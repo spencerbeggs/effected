@@ -10,6 +10,8 @@
 * Updated @effected/workspaces/testing: the repo-shape checks
 * Updated @effected/workspaces: monorepo tooling
 * Updated @effected/workspaces discovery and detection
+* Updated @effected/commands
+* Updated Run.collect drains stdout, stderr and the exit code concurrently
 
 ## 2026-10-27
 

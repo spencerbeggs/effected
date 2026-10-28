@@ -106,6 +106,28 @@ describe("Run against real processes", () => {
 		30_000,
 	);
 
+	it.effect(
+		"bytes returns NULs and invalid UTF-8 verbatim, draining both pipes under backpressure",
+		() =>
+			// Run.bytes shares collect's concurrent drain: on a raw handle a stream
+			// only moves while it is consumed, so the same both-pipes pressure that
+			// pins collect pins this collector too.
+			Effect.gen(function* () {
+				const script = [
+					"const big = Buffer.alloc(1024 * 1024, 0xff);",
+					"process.stdout.write(Buffer.from([0, 0xc3, 0x28]));",
+					"process.stderr.write(big);",
+					"process.stdout.write(big);",
+					"process.stderr.write(big);",
+				].join("");
+				const bytes = yield* live(Run.bytes(node(script)));
+				assert.instanceOf(bytes, Uint8Array);
+				assert.strictEqual(bytes.length, 3 + 1024 * 1024);
+				assert.deepStrictEqual([...bytes.subarray(0, 4)], [0, 0xc3, 0x28, 0xff]);
+			}),
+		30_000,
+	);
+
 	it.effect("json decodes real tool output through a schema", () =>
 		Effect.gen(function* () {
 			const parsed = yield* live(

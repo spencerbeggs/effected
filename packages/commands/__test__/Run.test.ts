@@ -185,6 +185,91 @@ describe("Run.text", () => {
 	);
 });
 
+describe("Run.bytes", () => {
+	// A NUL, then 0xc3 0x28 (an invalid two-byte sequence), then a lone 0xff.
+	const blob = new Uint8Array([0x00, 0x61, 0xc3, 0x28, 0xff]);
+
+	it.effect("returns stdout byte for byte, where text decoding would replace the invalid sequences", () =>
+		Effect.gen(function* () {
+			const bytes = yield* withScript(
+				() => Run.bytes(cmd("git", ["show", ":a.bin"])),
+				() => ({ stdout: blob }),
+			);
+			assert.deepStrictEqual([...bytes], [...blob]);
+			// Control: the text helpers lose the bytes this one keeps.
+			const text = yield* withScript(
+				() => Run.collect(cmd()),
+				() => ({ stdout: blob }),
+			);
+			assert.notStrictEqual(new TextEncoder().encode(text.stdout).length, blob.length);
+		}),
+	);
+
+	it.effect("a non-zero exit fails with kind 'nonZero', stdout decoded and redacted on the error", () =>
+		Effect.gen(function* () {
+			const secret = Redacted.make("hunter2");
+			const error = yield* Effect.flip(
+				withScript(
+					() => Run.bytes(cmd(), { redact: [secret] }),
+					() => ({ stdout: "token hunter2", stderr: "fatal: hunter2", exit: 128 }),
+				),
+			);
+			assert.instanceOf(error, CommandFailedError);
+			if (error instanceof CommandFailedError) {
+				assert.strictEqual(error.kind, "nonZero");
+				assert.strictEqual(error.exitCode, 128);
+				assert.strictEqual(error.stderr, "fatal: ***");
+				assert.strictEqual(error.stdout, "token ***");
+			}
+		}),
+	);
+
+	it.effect("redaction never rewrites the returned bytes", () =>
+		Effect.gen(function* () {
+			const bytes = yield* withScript(
+				() => Run.bytes(cmd(), { redact: [Redacted.make("hunter2")] }),
+				() => ({ stdout: "hunter2" }),
+			);
+			assert.strictEqual(new TextDecoder().decode(bytes), "hunter2");
+		}),
+	);
+
+	it.effect("fails typed when stdout exceeds maxOutputBytes, and accepts exactly the cap", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				withScript(
+					() => Run.bytes(cmd(), { maxOutputBytes: 4 }),
+					() => ({ stdout: blob }),
+				),
+			);
+			assert.instanceOf(error, CommandOutputError);
+			if (error instanceof CommandOutputError) assert.strictEqual(error.kind, "tooLarge");
+			const exact = yield* withScript(
+				() => Run.bytes(cmd(), { maxOutputBytes: 5 }),
+				() => ({ stdout: blob }),
+			);
+			assert.strictEqual(exact.length, 5);
+		}),
+	);
+
+	it.effect("an opted-in timeout fails with kind 'timeout'", () =>
+		Effect.gen(function* () {
+			const fiber = yield* Effect.forkChild(
+				Effect.flip(
+					withScript(
+						() => Run.bytes(cmd(), { timeout: "1 second" }),
+						() => ({ hang: true }),
+					),
+				),
+			);
+			yield* TestClock.adjust("2 seconds");
+			const error = yield* Fiber.join(fiber);
+			assert.instanceOf(error, CommandFailedError);
+			if (error instanceof CommandFailedError) assert.strictEqual(error.kind, "timeout");
+		}),
+	);
+});
+
 describe("Run.lines", () => {
 	it.effect("splits, trims and drops blank lines", () =>
 		Effect.gen(function* () {

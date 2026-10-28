@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/commands/src/LocalExec.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T14:19:29Z
+  at: 2026-10-28T16:53:35Z
 integrity:
   generated:
-    body: ec02787645bc0ea8
+    body: ff42f5503276de3d
 ---
 
 # @effected/commands
@@ -204,7 +204,8 @@ while a class's `static readonly` declarations keep it.
   unit control pins core's own `setEnv` behaviour so a beta that changes
   it fails loudly.
 - **A non-zero exit is a result for `collect`, `exitCode`, `succeeds` and
-  `jsonLine`, and a typed failure for `text`, `lines` and `json`.** The
+  `jsonLine`, and a typed failure for `text`, `lines`, `json` and
+  `bytes`.** The
   split is deliberate. The interpreting helpers also trim — `Run.text`
   trims the whole result, which silently corrupts fixed-column output
   whose first column can be whitespace (`git status --porcelain` is the
@@ -220,6 +221,16 @@ while a class's `static readonly` declarations keep it.
   alone does not discriminate, which is why the e2e backpressure test in
   `packages/commands/__test__/e2e/Run.e2e.test.ts` is not optional — see
   [`Run.collect` drains both pipes concurrently](../invariants/collect-drains-both-pipes-concurrently.md).
+  Every helper, `Run.bytes` included, goes through that one drain: core's
+  `ChildProcessSpawner` helpers drain unread pipes themselves, but on a raw
+  handle an output stream only moves while it is consumed.
+- **`Run.bytes` hands back stdout undecoded.** Every other helper decodes
+  stdout as UTF-8, which replaces invalid sequences with U+FFFD; a check
+  that inspects a blob (`git show :path`, looking for NULs or invalid
+  UTF-8) needs the bytes. It keeps `Run.text`'s exit, timeout and capture
+  semantics. Redaction scrubs stderr and every error, a failure's `stdout`
+  being the bytes decoded as text, but never the returned bytes, because
+  rewriting a blob corrupts it.
 - **Teeing is a separate combinator, not an option.** Only `collectTee`
   requires core `Stdio` in `R`, and an option cannot vary the `R`
   channel — a boolean would tax every plain `collect` caller with a

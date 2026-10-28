@@ -1,7 +1,7 @@
 import type { Duration, Redacted } from "effect";
 import { Effect, Function as Fn, PlatformError, Result, Schema, Stdio, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
-import { OutputTooLarge, collectBounded } from "./internal/capture.js";
+import { OutputTooLarge, collectBounded, collectBoundedBytes } from "./internal/capture.js";
 import { REDACTED, Redaction } from "./Redaction.js";
 
 /**
@@ -255,16 +255,27 @@ export class CommandOutputError extends Schema.TaggedError<CommandOutputError>()
 	}
 }
 
-/** Spawns, collects both streams concurrently, and awaits exit. */
-const collectRaw = (
+/** What one drained run produced, stdout in whatever form its collector made. */
+interface Drained<Out> {
+	readonly stdout: Out;
+	readonly stderr: string;
+	readonly exitCode: number;
+}
+
+/**
+ * Spawns, collects both streams concurrently, and awaits exit. `collectStdout`
+ * decides stdout's form: text for every interpreting helper, bytes for
+ * `Run.bytes`. stderr is always text.
+ */
+const drain = <Out>(
 	command: ChildProcess.Command,
 	options: RunOptions | undefined,
 	tee: Stdio.Stdio | undefined,
-): Effect.Effect<
-	CommandOutput,
-	PlatformError.PlatformError | OutputTooLarge,
-	ChildProcessSpawner.ChildProcessSpawner
-> =>
+	collectStdout: (
+		stream: Stream.Stream<Uint8Array, PlatformError.PlatformError>,
+		limit: number,
+	) => Effect.Effect<Out, PlatformError.PlatformError | OutputTooLarge>,
+): Effect.Effect<Drained<Out>, PlatformError.PlatformError | OutputTooLarge, ChildProcessSpawner.ChildProcessSpawner> =>
 	Effect.scoped(
 		Effect.gen(function* () {
 			const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -277,26 +288,40 @@ const collectRaw = (
 			// buffer fills — the child blocks writing to a full pipe while the
 			// reader that would drain it is still waiting on the other stream.
 			const [stdout, stderr, exitCode] = yield* Effect.all(
-				[collectBounded(out, limit), collectBounded(err, limit), handle.exitCode],
+				[collectStdout(out, limit), collectBounded(err, limit), handle.exitCode],
 				{ concurrency: "unbounded" },
 			);
-			const secrets = options?.redact;
-			return CommandOutput.make({
-				stdout: safeText(stdout, secrets),
-				stderr: safeText(stderr, secrets),
-				exitCode: Number(exitCode),
-			});
+			return { stdout, stderr, exitCode: Number(exitCode) };
 		}),
 	);
 
-/** Maps the raw failure modes onto this package's taxonomy, and applies any ceiling. */
-const collectClassified = (
+/** Spawns, collects both streams concurrently as text, and awaits exit. */
+const collectRaw = (
 	command: ChildProcess.Command,
 	options: RunOptions | undefined,
 	tee: Stdio.Stdio | undefined,
-): Effect.Effect<CommandOutput, CommandFailedError | CommandOutputError, ChildProcessSpawner.ChildProcessSpawner> => {
+): Effect.Effect<
+	CommandOutput,
+	PlatformError.PlatformError | OutputTooLarge,
+	ChildProcessSpawner.ChildProcessSpawner
+> =>
+	Effect.map(drain(command, options, tee, collectBounded), ({ stdout, stderr, exitCode }) => {
+		const secrets = options?.redact;
+		return CommandOutput.make({
+			stdout: safeText(stdout, secrets),
+			stderr: safeText(stderr, secrets),
+			exitCode,
+		});
+	});
+
+/** Maps the raw failure modes onto this package's taxonomy, and applies any ceiling. */
+const classify = <A>(
+	command: ChildProcess.Command,
+	options: RunOptions | undefined,
+	raw: Effect.Effect<A, PlatformError.PlatformError | OutputTooLarge, ChildProcessSpawner.ChildProcessSpawner>,
+): Effect.Effect<A, CommandFailedError | CommandOutputError, ChildProcessSpawner.ChildProcessSpawner> => {
 	const described = describeCommand(command);
-	const classified = collectRaw(command, options, tee).pipe(
+	const classified = raw.pipe(
 		Effect.catch((error) =>
 			Effect.fail(
 				error instanceof OutputTooLarge
@@ -312,6 +337,16 @@ const collectClassified = (
 				orElse: () => Effect.fail(CommandFailedError.timedOut(command, options.redact)),
 			});
 };
+
+/** `collectRaw`, classified. */
+const collectClassified = (
+	command: ChildProcess.Command,
+	options: RunOptions | undefined,
+	tee: Stdio.Stdio | undefined,
+): Effect.Effect<CommandOutput, CommandFailedError | CommandOutputError, ChildProcessSpawner.ChildProcessSpawner> =>
+	classify(command, options, collectRaw(command, options, tee));
+
+const lossy = new TextDecoder();
 
 /** Fails a run whose process exited non-zero. */
 const requireZero = (
@@ -338,7 +373,8 @@ const annotate = (command: ChildProcess.Command): Effect.Effect<void> => {
  *
  * A non-zero exit is a *result* for {@link Run.collect}, {@link Run.exitCode},
  * {@link Run.succeeds} and {@link Run.jsonLine}, and a typed *failure* for
- * {@link Run.text}, {@link Run.lines} and {@link Run.json} — the split is
+ * {@link Run.text}, {@link Run.lines}, {@link Run.json} and {@link Run.bytes},
+ * which alone hands back stdout undecoded — the split is
  * deliberate, matching core (where a non-zero exit is a success) at the
  * reporting level while giving the interpreting helpers the ergonomics callers
  * actually want.
@@ -423,6 +459,44 @@ export class Run {
 		yield* annotate(command);
 		const stdio = yield* Stdio.Stdio;
 		return yield* collectClassified(command, options, stdio);
+	});
+
+	/**
+	 * Runs `command` and resolves with its stdout as raw bytes on a zero exit —
+	 * NULs, invalid UTF-8 and all.
+	 *
+	 * @remarks
+	 * For output that is data rather than text: a blob from `git show :path`,
+	 * an archive on stdout, anything a check inspects byte for byte. Every
+	 * other helper decodes stdout as UTF-8, which replaces invalid sequences
+	 * with U+FFFD and so destroys exactly what such a check looks for.
+	 *
+	 * The semantics are {@link Run.text}'s: a non-zero exit fails
+	 * {@link CommandFailedError} of kind `"nonZero"`, more than
+	 * {@link RunOptions.maxOutputBytes} on either stream fails
+	 * {@link CommandOutputError} of kind `"tooLarge"`, and an opted-in
+	 * {@link RunOptions.timeout} fails kind `"timeout"`. stdout and stderr are
+	 * drained concurrently, as every helper here drains them.
+	 *
+	 * {@link RunOptions.redact} scrubs stderr and every error — a failure's
+	 * `stdout` is the bytes decoded as text, then redacted — but **never the
+	 * returned bytes**: redaction rewrites text, and rewriting a blob corrupts
+	 * it. A command whose stdout can carry a secret should not be read this
+	 * way.
+	 */
+	static readonly bytes = Effect.fn("Run.bytes")(function* (command: ChildProcess.Command, options?: RunOptions) {
+		yield* annotate(command);
+		const drained = yield* classify(command, options, drain(command, options, undefined, collectBoundedBytes));
+		if (drained.exitCode !== 0) {
+			const secrets = options?.redact;
+			const output = CommandOutput.make({
+				stdout: safeText(lossy.decode(drained.stdout), secrets),
+				stderr: safeText(drained.stderr, secrets),
+				exitCode: drained.exitCode,
+			});
+			return yield* Effect.fail(CommandFailedError.nonZero(command, output, secrets));
+		}
+		return drained.stdout;
 	});
 
 	/**
