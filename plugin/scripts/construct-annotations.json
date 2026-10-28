@@ -152,7 +152,7 @@
 		"EnvOverride": "read a mode variable accepted per audience, report rejected values without logging",
 		"RuntimeEnv": "agent, CI and terminal detection snapshot, persist as plain JSON",
 		"TerminalEnv": "per-stream colour level, `FORCE_COLOR` precedence, sync colour from env record, hyperlinks, width, core TerminalCapabilities",
-		"ShellExports": "parse and write shell export files, read a session env file, strict bash dialect",
+		"ShellExports": "parse and write shell export files, read session env, quote one shell word",
 		"ShellExportsError": "shell export text rejected, line, column and reason"
 	},
 	"git": {
@@ -1121,7 +1121,7 @@
 		"CurrentPlatform": "override the detected os platform for native directory resolution in tests",
 		"NativeDirs": "map platform and environment to os-native app directories, macOS Application Support, Windows AppData",
 		"ResolvedAppDirs": "the fully resolved app-namespaced directories and their search paths",
-		"Xdg": "read the XDG Base Directory environment variables once at layer construction",
+		"Xdg": "read the XDG Base Directory environment once at layer construction, opt-in home fallback",
 		"XdgConfig": "bridge xdg app directories into a config-file resolver, search path or native directory",
 		"XdgEnvError": "handle the HOME environment variable missing for xdg resolution",
 		"XdgPaths": "the resolved XDG_CONFIG_HOME/XDG_DATA_HOME and friends, home directory required",
