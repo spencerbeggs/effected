@@ -28,6 +28,7 @@
 			"@effected/memfs",
 			"@effected/schema-org",
 			"@effected/semver",
+			"@effected/source",
 			"@effected/spdx",
 			"@effected/store",
 			"@effected/templates",

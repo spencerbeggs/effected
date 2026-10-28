@@ -900,6 +900,9 @@
 		"VersionDiff": "classify the change between two versions: major minor or patch",
 		"VersionNotFoundError": "handle a version missing from the cache during diff next or prev navigation"
 	},
+	"source": {
+		"LineIndex": "convert offset to line and character, lsp position, count lines, line start end"
+	},
 	"spdx": {
 		"AndNode": "spdx AND compound expression node, conjunction of two license expressions",
 		"InvalidSpdxExpressionError": "handle malformed or unknown spdx license expression input",
