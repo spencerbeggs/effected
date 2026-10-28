@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:25:49Z
+  at: 2026-10-28T19:10:23Z
 integrity:
   generated:
-    body: 273b3b30dca3e2d0
+    body: f2580b0f14b35e93
 ---
 
 # runtimes
@@ -39,9 +39,12 @@ consuming applications, the binary does not.
 Boundary tier. IO goes entirely through `effect`-core abstractions; the
 consumer provides the platform layer at the edge. `peerDependencies` is
 `effect` alone; `dependencies` is `@effected/semver`
-(`packages/runtimes/package.json`) and nothing else, for all version
-math — no external runtime dependency, and that constraint is the whole
-reason the CLI lives in a separate repository.
+(`packages/runtimes/package.json`), for all version math, and
+`@effected/crypto`, whose pure `HttpRedaction` scrubs the GitHub token out
+of the `HttpClientError` a `NetworkError` or `ResponseParseError` keeps as
+its `cause`. Both are kit packages with no external runtime dependency of
+their own, and that constraint is the whole reason the CLI lives in a
+separate repository.
 
 The version math uses `@effected/semver`'s `SemVer` and `Range`
 **directly**, not its `VersionCache` service: `VersionCache` is a
