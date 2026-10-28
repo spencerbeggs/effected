@@ -1,7 +1,9 @@
 # @effected/walker
 
-Path traversal: upward (`Walker.ascend` / `ascendWithin` / `firstMatch` /
-`findUpward` / `findRoot`) and downward (`descend`, the public glob-file walker). Sixth
+Path traversal: upward (`Walker.ascend` / `ascendWithin` / `ascendToMarker` /
+`firstMatch` / `findUpward` / `findUpwardAll` / `findRoot`, plus `*Sync` twins)
+and downward (`descend`, the public glob-file walker), and path containment
+(`confineRelative` lexical, `confineReal` physical). Sixth
 migration; the first package extracted from an already-merged sibling rather
 than ported from a `*-effect` repo.
 
@@ -154,6 +156,35 @@ satisfies the sync port directly (its sync interface carries `realPath`).
   reach every driver mapping (a vanished directory, an unresolvable and a
   denied link); without them a broken `ENOENT` mapping passed. The sync
   fault handlers (`readDirectory`, `realPath`) mirror the Effect ones.
+
+## One upward machine, two drivers
+
+The upward forms and `confineReal` run ONE generator,
+`src/internal/upwardMachine.ts`, yielding `Exists` and `RealPath` requests;
+`src/internal/upwardDrivers.ts` answers them through core `FileSystem` or the
+sync port (`stat` succeeding = exists; `realPath` throwing `ENOENT` =
+absence). Same rule as the downward walk: **never put a rule in a driver**.
+`ascend` is pure and calls the machine's `ascendChain` with no driver, so its
+`R` stays `Path`. `__test__/WalkerSync.test.ts` and `ConfineReal.test.ts`
+are parity matrices over one memfs volume. `WalkerSyncPath` mirrors core
+`Path` (`sep`, `join`, `dirname`, `resolve`, `isAbsolute`).
+
+- `ascendToMarker` stops at the nearest directory holding a marker ENTRY
+  (any kind), probing nothing above it; empty markers / an empty name die.
+- `findUpwardAll` probes the whole nearest hit directory, nothing above it.
+- `confineReal` resolves SEGMENT BY SEGMENT. Never replace that with one
+  `realPath` of a `..`-bearing path: node's JS `fs.realpath` (the Node
+  `FileSystem` off win32) runs `path.resolve` first, so `base/link/../x`
+  would read as inside while the OS opens the link target's sibling. memfs's
+  `realPath` is physical, so the `out/../passwd` cases catch a walker that
+  collapses `..` itself, but NOT one that hands the whole path to a
+  lexical-first `realPath` — no memfs volume behaves that way. Unresolvable
+  is refused, the base itself is `empty`, a relative base dies.
+- `descend`'s `cwd` must be absolute (relative and `""` die: the empty-base
+  drive escape, `join("", "C:/x")`), and a missing `cwd` is an empty answer.
+- `match: "directory" | "any"` matches a directory as its parent's entry, by
+  resolved kind; prune/boundaries/unentered links withhold only what lies
+  below it.
 
 ## Invariants
 
