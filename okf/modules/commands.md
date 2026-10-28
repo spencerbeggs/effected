@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/commands/src/LocalExec.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:11:51Z
+  at: 2026-10-28T17:12:09Z
 integrity:
   generated:
-    body: 71421d1755989e58
+    body: 1bac32ec1dde61e7
 ---
 
 # @effected/commands
@@ -199,6 +199,18 @@ while a class's `static readonly` declarations keep it.
   them here is exactly the re-declaration the one rule forbids. What is
   left is genuinely ours: a deadline (no default — an install and a
   `rev-parse` cannot share one), a redaction set, and a capture bound.
+- **`Run.setKillOptions` sets the kill fields core has no combinator for.**
+  A timeout kills the child by closing its scope, and core's default kill
+  is `SIGTERM` with no `SIGKILL` follow-up: the Node spawner then waits on
+  the child with no time limit, so a tool that ignores `SIGTERM` holds the
+  run past its timeout. `forceKillAfter` bounds that wait. The combinator
+  is dual, merges over the command's own fields (an unset field keeps the
+  command's value), applies through a pipeline like `extendEnv`, and works
+  on `ResolvedTool.command`'s output, so no caller rebuilds a
+  `StandardCommand` from its fields. It stays a command combinator rather
+  than a `RunOptions` field because the kill is the command's, not the
+  run's: `Run.stream` and `Run.detach` take no options. An e2e test pins it
+  against a child that ignores `SIGTERM`.
 - **`Run.extendEnv` exists because core's `setEnv` is a trap.** `setEnv`
   merges into `options.env` but never sets `extendEnv`, and the Node
   spawner resolves the child environment as `extendEnv ? { ...process.env,

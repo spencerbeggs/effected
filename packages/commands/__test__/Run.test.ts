@@ -763,6 +763,48 @@ describe("Run.detach", () => {
 	);
 });
 
+describe("Run.setKillOptions", () => {
+	it.effect("the spawner receives the kill options, every other option kept", () =>
+		Effect.gen(function* () {
+			const spawner = ScriptedSpawner.make(() => ({ stdout: "ok" }));
+			const command = ChildProcess.make("tool", ["x"], { cwd: "/repo", env: { A: "1" } }).pipe(
+				Run.setKillOptions({ killSignal: "SIGINT", forceKillAfter: "2 seconds" }),
+			);
+			yield* Effect.provide(Run.collect(command), spawner.layer);
+			const options = spawner.spawns[0]?.options;
+			assert.strictEqual(options?.killSignal, "SIGINT");
+			assert.strictEqual(options?.forceKillAfter, "2 seconds");
+			assert.strictEqual(options?.cwd, "/repo");
+			assert.deepStrictEqual(options?.env, { A: "1" });
+			assert.deepStrictEqual(spawner.spawns[0]?.args, ["x"]);
+		}),
+	);
+
+	it("a field left unset keeps the command's own value, never an explicit undefined", () => {
+		const command = Run.setKillOptions(ChildProcess.make("tool", [], { killSignal: "SIGHUP" }), {
+			forceKillAfter: "1 second",
+		});
+		if (!ChildProcess.isStandardCommand(command)) assert.fail("expected a standard command");
+		assert.strictEqual(command.options.killSignal, "SIGHUP");
+		assert.strictEqual(command.options.forceKillAfter, "1 second");
+		const untouched = Run.setKillOptions(ChildProcess.make("tool", []), {});
+		if (!ChildProcess.isStandardCommand(untouched)) assert.fail("expected a standard command");
+		assert.isFalse("killSignal" in untouched.options);
+		assert.isFalse("forceKillAfter" in untouched.options);
+	});
+
+	it("applies to every command in a pipeline", () => {
+		const piped = Run.setKillOptions(ChildProcess.pipeTo(ChildProcess.make("a", []), ChildProcess.make("b", [])), {
+			forceKillAfter: "1 second",
+		});
+		if (!ChildProcess.isPipedCommand(piped)) assert.fail("expected a pipeline");
+		for (const side of [piped.left, piped.right]) {
+			if (!ChildProcess.isStandardCommand(side)) assert.fail("expected standard commands");
+			assert.strictEqual(side.options.forceKillAfter, "1 second");
+		}
+	});
+});
+
 describe("Run.extendEnv", () => {
 	it.effect("the spawner receives the merged env AND extendEnv true", () =>
 		Effect.gen(function* () {

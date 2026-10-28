@@ -164,6 +164,26 @@ describe("environment extension against a real spawn", () => {
 	);
 });
 
+describe("Run.setKillOptions against a real spawn", () => {
+	it.live.skipIf(process.platform === "win32")(
+		"a timeout with forceKillAfter ends a child that ignores SIGTERM, failing typed instead of hanging",
+		() =>
+			// The control is the same run without the combinator: core's default
+			// kill is SIGTERM with no SIGKILL follow-up, so the scope's release waits
+			// on this child forever and the test hangs to its vitest timeout.
+			Effect.gen(function* () {
+				const stubborn = node("process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);");
+				const command = Run.setKillOptions(stubborn, { forceKillAfter: "300 millis" });
+				const started = Date.now();
+				const error = yield* Effect.flip(live(Run.collect(command, { timeout: "300 millis" })));
+				assert.instanceOf(error, CommandFailedError);
+				if (error instanceof CommandFailedError) assert.strictEqual(error.kind, "timeout");
+				assert.isBelow(Date.now() - started, 10_000);
+			}),
+		20_000,
+	);
+});
+
 describe("Run.detach lifecycle", () => {
 	it.effect(
 		"an unref'd child SURVIVES its scope closing",

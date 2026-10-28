@@ -27,8 +27,9 @@ const MAX_MESSAGE_CHARS = 2000;
  * kill signals are all `ChildProcess.CommandOptions` fields with core
  * combinators (`ChildProcess.setCwd`, `ChildProcess.setEnv`) — this package
  * consumes core's command vocabulary rather than re-declaring it. What remains
- * here is what a `Command` value cannot express. One caveat on that routing:
- * bare `ChildProcess.setEnv` replaces the child's WHOLE environment (it never
+ * here is what a `Command` value cannot express. Core has no combinator for
+ * the kill fields, so {@link Run.setKillOptions} sets those on the command.
+ * One caveat on that routing: bare `ChildProcess.setEnv` replaces the child's WHOLE environment (it never
  * sets `extendEnv`, so the child loses `PATH` and `HOME`) — to add variables on
  * top of the parent environment, use `Run.extendEnv`.
  *
@@ -44,6 +45,10 @@ export interface RunOptions {
 	 * closes the run's scope (killing the child) and fails with
 	 * {@link CommandFailedError} of kind `"timeout"` rather than core's
 	 * `TimeoutError`, so a caller's error channel stays this package's taxonomy.
+	 *
+	 * The kill is the command's own: `SIGTERM` by default, with no `SIGKILL`
+	 * follow-up, so a child that ignores `SIGTERM` holds the run past this
+	 * ceiling. Bound it with {@link Run.setKillOptions}' `forceKillAfter`.
 	 */
 	readonly timeout?: Duration.Input | undefined;
 	/**
@@ -766,6 +771,39 @@ export class Run {
 			return ChildProcess.make(self.command, self.args, { ...self.options, env: merged, extendEnv: true });
 		}
 		return ChildProcess.pipeTo(Run.extendEnv(self.left, env), Run.extendEnv(self.right, env), self.options);
+	});
+
+	/**
+	 * Sets how a command is killed when its scope closes — a {@link RunOptions.timeout}
+	 * expiring, an interruption — merging `kill` over the command's own
+	 * `killSignal` / `forceKillAfter`.
+	 *
+	 * @remarks
+	 * A timeout kills the child by closing its scope, and core defaults that to
+	 * `SIGTERM` with **no** `SIGKILL` follow-up: the platform then waits for the
+	 * child to exit with no time limit, so a tool that ignores `SIGTERM` holds
+	 * the run past its timeout indefinitely. Set `forceKillAfter` to bound that
+	 * wait — the spawner sends `SIGKILL` once it elapses — and `killSignal` to
+	 * change the first signal:
+	 * `Run.collect(Run.setKillOptions(command, { forceKillAfter: "2 seconds" }), { timeout: "30 seconds" })`.
+	 *
+	 * Works on any command, `ResolvedTool.command`'s included, so nobody has to
+	 * rebuild a `StandardCommand` from its fields to change these two. A field
+	 * `kill` leaves unset keeps the command's own value. For a pipeline, applies
+	 * to every command in it, preserving the pipe's own options.
+	 */
+	static readonly setKillOptions: {
+		(kill: ChildProcess.KillOptions): (self: ChildProcess.Command) => ChildProcess.Command;
+		(self: ChildProcess.Command, kill: ChildProcess.KillOptions): ChildProcess.Command;
+	} = Fn.dual(2, (self: ChildProcess.Command, kill: ChildProcess.KillOptions): ChildProcess.Command => {
+		if (ChildProcess.isStandardCommand(self)) {
+			return ChildProcess.make(self.command, self.args, {
+				...self.options,
+				...(kill.killSignal === undefined ? {} : { killSignal: kill.killSignal }),
+				...(kill.forceKillAfter === undefined ? {} : { forceKillAfter: kill.forceKillAfter }),
+			});
+		}
+		return ChildProcess.pipeTo(Run.setKillOptions(self.left, kill), Run.setKillOptions(self.right, kill), self.options);
 	});
 
 	// Annotated: the module-local const must stay (used by collectRaw and exported).
