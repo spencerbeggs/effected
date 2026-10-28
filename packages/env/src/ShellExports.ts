@@ -524,12 +524,48 @@ export class ShellExports {
 	);
 
 	/**
+	 * Quote `value` as one shell word: the same word {@link ShellExports.format} writes after `NAME=`, so
+	 * `export NAME=${quote(value)}` reads back through {@link ShellExports.parseResult} as exactly `value`, and bash
+	 * reads the word as exactly `value` wherever it is an argument.
+	 *
+	 * @remarks
+	 * A value of only `A-Za-z0-9_@%+=:,./-` is written bare; the empty value as `''`; one holding a control character
+	 * or DEL (a newline, a tab, a carriage return among them) as `$'…'`, with the control characters as escapes; any
+	 * other as `'…'`, with `'` as `'\''`. Every value but NUL and a lone surrogate has a word.
+	 *
+	 * The word is for bash, in an argument or an assignment's value. `'…'` and bare words are POSIX, but `$'…'` is
+	 * bash's own quoting, so a value holding a control character is not portable to every POSIX `sh`. A bare word is
+	 * not quoted against command position: as a command's first word, `a=b` is an assignment, and `if` a keyword. A
+	 * `~` is always quoted, where macOS `/bin/bash` 3.2's `printf %q` leaves a leading one bare and bash then expands
+	 * it.
+	 *
+	 * @example
+	 * ```ts
+	 * import { ShellExports } from "@effected/env"
+	 *
+	 * console.log(ShellExports.quote("it's here"))
+	 * // => 'it'\''s here'
+	 * console.log(ShellExports.quote("line one\nline two"))
+	 * // => $'line one\nline two'
+	 * ```
+	 *
+	 * @param value - the value the word must mean
+	 * @throws RangeError for a value holding NUL (no bash string holds one) or a lone UTF-16 surrogate (it has no
+	 *   UTF-8 form): a caller's mistake, as in {@link ShellExports.format}.
+	 */
+	static quote(value: string): string {
+		if (value.includes("\0")) throw new RangeError("ShellExports.quote: the value holds NUL");
+		if (LONE_SURROGATE.test(value)) throw new RangeError("ShellExports.quote: the value holds a lone surrogate");
+		return quote(value);
+	}
+
+	/**
 	 * Write `vars` as `export NAME=value` lines in the dialect, one per entry in record order, each value quoted so
 	 * that {@link ShellExports.parseResult} and bash read it back exactly.
 	 *
 	 * @remarks
-	 * A value of only `A-Za-z0-9_@%+=:,./-` is written bare; one holding a control character or DEL as `$'…'`, with
-	 * the control characters as escapes; any other as `'…'`, with `'` as `'\''`. Every line ends in `\n`.
+	 * Each value is the word {@link ShellExports.quote} writes: bare for `A-Za-z0-9_@%+=:,./-`, `$'…'` for a control
+	 * character or DEL, `'…'` otherwise. Every line ends in `\n`.
 	 *
 	 * @param vars - variable name to value
 	 * @throws RangeError for a name that is not a shell variable name (`[A-Za-z_][A-Za-z0-9_]*`) or is one bash treats

@@ -281,6 +281,60 @@ describe("ShellExports.parseBytesResult", () => {
 		assert.deepStrictEqual(okBytes(bytes("# ", [0xff, 0xa5], "\nexport A=1\n")), { A: "1" }));
 });
 
+describe("ShellExports.quote", () => {
+	it("bare when safe, '' for empty, single quotes otherwise, $'…' for a control character, ~ always quoted", () =>
+		assert.deepStrictEqual(
+			["a/b:c=d", "", "it's here", "x\ny\u0001", "tab\there", "\r", "\u007f", "~", "~/x", "a:~/x", "日本"].map(
+				ShellExports.quote,
+			),
+			[
+				"a/b:c=d",
+				"''",
+				"'it'\\''s here'",
+				"$'x\\ny\\001'",
+				"$'tab\\there'",
+				"$'\\r'",
+				"$'\\177'",
+				"'~'",
+				"'~/x'",
+				"'a:~/x'",
+				"'日本'",
+			],
+		));
+
+	it("round-trips through parseResult as an export's value: newline, CR, tab, quotes, expansions, BOM, astral", () => {
+		const values = [
+			"line one\nline two",
+			"\r\n",
+			"\t",
+			"'\"\\",
+			// biome-ignore lint/suspicious/noTemplateCurlyInString: a literal shell parameter expansion, not a template
+			"$HOME `id` $(id) ${X} *?[] {a,b} !x #y ~",
+			"\uFEFF",
+			"😀\u0085\u00a0",
+			"\\'",
+			"'",
+			"''",
+		];
+		for (const value of values)
+			assert.deepStrictEqual(ok(`export A=${ShellExports.quote(value)}\n`), { A: value }, JSON.stringify(value));
+	});
+
+	it("is the word format writes: format({ A: v }) is export A=quote(v)", () => {
+		for (const value of ["", "plain", "a b", "x\ny", "it's", "~"])
+			assert.strictEqual(ShellExports.format({ A: value }), `export A=${ShellExports.quote(value)}\n`);
+	});
+
+	it("throws RangeError on NUL and on a lone surrogate, high or low, as format does", () => {
+		assert.throws(() => ShellExports.quote("a\0b"), RangeError);
+		assert.throws(() => ShellExports.quote("\0"), RangeError);
+		assert.throws(() => ShellExports.quote("a\uD800"), RangeError);
+		assert.throws(() => ShellExports.quote("\uDC00b"), RangeError);
+		// A whole surrogate pair is an ordinary character.
+		assert.strictEqual(ShellExports.quote("😀"), "'😀'");
+	});
+});
+
 describe("ShellExports.format", () => {
 	it("bare when safe, '' for empty, single quotes otherwise, $'…' for control characters", () =>
 		assert.strictEqual(
@@ -864,13 +918,13 @@ const pipestatusAfter = (bin: string, text: string): { readonly shell: string; r
 	return { shell: shell as string, child: child as string };
 };
 
-const pipestatusShells: ReadonlyArray<readonly [bin: string, version: string]> = [
+const bashShells: ReadonlyArray<readonly [bin: string, version: string]> = [
 	...(hasBash ? [["bash", probe.stdout] as const] : []),
 	...(hasBash3 ? [[BASH3, "3.2"] as const] : []),
 ];
 
-describe.skipIf(pipestatusShells.length === 0)("PIPESTATUS: an export bash keeps only as the first command", () => {
-	for (const [bin, version] of pipestatusShells) {
+describe.skipIf(bashShells.length === 0)("PIPESTATUS: an export bash keeps only as the first command", () => {
+	for (const [bin, version] of bashShells) {
 		it(`control (bash ${version}): exported on a file's first line, it survives`, () =>
 			assert.deepStrictEqual(pipestatusAfter(bin, "export PIPESTATUS=sentinel\nexport A=1\n"), {
 				shell: "sentinel",
@@ -886,4 +940,46 @@ describe.skipIf(pipestatusShells.length === 0)("PIPESTATUS: an export bash keeps
 			assert.strictEqual(rejection("export PIPESTATUS=sentinel\nexport A=1\n").reason, "special-variable");
 		});
 	}
+});
+
+/** Every value of the generated maps and the corpus: the quoter's oracle input. */
+const quoteValues: ReadonlyArray<string> = maps.flatMap((map) => Object.values(map));
+
+/** The arguments the bash at `bin` reads from `words` written after `set --`, each as its own entry. */
+const bashArguments = (bin: string, words: ReadonlyArray<string>, lcAll: string): ReadonlyArray<string> => {
+	// Only words that are dialect-valid as an export's value are ever handed to bash, so none can run a command.
+	for (const word of words) assert.isTrue(Result.isSuccess(ShellExports.parseResult(`export A=${word}\n`)), word);
+	const script = `set -- ${words.join(" ")}\nprintf '%s\\0' "$#" "$@"`;
+	const result = spawnSync(bin, ["--norc", "--noprofile", "-c", script], {
+		input: "",
+		encoding: "utf8",
+		cwd: sandbox,
+		env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: sandbox, LC_ALL: lcAll },
+		maxBuffer: 16 * 1024 * 1024,
+		timeout: 10_000,
+	});
+	assert.strictEqual(result.status, 0, result.stderr);
+	const [count, ...args] = result.stdout.split("\0").slice(0, -1);
+	assert.strictEqual(Number(count), args.length, "harness: the argument count and the arguments disagree");
+	return args;
+};
+
+describe.skipIf(bashShells.length === 0)("ShellExports.quote against real bash", () => {
+	it("the oracle input is real: hundreds of values, control characters and quotes among them", () => {
+		assert.isAbove(quoteValues.length, 200);
+		assert.isTrue(quoteValues.some((value) => value.includes("\n")));
+		assert.isTrue(quoteValues.some((value) => value.includes("'")));
+		assert.isTrue(quoteValues.includes(""));
+	});
+
+	for (const [bin, version] of bashShells)
+		for (const lcAll of ["C", "en_US.UTF-8"]) {
+			it(`bash ${version} reads each word as one argument holding exactly the value (LC_ALL=${lcAll})`, () =>
+				assert.deepStrictEqual(bashArguments(bin, quoteValues.map(ShellExports.quote), lcAll), quoteValues));
+		}
+
+	it.skipIf(!hasBash3)("control: bash 3.2's own printf %q leaves a leading ~ bare, and quote does not", () => {
+		assert.strictEqual(new TextDecoder().decode(printfBytes(BASH3, { A: "~/x" }, "en_US.UTF-8")), "export A=~/x\n");
+		assert.deepStrictEqual(bashArguments(BASH3, [ShellExports.quote("~/x")], "en_US.UTF-8"), ["~/x"]);
+	});
 });

@@ -152,7 +152,7 @@
 		"EnvOverride": "read a mode variable accepted per audience, report rejected values without logging",
 		"RuntimeEnv": "agent, CI and terminal detection snapshot, persist as plain JSON",
 		"TerminalEnv": "per-stream colour level, `FORCE_COLOR` precedence, sync colour from env record, hyperlinks, width, core TerminalCapabilities",
-		"ShellExports": "parse and write shell export files, read a session env file, strict bash dialect",
+		"ShellExports": "parse and write shell export files, read session env, quote one shell word",
 		"ShellExportsError": "shell export text rejected, line, column and reason"
 	},
 	"git": {
