@@ -333,6 +333,7 @@ export function* confineRealMachine<C>(
 	base: string,
 	candidate: string,
 	path: PathOps,
+	within = false,
 ): Walk<UpwardResult<{ readonly _tag: "Ok"; readonly value: string } | ConfineRefusal<C>>> {
 	// A win32 `\repo` is absolute to `isAbsolute`, yet which drive it names
 	// depends on the process working directory: a wiring defect like `C:repo`.
@@ -343,6 +344,8 @@ export function* confineRealMachine<C>(
 		done<ConfineRefusal<C>>({ _tag: "Refused", reason });
 	if (candidate.includes("\0")) return refuse("nulByte");
 	if (candidate === "") return refuse("empty");
+	// `within` answers a base-relative path for an absolute candidate only.
+	if (within && !path.isAbsolute(candidate)) return refuse("absolute");
 	const win32 = path.sep === "\\";
 	const isSep = (character: string): boolean => character === path.sep || (win32 && character === "/");
 	// A drive-relative `C:x` is not absolute to win32's `isAbsolute`, yet it is
@@ -359,8 +362,17 @@ export function* confineRealMachine<C>(
 	if (candidateReal._tag !== "Ok") return done(candidateReal);
 	const root = trimTrailing(baseReal.value, isSep);
 	const resolved = trimTrailing(candidateReal.value, isSep);
+	if (within && resolved === root) return done({ _tag: "Ok", value: "" });
 	if (resolved === root) return refuse("empty");
 	// `root` is `""` for a filesystem-root base, so the prefix is the separator alone.
 	if (!resolved.startsWith(`${root}${path.sep}`)) return refuse("outside");
+	if (within)
+		return done({
+			_tag: "Ok",
+			value: resolved
+				.slice(root.length + 1)
+				.split(path.sep)
+				.join("/"),
+		});
 	return done({ _tag: "Ok", value: candidateReal.value });
 }

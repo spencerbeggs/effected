@@ -29,7 +29,7 @@ export {
 	confineRelative,
 	confineRelativeResult,
 } from "./Confine.js";
-export { confineReal, confineRealSync } from "./ConfineReal.js";
+export { confineReal, confineRealSync, relativeWithin, relativeWithinSync } from "./ConfineReal.js";
 export {
 	type DescendEntriesResult,
 	type DescendEntry,
