@@ -147,6 +147,23 @@ export const confineRealSync = (
 	);
 
 /**
+ * Options for {@link relativeWithin}.
+ *
+ * @public
+ */
+export interface RelativeWithinOptions {
+	/**
+	 * What a path that does not exist yet means. `"ancestor"` (the default)
+	 * resolves the missing tail from the deepest existing ancestor, so a
+	 * destination can be placed before it is created; `"refuse"` answers `None`
+	 * for any path that does not exist.
+	 */
+	readonly missing?: "ancestor" | "refuse";
+}
+
+const within = (options: RelativeWithinOptions | undefined) => ({ requireExisting: options?.missing === "refuse" });
+
+/**
  * The posix, base-relative path of an absolute path that lies inside a base
  * directory PHYSICALLY, or `None` when it does not.
  *
@@ -172,6 +189,7 @@ export const confineRealSync = (
  *
  * @param base - The absolute directory the path must stay inside.
  * @param absolute - The absolute path to place under `base`.
+ * @param options - See {@link RelativeWithinOptions}.
  * @returns An `Effect` succeeding with the base-relative posix path, or `None`.
  *
  * @public
@@ -179,12 +197,13 @@ export const confineRealSync = (
 export const relativeWithin: (
 	base: string,
 	absolute: string,
+	options?: RelativeWithinOptions,
 ) => Effect.Effect<Option.Option<string>, never, FileSystem.FileSystem | Path.Path> = Effect.fn(
 	"Walker.relativeWithin",
-)(function* (base: string, absolute: string) {
+)(function* (base: string, absolute: string, options?: RelativeWithinOptions) {
 	const path = yield* Path.Path;
 	const outcome = yield* runUpward(
-		confineRealMachine<PlatformError.PlatformError>("Walker.relativeWithin", base, absolute, path, true),
+		confineRealMachine<PlatformError.PlatformError>("Walker.relativeWithin", base, absolute, path, within(options)),
 	);
 	return outcome._tag === "Ok" ? Option.some(outcome.value) : Option.none();
 });
@@ -203,13 +222,19 @@ export const relativeWithin: (
  * @param base - The absolute directory the path must stay inside.
  * @param absolute - The absolute path to place under `base`.
  * @param ops - The platform: spread or pass `nodeWalkerSyncOps`.
+ * @param options - See {@link RelativeWithinOptions}.
  * @returns The base-relative posix path, or `None`.
  *
  * @public
  */
-export const relativeWithinSync = (base: string, absolute: string, ops: WalkerSyncOps): Option.Option<string> => {
+export const relativeWithinSync = (
+	base: string,
+	absolute: string,
+	ops: WalkerSyncOps,
+	options?: RelativeWithinOptions,
+): Option.Option<string> => {
 	const outcome = runUpwardSync(
-		confineRealMachine<unknown>("Walker.relativeWithinSync", base, absolute, ops.path, true),
+		confineRealMachine<unknown>("Walker.relativeWithinSync", base, absolute, ops.path, within(options)),
 		ops.fileSystem,
 	);
 	return outcome._tag === "Ok" ? Option.some(outcome.value) : Option.none();

@@ -4,6 +4,7 @@ import { posix } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, Layer, Option, Path } from "effect";
+import type { RelativeWithinOptions } from "../src/ConfineReal.js";
 import { relativeWithin, relativeWithinSync } from "../src/ConfineReal.js";
 import type { WalkerSyncOps } from "../src/DescendSync.js";
 
@@ -18,10 +19,10 @@ const handle = MemoryFileSystem.makeSync({
 const ops: WalkerSyncOps = { fileSystem: handle.sync, path: posix };
 const platform = Layer.mergeAll(handle.layer, Path.layer);
 
-const both = (base: string, absolute: string, expected: string | undefined) => {
+const both = (base: string, absolute: string, expected: string | undefined, options?: RelativeWithinOptions) => {
 	const want = expected === undefined ? Option.none() : Option.some(expected);
-	assert.deepStrictEqual(Effect.runSync(relativeWithin(base, absolute).pipe(Effect.provide(platform))), want);
-	assert.deepStrictEqual(relativeWithinSync(base, absolute, ops), want);
+	assert.deepStrictEqual(Effect.runSync(relativeWithin(base, absolute, options).pipe(Effect.provide(platform))), want);
+	assert.deepStrictEqual(relativeWithinSync(base, absolute, ops, options), want);
 };
 
 describe("relativeWithin / relativeWithinSync", () => {
@@ -55,6 +56,14 @@ describe("relativeWithin / relativeWithinSync", () => {
 		both("/srv/site", "og/card.png", undefined);
 		both("/srv/site", "", undefined);
 		both("/srv/site", "/srv/site/a\0b", undefined);
+	});
+
+	it('with missing: "refuse" answers only for paths that exist', () => {
+		const refuse = { missing: "refuse" } as const;
+		both("/srv/site", "/srv/site/og/card.png", "og/card.png", refuse);
+		both("/srv/site", "/srv/site", "", refuse);
+		both("/srv/site", "/srv/site/og/new/file.md", undefined, refuse);
+		both("/srv/site", "/srv/site/og/new/file.md", "og/new/file.md", { missing: "ancestor" });
 	});
 
 	it("treats a relative base as a defect", () => {

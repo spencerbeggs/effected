@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/walker/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-29T16:07:50Z
+  at: 2026-10-29T16:09:16Z
 integrity:
   generated:
-    body: f3396dd134401dee
+    body: d87d4771c5e99524
 ---
 
 # walker
@@ -375,7 +375,7 @@ other question: where under the base does an absolute path sit? They return
 `None` for every refusal (outside, unverifiable, relative or NUL-bearing
 candidate). A destination that does not exist yet resolves from its deepest
 existing ancestor, exactly as in `confineReal`. A relative base is still a
-defect. There is no `missing` option: ancestor resolution is the only mode.
+defect. `options.missing` picks what absence means: `"ancestor"` (default) as above, or `"refuse"`, which answers `None` for any path that does not exist (an existing-and-inside check with no separate stat).
 
 ## Hardening
 
