@@ -1,5 +1,25 @@
 # @effected/ai-plugin
 
+## 0.45.0
+
+### Features
+
+- The `@effected/git` skill reference and construct index now cover `Git.diffFile`, its `allowMissing` and `ignoreRepositoryEnv` options and `FileNotFoundError`. [#1161][#1161]
+
+* The `@effected/env` skill reference and construct index now cover `ShellExports.quote` options (`dialect: "posix"`, `always`), `ShellExports.quoteResult` and `ShellQuoteError`. [#1160][#1160]
+
+- The `@effected/walker` skill reference and construct index now cover `relativeWithin` and `relativeWithinSync`, the physical base-relative placement of an absolute path that may not exist yet. [#1162][#1162]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1160]: https://github.com/spencerbeggs/effected/pull/1160
+
+[#1161]: https://github.com/spencerbeggs/effected/pull/1161
+
+[#1162]: https://github.com/spencerbeggs/effected/pull/1162
+
 ## 0.44.0
 
 ### Features

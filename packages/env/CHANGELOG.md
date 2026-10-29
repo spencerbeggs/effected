@@ -1,5 +1,18 @@
 # @effected/env
 
+## 0.8.0
+
+### Features
+
+- `ShellExports.quote` takes `{ dialect: "posix" }` to keep control characters literal inside `'…'` instead of `$'…'`, and `{ always: true }` to single-quote words that would otherwise be bare.
+- `ShellExports.quoteResult` returns a `Result` and fails with the new `ShellQuoteError` (`reason: "nul" | "lone-surrogate"`) instead of throwing a `RangeError`. [#1160][#1160]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1160]: https://github.com/spencerbeggs/effected/pull/1160
+
 ## 0.7.0
 
 ### Features

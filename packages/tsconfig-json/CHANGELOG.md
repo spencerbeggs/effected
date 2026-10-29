@@ -1,5 +1,13 @@
 # @effected/tsconfig-json
 
+## 0.18.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/walker | dependency | updated | 0.22.0 | 0.23.0 |
+
 ## 0.18.0
 
 ### Dependencies
