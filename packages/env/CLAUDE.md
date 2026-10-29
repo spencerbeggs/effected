@@ -42,7 +42,7 @@ Never pin this package's own output as the oracle in a test.
   std-env.
 - `ShellExports`: real bash. Generated maps go through bash's own `printf %q` and
   through `format`, and bash **sources** the result (`quote`'s words are read back by
-  bash 5 and bash 3.2 as `set --` arguments); the exported values must equal
+  bash 5 and bash 3.2 as `set --` arguments; the `posix` and `always` options are also read back by `/bin/sh` and dash); the exported values must equal
   what `parseResult` returns. Only dialect-valid text is ever sourced. Run bash with
   `--norc --noprofile`, and give any `BASH_ENV` probe `</dev/null`: bash treats a
   socket stdin as the sshd heuristic and reads its rc file. Source a file written

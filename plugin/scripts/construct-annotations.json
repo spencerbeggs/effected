@@ -154,8 +154,9 @@
 		"EnvOverride": "read a mode variable accepted per audience, report rejected values without logging",
 		"RuntimeEnv": "agent, CI and terminal detection snapshot, persist as plain JSON",
 		"TerminalEnv": "per-stream colour level, `FORCE_COLOR` precedence, sync colour from env record, hyperlinks, width, core TerminalCapabilities",
-		"ShellExports": "parse and write shell export files, read session env, quote one shell word",
-		"ShellExportsError": "shell export text rejected, line, column and reason"
+		"ShellExports": "parse and write shell export files, read session env, quote one shell word, posix sh quoting, always quote, quote without throwing",
+		"ShellExportsError": "shell export text rejected, line, column and reason",
+		"ShellQuoteError": "shell value cannot be quoted, NUL or lone surrogate"
 	},
 	"git": {
 		"BranchEntry": "one local or remote-tracking branch, name sha and whether it is checked out",
