@@ -63,10 +63,12 @@ describe("relativeWithin / relativeWithinSync", () => {
 		both("/srv/site", "/srv/site/og/card.png", "og/card.png", refuse);
 		both("/srv/site", "/srv/site", "", refuse);
 		both("/srv/site", "/srv/site/og/new/file.md", undefined, refuse);
+		both("/srv/site", "/srv/site/og/new.md", undefined, refuse);
 		both("/srv/site", "/srv/site/og/new/file.md", "og/new/file.md", { missing: "ancestor" });
 	});
 
 	it("treats a relative base as a defect", () => {
+		assert.throws(() => Effect.runSync(relativeWithin("srv", "/srv/x").pipe(Effect.provide(platform))));
 		assert.throws(() => relativeWithinSync("srv", "/srv/x", ops));
 	});
 });
