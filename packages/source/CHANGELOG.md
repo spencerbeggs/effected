@@ -1,5 +1,15 @@
 # @effected/source
 
+## 0.1.1
+
+### Other
+
+- Force release of package to validate OIDC connection
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.1.0
 
 ### Features

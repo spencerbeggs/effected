@@ -1,5 +1,11 @@
 # @effected/schemastore
 
+## 0.27.1
+
+### Maintenance
+
+- Version-only release to keep workspace versions consistent; no changes to this package.
+
 ## 0.27.0
 
 ### Dependencies

@@ -1,5 +1,13 @@
 # @effected/config-file
 
+## 0.22.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/walker | dependency | updated | 0.22.0 | 0.23.0 |
+
 ## 0.22.0
 
 ### Breaking Changes
