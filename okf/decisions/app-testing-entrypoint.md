@@ -2,7 +2,7 @@
 type: Decision
 title: app's test layer lives behind ./testing, with memfs an optional peer
 description: AppTest.layer ships from @effected/app/testing rather than as App.layerTest on the root, and @effected/memfs is an optional peer only that entrypoint reaches, so no production importer of App loads a test filesystem; a reachability test enforces it.
-status: draft
+status: stable
 tags:
   - bundle
   - deps
@@ -24,6 +24,13 @@ generated:
 integrity:
   generated:
     body: 738f3bcf43b3b742
+  verified:
+    by: human:spencer
+    at: 2026-10-29T00:43:21Z
+    content: 1fe4e57c8a6622cf
+verified:
+  - by: human:spencer
+    at: 2026-10-29T00:43:21Z
 ---
 
 # app's test layer lives behind ./testing, with memfs an optional peer

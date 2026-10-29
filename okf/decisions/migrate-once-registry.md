@@ -2,7 +2,7 @@
 type: Decision
 title: Store.migrateOnce keeps a process-global registry of plain Promises
 description: Store.migrateOnce deduplicates migration runs through one Map on globalThis under an unversioned Symbol.for key, holding never-rejecting Promises of plain outcome objects, so independent runtimes and module copies in one process share a run; failures are not cached, and it is not a lock.
-status: draft
+status: stable
 tags:
   - architecture
   - compat
@@ -23,6 +23,13 @@ generated:
 integrity:
   generated:
     body: df3ccba7a2b977d5
+  verified:
+    by: human:spencer
+    at: 2026-10-29T00:43:21Z
+    content: e3094c2e74cd0b66
+verified:
+  - by: human:spencer
+    at: 2026-10-29T00:43:21Z
 ---
 
 # Store.migrateOnce keeps a process-global registry of plain Promises

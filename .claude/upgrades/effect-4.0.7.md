@@ -6,10 +6,10 @@ It is a breaking round. Effect 4.0.7 changes behaviour your own code may depend 
 
 Work in this order:
 
-1. Repin vendored Effect source, bump the catalog plugin and reinstall (steps 1–2).
+1. Repin vendored Effect source, install `@effected/pnpm-plugin-effect@0.19.0` and reinstall (steps 1–2). The plugin is how you get the new versions: it carries every `@effected/*` minor and Effect 4.0.7 in its catalogs, so installing it is the whole bump.
 2. Find the Effect 4.0.7 changes in your code (step 3), then the kit's from the advance (step 4) and from the drain (step 5). Step 6 lists the security fixes, so you know what changes under you.
 3. Get the build and the full test suite green (step 8).
-4. **Only then**, adopt the new surfaces in step 7 and align your code on the kit and on Effect (step 9).
+4. **Only then**, adopt the new surfaces in step 7, adopt the fixes your own tracking tickets wait on (step 9), and align your code on the kit and on Effect (step 10).
 5. Run the verification again.
 
 Check every API claim against the **installed** `.d.ts` or the vendored Effect source, never against this document or memory. This ledger names shapes, not exact signatures. Where it states a behaviour, that behaviour was probed on both 4.0.6 and 4.0.7, but your code is the authority on what you depend on: probe before you rely on it.
@@ -40,7 +40,7 @@ Or use the `repos_manage` MCP tool with `action: "pin"`, `name: "effect"`, `ref:
 
 ## 2. Bump the catalog plugin and reinstall
 
-Your `@effected/*` versions come from `@effected/pnpm-plugin-effect` through `configDependencies` and `catalog:effected`, and so do `catalog:effect`'s Effect versions. You do not edit those ranges by hand.
+**Install `@effected/pnpm-plugin-effect@0.19.0` to get the new versions.** Nothing else moves them: your `@effected/*` versions come from `@effected/pnpm-plugin-effect` through `configDependencies` and `catalog:effected`, and so do `catalog:effect`'s Effect versions. You do not edit those ranges by hand.
 
 1. **Bump the plugin** in `pnpm-workspace.yaml`'s `configDependencies` to 0.19.0. Version and `+sha512` integrity move together: `pnpm view @effected/pnpm-plugin-effect@0.19.0 dist.integrity`.
    - Its `effect` catalog names `effect` and every `@effect/*` package at `^4.0.7`.
@@ -380,7 +380,48 @@ For each, search your code for the hand-rolled pattern, and replace it only wher
 
 Update READMEs, docs and agent context files that show the old shapes. Leave CHANGELOGs alone.
 
-## 9. Align on the kit and on Effect
+## 9. Clear your tracking tickets
+
+This wave closes the effected issues below, most of them filed by downstream projects. If your repository has an open ticket that tracks one of them (a workaround waiting on the kit, a "replace this once effected ships X", a TODO naming an effected issue), the fix has probably shipped.
+
+1. List your open issues and search the code and TODOs for `spencerbeggs/effected#` and for the numbers below.
+2. For each match, confirm the fix is in the version you now resolve. Read its changeset entry in the package CHANGELOG and the installed `.d.ts`, and probe it if your workaround depends on a behaviour.
+3. Adopt it: replace the workaround with the kit surface, keep the suite green, and close your ticket with a link to the effected issue. If the shipped shape does not cover your case, say so on the effected issue rather than keeping a private shim.
+
+Also check tickets that track an Effect issue against the 4.0.7 changes in step 3.
+
+| Issue | Closed by this wave |
+| --- | --- |
+| #530 | package-json: types-aware subpath resolution and entry-point enumeration |
+| #1113 | config-file: save/update write to the discovered source, not `defaultPath` |
+| #1114 | cli: a near-match ("did you mean") helper |
+| #1115 | github: `repositoryPatch` carries settings Octokit's types do not know yet |
+| #1116 | walker: stop an upward walk at a marker entry |
+| #1117 | walker: a `findUpward` form returning every hit in the nearest directory |
+| #1118 | env: a shell-word quoter beside `ShellExports.format` |
+| #1119 | xdg: opt-in home fallback and shell-compatible relative values |
+| #1120 | cli/testing: a `CliTest.spawn` handle for streaming output and signals |
+| #1121 | jsonc: a lenient `JsoncFingerprint` canonicalization mode |
+| #1122 | config-file: a pure, synchronous `deepMerge` |
+| #1123 | git: a hook-safe `repoRoot`/`treeIdentity` that scrubs `GIT_DIR` and `GIT_WORK_TREE` |
+| #1124 | workspaces/testing: a `SourceBoundary` rule forbidding specific named imports |
+| #1125 | memfs: seed a volume from a real fixture directory |
+| #1126 | markdown/yaml: the offset-to-line/character conversion (now `@effected/source`) |
+| #1127 | lsp: `file:` URI and path helpers (`LspUri`) |
+| #1128 | cli: `CliFormat.flag` takes caller-named aliases and custom formats |
+| #1129 | walker: sync forms of `ascend` and `findUpward` |
+| #1130 | workspaces: `findWorkspaceRootSync` can match only `pnpm-workspace.yaml` and returns the matched file |
+| #1132 | npm: a registry read that honours `.npmrc` (scoped registries, per-host auth) |
+| #1134 | cli: one `Fmt` helper for the error-text fallback |
+| #1135 | env: `ShellExports` handles `PIPESTATUS` |
+| #1136 | walker: directory matches, physical containment, and the missing-base contract |
+| #1137 | git: a pure gitfile parser, and trimming in `GitRemote.parse` |
+| #1138 | commands: `Run.bytes`, serialize-only `RunOnce`, ready `LocalExec` commands, kill options |
+| #1139 | env: a colour reader that does not need `Stdio` |
+| #1140 | package-json: an owner/repo accessor on `Repository` |
+| #1141 | mcp: `Fmt.describe` without a dependency on `@effected/cli` |
+
+## 10. Align on the kit and on Effect
 
 Do this only once step 8 is green, so every replacement is measured against a working baseline.
 

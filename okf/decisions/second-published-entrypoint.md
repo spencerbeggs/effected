@@ -27,13 +27,15 @@ integrity:
     body: f64f2a8b421058e8
   verified:
     by: human:spencer
-    at: 2026-10-25T20:04:29Z
-    content: 4910a0c64c1c883a
+    at: 2026-10-29T00:43:21Z
+    content: f8d07321f5cd2f4d
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
   - by: human:spencer
     at: 2026-10-25T20:04:29Z
+  - by: human:spencer
+    at: 2026-10-29T00:43:21Z
 ---
 
 # A second published entrypoint is a measured cost, not a convenience

@@ -22,11 +22,13 @@ integrity:
     body: 14cb107e62695534
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 18a4433db94bdf3e
+    at: 2026-10-29T00:43:21Z
+    content: 5549c0466d5c4ee0
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-10-29T00:43:21Z
 ---
 
 # The kit sets Ink's colour level on Ink's own chalk, resolved from Ink's location

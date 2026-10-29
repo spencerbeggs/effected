@@ -38,13 +38,15 @@ verified:
     at: 2026-09-24T00:11:49.503Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-10-29T00:43:21Z
 integrity:
   generated:
     body: e0f7832cfd110f9a
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: b274b6fd7212efbd
+    at: 2026-10-29T00:43:21Z
+    content: 2e16167deac39cd0
 ---
 
 # @effected/workspaces discovery and detection

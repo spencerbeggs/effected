@@ -2,7 +2,7 @@
 type: Decision
 title: "@effected/mcp ships StdioCapture behind a Node-only ./node subpath, licensed for two node: imports"
 description: "StdioCapture needs node:async_hooks for its capture context and node:stream for nullWritable, so it ships from @effected/mcp/node, which the root and ./testing never reach (a reachability test pins it), following jsonl's ./node precedent; the boundary licence is exactly those two imports in StdioCapture.ts, and its host is structural, so it reads no process."
-status: draft
+status: stable
 tags: [architecture, bundle, compat]
 sources:
   - id: owner-ruling
@@ -28,6 +28,13 @@ generated:
 integrity:
   generated:
     body: 86d6c1e69bab5334
+  verified:
+    by: human:spencer
+    at: 2026-10-29T00:43:21Z
+    content: 0725e2532075caca
+verified:
+  - by: human:spencer
+    at: 2026-10-29T00:43:21Z
 ---
 
 # `@effected/mcp` ships `StdioCapture` behind a Node-only `./node` subpath

@@ -14,13 +14,15 @@ verified:
     at: 2026-09-24T00:12:12.812Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-10-29T00:43:21Z
 integrity:
   generated:
     body: 34f49d7501bcf81d
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 96be3a3e54c0670d
+    at: 2026-10-29T00:43:21Z
+    content: e18c169ceb5ff17a
 ---
 
 # @effected/yaml stringify options

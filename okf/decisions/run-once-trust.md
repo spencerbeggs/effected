@@ -2,7 +2,7 @@
 type: Decision
 title: RunOnce trusts a done marker only from an owner it observed, and breaks a lock through per-contender tickets and a rename-based compare-and-delete
 description: "@effected/commands' RunOnce runs work once across concurrent processes with a file lock and a done marker: a marker counts only when its nonce belongs to an owner this caller saw in a read of the lock; the lock is read before the marker; a lock is removed by renaming it to a private tomb and judging the tomb; breakers exclude each other with uniquely named tickets that are never renamed or put back; a live owner is taken over only past staleMs + waitTimeoutMs; there is no heartbeat; and a driver removes only a file it created. One generator holds every rule, and a bounded model checker verifies it."
-status: draft
+status: stable
 tags: [architecture, testing]
 sources:
   - id: machine
@@ -29,6 +29,13 @@ generated:
 integrity:
   generated:
     body: 8bf9a4ce7ff62a4b
+  verified:
+    by: human:spencer
+    at: 2026-10-29T00:43:21Z
+    content: 6839e2409124e0e4
+verified:
+  - by: human:spencer
+    at: 2026-10-29T00:43:21Z
 ---
 
 # `RunOnce` trusts only observed owners and breaks locks through tickets and tombs

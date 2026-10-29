@@ -12,13 +12,15 @@ verified:
     at: 2026-09-23T19:50:29Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-10-29T00:43:21Z
 integrity:
   generated:
     body: 313bdee13d1f5b1c
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: d486266e3f0fafe4
+    at: 2026-10-29T00:43:21Z
+    content: b02e6a302d500ba8
 ---
 
 # D1: `@effected/engine` exists and holds `Distribution`, `Remediation` and `LaunchContext`

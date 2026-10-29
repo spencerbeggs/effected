@@ -16,13 +16,15 @@ verified:
     at: 2026-09-29T06:17:45Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-10-29T00:43:21Z
 integrity:
   generated:
     body: 5cff3190b71d6d8d
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: fa5ba56df4ab86c6
+    at: 2026-10-29T00:43:21Z
+    content: 0ac98594861f6a59
 ---
 
 # A physical ascend ceiling is a separate static taking an Option, not a realpath mode of stopAt

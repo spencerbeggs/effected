@@ -14,13 +14,15 @@ verified:
     at: 2026-09-24T00:11:33.163Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-10-29T00:43:21Z
 integrity:
   generated:
     body: 512806020b8c6d47
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: eb007f76ed8ad6b4
+    at: 2026-10-29T00:43:21Z
+    content: 14e7a779937703b1
 ---
 
 # @effected/github REST client

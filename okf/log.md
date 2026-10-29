@@ -1,5 +1,30 @@
 # Log
 
+## 2026-10-29
+
+* Updated @effected/cli depends on @effected/engine as a regular dependency, for distribution
+* Updated @effected/github GraphQL
+* Updated @effected/github REST client
+* Updated @effected/github errors and retry
+* Updated @effected/mcp ships StdioCapture behind a Node-only ./node subpath, licensed for two node: imports
+* Updated @effected/workspaces discovery and detection
+* Updated @effected/yaml lint system
+* Updated @effected/yaml stringify options
+* Updated A physical ascend ceiling is a separate static taking an Option, not a realpath mode of stopAt
+* Updated A second published entrypoint is a measured cost, not a convenience
+* Updated D1: @effected/engine exists and holds Distribution, Remediation and LaunchContext
+* Updated Git failure classification happens once, in one private function
+* Updated Only ./ui may bind Node's process streams, and only in three named files
+* Updated RunOnce trusts a done marker only from an owner it observed, and breaks a lock through per-contender tickets and a rename-based compare-and-delete
+* Updated Store.migrateOnce keeps a process-global registry of plain Promises
+* Updated The kit sets Ink's colour level on Ink's own chalk, resolved from Ink's location
+* Updated The package-json decode-free text path
+* Updated The package-json entry-point resolver
+* Updated actions-attestation
+* Updated actions-runtime
+* Updated actions-storage
+* Updated app's test layer lives behind ./testing, with memfs an optional peer
+
 ## 2026-10-28
 
 * Updated @effected/cli

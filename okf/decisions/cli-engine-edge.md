@@ -2,7 +2,7 @@
 type: Decision
 title: "@effected/cli depends on @effected/engine as a regular dependency, for distribution"
 description: "CliRuntime.main's distribution option provides engine's CurrentDistribution and decorates --version with withDistributionVersion, so cli takes @effected/engine as a regular dependency rather than a peer or a private copy; engine is pure with no @effected peers, and its one shared contract is a string-keyed Context.Reference that a duplicate copy still meets."
-status: draft
+status: stable
 tags: [architecture, deps]
 sources:
   - id: owner-ruling
@@ -25,6 +25,13 @@ generated:
 integrity:
   generated:
     body: e41ff7d8cb5b69db
+  verified:
+    by: human:spencer
+    at: 2026-10-29T00:43:21Z
+    content: e8bbd1d9c5ea0146
+verified:
+  - by: human:spencer
+    at: 2026-10-29T00:43:21Z
 ---
 
 # `@effected/cli` depends on `@effected/engine` as a regular dependency, for `distribution`

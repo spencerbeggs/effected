@@ -20,13 +20,15 @@ verified:
     at: 2026-09-24T00:12:21.362Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-10-29T00:43:21Z
 integrity:
   generated:
     body: b65591cdc27e644c
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: b407e924b193ed83
+    at: 2026-10-29T00:43:21Z
+    content: 33ec65f16365d690
 ---
 
 # The package-json entry-point resolver
