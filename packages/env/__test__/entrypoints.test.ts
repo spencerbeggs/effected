@@ -15,6 +15,7 @@ describe("the @effected/env entrypoint", () => {
 			"RuntimeEnv",
 			"ShellExports",
 			"ShellExportsError",
+			"ShellQuoteError",
 			"TerminalEnv",
 		]);
 	});
