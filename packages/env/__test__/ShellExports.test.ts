@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
@@ -284,8 +284,8 @@ describe("ShellExports.parseBytesResult", () => {
 describe("ShellExports.quote", () => {
 	it("bare when safe, '' for empty, single quotes otherwise, $'…' for a control character, ~ always quoted", () =>
 		assert.deepStrictEqual(
-			["a/b:c=d", "", "it's here", "x\ny\u0001", "tab\there", "\r", "\u007f", "~", "~/x", "a:~/x", "日本"].map(
-				ShellExports.quote,
+			["a/b:c=d", "", "it's here", "x\ny\u0001", "tab\there", "\r", "\u007f", "~", "~/x", "a:~/x", "日本"].map((v) =>
+				ShellExports.quote(v),
 			),
 			[
 				"a/b:c=d",
@@ -320,6 +320,23 @@ describe("ShellExports.quote", () => {
 			assert.deepStrictEqual(ok(`export A=${ShellExports.quote(value)}\n`), { A: value }, JSON.stringify(value));
 	});
 
+	it("posix dialect keeps control characters literal inside single quotes", () => {
+		assert.strictEqual(ShellExports.quote("a\nb\x7f", { dialect: "posix" }), "'a\nb\x7f'");
+		assert.strictEqual(ShellExports.quote("it's\t", { dialect: "posix" }), "'it'\\''s\t'");
+	});
+	it("always single-quotes words that would be bare", () => {
+		assert.strictEqual(ShellExports.quote("abc", { always: true }), "'abc'");
+		assert.strictEqual(ShellExports.quote("", { always: true }), "''");
+		assert.strictEqual(ShellExports.quote("a\nb", { always: true }), "$'a\\nb'");
+		assert.throws(() => ShellExports.quote("a\0", { always: true, dialect: "posix" }), RangeError);
+	});
+	it("quoteResult succeeds with the quote word and fails typed on NUL and lone surrogates", () => {
+		assert.deepStrictEqual(ShellExports.quoteResult("it's", { always: true }), Result.succeed("'it'\\''s'"));
+		const nul = ShellExports.quoteResult("a\0b");
+		assert.isTrue(Result.isFailure(nul) && nul.failure._tag === "ShellQuoteError" && nul.failure.reason === "nul");
+		const lone = ShellExports.quoteResult("\ud800");
+		assert.isTrue(Result.isFailure(lone) && lone.failure.reason === "lone-surrogate");
+	});
 	it("is the word format writes: format({ A: v }) is export A=quote(v)", () => {
 		for (const value of ["", "plain", "a b", "x\ny", "it's", "~"])
 			assert.strictEqual(ShellExports.format({ A: value }), `export A=${ShellExports.quote(value)}\n`);
@@ -489,7 +506,8 @@ const maps: ReadonlyArray<Record<string, string>> = (() => {
 	return [Object.fromEntries(CORPUS.map((v, k) => [`CORPUS_${k}`, v])), ...generated];
 })();
 
-const sandbox = hasBash ? mkdtempSync(join(tmpdir(), "shell-exports-")) : "";
+const sandbox =
+	hasBash || existsSync("/bin/sh") || existsSync("/bin/dash") ? mkdtempSync(join(tmpdir(), "shell-exports-")) : "";
 afterAll(() => {
 	if (sandbox !== "") rmSync(sandbox, { recursive: true, force: true });
 });
@@ -975,11 +993,64 @@ describe.skipIf(bashShells.length === 0)("ShellExports.quote against real bash",
 	for (const [bin, version] of bashShells)
 		for (const lcAll of ["C", "en_US.UTF-8"]) {
 			it(`bash ${version} reads each word as one argument holding exactly the value (LC_ALL=${lcAll})`, () =>
-				assert.deepStrictEqual(bashArguments(bin, quoteValues.map(ShellExports.quote), lcAll), quoteValues));
+				assert.deepStrictEqual(
+					bashArguments(
+						bin,
+						quoteValues.map((v) => ShellExports.quote(v)),
+						lcAll,
+					),
+					quoteValues,
+				));
 		}
 
 	it.skipIf(!hasBash3)("control: bash 3.2's own printf %q leaves a leading ~ bare, and quote does not", () => {
 		assert.strictEqual(new TextDecoder().decode(printfBytes(BASH3, { A: "~/x" }, "en_US.UTF-8")), "export A=~/x\n");
 		assert.deepStrictEqual(bashArguments(BASH3, [ShellExports.quote("~/x")], "en_US.UTF-8"), ["~/x"]);
+	});
+});
+
+/** The arguments `bin` reads from `set -- words`; words are quoter output, never raw input. */
+const shArguments = (bin: string, words: ReadonlyArray<string>): ReadonlyArray<string> => {
+	const result = spawnSync(bin, ["-c", `set -- ${words.join(" ")}\nprintf '%s\\0' "$#" "$@"`], {
+		input: "",
+		encoding: "utf8",
+		cwd: sandbox,
+		env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: sandbox, LC_ALL: "C" },
+		maxBuffer: 16 * 1024 * 1024,
+		timeout: 10_000,
+	});
+	assert.strictEqual(result.status, 0, result.stderr);
+	const [count, ...args] = result.stdout.split("\0").slice(0, -1);
+	assert.strictEqual(Number(count), args.length);
+	return args;
+};
+
+const posixShells = [...["/bin/sh", "/bin/dash"].filter((bin) => existsSync(bin)), ...bashShells.map(([bin]) => bin)];
+const portableValues = quoteValues.filter((value) => !value.includes("\0") && !/[\ud800-\udfff]/.test(value));
+
+describe.skipIf(posixShells.length === 0)("ShellExports.quote posix and always against real shells", () => {
+	// `always` alone keeps the bash `$'…'` form, which dash does not read.
+	for (const bin of posixShells)
+		for (const options of [{ dialect: "posix" }, { always: true }, { dialect: "posix", always: true }] as const)
+			it.skipIf(!("dialect" in options) && !bashShells.some(([b]) => b === bin))(
+				`${bin} reads each word as exactly the value (${JSON.stringify(options)})`,
+				() =>
+					assert.deepStrictEqual(
+						shArguments(
+							bin,
+							portableValues.map((v) => ShellExports.quote(v, options)),
+						),
+						portableValues,
+					),
+			);
+
+	it("posix never writes $'…' and always never writes a bare word", () => {
+		for (const value of portableValues) {
+			assert.isFalse(ShellExports.quote(value, { dialect: "posix" }).startsWith("$'"), JSON.stringify(value));
+			assert.isTrue(
+				ShellExports.quote(value, { always: true }).startsWith("'") ||
+					ShellExports.quote(value, { always: true }).startsWith("$'"),
+			);
+		}
 	});
 });

@@ -57,6 +57,21 @@ export class ShellExportsError extends Schema.TaggedError<ShellExportsError>()("
 	}
 }
 
+/**
+ * Why a value has no shell word: it holds NUL (no bash string holds one) or a lone UTF-16 surrogate (it has no
+ * UTF-8 form).
+ *
+ * @public
+ */
+export class ShellQuoteError extends Schema.TaggedError<ShellQuoteError>()("ShellQuoteError", {
+	/** What the value holds. */
+	reason: Schema.Literals(["nul", "lone-surrogate"]),
+}) {
+	override get message(): string {
+		return this.reason === "nul" ? "Cannot quote a value holding NUL" : "Cannot quote a value holding a lone surrogate";
+	}
+}
+
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 // Names bash does not leave as plain variables when a file exports them: read-only (UID, EUID, PPID, SHELLOPTS,
@@ -425,10 +440,10 @@ const hasControl = (value: string): boolean => {
 	return false;
 };
 
-const quote = (value: string): string => {
+const quote = (value: string, dialect: "bash" | "posix" = "bash", always = false): string => {
 	if (value === "") return "''";
-	if (BARE.test(value)) return value;
-	if (hasControl(value)) {
+	if (!always && BARE.test(value)) return value;
+	if (dialect === "bash" && hasControl(value)) {
 		let body = "";
 		for (const ch of value) {
 			const code = ch.codePointAt(0) as number;
@@ -438,6 +453,18 @@ const quote = (value: string): string => {
 	}
 	return `'${value.replaceAll("'", "'\\''")}'`;
 };
+
+/**
+ * Options for {@link ShellExports.quote}.
+ *
+ * @public
+ */
+export interface ShellQuoteOptions {
+	/** `"posix"` writes control characters literally inside `'…'` and never `$'…'`. Default `"bash"`. */
+	readonly dialect?: "bash" | "posix";
+	/** Single-quote a value that would be written bare. Default `false`. */
+	readonly always?: boolean;
+}
 
 /**
  * Read and write shell export files in one strict dialect: what `printf 'export %s=%q\n'` and
@@ -549,14 +576,42 @@ export class ShellExports {
 	 * // => $'line one\nline two'
 	 * ```
 	 *
+	 * With `dialect: "posix"` a control character is written literally inside `'…'` (POSIX `sh` takes it as is,
+	 * a newline included) and `$'…'` is never written. With `always: true` a value that would be bare is
+	 * single-quoted too. Neither option changes how NUL and a lone surrogate are rejected. Only the default
+	 * output is the word {@link ShellExports.format} writes.
+	 *
 	 * @param value - the value the word must mean
+	 * @param options - the dialect (default `"bash"`) and whether to always quote (default `false`)
 	 * @throws RangeError for a value holding NUL (no bash string holds one) or a lone UTF-16 surrogate (it has no
 	 *   UTF-8 form): a caller's mistake, as in {@link ShellExports.format}.
 	 */
-	static quote(value: string): string {
+	static quote(value: string, options?: ShellQuoteOptions): string {
 		if (value.includes("\0")) throw new RangeError("ShellExports.quote: the value holds NUL");
 		if (LONE_SURROGATE.test(value)) throw new RangeError("ShellExports.quote: the value holds a lone surrogate");
-		return quote(value);
+		return quote(value, options?.dialect, options?.always);
+	}
+
+	/**
+	 * {@link ShellExports.quote} without the throw: a value holding NUL or a lone surrogate fails with a
+	 * {@link ShellQuoteError} instead of a `RangeError`, so a generator can report it as a typed input error.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Result } from "effect"
+	 * import { ShellExports } from "@effected/env"
+	 *
+	 * console.log(Result.isFailure(ShellExports.quoteResult("a\0b")))
+	 * // => true
+	 * ```
+	 *
+	 * @param value - the value the word must mean
+	 * @param options - the dialect and always-quote options, as for {@link ShellExports.quote}
+	 */
+	static quoteResult(value: string, options?: ShellQuoteOptions): Result.Result<string, ShellQuoteError> {
+		if (value.includes("\0")) return Result.fail(new ShellQuoteError({ reason: "nul" }));
+		if (LONE_SURROGATE.test(value)) return Result.fail(new ShellQuoteError({ reason: "lone-surrogate" }));
+		return Result.succeed(quote(value, options?.dialect, options?.always));
 	}
 
 	/**

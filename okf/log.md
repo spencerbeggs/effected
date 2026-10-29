@@ -24,6 +24,7 @@
 * Updated actions-runtime
 * Updated actions-storage
 * Updated app's test layer lives behind ./testing, with memfs an optional peer
+* Updated @effected/env
 
 ## 2026-10-28
 
