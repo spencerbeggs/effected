@@ -506,7 +506,8 @@ const maps: ReadonlyArray<Record<string, string>> = (() => {
 	return [Object.fromEntries(CORPUS.map((v, k) => [`CORPUS_${k}`, v])), ...generated];
 })();
 
-const sandbox = hasBash ? mkdtempSync(join(tmpdir(), "shell-exports-")) : "";
+const sandbox =
+	hasBash || existsSync("/bin/sh") || existsSync("/bin/dash") ? mkdtempSync(join(tmpdir(), "shell-exports-")) : "";
 afterAll(() => {
 	if (sandbox !== "") rmSync(sandbox, { recursive: true, force: true });
 });
@@ -1024,7 +1025,7 @@ const shArguments = (bin: string, words: ReadonlyArray<string>): ReadonlyArray<s
 	return args;
 };
 
-const posixShells = ["/bin/sh", "/bin/dash", ...bashShells.map(([bin]) => bin)].filter((bin) => existsSync(bin));
+const posixShells = [...["/bin/sh", "/bin/dash"].filter((bin) => existsSync(bin)), ...bashShells.map(([bin]) => bin)];
 const portableValues = quoteValues.filter((value) => !value.includes("\0") && !/[\ud800-\udfff]/.test(value));
 
 describe.skipIf(posixShells.length === 0)("ShellExports.quote posix and always against real shells", () => {
