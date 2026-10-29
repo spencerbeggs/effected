@@ -10,10 +10,10 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-29T15:14:08Z
+  at: 2026-10-29T15:42:47Z
 integrity:
   generated:
-    body: c4e51a3ead3b838f
+    body: ff5f39f5a39c019c
 ---
 
 # git
@@ -163,7 +163,7 @@ normalizes refs for snapshot cache keys. Working-tree primitives
 methods in their own right, with `workingChanges` composing them as a
 deduplicated union that takes no ref, so `UnknownRefError` cannot arise
 from it. `nameStatus` is the semantically-typed diff, with a typed status
-vocabulary and `oldPath` on renames/copies. `diffFile(cwd, ref, path, options?)` returns one file's patch text (working tree against `ref`) with `--no-color --no-ext-diff --no-textconv` pinned so user config cannot change the bytes; an unchanged file is `""`, a path found neither at the ref nor in the index fails `FileNotFoundError` unless `allowMissing` is set, and `ignoreRepositoryEnv` makes it hook-safe. `lsRemote` reads over the
+vocabulary and `oldPath` on renames/copies. `diffFile(cwd, ref, path, options?)` returns one file's patch text (working tree against `ref`) with color, external diff, textconv, prefixes, relative paths, context and algorithm pinned by flag so the diff keys in user config cannot change the bytes; an unchanged file is `""`, a path found neither at the ref nor in the index fails `FileNotFoundError` unless `allowMissing` is set, and `ignoreRepositoryEnv` makes it hook-safe. `lsRemote` reads over the
 network and `lsFiles` reads the index — the only read that sees a
 staged-but-uncommitted `160000` gitlink — and both are still reads.
 `log` is the history walk, the one member whose parser can fail typed
@@ -228,7 +228,7 @@ output only with git output, never with a path the caller spelled. The
 answer must be exactly two non-empty lines, so an older git that echoes the
 flag fails as a `GitCommandError`.
 
-**Inside a git hook the three locating reads take `{ ignoreRepositoryEnv:
+**Inside a git hook the three locating reads and `diffFile` take `{ ignoreRepositoryEnv:
 true }`** (`GitLocateOptions`). git exports `GIT_DIR`, `GIT_INDEX_FILE` and
 `GIT_PREFIX` to a hook, and a child git that inherits `GIT_DIR` with no
 `GIT_WORK_TREE` takes its `cwd` as the top of the working tree: probed in a
@@ -241,7 +241,7 @@ the variables git clears before it runs a command in another repository —
 as `undefined` values in the command's `env`, which the platform spawner
 leaves out of the child; the list lives in `internal/repositoryEnv.ts`, and
 the integration suite compares it with the installed git's answer. It is an
-option on these three reads rather than a `Git.layer` variant, and off by
+option on these reads rather than a `Git.layer` variant, and off by
 default, for two reasons: a caller who sets `GIT_DIR` and `GIT_WORK_TREE` on
 purpose (a bare dotfiles repository) wants them honoured, and a hook's staged
 reads must keep `GIT_INDEX_FILE`, which under `git commit <paths>` names the

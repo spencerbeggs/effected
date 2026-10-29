@@ -23,6 +23,7 @@
 // surface) and the real Git service itself for checkout, which IS part of
 // the surface this package owns.
 
+import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -221,6 +222,21 @@ describe("Git — real repository integration", () => {
 				assert.strictEqual(yield* git.diffFile(fixture.dir, fixture.commit1, "nope.txt", { allowMissing: true }), "");
 				const unknown = yield* Effect.flip(git.diffFile(fixture.dir, "no-such-ref", "a.txt"));
 				assert.instanceOf(unknown, UnknownRefError);
+			}),
+		),
+	);
+
+	it.effect("diffFile: diff.noprefix and diff.context in user config do not change the patch", () =>
+		run(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				const before = yield* git.diffFile(fixture.dir, fixture.commit1, "a.txt");
+				execFileSync("git", ["config", "diff.noprefix", "true"], { cwd: fixture.dir });
+				execFileSync("git", ["config", "diff.context", "0"], { cwd: fixture.dir });
+				const after = yield* git.diffFile(fixture.dir, fixture.commit1, "a.txt");
+				assert.include(after, "--- a/a.txt");
+				assert.include(after, "+++ b/a.txt");
+				assert.strictEqual(after, before);
 			}),
 		),
 	);

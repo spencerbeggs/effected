@@ -1381,8 +1381,8 @@ export class TreeIdentity extends Schema.Class<TreeIdentity>("TreeIdentity")({
 }
 
 /**
- * Options for the repository-locating reads: `Git.repoRoot`, `Git.commonDir`
- * and `Git.treeIdentity`.
+ * Options for the repository-locating reads (`Git.repoRoot`, `Git.commonDir`
+ * and `Git.treeIdentity`) and for `Git.diffFile`.
  *
  * @public
  */
@@ -1729,10 +1729,23 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 			case "success": {
 				if (classified.output !== "" || options?.allowMissing === true) return classified.output;
 				// An empty diff is the same for an unchanged file and a missing one: probe to tell them apart.
-				const atRef = yield* runFor(GitCommand.lsTree(ref, [path]), cwd, "generic", locateUnset(options));
-				const inIndex = yield* runFor(GitCommand.lsFiles([path]), cwd, "generic", locateUnset(options));
-				const found = [atRef, inIndex].some((probe) => probe._tag === "success" && probe.output !== "");
-				return found ? "" : yield* Effect.fail(new FileNotFoundError({ path, ref, cwd }));
+				for (const invocation of [GitCommand.lsTree(ref, [path]), GitCommand.lsFiles([path])]) {
+					const probe = yield* runFor(invocation, cwd, "generic", locateUnset(options));
+					switch (probe._tag) {
+						case "success":
+							if (probe.output !== "") return "";
+							break;
+						case "notARepository":
+							return yield* Effect.fail(new NotARepositoryError({ cwd }));
+						case "unknownRef":
+							return yield* Effect.fail(new UnknownRefError({ ref, cwd }));
+						case "failure":
+							return yield* Effect.fail(probe.error);
+						default:
+							return yield* Effect.die(`Git.diffFile: unexpected classification "${probe._tag}"`);
+					}
+				}
+				return yield* Effect.fail(new FileNotFoundError({ path, ref, cwd }));
 			}
 			case "notARepository":
 				return yield* Effect.fail(new NotARepositoryError({ cwd }));
@@ -3491,11 +3504,13 @@ export interface GitShape {
 		path: string,
 	) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
-	 * `git diff --no-color --no-ext-diff --no-textconv <ref> -- <path>` — the
-	 * patch text of one file, working tree against `ref`.
+	 * `git diff <ref> -- <path>` — the patch text of one file, working tree
+	 * against `ref`.
 	 *
 	 * @remarks
-	 * Output bytes are pinned against user git config. An unchanged file yields
+	 * Color, external diff, textconv, the `a/` `b/` prefixes, relative paths,
+	 * context length and the diff algorithm are pinned by flag, so the diff
+	 * keys in user git config cannot change the bytes. An unchanged file yields
 	 * `""`; a path found neither at `ref` nor in the index fails with
 	 * {@link FileNotFoundError}, unless `allowMissing` is set. Pass
 	 * `ignoreRepositoryEnv: true` inside a git hook ({@link GitLocateOptions}).

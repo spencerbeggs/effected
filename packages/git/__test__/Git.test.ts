@@ -136,6 +136,15 @@ describe("Git", () => {
 			}),
 		);
 
+		it.effect("a failing probe surfaces its own error, not FileNotFoundError", () =>
+			Effect.gen(function* () {
+				const failure = yield* Effect.flip(
+					run(diffProgram(), (args) => (args[0] === "ls-tree" ? { exit: 1, stderr: "boom" } : {})),
+				);
+				assert.instanceOf(failure, GitCommandError);
+			}),
+		);
+
 		it.effect("allowMissing returns the empty string without probing", () =>
 			Effect.gen(function* () {
 				const result = yield* run(diffProgram({ allowMissing: true }), (args) =>

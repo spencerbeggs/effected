@@ -38,12 +38,17 @@ describe("GitCommand", () => {
 		assertGitCommand(GitCommand.show("HEAD", "package.json"), ["show", "HEAD:package.json"]);
 	});
 
-	it("diffFile pins color, external diff and textconv", () => {
+	it("diffFile pins the output-shaping flags", () => {
 		assertGitCommand(GitCommand.diffFile("HEAD", "a.txt"), [
 			"diff",
 			"--no-color",
 			"--no-ext-diff",
 			"--no-textconv",
+			"--src-prefix=a/",
+			"--dst-prefix=b/",
+			"--no-relative",
+			"-U3",
+			"--diff-algorithm=myers",
 			"HEAD",
 			"--",
 			"a.txt",
