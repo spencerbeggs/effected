@@ -187,6 +187,36 @@ export class GitCommand {
 	static readonly show = (ref: string, path: string): GitInvocation => git(["show", `${ref}:${path}`]);
 
 	/**
+	 * `git diff` with the output-shaping flags pinned, `<ref> -- <path>` — the
+	 * patch text for one file, the working tree against `ref`.
+	 *
+	 * @remarks
+	 * Explicit flags override the config keys that change the bytes: color,
+	 * external diff, textconv, the `a/` `b/` prefixes (`diff.noprefix`,
+	 * `diff.mnemonicPrefix`), `diff.relative`, `diff.context` and
+	 * `diff.algorithm`. A path that matches nothing exits 0 with empty output,
+	 * like an unchanged one.
+	 */
+	static readonly diffFile = (ref: string, path: string): GitInvocation =>
+		git([
+			"diff",
+			"--no-color",
+			"--no-ext-diff",
+			"--no-textconv",
+			"--src-prefix=a/",
+			"--dst-prefix=b/",
+			"--no-relative",
+			"-U3",
+			"--inter-hunk-context=0",
+			"--indent-heuristic",
+			"--submodule=short",
+			"--diff-algorithm=myers",
+			ref,
+			"--",
+			path,
+		]);
+
+	/**
 	 * `git ls-tree -r -z <ref> [-- <pathspec>...]` — every path in the tree at
 	 * `ref`, recursively, NUL-terminated, optionally scoped to `pathspec`.
 	 *

@@ -6,6 +6,7 @@ import {
 	BranchEntry,
 	ConfigListEntry,
 	DirtyWorktreeError,
+	FileNotFoundError,
 	Git,
 	GitCommandError,
 	LsFilesEntry,
@@ -101,6 +102,88 @@ describe("Git", () => {
 					exit: 128,
 				}));
 				assert.deepStrictEqual(result, Option.none());
+			}),
+		);
+	});
+
+	describe("diffFile", () => {
+		const diffProgram = (options?: { readonly allowMissing?: boolean; readonly ignoreRepositoryEnv?: boolean }) =>
+			Effect.gen(function* () {
+				const git = yield* Git;
+				return yield* git.diffFile(cwd, "HEAD", "a.txt", options);
+			});
+
+		it.effect("returns the patch text verbatim", () =>
+			Effect.gen(function* () {
+				const patch = "diff --git a/a.txt b/a.txt\n-one\n+two\n";
+				assert.strictEqual(yield* run(diffProgram(), () => ({ stdout: patch })), patch);
+			}),
+		);
+
+		it.effect("empty output for a path present at the ref is an unchanged file", () =>
+			Effect.gen(function* () {
+				const result = yield* run(diffProgram(), (args) =>
+					args[0] === "ls-tree" ? { stdout: "100644 blob abc\ta.txt\0" } : {},
+				);
+				assert.strictEqual(result, "");
+			}),
+		);
+
+		it.effect("empty output for a path found nowhere fails with FileNotFoundError", () =>
+			Effect.gen(function* () {
+				const failure = yield* Effect.flip(run(diffProgram(), () => ({})));
+				assert.instanceOf(failure, FileNotFoundError);
+			}),
+		);
+
+		it.effect("a failing probe surfaces its own error, not FileNotFoundError", () =>
+			Effect.gen(function* () {
+				const failure = yield* Effect.flip(
+					run(diffProgram(), (args) => (args[0] === "ls-tree" ? { exit: 1, stderr: "boom" } : {})),
+				);
+				assert.instanceOf(failure, GitCommandError);
+			}),
+		);
+
+		it.effect("allowMissing returns the empty string without probing", () =>
+			Effect.gen(function* () {
+				const result = yield* run(diffProgram({ allowMissing: true }), (args) =>
+					args[0] === "diff" ? {} : { exit: 99 },
+				);
+				assert.strictEqual(result, "");
+			}),
+		);
+
+		it.effect("an unknown ref is an UnknownRefError", () =>
+			Effect.gen(function* () {
+				const failure = yield* Effect.flip(
+					run(diffProgram(), () => ({ stderr: "fatal: bad revision 'HEAD'\n", exit: 128 })),
+				);
+				assert.instanceOf(failure, UnknownRefError);
+			}),
+		);
+
+		it.effect("outside a repository is a NotARepositoryError", () =>
+			Effect.gen(function* () {
+				const failure = yield* Effect.flip(
+					run(diffProgram(), () => ({ stderr: "fatal: not a git repository\n", exit: 128 })),
+				);
+				assert.instanceOf(failure, NotARepositoryError);
+			}),
+		);
+
+		const neverSpawn = (): ScriptResult => {
+			throw new Error("spawned — the option-injection guard did not fire");
+		};
+
+		it.effect("refuses an option-like ref before spawning", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.diffFile(cwd, "--help", "a.txt");
+				});
+				const failure = yield* Effect.flip(run(program, neverSpawn));
+				assert.instanceOf(failure, GitCommandError);
 			}),
 		);
 	});

@@ -296,6 +296,38 @@ export class UnknownRefError extends Schema.TaggedError<UnknownRefError>()("Unkn
 }
 
 /**
+ * `Git.diffFile` found `path` neither at `ref` nor in the index.
+ *
+ * @public
+ */
+export class FileNotFoundError extends Schema.TaggedError<FileNotFoundError>()("FileNotFoundError", {
+	/** The path that matched nothing. */
+	path: Schema.String,
+	/** The ref the path was diffed against. */
+	ref: Schema.String,
+	/** The working directory the diff ran in. */
+	cwd: Schema.String,
+}) {
+	/** Renders the missing path into a one-line message. */
+	override get message(): string {
+		return `no such file '${this.path}' at '${this.ref}' or in the index of ${this.cwd}`;
+	}
+}
+
+/**
+ * Options for `Git.diffFile`.
+ *
+ * @public
+ */
+export interface GitDiffFileOptions extends GitLocateOptions {
+	/**
+	 * Return `""` for a path found neither at the ref nor in the index, instead
+	 * of failing with {@link FileNotFoundError}. Default `false`.
+	 */
+	readonly allowMissing?: boolean;
+}
+
+/**
  * A `git push` was rejected because the remote ref has moved: the classic
  * non-fast-forward rejection (`fetch first` / `non-fast-forward`), or a
  * `--force-with-lease` lease failure (`stale info`).
@@ -1349,8 +1381,8 @@ export class TreeIdentity extends Schema.Class<TreeIdentity>("TreeIdentity")({
 }
 
 /**
- * Options for the repository-locating reads: `Git.repoRoot`, `Git.commonDir`
- * and `Git.treeIdentity`.
+ * Options for the repository-locating reads (`Git.repoRoot`, `Git.commonDir`
+ * and `Git.treeIdentity`) and for `Git.diffFile`.
  *
  * @public
  */
@@ -1377,7 +1409,7 @@ export interface GitLocateOptions {
 	 * rest of that list. `GIT_CEILING_DIRECTORIES` is not on it and still
 	 * applies.
 	 *
-	 * Only these three reads take the option, and it is off by default, for
+	 * Only these reads (and diffFile) take the option, and it is off by default, for
 	 * two reasons. A caller who sets `GIT_DIR` and `GIT_WORK_TREE` on purpose
 	 * (a bare dotfiles repository, say) wants git to honour them. And a hook's
 	 * staged reads must keep `GIT_INDEX_FILE`: under `git commit <paths>` it
@@ -1681,6 +1713,48 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 				return yield* Effect.fail(classified.error);
 			default:
 				return yield* Effect.die(`Git.show: unexpected classification "${classified._tag}"`);
+		}
+	});
+
+	const diffFile = Effect.fn("Git.diffFile")(function* (
+		cwd: string,
+		ref: string,
+		path: string,
+		options?: GitDiffFileOptions,
+	) {
+		yield* Effect.annotateCurrentSpan({ cwd, ref, path });
+		yield* rejectOptionLikeRefs(cwd, [ref]);
+		const classified = yield* runFor(GitCommand.diffFile(ref, path), cwd, "generic", locateUnset(options));
+		switch (classified._tag) {
+			case "success": {
+				if (classified.output !== "" || options?.allowMissing === true) return classified.output;
+				// An empty diff is the same for an unchanged file and a missing one: probe to tell them apart.
+				for (const invocation of [GitCommand.lsTree(ref, [path]), GitCommand.lsFiles([path])]) {
+					const probe = yield* runFor(invocation, cwd, "generic", locateUnset(options));
+					switch (probe._tag) {
+						case "success":
+							if (probe.output !== "") return "";
+							break;
+						case "notARepository":
+							return yield* Effect.fail(new NotARepositoryError({ cwd }));
+						case "unknownRef":
+							return yield* Effect.fail(new UnknownRefError({ ref, cwd }));
+						case "failure":
+							return yield* Effect.fail(probe.error);
+						default:
+							return yield* Effect.die(`Git.diffFile: unexpected classification "${probe._tag}"`);
+					}
+				}
+				return yield* Effect.fail(new FileNotFoundError({ path, ref, cwd }));
+			}
+			case "notARepository":
+				return yield* Effect.fail(new NotARepositoryError({ cwd }));
+			case "unknownRef":
+				return yield* Effect.fail(new UnknownRefError({ ref, cwd }));
+			case "failure":
+				return yield* Effect.fail(classified.error);
+			default:
+				return yield* Effect.die(`Git.diffFile: unexpected classification "${classified._tag}"`);
 		}
 	});
 
@@ -3333,6 +3407,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 
 	return {
 		show,
+		diffFile,
 		lsTree,
 		refExists,
 		mergeBase,
@@ -3428,6 +3503,24 @@ export interface GitShape {
 		ref: string,
 		path: string,
 	) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * `git diff <ref> -- <path>` — the patch text of one file, working tree
+	 * against `ref`.
+	 *
+	 * @remarks
+	 * Color, external diff, textconv, the `a/` `b/` prefixes, relative paths,
+	 * context length and the diff algorithm are pinned by flag, so the diff
+	 * keys in user git config cannot change the bytes. An unchanged file yields
+	 * `""`; a path found neither at `ref` nor in the index fails with
+	 * {@link FileNotFoundError}, unless `allowMissing` is set. Pass
+	 * `ignoreRepositoryEnv: true` inside a git hook ({@link GitLocateOptions}).
+	 */
+	readonly diffFile: (
+		cwd: string,
+		ref: string,
+		path: string,
+		options?: GitDiffFileOptions,
+	) => Effect.Effect<string, GitCommandError | NotARepositoryError | UnknownRefError | FileNotFoundError>;
 	/**
 	 * `git ls-tree -r -z <ref> [-- <pathspec>...]` — every path in the tree at
 	 * `ref`, recursively, optionally scoped to `pathspec`.
@@ -4597,6 +4690,7 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 	 */
 	static readonly makeTest = (overrides: Partial<GitShape> = {}): GitShape => ({
 		show: notStubbed("show"),
+		diffFile: notStubbed("diffFile"),
 		lsTree: notStubbed("lsTree"),
 		refExists: notStubbed("refExists"),
 		mergeBase: notStubbed("mergeBase"),

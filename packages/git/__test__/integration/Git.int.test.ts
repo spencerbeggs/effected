@@ -23,6 +23,7 @@
 // surface) and the real Git service itself for checkout, which IS part of
 // the surface this package owns.
 
+import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -31,7 +32,7 @@ import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { ConfigProvider, Effect, Layer, Option } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import { ChildProcess } from "effect/process";
-import { Git, NotARepositoryError } from "../../src/Git.js";
+import { FileNotFoundError, Git, NotARepositoryError, UnknownRefError } from "../../src/Git.js";
 import { runCollected } from "../../src/internal/run.js";
 
 /** Resolves both `Git` and every Node platform service (including the real `ChildProcessSpawner`). */
@@ -203,6 +204,39 @@ describe("Git — real repository integration", () => {
 				const afterDeletion = yield* git.show(fixture.dir, fixture.commit2, "deleted.txt");
 				assert.deepStrictEqual(beforeDeletion, Option.some("will be deleted\n"));
 				assert.deepStrictEqual(afterDeletion, Option.none());
+			}),
+		),
+	);
+
+	it.effect("diffFile: changed file yields a patch, unchanged yields empty, missing fails or is allowed", () =>
+		run(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				const patch = yield* git.diffFile(fixture.dir, fixture.commit1, "a.txt");
+				assert.include(patch, "-one");
+				assert.include(patch, "+two");
+				assert.notInclude(patch, "\u001b[");
+				assert.strictEqual(yield* git.diffFile(fixture.dir, fixture.commit1, "file with space.txt"), "");
+				const missing = yield* Effect.flip(git.diffFile(fixture.dir, fixture.commit1, "nope.txt"));
+				assert.instanceOf(missing, FileNotFoundError);
+				assert.strictEqual(yield* git.diffFile(fixture.dir, fixture.commit1, "nope.txt", { allowMissing: true }), "");
+				const unknown = yield* Effect.flip(git.diffFile(fixture.dir, "no-such-ref", "a.txt"));
+				assert.instanceOf(unknown, UnknownRefError);
+			}),
+		),
+	);
+
+	it.effect("diffFile: diff.noprefix and diff.context in user config do not change the patch", () =>
+		run(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				const before = yield* git.diffFile(fixture.dir, fixture.commit1, "a.txt");
+				execFileSync("git", ["config", "diff.noprefix", "true"], { cwd: fixture.dir });
+				execFileSync("git", ["config", "diff.context", "0"], { cwd: fixture.dir });
+				const after = yield* git.diffFile(fixture.dir, fixture.commit1, "a.txt");
+				assert.include(after, "--- a/a.txt");
+				assert.include(after, "+++ b/a.txt");
+				assert.strictEqual(after, before);
 			}),
 		),
 	);

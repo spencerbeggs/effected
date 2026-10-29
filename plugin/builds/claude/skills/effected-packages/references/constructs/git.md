@@ -10,7 +10,8 @@
 | `CommitLogEntry` | Class | One commit of a `git log` listing, with the paths that commit touched. | one commit from git log with sha, author identity, both dates as DateTime.Utc, and touched paths |
 | `ConfigListEntry` | Class | One configuration entry, from `git config --list`. | one git config key/value pair from git config --list |
 | `DirtyWorktreeError` | Class | A merge-shaped operation refused to start because local modifications would be overwritten — git's refusal reads `Your local changes ... would be overwritten by merge`. | merge-shaped op refused because local changes would be overwritten, commit or stash first |
-| `Git` | Class | Typed git introspection over core's `ChildProcessSpawner`: read a repository's state at any ref without checking it out (including the network read `lsRemote` and the index read `lsFiles`), plus the mutating tier — checkout/fetch, the working-tree restore trio and stash, branches and tags, remotes, worktrees, commit/push/pull, submodules, sparse-checkout, config writes and staging — that changes it. Every mutating method's TSDoc opens with the literal word `Mutating:`. | run git commands with redacted argv, read file at ref, status untracked files mode |
+| `FileNotFoundError` | Class | `Git.diffFile` found `path` neither at `ref` nor in the index. | diffFile path found neither at the ref nor in the index, patch text of one file |
+| `Git` | Class | Typed git introspection over core's `ChildProcessSpawner`: read a repository's state at any ref without checking it out (including the network read `lsRemote` and the index read `lsFiles`), plus the mutating tier — checkout/fetch, the working-tree restore trio and stash, branches and tags, remotes, worktrees, commit/push/pull, submodules, sparse-checkout, config writes and staging — that changes it. Every mutating method's TSDoc opens with the literal word `Mutating:`. | run git commands with redacted argv, read file at ref, patch text of one file, status untracked files mode |
 | `GitCommand` | Class | Pure constructors for the `git` `GitInvocation` values this package spawns. | pure constructors for git argv/invocations with redacted secrets |
 | `GitCommandError` | Class | git ran and failed in a way that is not one of the recognized domain cases (`NotARepositoryError` / `UnknownRefError`), or the spawn itself failed before git could run at all. | git command failed or spawn/timeout failure, exit code and redacted argv and stderr |
 | `GitConfig` | Class | A lossless git-config document: the source text plus the structural index scanned from it. | lossless git-config document, parse and surgically edit git config text preserving formatting |
@@ -21,10 +22,11 @@
 | `GitConfigParseError` | Class | The document could not be parsed as git-config text. | git-config text failed to parse, malformed config, handle diagnostics |
 | `GitConfigScope` | TypeAlias | Which configuration file a read is scoped to. | |
 | `GitConfigSection` | Class | One section of a git-config document. | one [section] or [section "subsection"] block of a parsed git-config document |
+| `GitDiffFileOptions` | Interface | Options for `Git.diffFile`. | |
 | `GitFile` | Class | A parsed gitfile: the `.git` file of a linked worktree or a submodule, pointing at the repository directory git uses for it. | parse a worktree or submodule .git pointer file, gitdir line, no spawn |
 | `GitFileParseError` | Class | A text that git would refuse as a gitfile. | text is not a gitfile, missing gitdir prefix or empty path |
 | `GitInvocation` | Interface | A pure `git` invocation: the spawnable command plus the diagnostic argv the error taxonomy is allowed to persist. | |
-| `GitLocateOptions` | Interface | Options for the repository-locating reads: `Git.repoRoot`, `Git.commonDir` and `Git.treeIdentity`. | |
+| `GitLocateOptions` | Interface | Options for the repository-locating reads (`Git.repoRoot`, `Git.commonDir` and `Git.treeIdentity`) and for `Git.diffFile`. | |
 | `GitRemote` | Class | Git remote addresses: parse into verbatim parts, render back, redact for logging. | parse, format and redact git remote urls, scp addresses and paths, repository path |
 | `GitRemoteForm` | TypeAlias | A parsed git remote address. | |
 | `GitRemotePath` | Class | A remote that is a filesystem path: no `:`, or a `/` before the first `:` (`/srv/repo.git`, `../sibling.git`, `./a:b`, `owner/name`). | a remote given as a filesystem path |
