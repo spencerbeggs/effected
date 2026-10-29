@@ -1409,7 +1409,7 @@ export interface GitLocateOptions {
 	 * rest of that list. `GIT_CEILING_DIRECTORIES` is not on it and still
 	 * applies.
 	 *
-	 * Only these three reads take the option, and it is off by default, for
+	 * Only these reads (and diffFile) take the option, and it is off by default, for
 	 * two reasons. A caller who sets `GIT_DIR` and `GIT_WORK_TREE` on purpose
 	 * (a bare dotfiles repository, say) wants git to honour them. And a hook's
 	 * staged reads must keep `GIT_INDEX_FILE`: under `git commit <paths>` it
