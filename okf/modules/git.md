@@ -10,10 +10,10 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T16:52:37Z
+  at: 2026-10-29T15:14:08Z
 integrity:
   generated:
-    body: 5c5f3a82fa1a8d6e
+    body: c4e51a3ead3b838f
 ---
 
 # git
@@ -163,7 +163,7 @@ normalizes refs for snapshot cache keys. Working-tree primitives
 methods in their own right, with `workingChanges` composing them as a
 deduplicated union that takes no ref, so `UnknownRefError` cannot arise
 from it. `nameStatus` is the semantically-typed diff, with a typed status
-vocabulary and `oldPath` on renames/copies. `lsRemote` reads over the
+vocabulary and `oldPath` on renames/copies. `diffFile(cwd, ref, path, options?)` returns one file's patch text (working tree against `ref`) with `--no-color --no-ext-diff --no-textconv` pinned so user config cannot change the bytes; an unchanged file is `""`, a path found neither at the ref nor in the index fails `FileNotFoundError` unless `allowMissing` is set, and `ignoreRepositoryEnv` makes it hook-safe. `lsRemote` reads over the
 network and `lsFiles` reads the index — the only read that sees a
 staged-but-uncommitted `160000` gitlink — and both are still reads.
 `log` is the history walk, the one member whose parser can fail typed

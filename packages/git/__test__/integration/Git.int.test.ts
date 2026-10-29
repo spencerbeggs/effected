@@ -31,7 +31,7 @@ import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { ConfigProvider, Effect, Layer, Option } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import { ChildProcess } from "effect/process";
-import { Git, NotARepositoryError } from "../../src/Git.js";
+import { FileNotFoundError, Git, NotARepositoryError, UnknownRefError } from "../../src/Git.js";
 import { runCollected } from "../../src/internal/run.js";
 
 /** Resolves both `Git` and every Node platform service (including the real `ChildProcessSpawner`). */
@@ -203,6 +203,24 @@ describe("Git — real repository integration", () => {
 				const afterDeletion = yield* git.show(fixture.dir, fixture.commit2, "deleted.txt");
 				assert.deepStrictEqual(beforeDeletion, Option.some("will be deleted\n"));
 				assert.deepStrictEqual(afterDeletion, Option.none());
+			}),
+		),
+	);
+
+	it.effect("diffFile: changed file yields a patch, unchanged yields empty, missing fails or is allowed", () =>
+		run(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				const patch = yield* git.diffFile(fixture.dir, fixture.commit1, "a.txt");
+				assert.include(patch, "-one");
+				assert.include(patch, "+two");
+				assert.notInclude(patch, "\u001b[");
+				assert.strictEqual(yield* git.diffFile(fixture.dir, fixture.commit1, "file with space.txt"), "");
+				const missing = yield* Effect.flip(git.diffFile(fixture.dir, fixture.commit1, "nope.txt"));
+				assert.instanceOf(missing, FileNotFoundError);
+				assert.strictEqual(yield* git.diffFile(fixture.dir, fixture.commit1, "nope.txt", { allowMissing: true }), "");
+				const unknown = yield* Effect.flip(git.diffFile(fixture.dir, "no-such-ref", "a.txt"));
+				assert.instanceOf(unknown, UnknownRefError);
 			}),
 		),
 	);

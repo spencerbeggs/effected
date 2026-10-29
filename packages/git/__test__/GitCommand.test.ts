@@ -38,6 +38,18 @@ describe("GitCommand", () => {
 		assertGitCommand(GitCommand.show("HEAD", "package.json"), ["show", "HEAD:package.json"]);
 	});
 
+	it("diffFile pins color, external diff and textconv", () => {
+		assertGitCommand(GitCommand.diffFile("HEAD", "a.txt"), [
+			"diff",
+			"--no-color",
+			"--no-ext-diff",
+			"--no-textconv",
+			"HEAD",
+			"--",
+			"a.txt",
+		]);
+	});
+
 	it("lsTree builds `git ls-tree -r -z <ref>`", () => {
 		assertGitCommand(GitCommand.lsTree("HEAD"), ["ls-tree", "-r", "-z", "HEAD"]);
 	});

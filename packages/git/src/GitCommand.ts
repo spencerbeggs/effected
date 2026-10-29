@@ -187,6 +187,18 @@ export class GitCommand {
 	static readonly show = (ref: string, path: string): GitInvocation => git(["show", `${ref}:${path}`]);
 
 	/**
+	 * `git diff --no-color --no-ext-diff --no-textconv <ref> -- <path>` — the
+	 * patch text for one file, the working tree against `ref`.
+	 *
+	 * @remarks
+	 * The three flags are pinned so user config (`color.diff`, `diff.external`,
+	 * `diff.<driver>.textconv`) cannot change the bytes. A path that matches
+	 * nothing exits 0 with empty output, like an unchanged one.
+	 */
+	static readonly diffFile = (ref: string, path: string): GitInvocation =>
+		git(["diff", "--no-color", "--no-ext-diff", "--no-textconv", ref, "--", path]);
+
+	/**
 	 * `git ls-tree -r -z <ref> [-- <pathspec>...]` — every path in the tree at
 	 * `ref`, recursively, NUL-terminated, optionally scoped to `pathspec`.
 	 *
