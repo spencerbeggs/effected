@@ -39,7 +39,7 @@
 		"@effected/jsonc": "workspace:*",
 		"@effected/toml": "workspace:*",
 		"@effected/yaml": "workspace:*",
-		"@savvy-web/bundler": "^2.7.0",
+		"@savvy-web/bundler": "^2.7.1",
 		"@types/node": "catalog:build",
 		"commonmark": "0.31.2",
 		"effect": "catalog:effect",
