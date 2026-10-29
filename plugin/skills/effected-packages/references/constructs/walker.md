@@ -20,6 +20,7 @@
 | `GlobExpansionError` | Class | Typed failure raised by `compileAndExpand`: the single error the compile+expand recipe fails with, so a caller catches one tag rather than folding two error channels by hand. | handle pattern-to-files expansion failure, compile or descend stage error, wraps GlobPatternError or DescendError |
 | `PathEscapeError` | Class | An untrusted relative path would leave, or does not name anything under, the base directory it was confined to. | handle path escaping a base directory, zip slip, symlink escape, absolute or dot-dot refused |
 | `PathEscapeReason` | Variable + TypeAlias | The decoded type of `(PathEscapeReason:variable)`. | why a confined path was refused, traversal, symlink outside base, unresolvable, win32 reserved |
+| `RelativeWithinOptions` | Interface | Options for `relativeWithin`. | |
 | `UnreadableDirectory` | Interface | One directory `descend` could not read under `onUnreadable: "record"`: its `cwd`-relative path and the `PlatformError` that `readDirectory` — or, for a symlinked directory under `followSymlinks`, `realPath` — failed with. The cause is the very failure the walk absorbed, so a caller that must report WHY a directory was unreadable never re-reads it. | |
 | `UpwardMatches` | Interface | `Walker.findUpwardAll`'s answer: the nearest directory holding any candidate, and every candidate that exists there. | |
 | `Walker` | Class | Upward path traversal primitives: the directory chain from a start path to the root, and first-match scans over it. | walk up parent directories, find nearest config file, stop at .git marker, sync forms |
@@ -39,3 +40,5 @@
 | `nodeWalkerFileSystem` | Variable | `WalkerSyncFileSystem` over `node:fs`: `readdirSync`, `statSync`, `lstatSync`, `realpathSync`. | from `@effected/walker/node-sync` — node fs binding for the synchronous walker |
 | `nodeWalkerPath` | Variable | `WalkerSyncPath` over `node:path` (the host platform's separator). | from `@effected/walker/node-sync` — node path binding for the synchronous walker |
 | `nodeWalkerSyncOps` | Variable | Both bindings, to spread into `descendSync` options. | from `@effected/walker/node-sync` — node fs and path bindings to spread into a synchronous walk |
+| `relativeWithin` | Function | The posix, base-relative path of an absolute path that lies inside a base directory PHYSICALLY, or `None` when it does not. | base-relative posix path of an absolute path physically inside a base, even if it does not exist yet, Option |
+| `relativeWithinSync` | Function | `relativeWithin`, synchronously, over a caller-supplied port. | synchronous base-relative containment answer over a caller-supplied fs port, Option |

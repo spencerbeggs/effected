@@ -277,6 +277,7 @@ function* resolvePhysical<C>(
 	path: PathOps,
 	win32: boolean,
 	checkSegments: boolean,
+	requireExisting = false,
 ): Walk<{ readonly _tag: "Ok"; readonly value: string } | ConfineRefusal<C>> {
 	let root = absolute;
 	for (let parent = path.dirname(root); parent !== root; parent = path.dirname(root)) root = parent;
@@ -319,6 +320,8 @@ function* resolvePhysical<C>(
 		// A link whose target does not resolve, or an entry that appeared between
 		// the two requests: either way nothing proves where it leads.
 		if (entry._tag === "Present") return { _tag: "Unresolvable", cause: answer.cause };
+		// A caller that needs an existing path is not told where an absent one would land.
+		if (requireExisting) return { _tag: "Refused", reason: "outside" };
 		current = next;
 	}
 	return { _tag: "Ok", value: current };
@@ -333,6 +336,7 @@ export function* confineRealMachine<C>(
 	base: string,
 	candidate: string,
 	path: PathOps,
+	within: false | { readonly requireExisting: boolean } = false,
 ): Walk<UpwardResult<{ readonly _tag: "Ok"; readonly value: string } | ConfineRefusal<C>>> {
 	// A win32 `\repo` is absolute to `isAbsolute`, yet which drive it names
 	// depends on the process working directory: a wiring defect like `C:repo`.
@@ -343,6 +347,8 @@ export function* confineRealMachine<C>(
 		done<ConfineRefusal<C>>({ _tag: "Refused", reason });
 	if (candidate.includes("\0")) return refuse("nulByte");
 	if (candidate === "") return refuse("empty");
+	// `within` answers a base-relative path for an absolute candidate only.
+	if (within && !path.isAbsolute(candidate)) return refuse("absolute");
 	const win32 = path.sep === "\\";
 	const isSep = (character: string): boolean => character === path.sep || (win32 && character === "/");
 	// A drive-relative `C:x` is not absolute to win32's `isAbsolute`, yet it is
@@ -355,12 +361,21 @@ export function* confineRealMachine<C>(
 	const full = path.isAbsolute(candidate) ? candidate : `${trimTrailing(base, isSep)}${path.sep}${candidate}`;
 	const baseReal = yield* resolvePhysical<C>(base, path, win32, false);
 	if (baseReal._tag !== "Ok") return done(baseReal);
-	const candidateReal = yield* resolvePhysical<C>(full, path, win32, true);
+	const candidateReal = yield* resolvePhysical<C>(full, path, win32, true, within !== false && within.requireExisting);
 	if (candidateReal._tag !== "Ok") return done(candidateReal);
 	const root = trimTrailing(baseReal.value, isSep);
 	const resolved = trimTrailing(candidateReal.value, isSep);
+	if (within && resolved === root) return done({ _tag: "Ok", value: "" });
 	if (resolved === root) return refuse("empty");
 	// `root` is `""` for a filesystem-root base, so the prefix is the separator alone.
 	if (!resolved.startsWith(`${root}${path.sep}`)) return refuse("outside");
+	if (within)
+		return done({
+			_tag: "Ok",
+			value: resolved
+				.slice(root.length + 1)
+				.split(path.sep)
+				.join("/"),
+		});
 	return done({ _tag: "Ok", value: candidateReal.value });
 }

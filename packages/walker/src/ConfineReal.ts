@@ -8,7 +8,7 @@
 // once, in `internal/upwardMachine.ts`; this module only maps the outcome.
 
 import type { FileSystem, PlatformError } from "effect";
-import { Effect, Path, Result } from "effect";
+import { Effect, Option, Path, Result } from "effect";
 import { PathEscapeError } from "./Confine.js";
 import type { WalkerSyncOps } from "./DescendSync.js";
 import { runUpward, runUpwardSync } from "./internal/upwardDrivers.js";
@@ -145,3 +145,97 @@ export const confineRealSync = (
 		candidate,
 		runUpwardSync(confineRealMachine<unknown>("Walker.confineRealSync", base, candidate, ops.path), ops.fileSystem),
 	);
+
+/**
+ * Options for {@link relativeWithin}.
+ *
+ * @public
+ */
+export interface RelativeWithinOptions {
+	/**
+	 * What a path that does not exist yet means. `"ancestor"` (the default)
+	 * resolves the missing tail from the deepest existing ancestor, so a
+	 * destination can be placed before it is created; `"refuse"` answers `None`
+	 * for any path that does not exist.
+	 */
+	readonly missing?: "ancestor" | "refuse";
+}
+
+const within = (options: RelativeWithinOptions | undefined) => ({ requireExisting: options?.missing === "refuse" });
+
+/**
+ * The posix, base-relative path of an absolute path that lies inside a base
+ * directory PHYSICALLY, or `None` when it does not.
+ *
+ * @remarks
+ * The question `confineReal` does not answer: where, under `base`, does this
+ * absolute path sit? It resolves links the way `confineReal` does, and a path
+ * or tail that does not exist yet is resolved lexically from its deepest
+ * existing ancestor, so a destination can be placed before it is created.
+ * The base itself answers `""`. `None` covers every refusal: a relative or
+ * NUL-bearing candidate, a real location outside the base, and a resolution
+ * that cannot be verified (a permission error, a loop, a dangling link) —
+ * containment that cannot be proved is never assumed. A relative `base` is a
+ * **defect**, as it is for `confineReal`.
+ *
+ * @example
+ * ```ts
+ * import { relativeWithin } from "@effected/walker";
+ * import { Effect } from "effect";
+ *
+ * const inside = relativeWithin("/repo", "/repo/docs/new.md");
+ * // Requires `FileSystem` and `Path`; succeeds with Option.some("docs/new.md").
+ * ```
+ *
+ * @param base - The absolute directory the path must stay inside.
+ * @param absolute - The absolute path to place under `base`.
+ * @param options - See {@link RelativeWithinOptions}.
+ * @returns An `Effect` succeeding with the base-relative posix path, or `None`.
+ *
+ * @public
+ */
+export const relativeWithin: (
+	base: string,
+	absolute: string,
+	options?: RelativeWithinOptions,
+) => Effect.Effect<Option.Option<string>, never, FileSystem.FileSystem | Path.Path> = Effect.fn(
+	"Walker.relativeWithin",
+)(function* (base: string, absolute: string, options?: RelativeWithinOptions) {
+	const path = yield* Path.Path;
+	const outcome = yield* runUpward(
+		confineRealMachine<PlatformError.PlatformError>("Walker.relativeWithin", base, absolute, path, within(options)),
+	);
+	return outcome._tag === "Ok" ? Option.some(outcome.value) : Option.none();
+});
+
+/**
+ * {@link relativeWithin}, synchronously, over a caller-supplied port.
+ *
+ * @example
+ * ```ts
+ * import { relativeWithinSync } from "@effected/walker";
+ * import { nodeWalkerSyncOps } from "@effected/walker/node-sync";
+ *
+ * const inside = relativeWithinSync("/repo", "/repo/docs/new.md", nodeWalkerSyncOps);
+ * ```
+ *
+ * @param base - The absolute directory the path must stay inside.
+ * @param absolute - The absolute path to place under `base`.
+ * @param ops - The platform: spread or pass `nodeWalkerSyncOps`.
+ * @param options - See {@link RelativeWithinOptions}.
+ * @returns The base-relative posix path, or `None`.
+ *
+ * @public
+ */
+export const relativeWithinSync = (
+	base: string,
+	absolute: string,
+	ops: WalkerSyncOps,
+	options?: RelativeWithinOptions,
+): Option.Option<string> => {
+	const outcome = runUpwardSync(
+		confineRealMachine<unknown>("Walker.relativeWithinSync", base, absolute, ops.path, within(options)),
+		ops.fileSystem,
+	);
+	return outcome._tag === "Ok" ? Option.some(outcome.value) : Option.none();
+};
