@@ -26,6 +26,7 @@
 * Updated app's test layer lives behind ./testing, with memfs an optional peer
 * Updated @effected/env
 * Updated git
+* Updated walker
 
 ## 2026-10-28
 

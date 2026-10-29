@@ -39,3 +39,5 @@
 | `nodeWalkerFileSystem` | Variable | `WalkerSyncFileSystem` over `node:fs`: `readdirSync`, `statSync`, `lstatSync`, `realpathSync`. | from `@effected/walker/node-sync` — node fs binding for the synchronous walker |
 | `nodeWalkerPath` | Variable | `WalkerSyncPath` over `node:path` (the host platform's separator). | from `@effected/walker/node-sync` — node path binding for the synchronous walker |
 | `nodeWalkerSyncOps` | Variable | Both bindings, to spread into `descendSync` options. | from `@effected/walker/node-sync` — node fs and path bindings to spread into a synchronous walk |
+| `relativeWithin` | Function | The posix, base-relative path of an absolute path that lies inside a base directory PHYSICALLY, or `None` when it does not. | base-relative posix path of an absolute path physically inside a base, even if it does not exist yet, Option |
+| `relativeWithinSync` | Function | `relativeWithin`, synchronously, over a caller-supplied port. | synchronous base-relative containment answer over a caller-supplied fs port, Option |

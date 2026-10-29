@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/walker/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:53:09Z
+  at: 2026-10-29T16:07:50Z
 integrity:
   generated:
-    body: dbfa2cde236f6bb4
+    body: f3396dd134401dee
 ---
 
 # walker
@@ -367,6 +367,15 @@ drive-relative `C:x` or a driveless rooted `\x` candidate is `absolute` and
 a reserved segment is `reservedName`; the win32 shapes are tested through
 memfs's win32 port, and the dangling-link write against a real temporary
 directory in `__test__/e2e/node-sync.e2e.test.ts`.
+
+`relativeWithin(base, absolute)` and `relativeWithinSync(base, absolute, ops)`
+(same module, same `confineRealMachine` behind a `within` flag) answer the
+other question: where under the base does an absolute path sit? They return
+`Option<string>` — the posix, base-relative path, `""` for the base itself,
+`None` for every refusal (outside, unverifiable, relative or NUL-bearing
+candidate). A destination that does not exist yet resolves from its deepest
+existing ancestor, exactly as in `confineReal`. A relative base is still a
+defect. There is no `missing` option: ancestor resolution is the only mode.
 
 ## Hardening
 

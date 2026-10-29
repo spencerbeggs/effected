@@ -1042,6 +1042,8 @@
 		"compileAndExpand": "compile a glob string, expand against the filesystem, pattern to matching files",
 		"confineReal": "check a path stays inside a base directory physically, resolve symlinks, refuse escapes",
 		"confineRealSync": "synchronous symlink-aware containment check over a caller-supplied fs port, Result",
+		"relativeWithin": "base-relative posix path of an absolute path physically inside a base, even if it does not exist yet, Option",
+		"relativeWithinSync": "synchronous base-relative containment answer over a caller-supplied fs port, Option",
 		"confineRelative": "confine an untrusted relative path to a base directory as an Effect, reject dot-dot escapes",
 		"confineRelativeResult": "confine an archive entry or manifest path under a base dir synchronously, zip slip guard, Result",
 		"descend": "expand a compiled glob into files or directories under a directory, prune node_modules",
