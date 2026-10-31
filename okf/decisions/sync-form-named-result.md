@@ -15,13 +15,15 @@ integrity:
     body: e8a8ade93492c88a
   verified:
     by: human:spencer
-    at: 2026-10-25T20:04:29Z
-    content: b6b5850b1d10c2e6
+    at: 2026-10-31T19:39:48Z
+    content: 476f956934a06966
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
   - by: human:spencer
     at: 2026-10-25T20:04:29Z
+  - by: human:spencer
+    at: 2026-10-31T19:39:48Z
 ---
 
 # The sync form is named `*Result`, never `*Sync`

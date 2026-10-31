@@ -2,7 +2,7 @@
 type: Decision
 title: Consumers see one catalog, effected, folded by the plugin's hook from split declarations
 description: "@effected/pnpm-plugin-effect is renamed @effected/pnpm-plugin-effected and serves consumers exactly one catalog, effected, holding the Effect family and the kit; savvy.build.ts still declares effect and effected separately with :peers twins because the override directive and the upgrade CLI work per catalog, and the plugin's updateConfig folds them."
-status: draft
+status: stable
 tags:
   - deps
   - release
@@ -31,6 +31,13 @@ generated:
 integrity:
   generated:
     body: 9ab094a00a1d1273
+  verified:
+    by: human:spencer
+    at: 2026-10-31T19:39:48Z
+    content: a0ca18846a56ed84
+verified:
+  - by: human:spencer
+    at: 2026-10-31T19:39:48Z
 ---
 
 # Consumers see one catalog, effected, folded by the plugin's hook from split declarations

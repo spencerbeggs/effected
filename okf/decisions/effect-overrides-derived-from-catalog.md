@@ -33,11 +33,13 @@ integrity:
     body: 45d0a4ae82cdae25
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 925d6409ae3cb45d
+    at: 2026-10-31T19:39:48Z
+    content: 7e8ceac50609d082
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-10-31T19:39:48Z
 ---
 
 # The effect family is pinned graph-wide by overrides derived from the catalog

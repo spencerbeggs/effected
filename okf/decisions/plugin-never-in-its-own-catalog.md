@@ -13,11 +13,13 @@ integrity:
     body: 83d06c1c8c79e0f2
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: b55d6770b7074521
+    at: 2026-10-31T19:39:48Z
+    content: 144fc784f441eaf8
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-10-31T19:39:48Z
 ---
 
 # `pnpm-plugin-effected` is deliberately absent from its own `effected` catalog

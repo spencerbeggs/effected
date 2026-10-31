@@ -26,11 +26,13 @@ integrity:
     body: bd31b82a5e714c9e
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: bfe371311559f487
+    at: 2026-10-31T19:39:48Z
+    content: e9e5c185713e5179
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-10-31T19:39:48Z
 ---
 
 # App auth, OIDC verify and the token store land in @effected/github

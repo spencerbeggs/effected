@@ -20,11 +20,13 @@ integrity:
     body: 5a84ae5178f18660
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 90b55c30a78650d5
+    at: 2026-10-31T19:39:48Z
+    content: 613b94ec13706932
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-10-31T19:39:48Z
 ---
 
 # Releases are changeset-driven and scope-agnostic

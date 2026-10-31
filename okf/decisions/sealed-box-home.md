@@ -31,11 +31,13 @@ integrity:
     body: b52d4bd8209778a8
   verified:
     by: human:spencer
-    at: 2026-10-25T20:04:29Z
-    content: 63e16801a0f2a424
+    at: 2026-10-31T19:39:48Z
+    content: da8abe4964c24e72
 verified:
   - by: human:spencer
     at: 2026-10-25T20:04:29Z
+  - by: human:spencer
+    at: 2026-10-31T19:39:48Z
 ---
 
 # The libsodium sealed box stays in `@effected/github` until a second consumer appears

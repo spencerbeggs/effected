@@ -14,11 +14,13 @@ integrity:
     body: fb143799ad834ade
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 1176704c9a0f4c0a
+    at: 2026-10-31T19:39:48Z
+    content: 5df7bedfa1d71f03
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-10-31T19:39:48Z
 ---
 
 # Vendored Effect is pinned to the lockfile's tag, not main

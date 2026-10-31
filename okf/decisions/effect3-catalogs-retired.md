@@ -14,11 +14,13 @@ integrity:
     body: d08f148ad9b8e4b3
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: edc9e7ecffe95195
+    at: 2026-10-31T19:39:48Z
+    content: edae9ae68844f4d9
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-10-31T19:39:48Z
 ---
 
 # There is no Effect v3 catalog and no camelCase catalog alias

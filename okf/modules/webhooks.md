@@ -22,10 +22,10 @@ sources:
     title: "InboundRequest and the verification-failure status mapping"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-31T19:37:34Z
+  at: 2026-10-31T19:49:35Z
 integrity:
   generated:
-    body: 6ada0ea0e55a0dd2
+    body: 0eabf6e70ccbaf80
 ---
 
 # `@effected/webhooks`
@@ -64,7 +64,7 @@ Secret handling follows the vendor exactly, because getting it wrong produces a 
 
 Linear signs with a bare hex HMAC over the body, which `HmacHeader` covers, but carries its timestamp inside the JSON body (`webhookTimestamp`, milliseconds). So `Webhooks.checkFreshness(timestamp, receivedAt, tolerance)` is exported on its own, and the caller applies it after decoding the body. It takes the timestamp as a `DateTime` or as epoch milliseconds, and a number no `DateTime` can represent is `stale_timestamp`, never a throw.
 
-`SharedSecret` compares with `ConstantTime.secretsEqual`, so the secret's length does not leak; it covers Cloudflare's `cf-webhook-auth` and a path secret delivered as a header. It compares the raw header value, untrimmed, because trimming would loosen a secret comparison; only an empty value is absent. Like every preset it requires `Mac.Mac` in `R` (the blinding key comes from `Mac.generateKey`), and a `CryptoError` is a defect.
+`SharedSecret` compares with `ConstantTime.secretsEqual`, so the secret's length does not leak; it covers Cloudflare's `cf-webhook-auth` and a path secret delivered as a header. It compares the header value exactly as the lookup returns it, untrimmed, because trimming would loosen a secret comparison; only an empty value is absent. A lookup over a fetch `Request` already sees values the `Headers` class trimmed, so padding never reaches the comparison there. An empty secret on any HMAC preset is refused by core `Mac` as `InvalidKey`, which the preset turns into a defect. Like every preset it requires `Mac.Mac` in `R` (the blinding key comes from `Mac.generateKey`), and a `CryptoError` is a defect.
 
 `HmacHeader` verifies with `crypto`'s `Hmac.verify`, which decodes the signature and compares bytes, so any spelling that decodes to the right MAC is accepted: hex in either case, and padded base64 that is not the canonical spelling. Core's base64 decoder requires padding, so unpadded base64 does not decode and is `bad_signature`. `GitHub`, `Stripe`, `Sanity` and `StandardWebhooks` compare their encoded signature strings.
 

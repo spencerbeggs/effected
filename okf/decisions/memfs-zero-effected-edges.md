@@ -16,11 +16,13 @@ integrity:
     body: 2e91ea77fea6cf3f
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 7b32c749191c886c
+    at: 2026-10-31T19:39:48Z
+    content: 9d659057ec9e8e91
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-10-31T19:39:48Z
 ---
 
 # memfs takes zero @effected/* edges, ever
