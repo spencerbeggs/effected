@@ -27,12 +27,13 @@ carries an explicit `@stability` tag: `stable` follows strict semver,
 `cli`, `http`, `http-api`, `sql`, and the rest of the table under "The
 unstable-stability namespaces") are `unstable`, and so are these top-level
 modules — **including the platform contracts**: `Arbitrary`, `ByteSize`, `Bytes`,
-`ChannelSchema`, `Crypto`, `ErrorReporter`, `ExecutionPlan`, `FileSystem`,
-`Graph`, `HashRing`, `LayerMap`, `LayerRef`, `Newtype`,
+`ChannelSchema`, `ErrorReporter`, `ExecutionPlan`, `FileSystem`,
+`Glob` (`experimental`), `Graph`, `HashRing`, `LayerMap`, `LayerRef`, `Newtype`,
 `PartitionedSemaphore`, `Path`, `PlatformError`, `SemVer`, `SemVerRange`,
 `Stdio`, `Terminal`, `TxChunk`, `Version`, `TextDiff` (`experimental`), plus `testing/TestConsole` and `testing/TestSchema`.
 Under `effect/encoding`, `Base64`, `Base64Url`, `EncodingError` and `Hex` are
-`stable`; the rest are `unstable`. A few symbols in otherwise-stable modules
+`stable`; the rest are `unstable`. Every `effect/crypto` and `effect/jose`
+module is `unstable`. A few symbols in otherwise-stable modules
 carry the tag too — the network-address, cookie, header, URL-params, `Graph` and `ByteSize` schemas
 in `Schema`, `Effect.withExecutionPlan`/`withErrorReporting`,
 `Stream.withExecutionPlan`/`limitBytes`, `Config.ByteSize`, `Logger.toFile` —
@@ -53,7 +54,8 @@ phrasing and missed on its module name.
 
 | You want to… | Reach for | Note |
 | --- | --- | --- |
-| **spawn a subprocess / run a command / shell out** | `effect/process` — `ChildProcess` (command values) + `ChildProcessSpawner` (the service) | NOT `cli`'s `Command`, which is the CLI *declaration*. Core declares the contract and ships **no layer**: require `ChildProcessSpawner` in `R`, let the app provide `NodeServices.layer`. Never hand-roll `node:child_process`. |
+| **spawn a subprocess / run a command / shell out** | `effect/process` — `ChildProcess` (command values) + `ChildProcessSpawner` (the service) | NOT `cli`'s `Command`, which is the CLI *declaration*. Core declares the contract and ships **no layer**: require `ChildProcessSpawner` in `R`, let the app provide `NodeServices.layer`. Never hand-roll `node:child_process`. Arguments are `CommandLine.Word` (`string \| Redacted<string>`), and a template with shell syntax (`\|`, `$HOME`, `*`) throws `CommandLineError` when `make` is called. |
+| **hash, HMAC, sign, encrypt, derive a key, or draw secure random bytes / a UUID** | `effect/crypto` — `Digest`, `Mac`, `Signature`, `Aead`/`Cipher`, `Kdf`, `SecureRandom` (each a service) | No `effect/Crypto` module exists. Require the service in `R` and provide it at the edge: `NodeCrypto.layer` (every family) or a family layer such as `NodeCrypto.layerDigest` from `@effect/platform-node`, or core's `<Family>.layerWebCrypto` on any WebCrypto runtime. **`NodeServices.layer` carries no crypto.** JOSE (JWS/JWE/JWT/JWK/JWKS) is `effect/jose`. |
 | **cache an effectful lookup with a TTL and in-flight de-duplication** | core `Cache` — `Cache.makeWith(lookup, { capacity, timeToLive })`, or `Cache.make` for a fixed TTL | Already does both jobs: it "shares an in-progress lookup when multiple callers request the same missing key" (`Cache.ts:4`) and expires by `timeToLive` (`Cache.ts:118`). Do not build a promise-map de-duplicator beside it — but read the two `Cache` sharp corners below before choosing a TTL. |
 | **write to stdout/stderr, or read argv/stdin, from a library** | core `Stdio` — require `Stdio` in `R` | `Stdio.layerTest(impl)` (`Stdio.ts:166`) takes a `Partial<Stdio>` and lets you echo-test the output **with no platform package installed**. The real implementation still comes from `@effect/platform-*` at the app edge. Do not `console.log` from library code to dodge the wiring. |
 
@@ -66,7 +68,7 @@ phrasing and missed on its module name.
 | `BigInt` | helpers over native `bigint`: arithmetic, comparison, safe parsing to `Option` | working with `bigint` values and needing safe parse/aggregate/order |
 | `Boolean` | helpers over `boolean`: logical ops, lazy branching, ordering, reducing | combining booleans or choosing between lazy branches |
 | `Brand` | compile-time nominal tags on structurally-identical values, optionally validating | keeping `Positive`/`UserId`-style values from mixing without runtime cost |
-| `ByteSize` | a branded non-negative `bigint` byte count (`ByteSize.ts:32`) with unit constructors (`bytes`, `kilobytes`/`kibibytes` … `quettabytes`), `fromInput`/`fromInputUnsafe` over `ByteSize.Input = ByteSize \| bigint \| number \| string`, `toBigInt`/`toNumber` (Option)/`toNumberUnsafe`, `sum`/`subtract`/`times`/`divide`, `Order`/`Equivalence`/`between`/`clamp`, `format` | any byte quantity — it **replaces `FileSystem.Size`/`SizeInput`**, which do not exist: `File.Info.size` and `blksize` are `ByteSize` (`FileSystem.ts:1042-1043`), `FileSystem.stream`'s `bytesToRead`/`offset` are `ByteSize.Input` (`:338-340`), `File.seek` takes a `bigint` and returns one (`:897`), `read`/`write` return `number` (`:903`, `:914`), `readAlloc`/`truncate` take `number` (`:909-913`). Reach for `ByteSize.toNumberUnsafe(info.size)` at a `Buffer` boundary, never `Number(info.size)` spelled by hand |
+| `ByteSize` | a branded non-negative `bigint` byte count (`ByteSize.ts:32`) with unit constructors (`bytes`, `kilobytes`/`kibibytes` … `quettabytes`), `fromInput`/`fromInputUnsafe` over `ByteSize.Input = ByteSize \| bigint \| number \| string`, `toBigInt`/`toNumber` (Option)/`toNumberUnsafe`, `sum`/`subtract`/`times`/`divide`, `Order`/`Equivalence`/`between`/`clamp`, `format` | any byte quantity — it **replaces `FileSystem.Size`/`SizeInput`**, which do not exist: `File.Info.size` and `blksize` are `ByteSize` (`FileSystem.ts:1103-1104`), `FileSystem.stream`'s `bytesToRead`/`offset` are `ByteSize.Input` (`:378-380`), `File.seek` takes a `bigint` and returns one (`:958`), `read`/`write` return `number` (`:964`, `:975`), `readAlloc`/`truncate` take `number` (`:970-974`). Reach for `ByteSize.toNumberUnsafe(info.size)` at a `Buffer` boundary, never `Number(info.size)` spelled by hand |
 | `Bytes` | helpers over `Uint8Array`: `concat`, `Equivalence`, `Order` | joining or comparing byte arrays without a `Buffer` dependency |
 | `Cache` | concurrent cache of Effect lookup results with capacity/TTL and in-flight sharing (`make` = fixed TTL, `makeWith` = per-entry TTL from the `Exit`) | memoizing an effectful lookup by key with dedupe/expiry — this is the whole feature; do not hand-roll an in-flight promise map |
 | `Cause` | full structured failure record: typed errors, defects, interruptions, annotations | inspecting or formatting why an Effect failed without collapsing it |
@@ -80,12 +82,11 @@ phrasing and missed on its module name.
 | `Console` | Effect wrapper over console (log/group/count/table/timer) as a swappable service | logging/console side effects you want swappable in tests |
 | `Context` | typed map of service implementations keyed by Service/Reference | building or reading the service environment `R` of effects |
 | `Cron` | recurring calendar schedule from cron expressions or field constraints | matching dates or computing next/previous scheduled occurrences |
-| `Crypto` | platform-independent crypto service contract: secure random bytes/numbers/shuffle, UUIDv4+v7 (`randomUUIDv4()` / `randomUUIDv7()` are calls, with an optional `format` of `hex` or `bytes`), ULID, and a **one-shot** `digest` over `SHA-1/256/384/512` — **and nothing else** (no HMAC, no signing, no key derivation, no incremental hashing; `Crypto.ts:81-202`). `effect/testing`'s `TestCrypto.layer(seed)` seeds the random members over a real `Crypto`'s digest | secure random/UUID/hashing of a value already in memory; contract, platform layer provides implementation. For HMAC, signing, or hashing a stream, `node:crypto` or a platform package — see the sharp corner below |
 | `Data` | constructors for immutable value classes, tagged classes/unions, typed errors | defining `_tag`-carrying domain values and errors with structural equality |
 | `DateTime` | absolute instants plus optional time-zone-aware date-times and arithmetic | zone-aware timestamps, date math, and formatting |
 | `Deferred` | one-time set-once async variable many fibers can await | cross-fiber coordination on a single result/signal |
 | `Differ` | interface to compute/combine/apply patches describing value changes | modeling incremental patch-based updates to a value |
-| `Duration` | immutable time span (finite or infinite) for delays/timeouts/TTL | expressing delays, timeouts, intervals, or TTLs |
+| `Duration` | immutable time span (finite or infinite) for delays/timeouts/TTL; ISO 8601 via `formatIso` (`Option<string>`, `none` for infinite) and `fromIso` (`Option<Duration>`) | expressing delays, timeouts, intervals, or TTLs; `Schema.DurationFromIsoString` is the schema form of the ISO codec |
 | `Effect` | core `Effect<A,E,R>` type and the main API for building/running workflows | creating, composing, recovering, or running effectful programs |
 | `Effectable` | internal: prototype builder + base class to make custom values act as Effects | rarely — making a domain value yieldable in `Effect.gen` |
 | `Equal` | structural equality (`equals`) plus the Equal interface, guards, adapters | comparing values structurally or implementing custom equality |
@@ -97,10 +98,11 @@ phrasing and missed on its module name.
 | `FiberHandle` | scope-bound holder of at most one fiber, replacing/interrupting prior | tracking a single swappable background fiber tied to a scope |
 | `FiberMap` | scope-bound map of fibers keyed by K, auto-removed on completion | managing keyed background fibers under one scope |
 | `FiberSet` | scope-bound set of many fibers, all interrupted when scope closes | managing a dynamic group of background fibers under one scope |
-| `FileSystem` | portable file system service (read/write/stream/glob/watch), fails `PlatformError`; sizes are `ByteSize` (see that row), and `File.seek` before the start of the file fails `BadArgument` and leaves the cursor unchanged (`FileSystem.ts:895-897`; the Node implementation is `@effect/platform-node-shared`, which the vendored tree does not carry — `effect-v4-source-lookup` says where to read it) | file IO; contract, platform layer provides implementation |
+| `FileSystem` | portable file system service (read/write/stream/glob/watch), fails `PlatformError`; sizes are `ByteSize` (see that row), and `File.seek` before the start of the file fails `BadArgument` and leaves the cursor unchanged (`FileSystem.ts:956-958`; the Node implementation is `@effect/platform-node-shared`, which the vendored tree does not carry — `effect-v4-source-lookup` says where to read it). `glob` is core's own walk on every platform: wildcard segments match **case-sensitively** even on a case-insensitive volume, while leading literal segments use `stat` and keep the pattern's spelling (`FileSystem.ts:154-156`); patterns use `/` separators | file IO; contract, platform layer provides implementation. **A custom implementation** must supply `readDirectoryEntries` (each entry's `name` and `type`, `"Unknown"` allowed). `FileSystem.make(impl)` derives `glob` (with `exists`, `readFileString`, `stream`, `sink`, `writeFileString`) and accepts none of them; apply a custom `glob` afterwards with `FileSystem.FileSystem.of({ ...FileSystem.make(impl), glob })`. A wrapper that changes `readDirectory` must change `readDirectoryEntries` the same way |
 | `Filter` | composable check returning `Result` (pass/fail) that can also narrow/transform | selective matching/recovery where a predicate must also refine or transform |
 | `Formatter` | renders arbitrary JS values to readable strings with redaction/cycle handling | formatting values for logs, diagnostics, or error messages |
 | `Function` | core composition helpers: `pipe`, `flow`, `dual`, identity/const/memoize | composing functions or writing dual direct/pipe APIs |
+| `Glob` | `experimental` pure matcher over `/`-separated paths with `FileSystem.glob`'s pattern syntax: `make(pattern, { dot? })`, `match` (dual), `escape` | testing a path against a glob with no file-system access; use `FileSystem.glob` to walk a tree |
 | `Graph` | immutable indexed node+edge graph carrying user data on both, mutated only inside a scoped window (`mutate(g, draft => …)`, or `beginMutation`/`endMutation`); directed-vs-undirected is a `Kind` type parameter. 95 exports — `dfs`/`bfs`/`topo`/`externals` walkers, the named algorithms (`dijkstra`, `bellmanFord`, `floydWarshall`, `astar`, `isAcyclic`, `isBipartite`, `connectedComponents`, `stronglyConnectedComponents`), graph set algebra (`compose`, `intersection`, `difference`, `symmetricDifference`, `complement`, `sum`), and `toMermaid` / `toGraphViz` emitters returning a diagram `string` | any graph problem — **do not hand-roll shortest path, topological sort, cycle detection, or SCCs beside it.** `Kind` gates the algorithms at the type level: `topo`/`stronglyConnectedComponents` take `"directed"` only, `isBipartite`/`connectedComponents` `"undirected"` only, so pick the constructor for the analysis you need (`stronglyConnectedComponents` also throws `GraphError` on an undirected graph at runtime). Reach for `toMermaid` whenever you want a diagram of anything you can model as nodes and edges |
 | `Hash` | computes non-cryptographic structural hashes; interface for custom hash | implementing custom hashing for Equal-based collections |
 | `HashMap` | immutable key/value map (HAMT) keyed by structural equality | need immutable map with object/structural keys |
@@ -119,7 +121,7 @@ phrasing and missed on its module name.
 | `Logger` | loggers, formatters, console/file routing, install layers | configuring/customizing how log events are emitted |
 | `LogLevel` | log-level types, ordering, threshold/enabled helpers | comparing or checking log severities |
 | `ManagedRuntime` | runs many effects against services built once from a Layer | bridging Effect to promise/callback/sync entry points |
-| `Match` | ordered pattern matcher (`Match.type`/`Match.value`) | pattern-matching on tags, shapes, predicates, literals |
+| `Match` | ordered pattern matcher (`Match.type`/`Match.value`); `Match.literals({ ... })` handles a subset of literal values by key, `literalsExhaustive` all of them | pattern-matching on tags, shapes, predicates, literals |
 | `Metric` | counters/gauges/histograms/frequencies/summaries/timers, attached to effects via `Effect.track` | metering an operation — boundaries only; see `effect-v4-observability`. NB there is no `Metric.tagged`/`taggedWithLabels`; attributes are `Metric.withAttributes` |
 | `MutableHashMap` | in-place map mixing native and Equal/Hash keys | fast mutable map needing structural-key lookup |
 | `MutableHashSet` | in-place unique set built on MutableHashMap | fast mutable set with structural-equality members |
@@ -136,7 +138,7 @@ phrasing and missed on its module name.
 | `Path` | path ops service (join/normalize/parse/resolve); POSIX `Path.layer` built in | path manipulation; contract, platform layer provides (POSIX layer in core) |
 | `Pipeable` | internal: `.pipe(...)` method-chaining interface | only when authoring a pipeable data type; agents skip |
 | `PlatformError` | normalized platform error model (`BadArgument`/`SystemError` reasons) | typing/handling FileSystem/Terminal/subprocess/host IO failures |
-| `Pool` | shares scoped resources borrowed across fibers | pooling connections/clients with TTL and invalidation |
+| `Pool` | shares scoped resources borrowed across fibers; `Pool.stats` snapshots `{ idle, used, pending, min, max }` | pooling connections/clients with TTL and invalidation; `stats` for occupancy metrics (`idle + used` can briefly exceed `max` while an invalidated item is replaced) |
 | `Predicate` | runtime guards and refinements with combinators | type guards, tag/shape checks, composing predicates — never hand-write `isString`/object guards (NB: no `isRecord` on the v4 line; the record-ish guards are `isObject`/`isReadonlyObject`/`isObjectOrArray`) |
 | `PrimaryKey` | protocol exposing a stable string identifier | giving a value a stable string key (requests, ring nodes) |
 | `PubSub` | broadcast hub; each subscriber gets every message | fan-out messaging where subscribers don't compete |
@@ -159,9 +161,9 @@ phrasing and missed on its module name.
 | `Runtime` | low-level `makeRunMain` for turning an Effect into a process entry point | writing a platform runner; app code uses platform-provided runners instead |
 | `Schedule` | policy stepping inputs into outputs plus delays for retry/repeat/pace | decide when/how often to retry, repeat, or pace an effect |
 | `Scheduler` | controls how runnable fiber tasks are queued, dispatched, and yielded | internal/advanced: tune or disable fiber scheduling and yields — usually skip |
-| `Schema` | validate/decode/encode data shapes with codecs, classes, refinements | the primary entry point for any schema, codec, or data validation |
+| `Schema` | validate/decode/encode data shapes with codecs, classes, refinements | the primary entry point for any schema, codec, or data validation. Checks include `Schema.isAscii()` (`U+0000`–`U+007F`); codecs include `Schema.DurationFromIsoString` (ISO 8601 string ↔ `Duration`) |
 | `SchemaAST` | runtime tree representation of schemas (nodes, checks, annotations) | advanced machinery: inspect/build/rewrite schema ASTs programmatically |
-| `Schema.SchemaError` | the error a schema decode/encode fails with: a `SchemaIssue` tree plus a formatted `message`. **Not a module** — it is a class exported from `Schema.ts` (`Schema.ts:1211`), so `import … from "effect/SchemaError"` fails to resolve; there is no `src/SchemaError.ts` and no `./SchemaError` export. Import it as `Schema.SchemaError` | catching/normalizing schema failures at a boundary — `Effect.catchTag("SchemaError", …)`. v4 exposes no `Schema` for the issue tree, so it rides in a domain error as `Schema.Defect()` |
+| `Schema.SchemaError` | the error a schema decode/encode fails with: a `SchemaIssue` tree plus a formatted `message`. **Not a module** — it is a class exported from `Schema.ts` (`Schema.ts:1219`), so `import … from "effect/SchemaError"` fails to resolve; there is no `src/SchemaError.ts` and no `./SchemaError` export. Import it as `Schema.SchemaError` | catching/normalizing schema failures at a boundary — `Effect.catchTag("SchemaError", …)`. v4 exposes no `Schema` for the issue tree, so it rides in a domain error as `Schema.Defect()` |
 | `SchemaGetter` | one-way optional-in/optional-out conversions used inside transformations | consumer-facing when authoring a custom decode/encode direction |
 | `SchemaIssue` | describes and formats decode/encode/check failures with location | consumer-facing: inspect or format schema validation errors |
 | `SchemaParser` | runs a schema against values (decode/encode/validate) in many result styles | consumer-facing: execute a schema returning Effect/Exit/Option/Result/sync |
@@ -172,7 +174,7 @@ phrasing and missed on its module name.
 | `Scope` | lifetime boundary collecting finalizers run with an `Exit` on close | directly create/fork/close scopes; most code uses `Effect.scoped`/`Layer` |
 | `ScopedCache` | cache whose entries own scopes, releasing resources on eviction | cache resource-backed values with per-entry cleanup and expiry |
 | `ScopedRef` | current value plus the scope owning it; swaps acquire/release atomically | hold a swappable resource handle (client/connection) with clean replacement |
-| `Semaphore` | permit pool limiting concurrent access to a shared resource | bound concurrency around an effect via acquire/release of permits |
+| `Semaphore` | permit pool limiting concurrent access to a shared resource | bound concurrency around an effect via acquire/release of permits; `Semaphore.takeScoped(sem, n)` holds permits until the surrounding `Scope` closes |
 | `Sink` | stream consumer folding/collecting a `Stream`'s output into one result | terminating a Stream: collect, fold, count, or search its elements |
 | `Stdio` | argv and stdin/stdout/stderr of the CURRENT process as an Effect service | standard-IO access (not spawning); contract, platform layer provides — but core ships `Stdio.layerTest(Partial<Stdio>)` for echo-testing without one |
 | `Stream` | effectful source emitting many values over time with error/requirements | model pull-based/streaming data: queues, callbacks, files, paginated sources |
@@ -182,7 +184,7 @@ phrasing and missed on its module name.
 | `Symbol` | runtime predicate narrowing `unknown` to a primitive `symbol` | guarding an `unknown` before using it as a symbol key/discriminant |
 | `SynchronizedRef` | `Ref` whose updates run one-at-a-time, safe for effectful transitions | serialize state updates when the next value is computed by an effect |
 | `Take` | stored representation of one stream pull: batch, failure, or done | low-level stream plumbing: inspecting buffered pull results |
-| `Terminal` | interactive terminal service (size, line/key input, output) | terminal capabilities; contract, platform layer provides |
+| `Terminal` | interactive terminal service (size, line/key input, output); `size` is a scoped queue that starts with the current `Size` and receives each resize | terminal capabilities; contract, platform layer provides. A hand-built `Terminal.make` must supply `size` beside `columns`, `rows`, `readInput`, `readLine` and `display` |
 | `TextDiff` | `experimental` edit scripts over arrays, lines or code points: `diff`/`diffWith`, `apply`/`applyText`, `invert`, `unified` formatting, `maxEdits` to bound search | computing a diff or a unified patch — do not pull in a diff library |
 | `Tracer` | low-level span/tracing model and tracer service | define/inspect spans or a custom tracer; usually via higher-level tracing APIs |
 | `Trie` | immutable string-keyed prefix tree for prefix/longest-match lookup | autocomplete, route tables, dictionaries, prefix-based key lookup |
@@ -221,20 +223,22 @@ follows from it.
 
 | Namespace | What it is | When to reach for it |
 | --- | --- | --- |
-| `ai` | provider-neutral AI: `LanguageModel`, `Chat`, `Tool`/`Toolkit`, MCP schema/server, and an `experimental` scoped MCP **client** (`McpClient.layerStdio`/`layerHttp`, `McpClient.toolkit`) | building AI features against a provider-agnostic surface (`@effect/ai-*` provides). `Tool.make`/`Tool.dynamic` take `toModelOutput` to send text, images and files to the model in place of the serialized result; `Tool.ParametersDecodingServices<T>` names the services a tool's parameter schema needs to decode |
+| `ai` | provider-neutral AI: `LanguageModel`, `Chat`, `Tool`/`Toolkit`, MCP schema/server, and an `experimental` scoped MCP **client** (`McpClient.layerStdio`/`layerHttp`, `McpClient.toolkit`) | building AI features against a provider-agnostic surface (`@effect/ai-*` provides). `Tool.make`/`Tool.dynamic` take `toModelOutput` to send text, images and files to the model in place of the serialized result; `Tool.ParametersDecodingServices<T>` names the services a tool's parameter schema needs to decode. `McpTest.makeClient(registrations, options?)` builds an in-process MCP client and server in the surrounding `Scope` for tests; MCP wiring → `effect-v4-mcp` |
 | `arbitrary` | the native property-testing engine, one module `Arbitrary`: `schema`, `Constant`, `map`/`filter`/`filterMap`/`flatMap`/`all`, `sampleEffect`, `checkEffect`, `formatCheckFailure`, `CheckOptions` | deriving generators from a Schema for `it.prop`/`it.effect.prop`, or running a property outside vitest — replaced `effect/testing/FastCheck` and `Schema.toArbitrary`. It has **no** `oneof`/`constantFrom`; choice and collections are Schemas — see `effect-v4-schema/references/11-generation-and-tooling.md` for the one collection combinator (`Arbitrary.array`) that does exist independent of Schema. Traps and translations → `effect-v4-testing`, surface → `effect-v4-schema/references/11-generation-and-tooling.md` |
 | `cli` | the v4 CLI framework: `Command`, `Flag`, `Argument`, `Prompt`, completions, `TerminalCapabilities` (the colour/TTY reference built-in help follows) | building a command-line tool — see `effect-v4-cli` |
 | `cluster` | entity sharding runtime: `Sharding`, `Entity`, runners, message storage | distributing stateful entities across machines |
+| `crypto` | `Digest` (MD5, SHA-1/256/384/512, one-shot), `SecureRandom` (bytes, ints, shuffle, UUIDv4/v7, ULID), `Mac` (HMAC, plus `Mac.timingSafeEqual`), `Signature` (Ed25519, ECDSA, RSA-PSS, RSASSA-PKCS1-v1_5), `Aead` (AES-GCM, ChaCha20-Poly1305), `Cipher` (AES-CTR/CBC, unauthenticated), `Kdf` (HKDF, PBKDF2, Argon2id), `KeyAgreement` (X25519, ECDH), `KeyWrap` (AES-KW, RSA-OAEP), `KeyFormat` (SPKI/PKCS#8/JWK/PEM import and export), `WebCrypto` (the `Context.Reference` the layers run on, default `globalThis.crypto`) and `CryptoError` | any cryptography — require the family service in `R`; see the sharp corners below for what to provide and how `Digest` fails |
 | `devtools` | client/server wiring an Effect runtime to the devtools tracer | connecting a program to Effect devtools |
-| `encoding` | `Base64`, `Base64Url`, `Hex` and `EncodingError` (the `stable` ones: encode/decode between strings, UTF-8 and bytes with `Result`-typed decode errors); `Ndjson` and `Sse` channel codecs; `SchemaBinary` (a compact binary codec derived from a Schema's encoded side); `Toml`, `Yaml` and `Ini` parsers; streaming archive and document codecs: `Tar` (unstable), `Zip` and `Xml` (`experimental`), and `JsonArray` (one JSON array as a stream of elements, optionally by JSON Pointer) | Base64/hex conversion; framing streams as NDJSON or server-sent events; parsing a config document when the `@effected/toml`/`@effected/yaml` fidelity guarantee is not needed |
+| `encoding` | `Base64`, `Base64Url`, `Hex` and `EncodingError` (the `stable` ones: encode/decode between strings, UTF-8 and bytes with `Result`-typed decode errors); `Ndjson` and `Sse` channel codecs; `SchemaBinary` (a compact binary codec derived from a Schema's encoded side); `Toml`, `Yaml` and `Ini` parsers; `Csv` (RFC 4180 stream encode/decode with a configurable delimiter and schema adapters); streaming archive and document codecs: `Tar` (unstable), `Zip` and `Xml` (`experimental`), and `JsonArray` (one JSON array as a stream of elements, optionally by JSON Pointer) | Base64/hex conversion; framing streams as NDJSON or server-sent events; parsing a config document when the `@effected/toml`/`@effected/yaml` fidelity guarantee is not needed |
 | `eventlog` | typed, replicated (optionally encrypted) event journal with SQL backends; `EventRow` for convergent row `set`/`patch`/`remove` events | event-sourced state that syncs/replicates |
 | `graphql` | typed GraphQL operations: `GraphQL`, `GraphQLGroup`, `GraphQLResolver`, `GraphQLClient`, `GraphQLMiddleware`, `GraphQLProtocol` (HTTP and subscription transports, partial results, serializable errors, cursor pagination). `@stability experimental` | calling a GraphQL API from Effect — the module is client-side (operations, a client, its transports and batching resolvers); it does not serve one. **Talking to GitHub's GraphQL API is `@effected/github`'s job**, not this module's |
-| `http` | HTTP client + server: `HttpClient`, `FetchHttpClient`, router, middleware | any HTTP work — clients (see runtimes precedent) or servers. Branching on a client failure: see the `reason` trap below; MIME lookup is `http/Mime` (`getType`/`getExtension`/`getAllExtensions`) — there is no `mime` npm dependency; `HttpClient.TracerPropagationEnabled` (a `Context.Reference`, on by default) controls whether requests carry `b3`/`traceparent`, so turn it off for a client talking to a third party; `HttpTraceContext.fromHeaders` reads inbound trace context |
+| `http` | HTTP client + server: `HttpClient`, `FetchHttpClient`, router, middleware | any HTTP work — clients (see runtimes precedent) or servers. Branching on a client failure: see the `reason` trap below; MIME lookup is `http/Mime` (`getType`/`getExtension`/`getAllExtensions`) — there is no `mime` npm dependency; `HttpClient.TracerPropagationEnabled` (a `Context.Reference`, on by default) controls whether requests carry `b3`/`traceparent`, so turn it off for a client talking to a third party; `HttpTraceContext.fromHeaders` reads inbound trace context; `HttpClient.timeout(duration)` fails a request that runs too long with an `HttpClientError`; `ProblemDetails` is the RFC 9457 `application/problem+json` value, codec and response constructor |
 | `net` | `IpInterface`, `IpNetwork`, `NetAddress` — pure, canonical IPv4/IPv6 addresses and CIDR prefixes (`NetAddress.loopbackAddresses` names both loopbacks); `Host` — host names and unresolved `host:port` endpoints, plus `toFullyQualified`/`toRelative` and a pure `parseHostsFile`; `Dns` and `AddressResolver` — resolution services a runtime package provides | parsing/normalizing an address, network prefix, host name or hosts file without a third-party `ipaddr`-style library; require `Dns`/`AddressResolver` in `R` when the program must resolve names |
 | `http-api` | schema-first declarative HTTP APIs with OpenAPI/Swagger output | defining a typed HTTP API contract shared by server and client. `HttpApiClient.decodeResponse` decodes a raw endpoint response with the endpoint's declared success and error schemas, e.g. after a `responseMode: "response-only"` call |
+| `jose` | `Jwk` (import/export, thumbprints, SPKI/PKCS#8 DER or PEM), `Jwks` (key-set resolution), `Jws`, `Jwe` (`dir`/A256GCM), `Jwt` (schema-typed claims, verified before decoding) and `JoseError`; compact serialization only, HS/RS/PS/ES 256/384/512 and EdDSA | signing or verifying JWTs and JWS without a third-party JOSE library. Bound untrusted token length yourself before verifying or decoding; the module imposes no limit. The kit's `@effected/jwt` and `@effected/oidc` are the house JWT and OIDC surfaces |
 | `observability` | OTLP + Prometheus exporters for traces/metrics/logs; `OtlpProxy` (`layer`/`layerFromConfig`/`make`) mounts `POST /v1/traces`, `/v1/logs` and `/v1/metrics` on an `HttpRouter` and forwards browser OTLP exports upstream, adding credentials on the server | exporting telemetry without the `@effect/opentelemetry` SDK; `OtlpProxy` when a browser exports OTLP and the vendor key must stay out of its bundle |
-| `persistence` | `KeyValueStore` (memory/fs/SQL), `PersistedCache`/`PersistedQueue`, `RateLimiter`, `UserDirectories` (home/config/data/cache/state directories by XDG and platform convention; `layerPlatform`), `Redis` (the client contract; `Redis.reserve` leases a dedicated pooled connection for blocking commands such as `XREAD BLOCK`/`BLPOP`), and `CircuitBreaker` (`@stability experimental`: keyed circuits, `consecutive`/`rate` trip policies, `layerStoreMemory`/`layerStoreRedis`; `HttpClient.withCircuitBreaker` wraps a client) | durable KV, request-level durable caching, rate limiting, failing fast on an unreliable dependency (`CircuitBreaker` never waits — put `Effect.retry`/`Effect.timeout` inside it). For per-application directories, `UserDirectories` folds the XDG variable and the native directory into one answer per kind; reach for kit `@effected/xdg` when you need XDG search paths (`XDG_CONFIG_DIRS`/`XDG_DATA_DIRS`), the runtime directory, or the native directories kept separate from XDG |
-| `process` | `ChildProcess` Command values + `ChildProcessSpawner` service | spawning subprocesses (`@effected/git` is the house example; require in `R`) |
+| `persistence` | `KeyValueStore` (memory/fs/SQL; a `make`/`makeStringOnly` store must implement `keys`), `PersistedCache`/`PersistedQueue`, `RateLimiter`, `UserDirectories` (home/config/data/cache/state directories by XDG and platform convention; `layerPlatform`), `Redis` (the client contract; `Redis.reserve` leases a dedicated pooled connection for blocking commands such as `XREAD BLOCK`/`BLPOP`), and `CircuitBreaker` (`@stability experimental`: keyed circuits, `consecutive`/`rate` trip policies, `layerStoreMemory`/`layerStoreRedis`; `HttpClient.withCircuitBreaker` wraps a client) | durable KV, request-level durable caching, rate limiting, failing fast on an unreliable dependency (`CircuitBreaker` never waits — put `Effect.retry`/`Effect.timeout` inside it). For per-application directories, `UserDirectories` folds the XDG variable and the native directory into one answer per kind; reach for kit `@effected/xdg` when you need XDG search paths (`XDG_CONFIG_DIRS`/`XDG_DATA_DIRS`), the runtime directory, or the native directories kept separate from XDG |
+| `process` | `ChildProcess` Command values + `ChildProcessSpawner` service; `CommandLine` — `Word` (`string \| Redacted<string>`), `template` (template text to argument list), and `quote`/`join`/`display` for one command-line string in an explicit `format` (`"posix"`, `"powershell"`, `"windows"`), with `display` masking `Redacted` arguments | spawning subprocesses (`@effected/git` is the house example; require in `R`); `CommandLine` when building a string for a shell or SSH, or rendering a command for a log |
 | `reactivity` | atom-based reactive state (`Atom`, `AtomRegistry`, hydration) | framework-facing reactive state (`@effect/atom-*` binds it) |
 | `rpc` | schema-backed RPC: groups, client/server, serialization, worker transport | typed request/response between processes without hand-rolling HTTP |
 | `schema` | `Model` (DB-vs-JSON variant models) + `VariantSchema` | one model with per-context variants (insert/update/json) |
@@ -256,25 +260,28 @@ follows from it.
   needs `Option`.
 - Testing utilities live in core under `effect/testing/*` — no separate
   test-support package.
-- **"Core has `Crypto`" is a dependency decision, so read the shape first.**
-  The contract covers secure random (`randomBytes`, `random`,
-  `randomInt`, `randomShuffle`), UUIDv4/v7 and SHA **digests**
-  (`"SHA-1" | "SHA-256" | "SHA-384" | "SHA-512"`, `Crypto.ts:42`, `Crypto.ts:81-202`) —
-  and stops there. There is **no HMAC, no signing, no key derivation, no
-  `subtle`-style surface**. A design that reads the module name and concludes
-  "hashing is handled" is right; one that concludes "crypto is handled" and then
-  needs an HMAC (request signing, a SigV4-style derivation, a webhook signature)
-  discovers mid-implementation that it must reach for `node:crypto` or a platform
-  package after all — after the tier and peer decisions were already made on the
-  wrong premise.
-- **`Crypto.digest` is one-shot, and that is a second dependency decision.** The
-  signature is `digest(algorithm, data: Uint8Array)` (`Crypto.ts:103-106`) — it
-  takes the whole payload at once and there is **no incremental/streaming form**,
-  no `update`/`digest` accumulator pair. So hashing a file, a tarball or any
-  input without a known upper bound means buffering all of it in memory to use
-  this API, where `node:crypto`'s `createHash(...).update(chunk)` walks a stream
-  at constant cost. Digesting a key, a token or a short manifest is a fit;
-  digesting an artifact is not. In the kit this is exactly why
+- **`effect/crypto` is where crypto lives, and nothing in the platform bundles
+  provides it.** Each family (`Digest`, `SecureRandom`, `Mac`, `Signature`,
+  `Aead`, `Cipher`, `Kdf`, `KeyAgreement`, `KeyWrap`) is a `Context.Service`
+  you require in `R`. `NodeServices.layer` carries none of them: provide
+  `NodeCrypto.layer` (every family) or one family layer such as
+  `NodeCrypto.layerDigest` from `@effect/platform-node`, or the core
+  `<Family>.layerWebCrypto` on any runtime with WebCrypto (Workers included).
+  In a test, provide the real `layerWebCrypto` or `Layer.mock(Digest.Digest,
+  { digestHex })`; there is no `TestCrypto`.
+- **`Digest` cannot fail typed, so a missing `crypto.subtle` is a defect.** Both
+  members return `Effect<…>` with a `never` error channel (`crypto/Digest.ts:135-144`).
+  `Digest.layerWebCrypto` builds even where `crypto.subtle` is absent (a
+  browser's insecure context), and then every SHA digest **dies**; MD5 keeps
+  working because it is pure TypeScript (`crypto/Digest.ts:151-153`). Never
+  model "digest failed" as a domain error reason — there is nothing to catch.
+- **`Digest.digest` is one-shot, and that is a dependency decision.** The
+  signature is `digest(algorithm, data: Uint8Array)` — it takes the whole
+  payload at once and there is **no incremental/streaming form**. So hashing a
+  file, a tarball or any input without a known upper bound means buffering all
+  of it in memory, where `node:crypto`'s `createHash(...).update(chunk)` walks a
+  stream at constant cost. Digesting a key, a token or a short manifest is a
+  fit; digesting an artifact is not. In the kit this is exactly why
   `github-actions`' `Artifact` and `PackageManagerInstaller` stay on
   `node:crypto` — both fold a `Stream` chunk-by-chunk on purpose.
 - **Core `Cache` is interrupt-clean, like `Effect.cached`.** Interrupting the
@@ -300,7 +307,7 @@ follows from it.
   ```
 
 - `HttpClientRequest.bearerToken` accepts a **`Redacted` directly**
-  (`token: string | Redacted.Redacted`, `http/HttpClientRequest.ts:441`;
+  (`token: string | Redacted.Redacted`, `http/HttpClientRequest.ts:445`;
   `basicAuth` likewise). A runtime token flows into request construction with **no
   declassification step at all** — which is what lets a package keep its
   secret-handling seam to one module instead of granting every request builder an

@@ -60,7 +60,7 @@ it.effect("a warning goes to stderr, colourless", () =>
 
 ## Core prompts: `TestTerminal`
 
-`@effected/cli/testing`'s `TestTerminal.make({ columns?, rows? })` is a `Terminal` a test drives: `type(text)`, `input([{ name: "enter" }])`, `end`, and the captured `output`, plus `pending` and `reads` (`{ keys, lines, subscriptions }`) to prove a non-interactive run never read the terminal. Core's own mock terminal is test-only and unexported; this is the public one.
+`@effected/cli/testing`'s `TestTerminal.make({ columns?, rows? })` is a `Terminal` a test drives: `type(text)`, `input([{ name: "enter" }])`, `end`, `resize({ columns, rows })`, and the captured `output`, plus `pending` and `reads` (`{ keys, lines, subscriptions }`) to prove a non-interactive run never read the terminal. It implements core's `Terminal.size` the way a real terminal does: each subscription starts with the current size and receives every `resize`, and `columns`/`rows` read live. Core's own mock terminal is test-only and unexported; this is the public one. A hand-built `Terminal.make` double must supply `size` (a scoped queue of `Terminal.Size`) beside `columns`, `rows`, `readInput`, `readLine` and `display`; `Effect.die("unused")` is enough when nothing subscribes, as in the stubs below.
 
 ~~~ts
 import { assert, it } from "@effect/vitest"
@@ -292,6 +292,7 @@ const platform = (tty: boolean) =>
       Terminal.make({
         columns: Effect.succeed(80),
         rows: Effect.succeed(24),
+        size: Effect.die("unused"),
         readInput: Effect.die("unused"),
         readLine: Effect.die("unused"),
         display: () => Effect.void,

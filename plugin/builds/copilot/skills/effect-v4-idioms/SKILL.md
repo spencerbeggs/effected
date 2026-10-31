@@ -161,12 +161,12 @@ Written once it looks like a typo — which is exactly why it gets replaced with
 `unknown`. Do not: typing a `FileSystem`-backed channel `unknown` violates the
 house standard (never collapse errors to `string`/`unknown` early) when the
 precise type is one `import type` away. `fs.exists: (path: string) =>
-Effect.Effect<boolean, PlatformError>` (FileSystem.ts:145). The `reason` field is where the detail lives: a `PlatformError` wraps
+Effect.Effect<boolean, PlatformError>` (FileSystem.ts:169). The `reason` field is where the detail lives: a `PlatformError` wraps
 a `BadArgument` (rejected caller input) or a `SystemError` (a host failure,
 carrying a normalized `SystemErrorTag`), `PlatformError.ts:39,114,163`.
 
 **`fs.exists` already absorbs `NotFound` — anything else is a real failure.**
-Core derives `exists` from `access` in `FileSystem.make` (`FileSystem.ts:516`):
+Core derives `exists` from `access` in `FileSystem.make` (`FileSystem.ts:574`):
 `access(path)` mapped to `true`, with a `PlatformError` whose `reason._tag` is
 `"NotFound"` mapped to `false` and **every other reason re-failed**
 (`EACCES`, `ENOTDIR`, `EIO`). So `fs.exists(p)` answers the question "is it
@@ -234,7 +234,7 @@ Result.succeed(42)` dies
 `Effect.succeed` control that returned normally. Note the **success**
 cases die too: this is not "errors need a bridge", it is "these are not Effects
 at all". Their `[Symbol.iterator]` yields the value itself, and the fiber loop
-rejects anything carrying no `evaluate` (`internal/effect.ts:708`).
+rejects anything carrying no `evaluate` (`internal/effect.ts:715`).
 
 The bridge is a module function on `Effect`, one per type:
 
@@ -494,7 +494,7 @@ into the taxonomy, not exposed as a parameter.
 
 A poll loop written as `const go = Effect.gen(function*() { ...; yield* Effect.sleep(d); return yield* go })`
 re-derives a schedule by hand and hides the stop condition in control flow.
-`Effect.repeat` (`Effect.ts:7975`) takes either a `Schedule` or an **options
+`Effect.repeat` (`Effect.ts:7981`) takes either a `Schedule` or an **options
 object** — `{ schedule?, times?, while?, until? }` — that
 `internal/schedule.ts:210` (`buildFromOptions`) folds into one schedule; `while`
 and `until` may return a `boolean` or an `Effect<boolean>`, and they see the
@@ -517,7 +517,7 @@ Three facts, each a trap for a hand-rolled loop:
   produces **three** runs (the doc's own gotcha, confirmed: a counter read 3);
   `times` counts repetitions, not executions.
 - **The value is the last result**, and an `until` written as a type guard
-  narrows it — `Repeat.Return` (`Effect.ts:7818`) picks the refined type, so the
+  narrows it — `Repeat.Return` (`Effect.ts:7824`) picks the refined type, so the
   example above types as `"done"`, not `"pending" | "done"`. `while` with a
   refinement narrows to the *excluded* branch.
 - **`until` alone with no `schedule` spins with no delay** (`passthroughForever`
@@ -596,7 +596,7 @@ The fork verbs take an options object:
 - `Effect.forkChild` — child of the current fiber; there is no bare `Effect.fork`.
   "Current fiber" means the **caller's**: a helper is not a fiber, so a child
   it forks (a timeout timer, a heartbeat) keeps running after the helper
-  returns, until the calling fiber itself ends (`Effect.ts:8929`, the `forkChild`
+  returns, until the calling fiber itself ends (`Effect.ts:8935`, the `forkChild`
   doc: "attached to the parent fiber's scope"). A helper that forks must
   `Fiber.interrupt` its children before it returns, or use `Effect.forkScoped`
   under a scope it closes.
@@ -715,13 +715,13 @@ construction throw or a service that was never provided:
 
 | Write | Not | Source |
 | --- | --- | --- |
-| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9360` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
-| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:9282` — same shape, same optional-`options` trap, one page away in the same module. |
+| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9390` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
+| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:9312` — same shape, same optional-`options` trap, one page away in the same module. |
 | `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:556` — a *function* returning a Layer, unlike almost every other `layer` in core. |
-| `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:5032` — takes ONE array argument. |
+| `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:5040` — takes ONE array argument. |
 
 **The discriminator is the optional argument.** `Schema.Cause(e, d)`
-(`Schema.ts:11287`) and `Schema.Exit(...)` (`:14366`) are factories too, but their
+(`Schema.ts:11318`) and `Schema.Exit(...)` (`:15494`) are factories too, but their
 arguments are required, so forgetting to call them is an immediate type error.
 Only the zero-or-optional-arg factories type-check uncalled.
 

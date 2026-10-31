@@ -70,8 +70,11 @@ think?") without shelling out to `npm pack`/`tar` yourself.
   | "extractFailed"` — a closed literal set, so it is routable like the `kind`
   fields elsewhere here, not prose to substring-match. `integrityMismatch`
   carries `expected`/`actual`.
-- Needs `FileSystem`, `Crypto`, `HttpClient` and `ChildProcessSpawner` in `R` —
-  more than the rest of this pipeline, because it writes to disk and unpacks.
+- Needs `FileSystem`, `Digest.Digest` (`effect/crypto`), `HttpClient` and
+  `ChildProcessSpawner` in `R` — more than the rest of this pipeline, because it
+  writes to disk and unpacks. A digest that cannot be computed is a defect, not
+  a `TarballError`: it is never reported as an integrity mismatch, and the bytes
+  never reach `tar`.
 
 **The doubles:**
 
@@ -92,7 +95,7 @@ registries: {} })` is the real, working double whose every lookup answers
 ## Publishing — `PackagePublish` and `NpmExecutor`
 
 `PackagePublish` runs `npm` through `@effected/commands`' `Run`, over
-core's `FileSystem | Crypto | ChildProcessSpawner` plus `@effected/commands`'
+core's `FileSystem | Digest.Digest | ChildProcessSpawner` plus `@effected/commands`'
 `LocalExec`. Members: `setupAuth`, `pack(packageDir, options?: PackOptions)`,
 `publishTarball(tarballPath, options: PublishOptions)` (`PublishOptions`
 extends `PackOptions`), `dryRun(packageDir, options?: PackOptions)`.
@@ -237,7 +240,12 @@ exists to avoid, invisibly.
 `PublishError` routes on `kind: "auth" | "pack" | "publish" | "output" |
 "digest" | "executor"` — no `reason: string` to substring-match. `"digest"`
 exists specifically because npm succeeding at `pack` while the tarball
-can't be read back for hashing is not "npm pack failed."
+can't be read back for hashing is not "npm pack failed." The SHA-256 itself
+comes from core `Digest`, which has no typed failure.
+
+`Digest.Digest` is not in any platform `*Services` bundle: provide
+`NodeCrypto.layerDigest` (`@effect/platform-node`) or core's
+`Digest.layerWebCrypto` beside `NodeServices.layer`.
 
 Both `PackagePublish` and `NpmExecutor.dlx` need `LocalExec` in `R` — a
 single-package checkout (an action) uses `LocalExec.layerFor("npm")` or

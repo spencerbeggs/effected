@@ -54,7 +54,7 @@ delimiter is derived: start from a base delimiter and extend it until it's
 absent from the value being written. GitHub's own toolkit picks a random
 UUID and accepts a small chance of collision; deriving the delimiter this
 way makes a collision **impossible** rather than improbable, needs no
-`Crypto` in `R`, and is deterministic under test. A value containing an
+`SecureRandom` in `R`, and is deterministic under test. A value containing an
 un-derived, fixed delimiter would terminate its own block early and
 corrupt every entry written after it in the same file — a
 value-controlled injection into the runner's own file. The same discipline

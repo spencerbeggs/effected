@@ -194,7 +194,7 @@ So: **a removal is never settled by rung 1.** If the docs are silent on a symbol
 Silence is the *gentler* failure. The migration notes also make positive claims that the tree contradicts, in both directions — and a confident wrong answer costs more than an absent one. Both of these were found in one audit and both still hold:
 
 - **A method that does not exist.** `migration/yieldable.md` documents the `Yieldable` trait as `asEffect(): Effect<A, E, R>` and states the runtime calls `.asEffect()` internally. **`asEffect` has zero occurrences in the entire source tree.** A design built on it fails at the first call.
-- **A removal that did not happen.** `migration/fiberref.md` lists `Differ` as removed alongside `FiberRef` / `FiberRefs` / `FiberRefsPatch`. Those three are genuinely gone; **`Differ` is alive** (`index.ts:195`), and `migration/v3-to-v4.md` even maps `effect/Differ` → `effect/Differ` and documents the surviving interface. The notes contradict themselves.
+- **A removal that did not happen.** `migration/fiberref.md` lists `Differ` as removed alongside `FiberRef` / `FiberRefs` / `FiberRefsPatch`. Those three are genuinely gone; **`Differ` is alive** (`index.ts:189`), and `migration/v3-to-v4.md` even maps `effect/Differ` → `effect/Differ` and documents the surviving interface. The notes contradict themselves.
 
 **Rung 1 settles renames and nothing else.** Not existence, not removal, not trait mechanics — those are rung 2, and behaviour is rung 3. Treat a positive claim in the notes about *what a symbol is or does* exactly as you treat their silence: unsettled until you have read the source.
 
@@ -218,21 +218,21 @@ of the global `Array` type, so core defines the symbol under a private name and
 renames it in an `export {}` block:
 
 ```text
-// Schema.ts:4669 — the real definition, under a name you did not grep for
+// Schema.ts:4677 — the real definition, under a name you did not grep for
 const ArraySchema: ArrayLambda = Struct_.lambda<ArrayLambda>((schema) => …)
 
-// Schema.ts:4672 — the export, in a block your grep pattern never matches
-export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at Schema.ts:4690
+// Schema.ts:4680 — the export, in a block your grep pattern never matches
+export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at Schema.ts:4698
 ```
 
 `Schema.Array` is real, and `grep 'export const Array' Schema.ts` returns
 nothing. The confirmed occurrences of this pattern (vendored-tree lines) —
-`Schema.ts:4690`, `Equivalence.ts:637`, `Order.ts:596` — are all
+`Schema.ts:4698`, `Equivalence.ts:637`, `Order.ts:596` — are all
 `Array`, but treat the *class* of names as suspect, not just that one:
 `Array`, `Record`, `Map`, `Set`, `Error`, `Date`, `Number`, `String`, `Object`,
 `Symbol`, `Function`, `Boolean`. (Some of them do grep normally —
-`Schema.Record` is a plain `export function Record` at `Schema.ts:4016`, and
-`Config.Array` a plain `export function Array` at `Config.ts:1163` — which
+`Schema.Record` is a plain `export function Record` at `Schema.ts:4024`, and
+`Config.Array` a plain `export function Array` at `Config.ts:1165` — which
 is exactly why the inconsistency catches people.)
 
 **When a built-in-colliding name greps as absent, do not conclude it was
@@ -403,7 +403,7 @@ Two riders on the package-root form, both learned by leaving mess behind:
   root is committed ground.
 
 1. **Run from inside the package, never the repo root.** A workspace root that has a v3 installed resolves it and will describe the v3 surface with total confidence; a root that has none — this repo today — fails with `ERR_MODULE_NOT_FOUND` instead. Both are the same rule: only `packages/<pkg>/` is guaranteed to resolve the pinned v4.
-2. **Print the resolved version inside every probe, and compare it to the installed `effect` and the vendored tag — never to a prerelease channel word.** `catalog:effect` is a caret range, so it cannot be the exact match: the exact version is the **lockfile's resolution**, the `version` in `node_modules/effect/package.json` (and the vendored tree's tag, `.repos/effect`'s `effect@<version>`). The probe prints what *it* resolved and that must equal both; a mismatch means the probe linked a different copy or the vendored tree is stale, and what it says about semantics is unreliable until reconciled. Resolving **v3** (`3.x`) voids a probe outright.
+2. **Print the resolved version inside every probe, and compare it to the installed `effect` and the vendored tag — never to a prerelease channel word.** `catalog:effected` is a range, so it cannot be the exact match: the exact version is the **lockfile's resolution**, the `version` in `node_modules/effect/package.json` (and the vendored tree's tag, `.repos/effect`'s `effect@<version>`). The probe prints what *it* resolved and that must equal both; a mismatch means the probe linked a different copy or the vendored tree is stale, and what it says about semantics is unreliable until reconciled. Resolving **v3** (`3.x`) voids a probe outright.
 3. **In a repo without a scratchpad workspace: probe files live at the package root** — *inside* `packages/<pkg>/`, written there, not merely run from there. Two distinct failures, and they bite at different moments:
    - **Outside the package, it will not even load.** Node resolves bare imports relative to the **script's own path, not the cwd**, walking up from the file for a `node_modules`. A probe parked in a scratch/temp directory therefore dies with `ERR_MODULE_NOT_FOUND: Cannot find package 'effect'` no matter how carefully you `cd packages/<pkg>` first. Write the file into the package; `cd` alone buys you nothing.
    - **In a *subdirectory* of the package, it silently false-passes.** The tsconfig `include` is `${configDir}/*.ts` and does **not** match subdirectories, so a probe one level down drops out of the compilation program and its control error never fires.
@@ -474,7 +474,7 @@ exists to prevent, and it is indistinguishable from success.
 This is the **only skill that resolves the path** — the agents reference this skill,
 never the directory. The other skills that mention `.repos/effect` only *cite* it:
 `effect-v4-mcp` and `effect-v4-cli` name it as the root their `Module.ts:line` anchors
-are pinned to, and `effected-packages`' `pnpm-plugin-effect.md` reference names it as
+are pinned to, and `effected-packages`' `pnpm-plugin-effected.md` reference names it as
 the tree to re-pin when the lockfile's `effect` moves. Keep it that way — a new mention
 under `plugin/skills` is either an anchor-root citation like those or a resolver that
 belongs here. The listing is the positive control, and the filtered count is the gate:
@@ -483,5 +483,5 @@ belongs here. The listing is the positive control, and the filtered count is the
 grep -rl '\.repos/effect' plugin/skills | sort   # this skill + the three citing files
 test "$(grep -rl '\.repos/effect' plugin/skills \
   | grep -v -e effect-v4-source-lookup -e effect-v4-mcp -e effect-v4-cli \
-            -e references/pnpm-plugin-effect.md | wc -l)" -eq 0
+            -e references/pnpm-plugin-effected.md | wc -l)" -eq 0
 ```

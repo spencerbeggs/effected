@@ -711,6 +711,9 @@
 		"IdentityTokenError": "handle failure obtaining an oidc identity token for an audience",
 		"Oidc": "verify an openid connect id token against its issuer's discovered jwks, decode a trusted token's claims unverified"
 	},
+	"pnpm-plugin-effected": {
+		"catalogs": "read the folded effected catalog, effect family and kit versions as a map"
+	},
 	"package-json": {
 		"BinField": "bin field shape, string path or name-to-path map",
 		"Bugs": "bugs field model, issue tracker url or email, shorthand fidelity",

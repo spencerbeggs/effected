@@ -559,7 +559,7 @@ magnitude `size²` (`schema.ts:1130`).
 Generated values are always validated by the schema's checks before they are
 returned. Built-in checks (`isBetween`, `isMinLength`/`isMaxLength`/
 `isBetweenLength`, `isPattern`, `isUnique`, `isInt`, …) carry an
-`arbitraryConstraint` annotation (over twenty `arbitraryConstraint:` sites in `Schema.ts`, e.g. `isBetween` at `:7848`; `isPattern` delegates to `SchemaAST.isPattern`), so the compiler generates
+`arbitraryConstraint` annotation (over twenty `arbitraryConstraint:` sites in `Schema.ts`, e.g. `isBetween` at `:7878`; `isPattern` delegates to `SchemaAST.isPattern`), so the compiler generates
 matching values **constructively**. Any other check is a *residual filter*:
 values are generated without it and rejected when they fail. Rejections are
 budgeted (`maxDiscards`, default `max(100, count * 10)` / `max(100, runs * 10)`),
@@ -581,7 +581,7 @@ never "raise `maxDiscards`" — it is one of:
 
 - give the filter a constructive constraint —
   `Schema.makeFilter(pred, { arbitraryConstraint: { patterns: [{ source, flags }] } })`
-  (or `minimum`/`maximum` + `order`, `minLength`/`maxLength`, `number: "integer" | "finite"`, `uniqueBy`; the shape is `Schema.Annotations.ToArbitrary.FilterConstraint`, `Schema.ts:18006` — the old `ToArbitrary.Constraint` name is gone);
+  (or `minimum`/`maximum` + `order`, `minLength`/`maxLength`, `number: "integer" | "finite"`, `uniqueBy`; the shape is `Schema.Annotations.ToArbitrary.FilterConstraint`, `Schema.ts:19134` — the old `ToArbitrary.Constraint` name is gone);
 - generate the leaf from a `Schema.Literals` of real values (the
   `packages/lockfiles/__test__/roundtrip.property.test.ts` shape);
 - for a declaration, provide `toCodecArbitrary` — a `Schema.link` from an
@@ -616,7 +616,7 @@ the house examples. Named groups (`(?<h>…)`) and non-capturing groups compile 
 it (`regexp.ts:835`: without `u` generation is held to code points up to
 `0xffff`; with it a negated class or `\S` can yield astral characters), and
 JSON Schema export requires it: `isPattern` exports `pattern` only when the
-flags match `/^[dg]*uy?$/` (`Schema.ts:6910`). A flag-free
+flags match `/^[dg]*uy?$/` (`Schema.ts:6895`). A flag-free
 `Schema.String.check(Schema.isPattern(/^[a-z]+$/))` exports as a bare
 `{"type":"string"}` — decoding still enforces the regex, but every published
 JSON Schema (a config schema, an MCP tool's `inputSchema`, schemastore output)
@@ -675,7 +675,7 @@ Declaration schemas are opaque. Derivation looks, in order, for an explicit
 so a declaration that already serializes usually needs nothing. When the
 canonical representation is opaque or generates valid values too rarely,
 provide a **Schema `Link`** from an easily-generated source, not a fast-check
-arbitrary (`Schema.Annotations.ToArbitrary.Declaration`, `Schema.ts:18025`):
+arbitrary (`Schema.Annotations.ToArbitrary.Declaration`, `Schema.ts:19153`):
 
 ```ts
 import { Schema, SchemaTransformation } from "effect"

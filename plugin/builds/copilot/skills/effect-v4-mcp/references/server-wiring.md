@@ -41,7 +41,7 @@ const MyHandlers = MyTools.toLayer({
 })
 
 const ToolsLayer = McpToolkit.layer(MyTools).pipe(Layer.provide(MyHandlers))
-const ServerLayer = ToolsLayer.pipe(Layer.provideMerge(McpStdio.layer({ name: "my-server", version: "1.0.0" })))
+const ServerLayer = McpStdio.layer({ name: "my-server", version: "1.0.0", registrations: ToolsLayer })
 
 // The platform Stdio is the one service provided at the edge.
 const Main = ServerLayer.pipe(Layer.provide(NodeStdio.layer))
@@ -49,7 +49,7 @@ const Main = ServerLayer.pipe(Layer.provide(NodeStdio.layer))
 NodeRuntime.runMain(McpStdio.launch(Main), { teardown: McpStdio.teardown })
 ~~~
 
-`ServerLayer` still requires `Stdio`; `Main` supplies `NodeStdio.layer` from
+`ServerLayer` is `Layer<McpServer, never, Stdio>`: it still requires `Stdio`, and `Main` supplies `NodeStdio.layer` from
 `@effect/platform-node` just before launch, and leaving that line out fails
 to typecheck. **Test `ServerLayer`, never `Main`**: `McpHarness.make` builds
 its own queue-backed `Stdio`, and a `Stdio` the server already provides
@@ -58,25 +58,37 @@ internally would win over the harness's and talk to the real terminal.
 ## `McpStdio.layer`
 
 `McpStdio.layer(options)` is `McpServer.layerStdio` (`layerStdio`) with
-`LogToStderr` **merged** into its own output via `Layer.provideMerge`, then
-`Layer.orDie`. Three consequences:
+`LogToStderr` **merged** into its own output via `Layer.provideMerge`, and a
+bad `protocols` list turned into a defect. Its output is `McpServer` (plus
+the request-scope marker the transport discharges); it does **not** output
+`McpServerClient`, because the stateless `v2026_07_28` revision in the
+default protocol list has no client session — a handler reads the client's
+details from `McpSchema.McpRequestContext` instead. Four consequences:
 
-- Every layer composed **with** `McpStdio.layer` inherits the stderr routing.
-  A sibling merged in beside it with `Layer.mergeAll` instead of
-  `Layer.provideMerge` is not provided *by* it, so that sibling's own build
-  still logs through the default logger, which lands on stdout when nothing
-  else has set `LogToStderr`.
+- **Pass the toolkit and handlers as `options.registrations`.** Core builds
+  registrations before the server reads its first request, under
+  `LogToStderr`, and `McpStdio.layer` is generic over the registration
+  layer's types: a toolkit whose services are all provided gives
+  `Layer<McpServer, never, Stdio>`. Providing `McpStdio.layer` to the
+  toolkit (`ToolsLayer.pipe(Layer.provideMerge(McpStdio.layer(...)))`) also
+  serves it and inherits the stderr routing. A sibling merged in beside it
+  with `Layer.mergeAll` is neither: its build still logs through the default
+  logger, which lands on stdout when nothing else has set `LogToStderr`, and
+  core's `McpServer.toolkit` inside it requires `McpServer`.
+- A registration's typed errors stay in the layer's error channel; only a
+  `Cause.IllegalArgumentError` (the class core raises for a configuration
+  mistake) dies.
 - `LogToStderr` only reaches a logger that reads it: Effect's default logger
   and `Logger.consolePretty`. `Logger.consoleJson`, `Logger.consoleLogFmt`
   and `Logger.consoleStructured` are built with `Logger.withConsoleLog`,
   which writes through `console.log` whatever `LogToStderr` says (`effect`'s
   `src/Logger.ts:273-279` is `withConsoleLog`; `consoleLogFmt` is `:942`,
   `consoleStructured` `:968` and `consoleJson` `:992`; the default logger reads
-  the reference at `src/internal/effect.ts:6952`). Never install them in an MCP server: every log
+  the reference at `src/internal/effect.ts:6974`). Never install them in an MCP server: every log
   line lands on stdout, the wire. For JSON logs on stderr, install
   `Logger.layer([Logger.withConsoleError(Logger.formatJson)])`.
 - A malformed `protocols` list — more than one stateless adapter — is the
-  implementer's own defect: `Layer.orDie` turns the `IllegalArgumentError`
+  implementer's own defect: the layer turns the `IllegalArgumentError`
   core would otherwise raise into a die, since there is no way to recover
   from a static configuration mistake at runtime. `protocols` is typed
   `NonEmptyReadonlyArray`, so an empty list is a compile error, not a
@@ -95,18 +107,20 @@ in the fiber's context. The stdin guard changes none of this.
 
 `Layer.fresh(layer)` builds `layer` and everything under it through a new
 memo map, so each bundle gets its own protocol and its own registry. Wrap
-the **whole** bundle — the toolkit layers together with the server, and the
-`Stdio` too if it is per server:
+the **whole** bundle — the server with its `registrations` (or the toolkit
+layers together with the server), and the `Stdio` too if it is per server:
 
 ~~~ts
-const serverA = McpToolkit.layer(ToolkitA).pipe(
-  Layer.provide(HandlersA),
-  Layer.provideMerge(McpStdio.layer({ name: "a", version: "1.0.0" })),
-)
-const serverB = McpToolkit.layer(ToolkitB).pipe(
-  Layer.provide(HandlersB),
-  Layer.provideMerge(McpStdio.layer({ name: "b", version: "1.0.0" })),
-)
+const serverA = McpStdio.layer({
+  name: "a",
+  version: "1.0.0",
+  registrations: McpToolkit.layer(ToolkitA).pipe(Layer.provide(HandlersA)),
+})
+const serverB = McpStdio.layer({
+  name: "b",
+  version: "1.0.0",
+  registrations: McpToolkit.layer(ToolkitB).pipe(Layer.provide(HandlersB)),
+})
 
 const Both = Layer.mergeAll(
   Layer.fresh(serverA.pipe(Layer.provide(StdioA))),

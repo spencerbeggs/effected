@@ -16,7 +16,7 @@ For the general Effect v4 service/layer rules this package follows — `Context.
 | Archive and restore a dependency directory across jobs | `ActionCache` | `ActionCache.layer` | `ActionEnvironment \| HttpClient \| FileSystem \| Path \| ChildProcessSpawner` | `ActionCacheError` |
 | Upload, list, get, download or delete a workflow artifact | `Artifact` | `Artifact.layer` | same five | `ArtifactError` |
 | A keyed blob with caller-owned metadata, in the Actions cache | `BlobStore` over `GitHubCacheBlobStore.layer` | `GitHubCacheBlobStore.layer` | `HttpClient \| ActionEnvironment` | `BlobStoreError \| BlobEnvelopeError` |
-| Same, in S3 / R2 / MinIO / Spaces | `BlobStore` over `BlobStore.layerS3(config)` | `BlobStore.layerS3(config)` | `HttpClient \| ActionOutputs` | same |
+| Same, in S3 / R2 / MinIO / Spaces | `BlobStore` over `BlobStore.layerS3(config)` | `BlobStore.layerS3(config)` | `HttpClient \| ActionOutputs \| Digest.Digest` | same |
 | A cache key, its restore-key ladder, and `hashFiles` | `CacheKey` | none — a pure `Schema.Class` with `Effect.fn` statics | `FileSystem` (`hashFiles`), `+ Path` (`matchingFiles`) | `CacheKeyError` |
 | Download, extract and cache a toolchain | `ToolInstaller` | `ToolInstaller.layer` | `ActionEnvironment \| FileSystem \| Path \| HttpClient \| ChildProcessSpawner` | `ToolInstallerError` |
 | Pin and install an exact npm/pnpm/yarn/bun on the runner | `PackageManagerInstaller` | `PackageManagerInstaller.layer` | `ActionEnvironment \| FileSystem \| Path \| ChildProcessSpawner \| ToolInstaller` | `PackageManagerInstallerError` |

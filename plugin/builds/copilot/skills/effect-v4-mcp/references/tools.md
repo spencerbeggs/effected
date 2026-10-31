@@ -5,10 +5,25 @@ Loaded from `effect-v4-mcp`. Covers `Tool.make`, annotations, `Toolkit.toLayer`,
 ## Defining a tool
 
 `Tool.make(name, { description, parameters, success, failure, dependencies })`
-is the whole shape. `dependencies` is required the moment a handler yields a
-service: omit it and `Tool.HandlerServices` infers `never` for that tool, so
-the toolkit's `toLayer` call fails to typecheck against a handler that
-actually needs something.
+is the whole shape. A handler gets a service one of two ways, and they are
+not interchangeable:
+
+- **Captured when the handlers are built** — the common case, for anything
+  fixed for the server's lifetime (a client, a store, `Stdio`). Use the
+  effect form, `Tools.toLayer(Effect.gen(function* () { const s = yield* S;
+  return { tool: (params) => … } }))`, and declare `S` nowhere; it is a
+  requirement of the handler layer, met with `Layer.provide`.
+- **Declared in `dependencies`** — a value that varies per request (the
+  current user, a request-scoped context). A declared service becomes an
+  `McpServer.McpRequest<"Requires", S>` requirement of `McpToolkit.layer`,
+  met only by MCP middleware: `McpServer.middleware<{ provides: S }>()((effect)
+  => Effect.provideService(effect, S, value))`, with its `.layer` provided to
+  the toolkit layer. `Layer.provide(Layer.succeed(S, …))` does **not**
+  satisfy it — the marker stays in `R` and the server fails to typecheck.
+
+A handler that yields a service it neither captured nor declared fails to
+typecheck: `Tool.HandlerServices` infers `never` for an undeclared tool, so
+the toolkit's `toLayer` call rejects the handler.
 
 A tool with **no** parameters uses `Tool.EmptyParams`, never a zero-key
 `Schema.Struct({})`:
@@ -28,16 +43,16 @@ Use Tool.EmptyParams for a tool without parameters.`, followed by
 `Missing key at ["type"]`: `McpServer`'s own registration path decodes the
 JSON Schema it generates for a tool's parameters against a fixed shape
 (`ToolJson`) and dies on failure, and a zero-key struct produces a shape
-that decode rejects (`ai/McpServer.ts:2118-2131`, the same die that kills
+that decode rejects (`ai/McpServer.ts:3135-3148`, the same die that kills
 the server on a top-level union parameter — see
 [Failures on the wire](#failures-on-the-wire)). This is a **registration-time defect**, not a
 runtime rejection by a client's own schema validator — the server never
 finishes coming up.
 
 Annotate hints onto a tool with `.annotate`, one call per hint:
-`Tool.Title` (a `Context.Service` class, `ai/Tool.ts:1829`),
+`Tool.Title` (a `Context.Service` class, `ai/Tool.ts:1848`),
 `Tool.Readonly`, `Tool.Destructive`, `Tool.Idempotent`, `Tool.OpenWorld`
-(`Context.Reference`s, `:1874`, `:1901`, `:1929`, `:1957`). Each maps
+(`Context.Reference`s, `:1893`, `:1920`, `:1948`, `:1976`). Each maps
 directly to an MCP hint (`readOnlyHint`, `destructiveHint`,
 `idempotentHint`, `openWorldHint`); an unannotated tool defaults to the
 *less* trusting reading in every case (`Readonly` and `Idempotent` default
@@ -53,7 +68,7 @@ own is the tool boundary blurring into the engine it should be calling.
 
 A tool annotated `Tool.Strict` true is served with `additionalProperties:
 false` on every object node and decoded with `onExcessProperty: "error"`
-and `errors: "all"` (`ai/McpServer.ts:2086-2089`). Core's report is
+and `errors: "all"` (`ai/McpServer.ts:3077-3080`). Core's report is
 complete: one `InvalidParams` names every excess key at every depth
 together with every missing or invalid field, so an agent fixes the whole
 call in one round trip.
@@ -144,7 +159,7 @@ default re-annotates it. If a test pins the served schema's
 
 `ToolInputSchema.unknownKeys`/`formatUnknownKeys` are for a **`Tool.dynamic`**
 tool's own handler only — core decodes a `Tool.make` tool's payload
-*before* the handler ever runs (`ai/McpServer.ts:2152`), so by the
+*before* the handler ever runs (`ai/McpServer.ts:3169`), so by the
 time a `Tool.make` handler executes, an excess key has already been dropped
 or rejected; there is nothing left for the handler to check. A `Tool.dynamic`
 tool's raw JSON Schema is never decoded that way, so its handler is the only
@@ -187,7 +202,7 @@ A **declared** failure is different, and this is the fact `ToolFailure`
 exists to work around: when the failure is an `Error` instance — every
 `Schema.TaggedError` is — core sends `isError: true` with `error.message` as
 the **only** text, and no `structuredContent` at all
-(`ai/McpServer.ts:2096-2100`). Only a failure whose `message` is empty, or
+(`ai/McpServer.ts:3087-3091`). Only a failure whose `message` is empty, or
 that is no `Error` instance, is sent as its JSON-encoded value instead.
 Whatever is not folded into `message` when the error is constructed never
 reaches the agent:
@@ -323,7 +338,7 @@ A top-level `Schema.Union` `parameters` schema dies the server at
 **registration**, the same way `Schema.Struct({})` does: `Tool.make`'s
 `parameters` has to resolve to an object schema for MCP's tool-JSON
 encoding, and the registration path's decode
-(`ai/McpServer.ts:2118-2131`) dies with a message naming the tool and
+(`ai/McpServer.ts:3135-3148`) dies with a message naming the tool and
 the object-root requirement, killing the server layer while it is still
 building — a stdio server never even starts reading stdin, and a
 server exposed some other way never finishes coming up either. Design the
@@ -459,7 +474,7 @@ returns a repeated call's stored first result, marked
 ~~~ts
 import { ToolOutcome, ToolReplay } from "@effected/mcp"
 import { Effect, Option, Schema } from "effect"
-import { Tool } from "effect/ai"
+import { Tool, Toolkit } from "effect/ai"
 import { KeyValueStore } from "effect/persistence"
 
 const Created = ToolReplay.success(Schema.Struct({ ...ToolOutcome.ok, id: Schema.Number }))
@@ -468,28 +483,41 @@ const Create = Tool.make("create", {
   description: "Create a thing.",
   parameters: Schema.Struct({ requestId: Schema.optionalKey(Schema.String), name: Schema.String }),
   success: Created,
-  dependencies: [KeyValueStore.KeyValueStore],
 })
+const Tools = Toolkit.make(Create)
 
 declare const createThing: (params: { readonly name: string }) => Effect.Effect<{ readonly ok: true; readonly id: number }>
 
-const create = ToolReplay.wrap({
-  tool: "create",
-  success: Created,
-  key: (params: { readonly requestId?: string; readonly name: string }) => Option.fromUndefinedOr(params.requestId),
-})(createThing)
+// The store is read once, when the handlers are built, and passed as `store`.
+const Handlers = Tools.toLayer(
+  Effect.gen(function* () {
+    const store = yield* KeyValueStore.KeyValueStore
+    return {
+      create: ToolReplay.wrap({
+        tool: "create",
+        success: Created,
+        key: (params: { readonly requestId?: string; readonly name: string }) => Option.fromUndefinedOr(params.requestId),
+        store,
+      })(createThing),
+    }
+  }),
+)
 ~~~
 
 Under `KeyValueStore.layerMemory`, two calls with `requestId: "r1"` answer
 `{"ok":true,"id":1}` and then `{"ok":true,"id":1,"_idempotentReplay":true}`
 — **even though the second call sent a different `name`.**
 
-- **The store.** Omit `store` and `wrap` requires core's `KeyValueStore`
-  (`effect/persistence`) in `R`: `KeyValueStore.layerMemory`,
-  `layerFileSystem` or `layerSql`. Declare it in the tool's `dependencies`.
-  Pass `store` — a `ToolReplayStore`, just `get` (answering `undefined` for a
-  miss) and `set` — to back replay with your own table instead; `KeyValueStore`
-  then leaves `R`. A `KeyValueStore` value satisfies `ToolReplayStore` as is.
+- **The store.** Inside a server, read `KeyValueStore` (`effect/persistence`:
+  `layerMemory`, `layerFileSystem` or `layerSql`) when the handlers are built
+  and pass it as `store`, as above; a `KeyValueStore` value satisfies
+  `ToolReplayStore` as is, and `KeyValueStore` then leaves the handler's `R`.
+  Omit `store` and `wrap` requires `KeyValueStore` in `R` per call, which a
+  tool can only declare in `dependencies` — a per-request requirement that
+  only `McpServer` middleware can meet. Any `ToolReplayStore` — just `get`
+  (answering `undefined` for a miss) and `set` — backs replay with your own
+  table. A store built with `KeyValueStore.makeStringOnly` must implement
+  `keys` with the rest.
 - **The key is the request's whole identity.** A hit compares nothing else:
   not the params, not the schema version. A key reused with different params
   replays the first result, as above, so when params under one
