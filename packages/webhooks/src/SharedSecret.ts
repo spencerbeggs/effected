@@ -32,7 +32,9 @@ const verify = Effect.fn("SharedSecret.verify")(function* (request: WebhookReque
  * @remarks
  * Compared with `ConstantTime.secretsEqual`, which blinds both sides with an HMAC under a fresh `Mac` key first,
  * so neither the secret's length nor a matching prefix leaks. The header value is compared exactly as received:
- * unlike the signature presets, it is never trimmed, because trimming would loosen a secret comparison.
+ * unlike the signature presets, it is never trimmed, because trimming would loosen a secret comparison. "As
+ * received" means as the header lookup returns it: a lookup over a fetch `Request` sees values the `Headers` class
+ * has already trimmed of leading and trailing whitespace, so padding never reaches the comparison there.
  *
  * @public
  */

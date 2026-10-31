@@ -256,7 +256,9 @@ const error = (input: HttpClientError.HttpClientError, depth = 0): HttpClientErr
  * Every copy keeps what a human debugs with — the method, the URL (userinfo
  * and sensitive query values replaced by `REDACTED`), the status, and the
  * response headers minus `set-cookie` and `cookie` — and drops request and
- * response bodies and the URL fragment. Sensitive header values (`authorization`,
+ * response bodies and a request's separate `hash`. A fragment written into the
+ * URL string is kept, with its query-shaped sensitive values (an implicit-grant
+ * `access_token`, say) replaced by `REDACTED`. Sensitive header values (`authorization`,
  * `proxy-authorization`, `cookie`, `set-cookie`, `x-api-key`,
  * `private-token` and the `x-*-token` / `x-*-api-key` / `x-*-signature`
  * family) read `REDACTED`. Sensitive query parameters are core's own
@@ -318,7 +320,8 @@ export class HttpRedaction {
 
 	/**
 	 * A copy of a request with sensitive header and query values redacted,
-	 * the URL redacted, and the body and fragment dropped.
+	 * the URL redacted (see {@link HttpRedaction.url}), and the body and the
+	 * separate `hash` dropped.
 	 */
 	static readonly request: (request: HttpClientRequest.HttpClientRequest) => HttpClientRequest.HttpClientRequest = (
 		input,
