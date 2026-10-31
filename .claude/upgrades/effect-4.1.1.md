@@ -83,8 +83,17 @@ Or use the `repos_manage` MCP tool with `action: "pin"`, `name: "effect"`, `ref:
 
 **`@effected/pnpm-plugin-effect` is replaced by `@effected/pnpm-plugin-effected`.** The old name is deprecated and gets no further releases. Your `@effected/*` and Effect versions come from the plugin through `configDependencies`, so replacing it is the whole bump. You do not edit those ranges by hand.
 
-1. **Swap the config dependency** in `pnpm-workspace.yaml`'s `configDependencies`: remove `@effected/pnpm-plugin-effect`, add `@effected/pnpm-plugin-effected` at its current version with its `+sha512` integrity (`pnpm view @effected/pnpm-plugin-effected@<version> dist.integrity`). Write the entry by hand: `pnpm add --config` strips the integrity hash from every config dependency, including ones it was not asked about.
-2. **Rewrite every catalog reference to the one catalog, `effected`.** The plugin now serves exactly one catalog. `catalog:effect`, `catalog:effect:peers` and `catalog:effected:peers` no longer exist, and an install fails loudly on any reference left behind:
+1. **Fix the release-age exclude first.** If `pnpm-workspace.yaml` exempts the old plugin from `minimumReleaseAge`, rename that entry before you install, or the gate refuses the new plugin's fresh release:
+
+   ```yaml
+   minimumReleaseAgeExclude:
+     - "@effected/pnpm-plugin-effected"
+     - "@savvy-web/pnpm-plugin-silk"
+   ```
+
+   It used to name `@effected/pnpm-plugin-effect`. Keep any other entries you have.
+2. **Swap the config dependency** in `pnpm-workspace.yaml`'s `configDependencies`: remove `@effected/pnpm-plugin-effect` and add `@effected/pnpm-plugin-effected` at its current version as a plain version number, with no `+sha512` integrity suffix. pnpm still honours a suffix, but the plain version is the canonical form.
+3. **Rewrite every catalog reference to the one catalog, `effected`.** The plugin still declares its catalogs split internally, but its install hook folds them, so your workspace sees exactly one catalog, `effected`, holding the Effect family and the kit. `catalog:effect`, `catalog:effect:peers` and `catalog:effected:peers` no longer exist for you, and an install with any of them left behind fails with `ERR_PNPM_CATALOG_ENTRY_NOT_FOUND_FOR_SPEC` (probed through a real config-dependency install of the plugin). Find them:
 
    ```bash
    git grep -nE 'catalog:(effect|effect:peers|effected:peers)"' -- '*package.json'
@@ -92,14 +101,14 @@ Or use the `repos_manage` MCP tool with `action: "pin"`, `name: "effect"`, `ref:
 
    Every one of them becomes `catalog:effected`, in `dependencies`, `devDependencies` and `peerDependencies` alike.
    - **Your published peer ranges change.** `pnpm pack` resolves `catalog:effected` to the catalog's install range, so a library you publish now advertises `effect: ~4.1.1` where it advertised the floored `^4.0.0`, and an `@effected/*` peer advertises the patch (`^0.24.1`), not the floored `^0.24.0`. The plugin's overrides pin those exact versions anyway. If you need a floored peer, write the range by hand in that one manifest.
-3. **The Effect family is held to one minor.** `catalog:effected` gives `effect` and every `@effect/*` package `~4.1.1` (`>=4.1.1 <4.2.0`), not a caret. A future Effect 4.2 arrives only with a new plugin release, never through a caret. `@effect/tsgo` stays on its own `0.x` line.
+4. **The Effect family is held to one minor.** `catalog:effected` gives `effect` and every `@effect/*` package `~4.1.1` (`>=4.1.1 <4.2.0`), not a caret. A future Effect 4.2 arrives only with a new plugin release, never through a caret. `@effect/tsgo` stays on its own `0.x` line.
    - The plugin still derives one override per Effect family member, pinning `effect` and every satellite to `4.1.1` across your whole graph. Never hand-write those pins.
-4. **Reinstall from scratch:** `pnpm clean --lockfile && pnpm install`. A plain install reports "Lockfile is up to date" and keeps the old versions.
+5. **Reinstall from scratch:** `pnpm clean --lockfile && pnpm install`. A plain install reports "Lockfile is up to date" and keeps the old versions.
    - A fresh Effect release can be refused by a release-age gate (pnpm `minimumReleaseAge`, yarn berry `npmMinimalAgeGate`). Add `effect` and `@effect/*` to the exclude list, or wait it out.
-5. **Check the lockfile diff:**
+6. **Check the lockfile diff:**
    - `effect@4.1.1` is the only `effect` your importers resolve.
    - Platform binaries (turbo, biome, tsgo) are still present. Count them before and after: `grep -cE "^  '?@?(turbo|biomejs/cli|typescript/native-preview)[^:]*(darwin|linux|win32)" pnpm-lock.yaml`.
-6. **Peers.** Every kit package's `effect` peer is now `~4.1.0`. A kit package built on 4.0.x does not satisfy it and cannot be mixed in. Compare each package you use (`pnpm view @effected/<pkg>@<version> peerDependencies`) against what you declare, and run `pnpm peers check`. Never silence a warning.
+7. **Peers.** Every kit package's `effect` peer is now `~4.1.0`. A kit package built on 4.0.x does not satisfy it and cannot be mixed in. Compare each package you use (`pnpm view @effected/<pkg>@<version> peerDependencies`) against what you declare, and run `pnpm peers check`. Never silence a warning.
 
 If a package pins an `@effected/*` range directly, outside `catalog:effected`, bump it by hand: on `0.x` a caret pins the minor. Prefer moving it onto the catalog.
 
@@ -198,12 +207,38 @@ The kit hit the first seven groups itself (step 4). Where this section says **ch
 Effect 4.1 removed the root `Crypto` service. Every kit API that required it now requires core's `Digest.Digest` (`import { Digest } from "effect/crypto"`) in `R`. Core's digest cannot fail with a typed error, so `PlatformError` leaves every signature that carried it only for the digest. Without `crypto.subtle`, `Digest.layerWebCrypto` still builds, but a SHA digest **dies**. Hashes are byte-identical to before.
 
 - **What you provide changes.** Where you provided `NodeCrypto.layer` or another `Crypto` layer, provide a `Digest` layer: core's `Digest.layerWebCrypto` (any WebCrypto runtime, Workers included), or `@effect/platform-node`'s `NodeCrypto.layerDigest` (`node:crypto`). `NodeServices.layer` no longer carries any crypto, so a program that leaned on it gets a compile error naming `Digest`. Typed.
-- **`@effected/crypto`:** `SigV4.canonicalize`, `SigV4.sign` and `Fingerprint.of` require `Digest.Digest` and no longer fail with `PlatformError`. `SigV4.signingKey` is unchanged (HMAC still runs on WebCrypto). A `catchTag("PlatformError")` on these effects stops compiling. Typed.
+- **`@effected/crypto`:** `SigV4.canonicalize`, `SigV4.sign` and `Fingerprint.of` require `Digest.Digest` and no longer fail with `PlatformError`. A `catchTag("PlatformError")` on these effects stops compiling. Typed. (HMAC moved too: see the next entry.)
 - **`@effected/jsonc`:** `JsoncFingerprint.hash` and `hashText` require `Digest.Digest`; `hashText`'s error channel is `never`. `hashResult` and `hashTextResult` are unchanged. Typed.
 - **`@effected/images`:** `ImageCacheKey.fromParams` requires `Digest.Digest`, and **`ImageCacheKeyError.reason` loses `"digest"`**, which can no longer occur. A `case "digest"` stops compiling. The `./cache` entry is no longer satisfied by `NodeServices.layer` alone: add `NodeCrypto.layerDigest`. Typed.
 - **`@effected/npm`:** `PackageTarball.layer` and `PackagePublish.layer` require `Digest.Digest` where they required `Crypto`. **`TarballError.reason` loses `"integrityUnverifiable"`**: a digest that cannot be computed is now a defect, not a typed failure. It is still never reported as an integrity mismatch, and the bytes still never reach `tar`. Typed for the reason union; behavioural for the defect.
 - **`@effected/github-actions`:** `BlobStore.layerS3` requires `Digest.Digest`. `ActionServices` gains `Digest.Digest` and `SecureRandom.SecureRandom`, and `ActionRuntime.layer` provides both from `NodeCrypto`, so an action run through `Action.run` needs no change. A hand-composed `layerS3` must provide `Digest`. Typed.
 - **Test doubles:** a hand-built `Crypto.make` double becomes `Layer.mock(Digest.Digest, { digestHex })`, or provide the real `Digest.layerWebCrypto`. `effect/testing/TestCrypto` is gone.
+
+### 4.x HMAC moves onto core `Mac` in `crypto`, `webhooks` and `github-actions`
+
+Core's `effect/crypto` now ships `Mac`, so `@effected/crypto` no longer reads `crypto.subtle` itself: every HMAC, the keyed blinding in `ConstantTime.secretsEqual` and SigV4's signing-key derivation go through core's `Mac.Mac` (`import { Mac } from "effect/crypto"`), required in `R`. Tags are byte-identical to before: the RFC 4231 HMAC-SHA256 and HMAC-SHA512 vectors and AWS's documented SigV4 examples pass unchanged on both `Mac.layerWebCrypto` and `NodeCrypto.layerMac`.
+
+- **What you provide.** Add a `Mac` layer beside your `Digest` layer: `Mac.layerWebCrypto.pipe(Layer.provide(SecureRandom.layerWebCrypto))` on any WebCrypto runtime (Workers included), or `@effect/platform-node`'s `NodeCrypto.layerMac`, which needs nothing further. `NodeServices.layer` carries neither. A program missing it gets a compile error naming `Mac`. Typed.
+- **`@effected/crypto`:** `Hmac.sign`, `Hmac.verify`, `ConstantTime.secretsEqual` and `SigV4.signingKey` require `Mac.Mac`; `SigV4.sign` requires `Mac.Mac | Digest.Digest`. `ConstantTime.equal` stays pure (it now compares through core's `Mac.timingSafeEqual`). Typed.
+- **`@effected/crypto` error type:** the package's own `CryptoError` and `CryptoErrorReason` are **deleted**; the error channel is core's `CryptoError` from `effect/crypto`, which this package does not re-export. Import it from `effect/crypto` (`CryptoError.CryptoError`). The tag is still `"CryptoError"`, so `catchTag("CryptoError", ...)` keeps compiling, but `reason` is now a tagged object, not a string: a check such as `error.reason === "key"` stops compiling and becomes `error.reason._tag === "InvalidKey"` (an empty HMAC key fails with `InvalidKey`, message `Mac.key: An HMAC key cannot be empty`). Typed.
+- **No `crypto.subtle` now dies.** Where the old HMAC failed with `CryptoError { reason: "unsupportedRuntime" }`, `Mac.layerWebCrypto` on a runtime without `crypto.subtle` builds, and the HMAC **dies**, as a SHA digest already did. A recovery from `unsupportedRuntime` never runs; it is a defect now. Behavioural.
+- **`@effected/webhooks`:** every preset's `verify` (`GitHub`, `Stripe`, `StandardWebhooks`, `Sanity`, `HmacHeader`, `SharedSecret`) requires `Mac.Mac`. The error channel is unchanged (`WebhookVerificationError` alone; a crypto failure was already a defect). `Webhooks.checkFreshness` needs nothing. Typed.
+- **`@effected/github-actions`:** `BlobStore.layerS3` requires `Mac.Mac` beside `Digest.Digest`. `ActionServices` gains `Mac.Mac` and `ActionRuntime.layer` provides it from `NodeCrypto.layerMac`, so an action run through `Action.run` needs no change. A hand-composed `layerS3` must provide `Mac`. A signing failure is still `BlobStoreError` `misconfigured`, its cause now core's `CryptoError`. Typed.
+- **Test doubles:** a test that stubbed `globalThis.crypto` to reach `unsupportedRuntime` provides a `Mac` layer over `WebCrypto.layer` instead, and asserts a defect; one that spied on `crypto.subtle.generateKey` wraps the real `Mac` service instead. Note that `@effect/vitest`'s `layer(...)` memoizes `Mac.layerWebCrypto` by reference, so a variant built from it inside such a suite needs `Layer.fresh`.
+
+### 4.x JWS and JWT move onto core `effect/jose` in `jwt`, `oidc` and `github`
+
+`@effected/jwt` no longer carries its own WebCrypto engine: signing, verifying, key import, segment encoding, PKCS#1 conversion and the registered-claim checks all run in core `effect/jose` and `effect/crypto`. Tokens interoperate both ways: an RS256 or ES256 token from the previous release verifies under this one and under core directly, and the reverse. A GitHub App JWT is byte-for-byte the token it was (same header, claim order and RS256 signature for the same key and clock).
+
+- **What you provide.** Signing and verifying require core's `Signature` service: `Signature.layerWebCrypto.pipe(Layer.provide(SecureRandom.layerWebCrypto))` from `effect/crypto`, once at the edge. A program missing it gets a compile error naming `Signature`. Typed.
+- **`@effected/jwt`:** `Jws.sign`, `Jws.verify`, `Jwt.sign`, `Jwt.verify`, `JwtKey.generate` and `TestIssuer` (`make`, `rotate`, a test issuer's `sign`) require `Signature.Signature`. `JwtKey.fromPkcs8Pem`, `JwtKey.fromJwk`, `Jws.decodeUnverified` and `JwksResolver` need no new service. Typed.
+- **`@effected/jwt` key types:** `SigningKey` and `VerificationKey` are now types, not classes: core's `Jwk.PrivateKey` and `Jwk.PublicKey`. `key.alg` becomes `key.algorithm`, and `key.key` is core's `Signature` key, not a `CryptoKey`; code that called `crypto.subtle` with it signs through the `Signature` service instead. `JoseHeader` is core's `Jws.ProtectedHeader`. Typed.
+- **`@effected/jwt` error routing:** `JwtErrorReason` loses `"unsupportedRuntime"`; a `case "unsupportedRuntime"` stops compiling. Typed. `alg: "none"` and any unknown algorithm are now `malformed` (were `unsupportedAlgorithm`); HMAC is still `unsupportedAlgorithm`. A JWKS key whose `use` is not `sig` is now `unknownKid` (was `key`). `Jwt.verify` checks `iss` and `aud` before `exp` and `nbf`, so a token that fails both reports `wrongIssuer` or `wrongAudience` where it reported `expired`. `JwtError.detail` text changes. Behavioural.
+- **`@effected/jwt` additions:** every asymmetric algorithm core has (`RS`/`PS`/`ES` 256-512, `EdDSA`), `kty: "OKP"` JWKs, and PKCS#1 for `PS*`. A header without `kid` now matches when exactly one key in the set fits its algorithm. Additive.
+- **`@effected/oidc`:** `Oidc.verify` requires `Signature.Signature` beside `JwksResolver`. `Oidc.decodeUnverified` needs nothing, and now requires a JSON-object payload. Its reasons follow `jwt`'s above. Typed, plus the behavioural reason changes.
+- **`@effected/github`:** `GitHubApp.layer`, `GitHubApp.layerWith`, `GitHubApp.clientLayer` and `GitHubApp.appClientLayer` require `Signature.Signature`; `ActionsOidc.verify` requires it beside `JwksResolver`. The `GitHubApp` methods do not: the layer captures the service when built. `GitHubApp.layerTest` and `makeTest` are unchanged. Typed.
+- **`@effected/github-actions`:** no `R` change. It reads tokens only through `Jws.decodeUnverified` and `Oidc.decodeUnverified`, which need no service.
+- **Test doubles:** a test that stubbed `globalThis.crypto` to make a later signing fail no longer can (core's `Signature` layer captures WebCrypto when built); wrap the real `Signature` service and fail its `sign` instead. In `@effect/vitest`, provide `Signature` with `layer(CryptoLive, { buildPerTest: true })`: a block-level `layer(...)` builds once, so its tests share one `TestClock`, and a test that sets the time breaks the next.
 
 ### 4.x `@effected/mcp`: registrations go through `McpStdio.layer`
 
@@ -248,7 +283,7 @@ For each, search your code for the hand-rolled pattern, and replace it only wher
 ### Effect 4.1
 
 - **`effect/crypto`:** `Digest`, `SecureRandom`, `Mac`, `Signature`, `Aead`, `Cipher`, `Kdf`, `KeyAgreement`, `KeyWrap` and `KeyFormat`, each a service with a WebCrypto layer (`layerWebCrypto`) and, in `@effect/platform-node`, `NodeCrypto` layers. Search: direct `crypto.subtle` or `node:crypto` calls, hand-written HMAC or signature helpers.
-- **`effect/jose`:** `Jws`, `Jwe`, `Jwt`, `Jwk` and `Jwks`, with a typed `JoseError`. Search: a `jose` dependency, hand-written JWT verification. If you use `@effected/jwt` or `@effected/oidc`, keep them for now: the kit has not ruled on moving onto core's JOSE.
+- **`effect/jose`:** `Jws`, `Jwe`, `Jwt`, `Jwk` and `Jwks`, with a typed `JoseError`. Search: a `jose` dependency, hand-written JWT verification. `@effected/jwt` now runs on it (step 4), so its keys are core's and work with core `Jws` and `Jwt` directly.
 - **`effect/Glob`:** a compiled pattern (`Glob.make`, `Glob.match`, `Glob.escape`), the matcher behind `FileSystem.glob`. Search: `picomatch` or `minimatch` used only to test a path. `@effected/glob` remains the kit's matcher for its own surface.
 - **`effect/process/CommandLine`:** `quote` and `join` build shell-safe command lines, and `Word` (`string | Redacted<string>`) carries a secret argument without exposing it. Search: hand-escaped shell strings, tokens interpolated into `ChildProcess` arguments.
 - **`HttpClient.timeout`**, **`HttpClient.isTransientError`** and **`isTransientResponse`:** a per-request timeout and the transient-failure predicate a retry schedule wants. Search: `Effect.timeout` wrapped round each `execute`, local "is this retryable" status lists.
@@ -269,6 +304,7 @@ For each, search your code for the hand-rolled pattern, and replace it only wher
 
 - **Every consumer that loads the kit in its build toolchain** needs the step 2.5 bridge until its tools republish on this release.
 - **Every consumer that pinned `@effected/pnpm-plugin-effect` 0.19.x** is on a broken catalog. Move to `@effected/pnpm-plugin-effected` before anything else.
+- **Consumers of `@effected/jwt`** that verify against a key they already hold, or one fixed HTTPS JWKS URL, and sign with PKCS#8 keys can use core `effect/jose` directly (`Jwt.verify`, `Jwks.layerRemote`, `Jwk.importPkcs8`). Keep `@effected/jwt` for OIDC discovery across issuers, a KV-backed `JwksStore` on Workers, PKCS#1 GitHub App keys, the 60 s / required-`exp` defaults, or `TestIssuer`; the kit may drop the package later.
 - **Consumers that keep test doubles of `FileSystem` or `Terminal`** (any repository with a hand-built `FileSystem.make` or `Terminal.make`) must add `readDirectoryEntries` or `size` (step 3). Prefer `@effected/memfs` and `@effected/cli/testing`, which already do.
 
 ## 6. Verify the upgrade
