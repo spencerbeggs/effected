@@ -1,5 +1,39 @@
 # @effected/github-actions
 
+## 0.30.0
+
+### Breaking Changes
+
+- Rebuilt on Effect 4.1.1. The `effect` peer dependency (and any `@effect/*` peer) is now `~4.1.0`, so an Effect 4.0.x install no longer satisfies it. Upgrade `effect` to 4.1 alongside this release; mixing this package with a copy built on 4.0.x is unsupported.
+
+#### Digest, Mac and SecureRandom replace Crypto
+
+- `BlobStore.layerS3` now requires `Digest.Digest` and `Mac.Mac` (both from `effect/crypto`): SigV4 signing takes its HMACs from core's `Mac`. `ActionServices` gains `Digest.Digest`, `Mac.Mac` and `SecureRandom.SecureRandom`, and `ActionRuntime.layer` provides all three from `NodeCrypto`, so an action run through `Action.run` needs no change. A hand-composed `layerS3` must provide `Digest` and `Mac`. A request that cannot be signed still fails as `BlobStoreError` `misconfigured`; its cause is now core's `CryptoError`. [#1168][#1168]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/crypto | dependency | updated | 0.3.0 | 0.4.0 |
+| @effected/github | dependency | updated | 0.26.0 | 0.27.0 |
+| @effected/github-commands | dependency | updated | 0.7.0 | 0.8.0 |
+| @effected/glob | dependency | updated | 0.16.0 | 0.17.0 |
+| @effected/jwt | dependency | updated | 0.7.0 | 0.8.0 |
+| @effected/markdown | dependency | updated | 0.24.0 | 0.25.0 |
+| @effected/npm | dependency | updated | 0.28.0 | 0.29.0 |
+| @effected/oidc | dependency | updated | 0.2.0 | 0.3.0 |
+| @effected/sbom | dependency | updated | 0.18.0 | 0.19.0 |
+| @effected/semver | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/templates | dependency | updated | 0.15.0 | 0.16.0 |
+| @effected/walker | dependency | updated | 0.23.0 | 0.24.0 |
+| @effected/yaml | dependency | updated | 0.26.0 | 0.27.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1168]: https://github.com/spencerbeggs/effected/pull/1168
+
 ## 0.29.1
 
 ### Dependencies

@@ -1,5 +1,26 @@
 # @effected/package-json
 
+## 0.28.0
+
+### Breaking Changes
+
+- Rebuilt on Effect 4.1.1. The `effect` peer dependency (and any `@effect/*` peer) is now `~4.1.0`, so an Effect 4.0.x install no longer satisfies it. Upgrade `effect` to 4.1 alongside this release; mixing this package with a copy built on 4.0.x is unsupported. [#1168][#1168]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.21.0 | 0.22.0 |
+| @effected/npm | dependency | updated | 0.28.0 | 0.29.0 |
+| @effected/semver | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/spdx | dependency | updated | 0.17.0 | 0.18.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1168]: https://github.com/spencerbeggs/effected/pull/1168
+
 ## 0.27.0
 
 ### Breaking Changes

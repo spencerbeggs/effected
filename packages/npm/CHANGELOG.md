@@ -1,5 +1,29 @@
 # @effected/npm
 
+## 0.29.0
+
+### Breaking Changes
+
+- Rebuilt on Effect 4.1.1. The `effect` peer dependency (and any `@effect/*` peer) is now `~4.1.0`, so an Effect 4.0.x install no longer satisfies it. Upgrade `effect` to 4.1 alongside this release; mixing this package with a copy built on 4.0.x is unsupported.
+
+#### Digest replaces Crypto
+
+- `PackageTarball.layer` and `PackagePublish.layer` now require `Digest.Digest` (from `effect/crypto`) where they required `Crypto`. `TarballError.reason` loses `"integrityUnverifiable"`: a digest that cannot be computed is now a defect rather than a typed failure. It is still never reported as an integrity mismatch, and the bytes still never reach `tar`. Provide `Digest.layerWebCrypto` or `NodeCrypto.layerDigest`. [#1168][#1168]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/commands | dependency | updated | 0.18.0 | 0.19.0 |
+| @effected/crypto | dependency | updated | 0.3.0 | 0.4.0 |
+| @effected/semver | dependency | updated | 0.19.0 | 0.20.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1168]: https://github.com/spencerbeggs/effected/pull/1168
+
 ## 0.28.0
 
 ### Breaking Changes
