@@ -428,15 +428,22 @@ export class McpToolkit {
 	/**
 	 * `McpServer.toolkit`'s registration layer, strict by default.
 	 * `options.unknownKeyMessage` is deprecated and ignored.
+	 *
+	 * @remarks
+	 * Its requirements are core's `McpServer.ToolkitRequirements` less
+	 * `McpServer`, which the layer provides itself: the handlers, any service
+	 * a parameter or success schema needs, and each service a tool declares
+	 * with `dependencies` or `addDependency` as an
+	 * `McpServer.McpRequest<"Requires", S>` marker. A marker is met per
+	 * request by MCP middleware (`McpServer.middleware`, its `layer` provided
+	 * to this one), never by providing `S`. A service the handlers only need
+	 * when they are built is captured by the effect form of
+	 * `Toolkit.toLayer` instead, and declared nowhere.
 	 */
 	static readonly layer = <Tools extends Record<string, Tool.Any>>(
 		toolkit: Toolkit.Toolkit<Tools>,
 		options: McpToolkitOptions = {},
-	): Layer.Layer<
-		never,
-		never,
-		Tool.HandlersFor<Tools> | Exclude<Tool.HandlerServices<Tools>, McpSchema.McpRequestContext>
-	> =>
+	): Layer.Layer<never, never, Exclude<McpServer.ToolkitRequirements<Tools>, McpServer.McpServer>> =>
 		Layer.effectDiscard(
 			Effect.gen(function* () {
 				const registry = yield* McpServer.McpServer;

@@ -371,8 +371,10 @@ Effect v4's consolidated core **declares** the platform service contracts —
 `FileSystem`, `Path`, `Terminal`, `Stdio` as top-level `effect/*` modules, and
 `ChildProcessSpawner` (subprocesses) under `effect/process` — while the
 **implementations** live in `@effect/platform-*` (Node's `NodeServices.layer`
-provides `ChildProcessSpawner | Crypto | FileSystem | Path | Stdio | Terminal`
-in one layer). All of these contracts are tagged `@stability unstable` — a
+provides `ChildProcessSpawner | FileSystem | Path | Stdio | Terminal`
+in one layer; crypto is not in it — the `effect/crypto` services such as
+`Digest` come from `NodeCrypto.layer` or a family layer like
+`NodeCrypto.layerDigest`, or core's `Digest.layerWebCrypto`). All of these contracts are tagged `@stability unstable` — a
 minor `effect` release may change their shape — which does not change the
 rule below; it means a library re-verifies its usage when the installed
 `effect` moves. That split fixes the house default:

@@ -7,6 +7,7 @@ import { CliConfig, Command, GlobalFlag, Prompt } from "effect/cli";
 import type { CliEnvOptions } from "../src/index.js";
 import { CliEnv, CliInteractive, CliLinks, CliRuntime, CliTheme } from "../src/index.js";
 import { TestTerminal } from "../src/testing.js";
+import { inertTerminal } from "./helpers/inertTerminal.js";
 
 const capturing = () => {
 	const out: string[] = [];
@@ -31,16 +32,7 @@ const platform = (io: {
 			stdoutIsTerminal: Effect.succeed(io.stdout),
 			...(io.stderr === undefined ? {} : { stderrIsTerminal: Effect.succeed(io.stderr) }),
 		}),
-		Layer.succeed(
-			Terminal.Terminal,
-			Terminal.make({
-				columns: io.columns ?? Effect.succeed(80),
-				rows: Effect.succeed(24),
-				readInput: Effect.die("unused"),
-				readLine: Effect.die("unused"),
-				display: () => Effect.void,
-			}),
-		),
+		inertTerminal({ columns: io.columns ?? Effect.succeed(80) }),
 	);
 
 const TTY = platform({ stdin: true, stdout: true });

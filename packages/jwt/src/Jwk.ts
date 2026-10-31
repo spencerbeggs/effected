@@ -1,13 +1,17 @@
 import { Option, Schema, SchemaGetter } from "effect";
 
 /**
- * A JSON Web Key (RFC 7517) for an RSA or EC key.
+ * A JSON Web Key (RFC 7517) for an RSA, EC or OKP (Ed25519) key.
  *
  * @remarks
  * The schema is open: members it does not name (`x5c`, `x5t`, `key_ops`,
  * `ext` and the rest) survive decoding and encoding unchanged, so a key read
  * from a JWKS can be handed on without losing anything. Symmetric keys
  * (`kty: "oct"`) are out of scope and fail to decode.
+ *
+ * The schema is this package's, not core `effect/jose`'s `PublicJwk`: it is
+ * deliberately looser (a key set keeps a key core cannot use instead of
+ * failing whole), and it carries private JWKs with their members redacted.
  *
  * Every private member, `d` and the RSA CRT members `p`, `q`, `dp`, `dq`
  * and `qi`, decodes to a `Redacted` string, so a decoded private JWK never
@@ -22,11 +26,11 @@ import { Option, Schema, SchemaGetter } from "effect";
  */
 export const Jwk = Schema.StructWithRest(
 	Schema.Struct({
-		/** Key type: `RSA` or `EC`. */
-		kty: Schema.Literals(["RSA", "EC"]),
+		/** Key type: `RSA`, `EC` or `OKP`. */
+		kty: Schema.Literals(["RSA", "EC", "OKP"]),
 		/** Key id, matched against a token header's `kid`. */
 		kid: Schema.optionalKey(Schema.String),
-		/** The algorithm the key is meant for, e.g. `RS256` or `ES256`. */
+		/** The algorithm the key is meant for, e.g. `RS256`, `ES256` or `EdDSA`. */
 		alg: Schema.optionalKey(Schema.String),
 		/** Intended use, e.g. `sig`. */
 		use: Schema.optionalKey(Schema.String),
@@ -34,9 +38,9 @@ export const Jwk = Schema.StructWithRest(
 		n: Schema.optionalKey(Schema.String),
 		/** RSA public exponent, base64url. */
 		e: Schema.optionalKey(Schema.String),
-		/** EC curve, e.g. `P-256`. */
+		/** EC or OKP curve, e.g. `P-256` or `Ed25519`. */
 		crv: Schema.optionalKey(Schema.String),
-		/** EC x coordinate, base64url. */
+		/** EC x coordinate, or the OKP public key, base64url. */
 		x: Schema.optionalKey(Schema.String),
 		/** EC y coordinate, base64url. */
 		y: Schema.optionalKey(Schema.String),

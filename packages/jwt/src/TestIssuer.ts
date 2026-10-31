@@ -3,6 +3,7 @@
 // classes here are the same runtime instances the root exports.
 import type * as Root from "@effected/jwt";
 import { Clock, Effect, Layer } from "effect";
+import type { Signature } from "effect/crypto";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { isAcceptedIssuer } from "./internal/issuer.js";
 import { JwksResolver } from "./JwksResolver.js";
@@ -26,12 +27,13 @@ export interface TestIssuerShape {
 	 *
 	 * @remarks
 	 * Fills `iss` (the issuer), `iat` (now on `Clock`, in whole seconds) and
-	 * `exp` (`iat` plus 10 minutes) unless `claims` gives them.
+	 * `exp` (`iat` plus 10 minutes) unless `claims` gives them. Requires core's
+	 * `Signature` service.
 	 */
 	readonly sign: (
 		claims: Readonly<Record<string, unknown>>,
 		header?: Readonly<Record<string, unknown>>,
-	) => Effect.Effect<string, Root.JwtError>;
+	) => Effect.Effect<string, Root.JwtError, Signature.Signature>;
 	/**
 	 * An `HttpClient` serving this issuer's discovery document
 	 * (`<issuer>/.well-known/openid-configuration`) and JWKS
@@ -107,7 +109,7 @@ const make = (options: {
 	readonly issuer: string;
 	readonly alg?: Root.JwtAlgorithm;
 	readonly kid?: string;
-}): Effect.Effect<TestIssuerShape, Root.JwtError> =>
+}): Effect.Effect<TestIssuerShape, Root.JwtError, Signature.Signature> =>
 	Effect.gen(function* () {
 		if (!isAcceptedIssuer(options.issuer)) {
 			return yield* Effect.die(
@@ -124,7 +126,10 @@ const make = (options: {
 		return shapeFor({ issuer: options.issuer, alg, keys, httpClient, resolverLayer }, pair.signing);
 	});
 
-const rotate = (issuer: TestIssuerShape, kid: string): Effect.Effect<TestIssuerShape, Root.JwtError> =>
+const rotate = (
+	issuer: TestIssuerShape,
+	kid: string,
+): Effect.Effect<TestIssuerShape, Root.JwtError, Signature.Signature> =>
 	Effect.gen(function* () {
 		const state = states.get(issuer);
 		if (state === undefined) {
@@ -142,7 +147,8 @@ const rotate = (issuer: TestIssuerShape, kid: string): Effect.Effect<TestIssuerS
  *
  * @example
  * ```ts
- * import { Effect, Schema } from "effect";
+ * import { Effect, Layer, Schema } from "effect";
+ * import { SecureRandom, Signature } from "effect/crypto";
  * import { JwksResolver, Jwt } from "@effected/jwt";
  * import { TestIssuer } from "@effected/jwt/testing";
  *
@@ -155,7 +161,7 @@ const rotate = (issuer: TestIssuerShape, kid: string): Effect.Effect<TestIssuerS
  * 		issuer: "https://issuer.test",
  * 		audience: "my-app",
  * 	}).pipe(Effect.provide(issuer.resolverLayer));
- * });
+ * }).pipe(Effect.provide(Signature.layerWebCrypto.pipe(Layer.provide(SecureRandom.layerWebCrypto))));
  * // => { sub: "user-1" }
  * ```
  *
@@ -169,7 +175,9 @@ export class TestIssuer {
 	 * `"test-key"` by default).
 	 *
 	 * @remarks
-	 * The issuer must be `https:`, or `http://localhost` /
+	 * Generating the key, and signing with it, require core's `Signature`
+	 * service: provide `Signature.layerWebCrypto` over
+	 * `SecureRandom.layerWebCrypto` from `effect/crypto`. The issuer must be `https:`, or `http://localhost` /
 	 * `http://127.0.0.1`, because `JwksResolver` refuses any other
 	 * issuer; anything else is a defect.
 	 *
@@ -179,7 +187,7 @@ export class TestIssuer {
 		readonly issuer: string;
 		readonly alg?: Root.JwtAlgorithm;
 		readonly kid?: string;
-	}) => Effect.Effect<TestIssuerShape, Root.JwtError> = make;
+	}) => Effect.Effect<TestIssuerShape, Root.JwtError, Signature.Signature> = make;
 
 	/**
 	 * Rotate: a second key under `kid`, served alongside every earlier one.
@@ -194,6 +202,8 @@ export class TestIssuer {
 	 *
 	 * @public
 	 */
-	static readonly rotate: (issuer: TestIssuerShape, kid: string) => Effect.Effect<TestIssuerShape, Root.JwtError> =
-		rotate;
+	static readonly rotate: (
+		issuer: TestIssuerShape,
+		kid: string,
+	) => Effect.Effect<TestIssuerShape, Root.JwtError, Signature.Signature> = rotate;
 }

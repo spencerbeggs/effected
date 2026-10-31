@@ -282,6 +282,13 @@ canonicalizes; and rename/`copyFile` onto a differently-cased entry keep the
 stored spelling while `copy` takes the requested one. Folding is `toLowerCase`
 per UTF-16 unit with no Unicode normalization.
 
+`glob` does **not** fold its wildcards. It is core's derived walk, as on the
+host: a wildcard segment matches stored names case-sensitively (`*.JSON`
+misses `docs.json` even on a case-insensitive volume), while a leading literal
+segment is looked up, so it folds and keeps the queried spelling (`sub/*.ts`
+finds `sub/A.ts` stored under `Sub/`). Code that must find a file however it
+is spelled cannot rely on a glob pattern for that.
+
 ## Traps
 
 - **Every provide re-seeds.** `Effect.provide(program, Volume)` then

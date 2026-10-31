@@ -2,9 +2,10 @@ import { assert, describe, it } from "@effect/vitest";
 import type { AudienceKind } from "@effected/env";
 import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
 import { Markdown } from "@effected/markdown";
-import { Cause, ConfigProvider, Console, Effect, Layer, Option, Stdio, Terminal } from "effect";
+import { Cause, ConfigProvider, Console, Effect, Layer, Option, Stdio } from "effect";
 import type { Document } from "../src/index.js";
 import { CliFailure, CliLinks, CliRuntime, CliTheme, Doc, Render } from "../src/index.js";
+import { inertTerminal } from "./helpers/inertTerminal.js";
 import { commandLines } from "./helpers/runnerCommands.js";
 
 const MARK = String.fromCodePoint(0x2800);
@@ -175,16 +176,7 @@ describe("outside GitHub Actions the text is left alone: no marker noise", () =>
 describe("the default failure report", () => {
 	const platform = Layer.mergeAll(
 		Stdio.layerTest({ stdinIsTerminal: Effect.succeed(true), stdoutIsTerminal: Effect.succeed(true) }),
-		Layer.succeed(
-			Terminal.Terminal,
-			Terminal.make({
-				columns: Effect.succeed(100),
-				rows: Effect.succeed(24),
-				readInput: Effect.die("unused"),
-				readLine: Effect.die("unused"),
-				display: () => Effect.void,
-			}),
-		),
+		inertTerminal({ columns: 100 }),
 	);
 
 	const report = (env: Record<string, string>, message: string, withEnv = true) =>

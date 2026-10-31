@@ -8,10 +8,10 @@
 Managed sections: delimited `BEGIN`/`END` blocks inside files whose surrounding content belongs to the user. A tool owns the block, the user owns everything else, and neither destroys the other — the mechanism behind a generated hook, a managed config fragment, or any file your tool and your user both need to edit.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
-> Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
+> Effect v4 (`effect` `~4.1.0`) and still in `0.x` development. Stable Effect
 > makes a kit `1.0.0` possible, not automatic. To keep your `effect` and
 > `@effect/*` versions on the line the kit is built and tested against, install
-> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+> [`@effected/pnpm-plugin-effected`](https://www.npmjs.com/package/@effected/pnpm-plugin-effected).
 >
 > **Stability: unstable.** This package's API surface is not yet considered
 > complete and may change across `0.x` releases. Pin an exact version — even a

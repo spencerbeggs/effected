@@ -1,7 +1,9 @@
 import { NodeCrypto } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { SigV4, SigV4PathError } from "@effected/crypto";
-import { Crypto, DateTime, Effect, Layer, Option, PlatformError, Redacted, Schema } from "effect";
+import { DateTime, Effect, Layer, Option, Redacted, Schema } from "effect";
+import type { Digest } from "effect/crypto";
+import { CryptoError, Mac } from "effect/crypto";
 import { FetchHttpClient, HttpClient } from "effect/http";
 import { TestClock } from "effect/testing";
 import type { S3Config } from "../src/index.js";
@@ -37,13 +39,15 @@ const s3 = (
 	fake: typeof globalThis.fetch,
 	config: S3Config = CONFIG,
 	outputs = recordingOutputs(),
-	crypto: Layer.Layer<Crypto.Crypto> = NodeCrypto.layer,
+	digest: Layer.Layer<Digest.Digest> = NodeCrypto.layerDigest,
+	mac: Layer.Layer<Mac.Mac> = NodeCrypto.layerMac,
 ) =>
 	BlobStore.layerS3(config).pipe(
 		Layer.provide(
 			Layer.mergeAll(
 				outputs.layer,
-				crypto,
+				digest,
+				mac,
 				FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch)(fake))),
 			),
 		),
@@ -278,7 +282,7 @@ describe("BlobStore", () => {
 						now: DateTime.makeUnsafe(Date.UTC(2024, 0, 2, 3, 4, 5)),
 					},
 					{ accessKeyId: "AKIAEXAMPLE", secretAccessKey: CONFIG.secretAccessKey, region: "auto", service: "s3" },
-				).pipe(Effect.provide(NodeCrypto.layer));
+				).pipe(Effect.provide([NodeCrypto.layerDigest, NodeCrypto.layerMac]));
 				assert.strictEqual(signed.path, "/cache/it%27s%20%28a%29%2A%21/v1.2/.../%C3%BC");
 				assert.strictEqual(seen[0]?.url, `https://account.r2.cloudflarestorage.com${signed.path}`);
 				assert.strictEqual(seen[0]?.headers.authorization, signed.headers.authorization);
@@ -316,20 +320,23 @@ describe("BlobStore", () => {
 		it.effect("fails as misconfigured, naming the key, when the request cannot be signed", () =>
 			Effect.gen(function* () {
 				const { seen, fake } = recordingFetch();
-				const failure = PlatformError.badArgument({ module: "Crypto", method: "digest", description: "no SHA-256" });
-				const broken = Layer.succeed(
-					Crypto.Crypto,
-					Crypto.make({ randomBytes: (size) => new Uint8Array(size), digest: () => Effect.fail(failure) }),
-				);
+				// A `Mac` layer that refuses to sign: the digest still works, but the
+				// SigV4 HMAC cannot run, so the request cannot be signed.
+				const refused = new CryptoError.CryptoError({
+					module: "Mac",
+					method: "sign",
+					reason: new CryptoError.Unsupported({ description: "HMAC is unavailable here" }),
+				});
+				const failing = Layer.mock(Mac.Mac, { sign: () => Effect.fail(refused) });
 				const error = yield* Effect.flip(
 					Effect.flatMap(BlobStore, (store) => store.has("k")).pipe(
-						Effect.provide(s3(fake, CONFIG, recordingOutputs(), broken)),
+						Effect.provide(s3(fake, CONFIG, recordingOutputs(), NodeCrypto.layerDigest, failing)),
 					),
 				);
 				assert.instanceOf(error, BlobStoreError);
 				assert.strictEqual(error.reason, "misconfigured");
 				assert.strictEqual(error.key, "k");
-				assert.strictEqual(error.cause, failure);
+				assert.strictEqual(error.cause, refused);
 				// Nothing unsigned leaves the process.
 				assert.strictEqual(seen.length, 0);
 			}),

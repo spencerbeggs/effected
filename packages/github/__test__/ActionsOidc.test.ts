@@ -1,15 +1,17 @@
-import { assert, describe, it } from "@effect/vitest";
+import { assert, layer } from "@effect/vitest";
 import type { JwtError } from "@effected/jwt";
 import { TestIssuer } from "@effected/jwt/testing";
 import { Duration, Effect } from "effect";
+import type { Signature } from "effect/crypto";
 import { TestClock } from "effect/testing";
 import { ActionsOidc, ActionsOidcClaims } from "../src/ActionsOidc.js";
+import { CryptoLive } from "./crypto.js";
 
 const NOW_MILLIS = 1_800_000_000_000;
 
 /** Run `use` against a fresh Actions-issuer double, with its resolver provided once around the whole test. */
 const withActions = <A, E>(
-	use: (actions: Effect.Success<ReturnType<typeof TestIssuer.make>>) => Effect.Effect<A, E, never>,
+	use: (actions: Effect.Success<ReturnType<typeof TestIssuer.make>>) => Effect.Effect<A, E, Signature.Signature>,
 ) =>
 	Effect.gen(function* () {
 		yield* TestClock.setTime(NOW_MILLIS);
@@ -19,7 +21,7 @@ const withActions = <A, E>(
 
 const reasonOf = (error: JwtError): string => error.reason;
 
-describe("ActionsOidc.verify", () => {
+layer(CryptoLive, { buildPerTest: true })("ActionsOidc.verify", (it) => {
 	it.effect("verifies a runner token into typed, camelCase claims with numeric ids", () =>
 		withActions((actions) =>
 			Effect.gen(function* () {
@@ -153,7 +155,7 @@ describe("ActionsOidc.verify", () => {
 	);
 });
 
-describe("ActionsOidc.testClaims", () => {
+layer(CryptoLive, { buildPerTest: true })("ActionsOidc.testClaims", (it) => {
 	it("is wire-shaped: snake_case keys and string ids", () => {
 		const claims = ActionsOidc.testClaims();
 		assert.strictEqual(typeof claims.run_id, "string");

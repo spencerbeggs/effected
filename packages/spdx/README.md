@@ -8,10 +8,10 @@
 SPDX license identifiers, exceptions and license expressions as Effect Schema classes. `License.parse` validates a single identifier against the full SPDX License List; `SpdxExpression.parse` validates and parses a whole expression — `(MIT OR Apache-2.0)`, `GPL-2.0-only WITH Classpath-exception-2.0` — into a typed AST rather than a string you re-parse at every call site. Zero runtime dependencies: the SPDX datasets are vendored as generated TypeScript, not read from a CJS package at runtime.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
-> Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
+> Effect v4 (`effect` `~4.1.0`) and still in `0.x` development. Stable Effect
 > makes a kit `1.0.0` possible, not automatic. To keep your `effect` and
 > `@effect/*` versions on the line the kit is built and tested against, install
-> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+> [`@effected/pnpm-plugin-effected`](https://www.npmjs.com/package/@effected/pnpm-plugin-effected).
 >
 > **Stability: unstable.** This package's API surface is not yet considered
 > complete and may change across `0.x` releases. Pin an exact version — even a

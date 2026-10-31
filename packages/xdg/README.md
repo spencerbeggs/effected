@@ -8,10 +8,10 @@
 XDG Base Directory resolution for Effect. `Xdg` reads the environment — `$HOME`, the four `*_HOME` variables, `$XDG_RUNTIME_DIR`, and the `$XDG_CONFIG_DIRS` / `$XDG_DATA_DIRS` search paths — once, at layer construction. `AppDirs` turns that into the config, data, cache, state and runtime directories for one application namespace, with on-demand creation. `NativeDirs` supplies the macOS and Windows conventions for applications that want them, and `XdgConfig` plugs the whole thing into [`@effected/config-file`](../config-file) as a resolver chain and a save target.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
-> Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
+> Effect v4 (`effect` `~4.1.0`) and still in `0.x` development. Stable Effect
 > makes a kit `1.0.0` possible, not automatic. To keep your `effect` and
 > `@effect/*` versions on the line the kit is built and tested against, install
-> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+> [`@effected/pnpm-plugin-effected`](https://www.npmjs.com/package/@effected/pnpm-plugin-effected).
 >
 > **Stability: unstable.** This package's API surface is not yet considered
 > complete and may change across `0.x` releases. Pin an exact version — even a

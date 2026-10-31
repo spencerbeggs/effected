@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T19:09:54Z
+  at: 2026-10-31T19:37:34Z
 integrity:
   generated:
-    body: 8faec8086db2551b
+    body: a3f6b4c895fb0c63
 ---
 
 # effected
@@ -69,11 +69,11 @@ The repository holds **libraries and their companions**. Standalone tools and ap
 | `images` | boundary | invention; image facts (format, MIME, dimensions) from bytes and a generated-image cache behind a backend port store satisfies structurally |
 | `jwt` | boundary | invention; JWS, JWT, JWK and JWKS sign and verify over WebCrypto, with no `node:` import and `@effected/crypto` (also WebCrypto-only) as its only runtime dependency, so it runs on Cloudflare workerd; the signer under `github`'s App auth and its Actions OIDC verifier |
 | `oidc` | boundary | invention; the OIDC vocabulary over `jwt`: the `IdentityToken` issuer contract (moved from `sbom`), ID-token claims, an unverified decode and an audience-guarded verify |
-| `crypto` | boundary | extraction from `github-actions` and `savvy-web/build` intake; HMAC, constant-time comparison and AWS SigV4 over WebCrypto, digests through core `Crypto` in `R`, no `node:` import |
+| `crypto` | boundary | extraction from `github-actions` and `savvy-web/build` intake; HMAC, constant-time comparison and AWS SigV4 over core `Mac` and `Digest` in `R`, no `node:` import |
 | `webhooks` | boundary | extraction from `savvy-web/build` intake; inbound webhook signature verification presets (Standard Webhooks, GitHub, Stripe, Sanity, HMAC header, shared secret) over `crypto` |
-| `pnpm-plugin-effect` | companion — no tier | invention; publishes the Effect catalogs the kit pins against |
+| `pnpm-plugin-effected` | companion — no tier | invention; the one `effected` catalog (the Effect family on one minor, and the kit) plus the graph-wide Effect pins; renamed from `pnpm-plugin-effect` |
 
-The roster is **43 packages**: 41 libraries and two companions (`pnpm-plugin-effect` and `schemastore-cli`). All but `crypto`, `oidc`, `webhooks` and `source`, the newest, have published.
+The roster is **43 packages**: 41 libraries and two companions (`pnpm-plugin-effected` and `schemastore-cli`). Every one has published except `pnpm-plugin-effected` under its new name: it continues `pnpm-plugin-effect`'s version line and needs an npm trusted publisher before its first release.
 
 ### Consumers
 

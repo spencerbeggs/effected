@@ -1,5 +1,6 @@
-import { assert, describe, it } from "@effect/vitest";
+import { assert, layer } from "@effect/vitest";
 import { Cause, Deferred, Duration, Effect, Exit, Fiber, Layer, Option, Schema } from "effect";
+import * as Base64Url from "effect/encoding/Base64Url";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { TestClock } from "effect/testing";
 import { Jwks } from "../src/Jwk.js";
@@ -8,6 +9,7 @@ import { JwksStore } from "../src/JwksStore.js";
 import { Jws } from "../src/Jws.js";
 import type { JwtError } from "../src/JwtError.js";
 import { JwtKey } from "../src/JwtKey.js";
+import { CryptoLive } from "./crypto.js";
 
 const ISSUER = "https://issuer.example";
 const DISCOVERY = `${ISSUER}/.well-known/openid-configuration`;
@@ -64,7 +66,7 @@ const reasonOf = <A, R>(effect: Effect.Effect<A, JwtError, R>) =>
 
 const generate = (kid: string) => JwtKey.generate("ES256", { kid });
 
-describe("JwksResolver", () => {
+layer(CryptoLive, { buildPerTest: true })("JwksResolver", (it) => {
 	it.effect("discovers and fetches the JWKS once for two verifications", () =>
 		Effect.gen(function* () {
 			const a = yield* generate("a");
@@ -146,7 +148,8 @@ describe("JwksResolver", () => {
 			const http = stub(
 				issuerRoutes(() => [
 					{ kty: "oct", kid: "a", k: "c2VjcmV0" },
-					{ kty: "OKP", kid: "a", crv: "Ed25519", x: "AA" },
+					{ kty: "OKP", kid: "a", crv: "X25519", x: "AA" },
+					{ kty: "EC", kid: "a", crv: "secp256k1", x: "AA", y: "AA" },
 				]),
 			);
 			const error = yield* Effect.flip(
@@ -169,9 +172,20 @@ describe("JwksResolver", () => {
 	it.effect("a matching kid that does not import is key, not unknownKid", () =>
 		Effect.gen(function* () {
 			const a = yield* generate("a");
-			const http = stub(issuerRoutes(() => [{ ...a.jwk, use: "enc" }]));
+			// canonical base64url, but not a point on P-256
+			const offCurve = { ...a.jwk, x: Base64Url.encode(new Uint8Array(32)), y: Base64Url.encode(new Uint8Array(32)) };
+			const http = stub(issuerRoutes(() => [offCurve]));
 			const reason = yield* reasonOf(Effect.provide(verify(yield* Jws.sign({}, a.signing)), resolverLayer(http.layer)));
 			assert.strictEqual(reason, "key");
+		}),
+	);
+
+	it.effect("a key whose use is not sig never matches, so its kid is unknownKid", () =>
+		Effect.gen(function* () {
+			const a = yield* generate("a");
+			const http = stub(issuerRoutes(() => [{ ...a.jwk, use: "enc" }]));
+			const reason = yield* reasonOf(Effect.provide(verify(yield* Jws.sign({}, a.signing)), resolverLayer(http.layer)));
+			assert.strictEqual(reason, "unknownKid");
 		}),
 	);
 
@@ -300,7 +314,7 @@ describe("JwksResolver", () => {
 	);
 });
 
-describe("JwksResolver freshness and bounds", () => {
+layer(CryptoLive, { buildPerTest: true })("JwksResolver freshness and bounds", (it) => {
 	const ttlLayer = (client: Layer.Layer<HttpClient.HttpClient>, store: Layer.Layer<JwksStore>) =>
 		JwksResolver.layerWith({ ttl: "1 minute" }).pipe(Layer.provide(Layer.mergeAll(client, store)));
 
@@ -566,7 +580,7 @@ describe("JwksResolver freshness and bounds", () => {
 	);
 });
 
-describe("JwksStore.layerMemory", () => {
+layer(CryptoLive, { buildPerTest: true })("JwksStore.layerMemory", (it) => {
 	it.effect("expires an entry after its TTL", () =>
 		Effect.gen(function* () {
 			const store = yield* JwksStore;

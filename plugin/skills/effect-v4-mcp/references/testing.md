@@ -17,11 +17,12 @@ states for `ServerLayer` vs `Main`. This bites through a bundled platform
 layer, not only a `Stdio` named directly: `@effect/platform-node`'s
 `NodeServices.layer` (and any house equivalent bundling the same shape)
 brings its own `Stdio` along with `FileSystem`, `Path`,
-`ChildProcessSpawner`, `Crypto` and `Terminal`, and that bundled `Stdio`
+`ChildProcessSpawner` and `Terminal`, and that bundled `Stdio`
 wins the same way — every harness-backed test then hangs to its timeout,
 with no error naming why. Provide the individual layers the server actually
 needs instead — `NodeFileSystem.layer`, `NodePath.layer`,
-`NodeChildProcessSpawner.layer`, `NodeCrypto.layer`, `NodeTerminal.layer` —
+`NodeChildProcessSpawner.layer`, `NodeTerminal.layer`, plus `NodeCrypto.layerDigest`
+or another `NodeCrypto` layer when a handler needs an `effect/crypto` service —
 and leave `Stdio` out of the composition entirely; the harness supplies it.
 
 On the default stateful revision (`McpProtocol.v2025_11_25`), `yield*
@@ -70,18 +71,19 @@ const Garble = Tool.make("garble", {
   description: "Writes a stray line to stdout.",
   parameters: Tool.EmptyParams,
   success: Schema.Struct({ ok: Schema.Boolean }),
-  dependencies: [Stdio.Stdio],
 })
 const Tools = Toolkit.make(Ping, Garble)
-const Handlers = Tools.toLayer({
-  ping: () => Effect.void,
-  garble: () =>
-    Effect.gen(function* () {
-      const stdio = yield* Stdio.Stdio
-      yield* Stream.run(Stream.make("garbage\n"), stdio.stdout())
-      return { ok: true }
-    }).pipe(Effect.orDie),
-})
+// Stdio is captured when the handlers are built, not declared in `dependencies`:
+// a declared service is a per-request requirement only MCP middleware can meet.
+const Handlers = Tools.toLayer(
+  Effect.gen(function* () {
+    const stdio = yield* Stdio.Stdio
+    return {
+      ping: () => Effect.void,
+      garble: () => Stream.run(Stream.make("garbage\n"), stdio.stdout()).pipe(Effect.as({ ok: true }), Effect.orDie),
+    }
+  }),
+)
 const ServerLayer = McpToolkit.layer(Tools).pipe(
   Layer.provide(Handlers),
   Layer.provideMerge(McpStdio.layer({ name: "harness-behaviour", version: "0.0.0" })),

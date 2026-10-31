@@ -76,10 +76,15 @@ const Handlers = Kit.toLayer({
 	echo: ({ text }) => Effect.succeed({ text }),
 });
 
+/** `note` declares `Clock`, a request-level dependency: MCP middleware supplies it per call. */
+const ProvideClock = McpServer.middleware<{ provides: Clock }>()((effect) =>
+	Effect.provideService(effect, Clock, { now: () => "2026-09-25" }),
+);
+
 const serve = <E, R>(registration: Layer.Layer<never, E, R>) =>
 	registration.pipe(
+		Layer.provide(ProvideClock.layer),
 		Layer.provide(Handlers),
-		Layer.provide(Layer.succeed(Clock, { now: () => "2026-09-25" })),
 		Layer.provideMerge(McpStdio.layer({ name: "union-test", version: "0.0.0" })),
 	);
 const kitServer = serve(McpToolkit.layer(Kit));

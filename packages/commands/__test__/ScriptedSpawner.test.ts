@@ -5,7 +5,7 @@
 // path, hang, unref observation, and the loud pipeline refusal.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, Effect, Exit, Fiber } from "effect";
+import { Cause, Effect, Exit, Fiber, Redacted } from "effect";
 import { ChildProcess } from "effect/process";
 import { TestClock } from "effect/testing";
 import { CommandFailedError, Run } from "../src/Run.js";
@@ -23,6 +23,25 @@ describe("ScriptedSpawner.make", () => {
 			const other = yield* Run.text(cmd("npm", ["--version"])).pipe(Effect.provide(spawner.layer));
 			assert.strictEqual(sha, "abc123");
 			assert.strictEqual(other, "other");
+		}),
+	);
+
+	it.effect("keeps a Redacted argument and env value redacted in the record and the script's argv", () =>
+		Effect.gen(function* () {
+			const seen: Array<ReadonlyArray<string>> = [];
+			const spawner = ScriptedSpawner.make((_command, args) => {
+				seen.push(args);
+				return {};
+			});
+			const token = Redacted.make("hunter2");
+			yield* Run.collect(ChildProcess.make("tool", ["--token", token], { env: { SECRET: token } })).pipe(
+				Effect.provide(spawner.layer),
+			);
+			const record = spawner.spawns[0];
+			assert.strictEqual(record?.args[1], token);
+			assert.strictEqual(record?.env?.SECRET, token);
+			assert.deepStrictEqual(seen[0], ["--token", "<redacted>"]);
+			assert.isFalse(JSON.stringify(record?.args).includes("hunter2"));
 		}),
 	);
 

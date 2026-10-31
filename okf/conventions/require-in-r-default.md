@@ -17,10 +17,10 @@ sources:
     resource: ../../packages/commands/src
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T18:00:23Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 8d8d95fc2e788236
+    body: f0ab6ed8ff02c868
 ---
 
 # Require the consolidated core's contract in R; never re-implement or re-declare it
@@ -35,8 +35,9 @@ that remain separate are platform-specific, provider-specific or
 technology-specific **implementations** of those contracts:
 `@effect/platform-*` (for example `@effect/platform-node`'s
 `NodeServices.layer`, which provides
-`ChildProcessSpawner | Crypto | FileSystem | Path | Stdio | Terminal` in
-one layer), `@effect/sql-*`, `@effect/ai-*`, `@effect/opentelemetry`,
+`ChildProcessSpawner | FileSystem | Path | Stdio | Terminal` in one
+layer, and no crypto: `NodeCrypto.layerDigest` and its siblings provide
+the `effect/crypto` services separately), `@effect/sql-*`, `@effect/ai-*`, `@effect/opentelemetry`,
 `@effect/atom-*` and `@effect/vitest`.
 
 ## The standing rule
@@ -94,18 +95,19 @@ consuming end — it simply requires the core `ChildProcessSpawner` in
 The rule above answers *does core declare this?* It does not answer the
 question that actually decides a call site: does core's version have the
 shape this site needs? A sweep of the kit against the vendored core, for
-hand-rolled re-rolls of the late-landing modules (`Crypto`, `Encoding`,
+hand-rolled re-rolls of the late-landing modules (`Crypto`, since
+replaced by `effect/crypto`, `Encoding`,
 `Graph`, `encoding/Toml`/`Yaml`), found most candidates already
 adopted and every remaining one kept for a shape mismatch rather than
 inertia. The mismatches recur in five shapes, each invisible from the
 module name alone and each cheap to miss:
 
-1. **A sync call site against an `Effect` primitive.** `Crypto.digest`
-   returns an `Effect` requiring `Crypto` in `R`; a sync function or a
+1. **A sync call site against an `Effect` primitive.** `Digest.digest`
+   returns an `Effect` requiring `Digest.Digest` in `R`; a sync function or a
    module-level constant cannot call it without becoming effectful or
    acquiring a runtime, which is a public-surface change to buy a
    dependency removal.
-2. **A streaming site against a one-shot primitive.** `Crypto.digest`
+2. **A streaming site against a one-shot primitive.** `Digest.digest`
    takes the whole payload with no `update`/`digest` accumulator, so
    hashing a stream through it means buffering the stream — fine for a
    key or a short manifest, wrong for an artifact of unbounded size.
@@ -127,12 +129,14 @@ module name alone and each cheap to miss:
    edit, format, comment fidelity — so a same-named core module is not
    evidence of duplication, and there is nothing to fold in.
 
-Absence is its own answer and the cheapest one to check first: core's
-`Crypto` has no HMAC, no signing, no key derivation and no cipher, so an
-AWS SigV4 signer or a PBKDF2 + AES-GCM envelope is not a migration
-candidate at all — it is `node:crypto` or WebCrypto `subtle` under
-operating rule 2's overlay exception, decided before the tier and peer
-decisions are made rather than discovered mid-implementation.
+Absence is its own answer and the cheapest one to check first, and it
+moves with core. Core's old `Crypto` had no HMAC, no signing, no key
+derivation and no cipher, so the kit's AWS SigV4 signer and PBKDF2 +
+AES-GCM envelope were built on WebCrypto `subtle` under operating rule 2's
+overlay exception. Core's `effect/crypto` now declares `Mac`,
+`Signature`, `Kdf`, `Cipher`, `Aead`, `KeyAgreement` and `KeyWrap`, so
+those sites are candidates again under the five shape checks above.
+Whether any of them moves is open; no ruling has been made.
 
 Two standing rules come out of the sweep. **Probe the shape, do not read
 the name** — every judgement above came from running the primitive

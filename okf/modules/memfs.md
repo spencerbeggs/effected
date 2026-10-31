@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T20:38:07Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: f4f1607b1e3966cf
+    body: e01a397408e2d641
 ---
 
 # @effected/memfs
@@ -89,12 +89,12 @@ dependencies.[^package-json]
 whole purpose is to be the filesystem double every kit package's tests
 consume as a devDependency, `@effected/glob` included. Any edge from
 `memfs` back into the kit creates the cycle this law exists to prevent.
-Its one structural consequence: the engine keeps the upstream mini-glob
-(brace expansion, character classes, globstar) for the `FileSystem.glob`
-member — a deliberate duplication of capability `@effected/glob` also
-ships. Do not "deduplicate" by importing `@effected/glob`; the
-duplication is the price of the law, and the mini-glob serves only
-`fs.glob`, never a public matching API. See
+The law costs nothing for `FileSystem.glob`: the engine implements
+`readDirectoryEntries`, and `FileSystem.make` derives core's own `glob`
+from it, so the engine carries no glob of its own and the volume answers
+exactly what the node adapter's derived glob answers. Never import `@effected/glob`
+to give `fs.glob` richer matching. `NodeSyncFileSystem` does not support
+`glob`, because the derived one forks fibers. See
 [the zero-edges decision](../decisions/memfs-zero-effected-edges.md) for
 the full reasoning, including why no other candidate host package
 worked.
@@ -693,8 +693,12 @@ authoritative list.
       merging into a folded-equal directory keeps the directory's stored
       name while a replaced child takes the source spelling. Probe with async
       `fs/promises`; `cpSync` differs.
-    - **`glob`** folds per token (a character class accepts either case) and
-      returns stored names; the v4 option is `root`.
+    - **`glob`** is core's derived one, as on the host: a wildcard segment
+      matches stored names case-sensitively (`*.JSON` misses `docs.json`),
+      while a literal segment is looked up, so it folds and keeps the
+      queried spelling (`sub/*.ts` gives `sub/A.ts`). Probed on APFS with
+      the node adapter: Effect 4.1.1 gives `[]` for `*.JSON`, where 4.0.7's
+      glob gave `["docs.json"]`. The v4 option is `root`.
     - **Watch** compares folded paths when not case-sensitive; the delivered
       event keeps its own spelling. No host oracle exists, because
       `fs.watch` on macOS is nondeterministic — memfs tests pin it.

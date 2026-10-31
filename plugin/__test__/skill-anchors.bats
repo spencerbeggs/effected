@@ -114,36 +114,36 @@ _set_line() {
 @test "negative control: a manifest line moved off its symbol fails and names the anchor" {
 	local mutated="$BATS_TEST_TMPDIR/manifest.json"
 	_edit_manifest "$MANIFEST" "$mutated" '
-		const e = m.anchors.find((a) => a.file === "effect-v4-testing/SKILL.md" && a.anchor === "FileSystem.ts:654");
-		e.symbols = { "654": "export const layerNoop" };
+		const e = m.anchors.find((a) => a.file === "effect-v4-testing/SKILL.md" && a.anchor === "FileSystem.ts:712");
+		e.symbols = { "712": "export const layerNoop" };
 	'
 	run node "$HELPER" --repo "$REPO_ROOT" --manifest "$mutated"
 	echo "$output"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"FAIL effect-v4-testing/SKILL.md: FileSystem.ts:654 -> effect:FileSystem.ts:654 does not contain"* ]]
+	[[ "$output" == *"FAIL effect-v4-testing/SKILL.md: FileSystem.ts:712 -> effect:FileSystem.ts:712 does not contain"* ]]
 }
 
 @test "negative control: a skill anchor rewritten to a stale line fails coverage both ways" {
 	local skills="$BATS_TEST_TMPDIR/skills"
 	_copy_skills "$skills"
-	sed -i.bak 's/`makeNoop` (`FileSystem.ts:654`)/`makeNoop` (`FileSystem.ts:825`)/' "$skills/effect-v4-testing/SKILL.md"
+	sed -i.bak 's/`makeNoop` (`FileSystem.ts:712`)/`makeNoop` (`FileSystem.ts:825`)/' "$skills/effect-v4-testing/SKILL.md"
 	grep -q 'FileSystem.ts:825' "$skills/effect-v4-testing/SKILL.md"
 	run node "$HELPER" --repo "$REPO_ROOT" --skills "$skills"
 	echo "$output"
 	[ "$status" -eq 1 ]
 	[[ "$output" == *"FAIL effect-v4-testing/SKILL.md: anchor FileSystem.ts:825 is not in the manifest"* ]]
-	[[ "$output" == *"FAIL manifest entry effect-v4-testing/SKILL.md: FileSystem.ts:654 does not occur"* ]]
+	[[ "$output" == *"FAIL manifest entry effect-v4-testing/SKILL.md: FileSystem.ts:712 does not occur"* ]]
 }
 
 @test "negative control: an anchor missing from the manifest fails" {
 	local mutated="$BATS_TEST_TMPDIR/manifest.json"
 	_edit_manifest "$MANIFEST" "$mutated" '
-		m.anchors = m.anchors.filter((a) => !(a.file === "effect-v4-cli/references/gotchas.md" && a.anchor === "cli/Command.ts:1606"));
+		m.anchors = m.anchors.filter((a) => !(a.file === "effect-v4-cli/references/gotchas.md" && a.anchor === "cli/Command.ts:1613"));
 	'
 	run node "$HELPER" --repo "$REPO_ROOT" --manifest "$mutated"
 	echo "$output"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"FAIL effect-v4-cli/references/gotchas.md: anchor cli/Command.ts:1606 is not in the manifest"* ]]
+	[[ "$output" == *"FAIL effect-v4-cli/references/gotchas.md: anchor cli/Command.ts:1613 is not in the manifest"* ]]
 }
 
 @test "negative control: a new citation in a skill the old scope never covered fails coverage" {
@@ -204,13 +204,13 @@ _set_line() {
 @test "negative control: a second occurrence of a listed token fails until the manifest counts it" {
 	local skills="$BATS_TEST_TMPDIR/skills"
 	_copy_skills "$skills"
-	# index.ts:195 is listed once for this file; a new, false claim reuses it.
-	[ "$(grep -o 'index.ts:195' "$skills/effect-v4-source-lookup/SKILL.md" | wc -l | tr -d ' ')" -eq 1 ]
-	printf '\nThe vitest `layer` helper is declared at `index.ts:195`.\n' >>"$skills/effect-v4-source-lookup/SKILL.md"
+	# index.ts:189 is listed once for this file; a new, false claim reuses it.
+	[ "$(grep -o 'index.ts:189' "$skills/effect-v4-source-lookup/SKILL.md" | wc -l | tr -d ' ')" -eq 1 ]
+	printf '\nThe vitest `layer` helper is declared at `index.ts:189`.\n' >>"$skills/effect-v4-source-lookup/SKILL.md"
 	run node "$HELPER" --repo "$REPO_ROOT" --skills "$skills"
 	echo "$output"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"FAIL effect-v4-source-lookup/SKILL.md: anchor index.ts:195 occurs 2 times but the manifest declares 1"* ]]
+	[[ "$output" == *"FAIL effect-v4-source-lookup/SKILL.md: anchor index.ts:189 occurs 2 times but the manifest declares 1"* ]]
 }
 
 @test "negative control: a token whose path is not its entry's source fails" {

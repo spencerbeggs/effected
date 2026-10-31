@@ -2,7 +2,7 @@ import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import type { AudienceKind, StreamEnv } from "@effected/env";
 import { Audience, TerminalEnv } from "@effected/env";
-import { Cause, ConfigProvider, Console, Context, Effect, Exit, Layer, Runtime, Schema, Stdio, Terminal } from "effect";
+import { Cause, ConfigProvider, Console, Context, Effect, Exit, Layer, Runtime, Schema, Stdio } from "effect";
 import { Command } from "effect/cli";
 import type { Block, Document, RenderContext } from "../src/index.js";
 import {
@@ -18,6 +18,7 @@ import {
 	Render,
 	SchemaIssueRenderer,
 } from "../src/index.js";
+import { inertTerminal } from "./helpers/inertTerminal.js";
 
 const ESC = String.fromCharCode(0x1b);
 const BEL = String.fromCharCode(7);
@@ -437,16 +438,7 @@ describe("CliRuntime: the default failure path", () => {
 				stdoutIsTerminal: Effect.succeed(tty),
 				stderrIsTerminal: Effect.succeed(tty),
 			}),
-			Layer.succeed(
-				Terminal.Terminal,
-				Terminal.make({
-					columns: Effect.succeed(100),
-					rows: Effect.succeed(24),
-					readInput: Effect.die("unused"),
-					readLine: Effect.die("unused"),
-					display: () => Effect.void,
-				}),
-			),
+			inertTerminal({ columns: 100 }),
 		);
 
 	const capturing = () => {

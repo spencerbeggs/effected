@@ -51,7 +51,7 @@ that ships `./guard`.
 `envelope`, `failure`, `catchAsEnvelope`, `isFailure`), `ToolReplay`
 (`marker`, `success`, `storeKey`, `wrap`), plus the `ToolOutcomeEnvelopeOptions`, `ToolOutcomeErrorInput`,
 `ToolOutcomeFailure`, `ToolOutcomeFailures`, `ToolReplayOptions`, `ToolReplayStore`,
-`McpStdioOptions`, `McpLaunchOptions`, `McpToolkitOptions`, `UnionHandlerOptions`, `UnionTool`,
+`McpStdioOptions`, `McpStdioRegistrationServices`, `McpLaunchOptions`, `McpToolkitOptions`, `UnionHandlerOptions`, `UnionTool`,
 `UnionToolOptions`, `UnknownKeysLevel` and `FormatUnknownKeysOptions`
 types. `McpToolkit` also carries `unionTool` and `unionHandler`.
 

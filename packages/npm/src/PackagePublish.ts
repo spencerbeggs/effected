@@ -1,7 +1,7 @@
 import { LocalExec, Run } from "@effected/commands";
 import { HttpRedaction } from "@effected/crypto";
-import { Context, Crypto, Effect, FileSystem, Layer, Option, Redacted as Red, Schema } from "effect";
-import * as Hex from "effect/encoding/Hex";
+import { Context, Effect, FileSystem, Layer, Option, Redacted as Red, Schema } from "effect";
+import { Digest } from "effect/crypto";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { IntegrityHash } from "./IntegrityHash.js";
 import { classifyPublishAuth, publishFailureOutput } from "./internal/npmLog.js";
@@ -356,7 +356,7 @@ export interface PackagePublishShape {
 /** Builds the service over already-resolved platform services. */
 const make = Effect.fnUntraced(function* () {
 	const fs = yield* FileSystem.FileSystem;
-	const crypto = yield* Crypto.Crypto;
+	const digester = yield* Digest.Digest;
 	const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 	const local = yield* LocalExec;
 
@@ -507,15 +507,13 @@ const make = Effect.fnUntraced(function* () {
 		const bytes = yield* fs
 			.readFile(tarballPath)
 			.pipe(Effect.catch((cause) => Effect.fail(new PublishError({ kind: "digest", subject: tarballPath, cause }))));
-		const digest = yield* crypto
-			.digest("SHA-256", bytes)
-			.pipe(Effect.catch((cause) => Effect.fail(new PublishError({ kind: "digest", subject: tarballPath, cause }))));
+		const sha256Hex = yield* digester.digestHex(Digest.sha256, bytes);
 		return PackedTarball.make({
 			tarballPath,
 			name: entry.name,
 			version: entry.version,
 			...integrityField(entry.integrity),
-			sha256Hex: Hex.encode(digest),
+			sha256Hex,
 			...(entry.size === undefined ? {} : { packedSize: entry.size }),
 			...(entry.unpackedSize === undefined ? {} : { unpackedSize: entry.unpackedSize }),
 			...(entry.entryCount === undefined ? {} : { fileCount: entry.entryCount }),
@@ -696,13 +694,16 @@ export class PackagePublish extends Context.Service<PackagePublish, PackagePubli
 	"@effected/npm/PackagePublish",
 ) {
 	/**
-	 * The live service. Requires `FileSystem`, `Crypto`, `ChildProcessSpawner`
+	 * The live service. Requires `FileSystem`, `Digest.Digest`, `ChildProcessSpawner`
 	 * and `LocalExec` (from `@effected/commands`), resolved once at construction.
+	 * `Digest.Digest` comes from `effect/crypto`: provide `Digest.layerWebCrypto`
+	 * or a platform family layer such as `NodeCrypto.layerDigest`
+	 * (`NodeServices.layer` does not include it).
 	 */
 	static readonly layer: Layer.Layer<
 		PackagePublish,
 		never,
-		FileSystem.FileSystem | Crypto.Crypto | ChildProcessSpawner.ChildProcessSpawner | LocalExec
+		FileSystem.FileSystem | Digest.Digest | ChildProcessSpawner.ChildProcessSpawner | LocalExec
 	> = Layer.effect(this, make());
 
 	/**

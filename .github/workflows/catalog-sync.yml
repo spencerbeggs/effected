@@ -96,7 +96,7 @@ jobs:
       - name: Format the rewrite
         # Scope Biome to the only file the sync rewrites, so an unrelated
         # unfixable lint diagnostic elsewhere in the repo cannot abort this job.
-        run: pnpm exec biome check --write packages/pnpm-plugin-effect/savvy.build.ts
+        run: pnpm exec biome check --write packages/pnpm-plugin-effected/savvy.build.ts
 
       - name: Check for changes
         id: changes
@@ -109,7 +109,7 @@ jobs:
         # while doing nothing, which is the failure class this whole design exists
         # to eliminate.
         run: |
-          if [ -z "$(git status --porcelain -- packages/pnpm-plugin-effect/savvy.build.ts .changeset/catalog-sync.md)" ]; then
+          if [ -z "$(git status --porcelain -- packages/pnpm-plugin-effected/savvy.build.ts .changeset/catalog-sync.md)" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -118,13 +118,13 @@ jobs:
       - name: Build and test
         if: steps.changes.outputs.changed == 'true'
         run: |
-          pnpm build --filter @effected/pnpm-plugin-effect
+          pnpm build --filter @effected/pnpm-plugin-effected
           # The catalog tests are the guard on the exclusion that makes this loop
           # terminate, so they run against the rewrite before it is proposed.
           # Coverage is disabled: this repo's vitest config enforces global
           # thresholds a single-package subset run cannot meet, which would abort
           # the job.
-          pnpm vitest run packages/pnpm-plugin-effect --coverage.enabled=false
+          pnpm vitest run packages/pnpm-plugin-effected --coverage.enabled=false
 
       - name: Commit the sync
         id: commit
@@ -142,7 +142,7 @@ jobs:
           # package that moved and both of its ranges; this is what gets used if
           # that file is somehow absent, so a missing message degrades to the old
           # generic headline rather than failing the commit.
-          HEADLINE: "chore(pnpm-plugin-effect): sync the effected catalog"
+          HEADLINE: "chore(pnpm-plugin-effected): sync the effected catalog"
           COMMIT_MESSAGE_PATH: .changeset/catalog-sync.commit.txt
           # DCO only requires a well-formed trailer; keep the exact identity the
           # previous `git commit --signoff` produced under this App.
@@ -157,7 +157,7 @@ jobs:
           # Stage exactly the paths this job owns, then read the staged status back:
           # that picks up the untracked changeset file alongside the rewritten
           # catalog, and normalizes both into a path list.
-          git add -- packages/pnpm-plugin-effect/savvy.build.ts .changeset/catalog-sync.md
+          git add -- packages/pnpm-plugin-effected/savvy.build.ts .changeset/catalog-sync.md
 
           additions='[]'
           while IFS= read -r -d '' path; do

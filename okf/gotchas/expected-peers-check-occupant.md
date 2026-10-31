@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-14T02:44:47Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 8d67ea9bd619a9e2
+    body: d40503a287e54fba
 ---
 
 # pnpm peers check is expected to report exactly one occupant
@@ -46,10 +46,13 @@ concept was last checked, not as a permanent fact.
 
 The satellite-drift class this warning used to also produce — an
 `@effect/*` package one release ahead or behind the pin, from the
-toolchain's own dependency graph — is retired separately: `pnpm-plugin-effect`
-generates a version-qualified `peerDependencyRules.allowedVersions` table
-from the lock catalog, so that class no longer warns at all. See [the
-generated allowed-versions table](../modules/pnpm-plugin-effect.md#the-generated-allowed-versions-table).
+toolchain's own dependency graph — is retired separately: the derived
+family pins `pnpm-plugin-effected` publishes hold `effect` and every
+satellite in the graph to one version, so that class no longer warns. See
+[the derived family pins](../modules/pnpm-plugin-effected.md#the-derived-family-pins-and-the-scoped-platform-node-shared-overrides).
+The version-qualified `allowedVersions` table that once suppressed it is
+empty now that no `effect` catalog entry is exact ([the allowed-versions
+rules](../modules/pnpm-plugin-effected.md#the-allowed-versions-rules)).
 
 ## The check
 

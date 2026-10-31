@@ -1,6 +1,7 @@
 import type { HmacAlgorithm } from "@effected/crypto";
 import { Hmac } from "@effected/crypto";
 import { Effect } from "effect";
+import type { Mac } from "effect/crypto";
 import { annotateOutcome, readHeader, reject } from "./internal/verify.js";
 import type { WebhookRequest } from "./WebhookRequest.js";
 import type { WebhookVerificationError } from "./WebhookVerificationError.js";
@@ -28,8 +29,8 @@ const verify = Effect.fn("HmacHeader.verify")(function* (request: WebhookRequest
 	if (header === undefined) return yield* reject(PRESET, "missing_signature");
 	const prefix = options.prefix ?? "";
 	if (!header.startsWith(prefix)) return yield* reject(PRESET, "bad_signature", "the signature prefix is missing");
-	// Compared as bytes: the signature is decoded and checked against the MAC in
-	// constant time, so any spelling that decodes to the right MAC is accepted.
+	// Compared as bytes: the signature is decoded and checked with `Mac.verify`
+	// in constant time, so any spelling that decodes to the right MAC is accepted.
 	const verified = yield* Hmac.verify({
 		algorithm: options.algorithm ?? "SHA-256",
 		key: request.secret,
@@ -62,7 +63,11 @@ export class HmacHeader {
 	 * that decodes to the right MAC verifies: hex in either case, and padded base64 even when it is not the canonical
 	 * spelling. One that does not decode, unpadded base64 included, is `bad_signature`.
 	 *
-	 * Truly asynchronous: the HMAC runs on WebCrypto, so a test that forks this and then adjusts `TestClock` can race or
+	 * Requires `Mac.Mac` (`effect/crypto`) in `R`: `Mac.layerWebCrypto` with `SecureRandom.layerWebCrypto`, or a
+	 * platform family layer such as `NodeCrypto.layerMac`. A `CryptoError` from the `Mac` layer is a defect, as is a
+	 * runtime with no `crypto.subtle` on the WebCrypto layer.
+	 *
+	 * On `Mac.layerWebCrypto` this is truly asynchronous: a test that forks it and then adjusts `TestClock` can race or
 	 * hang. Await it, or gate the clock on a latch.
 	 *
 	 * @public
@@ -70,5 +75,5 @@ export class HmacHeader {
 	static readonly verify: (
 		request: WebhookRequest,
 		options: HmacHeaderOptions,
-	) => Effect.Effect<void, WebhookVerificationError> = verify;
+	) => Effect.Effect<void, WebhookVerificationError, Mac.Mac> = verify;
 }

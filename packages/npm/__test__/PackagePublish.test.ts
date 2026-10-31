@@ -9,7 +9,7 @@ import { PublishError } from "../src/PublishError.js";
 import type { PublishCredential } from "../src/RegistryCredential.js";
 import { basicCredentialFromPairResult, workloadCredential } from "../src/RegistryCredential.js";
 import type { ScriptResult } from "./publish-fixtures.js";
-import { fakeCrypto, scripted } from "./publish-fixtures.js";
+import { fakeDigest, scripted } from "./publish-fixtures.js";
 
 const HOME = "/home/runner";
 const NPMRC = `${HOME}/.npmrc`;
@@ -58,7 +58,7 @@ const harness = (options?: {
 		options?.faults === undefined ? undefined : { faults: options.faults },
 	);
 	const layer = PackagePublish.layer.pipe(
-		Layer.provide(Layer.mergeAll(spawner.layer, fs.layer, fakeCrypto, options?.local ?? LocalExec.layerNone)),
+		Layer.provide(Layer.mergeAll(spawner.layer, fs.layer, fakeDigest, options?.local ?? LocalExec.layerNone)),
 	);
 	return { run: (program) => Effect.provide(program, layer), spawner, fs };
 };

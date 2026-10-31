@@ -26,15 +26,15 @@ sources:
     title: "jwt already performs issuer discovery and JWKS resolution"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-23T00:20:13Z
+  at: 2026-10-31T19:37:34Z
 integrity:
   generated:
-    body: 5254f4564f885b06
+    body: 6cac7469caaf1244
 ---
 
 # `@effected/oidc`
 
-`@effected/oidc` is the kit's OpenID Connect vocabulary: the contract for obtaining an ID token, the standard ID-token claims, and the two ways to read one. It is deliberately thin. [`jwt`](jwt.md) already does the hard work (JWS verification, issuer discovery, JWKS resolution with rotation), so this package names the OIDC concepts on top of it and gives them one home. Why it exists at all, and why it hosts the issuer contract, is [its own decision](../decisions/oidc-package-scope.md).[^owner][^jwt-resolver]
+`@effected/oidc` is the kit's OpenID Connect vocabulary: the contract for obtaining an ID token, the standard ID-token claims, and the two ways to read one. It is deliberately thin. [`jwt`](jwt.md) already does the hard work (issuer discovery and JWKS resolution with rotation, over core `effect/jose`, which runs the signature and claim checks), so this package names the OIDC concepts on top of it and gives them one home. Why it exists at all, and why it hosts the issuer contract, is [its own decision](../decisions/oidc-package-scope.md).[^owner][^jwt-resolver]
 
 ## Tier and dependencies
 
@@ -55,8 +55,8 @@ The `Reaches` column is an invariant with a test: `IdentityToken.ts` imports not
 
 - **`IdentityToken`** is the inverted issuer contract: `token(audience) => Effect<Redacted<string>, IdentityTokenError>`. The package declares it and implementers ship layers: [`github-actions`](github-actions.md)' `ActionsIdentityToken` over the runner's token service, and `layerStatic` for a caller already holding a token. It moved here unchanged from `sbom`.[^identity-token]
 - **`IdTokenClaims`** is `jwt`'s `RegisteredClaims` plus the OIDC Core ID-token claims (`azp`, `nonce`, `auth_time`, `acr`, `amr`). A provider's own claims extend it through a caller-supplied Schema rather than through a subclass here.
-- **`Oidc.decodeUnverified(token, claims)`** is `Jws.decodeUnverified` plus a decode of the payload against `claims`. It checks no signature, and it says so in its name. It is for reading a token this process was handed by a trusted runtime, never for authorizing anything.
-- **`Oidc.verify(token, { issuer, audience, claims, clockTolerance? })`** is `Jwt.verify` keyed through `JwksResolver.forIssuer(issuer)`. The key is always looked up for the configured issuer, never the token's own `iss`. An empty audience fails as `JwtError` `wrongAudience` before any network call, because an OIDC token verified without an audience is a token minted for anyone. That guard moved here from `ActionsOidc`.[^actions-oidc]
+- **`Oidc.decodeUnverified(token, claims)`** is `Jws.decodeUnverified` (core `Jwt.decodeUnverified` underneath, so the payload must be a JSON object) plus a decode of the payload against `claims`. It checks no signature, and it says so in its name; it needs no service. It is for reading a token this process was handed by a trusted runtime, never for authorizing anything.
+- **`Oidc.verify(token, { issuer, audience, claims, clockTolerance? })`** is `Jwt.verify` keyed through `JwksResolver.forIssuer(issuer)`, so it requires `JwksResolver` and core's `Signature` service (`Signature.layerWebCrypto` over `SecureRandom.layerWebCrypto`), provided at the application edge. The key is always looked up for the configured issuer, never the token's own `iss`. An empty audience fails as `JwtError` `wrongAudience` before any network call, because an OIDC token verified without an audience is a token minted for anyone. That guard moved here from `ActionsOidc`.[^actions-oidc]
 
 ## Errors
 

@@ -8,10 +8,10 @@
 Zero-dependency JSONC parsing, editing and formatting expressed as Effect schemas and pure functions. Parse JSONC into plain values or an offset-preserving AST, strip comments, compute byte-minimal edits, format, modify by path, walk a document as a `Stream`, and decode straight into a validated domain schema.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
-> Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
+> Effect v4 (`effect` `~4.1.0`) and still in `0.x` development. Stable Effect
 > makes a kit `1.0.0` possible, not automatic. To keep your `effect` and
 > `@effect/*` versions on the line the kit is built and tested against, install
-> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+> [`@effected/pnpm-plugin-effected`](https://www.npmjs.com/package/@effected/pnpm-plugin-effected).
 >
 > **Stability: unstable.** This package's API surface is not yet considered
 > complete and may change across `0.x` releases. Pin an exact version — even a
@@ -25,7 +25,7 @@ JSONC is JSON with comments and trailing commas: the format behind `tsconfig.jso
 
 This package treats the source text as the document. Modifications are computed as edits against the original bytes rather than re-serialized from a parsed object, so a change to one key leaves every comment, blank line and indentation choice untouched. Parsing recovers from errors and aggregates every diagnostic into one `JsoncParseError` carrying `code`, `offset`, `length`, `line` and `character` per error, instead of throwing on the first. And `Jsonc.schema` composes with a domain schema so a JSONC string decodes into a validated value in a single step.
 
-Everything is a pure function or a schema. No IO, no owned services and no runtime dependency other than `effect` itself: the scanner, parser and navigator are vendored into the package with attribution rather than pulled in as a dependency. The one effectful edge is fingerprint hashing, and the package ships no backend for it: `JsoncFingerprint.hash` and `hashText` require core's `Crypto.Crypto` service in `R`, provided by the consumer at the application edge, while their `hashResult` / `hashTextResult` twins take the digest as a plain function argument so a synchronous caller can fingerprint with no runtime at all.
+Everything is a pure function or a schema. No IO, no owned services and no runtime dependency other than `effect` itself: the scanner, parser and navigator are vendored into the package with attribution rather than pulled in as a dependency. The one effectful edge is fingerprint hashing, and the package ships no backend for it: `JsoncFingerprint.hash` and `hashText` require core's `Digest.Digest` service (`effect/crypto`) in `R`, provided by the consumer at the application edge, while their `hashResult` / `hashTextResult` twins take the digest as a plain function argument so a synchronous caller can fingerprint with no runtime at all.
 
 ## Install
 
@@ -162,12 +162,12 @@ console.log(Result.isFailure(bad) ? `${bad.failure.code} at "${bad.failure.path}
 // UnrepresentableValue at "/a/b"
 ```
 
-`hash` and `hashText` carry that canonicalization through to a content digest: the lowercase-hex SHA-256 of the UTF-8 bytes of the canonical text (`hash`) or of raw text as given (`hashText`). Both require core's `Crypto.Crypto` service in `R` — this package owns no backend, so provide `@effect/platform-node`'s `NodeCrypto.layer` (or any `Crypto` layer) at the application edge:
+`hash` and `hashText` carry that canonicalization through to a content digest: the lowercase-hex SHA-256 of the UTF-8 bytes of the canonical text (`hash`) or of raw text as given (`hashText`). Both require core's `Digest.Digest` service (`effect/crypto`) in `R` — this package owns no backend, so provide `Digest.layerWebCrypto` (any runtime with WebCrypto) or a platform family layer such as `@effect/platform-node`'s `NodeCrypto.layerDigest` at the application edge:
 
 ```ts
 import { JsoncFingerprint } from "@effected/jsonc";
-import { NodeCrypto } from "@effect/platform-node";
 import { Effect } from "effect";
+import { Digest } from "effect/crypto";
 
 const program = Effect.gen(function* () {
   const a = yield* JsoncFingerprint.hash({ b: 2, a: 1 });
@@ -175,11 +175,11 @@ const program = Effect.gen(function* () {
   return a === b;
 });
 
-Effect.runPromise(program.pipe(Effect.provide(NodeCrypto.layer))).then(console.log);
+Effect.runPromise(program.pipe(Effect.provide(Digest.layerWebCrypto))).then(console.log);
 // true
 ```
 
-`hashResult` and `hashTextResult` are the synchronous twins of those two, for callers with no fiber to run an `Effect` in — a bundler plugin's synchronous hook, a cache `read`/`write` invoked from inside a host callback. They agree byte for byte with the `Effect` forms. Since a `Crypto` layer cannot be provided from inside a synchronous callback, the digest itself is the argument: pass a `JsoncDigest`, `(bytes: Uint8Array) => Uint8Array`. This package still imports nothing from `node:*` and assumes no runtime, so a Node consumer binds the platform in one line:
+`hashResult` and `hashTextResult` are the synchronous twins of those two, for callers with no fiber to run an `Effect` in — a bundler plugin's synchronous hook, a cache `read`/`write` invoked from inside a host callback. They agree byte for byte with the `Effect` forms. Since a `Digest` layer cannot be provided from inside a synchronous callback, the digest itself is the argument: pass a `JsoncDigest`, `(bytes: Uint8Array) => Uint8Array`. This package still imports nothing from `node:*` and assumes no runtime, so a Node consumer binds the platform in one line:
 
 ```ts
 import { createHash } from "node:crypto";
@@ -207,8 +207,8 @@ Digests are always exactly 64 lowercase hexadecimal characters, with no `sha256:
 - `Jsonc.schema` / `Jsonc.fromString` / `Jsonc.JsoncFromString` — string→domain schema factories that decode JSONC directly into a validated Effect `Schema` value.
 - `JsoncFormatter` / `JsoncModifier` — compute byte-minimal `JsoncEdit` arrays for formatting and path-based modification, so callers apply the smallest possible diff instead of re-serializing the document.
 - `JsoncVisitor` — walk a parsed document as a `Stream` of visitor events, with `Stream.take` early termination on large inputs.
-- `JsoncFingerprint` — RFC 8785 canonical JSON (`canonicalize` / `canonicalizeResult`) and SHA-256 content fingerprints over it (`hash`, `hashText`), failing typed with `JsoncCanonicalizeError` rather than silently dropping or altering non-JSON values; `hash`/`hashText` require core's `Crypto.Crypto` service.
-- `JsoncFingerprint.hashResult` / `JsoncFingerprint.hashTextResult` — the synchronous `Result` variants of `hash` and `hashText` for callers outside an Effect runtime, taking the caller's own `JsoncDigest` instead of a `Crypto` layer so a synchronous host hook can fingerprint at all.
+- `JsoncFingerprint` — RFC 8785 canonical JSON (`canonicalize` / `canonicalizeResult`) and SHA-256 content fingerprints over it (`hash`, `hashText`), failing typed with `JsoncCanonicalizeError` rather than silently dropping or altering non-JSON values; `hash`/`hashText` require core's `Digest.Digest` service.
+- `JsoncFingerprint.hashResult` / `JsoncFingerprint.hashTextResult` — the synchronous `Result` variants of `hash` and `hashText` for callers outside an Effect runtime, taking the caller's own `JsoncDigest` instead of a `Digest` layer so a synchronous host hook can fingerprint at all.
 - `JsoncParseError` / `JsoncModificationError` — tagged errors carrying structured, positional payloads rather than opaque messages. Hostile input (deep nesting, unterminated literals) fails through the error channel, never as a stack overflow.
 
 ## License

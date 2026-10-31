@@ -1,9 +1,9 @@
-import { assert, describe, it } from "@effect/vitest";
+import { assert, describe, layer } from "@effect/vitest";
 import { DateTime, Effect } from "effect";
 import StripeSdk from "stripe";
 import { Stripe } from "../src/Stripe.js";
 import { NOON, STRIPE_SECRET } from "./fixtures/generate-vectors.js";
-import { bytes, hmac, request } from "./helpers.js";
+import { MacLive, bytes, hmac, request } from "./helpers.js";
 
 const T = NOON / 1000;
 const BODY = '{"id":"evt_1","object":"event","type":"charge.refunded","livemode":false}';
@@ -18,7 +18,7 @@ const verify = (head: Record<string, string>, body: string = BODY, receivedAt = 
 const reason = (head: Record<string, string>, body?: string, receivedAt?: number) =>
 	Effect.flip(verify(head, body, receivedAt)).pipe(Effect.map((error) => error.reason));
 
-describe("Stripe.verify", () => {
+layer(MacLive)("Stripe.verify", (it) => {
 	it.effect("returns the signed timestamp", () =>
 		Effect.gen(function* () {
 			const verified = yield* verify(header(`t=${T},v1=${good()}`));

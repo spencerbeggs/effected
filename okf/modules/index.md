@@ -2,7 +2,7 @@
 
 * [@effected/cli](cli.md) - The presentation boundary of an effect/cli program — audience, colour, theme, messages, logging, failure reporting and schema-issue renderers in a React-free root, with interactive Ink screens behind ./ui and their test harness behind ./ui/testing.
 * [@effected/commands](commands.md) - The kit's tool-and-output layer over core's subprocess contract — structured running, CLI tool discovery, run-once serialization across processes, prebuilt-binary resolution, launcher argv parsing, and (behind ./node-sync) anchored module resolution.
-* [@effected/crypto](crypto.md) - HMAC, constant-time comparison and AWS SigV4 request signing over WebCrypto, with no node imports, for the keyed primitives core Crypto does not offer, plus HttpRedaction, the kit's one credential scrub for kept HTTP errors.
+* [@effected/crypto](crypto.md) - HMAC, constant-time comparison and AWS SigV4 request signing over core Mac and Digest in R, with no node imports, plus HttpRedaction, the kit's one credential scrub for kept HTTP errors.
 * [@effected/engine](engine.md) - The platform-free primitives a carrier-pattern tool's own engine package shares across its front ends — distribution stamping, remediation shape, never-throwing error text, launch-context resolution, a one-permit lane for process-global work with scoped restores, and transport-neutral crash guards.
 * [@effected/env](env.md) - The boundary package that detects who is running a program and in what terminal — agent, CI and its run, session, colour level, hyperlink support and width — through Config, and reads shell export files in one strict dialect, with no node imports and no import-time reads.
 * [@effected/github](github.md) - The kit's typed GitHub REST and GraphQL API layer, owning the octokit runtime.
@@ -35,7 +35,7 @@
 * [lockfiles](lockfiles.md) - Pure lockfile parsing for bun, npm, pnpm and yarn Berry, normalized into one unified model, plus pure integrity checking.
 * [npm](npm.md) - The dependency-resolution contracts a manifest library defines but cannot implement, the npm vocabulary shared across the kit, and the registry/tarball/publish services that replace a shelled-out npm CLI.
 * [package-json](package-json.md) - package.json parsing, editing, validation and file IO as Effect schemas — the kit's boundary-tier manifest library and its reference for pure/IO separation.
-* [pnpm-plugin-effect](pnpm-plugin-effect.md) - The kit's companion pnpm config dependency — publishes the effect and effected catalogs that pin the whole ecosystem's versions.
+* [pnpm-plugin-effected](pnpm-plugin-effected.md) - The kit's companion pnpm config dependency: it serves consumers one catalog, effected, holding the Effect family on one minor and every @effected/\* package at its next release, and pins the Effect family graph-wide through derived overrides.
 * [runtimes](runtimes.md) - Resolves semver-compatible Node.js, Bun and Deno versions from live release feeds, with a bundled offline snapshot as fallback.
 * [sbom](sbom.md) - The software-supply-chain artifact half of attestation — a CycloneDX 1.6 SBOM, the NTIA report, SLSA provenance and Sigstore DSSE signing.
 * [scratchpad](scratchpad.md) - A committed but never-published pnpm workspace member that lets agents write typed probes fast — the evidence ladder's rung 3 tooled instead of hand-rolled.

@@ -172,12 +172,14 @@ describe("bundle reachability", () => {
 			"effect/encoding/Hex",
 			"node:crypto",
 		]);
-		// SigV4 is `@effected/crypto`'s (HMAC over WebCrypto, digests through core
-		// `Crypto` in `R`), so the S3 store reaches no `node:crypto` at all.
+		// SigV4 is `@effected/crypto`'s (HMACs through core `Mac.Mac` and digests
+		// through core `Digest.Digest`, both in `R`), so the S3 store reaches no
+		// `node:crypto` at all.
 		assert.deepStrictEqual([...reachableBareImports("BlobStore.ts")].sort(), [
 			"@effected/crypto",
 			"@effected/github-commands",
 			"effect",
+			"effect/crypto",
 			"effect/http",
 		]);
 		// The workflow-command protocol is not in this package any more: it lives in the pure

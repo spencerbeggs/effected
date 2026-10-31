@@ -115,11 +115,20 @@ export const caseInsensitiveSuite = (
 				),
 		);
 
-		it.effect("glob matches a folded pattern and returns the stored spelling", () =>
+		// The oracle is core's derived glob: a wildcard segment matches the stored
+		// names case-sensitively, while a literal segment is looked up (and so
+		// folds) and keeps the queried spelling.
+		it.effect("glob matches wildcards case-sensitively and folds literal segments", () =>
 			run((fs, d) =>
 				Effect.gen(function* () {
 					yield* fs.writeFileString(`${d}/docs.json`, "{}");
-					assert.deepStrictEqual(yield* fs.glob("*.JSON", { root: d }), ["docs.json"]);
+					yield* fs.makeDirectory(`${d}/Sub`);
+					yield* fs.writeFileString(`${d}/Sub/A.ts`, "");
+					assert.deepStrictEqual(yield* fs.glob("*.JSON", { root: d }), []);
+					assert.deepStrictEqual(yield* fs.glob("*.json", { root: d }), ["docs.json"]);
+					assert.deepStrictEqual(yield* fs.glob("DOCS.json", { root: d }), ["DOCS.json"]);
+					assert.deepStrictEqual(yield* fs.glob("sub/*.ts", { root: d }), ["sub/A.ts"]);
+					assert.deepStrictEqual(yield* fs.glob("Sub/*.TS", { root: d }), []);
 				}),
 			),
 		);

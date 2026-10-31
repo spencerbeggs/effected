@@ -13,8 +13,8 @@ sources:
     author: human:spencerbeggs
     last_modified: 2026-10-09T00:00:00Z
   - id: core-crypto
-    resource: ../../.repos/effect/packages/effect/src/Crypto.ts
-    title: "Core Crypto: random bytes, digests and ids, and no sign, verify or importKey"
+    resource: ../../.repos/effect/packages/effect/src/crypto/index.ts
+    title: "Core effect/crypto, which replaced the Crypto module (random bytes, digests and ids, no sign, verify or importKey) this decision was made against"
   - id: eventlog-session-auth
     resource: ../../.repos/effect/packages/effect/src/eventlog/EventLogSessionAuth.ts
     title: "Core's precedent for reading globalThis.crypto.subtle and failing when it is absent"
@@ -26,11 +26,13 @@ integrity:
     body: bd31b82a5e714c9e
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: bfe371311559f487
+    at: 2026-10-31T19:39:48Z
+    content: e9e5c185713e5179
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-10-31T19:39:48Z
 ---
 
 # App auth, OIDC verify and the token store land in @effected/github

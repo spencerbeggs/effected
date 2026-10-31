@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T22:03:44Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: fe52855b0c58ee10
+    body: 96f6ee9fe2a3e6ac
 ---
 
 # Sync-primitive policy
@@ -91,11 +91,11 @@ force:
    returns a nullable" and "pure computation, returns a `Result`".
 
 The rule holds even where the `Effect` twin is not merely a span.
-`@effected/jsonc`'s `JsoncFingerprint.hash` requires core's `Crypto.Crypto`,
+`@effected/jsonc`'s `JsoncFingerprint.hash` requires core's `Digest.Digest`,
 so its synchronous twin is not a free derivation — it takes the digest from
 the caller — and the accuracy argument above does not strictly apply, since
 the `Effect` form really is the effectful one. It is still spelled
-`hashResult` (`packages/jsonc/src/JsoncFingerprint.ts:487`), on the
+`hashResult` (`packages/jsonc/src/JsoncFingerprint.ts:648`), on the
 precedent and naming-collision arguments: `Result` is what the kit's readers
 have been taught to look for, and `*Sync` would still collide with the
 workspaces meaning. A sync twin that needs the caller to supply the platform

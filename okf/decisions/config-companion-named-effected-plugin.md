@@ -9,7 +9,7 @@ sources:
   - id: root-package-json
     resource: ../../package.json
   - id: pnpm-plugin-effect-claude
-    resource: ../../packages/pnpm-plugin-effect/CLAUDE.md
+    resource: ../../packages/pnpm-plugin-effected/CLAUDE.md
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z
@@ -18,13 +18,15 @@ verified:
     at: 2026-10-09T17:01:48Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-10-31T19:39:48Z
 integrity:
   generated:
     body: f96390bfa6f119f6
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 87bdcce26a33c520
+    at: 2026-10-31T19:39:48Z
+    content: ec56681e3b71a95e
 ---
 
 # The config companion is named @effected/plugin, not built yet

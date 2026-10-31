@@ -1,16 +1,17 @@
-import { assert, describe, it } from "@effect/vitest";
+import { assert, layer } from "@effect/vitest";
 import type { Layer } from "effect";
 import { Cause, Duration, Effect, Exit, Result, Schema } from "effect";
 import { HttpClient } from "effect/http";
 import { TestClock } from "effect/testing";
 import { JwksResolver, Jws, Jwt } from "../src/index.js";
 import { TestIssuer } from "../src/testing.js";
+import { CryptoLive } from "./crypto.js";
 
 const ISSUER = "https://issuer.test";
 
 const Claims = Schema.Struct({ iss: Schema.String, aud: Schema.String, iat: Schema.Number, exp: Schema.Number });
 
-describe("TestIssuer", () => {
+layer(CryptoLive, { buildPerTest: true })("TestIssuer", (it) => {
 	it.effect("a signed token verifies through the real JwksResolver with no network", () =>
 		Effect.gen(function* () {
 			const issuer = yield* TestIssuer.make({ issuer: ISSUER });

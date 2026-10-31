@@ -69,7 +69,7 @@ describe("ImageCache over store's Cache", () => {
 	const layer = ImageCache.layer.pipe(
 		Layer.provide(ImageBackend.layerFrom(Cache)),
 		Layer.provide(Cache.layerTest({ defaultTtl: Duration.minutes(5) })),
-		Layer.merge(NodeCrypto.layer),
+		Layer.merge(NodeCrypto.layerDigest),
 	);
 
 	it.effect("hits within the TTL and regenerates after it expires", () =>

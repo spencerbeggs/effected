@@ -13,26 +13,28 @@ sources:
     resource: ../../lib/scripts/catalog-sync.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-31T18:50:20Z
 verified:
   - by: human:spencer
     at: 2026-10-09T16:29:07Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-10-31T19:39:48Z
 integrity:
   generated:
-    body: 7cbb286165ad1386
+    body: 92bafe389c27b9e1
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 9c22c04702a3feb0
+    at: 2026-10-31T19:39:48Z
+    content: 3aa87fe724282684
 ---
 
 # The effected catalog holds next-release versions, and the publish order follows
 
 ## Context
 
-`@effected/pnpm-plugin-effect` publishes an `effected` catalog that
+`@effected/pnpm-plugin-effected` publishes an `effected` catalog that
 consumers resolve their `@effected/*` version ranges from. That catalog
 could, in principle, hold either the versions currently on the registry
 or the versions the packages are about to publish next. The choice
@@ -67,7 +69,7 @@ script,[^catalog-sync-script] which syncs the catalog and writes
 publishes. Nobody runs `catalog:sync` by hand ahead of a release.
 
 `.changeset/**` counts as a real version source for this reason —
-`packages/pnpm-plugin-effect/turbo.json` restates `$TURBO_ROOT$/.changeset/**`
+`packages/pnpm-plugin-effected/turbo.json` restates `$TURBO_ROOT$/.changeset/**`
 as a build input on both `build:dev` and `build:prod`, because the
 plugin's build reads versions from outside its own package directory and
 turbo's defaults do not describe that dependency by default.
@@ -93,7 +95,7 @@ first sync normalizing `^0.11.1` down to `^0.11.1`'s floor `^0.11.0` is
 the correct output of the rewrite, not drift to repair back. The chain
 this ordering protects does not actually end at the registry: it ends in
 a consumer's resolved tree, and that last link belongs to the consumer.
-A consumer's `configDependencies` pin on `@effected/pnpm-plugin-effect`
+A consumer's `configDependencies` pin on `@effected/pnpm-plugin-effected`
 can stay stale long after a correct release publishes, so "the packages
 published" and "the published plugin's catalog names them" can both be
 true while "the consumer's tree resolves them" is still false — the

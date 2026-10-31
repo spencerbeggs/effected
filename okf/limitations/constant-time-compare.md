@@ -1,7 +1,7 @@
 ---
 type: Limitation
 title: ConstantTime.equal is best-effort constant time
-description: "WebCrypto has no timingSafeEqual, so @effected/crypto compares with a JavaScript XOR loop whose timing the JIT does not guarantee; secretsEqual blinds both sides with a keyed MAC first to bound what leaks."
+description: "@effected/crypto compares through core Mac.timingSafeEqual, a JavaScript XOR loop whose timing the JIT does not guarantee; secretsEqual blinds both sides with a keyed MAC first to bound what leaks."
 status: draft
 bounds: ../modules/crypto.md
 tags:
@@ -14,17 +14,17 @@ sources:
     last_modified: 2026-10-22T00:00:00Z
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-23T01:39:30Z
+  at: 2026-10-31T19:37:34Z
 integrity:
   generated:
-    body: 9a03d8999091b5ee
+    body: 462ca42ea3313596
 ---
 
 # ConstantTime.equal is best-effort constant time
 
 ## Condition
 
-Any comparison made through [`@effected/crypto`](../modules/crypto.md)'s `ConstantTime.equal`, including every `Hmac.verify` and every [`webhooks`](../modules/webhooks.md) preset.
+Any comparison made through [`@effected/crypto`](../modules/crypto.md)'s `ConstantTime.equal` (core's `Mac.timingSafeEqual` over UTF-8 bytes), and every `Hmac.verify` and [`webhooks`](../modules/webhooks.md) preset, which compare through core `Mac.verify`. On `Mac.layerWebCrypto` that verify is WebCrypto's own `subtle.verify`; on `NodeCrypto.layerMac` it is `Mac.timingSafeEqual` over the computed tag.
 
 ## Symptom
 
@@ -32,10 +32,10 @@ None observable in normal use. The guarantee is weaker than `node:crypto`'s `tim
 
 ## Why it is acceptable
 
-WebCrypto offers no constant-time comparison, and the package must run where `node:crypto` does not. This is the standard approach in WebCrypto-only libraries. The exposure is narrow: an HMAC comparison is over a fixed-length digest, so the length leak reveals nothing, and a shared secret goes through `ConstantTime.secretsEqual`, which MACs both sides under a fresh random WebCrypto key first, so only two 32-byte MACs reach the loop and neither length nor prefix of the secret does.[^owner]
+WebCrypto offers no general constant-time comparison, and the package must run where `node:crypto` does not. The kit no longer carries a loop of its own: it uses core's, which is the standard approach in WebCrypto-only libraries. The exposure is narrow: an HMAC comparison is over a fixed-length tag, so the length leak reveals nothing, and a shared secret goes through `ConstantTime.secretsEqual`, which MACs the expected side under a fresh key from `Mac.generateKey` and checks the received side with `Mac.verify`, so only two 32-byte MACs are compared and neither length nor prefix of the secret is.[^owner]
 
 ## What a fix would take
 
-A runtime-native constant-time primitive in WebCrypto or in core `Crypto`. Until then, a Node-only caller wanting the stronger guarantee can compare with `node:crypto` itself.
+A runtime-native constant-time primitive in WebCrypto or in core. Core's `Mac.timingSafeEqual` (`effect/crypto`), which the kit now uses, is not one: it is an XOR-accumulate loop, returns early on a length mismatch, and documents that JavaScript runtimes do not guarantee constant-time execution. If core ever backs it with a native primitive, the kit inherits that with no change. Until then, a Node-only caller wanting the stronger guarantee can compare with `node:crypto` itself.
 
 [^owner]: conversation with the repository owner

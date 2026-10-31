@@ -39,10 +39,10 @@ const defaultWrite = (text: string): void => {
 };
 
 /** The package whose build config carries the catalog, and which the changeset bumps. */
-export const PLUGIN = "@effected/pnpm-plugin-effect";
+export const PLUGIN = "@effected/pnpm-plugin-effected";
 
 /** The config file the CLI rewrites, relative to the repository root. */
-export const CONFIG_PATH = "packages/pnpm-plugin-effect/savvy.build.ts";
+export const CONFIG_PATH = "packages/pnpm-plugin-effected/savvy.build.ts";
 
 /** Fixed name: repeated runs overwrite one changeset rather than accumulating many. */
 export const CHANGESET_PATH = ".changeset/catalog-sync.md";
@@ -202,8 +202,8 @@ export function renderCommitMessage(moves: readonly CatalogMove[]): string {
 	const groups = byCatalog(moves);
 	const headline =
 		groups.length === 1 && groups[0] !== undefined
-			? `chore(pnpm-plugin-effect): update ${moveSummary(groups[0][0], groups[0][1].length)}`
-			: `chore(pnpm-plugin-effect): update ${moves.length} catalog version${moves.length === 1 ? "" : "s"}`;
+			? `chore(pnpm-plugin-effected): update ${moveSummary(groups[0][0], groups[0][1].length)}`
+			: `chore(pnpm-plugin-effected): update ${moves.length} catalog version${moves.length === 1 ? "" : "s"}`;
 	const body = groups.flatMap(([catalog, group]) => [
 		...(groups.length === 1 ? [] : [`${catalog}:`]),
 		...group.map((move) => `- ${move.pkg} ${moveText(move)}`),
@@ -233,7 +233,7 @@ function readConfig(root: string): string {
 //
 // That is not hypothetical: it is how `@effected/schema-org` reached a release
 // branch absent from the catalog while the gate stayed green. Membership was
-// pinned only by `packages/pnpm-plugin-effect/__test__/catalog.test.ts`, so
+// pinned only by `packages/pnpm-plugin-effected/__test__/catalog.test.ts`, so
 // the tool that could see the gap was not the tool the gate ran. The gate now
 // asks the question too. That test still pins the same fact independently, and
 // deliberately so: it is a second pair of eyes on one rule, and the two live in
@@ -508,7 +508,7 @@ export async function sync(options: SyncOptions = {}): Promise<boolean> {
 	const before = readConfig(root);
 	const { code, stdout } = await run(
 		["upgrade", "savvy.build.ts", "--yes", "--format", "json"],
-		join(root, "packages/pnpm-plugin-effect"),
+		join(root, "packages/pnpm-plugin-effected"),
 	);
 	if (code !== 0) throw new Error(`rolldown-pnpm-config upgrade --yes exited ${code}`);
 
@@ -550,7 +550,7 @@ export async function check(options: SyncOptions = {}): Promise<number> {
 	const write = options.write ?? defaultWrite;
 	const { code, stdout } = await run(
 		["upgrade", "savvy.build.ts", "--check"],
-		join(root, "packages/pnpm-plugin-effect"),
+		join(root, "packages/pnpm-plugin-effected"),
 	);
 	if (stdout !== "") write(stdout);
 

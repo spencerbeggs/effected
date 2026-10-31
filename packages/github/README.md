@@ -8,10 +8,10 @@
 Typed GitHub REST and GraphQL for [Effect](https://effect.website) v4. `client.request("GET /repos/{owner}/{repo}", { owner, repo })` types both the parameters and the returned `data` from the route literal alone — no `operation: string`, no callback, no cast. One `GitHubError` covers every REST failure with a `kind` you branch on instead of grepping a message, one pagination engine backs every paginating route and `client.request`'s `Stream` form, and a set of resource services (`GitBranch`, `GitTag`, `CheckRun`, `PullRequest`, `PullRequestComment`, `GitHubRelease`, `Attestation`) turn multi-call dances — "does this branch already exist?", "conclude this check run no matter how the program exits" — into one call. A second tier writes the configuration half: secrets, variables, rulesets, deployment environments, the security toggles and CodeQL default setup. `GitHubApp` mints and revokes installation tokens for App auth.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
-> Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
+> Effect v4 (`effect` `~4.1.0`) and still in `0.x` development. Stable Effect
 > makes a kit `1.0.0` possible, not automatic. To keep your `effect` and
 > `@effect/*` versions on the line the kit is built and tested against, install
-> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+> [`@effected/pnpm-plugin-effected`](https://www.npmjs.com/package/@effected/pnpm-plugin-effected).
 >
 > **Stability: unstable.** This package's API surface is not yet considered
 > complete and may change across `0.x` releases. Pin an exact version — even a
@@ -25,7 +25,7 @@ Hand-rolled octokit wrappers tend to converge on the same shape: a `rest<T>(oper
 
 The error model gets the same treatment. `GitHubError.kind` is a literal union (`notFound`, `alreadyExists`, `rejected`, `unauthorized`, `rateLimited`, `transport`, `decode`) produced by one classification step, `GitHubError.fromOctokit`, instead of one hand-written mapper per resource. `kind: "alreadyExists"` is what makes `GitBranch.upsert` and `GitTag.upsert` a single round trip in the common case, rather than a create-then-catch-then-check-then-reset dance repeated at every call site that needs it.
 
-This package also owns the octokit runtime so nothing downstream has to. `@octokit/rest` and `@octokit/auth-app` are deliberately absent — the rest wrapper is a request-logging plugin plus 1.4 MB of duplicate endpoint types, and `auth-app` drags in `createOAuthUserAuth`, roughly 492 KB of OAuth machinery this package never calls. GitHub App JWTs are signed by the kit's own `@effected/jwt` instead: WebCrypto RS256 with no runtime dependencies, so App auth runs on Cloudflare Workers as well as Node. A consumer that only authenticates with a token it already holds never links the JWT signer at all: the App-authenticated layer lives in its own module (`GitHubApp`), and nothing here is gathered into a namespace object that would defeat that split.
+This package also owns the octokit runtime so nothing downstream has to. `@octokit/rest` and `@octokit/auth-app` are deliberately absent — the rest wrapper is a request-logging plugin plus 1.4 MB of duplicate endpoint types, and `auth-app` drags in `createOAuthUserAuth`, roughly 492 KB of OAuth machinery this package never calls. GitHub App JWTs are signed by the kit's own `@effected/jwt` instead, over core `effect/jose`: RS256 with no extra runtime dependencies, so App auth runs on Cloudflare Workers as well as Node. The App layers (`GitHubApp.layer`, `layerWith`, `clientLayer`, `appClientLayer`) require core's `Signature` service; provide `Signature.layerWebCrypto.pipe(Layer.provide(SecureRandom.layerWebCrypto))` from `effect/crypto` once at the edge. A consumer that only authenticates with a token it already holds never links the JWT signer at all: the App-authenticated layer lives in its own module (`GitHubApp`), and nothing here is gathered into a namespace object that would defeat that split.
 
 ## Install
 

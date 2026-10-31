@@ -25,7 +25,7 @@ The main entry imports nothing from `node:*`; only the `./node-sync` subpath doe
 `options` is `{ root?, caseSensitive?, faults?, spies?, watchEvents? }`:
 
 - `root` — seed keys are relative to it (`""` is the root itself; it exists even for an empty seed). A **join base, not a jail**: keys join lexically, so `"../x"` under `/ws/repo` is `/ws/x`. The handle's mutators join relative paths to it too, but unnormalized: `..` resolves after links are followed, as `writeFileSync` does. A relative root or an absolute key alongside it is a typed `BadArgument` naming the value.
-- `caseSensitive` — `true` by default; `false` models a case-insensitive, case-preserving volume (default APFS), with semantics measured on a real APFS volume.
+- `caseSensitive` — `true` by default; `false` models a case-insensitive, case-preserving volume (default APFS), with semantics measured on a real APFS volume. `glob` is core's derived walk on either setting: wildcard segments match stored names case-sensitively, literal segments fold and keep the queried spelling, as `NodeFileSystem` does on APFS.
 - `faults` — the fault map (or `(base) => faults` factory) wrapped around the built `FileSystem`. The seed lands beneath the faults; `Volume` inspects the raw volume. It does not reach a handle's ports.
 - `spies` — void observers per member that always delegate (the return value is discarded), run per execution and before any fault; like faults they propagate into derived members (a `writeFile` spy sees `writeFileString`).
 - `watchEvents` — `"automatic"` (default) or `"manual"`, which stops mutations from publishing watch events so only `handle.emit` delivers them.

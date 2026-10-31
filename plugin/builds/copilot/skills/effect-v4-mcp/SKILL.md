@@ -36,7 +36,8 @@ clients.
 - Launch with `McpStdio.launch` and `NodeRuntime.runMain(program, { teardown: McpStdio.teardown })` — never a bare `Layer.launch`.
 - Register toolkits through `McpToolkit.layer`, not core's `McpServer.toolkit` directly, so every tool is strict unless it opts out.
 - Fold remediation into a declared failure's message with `ToolFailure` at construction — nothing else reaches the agent.
-- Declare every service a handler uses in `Tool.make`'s `dependencies` option.
+- Capture a service a handler needs for the server's lifetime in the effect form of `Toolkit.toLayer`; declare a service in `Tool.make`'s `dependencies` only when it varies per request, and meet it with `McpServer.middleware` — `Layer.provide` cannot — see [Defining a tool](./references/tools.md#defining-a-tool).
+- Pass the toolkit layer to `McpStdio.layer` as `registrations`, so it builds before the first request with its logs on stderr.
 - Return an expected error the agent branches on through `ToolOutcome.catchAsEnvelope`, written inline in the handler's `pipe`.
 - Test the server layer in process with `McpHarness`; test a **built** bin with `McpProcess`/`McpProbe`.
 

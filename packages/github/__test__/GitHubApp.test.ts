@@ -1,11 +1,13 @@
 import { generateKeyPairSync, verify } from "node:crypto";
-import { assert, describe, it } from "@effect/vitest";
+import { assert, layer } from "@effect/vitest";
 import { JwtError } from "@effected/jwt";
 import { DateTime, Duration, Effect, Option, Redacted, Schema } from "effect";
+import type { Signature } from "effect/crypto";
 import { TestClock } from "effect/testing";
 import { AppIdentity, BotIdentity, BotUser, GitHubApp, Installation, InstallationToken } from "../src/GitHubApp.js";
 import { GitHubClient } from "../src/GitHubClient.js";
 import { RetryPolicy } from "../src/Resilience.js";
+import { CryptoLive } from "./crypto.js";
 import type { Reply } from "./fixtures.js";
 import { scriptedFetch } from "./fixtures.js";
 import { defectMessage } from "./harness.js";
@@ -38,7 +40,7 @@ const tokenReply = (options: { expiresAt?: string; token?: string } = {}): Reply
 const withApp = <A, E>(
 	replies: ReadonlyArray<Reply>,
 	use: (app: GitHubApp["Service"], script: ReturnType<typeof scriptedFetch>) => Effect.Effect<A, E>,
-): Effect.Effect<A, E> =>
+): Effect.Effect<A, E, Signature.Signature> =>
 	Effect.gen(function* () {
 		const script = scriptedFetch(replies);
 		return yield* Effect.provide(
@@ -47,7 +49,7 @@ const withApp = <A, E>(
 		);
 	});
 
-describe("GitHubApp.token", () => {
+layer(CryptoLive, { buildPerTest: true })("GitHubApp.token", (it) => {
 	it.effect("mints an installation token against a known installation", () =>
 		withApp([tokenReply()], (app, script) =>
 			Effect.gen(function* () {
@@ -192,12 +194,14 @@ describe("GitHubApp.token", () => {
 						Buffer.from(signature, "base64url"),
 					);
 					assert.isTrue(signed, "the JWT signature verifies against the public key");
-					assert.strictEqual(JSON.parse(Buffer.from(header, "base64url").toString("utf8")).alg, "RS256");
+					// The exact wire shape GitHub accepts: header bytes and claim order are pinned.
+					assert.strictEqual(Buffer.from(header, "base64url").toString("utf8"), '{"alg":"RS256","typ":"JWT"}');
 					const claims = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
 						iss: string;
 						iat: number;
 						exp: number;
 					};
+					assert.deepStrictEqual(Object.keys(claims), ["iat", "exp", "iss"]);
 					assert.strictEqual(claims.iss, "Iv1.pkcs1");
 					assert.strictEqual(claims.exp - claims.iat, 600);
 					// Time comes from Clock, so TestClock drives it: iat is backdated 60 s.
@@ -266,7 +270,7 @@ describe("GitHubApp.token", () => {
 	);
 });
 
-describe("GitHubApp.revoke and scopedToken", () => {
+layer(CryptoLive, { buildPerTest: true })("GitHubApp.revoke and scopedToken", (it) => {
 	it.effect("revokes with a token credential, not a bearer", () =>
 		withApp([{ status: 204 }], (app, script) =>
 			Effect.gen(function* () {
@@ -305,7 +309,7 @@ describe("GitHubApp.revoke and scopedToken", () => {
 	);
 });
 
-describe("GitHubApp.identity", () => {
+layer(CryptoLive, { buildPerTest: true })("GitHubApp.identity", (it) => {
 	it.effect("resolves slug, name and bot user id", () =>
 		withApp(
 			[
@@ -348,7 +352,7 @@ describe("GitHubApp.identity", () => {
 	);
 });
 
-describe("GitHubApp.botUser", () => {
+layer(CryptoLive, { buildPerTest: true })("GitHubApp.botUser", (it) => {
 	it.effect("reads <slug>[bot] bearing the installation token", () =>
 		withApp([{ status: 200, body: { id: 987654, login: "my-app[bot]", type: "Bot" } }], (app, script) =>
 			Effect.gen(function* () {
@@ -389,11 +393,11 @@ describe("GitHubApp.botUser", () => {
 	);
 });
 
-describe("GitHubApp.clientLayer", () => {
+layer(CryptoLive, { buildPerTest: true })("GitHubApp.clientLayer", (it) => {
 	const withClientLayer = <A, E>(
 		replies: ReadonlyArray<Reply>,
 		use: (client: GitHubClient["Service"], script: ReturnType<typeof scriptedFetch>) => Effect.Effect<A, E>,
-	): Effect.Effect<A, E | import("../src/GitHubApp.js").GitHubAppError> =>
+	): Effect.Effect<A, E | import("../src/GitHubApp.js").GitHubAppError, Signature.Signature> =>
 		Effect.gen(function* () {
 			const script = scriptedFetch(replies);
 			return yield* Effect.provide(
@@ -578,7 +582,7 @@ describe("GitHubApp.clientLayer", () => {
 	);
 });
 
-describe("InstallationToken", () => {
+layer(CryptoLive, { buildPerTest: true })("InstallationToken", (it) => {
 	const token = InstallationToken.make({
 		token: Redacted.make("ghs_x"),
 		expiresAt: DateTime.makeUnsafe("2026-01-01T00:00:00Z"),
@@ -628,7 +632,7 @@ describe("InstallationToken", () => {
 	});
 });
 
-describe("BotIdentity", () => {
+layer(CryptoLive, { buildPerTest: true })("BotIdentity", (it) => {
 	it("builds the full identity from slug and user id", () => {
 		const identity = BotIdentity.forApp({ appSlug: "my-app", appUserId: 42 });
 		assert.strictEqual(identity.name, "my-app[bot]");
@@ -665,14 +669,14 @@ describe("BotIdentity", () => {
 	});
 });
 
-describe("AppIdentity", () => {
+layer(CryptoLive, { buildPerTest: true })("AppIdentity", (it) => {
 	it("derives a bot identity", () => {
 		const identity = AppIdentity.make({ slug: "my-app", name: "My App", userId: 7 });
 		assert.strictEqual(identity.botIdentity().email, "7+my-app[bot]@users.noreply.github.com");
 	});
 });
 
-describe("GitHubApp.makeTest", () => {
+layer(CryptoLive, { buildPerTest: true })("GitHubApp.makeTest", (it) => {
 	it.effect("answers a stubbed member", () =>
 		Effect.gen(function* () {
 			const double = GitHubApp.makeTest({
@@ -701,7 +705,7 @@ describe("GitHubApp.makeTest", () => {
 	);
 });
 
-describe("Option is not needed to read a missing installation account", () => {
+layer(CryptoLive, { buildPerTest: true })("Option is not needed to read a missing installation account", (it) => {
 	it.effect("keeps an installation with no account", () =>
 		withApp([{ status: 200, body: [{ id: 3, account: null }] }, tokenReply()], (app) =>
 			Effect.gen(function* () {
@@ -725,7 +729,7 @@ const LENIENT_PAGE = [
 	{ id: 5, suspended_at: null, account: { login: "other", type: "User", id: 7 } },
 ];
 
-describe("Installation suspension, account type and id", () => {
+layer(CryptoLive, { buildPerTest: true })("Installation suspension, account type and id", (it) => {
 	it.effect("decodes suspended_at, updated_at and the account's type and id", () =>
 		withApp(
 			[

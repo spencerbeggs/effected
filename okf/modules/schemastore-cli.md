@@ -35,10 +35,10 @@ sources:
     resource: ../../packages/schemastore-cli/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:49:39Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 9eed20e9992ac709
+    body: f17abdfc991253ba
 ---
 
 # @effected/schemastore-cli
@@ -74,7 +74,7 @@ The pair releases together: a changesets **fixed** group holds
 `@effected/schemastore` and `@effected/schemastore-cli` at one version,
 and the CLI's peer range on the library is that exact version.
 
-Tier: **none — a companion package**, like `pnpm-plugin-effect`. It runs
+Tier: **none — a companion package**, like `pnpm-plugin-effected`. It runs
 under `Command.Environment`, loads consumer TypeScript through `jiti`,
 and touches the real filesystem — which would make a *library* integrated
 tier — but tier measures what an importer pays, and the one thing an
@@ -83,7 +83,7 @@ engine layer over the library's own
 contract rather than a surface of its own: the commands are the canonical
 use, the exports a courtesy. The
 [companion package](../glossary/companion-package.md) glossary rules,
-and the `pnpm-plugin-effect` precedent (a companion with no tier) is the
+and the `pnpm-plugin-effected` precedent (a companion with no tier) is the
 one this follows rather than arguing a running-code companion into a
 tier.
 

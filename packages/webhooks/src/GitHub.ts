@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import type { Mac } from "effect/crypto";
 import { annotateOutcome, matchesAny, readHeader, reject } from "./internal/verify.js";
 import type { WebhookRequest } from "./WebhookRequest.js";
 import type { WebhookVerificationError } from "./WebhookVerificationError.js";
@@ -37,10 +38,14 @@ export class GitHub {
 	 * `missing_signature` without the header; `bad_signature` when it is not `sha256=<64 lower-case hex>` or does
 	 * not match.
 	 *
-	 * Truly asynchronous: the HMAC runs on WebCrypto, so a test that forks this and then adjusts `TestClock` can race or
+	 * Requires `Mac.Mac` (`effect/crypto`) in `R`: `Mac.layerWebCrypto` with `SecureRandom.layerWebCrypto`, or a
+	 * platform family layer such as `NodeCrypto.layerMac`. A `CryptoError` from the `Mac` layer is a defect, as is a
+	 * runtime with no `crypto.subtle` on the WebCrypto layer.
+	 *
+	 * On `Mac.layerWebCrypto` this is truly asynchronous: a test that forks it and then adjusts `TestClock` can race or
 	 * hang. Await it, or gate the clock on a latch.
 	 *
 	 * @public
 	 */
-	static readonly verify: (request: WebhookRequest) => Effect.Effect<void, WebhookVerificationError> = verify;
+	static readonly verify: (request: WebhookRequest) => Effect.Effect<void, WebhookVerificationError, Mac.Mac> = verify;
 }

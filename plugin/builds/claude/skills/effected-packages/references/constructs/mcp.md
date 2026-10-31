@@ -23,6 +23,7 @@
 | `McpProcessStderrUntilOptions` | Interface | Options for `McpProcess.stderrUntil`. | from `@effected/mcp/testing` |
 | `McpStdio` | Class | Serve an MCP server over stdio without ever writing a log line or a failure report onto stdout, which is the JSON-RPC wire. | serve mcp over stdio, keep stdout the json-rpc wire, exit 0 on stdin close |
 | `McpStdioOptions` | Interface | Options for `McpStdio.layer`. | |
+| `McpStdioRegistrationServices` | TypeAlias | The services a registration layer needs that `McpStdio.layer` does not supply: everything but `McpServer` and `Stdio` (which the layer requires itself), with each request-level marker but `McpServer.McpRequest<"Requires", Scope>`, which the transport discharges. | |
 | `McpTestFailure` | Class | Why an MCP test client could not produce what was asked of it. | from `@effected/mcp/testing` — mcp test client failure, stream ended, server stopped, timed out |
 | `McpToolAudit` | Class | A pure sweep over a served `tools/list` that returns every policy violation, as `"<tool>: <what>"` strings. | from `@effected/mcp/testing` — lint served tools list, closed inputs, titles, hints, object-rooted outputs |
 | `McpToolAuditPolicy` | Interface | The policy `McpToolAudit.check` enforces. | from `@effected/mcp/testing` |

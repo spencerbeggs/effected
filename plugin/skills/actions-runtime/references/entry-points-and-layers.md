@@ -40,14 +40,20 @@ export type ActionServices =
   | ActionOutputs
   | ActionState
   | NodeServices.NodeServices
+  | Digest.Digest
+  | Mac.Mac
+  | SecureRandom.SecureRandom
   | HttpClient.HttpClient;
 ```
 
 Spelled out rather than inferred, on purpose: a program written against
 `ActionServices` is a program `Action.run` can run, and the compiler says so
 before the runner does. `NodeServices` carries
-`ChildProcessSpawner | Crypto | FileSystem | Path | Stdio | Terminal` — so
-any of those six resolve for free inside `ActionServices`, with no separate
+`ChildProcessSpawner | FileSystem | Path | Stdio | Terminal` and no crypto, so
+`Action.run`'s runtime adds `NodeCrypto.layerDigest`, `NodeCrypto.layerMac`
+and `NodeCrypto.layerSecureRandom` for `Digest.Digest`, `Mac.Mac` and
+`SecureRandom.SecureRandom` (all from `effect/crypto`) — so every member resolves
+for free inside `ActionServices`, with no separate
 `@effect/platform-node` mention at the call site.
 
 **Not in the union:** `ActionCache`, `Artifact`, `GitHubCacheBlobStore` — see

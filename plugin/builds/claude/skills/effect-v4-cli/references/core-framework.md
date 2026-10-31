@@ -27,8 +27,8 @@ type).
 ## Constructors are PascalCase
 
 Every `Flag`, `Argument`, `Prompt` and `GlobalFlag` constructor is a
-PascalCase name (`cli/Flag.ts:60-449`, `Argument.ts:62-308`,
-`Prompt.ts:888-1442`, `GlobalFlag.ts:111,130`). The lowercase spellings are
+PascalCase name (`cli/Flag.ts:60-450`, `Argument.ts:62-308`,
+`Prompt.ts:889-1443`, `GlobalFlag.ts:111,130`). The lowercase spellings are
 **`undefined`** on the namespace — a call type-errors, and a lookup probe
 that prints `typeof Flag.string` and concludes "no string flag" is the
 expensive misread. The roster:
@@ -58,7 +58,7 @@ is `Param.Boolean(Param.flagKind, name)` with no fallback (`cli/Flag.ts:80`;
 its own docstring at `:72` says *"Omission fails unless the flag is made
 optional or given a fallback"*), and the shared flag parser fails with
 `CliError.MissingOption({ option: name })` the moment the flag is absent from
-the parsed args (`cli/Param.ts:2135`) — the primitive's type never
+the parsed args (`cli/Param.ts:2137`) — the primitive's type never
 enters into it. So a bare `Flag.Boolean("force")` turns every invocation that
 *omits* `--force` into a usage error, which is the opposite of what a
 boolean flag is for. Spell the default:
@@ -124,7 +124,7 @@ is the handler's error, not a usage error.
 ~~~ts
 import type { Command } from "effect/cli"
 
-// effect/cli/Command.ts:406 — the five members: FileSystem.FileSystem,
+// effect/cli/Command.ts:407 — the five members: FileSystem.FileSystem,
 // Path.Path, Terminal.Terminal, ChildProcessSpawner, Stdio.Stdio
 export type Environment = Command.Environment
 ~~~
@@ -134,8 +134,8 @@ almost none of them for Node:**
 
 | service | what core actually ships |
 | --- | --- |
-| `Path` | `Path.layer` — a real implementation (posix), `Path.ts:926` |
-| `FileSystem` | only `FileSystem.layerNoop(partial)` — a deny-by-default **stub factory** (`FileSystem.ts:787`); never use it as a test double: a test's `FileSystem` is `@effected/memfs`'s `MemoryFileSystem.layer` |
+| `Path` | `Path.layer` — a real implementation (posix), `Path.ts:931` |
+| `FileSystem` | only `FileSystem.layerNoop(partial)` — a deny-by-default **stub factory** (`FileSystem.ts:848`); never use it as a test double: a test's `FileSystem` is `@effected/memfs`'s `MemoryFileSystem.layer` |
 | `Stdio` | `Stdio.layerTest(partial)` — **test-only**, by its name and its shape (`Stdio.ts:166`) |
 | `Terminal` | **no layer at all** — `Terminal.ts` declares no `layer` export |
 | `ChildProcessSpawner` | the contract and the `ChildProcess` command values, but **no layer** — see below |
@@ -159,8 +159,8 @@ modules (`process/index.ts`):
 
 | you want | v4 |
 | --- | --- |
-| `@effect/platform/Command` (build a command value) | **`effect/process` `ChildProcess`** — `ChildProcess.make("git", ["status"])`, plus `pipeTo` / `prefix` / `setCwd` / `setEnv` (`ChildProcess.ts:659,750,785,851,891`). **Warning:** `setEnv` never sets `extendEnv` — it merges into `options.env` and leaves `extendEnv` untouched, so the child's env is ONLY what you pass; it loses `PATH`/`HOME` and can't find its own binaries. To add vars on top of the parent env, use `Run.extendEnv` from `@effected/commands` (or pass `{ env, extendEnv: true }` to `make`, where `extendEnv` is a real option at `ChildProcess.ts:453`) |
-| `@effect/platform/CommandExecutor` (run it) | **`effect/process` `ChildProcessSpawner`** — a `Context.Service` with `spawn` / `exitCode` / `string` / `lines` / `streamString` / `streamLines` (`ChildProcessSpawner.ts:271`) |
+| `@effect/platform/Command` (build a command value) | **`effect/process` `ChildProcess`** — `ChildProcess.make("git", ["status"])`, plus `pipeTo` / `prefix` / `setCwd` / `setEnv` (`ChildProcess.ts:731,825,860,929,969`). **Warning:** `setEnv` never sets `extendEnv` — it merges into `options.env` and leaves `extendEnv` untouched, so the child's env is ONLY what you pass; it loses `PATH`/`HOME` and can't find its own binaries. To add vars on top of the parent env, use `Run.extendEnv` from `@effected/commands` (or pass `{ env, extendEnv: true }` to `make`, where `extendEnv` is a real option at `ChildProcess.ts:478`). Arguments are `CommandLine.Word` (`string \| Redacted<string>`, `CommandLine.ts:60`) and `env` values may be `Redacted`, so code reading a command's `args` gets `ReadonlyArray<CommandLine.Word>`, not `string[]`. The template form is split by `CommandLine.template` when `make` is called, and shell syntax in the text (`\|`, `$HOME`, `*`, `~`, `FOO=bar cmd`) **throws** a `CommandLine.CommandLineError` (`UnsupportedSyntax`) — quote it, or pass the value through `${}`; with `shell`, a template cannot hold `${}` values, so build the script with `CommandLine.quote` |
+| `@effect/platform/CommandExecutor` (run it) | **`effect/process` `ChildProcessSpawner`** — a `Context.Service` with `spawn` / `exitCode` / `string` / `lines` / `streamString` / `streamLines` (`ChildProcessSpawner.ts:276`) |
 
 > **Do not hand-roll a `node:child_process` layer or a parallel
 > `Command`/`CommandRunner` vocabulary.** One did survive four review gates in

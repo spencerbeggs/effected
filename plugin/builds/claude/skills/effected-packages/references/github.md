@@ -11,8 +11,9 @@ deployment environments, security toggles, code scanning). It also owns GitHub
 App authentication and the libsodium sealed-box crypto pair GitHub's secrets
 API demands. **Integrated tier** — it holds `@octokit/core`,
 `@octokit/plugin-paginate-rest`, `tweetnacl` and `blakejs` so nothing
-downstream has to, and signs the App JWT with `@effected/jwt` (WebCrypto, so
-App auth runs on Workers too); `@octokit/rest` and `@octokit/auth-app`
+downstream has to, and signs the App JWT with `@effected/jwt` over core
+`effect/jose` (so App auth runs on Workers too, and its layers require core's
+`Signature` service); `@octokit/rest` and `@octokit/auth-app`
 are deliberately absent and must never be reintroduced. Its pure edges are
 `@effected/semver` (for `GitTag.latestSemver`) and `@effected/github-references`
 (a droppable compat re-export of six moved names).
@@ -138,7 +139,11 @@ tempted to reach for `as`.
   revokes on scope close), `revoke`, `identity`, `botUser({ slug, installationToken? })` → `BotUser { id, login }` (the strict read: it fails where `identity` omits the id), `installations`. `TokenRequest`
   is `{ appId, privateKey: Redacted } & { installationId?, owner? }`;
   `InstallationToken` carries `permissions`, `isExpired(nowMillis, skew?)` and
-  `botIdentity()`. Three client layers:
+  `botIdentity()`. `GitHubApp.layer` / `layerWith` and the App client layers
+  below require core's `Signature` in `R`: provide
+  `Signature.layerWebCrypto.pipe(Layer.provide(SecureRandom.layerWebCrypto))`
+  from `effect/crypto` once at the edge (the methods themselves need nothing).
+  Three client layers:
   - **`GitHubApp.clientLayer(request, options?)`** — authenticated as an
     installation; mints on build, re-mints a minute before expiry, revokes on
     release.
@@ -172,8 +177,8 @@ tempted to reach for `as`.
   field is omitted, never a failure.
 - **`ActionsOidc`** — a static class with a private constructor (`issuer` and
   `verify`, nothing to construct or spread). `ActionsOidc.verify(token, { audience, clockTolerance? })`
-  → `Effect<ActionsOidcClaims, JwtError, JwksResolver>` (from `@effected/jwt`;
-  provide `JwksResolver.layer` at the edge). It is `@effected/oidc`'s `Oidc.verify`
+  → `Effect<ActionsOidcClaims, JwtError, JwksResolver | Signature>` (from `@effected/jwt`
+  and `effect/crypto`; provide `JwksResolver.layer` and the `Signature` layer at the edge). It is `@effected/oidc`'s `Oidc.verify`
   pinned to GitHub's issuer. It verifies against GitHub's JWKS
   for the github.com Actions issuer only (GHE.com and GHES issuers are
   `wrongIssuer`), with a **mandatory, non-empty audience**, then decodes

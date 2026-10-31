@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { NodeCrypto } from "@effect/platform-node";
 import { assert, describe, layer } from "@effect/vitest";
-import { Crypto, Effect, Layer, PlatformError, Schema, SchemaTransformation } from "effect";
+import { Effect, Layer, Schema, SchemaTransformation } from "effect";
+import { Digest } from "effect/crypto";
 import { ImageCacheKey, ImageCacheKeyError } from "../src/cache.js";
 
 const Params = Schema.Struct({
@@ -13,7 +14,7 @@ const OPTIONS = { salt: "og-v1", namespace: "og" } as const;
 const digestOf = (params: typeof Params.Type, options: { salt: string; namespace: string } = OPTIONS) =>
 	ImageCacheKey.fromParams(Params, params, options).pipe(Effect.map((key) => key.digest));
 
-layer(NodeCrypto.layer)("ImageCacheKey.fromParams", (it) => {
+layer(NodeCrypto.layerDigest)("ImageCacheKey.fromParams", (it) => {
 	it.effect("hashes exactly salt NUL canonical-json with SHA-256, as lowercase hex", () =>
 		Effect.gen(function* () {
 			const key = yield* ImageCacheKey.fromParams(Params, { version: "1.0.0", name: "pkg" }, OPTIONS);
@@ -100,22 +101,22 @@ layer(NodeCrypto.layer)("ImageCacheKey.fromParams", (it) => {
 	);
 });
 
-describe("ImageCacheKey.fromParams with a failing Crypto", () => {
-	const broken = Layer.succeed(Crypto.Crypto)(
-		Crypto.make({
-			randomBytes: (size) => new Uint8Array(size),
-			digest: () =>
-				Effect.fail(PlatformError.badArgument({ module: "Crypto", method: "digest", description: "unsupported" })),
-		}),
-	);
+describe("ImageCacheKey.fromParams with a Digest double", () => {
+	const seen: Array<string> = [];
+	const fixed = Layer.mock(Digest.Digest, {
+		digestHex: (algorithm, data) =>
+			Effect.sync(() => {
+				seen.push(`${algorithm.name}:${new TextDecoder().decode(data)}`);
+				return "a".repeat(64);
+			}),
+	});
 
-	layer(broken)((it) => {
-		it.effect("a Crypto failure is a typed digest failure carrying the PlatformError", () =>
+	layer(fixed)((it) => {
+		it.effect("takes the SHA-256 of salt NUL canonical-json from the Digest service in R", () =>
 			Effect.gen(function* () {
-				const error = yield* Effect.flip(ImageCacheKey.fromParams(Params, { name: "pkg", version: "1" }, OPTIONS));
-				assert.strictEqual(error.reason, "digest");
-				assert.instanceOf(error.cause, PlatformError.PlatformError);
-				assert.strictEqual((error.cause as PlatformError.PlatformError).reason._tag, "BadArgument");
+				const key = yield* ImageCacheKey.fromParams(Params, { name: "pkg", version: "1" }, OPTIONS);
+				assert.strictEqual(key.digest, "a".repeat(64));
+				assert.deepStrictEqual(seen, ['SHA-256:og-v1\u0000{"name":"pkg","version":"1"}']);
 			}),
 		);
 	});

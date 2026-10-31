@@ -11,7 +11,7 @@ import { ToolOutcome } from "./ToolOutcome.js";
  * Core's `KeyValueStore` already satisfies it structurally, so a
  * `KeyValueStore` value can be passed as is. An application backed by its
  * own table implements just these two methods, instead of stubbing the
- * `remove`, `clear` and `size` that `KeyValueStore.makeStringOnly` demands.
+ * `remove`, `clear`, `size` and `keys` that `KeyValueStore.makeStringOnly` demands.
  *
  * `get` answers `undefined` for a missing key, the same contract as
  * `KeyValueStore.get`. A failure from either method is never a tool error:
@@ -74,6 +74,13 @@ export interface ToolReplayOptions<P, S extends Schema.Top, Store extends ToolRe
  * {@link ToolReplayOptions.store} supplies a {@link ToolReplayStore}: just
  * `get` and `set`, for an application's own table. Then `R` carries no
  * `KeyValueStore`.
+ *
+ * Inside an MCP server, pass the store. A service left in a handler's `R`
+ * has to be declared in the tool's `dependencies`, which makes it a
+ * request-level dependency that only MCP middleware can meet. Read
+ * `KeyValueStore` once when the handlers are built, with the effect form of
+ * `Toolkit.toLayer`, and hand it to `wrap` as `store`: a `KeyValueStore`
+ * satisfies {@link ToolReplayStore} as is.
  *
  * Semantics, per call:
  *

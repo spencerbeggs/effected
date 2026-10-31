@@ -1,8 +1,8 @@
-import { assert, describe, it } from "@effect/vitest";
+import { assert, describe, layer } from "@effect/vitest";
 import { Effect } from "effect";
 import { GitHub } from "../src/GitHub.js";
 import { GITHUB_SECRET, NOON } from "./fixtures/generate-vectors.js";
-import { bytes, hmac, request } from "./helpers.js";
+import { MacLive, bytes, hmac, request } from "./helpers.js";
 
 const BODY = '{"action":"opened","number":1}';
 const good = hmac(GITHUB_SECRET, [BODY], "hex");
@@ -12,7 +12,7 @@ const verify = (head: Record<string, string>, body: string = BODY) =>
 const reason = (head: Record<string, string>, body?: string) =>
 	Effect.flip(verify(head, body)).pipe(Effect.map((error) => error.reason));
 
-describe("GitHub.verify", () => {
+layer(MacLive)("GitHub.verify", (it) => {
 	it.effect("accepts sha256=<hex> of the body", () =>
 		Effect.gen(function* () {
 			yield* verify({ "x-hub-signature-256": `sha256=${good}` });

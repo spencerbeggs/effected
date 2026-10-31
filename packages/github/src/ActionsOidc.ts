@@ -2,6 +2,7 @@ import type { JwksResolver, JwtError } from "@effected/jwt";
 import { Oidc } from "@effected/oidc";
 import type { Duration } from "effect";
 import { Effect, Schema, SchemaTransformation } from "effect";
+import type { Signature } from "effect/crypto";
 
 /** The issuer of every GitHub Actions OIDC token on github.com. */
 const ISSUER = "https://token.actions.githubusercontent.com";
@@ -173,7 +174,8 @@ const testClaims = (overrides: Readonly<Record<string, unknown>> = {}): Record<s
  * @remarks
  * {@link ActionsOidc.verify} is `@effected/oidc`'s `Oidc.verify` pinned to the
  * Actions issuer: it checks the signature against GitHub's published JWKS
- * (through `@effected/jwt`'s `JwksResolver`, which caches it), then `iss`,
+ * (through `@effected/jwt`'s `JwksResolver`, which caches it; the signature
+ * itself runs on core `effect/jose` and needs core's `Signature` service), then `iss`,
  * `aud`, `exp`, `nbf` and `iat`, then decodes the payload into
  * {@link ActionsOidcClaims}. Every failure is a `JwtError`; route on its
  * `reason` (`wrongAudience`, `expired`, `claims`, ...), never on its message.
@@ -198,7 +200,8 @@ const testClaims = (overrides: Readonly<Record<string, unknown>> = {}): Record<s
  * ```ts
  * import { JwksResolver } from "@effected/jwt";
  * import { ActionsOidc } from "@effected/github";
- * import { Data, Effect } from "effect";
+ * import { Data, Effect, Layer } from "effect";
+ * import { SecureRandom, Signature } from "effect/crypto";
  *
  * class Forbidden extends Data.TaggedError("Forbidden")<{ readonly repositoryId: number }> {}
  *
@@ -216,7 +219,8 @@ const testClaims = (overrides: Readonly<Record<string, unknown>> = {}): Record<s
  *   });
  *
  * // JwksResolver.layer needs an HttpClient and a JwksStore, provided once at the edge.
- * export const program = authorize("eyJ...").pipe(Effect.provide(JwksResolver.layer));
+ * const CryptoLive = Signature.layerWebCrypto.pipe(Layer.provide(SecureRandom.layerWebCrypto));
+ * export const program = authorize("eyJ...").pipe(Effect.provide(Layer.merge(JwksResolver.layer, CryptoLive)));
  * ```
  *
  * @public
@@ -227,11 +231,11 @@ export class ActionsOidc {
 	/** The Actions OIDC issuer, `https://token.actions.githubusercontent.com`. */
 	static readonly issuer: "https://token.actions.githubusercontent.com" = ISSUER;
 
-	/** Verify a runner-issued OIDC token: signature against GitHub's JWKS, iss, aud, exp/nbf, then typed claims. */
+	/** Verify a runner-issued OIDC token: signature against GitHub's JWKS, iss, aud, exp/nbf, then typed claims; requires `JwksResolver` and core `Signature`. */
 	static readonly verify: (
 		token: string,
 		options: ActionsOidcVerifyOptions,
-	) => Effect.Effect<ActionsOidcClaims, JwtError, JwksResolver> = verify;
+	) => Effect.Effect<ActionsOidcClaims, JwtError, JwksResolver | Signature.Signature> = verify;
 
 	/**
 	 * A valid claims payload for tests, overridable field by field.

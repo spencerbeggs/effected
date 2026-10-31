@@ -1,6 +1,6 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, ConfigProvider, Console, Effect, Exit, Fiber, Layer, Runtime, Stdio, Terminal } from "effect";
+import { Cause, ConfigProvider, Console, Effect, Exit, Fiber, Layer, Runtime, Stdio } from "effect";
 import { Command } from "effect/cli";
 import { vi } from "vitest";
 import { CliPrompt, CliRuntime } from "../../src/index.js";
@@ -8,6 +8,7 @@ import { TestTerminal } from "../../src/testing.js";
 import { CliUi, Select, TextInput } from "../../src/ui.js";
 import type { CliUiTestSession } from "../../src/ui-testing.js";
 import { CliUiTest } from "../../src/ui-testing.js";
+import { inertTerminal } from "../helpers/inertTerminal.js";
 
 // Count loads of the peers through the kit's one loader, without changing what it does.
 const { loads } = vi.hoisted(() => ({ loads: { count: 0 } }));
@@ -121,16 +122,7 @@ const platform = (tty: boolean) =>
 	Layer.mergeAll(
 		NodeServices.layer,
 		Stdio.layerTest({ stdinIsTerminal: Effect.succeed(tty), stdoutIsTerminal: Effect.succeed(tty) }),
-		Layer.succeed(
-			Terminal.Terminal,
-			Terminal.make({
-				columns: Effect.succeed(80),
-				rows: Effect.succeed(24),
-				readInput: Effect.die("unused"),
-				readLine: Effect.die("unused"),
-				display: () => Effect.void,
-			}),
-		),
+		inertTerminal(),
 	);
 
 /** okfit's production wiring: `CliRuntime.main` with `env`, so CliEnv provides the theme and decides interactivity. */

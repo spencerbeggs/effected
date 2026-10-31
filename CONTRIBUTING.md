@@ -106,9 +106,9 @@ Dependency versions are shared through pnpm catalogs in `pnpm-workspace.yaml`, s
 
 ## Dependency catalogs
 
-`@effected/pnpm-plugin-effect` defines the catalogs the repo and its consumers use: the `effect` pair, which pins Effect itself, and the `effected` pair, which names every publishable kit package except `@effected/pnpm-plugin-effect` itself, for consumers to reference as `catalog:effected`.
+`@effected/pnpm-plugin-effected` declares the catalogs the repo uses: the `effect` pair, which pins Effect itself, and the `effected` pair, which names every publishable kit package except `@effected/pnpm-plugin-effected` itself. Its pnpmfile folds them into the one catalog consumers see, `effected`, which carries the Effect family and the kit together and which consumers reference as `catalog:effected` everywhere, peers included.
 
-Advancing the Effect pin is a two-step, human-run flow. `pnpm:up` rewrites the catalog ranges in `packages/pnpm-plugin-effect/savvy.build.ts`; `pnpm:export` writes the catalogs into the root `pnpm-workspace.yaml`. Neither touches `pnpm-lock.yaml` — the lockfile moves on your next install. Review the diff before committing:
+Advancing the Effect pin is a two-step, human-run flow. `pnpm:up` rewrites the catalog ranges in `packages/pnpm-plugin-effected/savvy.build.ts`; `pnpm:export` writes the catalogs into the root `pnpm-workspace.yaml`. Neither touches `pnpm-lock.yaml` — the lockfile moves on your next install. Review the diff before committing:
 
 ```bash
 pnpm pnpm:preview   # print the generated catalogs without writing anything
@@ -123,7 +123,7 @@ pnpm catalog:check  # read-only: report where the catalog has drifted from the w
 pnpm catalog:sync   # rewrite the catalog and write a changeset if anything moved
 ```
 
-`catalog:sync` touches only `packages/pnpm-plugin-effect/savvy.build.ts` and one fixed-name changeset. Catalog entries hold each package's **next** release, so a pending changeset alone can move an entry — and because `lock-minor` floors peer patches, a first sync normalizing a peer range down by a patch is correct rather than drift.
+`catalog:sync` touches only `packages/pnpm-plugin-effected/savvy.build.ts` and one fixed-name changeset. Catalog entries hold each package's **next** release, so a pending changeset alone can move an entry — and because `lock-minor` floors peer patches, a first sync normalizing a peer range down by a patch is correct rather than drift.
 
 ## Build pipeline
 

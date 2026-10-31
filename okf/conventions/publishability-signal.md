@@ -10,14 +10,14 @@ tags:
 sources:
   - id: github-actions-package
     resource: ../../packages/github-actions/package.json
-  - id: pnpm-plugin-effect-package
-    resource: ../../packages/pnpm-plugin-effect/package.json
+  - id: pnpm-plugin-effected-package
+    resource: ../../packages/pnpm-plugin-effected/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 457227d4dcda1038
+    body: 8fcb1412a25b4c56
 ---
 
 # Read publishability from publishConfig.access, never from private
@@ -39,10 +39,10 @@ manifest — `github-actions/package.json` carries `"publishConfig": {
 needs to ask "does this package publish" — a catalog-membership check, a
 release-scope calculation, a dependency audit — must ask the question
 this way. Asking `private === false` instead classifies every package in
-this workspace as unpublishable and fails open: `packages/pnpm-plugin-effect/__test__/catalog.test.ts`'s
+this workspace as unpublishable and fails open: `packages/pnpm-plugin-effected/__test__/catalog.test.ts`'s
 own membership derivation, and the root `catalog:sync`/`catalog:check`
 gate, both compute publishability from `publishConfig.access`, never from
-`private`.[^pnpm-plugin-effect-package]
+`private`.[^pnpm-plugin-effected-package]
 
 Always write and read this signal as `publishConfig.access === "public"`.
 Never add logic that infers publish intent from `private`, and never
@@ -53,7 +53,7 @@ release — it does not, and never has.
     `"private": true` at the top of the manifest alongside a
     `"publishConfig": { "access": "public", ... }` block, the shape every
     publishing package in the workspace shares.
-[^pnpm-plugin-effect-package]: `packages/pnpm-plugin-effect/package.json`
+[^pnpm-plugin-effected-package]: `packages/pnpm-plugin-effected/package.json`
     and its build (`savvy.build.ts`) — the companion package that ships
     the catalog naming every other package's next-release version; see
     [the catalog-sync CLI](../interfaces/catalog-sync-cli.md) for how

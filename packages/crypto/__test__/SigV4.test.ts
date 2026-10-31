@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { NodeCrypto } from "@effect/platform-node";
 import { assert, describe, it, layer } from "@effect/vitest";
-import { Crypto, DateTime, Effect, Redacted } from "effect";
+import { DateTime, Effect, Layer, Redacted } from "effect";
+import { Digest, Mac, SecureRandom } from "effect/crypto";
 import type { SigV4Credentials, SigV4Request } from "../src/SigV4.js";
 import { SigV4 } from "../src/SigV4.js";
 import { SigV4PathError } from "../src/SigV4PathError.js";
@@ -46,125 +47,139 @@ describe("SigV4.encodePath", () => {
 	});
 });
 
-describe("SigV4.signingKey", () => {
-	it.effect("reproduces AWS's documented signing-key derivation", () =>
-		Effect.gen(function* () {
-			// AWS General Reference, "Examples of how to derive a signing key for
-			// Signature Version 4": IAM, us-east-1, 20120215.
-			const key = yield* SigV4.signingKey(
-				Redacted.make("wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"),
-				"20120215",
-				"us-east-1",
-				"iam",
-			);
-			assert.strictEqual(
-				Buffer.from(key).toString("hex"),
-				"f4780e2d9f65fa895f9c67b32ce1baf0b0d8a43505a000a1a9e090d414db404d",
-			);
-		}),
-	);
-});
+// Both families, as a Worker would provide them and as a Node process would.
+const WebCryptoLive = Layer.mergeAll(
+	Digest.layerWebCrypto,
+	Mac.layerWebCrypto.pipe(Layer.provide(SecureRandom.layerWebCrypto)),
+);
+const NodeCryptoLive = Layer.mergeAll(NodeCrypto.layerDigest, NodeCrypto.layerMac);
 
-layer(NodeCrypto.layer)("SigV4 (AWS S3 documented examples)", (it) => {
-	it.effect("reproduces the canonical request for GET Object", () =>
-		Effect.gen(function* () {
-			const canonical = yield* SigV4.canonicalize(getObject, s3Example);
-			assert.strictEqual(
-				canonical.canonicalRequest,
-				[
-					"GET",
-					"/test.txt",
-					"",
-					"host:examplebucket.s3.amazonaws.com",
-					"range:bytes=0-9",
-					"x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-					"x-amz-date:20130524T000000Z",
-					"",
-					"host;range;x-amz-content-sha256;x-amz-date",
-					"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-				].join("\n"),
-			);
-			// AWS documents this exact hash of the GET Object canonical request.
-			assert.strictEqual(
-				sha256Hex(canonical.canonicalRequest),
-				"7344ae5b7ee6c3e7e6b0fe0640412a37625d1fbfff95c48bbb2dc43964946972",
-			);
-			assert.strictEqual(canonical.amzDate, "20130524T000000Z");
-			assert.strictEqual(canonical.dateStamp, "20130524");
-		}),
-	);
+const families: ReadonlyArray<readonly [string, Layer.Layer<Digest.Digest | Mac.Mac>]> = [
+	["WebCrypto", WebCryptoLive],
+	["NodeCrypto", NodeCryptoLive],
+];
 
-	it.effect("signs GET Object with a Range header", () =>
-		Effect.gen(function* () {
-			const { headers } = yield* SigV4.sign(getObject, s3Example);
-			assert.strictEqual(
-				headers.authorization,
-				"AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request, SignedHeaders=host;range;x-amz-content-sha256;x-amz-date, Signature=f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41",
-			);
-			assert.strictEqual(headers["x-amz-date"], "20130524T000000Z");
-			assert.strictEqual(headers.host, host);
-			assert.strictEqual(headers.range, "bytes=0-9");
-		}),
-	);
+for (const [family, live] of families) {
+	layer(live)(`SigV4.signingKey on ${family}`, (it) => {
+		it.effect("reproduces AWS's documented signing-key derivation", () =>
+			Effect.gen(function* () {
+				// AWS General Reference, "Examples of how to derive a signing key for
+				// Signature Version 4": IAM, us-east-1, 20120215.
+				const key = yield* SigV4.signingKey(
+					Redacted.make("wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY"),
+					"20120215",
+					"us-east-1",
+					"iam",
+				);
+				assert.strictEqual(
+					Buffer.from(key).toString("hex"),
+					"f4780e2d9f65fa895f9c67b32ce1baf0b0d8a43505a000a1a9e090d414db404d",
+				);
+			}),
+		);
+	});
 
-	it.effect("signs PUT Object, hashing the body through Crypto and encoding the key", () =>
-		Effect.gen(function* () {
-			const { headers } = yield* SigV4.sign(
-				{
-					method: "PUT",
+	layer(live)(`SigV4 (AWS S3 documented examples) on ${family}`, (it) => {
+		it.effect("reproduces the canonical request for GET Object", () =>
+			Effect.gen(function* () {
+				const canonical = yield* SigV4.canonicalize(getObject, s3Example);
+				assert.strictEqual(
+					canonical.canonicalRequest,
+					[
+						"GET",
+						"/test.txt",
+						"",
+						"host:examplebucket.s3.amazonaws.com",
+						"range:bytes=0-9",
+						"x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+						"x-amz-date:20130524T000000Z",
+						"",
+						"host;range;x-amz-content-sha256;x-amz-date",
+						"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+					].join("\n"),
+				);
+				// AWS documents this exact hash of the GET Object canonical request.
+				assert.strictEqual(
+					sha256Hex(canonical.canonicalRequest),
+					"7344ae5b7ee6c3e7e6b0fe0640412a37625d1fbfff95c48bbb2dc43964946972",
+				);
+				assert.strictEqual(canonical.amzDate, "20130524T000000Z");
+				assert.strictEqual(canonical.dateStamp, "20130524");
+			}),
+		);
+
+		it.effect("signs GET Object with a Range header", () =>
+			Effect.gen(function* () {
+				const { headers } = yield* SigV4.sign(getObject, s3Example);
+				assert.strictEqual(
+					headers.authorization,
+					"AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request, SignedHeaders=host;range;x-amz-content-sha256;x-amz-date, Signature=f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41",
+				);
+				assert.strictEqual(headers["x-amz-date"], "20130524T000000Z");
+				assert.strictEqual(headers.host, host);
+				assert.strictEqual(headers.range, "bytes=0-9");
+			}),
+		);
+
+		it.effect("signs PUT Object, hashing the body through Digest and encoding the key", () =>
+			Effect.gen(function* () {
+				const { headers } = yield* SigV4.sign(
+					{
+						method: "PUT",
+						host,
+						path: "test$file.text",
+						headers: { Date: "Fri, 24 May 2013 00:00:00 GMT", "x-amz-storage-class": "REDUCED_REDUNDANCY" },
+						body: "Welcome to Amazon S3.",
+						now: MAY_24_2013,
+					},
+					s3Example,
+				);
+				// No payloadHash given, so the body was hashed: AWS's documented value.
+				assert.strictEqual(
+					headers["x-amz-content-sha256"],
+					"44ce7dd67c959e0d3524ffac1771dfbba87d2b6b4b4e99e42034a8b803f8b072",
+				);
+				assert.strictEqual(signatureOf(headers), "98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd");
+				assert.strictEqual(headers.date, "Fri, 24 May 2013 00:00:00 GMT", "header names are lower-cased");
+			}),
+		);
+
+		it.effect("signs GET Bucket (list objects) with a sorted query string", () =>
+			Effect.gen(function* () {
+				const request: SigV4Request = {
+					method: "GET",
 					host,
-					path: "test$file.text",
-					headers: { Date: "Fri, 24 May 2013 00:00:00 GMT", "x-amz-storage-class": "REDUCED_REDUNDANCY" },
-					body: "Welcome to Amazon S3.",
+					path: "/",
+					query: { prefix: "J", "max-keys": "2" },
+					payloadHash: SigV4.EMPTY_PAYLOAD_HASH,
 					now: MAY_24_2013,
-				},
-				s3Example,
-			);
-			// No payloadHash given, so the body was hashed: AWS's documented value.
-			assert.strictEqual(
-				headers["x-amz-content-sha256"],
-				"44ce7dd67c959e0d3524ffac1771dfbba87d2b6b4b4e99e42034a8b803f8b072",
-			);
-			assert.strictEqual(signatureOf(headers), "98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd");
-			assert.strictEqual(headers.date, "Fri, 24 May 2013 00:00:00 GMT", "header names are lower-cased");
-		}),
-	);
+				};
+				const canonical = yield* SigV4.canonicalize(request, s3Example);
+				assert.strictEqual(canonical.canonicalRequest.split("\n")[2], "max-keys=2&prefix=J");
+				const { headers } = yield* SigV4.sign(request, s3Example);
+				assert.strictEqual(signatureOf(headers), "34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7");
+			}),
+		);
 
-	it.effect("signs GET Bucket (list objects) with a sorted query string", () =>
-		Effect.gen(function* () {
-			const request: SigV4Request = {
-				method: "GET",
-				host,
-				path: "/",
-				query: { prefix: "J", "max-keys": "2" },
-				payloadHash: SigV4.EMPTY_PAYLOAD_HASH,
-				now: MAY_24_2013,
-			};
-			const canonical = yield* SigV4.canonicalize(request, s3Example);
-			assert.strictEqual(canonical.canonicalRequest.split("\n")[2], "max-keys=2&prefix=J");
-			const { headers } = yield* SigV4.sign(request, s3Example);
-			assert.strictEqual(signatureOf(headers), "34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7");
-		}),
-	);
+		it.effect("signs the same instant identically given a Date or a DateTime", () =>
+			Effect.gen(function* () {
+				const fromDate = yield* SigV4.sign(getObject, s3Example);
+				const fromDateTime = yield* SigV4.sign({ ...getObject, now: DateTime.makeUnsafe(MAY_24_2013) }, s3Example);
+				assert.strictEqual(fromDateTime.headers.authorization, fromDate.headers.authorization);
+			}),
+		);
 
-	it.effect("signs the same instant identically given a Date or a DateTime", () =>
-		Effect.gen(function* () {
-			const fromDate = yield* SigV4.sign(getObject, s3Example);
-			const fromDateTime = yield* SigV4.sign({ ...getObject, now: DateTime.makeUnsafe(MAY_24_2013) }, s3Example);
-			assert.strictEqual(fromDateTime.headers.authorization, fromDate.headers.authorization);
-		}),
-	);
+		it.effect("changes the signature when any signed header changes", () =>
+			Effect.gen(function* () {
+				const nine = yield* SigV4.sign(getObject, s3Example);
+				const eight = yield* SigV4.sign({ ...getObject, headers: { range: "bytes=0-8" } }, s3Example);
+				assert.notStrictEqual(signatureOf(nine.headers), signatureOf(eight.headers));
+			}),
+		);
+	});
+}
 
-	it.effect("changes the signature when any signed header changes", () =>
-		Effect.gen(function* () {
-			const nine = yield* SigV4.sign(getObject, s3Example);
-			const eight = yield* SigV4.sign({ ...getObject, headers: { range: "bytes=0-8" } }, s3Example);
-			assert.notStrictEqual(signatureOf(nine.headers), signatureOf(eight.headers));
-		}),
-	);
-});
-
-layer(NodeCrypto.layer)("SigV4 merged behaviour", (it) => {
+layer(NodeCryptoLive)("SigV4 merged behaviour", (it) => {
 	const credentials: SigV4Credentials = {
 		accessKeyId: "AK",
 		secretAccessKey: Redacted.make("SK"),
@@ -260,42 +275,38 @@ layer(NodeCrypto.layer)("SigV4 merged behaviour", (it) => {
 	it.effect("hashes an empty body without a digest call, as EMPTY_PAYLOAD_HASH", () =>
 		Effect.gen(function* () {
 			const seen: Array<number> = [];
-			const counting = Crypto.make({
-				randomBytes: (size) => new Uint8Array(size),
-				digest: (_algorithm, data) =>
+			const counting = Layer.mock(Digest.Digest, {
+				digestHex: (_algorithm, data) =>
 					Effect.sync(() => {
 						seen.push(data.byteLength);
-						return new Uint8Array(32);
+						return "0".repeat(64);
 					}),
 			});
 			const payloadHashOf = (body: Uint8Array | string) =>
 				SigV4.canonicalize({ ...base, body }, credentials).pipe(
-					Effect.provideService(Crypto.Crypto, counting),
+					Effect.provide(counting),
 					Effect.map((canonical) => canonical.payloadHash),
 				);
 			for (const empty of [new Uint8Array(0), ""]) {
 				assert.strictEqual(yield* payloadHashOf(empty), SigV4.EMPTY_PAYLOAD_HASH);
 			}
-			assert.deepStrictEqual(seen, [], "an empty body must not reach Crypto.digest");
+			assert.deepStrictEqual(seen, [], "an empty body must not reach Digest.digestHex");
 			// The control: the same fake does see a non-empty body.
 			assert.strictEqual(yield* payloadHashOf(new Uint8Array([1])), "0".repeat(64));
 			assert.deepStrictEqual(seen, [1]);
 		}),
 	);
 
-	it.effect("takes every digest from the Crypto service in R", () =>
+	it.effect("takes every digest from the Digest service in R", () =>
 		Effect.gen(function* () {
-			const zero = Crypto.make({
-				randomBytes: (size) => new Uint8Array(size),
-				digest: () => Effect.succeed(new Uint8Array(32)),
-			});
-			const canonical = yield* SigV4.canonicalize(base, credentials).pipe(Effect.provideService(Crypto.Crypto, zero));
+			const zero = Layer.mock(Digest.Digest, { digestHex: () => Effect.succeed("0".repeat(64)) });
+			const canonical = yield* SigV4.canonicalize(base, credentials).pipe(Effect.provide(zero));
 			assert.strictEqual(canonical.payloadHash, "0".repeat(64));
 		}),
 	);
 });
 
-layer(NodeCrypto.layer)("SigV4.sign's request target", (it) => {
+layer(NodeCryptoLive)("SigV4.sign's request target", (it) => {
 	const credentials: SigV4Credentials = {
 		accessKeyId: "AK",
 		secretAccessKey: Redacted.make("SK"),

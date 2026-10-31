@@ -36,8 +36,6 @@ describe("root entrypoint", () => {
 		const main = await import("../src/index.js");
 		assert.deepStrictEqual(Object.keys(main).sort(), [
 			"ConstantTime",
-			"CryptoError",
-			"CryptoErrorReason",
 			"DriftApply",
 			"DriftDecision",
 			"DriftDetected",
@@ -61,7 +59,6 @@ describe("root entrypoint", () => {
 		const reachable = [...reachableFrom(resolve(SRC, "index.ts"))];
 		// positive control: the walker resolves through to the internal engines
 		assert.isTrue(reachable.some((file) => file.endsWith("internal/hmac.ts")));
-		assert.isTrue(reachable.some((file) => file.endsWith("internal/subtle.ts")));
 		assert.isTrue(reachable.some((file) => file.endsWith("SigV4.ts")));
 		assert.isTrue(reachable.some((file) => file.endsWith("internal/canonical.ts")));
 		assert.isTrue(reachable.some((file) => file.endsWith("HttpRedaction.ts")));

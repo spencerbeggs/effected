@@ -9,10 +9,10 @@ tags:
   - release
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T17:43:02Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: cfde8e677870e182
+    body: 9b3952a8cecc8ff2
 ---
 
 # Publish a snapshot
@@ -32,13 +32,13 @@ A consumer needs unreleased kit changes on a runner, usually because its own fix
    - npm trusted publishing (OIDC) works through the nested reusable workflows; this was confirmed live, with the publisher recorded as `GitHubActions`. `NPM_TOKEN` stays the fallback. The caller must keep `id-token: write` and `packages: write`, because a nested job cannot exceed its caller's permissions.
    - A dry run versions, builds and packs, probes the registry, then skips every upload and reports the outcome `rehearsed`.
 4. **Copy the overrides block** from the job summary into the consumer's `pnpm-workspace.yaml`. It holds exact registry versions, not `file:` links, so the push guard allows the PR.
-5. **Before the consumer merges**, replace the snapshot pins with the real release: bump the `@effected/pnpm-plugin-effect` catalog pin and drop the lockfile (see the dogfood `--exit` step).
+5. **Before the consumer merges**, replace the snapshot pins with the real release: bump the `@effected/pnpm-plugin-effected` catalog pin and drop the lockfile (see the dogfood `--exit` step).
 
 ## Limits
 
 - **A package the registry has never seen is skipped** (reported as `never-published` in the result). A first publish under a non-latest tag would also claim `latest`, so the first publish belongs to the real release. Only a confirmed 404 counts; any other registry error fails that target. If a published snapshot depends on a skipped or failed sibling, the job summary lists it under "Dangling dependencies", and that snapshot can't install until the sibling is released.
 - **Snapshots publish ripple bumps too.** Every package the plan bumps is published, including patch bumps pulled in only because a dependency moved. Check `changeset status` before dispatching to see the set.
-- **The `effected` catalog doesn't carry snapshot versions**, and `@effected/pnpm-plugin-effect` is not snapshot-published. Consumers pin snapshots with `overrides:`, which replace the catalog's resolution outright.
+- **The `effected` catalog doesn't carry snapshot versions**, and `@effected/pnpm-plugin-effected` is not snapshot-published. Consumers pin snapshots with `overrides:`, which replace the catalog's resolution outright.
 
 ## Authority
 

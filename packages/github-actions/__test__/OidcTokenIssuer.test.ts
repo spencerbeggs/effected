@@ -196,7 +196,7 @@ describe("OidcTokenIssuer", () => {
 					live(fake),
 				);
 				assert.strictEqual(error.reason, "malformedToken");
-				assert.include(error.message, "three segments");
+				assert.include(error.message, "3 segments");
 			}),
 		);
 

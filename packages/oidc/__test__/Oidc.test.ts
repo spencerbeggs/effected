@@ -1,8 +1,10 @@
-import { assert, describe, it } from "@effect/vitest";
+import { assert, layer } from "@effect/vitest";
 import { TestIssuer } from "@effected/jwt/testing";
 import { Effect, Schema } from "effect";
+import type { Signature } from "effect/crypto";
 import { TestClock } from "effect/testing";
 import { IdTokenClaims, Oidc } from "../src/index.js";
+import { CryptoLive } from "./crypto.js";
 
 const ISSUER = "https://accounts.example.com";
 const NOW_MILLIS = 1_800_000_000_000;
@@ -11,7 +13,7 @@ const NOW = NOW_MILLIS / 1000;
 type Issuer = Effect.Success<ReturnType<typeof TestIssuer.make>>;
 
 /** Run `use` against a fresh issuer double, with the clock pinned. */
-const withIssuer = <A, E>(use: (issuer: Issuer) => Effect.Effect<A, E, never>) =>
+const withIssuer = <A, E>(use: (issuer: Issuer) => Effect.Effect<A, E, Signature.Signature>) =>
 	Effect.gen(function* () {
 		yield* TestClock.setTime(NOW_MILLIS);
 		const issuer = yield* TestIssuer.make({ issuer: ISSUER });
@@ -29,7 +31,7 @@ const ID_TOKEN = {
 	email: "user@example.com",
 };
 
-describe("Oidc.verify", () => {
+layer(CryptoLive, { buildPerTest: true })("Oidc.verify", (it) => {
 	it.effect("verifies an ID token into IdTokenClaims, keeping claims the schema does not name", () =>
 		withIssuer((issuer) =>
 			Effect.gen(function* () {
@@ -192,7 +194,7 @@ describe("Oidc.verify", () => {
 	);
 });
 
-describe("Oidc.decodeUnverified", () => {
+layer(CryptoLive, { buildPerTest: true })("Oidc.decodeUnverified", (it) => {
 	it.effect("decodes a token's claims without checking signature, issuer, audience or time", () =>
 		withIssuer(() =>
 			Effect.gen(function* () {

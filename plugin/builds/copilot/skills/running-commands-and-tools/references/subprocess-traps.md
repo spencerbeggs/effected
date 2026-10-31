@@ -56,4 +56,7 @@ that need a specific sequence of commands to return specific output without
 a real subprocess. `testing-actions` describes the ordering trap around
 composing it with `NodeServices.layer` in a merge; this is the actual
 shipped class that recipe is built around — reach for it by name instead of
-hand-rolling a spawner stub per suite.
+hand-rolling a spawner stub per suite. A recorded `SpawnRecord.args` is
+`ReadonlyArray<CommandLine.Word>`, so a `Redacted` argument stays `Redacted`
+in the record (compare with `args.map(String)` or against the `Redacted`
+itself); the script function sees it as `"<redacted>"`.

@@ -1,5 +1,6 @@
 import type { DateTime } from "effect";
 import { Effect } from "effect";
+import type { Mac } from "effect/crypto";
 import { annotateOutcome, checkFresh, matchesAny, readHeader, reject } from "./internal/verify.js";
 import type { FreshnessOptions, WebhookRequest } from "./WebhookRequest.js";
 import type { WebhookVerificationError } from "./WebhookVerificationError.js";
@@ -69,7 +70,11 @@ export class Stripe {
 	 * `stale_timestamp` when the signature matches but `t` sits outside `tolerance` (five minutes by default) of
 	 * `receivedAt`. The signature is always checked before the timestamp.
 	 *
-	 * Truly asynchronous: the HMAC runs on WebCrypto, so a test that forks this and then adjusts `TestClock` can race or
+	 * Requires `Mac.Mac` (`effect/crypto`) in `R`: `Mac.layerWebCrypto` with `SecureRandom.layerWebCrypto`, or a
+	 * platform family layer such as `NodeCrypto.layerMac`. A `CryptoError` from the `Mac` layer is a defect, as is a
+	 * runtime with no `crypto.subtle` on the WebCrypto layer.
+	 *
+	 * On `Mac.layerWebCrypto` this is truly asynchronous: a test that forks it and then adjusts `TestClock` can race or
 	 * hang. Await it, or gate the clock on a latch.
 	 *
 	 * @public
@@ -77,5 +82,5 @@ export class Stripe {
 	static readonly verify: (
 		request: WebhookRequest,
 		options?: FreshnessOptions,
-	) => Effect.Effect<StripeVerified, WebhookVerificationError> = verify;
+	) => Effect.Effect<StripeVerified, WebhookVerificationError, Mac.Mac> = verify;
 }

@@ -1,5 +1,5 @@
 import { generateKeyPairSync } from "node:crypto";
-import { assert, describe, it } from "@effect/vitest";
+import { assert, layer } from "@effect/vitest";
 import { DateTime, Duration, Effect, Layer, Redacted } from "effect";
 import { TestClock } from "effect/testing";
 import { GitHubApp } from "../src/GitHubApp.js";
@@ -10,6 +10,7 @@ import { GitHubRelease, ReleaseInfo } from "../src/GitHubRelease.js";
 import { uploadsBaseUrlFor } from "../src/internal/uploads.js";
 import { Repo } from "../src/Repo.js";
 import { RetryPolicy } from "../src/Resilience.js";
+import { CryptoLive } from "./crypto.js";
 import type { Reply, ScriptedFetch } from "./fixtures.js";
 import { scriptedFetch } from "./fixtures.js";
 import { REPO } from "./harness.js";
@@ -43,12 +44,12 @@ const clientLayer = (script: ScriptedFetch, options: Partial<GitHubClientOptions
 		...options,
 	});
 
-const upload = <E>(release: ReleaseInfo, client: Layer.Layer<GitHubClient, E>) =>
+const upload = <E, R>(release: ReleaseInfo, client: Layer.Layer<GitHubClient, E, R>) =>
 	Effect.flatMap(GitHubRelease, (releases) =>
 		releases.uploadAsset(release, { name: "app.zip", data: "bytes", contentType: "application/zip" }),
 	).pipe(Effect.provide(GitHubRelease.layer.pipe(Layer.provideMerge(Layer.mergeAll(client, Repo.layer(REPO))))));
 
-describe("GitHubRelease.uploadAsset upload host", () => {
+layer(CryptoLive, { buildPerTest: true })("GitHubRelease.uploadAsset upload host", (it) => {
 	it.effect("a GitHub Enterprise Server client uploads to its own /api/uploads, token attached", () =>
 		Effect.gen(function* () {
 			const script = scriptedFetch([{ status: 201, body: ASSET }]);
@@ -141,7 +142,7 @@ describe("GitHubRelease.uploadAsset upload host", () => {
 	);
 });
 
-describe("GitHubRelease.uploadAsset under GitHub App auth", () => {
+layer(CryptoLive, { buildPerTest: true })("GitHubRelease.uploadAsset under GitHub App auth", (it) => {
 	// The App layers build their client through a rotating facade over a live
 	// inner client; these drive the real octokit client underneath it.
 	const { privateKey } = generateKeyPairSync("rsa", {
@@ -259,7 +260,7 @@ describe("GitHubRelease.uploadAsset under GitHub App auth", () => {
 	);
 });
 
-describe("uploadsBaseUrlFor", () => {
+layer(CryptoLive, { buildPerTest: true })("uploadsBaseUrlFor", (it) => {
 	it("derives the upload host from the configured REST base alone", () => {
 		const table: ReadonlyArray<readonly [string | undefined, string]> = [
 			[undefined, "https://uploads.github.com"],

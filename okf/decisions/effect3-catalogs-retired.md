@@ -8,17 +8,19 @@ tags:
   - compat
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 9e620f04a9283674
+    body: d08f148ad9b8e4b3
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: edc9e7ecffe95195
+    at: 2026-10-31T19:39:48Z
+    content: edae9ae68844f4d9
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-10-31T19:39:48Z
 ---
 
 # There is no Effect v3 catalog and no camelCase catalog alias
@@ -38,7 +40,8 @@ may be reintroduced. Nothing in the workspace carries Effect v3 any
 longer, so an interop catalog tracking it would be dead configuration
 with no consumer. The generator emits colon-form catalog names only
 (`effect`, `effect:peers`, `effected`, `effected:peers`) — this is the
-whole set.
+whole declared set, and a consumer sees only the one the plugin folds
+them into, `effected`.
 
 ## Alternatives rejected
 

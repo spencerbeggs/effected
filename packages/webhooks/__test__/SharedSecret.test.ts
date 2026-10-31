@@ -1,7 +1,7 @@
-import { assert, describe, it } from "@effect/vitest";
+import { assert, layer } from "@effect/vitest";
 import { Effect } from "effect";
 import { SharedSecret } from "../src/SharedSecret.js";
-import { bytes, request } from "./helpers.js";
+import { MacLive, bytes, request } from "./helpers.js";
 
 const SECRET = "cf-webhook-shared-secret";
 const options = { header: "cf-webhook-auth" } as const;
@@ -11,8 +11,8 @@ const reason = (head: Record<string, string>) =>
 		Effect.map((error) => (error._tag === "WebhookVerificationError" ? error.reason : error._tag)),
 	);
 
-describe("SharedSecret.verify", () => {
-	it.effect("accepts the secret itself in the named header, with nothing in R", () =>
+layer(MacLive)("SharedSecret.verify", (it) => {
+	it.effect("accepts the secret itself in the named header", () =>
 		Effect.gen(function* () {
 			yield* verify({ "cf-webhook-auth": SECRET });
 		}),

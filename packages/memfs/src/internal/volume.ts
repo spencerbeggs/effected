@@ -21,10 +21,8 @@
 //   are now iterative worklists) and over Effect-returning tree walks
 //   (`detachEntry`, `cloneInode`, `validateCopyDirectoryContents`,
 //   `copyDirectoryContents` carry a depth counter failing typed at
-//   MAX_NESTING_DEPTH); `expandBraces` pre-scans brace nesting depth and fails
-//   typed instead of letting `findBraceExpansion` recurse unbounded. A
-//   pathological tree or pattern fails through the typed channel, never as a
-//   stack-overflow defect.
+//   MAX_NESTING_DEPTH). A pathological tree fails through the typed channel,
+//   never as a stack-overflow defect.
 // - `access` deliberately ignores its options (upstream posture: no virtual
 //   process identity, permission bits are metadata only); the facade TSDoc
 //   states it.
@@ -37,7 +35,10 @@
 //   code carried as `cause.code`; sites whose upstream tag or success/failure
 //   disagreed with node were corrected (readLink EINVAL, non-recursive remove
 //   of any directory, ENOTEMPTY, EBADF, fs.cp codes, trailing slashes, NUL
-//   bytes, glob roots, negative truncate).
+//   bytes, negative truncate).
+// - `glob` is core's, derived by `FileSystem.make` from `readDirectoryEntries`,
+//   which upstream's pinned head predates: the port's own glob is gone, so the
+//   volume answers exactly what the node adapter's derived glob answers.
 // - Case folding: State.caseSensitive, lookupEntry, case-only rename.
 // - Watch injection: `EngineOptions.automaticWatchEvents: false` stops
 //   transitions from publishing watch events, and `emit`/`watcherCount` let a
@@ -2099,6 +2100,30 @@ const readDirectory = (volume: Volume) =>
 		);
 	});
 
+// The volume knows every entry's kind, so no entry is ever "Unknown" and core's
+// derived glob never falls back to `stat`. A link reports itself, not its target.
+const readDirectoryEntries = (volume: Volume) =>
+	Effect.fnUntraced(function* (path: string) {
+		return yield* volume.mutate((state) =>
+			Effect.gen(function* () {
+				const resolved = yield* resolve(state, path, { method: "readDirectoryEntries" });
+				if (resolved.entry._tag !== "Directory") {
+					return yield* badResource("readDirectoryEntries", path, "ENOTDIR");
+				}
+				const directory = resolved.entry;
+				const nextState = setInode(state, { ...directory, atime: yield* DateTime.now });
+				const entries: Array<FileSystem.DirectoryEntry> = [];
+				for (const name of [...HashMap.keys(directory.entries)].sort()) {
+					// KIT EXTENSION (case folding): `name` is a stored key; exact hit.
+					const inode = findEntry(nextState, directory, name);
+					const child = inode === undefined ? undefined : findInode(nextState, inode);
+					entries.push({ name, type: child?._tag ?? "Unknown" });
+				}
+				return transitionResult(nextState, entries);
+			}),
+		);
+	});
+
 const readFile = (volume: Volume) =>
 	Effect.fnUntraced(function* (path: string) {
 		return yield* volume.mutate((state) =>
@@ -2391,404 +2416,6 @@ const makeTempFileScoped =
 		});
 
 // =============================================================================
-// globbing
-// =============================================================================
-
-const MAX_BRACE_EXPANSIONS = 256;
-
-interface GlobLiteral {
-	readonly _tag: "Literal";
-	readonly value: string;
-}
-
-interface GlobStar {
-	readonly _tag: "Star";
-}
-
-interface GlobOne {
-	readonly _tag: "One";
-}
-
-interface GlobCharacterClass {
-	readonly _tag: "CharacterClass";
-	readonly negated: boolean;
-	readonly ranges: ReadonlyArray<readonly [string, string]>;
-	readonly literals: ReadonlyArray<string>;
-}
-
-type GlobToken = GlobLiteral | GlobStar | GlobOne | GlobCharacterClass;
-
-const GlobToken = Data.taggedEnum<GlobToken>();
-
-interface GlobSegment {
-	readonly _tag: "Segment";
-	readonly tokens: ReadonlyArray<GlobToken>;
-	readonly startsWithDot: boolean;
-}
-
-interface GlobGlobstar {
-	readonly _tag: "Globstar";
-}
-
-type CompiledGlobSegment = GlobSegment | GlobGlobstar;
-
-interface CompiledGlobPattern {
-	readonly segments: ReadonlyArray<CompiledGlobSegment>;
-	readonly directoryOnly: boolean;
-}
-
-interface BraceExpansion {
-	readonly start: number;
-	readonly end: number;
-	readonly alternatives: ReadonlyArray<string>;
-}
-
-interface GlobCharacterClassAtom {
-	readonly value: string;
-	readonly escaped: boolean;
-}
-
-const globSyntaxCharacters = new Set(["*", "?", "[", "]", "{", "}", ",", "\\"]);
-
-const findBraceExpansion = (pattern: string): BraceExpansion | undefined => {
-	for (let start = 0; start < pattern.length; start++) {
-		if (pattern[start] === "\\") {
-			start += 1;
-			continue;
-		}
-		if (pattern[start] !== "{") continue;
-		let depth = 1;
-		let characterClass = false;
-		let closed = false;
-		const commas: Array<number> = [];
-		for (let end = start + 1; end < pattern.length; end++) {
-			if (pattern[end] === "\\") {
-				end += 1;
-				continue;
-			}
-			if (pattern[end] === "[") {
-				characterClass = true;
-			} else if (pattern[end] === "]") {
-				characterClass = false;
-			} else if (!characterClass && pattern[end] === "{") {
-				depth += 1;
-			} else if (!characterClass && pattern[end] === "}") {
-				depth -= 1;
-				if (depth === 0) {
-					closed = true;
-					if (commas.length === 0) {
-						const nested = findBraceExpansion(pattern.slice(start + 1, end));
-						if (nested !== undefined) {
-							return {
-								start: start + nested.start + 1,
-								end: start + nested.end + 1,
-								alternatives: nested.alternatives,
-							};
-						}
-						start = end;
-						break;
-					}
-					const alternatives: Array<string> = [];
-					let alternativeStart = start + 1;
-					for (const comma of [...commas, end]) {
-						alternatives.push(pattern.slice(alternativeStart, comma));
-						alternativeStart = comma + 1;
-					}
-					return { start, end, alternatives };
-				}
-			} else if (!characterClass && pattern[end] === "," && depth === 1) {
-				commas.push(end);
-			}
-		}
-		if (!closed) return undefined;
-	}
-	return undefined;
-};
-
-// PORT NOTE: a linear pre-scan bounds brace nesting at MAX_NESTING_DEPTH,
-// failing typed — upstream let `findBraceExpansion` recurse unbounded into
-// nested comma-free groups, so a deeply nested pattern was a stack-overflow
-// defect. Alternatives substitute substrings, so expansion never deepens
-// nesting and the one up-front scan bounds every later recursion.
-const braceNestingDepth = (pattern: string): number => {
-	let depth = 0;
-	let maximum = 0;
-	let characterClass = false;
-	for (let index = 0; index < pattern.length; index++) {
-		const character = pattern[index];
-		if (character === "\\") {
-			index += 1;
-		} else if (character === "[") {
-			characterClass = true;
-		} else if (character === "]") {
-			characterClass = false;
-		} else if (!characterClass && character === "{") {
-			depth += 1;
-			maximum = Math.max(maximum, depth);
-		} else if (!characterClass && character === "}") {
-			depth = Math.max(0, depth - 1);
-		}
-	}
-	return maximum;
-};
-
-const expandBraces = (method: string, pattern: string) => {
-	if (braceNestingDepth(pattern) > MAX_NESTING_DEPTH) {
-		return Effect.fail(argumentError(method, `brace nesting exceeds ${MAX_NESTING_DEPTH} levels`));
-	}
-	let patterns = [pattern];
-	while (true) {
-		const index = patterns.findIndex((pattern) => findBraceExpansion(pattern) !== undefined);
-		if (index === -1) return Effect.succeed(patterns);
-		const current = patterns[index];
-		const expansion = findBraceExpansion(current);
-		if (expansion === undefined) return Effect.succeed(patterns);
-		if (patterns.length - 1 + expansion.alternatives.length > MAX_BRACE_EXPANSIONS) {
-			return Effect.fail(argumentError(method, `brace expansion exceeds ${MAX_BRACE_EXPANSIONS} alternatives`));
-		}
-		patterns = [
-			...patterns.slice(0, index),
-			...expansion.alternatives.map(
-				(alternative) => `${current.slice(0, expansion.start)}${alternative}${current.slice(expansion.end + 1)}`,
-			),
-			...patterns.slice(index + 1),
-		];
-	}
-};
-
-const parseCharacterClass = (method: string, segment: string, start: number) => {
-	let index = start + 1;
-	const negated = segment[index] === "!";
-	if (negated) index += 1;
-	const characters: Array<GlobCharacterClassAtom> = [];
-	while (index < segment.length) {
-		if (segment[index] === "]" && characters.length > 0) break;
-		let escaped = false;
-		if (segment[index] === "\\") {
-			escaped = true;
-			index += 1;
-			if (index === segment.length) {
-				return argumentError(method, "character classes must not end with an escape");
-			}
-		}
-		characters.push({ value: segment[index], escaped });
-		index += 1;
-	}
-	if (index === segment.length || characters.length === 0) {
-		return argumentError(method, "character classes must be closed and non-empty");
-	}
-	const literals: Array<string> = [];
-	const ranges: Array<readonly [string, string]> = [];
-	for (let characterIndex = 0; characterIndex < characters.length; characterIndex++) {
-		const character = characters[characterIndex];
-		if (
-			characterIndex + 2 < characters.length &&
-			characters[characterIndex + 1].value === "-" &&
-			!characters[characterIndex + 1].escaped &&
-			characters[characterIndex + 2].value !== "-"
-		) {
-			const end = characters[characterIndex + 2].value;
-			if (character.value > end) {
-				return argumentError(method, "character class ranges must be ascending");
-			}
-			ranges.push([character.value, end]);
-			characterIndex += 2;
-		} else {
-			literals.push(character.value);
-		}
-	}
-	return Effect.succeed([GlobToken.CharacterClass({ negated, ranges, literals }), index + 1] as const);
-};
-
-const parseGlobSegment = Effect.fnUntraced(function* (method: string, segment: string) {
-	if (segment === "**") return { _tag: "Globstar" } satisfies GlobGlobstar;
-	const tokens: Array<GlobToken> = [];
-	let index = 0;
-	while (index < segment.length) {
-		const character = segment[index];
-		if (character === "\\") {
-			index += 1;
-			if (index === segment.length) {
-				return yield* argumentError(method, "patterns must not end with an escape");
-			}
-			const value = segment[index];
-			if (globSyntaxCharacters.has(value)) {
-				tokens.push(GlobToken.Literal({ value }));
-			} else {
-				tokens.push(GlobToken.Literal({ value: "\\" }));
-				index -= 1;
-			}
-		} else if (character === "*") {
-			tokens.push(GlobToken.Star());
-		} else if (character === "?") {
-			tokens.push(GlobToken.One());
-		} else if (character === "[") {
-			const parsed = yield* parseCharacterClass(method, segment, index);
-			tokens.push(parsed[0]);
-			index = parsed[1] - 1;
-		} else {
-			tokens.push(GlobToken.Literal({ value: character }));
-		}
-		index += 1;
-	}
-	return {
-		_tag: "Segment",
-		tokens,
-		startsWithDot:
-			(tokens[0]?._tag === "Literal" && tokens[0].value === ".") ||
-			(tokens[0]?._tag === "CharacterClass" &&
-				!tokens[0].negated &&
-				(tokens[0].literals.includes(".") || tokens[0].ranges.some(([start, end]) => start <= "." && "." <= end))),
-	} satisfies GlobSegment;
-});
-
-const compileGlobPattern = Effect.fnUntraced(function* (method: string, pattern: string) {
-	if (pattern.length === 0 || pattern.includes("\0") || pattern.startsWith("/")) {
-		return yield* argumentError(method, "pattern must be a root-relative POSIX glob");
-	}
-	const directoryOnly = pattern.endsWith("/");
-	const path = directoryOnly ? pattern.slice(0, -1) : pattern;
-	const segments = path.split("/");
-	if (segments.includes("") || segments.includes(".") || segments.includes("..")) {
-		return yield* argumentError(method, "pattern must not contain empty or dot path segments");
-	}
-	const compiled = yield* Effect.forEach(segments, (segment) => parseGlobSegment(method, segment));
-	return { segments: compiled, directoryOnly } satisfies CompiledGlobPattern;
-});
-
-const compileGlobPatterns = Effect.fnUntraced(function* (method: string, pattern: string) {
-	const expanded = yield* expandBraces(method, pattern);
-	return yield* Effect.forEach(expanded, (alternative) => compileGlobPattern(method, alternative));
-});
-
-// KIT EXTENSION (case folding): `fold` matches
-// the way a case-insensitive regex does — a literal compares folded, and a
-// character class accepts the value in either case. Host-proven: node's
-// `fs.glob` on a folding volume matches `*.JSON` against a stored `docs.json`.
-const matchesGlobToken = (token: GlobToken, value: string, fold = false): boolean =>
-	GlobToken.$match(token, {
-		Literal: (token) => token.value === value || (fold && token.value.toLowerCase() === value.toLowerCase()),
-		Star: () => false,
-		One: () => true,
-		CharacterClass: (token) => {
-			const inClass = (candidate: string) =>
-				token.literals.includes(candidate) ||
-				token.ranges.some(([start, end]) => start <= candidate && candidate <= end);
-			const matches = inClass(value) || (fold && (inClass(value.toLowerCase()) || inClass(value.toUpperCase())));
-			return token.negated ? !matches : matches;
-		},
-	});
-
-// KIT EXTENSION (case folding): `fold`, see matchesGlobToken.
-const matchesGlobSegment = (pattern: GlobSegment, value: string, fold = false): boolean => {
-	if (value.startsWith(".") && !pattern.startsWithDot) return false;
-	let patternIndex = 0;
-	let valueIndex = 0;
-	let starIndex = -1;
-	let starValueIndex = -1;
-	while (valueIndex < value.length) {
-		const token = pattern.tokens[patternIndex];
-		if (token !== undefined && token._tag !== "Star" && matchesGlobToken(token, value[valueIndex], fold)) {
-			patternIndex += 1;
-			valueIndex += 1;
-		} else if (token?._tag === "Star") {
-			starIndex = patternIndex;
-			starValueIndex = valueIndex;
-			patternIndex += 1;
-		} else if (starIndex !== -1) {
-			patternIndex = starIndex + 1;
-			starValueIndex += 1;
-			valueIndex = starValueIndex;
-		} else {
-			return false;
-		}
-	}
-	while (pattern.tokens[patternIndex]?._tag === "Star") {
-		patternIndex += 1;
-	}
-	return patternIndex === pattern.tokens.length;
-};
-
-// KIT EXTENSION (case folding): `fold`, see matchesGlobToken.
-const matchesGlob = (
-	pattern: CompiledGlobPattern,
-	path: ReadonlyArray<string>,
-	directory: boolean,
-	fold = false,
-): boolean => {
-	if (pattern.directoryOnly && !directory) return false;
-	let next = Array.from({ length: path.length + 1 }, (_, index) => index === path.length);
-	for (let patternIndex = pattern.segments.length - 1; patternIndex >= 0; patternIndex--) {
-		const current = Array.from({ length: path.length + 1 }, () => false);
-		const segment = pattern.segments[patternIndex];
-		if (segment._tag === "Globstar") {
-			for (let pathIndex = path.length; pathIndex >= 0; pathIndex--) {
-				current[pathIndex] =
-					next[pathIndex] || (pathIndex < path.length && !path[pathIndex].startsWith(".") && current[pathIndex + 1]);
-			}
-		} else {
-			for (let pathIndex = path.length - 1; pathIndex >= 0; pathIndex--) {
-				current[pathIndex] = matchesGlobSegment(segment, path[pathIndex], fold) && next[pathIndex + 1];
-			}
-		}
-		next = current;
-	}
-	return next[0];
-};
-
-const glob = (volume: Volume) =>
-	Effect.fnUntraced(function* (
-		pattern: string,
-		options?: { readonly root?: string | undefined; readonly exclude?: ReadonlyArray<string> | undefined },
-	) {
-		const includes = yield* compileGlobPatterns("glob", pattern);
-		const excludes = yield* Effect.forEach(options?.exclude ?? [], (excluded) =>
-			compileGlobPatterns("glob", excluded),
-		).pipe(Effect.map((patterns) => patterns.flat()));
-		const rootPath = options?.root ?? "/";
-		return yield* volume.withState((state) =>
-			Effect.gen(function* () {
-				// KIT EXTENSION (errno fidelity): node's `fs.glob` answers an empty
-				// match set for a root that is missing, not a directory, or
-				// unresolvable — it never fails on the root. A malformed root (a NUL
-				// byte) is still a BadArgument.
-				const root = yield* Effect.result(resolve(state, rootPath, { method: "glob" }));
-				if (root._tag === "Failure") {
-					if (root.failure.reason._tag === "BadArgument") return yield* root.failure;
-					return [];
-				}
-				const resolved = root.success;
-				if (resolved.entry._tag !== "Directory") return [];
-				// KIT EXTENSION (case folding)
-				const fold = !state.caseSensitive;
-				const rootExcluded = excludes.some((pattern) => matchesGlob(pattern, [], true, fold));
-				if (rootExcluded) return [];
-				const matches: Array<string> = includes.some((pattern) => matchesGlob(pattern, [], true, fold)) ? ["."] : [];
-				const pending: Array<readonly [DirectoryInode, ReadonlyArray<string>]> = [[resolved.entry, []]];
-				while (pending.length > 0) {
-					const next = pending.pop();
-					if (next === undefined) break;
-					const [directory, parent] = next;
-					for (const name of [...HashMap.keys(directory.entries)].sort()) {
-						const path = [...parent, name];
-						// KIT EXTENSION (case folding): folded lookup.
-						const inode = findEntry(state, directory, name);
-						const entry = inode === undefined ? undefined : findInode(state, inode);
-						const isDirectory = entry?._tag === "Directory";
-						const excluded = excludes.some((pattern) => matchesGlob(pattern, path, isDirectory, fold));
-						if (!excluded && includes.some((pattern) => matchesGlob(pattern, path, isDirectory, fold))) {
-							matches.push(path.join("/"));
-						}
-						if (excluded) continue;
-						if (entry?._tag === "Directory") pending.push([entry, path]);
-					}
-				}
-				return matches.sort();
-			}),
-		);
-	});
-
-// =============================================================================
 // volume
 // =============================================================================
 
@@ -2930,7 +2557,6 @@ const toFileSystem = (volume: Volume): FileSystem.FileSystem =>
 		copyFile: copyFile(volume),
 		chmod: chmod(volume),
 		chown: chown(volume),
-		glob: glob(volume),
 		link: link(volume),
 		lstat: lstat(volume),
 		makeDirectory: makeDirectory(volume),
@@ -2940,6 +2566,7 @@ const toFileSystem = (volume: Volume): FileSystem.FileSystem =>
 		makeTempFileScoped: makeTempFileScoped(volume),
 		open: open(volume),
 		readDirectory: readDirectory(volume),
+		readDirectoryEntries: readDirectoryEntries(volume),
 		readFile: readFile(volume),
 		readLink: readLink(volume),
 		realPath: realPath(volume),

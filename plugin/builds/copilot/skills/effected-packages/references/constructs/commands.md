@@ -48,7 +48,7 @@
 | `ScriptResult` | TypeAlias | One scripted outcome for a spawned command. | |
 | `ScriptedSpawner` | Class | A scripted `ChildProcessSpawner` test double: script each spawn's outcome, read back what was spawned. | test double for ChildProcessSpawner: script each spawn's outcome, inspect recorded spawns |
 | `SpawnRecord` | Interface | What the scripted spawner observed for one spawn, in call order. | |
-| `SpawnScript` | TypeAlias | The script a `ScriptedSpawner` answers spawns from: the executable and argv in, a `ScriptResult` out. | |
+| `SpawnScript` | TypeAlias | The script a `ScriptedSpawner` answers spawns from: the executable and argv in, a `ScriptResult` out. A `Redacted` argument reaches the script as its placeholder (`"<redacted>"`), never its value; the `SpawnRecord` keeps the `Redacted` itself. | |
 | `SyncRun` | TypeAlias | Runs `command` with `args` synchronously, with no shell, to completion. | |
 | `SyncRunResult` | Interface | What one synchronous run reports — the subset of Node's `spawnSync` result `RunOnce.commandSync` reads. | |
 | `SyncSpawn` | TypeAlias | Spawns `command` with `args` synchronously, with no shell, and reports how it went. | |

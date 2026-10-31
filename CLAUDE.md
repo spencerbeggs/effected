@@ -37,7 +37,7 @@ Durable project knowledge lives as OKF concepts under `okf/`, not in prose here.
 
 ### Kit composition
 
-The kit is **43 publishable packages**: 41 libraries plus two companions (`pnpm-plugin-effect` and `schemastore-cli`); all but `@effected/crypto`, `@effected/oidc`, `@effected/webhooks` and `@effected/source`, the newest libraries, have published. New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
+The kit is **43 publishable packages**: 41 libraries plus two companions (`pnpm-plugin-effected` and `schemastore-cli`); all have published except `pnpm-plugin-effected` under its new name (it continues `pnpm-plugin-effect`'s version line and needs an npm trusted publisher before its first release). New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
 
 `@effected/config-file` holds every config **codec**; the `jsonc`, `yaml` and `toml` **format** packages stay independent. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — with `ConfigCodec` the interface only. `JsonCodec` is on the root; the other three ship from the `./jsonc`, `./yaml` and `./toml` subpaths, whose engines are optional peers the root must never reach. **Never collect them into a namespace object**: it would drag every parsing engine into a JSON-only consumer's bundle, killing tree-shaking silently. Read `okf/modules/config-file.md` and `okf/decisions/codecs-are-free-standing-named-exports.md` before touching it.
 
@@ -77,9 +77,9 @@ Builds run through turbo and `@savvy-web/bundler`; mechanics → `okf/modules/wo
 
 ## Commands
 
-**User-run only:** `pnpm pnpm:up`, `pnpm pnpm:preview` and `pnpm pnpm:export` advance and export the Effect catalogs, mutating the lockfile and the root `pnpm-workspace.yaml`. **Agents must not invoke them** — surface the command and let the user run it (advancing the Effect pin is `pnpm:up` then `pnpm:export`).
+**User-run only:** `pnpm pnpm:up`, `pnpm pnpm:preview` and `pnpm pnpm:export` advance and export the Effect catalogs, mutating the lockfile and the root `pnpm-workspace.yaml`. **Agents must not invoke them** — surface the command and let the user run it (advancing the Effect pin is `pnpm:up` then `pnpm:export`; a new Effect minor also needs the tilde ranges edited, per `okf/runbooks/advance-the-effect-pin.md`).
 
-**Agents may run** `pnpm catalog:check` (read-only drift gate) and `pnpm catalog:sync`, which write nothing but `packages/pnpm-plugin-effect/savvy.build.ts` and one fixed-name changeset. They keep the published `effected` catalog current — do not lump them in with the `pnpm:*` class.
+**Agents may run** `pnpm catalog:check` (read-only drift gate) and `pnpm catalog:sync`, which write nothing but `packages/pnpm-plugin-effected/savvy.build.ts` and one fixed-name changeset. They keep the published `effected` catalog current — do not lump them in with the `pnpm:*` class.
 
 **A release does not need a hand-run `catalog:sync` — CI guarantees it.** `.github/workflows/catalog-sync.yml` runs on every PR to `main` **and to `changeset-release/main`**, so opening the release PR is itself the trigger: the job syncs the catalog, writes `.changeset/catalog-sync.md`, and the release PR picks up the resulting plugin bump before publishing. The catalog therefore cannot publish out of step with the packages it names.
 
@@ -105,11 +105,11 @@ Biome, commitlint, lint-staged and markdownlint take their presets from `@savvy-
 
 ### Dependencies
 
-Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml`, managed via `packages/pnpm-plugin-effect`. Catalog detail and the expected peer-warning class → `okf/modules/pnpm-plugin-effect.md`, `okf/conventions/peer-dependency-discipline.md`, `okf/gotchas/expected-peers-check-occupant.md`.
+Shared dependency versions come from pnpm catalogs in `pnpm-workspace.yaml`, managed via `packages/pnpm-plugin-effected`. Catalog detail, the one `effected` catalog consumers see, and the expected peer-warning class → `okf/modules/pnpm-plugin-effected.md`, `okf/decisions/consumer-catalog-fold.md`, `okf/conventions/peer-dependency-discipline.md`, `okf/gotchas/expected-peers-check-occupant.md`.
 
-**`catalog:effect` rides the stable line with carets under `lock-minor`, and the plugin's `overridesFromCatalogs` directive derives one line-scoped override per family member, pinning `effect` and every satellite to the catalog version across the whole consumer graph** — a caret alone once paired a 4.0.3 satellite with core 4.0.2, which dies at import, and a parent-scoped override does not reach the peer edge. Never hand-write the family pins; they move with the catalog. Why → `okf/decisions/effect-overrides-derived-from-catalog.md`. `.repos/effect`, the authority on what v4 exports, is pinned to the tag matching the lockfile's `effect`; re-pin it whenever that moves, or the vendored source and the installed package drift apart silently.
+**`catalog:effect` holds the Effect family to one minor with tildes under `lock-minor`, and the plugin's `overridesFromCatalogs` directive derives one line-scoped override per family member, pinning `effect` and every satellite to the catalog version across the whole consumer graph.** A caret let the unattended catalog sync carry the catalog onto Effect 4.1 under a kit built on 4.0, which died at import; never restore one, and bring an Effect minor only through `okf/runbooks/advance-the-effect-pin.md`. Never hand-write the family pins; they move with the catalog. Why → `okf/decisions/effect-catalog-minor-lock.md`, `okf/decisions/effect-overrides-derived-from-catalog.md`, `okf/incidents/catalog-crossed-effect-minor.md`. The root `.pnpmfile.cjs` `readPackage` hook bridges the toolchain's published 4.0-built kit; its shape and removal condition → `okf/conventions/one-resolved-effect-copy.md`. `.repos/effect`, the authority on what v4 exports, is pinned to the tag matching the lockfile's `effect`; re-pin it whenever that moves, or the vendored source and the installed package drift apart silently.
 
-**Always check the lockfile diff after an install** — a plain `pnpm install` can strip turbo/biome/tsgo platform binaries from it.
+**Always check the lockfile diff after an install** — a plain `pnpm install` can strip turbo/biome/tsgo platform binaries from it. After renaming a workspace package, the next `pnpm run` of any script installs first → `okf/gotchas/verify-deps-before-run.md`.
 
 ### Commits
 

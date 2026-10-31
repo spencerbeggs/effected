@@ -266,15 +266,15 @@ read" passes against a code path that was only *described*, never run.
 
 **Not one way — and two blanket statements circulate, and both are wrong**:
 "every unstubbed member fails typed `NotFound`" and "every unstubbed member
-dies". `layerNoop` at `FileSystem.ts:787` is
-`Layer.succeed(FileSystem)(makeNoop(fileSystem))`, and `makeNoop` (`:654`)
+dies". `layerNoop` at `FileSystem.ts:848` is
+`Layer.succeed(FileSystem)(makeNoop(fileSystem))`, and `makeNoop` (`:712`)
 splits its members:
 
 | members | behavior | absorbable by `Effect.catch`? |
 | --- | --- | --- |
 | `readFile`, `readFileString`, `readDirectory`, `stat`, `lstat`, `access`, `open`, `realPath`, `readLink`, `copy*`, `link`, `symlink`, `rename`, `truncate`, `utimes`, `glob`, `write*`, `sink`, `stream`, `watch` | typed `notFound(<method>, path)` — a `PlatformError` | **yes** |
-| `exists` → `false` (`:675`), `remove` → `Effect.void` (`:717`) | silent success | n/a — never fails |
-| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` (`:684`–`:697`) | `Effect.die("not implemented")` — a **defect** | **no** |
+| `exists` → `false` (`:733`), `remove` → `Effect.void` (`:778`) | silent success | n/a — never fails |
+| `makeDirectory`, `makeTempDirectory{,Scoped}`, `makeTempFile{,Scoped}` (`:742`–`:755`) | `Effect.die("not implemented")` — a **defect** | **no** |
 
 Three distinct false greens, one per row:
 
@@ -308,7 +308,7 @@ and `MemoryFileSystem.die(defect)` for row three. A `FileSystem` double is `@eff
 
 Companion fact, same tier: **`FileSystem.readFileString` strips a leading BOM.**
 It is `impl.readFile(path)` piped through `new TextDecoder(encoding).decode(_)`
-(`FileSystem.ts:525-536`, the decode itself at `:528`), and `TextDecoder`
+(`FileSystem.ts:583-594`, the decode itself at `:586`), and `TextDecoder`
 defaults to `ignoreBOM: false`,
 which consumes the mark. "Read the file as a string" therefore looks lossless
 and is not. A round-trip test that reads with `readFileString` and writes back
@@ -347,7 +347,7 @@ console.log("RIGHT:", body);
 ```
 
 Working examples: `packages/github-actions/__test__/results.ts:63-73` (JSON
-over Twirp) and `BlobStore.test.ts:153` (bytes). The general rule: **a double
+over Twirp) and `BlobStore.test.ts:157` (bytes). The general rule: **a double
 that mis-parses looks like the network being unreliable**, and every layer of
 retry between the two makes the diagnosis worse. When a virtual-clock suite
 times out in several places at once, suspect the double before the clock.
@@ -468,7 +468,9 @@ The first test is its own evidence: the control `logError` line reaches
 `logLines` nor `errorLines`. Outside the test services it is the same — run
 under `Effect.runPromise`, the program prints only the control line on stdout
 and nothing on stderr. `References.UnhandledLogLevel` does not change this:
-core reads it only in `Pool.ts:1124`. A test whose only assertions live in
+core reads it only where a caller opts in with `log: "Unhandled"` on
+`Effect.ignore`/`ignoreCause` and their `Stream`/`Channel` twins
+(`internal/effect.ts:3510`), and inside `CircuitBreaker`. A test whose only assertions live in
 code paths that never observe a forked child's outcome is exercising nothing
 about that child. Join it, or route its `Exit` into a `Deferred` the test
 explicitly awaits — never assume a green run means every fiber it started
@@ -531,8 +533,8 @@ Three sharp edges, all clock-adjacent:
   satisfied by the runner. An explicit `Effect.scoped` in the pipeline is
   harmless — it just closes the scope earlier, before the test ends — but it is
   belt-and-braces, not a requirement.
-- **`Effect.fork` does not exist** — it is `forkChild` (`Effect.ts:8929`) /
-  `forkIn` (`:8973`) / `forkScoped` (`:9017`) / `forkDetach` (`:9063`). And
+- **`Effect.fork` does not exist** — it is `forkChild` (`Effect.ts:8935`) /
+  `forkIn` (`:8979`) / `forkScoped` (`:9023`) / `forkDetach` (`:9069`). And
   `Stream.fromQueue` takes a `Queue.Dequeue`
   (`Stream.ts:1190`), so it rejects a `Subscription`.
 
@@ -748,7 +750,7 @@ nonzero, which CI reads as a failure with no failing test to point at.
 
 Snapshot and restore it in a `finally` around any test that exercises such
 code, alongside the console spy and any env mutation
-(`packages/github-actions/__test__/Action.test.ts:44-54`):
+(`packages/github-actions/__test__/Action.test.ts:45-55`):
 
 ```ts
 import { assert, it } from "@effect/vitest";

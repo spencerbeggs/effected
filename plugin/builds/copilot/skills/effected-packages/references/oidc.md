@@ -1,6 +1,6 @@
 # @effected/oidc
 
-The kit's OpenID Connect vocabulary over `@effected/jwt`: the `IdentityToken` issuer contract, ID-token claims, an unverified decode and a discovery-backed verify. Boundary tier, deliberately thin: one regular dependency (`@effected/jwt`, which does the JWS, issuer discovery and JWKS work), `effect` the only peer, no `node:` import.
+The kit's OpenID Connect vocabulary over `@effected/jwt`: the `IdentityToken` issuer contract, ID-token claims, an unverified decode and a discovery-backed verify. Boundary tier, deliberately thin: one regular dependency (`@effected/jwt`, which does issuer discovery and JWKS work over core `effect/jose`), `effect` the only peer, no `node:` import.
 
 ## Import
 
@@ -9,7 +9,7 @@ import { IdentityToken, IdentityTokenError, IdTokenClaims, Oidc } from "@effecte
 import type { IdentityTokenShape, OidcVerifyOptions } from "@effected/oidc";
 ```
 
-**Platform**: `Oidc.verify` needs `JwksResolver` from `@effected/jwt` in `R`, which needs an `HttpClient` and a `JwksStore` provided once at the edge. `Oidc.decodeUnverified` and `IdentityToken` need nothing.
+**Platform**: `Oidc.verify` needs `JwksResolver` from `@effected/jwt` (which needs an `HttpClient` and a `JwksStore`) and core's `Signature` service in `R`, provided once at the edge. `Oidc.decodeUnverified` and `IdentityToken` need nothing.
 
 ## Core API
 
@@ -36,6 +36,7 @@ Both `Oidc` operations fail with `@effected/jwt`'s `JwtError` and add no error o
 import { JwksResolver, JwksStore } from "@effected/jwt";
 import { IdTokenClaims, Oidc } from "@effected/oidc";
 import { Effect, Layer } from "effect";
+import { SecureRandom, Signature } from "effect/crypto";
 import { FetchHttpClient } from "effect/http";
 
 const program = Oidc.verify("eyJ...", {
@@ -44,7 +45,10 @@ const program = Oidc.verify("eyJ...", {
   claims: IdTokenClaims,
 });
 
-const Live = JwksResolver.layer.pipe(Layer.provide(Layer.merge(FetchHttpClient.layer, JwksStore.layerMemory)));
+const Live = Layer.merge(
+  JwksResolver.layer.pipe(Layer.provide(Layer.merge(FetchHttpClient.layer, JwksStore.layerMemory))),
+  Signature.layerWebCrypto.pipe(Layer.provide(SecureRandom.layerWebCrypto)),
+);
 export const main = program.pipe(Effect.provide(Live));
 ```
 

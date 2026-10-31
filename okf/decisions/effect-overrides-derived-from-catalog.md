@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: The effect family is pinned graph-wide by overrides derived from the catalog
-description: "The plugin's effect catalog rides the stable line with carets under lock-minor, and a permanent overridesFromCatalogs directive derives one line-scoped override per family member, pinning effect and every satellite to the catalog's exact version across the whole consumer graph."
+description: "A permanent overridesFromCatalogs directive derives one line-scoped override per Effect family member from the plugin's effect catalog, pinning effect and every satellite to the catalog's exact version across the whole consumer graph; the catalog's own range is ruled separately."
 status: stable
 supersedes: effect-catalog-locked-exact.md
 tags:
@@ -20,24 +20,26 @@ sources:
     resource: https://github.com/spencerbeggs/rolldown-pnpm-config/pull/237
     title: "rolldown-pnpm-config 2.1.0: overridesFromCatalogs"
   - id: savvy-build
-    resource: ../../packages/pnpm-plugin-effect/savvy.build.ts
+    resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
     title: "The effect catalog block and the overridesFromCatalogs directive"
   - id: catalog-test
-    resource: ../../packages/pnpm-plugin-effect/__test__/catalog.test.ts
+    resource: ../../packages/pnpm-plugin-effected/__test__/catalog.test.ts
     title: "The effect catalog describe and the derived family pins in the overrides describe"
 generated:
   by: okfit/claude-code
-  at: 2026-10-19T14:28:38Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 80a4aca8a0ee1ea1
+    body: 45d0a4ae82cdae25
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 925d6409ae3cb45d
+    at: 2026-10-31T19:39:48Z
+    content: 7e8ceac50609d082
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-10-31T19:39:48Z
 ---
 
 # The effect family is pinned graph-wide by overrides derived from the catalog
@@ -52,19 +54,20 @@ Once core published, the owner asked whether the explicit overriding should stay
 
 `rolldown-pnpm-config` 2.1.0 adds `overridesFromCatalogs`, a build-time directive resolved in `freeze` so the pnpmfile, `export` and `preview` all carry it.[^directive] The plugin declares `overridesFromCatalogs: { catalog: "effect" }` and keeps only the two release-candidate `platform-node-shared` bridge entries in its authored `overrides`.[^savvy-build] For every family member the directive emits `"<name>@^4.0.0": "<catalog version>"`, so the pins move with the catalog literal and the upgrade bot cannot leave them behind.
 
-The catalog itself returns to carets under `lock-minor`, which the stable-line decision had chosen before the incident: the override layer, not the catalog range, is now what stops a satellite from pairing with an older core. `@effect/tsgo` versions on its own 0.x line and stays exact in the catalog; the directive pins it on that line (a `"@effect/tsgo@^0.<minor>.0"` selector naming the catalog version), so one tsgo serves the graph as well.
+The catalog's own range is a separate choice. This decision returned it to the stable-line carets; [the effect catalog holds one minor](effect-catalog-minor-lock.md) has since replaced them with tildes, after a caret let the unattended sync cross an Effect minor. Either way the override layer, not the catalog range, is what stops a satellite from pairing with an older core. `@effect/tsgo` versions on its own 0.x line; the directive pins it on that line (a `"@effect/tsgo@^0.<minor>.0"` selector naming the catalog version), so one tsgo serves the graph as well.
 
-`__test__/catalog.test.ts` pins both halves: every entry is a caret on `lock-minor` with a peer floored to its minor, every 4.x entry names `effect`'s own version, and the built pnpmfile's `overrides` equal the pins derived from the catalog literal plus the two bridge entries.[^catalog-test]
+`__test__/catalog.test.ts` pins both halves: every 4.x entry names `effect`'s own version, and the built pnpmfile's `overrides` equal the pins derived from the catalog literal plus the two bridge entries.[^catalog-test]
 
 ## Alternatives rejected
 
 - **Parent-scoped `satellite>effect` overrides.** Proposed as the form that would force each satellite onto its own `effect`. The probe showed it does not reach the peer resolution; the pairing survives.[^override-probe]
 - **A hand-written family block moved on every advance.** The exact-lock shape. It works, but the upgrade bot cannot move it and a stale block holds every consumer on the old patch until a human notices.
-- **No override layer, carets only.** The pre-incident shape. A caret admits the next satellite before core publishes, and a catalog never reaches a dependency's own dependencies.
+- **No override layer, catalog ranges only.** The pre-incident shape. A caret admits the next satellite before core publishes, and a catalog never reaches a dependency's own dependencies.
 - **A floor-only selector that lifts stragglers but never holds a newer request down.** It would not have stopped the incident: the satellites' `^4.0.0` requests are not a sub-range of a `<=4.0.2` selector, so nothing would have held them.
 
 ## Consequences
 
+- **The pins also move a published kit across a minor.** A kit release built on an older 4.x minor sits inside `^4.0.0`, so the pins rewrite it onto the catalog's minor; when that minor removed something it imports, it dies at import. That is what [the catalog crossed an Effect minor](../incidents/catalog-crossed-effect-minor.md) records, and why the catalog range now holds one minor.
 - **Every Effect patch is still a kit-wide move, for every consumer repository.** The pin applies to the whole graph, devDependencies and their closures included, so a tool built on 4.0.2 runs on 4.0.3 once the catalog advances, and a tool built ahead of the catalog is held back until it moves. The owner accepted this as the price of the guard; Effect's patch releases are expected to settle.[^owner-ruling] It is one more reason the advance runbook demands a full build and test pass before release.
 - **A missing core now fails at install time.** When satellites publish before core, the pin asks for an `effect` version npm does not have and the resolve fails loudly, instead of a satellite pairing silently with the old core and dying at import.
 - **The bridge entries stay authored.** The release-candidate `platform-node-shared` entries are parent-scoped by design and sit outside the family pin; they are removed as their tool consumers rebuild.
@@ -73,5 +76,5 @@ The catalog itself returns to carets under `lock-minor`, which the stable-line d
 [^owner-ruling]: Conversation with the repository owner, 2026-10-11.
 [^override-probe]: Probe on pnpm 12.6.0, 2026-10-11.
 [^directive]: <https://github.com/spencerbeggs/rolldown-pnpm-config/pull/237>
-[^savvy-build]: `packages/pnpm-plugin-effect/savvy.build.ts`
-[^catalog-test]: `packages/pnpm-plugin-effect/__test__/catalog.test.ts`
+[^savvy-build]: `packages/pnpm-plugin-effected/savvy.build.ts`
+[^catalog-test]: `packages/pnpm-plugin-effected/__test__/catalog.test.ts`

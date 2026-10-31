@@ -4,6 +4,7 @@
 import type { HmacKey, HmacMessage, HmacStringEncoding } from "@effected/crypto";
 import { ConstantTime, Hmac } from "@effected/crypto";
 import { DateTime, Duration, Effect, Option } from "effect";
+import type { Mac } from "effect/crypto";
 import type { FreshnessOptions, WebhookRequest } from "../WebhookRequest.js";
 import type { WebhookPreset, WebhookVerificationReason } from "../WebhookVerificationError.js";
 import { WebhookVerificationError } from "../WebhookVerificationError.js";
@@ -54,8 +55,9 @@ export const reject = (
  *
  * @remarks
  * Compared as encoded strings in constant time, so a candidate in another spelling (upper-case hex, say) does not
- * match: GitHub and Stripe send lower-case hex only. A `CryptoError` is a defect here: the presets' keys are
- * well-formed by the time they reach this, so one would be a wiring mistake, not a bad delivery.
+ * match: GitHub and Stripe send lower-case hex only. The HMAC runs on core's `Mac.Mac`, required in `R`. A
+ * `CryptoError` is a defect here: the presets' keys are well-formed by the time they reach this, so one would be a
+ * wiring mistake, not a bad delivery.
  *
  * @internal
  */
@@ -64,7 +66,7 @@ export const matchesAny = (
 	message: HmacMessage,
 	encoding: HmacStringEncoding,
 	candidates: ReadonlyArray<string>,
-): Effect.Effect<boolean> =>
+): Effect.Effect<boolean, never, Mac.Mac> =>
 	Hmac.sign({ algorithm: "SHA-256", key, message, encoding }).pipe(
 		Effect.orDie,
 		Effect.map((expected) => {

@@ -30,7 +30,7 @@ installs) → `@effected/workspaces/testing` (see `effected-packages`).
 
 **Install it from the same catalog as `effect`, so it resolves to the same version** — never bare and never from a dist-tag. Effect releases `effect` and every `@effect/*` package together at one shared version, so `@effect/vitest` must resolve to exactly the version `effect` does. A dist-tag (`latest`, `beta`, `rc`, `snapshot`) is a moving pointer that can resolve to a version other than the one `effect` resolves to.
 
-The failure of a mismatch names neither package: a v3 `@effect/vitest` installed beside v4 `effect` loads with only a one-line `Issues with peer dependencies found` warning; `pnpm peers check` then lists unmet `effect ^3` and `vitest ^3` peers, and the test file fails to load with `Cannot find module '…/effect/dist/Arbitrary.js'`, because the v3 package imports a module the v4 `effect` does not ship. It reads as a broken install rather than a version mismatch. Run `pnpm peers check` and compare `@effect/vitest`'s resolved version with `effect`'s in the lockfile before believing any resolution. **Inside this monorepo** the dependency comes from `catalog:effect`, which carries both at the same range.
+The failure of a mismatch names neither package: a v3 `@effect/vitest` installed beside v4 `effect` loads with only a one-line `Issues with peer dependencies found` warning; `pnpm peers check` then lists unmet `effect ^3` and `vitest ^3` peers, and the test file fails to load with `Cannot find module '…/effect/dist/Arbitrary.js'`, because the v3 package imports a module the v4 `effect` does not ship. It reads as a broken install rather than a version mismatch. Run `pnpm peers check` and compare `@effect/vitest`'s resolved version with `effect`'s in the lockfile before believing any resolution. With `@effected/pnpm-plugin-effected` the dependency comes from `catalog:effected`, which carries both at the same range.
 
 **`vi.mock` is the one import that must NOT come from `@effect/vitest`.** Vitest
 hoists it above all imports, so a `vi` bound through the re-export is not yet
@@ -237,9 +237,9 @@ A mock service is a `Context.Service` with a test `Layer`, swapped `Live` →
 `Test` at this boundary, never inside test bodies.
 
 **Testing a boundary-tier package that does real IO needs no platform package.**
-`Path.layer` comes from `effect` core (`Path.ts:926`) and the filesystem double
+`Path.layer` comes from `effect` core (`Path.ts:931`) and the filesystem double
 is `@effected/memfs`, a pure package with no `node:*` import — core ships
-**no** `FileSystem.layer`, only the deny-by-default `layerNoop` (`FileSystem.ts:787`),
+**no** `FileSystem.layer`, only the deny-by-default `layerNoop` (`FileSystem.ts:848`),
 which is not a double
 ([references/providing-layers.md](./references/providing-layers.md)). So `@effected/walker` tests filesystem behavior
 with zero `@effect/platform-node` devDependency:
@@ -270,7 +270,7 @@ layer(Volume)("seeded filesystem", (it) => {
 ```
 
 **`layerNoop`'s unstubbed members answer in THREE different ways**
-(`makeNoop` (`FileSystem.ts:654`) splits them) — typed `NotFound`, silent success (`exists` → `false`, `remove` → `Effect.void`), and
+(`makeNoop` (`FileSystem.ts:712`) splits them) — typed `NotFound`, silent success (`exists` → `false`, `remove` → `Effect.void`), and
 `Effect.die` (`makeDirectory`, `makeTemp*`), which `Effect.catch` cannot
 absorb. **None of this is a reason to stub `layerNoop` better — it is the
 argument for `@effected/memfs`.** This repo's rule: a `FileSystem` double is

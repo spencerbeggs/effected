@@ -4,7 +4,8 @@
 
 import { createHash } from "node:crypto";
 import { assert, describe, it } from "@effect/vitest";
-import { Crypto, Effect, Layer, Result, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
+import { Digest } from "effect/crypto";
 import type { JsoncDigest } from "../src/index.js";
 import { JsoncCanonicalizeError, JsoncCanonicalizeOptions, JsoncFingerprint } from "../src/index.js";
 
@@ -24,16 +25,7 @@ const failure = (value: unknown, options?: JsoncCanonicalizeOptions): JsoncCanon
 
 const nodeDigest: JsoncDigest = (bytes) => createHash("sha256").update(bytes).digest();
 
-const CryptoTest = Layer.succeed(
-	Crypto.Crypto,
-	Crypto.make({
-		randomBytes: (size) => globalThis.crypto.getRandomValues(new Uint8Array(size)),
-		digest: (algorithm, data) =>
-			Effect.promise(
-				async () => new Uint8Array(await globalThis.crypto.subtle.digest(algorithm, new Uint8Array(data))),
-			),
-	}),
-);
+const DigestTest = Digest.layerWebCrypto;
 
 describe("JsoncCanonicalizeOptions", () => {
 	describe("bigint", () => {
@@ -258,7 +250,7 @@ describe("JsoncCanonicalizeOptions", () => {
 				assert.strictEqual(yield* JsoncFingerprint.canonicalize(value, options), text(value, options));
 				const error = yield* Effect.flip(JsoncFingerprint.hash(value));
 				assert.instanceOf(error, JsoncCanonicalizeError);
-			}).pipe(Effect.provide(CryptoTest)),
+			}).pipe(Effect.provide(DigestTest)),
 		);
 	});
 });

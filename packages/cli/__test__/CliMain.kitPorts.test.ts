@@ -16,12 +16,12 @@ import {
 	Predicate,
 	Runtime,
 	Stdio,
-	Terminal,
 } from "effect";
 import { Command } from "effect/cli";
 import type { FailureDetails } from "../src/index.js";
 import { CliRuntime, Doc } from "../src/index.js";
 import { relativeTo } from "../src/internal/displayPath.js";
+import { inertTerminal } from "./helpers/inertTerminal.js";
 
 class DataStoreError extends Data.TaggedError("DataStoreError")<{ readonly message: string }> {}
 class SidecarTimeoutError extends Data.TaggedError("SidecarTimeoutError")<{ readonly message: string }> {}
@@ -158,16 +158,7 @@ describe("distribution", () => {
 describe("env.displayPath: { relativeTo }", () => {
 	const platform = Layer.mergeAll(
 		Stdio.layerTest({ stdinIsTerminal: Effect.succeed(false), stdoutIsTerminal: Effect.succeed(false) }),
-		Layer.succeed(
-			Terminal.Terminal,
-			Terminal.make({
-				columns: Effect.succeed(100),
-				rows: Effect.succeed(24),
-				readInput: Effect.die("unused"),
-				readLine: Effect.die("unused"),
-				display: () => Effect.void,
-			}),
-		),
+		inertTerminal({ columns: 100 }),
 		Path.layer,
 	);
 	const doc = [

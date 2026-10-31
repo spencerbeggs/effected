@@ -1,20 +1,8 @@
 import { inspect } from "node:util";
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import {
-	Cause,
-	Crypto,
-	Effect,
-	Exit,
-	Layer,
-	Logger,
-	Option,
-	Redacted,
-	References,
-	Result,
-	Schema,
-	Tracer,
-} from "effect";
+import { Cause, Effect, Exit, Layer, Logger, Option, Redacted, References, Result, Schema, Tracer } from "effect";
+import { Digest } from "effect/crypto";
 import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
 import type { RegistryCredentialLookup, TarballError } from "../src/index.js";
 import { NpmConfig, PackageTarball, PublishedVersion } from "../src/index.js";
@@ -35,13 +23,7 @@ const ACME = config([`//npm.acme.dev/:_authToken=${REGISTRY_TOKEN}`, "@acme:regi
 const published = (tarball: string) =>
 	Schema.decodeUnknownSync(PublishedVersion)({ name: "@acme/widget", version: "1.0.0", tarball });
 
-const crypto = Layer.succeed(
-	Crypto.Crypto,
-	Crypto.make({
-		digest: () => Effect.succeed(new Uint8Array(0)),
-		randomBytes: (size) => new Uint8Array(size),
-	}),
-);
+const digest = Layer.mock(Digest.Digest, { digest: () => Effect.succeed(new Uint8Array(0)) });
 
 type Answer = { readonly status: number; readonly location?: string } | "transport" | "brokenBody";
 
@@ -90,7 +72,7 @@ const extractWith = (
 	const spawner = scripted(() => ({ exit: 0 }));
 	const layer = PackageTarball.layer.pipe(
 		Layer.provide(
-			Layer.mergeAll(spawner.layer, MemoryFileSystem.layer, crypto, Layer.succeed(HttpClient.HttpClient, client)),
+			Layer.mergeAll(spawner.layer, MemoryFileSystem.layer, digest, Layer.succeed(HttpClient.HttpClient, client)),
 		),
 	);
 	return Effect.flatMap(PackageTarball, (tarball) =>

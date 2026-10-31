@@ -1,30 +1,22 @@
 import { createHash } from "node:crypto";
 import { assert, describe, it } from "@effect/vitest";
-import { Crypto, Effect, Layer, Result } from "effect";
+import { Effect, Result } from "effect";
+import { Digest } from "effect/crypto";
 import type { JsoncDigest } from "../src/index.js";
 import { JsoncCanonicalizeError, JsoncFingerprint, JsoncTextHashOptions } from "../src/index.js";
 
-// A real SHA-256 backend over WebCrypto (Node 20+), wired through core's
-// Crypto.make so the tests exercise the exact service contract consumers
-// provide (e.g. NodeCrypto.layer from @effect/platform-node).
-const CryptoTest = Layer.succeed(
-	Crypto.Crypto,
-	Crypto.make({
-		randomBytes: (size) => globalThis.crypto.getRandomValues(new Uint8Array(size)),
-		digest: (algorithm, data) =>
-			Effect.promise(
-				async () => new Uint8Array(await globalThis.crypto.subtle.digest(algorithm, new Uint8Array(data))),
-			),
-	}),
-);
+// A real SHA-256 backend: core's WebCrypto-backed Digest layer, the same
+// service contract consumers provide (Digest.layerWebCrypto, or a platform
+// family layer such as NodeCrypto.layerDigest).
+const DigestTest = Digest.layerWebCrypto;
 
 // The consumer-side platform binding the sync twins take, written exactly as
 // the JsoncDigest docs tell a Node consumer to write it. Node's Buffer IS a
 // Uint8Array, so no copy is needed.
 const nodeDigest: JsoncDigest = (bytes) => createHash("sha256").update(bytes).digest();
 
-const provideCrypto = <A, E>(effect: Effect.Effect<A, E, Crypto.Crypto>): Effect.Effect<A, E> =>
-	Effect.provide(effect, CryptoTest);
+const provideDigest = <A, E>(effect: Effect.Effect<A, E, Digest.Digest>): Effect.Effect<A, E> =>
+	Effect.provide(effect, DigestTest);
 
 describe("JsoncFingerprint", () => {
 	describe("canonicalizeResult (RFC 8785 vectors)", () => {
@@ -293,7 +285,7 @@ describe("JsoncFingerprint", () => {
 
 	describe("hashText", () => {
 		it.effect("matches the known-answer SHA-256 vectors", () =>
-			provideCrypto(
+			provideDigest(
 				Effect.gen(function* () {
 					assert.strictEqual(
 						yield* JsoncFingerprint.hashText(""),
@@ -308,7 +300,7 @@ describe("JsoncFingerprint", () => {
 		);
 
 		it.effect("hashes the UTF-8 bytes verbatim by default", () =>
-			provideCrypto(
+			provideDigest(
 				Effect.gen(function* () {
 					const crlf = yield* JsoncFingerprint.hashText("a\r\nb");
 					const lf = yield* JsoncFingerprint.hashText("a\nb");
@@ -318,7 +310,7 @@ describe("JsoncFingerprint", () => {
 		);
 
 		it.effect("normalizes CRLF and bare CR to LF when normalizeEol is set", () =>
-			provideCrypto(
+			provideDigest(
 				Effect.gen(function* () {
 					const options = JsoncTextHashOptions.make({ normalizeEol: true });
 					const crlf = yield* JsoncFingerprint.hashText("a\r\nb\rc", options);
@@ -331,7 +323,7 @@ describe("JsoncFingerprint", () => {
 
 	describe("hash", () => {
 		it.effect("fingerprints the canonical serialization — key order never matters", () =>
-			provideCrypto(
+			provideDigest(
 				Effect.gen(function* () {
 					const a = yield* JsoncFingerprint.hash({ b: 2, a: [1, { y: 0, x: 0 }] });
 					const b = yield* JsoncFingerprint.hash({ a: [1, { x: 0, y: 0 }], b: 2 });
@@ -342,7 +334,7 @@ describe("JsoncFingerprint", () => {
 		);
 
 		it.effect("emits the sbom Sha256Digest format: exactly 64 lowercase hex characters, no prefix", () =>
-			provideCrypto(
+			provideDigest(
 				Effect.gen(function* () {
 					// Mirrors @effected/sbom's SHA256_RE (/^[0-9a-f]{64}$/) without
 					// taking the forbidden pure-tier → integrated-tier edge: the
@@ -359,7 +351,7 @@ describe("JsoncFingerprint", () => {
 		);
 
 		it.effect("agrees with hashText over the canonical text", () =>
-			provideCrypto(
+			provideDigest(
 				Effect.gen(function* () {
 					const value = { b: 1, a: [2, "x"] };
 					const direct = yield* JsoncFingerprint.hash(value);
@@ -370,7 +362,7 @@ describe("JsoncFingerprint", () => {
 		);
 
 		it.effect("hashes exactly the canonical bytes", () =>
-			provideCrypto(
+			provideDigest(
 				Effect.gen(function* () {
 					// canonicalize({b: 2, a: 1}) is '{"a":1,"b":2}'; the
 					// fingerprint is the SHA-256 of exactly those 13 ASCII bytes.
@@ -383,7 +375,7 @@ describe("JsoncFingerprint", () => {
 		);
 
 		it.effect("propagates canonicalization failures typed", () =>
-			provideCrypto(
+			provideDigest(
 				Effect.gen(function* () {
 					const error = yield* Effect.flip(JsoncFingerprint.hash({ bad: undefined }));
 					assert.instanceOf(error, JsoncCanonicalizeError);
@@ -405,7 +397,7 @@ describe("JsoncFingerprint", () => {
 
 	describe("hashResult / hashTextResult (synchronous, caller-supplied digest)", () => {
 		it.effect("agrees with hash byte for byte, with no fiber in sight", () =>
-			provideCrypto(
+			provideDigest(
 				Effect.gen(function* () {
 					// Deliberately key-disordered and nested, so agreement
 					// covers the canonical serialization and not just the
@@ -420,7 +412,7 @@ describe("JsoncFingerprint", () => {
 		);
 
 		it.effect("agrees with hashText byte for byte, normalizeEol included", () =>
-			provideCrypto(
+			provideDigest(
 				Effect.gen(function* () {
 					const options = JsoncTextHashOptions.make({ normalizeEol: true });
 					const text = "line one\r\nline two\rline three";

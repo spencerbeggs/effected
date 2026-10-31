@@ -1,10 +1,11 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Cause, ConfigProvider, Console, Context, Effect, Exit, Layer, Path, Stdio, Terminal } from "effect";
+import { Cause, ConfigProvider, Console, Context, Effect, Exit, Layer, Path, Stdio } from "effect";
 import { Command } from "effect/cli";
 import type { CliFailureOptions, CliLogOptions, FailureDetails } from "../src/index.js";
 import { CliAudience, CliFailure, CliRuntime, Render } from "../src/index.js";
+import { inertTerminal } from "./helpers/inertTerminal.js";
 
 interface Frame {
 	readonly name: string;
@@ -254,16 +255,7 @@ describe("CliFailure.toDoc: a monorepo's own packages/effect is the program's", 
 describe("CliRuntime.main's env.spans", () => {
 	const platform = Layer.mergeAll(
 		Stdio.layerTest({ stdinIsTerminal: Effect.succeed(false), stdoutIsTerminal: Effect.succeed(false) }),
-		Layer.succeed(
-			Terminal.Terminal,
-			Terminal.make({
-				columns: Effect.succeed(100),
-				rows: Effect.succeed(24),
-				readInput: Effect.die("unused"),
-				readLine: Effect.die("unused"),
-				display: () => Effect.void,
-			}),
-		),
+		inertTerminal({ columns: 100 }),
 	);
 
 	const runTool = (

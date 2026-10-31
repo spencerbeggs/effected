@@ -4,7 +4,7 @@ Loaded from `effect-v4-cli`. Seven traps that pass a type-check and a casual tes
 
 ## `Command.provide` builds its layer before the handler runs
 
-`Command.provide` (`cli/Command.ts:1606`) wraps the handler in
+`Command.provide` (`cli/Command.ts:1613`) wraps the handler in
 `Effect.provide(handler, layer)`. The layer is built to satisfy the handler's
 requirements before the handler's own body can execute — so a handler cannot
 validate an input the layer itself depends on (a `--config` path, say)
@@ -27,6 +27,7 @@ const CliTestLayer = Layer.mergeAll(
     Terminal.make({
       columns: Effect.succeed(80),
       rows: Effect.succeed(24),
+      size: Effect.die("unused"),
       readInput: Effect.die("unused"),
       readLine: Effect.die("unused"),
       display: () => Effect.void,
@@ -58,7 +59,7 @@ site suggests an ordering.
 ## `Flag.File(name, { mustExist: true })` fails at parse time — exit 64 only under `CliRuntime.main`
 
 The existence check runs inside the primitive's own parser
-(`cli/Primitive.ts:516`), before any handler sees the value. A
+(`cli/Primitive.ts:525`), before any handler sees the value. A
 failure there does not reach the handler as a domain error: `Command.runWith`
 wraps every parse failure in a `CliError.ShowHelp`, which reports as a usage
 error — wrong for a `--config` whose *absence* is meant to be an
@@ -91,6 +92,7 @@ const CliTestLayer = Layer.mergeAll(
     Terminal.make({
       columns: Effect.succeed(80),
       rows: Effect.succeed(24),
+      size: Effect.die("unused"),
       readInput: Effect.die("unused"),
       readLine: Effect.die("unused"),
       display: () => Effect.void,
@@ -138,6 +140,7 @@ const CliTestLayer = Layer.mergeAll(
     Terminal.make({
       columns: Effect.succeed(80),
       rows: Effect.succeed(24),
+      size: Effect.die("unused"),
       readInput: Effect.die("unused"),
       readLine: Effect.die("unused"),
       display: () => Effect.void,
@@ -227,7 +230,7 @@ them apart.
 ## `Argument.Path` resolves a relative path against the process's own cwd, at parse time
 
 The primitive resolves a non-absolute value with `path.resolve(value)`
-(`cli/Primitive.ts:507`) — Node's own cwd-relative resolution, run
+(`cli/Primitive.ts:516`) — Node's own cwd-relative resolution, run
 the moment the argument is parsed, not when the handler later reads it. A
 handler that expects the raw string it was passed, or that resolves relative
 to a directory the user supplied elsewhere, gets a different path than it
@@ -242,5 +245,5 @@ behavior with `Argument.Path` — both kinds route through the same
 command tree by default — a subcommand cannot "not have" `--help` on its own.
 Trim them program-wide with `CliConfig.layer({ builtIns: [] })`
 (`cli/CliConfig.ts`), read by `Command.runWith` when it collects the
-active flag set (`Command.ts:1839`) — there is no per-command opt-out, only
+active flag set (`Command.ts:1847`) — there is no per-command opt-out, only
 this one program-wide switch.

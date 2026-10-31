@@ -10,10 +10,10 @@ sources:
     resource: ../../pnpm-workspace.yaml
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 53a9038465693d4d
+    body: ce395dd6c44414b0
 ---
 
 # Add a workspace package
@@ -45,7 +45,7 @@ A new `@effected/X` library is ready to be scaffolded, following
    in the package being scaffolded. This is unconditional: it holds even
    for a pure leaf package with no `workspace:*` edges at all, because
    every library manifest carries `prepare: turbo run build:dev` (the
-   `pnpm-plugin-effect` companion is the lone exception, and nobody
+   `pnpm-plugin-effected` companion is the lone exception, and nobody
    scaffolds a library from it), so any sibling-copied scaffold inherits
    the script regardless of what the new package depends on.
 

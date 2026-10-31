@@ -1,7 +1,8 @@
 import { assert, describe, it } from "@effect/vitest";
-import { ConfigProvider, Effect, Layer, Stdio, Terminal } from "effect";
+import { ConfigProvider, Effect, Layer, Stdio } from "effect";
 import { TerminalCapabilities } from "effect/cli";
 import { CliEnv, CliInteractive } from "../src/index.js";
+import { inertTerminal } from "./helpers/inertTerminal.js";
 
 /** `Stdio` and `Terminal` doubles: the requirements `CliEnv.layer` leaves to the platform. */
 const platform = (io: { readonly stdin: boolean; readonly stdout: boolean }) =>
@@ -11,16 +12,7 @@ const platform = (io: { readonly stdin: boolean; readonly stdout: boolean }) =>
 			stdoutIsTerminal: Effect.succeed(io.stdout),
 			stderrIsTerminal: Effect.succeed(io.stdout),
 		}),
-		Layer.succeed(
-			Terminal.Terminal,
-			Terminal.make({
-				columns: Effect.succeed(80),
-				rows: Effect.succeed(24),
-				readInput: Effect.die("unused"),
-				readLine: Effect.die("unused"),
-				display: () => Effect.void,
-			}),
-		),
+		inertTerminal(),
 	);
 
 const withEnv = (env: Record<string, string>) =>

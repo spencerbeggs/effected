@@ -4,9 +4,10 @@
 // The pure core is the JCS emitter — compact output, object keys sorted by
 // UTF-16 code units, ES number serialization — with the package's usual
 // `Result` primitive / spanned `Effect` twin arrangement. Hashing is the one
-// effectful edge: it requires core's `Crypto.Crypto` service in `R` and owns
-// no backend, so consumers provide `@effect/platform-node`'s
-// `NodeCrypto.layer` (or any `Crypto` layer) at the application edge.
+// effectful edge: it requires core's `Digest.Digest` service in `R` and owns
+// no backend, so consumers provide `Digest.layerWebCrypto` from
+// `effect/crypto` (or a platform family layer such as `NodeCrypto.layerDigest`)
+// at the application edge.
 //
 // This is a deliberately different contract from `Jsonc.stringify` (plain
 // `JSON.stringify` semantics — nested unrepresentables dropped or nulled):
@@ -15,8 +16,8 @@
 // rules in `JsoncCanonicalizeOptions` (bigint, undefined, non-finite numbers,
 // toJSON) are opt-in per value kind and inert for plain JSON input.
 
-import type { PlatformError } from "effect";
-import { Crypto, Effect, Result, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
+import { Digest } from "effect/crypto";
 import * as Hex from "effect/encoding/Hex";
 import { causeMessage } from "./internal/causeMessage.js";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
@@ -447,7 +448,7 @@ export type JsoncDigest = (bytes: Uint8Array) => Uint8Array;
 
 const encoder = new TextEncoder();
 
-// SHA-256 produces 32 bytes. The `Crypto.Crypto` path cannot return anything
+// SHA-256 produces 32 bytes. The `Digest.Digest` path cannot return anything
 // else; the caller-supplied `JsoncDigest` can, so the sync twins check it
 // rather than quietly emitting a digest of the wrong width under a contract
 // that promises 64 hex characters.
@@ -482,12 +483,8 @@ const digestHexResult = (text: string, digest: JsoncDigest): Result.Result<strin
 					),
 	);
 
-const digestHex = (text: string): Effect.Effect<string, PlatformError.PlatformError, Crypto.Crypto> =>
-	Effect.gen(function* () {
-		const crypto = yield* Crypto.Crypto;
-		const digest = yield* crypto.digest("SHA-256", encoder.encode(text));
-		return Hex.encode(digest);
-	});
+const digestHex = (text: string): Effect.Effect<string, never, Digest.Digest> =>
+	Digest.Digest.use((digest) => digest.digestHex(Digest.sha256, encoder.encode(text)));
 
 // ── Facade ──────────────────────────────────────────────────────────────────
 
@@ -496,9 +493,10 @@ const digestHex = (text: string): Effect.Effect<string, PlatformError.PlatformEr
  * Canonicalization Scheme) and SHA-256 content fingerprints. Not instantiable.
  *
  * Canonicalization is pure; the two hashing statics require core's
- * `Crypto.Crypto` service in `R` and own no backend — provide
- * `@effect/platform-node`'s `NodeCrypto.layer` (or any `Crypto` layer, e.g.
- * one built with `Crypto.make` over WebCrypto) at the application edge.
+ * `Digest.Digest` service in `R` and own no backend — provide
+ * `Digest.layerWebCrypto` from `effect/crypto` (any runtime with WebCrypto)
+ * or a platform family layer such as `@effect/platform-node`'s
+ * `NodeCrypto.layerDigest` at the application edge.
  *
  * @example
  * ```ts
@@ -511,8 +509,8 @@ const digestHex = (text: string): Effect.Effect<string, PlatformError.PlatformEr
  *   const b = yield* JsoncFingerprint.hash({ a: 1, b: 2 });
  *   return a === b; // true
  * });
- * // Provide a Crypto layer at the edge, e.g. NodeCrypto.layer from
- * // "@effect/platform-node".
+ * // Provide a Digest layer at the edge, e.g. Digest.layerWebCrypto from
+ * // "effect/crypto".
  * ```
  *
  * @public
@@ -619,7 +617,7 @@ export class JsoncFingerprint {
 	 * callback. Hashing is the one place the package cannot stay pure on its
 	 * own, so the caller binds the platform: pass a {@link JsoncDigest}
 	 * wrapping `node:crypto`'s `createHash` (or any SHA-256 implementation),
-	 * exactly as a `Crypto` layer is provided at the edge for the `Effect`
+	 * exactly as a `Digest` layer is provided at the edge for the `Effect`
 	 * variant.
 	 *
 	 * @example
@@ -662,10 +660,10 @@ export class JsoncFingerprint {
 	 * value fails with the same typed errors as
 	 * {@link JsoncFingerprint.canonicalize}.
 	 *
-	 * Requires core's `Crypto.Crypto` service — provide
-	 * `@effect/platform-node`'s `NodeCrypto.layer` (or any `Crypto` layer) at
-	 * the application edge. The digest itself can fail with the platform's
-	 * `PlatformError`, passed through untranslated.
+	 * Requires core's `Digest.Digest` service — provide
+	 * `Digest.layerWebCrypto` from `effect/crypto` (or a platform family layer
+	 * such as `NodeCrypto.layerDigest`) at the application edge. The digest
+	 * itself cannot fail with a typed error.
 	 * Synchronous callers with no fiber to run this in reach for
 	 * {@link JsoncFingerprint.hashResult} instead, supplying their own
 	 * digest; the two agree byte for byte.
@@ -679,15 +677,15 @@ export class JsoncFingerprint {
 	 * @param value - The plain JSON value to fingerprint.
 	 * @param options - Optional {@link JsoncCanonicalizeOptions}, applied to the
 	 *   canonicalization the digest is taken over.
-	 * @returns An `Effect` requiring `Crypto.Crypto` that succeeds with the
+	 * @returns An `Effect` requiring `Digest.Digest` that succeeds with the
 	 *   64-character lowercase-hex SHA-256, or fails with a
-	 *   {@link JsoncCanonicalizeError} (or the platform's `PlatformError`).
+	 *   {@link JsoncCanonicalizeError}.
 	 */
 	static readonly hash = Effect.fn("JsoncFingerprint.hash")(
 		(
 			value: unknown,
 			options?: JsoncCanonicalizeOptions,
-		): Effect.Effect<string, JsoncCanonicalizeError | PlatformError.PlatformError, Crypto.Crypto> =>
+		): Effect.Effect<string, JsoncCanonicalizeError, Digest.Digest> =>
 			Effect.flatMap(Effect.fromResult(JsoncFingerprint.canonicalizeResult(value, options)), digestHex),
 	);
 
@@ -726,9 +724,9 @@ export class JsoncFingerprint {
 	 * for file content that must fingerprint identically across checkout
 	 * line-ending settings.
 	 *
-	 * Requires core's `Crypto.Crypto` service — provide
-	 * `@effect/platform-node`'s `NodeCrypto.layer` (or any `Crypto` layer) at
-	 * the application edge.
+	 * Requires core's `Digest.Digest` service — provide
+	 * `Digest.layerWebCrypto` from `effect/crypto` (or a platform family layer
+	 * such as `NodeCrypto.layerDigest`) at the application edge.
 	 * Synchronous callers reach for
 	 * {@link JsoncFingerprint.hashTextResult} instead, supplying their own
 	 * digest; the two agree byte for byte.
@@ -755,12 +753,11 @@ export class JsoncFingerprint {
 	 * @param text - The text content to fingerprint.
 	 * @param options - Optional {@link JsoncTextHashOptions}; defaults apply
 	 *   for omitted fields.
-	 * @returns An `Effect` requiring `Crypto.Crypto` that succeeds with the
-	 *   64-character lowercase-hex SHA-256, or fails with the platform's
-	 *   `PlatformError` if the digest itself fails.
+	 * @returns An `Effect` requiring `Digest.Digest` that succeeds with the
+	 *   64-character lowercase-hex SHA-256; it has no typed failure.
 	 */
 	static readonly hashText = Effect.fn("JsoncFingerprint.hashText")(
-		(text: string, options?: JsoncTextHashOptions): Effect.Effect<string, PlatformError.PlatformError, Crypto.Crypto> =>
+		(text: string, options?: JsoncTextHashOptions): Effect.Effect<string, never, Digest.Digest> =>
 			digestHex(options?.normalizeEol === true ? JsoncFingerprint.normalizeEol(text) : text),
 	);
 }

@@ -1,25 +1,17 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { AudienceKind } from "@effected/env";
 import { Audience, TerminalEnv } from "@effected/env";
-import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Option, Stdio, Terminal } from "effect";
+import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Option, Stdio } from "effect";
 import type { Document, FailureDetails, ReportFailuresOptions } from "../src/index.js";
 import { CliDoc, CliLinks, CliLogger, CliRuntime, CliTheme, Doc, Render } from "../src/index.js";
+import { inertTerminal } from "./helpers/inertTerminal.js";
 import { commandLines } from "./helpers/runnerCommands.js";
 
 const ESC = String.fromCharCode(0x1b);
 
 const platform = Layer.mergeAll(
 	Stdio.layerTest({ stdinIsTerminal: Effect.succeed(true), stdoutIsTerminal: Effect.succeed(true) }),
-	Layer.succeed(
-		Terminal.Terminal,
-		Terminal.make({
-			columns: Effect.succeed(100),
-			rows: Effect.succeed(24),
-			readInput: Effect.die("unused"),
-			readLine: Effect.die("unused"),
-			display: () => Effect.void,
-		}),
-	),
+	inertTerminal({ columns: 100 }),
 );
 
 const capturing = () => {

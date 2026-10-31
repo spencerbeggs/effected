@@ -15,7 +15,7 @@ Each package sits in one of four categories describing its runtime surface:
 - **Integrated** — imports at least one runtime package outside `effect` core.
 - **Boundary** — the same `@effected/*`-only dependency surface as a pure package, but does IO through Effect's core `FileSystem` and `Path` services.
 - **Pure** — peers on `effect` and takes only `@effected/*` edges, with no IO.
-- **Companion** — not a library and exposes no API; published and installable, it ships pnpm catalogs and a pnpmfile that pin your `effect` versions, your `@effected/*` versions and both sets of peer floors to the ones the kit was built against.
+- **Companion** — not a library and exposes no API; published and installable, it ships one pnpm catalog and a pnpmfile that pin your `effect` and `@effected/*` versions to the ones the kit was built against.
 
 Every package is `unstable`; see [release strategy](#release-strategy).
 
@@ -72,14 +72,14 @@ Every package is `unstable`; see [release strategy](#release-strategy).
 
 | Package | Stability | Description |
 | ------- | --------- | ----------- |
-| [@effected/pnpm-plugin-effect](packages/pnpm-plugin-effect) | unstable | pnpm config dependency shipping the catalogs that pin Effect and the `@effected/*` kit, for dependencies and peer ranges alike |
+| [@effected/pnpm-plugin-effected](packages/pnpm-plugin-effected) | unstable | pnpm config dependency shipping one catalog, `effected`, that pins Effect and the `@effected/*` kit, for dependencies and peer ranges alike |
 | [@effected/schemastore-cli](packages/schemastore-cli) | unstable | The `schemastore` command: build and check SchemaStore-shaped JSON Schema documents from a `schemastore.config.ts`, with a per-schema published flag and a drift policy |
 
 ## Release strategy
 
 Every package here is published to npm. Releases are changeset-driven: a change that affects a published package carries a changeset, and CI releases the packages those changesets name. That release is sometimes the whole kit and sometimes a single package — both are ordinary, and package versions move independently as a result. Each package's own npm page and `package.json` are the source of truth for where it stands.
 
-What does not move independently is the Effect line. Every package is built and tested against the one Effect v4 release the workspace lockfile resolves, and every package peers `effect` at the same `^4.0.0`, so their peer ranges agree with each other by construction rather than by luck. Publishing runs ahead of the applications that consume the kit rather than behind them, which surfaces integration problems against real published packages instead of a stand-in.
+What does not move independently is the Effect line. Every package is built and tested against the one Effect v4 release the workspace lockfile resolves, and every package peers `effect` at the same `~4.1.0`, so their peer ranges agree with each other by construction rather than by luck. Publishing runs ahead of the applications that consume the kit rather than behind them, which surfaces integration problems against real published packages instead of a stand-in.
 
 ### Pre-1.0.0
 
@@ -96,16 +96,16 @@ Every package is `unstable` today. Treat the two as separate: even a package mar
 
 ### Version alignment
 
-[`@effected/pnpm-plugin-effect`](packages/pnpm-plugin-effect) keeps a consumer's versions aligned with the kit's. It is a pnpm config dependency, installed ahead of the rest of the tree, that ships four pnpm catalogs: two for Effect and two for the kit itself.
+[`@effected/pnpm-plugin-effected`](packages/pnpm-plugin-effected) keeps a consumer's versions aligned with the kit's. It is a pnpm config dependency, installed ahead of the rest of the tree, that ships one pnpm catalog, `effected`, covering Effect and the kit alike.
 
-The `effect` catalog carries `effect` and its `@effect/*` satellites at `^4.0.0` (`@effect/tsgo` is the exception: it versions independently on its own line). Effect releases all of them together at one version, so once the plugin is installed everything in your workspace resolves to one `4.x`, and your lockfile holds the exact version. `effect:peers` carries the same package set at the peer range a library should advertise.
+The catalog carries `effect` and its `@effect/*` satellites held to one Effect minor (`~4.1.1`; `@effect/tsgo` is the exception: it versions independently on its own line). Effect releases all of them together at one version, so once the plugin is installed everything in your workspace resolves to one `4.1.x`, and your lockfile holds the exact version. A new Effect minor arrives with a new plugin release, never through a range.
 
-The `effected` catalog does the same job for the kit's own packages — every one except `@effected/pnpm-plugin-effect` itself, which is the package the catalog ships inside. Write `"@effected/workspaces": "catalog:effected"` in `dependencies`, or `catalog:effected:peers` in `peerDependencies`, instead of a hand-maintained range. That matters more than it sounds on `0.x`, where a caret does not cross a minor: a range written by hand stops resolving anything current as soon as the package it names cuts a minor, and it does so silently across every manifest that repeats it. The catalog is rebuilt as packages release, so upgrading the config dependency advances the whole kit surface in one step.
+The same catalog carries the kit's own packages — every one except `@effected/pnpm-plugin-effected` itself, which is the package the catalog ships inside. Write `"@effected/workspaces": "catalog:effected"` in `dependencies`, `devDependencies` and `peerDependencies` alike, instead of a hand-maintained range. That matters more than it sounds on `0.x`, where a caret does not cross a minor: a range written by hand stops resolving anything current as soon as the package it names cuts a minor, and it does so silently across every manifest that repeats it. The catalog is rebuilt as packages release, so upgrading the config dependency advances the whole kit surface in one step.
 
 ```json
 {
   "dependencies": {
-    "effect": "catalog:effect",
+    "effect": "catalog:effected",
     "@effected/workspaces": "catalog:effected"
   }
 }
@@ -113,7 +113,7 @@ The `effected` catalog does the same job for the kit's own packages — every on
 
 ### A note on peers
 
-Upstream Effect manifests occasionally introduce peer-dependency wrinkles that need an override rule to keep resolution clean. `@effected/pnpm-plugin-effect` ships the ones the kit knows about: today, scoped pins that keep tools still built on an Effect release candidate on their own `@effect/platform-node-shared`.
+A catalog fixes the versions your own manifests name, but not the ones your dependencies name. `@effected/pnpm-plugin-effected` therefore also ships overrides: one per Effect family member, derived from the catalog, holding every `effect` and `@effect/*` in your graph to the catalog version, plus scoped pins that keep tools still built on an Effect release candidate on their own `@effect/platform-node-shared`. Your own `overrides` are kept, and your value for the same selector wins.
 
 ## Contributing
 

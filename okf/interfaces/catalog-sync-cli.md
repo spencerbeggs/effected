@@ -1,7 +1,7 @@
 ---
 type: Interface
 title: The catalog:sync / catalog:check CLI
-description: Two root package.json scripts over lib/scripts/catalog-sync.ts that resolve every catalogued @effected/* package's next-release version, rewrite the effected catalog literal in packages/pnpm-plugin-effect/savvy.build.ts, and gate on both catalog membership and version drift.
+description: Two root package.json scripts over lib/scripts/catalog-sync.ts that resolve every catalogued @effected/* package's next-release version, rewrite the effected catalog literal in packages/pnpm-plugin-effected/savvy.build.ts, and gate on both catalog membership and version drift.
 status: stable
 kind: cli
 resource: ../../lib/scripts/catalog-sync.ts
@@ -13,23 +13,25 @@ sources:
     resource: ../../package.json
   - id: catalog-sync-script
     resource: ../../lib/scripts/catalog-sync.ts
-  - id: pnpm-plugin-effect-savvy-build
-    resource: ../../packages/pnpm-plugin-effect/savvy.build.ts
+  - id: pnpm-plugin-effected-savvy-build
+    resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-31T18:50:20Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:14.366Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-10-31T19:39:48Z
 integrity:
   generated:
-    body: 27046855d658d76c
+    body: 8439fda584edd5c2
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 3850c7f3af7a0557
+    at: 2026-10-31T19:39:48Z
+    content: c67f4e0d81871f57
 ---
 
 # The catalog:sync / catalog:check CLI
@@ -42,10 +44,17 @@ integrity:
   `"catalog:sync": "tsx lib/scripts/catalog-sync.ts"`.[^root-package-scripts]
 - The rewrite target is the `effected` catalog literal declared inline at
   the `PnpmConfigPlugin(...)` call site inside
-  `packages/pnpm-plugin-effect/savvy.build.ts`.[^pnpm-plugin-effect-savvy-build]
+  `packages/pnpm-plugin-effected/savvy.build.ts`.[^pnpm-plugin-effected-savvy-build]
   The literal must stay inline there — hoisting it into an exported
   `const` makes it invisible to the upstream `rolldown-pnpm-config
   upgrade` CLI that walks the call argument statically.
+- The `upgrade --yes` run is not confined to `effected`: it walks the
+  whole literal, so it also moves the `effect` catalog to the newest
+  in-range registry release. Under a caret that took the catalog across
+  an Effect minor unattended
+  ([the catalog crossed an Effect minor](../incidents/catalog-crossed-effect-minor.md));
+  under the tilde ranges the `effect` catalog now uses, it can move a
+  patch and never a minor.
 - `.github/workflows/catalog-sync.yml` is the CI job that runs this CLI
   against `main` on every pull request; see
   [the catalog-sync-check-goes-red-when-it-repairs gotcha](../gotchas/catalog-sync-check-goes-red-when-it-repairs.md).
@@ -58,7 +67,7 @@ and exits non-zero if either check finds anything wrong. It writes
 nothing.
 
 `catalog:sync` — the only writer. Rewrites the catalog literal in
-`packages/pnpm-plugin-effect/savvy.build.ts` in place and writes one
+`packages/pnpm-plugin-effected/savvy.build.ts` in place and writes one
 fixed-name changeset (`.changeset/catalog-sync.md`) when anything moved.
 Builds never write this file; only a human or a workflow invoking
 `catalog:sync` deliberately does.
@@ -124,6 +133,6 @@ not it wrote anything.
     `catalogMembers`, `publishablePackages` and `missingFromCatalog`
     functions that compute membership independently of the upstream
     upgrade CLI.
-[^pnpm-plugin-effect-savvy-build]: `packages/pnpm-plugin-effect/savvy.build.ts:11-20`
+[^pnpm-plugin-effected-savvy-build]: `packages/pnpm-plugin-effected/savvy.build.ts`, the `effected` catalog block
     — the inline `PnpmConfigPlugin({ ... })` call carrying the catalog
     literal the CLI rewrites.

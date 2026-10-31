@@ -33,6 +33,11 @@ export interface TestTerminalHandle {
 	readonly end: Effect.Effect<void>;
 	/** Everything written to the terminal so far, prompt frames and escape codes included. */
 	readonly output: Effect.Effect<string>;
+	/**
+	 * Resize the terminal: `columns` and `rows` report the new size from now on, and every open `size`
+	 * subscription receives it.
+	 */
+	readonly resize: (size: Terminal.Size) => Effect.Effect<void>;
 	/** How many queued key presses nobody has taken yet. */
 	readonly pending: Effect.Effect<number>;
 	/**
@@ -48,7 +53,9 @@ export interface TestTerminalHandle {
  * A scripted `Terminal` for testing prompts and anything that reads the terminal.
  *
  * @remarks
- * Queue keys with `input` or `type`, run the program under `layer`, then read `output`. To assert that a code path
+ * Queue keys with `input` or `type`, run the program under `layer`, then read `output`. `size` behaves as a real
+ * terminal's does: each subscription starts with the current size, receives every `resize`, keeps only the latest,
+ * and ends when its scope closes. To assert that a code path
  * did NOT touch the terminal, queue some keys first and check `reads` is all zero (no subscription, no key, no
  * line) and `pending` is unchanged afterwards. Only
  * available from `@effected/cli/testing`.
@@ -73,6 +80,8 @@ export class TestTerminal {
 			let offered = 0;
 			let lines = 0;
 			let subscriptions = 0;
+			let current: Terminal.Size = { columns: options?.columns ?? 80, rows: options?.rows ?? 24 };
+			const sizeSubscribers = new Set<Queue.Queue<Terminal.Size, Cause.Done>>();
 
 			const offer = (inputs: ReadonlyArray<Terminal.UserInput>) =>
 				Effect.suspend(() => {
@@ -81,8 +90,22 @@ export class TestTerminal {
 				}).pipe(Effect.asVoid);
 
 			const terminal = Terminal.make({
-				columns: Effect.succeed(options?.columns ?? 80),
-				rows: Effect.succeed(options?.rows ?? 24),
+				columns: Effect.sync(() => current.columns),
+				rows: Effect.sync(() => current.rows),
+				size: Effect.acquireRelease(
+					Effect.flatMap(Queue.sliding<Terminal.Size, Cause.Done>(1), (subscriber) =>
+						Effect.sync(() => {
+							Queue.offerUnsafe(subscriber, current);
+							sizeSubscribers.add(subscriber);
+							return subscriber;
+						}),
+					),
+					(subscriber) =>
+						Effect.sync(() => {
+							sizeSubscribers.delete(subscriber);
+							Queue.endUnsafe(subscriber);
+						}),
+				),
 				readInput: Effect.sync(() => {
 					subscriptions++;
 					return queue;
@@ -114,6 +137,11 @@ export class TestTerminal {
 						})),
 					),
 				end: Queue.end(queue).pipe(Effect.asVoid),
+				resize: (size) =>
+					Effect.sync(() => {
+						current = { columns: size.columns, rows: size.rows };
+						for (const subscriber of sizeSubscribers) Queue.offerUnsafe(subscriber, current);
+					}),
 				output: Effect.sync(() => written.join("")),
 				pending: Queue.size(queue),
 				reads: Effect.map(Queue.size(queue), (size) => ({ keys: offered - size, lines, subscriptions })),

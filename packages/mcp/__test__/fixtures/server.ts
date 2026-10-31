@@ -27,12 +27,10 @@ export const Slow = Tool.make("slow", { description: "Completes after a short re
 export const Garble = Tool.make("garble", {
 	description: "Writes a stray line to stdout.",
 	success: Schema.Struct({ ok: Schema.Boolean }),
-	dependencies: [Stdio.Stdio],
 });
 export const Grow = Tool.make("grow", {
 	description: "Registers another tool at runtime.",
 	success: Schema.Struct({ ok: Schema.Boolean }),
-	dependencies: [McpServer.McpServer],
 });
 export const Version = Tool.make("version", { description: "Returns a bare string.", success: Schema.String });
 
@@ -46,34 +44,38 @@ export const FixtureResource = McpServer.resource({
 	content: Effect.succeed("fixture content"),
 });
 
-export const FixtureHandlers = FixtureKit.toLayer({
-	echo: ({ text }) => Effect.succeed({ text }),
-	lookup: ({ id }) =>
-		Effect.fail(
-			new NotFound({ id, remediation, message: ToolFailure.message(`No thing "${ToolFailure.truncate(id)}".`, remediation) }),
-		),
-	boom: () => Effect.die(new Error("kaboom")),
-	ping: () => Effect.succeed({ pong: true }),
-	hang: () => Effect.never,
-	slow: () => Effect.as(Effect.sleep("100 millis"), { ok: true }),
-	garble: () =>
-		Effect.gen(function* () {
-			const stdio = yield* Stdio.Stdio;
-			yield* Stream.run(Stream.make("garbage\n"), stdio.stdout());
-			return { ok: true };
-		}).pipe(Effect.orDie),
-	grow: () =>
-		Effect.gen(function* () {
-			const server = yield* McpServer.McpServer;
-			yield* server.addTool({
-				tool: new McpSchema.Tool({ name: "late", inputSchema: { type: "object" } }),
-				annotations: Context.empty(),
-				handle: () => Effect.succeed(new McpSchema.CallToolResult({ content: [] })),
-			});
-			return { ok: true };
-		}),
-	version: () => Effect.succeed("1.2.3"),
-});
+/** Stdio and McpServer are captured when the handlers are built, not declared as request-level dependencies. */
+export const FixtureHandlers = FixtureKit.toLayer(
+	Effect.gen(function* () {
+		const stdio = yield* Stdio.Stdio;
+		const server = yield* McpServer.McpServer;
+		return {
+			echo: ({ text }) => Effect.succeed({ text }),
+			lookup: ({ id }) =>
+				Effect.fail(
+					new NotFound({
+						id,
+						remediation,
+						message: ToolFailure.message(`No thing "${ToolFailure.truncate(id)}".`, remediation),
+					}),
+				),
+			boom: () => Effect.die(new Error("kaboom")),
+			ping: () => Effect.succeed({ pong: true }),
+			hang: () => Effect.never,
+			slow: () => Effect.as(Effect.sleep("100 millis"), { ok: true }),
+			garble: () => Stream.run(Stream.make("garbage\n"), stdio.stdout()).pipe(Effect.as({ ok: true }), Effect.orDie),
+			grow: () =>
+				server
+					.addTool({
+						tool: new McpSchema.Tool({ name: "late", inputSchema: { type: "object" } }),
+						annotations: Context.empty(),
+						handle: () => Effect.succeed(new McpSchema.CallToolResult({ content: [] })),
+					})
+					.pipe(Effect.as({ ok: true })),
+			version: () => Effect.succeed("1.2.3"),
+		};
+	}),
+);
 
 /** The toolkit provided WITH McpStdio.layer — the composition okfit uses. */
 export const fixtureServer = (options: Pick<McpStdioOptions, "protocols"> = {}) =>
@@ -87,6 +89,10 @@ const BoomKit = Toolkit.make(Boom);
 /** The toolkit MERGED BESIDE McpStdio.layer — it never sees the layer's outputs at build time. */
 export const fixtureServerMerged = () =>
 	Layer.mergeAll(
-		McpServer.toolkit(BoomKit).pipe(Layer.provide(BoomKit.toLayer({ boom: () => Effect.die(new Error("kaboom")) }))),
+		// The shared registry, not McpStdio.layer's output: the toolkit stays a sibling that never inherits LogToStderr.
+		McpServer.toolkit(BoomKit).pipe(
+			Layer.provide(BoomKit.toLayer({ boom: () => Effect.die(new Error("kaboom")) })),
+			Layer.provide(McpServer.McpServer.layer),
+		),
 		McpStdio.layer({ name: "fixture-merged", version: "0.0.0" }),
 	);

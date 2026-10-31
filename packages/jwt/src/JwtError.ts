@@ -6,8 +6,10 @@ import { Schema } from "effect";
  * @remarks
  * Route on this value, never on `message`. The set is closed:
  *
- * - `malformed` — the token is not three base64url segments of JSON, JSON, bytes.
- * - `unsupportedAlgorithm` — the algorithm is not `RS256` or `ES256` (`none` is never accepted).
+ * - `malformed` — the token is not three canonical base64url segments of a JSON
+ *   header, a JSON payload and a signature, or its header names an algorithm
+ *   core does not know (`none` is never accepted) or carries `crit` or `b64`.
+ * - `unsupportedAlgorithm` — the algorithm is HMAC (`HS256`, ...), which a public key never verifies.
  * - `algorithmMismatch` — the header's `alg` differs from the key's algorithm.
  * - `badSignature` — the signature does not verify.
  * - `unknownKid` — no key in the key set carries the token's `kid`.
@@ -16,7 +18,9 @@ import { Schema } from "effect";
  * - `claims` — the claims are not the expected shape.
  * - `key` — key material could not be imported or generated.
  * - `jwksFetch` — the key set could not be discovered or fetched.
- * - `unsupportedRuntime` — the runtime has no WebCrypto `subtle`.
+ *
+ * Every signature, key import and claim check runs in core `effect/jose`;
+ * the core `JoseError`, when there is one, is kept as `cause`.
  *
  * @public
  */
@@ -33,7 +37,6 @@ export const JwtErrorReason = Schema.Literals([
 	"claims",
 	"key",
 	"jwksFetch",
-	"unsupportedRuntime",
 ]);
 
 /**

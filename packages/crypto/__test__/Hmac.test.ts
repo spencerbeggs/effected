@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
-import { assert, describe, it } from "@effect/vitest";
-import { Effect, Redacted } from "effect";
-import { afterEach, vi } from "vitest";
+import { NodeCrypto } from "@effect/platform-node";
+import { assert, layer } from "@effect/vitest";
+import { Effect, Exit, Layer, Redacted } from "effect";
+import { Mac, SecureRandom, WebCrypto } from "effect/crypto";
 import type { HmacAlgorithm } from "../src/Hmac.js";
 import { Hmac } from "../src/Hmac.js";
 
@@ -21,12 +22,22 @@ const vectors: ReadonlyArray<Vector> = JSON.parse(
 const bytes = (hex: string): Uint8Array => new Uint8Array(Buffer.from(hex, "hex"));
 const hexOf = (value: Uint8Array): string => Buffer.from(value).toString("hex");
 
+// The WebCrypto layer, as a Worker would run it.
+const MacLive = Mac.layerWebCrypto.pipe(Layer.provide(SecureRandom.layerWebCrypto));
+
+/** A `Mac` layer over a `Crypto` object with no `subtle`, as an insecure browser context has. */
+// `Layer.fresh`: the suite's memo map already holds `Mac.layerWebCrypto` built
+// over the real `crypto`, and would hand that instance back instead.
+const NoSubtle = Layer.fresh(Mac.layerWebCrypto).pipe(
+	Layer.provide([SecureRandom.layerWebCrypto, WebCrypto.layer({} as typeof globalThis.crypto)]),
+);
+
 const algorithms: ReadonlyArray<readonly [HmacAlgorithm, "sha256" | "sha512"]> = [
 	["SHA-256", "sha256"],
 	["SHA-512", "sha512"],
 ];
 
-describe("Hmac.sign (RFC 4231)", () => {
+layer(MacLive)("Hmac.sign (RFC 4231)", (it) => {
 	it("reads all seven RFC 4231 test cases", () => {
 		assert.deepStrictEqual(
 			vectors.map((vector) => vector.case),
@@ -90,7 +101,7 @@ describe("Hmac.sign (RFC 4231)", () => {
 	);
 });
 
-describe("Hmac.verify", () => {
+layer(MacLive)("Hmac.verify", (it) => {
 	const case2 = { algorithm: "SHA-256", key: Redacted.make("Jefe"), message: "what do ya want for nothing?" } as const;
 	const hex = "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843";
 	const oracle = Buffer.from(hex, "hex");
@@ -134,7 +145,7 @@ describe("Hmac.verify", () => {
 	);
 });
 
-describe("Hmac over a multi-part message", () => {
+layer(MacLive)("Hmac over a multi-part message", (it) => {
 	const key = Redacted.make("parts-key");
 	const body = new Uint8Array([0xff, 0x00, 0xc3]);
 
@@ -171,33 +182,58 @@ describe("Hmac over a multi-part message", () => {
 	);
 });
 
-describe("Hmac failures", () => {
-	afterEach(() => {
-		vi.unstubAllGlobals();
-	});
-
-	it.effect("fails with unsupportedRuntime when the runtime has no crypto.subtle", () =>
+layer(MacLive)("Hmac failures", (it) => {
+	it.effect("dies, rather than failing, when the runtime has no crypto.subtle", () =>
 		Effect.gen(function* () {
-			vi.stubGlobal("crypto", undefined);
-			const error = yield* Effect.flip(Hmac.sign({ algorithm: "SHA-256", key: bytes("0b"), message: "x" }));
-			assert.strictEqual(error._tag, "CryptoError");
-			assert.strictEqual(error.reason, "unsupportedRuntime");
-		}),
+			const exit = yield* Effect.exit(Hmac.sign({ algorithm: "SHA-256", key: bytes("0b"), message: "x" }));
+			assert.isTrue(Exit.isFailure(exit));
+			if (Exit.isFailure(exit)) {
+				assert.deepStrictEqual(
+					exit.cause.reasons.map((reason) => reason._tag),
+					["Die"],
+				);
+			}
+		}).pipe(Effect.provide(NoSubtle)),
 	);
 
-	it.effect("fails with key when WebCrypto refuses the key, and never names the key", () =>
+	it.effect("fails with core's CryptoError (InvalidKey) for an empty key, and never names the key", () =>
 		Effect.gen(function* () {
-			// WebCrypto refuses a zero-length HMAC key.
 			const error = yield* Effect.flip(
 				Hmac.verify({ algorithm: "SHA-512", key: Redacted.make(""), message: "x", signature: new Uint8Array(64) }),
 			);
-			assert.strictEqual(error.reason, "key");
-			assert.include(error.message, "SHA-512");
+			assert.strictEqual(error._tag, "CryptoError");
+			assert.strictEqual(error.reason._tag, "InvalidKey");
+			assert.strictEqual(error.message, "Mac.key: An HMAC key cannot be empty");
+		}),
+	);
+
+	it.effect("fails on an empty key even when the signature does not decode", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				Hmac.verify({ algorithm: "SHA-256", key: Redacted.make(""), message: "x", signature: "zz", encoding: "hex" }),
+			);
+			assert.strictEqual(error.reason._tag, "InvalidKey");
 		}),
 	);
 });
 
-describe("Hmac.sign over byte views", () => {
+layer(NodeCrypto.layerMac)("Hmac on a platform Mac layer", (it) => {
+	it.effect("signs and verifies RFC 4231 case 2 identically on NodeCrypto.layerMac", () =>
+		Effect.gen(function* () {
+			const options = {
+				algorithm: "SHA-256",
+				key: Redacted.make("Jefe"),
+				message: "what do ya want for nothing?",
+			} as const;
+			const hex = "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843";
+			assert.strictEqual(yield* Hmac.sign({ ...options, encoding: "hex" }), hex);
+			assert.isTrue(yield* Hmac.verify({ ...options, signature: hex, encoding: "hex" }));
+			assert.isFalse(yield* Hmac.verify({ ...options, signature: hex.slice(2), encoding: "hex" }));
+		}),
+	);
+});
+
+layer(MacLive)("Hmac.sign over byte views", (it) => {
 	it.effect("signs exactly a view's bytes, whether it spans its buffer or sits at an offset inside one", () =>
 		Effect.gen(function* () {
 			const key = Redacted.make("view-key");

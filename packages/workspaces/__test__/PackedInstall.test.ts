@@ -194,7 +194,7 @@ describe("PackedInstall.run", () => {
 					assert.strictEqual(pack?.command, "pnpm");
 					assert.strictEqual(pack?.cwd, "/repo/packages/carrier");
 					assert.deepStrictEqual(
-						pack?.args.filter((arg) => !arg.startsWith("/")),
+						pack?.args.map(String).filter((arg) => !arg.startsWith("/")),
 						["pack", "--pack-destination", "--config.ignore-scripts=true"],
 					);
 				}),
@@ -233,7 +233,7 @@ describe("PackedInstall.run", () => {
 				const pack = defaulted.spawns[1];
 				assert.strictEqual(pack?.command, "npm");
 				assert.strictEqual(pack?.cwd, "/repo/packages/carrier/dist/prod/npm/pkg");
-				const destination = pack?.args[3] ?? "";
+				const destination = String(pack?.args[3] ?? "");
 				assert.deepStrictEqual(pack?.args, ["pack", "--ignore-scripts", "--pack-destination", destination]);
 				assert.isTrue(
 					destination.startsWith(defaulted.spawns[0]?.cwd ?? "<no probe>"),

@@ -6,7 +6,12 @@
  *
  * @packageDocumentation
  */
-export { type McpLaunchOptions, McpStdio, type McpStdioOptions } from "./McpStdio.js";
+export {
+	type McpLaunchOptions,
+	McpStdio,
+	type McpStdioOptions,
+	type McpStdioRegistrationServices,
+} from "./McpStdio.js";
 export {
 	McpToolkit,
 	type McpToolkitOptions,

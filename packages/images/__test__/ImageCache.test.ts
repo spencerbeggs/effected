@@ -21,7 +21,7 @@ const keyFor = (name: string) => ImageCacheKey.fromParams(Params, { name }, { sa
 const live = () =>
 	ImageCache.layer.pipe(
 		Layer.provideMerge(ImageBackend.layerDirectory({ directory: "/cache" })),
-		Layer.provideMerge(Layer.mergeAll(MemoryFileSystem.layerWith({}), Path.layer, NodeCrypto.layer)),
+		Layer.provideMerge(Layer.mergeAll(MemoryFileSystem.layerWith({}), Path.layer, NodeCrypto.layerDigest)),
 	);
 
 /** "The cache is off": the no-store backend, which needs nothing provided. */
@@ -29,7 +29,7 @@ const cacheOff: Layer.Layer<ImageBackend> = ImageBackend.layerNone;
 
 /** The cache over a hand-written backend double. */
 const over = (backend: ImageBackendShape) =>
-	ImageCache.layer.pipe(Layer.provide(Layer.succeed(ImageBackend)(backend)), Layer.merge(NodeCrypto.layer));
+	ImageCache.layer.pipe(Layer.provide(Layer.succeed(ImageBackend)(backend)), Layer.merge(NodeCrypto.layerDigest));
 
 describe("ImageCache.getOrGenerate", () => {
 	it.effect("accept narrows facts.format to the listed formats; without accept it stays the full union", () =>
@@ -92,7 +92,7 @@ describe("ImageCache.getOrGenerate", () => {
 			assert.strictEqual(gen.calls(), 2);
 			assert.deepStrictEqual(second.bytes, PNG);
 			assert.isTrue(Option.isNone(yield* (yield* ImageBackend).get(key.digest)));
-		}).pipe(Effect.provide(ImageCache.layer.pipe(Layer.provideMerge(cacheOff), Layer.merge(NodeCrypto.layer)))),
+		}).pipe(Effect.provide(ImageCache.layer.pipe(Layer.provideMerge(cacheOff), Layer.merge(NodeCrypto.layerDigest)))),
 	);
 
 	it.effect("misses, generates, stores; then hits without generating", () =>

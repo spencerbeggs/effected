@@ -90,17 +90,20 @@ describe("Jwks", () => {
 	it.effect("keeps only the supported keys of a mixed set", () =>
 		Effect.gen(function* () {
 			const rsa = { kty: "RSA", kid: "r1", n: "AQAB", e: "AQAB" } as const;
+			const okp = { kty: "OKP", crv: "Ed25519", x: "AA" } as const;
 			const jwks = yield* Schema.decodeUnknownEffect(Jwks)({
 				keys: [
 					rsa,
-					{ kty: "OKP", crv: "Ed25519", x: "AA" },
+					okp,
+					{ kty: "LWE", x: "AA" },
 					{ kty: "oct", k: "b2N0LXNlY3JldC1tYXRlcmlhbA" },
 					{ kty: "EC", crv: 7 },
 				],
 			});
-			assert.deepStrictEqual(jwks.keys, [rsa]);
+			// OKP (Ed25519, for EdDSA) is a supported family
+			assert.deepStrictEqual(jwks.keys, [rsa, okp]);
 			assert.notInclude(JSON.stringify(jwks), "b2N0LXNlY3JldC1tYXRlcmlhbA");
-			assert.deepStrictEqual(yield* Schema.encodeEffect(Jwks)(jwks), { keys: [rsa] });
+			assert.deepStrictEqual(yield* Schema.encodeEffect(Jwks)(jwks), { keys: [rsa, okp] });
 		}),
 	);
 

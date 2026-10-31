@@ -103,6 +103,7 @@ describe("MemoryFileSystem.layerFaulty", () => {
 			const base = yield* MemoryFileSystem.makeWith({ "/data.bin": "payload" });
 			const faulty = MemoryFileSystem.makeFaulty(base, {
 				readFile: (path) => Effect.fail(denied("readFile", path)),
+				readDirectoryEntries: (path) => Effect.fail(denied("readDirectoryEntries", path)),
 				access: (path) =>
 					Effect.fail(
 						PlatformError.systemError({
@@ -119,8 +120,12 @@ describe("MemoryFileSystem.layerFaulty", () => {
 			assert.strictEqual(derived.reason._tag, "PermissionDenied");
 			// exists is derived from access: an injected NotFound reads as false.
 			assert.isFalse(yield* faulty.exists("/data.bin"));
+			// glob is derived from readDirectoryEntries: the fault flows through.
+			const globbed = yield* Effect.flip(faulty.glob("*.bin", { root: "/" }));
+			assert.strictEqual(globbed.reason._tag, "PermissionDenied");
 			// The wrapped volume itself is untouched.
 			assert.strictEqual(yield* base.readFileString("/data.bin"), "payload");
+			assert.deepStrictEqual(yield* base.glob("*.bin", { root: "/" }), ["data.bin"]);
 		}),
 	);
 
@@ -140,13 +145,14 @@ describe("MemoryFileSystem.layerFaulty", () => {
 		"every member FileSystem.make derives is directly interceptable — the fault fires on the member itself",
 		() =>
 			Effect.gen(function* () {
-				// FileSystem.make derives exactly five members (exists, readFileString,
-				// stream, sink, writeFileString). A fault registered on any of them
+				// FileSystem.make derives exactly six members (exists, glob,
+				// readFileString, stream, sink, writeFileString). A fault registered on any of them
 				// must fire on that member — never be silently bypassed by the
 				// re-derivation from an unfaulted primitive.
 				const base = yield* MemoryFileSystem.makeWith({ "/f.txt": "content" });
 				const faulty = MemoryFileSystem.makeFaulty(base, {
 					exists: (path) => Effect.fail(denied("exists", path)),
+					glob: (pattern) => Effect.fail(denied("glob", pattern)),
 					readFileString: (path) => Effect.fail(denied("readFileString", path)),
 					writeFileString: (path) => Effect.fail(denied("writeFileString", path)),
 					stream: (path) => Stream.fail(denied("stream", path)),
@@ -154,6 +160,7 @@ describe("MemoryFileSystem.layerFaulty", () => {
 				});
 
 				assert.strictEqual((yield* Effect.flip(faulty.exists("/f.txt"))).reason._tag, "PermissionDenied");
+				assert.strictEqual((yield* Effect.flip(faulty.glob("*.txt", { root: "/" }))).reason._tag, "PermissionDenied");
 				assert.strictEqual((yield* Effect.flip(faulty.readFileString("/f.txt"))).reason._tag, "PermissionDenied");
 				assert.strictEqual((yield* Effect.flip(faulty.writeFileString("/f.txt", "x"))).reason._tag, "PermissionDenied");
 				assert.strictEqual(
