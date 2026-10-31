@@ -156,8 +156,8 @@
 			"description": "Pure lockfile parsing for bun, npm, pnpm and yarn Berry into one unified Effect schema model, with pure integrity checking against workspace manifests"
 		},
 		{
-			"name": "@effected/pnpm-plugin-effect",
-			"slug": "pnpm-plugin-effect",
+			"name": "@effected/pnpm-plugin-effected",
+			"slug": "pnpm-plugin-effected",
 			"tier": "companion",
 			"stability": "unstable",
 			"description": "pnpm config dependency for centralized catalog management across the Effected ecosystem"

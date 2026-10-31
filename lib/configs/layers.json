@@ -36,7 +36,7 @@
 		["@effected/crypto"],
 		["@effected/source"]
 	],
-	"tooling": ["@effected/pnpm-plugin-effect"],
+	"tooling": ["@effected/pnpm-plugin-effected"],
 	"unconstrained": ["effected", "docs", "scratchpad", "@effected/ai-plugin"],
 	"fields": ["dependencies", "peerDependencies", "optionalDependencies"],
 	"requiredEdges": [

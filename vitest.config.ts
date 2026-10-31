@@ -67,7 +67,9 @@ export default async () => {
 				// Our own sources only. Without an include, the coverage-target scan listed dependency files
 				// (node_modules/.pnpm/...) as "below target" (effected#945).
 				include: ["packages/*/src/**/*.{ts,tsx,mts,cts}", "lib/scripts/**/*.ts"],
-				exclude: ["scratchpad/**"],
+				// The catalog plugin's source imports rolldown-pnpm-config's build-only virtual modules,
+				// so no test can load it; its suite exercises the built pnpmfile instead.
+				exclude: ["scratchpad/**", "packages/pnpm-plugin-effected/src/**"],
 			},
 		},
 	});

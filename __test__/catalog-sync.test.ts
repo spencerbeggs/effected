@@ -48,7 +48,7 @@ const quiet = { write: () => {} } as const;
 function makeRoot(config: string): string {
 	const root = mkdtempSync(join(tmpdir(), "catalog-sync-"));
 	roots.push(root);
-	mkdirSync(join(root, "packages/pnpm-plugin-effect"), { recursive: true });
+	mkdirSync(join(root, "packages/pnpm-plugin-effected"), { recursive: true });
 	mkdirSync(join(root, ".changeset"), { recursive: true });
 	writeFileSync(join(root, CONFIG_PATH), config);
 	return root;
@@ -126,7 +126,7 @@ describe("catalog:sync", () => {
 
 		assert.lengthOf(run.calls, 1);
 		assert.deepStrictEqual(run.calls[0]?.args, ["upgrade", "savvy.build.ts", "--yes", "--format", "json"]);
-		assert.strictEqual(run.calls[0]?.cwd, join(root, "packages/pnpm-plugin-effect"));
+		assert.strictEqual(run.calls[0]?.cwd, join(root, "packages/pnpm-plugin-effected"));
 	});
 
 	it("fails loudly when the CLI does, rather than reporting a clean sync", async () => {
@@ -218,7 +218,7 @@ describe("catalog:sync message rendering", () => {
 	it("renders a commit message with a conventional headline and a blank line", () => {
 		const message = renderCommitMessage(moves);
 		const [headline, blank] = message.split("\n");
-		assert.strictEqual(headline, "chore(pnpm-plugin-effect): update 2 catalog:effected versions");
+		assert.strictEqual(headline, "chore(pnpm-plugin-effected): update 2 catalog:effected versions");
 		assert.strictEqual(blank, "", "commitlint requires a blank line before the body");
 		assert.include(message, "- @effected/app ^0.13.0 -> ^0.13.1 (peer ^0.13.0)");
 	});

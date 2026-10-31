@@ -30,7 +30,7 @@
 		"@effected/memfs": "workspace:*",
 		"@effected/npm": "workspace:*",
 		"@effected/package-json": "workspace:*",
-		"@effected/pnpm-plugin-effect": "workspace:*",
+		"@effected/pnpm-plugin-effected": "workspace:*",
 		"@effected/runtimes": "workspace:*",
 		"@effected/sbom": "workspace:*",
 		"@effected/schema-org": "workspace:*",

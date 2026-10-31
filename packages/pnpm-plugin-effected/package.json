@@ -1,17 +1,17 @@
 {
-	"name": "@effected/pnpm-plugin-effect",
+	"name": "@effected/pnpm-plugin-effected",
 	"version": "0.19.3",
 	"private": true,
 	"description": "pnpm config dependency for centralized catalog management across the Effected ecosystem.",
 	"keywords": ["pnpm", "pnpm-plugin", "config-dependency", "catalog", "monorepo", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/pnpm-plugin-effect#readme",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/pnpm-plugin-effected#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/spencerbeggs/effected.git",
-		"directory": "packages/pnpm-plugin-effect"
+		"directory": "packages/pnpm-plugin-effected"
 	},
 	"license": "MIT",
 	"author": {

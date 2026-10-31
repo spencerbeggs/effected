@@ -9,7 +9,7 @@ await build({
 	},
 	plugins: [
 		PnpmConfigPlugin({
-			name: "@effected/pnpm-plugin-effect",
+			name: "@effected/pnpm-plugin-effected",
 			peerDependencyRules: {
 				allowedVersionsFromCatalogs: {
 					catalog: "effect", // which catalog supplies the satellites
@@ -21,133 +21,133 @@ await build({
 				effect: {
 					packages: {
 						"@effect/ai-anthropic": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/ai-openai": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/ai-openai-compat": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/ai-openrouter": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/atom-react": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/atom-solid": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/atom-vue": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/openapi-generator": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/opentelemetry": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/platform-browser": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/platform-bun": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/platform-node": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/platform-node-shared": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/sql-clickhouse": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/sql-d1": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/sql-libsql": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/sql-mssql": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/sql-mysql2": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/sql-pg": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/sql-pglite": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/sql-sqlite-bun": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/sql-sqlite-do": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/sql-sqlite-node": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/sql-sqlite-react-native": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/sql-sqlite-wasm": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/vitest": {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 						"@effect/tsgo": {
@@ -156,8 +156,8 @@ await build({
 							strategy: "lock-minor",
 						},
 						effect: {
-							range: "^4.1.1",
-							peer: "^4.1.0",
+							range: "~4.1.1",
+							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
 					},
@@ -166,7 +166,7 @@ await build({
 				 * The kit's own version surface, consumed across the ecosystem as
 				 * `catalog:effected` and `catalog:effected:peers`.
 				 *
-				 * `@effected/pnpm-plugin-effect` is deliberately ABSENT and must stay absent. It is
+				 * `@effected/pnpm-plugin-effected` is deliberately ABSENT and must stay absent. It is
 				 * the package this catalog ships inside: catalogue it, and every catalog rewrite
 				 * bumps the plugin, which invalidates the catalog, which writes another changeset —
 				 * an infinite release loop. The omission is the termination condition, not an

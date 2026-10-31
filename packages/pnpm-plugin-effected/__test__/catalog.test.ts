@@ -5,7 +5,7 @@ import { assert, describe, it } from "vitest";
 
 const PACKAGE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const PACKAGES_DIR = fileURLToPath(new URL("../../", import.meta.url));
-const PLUGIN = "@effected/pnpm-plugin-effect";
+const PLUGIN = "@effected/pnpm-plugin-effected";
 
 /**
  * The catalog is declared as an inline object literal inside the
@@ -144,16 +144,20 @@ describe("effect catalog", () => {
 		assert.isTrue(entries().has("@effect/platform-node"));
 	});
 
-	// The catalog rides the stable line with carets under lock-minor; the override
-	// layer below, not the catalog range, is what keeps a satellite from pairing with
-	// an older core. What the catalog must still promise is that the whole family
-	// names one version, so the derived pins all agree.
-	it("keeps every entry on a caret under lock-minor with a floored peer", () => {
+	// The 4.x family rides one Effect minor with tildes under lock-minor: a caret
+	// let the unattended sync cross into 4.1, whose removed root `Crypto` export
+	// broke the published kit at import. The override layer below, not the catalog
+	// range, is what keeps a satellite from pairing with an older core. What the
+	// catalog must still promise is that the whole family names one version, so the
+	// derived pins all agree. `@effect/tsgo` is 0.x, where a caret already holds
+	// the minor.
+	it("holds every 4.x entry to one minor under lock-minor with a floored peer", () => {
 		for (const [name, spec] of entries()) {
 			const range = /\brange:\s*"([^"]+)"/.exec(spec)?.[1] ?? "";
 			const peer = /\bpeer:\s*"([^"]+)"/.exec(spec)?.[1] ?? "";
-			assert.match(range, /^\^\d+\.\d+\.\d+$/, `${name} range is not a caret on a plain version`);
-			assert.match(peer, /^\^\d+\.\d+\.0$/, `${name} peer is not floored to its minor`);
+			const op = name === "@effect/tsgo" ? "\\^" : "~";
+			assert.match(range, new RegExp(`^${op}\\d+\\.\\d+\\.\\d+$`), `${name} range does not lock its minor`);
+			assert.match(peer, new RegExp(`^${op}\\d+\\.\\d+\\.0$`), `${name} peer is not floored to its minor`);
 			assert.match(spec, /strategy:\s*"lock-minor"/, `${name} is not on strategy lock-minor`);
 		}
 	});
@@ -170,7 +174,7 @@ describe("effect catalog", () => {
 
 /** The plain version a catalog entry's range names, operator stripped. */
 function bare(spec: string): string {
-	return (/\brange:\s*"\^?([^"]+)"/.exec(spec)?.[1] ?? "").trim();
+	return (/\brange:\s*"[\^~]?([^"]+)"/.exec(spec)?.[1] ?? "").trim();
 }
 
 describe("overrides", () => {
@@ -185,7 +189,7 @@ describe("overrides", () => {
 	 */
 	function familyPins(): Record<string, string> {
 		const source = readFileSync(join(PACKAGE_ROOT, "savvy.build.ts"), "utf8");
-		const effect = /\n\t+effect: \{[^}]*range:\s*"\^?([^"]+)"/.exec(
+		const effect = /\n\t+effect: \{[^}]*range:\s*"[\^~]?([^"]+)"/.exec(
 			source.slice(source.indexOf("effect: {\n\t\t\t\t\tpackages: {")),
 		)?.[1];
 		assert.isString(effect);
@@ -238,5 +242,40 @@ describe("overrides", () => {
 	it("lets a consumer's value for the same selector win", async () => {
 		const { overrides } = await updateConfig({ overrides: { [RC117]: "4.0.0-rc.116" } });
 		assert.deepStrictEqual(overrides, { ...PINS, [RC117]: "4.0.0-rc.116" });
+	});
+});
+
+describe("the consumer's catalog", () => {
+	const PNPMFILE = join(PACKAGE_ROOT, "dist/dev/pkg/pnpmfile.mjs");
+
+	async function catalogsFor(config: Record<string, unknown>): Promise<Record<string, Record<string, string>>> {
+		assert.isTrue(existsSync(PNPMFILE), "build the plugin before testing its pnpmfile");
+		const { hooks } = (await import(PNPMFILE)) as {
+			hooks: { updateConfig: (config: Record<string, unknown>) => Promise<Record<string, unknown>> };
+		};
+		const out = await hooks.updateConfig(config);
+		return out.catalogs as Record<string, Record<string, string>>;
+	}
+
+	// One catalog was the point of the rename: the effect / effected split, and the
+	// `:peers` twins, confused every consumer. `pnpm pack` runs no hook, so a peer
+	// a consumer writes as `catalog:effected` publishes the `effected` range.
+	it("exposes exactly one catalog, effected", async () => {
+		const catalogs = await catalogsFor({});
+		assert.deepStrictEqual(Object.keys(catalogs), ["effected"]);
+	});
+
+	it("carries the effect family and the kit in it", async () => {
+		const { effected } = await catalogsFor({});
+		assert.match(effected?.effect ?? "", /^~4\.\d+\.\d+$/);
+		assert.match(effected?.["@effect/platform-node"] ?? "", /^~4\.\d+\.\d+$/);
+		assert.match(effected?.["@effected/cli"] ?? "", /^\^0\.\d+\.\d+$/);
+		assert.notProperty(effected, PLUGIN);
+	});
+
+	it("keeps a consumer's own catalogs, and its effected entry wins", async () => {
+		const catalogs = await catalogsFor({ catalogs: { build: { tsx: "^4.0.0" }, effected: { effect: "4.1.1" } } });
+		assert.deepStrictEqual(catalogs.build, { tsx: "^4.0.0" });
+		assert.strictEqual(catalogs.effected?.effect, "4.1.1");
 	});
 });
