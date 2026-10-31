@@ -3240,8 +3240,8 @@ describe("Git — remaining tiers (round 2)", () => {
 					ChildProcessSpawner.ChildProcessSpawner,
 					ChildProcessSpawner.make((command) => {
 						if (!ChildProcess.isStandardCommand(command)) return Effect.die("piped commands not scripted");
-						seen.push({ args: command.args, options: command.options });
-						const probe = isSshProbe(command.args);
+						seen.push({ args: command.args.map(String), options: command.options });
+						const probe = isSshProbe(command.args.map(String));
 						const asked = command.args[2];
 						const answer =
 							asked === "core.sshCommand" ? options.configured : asked === "ssh.variant" ? options.variant : undefined;
@@ -3471,7 +3471,7 @@ describe("Git — remaining tiers (round 2)", () => {
 						return Effect.succeed(
 							ChildProcessSpawner.makeHandle({
 								pid: ChildProcessSpawner.ProcessId(1),
-								exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(isSshProbe(command.args) ? 1 : 0)),
+								exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(isSshProbe(command.args.map(String)) ? 1 : 0)),
 								isRunning: Effect.succeed(false),
 								kill: () => Effect.void,
 								stdin: Sink.drain,
@@ -3526,11 +3526,11 @@ describe("Git — remaining tiers (round 2)", () => {
 						ChildProcessSpawner.ChildProcessSpawner,
 						ChildProcessSpawner.make((command) => {
 							if (!ChildProcess.isStandardCommand(command)) return Effect.die("piped commands not scripted");
-							seen.push({ args: command.args, options: command.options });
+							seen.push({ args: command.args.map(String), options: command.options });
 							return Effect.succeed(
 								ChildProcessSpawner.makeHandle({
 									pid: ChildProcessSpawner.ProcessId(1),
-									exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(isSshProbe(command.args) ? 1 : 0)),
+									exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(isSshProbe(command.args.map(String)) ? 1 : 0)),
 									isRunning: Effect.succeed(false),
 									kill: () => Effect.void,
 									stdin: Sink.drain,

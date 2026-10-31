@@ -1,4 +1,5 @@
-import { Effect, Layer, PlatformError, Sink, Stream } from "effect";
+import { Effect, Layer, PlatformError, Redacted, Sink, Stream } from "effect";
+import type { CommandLine } from "effect/process";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 /**
@@ -28,7 +29,9 @@ export type ScriptResult =
 
 /**
  * The script a {@link ScriptedSpawner} answers spawns from: the executable and
- * argv in, a {@link ScriptResult} out.
+ * argv in, a {@link ScriptResult} out. A `Redacted` argument reaches the script
+ * as its placeholder (`"<redacted>"`), never its value; the {@link SpawnRecord}
+ * keeps the `Redacted` itself.
  *
  * @public
  */
@@ -49,12 +52,16 @@ export type SpawnScript = (command: string, args: ReadonlyArray<string>) => Scri
 export interface SpawnRecord {
 	/** The executable. */
 	readonly command: string;
-	/** The argv, exactly as spawned. */
-	readonly args: ReadonlyArray<string>;
+	/**
+	 * The argv, exactly as spawned: a `Redacted` argument stays `Redacted`, so a
+	 * record never holds a secret as plain text and a test can assert one was
+	 * passed redacted.
+	 */
+	readonly args: ReadonlyArray<CommandLine.Word>;
 	/** `options.cwd`, when one was set. */
 	readonly cwd: string | undefined;
-	/** `options.env`, when one was set. */
-	readonly env: Record<string, string | undefined> | undefined;
+	/** `options.env`, when one was set; a `Redacted` value stays `Redacted`. */
+	readonly env: Record<string, string | Redacted.Redacted<string> | undefined> | undefined;
 	/** `options.extendEnv`, when one was set. */
 	readonly extendEnv: boolean | undefined;
 	/** The full `ChildProcess.CommandOptions` as the spawner received them. */
@@ -177,7 +184,10 @@ export class ScriptedSpawner {
 						unrefed: false,
 					};
 					spawns.push(record);
-					const result = script(command.command, command.args);
+					const result = script(
+						command.command,
+						command.args.map((arg) => (Redacted.isRedacted(arg) ? String(arg) : arg)),
+					);
 					if (result instanceof PlatformError.PlatformError) {
 						return Effect.fail(result);
 					}

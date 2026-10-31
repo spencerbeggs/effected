@@ -8,10 +8,10 @@
 Effect service contracts for resolving pnpm `catalog:` and `workspace:` dependency specifiers, plus the npm registry and publish surface built on top of them. `CatalogResolver.rangeOf` turns a package name plus an optional catalog name into the configured range; `WorkspaceResolver.versionOf` turns a workspace package name into its concrete version. Both are `Context.Service` contracts, both ship a no-op default layer that resolves nothing, and neither one reads a file. The package is the seam: a library that needs to *expand* a specifier depends on this, and something that can actually see the workspace supplies the implementation. On top of the contracts sit the kit's shared dependency vocabulary — `DependencySpecifier`, `DependencySection`, `IntegrityHash` — and `Manifest`, a tolerant manifest model that resolves every `catalog:` and `workspace:` specifier through the contracts in one call. `NpmRegistry` and `PackagePublish` round out the package with the registry reads and pack/publish workflow a release tool needs, over core `HttpClient` and `@effected/commands`.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
-> Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
+> Effect v4 (`effect` `~4.1.0`) and still in `0.x` development. Stable Effect
 > makes a kit `1.0.0` possible, not automatic. To keep your `effect` and
 > `@effect/*` versions on the line the kit is built and tested against, install
-> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+> [`@effected/pnpm-plugin-effected`](https://www.npmjs.com/package/@effected/pnpm-plugin-effected).
 >
 > **Stability: unstable.** This package's API surface is not yet considered
 > complete and may change across `0.x` releases. Pin an exact version — even a
@@ -39,7 +39,7 @@ Requires Node.js >=24.11.0.
 
 All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
 
-`effect` v4 and `@effected/semver` are peer dependencies; `@effected/commands` arrives as an ordinary dependency, behind `PackagePublish`. Defining the resolver contracts runs no effect and touches no filesystem — their default layers are `Layer.succeed` over functions that return `Option.none()` — but `NpmRegistry` needs a `HttpClient` and `PackagePublish` needs `FileSystem`, `Crypto` and a `ChildProcessSpawner`, each supplied at the edge from `@effect/platform-node` or `@effect/platform-bun`.
+`effect` v4 and `@effected/semver` are peer dependencies; `@effected/commands` arrives as an ordinary dependency, behind `PackagePublish`. Defining the resolver contracts runs no effect and touches no filesystem — their default layers are `Layer.succeed` over functions that return `Option.none()` — but `NpmRegistry` needs a `HttpClient` and `PackagePublish` and `PackageTarball` need `FileSystem`, `Digest.Digest` (`effect/crypto`) and a `ChildProcessSpawner`, each supplied at the edge from `@effect/platform-node` or `@effect/platform-bun` — `Digest.Digest` from a platform crypto family layer such as `NodeCrypto.layerDigest`, or core's `Digest.layerWebCrypto`, since the platform `*Services` layers carry no crypto.
 
 ## Quick start
 

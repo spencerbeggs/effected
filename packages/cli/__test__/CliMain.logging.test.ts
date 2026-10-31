@@ -1,8 +1,9 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { ConfigProvider, Console, Effect, Layer, Logger, Stdio, Terminal } from "effect";
+import { ConfigProvider, Console, Effect, Layer, Logger, Stdio } from "effect";
 import { Command } from "effect/cli";
 import { CliRuntime } from "../src/index.js";
+import { inertTerminal } from "./helpers/inertTerminal.js";
 import { LINE_BREAK, isCommand } from "./helpers/runnerCommands.js";
 
 const capturing = () => {
@@ -18,16 +19,7 @@ const capturing = () => {
 /** `Stdio` and `Terminal` doubles, as a platform provides them. */
 const io = Layer.mergeAll(
 	Stdio.layerTest({ stdinIsTerminal: Effect.succeed(false), stdoutIsTerminal: Effect.succeed(false) }),
-	Layer.succeed(
-		Terminal.Terminal,
-		Terminal.make({
-			columns: Effect.succeed(80),
-			rows: Effect.succeed(24),
-			readInput: Effect.die("unused"),
-			readLine: Effect.die("unused"),
-			display: () => Effect.void,
-		}),
-	),
+	inertTerminal(),
 );
 
 describe("CliRuntime.main: the platform is built under the logger", () => {
@@ -237,16 +229,7 @@ describe("CliRuntime.main: format auto decides the build-time lines from env and
 					stdoutIsTerminal: Effect.succeed(false),
 				}),
 				Layer.effectDiscard(Effect.logDebug("migration ran")),
-				Layer.succeed(
-					Terminal.Terminal,
-					Terminal.make({
-						columns: Effect.succeed(80),
-						rows: Effect.succeed(24),
-						readInput: Effect.die("unused"),
-						readLine: Effect.die("unused"),
-						display: () => Effect.void,
-					}),
-				),
+				inertTerminal(),
 			);
 			yield* CliRuntime.main(Effect.void, { platform: withArgs, env: { log: { level: "Debug" } } }).pipe(
 				Effect.provideService(Console.Console, double),

@@ -1,5 +1,5 @@
-import type { PlatformError } from "effect";
-import { Crypto, DateTime, Effect, Redacted } from "effect";
+import { DateTime, Effect, Redacted } from "effect";
+import { Digest } from "effect/crypto";
 import * as Hex from "effect/encoding/Hex";
 import type { CryptoError } from "./CryptoError.js";
 import { utf8 } from "./internal/bytes.js";
@@ -142,16 +142,13 @@ const canonicalQuery = (query: SigV4Request["query"]): string => {
 		.join("&");
 };
 
-const sha256Hex = (data: Uint8Array): Effect.Effect<string, PlatformError.PlatformError, Crypto.Crypto> =>
-	Effect.gen(function* () {
-		const crypto = yield* Crypto.Crypto;
-		return Hex.encode(yield* crypto.digest("SHA-256", data));
-	});
+const sha256Hex = (data: Uint8Array): Effect.Effect<string, never, Digest.Digest> =>
+	Digest.Digest.use((digest) => digest.digestHex(Digest.sha256, data));
 
 const canonicalize = (
 	request: SigV4Request,
 	credentials: SigV4Credentials,
-): Effect.Effect<SigV4Canonical, SigV4PathError | PlatformError.PlatformError, Crypto.Crypto> =>
+): Effect.Effect<SigV4Canonical, SigV4PathError, Digest.Digest> =>
 	Effect.gen(function* () {
 		// Before anything is hashed: a path no URL can carry is never signed.
 		yield* checkSegments(request.path);
@@ -234,9 +231,11 @@ const sign = Effect.fn("SigV4.sign")(function* (request: SigV4Request, credentia
  * such as R2, MinIO and Spaces.
  *
  * @remarks
- * HMAC comes from WebCrypto and every SHA-256 from core `Crypto.digest`, so
- * signing is effectful and needs `Crypto` in `R`. Time is never read: the
- * request carries its signing instant.
+ * HMAC comes from WebCrypto and every SHA-256 from core's `Digest.Digest`
+ * service, so signing is effectful and needs `Digest.Digest` in `R`: provide
+ * `Digest.layerWebCrypto` from `effect/crypto` (Node, Workers, any runtime
+ * with WebCrypto) or a platform family layer such as `NodeCrypto.layerDigest`.
+ * Time is never read: the request carries its signing instant.
  *
  * @public
  */
@@ -293,7 +292,7 @@ export class SigV4 {
 	static readonly canonicalize: (
 		request: SigV4Request,
 		credentials: SigV4Credentials,
-	) => Effect.Effect<SigV4Canonical, SigV4PathError | PlatformError.PlatformError, Crypto.Crypto> = canonicalize;
+	) => Effect.Effect<SigV4Canonical, SigV4PathError, Digest.Digest> = canonicalize;
 
 	/**
 	 * Derive the signing key: four nested HMAC-SHA256s over the date, region,
@@ -337,5 +336,5 @@ export class SigV4 {
 	static readonly sign: (
 		request: SigV4Request,
 		credentials: SigV4Credentials,
-	) => Effect.Effect<SigV4Signed, SigV4PathError | CryptoError | PlatformError.PlatformError, Crypto.Crypto> = sign;
+	) => Effect.Effect<SigV4Signed, SigV4PathError | CryptoError, Digest.Digest> = sign;
 }

@@ -1,5 +1,5 @@
-import { Crypto, Effect, Result, Schema } from "effect";
-import * as Hex from "effect/encoding/Hex";
+import { Effect, Result, Schema } from "effect";
+import { Digest } from "effect/crypto";
 import { ImageCacheKeyError } from "./ImageCacheKeyError.js";
 import { canonicalJson } from "./internal/canonical.js";
 import { DIGEST_PATTERN } from "./internal/digest.js";
@@ -34,14 +34,15 @@ export class ImageCacheKey extends Schema.Class<ImageCacheKey>("ImageCacheKey")(
 	 *
 	 * @remarks
 	 * `params` are encoded through `schema`, so a transformation participates and the key reflects the wire form. The
-	 * digest is core `Crypto`'s SHA-256, so `Crypto` is required — Node apps get it from `NodeServices.layer` or
-	 * `NodeCrypto.layer`.
+	 * digest is core `Digest`'s SHA-256, so `Digest.Digest` is required — provide `Digest.layerWebCrypto` from
+	 * `effect/crypto`, or a platform family layer such as `NodeCrypto.layerDigest`. `NodeServices.layer` does not
+	 * include it.
 	 */
 	static fromParams<S extends Schema.ConstraintEncoder<unknown>>(
 		schema: S,
 		params: S["Type"],
 		options: ImageCacheKeyOptions,
-	): Effect.Effect<ImageCacheKey, ImageCacheKeyError, Crypto.Crypto> {
+	): Effect.Effect<ImageCacheKey, ImageCacheKeyError, Digest.Digest> {
 		return Effect.gen(function* () {
 			const encoded = yield* Schema.encodeEffect(schema)(params).pipe(
 				Effect.mapError((cause) => new ImageCacheKeyError({ reason: "encode", detail: cause.message, cause })),
@@ -49,11 +50,12 @@ export class ImageCacheKey extends Schema.Class<ImageCacheKey>("ImageCacheKey")(
 			const canonical = canonicalJson(encoded);
 			if (Result.isFailure(canonical))
 				return yield* new ImageCacheKeyError({ reason: "non-json", detail: canonical.failure });
-			const crypto = yield* Crypto.Crypto;
-			const bytes = yield* crypto
-				.digest("SHA-256", new TextEncoder().encode(`${options.salt}\u0000${canonical.success}`))
-				.pipe(Effect.mapError((cause) => new ImageCacheKeyError({ reason: "digest", detail: cause.message, cause })));
-			return ImageCacheKey.make({ digest: Hex.encode(bytes), salt: options.salt, namespace: options.namespace });
+			const digest = yield* Digest.Digest;
+			const hex = yield* digest.digestHex(
+				Digest.sha256,
+				new TextEncoder().encode(`${options.salt}\u0000${canonical.success}`),
+			);
+			return ImageCacheKey.make({ digest: hex, salt: options.salt, namespace: options.namespace });
 		}).pipe(Effect.withSpan("ImageCacheKey.fromParams", { attributes: { namespace: options.namespace } }));
 	}
 }

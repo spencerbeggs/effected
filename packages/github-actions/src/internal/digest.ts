@@ -1,11 +1,11 @@
 // The sanctioned `node:crypto` digests, spelled once.
 //
 // This module is the package's only `node:crypto` import, for two kinds of call
-// site core `Crypto.digest` cannot serve (the recorded verdicts of #767): the
+// site core `Digest.Digest` cannot serve (the recorded verdicts of #767): the
 // streamed `digestFile` a multi-gigabyte toolchain archive needs, since nothing
 // in core or WebCrypto hashes a stream, and the synchronous digests behind
-// `CacheKey`, which moving onto core `Crypto` would make effectful with
-// `Crypto` in `R`. HMAC is not here: the S3 blob store signs through
+// `CacheKey`, which moving onto core `Digest` would make effectful with
+// `Digest.Digest` in `R`. HMAC is not here: the S3 blob store signs through
 // `@effected/crypto`'s `SigV4`. Keeping every `createHash` behind this module
 // makes the licence auditable in one place.
 

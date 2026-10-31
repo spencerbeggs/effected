@@ -8,10 +8,10 @@ The boundary layer of an `effect/ai` MCP server: stdio wiring that keeps stdout 
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
-> Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
+> Effect v4 (`effect` `~4.1.0`) and still in `0.x` development. Stable Effect
 > makes a kit `1.0.0` possible, not automatic. To keep your `effect` and
 > `@effect/*` versions on the line the kit is built and tested against, install
-> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+> [`@effected/pnpm-plugin-effected`](https://www.npmjs.com/package/@effected/pnpm-plugin-effected).
 >
 > **Stability: unstable.** This package's API surface is not yet considered
 > complete and may change across `0.x` releases. Pin an exact version — even a
@@ -486,7 +486,7 @@ with no child process and no sockets. Pass `server` **without** a `Stdio`
 of its own — a `Stdio` the server provides internally would talk to the
 real terminal instead of the test's queues, including one that arrives
 bundled: `@effect/platform-node`'s `NodeServices.layer` brings its own
-`Stdio` along with `FileSystem`, `Path`, `ChildProcessSpawner`, `Crypto`
+`Stdio` along with `FileSystem`, `Path`, `ChildProcessSpawner`
 and `Terminal`, so composing the server with that bundle loses the harness's
 `Stdio` the same way. Compose the individual platform layers the server
 needs instead and leave `Stdio` out; the harness supplies it. The harness builds the server

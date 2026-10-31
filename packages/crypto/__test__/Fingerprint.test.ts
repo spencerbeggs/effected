@@ -185,11 +185,11 @@ describe("a throw that is not about the value's JSON form", () => {
 			if (Exit.isFailure(exit)) {
 				assert.isTrue(exit.cause.reasons.some((reason) => reason._tag === "Die" && reason.defect === trap));
 			}
-		}).pipe(Effect.provide(NodeCrypto.layer)),
+		}).pipe(Effect.provide(NodeCrypto.layerDigest)),
 	);
 });
 
-layer(NodeCrypto.layer)("Fingerprint.of", (it) => {
+layer(NodeCrypto.layerDigest)("Fingerprint.of", (it) => {
 	it.effect("is the sha256 hex of the canonical text", () =>
 		Effect.gen(function* () {
 			const value = { b: [2, 1], a: "x" };

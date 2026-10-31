@@ -5,7 +5,7 @@
 // **Delimiters are derived, never random.** GitHub's own toolkit uses a
 // random UUID here and accepts the (tiny) chance of collision. Deriving the
 // delimiter instead makes collision **impossible** rather than improbable,
-// needs no randomness — so no `Crypto` in `R` and no unreproducible output —
+// needs no randomness — so no `SecureRandom` in `R` and no unreproducible output —
 // and is trivially testable. A value that contains a delimiter would
 // terminate its block early and corrupt every entry after it, which is a
 // value-controlled injection into the runner's own file.

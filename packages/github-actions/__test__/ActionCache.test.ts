@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, FileSystem, Layer, Option } from "effect";
+import { Effect, FileSystem, Layer, Option, Redacted } from "effect";
 import { FetchHttpClient } from "effect/http";
 import { ChildProcessSpawner } from "effect/process";
 import type { FileBlobTransfer } from "../src/index.js";
@@ -517,7 +517,7 @@ describe("ActionCache", () => {
 						spawn: (...spawnArgs: Parameters<typeof real.spawn>) => {
 							const [command] = spawnArgs;
 							if ("args" in command) {
-								const args = [...command.args];
+								const args = command.args.map((word) => (typeof word === "string" ? word : Redacted.value(word)));
 								const flag = args.indexOf("-T");
 								const manifestPath = flag === -1 ? undefined : args[flag + 1];
 								spawns.push({

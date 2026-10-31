@@ -23,7 +23,8 @@ export const scripted = (byArgs: (args: ReadonlyArray<string>) => ScriptResult) 
 			if (!ChildProcess.isStandardCommand(command)) {
 				return Effect.die("piped commands not scripted");
 			}
-			const result = byArgs(command.args);
+			const result = // Git passes no `Redacted` argument; `String` yields its placeholder if one ever appears.
+				byArgs(command.args.map(String));
 			if (result instanceof PlatformError.PlatformError) {
 				return Effect.fail(result);
 			}

@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { NodeCrypto } from "@effect/platform-node";
 import { assert, describe, it, layer } from "@effect/vitest";
-import { Crypto, DateTime, Effect, Redacted } from "effect";
+import { DateTime, Effect, Layer, Redacted } from "effect";
+import { Digest } from "effect/crypto";
 import type { SigV4Credentials, SigV4Request } from "../src/SigV4.js";
 import { SigV4 } from "../src/SigV4.js";
 import { SigV4PathError } from "../src/SigV4PathError.js";
@@ -65,7 +66,7 @@ describe("SigV4.signingKey", () => {
 	);
 });
 
-layer(NodeCrypto.layer)("SigV4 (AWS S3 documented examples)", (it) => {
+layer(NodeCrypto.layerDigest)("SigV4 (AWS S3 documented examples)", (it) => {
 	it.effect("reproduces the canonical request for GET Object", () =>
 		Effect.gen(function* () {
 			const canonical = yield* SigV4.canonicalize(getObject, s3Example);
@@ -107,7 +108,7 @@ layer(NodeCrypto.layer)("SigV4 (AWS S3 documented examples)", (it) => {
 		}),
 	);
 
-	it.effect("signs PUT Object, hashing the body through Crypto and encoding the key", () =>
+	it.effect("signs PUT Object, hashing the body through Digest and encoding the key", () =>
 		Effect.gen(function* () {
 			const { headers } = yield* SigV4.sign(
 				{
@@ -164,7 +165,7 @@ layer(NodeCrypto.layer)("SigV4 (AWS S3 documented examples)", (it) => {
 	);
 });
 
-layer(NodeCrypto.layer)("SigV4 merged behaviour", (it) => {
+layer(NodeCrypto.layerDigest)("SigV4 merged behaviour", (it) => {
 	const credentials: SigV4Credentials = {
 		accessKeyId: "AK",
 		secretAccessKey: Redacted.make("SK"),
@@ -260,42 +261,38 @@ layer(NodeCrypto.layer)("SigV4 merged behaviour", (it) => {
 	it.effect("hashes an empty body without a digest call, as EMPTY_PAYLOAD_HASH", () =>
 		Effect.gen(function* () {
 			const seen: Array<number> = [];
-			const counting = Crypto.make({
-				randomBytes: (size) => new Uint8Array(size),
-				digest: (_algorithm, data) =>
+			const counting = Layer.mock(Digest.Digest, {
+				digestHex: (_algorithm, data) =>
 					Effect.sync(() => {
 						seen.push(data.byteLength);
-						return new Uint8Array(32);
+						return "0".repeat(64);
 					}),
 			});
 			const payloadHashOf = (body: Uint8Array | string) =>
 				SigV4.canonicalize({ ...base, body }, credentials).pipe(
-					Effect.provideService(Crypto.Crypto, counting),
+					Effect.provide(counting),
 					Effect.map((canonical) => canonical.payloadHash),
 				);
 			for (const empty of [new Uint8Array(0), ""]) {
 				assert.strictEqual(yield* payloadHashOf(empty), SigV4.EMPTY_PAYLOAD_HASH);
 			}
-			assert.deepStrictEqual(seen, [], "an empty body must not reach Crypto.digest");
+			assert.deepStrictEqual(seen, [], "an empty body must not reach Digest.digestHex");
 			// The control: the same fake does see a non-empty body.
 			assert.strictEqual(yield* payloadHashOf(new Uint8Array([1])), "0".repeat(64));
 			assert.deepStrictEqual(seen, [1]);
 		}),
 	);
 
-	it.effect("takes every digest from the Crypto service in R", () =>
+	it.effect("takes every digest from the Digest service in R", () =>
 		Effect.gen(function* () {
-			const zero = Crypto.make({
-				randomBytes: (size) => new Uint8Array(size),
-				digest: () => Effect.succeed(new Uint8Array(32)),
-			});
-			const canonical = yield* SigV4.canonicalize(base, credentials).pipe(Effect.provideService(Crypto.Crypto, zero));
+			const zero = Layer.mock(Digest.Digest, { digestHex: () => Effect.succeed("0".repeat(64)) });
+			const canonical = yield* SigV4.canonicalize(base, credentials).pipe(Effect.provide(zero));
 			assert.strictEqual(canonical.payloadHash, "0".repeat(64));
 		}),
 	);
 });
 
-layer(NodeCrypto.layer)("SigV4.sign's request target", (it) => {
+layer(NodeCrypto.layerDigest)("SigV4.sign's request target", (it) => {
 	const credentials: SigV4Credentials = {
 		accessKeyId: "AK",
 		secretAccessKey: Redacted.make("SK"),

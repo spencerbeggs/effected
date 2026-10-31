@@ -8,7 +8,8 @@ const argv = (command: ChildProcess.Command): ReadonlyArray<string> => {
 	if (!ChildProcess.isStandardCommand(command)) {
 		throw new Error("expected a standard command");
 	}
-	return [command.command, ...command.args];
+	// These commands carry no `Redacted` argument; `String` would show its placeholder.
+	return [command.command, ...command.args.map(String)];
 };
 
 describe("LocalExec.prefixes", () => {

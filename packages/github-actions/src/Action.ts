@@ -1,6 +1,7 @@
-import { NodeServices } from "@effect/platform-node";
+import { NodeCrypto, NodeServices } from "@effect/platform-node";
 import { WorkflowCommand } from "@effected/github-commands";
 import { Cause, Effect, Exit, Layer, LogLevel, Option, References, Result } from "effect";
+import type { Digest, SecureRandom } from "effect/crypto";
 import type { HttpClient } from "effect/http";
 import { FetchHttpClient } from "effect/http";
 import { ActionEnvironment } from "./ActionEnvironment.js";
@@ -25,6 +26,8 @@ export type ActionServices =
 	| ActionOutputs
 	| ActionState
 	| NodeServices.NodeServices
+	| Digest.Digest
+	| SecureRandom.SecureRandom
 	| HttpClient.HttpClient;
 
 /**
@@ -52,6 +55,11 @@ export class ActionRuntime {
 	 * and the workflow-command `Logger`.
 	 *
 	 * @remarks
+	 * The platform is `NodeServices.layer` plus Node's `Digest` and
+	 * `SecureRandom` crypto layers (`NodeCrypto.layerDigest` and
+	 * `NodeCrypto.layerSecureRandom`), which `NodeServices.layer` does not
+	 * carry; `BlobStore.layerS3` takes its digests from them.
+	 *
 	 * A bound constant rather than a factory. A layer-returning function mints a
 	 * fresh layer per call, and layers memoize by reference — a factory here
 	 * would rebuild the environment snapshot for every composition site.
@@ -79,7 +87,9 @@ export class ActionRuntime {
 		// siblings they would not see each other, and the layer would not build.
 		Layer.provideMerge(ActionOutputs.layer),
 		Layer.provideMerge(ActionEnvironment.layer),
-		Layer.provideMerge(Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer)),
+		Layer.provideMerge(
+			Layer.mergeAll(NodeServices.layer, NodeCrypto.layerDigest, NodeCrypto.layerSecureRandom, FetchHttpClient.layer),
+		),
 	);
 }
 

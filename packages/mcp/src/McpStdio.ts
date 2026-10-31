@@ -1,6 +1,5 @@
-import type { Array as Arr, Stdio } from "effect";
+import type { Array as Arr, Scope, Stdio } from "effect";
 import { Cause, Effect, Exit, Layer, References, Runtime } from "effect";
-import type { McpSchema } from "effect/ai";
 import { McpProtocol, McpServer } from "effect/ai";
 import { LaunchFailed } from "./internal/LaunchFailed.js";
 import { makeGuardedStdio } from "./internal/StdinFrames.js";
@@ -10,7 +9,7 @@ import { makeGuardedStdio } from "./internal/StdinFrames.js";
  *
  * @public
  */
-export interface McpStdioOptions {
+export interface McpStdioOptions<RA = never, RE = never, RR = never> {
 	/** The server name reported to the client. */
 	readonly name: string;
 	/** The server version reported to the client. */
@@ -21,7 +20,31 @@ export interface McpStdioOptions {
 	readonly description?: string | undefined;
 	/** Defaults to {@link McpStdio.protocols}. Read its ordering rules before overriding. */
 	readonly protocols?: Arr.NonEmptyReadonlyArray<McpProtocol.ProtocolAdapter> | undefined;
+	/**
+	 * The server's registration layers (toolkits, resources, prompts), built
+	 * before the server reads its first request and under `LogToStderr`.
+	 *
+	 * @remarks
+	 * Core's `registrations` option of `McpServer.layerStdio`. The transport
+	 * discharges each `McpServer.McpRequest<"Requires", Scope>` marker; any
+	 * other request-level marker stays in the layer's requirements, to be met
+	 * by MCP middleware. A registration that needs `Stdio` when it is built
+	 * gets the guarded one this layer serves over.
+	 */
+	readonly registrations?: Layer.Layer<RA, RE, RR> | undefined;
 }
+
+/**
+ * The services a registration layer needs that {@link McpStdio.layer} does
+ * not supply: everything but `McpServer` and `Stdio` (which the layer
+ * requires itself), with each request-level marker but
+ * `McpServer.McpRequest<"Requires", Scope>`, which the transport discharges.
+ *
+ * @public
+ */
+export type McpStdioRegistrationServices<RR> =
+	| Exclude<McpServer.McpRequest.Without<RR>, McpServer.McpServer>
+	| McpServer.McpRequest.From<"Requires", Exclude<McpServer.McpRequest.Only<"Requires", RR>, Scope.Scope>>;
 
 /**
  * Options for {@link McpStdio.launch}.
@@ -56,7 +79,8 @@ export interface McpLaunchOptions {
  * ```
  *
  * - {@link McpStdio.layer} is `McpServer.layerStdio` with `LogToStderr`
- *   provided and merged into its output, and `Layer.orDie`. It answers a
+ *   provided and merged into its output, and a bad `protocols` list
+ *   turned into a defect. It answers a
  *   stdin line that is not JSON with a JSON-RPC `-32700` parse error, and
  *   JSON that is not a JSON-RPC message with `-32600`, and keeps serving.
  * - {@link McpStdio.launch} reports a launch failure itself, on stderr, and
@@ -99,14 +123,24 @@ export class McpStdio {
 	/**
 	 * `McpServer.layerStdio` with `LogToStderr` provided and merged into the
 	 * output, so every layer it provides logs to stderr too. A bad
-	 * `protocols` list dies: it is the implementer's defect.
+	 * `protocols` list dies: it is the implementer's defect. So does a
+	 * registration that fails with `Cause.IllegalArgumentError`, which core
+	 * reports for the same class of mistake; any other registration error
+	 * stays in the error channel.
 	 *
 	 * @remarks
-	 * Only a layer this one provides inherits `LogToStderr`: compose with
-	 * `Layer.provideMerge(McpStdio.layer(...))`. A sibling merged beside it
-	 * with `Layer.mergeAll` is not provided by it, so its build logs still
+	 * Pass the server's registration layers as `options.registrations`: they
+	 * are built before the server reads its first request, under
+	 * `LogToStderr`. Providing this layer to them, as
+	 * `Registrations.pipe(Layer.provideMerge(McpStdio.layer(...)))`, also
+	 * serves them, and they inherit `LogToStderr` the same way. A sibling
+	 * merged beside it with `Layer.mergeAll` is neither: its build logs still
 	 * go through `console.log`, onto the wire.
-	
+	 *
+	 * The output is `McpServer` and the `McpServer.McpRequest<"Requires", Scope>`
+	 * marker the transport discharges. `McpServerClient` is not in it: the
+	 * stateless `v2026_07_28` revision has no client session, so a handler
+	 * reads the client's details from `McpSchema.McpRequestContext` instead.
 	 *
 	 * `LogToStderr` only reaches a logger that reads it: Effect's default
 	 * logger and `Logger.consolePretty`. `Logger.consoleJson`,
@@ -149,8 +183,8 @@ export class McpStdio {
 	 * anywhere under the first one's `Effect.provide`: nested `Layer.build`
 	 * and `Effect.provide` fork the ambient memo map rather than starting a
 	 * new one. The tool registry is shared the same way. Isolate each server
-	 * by wrapping its whole bundle (its toolkit layers together with this
-	 * layer) in `Layer.fresh`, or with its own `ManagedRuntime`,
+	 * by wrapping its whole bundle (this layer with its `registrations`, or its
+	 * toolkit layers together with this layer) in `Layer.fresh`, or with its own `ManagedRuntime`,
 	 * `Effect.provide(layer, { local: true })` or its own process. Never put
 	 * the `Layer.fresh` boundary between a toolkit and this layer: the server
 	 * would serve an empty registry.
@@ -163,19 +197,35 @@ export class McpStdio {
 	 * Each call mints a fresh layer; bind the result to a `const` or the
 	 * server builds twice.
 	 */
-	static readonly layer = (
-		options: McpStdioOptions,
-	): Layer.Layer<McpServer.McpServer | McpSchema.McpServerClient, never, Stdio.Stdio> =>
+	static readonly layer = <RA = never, RE = never, RR = never>(
+		options: McpStdioOptions<RA, RE, RR>,
+	): Layer.Layer<
+		McpServer.McpServer | McpServer.McpRequest<"Requires", Scope.Scope>,
+		Exclude<RE, Cause.IllegalArgumentError>,
+		Stdio.Stdio | McpStdioRegistrationServices<RR>
+	> =>
 		McpServer.layerStdio({
 			name: options.name,
 			version: options.version,
 			instructions: options.instructions,
 			description: options.description,
 			protocols: options.protocols ?? McpStdio.protocols,
+			registrations: options.registrations,
 		}).pipe(
 			Layer.provide(makeGuardedStdio()),
 			Layer.provideMerge(Layer.succeed(References.LogToStderr, true)),
-			Layer.orDie,
+			// A bad `protocols` list (or an invalid registration) is the implementer's defect; every other error is kept.
+			Layer.catchCause((cause) =>
+				Layer.effectContext<
+					McpServer.McpServer | McpServer.McpRequest<"Requires", Scope.Scope>,
+					Exclude<RE, Cause.IllegalArgumentError>,
+					never
+				>(
+					Effect.failCause(cause).pipe(
+						Effect.catchIf(Cause.isIllegalArgumentError, (error) => Effect.die(error)),
+					) as Effect.Effect<never, Exclude<RE, Cause.IllegalArgumentError>>,
+				),
+			),
 		);
 
 	/**

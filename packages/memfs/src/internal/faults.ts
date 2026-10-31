@@ -108,14 +108,16 @@ export const wrapFaulty = (
 		const intercepted = (...args: ReadonlyArray<unknown>) => handler(...args) ?? delegate(...args);
 		return intercepted as FileSystem.FileSystem[Method];
 	};
-	// Rebuilding through FileSystem.make re-derives `exists`, `readFileString`,
-	// `writeFileString`, `stream` and `sink` from the intercepted core methods,
-	// so a fault registered on e.g. `readFile` or `open` propagates coherently
+	// Rebuilding through FileSystem.make re-derives `exists`, `glob`,
+	// `readFileString`, `writeFileString`, `stream` and `sink` from the
+	// intercepted core methods, so a fault registered on e.g. `readFile`,
+	// `readDirectoryEntries` or `open` propagates coherently
 	// into the members derived from it — exactly as an OS-level failure would.
-	// The five derived members are destructured out of the spread so the
+	// The six derived members are destructured out of the spread so the
 	// contract is explicit rather than relying on `make` to overwrite them.
 	const {
 		exists: _exists,
+		glob: _glob,
 		readFileString: _readFileString,
 		sink: _sink,
 		stream: _stream,
@@ -129,7 +131,6 @@ export const wrapFaulty = (
 		chown: intercept("chown", base.chown),
 		copy: intercept("copy", base.copy),
 		copyFile: intercept("copyFile", base.copyFile),
-		glob: intercept("glob", base.glob),
 		link: intercept("link", base.link),
 		lstat: intercept("lstat", base.lstat),
 		makeDirectory: intercept("makeDirectory", base.makeDirectory),
@@ -139,6 +140,7 @@ export const wrapFaulty = (
 		makeTempFileScoped: intercept("makeTempFileScoped", base.makeTempFileScoped),
 		open: intercept("open", base.open),
 		readDirectory: intercept("readDirectory", base.readDirectory),
+		readDirectoryEntries: intercept("readDirectoryEntries", base.readDirectoryEntries),
 		readFile: intercept("readFile", base.readFile),
 		readLink: intercept("readLink", base.readLink),
 		realPath: intercept("realPath", base.realPath),
@@ -154,6 +156,7 @@ export const wrapFaulty = (
 	return {
 		...core,
 		exists: intercept("exists", core.exists),
+		glob: intercept("glob", core.glob),
 		readFileString: intercept("readFileString", core.readFileString),
 		sink: interceptLazy("sink", core.sink),
 		stream: interceptLazy("stream", core.stream),

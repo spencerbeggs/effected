@@ -1,6 +1,7 @@
 import { HttpRedaction, SigV4 } from "@effected/crypto";
 import type { Redacted } from "effect";
-import { Context, Crypto, DateTime, Effect, Layer, Option, Schema } from "effect";
+import { Context, DateTime, Effect, Layer, Option, Schema } from "effect";
+import { Digest } from "effect/crypto";
 import { HttpClient, HttpClientRequest } from "effect/http";
 import type { ActionOutputs } from "./ActionOutputs.js";
 import type { BlobEnvelopeError } from "./BlobEnvelope.js";
@@ -160,8 +161,10 @@ export class BlobStore extends Context.Service<BlobStore, BlobStoreShape>()("@ef
 	 * credential management, retries and a service catalogue none of which this
 	 * needs.
 	 *
-	 * Requires core `Crypto` for the SHA-256 digests signing takes, resolved
-	 * once when the layer is built; `NodeServices.layer` supplies it. A request
+	 * Requires core's `Digest.Digest` (`effect/crypto`) for the SHA-256 digests
+	 * signing takes, resolved once when the layer is built: provide
+	 * `Digest.layerWebCrypto` or a platform family layer such as
+	 * `NodeCrypto.layerDigest`; `NodeServices.layer` does not include it. A request
 	 * that cannot be signed fails as {@link BlobStoreError} `misconfigured`. A
 	 * key with a `.` or `..` path segment fails as `invalidKey` before anything
 	 * is signed or sent: every URL parser collapses such a segment, so the store
@@ -173,7 +176,7 @@ export class BlobStore extends Context.Service<BlobStore, BlobStoreShape>()("@ef
 	 */
 	static readonly layerS3 = (
 		config: S3Config,
-	): Layer.Layer<BlobStore, never, HttpClient.HttpClient | ActionOutputs | Crypto.Crypto> =>
+	): Layer.Layer<BlobStore, never, HttpClient.HttpClient | ActionOutputs | Digest.Digest> =>
 		Layer.effect(BlobStore, makeS3(config));
 
 	/** A test double. Unstubbed members die rather than reporting a miss. */
@@ -222,7 +225,7 @@ const dies = unstubbed("BlobStore.makeTest");
 
 const makeS3 = (
 	config: S3Config,
-): Effect.Effect<BlobStoreShape, never, HttpClient.HttpClient | ActionOutputs | Crypto.Crypto> =>
+): Effect.Effect<BlobStoreShape, never, HttpClient.HttpClient | ActionOutputs | Digest.Digest> =>
 	Effect.gen(function* () {
 		// Trace context stays inside the process: the store is a third party, and
 		// `b3`/`traceparent` would hand it this run's trace and span ids on every
@@ -231,7 +234,7 @@ const makeS3 = (
 			Effect.provideService(effect, HttpClient.TracerPropagationEnabled, false),
 		);
 		// Resolved once, so every member's `R` stays `never`.
-		const crypto = yield* Crypto.Crypto;
+		const digest = yield* Digest.Digest;
 		// Trailing slashes stripped without a regex: the anchored `/\/+$/` form
 		// backtracks quadratically on slash runs (CodeQL js/polynomial-redos).
 		let endpoint = config.endpoint ?? `https://s3.${config.region}.amazonaws.com`;
@@ -270,7 +273,7 @@ const makeS3 = (
 				// The signing instant comes from `Clock`, so `TestClock` drives it.
 				const now = yield* DateTime.now;
 				const signed = yield* SigV4.sign({ method, path, host, body, now }, credentials).pipe(
-					Effect.provideService(Crypto.Crypto, crypto),
+					Effect.provideService(Digest.Digest, digest),
 					Effect.catchTags({
 						// A path SigV4 refuses is the caller's key, not the layer's settings.
 						SigV4PathError: (cause) =>
@@ -283,7 +286,6 @@ const makeS3 = (
 								}),
 							),
 						CryptoError: (cause) => Effect.fail(unsignable(key, cause)),
-						PlatformError: (cause) => Effect.fail(unsignable(key, cause)),
 					}),
 				);
 				// The URL carries the target exactly as it was signed, never re-encoded:

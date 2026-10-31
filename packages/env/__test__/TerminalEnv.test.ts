@@ -21,6 +21,7 @@ const terminal = (columns: number) =>
 		Terminal.make({
 			columns: Effect.succeed(columns),
 			rows: Effect.succeed(24),
+			size: Effect.die("unused"),
 			readInput: Effect.die("unused"),
 			readLine: Effect.die("unused"),
 			display: () => Effect.void,

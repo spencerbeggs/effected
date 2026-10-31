@@ -13,8 +13,8 @@ import { Schema } from "effect";
  * with `Effect.orDie`. A SigV4 path no URL can carry is caller input, so it
  * is its own tag, {@link SigV4PathError}.
  *
- * A digest failure is not one of these: digests come from core `Crypto`, so
- * they fail with core's own `PlatformError`.
+ * A digest failure is not one of these: digests come from core's
+ * `Digest.Digest` service, whose digests cannot fail with a typed error.
  *
  * @public
  */

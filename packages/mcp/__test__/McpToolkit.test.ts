@@ -38,10 +38,15 @@ const Handlers = Kit.toLayer({
 	tight: ({ query }) => Effect.succeed({ query }),
 });
 
+/** `stamp` declares `Stamper`, a request-level dependency: MCP middleware supplies it per call. */
+const ProvideStamper = McpServer.middleware<{ provides: Stamper }>()((effect) =>
+	Effect.provideService(effect, Stamper, { now: () => "2026-09-23" }),
+);
+
 const serve = <E, R>(registration: Layer.Layer<never, E, R>) =>
 	registration.pipe(
+		Layer.provide(ProvideStamper.layer),
 		Layer.provide(Handlers),
-		Layer.provide(Layer.succeed(Stamper, { now: () => "2026-09-23" })),
 		Layer.provideMerge(McpStdio.layer({ name: "toolkit-test", version: "0.0.0" })),
 	);
 const strictServer = (options: McpToolkitOptions = { strict: "all" }) => serve(McpToolkit.layer(Kit, options));

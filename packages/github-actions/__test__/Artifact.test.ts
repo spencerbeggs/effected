@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Layer, Option, Sink, Stream } from "effect";
+import { Effect, Layer, Option, Redacted, Sink, Stream } from "effect";
 import { FetchHttpClient } from "effect/http";
 import { ChildProcessSpawner } from "effect/process";
 import { TestClock } from "effect/testing";
@@ -285,11 +285,12 @@ describe("Artifact", () => {
 					ChildProcessSpawner.make((command) =>
 						Effect.sync(() => {
 							if ("args" in command) {
-								const script = command.args[3] ?? "";
+								const args = command.args.map((word) => (typeof word === "string" ? word : Redacted.value(word)));
+								const script = args[3] ?? "";
 								const manifestPath = /ReadAllLines\('([^']*)'\)/.exec(script)?.[1] ?? "";
 								spawns.push({
 									command: command.command,
-									args: [...command.args],
+									args,
 									manifest: readFileSync(manifestPath),
 								});
 							}

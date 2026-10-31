@@ -71,23 +71,27 @@ const toUint64 = (value: bigint): bigint => BigInt.asUintN(64, value);
 const toUint64Option = (value: bigint | undefined): Option.Option<bigint> =>
 	Option.map(Option.fromNullishOr(value), toUint64);
 
+// The node adapter's `fileType`, shared by stats and directory entries.
+const fileType = (entry: NFS.BigIntStats | NFS.Dirent): FileSystem.File.Type =>
+	entry.isFile()
+		? "File"
+		: entry.isDirectory()
+			? "Directory"
+			: entry.isSymbolicLink()
+				? "SymbolicLink"
+				: entry.isBlockDevice()
+					? "BlockDevice"
+					: entry.isCharacterDevice()
+						? "CharacterDevice"
+						: entry.isFIFO()
+							? "FIFO"
+							: entry.isSocket()
+								? "Socket"
+								: "Unknown";
+
 // The node adapter's `makeFileInfo`, field for field.
 const fileInfo = (stat: NFS.BigIntStats): FileSystem.File.Info => ({
-	type: stat.isFile()
-		? "File"
-		: stat.isDirectory()
-			? "Directory"
-			: stat.isSymbolicLink()
-				? "SymbolicLink"
-				: stat.isBlockDevice()
-					? "BlockDevice"
-					: stat.isCharacterDevice()
-						? "CharacterDevice"
-						: stat.isFIFO()
-							? "FIFO"
-							: stat.isSocket()
-								? "Socket"
-								: "Unknown",
+	type: fileType(stat),
 	mtime: Option.fromNullishOr(stat.mtime),
 	atime: Option.fromNullishOr(stat.atime),
 	birthtime: Option.fromNullishOr(stat.birthtime),
@@ -125,66 +129,78 @@ const statWith =
 				}),
 		);
 
-const make: FileSystem.FileSystem = FileSystem.make({
-	access: (path, options) =>
-		attempt("access", path, () => {
-			let mode = NFS.constants.F_OK;
-			if (options?.readable) mode |= NFS.constants.R_OK;
-			if (options?.writable) mode |= NFS.constants.W_OK;
-			NFS.accessSync(path, mode);
-		}),
-	lstat: statWith("lstat", NFS.lstatSync),
-	stat: statWith("stat", NFS.statSync),
-	// The adapter's own value: node's Buffer (a Uint8Array), not a copy. A
-	// non-string path never reaches `readFileSync`, which would read it as a
-	// file DESCRIPTOR; the adapter's async `readFile` rejects it in its callback,
-	// so it surfaces there as a system error (Unknown, ERR_INVALID_ARG_TYPE).
-	readFile: (path) =>
-		typeof path === "string"
-			? attempt("readFile", path, () => NFS.readFileSync(path))
-			: Effect.fail(
-					errnoException(
-						"readFile",
-						path,
-						Object.assign(new TypeError(`The "path" argument must be of type string. Received ${typeof path}`), {
-							code: "ERR_INVALID_ARG_TYPE",
-						}),
+// `make` derives `glob`, but it forks fibers, which the runs-under-`runSync`
+// promise does not cover, so it stays outside the read set.
+const make: FileSystem.FileSystem = FileSystem.FileSystem.of({
+	...FileSystem.make({
+		access: (path, options) =>
+			attempt("access", path, () => {
+				let mode = NFS.constants.F_OK;
+				if (options?.readable) mode |= NFS.constants.R_OK;
+				if (options?.writable) mode |= NFS.constants.W_OK;
+				NFS.accessSync(path, mode);
+			}),
+		lstat: statWith("lstat", NFS.lstatSync),
+		stat: statWith("stat", NFS.statSync),
+		// The adapter's own value: node's Buffer (a Uint8Array), not a copy. A
+		// non-string path never reaches `readFileSync`, which would read it as a
+		// file DESCRIPTOR; the adapter's async `readFile` rejects it in its callback,
+		// so it surfaces there as a system error (Unknown, ERR_INVALID_ARG_TYPE).
+		readFile: (path) =>
+			typeof path === "string"
+				? attempt("readFile", path, () => NFS.readFileSync(path))
+				: Effect.fail(
+						errnoException(
+							"readFile",
+							path,
+							Object.assign(new TypeError(`The "path" argument must be of type string. Received ${typeof path}`), {
+								code: "ERR_INVALID_ARG_TYPE",
+							}),
+						),
 					),
-				),
-	// The adapter wraps `readdir` in `Effect.tryPromise` whose catch is
-	// `handleErrnoException` alone, so EVERY failure — argument errors too — is
-	// a system error (an `ERR_*` code maps to Unknown). Matched here ON PURPOSE:
-	// a NUL byte or non-string path is `Unknown`/`ERR_INVALID_ARG_*` for
-	// readDirectory but `BadArgument` for every other member, exactly as on the
-	// adapter. Do not "fix" it: it is the parity with the adapter.
-	readDirectory: (path, options) =>
-		Effect.try({
-			try: () => NFS.readdirSync(path, { encoding: "utf8", recursive: options?.recursive === true }),
-			catch: (err) => errnoException("readDirectory", path, err),
-		}),
-	readLink: (path) => attempt("readLink", path, () => NFS.readlinkSync(path)),
-	// The JS `realpathSync`, NOT `.native`: the node adapter wraps the JS
-	// `fs.realpath`, which resolves links but never canonicalizes case.
-	realPath: (path) => attempt("realPath", path, () => NFS.realpathSync(path)),
-	copy: unsupported("copy"),
-	copyFile: unsupported("copyFile"),
-	chmod: unsupported("chmod"),
-	chown: unsupported("chown"),
+		// The adapter wraps `readdir` in `Effect.tryPromise` whose catch is
+		// `handleErrnoException` alone, so EVERY failure — argument errors too — is
+		// a system error (an `ERR_*` code maps to Unknown). Matched here ON PURPOSE:
+		// a NUL byte or non-string path is `Unknown`/`ERR_INVALID_ARG_*` for
+		// readDirectory but `BadArgument` for every other member, exactly as on the
+		// adapter. Do not "fix" it: it is the parity with the adapter.
+		readDirectory: (path, options) =>
+			Effect.try({
+				try: () => NFS.readdirSync(path, { encoding: "utf8", recursive: options?.recursive === true }),
+				catch: (err) => errnoException("readDirectory", path, err),
+			}),
+		// The adapter's `readdir` with file types, under the same catch-all as
+		// readDirectory above.
+		readDirectoryEntries: (path) =>
+			Effect.try({
+				try: () =>
+					NFS.readdirSync(path, { withFileTypes: true }).map((entry) => ({ name: entry.name, type: fileType(entry) })),
+				catch: (err) => errnoException("readDirectoryEntries", path, err),
+			}),
+		readLink: (path) => attempt("readLink", path, () => NFS.readlinkSync(path)),
+		// The JS `realpathSync`, NOT `.native`: the node adapter wraps the JS
+		// `fs.realpath`, which resolves links but never canonicalizes case.
+		realPath: (path) => attempt("realPath", path, () => NFS.realpathSync(path)),
+		copy: unsupported("copy"),
+		copyFile: unsupported("copyFile"),
+		chmod: unsupported("chmod"),
+		chown: unsupported("chown"),
+		link: unsupported("link"),
+		makeDirectory: unsupported("makeDirectory"),
+		makeTempDirectory: unsupported("makeTempDirectory"),
+		makeTempDirectoryScoped: unsupported("makeTempDirectoryScoped"),
+		makeTempFile: unsupported("makeTempFile"),
+		makeTempFileScoped: unsupported("makeTempFileScoped"),
+		open: unsupported("open"),
+		remove: unsupported("remove"),
+		rename: unsupported("rename"),
+		symlink: unsupported("symlink"),
+		truncate: unsupported("truncate"),
+		utimes: unsupported("utimes"),
+		watch: () => Stream.die(readOnly("watch")),
+		writeFile: unsupported("writeFile"),
+	}),
 	glob: unsupported("glob"),
-	link: unsupported("link"),
-	makeDirectory: unsupported("makeDirectory"),
-	makeTempDirectory: unsupported("makeTempDirectory"),
-	makeTempDirectoryScoped: unsupported("makeTempDirectoryScoped"),
-	makeTempFile: unsupported("makeTempFile"),
-	makeTempFileScoped: unsupported("makeTempFileScoped"),
-	open: unsupported("open"),
-	remove: unsupported("remove"),
-	rename: unsupported("rename"),
-	symlink: unsupported("symlink"),
-	truncate: unsupported("truncate"),
-	utimes: unsupported("utimes"),
-	watch: () => Stream.die(readOnly("watch")),
-	writeFile: unsupported("writeFile"),
 });
 
 const layer: Layer.Layer<FileSystem.FileSystem> = Layer.succeed(FileSystem.FileSystem, make);

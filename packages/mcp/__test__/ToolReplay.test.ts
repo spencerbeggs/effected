@@ -127,6 +127,7 @@ describe("ToolReplay.wrap", () => {
 					remove: () => Effect.void,
 					clear: Effect.void,
 					size: Effect.succeed(0),
+					keys: Effect.succeed([]),
 				}),
 			),
 		),
@@ -209,12 +210,25 @@ const CreateTool = Tool.make("create", {
 	description: "Creates a thing; a repeated requestId replays the first result.",
 	parameters: Schema.Struct({ requestId: Schema.String }),
 	success: Result,
-	dependencies: [KeyValueStore.KeyValueStore],
 });
 const Kit = Toolkit.make(CreateTool);
 const { handler: wireHandler } = makeHandler();
+/** The store is captured when the handlers are built and passed as `store`, so the handler's `R` stays empty. */
 const server = McpToolkit.layer(Kit).pipe(
-	Layer.provide(Kit.toLayer({ create: (params) => wrapWith(wireHandler)(params).pipe(Effect.orDie) })),
+	Layer.provide(
+		Kit.toLayer(
+			Effect.gen(function* () {
+				const store = yield* KeyValueStore.KeyValueStore;
+				const create = ToolReplay.wrap({
+					tool: "create",
+					success: Result,
+					key: (params: Params) => Option.fromUndefinedOr(params.requestId),
+					store,
+				})(wireHandler);
+				return { create: (params) => create(params).pipe(Effect.orDie) };
+			}),
+		),
+	),
 	Layer.provide(KeyValueStore.layerMemory),
 	Layer.provideMerge(McpStdio.layer({ name: "replay", version: "0.0.0" })),
 );

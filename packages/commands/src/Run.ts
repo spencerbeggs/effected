@@ -1,5 +1,5 @@
-import type { Duration, Redacted } from "effect";
-import { Effect, Function as Fn, PlatformError, Result, Schema, Stdio, Stream } from "effect";
+import type { Duration } from "effect";
+import { Effect, Function as Fn, PlatformError, Redacted, Result, Schema, Stdio, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { OutputTooLarge, collectBounded, collectBoundedBytes } from "./internal/capture.js";
 import { REDACTED, Redaction } from "./Redaction.js";
@@ -86,7 +86,12 @@ export class CommandOutput extends Schema.Class<CommandOutput>("CommandOutput")(
 /** The executable and argv an error should report for `command`. */
 const describeCommand = (command: ChildProcess.Command): { command: string; args: ReadonlyArray<string> } => {
 	if (ChildProcess.isStandardCommand(command)) {
-		return { command: command.command, args: command.args };
+		// A `Redacted` argument is already a declared secret: its value never enters
+		// the described argv, so no error, span or log can carry it.
+		return {
+			command: command.command,
+			args: command.args.map((arg) => (Redacted.isRedacted(arg) ? REDACTED : arg)),
+		};
 	}
 	const left = describeCommand(command.left);
 	const right = describeCommand(command.right);
@@ -763,15 +768,18 @@ export class Run {
 	 * nothing.
 	 */
 	static readonly extendEnv: {
-		(env: Record<string, string>): (self: ChildProcess.Command) => ChildProcess.Command;
-		(self: ChildProcess.Command, env: Record<string, string>): ChildProcess.Command;
-	} = Fn.dual(2, (self: ChildProcess.Command, env: Record<string, string>): ChildProcess.Command => {
-		if (ChildProcess.isStandardCommand(self)) {
-			const merged = self.options.env === undefined ? env : { ...self.options.env, ...env };
-			return ChildProcess.make(self.command, self.args, { ...self.options, env: merged, extendEnv: true });
-		}
-		return ChildProcess.pipeTo(Run.extendEnv(self.left, env), Run.extendEnv(self.right, env), self.options);
-	});
+		(env: Record<string, string | Redacted.Redacted<string>>): (self: ChildProcess.Command) => ChildProcess.Command;
+		(self: ChildProcess.Command, env: Record<string, string | Redacted.Redacted<string>>): ChildProcess.Command;
+	} = Fn.dual(
+		2,
+		(self: ChildProcess.Command, env: Record<string, string | Redacted.Redacted<string>>): ChildProcess.Command => {
+			if (ChildProcess.isStandardCommand(self)) {
+				const merged = self.options.env === undefined ? env : { ...self.options.env, ...env };
+				return ChildProcess.make(self.command, self.args, { ...self.options, env: merged, extendEnv: true });
+			}
+			return ChildProcess.pipeTo(Run.extendEnv(self.left, env), Run.extendEnv(self.right, env), self.options);
+		},
+	);
 
 	/**
 	 * Sets how a command is killed when its scope closes — a {@link RunOptions.timeout}

@@ -1,6 +1,6 @@
-import type { PlatformError, Result } from "effect";
-import { Crypto, Effect } from "effect";
-import * as Hex from "effect/encoding/Hex";
+import type { Result } from "effect";
+import { Effect } from "effect";
+import { Digest } from "effect/crypto";
 import type { DriftDecision } from "./DriftDecision.js";
 import { DriftApply, DriftDetected, DriftUnchanged } from "./DriftDecision.js";
 import type { FingerprintError } from "./FingerprintError.js";
@@ -55,9 +55,10 @@ export interface FingerprintDecideInput {
  * This is deliberately not RFC 8785: `JsoncFingerprint` in `@effected/jsonc`
  * refuses `undefined`, where drift detection must treat it as absent.
  *
- * The digest comes from core `Crypto.digest`, required in `R`, so the same
- * code runs on Node (`NodeCrypto.layer`) and on Cloudflare Workers (a
- * WebCrypto-backed `Crypto` layer).
+ * The digest comes from core's `Digest.Digest` service, required in `R`, so
+ * the same code runs on Node and on Cloudflare Workers: provide
+ * `Digest.layerWebCrypto` from `effect/crypto`, or a platform family layer
+ * such as `NodeCrypto.layerDigest`.
  *
  * @public
  */
@@ -93,8 +94,8 @@ export class Fingerprint {
 	 * of its canonical JSON text.
 	 *
 	 * @remarks
-	 * Requires core's `Crypto.Crypto` in `R`; a digest failure is core's
-	 * `PlatformError`. Built on {@link Fingerprint.canonicalizeResult}, so the
+	 * Requires core's `Digest.Digest` in `R`. A digest cannot fail: a runtime
+	 * without WebCrypto is a defect, not a typed error. Built on {@link Fingerprint.canonicalizeResult}, so the
 	 * two can never disagree. See {@link Fingerprint} for the canonical rules.
 	 *
 	 * @example
@@ -107,21 +108,19 @@ export class Fingerprint {
 	 *   const b = yield* Fingerprint.of({ rules: ["a", "b"], name: "main" });
 	 *   return a === b; // true: key order is not drift
 	 * });
-	 * // provide NodeCrypto.layer, or a WebCrypto-backed Crypto layer
+	 * // provide Digest.layerWebCrypto (effect/crypto) or NodeCrypto.layerDigest
 	 * ```
 	 *
 	 * @param value - A JSON-shaped value.
-	 * @returns An `Effect` requiring `Crypto.Crypto` that succeeds with 64
+	 * @returns An `Effect` requiring `Digest.Digest` that succeeds with 64
 	 * lowercase hex characters.
 	 */
-	static readonly of: (
-		value: unknown,
-	) => Effect.Effect<string, FingerprintError | PlatformError.PlatformError, Crypto.Crypto> = Effect.fn(
+	static readonly of: (value: unknown) => Effect.Effect<string, FingerprintError, Digest.Digest> = Effect.fn(
 		"Fingerprint.of",
 	)(function* (value: unknown) {
 		const text = yield* Effect.fromResult(canonicalText(value));
-		const crypto = yield* Crypto.Crypto;
-		return Hex.encode(yield* crypto.digest("SHA-256", utf8(text)));
+		const digest = yield* Digest.Digest;
+		return yield* digest.digestHex(Digest.sha256, utf8(text));
 	});
 
 	/**

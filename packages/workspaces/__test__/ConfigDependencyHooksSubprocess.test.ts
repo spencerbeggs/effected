@@ -58,6 +58,9 @@ const harness = (script: Parameters<typeof ScriptedSpawner.make>[0]) => {
 	return { spawner, layer };
 };
 
+/** The recorded argv as strings; none of these spawns carries a `Redacted` argument. */
+const strArgs = (spawn: { readonly args: ReadonlyArray<unknown> }): ReadonlyArray<string> => spawn.args.map(String);
+
 describe("ConfigDependencyHooks.layerSubprocess — no-spawn fast paths", () => {
 	it.effect("empty configDependencies returns the seed without spawning anything", () => {
 		const { spawner, layer } = harness(() => ({ stdout: emitted({ ok: true, config: {} }) }));
@@ -107,19 +110,19 @@ describe("ConfigDependencyHooks.layerSubprocess — the argv contract", () => {
 			const spawn = spawner.spawns[0];
 			assert.isDefined(spawn);
 			assert.strictEqual(spawn.command, "node");
-			assert.strictEqual(spawn.args[0], "--input-type=module");
-			assert.strictEqual(spawn.args[1], "-e");
-			const script = spawn.args[2];
+			assert.strictEqual(strArgs(spawn)[0], "--input-type=module");
+			assert.strictEqual(strArgs(spawn)[1], "-e");
+			const script = strArgs(spawn)[2];
 			assert.isDefined(script);
 			// The script is a STATIC constant: no runtime value is spliced into the
 			// program text — seed, rules and the resolved pairs travel exclusively
 			// as argv.
 			assert.isFalse(script?.includes(ROOT));
 			assert.isFalse(script?.includes("dep-a"));
-			assert.deepStrictEqual(JSON.parse(spawn.args[3] ?? ""), SEED);
+			assert.deepStrictEqual(JSON.parse(strArgs(spawn)[3] ?? ""), SEED);
 			// The rules seed rides the same argv channel, in its own slot ahead of
 			// the pairs — never spliced into the program text either.
-			assert.deepStrictEqual(JSON.parse(spawn.args[4] ?? ""), {
+			assert.deepStrictEqual(JSON.parse(strArgs(spawn)[4] ?? ""), {
 				allowedVersions: {},
 				ignoreMissing: [],
 				allowAny: [],
@@ -127,7 +130,7 @@ describe("ConfigDependencyHooks.layerSubprocess — the argv contract", () => {
 			// The PARENT resolved each declared version to a pnpmfile and converted
 			// it to a `file:` URL; the child receives `[name, fileUrl]` pairs as ONE
 			// JSON argument and performs no lookup or path conversion of its own.
-			assert.deepStrictEqual(JSON.parse(spawn.args[5] ?? ""), [
+			assert.deepStrictEqual(JSON.parse(strArgs(spawn)[5] ?? ""), [
 				["dep-a", pnpmfileUrlOf("dep-a")],
 				["@scope/dep-b", pnpmfileUrlOf("@scope/dep-b")],
 			]);
@@ -159,8 +162,8 @@ describe("ConfigDependencyHooks.layerSubprocess — the argv contract", () => {
 			// Seeded, not merged by us: the workspace file's rules go INTO the
 			// threaded config so the hooks merge onto them, exactly as pnpm seeds
 			// its own config.
-			assert.deepStrictEqual(JSON.parse(spawn.args[4] ?? ""), rules);
-			assert.isFalse(spawn.args[2]?.includes("1.2.3"));
+			assert.deepStrictEqual(JSON.parse(strArgs(spawn)[4] ?? ""), rules);
+			assert.isFalse(strArgs(spawn)[2]?.includes("1.2.3"));
 		}).pipe(Effect.provide(layer));
 	});
 });

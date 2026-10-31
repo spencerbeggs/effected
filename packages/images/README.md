@@ -8,10 +8,10 @@
 Image facts from bytes, and a cache for generated images. `ImageFacts` reads the format, MIME type and pixel dimensions of a PNG, JPEG, GIF, WebP or AVIF file straight from its header, with one typed failure for bytes that are not a readable image. `ImageCache` answers "have I already generated an image from these parameters?", so a build stops re-running an expensive renderer such as an Open Graph card generator on every run.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
-> Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
+> Effect v4 (`effect` `~4.1.0`) and still in `0.x` development. Stable Effect
 > makes a kit `1.0.0` possible, not automatic. To keep your `effect` and
 > `@effect/*` versions on the line the kit is built and tested against, install
-> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+> [`@effected/pnpm-plugin-effected`](https://www.npmjs.com/package/@effected/pnpm-plugin-effected).
 >
 > **Stability: unstable.** This package's API surface is not yet considered
 > complete and may change across `0.x` releases. Pin an exact version — even a
@@ -66,7 +66,7 @@ const facts = ImageFacts.fromBytes(bytes).pipe(
 
 ```ts
 import { ImageBackend, ImageCache, ImageCacheKey } from "@effected/images/cache";
-import { NodeServices } from "@effect/platform-node";
+import { NodeCrypto, NodeServices } from "@effect/platform-node";
 import { Effect, Layer, Schema } from "effect";
 
 const CardParams = Schema.Struct({ title: Schema.String, theme: Schema.String });
@@ -89,7 +89,10 @@ const program = Effect.gen(function* () {
     { accept: ["png"] },
   );
   return { bytes, width: facts.width, hit };
-}).pipe(Effect.provide(CacheLive), Effect.provide(NodeServices.layer));
+}).pipe(
+  Effect.provide(CacheLive),
+  Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layerDigest)),
+);
 ```
 
 `getOrGenerate` returns the bytes, their `ImageFacts` and whether it was a `hit`. With `accept`, the result's `facts.format` is typed as the accepted formats, so `["png", "jpeg", "webp"]` gives `"png" | "jpeg" | "webp"`; without it, every format. A stored entry that no longer parses, or whose format is outside `accept`, is treated as a miss and overwritten. A generator result that is empty, unparseable or outside `accept` fails with `ImageGenerateError` and is never stored. Backend failures surface as `ImageBackendError`; the generator's own error passes through untouched.
@@ -120,7 +123,7 @@ declare const cachingEnabled: boolean;
 const backend = cachingEnabled ? ImageBackend.layerDirectory({ directory: ".cache/og" }) : ImageBackend.layerNone;
 ```
 
-The key digest uses core `Crypto`, and the directory backend uses `FileSystem` and `Path`. On Node, `NodeServices.layer` from `@effect/platform-node` provides all three.
+The key digest uses core `Digest.Digest` (`effect/crypto`), and the directory backend uses `FileSystem` and `Path`. On Node, `NodeServices.layer` from `@effect/platform-node` provides `FileSystem` and `Path`, and `NodeCrypto.layerDigest` provides `Digest.Digest`; `Digest.layerWebCrypto` from `effect/crypto` works on any runtime with WebCrypto.
 
 ### Bring your own store
 

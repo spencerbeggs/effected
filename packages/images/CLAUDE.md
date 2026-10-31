@@ -14,8 +14,8 @@ the contract this package implements.
 a global). `@effected/store`, `@effected/memfs` and `@effect/platform-node` are
 devDependencies for tests only; no `src/` file imports them and no published
 `.d.ts` names a store type. Never add `image-size` or any image library — the
-readers are in-house. The key digest is core `Crypto.digest("SHA-256", ...)`
-with `Crypto.Crypto` in `R`; never `node:crypto`, never a hand-rolled hash.
+readers are in-house. The key digest is core `Digest.digestHex(Digest.sha256, ...)`
+with `Digest.Digest` (`effect/crypto`) in `R`; never `node:crypto`, never a hand-rolled hash.
 
 ## Subpaths
 
@@ -26,7 +26,8 @@ with `Crypto.Crypto` in `R`; never `node:crypto`, never a hand-rolled hash.
   `layerDirectory`'s file names included, is read from them.
 - `./cache` — `ImageCache`, `ImageCacheKey`, `ImageCacheKeyError`,
   `ImageBackend`, `ImageBackendError`, `ImageGenerateError`. Needs `FileSystem`,
-  `Path` and `Crypto` in `R`; a Node app provides all three with `NodeServices.layer`.
+  `Path` and `Digest.Digest` in `R`; a Node app provides `NodeServices.layer` plus a digest layer
+  (`Digest.layerWebCrypto` or `NodeCrypto.layerDigest`) — `NodeServices.layer` carries no crypto.
 
 Module-per-concept: one exported concept per `src/<Concept>.ts`, engines in
 `src/internal/`, only `index.ts` and `cache.ts` re-export.
@@ -36,7 +37,7 @@ Module-per-concept: one exported concept per `src/<Concept>.ts`, engines in
 A surface with no IO and `R = never` ships a `*Result` primitive and derives its
 `Effect` form with `Effect.fromResult`, adding only a span
 (`ImageFacts.fromBytesResult` / `fromBytes`). IO surfaces and
-`ImageCacheKey.fromParams` (`Crypto` in `R`) are `Effect` only. Never name a sync form `*Sync`.
+`ImageCacheKey.fromParams` (`Digest.Digest` in `R`) are `Effect` only. Never name a sync form `*Sync`.
 `Schema.Class` reserves `make`, so the key constructor is `fromParams`.
 
 ## Reader hardening

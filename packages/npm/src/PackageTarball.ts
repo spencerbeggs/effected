@@ -1,7 +1,8 @@
 import { Run } from "@effected/commands";
 import { HttpRedaction } from "@effected/crypto";
 import type { Scope } from "effect";
-import { Context, Crypto, Effect, FileSystem, Layer, Option, Redacted, Schema } from "effect";
+import { Context, Effect, FileSystem, Layer, Option, Redacted, Schema } from "effect";
+import { Digest } from "effect/crypto";
 import * as Base64 from "effect/encoding/Base64";
 import { HttpClient } from "effect/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
@@ -28,11 +29,8 @@ export class TarballError extends Schema.TaggedError<TarballError>()("TarballErr
 	 * and the failure that results is silent: an integrity mismatch handled as
 	 * a missing version can send a caller down a lossy fallback on a run that
 	 * still reports success. Branch on `reason`.
-	 *
-	 * `integrityUnverifiable` — the registry vouched for an integrity but no
-	 * digest could be computed to check it, so nothing was compared.
 	 */
-	reason: Schema.Literals(["notFound", "http", "integrityMismatch", "integrityUnverifiable", "extractFailed"]),
+	reason: Schema.Literals(["notFound", "http", "integrityMismatch", "extractFailed"]),
 	/** The package being fetched. */
 	package: Schema.String,
 	/** The version being fetched. */
@@ -55,8 +53,6 @@ export class TarballError extends Schema.TaggedError<TarballError>()("TarballErr
 				return `Could not download the tarball for ${what}${this.status === undefined ? "" : ` (HTTP ${this.status})`}`;
 			case "integrityMismatch":
 				return `The tarball for ${what} did not match the integrity the registry published (expected ${this.expected ?? "unknown"}, got ${this.actual ?? "unknown"})`;
-			case "integrityUnverifiable":
-				return `Could not compute a digest to verify ${what}, so its integrity was never checked (expected ${this.expected ?? "unknown"})`;
 			default:
 				return `Could not extract the tarball for ${what}`;
 		}
@@ -134,17 +130,17 @@ const authorizationHeader = (credential: RegistryCredential | undefined): Record
 		: { authorization: `Basic ${Redacted.value(credential.encoded)}` };
 };
 
-/** Map an SRI algorithm name onto core's digest algorithm spelling. */
-const digestAlgorithmOf = (algorithm: string): Crypto.DigestAlgorithm | undefined => {
+/** Map an SRI algorithm name onto core's digest algorithm. */
+const digestAlgorithmOf = (algorithm: string): Digest.Algorithm | undefined => {
 	switch (algorithm) {
 		case "sha1":
-			return "SHA-1";
+			return Digest.sha1;
 		case "sha256":
-			return "SHA-256";
+			return Digest.sha256;
 		case "sha384":
-			return "SHA-384";
+			return Digest.sha384;
 		case "sha512":
-			return "SHA-512";
+			return Digest.sha512;
 		default:
 			return undefined;
 	}
@@ -156,7 +152,7 @@ const unpadded = (value: string): string => value.replace(/=+$/, "");
 /** Builds the service over already-resolved platform services. */
 const make = Effect.fnUntraced(function* () {
 	const fs = yield* FileSystem.FileSystem;
-	const crypto = yield* Crypto.Crypto;
+	const digester = yield* Digest.Digest;
 	// Redirects are followed here rather than left to the client, so the
 	// origin-change rule (core drops `authorization`, `proxy-authorization`
 	// and `cookie`) holds for every client a consumer provides. A client that
@@ -172,7 +168,7 @@ const make = Effect.fnUntraced(function* () {
 		const name = published.name;
 		const version = published.version;
 		const fail = (
-			reason: "notFound" | "http" | "integrityMismatch" | "integrityUnverifiable" | "extractFailed",
+			reason: "notFound" | "http" | "integrityMismatch" | "extractFailed",
 			extra: { status?: number; expected?: string; actual?: string; cause?: unknown } = {},
 		): TarballError => new TarballError({ reason, package: name, version, ...extra });
 
@@ -229,12 +225,9 @@ const make = Effect.fnUntraced(function* () {
 					`PackageTarball: cannot verify ${name}@${version} — "${expected}" is not an integrity form this can check`,
 				);
 			} else {
-				const digest = yield* crypto
-					.digest(algorithm.value, bytes)
-					// NOT integrityMismatch: nothing was compared. See the reason
-					// docstring — a failure to verify presented as a measured
-					// mismatch is the exact class this package fixes elsewhere.
-					.pipe(Effect.mapError((cause) => fail("integrityUnverifiable", { expected, cause })));
+				// Core's digest has no typed failure: a runtime that cannot hash is
+				// a defect, never reported as a measured mismatch.
+				const digest = yield* digester.digest(algorithm.value, bytes);
 				const actual = `${expected.slice(0, expected.indexOf("-"))}-${Base64.encode(digest)}`;
 				// Compared without base64 padding: the SRI grammar permits an
 				// unpadded value, and a padding difference is not a byte
@@ -315,13 +308,16 @@ export class PackageTarball extends Context.Service<PackageTarball, PackageTarba
 	"@effected/npm/PackageTarball",
 ) {
 	/**
-	 * The live service, over core's `FileSystem`, `Crypto`, `HttpClient` and
-	 * `ChildProcessSpawner`. Pair it with {@link NpmRegistry.layer} to obtain the
+	 * The live service, over core's `FileSystem`, `Digest.Digest`, `HttpClient` and
+	 * `ChildProcessSpawner`. `Digest.Digest` comes from `effect/crypto`: provide
+	 * `Digest.layerWebCrypto` or a platform family layer such as
+	 * `NodeCrypto.layerDigest` (`NodeServices.layer` does not include it).
+	 * Pair it with {@link NpmRegistry.layer} to obtain the
 	 * {@link PublishedVersion} that `extract` takes.
 	 */
 	static readonly layer: Layer.Layer<
 		PackageTarball,
 		never,
-		FileSystem.FileSystem | Crypto.Crypto | HttpClient.HttpClient | ChildProcessSpawner.ChildProcessSpawner
+		FileSystem.FileSystem | Digest.Digest | HttpClient.HttpClient | ChildProcessSpawner.ChildProcessSpawner
 	> = Layer.effect(PackageTarball)(make());
 }

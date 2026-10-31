@@ -6,7 +6,7 @@
 JWS, JWT, JWK and JWKS sign and verify over WebCrypto, for Effect v4. It runs anywhere WebCrypto does, including Node, browsers and Cloudflare Workers, with no `node:` import and no runtime dependency beyond the `effect` peer and `@effected/crypto`, which is WebCrypto-only too.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
-> Effect v4 (`effect` `^4.0.0`) and still in `0.x` development.
+> Effect v4 (`effect` `~4.1.0`) and still in `0.x` development.
 >
 > **Stability: unstable.** This package's API surface is not yet complete and may change across `0.x` releases. Pin an exact version. Full policy: [release strategy](https://github.com/spencerbeggs/effected#release-strategy).
 

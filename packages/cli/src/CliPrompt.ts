@@ -87,7 +87,7 @@ export class CliPrompt {
 	 * stdin, which drops piped input and puts a TTY stdin into raw mode. Core's `withFallbackPrompt`, a `Prompt.run`
 	 * in a handler and the command wizard all do so whether or not anyone is there to answer. Not interactive, this
 	 * terminal's input is an already-ended queue, its `readLine` fails as quit and its `display` writes nothing, so
-	 * any such prompt is quit at once and the real terminal is never read. Its `columns` and `rows` always come
+	 * any such prompt is quit at once and the real terminal is never read. Its `columns`, `rows` and `size` always come
 	 * from the real one, so layout keeps working. Interactive, every call passes through to the real terminal.
 	 *
 	 * The decision is made on every call, not when the layer is built, so a scope that narrows `CliInteractive`
@@ -107,6 +107,7 @@ export class CliPrompt {
 			return Terminal.make({
 				columns: real.columns,
 				rows: real.rows,
+				size: real.size,
 				readInput: Effect.flatMap(CliInteractive, (interactive) => (interactive ? real.readInput : endedInput)),
 				readLine: Effect.flatMap(CliInteractive, (interactive) =>
 					interactive ? real.readLine : Effect.fail(new Terminal.QuitError({})),

@@ -8,10 +8,10 @@
 The `schemastore` command: build and check SchemaStore-shaped JSON Schema documents from a `schemastore.config.ts`, and validate a payload against a published document. It is the companion to [`@effected/schemastore`](https://www.npmjs.com/package/@effected/schemastore), which owns the pipeline and every type a config needs; this package ships the plumbing every consumer used to write by hand — the config loader, the drift policy, the frozen-label checks, the catalog file, exit codes, a GitHub step summary — once, as a `bin`. It is also where the validation engines live: `AjvValidator` (documents) and `AjvInstanceValidator` (payloads), both ajv in strict mode over one shared setup, composed by the commands and exported for a program that drives the pipeline or validates payloads itself, so the library stays free of ajv.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
-> Effect v4 (`effect` `^4.0.0`) and still in `0.x` development. Stable Effect
+> Effect v4 (`effect` `~4.1.0`) and still in `0.x` development. Stable Effect
 > makes a kit `1.0.0` possible, not automatic. To keep your `effect` and
 > `@effect/*` versions on the line the kit is built and tested against, install
-> [`@effected/pnpm-plugin-effect`](https://www.npmjs.com/package/@effected/pnpm-plugin-effect).
+> [`@effected/pnpm-plugin-effected`](https://www.npmjs.com/package/@effected/pnpm-plugin-effected).
 >
 > **Stability: unstable.** This package's API surface is not yet considered
 > complete and may change across `0.x` releases. Pin an exact version — even a
