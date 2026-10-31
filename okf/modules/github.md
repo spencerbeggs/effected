@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T20:20:25Z
+  at: 2026-10-31T19:37:34Z
 integrity:
   generated:
-    body: c1993655f3d5d5b6
+    body: 2d136c2596a64ec1
 ---
 
 # @effected/github
@@ -74,7 +74,7 @@ package named for it.
 | `@octokit/core` | the `Octokit` class: a route-keyed, fully typed `request`, which carries GraphQL too (`POST /graphql` with a `data` body, never its `graphql` method) |
 | `@octokit/plugin-paginate-rest` | the composable paginator over a bare core instance, plus the type that statically rejects paginating a non-paginating route |
 | `@octokit/types` | the generated endpoint map; ships no JavaScript — types only |
-| `@effected/jwt` (`workspace:^`) | signs the App JWT over WebCrypto; no runtime dependencies, and accepts PKCS#1 and PKCS#8 keys on every runtime — see [`jwt`](jwt.md) |
+| `@effected/jwt` (`workspace:^`) | signs the App JWT on core `effect/jose` (the `Signature` service, required in `R` by the App layers); kept as the edge because it accepts PKCS#1 and escaped-newline PEMs, which core's `Jwk.importPkcs8` does not — see [`jwt`](jwt.md) |
 | `tweetnacl` + `blakejs` | the libsodium sealed box GitHub's secrets API requires, reachable only from `RepositorySecret` |
 | `@effected/semver` (`workspace:^`) | semver-aware tag selection; pure tier, so the edge is free |
 | `@effected/github-references` (`workspace:^`) | the compat re-export of six issue-reference names — see [`github-references`](github-references.md) |
@@ -102,8 +102,8 @@ would immediately silence, plus megabytes of generated types duplicating
 making hundreds of kilobytes of OAuth app, user and device-flow machinery
 reachable from a package that only ever mints installation tokens; what is
 actually needed — an RS256-signed App JWT plus one typed token-endpoint
-route — comes from the kit's own [`@effected/jwt`](jwt.md), a WebCrypto
-signer with no runtime dependencies that runs on workerd as well as Node.
+route — comes from the kit's own [`@effected/jwt`](jwt.md), a thin layer over
+core `effect/jose` that runs on workerd as well as Node.
 
 ## Bundle reachability
 

@@ -8,7 +8,7 @@ resource: ../../packages/github/src/GitHubApp.ts
 tags: [bundle, security]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-11T17:00:41Z
+  at: 2026-10-31T19:37:34Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:25.629Z
@@ -16,7 +16,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: a52b881f6339995d
+    body: a433bb1afa94c60b
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -26,7 +26,7 @@ integrity:
 # @effected/github App authentication
 
 App authentication is the third way to get a client: an RS256 App JWT signed
-by `@effected/jwt` over WebCrypto, installation tokens minted through the same typed
+through `@effected/jwt` on core `effect/jose` and its `Signature` service, installation tokens minted through the same typed
 route table as every other call, and a lifecycle that enriches, expires,
 re-mints and revokes them. Bot identity and the DCO signoff trailer it
 renders come with it, because they are projections of the same token.
@@ -64,12 +64,22 @@ heavy dependency must not.
 `AppCredentials.privateKey` is a `Redacted` PEM, read only at the import call
 inside `@effected/jwt`. PKCS#1 (`BEGIN RSA PRIVATE KEY`, what github.com
 hands out) and PKCS#8 are both accepted on every runtime with WebCrypto,
-Cloudflare workerd included: a PKCS#1 key is wrapped to PKCS#8 in-process, so
-no `openssl` conversion step exists any more. A key whose newlines arrive
+Cloudflare workerd included: core's `KeyFormat.pkcs1` reads a PKCS#1 key and
+re-encodes it as PKCS#8 in-process, so no `openssl` conversion step exists. A key whose newlines arrive
 escaped as the two characters backslash and `n` — the one-line form an
 environment variable carries — is accepted, matching the signer it replaced.
 The key must be RSA of at least 2048 bits; anything else is a `jwt`-kind
 failure carrying the `JwtError` as its cause.
+
+## The Signature requirement
+
+`GitHubApp.layer`, `GitHubApp.layerWith`, `GitHubApp.clientLayer` and
+`GitHubApp.appClientLayer` require core's `Signature` service in `R`; the
+application provides `Signature.layerWebCrypto` over
+`SecureRandom.layerWebCrypto` once at its edge. The layer captures the
+service when it is built, so the `GitHubApp` methods and the client's
+re-signing keep `R = never`. The App JWT's wire shape is pinned by test:
+header `{"alg":"RS256","typ":"JWT"}`, claims `iat`, `exp`, `iss` in that order.
 
 ## Three client layers
 

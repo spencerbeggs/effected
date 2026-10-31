@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-10-31T19:37:34Z
 integrity:
   generated:
-    body: 7781c91f4bd7b74b
+    body: c71b8d2d224c6e91
 ---
 
 # github-actions
@@ -110,11 +110,12 @@ and tree-shakes sees the benefit. The composed runtime layer
 (`Action.run`) deliberately excludes the cache, artifact and blob
 services for the same reason: folding them in would put the Azure client
 in the bundle of every action that merely sets an output. It does carry
-the `effect/crypto` services: `ActionServices` includes `Digest.Digest`
-and `SecureRandom.SecureRandom`, and `ActionRuntime.layer` provides both
-from `NodeCrypto` (`layerDigest`, `layerSecureRandom`) beside
-`NodeServices.layer`, which carries no crypto. A hand-composed
-`BlobStore.layerS3` must provide `Digest.Digest` itself.
+the `effect/crypto` services: `ActionServices` includes `Digest.Digest`,
+`Mac.Mac` and `SecureRandom.SecureRandom`, and `ActionRuntime.layer`
+provides all three from `NodeCrypto` (`layerDigest`, `layerMac`,
+`layerSecureRandom`) beside `NodeServices.layer`, which carries no crypto. A
+hand-composed `BlobStore.layerS3` must provide `Digest.Digest` and `Mac.Mac`
+itself.
 
 ## Module topology
 

@@ -56,6 +56,11 @@
 * Added pnpm-plugin-effected
 * Updated pnpm-plugin-effected is deliberately absent from its own effected catalog
 * Updated workspace
+* Updated @effected/github
+* Updated @effected/github App authentication
+* Updated @effected/oidc
+* Updated @effected/webhooks
+* Updated Keyed operations come from core Mac, payload digests from core Digest, both required in R
 
 ## 2026-10-29
 

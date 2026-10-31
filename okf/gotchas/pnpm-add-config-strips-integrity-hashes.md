@@ -1,60 +1,28 @@
 ---
 type: Gotcha
 title: pnpm add --config silently strips integrity hashes from every config dependency
-description: Adding one new config dependency with pnpm add --config can remove the +sha512 integrity suffix from every existing configDependencies entry, not just the one being added.
-status: stable
+description: "Superseded: a configDependencies entry is a plain version, the canonical form, so pnpm add --config writing entries without a +sha512 suffix, and dropping it from the others, loses nothing a consumer is expected to keep; pnpm still honours a suffix that is present."
+status: deprecated
 resource: ../../pnpm-workspace.yaml
-stale_after: "2027-01-13T00:00:00Z"
 tags:
   - security
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-10-31T19:37:34Z
 integrity:
   generated:
-    body: 0c5120fa497a09d6
+    body: 4467015ca83c4feb
 ---
 
-# `pnpm add --config` silently strips integrity hashes from every config dependency
+# `pnpm add --config` strips integrity hashes from every config dependency (superseded)
 
-## What a reader sees
+**Superseded.** A `configDependencies` entry is written as a plain version, `"<name>": <version>`, and that is now the canonical form in this repository and in the kit's consumer guidance. pnpm still honours a `+sha512-…` integrity suffix on an entry that carries one, but nothing here asks for one, so the behaviour below no longer costs anything a reader is expected to keep. Do not restore stripped suffixes by hand, and do not add them to new entries.
 
-A maintainer runs `pnpm add --config <some-new-package>` to add a new
-pnpm config dependency alongside the existing ones (such as
-`@effected/pnpm-plugin-effected` or `@savvy-web/pnpm-plugin-silk`). The
-command succeeds, the new entry appears in `configDependencies`, and
-nothing in the command's own output signals a problem with anything
-else.
+## What this concept used to warn about
 
-## What they will wrongly conclude
+Reproduced on pnpm 11.24.0: `pnpm add --config <package>` wrote the new entry with no `+sha512-…` suffix and removed the suffix from every **other** `configDependencies` entry in the same write, and a later `pnpm install` did not restore them. Under the old guidance, which pinned each config dependency with its integrity hash, that silently removed the guard from the packages with the most reach into an install. The advice was to diff the whole block after every `--config` add and write each hash back from `npm view <name>@<version> dist.integrity`.
 
-That only the newly-added entry changed, and that every other
-`configDependencies` entry — including the ones that were already
-integrity-pinned before this command ran — is untouched.
+## What still holds
 
-## What is actually true
-
-Reproduced on pnpm 11.24.0: the new entry is written with **no**
-`+sha512-…` integrity suffix, and every **other** `configDependencies`
-entry in `pnpm-workspace.yaml` loses its suffix too, in the same write. A
-subsequent plain `pnpm install` does not restore the stripped suffixes.
-Config dependencies install ahead of the rest of the dependency tree and
-can run install hooks, so this silently removes the integrity guard on
-exactly the packages with the most reach into the install process — and
-the damage is invisible unless someone diffs `pnpm-workspace.yaml` after
-running the command, since nothing else in the workspace changes shape.
-This was found by a consumer following this package's own documented
-install step, in a cross-repository dogfood loop.
-
-## The check
-
-After running `pnpm add --config` for any reason, diff
-`pnpm-workspace.yaml`'s `configDependencies` block in full, not just the
-entry you intended to add — check every existing entry, not only the new
-one, for a missing `+sha512-…` suffix. A hand-written hash is accepted
-and preserved by pnpm once restored, so the fix is to look up the correct
-integrity value for each stripped entry and re-add it by hand rather than
-relying on any subsequent `pnpm install` to repair it. This repository's
-own `@savvy-web/pnpm-plugin-silk` entry carries its hash deliberately for
-this reason; check it specifically after any `--config` add.
+The command still rewrites every `configDependencies` entry, not only the one it was asked to add, so read the block's diff after running it. A change there now means a version moved, not a lost hash.
