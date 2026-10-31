@@ -6,7 +6,7 @@
 
 ### Renamed from @effected/pnpm-plugin-effect
 
-This package replaces `@effected/pnpm-plugin-effect` and continues its version line. The old name is deprecated and gets no further releases. Swap the entry in `configDependencies` (write it by hand with its `+sha512` integrity; `pnpm add --config` strips integrity hashes) and reinstall from scratch.
+This package replaces `@effected/pnpm-plugin-effect` and continues its version line. The old name is deprecated and gets no further releases. Before installing, rename `@effected/pnpm-plugin-effect` to `@effected/pnpm-plugin-effected` in `minimumReleaseAgeExclude` if you exempt it there, so the release-age gate admits the new package. Then swap the entry in `configDependencies` for `@effected/pnpm-plugin-effected` at a plain version (no integrity suffix) and reinstall from scratch.
 
 ### One catalog, `effected`
 

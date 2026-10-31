@@ -67,7 +67,6 @@ Root `pnpm-workspace.yaml` sets exactly one resolver-relevant key: `autoInstallP
 
 ## Hazards
 
-- **`pnpm add --config` destroys integrity pinning, including for packages it was not asked about.** The entry it adds has no `+sha512-…` suffix, and every OTHER `configDependencies` entry loses its suffix too; a later plain install does not restore them. Write config-dependency entries and their hashes by hand → `okf/gotchas/pnpm-add-config-strips-integrity-hashes.md`.
 - **After renaming this package (or any workspace package), the next `pnpm run` installs first** → `okf/gotchas/verify-deps-before-run.md`.
 - **Always check the lockfile diff after an install** — a plain install once stripped turbo / biome / tsgo platform binaries from it.
 - Never set `"private": false` — `publishConfig` (`directory: dist/dev/pkg`, `linkDirectory: true`) produces the publishable manifest at build time.

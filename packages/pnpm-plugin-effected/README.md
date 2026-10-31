@@ -38,27 +38,20 @@ pnpm add --config @effected/pnpm-plugin-effected
 
 Requires pnpm 11 or newer, and Node.js >=24.11.0. There is no npm or yarn equivalent: config dependencies and catalogs are pnpm features.
 
-The command writes the package into your `pnpm-workspace.yaml`:
+The command writes the package into your `pnpm-workspace.yaml` at a plain version:
 
 ```yaml
 configDependencies:
-  "@effected/pnpm-plugin-effected": <version>+sha512-...
+  "@effected/pnpm-plugin-effected": <version>
 ```
 
-**Check that file afterwards, and expect to fix it by hand.** `pnpm add --config` writes the new entry **without** an integrity hash, and strips the `+sha512-…` suffix from every *other* config dependency already listed — including ones the command had no reason to touch. A later `pnpm install` does not restore them. Config dependencies are installed ahead of everything else and can contribute hooks that run during install, so the integrity pin is the thing standing between you and an unverified package with that reach.
+A plain version is the canonical form. pnpm still honours a `+sha512-…` integrity suffix on the entry if one is there, but you do not need to add one.
 
-Hand-written hashes are accepted and preserved, so the fix is to put them back:
+If your workspace sets `minimumReleaseAge`, add the plugin to `minimumReleaseAgeExclude` so a release that is only hours old still installs:
 
 ```yaml
-configDependencies:
-  "@effected/pnpm-plugin-effected": <version>+sha512-...
-  "@your-org/other-config-dep": 1.2.3+sha512-...   # restore this one too
-```
-
-You can read the correct hash for a version out of the registry:
-
-```bash
-npm view "@effected/pnpm-plugin-effected@<version>" dist.integrity
+minimumReleaseAgeExclude:
+  - "@effected/pnpm-plugin-effected"
 ```
 
 ## Usage
@@ -118,7 +111,6 @@ The Effect entries move when the kit advances its Effect pin. The kit entries ar
 
 ```bash
 pnpm update --config @effected/pnpm-plugin-effected
-# restore the +sha512 integrity hashes, then:
 pnpm install
 # every catalog:effected specifier in the workspace re-resolves to the new pins
 ```
