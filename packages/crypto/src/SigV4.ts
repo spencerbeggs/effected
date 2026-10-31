@@ -1,7 +1,7 @@
 import { DateTime, Effect, Redacted } from "effect";
+import type { CryptoError, Mac } from "effect/crypto";
 import { Digest } from "effect/crypto";
 import * as Hex from "effect/encoding/Hex";
-import type { CryptoError } from "./CryptoError.js";
 import { utf8 } from "./internal/bytes.js";
 import { hmacBytes } from "./internal/hmac.js";
 import { SigV4PathError } from "./SigV4PathError.js";
@@ -197,7 +197,7 @@ const signingKey = (
 	dateStamp: string,
 	region: string,
 	service: string,
-): Effect.Effect<Uint8Array, CryptoError> =>
+): Effect.Effect<Uint8Array, CryptoError.CryptoError, Mac.Mac> =>
 	Effect.gen(function* () {
 		const dated = yield* hmacBytes("SHA-256", utf8(`AWS4${Redacted.value(secretAccessKey)}`), utf8(dateStamp));
 		const regional = yield* hmacBytes("SHA-256", dated, utf8(region));
@@ -231,11 +231,14 @@ const sign = Effect.fn("SigV4.sign")(function* (request: SigV4Request, credentia
  * such as R2, MinIO and Spaces.
  *
  * @remarks
- * HMAC comes from WebCrypto and every SHA-256 from core's `Digest.Digest`
- * service, so signing is effectful and needs `Digest.Digest` in `R`: provide
+ * Every HMAC comes from core's `Mac.Mac` service and every SHA-256 from its
+ * `Digest.Digest` service, so signing is effectful and needs both in `R`:
+ * provide `Mac.layerWebCrypto` (with `SecureRandom.layerWebCrypto`) and
  * `Digest.layerWebCrypto` from `effect/crypto` (Node, Workers, any runtime
- * with WebCrypto) or a platform family layer such as `NodeCrypto.layerDigest`.
- * Time is never read: the request carries its signing instant.
+ * with WebCrypto), or the platform family layers such as
+ * `NodeCrypto.layerMac` and `NodeCrypto.layerDigest`. On the WebCrypto
+ * layers, a runtime with no `crypto.subtle` dies rather than failing. Time
+ * is never read: the request carries its signing instant.
  *
  * @public
  */
@@ -285,7 +288,8 @@ export class SigV4 {
 	 * by name then value, and the payload hash is `payloadHash` when given or
 	 * the SHA-256 of the body otherwise. A path with a `.` or `..` segment
 	 * fails with {@link SigV4PathError} before anything is hashed. No HMAC is
-	 * taken here, so it never fails with `CryptoError`.
+	 * taken here, so it needs only `Digest.Digest` and never fails with
+	 * `CryptoError`.
 	 *
 	 * @public
 	 */
@@ -300,7 +304,13 @@ export class SigV4 {
 	 *
 	 * @remarks
 	 * Exported so a test can reproduce AWS's documented derivation. The
-	 * result is key material; treat it as secret.
+	 * result is key material; treat it as secret. Each HMAC runs on core's
+	 * `Mac.Mac`, required in `R`. The `CryptoError` channel is core's; the
+	 * first key is `AWS4` plus the secret, never empty, so a well-behaved
+	 * `Mac` layer does not reach it.
+	 *
+	 * On `Mac.layerWebCrypto` this is truly asynchronous: a test that forks it
+	 * and then adjusts `TestClock` can race or hang; await it or use a latch.
 	 *
 	 * @public
 	 */
@@ -309,7 +319,7 @@ export class SigV4 {
 		dateStamp: string,
 		region: string,
 		service: string,
-	) => Effect.Effect<Uint8Array, CryptoError> = signingKey;
+	) => Effect.Effect<Uint8Array, CryptoError.CryptoError, Mac.Mac> = signingKey;
 
 	/**
 	 * Sign a request, returning the headers to send and the target they cover.
@@ -324,17 +334,19 @@ export class SigV4 {
 	 * and exactly what was signed reaches the wire. A path with a segment
 	 * that is exactly `.` or `..` fails with {@link SigV4PathError} before
 	 * signing: every URL parser collapses it, so the request would reach
-	 * another path than the one signed. That is caller input; `CryptoError`
-	 * is a wiring defect (no WebCrypto, or a refused key). The span carries
-	 * the region and service, never a key or the signature.
+	 * another path than the one signed. That is caller input; core's
+	 * `CryptoError` is a wiring defect (a `Mac` layer refusing a key). Needs
+	 * `Mac.Mac` and `Digest.Digest` in `R`. The span carries the region and
+	 * service, never a key or the signature.
 	 *
-	 * WebCrypto's HMAC is truly asynchronous: a test that forks a signature
-	 * and then adjusts `TestClock` can race or hang; await it or use a latch.
+	 * On `Mac.layerWebCrypto` the HMAC is truly asynchronous: a test that
+	 * forks a signature and then adjusts `TestClock` can race or hang; await
+	 * it or use a latch.
 	 *
 	 * @public
 	 */
 	static readonly sign: (
 		request: SigV4Request,
 		credentials: SigV4Credentials,
-	) => Effect.Effect<SigV4Signed, SigV4PathError | CryptoError, Digest.Digest> = sign;
+	) => Effect.Effect<SigV4Signed, SigV4PathError | CryptoError.CryptoError, Digest.Digest | Mac.Mac> = sign;
 }

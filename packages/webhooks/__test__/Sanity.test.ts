@@ -1,8 +1,8 @@
-import { assert, describe, it } from "@effect/vitest";
+import { assert, describe, layer } from "@effect/vitest";
 import { DateTime, Effect } from "effect";
 import { Sanity } from "../src/Sanity.js";
 import { NOON, SANITY_SECRET } from "./fixtures/generate-vectors.js";
-import { bytes, hmac, request } from "./helpers.js";
+import { MacLive, bytes, hmac, request } from "./helpers.js";
 
 const BODY = '{"_id":"post-1","_type":"post"}';
 
@@ -15,7 +15,7 @@ const verify = (head: Record<string, string>, body: string = BODY, receivedAt = 
 const reason = (head: Record<string, string>, body?: string, receivedAt?: number) =>
 	Effect.flip(verify(head, body, receivedAt)).pipe(Effect.map((error) => error.reason));
 
-describe("Sanity.verify", () => {
+layer(MacLive)("Sanity.verify", (it) => {
 	it.effect("returns the signed timestamp, read as milliseconds", () =>
 		Effect.gen(function* () {
 			const verified = yield* verify(header(`t=${NOON},v1=${good()}`));

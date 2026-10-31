@@ -1,12 +1,12 @@
 import type { Redacted } from "effect";
 import { Effect, Result } from "effect";
+import type { CryptoError } from "effect/crypto";
+import { Mac } from "effect/crypto";
 import * as Base64 from "effect/encoding/Base64";
 import * as Base64Url from "effect/encoding/Base64Url";
 import * as Hex from "effect/encoding/Hex";
-import { ConstantTime } from "./ConstantTime.js";
-import type { CryptoError } from "./CryptoError.js";
 import { messageBytes, secretBytes } from "./internal/bytes.js";
-import { hmacBytes } from "./internal/hmac.js";
+import { hmacBytes, macAlgorithm } from "./internal/hmac.js";
 
 /**
  * The hash an HMAC is computed over.
@@ -155,29 +155,40 @@ const signAny = Effect.fn("Hmac.sign")(function* (options: HmacSignOptions) {
 	return encode(mac, options.encoding ?? "bytes");
 });
 
-function sign(options: HmacSignBytesOptions): Effect.Effect<Uint8Array, CryptoError>;
-function sign(options: HmacSignStringOptions): Effect.Effect<string, CryptoError>;
-function sign(options: HmacSignOptions): Effect.Effect<Uint8Array | string, CryptoError> {
+function sign(options: HmacSignBytesOptions): Effect.Effect<Uint8Array, CryptoError.CryptoError, Mac.Mac>;
+function sign(options: HmacSignStringOptions): Effect.Effect<string, CryptoError.CryptoError, Mac.Mac>;
+function sign(options: HmacSignOptions): Effect.Effect<Uint8Array | string, CryptoError.CryptoError, Mac.Mac> {
 	return signAny(options);
 }
 
 const verify = Effect.fn("Hmac.verify")(function* (options: HmacVerifyOptions) {
 	yield* Effect.annotateCurrentSpan("algorithm", options.algorithm);
-	const expected = yield* hmacBytes(options.algorithm, secretBytes(options.key), messageBytes(options.message));
-	if (!("encoding" in options)) return ConstantTime.equal(expected, options.signature);
+	// The key first: an empty key fails whatever the signature looks like.
+	const key = yield* Mac.key(macAlgorithm(options.algorithm), secretBytes(options.key));
 	// A signature that does not decode is a wrong signature, not an error.
-	const received = decode(options.signature, options.encoding);
-	return Result.isSuccess(received) && ConstantTime.equal(expected, received.success);
+	const received =
+		"encoding" in options ? decode(options.signature, options.encoding) : Result.succeed(options.signature);
+	if (Result.isFailure(received)) return false;
+	const mac = yield* Mac.Mac;
+	return yield* mac.verify(key, received.success, messageBytes(options.message));
 });
 
 /**
- * HMAC sign and verify (RFC 2104) over WebCrypto, with SHA-256 or SHA-512.
+ * HMAC sign and verify (RFC 2104) with SHA-256 or SHA-512, over core's `Mac`
+ * service.
  *
  * @remarks
- * Both return an `Effect` because WebCrypto's `sign` is asynchronous. Both
- * fail with {@link CryptoError}: `unsupportedRuntime` when the runtime has no
- * `crypto.subtle`, `key` when WebCrypto refuses the key (an empty key, for
- * instance). The span carries the algorithm, never the key or the MAC.
+ * Both require `Mac.Mac` (`effect/crypto`) in `R`: provide `Mac.layerWebCrypto`
+ * with `SecureRandom.layerWebCrypto` (Node, Workers, any runtime with
+ * WebCrypto) or a platform family layer such as `NodeCrypto.layerMac`. What
+ * this adds over `Mac` is the input and output shape: `Redacted` keys, string
+ * and multi-part messages, hex and base64 encodings, and a received signature
+ * that does not decode answering `false`.
+ *
+ * Both fail with core's `CryptoError` (`effect/crypto`) when the key is
+ * refused — reason `InvalidKey` for an empty key. On the WebCrypto layer, a
+ * runtime with no `crypto.subtle` is a defect: the effect dies rather than
+ * failing. The span carries the algorithm, never the key or the MAC.
  *
  * @public
  */
@@ -190,32 +201,37 @@ export class Hmac {
 	 * @remarks
 	 * Returns raw bytes unless `encoding` names a string form: `hex` (lower
 	 * case), `base64` (padded) or `base64url` (unpadded). A list `message` is
-	 * signed as its parts' bytes joined in order.
+	 * signed as its parts' bytes joined in order. Requires `Mac.Mac` in `R`;
+	 * an empty key fails with `CryptoError` (`InvalidKey`).
 	 *
-	 * WebCrypto's `sign` is truly asynchronous: the effect suspends on a
-	 * promise, not a scheduled fiber, so a test that forks it and then adjusts
-	 * `TestClock` can race or hang. Await it, or gate the clock on a latch.
+	 * On `Mac.layerWebCrypto`, `sign` is truly asynchronous: the effect
+	 * suspends on a promise, not a scheduled fiber, so a test that forks it and
+	 * then adjusts `TestClock` can race or hang. Await it, or gate the clock on
+	 * a latch.
 	 *
 	 * @public
 	 */
 	static readonly sign: {
-		(options: HmacSignBytesOptions): Effect.Effect<Uint8Array, CryptoError>;
-		(options: HmacSignStringOptions): Effect.Effect<string, CryptoError>;
+		(options: HmacSignBytesOptions): Effect.Effect<Uint8Array, CryptoError.CryptoError, Mac.Mac>;
+		(options: HmacSignStringOptions): Effect.Effect<string, CryptoError.CryptoError, Mac.Mac>;
 	} = sign;
 
 	/**
 	 * Whether `signature` is the HMAC of `message` under `key`.
 	 *
 	 * @remarks
-	 * Recomputes the HMAC and compares with {@link ConstantTime.equal}. A
-	 * string signature is decoded per `encoding` first; one that does not
-	 * decode, or decodes to the wrong length, answers `false` rather than
-	 * failing. Hex is accepted in either case.
+	 * Checked with `Mac.verify`, which compares in constant time and answers
+	 * `false` for a signature of the wrong length. A string signature is
+	 * decoded per `encoding` first; one that does not decode answers `false`
+	 * rather than failing. Hex is accepted in either case. Requires `Mac.Mac`
+	 * in `R`; an empty key fails with `CryptoError` (`InvalidKey`).
 	 *
-	 * Truly asynchronous, as {@link Hmac.sign} is: a forked verify does not
-	 * finish under `TestClock` adjustment alone; await it or use a latch.
+	 * Truly asynchronous on `Mac.layerWebCrypto`, as {@link Hmac.sign} is: a
+	 * forked verify does not finish under `TestClock` adjustment alone; await
+	 * it or use a latch.
 	 *
 	 * @public
 	 */
-	static readonly verify: (options: HmacVerifyOptions) => Effect.Effect<boolean, CryptoError> = verify;
+	static readonly verify: (options: HmacVerifyOptions) => Effect.Effect<boolean, CryptoError.CryptoError, Mac.Mac> =
+		verify;
 }

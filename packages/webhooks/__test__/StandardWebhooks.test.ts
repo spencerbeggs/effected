@@ -1,9 +1,9 @@
-import { assert, describe, it } from "@effect/vitest";
+import { assert, describe, layer } from "@effect/vitest";
 import { Cause, DateTime, Duration, Effect, Exit } from "effect";
 import { Webhook } from "svix";
 import { StandardWebhooks } from "../src/StandardWebhooks.js";
 import { NOON, SVIX_SECRET } from "./fixtures/generate-vectors.js";
-import { bytes, hmac, request } from "./helpers.js";
+import { MacLive, bytes, hmac, request } from "./helpers.js";
 
 const KEY = Buffer.from(SVIX_SECRET.slice("whsec_".length), "base64");
 const T = NOON / 1000;
@@ -34,7 +34,7 @@ const verify = (
 const reason = (head: Record<string, string>, body?: string | Uint8Array, receivedAt?: number) =>
 	Effect.flip(verify(head, body, receivedAt)).pipe(Effect.map((error) => error.reason));
 
-describe("StandardWebhooks.verify", () => {
+layer(MacLive)("StandardWebhooks.verify", (it) => {
 	it.effect("returns the message id and the signed timestamp", () =>
 		Effect.gen(function* () {
 			const verified = yield* verify(headers(good()));

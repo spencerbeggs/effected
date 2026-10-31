@@ -1,7 +1,8 @@
 /**
- * HMAC, constant-time comparison and AWS SigV4 request signing over
- * WebCrypto, safe for Cloudflare Workers. Every digest comes from core
- * `Crypto`, required in `R`; secret blinding is keyed, so it is WebCrypto HMAC.
+ * HMAC, constant-time comparison and AWS SigV4 request signing, safe for
+ * Cloudflare Workers. Every HMAC comes from core's `Mac.Mac` and every digest
+ * from core's `Digest.Digest` (`effect/crypto`), both required in `R`; a
+ * failure is core's `CryptoError`.
  * `Fingerprint` hashes a canonical JSON text for three-way drift detection.
  *
  * @packageDocumentation
@@ -9,7 +10,6 @@
 
 export type { SecretInput } from "./ConstantTime.js";
 export { ConstantTime } from "./ConstantTime.js";
-export { CryptoError, CryptoErrorReason } from "./CryptoError.js";
 export { DriftApply, DriftDecision, DriftDetected, DriftUnchanged } from "./DriftDecision.js";
 export type { FingerprintDecideInput } from "./Fingerprint.js";
 export { Fingerprint } from "./Fingerprint.js";

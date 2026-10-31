@@ -1,6 +1,10 @@
 import { createHmac } from "node:crypto";
-import { DateTime, Option, Redacted } from "effect";
+import { DateTime, Layer, Option, Redacted } from "effect";
+import { Mac, SecureRandom } from "effect/crypto";
 import type { WebhookRequest } from "../src/WebhookRequest.js";
+
+/** Core's WebCrypto `Mac`, as a Worker would provide it: every verifier requires `Mac.Mac` in `R`. */
+export const MacLive: Layer.Layer<Mac.Mac> = Mac.layerWebCrypto.pipe(Layer.provide(SecureRandom.layerWebCrypto));
 
 /** UTF-8 bytes of a string. */
 export const bytes = (text: string): Uint8Array => new Uint8Array(Buffer.from(text, "utf8"));

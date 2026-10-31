@@ -6,7 +6,7 @@ Inbound webhook signature verification as pure functions over a header lookup, t
 
 ## Tier: boundary
 
-`effect` is the only peer; `@effected/crypto` is the only runtime dependency. **No `node:` import anywhere under `src/`.** No HTTP framework: input is plain data. Tests may use `node:crypto`, `svix` and `stripe`; `src/` may not.
+`effect` is the only peer; `@effected/crypto` is the only runtime dependency. **No `node:` import anywhere under `src/`.** Every preset's HMAC and secret comparison runs on core's `Mac.Mac` (`effect/crypto`) through `@effected/crypto`, so every `verify` requires `Mac.Mac` in `R`; a `CryptoError` is a defect (`orDie`), and `E` stays `WebhookVerificationError` alone. Tests provide `MacLive` from `__test__/helpers.ts` (`Mac.layerWebCrypto` with `SecureRandom.layerWebCrypto`). No HTTP framework: input is plain data. Tests may use `node:crypto`, `svix` and `stripe`; `src/` may not.
 
 ## Rules
 

@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Cause, Config, ConfigProvider, Context, Effect, FileSystem, Layer, References, Schema } from "effect";
+import { Mac } from "effect/crypto";
 import { vi } from "vitest";
 import { Action, ActionEnvironment, ActionInput, ActionOutputs, ActionRuntime, describeCause } from "../src/index.js";
 
@@ -368,6 +369,19 @@ describe("Action.run", () => {
 		// composition site.
 		assert.strictEqual(ActionRuntime.layer, ActionRuntime.layer);
 	});
+
+	it.effect("provides a working Mac, which BlobStore.layerS3 signs with", () =>
+		Effect.gen(function* () {
+			// RFC 4231 test case 2: key "Jefe", data "what do ya want for nothing?".
+			const encoder = new TextEncoder();
+			const key = yield* Mac.key(Mac.hmacSha256, encoder.encode("Jefe"));
+			const tag = yield* Mac.Mac.use((mac) => mac.sign(key, encoder.encode("what do ya want for nothing?")));
+			assert.strictEqual(
+				Buffer.from(tag).toString("hex"),
+				"5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843",
+			);
+		}).pipe(Effect.provide(ActionRuntime.layer)),
+	);
 });
 
 describe("Action.run step debugging", () => {

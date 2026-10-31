@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
-import { assert, describe, it } from "@effect/vitest";
+import { assert, layer } from "@effect/vitest";
 import { Effect } from "effect";
+import type { Mac } from "effect/crypto";
 import { GitHub } from "../src/GitHub.js";
 import { HmacHeader } from "../src/HmacHeader.js";
 import { Sanity } from "../src/Sanity.js";
@@ -10,7 +11,7 @@ import type { WebhookRequest } from "../src/WebhookRequest.js";
 import type { WebhookVerificationError } from "../src/WebhookVerificationError.js";
 import type { Vector } from "./fixtures/generate-vectors.js";
 import { generateVectors } from "./fixtures/generate-vectors.js";
-import { request } from "./helpers.js";
+import { MacLive, request } from "./helpers.js";
 
 const committed: ReadonlyArray<Vector> = JSON.parse(
 	readFileSync(new URL("./fixtures/vectors.json", import.meta.url), "utf-8"),
@@ -18,7 +19,7 @@ const committed: ReadonlyArray<Vector> = JSON.parse(
 
 const verifiers: Record<
 	Vector["preset"],
-	(request: WebhookRequest) => Effect.Effect<unknown, WebhookVerificationError>
+	(request: WebhookRequest) => Effect.Effect<unknown, WebhookVerificationError, Mac.Mac>
 > = {
 	StandardWebhooks: (r) => StandardWebhooks.verify(r),
 	GitHub: (r) => GitHub.verify(r),
@@ -30,7 +31,7 @@ const verifiers: Record<
 const toRequest = (vector: Vector, body: Uint8Array = new Uint8Array(Buffer.from(vector.body, "base64"))) =>
 	request(vector.headers, body, vector.secret, vector.receivedAt);
 
-describe("committed vectors", () => {
+layer(MacLive)("committed vectors", (it) => {
 	it("are exactly what the generator produces from the vendor libraries", () => {
 		assert.deepStrictEqual(committed, generateVectors());
 		assert.strictEqual(committed.length, 8);

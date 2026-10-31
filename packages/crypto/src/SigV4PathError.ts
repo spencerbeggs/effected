@@ -8,9 +8,9 @@ import { Schema } from "effect";
  * Every URL parser collapses such a segment, so the request would reach
  * another path than the one signed; percent-encoding cannot help, since both
  * characters are unreserved. This is caller input, not a wiring defect, which
- * is why it is its own tag rather than a {@link CryptoError} reason: recover
- * from it with `Effect.catchTag("SigV4PathError", ...)` and let `CryptoError`
- * die. `SigV4.canonicalize` and `SigV4.sign` raise it before anything is
+ * is why it is its own tag rather than a reason on core's `CryptoError`
+ * (`effect/crypto`): recover from it with
+ * `Effect.catchTag("SigV4PathError", ...)` and let `CryptoError` die. `SigV4.canonicalize` and `SigV4.sign` raise it before anything is
  * hashed or signed.
  *
  * @public

@@ -1,6 +1,7 @@
 /**
- * Inbound webhook signature verification over WebCrypto, safe for Cloudflare Workers: pure verifiers over a header
- * lookup, the raw body, the receive time and the secret.
+ * Inbound webhook signature verification, safe for Cloudflare Workers: pure verifiers over a header lookup, the raw
+ * body, the receive time and the secret. Every preset takes its HMAC from core's `Mac.Mac` (`effect/crypto`),
+ * required in `R`.
  *
  * @packageDocumentation
  */

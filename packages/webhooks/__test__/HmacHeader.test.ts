@@ -1,10 +1,10 @@
 import { createHmac } from "node:crypto";
-import { assert, describe, it } from "@effect/vitest";
+import { assert, describe, layer } from "@effect/vitest";
 import { Effect } from "effect";
 import type { HmacHeaderOptions } from "../src/HmacHeader.js";
 import { HmacHeader } from "../src/HmacHeader.js";
 import { LINEAR_SECRET, NOON } from "./fixtures/generate-vectors.js";
-import { bytes, hmac, request } from "./helpers.js";
+import { MacLive, bytes, hmac, request } from "./helpers.js";
 
 const BODY = '{"type":"Issue","action":"update","webhookTimestamp":1792411200000}';
 const linear: HmacHeaderOptions = { header: "linear-signature", encoding: "hex" };
@@ -15,7 +15,7 @@ const verify = (head: Record<string, string>, options: HmacHeaderOptions = linea
 const reason = (head: Record<string, string>, options?: HmacHeaderOptions, body?: string) =>
 	Effect.flip(verify(head, options, body)).pipe(Effect.map((error) => error.reason));
 
-describe("HmacHeader.verify", () => {
+layer(MacLive)("HmacHeader.verify", (it) => {
 	it.effect("verifies Linear's bare hex, in either case and with surrounding whitespace", () =>
 		Effect.gen(function* () {
 			yield* verify({ "linear-signature": good });
