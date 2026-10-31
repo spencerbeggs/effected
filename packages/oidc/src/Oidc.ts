@@ -1,6 +1,7 @@
 import { JwksResolver, Jws, Jwt, JwtError } from "@effected/jwt";
 import type { Duration } from "effect";
 import { Effect, Schema } from "effect";
+import type { Signature } from "effect/crypto";
 
 /**
  * Options for {@link (Oidc:class).verify}.
@@ -74,13 +75,15 @@ const verify = Effect.fn("Oidc.verify")(function* <S extends Schema.Constraint>(
  *
  * @remarks
  * Both operations fail with `@effected/jwt`'s `JwtError` and add no error of
- * their own; route on its `reason`, never on its message.
+ * their own; route on its `reason`, never on its message. Verification runs
+ * in core `effect/jose` and requires core's `Signature` service.
  *
  * @example
  * ```ts
  * import { JwksResolver } from "@effected/jwt";
  * import { IdTokenClaims, Oidc } from "@effected/oidc";
- * import { Effect } from "effect";
+ * import { Effect, Layer } from "effect";
+ * import { SecureRandom, Signature } from "effect/crypto";
  *
  * const program = Oidc.verify("eyJ...", {
  *   issuer: "https://accounts.example.com",
@@ -89,7 +92,8 @@ const verify = Effect.fn("Oidc.verify")(function* <S extends Schema.Constraint>(
  * });
  *
  * // JwksResolver.layer needs an HttpClient and a JwksStore, provided once at the edge.
- * export const main = program.pipe(Effect.provide(JwksResolver.layer));
+ * const CryptoLive = Signature.layerWebCrypto.pipe(Layer.provide(SecureRandom.layerWebCrypto));
+ * export const main = program.pipe(Effect.provide(Layer.merge(JwksResolver.layer, CryptoLive)));
  * ```
  *
  * @public
@@ -107,7 +111,8 @@ export class Oidc {
 	 * authorizing anything: the result is whatever the token's author wrote.
 	 *
 	 * Fails as `malformed` when the token is not a compact JWS with a JOSE
-	 * header, and as `claims` when the payload does not decode.
+	 * header and a JSON-object payload, and as `claims` when the payload does
+	 * not decode. Needs no service: nothing is verified.
 	 *
 	 * @public
 	 */
@@ -125,7 +130,8 @@ export class Oidc {
 	 * the signature against the issuer's discovered JWKS, then `exp`, `nbf`,
 	 * `iat`, `iss` and `aud`, then the schema decode. An empty audience, or an
 	 * empty string among several, fails as `wrongAudience` before anything
-	 * else, with no network call.
+	 * else, with no network call. Requires core's `Signature` service alongside
+	 * `JwksResolver`.
 	 *
 	 * The key is always looked up for the configured issuer, never for the
 	 * token's own `iss`, so a token naming another issuer is never checked
@@ -136,5 +142,5 @@ export class Oidc {
 	static readonly verify: <S extends Schema.Constraint>(
 		token: string,
 		options: OidcVerifyOptions<S>,
-	) => Effect.Effect<S["Type"], JwtError, JwksResolver | S["DecodingServices"]> = verify;
+	) => Effect.Effect<S["Type"], JwtError, JwksResolver | Signature.Signature | S["DecodingServices"]> = verify;
 }

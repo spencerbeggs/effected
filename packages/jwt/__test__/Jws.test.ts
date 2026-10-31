@@ -1,11 +1,13 @@
 import { createHmac, createPublicKey, generateKeyPairSync, sign as nodeSign, verify as nodeVerify } from "node:crypto";
-import { assert, describe, it } from "@effect/vitest";
+import { assert, layer } from "@effect/vitest";
 import { Effect, Result, Schema } from "effect";
 import * as Base64Url from "effect/encoding/Base64Url";
+import { Jwk as CoreJwk } from "effect/jose";
 import { Jwk } from "../src/Jwk.js";
 import { Jws } from "../src/Jws.js";
 import { JwtError } from "../src/JwtError.js";
 import { JwtKey } from "../src/JwtKey.js";
+import { CryptoLive } from "./crypto.js";
 
 const segment = (value: unknown): string => Base64Url.encode(JSON.stringify(value));
 
@@ -17,8 +19,19 @@ const parts = (token: string): [string, string, string] => {
 const reasonOf = <A, R>(effect: Effect.Effect<A, { readonly reason: string }, R>) =>
 	Effect.map(Effect.flip(effect), (error) => error.reason);
 
-describe("Jws round trips", () => {
-	for (const alg of ["RS256", "ES256"] as const) {
+layer(CryptoLive, { buildPerTest: true })("Jws round trips", (it) => {
+	for (const alg of [
+		"RS256",
+		"RS384",
+		"RS512",
+		"PS256",
+		"PS384",
+		"PS512",
+		"ES256",
+		"ES384",
+		"ES512",
+		"EdDSA",
+	] as const) {
 		it.effect(`signs and verifies ${alg}`, () =>
 			Effect.gen(function* () {
 				const pair = yield* JwtKey.generate(alg, { kid: "k1" });
@@ -47,7 +60,7 @@ describe("Jws round trips", () => {
 	);
 });
 
-describe("Jws node:crypto interop", () => {
+layer(CryptoLive, { buildPerTest: true })("Jws node:crypto interop", (it) => {
 	it.effect("ES256 signatures are raw r||s: node verifies ours, and we verify node's", () =>
 		Effect.gen(function* () {
 			const pair = yield* JwtKey.generate("ES256");
@@ -97,7 +110,7 @@ describe("Jws node:crypto interop", () => {
 	);
 });
 
-describe("Jws.verify refusals", () => {
+layer(CryptoLive, { buildPerTest: true })("Jws.verify refusals", (it) => {
 	it.effect("a flipped signature byte is badSignature", () =>
 		Effect.gen(function* () {
 			for (const alg of ["RS256", "ES256"] as const) {
@@ -125,9 +138,7 @@ describe("Jws.verify refusals", () => {
 		() =>
 			Effect.gen(function* () {
 				const pair = yield* JwtKey.generate("RS256");
-				const spki = new Uint8Array(
-					yield* Effect.promise(() => globalThis.crypto.subtle.exportKey("spki", pair.verification.key)),
-				);
+				const spki = yield* CoreJwk.exportSpki(pair.verification);
 				const pem = createPublicKey({ key: Buffer.from(spki), format: "der", type: "spki" })
 					.export({ format: "pem", type: "spki" })
 					.toString();
@@ -147,7 +158,7 @@ describe("Jws.verify refusals", () => {
 			}),
 	);
 
-	it.effect("any header alg outside RS256 and ES256 is unsupportedAlgorithm without resolving a key", () =>
+	it.effect("an HMAC alg is unsupportedAlgorithm and an unknown one malformed, both without resolving a key", () =>
 		Effect.gen(function* () {
 			const pair = yield* JwtKey.generate("RS256");
 			let resolutions = 0;
@@ -155,21 +166,25 @@ describe("Jws.verify refusals", () => {
 				resolutions += 1;
 				return Effect.succeed(pair.verification);
 			};
-			for (const alg of ["none", "HS256", "RS384", "PS256", "EdDSA", "rs256", ""]) {
+			for (const alg of ["HS256", "HS384", "HS512"]) {
 				const token = `${segment({ alg })}.${segment({ sub: "x" })}.AA`;
 				assert.strictEqual(yield* reasonOf(Jws.verify(token, resolver)), "unsupportedAlgorithm", alg);
+			}
+			for (const alg of ["none", "rs256", "", "RS1"]) {
+				const token = `${segment({ alg })}.${segment({ sub: "x" })}.AA`;
+				assert.strictEqual(yield* reasonOf(Jws.verify(token, resolver)), "malformed", alg);
 			}
 			assert.strictEqual(resolutions, 0);
 		}),
 	);
 
-	it.effect("alg none with an empty-but-present signature is unsupportedAlgorithm", () =>
+	it.effect("alg none is malformed, with or without a signature segment, and resolves no key", () =>
 		Effect.gen(function* () {
 			const pair = yield* JwtKey.generate("RS256");
 			const input = `${segment({ alg: "none" })}.${segment({ sub: "admin" })}`;
 			// the codec refuses an empty segment before any header is read
 			assert.strictEqual(yield* reasonOf(Jws.verify(`${input}.`, pair.verification)), "malformed");
-			// with a present, well-formed signature segment the header is reached and none is refused
+			// with a present, well-formed signature segment the header is read, and core knows no alg none
 			let resolved = false;
 			const reason = yield* reasonOf(
 				Jws.verify(`${input}.AA`, () => {
@@ -177,7 +192,7 @@ describe("Jws.verify refusals", () => {
 					return Effect.succeed(pair.verification);
 				}),
 			);
-			assert.strictEqual(reason, "unsupportedAlgorithm");
+			assert.strictEqual(reason, "malformed");
 			assert.isFalse(resolved, "the key must not be resolved for alg none");
 		}),
 	);
@@ -234,7 +249,7 @@ describe("Jws.verify refusals", () => {
 	);
 });
 
-describe("Jws.sign", () => {
+layer(CryptoLive, { buildPerTest: true })("Jws.sign", (it) => {
 	it.effect("emits the key's algorithm whatever alg the caller passes", () =>
 		Effect.gen(function* () {
 			const pair = yield* JwtKey.generate("RS256");
@@ -276,7 +291,7 @@ describe("Jws.sign", () => {
 	);
 });
 
-describe("Jws.decodeUnverified", () => {
+layer(CryptoLive, { buildPerTest: true })("Jws.decodeUnverified", (it) => {
 	it.effect("reads header and payload without a key, and refuses what verify's codec refuses", () =>
 		Effect.gen(function* () {
 			const pair = yield* JwtKey.generate("RS256", { kid: "route" });
@@ -290,7 +305,7 @@ describe("Jws.decodeUnverified", () => {
 	);
 });
 
-describe("Jws documented edges", () => {
+layer(CryptoLive, { buildPerTest: true })("Jws documented edges", (it) => {
 	// P-256 group order.
 	const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
 	const toBig = (bytes: Uint8Array): bigint => BigInt(`0x${Buffer.from(bytes).toString("hex")}`);
@@ -318,18 +333,19 @@ describe("Jws documented edges", () => {
 		Effect.gen(function* () {
 			const pair = yield* JwtKey.generate("RS256", { kid: "copy" });
 			const token = yield* Jws.sign({ sub: "x" }, pair.signing);
-			const foreign = { alg: pair.verification.alg, kid: pair.verification.kid, key: pair.verification.key };
+			const foreign = { ...pair.verification };
 			assert.deepStrictEqual((yield* Jws.verify(token, foreign)).payload, { sub: "x" });
 		}),
 	);
 
-	it.effect("quotes and caps an attacker-supplied alg in the error detail", () =>
+	it.effect("never echoes an attacker-supplied alg in the error detail", () =>
 		Effect.gen(function* () {
 			const pair = yield* JwtKey.generate("RS256");
 			const alg = `\u001b[31m${"A".repeat(10_000)}\n`;
 			const token = `${segment({ alg })}.${segment({ sub: "x" })}.AA`;
 			const error = yield* Effect.flip(Jws.verify(token, pair.verification));
-			assert.strictEqual(error.reason, "unsupportedAlgorithm");
+			assert.strictEqual(error.reason, "malformed");
+			assert.notInclude(error.detail, "AAAA");
 			assert.isBelow(error.detail.length, 120);
 			assert.isBelow(error.message.length, 160);
 			assert.notInclude(error.detail, "\u001b");

@@ -1,13 +1,27 @@
 import { createPublicKey, generateKeyPairSync, verify } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { assert, describe, it } from "@effect/vitest";
+import { assert, layer } from "@effect/vitest";
 import { Effect, Redacted, Schema } from "effect";
-import type { Algorithm } from "../src/internal/algorithms.js";
+import { Signature } from "effect/crypto";
+import type { Jwk as CoreJwk } from "effect/jose";
 import { Jwk, Jwks } from "../src/Jwk.js";
-import type { JwtAlgorithm } from "../src/JwtKey.js";
+import type { JwtAlgorithm, SigningKey, VerificationKey } from "../src/JwtKey.js";
 import { JwtKey } from "../src/JwtKey.js";
+import { CryptoLive } from "./crypto.js";
 
 const data = new TextEncoder().encode("header.payload");
+
+// Signs and verifies through core's Signature service, the one the package's keys are bound to.
+const signWith = (key: SigningKey, bytes: Uint8Array) =>
+	Effect.gen(function* () {
+		const signature = yield* Signature.Signature;
+		return yield* signature.sign(key.key, bytes);
+	});
+const verifyWith = (key: VerificationKey, signature: Uint8Array, bytes: Uint8Array) =>
+	Effect.gen(function* () {
+		const service = yield* Signature.Signature;
+		return yield* service.verify(key.key, signature, bytes);
+	});
 
 const rsaPair = (privateType: "pkcs1" | "pkcs8", modulusLength = 2048) =>
 	generateKeyPairSync("rsa", {
@@ -25,18 +39,17 @@ if (firstActionsKey === undefined) throw new Error("the Actions JWKS fixture is 
 const reasonOf = <A>(effect: Effect.Effect<A, { readonly reason: string }>) =>
 	Effect.map(Effect.flip(effect), (error) => error.reason);
 
-describe("JwtKey.fromPkcs8Pem", () => {
+layer(CryptoLive, { buildPerTest: true })("JwtKey.fromPkcs8Pem", (it) => {
 	it.effect("imports a PKCS#1 RSA key whose signatures node:crypto verifies", () =>
 		Effect.gen(function* () {
 			const { privateKey, publicKey } = rsaPair("pkcs1");
 			assert.include(privateKey, "BEGIN RSA PRIVATE KEY");
 			const signing = yield* JwtKey.fromPkcs8Pem(Redacted.make(privateKey), { alg: "RS256", kid: "app" });
-			assert.strictEqual(signing.alg, "RS256");
+			assert.strictEqual(signing.algorithm, "RS256");
 			assert.strictEqual(signing.kid, "app");
-			assert.isFalse(signing.key.extractable);
-			const signature = new Uint8Array(
-				yield* Effect.promise(() => globalThis.crypto.subtle.sign("RSASSA-PKCS1-v1_5", signing.key, data)),
-			);
+			// core keeps the material behind a key that prints only its algorithm
+			assert.notInclude(String(signing.key), "PRIVATE");
+			const signature = yield* signWith(signing, data);
 			assert.isTrue(verify("sha256", data, publicKey, signature));
 			// control: the same signature does not verify against a different key
 			assert.isFalse(verify("sha256", data, rsaPair("pkcs8").publicKey, signature));
@@ -49,9 +62,7 @@ describe("JwtKey.fromPkcs8Pem", () => {
 			assert.include(privateKey, "BEGIN PRIVATE KEY");
 			const signing = yield* JwtKey.fromPkcs8Pem(Redacted.make(privateKey), { alg: "RS256" });
 			assert.isUndefined(signing.kid);
-			const signature = new Uint8Array(
-				yield* Effect.promise(() => globalThis.crypto.subtle.sign("RSASSA-PKCS1-v1_5", signing.key, data)),
-			);
+			const signature = yield* signWith(signing, data);
 			assert.isTrue(verify("sha256", data, publicKey, signature));
 		}),
 	);
@@ -65,9 +76,7 @@ describe("JwtKey.fromPkcs8Pem", () => {
 				assert.notInclude(escaped, "\n", type);
 				assert.include(escaped, "\\n", type);
 				const signing = yield* JwtKey.fromPkcs8Pem(Redacted.make(escaped), { alg: "RS256" });
-				const signature = new Uint8Array(
-					yield* Effect.promise(() => globalThis.crypto.subtle.sign("RSASSA-PKCS1-v1_5", signing.key, data)),
-				);
+				const signature = yield* signWith(signing, data);
 				assert.isTrue(verify("sha256", data, publicKey, signature), type);
 			}
 		}),
@@ -81,11 +90,7 @@ describe("JwtKey.fromPkcs8Pem", () => {
 				publicKeyEncoding: { type: "spki", format: "pem" },
 			});
 			const signing = yield* JwtKey.fromPkcs8Pem(Redacted.make(privateKey), { alg: "ES256" });
-			const signature = new Uint8Array(
-				yield* Effect.promise(() =>
-					globalThis.crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, signing.key, data),
-				),
-			);
+			const signature = yield* signWith(signing, data);
 			assert.isTrue(verify("sha256", data, { key: publicKey, dsaEncoding: "ieee-p1363" }, signature));
 		}),
 	);
@@ -121,7 +126,7 @@ describe("JwtKey.fromPkcs8Pem", () => {
 	);
 });
 
-describe("RSA key strength", () => {
+layer(CryptoLive, { buildPerTest: true })("RSA key strength", (it) => {
 	it.effect("refuses a 1024-bit PKCS#8 or PKCS#1 PEM as key, and accepts 2048 bits", () =>
 		Effect.gen(function* () {
 			for (const type of ["pkcs8", "pkcs1"] as const) {
@@ -129,9 +134,9 @@ describe("RSA key strength", () => {
 					JwtKey.fromPkcs8Pem(Redacted.make(rsaPair(type, 1024).privateKey), { alg: "RS256" }),
 				);
 				assert.strictEqual(error.reason, "key", type);
-				assert.include(error.detail, "at least 2048 bits, got 1024");
+				assert.include(error.detail, "at least 2048 bits");
 				const ok = yield* JwtKey.fromPkcs8Pem(Redacted.make(rsaPair(type, 2048).privateKey), { alg: "RS256" });
-				assert.strictEqual(ok.alg, "RS256");
+				assert.strictEqual(ok.algorithm, "RS256");
 			}
 		}),
 	);
@@ -145,13 +150,13 @@ describe("RSA key strength", () => {
 				});
 			const error = yield* Effect.flip(JwtKey.fromJwk(jwkOf(1024)));
 			assert.strictEqual(error.reason, "key");
-			assert.include(error.detail, "at least 2048 bits, got 1024");
-			assert.strictEqual((yield* JwtKey.fromJwk(jwkOf(2048))).alg, "RS256");
+			assert.include(error.detail, "at least 2048 bits");
+			assert.strictEqual((yield* JwtKey.fromJwk(jwkOf(2048))).algorithm, "RS256");
 		}),
 	);
 });
 
-describe("kid on import and strength failures", () => {
+layer(CryptoLive, { buildPerTest: true })("kid on import and strength failures", (it) => {
 	it.effect("carries the kid when a key fails to import or is too weak", () =>
 		Effect.gen(function* () {
 			const weakJwk = Schema.decodeUnknownSync(Jwk)({
@@ -184,7 +189,7 @@ describe("kid on import and strength failures", () => {
 	);
 });
 
-describe("JwtKey.fromPkcs8Pem labels", () => {
+layer(CryptoLive, { buildPerTest: true })("JwtKey.fromPkcs8Pem labels", (it) => {
 	it.effect("refuses a SEC1 EC PRIVATE KEY block as key", () =>
 		Effect.gen(function* () {
 			const { privateKey } = generateKeyPairSync("ec", {
@@ -199,23 +204,22 @@ describe("JwtKey.fromPkcs8Pem labels", () => {
 	);
 });
 
-describe("JwtKey.fromJwk", () => {
+layer(CryptoLive, { buildPerTest: true })("JwtKey.fromJwk", (it) => {
 	const rsa = Schema.decodeUnknownSync(Jwk)({ kty: "RSA", n: firstActionsKey.n, e: firstActionsKey.e });
 
 	it.effect("imports the first Actions JWKS key as an RS256 verification key", () =>
 		Effect.gen(function* () {
 			const key = yield* JwtKey.fromJwk(firstActionsKey);
-			assert.strictEqual(key.alg, "RS256");
+			assert.strictEqual(key.algorithm, "RS256");
 			assert.strictEqual(key.kid, firstActionsKey.kid);
-			assert.strictEqual(key.key.type, "public");
-			assert.deepStrictEqual(key.key.usages, ["verify"]);
+			assert.isTrue(Signature.isPublicKey(key.key));
 		}),
 	);
 
 	it.effect("takes the algorithm from the option when the JWK names none", () =>
 		Effect.gen(function* () {
 			const key = yield* JwtKey.fromJwk(rsa, { alg: "RS256" });
-			assert.strictEqual(key.alg, "RS256");
+			assert.strictEqual(key.algorithm, "RS256");
 		}),
 	);
 
@@ -225,9 +229,9 @@ describe("JwtKey.fromJwk", () => {
 		}),
 	);
 
-	it.effect("rejects an alg outside RS256 and ES256 as unsupportedAlgorithm", () =>
+	it.effect("rejects an alg that is not an asymmetric JWS algorithm as unsupportedAlgorithm", () =>
 		Effect.gen(function* () {
-			for (const alg of ["HS256", "RS384", "none"]) {
+			for (const alg of ["HS256", "none", "rs256"]) {
 				assert.strictEqual(yield* reasonOf(JwtKey.fromJwk({ ...rsa, alg })), "unsupportedAlgorithm", alg);
 				assert.strictEqual(
 					yield* reasonOf(JwtKey.fromJwk({ ...rsa, alg }, { alg: "RS256" })),
@@ -270,7 +274,7 @@ describe("JwtKey.fromJwk", () => {
 		Effect.gen(function* () {
 			assert.strictEqual(yield* reasonOf(JwtKey.fromJwk({ ...firstActionsKey, use: "enc" })), "key");
 			const key = yield* JwtKey.fromJwk({ ...firstActionsKey, use: "sig" });
-			assert.strictEqual(key.alg, "RS256");
+			assert.strictEqual(key.algorithm, "RS256");
 		}),
 	);
 
@@ -284,7 +288,7 @@ describe("JwtKey.fromJwk", () => {
 				);
 			}
 			const key = yield* JwtKey.fromJwk({ ...firstActionsKey, key_ops: ["sign", "verify"] });
-			assert.strictEqual(key.alg, "RS256");
+			assert.strictEqual(key.algorithm, "RS256");
 		}),
 	);
 
@@ -302,13 +306,12 @@ describe("JwtKey.fromJwk", () => {
 			const jwk = Schema.decodeUnknownSync(Jwk)({ ...exported, alg: "RS256" });
 			assert.isTrue(jwk.d !== undefined && Redacted.isRedacted(jwk.d));
 			const key = yield* JwtKey.fromJwk(jwk);
-			assert.strictEqual(key.key.type, "public");
-			assert.deepStrictEqual(key.key.usages, ["verify"]);
+			assert.isTrue(Signature.isPublicKey(key.key));
 		}),
 	);
 });
 
-describe("JwtKey.generate", () => {
+layer(CryptoLive, { buildPerTest: true })("JwtKey.generate", (it) => {
 	it.effect("produces an ES256 pair whose jwk is a public P-256 key", () =>
 		Effect.gen(function* () {
 			const pair = yield* JwtKey.generate("ES256", { kid: "test" });
@@ -317,10 +320,10 @@ describe("JwtKey.generate", () => {
 			assert.strictEqual(pair.jwk.alg, "ES256");
 			assert.strictEqual(pair.jwk.kid, "test");
 			assert.isUndefined(pair.jwk.d);
-			assert.strictEqual(pair.signing.alg, "ES256");
+			assert.strictEqual(pair.signing.algorithm, "ES256");
 			assert.strictEqual(pair.verification.kid, "test");
-			assert.isFalse(pair.signing.key.extractable);
-			assert.isTrue(pair.verification.key.extractable);
+			assert.isTrue(Signature.isPrivateKey(pair.signing.key));
+			assert.isTrue(Signature.isPublicKey(pair.verification.key));
 		}),
 	);
 
@@ -329,24 +332,22 @@ describe("JwtKey.generate", () => {
 			const pair = yield* JwtKey.generate("RS256");
 			assert.strictEqual(pair.jwk.kty, "RSA");
 			assert.isUndefined(pair.jwk.kid);
-			const signature = new Uint8Array(
-				yield* Effect.promise(() => globalThis.crypto.subtle.sign("RSASSA-PKCS1-v1_5", pair.signing.key, data)),
-			);
+			const signature = yield* signWith(pair.signing, data);
 			const reimported = yield* JwtKey.fromJwk(pair.jwk);
-			assert.isTrue(
-				yield* Effect.promise(() =>
-					globalThis.crypto.subtle.verify("RSASSA-PKCS1-v1_5", reimported.key, signature, data),
-				),
-			);
+			assert.isTrue(yield* verifyWith(reimported, signature, data));
 			const spki = createPublicKey({ key: pair.jwk as never, format: "jwk" });
 			assert.isTrue(verify("sha256", data, spki, signature));
 		}),
 	);
 });
 
-describe("JwtAlgorithm", () => {
-	it("is the same union as the internal Algorithm (a type-level check; types:check fails on drift)", () => {
-		const same: [Algorithm] extends [JwtAlgorithm] ? ([JwtAlgorithm] extends [Algorithm] ? true : never) : never = true;
+layer(CryptoLive, { buildPerTest: true })("JwtAlgorithm", (it) => {
+	it("is core's asymmetric algorithm union (a type-level check; types:check fails on drift)", () => {
+		const same: [CoreJwk.AsymmetricAlgorithm] extends [JwtAlgorithm]
+			? [JwtAlgorithm] extends [CoreJwk.AsymmetricAlgorithm]
+				? true
+				: never
+			: never = true;
 		assert.isTrue(same);
 	});
 });

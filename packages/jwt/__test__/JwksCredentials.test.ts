@@ -1,11 +1,12 @@
 import { inspect } from "node:util";
-import { assert, describe, it } from "@effect/vitest";
+import { assert, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { JwksResolver } from "../src/JwksResolver.js";
 import { JwksStore } from "../src/JwksStore.js";
 import { Jws } from "../src/Jws.js";
 import { JwtKey } from "../src/JwtKey.js";
+import { CryptoLive } from "./crypto.js";
 
 const ISSUER = "https://issuer.example";
 const TOKEN = "SECRET_jwks_gateway_token_6d2a";
@@ -50,7 +51,7 @@ const reachableStrings = (value: unknown, seen = new Set<unknown>()): ReadonlyAr
 	});
 };
 
-describe("JwksResolver keeps no credential on a fetch failure", () => {
+layer(CryptoLive, { buildPerTest: true })("JwksResolver keeps no credential on a fetch failure", (it) => {
 	it.effect("positive control: the walk finds the token on core's own error", () =>
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(authenticatedClient("transport").get(`${ISSUER}/keys`));

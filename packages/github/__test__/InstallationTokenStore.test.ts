@@ -1,5 +1,5 @@
 import { generateKeyPairSync } from "node:crypto";
-import { assert, describe, it } from "@effect/vitest";
+import { assert, layer } from "@effect/vitest";
 import { Cause, DateTime, Duration, Effect, Exit, Fiber, Latch, Layer, Option, Redacted, Ref, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import type { CachedTokenRequest } from "../src/GitHubApp.js";
@@ -8,6 +8,7 @@ import { GitHubClient } from "../src/GitHubClient.js";
 import type { InstallationTokenStoreShape } from "../src/InstallationTokenStore.js";
 import { InstallationTokenStore } from "../src/InstallationTokenStore.js";
 import { RetryPolicy } from "../src/Resilience.js";
+import { CryptoLive } from "./crypto.js";
 import { scriptedFetch } from "./fixtures.js";
 
 const NOW_MILLIS = 1_800_000_000_000;
@@ -54,7 +55,7 @@ const recordingStore = (seed: ReadonlyMap<number, string> = new Map()) =>
 		return { entries, writes, layer: Layer.succeed(InstallationTokenStore, shape) };
 	});
 
-describe("GitHubApp.cachedToken", () => {
+layer(CryptoLive, { buildPerTest: true })("GitHubApp.cachedToken", (it) => {
 	it.effect("mints once, then serves the stored token", () =>
 		Effect.gen(function* () {
 			yield* TestClock.setTime(NOW_MILLIS);
@@ -266,7 +267,7 @@ const yieldUntil = (condition: Effect.Effect<boolean>, limit = 100) =>
 		assert.fail(`condition did not hold within ${limit} yields`);
 	});
 
-describe("GitHubApp.cachedToken single-flight", () => {
+layer(CryptoLive, { buildPerTest: true })("GitHubApp.cachedToken single-flight", (it) => {
 	const N = 4;
 
 	it.effect("collapses N overlapping misses for one installation into one mint", () =>
@@ -467,7 +468,7 @@ describe("GitHubApp.cachedToken single-flight", () => {
 	);
 });
 
-describe("GitHubApp.cachedClientLayer", () => {
+layer(CryptoLive, { buildPerTest: true })("GitHubApp.cachedClientLayer", (it) => {
 	const { privateKey } = generateKeyPairSync("rsa", {
 		modulusLength: 2048,
 		privateKeyEncoding: { type: "pkcs8", format: "pem" },
@@ -510,7 +511,7 @@ describe("GitHubApp.cachedClientLayer", () => {
 	);
 });
 
-describe("InstallationTokenStore.layerMemory", () => {
+layer(CryptoLive, { buildPerTest: true })("InstallationTokenStore.layerMemory", (it) => {
 	it.effect("expires an entry once its TTL passes on Clock", () =>
 		Effect.gen(function* () {
 			yield* TestClock.setTime(NOW_MILLIS);

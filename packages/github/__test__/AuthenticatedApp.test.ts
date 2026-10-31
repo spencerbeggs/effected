@@ -1,11 +1,12 @@
 import { generateKeyPairSync } from "node:crypto";
-import { assert, describe, it } from "@effect/vitest";
+import { assert, layer } from "@effect/vitest";
 import { Effect, Layer, Redacted, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { AppInfo, AuthenticatedApp, DeliveryAttempt } from "../src/AuthenticatedApp.js";
 import { GitHubApp } from "../src/GitHubApp.js";
 import { RetryPolicy } from "../src/Resilience.js";
 import { PageOptions } from "../src/Rest.js";
+import { CryptoLive } from "./crypto.js";
 import type { Reply } from "./fixtures.js";
 import { linkNext, scriptedFetch } from "./fixtures.js";
 import { defectMessage, harness } from "./harness.js";
@@ -37,7 +38,7 @@ const wireDelivery = (overrides: Record<string, unknown> = {}) => ({
 	...overrides,
 });
 
-describe("AuthenticatedApp.get", () => {
+layer(CryptoLive, { buildPerTest: true })("AuthenticatedApp.get", (it) => {
 	it.effect("reads GET /app into AppInfo", () =>
 		Effect.gen(function* () {
 			const { value, script } = yield* drive(
@@ -86,7 +87,7 @@ describe("AuthenticatedApp.get", () => {
 	);
 });
 
-describe("AuthenticatedApp.deliveries", () => {
+layer(CryptoLive, { buildPerTest: true })("AuthenticatedApp.deliveries", (it) => {
 	it.effect("decodes each delivery, ids narrowed and nulls kept", () =>
 		Effect.gen(function* () {
 			const { value } = yield* drive(
@@ -177,7 +178,7 @@ describe("AuthenticatedApp.deliveries", () => {
 	);
 });
 
-describe("AuthenticatedApp writes and single reads", () => {
+layer(CryptoLive, { buildPerTest: true })("AuthenticatedApp writes and single reads", (it) => {
 	it.effect("delivery reads one attempt, dropping the payloads", () =>
 		Effect.gen(function* () {
 			const { value, script } = yield* drive(
@@ -227,7 +228,7 @@ describe("AuthenticatedApp writes and single reads", () => {
 	);
 });
 
-describe("AuthenticatedApp over GitHubApp.appClientLayer", () => {
+layer(CryptoLive, { buildPerTest: true })("AuthenticatedApp over GitHubApp.appClientLayer", (it) => {
 	it.effect("authenticates with an App JWT", () =>
 		Effect.gen(function* () {
 			yield* TestClock.setTime(1_800_000_000_000);
@@ -253,7 +254,7 @@ describe("AuthenticatedApp over GitHubApp.appClientLayer", () => {
 	);
 });
 
-describe("AuthenticatedApp.makeTest", () => {
+layer(CryptoLive, { buildPerTest: true })("AuthenticatedApp.makeTest", (it) => {
 	it.effect("dies when run, naming an unstubbed member", () =>
 		Effect.gen(function* () {
 			const exit = yield* Effect.exit(AuthenticatedApp.makeTest().uninstall(1));

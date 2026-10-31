@@ -12,7 +12,7 @@ The kit's OpenID Connect vocabulary over `@effected/jwt`: the `IdentityToken` is
 
 - `src/IdentityToken.ts` imports nothing but `effect` — `sbom` depends on that so it links no JWT code. `__test__/reachability.test.ts` pins it; do not weaken it.
 - No provider-specific claims here. GitHub's live in `@effected/github`.
-- `Oidc.verify` refuses an empty audience before any network call, and looks keys up for the configured issuer, never the token's own `iss`.
+- `Oidc.verify` refuses an empty audience before any network call, and looks keys up for the configured issuer, never the token's own `iss`. It requires core's `Signature` service in `R` (the signature runs on core `effect/jose`); tests provide it from `__test__/crypto.ts` per test.
 - Module-per-concept; only `index.ts` re-exports.
 
 ```bash

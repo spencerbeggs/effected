@@ -2,19 +2,18 @@ import { HttpRedaction } from "@effected/crypto";
 import { Cause, Clock, Context, Duration, Effect, Layer, Option, Schema, Semaphore, Stream } from "effect";
 import type { HttpClientResponse } from "effect/http";
 import { HttpClient } from "effect/http";
-import { isAlgorithm, unsupportedAlgorithm } from "./internal/algorithms.js";
+import { Jwks as CoreJwks } from "effect/jose";
 import { concat, fatalUtf8 } from "./internal/bytes.js";
 import { finiteMillis } from "./internal/duration.js";
 import { isAcceptedIssuer, isLocalIssuer, protocolOf } from "./internal/issuer.js";
-import { capped, kidLimit, quote } from "./internal/quote.js";
-import type { Jwk } from "./Jwk.js";
+import { isAsymmetricAlgorithm, kidOf, toCoreKeySet, toJwtError, unsupportedAlgorithm } from "./internal/jose.js";
+import { kidLimit, quote } from "./internal/quote.js";
 import { Jwks } from "./Jwk.js";
 import type { CachedJwks } from "./JwksStore.js";
 import { JwksStore } from "./JwksStore.js";
 import type { JoseHeader } from "./Jws.js";
 import { JwtError } from "./JwtError.js";
 import type { VerificationKey } from "./JwtKey.js";
-import { JwtKey } from "./JwtKey.js";
 
 /**
  * Options for {@link (JwksResolver:class).layerWith}.
@@ -138,14 +137,41 @@ const discoverJwksUri = (client: HttpClient.HttpClient, issuer: string): Effect.
 		return jwksUri.toString();
 	});
 
-const select = (jwks: Jwks, header: JoseHeader): Option.Option<Jwk> => {
-	// A key naming a different algorithm is not a match for this token.
-	const compatible = (key: Jwk) => key.alg === undefined || key.alg === header.alg;
-	if (header.kid === undefined) {
-		const [only] = jwks.keys;
-		return jwks.keys.length === 1 && only !== undefined && compatible(only) ? Option.some(only) : Option.none();
-	}
-	return Option.fromUndefinedOr(jwks.keys.find((key) => key.kid === header.kid && compatible(key)));
+// Selection and import are core's (`Jwks.makeLocal`): a key matches on the
+// header's `alg` and `kid` and on its own family, curve, `alg`, `use` and
+// `key_ops`. Each fetched set gets one core service, so a key is imported once
+// per set rather than once per verification.
+const localSets = new WeakMap<Jwks, CoreJwks.Jwks["Service"]>();
+
+const localFor = (jwks: Jwks): Effect.Effect<CoreJwks.Jwks["Service"]> => {
+	const cached = localSets.get(jwks);
+	if (cached !== undefined) return Effect.succeed(cached);
+	return Effect.tap(CoreJwks.makeLocal(toCoreKeySet(jwks.keys)), (service) =>
+		Effect.sync(() => localSets.set(jwks, service)),
+	);
+};
+
+// `None` when no key matches, so the caller may refetch; a key that matches
+// but will not import, or a kid matching several keys, fails.
+const select = (jwks: Jwks, header: JoseHeader): Effect.Effect<Option.Option<VerificationKey>, JwtError> => {
+	const algorithm = header.alg;
+	if (!isAsymmetricAlgorithm(algorithm)) return Effect.succeed(Option.none());
+	return Effect.flatMap(localFor(jwks), (service) =>
+		service
+			.resolve({
+				algorithm,
+				...(header.kid !== undefined ? { kid: header.kid } : {}),
+				protectedHeader: header,
+			})
+			.pipe(
+				Effect.map(Option.some),
+				Effect.catch((error) =>
+					error.reason._tag === "KeyNotFound"
+						? Effect.succeed(Option.none<VerificationKey>())
+						: Effect.fail(toJwtError(error, { resolved: undefined, kid: header.kid, resolverFailure: undefined })),
+				),
+			),
+	);
 };
 
 // Static configuration: a bad value is a programming error, so it dies at
@@ -206,9 +232,12 @@ const make = (options: JwksResolverOptions) =>
 				const jwks = yield* Effect.mapError(Schema.decodeUnknownEffect(Jwks)(raw), (cause) =>
 					fetchFailed("the JWKS is not a key set", cause),
 				);
-				const dropped = raw.keys.length - jwks.keys.length;
-				if (raw.keys.length > 0 && jwks.keys.length === 0) {
-					return yield* fetchFailed(`the JWKS holds ${raw.keys.length} keys but no supported keys (RSA or P-256 EC)`);
+				const usable = toCoreKeySet(jwks.keys).keys.length;
+				const dropped = raw.keys.length - usable;
+				if (raw.keys.length > 0 && usable === 0) {
+					return yield* fetchFailed(
+						`the JWKS holds ${raw.keys.length} keys but no supported keys (RSA, P-256/384/521 EC or Ed25519)`,
+					);
 				}
 				yield* Effect.annotateCurrentSpan({ "jwt.jwks.keys": jwks.keys.length, "jwt.jwks.dropped": dropped });
 				return jwks;
@@ -220,9 +249,6 @@ const make = (options: JwksResolverOptions) =>
 				Effect.withSpan("JwksResolver.fetch", { attributes: { "jwt.issuer": issuer } }),
 			);
 
-		const importFor = (jwk: Jwk, header: JoseHeader) =>
-			isAlgorithm(header.alg) ? JwtKey.fromJwk(jwk, { alg: header.alg }) : JwtKey.fromJwk(jwk);
-
 		// The header's `kid` is attacker-chosen and is read before any signature
 		// check, so it is capped, in the detail and on the error alike.
 		const unknownKid = (header: JoseHeader) =>
@@ -231,7 +257,7 @@ const make = (options: JwksResolverOptions) =>
 				header.kid === undefined
 					? "the token names no kid and the JWKS does not hold exactly one matching key"
 					: `the JWKS holds no ${header.alg} key with kid ${quote(header.kid, kidLimit)}`,
-				header.kid === undefined ? undefined : { kid: capped(header.kid, kidLimit) },
+				kidOf(header.kid),
 			);
 
 		// The resolver's own last successful fetch, if still inside its TTL. A
@@ -252,7 +278,7 @@ const make = (options: JwksResolverOptions) =>
 			stored: Option.Option<CachedJwks>,
 			last: CachedJwks | undefined,
 			header: JoseHeader,
-		): Option.Option<Jwk> => {
+		): Effect.Effect<Option.Option<VerificationKey>, JwtError> => {
 			const fromStore = Option.getOrUndefined(stored);
 			const newest =
 				fromStore === undefined
@@ -260,7 +286,7 @@ const make = (options: JwksResolverOptions) =>
 					: last === undefined || fromStore.fetchedAtMillis > last.fetchedAtMillis
 						? fromStore
 						: last;
-			return newest === undefined ? Option.none() : select(newest.jwks, header);
+			return newest === undefined ? Effect.succeed(Option.none()) : select(newest.jwks, header);
 		};
 
 		const refresh = (issuer: string, header: JoseHeader) =>
@@ -270,8 +296,8 @@ const make = (options: JwksResolverOptions) =>
 				const stored = yield* storedFor(issuer, now);
 				const state = issuers.get(issuer);
 				const last = lastFor(issuer, now);
-				const match = matchIn(stored, last, header);
-				if (Option.isSome(match)) return yield* importFor(match.value, header);
+				const match = yield* matchIn(stored, last, header);
+				if (Option.isSome(match)) return match.value;
 
 				const lastAttempt = Math.max(
 					state?.lastAttemptMillis ?? Number.NEGATIVE_INFINITY,
@@ -287,20 +313,24 @@ const make = (options: JwksResolverOptions) =>
 				const fetched: CachedJwks = { jwks, fetchedAtMillis: now };
 				issuers.set(issuer, { lastAttemptMillis: now, last: fetched });
 				yield* swallow(store.set(issuer, fetched, ttl), undefined);
-				const fresh = select(jwks, header);
-				return Option.isSome(fresh) ? yield* importFor(fresh.value, header) : yield* unknownKid(header);
+				const fresh = yield* select(jwks, header);
+				return Option.isSome(fresh) ? fresh.value : yield* unknownKid(header);
 			});
 
 		const key = Effect.fn("JwksResolver.key")(function* (issuer: string, header: JoseHeader) {
-			if (!isAlgorithm(header.alg)) return yield* unsupportedAlgorithm(header.alg);
+			if (!isAsymmetricAlgorithm(header.alg)) {
+				return yield* unsupportedAlgorithm(
+					`the token claims ${quote(header.alg)}, which is not an asymmetric algorithm`,
+				);
+			}
 			const now = yield* Clock.currentTimeMillis;
 			const stored = yield* storedFor(issuer, now);
 			// Read outside the lock, which is safe: the entry is an immutable
 			// snapshot replaced whole, `last` only ever moves to a newer
 			// successful fetch, and this read decides a match, never a write or a
 			// refetch. A miss here is re-checked under the lock.
-			const hit = matchIn(stored, lastFor(issuer, now), header);
-			if (Option.isSome(hit)) return yield* importFor(hit.value, header);
+			const hit = yield* matchIn(stored, lastFor(issuer, now), header);
+			if (Option.isSome(hit)) return hit.value;
 			// One refresh per issuer at a time, so concurrent misses share a fetch.
 			return yield* lockFor(issuer).withPermit(refresh(issuer, header));
 		});
@@ -320,8 +350,11 @@ const make = (options: JwksResolverOptions) =>
  * {@link JwksStore}. A token whose `kid` the cached set lacks triggers one
  * refetch, at most once per `minRefetchInterval` per issuer, so a key
  * rotation is picked up while a flood of made-up `kid`s is not; concurrent
- * misses share that fetch. A header without `kid` matches only a single-key
- * set, and a key naming a different `alg` never matches.
+ * misses share that fetch. Selection is core `effect/jose`'s: a key matches
+ * on the header's `alg` and `kid` and on its own family, curve, `alg`, `use`
+ * and `key_ops`; a header without `kid` matches when exactly one key fits the
+ * algorithm, and a `kid` matching several keys is `unknownKid`. Each fetched
+ * set's keys are imported once, not once per verification.
  *
  * Failures: no matching key is `unknownKid`; a matching key that does not
  * import is `key`; an unreachable, slow (over `fetchTimeout`, 10 seconds by

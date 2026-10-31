@@ -16,6 +16,7 @@ import {
 	Semaphore,
 	Stream,
 } from "effect";
+import { Signature } from "effect/crypto";
 import type { GitHubClientShape } from "./GitHubClient.js";
 import { GitHubClient, makeClientShape, resolveApiVersion } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
@@ -437,7 +438,7 @@ export interface GitHubAppOptions {
  */
 export class GitHubApp extends Context.Service<GitHubApp, GitHubAppShape>()("@effected/github/GitHubApp") {
 	/** The default transport. Bind it once; layers are memoized by reference. */
-	static readonly layer: Layer.Layer<GitHubApp> = Layer.effect(this, makeApp({}));
+	static readonly layer: Layer.Layer<GitHubApp, never, Signature.Signature> = Layer.effect(this, makeApp({}));
 
 	/**
 	 * A transport with custom settings.
@@ -447,7 +448,7 @@ export class GitHubApp extends Context.Service<GitHubApp, GitHubAppShape>()("@ef
 	 * this at two provide sites builds two instances, because layers are
 	 * memoized by reference.
 	 */
-	static readonly layerWith = (options: GitHubAppOptions): Layer.Layer<GitHubApp> =>
+	static readonly layerWith = (options: GitHubAppOptions): Layer.Layer<GitHubApp, never, Signature.Signature> =>
 		Layer.effect(GitHubApp, makeApp(options));
 
 	/**
@@ -471,7 +472,7 @@ export class GitHubApp extends Context.Service<GitHubApp, GitHubAppShape>()("@ef
 	static readonly clientLayer = (
 		request: TokenRequest,
 		options: GitHubAppOptions = {},
-	): Layer.Layer<GitHubClient, GitHubAppError> =>
+	): Layer.Layer<GitHubClient, GitHubAppError, Signature.Signature> =>
 		Layer.effect(
 			GitHubClient,
 			Effect.flatMap(GitHubApp, (app) =>
@@ -542,10 +543,17 @@ export class GitHubApp extends Context.Service<GitHubApp, GitHubAppShape>()("@ef
 	static readonly appClientLayer = (
 		credentials: AppCredentials,
 		options: GitHubAppOptions = {},
-	): Layer.Layer<GitHubClient, GitHubAppError> =>
+	): Layer.Layer<GitHubClient, GitHubAppError, Signature.Signature> =>
 		Layer.effect(
 			GitHubClient,
-			makeRotatingClient(mintJwt(credentials), () => Effect.void, options, "GitHubApp.appClientLayer"),
+			Effect.flatMap(Effect.service(Signature.Signature), (signature) =>
+				makeRotatingClient(
+					Effect.provideService(mintJwt(credentials), Signature.Signature, signature),
+					() => Effect.void,
+					options,
+					"GitHubApp.appClientLayer",
+				),
+			),
 		);
 
 	/**
@@ -836,7 +844,7 @@ const makeCachedToken = (token: GitHubAppShape["token"]): GitHubAppShape["cached
 const dies = unstubbed("GitHubApp.makeTest");
 
 /** Mint an app JWT: iat 60 s in the past (clock drift), exp 9 minutes after now (GitHub caps at 10). */
-const mintJwt = (credentials: AppCredentials): Effect.Effect<RotatingCredential, GitHubAppError> =>
+const mintJwt = (credentials: AppCredentials): Effect.Effect<RotatingCredential, GitHubAppError, Signature.Signature> =>
 	Effect.gen(function* () {
 		const key = yield* JwtKey.fromPkcs8Pem(credentials.privateKey, { alg: "RS256" });
 		const now = Math.floor((yield* Clock.currentTimeMillis) / 1000);
@@ -846,10 +854,10 @@ const mintJwt = (credentials: AppCredentials): Effect.Effect<RotatingCredential,
 	}).pipe(Effect.catchTag("JwtError", (error) => Effect.fail(GitHubAppError.of("jwt", error.detail, error))));
 
 /** A client speaking as the app itself. */
-const asApp = (
+const appClientOf = (
 	credentials: AppCredentials,
 	options: GitHubAppOptions,
-): Effect.Effect<GitHubClientShape, GitHubAppError> =>
+): Effect.Effect<GitHubClientShape, GitHubAppError, Signature.Signature> =>
 	Effect.flatMap(mintJwt(credentials), ({ token }) => makeClientShape({ ...options, token }));
 
 /** A client speaking as a holder of `token`, or as nobody when there is none. */
@@ -861,122 +869,130 @@ const asBearer = (
 const appFailure = (kind: GitHubAppError["kind"]) => (error: GitHubError) =>
 	Effect.fail(GitHubAppError.of(kind, error.reason, error));
 
-function makeApp(options: GitHubAppOptions): Effect.Effect<GitHubAppShape> {
+function makeApp(options: GitHubAppOptions): Effect.Effect<GitHubAppShape, never, Signature.Signature> {
 	// Validated here, eagerly, so a malformed version fails at layer
 	// construction rather than on the first token mint.
-	return Effect.map(resolveApiVersion(options.apiVersion), () => {
-		const installations = Effect.fn("GitHubApp.installations")(function* (credentials: AppCredentials) {
-			const client = yield* asApp(credentials, options);
-			const raw = yield* client.paginate("GET /app/installations", {}).pipe(Effect.catch(appFailure("installation")));
-			return raw.map((entry) => {
-				const account: Record<string, unknown> | undefined = entry.account ?? undefined;
-				return Installation.make({
-					id: numericId(entry.id),
-					...(account !== undefined && typeof account.login === "string" ? { account: account.login } : {}),
-					...readField("accountType", Schema.String, account?.type),
-					...readField("accountId", Schema.Int, typeof account?.id === "bigint" ? numericId(account.id) : account?.id),
-					...readField("suspendedAt", SuspendedAt, entry.suspended_at),
-					...readField("updatedAt", Schema.DateTimeUtcFromString, entry.updated_at),
-				});
+	return Effect.flatMap(Effect.service(Signature.Signature), (signature) =>
+		Effect.map(resolveApiVersion(options.apiVersion), () => makeAppWith(options, signature)),
+	);
+}
+
+// The layer's `Signature` is captured once, so the service's methods sign
+// the App JWT without widening their own requirements.
+function makeAppWith(options: GitHubAppOptions, signature: Signature.Signature["Service"]): GitHubAppShape {
+	const asApp = (credentials: AppCredentials, clientOptions: GitHubAppOptions) =>
+		Effect.provideService(appClientOf(credentials, clientOptions), Signature.Signature, signature);
+	const installations = Effect.fn("GitHubApp.installations")(function* (credentials: AppCredentials) {
+		const client = yield* asApp(credentials, options);
+		const raw = yield* client.paginate("GET /app/installations", {}).pipe(Effect.catch(appFailure("installation")));
+		return raw.map((entry) => {
+			const account: Record<string, unknown> | undefined = entry.account ?? undefined;
+			return Installation.make({
+				id: numericId(entry.id),
+				...(account !== undefined && typeof account.login === "string" ? { account: account.login } : {}),
+				...readField("accountType", Schema.String, account?.type),
+				...readField("accountId", Schema.Int, typeof account?.id === "bigint" ? numericId(account.id) : account?.id),
+				...readField("suspendedAt", SuspendedAt, entry.suspended_at),
+				...readField("updatedAt", Schema.DateTimeUtcFromString, entry.updated_at),
 			});
 		});
+	});
 
-		const resolveInstallationId = (request: TokenRequest): Effect.Effect<number, GitHubAppError> =>
-			request.installationId !== undefined
-				? Effect.succeed(request.installationId)
-				: Effect.gen(function* () {
-						const all = yield* installations(request);
-						if (request.owner !== undefined) {
-							const wanted = request.owner.toLowerCase();
-							const match = all.find((entry) => entry.account?.toLowerCase() === wanted);
-							if (match !== undefined) return match.id;
-							return yield* Effect.fail(
-								GitHubAppError.of(
-									"installation",
-									`the app is not installed on ${request.owner} (installed on: ${all.map((entry) => entry.account ?? entry.id).join(", ") || "nothing"})`,
-								),
-							);
-						}
-						const only = all[0];
-						if (all.length === 1 && only !== undefined) return only.id;
+	const resolveInstallationId = (request: TokenRequest): Effect.Effect<number, GitHubAppError> =>
+		request.installationId !== undefined
+			? Effect.succeed(request.installationId)
+			: Effect.gen(function* () {
+					const all = yield* installations(request);
+					if (request.owner !== undefined) {
+						const wanted = request.owner.toLowerCase();
+						const match = all.find((entry) => entry.account?.toLowerCase() === wanted);
+						if (match !== undefined) return match.id;
 						return yield* Effect.fail(
 							GitHubAppError.of(
 								"installation",
-								all.length === 0
-									? "the app has no installations"
-									: `the app has ${all.length} installations; pass installationId or owner`,
+								`the app is not installed on ${request.owner} (installed on: ${all.map((entry) => entry.account ?? entry.id).join(", ") || "nothing"})`,
 							),
 						);
-					});
+					}
+					const only = all[0];
+					if (all.length === 1 && only !== undefined) return only.id;
+					return yield* Effect.fail(
+						GitHubAppError.of(
+							"installation",
+							all.length === 0
+								? "the app has no installations"
+								: `the app has ${all.length} installations; pass installationId or owner`,
+						),
+					);
+				});
 
-		const token = Effect.fn("GitHubApp.token")(function* (request: TokenRequest) {
-			const installationId = yield* resolveInstallationId(request);
-			const client = yield* asApp(request, options);
-			const minted = yield* client
-				.request("POST /app/installations/{installation_id}/access_tokens", { installation_id: installationId })
-				.pipe(Effect.catch(appFailure("token")));
-			return yield* Schema.decodeUnknownEffect(InstallationToken)({
-				token: minted.token,
-				expiresAt: minted.expires_at,
-				installationId,
-				permissions: normalizePermissions(minted.permissions),
-			}).pipe(
-				Effect.catchTag("SchemaError", (error) =>
-					Effect.fail(GitHubAppError.of("token", "GitHub returned an unexpected token payload", error)),
-				),
-			);
-		});
-
-		const revoke = Effect.fn("GitHubApp.revoke")(function* (value: Redacted.Redacted<string>) {
-			const client = yield* asBearer(value, options);
-			yield* client.request("DELETE /installation/token", {}).pipe(Effect.catch(appFailure("revoke")));
-		});
-
-		const scopedToken = (request: TokenRequest): Effect.Effect<InstallationToken, GitHubAppError, Scope.Scope> =>
-			Effect.acquireRelease(token(request), (minted) => Effect.ignore(revoke(minted.token)));
-
-		const identity = Effect.fn("GitHubApp.identity")(function* (
-			request: AppCredentials & { readonly installationToken?: Redacted.Redacted<string> | undefined },
-		) {
-			const appClient = yield* asApp(request, options);
-			const app = yield* appClient.request("GET /app", {}).pipe(Effect.catch(appFailure("identity")));
-			if (app === null) {
-				return yield* Effect.fail(GitHubAppError.of("identity", "GET /app returned no app"));
-			}
-			const slug = app.slug ?? "";
-			const name = app.name;
-			// `GET /users/{slug}[bot]` rejects an app JWT, so this bears the
-			// installation token when one was supplied and otherwise runs
-			// unauthenticated — 60 requests per hour per IP.
-			const userClient = yield* asBearer(request.installationToken, options);
-			const user = yield* userClient.request("GET /users/{username}", { username: `${slug}[bot]` }).pipe(Effect.option);
-			return AppIdentity.make({
-				slug,
-				name,
-				...(Option.isSome(user) ? { userId: numericId(user.value.id) } : {}),
-			});
-		});
-
-		const botUser = Effect.fn("GitHubApp.botUser")(function* (request: BotUserRequest) {
-			yield* Effect.annotateCurrentSpan({ slug: request.slug });
-			const client = yield* asBearer(request.installationToken, options);
-			const user = yield* client
-				.request("GET /users/{username}", { username: `${request.slug}[bot]` })
-				.pipe(Effect.catch(appFailure("identity")));
-			// A body that is not an object goes to the decoder as it is, so it fails
-			// identity-kind rather than throwing while `id` is read.
-			const raw: unknown = user;
-			return yield* Schema.decodeUnknownEffect(BotUser)(
-				typeof raw === "object" && raw !== null ? { id: numericId(user.id), login: user.login } : raw,
-			).pipe(
-				Effect.catchTag("SchemaError", (error) =>
-					Effect.fail(GitHubAppError.of("identity", "GitHub returned an unexpected bot user", error)),
-				),
-			);
-		});
-
-		return { token, scopedToken, revoke, identity, botUser, installations, cachedToken: makeCachedToken(token) };
+	const token = Effect.fn("GitHubApp.token")(function* (request: TokenRequest) {
+		const installationId = yield* resolveInstallationId(request);
+		const client = yield* asApp(request, options);
+		const minted = yield* client
+			.request("POST /app/installations/{installation_id}/access_tokens", { installation_id: installationId })
+			.pipe(Effect.catch(appFailure("token")));
+		return yield* Schema.decodeUnknownEffect(InstallationToken)({
+			token: minted.token,
+			expiresAt: minted.expires_at,
+			installationId,
+			permissions: normalizePermissions(minted.permissions),
+		}).pipe(
+			Effect.catchTag("SchemaError", (error) =>
+				Effect.fail(GitHubAppError.of("token", "GitHub returned an unexpected token payload", error)),
+			),
+		);
 	});
+
+	const revoke = Effect.fn("GitHubApp.revoke")(function* (value: Redacted.Redacted<string>) {
+		const client = yield* asBearer(value, options);
+		yield* client.request("DELETE /installation/token", {}).pipe(Effect.catch(appFailure("revoke")));
+	});
+
+	const scopedToken = (request: TokenRequest): Effect.Effect<InstallationToken, GitHubAppError, Scope.Scope> =>
+		Effect.acquireRelease(token(request), (minted) => Effect.ignore(revoke(minted.token)));
+
+	const identity = Effect.fn("GitHubApp.identity")(function* (
+		request: AppCredentials & { readonly installationToken?: Redacted.Redacted<string> | undefined },
+	) {
+		const appClient = yield* asApp(request, options);
+		const app = yield* appClient.request("GET /app", {}).pipe(Effect.catch(appFailure("identity")));
+		if (app === null) {
+			return yield* Effect.fail(GitHubAppError.of("identity", "GET /app returned no app"));
+		}
+		const slug = app.slug ?? "";
+		const name = app.name;
+		// `GET /users/{slug}[bot]` rejects an app JWT, so this bears the
+		// installation token when one was supplied and otherwise runs
+		// unauthenticated — 60 requests per hour per IP.
+		const userClient = yield* asBearer(request.installationToken, options);
+		const user = yield* userClient.request("GET /users/{username}", { username: `${slug}[bot]` }).pipe(Effect.option);
+		return AppIdentity.make({
+			slug,
+			name,
+			...(Option.isSome(user) ? { userId: numericId(user.value.id) } : {}),
+		});
+	});
+
+	const botUser = Effect.fn("GitHubApp.botUser")(function* (request: BotUserRequest) {
+		yield* Effect.annotateCurrentSpan({ slug: request.slug });
+		const client = yield* asBearer(request.installationToken, options);
+		const user = yield* client
+			.request("GET /users/{username}", { username: `${request.slug}[bot]` })
+			.pipe(Effect.catch(appFailure("identity")));
+		// A body that is not an object goes to the decoder as it is, so it fails
+		// identity-kind rather than throwing while `id` is read.
+		const raw: unknown = user;
+		return yield* Schema.decodeUnknownEffect(BotUser)(
+			typeof raw === "object" && raw !== null ? { id: numericId(user.id), login: user.login } : raw,
+		).pipe(
+			Effect.catchTag("SchemaError", (error) =>
+				Effect.fail(GitHubAppError.of("identity", "GitHub returned an unexpected bot user", error)),
+			),
+		);
+	});
+
+	return { token, scopedToken, revoke, identity, botUser, installations, cachedToken: makeCachedToken(token) };
 }
 
 /** GitHub's permission values are strings; anything else is not a permission. */

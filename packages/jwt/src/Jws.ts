@@ -1,41 +1,31 @@
-import { Effect, Result, Schema } from "effect";
-import { isAlgorithm, signParams, unsupportedAlgorithm } from "./internal/algorithms.js";
-import { appendSignature, joinCompact, splitCompact } from "./internal/segments.js";
-import { subtle, toArrayBuffer } from "./internal/subtle.js";
+import { Effect, Redacted, Result, Schema } from "effect";
+import type { Signature } from "effect/crypto";
+import { Jwks as CoreJwks, Jws as CoreJws, Jwt as CoreJwt } from "effect/jose";
+import { fatalUtf8 } from "./internal/bytes.js";
+import { asymmetricAlgorithms, keySetFor, makeState, toJwtError } from "./internal/jose.js";
 import { JwtError } from "./JwtError.js";
 import type { SigningKey, VerificationKey } from "./JwtKey.js";
 
 /**
- * A JOSE header (RFC 7515 §4) as this package reads it.
+ * A JOSE protected header (RFC 7515 §4): core `effect/jose`'s
+ * `Jws.ProtectedHeader`.
  *
  * @remarks
- * The header must be a JSON object with a string `alg`, read as an own
- * property only. The schema is open, so other members survive. `crit`
- * (§4.1.11) names extensions the recipient must understand; this package
- * understands none, so a header carrying `crit` fails to decode.
+ * A JSON object whose `alg` is a JWS algorithm core knows, with optional
+ * string `kid`, `typ` and `cty`; other members must be JSON and survive.
+ * A header carrying `crit` or `b64` is refused when a token is read, because
+ * those change how a token is processed.
  *
  * @public
  */
-export const JoseHeader = Schema.StructWithRest(
-	Schema.Struct({
-		/** The algorithm the token claims; checked against the key's, never trusted. */
-		alg: Schema.String,
-		/** Key id, used to pick the verification key. */
-		kid: Schema.optionalKey(Schema.String),
-		/** Media type, `JWT` by default when signing. */
-		typ: Schema.optionalKey(Schema.String),
-		/** Critical extensions; none are understood, so any value is refused. */
-		crit: Schema.optionalKey(Schema.Never),
-	}),
-	[Schema.Record(Schema.String, Schema.Unknown)],
-);
+export const JoseHeader: typeof CoreJws.ProtectedHeader = CoreJws.ProtectedHeader;
 
 /**
  * A decoded {@link (JoseHeader:variable)}.
  *
  * @public
  */
-export type JoseHeader = typeof JoseHeader.Type;
+export type JoseHeader = CoreJws.ProtectedHeader;
 
 /**
  * The header and payload of a compact JWS.
@@ -49,85 +39,85 @@ export interface DecodedJws {
 	readonly payload: unknown;
 }
 
-const decodeHeader = Schema.decodeUnknownResult(JoseHeader);
+const isJoseHeader = Schema.is(CoreJws.ProtectedHeader);
 
-const headerOf = (value: unknown): Result.Result<JoseHeader, JwtError> =>
-	Result.mapError(decodeHeader(value), (cause) =>
-		JwtError.of("malformed", "the header is not a JOSE header (a JSON object with a string alg and no crit)", {
-			cause,
-		}),
-	);
+const parseJson = (bytes: Uint8Array): Result.Result<unknown, JwtError> => {
+	try {
+		return Result.succeed(JSON.parse(fatalUtf8.decode(bytes)) as unknown);
+	} catch (cause) {
+		return Result.fail(JwtError.of("malformed", "the payload is not UTF-8 JSON", { cause }));
+	}
+};
 
+// Core's unverified reader is pure, so it runs synchronously here to keep this
+// a `Result`; it reads a JWT, so the payload must be a JSON object.
 const decodeUnverified = (token: string): Result.Result<DecodedJws, JwtError> =>
-	Result.flatMap(splitCompact(token), (parts) =>
-		Result.map(headerOf(parts.header), (header) => ({ header, payload: parts.payload })),
+	Effect.runSync(
+		Effect.result(
+			Effect.mapBoth(CoreJwt.decodeUnverified(token), {
+				onFailure: (error) => toJwtError(error),
+				onSuccess: ({ protectedHeader, claims }): DecodedJws => ({ header: protectedHeader, payload: claims }),
+			}),
+		),
 	);
-
-const encoder = new TextEncoder();
 
 const sign = Effect.fn("Jws.sign")(function* (
 	payload: unknown,
 	key: SigningKey,
 	header?: Readonly<Record<string, unknown>>,
 ) {
-	const candidate = {
-		...header,
-		alg: key.alg,
+	const { alg: _ignored, ...rest } = header ?? {};
+	// `typ` defaults to `JWT`; the key's `kid` wins over a caller's.
+	const fields: Record<string, unknown> = {
+		...rest,
 		typ: header?.typ ?? "JWT",
 		...(key.kid !== undefined ? { kid: key.kid } : {}),
 	};
 	// Emit only what `verify` would accept back.
-	const checked = yield* Effect.fromResult(headerOf(candidate));
-	const { signingInput } = yield* Effect.fromResult(joinCompact(checked, payload));
-	const crypto = yield* subtle;
-	const signature = yield* Effect.tryPromise({
-		try: () => crypto.sign(signParams(key.alg), key.key, toArrayBuffer(encoder.encode(signingInput))),
-		catch: (cause) => JwtError.of("key", `the ${key.alg} key could not sign`, { cause }),
-	});
-	return appendSignature(signingInput, new Uint8Array(signature));
+	if (
+		Object.hasOwn(fields, "crit") ||
+		Object.hasOwn(fields, "b64") ||
+		!isJoseHeader({ ...fields, alg: key.algorithm })
+	) {
+		return yield* JwtError.of("malformed", "the header is not a JOSE header verify would accept");
+	}
+	let json: string | undefined;
+	try {
+		json = JSON.stringify(payload);
+	} catch (cause) {
+		return yield* JwtError.of("malformed", "the payload is not representable as JSON", { cause });
+	}
+	if (json === undefined) return yield* JwtError.of("malformed", "the payload is not representable as JSON");
+	const token = yield* CoreJws.sign(new TextEncoder().encode(json), key, fields as CoreJws.Header).pipe(
+		Effect.mapError((error) => toJwtError(error)),
+	);
+	return Redacted.value(token);
 });
 
 const verify = <R = never>(
 	token: string,
 	key: VerificationKey | ((header: JoseHeader) => Effect.Effect<VerificationKey, JwtError, R>),
-): Effect.Effect<DecodedJws, JwtError, R> =>
+): Effect.Effect<DecodedJws, JwtError, R | Signature.Signature> =>
 	Effect.gen(function* () {
-		const parts = yield* Effect.fromResult(splitCompact(token));
-		const header = yield* Effect.fromResult(headerOf(parts.header));
-		// Decided before any key is resolved, so a token naming an algorithm
-		// this package does not implement (none, HS256, ...) never triggers a
-		// key lookup such as a JWKS fetch.
-		if (!isAlgorithm(header.alg)) return yield* unsupportedAlgorithm(header.alg);
-		// `typeof`, not `instanceof`: a key built by a second copy of this
-		// package (a duplicated dependency) is still a key, not a function.
-		const resolved = typeof key === "function" ? yield* key(header) : key;
-		const extra = resolved.kid !== undefined ? { kid: resolved.kid } : undefined;
-		// The algorithm is the key's; the header's is only compared against it,
-		// so an HS256 or other foreign header never selects a different check.
-		if (header.alg !== resolved.alg) {
-			return yield* JwtError.of(
-				"algorithmMismatch",
-				`the token claims ${header.alg} but the key is ${resolved.alg}`,
-				extra,
-			);
-		}
-		const crypto = yield* subtle;
-		const valid = yield* Effect.tryPromise({
-			try: () =>
-				crypto.verify(
-					signParams(resolved.alg),
-					resolved.key,
-					toArrayBuffer(parts.signature),
-					toArrayBuffer(parts.signingInput),
-				),
-			catch: (cause) => JwtError.of("key", `the ${resolved.alg} key could not verify`, { ...extra, cause }),
-		});
-		if (!valid) return yield* JwtError.of("badSignature", "the signature does not verify", extra);
-		return { header, payload: parts.payload };
+		const state = makeState();
+		const keySet = yield* keySetFor(key, state);
+		const verified = yield* CoreJws.verifyWithKeySet(token, { algorithms: asymmetricAlgorithms }).pipe(
+			Effect.provideService(CoreJwks.Jwks, keySet),
+			Effect.mapError((error) => toJwtError(error, state)),
+		);
+		const payload = yield* Effect.fromResult(parseJson(verified.payload));
+		return { header: verified.protectedHeader, payload };
 	}).pipe(Effect.withSpan("Jws.verify"));
 
 /**
- * Sign and verify compact JWS (RFC 7515) with `RS256` or `ES256`.
+ * Sign and verify compact JWS (RFC 7515) with any asymmetric algorithm core
+ * `effect/jose` implements.
+ *
+ * @remarks
+ * A thin layer over core `Jws`: core parses, checks the algorithm and runs
+ * the signature; this class adds a JSON payload, a `typ: "JWT"` default, a
+ * key-resolver function and `JwtError` routing. Signing and verifying
+ * require core's `Signature` service.
  *
  * @public
  */
@@ -135,14 +125,15 @@ export class Jws {
 	private constructor() {}
 
 	/**
-	 * Sign `payload` as a compact JWS.
+	 * Sign `payload` (JSON-encoded) as a compact JWS.
 	 *
 	 * @remarks
 	 * The header is `header` with `alg` set to the key's algorithm (a
 	 * caller-supplied `alg` is overwritten), `typ` defaulting to `JWT`, and
 	 * `kid` set from the key when it has one. A header `verify` would refuse
-	 * (a `crit`, a non-string `typ` or `kid`) or a payload JSON cannot
-	 * represent (a BigInt, a cycle, `undefined`) is `malformed`.
+	 * (a `crit` or `b64`, a non-string `typ` or `kid`, a non-JSON member) or a
+	 * payload JSON cannot represent (a BigInt, a cycle, `undefined`) is
+	 * `malformed`.
 	 *
 	 * @public
 	 */
@@ -150,43 +141,44 @@ export class Jws {
 		payload: unknown,
 		key: SigningKey,
 		header?: Readonly<Record<string, unknown>>,
-	) => Effect.Effect<string, JwtError> = sign;
+	) => Effect.Effect<string, JwtError, Signature.Signature> = sign;
 
 	/**
 	 * Verify a compact JWS and return its header and payload.
 	 *
 	 * @remarks
 	 * `key` is a {@link VerificationKey} or a function from the decoded header
-	 * to one (for a JWKS lookup by `kid`). The checks run in order: the token
-	 * splits and its header decodes (`malformed`); a header `alg` other than
-	 * `RS256` or `ES256` (`none`, `HS256`, ...) is `unsupportedAlgorithm` and no
-	 * key is resolved; the header's `alg` must equal the key's
-	 * (`algorithmMismatch`, and no other algorithm is tried);
-	 * the signature must verify (`badSignature`). The algorithm is always the
-	 * key's, never the header's.
+	 * to one (for a JWKS lookup by `kid`). Core runs the checks in order: the
+	 * token splits into canonical base64url segments and its header decodes
+	 * (`malformed`, which includes `alg: "none"` and any algorithm core does
+	 * not know); an HMAC `alg` is `unsupportedAlgorithm` and no key is
+	 * resolved; the header's `alg` must equal the key's (`algorithmMismatch`,
+	 * and no other algorithm is tried); the signature must verify
+	 * (`badSignature`). The payload must then be UTF-8 JSON (`malformed`). A
+	 * resolver's own failure passes through unchanged.
 	 *
-	 * A token string is not a unique identifier. ES256 signatures are
+	 * A token string is not a unique identifier. ECDSA signatures are
 	 * malleable: wherever `(r, s)` verifies, `(r, n - s)` does too, so one
-	 * signed payload has two valid token strings, and rejecting either would
-	 * break interop with ES256 issuers. Key replay detection, deduplication
-	 * and revocation on verified claims (`jti`, or `iss` with `sub` and
-	 * `iat`), never on the token text.
+	 * signed payload has two valid token strings. Key replay detection,
+	 * deduplication and revocation on verified claims (`jti`, or `iss` with
+	 * `sub` and `iat`), never on the token text.
 	 *
 	 * @public
 	 */
 	static readonly verify: <R = never>(
 		token: string,
 		key: VerificationKey | ((header: JoseHeader) => Effect.Effect<VerificationKey, JwtError, R>),
-	) => Effect.Effect<DecodedJws, JwtError, R> = verify;
+	) => Effect.Effect<DecodedJws, JwtError, R | Signature.Signature> = verify;
 
 	/**
-	 * Decode a compact JWS's header and payload **without verifying it**.
+	 * Decode a compact JWT's header and payload **without verifying it**.
 	 *
 	 * @remarks
-	 * For routing only: reading `iss` or `kid` to decide which key or issuer
-	 * to verify against. The result is attacker-controlled and authorizes
-	 * nothing; pass the token to {@link (Jws:class).verify} before acting
-	 * on any claim.
+	 * Core `Jwt.decodeUnverified`, as a synchronous `Result`: the header must
+	 * decode as for {@link (Jws:class).verify} and the payload must be a JSON
+	 * object, else `malformed`. For routing only: reading `iss` or `kid` to
+	 * decide which key or issuer to verify against. The result is
+	 * attacker-controlled and authorizes nothing.
 	 *
 	 * @public
 	 */

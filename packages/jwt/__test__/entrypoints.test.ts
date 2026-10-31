@@ -46,8 +46,6 @@ describe("root entrypoint", () => {
 			"JwtErrorReason",
 			"JwtKey",
 			"RegisteredClaims",
-			"SigningKey",
-			"VerificationKey",
 		]);
 		const reexported = specifiersOf(resolve(SRC, "index.ts"));
 		assert.isTrue(reexported.length > 0);
@@ -88,8 +86,8 @@ describe("root entrypoint", () => {
 			...reachableFrom(resolve(SRC, "testing.ts")),
 		]);
 		assert.isTrue([...reachable].some((file) => file.endsWith("testing.ts")));
-		// positive control: the walker resolves through to the internal engines
-		assert.isTrue([...reachable].some((file) => file.endsWith("internal/der.ts")));
+		// positive control: the walker resolves through to the internal modules
+		assert.isTrue([...reachable].some((file) => file.endsWith("internal/jose.ts")));
 		assert.isTrue([...reachable].some((file) => file.endsWith("JwksResolver.ts")));
 		const nodeImports = [...reachable].flatMap((file) =>
 			specifiersOf(file)

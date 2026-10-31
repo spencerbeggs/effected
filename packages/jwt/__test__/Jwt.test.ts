@@ -1,5 +1,6 @@
-import { assert, describe, it } from "@effect/vitest";
+import { assert, layer } from "@effect/vitest";
 import { Context, Duration, Effect, Schema } from "effect";
+import { Signature } from "effect/crypto";
 import * as Base64Url from "effect/encoding/Base64Url";
 import { TestClock } from "effect/testing";
 import { Jws } from "../src/Jws.js";
@@ -7,6 +8,7 @@ import { Jwt, RegisteredClaims } from "../src/Jwt.js";
 import type { JwtError } from "../src/JwtError.js";
 import type { SigningKey, VerificationKey } from "../src/JwtKey.js";
 import { JwtKey } from "../src/JwtKey.js";
+import { CryptoLive } from "./crypto.js";
 
 // 2026-10-09T00:00:00Z, in seconds.
 const NOW = 1_791_504_000;
@@ -26,17 +28,12 @@ const rawToken = (pair: { readonly signing: SigningKey }, payloadJson: string) =
 	Effect.gen(function* () {
 		const header = Base64Url.encode(JSON.stringify({ alg: "ES256", typ: "JWT" }));
 		const input = `${header}.${Base64Url.encode(payloadJson)}`;
-		const signature = yield* Effect.promise(() =>
-			globalThis.crypto.subtle.sign(
-				{ name: "ECDSA", hash: "SHA-256" },
-				pair.signing.key,
-				new TextEncoder().encode(input),
-			),
-		);
-		return `${input}.${Base64Url.encode(new Uint8Array(signature))}`;
+		const signer = yield* Signature.Signature;
+		const signature = yield* signer.sign(pair.signing.key, new TextEncoder().encode(input));
+		return `${input}.${Base64Url.encode(signature)}`;
 	});
 
-describe("Jwt.verify time claims", () => {
+layer(CryptoLive, { buildPerTest: true })("Jwt.verify time claims", (it) => {
 	it.effect("exp at now - 59s passes and at now - 60s is expired (default 60s tolerance)", () =>
 		Effect.gen(function* () {
 			const pair = yield* setup;
@@ -134,7 +131,7 @@ describe("Jwt.verify time claims", () => {
 	});
 });
 
-describe("Jwt.verify issuer and audience", () => {
+layer(CryptoLive, { buildPerTest: true })("Jwt.verify issuer and audience", (it) => {
 	it.effect("Review Focus 4: an aud array containing the audience passes; a missing aud is wrongAudience", () =>
 		Effect.gen(function* () {
 			const pair = yield* setup;
@@ -180,7 +177,7 @@ describe("Jwt.verify issuer and audience", () => {
 	);
 });
 
-describe("Jwt.verify claims decoding", () => {
+layer(CryptoLive, { buildPerTest: true })("Jwt.verify claims decoding", (it) => {
 	it.effect("decodes with the caller's schema, transformations included", () =>
 		Effect.gen(function* () {
 			const pair = yield* setup;
