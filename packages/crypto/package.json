@@ -1,6 +1,6 @@
 {
 	"name": "@effected/crypto",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"private": true,
 	"description": "HMAC, constant-time comparison and AWS SigV4 request signing on Effect v4's core Mac and Digest services, safe for Workers.",
 	"keywords": ["hmac", "sigv4", "aws", "constant-time", "webcrypto", "workers", "effect", "effected"],

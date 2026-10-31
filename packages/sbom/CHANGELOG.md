@@ -1,5 +1,25 @@
 # @effected/sbom
 
+## 0.19.0
+
+### Breaking Changes
+
+- Rebuilt on Effect 4.1.1. The `effect` peer dependency (and any `@effect/*` peer) is now `~4.1.0`, so an Effect 4.0.x install no longer satisfies it. Upgrade `effect` to 4.1 alongside this release; mixing this package with a copy built on 4.0.x is unsupported. [#1168][#1168]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/oidc | dependency | updated | 0.2.0 | 0.3.0 |
+| @effected/package-json | dependency | updated | 0.27.0 | 0.28.0 |
+| @effected/spdx | dependency | updated | 0.17.0 | 0.18.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1168]: https://github.com/spencerbeggs/effected/pull/1168
+
 ## 0.18.0
 
 ### Dependencies

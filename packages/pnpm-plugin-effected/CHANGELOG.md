@@ -1,5 +1,78 @@
 # @effected/pnpm-plugin-effect
 
+## 0.20.0
+
+### Breaking Changes
+
+#### Renamed from @effected/pnpm-plugin-effect
+
+- This package replaces `@effected/pnpm-plugin-effect` and continues its version line. The old name is deprecated and gets no further releases. Before installing, rename `@effected/pnpm-plugin-effect` to `@effected/pnpm-plugin-effected` in `minimumReleaseAgeExclude` if you exempt it there, so the release-age gate admits the new package. Then swap the entry in `configDependencies` for `@effected/pnpm-plugin-effected` at a plain version (no integrity suffix) and reinstall from scratch.
+
+#### One catalog, `effected`
+
+- Consumers see a single catalog, `effected`, with `effect` folded in. The `effect`, `effect:peers` and `effected:peers` catalogs are removed, so every `catalog:effect`, `catalog:effect:peers` and `catalog:effected:peers` reference becomes `catalog:effected`. Peers written `catalog:effected` publish the catalog's install range (for example `effect: ~4.1.1`) rather than a floored one.
+
+#### Effect held to one minor
+
+- The Effect family is held at `~4.1.1` under `lock-minor`, not a caret, and the plugin derives one override per family member so `effect` and every satellite resolve to the catalog version across the whole graph. A caret had let the unattended catalog sync carry consumers onto Effect 4.1 while the published kit was still built on 4.0.x. Rebuilt on Effect 4.1.1: every `@effected/*` peer on `effect` is now `~4.1.0`.
+
+### Bug Fixes
+
+- Releases 0.19.1–0.19.3 of the old name moved the catalog to Effect 4.1 under a kit built on 4.0.7, and crashed consumers at import with `does not provide an export named 'Crypto'`. Do not install them; move to this package. Closes #1146. [#1168][#1168]
+
+### Maintenance
+
+#### Updates 42 catalog:effected versions
+
+- `@effected/app` ^0.29.1 -> ^0.30.0 (peer ^0.30.0)
+- `@effected/cli` ^0.24.1 -> ^0.25.0 (peer ^0.25.0)
+- `@effected/commands` ^0.18.0 -> ^0.19.0 (peer ^0.19.0)
+- `@effected/config-file` ^0.22.1 -> ^0.23.0 (peer ^0.23.0)
+- `@effected/crypto` ^0.3.0 -> ^0.4.0 (peer ^0.4.0)
+- `@effected/engine` ^0.10.0 -> ^0.11.0 (peer ^0.11.0)
+- `@effected/env` ^0.8.0 -> ^0.9.0 (peer ^0.9.0)
+- `@effected/git` ^0.28.0 -> ^0.29.0 (peer ^0.29.0)
+- `@effected/github` ^0.26.0 -> ^0.27.0 (peer ^0.27.0)
+- `@effected/github-actions` ^0.29.1 -> ^0.30.0 (peer ^0.30.0)
+- `@effected/github-commands` ^0.7.0 -> ^0.8.0 (peer ^0.8.0)
+- `@effected/github-references` ^0.12.0 -> ^0.13.0 (peer ^0.13.0)
+- `@effected/glob` ^0.16.0 -> ^0.17.0 (peer ^0.17.0)
+- `@effected/images` ^0.7.0 -> ^0.8.0 (peer ^0.8.0)
+- `@effected/jsonc` ^0.21.0 -> ^0.22.0 (peer ^0.22.0)
+- `@effected/jsonl` ^0.16.0 -> ^0.17.0 (peer ^0.17.0)
+- `@effected/jwt` ^0.7.0 -> ^0.8.0 (peer ^0.8.0)
+- `@effected/lockfiles` ^0.20.0 -> ^0.21.0 (peer ^0.21.0)
+- `@effected/lsp` ^0.6.0 -> ^0.7.0 (peer ^0.7.0)
+- `@effected/markdown` ^0.24.0 -> ^0.25.0 (peer ^0.25.0)
+- `@effected/mcp` ^0.11.0 -> ^0.12.0 (peer ^0.12.0)
+- `@effected/memfs` ^0.21.0 -> ^0.22.0 (peer ^0.22.0)
+- `@effected/npm` ^0.28.0 -> ^0.29.0 (peer ^0.29.0)
+- `@effected/oidc` ^0.2.0 -> ^0.3.0 (peer ^0.3.0)
+- `@effected/package-json` ^0.27.0 -> ^0.28.0 (peer ^0.28.0)
+- `@effected/runtimes` ^0.16.2 -> ^0.17.0 (peer ^0.17.0)
+- `@effected/sbom` ^0.18.0 -> ^0.19.0 (peer ^0.19.0)
+- `@effected/schema-org` ^0.12.0 -> ^0.13.0 (peer ^0.13.0)
+- `@effected/schemastore` ^0.27.1 -> ^0.28.0 (peer ^0.28.0)
+- `@effected/schemastore-cli` ^0.27.1 -> ^0.28.0 (peer ^0.28.0)
+- `@effected/semver` ^0.19.0 -> ^0.20.0 (peer ^0.20.0)
+- `@effected/source` ^0.1.1 -> ^0.2.0 (peer ^0.2.0)
+- `@effected/spdx` ^0.17.0 -> ^0.18.0 (peer ^0.18.0)
+- `@effected/store` ^0.21.0 -> ^0.22.0 (peer ^0.22.0)
+- `@effected/templates` ^0.15.0 -> ^0.16.0 (peer ^0.16.0)
+- `@effected/toml` ^0.17.0 -> ^0.18.0 (peer ^0.18.0)
+- `@effected/tsconfig-json` ^0.18.1 -> ^0.19.0 (peer ^0.19.0)
+- `@effected/walker` ^0.23.0 -> ^0.24.0 (peer ^0.24.0)
+- `@effected/webhooks` ^0.2.0 -> ^0.3.0 (peer ^0.3.0)
+- `@effected/workspaces` ^0.40.1 -> ^0.41.0 (peer ^0.41.0)
+- `@effected/xdg` ^0.17.1 -> ^0.18.0 (peer ^0.18.0)
+- `@effected/yaml` ^0.26.0 -> ^0.27.0 (peer ^0.27.0) [#1168][#1168]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1168]: https://github.com/spencerbeggs/effected/pull/1168
+
 ## 0.19.3
 
 ### Maintenance

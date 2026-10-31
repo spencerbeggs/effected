@@ -1,6 +1,6 @@
 {
 	"name": "@effected/yaml",
-	"version": "0.26.0",
+	"version": "0.27.0",
 	"private": true,
 	"description": "YAML parsing, editing, formatting and linting as Effect schemas, with no IO and no dependency beyond effect and the kit's own position helpers.",
 	"keywords": ["yaml", "parser", "effect", "schema", "ast", "cst", "editing", "formatting", "linting", "effected"],

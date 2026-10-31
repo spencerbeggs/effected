@@ -1,5 +1,23 @@
 # @effected/schemastore
 
+## 0.28.0
+
+### Breaking Changes
+
+- Rebuilt on Effect 4.1.1. The `effect` peer dependency (and any `@effect/*` peer) is now `~4.1.0`, so an Effect 4.0.x install no longer satisfies it. Upgrade `effect` to 4.1 alongside this release; mixing this package with a copy built on 4.0.x is unsupported. [#1168][#1168]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/semver | dependency | updated | 0.19.0 | 0.20.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1168]: https://github.com/spencerbeggs/effected/pull/1168
+
 ## 0.27.1
 
 ### Maintenance

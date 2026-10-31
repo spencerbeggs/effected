@@ -1,5 +1,18 @@
 # @effected/ai-plugin
 
+## 0.46.0
+
+### Features
+
+- Skills and references now teach Effect 4.1 and the matching kit shapes: `Digest` in place of `Crypto`, `McpStdio` `registrations`, inherited-flag help, `Redacted` spawn arguments and core's derived `glob`.
+- New `pnpm-plugin-effected` package reference replaces the `pnpm-plugin-effect` one, covering the single `effected` catalog. [#1168][#1168]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1168]: https://github.com/spencerbeggs/effected/pull/1168
+
 ## 0.45.0
 
 ### Features

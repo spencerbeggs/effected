@@ -1,5 +1,38 @@
 # @effected/github
 
+## 0.27.0
+
+### Breaking Changes
+
+- Rebuilt on Effect 4.1.1. The `effect` peer dependency (and any `@effect/*` peer) is now `~4.1.0`, so an Effect 4.0.x install no longer satisfies it. Upgrade `effect` to 4.1 alongside this release; mixing this package with a copy built on 4.0.x is unsupported.
+
+- The App JWT is now signed through `@effected/jwt` on core `effect/jose`, so `GitHubApp.layer`, `GitHubApp.layerWith`, `GitHubApp.clientLayer` and `GitHubApp.appClientLayer` require core's `Signature` service, and `ActionsOidc.verify` requires it alongside `JwksResolver`. Provide it once at the edge:
+
+```ts
+import { Layer } from "effect";
+import { SecureRandom, Signature } from "effect/crypto";
+
+const CryptoLive = Signature.layerWebCrypto.pipe(Layer.provide(SecureRandom.layerWebCrypto));
+```
+
+- The `GitHubApp` methods and the client layers' re-signing still need nothing: the layer captures `Signature` when it is built. The App JWT on the wire is unchanged: header `{"alg":"RS256","typ":"JWT"}`, claims `iat`, `exp` and `iss`, and the same signature bytes for the same key and clock. [#1168][#1168]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/crypto | dependency | updated | 0.3.0 | 0.4.0 |
+| @effected/github-references | dependency | updated | 0.12.0 | 0.13.0 |
+| @effected/jwt | dependency | updated | 0.7.0 | 0.8.0 |
+| @effected/oidc | dependency | updated | 0.2.0 | 0.3.0 |
+| @effected/semver | dependency | updated | 0.19.0 | 0.20.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1168]: https://github.com/spencerbeggs/effected/pull/1168
+
 ## 0.26.0
 
 ### Breaking Changes
