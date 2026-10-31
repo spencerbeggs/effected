@@ -347,7 +347,7 @@ console.log("RIGHT:", body);
 ```
 
 Working examples: `packages/github-actions/__test__/results.ts:63-73` (JSON
-over Twirp) and `BlobStore.test.ts:155` (bytes). The general rule: **a double
+over Twirp) and `BlobStore.test.ts:157` (bytes). The general rule: **a double
 that mis-parses looks like the network being unreliable**, and every layer of
 retry between the two makes the diagnosis worse. When a virtual-clock suite
 times out in several places at once, suspect the double before the clock.
@@ -750,7 +750,7 @@ nonzero, which CI reads as a failure with no failing test to point at.
 
 Snapshot and restore it in a `finally` around any test that exercises such
 code, alongside the console spy and any env mutation
-(`packages/github-actions/__test__/Action.test.ts:44-54`):
+(`packages/github-actions/__test__/Action.test.ts:45-55`):
 
 ```ts
 import { assert, it } from "@effect/vitest";

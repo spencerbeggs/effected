@@ -1,6 +1,6 @@
 # @effected/webhooks
 
-Inbound webhook signature verification over WebCrypto, safe for Cloudflare Workers: pure verifiers over a header lookup, the raw body, the receive time and the secret. Boundary tier. It has one regular dependency, `@effected/crypto` (HMAC and constant-time compare), and `effect` is the only peer; no `node:` import and no framework adapter.
+Inbound webhook signature verification, safe for Cloudflare Workers: pure verifiers over a header lookup, the raw body, the receive time and the secret. Boundary tier. It has one regular dependency, `@effected/crypto` (HMAC and constant-time compare), and `effect` is the only peer; no `node:` import and no framework adapter.
 
 ## Import
 
@@ -9,13 +9,13 @@ import { GitHub, HmacHeader, Sanity, SharedSecret, StandardWebhooks, Stripe, Web
 import type { FreshnessOptions, WebhookRequest } from "@effected/webhooks";
 ```
 
-**Platform**: nothing. Every preset, `SharedSecret` included, needs nothing in `R` and fails only with `WebhookVerificationError`; a WebCrypto failure is a defect.
+**Platform**: core `Mac.Mac` (`effect/crypto`). Every preset, `SharedSecret` included, requires it in `R` and fails only with `WebhookVerificationError`; a `CryptoError` is a defect, and so is a runtime with no `crypto.subtle` on the WebCrypto layer. Provide it once at the edge: `Mac.layerWebCrypto.pipe(Layer.provide(SecureRandom.layerWebCrypto))` on any WebCrypto runtime (Workers included), or `@effect/platform-node`'s `NodeCrypto.layerMac`. `Webhooks.checkFreshness` needs nothing.
 
-**Async**: every `verify` runs on WebCrypto, which is truly asynchronous. A test that forks a verify and then adjusts `TestClock` can race or hang; await it, or gate the clock on a latch.
+**Async**: on `Mac.layerWebCrypto`, every `verify` is truly asynchronous. A test that forks a verify and then adjusts `TestClock` can race or hang; await it, or gate the clock on a latch.
 
 ## Core API
 
-Every preset is a class with one static `verify(request, options?)` → `Effect<…, WebhookVerificationError>`.
+Every preset is a class with one static `verify(request, options?)` → `Effect<…, WebhookVerificationError, Mac.Mac>`.
 
 - **`WebhookRequest`** — plain data, so it adapts from core `effect/http`, a Workers `Request` or a test: `header(name)` → `Option<string>` (called with lower-case names; return the value as received: the presets guarantee that an empty value counts as absent, and the signature presets trim and treat whitespace-only as absent, so the adapter does neither), `body: Uint8Array` (**the exact bytes received, never a re-serialized parse**), `receivedAt: DateTime.Utc` (staleness is judged against this, never the wall clock) and `secret: Redacted<string>` (in the form the vendor shows it).
 - **`GitHub.verify(request)`** — `x-hub-signature-256`: `sha256=` plus the hex HMAC-SHA256 of the body. The legacy SHA-1 header is ignored. GitHub signs no timestamp, so deduplicate on `x-github-delivery`. Succeeds with `void`.
@@ -30,7 +30,7 @@ Every preset is a class with one static `verify(request, options?)` → `Effect<
 ## Rules the package enforces
 
 - The signature is always checked **before** the timestamp, so `stale_timestamp` is only ever reported for an authentic delivery.
-- Every comparison is constant-time (`ConstantTime` from `@effected/crypto`).
+- Every comparison is constant-time (`Hmac.verify` and `ConstantTime` from `@effected/crypto`, over core `Mac`).
 - The body is raw bytes. Verify before parsing; a parsed-then-reserialized body will not match.
 - A scheme with no timestamp in the signed bytes (GitHub, `HmacHeader`) cannot reject a replay: deduplicate on the sender's delivery id.
 

@@ -12,17 +12,7 @@ pnpm add --config @effected/pnpm-plugin-effected
 
 This writes a `configDependencies` entry into the workspace's `pnpm-workspace.yaml`. Installing it any other way does NOT activate its catalog or hooks.
 
-**Then restore the integrity hashes by hand.** `pnpm add --config` writes the new entry without its `+sha512-…` suffix and strips the suffix from every *other* `configDependencies` entry too; a later `pnpm install` does not put them back. A config dependency installs ahead of the tree and can run hooks, so the hash is the guard on the packages with the most reach. Read each one from the registry and write it back:
-
-```bash
-npm view "@effected/pnpm-plugin-effected@<version>" dist.integrity
-```
-
-```yaml
-configDependencies:
-  "@effected/pnpm-plugin-effected": <version>+sha512-...
-  "@your-org/other-config-dep": 1.2.3+sha512-...   # restore this one too
-```
+The entry is a plain version (`"@effected/pnpm-plugin-effected": <version>`), the canonical form; pnpm still honours a `+sha512-…` suffix if one is present, but none is needed. A workspace that sets `minimumReleaseAge` lists `@effected/pnpm-plugin-effected` in `minimumReleaseAgeExclude`, so a fresh plugin release installs.
 
 ## What it ships
 

@@ -686,10 +686,10 @@
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "BlobStore.test.ts:155",
+			"anchor": "BlobStore.test.ts:157",
 			"source": "repo:packages/github-actions/__test__/BlobStore.test.ts",
 			"symbols": {
-				"155": "new Uint8Array(await new Response(init?.body).arrayBuffer())"
+				"157": "new Uint8Array(await new Response(init?.body).arrayBuffer())"
 			}
 		},
 		{
@@ -721,11 +721,11 @@
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "packages/github-actions/__test__/Action.test.ts:44-54",
+			"anchor": "packages/github-actions/__test__/Action.test.ts:45-55",
 			"source": "repo:packages/github-actions/__test__/Action.test.ts",
 			"symbols": {
-				"44": "const previousExit = process.exitCode",
-				"54": "process.exitCode = previousExit"
+				"45": "const previousExit = process.exitCode",
+				"55": "process.exitCode = previousExit"
 			}
 		},
 		{
