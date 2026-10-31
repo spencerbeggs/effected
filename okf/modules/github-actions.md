@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T20:26:30Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 90d3af8c8f686de5
+    body: 7781c91f4bd7b74b
 ---
 
 # github-actions
@@ -51,10 +51,10 @@ composed here rather than left to the consumer, which is the point of
 `Action.run`. **Sanctioned is not unlimited** — the list is closed and
 small. `node:crypto` lives in `internal/digest.ts` alone (every
 `createHash`, spelled once), for two kinds of call site core's
-`Crypto.digest` cannot serve: the streamed file digest a
+`Digest.Digest` cannot serve: the streamed file digest a
 multi-gigabyte archive needs, since no core or WebCrypto primitive
 hashes a stream, and the synchronous digests behind `CacheKey`, which
-would become effectful with `Crypto` in `R` if moved. Those are the
+would become effectful with `Digest.Digest` in `R` if moved. Those are the
 recorded per-site verdicts of effected#767. HMAC is no longer here: the
 S3 blob store signs through [`crypto`](crypto.md)'s `SigV4`;
 `node:child_process` and `node:fs` in `DetachedProcess.ts`
@@ -109,7 +109,12 @@ bundler's resolver still walks it; only a consumer that actually bundles
 and tree-shakes sees the benefit. The composed runtime layer
 (`Action.run`) deliberately excludes the cache, artifact and blob
 services for the same reason: folding them in would put the Azure client
-in the bundle of every action that merely sets an output.
+in the bundle of every action that merely sets an output. It does carry
+the `effect/crypto` services: `ActionServices` includes `Digest.Digest`
+and `SecureRandom.SecureRandom`, and `ActionRuntime.layer` provides both
+from `NodeCrypto` (`layerDigest`, `layerSecureRandom`) beside
+`NodeServices.layer`, which carries no crypto. A hand-composed
+`BlobStore.layerS3` must provide `Digest.Digest` itself.
 
 ## Module topology
 

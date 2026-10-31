@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/commands/src/LocalExec.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T18:51:45Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 34c882b60b486fb7
+    body: b1db1b763838b86f
 ---
 
 # @effected/commands
@@ -610,7 +610,13 @@ ordering. Every recorder is `Effect.suspend` / `Effect.sync`-wrapped, so
 a spawn is logged when the effect *runs*, never when it is merely
 constructed — an eager recorder would report calls that never happened,
 and the double's own suite pins the distinction along with the `unref`
-flag.[^scripted-spawner][^scripted-spawner-test] Standard commands only —
+flag.[^scripted-spawner][^scripted-spawner-test] A record holds what was
+passed, not an unwrapped copy: `SpawnRecord.args` is
+`ReadonlyArray<CommandLine.Word>` (`string | Redacted<string>`) and an `env`
+value may be `Redacted<string>`, so a record never holds a secret as text
+(`String` and `JSON.stringify` show `<redacted>`). A `SpawnScript` still
+receives `ReadonlyArray<string>`, with a `Redacted` argument as
+`"<redacted>"`. Standard commands only —
 a piped command reaching it dies loudly naming the workaround, because
 scripting a pipeline honestly means modeling core's `PipeOptions` routing
 and dying beats a silently wrong answer.

@@ -1,16 +1,16 @@
 ---
 type: Decision
-title: pnpm-plugin-effect is deliberately absent from its own effected catalog
-description: Cataloguing @effected/pnpm-plugin-effect inside the effected catalog it ships would create a release loop with no termination condition.
+title: pnpm-plugin-effected is deliberately absent from its own effected catalog
+description: Cataloguing @effected/pnpm-plugin-effected inside the effected catalog it ships would create a release loop with no termination condition.
 status: stable
 tags:
   - release
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: b3586e06fcd0240c
+    body: 83d06c1c8c79e0f2
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -20,11 +20,11 @@ verified:
     at: 2026-10-23T01:00:25Z
 ---
 
-# `pnpm-plugin-effect` is deliberately absent from its own `effected` catalog
+# `pnpm-plugin-effected` is deliberately absent from its own `effected` catalog
 
 ## Context
 
-`@effected/pnpm-plugin-effect` publishes the `effected` catalog naming
+`@effected/pnpm-plugin-effected` publishes the `effected` catalog naming
 every other publishable kit package's next-release version. The plugin
 itself is also a publishable kit package. Whether to include the plugin's
 own entry in the catalog it ships inside determines whether the catalog
@@ -32,7 +32,7 @@ can ever reach a stable state.
 
 ## Decision
 
-`@effected/pnpm-plugin-effect` is deliberately absent from its own
+`@effected/pnpm-plugin-effected` is deliberately absent from its own
 `effected` catalog, and must stay absent. It is the package the catalog
 ships inside: cataloguing it means every catalog rewrite bumps the
 plugin's own version, which invalidates the catalog the moment it is
@@ -40,7 +40,7 @@ written (since the plugin's own version moved), which writes another
 changeset to fix that, which bumps the plugin again — a release loop with
 no termination condition. The omission *is* the termination condition,
 not an oversight. Two tests in
-`packages/pnpm-plugin-effect/__test__/catalog.test.ts` pin the omission.
+`packages/pnpm-plugin-effected/__test__/catalog.test.ts` pin the omission.
 
 ## Alternatives rejected
 
@@ -61,7 +61,7 @@ completely.
 ## Consequences
 
 A consumer installing this config dependency gets the current
-`@effected/pnpm-plugin-effect` version from the registry or their own
+`@effected/pnpm-plugin-effected` version from the registry or their own
 `configDependencies` pin, never from the catalog it ships — there is no
 `catalog:effected` entry for it to reference. Any future audit or
 generator that assumes the `effected` catalog names *every* publishable

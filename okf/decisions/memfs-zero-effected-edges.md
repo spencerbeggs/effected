@@ -10,10 +10,10 @@ sources:
     resource: ../../packages/memfs/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 28423255f580c733
+    body: 2e91ea77fea6cf3f
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -36,11 +36,10 @@ ships as a full-fidelity minimatch engine.
 
 `@effected/memfs` takes no `@effected/*` edge of any kind — not a
 runtime dependency, not a peer, not even a devDependency.[^package-json]
-Its `FileSystem.glob` member keeps the upstream vendored mini-glob
-(brace expansion, character classes, globstar) rather than importing
-`@effected/glob`, even though this duplicates matching capability the
-kit already has elsewhere. The duplication is confined: the mini-glob
-serves only `fs.glob`, never a public matching API of its own.
+Its `FileSystem.glob` member never imports `@effected/glob`. It is
+core's own glob, which `FileSystem.make` derives from the engine's
+`readDirectoryEntries`, so the law costs no duplicated matching code:
+the engine carries no glob of its own and serves no public matching API.
 
 A new package was created for this role rather than folding the
 capability into an existing one, because every existing candidate host
@@ -60,9 +59,9 @@ matching logic.** Rejected because any edge from `memfs` back into the
 kit creates exactly the cycle the zero-edges law exists to prevent:
 `@effected/glob`'s own tests devDepend on `memfs`, so `memfs` depending
 on `@effected/glob` at runtime would form a cycle through the dependency
-graph the moment both packages are resolved together. The two-glob-engines
-duplication this avoids is the deliberate price of keeping the graph
-acyclic.
+graph the moment both packages are resolved together. Core's derived
+glob gives `fs.glob` what the host gives it, which is all a filesystem
+double owes.
 
 **Fold the memory filesystem into an existing package (`glob`, `walker`,
 `xdg`, `commands`, or `store`).** Rejected for each candidate on
@@ -77,11 +76,10 @@ consumer to accept an integrated-tier edge.
 
 Every kit package, at any tier, can devDepend on `@effected/memfs`
 without tier or cycle consequences, because the edge only ever runs one
-direction — from a package's tests into `memfs`, never the reverse. The
-cost is a small, self-contained duplication of glob-matching logic
-inside `memfs`'s own internals, scoped to the one member that needs it
-and never exposed as a public API a consumer could reach for instead of
-`@effected/glob`.
+direction — from a package's tests into `memfs`, never the reverse.
+`fs.glob` matches exactly as core's glob does on the host, so a test of
+glob behaviour against `memfs` is a test against core's semantics, never
+against `@effected/glob`'s.
 
 [^package-json]: `packages/memfs/package.json` — `effect` as the only
     peer dependency; no `@effected/*` entry anywhere in the manifest.

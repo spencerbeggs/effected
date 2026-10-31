@@ -4,7 +4,7 @@ title: The plugin's catalog paired 4.0.3 satellites with core effect 4.0.2
 description: "pnpm-plugin-effect 0.13.15 shipped an effect catalog with the @effect/* satellites at ^4.0.3 and effect at ^4.0.2, after upstream published every 4.0.3 satellite but not core; a fresh resolve died at import, and the catalog now locks exact versions behind version-scoped overrides."
 status: draft
 occurred: "2026-10-10"
-guard: ../../packages/pnpm-plugin-effect/__test__/catalog.test.ts
+guard: ../../packages/pnpm-plugin-effected/__test__/catalog.test.ts
 tags:
   - release
   - deps
@@ -26,14 +26,14 @@ sources:
     resource: https://github.com/spencerbeggs/effected/commit/c2919488
     title: "chore(pnpm-plugin-effect): update 27 catalog versions"
   - id: savvy-build
-    resource: ../../packages/pnpm-plugin-effect/savvy.build.ts
+    resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
     title: "The exact effect catalog and the HOLD overrides"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-11T16:59:56Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 02bd4ca8564a0d39
+    body: 39f2805ec190ddad
 ---
 
 # The plugin's catalog paired 4.0.3 satellites with core effect 4.0.2
@@ -42,7 +42,7 @@ integrity:
 
 Upstream published every `@effect/*` 4.0.3 satellite to npm at about 10:04 UTC on 2026-10-10. Core `effect@4.0.3` never published. It still returned 404 at 22:55 UTC, and npm's `latest` stayed 4.0.2.[^upstream-8994][^registry-check] The 4.0.3 satellites peer on `effect` `^4.0.3`. This repeats an earlier upstream partial publish.[^upstream-8186] The maintainers closed the issue and plan to move to npm staged publishing.
 
-The registry bot's `upgrade` run (commit c2919488) saw the satellites publish and bumped all of them in the [`pnpm-plugin-effect`](../modules/pnpm-plugin-effect.md) catalog.[^bot-commit] Release #994 then published `@effected/pnpm-plugin-effect@0.13.15` with the 26 satellites at `^4.0.3` and `effect` at `^4.0.2`.[^release-994] Every consumer that adopted 0.13.15 received the broken pair.
+The registry bot's `upgrade` run (commit c2919488) saw the satellites publish and bumped all of them in the [`pnpm-plugin-effect`](../modules/pnpm-plugin-effected.md) catalog.[^bot-commit] Release #994 then published `@effected/pnpm-plugin-effect@0.13.15` with the 26 satellites at `^4.0.3` and `effect` at `^4.0.2`.[^release-994] Every consumer that adopted 0.13.15 received the broken pair.
 
 Two published kit packages pull satellites transitively, so no catalog can govern them. `@effected/store@0.13.1` depends on `@effect/sql-sqlite-node` `^4.0.1`, and `@effected/schemastore-cli@0.21.4` depends on `@effect/platform-node` `^4.0.2`. A fresh resolve of either takes satellite 4.0.3.
 

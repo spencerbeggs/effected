@@ -3,23 +3,23 @@ type: DataModel
 title: The effected catalog literal
 description: "The inline PnpmConfigPlugin call in savvy.build.ts declaring the catalogs object that every kit catalog and the derived allowed-versions table is generated from."
 status: stable
-resource: ../../packages/pnpm-plugin-effect/savvy.build.ts
+resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
 tags:
   - release
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-14T00:17:26Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 284eaae1bd098e8b
+    body: 68fb05e5169a6788
 ---
 
 # The effected catalog literal
 
 ## Shape
 
-`packages/pnpm-plugin-effect/savvy.build.ts` calls `PnpmConfigPlugin({ ... })`
+`packages/pnpm-plugin-effected/savvy.build.ts` calls `PnpmConfigPlugin({ ... })`
 with a `catalogs` object carrying two declared catalogs, `effect` and
 `effected`; each generates a `:peers` twin from its `peer` fields, so four
 named catalogs result — `effect`, `effect:peers`, `effected` and
@@ -29,10 +29,12 @@ package name, and every entry is an object of the same three fields:
 package's next-release version), `peer` (the input the peer-floor
 computation reads, which becomes the `:peers` twin's value) and
 `strategy`. The `effect` catalog uses `"lock-minor"`: every `effect` and
-`@effect/*` entry's `range` is a caret on the current release and its
-`peer` is floored to the minor (`^4.0.0`), while `@effect/tsgo`, which
-versions on its own line, takes a caret on that line under the same
-`lock-minor` strategy. The `effected` catalog also
+`@effect/*` entry's `range` is a tilde on the current Effect minor
+(`~4.<minor>.<patch>`) and its `peer` is that tilde floored to the minor
+(`~4.<minor>.0`), so no upgrade can cross a minor; see
+[the effect catalog holds one minor](../decisions/effect-catalog-minor-lock.md).
+`@effect/tsgo`, which versions on its own 0.x line, takes a caret on that
+line under the same strategy, which on 0.x already holds the minor. The `effected` catalog also
 uses `"lock-minor"`, which floors each peer's patch.
 `effected` entries additionally carry `source: "workspace"`, telling the
 upgrade CLI to resolve the version from this workspace rather than
@@ -42,12 +44,12 @@ The literal also carries an `overridesFromCatalogs` directive, from which
 the build derives the family pins (`"<name>@^4.0.0": "<catalog version>"`
 for `effect` and every satellite, and `@effect/tsgo` pinned on its own 0.x line), and an
 authored `overrides` block holding only the scoped release-candidate
-`platform-node-shared` pins; see [the derived pins and scoped overrides](../modules/pnpm-plugin-effect.md#the-derived-family-pins-and-the-scoped-platform-node-shared-overrides).
+`platform-node-shared` pins; see [the derived pins and scoped overrides](../modules/pnpm-plugin-effected.md#the-derived-family-pins-and-the-scoped-platform-node-shared-overrides).
 
 A `peerDependencyRules.allowedVersionsFromCatalogs` block sits alongside
 `catalogs`, naming the source catalog (`effect`) and the peer each rule
 targets (`effect`) for [the generated allowed-versions
-table](../modules/pnpm-plugin-effect.md#the-generated-allowed-versions-table).
+rules](../modules/pnpm-plugin-effected.md#the-allowed-versions-rules). No `effect` entry is exact, so it derives no rule.
 
 ## What derives from it
 
@@ -58,12 +60,14 @@ upgrade` (the CLI behind [`catalog:sync` /
 `catalog:check`](../interfaces/catalog-sync-cli.md)) reads and rewrites
 the `effected` catalog's entries in place, resolving each `source:
 "workspace"` package's next-release version. Run over the `effect`
-catalog (`pnpm pnpm:up`, or the registry bot), it moves each entry to its
-latest release, keeping an exact operator exact. It never rewrites
-`overrides`. The published npm package's
-`catalogs` and `hooks` virtual modules — what a consumer's pnpm actually
-installs as `catalog:effect`, `catalog:effected`, and so on — are built
-from this same literal.
+catalog (`pnpm pnpm:up`, or the sync's `upgrade --yes`), it moves each entry
+to its newest release inside the range, keeping the operator, so a tilde
+entry takes a new patch and never a new minor. It never rewrites
+`overrides`. The published package's `catalogs` export and `hooks` are
+built from this same literal, but a consumer never sees the four catalogs:
+the plugin's `updateConfig` folds them into one, `effected`, and
+`catalogs` exports that folded view; see
+[consumers see one catalog](../decisions/consumer-catalog-fold.md).
 
 ## What breaks if an entry is wrong
 

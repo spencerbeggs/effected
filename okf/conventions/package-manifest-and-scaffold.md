@@ -14,10 +14,10 @@ sources:
     resource: ../../packages/semver/turbo.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 5f5187a9e430b8d6
+    body: 2ba3a115a5f33443
 ---
 
 # Every package carries the same manifest shape and file set
@@ -78,7 +78,7 @@ dependencies in topological order via the `^build:dev` task edge, so
 every `dist/dev/pkg` a consumer links to exists before tests run.
 Strictly, only the consumer needs the script — a pure leaf's dependents
 build it via their own `turbo run build:dev` — but every library package
-carries it anyway (all but the `pnpm-plugin-effect` companion), leaves
+carries it anyway (all but the `pnpm-plugin-effected` companion), leaves
 included, because a scaffold copied from any sibling inherits the script
 regardless of what the new package depends on.
 
@@ -88,7 +88,7 @@ Wiring is mostly automatic once the files exist:
 
 - The `packages/*` glob in `pnpm-workspace.yaml` picks up the new package — no manual registration.
 - `catalog:effect` and `catalog:effect:peers` live in `pnpm-workspace.yaml`. `catalog:build`, which supplies `@types/node` and `typescript`, does not — it is injected by a config dependency, so its absence from `pnpm-workspace.yaml` is expected.
-- **The `effected` catalog is not automatic.** A new publishable package must be added to the `effected` catalog literal in `packages/pnpm-plugin-effect/savvy.build.ts` and to that package's `turbo.json` build `inputs` lists (both `build:dev` and `build:prod`). The plugin's catalog test asserts the catalog covers every package whose manifest has `publishConfig.access === "public"`, so skipping this turns a scaffold into a failing test suite.
+- **The `effected` catalog is not automatic.** A new publishable package must be added to the `effected` catalog literal in `packages/pnpm-plugin-effected/savvy.build.ts` and to that package's `turbo.json` build `inputs` lists (both `build:dev` and `build:prod`). The plugin's catalog test asserts the catalog covers every package whose manifest has `publishConfig.access === "public"`, so skipping this turns a scaffold into a failing test suite.
 - The api-extractor model is wired by the `turbo.json` `outputs` entry plus the `savvy.build.ts` `localPaths` (both `../../website/lib/models/X`). The generated model under `website/lib/models/X` is a `build:prod` artifact, not committed.
 
 [^semver-package-json]: `packages/semver/package.json` — a complete pure-tier

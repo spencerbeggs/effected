@@ -48,10 +48,10 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:51:20Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 2cc86c26050119e5
+    body: 46deab0ac8e0fe62
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -509,7 +509,7 @@ both halves.
 ### The worked example
 
 This repository's own policy is `lib/configs/layers.json`.[^layers-json] It
-has five layers, `@effected/pnpm-plugin-effect` as tooling, and the root, the
+has five layers, `@effected/pnpm-plugin-effected` as tooling, and the root, the
 docs site, the scratchpad and the two plugin tracking packages as
 unconstrained. It checks `dependencies`, `peerDependencies` and
 `optionalDependencies`, and it requires four edges that must stay present,
@@ -690,7 +690,7 @@ read with `tar -xzOf`. A `Path` whose separator is not `/` fails
 `PackagePublish.pack` writes its tarball into the package directory
 (`PackagePublish.ts:480`) with no `--pack-destination`, so it would drop a
 `.tgz` into `dist/prod/npm/pkg` that a later pack ships inside itself. It
-also needs `Crypto` and `LocalExec` in `R` for a SHA-256 this check does not
+also needs `Digest` and `LocalExec` in `R` for a SHA-256 this check does not
 use.[^package-publish-ts] `PackageTarball.extract` fetches a *published*
 version over `HttpClient`, not a local tarball.[^package-tarball-ts]
 `PackedInstall` runs `npm pack` or `pnpm pack` through `Run` into an empty

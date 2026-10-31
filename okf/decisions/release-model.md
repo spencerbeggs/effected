@@ -14,10 +14,10 @@ sources:
     resource: ../../packages/github-actions/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-10T23:08:17Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 84353eade286eafd
+    body: 5a84ae5178f18660
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -47,7 +47,7 @@ kit when a catalog advance touches every package, or one package when a
 single patch is the only thing pending.[^root-claude-releases] Both
 shapes are ordinary: a near-whole-kit wave behind a catalog advance and
 a lone patch release are the same mechanism producing different sets.
-A package may release entirely on its own, and `@effected/pnpm-plugin-effect`
+A package may release entirely on its own, and `@effected/pnpm-plugin-effected`
 publishes with the kit rather than apart from it, because its own
 catalog literal is itself one of the artifacts a release keeps
 current — see [the catalog holds next-release versions](catalog-holds-next-release-versions.md).
@@ -83,7 +83,7 @@ a synthetic proof.
 
 The gate was the union of what five consuming applications needed, and
 it closed at **nineteen publishable packages**: eighteen libraries plus
-the `pnpm-plugin-effect` companion.
+the `pnpm-plugin-effected` companion.
 
 | Package | Tier | Why it was on the gate |
 | --- | --- | --- |
@@ -105,7 +105,7 @@ the `pnpm-plugin-effect` companion.
 | `@effected/git` | boundary | typed git introspection over core's `ChildProcessSpawner`; consumers are `workspaces` and `savvy-web/systems` |
 | `@effected/spdx` | pure | vendored SPDX license expressions as pure schemas; `package-json` delegates license validation to it |
 | `@effected/app` | integrated | the composition layer over `xdg` + `config-file` + `store` |
-| `@effected/pnpm-plugin-effect` | companion — no tier | not a library, but on the gate: it hands consumers the `effect` catalogs the kit was built against |
+| `@effected/pnpm-plugin-effected` | companion — no tier | not a library, but on the gate: it hands consumers the one `effected` catalog, Effect family and kit, the kit was built against |
 
 That table is a closed historical record of why each package had to
 exist before the kit could publish at all — it is not a filter on

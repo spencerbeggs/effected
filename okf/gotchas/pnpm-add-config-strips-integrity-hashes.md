@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: e7114462b4f12402
+    body: 0c5120fa497a09d6
 ---
 
 # `pnpm add --config` silently strips integrity hashes from every config dependency
@@ -22,7 +22,7 @@ integrity:
 
 A maintainer runs `pnpm add --config <some-new-package>` to add a new
 pnpm config dependency alongside the existing ones (such as
-`@effected/pnpm-plugin-effect` or `@savvy-web/pnpm-plugin-silk`). The
+`@effected/pnpm-plugin-effected` or `@savvy-web/pnpm-plugin-silk`). The
 command succeeds, the new entry appears in `configDependencies`, and
 nothing in the command's own output signals a problem with anything
 else.

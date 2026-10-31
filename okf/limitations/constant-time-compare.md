@@ -14,10 +14,10 @@ sources:
     last_modified: 2026-10-22T00:00:00Z
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-23T01:39:30Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 9a03d8999091b5ee
+    body: b6220941735d2221
 ---
 
 # ConstantTime.equal is best-effort constant time
@@ -36,6 +36,6 @@ WebCrypto offers no constant-time comparison, and the package must run where `no
 
 ## What a fix would take
 
-A runtime-native constant-time primitive in WebCrypto or in core `Crypto`. Until then, a Node-only caller wanting the stronger guarantee can compare with `node:crypto` itself.
+A runtime-native constant-time primitive in WebCrypto or in core. Core's `Mac.timingSafeEqual` (`effect/crypto`) is not one: it is the same XOR-accumulate loop, returns early on a length mismatch, and documents that JavaScript runtimes do not guarantee constant-time execution, so adopting it would not change this guarantee. Until then, a Node-only caller wanting the stronger guarantee can compare with `node:crypto` itself.
 
 [^owner]: conversation with the repository owner

@@ -21,14 +21,14 @@ sources:
     resource: ../../packages/crypto/package.json
     title: "crypto's manifest: effect as its only peer, no runtime dependencies, one root entrypoint"
   - id: core-crypto
-    resource: ../../.repos/effect/packages/effect/src/Crypto.ts
-    title: "Core Crypto: randomBytes and a one-shot digest, nothing keyed and no X25519, XSalsa20-Poly1305 or BLAKE2b"
+    resource: ../../.repos/effect/packages/effect/src/crypto/index.ts
+    title: "Core effect/crypto: Digest (MD5 and SHA only), SecureRandom, and keyed services including X25519 key agreement and ChaCha20/XChaCha20-Poly1305 AEAD, but no XSalsa20-Poly1305 and no BLAKE2b"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-24T00:28:31Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 340f3a1159317921
+    body: b52d4bd8209778a8
   verified:
     by: human:spencer
     at: 2026-10-25T20:04:29Z
@@ -44,7 +44,7 @@ verified:
 
 GitHub's secrets API accepts a secret only as a libsodium sealed box: X25519 plus XSalsa20-Poly1305 under an ephemeral keypair, with the nonce derived as `blake2b(ephemeral_pk ‖ recipient_pk, 24)`. The kit builds that box in one place, `encryptSecret` in [`@effected/github`](../modules/github.md), on `tweetnacl` for the box and `blakejs` for the nonce.[^github-crypto] The module imports no builtin, so it runs on workerd as well as Node; a malformed public key fails as a typed `Result`; and `github`'s reachability test pins both libraries to `RepositorySecret`, so no other consumer of the package links them.[^github-manifest]
 
-WebCrypto offers X25519 on some runtimes, but no XSalsa20-Poly1305 and no BLAKE2b, and core `Crypto` offers random bytes and a one-shot digest, nothing keyed.[^core-crypto] So no Effect-native backend exists for two of the three primitives, and an "Effect-native home" can only mean wrapping the same two libraries somewhere else, or writing the primitives by hand. This decision settles the sealed-box half of the question that opened when [`crypto`](../modules/crypto.md) was carved out: whether the pair belongs there.[^issue-1043]
+WebCrypto offers X25519 on some runtimes, but no XSalsa20-Poly1305 and no BLAKE2b. Core's `effect/crypto` declares X25519 key agreement and ChaCha20-Poly1305 and XChaCha20-Poly1305, but neither XSalsa20-Poly1305 nor BLAKE2b; its `Digest` offers MD5 and the SHA family only.[^core-crypto] So no Effect-native backend exists for two of the three primitives, and an "Effect-native home" can only mean wrapping the same two libraries somewhere else, or writing the primitives by hand. This decision settles the sealed-box half of the question that opened when [`crypto`](../modules/crypto.md) was carved out: whether the pair belongs there.[^issue-1043]
 
 ## Decision
 
@@ -54,7 +54,7 @@ The deciding evidence is the dependency policy, not taste. [R1](../conventions/d
 
 ## Alternatives rejected
 
-- **A `SealedBox.seal` / `SealedBox.open` wrapper under `@effected/crypto/sealed-box`.** Tree-shaking would keep the root entrypoint clean, but the tier would not survive: R1 and R2 are manifest rules, so the subpath buys bundle hygiene and loses the boundary tier of `crypto` and `webhooks`. It would also be a wrapper with one caller, and `open` has no caller at all. Its two sub-questions fall with it, and would be answered the same way in any home. Drawing the ephemeral key from core `Crypto.randomBytes` would make a secret key depend on a swappable service, the footgun [the backend decision](crypto-backends.md) already names for nonces, and a deterministic key buys no test the current suite lacks: it opens the box with the recipient's secret key, a stronger oracle than a fixed vector. Using WebCrypto X25519 where present would put a runtime branch in a path whose failure mode is a box GitHub accepts and cannot decrypt, for no gain over the audited pure-JavaScript implementation.
+- **A `SealedBox.seal` / `SealedBox.open` wrapper under `@effected/crypto/sealed-box`.** Tree-shaking would keep the root entrypoint clean, but the tier would not survive: R1 and R2 are manifest rules, so the subpath buys bundle hygiene and loses the boundary tier of `crypto` and `webhooks`. It would also be a wrapper with one caller, and `open` has no caller at all. Its two sub-questions fall with it, and would be answered the same way in any home. Drawing the ephemeral key from core `SecureRandom` would make a secret key depend on a swappable service, the footgun [the backend decision](crypto-backends.md) already names for nonces, and a deterministic key buys no test the current suite lacks: it opens the box with the recipient's secret key, a stronger oracle than a fixed vector. Using WebCrypto X25519 where present would put a runtime branch in a path whose failure mode is a box GitHub accepts and cannot decrypt, for no gain over the audited pure-JavaScript implementation.
 - **Pure-Effect ports of the primitives.** A stream cipher, a Poly1305 MAC and BLAKE2b written in house, replacing two small, audited libraries. The failure is silent: a subtle bug produces a box GitHub stores and a workflow later reads as a corrupt secret. The only adequate cross-check is libsodium itself, which would re-enter the kit as a test dependency. Nothing forces this cost, so it is declined.
 - **A new `@effected/sealed-box` package today.** The right shape for a second consumer, premature for one: it would be an integrated package with a single internal caller, and `github` would gain a dependency edge in exchange for moving one internal module.
 
@@ -73,4 +73,4 @@ A second consumer that needs a sealed box, or BLAKE2b, outside `@effected/github
 [^github-crypto]: `../../packages/github/src/internal/crypto.ts`
 [^github-manifest]: `../../packages/github/package.json`
 [^crypto-manifest]: `../../packages/crypto/package.json`
-[^core-crypto]: `../../.repos/effect/packages/effect/src/Crypto.ts`
+[^core-crypto]: `.repos/effect/packages/effect/src/crypto/index.ts`

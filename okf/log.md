@@ -1,5 +1,62 @@
 # Log
 
+## 2026-10-31
+
+* Updated @effected/cli
+* Updated @effected/commands
+* Updated @effected/crypto
+* Updated @effected/images
+* Updated @effected/jwt
+* Updated @effected/mcp
+* Updated @effected/memfs
+* Updated @effected/schemastore-cli
+* Updated @effected/workspaces/testing: the repo-shape checks
+* Updated Add a workspace package
+* Updated Advance the effect pin
+* Added After a workspace package is renamed, the next pnpm run installs before it runs the script
+* Updated Agents never run pnpm:up, pnpm:preview, or pnpm:export
+* Updated An unsatisfiable effect peer installs clean and fails somewhere else
+* Updated App auth, OIDC verify and the token store land in @effected/github
+* Updated Close a catalog membership gap
+* Updated Companion package
+* Updated ConstantTime.equal is best-effort constant time
+* Added Consumers see one catalog, effected, folded by the plugin's hook from split declarations
+* Updated Every package carries the same manifest shape and file set
+* Updated Keep the tree resolved to one effect copy
+* Updated Keyed operations come from WebCrypto, payload digests from core Digest required in R
+* Updated Library tier (pure / boundary / integrated)
+* Updated Publish a snapshot
+* Updated Read publishability from publishConfig.access, never from private
+* Updated Releases are changeset-driven and scope-agnostic
+* Updated Require the consolidated core's contract in R; never re-implement or re-declare it
+* Updated Sync-primitive policy
+* Added The catalog sync moved the effect catalog onto Effect 4.1 under a kit built on 4.0
+* Updated The catalog:sync / catalog:check CLI
+* Updated The config companion is named @effected/plugin, not built yet
+* Added The effect catalog holds the Effect family to one minor with tilde ranges
+* Updated The effect catalog locks every entry to an exact version, held by overrides
+* Updated The effect catalog pins exact versions
+* Updated The effect catalog takes caret ranges on the stable line
+* Updated The effect family is pinned graph-wide by overrides derived from the catalog
+* Updated The effected catalog holds next-release versions, and the publish order follows
+* Updated The effected catalog literal
+* Updated The libsodium sealed box stays in @effected/github until a second consumer appears
+* Updated The plugin's catalog paired 4.0.3 satellites with core effect 4.0.2
+* Updated The sync form is named `*Result`, never `*Sync`
+* Updated There is no Effect v3 catalog and no camelCase catalog alias
+* Updated Vendored Effect is pinned to the lockfile's tag, not main
+* Updated config-file
+* Updated effected
+* Updated github-actions
+* Updated jsonc
+* Updated memfs takes zero @effected/* edges, ever
+* Updated npm
+* Updated pnpm add --config silently strips integrity hashes from every config dependency
+* Updated pnpm peers check is expected to report exactly one occupant
+* Added pnpm-plugin-effected
+* Updated pnpm-plugin-effected is deliberately absent from its own effected catalog
+* Updated workspace
+
 ## 2026-10-29
 
 * Updated @effected/cli depends on @effected/engine as a regular dependency, for distribution

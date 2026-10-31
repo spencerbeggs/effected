@@ -11,10 +11,10 @@ sources:
     resource: ../project.md
 generated:
   by: "claude-code/opus-5"
-  at: 2026-09-15T15:38:20Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 611b1e2c22dca247
+    body: 0aad9e57ade7ce85
 ---
 
 # Companion package
@@ -43,7 +43,7 @@ fourth one.
 
 Two packages are companions.[^project]
 
-`@effected/pnpm-plugin-effect` ships the pnpm catalogs and a pnpmfile —
+`@effected/pnpm-plugin-effected` ships a pnpm catalog and a pnpmfile —
 configuration, not code — and installing it pins a consumer's `effect`
 versions and peer floors, and the kit's own package versions, to the
 values the kit was built and tested against. It is a real published
@@ -71,10 +71,11 @@ would read as internal-only tooling, inviting the (wrong) inference that
 it is not a real shipped package. `companion` instead names the
 package's relationship to the *consumer* — it ships alongside the kit,
 installation of it is optional, and its API is not why you install it —
-none at all (`pnpm-plugin-effect`) or one fronting layer over the library
+none at all (`pnpm-plugin-effected`) or one fronting layer over the library
 it accompanies (`schemastore-cli`'s `AjvValidator`) — which makes that
 wrong reading harder to fall into.
 
-[^project]: `project.md` — the packages table's `pnpm-plugin-effect` row:
-    "companion — no tier | invention; publishes the Effect catalogs the
-    kit pins against."
+[^project]: `project.md` — the packages table's `pnpm-plugin-effected` row:
+    "companion — no tier | invention; the one `effected` catalog (the
+    Effect family on one minor, and the kit) plus the graph-wide Effect
+    pins; renamed from `pnpm-plugin-effect`."

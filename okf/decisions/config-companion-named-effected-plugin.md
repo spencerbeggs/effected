@@ -9,7 +9,7 @@ sources:
   - id: root-package-json
     resource: ../../package.json
   - id: pnpm-plugin-effect-claude
-    resource: ../../packages/pnpm-plugin-effect/CLAUDE.md
+    resource: ../../packages/pnpm-plugin-effected/CLAUDE.md
 generated:
   by: "okfit/claude-code"
   at: 2026-09-13T05:33:04Z

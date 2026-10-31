@@ -16,10 +16,10 @@ sources:
     title: "The effect catalog locks every entry to an exact version, held by overrides"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-11T16:59:56Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: 4926d86954f78dc8
+    body: 200f28ad9f636d3b
 ---
 
 # An unsatisfiable effect peer installs clean and fails somewhere else
@@ -53,10 +53,13 @@ from the `effect:peers` catalog.[^pnpm-workspace] On the releases built
 under [the exact lock](../decisions/effect-catalog-locked-exact.md) (the
 2026-10-10 and 2026-10-11 releases), that peer is the exact version the
 package was built against, `4.0.2`.[^exact-lock] Releases published before
-it on the stable line, and every release since the catalog returned to
+it on the stable line, and the releases built while the catalog used
 carets under [the derived-overrides decision](../decisions/effect-overrides-derived-from-catalog.md),
-advertise the caret `^4.0.0`; release-candidate releases advertise their
-candidate's exact version (`"effect": "4.0.0-rc.115"`).
+advertise the caret `^4.0.0`. Releases since
+[the effect catalog holds one minor](../decisions/effect-catalog-minor-lock.md)
+advertise a tilde floored to the minor they were built on (`~4.<minor>.0`).
+Release-candidate releases advertise their candidate's exact version
+(`"effect": "4.0.0-rc.115"`).
 
 The shape of the peer does not change the trap. Under pnpm's common
 `autoInstallPeers: true` default, a peer the installed `effect` cannot
@@ -75,16 +78,23 @@ exited 0, printed only `Issues with peer dependencies found`, and
 resolved the package as `file:../lib(effect@3.10.0)`: the unsatisfiable
 caret was bound to the v3 copy.
 
-What the exact peer changes is who hits it. Under the caret, any `4.x`
+What the peer's shape changes is who hits it. Under the caret, any `4.x`
 satisfied the peer, so the trap was left to consumers on v3 or a release
-candidate. Under the exact peer, a consumer on any other `4.x` (`4.0.1`, or
+candidate. Under the tilde, a consumer on another `4.x` minor is unsatisfied
+and warned. Under the exact peer, a consumer on any other `4.x` (`4.0.1`, or
 `4.0.3` once it ships) is unsatisfied too, gets the same warning, and is
 bound to its own copy. Whether that then fails at runtime depends on
 whether the consumer's `effect` lacks something the package uses. The warning
 alone does not say, so it cannot be dismissed as noise. A consumer that
-installs `@effected/pnpm-plugin-effect` avoids the mismatch: its catalog
+installs `@effected/pnpm-plugin-effected` avoids the mismatch: its catalog
 and its derived family pins resolve `effect` and every satellite to the
 version the kit peers on.
+
+The opposite case looks clean and is not: a satisfied peer that is too
+wide. The caret `^4.0.0` admitted Effect 4.1, which removed the `Crypto`
+module the 4.0-built kit imports, so the install printed no warning at all
+and the kit died at import with this same missing-export `SyntaxError`
+([the catalog crossed an Effect minor](../incidents/catalog-crossed-effect-minor.md)).
 
 A satellite resolved against a core it was not built for is a related
 failure with a different signal: a missing `effect/dist/...` file at
@@ -105,6 +115,6 @@ declares. A mismatch there is the bug; the erroring module is just where
 it happened to surface.
 
 [^pnpm-workspace]: `pnpm-workspace.yaml` — the `effect:peers` catalog
-    holds the exact version, under `lock`, that every published
+    holds the floored peer range, under `lock-minor`, that every published
     `@effected/*` package's `peerDependencies` resolves from.
 [^exact-lock]: `okf/decisions/effect-catalog-locked-exact.md`

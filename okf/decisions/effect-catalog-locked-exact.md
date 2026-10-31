@@ -18,22 +18,22 @@ sources:
     resource: https://github.com/Effect-TS/effect/issues/8994
     title: "Every @effect/* 4.0.3 satellite published to npm; core effect@4.0.3 did not"
   - id: savvy-build
-    resource: ../../packages/pnpm-plugin-effect/savvy.build.ts
+    resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
     title: "The effect catalog block and the HOLD overrides"
   - id: catalog-test
-    resource: ../../packages/pnpm-plugin-effect/__test__/catalog.test.ts
+    resource: ../../packages/pnpm-plugin-effected/__test__/catalog.test.ts
     title: "The effect catalog describe and the HOLD map in the overrides describe"
   - id: override-probe
     resource: "Probe on pnpm 12.6.0, 2026-10-10: a ^4.0.3 request and a transitive ^4.0.1 request both resolved to 4.0.2 under the overrides; a 4.0.0-rc.118 request was untouched"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-10T23:08:17Z
+  at: 2026-10-31T18:50:20Z
 verified:
   - by: human:spencer
     at: 2026-10-10T23:15:36Z
 integrity:
   generated:
-    body: '892339734e501296'
+    body: e9572bed4d576630
 ---
 
 # The effect catalog locks every entry to an exact version, held by overrides
@@ -46,7 +46,7 @@ A catalog range alone could not have prevented it. A caret admits the broken sat
 
 ## Decision
 
-Every entry in the `effect` catalog of [`pnpm-plugin-effect`](../modules/pnpm-plugin-effect.md) is an exact range with an identical `peer` under `strategy: "lock"`: `effect` and the 26 satellites at `4.0.2`, `@effect/tsgo` at `0.51.1`.[^savvy-build] `lock` emits the peer verbatim, keeping its operator, where `lock-minor` floored the peer patch to `^4.0.0`. So `catalog:effect` and `catalog:effect:peers` both emit the exact version.
+Every entry in the `effect` catalog of [`pnpm-plugin-effect`](../modules/pnpm-plugin-effected.md) is an exact range with an identical `peer` under `strategy: "lock"`: `effect` and the 26 satellites at `4.0.2`, `@effect/tsgo` at `0.51.1`.[^savvy-build] `lock` emits the peer verbatim, keeping its operator, where `lock-minor` floored the peer patch to `^4.0.0`. So `catalog:effect` and `catalog:effect:peers` both emit the exact version.
 
 The plugin also publishes one `overrides` entry per package, `"<name>@^4.0.0": "4.0.2"`, for `effect` and all 26 satellites. The selectors are scoped to the stable line. A `^4.0.3` request and a transitive `^4.0.1` request both resolve to 4.0.2. A `4.0.0-rc.118` request sits outside `^4.0.0` and is untouched, so the existing release-candidate `platform-node-shared` overrides keep working.[^override-probe] The registry `upgrade` CLI rewrites catalogs only, never overrides, so the hold survives the bot's next bump.
 

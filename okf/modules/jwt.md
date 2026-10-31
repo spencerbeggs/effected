@@ -16,8 +16,8 @@ sources:
     author: human:spencerbeggs
     last_modified: 2026-10-09T00:00:00Z
   - id: core-crypto
-    resource: ../../.repos/effect/packages/effect/src/Crypto.ts
-    title: "Core Crypto: random bytes, digests and ids, and no sign, verify or importKey"
+    resource: ../../.repos/effect/packages/effect/src/crypto/index.ts
+    title: "Core effect/crypto: Digest, SecureRandom and keyed services, Signature, Mac and KeyFormat among them"
   - id: eventlog-session-auth
     resource: ../../.repos/effect/packages/effect/src/eventlog/EventLogSessionAuth.ts
     title: "Core's precedent for reading globalThis.crypto.subtle and failing when it is absent"
@@ -25,10 +25,10 @@ sources:
     resource: ../../packages/jwt/savvy.build.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T19:09:54Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: fd9411ca1cd018d6
+    body: d5747cfe7c1fd3c5
 ---
 
 # `@effected/jwt`
@@ -39,11 +39,11 @@ integrity:
 
 Boundary tier, which runs anywhere WebCrypto does: Node, browsers and Cloudflare workerd. There is no `node:` import under `src/`, because the consumer that motivated the package is a Cloudflare Workers GitHub App (savvy-web/silk-app) with no `node:crypto`. Its one runtime dependency is `@effected/crypto`, which is also WebCrypto-only and has no `node:` import, so the package still runs on workerd; it supplies `HttpRedaction`, through which `JwksResolver` keeps a fetch failure's `HttpClientError` cause without the request's credentials. `peerDependencies` is `effect` alone.
 
-The package reads `globalThis.crypto?.subtle` directly. Core `Crypto` (verified against the vendored source on 2026-10-09) offers random bytes, SHA-1/256/384/512 digests, random numbers, UUIDv4/v7 and ULID, and nothing else. Core's own `eventlog/EventLogSessionAuth.ts` reads `globalThis.crypto?.subtle` for Ed25519 sign and verify, and that is the precedent this package follows. When `subtle` is absent the package fails with `JwtError` and `reason: "unsupportedRuntime"`.
+The package reads `globalThis.crypto?.subtle` directly. When this package was built, core's `Crypto` offered random bytes, SHA digests, random numbers, UUIDs and ULID, and nothing keyed. Core's `effect/crypto` now also declares `Signature`, `Mac` and `KeyFormat` (JWK import among them); the package has not moved onto them, and whether it should is open. Core's own `eventlog/EventLogSessionAuth.ts` reads `globalThis.crypto?.subtle` for Ed25519 sign and verify, and that is the precedent this package follows. When `subtle` is absent the package fails with `JwtError` and `reason: "unsupportedRuntime"`.
 
 ## Core-owned list
 
-Nothing here is re-derived from core. Base64url is `effect/encoding/Base64Url` (`encode`, `decode`, `decodeString`) and base64 is `effect/encoding/Base64`. Digests and random bytes are core `Crypto`, and this package needs neither. HTTP is `effect/http`, caching primitives are core `Cache` and `ScopedCache`, and time is `Clock`, never `Date.now()`. Core has no JWS, JWK, sign, verify or importKey surface, so those are this package's job and nothing else is.
+Nothing here is re-derived from core. Base64url is `effect/encoding/Base64Url` (`encode`, `decode`, `decodeString`) and base64 is `effect/encoding/Base64`. Digests and random bytes are core `Digest` and `SecureRandom`, and this package needs neither. HTTP is `effect/http`, caching primitives are core `Cache` and `ScopedCache`, and time is `Clock`, never `Date.now()`. Core has no JWS, JWK, sign, verify or importKey surface, so those are this package's job and nothing else is.
 
 ## Modules
 

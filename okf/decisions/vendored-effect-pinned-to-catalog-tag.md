@@ -8,10 +8,10 @@ tags:
   - compat
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-10T23:08:17Z
+  at: 2026-10-31T18:50:20Z
 integrity:
   generated:
-    body: cfc902643edd3706
+    body: fb143799ad834ade
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -39,4 +39,4 @@ Tracking `main` was rejected. `main` moves ahead of whatever version is actually
 
 The failure mode a tag-tracked submodule avoids is not a normal "stale docs" failure: it is a failure that *looks* conclusive. An agent citing `.repos/effect` at `main` for a surface that does not exist in the installed release has done exactly what the evidence ladder asks (checked source, not memory) and still produced a wrong answer with high confidence — worse than admitting uncertainty. Pinning to the tag means "the source is on disk" and "the source matches what's installed" are the same fact, checkable by comparing the pin to the lockfile's resolved `effect` rather than trusted separately.
 
-The cost is that every move of the lockfile's `effect` requires a corresponding re-pin, folded into the same commit. With exact catalog pins and the HOLD overrides, a plain install no longer moves the lockfile's `effect` on its own, so a move comes with a catalog edit. A return to caret ranges would make the re-pin easy to miss again, because a fresh resolve could then move the lockfile with no catalog edit to prompt it. An omitted re-pin reintroduces the exact drift this decision exists to prevent.
+The cost is that every move of the lockfile's `effect` requires a corresponding re-pin, folded into the same commit. The derived family pins name the catalog's exact version, so a plain install does not move the lockfile's `effect` on its own: a move comes with a catalog edit and a human-run `pnpm pnpm:export`. The catalog-sync bot can move the plugin's catalog to a new patch within the minor with no human edit, so the export that carries that patch into the root `pnpm-workspace.yaml` is where the re-pin is easy to miss. An omitted re-pin reintroduces the exact drift this decision exists to prevent.
