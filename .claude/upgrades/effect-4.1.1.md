@@ -1,6 +1,6 @@
 # Upgrade this project to Effect 4.1.1 and the matching `@effected` release
 
-You are moving this repository to Effect `4.1.1`, from `4.0.7` or earlier. This crosses an Effect minor (`4.1.0`) as well as its patch. You are also moving to the `@effected/*` release built on it (effected PR #TBD), which carries two bodies of work: the Effect 4.1 port of the kit, and the replacement of the catalog plugin `@effected/pnpm-plugin-effect` with `@effected/pnpm-plugin-effected` (effected #1146).
+You are moving this repository to Effect `4.1.1`, from `4.0.7` or earlier. This crosses an Effect minor (`4.1.0`) as well as its patch. You are also moving to the `@effected/*` release built on it (effected PR #1168), which carries two bodies of work: the Effect 4.1 port of the kit, and the replacement of the catalog plugin `@effected/pnpm-plugin-effect` with `@effected/pnpm-plugin-effected` (effected #1146).
 
 It is a breaking round. Effect 4.1.0 removes and reshapes APIs your own code may use: the root `Crypto` module is gone, custom `FileSystem` and `Terminal` implementations need new members, `ChildProcess` arguments are typed differently, and `McpServer` registration changed. The kit follows: several packages now require Effect's `Digest` service where they required `Crypto`. The catalog plugin changes name and serves **one** catalog, `effected`, in place of `effect`, `effect:peers`, `effected` and `effected:peers`. And the Effect family is now held to one Effect minor (`~4.1.1`), not a caret.
 
