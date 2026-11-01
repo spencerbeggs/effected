@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-01T21:43:51Z
 integrity:
   generated:
-    body: d40503a287e54fba
+    body: 95fa9f1d6fefdcdb
 ---
 
 # pnpm peers check is expected to report exactly one occupant
@@ -51,7 +51,7 @@ family pins `pnpm-plugin-effected` publishes hold `effect` and every
 satellite in the graph to one version, so that class no longer warns. See
 [the derived family pins](../modules/pnpm-plugin-effected.md#the-derived-family-pins-and-the-scoped-platform-node-shared-overrides).
 The version-qualified `allowedVersions` table that once suppressed it is
-empty now that no `effect` catalog entry is exact ([the allowed-versions
+empty now that no Effect-family catalog entry is exact ([the allowed-versions
 rules](../modules/pnpm-plugin-effected.md#the-allowed-versions-rules)).
 
 ## The check

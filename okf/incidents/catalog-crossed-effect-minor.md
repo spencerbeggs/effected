@@ -29,10 +29,10 @@ sources:
     title: "The tilde effect catalog"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-01T21:43:51Z
 integrity:
   generated:
-    body: ca7f281cfbc5c019
+    body: 7234e66a32a9e294
 ---
 
 # The catalog sync moved the effect catalog onto Effect 4.1 under a kit built on 4.0
@@ -59,7 +59,7 @@ The caret catalog relied on the advance itself to stop an Effect minor reaching 
 - `__test__/catalog.test.ts` requires the tilde on every 4.x entry and a peer floored to the minor, so a caret coming back fails the suite.
 - The kit's published `effect` peer becomes `~4.1.0`, so a kit built on 4.1 no longer claims to accept a future 4.2.
 
-The old plugin's 0.19.1 to 0.19.3 releases are to be deprecated on npm by the owner. The plugin continues as `@effected/pnpm-plugin-effected`. While the toolchain still loads the 4.0.7-built kit, this repository bridges it with a root `.pnpmfile.cjs` `readPackage` hook: see [one resolved effect copy](../conventions/one-resolved-effect-copy.md).
+The old plugin's 0.19.1 to 0.19.3 releases are to be deprecated on npm by the owner. The plugin continues as `@effected/pnpm-plugin-effected`. While the toolchain still loaded the 4.0.7-built kit, this repository bridged it with a root `.pnpmfile.cjs` `readPackage` hook (see [one resolved effect copy](../conventions/one-resolved-effect-copy.md)). The hook was retired on 2026-11-01 once the toolchain moved onto the 4.1-built kit.
 
 [^sync-script]: `lib/scripts/catalog-sync.ts`
 [^bot-commit-410]: Commit 216a94cb, 2026-10-29.

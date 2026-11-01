@@ -122,7 +122,6 @@ describe("displayWidth against string-width: escapes that are not CSI or OSC", (
 	// Each of these left a printable byte behind before the strip covered them (`ESC c` measured as "c").
 	const ESCAPES: ReadonlyArray<readonly [label: string, text: string]> = [
 		["reset (ESC c)", "\u001bcabc"],
-		["save and restore cursor (ESC 7, ESC 8)", "\u001b7abc\u001b8"],
 		["charset designation (ESC ( B)", "\u001b(Babc"],
 		["keypad mode (ESC =)", "\u001b=abc"],
 		["private CSI (cursor hide)", "\u001b[?25labc"],
@@ -134,6 +133,15 @@ describe("displayWidth against string-width: escapes that are not CSI or OSC", (
 			assert.strictEqual(displayWidth(text), 3);
 		});
 	}
+
+	// ansi-regex 6.5.0 ("never partially strip a sequence") narrowed its final-byte class, and the digits of
+	// DECSC/DECRC fell outside it, so the oracle counts `ESC 7` and `ESC 8` as visible "7" and "8". Both are
+	// cursor save and restore: they draw nothing, and 3 is the width a terminal shows.
+	it("pins the cursor save/restore divergence: ESC 7 and ESC 8 draw nothing, though the oracle counts them", () => {
+		const text = "\u001b7abc\u001b8";
+		assert.strictEqual(displayWidth(text), 3);
+		assert.isAbove(stringWidth(text), 3);
+	});
 
 	it("pins the string divergence: a DCS or APC payload draws nothing, though the oracle counts it", () => {
 		const dcs = "\u001bPq#0\u001b\\abc";

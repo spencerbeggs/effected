@@ -35,7 +35,7 @@ importing it from `src/`.
 
 ## Peers
 
-`@effected/engine` (workspace `^`) and `effect` (`catalog:effect:peers`).
+`@effected/engine` (workspace `^`) and `effect` (`catalog:effected:peers`).
 `Remediation` from `@effected/engine` is the shape `ToolFailure` folds into a
 wire message, and `ProcessGuard` from `@effected/engine/guard` is the whole
 guard half of `McpGuard.run`. The peer floor must include an engine version

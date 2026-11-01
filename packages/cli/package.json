@@ -41,8 +41,8 @@
 		"@effected/github-commands": "workspace:^"
 	},
 	"devDependencies": {
-		"@effect/platform-node": "catalog:effect",
-		"@effect/vitest": "catalog:effect",
+		"@effect/platform-node": "catalog:effected",
+		"@effect/vitest": "catalog:effected",
 		"@effected/config-file": "workspace:*",
 		"@effected/env": "workspace:*",
 		"@effected/glob": "workspace:*",
@@ -56,7 +56,7 @@
 		"@savvy-web/bundler": "^2.7.1",
 		"@types/node": "catalog:build",
 		"@types/react": "catalog:build",
-		"effect": "catalog:effect",
+		"effect": "catalog:effected",
 		"ink": "catalog:silk",
 		"react": "catalog:build",
 		"string-width": "^8.3.0",
@@ -68,7 +68,7 @@
 		"@effected/glob": "workspace:^",
 		"@effected/walker": "workspace:^",
 		"@types/react": "catalog:silk:peers",
-		"effect": "catalog:effect:peers",
+		"effect": "catalog:effected:peers",
 		"ink": "catalog:silk:peers",
 		"react": "catalog:silk:peers"
 	},

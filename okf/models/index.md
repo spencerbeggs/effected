@@ -2,7 +2,7 @@
 
 * [The committed SPDX license catalog](spdx-license-data.md) - The vendored SPDX license-list document that seeds @effected/spdx's generated metadata table, and what breaks when it falls out of sync with the identifier devDependency.
 * [The committed schema.org vocabulary document](schema-org-vocabulary-data.md) - The vendored schema.org -current release document that seeds @effected/schema-org's interned vocabulary table, and the invariants a regeneration must not let slip.
-* [The effected catalog literal](effected-catalog-literal.md) - The inline PnpmConfigPlugin call in savvy.build.ts declaring the catalogs object that every kit catalog and the derived allowed-versions table is generated from.
+* [The effected catalog literal](effected-catalog-literal.md) - The inline PnpmConfigPlugin call in savvy.build.ts declaring the one effected catalog, holding the Effect family and the kit, that the catalogs, the derived family pins and the allowed-versions table are generated from.
 * [The runtimes bundled offline defaults](runtimes-bundled-defaults.md) - Three generated TypeScript files holding a filtered, feed-ordered snapshot of Node, Bun and Deno release data, used as the offline and auto-strategy fallback.
 * [construct-annotations.json](construct-annotations.md) - The intent-keyword sidecar the construct-index generator joins against each package's api-extractor doc model to produce one generated table per kit package.
 * [tsconfig-json enum mapping tables](tsconfig-enum-mappings.md) - The hand-transcribed string-to-numeric-value tables TsEnumCodec derives every TypeScript enum-family conversion from.

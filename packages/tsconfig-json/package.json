@@ -32,21 +32,21 @@
 		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {
-		"@effect/vitest": "catalog:effect",
+		"@effect/vitest": "catalog:effected",
 		"@effected/glob": "workspace:*",
 		"@effected/jsonc": "workspace:*",
 		"@effected/memfs": "workspace:*",
 		"@effected/walker": "workspace:*",
 		"@savvy-web/bundler": "^2.7.1",
 		"@types/node": "catalog:build",
-		"effect": "catalog:effect",
+		"effect": "catalog:effected",
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
 		"@effected/glob": "workspace:^",
 		"@effected/jsonc": "workspace:^",
 		"@effected/walker": "workspace:^",
-		"effect": "catalog:effect:peers"
+		"effect": "catalog:effected:peers"
 	},
 	"engines": {
 		"node": ">=24.11.0"

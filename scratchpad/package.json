@@ -47,10 +47,10 @@
 		"@effected/yaml": "workspace:*"
 	},
 	"devDependencies": {
-		"@effect/platform-node": "catalog:effect",
-		"@effect/vitest": "catalog:effect",
+		"@effect/platform-node": "catalog:effected",
+		"@effect/vitest": "catalog:effected",
 		"@types/node": "catalog:build",
-		"effect": "catalog:effect",
+		"effect": "catalog:effected",
 		"tsx": "^4.23.12",
 		"typescript": "catalog:build"
 	}

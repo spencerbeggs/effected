@@ -12,13 +12,26 @@ await build({
 			name: "@effected/pnpm-plugin-effected",
 			peerDependencyRules: {
 				allowedVersionsFromCatalogs: {
-					catalog: "effect", // which catalog supplies the satellites
+					catalog: "effected", // which catalog supplies the satellites
 					peer: "effect", // the peer each rule targets
 					prefix: null,
 				},
 			},
 			catalogs: {
-				effect: {
+				/**
+				 * The one catalog: the Effect family (`effect`, `@effect/*`) followed by the kit's own
+				 * version surface, consumed across the ecosystem as `catalog:effected` and
+				 * `catalog:effected:peers`. Only the Effect family is pinned graph-wide: the
+				 * `overridesFromCatalogs` `include` below selects it by pattern, so a kit package added
+				 * here gains no override.
+				 *
+				 * `@effected/pnpm-plugin-effected` is deliberately ABSENT and must stay absent. It is
+				 * the package this catalog ships inside: catalogue it, and every catalog rewrite
+				 * bumps the plugin, which invalidates the catalog, which writes another changeset —
+				 * an infinite release loop. The omission is the termination condition, not an
+				 * oversight.
+				 */
+				effected: {
 					packages: {
 						"@effect/ai-anthropic": {
 							range: "~4.1.1",
@@ -160,20 +173,6 @@ await build({
 							peer: "~4.1.0",
 							strategy: "lock-minor",
 						},
-					},
-				},
-				/**
-				 * The kit's own version surface, consumed across the ecosystem as
-				 * `catalog:effected` and `catalog:effected:peers`.
-				 *
-				 * `@effected/pnpm-plugin-effected` is deliberately ABSENT and must stay absent. It is
-				 * the package this catalog ships inside: catalogue it, and every catalog rewrite
-				 * bumps the plugin, which invalidates the catalog, which writes another changeset —
-				 * an infinite release loop. The omission is the termination condition, not an
-				 * oversight.
-				 */
-				effected: {
-					packages: {
 						"@effected/app": {
 							range: "^0.30.0",
 							peer: "^0.30.0",
@@ -436,7 +435,7 @@ await build({
 				},
 			},
 			minimumReleaseAgeExclude: ["effect", "@effect/*", "@effect/tsgo-*"],
-			// Every member of the effect catalog is pinned to its exact catalog version across the
+			// Every Effect-family member of the catalog is pinned to its exact catalog version across the
 			// whole consumer graph, scoped to the 4.x line: `"<name>@^4.0.0": "<version>"` for
 			// effect and each satellite, derived from the catalog literal above so the pins move
 			// with it. A catalog range alone cannot promise that: a caret admits a satellite the
@@ -446,7 +445,9 @@ await build({
 			// on satellites directly). The line scope leaves a tool still built on a release
 			// candidate alone: 4.0.0-rc.118 sits outside ^4.0.0. @effect/tsgo versions on its
 			// own 0.x line and gets its own line-scoped pin, so one tsgo serves the graph too.
-			overridesFromCatalogs: { catalog: "effect" },
+			// The `include` patterns select the family; the kit's `@effected/*` entries match neither
+			// (`*` does not cross the scope `/`), so they are never pinned.
+			overridesFromCatalogs: { catalog: "effected", include: ["effect", "@effect/*"] },
 			// Tools still built on an Effect release candidate depend on that candidate's
 			// @effect/platform-node, which takes @effect/platform-node-shared with a caret.
 			// A fresh resolve pairs it with the newest shared package, built against a

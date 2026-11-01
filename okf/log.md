@@ -1,5 +1,24 @@
 # Log
 
+## 2026-11-01
+
+* Updated Advance the effect pin
+* Updated An unsatisfiable effect peer installs clean and fails somewhere else
+* Updated Consumer-facing text states current Effect behaviour, never versions
+* Updated Consumers see one catalog, effected, folded by the plugin's hook from split declarations
+* Updated Every package carries the same manifest shape and file set
+* Updated Keep the tree resolved to one effect copy
+* Updated The catalog sync moved the effect catalog onto Effect 4.1 under a kit built on 4.0
+* Updated The catalog:sync / catalog:check CLI
+* Updated The effected catalog literal
+* Added The plugin declares one catalog, effected, and pins only the Effect family by include pattern
+* Updated effected
+* Updated pnpm peers check is expected to report exactly one occupant
+* Updated pnpm-plugin-effected
+* Added pnpm:export keeps a catalog the plugin no longer declares
+* Updated scratchpad
+* Updated workspace
+
 ## 2026-10-31
 
 * Updated @effected/cli

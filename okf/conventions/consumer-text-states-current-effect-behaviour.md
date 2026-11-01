@@ -12,10 +12,10 @@ sources:
     resource: ../../plugin/skills
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-10T23:08:17Z
+  at: 2026-11-01T21:43:51Z
 integrity:
   generated:
-    body: 1e6c5251264a565b
+    body: b20b5916c2d593be
 ---
 
 # Consumer-facing text states current Effect behaviour, never versions
@@ -40,8 +40,8 @@ What to write:
 
 A version may appear only when the text is about versioning itself. Examples
 are an `@effected/*` package's own semver, a package-manager major in a support
-policy, and a `catalog:` range or pinned-version example such as the exact
-`4.0.2` the `effect` catalog pins. Even there, never name a prerelease
+policy, and a `catalog:` range or pinned-version example such as the
+`~4.<minor>.<patch>` tilde the `effected` catalog holds. Even there, never name a prerelease
 number as the Effect version the text describes. A version inside example data whose format is the subject also
 counts, such as a lockfile specifier `4.0.0-rc.109(effect@4.0.0-rc.109)` in a
 parser's TSDoc. Plain `//` comments in `packages/*/src` do not ship, but they

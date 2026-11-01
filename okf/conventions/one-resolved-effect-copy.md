@@ -9,18 +9,18 @@ tags:
   - compat
 sources:
   - id: pnpmfile
-    resource: ../../.pnpmfile.cjs
-    title: "The readPackage bridge for the Effect 4.1 advance"
+    resource: "git history: .pnpmfile.cjs, added on feat/effect-4.1.1 (#1168) and removed 2026-11-01"
+    title: "The readPackage bridge for the Effect 4.1 advance (retired)"
   - id: okfit-split
     resource: "Observation 2026-10-31, feat/effect-4.1.1: node_modules/.bin/okfit (okfit 0.15.1) binds effect@4.1.1 for @okfit/* and 4.0.7 for its @effected/* dependencies, and crashes on every command"
   - id: satellite
     resource: "Observation 2026-10-31, feat/effect-4.1.1: pnpm install of the toolchain-wide hook resolved @effect/platform-node-shared@4.1.1(effect@4.0.7) under the bridged @effect/platform-node@4.0.7; every prepare build:dev failed with ERR_MODULE_NOT_FOUND for effect/dist/process/CommandLine.js"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-01T21:43:51Z
 integrity:
   generated:
-    body: 58e163ed40688458
+    body: 2dd6888d7d009101
 ---
 
 # Keep the tree resolved to one effect copy
@@ -39,7 +39,7 @@ A patch advance strands nothing a tilde or caret peer covers; the risk left is a
 
 - **Runtime-compatible:** bridge old→new with a `pnpm-workspace.yaml` `overrides` block, one entry per stranded package (`effect`, and any platform packages such as `@effect/platform-node` / `@effect/sql-sqlite-node` also stranded at the old spec), rewriting the old spec to the new one. This collapses the tree back to one copy immediately. The plugin ships a scoped example: its `platform-node-shared` overrides, one per release-candidate parent (see [the scoped overrides](../modules/pnpm-plugin-effected.md#the-derived-family-pins-and-the-scoped-platform-node-shared-overrides)).
 - **Runtime-incompatible, toolchain on its own `effect`:** an `overrides` block would run old-pin-built code against the new `effect` and crash at module initialization. Bridge instead with a `packageExtensions` block that pins the **toolchain's own peers** (the `@effected/*` packages the toolchain takes as peers, for example via `@savvy-web/tsdown-plugins`) to regular dependencies on the toolchain's still-old `effect`, so the toolchain runs a homogeneous old-pin world while it compiles new-pin source it never executes. Accept two `effect` copies in the lockfile for this window.
-- **Runtime-incompatible, published kit at the workspace's own versions:** when the published closure's versions equal the workspace packages' unbumped versions, a `packageExtensions` key would select the workspace's own packages too. Bridge with a root `.pnpmfile.cjs` `readPackage` hook instead, keyed on `private !== true`, since every source manifest here is `private: true`.[^pnpmfile] The hook bridges three sets of packages: every published `@effected/*` package and anything that depends on or peers on one; the toolchain families themselves (`@savvy-web/*`, `@okfit/*`, `@tsdoctor/*`, `@vitest-agent/*`, `@pluginfinity/*`, `rolldown-pnpm-config`, `rspress-plugin-api-extractor`); and every `effect`-line package at exactly `<old>`. For each, it turns `effect` and every `@effect/*` on the 4.x line (peer or dependency) into a regular dependency on `npm:<name>@<old>`. The npm alias slips past the version-selector override `effect@^4.0.0: <new>`; a plain `<old>` dependency does not, because the override rewrites it. The Effect 4.1 advance used this shape with `<old>` = 4.0.7. Remove it once the toolchain republishes on an `@effected` release built on the new minor; then no lockfile `packages:` entry names the old `effect`.
+- **Runtime-incompatible, published kit at the workspace's own versions:** when the published closure's versions equal the workspace packages' unbumped versions, a `packageExtensions` key would select the workspace's own packages too. Bridge with a root `.pnpmfile.cjs` `readPackage` hook instead, keyed on `private !== true`, since every source manifest here is `private: true`.[^pnpmfile] The hook bridges three sets of packages: every published `@effected/*` package and anything that depends on or peers on one; the toolchain families themselves (`@savvy-web/*`, `@okfit/*`, `@tsdoctor/*`, `@vitest-agent/*`, `@pluginfinity/*`, `rolldown-pnpm-config`, `rspress-plugin-api-extractor`); and every `effect`-line package at exactly `<old>`. For each, it turns `effect` and every `@effect/*` on the 4.x line (peer or dependency) into a regular dependency on `npm:<name>@<old>`. The npm alias slips past the version-selector override `effect@^4.0.0: <new>`; a plain `<old>` dependency does not, because the override rewrites it. The Effect 4.1 advance used this shape with `<old>` = 4.0.7, and it was removed on 2026-11-01. Remove it once the toolchain republishes on an `@effected` release built on the new minor; then no lockfile `packages:` entry names the old `effect`. **A bridge left in place past that point breaks things:** it pins the newly published kit (whose peer is now `~4.<new>.0`) onto the old `effect`. The kit then fails at import (4.1's `effect/crypto` `Digest`, for example), and every `prepare` build fails.
 
 Each of the three sets closes a crash the narrower hook hit:
 
@@ -52,6 +52,6 @@ Never let a `packageExtensions` key match a workspace package's own current vers
 
 Full re-pin mechanics are in [advance the effect pin](../runbooks/advance-the-effect-pin.md).
 
-[^pnpmfile]: `.pnpmfile.cjs` at the repository root.
+[^pnpmfile]: `.pnpmfile.cjs` at the repository root, while it existed.
 [^okfit-split]: Observed 2026-10-31 on feat/effect-4.1.1.
 [^satellite]: Observed 2026-10-31 on feat/effect-4.1.1, the first install of the toolchain-wide hook.

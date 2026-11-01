@@ -11,22 +11,22 @@ tags:
 sources:
   - id: savvy-build
     resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
-    title: "The declared effect and effected catalogs, overridesFromCatalogs and the authored overrides"
+    title: "The one declared effected catalog, overridesFromCatalogs and the authored overrides"
   - id: pnpmfile
     resource: ../../packages/pnpm-plugin-effected/src/pnpmfile.ts
-    title: "The updateConfig wrapper that folds the declared catalogs into effected"
+    title: "The updateConfig wrapper that hides effected:peers"
   - id: index
     resource: ../../packages/pnpm-plugin-effected/src/index.ts
-    title: "The exported catalogs map, the same folded view"
+    title: "The exported catalogs map, the same one-catalog view"
   - id: catalog-test
     resource: ../../packages/pnpm-plugin-effected/__test__/catalog.test.ts
-    title: "Membership, the minor-locked effect entries, the derived pins and the one-catalog fold"
+    title: "Membership, the minor-locked Effect-family entries, the derived pins and the one consumer catalog"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-01T21:43:51Z
 integrity:
   generated:
-    body: 292215f7e8bc4ab2
+    body: e0e3c125211be36e
 ---
 
 # pnpm-plugin-effected
@@ -37,7 +37,7 @@ integrity:
 
 Nothing can depend on this package, since there is nothing to import and nothing to call, so tier does not apply. It publishes with the kit on the release gate like every other package. **Installing it is optional for the consumer**, who can pin Effect by hand, but shipping it is not optional for the release.
 
-It replaces `@effected/pnpm-plugin-effect` and continues that package's version line; the old name gets no further release. Why one catalog, and why the rename came with it: [consumers see one catalog](../decisions/consumer-catalog-fold.md).
+It replaces `@effected/pnpm-plugin-effect` and continues that package's version line; the old name gets no further release. Why one catalog, and why the rename came with it: [consumers see one catalog](../decisions/consumer-catalog-fold.md). Why it is also declared as one: [the one declared effected catalog](../decisions/one-declared-effected-catalog.md).
 
 ## What a consumer sees
 
@@ -48,28 +48,28 @@ One catalog, `effected`, used in `dependencies`, `devDependencies` and `peerDepe
 
 A consumer peer written as `catalog:effected` publishes the catalog's install range, patch included (`~4.<minor>.<patch>`, `^0.<minor>.<patch>`), not a floored one, because `pnpm pack` runs no `readPackage` hook.
 
-`src/pnpmfile.ts` produces this view. It runs the generated `updateConfig`, then folds the declared `effect` catalog into `effected` and deletes `effect`, `effect:peers` and `effected:peers` from what pnpm sees. A consumer's own `effected` entries win.[^pnpmfile] `src/index.ts` exports the same folded view as `catalogs`.[^index] `__test__/catalog.test.ts` asserts that the built hook exposes exactly one catalog and that it carries both the Effect family and the kit.[^catalog-test]
+`src/pnpmfile.ts` produces this view. It runs the generated `updateConfig`, whose merge lets a consumer's own `effected` entries win, then deletes `effected:peers` from what pnpm sees.[^pnpmfile] `src/index.ts` exports the declared `effected` catalog as `catalogs`.[^index] `__test__/catalog.test.ts` asserts that the built hook exposes exactly one catalog and that it carries both the Effect family and the kit.[^catalog-test]
 
 ## What it declares
 
-`savvy.build.ts` still **declares** four catalogs through `rolldown-pnpm-config`'s `PnpmConfigPlugin`: `effect` and `effected`, each with a `:peers` twin.[^savvy-build] Each entry carries a `range`, a `peer` and a `strategy`, and the literal stays inline at the call site, because the `upgrade` CLI finds it by statically walking that argument. See [the effected catalog literal](../models/effected-catalog-literal.md) for its shape.
+`savvy.build.ts` **declares** one catalog through `rolldown-pnpm-config`'s `PnpmConfigPlugin`, `effected`, and its entries' `peer` fields emit an `effected:peers` twin.[^savvy-build] Each entry carries a `range`, a `peer` and a `strategy`, and the literal stays inline at the call site, because the `upgrade` CLI finds it by statically walking that argument. See [the effected catalog literal](../models/effected-catalog-literal.md) for its shape.
 
-The declarations stay split because `overridesFromCatalogs` and the `upgrade` CLI both work per catalog. The Effect family is pinned graph-wide and the kit is not, and the directive's `exclude` takes exact names only, so one merged declaration would mean listing every kit package there.
+The catalog holds two halves, and the test reads each one by name prefix.[^catalog-test] The Effect family is pinned graph-wide and the kit is not; the override directive's `include` patterns draw that line inside the one catalog (see [the derived family pins](#the-derived-family-pins-and-the-scoped-platform-node-shared-overrides)).
 
-- **`effect`**: `effect` and its satellites at `range: "~4.<minor>.<patch>"`, `peer: "~4.<minor>.0"`, `strategy: "lock-minor"`; `@effect/tsgo` at a `^0.<minor>.0` caret on the same strategy. `rolldown-pnpm-config` keeps each entry's operator when it derives the peer. `__test__/catalog.test.ts` requires the tilde on every 4.x entry, a peer floored to the minor, and one version across the family.[^catalog-test]
-- **`effected`**: every publishable kit package but one, object form, `strategy: "lock-minor"`, `source: "workspace"`, holding next-release versions. `@effected/pnpm-plugin-effected` is deliberately absent: see [the plugin is never in its own catalog](../decisions/plugin-never-in-its-own-catalog.md). Membership is `publishConfig.access === "public"`, never `private === false`: see [the publishability-signal convention](../conventions/publishability-signal.md). What next-release versions imply: [the effected catalog holds next-release versions](../decisions/catalog-holds-next-release-versions.md). Keeping it current is automated: [the catalog:sync / catalog:check CLI](../interfaces/catalog-sync-cli.md).
+- **The Effect family**: `effect` and its satellites at `range: "~4.<minor>.<patch>"`, `peer: "~4.<minor>.0"`, `strategy: "lock-minor"`; `@effect/tsgo` at a `^0.<minor>.0` caret on the same strategy. `rolldown-pnpm-config` keeps each entry's operator when it derives the peer. `__test__/catalog.test.ts` requires the tilde on every 4.x entry, a peer floored to the minor, and one version across the family.[^catalog-test]
+- **The kit**: every publishable kit package but one, object form, `strategy: "lock-minor"`, `source: "workspace"`, holding next-release versions. `@effected/pnpm-plugin-effected` is deliberately absent: see [the plugin is never in its own catalog](../decisions/plugin-never-in-its-own-catalog.md). Membership is `publishConfig.access === "public"`, never `private === false`: see [the publishability-signal convention](../conventions/publishability-signal.md). What next-release versions imply: [the effected catalog holds next-release versions](../decisions/catalog-holds-next-release-versions.md). Keeping it current is automated: [the catalog:sync / catalog:check CLI](../interfaces/catalog-sync-cli.md).
 
-The `effect` catalog carries no entries for packages Effect v4 absorbed into core (`@effect/platform`, `@effect/cluster`, `@effect/rpc`, `@effect/sql`, `@effect/workflow`, `@effect/experimental`). That absence is the removal signal: a lookup that finds nothing means the package no longer exists on the v4 line. The suffixed packages that still ship (`@effect/platform-node`, the `@effect/sql-*` drivers) stay. The retired v3 interop pair must not come back: [effect3 catalogs are retired](../decisions/effect3-catalogs-retired.md).
+The catalog carries no entries for packages Effect v4 absorbed into core (`@effect/platform`, `@effect/cluster`, `@effect/rpc`, `@effect/sql`, `@effect/workflow`, `@effect/experimental`). That absence is the removal signal: a lookup that finds nothing means the package no longer exists on the v4 line. The suffixed packages that still ship (`@effect/platform-node`, the `@effect/sql-*` drivers) stay. The retired v3 interop pair must not come back: [effect3 catalogs are retired](../decisions/effect3-catalogs-retired.md).
 
 ## How this repository consumes it
 
-This repository does not install the plugin as a config dependency. `pnpm pnpm:export` writes the declared catalogs into the root `pnpm-workspace.yaml` directly, so the hook's fold never runs here. The workspace's manifests therefore keep `catalog:effect` (dev) and `catalog:effect:peers` (peers), and the kit's published `effect` peer is the floored `~4.<minor>.0`. The `effected` pair is exported too, but internal edges stay `workspace:*`.
+This repository does not install the plugin as a config dependency. `pnpm pnpm:export` writes the declared `effected` and `effected:peers` catalogs into the root `pnpm-workspace.yaml` directly, so the hook never runs here and the `:peers` twin stays visible. The workspace's manifests write the same catalog names a consumer does: `catalog:effected` for a dev or runtime dependency and `catalog:effected:peers` for a peer, so the kit's published `effect` peer is the floored `~4.<minor>.0`. Internal `@effected/*` edges stay `workspace:*` or `workspace:^`, never the catalog. The export never deletes a catalog the plugin stopped declaring: [the export keeps removed catalogs](../gotchas/export-keeps-removed-catalogs.md).
 
 ## The derived family pins and the scoped platform-node-shared overrides
 
 The plugin publishes a pnpm `overrides` block, which a consumer's install applies. A consumer's own value for the same selector wins.
 
-Most of it is derived, not authored. The `overridesFromCatalogs: { catalog: "effect" }` directive makes `rolldown-pnpm-config` emit one `"<name>@^4.0.0": "<catalog version>"` entry for `effect` and every satellite, and a `"@effect/tsgo@^0.<minor>.0"` entry for tsgo on its own line, at build time. The pins move with the catalog literal and survive the registry `upgrade` CLI, which rewrites catalogs only. They reach transitive satellite requests that no catalog governs and hold the whole consumer graph on one `effect`. Each selector is scoped to `^4.0.0`, so a release candidate's own `effect` is untouched. Why this shape and what it costs: [the derived-overrides decision](../decisions/effect-overrides-derived-from-catalog.md).
+Most of it is derived, not authored. The `overridesFromCatalogs: { catalog: "effected", include: ["effect", "@effect/*"] }` directive makes `rolldown-pnpm-config` emit one `"<name>@^4.0.0": "<catalog version>"` entry for `effect` and every satellite, and a `"@effect/tsgo@^0.<minor>.0"` entry for tsgo on its own line, at build time. The `include` patterns select the family by glob; `*` does not cross the scope `/`, so no `@effected/*` entry matches and the kit is never pinned, which `__test__/catalog.test.ts` asserts.[^catalog-test] The pins move with the catalog literal and survive the registry `upgrade` CLI, which rewrites catalogs only. They reach transitive satellite requests that no catalog governs and hold the whole consumer graph on one `effect`. Each selector is scoped to `^4.0.0`, so a release candidate's own `effect` is untouched. Why this shape and what it costs: [the derived-overrides decision](../decisions/effect-overrides-derived-from-catalog.md).
 
 The line scope also means the pins rewrite a published kit package built on an older 4.x minor onto the catalog version. When the new minor removed something that closure imports, it dies at import: that is how [the catalog crossed an Effect minor](../incidents/catalog-crossed-effect-minor.md).
 
@@ -82,7 +82,7 @@ Each pins the shared package to its parent's own version. A tool built on a rele
 
 ## The allowed-versions rules
 
-`peerDependencyRules.allowedVersionsFromCatalogs` asks `rolldown-pnpm-config export` to derive version-qualified `"<satellite>@<pin>>effect"` rules into the root `pnpm-workspace.yaml`. It derives a rule only for an entry whose `range` is an exact version, and no `effect` entry is exact, so the exported `peerDependencyRules` is empty. The directive stays declared so that an exact entry would get its rule again. The table only ever suppressed reporting; it never changed resolution.
+`peerDependencyRules.allowedVersionsFromCatalogs` asks `rolldown-pnpm-config export` to derive version-qualified `"<satellite>@<pin>>effect"` rules into the root `pnpm-workspace.yaml`. It derives a rule only for an entry whose `range` is an exact version, and no catalog entry is exact, so the exported `peerDependencyRules` is empty. It names the `effected` catalog. The directive stays declared so that an exact entry would get its rule again. The table only ever suppressed reporting; it never changed resolution.
 
 ## Maintainer workflows
 

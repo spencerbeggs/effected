@@ -14,38 +14,30 @@ export interface PnpmConfig {
 }
 
 /**
- * The catalogs `savvy.build.ts` declares, folded into the one a consumer sees.
- * The declarations stay split because `overridesFromCatalogs` and the `upgrade`
- * CLI work per catalog: the Effect family is pinned graph-wide, the kit is not.
- * The `:peers` catalogs serve this repo's own published peer floors, through the
- * root `pnpm-workspace.yaml` that `pnpm:export` writes; a consumer's packed peer
- * takes the `effected` range, since `pnpm pack` runs no hook.
+ * `savvy.build.ts` declares one catalog, `effected`, and its `:peers` twin. The
+ * twin serves this repo's own published peer floors, through the root
+ * `pnpm-workspace.yaml` that `pnpm:export` writes; a consumer never needs it,
+ * since its packed peer takes the `effected` range (`pnpm pack` runs no hook),
+ * so the hook hides it and a consumer sees exactly one catalog.
  */
-const FOLDED = "effected";
-const ABSORBED = ["effect"] as const;
-const HIDDEN = ["effect:peers", "effected:peers"] as const;
+const HIDDEN = ["effected:peers"] as const;
 
-function fold(config: PnpmConfig): PnpmConfig {
+function hide(config: PnpmConfig): PnpmConfig {
 	const catalogs = config.catalogs;
 	if (catalogs === undefined) return config;
 	const out: CatalogMap = { ...catalogs };
-	const merged: Record<string, string> = {};
-	for (const name of ABSORBED) Object.assign(merged, out[name]);
-	// The consumer's own `effected` entries win, as they do in the generated merge.
-	Object.assign(merged, out[FOLDED]);
-	out[FOLDED] = merged;
-	for (const name of [...ABSORBED, ...HIDDEN]) delete out[name];
+	for (const name of HIDDEN) delete out[name];
 	return { ...config, catalogs: out };
 }
 
 /**
- * The plugin's pnpm hooks: the generated `updateConfig`, then the catalog fold.
+ * The plugin's pnpm hooks: the generated `updateConfig`, then hiding the peers catalog.
  *
  * @public
  */
 export const hooks = {
 	updateConfig(config: PnpmConfig): PnpmConfig | Promise<PnpmConfig> {
 		const result = generated.updateConfig(config as never) as unknown as PnpmConfig | Promise<PnpmConfig>;
-		return result instanceof Promise ? result.then(fold) : fold(result);
+		return result instanceof Promise ? result.then(hide) : hide(result);
 	},
 };

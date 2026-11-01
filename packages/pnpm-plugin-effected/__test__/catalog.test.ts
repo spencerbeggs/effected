@@ -6,6 +6,25 @@ import { assert, describe, it } from "vitest";
 const PACKAGE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const PACKAGES_DIR = fileURLToPath(new URL("../../", import.meta.url));
 const PLUGIN = "@effected/pnpm-plugin-effected";
+const KIT = "@effected/";
+const FAMILY = "@effect/";
+const SOURCE = () => readFileSync(join(PACKAGE_ROOT, "savvy.build.ts"), "utf8");
+
+/** The one declared catalog's entries whose name starts with `prefix`. */
+function entriesWith(prefix: string): Map<string, string> {
+	return new Map([...readCatalogEntries("effected")].filter(([name]) => name.startsWith(prefix)));
+}
+
+/**
+ * The `effect` entry is an unquoted key, which the shared reader skips, so it is
+ * read here by name, inside the `effected` catalog.
+ */
+function effectEntry(): string {
+	const source = SOURCE();
+	const match = /\n\t+effect: (\{[^}]*\})/.exec(source.slice(source.indexOf("effected: {")));
+	assert.isNotNull(match, "the effected catalog declares no `effect` entry");
+	return match?.[1] ?? "";
+}
 
 /**
  * The catalog is declared as an inline object literal inside the
@@ -94,9 +113,9 @@ function publishablePackages(): string[] {
 		.map((manifest) => manifest.name);
 }
 
-describe("effected catalog", () => {
+describe("effected catalog: the kit", () => {
 	it("covers every publishable package except the plugin itself", () => {
-		const listed = [...readCatalogEntries("effected").keys()].sort();
+		const listed = [...entriesWith(KIT).keys()].sort();
 		const expected = publishablePackages()
 			.filter((name) => name !== PLUGIN)
 			.sort();
@@ -105,7 +124,7 @@ describe("effected catalog", () => {
 	});
 
 	it("uses the object form so a peers catalog is emitted", () => {
-		for (const [name, spec] of readCatalogEntries("effected")) {
+		for (const [name, spec] of entriesWith(KIT)) {
 			assert.match(spec, /\brange:/, `${name} must declare a range`);
 			assert.match(spec, /\bpeer:/, `${name} must declare a peer range or no peers catalog is emitted`);
 			// The VALUES, not just the keys: `lock-minor` is what floors the patch while a
@@ -118,6 +137,12 @@ describe("effected catalog", () => {
 		}
 	});
 
+	it("declares nothing but the Effect family and the kit", () => {
+		for (const name of readCatalogEntries("effected").keys()) {
+			assert.isTrue(name.startsWith(KIT) || name.startsWith(FAMILY), `${name} is neither kit nor Effect family`);
+		}
+	});
+
 	it("finds the packages it filters, so an empty catalog cannot pass silently", () => {
 		const publishable = publishablePackages();
 		assert.isAbove(publishable.length, 1, "publishConfig.access filtering yielded nothing");
@@ -125,19 +150,8 @@ describe("effected catalog", () => {
 	});
 });
 
-describe("effect catalog", () => {
-	/**
-	 * The `effect` catalog's own entry is an unquoted key, which the shared
-	 * reader skips, so it is read here by name.
-	 */
-	function effectEntry(): string {
-		const source = readFileSync(join(PACKAGE_ROOT, "savvy.build.ts"), "utf8");
-		const match = /\n\t+effect: (\{[^}]*\})/.exec(source.slice(source.indexOf("effect: {\n\t\t\t\t\tpackages: {")));
-		assert.isNotNull(match, "the effect catalog declares no `effect` entry");
-		return match?.[1] ?? "";
-	}
-
-	const entries = () => new Map([...readCatalogEntries("effect"), ["effect", effectEntry()]]);
+describe("effected catalog: the Effect family", () => {
+	const entries = () => new Map([...entriesWith(FAMILY), ["effect", effectEntry()]]);
 
 	it("finds effect and its satellites, so an empty catalog cannot pass silently", () => {
 		assert.isAtLeast(entries().size, 20);
@@ -188,16 +202,12 @@ describe("overrides", () => {
 	 * built hook can fail it.
 	 */
 	function familyPins(): Record<string, string> {
-		const source = readFileSync(join(PACKAGE_ROOT, "savvy.build.ts"), "utf8");
-		const effect = /\n\t+effect: \{[^}]*range:\s*"[\^~]?([^"]+)"/.exec(
-			source.slice(source.indexOf("effect: {\n\t\t\t\t\tpackages: {")),
-		)?.[1];
-		assert.isString(effect);
-		assert.match(effect ?? "", /^4\.\d+\.\d+$/, "the effect catalog's own entry is not a plain 4.x version");
+		const effect = bare(effectEntry());
+		assert.match(effect, /^4\.\d+\.\d+$/, "the catalog's `effect` entry is not a plain 4.x version");
 		// Each pin sits on the member's own release line, derived from its range the way
 		// the directive does: `^X.0.0` on a major line, `^0.Y.0` on a 0.x line.
 		const pins: Record<string, string> = {};
-		const entries = new Map([...readCatalogEntries("effect"), ["effect", `{ range: "^${effect}" }`]]);
+		const entries = new Map([...entriesWith(FAMILY), ["effect", `{ range: "^${effect}" }`]]);
 		for (const [name, spec] of entries) {
 			const version = bare(spec);
 			const [major, minor] = version.split(".");
@@ -232,6 +242,11 @@ describe("overrides", () => {
 		// and tsgo is pinned on its own 0.x line rather than the 4.x one.
 		assert.isAtLeast(Object.keys(PINS).length, 23);
 		assert.notProperty(overrides, "@effect/tsgo@^4.0.0");
+		// The kit shares the catalog but must never be pinned graph-wide: the directive's
+		// `include` patterns are what keep it out, so a widened filter fails here.
+		for (const selector of Object.keys(overrides as Record<string, string>)) {
+			assert.isFalse(selector.startsWith(KIT), `${selector} pins a kit package graph-wide`);
+		}
 	});
 
 	it("keeps a consumer's own overrides", async () => {
