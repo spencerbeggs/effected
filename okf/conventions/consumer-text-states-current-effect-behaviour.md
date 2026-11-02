@@ -1,7 +1,7 @@
 ---
 type: Convention
 title: Consumer-facing text states current Effect behaviour, never versions
-description: Plugin skills, agents and hooks, and TSDoc comments name no Effect prerelease version and carry no since-version history; they state what is true on the pinned Effect today. The okf bundle may keep version history.
+description: Plugin skills, agents and hooks, and TSDoc comments name no Effect prerelease version and carry no since-version history; they state what is true on the pinned Effect today. The okf bundle may keep version history, and so may the effected-renovate upgrade ledger, which is version-keyed by design.
 status: draft
 stale_after: "2027-03-23T00:00:00Z"
 tags:
@@ -12,10 +12,10 @@ sources:
     resource: ../../plugin/skills
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-01T21:43:51Z
+  at: 2026-11-02T14:55:07Z
 integrity:
   generated:
-    body: b20b5916c2d593be
+    body: bbe6edc8a1b1feb5
 ---
 
 # Consumer-facing text states current Effect behaviour, never versions
@@ -48,13 +48,25 @@ parser's TSDoc. Plain `//` comments in `packages/*/src` do not ship, but they
 follow the same rule whenever they are edited: a "probed against beta.101" note
 becomes a pointer to the test that pins the behaviour.
 
+**One directory is exempt by design.** Each file under
+`plugin/skills/effected-renovate/references/ledger/` names versions and
+tracking issues, because a version-keyed delta is the whole job of that
+file. An entry's `applies` thresholds select it, and its `closes` list
+links its issues. See [the ledger entry model](../models/renovate-ledger-entry.md)
+and [the upgrade-ledger decision](../decisions/upgrade-ledger-in-the-plugin.md).
+The carve-out is the directory and nothing else. That skill's `SKILL.md`,
+its `references/traps.md` and its scripts' prose stay version-free like
+every other plugin text.
+
 Find violations with:
 
 ```sh
-grep -rnE 'rc\.[0-9]{2,3}|beta\.[0-9]{2,3}|4\.0\.0-(rc|beta)' plugins packages/*/src
+grep -rnE 'rc\.[0-9]{2,3}|beta\.[0-9]{2,3}|4\.0\.0-(rc|beta)' plugin packages/*/src \
+  --exclude-dir=ledger
 ```
 
-Every hit is either rewritten or justified as one of the exceptions above.
+Every hit is either rewritten or justified as one of the exceptions above. The
+`--exclude-dir=ledger` flag skips the exempt ledger directory.
 
 ## Why
 

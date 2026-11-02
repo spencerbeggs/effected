@@ -122,6 +122,10 @@ Available via the Skill tool (several also auto-load on trigger):
   contains, when to reach for it, and a per-package reference (services, usage,
   testing machinery). Consult before building lockfile/config/glob/semver/XDG/
   workspace/git capability the kit already ships.
+- effected-renovate — /effected-renovate, user-invoked: move a repository onto
+  a new @effected release. Bumps the catalog plugin, regenerates the lockfile,
+  and lists the upgrade-ledger entries the bump crossed, with the files where
+  each one meets your code.
 - effect-v4-source-lookup — the evidence ladder for confirming a v4 API before
   relying on it: the vendored source settles existence and signature, only a
   probe settles semantics.

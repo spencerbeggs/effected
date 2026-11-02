@@ -1,5 +1,6 @@
 # DataModel
 
+* [An upgrade-ledger entry is one change, selected by the versions a consumer's upgrade crosses](renovate-ledger-entry.md) - The effected-renovate ledger's file format: a BASELINE.md naming the round's previous tag and floor, plus one NNNN-slug.md per change with a kind, a shows, an applies map of >=X.Y.Z thresholds and the detect patterns applicable.mjs runs through git grep; the restricted YAML subset it is written in; how entries are selected, ordered and chained across rounds.
 * [The committed SPDX license catalog](spdx-license-data.md) - The vendored SPDX license-list document that seeds @effected/spdx's generated metadata table, and what breaks when it falls out of sync with the identifier devDependency.
 * [The committed schema.org vocabulary document](schema-org-vocabulary-data.md) - The vendored schema.org -current release document that seeds @effected/schema-org's interned vocabulary table, and the invariants a regeneration must not let slip.
 * [The effected catalog literal](effected-catalog-literal.md) - The inline PnpmConfigPlugin call in savvy.build.ts declaring the one effected catalog, holding the Effect family and the kit, that the catalogs, the derived family pins and the allowed-versions table are generated from.

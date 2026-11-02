@@ -6,7 +6,7 @@
 		"@savvy-web/changelog",
 		{
 			"packages": {
-				"@effected/ai-plugin": {
+				"@effected/ai-plugins": {
 					"versionFiles": [
 						{
 							"glob": "plugin/builds/claude/.claude-plugin/plugin.json",

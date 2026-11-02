@@ -1,5 +1,5 @@
 ---
-"@effected/ai-plugin": patch
+"@effected/ai-plugins": patch
 ---
 
 ## Documentation

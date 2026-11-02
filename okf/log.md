@@ -1,5 +1,20 @@
 # Log
 
+## 2026-11-02
+
+* Updated A plugin skill is a lean index over references
+* Updated Advance the effect pin
+* Added An upgrade-ledger entry is one change, selected by the versions a consumer's upgrade crosses
+* Updated Author the plugin once in plugin/, never edit its builds
+* Added Consumer upgrades run one fixed plugin process over an append-only ledger of per-change entries
+* Updated Consumer-facing text states current Effect behaviour, never versions
+* Updated Never hand-edit the construct index — regenerate it
+* Updated One tracking package versions both plugin builds
+* Updated Release a plugin
+* Updated ai-plugin
+* Updated construct-annotations.json
+* Updated workspace
+
 ## 2026-11-01
 
 * Updated Advance the effect pin

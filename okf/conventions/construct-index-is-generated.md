@@ -11,10 +11,10 @@ sources:
     resource: ../../plugin/scripts/generate-constructs.mts
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-03T04:19:44Z
+  at: 2026-11-02T14:55:07Z
 integrity:
   generated:
-    body: 944b4d04fb0e039c
+    body: c016e6759d7a164f
 ---
 
 # Never hand-edit the construct index — regenerate it
@@ -46,7 +46,7 @@ To change what the index says:
 4. Confirm coverage with `... check --require-intent`, which fails
    naming any Class, Function or Variable construct still missing an
    intent annotation.
-5. Rebuild the plugin with `pnpm build --filter @effected/ai-plugin`,
+5. Rebuild the plugin with `pnpm build --filter @effected/ai-plugins`,
    which copies the regenerated tables into both committed builds under
    `plugin/builds/`, and commit the source and builds together.
 

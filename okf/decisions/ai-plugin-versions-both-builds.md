@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: One tracking package versions both plugin builds
-description: "@effected/ai-plugin, a private never-published workspace package, versions the Claude Code and Copilot builds together, so one changeset releases both at one version."
+description: "@effected/ai-plugins, a private never-published workspace package, versions the Claude Code and Copilot builds together, so one changeset releases both at one version."
 status: stable
 supersedes: plugins-version-via-private-tracking-packages.md
 tags:
@@ -13,19 +13,21 @@ sources:
     resource: ../../.changeset/config.json
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-03T04:19:44Z
+  at: 2026-11-02T14:55:07Z
 verified:
   - by: human:spencer
     at: 2026-10-03T04:58:31Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T14:54:01Z
 integrity:
   generated:
-    body: f792fc75c3637483
+    body: 611d9ce40bbf6373
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 9ae24e7d97c7bd11
+    at: 2026-11-02T14:54:01Z
+    content: 2541f08d55c0b8d4
 ---
 
 # One tracking package versions both plugin builds
@@ -44,7 +46,7 @@ different content to version separately.
 ## Decision
 
 `plugin/package.json` is the private tracking package
-`@effected/ai-plugin`.[^ai-plugin-package-json] It is `"private": true`
+`@effected/ai-plugins`.[^ai-plugin-package-json] It is `"private": true`
 with no `publishConfig`, so by the publishability rule
 (`publishConfig.access === "public"`) it never publishes to npm. It is a
 workspace member solely because changesets versions workspace members.
@@ -52,7 +54,7 @@ workspace member solely because changesets versions workspace members.
 `.changeset/config.json` gives it two `versionFiles` entries,
 `plugin/builds/claude/.claude-plugin/plugin.json` and
 `plugin/builds/copilot/plugin.json`, both at `$.version`.[^changeset-config]
-A changeset naming `@effected/ai-plugin` therefore bumps `package.json`
+A changeset naming `@effected/ai-plugins` therefore bumps `package.json`
 and both built manifests in lockstep, then CI cuts a git tag and a
 GitHub release with no npm publish. Both hosts always share one version.
 See [release a plugin](../runbooks/release-a-plugin.md) for the
@@ -74,7 +76,7 @@ one.
 
 ## Consequences
 
-To version the plugin, add a changeset naming `@effected/ai-plugin`; a
+To version the plugin, add a changeset naming `@effected/ai-plugins`; a
 changeset for any other package does nothing for it. The Copilot channel
 jumps from 0.15.0 to the shared line on its first release.
 `pluginfinity.config.ts` sets no `version`, so a build stamps both
@@ -82,7 +84,7 @@ manifests with `package.json`'s; the release bump writes all three to
 the same value, so `pluginfinity build --check` stays clean after it.
 
 [^ai-plugin-package-json]: `plugin/package.json` —
-    `"name": "@effected/ai-plugin"`, `"private": true`, no
+    `"name": "@effected/ai-plugins"`, `"private": true`, no
     `publishConfig`.
-[^changeset-config]: `.changeset/config.json` — the `@effected/ai-plugin`
+[^changeset-config]: `.changeset/config.json` — the `@effected/ai-plugins`
     entry under `@savvy-web/changelog`'s `packages`.

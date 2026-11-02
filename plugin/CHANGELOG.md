@@ -1,4 +1,4 @@
-# @effected/ai-plugin
+# @effected/ai-plugins
 
 ## 0.46.0
 

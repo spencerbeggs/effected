@@ -14,7 +14,7 @@
 #      regenerating into a temp dir and diffing.
 #   3. BUILDS       — the generator writes the pluginfinity SOURCE; the copies
 #      under plugin/builds/{claude,copilot} are committed build output, so a
-#      regeneration that skipped `pnpm build --filter @effected/ai-plugin`
+#      regeneration that skipped `pnpm build --filter @effected/ai-plugins`
 #      leaves them behind. Caught by `pluginfinity build --check`.
 #
 # Runs on pre-push rather than pre-commit deliberately: check 2 needs the doc
@@ -151,7 +151,7 @@ if ! diff -rq "$SRC_DIR" "$tmp" >/dev/null 2>&1; then
 	echo >&2
 	echo "  Regenerate, rebuild the plugin, and commit:" >&2
 	echo "    node $GEN generate" >&2
-	echo "    pnpm build --filter @effected/ai-plugin" >&2
+	echo "    pnpm build --filter @effected/ai-plugins" >&2
 	exit 1
 fi
 
@@ -163,7 +163,7 @@ if ! (cd plugin && pnpm exec pluginfinity build --check >/dev/null 2>&1); then
 	echo "construct-index: plugin/builds is OUT OF DATE with its source — push blocked." >&2
 	echo >&2
 	echo "  The generator writes plugin/skills only. Rebuild and commit:" >&2
-	echo "    pnpm build --filter @effected/ai-plugin" >&2
+	echo "    pnpm build --filter @effected/ai-plugins" >&2
 	exit 1
 fi
 
