@@ -28,52 +28,52 @@ catalogs:
     "@effect/sql-sqlite-wasm": ~4.1.2
     "@effect/tsgo": ^0.63.0
     "@effect/vitest": ~4.1.2
-    "@effected/app": ^0.30.0
+    "@effected/app": ^0.31.0
     "@effected/cli": ^0.26.0
-    "@effected/cli-kit": ^0.25.0
-    "@effected/commands": ^0.19.0
-    "@effected/config-file": ^0.23.0
-    "@effected/crypto": ^0.4.0
+    "@effected/cli-kit": ^0.26.0
+    "@effected/commands": ^0.20.0
+    "@effected/config-file": ^0.24.0
+    "@effected/crypto": ^0.5.0
     "@effected/engine": ^0.12.0
-    "@effected/env": ^0.9.0
-    "@effected/git": ^0.29.0
-    "@effected/github": ^0.27.0
-    "@effected/github-actions": ^0.30.0
-    "@effected/github-commands": ^0.8.0
-    "@effected/github-references": ^0.13.0
-    "@effected/glob": ^0.17.0
-    "@effected/images": ^0.8.0
-    "@effected/jsonc": ^0.22.0
-    "@effected/jsonl": ^0.17.0
-    "@effected/jwt": ^0.8.0
-    "@effected/kit": ^0.11.0
-    "@effected/lockfiles": ^0.21.0
-    "@effected/lsp": ^0.7.0
-    "@effected/markdown": ^0.25.0
+    "@effected/env": ^0.10.0
+    "@effected/git": ^0.30.0
+    "@effected/github": ^0.28.0
+    "@effected/github-actions": ^0.31.0
+    "@effected/github-commands": ^0.9.0
+    "@effected/github-references": ^0.14.0
+    "@effected/glob": ^0.18.0
+    "@effected/images": ^0.9.0
+    "@effected/jsonc": ^0.23.0
+    "@effected/jsonl": ^0.18.0
+    "@effected/jwt": ^0.9.0
+    "@effected/kit": ^0.12.0
+    "@effected/lockfiles": ^0.22.0
+    "@effected/lsp": ^0.8.0
+    "@effected/markdown": ^0.26.0
     "@effected/mcp": ^0.13.0
-    "@effected/mcp-kit": ^0.12.0
-    "@effected/memfs": ^0.22.0
-    "@effected/npm": ^0.29.0
-    "@effected/oidc": ^0.3.0
-    "@effected/package-json": ^0.28.0
+    "@effected/mcp-kit": ^0.13.0
+    "@effected/memfs": ^0.23.0
+    "@effected/npm": ^0.30.0
+    "@effected/oidc": ^0.4.0
+    "@effected/package-json": ^0.29.0
     "@effected/plugin": ^0.1.0
-    "@effected/runtimes": ^0.17.0
-    "@effected/sbom": ^0.19.0
-    "@effected/schema-org": ^0.13.0
-    "@effected/schemastore": ^0.28.0
-    "@effected/schemastore-cli": ^0.28.0
-    "@effected/semver": ^0.20.0
-    "@effected/source": ^0.2.0
-    "@effected/spdx": ^0.18.0
-    "@effected/store": ^0.22.0
-    "@effected/templates": ^0.16.0
-    "@effected/toml": ^0.18.0
-    "@effected/tsconfig-json": ^0.19.0
-    "@effected/walker": ^0.24.0
-    "@effected/webhooks": ^0.3.0
-    "@effected/workspaces": ^0.41.0
-    "@effected/xdg": ^0.18.0
-    "@effected/yaml": ^0.27.0
+    "@effected/runtimes": ^0.18.0
+    "@effected/sbom": ^0.20.0
+    "@effected/schema-org": ^0.14.0
+    "@effected/schemastore": ^0.29.0
+    "@effected/schemastore-cli": ^0.29.0
+    "@effected/semver": ^0.21.0
+    "@effected/source": ^0.3.0
+    "@effected/spdx": ^0.19.0
+    "@effected/store": ^0.23.0
+    "@effected/templates": ^0.17.0
+    "@effected/toml": ^0.19.0
+    "@effected/tsconfig-json": ^0.20.0
+    "@effected/walker": ^0.25.0
+    "@effected/webhooks": ^0.4.0
+    "@effected/workspaces": ^0.42.0
+    "@effected/xdg": ^0.19.0
+    "@effected/yaml": ^0.28.0
     effect: ~4.1.2
   effected:peers:
     "@effect/ai-anthropic": ~4.1.0
@@ -103,52 +103,52 @@ catalogs:
     "@effect/sql-sqlite-wasm": ~4.1.0
     "@effect/tsgo": ^0.63.0
     "@effect/vitest": ~4.1.0
-    "@effected/app": ^0.30.0
+    "@effected/app": ^0.31.0
     "@effected/cli": ^0.26.0
-    "@effected/cli-kit": ^0.25.0
-    "@effected/commands": ^0.19.0
-    "@effected/config-file": ^0.23.0
-    "@effected/crypto": ^0.4.0
+    "@effected/cli-kit": ^0.26.0
+    "@effected/commands": ^0.20.0
+    "@effected/config-file": ^0.24.0
+    "@effected/crypto": ^0.5.0
     "@effected/engine": ^0.12.0
-    "@effected/env": ^0.9.0
-    "@effected/git": ^0.29.0
-    "@effected/github": ^0.27.0
-    "@effected/github-actions": ^0.30.0
-    "@effected/github-commands": ^0.8.0
-    "@effected/github-references": ^0.13.0
-    "@effected/glob": ^0.17.0
-    "@effected/images": ^0.8.0
-    "@effected/jsonc": ^0.22.0
-    "@effected/jsonl": ^0.17.0
-    "@effected/jwt": ^0.8.0
-    "@effected/kit": ^0.11.0
-    "@effected/lockfiles": ^0.21.0
-    "@effected/lsp": ^0.7.0
-    "@effected/markdown": ^0.25.0
+    "@effected/env": ^0.10.0
+    "@effected/git": ^0.30.0
+    "@effected/github": ^0.28.0
+    "@effected/github-actions": ^0.31.0
+    "@effected/github-commands": ^0.9.0
+    "@effected/github-references": ^0.14.0
+    "@effected/glob": ^0.18.0
+    "@effected/images": ^0.9.0
+    "@effected/jsonc": ^0.23.0
+    "@effected/jsonl": ^0.18.0
+    "@effected/jwt": ^0.9.0
+    "@effected/kit": ^0.12.0
+    "@effected/lockfiles": ^0.22.0
+    "@effected/lsp": ^0.8.0
+    "@effected/markdown": ^0.26.0
     "@effected/mcp": ^0.13.0
-    "@effected/mcp-kit": ^0.12.0
-    "@effected/memfs": ^0.22.0
-    "@effected/npm": ^0.29.0
-    "@effected/oidc": ^0.3.0
-    "@effected/package-json": ^0.28.0
+    "@effected/mcp-kit": ^0.13.0
+    "@effected/memfs": ^0.23.0
+    "@effected/npm": ^0.30.0
+    "@effected/oidc": ^0.4.0
+    "@effected/package-json": ^0.29.0
     "@effected/plugin": ^0.1.0
-    "@effected/runtimes": ^0.17.0
-    "@effected/sbom": ^0.19.0
-    "@effected/schema-org": ^0.13.0
-    "@effected/schemastore": ^0.28.0
-    "@effected/schemastore-cli": ^0.28.0
-    "@effected/semver": ^0.20.0
-    "@effected/source": ^0.2.0
-    "@effected/spdx": ^0.18.0
-    "@effected/store": ^0.22.0
-    "@effected/templates": ^0.16.0
-    "@effected/toml": ^0.18.0
-    "@effected/tsconfig-json": ^0.19.0
-    "@effected/walker": ^0.24.0
-    "@effected/webhooks": ^0.3.0
-    "@effected/workspaces": ^0.41.0
-    "@effected/xdg": ^0.18.0
-    "@effected/yaml": ^0.27.0
+    "@effected/runtimes": ^0.18.0
+    "@effected/sbom": ^0.20.0
+    "@effected/schema-org": ^0.14.0
+    "@effected/schemastore": ^0.29.0
+    "@effected/schemastore-cli": ^0.29.0
+    "@effected/semver": ^0.21.0
+    "@effected/source": ^0.3.0
+    "@effected/spdx": ^0.19.0
+    "@effected/store": ^0.23.0
+    "@effected/templates": ^0.17.0
+    "@effected/toml": ^0.19.0
+    "@effected/tsconfig-json": ^0.20.0
+    "@effected/walker": ^0.25.0
+    "@effected/webhooks": ^0.4.0
+    "@effected/workspaces": ^0.42.0
+    "@effected/xdg": ^0.19.0
+    "@effected/yaml": ^0.28.0
     effect: ~4.1.0
 configDependencies:
   "@savvy-web/pnpm-plugin-silk": 0.52.0
