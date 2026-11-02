@@ -21,10 +21,10 @@ sources:
     resource: git grep -IE probe over okf/ on 2026-11-01
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T14:55:07Z
+  at: 2026-11-02T15:34:25Z
 integrity:
   generated:
-    body: 31c3417c8cff8f58
+    body: 8dd3feec5f1e0b59
 ---
 
 # An upgrade-ledger entry is one change, selected by the versions a consumer's upgrade crosses
@@ -102,21 +102,19 @@ outside that subset fails `--check` with `unreadable line`:
 - **Top-level keys** match `[A-Za-z][\w-]*`. A line is `key: value`, or a
   bare `key:` that opens a block. Blank lines and lines that start with
   `#` are skipped.
-- **Scalars** may be bare, `"double"`-quoted or `'single'`-quoted. Only
-  the outer quotes are stripped. Nothing is typed, so `id: 0001` and
-  `id: "0001"` both read as the string `0001`.
-- **Flow lists** are `key: ["a", 'b', c]`. A double-quoted item is decoded
-  as a JSON string, so the regex `Crypto\.` is written `"Crypto\\."`. A
-  single-quoted item and a bare item are literal, and a bare item ends at
-  the next comma.
+- **Scalars** may be bare, `"double"`-quoted or `'single'`-quoted. Nothing
+  is typed, so `id: 0001` and `id: "0001"` both read as the string `0001`.
+- **A double-quoted value is decoded as a JSON string wherever it
+  appears**: a scalar, a flow-list item, a block-list item or a block-map
+  value. So the regex `Crypto\.` is written `"Crypto\\."` in every
+  position. A single-quoted or bare value is literal.
+- **Flow lists** are `key: ["a", 'b', c]`. A bare item ends at the next
+  comma.
 - **A block under a bare key** is either a list (indented `- item` lines) or a map
   (indented `name: value` lines, where the name is quoted or contains no colon). It is
-  never both. One level deep is the limit. A block-list item is
-  quote-stripped and never JSON-decoded, so `- "Crypto\\."` keeps both
-  backslashes.
-- **Comments.** Whitespace followed by `#` ends a scalar or a flow-list
-  line *even inside quotes*. `"a #b"` reads as `"a`. Never put whitespace before a `#` in a
-  value.
+  never both. One level deep is the limit.
+- **Comments.** Whitespace followed by `#` outside quotes ends the value.
+  A `#` inside quotes is kept, so `"a #b"` reads as `a #b`.
 
 Hence the house shape: `applies` and `renames` are block maps with quoted
 keys, and `detect`, `closes` and `changesets` are one-line flow lists of
