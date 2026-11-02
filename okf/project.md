@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T16:44:32Z
+  at: 2026-11-02T16:46:54Z
 integrity:
   generated:
-    body: b296b1ec2640426b
+    body: 25bac2dd1824ee3f
 ---
 
 # effected
@@ -77,7 +77,7 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `mcp` | tool — no tier | invention; the `effected-mcp` stdio server with one `identity` tool over `effect/ai` and `mcp-kit` |
 | `engine` | tool — no tier | invention; the tool's shared logic (`Identity.report`, an `IdentityReport`) that both front ends report through, built on `kit` |
 
-The roster is **47 packages**: 41 libraries, two companions (`pnpm-plugin-effected` and `schemastore-cli`) and the four packages of the `effected` tool (`plugin`, `cli`, `mcp`, `engine`), which are an application and carry no library tier. Every one has published except `pnpm-plugin-effected` under its new name: it continues `pnpm-plugin-effect`'s version line and needs an npm trusted publisher before its first release.
+The roster is **47 packages**: 41 libraries, two companions (`pnpm-plugin-effected` and `schemastore-cli`) and the four packages of the `effected` tool (`plugin`, `cli`, `mcp`, `engine`), which are an application and carry no library tier. Every one has published except `pnpm-plugin-effected` under its new name (it continues `pnpm-plugin-effect`'s version line and needs an npm trusted publisher before its first release) and the four tool packages: `plugin` is new, and `cli`, `mcp` and `engine` have never published their new contents under the names they took from the renamed libraries.
 
 ### Consumers
 

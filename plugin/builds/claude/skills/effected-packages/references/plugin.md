@@ -25,7 +25,7 @@ directly.
 
 - **`effected`** — the command. `effected --version` prints
   `effected <version> via @effected/plugin <version>`; `--help` lists the command
-  tree. Version and help are all it does today.
+  tree. Version and help are all it does.
 - **`effected-mcp`** — the stdio MCP server, with one `identity` tool reporting the
   tool version, the carrier, and the resolved `effect` version. The effected agent
   plugin launches it, and falls back to a one-off run of `@effected/mcp` with the
