@@ -12,13 +12,15 @@ verified:
     at: 2026-10-09T17:01:48Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
     body: fab40b1d6134ee37
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 7f4246f93b55fcdd
+    at: 2026-11-02T17:04:46Z
+    content: 7f211221edad5435
 ---
 
 # CliLogger honours LogToStderr only as a force-all override

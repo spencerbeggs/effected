@@ -12,13 +12,15 @@ verified:
     at: 2026-09-23T19:50:29Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
     body: f6850c10a58d2f13
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 9e88d6257e27e7a2
+    at: 2026-11-02T17:04:46Z
+    content: 9df93484aa70d79b
 ---
 
 # D5: the layering, packed-install and boundary checks live in `@effected/workspaces/testing`

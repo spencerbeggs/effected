@@ -12,11 +12,13 @@ integrity:
     body: 69dc787b385eb2e8
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 0c96a220301b20e9
+    at: 2026-11-02T17:04:46Z
+    content: 73eb191de3b70155
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # The workflow-command grammar left github-actions for its own pure package

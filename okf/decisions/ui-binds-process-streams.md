@@ -19,13 +19,15 @@ integrity:
     body: 5d085d9e771548d5
   verified:
     by: human:spencer
-    at: 2026-10-29T00:43:21Z
-    content: 41696871c3dd1df1
+    at: 2026-11-02T17:04:46Z
+    content: 025ab79a9187c8d6
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # Only ./ui may bind Node's process streams, and only in three named files

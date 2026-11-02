@@ -19,11 +19,13 @@ integrity:
     body: a6292607a259621d
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: d5b3ae90d7f238b7
+    at: 2026-11-02T17:04:46Z
+    content: 4a5d09fe60c2edcb
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # A live view is a scoped drain of runs, hosted or owned, with no input and the mount permit per run

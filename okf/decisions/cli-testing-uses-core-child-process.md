@@ -12,13 +12,15 @@ verified:
     at: 2026-09-23T19:50:29Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
     body: e3e02469be2ec130
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 502ff5dad789fc73
+    at: 2026-11-02T17:04:46Z
+    content: a068f74f32a58ca9
 ---
 
 # D9: `CliTest` uses core `ChildProcess`, with no peer on `@effected/commands`

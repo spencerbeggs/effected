@@ -12,13 +12,15 @@ verified:
     at: 2026-09-23T19:50:29Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
     body: 0973c67b8c5e1d59
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 2950eb53ce7844ba
+    at: 2026-11-02T17:04:46Z
+    content: ef6c9d2a4693931b
 ---
 
 # D7: `usageExitCode` defaults to 64 (BSD `EX_USAGE`)

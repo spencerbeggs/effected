@@ -12,13 +12,15 @@ verified:
     at: 2026-09-23T19:50:29Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
     body: fd4356a24b91155d
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: e8f4510fe2d560d3
+    at: 2026-11-02T17:04:46Z
+    content: 30ad22abefd6da6c
 ---
 
 # D6: CLI and MCP knowledge stays in separate skills, linked from `design-patterns`

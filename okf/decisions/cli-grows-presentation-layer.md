@@ -17,13 +17,15 @@ verified:
     at: 2026-10-09T16:29:07Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
     body: ef18b1754420003a
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 95a2ebdc1dbb56f2
+    at: 2026-11-02T17:04:46Z
+    content: 5bc6e6ccdba7bb46
 ---
 
 # @effected/cli-kit grows a presentation layer and interactive UI

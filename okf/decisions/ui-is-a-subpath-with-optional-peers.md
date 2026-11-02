@@ -22,11 +22,13 @@ integrity:
     body: cfa194a01f0750ba
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 93acec22ba07a1b8
+    at: 2026-11-02T17:04:46Z
+    content: 5ddeb0f5aba8ae6f
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # The Ink layer is a ./ui subpath of cli, with ink and react as optional peers

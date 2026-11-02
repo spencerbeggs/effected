@@ -12,13 +12,15 @@ verified:
     at: 2026-09-23T19:50:29Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
     body: 7e944d3935ccbd9c
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 596e950c3ccafbc3
+    at: 2026-11-02T17:04:46Z
+    content: 48b149c2425a4e0a
 ---
 
 # D10: `McpToolAudit` enforces object-rooted outputs by default

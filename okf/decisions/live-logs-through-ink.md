@@ -19,11 +19,13 @@ integrity:
     body: f646960c398c6c74
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 480a1db724a4de38
+    at: 2026-11-02T17:04:46Z
+    content: 2c93e0a5b6f20a80
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # While a live view is mounted, kit logs go through Ink's own stdout and stderr writers

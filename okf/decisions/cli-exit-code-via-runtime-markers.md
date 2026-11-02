@@ -12,13 +12,15 @@ verified:
     at: 2026-10-09T16:29:07Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
     body: 75a7d709c89be75f
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: f6a68765d90a4a34
+    at: 2026-11-02T17:04:46Z
+    content: d4b3e47b10f3c85b
 ---
 
 # cli sets the exit code through core's own Runtime markers

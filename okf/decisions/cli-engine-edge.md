@@ -27,11 +27,13 @@ integrity:
     body: a65f7a8bc3a10a6d
   verified:
     by: human:spencer
-    at: 2026-10-29T00:43:21Z
-    content: e8bbd1d9c5ea0146
+    at: 2026-11-02T17:04:46Z
+    content: efa31343a4c37c61
 verified:
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # `@effected/cli-kit` depends on `@effected/kit` as a regular dependency, for `distribution`

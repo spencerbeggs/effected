@@ -12,13 +12,15 @@ verified:
     at: 2026-10-09T16:29:07Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
     body: 1848247eb3377350
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: f921259167d5031a
+    at: 2026-11-02T17:04:46Z
+    content: d4392079f8fd9495
 ---
 
 # cli files the Command handler-accessor gap upstream rather than shimming it

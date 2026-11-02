@@ -28,13 +28,15 @@ verified:
     at: 2026-10-09T16:29:07Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
     body: 8292e88b5f0217e9
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: ef6d72a377de0d00
+    at: 2026-11-02T17:04:46Z
+    content: d60e1a96d829e4b9
 ---
 
 # The audience flag is four shared root flags resolved into env's Audience

@@ -19,11 +19,13 @@ integrity:
     body: ceedf69dd7d61b1e
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: fa6bfe8f2934c4c0
+    at: 2026-11-02T17:04:46Z
+    content: 64ac0dd046c8b78e
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # The live view's tick is a scoped Effect schedule, and its frame index comes from Clock

@@ -19,11 +19,13 @@ integrity:
     body: fda6c84d5b28b897
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: c796fabb6c17a031
+    at: 2026-11-02T17:04:46Z
+    content: 61e512b1dfe48254
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # The live frame is clamped to rows - 1 in height, and its root width is never taken from a hook

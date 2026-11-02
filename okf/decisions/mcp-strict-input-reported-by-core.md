@@ -32,13 +32,15 @@ verified:
     at: 2026-09-28T17:52:49Z
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
     body: a54eac1e2e2078fc
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: f1be3b0d0ccecf06
+    at: 2026-11-02T17:04:46Z
+    content: ad63fd15892bb0ef
 ---
 
 # Strict MCP input is reported by core; McpToolkit appends the accepted params instead of pre-checking

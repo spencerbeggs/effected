@@ -12,13 +12,15 @@ verified:
     at: 2026-09-23T19:50:29Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
     body: 4be85ca6c4479409
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 0744bdcc09167a4b
+    at: 2026-11-02T17:04:46Z
+    content: 471c28c4d75217ad
 ---
 
 # D3: `CliLogger` default `stderrFrom` flips to `"All"`

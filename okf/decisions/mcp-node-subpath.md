@@ -30,11 +30,13 @@ integrity:
     body: 2b957efc9b37306e
   verified:
     by: human:spencer
-    at: 2026-10-29T00:43:21Z
-    content: 0725e2532075caca
+    at: 2026-11-02T17:04:46Z
+    content: 0e693ec1bddd65d5
 verified:
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # `@effected/mcp-kit` ships `StdioCapture` behind a Node-only `./node` subpath

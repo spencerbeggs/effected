@@ -18,11 +18,13 @@ integrity:
     body: f5c4b62f3c8f6522
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 72a1e0c48ad72cfe
+    at: 2026-11-02T17:04:46Z
+    content: 1a38124cf1d89298
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # No bin on the library — the CLI is a fixed-version companion package

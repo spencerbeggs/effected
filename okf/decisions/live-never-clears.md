@@ -23,11 +23,13 @@ integrity:
     body: e1f54c755fc2f50e
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: d220d0d82fac9595
+    at: 2026-11-02T17:04:46Z
+    content: 35d1ac468729241f
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # The live view never calls Ink's clear(); a new run re-renders in place or remounts

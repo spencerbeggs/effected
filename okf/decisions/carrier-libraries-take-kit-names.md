@@ -2,7 +2,7 @@
 type: Decision
 title: The carrier libraries take -kit names, with no shim
 description: "@effected/cli, @effected/mcp and @effected/engine are renamed @effected/cli-kit, @effected/mcp-kit and @effected/kit so the freed names can be the effected tool's own packages; the renamed packages continue their version lines, no compatibility shim is published, and @effected/app keeps its name because it is the application control plane, not a front-end carrier library."
-status: draft
+status: stable
 tags:
   - architecture
   - release
@@ -27,6 +27,13 @@ generated:
 integrity:
   generated:
     body: a2ff22bdf2517c9c
+  verified:
+    by: human:spencer
+    at: 2026-11-02T17:04:46Z
+    content: 190eb864f16bac73
+verified:
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # The carrier libraries take -kit names, with no shim

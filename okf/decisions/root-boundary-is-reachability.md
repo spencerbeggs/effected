@@ -25,11 +25,13 @@ integrity:
     body: af277267edf5bdc0
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 43025b72a6f96197
+    at: 2026-11-02T17:04:46Z
+    content: 225d1c308ad4f265
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # The cli root boundary is a module-graph walk, not a per-file scan

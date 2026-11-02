@@ -2,7 +2,7 @@
 type: Decision
 title: The monorepo holds one tool, effected, beside its libraries
 description: "The repository ships the effected tool (the effected command, the effected-mcp server, and the @effected/plugin carrier that installs both) in the same monorepo as the kit's libraries, because the tool is built from the kit and its agent plugin must release in step with it; applications otherwise stay in external repos, libraries stay the rest of the repo, and the website stays frozen."
-status: draft
+status: stable
 tags:
   - architecture
   - release
@@ -26,6 +26,13 @@ generated:
 integrity:
   generated:
     body: 8288c2db5c3c3ec7
+  verified:
+    by: human:spencer
+    at: 2026-11-02T17:04:46Z
+    content: 323683fd638ae344
+verified:
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # The monorepo holds one tool, effected, beside its libraries

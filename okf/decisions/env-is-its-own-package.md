@@ -16,11 +16,13 @@ integrity:
     body: b7aad6fce0e2eb70
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 239e184493617eef
+    at: 2026-11-02T17:04:46Z
+    content: e7f1ccf01b6d863a
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # @effected/env is its own boundary package, a required peer of cli

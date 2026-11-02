@@ -14,13 +14,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
     body: 91dc3dc0e700965a
   verified:
     by: human:spencer
-    at: 2026-10-29T00:43:21Z
-    content: b02e6a302d500ba8
+    at: 2026-11-02T17:04:46Z
+    content: 571f1df5dbf0afc7
 ---
 
 # D1: `@effected/kit` exists and holds `Distribution`, `Remediation` and `LaunchContext`

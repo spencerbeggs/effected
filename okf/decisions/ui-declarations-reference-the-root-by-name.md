@@ -25,11 +25,13 @@ integrity:
     body: c09b62d3b3c74569
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 38dea30c02b4b3a7
+    at: 2026-11-02T17:04:46Z
+    content: 4744e024bda6a4ac
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # The ui declarations reference the root's types by the package's own name

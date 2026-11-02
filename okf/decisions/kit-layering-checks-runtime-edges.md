@@ -20,13 +20,15 @@ verified:
     at: 2026-09-24T06:10:09Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
     body: 9c498d5cc9a93bee
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 937dd4000d3eea6b
+    at: 2026-11-02T17:04:46Z
+    content: 2fb97666b74b318a
 ---
 
 # The kit's layering check forbids runtime edges only

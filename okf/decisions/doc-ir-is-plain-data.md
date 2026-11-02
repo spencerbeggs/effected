@@ -12,13 +12,15 @@ verified:
     at: 2026-10-09T17:01:48Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
     body: c259de13a717b135
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: c4f8a1f042297664
+    at: 2026-11-02T17:04:46Z
+    content: cca0fea6d9571cd5
 ---
 
 # The document IR is plain frozen data, not Schema classes

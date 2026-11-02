@@ -12,13 +12,15 @@ verified:
     at: 2026-10-09T17:01:48Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
     body: f4ff7e88334e3aa1
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 6cd0f235d63cf3fe
+    at: 2026-11-02T17:04:46Z
+    content: 4ed150ebc69fa810
 ---
 
 # CliLinks finds the editor directory with its own bounded ascent
