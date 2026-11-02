@@ -3,6 +3,7 @@
 		["@effected/app", "@effected/github-actions", "@effected/schemastore-cli"],
 		[
 			"@effected/cli-kit",
+			"@effected/engine",
 			"@effected/lsp",
 			"@effected/mcp-kit",
 			"@effected/sbom",
