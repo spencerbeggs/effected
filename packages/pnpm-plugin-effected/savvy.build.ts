@@ -179,6 +179,12 @@ await build({
 							strategy: "lock-minor",
 							source: "workspace",
 						},
+						"@effected/cli": {
+							range: "^0.26.0",
+							peer: "^0.26.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
 						"@effected/cli-kit": {
 							range: "^0.25.0",
 							peer: "^0.25.0",
@@ -206,6 +212,12 @@ await build({
 						"@effected/kit": {
 							range: "^0.11.0",
 							peer: "^0.11.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/engine": {
+							range: "^0.12.0",
+							peer: "^0.12.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
@@ -293,6 +305,12 @@ await build({
 							strategy: "lock-minor",
 							source: "workspace",
 						},
+						"@effected/mcp": {
+							range: "^0.13.0",
+							peer: "^0.13.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
 						"@effected/mcp-kit": {
 							range: "^0.12.0",
 							peer: "^0.12.0",
@@ -320,6 +338,12 @@ await build({
 						"@effected/package-json": {
 							range: "^0.28.0",
 							peer: "^0.28.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
+						"@effected/plugin": {
+							range: "^0.1.0",
+							peer: "^0.1.0",
 							strategy: "lock-minor",
 							source: "workspace",
 						},
@@ -434,6 +458,9 @@ await build({
 					strategy: "union",
 				},
 			},
+			// The carrier is a consumer's root devDependency; hoisting it publicly puts it, and so its
+			// `effected` and `effected-mcp` bins, at the workspace root for every package to reach.
+			publicHoistPattern: ["@effected/plugin"],
 			minimumReleaseAgeExclude: ["effect", "@effect/*", "@effect/tsgo-*"],
 			// Every Effect-family member of the catalog is pinned to its exact catalog version across the
 			// whole consumer graph, scoped to the 4.x line: `"<name>@^4.0.0": "<version>"` for

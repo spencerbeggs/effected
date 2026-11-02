@@ -1,0 +1,63 @@
+{
+	"name": "@effected/plugin",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Install this one package to get the effected command and the effected-mcp server. Depends on @effected/cli and @effected/mcp.",
+	"keywords": ["effect", "effected", "cli", "mcp", "agent"],
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/plugin#readme",
+	"bugs": {
+		"url": "https://github.com/spencerbeggs/effected/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/spencerbeggs/effected.git",
+		"directory": "packages/plugin"
+	},
+	"license": "MIT",
+	"author": {
+		"name": "C. Spencer Beggs",
+		"email": "spencer@beggs.codes",
+		"url": "https://spencerbeg.gs"
+	},
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./package.json": "./package.json"
+	},
+	"bin": {
+		"effected": "./src/bin/effected.ts",
+		"effected-mcp": "./src/bin/effected-mcp.ts"
+	},
+	"scripts": {
+		"build:dev": "node savvy.build.ts --target dev",
+		"build:prod": "node savvy.build.ts --target prod",
+		"prepare": "turbo run build:dev",
+		"types:check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@effected/cli": "workspace:^",
+		"@effected/mcp": "workspace:^"
+	},
+	"devDependencies": {
+		"@effect/platform-node": "catalog:effected",
+		"@effect/vitest": "catalog:effected",
+		"@effected/commands": "workspace:*",
+		"@effected/mcp-kit": "workspace:*",
+		"@effected/workspaces": "workspace:*",
+		"@savvy-web/bundler": "^2.7.1",
+		"@types/node": "catalog:build",
+		"effect": "catalog:effected",
+		"typescript": "catalog:build"
+	},
+	"engines": {
+		"node": ">=24.11.0"
+	},
+	"publishConfig": {
+		"access": "public",
+		"directory": "dist/dev/pkg",
+		"linkDirectory": true,
+		"targets": {
+			"npm": true
+		}
+	}
+}

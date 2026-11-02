@@ -1,5 +1,6 @@
 {
 	"layers": [
+		["@effected/plugin"],
 		["@effected/app", "@effected/cli", "@effected/github-actions", "@effected/mcp", "@effected/schemastore-cli"],
 		[
 			"@effected/cli-kit",

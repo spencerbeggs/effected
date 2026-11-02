@@ -294,3 +294,37 @@ describe("the consumer's catalog", () => {
 		assert.strictEqual(catalogs.effected?.effect, "4.1.1");
 	});
 });
+
+describe("the effected tool", () => {
+	const PNPMFILE = join(PACKAGE_ROOT, "dist/dev/pkg/pnpmfile.mjs");
+	// The tool's four packages and the three carrier libraries they replaced the
+	// names of, plus the app kit: a consumer moving from a kit library to its `-kit`
+	// name, or adding the tool, reaches each one through `catalog:effected`.
+	const TOOL = [
+		"@effected/plugin",
+		"@effected/cli",
+		"@effected/mcp",
+		"@effected/engine",
+		"@effected/kit",
+		"@effected/cli-kit",
+		"@effected/mcp-kit",
+		"@effected/app",
+	];
+
+	it("catalogs the tool packages and the carrier libraries", () => {
+		const listed = entriesWith(KIT);
+		for (const name of TOOL) assert.isTrue(listed.has(name), `${name} is not in the effected catalog`);
+	});
+
+	// `@effected/plugin` is installed as a root devDependency; the hoist makes its
+	// bins resolve from every package of a consumer's workspace.
+	it("hoists the carrier publicly", async () => {
+		assert.isTrue(existsSync(PNPMFILE), "build the plugin before testing its pnpmfile");
+		const { hooks } = (await import(PNPMFILE)) as {
+			hooks: { updateConfig: (config: Record<string, unknown>) => Promise<Record<string, unknown>> };
+		};
+		const { publicHoistPattern } = await hooks.updateConfig({});
+		assert.isArray(publicHoistPattern, "the resolved config carries no publicHoistPattern");
+		assert.include(publicHoistPattern as ReadonlyArray<string>, "@effected/plugin");
+	});
+});
