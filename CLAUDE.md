@@ -38,7 +38,9 @@ Durable project knowledge lives as OKF concepts under `okf/`, not in prose here.
 
 ### Kit composition
 
-The kit is **43 publishable packages**: 41 libraries plus two companions (`pnpm-plugin-effected` and `schemastore-cli`); all have published except `pnpm-plugin-effected` under its new name (it continues `pnpm-plugin-effect`'s version line and needs an npm trusted publisher before its first release). New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
+The kit is **47 publishable packages**: 41 libraries, two companions (`pnpm-plugin-effected` and `schemastore-cli`) and the four packages of the `effected` tool (`@effected/plugin`, the carrier a consumer installs, plus its `cli`, `mcp` and `engine`; see `okf/decisions/one-tool-beside-the-libraries.md`); all have published except `pnpm-plugin-effected` under its new name (it continues `pnpm-plugin-effect`'s version line and needs an npm trusted publisher before its first release). New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
+
+**The carrier libraries are `@effected/cli-kit`, `@effected/mcp-kit` and `@effected/kit`; `@effected/cli`, `@effected/mcp` and `@effected/engine` are the `effected` tool's own packages.** The old names were renamed with no shim, and `@effected/app` kept its name → `okf/decisions/carrier-libraries-take-kit-names.md`. A stale import of an old name fails at build, not at install.
 
 `@effected/config-file` holds every config **codec**; the `jsonc`, `yaml` and `toml` **format** packages stay independent. The four codecs are **free-standing named exports** — `JsonCodec`, `JsoncCodec`, `YamlCodec`, `TomlCodec`, one module each — with `ConfigCodec` the interface only. `JsonCodec` is on the root; the other three ship from the `./jsonc`, `./yaml` and `./toml` subpaths, whose engines are optional peers the root must never reach. **Never collect them into a namespace object**: it would drag every parsing engine into a JSON-only consumer's bundle, killing tree-shaking silently. Read `okf/modules/config-file.md` and `okf/decisions/codecs-are-free-standing-named-exports.md` before touching it.
 
@@ -56,7 +58,7 @@ The kit is **43 publishable packages**: 41 libraries plus two companions (`pnpm-
 
 ### Package context files
 
-Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. The roster of all 43 — what each one is, and the parenthetical tier tag every **library** carries (pure / boundary / integrated, per `okf/glossary/library-tier.md`) — lives in `okf/project.md`'s packages table. Load it when: choosing which package owns a capability, or checking a package's tier or scope before working in it.
+Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. The roster of all 47 — what each one is, and the parenthetical tier tag every **library** carries (pure / boundary / integrated, per `okf/glossary/library-tier.md`) — lives in `okf/project.md`'s packages table. Load it when: choosing which package owns a capability, or checking a package's tier or scope before working in it.
 
 ## Build Pipeline
 

@@ -19,10 +19,10 @@ sources:
     resource: "npm:pluginfinity"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T14:55:07Z
+  at: 2026-11-02T16:44:32Z
 integrity:
   generated:
-    body: 1bec60aafec00398
+    body: 986d98881fcc4f10
 ---
 
 # ai-plugin
@@ -70,7 +70,8 @@ plugin/
   package.json             # @effected/ai-plugins (private, versioning only)
   pluginfinity.config.ts   # manifest fields, hooks, per-target overrides
   turbo.json               # build tasks uncached
-  skills/ agents/ hooks/   # the source — the only dirs pluginfinity ships
+  skills/ agents/ hooks/   # the source dirs pluginfinity ships
+  bin/start-mcp.sh         # the effected-mcp launcher, copied into each build
   scripts/                 # construct-index generator, pre-push gate, anchor re-deriver (never shipped)
   __test__/                # bats suites and their fixtures
   builds/claude/           # GENERATED, committed
@@ -312,6 +313,10 @@ Effect tasks to the matching agent rather than hand-rolling them inline.
 Its `dogfood_feedback` block carries two loops — plugin feedback and
 `@effected` package feedback — and filing an issue always requires the
 user's explicit agreement.
+
+## The effected MCP server
+
+`pluginfinity.config.ts` declares one `mcpServers` entry, `effected`, for both hosts: `sh ${PLUGIN_ROOT}/bin/start-mcp.sh`. The launcher is a POSIX `sh` script on pluginfinity's server library. It runs the project's installed `effected-mcp` bin (from [`@effected/plugin`](plugin.md)), and when that is not installed it prints the `@effected/plugin` install line for the project's package manager on stderr and falls back to a one-off run of [`@effected/mcp`](mcp.md). The fallback exists because a one-off runner cannot choose between two bins of one package, so the front end carries the bin too ([shared bins](../decisions/carrier-only-declares-bins.md)). Nothing prints to stdout before the `exec`: stdout is the JSON-RPC wire. The server answers one `identity` tool. `__test__/launchers.bats` runs the built launcher against a fake project with a stubbed bin on each host. The SessionStart briefing names the server.
 
 ## Versioning and distribution
 

@@ -78,6 +78,13 @@
 * Updated A package that names its own root types once showed one warning or none, until the bundler resolved the self-reference to declarations
 * Updated D6: CLI and MCP knowledge stays in separate skills, linked from design-patterns
 * Updated Releases are changeset-driven and scope-agnostic
+* Added @effected/cli
+* Added @effected/engine
+* Added @effected/mcp
+* Added @effected/plugin
+* Added The carrier libraries take -kit names, with no shim
+* Added The monorepo holds one tool, effected, beside its libraries
+* Updated pnpm-plugin-effected
 
 ## 2026-11-01
 

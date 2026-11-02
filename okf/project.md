@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:53:05Z
+  at: 2026-11-02T16:44:32Z
 integrity:
   generated:
-    body: 4dd2b8cd1232beb9
+    body: b296b1ec2640426b
 ---
 
 # effected
@@ -25,7 +25,7 @@ The developer-experience exemplar is the [`semver`](modules/semver.md) package, 
 
 ## Boundaries
 
-The repository holds **libraries and their companions**. Standalone tools and applications built on these libraries stay in their own repos and consume published `@effected` packages: a repository with an entry point a user runs, rather than an API a program imports, does not belong here. The one admitted exception is a **companion** that fronts exactly one library here and releases as a fixed pair with it (`schemastore-cli` over `schemastore`): it is the library's own command-line surface, not an application, and it carries no library tier — see [companion package](glossary/companion-package.md). Package membership is the `packages/` directory listing.
+The repository holds **libraries, their companions, and one tool**. Standalone tools and applications built on these libraries stay in their own repos and consume published `@effected` packages: a repository with an entry point a user runs, rather than an API a program imports, does not belong here. There are two admitted exceptions. The first is the **`effected` tool** — a command, an MCP server and the carrier that installs both, four packages that are the kit applied and release with it; see [one tool beside the libraries](decisions/one-tool-beside-the-libraries.md). The second is a **companion** that fronts exactly one library here and releases as a fixed pair with it (`schemastore-cli` over `schemastore`): it is the library's own command-line surface, not an application, and it carries no library tier — see [companion package](glossary/companion-package.md). Package membership is the `packages/` directory listing.
 
 | Package | Tier | Provenance |
 | --- | --- | --- |
@@ -71,9 +71,13 @@ The repository holds **libraries and their companions**. Standalone tools and ap
 | `oidc` | boundary | invention; the OIDC vocabulary over `jwt`: the `IdentityToken` issuer contract (moved from `sbom`), ID-token claims, an unverified decode and an audience-guarded verify |
 | `crypto` | boundary | extraction from `github-actions` and `savvy-web/build` intake; HMAC, constant-time comparison and AWS SigV4 over core `Mac` and `Digest` in `R`, no `node:` import |
 | `webhooks` | boundary | extraction from `savvy-web/build` intake; inbound webhook signature verification presets (Standard Webhooks, GitHub, Stripe, Sanity, HMAC header, shared secret) over `crypto` |
-| `pnpm-plugin-effected` | companion — no tier | invention; the one `effected` catalog (the Effect family on one minor, and the kit) plus the graph-wide Effect pins; renamed from `pnpm-plugin-effect` |
+| `pnpm-plugin-effected` | companion — no tier | invention; the one `effected` catalog (the Effect family on one minor, and the kit) plus the graph-wide Effect pins, and the public hoist of `@effected/plugin`; renamed from `pnpm-plugin-effect` |
+| `plugin` | tool — no tier | invention; the `effected` tool's carrier, the one package a consumer installs (a root devDependency through `catalog:effected`): declares the `effected` and `effected-mcp` bins as shims passing its own distribution identity |
+| `cli` | tool — no tier | invention; the `effected` command (`--version` and `--help`) over `effect/cli` and `cli-kit`; the name was `cli-kit`'s before [the rename](decisions/carrier-libraries-take-kit-names.md) |
+| `mcp` | tool — no tier | invention; the `effected-mcp` stdio server with one `identity` tool over `effect/ai` and `mcp-kit` |
+| `engine` | tool — no tier | invention; the tool's shared logic (`Identity.report`, an `IdentityReport`) that both front ends report through, built on `kit` |
 
-The roster is **43 packages**: 41 libraries and two companions (`pnpm-plugin-effected` and `schemastore-cli`). Every one has published except `pnpm-plugin-effected` under its new name: it continues `pnpm-plugin-effect`'s version line and needs an npm trusted publisher before its first release.
+The roster is **47 packages**: 41 libraries, two companions (`pnpm-plugin-effected` and `schemastore-cli`) and the four packages of the `effected` tool (`plugin`, `cli`, `mcp`, `engine`), which are an application and carry no library tier. Every one has published except `pnpm-plugin-effected` under its new name: it continues `pnpm-plugin-effect`'s version line and needs an npm trusted publisher before its first release.
 
 ### Consumers
 
@@ -99,7 +103,7 @@ The repository's monorepo tooling and layout are documented in [the workspace mo
 
 ## Non-goals / out of scope
 
-- **Applications.** Anything with a user-run entry point rather than an importable API stays in its own repo, even when it started life here or shares packages with the kit.
+- **Applications.** Anything with a user-run entry point rather than an importable API stays in its own repo, even when it started life here or shares packages with the kit. The one exception is the `effected` tool ([why](decisions/one-tool-beside-the-libraries.md)); the website stays frozen for it.
 - **`@effected/json-schema`.** Off the roadmap entirely: its core value is superseded by Effect v4's `Schema.toJsonSchemaDocument`, and the one internal dependency on it (from `xdg`) was a dead facade that has been cut. It would be revisited only if a consuming application appeared.
 - **`ts-vfs`.** Lives in the external `type-registry-effect` repo; carries the `typescript` / `@typescript/vfs` peers the kit's "no `@effected/*` package imports `typescript`" posture excludes.
 - **The `runtime-resolver` binary.** Ships from the external `runtime-resolver` repo against the published `runtimes` package, so the library's own consumers never need `@effect/platform-node`.

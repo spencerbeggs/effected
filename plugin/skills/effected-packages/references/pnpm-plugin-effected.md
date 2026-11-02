@@ -28,6 +28,8 @@ The entry is a plain version (`"@effected/pnpm-plugin-effected": <version>`), th
 
 The pnpmfile also applies, to every consumer:
 
+- **A public hoist of `@effected/plugin`**, so the `effected` and `effected-mcp` bins resolve from any workspace package, not only the root.
+
 - **Graph-wide Effect overrides**, one per family member (`"<name>@^4.0.0": "<catalog version>"`, and the same for `@effect/tsgo` on its own line), derived from the catalog so they move with it. They hold every `effect` and satellite in the graph — including a dependency's own dependencies, which a catalog never reaches — to one version. Never hand-write these pins. A consumer's own `overrides` are kept, and a consumer value for the same selector wins.
 - **Release-age exclusion:** `effect`, `@effect/*` and `@effect/tsgo-*` are exempt from `minimumReleaseAge`, so a pinned Effect release only hours old still installs.
 

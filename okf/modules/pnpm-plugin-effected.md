@@ -23,10 +23,10 @@ sources:
     title: "Membership, the minor-locked Effect-family entries, the derived pins and the one consumer catalog"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-01T21:43:51Z
+  at: 2026-11-02T16:44:32Z
 integrity:
   generated:
-    body: e0e3c125211be36e
+    body: b075c772f2aa8d96
 ---
 
 # pnpm-plugin-effected
@@ -60,6 +60,10 @@ The catalog holds two halves, and the test reads each one by name prefix.[^catal
 - **The kit**: every publishable kit package but one, object form, `strategy: "lock-minor"`, `source: "workspace"`, holding next-release versions. `@effected/pnpm-plugin-effected` is deliberately absent: see [the plugin is never in its own catalog](../decisions/plugin-never-in-its-own-catalog.md). Membership is `publishConfig.access === "public"`, never `private === false`: see [the publishability-signal convention](../conventions/publishability-signal.md). What next-release versions imply: [the effected catalog holds next-release versions](../decisions/catalog-holds-next-release-versions.md). Keeping it current is automated: [the catalog:sync / catalog:check CLI](../interfaces/catalog-sync-cli.md).
 
 The catalog carries no entries for packages Effect v4 absorbed into core (`@effect/platform`, `@effect/cluster`, `@effect/rpc`, `@effect/sql`, `@effect/workflow`, `@effect/experimental`). That absence is the removal signal: a lookup that finds nothing means the package no longer exists on the v4 line. The suffixed packages that still ship (`@effect/platform-node`, the `@effect/sql-*` drivers) stay. The retired v3 interop pair must not come back: [effect3 catalogs are retired](../decisions/effect3-catalogs-retired.md).
+
+## The carrier hoist
+
+The plugin sets `publicHoistPattern: ["@effected/plugin"]`, so the `effected` and `effected-mcp` bins of the [carrier](plugin.md) reach the workspace root. A packed-install e2e showed it matters only when a leaf workspace package declares the carrier; a root devDependency's bin already resolves. The catalog lists the tool's packages with the rest of the kit, and the recommended consumer install is `"@effected/plugin": "catalog:effected"` as a root devDependency.
 
 ## How this repository consumes it
 
