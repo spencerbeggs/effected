@@ -1,7 +1,14 @@
 {
 	"layers": [
 		["@effected/app", "@effected/github-actions", "@effected/schemastore-cli"],
-		["@effected/cli", "@effected/lsp", "@effected/mcp", "@effected/sbom", "@effected/workspaces", "@effected/xdg"],
+		[
+			"@effected/cli-kit",
+			"@effected/lsp",
+			"@effected/mcp-kit",
+			"@effected/sbom",
+			"@effected/workspaces",
+			"@effected/xdg"
+		],
 		["@effected/config-file", "@effected/lockfiles", "@effected/package-json", "@effected/tsconfig-json"],
 		[
 			"@effected/github",
@@ -14,7 +21,7 @@
 		["@effected/oidc", "@effected/webhooks"],
 		[
 			"@effected/commands",
-			"@effected/engine",
+			"@effected/kit",
 			"@effected/env",
 			"@effected/git",
 			"@effected/github-commands",
@@ -40,9 +47,9 @@
 	"unconstrained": ["effected", "docs", "scratchpad", "@effected/ai-plugins"],
 	"fields": ["dependencies", "peerDependencies", "optionalDependencies"],
 	"requiredEdges": [
-		"@effected/mcp -> @effected/engine",
+		"@effected/mcp-kit -> @effected/kit",
 		"@effected/workspaces -> @effected/npm",
-		"@effected/schemastore-cli -> @effected/cli",
+		"@effected/schemastore-cli -> @effected/cli-kit",
 		"@effected/app -> @effected/xdg"
 	]
 }

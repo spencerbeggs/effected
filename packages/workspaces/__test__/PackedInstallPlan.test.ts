@@ -294,15 +294,15 @@ describe("fileOverridesOf", () => {
 			fileOverridesOf({
 				packages: ["packages/*"],
 				overrides: {
-					"@effected/cli": "file:../effected/packages/cli/dist/prod/npm/pkg",
+					"@effected/cli-kit": "file:../effected/packages/cli/dist/prod/npm/pkg",
 					plain: "file:/abs/plain.tgz",
-					"@effected/mcp": "^0.2.0",
+					"@effected/mcp-kit": "^0.2.0",
 					"parent>child": "file:../child",
 					"pinned@1": "file:../pinned",
 					numeric: 3,
 				},
 			}),
-			{ "@effected/cli": "../effected/packages/cli/dist/prod/npm/pkg", plain: "/abs/plain.tgz" },
+			{ "@effected/cli-kit": "../effected/packages/cli/dist/prod/npm/pkg", plain: "/abs/plain.tgz" },
 		);
 	});
 

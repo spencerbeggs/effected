@@ -6,7 +6,7 @@
 		"AppStore": "the app's migrated sqlite state database in the xdg state directory, multiple stores each under your own service key",
 		"AppTest": "hermetic app layer for tests over an in-memory filesystem, from the testing entrypoint"
 	},
-	"cli": {
+	"cli-kit": {
 		"Cancelled": "user quit a prompt or screen with esc or ctrl-c, exit 130",
 		"CliAudience": "add --agent --human --ci --audience flags, resolve the audience before parsing",
 		"CliColor": "decide once whether stdout gets ansi colour, `FORCE_COLOR` and `NO_COLOR` aware",
@@ -132,7 +132,7 @@
 		"asConfigProvider": "bridge a loaded config document into effect's Config accessors",
 		"layerConfigProvider": "install a config file as a fallback beneath the ambient ConfigProvider"
 	},
-	"engine": {
+	"kit": {
 		"CurrentDistribution": "read which carrier package installed this run without it appearing in R, defaults to none",
 		"Distribution": "the carrier package name and version a tool's bins were installed through",
 		"DistributionField": "the nullable distribution field of a machine-readable envelope, null for a direct install",
@@ -631,7 +631,7 @@
 		"NodeDirectorySeed": "seed volume from real fixture directory, copy fixture tree byte-exact",
 		"NodeSyncFileSystem": "read real disk under Effect.runSync, synchronous read-only node filesystem"
 	},
-	"mcp": {
+	"mcp-kit": {
 		"McpGuard": "crash guards before the server graph loads, exit only before connect, startup failure exits 1, parse a crash-injection env value",
 		"McpHarness": "test mcp server in-process, call tools over queue-backed stdio",
 		"McpProbe": "smoke-test a built mcp bin, initialize then clean exit",

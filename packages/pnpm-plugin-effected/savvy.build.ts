@@ -179,7 +179,7 @@ await build({
 							strategy: "lock-minor",
 							source: "workspace",
 						},
-						"@effected/cli": {
+						"@effected/cli-kit": {
 							range: "^0.25.0",
 							peer: "^0.25.0",
 							strategy: "lock-minor",
@@ -203,7 +203,7 @@ await build({
 							strategy: "lock-minor",
 							source: "workspace",
 						},
-						"@effected/engine": {
+						"@effected/kit": {
 							range: "^0.11.0",
 							peer: "^0.11.0",
 							strategy: "lock-minor",
@@ -293,7 +293,7 @@ await build({
 							strategy: "lock-minor",
 							source: "workspace",
 						},
-						"@effected/mcp": {
+						"@effected/mcp-kit": {
 							range: "^0.12.0",
 							peer: "^0.12.0",
 							strategy: "lock-minor",

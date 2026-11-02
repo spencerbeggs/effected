@@ -328,17 +328,17 @@ importers:
         version: 7.1.0-beta
     publishDirectory: dist/dev/pkg
 
-  packages/cli:
+  packages/cli-kit:
     dependencies:
       '@effected/commands':
         specifier: workspace:^
         version: link:../commands/dist/dev/pkg
-      '@effected/engine':
-        specifier: workspace:^
-        version: link:../engine/dist/dev/pkg
       '@effected/github-commands':
         specifier: workspace:^
         version: link:../github-commands/dist/dev/pkg
+      '@effected/kit':
+        specifier: workspace:^
+        version: link:../kit/dist/dev/pkg
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effected
@@ -478,31 +478,6 @@ importers:
       '@effect/vitest':
         specifier: catalog:effected
         version: 4.1.1(effect@4.1.1)(vitest@5.0.5)
-      '@savvy-web/bundler':
-        specifier: ^2.7.1
-        version: 2.7.2(@types/node@26.6.6)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(redis@6.3.1)(tsx@4.23.15)(typescript@7.1.0-beta)
-      '@types/node':
-        specifier: catalog:build
-        version: 26.6.6
-      effect:
-        specifier: catalog:effected
-        version: 4.1.1
-      typescript:
-        specifier: catalog:build
-        version: 7.1.0-beta
-    publishDirectory: dist/dev/pkg
-
-  packages/engine:
-    devDependencies:
-      '@effect/platform-node':
-        specifier: catalog:effected
-        version: 4.1.1(effect@4.1.1)(redis@6.3.1)
-      '@effect/vitest':
-        specifier: catalog:effected
-        version: 4.1.1(effect@4.1.1)(vitest@5.0.5)
-      '@effected/workspaces':
-        specifier: workspace:*
-        version: link:../workspaces/dist/dev/pkg
       '@savvy-web/bundler':
         specifier: ^2.7.1
         version: 2.7.2(@types/node@26.6.6)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(redis@6.3.1)(tsx@4.23.15)(typescript@7.1.0-beta)
@@ -856,6 +831,31 @@ importers:
         version: 7.1.0-beta
     publishDirectory: dist/dev/pkg
 
+  packages/kit:
+    devDependencies:
+      '@effect/platform-node':
+        specifier: catalog:effected
+        version: 4.1.1(effect@4.1.1)(redis@6.3.1)
+      '@effect/vitest':
+        specifier: catalog:effected
+        version: 4.1.1(effect@4.1.1)(vitest@5.0.5)
+      '@effected/workspaces':
+        specifier: workspace:*
+        version: link:../workspaces/dist/dev/pkg
+      '@savvy-web/bundler':
+        specifier: ^2.7.1
+        version: 2.7.2(@types/node@26.6.6)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(redis@6.3.1)(tsx@4.23.15)(typescript@7.1.0-beta)
+      '@types/node':
+        specifier: catalog:build
+        version: 26.6.6
+      effect:
+        specifier: catalog:effected
+        version: 4.1.1
+      typescript:
+        specifier: catalog:build
+        version: 7.1.0-beta
+    publishDirectory: dist/dev/pkg
+
   packages/lockfiles:
     devDependencies:
       '@effect/vitest':
@@ -947,7 +947,7 @@ importers:
         version: 7.1.0-beta
     publishDirectory: dist/dev/pkg
 
-  packages/mcp:
+  packages/mcp-kit:
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effected
@@ -955,9 +955,9 @@ importers:
       '@effect/vitest':
         specifier: catalog:effected
         version: 4.1.1(effect@4.1.1)(vitest@5.0.5)
-      '@effected/engine':
+      '@effected/kit':
         specifier: workspace:*
-        version: link:../engine/dist/dev/pkg
+        version: link:../kit/dist/dev/pkg
       '@effected/workspaces':
         specifier: workspace:*
         version: link:../workspaces/dist/dev/pkg
@@ -1232,9 +1232,9 @@ importers:
       '@effect/platform-node':
         specifier: catalog:effected
         version: 4.1.1(effect@4.1.1)(redis@6.3.1)
-      '@effected/cli':
+      '@effected/cli-kit':
         specifier: workspace:^
-        version: link:../cli/dist/dev/pkg
+        version: link:../cli-kit/dist/dev/pkg
       '@effected/env':
         specifier: workspace:^
         version: link:../env/dist/dev/pkg
@@ -1653,18 +1653,15 @@ importers:
       '@effected/app':
         specifier: workspace:*
         version: link:../packages/app/dist/dev/pkg
-      '@effected/cli':
+      '@effected/cli-kit':
         specifier: workspace:*
-        version: link:../packages/cli/dist/dev/pkg
+        version: link:../packages/cli-kit/dist/dev/pkg
       '@effected/commands':
         specifier: workspace:*
         version: link:../packages/commands/dist/dev/pkg
       '@effected/config-file':
         specifier: workspace:*
         version: link:../packages/config-file/dist/dev/pkg
-      '@effected/engine':
-        specifier: workspace:*
-        version: link:../packages/engine/dist/dev/pkg
       '@effected/env':
         specifier: workspace:*
         version: link:../packages/env/dist/dev/pkg
@@ -1692,15 +1689,18 @@ importers:
       '@effected/jsonl':
         specifier: workspace:*
         version: link:../packages/jsonl/dist/dev/pkg
+      '@effected/kit':
+        specifier: workspace:*
+        version: link:../packages/kit/dist/dev/pkg
       '@effected/lockfiles':
         specifier: workspace:*
         version: link:../packages/lockfiles/dist/dev/pkg
       '@effected/markdown':
         specifier: workspace:*
         version: link:../packages/markdown/dist/dev/pkg
-      '@effected/mcp':
+      '@effected/mcp-kit':
         specifier: workspace:*
-        version: link:../packages/mcp/dist/dev/pkg
+        version: link:../packages/mcp-kit/dist/dev/pkg
       '@effected/memfs':
         specifier: workspace:*
         version: link:../packages/memfs/dist/dev/pkg

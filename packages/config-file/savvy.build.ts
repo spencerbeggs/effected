@@ -11,7 +11,7 @@ await build({
 				{ messageId: "ae-forgotten-export", pattern: "_base" },
 				// The second API Extractor pass resolves each codec subpath's self-referencing "@effected/config-file" import
 				// to the built root declarations, but still reports the root types it reaches as forgotten (the
-				// @effected/cli ./ui precedent). Scoped to the three codec entries only; what it would hide (a subpath-local
+				// @effected/cli-kit ./ui precedent). Scoped to the three codec entries only; what it would hide (a subpath-local
 				// declaration left unexported) is pinned by __test__/subpaths.test.ts over the built declarations.
 				{ messageId: "ae-forgotten-export", pattern: "entry point (?:jsonc|yaml|toml)\\.d\\.ts$" },
 			],

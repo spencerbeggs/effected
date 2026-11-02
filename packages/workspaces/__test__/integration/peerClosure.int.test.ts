@@ -88,9 +88,9 @@ describe("the closure rule, on a toy graph (positive controls)", () => {
 	const glob = kit({ name: "@effected/glob" });
 
 	it("a package that peers on X but not on X's own required peer is a gap, naming both", () => {
-		const cli = kit({ name: "@effected/cli", peers: ["@effected/walker"] });
+		const cli = kit({ name: "@effected/cli-kit", peers: ["@effected/walker"] });
 		assert.deepStrictEqual(describeGaps(closureGaps([cli, walker, glob])), [
-			"@effected/cli is missing peer @effected/glob (required through @effected/walker)",
+			"@effected/cli-kit is missing peer @effected/glob (required through @effected/walker)",
 		]);
 	});
 
@@ -134,7 +134,7 @@ describe("the closure rule, on a toy graph (positive controls)", () => {
 	});
 
 	it("an optional peer's closure is optional: nothing it requires is demanded", () => {
-		const cli = kit({ name: "@effected/cli", optionalPeers: ["@effected/walker"] });
+		const cli = kit({ name: "@effected/cli-kit", optionalPeers: ["@effected/walker"] });
 		assert.deepStrictEqual(closureGaps([cli, walker, glob]), []);
 		// And a peer another package marks optional is not required of its dependents.
 		const soft = kit({ name: "soft", peers: ["@effected/glob"], optionalPeers: ["@effected/walker"] });

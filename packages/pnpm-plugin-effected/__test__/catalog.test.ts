@@ -284,7 +284,7 @@ describe("the consumer's catalog", () => {
 		const { effected } = await catalogsFor({});
 		assert.match(effected?.effect ?? "", /^~4\.\d+\.\d+$/);
 		assert.match(effected?.["@effect/platform-node"] ?? "", /^~4\.\d+\.\d+$/);
-		assert.match(effected?.["@effected/cli"] ?? "", /^\^0\.\d+\.\d+$/);
+		assert.match(effected?.["@effected/cli-kit"] ?? "", /^\^0\.\d+\.\d+$/);
 		assert.notProperty(effected, PLUGIN);
 	});
 
