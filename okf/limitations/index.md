@@ -1,6 +1,6 @@
 # Limitation
 
-* [@effected/cli is not a CLI framework](cli-is-not-a-framework.md) - The package deliberately carries no argument parsing, no platform package, and no interactive terminal UI.
+* [@effected/cli-kit is not a CLI framework](cli-is-not-a-framework.md) - The package deliberately carries no argument parsing, no platform package, and no interactive terminal UI.
 * [@effected/commands does not supervise or archive processes](commands-no-process-supervision.md) - Reap-after-detach, readiness polling, and archive helpers are deliberately absent, and stay a level up; the one exception is RunOnce's signal-0 liveness probe, which asks whether a lock owner exists and never signals or supervises it.
 * [@effected/github does not own every GraphQL document](github-graphql-schema-not-owned.md) - A document over a consumer-specific domain (project boards, etc.) is deliberately not modelled in the kit.
 * [A block-mapping key longer than 1024 rendered characters spills to explicit-key form](yaml-explicit-key-spill.md) - YAML 1.2's implicit-key length cap forces the stringifier to switch a long key from block-implicit to explicit-key form, changing the emitted shape.

@@ -1,19 +1,19 @@
-# @effected/mcp
+# @effected/mcp-kit
 
 Teaching skill: `effect-v4-mcp`.
 
-The boundary layer of an `effect/ai` MCP server: stdio wiring that keeps stdout the JSON-RPC wire, tool-failure shaping, strict-by-default toolkit registration, and JSON Schema input walkers for `Tool.dynamic` tools, the `ok: false` outcome envelope and idempotent replay for write tools, a Node-only `./node` stdout capture for in-process libraries, plus a `./testing` module of clients for driving a built server from a test. Tier: boundary. `effect` and `@effected/engine` are the only peers — no `@effect/platform*` package and no `console.*` call anywhere in `src/`, and no `node:` import outside `./node` (whose one module imports `node:async_hooks` and `node:stream`).
+The boundary layer of an `effect/ai` MCP server: stdio wiring that keeps stdout the JSON-RPC wire, tool-failure shaping, strict-by-default toolkit registration, and JSON Schema input walkers for `Tool.dynamic` tools, the `ok: false` outcome envelope and idempotent replay for write tools, a Node-only `./node` stdout capture for in-process libraries, plus a `./testing` module of clients for driving a built server from a test. Tier: boundary. `effect` and `@effected/kit` are the only peers — no `@effect/platform*` package and no `console.*` call anywhere in `src/`, and no `node:` import outside `./node` (whose one module imports `node:async_hooks` and `node:stream`).
 
 ## Import
 
 ```ts
-import { McpStdio, McpToolkit, ToolFailure, ToolInputSchema, ToolOutcome, ToolReplay } from "@effected/mcp";
-import { McpHarness, McpProbe, McpProcess, McpTestFailure, McpToolAudit } from "@effected/mcp/testing";
-import { type InjectCrash, McpGuard } from "@effected/mcp/guard";
-import { StdioCapture } from "@effected/mcp/node";
+import { McpStdio, McpToolkit, ToolFailure, ToolInputSchema, ToolOutcome, ToolReplay } from "@effected/mcp-kit";
+import { McpHarness, McpProbe, McpProcess, McpTestFailure, McpToolAudit } from "@effected/mcp-kit/testing";
+import { type InjectCrash, McpGuard } from "@effected/mcp-kit/guard";
+import { StdioCapture } from "@effected/mcp-kit/node";
 ```
 
-Four entrypoints. `./node` holds `StdioCapture` alone, apart from the root because it imports `node:async_hooks` (and `node:stream` for `nullWritable`), which the platform-neutral root must never load; a reachability test pins that the root never reaches it. `./testing` is a separate module so test machinery never enters a server's runtime import graph — a reachability test pins that the two graphs never cross. `./guard` statically imports only `@effected/engine/guard`, which imports nothing, so its crash guards listen before `effect` or the server graph evaluates; `McpGuard.run` is `ProcessGuard.run` from that engine subpath plus an MCP stdio launch. Protocol handling, tool registration and the wire format stay `effect/ai`'s job, not this package's.
+Four entrypoints. `./node` holds `StdioCapture` alone, apart from the root because it imports `node:async_hooks` (and `node:stream` for `nullWritable`), which the platform-neutral root must never load; a reachability test pins that the root never reaches it. `./testing` is a separate module so test machinery never enters a server's runtime import graph — a reachability test pins that the two graphs never cross. `./guard` statically imports only `@effected/kit/guard`, which imports nothing, so its crash guards listen before `effect` or the server graph evaluates; `McpGuard.run` is `ProcessGuard.run` from that engine subpath plus an MCP stdio launch. Protocol handling, tool registration and the wire format stay `effect/ai`'s job, not this package's.
 
 ## Feature surface
 
@@ -29,7 +29,7 @@ Four entrypoints. `./node` holds `StdioCapture` alone, apart from the root becau
 | `McpProcess.spawn(command)` | a test must drive a **spawned** bin, not an in-process layer |
 | `McpProbe.initialize(command)` | the MCP half of a packed-install proof: one `initialize`, a clean close, exit 0 |
 | `McpToolAudit.check(tools, policy)` | a pure, server-free policy sweep over what `tools/list` actually serves |
-| `McpGuard.run(options)` (`./guard`) | crash guards for an MCP server's `main.ts`, with an exit-before-connect policy; for an LSP or any other transport use `ProcessGuard.run` from `@effected/engine/guard` |
+| `McpGuard.run(options)` (`./guard`) | crash guards for an MCP server's `main.ts`, with an exit-before-connect policy; for an LSP or any other transport use `ProcessGuard.run` from `@effected/kit/guard` |
 | `McpGuard.parseInjectCrash(value)` (`./guard`) | parse a launcher's test-only `<at>:<kind>` crash-injection variable into `injectCrash` (`undefined` for anything else); the same function as `ProcessGuard.parseInjectCrash` |
 | `McpProcess.stderrUntil(predicate, { timeout })` | waiting for a report a spawned server writes on a later tick than its responses, such as `McpGuard`'s `injectCrash: { at: "connected" }` report |
 | `ToolRefusal.refuse(reason, remediation)` | a declared, agent-actionable refusal; structured data on it never reaches the client, so fold it into `reason` or return a `ToolOutcome` envelope |
@@ -56,7 +56,7 @@ Four entrypoints. `./node` holds `StdioCapture` alone, apart from the root becau
 ## Usage
 
 ```ts
-import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp";
+import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp-kit";
 import { NodeRuntime, NodeStdio } from "@effect/platform-node";
 import { Effect, Layer, Schema } from "effect";
 import { Tool, Toolkit } from "effect/ai";

@@ -18,11 +18,11 @@ sources:
     resource: ../../.repos/effect/packages/effect/src/cli/CliError.ts
     title: Core CliError, ShowHelp and its exit code
   - id: cli-runtime
-    resource: ../../packages/cli/src/CliRuntime.ts
+    resource: ../../packages/cli-kit/src/CliRuntime.ts
     title: CliRuntime, which remaps usage failures to exit 64
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T14:11:47Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-10-09T16:29:07Z
@@ -30,7 +30,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: e277224bfe5607a4
+    body: 8292e88b5f0217e9
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -186,4 +186,4 @@ probed; shared flags are documented as inherited by descendants.
 
 [^core-cli-error]: `.repos/effect/packages/effect/src/cli/CliError.ts`: `ShowHelp` carries `Runtime.errorExitCode` of 1 when it has errors, near line 656.
 
-[^cli-runtime]: `packages/cli/src/CliRuntime.ts`: a `ShowHelp` with errors and a rendered `UserError` exit with `usageExitCode`, default 64.
+[^cli-runtime]: `packages/cli-kit/src/CliRuntime.ts`: a `ShowHelp` with errors and a rendered `UserError` exit with `usageExitCode`, default 64.

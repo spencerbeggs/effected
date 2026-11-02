@@ -11,10 +11,10 @@ sources:
   - id: layering-int-test
     resource: ../../packages/workspaces/__test__/integration/layering.int.test.ts
   - id: engine-package-json
-    resource: ../../packages/engine/package.json
+    resource: ../../packages/kit/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T01:41:28Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-09-24T06:10:09Z
@@ -22,7 +22,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: ef87325e7e10c928
+    body: 6241c21ed153281e
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -76,7 +76,7 @@ add a release unit for no runtime benefit.
   cycle.[^layering-int-test]
 - The same test proves the devDependency edges exist and would be caught if
   the policy checked them: it asserts
-  `@effected/engine -> @effected/workspaces (devDependencies)` is an edge,
+  `@effected/kit -> @effected/workspaces (devDependencies)` is an edge,
   and that an all-field policy reports it as `upward`.
 - Each design-forbidden edge has a positive control in that test: planting
   it as a peer edge yields exactly the expected offence.
@@ -86,5 +86,5 @@ add a release unit for no runtime benefit.
 [^layering-int-test]: `packages/workspaces/__test__/integration/layering.int.test.ts`
     — the policy check, the forbidden-edge controls, the devDependency test
     and the all-field acyclicity assertion.
-[^engine-package-json]: `packages/engine/package.json` — the `workspace:*`
+[^engine-package-json]: `packages/kit/package.json` — the `workspace:*`
     devDependency on `@effected/workspaces`.

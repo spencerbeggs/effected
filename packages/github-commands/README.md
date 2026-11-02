@@ -50,7 +50,7 @@ CommandNeutralizer.text("prefix ##[add-mask]secret\n::error::x");
 - **`WorkflowCommand`**: `render(name, properties, message)` and the `debug`, `notice`, `warning`, `error`, `group`, `endGroup` and `addMask` helpers. Annotation properties use readable names (`startLine`, `startColumn`) and go out as the wire's (`line`, `col`). The message escapes `%`, CR and LF; a property value also escapes `:` and `,`; the `%` goes first so an escape is never escaped twice.
 - **`CommandNeutralizer`**: `lines(text)` and `text(text)`. A bare `##` is left alone, so a markdown heading is unharmed. It splits at CR, LF and CRLF as the runner does, and it is idempotent: neutralizing twice changes nothing.
 
-[`@effected/github-actions`](https://www.npmjs.com/package/@effected/github-actions) re-exports `WorkflowCommand`, and [`@effected/cli`](https://www.npmjs.com/package/@effected/cli) neutralizes its output through `CommandNeutralizer` whenever the runner is GitHub Actions.
+[`@effected/github-actions`](https://www.npmjs.com/package/@effected/github-actions) re-exports `WorkflowCommand`, and [`@effected/cli-kit`](https://www.npmjs.com/package/@effected/cli-kit) neutralizes its output through `CommandNeutralizer` whenever the runner is GitHub Actions.
 
 ## Documentation
 

@@ -6,13 +6,13 @@ status: deprecated
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T18:00:23Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
 integrity:
   generated:
-    body: 27128e6290b1601d
+    body: 9f9866b876a2cd6e
 ---
 
 # D8: `FORCE_COLOR` is ignored, matching core
@@ -59,7 +59,7 @@ different variable.
 The `NO_COLOR` check is correctly presence-based by construction — `Config.option`
 answers `Some`/`None`, not string equality against `"1"` — closing both
 the okfit and Silk bugs without special-casing either one.
-`okf/modules/cli.md`'s testing section documents the resulting truth
+`okf/modules/cli-kit.md`'s testing section documents the resulting truth
 table: `NO_COLOR` values `unset / "" / "1" / "true" / "0"` crossed with
 TTY yes/no. A consumer that genuinely needs `FORCE_COLOR` support can add
 it at their own call site by overriding `CliColor.formatterLayer`'s

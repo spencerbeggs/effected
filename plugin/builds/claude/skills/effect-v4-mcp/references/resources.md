@@ -12,7 +12,7 @@ a `Layer` — merge it next to the toolkit, the same way `McpToolkit.layer`
 is:
 
 ~~~ts
-import { McpStdio } from "@effected/mcp"
+import { McpStdio } from "@effected/mcp-kit"
 import { Effect, Layer } from "effect"
 import { McpServer } from "effect/ai"
 
@@ -41,8 +41,8 @@ return the full shape when the client needs the mime type on the read
 itself, not only in the listing.
 
 ~~~ts
-import { McpStdio } from "@effected/mcp"
-import { McpHarness } from "@effected/mcp/testing"
+import { McpStdio } from "@effected/mcp-kit"
+import { McpHarness } from "@effected/mcp-kit/testing"
 import { Effect, Layer } from "effect"
 import { McpServer } from "effect/ai"
 
@@ -123,8 +123,8 @@ the router reports no match, and the client sees `ResourceNotFound`, not a
 decode error.
 
 ~~~ts
-import { McpStdio } from "@effected/mcp"
-import { McpHarness } from "@effected/mcp/testing"
+import { McpStdio } from "@effected/mcp-kit"
+import { McpHarness } from "@effected/mcp-kit/testing"
 import { Effect, Layer, Schema } from "effect"
 import { McpSchema, McpServer } from "effect/ai"
 

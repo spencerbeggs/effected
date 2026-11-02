@@ -50,7 +50,9 @@ function ledgerRenames(dir) {
 
 function latest(name) {
 	try {
-		const version = JSON.parse(execFileSync("pnpm", ["view", `${name}@latest`, "version", "--json"], { encoding: "utf8" }));
+		const version = JSON.parse(
+			execFileSync("pnpm", ["view", `${name}@latest`, "version", "--json"], { encoding: "utf8" }),
+		);
 		if (typeof version !== "string" || version === "") throw new Error("no version returned");
 		return version;
 	} catch (err) {

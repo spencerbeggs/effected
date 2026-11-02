@@ -5,7 +5,7 @@ Loaded from `effect-v4-mcp`. Covers the complete `main.ts`, why `Stdio` is provi
 ## The complete `main.ts`
 
 ~~~ts
-import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp"
+import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp-kit"
 import { NodeRuntime, NodeStdio } from "@effect/platform-node"
 import { Effect, Layer, Schema } from "effect"
 import { Tool, Toolkit } from "effect/ai"
@@ -195,7 +195,7 @@ through bad lines but never answers them.
 import { unlinkSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { McpProcess } from "@effected/mcp/testing"
+import { McpProcess } from "@effected/mcp-kit/testing"
 import { Effect } from "effect"
 import { ChildProcess } from "effect/process"
 
@@ -205,7 +205,7 @@ const serverFile = join(import.meta.dirname, "mcp-guard-demo-server.mjs")
 writeFileSync(
   serverFile,
   `
-import { McpStdio, McpToolkit } from "@effected/mcp"
+import { McpStdio, McpToolkit } from "@effected/mcp-kit"
 import { NodeRuntime, NodeStdio } from "@effect/platform-node"
 import { Effect, Layer } from "effect"
 import { Tool, Toolkit } from "effect/ai"
@@ -359,7 +359,7 @@ process.on("unhandledRejection", (reason) => {
 // Do NOT "tidy" these into static imports at the top of the file: a throw
 // during evaluation of the server graph itself must still reach the guards
 // above, which only works if nothing here is imported before they run.
-const { McpStdio } = await import("@effected/mcp")
+const { McpStdio } = await import("@effected/mcp-kit")
 const { NodeRuntime, NodeStdio } = await import("@effect/platform-node")
 const { Layer } = await import("effect")
 
@@ -409,7 +409,7 @@ above, only when none can.
 
 ### `McpGuard.run` packages both policies
 
-`@effected/mcp/guard` ships the skeleton above as `McpGuard.run`. The
+`@effected/mcp-kit/guard` ships the skeleton above as `McpGuard.run`. The
 entrypoint has no static runtime import, so importing it statically is
 safe; it registers both listeners, awaits `load()`, reports a rejected
 `load()` as `startup failed` with exit `1`, then launches the returned layer
@@ -417,7 +417,7 @@ with `McpStdio.launch` and `McpStdio.teardown`. It owns the connected flag
 too: `McpStdio.launch`'s `onReady` runs once the whole layer has built.
 
 ~~~ts
-import { McpGuard } from "@effected/mcp/guard"
+import { McpGuard } from "@effected/mcp-kit/guard"
 
 await McpGuard.run({
   label: "guarded-server",
@@ -425,7 +425,7 @@ await McpGuard.run({
   // survive-once-connected; omit policy for exit-always
   policy: { onUncaught: "exitBeforeConnect", onRejection: "log" },
   load: async () => {
-    const { McpStdio } = await import("@effected/mcp")
+    const { McpStdio } = await import("@effected/mcp-kit")
     const NodeRuntime = await import("@effect/platform-node/NodeRuntime")
     const NodeStdio = await import("@effect/platform-node/NodeStdio")
     const { Layer } = await import("effect")
@@ -469,7 +469,7 @@ that proves the policy switches on the connect signal.
 
 ### Another transport: `ProcessGuard.run`
 
-`McpGuard.run` is `ProcessGuard.run` from `@effected/engine/guard` with an
+`McpGuard.run` is `ProcessGuard.run` from `@effected/kit/guard` with an
 MCP launch in its `load`. A server on another transport, such as an LSP
 over `vscode-languageserver`, takes the engine guard directly: same
 listeners, policy, `startup failed` exit, `injectCrash` and formatter, and
@@ -478,7 +478,7 @@ control with `markConnected()` (the only thing that makes
 `"exitBeforeConnect"` stop exiting) and `useFormat(fn)`:
 
 ~~~ts
-import { ProcessGuard } from "@effected/engine/guard"
+import { ProcessGuard } from "@effected/kit/guard"
 
 await ProcessGuard.run({
   label: "my-lsp",
@@ -509,7 +509,7 @@ candidate, in order, so a flag is a directory to it. A plugin whose
 server has no command parser to strip the flag first:
 
 ~~~ts
-import { LaunchContext } from "@effected/engine"
+import { LaunchContext } from "@effected/kit"
 
 // The host launched: node server.js --stdio <project dir>
 const args = process.argv.slice(2)
@@ -536,7 +536,7 @@ pass the directory through an environment variable instead and resolve with
 `argv: []` and the env `keys` alone:
 
 ~~~ts
-import { LaunchContext } from "@effected/engine"
+import { LaunchContext } from "@effected/kit"
 
 // The agent host left CLAUDE_PROJECT_DIR unsubstituted — a literal
 // "${CLAUDE_PROJECT_DIR}" string, not an expanded path.

@@ -1,4 +1,4 @@
-# @effected/mcp
+# @effected/mcp-kit
 
 The boundary layer of an `effect/ai` MCP server: stdio wiring that
 keeps stdout the JSON-RPC wire, tool-failure shaping, and strict-input
@@ -8,9 +8,9 @@ built server from a test.
 Protocol handling, tool registration and the wire format stay core's; this
 package fixes the defaults consumers kept getting wrong.
 
-**Design doc:** `@./okf/modules/mcp.md` — Load when: changing the public
+**Design doc:** `@./okf/modules/mcp-kit.md` — Load when: changing the public
 surface, the stdio launch/teardown shape, the tool-failure message contract,
-or the strict-input walker. `okf/modules/mcp.md` stays `status: draft` until
+or the strict-input walker. `okf/modules/mcp-kit.md` stays `status: draft` until
 the user verifies it.
 
 ## Tier: boundary — one licensed exception in `src/`
@@ -27,7 +27,7 @@ and never calls `console.*`. `Console` is reached only through core's
 to it corrupts the protocol.
 
 **Nothing in the kit may depend on this package except an application.**
-`@effected/mcp` never takes a runtime dependency on `@effected/cli` or
+`@effected/mcp-kit` never takes a runtime dependency on `@effected/cli-kit` or
 `@effected/workspaces` — a CLI boundary and an MCP boundary are siblings,
 both front ends, never layers on each other; `@effected/workspaces` is a
 devDependency for `SourceBoundary` only, and the boundary test forbids
@@ -35,15 +35,15 @@ importing it from `src/`.
 
 ## Peers
 
-`@effected/engine` (workspace `^`) and `effect` (`catalog:effected:peers`).
-`Remediation` from `@effected/engine` is the shape `ToolFailure` folds into a
-wire message, and `ProcessGuard` from `@effected/engine/guard` is the whole
+`@effected/kit` (workspace `^`) and `effect` (`catalog:effected:peers`).
+`Remediation` from `@effected/kit` is the shape `ToolFailure` folds into a
+wire message, and `ProcessGuard` from `@effected/kit/guard` is the whole
 guard half of `McpGuard.run`. The peer floor must include an engine version
 that ships `./guard`.
 
 ## Exports
 
-`@effected/mcp` (`src/index.ts`): `McpStdio` (`protocols`, `layer`, `launch`,
+`@effected/mcp-kit` (`src/index.ts`): `McpStdio` (`protocols`, `layer`, `launch`,
 `teardown`), `McpToolkit` (`layer`), `ToolFailure` (`fields`, `message`,
 `truncate`, `ECHO_LIMIT`, `ENGINE_ECHO_LIMIT`), `ToolInputSchema`
 (`unknownKeys`, `formatUnknownKeys`, `objectRooted`), `ToolOutputSchema`
@@ -55,10 +55,10 @@ that ships `./guard`.
 `UnionToolOptions`, `UnknownKeysLevel` and `FormatUnknownKeysOptions`
 types. `McpToolkit` also carries `unionTool` and `unionHandler`.
 
-`@effected/mcp/guard` (`src/guard.ts`): `McpGuard` (`run`, and `parseInjectCrash`, which is `ProcessGuard.parseInjectCrash`), plus the
+`@effected/mcp-kit/guard` (`src/guard.ts`): `McpGuard` (`run`, and `parseInjectCrash`, which is `ProcessGuard.parseInjectCrash`), plus the
 `InjectCrash` (its return), `McpGuardHost`, `McpGuardPolicy`, `McpGuardedServer` and
 `McpGuardRunOptions` types. **Its only static runtime import is
-`@effected/engine/guard`, which itself imports nothing**: the guards must
+`@effected/kit/guard`, which itself imports nothing**: the guards must
 be listening before `effect` or the server graph evaluates. `McpGuard.run`
 is `ProcessGuard.run` (listeners, policy, `startup failed`, `injectCrash`,
 formatter) with an MCP launch in its `load`: it hands the loaded `format`
@@ -66,10 +66,10 @@ to `guard.useFormat` and `guard.markConnected` to `McpStdio.launch`'s
 `onReady`. Behaviour belongs in the engine, not here. The server half
 lives in `src/internal/guardLaunch.ts` behind a dynamic `import()`;
 `entrypoints.test.ts` pins the graph (and walks the installed
-`@effected/engine/guard` to zero packages), so a static import added to
+`@effected/kit/guard` to zero packages), so a static import added to
 `McpGuard.ts` fails it.
 
-`@effected/mcp/node` (`src/node.ts`): `StdioCapture` (`install`, `discard`, `nullWritable`;
+`@effected/mcp-kit/node` (`src/node.ts`): `StdioCapture` (`install`, `discard`, `nullWritable`;
 instances carry `toStderr`, `run`, `capture`), plus the `StdioCaptureHost`,
 `StdioCaptureOptions` and `StdioSink` types (`StdioSink` is both a
 patched stream and a sink). `discard` is a write-only sink;
@@ -86,7 +86,7 @@ root fiber started inside the context, with fork and finalizer install
 masked (an interrupt between them orphaned the fiber; the interrupt test
 caught it).
 
-`@effected/mcp/testing` (`src/testing.ts`): `McpHarness` (`make`; instances
+`@effected/mcp-kit/testing` (`src/testing.ts`): `McpHarness` (`make`; instances
 carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `listResources`, `callTool`, `readResource`, `request`,
 `startRequest`, `notify`, `sendRaw`, `awaitOutboundMethod`, `stderrSoFar`,
 `consoleLogSoFar`, `close`, `stop`), `McpProcess` (`spawn`; instances carry `send`,
@@ -256,13 +256,13 @@ carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `lis
   without it the record is served open and `ToolInputSchema.unknownKeys`
   accepts any key there.
 
-See `okf/modules/mcp.md`'s "Spec amendments" table (A1–A10) for the full
+See `okf/modules/mcp-kit.md`'s "Spec amendments" table (A1–A10) for the full
 list, each amendment against the original design spec.
 
 ## `./testing` split
 
 `src/testing.ts` is a separate entrypoint, exported at
-`@effected/mcp/testing`, so test tooling never enters a server's runtime
+`@effected/mcp-kit/testing`, so test tooling never enters a server's runtime
 import graph. It carries no boundary exception of its own — reachability
 from `src/index.ts` is pinned by a test that asserts the two graphs never
 cross.
@@ -273,8 +273,8 @@ Tests live in `__test__/`, use `@effect/vitest`, assert with `assert.*` —
 never `expect`.
 
 ```bash
-pnpm vitest run --project @effected/mcp   # this package's tests, from the repo root
-pnpm build --filter @effected/mcp         # dev + prod, from the repo root
+pnpm vitest run --project @effected/mcp-kit   # this package's tests, from the repo root
+pnpm build --filter @effected/mcp-kit         # dev + prod, from the repo root
 ```
 
 Never run `node savvy.build.ts --target prod` directly: it skips

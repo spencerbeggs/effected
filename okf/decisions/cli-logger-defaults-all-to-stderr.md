@@ -6,7 +6,7 @@ status: stable
 tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:45:24Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
@@ -14,7 +14,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: bb9181596967206b
+    body: 4be85ca6c4479409
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -66,7 +66,7 @@ Any consumer relying on `logInfo` reaching stdout under the old default
 changes behaviour once it upgrades. The design's own risk assessment
 names the one known consumer that logs through `Effect.log` rather than
 `Console.log` — Silk — and notes Silk does not use `CliLogger` today, so
-the blast radius at ship time is zero known consumers. `okf/modules/cli.md`
+the blast radius at ship time is zero known consumers. `okf/modules/cli-kit.md`
 documents the new default in its `CliLogger` section, and the levels
 comparison stays ordinal
 (`LogLevel.isGreaterThanOrEqualTo(logLevel, stderrFrom)`), never

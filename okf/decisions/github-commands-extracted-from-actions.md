@@ -6,10 +6,10 @@ status: stable
 tags: [architecture, deps, security]
 generated:
   by: okfit/claude-code
-  at: 2026-10-01T01:56:30Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: 41d764a9a33e2189
+    body: 7691684ade9d28a5
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -26,7 +26,7 @@ verified:
 `WorkflowCommand` rendered the GitHub Actions command protocol inside
 `@effected/github-actions`, an integrated-tier package with a required peer on
 `@effect/platform-node`. Neutralizing text so the runner cannot read it as a
-command is the same grammar from the other end, and `@effected/cli` (boundary
+command is the same grammar from the other end, and `@effected/cli-kit` (boundary
 tier) needs it: its renderers, `CliMessage`, the failure report and the loggers
 all write consumer-supplied text into a log that the runner parses. `cli` could
 not take `github-actions` for that: layering forbids a boundary package taking
@@ -44,7 +44,7 @@ The grammar moves to a pure, dependency-free package,
 `WorkflowCommand` (moved unchanged) and `CommandNeutralizer` (the two-parser
 rule). `@effected/github-actions` takes a regular `workspace:^` dependency on it
 and re-exports `WorkflowCommand` and `AnnotationProperties` from its entrypoint,
-so existing consumers keep compiling; `@effected/cli` takes the same regular
+so existing consumers keep compiling; `@effected/cli-kit` takes the same regular
 dependency and drops its copies.
 
 It is a regular dependency, not a peer, because the peer-or-regular choice is the

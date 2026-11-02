@@ -217,7 +217,7 @@ Building `App.layer` **opens and migrates both databases**, eagerly — `store.d
 
 ```ts
 import { App, AppStore } from "@effected/app";
-import { CliRuntime } from "@effected/cli";
+import { CliRuntime } from "@effected/cli-kit";
 import { Store } from "@effected/store";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Effect, Layer } from "effect";

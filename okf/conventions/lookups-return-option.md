@@ -24,15 +24,15 @@ sources:
   - id: import-graph
     resource: ../../packages/workspaces/src/ImportGraph.ts
   - id: ui-key
-    resource: ../../packages/cli/src/ui/UiKey.ts
+    resource: ../../packages/cli-kit/src/ui/UiKey.ts
   - id: frontmatter-resolver
     resource: ../../packages/markdown/src/FrontmatterResolver.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-24T00:37:31Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: 4514097a2844e323
+    body: 549234f68aea48f2
 ---
 
 # A public lookup that can miss returns Option, never T | undefined
@@ -161,5 +161,5 @@ there an omitted ceiling would have meant an unbounded walk, while
     for data with no `$schema` key. The `requireDeclaration: true` overload
     returns `Result.Result<SchemaDeclaration, …>` with the miss as a typed
     failure.
-[^ui-key]: `packages/cli/src/ui/UiKey.ts` — `fromInk` maps an Ink key
+[^ui-key]: `packages/cli-kit/src/ui/UiKey.ts` — `fromInk` maps an Ink key
     event to a `UiKey`, or `undefined` when the event has no binding.

@@ -46,9 +46,9 @@ Every package is `unstable`; see [release strategy](#release-strategy).
 | [@effected/commands](packages/commands) | unstable | Structured command running and CLI tool discovery over Effect's core ChildProcessSpawner contract |
 | [@effected/templates](packages/templates) | unstable | Managed-section blocks in user-editable files: parse, reconcile, sync and check delimited regions |
 | [@effected/jsonl](packages/jsonl) | unstable | Append-only, schema-validated JSONL journals as a definable Effect service |
-| [@effected/cli](packages/cli) | unstable | The presentation boundary of an `effect/unstable/cli` program: audience-aware output, a document IR and renderers, editor links, failure reports and logging, plus opt-in Ink screens, widgets and a live view |
+| [@effected/cli-kit](packages/cli-kit) | unstable | The presentation boundary of an `effect/unstable/cli` program: audience-aware output, a document IR and renderers, editor links, failure reports and logging, plus opt-in Ink screens, widgets and a live view |
 | [@effected/env](packages/env) | unstable | Environment detection read through `Config`: agent, CI, terminal colour level, hyperlinks, columns and audience, swapped in tests with `layerTest` |
-| [@effected/mcp](packages/mcp) | unstable | The boundary layer of an `effect/ai` MCP server: stdio wiring that keeps stdout the wire, tool-failure shaping, strict-input walkers and test clients |
+| [@effected/mcp-kit](packages/mcp-kit) | unstable | The boundary layer of an `effect/ai` MCP server: stdio wiring that keeps stdout the wire, tool-failure shaping, strict-input walkers and test clients |
 
 ### Pure
 
@@ -66,7 +66,7 @@ Every package is `unstable`; see [release strategy](#release-strategy).
 | [@effected/memfs](packages/memfs) | unstable | An isolated virtual POSIX volume behind Effect's core FileSystem service: the kit's filesystem test double, for tests and dry-run programs |
 | [@effected/github-references](packages/github-references) | unstable | GitHub's issue-reference grammar as pure functions: inline-in-prose harvesting with offsets, bare-line parsing and the closing-list dialect |
 | [@effected/github-commands](packages/github-commands) | unstable | The GitHub Actions workflow-command grammar as pure functions: render a command, and neutralize text so the runner cannot read it as one |
-| [@effected/engine](packages/engine) | unstable | Platform-free primitives shared by every front end of an Effect v4 tool: distribution identity, remediation and launch context |
+| [@effected/kit](packages/kit) | unstable | Platform-free primitives shared by every front end of an Effect v4 tool: distribution identity, remediation and launch context |
 
 ### Companion
 

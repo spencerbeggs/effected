@@ -130,7 +130,7 @@ source wins and the concept is a finding to report.
        lives). `actions-inputs-outputs`' output-contracts reference is the
        recipe; never hand-roll the
        lowering or a byte-comparing drift test. Gate CI on the command's
-       exit code: its failures arrive on stderr as the `@effected/cli`
+       exit code: its failures arrive on stderr as the `@effected/cli-kit`
        standard report, whose line shape is not a contract.
 2. **Read the module you are extending**, and its `__test__/` directory. The
    tests encode invariants the types cannot: probe counts, mutation controls,

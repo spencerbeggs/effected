@@ -1,8 +1,8 @@
-# @effected/mcp
+# @effected/mcp-kit
 
 The boundary layer of an `effect/ai` MCP server: stdio wiring that keeps stdout the JSON-RPC wire, tool-failure shaping, and strict-input walkers, plus a `./testing` subpath for driving a built server from a test.
 
-[![npm](https://img.shields.io/npm/v/@effected%2Fmcp?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/mcp)
+[![npm](https://img.shields.io/npm/v/@effected%2Fmcp?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/mcp-kit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
@@ -22,18 +22,18 @@ The boundary layer of an `effect/ai` MCP server: stdio wiring that keeps stdout 
 ## Install
 
 ```bash
-npm install @effected/mcp @effected/engine effect
+npm install @effected/mcp-kit @effected/kit effect
 ```
 
 ```bash
-pnpm add @effected/mcp @effected/engine effect
+pnpm add @effected/mcp-kit @effected/kit effect
 ```
 
 Requires Node.js >=24.11.0.
 
 All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
 
-`effect` v4 and `@effected/engine` are the only peer dependencies. Boundary tier: `src/` reads no `process` token, imports no `node:` module and no `@effect/platform*` package, and calls no `console.*` — stdout is the JSON-RPC wire a server writes over.
+`effect` v4 and `@effected/kit` are the only peer dependencies. Boundary tier: `src/` reads no `process` token, imports no `node:` module and no `@effect/platform*` package, and calls no `console.*` — stdout is the JSON-RPC wire a server writes over.
 
 ## ToolFailure
 
@@ -42,7 +42,7 @@ Core's MCP server sends a tool's declared failure — an `Error` instance, which
 Spread `ToolFailure.fields` into a tool's `Schema.TaggedError`, build `message` with `ToolFailure.message`, and pass every caller-supplied value through `ToolFailure.truncate` before echoing it back:
 
 ```ts
-import { ToolFailure } from "@effected/mcp";
+import { ToolFailure } from "@effected/mcp-kit";
 import { Schema } from "effect";
 
 class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {
@@ -66,7 +66,7 @@ console.log(error.message);
 `ToolFailure.message` drops any empty part, so an omitted `suggestedTool` or an empty `hint` never leaves a double space:
 
 ```ts
-import { ToolFailure } from "@effected/mcp";
+import { ToolFailure } from "@effected/mcp-kit";
 
 console.log(ToolFailure.message("Config missing.", { hint: "Run init." }));
 // => Config missing. Run init.
@@ -75,7 +75,7 @@ console.log(ToolFailure.message("Config missing.", { hint: "Run init." }));
 `ToolFailure.truncate` caps a caller-supplied value at `ToolFailure.ECHO_LIMIT` (200 UTF-16 code units) before it is echoed into a message, backing off one unit rather than splitting a surrogate pair. A value the engine itself produced — a path, a diagnostic — can take the larger `ToolFailure.ENGINE_ECHO_LIMIT` (2000):
 
 ```ts
-import { ToolFailure } from "@effected/mcp";
+import { ToolFailure } from "@effected/mcp-kit";
 
 console.log(ToolFailure.truncate("a".repeat(500)).length);
 // => 201 (200 characters, then "…")
@@ -92,7 +92,7 @@ console.log(ToolFailure.truncate(enginePath, ToolFailure.ENGINE_ECHO_LIMIT) === 
 For a refusal with no fields of its own, `ToolRefusal` is that shape ready-made: a `Schema.TaggedError` on `ToolFailure.fields`, built with `ToolRefusal.refuse(reason, remediation)`, which folds the remediation into `message`. Declare it in the tool's `failure` schema:
 
 ```ts
-import { ToolFailure, ToolRefusal } from "@effected/mcp";
+import { ToolFailure, ToolRefusal } from "@effected/mcp-kit";
 import { Effect, Schema } from "effect";
 import { Tool } from "effect/ai";
 
@@ -117,7 +117,7 @@ console.log(refusal.message);
 A stdio server's `main.ts` is one line, plus the layer that wires it:
 
 ```ts
-import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp";
+import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp-kit";
 import { NodeRuntime, NodeStdio } from "@effect/platform-node";
 import { Effect, Layer, Schema } from "effect";
 import { Tool, Toolkit } from "effect/ai";
@@ -227,10 +227,10 @@ process. Never put the `Layer.fresh` boundary between a toolkit and
 
 ## Crash guards
 
-A stray `uncaughtException` or `unhandledRejection` in a stdio server either kills it silently or, worse, happens while its modules are still loading, before anything is listening. `@effected/mcp/guard` installs the listeners first. The entrypoint has no static runtime import, so the guards are in place before `effect` or your server graph is evaluated:
+A stray `uncaughtException` or `unhandledRejection` in a stdio server either kills it silently or, worse, happens while its modules are still loading, before anything is listening. `@effected/mcp-kit/guard` installs the listeners first. The entrypoint has no static runtime import, so the guards are in place before `effect` or your server graph is evaluated:
 
 ```ts
-import { McpGuard } from "@effected/mcp/guard";
+import { McpGuard } from "@effected/mcp-kit/guard";
 
 await McpGuard.run({
   label: "my-server",
@@ -293,7 +293,7 @@ scopes:
   `Tool.Strict` false to opt it out under the default.
 
 ```ts
-import { McpToolkit } from "@effected/mcp";
+import { McpToolkit } from "@effected/mcp-kit";
 import { Layer } from "effect";
 import type { Tool, Toolkit } from "effect/ai";
 
@@ -344,7 +344,7 @@ rather than claiming it accepts none.
 The dynamic-tool recipe, with the handler reporting every unknown key:
 
 ```ts
-import { McpToolkit, ToolInputSchema } from "@effected/mcp";
+import { McpToolkit, ToolInputSchema } from "@effected/mcp-kit";
 import { Effect, Layer, Schema } from "effect";
 import { Tool, Toolkit } from "effect/ai";
 
@@ -404,7 +404,7 @@ edit({ action: "rename", to: "b", extra: 1, options: { force: true, bogus: 2 } }
 A tool whose parameters are a `Schema.Union` of objects cannot be a `Tool.make` tool: core dies at registration on a non-object `parameters` root. `McpToolkit.unionTool` makes it a `Tool.dynamic` served with Effect's strict JSON Schema document for the union (`additionalProperties: false` on every object node), object-rooted by `ToolInputSchema.objectRooted`. `McpToolkit.unionHandler` wraps a handler that receives the decoded member:
 
 ```ts
-import { McpToolkit, ToolOutputSchema, ToolRefusal } from "@effected/mcp";
+import { McpToolkit, ToolOutputSchema, ToolRefusal } from "@effected/mcp-kit";
 import { Effect, Schema } from "effect";
 import { Tool, Toolkit } from "effect/ai";
 
@@ -441,7 +441,7 @@ Registered through `McpToolkit.layer`, a union tool is decoded like a strict `To
 MCP requires a tool's `outputSchema` to be rooted in an object, and a top-level `Schema.Union` emits a bare `anyOf`. Core drops such an `outputSchema` from `tools/list` on the stateful revisions, and serves it verbatim on the stateless one, where strict clients reject it. When every member of the union is an object shape, `ToolOutputSchema.objectRooted` adds `type: "object"` beside the `anyOf` through a check that always passes, so decoding and the schema's type stay the same:
 
 ```ts
-import { ToolOutputSchema } from "@effected/mcp";
+import { ToolOutputSchema } from "@effected/mcp-kit";
 import { Schema } from "effect";
 
 const Found = Schema.Struct({ kind: Schema.Literal("found"), id: Schema.String });
@@ -454,11 +454,11 @@ It can go before or after `.annotate({ identifier })`: the identifier the schema
 
 ## Testing
 
-`@effected/mcp/testing` is a separate entrypoint — importing it never pulls
+`@effected/mcp-kit/testing` is a separate entrypoint — importing it never pulls
 test machinery into a server's runtime import graph.
 
 ```ts
-import { McpHarness } from "@effected/mcp/testing";
+import { McpHarness } from "@effected/mcp-kit/testing";
 import { Effect, type Layer, type Stdio } from "effect";
 import type { McpServer } from "effect/ai";
 
@@ -519,7 +519,7 @@ how a test proves the stdin guard against a spawned server:
 import { unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
-import { McpProcess } from "@effected/mcp/testing";
+import { McpProcess } from "@effected/mcp-kit/testing";
 import { Effect } from "effect";
 import { ChildProcess } from "effect/process";
 
@@ -528,7 +528,7 @@ const serverFile = join(import.meta.dirname, "mcp-guard-demo-server.mjs");
 writeFileSync(
   serverFile,
   `
-import { McpStdio, McpToolkit } from "@effected/mcp";
+import { McpStdio, McpToolkit } from "@effected/mcp-kit";
 import { NodeRuntime, NodeStdio } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 import { Tool, Toolkit } from "effect/ai";
@@ -563,7 +563,7 @@ await Effect.runPromise(program).finally(() => unlinkSync(serverFile));
 
 ## Tier
 
-Boundary tier. Peers: `@effected/engine` and `effect`. Nothing in the kit depends on `@effected/mcp` except an application; it never depends on `@effected/cli` or `@effected/workspaces` — a CLI boundary and an MCP boundary are siblings, both front ends, never layers on each other.
+Boundary tier. Peers: `@effected/kit` and `effect`. Nothing in the kit depends on `@effected/mcp-kit` except an application; it never depends on `@effected/cli-kit` or `@effected/workspaces` — a CLI boundary and an MCP boundary are siblings, both front ends, never layers on each other.
 
 ## License
 

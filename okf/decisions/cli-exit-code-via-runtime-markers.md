@@ -6,7 +6,7 @@ status: stable
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-10-09T16:29:07Z
@@ -14,7 +14,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 603a9476d847d8f0
+    body: 75a7d709c89be75f
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -25,7 +25,7 @@ integrity:
 
 ## Context
 
-`@effected/cli` needs a program's failure to set a specific process exit
+`@effected/cli-kit` needs a program's failure to set a specific process exit
 code and to be reported exactly once, in the program's own logger's format,
 rather than in Effect's default logger's format on stdout. Core exposes two
 markers read off the squashed failure by `defaultTeardown` /

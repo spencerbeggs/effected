@@ -1,25 +1,25 @@
 ---
 type: Limitation
-title: "@effected/cli is not a CLI framework"
+title: "@effected/cli-kit is not a CLI framework"
 description: The package deliberately carries no argument parsing, no platform package, and no interactive terminal UI.
 status: deprecated
-bounds: ../modules/cli.md
+bounds: ../modules/cli-kit.md
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T18:00:23Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: 465a1831be713ee1
+    body: 7474d4aca94a18f3
 ---
 
-# @effected/cli is not a CLI framework
+# @effected/cli-kit is not a CLI framework
 
 ## The condition
 
 A consumer wants argument parsing, flags, a command tree, help rendering, a
 platform dependency, or interactive terminal UI (prompts, spinners,
-progress bars) from `@effected/cli`.
+progress bars) from `@effected/cli-kit`.
 
 ## The symptom
 
@@ -31,7 +31,7 @@ input.
 
 ## Why this is acceptable
 
-`@effected/cli` is boundary tier and scoped narrowly to presentation: how
+`@effected/cli-kit` is boundary tier and scoped narrowly to presentation: how
 output reaches a human, how a failure is reported, and how a schema issue
 renders into a sentence. Adding a parser or an interactive-UI dependency
 would move it off that scope and, in the platform-package case, would make

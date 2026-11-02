@@ -23,7 +23,7 @@ own version of this layout:
   `process.argv` for distribution identity (see [Process confinement](#process-confinement)).
 
 ~~~ts
-import { CliAudience, CliRuntime } from "@effected/cli"
+import { CliAudience, CliRuntime } from "@effected/cli-kit"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Command } from "effect/cli"
 
@@ -80,14 +80,14 @@ package substitution for it.
 
 `main` owns this: pass the carrier the bin was installed through as
 `distribution` (`null` for a direct install), a plain value `version.ts`
-already computed from `process.argv`. `main` provides `@effected/engine`'s
+already computed from `process.argv`. `main` provides `@effected/kit`'s
 `CurrentDistribution` around the program, so the program and the engine it
 calls read the same value, and with a carrier `--version` ends with
 `via <name> <version>` (after a space), appended to whatever `formatVersion` is in effect:
 
 ~~~ts
-import { CliAudience, CliRuntime } from "@effected/cli"
-import type { Distribution } from "@effected/engine"
+import { CliAudience, CliRuntime } from "@effected/cli-kit"
+import type { Distribution } from "@effected/kit"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Command } from "effect/cli"
 
@@ -111,8 +111,8 @@ program boundary:
 
 ~~~ts
 import { MemoryFileSystem } from "@effected/memfs"
-import { CliColor } from "@effected/cli"
-import { CurrentDistribution, withDistributionVersion } from "@effected/engine"
+import { CliColor } from "@effected/cli-kit"
+import { CurrentDistribution, withDistributionVersion } from "@effected/kit"
 import { Effect, Layer, Option, Path, Stdio, Terminal } from "effect"
 import { Command } from "effect/cli"
 import { ChildProcessSpawner } from "effect/process"

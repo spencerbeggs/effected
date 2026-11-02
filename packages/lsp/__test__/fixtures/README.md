@@ -50,7 +50,7 @@
   server's platform layer reads `HOME`. It logs one line once serving.
 - **How it runs:** `node --import ./ts-resolve.mjs lsp-main.ts [flags]`.
   Node strips the types itself; `ts-resolve.mjs` (copied from
-  `@effected/mcp`'s fixtures) maps a relative `./x.js` import to `./x.ts`
+  `@effected/mcp-kit`'s fixtures) maps a relative `./x.js` import to `./x.ts`
   when no `.js` file exists, so the sources run unbuilt.
 
 | Flag or env | Shape it pins |

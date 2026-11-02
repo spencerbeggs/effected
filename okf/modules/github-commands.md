@@ -8,10 +8,10 @@ resource: ../../packages/github-commands
 tags: [github, security, bundle]
 generated:
   by: okfit/claude-code
-  at: 2026-10-24T00:40:05Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: e959b3a782be0017
+    body: b989329b71d2206e
 ---
 
 # @effected/github-commands
@@ -54,7 +54,7 @@ A bare `##` with no `[` straight after it is not a command and is left alone, so
 a markdown heading survives. Input is split at CR, LF and CRLF, as the runner
 splits a stream. The result is **idempotent**: a neutralized line no longer
 matches either rule, so applying it twice, as `Render.githubLog` and the facade
-in `@effected/cli` both do, adds nothing.
+in `@effected/cli-kit` both do, adds nothing.
 
 There is deliberately **no exported detector** (`isCommand`). A detector shipped
 beside the neutralizer would be the implementation's own opinion of what a
@@ -66,7 +66,7 @@ runner's source.
 
 The runner has one log stream and one open group at a time: a second
 `::group::` ends the first. Two kit surfaces write groups, `ActionLogger.group`
-in `@effected/github-actions` and `Render.githubLog` in `@effected/cli` (a
+in `@effected/github-actions` and `Render.githubLog` in `@effected/cli-kit` (a
 top-level collapsible), and neither package depends on the other, so the count
 of open groups has to live somewhere both reach. That is this package, the one
 they both already depend on, but this package imports no `effect` and so cannot
@@ -89,7 +89,7 @@ it.
 
 Consumers: `@effected/github-actions` (a regular dependency: `ActionLogger`
 neutralizes the log text it writes, and the whole actions runtime emits commands
-through `WorkflowCommand`) and `@effected/cli` (a regular dependency: the renderers,
+through `WorkflowCommand`) and `@effected/cli-kit` (a regular dependency: the renderers,
 `CliMessage`, the failure report and the loggers neutralize under GitHub
 Actions). See [why the grammar left `github-actions`](../decisions/github-commands-extracted-from-actions.md).
 

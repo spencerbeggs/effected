@@ -14,10 +14,10 @@ sources:
     resource: https://github.com/spencerbeggs/tsdoctor
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: e166e7823ee54a47
+    body: 1fa1033ae4395572
 ---
 
 # Plan a surface's first consumer port as a design round
@@ -46,7 +46,7 @@ first to run at a terminal rather than on a CI runner. It did not report
 mis-projected calls against an existing API; it reported that pieces of
 the surface did not exist yet: a resolver chain, a read-through cache, a
 UTF-8 codec, decode options, six unrepresented GitHub route families, and
-the whole `@effected/cli` boundary. Two of those findings were written up
+the whole `@effected/cli-kit` boundary. Two of those findings were written up
 downstream, as a design document for the kit to fold in, rather than
 filed as ordinary bug reports against an existing contract.
 `@effected/schema-org` followed the same shape: named into existence by

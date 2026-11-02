@@ -14,7 +14,7 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T01:41:28Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-09-24T06:10:09Z
@@ -22,7 +22,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 6c56e28c0ca5287c
+    body: a261d9b9ede952fd
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -53,7 +53,7 @@ recorded:
 | C4: the tarball's file list equals `dist/prod/npm/pkg` | B: empty difference for all five. A: every `*.js.map` and `*.d.ts.map` only in the tarball, `tsdoc-metadata.json` only in the prod build, for every package |
 | C5: `private` is `false` in the packed manifest | both candidates, all five packages |
 | C6: scenario installs (S1: `mcp` with its `engine` peer; S2: the `schemastore-cli` bin) | exit 0 for both candidates under npm, pnpm and bun |
-| C7: the installed code runs from the consumer root | S2 passes everywhere. S1 passes under npm and bun, and fails `ERR_MODULE_NOT_FOUND` on `@effected/engine` under pnpm, identically for both candidates |
+| C7: the installed code runs from the consumer root | S2 passes everywhere. S1 passes under npm and bun, and fails `ERR_MODULE_NOT_FOUND` on `@effected/kit` under pnpm, identically for both candidates |
 | C8: `pnpm pack` rewrites `workspace:^` in a never-installed workspace | no: it fails `ERR_PNPM_CANNOT_RESOLVE_WORKSPACE_PROTOCOL`, exit 1 |
 
 C4 is the discriminator. Under the effected bundler `publishConfig.directory`
@@ -63,7 +63,7 @@ actually publishes.
 
 The literal outcome rule read "F", because neither candidate cleared C7 under
 pnpm for S1. That failure is not a pack-source property: the S1 consumer
-imported `@effected/engine` without declaring it, and pnpm's isolated layout
+imported `@effected/kit` without declaring it, and pnpm's isolated layout
 links only declared dependencies at a project's top level. The override
 resolved the peer correctly inside `mcp` for both candidates; npm and bun
 hoist, and passed.

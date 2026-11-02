@@ -18,13 +18,13 @@ sources:
   - id: app-package-json
     resource: ../../packages/app/package.json
   - id: mcp-package-json
-    resource: ../../packages/mcp/package.json
+    resource: ../../packages/mcp-kit/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T13:22:20Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: f64f2a8b421058e8
+    body: d6ca6d136a87fbd1
   verified:
     by: human:spencer
     at: 2026-10-29T00:43:21Z
@@ -45,7 +45,7 @@ verified:
 Most packages ship a single `.` entrypoint. Among those that do not:
 `@effected/workspaces`, `@effected/commands` and `@effected/walker` each add
 `./node-sync`, `@effected/schema-org` adds `./validate`, `@effected/app`
-adds `./testing`, and `@effected/mcp` adds
+adds `./testing`, and `@effected/mcp-kit` adds
 `./node`.[^schema-org-package-json][^workspaces-package-json][^commands-package-json][^walker-package-json][^app-package-json][^mcp-package-json] `"sideEffects": false` sounds like
 it already solves the tree-shaking problem a subpath would solve, and
 believing that is the trap this decision exists to name.
@@ -85,7 +85,7 @@ production importer of `App` must never load; see
 `mcp`'s `./node` is the same mechanism for a Node-only capability: it
 carries `StdioCapture`, whose `node:async_hooks` and `node:stream` imports
 the boundary-tier root must never load; see
-[`@effected/mcp` ships `StdioCapture` behind `./node`](mcp-node-subpath.md).
+[`@effected/mcp-kit` ships `StdioCapture` behind `./node`](mcp-node-subpath.md).
 
 The wiring is three parts:
 
@@ -147,6 +147,6 @@ the candidate module and write the reachability test before adding the
 [^app-package-json]: `packages/app/package.json` — `exports` carries
     `"./testing": "./src/testing.ts"` alongside `.`, and `@effected/memfs`
     is marked optional in `peerDependenciesMeta`.
-[^mcp-package-json]: `packages/mcp/package.json` — `exports` carries
+[^mcp-package-json]: `packages/mcp-kit/package.json` — `exports` carries
     `"./node": "./src/node.ts"` alongside `.`; its reachability test is
     `__test__/entrypoints.test.ts`.

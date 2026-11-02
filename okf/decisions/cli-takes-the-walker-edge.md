@@ -1,13 +1,13 @@
 ---
 type: Decision
 title: CliLinks finds the project root with @effected/walker
-description: "CliLinks locates the nearest ancestor holding .git or pnpm-workspace.yaml with Walker.ascend and Walker.findRoot, taking @effected/walker as a required peer of @effected/cli, rather than a hand-written ascent."
+description: "CliLinks locates the nearest ancestor holding .git or pnpm-workspace.yaml with Walker.ascend and Walker.findRoot, taking @effected/walker as a required peer of @effected/cli-kit, rather than a hand-written ascent."
 status: stable
 supersedes: cli-links-inline-ascent.md
 tags: [architecture, deps]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T23:56:58Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
@@ -15,7 +15,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: fce59e2454cf60bd
+    body: 1c2d60064a5aeea7
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -30,7 +30,7 @@ integrity:
 the project root (the nearest ancestor of the working directory holding `.git`
 or `pnpm-workspace.yaml`) and checks for a `.vscode/` directory there. The
 [first draft](cli-links-inline-ascent.md) wrote that walk inline, to keep
-`@effected/walker` out of `@effected/cli`'s peers: walker peers on
+`@effected/walker` out of `@effected/cli-kit`'s peers: walker peers on
 `@effected/glob`, and that looked like two extra installs for every consumer.
 
 ## Decision
@@ -38,8 +38,8 @@ or `pnpm-workspace.yaml`) and checks for a `.vscode/` directory there. The
 `CliLinks` takes the `@effected/walker` edge and uses `Walker.ascend`, bounded
 to the working directory and at most 64 ancestors, with `Walker.findRoot` for
 the marker test. `@effected/walker` is a required `workspace:^` peer of
-`@effected/cli` and a `workspace:*` devDependency. Every workspace consumer of
-`@effected/cli` declares walker, and `@effected/glob`, which walker peers on,
+`@effected/cli-kit` and a `workspace:*` devDependency. Every workspace consumer of
+`@effected/cli-kit` declares walker, and `@effected/glob`, which walker peers on,
 beside it: `schemastore-cli` as regular dependencies, `scratchpad` already
 lists both. The layer order allows it: `cli` is above `walker`.
 
@@ -63,7 +63,7 @@ The reasons:
 
 ## Consequences
 
-The edge is one-way and downward. A consumer of `@effected/cli` now installs
+The edge is one-way and downward. A consumer of `@effected/cli-kit` now installs
 walker and glob. Tier rules still hold: no integrated or platform-bound package
 is pulled into `cli`. The ascent stays behind one function in `CliLinks`, so the
 walk can change without touching the link policy.

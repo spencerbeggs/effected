@@ -141,7 +141,7 @@ Available via the Skill tool (several also auto-load on trigger):
 - effect-v4-idioms — core Effect: typed errors, Result, generators,
   scope/resources, forking, structural equality.
 - effect-v4-cli — command-line programs: effect/cli in core plus
-  the @effected/cli presentation boundary (main assembly, exit codes, stdout
+  the @effected/cli-kit presentation boundary (main assembly, exit codes, stdout
   vs stderr, human/agent/CI audiences, themed documents and failure reports,
   prompts, Ink screens and live views, testing a built bin).
 - effect-v4-mcp — MCP servers on effect/ai: stdio wiring that keeps

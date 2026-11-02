@@ -893,7 +893,7 @@
 			}
 		},
 		{
-			"file": "effected-packages/references/mcp.md",
+			"file": "effected-packages/references/mcp-kit.md",
 			"anchor": "McpServer.ts:3169",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {

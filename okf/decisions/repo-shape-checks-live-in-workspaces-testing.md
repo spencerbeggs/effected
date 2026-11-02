@@ -6,7 +6,7 @@ status: stable
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:45:24Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
@@ -14,7 +14,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 8da4d7914038a1d9
+    body: 330e810eaf9acd3f
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -34,7 +34,7 @@ package-manager surface — exactly what `@effected/workspaces` already
 owns through `WorkspaceDiscovery`, `DependencyGraph`, and `@effected/npm`'s
 `PackagePublish`/`PackageTarball`. None of the three need `effect` alone;
 each is meaningless without a real monorepo to check, which is a different
-dependency shape than `@effected/engine`'s pure, platform-free primitives.
+dependency shape than `@effected/kit`'s pure, platform-free primitives.
 
 ## Decision
 
@@ -54,7 +54,7 @@ dependency on `@effected/workspaces` itself, either duplicating
 integrated-tier weight or adding a needless indirection for three exports
 that already belong beside the package whose model they check.
 
-**`engine/testing`.** Rejected — `@effected/engine` is deliberately pure
+**`engine/testing`.** Rejected — `@effected/kit` is deliberately pure
 tier with `effect` as its only peer (see [D1](engine-holds-cross-front-end-primitives.md)).
 `PackedInstall` alone requires `ChildProcessSpawner`, `FileSystem`, `Path`
 and `WorkspaceDiscovery`; folding it under `engine/testing` would drag

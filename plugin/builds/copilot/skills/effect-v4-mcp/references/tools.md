@@ -88,8 +88,8 @@ strict-by-default (below) and the union decode for a
 ignored; the appended lines are fixed text.
 
 ~~~ts
-import { McpStdio, McpToolkit } from "@effected/mcp"
-import { McpHarness } from "@effected/mcp/testing"
+import { McpStdio, McpToolkit } from "@effected/mcp-kit"
+import { McpHarness } from "@effected/mcp-kit/testing"
 import { Effect, Layer, Schema } from "effect"
 import { Tool, Toolkit } from "effect/ai"
 
@@ -208,8 +208,8 @@ Whatever is not folded into `message` when the error is constructed never
 reaches the agent:
 
 ~~~ts
-import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp"
-import { McpHarness } from "@effected/mcp/testing"
+import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp-kit"
+import { McpHarness } from "@effected/mcp-kit/testing"
 import { Effect, Layer, Schema } from "effect"
 import { Tool, Toolkit } from "effect/ai"
 
@@ -290,8 +290,8 @@ call rather than only a known tool's bad parameters, misses the other half
 of the matrix.
 
 ~~~ts
-import { McpStdio, McpToolkit } from "@effected/mcp"
-import { McpHarness } from "@effected/mcp/testing"
+import { McpStdio, McpToolkit } from "@effected/mcp-kit"
+import { McpHarness } from "@effected/mcp-kit/testing"
 import { Effect, Layer, Schema } from "effect"
 import { McpProtocol, Tool, Toolkit } from "effect/ai"
 
@@ -366,14 +366,14 @@ When an agent needs **structured** remediation for an error it should
 handle programmatically — not just read as a sentence — return the expected
 domain error on the tool's **success** channel, where `structuredContent`
 does arrive, instead of its declared failure channel. `ToolOutcome`
-(`@effected/mcp`) builds that envelope. `ToolRefusal` stays the declared
+(`@effected/mcp-kit`) builds that envelope. `ToolRefusal` stays the declared
 failure for a call that was itself wrong; both carry `ToolFailure.fields`
 (`message`, `remediation`), so an error can move between channels without
 reshaping.
 
 ~~~ts
-import { McpStdio, McpToolkit, ToolOutcome } from "@effected/mcp"
-import { McpHarness } from "@effected/mcp/testing"
+import { McpStdio, McpToolkit, ToolOutcome } from "@effected/mcp-kit"
+import { McpHarness } from "@effected/mcp-kit/testing"
 import { Effect, Layer, Schema } from "effect"
 import { Tool, Toolkit } from "effect/ai"
 
@@ -472,7 +472,7 @@ returns a repeated call's stored first result, marked
 `_idempotentReplay: true`, instead of running the handler again:
 
 ~~~ts
-import { ToolOutcome, ToolReplay } from "@effected/mcp"
+import { ToolOutcome, ToolReplay } from "@effected/mcp-kit"
 import { Effect, Option, Schema } from "effect"
 import { Tool, Toolkit } from "effect/ai"
 import { KeyValueStore } from "effect/persistence"
@@ -549,12 +549,12 @@ Under `KeyValueStore.layerMemory`, two calls with `requestId: "r1"` answer
 
 A handler that runs a chatty library in-process — a test runner, a bundler,
 a linter — writes to the same stdout the JSON-RPC wire uses. `StdioCapture`
-from `@effected/mcp/node` (Node only, since it imports `node:async_hooks`)
+from `@effected/mcp-kit/node` (Node only, since it imports `node:async_hooks`)
 diverts writes made inside one async context while every other context, the
 transport included, keeps writing to the real streams:
 
 ~~~ts
-import { StdioCapture } from "@effected/mcp/node"
+import { StdioCapture } from "@effected/mcp-kit/node"
 
 // main.ts, once:
 const capture = StdioCapture.install(process)

@@ -6,7 +6,7 @@ status: stable
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T18:00:23Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
@@ -14,7 +14,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 247251351c87397e
+    body: 0973c67b8c5e1d59
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -58,7 +58,7 @@ CLI.
 
 ## Consequences
 
-`okf/modules/cli.md`'s public-surface table documents
+`okf/modules/cli-kit.md`'s public-surface table documents
 `ReportFailuresOptions.usageExitCode` alongside the rest of the
 reporting-behaviour changes. `CliRuntime.main`'s own `usageExitCode`
 option threads through to the same remap. The design's own numeric-code

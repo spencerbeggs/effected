@@ -70,7 +70,7 @@ schemastore validate <payload.json> [config] [--schema <path|$id|url>] [--format
 
 ## Exit codes
 
-The command runs under `CliRuntime.main` (`exitCode: 3`, `env.appModule`), so a failure is the `@effected/cli` standard report on stderr: a status line naming the error and its message (`✗ DriftError: 1 published schema(s) drifted; nothing was written.`), the message's further lines, and an `in:` trail of the command's own spans when the failure happened inside one (a missing config prints none), painted for a person, plain for an agent, the log form under GitHub Actions. Gate on the exit code and the error's text, never on the line's leading characters.
+The command runs under `CliRuntime.main` (`exitCode: 3`, `env.appModule`), so a failure is the `@effected/cli-kit` standard report on stderr: a status line naming the error and its message (`✗ DriftError: 1 published schema(s) drifted; nothing was written.`), the message's further lines, and an `in:` trail of the command's own spans when the failure happened inside one (a missing config prints none), painted for a person, plain for an agent, the log form under GitHub Actions. Gate on the exit code and the error's text, never on the line's leading characters.
 
 | code | meaning |
 | ------ | --------- |

@@ -242,7 +242,11 @@ export function entryProblems(file, parsed) {
 			if (!parseThreshold(thr)) at(`applies.${pkg}: ${JSON.stringify(thr)} is not >=X.Y.Z`);
 		}
 	}
-	if (data.renames !== undefined && data.renames !== null && (typeof data.renames !== "object" || Array.isArray(data.renames))) {
+	if (
+		data.renames !== undefined &&
+		data.renames !== null &&
+		(typeof data.renames !== "object" || Array.isArray(data.renames))
+	) {
 		at("renames must be a map of old package name to new");
 	}
 	for (const field of ["detect", "closes", "changesets"]) {
@@ -274,13 +278,19 @@ export function baselineProblems(parsed) {
 	if (!parsed) return ["BASELINE.md: no frontmatter"];
 	const { data } = parsed;
 	const problems = [];
-	if (typeof data.repo !== "string" || !/^[\w.-]+\/[\w.-]+$/.test(data.repo)) problems.push("BASELINE.md: repo must be owner/name");
+	if (typeof data.repo !== "string" || !/^[\w.-]+\/[\w.-]+$/.test(data.repo))
+		problems.push("BASELINE.md: repo must be owner/name");
 	if (typeof data.path !== "string" || data.path === "") problems.push("BASELINE.md: path is required");
-	if (typeof data.previous !== "string" || data.previous === "") problems.push('BASELINE.md: previous must be a tag or "none"');
+	if (typeof data.previous !== "string" || data.previous === "")
+		problems.push('BASELINE.md: previous must be a tag or "none"');
 	if (data.floor !== null && (typeof data.floor !== "object" || Array.isArray(data.floor))) {
 		problems.push("BASELINE.md: floor must be a map of package name to version");
 	}
-	if (data.renames !== undefined && data.renames !== null && (typeof data.renames !== "object" || Array.isArray(data.renames))) {
+	if (
+		data.renames !== undefined &&
+		data.renames !== null &&
+		(typeof data.renames !== "object" || Array.isArray(data.renames))
+	) {
 		problems.push("BASELINE.md: renames must be a map of old package name to new");
 	}
 	for (const [pkg, v] of Object.entries(data.floor ?? {})) {
@@ -452,7 +462,9 @@ function main() {
 			break;
 		}
 		if (opts.offline) {
-			notices.push(`this repository predates the ledger's baseline; the earlier round is at ${tag} — rerun without --offline to fetch it`);
+			notices.push(
+				`this repository predates the ledger's baseline; the earlier round is at ${tag} — rerun without --offline to fetch it`,
+			);
 			break;
 		}
 		dir = fetchRound(ledger.baseline, tag);

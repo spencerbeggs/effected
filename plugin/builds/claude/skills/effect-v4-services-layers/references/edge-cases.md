@@ -109,7 +109,7 @@ time it is provided — breaks under that memoization: two logically separate
 
 `Layer.fresh(Layer.sync(...))` is the fix: it opts the layer out of
 reference memoization, so every site that provides it gets its own build.
-`@effected/cli`'s `CliExit.layer` is exactly this shape — a fresh
+`@effected/cli-kit`'s `CliExit.layer` is exactly this shape — a fresh
 `MutableRef` cell per provide, so a nested run or a test never inherits a
 prior run's exit code.
 

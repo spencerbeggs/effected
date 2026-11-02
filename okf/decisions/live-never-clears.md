@@ -6,7 +6,7 @@ status: stable
 tags: [architecture, dx]
 sources:
   - id: pinned-by
-    resource: ../../packages/cli/__test__/ui/CliUiTest.live.test.ts
+    resource: ../../packages/cli-kit/__test__/ui/CliUiTest.live.test.ts
     title: "The live-view tests assert no full clear and no ESC[3J is ever written, and a new run re-renders in place"
   - id: ink-clear
     resource: "npm:ink@8.0.0"
@@ -17,10 +17,10 @@ sources:
     last_modified: 2026-10-21T00:00:00Z
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-21T17:30:00Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: 1aeb5222ff6b8247
+    body: e1f54c755fc2f50e
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -90,6 +90,6 @@ Ink 8 is fixed. What stays true on both versions is that `clear()` followed by
 - A future Ink upgrade does not need a new probe for this decision to hold,
   since it relies on nothing Ink fixed.
 
-[^pinned-by]: `packages/cli/__test__/ui/CliUiTest.live.test.ts`, whose `written` reader is where a test asserts no `ESC[3J`.
+[^pinned-by]: `packages/cli-kit/__test__/ui/CliUiTest.live.test.ts`, whose `written` reader is where a test asserts no `ESC[3J`.
 [^ink-clear]: `npm:ink@8.0.0`, `build/ink.js:917-923` and `229-233`, `build/log-update.js:57-60`, and `build/render.js:46-62`
 [^pty-probe]: <https://github.com/spencerbeggs/effected/issues/957>

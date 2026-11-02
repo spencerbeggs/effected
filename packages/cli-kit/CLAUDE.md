@@ -1,4 +1,4 @@
-# @effected/cli
+# @effected/cli-kit
 
 The boundary layer of an `effect/cli` program: `CliLogger`,
 `CliRuntime` (including `CliRuntime.main`), `CliExit`, `CliColor`,
@@ -21,7 +21,7 @@ as breaks. A status vocabulary's glyphs are sanitised too, at one source
 on a trusted line; a theme's glyph set (separators, ellipsis) is configuration.
 `CliFormat` pairs a shared `--format` flag with `Doc.print` (plus `json`, also alone as `CliFormat.printJson`);
 `Fmt` carries the text helpers: `Fmt.describe`, `Fmt.causeMessage` (the kit's
-guarded cause read, never throwing) and `Fmt.errorText` are `@effected/engine`'s
+guarded cause read, never throwing) and `Fmt.errorText` are `@effected/kit`'s
 `ErrorText` functions, delegated rather than copied, and `Fmt.suggest` is the
 "did you mean" list with `effect/cli`'s own two-edit threshold. `CliFormat.flag`
 takes `aliases` and `custom` formats; a CLI that still accepts `--json` declares it itself. `CliRuntime.main` takes `exitCodes` (by
@@ -29,9 +29,9 @@ tag), `distribution` (the carrier: engine's `CurrentDistribution` plus the
 `--version` suffix, wrapping whatever formatter is in effect) and
 `env.displayPath` (a function or `{ relativeTo: root }`, the path display
 every renderer, `Doc.print` and a live view's `final` follow).
-`okf/modules/cli.md` has the rows.
+`okf/modules/cli-kit.md` has the rows.
 
-**Design doc:** `@./okf/modules/cli.md` — Load when:
+**Design doc:** `@./okf/modules/cli-kit.md` — Load when:
 changing the public surface, the logger's stream routing, the failure-reporting
 combinator or the renderers. It carries the reasoning this file only
 states. The consumer record behind it is
@@ -59,7 +59,7 @@ Same posture as `app`: the two are siblings, not layers — `app` is the control
 plane, `cli` the presentation boundary, and neither imports the other.
 
 **Three regular dependencies, no new peers:** `@effected/github-commands`,
-`@effected/engine` (the root's `CliRuntime` imports `withDistribution` and
+`@effected/kit` (the root's `CliRuntime` imports `withDistribution` and
 `withDistributionVersion` for `MainOptions.distribution`) and
 `@effected/commands` (ONLY its `./node-sync` subpath, ONLY from
 `ui/internal/inkChalk.ts`, ONLY by a dynamic `import()` when a screen
@@ -83,7 +83,7 @@ for a program that runs several (with a `transcript` and `written` of the termin
 one read. `./ui/testing/serializer` (`src/ui-testing-serializer.ts`)
 default-exports `CliUiTest.serializer` for Vitest's `snapshotSerializers`; the root
 `vitest.config.ts` registers it that way for this package's own project (#909), so a
-snapshot test here uses `expect` for the snapshot alone. `okf/modules/cli.md` has the rows.
+snapshot test here uses `expect` for the snapshot alone. `okf/modules/cli-kit.md` has the rows.
 
 - **Optional peers `ink` (^8.0.0) and `react` (^19.3.0).** The root never
   reaches them, and `./ui` imports them only when a screen mounts (`loadInk`),
@@ -97,8 +97,8 @@ snapshot test here uses `expect` for the snapshot alone. `okf/modules/cli.md` ha
   loads them as values (held by `boundary.test.ts`); a missing peer in an interactive run is a defect
   naming both, never a silent fallback.
 - **The ui declarations name the root by its package name.** `src/ui/**`
-  imports root types as `import type * as Cli from "@effected/cli"`, and
-  `savvy.build.ts` keeps `@effected/cli` and `@effected/cli/ui` external
+  imports root types as `import type * as Cli from "@effected/cli-kit"`, and
+  `savvy.build.ts` keeps `@effected/cli-kit` and `@effected/cli-kit/ui` external
   (`dtsExternals`), so `ui.d.ts` imports the root instead of inlining a copy
   a consumer's root layers could not satisfy —
   `@./okf/decisions/ui-declarations-reference-the-root-by-name.md` — Load
@@ -274,7 +274,7 @@ walks the import graph from `src/index.ts` and asserts nothing reachable from
 it imports `CliTest` or `testing.ts`, with a positive control proving the
 walker actually resolves imports (`./testing` DOES reach `CliTest`) and a
 second control proving it resolves the main entry too (`index.ts` reaches
-`CliRuntime`). A CLI that only imports `@effected/cli` therefore never pulls
+`CliRuntime`). A CLI that only imports `@effected/cli-kit` therefore never pulls
 test-spawning machinery — `effect/process`'s `ChildProcessSpawner`
 included — into its runtime bundle.
 
@@ -310,7 +310,7 @@ obvious first reach. `@effect/vitest`, `it.effect`, `assert.*` — never
 `expect`.
 
 **Testing an actual built bin — a real subprocess, not the program in-process
-— uses `@effected/cli/testing`'s `CliTest`.** `CliTest.sandbox({ path })`
+— uses `@effected/cli-kit/testing`'s `CliTest`.** `CliTest.sandbox({ path })`
 mints a scoped temp directory with a fresh `HOME` and
 `XDG_{CONFIG,DATA,STATE,CACHE}_HOME`, `NO_COLOR: "1"`, and the `path` you
 pass as `PATH` — the host environment is never inherited. `CliTest.run(bin,
@@ -329,6 +329,6 @@ caller's scope closes, `SIGKILL` following `SIGTERM` after `forceKillAfter`
 (`2 seconds` by default) so a child ignoring the signal is never left behind.
 
 ```bash
-pnpm vitest run packages/cli        # from the repo root
-pnpm build --filter @effected/cli   # cold; never the raw savvy.build.ts
+pnpm vitest run packages/cli-kit        # from the repo root
+pnpm build --filter @effected/cli-kit   # cold; never the raw savvy.build.ts
 ```

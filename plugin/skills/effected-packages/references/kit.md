@@ -1,4 +1,4 @@
-# @effected/engine
+# @effected/kit
 
 Pattern: `design-patterns`.
 
@@ -11,8 +11,8 @@ tier: `effect` is the only peer, and the only dependency of any kind — no
 edge into `src/`. What touches the process (`ProcessScope`) takes it as an
 argument. There is no IO here and nothing to provide at the edge.
 
-**Two kit packages depend on it:** `@effected/mcp` as a peer, and
-`@effected/cli` as a regular dependency, for `MainOptions.distribution`. A
+**Two kit packages depend on it:** `@effected/mcp-kit` as a peer, and
+`@effected/cli-kit` as a regular dependency, for `MainOptions.distribution`. A
 front end consumes both; engine depends on neither.
 
 ## Import
@@ -32,14 +32,14 @@ import {
   distributionSuffix,
   withDistribution,
   withDistributionVersion,
-} from "@effected/engine";
+} from "@effected/kit";
 ```
 
 ```ts
-import { ProcessGuard } from "@effected/engine/guard";
+import { ProcessGuard } from "@effected/kit/guard";
 ```
 
-Two entrypoints. `@effected/engine/guard` has **no runtime import at all** —
+Two entrypoints. `@effected/kit/guard` has **no runtime import at all** —
 not even `effect` — so a server's `main.ts` can import it statically and its
 listeners are installed before anything else evaluates. The main entry never
 re-exports it.
@@ -80,7 +80,7 @@ re-exports it.
   encoded.
 - **`ErrorText`** — a static-only class turning any value into error text,
   never throwing, the one implementation a CLI and an MCP server share
-  (`@effected/cli`'s `Fmt.describe`, `Fmt.causeMessage` and `Fmt.errorText`
+  (`@effected/cli-kit`'s `Fmt.describe`, `Fmt.causeMessage` and `Fmt.errorText`
   are these same functions). `ErrorText.describe(value)`: a string as itself,
   a value with a string `message` as that message (an `Error`, one from
   another realm, a plain `{ message }`), else its JSON, else `String(value)`,
@@ -174,7 +174,7 @@ re-exports it.
   anything else); a stdio server is "serving" once its transport is built and
   reading stdin; the `"connected"` report lands on a
   later tick than `markConnected`, so a test waits for it rather than
-  reading stderr once. `@effected/mcp/guard`'s `McpGuard.run` is this guard
+  reading stderr once. `@effected/mcp-kit/guard`'s `McpGuard.run` is this guard
   plus an MCP stdio launch.
 
 ## Usage
@@ -184,7 +184,7 @@ every non-empty value counts as a candidate, so a leading `--flag` would become
 the project directory:
 
 ```ts
-import { LaunchContext } from "@effected/engine";
+import { LaunchContext } from "@effected/kit";
 
 // WRONG — raw argv, unfiltered: a leading flag is a non-empty candidate and wins.
 const rawArgv = ["--verbose", "/expected/project"];
@@ -220,8 +220,8 @@ Where the positionals exist decides where `projectDir` is called:
   passes `env` and `cwd` down to the command as plain values:
 
 ```ts
-import { CliRuntime } from "@effected/cli";
-import { LaunchContext } from "@effected/engine";
+import { CliRuntime } from "@effected/cli-kit";
+import { LaunchContext } from "@effected/kit";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Console, Effect, Option } from "effect";
 import { Argument, Command } from "effect/cli";

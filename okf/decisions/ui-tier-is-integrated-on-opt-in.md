@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: The cli root stays boundary, and ./ui is integrated only for consumers who opt in
-description: "@effected/cli keeps a boundary-tier root while its ./ui subpath imports the third-party ink and react, which makes ./ui integrated only for a consumer who installs those optional peers; R1-R4 are read per entrypoint for this package."
+description: "@effected/cli-kit keeps a boundary-tier root while its ./ui subpath imports the third-party ink and react, which makes ./ui integrated only for a consumer who installs those optional peers; R1-R4 are read per entrypoint for this package."
 status: stable
 tags: [architecture, deps, bundle]
 sources:
@@ -9,7 +9,7 @@ sources:
     resource: ../conventions/dependency-policy.md
     title: "Dependency policy: R1-R4"
   - id: cli-package-json
-    resource: ../../packages/cli/package.json
+    resource: ../../packages/cli-kit/package.json
     title: The cli manifest
   - id: schemastore-cli-package-json
     resource: ../../packages/schemastore-cli/package.json
@@ -22,10 +22,10 @@ sources:
     title: "pnpm settings, autoInstallPeers"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T03:23:20Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: 5951dba03d70fc3c
+    body: 379067248293bdff
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -40,7 +40,7 @@ verified:
 ## Context
 
 A [library's tier](../glossary/library-tier.md) is its own runtime
-dependency surface. `@effected/cli`'s root is boundary: it imports `effect`
+dependency surface. `@effected/cli-kit`'s root is boundary: it imports `effect`
 and `@effected/*` packages only, and does its IO through core's services.
 The [./ui subpath](ui-is-a-subpath-with-optional-peers.md) imports `ink` and
 `react`, which are third-party runtime packages, so by the tier definition
@@ -67,7 +67,7 @@ R1 to R4 apply as follows:
 - **R1** is held by the root and `./testing`, which take no external runtime
   dependency. Only the opt-in subpaths name one.
 - **R2** propagates tier only from a tier-3 package. The one kit package that
-  depends on `@effected/cli` is `schemastore-cli`,[^schemastore-cli-package-json]
+  depends on `@effected/cli-kit` is `schemastore-cli`,[^schemastore-cli-package-json]
   a [companion](../glossary/companion-package.md) that carries no tier and
   imports only the boundary root, so nothing inherits a tier from `./ui`.
 - **R3** keeps the root boundary despite its `@effected/*` edges (`env`,
@@ -88,7 +88,7 @@ R1 to R4 apply as follows:
 ## Consequences
 
 - The project roster keeps `cli` at boundary. The per-entrypoint reading lives
-  here and in the [cli Module](../modules/cli.md).
+  here and in the [cli Module](../modules/cli-kit.md).
 - The layering check reads `peerDependencies`, but it constrains `@effected/*`
   edges only, so the two new external peers do not move `cli` in
   `layers.json`.
@@ -99,7 +99,7 @@ R1 to R4 apply as follows:
   imports `./ui`.
 
 [^dependency-policy]: `../conventions/dependency-policy.md`
-[^cli-package-json]: `../../packages/cli/package.json`
+[^cli-package-json]: `../../packages/cli-kit/package.json`
 [^npm-optional-peers]: <https://docs.npmjs.com/cli/v11/configuring-npm/package-json#peerdependenciesmeta>
 [^pnpm-auto-install-peers]: <https://pnpm.io/settings/peer-dependencies#autoinstallpeers>
 [^schemastore-cli-package-json]: `../../packages/schemastore-cli/package.json`

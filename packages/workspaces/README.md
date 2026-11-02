@@ -464,7 +464,7 @@ Both checks are static analysis of literal specifiers — there is no dynamic-im
 
 `PackedInstall.run` packs a carrier and every workspace package it needs, then installs the carrier into a fresh project outside the workspace under each package manager that answers `--version`, and checks every expected bin is linked and executable. It carries the traps each manager sets: the parent run's `npm_*` and `pnpm_config_*` context is scrubbed, pnpm's overrides go in `pnpm-workspace.yaml`, Yarn Berry gets the `node-modules` linker, `packageManager` is pinned to the probed version, and lifecycle scripts are skipped. By default it packs each package's built `dist/prod/npm/pkg`, the artifact a release publishes; build first.
 
-It does not run the bins; the test does, inside the same scope, because the scratch directory (`result.scratch`) is removed when the scope closes. `consumer.runBin(name, args, options?)` runs one to completion and returns `{ stdout, stderr, exitCode }`, with no direct `@effected/commands` dependency. `consumer.command(name, args?, options?)` returns the `ChildProcess` command `runBin` builds, same environment and working directory, with stdin left open, so a probe that writes to the bin can spawn it. `consumer.binProvenance(name)` names the package a `.bin` symlink resolves into. `PackedInstall.closure(carrier, options?)` names every package the run will pack before it runs, and `PackedInstall.timeoutBudget` sizes the outer timeout from those names and the run's own ceilings. For an MCP server bin, `McpProbe` from `@effected/mcp/testing` is the proof:
+It does not run the bins; the test does, inside the same scope, because the scratch directory (`result.scratch`) is removed when the scope closes. `consumer.runBin(name, args, options?)` runs one to completion and returns `{ stdout, stderr, exitCode }`, with no direct `@effected/commands` dependency. `consumer.command(name, args?, options?)` returns the `ChildProcess` command `runBin` builds, same environment and working directory, with stdin left open, so a probe that writes to the bin can spawn it. `consumer.binProvenance(name)` names the package a `.bin` symlink resolves into. `PackedInstall.closure(carrier, options?)` names every package the run will pack before it runs, and `PackedInstall.timeoutBudget` sizes the outer timeout from those names and the run's own ceilings. For an MCP server bin, `McpProbe` from `@effected/mcp-kit/testing` is the proof:
 
 ```ts
 // __test__/e2e/packed-install.e2e.test.ts, two levels below the workspace root
@@ -472,7 +472,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, layer } from "@effect/vitest";
-import { McpProbe } from "@effected/mcp/testing";
+import { McpProbe } from "@effected/mcp-kit/testing";
 import { Workspaces } from "@effected/workspaces";
 import { PackedInstall } from "@effected/workspaces/testing";
 import { Duration, Effect, Layer } from "effect";

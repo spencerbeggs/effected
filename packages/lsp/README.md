@@ -106,7 +106,7 @@ LspUri.fromPath("C:\\Users\\me\\a.ts", { platform: "win32" }); // "file:///c:/Us
 
 ## LspProbe (`@effected/lsp/testing`)
 
-The packed-install proof for a Language Server bin, the twin of `@effected/mcp/testing`'s `McpProbe`. It spawns the command and runs the lifecycle an editor runs — `initialize`, `initialized`, `shutdown`, `exit` — then waits for the server to exit:
+The packed-install proof for a Language Server bin, the twin of `@effected/mcp-kit/testing`'s `McpProbe`. It spawns the command and runs the lifecycle an editor runs — `initialize`, `initialized`, `shutdown`, `exit` — then waits for the server to exit:
 
 ```ts
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -128,7 +128,7 @@ const program = Effect.gen(function* () {
 
 ## LspProcess (`@effected/lsp/testing`)
 
-A spawned server a test drives frame by frame — the LSP twin of `@effected/mcp/testing`'s `McpProcess`. The child lives for the enclosing scope:
+A spawned server a test drives frame by frame — the LSP twin of `@effected/mcp-kit/testing`'s `McpProcess`. The child lives for the enclosing scope:
 
 ```ts
 import * as NodeServices from "@effect/platform-node/NodeServices";

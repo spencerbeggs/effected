@@ -9,10 +9,10 @@ layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T18:50:20Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: c5e061de56c13062
+    body: 75d7b8507c37498e
 ---
 
 # @effected/lsp
@@ -48,11 +48,11 @@ only runtime import: no `@effected/*` edge, no `node:` import and no
 devDependency for that test alone).
 
 **Nothing in the kit may depend on this package except an application.**
-It is a front-end sibling of [`@effected/mcp`](mcp.md) and
-[`@effected/cli`](cli.md): no edge between any two of them, and no
+It is a front-end sibling of [`@effected/mcp-kit`](mcp-kit.md) and
+[`@effected/cli-kit`](cli-kit.md): no edge between any two of them, and no
 library takes an edge on any of them. It does **not** depend on
-`@effected/engine`, and it builds no process guard — the
-transport-neutral guard belongs to `@effected/engine`'s `./guard`, built
+`@effected/kit`, and it builds no process guard — the
+transport-neutral guard belongs to `@effected/kit`'s `./guard`, built
 separately.
 
 ## Public surface
@@ -152,7 +152,7 @@ buffering without bound. The body must be valid UTF-8 and valid JSON.
   fails, and the whole exchange sits under one timeout whose failure names
   the step it was waiting on and the stderr so far. Closing the probe's
   scope kills the child.
-- **The `./testing` split mirrors `@effected/mcp`.** Test tooling never
+- **The `./testing` split mirrors `@effected/mcp-kit`.** Test tooling never
   enters a runtime graph; `entrypoints.test.ts` pins that nothing
   reachable from `.` imports the probe, with a positive control.
 
@@ -256,6 +256,6 @@ server converting offsets to LSP positions reaches for `LineIndex` from
 
 ## See also
 
-- [`@effected/mcp`](mcp.md) — `McpStdio`, `McpProbe` and `McpProcess`,
+- [`@effected/mcp-kit`](mcp-kit.md) — `McpStdio`, `McpProbe` and `McpProcess`,
   the MCP halves of the same surfaces.
 - [Add a kit package](../runbooks/add-a-kit-package.md)

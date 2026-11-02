@@ -25,14 +25,14 @@ sources:
     resource: "npm:ink@8.0.0"
     title: "Ink 8.0.0, build/output.js:38: drops every Default_Ignorable_Code_Point from a frame"
   - id: docview-test
-    resource: ../../packages/cli/__test__/ui/DocView.test.ts
+    resource: ../../packages/cli-kit/__test__/ui/DocView.test.ts
     title: "A CliUi.run screen's DocView under Actions carries no command, and Ink draws the marker"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-07T21:32:23Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: 001e3ff40387a259
+    body: 9434991018a6a0cb
 ---
 
 # A zero-width space never stopped the Actions runner reading a workflow command
@@ -41,7 +41,7 @@ integrity:
 
 `@effected/github-commands` shipped `CommandNeutralizer` in its first release.
 It put a zero-width space (U+200B) in front of a line that would start with
-`::` and between the `##` and `[` of every `##[`. `@effected/cli` and
+`::` and between the `##` and `[` of every `##[`. `@effected/cli-kit` and
 `@effected/github-actions` route every line of untrusted text they write under
 GitHub Actions through it: error messages, file names, document text and log
 lines.
@@ -96,4 +96,4 @@ touched had the same hole all along.
 [^icu-probe]: Probe on .NET 8 (`mcr.microsoft.com/dotnet/sdk:8.0`), 2026-10-07, run once and not kept.
 [^oracle]: `packages/github-commands/__test__/helpers/runnerCommands.ts`
 [^ink-filter]: `npm:ink@8.0.0`, `build/output.js:38`
-[^docview-test]: `packages/cli/__test__/ui/DocView.test.ts`
+[^docview-test]: `packages/cli-kit/__test__/ui/DocView.test.ts`

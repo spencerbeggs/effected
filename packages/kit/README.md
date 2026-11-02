@@ -1,11 +1,11 @@
-# @effected/engine
+# @effected/kit
 
-[![npm](https://img.shields.io/npm/v/@effected%2Fengine?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/engine)
+[![npm](https://img.shields.io/npm/v/@effected%2Fengine?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/kit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Platform-free primitives shared by every front end of an Effect v4 tool. A carrier-pattern tool (a CLI, an MCP server, an LSP server) ships more than one bin behind one meta-package, and every one of those front ends needs to answer the same handful of questions the same way: which carrier was I installed through, and what version line does that make me. This package holds those primitives once, so a consumer's own `engine` package can depend on them without also depending on `@effected/cli` or any other front end.
+Platform-free primitives shared by every front end of an Effect v4 tool. A carrier-pattern tool (a CLI, an MCP server, an LSP server) ships more than one bin behind one meta-package, and every one of those front ends needs to answer the same handful of questions the same way: which carrier was I installed through, and what version line does that make me. This package holds those primitives once, so a consumer's own `engine` package can depend on them without also depending on `@effected/cli-kit` or any other front end.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
 > Effect v4 (`effect` `~4.1.0`) and still in `0.x` development. Stable Effect
@@ -22,11 +22,11 @@ Platform-free primitives shared by every front end of an Effect v4 tool. A carri
 ## Install
 
 ```bash
-npm install @effected/engine effect
+npm install @effected/kit effect
 ```
 
 ```bash
-pnpm add @effected/engine effect
+pnpm add @effected/kit effect
 ```
 
 Requires Node.js >=24.11.0.
@@ -40,7 +40,7 @@ All `@effected/*` packages are ESM-only: the exports maps publish only `import` 
 `Distribution` is the carrier package a tool's bins were installed through — its `name` and `version`. A plain `Schema.Struct` rather than a `Schema.Class`, because it travels as a plain object inside a machine-readable envelope and is compared structurally, never constructed on its own.
 
 ```ts
-import { Distribution } from "@effected/engine";
+import { Distribution } from "@effected/kit";
 import { Schema } from "effect";
 
 const decoded = Schema.decodeUnknownSync(Distribution)({ name: "@okfit/plugin", version: "0.5.1" });
@@ -55,7 +55,7 @@ console.log(decoded);
 `CurrentDistribution` is a `Context.Reference<Option<Distribution>>`, not a `Context.Service`: it carries its own default (`Option.none()`), so reading it never appears in an effect's `R` and a direct install needs no provision at all. A front end's `main` provides it once, at the top of the program, once it has resolved what installed it.
 
 ```ts
-import { CurrentDistribution } from "@effected/engine";
+import { CurrentDistribution } from "@effected/kit";
 import { Effect, Option } from "effect";
 
 const program = Effect.gen(function* () {
@@ -80,7 +80,7 @@ program.pipe(
 `distributionSuffix` turns a `CurrentDistribution` read into the trailing text a `--version` line or a startup log line appends — `""` for a direct install, `" via <name> <version>"` for a carrier. A free function, not a static on `Distribution`, because a `Schema.Struct` value carries no statics to hang it from.
 
 ```ts
-import { distributionSuffix } from "@effected/engine";
+import { distributionSuffix } from "@effected/kit";
 import { Option } from "effect";
 
 distributionSuffix(Option.none());
@@ -92,7 +92,7 @@ distributionSuffix(Option.some({ name: "@okfit/plugin", version: "0.5.1" }));
 
 ## Tier
 
-Pure tier: `effect` is the only peer, no `process`, no `node:` import, no platform package. Nothing in the kit depends on `@effected/engine` except `@effected/mcp`; `@effected/cli` never does — the two sit at the same layer, both consumed by a front end, never by each other.
+Pure tier: `effect` is the only peer, no `process`, no `node:` import, no platform package. Nothing in the kit depends on `@effected/kit` except `@effected/mcp-kit`; `@effected/cli-kit` never does — the two sit at the same layer, both consumed by a front end, never by each other.
 
 ## License
 

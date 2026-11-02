@@ -6,7 +6,7 @@ status: stable
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
@@ -14,7 +14,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 3052b9a418e53b9f
+    body: fab40b1d6134ee37
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -26,7 +26,7 @@ integrity:
 ## Context
 
 `References.LogToStderr` is a public reference core's own default logger
-already reads to decide its stream. `@effected/cli`'s `CliLogger` also
+already reads to decide its stream. `@effected/cli-kit`'s `CliLogger` also
 needs to respect it, but the reference could plausibly be read two ways:
 as a single all-or-nothing switch, or as something that could be
 interpreted per level.

@@ -6,7 +6,7 @@ status: stable
 tags: [architecture, docs]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:45:24Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
@@ -14,7 +14,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 84635f8e7ed95482
+    body: da1ff545d8ea8dc1
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -27,8 +27,8 @@ integrity:
 
 This design's own evidence — two research passes over okfit's and
 vitest-agent's source — is what identified every primitive candidate in
-`@effected/engine`, `@effected/cli`'s growth, and the phase-2
-`@effected/mcp`. Writing the Module and Decision concepts that extract
+`@effected/kit`, `@effected/cli-kit`'s growth, and the phase-2
+`@effected/mcp-kit`. Writing the Module and Decision concepts that extract
 those primitives without first recording what was actually surveyed would
 leave the justification for each extraction living only in a scratchpad
 research file nobody re-reads, and future package additions would have no
@@ -38,8 +38,8 @@ what does it deliberately keep for itself."
 ## Decision
 
 `okf/consumers/okfit.md` and `okf/consumers/vitest-agent.md` are written
-and linked from the new Module concepts (`engine.md`, `mcp.md`, and the
-updated `cli.md`) as the first step of this branch, before any of the ten
+and linked from the new Module concepts (`kit.md`, `mcp-kit.md`, and the
+updated `cli-kit.md`) as the first step of this branch, before any of the ten
 Decisions or the Module bodies that depend on them. Each Consumer names
 the repository, the kit surfaces it already exercises with links to the
 Modules and Interfaces involved, what it deliberately keeps for itself,
@@ -51,7 +51,7 @@ and the open questions it holds the kit to — the exact register shape
 **Justifying the extractions without registering the consumers.** Rejected
 — a Module or Decision concept that says "three consumers hand-roll this"
 without a Consumer concept a reader can open makes the claim
-unfalsifiable: nobody reading `engine.md` six months from now can check
+unfalsifiable: nobody reading `kit.md` six months from now can check
 which repo actually exercises `Distribution` without re-running the
 research pass this branch already did once. Registering the consumers
 first means every later Decision can link a concrete, dated survey

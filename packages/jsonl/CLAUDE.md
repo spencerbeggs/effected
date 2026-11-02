@@ -26,7 +26,7 @@ through every write and read path **untranslated** rather than being wrapped.
 
 **The root never imports `node:*`.** The one platform surface is the
 `./node` subpath (`src/node.ts` → `NodeJournalWatcher`): Node-only, read
-per entrypoint like `@effected/cli`'s `./ui`. It adds no package — only the
+per entrypoint like `@effected/cli-kit`'s `./ui`. It adds no package — only the
 `node:fs` built-in — so it does not make the package integrated by
 `okf/glossary/library-tier.md`; it does make that entry unusable off Node.
 `__test__/entrypoints.test.ts` holds the boundary: nothing reachable from

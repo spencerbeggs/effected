@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-31T19:37:34Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: c71b8d2d224c6e91
+    body: e7fb1c7ffa330578
 ---
 
 # github-actions
@@ -183,7 +183,7 @@ the groups inside a phase stay top level and each gets its own section, and
 `withBuffer`/`withStep` hold a step's transcript for its failure report. The
 open-group count is the fiber-local keyed by
 [`github-commands`](github-commands.md)' `WorkflowCommand.groupDepthKey`, not
-a key of this package's own, so [`cli`](cli.md)'s `Render.context` built
+a key of this package's own, so [`cli`](cli-kit.md)'s `Render.context` built
 inside a group sees it and `Doc.print`'s collapsible stays plain there.
 
 Step debugging reaches the log level, not just the renderer. When the

@@ -1,28 +1,28 @@
 ---
 type: Decision
 title: The ui declarations reference the root's types by the package's own name
-description: "The ./ui and ./ui/testing declarations import the root's types from @effected/cli (kept external with dtsExternals) instead of carrying copies, with API Extractor's resulting noise suppressed for the ui entries only and re-pinned by tests over the built declarations."
+description: "The ./ui and ./ui/testing declarations import the root's types from @effected/cli-kit (kept external with dtsExternals) instead of carrying copies, with API Extractor's resulting noise suppressed for the ui entries only and re-pinned by tests over the built declarations."
 status: stable
 tags: [architecture, bundle, dx]
 sources:
   - id: cli-build-config
-    resource: ../../packages/cli/savvy.build.ts
+    resource: ../../packages/cli-kit/savvy.build.ts
     title: "The cli build: dtsExternals and the scoped suppression"
   - id: cli-declarations-test
-    resource: ../../packages/cli/__test__/declarations.test.ts
+    resource: ../../packages/cli-kit/__test__/declarations.test.ts
     title: The gates over the built declarations
   - id: cli-boundary-test
-    resource: ../../packages/cli/__test__/boundary.test.ts
+    resource: ../../packages/cli-kit/__test__/boundary.test.ts
     title: The self-name rules
   - id: split-declarations-probe
     resource: "Consumer probe over the built dist/prod/npm/pkg/index.d.ts and ui.d.ts, run 2026-10-01 during P4 review"
     title: The probe that found the split declarations
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T04:10:06Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: d61b911ace21e180
+    body: c09b62d3b3c74569
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -36,7 +36,7 @@ verified:
 
 ## Context
 
-`@effected/cli` builds one rolled-up `.d.ts` per entrypoint. `CliUi.run`, in
+`@effected/cli-kit` builds one rolled-up `.d.ts` per entrypoint. `CliUi.run`, in
 `./ui`, names root types in its signature: it fails with `Cancelled` or
 `NotInteractive` and requires `CliTheme`.
 
@@ -51,13 +51,13 @@ Re-exporting the root types from `./ui` did not help, because the copies remaine
 ## Decision
 
 - **`./ui` names root types through the package's own name**, with
-  `import type * as Cli from "@effected/cli"`. `./ui/testing` does the same,
-  and also names `./ui`'s types through `@effected/cli/ui`. Values stay
+  `import type * as Cli from "@effected/cli-kit"`. `./ui/testing` does the same,
+  and also names `./ui`'s types through `@effected/cli-kit/ui`. Values stay
   relative imports, so the runtime graph is unchanged.
 - **The dts pass keeps those imports external.** `dtsExternals` is set to
-  `["@effected/cli", "@effected/cli/ui"]`; the match is exact, so each subpath
-  is listed. The emitted `ui.d.ts` imports from `@effected/cli`, and
-  `ui-testing.d.ts` from `@effected/cli/ui`, instead of copying.[^cli-build-config]
+  `["@effected/cli-kit", "@effected/cli-kit/ui"]`; the match is exact, so each subpath
+  is listed. The emitted `ui.d.ts` imports from `@effected/cli-kit`, and
+  `ui-testing.d.ts` from `@effected/cli-kit/ui`, instead of copying.[^cli-build-config]
 - **API Extractor's resulting noise is suppressed for the ui entries only.**
   The meta pass follows the self-name back into source and reports every root
   type as a forgotten export. The suppression rule matches
@@ -72,10 +72,10 @@ Re-exporting the root types from `./ui` did not help, because the copies remaine
     import the package it keeps external. This is a content check, so a turbo
     cache replay of the build report cannot turn it red.
 - **The boundary test holds the self-name rules:**[^cli-boundary-test]
-  - ui files name `@effected/cli` through `import type` only;
+  - ui files name `@effected/cli-kit` through `import type` only;
   - a root module must not import the package's own name at all, which would
     make the root declarations import themselves;
-  - the root must never reach `@effected/cli/ui`.
+  - the root must never reach `@effected/cli-kit/ui`.
 
 ## Accepted cost
 
@@ -104,6 +104,6 @@ drafted and not yet filed.
   specified API.
 
 [^split-declarations-probe]: Consumer probe over the built `index.d.ts` and `ui.d.ts`, 2026-10-01.
-[^cli-build-config]: `../../packages/cli/savvy.build.ts`
-[^cli-declarations-test]: `../../packages/cli/__test__/declarations.test.ts`
-[^cli-boundary-test]: `../../packages/cli/__test__/boundary.test.ts`
+[^cli-build-config]: `../../packages/cli-kit/savvy.build.ts`
+[^cli-declarations-test]: `../../packages/cli-kit/__test__/declarations.test.ts`
+[^cli-boundary-test]: `../../packages/cli-kit/__test__/boundary.test.ts`

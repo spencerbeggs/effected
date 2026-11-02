@@ -3,22 +3,22 @@ type: Gotcha
 title: Ink delivers every key in one stdin read before React re-renders
 description: A key handler that steps from state captured in its render works one key at a time and repeats a move when several keys arrive in one read, because Ink dispatches them all before React re-renders; step from a functional update, a reducer or a ref instead.
 status: draft
-resource: ../../packages/cli/src/ui/KeyTable.ts
+resource: ../../packages/cli-kit/src/ui/KeyTable.ts
 stale_after: "2027-03-30T00:00:00Z"
 tags:
   - dx
   - testing
 sources:
   - id: tabs-one-chunk-probe
-    resource: "../../packages/cli/__test__/ui/Tabs.test.ts"
+    resource: "../../packages/cli-kit/__test__/ui/Tabs.test.ts"
     author: "agent:claude-code"
     last_modified: "2026-10-01T05:17:00Z"
   - id: chunk-test
-    resource: "../../packages/cli/__test__/ui/CliUiTest.chunk.test.ts"
+    resource: "../../packages/cli-kit/__test__/ui/CliUiTest.chunk.test.ts"
     author: "agent:claude-code"
     last_modified: "2026-10-01T05:29:00Z"
   - id: char-probe
-    resource: "../../packages/cli/__test__/ui/CliUiTest.chunk.test.ts"
+    resource: "../../packages/cli-kit/__test__/ui/CliUiTest.chunk.test.ts"
     author: "agent:claude-code"
     last_modified: "2026-10-01T05:50:00Z"
   - id: ink-input-parser
@@ -26,10 +26,10 @@ sources:
     last_modified: "2026-10-07T00:00:00Z"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-07T21:32:23Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: 83309d85f22c29d9
+    body: d84f5a95bbbb0a3f
 ---
 
 # Ink delivers every key in one stdin read before React re-renders
@@ -103,7 +103,7 @@ Select, MultiSelect, Confirm and TextInput use functional updates. Tabs,
 which also reports each step through `onChange` and may be controlled,
 advances a ref that every render re-syncs. When reviewing a new widget,
 cover it with a one-chunk test of two keys: `handle.chunk("right",
-"right")` from `@effected/cli/ui/testing`.
+"right")` from `@effected/cli-kit/ui/testing`.
 
 [^tabs-one-chunk-probe]: `__test__/ui/Tabs.test.ts`, "Tabs input in one chunk"
 [^chunk-test]: `__test__/ui/CliUiTest.chunk.test.ts`

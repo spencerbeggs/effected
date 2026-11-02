@@ -6,7 +6,7 @@ status: stable
 tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T22:58:53Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
@@ -14,7 +14,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 0f1a229fdc56d0bc
+    body: c259de13a717b135
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -25,7 +25,7 @@ integrity:
 
 ## Context
 
-`@effected/cli` is gaining a document IR (`Doc`) that failure rendering, the
+`@effected/cli-kit` is gaining a document IR (`Doc`) that failure rendering, the
 two schema-issue renderers and later screens build once and render four ways:
 plain text, ANSI, markdown and GitHub log lines. The house default for a model
 is a `Schema.Class`, so the choice needs a reason.

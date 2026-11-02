@@ -28,15 +28,15 @@ hand-rolling the recipe again.
 
 | construct | import | reach for it when |
 | --- | --- | --- |
-| `CurrentDistribution`, `DistributionField`, `distributionSuffix` | `@effected/engine` | threading which meta-package a front end was installed through |
-| `LaunchContext` | `@effected/engine` | resolving an agent-launched project directory from `argv`/`env`/`cwd` |
-| `CliRuntime.main` | `@effected/cli` | assembling a CLI front end's `main.ts` |
-| `McpStdio` | `@effected/mcp` | assembling an MCP front end's `main.ts` — launch, stdio boundary, teardown |
-| `ProcessGuard`, `McpGuard` | `@effected/engine/guard`, `@effected/mcp/guard` | crash guards in a server front end's `main.ts` before its graph loads — any transport (an LSP), or MCP with the launch built in |
+| `CurrentDistribution`, `DistributionField`, `distributionSuffix` | `@effected/kit` | threading which meta-package a front end was installed through |
+| `LaunchContext` | `@effected/kit` | resolving an agent-launched project directory from `argv`/`env`/`cwd` |
+| `CliRuntime.main` | `@effected/cli-kit` | assembling a CLI front end's `main.ts` |
+| `McpStdio` | `@effected/mcp-kit` | assembling an MCP front end's `main.ts` — launch, stdio boundary, teardown |
+| `ProcessGuard`, `McpGuard` | `@effected/kit/guard`, `@effected/mcp-kit/guard` | crash guards in a server front end's `main.ts` before its graph loads — any transport (an LSP), or MCP with the launch built in |
 | `WorkspaceLayering`, `LayerPolicy` | `@effected/workspaces/testing` | the manifest DAG test that holds the package graph to a committed policy |
 | `SourceBoundary` | `@effected/workspaces/testing` | a package's own `process`/import boundary test |
 | `PackedInstall` | `@effected/workspaces/testing` | the cross-package-manager packed-install e2e |
-| `McpProbe` | `@effected/mcp/testing` | the MCP half of a packed-install proof |
+| `McpProbe` | `@effected/mcp-kit/testing` | the MCP half of a packed-install proof |
 
 ## Standards
 

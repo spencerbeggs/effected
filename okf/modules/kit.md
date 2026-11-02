@@ -1,23 +1,23 @@
 ---
 type: Module
-title: "@effected/engine"
+title: "@effected/kit"
 description: The platform-free primitives a carrier-pattern tool's own engine package shares across its front ends — distribution stamping, remediation shape, never-throwing error text, launch-context resolution, a one-permit lane for process-global work with scoped restores, and transport-neutral crash guards.
 status: stable
 kind: package
-resource: ../../packages/engine
+resource: ../../packages/kit
 layer: pure
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T16:52:44Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: cb967218b366fcec
+    body: f1089169e325f852
 ---
 
-# @effected/engine
+# @effected/kit
 
-`@effected/engine` is where the primitives every front end of a
+`@effected/kit` is where the primitives every front end of a
 carrier-pattern tool shares live, once, fixed. A consumer such as okfit or
 vitest-agent ships its own `engine` package that composes its `core` and
 its vocabulary into shared programs; this kit package sits *below* that
@@ -28,13 +28,13 @@ somewhere a consumer's engine can depend on without also depending on a
 front end.
 
 That is the whole reason this package exists rather than living inside
-`@effected/cli` or a future `@effected/mcp`: **a consumer's engine may not
-import `@effected/cli`**, whose own rule is that only applications depend
-on it (see [`cli.md`](cli.md)). If `Distribution` lived in `cli`, every
+`@effected/cli-kit` or a future `@effected/mcp-kit`: **a consumer's engine may not
+import `@effected/cli-kit`**, whose own rule is that only applications depend
+on it (see [`cli-kit.md`](cli-kit.md)). If `Distribution` lived in `cli`, every
 consumer engine that wanted to stamp its own distribution would have to
 take a `cli` dependency it structurally cannot carry. Putting `Distribution`,
 `Remediation` and `LaunchContext` in a package whose only kit dependents
-are the two front ends, `@effected/mcp` and `@effected/cli`, breaks that
+are the two front ends, `@effected/mcp-kit` and `@effected/cli-kit`, breaks that
 knot. See
 [D1](../decisions/engine-holds-cross-front-end-primitives.md) for the full
 reasoning and the rejected alternatives.
@@ -54,9 +54,9 @@ object, which loses TSDoc on its members in the built `.d.ts`.
 | `withDistribution(d)` | free function | `(d: Distribution \| null \| undefined) => <A, E, R>(self: Effect<A, E, R>) => Effect<A, E, R>`. Provides `CurrentDistribution` to `self`: `Option.some` of a carrier, `Option.none()` for `null` or `undefined`. The one-line form of what a front end's `main` does once; data-last. |
 | `withDistributionVersion(d)` | free function | `(d: Option<Distribution>) => (formatVersion: (name, version) => string) => (name, version) => string`. Decorates a `--version` formatter shaped like `effect/cli`'s `CliOutput.Formatter["formatVersion"]`, appending `distributionSuffix(d)`. It **wraps** whatever formatter is in effect (a coloured default, a custom one) rather than replacing it; the suffix is computed once, when applied. `CliRuntime.main`'s `distribution` option is built on it. |
 | `Remediation` | `Schema.Struct` and type | `{ hint: string; suggestedTool?: string; suggestedArgs?: Record<string, unknown> }`. The shape okfit and Silk both already use, plus vitest-agent's `suggestedArgs`; vitest-agent's `humanHint` maps onto `hint`. |
-| `ErrorText.describe(value)` | static function | `(value: unknown) => string`, never throwing: a string as itself, a value with a string `message` as that message (an `Error`, one from another realm, a plain `{ message }`, even an empty one), else its JSON, else `String(value)`, else `"[unprintable value]"`. A throwing getter is a value without a message. Not sanitised. Moved here from `@effected/cli`'s `Fmt.describe`, which now delegates (#1141): an MCP front end may not depend on `cli`, and both front ends of one tool must describe a failure with the same words. |
-| `ErrorText.causeMessage(value)` | static function | `(value: unknown) => string \| undefined`: the [error-standards](../conventions/error-standards.md) guarded cause read, published. Every distinct non-empty message along the `cause` chain, nearest first, joined with a colon and a space, eight nodes at most, never throwing. The `src/internal/causeMessage.ts` copy moved here from `@effected/cli`, whose `Fmt.causeMessage` delegates. |
-| `ErrorText.of(value)` | static function | `(value: unknown) => string`: exactly `causeMessage(value) ?? describe(value)`, the fallback every I/O site would otherwise spell by hand (#1134); `@effected/cli`'s `Fmt.errorText` is this function. The replacement for a per-site `error instanceof Error ? error.message : String(error)`, which misses a cross-realm error and the cause chain and throws on a prototype-less value. |
+| `ErrorText.describe(value)` | static function | `(value: unknown) => string`, never throwing: a string as itself, a value with a string `message` as that message (an `Error`, one from another realm, a plain `{ message }`, even an empty one), else its JSON, else `String(value)`, else `"[unprintable value]"`. A throwing getter is a value without a message. Not sanitised. Moved here from `@effected/cli-kit`'s `Fmt.describe`, which now delegates (#1141): an MCP front end may not depend on `cli`, and both front ends of one tool must describe a failure with the same words. |
+| `ErrorText.causeMessage(value)` | static function | `(value: unknown) => string \| undefined`: the [error-standards](../conventions/error-standards.md) guarded cause read, published. Every distinct non-empty message along the `cause` chain, nearest first, joined with a colon and a space, eight nodes at most, never throwing. The `src/internal/causeMessage.ts` copy moved here from `@effected/cli-kit`, whose `Fmt.causeMessage` delegates. |
+| `ErrorText.of(value)` | static function | `(value: unknown) => string`: exactly `causeMessage(value) ?? describe(value)`, the fallback every I/O site would otherwise spell by hand (#1134); `@effected/cli-kit`'s `Fmt.errorText` is this function. The replacement for a per-site `error instanceof Error ? error.message : String(error)`, which misses a cross-realm error and the cause chain and throws on a prototype-less value. |
 | `LaunchContext.usable(value)` | static function | `(value: string \| undefined) => Option<string>`: the value trimmed, or `None` for `undefined`, an empty or whitespace-only string, or a string still carrying a literal `${VAR}`. The one guard every resolver applies; `??` would accept an empty string or a placeholder. |
 | `LaunchContext.resolve(input)` | static function | `({ argv?, env, keys }) => Option<string>`: the first usable `argv` value, then the first usable env value in `keys` order. For any launch-supplied location (a host's plugin data directory, an app override) with the caller's own fallback after it. `argv` must be parsed positionals, never raw `process.argv`: every non-empty value is a candidate. |
 | `LaunchContext.projectDir(input)` | static function | `({ argv?, env, keys, cwd }): string`: `resolve` with `cwd` as the fallback. Values are trimmed. Pure — `env` and `cwd` are passed in, never read from `process`. |
@@ -126,7 +126,7 @@ a defect. `ProcessScope`'s TSDoc carries the same recipe.
 
 ### Why the guard lives here, on its own subpath
 
-The crash guard was born as `McpGuard.run` in `@effected/mcp/guard`, but
+The crash guard was born as `McpGuard.run` in `@effected/mcp-kit/guard`, but
 its guard half (listeners, policy, startup failure, `injectCrash`, the
 formatter) has nothing to do with MCP, and okfit's LSP front end
 (`vscode-languageserver` over stdio) hand-rolled a copy because
@@ -171,9 +171,9 @@ platform package. `ProcessScope` and `ProcessGuard` take the process state
 they touch as structural hosts or plain records, so the purity holds by
 construction.
 
-Two kit packages depend on `@effected/engine`: `@effected/mcp`
-(see [`mcp.md`](mcp.md)) as a peer, and `@effected/cli`
-(see [`cli.md`](cli.md)) as a regular dependency, for `CliRuntime.main`'s
+Two kit packages depend on `@effected/kit`: `@effected/mcp-kit`
+(see [`mcp-kit.md`](mcp-kit.md)) as a peer, and `@effected/cli-kit`
+(see [`cli-kit.md`](cli-kit.md)) as a regular dependency, for `CliRuntime.main`'s
 `distribution` option ([decision](../decisions/cli-engine-edge.md)). No
 other package may add an edge to it without a new Decision.
 
@@ -183,9 +183,9 @@ other package may add an edge to it without a new Decision.
 named this gap: its own `engine` package is exactly the shape a kit
 `Distribution` primitive sits under, and its `Remediation`/`ToolFailure`
 copies are one of the near-identical duplicates this package (together with
-the phase-2 `@effected/mcp`) exists to collapse.
+the phase-2 `@effected/mcp-kit`) exists to collapse.
 [`consumers/vitest-agent`](../consumers/vitest-agent.md) is the second: its
-`process.exit` handlers and `spawnSync` e2e are `@effected/cli` concerns
+`process.exit` handlers and `spawnSync` e2e are `@effected/cli-kit` concerns
 (see [D3](../decisions/cli-logger-defaults-all-to-stderr.md) and
 [D9](../decisions/cli-testing-uses-core-child-process.md)), but its two
 independent ports of `registerToolkit` are the `Remediation`-shaped
@@ -222,11 +222,11 @@ target directly.
   cycle, a bigint field, a throwing getter, a prototype-less value),
   `causeMessage` through the kit-wide `causeMessage.test.ts` every copy
   carries, and `of` held to exactly `causeMessage ?? describe` across hostile
-  values. `@effected/cli`'s `Fmt.test.ts` pins its delegation by identity.
+  values. `@effected/cli-kit`'s `Fmt.test.ts` pins its delegation by identity.
 
 ## See also
 
-- [D1: `@effected/engine` exists and holds `Distribution`, `Remediation` and `LaunchContext`](../decisions/engine-holds-cross-front-end-primitives.md)
-- [`@effected/cli` depends on `@effected/engine` for `distribution`](../decisions/cli-engine-edge.md)
-- [`@effected/cli`](cli.md)
-- [`@effected/mcp`](mcp.md)
+- [D1: `@effected/kit` exists and holds `Distribution`, `Remediation` and `LaunchContext`](../decisions/engine-holds-cross-front-end-primitives.md)
+- [`@effected/cli-kit` depends on `@effected/kit` for `distribution`](../decisions/cli-engine-edge.md)
+- [`@effected/cli-kit`](cli-kit.md)
+- [`@effected/mcp-kit`](mcp-kit.md)

@@ -4,7 +4,7 @@ Language Server Protocol base-protocol framing as pure functions, a stdio
 launcher (`LspStdio`) that keeps stdout the wire and exits with the
 specification's code, plus a `./testing` subpath whose `LspProbe` proves a
 Language Server bin boots and whose `LspProcess` drives one frame by frame —
-the LSP twins of `@effected/mcp`'s `McpStdio`, `McpProbe` and `McpProcess`.
+the LSP twins of `@effected/mcp-kit`'s `McpStdio`, `McpProbe` and `McpProcess`.
 Not an LSP server framework: the message loop and every handler stay with
 whatever the consumer serves the protocol with (okfit's `okfit-lsp` runs
 `vscode-languageserver` behind its own Effect transport).
@@ -26,10 +26,10 @@ over `SourceBoundary.scan` (`@effected/workspaces` is a devDependency for
 that test alone).
 
 **Nothing in the kit may depend on this package except an application.**
-It is a front-end sibling of `@effected/mcp` and `@effected/cli`: no edge
+It is a front-end sibling of `@effected/mcp-kit` and `@effected/cli-kit`: no edge
 between any two of them, and no library takes one. It does not depend on
-`@effected/engine` and builds no process guard; the transport-neutral
-guard is `@effected/engine`'s business.
+`@effected/kit` and builds no process guard; the transport-neutral
+guard is `@effected/kit`'s business.
 
 ## Exports
 
@@ -105,7 +105,7 @@ guard is `@effected/engine`'s business.
   drive letter is lowercase both ways. `node:url` appears only in
   `__test__/LspUri.test.ts`, as the differential oracle. The rulings are in
   `okf/modules/lsp.md` ("`file:` URIs and paths").
-- **The `./testing` split mirrors `@effected/mcp`.** `entrypoints.test.ts`
+- **The `./testing` split mirrors `@effected/mcp-kit`.** `entrypoints.test.ts`
   pins that nothing reachable from `.` imports the probe, with positive
   controls.
 
