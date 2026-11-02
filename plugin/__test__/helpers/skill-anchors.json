@@ -749,11 +749,11 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/resources.md",
-			"anchor": "ai/McpServer.ts:3998-4018",
+			"anchor": "ai/McpServer.ts:4021-4041",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"3998": "const resolveResourceContent = (",
-				"4018": "^}$"
+				"4021": "const resolveResourceContent = (",
+				"4041": "^}$"
 			}
 		},
 		{
@@ -817,11 +817,11 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:3135-3148",
+			"anchor": "ai/McpServer.ts:3160-3173",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"3135": "const inputSchema = yield* Schema.decodeUnknownEffect(ToolJson)(",
-				"3148": "const mcpTool = new McpTool({"
+				"3160": "const inputSchema = yield* Schema.decodeUnknownEffect(ToolJson)(",
+				"3173": "const mcpTool = new McpTool({"
 			},
 			"occurrences": 2
 		},
@@ -867,37 +867,37 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:3077-3080",
+			"anchor": "ai/McpServer.ts:3102-3105",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"3077": "const decodeOptions: SchemaAST.ParseOptions = {",
-				"3078": "onExcessProperty: strict ? \"error\" : \"ignore\"",
-				"3080": "^    }$"
+				"3102": "const decodeOptions: SchemaAST.ParseOptions = {",
+				"3103": "onExcessProperty: strict ? \"error\" : \"ignore\"",
+				"3105": "^    }$"
 			}
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:3169",
+			"anchor": "ai/McpServer.ts:3194",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"3169": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
+				"3194": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
 			}
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:3087-3091",
+			"anchor": "ai/McpServer.ts:3132-3135",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"3087": "const declaredFailureResult = (error: unknown) =>",
-				"3091": "new CallToolResult({ isError: true, content: toolResultContent(encoded) }))"
+				"3132": "const declaredFailureResult = (error: unknown) =>",
+				"3135": ": Effect.map(encodeFailure(error), failureResult)"
 			}
 		},
 		{
 			"file": "effected-packages/references/mcp-kit.md",
-			"anchor": "McpServer.ts:3169",
+			"anchor": "McpServer.ts:3194",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"3169": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
+				"3194": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
 			}
 		},
 		{

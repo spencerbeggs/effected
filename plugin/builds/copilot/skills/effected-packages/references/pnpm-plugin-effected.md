@@ -19,11 +19,11 @@ The entry is a plain version (`"@effected/pnpm-plugin-effected": <version>`), th
 **One catalog, `effected`**, and a pnpmfile.
 
 - **`catalog:effected`** — `effect`, every `@effect/*` package, `@effect/tsgo` and every published `@effected/*` package except the plugin itself. It is the only catalog name a consumer writes: in `dependencies`, `devDependencies` and `peerDependencies` alike.
-  - **The Effect family is held to one minor with a tilde** (`~4.1.1`, so `>=4.1.1 <4.2.0`), not a caret. A new Effect minor reaches a consumer only through a new plugin release. `@effect/tsgo` stays on its own `0.x` line with its own range.
+  - **The Effect family is held to one minor with a tilde** (`~4.<minor>.<patch>`, so every later patch of that minor and never the next minor), not a caret. A new Effect minor reaches a consumer only through a new plugin release. `@effect/tsgo` stays on its own `0.x` line with its own range.
   - **Kit packages carry their current release** as a caret, which on `0.x` pins the minor.
   - The exact version a repo builds against is its **lockfile's resolution**, not the catalog literal; re-pin a vendored `.repos/effect` whenever that resolution moves.
 - **There is no `catalog:effect`, `catalog:effect:peers` or `catalog:effected:peers`.** The plugin declares one catalog, `effected`, and its `updateConfig` hook hides the internal `:peers` twin, so a manifest still naming one fails the install. A consumer's own `effected` entry wins over the plugin's for the same package; a consumer's other catalogs are kept.
-- **A published peer takes the install range.** `pnpm pack` runs no hook and resolves `catalog:effected` to the catalog's range, so a library's packed manifest advertises `effect: ~4.1.1` and an `@effected/*` peer at its current patch. When a library needs a wider peer, write that range by hand in its own manifest.
+- **A published peer takes the install range.** `pnpm pack` runs no hook and resolves `catalog:effected` to the catalog's range, so a library's packed manifest advertises the catalog's `effect` tilde range and an `@effected/*` peer at its current patch. When a library needs a wider peer, write that range by hand in its own manifest.
 - **`@effected/pnpm-plugin-effected` is deliberately absent from its own catalog.** Catalogue it and every catalog rewrite bumps the plugin, which invalidates the catalog — a release loop with no termination condition.
 
 The pnpmfile also applies, to every consumer:

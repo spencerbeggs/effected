@@ -10,7 +10,7 @@ when_to_use: "reading image dimensions or MIME type from bytes, caching generate
 `pnpm-plugin-effected` and `schemastore-cli` companions, and the four packages of
 the `effected` tool) designed against the
 v4 line, released together, with every
-`effect` dependency drawn from one pnpm catalog range held to one Effect minor (`~4.1.1`, `lock-minor`). Before
+`effect` dependency drawn from one pnpm catalog range held to one Effect minor (a tilde range, `lock-minor`). Before
 designing lockfile/config/glob/semver/path/state/workspace/git capability by
 hand, check this table — the kit probably ships it, schema-first and with a
 typed error channel.
