@@ -70,6 +70,14 @@ _baseline() {
 	} >"$1/BASELINE.md"
 }
 
+# _named_changesets <ledger-dir> — every changeset name any entry lists, one per
+# line, read with applicable.mjs's own parser so flow and block lists both count.
+_named_changesets() {
+	node --input-type=module -e '
+		import { readLedger } from "'"$SCRIPTS"'/applicable.mjs";
+		for (const e of readLedger(process.argv[1]).entries) for (const n of e.changesets ?? []) console.log(n);' "$1"
+}
+
 setup() {
 	PROJECT="$BATS_TEST_TMPDIR/project"
 	LEDGER_FIX="$BATS_TEST_TMPDIR/ledger"
@@ -260,14 +268,24 @@ EOF
 	[[ "$output" != *"src/old.ts:3"* ]]
 }
 
+@test "ledger gate: every changeset in a flow list counts, not only the last" {
+	printf -- '---\nid: "0001"\ntitle: Two\nkind: tooling\nshows: none\napplies:\n  effect: ">=4.1.0"\nchangesets: ["first-one", "second-one"]\n---\n\nBody.\n' >"$LEDGER_FIX/0001-two.md"
+	printf -- '---\nid: "0002"\ntitle: Block\nkind: tooling\nshows: none\napplies:\n  effect: ">=4.1.0"\nchangesets:\n  - third-one\n  - fourth-one\n---\n\nBody.\n' >"$LEDGER_FIX/0002-block.md"
+	run _named_changesets "$LEDGER_FIX"
+	[ "$status" -eq 0 ]
+	[ "$output" = "$(printf 'first-one\nsecond-one\nthird-one\nfourth-one')" ]
+}
+
 @test "repo: every pending changeset with a breaking section is named by a ledger entry" {
 	local missing=""
+	local named
+	named="$(_named_changesets "$LEDGER")"
 	for cs in "$REPO_ROOT"/.changeset/*.md; do
 		[ -e "$cs" ] || continue
 		grep -q '^## Breaking Changes' "$cs" || continue
 		local name
 		name="$(basename "$cs" .md)"
-		grep -rqE "^changesets:.*[\"' ]$name[\"',\]]|^  - [\"']?$name[\"']?\$" "$LEDGER" || missing="$missing $name"
+		printf "%s\n" "$named" | grep -qxF "$name" || missing="$missing $name"
 	done
 	if [ -n "$missing" ]; then
 		echo "breaking changesets with no ledger entry:$missing" >&2

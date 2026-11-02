@@ -6,11 +6,7 @@ shows: typed
 applies:
   "@effected/pnpm-plugin-effected": ">=0.21.0"
 detect: ["@effected/(cli|mcp|engine)([\"'/]|$)"]
-changesets:
-  - rename-carrier-libraries
-  - effected-cli-tool
-  - effected-mcp-tool
-  - effected-engine-tool
+changesets: ["rename-carrier-libraries", "effected-cli-tool", "effected-mcp-tool", "effected-engine-tool"]
 ---
 
 Three kit libraries were renamed, with no compatibility shim: `@effected/cli` is now `@effected/cli-kit`, `@effected/mcp` is now `@effected/mcp-kit`, and `@effected/engine` is now `@effected/kit`. Subpaths carry over unchanged: `@effected/cli/ui` becomes `@effected/cli-kit/ui`, `@effected/cli/testing` becomes `@effected/cli-kit/testing`, and so on.
