@@ -15,7 +15,7 @@ sources:
     resource: https://github.com/spencerbeggs/effected/issues/1223
     title: "This branch's slice of 1147"
   - id: ledger-0048
-    resource: ../../plugin/skills/effected-renovate/ledger
+    resource: ../../plugin/skills/effected-renovate/references/ledger
     title: "The breaking ledger entry that tells consumers what to change"
   - id: owner
     resource: conversation with the repository owner
