@@ -348,6 +348,9 @@ importers:
       '@effected/walker':
         specifier: workspace:^
         version: link:../walker/dist/dev/pkg
+      effect:
+        specifier: catalog:effected
+        version: 4.1.1
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effected
@@ -361,9 +364,6 @@ importers:
       '@types/node':
         specifier: catalog:build
         version: 26.6.6
-      effect:
-        specifier: catalog:effected
-        version: 4.1.1
       typescript:
         specifier: catalog:build
         version: 7.1.0-beta
@@ -538,6 +538,9 @@ importers:
       '@effected/kit':
         specifier: workspace:^
         version: link:../kit/dist/dev/pkg
+      effect:
+        specifier: catalog:effected
+        version: 4.1.1
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effected
@@ -548,9 +551,6 @@ importers:
       '@types/node':
         specifier: catalog:build
         version: 26.6.6
-      effect:
-        specifier: catalog:effected
-        version: 4.1.1
       typescript:
         specifier: catalog:build
         version: 7.1.0-beta
@@ -1025,6 +1025,9 @@ importers:
       '@effected/mcp-kit':
         specifier: workspace:^
         version: link:../mcp-kit/dist/dev/pkg
+      effect:
+        specifier: catalog:effected
+        version: 4.1.1
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effected
@@ -1035,9 +1038,6 @@ importers:
       '@types/node':
         specifier: catalog:build
         version: 26.6.6
-      effect:
-        specifier: catalog:effected
-        version: 4.1.1
       typescript:
         specifier: catalog:build
         version: 7.1.0-beta
@@ -1197,6 +1197,9 @@ importers:
       '@effected/mcp':
         specifier: workspace:^
         version: link:../mcp/dist/dev/pkg
+      effect:
+        specifier: catalog:effected
+        version: 4.1.1
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effected
@@ -1207,6 +1210,9 @@ importers:
       '@effected/commands':
         specifier: workspace:*
         version: link:../commands/dist/dev/pkg
+      '@effected/kit':
+        specifier: workspace:*
+        version: link:../kit/dist/dev/pkg
       '@effected/mcp-kit':
         specifier: workspace:*
         version: link:../mcp-kit/dist/dev/pkg
@@ -1219,9 +1225,6 @@ importers:
       '@types/node':
         specifier: catalog:build
         version: 26.6.6
-      effect:
-        specifier: catalog:effected
-        version: 4.1.1
       typescript:
         specifier: catalog:build
         version: 7.1.0-beta

@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T16:44:32Z
+  at: 2026-11-02T17:01:56Z
 integrity:
   generated:
-    body: 441c9eae30fb31db
+    body: 1640fba4a101490c
 ---
 
 # @effected/engine
@@ -26,6 +26,6 @@ integrity:
 
 ## Boundaries
 
-- `@effected/kit` is a regular dependency (it supplies `Distribution`); `effect` is the only peer.
+- `@effected/kit` is a regular dependency (it supplies `Distribution`); `effect` is a regular dependency, because a tool declares its full stack.
 - New logic both front ends need goes here, never in a front end. The carrier [plugin](plugin.md) holds nothing but bin shims.
 - Package-local rules live in the package's `CLAUDE.md`.

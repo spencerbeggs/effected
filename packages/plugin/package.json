@@ -36,17 +36,18 @@
 	},
 	"dependencies": {
 		"@effected/cli": "workspace:^",
-		"@effected/mcp": "workspace:^"
+		"@effected/mcp": "workspace:^",
+		"effect": "catalog:effected"
 	},
 	"devDependencies": {
 		"@effect/platform-node": "catalog:effected",
 		"@effect/vitest": "catalog:effected",
 		"@effected/commands": "workspace:*",
+		"@effected/kit": "workspace:*",
 		"@effected/mcp-kit": "workspace:*",
 		"@effected/workspaces": "workspace:*",
 		"@savvy-web/bundler": "^2.7.1",
 		"@types/node": "catalog:build",
-		"effect": "catalog:effected",
 		"typescript": "catalog:build"
 	},
 	"engines": {
