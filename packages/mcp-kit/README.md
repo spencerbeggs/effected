@@ -1,0 +1,570 @@
+# @effected/mcp-kit
+
+The boundary layer of an `effect/ai` MCP server: stdio wiring that keeps stdout the JSON-RPC wire, tool-failure shaping, and strict-input walkers, plus a `./testing` subpath for driving a built server from a test.
+
+[![npm](https://img.shields.io/npm/v/@effected%2Fmcp?label=npm&color=cb3837)](https://www.npmjs.com/package/@effected/mcp-kit)
+[![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
+[![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
+[![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
+
+> **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
+> Effect v4 (`effect` `~4.1.0`) and still in `0.x` development. Stable Effect
+> makes a kit `1.0.0` possible, not automatic. To keep your `effect` and
+> `@effect/*` versions on the line the kit is built and tested against, install
+> [`@effected/pnpm-plugin-effected`](https://www.npmjs.com/package/@effected/pnpm-plugin-effected).
+>
+> **Stability: unstable.** This package's API surface is not yet considered
+> complete and may change across `0.x` releases. Pin an exact version — even a
+> package marked *stable* before `1.0.0` can introduce a breaking change by
+> accident, and an exact pin turns that into a type-check error rather than a
+> runtime surprise. Full policy: [release strategy](https://github.com/spencerbeggs/effected#release-strategy).
+
+## Install
+
+```bash
+npm install @effected/mcp-kit @effected/kit effect
+```
+
+```bash
+pnpm add @effected/mcp-kit @effected/kit effect
+```
+
+Requires Node.js >=24.11.0.
+
+All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
+
+`effect` v4 and `@effected/kit` are the only peer dependencies. Boundary tier: `src/` reads no `process` token, imports no `node:` module and no `@effect/platform*` package, and calls no `console.*` — stdout is the JSON-RPC wire a server writes over.
+
+## ToolFailure
+
+Core's MCP server sends a tool's declared failure — an `Error` instance, which every `Schema.TaggedError` is — as `isError: true` with `error.message` as the only text and no `structuredContent`. Whatever is not folded into `message` when the error is constructed never reaches the agent. `ToolFailure` is the shared shape for doing that folding consistently across a server's tools.
+
+Spread `ToolFailure.fields` into a tool's `Schema.TaggedError`, build `message` with `ToolFailure.message`, and pass every caller-supplied value through `ToolFailure.truncate` before echoing it back:
+
+```ts
+import { ToolFailure } from "@effected/mcp-kit";
+import { Schema } from "effect";
+
+class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {
+  ...ToolFailure.fields,
+  id: Schema.String,
+}) {}
+
+const remediation = { hint: "List the ids first.", suggestedTool: "list_things" };
+const id = "missing-id";
+
+const error = new NotFound({
+  id,
+  remediation,
+  message: ToolFailure.message(`No thing "${ToolFailure.truncate(id)}".`, remediation),
+});
+
+console.log(error.message);
+// => No thing "missing-id". List the ids first. Try list_things.
+```
+
+`ToolFailure.message` drops any empty part, so an omitted `suggestedTool` or an empty `hint` never leaves a double space:
+
+```ts
+import { ToolFailure } from "@effected/mcp-kit";
+
+console.log(ToolFailure.message("Config missing.", { hint: "Run init." }));
+// => Config missing. Run init.
+```
+
+`ToolFailure.truncate` caps a caller-supplied value at `ToolFailure.ECHO_LIMIT` (200 UTF-16 code units) before it is echoed into a message, backing off one unit rather than splitting a surrogate pair. A value the engine itself produced — a path, a diagnostic — can take the larger `ToolFailure.ENGINE_ECHO_LIMIT` (2000):
+
+```ts
+import { ToolFailure } from "@effected/mcp-kit";
+
+console.log(ToolFailure.truncate("a".repeat(500)).length);
+// => 201 (200 characters, then "…")
+
+const enginePath = `/work/${"deep/".repeat(100)}file.ts`;
+console.log(ToolFailure.truncate(enginePath, ToolFailure.ENGINE_ECHO_LIMIT) === enginePath);
+// => true (under the 2000-unit engine cap)
+```
+
+`ToolFailure` is a static-namespace class with a private constructor — it is never instantiated.
+
+### ToolRefusal
+
+For a refusal with no fields of its own, `ToolRefusal` is that shape ready-made: a `Schema.TaggedError` on `ToolFailure.fields`, built with `ToolRefusal.refuse(reason, remediation)`, which folds the remediation into `message`. Declare it in the tool's `failure` schema:
+
+```ts
+import { ToolFailure, ToolRefusal } from "@effected/mcp-kit";
+import { Effect, Schema } from "effect";
+import { Tool } from "effect/ai";
+
+const GetRun = Tool.make("get_run", {
+  parameters: Schema.Struct({ id: Schema.String }),
+  success: Schema.Struct({ status: Schema.String }),
+  failure: ToolRefusal,
+});
+
+const refusal = ToolRefusal.refuse(`No run "${ToolFailure.truncate("r9")}".`, {
+  hint: "List the runs first.",
+  suggestedTool: "list_runs",
+});
+console.log(refusal.message);
+// => No run "r9". List the runs first. Try list_runs.
+```
+
+**Audit every throw path when you port a tool.** Core scrubs an undeclared failure, and every defect, to `Tool execution failed due to an internal server error.` The message you wrote never reaches the agent, and nothing warns you. Any failure the agent should act on must be declared in the tool's `failure` schema, as a `ToolRefusal` or your own `ToolFailure`-shaped error.
+
+## Putting it together
+
+A stdio server's `main.ts` is one line, plus the layer that wires it:
+
+```ts
+import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp-kit";
+import { NodeRuntime, NodeStdio } from "@effect/platform-node";
+import { Effect, Layer, Schema } from "effect";
+import { Tool, Toolkit } from "effect/ai";
+
+class NotFound extends Schema.TaggedError<NotFound>()("NotFound", {
+  ...ToolFailure.fields,
+  id: Schema.String,
+}) {}
+
+const GetThing = Tool.make("get_thing", {
+  description: "Fetch a thing by id.",
+  parameters: Schema.Struct({ id: Schema.String }),
+  success: Schema.Struct({ name: Schema.String }),
+  failure: NotFound,
+});
+
+const MyTools = Toolkit.make(GetThing);
+
+const MyHandlers = MyTools.toLayer({
+  get_thing: ({ id }) =>
+    id === "known"
+      ? Effect.succeed({ name: "a known thing" })
+      : Effect.fail(
+          new NotFound({
+            id,
+            remediation: { hint: "List the ids first.", suggestedTool: "list_things" },
+            message: ToolFailure.message(`No thing "${ToolFailure.truncate(id)}".`, {
+              hint: "List the ids first.",
+              suggestedTool: "list_things",
+            }),
+          }),
+        ),
+});
+
+const ToolsLayer = McpToolkit.layer(MyTools).pipe(Layer.provide(MyHandlers));
+const ServerLayer = ToolsLayer.pipe(
+  Layer.provideMerge(McpStdio.layer({ name: "my-server", version: "1.0.0" })),
+);
+
+// The platform Stdio is the one service provided at the edge.
+const Main = ServerLayer.pipe(Layer.provide(NodeStdio.layer));
+
+NodeRuntime.runMain(McpStdio.launch(Main), { teardown: McpStdio.teardown });
+```
+
+The platform `Stdio` is the one service provided at the edge: `ServerLayer`
+still requires it, and `Main` supplies `NodeStdio.layer` from
+`@effect/platform-node` just before launch. Leave that line out and
+`McpStdio.launch(Main)` fails to typecheck, because `Stdio` is still in its
+requirements. Test `ServerLayer`, never `Main`: `McpHarness.make` supplies
+its own queue-backed `Stdio`.
+
+`McpToolkit.layer` re-annotates every tool without its own `Tool.Strict`
+annotation to strict by default, so `get_thing({ id: "known", extra: 1 })`
+is rejected by core's strict decode, which names every excess, missing and
+invalid field in one `InvalidParams`, before the handler ever runs, and the
+layer adds `Accepted params at the root: id.` — see
+[Strict input](#strict-input) below.
+
+## The stdio boundary
+
+`McpStdio.layer` is core's `McpServer.layerStdio` with every log line sent to
+stderr, and with stdin read through a guard. Core's own stdio decoder skips a
+line it cannot use and keeps serving, but it sends no reply, where JSON-RPC 2.0
+requires one: the client is left waiting on a request it will never hear about.
+The guard frames stdin exactly as core does — one streaming UTF-8 decoder, a
+byte-order mark stripped only at the start of the stream, lines split on `\n`
+— and answers each such line itself, on stdout:
+
+- a line that is not JSON gets a JSON-RPC parse error,
+  `{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}`,
+  and the server keeps serving the lines after it;
+- a line longer than core's cap of 16 Mi UTF-16 code units gets the same
+  reply once, as soon as it passes the cap, and the rest of it is discarded
+  up to its newline;
+- a line that is JSON but no JSON-RPC message gets an Invalid Request,
+  `{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Invalid Request"}}`,
+  and the server keeps serving. That covers a value that is neither an object
+  nor an array, an object whose `method` is not a string and whose `id` is
+  absent or `null`, and an object with neither `method` nor `id`, which is
+  neither a request nor a response;
+- a line whose `method` starts with `@effect/rpc/` never reaches core, which
+  would read one without an `id` as its own RPC control message:
+  `{"jsonrpc":"2.0","method":"@effect/rpc/Eof"}` alone silently stops an
+  unguarded server ([Effect-TS/effect#8499](https://github.com/Effect-TS/effect/issues/8499),
+  open upstream). Such a notification is
+  dropped; such a request is answered `-32601` Method not found, echoing its
+  `id`;
+- a line of JSON whitespace (space, tab, carriage return) is ignored.
+
+Every other line goes to core. That includes an array, which core answers with
+`-32600` itself because it serves no batches, and an object with an `id` and
+no `method`, which is a response and never gets a reply.
+
+**Give each server a fresh layer memo map.** Core's stdio protocol layer is a
+shared constant, so a second `McpStdio.layer` server whose build sees the
+first one's memo map shares its protocol: only the first server reads stdin,
+and the second never answers. Merging both into one graph does that, and so
+does building or providing the second anywhere under the first one's
+`Effect.provide` — a nested `Layer.build` or `Effect.provide` forks the
+ambient memo map rather than starting a new one. The tool registry is shared
+the same way. Isolate each server by wrapping its whole bundle (its toolkit
+layers together with `McpStdio.layer`) in `Layer.fresh`, or give it its own
+`ManagedRuntime`, `Effect.provide(layer, { local: true })`, or its own
+process. Never put the `Layer.fresh` boundary between a toolkit and
+`McpStdio.layer`: the server would serve an empty registry.
+
+## Crash guards
+
+A stray `uncaughtException` or `unhandledRejection` in a stdio server either kills it silently or, worse, happens while its modules are still loading, before anything is listening. `@effected/mcp-kit/guard` installs the listeners first. The entrypoint has no static runtime import, so the guards are in place before `effect` or your server graph is evaluated:
+
+```ts
+import { McpGuard } from "@effected/mcp-kit/guard";
+
+await McpGuard.run({
+  label: "my-server",
+  host: process,
+  policy: { onUncaught: "exitBeforeConnect", onRejection: "log" },
+  load: async () => {
+    const NodeRuntime = await import("@effect/platform-node/NodeRuntime");
+    const { Main } = await import("./server.js");
+    return { layer: Main, runMain: NodeRuntime.runMain };
+  },
+});
+```
+
+`McpGuard.run` registers both listeners on `host`, awaits `load()`, and launches the returned layer with `McpStdio.launch` and `McpStdio.teardown` under the returned `runMain`. Keep every import that could throw inside `load`, behind a dynamic `import()`.
+
+The policy decides when a stray exception or rejection ends the process. `"exit"` exits 1 whenever it happens. `"exitBeforeConnect"` exits 1 until the server is serving, then logs and keeps serving, because a server that dies mid-session takes every tool away from the client. `"log"` (rejections only) never exits. Both default to `"exit"`.
+
+Some behaviour worth knowing:
+
+- "Connected" means the whole server layer has built, so stdin is being read. That comes before any client sends `initialize`. `McpStdio.launch`'s `onReady` option is where the guard gets that signal.
+- A `load()` that rejects is reported as `startup failed` and exits 1, whatever the policy. Left to a log-only rejection listener it would let the event loop drain and exit 0 with no server running.
+- An `unhandledRejection` listener switches off Node's default of throwing on one, so `"log"` really does keep the process running.
+- A guard's exit skips Effect's finalizers and the teardown.
+- Carrying on after a crash works because the platform `runMain` holds the process open while the server fiber lives.
+- A layer that fails to build is still reported by `McpStdio.launch`, on stderr.
+
+To test the guards themselves, pass `injectCrash: { at, kind }`, with `kind` either `"uncaughtException"` or `"unhandledRejection"`. Wire it to an environment variable only your test sets; unset, it does nothing. The crash is raised through `host.emit` on a `setTimeout(0)` tick, so the guard's own listeners handle it identically under the real `process` and under a test double for `McpGuardHost` (which therefore needs `on`, `emit`, `stderr` and `exit`). If a double's `exit` throws at `"load"`, `run` rejects with what it threw instead of waiting.
+
+- `at: "load"` raises it once both listeners are installed and before `load()` is called, and `load()` waits until the guard has handled it. The pre-connect half of the policy applies: `"exitBeforeConnect"` and `"exit"` both exit 1 here, and only `onRejection: "log"` lets the process go on to load and serve. The report uses the guard's own formatter, because no `format` is loaded yet.
+- `at: "connected"` raises it on a timer just after the server is serving, where `"exitBeforeConnect"` logs and keeps serving.
+
+Together they drive both halves of `"exitBeforeConnect"` in a real child process.
+
+## Strict input
+
+Two ways to close a tool's input schema against unknown keys, at different
+scopes:
+
+- **`ToolInputSchema`** — pure walkers, for a `Tool.dynamic` tool,
+  whose raw JSON Schema core never validates strictly: run
+  `ToolInputSchema.unknownKeys(payload, schema)` inside its handler against
+  the schema you registered, usually paired with `objectRooted(schema)`,
+  because a top-level discriminated union only reaches a server as raw
+  JSON Schema — core dies at boot on a union root. Not for a `Tool.make`
+  tool: core decodes its payload before the handler runs, so an excess key
+  is already dropped or rejected by then.
+- **`McpToolkit.layer(toolkit, options?)`** — the registration-scoped
+  decorator, and the recommended default: every tool without its own
+  `Tool.Strict` annotation is served and decoded strict
+  (`options.strict` defaults to `"all"`). Rejection and the report are
+  core's: a strict tool is decoded with `errors: "all"`, so one
+  `InvalidParams` names every excess key at every depth together with every
+  missing or invalid field. The layer appends to that report, never in
+  place of it: one `Accepted params at <path>: …` line for each object level
+  of the payload that carries an unknown key, so an agent can fix the call
+  from the reply alone (example below). An explicit `Tool.Strict`
+  annotation always wins, and a `Tool.dynamic` tool is never re-annotated.
+  `options.unknownKeyMessage` is deprecated and ignored. Pass `{ strict: "annotated" }` to leave
+  unannotated tools lenient, or annotate an individual tool
+  `Tool.Strict` false to opt it out under the default.
+
+```ts
+import { McpToolkit } from "@effected/mcp-kit";
+import { Layer } from "effect";
+import type { Tool, Toolkit } from "effect/ai";
+
+// The toolkit and its handlers, as built in "Putting it together".
+declare const MyTools: Toolkit.Toolkit<Record<string, Tool.Any>>;
+declare const MyHandlers: Layer.Layer<never>;
+
+// Default: every tool is strict; core's rejection names every bad field at once.
+const ToolsLayer = McpToolkit.layer(MyTools).pipe(Layer.provide(MyHandlers));
+
+// Only tools explicitly annotated Tool.Strict are decoded strict.
+const LenientByDefault = McpToolkit.layer(MyTools, { strict: "annotated" }).pipe(Layer.provide(MyHandlers));
+```
+
+A strict `search` tool taking `query` and an optional `filter` union, called
+with an unknown key at the root and one inside the selected `filter` member,
+and without its required `query`:
+
+```text
+search({ extra: 1, filter: { kind: "tag", tag: "t", text: "sneaky" } })
+=> Invalid parameters for tool 'search': Expected no excess property
+     at ["extra"]
+   Missing key
+     at ["query"]
+   Expected no excess property
+     at ["filter"]["text"]
+   Accepted params at the root: query, filter.
+   Accepted params at ["filter"]: kind, tag.
+```
+
+The first six lines are core's. The layer adds the last two: one per object
+level that carries an unknown key, naming its accepted keys, plus
+`keys matching <pattern>` where the level accepts keys by `patternProperties`.
+A zero-parameter tool gets `This tool accepts no params.` instead. A failure
+with no unknown key, only missing or mistyped fields, is core's report
+unchanged.
+
+A pattern-keyed `Schema.Record` is served closed, with `patternProperties`,
+only when its key pattern's RegExp carries the Unicode flag:
+`Schema.isPattern(/^x-/u)`. Without `u`, Effect treats the exported pattern as
+approximate and serves the record open (`additionalProperties` set to the value
+schema), so the served schema, and `ToolInputSchema.unknownKeys` walking it,
+accept any key; the strict decode still enforces the pattern. `McpToolAudit`'s `input: "closed"` check reports such
+a record open and suggests the flag. Where a closed level accepts keys by
+pattern, `formatUnknownKeys` names the patterns (`Accepted keys matching: ^x-.`)
+rather than claiming it accepts none.
+
+The dynamic-tool recipe, with the handler reporting every unknown key:
+
+```ts
+import { McpToolkit, ToolInputSchema } from "@effected/mcp-kit";
+import { Effect, Layer, Schema } from "effect";
+import { Tool, Toolkit } from "effect/ai";
+
+// A top-level union, written as raw JSON Schema and rewritten to an object root.
+const EditInput = ToolInputSchema.objectRooted({
+  anyOf: [
+    {
+      type: "object",
+      properties: {
+        action: { const: "rename" },
+        to: { type: "string" },
+        options: { type: "object", properties: { force: { type: "boolean" } }, additionalProperties: false },
+      },
+      required: ["action", "to"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: { action: { const: "delete" } },
+      required: ["action"],
+      additionalProperties: false,
+    },
+  ],
+});
+
+class UnknownKeys extends Schema.TaggedError<UnknownKeys>()("UnknownKeys", { message: Schema.String }) {}
+
+const Edit = Tool.dynamic("edit", {
+  description: "Rename or delete a thing.",
+  parameters: EditInput,
+  failure: UnknownKeys,
+});
+
+const EditTools = Toolkit.make(Edit);
+
+const EditHandlers = EditTools.toLayer({
+  // A dynamic tool is decoded as Schema.Unknown: the handler sees the raw payload.
+  edit: (payload) => {
+    const levels = ToolInputSchema.unknownKeys(payload, EditInput);
+    return levels.length > 0
+      ? Effect.fail(new UnknownKeys({ message: ToolInputSchema.formatUnknownKeys(levels) }))
+      : Effect.succeed(payload);
+  },
+});
+
+// McpToolkit never re-annotates a Tool.dynamic tool, so it stays lenient and the handler reports.
+const EditLayer = McpToolkit.layer(EditTools).pipe(Layer.provide(EditHandlers));
+```
+
+```text
+edit({ action: "rename", to: "b", extra: 1, options: { force: true, bogus: 2 } })
+=> Unrecognized parameter(s): extra. Accepted params: action, to, options. Unrecognized parameter(s): options.bogus. Accepted params: force.
+```
+
+## Union-parameter tools
+
+A tool whose parameters are a `Schema.Union` of objects cannot be a `Tool.make` tool: core dies at registration on a non-object `parameters` root. `McpToolkit.unionTool` makes it a `Tool.dynamic` served with Effect's strict JSON Schema document for the union (`additionalProperties: false` on every object node), object-rooted by `ToolInputSchema.objectRooted`. `McpToolkit.unionHandler` wraps a handler that receives the decoded member:
+
+```ts
+import { McpToolkit, ToolOutputSchema, ToolRefusal } from "@effected/mcp-kit";
+import { Effect, Schema } from "effect";
+import { Tool, Toolkit } from "effect/ai";
+
+const AddNote = Schema.Struct({ action: Schema.Literal("add"), text: Schema.String });
+const ListNotes = Schema.Struct({ action: Schema.Literal("list"), limit: Schema.optionalKey(Schema.Number) });
+
+const Note = McpToolkit.unionTool("note", {
+  description: "Add or list notes.",
+  parameters: Schema.Union([AddNote, ListNotes]),
+  success: ToolOutputSchema.objectRooted(
+    Schema.Union([
+      Schema.Struct({ kind: Schema.Literal("added") }),
+      Schema.Struct({ kind: Schema.Literal("listed"), count: Schema.Number }),
+    ]),
+  ),
+  failure: ToolRefusal,
+}).annotate(Tool.Title, "Note");
+
+const Kit = Toolkit.make(Note);
+const Handlers = Kit.toLayer({
+  // `params` is AddNote | ListNotes, already decoded.
+  note: McpToolkit.unionHandler(Note, (params) =>
+    Effect.succeed(params.action === "add" ? { kind: "added" as const } : { kind: "listed" as const, count: 0 }),
+  ),
+});
+```
+
+`annotate` and `addDependency` keep the union on the tool, so a chained `.annotate(Tool.Title, …)` still hands `unionHandler` the decoded type.
+
+Registered through `McpToolkit.layer`, a union tool is decoded like a strict `Tool.make` tool, before the handler runs: strictly, with `errors: "all"`, so one `InvalidParams` in core's `Tool.make` wording names every excess key at every depth together with every missing or invalid field of the matched member, followed by the same `Accepted params at <path>: …` lines. Bad arguments therefore answer as a `Tool.make` decode failure does: a JSON-RPC `-32602` on `2025-06-18`, an `isError` result on the later revisions. Registered through core's `McpServer.toolkit` instead, or called directly (a test helper, say), `unionHandler` runs the same decode itself, so the message is identical. Under `McpServer.toolkit` that `InvalidParams` is a declared failure, an `isError` result on every revision. `unionHandler`'s third argument, `{ unknownKeyMessage }`, is deprecated and ignored. Never annotate a union tool `Tool.Strict` true: core dies at registration on a strict tool with a raw JSON Schema.
+
+## Union success schemas
+
+MCP requires a tool's `outputSchema` to be rooted in an object, and a top-level `Schema.Union` emits a bare `anyOf`. Core drops such an `outputSchema` from `tools/list` on the stateful revisions, and serves it verbatim on the stateless one, where strict clients reject it. When every member of the union is an object shape, `ToolOutputSchema.objectRooted` adds `type: "object"` beside the `anyOf` through a check that always passes, so decoding and the schema's type stay the same:
+
+```ts
+import { ToolOutputSchema } from "@effected/mcp-kit";
+import { Schema } from "effect";
+
+const Found = Schema.Struct({ kind: Schema.Literal("found"), id: Schema.String });
+const Missing = Schema.Struct({ kind: Schema.Literal("missing"), reason: Schema.String });
+
+const Result = ToolOutputSchema.objectRooted(Schema.Union([Found, Missing])).annotate({ identifier: "Result" });
+```
+
+It can go before or after `.annotate({ identifier })`: the identifier the schema already carries moves onto the new check, so the served documents are equal either way. Every union member must be an object shape: do not use it on a union with a primitive or array member, because the added `type: "object"` is a claim about the whole union that nothing checks, and the served schema would then contradict what the tool returns — give that tool an object envelope instead. `McpToolAudit`'s `objectRootedOutput` check names this helper when it finds a union root.
+
+## Testing
+
+`@effected/mcp-kit/testing` is a separate entrypoint — importing it never pulls
+test machinery into a server's runtime import graph.
+
+```ts
+import { McpHarness } from "@effected/mcp-kit/testing";
+import { Effect, type Layer, type Stdio } from "effect";
+import type { McpServer } from "effect/ai";
+
+// The server layer from "Putting it together" — still requiring Stdio.
+declare const ServerLayer: Layer.Layer<McpServer.McpServer, never, Stdio.Stdio>;
+
+const test = Effect.gen(function* () {
+  const client = yield* McpHarness.make(ServerLayer);
+  yield* client.initialize; // initialize + notifications/initialized: every stateful revision requires it
+  const result = yield* client.callTool("get_thing", { id: "known" });
+  // result.result.structuredContent === { name: "a known thing" }
+  yield* client.close;
+});
+```
+
+On a stateful revision (the default is `2025-11-25`), `initialize` comes
+first: any other request sent before it fails fast with `McpTestFailure`
+reason `NotInitialized` instead of the server's opaque `Invalid request
+metadata`. `ping` is the exception: the server answers it `{}` before
+initialization, so the harness sends it. `client.initializeWith("2025-06-18")` asks for a different stateful revision than the harness speaks and returns the whole response, so a test can assert the negotiated `protocolVersion`. A stateful server never refuses a version: an unknown one, or the stateless `2026-07-28`, is counter-offered `2025-11-25`. On a harness made with the stateless revision, `initialize` itself is not served, and the response is a JSON-RPC `-32601` error with no `notifications/initialized` sent after it. `client.sentSoFar` holds every frame the harness has written, in order.
+
+`McpHarness.make` runs the server in-process over queue-backed `Stdio`, so
+a test sees the exact served schemas and wire results a real client would,
+with no child process and no sockets. Pass `server` **without** a `Stdio`
+of its own — a `Stdio` the server provides internally would talk to the
+real terminal instead of the test's queues, including one that arrives
+bundled: `@effect/platform-node`'s `NodeServices.layer` brings its own
+`Stdio` along with `FileSystem`, `Path`, `ChildProcessSpawner`
+and `Terminal`, so composing the server with that bundle loses the harness's
+`Stdio` the same way. Compose the individual platform layers the server
+needs instead and leave `Stdio` out; the harness supplies it. The harness builds the server
+with a fresh layer memo map, never the ambient one, so a harness made under
+another stdio server's `Effect.provide` still serves its own. For the same
+reason, never pass a server layer that provides a layer the test also
+provides and then reads: `McpHarness.make(server.pipe(Layer.provide(AppLayer)))`
+under `Effect.provide(AppLayer)` builds `AppLayer` twice, so the tools write
+to one instance and the test reads the other. Leave the service in the
+server layer's requirements and provide it once from the test, or build it
+once and pass `Layer.succeed(Tag, value)`. `McpProcess.spawn` and
+`McpProbe.initialize` are the spawned-bin equivalents, for a test that
+must exercise a built artifact rather than a layer — `McpProbe` in
+particular is the MCP half of a packed-install proof: it keeps stdin open
+until the response arrives, and the caller asserts
+`result.response.error === undefined`, empty `stderr` and exit 0 — a
+server that refuses the handshake still answers, exits 0 and stays quiet.
+`McpToolAudit.check` is a pure sweep over a served `tools/list`, for a
+static policy check with no server at all. `client.listResources` and
+`client.readResource(uri)` mirror `listTools`/`callTool` for a server's
+`resources/list` and `resources/read`.
+
+`McpProcess` writes a JSON-encoded message with `send`, and anything at all
+with `sendRaw(text: string | Uint8Array)`, which writes the string or bytes
+verbatim. `sendRaw` is the only way to put genuinely malformed input on a
+server's stdin — `send` and `McpHarness` always encode valid JSON — so it is
+how a test proves the stdin guard against a spawned server:
+
+```ts
+import { unlinkSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { NodeServices } from "@effect/platform-node";
+import { McpProcess } from "@effected/mcp-kit/testing";
+import { Effect } from "effect";
+import { ChildProcess } from "effect/process";
+
+// A minimal server, written to disk so it can be spawned as a real process.
+const serverFile = join(import.meta.dirname, "mcp-guard-demo-server.mjs");
+writeFileSync(
+  serverFile,
+  `
+import { McpStdio, McpToolkit } from "@effected/mcp-kit";
+import { NodeRuntime, NodeStdio } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
+import { Tool, Toolkit } from "effect/ai";
+
+const Ping = Tool.make("ping", { description: "Liveness check.", parameters: Tool.EmptyParams });
+const Tools = Toolkit.make(Ping);
+const Handlers = Tools.toLayer({ ping: () => Effect.void });
+const Main = McpToolkit.layer(Tools).pipe(
+  Layer.provide(Handlers),
+  Layer.provideMerge(McpStdio.layer({ name: "guard-demo", version: "0.0.0" })),
+  Layer.provide(NodeStdio.layer),
+);
+
+NodeRuntime.runMain(McpStdio.launch(Main), { teardown: McpStdio.teardown });
+`,
+);
+
+const program = Effect.gen(function* () {
+  const server = yield* McpProcess.spawn(ChildProcess.make(process.execPath, [serverFile]));
+  yield* server.handshake(); // always id 1
+  // A bad line and a good one, in the same write.
+  yield* server.sendRaw('not json\n{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n');
+  const { response, seen } = yield* server.readUntilResponse(2);
+  console.log("answered the bad line:", seen.some((frame) => (frame as { id: unknown }).id === null));
+  console.log("kept serving:", Array.isArray((response.result as { tools: unknown }).tools));
+}).pipe(Effect.scoped, Effect.provide(NodeServices.layer), Effect.timeout("5 seconds"));
+
+await Effect.runPromise(program).finally(() => unlinkSync(serverFile));
+// => answered the bad line: true
+// => kept serving: true
+```
+
+## Tier
+
+Boundary tier. Peers: `@effected/kit` and `effect`. Nothing in the kit depends on `@effected/mcp-kit` except an application; it never depends on `@effected/cli-kit` or `@effected/workspaces` — a CLI boundary and an MCP boundary are siblings, both front ends, never layers on each other.
+
+## License
+
+[MIT](LICENSE)

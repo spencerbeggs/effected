@@ -222,7 +222,7 @@ the scope closes.
 
 ```ts
 import { NodeServices } from "@effect/platform-node"
-import { McpProbe } from "@effected/mcp/testing"
+import { McpProbe } from "@effected/mcp-kit/testing"
 import { Workspaces } from "@effected/workspaces"
 import { PackedInstall } from "@effected/workspaces/testing"
 import { Config, Duration, Effect, Layer } from "effect"
@@ -388,7 +388,7 @@ assert that they are:
 import { resolve } from "node:path"
 import { NodeServices } from "@effect/platform-node"
 import { assert, describe, it, layer } from "@effect/vitest"
-import { McpProbe } from "@effected/mcp/testing"
+import { McpProbe } from "@effected/mcp-kit/testing"
 import { Workspaces } from "@effected/workspaces"
 import type { PackedInstallOptions } from "@effected/workspaces/testing"
 import { PackedInstall } from "@effected/workspaces/testing"

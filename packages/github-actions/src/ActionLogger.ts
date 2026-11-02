@@ -139,7 +139,7 @@ const ActiveBuffer = Context.Reference<BufferState | null>("@effected/github-act
  *
  * Keyed by `WorkflowCommand.groupDepthKey`, the kit-wide key for this count,
  * rather than a key of this package's own: Effect looks a reference up by its
- * key, so `@effected/cli`'s `Render.context`, which builds its own reference
+ * key, so `@effected/cli-kit`'s `Render.context`, which builds its own reference
  * from the same key, sees the depth this member provides, and a document it
  * renders inside a group opens no second one.
  *
@@ -251,7 +251,7 @@ export interface ActionLoggerShape {
 	 *    that outlives the group still writes headers rather than a group.
 	 * 3. **Only a writer that reads the shared depth is counted.** The depth
 	 *    lives in the fiber-local keyed by `WorkflowCommand.groupDepthKey`
-	 *    (from `@effected/github-commands`), which `@effected/cli` reads too:
+	 *    (from `@effected/github-commands`), which `@effected/cli-kit` reads too:
 	 *    `Render.context` built inside a group carries it as
 	 *    `RenderContext.groupDepth`, so `Doc.print` and `Render.githubLog`
 	 *    render a top-level collapsible as plain text there rather than as a

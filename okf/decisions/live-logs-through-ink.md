@@ -6,24 +6,26 @@ status: stable
 tags: [architecture, observability]
 sources:
   - id: pinned-by
-    resource: ../../packages/cli/__test__/ui/inkConsole.test.ts
+    resource: ../../packages/cli-kit/__test__/ui/inkConsole.test.ts
     title: "The console bridge writes above a live Ink frame on the production path"
   - id: ink-writers
     resource: "npm:ink@8.0.0"
     title: "Ink 8.0.0, build/ink.js:698-750 (writeToStdout/writeToStderr, early return when unmounted) and build/render.js:23-36 (the instance has no writers)"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-07T21:32:23Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: a417a94bc2de2a1d
+    body: f646960c398c6c74
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 480a1db724a4de38
+    at: 2026-11-02T17:04:46Z
+    content: 2c93e0a5b6f20a80
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # While a live view is mounted, kit logs go through Ink's own stdout and stderr writers
@@ -67,5 +69,5 @@ once unmounted, so a write after unmount is silently lost.[^ink-writers]
   the view is mounted; a log written any other way still tears the frame.
 - A degrade warning is written after the unmount, never mid-frame.
 
-[^pinned-by]: `packages/cli/__test__/ui/inkConsole.test.ts`, which asserts the bridged writes land above the frame on the production path. The seven-mechanism probe that chose it was run once and is not kept.
+[^pinned-by]: `packages/cli-kit/__test__/ui/inkConsole.test.ts`, which asserts the bridged writes land above the frame on the production path. The seven-mechanism probe that chose it was run once and is not kept.
 [^ink-writers]: `npm:ink@8.0.0`, `build/ink.js:698-750` and `build/render.js:23-36`

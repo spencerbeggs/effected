@@ -1,6 +1,6 @@
 {
 	"name": "@effected/pnpm-plugin-effected",
-	"version": "0.20.0",
+	"version": "0.21.0",
 	"private": true,
 	"description": "pnpm config dependency for centralized catalog management across the Effected ecosystem.",
 	"keywords": ["pnpm", "pnpm-plugin", "config-dependency", "catalog", "monorepo", "effected"],
@@ -35,7 +35,7 @@
 	"devDependencies": {
 		"@savvy-web/bundler": "^2.7.1",
 		"@types/node": "catalog:build",
-		"rolldown-pnpm-config": "^2.2.1",
+		"rolldown-pnpm-config": "^2.4.0",
 		"typescript": "catalog:build"
 	},
 	"engines": {

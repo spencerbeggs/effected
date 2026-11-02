@@ -7,7 +7,7 @@ running a program, which terminal session it is in, what the terminal can do
 
 **Design doc:** `@./okf/modules/env.md` — Load when: changing the public
 surface, adding a detector, or deciding whether a capability belongs here
-versus in `@effected/cli` or `@effected/engine`.
+versus in `@effected/cli-kit` or `@effected/kit`.
 
 ## Boundary tier — purity rules
 

@@ -70,7 +70,7 @@ The Copilot port is new and covers less than the Claude Code plugin — in parti
 
 ### Hacking on the plugin itself
 
-The plugin's source lives in `plugin/`, and `pluginfinity` builds it into committed Claude Code and Copilot plugins under `plugin/builds/`. After editing the source, rebuild with `pnpm build --filter @effected/ai-plugin`, then run your agent against this checkout's build rather than the published copy:
+The plugin's source lives in `plugin/`, and `pluginfinity` builds it into committed Claude Code and Copilot plugins under `plugin/builds/`. After editing the source, rebuild with `pnpm build --filter @effected/ai-plugins`, then run your agent against this checkout's build rather than the published copy:
 
 ```bash
 pnpm claude      # claude --plugin-dir plugin/builds/claude

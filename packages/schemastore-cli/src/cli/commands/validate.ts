@@ -8,7 +8,7 @@
 // the URL an application emits via its `HostedSchema` — names the local
 // committed document, no network involved.
 
-import { CliRuntime } from "@effected/cli";
+import { CliRuntime } from "@effected/cli-kit";
 import type { InstanceFinding, SchemastoreConfig } from "@effected/schemastore";
 import { InstanceValidator } from "@effected/schemastore";
 import { Console, Effect, FileSystem, JsonPointer, Option, Path, Predicate, Schema } from "effect";

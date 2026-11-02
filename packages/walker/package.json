@@ -1,6 +1,6 @@
 {
 	"name": "@effected/walker",
-	"version": "0.24.0",
+	"version": "0.25.0",
 	"private": true,
 	"description": "Path traversal as Effect primitives: ascend a directory chain to the first matching candidate, or descend a tree expanding a glob against the filesystem.",
 	"keywords": ["path", "traversal", "walk", "find-up", "effect", "effected"],
@@ -33,17 +33,17 @@
 		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {
-		"@effect/vitest": "catalog:effect",
+		"@effect/vitest": "catalog:effected",
 		"@effected/glob": "workspace:*",
 		"@effected/memfs": "workspace:*",
 		"@savvy-web/bundler": "^2.7.1",
 		"@types/node": "catalog:build",
-		"effect": "catalog:effect",
+		"effect": "catalog:effected",
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
 		"@effected/glob": "workspace:^",
-		"effect": "catalog:effect:peers"
+		"effect": "catalog:effected:peers"
 	},
 	"engines": {
 		"node": ">=24.11.0"

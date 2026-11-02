@@ -9,11 +9,12 @@ It is a breaking round. Effect 4.1.0 removes and reshapes APIs your own code may
 Work in this order:
 
 1. Repin vendored Effect source (step 1), then replace the catalog plugin and reinstall (step 2). The plugin is how you get the new versions: it carries every `@effected/*` version and Effect 4.1.1, so installing it is the whole bump.
-2. If your build toolchain loads published `@effected/*` packages built on Effect 4.0.x, bridge it first (step 2.5), or nothing builds.
-3. Find the Effect 4.1 changes in your code (step 3) and the kit's (step 4). This round carries no security fixes.
-4. Get the build and the full test suite green (step 6).
-5. **Only then**, adopt the new surfaces in step 5, clear your tracking tickets (step 7), and align your code on the kit and on Effect (step 8).
-6. Run the verification again.
+2. Update `@savvy-web/pnpm-plugin-silk` to v0.52.0
+3. Update your build dependencies like `@vitest-agent/*plugin*` `@savvy-web/*` and `@okfit/*` tot he latest version which are already on Effect 4.1.1
+4. Find the Effect 4.1 changes in your code (step 3) and the kit's (step 4). This round carries no security fixes.
+5. Get the build and the full test suite green (step 6).
+6. **Only then**, adopt the new surfaces in step 5, clear your tracking tickets (step 7), and align your code on the kit and on Effect (step 8).
+7. Run the verification again.
 
 Check every API claim against the **installed** `.d.ts` or the vendored Effect source, never against this document or memory. This ledger names shapes, not exact signatures. Where it states a behaviour, that behaviour was probed on both 4.0.7 and 4.1.1, but your code is the authority on what you depend on: probe before you rely on it.
 

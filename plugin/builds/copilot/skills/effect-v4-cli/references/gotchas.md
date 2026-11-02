@@ -64,7 +64,7 @@ failure there does not reach the handler as a domain error: `Command.runWith`
 wraps every parse failure in a `CliError.ShowHelp`, which reports as a usage
 error — wrong for a `--config` whose *absence* is meant to be an
 infrastructure error your own code decides how to report. **The `64` itself
-is `@effected/cli`'s doing, not core's**: `CliError.ShowHelp` carries its own
+is `@effected/cli-kit`'s doing, not core's**: `CliError.ShowHelp` carries its own
 default `Runtime.errorExitCode` of `1` when it has errors (`0` when it does
 not); only `CliRuntime.main`'s `reportFailures` remaps an errors-carrying
 `ShowHelp` to `usageExitCode` (`64` by default). A bare `Command.run`/`runWith`

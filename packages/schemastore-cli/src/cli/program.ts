@@ -3,7 +3,7 @@
 // adds `NodeServices`, `reportFailures` and `runMain`; tests provide a test
 // `Command.Environment` and assert on the failure's exit-code marker.
 
-import { CliLogger, CliRuntime } from "@effected/cli";
+import { CliLogger, CliRuntime } from "@effected/cli-kit";
 import { Effect } from "effect";
 import { Command } from "effect/cli";
 import { ConfigLoadError } from "../ConfigLoader.js";

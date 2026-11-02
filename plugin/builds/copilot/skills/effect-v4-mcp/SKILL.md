@@ -1,35 +1,35 @@
 ---
 name: effect-v4-mcp
-description: "Use when building, wiring, testing or reviewing an MCP server on Effect v4 — effect/ai's McpServer, Tool and Toolkit plus the @effected/mcp boundary that keeps stdout the JSON-RPC wire and makes tool failures readable to an agent. Also use when: MCP server, McpServer, Tool.make, Toolkit, layerStdio, tools/call, server/discover, initialize, Tool.Strict, unknown keys, isError, structuredContent, InvalidParams, MCP resource, mimeType, stdio server exits 130, JSON-RPC on stdout, McpHarness, McpProbe, crash guard, ok false envelope, ToolOutcome, idempotency key, ToolReplay, StdioCapture, library writes to stdout, Exclusive, ProcessScope, chdir per request"
+description: "Use when building, wiring, testing or reviewing an MCP server on Effect v4 — effect/ai's McpServer, Tool and Toolkit plus the @effected/mcp-kit boundary that keeps stdout the JSON-RPC wire and makes tool failures readable to an agent. Also use when: MCP server, McpServer, Tool.make, Toolkit, layerStdio, tools/call, server/discover, initialize, Tool.Strict, unknown keys, isError, structuredContent, InvalidParams, MCP resource, mimeType, stdio server exits 130, JSON-RPC on stdout, McpHarness, McpProbe, crash guard, ok false envelope, ToolOutcome, idempotency key, ToolReplay, StdioCapture, library writes to stdout, Exclusive, ProcessScope, chdir per request"
 ---
 
 # Effect v4 MCP servers
 
 Core owns the protocol, tool registration and the wire format:
 `effect/ai`'s `McpServer`, `Tool` and `Toolkit` parse requests,
-serve JSON Schema, and shape a `tools/call` result. `@effected/mcp` owns the
+serve JSON Schema, and shape a `tools/call` result. `@effected/mcp-kit` owns the
 stdio boundary — keeping every log line and every crash report off stdout,
 which is the JSON-RPC wire — plus tool-failure shaping and strict-by-default
-registration. `@effected/mcp/testing` owns the in-process and spawned test
+registration. `@effected/mcp-kit/testing` owns the in-process and spawned test
 clients.
 
 | construct | import | reach for it when |
 | --- | --- | --- |
 | `McpServer`, `Tool`, `Toolkit`, `McpSchema` | `effect/ai` | declaring the server, its tools, and the protocol-level schemas |
-| `McpStdio` | `@effected/mcp` | launching a stdio server without a stray log line or crash report reaching the wire |
-| `McpToolkit` | `@effected/mcp` | registering a toolkit strict-by-default; core's strict decode names every bad key and field in one response, and the layer appends each offending level's accepted params |
-| `ToolFailure` | `@effected/mcp` | folding remediation into a declared failure's message — core sends only `error.message` |
-| `ToolInputSchema` | `@effected/mcp` | naming unknown keys in a `Tool.dynamic` tool's raw payload, inside its own handler — core never validates a raw JSON Schema |
-| `McpToolkit.unionTool` / `unionHandler` | `@effected/mcp` | a tool whose parameters are a `Schema.Union` of objects, rejected like a `Tool.make` decode failure |
-| `ToolOutcome` | `@effected/mcp` | an expected domain error the agent should branch on as data: the `ok: false` envelope on the success channel, where `structuredContent` arrives |
-| `ToolReplay` | `@effected/mcp` | a write tool whose retried call with the same idempotency key returns the first result instead of running again |
-| `StdioCapture` | `@effected/mcp/node` | an in-process library (a test runner, a bundler) that writes to stdout from inside a handler |
-| `Exclusive` | `@effected/engine` | handlers that mutate process-global state (cwd, env, a patched stream) must run one at a time, under a timeout |
-| `ProcessScope` | `@effected/engine` | a `chdir` or an env patch restored when the request's scope closes |
-| `McpGuard` | `@effected/mcp/guard` | crash guards installed before the server graph loads, with an exit-before-connect policy |
-| `ProcessGuard` | `@effected/engine/guard` | the same guards for a server on another transport (an LSP), which reports `markConnected` itself |
-| `Remediation`, `LaunchContext` | `@effected/engine` | a structured `{ hint, suggestedTool? }` shape, or resolving an agent-launched project directory |
-| `McpHarness`, `McpProcess`, `McpProbe`, `McpToolAudit` | `@effected/mcp/testing` | testing the server layer in process, a spawned child, a packed install, or auditing what `tools/list` actually serves |
+| `McpStdio` | `@effected/mcp-kit` | launching a stdio server without a stray log line or crash report reaching the wire |
+| `McpToolkit` | `@effected/mcp-kit` | registering a toolkit strict-by-default; core's strict decode names every bad key and field in one response, and the layer appends each offending level's accepted params |
+| `ToolFailure` | `@effected/mcp-kit` | folding remediation into a declared failure's message — core sends only `error.message` |
+| `ToolInputSchema` | `@effected/mcp-kit` | naming unknown keys in a `Tool.dynamic` tool's raw payload, inside its own handler — core never validates a raw JSON Schema |
+| `McpToolkit.unionTool` / `unionHandler` | `@effected/mcp-kit` | a tool whose parameters are a `Schema.Union` of objects, rejected like a `Tool.make` decode failure |
+| `ToolOutcome` | `@effected/mcp-kit` | an expected domain error the agent should branch on as data: the `ok: false` envelope on the success channel, where `structuredContent` arrives |
+| `ToolReplay` | `@effected/mcp-kit` | a write tool whose retried call with the same idempotency key returns the first result instead of running again |
+| `StdioCapture` | `@effected/mcp-kit/node` | an in-process library (a test runner, a bundler) that writes to stdout from inside a handler |
+| `Exclusive` | `@effected/kit` | handlers that mutate process-global state (cwd, env, a patched stream) must run one at a time, under a timeout |
+| `ProcessScope` | `@effected/kit` | a `chdir` or an env patch restored when the request's scope closes |
+| `McpGuard` | `@effected/mcp-kit/guard` | crash guards installed before the server graph loads, with an exit-before-connect policy |
+| `ProcessGuard` | `@effected/kit/guard` | the same guards for a server on another transport (an LSP), which reports `markConnected` itself |
+| `Remediation`, `LaunchContext` | `@effected/kit` | a structured `{ hint, suggestedTool? }` shape, or resolving an agent-launched project directory |
+| `McpHarness`, `McpProcess`, `McpProbe`, `McpToolAudit` | `@effected/mcp-kit/testing` | testing the server layer in process, a spawned child, a packed install, or auditing what `tools/list` actually serves |
 
 ## Standards
 
@@ -72,7 +72,7 @@ clients.
 - [tools.md](./references/tools.md) — defining a tool, strict input reporting, failures on the wire, the `ToolOutcome` `ok: false` envelope, `ToolReplay` idempotent replay, and `StdioCapture`. Load when: declaring a `Tool.make`, wiring a `Toolkit`, a client is seeing the wrong failure shape, a write tool needs an idempotency key, or a handler runs a library that writes to stdout.
 - [resources.md](./references/resources.md) — `McpServer.resource`'s single and URI-template forms, the `mimeType` trap, and why a slash-containing id needs a static resource instead of a template. Load when: registering an MCP resource, or a client's read is missing a `mimeType` it expects.
 - [testing.md](./references/testing.md) — the in-process harness, the protocol matrix, spawned clients, the packed-install proof, and the tool audit. Load when: writing a test against an MCP server, or choosing between `McpHarness`, `McpProcess`, `McpProbe` and `McpToolAudit`.
-- `effected-packages`' [mcp.md](../effected-packages/references/mcp.md) — the `@effected/mcp` package surface as a routing reference (import table, full API, Usage block). Load when: you need the package-level index rather than the teaching depth here.
+- `effected-packages`' [mcp-kit.md](../effected-packages/references/mcp-kit.md) — the `@effected/mcp-kit` package surface as a routing reference (import table, full API, Usage block). Load when: you need the package-level index rather than the teaching depth here.
 
 Anchors in this skill and its references cite the vendored tag at
 `.repos/effect/packages/effect/src/`; a consumer without that tree searches

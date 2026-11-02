@@ -5,4 +5,4 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
-| `catalogs` | Variable | The one catalog a consumer installs, `effected`: the Effect family and the kit, folded from the catalogs `savvy.build.ts` declares, exactly as the plugin's `updateConfig` hook presents them to pnpm. | read the folded effected catalog, effect family and kit versions as a map |
+| `catalogs` | Variable | The one catalog a consumer installs, `effected`: the Effect family and the kit, exactly as the plugin's `updateConfig` hook presents it to pnpm. | read the effected catalog, effect family and kit versions as a map |

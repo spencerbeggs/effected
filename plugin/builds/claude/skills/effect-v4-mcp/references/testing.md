@@ -60,8 +60,8 @@ layer's requirements and provide it once from the test, or build it once
 and pass `Layer.succeed(Tag, value)`.
 
 ~~~ts
-import { McpStdio, McpToolkit } from "@effected/mcp"
-import { McpHarness } from "@effected/mcp/testing"
+import { McpStdio, McpToolkit } from "@effected/mcp-kit"
+import { McpHarness } from "@effected/mcp-kit/testing"
 import { assert, describe, it } from "@effect/vitest"
 import { Cause, Effect, Exit, Layer, Option, Schema, Stdio, Stream } from "effect"
 import { Tool, Toolkit } from "effect/ai"
@@ -172,8 +172,8 @@ helper, whose returned `it` (`Vitest.MethodsNonLive`) has no `.live` method
 at all; only the top-level `it` export does.
 
 ~~~ts
-import { McpStdio, McpToolkit } from "@effected/mcp"
-import { McpHarness } from "@effected/mcp/testing"
+import { McpStdio, McpToolkit } from "@effected/mcp-kit"
+import { McpHarness } from "@effected/mcp-kit/testing"
 import { assert, describe, it } from "@effect/vitest"
 import { Effect, Layer, Schema } from "effect"
 import { McpProtocol, Tool, Toolkit } from "effect/ai"
@@ -221,8 +221,8 @@ would fail rather than passing vacuously.
 ## Declared-failure assertion
 
 ~~~ts
-import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp"
-import { McpHarness } from "@effected/mcp/testing"
+import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp-kit"
+import { McpHarness } from "@effected/mcp-kit/testing"
 import { assert, describe, it } from "@effect/vitest"
 import { Effect, Layer, Schema } from "effect"
 import { Tool, Toolkit } from "effect/ai"
@@ -300,7 +300,7 @@ rather than timing it out:
 import { unlinkSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { McpProcess } from "@effected/mcp/testing"
+import { McpProcess } from "@effected/mcp-kit/testing"
 import { Effect } from "effect"
 import { ChildProcess } from "effect/process"
 
@@ -396,7 +396,7 @@ import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { NodeServices } from "@effect/platform-node"
 import { assert, describe, layer } from "@effect/vitest"
-import { McpProbe } from "@effected/mcp/testing"
+import { McpProbe } from "@effected/mcp-kit/testing"
 import { Workspaces } from "@effected/workspaces"
 import { PackedInstall } from "@effected/workspaces/testing"
 import { Duration, Effect, Layer } from "effect"
@@ -481,8 +481,8 @@ closed, as patternProperties, only when its RegExp has the u flag, e.g.
 Schema.isPattern(/^x-/u)`.
 
 ~~~ts
-import { McpToolAudit } from "@effected/mcp/testing"
-import type { ServedTool } from "@effected/mcp/testing"
+import { McpToolAudit } from "@effected/mcp-kit/testing"
+import type { ServedTool } from "@effected/mcp-kit/testing"
 
 const closed: ServedTool = {
   name: "closed_tool",
@@ -543,8 +543,8 @@ revisions disagree on whether a non-object success schema even survives to
 `tools/list` at all:
 
 ~~~ts
-import { McpStdio, McpToolkit } from "@effected/mcp"
-import { McpHarness } from "@effected/mcp/testing"
+import { McpStdio, McpToolkit } from "@effected/mcp-kit"
+import { McpHarness } from "@effected/mcp-kit/testing"
 import { Effect, Layer, Schema } from "effect"
 import { McpProtocol, Tool, Toolkit } from "effect/ai"
 

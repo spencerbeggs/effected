@@ -49,19 +49,23 @@ describe("the kit's layering, checked by WorkspaceLayering", () => {
 					WorkspaceLayering.check(plus(graph, from, to), policy).offenders.map(
 						({ edge, reason }) => `${reason} ${edge.from} -> ${edge.to}`,
 					);
-				assert.deepStrictEqual(reasons("@effected/cli", "@effected/mcp"), ["sameLayer @effected/cli -> @effected/mcp"]);
-				assert.deepStrictEqual(reasons("@effected/mcp", "@effected/cli"), ["sameLayer @effected/mcp -> @effected/cli"]);
-				assert.deepStrictEqual(reasons("@effected/mcp", "@effected/workspaces"), [
-					"sameLayer @effected/mcp -> @effected/workspaces",
+				assert.deepStrictEqual(reasons("@effected/cli-kit", "@effected/mcp-kit"), [
+					"sameLayer @effected/cli-kit -> @effected/mcp-kit",
 				]);
-				assert.deepStrictEqual(reasons("@effected/workspaces", "@effected/mcp"), [
-					"sameLayer @effected/workspaces -> @effected/mcp",
+				assert.deepStrictEqual(reasons("@effected/mcp-kit", "@effected/cli-kit"), [
+					"sameLayer @effected/mcp-kit -> @effected/cli-kit",
 				]);
-				assert.deepStrictEqual(reasons("@effected/engine", "@effected/semver"), [
-					"sameLayer @effected/engine -> @effected/semver",
+				assert.deepStrictEqual(reasons("@effected/mcp-kit", "@effected/workspaces"), [
+					"sameLayer @effected/mcp-kit -> @effected/workspaces",
 				]);
-				assert.deepStrictEqual(reasons("@effected/engine", "@effected/cli"), [
-					"upward @effected/engine -> @effected/cli",
+				assert.deepStrictEqual(reasons("@effected/workspaces", "@effected/mcp-kit"), [
+					"sameLayer @effected/workspaces -> @effected/mcp-kit",
+				]);
+				assert.deepStrictEqual(reasons("@effected/kit", "@effected/semver"), [
+					"sameLayer @effected/kit -> @effected/semver",
+				]);
+				assert.deepStrictEqual(reasons("@effected/kit", "@effected/cli-kit"), [
+					"upward @effected/kit -> @effected/cli-kit",
 				]);
 			}),
 		);
@@ -73,7 +77,7 @@ describe("the kit's layering, checked by WorkspaceLayering", () => {
 					const { policy, graph } = yield* facts;
 					assert.include(
 						graph.edges.map((edge) => edge.label),
-						"@effected/engine -> @effected/workspaces (devDependencies)",
+						"@effected/kit -> @effected/workspaces (devDependencies)",
 					);
 					const everyField = LayerPolicy.make({
 						layers: policy.layers,
@@ -82,7 +86,7 @@ describe("the kit's layering, checked by WorkspaceLayering", () => {
 					});
 					assert.include(
 						WorkspaceLayering.check(graph, everyField).offenders.map(({ edge, reason }) => `${reason} ${edge.label}`),
-						"upward @effected/engine -> @effected/workspaces (devDependencies)",
+						"upward @effected/kit -> @effected/workspaces (devDependencies)",
 					);
 				}),
 		);

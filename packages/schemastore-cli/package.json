@@ -1,6 +1,6 @@
 {
 	"name": "@effected/schemastore-cli",
-	"version": "0.28.0",
+	"version": "0.29.0",
 	"private": true,
 	"description": "The schemastore command: build and check SchemaStore-shaped JSON Schema documents from a schemastore.config.ts, with a per-schema published flag and a drift policy.",
 	"keywords": ["schemastore", "json-schema", "draft-07", "cli", "effect", "effected"],
@@ -35,8 +35,8 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@effect/platform-node": "catalog:effect",
-		"@effected/cli": "workspace:^",
+		"@effect/platform-node": "catalog:effected",
+		"@effected/cli-kit": "workspace:^",
 		"@effected/env": "workspace:^",
 		"@effected/glob": "workspace:^",
 		"@effected/walker": "workspace:^",
@@ -45,17 +45,17 @@
 		"jiti": "^2.6.0"
 	},
 	"devDependencies": {
-		"@effect/vitest": "catalog:effect",
+		"@effect/vitest": "catalog:effected",
 		"@effected/memfs": "workspace:*",
 		"@effected/schemastore": "workspace:*",
 		"@savvy-web/bundler": "^2.7.1",
 		"@types/node": "catalog:build",
-		"effect": "catalog:effect",
+		"effect": "catalog:effected",
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
 		"@effected/schemastore": "workspace:*",
-		"effect": "catalog:effect:peers"
+		"effect": "catalog:effected:peers"
 	},
 	"engines": {
 		"node": ">=24.11.0"

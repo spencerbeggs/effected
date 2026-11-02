@@ -42,7 +42,7 @@ these before inventing a local convention.
     its members need declared signatures — with the rationale and every
     member's TSDoc on the const. Forced: `SpdxExpression` (`@effected/spdx`),
     `EncryptedCodecKey` (`@effected/config-file`) and `UiKey`
-    (`@effected/cli`, whose same-named union is the key model itself).
+    (`@effected/cli-kit`, whose same-named union is the key model itself).
   - **A by-choice holdout is a same-named interface that describes the
     *values* the container builds** — a strategy's `name`/`resolve`, a
     version accessor's `get`/`set`, an event descriptor, an envelope. Merging

@@ -1,6 +1,6 @@
 {
 	"name": "@effected/github-commands",
-	"version": "0.8.0",
+	"version": "0.9.0",
 	"private": true,
 	"description": "The GitHub Actions workflow-command grammar as pure functions: render a command, and neutralize text so the runner cannot read it as one.",
 	"keywords": ["github", "github-actions", "workflow-command", "grammar", "neutralize", "effected"],
@@ -32,10 +32,10 @@
 		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {
-		"@effect/vitest": "catalog:effect",
+		"@effect/vitest": "catalog:effected",
 		"@savvy-web/bundler": "^2.7.1",
 		"@types/node": "catalog:build",
-		"effect": "catalog:effect",
+		"effect": "catalog:effected",
 		"typescript": "catalog:build"
 	},
 	"engines": {

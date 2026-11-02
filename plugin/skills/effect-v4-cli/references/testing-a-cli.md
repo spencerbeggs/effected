@@ -34,7 +34,7 @@ Then capture `Console.Console` and assert on **what** was written and **which st
 
 ~~~ts
 import { assert, it } from "@effect/vitest"
-import { CliEnv, CliMessage } from "@effected/cli"
+import { CliEnv, CliMessage } from "@effected/cli-kit"
 import { Console, Effect } from "effect"
 
 const TestEnv = CliEnv.layerTest({ audience: "human", color: "none" })
@@ -60,11 +60,11 @@ it.effect("a warning goes to stderr, colourless", () =>
 
 ## Core prompts: `TestTerminal`
 
-`@effected/cli/testing`'s `TestTerminal.make({ columns?, rows? })` is a `Terminal` a test drives: `type(text)`, `input([{ name: "enter" }])`, `end`, `resize({ columns, rows })`, and the captured `output`, plus `pending` and `reads` (`{ keys, lines, subscriptions }`) to prove a non-interactive run never read the terminal. It implements core's `Terminal.size` the way a real terminal does: each subscription starts with the current size and receives every `resize`, and `columns`/`rows` read live. Core's own mock terminal is test-only and unexported; this is the public one. A hand-built `Terminal.make` double must supply `size` (a scoped queue of `Terminal.Size`) beside `columns`, `rows`, `readInput`, `readLine` and `display`; `Effect.die("unused")` is enough when nothing subscribes, as in the stubs below.
+`@effected/cli-kit/testing`'s `TestTerminal.make({ columns?, rows? })` is a `Terminal` a test drives: `type(text)`, `input([{ name: "enter" }])`, `end`, `resize({ columns, rows })`, and the captured `output`, plus `pending` and `reads` (`{ keys, lines, subscriptions }`) to prove a non-interactive run never read the terminal. It implements core's `Terminal.size` the way a real terminal does: each subscription starts with the current size and receives every `resize`, and `columns`/`rows` read live. Core's own mock terminal is test-only and unexported; this is the public one. A hand-built `Terminal.make` double must supply `size` (a scoped queue of `Terminal.Size`) beside `columns`, `rows`, `readInput`, `readLine` and `display`; `Effect.die("unused")` is enough when nothing subscribes, as in the stubs below.
 
 ~~~ts
 import { assert, it } from "@effect/vitest"
-import { TestTerminal } from "@effected/cli/testing"
+import { TestTerminal } from "@effected/cli-kit/testing"
 import { MemoryFileSystem } from "@effected/memfs"
 import { Effect, Layer, Path } from "effect"
 import { Prompt } from "effect/cli"
@@ -86,7 +86,7 @@ it.effect("answers a core prompt", () =>
 
 ## Ink screens and live views: `CliUiTest`
 
-`@effected/cli/ui/testing`'s `CliUiTest` mounts on in-memory streams under a marker-palette theme (`columns`, `rows`, `color`, `glyphs`, `interactive` options):
+`@effected/cli-kit/ui/testing`'s `CliUiTest` mounts on in-memory streams under a marker-palette theme (`columns`, `rows`, `color`, `glyphs`, `interactive` options):
 
 | `CliUiTest` | Use |
 | --- | --- |
@@ -95,12 +95,12 @@ it.effect("answers a core prompt", () =>
 | `session(options?)` | a program that runs several screens (a wizard): provide its `layer`, fork the program, then `next({ contains? })` for each screen as it mounts; `stdout`/`stderr` are what the program wrote through `Console`, `stdoutTranscript`/`stderrTranscript` each terminal stream alone as plain text, `transcript`/`written` what reached the terminal (a live view's `logConsole` lines included), and `mounts === 0` is the "nothing mounted" assertion. `renderPath: "production"` makes `clear` observable. Worked through below |
 | `live(options)` | a live view on the **production** render path, with `publish(event)`, `end`, `advance(duration)`, `write(stream, bytes)` (raw bytes under the frame, past Ink), `transcript` (what the terminal shows, scrollback included), `written` (every raw byte, e.g. to assert a frame never takes Ink's full-clear path, `ESC[1;1H` then `ESC[J`) and `stdoutWritten`/`stderrWritten` (each stream's bytes alone, to assert which stream a line went to) |
 | `cancelReason(exitOrCause)` | `Option<"escape" \| "interrupt">` from an `Exit` or `Cause`, so a test never walks the cause |
-| `styled(ansi)`, `serializer` | ANSI decoded back to token markup, and a Vitest snapshot serializer printing it (also the default export of `@effected/cli/ui/testing/serializer`, for `snapshotSerializers`) |
+| `styled(ansi)`, `serializer` | ANSI decoded back to token markup, and a Vitest snapshot serializer printing it (also the default export of `@effected/cli-kit/ui/testing/serializer`, for `snapshotSerializers`) |
 
 ~~~ts
 import { assert, it } from "@effect/vitest"
-import { Select } from "@effected/cli/ui"
-import { CliUiTest } from "@effected/cli/ui/testing"
+import { Select } from "@effected/cli-kit/ui"
+import { CliUiTest } from "@effected/cli-kit/ui/testing"
 import { Effect, Option } from "effect"
 
 const template = Select.screen({
@@ -152,7 +152,7 @@ Traps a first screen test trips over:
 // vitest.config.ts
 import { defineConfig } from "vitest/config"
 
-export default defineConfig({ test: { snapshotSerializers: ["@effected/cli/ui/testing/serializer"] } })
+export default defineConfig({ test: { snapshotSerializers: ["@effected/cli-kit/ui/testing/serializer"] } })
 ~~~
 
 The equivalent in a setup file is `expect.addSnapshotSerializer(CliUiTest.serializer)`. A snapshot is the one assertion `assert` has no form of, so it goes through Vitest's `expect`:
@@ -176,9 +176,9 @@ Snapshot `rawFrame` (or `frame`, already decoded); the serializer claims a strin
 ~~~ts
 import { NodeServices } from "@effect/platform-node"
 import { assert, it } from "@effect/vitest"
-import { CliUi, Select, TextInput } from "@effected/cli/ui"
-import { CliUiTest } from "@effected/cli/ui/testing"
-import type { CliUiTestSession } from "@effected/cli/ui/testing"
+import { CliUi, Select, TextInput } from "@effected/cli-kit/ui"
+import { CliUiTest } from "@effected/cli-kit/ui/testing"
+import type { CliUiTestSession } from "@effected/cli-kit/ui/testing"
 import { Console, Effect, Fiber, Option } from "effect"
 import { Command } from "effect/cli"
 
@@ -280,7 +280,7 @@ assert.notInclude(yield* session.transcript, "Token reference?")
 **Under `CliRuntime.main` with `env`, `CliEnv` decides interactivity and the theme, not the session's options.** `main`'s environment is provided closer to the screens than the session's layer, so `session({ interactive: false })` does not stop a screen from mounting there: what decides is the `Stdio` terminal facts and the `ConfigProvider`. The session keeps only the streams, the frame capture and the console. To test the production wiring, give the platform a terminal (or a pipe) and an empty config. This recipe (a pinned `session.layer`, a `CliExit.layer` where a handler records a code, and an empty `ConfigProvider`) is for command-handler tests, where a whole handler runs under `Command.runWith` or `CliRuntime.main`; a screen-only helper (a function that just runs `CliUi.prompt` or `CliUi.run`) needs none of it, only the plain `session` shape above: `const session = yield* CliUiTest.session()`, the helper provided with `session.layer`, forked with `Effect.forkScoped`, and driven with `session.next`.
 
 ~~~ts
-import { CliRuntime } from "@effected/cli"
+import { CliRuntime } from "@effected/cli-kit"
 import { ConfigProvider, Layer, Stdio, Terminal } from "effect"
 
 const platform = (tty: boolean) =>
@@ -315,7 +315,7 @@ const production = (session: CliUiTestSession, tty: boolean) =>
 
 ~~~tsx
 // verify-view.tsx
-import type { LiveOptions } from "@effected/cli/ui"
+import type { LiveOptions } from "@effected/cli-kit/ui"
 
 export const verifyView: Omit<LiveOptions<Event, State>, "events"> = {
   initial: { done: 0, failed: 0 },
@@ -348,7 +348,7 @@ exit code and the exact bytes on each stream are a different claim — they are
 a property of the **built artifact**, wired through the real platform layer —
 and the only thing that proves it is spawning the bin that ships.
 
-`@effected/cli/testing`'s `CliTest` does that hermetically. `CliTest.sandbox({
+`@effected/cli-kit/testing`'s `CliTest` does that hermetically. `CliTest.sandbox({
 path })` mints a scoped temp directory with a fresh `HOME` and
 `XDG_{CONFIG,DATA,STATE,CACHE}_HOME`, `NO_COLOR: "1"`, and the `path` you
 pass — **nothing** from the host environment is inherited unless you pass it
@@ -390,7 +390,7 @@ Three traps this replaces:
 ~~~ts
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { assert, describe, layer } from "@effect/vitest"
-import { CliTest } from "@effected/cli/testing"
+import { CliTest } from "@effected/cli-kit/testing"
 import { Effect, FileSystem, Path } from "effect"
 
 describe("a spawned bin's exit code and streams are data", () => {

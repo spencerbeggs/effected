@@ -310,9 +310,15 @@ export function catalogEntries(root: string, catalog: string = MEMBERSHIP_CATALO
 	return entries;
 }
 
-/** The `@effected/*` names a catalog literal declares. */
+/**
+ * The `@effected/*` names a catalog literal declares.
+ *
+ * @remarks
+ * The `effected` catalog also carries the Effect family (`effect`, `@effect/*`),
+ * which is not workspace membership, so only the kit's own scope is counted.
+ */
 export function catalogMembers(root: string, catalog: string = MEMBERSHIP_CATALOG): ReadonlySet<string> {
-	return new Set(catalogEntries(root, catalog).keys());
+	return new Set([...catalogEntries(root, catalog).keys()].filter((name) => name.startsWith("@effected/")));
 }
 
 /**

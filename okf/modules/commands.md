@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/commands/src/LocalExec.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: b1db1b763838b86f
+    body: 31bf82b4ed74a42e
 ---
 
 # @effected/commands
@@ -584,7 +584,7 @@ copy is reinstalled underneath it.[^module-resolution-ts]
   `unknown`; `importer` is the test seam, since a computed `import()`
   defeats `vi.mock`.
 
-`@effected/cli`'s `./ui` is the in-kit consumer: its Ink loader imports
+`@effected/cli-kit`'s `./ui` is the in-kit consumer: its Ink loader imports
 `@effected/commands/node-sync` lazily to resolve Ink's own chalk
 ([why](../decisions/ink-colour-via-inks-own-chalk.md)).
 
@@ -705,7 +705,7 @@ in backticks.
 - **`@effected/github-actions`** — the general-purpose runner behind
   action work, plus the owner of the two lifecycle halves this package
   declines.
-- **`@effected/cli`** — a regular dependency; its `./ui` Ink loader
+- **`@effected/cli-kit`** — a regular dependency; its `./ui` Ink loader
   imports `./node-sync`'s `ModuleResolution` lazily, and nothing in cli
   imports the main entry.
 - **[savvy-web/systems](../consumers/systems.md)** — `silk-effects`'

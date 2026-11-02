@@ -7,10 +7,10 @@ status: stable
 tags: [bundle, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: fd2f89b8740220fe
+    body: 9e0be9cec3210d4c
 ---
 
 # spencerbeggs/reposets
@@ -23,7 +23,7 @@ each difference is why its dogfood loop found what it found:
 - It is a CLI, not a GitHub Action. Every other consumer runs on a
   GitHub-provided runner with one platform and one log sink; this one runs
   on a person's terminal, which is what surfaced
-  [`@effected/cli`](../modules/cli.md).
+  [`@effected/cli-kit`](../modules/cli-kit.md).
 - It is the first consumer of the application control plane —
   [`@effected/app`](../modules/app.md) and
   [`@effected/store`](../modules/store.md) had shipped and had never been
@@ -32,7 +32,7 @@ each difference is why its dogfood loop found what it found:
   Two ports were written downstream against a design doc and landed in
   the kit: the repository resource services plus sealed-box crypto into
   [`@effected/github`](../modules/github.md), and the whole of
-  [`@effected/cli`](../modules/cli.md). Both were folded, corrected and
+  [`@effected/cli-kit`](../modules/cli-kit.md). Both were folded, corrected and
   gated on the kit side; neither arrived as a merge of consumer source.
 
 The loop that produced these findings is closed: its findings landed, the
@@ -127,7 +127,7 @@ survived a challenge than it would have been unopposed.
 
 ## Open questions
 
-- It still has not adopted `@effected/cli`, the package its own design
+- It still has not adopted `@effected/cli-kit`, the package its own design
   doc drove into existence. The port landed in the kit and has released,
   but as of the last survey the consumer had advanced its other pins past
   it without taking `cli` up — so the one piece of adoption evidence that

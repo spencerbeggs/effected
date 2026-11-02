@@ -61,7 +61,7 @@ export interface ProcessParts {
 
 /**
  * A spawned Language Server bin a test writes `Content-Length` frames to
- * while it runs — the LSP twin of `@effected/mcp/testing`'s `McpProcess`.
+ * while it runs — the LSP twin of `@effected/mcp-kit/testing`'s `McpProcess`.
  *
  * @remarks
  * Build the command in the test file with `execPath` and an explicit `env`:

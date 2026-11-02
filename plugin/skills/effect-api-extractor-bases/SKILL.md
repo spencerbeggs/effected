@@ -565,7 +565,7 @@ the transitional backlog is **drained**: no package in the kit carries a
 hit — a *comment* in `runtimes/src/NodeResolver.ts` explaining why the
 suppression is scoped. Which packages' `savvy.build.ts` still lack the
 suppression line is not a list worth hand-keeping — a package gains it the
-moment it gains its first class factory (`cli` gained the line when `CliExit`,
+moment it gains its first class factory (`cli-kit` gained the line when `CliExit`,
 a `Context.Service`, shipped) — so read it live instead:
 
 ```bash

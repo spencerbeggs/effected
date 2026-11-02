@@ -6,17 +6,19 @@ status: stable
 tags: [architecture, deps, security]
 generated:
   by: okfit/claude-code
-  at: 2026-10-01T01:56:30Z
+  at: 2026-11-02T15:53:05Z
 integrity:
   generated:
-    body: 41d764a9a33e2189
+    body: 69dc787b385eb2e8
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 0c96a220301b20e9
+    at: 2026-11-02T17:04:46Z
+    content: 73eb191de3b70155
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # The workflow-command grammar left github-actions for its own pure package
@@ -26,13 +28,13 @@ verified:
 `WorkflowCommand` rendered the GitHub Actions command protocol inside
 `@effected/github-actions`, an integrated-tier package with a required peer on
 `@effect/platform-node`. Neutralizing text so the runner cannot read it as a
-command is the same grammar from the other end, and `@effected/cli` (boundary
+command is the same grammar from the other end, and `@effected/cli-kit` (boundary
 tier) needs it: its renderers, `CliMessage`, the failure report and the loggers
-all write consumer-supplied text into a log that the runner parses. `cli` could
+all write consumer-supplied text into a log that the runner parses. `cli-kit` could
 not take `github-actions` for that: layering forbids a boundary package taking
 an integrated one, and it would drag the platform package into every CLI.
 
-The first answer was a copy: `cli` carried its own escaping and its own
+The first answer was a copy: `cli-kit` carried its own escaping and its own
 neutralizer, with a comment that the duplication was deliberate. The copy made
 two implementations of one protocol, and the neutralizer's first version modelled
 only one of the runner's two parsers.
@@ -44,7 +46,7 @@ The grammar moves to a pure, dependency-free package,
 `WorkflowCommand` (moved unchanged) and `CommandNeutralizer` (the two-parser
 rule). `@effected/github-actions` takes a regular `workspace:^` dependency on it
 and re-exports `WorkflowCommand` and `AnnotationProperties` from its entrypoint,
-so existing consumers keep compiling; `@effected/cli` takes the same regular
+so existing consumers keep compiling; `@effected/cli-kit` takes the same regular
 dependency and drops its copies.
 
 It is a regular dependency, not a peer, because the peer-or-regular choice is the
@@ -58,7 +60,7 @@ the packages that use them.
 The reasons:
 
 - One implementation of one protocol, so a correction (the legacy `##[` parser
-  anywhere in a line) reaches `ActionLogger`, both `cli` loggers and the
+  anywhere in a line) reaches `ActionLogger`, both `cli-kit` loggers and the
   renderers at once.
 - The kit's packages interlock rather than copy: where a pure rule is shared, a
   pure package at the lowest layer is the place, and any tier may depend on it.
@@ -70,5 +72,5 @@ The reasons:
 - There is no exported detector, so the grammar package never offers a second
   opinion of what a command is; each consumer's tests carry an independent oracle.
 
-This supersedes nothing: it extracts, and the earlier `cli` copy was never a
+This supersedes nothing: it extracts, and the earlier `cli-kit` copy was never a
 recorded decision beyond a code comment.

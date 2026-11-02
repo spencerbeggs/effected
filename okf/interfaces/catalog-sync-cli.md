@@ -17,7 +17,7 @@ sources:
     resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-01T21:43:51Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:14.366Z
@@ -25,13 +25,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-10-31T19:39:48Z
+  - by: human:spencer
+    at: 2026-11-01T21:41:54Z
 integrity:
   generated:
-    body: 8439fda584edd5c2
+    body: cc849c6ab926fd7f
   verified:
     by: human:spencer
-    at: 2026-10-31T19:39:48Z
-    content: c67f4e0d81871f57
+    at: 2026-11-01T21:41:54Z
+    content: a864ab933494dd9b
 ---
 
 # The catalog:sync / catalog:check CLI
@@ -48,12 +50,12 @@ integrity:
   The literal must stay inline there — hoisting it into an exported
   `const` makes it invisible to the upstream `rolldown-pnpm-config
   upgrade` CLI that walks the call argument statically.
-- The `upgrade --yes` run is not confined to `effected`: it walks the
-  whole literal, so it also moves the `effect` catalog to the newest
-  in-range registry release. Under a caret that took the catalog across
+- The `upgrade --yes` run is not confined to the kit: it walks the
+  whole literal, so it also moves the catalog's Effect-family entries to
+  the newest in-range registry release. Under a caret that took the catalog across
   an Effect minor unattended
   ([the catalog crossed an Effect minor](../incidents/catalog-crossed-effect-minor.md));
-  under the tilde ranges the `effect` catalog now uses, it can move a
+  under the tilde ranges those entries now use, it can move a
   patch and never a minor.
 - `.github/workflows/catalog-sync.yml` is the CI job that runs this CLI
   against `main` on every pull request; see
@@ -87,7 +89,9 @@ on purpose:
   `lib/scripts/catalog-sync.ts` computes this itself
   (`catalogMembers`, `publishablePackages`, `missingFromCatalog`),
   reading the literal as source text the same way the CLI
-  does.[^catalog-sync-script] `check` fails on a membership gap even
+  does.[^catalog-sync-script] `catalogMembers` counts only `@effected/*`
+  names, because the same catalog also carries the Effect family, which
+  is not workspace membership. `check` fails on a membership gap even
   when the upgrade CLI is green; `sync` refuses to run at all rather
   than writing a changeset for a catalog it knows is incomplete — see
   [closing a membership gap](../runbooks/close-a-catalog-membership-gap.md).

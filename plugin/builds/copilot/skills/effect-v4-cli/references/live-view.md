@@ -1,6 +1,6 @@
 # The live view: `CliUi.live`, `DocView` and `UiProvider`
 
-Loaded from `effect-v4-cli`. Covers drawing progress that updates in place while work runs: folding a stream of events into state, how runs start and end, logging without tearing the frame, ending the view without losing its tail, forwarding output the program did not write (`CliUi.routeStream`), hosting a view from code not built on Effect (`CliUi.liveDetached`), drawing the `Doc` IR inside Ink, and giving an Ink tree the kit did not mount the same theme. All of it lives behind `@effected/cli/ui` and its optional peers `ink` and `react`.
+Loaded from `effect-v4-cli`. Covers drawing progress that updates in place while work runs: folding a stream of events into state, how runs start and end, logging without tearing the frame, ending the view without losing its tail, forwarding output the program did not write (`CliUi.routeStream`), hosting a view from code not built on Effect (`CliUi.liveDetached`), drawing the `Doc` IR inside Ink, and giving an Ink tree the kit did not mount the same theme. All of it lives behind `@effected/cli-kit/ui` and its optional peers `ink` and `react`.
 
 ## The shape
 
@@ -10,8 +10,8 @@ The JSX lives in a module of its own, so the command that uses the view imports 
 
 ```tsx
 // view.tsx: the only module that holds JSX
-import { Doc, Status } from "@effected/cli"
-import { DocView } from "@effected/cli/ui"
+import { Doc, Status } from "@effected/cli-kit"
+import { DocView } from "@effected/cli-kit/ui"
 import type { ReactElement } from "react"
 
 export interface State { readonly done: number; readonly failed: number }
@@ -31,7 +31,7 @@ export const renderView = (state: State): ReactElement => (
 
 ```ts
 // verify.ts: the command module, no JSX
-import { CliUi } from "@effected/cli/ui"
+import { CliUi } from "@effected/cli-kit/ui"
 import { Console, Effect, PubSub } from "effect"
 import type { State } from "./view.js"
 

@@ -14,10 +14,10 @@ sources:
     resource: ../../packages/semver/turbo.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-01T21:43:51Z
 integrity:
   generated:
-    body: 2ba3a115a5f33443
+    body: 144f064433a00c94
 ---
 
 # Every package carries the same manifest shape and file set
@@ -52,8 +52,8 @@ fields:
 - `homepage` must be `https://github.com/spencerbeggs/effected/tree/main/packages/X#readme`. The `/tree/main/` segment is load-bearing: the shorter form without it 404s, because GitHub reads a bare `/packages/X` path as a repo route rather than a tree path.
 - `exports`: `{ ".": "./src/index.ts", "./package.json": "./package.json" }` for a single-entrypoint package — see [a second published entrypoint](../decisions/second-published-entrypoint.md) for the two packages that add a subpath.
 - `scripts`: `build:dev` = `node savvy.build.ts --target dev`, `build:prod` = `node savvy.build.ts --target prod`, `types:check` = `tsc --noEmit`.[^semver-package-json] A package with a workspace edge to another `@effected/*` package also needs `prepare` = `turbo run build:dev` — see [Cross-package build dependencies](#cross-package-build-dependencies).
-- `devDependencies`: `@savvy-web/bundler` (a plain semver range, not catalogued, and always a `devDependency` — never a `dependency`, or the publishable manifest ships a build tool at runtime); `@effect/vitest` and `effect` at `catalog:effect`; `@types/node` and `typescript` at `catalog:build`. Do not add `@effect/tsgo` — see [the typechecker: tsc, not tsgo](../decisions/tsc-not-tsgo.md).
-- `peerDependencies`: `effect` at `catalog:effect:peers` — the peer declaration draws from the `effect:peers` catalog, distinct from the `catalog:effect` the `devDependencies` entry uses.
+- `devDependencies`: `@savvy-web/bundler` (a plain semver range, not catalogued, and always a `devDependency` — never a `dependency`, or the publishable manifest ships a build tool at runtime); `@effect/vitest` and `effect` at `catalog:effected`; `@types/node` and `typescript` at `catalog:build`. Do not add `@effect/tsgo` — see [the typechecker: tsc, not tsgo](../decisions/tsc-not-tsgo.md).
+- `peerDependencies`: `effect` at `catalog:effected:peers` — the peer declaration draws from the `effected:peers` catalog, whose floored range is distinct from the `catalog:effected` install range the `devDependencies` entry uses.
 - Sibling `@effected/*` edges use `workspace:^`, whether dependencies or peers. The one exception is a `devDependency` that satisfies an auto-installed peer, which stays `workspace:*` because it is never published.
 - `engines`: `node >=24.11.0`, matching every sibling and the root manifest.
 - `publishConfig`: `{ access: "public", directory: "dist/dev/pkg", linkDirectory: true, targets: { npm: true } }`.
@@ -87,7 +87,7 @@ regardless of what the new package depends on.
 Wiring is mostly automatic once the files exist:
 
 - The `packages/*` glob in `pnpm-workspace.yaml` picks up the new package — no manual registration.
-- `catalog:effect` and `catalog:effect:peers` live in `pnpm-workspace.yaml`. `catalog:build`, which supplies `@types/node` and `typescript`, does not — it is injected by a config dependency, so its absence from `pnpm-workspace.yaml` is expected.
+- `catalog:effected` and `catalog:effected:peers` live in `pnpm-workspace.yaml`. `catalog:build`, which supplies `@types/node` and `typescript`, does not — it is injected by a config dependency, so its absence from `pnpm-workspace.yaml` is expected.
 - **The `effected` catalog is not automatic.** A new publishable package must be added to the `effected` catalog literal in `packages/pnpm-plugin-effected/savvy.build.ts` and to that package's `turbo.json` build `inputs` lists (both `build:dev` and `build:prod`). The plugin's catalog test asserts the catalog covers every package whose manifest has `publishConfig.access === "public"`, so skipping this turns a scaffold into a failing test suite.
 - The api-extractor model is wired by the `turbo.json` `outputs` entry plus the `savvy.build.ts` `localPaths` (both `../../website/lib/models/X`). The generated model under `website/lib/models/X` is a `build:prod` artifact, not committed.
 

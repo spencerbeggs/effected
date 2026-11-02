@@ -1,5 +1,25 @@
 # @effected/sbom
 
+## 0.20.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/oidc | dependency | updated | 0.3.0 | 0.4.0 |
+| @effected/package-json | dependency | updated | 0.28.0 | 0.29.0 |
+| @effected/spdx | dependency | updated | 0.18.0 | 0.19.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.1.2 [#1229][#1229]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1229]: https://github.com/spencerbeggs/effected/pull/1229
+
 ## 0.19.0
 
 ### Breaking Changes

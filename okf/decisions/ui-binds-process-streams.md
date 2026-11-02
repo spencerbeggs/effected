@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: Only ./ui may bind Node's process streams, and only in three named files
-description: "@effected/cli/ui alone may rely on Node's process streams, because Ink has exactly one platform shape; the licence is file-scoped to processStreams.ts, CliUiRouteStream.ts and the testing-only fakeStreams.ts, and does not generalize the platform-node licence."
+description: "@effected/cli-kit/ui alone may rely on Node's process streams, because Ink has exactly one platform shape; the licence is file-scoped to processStreams.ts, CliUiRouteStream.ts and the testing-only fakeStreams.ts, and does not generalize the platform-node licence."
 status: stable
 tags: [architecture, compat]
 sources:
@@ -9,30 +9,32 @@ sources:
     resource: "npm:ink@8.0.0"
     title: "Ink 8.0.0, build/render.js:9: render() defaults stdout, stdin and stderr to the process streams"
   - id: cli-boundary-test
-    resource: ../../packages/cli/__test__/boundary.test.ts
+    resource: ../../packages/cli-kit/__test__/boundary.test.ts
     title: The boundary test that holds the waived set exact
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T13:22:20Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: ecc8a94468178597
+    body: 5d085d9e771548d5
   verified:
     by: human:spencer
-    at: 2026-10-29T00:43:21Z
-    content: 41696871c3dd1df1
+    at: 2026-11-02T17:04:46Z
+    content: 025ab79a9187c8d6
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # Only ./ui may bind Node's process streams, and only in three named files
 
 ## Context
 
-The `@effected/cli` root reads no `process` and imports no `node:` module. It
+The `@effected/cli-kit` root reads no `process` and imports no `node:` module. It
 reaches the terminal through core's services (`Console`, `Terminal`) and
 `@effected/env`, so it runs anywhere Effect runs.
 
@@ -112,4 +114,4 @@ edit to one test. A consumer on a runtime without Node's stream objects can
 still use the root; it cannot mount a screen.
 
 [^ink-render]: `npm:ink@8.0.0`, `build/render.js:9`
-[^cli-boundary-test]: `../../packages/cli/__test__/boundary.test.ts`
+[^cli-boundary-test]: `../../packages/cli-kit/__test__/boundary.test.ts`

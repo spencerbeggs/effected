@@ -33,7 +33,7 @@ sources:
   - id: package-tarball-ts
     resource: ../../packages/npm/src/PackageTarball.ts
   - id: cli-logger-ts
-    resource: ../../packages/cli/src/CliLogger.ts
+    resource: ../../packages/cli-kit/src/CliLogger.ts
   - id: node-console
     resource: https://nodejs.org/api/console.html
   - id: layers-json
@@ -48,10 +48,10 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: 46deab0ac8e0fe62
+    body: 4d3ae3f3f39e3bb6
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -513,7 +513,7 @@ has five layers, `@effected/pnpm-plugin-effected` as tooling, and the root, the
 docs site, the scratchpad and the two plugin tracking packages as
 unconstrained. It checks `dependencies`, `peerDependencies` and
 `optionalDependencies`, and it requires four edges that must stay present,
-such as `@effected/mcp -> @effected/engine`. `cli`, `mcp` and `workspaces`
+such as `@effected/mcp-kit -> @effected/kit`. `cli`, `mcp` and `workspaces`
 share one layer, so any runtime edge between them is a `sameLayer` offence.
 `__test__/integration/layering.int.test.ts` checks the real workspace against
 it.
@@ -730,7 +730,7 @@ of it. A transport probe for an LSP is not part of this package: a separate
 state such as `XDG_DATA_HOME` can live inside it and be removed with it
 rather than in a second temporary directory.
 
-For an MCP bin, `McpProbe.initialize` from `@effected/mcp/testing` is the
+For an MCP bin, `McpProbe.initialize` from `@effected/mcp-kit/testing` is the
 proof. `InstalledConsumer.command(name, args?, options?)` returns the
 `ChildProcess` command `runBin` builds, with the same environment layering and
 scrub, and leaves stdin as the spawner's default pipe so the probe can write
@@ -806,7 +806,7 @@ under npm and bun, and `undefined` under pnpm, against real installs.[^packed-in
 [^import-graph-ts]: `packages/workspaces/src/ImportGraph.ts` — the
     reachability walk, the undeclared-import check and their resolution
     rules.
-[^cli-logger-ts]: `packages/cli/src/CliLogger.ts:131` — the local `console`
+[^cli-logger-ts]: `packages/cli-kit/src/CliLogger.ts:131` — the local `console`
     binding.
 [^node-console]: <https://nodejs.org/api/console.html> — the global
     console's methods and the streams they write to.

@@ -10,17 +10,19 @@ sources:
     title: string-width, the ecosystem oracle the differential test compares against
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T20:33:06Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: 4a2886bba07afc93
+    body: bd301c39e8e8c06b
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: cffa7954e5a74ab5
+    at: 2026-11-02T17:04:46Z
+    content: 5bf04182f902e454
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # The cli package owns its display-width function
@@ -30,7 +32,7 @@ verified:
 `Fmt.truncate` and the width-aware renderers need the display width of a
 string: graphemes, wide East Asian characters and emoji count two columns,
 combining marks and ANSI escapes count none. `string-width` is the ecosystem's
-oracle,[^string-width] but `@effected/cli` is boundary tier and
+oracle,[^string-width] but `@effected/cli-kit` is boundary tier and
 [R1](../conventions/dependency-policy.md) forbids an external runtime
 dependency there. A probe measured whether a small own implementation could
 agree with it.
@@ -38,7 +40,7 @@ agree with it.
 ## Decision
 
 The package carries about 16 lines of its own in
-`packages/cli/src/internal/displayWidth.ts`: `Intl.Segmenter` for graphemes,
+`packages/cli-kit/src/internal/displayWidth.ts`: `Intl.Segmenter` for graphemes,
 `\p{Emoji_Presentation}` and `\p{RGI_Emoji}` for emoji, a hand-kept East Asian
 Width range table, and an ANSI stripper for CSI and OSC-8 sequences. A
 differential test, the only file importing `string-width`, compares it against

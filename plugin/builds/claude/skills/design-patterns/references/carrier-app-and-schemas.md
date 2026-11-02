@@ -202,7 +202,7 @@ export const OkfitPlatform = Layer.mergeAll(
 ).pipe(Layer.provideMerge(NodeServices.layer));
 ```
 
-(<https://github.com/spencerbeggs/okfit/blob/main/packages/engine/src/platform.ts>)
+(<https://github.com/spencerbeggs/okfit/blob/main/packages/kit/src/platform.ts>)
 
 The engine may import `@effect/platform-node` here — only **core** stays
 platform-free — but still reads no `process` itself (`NodeServices.layer`
@@ -246,7 +246,7 @@ export const buildConfigLayer = (options: {
       });
 ```
 
-(<https://github.com/spencerbeggs/okfit/blob/main/packages/engine/src/config/layer.ts>)
+(<https://github.com/spencerbeggs/okfit/blob/main/packages/kit/src/config/layer.ts>)
 
 `AppConfig.layer` (verified against `@effected/app` in this kit,
 `AppConfig.layer(Tag, options)`) is the one call site both branches share
@@ -270,7 +270,7 @@ test asserts it directly —
 const FORBIDDEN_APP_IMPORTS = ["App", "AppStore", "AppCache"];
 ```
 
-(<https://github.com/spencerbeggs/okfit/blob/main/packages/engine/__test__/boundaries.test.ts>)
+(<https://github.com/spencerbeggs/okfit/blob/main/packages/kit/__test__/boundaries.test.ts>)
 
 — which is the same boundary-test discipline covered in
 [carrier-verification.md](./carrier-verification.md), applied to a new

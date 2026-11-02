@@ -1,0 +1,100 @@
+{
+	"name": "@effected/cli-kit",
+	"version": "0.26.0",
+	"private": true,
+	"description": "The presentation boundary of an effect/cli program: audience-aware output, a document IR and renderers, editor links, failure reports and logging, plus opt-in Ink screens, widgets and a live view",
+	"keywords": ["effect", "cli", "logger", "terminal", "ink", "tui"],
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/cli-kit#readme",
+	"bugs": {
+		"url": "https://github.com/spencerbeggs/effected/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/spencerbeggs/effected.git",
+		"directory": "packages/cli-kit"
+	},
+	"license": "MIT",
+	"author": {
+		"name": "C. Spencer Beggs",
+		"email": "spencer@beggs.codes",
+		"url": "https://spencerbeg.gs"
+	},
+	"sideEffects": false,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./testing": "./src/testing.ts",
+		"./ui": "./src/ui.ts",
+		"./ui/testing": "./src/ui-testing.ts",
+		"./ui/testing/serializer": "./src/ui-testing-serializer.ts",
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build:dev": "node savvy.build.ts --target dev",
+		"build:prod": "node savvy.build.ts --target prod",
+		"prepare": "turbo run build:dev",
+		"types:check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@effected/commands": "workspace:^",
+		"@effected/github-commands": "workspace:^",
+		"@effected/kit": "workspace:^"
+	},
+	"devDependencies": {
+		"@effect/platform-node": "catalog:effected",
+		"@effect/vitest": "catalog:effected",
+		"@effected/config-file": "workspace:*",
+		"@effected/env": "workspace:*",
+		"@effected/glob": "workspace:*",
+		"@effected/jsonc": "workspace:*",
+		"@effected/markdown": "workspace:*",
+		"@effected/memfs": "workspace:*",
+		"@effected/toml": "workspace:*",
+		"@effected/walker": "workspace:*",
+		"@effected/workspaces": "workspace:*",
+		"@effected/yaml": "workspace:*",
+		"@savvy-web/bundler": "^2.7.1",
+		"@types/node": "catalog:build",
+		"@types/react": "catalog:build",
+		"effect": "catalog:effected",
+		"ink": "catalog:silk",
+		"react": "catalog:build",
+		"string-width": "^8.3.0",
+		"typescript": "catalog:build"
+	},
+	"peerDependencies": {
+		"@effected/config-file": "workspace:^",
+		"@effected/env": "workspace:^",
+		"@effected/glob": "workspace:^",
+		"@effected/walker": "workspace:^",
+		"@types/react": "catalog:silk:peers",
+		"effect": "catalog:effected:peers",
+		"ink": "catalog:silk:peers",
+		"react": "catalog:silk:peers"
+	},
+	"peerDependenciesMeta": {
+		"@effected/config-file": {
+			"optional": true
+		},
+		"@types/react": {
+			"optional": true
+		},
+		"ink": {
+			"optional": true
+		},
+		"react": {
+			"optional": true
+		}
+	},
+	"engines": {
+		"node": ">=24.11.0"
+	},
+	"publishConfig": {
+		"access": "public",
+		"directory": "dist/dev/pkg",
+		"linkDirectory": true,
+		"targets": {
+			"npm": true
+		}
+	}
+}

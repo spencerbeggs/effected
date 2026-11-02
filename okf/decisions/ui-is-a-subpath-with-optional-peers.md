@@ -1,32 +1,34 @@
 ---
 type: Decision
 title: The Ink layer is a ./ui subpath of cli, with ink and react as optional peers
-description: "Interactive screens live in @effected/cli behind ./ui and ./ui/testing, with ink and react as optional peers that the root never reaches and that ./ui itself loads only when a screen mounts; separate cli-ink and cli-ui packages were rejected."
+description: "Interactive screens live in @effected/cli-kit behind ./ui and ./ui/testing, with ink and react as optional peers that the root never reaches and that ./ui itself loads only when a screen mounts; separate cli-ink and cli-ui packages were rejected."
 status: stable
 tags: [architecture, bundle]
 sources:
   - id: cli-package-json
-    resource: ../../packages/cli/package.json
+    resource: ../../packages/cli-kit/package.json
     title: The cli manifest, carrying the ./ui exports and the optional peers
   - id: cli-boundary-test
-    resource: ../../packages/cli/__test__/boundary.test.ts
+    resource: ../../packages/cli-kit/__test__/boundary.test.ts
     title: The reachability test that keeps the root off ./ui
   - id: optional-peers-revert
     resource: https://github.com/spencerbeggs/effected/issues/250
     title: "Issue 250: optional peers re-exported from a root entry broke unbundled consumers"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-07T21:32:23Z
+  at: 2026-11-02T15:53:05Z
 integrity:
   generated:
-    body: 5d771fb96cfe3dbf
+    body: cfa194a01f0750ba
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 93acec22ba07a1b8
+    at: 2026-11-02T17:04:46Z
+    content: 5ddeb0f5aba8ae6f
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # The Ink layer is a ./ui subpath of cli, with ink and react as optional peers
@@ -35,7 +37,7 @@ verified:
 
 The interactive CLI kit needs screens: a select, a multi-select, a confirm,
 a text input, tabs and a live view. They are built on Ink, which brings
-React. Most programs that depend on `@effected/cli` never draw a screen, and
+React. Most programs that depend on `@effected/cli-kit` never draw a screen, and
 an agent or a CI run never should, so they must not pay for React.
 
 The kit has learned this lesson once. A static root re-export of optional
@@ -45,7 +47,7 @@ peer is optional only while no shared module reaches it.
 
 ## Decision
 
-The Ink layer lives in `@effected/cli` behind two subpaths: `./ui` for the
+The Ink layer lives in `@effected/cli-kit` behind two subpaths: `./ui` for the
 screens and widgets, and `./ui/testing` for the screen harness.[^cli-package-json]
 
 - `ink` (`^8.0.0`) and `react` (`^19.3.0`) are **optional peers**. Only files
@@ -58,14 +60,14 @@ screens and widgets, and `./ui/testing` for the screen harness.[^cli-package-jso
   Runtime values come only from the kit's lazy loader, which `import()`s
   both the first time a screen mounts. Kit files may `import type` from
   either package but never import a value. A consumer's flag path can import
-  `@effected/cli/ui` and still not load React unless it draws a screen.
+  `@effected/cli-kit/ui` and still not load React unless it draws a screen.
 - Kit components are written with `React.createElement`, so the package
   needs no JSX and no tsconfig change. Consumers may write JSX.
 
 ## Alternatives rejected
 
 - **A separate `@effected/cli-ink` package.** Rejected. Its consumers are
-  the programs that already depend on `cli`, and its screens read `cli`'s
+  the programs that already depend on `cli-kit`, and its screens read `cli-kit`'s
   services (`CliInteractive`, `CliTheme`). A second package would be a second
   peer that has to resolve to one copy of each service, for no install a
   consumer saves: an optional peer already costs nothing to a program that
@@ -78,11 +80,11 @@ screens and widgets, and `./ui/testing` for the screen harness.[^cli-package-jso
 ## Consequences
 
 A consumer who wants screens installs `ink` and `react` beside
-`@effected/cli`. One who does not pays nothing and sees no peer warning that
+`@effected/cli-kit`. One who does not pays nothing and sees no peer warning that
 matters. The tier consequence is
 [recorded separately](ui-tier-is-integrated-on-opt-in.md), and so is
 [why the boundary is a reachability check](root-boundary-is-reachability.md).
 
 [^optional-peers-revert]: <https://github.com/spencerbeggs/effected/issues/250>
-[^cli-package-json]: `../../packages/cli/package.json`
-[^cli-boundary-test]: `../../packages/cli/__test__/boundary.test.ts`
+[^cli-package-json]: `../../packages/cli-kit/package.json`
+[^cli-boundary-test]: `../../packages/cli-kit/__test__/boundary.test.ts`

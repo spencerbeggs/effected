@@ -2,7 +2,7 @@
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { CliRuntime } from "@effected/cli";
+import { CliRuntime } from "@effected/cli-kit";
 import type { Layer } from "effect";
 import type { ProgramDeps } from "./cli/program.js";
 import { loggerLayer, program } from "./cli/program.js";

@@ -1,6 +1,6 @@
 {
 	"name": "@effected/toml",
-	"version": "0.18.0",
+	"version": "0.19.0",
 	"private": true,
 	"description": "TOML 1.1.0 parsing, editing and formatting as Effect schemas: typed diagnostics, a lossless CST and first-class date-time values.",
 	"keywords": ["toml", "parser", "config", "cst", "effect", "schema", "effected"],
@@ -35,15 +35,15 @@
 		"@effected/source": "workspace:^"
 	},
 	"devDependencies": {
-		"@effect/vitest": "catalog:effect",
+		"@effect/vitest": "catalog:effected",
 		"@savvy-web/bundler": "^2.7.1",
 		"@types/node": "catalog:build",
-		"effect": "catalog:effect",
+		"effect": "catalog:effected",
 		"smol-toml": "1.9.1",
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
-		"effect": "catalog:effect:peers"
+		"effect": "catalog:effected:peers"
 	},
 	"engines": {
 		"node": ">=24.11.0"

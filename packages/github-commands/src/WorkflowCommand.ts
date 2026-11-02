@@ -154,7 +154,7 @@ export class WorkflowCommand {
 	 * and Effect looks a reference up by its key, so every reference built
 	 * from it reads and writes one slot. `ActionLogger.group` in
 	 * `@effected/github-actions` provides `depth + 1` around a group's body
-	 * and writes the command only at `0`; `Render.context` in `@effected/cli`
+	 * and writes the command only at `0`; `Render.context` in `@effected/cli-kit`
 	 * reads it into `RenderContext.groupDepth`, so `Render.githubLog` renders
 	 * a collapsible as a group only when none is open. A consumer's own group
 	 * wrapper joins by doing the same: read the depth, write the command only

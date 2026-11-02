@@ -1,6 +1,6 @@
 {
 	"name": "@effected/runtimes",
-	"version": "0.17.0",
+	"version": "0.18.0",
 	"private": true,
 	"description": "Resolve semver-compatible Node.js, Bun and Deno runtime versions with offline fallback.",
 	"keywords": ["node", "bun", "deno", "runtime", "version", "semver", "resolver", "effect", "effected"],
@@ -36,15 +36,15 @@
 		"@effected/semver": "workspace:^"
 	},
 	"devDependencies": {
-		"@effect/vitest": "catalog:effect",
+		"@effect/vitest": "catalog:effected",
 		"@savvy-web/bundler": "^2.7.1",
 		"@types/node": "catalog:build",
-		"effect": "catalog:effect",
+		"effect": "catalog:effected",
 		"oxc-parser": "^0.156.0",
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
-		"effect": "catalog:effect:peers"
+		"effect": "catalog:effected:peers"
 	},
 	"engines": {
 		"node": ">=24.11.0"

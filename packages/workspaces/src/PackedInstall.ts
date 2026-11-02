@@ -436,7 +436,7 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 	/**
 	 * The command {@link InstalledConsumer.runBin} spawns for the bin `name`,
 	 * for a caller that drives the child itself, such as `McpProbe.initialize`
-	 * from `@effected/mcp/testing`.
+	 * from `@effected/mcp-kit/testing`.
 	 *
 	 * @remarks
 	 * {@link InstalledConsumer.binPath}, from the consumer's directory, under
@@ -449,7 +449,7 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 	 *
 	 * @example
 	 * ```ts
-	 * import { McpProbe } from "@effected/mcp/testing";
+	 * import { McpProbe } from "@effected/mcp-kit/testing";
 	 * import type { InstalledConsumer } from "@effected/workspaces/testing";
 	 *
 	 * declare const consumer: InstalledConsumer;
@@ -919,7 +919,7 @@ const planClosure = (carrier: string, options: PackedInstallClosureOptions) =>
  *
  * It asserts nothing about what the bins DO: run them from the test through
  * `InstalledConsumer.runBin`, or for an MCP bin through `McpProbe` from
- * `@effected/mcp/testing` at `InstalledConsumer.binPath`, inside the same
+ * `@effected/mcp-kit/testing` at `InstalledConsumer.binPath`, inside the same
  * scope, because the scratch directory (`PackedInstallResult.scratch`) is
  * removed when the scope closes. Size the test's outer timeout with
  * {@link PackedInstall.timeoutBudget}. POSIX only.

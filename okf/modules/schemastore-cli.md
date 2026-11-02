@@ -35,10 +35,10 @@ sources:
     resource: ../../packages/schemastore-cli/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: f17abdfc991253ba
+    body: 65ca3e4516e8ba70
 ---
 
 # @effected/schemastore-cli
@@ -668,7 +668,7 @@ recorded as a Gotcha rather than fought.
   `localPaths: ["../../website/lib/models/schemastore-cli"]`); the
   command's documentation is still `--help`, the README and the
   library's page.[^cli-package-json]
-- `dependencies`: `jiti`, `@effect/platform-node`, `@effected/cli`,
+- `dependencies`: `jiti`, `@effect/platform-node`, `@effected/cli-kit`,
   `ajv`, `ajv-formats`. `peerDependencies`: `effect`,
   `@effected/schemastore` (exact fixed version).
 - A consumer installs `@effected/schemastore`, `@effected/schemastore-cli`

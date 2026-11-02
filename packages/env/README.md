@@ -95,7 +95,7 @@ const Environment = Layer.mergeAll(
 
 ## Documentation
 
-The guides and the full API reference are at [effected.spencerbeg.gs/env](https://effected.spencerbeg.gs/env). [`@effected/cli`](https://www.npmjs.com/package/@effected/cli) builds its whole presentation layer on these services.
+The guides and the full API reference are at [effected.spencerbeg.gs/env](https://effected.spencerbeg.gs/env). [`@effected/cli-kit`](https://www.npmjs.com/package/@effected/cli-kit) builds its whole presentation layer on these services.
 
 ## License
 

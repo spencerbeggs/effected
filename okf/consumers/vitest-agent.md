@@ -7,10 +7,10 @@ status: stable
 tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T14:18:02Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: ac6fabcae16f470f
+    body: 5a9319c716579d74
 ---
 
 # spencerbeggs/vitest-agent
@@ -33,13 +33,13 @@ tarball rather than a workspace link.
 ## What it exercises
 
 - `@effected/xdg` — `AppDirs`, bound once to a `const` layer
-  (`packages/engine/src/layers/PathResolutionLive.ts`) so the layer
+  (`packages/kit/src/layers/PathResolutionLive.ts`) so the layer
   memoizes by reference, over the `Xdg` layer it is provided over, and
-  read again in `packages/engine/src/utils/resolve-data-path.ts` for
+  read again in `packages/kit/src/utils/resolve-data-path.ts` for
   XDG-namespaced data paths.
 - [`@effected/schemastore`](../modules/schemastore.md) — the report schema
   its MCP tool results validate against.
-- [`@effected/cli`](../modules/cli.md)'s live view, behind the optional peers
+- [`@effected/cli-kit`](../modules/cli-kit.md)'s live view, behind the optional peers
   `ink` and `react`: the reporter's live run view is `CliUi.live` over a
   `PubSub` subscription passed as `events`, with `close` as the lossless end
   (`packages/reporter/src/liveView.ts`), drawn through `UiProvider` and
@@ -68,7 +68,7 @@ tarball rather than a workspace link.
 - `spawnSync` e2e throws on non-zero exit — its packed-install e2e cannot
   express "ran and failed as expected" the way a future `CliTest` would.
 - Its two independent ports of `registerToolkit` — duplicated MCP toolkit
-  registration logic that a shared `@effected/mcp` primitive would
+  registration logic that a shared `@effected/mcp-kit` primitive would
   collapse (phase 2).
 - `Glyphs.ascii` has no pass, fail or skip marks of its own, so the reporter
   draws those itself and a `TERM=dumb` assertion about kit glyphs needs a

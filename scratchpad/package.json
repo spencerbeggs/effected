@@ -11,10 +11,9 @@
 	},
 	"dependencies": {
 		"@effected/app": "workspace:*",
-		"@effected/cli": "workspace:*",
+		"@effected/cli-kit": "workspace:*",
 		"@effected/commands": "workspace:*",
 		"@effected/config-file": "workspace:*",
-		"@effected/engine": "workspace:*",
 		"@effected/env": "workspace:*",
 		"@effected/git": "workspace:*",
 		"@effected/github": "workspace:*",
@@ -24,9 +23,10 @@
 		"@effected/glob": "workspace:*",
 		"@effected/jsonc": "workspace:*",
 		"@effected/jsonl": "workspace:*",
+		"@effected/kit": "workspace:*",
 		"@effected/lockfiles": "workspace:*",
 		"@effected/markdown": "workspace:*",
-		"@effected/mcp": "workspace:*",
+		"@effected/mcp-kit": "workspace:*",
 		"@effected/memfs": "workspace:*",
 		"@effected/npm": "workspace:*",
 		"@effected/package-json": "workspace:*",
@@ -47,10 +47,10 @@
 		"@effected/yaml": "workspace:*"
 	},
 	"devDependencies": {
-		"@effect/platform-node": "catalog:effect",
-		"@effect/vitest": "catalog:effect",
+		"@effect/platform-node": "catalog:effected",
+		"@effect/vitest": "catalog:effected",
 		"@types/node": "catalog:build",
-		"effect": "catalog:effect",
+		"effect": "catalog:effected",
 		"tsx": "^4.23.12",
 		"typescript": "catalog:build"
 	}

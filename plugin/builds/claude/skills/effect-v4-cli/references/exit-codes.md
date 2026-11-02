@@ -88,7 +88,7 @@ line, say) through `env.formatter`.
 still call your own runtime's runner:
 
 ~~~ts
-import { CliExit, CliRuntime } from "@effected/cli"
+import { CliExit, CliRuntime } from "@effected/cli-kit"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Effect } from "effect"
 import { Command } from "effect/cli"
@@ -172,8 +172,8 @@ tag field: a hook that writes a fixed stderr shape reads `_tag` off the error
 itself.
 
 ~~~ts
-import type { FailureDetails } from "@effected/cli"
-import { Fmt } from "@effected/cli"
+import type { FailureDetails } from "@effected/cli-kit"
+import { Fmt } from "@effected/cli-kit"
 import { Predicate } from "effect"
 
 const render = (error: unknown, details: FailureDetails) => {

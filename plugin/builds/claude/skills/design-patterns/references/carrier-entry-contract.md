@@ -39,12 +39,12 @@ program" are never the same import.
 
 ## An MCP front end's `main.ts`
 
-`@effected/mcp`'s `McpStdio.launch` and `McpStdio.teardown` are the whole
+`@effected/mcp-kit`'s `McpStdio.launch` and `McpStdio.teardown` are the whole
 assembly — a front end no longer hand-rolls the launch/report/teardown
 sequence:
 
 ```ts
-import { McpStdio } from "@effected/mcp"
+import { McpStdio } from "@effected/mcp-kit"
 import { NodeRuntime } from "@effect/platform-node"
 import type { Layer } from "effect"
 
@@ -79,10 +79,10 @@ chose.
 
 The same applies to any long-lived server front end on stdio, an LSP
 included. The kit ships the guard once: `ProcessGuard.run` from the
-import-free `@effected/engine/guard` subpath installs the listeners and
+import-free `@effected/kit/guard` subpath installs the listeners and
 awaits a `load` that imports and starts the server on any transport, and
 the server reports `markConnected()` itself; `McpGuard.run` from
-`@effected/mcp/guard` is that guard plus the MCP stdio launch. Neither
+`@effected/mcp-kit/guard` is that guard plus the MCP stdio launch. Neither
 hand-rolled copy (a `fatal(label, error)` plus two `process.on` calls) is
 needed in a carrier's front ends.
 
@@ -93,7 +93,7 @@ graph is fine.
 
 ## A CLI front end's `main.ts`
 
-`@effected/cli`'s `CliRuntime.main` is the equivalent whole-assembly move
+`@effected/cli-kit`'s `CliRuntime.main` is the equivalent whole-assembly move
 for a CLI: a fresh `CliExit`, the platform layer inside failure reporting,
 and the logger outermost, in the one order that reports every failure well.
 `effect-v4-cli`'s
@@ -105,13 +105,13 @@ hand; the depth for a CLI front end lives there, not in this file.
 ## Resolving the project directory
 
 Both front ends resolve where a tool launched by an agent host should treat
-as its project the same way: `@effected/engine`'s `LaunchContext.projectDir`,
+as its project the same way: `@effected/kit`'s `LaunchContext.projectDir`,
 over caller-supplied `argv`/`env`/`cwd`, where `argv` is **positional
 arguments only** — a raw `process.argv.slice(2)` makes the first flag the
 project directory. An MCP front end has no command parser, so its `main.ts`
 filters the flags out or resolves from an env var alone; a CLI front end's
 positionals exist only once its command has parsed them, inside the
-handler (see `effected-packages`' `engine.md`). See `effect-v4-mcp`'s
+handler (see `effected-packages`' `kit.md`). See `effect-v4-mcp`'s
 [`server-wiring.md#project-directory`](../../effect-v4-mcp/references/server-wiring.md#project-directory)
 for the runnable shape and why `LaunchContext.isUnsubstituted` matters — a
 plugin host can pass a literal, unexpanded `${CLAUDE_PROJECT_DIR}` through,

@@ -2,7 +2,7 @@
 // drives `program` and its exit-code markers; this drives `run`, what `main` hands `NodeRuntime.runMain`, over the same
 // in-memory `Command.Environment`, and reads what reaches stdout and stderr and the exit code the runtime would use.
 import { assert, describe, it } from "@effect/vitest";
-import { CliFailure, Render } from "@effected/cli";
+import { CliFailure, Render } from "@effected/cli-kit";
 import type { MemoryFileSystemSeed } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
 import type { SchemastoreConfig } from "@effected/schemastore";

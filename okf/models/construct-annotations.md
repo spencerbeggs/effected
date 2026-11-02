@@ -13,10 +13,10 @@ sources:
     resource: ../../plugin/scripts/generate-constructs.mts
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-03T04:19:44Z
+  at: 2026-11-02T14:55:07Z
 integrity:
   generated:
-    body: 35a6277e81672262
+    body: a650acc6d3368794
 ---
 
 # construct-annotations.json
@@ -107,7 +107,7 @@ needs no custom build step.
 The generator writes only the pluginfinity source. pluginfinity copies
 the tables into `plugin/builds/claude/` and `plugin/builds/copilot/`, so
 a regeneration is complete only after `pnpm build --filter
-@effected/ai-plugin`. The pre-push gate, `plugin/scripts/check-construct-index.sh`,
+@effected/ai-plugins`. The pre-push gate, `plugin/scripts/check-construct-index.sh`,
 checks three things when a pushed range touches an index input: the
 annotations, the committed tables against a fresh regeneration, and the
 committed builds against their source via `pluginfinity build --check`.

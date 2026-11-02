@@ -6,13 +6,13 @@ status: deprecated
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T18:00:23Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
 integrity:
   generated:
-    body: edc87da649c7f90d
+    body: 6bc0da04b55a4a3f
 ---
 
 # D2: strict MCP input is upstream-first
@@ -68,8 +68,8 @@ or `McpToolkit` ever close the gap.
 
 ## Consequences
 
-Phase 1 ships nothing MCP-shaped at all — `@effected/mcp` is design-only
-this phase (see [`modules/mcp.md`](../modules/mcp.md)). Phase 2 runs
+Phase 1 ships nothing MCP-shaped at all — `@effected/mcp-kit` is design-only
+this phase (see [`modules/mcp-kit.md`](../modules/mcp-kit.md)). Phase 2 runs
 probe P1 before committing to `McpToolkit`; a failed probe demotes it to
 a skill recipe without blocking the rest of the package. The two upstream
 issues are filed regardless of P1's outcome, since both are real gaps a

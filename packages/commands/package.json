@@ -1,6 +1,6 @@
 {
 	"name": "@effected/commands",
-	"version": "0.19.0",
+	"version": "0.20.0",
 	"private": true,
 	"description": "Structured command running and CLI tool discovery over Effect's core ChildProcessSpawner contract.",
 	"keywords": ["command", "subprocess", "tool-discovery", "spawn", "effect", "effected"],
@@ -34,17 +34,17 @@
 		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {
-		"@effect/platform-node": "catalog:effect",
-		"@effect/vitest": "catalog:effect",
+		"@effect/platform-node": "catalog:effected",
+		"@effect/vitest": "catalog:effected",
 		"@effected/memfs": "workspace:*",
 		"@savvy-web/bundler": "^2.7.1",
 		"@types/node": "catalog:build",
-		"effect": "catalog:effect",
+		"effect": "catalog:effected",
 		"tsx": "catalog:build",
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
-		"effect": "catalog:effect:peers"
+		"effect": "catalog:effected:peers"
 	},
 	"engines": {
 		"node": ">=24.11.0"

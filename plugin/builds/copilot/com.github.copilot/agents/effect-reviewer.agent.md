@@ -127,7 +127,7 @@ reference). Flag, as findings:
   is `@effected/memfs`, never `FileSystem.layerNoop`"; an "unchanged" proof
   faults the write members with `MemoryFileSystem.die` instead.
 
-CLI code on `@effected/cli` follows `effect-v4-cli`. Flag, as findings:
+CLI code on `@effected/cli-kit` follows `effect-v4-cli`. Flag, as findings:
 
 - any escape sequence reaching an agent audience, a hand-copied "agent gets no
   colour" rule instead of `CliTheme.forAudience`, or a glyph hand-painted into

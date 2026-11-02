@@ -1,6 +1,6 @@
 {
 	"name": "@effected/xdg",
-	"version": "0.18.0",
+	"version": "0.19.0",
 	"private": true,
 	"description": "XDG Base Directory resolution for Effect: environment paths, app-namespaced directories, native OS conventions and config-file resolvers.",
 	"keywords": ["xdg", "basedir", "appdirs", "config", "paths", "effect", "effected"],
@@ -32,7 +32,7 @@
 		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {
-		"@effect/vitest": "catalog:effect",
+		"@effect/vitest": "catalog:effected",
 		"@effected/config-file": "workspace:*",
 		"@effected/glob": "workspace:*",
 		"@effected/jsonc": "workspace:*",
@@ -42,7 +42,7 @@
 		"@effected/yaml": "workspace:*",
 		"@savvy-web/bundler": "^2.7.1",
 		"@types/node": "catalog:build",
-		"effect": "catalog:effect",
+		"effect": "catalog:effected",
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
@@ -52,7 +52,7 @@
 		"@effected/toml": "workspace:^",
 		"@effected/walker": "workspace:^",
 		"@effected/yaml": "workspace:^",
-		"effect": "catalog:effect:peers"
+		"effect": "catalog:effected:peers"
 	},
 	"peerDependenciesMeta": {
 		"@effected/jsonc": {

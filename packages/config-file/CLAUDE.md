@@ -323,7 +323,7 @@ pnpm build --filter @effected/config-file   # from the repo root
   never a bare messageId suppression, and extend `__test__/subpaths.test.ts`'s
   `SUBPATHS` list. The test's declarations check (only the exported codec is
   declared, `@public`, importing the root) is what proves the suppression
-  hid nothing. `@effected/cli`'s `./ui` (`savvy.build.ts`,
+  hid nothing. `@effected/cli-kit`'s `./ui` (`savvy.build.ts`,
   `__test__/declarations.test.ts`) is the same recipe at larger scale.
 - `savvy.build.ts` carries two **narrow** suppressions:
   `{ messageId: "ae-forgotten-export", pattern: "_base" }`, and one scoped to

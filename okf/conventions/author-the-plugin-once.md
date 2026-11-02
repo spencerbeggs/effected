@@ -15,10 +15,10 @@ sources:
     resource: ../../plugin/scripts/check-construct-index.sh
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-09T19:40:15Z
+  at: 2026-11-02T14:55:07Z
 integrity:
   generated:
-    body: f7dcfe56e0aef21a
+    body: a2e9c3ecacd20045
 ---
 
 # Author the plugin once in plugin/, never edit its builds
@@ -29,7 +29,7 @@ both host plugins. Follow these rules:
 
 1. **Change the source, then rebuild.** Edit under `plugin/skills/`,
    `plugin/agents/`, `plugin/hooks/` or `plugin/pluginfinity.config.ts`,
-   then run `pnpm build --filter @effected/ai-plugin` and commit the
+   then run `pnpm build --filter @effected/ai-plugins` and commit the
    source and the regenerated `plugin/builds/` together.
 2. **Never hand-edit `plugin/builds/`.** The next build overwrites the
    edit. Before committing, confirm with

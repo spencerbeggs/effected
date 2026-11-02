@@ -7,10 +7,10 @@ status: stable
 tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T14:11:47Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: 7f14a24d7bf398cb
+    body: 34c47213b19f3d27
 ---
 
 # spencerbeggs/okfit
@@ -29,20 +29,20 @@ integration. No front end depends on another front end.
 
 ## What it exercises
 
-- [`@effected/cli`](../modules/cli.md) — `CliRuntime.reportFailures`
-  (`packages/cli/src/main.ts`), `CliLogger` (provided outermost around the
+- [`@effected/cli-kit`](../modules/cli-kit.md) — `CliRuntime.reportFailures`
+  (`packages/cli-kit/src/main.ts`), `CliLogger` (provided outermost around the
   reporting layer, also in `main.ts`), and `ConfigIssueRenderer`
-  (`packages/cli/src/errors.ts`) for rendering a validation error's
+  (`packages/cli-kit/src/errors.ts`) for rendering a validation error's
   `render` option one line per stderr line.
-- [`@effected/cli`](../modules/cli.md)'s `./ui` screens, behind the
+- [`@effected/cli-kit`](../modules/cli-kit.md)'s `./ui` screens, behind the
   optional peers `ink` and `react`: the `okfit init` wizard runs on
-  `CliUi.fallback` (`packages/cli/src/internal/initWizard.ts`), a `Select` for
+  `CliUi.fallback` (`packages/cli-kit/src/internal/initWizard.ts`), a `Select` for
   the profile, a `TextInput` with an inline `validate` for the bundle
   directory and a `Select` for the config location, each with an `otherwise`
   default so a non-interactive run writes what the flags say and loads
   neither peer. The `okfit verify` picker runs `MultiSelect.screen` through
   `CliUi.prompt` with no `otherwise`, one section per concept type, then
-  `Confirm.screen` with a toggle (`packages/cli/src/commands/verify-picker.ts`);
+  `Confirm.screen` with a toggle (`packages/cli-kit/src/commands/verify-picker.ts`);
   declining raises `Cancelled` with reason `escape` and exits 130. Its tests
   drive the screens with `CliUiTest.session`, counting `mounts === 0` for the
   run that must not prompt.
@@ -50,15 +50,15 @@ integration. No front end depends on another front end.
   `CliAudience` with an `OKFIT_AUDIENCE` override, `CliExit.set` in place of
   its own exit-code cell, and `FORCE_COLOR` honoured through
   [`@effected/env`](../modules/env.md).
-- [`@effected/cli`](../modules/cli.md)'s `Doc` IR, as a **trial only**: its
+- [`@effected/cli-kit`](../modules/cli-kit.md)'s `Doc` IR, as a **trial only**: its
   human `validate` report and `verify --all` batch lines were rebuilt as
   `Doc`s and compared byte for byte with the current renderers. They match in
   plain output; okfit is not adopting the IR.
 - [`@effected/app`](../modules/app.md) — `AppConfig` only
-  (`packages/engine/src/config/layer.ts`). `App`, `AppStore`, and
+  (`packages/kit/src/config/layer.ts`). `App`, `AppStore`, and
   `AppCache` are forbidden imports, enforced by a boundary test in both
-  `packages/cli/__test__/utils/boundaries.ts` and
-  `packages/engine/__test__/boundaries.test.ts` (K-9's forbidden-names
+  `packages/cli-kit/__test__/utils/boundaries.ts` and
+  `packages/kit/__test__/boundaries.test.ts` (K-9's forbidden-names
   list: `App`, `AppStore`, `AppCache`).
 - [`@effected/xdg`](../modules/xdg.md) and
   [`@effected/config-file`](../modules/config-file.md)
@@ -91,7 +91,7 @@ integration. No front end depends on another front end.
   a missing-flag error, and never loads `ink` or `react`.
 
 - A `Distribution` reference below the front ends — worth a
-  `@effected/engine` package, since `okfit`'s own `engine` package is
+  `@effected/kit` package, since `okfit`'s own `engine` package is
   exactly the shape a kit `Distribution` primitive would sit under.
 - A `ShowHelp`-safe `reportFailures` — `CliRuntime.reportFailures`'s
   default render calls `String(value)` on a raised `ShowHelp`, and
@@ -105,7 +105,7 @@ integration. No front end depends on another front end.
   presence, so `NO_COLOR=""` or any other truthy-looking value fails to
   disable colour the way `NO_COLOR` being merely *set* should.
 - MCP primitives — `Remediation`/`ToolFailure`, `ToolInputSchema`, and
-  `LaunchContext` belong in a future `@effected/mcp` (phase 2); okfit's
+  `LaunchContext` belong in a future `@effected/mcp-kit` (phase 2); okfit's
   own MCP remediation helpers are one of three near-identical copies
   across the kit's consumers.
 - Shared bins, with an optional migration to
