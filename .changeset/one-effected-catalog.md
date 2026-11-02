@@ -11,4 +11,4 @@
 
 | Dependency           | Type          | Action  | From   | To     |
 | :------------------- | :------------ | :------ | :----- | :----- |
-| rolldown-pnpm-config | devDependency | updated | ^2.2.1 | ^2.3.0 |
+| rolldown-pnpm-config | devDependency | updated | ^2.2.1 | ^2.4.0 |

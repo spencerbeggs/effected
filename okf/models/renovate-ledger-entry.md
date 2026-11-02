@@ -21,10 +21,10 @@ sources:
     resource: git grep -IE probe over okf/ on 2026-11-01
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:34:25Z
+  at: 2026-11-02T17:54:48Z
 integrity:
   generated:
-    body: 8dd3feec5f1e0b59
+    body: 317623abd67b3623
 ---
 
 # An upgrade-ledger entry is one change, selected by the versions a consumer's upgrade crosses
@@ -145,6 +145,13 @@ of `HEAD` with `origin/HEAD` (or `main`, or `master`). `--base` or
   no crossing. A newly adopted package triggers none of its own entries.
   An entry that only a new dependent would need is therefore not worth
   writing.
+- **Renamed before.** The one exception is a rename. Every `renames` map in
+  the selected rounds, in their baselines and their entries, is folded into
+  the before versions: a new name the repository did not resolve takes the
+  old name's version, because a republished package continues its old
+  version line. A repository still on `@effected/pnpm-plugin-effect` 0.19.x
+  therefore crosses a `@effected/pnpm-plugin-effected` `>=0.21.0` threshold.
+  A new name the repository already resolved keeps its own version.
 - **Hits.** For each selected entry, `detect` runs as one
   `git grep -nIE -e … -e …` over tracked files. It excludes
   `pnpm-lock.yaml`, every `CHANGELOG.md` and `.changeset/`. Text output
@@ -189,7 +196,7 @@ together and sorted as one list.
 
 ## Renames
 
-`bump-config-deps.mjs` reads `renames` from every entry in the shipped
+Selection reads `renames` too; see "Renamed before" above. `bump-config-deps.mjs` reads `renames` from every entry in the shipped
 round, whether or not that entry applies, and it never reads fetched
 rounds. A `configDependencies` key that matches an old name is rewritten
 to the new name at the new name's latest version.[^bump-config-deps-mjs]
@@ -225,7 +232,7 @@ and runs with no plugin variables.
 
 [^applicable-mjs]: `plugin/skills/effected-renovate/scripts/applicable.mjs`
     — `lockfileVersions`, `parseFrontmatter`, `entryProblems`,
-    `baselineProblems`, `crossings`, `olderThanBaseline`, `fetchRound`,
+    `baselineProblems`, `crossings`, `foldRenames`, `roundRenames`, `olderThanBaseline`, `fetchRound`,
     `detectHits` and `main`.
 [^bump-config-deps-mjs]: `plugin/skills/effected-renovate/scripts/bump-config-deps.mjs`
     — `ledgerRenames`.

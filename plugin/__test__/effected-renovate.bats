@@ -268,6 +268,27 @@ EOF
 	[[ "$output" != *"src/old.ts:3"* ]]
 }
 
+@test "repo: the carrier rename entry applies to a repository still on the old catalog plugin" {
+	printf 'import { Ui } from "@effected/cli/ui"\n' >"$PROJECT/src/old.ts"
+	git -C "$PROJECT" add -A
+	git -C "$PROJECT" -c user.email=t@t -c user.name=t commit -qm old
+	sed -i.bak "s#'@effected/pnpm-plugin-effected'#'@effected/pnpm-plugin-effect'#; s/0\.20\.0/0.19.0/g" "$BATS_TEST_TMPDIR/before.yaml"
+	sed -i.bak 's/0\.20\.0/0.21.0/g' "$BATS_TEST_TMPDIR/after.yaml"
+	run node "$SCRIPTS/applicable.mjs" --root "$PROJECT" --ledger "$LEDGER" \
+		--before "$BATS_TEST_TMPDIR/before.yaml" --after "$BATS_TEST_TMPDIR/after.yaml"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"0048"* ]]
+	[[ "$output" == *"0049"* ]]
+	[[ "$output" == *"crossed: @effected/pnpm-plugin-effected 0.19.0 -> 0.21.0"* ]]
+	[[ "$output" == *"src/old.ts:1:import { Ui } from \"@effected/cli/ui\""* ]]
+}
+
+@test "a rename's new name already resolved before keeps its own version" {
+	printf -- '---\nid: "0001"\ntitle: R\nkind: tooling\nshows: none\napplies:\n  "@effected/pnpm-plugin-effected": ">=0.20.0"\nrenames:\n  "@effected/crypto": "@effected/pnpm-plugin-effected"\n---\n\nBody.\n' >"$LEDGER_FIX/0001-r.md"
+	_applicable
+	[[ "$output" == *"0 of 1"* ]]
+}
+
 @test "ledger gate: every changeset in a flow list counts, not only the last" {
 	printf -- '---\nid: "0001"\ntitle: Two\nkind: tooling\nshows: none\napplies:\n  effect: ">=4.1.0"\nchangesets: ["first-one", "second-one"]\n---\n\nBody.\n' >"$LEDGER_FIX/0001-two.md"
 	printf -- '---\nid: "0002"\ntitle: Block\nkind: tooling\nshows: none\napplies:\n  effect: ">=4.1.0"\nchangesets:\n  - third-one\n  - fourth-one\n---\n\nBody.\n' >"$LEDGER_FIX/0002-block.md"

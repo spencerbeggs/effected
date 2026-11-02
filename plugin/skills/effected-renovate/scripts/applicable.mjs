@@ -342,6 +342,27 @@ export function crossings(entry, before, after) {
 	return out;
 }
 
+/**
+ * `before` with each renamed package also visible under its new name. A
+ * republished package continues its old version line, so a repository that
+ * resolved only the old name before the upgrade crosses the new name's
+ * thresholds from the old name's version. A new name it already resolved wins.
+ */
+export function foldRenames(before, renames) {
+	const out = new Map(before);
+	for (const [oldName, newName] of Object.entries(renames)) {
+		if (!out.has(newName) && out.has(oldName)) out.set(newName, out.get(oldName));
+	}
+	return out;
+}
+
+/** Every rename a ledger round records, in its baseline and its entries. */
+export function roundRenames(round) {
+	const renames = { ...(round.baseline?.renames ?? {}) };
+	for (const entry of round.entries) Object.assign(renames, entry.renames ?? {});
+	return renames;
+}
+
 /** True when the repository was on a release older than the ledger's baseline. */
 export function olderThanBaseline(baseline, before) {
 	for (const [pkg, floor] of Object.entries(baseline.floor ?? {})) {
@@ -470,12 +491,13 @@ function main() {
 		dir = fetchRound(ledger.baseline, tag);
 	}
 
+	const renamed = foldRenames(before, Object.assign({}, ...rounds.map(roundRenames)));
 	const applied = [];
 	let total = 0;
 	for (const round of rounds) {
 		for (const entry of round.entries) {
 			total++;
-			const crossed = crossings(entry, before, after);
+			const crossed = crossings(entry, renamed, after);
 			if (crossed.length === 0) continue;
 			const hits = detectHits(root, entry.detect);
 			applied.push({ ...entry, crossed, hits });
