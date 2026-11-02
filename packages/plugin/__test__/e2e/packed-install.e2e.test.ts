@@ -30,8 +30,9 @@ const RUN: PackedInstallOptions = {
 	closure: "auto",
 	// While a dogfood loop links an unreleased sibling build, the consumers get it too; otherwise inert.
 	workspaceOverrides: true,
-	// CI provisions npm, pnpm and bun (root devEngines), so they are required there; yarn is opportunistic locally.
-	managers: process.env.CI ? ["npm", "pnpm", "bun"] : ["npm", "pnpm", "bun", "yarn"],
+	// CI provisions only node (which ships npm) and pnpm, from the root devEngines, so those two are required there;
+	// bun and yarn run wherever a developer has them installed.
+	managers: process.env.CI ? ["npm", "pnpm"] : ["npm", "pnpm", "bun", "yarn"],
 	bins: ["effected", "effected-mcp"],
 	allowSharedBins: true,
 	// A runner exporting FORCE_COLOR would colour the output asserted below.
@@ -53,7 +54,8 @@ const CATALOG_PNPMFILE = `${ROOT}/packages/pnpm-plugin-effected/dist/prod/npm/pk
 
 // Module evaluation, before `describe` runs. PackedInstall packs `dist/prod/npm/pkg` (the release
 // artifact): with it absent the suite skips locally and FAILS under CI, so it never stops proving the
-// published tarballs silently. The gate reads `CI` through `Config`.
+// published tarballs silently. The release workflow runs `ci:test` before `ci:build`, so the root
+// `ci:test` script prod-builds this carrier's closure first. The gate reads `CI` through `Config`.
 const GATE = await Effect.runPromise(
 	Effect.all([PackedInstall.preflight(RUN), PackedInstall.preflight(CATALOG_PLUGIN)]).pipe(
 		Effect.map(([carrier, catalog]) => ({

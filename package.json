@@ -25,7 +25,7 @@
 		"catalog:check": "tsx lib/scripts/catalog-sync.ts --check",
 		"catalog:sync": "tsx lib/scripts/catalog-sync.ts",
 		"ci:build": "CI=\"true\" turbo run build:dev build:prod --log-order=grouped --output-logs=full --log-prefix=none",
-		"ci:test": "CI=\"true\" vitest run --passWithNoTests",
+		"ci:test": "CI=\"true\" turbo run build:prod --filter='@effected/plugin...' --filter=@effected/pnpm-plugin-effected --output-logs=errors-only --log-prefix=none && CI=\"true\" vitest run --passWithNoTests",
 		"claude": "claude --plugin-dir plugin/builds/claude",
 		"claude:debug": "PLUGINFINITY_DEBUG=1 claude --plugin-dir plugin/builds/claude",
 		"copilot": "copilot --plugin-dir plugin/builds/copilot",
