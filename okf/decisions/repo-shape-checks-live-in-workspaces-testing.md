@@ -6,19 +6,21 @@ status: stable
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:45:24Z
+  at: 2026-11-02T15:53:05Z
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
-    body: 8da4d7914038a1d9
+    body: f6850c10a58d2f13
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 9e88d6257e27e7a2
+    at: 2026-11-02T17:04:46Z
+    content: 9df93484aa70d79b
 ---
 
 # D5: the layering, packed-install and boundary checks live in `@effected/workspaces/testing`
@@ -34,7 +36,7 @@ package-manager surface — exactly what `@effected/workspaces` already
 owns through `WorkspaceDiscovery`, `DependencyGraph`, and `@effected/npm`'s
 `PackagePublish`/`PackageTarball`. None of the three need `effect` alone;
 each is meaningless without a real monorepo to check, which is a different
-dependency shape than `@effected/engine`'s pure, platform-free primitives.
+dependency shape than `@effected/kit`'s pure, platform-free primitives.
 
 ## Decision
 
@@ -54,12 +56,12 @@ dependency on `@effected/workspaces` itself, either duplicating
 integrated-tier weight or adding a needless indirection for three exports
 that already belong beside the package whose model they check.
 
-**`engine/testing`.** Rejected — `@effected/engine` is deliberately pure
+**`engine/testing`.** Rejected — `@effected/kit` is deliberately pure
 tier with `effect` as its only peer (see [D1](engine-holds-cross-front-end-primitives.md)).
 `PackedInstall` alone requires `ChildProcessSpawner`, `FileSystem`, `Path`
 and `WorkspaceDiscovery`; folding it under `engine/testing` would drag
-`engine` from pure to boundary or integrated for a subpath that has
-nothing to do with the cross-front-end primitives `engine` exists to hold.
+`kit` from pure to boundary or integrated for a subpath that has
+nothing to do with the cross-front-end primitives `kit` exists to hold.
 
 ## Consequences
 

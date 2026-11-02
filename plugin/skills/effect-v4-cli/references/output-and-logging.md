@@ -1,8 +1,8 @@
-# Output and logging: the `@effected/cli` boundary
+# Output and logging: the `@effected/cli-kit` boundary
 
-Loaded from `effect-v4-cli`. Covers the three defaults core gets wrong at a terminal, why `@effected/cli` exists to fix them, and the implementation facts behind `CliLogger` and exit-code reporting.
+Loaded from `effect-v4-cli`. Covers the three defaults core gets wrong at a terminal, why `@effected/cli-kit` exists to fix them, and the implementation facts behind `CliLogger` and exit-code reporting.
 
-## The boundary core does not give you — reach for `@effected/cli`
+## The boundary core does not give you — reach for `@effected/cli-kit`
 
 `effect/cli` owns parsing, flags, the command tree and help. It owns
 **nothing** about how output reaches a person, and the three defaults you get
@@ -24,7 +24,7 @@ when a user looks at the output:
    the obvious probe hints at nothing. Two engineers searched for two rounds and
    concluded they did not exist.
 
-**`@effected/cli` is the boundary for all three** — `CliLogger`, `CliRuntime`
+**`@effected/cli-kit` is the boundary for all three** — `CliLogger`, `CliRuntime`
 and the schema/config issue renderers. It is deliberately not a second
 framework: parsing stays core's.
 
@@ -106,7 +106,7 @@ render paths relative to the current working directory rather than absolute.
 **`CliColor.enabled`**, `Effect<boolean, never, Stdio>`, is stdout's colour level as a plain boolean: `@effected/env`'s `TerminalEnv.colorLevel("stdout") !== "none"`. It follows Node's `getColorDepth` precedence — **`FORCE_COLOR` first, and it beats `NO_COLOR`**; then the TTY gate; then a non-empty `NO_COLOR`, `NODE_DISABLE_COLORS` or `TERM=dumb`, and the terminal table (`TERM`, `COLORTERM`, `TERM_PROGRAM`, CI). The environment is read through the ambient `Config` (never `process.env` directly), so a test swaps the provider instead of mutating a global; an ambient `TerminalEnv`, such as `TerminalEnv.layerTest`, answers instead when one is provided. The full precedence lives in `presentation.md`.
 
 ~~~ts
-import { CliColor } from "@effected/cli"
+import { CliColor } from "@effected/cli-kit"
 import { ConfigProvider, Effect, Stdio } from "effect"
 
 const decide = (env: Record<string, string>) =>

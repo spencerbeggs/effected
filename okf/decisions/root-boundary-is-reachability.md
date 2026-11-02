@@ -15,21 +15,23 @@ sources:
     resource: ../../packages/workspaces/__test__/entrypoints.test.ts
     title: The reachableFrom walker the cli test copies
   - id: cli-boundary-test
-    resource: ../../packages/cli/__test__/boundary.test.ts
+    resource: ../../packages/cli-kit/__test__/boundary.test.ts
     title: The cli boundary test
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T03:23:20Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: a5ae698a88b1a16f
+    body: af277267edf5bdc0
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 43025b72a6f96197
+    at: 2026-11-02T17:04:46Z
+    content: 225d1c308ad4f265
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # The cli root boundary is a module-graph walk, not a per-file scan
@@ -53,14 +55,14 @@ synthetic trees.[^probe-p4]
 
 ## Decision
 
-`packages/cli/__test__/boundary.test.ts` has two parts.[^cli-boundary-test]
+`packages/cli-kit/__test__/boundary.test.ts` has two parts.[^cli-boundary-test]
 
 - **Part 2, the boundary, is reachability.** A walk over
   `SourceBoundary.importSpecifiers`, following relative specifiers with `.js`
   mapped to `.ts`, copied from the workspaces entrypoints
   test.[^workspaces-entrypoints] From `src/index.ts` and `src/testing.ts` it
   asserts that no `src/ui*` file, no `ink`, `react` or `react/*` specifier,
-  and no self-reference to `@effected/cli/ui` is reachable; the package's own
+  and no self-reference to `@effected/cli-kit/ui` is reachable; the package's own
   name resolves through its `exports`, so a self-reference is a way into
   `./ui` that no relative edge shows. An `import("<literal>")` is an edge like
   any other, so the
@@ -94,4 +96,4 @@ lexer to tag each literal's kind.
 [^probe-p4]: Probe P4, run 2026-09-30 over five synthetic source trees.
 [^source-boundary]: `../../packages/workspaces/src/SourceBoundary.ts`
 [^workspaces-entrypoints]: `../../packages/workspaces/__test__/entrypoints.test.ts`
-[^cli-boundary-test]: `../../packages/cli/__test__/boundary.test.ts`
+[^cli-boundary-test]: `../../packages/cli-kit/__test__/boundary.test.ts`

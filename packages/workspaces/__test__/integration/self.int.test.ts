@@ -103,14 +103,14 @@ describe("the effected repository, discovered by the package that lives in it", 
 			}),
 		);
 
-		it.effect("resolves the repo's own effect catalog entry", () =>
+		it.effect("resolves the repo's own effected catalog entry for effect", () =>
 			Effect.gen(function* () {
 				const catalogs = yield* WorkspaceCatalogs;
 				const set = yield* catalogs.set();
-				// This repo pins `effect` in a named `effect` catalog, and every
-				// package depends on `catalog:effect`.
-				const range = set.rangeOf("effect", Option.some("effect"));
-				assert.isTrue(Option.isSome(range), "the effect catalog must resolve");
+				// This repo pins `effect` in the named `effected` catalog, and every
+				// package depends on `catalog:effected`.
+				const range = set.rangeOf("effect", Option.some("effected"));
+				assert.isTrue(Option.isSome(range), "the effected catalog must resolve effect");
 				assert.match(Option.getOrThrow(range), /^[\^~]?4\./);
 			}),
 		);

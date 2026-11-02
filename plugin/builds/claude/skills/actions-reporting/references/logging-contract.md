@@ -45,7 +45,7 @@ const program = Effect.gen(function* () {
   and only a writer that reads the shared depth is counted. The depth lives
   in the fiber-local keyed by `WorkflowCommand.groupDepthKey` (from
   `@effected/github-commands`, which holds the key, never the reference),
-  and `@effected/cli` reads the same key: `Render.context` built inside a
+  and `@effected/cli-kit` reads the same key: `Render.context` built inside a
   group carries it as `RenderContext.groupDepth`, so `Doc.print` and
   `Render.githubLog` render a top-level collapsible as plain text there
   rather than as a second group. A raw `WorkflowCommand.group`, or a
@@ -101,7 +101,7 @@ overrides.
 which is what makes the escaping testable with no runner and reusable
 outside Actions. Members: `render`, `debug`, `notice`, `warning`, `error`,
 `group`, `endGroup`, `addMask`, and the constant `groupDepthKey` — the key of
-the fiber-local open-group count that `ActionLogger.group` and `@effected/cli`'s
+the fiber-local open-group count that `ActionLogger.group` and `@effected/cli-kit`'s
 `Render.context` each build their reference from (the package holds the key,
 never the reference, since it imports no `effect`). The escaping order is
 load-bearing: `%` is

@@ -1,33 +1,8 @@
 /**
- * The boundary layer of an `effect/ai` MCP server: stdio wiring that
- * keeps stdout the JSON-RPC wire, tool-failure shaping, and strict-input
- * walkers. Protocol handling, tool registration and the wire format stay
- * core's; this package fixes the defaults consumers kept getting wrong.
+ * The `effected-mcp` server: the tool's MCP tools on the kit's MCP boundary.
  *
  * @packageDocumentation
  */
-export {
-	type McpLaunchOptions,
-	McpStdio,
-	type McpStdioOptions,
-	type McpStdioRegistrationServices,
-} from "./McpStdio.js";
-export {
-	McpToolkit,
-	type McpToolkitOptions,
-	type UnionHandlerOptions,
-	type UnionTool,
-	type UnionToolOptions,
-} from "./McpToolkit.js";
-export { ToolFailure } from "./ToolFailure.js";
-export { type FormatUnknownKeysOptions, ToolInputSchema, type UnknownKeysLevel } from "./ToolInputSchema.js";
-export {
-	ToolOutcome,
-	type ToolOutcomeEnvelopeOptions,
-	type ToolOutcomeErrorInput,
-	type ToolOutcomeFailure,
-	type ToolOutcomeFailures,
-} from "./ToolOutcome.js";
-export { ToolOutputSchema } from "./ToolOutputSchema.js";
-export { ToolRefusal } from "./ToolRefusal.js";
-export { ToolReplay, type ToolReplayOptions, type ToolReplayStore } from "./ToolReplay.js";
+
+export type { MainOptions } from "./main.js";
+export { MCP_VERSION } from "./version.js";

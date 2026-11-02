@@ -1,5 +1,110 @@
 # Log
 
+## 2026-11-02
+
+* Updated A plugin skill is a lean index over references
+* Updated Advance the effect pin
+* Added An upgrade-ledger entry is one change, selected by the versions a consumer's upgrade crosses
+* Updated Author the plugin once in plugin/, never edit its builds
+* Added Consumer upgrades run one fixed plugin process over an append-only ledger of per-change entries
+* Updated Consumer-facing text states current Effect behaviour, never versions
+* Updated Never hand-edit the construct index — regenerate it
+* Updated One tracking package versions both plugin builds
+* Updated Release a plugin
+* Updated ai-plugin
+* Updated construct-annotations.json
+* Updated workspace
+* Added @effected/cli-kit
+* Updated @effected/cli-kit depends on @effected/kit as a regular dependency, for distribution
+* Updated @effected/cli-kit grows a presentation layer and interactive UI
+* Updated @effected/cli-kit is not a CLI framework
+* Updated @effected/commands
+* Updated @effected/env
+* Updated @effected/env is its own boundary package, a required peer of cli
+* Updated @effected/github-commands
+* Added @effected/kit
+* Updated @effected/lsp
+* Added @effected/mcp-kit
+* Updated @effected/mcp-kit ships StdioCapture behind a Node-only ./node subpath, licensed for two node: imports
+* Updated @effected/schemastore-cli
+* Updated @effected/workspaces/testing: the repo-shape checks
+* Updated A live view is a scoped drain of runs, hosted or owned, with no input and the mount permit per run
+* Updated A public lookup that can miss returns Option, never T | undefined
+* Updated A second published entrypoint is a measured cost, not a convenience
+* Updated A zero-width space never stopped the Actions runner reading a workflow command
+* Updated CliLinks finds the editor directory with its own bounded ascent
+* Updated CliLinks finds the project root with @effected/walker
+* Updated CliLogger honours LogToStderr only as a force-all override
+* Updated D10: McpToolAudit enforces object-rooted outputs by default
+* Updated D1: @effected/kit exists and holds Distribution, Remediation and LaunchContext
+* Updated D2: strict MCP input is upstream-first
+* Updated D3: CliLogger's stderrFrom default flips to All
+* Updated D4: okfit and vitest-agent are registered as consumers before extraction
+* Updated D5: the layering, packed-install and boundary checks live in @effected/workspaces/testing
+* Updated D7: usageExitCode defaults to 64 (BSD EX_USAGE)
+* Updated D8: CliColor ignores FORCE_COLOR, matching core
+* Updated D9: CliTest uses core ChildProcess, with no peer on @effected/commands
+* Updated Error handling standards
+* Updated Ink delivers every key in one stdin read before React re-renders
+* Updated No bin on the library — the CLI is a fixed-version companion package
+* Updated Only ./ui may bind Node's process streams, and only in three named files
+* Updated PackedInstall packs the prod npm directory by default
+* Updated Plan a surface's first consumer port as a design round
+* Updated React 19's development reconciler leaked user-timing entries on every render, until react-reconciler 0.34
+* Updated Strict MCP input is reported by core; McpToolkit appends the accepted params instead of pre-checking
+* Updated The Ink layer is a ./ui subpath of cli, with ink and react as optional peers
+* Updated The audience flag is four shared root flags resolved into env's Audience
+* Updated The cli package owns its display-width function
+* Updated The cli root boundary is a module-graph walk, not a per-file scan
+* Updated The cli root stays boundary, and ./ui is integrated only for consumers who opt in
+* Updated The document IR is plain frozen data, not Schema classes
+* Updated The kit sets Ink's colour level on Ink's own chalk, resolved from Ink's location
+* Updated The kit's layering check forbids runtime edges only
+* Updated The live frame is clamped to rows - 1 in height, and its root width is never taken from a hook
+* Updated The live view never calls Ink's clear(); a new run re-renders in place or remounts
+* Updated The live view's tick is a scoped Effect schedule, and its frame index comes from Clock
+* Updated The ui declarations reference the root's types by the package's own name
+* Updated The workflow-command grammar left github-actions for its own pure package
+* Updated While a live view is mounted, kit logs go through Ink's own stdout and stderr writers
+* Updated cli files the Command handler-accessor gap upstream rather than shimming it
+* Updated cli sets the exit code through core's own Runtime markers
+* Updated effected
+* Updated github-actions
+* Updated savvy-web/systems
+* Updated spencerbeggs/okfit
+* Updated spencerbeggs/reposets
+* Updated spencerbeggs/vitest-agent
+* Updated @effected/images
+* Updated A package that names its own root types once showed one warning or none, until the bundler resolved the self-reference to declarations
+* Updated D6: CLI and MCP knowledge stays in separate skills, linked from design-patterns
+* Updated Releases are changeset-driven and scope-agnostic
+* Added @effected/cli
+* Added @effected/engine
+* Added @effected/mcp
+* Added @effected/plugin
+* Added The carrier libraries take -kit names, with no shim
+* Added The monorepo holds one tool, effected, beside its libraries
+* Updated pnpm-plugin-effected
+
+## 2026-11-01
+
+* Updated Advance the effect pin
+* Updated An unsatisfiable effect peer installs clean and fails somewhere else
+* Updated Consumer-facing text states current Effect behaviour, never versions
+* Updated Consumers see one catalog, effected, folded by the plugin's hook from split declarations
+* Updated Every package carries the same manifest shape and file set
+* Updated Keep the tree resolved to one effect copy
+* Updated The catalog sync moved the effect catalog onto Effect 4.1 under a kit built on 4.0
+* Updated The catalog:sync / catalog:check CLI
+* Updated The effected catalog literal
+* Added The plugin declares one catalog, effected, and pins only the Effect family by include pattern
+* Updated effected
+* Updated pnpm peers check is expected to report exactly one occupant
+* Updated pnpm-plugin-effected
+* Added pnpm:export keeps a catalog the plugin no longer declares
+* Updated scratchpad
+* Updated workspace
+
 ## 2026-10-31
 
 * Updated @effected/cli

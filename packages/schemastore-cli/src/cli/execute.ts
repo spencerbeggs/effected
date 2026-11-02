@@ -4,7 +4,7 @@
 // loader) arrive through `ExecuteDeps` so the command tree never reads them
 // itself.
 
-import { CliRuntime } from "@effected/cli";
+import { CliRuntime } from "@effected/cli-kit";
 import type {
 	DriftTolerance,
 	InstanceValidator,

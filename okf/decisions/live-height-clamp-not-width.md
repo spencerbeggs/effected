@@ -6,24 +6,26 @@ status: stable
 tags: [architecture, compat]
 sources:
   - id: pinned-by
-    resource: ../../packages/cli/__test__/ui/CliUiTest.live.test.ts
+    resource: ../../packages/cli-kit/__test__/ui/CliUiTest.live.test.ts
     title: "The live-view tests: the frame is clamped to rows - 1, and a resize repaints without stranding a copy"
   - id: ink-resize
     resource: "npm:ink@8.0.0"
     title: "Ink 8.0.0, build/ink.js:41 (homeAndEraseDown), 42-62 (shouldClearTerminalForFrame), 455-514 (renderInteractiveFrame's full-clear path) and 135-150 (resize re-layout)"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-07T21:32:23Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: f3fabbeeae9cd252
+    body: fda6c84d5b28b897
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: c796fabb6c17a031
+    at: 2026-11-02T17:04:46Z
+    content: 61e512b1dfe48254
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # The live frame is clamped to rows - 1 in height, and its root width is never taken from a hook
@@ -83,5 +85,5 @@ paints the wider frame into the narrower terminal.
   full-clear sequence, and a control renders the same rows unclamped and
   sees it written.
 
-[^pinned-by]: `packages/cli/__test__/ui/CliUiTest.live.test.ts`, `CliUi.live.test.ts` and `Viewport.test.ts`: the height clamp, its unclamped controls and the resize behaviour. The probes that found them (a deferred-wrap emulator and iTerm2 for the width question, a resize on a pty for the strand) were run once and are not kept.
+[^pinned-by]: `packages/cli-kit/__test__/ui/CliUiTest.live.test.ts`, `CliUi.live.test.ts` and `Viewport.test.ts`: the height clamp, its unclamped controls and the resize behaviour. The probes that found them (a deferred-wrap emulator and iTerm2 for the width question, a resize on a pty for the strand) were run once and are not kept.
 [^ink-resize]: `npm:ink@8.0.0`, `build/ink.js:41`, `42-62`, `455-514` and `135-150`

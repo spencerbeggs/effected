@@ -16,19 +16,21 @@ sources:
     title: "chalk 6.0.1, source/index.js:17-37: level is a validating accessor over a stored value every style getter reads"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T13:22:20Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: 14cb107e62695534
+    body: 73343f4ef0a7a6a2
   verified:
     by: human:spencer
-    at: 2026-10-29T00:43:21Z
-    content: 5549c0466d5c4ee0
+    at: 2026-11-02T17:04:46Z
+    content: 1211ac7b36e02ec4
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # The kit sets Ink's colour level on Ink's own chalk, resolved from Ink's location
@@ -62,7 +64,7 @@ When a screen mounts, after the lazy `import("ink")`, the kit:
    colours 2, truecolor 3), saves the previous level and sets the new one;
 3. restores the saved level in the release of the same `acquireRelease`.
 
-`@effected/cli` takes **no `chalk` dependency of any kind**. Resolving from
+`@effected/cli-kit` takes **no `chalk` dependency of any kind**. Resolving from
 Ink's location gives the identical instance by construction: Node's ESM
 loader keys modules by realpath, and pnpm's symlink to Ink's chalk resolves
 to the file Ink imports. Node's resolvers already answer with the real path

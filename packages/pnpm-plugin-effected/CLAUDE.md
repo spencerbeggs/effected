@@ -15,24 +15,24 @@ Load when changing catalog strategy, advancing the Effect pin, or debugging work
 
 A pnpm **config dependency**, built with `rolldown-pnpm-config`. All catalog configuration lives in `savvy.build.ts`, where `PnpmConfigPlugin` declares each catalogued package with a `range`, a `peer` and a `strategy`. Source is two small files over the virtual modules:
 
-- `src/pnpmfile.ts` wraps the generated `updateConfig` and **folds** the declared catalogs into one.
-- `src/index.ts` exports the same folded view as `catalogs`.
+- `src/pnpmfile.ts` wraps the generated `updateConfig` and **hides** the `effected:peers` twin.
+- `src/index.ts` exports the declared `effected` catalog as `catalogs`.
 
 ## What consumers see: one catalog
 
-A consumer sees exactly one catalog, **`effected`**: the Effect family plus every publishable `@effected/*` package but this one. The hook folds `effect` into `effected` (a consumer's own `effected` entries win) and deletes `effect`, `effect:peers` and `effected:peers`. `__test__/catalog.test.ts` pins this against the built `dist/dev/pkg/pnpmfile.mjs`. Why → `@./okf/decisions/consumer-catalog-fold.md`.
+A consumer sees exactly one catalog, **`effected`**: the Effect family plus every publishable `@effected/*` package but this one. The generated merge lets a consumer's own `effected` entries win, and the hook deletes `effected:peers`. `__test__/catalog.test.ts` pins this against the built `dist/dev/pkg/pnpmfile.mjs`. Why → `@./okf/decisions/consumer-catalog-fold.md`, `@./okf/decisions/one-declared-effected-catalog.md`.
 
 **`pnpm pack` runs no `readPackage` hook**, so a consumer peer written as `catalog:effected` publishes the install range (patch included), not a floored one. Do not try to fix that in a hook; a consumer that wants a floored peer writes it by hand.
 
-## What it declares: four catalogs, kept split
+## What it declares: one catalog, two halves
 
-`savvy.build.ts` still **declares** `effect` and `effected`, each with a `:peers` twin. Do not merge them: `overridesFromCatalogs` and the `upgrade` CLI work per catalog, the Effect family is pinned graph-wide and the kit is not, and `exclude` takes exact names only.
+`savvy.build.ts` **declares** one catalog, `effected`, with a `:peers` twin: the Effect family first, then the kit. **Do not split it again, and never widen the override filter**: the Effect family is pinned graph-wide and the kit is not, and the `overridesFromCatalogs` `include` patterns are what draw that line (see Overrides). `__test__/catalog.test.ts` asserts the catalog holds nothing but the family and the kit, and that no override pins an `@effected/*` package.
 
-This repository does not run the fold on itself. `pnpm:export` writes the declarations into the root `pnpm-workspace.yaml`, so this repo's manifests keep `catalog:effect` (dev) and `catalog:effect:peers` (peer), and the kit's published `effect` peer stays floored.
+This repository does not run the hook on itself. `pnpm:export` writes `effected` and `effected:peers` into the root `pnpm-workspace.yaml`, so this repo's manifests use the consumer's names, `catalog:effected` (dev) and `catalog:effected:peers` (peer), and the kit's published `effect` peer stays floored. **`pnpm:export` keeps catalogs the plugin no longer declares**: delete a removed one from `pnpm-workspace.yaml` by hand → `@./okf/gotchas/export-keeps-removed-catalogs.md`.
 
 **Every `effect`-family entry is `range: "~4.<minor>.<patch>"`, `peer: "~4.<minor>.0"`, `strategy: "lock-minor"`.** `@effect/tsgo` keeps a `^0.<minor>.0` caret, which on 0.x already holds the minor. **Never restore a caret on a 4.x entry**: under a caret the catalog sync's `upgrade --yes` took Effect 4.1.0 while the published kit was built on 4.0.7, and the kit died at import (`does not provide an export named 'Crypto'`). `__test__/catalog.test.ts` rejects any operator but the tilde, and requires every 4.x entry at `effect`'s own version. Why → `@./okf/decisions/effect-catalog-minor-lock.md`, `@./okf/incidents/catalog-crossed-effect-minor.md`. An Effect minor arrives only through `okf/runbooks/advance-the-effect-pin.md`.
 
-The `effected` catalog: object form, `strategy: "lock-minor"`, `source: "workspace"`, each package at its **next release** version. Four properties are load-bearing ([reasoning](../../okf/models/effected-catalog-literal.md)):
+The kit half: object form, `strategy: "lock-minor"`, `source: "workspace"`, each package at its **next release** version. `lib/scripts/catalog-sync.ts` counts only `@effected/*` names as membership. Four properties are load-bearing ([reasoning](../../okf/models/effected-catalog-literal.md)):
 
 - **`@effected/pnpm-plugin-effected` is deliberately absent from its own catalog, and must stay absent.** Catalogue it and every rewrite bumps the plugin, invalidating the catalog and writing another changeset — a release loop with no termination condition. `__test__/catalog.test.ts` pins it; [its Decision](../../okf/decisions/plugin-never-in-its-own-catalog.md).
 - **Publishability is `publishConfig.access === "public"`, never `private === false`.** A membership check written against `private` classifies the whole kit as unpublishable and silently emits an empty catalog.
@@ -43,9 +43,9 @@ The Effect **v3** interop catalogs (`effect3` / `effect3:peers`) and the camelCa
 
 ## Overrides
 
-`overridesFromCatalogs: { catalog: "effect" }` derives one `"<name>@^4.0.0": "<catalog version>"` pin per family member (tsgo on its own 0.x line), so the whole consumer graph runs one `effect`. Never hand-write them; they move with the catalog literal. The pins also move a published kit built on an older minor onto the catalog's minor, which is why a minor advance needs the bridge in `okf/conventions/one-resolved-effect-copy.md`. The only authored `overrides` are the two release-candidate `platform-node-shared` entries. Why → `@./okf/decisions/effect-overrides-derived-from-catalog.md`.
+`overridesFromCatalogs: { catalog: "effected", include: ["effect", "@effect/*"] }` derives one `"<name>@^4.0.0": "<catalog version>"` pin per family member (tsgo on its own 0.x line), so the whole consumer graph runs one `effect`. The patterns are core `effect/Glob`: `*` does not cross the scope `/`, so no `@effected/*` entry matches and a kit package added to the catalog gains no override. An `include` entry that matches nothing throws at build time. Never hand-write them; they move with the catalog literal. The pins also move a published kit built on an older minor onto the catalog's minor, which is why a minor advance needs the bridge in `okf/conventions/one-resolved-effect-copy.md`. The only authored `overrides` are the two release-candidate `platform-node-shared` entries. Why → `@./okf/decisions/effect-overrides-derived-from-catalog.md`.
 
-`peerDependencyRules.allowedVersionsFromCatalogs` stays declared, but it derives a rule only for an exact entry and no entry is exact, so the exported table is empty. There is no generator script and no checked-in table; do not restore `allowed-versions.gen.ts` or its test.
+`peerDependencyRules.allowedVersionsFromCatalogs` stays declared (`catalog: "effected"`), but it derives a rule only for an exact entry and no entry is exact, so the exported table is empty. There is no generator script and no checked-in table; do not restore `allowed-versions.gen.ts` or its test.
 
 ## Two script classes — do not merge them
 

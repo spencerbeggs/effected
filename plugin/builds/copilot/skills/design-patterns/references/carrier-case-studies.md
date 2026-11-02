@@ -29,7 +29,7 @@ What it does best:
   versions together. See
   [carrier-version-threading.md](./carrier-version-threading.md) for the
   full mechanism.
-- The cleanest engine/front-end split: `packages/engine` owns everything
+- The cleanest engine/front-end split: `packages/kit` owns everything
   both `cli` and `mcp` would otherwise duplicate, down to the shared
   `DistributionField` schema.
 - **The only one of the three that builds out the optional app-layer and
@@ -40,9 +40,9 @@ What it does best:
   [carrier-app-and-schemas.md](./carrier-app-and-schemas.md).
 - The MCP crash-guard convention is documented in the module's own doc
   comment, not just tribal knowledge
-  (<https://github.com/spencerbeggs/okfit/blob/main/packages/mcp/src/main.ts>).
+  (<https://github.com/spencerbeggs/okfit/blob/main/packages/mcp-kit/src/main.ts>).
 - **What the kit now ships in its place:** the hand-rolled `Distribution`
-  `Context.Reference` is `@effected/engine`'s `CurrentDistribution` — see
+  `Context.Reference` is `@effected/kit`'s `CurrentDistribution` — see
   [carrier-version-threading.md](./carrier-version-threading.md).
 
 Gaps:
@@ -95,7 +95,7 @@ What it does best:
   directly, only its bin shims do.
 - **What the kit now ships in its place:** the hand-rolled
   `register-toolkit.ts` port (strict-by-default registration, naming every
-  unknown key) is `@effected/mcp`'s `McpToolkit` for the strict default, and
+  unknown key) is `@effected/mcp-kit`'s `McpToolkit` for the strict default, and
   core's own strict decode, which names every bad key and field in one
   response, for the report — see `effect-v4-mcp`'s
   [tools.md](../../effect-v4-mcp/references/tools.md#strict-input).
@@ -125,7 +125,7 @@ Gaps and notable deviations:
   const DISCOVERY_LAST_SCAN_SYMBOL = Symbol.for("vitest-agent:discovery:last-scan-at");
   ```
 
-  (<https://github.com/spencerbeggs/vitest-agent/blob/main/packages/mcp/src/tools/run-tests.ts>,
+  (<https://github.com/spencerbeggs/vitest-agent/blob/main/packages/mcp-kit/src/tools/run-tests.ts>,
   <https://github.com/spencerbeggs/vitest-agent/blob/main/packages/plugin/src/utils/discover-projects.ts>)
 
   This is real coupling the manifest DAG test cannot see, by construction

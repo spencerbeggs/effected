@@ -35,17 +35,17 @@
 		"@effected/crypto": "workspace:^"
 	},
 	"devDependencies": {
-		"@effect/platform-node": "catalog:effect",
-		"@effect/vitest": "catalog:effect",
+		"@effect/platform-node": "catalog:effected",
+		"@effect/vitest": "catalog:effected",
 		"@savvy-web/bundler": "^2.7.1",
 		"@types/node": "catalog:build",
-		"effect": "catalog:effect",
+		"effect": "catalog:effected",
 		"stripe": "^23.0.0",
 		"svix": "^2.9.1",
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
-		"effect": "catalog:effect:peers"
+		"effect": "catalog:effected:peers"
 	},
 	"engines": {
 		"node": ">=24.11.0"

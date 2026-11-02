@@ -13,10 +13,10 @@ sources:
     resource: ../../scratchpad/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T05:32:50Z
+  at: 2026-11-01T21:43:51Z
 integrity:
   generated:
-    body: 040423d47e5cd536
+    body: 94e8b75411a5d309
 ---
 
 # scratchpad
@@ -40,11 +40,11 @@ it like any other member. But it is a fixture, not a package: `"private":
 true`, no `publishConfig`, no `savvy.build.ts`, no build scripts. Its
 only scripts are the three runners (`probe`, `check`, `reset`).
 
-Its manifest lists `effect: catalog:effect` and every published
+Its manifest lists `effect: catalog:effected` and every published
 `@effected/*` package at `workspace:*` — the manifest **is** the probe
 roster, so a package missing from it is simply unprobeable here, and a
 new kit package has to be added to it explicitly. Dev dependencies are
-`@effect/vitest` (`catalog:effect`), `tsx`, `typescript` and `@types/node`
+`@effect/vitest` (`catalog:effected`), `tsx`, `typescript` and `@types/node`
 (`catalog:build`). It carries no `vitest` devDependency of its own — the
 project runs through the root vitest install, and adding one locally
 would only invite version skew.

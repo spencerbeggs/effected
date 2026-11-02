@@ -18,18 +18,18 @@ sources:
   - id: pluginfinity-npm
     resource: "npm:pluginfinity"
 generated:
-  by: "claude-code/opus-5.5"
-  at: 2026-10-23T22:19:34Z
+  by: "okfit/claude-code"
+  at: 2026-11-02T16:44:32Z
 integrity:
   generated:
-    body: 6a129000832b1492
+    body: 986d98881fcc4f10
 ---
 
 # ai-plugin
 
 ## Overview
 
-`plugin/` is the workspace package `@effected/ai-plugin`, the single
+`plugin/` is the workspace package `@effected/ai-plugins`, the single
 source of the "effected" agent plugin: a catalog of skills, three
 specialist subagents and a SessionStart briefing hook. It is dogfooded
 during package work. `pluginfinity`, a devDependency from
@@ -67,11 +67,12 @@ to prevent. Lessons from kit work feed back through
 
 ```text
 plugin/
-  package.json             # @effected/ai-plugin (private, versioning only)
+  package.json             # @effected/ai-plugins (private, versioning only)
   pluginfinity.config.ts   # manifest fields, hooks, per-target overrides
   turbo.json               # build tasks uncached
-  skills/ agents/ hooks/   # the source — the only dirs pluginfinity ships
-  scripts/                 # construct-index generator, pre-push gate, anchor re-deriver
+  skills/ agents/ hooks/   # the source dirs pluginfinity ships
+  bin/start-mcp.sh         # the effected-mcp launcher, copied into each build
+  scripts/                 # construct-index generator, pre-push gate, anchor re-deriver (never shipped)
   __test__/                # bats suites and their fixtures
   builds/claude/           # GENERATED, committed
   builds/copilot/          # GENERATED, committed
@@ -79,13 +80,14 @@ plugin/
 
 pluginfinity ships nothing outside `skills/`, `agents/` and `hooks/`, so
 `scripts/` and `__test__/` sit beside the source without reaching a
-user's install. The reverse also holds: the whole `hooks/` directory
+user's install. A skill's own `skills/<name>/scripts/` is different: it
+ships inside the skill. The reverse also holds: the whole `hooks/` directory
 ships to both hosts, so test fixtures for the hook live under
 `__test__/fixtures/hooks/`, not under `hooks/`.
 
 ## Building
 
-`pnpm build --filter @effected/ai-plugin` runs `pluginfinity build`,
+`pnpm build --filter @effected/ai-plugins` runs `pluginfinity build`,
 which rewrites both builds from the source. Both `build:dev` and
 `build:prod` run it, so a CI or release build regenerates `builds/`
 before the release bumps the manifests. `plugin/turbo.json` sets both
@@ -99,7 +101,7 @@ release reaches `plugin/package.json` through the scheduled update PR.
 That PR's `run` step does not build, so it changes only the manifest and
 lockfile. When the new release changes what pluginfinity emits, the
 committed builds go stale until someone runs
-`pnpm build --filter @effected/ai-plugin` and commits the result; the
+`pnpm build --filter @effected/ai-plugins` and commits the result; the
 update PR's `plugin:check` gate fails until then.
 
 From `plugin/`:
@@ -175,6 +177,19 @@ teaching a consumer repository to publish SchemaStore-shaped JSON Schema
 documents through `@effected/schemastore` and its CLI companion — the
 config file, the drift policy, document authoring, and the CI gate.
 
+**Consumer upgrades**: `effected-renovate`, which is user-invoked only
+(`disable-model-invocation: true`). It moves a consumer repository onto a
+new kit release: bump the config dependencies, regenerate the lockfile,
+confirm one `effect`, list the upgrade-ledger entries the upgrade
+crossed together with their hits in the consumer's code, build, test,
+align, write changesets and report. It is the first skill to ship
+`scripts/`: three dependency-free `.mjs` helpers that `SKILL.md` names
+through `{{skill_dir}}`. Its `references/ledger/` is the one
+version-keyed plugin text. This repository writes the ledger through the
+project-level `effect-upgrade` skill. See
+[the ledger entry model](../models/renovate-ledger-entry.md) and
+[the upgrade-ledger decision](../decisions/upgrade-ledger-in-the-plugin.md).
+
 **Architecture**: `design-patterns`, which indexes proven architecture
 patterns as loadable references, starting with the carrier package
 pattern for multi-bin tools.
@@ -245,6 +260,14 @@ reads the source.
 - `construct-index.bats` and `construct-index-gate.bats` — the generator
   and the pre-push gate; see
   [construct-annotations](../models/construct-annotations.md).
+- `effected-renovate.bats` — the `effected-renovate` scripts against
+  fixture lockfiles and ledgers. It covers selection by crossing,
+  ordering, `--check`, the chain fetch through a stub `gh` with
+  `GH_HOST` scrubbed, and `bump-config-deps` renames. It also holds two
+  repository gates: the shipped ledger is valid, and every pending
+  breaking changeset is named by an entry. Its last case runs the
+  **built** `applicable.mjs` on both hosts through pluginfinity's
+  `run_script`. Build before running it.
 - `effected-packages-index.bats` — the routing table against the
   workspace's published packages.
 - `skill-anchors.bats` — every `File.ts:N` citation in every skill file
@@ -290,6 +313,10 @@ Effect tasks to the matching agent rather than hand-rolling them inline.
 Its `dogfood_feedback` block carries two loops — plugin feedback and
 `@effected` package feedback — and filing an issue always requires the
 user's explicit agreement.
+
+## The effected MCP server
+
+`pluginfinity.config.ts` declares one `mcpServers` entry, `effected`, for both hosts: `sh ${PLUGIN_ROOT}/bin/start-mcp.sh`. The launcher is a POSIX `sh` script on pluginfinity's server library. It runs the project's installed `effected-mcp` bin (from [`@effected/plugin`](plugin.md)), and when that is not installed it prints the `@effected/plugin` install line for the project's package manager on stderr and falls back to a one-off run of [`@effected/mcp`](mcp.md). The fallback exists because a one-off runner cannot choose between two bins of one package, so the front end carries the bin too ([shared bins](../decisions/carrier-only-declares-bins.md)). Nothing prints to stdout before the `exec`: stdout is the JSON-RPC wire. The server answers one `identity` tool. `__test__/launchers.bats` runs the built launcher against a fake project with a stubbed bin on each host. The SessionStart briefing names the server.
 
 ## Versioning and distribution
 

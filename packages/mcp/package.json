@@ -2,8 +2,8 @@
 	"name": "@effected/mcp",
 	"version": "0.12.0",
 	"private": true,
-	"description": "The boundary layer of an effect/ai MCP server: stdio wiring that keeps stdout the wire, tool-failure shaping, strict-input walkers, and test clients",
-	"keywords": ["effect", "mcp", "model-context-protocol", "stdio", "json-rpc", "effected"],
+	"description": "The effected-mcp server: the tool's MCP tools on the kit's MCP boundary",
+	"keywords": ["effect", "mcp", "model-context-protocol", "effected"],
 	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/mcp#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
@@ -23,10 +23,11 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
-		"./guard": "./src/guard.ts",
-		"./node": "./src/node.ts",
-		"./testing": "./src/testing.ts",
+		"./main": "./src/main.ts",
 		"./package.json": "./package.json"
+	},
+	"bin": {
+		"effected-mcp": "./src/bin.ts"
 	},
 	"scripts": {
 		"build:dev": "node savvy.build.ts --target dev",
@@ -34,19 +35,18 @@
 		"prepare": "turbo run build:dev",
 		"types:check": "tsc --noEmit"
 	},
+	"dependencies": {
+		"@effect/platform-node": "catalog:effected",
+		"@effected/engine": "workspace:^",
+		"@effected/kit": "workspace:^",
+		"@effected/mcp-kit": "workspace:^",
+		"effect": "catalog:effected"
+	},
 	"devDependencies": {
-		"@effect/platform-node": "catalog:effect",
-		"@effect/vitest": "catalog:effect",
-		"@effected/engine": "workspace:*",
-		"@effected/workspaces": "workspace:*",
+		"@effect/vitest": "catalog:effected",
 		"@savvy-web/bundler": "^2.7.1",
 		"@types/node": "catalog:build",
-		"effect": "catalog:effect",
 		"typescript": "catalog:build"
-	},
-	"peerDependencies": {
-		"@effected/engine": "workspace:^",
-		"effect": "catalog:effect:peers"
 	},
 	"engines": {
 		"node": ">=24.11.0"

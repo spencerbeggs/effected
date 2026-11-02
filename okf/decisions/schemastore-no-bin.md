@@ -12,17 +12,19 @@ sources:
     last_modified: 2026-09-13T00:00:00Z
 generated:
   by: "claude-code/opus-5"
-  at: 2026-09-14T00:42:15Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: 0515417eae285b4e
+    body: f5c4b62f3c8f6522
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 72a1e0c48ad72cfe
+    at: 2026-11-02T17:04:46Z
+    content: 1a38124cf1d89298
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # No bin on the library — the CLI is a fixed-version companion package
@@ -56,7 +58,7 @@ CLI, so the config and the pipeline share one `effect` and one
 **Ship a `bin` entry on the library running `SchemaPipeline` over a
 config file.** Rejected because a library consumed through `R` and a
 binary with an exit-code contract have different dependency shapes: the
-bin needs `jiti`, a platform layer and `@effected/cli`, none of which a
+bin needs `jiti`, a platform layer and `@effected/cli-kit`, none of which a
 consumer composing the pipeline in its own program should install.
 
 **Ship the CLI with its own copy of the library and re-export

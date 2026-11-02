@@ -32,10 +32,10 @@
 		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {
-		"@effect/vitest": "catalog:effect",
+		"@effect/vitest": "catalog:effected",
 		"@savvy-web/bundler": "^2.7.1",
 		"@types/node": "catalog:build",
-		"effect": "catalog:effect",
+		"effect": "catalog:effected",
 		"typescript": "catalog:build"
 	},
 	"engines": {

@@ -113,7 +113,7 @@ schemastore check [config] [--drift=strict|semantic|allow] [--on-drift=error|war
 | `64` | usage error (an unknown flag, a bad literal, or `--wizard` on a run that is not interactive: the kit's prompt-gated flag is left out of help and rejected there) |
 
 The failure itself is written to stderr as the kit's standard
-`@effected/cli` report: a status line naming the error and its message
+`@effected/cli-kit` report: a status line naming the error and its message
 (`✗ DriftError: 1 published schema(s) drifted; nothing was written.`), the
 message's further lines, and, when the failure happened inside a span, an
 `in: …` line naming the command's own spans

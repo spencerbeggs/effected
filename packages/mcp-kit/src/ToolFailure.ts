@@ -1,0 +1,79 @@
+import { Remediation } from "@effected/kit";
+import { Schema } from "effect";
+
+const isHighSurrogate = (code: number): boolean => code >= 0xd800 && code <= 0xdbff;
+
+/**
+ * How a tool's declared failure should read on the wire.
+ *
+ * @remarks
+ * Core sends a declared failure that is an `Error` instance — every
+ * `Schema.TaggedError` is — as `isError: true` with `error.message` as the only
+ * text and no `structuredContent` (effect `ai/McpServer.ts`,
+ * `declaredFailureResult`). So the remediation must be folded into `message`
+ * when the error is constructed: whatever is not in the message never reaches
+ * the agent.
+ *
+ * Spread {@link ToolFailure.fields} into your tool's `Schema.TaggedError`, build
+ * `message` with {@link ToolFailure.message}, and pass every caller-supplied
+ * value through {@link ToolFailure.truncate} before echoing it. For a plain
+ * refusal with no fields of its own, `ToolRefusal` is this shape ready-made.
+ *
+ * Only a declared failure keeps its message: core scrubs an undeclared
+ * failure or a defect to "Tool execution failed due to an internal server
+ * error.", so audit every throw path a tool can take and declare each one the
+ * agent should read.
+ *
+ * @example
+ * ```ts
+ * import { ToolFailure } from "@effected/mcp-kit";
+ * import { Schema } from "effect";
+ *
+ * class NotFound extends Schema.TaggedError<NotFound>()("NotFound", { ...ToolFailure.fields, id: Schema.String }) {}
+ * const remediation = { hint: "List the ids first.", suggestedTool: "list_things" }
+ * new NotFound({ id, remediation, message: ToolFailure.message(`No thing "${ToolFailure.truncate(id)}".`, remediation) })
+ * ```
+ *
+ * @public
+ */
+export class ToolFailure {
+	private constructor() {}
+
+	/** The cap, in UTF-16 code units, on a caller-supplied value echoed into a message. */
+	static readonly ECHO_LIMIT: number = 200;
+
+	/** The larger cap for a value the engine produced (a path, a diagnostic), not one a caller typed. */
+	static readonly ENGINE_ECHO_LIMIT: number = 2000;
+
+	/**
+	 * The `message` and `remediation` fields to spread into a consumer's
+	 * `Schema.TaggedError`, each carrying a default `description` that a served
+	 * JSON Schema (a tool's `outputSchema`) shows the agent.
+	 */
+	static readonly fields = {
+		message: Schema.String.annotate({ description: "What went wrong, as one plain sentence." }),
+		remediation: Remediation.annotate({
+			description: "What to do next: a hint, and optionally the tool to call next and the arguments to call it with.",
+		}),
+	} as const;
+
+	/**
+	 * `"<raw> <hint> Try <suggestedTool>."`, dropping any empty part, so a
+	 * missing tool or an empty hint never leaves a double space.
+	 */
+	static readonly message = (raw: string, remediation: Remediation): string =>
+		[raw, remediation.hint, remediation.suggestedTool === undefined ? "" : `Try ${remediation.suggestedTool}.`]
+			.filter((part) => part !== "")
+			.join(" ");
+
+	/**
+	 * `value` cut to `limit` code units with a trailing ellipsis, backing off one
+	 * unit rather than splitting a surrogate pair. A hostile multi-megabyte
+	 * argument is otherwise echoed into the agent's context whole.
+	 */
+	static readonly truncate = (value: string, limit: number = ToolFailure.ECHO_LIMIT): string => {
+		if (value.length <= limit) return value;
+		const end = limit > 0 && isHighSurrogate(value.charCodeAt(limit - 1)) ? limit - 1 : limit;
+		return `${value.slice(0, end)}…`;
+	};
+}

@@ -1,11 +1,11 @@
 # The presentation layer: audience, environment, theme, documents, diagnostics
 
-Loaded from `effect-v4-cli`. Covers who a run's output is for and how it is drawn: the audience flags, `CliEnv`, colour, the theme vocabulary, `CliMessage`, the `Doc` IR and its renderers, the failure report, and `CliLog` diagnostics. Every signature here is `@effected/cli`'s root entrypoint unless it names `@effected/env`.
+Loaded from `effect-v4-cli`. Covers who a run's output is for and how it is drawn: the audience flags, `CliEnv`, colour, the theme vocabulary, `CliMessage`, the `Doc` IR and its renderers, the failure report, and `CliLog` diagnostics. Every signature here is `@effected/cli-kit`'s root entrypoint unless it names `@effected/env`.
 
 ## The one wiring
 
 ```ts
-import { CliAudience, CliRuntime } from "@effected/cli"
+import { CliAudience, CliRuntime } from "@effected/cli-kit"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Command } from "effect/cli"
 
@@ -105,9 +105,9 @@ Pick the channel by what the line is:
 - **Blocks:** `heading(level, content)`, `paragraph(...content)`, `line`, `lines`, `list(items, options?)`, `table(columns, rows, options?)`, `tree(root)`, `collapsible(title, body, { open? })`, `callout(kind, body)`, `codeBlock(text, lang?)`, `verbatim`, `diff(expected, received)`, `diffText(unified, { truncate? })`, `section(title, children)`, `counts({ counters, layout, ... })`, `countsTable(rows, options?)` (with `Doc.counter(vocab, name, { key, label, n })` for each cell; `label` may be `{ one, other }`: `one` for a count of exactly 1, `other` otherwise; a standalone count reads by its own `n`, and the share headline by the total, so `1/3 repos`), and `annotation(properties, message)`, which only the GitHub log renderer writes.
 
 ```ts
-import { CliTheme, Doc, Render, Status } from "@effected/cli"
+import { CliTheme, Doc, Render, Status } from "@effected/cli-kit"
 import { Audience, TerminalEnv } from "@effected/env"
-import type { CliLinks } from "@effected/cli"
+import type { CliLinks } from "@effected/cli-kit"
 import type { Effect } from "effect"
 
 const report = [

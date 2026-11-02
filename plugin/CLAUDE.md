@@ -1,6 +1,6 @@
 # CLAUDE.md — the plugin workspace
 
-This directory is `@effected/ai-plugin`, the single source of the "effected"
+This directory is `@effected/ai-plugins`, the single source of the "effected"
 agent plugin. It is not an `@effected` library and never publishes to npm;
 `pluginfinity` builds it into a Claude Code plugin and a GitHub Copilot plugin
 that ship through the `spencerbeggs/bot` marketplaces.
@@ -22,11 +22,15 @@ exported construct, or touching `scripts/generate-constructs.mts`,
 `scripts/construct-annotations.json`, `scripts/check-construct-index.sh` or the
 construct-index bats suites.
 
+**Upgrade ledger:** `okf/models/renovate-ledger-entry.md`,
+`okf/decisions/upgrade-ledger-in-the-plugin.md` — Load when: writing an
+`effected-renovate` ledger entry or changing that skill's scripts.
+
 ## Rules
 
 - **`builds/` is generated and committed. Never hand-edit it.** Change the
   source (`skills/`, `agents/`, `hooks/`, `pluginfinity.config.ts`), run
-  `pnpm build --filter @effected/ai-plugin` from the repo root, and commit
+  `pnpm build --filter @effected/ai-plugins` from the repo root, and commit
   source and builds together. `pnpm exec pluginfinity build --check` from here
   exits 1 when a build lags its source; the pre-push hook and CI's
   `pnpm plugin:check` gate both enforce it.

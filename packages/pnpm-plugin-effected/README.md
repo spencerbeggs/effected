@@ -85,13 +85,13 @@ A library uses the same catalog on both sides:
 }
 ```
 
-pnpm rewrites `catalog:` specifiers to concrete ranges when it packs, so what lands on the registry is an ordinary manifest. Nothing downstream needs this plugin, or pnpm. A packed peer advertises the catalog's range — `effect: ~4.1.1`, and each `@effected/*` package at its current release. If a library needs a wider peer, write that range by hand in its own manifest.
+pnpm rewrites `catalog:` specifiers to concrete ranges when it packs, so what lands on the registry is an ordinary manifest. Nothing downstream needs this plugin, or pnpm. A packed peer advertises the catalog's range — `effect: ~4.<minor>.<patch>` at the catalog's current Effect release, and each `@effected/*` package at its current release. If a library needs a wider peer, write that range by hand in its own manifest.
 
 ## What it ships
 
 | Entries | Range | Notes |
 | ------- | ----- | ----- |
-| `effect` and every `@effect/*` package | one Effect minor, with a tilde (`~4.1.1`) | a new Effect minor arrives with a new plugin release, never through a range |
+| `effect` and every `@effect/*` package | one Effect minor, with a tilde (`~4.<minor>.<patch>`) | a new Effect minor arrives with a new plugin release, never through a range |
 | `@effect/tsgo` | its own `0.x` line | versions independently of `effect` |
 | every published `@effected/*` package | its current release, with a caret | on `0.x` a caret pins the minor |
 

@@ -39,7 +39,7 @@ TSDoc summary; annotating them is optional.
    including the other side of an `implements` link. A bare `generate` reads
    every package's model, so a stale local build of an unrelated package
    would otherwise rewrite its rows (effected#839).
-5. `pnpm build --filter @effected/ai-plugin` — copies the regenerated tables
+5. `pnpm build --filter @effected/ai-plugins` — copies the regenerated tables
    into both committed builds under `plugin/builds/`. The pre-push gate
    blocks a push whose builds lag the source.
 6. `bats plugin/__test__/construct-index.bats` — must be green before commit.

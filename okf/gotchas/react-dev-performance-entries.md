@@ -6,10 +6,10 @@ status: deprecated
 tags: [performance, compat, testing]
 sources:
   - id: measures-test
-    resource: ../../packages/cli/__test__/ui/reactMeasures.test.ts
+    resource: ../../packages/cli-kit/__test__/ui/reactMeasures.test.ts
     title: "React records a measure per rerender and none are left, with console.timeStamp installed before Ink loads"
   - id: live-test
-    resource: ../../packages/cli/__test__/ui/CliUiTest.live.test.ts
+    resource: ../../packages/cli-kit/__test__/ui/CliUiTest.live.test.ts
     title: "Test 4: React's entries never pile up under a live view, and a program's own performance.measure survives it"
   - id: react-entry
     resource: "npm:react@19.3.0"
@@ -22,10 +22,10 @@ sources:
     title: "package.json: react-reconciler ^0.34.0 (Ink 7.1.1 had ^0.33.0)"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-08T02:48:10Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: 192effed63b6b216
+    body: 7a19a0a7269b82db
 ---
 
 # React 19's development reconciler leaked user-timing entries on every render, until react-reconciler 0.34
@@ -36,7 +36,7 @@ Deprecated: the trap is fixed upstream and the kit carries no workaround.
 react-reconciler 0.34 pairs every `performance.measure` it makes with a
 `performance.clearMeasures` of the same name,[^reconciler-clears] and Ink 8
 depends on `^0.34.0`,[^ink-pins-reconciler] so on any Ink the kit's `^8.0.0`
-peer admits, React's development build leaves no measures behind. `@effected/cli`
+peer admits, React's development build leaves no measures behind. `@effected/cli-kit`
 clears nothing itself: a process-wide clear would also wipe a program's own
 measures, and a live-view test asserts that a program's `performance.measure`
 survives a run.[^live-test]
@@ -60,8 +60,8 @@ again: measures, never marks, pile up at about 15 per rerender, and a
 long-lived view's heap grows. Only then reintroduce a clear, and scope it so
 it cannot take a program's own measures.
 
-[^measures-test]: `packages/cli/__test__/ui/reactMeasures.test.ts`
-[^live-test]: `packages/cli/__test__/ui/CliUiTest.live.test.ts`, test 4
+[^measures-test]: `packages/cli-kit/__test__/ui/reactMeasures.test.ts`
+[^live-test]: `packages/cli-kit/__test__/ui/CliUiTest.live.test.ts`, test 4
 [^react-entry]: `npm:react@19.3.0`, `index.js:3`, and `npm:react-reconciler`, `index.js:3`
 [^reconciler-clears]: `npm:react-reconciler@0.34.0`, `cjs/react-reconciler.development.js`
 [^ink-pins-reconciler]: `npm:ink@8.0.0`, `package.json`

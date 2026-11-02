@@ -128,7 +128,7 @@ beats nothing at all — write the control first and watch it fail.
   zero-warning report. See `effect-api-extractor-bases`.
 + **Front ends**: `effect-v4-cli` for command-line programs, `effect-v4-mcp`
   for MCP servers, `design-patterns` for a tool that ships more than one bin.
-  On `@effected/cli`, an agent is never written an escape: paint through the
+  On `@effected/cli-kit`, an agent is never written an escape: paint through the
   theme (`CliTheme.forAudience`, `CliLog.status`), never by hand. Map a
   screen's answer with `CliUi.map`, load a live view lazily with
   `CliUi.lazyView` and give it a `final` document, and match a secret

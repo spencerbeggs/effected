@@ -23,10 +23,10 @@ sources:
     resource: ../../packages/store/__test__/StoreLifecycle.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T19:13:48Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: 22d6ecb74628f6c4
+    body: fe655462bd9eecda
 ---
 
 # Error handling standards
@@ -195,14 +195,14 @@ export const causeMessage = (cause: unknown): string | undefined => {
 The shipped copies carry the same text under the kit's tab indentation and a
 leading comment naming this section as the source; `cmp` across
 `packages/*/src/internal/causeMessage.ts` must report them identical. There
-are nine, every one with the getter guards above: `@effected/engine`,
+are nine, every one with the getter guards above: `@effected/kit`,
 `images`, `jsonc`, `jsonl`, `npm`, `package-json`, `schemastore-cli`,
-`store` and `workspaces`. `@effected/engine` is the one that also
+`store` and `workspaces`. `@effected/kit` is the one that also
 publishes it, as `ErrorText.causeMessage`, the read a consumer's own error
 rendering should use instead of copying the module (see
-[`engine.md`](../modules/engine.md)). `@effected/cli` re-publishes that same
+[`kit.md`](../modules/kit.md)). `@effected/cli-kit` re-publishes that same
 function object as `Fmt.causeMessage` and carries no copy of its own (see
-[`cli.md`](../modules/cli.md)).
+[`cli-kit.md`](../modules/cli-kit.md)).
 
 - The helper returns `string | undefined`; the site decides the fallback.
   A `message` getter renders its summary alone when `causeMessage` returns
@@ -231,10 +231,10 @@ function object as `Fmt.causeMessage` and carries no copy of its own (see
   `instanceof Error` reads in the kit sit outside this rule's subject — they
   render a value caught at a boundary, a defect's stack or an `Error`'s
   identity, not a preserved `cause: Schema.Defect()` field — and are listed
-  so the inventory is complete, not as debt: in `@effected/cli`
+  so the inventory is complete, not as debt: in `@effected/cli-kit`
   `src/CliRuntime.ts`, `src/CliFailure.ts`, `src/ui/CliUiLive.ts`,
   `src/ui/internal/inkConsole.ts` and `src/internal/fileSink.ts`;
-  `@effected/engine`'s `src/ProcessGuard.ts`; and `@effected/github-actions`'
+  `@effected/kit`'s `src/ProcessGuard.ts`; and `@effected/github-actions`'
   `src/Action.ts`. Of the message-from-`cause` sites #1082 named, the one
   read that stays is `REPLAY_SCRIPT` in
   `packages/workspaces/src/ConfigDependencyHooks.ts`: it is JavaScript source

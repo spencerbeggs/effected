@@ -25,7 +25,7 @@ set -euo pipefail
 # deliberately a constant rather than read from the host repo's catalog — the
 # point is to tell a LAGGING repo what it should move to, so comparing against
 # that repo's own (possibly stale) catalog would defeat the check.
-EFFECT_PIN="4.1.1"
+EFFECT_PIN="4.1.2"
 
 # --- vendored-source posture -------------------------------------------------
 # The session's project: CLAUDE_PROJECT_DIR on Claude Code, else the envelope's
@@ -122,6 +122,10 @@ Available via the Skill tool (several also auto-load on trigger):
   contains, when to reach for it, and a per-package reference (services, usage,
   testing machinery). Consult before building lockfile/config/glob/semver/XDG/
   workspace/git capability the kit already ships.
+- effected-renovate — /effected-renovate, user-invoked: move a repository onto
+  a new @effected release. Bumps the catalog plugin, regenerates the lockfile,
+  and lists the upgrade-ledger entries the bump crossed, with the files where
+  each one meets your code.
 - effect-v4-source-lookup — the evidence ladder for confirming a v4 API before
   relying on it: the vendored source settles existence and signature, only a
   probe settles semantics.
@@ -137,7 +141,7 @@ Available via the Skill tool (several also auto-load on trigger):
 - effect-v4-idioms — core Effect: typed errors, Result, generators,
   scope/resources, forking, structural equality.
 - effect-v4-cli — command-line programs: effect/cli in core plus
-  the @effected/cli presentation boundary (main assembly, exit codes, stdout
+  the @effected/cli-kit presentation boundary (main assembly, exit codes, stdout
   vs stderr, human/agent/CI audiences, themed documents and failure reports,
   prompts, Ink screens and live views, testing a built bin).
 - effect-v4-mcp — MCP servers on effect/ai: stdio wiring that keeps
@@ -226,6 +230,9 @@ the agents are the delivery mechanism. The specialists:
   the Actions suite above. Delegate whole action- and release-engineering
   tasks here.
 </agents>
+
+The effected MCP server (\`effected\`) is bundled with this plugin; its tools are
+available when the project installs @effected/plugin.
 
 When a task is substantially "write or review Effect code" or "build an action
 / call the GitHub API," dispatch the matching agent rather than doing it

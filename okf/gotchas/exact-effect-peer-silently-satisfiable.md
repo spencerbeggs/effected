@@ -16,10 +16,10 @@ sources:
     title: "The effect catalog locks every entry to an exact version, held by overrides"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-01T21:43:51Z
 integrity:
   generated:
-    body: 200f28ad9f636d3b
+    body: 7c7bb8bd1a16058c
 ---
 
 # An unsatisfiable effect peer installs clean and fails somewhere else
@@ -49,7 +49,7 @@ import — and that the fix is there.
 ## What is actually true
 
 Every published `@effected/*` package advertises an `effect` peer taken
-from the `effect:peers` catalog.[^pnpm-workspace] On the releases built
+from the repository's peers catalog, `effected:peers` (`effect:peers` on releases before [the one declared effected catalog](../decisions/one-declared-effected-catalog.md)).[^pnpm-workspace] On the releases built
 under [the exact lock](../decisions/effect-catalog-locked-exact.md) (the
 2026-10-10 and 2026-10-11 releases), that peer is the exact version the
 package was built against, `4.0.2`.[^exact-lock] Releases published before
@@ -114,7 +114,7 @@ against the `effect` peer range the `@effected/*` package actually
 declares. A mismatch there is the bug; the erroring module is just where
 it happened to surface.
 
-[^pnpm-workspace]: `pnpm-workspace.yaml` — the `effect:peers` catalog
+[^pnpm-workspace]: `pnpm-workspace.yaml` — the `effected:peers` catalog
     holds the floored peer range, under `lock-minor`, that every published
     `@effected/*` package's `peerDependencies` resolves from.
 [^exact-lock]: `okf/decisions/effect-catalog-locked-exact.md`

@@ -175,7 +175,7 @@ the MCP loader.
 The loader script itself stays shell — resolving the right bin and `exec`ing
 it is a shell problem, not one this pattern hands to the kit. What the kit
 does own is the **other** side: once the bin is running, it resolves which
-directory to treat as the project with `@effected/engine`'s
+directory to treat as the project with `@effected/kit`'s
 `LaunchContext.projectDir`. Have the loader pass the directory down through
 an environment variable, or at a known position among plain positional
 arguments — never mixed into a flag list the bin forwards unfiltered.

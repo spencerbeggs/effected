@@ -5,7 +5,7 @@
 # One source script serves Claude Code and Copilot through the pluginfinity
 # hook library, so every test runs the BUILT copy under builds/<host>/ with
 # run_hook, the way each host runs it. Run `pnpm build --filter
-# @effected/ai-plugin` first; `pluginfinity build --check` proves the builds
+# @effected/ai-plugins` first; `pluginfinity build --check` proves the builds
 # match the source.
 #
 # What the suite pins:

@@ -1,25 +1,25 @@
-# Prompts and screens: `CliPrompt` and `@effected/cli/ui`
+# Prompts and screens: `CliPrompt` and `@effected/cli-kit/ui`
 
-Loaded from `effect-v4-cli`. Covers asking a person for input: setting a project up for Ink screens, keeping React off the runs that never prompt, core's `Prompt` gated by `CliPrompt`, the Ink screens behind `@effected/cli/ui`, the ready-made widgets (with a `Confirm` worked through), writing a screen of your own, and the rules that keep a screen from tearing the terminal.
+Loaded from `effect-v4-cli`. Covers asking a person for input: setting a project up for Ink screens, keeping React off the runs that never prompt, core's `Prompt` gated by `CliPrompt`, the Ink screens behind `@effected/cli-kit/ui`, the ready-made widgets (with a `Confirm` worked through), writing a screen of your own, and the rules that keep a screen from tearing the terminal.
 
 ## Two engines, one contract
 
 | Engine | Import | Reach for it when |
 | --- | --- | --- |
-| core `Prompt` + `CliPrompt.fallback` | `effect/cli`, `@effected/cli` | a line-based question (text, number, confirm, select) with no extra dependencies |
-| Ink screens: `CliUi` + widgets | `@effected/cli/ui` | a richer screen: a scrolling list, sections of checkboxes, a confirm with toggles, tabs, your own layout |
+| core `Prompt` + `CliPrompt.fallback` | `effect/cli`, `@effected/cli-kit` | a line-based question (text, number, confirm, select) with no extra dependencies |
+| Ink screens: `CliUi` + widgets | `@effected/cli-kit/ui` | a richer screen: a scrolling list, sections of checkboxes, a confirm with toggles, tabs, your own layout |
 
 Both obey the same contract: they prompt **only** when `CliInteractive` is true (a human audience, terminals on stdin and stdout, `TERM` not `dumb`), a quit is **one `Cancelled`** (`reason: "escape" | "interrupt"`, exit `130`), and a prompt reached in a run that cannot prompt either answers a default you supply or fails (`NotInteractive`, exit `64`, or core's missing-parameter error, exit `64`). Every one of these needs `CliRuntime.main(..., { env })` (or `CliEnv.layer`) to have decided `CliInteractive`; without it nothing ever prompts.
 
 ## Setup
 
 ```sh
-pnpm add @effected/cli @effected/env @effected/walker @effected/glob effect
-pnpm add ink react                  # only for @effected/cli/ui
+pnpm add @effected/cli-kit @effected/env @effected/walker @effected/glob effect
+pnpm add ink react                  # only for @effected/cli-kit/ui
 pnpm add -D @types/react @types/node
 ```
 
-`@effected/env`, `@effected/walker` and `@effected/glob` are required peers of the root; `ink`, `react` and `@types/react` are optional peers that only `@effected/cli/ui` uses, and `@effected/config-file` is an optional peer of one root module. A program that only prompts through core's `Prompt` installs none of the Ink ones.
+`@effected/env`, `@effected/walker` and `@effected/glob` are required peers of the root; `ink`, `react` and `@types/react` are optional peers that only `@effected/cli-kit/ui` uses, and `@effected/config-file` is an optional peer of one root module. A program that only prompts through core's `Prompt` installs none of the Ink ones.
 
 A screen of your own written as JSX needs the automatic JSX transform, in the tsconfig that compiles it:
 
@@ -33,14 +33,14 @@ The kit ships no JSX, so this is a consumer-only setting. With `"jsx": "react"` 
 
 ## Keeping React off the runs that never prompt
 
-Importing `@effected/cli/ui` loads nothing: `ink` and `react` are imported only when a screen first mounts. **A module of yours that contains JSX does not get that benefit.** Compiled with `react-jsx` it begins with `import { jsx } from "react/jsx-runtime"`, and a module that imports `ink` or `react` loads them when the module loads. If the command module that declares your flags holds that JSX, every run of the program loads React, including `--agent` and CI runs and `--help`.
+Importing `@effected/cli-kit/ui` loads nothing: `ink` and `react` are imported only when a screen first mounts. **A module of yours that contains JSX does not get that benefit.** Compiled with `react-jsx` it begins with `import { jsx } from "react/jsx-runtime"`, and a module that imports `ink` or `react` loads them when the module loads. If the command module that declares your flags holds that JSX, every run of the program loads React, including `--agent` and CI runs and `--help`.
 
 Keep every screen of your own in a module of its own, with the screen as its default export, and mount it with `CliUi.lazy`, which defers the module's import to the moment the screen mounts:
 
 ```tsx
 // screens/counter.tsx: the only module that imports ink, react and the JSX runtime
-import { KeyHelp, KeyTable, Styled, useKeys } from "@effected/cli/ui"
-import type { Screen } from "@effected/cli/ui"
+import { KeyHelp, KeyTable, Styled, useKeys } from "@effected/cli-kit/ui"
+import type { Screen } from "@effected/cli-kit/ui"
 import { Box, Text } from "ink"
 import { useState } from "react"
 
@@ -80,7 +80,7 @@ export default counter
 
 ```ts
 // pick.ts: the command module, no JSX and no ink or react import, so a non-interactive run loads neither
-import { CliUi } from "@effected/cli/ui"
+import { CliUi } from "@effected/cli-kit/ui"
 import { Console, Effect } from "effect"
 import { Command } from "effect/cli"
 
@@ -116,8 +116,8 @@ The module loads only when a run first draws with Ink. `--help`, `--version` and
 ## A flag or argument that prompts when missing
 
 ```ts
-import { CliPrompt } from "@effected/cli"
-import { CliUi, Select } from "@effected/cli/ui"
+import { CliPrompt } from "@effected/cli-kit"
+import { CliUi, Select } from "@effected/cli-kit/ui"
 import { Flag, Prompt } from "effect/cli"
 
 const name = Flag.String("name").pipe(
@@ -151,7 +151,7 @@ Name the parameter with `flag` (its name without dashes) or `argument`, so the m
 | `context` | `Effect<UiContextValue, never, CliTheme>`: the theme and glyphs for an Ink tree the kit did not mount (see the live-view reference) |
 
 ```ts
-import { CliUi, Select, TextInput } from "@effected/cli/ui"
+import { CliUi, Select, TextInput } from "@effected/cli-kit/ui"
 import { Effect } from "effect"
 
 const answers = Effect.gen(function* () {
@@ -205,7 +205,7 @@ Behaviour that surprises a first screen:
 `Confirm.screen` resolves a `ConfirmResult`: `{ confirmed: boolean, toggles }`. `y` and `n` set the answer, `←` and `→` flip it, `↑` and `↓` move to the toggle rows, space flips the highlighted toggle, enter submits. **Enter alone answers no**, unless `initial: true` says otherwise.
 
 ```ts
-import { CliUi, Confirm } from "@effected/cli/ui"
+import { CliUi, Confirm } from "@effected/cli-kit/ui"
 import { Effect } from "effect"
 
 const create = Effect.gen(function* () {
@@ -227,7 +227,7 @@ const create = Effect.gen(function* () {
 A `Confirm` behind a boolean flag ("confirm, or `--yes`") needs a `Screen<boolean>`, because `Flag.Boolean`'s fallback takes the flag's own type. `CliUi.map(screen, f)` turns a `Screen<A>` into a `Screen<B>`: it resolves with `f` of the inner answer and leaves a cancel, the drawing and the keys alone:
 
 ```ts
-import { CliUi, Confirm } from "@effected/cli/ui"
+import { CliUi, Confirm } from "@effected/cli-kit/ui"
 import { Flag } from "effect/cli"
 
 const overwrite = CliUi.map(Confirm.screen({ message: "Overwrite existing files?" }), (result) => result.confirmed)
@@ -248,8 +248,8 @@ A `Screen<A>` is `(control: ScreenControl<A>) => ReactElement | Promise<ReactEle
 A scrolling picker with tabs composes `Viewport` and `Tabs`. `Viewport.init(count, height)` is the state, `Viewport.step` moves it from a functional update inside `useKeys(Viewport.keys, ...)`, and `<Viewport.View rows state renderRow reserved />` draws only the rows that fit, with `reserved` the lines the rest of the screen uses. Take the height from `useTerminalSize().rows`; reinitialise the state when the rows change:
 
 ```tsx
-import { KeyHelp, KeyTable, Styled, Tabs, useKeys, useTerminalSize, Viewport } from "@effected/cli/ui"
-import type { Screen, ViewportRow } from "@effected/cli/ui"
+import { KeyHelp, KeyTable, Styled, Tabs, useKeys, useTerminalSize, Viewport } from "@effected/cli-kit/ui"
+import type { Screen, ViewportRow } from "@effected/cli-kit/ui"
 import { Box, Text } from "ink"
 import { useState } from "react"
 
@@ -327,7 +327,7 @@ A row is `{ _tag: "Item", key }` (selectable, its `key` unique) or `{ _tag: "Hea
 
 - **Nothing may log while a screen is mounted.** Ink runs with `patchConsole` off, so a line written to the terminal from anywhere else tears the frame. Log before or after, or use a live view's `logConsole`.
 - **React error boundaries do not catch an error thrown in an Ink `useInput` or `usePaste` handler** — Ink calls input handlers outside React's render. Inside a screen, a throwing `useKeys` dispatch (and the kit's own paste handling) is caught and ends the screen as a defect. A raw `useInput` or `usePaste` of your own is **not** guarded: catch inside it.
-- **`ink` and `react` are optional peers** (`ink` ^8.0.0, `react` ^19.3.0), loaded by the kit only when a screen first mounts: importing `@effected/cli/ui`, or running a non-interactive program, loads neither (JSX and `ink` imports of your own load them when their module loads: see above). An interactive run without them is a defect naming both, never a silent fallback. A TypeScript consumer also installs `@types/react` (an optional peer, since React ships no types; without it a `skipLibCheck` build silently types every screen as `any`) and `@types/node`.
-- **The root entrypoint never reaches `./ui`**, so a program that only imports `@effected/cli` cannot load Ink by accident.
+- **`ink` and `react` are optional peers** (`ink` ^8.0.0, `react` ^19.3.0), loaded by the kit only when a screen first mounts: importing `@effected/cli-kit/ui`, or running a non-interactive program, loads neither (JSX and `ink` imports of your own load them when their module loads: see above). An interactive run without them is a defect naming both, never a silent fallback. A TypeScript consumer also installs `@types/react` (an optional peer, since React ships no types; without it a `skipLibCheck` build silently types every screen as `any`) and `@types/node`.
+- **The root entrypoint never reaches `./ui`**, so a program that only imports `@effected/cli-kit` cannot load Ink by accident.
 - **A screen that awaits another `CliUi.run` deadlocks.** Screens run one at a time, process-wide, so the inner `run` waits for the outer to release, which waits for the inner. Nothing guards against it: ask the second question after the first screen resolves, in the handler.
 - **A `CliUi.run` while a live view has a run drawn waits for that run to end**, so do not prompt in the middle of drawn progress. A drawn run's tick timer also keeps the process alive until the run's terminal event or the scope's close.

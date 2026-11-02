@@ -1,24 +1,26 @@
 ---
 type: Decision
 title: "D9: CliTest uses core ChildProcess, with no peer on @effected/commands"
-description: The new @effected/cli/testing subpath spawns fixture binaries directly over effect core's ChildProcess contract rather than adding an optional peer on @effected/commands.
+description: The new @effected/cli-kit/testing subpath spawns fixture binaries directly over effect core's ChildProcess contract rather than adding an optional peer on @effected/commands.
 status: stable
 tags: [architecture, testing, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:45:24Z
+  at: 2026-11-02T15:53:05Z
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
-    body: bc110660511c8e01
+    body: e3e02469be2ec130
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 502ff5dad789fc73
+    at: 2026-11-02T17:04:46Z
+    content: a068f74f32a58ca9
 ---
 
 # D9: `CliTest` uses core `ChildProcess`, with no peer on `@effected/commands`
@@ -31,9 +33,9 @@ exactly the shape `@effected/commands`' `Run` already provides, over the
 same underlying `ChildProcessSpawner` contract core exposes directly.
 Reaching for `@effected/commands` would mean either a required dependency
 — unacceptable for a `boundary`-tier testing subpath whose package,
-`@effected/cli`, currently depends on nothing but `effect` and the
+`@effected/cli-kit`, currently depends on nothing but `effect` and the
 optional `@effected/config-file` peer — or an *optional* peer, mirroring
-the `config-file` pattern `cli.md` already documents for
+the `config-file` pattern `cli-kit.md` already documents for
 `ConfigIssueRenderer`. But `@effected/commands` brings tool-discovery and
 argv-prefix machinery (`npm exec`, `pnpm dlx`, and the rest of its table)
 that a test harness spawning one already-known fixture binary has no use
@@ -46,7 +48,7 @@ resolution.
 
 `CliTest.run` spawns `execPath` with `[bin, ...args]` directly over core's
 `ChildProcess` contract (`ChildProcessSpawner`), the same contract
-`@effected/commands` itself is built on. `@effected/cli/testing` takes no
+`@effected/commands` itself is built on. `@effected/cli-kit/testing` takes no
 dependency, optional or required, on `@effected/commands`.
 
 ## Alternatives rejected
@@ -55,7 +57,7 @@ dependency, optional or required, on `@effected/commands`.
 tool-discovery and prefix-resolution machinery `Run` provides has no
 counterpart need in `CliTest.run`'s contract, which always receives an
 already-known `execPath` and `bin` from the calling test file rather than
-resolving either one itself. Adding the peer would cost every `cli`
+resolving either one itself. Adding the peer would cost every `cli-kit`
 consumer an unused optional-peer entry in their manifest for a capability
 `CliTest` never calls.
 

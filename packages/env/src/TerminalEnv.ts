@@ -26,7 +26,7 @@ export interface StreamEnv {
 	 * multiplexer that strips them (tmux, GNU screen), and a known terminal at a version that renders them.
 	 *
 	 * This is terminal capability only and does not consider the audience. Turning links off for an agent audience
-	 * is applied by `@effected/cli`, where the audience is known.
+	 * is applied by `@effected/cli-kit`, where the audience is known.
 	 */
 	readonly hyperlinks: boolean;
 	/**
@@ -237,7 +237,7 @@ export class TerminalEnv extends Context.Service<TerminalEnv, TerminalEnvShape>(
 	 *
 	 * The snapshot does not carry `TERM`, so it is passed alongside. This package installs no layer for core's
 	 * reference: `effect/cli` exports it only through its barrel, and a value import here would load that barrel for
-	 * every consumer of this package. `@effected/cli`'s `CliEnv.layer` installs it, reading `TERM` through `Config`.
+	 * every consumer of this package. `@effected/cli-kit`'s `CliEnv.layer` installs it, reading `TERM` through `Config`.
 	 *
 	 * @param terminal - the terminal snapshot
 	 * @param term - the value of `TERM`, or `undefined` when it is unset

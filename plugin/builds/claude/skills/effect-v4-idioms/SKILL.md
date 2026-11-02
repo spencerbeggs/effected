@@ -697,10 +697,12 @@ Equal.equals(NaN, NaN)             // true  (NaN equals itself)
 Equal.equals(new Uint8Array([1, 2]).buffer, new Uint8Array([3, 4]).buffer) // false
 ```
 
-Mutable cells are the exception: `Ref` and `MutableRef` compare **by
-reference**. Two distinct refs holding equal contents are unequal and are two
-separate `HashSet` members or `HashMap` keys; compare what they hold
-(`Ref.get`, `MutableRef.get`) when the contents are what matters.
+Mutable cells are no exception: `Ref` and `MutableRef` compare **by their
+current contents**. Two distinct refs holding equal values are `Equal`, hash
+alike, and collapse to one `HashSet` member or one `HashMap` key; and since the
+comparison reads the value at that moment, a ref mutated after insertion can
+stop matching its own entry. Never use a ref as a set member, map key or
+memo key; key on a stable id you own, or wrap it in `Equal.byReference`.
 
 To force identity comparison, opt out per object: `Equal.byReference(obj)`
 (non-mutating Proxy) or `Equal.byReferenceUnsafe(obj)` (marks the object itself,

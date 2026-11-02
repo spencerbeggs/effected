@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: Consumers see one catalog, effected, folded by the plugin's hook from split declarations
-description: "@effected/pnpm-plugin-effect is renamed @effected/pnpm-plugin-effected and serves consumers exactly one catalog, effected, holding the Effect family and the kit; savvy.build.ts still declares effect and effected separately with :peers twins because the override directive and the upgrade CLI work per catalog, and the plugin's updateConfig folds them."
+description: "@effected/pnpm-plugin-effect is renamed @effected/pnpm-plugin-effected and serves consumers exactly one catalog, effected, holding the Effect family and the kit; savvy.build.ts still declares effect and effected separately with :peers twins because the override directive and the upgrade CLI work per catalog, and the plugin's updateConfig folds them. The split declaration and the fold are superseded by one-declared-effected-catalog; the one consumer catalog and the rename stand."
 status: stable
 tags:
   - deps
@@ -27,20 +27,24 @@ sources:
     title: "The @effect/tsgo auto-patch, split out of 1146"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-01T21:43:51Z
 integrity:
   generated:
-    body: 9ab094a00a1d1273
+    body: a8290944ef0d8f01
   verified:
     by: human:spencer
-    at: 2026-10-31T19:39:48Z
-    content: a0ca18846a56ed84
+    at: 2026-11-01T21:41:54Z
+    content: 59bd8a95df432579
 verified:
   - by: human:spencer
     at: 2026-10-31T19:39:48Z
+  - by: human:spencer
+    at: 2026-11-01T21:41:54Z
 ---
 
 # Consumers see one catalog, effected, folded by the plugin's hook from split declarations
+
+**Superseded in part.** The consumer-facing half stands: one catalog, `effected`, and the rename. The split declaration, the fold, and this repository's use of `catalog:effect` are superseded by [the one declared effected catalog](one-declared-effected-catalog.md), which `rolldown-pnpm-config` 2.3.0's `include` patterns made possible.
 
 ## Context
 

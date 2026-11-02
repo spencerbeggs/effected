@@ -1,19 +1,19 @@
 ---
 name: effect-v4-cli
-description: Use when building or reviewing a command-line program on Effect v4 — effect/cli in core, its exit-code contract, and @effected/cli, the presentation boundary that decides who the output is for (human, agent, CI), keeps stdout clean, reports failures on stderr, and adds prompts, Ink screens and live progress views — a TUI, wizard, picker or interactive prompt, and the tests that drive them.
-when_to_use: effect/cli, Command, Flag, Argument, @effect/cli, exit code, findings exit code, usage error, --format json, --version, stdout vs stderr, stdin, CliLogger, CliRuntime, CliExit, CliColor, CliTest, @effected/cli/testing, NO_COLOR, FORCE_COLOR, TERM=dumb, bin-only package, emitDts false, Command.Environment, ChildProcess vs Command, --agent, --human, --ci, audience, CliAudience, CliEnv, CliTheme, CliMessage, CliLog, Doc, Render, CliFailure, CliPrompt, prompt fallback, interactive, CliUi, @effected/cli/ui, Ink, Select, MultiSelect, Confirm, TextInput, live view, spinner, progress, DocView, UiProvider, CliUiTest, TestTerminal, TUI, terminal UI, wizard, picker, menu, checkbox, interactive prompt, key bindings, KeyTable, useKeys, Tabs, Viewport, CliUi.lazy, jsx react-jsx, React is not defined, CliUi.map, CliUi.lazyView, masked input, secret prompt, span trail, snapshot serializer
+description: Use when building or reviewing a command-line program on Effect v4 — effect/cli in core, its exit-code contract, and @effected/cli-kit, the presentation boundary that decides who the output is for (human, agent, CI), keeps stdout clean, reports failures on stderr, and adds prompts, Ink screens and live progress views — a TUI, wizard, picker or interactive prompt, and the tests that drive them.
+when_to_use: effect/cli, Command, Flag, Argument, @effect/cli, exit code, findings exit code, usage error, --format json, --version, stdout vs stderr, stdin, CliLogger, CliRuntime, CliExit, CliColor, CliTest, @effected/cli-kit/testing, NO_COLOR, FORCE_COLOR, TERM=dumb, bin-only package, emitDts false, Command.Environment, ChildProcess vs Command, --agent, --human, --ci, audience, CliAudience, CliEnv, CliTheme, CliMessage, CliLog, Doc, Render, CliFailure, CliPrompt, prompt fallback, interactive, CliUi, @effected/cli-kit/ui, Ink, Select, MultiSelect, Confirm, TextInput, live view, spinner, progress, DocView, UiProvider, CliUiTest, TestTerminal, TUI, terminal UI, wizard, picker, menu, checkbox, interactive prompt, key bindings, KeyTable, useKeys, Tabs, Viewport, CliUi.lazy, jsx react-jsx, React is not defined, CliUi.map, CliUi.lazyView, masked input, secret prompt, span trail, snapshot serializer
 ---
 
 # Effect v4 CLIs
 
 Core owns parsing: `effect/cli` is the whole framework — `Command`, `Flag`,
 `Argument`, `Prompt`, help, exit-code mapping. It owns nothing about who reads
-the output or how it reaches them. `@effected/cli` is the presentation
+the output or how it reaches them. `@effected/cli-kit` is the presentation
 boundary that fills that gap: it decides the **audience** (a person, an agent,
 a CI job), what the terminal can do, the theme, how a document and a failure
 are drawn for that audience, and when a run may prompt. Its root is
 React-free; interactive Ink screens and live views live behind
-`@effected/cli/ui`, whose `ink` and `react` peers are optional. It is
+`@effected/cli-kit/ui`, whose `ink` and `react` peers are optional. It is
 deliberately not a second framework: it adds no parser and no command model.
 
 The one wiring:
@@ -36,34 +36,34 @@ NodeRuntime.runMain(
 | --- | --- | --- |
 | `Command`, `Flag`, `Argument`, `Prompt` | `effect/cli` | declaring the command tree, its flags, positional arguments and core's line prompts |
 | `ChildProcess`, `ChildProcessSpawner` | `effect/process` | building or running a spawned command — **not** `effect/cli`'s `Command`, which only declares your own CLI |
-| `CliRuntime.main`, `CliRuntime.reportFailures` | `@effected/cli` | assembling `main`: platform, environment, failure reporting through your own logger, and the process exit code |
-| `CliAudience` | `@effected/cli` | `--audience`/`--human`/`--agent`/`--ci` on the root, resolved before core parses |
-| `CliEnv` | `@effected/cli` | building audience, terminal, theme and links once, and deciding `CliInteractive` — normally via `main`'s `env`; `CliEnv.layerTest` fixes them in a test |
+| `CliRuntime.main`, `CliRuntime.reportFailures` | `@effected/cli-kit` | assembling `main`: platform, environment, failure reporting through your own logger, and the process exit code |
+| `CliAudience` | `@effected/cli-kit` | `--audience`/`--human`/`--agent`/`--ci` on the root, resolved before core parses |
+| `CliEnv` | `@effected/cli-kit` | building audience, terminal, theme and links once, and deciding `CliInteractive` — normally via `main`'s `env`; `CliEnv.layerTest` fixes them in a test |
 | `Audience`, `TerminalEnv`, `CurrentRuntimeEnv`, `EnvOverride` | `@effected/env` | reading who runs the program and what the terminal can do (colour level, width, hyperlinks) |
-| `CliInteractive` | `@effected/cli` | asking whether this run may prompt a person |
-| `CliTheme`, `Token`, `Status`, `Glyphs` | `@effected/cli` | painting by token, a typed status vocabulary, Unicode or ASCII glyphs |
-| `CliMessage` | `@effected/cli` | a one-line themed outcome ("created 3 files") that no log level silences |
-| `CliLog.status`, `CliTheme.forAudience` | `@effected/cli` | a status glyph that keeps its colour on the log channel; painting your own lines by the kit's audience rule |
-| `Doc`, `Render`, `Fmt`, `CliLinks` | `@effected/cli` | building a report once and rendering it plain for agents, ANSI for people, markdown, or a GitHub Actions log |
-| `CliFormat.flag`, `CliFormat.print`, `CliFormat.printJson` | `@effected/cli` | a `--format` flag (`auto`, a renderer by name, or `json`; plus `aliases` such as `{ human: "auto" }`, and `custom` formats the command renders itself) and the one print that honours it: the report built once as a `Doc`, the data once as a value. `print` takes no custom format, so branch on it first; `printJson` alone for a CLI that keeps its own `--json` |
-| `CliFailure` | `@effected/cli` | drawing a failure as a document, or letting an error draw itself (`CliDoc`); its `in:` span trail (`spans`, `appModule`) |
-| `CliLog` | `@effected/cli` | opt-in diagnostics: a level variable, NDJSON for agents and CI, a file sink, components |
-| `CliLog.parseLevel` | `@effected/cli` | reading a level from your own flag or config with the answer `CliLog.layer` would give (`Option` of the level) |
-| `CliLogger` | `@effected/cli` | the plain, level-routed logger on its own, for a program without `CliLog` |
-| `CliExit` | `@effected/cli` | a findings command (a linter that found problems) exiting non-zero by succeeding, never by failing |
-| `CliColor` | `@effected/cli` | the stdout colour decision as a boolean, and core's formatter coloured by it, in a program without `env` |
-| `CliPrompt.fallback` | `@effected/cli` | a flag or argument that prompts with core's `Prompt` when missing — only when interactive |
-| `CliUi`, `Select`, `TextInput`, `MultiSelect`, `Confirm` | `@effected/cli/ui` | an Ink screen from a handler (`prompt`) or as a fallback (`fallback`), with a non-interactive default |
-| `CliUi.lazy` | `@effected/cli/ui` | mounting a screen of your own whose module holds the JSX, so a non-interactive run never loads React |
-| `CliUi.map` | `@effected/cli/ui` | mapping a screen's answer, e.g. a `Confirm` behind a `--yes` boolean flag |
-| `CliUi.live`, `CliUi.lazyView`, `DocView`, `UiProvider` | `@effected/cli/ui` | progress that redraws in place while work runs, its view loaded lazily and a `final` document for runs nobody watches, drawing the `Doc` IR inside Ink |
-| `CliUi.liveDetached` | `@effected/cli/ui` | a live view hosted by code not built on Effect (a test reporter, a bundler plugin): Promise `handle`/`close`/`exit`, its `render` given directly or as an Effect that reads `env`'s services |
-| `CliUi.routeStream` | `@effected/cli/ui` | a `Writable` to hand a library in place of a terminal stream, routing its lines above a live view's frame through `printAbove` |
-| `KeyTable`, `useKeys`, `KeyHelp`, `Styled`, `Viewport`, `Tabs` | `@effected/cli/ui` | writing your own screen: keys as data, themed text, a scrolling list, tabs |
-| `CliTest.sandbox`/`run`/`spawn`, `TestTerminal` | `@effected/cli/testing` | spawning a built bin hermetically (`run` waits and returns the result; `spawn` returns at once for a long-running bin); driving core prompts in a test |
-| `CliUiTest` | `@effected/cli/ui/testing` | driving a screen or live view with keys and reading its frames and the terminal's transcript |
-| `MainOptions.distribution` | `@effected/cli` | the carrier the bin was installed through: `main` provides engine's `CurrentDistribution` and ends `--version` with its `via <name> <version>` suffix |
-| `CurrentDistribution`, `withDistributionVersion`, `distributionSuffix` | `@effected/engine` | reading the carrier inside the program, or decorating a `formatVersion` without `main` |
+| `CliInteractive` | `@effected/cli-kit` | asking whether this run may prompt a person |
+| `CliTheme`, `Token`, `Status`, `Glyphs` | `@effected/cli-kit` | painting by token, a typed status vocabulary, Unicode or ASCII glyphs |
+| `CliMessage` | `@effected/cli-kit` | a one-line themed outcome ("created 3 files") that no log level silences |
+| `CliLog.status`, `CliTheme.forAudience` | `@effected/cli-kit` | a status glyph that keeps its colour on the log channel; painting your own lines by the kit's audience rule |
+| `Doc`, `Render`, `Fmt`, `CliLinks` | `@effected/cli-kit` | building a report once and rendering it plain for agents, ANSI for people, markdown, or a GitHub Actions log |
+| `CliFormat.flag`, `CliFormat.print`, `CliFormat.printJson` | `@effected/cli-kit` | a `--format` flag (`auto`, a renderer by name, or `json`; plus `aliases` such as `{ human: "auto" }`, and `custom` formats the command renders itself) and the one print that honours it: the report built once as a `Doc`, the data once as a value. `print` takes no custom format, so branch on it first; `printJson` alone for a CLI that keeps its own `--json` |
+| `CliFailure` | `@effected/cli-kit` | drawing a failure as a document, or letting an error draw itself (`CliDoc`); its `in:` span trail (`spans`, `appModule`) |
+| `CliLog` | `@effected/cli-kit` | opt-in diagnostics: a level variable, NDJSON for agents and CI, a file sink, components |
+| `CliLog.parseLevel` | `@effected/cli-kit` | reading a level from your own flag or config with the answer `CliLog.layer` would give (`Option` of the level) |
+| `CliLogger` | `@effected/cli-kit` | the plain, level-routed logger on its own, for a program without `CliLog` |
+| `CliExit` | `@effected/cli-kit` | a findings command (a linter that found problems) exiting non-zero by succeeding, never by failing |
+| `CliColor` | `@effected/cli-kit` | the stdout colour decision as a boolean, and core's formatter coloured by it, in a program without `env` |
+| `CliPrompt.fallback` | `@effected/cli-kit` | a flag or argument that prompts with core's `Prompt` when missing — only when interactive |
+| `CliUi`, `Select`, `TextInput`, `MultiSelect`, `Confirm` | `@effected/cli-kit/ui` | an Ink screen from a handler (`prompt`) or as a fallback (`fallback`), with a non-interactive default |
+| `CliUi.lazy` | `@effected/cli-kit/ui` | mounting a screen of your own whose module holds the JSX, so a non-interactive run never loads React |
+| `CliUi.map` | `@effected/cli-kit/ui` | mapping a screen's answer, e.g. a `Confirm` behind a `--yes` boolean flag |
+| `CliUi.live`, `CliUi.lazyView`, `DocView`, `UiProvider` | `@effected/cli-kit/ui` | progress that redraws in place while work runs, its view loaded lazily and a `final` document for runs nobody watches, drawing the `Doc` IR inside Ink |
+| `CliUi.liveDetached` | `@effected/cli-kit/ui` | a live view hosted by code not built on Effect (a test reporter, a bundler plugin): Promise `handle`/`close`/`exit`, its `render` given directly or as an Effect that reads `env`'s services |
+| `CliUi.routeStream` | `@effected/cli-kit/ui` | a `Writable` to hand a library in place of a terminal stream, routing its lines above a live view's frame through `printAbove` |
+| `KeyTable`, `useKeys`, `KeyHelp`, `Styled`, `Viewport`, `Tabs` | `@effected/cli-kit/ui` | writing your own screen: keys as data, themed text, a scrolling list, tabs |
+| `CliTest.sandbox`/`run`/`spawn`, `TestTerminal` | `@effected/cli-kit/testing` | spawning a built bin hermetically (`run` waits and returns the result; `spawn` returns at once for a long-running bin); driving core prompts in a test |
+| `CliUiTest` | `@effected/cli-kit/ui/testing` | driving a screen or live view with keys and reading its frames and the terminal's transcript |
+| `MainOptions.distribution` | `@effected/cli-kit` | the carrier the bin was installed through: `main` provides engine's `CurrentDistribution` and ends `--version` with its `via <name> <version>` suffix |
+| `CurrentDistribution`, `withDistributionVersion`, `distributionSuffix` | `@effected/kit` | reading the carrier inside the program, or decorating a `formatVersion` without `main` |
 | `SourceBoundary` | `@effected/workspaces/testing` | pinning which files may read `process` in a CLI's own tests |
 
 ## Standards
@@ -98,7 +98,7 @@ NodeRuntime.runMain(
 - An agent audience never gets an escape, even from an explicit `Render.ansi` — see `presentation.md`.
 - Under `env`, `main`'s formatter shadows one the platform sets; override through `env.formatter` — see `recipes.md`.
 - A `Logger.layer([...])` of your own beside `CliLog` replaces its whole logger set and silences diagnostics — see `presentation.md`.
-- JSX or an `ink`/`react` import in the module that declares your commands loads React on every run, `--agent` and CI included; `@effected/cli/ui` itself never does — see `prompts-and-screens.md`.
+- JSX or an `ink`/`react` import in the module that declares your commands loads React on every run, `--agent` and CI included; `@effected/cli-kit/ui` itself never does — see `prompts-and-screens.md`.
 - `"jsx": "react"` (classic) crashes a screen at mount with `React is not defined` — see `prompts-and-screens.md`.
 - A cancel in a fallback prompt is a defect a handler's `catchTag` cannot see; `main` renders it, exit `130` — see `prompts-and-screens.md`.
 - A line written while a screen is mounted tears the frame (`patchConsole` is off) — see `prompts-and-screens.md`.
@@ -152,5 +152,5 @@ Anchors in this skill and its references cite the vendored tag at
 - **`effect-v4-services-layers`** — providing `Command.Environment` once at the
   boundary, and the memoization discipline.
 - **`effect-v4-testing`** — `TestClock`, `TestConsole`, and proving a suite can fail.
-- **`effected-packages`** — the `@effected/env` and `@effected/cli` rows and
+- **`effected-packages`** — the `@effected/env` and `@effected/cli-kit` rows and
   their construct index.

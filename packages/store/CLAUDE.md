@@ -10,7 +10,7 @@ The two are genuinely different services, not one with a flag: an evicted cache 
 
 ## Tier: integrated
 
-**Integrated tier**, and the only package in the repo that is. `peerDependencies` is `effect` alone; `dependencies` is `@effect/sql-sqlite-node` (`catalog:effect`) — one regular runtime dependency, which is precisely what makes store tier 3. Its only peer is `effect`, which store already declares, so the peer closure is complete by construction.
+**Integrated tier**, and the only package in the repo that is. `peerDependencies` is `effect` alone; `dependencies` is `@effect/sql-sqlite-node` (`catalog:effected`) — one regular runtime dependency, which is precisely what makes store tier 3. Its only peer is `effect`, which store already declares, so the peer closure is complete by construction.
 
 Consumers of store are tier 3 by [R2](../../okf/conventions/dependency-policy.md#r2--tier-3-propagates). That is *why* the SQLite services were split out of `@effected/xdg` — so xdg stays boundary tier. Do not let store's dependency leak upward: no store type signature exposes a `SqliteClient` type, the driver appears only inside `layerSqlite`/`layerTest`, and it must stay that way.
 

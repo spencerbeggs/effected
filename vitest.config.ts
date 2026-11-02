@@ -8,14 +8,16 @@ export default async () => {
 	const strategy = new DefaultDiscoverStrategy().extend({
 		buildProject: async (input, inherited) => {
 			if (input.name === "scratchpad" && process.env.CI) return null;
-			// @effected/cli registers its own snapshot serializer the way a consumer does: through the config, by the
+			// @effected/cli-kit registers its own snapshot serializer the way a consumer does: through the config, by the
 			// module whose default export it is, never with expect.addSnapshotSerializer (effected#909).
-			if (input.name === "@effected/cli" && inherited !== null) {
+			if (input.name === "@effected/cli-kit" && inherited !== null) {
 				return {
 					...inherited,
 					test: {
 						...inherited.test,
-						snapshotSerializers: [fileURLToPath(new URL("packages/cli/src/ui-testing-serializer.ts", import.meta.url))],
+						snapshotSerializers: [
+							fileURLToPath(new URL("packages/cli-kit/src/ui-testing-serializer.ts", import.meta.url)),
+						],
 					},
 				};
 			}

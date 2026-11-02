@@ -15,7 +15,7 @@ sources:
   - id: upstream-8496
     resource: https://github.com/Effect-TS/effect/issues/8496
   - id: toolkit
-    resource: ../../packages/mcp/src/McpToolkit.ts
+    resource: ../../packages/mcp-kit/src/McpToolkit.ts
   - id: vitest-agent-friction
     resource: "vitest-agent dogfood findings, rc-118 loop round 1, friction 1 (the accepted-params list is a documented consumer contract)"
   - id: owner
@@ -24,7 +24,7 @@ sources:
     last_modified: 2026-09-28T00:00:00Z
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T18:00:23Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-09-28T17:11:35Z
@@ -32,13 +32,15 @@ verified:
     at: 2026-09-28T17:52:49Z
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
-    body: 4a505291456fbd27
+    body: a54eac1e2e2078fc
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: f1be3b0d0ccecf06
+    at: 2026-11-02T17:04:46Z
+    content: ad63fd15892bb0ef
 ---
 
 # Strict MCP input is reported by core; McpToolkit appends the accepted params instead of pre-checking
@@ -135,6 +137,6 @@ after the decode instead (see Decision).
 [^upstream-8495]: Effect-TS/effect issue 8495, a strict tool's parameter rejection names only the first unknown key.
 [^upstream-8508]: Effect-TS/effect PR 8508, report all MCP tool parameter validation errors.
 [^upstream-8496]: Effect-TS/effect issue 8496, closed as intended; the registration error was clarified instead.
-[^toolkit]: `packages/mcp/src/McpToolkit.ts`
+[^toolkit]: `packages/mcp-kit/src/McpToolkit.ts`
 [^vitest-agent-friction]: vitest-agent dogfood findings, rc-118 loop round 1, friction 1.
 [^owner]: conversation with the repository owner, 2026-09-28.

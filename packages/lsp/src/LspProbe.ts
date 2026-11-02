@@ -52,7 +52,7 @@ export interface LspProbeResult {
  * notification; then the probe waits for the server to exit. The caller
  * asserts `response.error === undefined`, `exitCode === 0` and, for a clean
  * boot, `stderr === ""` — this is the LSP half of a packed-install proof, the
- * twin of `@effected/mcp/testing`'s `McpProbe`. Every frame is encoded with
+ * twin of `@effected/mcp-kit/testing`'s `McpProbe`. Every frame is encoded with
  * `LspFrame.encode` from the main entry, so `Content-Length` counts bytes.
  *
  * - `initialized` is sent because the specification requires it before any

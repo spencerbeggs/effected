@@ -10,11 +10,11 @@ sources:
   - id: effected-packages-skill
     resource: ../../plugin/skills/effected-packages
 generated:
-  by: "claude-code/opus-5.5"
-  at: 2026-10-23T22:19:34Z
+  by: "okfit/claude-code"
+  at: 2026-11-02T14:55:07Z
 integrity:
   generated:
-    body: 72dc61a0cc605c6c
+    body: 2d14e4011d779a8d
 ---
 
 # A plugin skill is a lean index over references
@@ -52,7 +52,10 @@ reader cannot act on is cost without payoff. The same reasoning bans an
 Effect prerelease version or since-version history from a skill's own
 prose — see
 [consumer-text-states-current-effect-behaviour.md](consumer-text-states-current-effect-behaviour.md)
-for the full rule and its narrow exceptions. Citations into the vendored
+for the full rule and its narrow exceptions. The one directory exempt
+from the versions and issue-numbers ban is the `effected-renovate`
+skill's upgrade ledger, whose entries are version-keyed by design. Its
+`SKILL.md` and its other references are not exempt. Citations into the vendored
 Effect source are the sanctioned exception, and they are load-bearing
 rather than merely tolerated: a `Module.ts:line` anchor is what lets a
 reader settle a v4 claim against source instead of trusting the skill's
@@ -73,6 +76,17 @@ code span continuing one, and give it an entry in
 prose (`` `src/Logger.ts` ``: `consoleJson` at 992) is invisible to the
 anchor check, so it rots unchecked. The check rejects the common prose
 form, but it cannot see every phrasing.
+
+## Scripts a skill ships
+
+A skill may ship executable helpers under its own `scripts/` directory,
+as `effected-renovate` does. `SKILL.md` names each one through
+pluginfinity's `{{skill_dir}}` token
+(`node "{{skill_dir}}/scripts/<name>.mjs"`), and the build resolves that
+token for each host. A script must be dependency-free Node, because an
+installed plugin has no `node_modules`. It is pinned by a bats suite
+that runs the **built** script on both hosts through pluginfinity's
+`run_script`, as `plugin/__test__/effected-renovate.bats` does.
 
 ## The frontmatter contract
 

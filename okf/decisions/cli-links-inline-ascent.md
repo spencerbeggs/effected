@@ -6,19 +6,21 @@ status: stable
 tags: [architecture, bundle, deps]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T23:56:58Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
-    body: 44c56e989071df0b
+    body: f4ff7e88334e3aa1
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 6cd0f235d63cf3fe
+    at: 2026-11-02T17:04:46Z
+    content: 4ed150ebc69fa810
 ---
 
 # CliLinks finds the editor directory with its own bounded ascent
@@ -40,8 +42,8 @@ inline bounded loop of about ten lines: `Path.dirname` upward, asking
 `FileSystem.exists` at each level, stopping at the root or a fixed depth.
 
 The reason is the peer closure. `@effected/walker` peers on `@effected/glob`,
-so taking the edge would force two extra installs on every `@effected/cli`
-consumer to locate one directory. `@effected/cli` is
+so taking the edge would force two extra installs on every `@effected/cli-kit`
+consumer to locate one directory. `@effected/cli-kit` is
 [boundary tier](../conventions/peer-dependency-discipline.md) and takes no new
 `@effected/*` peer for this.
 

@@ -154,7 +154,7 @@ Findings come back as values — `ValidationFinding` pointers into the document 
 
 ## Exit codes
 
-A failure is reported on stderr in the `@effected/cli` standard form: a status line naming the error and its message, the message's further lines, and, when the failure happened inside one of the command's spans, an `in: …` line naming them (a missing config, raised before any span, prints none). It is painted at a terminal, plain for an agent, and written for the log under GitHub Actions. Read the exit code, not the line's shape.
+A failure is reported on stderr in the `@effected/cli-kit` standard form: a status line naming the error and its message, the message's further lines, and, when the failure happened inside one of the command's spans, an `in: …` line naming them (a missing config, raised before any span, prints none). It is painted at a terminal, plain for an agent, and written for the log under GitHub Actions. Read the exit code, not the line's shape.
 
 | code | meaning |
 | ---- | -------------------------------------------------------------------------- |

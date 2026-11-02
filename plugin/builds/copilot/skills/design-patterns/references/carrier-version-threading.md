@@ -7,7 +7,7 @@ does not fail loudly: it produces reports that look internally
 inconsistent, and a reader who compares two version numbers wrongly
 concludes two different builds are running when only one ever was.
 
-`@effected/engine` ships the carrier-identity half of this discipline —
+`@effected/kit` ships the carrier-identity half of this discipline —
 `Distribution`, `DistributionField`, `CurrentDistribution` and
 `distributionSuffix` — so a front end no longer hand-rolls its own
 `Context.Reference` for it. What still has no kit export, and stays a
@@ -52,14 +52,14 @@ A direct install of the front end (no carrier involved) calls `main()` with
 no `distribution` option at all — the option is optional at every layer for
 exactly that reason.
 
-## `CurrentDistribution`: `@effected/engine`'s `Context.Reference`
+## `CurrentDistribution`: `@effected/kit`'s `Context.Reference`
 
 The front end receives `options.distribution` as a plain optional value and
 converts it once, at the top of the program, with `Option.fromNullishOr`
-and `@effected/engine`'s `CurrentDistribution`:
+and `@effected/kit`'s `CurrentDistribution`:
 
 ```ts
-import { CurrentDistribution, distributionSuffix } from "@effected/engine"
+import { CurrentDistribution, distributionSuffix } from "@effected/kit"
 import { Effect, Option } from "effect"
 
 interface MainOptions {
@@ -92,7 +92,7 @@ command or handler further down reads `CurrentDistribution` and gets
 `Option.none()` for a direct install with zero ceremony, instead of every
 call site needing to provide a fake value just to satisfy a service
 requirement it doesn't otherwise care about. The shape being threaded —
-`{ name, version }` — is `@effected/engine`'s `Distribution`, one
+`{ name, version }` — is `@effected/kit`'s `Distribution`, one
 definition every front end shares instead of each hand-rolling its own
 `Schema.Struct`; `DistributionField` is the `null`-or-`Distribution` shape
 for a JSON envelope field.
@@ -125,7 +125,7 @@ core's own `formatVersion` hook — is `effect-v4-cli`'s
 [`recipes.md#version-formatter`](../../effect-v4-cli/references/recipes.md#version-formatter),
 not re-taught here: that reference covers the exact `(name, version)` arity
 `formatVersion` takes and the ruling that only a *consumer* front end may
-depend on `@effected/engine`, never the kit's own `cli` package. This file
+depend on `@effected/kit`, never the kit's own `@effected/cli-kit` package. This file
 supplies the identity `CurrentDistribution` carries down to that formatter;
 the formatter is the front end's job.
 
@@ -134,8 +134,8 @@ the formatter is the front end's job.
 The MCP server threads `distribution` as a plain optional parameter through
 its own call chain — `main` → `ServerLayer` → the tool registry → each tool
 handler — the same `{ name, version } | undefined` shape at every hop
-(<https://github.com/spencerbeggs/okfit/blob/main/packages/mcp/src/server.ts>,
-<https://github.com/spencerbeggs/okfit/blob/main/packages/mcp/src/toolkit.ts>).
+(<https://github.com/spencerbeggs/okfit/blob/main/packages/mcp-kit/src/server.ts>,
+<https://github.com/spencerbeggs/okfit/blob/main/packages/mcp-kit/src/toolkit.ts>).
 The LSP server instead puts it in its own startup log line rather than a
 structured field:
 

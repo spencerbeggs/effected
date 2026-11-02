@@ -1,7 +1,7 @@
 ---
 type: Decision
-title: "@effected/cli depends on @effected/engine as a regular dependency, for distribution"
-description: "CliRuntime.main's distribution option provides engine's CurrentDistribution and decorates --version with withDistributionVersion, so cli takes @effected/engine as a regular dependency rather than a peer or a private copy; engine is pure with no @effected peers, and its one shared contract is a string-keyed Context.Reference that a duplicate copy still meets."
+title: "@effected/cli-kit depends on @effected/kit as a regular dependency, for distribution"
+description: "CliRuntime.main's distribution option provides engine's CurrentDistribution and decorates --version with withDistributionVersion, so cli takes @effected/kit as a regular dependency rather than a peer or a private copy; engine is pure with no @effected peers, and its one shared contract is a string-keyed Context.Reference that a duplicate copy still meets."
 status: stable
 tags: [architecture, deps]
 sources:
@@ -11,30 +11,32 @@ sources:
     author: human:spencer
     last_modified: 2026-10-26T00:00:00Z
   - id: cli-runtime
-    resource: ../../packages/cli/src/CliRuntime.ts
+    resource: ../../packages/cli-kit/src/CliRuntime.ts
     title: "MainOptions.distribution and the withCarrier wrapper over withDistribution and withDistributionVersion"
   - id: engine-distribution
-    resource: ../../packages/engine/src/Distribution.ts
-    title: "CurrentDistribution, a Context.Reference keyed \"@effected/engine/CurrentDistribution\", and withDistributionVersion"
+    resource: ../../packages/kit/src/Distribution.ts
+    title: "CurrentDistribution, a Context.Reference keyed \"@effected/kit/CurrentDistribution\", and withDistributionVersion"
   - id: core-context
     resource: ../../.repos/effect/packages/effect/src/Context.ts
     title: "Context.Reference is Context.Service with a default; lookup is by the string key"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T13:22:20Z
+  at: 2026-11-02T15:53:05Z
 integrity:
   generated:
-    body: e41ff7d8cb5b69db
+    body: a65f7a8bc3a10a6d
   verified:
     by: human:spencer
-    at: 2026-10-29T00:43:21Z
-    content: e8bbd1d9c5ea0146
+    at: 2026-11-02T17:04:46Z
+    content: efa31343a4c37c61
 verified:
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
-# `@effected/cli` depends on `@effected/engine` as a regular dependency, for `distribution`
+# `@effected/cli-kit` depends on `@effected/kit` as a regular dependency, for `distribution`
 
 ## Context
 
@@ -47,9 +49,9 @@ identity: the program, and the consumer engine it calls, read it as
 coloured default rather than decorating it.
 
 [D1](engine-holds-cross-front-end-primitives.md) put `Distribution` and
-`CurrentDistribution` in `@effected/engine` so that a consumer's engine can
+`CurrentDistribution` in `@effected/kit` so that a consumer's engine can
 reach them without a front-end edge, and said that any new kit edge to
-`engine` needs its own Decision. Folding the wiring into
+`kit` needs its own Decision. Folding the wiring into
 `CliRuntime.main` needs exactly that edge.[^owner-ruling]
 
 ## Decision
@@ -61,15 +63,15 @@ engine's own `withDistribution`, and, with a carrier, updates core's
 `CliOutput.Formatter` so its `formatVersion` is wrapped by
 `withDistributionVersion(Option.some(distribution))`: whatever formatter is
 in effect, coloured or custom, keeps its output and gains the
-suffix.[^cli-runtime] To get those, `@effected/cli` takes
-`@effected/engine` as a **regular dependency**.
+suffix.[^cli-runtime] To get those, `@effected/cli-kit` takes
+`@effected/kit` as a **regular dependency**.
 
 It is a regular dependency and not a peer because engine carries no
 shared-instance contract that a duplicate copy would break. Engine is pure
 and has no `@effected` peers, so the edge adds nothing to cli's peer
 closure. `Distribution` is a plain `Schema.Struct`, compared
 structurally. `CurrentDistribution` is a `Context.Reference` keyed by the
-string `"@effected/engine/CurrentDistribution"`,[^engine-distribution] and
+string `"@effected/kit/CurrentDistribution"`,[^engine-distribution] and
 core looks a service up by that key,[^core-context] so a value provided
 through cli's copy is the value a consumer engine reads through its own.
 
@@ -78,7 +80,7 @@ through cli's copy is the value a consumer engine reads through its own.
 - **Keep the wiring in each consumer.** Rejected: it is the duplicated
   recipe D1 exists to remove, and the recipe's usual shape replaced core's
   formatter instead of wrapping it, which drops the colour.
-- **A peer dependency on `engine`.** Rejected: a peer is for a contract that
+- **A peer dependency on `kit`.** Rejected: a peer is for a contract that
   must resolve to one copy, and this one does not. It would make every
   application declare a package it may never import.
 - **Copy `CurrentDistribution` into cli.** Rejected: a second Reference with
@@ -92,16 +94,16 @@ through cli's copy is the value a consumer engine reads through its own.
 
 ## Consequences
 
-`@effected/cli`'s regular dependencies are `@effected/github-commands`,
-`@effected/engine` and `@effected/commands` (the last for `./ui`'s chalk
+`@effected/cli-kit`'s regular dependencies are `@effected/github-commands`,
+`@effected/kit` and `@effected/commands` (the last for `./ui`'s chalk
 resolution, see [the `./ui` Node licence](ui-binds-process-streams.md)).
 A program must not also append the suffix in `env.formatter`, or it prints
 twice. A hand-wired program that does not use `CliRuntime.main` composes
 the same two engine exports itself. D1's rule still stands for every other
-package: `@effected/mcp` (a peer) and `@effected/cli` are the only kit
-dependents of `engine`.
+package: `@effected/mcp-kit` (a peer) and `@effected/cli-kit` are the only kit
+dependents of `kit`.
 
 [^owner-ruling]: conversation with the repository owner, 2026-10-26
-[^cli-runtime]: `../../packages/cli/src/CliRuntime.ts`
-[^engine-distribution]: `../../packages/engine/src/Distribution.ts`
+[^cli-runtime]: `../../packages/cli-kit/src/CliRuntime.ts`
+[^engine-distribution]: `../../packages/kit/src/Distribution.ts`
 [^core-context]: `../../.repos/effect/packages/effect/src/Context.ts`

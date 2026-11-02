@@ -114,7 +114,7 @@ export class App {
 	 * Databases per command, directories everywhere — the CLI shape:
 	 * ```ts
 	 * import { App, AppStore } from "@effected/app";
-	 * import { CliRuntime } from "@effected/cli";
+	 * import { CliRuntime } from "@effected/cli-kit";
 	 * import type { StoreMigration } from "@effected/store";
 	 * import { Store } from "@effected/store";
 	 * import { NodeRuntime, NodeServices } from "@effect/platform-node";

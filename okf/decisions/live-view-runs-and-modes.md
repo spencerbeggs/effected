@@ -6,24 +6,26 @@ status: stable
 tags: [architecture, dx]
 sources:
   - id: pinned-by
-    resource: ../../packages/cli/__test__/ui/CliUi.live.modes.test.ts
+    resource: ../../packages/cli-kit/__test__/ui/CliUi.live.modes.test.ts
     title: "The live-view mode tests: hosted and owned, runs, mounting and the non-interactive final frame"
   - id: ink-render
     resource: "npm:ink@8.0.0"
     title: "Ink 8.0.0, build/ink.js:419-421: interactive defaults to !isInCi && stdout.isTTY"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-07T21:32:23Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: a9a7b60c2387ff3c
+    body: a6292607a259621d
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: d5b3ae90d7f238b7
+    at: 2026-11-02T17:04:46Z
+    content: 4a5d09fe60c2edcb
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
 # A live view is a scoped drain of runs, hosted or owned, with no input and the mount permit per run
@@ -98,5 +100,5 @@ stdout.
 - `useTerminalSize` needs a size override for the `renderToString` path,
   which `UiProvider`'s `size` provides.
 
-[^pinned-by]: `packages/cli/__test__/ui/CliUi.live.modes.test.ts` and `CliUi.live.test.ts`, which pin the runs, the two modes and the explicit `interactive`; `UiProvider.test.ts` pins the size override `renderToString` needs. The probes behind the three findings were run once and are not kept.
+[^pinned-by]: `packages/cli-kit/__test__/ui/CliUi.live.modes.test.ts` and `CliUi.live.test.ts`, which pin the runs, the two modes and the explicit `interactive`; `UiProvider.test.ts` pins the size override `renderToString` needs. The probes behind the three findings were run once and are not kept.
 [^ink-render]: `npm:ink@8.0.0`, `build/ink.js:419-421`

@@ -6,19 +6,21 @@ status: stable
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T14:11:47Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
-    body: 55dc10bfcc41a019
+    body: 7e944d3935ccbd9c
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 596e950c3ccafbc3
+    at: 2026-11-02T17:04:46Z
+    content: 48b149c2425a4e0a
 ---
 
 # D10: `McpToolAudit` enforces object-rooted outputs by default
@@ -56,11 +58,11 @@ of shipping the check as a default-on audit rather than an opt-in lint.
 
 ## Consequences
 
-`okf/modules/mcp.md`'s `McpToolAudit.check` row documents
+`okf/modules/mcp-kit.md`'s `McpToolAudit.check` row documents
 `objectRootedOutput? = true` as the default, matching this Decision.
 A tool intentionally returning a bare scalar or array under the stateless
 adapter — a legitimate but rare shape — must opt the audit out explicitly
 per call, making the exception visible in the audit invocation itself
-rather than silent. The check's own test suite (`packages/mcp/__test__/McpToolAudit.test.ts`) includes
+rather than silent. The check's own test suite (`packages/mcp-kit/__test__/McpToolAudit.test.ts`) includes
 positive-control fixtures proving both the enforced-default and the
 opted-out paths behave as this Decision states.

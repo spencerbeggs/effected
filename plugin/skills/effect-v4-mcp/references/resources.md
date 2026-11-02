@@ -12,7 +12,7 @@ a `Layer` — merge it next to the toolkit, the same way `McpToolkit.layer`
 is:
 
 ~~~ts
-import { McpStdio } from "@effected/mcp"
+import { McpStdio } from "@effected/mcp-kit"
 import { Effect, Layer } from "effect"
 import { McpServer } from "effect/ai"
 
@@ -32,7 +32,7 @@ A resource read failure is `new McpSchema.InternalError({ message })`.
 
 `content` can return a bare `string`, a `Uint8Array`, or a whole
 `ReadResourceResult` (`{ contents: [{ uri, mimeType, text }] }`). Core's own
-`resolveResourceContent` (`ai/McpServer.ts:3998-4018`) wraps a bare
+`resolveResourceContent` (`ai/McpServer.ts:4021-4041`) wraps a bare
 string as `{ contents: [{ uri, text }] }` — **no `mimeType` field at
 all** — and passes a full `ReadResourceResult` through unchanged. The
 declared `mimeType` option still appears correctly in `resources/list`
@@ -41,8 +41,8 @@ return the full shape when the client needs the mime type on the read
 itself, not only in the listing.
 
 ~~~ts
-import { McpStdio } from "@effected/mcp"
-import { McpHarness } from "@effected/mcp/testing"
+import { McpStdio } from "@effected/mcp-kit"
+import { McpHarness } from "@effected/mcp-kit/testing"
 import { Effect, Layer } from "effect"
 import { McpServer } from "effect/ai"
 
@@ -123,8 +123,8 @@ the router reports no match, and the client sees `ResourceNotFound`, not a
 decode error.
 
 ~~~ts
-import { McpStdio } from "@effected/mcp"
-import { McpHarness } from "@effected/mcp/testing"
+import { McpStdio } from "@effected/mcp-kit"
+import { McpHarness } from "@effected/mcp-kit/testing"
 import { Effect, Layer, Schema } from "effect"
 import { McpSchema, McpServer } from "effect/ai"
 

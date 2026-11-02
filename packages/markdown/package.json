@@ -35,21 +35,21 @@
 		"@effected/source": "workspace:^"
 	},
 	"devDependencies": {
-		"@effect/vitest": "catalog:effect",
+		"@effect/vitest": "catalog:effected",
 		"@effected/jsonc": "workspace:*",
 		"@effected/toml": "workspace:*",
 		"@effected/yaml": "workspace:*",
 		"@savvy-web/bundler": "^2.7.1",
 		"@types/node": "catalog:build",
 		"commonmark": "0.31.2",
-		"effect": "catalog:effect",
+		"effect": "catalog:effected",
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
 		"@effected/jsonc": "workspace:^",
 		"@effected/toml": "workspace:^",
 		"@effected/yaml": "workspace:^",
-		"effect": "catalog:effect:peers"
+		"effect": "catalog:effected:peers"
 	},
 	"peerDependenciesMeta": {
 		"@effected/jsonc": {

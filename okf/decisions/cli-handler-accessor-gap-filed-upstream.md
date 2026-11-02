@@ -6,26 +6,28 @@ status: stable
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-28T18:00:23Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-10-09T16:29:07Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
-    body: 74f947a296868ceb
+    body: 1848247eb3377350
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: f921259167d5031a
+    at: 2026-11-02T17:04:46Z
+    content: d4392079f8fd9495
 ---
 
 # cli files the Command handler-accessor gap upstream rather than shimming it
 
 ## Context
 
-While building `@effected/cli`'s test surface, a gap surfaced in
+While building `@effected/cli-kit`'s test surface, a gap surfaced in
 `effect/cli`'s `Command` type: there is no supported accessor for
 a command's handler, which would otherwise make certain testing patterns
 more convenient to write.
@@ -33,7 +35,7 @@ more convenient to write.
 ## Decision
 
 The gap is filed upstream against core, not shimmed inside
-`@effected/cli`. This package's whole claim is that it owns the
+`@effected/cli-kit`. This package's whole claim is that it owns the
 *boundary* — presentation over a CLI program — rather than patching the
 framework `effect/cli` itself provides.
 
@@ -47,7 +49,7 @@ framework `effect/cli` itself provides.
 
 ## Consequences
 
-`@effected/cli`'s test surface works around the gap without touching
+`@effected/cli-kit`'s test surface works around the gap without touching
 `effect/cli`'s internals, and the fix — if and when core ships
 one — lands upstream rather than as a local patch this package would then
 have to un-shim later.

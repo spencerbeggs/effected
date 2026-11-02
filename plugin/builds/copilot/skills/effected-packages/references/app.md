@@ -56,7 +56,7 @@ Provide `App.layerDirs` once at `CliRuntime.main`, bind each database layer once
 
 ```ts
 import { App, AppStore } from "@effected/app";
-import { CliRuntime } from "@effected/cli";
+import { CliRuntime } from "@effected/cli-kit";
 import { Store } from "@effected/store";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { Effect, Layer } from "effect";

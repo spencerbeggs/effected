@@ -7,6 +7,12 @@
 		"AppTest": "hermetic app layer for tests over an in-memory filesystem, from the testing entrypoint"
 	},
 	"cli": {
+		"CLI_VERSION": "the effected command's own version, replaced at build, what effected --version prints",
+		"main": "run the effected command on Node, the effected bin entry, a carrier bin shim passes its distribution",
+		"rootCommand": "the effected command tree, effect/cli root command, version and help only",
+		"run": "run the effected program over a test platform layer in-process, drive the cli in a test"
+	},
+	"cli-kit": {
 		"Cancelled": "user quit a prompt or screen with esc or ctrl-c, exit 130",
 		"CliAudience": "add --agent --human --ci --audience flags, resolve the audience before parsing",
 		"CliColor": "decide once whether stdout gets ansi colour, `FORCE_COLOR` and `NO_COLOR` aware",
@@ -133,6 +139,10 @@
 		"layerConfigProvider": "install a config file as a fallback beneath the ambient ConfigProvider"
 	},
 	"engine": {
+		"Identity": "build the effected tool identity report, version distribution and resolved effect version for a front end",
+		"IdentityReport": "what the effected tool reports about itself, tool name, version, carrier distribution, effect version"
+	},
+	"kit": {
 		"CurrentDistribution": "read which carrier package installed this run without it appearing in R, defaults to none",
 		"Distribution": "the carrier package name and version a tool's bins were installed through",
 		"DistributionField": "the nullable distribution field of a machine-readable envelope, null for a direct install",
@@ -614,6 +624,10 @@
 		"TomlFrontmatter": "toml frontmatter codec, decode and encode toml frontmatter over @effected/toml",
 		"YamlFrontmatter": "yaml frontmatter codec, decode and encode yaml frontmatter over @effected/yaml"
 	},
+	"mcp": {
+		"MCP_VERSION": "the effected-mcp server's own version, replaced at build, reported by the identity tool",
+		"main": "run the effected-mcp server over stdio, the effected-mcp bin entry, a carrier bin shim passes its distribution"
+	},
 	"memfs": {
 		"MemoryFileSystem": "in-memory FileSystem test double, seed files, inject faults, inspect writes, sync and promises ports, case-insensitive volume",
 		"MemoryFileSystemErrnoError": "node-shaped thrown error, fail a port fault like node:fs",
@@ -631,7 +645,7 @@
 		"NodeDirectorySeed": "seed volume from real fixture directory, copy fixture tree byte-exact",
 		"NodeSyncFileSystem": "read real disk under Effect.runSync, synchronous read-only node filesystem"
 	},
-	"mcp": {
+	"mcp-kit": {
 		"McpGuard": "crash guards before the server graph loads, exit only before connect, startup failure exits 1, parse a crash-injection env value",
 		"McpHarness": "test mcp server in-process, call tools over queue-backed stdio",
 		"McpProbe": "smoke-test a built mcp bin, initialize then clean exit",
@@ -711,8 +725,11 @@
 		"IdentityTokenError": "handle failure obtaining an oidc identity token for an audience",
 		"Oidc": "verify an openid connect id token against its issuer's discovered jwks, decode a trusted token's claims unverified"
 	},
+	"plugin": {
+		"PLUGIN_VERSION": "the effected carrier package version, replaced at build, passed as distribution version by both bin shims"
+	},
 	"pnpm-plugin-effected": {
-		"catalogs": "read the folded effected catalog, effect family and kit versions as a map"
+		"catalogs": "read the effected catalog, effect family and kit versions as a map"
 	},
 	"package-json": {
 		"BinField": "bin field shape, string path or name-to-path map",

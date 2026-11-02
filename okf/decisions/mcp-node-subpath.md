@@ -1,43 +1,45 @@
 ---
 type: Decision
-title: "@effected/mcp ships StdioCapture behind a Node-only ./node subpath, licensed for two node: imports"
-description: "StdioCapture needs node:async_hooks for its capture context and node:stream for nullWritable, so it ships from @effected/mcp/node, which the root and ./testing never reach (a reachability test pins it), following jsonl's ./node precedent; the boundary licence is exactly those two imports in StdioCapture.ts, and its host is structural, so it reads no process."
+title: "@effected/mcp-kit ships StdioCapture behind a Node-only ./node subpath, licensed for two node: imports"
+description: "StdioCapture needs node:async_hooks for its capture context and node:stream for nullWritable, so it ships from @effected/mcp-kit/node, which the root and ./testing never reach (a reachability test pins it), following jsonl's ./node precedent; the boundary licence is exactly those two imports in StdioCapture.ts, and its host is structural, so it reads no process."
 status: stable
 tags: [architecture, bundle, compat]
 sources:
   - id: owner-ruling
     resource: conversation with the repository owner
-    title: "kit-ports user ruling 2026-10-26: a new @effected/mcp/node subpath"
+    title: "kit-ports user ruling 2026-10-26: a new @effected/mcp-kit/node subpath"
     author: human:spencer
     last_modified: 2026-10-26T00:00:00Z
   - id: stdio-capture
-    resource: ../../packages/mcp/src/StdioCapture.ts
+    resource: ../../packages/mcp-kit/src/StdioCapture.ts
     title: "StdioCapture: a process-global registry, AsyncLocalStorage routing, the two escape paths, the masked fork"
   - id: mcp-entrypoints-test
-    resource: ../../packages/mcp/__test__/entrypoints.test.ts
+    resource: ../../packages/mcp-kit/__test__/entrypoints.test.ts
     title: "Nothing reachable from . or ./testing reaches node.ts or StdioCapture.ts, with a positive control from ./node"
   - id: mcp-boundary-test
-    resource: ../../packages/mcp/__test__/boundary.test.ts
+    resource: ../../packages/mcp-kit/__test__/boundary.test.ts
     title: "The ./node licence waives exactly node:async_hooks and node:stream in StdioCapture.ts"
   - id: fiber-async-context
     resource: ../../.repos/effect/packages/effect/src/internal/effect.ts
     title: "A fiber captures an AsyncResource when it yields and resumes inside it (lines 505-514, 616-636)"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T13:22:20Z
+  at: 2026-11-02T15:49:39Z
 integrity:
   generated:
-    body: 86d6c1e69bab5334
+    body: 2b957efc9b37306e
   verified:
     by: human:spencer
-    at: 2026-10-29T00:43:21Z
-    content: 0725e2532075caca
+    at: 2026-11-02T17:04:46Z
+    content: 0e693ec1bddd65d5
 verified:
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 ---
 
-# `@effected/mcp` ships `StdioCapture` behind a Node-only `./node` subpath
+# `@effected/mcp-kit` ships `StdioCapture` behind a Node-only `./node` subpath
 
 ## Context
 
@@ -50,7 +52,7 @@ writes would be diverted with it. The routing has to follow the *async
 context* of the call, which on Node is `AsyncLocalStorage` from
 `node:async_hooks`.
 
-`@effected/mcp` is [boundary tier](../glossary/library-tier.md): its root
+`@effected/mcp-kit` is [boundary tier](../glossary/library-tier.md): its root
 reads no `process` and imports no `node:` module, and its boundary test
 holds that. `@effected/jsonl` met the same tension for its Node watch
 backend and resolved it with an opt-in `./node` subpath
@@ -61,7 +63,7 @@ justified by a structural test, not by preference.
 ## Decision
 
 `StdioCapture` (with `StdioSink`, `StdioCaptureHost` and
-`StdioCaptureOptions`) ships from `@effected/mcp/node` alone.[^owner-ruling]
+`StdioCaptureOptions`) ships from `@effected/mcp-kit/node` alone.[^owner-ruling]
 A reachability test pins that nothing reachable from `.` or `./testing`
 reaches `node.ts` or `StdioCapture.ts`, with a positive control that `./node`
 does.[^mcp-entrypoints-test]
@@ -123,7 +125,7 @@ of the package unchanged. Adding a Node-only export to `./node` means
 widening the boundary test's exact waiver list, a reviewed edit to one test.
 
 [^owner-ruling]: conversation with the repository owner, 2026-10-26
-[^stdio-capture]: `../../packages/mcp/src/StdioCapture.ts`
-[^mcp-entrypoints-test]: `../../packages/mcp/__test__/entrypoints.test.ts`
-[^mcp-boundary-test]: `../../packages/mcp/__test__/boundary.test.ts`
+[^stdio-capture]: `../../packages/mcp-kit/src/StdioCapture.ts`
+[^mcp-entrypoints-test]: `../../packages/mcp-kit/__test__/entrypoints.test.ts`
+[^mcp-boundary-test]: `../../packages/mcp-kit/__test__/boundary.test.ts`
 [^fiber-async-context]: `../../.repos/effect/packages/effect/src/internal/effect.ts`, lines 505-514 and 616-636

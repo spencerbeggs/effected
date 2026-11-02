@@ -1,12 +1,12 @@
 ---
 type: Decision
-title: "D1: @effected/engine exists and holds Distribution, Remediation and LaunchContext"
-description: A new pure-tier package sits below @effected/cli and @effected/mcp so a consumer's own engine can stamp distribution without depending on a front end.
+title: "D1: @effected/kit exists and holds Distribution, Remediation and LaunchContext"
+description: A new pure-tier package sits below @effected/cli-kit and @effected/mcp-kit so a consumer's own engine can stamp distribution without depending on a front end.
 status: stable
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T13:22:20Z
+  at: 2026-11-02T15:49:39Z
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
@@ -14,16 +14,18 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
+  - by: human:spencer
+    at: 2026-11-02T17:04:46Z
 integrity:
   generated:
-    body: 313bdee13d1f5b1c
+    body: 91dc3dc0e700965a
   verified:
     by: human:spencer
-    at: 2026-10-29T00:43:21Z
-    content: b02e6a302d500ba8
+    at: 2026-11-02T17:04:46Z
+    content: 571f1df5dbf0afc7
 ---
 
-# D1: `@effected/engine` exists and holds `Distribution`, `Remediation` and `LaunchContext`
+# D1: `@effected/kit` exists and holds `Distribution`, `Remediation` and `LaunchContext`
 
 ## Context
 
@@ -37,17 +39,17 @@ and `mcp` front ends — is exactly where the stamping happens, because the
 engine is the thing that builds the envelope the distribution rides in.
 That forces a placement question: a shared `Distribution` primitive has to
 live somewhere a consumer's engine can depend on, and a consumer's engine
-is not an application — it may not take a `@effected/cli` dependency, and
-`@effected/cli`'s own rule ("nothing in the kit may depend on it except an
+is not an application — it may not take a `@effected/cli-kit` dependency, and
+`@effected/cli-kit`'s own rule ("nothing in the kit may depend on it except an
 application") makes that a hard constraint, not a style preference.
 
 ## Decision
 
-A new pure-tier `@effected/engine` package holds `Distribution`,
+A new pure-tier `@effected/kit` package holds `Distribution`,
 `DistributionField`, `CurrentDistribution`, `distributionSuffix`,
 `Remediation`, and `LaunchContext`. Its only dependency of any kind is
-`effect`, declared as a peer. It sits below both `@effected/cli` and
-`@effected/mcp` in the dependency graph, and a consumer's own engine package is free to
+`effect`, declared as a peer. It sits below both `@effected/cli-kit` and
+`@effected/mcp-kit` in the dependency graph, and a consumer's own engine package is free to
 depend on it directly — the entire reason it exists as a separate package
 rather than folding into one of the front ends.
 
@@ -70,8 +72,8 @@ carrying a bug — is exactly what a recipe reproduces.
 
 ## Consequences
 
-Two kit packages depend on `@effected/engine`: `@effected/mcp`, as a
-peer, and `@effected/cli`, as a regular dependency for `CliRuntime.main`'s
+Two kit packages depend on `@effected/kit`: `@effected/mcp-kit`, as a
+peer, and `@effected/cli-kit`, as a regular dependency for `CliRuntime.main`'s
 `distribution` option ([its own Decision](cli-engine-edge.md)). An edge
 from any other kit package to `engine` needs its own Decision. A consumer's engine package gains a legitimate kit
 dependency it did not have before, which is the intended effect: it can
