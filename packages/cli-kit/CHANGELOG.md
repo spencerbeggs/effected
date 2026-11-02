@@ -1,5 +1,43 @@
 # @effected/cli
 
+## 0.26.0
+
+### Breaking Changes
+
+- The three carrier libraries are renamed so the `@effected/cli`, `@effected/mcp` and `@effected/engine` names are free for the `effected` tool's own packages. Rename every import and dependency; there is no compatibility shim, and every subpath (`./ui`, `./testing`, `./guard`, `./node`) carries over unchanged.
+
+| Old name | New name |
+| :-- | :-- |
+| `@effected/engine` | `@effected/kit` |
+| `@effected/cli` | `@effected/cli-kit` |
+| `@effected/mcp` | `@effected/mcp-kit` |
+
+### Refactoring
+
+- Dependents rename their imports and dependency declarations to the new package names. The `effected` catalog lists the renamed packages under their new names. [#1229][#1229]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/commands | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/config-file | dependency | updated | 0.23.0 | 0.24.0 |
+| @effected/env | dependency | updated | 0.9.0 | 0.10.0 |
+| @effected/github-commands | dependency | updated | 0.8.0 | 0.9.0 |
+| @effected/glob | dependency | updated | 0.17.0 | 0.18.0 |
+| @effected/kit | dependency | updated | 0.11.0 | 0.12.0 |
+| @effected/walker | dependency | updated | 0.24.0 | 0.25.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.1.2 [#1229][#1229]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1229]: https://github.com/spencerbeggs/effected/pull/1229
+
 ## 0.25.0
 
 ### Breaking Changes

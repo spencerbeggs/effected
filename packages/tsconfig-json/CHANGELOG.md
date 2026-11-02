@@ -1,5 +1,25 @@
 # @effected/tsconfig-json
 
+## 0.20.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/glob | dependency | updated | 0.17.0 | 0.18.0 |
+| @effected/jsonc | dependency | updated | 0.22.0 | 0.23.0 |
+| @effected/walker | dependency | updated | 0.24.0 | 0.25.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.1.2 [#1229][#1229]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1229]: https://github.com/spencerbeggs/effected/pull/1229
+
 ## 0.19.0
 
 ### Breaking Changes

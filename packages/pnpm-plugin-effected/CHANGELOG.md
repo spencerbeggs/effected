@@ -1,5 +1,96 @@
 # @effected/pnpm-plugin-effect
 
+## 0.21.0
+
+### Breaking Changes
+
+- The three carrier libraries are renamed so the `@effected/cli`, `@effected/mcp` and `@effected/engine` names are free for the `effected` tool's own packages. Rename every import and dependency; there is no compatibility shim, and every subpath (`./ui`, `./testing`, `./guard`, `./node`) carries over unchanged.
+
+| Old name | New name |
+| :-- | :-- |
+| `@effected/engine` | `@effected/kit` |
+| `@effected/cli` | `@effected/cli-kit` |
+| `@effected/mcp` | `@effected/mcp-kit` |
+
+### Features
+
+- The `effected` catalog lists the effected tool's packages: `@effected/plugin`, `@effected/cli`, `@effected/mcp` and `@effected/engine`.
+- `publicHoistPattern` now hoists `@effected/plugin`, so its `effected` and `effected-mcp` bins reach every package of a consumer's pnpm workspace even when only one leaf package declares it. [#1229][#1229]
+
+### Documentation
+
+- Four new `effected-renovate` ledger entries for Effect 4.1.2: refs compare by their contents again, `McpServer` JSON-encodes declared tool failures, core fixes that change a tested result, and SQL transaction spans plus idle OTLP exporters.
+- `effect-v4-idioms` now says `Ref` and `MutableRef` compare by their current contents, and `effect-v4-module-index` lists core's `Jsonc` and `Json5` parsers.
+- The `pnpm-plugin-effected` README and the `effected-packages` skill describe the Effect catalog range without naming a patch release, so they no longer go stale on each Effect patch. [#1229][#1229]
+
+### Refactoring
+
+- The plugin now declares a single `effected` catalog instead of declaring `effect` and `effected` separately and folding them in its `updateConfig` hook. What a consumer installs is unchanged: one `effected` catalog holding the Effect family and the kit, and the same graph-wide Effect pins.
+- The graph-wide pins are selected with `overridesFromCatalogs` `include: ["effect", "@effect/*"]`, so a kit package added to the catalog never gains an override. [#1229][#1229]
+
+* Dependents rename their imports and dependency declarations to the new package names. The `effected` catalog lists the renamed packages under their new names. [#1229][#1229]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| effect | config | updated | 4.1.1 | 4.1.2 |
+| rolldown-pnpm-config | devDependency | updated | ^2.2.1 | ^2.4.0 |
+
+- The `effected` catalog moves the Effect family to 4.1.2, and the derived graph-wide pins follow it.
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.1.2 [#1229][#1229]
+
+#### Updates 39 catalog:effected versions
+
+- `@effected/app` ^0.30.1 -> ^0.31.0 (peer ^0.31.0)
+- `@effected/commands` ^0.19.0 -> ^0.20.0 (peer ^0.20.0)
+- `@effected/config-file` ^0.23.0 -> ^0.24.0 (peer ^0.24.0)
+- `@effected/crypto` ^0.4.0 -> ^0.5.0 (peer ^0.5.0)
+- `@effected/env` ^0.9.1 -> ^0.10.0 (peer ^0.10.0)
+- `@effected/git` ^0.29.0 -> ^0.30.0 (peer ^0.30.0)
+- `@effected/github` ^0.27.0 -> ^0.28.0 (peer ^0.28.0)
+- `@effected/github-actions` ^0.30.1 -> ^0.31.0 (peer ^0.31.0)
+- `@effected/github-commands` ^0.8.1 -> ^0.9.0 (peer ^0.9.0)
+- `@effected/github-references` ^0.13.0 -> ^0.14.0 (peer ^0.14.0)
+- `@effected/glob` ^0.17.0 -> ^0.18.0 (peer ^0.18.0)
+- `@effected/images` ^0.8.0 -> ^0.9.0 (peer ^0.9.0)
+- `@effected/jsonc` ^0.22.0 -> ^0.23.0 (peer ^0.23.0)
+- `@effected/jsonl` ^0.17.0 -> ^0.18.0 (peer ^0.18.0)
+- `@effected/jwt` ^0.8.0 -> ^0.9.0 (peer ^0.9.0)
+- `@effected/lockfiles` ^0.21.0 -> ^0.22.0 (peer ^0.22.0)
+- `@effected/lsp` ^0.7.1 -> ^0.8.0 (peer ^0.8.0)
+- `@effected/markdown` ^0.25.0 -> ^0.26.0 (peer ^0.26.0)
+- `@effected/memfs` ^0.22.0 -> ^0.23.0 (peer ^0.23.0)
+- `@effected/npm` ^0.29.0 -> ^0.30.0 (peer ^0.30.0)
+- `@effected/oidc` ^0.3.0 -> ^0.4.0 (peer ^0.4.0)
+- `@effected/package-json` ^0.28.0 -> ^0.29.0 (peer ^0.29.0)
+- `@effected/runtimes` ^0.17.0 -> ^0.18.0 (peer ^0.18.0)
+- `@effected/sbom` ^0.19.0 -> ^0.20.0 (peer ^0.20.0)
+- `@effected/schema-org` ^0.13.0 -> ^0.14.0 (peer ^0.14.0)
+- `@effected/schemastore` ^0.28.1 -> ^0.29.0 (peer ^0.29.0)
+- `@effected/schemastore-cli` ^0.28.1 -> ^0.29.0 (peer ^0.29.0)
+- `@effected/semver` ^0.20.0 -> ^0.21.0 (peer ^0.21.0)
+- `@effected/source` ^0.2.0 -> ^0.3.0 (peer ^0.3.0)
+- `@effected/spdx` ^0.18.0 -> ^0.19.0 (peer ^0.19.0)
+- `@effected/store` ^0.22.0 -> ^0.23.0 (peer ^0.23.0)
+- `@effected/templates` ^0.16.0 -> ^0.17.0 (peer ^0.17.0)
+- `@effected/toml` ^0.18.0 -> ^0.19.0 (peer ^0.19.0)
+- `@effected/tsconfig-json` ^0.19.0 -> ^0.20.0 (peer ^0.20.0)
+- `@effected/walker` ^0.24.0 -> ^0.25.0 (peer ^0.25.0)
+- `@effected/webhooks` ^0.3.0 -> ^0.4.0 (peer ^0.4.0)
+- `@effected/workspaces` ^0.41.1 -> ^0.42.0 (peer ^0.42.0)
+- `@effected/xdg` ^0.18.0 -> ^0.19.0 (peer ^0.19.0)
+- `@effected/yaml` ^0.27.0 -> ^0.28.0 (peer ^0.28.0) [#1229][#1229]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1229]: https://github.com/spencerbeggs/effected/pull/1229
+
 ## 0.20.0
 
 ### Breaking Changes
