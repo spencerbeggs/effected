@@ -1,5 +1,23 @@
 # @effected/oidc
 
+## 0.4.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jwt | dependency | updated | 0.8.0 | 0.9.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.1.2 [#1229][#1229]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1229]: https://github.com/spencerbeggs/effected/pull/1229
+
 ## 0.3.0
 
 ### Breaking Changes

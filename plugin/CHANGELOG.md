@@ -1,5 +1,57 @@
 # @effected/ai-plugins
 
+## 0.47.0
+
+### Features
+
+- The `effected-packages` skill routes to the `effected` tool: rows and references for `@effected/plugin`, `@effected/cli`, `@effected/mcp` and `@effected/engine`, with the package count at 47. The skill recommends installing only `@effected/plugin`, as a root devDependency through `catalog:effected`.
+- The construct index covers the four tool packages. [#1229][#1229]
+
+#### `/effected-renovate`
+
+- A new user-invoked skill that moves a repository onto a new `@effected` release. It bumps the catalog plugin and the other config dependencies, regenerates the lockfile, checks that one `effect` resolves, then builds, tests and aligns the remaining dependencies.
+
+- **The upgrade ledger.** Each release now ships one entry per change a consumer must act on: a break, a behaviour change, a security fix, a tooling change or a surface worth adopting. `applicable.mjs` compares the pre-upgrade lockfile with the new one, lists only the entries the upgrade crossed, and shows the files where each one meets your code. A repository several releases behind gets the earlier rounds too, fetched from the plugin's release tags.
+
+- **The first round** covers the move to Effect 4.1.1 and 4.1.2, the carrier-library rename and the matching kit releases, in 53 entries.
+
+- **Renames count as the same package.** A repository that still resolves a renamed package under its old name crosses the new name's thresholds from its old version, so a repository on `@effected/pnpm-plugin-effect` still sees the entries keyed on `@effected/pnpm-plugin-effected`.
+
+- **Renamed config dependencies** declared in the ledger are applied by `bump-config-deps.mjs`, for example `@effected/pnpm-plugin-effect` to `@effected/pnpm-plugin-effected`.
+
+- The session briefing lists the new skill.
+
+* The effected agent plugin launches the `effected-mcp` server.
+* The upgrade ledger records the carrier rename (`@effected/cli`, `@effected/mcp` and `@effected/engine` became `@effected/cli-kit`, `@effected/mcp-kit` and `@effected/kit`) and how to install the effected tool through `@effected/plugin`. [#1229][#1229]
+
+### Documentation
+
+- The `effected-packages` references for `@effected/pnpm-plugin-effected` and `@effected/workspaces` describe the plugin's single declared `effected` catalog and the `:peers` twin its hook hides. [#1229][#1229]
+
+* Four new `effected-renovate` ledger entries for Effect 4.1.2: refs compare by their contents again, `McpServer` JSON-encodes declared tool failures, core fixes that change a tested result, and SQL transaction spans plus idle OTLP exporters.
+* `effect-v4-idioms` now says `Ref` and `MutableRef` compare by their current contents, and `effect-v4-module-index` lists core's `Jsonc` and `Json5` parsers.
+* The `pnpm-plugin-effected` README and the `effected-packages` skill describe the Effect catalog range without naming a patch release, so they no longer go stale on each Effect patch. [#1229][#1229]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| effect | config | updated | 4.1.1 | 4.1.2 |
+
+- The `effected` catalog moves the Effect family to 4.1.2, and the derived graph-wide pins follow it.
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.1.2 [#1229][#1229]
+
+* The tracking package is renamed from `@effected/ai-plugin` to `@effected/ai-plugins`, so plugin release tags now read `@effected/ai-plugins@<version>`. [#1229][#1229]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1229]: https://github.com/spencerbeggs/effected/pull/1229
+
 ## 0.46.0
 
 ### Features

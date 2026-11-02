@@ -1,6 +1,6 @@
 {
 	"name": "@effected/engine",
-	"version": "0.11.0",
+	"version": "0.12.0",
 	"private": true,
 	"description": "The effected tool's shared logic, consumed by its CLI and MCP front ends",
 	"keywords": ["effect", "cli", "mcp", "engine", "effected"],

@@ -1,5 +1,26 @@
 # @effected/markdown
 
+## 0.26.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.22.0 | 0.23.0 |
+| @effected/source | dependency | updated | 0.2.0 | 0.3.0 |
+| @effected/toml | dependency | updated | 0.18.0 | 0.19.0 |
+| @effected/yaml | dependency | updated | 0.27.0 | 0.28.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.1.2 [#1229][#1229]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1229]: https://github.com/spencerbeggs/effected/pull/1229
+
 ## 0.25.0
 
 ### Breaking Changes

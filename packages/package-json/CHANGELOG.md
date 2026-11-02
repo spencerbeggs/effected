@@ -1,5 +1,26 @@
 # @effected/package-json
 
+## 0.29.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.22.0 | 0.23.0 |
+| @effected/npm | dependency | updated | 0.29.0 | 0.30.0 |
+| @effected/semver | dependency | updated | 0.20.0 | 0.21.0 |
+| @effected/spdx | dependency | updated | 0.18.0 | 0.19.0 |
+
+### Maintenance
+
+- Upgrades core Effect library dependencies to v4.1.2 [#1229][#1229]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1229]: https://github.com/spencerbeggs/effected/pull/1229
+
 ## 0.28.0
 
 ### Breaking Changes
