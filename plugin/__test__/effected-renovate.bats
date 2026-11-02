@@ -246,6 +246,20 @@ EOF
 	[ "$status" -eq 0 ]
 }
 
+@test "repo: the carrier rename entry applies across the plugin release and finds the old imports" {
+	printf 'import { Ui } from "@effected/cli/ui"\nimport { Engine } from "@effected/engine"\nimport { ok } from "@effected/cli-kit"\n' >"$PROJECT/src/old.ts"
+	git -C "$PROJECT" add -A
+	git -C "$PROJECT" -c user.email=t@t -c user.name=t commit -qm old
+	sed -i.bak 's/0\.20\.0/0.21.0/g' "$BATS_TEST_TMPDIR/after.yaml"
+	run node "$SCRIPTS/applicable.mjs" --root "$PROJECT" --ledger "$LEDGER" \
+		--before "$BATS_TEST_TMPDIR/before.yaml" --after "$BATS_TEST_TMPDIR/after.yaml"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"0048"* ]]
+	[[ "$output" == *"src/old.ts:1:import { Ui } from \"@effected/cli/ui\""* ]]
+	[[ "$output" == *"src/old.ts:2:import { Engine } from \"@effected/engine\""* ]]
+	[[ "$output" != *"src/old.ts:3"* ]]
+}
+
 @test "repo: every pending changeset with a breaking section is named by a ledger entry" {
 	local missing=""
 	for cs in "$REPO_ROOT"/.changeset/*.md; do
