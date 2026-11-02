@@ -33,7 +33,7 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
-		"@savvy-web/bundler": "^2.7.1",
+		"@savvy-web/bundler": "^2.7.3",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effected",
 		"typescript": "catalog:build"

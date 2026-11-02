@@ -36,7 +36,7 @@
 		"@effect/vitest": "catalog:effected",
 		"@effected/glob": "workspace:*",
 		"@effected/memfs": "workspace:*",
-		"@savvy-web/bundler": "^2.7.1",
+		"@savvy-web/bundler": "^2.7.3",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effected",
 		"typescript": "catalog:build"
