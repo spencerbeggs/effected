@@ -4,7 +4,12 @@ import { assert, describe, it, layer } from "@effect/vitest";
 import { Run } from "@effected/commands";
 import { McpProbe, McpProcess } from "@effected/mcp-kit/testing";
 import { Workspaces } from "@effected/workspaces";
-import type { InstalledConsumer, PackedInstallOptions, PackedInstallResult } from "@effected/workspaces/testing";
+import type {
+	InstalledConsumer,
+	PackedInstallOptions,
+	PackedInstallPreflightOptions,
+	PackedInstallResult,
+} from "@effected/workspaces/testing";
 import { PackedInstall } from "@effected/workspaces/testing";
 import { Duration, Effect, FileSystem, Layer, Redacted } from "effect";
 import { ChildProcess } from "effect/process";
@@ -38,17 +43,26 @@ const RUN: PackedInstallOptions = {
 };
 
 /**
- * What `@effected/pnpm-plugin-effected` sets as `publicHoistPattern` (its
- * catalog test reads it from the built hook); here it is the setting under
- * test, written into a scratch workspace.
+ * The catalog plugin's release artifact. A consumer gets `publicHoistPattern`
+ * only through this hook's `updateConfig`, so the hoisted workspace loads the
+ * built pnpmfile (pnpm's `pnpmfile` setting) instead of writing the setting
+ * itself: a hook that stopped delivering the hoist fails here.
  */
-const HOIST = ["@effected/plugin"];
+const CATALOG_PLUGIN: PackedInstallPreflightOptions = { carrier: "@effected/pnpm-plugin-effected", closure: [] };
+const CATALOG_PNPMFILE = `${ROOT}/packages/pnpm-plugin-effected/dist/prod/npm/pkg/pnpmfile.mjs`;
 
 // Module evaluation, before `describe` runs. PackedInstall packs `dist/prod/npm/pkg` (the release
 // artifact): with it absent the suite skips locally and FAILS under CI, so it never stops proving the
 // published tarballs silently. The gate reads `CI` through `Config`.
 const GATE = await Effect.runPromise(
-	PackedInstall.preflight(RUN).pipe(Effect.flatMap(PackedInstall.gate), Effect.provide(Live)),
+	Effect.all([PackedInstall.preflight(RUN), PackedInstall.preflight(CATALOG_PLUGIN)]).pipe(
+		Effect.map(([carrier, catalog]) => ({
+			ready: carrier.ready && catalog.ready,
+			missing: [...carrier.missing, ...catalog.missing],
+		})),
+		Effect.flatMap(PackedInstall.gate),
+		Effect.provide(Live),
+	),
 );
 // PackedInstall is POSIX-only.
 const RUNNABLE = GATE.action === "run" && process.platform !== "win32";
@@ -100,7 +114,8 @@ const mcpSession = (consumer: InstalledConsumer, env: Record<string, string>) =>
  * `packages/tools`, and `effected` is run from its sibling leaf
  * `packages/app`, which depends on nothing. pnpm links a package's bins only
  * into the projects that declare it, so only the hoist puts `effected` where
- * `app` (and the root) can reach it. With the carrier as a root
+ * `app` (and the root) can reach it, and the hoist comes only from the
+ * catalog plugin's hook when `pnpmfile` names it. With the carrier as a root
  * devDependency instead, `pnpm exec` reaches it from every leaf with or
  * without the hoist, so that layout would prove nothing about the hoist.
  */
@@ -108,7 +123,7 @@ const pnpmWorkspace = (
 	result: PackedInstallResult,
 	consumer: InstalledConsumer,
 	name: string,
-	hoist: ReadonlyArray<string> | undefined,
+	pnpmfile: string | undefined,
 ) =>
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
@@ -138,7 +153,7 @@ const pnpmWorkspace = (
 				packages: ["packages/*"],
 				minimumReleaseAge: 0,
 				overrides,
-				...(hoist === undefined ? {} : { publicHoistPattern: hoist }),
+				...(pnpmfile === undefined ? {} : { pnpmfile }),
 			}),
 		);
 		yield* fs.writeFileString(
@@ -149,7 +164,17 @@ const pnpmWorkspace = (
 			`${directory}/packages/app/package.json`,
 			json({ name: "app", version: "0.0.0", private: true }),
 		);
-		const env = consumer.env === undefined ? PackedInstall.scrubEnv(RUN.env) : Redacted.value(consumer.env);
+		const scrubbed = consumer.env === undefined ? PackedInstall.scrubEnv(RUN.env) : Redacted.value(consumer.env);
+		// The test runs under this monorepo's `pnpm`, whose PATH carries its own `node_modules/.bin`
+		// directories, and the carrier's front ends put a workspace `effected` there; `pnpm exec`
+		// would find that one from `app` and the control would fail for the wrong reason.
+		const env = {
+			...scrubbed,
+			PATH: (scrubbed.PATH ?? "")
+				.split(":")
+				.filter((entry) => !entry.startsWith(ROOT))
+				.join(":"),
+		};
 		const pnpm = (args: ReadonlyArray<string>, cwd: string) =>
 			Run.collect(ChildProcess.make("pnpm", args, { cwd, env, extendEnv: false, stdin: "ignore" }), {
 				timeout: "3 minutes",
@@ -160,7 +185,7 @@ const pnpmWorkspace = (
 	});
 
 describe.runIf(GATE.action === "fail")("packed install (@effected/plugin) prod build", () => {
-	it("dist/prod exists (run `pnpm build --filter @effected/plugin...` before the tests)", () => {
+	it("dist/prod exists (run `pnpm build --filter @effected/plugin... --filter @effected/pnpm-plugin-effected` before the tests)", () => {
 		assert.fail(GATE.message);
 	});
 });
@@ -223,18 +248,20 @@ describe.skipIf(!RUNNABLE)("packed install (@effected/plugin)", () => {
 						}
 					}
 
-					// The hoist: a pnpm workspace whose leaf carries the carrier, run from a sibling leaf.
+					// The hoist, as a consumer gets it from the catalog plugin's hook: a pnpm workspace whose
+					// leaf carries the carrier, run from a sibling leaf.
 					const pnpm = result.consumers.find((consumer) => consumer.manager === "pnpm");
 					if (pnpm === undefined) {
 						yield* Effect.log("pnpm unavailable: the workspace hoist was not proven");
 						return;
 					}
-					const hoisted = yield* pnpmWorkspace(result, pnpm, "workspace-hoisted", HOIST);
+					const hoisted = yield* pnpmWorkspace(result, pnpm, "workspace-hoisted", CATALOG_PNPMFILE);
 					assert.strictEqual(hoisted.exitCode, 0, `hoisted: ${hoisted.stderr}`);
 					assert.strictEqual(VERSION.exec(hoisted.stdout.trim())?.[1], manifest.version, hoisted.stdout);
-					// Control: the same workspace without the hoist cannot reach the bin from `app`.
+					// Control: the same workspace without the hook cannot reach the bin from `app`.
 					const unhoisted = yield* pnpmWorkspace(result, pnpm, "workspace-unhoisted", undefined);
 					assert.notStrictEqual(unhoisted.exitCode, 0, `unhoisted unexpectedly ran: ${unhoisted.stdout}`);
+					assert.include(unhoisted.stderr, 'Command "effected" not found', unhoisted.stderr);
 				}).pipe(Effect.scoped, Effect.timeout(BUDGET)),
 			// vitest's own guard a minute above the Effect's, so a named PackedInstallError fires first.
 			Duration.toMillis(BUDGET) + 60_000,
