@@ -328,6 +328,47 @@ importers:
         version: 7.1.0-beta
     publishDirectory: dist/dev/pkg
 
+  packages/cli:
+    dependencies:
+      '@effect/platform-node':
+        specifier: catalog:effected
+        version: 4.1.1(effect@4.1.1)(redis@6.3.1)
+      '@effected/cli-kit':
+        specifier: workspace:^
+        version: link:../cli-kit/dist/dev/pkg
+      '@effected/env':
+        specifier: workspace:^
+        version: link:../env/dist/dev/pkg
+      '@effected/glob':
+        specifier: workspace:^
+        version: link:../glob/dist/dev/pkg
+      '@effected/kit':
+        specifier: workspace:^
+        version: link:../kit/dist/dev/pkg
+      '@effected/walker':
+        specifier: workspace:^
+        version: link:../walker/dist/dev/pkg
+    devDependencies:
+      '@effect/vitest':
+        specifier: catalog:effected
+        version: 4.1.1(effect@4.1.1)(vitest@5.0.5)
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs/dist/dev/pkg
+      '@savvy-web/bundler':
+        specifier: ^2.7.1
+        version: 2.7.2(@types/node@26.6.6)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(redis@6.3.1)(tsx@4.23.15)(typescript@7.1.0-beta)
+      '@types/node':
+        specifier: catalog:build
+        version: 26.6.6
+      effect:
+        specifier: catalog:effected
+        version: 4.1.1
+      typescript:
+        specifier: catalog:build
+        version: 7.1.0-beta
+    publishDirectory: dist/dev/pkg
+
   packages/cli-kit:
     dependencies:
       '@effected/commands':
