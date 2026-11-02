@@ -231,6 +231,9 @@ the agents are the delivery mechanism. The specialists:
   tasks here.
 </agents>
 
+The effected MCP server (\`effected\`) is bundled with this plugin; its tools are
+available when the project installs @effected/plugin.
+
 When a task is substantially "write or review Effect code" or "build an action
 / call the GitHub API," dispatch the matching agent rather than doing it
 inline — when dispatch is permitted; otherwise load the same skills and do it

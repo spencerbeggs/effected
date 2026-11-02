@@ -16,5 +16,18 @@
 		"github",
 		"actions",
 		"typescript"
-	]
+	],
+	"mcpServers": {
+		"effected": {
+			"command": "sh",
+			"args": [
+				"${CLAUDE_PLUGIN_ROOT}/bin/start-mcp.sh"
+			],
+			"env": {
+				"PLUGINFINITY_HOST": "claude",
+				"PLUGINFINITY_PLUGIN": "effected",
+				"PLUGINFINITY_LIB": "${CLAUDE_PLUGIN_ROOT}/lib/pluginfinity"
+			}
+		}
+	}
 }

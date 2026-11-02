@@ -12,6 +12,10 @@ export default defineConfig({
 	hooks: {
 		SessionStart: [{ script: "hooks/session-start/orientation.sh", timeout: 5 }],
 	},
+	mcpServers: {
+		// biome-ignore lint/suspicious/noTemplateCurlyInString: pluginfinity placeholder
+		effected: { command: "sh", args: ["${PLUGIN_ROOT}/bin/start-mcp.sh"] },
+	},
 	claude: true,
 	copilot: true,
 });
