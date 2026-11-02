@@ -29,11 +29,12 @@ catalogs:
     "@effect/tsgo": ^0.63.0
     "@effect/vitest": ~4.1.1
     "@effected/app": ^0.30.0
-    "@effected/cli": ^0.25.0
+    "@effected/cli": ^0.26.0
+    "@effected/cli-kit": ^0.25.0
     "@effected/commands": ^0.19.0
     "@effected/config-file": ^0.23.0
     "@effected/crypto": ^0.4.0
-    "@effected/engine": ^0.11.0
+    "@effected/engine": ^0.12.0
     "@effected/env": ^0.9.0
     "@effected/git": ^0.29.0
     "@effected/github": ^0.27.0
@@ -45,14 +46,17 @@ catalogs:
     "@effected/jsonc": ^0.22.0
     "@effected/jsonl": ^0.17.0
     "@effected/jwt": ^0.8.0
+    "@effected/kit": ^0.11.0
     "@effected/lockfiles": ^0.21.0
     "@effected/lsp": ^0.7.0
     "@effected/markdown": ^0.25.0
-    "@effected/mcp": ^0.12.0
+    "@effected/mcp": ^0.13.0
+    "@effected/mcp-kit": ^0.12.0
     "@effected/memfs": ^0.22.0
     "@effected/npm": ^0.29.0
     "@effected/oidc": ^0.3.0
     "@effected/package-json": ^0.28.0
+    "@effected/plugin": ^0.1.0
     "@effected/runtimes": ^0.17.0
     "@effected/sbom": ^0.19.0
     "@effected/schema-org": ^0.13.0
@@ -100,11 +104,12 @@ catalogs:
     "@effect/tsgo": ^0.63.0
     "@effect/vitest": ~4.1.0
     "@effected/app": ^0.30.0
-    "@effected/cli": ^0.25.0
+    "@effected/cli": ^0.26.0
+    "@effected/cli-kit": ^0.25.0
     "@effected/commands": ^0.19.0
     "@effected/config-file": ^0.23.0
     "@effected/crypto": ^0.4.0
-    "@effected/engine": ^0.11.0
+    "@effected/engine": ^0.12.0
     "@effected/env": ^0.9.0
     "@effected/git": ^0.29.0
     "@effected/github": ^0.27.0
@@ -116,14 +121,17 @@ catalogs:
     "@effected/jsonc": ^0.22.0
     "@effected/jsonl": ^0.17.0
     "@effected/jwt": ^0.8.0
+    "@effected/kit": ^0.11.0
     "@effected/lockfiles": ^0.21.0
     "@effected/lsp": ^0.7.0
     "@effected/markdown": ^0.25.0
-    "@effected/mcp": ^0.12.0
+    "@effected/mcp": ^0.13.0
+    "@effected/mcp-kit": ^0.12.0
     "@effected/memfs": ^0.22.0
     "@effected/npm": ^0.29.0
     "@effected/oidc": ^0.3.0
     "@effected/package-json": ^0.28.0
+    "@effected/plugin": ^0.1.0
     "@effected/runtimes": ^0.17.0
     "@effected/sbom": ^0.19.0
     "@effected/schema-org": ^0.13.0
@@ -187,3 +195,5 @@ packages:
   - scratchpad
   - website
 peerDependencyRules: {}
+publicHoistPattern:
+  - "@effected/plugin"
