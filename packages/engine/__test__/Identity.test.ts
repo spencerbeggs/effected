@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
+import effectPackage from "effect/package.json" with { type: "json" };
 import { Identity, IdentityReport } from "../src/index.js";
 
 describe("Identity.report", () => {
@@ -11,6 +12,7 @@ describe("Identity.report", () => {
 			assert.strictEqual(report.version, "1.2.3");
 			assert.deepStrictEqual(report.distribution, { name: "effected", version: "1.2.3" });
 			assert.match(report.effect, /^[0-9]+\.[0-9]+\.[0-9]+/);
+			assert.strictEqual(report.effect, effectPackage.version);
 		}),
 	);
 

@@ -8,25 +8,40 @@ import effectPackage from "effect/package.json" with { type: "json" };
  * @public
  */
 export class IdentityReport extends Schema.Class<IdentityReport>("IdentityReport")({
+	/** The tool name; always `"effected"`. */
 	tool: Schema.Literal("effected"),
+	/** The reporting front end's own version. */
 	version: Schema.String,
+	/** The carrier distribution the front end was installed through, or `null` for a direct install. */
 	distribution: DistributionField,
+	/** The resolved `effect` package version. */
 	effect: Schema.String,
 }) {}
 
 /**
  * The `effected` tool's identity program.
  *
+ * @example
+ * ```ts
+ * import { Identity } from "@effected/engine"
+ *
+ * const report = Identity.report({ version: "0.12.0", distribution: null })
+ * // Effect<IdentityReport>: { tool: "effected", version: "0.12.0", distribution: null, effect: "4.1.1" }
+ * ```
+ *
  * @public
  */
-export const Identity = {
+export class Identity {
+	private constructor() {}
+
 	/**
 	 * Build the identity report for a front end.
 	 *
-	 * @param options - The front end's own `version` and the carrier `distribution` it was installed through, or `null`.
-	 * @returns The report, with `effect` read from the resolved `effect` package.
+	 * @remarks
+	 * `options.version` is the front end's own version and `options.distribution` the carrier it was installed
+	 * through, or `null`. The `effect` field is read from the resolved `effect` package.
 	 */
-	report: (options: {
+	static readonly report = (options: {
 		readonly version: string;
 		readonly distribution: IdentityReport["distribution"];
 	}): Effect.Effect<IdentityReport> =>
@@ -37,5 +52,5 @@ export const Identity = {
 				distribution: options.distribution,
 				effect: effectPackage.version,
 			}),
-		),
-};
+		);
+}
