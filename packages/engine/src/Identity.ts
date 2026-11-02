@@ -23,10 +23,14 @@ export class IdentityReport extends Schema.Class<IdentityReport>("IdentityReport
  *
  * @example
  * ```ts
+ * import { Effect } from "effect"
  * import { Identity } from "@effected/engine"
  *
- * const report = Identity.report({ version: "0.12.0", distribution: null })
- * // Effect<IdentityReport>: { tool: "effected", version: "0.12.0", distribution: null, effect: "4.1.1" }
+ * const program = Effect.gen(function* () {
+ *   const report = yield* Identity.report({ version: "0.12.0", distribution: null })
+ *   // { tool: "effected", version: "0.12.0", distribution: null, effect: "<the resolved effect version>" }
+ *   return report
+ * })
  * ```
  *
  * @public

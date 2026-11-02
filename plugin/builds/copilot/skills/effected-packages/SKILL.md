@@ -18,7 +18,7 @@ typed error channel.
 on `effect` only, no IO; **boundary** — does IO through core service contracts
 (`FileSystem`, `Path`, `HttpClient`, `ChildProcessSpawner`) required in `R`,
 so you provide one platform layer at the edge; **integrated** — carries a real
-backend/runtime dependency that propagates to consumers. **Companion** and **tool** packages carry no tier: a companion is config for one library, a tool package belongs to the `effected` tool (an application, not a library). Check core first
+backend/runtime dependency that propagates to consumers. **Companion** and **tool** packages carry no tier: a companion fronts one library, a tool package belongs to the `effected` tool (an application, not a library). Check core first
 (`effect-v4-module-index`), then the kit — never re-implement either.
 
 ## Index
