@@ -74,6 +74,10 @@
 * Updated spencerbeggs/okfit
 * Updated spencerbeggs/reposets
 * Updated spencerbeggs/vitest-agent
+* Updated @effected/images
+* Updated A package that names its own root types once showed one warning or none, until the bundler resolved the self-reference to declarations
+* Updated D6: CLI and MCP knowledge stays in separate skills, linked from design-patterns
+* Updated Releases are changeset-driven and scope-agnostic
 
 ## 2026-11-01
 

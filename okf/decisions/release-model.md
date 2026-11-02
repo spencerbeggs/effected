@@ -14,10 +14,10 @@ sources:
     resource: ../../packages/github-actions/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-02T15:53:05Z
 integrity:
   generated:
-    body: 5a84ae5178f18660
+    body: b343e896a2194be0
   verified:
     by: human:spencer
     at: 2026-10-31T19:39:48Z
@@ -116,7 +116,7 @@ anything now.
 ## Joining the release stream after the gate
 
 Twelve packages arrived after the gate: `markdown`, `schemastore`,
-`jsonl`, `cli`, `memfs`, `github-references`, `schema-org`, and the
+`jsonl`, `cli-kit`, `memfs`, `github-references`, `schema-org`, and the
 github-split five — `commands`, `templates`, `github`, `github-actions`
 and `sbom` (see [the github-split program](../glossary/github-split.md)).
 None entered through the gate's criterion, because that criterion is the
@@ -128,9 +128,9 @@ without them. What scoped each instead:
   `claude-code-marketplace-manager` — and all six have since completed
   the migration onto them. Only `silk-update-action` of those six is
   also one of the five founding applications.
-- `markdown`, `schemastore`, `jsonl` and `cli` were each scoped by a
+- `markdown`, `schemastore`, `jsonl` and `cli-kit` were each scoped by a
   named consumer and built design-doc-first, then published in the next
-  wave whose changesets named them. `cli` came out of the `reposets`
+  wave whose changesets named them. `cli-kit` came out of the `reposets`
   consumer loop — the kit's first consumer that runs at a terminal
   rather than on a runner — with its design reviewed by that consumer
   before the port.

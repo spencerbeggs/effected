@@ -10,10 +10,10 @@ sources:
     title: "env purity: no process read, node: import, platform or kit import, or console write in src"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-02T15:53:05Z
 integrity:
   generated:
-    body: 08da0eefcec2809b
+    body: b7aad6fce0e2eb70
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -40,18 +40,18 @@ plugin must choose a reporter. None of those may take a dependency on
 `@effected/cli-kit`. Audience and terminal *detection* (`RuntimeEnv`,
 `TerminalEnv`, `Audience`, `EnvOverride`) live in `env`. Only the
 `--audience` flag, which lets a user override detection on one invocation,
-lives in `cli`. See [`env.md`](../modules/env.md).
+lives in `cli-kit`. See [`env.md`](../modules/env.md).
 
 ## Alternatives rejected
 
 - **Fold detection into `@effected/cli-kit`.** Rejected. It would force every
   MCP server, engine and test plugin that needs detection to install the CLI
   package and its presentation layer, and would break the engine rule that a
-  consumer engine may not import `cli`.
+  consumer engine may not import `cli-kit`.
 
 ## Consequences
 
-`cli` declares `@effected/env` as a peer under
+`cli-kit` declares `@effected/env` as a peer under
 [`peer-dependency-discipline`](../conventions/peer-dependency-discipline.md),
 so a consumer resolves one copy of the `CurrentRuntimeEnv`, `TerminalEnv` and
 `Audience` service tags. A second resolved copy would be two distinct tags and a layer built

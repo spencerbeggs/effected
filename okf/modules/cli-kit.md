@@ -8,10 +8,10 @@ resource: ../../packages/cli-kit
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-02T15:53:05Z
 integrity:
   generated:
-    body: 2acbaf3d7e1afaa7
+    body: fb63be1334867696
 ---
 
 # @effected/cli-kit
@@ -90,9 +90,9 @@ module at all.
 
 **Nothing in the kit may depend on it except an application**, the same
 rule `@effected/app` carries. A library that reaches for CLI output has
-made a decision that belongs to the program at the top. `app` and `cli` are
+made a decision that belongs to the program at the top. `app` and `cli-kit` are
 siblings, not layers: `app` is the control plane (directories, state,
-cache, config), `cli` is the presentation boundary. Neither imports the
+cache, config), `cli-kit` is the presentation boundary. Neither imports the
 other.
 
 `@effected/cli-kit` is one of the surfaces the consumer register describes —

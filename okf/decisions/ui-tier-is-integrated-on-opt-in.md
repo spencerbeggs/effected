@@ -22,10 +22,10 @@ sources:
     title: "pnpm settings, autoInstallPeers"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-02T15:53:05Z
 integrity:
   generated:
-    body: 379067248293bdff
+    body: a2921f5012d3e55b
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -87,10 +87,10 @@ R1 to R4 apply as follows:
 
 ## Consequences
 
-- The project roster keeps `cli` at boundary. The per-entrypoint reading lives
+- The project roster keeps `cli-kit` at boundary. The per-entrypoint reading lives
   here and in the [cli Module](../modules/cli-kit.md).
 - The layering check reads `peerDependencies`, but it constrains `@effected/*`
-  edges only, so the two new external peers do not move `cli` in
+  edges only, so the two new external peers do not move `cli-kit` in
   `layers.json`.
 - **"Installs nothing" holds only while no incompatible `react` is in the
   tree. This is not probed.** npm's resolver treats a present but out-of-range

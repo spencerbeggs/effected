@@ -16,10 +16,10 @@ sources:
     title: "Issue 250: optional peers re-exported from a root entry broke unbundled consumers"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-02T15:53:05Z
 integrity:
   generated:
-    body: c99e12ad2e0b1bf7
+    body: cfa194a01f0750ba
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -65,7 +65,7 @@ screens and widgets, and `./ui/testing` for the screen harness.[^cli-package-jso
 ## Alternatives rejected
 
 - **A separate `@effected/cli-ink` package.** Rejected. Its consumers are
-  the programs that already depend on `cli`, and its screens read `cli`'s
+  the programs that already depend on `cli-kit`, and its screens read `cli-kit`'s
   services (`CliInteractive`, `CliTheme`). A second package would be a second
   peer that has to resolve to one copy of each service, for no install a
   consumer saves: an optional peer already costs nothing to a program that

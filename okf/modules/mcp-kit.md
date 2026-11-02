@@ -9,10 +9,10 @@ layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-02T15:53:05Z
 integrity:
   generated:
-    body: 9b730c26f57c3253
+    body: a0baa20f34c205c7
 ---
 
 # @effected/mcp-kit
@@ -34,8 +34,8 @@ platform package taken as a dependency. The one exception is the opt-in
 file ([decision](../decisions/mcp-node-subpath.md)). It depends on `effect`
 and [`@effected/kit`](kit.md), both peers, and never on `@effected/cli-kit` —
 the forbidden-edges list in the front-end-kit design holds for this
-package exactly as it holds for `cli`: no edge from `mcp` to `cli`, none
-from `cli` to `mcp`, none from `mcp` to `workspaces`.
+package exactly as it holds for `cli-kit`: no edge from `mcp-kit` to `cli-kit`, none
+from `cli-kit` to `mcp-kit`, none from `mcp-kit` to `workspaces`.
 
 ## Public surface
 

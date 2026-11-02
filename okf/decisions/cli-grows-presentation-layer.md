@@ -11,7 +11,7 @@ sources:
     title: "Issue 838: the audit of presentation code consumers re-derive"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-02T15:53:05Z
 verified:
   - by: human:spencer
     at: 2026-10-09T16:29:07Z
@@ -19,7 +19,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 7a4995f9933d66f1
+    body: ef18b1754420003a
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -69,7 +69,7 @@ that belongs upstream or nowhere. Nothing in the kit may depend on
 ## Alternatives rejected
 
 - **A separate `@effected/cli-ui` package.** Rejected. The presentation layer
-  is consumed by the same programs that already depend on `cli`, and a second
+  is consumed by the same programs that already depend on `cli-kit`, and a second
   package would split one boundary into two peers that must resolve to one
   copy of each service tag, for no install saving a consumer could use.
 - **A separate `cli-ink` package for the interactive screens.** Rejected for
@@ -81,7 +81,7 @@ that belongs upstream or nowhere. Nothing in the kit may depend on
 The limitation is deprecated and this Decision supersedes it. Its one open
 question, colour-aware output, is settled by
 [honouring FORCE_COLOR](force-color-honoured-node-precedence.md) through
-`@effected/env`. The [`cli` Module](../modules/cli-kit.md) documents the new
+`@effected/env`. The [`cli-kit` Module](../modules/cli-kit.md) documents the new
 surface, and the package's `CLAUDE.md` points here instead of banning prompts.
 
 [^cli-presentation-audit]: <https://github.com/spencerbeggs/effected/issues/838>

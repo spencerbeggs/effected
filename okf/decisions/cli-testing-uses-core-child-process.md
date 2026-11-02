@@ -6,7 +6,7 @@ status: stable
 tags: [architecture, testing, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-02T15:53:05Z
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
@@ -14,7 +14,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: b27f28bb1511f57b
+    body: e3e02469be2ec130
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -55,7 +55,7 @@ dependency, optional or required, on `@effected/commands`.
 tool-discovery and prefix-resolution machinery `Run` provides has no
 counterpart need in `CliTest.run`'s contract, which always receives an
 already-known `execPath` and `bin` from the calling test file rather than
-resolving either one itself. Adding the peer would cost every `cli`
+resolving either one itself. Adding the peer would cost every `cli-kit`
 consumer an unused optional-peer entry in their manifest for a capability
 `CliTest` never calls.
 

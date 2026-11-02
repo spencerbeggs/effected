@@ -6,10 +6,10 @@ status: stable
 tags: [architecture, deps, security]
 generated:
   by: okfit/claude-code
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-02T15:53:05Z
 integrity:
   generated:
-    body: 7691684ade9d28a5
+    body: 69dc787b385eb2e8
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -28,11 +28,11 @@ verified:
 `@effect/platform-node`. Neutralizing text so the runner cannot read it as a
 command is the same grammar from the other end, and `@effected/cli-kit` (boundary
 tier) needs it: its renderers, `CliMessage`, the failure report and the loggers
-all write consumer-supplied text into a log that the runner parses. `cli` could
+all write consumer-supplied text into a log that the runner parses. `cli-kit` could
 not take `github-actions` for that: layering forbids a boundary package taking
 an integrated one, and it would drag the platform package into every CLI.
 
-The first answer was a copy: `cli` carried its own escaping and its own
+The first answer was a copy: `cli-kit` carried its own escaping and its own
 neutralizer, with a comment that the duplication was deliberate. The copy made
 two implementations of one protocol, and the neutralizer's first version modelled
 only one of the runner's two parsers.
@@ -58,7 +58,7 @@ the packages that use them.
 The reasons:
 
 - One implementation of one protocol, so a correction (the legacy `##[` parser
-  anywhere in a line) reaches `ActionLogger`, both `cli` loggers and the
+  anywhere in a line) reaches `ActionLogger`, both `cli-kit` loggers and the
   renderers at once.
 - The kit's packages interlock rather than copy: where a pure rule is shared, a
   pure package at the lowest layer is the place, and any tier may depend on it.
@@ -70,5 +70,5 @@ The reasons:
 - There is no exported detector, so the grammar package never offers a second
   opinion of what a command is; each consumer's tests carry an independent oracle.
 
-This supersedes nothing: it extracts, and the earlier `cli` copy was never a
+This supersedes nothing: it extracts, and the earlier `cli-kit` copy was never a
 recorded decision beyond a code comment.

@@ -9,10 +9,10 @@ layer: pure
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-02T15:53:05Z
 integrity:
   generated:
-    body: f1089169e325f852
+    body: 0fcf8e3d38a3c06a
 ---
 
 # @effected/kit
@@ -28,11 +28,11 @@ somewhere a consumer's engine can depend on without also depending on a
 front end.
 
 That is the whole reason this package exists rather than living inside
-`@effected/cli-kit` or a future `@effected/mcp-kit`: **a consumer's engine may not
+`@effected/cli-kit` or `@effected/mcp-kit`: **a consumer's engine may not
 import `@effected/cli-kit`**, whose own rule is that only applications depend
-on it (see [`cli-kit.md`](cli-kit.md)). If `Distribution` lived in `cli`, every
+on it (see [`cli-kit.md`](cli-kit.md)). If `Distribution` lived in `cli-kit`, every
 consumer engine that wanted to stamp its own distribution would have to
-take a `cli` dependency it structurally cannot carry. Putting `Distribution`,
+take a `cli-kit` dependency it structurally cannot carry. Putting `Distribution`,
 `Remediation` and `LaunchContext` in a package whose only kit dependents
 are the two front ends, `@effected/mcp-kit` and `@effected/cli-kit`, breaks that
 knot. See
@@ -54,7 +54,7 @@ object, which loses TSDoc on its members in the built `.d.ts`.
 | `withDistribution(d)` | free function | `(d: Distribution \| null \| undefined) => <A, E, R>(self: Effect<A, E, R>) => Effect<A, E, R>`. Provides `CurrentDistribution` to `self`: `Option.some` of a carrier, `Option.none()` for `null` or `undefined`. The one-line form of what a front end's `main` does once; data-last. |
 | `withDistributionVersion(d)` | free function | `(d: Option<Distribution>) => (formatVersion: (name, version) => string) => (name, version) => string`. Decorates a `--version` formatter shaped like `effect/cli`'s `CliOutput.Formatter["formatVersion"]`, appending `distributionSuffix(d)`. It **wraps** whatever formatter is in effect (a coloured default, a custom one) rather than replacing it; the suffix is computed once, when applied. `CliRuntime.main`'s `distribution` option is built on it. |
 | `Remediation` | `Schema.Struct` and type | `{ hint: string; suggestedTool?: string; suggestedArgs?: Record<string, unknown> }`. The shape okfit and Silk both already use, plus vitest-agent's `suggestedArgs`; vitest-agent's `humanHint` maps onto `hint`. |
-| `ErrorText.describe(value)` | static function | `(value: unknown) => string`, never throwing: a string as itself, a value with a string `message` as that message (an `Error`, one from another realm, a plain `{ message }`, even an empty one), else its JSON, else `String(value)`, else `"[unprintable value]"`. A throwing getter is a value without a message. Not sanitised. Moved here from `@effected/cli-kit`'s `Fmt.describe`, which now delegates (#1141): an MCP front end may not depend on `cli`, and both front ends of one tool must describe a failure with the same words. |
+| `ErrorText.describe(value)` | static function | `(value: unknown) => string`, never throwing: a string as itself, a value with a string `message` as that message (an `Error`, one from another realm, a plain `{ message }`, even an empty one), else its JSON, else `String(value)`, else `"[unprintable value]"`. A throwing getter is a value without a message. Not sanitised. Moved here from `@effected/cli-kit`'s `Fmt.describe`, which now delegates (#1141): an MCP front end may not depend on `cli-kit`, and both front ends of one tool must describe a failure with the same words. |
 | `ErrorText.causeMessage(value)` | static function | `(value: unknown) => string \| undefined`: the [error-standards](../conventions/error-standards.md) guarded cause read, published. Every distinct non-empty message along the `cause` chain, nearest first, joined with a colon and a space, eight nodes at most, never throwing. The `src/internal/causeMessage.ts` copy moved here from `@effected/cli-kit`, whose `Fmt.causeMessage` delegates. |
 | `ErrorText.of(value)` | static function | `(value: unknown) => string`: exactly `causeMessage(value) ?? describe(value)`, the fallback every I/O site would otherwise spell by hand (#1134); `@effected/cli-kit`'s `Fmt.errorText` is this function. The replacement for a per-site `error instanceof Error ? error.message : String(error)`, which misses a cross-realm error and the cause chain and throws on a prototype-less value. |
 | `LaunchContext.usable(value)` | static function | `(value: string \| undefined) => Option<string>`: the value trimmed, or `None` for `undefined`, an empty or whitespace-only string, or a string still carrying a literal `${VAR}`. The one guard every resolver applies; `??` would accept an empty string or a placeholder. |
@@ -139,7 +139,7 @@ not serve that role. The connected signal is a plain `markConnected()`
 callback rather than an Effect or a `start()` return value: an LSP calls it
 from its own listening path, and `McpGuard` passes it to
 `McpStdio.launch`'s `onReady`, which fires after `load` resolved — a
-`start()`-shaped contract could not express that later moment. `engine`
+`start()`-shaped contract could not express that later moment. `kit`
 stays pure: the host is structural and `setTimeout` is the only global
 touched.
 

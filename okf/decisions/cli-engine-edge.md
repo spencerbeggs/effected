@@ -21,10 +21,10 @@ sources:
     title: "Context.Reference is Context.Service with a default; lookup is by the string key"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-02T15:53:05Z
 integrity:
   generated:
-    body: 99ae6e717ac1061c
+    body: a65f7a8bc3a10a6d
   verified:
     by: human:spencer
     at: 2026-10-29T00:43:21Z
@@ -49,7 +49,7 @@ coloured default rather than decorating it.
 [D1](engine-holds-cross-front-end-primitives.md) put `Distribution` and
 `CurrentDistribution` in `@effected/kit` so that a consumer's engine can
 reach them without a front-end edge, and said that any new kit edge to
-`engine` needs its own Decision. Folding the wiring into
+`kit` needs its own Decision. Folding the wiring into
 `CliRuntime.main` needs exactly that edge.[^owner-ruling]
 
 ## Decision
@@ -78,7 +78,7 @@ through cli's copy is the value a consumer engine reads through its own.
 - **Keep the wiring in each consumer.** Rejected: it is the duplicated
   recipe D1 exists to remove, and the recipe's usual shape replaced core's
   formatter instead of wrapping it, which drops the colour.
-- **A peer dependency on `engine`.** Rejected: a peer is for a contract that
+- **A peer dependency on `kit`.** Rejected: a peer is for a contract that
   must resolve to one copy, and this one does not. It would make every
   application declare a package it may never import.
 - **Copy `CurrentDistribution` into cli.** Rejected: a second Reference with
@@ -99,7 +99,7 @@ A program must not also append the suffix in `env.formatter`, or it prints
 twice. A hand-wired program that does not use `CliRuntime.main` composes
 the same two engine exports itself. D1's rule still stands for every other
 package: `@effected/mcp-kit` (a peer) and `@effected/cli-kit` are the only kit
-dependents of `engine`.
+dependents of `kit`.
 
 [^owner-ruling]: conversation with the repository owner, 2026-10-26
 [^cli-runtime]: `../../packages/cli-kit/src/CliRuntime.ts`

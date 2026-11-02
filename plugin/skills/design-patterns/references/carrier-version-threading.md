@@ -125,7 +125,7 @@ core's own `formatVersion` hook — is `effect-v4-cli`'s
 [`recipes.md#version-formatter`](../../effect-v4-cli/references/recipes.md#version-formatter),
 not re-taught here: that reference covers the exact `(name, version)` arity
 `formatVersion` takes and the ruling that only a *consumer* front end may
-depend on `@effected/kit`, never the kit's own `cli` package. This file
+depend on `@effected/kit`, never the kit's own `@effected/cli-kit` package. This file
 supplies the identity `CurrentDistribution` carries down to that formatter;
 the formatter is the front end's job.
 

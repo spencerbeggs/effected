@@ -6,7 +6,7 @@ status: stable
 tags: [architecture, docs]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T17:45:24Z
+  at: 2026-11-02T15:53:05Z
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
@@ -14,7 +14,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 298f14aec759fdbc
+    body: fd4356a24b91155d
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -53,7 +53,7 @@ exports (`CurrentDistribution`, `WorkspaceLayering`, `PackedInstall`,
 **Folding CLI and MCP knowledge into `design-patterns`.** Rejected — an
 agent building a CLI front end has no need to load MCP wire-format detail
 in the same context window, and vice versa; the two front ends do not
-compose with each other by design (`cli` and `mcp` never depend on one
+compose with each other by design (`cli-kit` and `mcp-kit` never depend on one
 another), so their skills should not either. Folding them together would
 also blow well past `okf/conventions/skill-shape.md`'s lean-index budget
 for a single skill, forcing exactly the `references/` split
@@ -68,6 +68,6 @@ stays independently maintainable: an `effect-v4-cli` refresh (this
 design's phase 1 and 4) does not force a simultaneous `effect-v4-mcp`
 edit, and vice versa for phase 2's MCP work. The 32-to-34-package kit
 composition table and the `effected-packages` skill index both gain rows
-for `engine` and `mcp` as part of this same phase-4 work, so an agent
+for `kit` and `mcp-kit` as part of this same phase-4 work, so an agent
 choosing a skill by package name finds the right one without reading
 `design-patterns` first.

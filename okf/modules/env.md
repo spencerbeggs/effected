@@ -13,10 +13,10 @@ sources:
     title: "env purity: no process read, node: import, platform or kit import, or console write in src"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-02T15:53:05Z
 integrity:
   generated:
-    body: 52a6b8421955c3ec
+    body: 374bdc3c8b757be5
 ---
 
 # @effected/env
@@ -57,7 +57,7 @@ truecolor. That approximates Node on Windows 10 build 14931 and later; an
 older build gets more colour than Node would give. Hyperlink
 detection is a port of std-osc8's pure core
 ([decision](../decisions/osc8-ported-not-wrapped.md)); hyperlinks being off
-for the agent audience is applied in `cli`, where the audience is known, not
+for the agent audience is applied in `cli-kit`, where the audience is known, not
 here.
 
 ## Bound by

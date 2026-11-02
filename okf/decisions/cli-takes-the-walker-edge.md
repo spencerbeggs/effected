@@ -7,7 +7,7 @@ supersedes: cli-links-inline-ascent.md
 tags: [architecture, deps]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-02T15:53:05Z
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
@@ -15,7 +15,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 1c2d60064a5aeea7
+    body: 885d63e25ed4cc46
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -41,12 +41,12 @@ the marker test. `@effected/walker` is a required `workspace:^` peer of
 `@effected/cli-kit` and a `workspace:*` devDependency. Every workspace consumer of
 `@effected/cli-kit` declares walker, and `@effected/glob`, which walker peers on,
 beside it: `schemastore-cli` as regular dependencies, `scratchpad` already
-lists both. The layer order allows it: `cli` is above `walker`.
+lists both. The layer order allows it: `cli-kit` is above `walker`.
 
 The reasons:
 
 - The kit is designed to interlock, and walker exists for exactly this upward
-  walk. The real consumers of `cli` (okfit, vitest-agent) already depend on
+  walk. The real consumers of `cli-kit` (okfit, vitest-agent) already depend on
   walker and glob, so the install cost the first draft feared is close to
   nothing.
 - Walker has the hardened semantics the hand-written loop lacked: a bounded
@@ -65,5 +65,5 @@ The reasons:
 
 The edge is one-way and downward. A consumer of `@effected/cli-kit` now installs
 walker and glob. Tier rules still hold: no integrated or platform-bound package
-is pulled into `cli`. The ascent stays behind one function in `CliLinks`, so the
+is pulled into `cli-kit`. The ascent stays behind one function in `CliLinks`, so the
 walk can change without touching the link policy.

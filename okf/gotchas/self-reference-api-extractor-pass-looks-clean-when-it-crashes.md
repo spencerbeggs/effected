@@ -20,10 +20,10 @@ sources:
     title: "The node.d.ts ae-forgotten-export suppression the control emptied"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T21:46:56Z
+  at: 2026-11-02T15:53:05Z
 integrity:
   generated:
-    body: 02e4c041e96b76ba
+    body: 0a0ff41c79f10645
 ---
 
 # A package that names its own root types once showed one warning or none, until the bundler resolved the self-reference to declarations
@@ -36,7 +36,7 @@ it. `@savvy-web/tsdown-plugins` 2.10.0 gives the second API Extractor pass a
 declaration files, so a type-only self-reference such as
 `import type * as Jsonl from "@effected/jsonl"` resolves to declarations, not
 to `src`.[^tsdown-plugins] A forced build of `images` reports 0 warnings and no
-`ae-wrong-input-file-type`.[^issues] `cli` and `jsonl` report coded warnings
+`ae-wrong-input-file-type`.[^issues] `cli-kit` and `jsonl` report coded warnings
 from their second passes, so those passes run to completion. Emptying the
 `node.d.ts` suppression pattern in `jsonl` brings back 28 coded
 `ae-forgotten-export` warnings against `node.d.ts`, and restoring it returns
@@ -45,9 +45,9 @@ the build to 0.[^jsonl-build]
 ## What still holds
 
 The second pass still reports every root type a self-referencing entry names
-as `ae-forgotten-export` against that entry, which is why `images`, `cli` and
+as `ae-forgotten-export` against that entry, which is why `images`, `cli-kit` and
 `jsonl` each keep one narrow suppression scoped to their non-root entry
-points (`cli` covers two: `./ui` and `./ui/testing`).
+points (`cli-kit` covers two: `./ui` and `./ui/testing`).
 That suppression is checked: a clean `issues.json` from the second pass is a
 real result, not an unchecked one.
 

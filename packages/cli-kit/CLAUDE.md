@@ -56,7 +56,7 @@ installs its optional peers — `@./okf/decisions/ui-tier-is-integrated-on-opt-i
 The one kit package that does is `schemastore-cli`, a companion that carries no
 tier and imports only the boundary root, so nothing inherits a tier from `./ui`.
 Same posture as `app`: the two are siblings, not layers — `app` is the control
-plane, `cli` the presentation boundary, and neither imports the other.
+plane, `cli-kit` the presentation boundary, and neither imports the other.
 
 **Three regular dependencies, no new peers:** `@effected/github-commands`,
 `@effected/kit` (the root's `CliRuntime` imports `withDistribution` and

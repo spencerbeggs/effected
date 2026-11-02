@@ -21,10 +21,10 @@ sources:
     resource: ../../packages/mcp-kit/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-02T15:53:05Z
 integrity:
   generated:
-    body: d6ca6d136a87fbd1
+    body: c026823980b28852
   verified:
     by: human:spencer
     at: 2026-10-29T00:43:21Z
@@ -82,7 +82,7 @@ load. Walker's `./node-sync` binds `descendSync` / `descendEntriesSync` to
 code: `AppTest.layer` reaches `@effected/memfs`, an optional peer, which a
 production importer of `App` must never load; see
 [app's test layer lives behind ./testing](app-testing-entrypoint.md).
-`mcp`'s `./node` is the same mechanism for a Node-only capability: it
+`mcp-kit`'s `./node` is the same mechanism for a Node-only capability: it
 carries `StdioCapture`, whose `node:async_hooks` and `node:stream` imports
 the boundary-tier root must never load; see
 [`@effected/mcp-kit` ships `StdioCapture` behind `./node`](mcp-node-subpath.md).

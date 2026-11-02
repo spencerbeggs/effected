@@ -6,7 +6,7 @@ status: stable
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-02T15:53:05Z
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
@@ -14,7 +14,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 330e810eaf9acd3f
+    body: f6850c10a58d2f13
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -58,8 +58,8 @@ that already belong beside the package whose model they check.
 tier with `effect` as its only peer (see [D1](engine-holds-cross-front-end-primitives.md)).
 `PackedInstall` alone requires `ChildProcessSpawner`, `FileSystem`, `Path`
 and `WorkspaceDiscovery`; folding it under `engine/testing` would drag
-`engine` from pure to boundary or integrated for a subpath that has
-nothing to do with the cross-front-end primitives `engine` exists to hold.
+`kit` from pure to boundary or integrated for a subpath that has
+nothing to do with the cross-front-end primitives `kit` exists to hold.
 
 ## Consequences
 
