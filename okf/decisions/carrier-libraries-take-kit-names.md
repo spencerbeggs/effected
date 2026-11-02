@@ -29,11 +29,13 @@ integrity:
     body: a2ff22bdf2517c9c
   verified:
     by: human:spencer
-    at: 2026-11-02T17:04:46Z
-    content: 190eb864f16bac73
+    at: 2026-11-02T17:22:06Z
+    content: 4d2c6cfbb30d24ed
 verified:
   - by: human:spencer
     at: 2026-11-02T17:04:46Z
+  - by: human:spencer
+    at: 2026-11-02T17:22:06Z
 ---
 
 # The carrier libraries take -kit names, with no shim
