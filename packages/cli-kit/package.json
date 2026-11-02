@@ -4,14 +4,14 @@
 	"private": true,
 	"description": "The presentation boundary of an effect/cli program: audience-aware output, a document IR and renderers, editor links, failure reports and logging, plus opt-in Ink screens, widgets and a live view",
 	"keywords": ["effect", "cli", "logger", "terminal", "ink", "tui"],
-	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/cli#readme",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/cli-kit#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/spencerbeggs/effected.git",
-		"directory": "packages/cli"
+		"directory": "packages/cli-kit"
 	},
 	"license": "MIT",
 	"author": {

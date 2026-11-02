@@ -3,7 +3,7 @@
 	"extends": ["//"],
 	"tasks": {
 		"build:prod": {
-			"outputs": ["$TURBO_EXTENDS$", "../../website/lib/models/mcp"]
+			"outputs": ["$TURBO_EXTENDS$", "../../website/lib/models/mcp-kit"]
 		}
 	}
 }

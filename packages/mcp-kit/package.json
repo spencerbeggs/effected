@@ -4,14 +4,14 @@
 	"private": true,
 	"description": "The boundary layer of an effect/ai MCP server: stdio wiring that keeps stdout the wire, tool-failure shaping, strict-input walkers, and test clients",
 	"keywords": ["effect", "mcp", "model-context-protocol", "stdio", "json-rpc", "effected"],
-	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/mcp#readme",
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/mcp-kit#readme",
 	"bugs": {
 		"url": "https://github.com/spencerbeggs/effected/issues"
 	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/spencerbeggs/effected.git",
-		"directory": "packages/mcp"
+		"directory": "packages/mcp-kit"
 	},
 	"license": "MIT",
 	"author": {
