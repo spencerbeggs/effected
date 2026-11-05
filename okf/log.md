@@ -53,6 +53,7 @@
 * Updated The package-json decode-free text path
 * Updated glob
 * Updated glob is a full-fidelity vendored port, not a minimal runtime dependency
+* Updated semver
 
 ## 2026-11-02
 

@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-25T14:19:57Z
+  at: 2026-11-05T19:12:42Z
 integrity:
   generated:
-    body: d40ed05a46304739
+    body: 59f22ea73c2a023a
 ---
 
 # semver
@@ -27,7 +27,7 @@ integrity:
 
 ## Module layout
 
-Module-per-concept: one file per domain concept (`SemVer.ts`, `Comparator.ts`, `Range.ts`, `VersionDiff.ts`, `VersionCache.ts`), each owning its own tagged errors rather than kind-based `errors/`/`schemas/` folders. `src/index.ts` is the only re-exporting module. `src/internal/` holds the parsing pipeline: `grammar.ts` (recursive descent), `desugar.ts` (caret/tilde/x-range/hyphen), `normalize.ts` (comparator sort and build-metadata-ignoring dedupe), and `order.ts` — a module that exists solely to break a cycle, since both `SemVer` and `Range` need the spec's compare primitives and neither may import the other.
+Module-per-concept: one file per domain concept (`SemVer.ts`, `Comparator.ts`, `Range.ts`, `VersionDiff.ts`, `VersionCache.ts`, `VersionSpecifier.ts`), each owning its own tagged errors rather than kind-based `errors/`/`schemas/` folders. `src/index.ts` is the only re-exporting module. `src/internal/` holds the parsing pipeline: `grammar.ts` (recursive descent), `desugar.ts` (caret/tilde/x-range/hyphen), `normalize.ts` (comparator sort and build-metadata-ignoring dedupe), and `order.ts` — a module that exists solely to break a cycle, since both `SemVer` and `Range` need the spec's compare primitives and neither may import the other.
 
 ## Public surface
 
