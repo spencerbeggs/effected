@@ -13,6 +13,7 @@ import type {
 	SchemaReport,
 } from "./RunReport.js";
 import { RunReport } from "./RunReport.js";
+import { VersionMismatch } from "./VersionCheck.js";
 
 const findingLine = (finding: PipelineFinding): string => `  ${finding.label} at "${finding.path}": ${finding.message}`;
 
@@ -231,9 +232,23 @@ export class Report {
 		return report.schemas.filter((schema) => schema.verdict === "drift").map((schema) => warningLine(schema, report));
 	}
 
-	/** One JSON document, stable key order: {@link RunReport.Json}'s encoding. */
-	static json(report: RunReport): string {
-		return JSON.stringify(Schema.encodeSync(RunReport.Json)(report), null, "\t");
+	/**
+	 * One JSON document, stable key order: {@link RunReport.Json}'s encoding.
+	 *
+	 * @remarks
+	 * A version mismatch the run went on past is not part of the report, so it is
+	 * passed beside it and comes last, where `ValidateReport.Json` has it: an agent
+	 * reading only stdout must see it. Without one the document is unchanged.
+	 */
+	static json(report: RunReport, versionMismatch?: VersionMismatch): string {
+		const encoded = Schema.encodeSync(RunReport.Json)(report);
+		return JSON.stringify(
+			versionMismatch === undefined
+				? encoded
+				: { ...(encoded as object), versionMismatch: Schema.encodeSync(VersionMismatch)(versionMismatch) },
+			null,
+			"\t",
+		);
 	}
 
 	/**

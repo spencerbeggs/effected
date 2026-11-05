@@ -11,8 +11,9 @@ import {
 	PayloadError,
 	SchemaResolutionError,
 	SchemaValidate,
+	ValidateReport,
 } from "../../src/schema/SchemaValidate.js";
-import { VersionMismatchError } from "../../src/schema/VersionCheck.js";
+import { VersionMismatch, VersionMismatchError } from "../../src/schema/VersionCheck.js";
 
 const volume = (seed: MemoryFileSystemSeed = {}) => Layer.merge(Path.layer, MemoryFileSystem.layerWith(seed));
 
@@ -421,5 +422,60 @@ describe("SchemaValidate.run", () => {
 				);
 			}).pipe(Effect.provide(volume(seed))),
 		);
+	});
+});
+
+describe("ValidateReport.Json", () => {
+	const located = ValidateReport.make({
+		payload: PAYLOAD_PATH,
+		$ref: BASIC_ID,
+		source: BASIC_PATH,
+		valid: false,
+		findings: [
+			{
+				path: "/name",
+				message: "must be string",
+				keyword: "type",
+				location: { file: PAYLOAD_PATH, line: 3, column: 11 },
+			},
+			{ path: "", message: "no location" },
+		],
+	});
+
+	it("encodes today's document: $ref as schema, source as document, in today's key order", () => {
+		const encoded = Schema.encodeSync(ValidateReport.Json)(located);
+		assert.strictEqual(
+			JSON.stringify(encoded),
+			JSON.stringify({
+				payload: PAYLOAD_PATH,
+				schema: BASIC_ID,
+				document: BASIC_PATH,
+				valid: false,
+				findings: [
+					{
+						path: "/name",
+						message: "must be string",
+						keyword: "type",
+						location: { file: PAYLOAD_PATH, line: 3, column: 11 },
+					},
+					{ path: "", message: "no location" },
+				],
+			}),
+		);
+	});
+
+	it("a mismatch comes last, and decoding gives back the same report", () => {
+		const report = ValidateReport.make({
+			...located,
+			versionMismatch: VersionMismatch.make({
+				tool: "2.0.0",
+				found: [{ where: "config", version: "1.0.0" }],
+				message: "m",
+			}),
+		});
+		const encoded = Schema.encodeSync(ValidateReport.Json)(report) as Record<string, unknown>;
+		assert.strictEqual(Object.keys(encoded).at(-1), "versionMismatch");
+		const decoded = Schema.decodeUnknownSync(ValidateReport.Json)(JSON.parse(JSON.stringify(encoded)));
+		assert.deepStrictEqual(Schema.encodeSync(ValidateReport)(decoded), Schema.encodeSync(ValidateReport)(report));
 	});
 });

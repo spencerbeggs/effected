@@ -4,6 +4,7 @@ import { PipelineFinding } from "@effected/schemastore";
 import { Schema } from "effect";
 import { Report } from "../../src/schema/Report.js";
 import { CatalogReport, DocumentDiff, RunReport, SchemaReport } from "../../src/schema/RunReport.js";
+import { VersionMismatch } from "../../src/schema/VersionCheck.js";
 
 const version = (label: string): SchemaVersion => label as SchemaVersion;
 
@@ -673,6 +674,29 @@ describe("Report.markdown diff blocks", () => {
 	it("keeps diff text out of the human lines", () => {
 		const lines = Report.human(withDiff("--- a\n+secret-marker\n"));
 		assert.isFalse(lines.some((line) => line.includes("secret-marker")));
+	});
+});
+
+describe("Report.json with a version mismatch", () => {
+	const mismatch = VersionMismatch.make({
+		tool: "2.0.0",
+		found: [{ where: "config", version: "1.0.0" }],
+		message: "m",
+	});
+
+	it("carries it as the last top-level key, encoded", () => {
+		const doc = JSON.parse(Report.json(cleanBuild, mismatch)) as Record<string, unknown>;
+		assert.strictEqual(Object.keys(doc).at(-1), "versionMismatch");
+		assert.deepStrictEqual(doc.versionMismatch, {
+			tool: "2.0.0",
+			found: [{ where: "config", version: "1.0.0" }],
+			message: "m",
+		});
+	});
+
+	it("changes nothing without one", () => {
+		assert.strictEqual(Report.json(cleanBuild, undefined), Report.json(cleanBuild));
+		assert.notInclude(Report.json(cleanBuild), "versionMismatch");
 	});
 });
 

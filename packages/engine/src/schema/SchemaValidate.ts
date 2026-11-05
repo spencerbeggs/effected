@@ -10,7 +10,7 @@ import type { InstanceValidatorError, SchemastoreConfig } from "@effected/schema
 import { InstanceValidator } from "@effected/schemastore";
 import { LineIndex } from "@effected/source";
 import type { PlatformError } from "effect";
-import { Effect, FileSystem, JsonPointer, Option, Path, Predicate, Result, Schema } from "effect";
+import { Effect, FileSystem, JsonPointer, Option, Path, Predicate, Result, Schema, SchemaTransformation } from "effect";
 import { AjvInstanceValidator } from "./AjvInstanceValidator.js";
 import type { ConfigLoadError, ConfigNotFoundError } from "./ConfigLoader.js";
 import { ConfigLoader } from "./ConfigLoader.js";
@@ -93,6 +93,17 @@ export class LocatedFinding extends Schema.Class<LocatedFinding>("LocatedFinding
 	location: Schema.optionalKey(SourcePoint),
 }) {}
 
+// The CLI's `--format=json` document: `$ref` and `source` under the names it has
+// always printed, in its order, and every other field the class's own.
+const JsonDocument = Schema.Struct({
+	payload: Schema.String,
+	schema: Schema.String,
+	document: Schema.String,
+	valid: Schema.Boolean,
+	findings: Schema.Array(Schema.toEncoded(LocatedFinding)),
+	versionMismatch: Schema.optionalKey(Schema.toEncoded(VersionMismatch)),
+});
+
 /**
  * The answer to one `validate`. A payload that does not conform is
  * `valid: false`, an ordinary result.
@@ -110,7 +121,31 @@ export class ValidateReport extends Schema.Class<ValidateReport>("ValidateReport
 	findings: Schema.Array(LocatedFinding),
 	/** Present when the config's values came from another `@effected/schemastore` and the run went on. */
 	versionMismatch: Schema.optionalKey(VersionMismatch),
-}) {}
+}) {
+	/**
+	 * The report as the CLI's `--format=json` document: `$ref` is `schema` and
+	 * `source` is `document`. Decoding it gives back the same report, so a consumer
+	 * of the CLI's stdout reads the class the MCP result encodes.
+	 */
+	static readonly Json: Schema.Codec<ValidateReport, unknown> = JsonDocument.pipe(
+		Schema.decodeTo(
+			ValidateReport,
+			SchemaTransformation.transform({
+				decode: ({ schema, document, ...rest }: typeof JsonDocument.Type): typeof ValidateReport.Encoded => ({
+					...rest,
+					$ref: schema,
+					source: document,
+				}),
+				encode: ({ payload, $ref, source, ...rest }: typeof ValidateReport.Encoded): typeof JsonDocument.Type => ({
+					payload,
+					schema: $ref,
+					document: source,
+					...rest,
+				}),
+			}),
+		),
+	);
+}
 
 /**
  * What one `validate` was asked to do.
