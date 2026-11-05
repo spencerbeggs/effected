@@ -19,7 +19,7 @@ pnpm add ink react                  # only for @effected/cli-kit/ui
 pnpm add -D @types/react @types/node
 ```
 
-`@effected/env`, `@effected/walker` and `@effected/glob` are required peers of the root; `ink`, `react` and `@types/react` are optional peers that only `@effected/cli-kit/ui` uses, and `@effected/config-file` is an optional peer of one root module. A program that only prompts through core's `Prompt` installs none of the Ink ones.
+`@effected/env`, `@effected/walker` and `@effected/glob` are required peers of the root; `ink`, `react` and `@types/react` are optional peers that only `@effected/cli-kit/ui` uses. A program that only prompts through core's `Prompt` installs none of the Ink ones.
 
 A screen of your own written as JSX needs the automatic JSX transform, in the tsconfig that compiles it:
 
