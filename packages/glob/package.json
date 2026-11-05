@@ -36,7 +36,7 @@
 		"@savvy-web/bundler": "^2.7.3",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effected",
-		"minimatch": "10.2.6",
+		"minimatch": "11.0.1",
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
