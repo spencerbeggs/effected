@@ -11,10 +11,10 @@ sources:
     resource: ../project.md
 generated:
   by: "claude-code/opus-5"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: 1883b67b967caa3f
+    body: c5c23dbed36085a6
 ---
 
 # Library tier (pure / boundary / integrated)
@@ -71,11 +71,11 @@ pushed up a tier by that edge.
 
 Every package's tier is recorded in the `Tier` column of the packages
 table.[^project] The
-companion packages — `pnpm-plugin-effected` and `schemastore-cli` — carry
-no tier at all, even the one that runs code: tier measures what an
-importer pays, and a bin-only package has no importer. See
-[companion package](companion-package.md) for why tier does not apply to
-them.
+companion package — `pnpm-plugin-effected` — carries no tier at all:
+tier measures what an importer pays, and a package that ships only
+configuration has no importer. The `effected` tool's packages are
+applications and carry none either. See
+[companion package](companion-package.md) for why tier does not apply.
 
 [^project]: `project.md` — the packages table's `Tier` column, for
     example the `config-file` row: "boundary | port of

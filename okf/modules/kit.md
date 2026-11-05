@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/kit"
-description: The platform-free primitives a carrier-pattern tool's own engine package shares across its front ends — distribution stamping, remediation shape, never-throwing error text, launch-context resolution, a one-permit lane for process-global work with scoped restores, and transport-neutral crash guards.
+description: The platform-free primitives a carrier-pattern tool's own engine package shares across its front ends — distribution stamping, remediation shape, never-throwing error text, launch-context resolution, a one-permit lane for process-global work with scoped restores, a path-containment check that fails closed, and transport-neutral crash guards.
 status: stable
 kind: package
 resource: ../../packages/kit

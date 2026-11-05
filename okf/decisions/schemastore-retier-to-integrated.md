@@ -10,10 +10,10 @@ sources:
     resource: ../../packages/schemastore/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-15T15:38:20Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: 5154436eecf28a8f
+    body: 8a4eadf663cd5053
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -26,8 +26,8 @@ verified:
 # Schemastore retiers from boundary to integrated for a direct ajv dependency
 
 > Superseded on 2026-09-15 by
-> [the engine lives in the CLI](schemastore-engine-lives-in-the-cli.md):
-> the ajv engine moved to `@effected/schemastore-cli` and the library
+> [the engine lives in the effected tool](schemastore-engine-lives-in-the-cli.md):
+> the ajv engine moved out to the command's package and the library
 > returned to boundary tier. Kept as the record of why the retier was
 > admissible when it was made.
 

@@ -22,10 +22,10 @@ sources:
     last_modified: 2026-11-02T00:00:00Z
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T16:44:32Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: 8288c2db5c3c3ec7
+    body: 9ad424b71a2f60e6
   verified:
     by: human:spencer
     at: 2026-11-02T17:04:46Z
@@ -39,7 +39,7 @@ verified:
 
 ## Context
 
-The [project](../project.md) said the repository held "libraries only" and that anything with a user-run entry point stayed in its own repo. The kit is now about to ship a tool: `effected`, a command and a stdio MCP server that a consumer installs as one root devDependency and that the [agent plugin](../modules/ai-plugin.md) launches. The tool will grow to bundle packages, build GitHub Actions, run the schemastore functions and export tsconfig presets, all of which are kit libraries applied. Issue 1147 required the exception to be recorded rather than assumed.
+The [project](../project.md) said the repository held "libraries only" and that anything with a user-run entry point stayed in its own repo. The kit is now about to ship a tool: `effected`, a command and a stdio MCP server that a consumer installs as one root devDependency and that the [agent plugin](../modules/ai-plugin.md) launches. The tool will grow to bundle packages, build GitHub Actions and export tsconfig presets, and already runs the schemastore functions (`effected schema`), all of which are kit libraries applied. Issue 1147 required the exception to be recorded rather than assumed.
 
 ## Decision
 
@@ -52,14 +52,15 @@ The tool lives here because it is made of the kit and releases with it: the cata
 - **Applications other than this one tool stay in external repos.** The exception is the tool, not a licence for others; a consumer application is still surveyed from outside under `consumers/`.
 - **Libraries are everything else.** The kit's libraries keep their tiers and their closed scope; the tool takes no capability a library should own, and shared logic lives in `engine`, built on the kit's libraries.
 - **The website is frozen.** No docs pages, navigation or website content for the tool packages.
-- **Companions stay a separate category.** The [companion packages](../glossary/companion-package.md) front exactly one library; the tool is not a companion.
+- **Companions stay a separate category.** A [companion package](../glossary/companion-package.md) ships configuration, not a program; the tool is not a companion.
 
 ## Alternatives rejected
 
 - **A separate `effected` tool repo.** Rejected: the tool's every command is the kit applied, the catalog and agent plugin release with it, and the repo split is the cross-repo loop the kit was built to end.
-- **Treating the tool as a companion.** Rejected: a companion fronts one library and releases as a fixed pair with it; the tool fronts the whole kit.
+- **Treating the tool as a companion.** Rejected: a companion ships configuration, while the tool is programs that front the whole kit.
 
 ## Related
 
 - [The carrier libraries take kit names](carrier-libraries-take-kit-names.md) frees the names the tool's packages use.
+- [The schemastore commands live in the tool](schema-commands-live-in-the-tool.md) is the first builder to move in, and the pattern later ones follow.
 - [Carrier-only bins](carrier-only-declares-bins.md) is the pattern; the tool uses its supported shared-bin alternative because the agent plugin's one-off fallback runs `@effected/mcp`, and a one-off runner cannot choose between two bins of one package.

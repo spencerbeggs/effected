@@ -10,10 +10,10 @@ sources:
     resource: ../../packages/schemastore/src/SchemaFile.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-15T15:38:20Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: 4a7f537556e351c2
+    body: 7bf6021d8edb7b28
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -50,8 +50,8 @@ unambiguous from the two names alone.
 ## Consequences
 
 A consumer names `SchemaFile.layer`, or `AjvValidator.layer` from
-`@effected/schemastore-cli` for the validator (the real engine moved
-there on 2026-09-15 — see
-[the engine lives in the CLI](schemastore-engine-lives-in-the-cli.md)),
+`@effected/engine/schema` for the validator (the real engine lives
+there — see
+[the engine lives in the effected tool](schemastore-engine-lives-in-the-cli.md)),
 for production wiring, and `makeTest`/`layerTest` for tests, with no
 third name to learn or keep in sync with the other two.

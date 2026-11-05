@@ -1,17 +1,17 @@
 ---
 type: Decision
-title: A schemastore outputDir is never exclusively the CLI's
-description: schemastore-cli reads only the paths it derives, never a listing of outputDir, because that directory may be shared with another config, a deploy folder, or the repository root — so orphan detection probes derived sibling shapes and knowingly misses a name change.
+title: A schemastore outputDir is never exclusively the command's
+description: `effected schema` reads only the paths it derives, never a listing of outputDir, because that directory may be shared with another config, a deploy folder, or the repository root — so orphan detection probes derived sibling shapes and knowingly misses a name change.
 status: stable
 tags:
   - schemastore
   - monorepo
 generated:
   by: okfit/claude-code
-  at: 2026-09-28T23:39:57Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: 0ee68c028d4b65ef
+    body: a2870a86aa72a922
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -21,17 +21,17 @@ verified:
     at: 2026-10-23T01:00:25Z
 ---
 
-# A schemastore outputDir is never exclusively the CLI's
+# A schemastore outputDir is never exclusively the command's
 
 ## Context
 
-`schemastore.config.ts` names an `outputDir`, and the CLI derives every path it writes under it. Issue #747 asked `check` to catch the file a rename leaves behind — an `appendVersion` flip, a `name` change or a `layout` change moves a document's derived path, and for a `published` label the old URL keeps serving a stale document with no report. The proposed mechanism, and the first cut of PR #753, listed "the directories the config owns" and reported every unclaimed `*.json` file as orphaned.
+`schemastore.config.ts` names an `outputDir`, and the command derives every path it writes under it. Issue #747 asked `check` to catch the file a rename leaves behind — an `appendVersion` flip, a `name` change or a `layout` change moves a document's derived path, and for a `published` label the old URL keeps serving a stale document with no report. The proposed mechanism, and the first cut of PR #753, listed "the directories the config owns" and reported every unclaimed `*.json` file as orphaned.
 
 ## Decision
 
-The CLI never lists `outputDir` (or any directory under it) to decide what is stale. It reads exactly the paths it can derive: the claimed paths, and — for orphan detection — the sibling shapes of each claimed path (`<name>.json`, `<name>-<v>.json`, `<v>/<name>.json`, `<v>/<name>-<v>.json`) for every label the config still declares. A file at a sibling shape is an orphan; a file anywhere else is invisible to the command.
+The command never lists `outputDir` (or any directory under it) to decide what is stale. It reads exactly the paths it can derive: the claimed paths, and — for orphan detection — the sibling shapes of each claimed path (`<name>.json`, `<name>-<v>.json`, `<v>/<name>.json`, `<v>/<name>-<v>.json`) for every label the config still declares. A file at a sibling shape is an orphan; a file anywhere else is invisible to the command.
 
-Any feature that needs "what else is here" — a `name`-change orphan, a dropped-label orphan, a merged catalog across configs — must carry its own ownership record (a per-config identity and a record of what that config wrote), never infer ownership from a directory. The merged catalog (#754) is the first such feature: each config carries a required `name` and owns the slice `<catalogDir>/<name>.json`, and `catalogDir` — a directory that holds only slices by construction — is the one directory the CLI lists.
+Any feature that needs "what else is here" — a `name`-change orphan, a dropped-label orphan, a merged catalog across configs — must carry its own ownership record (a per-config identity and a record of what that config wrote), never infer ownership from a directory. The merged catalog (#754) is the first such feature: each config carries a required `name` and owns the slice `<catalogDir>/<name>.json`, and `catalogDir` — a directory that holds only slices by construction — is the one directory the command lists.
 
 ## Alternatives rejected
 

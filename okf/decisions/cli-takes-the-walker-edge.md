@@ -7,7 +7,7 @@ supersedes: cli-links-inline-ascent.md
 tags: [architecture, deps]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:53:05Z
+  at: 2026-11-05T06:55:47Z
 verified:
   - by: human:spencer
     at: 2026-10-09T17:01:48Z
@@ -17,7 +17,7 @@ verified:
     at: 2026-11-02T17:04:46Z
 integrity:
   generated:
-    body: 885d63e25ed4cc46
+    body: 5efdf00eae2716a8
   verified:
     by: human:spencer
     at: 2026-11-02T17:04:46Z
@@ -42,7 +42,7 @@ to the working directory and at most 64 ancestors, with `Walker.findRoot` for
 the marker test. `@effected/walker` is a required `workspace:^` peer of
 `@effected/cli-kit` and a `workspace:*` devDependency. Every workspace consumer of
 `@effected/cli-kit` declares walker, and `@effected/glob`, which walker peers on,
-beside it: `schemastore-cli` as regular dependencies, `scratchpad` already
+beside it: `@effected/cli` as regular dependencies, `scratchpad` already
 lists both. The layer order allows it: `cli-kit` is above `walker`.
 
 The reasons:

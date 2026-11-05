@@ -28,10 +28,10 @@ sources:
     resource: ../../packages/schemastore/src/StoreDocument.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T22:43:13Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: 075e863c25dd570f
+    body: df805f66f5acb8cb
 ---
 
 # @effected/schemastore
@@ -57,7 +57,7 @@ This package stays the narrow publication, catalog, versioning and lint
 layer, and must not grow into a general JSON Schema package: schema
 construction, `$ref` resolution beyond the document's own `$defs` pool,
 and dialect conversion all belong to core's `JsonSchema`, never here.
-This is an explicit non-goal, not a deferral, and the CLI's `ajv`
+This is an explicit non-goal, not a deferral, and the tool's `ajv`
 dependency does not widen it — ajv is the validation gate the command
 runs, not a construction or conversion surface. Also out of scope: generating positive and negative
 test fixtures, submitting PRs to SchemaStore (the package produces
@@ -70,7 +70,7 @@ JSON.
 backing version ordering and label validation, with no `SemVer` type
 surfacing in the public API; `effect` is the peer.[^package-json] No
 third-party runtime dependency remains: `ajv` and `ajv-formats` moved
-to [`@effected/schemastore-cli`](schemastore-cli.md) with the engine,
+to [`@effected/engine`](engine.md) with the engine,
 so an application that imports this package at runtime — for
 `HostedSchema`, say — never pulls a validator into its install or its
 bundle. All IO lives in `SchemaFile` over core `FileSystem`/`Path`
@@ -81,9 +81,9 @@ checks suffice.
 
 The package was integrated between 2026-08-04, when it took `ajv`
 directly ([the retier decision](../decisions/schemastore-retier-to-integrated.md),
-now superseded), and 2026-09-15, when the CLI became the only
-real-engine consumer and the adapter moved there
-([the engine lives in the CLI](../decisions/schemastore-engine-lives-in-the-cli.md)).
+now superseded), and 2026-09-15, when the command became the only
+real-engine consumer and the adapter moved out
+([the engine lives in the effected tool](../decisions/schemastore-engine-lives-in-the-cli.md)).
 A second retier is a fresh decision held to the same two facts, not a
 free ride on either.
 
@@ -144,7 +144,7 @@ entrypoint.[^entrypoint] The load-bearing division:
   equality under the serializer's own semantics — object key order
   ignored, array order significant, `NaN` never equal, total past a
   stack guard — so `DocumentDiff`, `SchemaFile` and a consumer writing
-  its own JSON artifact (the CLI's catalog entries) decide "unchanged"
+  its own JSON artifact (the command's catalog entries) decide "unchanged"
   by one rule.
 - **`KeywordFamilies`** — the one owner of the declared non-standard
   keyword registry, in two groups: the upstream language-server families
@@ -161,10 +161,10 @@ entrypoint.[^entrypoint] The load-bearing division:
   What a namespace cannot promise is bounded by the engine — see
   [declared-family keys are bounded by ajv](../limitations/schemastore-declared-family-keys-are-bounded-by-ajv.md).
 - **`SchemaValidator`** — the validation contract and its doubles; the
-  engine is the CLI's `AjvValidator`. See
+  engine is the tool's `AjvValidator`. See
   [the validation gate](#the-validation-gate-ajv-ships-closed).
 - **`InstanceValidator`** — the payload-against-document validation
-  contract and its doubles; the engine is the CLI's
+  contract and its doubles; the engine is the tool's
   `AjvInstanceValidator`. See
   [the validation gate](#the-validation-gate-ajv-ships-closed).
 - **`DocumentDiff`** — pure change classification; see
@@ -175,7 +175,7 @@ entrypoint.[^entrypoint] The load-bearing division:
   (`ContractChangePolicy`, `SchemaContractChangeError`); see
   [the pipeline](#the-pipeline-orchestration-as-a-shipped-surface).
 - **`DriftPolicy`** — the pure drift classifier over a published
-  target's `WriteChange`; see [the CLI contract](#the-cli-contract-defineconfig-drift-and-published).
+  target's `WriteChange`; see [the config contract](#the-config-contract-defineconfig-drift-and-published).
 - **`HostedSchema`** — a `Schema.Class` over `{ name, baseUrl, versions?,
   current?, layout? }`: where a document is hosted and which version is
   current, the one value an application derives its `$schema` URL from
@@ -183,7 +183,11 @@ entrypoint.[^entrypoint] The load-bearing division:
   [hosted identity](#hosted-identity-one-value-for-schema-and-id). Also
   the home of `SCHEMASTORE_ID_BASE` and `SCHEMASTORE_CATALOG_BASE`.
 - **`SchemastoreConfig`** — `defineConfig`, the keyed `schemastore.config.ts`
-  contract; see [the CLI contract](#the-cli-contract-defineconfig-drift-and-published).
+  contract; see [the config contract](#the-config-contract-defineconfig-drift-and-published).
+  A `ResolvedSchema` keeps the `HostedSchema` it was given as `hosted`, exactly as given.
+- **`SchemastoreVersion`** — which copy of this package produced a value:
+  `current` is this copy's version and `of(value)` reads the stamp on a
+  value, `Option.none()` when it carries none ([the version check](#version-stamp-and-brand-recognition)).
 
 There is no annotation-carrier module. `AnnotationCarriers` existed to
 re-graft declared keys after the Draft-07 lowering dropped them; core
@@ -335,7 +339,7 @@ with three arms: any non-`"contract"` classification is identity; a
 non-pinned (prerelease) `current` is identity; otherwise a MINOR bump
 that preserves the label's component count (`1` → `2`, major being
 the only axis a one-component label has; `1.2` → `1.3`; `1.2.3` →
-`1.3.0`). It is a suggestion the CLI surfaces, not a
+`1.3.0`). It is a suggestion the command surfaces, not a
 verdict — the drift policy decides whether a published document may
 change at all — so the bump's job is to be strictly greater and
 conspicuous, not to encode SemVer compatibility: `DocumentDiff` cannot
@@ -343,9 +347,9 @@ distinguish an added optional property from a removed required one, so
 every contract change reads as breaking regardless of whether it
 actually is.
 
-## The CLI contract: defineConfig, drift and published
+## The config contract: defineConfig, drift and published
 
-The `schemastore-cli` companion consumes three additions that stay in
+The [`effected schema` command](../interfaces/schema-commands.md) consumes three additions that stay in
 this library so any caller can reason with them. `SchemaTarget.published`
 (always present, default `false`) is the lifecycle switch: an
 unpublished target is regenerated in place until someone depends on its
@@ -380,7 +384,7 @@ export default defineConfig({
 
 A first-run config declares a single label; a second label is appended to
 `versions` only once the first is published and its file already exists on
-disk — see `schemastore-cli.md`'s drift table and the
+disk — see [the schema commands' drift table](../interfaces/schema-commands.md#drift) and the
 `building-schemastore-schemas` skill's `drift-and-versioning.md` reference
 for the lifecycle.
 
@@ -402,7 +406,7 @@ highest under `SchemaVersioning.Order`), is generated from `schema`, and the
 rest become **frozen** `FrozenVersion` entries (`version`, `path`, `$id`,
 `url` — `$id` and `url` differ only under `"schemastore"`) — files that
 already exist on disk, advertised by the catalog and verified on disk by
-the CLI (existence and the declared `$id`), never regenerated. `outputDir` is top-level only, one destination per config;
+the command (existence and the declared `$id`), never regenerated. `outputDir` is top-level only, one destination per config;
 `baseUrl` and `drift` are top-level defaults an entry may override; `onDrift`
 is run-wide and not overridable. A `catalog` block is
 `{ name?, description, fileMatch }`: `name` is the entry's display name
@@ -424,7 +428,7 @@ custom `baseUrl` is one base for both `$id` and the catalog URL instead.
 ### Hosted identity: one value for `$schema` and `$id`
 
 An application that writes `$schema` into its own output has to spell the
-URL the CLI will emit as `$id`, and two hand-derivations of one URL drift.
+URL the command will emit as `$id`, and two hand-derivations of one URL drift.
 `HostedSchema` is the one value both read.[^hosted-schema] It is a `Schema.Class` over the
 raw fields `defineConfig` accepts by hand — `{ name, baseUrl, versions?,
 current?, layout? }` — with three named constructors, each validating
@@ -477,7 +481,7 @@ or spelling a hosting field beside it; an entry with no `baseUrl` and no
 config default; a missing `catalog` under `"schemastore"`; two cataloged
 schemas whose entries resolve to one catalog `name` (a `catalog.name`, else
 the key — so a display name equal to another cataloged schema's key
-collides; the CLI's merge refuses the same across configs); and an output
+collides; the command's merge refuses the same across configs); and an output
 path (a target, a frozen file, the config's catalog slice
 `<catalogDir>/<name>.json` or the merged `catalog.json` in `catalogDir`'s
 parent) declared twice,
@@ -486,7 +490,7 @@ empty `versions` array, an unparseable or duplicate label, `current`
 without `versions` or not among them, `layout` under `"schemastore"`, a
 `baseUrl` that is neither `"schemastore"` nor `https://` — are
 `HostedSchema`'s, surfaced under the same prefix. Every failure is a plain
-`Error`, never a raw `TypeError`; the CLI wraps the throw into its typed
+`Error`, never a raw `TypeError`; the command wraps the throw into its typed
 load error (exit `2`). The result is branded with a private symbol so
 `isSchemastoreConfig` recognises a loaded module's default export without
 the loader inspecting its shape.
@@ -495,8 +499,21 @@ the loader inspecting its shape.
 caller driving `SchemaPipeline` directly; `defineConfig` lowers each entry
 onto it. The old array-of-targets `SchemastoreConfigInput` and its
 per-target catalog/entry-pair types no longer exist. Together with the
-widened version grammar above, this is the whole surface the CLI needs
+widened version grammar above, this is the whole surface the command needs
 from the library.
+
+### Version stamp and brand recognition
+
+A tool that loads a consumer's config can run a different copy of this package than the one that built the config's values. Two
+mechanisms let it tell, and let it decide rather than crash.[^hosted-schema] **A stamp:** `HostedSchema`'s prototype and the
+`defineConfig` result carry the package's version, non-enumerable and under `Symbol.for("@effected/schemastore/version")`, so it
+stays out of structural equality, `Schema` encoding and object spread; the value is `process.env.__PACKAGE_VERSION__`, which the
+bundler replaces at build, read in one internal module, with `"0.0.0"` for an unbuilt source run. `SchemastoreVersion.of(value)`
+reads any copy's stamp. **A brand:** `defineConfig` recognizes a `HostedSchema` by a `Symbol.for("@effected/schemastore/HostedSchema")`
+brand on the prototype instead of `instanceof`, which fails across two copies inside the config's own evaluation, where no flag of the
+tool's could reach. A value from another copy is kept as given on `ResolvedSchema.hosted`, and the identity is rebuilt from its raw
+fields (`baseUrl`, `versions`, `current`, `layout`, `appendVersion`) with this copy's rules, whatever that copy's getters do. The tool's
+comparison and its policy are [a Decision](../decisions/schema-version-mismatch-check.md); two copies at one version are not told apart.
 
 ## The validation gate: ajv ships closed
 
@@ -512,9 +529,9 @@ conform to the published document it names in `$schema`". The one shipped
 shipped `InstanceValidator` implementation is `AjvInstanceValidator.layer`
 — the same ajv strict-mode setup through one shared `makeAjv`, pointed at
 a payload instance instead of the meta-schema — both exported from
-[`@effected/schemastore-cli`](schemastore-cli.md), which the commands
+[`@effected/engine`](engine.md)'s `./schema` subpath, which the commands
 compose at their edges and a program driving `SchemaPipeline` or
-validating payloads itself can import ([the engine lives in the CLI](../decisions/schemastore-engine-lives-in-the-cli.md)).
+validating payloads itself can import ([the engine lives in the effected tool](../decisions/schemastore-engine-lives-in-the-cli.md)).
 The channel convention is the library's: findings are values, and the
 error channel is reserved for the engine failing as a mechanism. The
 subjects differ, so the same compile failure splits: for
@@ -549,7 +566,7 @@ comparison helper so the two routes cannot disagree, and `check` never
 writes, since a CI drift job must not regenerate. An existing file that
 does not parse is classified as a contract change and repaired, not
 failed typed — failing would leave a hand-corrupted generated file
-permanently un-regenerable.
+permanently un-regenerable. A `check` result also carries the canonical text a write would put on disk (`generated`) and the file's text as it is (`existing`, absent when the file is missing), and `SchemaPipeline.check` forwards both on each target's result, so a caller can show a line diff for a document it did not write without reading the file again.
 
 ## Change classification: annotations versus contract
 
@@ -620,7 +637,8 @@ contract policy guards, classifies it against its on-disk predecessor.
 Phase 2 writes the held documents, in target order, only once every
 target has cleared phase 1. `check` stays total over the targets and
 never fails on findings, carrying `blocked` and `contractBlocked` per
-target instead.
+target instead, along with the `generated` and `existing` text of each
+document.
 
 `contractChanges` is the second, independent policy, keyed on
 `SchemaVersioning.isPinned(target.version)`. The default,

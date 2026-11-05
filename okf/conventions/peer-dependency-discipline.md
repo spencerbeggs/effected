@@ -12,10 +12,10 @@ sources:
     resource: ../../pnpm-workspace.yaml
 generated:
   by: "claude-code/opus-5"
-  at: 2026-10-01T17:24:58Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: 9a582e015902bf84
+    body: f1f5ac686ca39334
 ---
 
 # Peer-dependency discipline
@@ -87,15 +87,22 @@ uses `workspace:^`. Two enumerated exceptions stay `workspace:*`:
 
 - the paired `devDependency` that satisfies an auto-installed peer, which
   is never published;
-- `@effected/schemastore-cli`'s **peer** on `@effected/schemastore`. The
-  two release as a changesets fixed group at one version, and the CLI's
-  pipeline pattern-matches annotation symbols the consumer's config
-  created through the library — so there must be exactly one
-  `@effected/schemastore` instance, and it must be the very version the
-  bin was built against. An exact pin turns a second copy into an install
-  error rather than a silent runtime mismatch. This exception is a
-  property of a bin-only companion fronting one library; a library edge
-  never earns it.
+- the **`effected` tool's pin chain**, where `workspace:*` publishes as an
+  exact version. `@effected/plugin` depends on `@effected/cli`,
+  `@effected/mcp` and `@effected/schemastore`; `cli` and `mcp` on
+  `@effected/engine`; `engine` on `@effected/schemastore`; and
+  `schemastore` on `@effected/semver`. These are regular dependencies, not
+  peers, because the tool owns the versions it ships: the engine runs the
+  pipeline of the exact `@effected/schemastore` it was built against, and a
+  consumer's `schemastore.config.ts` constructs `SchemaTarget`s and
+  `HostedSchema`s that the pipeline pattern-matches by annotation symbol
+  and brand. A patch floating in anywhere below the carrier would change
+  what the tool writes with no carrier version to show for it, and a
+  bump of `schemastore` instead ripples down the chain, which is the
+  point. The exception covers exactly those five edges and is a property
+  of a tool whose output is the product; a library edge never earns it,
+  and a test in `@effected/plugin` reads the manifests to keep it exact
+  ([why the commands live in the tool](../decisions/schema-commands-live-in-the-tool.md)).
 
 Patch-floating is the point everywhere else: a sibling patch flows into an
 existing release without forcing a coordinated re-release, while a minor

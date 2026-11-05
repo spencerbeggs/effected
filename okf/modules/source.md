@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/source"
-description: "Source-text positions as plain values: a LineIndex from offsets to LSP-style zero-based line and character and back, and the structural range, position and diagnostic shapes the kit's format packages share."
+description: "Source-text positions as plain values: a LineIndex from offsets to LSP-style zero-based line and character and back, a pure LineDiff of two texts into unified-diff hunks, and the structural range, position and diagnostic shapes the kit's format packages share."
 status: draft
 kind: package
 resource: ../../packages/source

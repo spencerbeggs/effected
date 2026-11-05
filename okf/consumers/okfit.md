@@ -7,10 +7,10 @@ status: stable
 tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: 34c47213b19f3d27
+    body: 44bd6fbce954d245
 ---
 
 # spencerbeggs/okfit
@@ -64,7 +64,7 @@ integration. No front end depends on another front end.
   [`@effected/config-file`](../modules/config-file.md)
   (`TomlCodec`) for config discovery and parsing,
   [`@effected/schemastore`](../modules/schemastore.md) (`HostedSchema`) for
-  the published config JSON Schema, and `@effected/schemastore-cli`.
+  the published config JSON Schema, and the schemastore command (`effected schema`, formerly the `@effected/schemastore-cli` bin).
 - [`@effected/commands`](../modules/commands.md) — `Run.collect` in its
   e2e suites.
 

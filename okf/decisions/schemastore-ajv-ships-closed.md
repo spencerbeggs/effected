@@ -8,10 +8,10 @@ sources:
     resource: ../../packages/schemastore/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-15T15:38:20Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: 0ac05b1440426f9c
+    body: 9f40b249c2b18669
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -79,9 +79,9 @@ interface with a `noop` layer and a test layer, so a consumer that
 genuinely needs to swap the engine still can. Not-writing-an-adapter is
 simply the default now, rather than the only option.
 
-Since 2026-09-15 the engine's home is `@effected/schemastore-cli`, as
+The engine's home is `@effected/engine`'s `./schema` subpath, as
 `AjvValidator.layer` — see
-[the engine lives in the CLI](schemastore-engine-lives-in-the-cli.md).
-Every registration rule above holds unchanged there; what moved is the
-package that pays for `ajv`, and the "companion package" alternative
-was declined a second time in favour of the CLI that already existed.
+[the engine lives in the effected tool](schemastore-engine-lives-in-the-cli.md).
+Every registration rule above holds unchanged there; the package that
+pays for `ajv` is the one the command already needs, and the "companion
+package" alternative was declined in favour of it.
