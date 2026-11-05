@@ -1,26 +1,31 @@
 import { assert, describe, it } from "@effect/vitest";
 import { McpHarness } from "@effected/mcp-kit/testing";
-import { Effect } from "effect";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, Layer, Path } from "effect";
 import { ServerLayer } from "../src/server.js";
 
 const DISTRIBUTION = { name: "@effected/plugin", version: "1.2.3" };
 
 const harnessFor = (options: Parameters<typeof ServerLayer>[0]) =>
 	Effect.gen(function* () {
-		const harness = yield* McpHarness.make(ServerLayer(options));
+		const harness = yield* McpHarness.make(
+			ServerLayer(options).pipe(Layer.provide(Layer.mergeAll(MemoryFileSystem.layer, Path.layer))),
+		);
 		yield* harness.initialize;
 		return harness;
 	});
 
 describe("effected-mcp", () => {
-	it.effect("tools/list serves exactly the identity tool", () =>
+	it.effect("tools/list serves the identity tool and the schema tools", () =>
 		Effect.gen(function* () {
 			const harness = yield* harnessFor({});
 			const tools = yield* harness.listTools;
-			assert.deepStrictEqual(
-				tools.map((tool) => tool.name),
-				["identity"],
-			);
+			assert.deepStrictEqual(tools.map((tool) => tool.name).sort(), [
+				"identity",
+				"schema_build",
+				"schema_check",
+				"schema_validate",
+			]);
 		}).pipe(Effect.scoped),
 	);
 

@@ -1075,14 +1075,20 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(redis@6.3.1)
       '@effected/engine':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../engine/dist/dev/pkg
+      '@effected/glob':
+        specifier: workspace:^
+        version: link:../glob/dist/dev/pkg
       '@effected/kit':
         specifier: workspace:^
         version: link:../kit/dist/dev/pkg
       '@effected/mcp-kit':
         specifier: workspace:^
         version: link:../mcp-kit/dist/dev/pkg
+      '@effected/walker':
+        specifier: workspace:^
+        version: link:../walker/dist/dev/pkg
       effect:
         specifier: catalog:effected
         version: 4.1.2
@@ -1090,6 +1096,12 @@ importers:
       '@effect/vitest':
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs/dist/dev/pkg
+      '@effected/schemastore':
+        specifier: workspace:*
+        version: link:../schemastore/dist/dev/pkg
       '@savvy-web/bundler':
         specifier: ^2.7.3
         version: 2.7.3(@types/node@26.6.6)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(redis@6.3.1)(tsx@4.23.15)(typescript@7.1.0-beta)
