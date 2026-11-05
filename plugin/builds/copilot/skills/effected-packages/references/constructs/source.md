@@ -5,6 +5,8 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `EditDistance` | Class | Edit distance and "did you mean" as plain functions: no Effect, no IO. | edit distance between two strings, levenshtein, did you mean suggestions, nearest candidate, typo hint |
+| `EditDistanceSuggestOptions` | Interface | Options for `EditDistance.suggest`. | |
 | `LineBreaks` | TypeAlias | Which characters end a line, for `LineIndex.make`. | |
 | `LineDiff` | Class | Line diffs as plain values: no Effect, no JSON, no colour. | diff two texts line by line, hunks with context, plain values, unified diff |
 | `LineDiffHunk` | Interface | A run of changes with its surrounding context. | |

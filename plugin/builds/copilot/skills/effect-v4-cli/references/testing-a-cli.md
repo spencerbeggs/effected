@@ -253,7 +253,7 @@ program.pipe(Effect.provide(session.layer), Effect.provide(CliEnv.layerTest()))
 ~~~
 
 - **A session is 80 columns wide unless you say otherwise, and widgets cut every row to fit.** A `contains` on a long path or label fails with no hint that the text was truncated: pass `CliUiTest.session({ columns: 120 })`.
-- **`CliUi.prompt` without `otherwise` keeps `NotInteractive` in its error type**, even in a handler that already checked `CliInteractive`: the type cannot know. Map it to a usage error, which `CliRuntime.main` exits `64` (or `usageExitCode`), and assert that in a non-interactive test (`interactive: false`, `mounts` is `0`):
+- **`CliUi.prompt` without a real `otherwise` (none, or `undefined`) keeps `NotInteractive` in its error type**, even in a handler that already checked `CliInteractive`: the type cannot know. Map it to a usage error, which `CliRuntime.main` exits `64` (or `usageExitCode`), and assert that in a non-interactive test (`interactive: false`, `mounts` is `0`):
 
 ~~~ts
 CliUi.prompt(screen).pipe(

@@ -20,6 +20,26 @@ not interchangeable:
   => Effect.provideService(effect, S, value))`, with its `.layer` provided to
   the toolkit layer. `Layer.provide(Layer.succeed(S, …))` does **not**
   satisfy it — the marker stays in `R` and the server fails to typecheck.
+- **Declared, with a value fixed for the server's lifetime** — keep the
+  `dependencies` and meet them with `McpToolkit.provideLifetime(layer)`,
+  provided to `McpToolkit.layer`. The layer builds once with the server's
+  graph: a failure fails the server build, its finalizers run at shutdown,
+  and it shares the graph's memo map, so a layer the graph also builds is
+  built once and a server wrapped whole in `Layer.fresh` builds its own. It
+  captures what the layer outputs and nothing else. A hand-written
+  `McpServer.middleware` over `Effect.context` captures everything the build
+  ran under, and a span or request-level reference from the build then
+  shadows the request's own. A layer that outputs `Effect.context()`
+  wholesale leaks the same way, so output the services.
+
+~~~ts
+import { McpToolkit } from "@effected/mcp-kit"
+import { Layer } from "effect"
+
+// `Kit` declares `dependencies: [Inspector]`; `InspectorLive` builds it once.
+const Lifetime = McpToolkit.provideLifetime(InspectorLive)
+const ToolsLayer = McpToolkit.layer(Kit).pipe(Layer.provide(Lifetime), Layer.provide(KitHandlers))
+~~~
 
 A handler that yields a service it neither captured nor declared fails to
 typecheck: `Tool.HandlerServices` infers `never` for an undeclared tool, so
@@ -538,10 +558,15 @@ Under `KeyValueStore.layerMemory`, two calls with `requestId: "r1"` answer
   a miss or a skipped write, logged at debug level, never a tool error. A
   handler failure stores nothing, and neither does an `ok: false` envelope
   result — a "not found" must not replay after the thing exists.
-- **Wrap inside `catchAsEnvelope`**:
-  `ToolReplay.wrap(options)(handler)` first, then
-  `.pipe(ToolOutcome.catchAsEnvelope({ … }))` around it, so the envelope sees
-  the handler's real errors and replay sees only real successes.
+- **Either order of `catchAsEnvelope` and `wrap` is safe.** `wrap` skips
+  storing an `ok: false` result, so replay may sit outside a handler that
+  already catches into the envelope. Wrapping first and putting
+  `.pipe(ToolOutcome.catchAsEnvelope({ … }))` around it also works; the envelope
+  then sees the handler's real errors.
+- **Call `wrap` once, where the handler is built** (the effect form of
+  `Toolkit.toLayer`, as above), never inside the per-request handler: that
+  rebuilds the codec every call and moves the wiring check's throw from server
+  build to the first call.
 - **Replay, not exactly-once.** Two concurrent calls with one key both miss
   and both run the mutation. Serialize them yourself when that matters.
 
