@@ -22,10 +22,10 @@ sources:
     resource: ../../packages/engine/src/schema/index.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T06:55:47Z
+  at: 2026-11-05T06:58:37Z
 integrity:
   generated:
-    body: f679a67f72c3d3d6
+    body: 4434f81aa1487d59
 ---
 
 # The schemastore commands live in the effected tool, and the companion package is removed
@@ -33,7 +33,7 @@ integrity:
 ## Context
 
 `@effected/schemastore` builds, gates and classifies SchemaStore-shaped documents. Six consuming repositories each wrote
-the same two hundred lines around it, and a companion package, `@effected/schemastore-cli`, collected them into a
+the same two hundred lines around it[^six], and a companion package, `@effected/schemastore-cli`, collected them into a
 `schemastore` bin released as a fixed pair with the library. Meanwhile the [effected tool](one-tool-beside-the-libraries.md)
 shipped as a carrier that only reported its identity. The companion already worked and had real consumers (okfit,
 vitest-agent and silk-release-action), so it was the first thing the tool could take on, and the owner's intent was three
@@ -73,20 +73,24 @@ catalog drops it, which is loud and acceptable.
 
 ## Alternatives rejected
 
+- **`@effected/schemastore` as a peer of the engine.** The owner offered a direct dependency or a peer and the design
+  picked the dependency; the rationale given here (a peer leaves the consumer to align the version, the partial-bump failure
+  the pin exists to prevent) is the author's, not the owner's.[^engine-package-json]
+- **Float the chain at `workspace:^`.** That was the carrier's link to `cli` and `mcp`, and it would let a patch change
+  output with no carrier bump, which the design names as an anti-goal.
+- **`defineSchema` as the carrier's name for the function.** It reads as defining one schema, where the function defines a
+  whole config; the owner offered two candidates and the design picked `defineSchemastore`.
+
+## Author's reasoning, not considered with the owner
+
+These two alternatives are inferred by the author of this concept. Nobody discussed them; the owner can verify or delete them.
+
 - **Keep the companion and add an MCP server beside it.** A second install, a second front door and a second set of
   result shapes to keep level, with the tool still reporting nothing a builder needs. The point of the carrier is one
   install for every kit build tool.
 - **Keep the logic in the CLI and have the MCP shell out to it.** The agent would parse arbitrary JSON, which is exactly
   the guess the declared result is there to remove, and the two surfaces would share no types. Shared logic belongs in
   `engine`, and the front ends stay thin.
-- **`@effected/schemastore` as a peer of the engine.** The tool owns the version it ships, and a peer would leave the
-  consumer to align it, which is the partial-bump failure the pin exists to prevent. A direct dependency, pinned exact
-  through the chain, makes the tool one thing.[^engine-package-json]
-- **Float the chain at `workspace:^`.** That was the carrier's link to `cli` and `mcp`, and it would let a patch change
-  output with no carrier bump. Patch-floating is the kit's default for libraries because a patch is safe to flow; here a
-  patch is a change to what the tool writes.
-- **`defineSchema` as the carrier's name for the function.** It reads as defining one schema, where the function defines a
-  whole config; the owner offered two candidates and the design picked `defineSchemastore`.
 
 ## Consequences
 
@@ -104,3 +108,4 @@ catalog drops it, which is loud and acceptable.
 [^design]: `docs/superpowers/specs/2026-11-04-effected-schema-design.md`: Intent, Packages and the pin, and Retiring `@effected/schemastore-cli`.
 [^plugin-package-json]: `packages/plugin/package.json`: `@effected/cli`, `@effected/mcp` and `@effected/schemastore` at `workspace:*`.
 [^engine-package-json]: `packages/engine/package.json`: `@effected/schemastore` at `workspace:*`, and `ajv`, `ajv-formats` at exact versions.
+[^six]: The owner's design conversation of 2026-09-13 (the six duplicated generators), recorded in the former `@effected/schemastore-cli` Module and in `schemastore-no-bin.md`.

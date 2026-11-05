@@ -24,10 +24,10 @@ sources:
     resource: ../../packages/schemastore/src/HostedSchema.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T06:55:47Z
+  at: 2026-11-05T06:58:37Z
 integrity:
   generated:
-    body: ea0032c57ca4badc
+    body: 33afaf7e916c5552
 ---
 
 # A config from another schemastore version fails the CLI and only warns the MCP
@@ -66,14 +66,19 @@ config's own evaluation, before the engine saw anything and where no flag could 
 
 ## Alternatives rejected
 
-- **A hard failure everywhere.** An agent on the MCP cannot pass a flag, and a refusal tells it nothing it can act on
-  except that the tool will not run. A result carrying the warning lets it finish the task and report the mismatch.
-- **A warning everywhere.** CI and a person at a terminal would proceed past a config the tool does not fully understand,
-  and an automated build under `onDrift: "error"` could pass on output the wrong copy shaped.
 - **An MCP flag mirroring the CLI's.** It would add a parameter whose only use is to be set to quiet a warning the agent
   is meant to read.
 - **Keep `instanceOf` and let the engine fail first.** The foreign value throws in the config's own evaluation, before the
   engine runs, so neither the refusal nor the override could exist.
+
+## Author's reasoning, not considered with the owner
+
+These two alternatives are inferred by the author of this concept. Nobody discussed them; the owner can verify or delete them.
+
+- **A hard failure everywhere.** An agent on the MCP cannot pass a flag, and a refusal tells it nothing it can act on
+  except that the tool will not run. A result carrying the warning lets it finish the task and report the mismatch.
+- **A warning everywhere.** CI and a person at a terminal would proceed past a config the tool does not fully understand,
+  and an automated build under `onDrift: "error"` could pass on output the wrong copy shaped.
 
 ## Consequences
 
