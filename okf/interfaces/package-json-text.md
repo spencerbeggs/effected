@@ -22,13 +22,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
+  - by: human:spencer
+    at: 2026-11-05T20:23:04Z
 integrity:
   generated:
     body: bdae357cc466e363
   verified:
     by: human:spencer
-    at: 2026-10-29T00:43:21Z
-    content: 545c0dc54859d565
+    at: 2026-11-05T20:23:04Z
+    content: 404919100810f6ac
 ---
 
 # The package-json decode-free text path

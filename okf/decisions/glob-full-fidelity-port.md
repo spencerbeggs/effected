@@ -14,11 +14,13 @@ integrity:
     body: 4b78acda9e2d08e4
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 02e532a532cf4da6
+    at: 2026-11-05T20:23:04Z
+    content: add51726d1da1f4e
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-05T20:23:04Z
 ---
 
 # glob is a full-fidelity vendored port, not a minimal runtime dependency
