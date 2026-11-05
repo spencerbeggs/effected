@@ -26,8 +26,8 @@ Single entrypoint; no subpaths.
 | `Package.toJsonString(options?)` | serialize with canonical key order, dependency-map sorting, empty-map stripping |
 | `PackageJsonFormat.parseObjectResult(text)` / `parseObject` | turn package.json text into a plain object without decoding, keeping "not JSON" (`invalid-json`) apart from "not an object" (`not-an-object`) on `PackageJsonSyntaxError.reason` — use it instead of a bare `JSON.parse`, which lets `null` through |
 | `PackageJsonFormat.formatToString` / `sortValue` | canonical sort and format without decoding (a lint-hook handler) |
-| `PackageJsonFormat.modifyResult` / `modifyToStringResult` (Effect forms `modify` / `modifyToString`) | one byte-preserving field edit; an unnavigable path or an unserializable value (`bigint`, circular, function) fails `PackageJsonModifyError` with the jsonc error on `cause` |
-| `PackageJsonFile.read` / `.write` / `.modify` | the one IO service, over core `FileSystem`/`Path` |
+| `PackageJsonFormat.modifyResult` / `modifyToStringResult` (Effect forms `modify` / `modifyToString`) | one byte-preserving field edit, with `options?: PackageModifyOptions` (`insertAfter` places a new key after a sibling, `createParents` builds missing object ancestors); an unnavigable path or an unserializable value (`bigint`, circular, function) fails `PackageJsonModifyError` with the jsonc error on `cause` |
+| `PackageJsonFile.read` / `.write` / `.modify` | the one IO service, over core `FileSystem`/`Path`; each `modify` edit carries its own `insertAfter` / `createParents` |
 | `PackageValidator.validate` | aggregate rule-based checks into one `PackageValidationError` |
 | `PackageName`, `SpdxLicense`, `PackageManager`, `Person` | leaf schemas for the corresponding raw-string fields |
 

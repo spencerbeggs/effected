@@ -29,7 +29,7 @@
 | `PackageExportsError` | Class | Raised when a subpath or import specifier does not resolve against a manifest. | handle subpath not exported, invalid package target, path traversal refused, node error code |
 | `PackageExportsManifest` | Interface | The manifest fields subpath resolution reads. | |
 | `PackageExportsOptions` | Interface | Options for `PackageExports.resolveResult`, `PackageExports.resolveImportResult` and `PackageExports.entriesResult`. | |
-| `PackageFieldEdit` | Interface | One surgical field edit for `PackageJsonFile`'s `modify`: set `value` at `path`, or delete the key there when `value` is `undefined` (the `@effected/jsonc` / `@effected/yaml` modify convention — deletion is spelled with an explicit `value: undefined`, so it is always deliberate). | |
+| `PackageFieldEdit` | Interface | One surgical field edit for `PackageJsonFile`'s `modify`: set `value` at `path`, or delete the key there when `value` is `undefined` (the `@effected/jsonc` / `@effected/yaml` modify convention — deletion is spelled with an explicit `value: undefined`, so it is always deliberate). The `PackageModifyOptions` apply to this edit alone. | |
 | `PackageFileTarget` | Class | A request resolved to a file of the package. | resolved exports or imports file path inside the package |
 | `PackageFormatOptions` | Interface | Options for `Package.toJsonString` and `PackageJsonFile.write`. | |
 | `PackageFormatTextOptions` | Interface | Options for `PackageJsonFormat.formatToString`. | |
@@ -47,6 +47,7 @@
 | `PackageManager` | Class | A structured `packageManager` value with `name`, `version` and an optional `integrity` hash. | parse packageManager field, corepack pin triple name version integrity, exact pinnable version only |
 | `PackageManagerRange` | Class | A structured `packageManager` value whose version position is a semver **range**, carried verbatim: `name`, `range` and an optional `integrity` hash. | parse packageManager field with a semver range, pnpm manage-package-manager-versions, verbatim range text |
 | `PackageManifest` | Class | A package.json document as it exists on disk, publishable or not: every field of `Package` with `name` and `version` optional and `packageManager` accepting the range spelling. | read a package.json that may lack name or version, private workspace root |
+| `PackageModifyOptions` | Interface | Options for `PackageJsonFormat.modify` and its siblings, and for each edit of `PackageJsonFile.modify`. Indentation and line endings are not among them: those always follow the source. | |
 | `PackageName` | Variable + TypeAlias | A valid npm package name, scoped or unscoped. | validate npm package name, scoped or unscoped, classify scope |
 | `PackageNameStatics` | Interface | Classification statics attached to the `PackageName` schema value. | |
 | `PackagePatch` | TypeAlias | A patch over `Package`'s modeled fields — every field optional, derived from the schema so it never drifts from the model. | |
