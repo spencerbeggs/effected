@@ -358,6 +358,7 @@ export interface StoreSqliteOptions extends StoreOptions {
 	 * });
 	 * ```
 	 *
+	 * @example
 	 * For several settings, sequence the statements; each is an `Effect`, so
 	 * `Effect.andThen` (or `Effect.gen`) chains them and the first failure
 	 * fails the layer:

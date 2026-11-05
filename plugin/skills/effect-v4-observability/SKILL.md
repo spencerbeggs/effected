@@ -243,7 +243,9 @@ const AppLayer = Layer.mergeAll(DomainLayer, HttpLayer).pipe(Layer.provide(Telem
   failure. The explicit `layer` / `layerJson` / `layerProtobuf` forms take their
   options directly and have no exporter gate.
 - Default export intervals differ by signal: traces 5 s, logs 1 s, metrics
-  10 s. Override with `exportInterval` on the explicit forms; `layerFromConfig`
+  10 s. Override with `tracerExportInterval`, `loggerExportInterval` and
+  `metricsExportInterval` on `Otlp.layer` / `layerJson` / `layerProtobuf` (the
+  per-signal modules take plain `exportInterval`); `layerFromConfig`
   reads `OTEL_BSP_SCHEDULE_DELAY` (traces), `OTEL_BLRP_SCHEDULE_DELAY` (logs) and
   `OTEL_METRIC_EXPORT_INTERVAL` (metrics).
 - **Request URLs reach exported spans.** Whenever a tracer is live, `effect/http`'s
@@ -252,7 +254,8 @@ const AppLayer = Layer.mergeAll(DomainLayer, HttpLayer).pipe(Layer.provide(Telem
   `UrlParams.CurrentRedactedNames` are redacted by default (the signed-URL
   names `X-Amz-Signature`, `X-Amz-Credential`, `X-Amz-Security-Token`,
   `AWSAccessKeyId`, `Signature`, `sig`, `X-Goog-Signature`), so a `?token=`
-  query value is exported as written. Extend the list by providing
+  query value is exported as written. `url.path` is never redacted, so a secret
+  in the path goes out as written too. Extend the list by providing
   `UrlParams.CurrentRedactedNames`; a custom list replaces the defaults.
   The exporter's own posts are not traced.
 - The layers own export batching and shutdown (`shutdownTimeout`) — **never
