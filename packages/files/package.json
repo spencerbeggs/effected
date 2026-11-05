@@ -1,0 +1,56 @@
+{
+	"name": "@effected/files",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Atomic single-file replacement over core FileSystem: write a temp file beside the target, sync it, and rename it into place, so a crash never leaves a truncated file. A link realPath cannot follow is written through directly.",
+	"keywords": ["atomic", "write", "file", "rename", "filesystem", "effect", "effected"],
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/files#readme",
+	"bugs": {
+		"url": "https://github.com/spencerbeggs/effected/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/spencerbeggs/effected.git",
+		"directory": "packages/files"
+	},
+	"license": "MIT",
+	"author": {
+		"name": "C. Spencer Beggs",
+		"email": "spencer@beggs.codes",
+		"url": "https://spencerbeg.gs"
+	},
+	"sideEffects": false,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build:dev": "node savvy.build.ts --target dev",
+		"build:prod": "node savvy.build.ts --target prod",
+		"prepare": "turbo run build:dev",
+		"types:check": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@effect/vitest": "catalog:effected",
+		"@effected/memfs": "workspace:*",
+		"@savvy-web/bundler": "^2.7.3",
+		"@types/node": "catalog:build",
+		"effect": "catalog:effected",
+		"typescript": "catalog:build"
+	},
+	"peerDependencies": {
+		"effect": "catalog:effected:peers"
+	},
+	"engines": {
+		"node": ">=24.11.0"
+	},
+	"publishConfig": {
+		"access": "public",
+		"directory": "dist/dev/pkg",
+		"linkDirectory": true,
+		"targets": {
+			"npm": true
+		}
+	}
+}

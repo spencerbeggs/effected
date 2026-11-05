@@ -1,3 +1,4 @@
+import { AtomicFile } from "@effected/files";
 import type { SchemaAST } from "effect";
 import { Context, DateTime, Effect, FileSystem, Layer, Option, Path, PubSub, Schema, Semaphore } from "effect";
 import type { ConfigCodec } from "./ConfigCodec.js";
@@ -709,9 +710,11 @@ const makeImpl = <A, I, RR, CE>(
 			const serialized = yield* encodeTo(value, Option.some(target), encodeOptions, (error) =>
 				emit({ _tag: "StringifyFailed", codec: options.codec.name, error }),
 			);
-			yield* fs
-				.writeFileString(target, serialized)
-				.pipe(Effect.mapError((cause) => new ConfigFileWriteError({ path: target, cause })));
+			yield* AtomicFile.write(target, serialized).pipe(
+				Effect.provideService(FileSystem.FileSystem, fs),
+				Effect.provideService(Path.Path, path),
+				Effect.mapError((cause) => new ConfigFileWriteError({ path: target, cause })),
+			);
 		});
 
 	// No event: nothing was written.

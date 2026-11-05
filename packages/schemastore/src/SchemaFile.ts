@@ -3,6 +3,7 @@
 // provides a platform implementation (`@effect/platform-node`) at the edge.
 // Mirrors `@effected/package-json`'s `PackageJsonFile` pattern.
 
+import { AtomicFile } from "@effected/files";
 import { Context, Effect, FileSystem, Layer, Path, Result, Schema } from "effect";
 import type { CanonicalJsonError, CanonicalJsonOptions } from "./CanonicalJson.js";
 import type { SchemaChange } from "./DocumentDiff.js";
@@ -330,9 +331,11 @@ export class SchemaFile extends Context.Service<SchemaFile, SchemaFileShape>()("
 				yield* fs
 					.makeDirectory(path.dirname(target), { recursive: true })
 					.pipe(Effect.mapError((cause) => SchemaFileWriteError.make({ path: target, cause })));
-				yield* fs
-					.writeFileString(target, text)
-					.pipe(Effect.mapError((cause) => SchemaFileWriteError.make({ path: target, cause })));
+				yield* AtomicFile.write(target, text).pipe(
+					Effect.provideService(FileSystem.FileSystem, fs),
+					Effect.provideService(Path.Path, path),
+					Effect.mapError((cause) => SchemaFileWriteError.make({ path: target, cause })),
+				);
 				return { outcome: "written", change } as const satisfies WriteResult;
 			});
 

@@ -162,6 +162,13 @@ export class ToolReplay {
 	/**
 	 * Wraps a handler with replay. Throws at wrap time when `tool` contains
 	 * `:`, a wiring mistake, so it surfaces when the server is built.
+	 *
+	 * @remarks
+	 * Call it where the handler is built, once: the effect form of
+	 * `Toolkit.toLayer`, reading the store's services there and passing them as
+	 * `store`. Calling it per request, inside the handler, rebuilds the JSON
+	 * codec on every call and turns the wiring check's throw into a defect at
+	 * the first call instead of a failure when the server is built.
 	 */
 	static readonly wrap = <P, S extends Schema.Top, Store extends ToolReplayStore | undefined = undefined>(
 		options: ToolReplayOptions<P, S, Store>,

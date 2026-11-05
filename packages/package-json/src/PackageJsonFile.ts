@@ -4,6 +4,7 @@
 // (`@effect/platform-node`) at the edge. Resolution is not fused into `write`
 // (compose `Package.resolve` explicitly).
 
+import { AtomicFile } from "@effected/files";
 import type { JsoncPath } from "@effected/jsonc";
 import type { PlatformError } from "effect";
 import { Context, Effect, FileSystem, Layer, Option, Path, Result, Schema } from "effect";
@@ -260,9 +261,11 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 					yield* fs
 						.makeDirectory(directory, { recursive: true })
 						.pipe(Effect.mapError((cause) => new PackageJsonWriteError({ path: target, cause })));
-					yield* fs
-						.writeFileString(target, json)
-						.pipe(Effect.mapError((cause) => new PackageJsonWriteError({ path: target, cause })));
+					yield* AtomicFile.write(target, json).pipe(
+						Effect.provideService(FileSystem.FileSystem, fs),
+						Effect.provideService(Path.Path, path),
+						Effect.mapError((cause) => new PackageJsonWriteError({ path: target, cause })),
+					);
 				});
 
 			const read = Effect.fn("PackageJsonFile.read")(function* (target: string) {

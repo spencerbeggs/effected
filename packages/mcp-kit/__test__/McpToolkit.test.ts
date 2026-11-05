@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Context, Effect, Layer, Schema } from "effect";
-import { McpProtocol, McpServer, Tool, Toolkit } from "effect/ai";
+import { Context, Effect, Layer, Schema, Tracer } from "effect";
+import { McpProtocol, McpSchema, McpServer, Tool, Toolkit } from "effect/ai";
 import type { McpToolkitOptions } from "../src/index.js";
 import { McpStdio, McpToolkit, ToolInputSchema } from "../src/index.js";
 import { McpHarness } from "../src/testing.js";
@@ -407,6 +407,234 @@ describe("McpToolkit.layer", () => {
 			const clean = resultOf(yield* harness.callTool("edit", { action: "delete" }));
 			assert.notStrictEqual(clean.isError, true);
 			assert.deepStrictEqual(clean.structuredContent, { action: "delete" });
+		}),
+	);
+});
+
+class Store extends Context.Service<Store, { readonly id: string }>()("test/Store") {}
+class StoreFailed extends Schema.TaggedError<StoreFailed>()("StoreFailed", { message: Schema.String }) {}
+
+const WhoAmI = Tool.make("whoami", { success: Schema.Struct({ id: Schema.String }), dependencies: [Store] });
+const LifetimeKit = Toolkit.make(WhoAmI);
+
+/** What a `whoami` handler saw in its own context. */
+interface HandlerView {
+	readonly context: Context.Context<never>;
+}
+
+const lifetimeHandlers = (views: Array<HandlerView> = []) =>
+	LifetimeKit.toLayer({
+		whoami: () =>
+			Effect.gen(function* () {
+				const store = yield* Store;
+				views.push({ context: yield* Effect.context<never>() });
+				return { id: store.id };
+			}),
+	});
+
+/** A `Store` layer counting its acquires and releases. */
+const countedStore = () => {
+	const state = { builds: 0, finalized: 0 };
+	const layer = Layer.effect(
+		Store,
+		Effect.acquireRelease(
+			Effect.sync(() => {
+				state.builds++;
+				return { id: `store-${state.builds}` };
+			}),
+			() =>
+				Effect.sync(() => {
+					state.finalized++;
+				}),
+		),
+	);
+	return { state, layer };
+};
+
+const lifetimeBundle = <E, R>(
+	lifetime: Layer.Layer<McpServer.McpRequest<"Requires", Store>, E, R>,
+	handlers: Layer.Layer<Tool.HandlersFor<typeof LifetimeKit.tools>, never, never> = lifetimeHandlers(),
+) =>
+	McpToolkit.layer(LifetimeKit).pipe(
+		Layer.provide(lifetime),
+		Layer.provide(handlers),
+		Layer.provideMerge(McpStdio.layer({ name: "lifetime-test", version: "0.0.0" })),
+	);
+
+// The `McpRequest<"Requires", S>` marker is met, leaving nothing in `R`; a layer that outputs
+// only part of what the tools declare leaves the rest of the marker in `R`.
+class Other extends Context.Service<Other, { readonly id: string }>()("test/Other") {}
+const TwoDeps = Tool.make("two_deps", { dependencies: [Store, Other] });
+const TwoDepsKit = Toolkit.make(TwoDeps);
+const TwoDepsHandlers = TwoDepsKit.toLayer({ two_deps: () => Effect.void });
+const typeLevelChecks = () => {
+	const both = Layer.merge(Layer.succeed(Store, { id: "s" }), Layer.succeed(Other, { id: "o" }));
+	const met: Layer.Layer<never, never, never> = McpToolkit.layer(TwoDepsKit).pipe(
+		Layer.provide(McpToolkit.provideLifetime(both)),
+		Layer.provide(TwoDepsHandlers),
+	);
+	// @ts-expect-error `Other` is declared and the layer does not output it, so its marker stays in R.
+	const unmet: Layer.Layer<never, never, never> = McpToolkit.layer(TwoDepsKit).pipe(
+		Layer.provide(McpToolkit.provideLifetime(Layer.succeed(Store, { id: "s" }))),
+		Layer.provide(TwoDepsHandlers),
+	);
+	return [met, unmet];
+};
+
+describe("McpToolkit.provideLifetime", () => {
+	it("meets every declared dependency at the type level", () => {
+		assert.strictEqual(typeof typeLevelChecks, "function");
+	});
+
+	it.effect("a tool's declared dependency is met by provideLifetime", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(
+				lifetimeBundle(McpToolkit.provideLifetime(Layer.succeed(Store, { id: "lifetime" }))),
+			);
+			yield* harness.initialize;
+			const result = resultOf(yield* harness.callTool("whoami", {}));
+			assert.notStrictEqual(result.isError, true);
+			assert.deepStrictEqual(result.structuredContent, { id: "lifetime" });
+		}),
+	);
+
+	it.effect("the layer is built once across many calls", () =>
+		Effect.gen(function* () {
+			const { state, layer } = countedStore();
+			const harness = yield* McpHarness.make(lifetimeBundle(McpToolkit.provideLifetime(layer)));
+			yield* harness.initialize;
+			for (let call = 0; call < 5; call++) {
+				const result = resultOf(yield* harness.callTool("whoami", {}));
+				assert.deepStrictEqual(result.structuredContent, { id: "store-1" });
+			}
+			assert.strictEqual(state.builds, 1);
+		}),
+	);
+
+	it.effect("its finalizer runs at server shutdown, not after a request", () =>
+		Effect.gen(function* () {
+			const { state, layer } = countedStore();
+			const harness = yield* McpHarness.make(lifetimeBundle(McpToolkit.provideLifetime(layer)));
+			yield* harness.initialize;
+			yield* harness.callTool("whoami", {});
+			yield* harness.callTool("whoami", {});
+			assert.strictEqual(state.finalized, 0);
+			yield* harness.stop;
+			assert.strictEqual(state.finalized, 1);
+		}),
+	);
+
+	const fakeRequestContext = { fake: "built-under-this" } as unknown as McpSchema.McpRequestContext["Service"];
+	/** The handler's view when the server is built inside a span, under a request-level reference. */
+	const viewBuiltUnderRequestKeys = <E, R>(lifetime: Layer.Layer<McpServer.McpRequest<"Requires", Store>, E, R>) =>
+		Effect.gen(function* () {
+			const views: Array<HandlerView> = [];
+			const harness = yield* McpHarness.make(lifetimeBundle(lifetime, lifetimeHandlers(views))).pipe(
+				Effect.provideService(McpSchema.McpRequestContext, fakeRequestContext),
+				Effect.withSpan("build-span"),
+			);
+			yield* harness.initialize;
+			const result = resultOf(yield* harness.callTool("whoami", {}));
+			assert.deepStrictEqual(result.structuredContent, { id: "s" });
+			const view = views[0]?.context ?? Context.empty();
+			const parent = Context.getOrUndefined(view, Tracer.ParentSpan);
+			return {
+				requestContext: Context.getOrUndefined(view, McpSchema.McpRequestContext),
+				parentName: parent?._tag === "Span" ? parent.name : undefined,
+			};
+		});
+
+	it.effect("a request-scoped reference is not shadowed", () =>
+		Effect.gen(function* () {
+			const view = yield* viewBuiltUnderRequestKeys(McpToolkit.provideLifetime(Layer.succeed(Store, { id: "s" })));
+			assert.isDefined(view.requestContext);
+			assert.notStrictEqual(view.requestContext, fakeRequestContext);
+			assert.notStrictEqual(view.parentName, "build-span");
+		}),
+	);
+
+	it.effect("control: the hand-rolled capture of Effect.context shadows both", () =>
+		Effect.gen(function* () {
+			const handRolled = McpServer.middleware<{ provides: Store }>()(
+				Effect.map(Effect.context<Store>(), (context) => (effect) => Effect.provideContext(effect, context)),
+			).layer.pipe(Layer.provide(Layer.succeed(Store, { id: "s" })));
+			const view = yield* viewBuiltUnderRequestKeys(handRolled);
+			assert.strictEqual(view.requestContext, fakeRequestContext);
+			assert.strictEqual(view.parentName, "build-span");
+		}),
+	);
+
+	it.effect("a layer failure fails the server build, not a request", () =>
+		Effect.gen(function* () {
+			const failing = McpToolkit.provideLifetime(
+				Layer.effect(Store, Effect.fail(new StoreFailed({ message: "no store" }))),
+			);
+			const failure = yield* Effect.flip(McpHarness.make(lifetimeBundle(failing)));
+			assert.strictEqual(failure._tag, "StoreFailed");
+		}),
+	);
+
+	it.effect("a layer the server's graph also builds is built once, and released once", () =>
+		Effect.gen(function* () {
+			const { state, layer } = countedStore();
+			const capturing = LifetimeKit.toLayer(
+				Effect.gen(function* () {
+					const captured = yield* Store;
+					return { whoami: () => Effect.map(Effect.service(Store), (store) => ({ id: `${captured.id}/${store.id}` })) };
+				}),
+			).pipe(Layer.provide(layer));
+			const harness = yield* McpHarness.make(lifetimeBundle(McpToolkit.provideLifetime(layer), capturing));
+			yield* harness.initialize;
+			const result = resultOf(yield* harness.callTool("whoami", {}));
+			assert.deepStrictEqual(result.structuredContent, { id: "store-1/store-1" });
+			assert.strictEqual(state.builds, 1);
+			yield* harness.stop;
+			assert.strictEqual(state.finalized, 1);
+		}),
+	);
+
+	it.effect("two servers, each whole bundle in Layer.fresh, each build the layer", () =>
+		Effect.gen(function* () {
+			const { state, layer } = countedStore();
+			const lifetime = McpToolkit.provideLifetime(layer);
+			const harness = yield* McpHarness.make(
+				Layer.merge(Layer.fresh(lifetimeBundle(lifetime)), Layer.fresh(lifetimeBundle(lifetime))),
+			);
+			assert.strictEqual(state.builds, 2);
+			yield* harness.stop;
+			assert.strictEqual(state.finalized, 2);
+		}),
+	);
+
+	it.effect("control: two servers in one memo map share the layer", () =>
+		Effect.gen(function* () {
+			const { state, layer } = countedStore();
+			const lifetime = McpToolkit.provideLifetime(layer);
+			const harness = yield* McpHarness.make(Layer.merge(lifetimeBundle(lifetime), lifetimeBundle(lifetime)));
+			assert.strictEqual(state.builds, 1);
+			yield* harness.stop;
+		}),
+	);
+
+	it.effect("a handler's Layer.CurrentMemoMap is not the captured one", () =>
+		Effect.gen(function* () {
+			// Under Layer.fresh the build's map differs from the fiber's, which tells the two apart.
+			const built: { map?: Layer.MemoMap } = {};
+			const recording = Layer.fromBuild((memoMap) =>
+				Effect.sync(() => {
+					built.map = memoMap;
+					return Context.make(Store, { id: "s" });
+				}),
+			);
+			const views: Array<HandlerView> = [];
+			const harness = yield* McpHarness.make(
+				Layer.fresh(lifetimeBundle(McpToolkit.provideLifetime(recording), lifetimeHandlers(views))),
+			);
+			yield* harness.initialize;
+			yield* harness.callTool("whoami", {});
+			assert.isDefined(built.map);
+			const seen = Context.getOrUndefined(views[0]?.context ?? Context.empty(), Layer.CurrentMemoMap);
+			assert.notStrictEqual(seen, built.map);
 		}),
 	);
 });

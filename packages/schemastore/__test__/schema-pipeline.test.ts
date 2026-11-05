@@ -138,6 +138,8 @@ const noWrites = (reason: string): MemoryFileSystemFaults => ({
 	makeDirectory: MemoryFileSystem.die(new Error(reason)),
 	writeFile: MemoryFileSystem.die(new Error(reason)),
 	writeFileString: MemoryFileSystem.die(new Error(reason)),
+	open: MemoryFileSystem.die(new Error(reason)),
+	rename: MemoryFileSystem.die(new Error(reason)),
 });
 
 describe("SchemaPipeline", () => {

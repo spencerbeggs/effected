@@ -53,7 +53,8 @@ describe("ConfigFile.write", () => {
 			const cause = (error as ConfigFileWriteError).cause;
 			if (cause instanceof PlatformError.PlatformError && cause.reason._tag !== "BadArgument") {
 				assert.strictEqual(cause.reason._tag, "Unknown");
-				assert.strictEqual(cause.reason.pathOrDescriptor, "/ro/.apprc");
+				// The atomic write is refused at the temp file it opens beside the target.
+				assert.isTrue(String(cause.reason.pathOrDescriptor).startsWith("/ro/.effected-"));
 			} else {
 				assert.fail(`expected the host's typed SystemError as the cause, got ${String(cause)}`);
 			}
@@ -229,6 +230,38 @@ describe("ConfigFile.layer with an empty resolver chain", () => {
 			assert.strictEqual(written, "/write-only/.apprc");
 			assert.deepStrictEqual(host.mkdirs, ["/write-only"]);
 			assert.deepStrictEqual(JSON.parse(host.volume.text("/write-only/.apprc") as string), { port: 42 });
+		}),
+	);
+});
+
+describe("ConfigFile.write — atomicity", () => {
+	it.effect("a failed rename keeps the previous file and removes the temp", () =>
+		Effect.gen(function* () {
+			const handle = MemoryFileSystem.makeSync(
+				{ "/app/.apprc": `{"port":1}` },
+				{
+					faults: {
+						rename: (from) =>
+							Effect.fail(
+								PlatformError.systemError({
+									_tag: "PermissionDenied",
+									module: "FileSystem",
+									method: "rename",
+									pathOrDescriptor: String(from),
+								}),
+							),
+					},
+				},
+			);
+			const error = yield* Effect.gen(function* () {
+				const cfg = yield* AppConfig;
+				return yield* Effect.flip(cfg.write(new AppShape({ port: 2 }), "/app/.apprc"));
+			}).pipe(Effect.provide(layerFor({ layer: handle.layer, volume: handle.volume, mkdirs: [] })));
+
+			assert.instanceOf(error, ConfigFileWriteError);
+			assert.strictEqual((error as ConfigFileWriteError).path, "/app/.apprc");
+			assert.strictEqual(handle.volume.text("/app/.apprc"), `{"port":1}`);
+			assert.deepStrictEqual(handle.volume.paths(), ["/app/.apprc"]);
 		}),
 	);
 });

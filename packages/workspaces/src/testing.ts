@@ -59,6 +59,7 @@ export {
 	type ForbiddenImportedNames,
 	Offence,
 	type OffenceRule,
+	type PromiseInExclusiveOptions,
 	type ReferenceOptions,
 	type ScanOptions,
 	SourceBoundary,

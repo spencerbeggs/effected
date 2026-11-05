@@ -35,11 +35,11 @@ npm install @effected/templates effect
 pnpm add @effected/templates effect
 ```
 
-Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency, and the only dependency of any kind.
+Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency. `@effected/files` comes along as an ordinary dependency, and it backs the atomic write.
 
 All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
 
-`FileSystem` comes from `effect` core, not from a platform package, so a consumer provides it once at the edge (`NodeFileSystem.layer` from `@effect/platform-node` on Node). `Path` is deliberately not required — this package treats every path as an opaque string handed straight to `FileSystem`.
+`FileSystem` comes from `effect` core, not from a platform package, so a consumer provides it once at the edge (`NodeFileSystem.layer` from `@effect/platform-node` on Node). `Path` is required as well (`NodePath.layer` on Node): a sync replaces the file through a temp file beside it and a rename, so a crash cannot leave a truncated file.
 
 ## Quick start
 
@@ -47,8 +47,8 @@ Declare two sections and sync them into a file in one call. Declared order becom
 
 ```ts
 import { CommentStyle, ManagedSection, SectionId } from "@effected/templates";
-import { NodeFileSystem } from "@effect/platform-node";
-import { Effect } from "effect";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { Effect, Layer } from "effect";
 
 const Base = SectionId.make({ key: "base", commentStyle: CommentStyle.hash });
 const Tool = SectionId.make({ key: "tool", commentStyle: CommentStyle.hash });
@@ -58,7 +58,7 @@ const program = Effect.gen(function* () {
   return yield* sections.syncAll(".husky/pre-commit", [Base.section("#!/usr/bin/env sh"), Tool.section("npx tool run")]);
 });
 
-Effect.runPromise(program.pipe(Effect.provide(ManagedSection.layer), Effect.provide(NodeFileSystem.layer))).then((outcomes) =>
+Effect.runPromise(program.pipe(Effect.provide(ManagedSection.layer), Effect.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)))).then((outcomes) =>
   console.log(outcomes.map((o) => o._tag)),
 );
 // example output on a fresh file: [ "Created", "Created" ]

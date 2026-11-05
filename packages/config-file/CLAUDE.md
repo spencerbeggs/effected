@@ -275,12 +275,12 @@ whole reason the consolidation was safe to do.
 `@effected/{jsonc,toml,yaml,walker,glob}` are each a `workspace:^` peer (so a
 published patch floats) mirrored by a plain `workspace:*` `devDependency` — the
 two specifiers now deliberately differ (the `@effected/walker` precedent).
-Runtime `dependencies` stays empty.
+Runtime `dependencies` holds one kit package, `@effected/files` (`workspace:^`), which `encodeAndWrite` uses so a crash mid-write cannot truncate the user's file; no external library.
 
 **The three format engines are optional peers, and the root must never reach
 them.** `JsoncCodec`, `YamlCodec` and `TomlCodec` ship only from their
 subpaths; the root reaches `@effected/walker` (required, with `glob` for its
-closure) and nothing else of the kit. Never re-export a subpath codec from
+closure) and `@effected/files` and nothing else of the kit. Never re-export a subpath codec from
 `src/index.ts`, statically or through a lazy `import()`: an optional peer
 reached from the root breaks every unbundled consumer that skipped it (#250).
 `__test__/subpaths.test.ts` walks the built module graph and fails on it.

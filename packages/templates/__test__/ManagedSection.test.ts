@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Cause, Effect, Exit, Option } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Path, PlatformError } from "effect";
 import { ManagedSection } from "../src/index.js";
 import { block, id, lines, memoryFs, section } from "./fixtures.js";
 
@@ -10,9 +10,49 @@ const HOOK = ".husky/pre-commit";
 const withFs = <A, E>(
 	fs: ReturnType<typeof memoryFs>,
 	program: Effect.Effect<A, E, ManagedSection>,
-): Effect.Effect<A, E> => program.pipe(Effect.provide(ManagedSection.layer), Effect.provide(fs.layer));
+): Effect.Effect<A, E> =>
+	program.pipe(Effect.provide(ManagedSection.layer), Effect.provide(Layer.mergeAll(fs.layer, Path.layer)));
 
 describe("ManagedSection", () => {
+	describe("atomic writes", () => {
+		const renameDenied = (from: string) =>
+			Effect.fail(
+				PlatformError.systemError({
+					_tag: "PermissionDenied",
+					module: "FileSystem",
+					method: "rename",
+					pathOrDescriptor: from,
+				}),
+			);
+
+		it.effect("a failed rename keeps the previous file and removes the temp", () => {
+			const original = lines("#!/bin/sh", "echo before", "");
+			const handle = MemoryFileSystem.makeSync({ [HOOK]: original }, { faults: { rename: renameDenied } });
+			return Effect.gen(function* () {
+				const service = yield* ManagedSection;
+				const error = yield* Effect.flip(service.sync(HOOK, section("example-tool", "echo hi")));
+				assert.strictEqual(error._tag, "SectionFileError");
+				assert.strictEqual(handle.volume.text(HOOK), original);
+				assert.deepStrictEqual(handle.volume.paths(), [`/${HOOK}`]);
+			}).pipe(Effect.provide(ManagedSection.layer), Effect.provide(Layer.mergeAll(handle.layer, Path.layer)));
+		});
+
+		it.effect("a failed sync keeps the user's text outside the section", () => {
+			const original = lines("#!/bin/sh", "echo user-line", block("example-tool", "echo old"), "echo after", "");
+			const handle = MemoryFileSystem.makeSync({ [HOOK]: original }, { faults: { rename: renameDenied } });
+			return Effect.gen(function* () {
+				const service = yield* ManagedSection;
+				const error = yield* Effect.flip(service.sync(HOOK, section("example-tool", "echo new")));
+				assert.strictEqual(error._tag, "SectionFileError");
+				const kept = handle.volume.text(HOOK) ?? "";
+				assert.include(kept, "echo user-line");
+				assert.include(kept, "echo after");
+				assert.include(kept, "echo old");
+				assert.notInclude(kept, "echo new");
+			}).pipe(Effect.provide(ManagedSection.layer), Effect.provide(Layer.mergeAll(handle.layer, Path.layer)));
+		});
+	});
+
 	describe("read", () => {
 		it.effect("reads a section from a file", () => {
 			const fs = memoryFs({ [HOOK]: lines("#!/bin/sh", block("example-tool", "echo hi"), "") });
@@ -57,9 +97,9 @@ describe("ManagedSection", () => {
 
 	describe("sync", () => {
 		it.effect("creates the file when it does not exist", () => {
-			// The hook's PARENT must exist: this package requires no `Path`, so it
-			// cannot derive a directory to create, and a real filesystem refuses a
-			// write into a missing one. The file itself is what this test creates.
+			// The hook's PARENT must exist: this package never creates a directory,
+			// and a real filesystem refuses a write into a missing one. The file
+			// itself is what this test creates.
 			const fs = memoryFs({ ".husky": MemoryFileSystem.directory() });
 			return withFs(
 				fs,

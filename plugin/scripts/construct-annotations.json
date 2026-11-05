@@ -452,6 +452,11 @@
 		"transformSecurityAndAnalysis": "translate a security_and_analysis block into the shape the repository patch endpoint expects",
 		"versionFromTag": "extract a version string out of a tag name, the default tag-to-semver convention"
 	},
+	"files": {
+		"AtomicDirectory": "replace a directory atomically, stage in a sibling then rename into place, write a file set without a half-written tree",
+		"AtomicDirectoryError": "handle an atomic directory write failure, validate clear stage write or promote step failed",
+		"AtomicFile": "write a file atomically, temp file then rename, keep symlink and permissions on save"
+	},
 	"glob": {
 		"GlobPattern": "compile a glob pattern, test if a path matches, minimatch dialect",
 		"GlobPatternError": "handle malformed glob pattern, pattern too long, brace expansion budget exceeded, nesting depth exceeded",
@@ -697,7 +702,7 @@
 		"McpStdio": "serve mcp over stdio, keep stdout the json-rpc wire, exit 0 on stdin close",
 		"McpTestFailure": "mcp test client failure, stream ended, server stopped, timed out",
 		"McpToolAudit": "lint served tools list, closed inputs, titles, hints, object-rooted outputs",
-		"McpToolkit": "name every unknown tool argument in one InvalidParams, strict by default",
+		"McpToolkit": "name every unknown tool argument in one InvalidParams, strict by default, meet declared tool dependencies from a layer built once for the server lifetime",
 		"ToolFailure": "fold remediation into tool error message, truncate echoed caller values",
 		"ToolInputSchema": "find unknown tool arguments at every depth, object-root a union input",
 		"ToolOutputSchema": "object-root a union tool success schema so outputSchema is served",
@@ -982,6 +987,7 @@
 		"VersionNotFoundError": "handle a version missing from the cache during diff next or prev navigation"
 	},
 	"source": {
+		"EditDistance": "edit distance between two strings, levenshtein, did you mean suggestions, nearest candidate, typo hint",
 		"LineIndex": "convert offset to line and character, lsp position, count lines, line start end",
 		"LineDiff": "diff two texts line by line, hunks with context, plain values, unified diff"
 	},
@@ -998,8 +1004,6 @@
 		"isValidExpression": "check if a string is a valid spdx license expression"
 	},
 	"store": {
-		"AtomicDirectory": "replace a directory atomically, stage in a sibling then rename into place, write a file set without a half-written tree",
-		"AtomicDirectoryError": "handle an atomic directory write failure, validate clear stage write or promote step failed",
 		"Cache": "cache with ttl and tags, durable local state, tag invalidation and write-order eviction, second cache under your own key",
 		"CacheEntry": "a stored cache row, key value bytes, content type, tags and expiry",
 		"CacheError": "handle a cache sql operation failure, get set has invalidate prune failed",

@@ -18,17 +18,19 @@ sources:
     resource: https://github.com/spencerbeggs/effected/issues/1041
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:32:35Z
+  at: 2026-11-05T16:58:35Z
 integrity:
   generated:
-    body: 94b0d0cf18824d62
+    body: d5655129894d74ae
   verified:
     by: human:spencer
-    at: 2026-10-25T20:04:29Z
-    content: e3f0c7ecec6a926d
+    at: 2026-11-05T17:32:05Z
+    content: 674df15ab0df202d
 verified:
   - by: human:spencer
     at: 2026-10-25T20:04:29Z
+  - by: human:spencer
+    at: 2026-11-05T17:32:05Z
 ---
 
 # xdg stays independent of core UserDirectories
@@ -41,8 +43,9 @@ directory per application name, read through `Config` and resolved lazily on
 every call.[^core-user-directories] It overlaps `@effected/xdg`, and the
 question was whether xdg should build on it, defer to it, or stay
 independent.[^ticket-1041] A parity probe found that the two agree on absolute
-`XDG_*_HOME` values and on the macOS and Windows native directories, and that
-core was right on two edges where xdg was wrong: core ignores a relative XDG
+`XDG_*_HOME` values and on the macOS and Windows native directories (the parity
+test now pins the Windows agreement with a win32 `Path` built from
+`node:path`), and that core was right on two edges where xdg was wrong: core ignores a relative XDG
 value (xdg resolved it against the working directory), and core reads the
 Windows home directory from `USERPROFILE` (xdg read only `HOME`, which a
 typical Windows shell does not set).

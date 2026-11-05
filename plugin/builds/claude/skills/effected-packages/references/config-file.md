@@ -1,6 +1,6 @@
 # @effected/config-file
 
-Composable config-file loading: a pluggable codec × resolver × strategy pipeline, plus encryption/migration decorators and a `ConfigProvider` bridge. Boundary tier: all IO through core `FileSystem`/`Path`, zero external runtime deps — format engines arrive only through the `@effected/jsonc`/`yaml`/`toml` peers, which are OPTIONAL: install only the one whose codec you import.
+Composable config-file loading: a pluggable codec × resolver × strategy pipeline, plus encryption/migration decorators and a `ConfigProvider` bridge. Boundary tier: all IO through core `FileSystem`/`Path`, zero external runtime deps (one kit dependency, `@effected/files`, for atomic writes) — format engines arrive only through the `@effected/jsonc`/`yaml`/`toml` peers, which are OPTIONAL: install only the one whose codec you import.
 
 ## Import
 

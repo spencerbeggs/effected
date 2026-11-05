@@ -3,7 +3,7 @@
 // but never in which block a marker names.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Arbitrary, Effect, Equal, Option, Result, Schema } from "effect";
+import { Arbitrary, Effect, Equal, Layer, Option, Path, Result, Schema } from "effect";
 import type { Section, SectionDocument, SectionRenderError } from "../src/index.js";
 import { CommentStyle, ManagedSection, SectionDialect, SectionId } from "../src/index.js";
 import { begin, block, end, id, lines, memoryFs, parse, parseFailure, section } from "./fixtures.js";
@@ -300,7 +300,7 @@ describe("marker attributes", () => {
 				assert.strictEqual(second._tag, "Unchanged");
 				assert.strictEqual(fs.writes(), writesAfterFirst, "the second sync must not write");
 				assert.strictEqual(fs.text("pre-commit"), written);
-			}).pipe(Effect.provide(ManagedSection.layer), Effect.provide(fs.layer));
+			}).pipe(Effect.provide(ManagedSection.layer), Effect.provide(Layer.mergeAll(fs.layer, Path.layer)));
 		});
 	});
 

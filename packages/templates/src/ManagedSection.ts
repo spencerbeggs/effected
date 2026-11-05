@@ -1,5 +1,6 @@
+import { AtomicFile } from "@effected/files";
 import type { Option, PlatformError } from "effect";
-import { Context, Effect, FileSystem, Layer, Schema } from "effect";
+import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect";
 import type { Section, SectionId } from "./Section.js";
 import type { SectionRenderError } from "./SectionDialect.js";
 import { SectionDialect } from "./SectionDialect.js";
@@ -117,9 +118,12 @@ const notFound = (error: PlatformError.PlatformError): boolean => error.reason._
  */
 const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
-const make = (options: ManagedSectionOptions = {}): Effect.Effect<ManagedSectionShape, never, FileSystem.FileSystem> =>
+const make = (
+	options: ManagedSectionOptions = {},
+): Effect.Effect<ManagedSectionShape, never, FileSystem.FileSystem | Path.Path> =>
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
 		const dialect = options.dialect ?? SectionDialect.default;
 
 		/**
@@ -143,14 +147,14 @@ const make = (options: ManagedSectionOptions = {}): Effect.Effect<ManagedSection
 				),
 			);
 
-		const store = (path: string, text: string): Effect.Effect<void, SectionFileError> =>
-			fs
-				.writeFileString(path, text)
-				.pipe(
-					Effect.catchTag("PlatformError", (error) =>
-						Effect.fail(new SectionFileError({ path, operation: "write", cause: error })),
-					),
-				);
+		const store = (file: string, text: string): Effect.Effect<void, SectionFileError> =>
+			AtomicFile.write(file, text).pipe(
+				Effect.provideService(FileSystem.FileSystem, fs),
+				Effect.provideService(Path.Path, path),
+				Effect.catchTag("PlatformError", (error) =>
+					Effect.fail(new SectionFileError({ path: file, operation: "write", cause: error })),
+				),
+			);
 
 		const syncAll: ManagedSectionShape["syncAll"] = Effect.fn("ManagedSection.syncAll")(function* (
 			path: string,
@@ -237,14 +241,16 @@ const unstubbed = (member: string) => (): Effect.Effect<never> =>
  * the pure core, and writes back only when the text actually changed. All the
  * interesting behavior — and all the interesting tests — live in the pure core.
  *
- * `FileSystem` is required in `R` and discharged by the consumer's platform
- * layer at the edge. No `Path` is required: paths are handed to `FileSystem`
- * untouched.
+ * `FileSystem` and `Path` are required in `R` and discharged by the consumer's
+ * platform layer at the edge. A sync replaces the file through a temp file
+ * beside it and a rename, so a crash leaves the old text or the new text and
+ * never a truncated file.
  *
  * @example
  * ```ts
  * import { CommentStyle, ManagedSection, SectionId } from "@effected/templates";
- * import { Effect } from "effect";
+ * import { NodeFileSystem, NodePath } from "@effect/platform-node";
+ * import { Effect, Layer } from "effect";
  *
  * const Base = SectionId.make({ key: "base", commentStyle: CommentStyle.hash });
  * const Tool = SectionId.make({ key: "tool", commentStyle: CommentStyle.hash });
@@ -257,6 +263,10 @@ const unstubbed = (member: string) => (): Effect.Effect<never> =>
  *     Tool.section("run-the-tool"),
  *   ]);
  * });
+ *
+ * // `FileSystem` and `Path` come from a platform layer at the edge.
+ * const live = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+ * Effect.runPromise(program.pipe(Effect.provide(ManagedSection.layer), Effect.provide(live)));
  * ```
  *
  * @public
@@ -271,7 +281,10 @@ export class ManagedSection extends Context.Service<ManagedSection, ManagedSecti
 	 * @remarks
 	 * A bound `const`, not a function, so it memoizes by reference.
 	 */
-	static readonly layer: Layer.Layer<ManagedSection, never, FileSystem.FileSystem> = Layer.effect(this, make());
+	static readonly layer: Layer.Layer<ManagedSection, never, FileSystem.FileSystem | Path.Path> = Layer.effect(
+		this,
+		make(),
+	);
 
 	/**
 	 * A layer with a custom marker dialect.
@@ -283,7 +296,8 @@ export class ManagedSection extends Context.Service<ManagedSection, ManagedSecti
 	 */
 	static readonly layerWith = (
 		options: ManagedSectionOptions,
-	): Layer.Layer<ManagedSection, never, FileSystem.FileSystem> => Layer.effect(ManagedSection, make(options));
+	): Layer.Layer<ManagedSection, never, FileSystem.FileSystem | Path.Path> =>
+		Layer.effect(ManagedSection, make(options));
 
 	/**
 	 * A test double. Members a suite does not stub **die when run** (calling

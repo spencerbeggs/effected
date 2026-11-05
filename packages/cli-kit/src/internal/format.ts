@@ -28,9 +28,7 @@ const formatter = SchemaIssue.makeFormatterStandardSchemaV1({
  *
  * @remarks
  * Shared by `SchemaIssueRenderer` and `ConfigIssueRenderer` and imported by
- * nothing else. It lives here rather than in either module so that
- * `ConfigIssueRenderer` — the only export that references the optional
- * `@effected/config-file` peer — can stay a module no other module imports.
+ * nothing else.
  *
  * **No walker of our own.** `makeFormatterStandardSchemaV1` already flattens the
  * tree to `{ message, path }` entries, and `defaultLeafHook` covers every leaf
@@ -54,7 +52,7 @@ export const formatIssue = (issue: unknown): ReadonlyArray<string> =>
  * @remarks
  * Used by `ConfigIssueRenderer` only. The declared keys come from the issue tree itself: core's `UnexpectedKey` leaf
  * carries the AST of the struct being decoded, whose property signatures are the keys the schema accepts at that
- * path, so no schema is passed in and no `@effected/config-file` value is needed. The hint is `Fmt.suggest`'s list,
+ * path, so no schema is passed in. The hint is `Fmt.suggest`'s list,
  * each key sanitised, and a line with no near match is exactly the line {@link formatIssue} draws.
  *
  * @internal

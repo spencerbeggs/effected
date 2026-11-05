@@ -71,6 +71,7 @@
 | `CliUiTestView` | Interface | A display-only element mounted by `CliUiTest.view`: a `CliUiTestScreen` that can be swapped for another element, with no result to wait for. | from `@effected/cli-kit/ui/testing` |
 | `Column` | Interface | One column of a table. | |
 | `ConfigIssueRenderer` | Class | Turns a `@effected/config-file` `ConfigValidationError` into one line per rejected value. | render a @effected/config-file validation error into human-readable lines |
+| `ConfigIssueSource` | Interface | What `ConfigIssueRenderer.render` reads: anything that may carry an `issue` tree. | |
 | `Confirm` | Class | A yes/no question, optionally with extra on/off rows beneath it: a pure reducer, its key table, a view and a ready-made screen. | from `@effected/cli-kit/ui` — yes or no question screen with extra toggles |
 | `ConfirmAction` | TypeAlias | What a key does in a `Confirm`. | from `@effected/cli-kit/ui` |
 | `ConfirmInitOptions` | Interface | Options for `Confirm.init`. | from `@effected/cli-kit/ui` |

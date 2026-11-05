@@ -42,7 +42,7 @@
 			"@effected/toml",
 			"@effected/yaml"
 		],
-		["@effected/crypto"],
+		["@effected/crypto", "@effected/files"],
 		["@effected/source"]
 	],
 	"tooling": ["@effected/pnpm-plugin-effected"],

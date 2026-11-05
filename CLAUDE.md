@@ -39,7 +39,7 @@ Durable project knowledge lives as OKF concepts under `okf/`, not in prose here.
 
 ### Kit composition
 
-The kit is **46 publishable packages**: 41 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`@effected/plugin`, the carrier a consumer installs, plus its `cli`, `mcp` and `engine`; see `okf/decisions/one-tool-beside-the-libraries.md`); `@effected/cli-kit`, `@effected/mcp-kit`, `@effected/kit` and `@effected/plugin` are new npm names, not yet published; `@effected/cli`, `@effected/mcp` and `@effected/engine` published before as the old kit libraries, and their next release is the tool package under the same name. New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
+The kit is **47 publishable packages**: 42 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`@effected/plugin`, the carrier a consumer installs, plus its `cli`, `mcp` and `engine`; see `okf/decisions/one-tool-beside-the-libraries.md`); `@effected/cli-kit`, `@effected/mcp-kit`, `@effected/kit` and `@effected/plugin` are new npm names, not yet published; `@effected/cli`, `@effected/mcp` and `@effected/engine` published before as the old kit libraries, and their next release is the tool package under the same name. New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
 
 **The carrier libraries are `@effected/cli-kit`, `@effected/mcp-kit` and `@effected/kit`; `@effected/cli`, `@effected/mcp` and `@effected/engine` are the `effected` tool's own packages.** The old names were renamed with no shim, and `@effected/app` kept its name → `okf/decisions/carrier-libraries-take-kit-names.md`. A stale import of an old name fails at build, not at install.
 
@@ -59,7 +59,7 @@ The kit is **46 publishable packages**: 41 libraries, one companion (`pnpm-plugi
 
 ### Package context files
 
-Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. The roster of all 46 — what each one is, and the parenthetical tier tag every **library** carries (pure / boundary / integrated, per `okf/glossary/library-tier.md`) — lives in `okf/project.md`'s packages table. Load it when: choosing which package owns a capability, or checking a package's tier or scope before working in it.
+Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. The roster of all 47 — what each one is, and the parenthetical tier tag every **library** carries (pure / boundary / integrated, per `okf/glossary/library-tier.md`) — lives in `okf/project.md`'s packages table. Load it when: choosing which package owns a capability, or checking a package's tier or scope before working in it.
 
 ## Build Pipeline
 
@@ -85,7 +85,7 @@ Builds run through turbo and `@savvy-web/bundler`; mechanics → `okf/modules/wo
 
 **Agents may run** `pnpm catalog:check` (read-only drift gate) and `pnpm catalog:sync`, which write nothing but `packages/pnpm-plugin-effected/savvy.build.ts` and one fixed-name changeset. They keep the published `effected` catalog current — do not lump them in with the `pnpm:*` class.
 
-**A release does not need a hand-run `catalog:sync` — CI guarantees it.** `.github/workflows/catalog-sync.yml` runs on every PR to `main` **and to `changeset-release/main`**, so opening the release PR is itself the trigger: the job syncs the catalog, writes `.changeset/catalog-sync.md`, and the release PR picks up the resulting plugin bump before publishing. The catalog therefore cannot publish out of step with the packages it names.
+**A release does not need a hand-run `catalog:sync` — CI guarantees it.** `.github/workflows/catalog-sync.yml` runs on a `pull_request` to `main` only when the head branch is `changeset-release/main` (the job's `if:` skips every other PR by design), so opening the release PR is itself the trigger: the job syncs the catalog, writes `.changeset/catalog-sync.md`, and the release PR picks up the resulting plugin bump before publishing. The catalog therefore cannot publish out of step with the packages it names.
 
 **That guarantee covers direct bumps; membership and dependency ripples each needed their own answer, and the two resolve oppositely.** The upgrade CLI walks the catalog literal, so a package absent from it is invisible to the sync and cannot be added by one, and a package bumped only as a dependency **ripple** carries no changeset naming it, so the CLI cannot see that either. `catalog:check` now fails on both, naming the affected packages. From there they part company:
 

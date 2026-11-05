@@ -23,7 +23,7 @@ on a trusted line; a theme's glyph set (separators, ellipsis) is configuration.
 `Fmt` carries the text helpers: `Fmt.describe`, `Fmt.causeMessage` (the kit's
 guarded cause read, never throwing) and `Fmt.errorText` are `@effected/kit`'s
 `ErrorText` functions, delegated rather than copied, and `Fmt.suggest` is the
-"did you mean" list with `effect/cli`'s own two-edit threshold. `CliFormat.flag`
+"did you mean" list with `effect/cli`'s own two-edit threshold (`@effected/source`'s `EditDistance.suggest`, delegated). `CliFormat.flag`
 takes `aliases` and `custom` formats; a CLI that still accepts `--json` declares it itself. `CliRuntime.main` takes `exitCodes` (by
 tag), `distribution` (the carrier: engine's `CurrentDistribution` plus the
 `--version` suffix, wrapping whatever formatter is in effect) and
@@ -58,12 +58,13 @@ tier and imports only the boundary root, so nothing inherits a tier from `./ui`.
 Same posture as `app`: the two are siblings, not layers — `app` is the control
 plane, `cli-kit` the presentation boundary, and neither imports the other.
 
-**Three regular dependencies, no new peers:** `@effected/github-commands`,
+**Four regular dependencies, no new peers:** `@effected/github-commands`,
+`@effected/source` (`Fmt.suggest` delegates to its `EditDistance.suggest`; pure, no dependencies),
 `@effected/kit` (the root's `CliRuntime` imports `withDistribution` and
 `withDistributionVersion` for `MainOptions.distribution`) and
 `@effected/commands` (ONLY its `./node-sync` subpath, ONLY from
 `ui/internal/inkChalk.ts`, ONLY by a dynamic `import()` when a screen
-mounts). None has an `@effected` peer, so the peer closure is unchanged.
+mounts). None of the four has an `@effected` peer, so the peer closure is unchanged.
 `boundary.test.ts` pins that `.` and `./testing` reach no
 `@effected/commands` module and that the Ink loader alone reaches
 `./node-sync`. Why a regular dependency on engine →
@@ -277,23 +278,6 @@ second control proving it resolves the main entry too (`index.ts` reaches
 `CliRuntime`). A CLI that only imports `@effected/cli-kit` therefore never pulls
 test-spawning machinery — `effect/process`'s `ChildProcessSpawner`
 included — into its runtime bundle.
-
-## The optional peer, and the rule that makes it honest
-
-`@effected/config-file` is a `workspace:^` peer with
-`peerDependenciesMeta.optional: true`, consumed only by `ConfigIssueRenderer` —
-the same arrangement `@effected/markdown` has with `yaml`/`toml`/`jsonc`.
-
-**`ConfigIssueRenderer` must stay a module no other module imports.** An
-optional peer whose import is reachable from a shared module is not optional; it
-is a crash for every consumer who took the manifest at its word. Shared
-rendering lives in `src/internal/format.ts`, which both renderers import and
-neither re-exports. The entrypoint re-exporting `ConfigIssueRenderer` is fine.
-
-Verify this with a build, not by reading: no runtime `import` of
-`@effected/config-file` may appear in `dist/prod/npm/pkg/**/*.js` outside
-`ConfigIssueRenderer`'s own module. The `.d.ts` carries a type-only import of
-`ConfigValidationError`, which is erased.
 
 ## Testing
 

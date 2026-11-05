@@ -12,7 +12,7 @@ export interface MemoryFs {
 	readonly volume: MemoryFileSystemVolume;
 	/** The UTF-8 contents at `path`, or `undefined` when absent. `""` is an empty file. */
 	readonly text: (path: string) => string | undefined;
-	/** How many times `writeFileString` actually ran. */
+	/** How many writes landed: one per rename of a temp file into place. */
 	readonly writes: () => number;
 	readonly layer: Layer.Layer<FileSystem.FileSystem>;
 }
@@ -53,12 +53,21 @@ export const memoryFs = (
 				options.unreadable === String(path)
 					? Effect.fail(systemError("PermissionDenied", "readFile", String(path)))
 					: undefined,
-			writeFileString: (path) => {
-				if (options.unwritable === String(path)) {
-					return Effect.fail(systemError("PermissionDenied", "writeFileString", String(path)));
+			// A write opens a temp file beside the target and renames it into place, so a refused write is a
+			// refused `open` of that temp, and the counter ticks on the rename that lands it.
+			open: (path) => {
+				const unwritable = options.unwritable;
+				if (
+					unwritable !== undefined &&
+					String(path).startsWith(`${unwritable.slice(0, unwritable.lastIndexOf("/") + 1)}.effected-`)
+				) {
+					return Effect.fail(systemError("PermissionDenied", "open", String(path)));
 				}
+				return undefined;
+			},
+			rename: () => {
 				writeCount += 1;
-				return undefined; // decline: the volume performs the real write
+				return undefined; // decline: the volume performs the real rename
 			},
 		},
 	});

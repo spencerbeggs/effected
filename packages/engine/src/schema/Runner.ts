@@ -12,6 +12,7 @@
 // `catalogDir` is the union of every slice there; both are compared
 // structurally against what is on disk.
 
+import { AtomicFile } from "@effected/files";
 import type {
 	CanonicalJsonError,
 	DriftTolerance,
@@ -21,14 +22,20 @@ import type {
 	SchemaConversionError,
 	SchemaFile,
 	SchemaFileReadError,
-	SchemaFileWriteError,
 	SchemaValidator,
 	SchemaValidatorError,
 	SchemastoreConfig,
 	UndeclaredAnnotationKeyError,
 	WriteChange,
 } from "@effected/schemastore";
-import { CanonicalJson, CatalogEntry, DriftPolicy, SchemaPipeline, SchemaVersioning } from "@effected/schemastore";
+import {
+	CanonicalJson,
+	CatalogEntry,
+	DriftPolicy,
+	SchemaFileWriteError,
+	SchemaPipeline,
+	SchemaVersioning,
+} from "@effected/schemastore";
 import { LineDiff } from "@effected/source";
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Option, Order, Path, Predicate, Result, Schema } from "effect";
@@ -326,9 +333,11 @@ const syncFile = Effect.fn("Runner.syncFile")(function* (
 	const same = Option.isSome(existing) && parsesEqual(existing.value, text);
 	const outcome = writing && !same ? "written" : pendingOutcome(!same, refused);
 	if (outcome === "written") {
-		// Mirrors `SchemaFile.write`: create the parent, then write.
-		yield* fs.makeDirectory(path.dirname(file), { recursive: true });
-		yield* fs.writeFileString(file, text);
+		// Mirrors `SchemaFile.write`: create the parent, then write, and name the slice the user asked for, not the temp.
+		yield* fs.makeDirectory(path.dirname(file), { recursive: true }).pipe(
+			Effect.andThen(AtomicFile.write(file, text)),
+			Effect.mapError((cause) => SchemaFileWriteError.make({ path: file, cause })),
+		);
 	}
 	return outcome;
 });

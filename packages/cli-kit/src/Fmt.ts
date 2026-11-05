@@ -1,4 +1,5 @@
 import { ErrorText } from "@effected/kit";
+import { EditDistance } from "@effected/source";
 import { Duration, Option } from "effect";
 import { displayWidth, graphemes, isEscapeOnly, stripAnsi } from "./internal/displayWidth.js";
 
@@ -51,39 +52,6 @@ export interface SuggestOptions {
 	/** The most edits a suggestion may be away from the input; `2` by default, as `effect/cli` uses. */
 	readonly maxDistance?: number | undefined;
 }
-
-/**
- * The Levenshtein distance between `a` and `b` when it is at most `limit`, and `limit + 1` otherwise.
- *
- * Only the diagonal band of the matrix within `limit` of it is computed (a cell outside it is past `limit` already),
- * over two rows reused in turn, and a row whose every cell is past `limit` ends the walk, since no later row can come
- * back under it: the cost is the length of `a` times `2 * limit + 1`.
- */
-const boundedDistance = (a: string, b: string, limit: number): number => {
-	const over = limit + 1;
-	if (Math.abs(a.length - b.length) > limit) return over;
-	const n = b.length;
-	const at = (row: Array<number>, j: number): number => row[j] ?? over;
-	let previous: Array<number> = Array.from({ length: n + 1 }, (_, j) => (j <= limit ? j : over));
-	let current: Array<number> = new Array<number>(n + 1).fill(over);
-	for (let i = 1; i <= a.length; i++) {
-		const lo = Math.max(1, i - limit);
-		const hi = Math.min(n, i + limit);
-		const edge = lo === 1 && i <= limit ? i : over;
-		current[lo - 1] = edge;
-		let rowMin = edge;
-		for (let j = lo; j <= hi; j++) {
-			const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
-			const cell = Math.min(at(previous, j) + 1, at(current, j - 1) + 1, at(previous, j - 1) + cost, over);
-			current[j] = cell;
-			if (cell < rowMin) rowMin = cell;
-		}
-		if (hi < n) current[hi + 1] = over;
-		if (rowMin > limit) return over;
-		[previous, current] = [current, previous];
-	}
-	return Math.min(at(previous, n), over);
-};
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: the point is to match control characters
 const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
@@ -400,17 +368,6 @@ export class Fmt {
 		if (!Number.isInteger(max) || max < 0) {
 			throw new RangeError(`Fmt.suggest: maxDistance must be a non-negative integer, received ${max}`);
 		}
-		let best = max + 1;
-		let found: Array<string> = [];
-		for (const candidate of new Set(candidates)) {
-			const distance = boundedDistance(input, candidate, Math.min(max, best));
-			if (distance < best) {
-				best = distance;
-				found = [candidate];
-			} else if (distance === best) {
-				found.push(candidate);
-			}
-		}
-		return best <= max ? found : [];
+		return EditDistance.suggest(input, candidates, { maxDistance: max });
 	};
 }

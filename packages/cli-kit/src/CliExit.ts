@@ -1,4 +1,5 @@
-import { Context, Effect, Layer, MutableRef } from "effect";
+import { Cause, Console, Context, Effect, Layer, MutableRef, Predicate } from "effect";
+import { Fmt } from "./Fmt.js";
 import { isExitCode } from "./internal/isExitCode.js";
 
 /**
@@ -72,4 +73,68 @@ export class CliExit extends Context.Service<CliExit, CliExitShape>()("@effected
 			const exit = yield* CliExit;
 			if (code > MutableRef.get(exit.code)) MutableRef.set(exit.code, code);
 		});
+
+	/**
+	 * Write one line to stderr, record an exit code, and succeed: the shape of a
+	 * hook-style command that must say why it exits non-zero without failing.
+	 *
+	 * @remarks
+	 * This does **not** stop the program. It succeeds, so the caller must still
+	 * return (or otherwise end its own flow) after calling it; finalizers and log
+	 * sinks run as they would on any successful run, and `CliRuntime.main` turns
+	 * the recorded code into the exit.
+	 *
+	 * The code is validated first, exactly as {@link CliExit.set} validates it, and
+	 * an invalid code dies as the same defect before anything is written. The
+	 * line goes through `Console.error`, never stdout, and is written as given:
+	 * sanitize anything you do not control with `Fmt.sanitize` first. The
+	 * highest code recorded during the run wins.
+	 */
+	static readonly report = (code: number, line: string): Effect.Effect<void, never, CliExit> =>
+		Effect.gen(function* () {
+			yield* CliExit.set(code);
+			yield* Console.error(line);
+		});
+
+	/**
+	 * Report a failure cause as one stderr line, record the exit code the caller
+	 * chooses for it, and succeed.
+	 *
+	 * @remarks
+	 * The cause is squashed and the line is `<code> <tag>: <message>`, or
+	 * `<code> <message>` when the error has no string `_tag`. The message comes
+	 * from `Fmt.errorText` and is sanitized with `Fmt.sanitize` and its line breaks
+	 * become a space, so a hostile error can neither throw, write an escape nor
+	 * forge a second line. Reading `_tag` is guarded
+	 * too: a getter that throws means no tag.
+	 *
+	 * An interrupt-only cause is not a failure to report: nothing is written or
+	 * recorded and the effect re-interrupts. `codeOf` receives the squashed error
+	 * and must return an integer in `0..255`; anything else dies as
+	 * {@link CliExit.set} does, which is wiring.
+	 *
+	 * Like {@link CliExit.report} it does not stop the program: the caller still
+	 * has to return.
+	 */
+	static readonly reportCause = <E>(
+		cause: Cause.Cause<E>,
+		codeOf: (error: unknown) => number,
+	): Effect.Effect<void, never, CliExit> =>
+		Cause.hasInterruptsOnly(cause)
+			? Effect.interrupt
+			: Effect.suspend(() => {
+					const error = Cause.squash(cause);
+					const code = codeOf(error);
+					let tag: string | undefined;
+					try {
+						const read = Predicate.hasProperty(error, "_tag") ? error._tag : undefined;
+						tag = Predicate.isString(read) ? read : undefined;
+					} catch {
+						// A throwing `_tag` getter means no tag.
+					}
+					// `Fmt.sanitize` keeps line breaks, so a message could otherwise forge a second stderr line.
+					const oneLine = (text: string) => Fmt.sanitize(text).replace(/\r?\n|\r/gu, " ");
+					const message = oneLine(Fmt.errorText(error));
+					return CliExit.report(code, tag === undefined ? `${code} ${message}` : `${code} ${oneLine(tag)}: ${message}`);
+				});
 }

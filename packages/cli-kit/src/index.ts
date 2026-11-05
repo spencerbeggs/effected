@@ -86,7 +86,7 @@ export {
 	type CliThemeTestOptions,
 	type StreamTheme,
 } from "./CliTheme.js";
-export { ConfigIssueRenderer } from "./ConfigIssueRenderer.js";
+export { ConfigIssueRenderer, type ConfigIssueSource } from "./ConfigIssueRenderer.js";
 export {
 	type AnnotationOptions,
 	type Block,

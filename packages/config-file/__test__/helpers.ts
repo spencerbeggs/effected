@@ -34,6 +34,17 @@ export const recordingFs = (seed: MemoryFileSystemSeed = {}): RecordingFs => {
  * directories, the test dies rather than quietly passing.
  */
 export const hostileFs = (): RecordingFs => {
+	const readOnly = (method: string, path: string) =>
+		Effect.fail(
+			PlatformError.systemError({
+				_tag: "Unknown",
+				module: "FileSystem",
+				method,
+				syscall: "open",
+				pathOrDescriptor: path,
+				description: "EROFS: read-only file system",
+			}),
+		);
 	const handle = MemoryFileSystem.makeSync(
 		{},
 		{
@@ -49,6 +60,9 @@ export const hostileFs = (): RecordingFs => {
 							description: "EROFS: read-only file system",
 						}),
 					),
+				// The atomic write goes through a temp file beside the target, so `open` is where a read-only host refuses.
+				open: (path) => readOnly("open", path),
+				rename: (from) => readOnly("rename", from),
 				makeDirectory: MemoryFileSystem.die(new Error("hostileFs: makeDirectory must never be called")),
 			},
 		},

@@ -498,9 +498,11 @@ export class CliUi {
 	 * naming the peers, never a silent `otherwise`. Screens in sequence make a wizard: discover the defaults first,
 	 * pass each as an `otherwise`, and a non-interactive run returns exactly them.
 	 *
-	 * Without `otherwise`, `NotInteractive` stays in the error type even after the caller checked `CliInteractive`, since
-	 * the type cannot know. Catch the tag and fail with `CliError.UserError` to exit as a usage error (`64` under
-	 * `CliRuntime.main`).
+	 * It has two forms. With a real `otherwise` (any value but `undefined`) the error type is `Cancelled` alone, since a
+	 * non-interactive run answers and cannot fail. Without one, or with `{ otherwise: undefined }`, which counts as not
+	 * given, `NotInteractive` stays in the error type even after the caller checked `CliInteractive`, since the type
+	 * cannot know. Catch the tag and fail with `CliError.UserError` to exit as a usage error (`64` under
+	 * `CliRuntime.main`). `A` is read from the screen, never from `otherwise`.
 	 *
 	 * As with `CliUi.run`, do not log while the screen is mounted: a line written to the terminal from elsewhere tears
 	 * the frame.
@@ -508,17 +510,26 @@ export class CliUi {
 	 * @param screen - the screen to show
 	 * @param options - the non-interactive default, and whether to erase the last frame
 	 */
-	static readonly prompt = <A>(
-		screen: Screen<A>,
-		options?: CliUiPromptOptions<A>,
-	): Effect.Effect<A, Cli.Cancelled | Cli.NotInteractive, Cli.CliTheme> =>
+	static readonly prompt: {
+		<A>(
+			screen: Screen<A>,
+			options: CliUiPromptOptions<A> & { readonly otherwise: Exclude<A, undefined> },
+		): Effect.Effect<A, Cli.Cancelled, Cli.CliTheme>;
+		<A>(
+			screen: Screen<A>,
+			options?: CliUiPromptOptions<A>,
+		): Effect.Effect<A, Cli.Cancelled | Cli.NotInteractive, Cli.CliTheme>;
+	} = <A>(screen: Screen<A>, options?: CliUiPromptOptions<A>): Effect.Effect<A, never, Cli.CliTheme> =>
+		// The body fails with `NotInteractive` exactly when `otherwise` is `undefined`, which is the second overload; the
+		// first overload's argument type rules that out. One signature cannot say both, so the error type is widened to
+		// `never` here and each overload states its own.
 		CliUi.run(screen, options?.clear === true ? { clear: true } : undefined).pipe(
 			Effect.catchTag("NotInteractive", (error) => {
 				// `{ otherwise: undefined }` counts as not given.
 				const otherwise = options?.otherwise;
 				return otherwise === undefined ? Effect.fail(error) : Effect.succeed(otherwise);
 			}),
-		);
+		) as Effect.Effect<A, never, Cli.CliTheme>;
 
 	/**
 	 * A fallback for `Flag.withFallbackPrompt` or `Argument.withFallbackPrompt` that shows a screen when the run is

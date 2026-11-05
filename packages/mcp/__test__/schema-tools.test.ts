@@ -531,23 +531,22 @@ describe("schema tools", () => {
 		}).pipe(Effect.scoped),
 	);
 
-	// A real write truncates, then writes, with a turn of the event loop between. Without the lane, a check here answers
-	// from the torn document: "stale", about a tree a build is finishing.
-	it.live("a check waits for a build holding a torn document", () =>
+	// A build writes several files, each atomically, with a turn of the event loop between them. Without the lane, a check
+	// here answers from a mix of old and new: "stale", about a tree a build is finishing.
+	it.live("a check waits for a build holding a half-landed tree", () =>
 		Effect.gen(function* () {
 			const torn = yield* Deferred.make<void>();
 			const release = yield* Deferred.make<void>();
 			let tore = false;
 			const { harness } = yield* serve({
 				faults: (base) => ({
-					writeFileString: (path, text) => {
-						if (path !== DOC_PATH || tore) return undefined;
+					rename: (from, to) => {
+						if (to !== DOC_PATH || tore) return undefined;
 						tore = true;
 						return Effect.gen(function* () {
-							yield* base.writeFileString(path, "");
 							yield* Deferred.succeed(torn, undefined);
 							yield* Deferred.await(release);
-							return yield* base.writeFileString(path, text);
+							return yield* base.rename(from, to);
 						});
 					},
 				}),

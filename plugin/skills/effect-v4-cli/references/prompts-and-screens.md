@@ -19,7 +19,7 @@ pnpm add ink react                  # only for @effected/cli-kit/ui
 pnpm add -D @types/react @types/node
 ```
 
-`@effected/env`, `@effected/walker` and `@effected/glob` are required peers of the root; `ink`, `react` and `@types/react` are optional peers that only `@effected/cli-kit/ui` uses, and `@effected/config-file` is an optional peer of one root module. A program that only prompts through core's `Prompt` installs none of the Ink ones.
+`@effected/env`, `@effected/walker` and `@effected/glob` are required peers of the root; `ink`, `react` and `@types/react` are optional peers that only `@effected/cli-kit/ui` uses. A program that only prompts through core's `Prompt` installs none of the Ink ones.
 
 A screen of your own written as JSX needs the automatic JSX transform, in the tsconfig that compiles it:
 
@@ -145,7 +145,7 @@ Name the parameter with `flag` (its name without dashes) or `argument`, so the m
 | `CliUi` | Signature and use |
 | --- | --- |
 | `run(screen, { clear? })` | `Effect<A, Cancelled \| NotInteractive, CliTheme>`; mounts the screen. Not interactive, fails `NotInteractive` and loads nothing |
-| `prompt(screen, { otherwise?, clear? })` | `run` with a non-interactive default: the form for a handler. A cancel is the typed `Cancelled` a handler **can** catch |
+| `prompt(screen, { otherwise?, clear? })` | `run` with a non-interactive default: the form for a handler. A cancel is the typed `Cancelled` a handler **can** catch. With a real `otherwise` the error type is `Cancelled` alone; without one, or with `otherwise: undefined`, it is `Cancelled \| NotInteractive` |
 | `fallback(screen, { flag \| argument, otherwise?, clear? })` | a `Param.FallbackPrompt`, as `CliPrompt.fallback` above |
 | `lazy(() => import("./screen.js"))` | defers a screen's module to its mount, so its JSX and its `ink`/`react` imports load only then; the module's default export is the `Screen` (see "Keeping React off the runs that never prompt") |
 | `context` | `Effect<UiContextValue, never, CliTheme>`: the theme and glyphs for an Ink tree the kit did not mount (see the live-view reference) |
@@ -195,7 +195,7 @@ Most widgets are a pure `init`/`step` reducer, a `keys` table, a `View` and a re
 Behaviour that surprises a first screen:
 
 - **`Select` draws `detail` only for the highlighted choice** (one muted line under the list), so a test sees each choice's detail only after moving the cursor onto it.
-- **`CliUi.prompt` without `otherwise` fails `NotInteractive`, and that stays in the error type** even after you gated on `CliInteractive`. Give every prompt an `otherwise`, or catch the tag and fail with `CliError.UserError` so the run exits as a usage error (`64`).
+- **`CliUi.prompt` without `otherwise` fails `NotInteractive`, and that stays in the error type** even after you gated on `CliInteractive`. `otherwise: undefined` counts as not given, so it keeps the error too. Give every prompt a real `otherwise`, which takes `NotInteractive` out of the error type (`A` is read from the screen), or catch the tag and fail with `CliError.UserError` so the run exits as a usage error (`64`).
 - **`q` cancels `Select`, `MultiSelect` and `Confirm`** with `"escape"`, as Esc does; Ctrl-C cancels with `"interrupt"`. `TextInput` has no `q` binding, since `q` is text.
 - **A screen with nothing to choose dies as a defect**, not a typed failure: `Select.screen` with no enabled choice, a `Confirm` toggle key or a `MultiSelect` item key that repeats, and a `Viewport` item key that repeats.
 - **`CliUi.prompt` takes one screen's answer**, so a wizard is several `prompt` calls in a handler (or several `fallback`s on flags), each with its own `otherwise`.

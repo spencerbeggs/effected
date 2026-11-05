@@ -8,10 +8,10 @@ resource: ../../packages/templates
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-30T01:39:09Z
+  at: 2026-11-05T16:08:15Z
 integrity:
   generated:
-    body: 21d1f961a162f47c
+    body: c53ba4df405e377d
 ---
 
 # @effected/templates
@@ -49,13 +49,12 @@ definition" is not a shell abstraction; it is a section id with
 
 ## Tier and dependencies
 
-**Boundary tier.** `effect` is the only peer; no `@effected` edges and no
-external runtime dependencies. `FileSystem` arrives in `R` from the
-consumer's platform layer, the walker/xdg/git pattern. `Path` is
-deliberately not required: paths are opaque strings handed straight to
-`FileSystem`, and this package never joins, resolves or splits one — if a
-future member needs to derive a sibling path, `Path` joins `R` then, as a
-recorded change, not a reflex. `@effect/platform-node` is a devDependency
+**Boundary tier.** `effect` is the only peer; the one `@effected` edge is
+`@effected/files`, and there are no external runtime dependencies.
+`FileSystem` and `Path` arrive in `R` from the consumer's platform layer,
+the walker/xdg/git pattern. `Path` is required because a sync replaces the
+file through `AtomicFile.write`, which writes a temp file beside the target
+and renames it, so a crash cannot truncate the user's text. `@effect/platform-node` is a devDependency
 for the integration suite only. No diff engine, no template engine, no
 `node:` import anywhere.
 

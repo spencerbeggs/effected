@@ -129,6 +129,8 @@ above it; `CliExit.set` instead records the code and lets `CliRuntime.main`
 turn it into a marked failure the runtime's own teardown honours, with
 finalizers intact.
 
+`CliExit.report(code, line)` is `set` plus one stderr line, for a hook-style command that must say why it exits non-zero; `CliExit.reportCause(cause, codeOf)` does the same for a cause, writing `<code> <tag>: <message>` with the message sanitized (an interrupt-only cause reports nothing and re-interrupts). Both succeed and do not stop the program: the caller still has to return.
+
 `CliExit.set` keeps the **highest** code seen during a run, not the last one,
 so a later "all clean" step can never quietly downgrade an earlier finding.
 It dies as a defect naming the value when the code is not an integer in

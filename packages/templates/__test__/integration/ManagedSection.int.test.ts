@@ -10,10 +10,10 @@
 import * as nodeFs from "node:fs/promises";
 import * as nodeOs from "node:os";
 import * as nodePath from "node:path";
-import { NodeFileSystem } from "@effect/platform-node";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import type { Scope } from "effect";
-import { Effect, FileSystem, Option } from "effect";
+import { Effect, FileSystem, Layer, Option } from "effect";
 import { CommentStyle, ManagedSection, SectionId } from "../../src/index.js";
 
 const tempDir = Effect.acquireRelease(
@@ -27,7 +27,10 @@ const tempDir = Effect.acquireRelease(
  * needed, and the Scope stays in `R` for the runner to discharge.
  */
 const live = <A, E>(program: Effect.Effect<A, E, ManagedSection | FileSystem.FileSystem | Scope.Scope>) =>
-	program.pipe(Effect.provide(ManagedSection.layer), Effect.provide(NodeFileSystem.layer));
+	program.pipe(
+		Effect.provide(ManagedSection.layer),
+		Effect.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+	);
 
 const id = (key: string) => SectionId.make({ key, commentStyle: CommentStyle.hash });
 

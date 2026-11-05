@@ -6,7 +6,7 @@ status: stable
 tags: [architecture, testing, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:53:05Z
+  at: 2026-11-05T17:16:21Z
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
@@ -14,13 +14,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-11-02T17:04:46Z
+  - by: human:spencer
+    at: 2026-11-05T17:32:05Z
 integrity:
   generated:
-    body: e3e02469be2ec130
+    body: 88f49541d2204254
   verified:
     by: human:spencer
-    at: 2026-11-02T17:04:46Z
-    content: a068f74f32a58ca9
+    at: 2026-11-05T17:32:05Z
+    content: 0cce65780f25f2ea
 ---
 
 # D9: `CliTest` uses core `ChildProcess`, with no peer on `@effected/commands`
@@ -33,8 +35,8 @@ exactly the shape `@effected/commands`' `Run` already provides, over the
 same underlying `ChildProcessSpawner` contract core exposes directly.
 Reaching for `@effected/commands` would mean either a required dependency
 — unacceptable for a `boundary`-tier testing subpath whose package,
-`@effected/cli-kit`, currently depends on nothing but `effect` and the
-optional `@effected/config-file` peer — or an *optional* peer, mirroring
+`@effected/cli-kit`, currently has no `@effected` peer and depends only on `effect` and a few
+pure kit packages — or an *optional* peer, mirroring
 the `config-file` pattern `cli-kit.md` already documents for
 `ConfigIssueRenderer`. But `@effected/commands` brings tool-discovery and
 argv-prefix machinery (`npm exec`, `pnpm dlx`, and the rest of its table)

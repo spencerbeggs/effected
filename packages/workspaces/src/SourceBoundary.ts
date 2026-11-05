@@ -33,8 +33,18 @@ import { DEFAULT_EXTENSIONS, walkSources } from "./internal/sourceWalk.js";
  * re-export (`export { App } from ...`), an `export * from` of the module,
  * and a member access on a namespace binding (`import * as m from ...` or the
  * TypeScript `import m = require(...)`, then `m.App`). `from` must equal the specifier
- * exactly; a subpath is a different module. See {@link SourceBoundary}'s
- * remarks for what this lexer cannot see.
+ * exactly; a subpath is a different module. `{ promiseInExclusive }` forbids
+ * `Effect.promise(`, `Effect.runPromise(` and `Effect.runPromiseExit(` inside the argument span of a
+ * `<lane>.run(` call, where `<lane>` is a name the same file binds from
+ * `Exclusive.make` (`const lane = yield* Exclusive.make`) or one listed in
+ * `lanes`. Core's `Effect.promise` abandons the promise when the lane's timeout
+ * interrupts the body, so the permit is released while the work still runs;
+ * `Exclusive.promise` aborts and waits. `Exclusive.promise` and
+ * `Effect.tryPromise` are not flagged. The check is lexical: a helper called
+ * from the body, a body bound to a variable before `run`, a member receiver
+ * (`this.lane.run(`), an aliased import of `Effect`, a destructured `run` and a
+ * call through a local alias of `Effect.promise` all pass. See
+ * {@link SourceBoundary}'s remarks for what this lexer cannot see.
  *
  * To confine a token to named files rather than forbid it everywhere, forbid
  * it and waive the rule for those files through
@@ -62,7 +72,8 @@ export type BoundaryRule =
 	| "console-stdout"
 	| { readonly forbidImports: ReadonlyArray<string> }
 	| { readonly forbidTokens: ReadonlyArray<string> }
-	| { readonly forbidImportedNames: ForbiddenImportedNames };
+	| { readonly forbidImportedNames: ForbiddenImportedNames }
+	| { readonly promiseInExclusive: PromiseInExclusiveOptions };
 
 /**
  * The names a `{ forbidImportedNames }` rule forbids, and the module they must
@@ -75,6 +86,16 @@ export interface ForbiddenImportedNames {
 	readonly from: string;
 	/** The export names that must not be imported from it. `"default"` names the default export. */
 	readonly names: ReadonlyArray<string>;
+}
+
+/**
+ * The options of a `{ promiseInExclusive }` rule.
+ *
+ * @public
+ */
+export interface PromiseInExclusiveOptions {
+	/** Names of lanes this file receives rather than binds from `Exclusive.make`, such as a parameter. */
+	readonly lanes?: ReadonlyArray<string> | undefined;
 }
 
 /**
@@ -131,6 +152,7 @@ export class Offence extends Schema.Class<Offence>("Offence")({
 		"forbidImports",
 		"forbidTokens",
 		"forbidImportedNames",
+		"promiseInExclusive",
 	]),
 	/**
 	 * What matched: the identifier, the call, the import specifier, the token,
@@ -149,7 +171,8 @@ export class Offence extends Schema.Class<Offence>("Offence")({
  * The rule an {@link Offence} names: every string {@link BoundaryRule}, plus
  * `"forbidImports"` for any `{ forbidImports }` rule, `"forbidTokens"` for
  * any `{ forbidTokens }` rule and `"forbidImportedNames"` for any
- * `{ forbidImportedNames }` rule. These are the keys of
+ * `{ forbidImportedNames }` rule and `"promiseInExclusive"` for any
+ * `{ promiseInExclusive }` rule. These are the keys of
  * {@link ScanOptions.allowRules}.
  *
  * @public
@@ -465,6 +488,48 @@ const forbids = (entry: string, specifier: string): boolean =>
 const isNodeModule = (specifier: string, module: string): boolean =>
 	[module, `node:${module}`].some((name) => specifier === name || specifier.startsWith(`${name}/`));
 
+const LANE_BINDING =
+	/(?<![\p{ID_Continue}$.#])(?:const|let|var)\s+([\p{ID_Start}$_][\p{ID_Continue}$]*)\s*=\s*(?:(?:yield\s*\*|await)\s*)?Exclusive\s*\.\s*make(?![\p{ID_Continue}$])/gu;
+const PROMISE_CALL =
+	/(?<![\p{ID_Continue}$.#])Effect\s*\.\s*(promise|runPromiseExit|runPromise)\s*(?:<[^()]*>\s*)?\(/gu;
+
+/** Where `code` calls `<lane>.run(`, as the offsets just inside the opening paren and of the matching close (end of text when unbalanced). */
+const runSpans = (code: string, lane: string): ReadonlyArray<{ readonly from: number; readonly to: number }> => {
+	const call = new RegExp(
+		`(?<![\\p{ID_Continue}$.#])${lane.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\s*(?:\\?\\.|\\.)\\s*run\\s*\\(`,
+		"gu",
+	);
+	return [...code.matchAll(call)].map((match) => {
+		const from = (match.index ?? 0) + match[0].length;
+		let depth = 1;
+		let to = from;
+		for (; to < code.length && depth > 0; to++) {
+			if (code[to] === "(") depth++;
+			else if (code[to] === ")") depth--;
+		}
+		return { from, to };
+	});
+};
+
+/** Every `Effect.promise(` or `Effect.runPromise(` lexically inside a `<lane>.run(` call, for each lane the file binds from `Exclusive.make` or `lanes` names. */
+const promisesInLanes = (
+	code: string,
+	lanes: ReadonlyArray<string>,
+): ReadonlyArray<{ readonly offset: number; readonly detail: string }> => {
+	const names = new Set([...[...code.matchAll(LANE_BINDING)].map((match) => match[1] ?? ""), ...lanes]);
+	names.delete("");
+	const found = new Map<number, string>();
+	for (const lane of names) {
+		for (const { from, to } of runSpans(code, lane)) {
+			for (const call of code.slice(from, to).matchAll(PROMISE_CALL)) {
+				const offset = from + (call.index ?? 0);
+				if (!found.has(offset)) found.set(offset, `${lane}.run: Effect.${call[1]}`);
+			}
+		}
+	}
+	return [...found].map(([offset, detail]) => ({ offset, detail }));
+};
+
 const FIXTURES: ReadonlyArray<BoundaryFixture> = [
 	{ name: "process: destructuring", source: "const { env } = process;", rule: "process", flagged: true },
 	{ name: "process: bracket access", source: 'const env = process["env"];', rule: "process", flagged: true },
@@ -717,6 +782,75 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
 		flagged: false,
 	},
 	{
+		name: "promiseInExclusive: Effect.promise in a lane body",
+		source: 'const lane = yield* Exclusive.make;\nlane.run(Effect.promise(() => f()), { timeout: "1s" });',
+		rule: { promiseInExclusive: {} },
+		flagged: true,
+	},
+	{
+		name: "promiseInExclusive: Effect.promise nested in Effect.gen in a lane body",
+		source:
+			"const lane = yield* Exclusive.make;\nlane.run(Effect.gen(function* () { yield* Effect.promise(() => f()); }), { timeout: 1 });",
+		rule: { promiseInExclusive: {} },
+		flagged: true,
+	},
+	{
+		name: "promiseInExclusive: Effect.runPromise in a lane body",
+		source: "const lane = yield* Exclusive.make;\nlane.run(Effect.sync(() => Effect.runPromise(g)), { timeout: 1 });",
+		rule: { promiseInExclusive: {} },
+		flagged: true,
+	},
+	{
+		name: "promiseInExclusive: Effect.promise with a type argument in a lane body",
+		source: "const lane = yield* Exclusive.make;\nlane.run(Effect.promise<void>(() => f()), { timeout: 1 });",
+		rule: { promiseInExclusive: {} },
+		flagged: true,
+	},
+	{
+		name: "promiseInExclusive: Effect.runPromiseExit in a lane body",
+		source:
+			"const lane = yield* Exclusive.make;\nlane.run(Effect.sync(() => Effect.runPromiseExit(g)), { timeout: 1 });",
+		rule: { promiseInExclusive: {} },
+		flagged: true,
+	},
+	{
+		name: "promiseInExclusive: a lane passed in and named in lanes",
+		source: "lane.run(Effect.promise(() => f()), { timeout: 1 });",
+		rule: { promiseInExclusive: { lanes: ["lane"] } },
+		flagged: true,
+	},
+	{
+		name: "promiseInExclusive: Exclusive.promise in a lane body",
+		source: "const lane = yield* Exclusive.make;\nlane.run(Exclusive.promise(lane, (s) => f(s)), { timeout: 1 });",
+		rule: { promiseInExclusive: {} },
+		flagged: false,
+	},
+	{
+		name: "promiseInExclusive: Effect.promise after the run call closes",
+		source:
+			"const lane = yield* Exclusive.make;\nlane.run(body, { timeout: 1 });\nconst p = Effect.promise(() => f());",
+		rule: { promiseInExclusive: {} },
+		flagged: false,
+	},
+	{
+		name: "promiseInExclusive: the call named in a string",
+		source: 'const lane = yield* Exclusive.make;\nlane.run(Effect.succeed("Effect.promise(x)"), { timeout: 1 });',
+		rule: { promiseInExclusive: {} },
+		flagged: false,
+	},
+	{
+		name: "promiseInExclusive: the call named in a comment",
+		source: "const lane = yield* Exclusive.make;\nlane.run(body /* Effect.promise(x) */, { timeout: 1 });",
+		rule: { promiseInExclusive: {} },
+		flagged: false,
+	},
+	{
+		name: "promiseInExclusive: a receiver nothing binds from Exclusive.make",
+		source: "other.run(Effect.promise(() => f()), { timeout: 1 });",
+		rule: { promiseInExclusive: {} },
+		flagged: false,
+	},
+	{
 		name: "forbidTokens: a private field",
 		source: "const v = this.#process.env.__PACKAGE_VERSION__;",
 		rule: { forbidTokens: ["process.env.__PACKAGE_VERSION__"] },
@@ -859,6 +993,10 @@ export class SourceBoundary {
 			} else if ("forbidImportedNames" in rule) {
 				for (const { offset, detail } of importedNameUses(lexed, rule.forbidImportedNames)) {
 					found.push({ offset, rule: "forbidImportedNames", detail });
+				}
+			} else if ("promiseInExclusive" in rule) {
+				for (const { offset, detail } of promisesInLanes(lexed.code, rule.promiseInExclusive.lanes ?? [])) {
+					found.push({ offset, rule: "promiseInExclusive", detail });
 				}
 			} else if ("forbidTokens" in rule) {
 				for (const token of new Set(rule.forbidTokens)) {

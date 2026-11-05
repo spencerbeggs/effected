@@ -1,5 +1,17 @@
-import type { ConfigValidationError } from "@effected/config-file";
 import { formatIssueWithHints } from "./internal/format.js";
+
+/**
+ * What {@link ConfigIssueRenderer.render} reads: anything that may carry an `issue` tree.
+ *
+ * @remarks
+ * A `@effected/config-file` `ConfigValidationError` is assignable to it, as is any
+ * other value with an optional `issue` property.
+ *
+ * @public
+ */
+export interface ConfigIssueSource {
+	readonly issue?: unknown;
+}
 
 /**
  * Turns a `@effected/config-file` `ConfigValidationError` into one line per rejected value.
@@ -13,10 +25,9 @@ import { formatIssueWithHints } from "./internal/format.js";
  * value is the diagnostic: printing only the message tells a user their config
  * is invalid without saying which value is wrong or how it is shaped.
  *
- * `@effected/config-file` is an optional peer, and this module only
- * `import type`s it, so the import is erased at build time. A consumer without
- * the package installed can import this module without the resolver being asked
- * for it.
+ * The parameter is {@link ConfigIssueSource}, a structural type, so this module
+ * names nothing from `@effected/config-file` and the package is not a peer. A
+ * real `ConfigValidationError` is assignable to it.
  *
  * @example
  * ```ts
@@ -46,7 +57,7 @@ export class ConfigIssueRenderer {
 	 * hands you and because `issue` is typed `Schema.Defect`, which every call
 	 * site would otherwise have to reach into. Inside
 	 * `Effect.catchTag("ConfigValidationError", …)` the error is already this
-	 * type.
+	 * shape.
 	 *
 	 * An unknown key the schema has a near match for at the same path ends in a
 	 * hint, `unknown key at theme.colour (did you mean "color"?)`, drawn from the
@@ -58,6 +69,7 @@ export class ConfigIssueRenderer {
 	 * a guard before it is read, so a renderer on an error path never becomes the
 	 * reason a program dies.
 	 */
-	static readonly render = (error: ConfigValidationError): ReadonlyArray<string> =>
-		formatIssueWithHints((error as { readonly issue?: unknown } | null)?.issue);
+	static readonly render = (error: ConfigIssueSource): ReadonlyArray<string> =>
+		// A non-object reaching a typed parameter at runtime must still not throw.
+		formatIssueWithHints((error as ConfigIssueSource | null | undefined)?.issue);
 }

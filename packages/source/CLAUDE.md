@@ -1,6 +1,6 @@
 # @effected/source
 
-Source-text positions as plain values: `LineIndex` converts a UTF-16 offset to a zero-based `{ line, character }` and back, and `SourcePosition`, `SourceRange`, `SourceSpan`, `SourceLocation` and `SourceDiagnostic` are the structural shapes the kit's format packages (`jsonc`, `yaml`, `toml`, `markdown`) already share.
+Source-text positions as plain values: `LineIndex` converts a UTF-16 offset to a zero-based `{ line, character }` and back, and `SourcePosition`, `SourceRange`, `SourceSpan`, `SourceLocation` and `SourceDiagnostic` are the structural shapes the kit's format packages (`jsonc`, `yaml`, `toml`, `markdown`) already share. `LineDiff` is a pure line diff; `EditDistance` is a pure Levenshtein distance and "did you mean" list (`Fmt.suggest` in `@effected/cli-kit` delegates to it).
 
 **Tier: pure.** No `effect` (not even a peer), no `node:` import, no service, no dependency of any kind, no `@effected/*` edge, `"sideEffects": false`. Never add one: format packages and LSP servers at every tier depend on this one, as a REGULAR dependency, and that is only sound while it asks for nothing and carries no shared-instance contract. `__test__/entrypoints.test.ts` pins both.
 

@@ -27,10 +27,10 @@ sources:
     title: "LSP 3.17 Position: zero-based, UTF-16 by default, line endings \\n, \\r\\n and \\r"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-05T03:42:19Z
+  at: 2026-11-05T16:26:11Z
 integrity:
   generated:
-    body: b8d71d111118890b
+    body: 6e00b72eb673395a
 ---
 
 # @effected/source
@@ -85,6 +85,7 @@ API. `SourceDiagnostic` only names the shape they already share, so a consumer
 | --- | --- | --- |
 | `LineIndex` | `LineIndex`, `LineBreaks`, `LineIndexOptions` | A line table built once over a text by one forward scan; every query is a binary search. `positionAt` / `offsetAt` convert both ways; `lineCount`, `lineAt`, `lineStart`, `lineEnd` (excluding the terminator) and `lineText`; `spanOf` / `rangeOf` between offsets and an LSP `Range`; `locationOf` for the shape a diagnostic carries. |
 | `LineDiff` | `LineDiff`, `LineDiffHunk`, `LineDiffLine`, `LineDiffOptions` | A pure line diff: `compute(before, after, options?)` runs Myers over the lines (common prefix and suffix trimmed first; past `maxEditDistance`, default 4096, the middle becomes one remove-all, add-all block) and groups the edits into unified-diff hunks with `context` lines (default 3); `unified(hunks, labels)` prints git-style text. Lines split on `\n` (a final `\n` ends the last line; an unterminated last line carries `noNewline`) and keep a trailing `\r`. No Effect, no colour. |
+| `EditDistance` | `EditDistance`, `EditDistanceSuggestOptions` | Pure Levenshtein: `between(a, b)` is the distance over UTF-16 code units, case-sensitive; `suggest(input, candidates, { maxDistance? })` is the candidates at the smallest distance up to the maximum (2 by default; a number, or a function of the input for a threshold that grows with a longer word), ties in the order given, each once, `[]` when none is that close. Only the band of the matrix within the maximum of its diagonal is computed and a candidate whose length is further off is skipped, so cost is linear in the candidates. A resolved maximum that is not a non-negative integer throws a `RangeError`. It exists so a library that may not depend on boundary-tier `@effected/cli-kit` gets a "did you mean" (#1190); `Fmt.suggest` delegates to it. |
 | `SourceIndex` | `SourceIndex` | `LineIndex`'s public surface as a structural interface: the type to name in a signature that takes or returns an index, so two installed copies interoperate. |
 | `SourcePosition` | `SourcePosition` | `{ line, character }`, zero-based, `character` in UTF-16 code units: an LSP `Position`. |
 | `SourceRange` | `SourceRange` | `{ offset, length }` in UTF-16 code units. |
@@ -219,7 +220,7 @@ oracle**: a regular-expression splitter sharing no code with it, over every
 string of up to six characters drawn from `{a, \n, \r, U+2028, \uD83D,
 \uDE00}`, every offset, and all three rules, including the
 position-to-offset round trip. `__test__/entrypoints.test.ts` pins the export
-list (`LineDiff` and `LineIndex` are the only runtime values), that `src/`
+list (`EditDistance`, `LineDiff` and `LineIndex` are the only runtime values), that `src/`
 imports nothing but itself, and that the manifest declares no dependency or
 peer.
 

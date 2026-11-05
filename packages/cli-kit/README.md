@@ -47,8 +47,6 @@ Optional peers:
   npm install ink react @types/react
   ```
 
-- **`@effected/config-file`**, only for `ConfigIssueRenderer`. It is imported as a type, so nothing at runtime reaches for it.
-
 All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED`. Import from an ES module.
 
 ## Quick start

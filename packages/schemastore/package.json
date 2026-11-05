@@ -32,6 +32,7 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@effected/files": "workspace:^",
 		"@effected/semver": "workspace:*"
 	},
 	"devDependencies": {

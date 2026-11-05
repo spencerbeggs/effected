@@ -130,7 +130,7 @@ would be a one-element loop and the walker edge would be ceremony.
 
 ## Testing and building
 
-99 tests in `__test__/`, `@effect/vitest`, `assert.*` — never `expect`.
+104 tests in `__test__/`, `@effect/vitest`, `assert.*` — never `expect`.
 
 ```bash
 pnpm vitest run packages/xdg

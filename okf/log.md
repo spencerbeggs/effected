@@ -39,6 +39,16 @@
 * Updated ai-plugin
 * Updated effected
 * Updated spencerbeggs/okfit
+* Added @effected/files
+* Updated store
+* Updated @effected/templates
+* Updated config-file
+* Updated package-json
+* Updated @effected/workspaces: monorepo tooling
+* Updated The Catalog Sync check goes RED when it found and fixed drift
+* Updated xdg stays independent of core UserDirectories
+* Updated D9: CliTest uses core ChildProcess, with no peer on @effected/commands
+* Added Atomic writes live in their own package, @effected/files, not in @effected/kit or @effected/store
 
 ## 2026-11-02
 

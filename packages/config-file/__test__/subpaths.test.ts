@@ -68,11 +68,11 @@ const kitPackages = (packages: ReadonlyArray<string>): ReadonlyArray<string> =>
 	packages.filter((name) => name.startsWith("@effected/"));
 
 describe("the built module graph", () => {
-	it("keeps the root entry off every format engine: it reaches @effected/walker and effect only", () => {
+	it("keeps the root entry off every format engine: it reaches @effected/files, @effected/walker and effect only", () => {
 		for (const build of BUILDS) {
 			const reached = packagesReachedFrom(join(build, "index.js"));
 			assert.include(reached, "effect", `the control: the root graph was walked (${build})`);
-			assert.deepStrictEqual(kitPackages(reached), ["@effected/walker"], build);
+			assert.deepStrictEqual(kitPackages(reached), ["@effected/files", "@effected/walker"], build);
 			for (const engine of ENGINES) assert.notInclude(reached, engine, `${engine} (${build})`);
 		}
 	});
