@@ -3,8 +3,10 @@ import { assert, describe, it } from "@effect/vitest";
 import { Cause, Console, Effect, Exit, Fiber, Layer, Logger, References, Runtime } from "effect";
 import { Command, Flag, Prompt } from "effect/cli";
 import { vi } from "vitest";
+import type { Cancelled } from "../../src/index.js";
 import { CliInteractive, CliPrompt, CliRuntime, CliTheme, NotInteractive } from "../../src/index.js";
 import { TestTerminal } from "../../src/testing.js";
+import type { Screen } from "../../src/ui.js";
 import { CliUi, Select } from "../../src/ui.js";
 import type { CliUiTestSession } from "../../src/ui-testing.js";
 import { CliUiTest } from "../../src/ui-testing.js";
@@ -210,4 +212,30 @@ describe("CliUi.prompt", () => {
 			assert.strictEqual(loads.count, before);
 		}).pipe(Effect.provide(CliTheme.layerTest()), Effect.provide(CliInteractive.layerTest(false))),
 	);
+
+	it("types: a real otherwise drops NotInteractive from the error; none, or undefined, keeps it", () => {
+		const optional = null as unknown as Screen<string | undefined>;
+		const plain = null as unknown as Screen<string>;
+		const check = () => {
+			// A real `otherwise`: the error type is `Cancelled` alone.
+			const given: Effect.Effect<string, Cancelled, CliTheme> = CliUi.prompt(plain, { otherwise: "x" });
+			// `A` comes from the screen, so `string | undefined` stays, with a real `otherwise` still dropping the error.
+			const kept: Effect.Effect<string | undefined, Cancelled, CliTheme> = CliUi.prompt(optional, {
+				otherwise: "x",
+			});
+			// No `otherwise`, or `{ otherwise: undefined }` (not given at runtime), keeps `NotInteractive`.
+			// @ts-expect-error: NotInteractive stays in the error type without an otherwise
+			const none: Effect.Effect<string, Cancelled, CliTheme> = CliUi.prompt(plain);
+			// @ts-expect-error: `{ otherwise: undefined }` counts as not given, so NotInteractive stays
+			const undef: Effect.Effect<string | undefined, Cancelled, CliTheme> = CliUi.prompt(optional, {
+				otherwise: undefined,
+			});
+			const withClear: Effect.Effect<string, Cancelled, CliTheme> = CliUi.prompt(plain, {
+				otherwise: "x",
+				clear: true,
+			});
+			return [given, kept, none, undef, withClear];
+		};
+		assert.isFunction(check);
+	});
 });
