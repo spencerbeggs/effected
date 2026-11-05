@@ -742,6 +742,54 @@ describe("JsoncModifier", () => {
 				}),
 			);
 
+			it.effect(
+				"createParents refuses a path deeper than the parser's nesting cap, typed, leaving the text alone",
+				() =>
+					Effect.gen(function* () {
+						for (const length of [300, 257, 20_000]) {
+							const path = Array.from({ length }, (_, i) => `k${i}`);
+							const error = yield* Effect.flip(JsoncModifier.modify("{}", path, 1, { createParents: true }));
+							if (error._tag !== "JsoncModificationError") return assert.fail(`got ${error._tag}`);
+							assert.strictEqual(error.expected, "object");
+							assert.strictEqual(error.depth, 257);
+							assert.strictEqual(error.limit, 256);
+							assert.include(error.message, "256");
+						}
+						const text = '{ "a": 1 }';
+						const result = JsoncModifier.modifyResult(
+							text,
+							Array.from({ length: 300 }, (_, i) => `k${i}`),
+							1,
+							{
+								createParents: true,
+							},
+						);
+						assert.isTrue(Result.isFailure(result));
+					}),
+			);
+
+			it.effect("createParents counts the depth of the existing container too", () =>
+				Effect.gen(function* () {
+					const nested = `${'{"a":'.repeat(100)}{}${"}".repeat(100)}`;
+					const deep = [...Array.from({ length: 100 }, () => "a"), ...Array.from({ length: 157 }, (_, i) => `k${i}`)];
+					const error = yield* Effect.flip(JsoncModifier.modify(nested, deep, 1, { createParents: true }));
+					if (error._tag !== "JsoncModificationError") return assert.fail(`got ${error._tag}`);
+					assert.strictEqual(error.depth, 257);
+				}),
+			);
+
+			it.effect("createParents at exactly the cap succeeds and the output parses", () =>
+				Effect.gen(function* () {
+					const path = Array.from({ length: 256 }, (_, i) => `k${i}`);
+					const out = yield* created("{}", path, 1);
+					const parsed = yield* Jsonc.parse(out);
+					assert.isDefined(parsed);
+					const over = Array.from({ length: 257 }, (_, i) => `k${i}`);
+					const error = yield* Effect.flip(JsoncModifier.modify("{}", over, 1, { createParents: true }));
+					assert.strictEqual(error._tag, "JsoncModificationError");
+				}),
+			);
+
 			it.effect("createParents writes a key that needs escaping, and __proto__, as data", () =>
 				Effect.gen(function* () {
 					assert.strictEqual(

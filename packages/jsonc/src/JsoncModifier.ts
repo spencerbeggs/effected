@@ -6,6 +6,7 @@
 // navigation miss; value serialization goes through `Jsonc.stringifyResult`.
 
 import { Effect, Result, Schema } from "effect";
+import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import type { Insert, Located } from "./internal/navigate.js";
 import { isBlank, isLineBreak, navigate } from "./internal/navigate.js";
 import type { JsoncStringifyError } from "./Jsonc.js";
@@ -26,6 +27,8 @@ import type { JsoncPath } from "./JsoncNode.js";
  * - `offset` — reserved for a source-position annotation; currently always
  *   omitted (navigation reports the mismatch structurally, without a text
  *   offset).
+ * - `limit` — present only when `createParents` would nest deeper than the
+ *   parser's cap: the cap (256 levels), with `depth` the first level past it.
  *
  * @remarks
  * Follows the structure-preserving-errors house rule — the mismatch's
@@ -42,9 +45,13 @@ export class JsoncModificationError extends Schema.TaggedError<JsoncModification
 	expected: Schema.Literals(["object", "array"]),
 	depth: Schema.Number,
 	offset: Schema.optionalKey(Schema.Number),
+	limit: Schema.optionalKey(Schema.Number),
 }) {
 	override get message(): string {
 		const at = this.offset !== undefined ? ` (offset ${this.offset})` : "";
+		if (this.limit !== undefined) {
+			return `Modification failed at path [${this.path.join(", ")}]${at}: nesting would exceed ${this.limit} levels at depth ${this.depth}`;
+		}
 		return `Modification failed at path [${this.path.join(", ")}]${at}: expected ${this.expected} at depth ${this.depth}`;
 	}
 }
@@ -91,7 +98,10 @@ export interface JsoncModifyOptions {
 	 * exists with the wrong type still fails and is never overwritten, a numeric
 	 * segment under a missing ancestor still fails (`expected: "array"`), because
 	 * arrays are never invented, and so does a missing array element. A delete
-	 * under a missing ancestor succeeds with no edits.
+	 * under a missing ancestor succeeds with no edits. A path that would nest
+	 * deeper than `Jsonc.parse` accepts (256 levels, counting the existing
+	 * container plus every created one) fails with {@link JsoncModificationError}
+	 * carrying `limit` and the first `depth` past it, leaving the text untouched.
 	 */
 	readonly createParents?: boolean;
 }
@@ -395,6 +405,18 @@ export class JsoncModifier {
 				}
 				if (value === undefined) {
 					return Result.succeed([]);
+				}
+				// Created objects nest one level per path segment: a deeper document
+				// would be one `Jsonc.parse` refuses.
+				if (path.length > MAX_NESTING_DEPTH) {
+					return Result.fail(
+						new JsoncModificationError({
+							path,
+							expected: "object",
+							depth: MAX_NESTING_DEPTH + 1,
+							limit: MAX_NESTING_DEPTH,
+						}),
+					);
 				}
 				const numeric = below.findIndex((segment) => typeof segment !== "string");
 				if (numeric !== -1) {

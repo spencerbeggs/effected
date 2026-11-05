@@ -109,4 +109,21 @@ describe("PackageJsonFile.write — atomicity", () => {
 			assert.deepStrictEqual(handle.volume.paths(), [TARGET]);
 		}),
 	);
+
+	it.effect("a createParents path past the nesting cap fails PackageJsonModifyError and writes nothing", () =>
+		Effect.gen(function* () {
+			const handle = MemoryFileSystem.makeSync({ [TARGET]: STALE });
+			const layer = PackageJsonFile.layer.pipe(Layer.provide(Layer.mergeAll(handle.layer, Path.layer)));
+			const path = Array.from({ length: 300 }, (_, i) => `k${i}`);
+			const error = yield* Effect.gen(function* () {
+				const file = yield* PackageJsonFile;
+				return yield* Effect.flip(file.modify(TARGET, [{ path, value: 1, createParents: true }]));
+			}).pipe(Effect.provide(layer));
+			if (!(error instanceof PackageJsonModifyError)) {
+				return assert.fail(`expected PackageJsonModifyError, got ${error._tag}`);
+			}
+			assert.include(error.message, "nesting would exceed 256 levels");
+			assert.strictEqual(handle.volume.text(TARGET), STALE);
+		}),
+	);
 });
