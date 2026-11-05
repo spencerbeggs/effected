@@ -6,6 +6,7 @@ shows: none
 applies:
   "@effected/cli-kit": ">=0.27.0"
 detect: ["\"@effected/config-file\""]
+changesets: ["cli-kit-drops-config-peer"]
 ---
 
 `@effected/cli-kit` no longer declares `@effected/config-file` as an optional peer, because it no longer reaches it.

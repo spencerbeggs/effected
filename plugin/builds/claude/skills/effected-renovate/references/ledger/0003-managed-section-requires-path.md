@@ -6,6 +6,7 @@ shows: typed
 applies:
   "@effected/templates": ">=0.18.0"
 detect: ["ManagedSection\\.(make|layer|layerWith)"]
+changesets: ["sections-write-atomically"]
 ---
 
 `ManagedSection.make`, `ManagedSection.layer` and `ManagedSection.layerWith` now carry `Path` in their requirement channel next to `FileSystem`. A program that provided only a file system fails to typecheck where the layer is built or provided.

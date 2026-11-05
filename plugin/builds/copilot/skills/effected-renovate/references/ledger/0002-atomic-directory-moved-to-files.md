@@ -6,6 +6,7 @@ shows: typed
 applies:
   "@effected/store": ">=0.24.0"
 detect: ["AtomicDirectory(Error|Files)?"]
+changesets: ["atomic-directory-moves-out"]
 ---
 
 `AtomicDirectory`, `AtomicDirectoryError` and the `AtomicDirectoryFiles` type are no longer exported from `@effected/store`. They live in the new `@effected/files` package, with no re-export and no shim, so a stale import fails at build.
