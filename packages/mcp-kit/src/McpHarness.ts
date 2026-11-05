@@ -1,6 +1,6 @@
 import { ErrorText } from "@effected/kit";
-import type { Cause, Scope } from "effect";
-import { Console, Context, Deferred, Effect, Exit, Fiber, Layer, Queue, Sink, Stdio, Stream } from "effect";
+import type { Cause, Context, Scope } from "effect";
+import { Console, Deferred, Effect, Exit, Fiber, Layer, Queue, Sink, Stdio, Stream } from "effect";
 import { McpProtocol } from "effect/ai";
 import type { ClientInfo } from "./internal/wire.js";
 import {
@@ -71,9 +71,10 @@ export interface McpHarnessOptions<S = never> {
 	 *
 	 * @remarks
 	 * Build the services once, seed them from the test, and pass them here: the tools then read the instance the test
-	 * wrote to, where providing the services' layer instead would build a second one. A `Stdio` in the context is
-	 * dropped: the harness supplies the queue-backed one, and a platform layer's real process `Stdio` must never
-	 * reach the server. The type removes `S` from the server's requirements.
+	 * wrote to, where providing the services' layer instead would build a second one. The harness's queue-backed
+	 * `Stdio` always serves the server, because the services are provided outside it: a `Stdio` in the context,
+	 * such as a platform layer's real process one, never reaches the server. The type removes `S` from the
+	 * server's requirements.
 	 */
 	readonly services?: Context.Context<S> | undefined;
 }
@@ -334,12 +335,10 @@ export class McpHarness {
 				options.captureLogs === false
 					? server.pipe(Layer.provide(stdio))
 					: server.pipe(Layer.provide(stdio), Layer.provide(Layer.succeed(Console.Console, captured)));
-			// The harness's own Stdio is the only one the server may see. `services` supplies S, so S leaves the
-			// requirements; the type cannot see through a context.
+			// Services are provided OUTSIDE the harness's Stdio, so a Stdio among them cannot shadow it. The cast:
+			// the type cannot see that the context supplies S.
 			const provided = (
-				options.services === undefined
-					? withLogs
-					: withLogs.pipe(Layer.provide(Layer.succeedContext(Context.omit(Stdio.Stdio)(options.services))))
+				options.services === undefined ? withLogs : withLogs.pipe(Layer.provide(Layer.succeedContext(options.services)))
 			) as Layer.Layer<ROut, E, Exclude<R, Stdio.Stdio | S>>;
 
 			const route = (line: string): Effect.Effect<void> => {

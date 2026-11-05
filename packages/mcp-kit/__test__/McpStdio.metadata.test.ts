@@ -1,5 +1,5 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Context, Effect, Layer, Ref, Schema, Stdio } from "effect";
+import { Context, Effect, Layer, Ref, Schema, Sink, Stdio, Stream } from "effect";
 import { McpProtocol, Tool, Toolkit } from "effect/ai";
 import { McpStdio, McpToolkit } from "../src/index.js";
 import { McpHarness } from "../src/testing.js";
@@ -46,6 +46,22 @@ describe("McpStdio.layer metadata", () => {
 			assert.include(text, "example/feature");
 		}),
 	);
+
+	it.effect("websiteUrl and icons appear in initialize on a stateful protocol", () =>
+		Effect.gen(function* () {
+			const harness = yield* McpHarness.make(
+				McpStdio.layer({
+					name: "meta",
+					version: "0.0.0",
+					websiteUrl: "https://example.com/meta",
+					icons: [{ src: "https://example.com/icon.png", mimeType: "image/png" }],
+				}),
+			);
+			const text = JSON.stringify((yield* harness.initialize).result);
+			assert.include(text, "https://example.com/meta");
+			assert.include(text, "https://example.com/icon.png");
+		}),
+	);
 });
 
 describe("McpHarness services", () => {
@@ -76,15 +92,15 @@ describe("McpHarness services", () => {
 		}),
 	);
 
-	it.effect("a Stdio in services doesn't replace the harness's", () =>
+	it.effect("services are provided outside the harness's Stdio, so a Stdio among them never serves the server", () =>
 		Effect.gen(function* () {
 			const ref = yield* Ref.make(7);
-			// A Stdio that would hang the server if it were used: stdin never delivers.
+			// A Stdio whose stdin ends at once: the server stops before it answers if this one serves it.
 			const poisoned = Stdio.make({
 				args: Effect.succeed([]),
-				stdin: undefined as never,
-				stdout: undefined as never,
-				stderr: undefined as never,
+				stdin: Stream.empty,
+				stdout: () => Sink.drain,
+				stderr: () => Sink.drain,
 			});
 			const services = Context.make(Counter, ref).pipe(Context.add(Stdio.Stdio, poisoned));
 			const harness = yield* McpHarness.make(server, { services });
