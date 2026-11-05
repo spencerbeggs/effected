@@ -27,7 +27,7 @@
 | `McpTestFailure` | Class | Why an MCP test client could not produce what was asked of it. | from `@effected/mcp-kit/testing` — mcp test client failure, stream ended, server stopped, timed out |
 | `McpToolAudit` | Class | A pure sweep over a served `tools/list` that returns every policy violation, as `"<tool>: <what>"` strings. | from `@effected/mcp-kit/testing` — lint served tools list, closed inputs, titles, hints, object-rooted outputs |
 | `McpToolAuditPolicy` | Interface | The policy `McpToolAudit.check` enforces. | from `@effected/mcp-kit/testing` |
-| `McpToolkit` | Class | Register a toolkit exactly as core's `McpServer.toolkit` does, except that every tool is strict by default and a `McpToolkit.unionTool` gets its union decoded. | name every unknown tool argument in one InvalidParams, strict by default |
+| `McpToolkit` | Class | Register a toolkit exactly as core's `McpServer.toolkit` does, except that every tool is strict by default and a `McpToolkit.unionTool` gets its union decoded. | name every unknown tool argument in one InvalidParams, strict by default, meet declared tool dependencies from a layer built once for the server lifetime |
 | `McpToolkitOptions` | Interface | Options for `McpToolkit.layer`. | |
 | `ServedResource` | Interface | One entry of a `resources/list` result. | from `@effected/mcp-kit/testing` |
 | `ServedTool` | Interface | One entry of a `tools/list` result. | from `@effected/mcp-kit/testing` |
