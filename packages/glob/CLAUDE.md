@@ -2,7 +2,7 @@
 
 Full-fidelity glob matching as Effect schemas: the complete minimatch dialect
 compiled to pure string predicates. Seventh migration. 12 `src/` files
-(10 engine + 2 facade), 6 test files, 134 tests.
+(10 engine + 2 facade), 7 test files.
 
 **Tier: pure.** Peer-depends on `effect` only. Zero runtime deps, no IO, no
 services. The `minimatch` devDependency is the **test oracle only** — pinned
@@ -39,7 +39,8 @@ Upstream guards **preserved**: the 64KB `MAX_PATTERN_LENGTH`; brace-expansion's
 evaluation (both load-bearing DoS fixes); the CVE-2022-3517 ReDoS-safe brace
 pre-check regex; `maxExtglobRecursion` (default 2, over-nesting **degrades to
 literal**, never errors); `maxGlobstarRecursion` (default 200, exceeding it is
-upstream's deliberate **false negative** — never converted to an error).
+upstream's deliberate **false negative** — never converted to an error; under
+`partial`, a walk the cap cuts short ends in a match, as in minimatch 11).
 
 New guards **added**, all at `MAX_NESTING_DEPTH = 256` (`internal/limits.ts`):
 
@@ -54,18 +55,36 @@ New guards **added**, all at `MAX_NESTING_DEPTH = 256` (`internal/limits.ts`):
 4. `ast.ts` `toRegExpSource` ↔ `#partsToRegExp`, `#flatten`, `clone`/`copyIn`
    — depth counters on the remaining AST recursion surfaces.
 
+`#matchGlobStarBodySections` also keeps a `tried` set, from minimatch 11, so
+sections that all fail stop at a place already tried. Without it, `**/a` twelve
+times against 30 `a` portions and a dot portion takes seconds, with or without
+`partial`, and each further `**` multiplies that. It costs at most
+`(maxGlobstarRecursion + 1) × path portions` entries for one match. **Never drop
+it to save the allocation.**
+
 `balancedMatch.ts` is fully **iterative — no guard; do not add one**. Budget
 exhaustion **throws typed** (`ExpansionBudgetExceeded`) where upstream
 silently truncated — silent truncation silently changes match semantics.
 NaN/non-integer caps die as `TypeError` defects via `assertCap` (wiring bugs,
 not input).
 
-## The two behavioral deviations from upstream (and one opt-in adaptation)
+## The three behavioral deviations from upstream (and one opt-in adaptation)
 
 1. **No ambient environment detection**: `platform` is an explicit option
    defaulting to `"posix"`; `process.platform` is never read. Win32 handling
    (UNC, drive letters, backslash splitting) is kept behind the option.
 2. **Typed budget exhaustion** instead of silent truncation (above).
+3. **`**` matching takes minimatch 11.0.4's fixes**, and nothing else from that
+   rewrite, in `#matchGlobstar` and `#matchGlobStarBodySections`. The oracle
+   has the bugs, so it answers wrongly on patterns with more than one `**`, and
+   on `partial` with any `**`. Four things differ: a section's last start comes
+   from the portions it and the later sections need; a body stops short of the
+   tail, and the last `**` does not walk it; under `partial` the body can run
+   past the path and matches only when the path is used up; and the `tried` set
+   above. `__test__/globstar.test.ts` pins hard-coded answers and a reference
+   matcher, and the oracle properties skip patterns with two or more `**`.
+   11's other changes are **not** taken: `a/b/` still matches `a/b/?(x)`, regexps
+   and `AST` stay, and so does its win32 handling.
 
 Beside them, `extglobBang` is an **opt-in adaptation** (off by default, so the
 oracle contract and its compliance rows hold): `parseNegate` stops before a `!`
@@ -104,11 +123,11 @@ matches `packages/a/b` (glob-core's issue-#62 rewrite is not carried forward).
 ## Testing and building
 
 Tests in `__test__/`, `@effect/vitest`, `assert.*` never `expect`. The
-compliance gate (`compliance.test.ts` + `hostility.test.ts`) runs against the
-raw engine: a 130-row fixture table asserting expected AND oracle agreement on
+compliance gate (`compliance.test.ts` + `hostility.test.ts` +
+`globstar.test.ts`) runs against the raw engine: a 130-row fixture table asserting expected AND oracle agreement on
 every row, oracle property tests, and the hostile-input suite. **If the engine
 disagrees with the oracle, fix the engine, never the expectation** — except
-the two documented deviations. Oracle calls map `platform: "posix"` →
+the documented deviations. Oracle calls map `platform: "posix"` →
 `"linux"` (upstream's Platform type has no posix member; linux is behaviorally
 identical and immune to ambient drift).
 

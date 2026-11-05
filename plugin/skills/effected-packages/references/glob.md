@@ -88,4 +88,5 @@ None exported (minimatch is the internal test oracle only).
 - Invalid options are a defect at construction; only malformed *patterns* use the typed error channel.
 - Brace-expansion budget exhaustion fails as typed `GlobPatternError` (`ExpansionBudgetExceeded`) rather than silently truncating.
 - Extglob over-nesting degrades to literal matching (no error); globstar recursion over the cap is a deliberate false negative — both preserved upstream trade-offs.
+- Answers on patterns with more than one `**`, and on `partial` with any `**`, follow minimatch 11's fixes and can differ from minimatch 10.x: `**/a/b/c/**/d/**` matches `d/a/b/c/d/b` here and not there. Nothing else from minimatch 11 applies: `a/b/` still matches `a/b/?(x)`.
 - Windows-style matching requires explicit `{ platform: "win32" }`.

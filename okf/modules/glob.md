@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T18:39:02Z
+  at: 2026-11-05T18:52:13Z
 integrity:
   generated:
-    body: c6fb4ab69e098285
+    body: 4d8488f03d39c64a
 ---
 
 # glob
@@ -65,7 +65,7 @@ A `Schema.Class` over an array of pattern strings with **set** semantics: a lead
 
 ## Hardening
 
-Upstream already carries substantial DoS hardening, **preserved** in the port: the 64KB pattern-length cap at every entry; brace-expansion's output budget, its recursion-to-loop rewrite, and lazy tail evaluation; and the ReDoS-safe brace pre-check regex mitigating CVE-2022-3517. Two upstream guards are kept as **authorities**, not tightened: extglob recursion (over-nesting degrades to literal and does not error) and globstar recursion (exceeding it is upstream's deliberate false-negative "correctness for security" trade) — both are invariants, so `matches` stays total.
+Upstream already carries substantial DoS hardening, **preserved** in the port: the 64KB pattern-length cap at every entry; brace-expansion's output budget, its recursion-to-loop rewrite, and lazy tail evaluation; and the ReDoS-safe brace pre-check regex mitigating CVE-2022-3517. Two upstream guards are kept as **authorities**, not tightened: extglob recursion (over-nesting degrades to literal and does not error) and globstar recursion (exceeding it is upstream's deliberate false-negative "correctness for security" trade) — both are invariants, so `matches` stays total. `**` matching remembers the places a walk has tried, so sections that all fail cost polynomial time rather than exponential, with or without `partial`.
 
 New depth guards at the shared nesting cap cover the remaining AST and brace-expansion recursion. `balancedMatch.ts` is fully iterative — no stack surface, no guard, and none should be added. One upstream hole is closed: coalescible nested extglobs recurse with a zero depth increment in stock minimatch, so it stack-overflows at default options on a roughly 60KB adoption chain that sits under its own length cap; the vendored AST parser adds a structural depth backstop counting every descent and failing typed, guarding that surface independently of the extglob recursion option. Cap defaults live in `internal/limits.ts`. Three caps are caller-settable options, validated by the options schema so an invalid value is rejected as a wiring defect before any guard sees it; the internal-only caps follow the [walker](walker.md) `maxDepth` rule — a NaN or non-integer reaching a guard can only come from code, is programmer error, and dies as a defect. Malformed input at every surface exits through the typed error, never a defect, never a hang.
 
@@ -75,7 +75,9 @@ Named `Effect.fn` spans on the public fallible boundaries only — the two `comp
 
 ## Testing
 
-`@effect/vitest`, `it.effect`, `assert.*` — never `expect`; tests in `__test__/`. No platform packages, no mock layers (no `R`), no `TestClock`. The engine is tested below the facade as well as through the public surface, in three families: a compliance fixture table asserting expected result *and* oracle agreement on every row; oracle property tests generating over the full dialect against the real `minimatch` package, asserting the vendored engine agrees modulo the two documented deviations (if the engine disagrees with the oracle, fix the engine, never the expectation); and a hostility suite — oversized patterns, expansion bombs, deep brace nesting, extglob adoption chains, long globstar chains, deep comma-part chains — each failing through the typed error with the right reason, never a stack overflow, OOM or hang, plus the NaN and non-integer cap defect guards.
+`@effect/vitest`, `it.effect`, `assert.*` — never `expect`; tests in `__test__/`. No platform packages, no mock layers (no `R`), no `TestClock`. The engine is tested below the facade as well as through the public surface, in three families: a compliance fixture table asserting expected result *and* oracle agreement on every row; oracle property tests generating over the full dialect against the real `minimatch` package, asserting the vendored engine agrees modulo the documented deviations (if the engine disagrees with the oracle, fix the engine, never the expectation); and a hostility suite — oversized patterns, expansion bombs, deep brace nesting, extglob adoption chains, long globstar chains, deep comma-part chains — each failing through the typed error with the right reason, never a stack overflow, OOM or hang, plus the NaN and non-integer cap defect guards.
+
+The oracle has one standing exception. The port takes minimatch 11.0.4's `**` fixes and nothing else from that rewrite, because minimatch 10.x answers wrongly on some patterns with more than one `**` and under `partial`. The oracle stays on 10.x, since moving it means deciding 11's deliberate changes, so `__test__/globstar.test.ts` pins these with hard-coded rows and a reference matcher, and the oracle properties skip patterns with two or more `**`.
 
 ## Consumer contract
 

@@ -29,6 +29,8 @@ The dialect is not a subset. The engine is a ported-with-attribution vendoring o
 
 One deliberate deviation from upstream: no ambient environment detection. `platform` is an explicit option defaulting to `"posix"`, and `process.platform` is never read, so a pattern behaves identically on every machine. All win32 path handling stays behind the option, for the caller who knows they need it.
 
+`**` matching also goes past the minimatch version it is ported from. minimatch 10.x gives wrong answers on some patterns with more than one `**`, such as `**/a/b/c/**/d/**` against `d/a/b/c/d/b`, and under `partial`. This engine carries the fixes from minimatch 11, and only those.
+
 ## Install
 
 ```bash
@@ -135,7 +137,7 @@ Effect.runPromise(Effect.result(GlobPattern.compile("a".repeat(70_000)))).then(c
 
 The engine in `src/internal/` is ported with attribution from:
 
-- [minimatch](https://github.com/isaacs/minimatch) 10.2.5 — Isaac Z. Schlueter and Contributors, BlueOak-1.0.0
+- [minimatch](https://github.com/isaacs/minimatch) 10.2.5, with the `**` fixes from 11.0.4 — Isaac Z. Schlueter and Contributors, BlueOak-1.0.0
 - [brace-expansion](https://github.com/juliangruber/brace-expansion) 5.0.7 — Julian Gruber, MIT
 - [balanced-match](https://github.com/juliangruber/balanced-match) 4.0.4 — Julian Gruber, MIT
 

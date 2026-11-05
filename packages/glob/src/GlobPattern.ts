@@ -435,9 +435,9 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 *
 	 * It returns the pattern's spelling and never folds case: under `nocase`,
 	 * `SRC/Lib/**` gives `SRC/Lib`, though the pattern also matches `src/lib/a.ts`.
-	 * It is not a safe walk root there on a case-sensitive filesystem. (
+	 * It is not a safe walk root there on a case-sensitive filesystem.
 	 * {@link GlobPattern.enumerationPrefix} is more conservative: `nocase` turns a
-	 * letter segment into a case-insensitive matcher, so it stops there.)
+	 * letter segment into a case-insensitive matcher, so it stops there.
 	 *
 	 * Like {@link GlobPattern.enumerationPrefix} it reads the inner pattern of a
 	 * negated one: guard on {@link GlobPattern.negated} at the call site.
