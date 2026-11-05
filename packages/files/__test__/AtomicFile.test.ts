@@ -28,16 +28,6 @@ const linkChain = (count: number): MemoryFileSystemSeed => {
 	return seed;
 };
 
-/**
- * A volume whose `realPath` answers `NotFound` for everything but the directory
- * holding the links, so the hop budget is the only thing that stops the walk. A
- * real `realPath` reports `ELOOP` first.
- */
-const realPathAlwaysAbsent = (seed: MemoryFileSystemSeed) =>
-	MemoryFileSystem.layerWithPath(seed, {
-		faults: { realPath: (path) => (path === DIR ? undefined : Effect.fail(failure("realPath", path, "NotFound"))) },
-	});
-
 /** Replaces `writeAll` on every file opened, leaving the rest of the file real. */
 const withWriteAll =
 	(writeAll: () => Effect.Effect<void, PlatformError.PlatformError>): MemoryFileSystemFaultsFactory =>
@@ -194,23 +184,14 @@ describe("AtomicFile.write", () => {
 		}).pipe(Effect.provide(MemoryFileSystem.layerWithPath(linkChain(3)))),
 	);
 
-	it.effect("exactly 40 hops is within the budget", () =>
-		Effect.gen(function* () {
-			yield* AtomicFile.write("/work/l0", "new");
-			const volume = yield* MemoryFileSystem.Volume;
-			assert.strictEqual(volume.text("/work/missing"), "new");
-		}).pipe(Effect.provide(realPathAlwaysAbsent(linkChain(40)))),
-	);
-
-	it.effect("a chain of links over 40 hops fails rather than looping", () =>
+	it.effect("a chain of links too long to follow fails with the filesystem's error", () =>
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(AtomicFile.write("/work/l0", "new"));
-			assert.strictEqual(error.reason._tag, "NotFound");
-			assert.strictEqual(error.reason.method, "realPath");
+			assert.strictEqual(error.reason._tag, "BadResource");
 			const volume = yield* MemoryFileSystem.Volume;
 			assert.isFalse(volume.has("/work/missing"));
 			assert.deepStrictEqual(yield* temps, []);
-		}).pipe(Effect.provide(realPathAlwaysAbsent(linkChain(41)))),
+		}).pipe(Effect.provide(MemoryFileSystem.layerWithPath(linkChain(45)))),
 	);
 
 	it.effect("a cycle of links fails with what realPath reports", () =>
@@ -433,7 +414,7 @@ describe("AtomicFile.write", () => {
 		}),
 	);
 
-	it.effect("a dangling link through a symlinked parent lands where the OS would", () =>
+	it.effect("a dangling link through a symlinked parent lands at the kernel's destination", () =>
 		Effect.gen(function* () {
 			const link = "/work/sub/alias/dl";
 			yield* AtomicFile.write(link, "new");
@@ -454,23 +435,82 @@ describe("AtomicFile.write", () => {
 		),
 	);
 
-	it.effect("a failure resolving a dangling link's directory propagates", () =>
+	it.effect("a dangling link with a symlink before .. lands at the kernel's destination", () =>
+		Effect.gen(function* () {
+			yield* AtomicFile.write(TARGET, "new");
+			const fs = yield* FileSystem.FileSystem;
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text("/other/landing.txt"), "new");
+			assert.isFalse(volume.has("/work/landing.txt"), "a lexical alias/.. would land here");
+			assert.strictEqual(volume.readLink(TARGET), "alias/../landing.txt");
+			assert.strictEqual(yield* fs.readFileString(TARGET), "new");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath({
+					"/other/deep": MemoryFileSystem.directory(),
+					"/work/alias": MemoryFileSystem.symlink("/other/deep"),
+					[TARGET]: MemoryFileSystem.symlink("alias/../landing.txt"),
+				}),
+			),
+		),
+	);
+
+	it.effect("a dangling link into an absent directory fails and creates nothing", () =>
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(AtomicFile.write(TARGET, "new"));
-			assert.strictEqual(error.reason._tag, "PermissionDenied");
+			assert.strictEqual(error.reason._tag, "NotFound");
 			const volume = yield* MemoryFileSystem.Volume;
-			assert.isFalse(volume.has("/work/missing.json"));
+			assert.strictEqual(volume.readLink(TARGET), "absent/landing.txt");
+			assert.isFalse(volume.has("/work/absent"));
+			assert.deepStrictEqual(yield* temps, []);
+		}).pipe(
+			Effect.provide(MemoryFileSystem.layerWithPath({ [TARGET]: MemoryFileSystem.symlink("absent/landing.txt") })),
+		),
+	);
+
+	it.effect("a link realPath cannot follow is written through, replacing the content and keeping the link", () =>
+		Effect.gen(function* () {
+			yield* AtomicFile.write(TARGET, "new");
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text("/other/landing.txt"), "new");
+			assert.isFalse(volume.has("/work/landing.txt"));
+			assert.strictEqual(volume.readLink(TARGET), "alias/../landing.txt");
 			assert.deepStrictEqual(yield* temps, []);
 		}).pipe(
 			Effect.provide(
 				MemoryFileSystem.layerWithPath(
-					{ [TARGET]: MemoryFileSystem.symlink("missing.json") },
 					{
+						"/other/landing.txt": "a much longer old content",
+						"/other/deep": MemoryFileSystem.directory(),
+						"/work/alias": MemoryFileSystem.symlink("/other/deep"),
+						[TARGET]: MemoryFileSystem.symlink("alias/../landing.txt"),
+					},
+					{
+						// Node's realpath answers ENOENT for this shape, while memfs follows it. The rename fault proves no temp path ran.
 						faults: {
-							realPath: (path) =>
-								path === DIR ? Effect.fail(failure("realPath", path, "PermissionDenied")) : undefined,
+							realPath: (path) => (path === TARGET ? Effect.fail(failure("realPath", path, "NotFound")) : undefined),
+							rename: (from) => Effect.fail(failure("rename", from)),
 						},
 					},
+				),
+			),
+		),
+	);
+
+	it.effect("a dangling link's write failure surfaces as the error", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(AtomicFile.write(TARGET, "new"));
+			assert.strictEqual(error.reason._tag, "PermissionDenied");
+			assert.strictEqual(error.reason.method, "writeFile");
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.isFalse(volume.has("/work/made.txt"));
+			assert.strictEqual(volume.readLink(TARGET), "made.txt");
+			assert.deepStrictEqual(yield* temps, []);
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ [TARGET]: MemoryFileSystem.symlink("made.txt") },
+					{ faults: { writeFile: (path) => Effect.fail(failure("writeFile", path, "PermissionDenied")) } },
 				),
 			),
 		),

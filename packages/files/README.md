@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Atomic single-file writes for Effect: write a temp file beside the target, sync it, and rename it into place, so a crash never leaves a truncated file.
+Atomic single-file writes for Effect: write a temp file beside the target, sync it, and rename it into place, so a crash never leaves a truncated file. A link `realPath` cannot follow is the one exception: it is written through directly.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, still in `0.x`
 > development.
@@ -39,9 +39,9 @@ import { AtomicFile } from "@effected/files";
 const save = AtomicFile.write("/home/me/.config/tool/config.json", '{"theme":"dark"}\n');
 ```
 
-- **A symlink keeps its link.** The write lands on the file behind it, and a dangling link creates that file.
+- **A symlink keeps its link.** The write lands on the file behind it.
 - **An existing file keeps its permission bits.**
-- **A failure or an interruption before the rename** removes the temp and leaves the target untouched.
+- **A failure or an interruption before the rename** removes the temp and leaves the target untouched. The one exception is in Limits.
 - **Parent directories are not created.** An absent parent fails `NotFound`.
 
 ## Limits
@@ -50,6 +50,7 @@ const save = AtomicFile.write("/home/me/.config/tool/config.json", '{"theme":"da
 - A hard link is broken: other names for the old inode keep the old content.
 - The directory is not synced, so the rename itself may not survive power loss.
 - A killed process can leave a `.effected-*.tmp` file beside the target.
+- A link `realPath` cannot follow (dangling, or with a symlink before `..` in its text under Node) is written through directly, without atomicity.
 - Windows can refuse the rename while a reader holds the file.
 
 ## License

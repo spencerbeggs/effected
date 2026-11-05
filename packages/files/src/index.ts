@@ -4,7 +4,8 @@
  *
  * {@link AtomicFile.write} replaces a file through a synced temp file and a
  * rename, so a crash leaves the old content or the new content and never a
- * truncated file.
+ * truncated file. A link `realPath` cannot follow is the one exception: it is
+ * written through directly.
  *
  * @packageDocumentation
  */

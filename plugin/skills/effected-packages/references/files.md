@@ -1,6 +1,6 @@
 # @effected/files
 
-`AtomicFile.write` replaces one file through a temp file beside it, a sync and a rename, so a crash leaves the old content or the new content and never a truncated file. `FileSystem` and `Path` are in `R`, and the error is plain `PlatformError`, so an adopter keeps its existing `mapError`.
+`AtomicFile.write` replaces one file through a temp file beside it, a sync and a rename, so a crash leaves the old content or the new content and never a truncated file. A link `realPath` cannot follow is the one exception: it is written through directly. `FileSystem` and `Path` are in `R`, and the error is plain `PlatformError`, so an adopter keeps its existing `mapError`.
 
 ## Import
 
@@ -30,7 +30,8 @@ const save = (file: string, text: string) =>
 ## Gotchas
 
 - **Parent directories are not created.** An absent parent fails `NotFound`, so make the directory first.
-- **A symlink survives.** The write lands on the file behind the link, and a dangling link creates that file.
+- **A symlink survives.** The write lands on the file behind the link.
+- **A link `realPath` cannot follow (dangling, or with a symlink before `..` in its text under Node) is written through directly, without atomicity.**
 - **An existing file keeps its permission bits.** A new file gets the platform default.
 - **The directory needs write permission.** A read-only directory fails, with no non-atomic fallback.
 - **A hard link is broken.** Other names for the old inode keep the old content.
@@ -40,4 +41,4 @@ const save = (file: string, text: string) =>
 
 ## Testing
 
-Provide `MemoryFileSystem.layerWithPath` from `@effected/memfs`. Fault `rename` to fail the swap, and wrap the file from an `open` fault with `MemoryFileSystem.wrapFile` to fail `writeAll` or `sync`. `writeFile` faults do not reach this code, because it writes through `open`.
+Provide `MemoryFileSystem.layerWithPath` from `@effected/memfs`. Fault `rename` to fail the swap, and wrap the file from an `open` fault with `MemoryFileSystem.wrapFile` to fail `writeAll` or `sync`. `writeFile` faults reach only the write-through path, because the atomic path writes through `open`.
