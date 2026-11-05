@@ -5,11 +5,12 @@
 ## Import
 
 ```ts
-import { AtomicFile } from "@effected/files";
+import { AtomicDirectory, AtomicFile } from "@effected/files";
 ```
 
 ## Core API
 
+- **`AtomicDirectory.write(root, files)`** → `Effect<void, AtomicDirectoryError, FileSystem | Path>`: replace a directory atomically (a cache's per-package tree, a generated output dir) instead of hand-rolling the staging dance. Stages in the sibling `.<name>.staging` (same parent, so the `rename` is same-filesystem atomic), clears leftover staging first, creates staging even for an empty set, writes files with parents, then removes live and renames staging in. `files` is any iterable of `[relativePath, string | Uint8Array]`; an empty, absolute or escaping path fails `operation: "validate"` before any IO. A brief window exists where `root` is ABSENT (never half-written): treat absence as a miss. One writer per `root` (fixed staging name). Needs no SQLite.
 - **`AtomicFile.write(target, content)`**: `content` is a string, written as UTF-8, or a `Uint8Array`, written verbatim. Returns `Effect<void, PlatformError, FileSystem.FileSystem | Path.Path>`.
 
 ## Usage

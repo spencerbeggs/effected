@@ -1,7 +1,7 @@
 // Atomic replacement of a whole on-disk directory: stage the file set in a
 // sibling directory, then swap it into place with two renames, so a reader
 // never observes a half-written or half-removed tree. FileSystem and Path
-// arrive through R; store owns no filesystem backend.
+// arrive through R; files owns no filesystem backend.
 
 import { Effect, FileSystem, Path, Schema } from "effect";
 import { causeMessage } from "./internal/causeMessage.js";
@@ -135,7 +135,7 @@ export class AtomicDirectory {
 	 *
 	 * @example
 	 * ```ts
-	 * import { AtomicDirectory } from "@effected/store";
+	 * import { AtomicDirectory } from "@effected/files";
 	 * import { Effect } from "effect";
 	 *
 	 * const program = AtomicDirectory.write(

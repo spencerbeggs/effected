@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T15:34:07Z
+  at: 2026-11-05T15:50:42Z
 integrity:
   generated:
-    body: a550dde5d6f0b1f6
+    body: bb4e624cc9191042
 ---
 
 # effected
@@ -41,7 +41,7 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `lockfiles` | pure | extraction from `workspaces`; bun/npm/pnpm/yarn parsers |
 | `store` | integrated | extraction from `xdg`; migrated SQLite `Store` and TTL `Cache` |
 | `xdg` | boundary | port of `xdg-effect`; does not depend on `store` |
-| `files` | boundary | invention; `AtomicFile.write`, the atomic single-file write adopted across the kit, over core `FileSystem` and `Path` in `R` |
+| `files` | boundary | invention; `AtomicFile.write`, the atomic single-file write adopted across the kit, and `AtomicDirectory.write`, whole-directory replacement, over core `FileSystem` and `Path` in `R` |
 | `workspaces` | integrated | port of `workspaces-effect`; discovery, dependency graph, catalogs, change detection |
 | `runtimes` | boundary | port of `runtime-resolver`'s library half |
 | `tsconfig-json` | boundary | invention; zero `typescript` imports |

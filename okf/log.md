@@ -40,6 +40,7 @@
 * Updated effected
 * Updated spencerbeggs/okfit
 * Added @effected/files
+* Updated store
 
 ## 2026-11-02
 

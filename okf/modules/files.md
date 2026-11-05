@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/files"
-description: Atomic single-file replacement over core FileSystem and Path in R, which writes a temp file beside the target, syncs it and renames it into place, so a crash never leaves a truncated user file, except through a link realPath cannot follow, which is written through directly.
+description: Atomic file and directory replacement over core FileSystem and Path in R. AtomicFile writes a temp file beside the target, syncs it and renames it into place, so a crash never leaves a truncated user file, except through a link realPath cannot follow, which is written through directly.
 status: draft
 kind: package
 resource: ../../packages/files
@@ -10,10 +10,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T15:47:45Z
+  at: 2026-11-05T15:50:42Z
 integrity:
   generated:
-    body: e0d7154f8300c642
+    body: 047388e4ba552b37
 ---
 
 # `@effected/files`
@@ -56,6 +56,10 @@ AtomicFile.write(target: string, content: string | Uint8Array):
 - A link `realPath` cannot follow (dangling, or with a symlink before `..` in its text under Node) is written through directly, without atomicity. Node's `realpath` applies link text lexically on POSIX, so it answers `NotFound` for the second shape even when the destination exists. That case has old content a crash can truncate.
 - Windows can refuse the rename while a reader holds the file.
 
+## AtomicDirectory
+
+`AtomicDirectory.write(root, files)` replaces a directory with exactly a file set, staging in the sibling `.<name>.staging` and swapping it into place with two renames (live to `.<name>.old`, staging to live, then removing `.<name>.old`): the on-disk counterpart for consumers that cache whole trees (a type registry's per-package directory). It requires `FileSystem` and `Path` in `R` and adds no dependency. The siblings are load-bearing (elsewhere, a `rename` crosses filesystems and stops being atomic), as are clearing both leftovers first and creating staging even for an empty set. `root` is normalised and a basename of `.` or `..` is refused; every file path is validated before any IO. The old tree is removed only after it has left `root`, so no reader sees a half-deleted tree. The window between the two renames is documented: a reader sees absence, never a partial tree, and a crash there leaves both trees whole for the next call to clear. The fixed sibling names mean one writer per root. Failures are the tagged `AtomicDirectoryError` with `operation` `validate`, `clear`, `stage`, `write`, `promote` or `cleanup` (new tree live, old one not yet removed). Its `causeMessage` is a verbatim copy of the kit's, per [error standards](../conventions/error-standards.md).
+
 ## Layout
 
-One static class, `AtomicFile`, in `src/AtomicFile.ts`, re-exported from `src/index.ts`, following the [module-per-concept layout](../conventions/module-per-concept-layout.md). Whole-directory replacement is a different mechanism and stays in [`@effected/store`](store.md).
+Two static classes, `AtomicFile` in `src/AtomicFile.ts` and `AtomicDirectory` (with `AtomicDirectoryError`) in `src/AtomicDirectory.ts`, re-exported from `src/index.ts`, following the [module-per-concept layout](../conventions/module-per-concept-layout.md). `src/internal/causeMessage.ts` serves the directory error.
