@@ -1,0 +1,38 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "https://raw.githubusercontent.com/effected-fixtures/schema-consumer/main/1.0/output-1.0.json",
+	"type": "object",
+	"properties": {
+		"$schema": {
+			"type": "string",
+			"enum": [
+				"https://raw.githubusercontent.com/effected-fixtures/schema-consumer/main/1.0/output-1.0.json"
+			]
+		},
+		"name": {
+			"type": "string",
+			"description": "What produced this output"
+		},
+		"count": {
+			"anyOf": [
+				{
+					"type": "number"
+				},
+				{
+					"type": "string",
+					"enum": [
+						"Infinity",
+						"-Infinity",
+						"NaN"
+					]
+				}
+			]
+		}
+	},
+	"required": [
+		"$schema",
+		"name"
+	],
+	"additionalProperties": false,
+	"description": "One output file of the schema-consumer fixture"
+}

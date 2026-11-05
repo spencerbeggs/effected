@@ -11,9 +11,9 @@ sources:
   - id: cli-package-json
     resource: ../../packages/cli-kit/package.json
     title: The cli manifest
-  - id: schemastore-cli-package-json
-    resource: ../../packages/schemastore-cli/package.json
-    title: The schemastore-cli manifest, the one kit package that depends on cli
+  - id: tool-cli-package-json
+    resource: ../../packages/cli/package.json
+    title: The effected command's manifest, the one kit package that depends on cli-kit
   - id: npm-optional-peers
     resource: https://docs.npmjs.com/cli/v11/configuring-npm/package-json#peerdependenciesmeta
     title: "npm package.json docs, peerDependenciesMeta"
@@ -22,19 +22,21 @@ sources:
     title: "pnpm settings, autoInstallPeers"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:53:05Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: a2921f5012d3e55b
+    body: 17b07d77765bd87f
   verified:
     by: human:spencer
-    at: 2026-11-02T17:04:46Z
-    content: 9acb7baef8a022d2
+    at: 2026-11-05T14:25:52Z
+    content: d763e9594f1d6d7a
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
   - by: human:spencer
     at: 2026-11-02T17:04:46Z
+  - by: human:spencer
+    at: 2026-11-05T14:25:52Z
 ---
 
 # The cli root stays boundary, and ./ui is integrated only for consumers who opt in
@@ -69,9 +71,10 @@ R1 to R4 apply as follows:
 - **R1** is held by the root and `./testing`, which take no external runtime
   dependency. Only the opt-in subpaths name one.
 - **R2** propagates tier only from a tier-3 package. The one kit package that
-  depends on `@effected/cli-kit` is `schemastore-cli`,[^schemastore-cli-package-json]
-  a [companion](../glossary/companion-package.md) that carries no tier and
-  imports only the boundary root, so nothing inherits a tier from `./ui`.
+  depends on `@effected/cli-kit` is `@effected/cli`,[^tool-cli-package-json]
+  the `effected` command, an application package of the tool that carries no
+  library tier; it takes `ink` and `react` itself and reaches `./ui` only by a
+  dynamic import for an interactive human run, so nothing inherits a tier from `./ui`.
 - **R3** keeps the root boundary despite its `@effected/*` edges (`env`,
   `walker`, `glob`, `config-file`, `github-commands`): each is boundary or
   pure, and a boundary edge does not propagate.
@@ -104,4 +107,4 @@ R1 to R4 apply as follows:
 [^cli-package-json]: `../../packages/cli-kit/package.json`
 [^npm-optional-peers]: <https://docs.npmjs.com/cli/v11/configuring-npm/package-json#peerdependenciesmeta>
 [^pnpm-auto-install-peers]: <https://pnpm.io/settings/peer-dependencies#autoinstallpeers>
-[^schemastore-cli-package-json]: `../../packages/schemastore-cli/package.json`
+[^tool-cli-package-json]: `../../packages/cli/package.json`

@@ -14,6 +14,7 @@
 | `ExclusiveRunOptions` | Interface | `Exclusive.run`'s required options. | |
 | `ExclusiveTimeout` | Class | The body of an `Exclusive.run` call ran past its timeout and was interrupted. Its finalizers had run, and the permit was released, by the time the caller sees this. | exclusive lane body ran past its timeout |
 | `LaunchContext` | Class | Resolves where a tool launched by an agent host should treat as its project. | resolve a launched tool's project directory from argv, env keys, then cwd, rejecting unsubstituted placeholders |
+| `PathContainment` | Class | Decides whether a caller-supplied path stays inside a root. | check a caller-supplied path stays inside a workspace root, refuse path traversal, containment guard |
 | `ProcessCwdHost` | Interface | The working-directory half of a process, structurally. Node's `process` satisfies it; pass it in, so nothing here reads `process` itself. | |
 | `ProcessGuard` | Class | Transport-neutral crash guards for a server process, installed before the server's module graph loads. Imported from `@effected/kit/guard`. | from `@effected/kit/guard` — transport-neutral crash guards for an lsp or any server process before its graph loads, mark connected yourself, exit only before connect, startup failure exits 1, parse a crash-injection env value |
 | `ProcessGuardControl` | Interface | What `ProcessGuardOptions.load` is handed: the two moments only the caller can see. | from `@effected/kit/guard` |

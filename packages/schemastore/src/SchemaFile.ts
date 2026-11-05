@@ -120,6 +120,10 @@ export interface CheckResult {
 	readonly wouldWrite: boolean;
 	/** What differs between the on-disk content and the new document. */
 	readonly change: WriteChange;
+	/** The canonical text a `write` would put on disk. */
+	readonly generated: string;
+	/** The file's text as it is on disk; absent when the file is missing. */
+	readonly existing?: string;
 }
 
 /**
@@ -297,7 +301,11 @@ export class SchemaFile extends Context.Service<SchemaFile, SchemaFileShape>()("
 
 			// The one comparison both `write` and `check` answer from, so the
 			// two can never disagree about the same file.
-			const compare = (existing: string | undefined, text: string, options?: SchemaWriteOptions): CheckResult => {
+			const compare = (
+				existing: string | undefined,
+				text: string,
+				options?: SchemaWriteOptions,
+			): Pick<CheckResult, "wouldWrite" | "change"> => {
 				if (existing === undefined) {
 					return { wouldWrite: true, change: "created" };
 				}
@@ -335,7 +343,11 @@ export class SchemaFile extends Context.Service<SchemaFile, SchemaFileShape>()("
 			) {
 				const text = yield* Effect.fromResult(document.serializeResult(options));
 				const existing = yield* readForCompare(target);
-				return compare(existing, text, options);
+				return {
+					...compare(existing, text, options),
+					generated: text,
+					...(existing !== undefined ? { existing } : {}),
+				} satisfies CheckResult;
 			});
 
 			return { read, write, check };

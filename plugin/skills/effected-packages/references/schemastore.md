@@ -1,6 +1,8 @@
 # @effected/schemastore
 
-Effect Schemas published as SchemaStore-shaped Draft-07 JSON Schema documents: document assembly over core's generation + lowering, the gate holding a document's non-standard surface to the declared keyword families, both catalog modes over full-SemVer version labels, structural and hygiene lints, real-engine validation, deterministic JSON text, content-comparing file IO, and the emit pipeline over all of it. **Boundary tier** — the validation engines (and `ajv`) live in `@effected/schemastore-cli` since 2026-09-15 (see [validation](#validation-the-contracts-here-the-engines-in-the-cli)); the only runtime dependency is `@effected/semver`. All IO lives in one module; everything else is pure.
+Effect Schemas published as SchemaStore-shaped Draft-07 JSON Schema documents: document assembly over core's generation + lowering, the gate holding a document's non-standard surface to the declared keyword families, both catalog modes over full-SemVer version labels, structural and hygiene lints, real-engine validation, deterministic JSON text, content-comparing file IO, and the emit pipeline over all of it. **Boundary tier** — the validation engines (and `ajv`) live in `@effected/engine/schema`, behind the `effected schema` command (see [validation](#validation-the-contracts-here-the-engines-in-the-engine)); the only runtime dependency is `@effected/semver`. All IO lives in one module; everything else is pure.
+
+For the command and the MCP tools that drive this package, see [cli.md](./cli.md), [mcp.md](./mcp.md) and [engine.md](./engine.md); for the end-to-end procedure, load the `building-schemastore-schemas` skill.
 
 ## Import
 
@@ -28,15 +30,15 @@ import { SchemaPipeline, SchemaTarget, SchemaFile, SchemaValidator, StoreDocumen
 
 **Findings are values; the package never logs.** Log wording is repo policy. What the package owns is the gating decision, because that is the one that silently changes what ships.
 
-## Validation: the contracts here, the engines in the CLI
+## Validation: the contracts here, the engines in the engine
 
-`SchemaValidator` is the **contract** — a service the pipeline requires in `R` and never owns — plus its doubles: `noop` turns validation off, `makeTest`/`layerTest` are the test doubles (unstubbed members die naming themselves). The one real implementation is **`@effected/schemastore-cli`'s `AjvValidator.layer`**: ajv strict mode over the Draft-07 meta-schema, which the `schemastore` command composes at its edge and also exports for a program driving `SchemaPipeline` itself. `ajv` is therefore a cost only the command (a devDependency) pays; an application that imports this package at runtime — to read a `HostedSchema`, say — never pulls an engine or bundles one. This is the second reversal of the seam: 2026-08-04 shipped the engine here because every consumer hand-rolled the adapter, worse; once the CLI became the only real-engine consumer that reason died, and the engine followed it (2026-09-15).
+`SchemaValidator` is the **contract** — a service the pipeline requires in `R` and never owns — plus its doubles: `noop` turns validation off, `makeTest`/`layerTest` are the test doubles (unstubbed members die naming themselves). The one real implementation is **`AjvValidator.layer` from `@effected/engine/schema`**: ajv strict mode over the Draft-07 meta-schema, which `effected schema` composes at its edge and which a program driving `SchemaPipeline` itself imports. `ajv` is therefore a cost only the tool pays; an application that imports this package at runtime — to read a `HostedSchema`, say — never pulls an engine or bundles one.
 
 - Meta-schema failures keep ajv's structured `instancePath` and `keyword`; a strict-mode rejection (ajv throws those at compile time) becomes one root-pathed finding.
 - Declared `KeywordFamilies` keywords are registered before compiling, **so ajv cannot reject what `DocumentLint` deliberately allows** — one predicate governs both verdicts. A hand-rolled adapter that skips this rejects any document carrying `x-taplo` or `markdownDescription`.
 - `SchemaValidatorShape` / `SchemaValidatorOptions` / `SchemaValidatorError` / `ValidationFinding` are the surrounding types; the error channel is reserved for the engine failing as a *mechanism*, never for a document it rejects.
 
-`InstanceValidator` is the **second contract**, for the payload half of the publication story: not "is this document valid JSON Schema" but "does this instance conform to the published document it names in `$schema`" — decoding against the source Effect Schema is not a substitute, since that proves the instance matches the CODE, not the committed document consumers fetch. Same doubles-only shape (`noop`, `makeTest`/`layerTest`); the one real implementation is the CLI's `AjvInstanceValidator.layer`, composed by the `schemastore validate` command through the same shared ajv setup, so a document the `check` gate admits always compiles in the instance engine too.
+`InstanceValidator` is the **second contract**, for the payload half of the publication story: not "is this document valid JSON Schema" but "does this instance conform to the published document it names in `$schema`" — decoding against the source Effect Schema is not a substitute, since that proves the instance matches the CODE, not the committed document consumers fetch. Same doubles-only shape (`noop`, `makeTest`/`layerTest`); the one real implementation is `AjvInstanceValidator.layer` from `@effected/engine/schema`, composed by `effected schema validate` through the same shared ajv setup, so a document the `check` gate admits always compiles in the instance engine too.
 
 - `InstanceFinding` carries the same structure `ValidationFinding` does, but its pointer addresses the INSTANCE — kept a separate type so mixing them up is a compile error.
 - The subject split flips the same throw: a document the engine cannot compile is a finding for `SchemaValidator` (the document IS the subject there) but `InstanceValidatorError` for `InstanceValidator` (the subject is the instance; a document yielding no verdict is a mechanism failure — the document's own gate is `check`'s job).
@@ -75,7 +77,7 @@ import { SchemaPipeline, SchemaTarget, SchemaFile, SchemaValidator, StoreDocumen
 
 ```ts
 import { SchemaFile, SchemaPipeline, SchemaTarget } from "@effected/schemastore";
-import { AjvValidator } from "@effected/schemastore-cli";
+import { AjvValidator } from "@effected/engine/schema";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, Layer, Schema } from "effect";
 
@@ -130,4 +132,4 @@ const layers = Layer.mergeAll(SchemaFile.layer.pipe(Layer.provide(ReadOnlyVolume
 
 ## Scope fence
 
-**Must not grow into a general JSON Schema package**: no schema construction, no `$ref` resolution beyond the document's own `$defs` pool, no dialect conversion — core's `JsonSchema` owns the generation pipeline. The CLI's ajv dependency does not widen this: ajv is the validation gate, not a construction surface. `@effected/json-schema` is off the roadmap entirely because core made it redundant.
+**Must not grow into a general JSON Schema package**: no schema construction, no `$ref` resolution beyond the document's own `$defs` pool, no dialect conversion — core's `JsonSchema` owns the generation pipeline. The engine's ajv dependency does not widen this: ajv is the validation gate, not a construction surface. `@effected/json-schema` is off the roadmap entirely because core made it redundant.

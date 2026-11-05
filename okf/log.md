@@ -1,5 +1,45 @@
 # Log
 
+## 2026-11-05
+
+* Updated @effected/source
+* Updated @effected/kit
+* Updated @effected/cli
+* Updated @effected/cli-kit
+* Updated @effected/engine
+* Updated @effected/mcp
+* Updated @effected/mcp-kit
+* Updated @effected/plugin
+* Updated @effected/schemastore
+* Added A config from another schemastore version fails the CLI and only warns the MCP
+* Updated A declared-family key must be a name ajv can register, and its payload cannot carry an $id
+* Added A long-lived MCP server does not see an edit to an imported native module until it restarts
+* Updated A schemastore outputDir is never exclusively the command's
+* Updated Build a GitHub Action repository to the kit's canonical shape
+* Updated Calling ajv-formats' default import is a TS2349, and the one-hop `.default` is not a bug
+* Updated CliLinks finds the project root with @effected/walker
+* Updated Companion package
+* Updated D3: CliLogger's stderrFrom default flips to All
+* Updated Dependency policy: R1-R4
+* Updated Error handling standards
+* Updated Library tier (pure / boundary / integrated)
+* Updated No bin on the library — the executable lives in the effected tool
+* Updated No layerDefault on SchemaValidator or SchemaFile
+* Updated No shipped templates/ directory
+* Updated PackedInstall packs the prod npm directory by default
+* Updated Peer-dependency discipline
+* Updated Schemastore retiers from boundary to integrated for a direct ajv dependency
+* Updated The ajv engine lives in the effected tool, and the library returns to boundary tier
+* Updated The cli root stays boundary, and ./ui is integrated only for consumers who opt in
+* Added The effected schema command writes tab-indented, fully expanded JSON only
+* Added The effected schema commands: build, check and validate
+* Updated The monorepo holds one tool, effected, beside its libraries
+* Added The schemastore commands live in the effected tool, and the companion package is removed
+* Updated The validation gate ships a real ajv engine, closed by default
+* Updated ai-plugin
+* Updated effected
+* Updated spencerbeggs/okfit
+
 ## 2026-11-02
 
 * Updated A plugin skill is a lean index over references

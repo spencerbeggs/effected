@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T17:02:05Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: e066aa5d554977d9
+    body: d5bc5ce01642e2ef
 ---
 
 # effected
@@ -25,7 +25,7 @@ The developer-experience exemplar is the [`semver`](modules/semver.md) package, 
 
 ## Boundaries
 
-The repository holds **libraries, their companions, and one tool**. Standalone tools and applications built on these libraries stay in their own repos and consume published `@effected` packages: a repository with an entry point a user runs, rather than an API a program imports, does not belong here. There are two admitted exceptions. The first is the **`effected` tool** — a command, an MCP server and the carrier that installs both, four packages that are the kit applied and release with it; see [one tool beside the libraries](decisions/one-tool-beside-the-libraries.md). The second is a **companion** that fronts exactly one library here and releases as a fixed pair with it (`schemastore-cli` over `schemastore`): it is the library's own command-line surface, not an application, and it carries no library tier — see [companion package](glossary/companion-package.md). Package membership is the `packages/` directory listing.
+The repository holds **libraries, their companions, and one tool**. Standalone tools and applications built on these libraries stay in their own repos and consume published `@effected` packages: a repository with an entry point a user runs, rather than an API a program imports, does not belong here. There are two admitted exceptions. The first is the **`effected` tool** — a command, an MCP server and the carrier that installs both, four packages that are the kit applied and release with it, and the home of the schemastore commands (`effected schema`); see [one tool beside the libraries](decisions/one-tool-beside-the-libraries.md) and [the schema commands](interfaces/schema-commands.md). The second is a **companion** that ships configuration rather than code (`pnpm-plugin-effected`): it carries no library tier — see [companion package](glossary/companion-package.md). Package membership is the `packages/` directory listing.
 
 | Package | Tier | Provenance |
 | --- | --- | --- |
@@ -62,8 +62,7 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `source` | pure | extraction of the line/character conversion `jsonc`, `yaml`, `toml` and `markdown` each hand-rolled; `LineIndex` (offset to LSP-style zero-based `{ line, character }` and back) and the structural `SourcePosition`/`SourceRange`/`SourceSpan`/`SourceLocation`/`SourceDiagnostic` shapes, no dependency at all; a regular dependency for its adopters |
 | `github-actions` | integrated | port-with-redesign of the same package's Actions half |
 | `sbom` | integrated | port-with-redesign of the same package's `Attest` knot |
-| `schemastore` | boundary (integrated 2026-08-04 → 2026-09-15) | invention; SchemaStore-shaped JSON Schema documents from Effect Schema sources |
-| `schemastore-cli` | companion — no tier | invention; the `schemastore` bin over `@effected/schemastore`: build/check a `schemastore.config.ts` under a per-schema published flag and a drift policy; also exports `AjvValidator`, the one shipped validation engine |
+| `schemastore` | boundary (integrated 2026-08-04 → 2026-09-15) | invention; SchemaStore-shaped JSON Schema documents from Effect Schema sources; its commands are `effected schema` in the tool |
 | `schema-org` | pure | invention; schema.org vocabulary as Effect Schema classes |
 | `jsonl` | boundary | invention; append-only schema-validated JSONL journals |
 | `images` | boundary | invention; image facts (format, MIME, dimensions) from bytes and a generated-image cache behind a backend port store satisfies structurally |
@@ -72,12 +71,12 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `crypto` | boundary | extraction from `github-actions` and `savvy-web/build` intake; HMAC, constant-time comparison and AWS SigV4 over core `Mac` and `Digest` in `R`, no `node:` import |
 | `webhooks` | boundary | extraction from `savvy-web/build` intake; inbound webhook signature verification presets (Standard Webhooks, GitHub, Stripe, Sanity, HMAC header, shared secret) over `crypto` |
 | `pnpm-plugin-effected` | companion — no tier | invention; the one `effected` catalog (the Effect family on one minor, and the kit) plus the graph-wide Effect pins, and the public hoist of `@effected/plugin`; renamed from `pnpm-plugin-effect` |
-| `plugin` | tool — no tier | invention; the `effected` tool's carrier, the one package a consumer installs (a root devDependency through `catalog:effected`): declares the `effected` and `effected-mcp` bins as shims passing its own distribution identity |
-| `cli` | tool — no tier | invention; the `effected` command (`--version` and `--help`) over `effect/cli` and `cli-kit`; the name was `cli-kit`'s before [the rename](decisions/carrier-libraries-take-kit-names.md) |
-| `mcp` | tool — no tier | invention; the `effected-mcp` stdio server with one `identity` tool over `effect/ai` and `mcp-kit` |
-| `engine` | tool — no tier | invention; the tool's shared logic (`Identity.report`, an `IdentityReport`) that both front ends report through, built on `kit` |
+| `plugin` | tool — no tier | invention; the `effected` tool's carrier, the one package a consumer installs (a root devDependency through `catalog:effected`): declares the `effected` and `effected-mcp` bins as shims passing its own distribution identity, re-exports `defineSchemastore`, and pins the chain below it exactly |
+| `cli` | tool — no tier | invention; the `effected` command (`schema build`, `check` and `validate`, `--version`, `--help`) over `effect/cli`, `cli-kit` and `engine`; the name was `cli-kit`'s before [the rename](decisions/carrier-libraries-take-kit-names.md) |
+| `mcp` | tool — no tier | invention; the `effected-mcp` stdio server with the `identity` tool and the `schema_build`, `schema_check` and `schema_validate` tools over `effect/ai`, `mcp-kit` and `engine` |
+| `engine` | tool — no tier | invention; the tool's shared logic that both front ends report through: `Identity.report`, and the `./schema` subpath (config loader, runner, report classes, version check, the two shipped ajv engines), built on `kit` and `schemastore` |
 
-The roster is **47 packages**: 41 libraries, two companions (`pnpm-plugin-effected` and `schemastore-cli`) and the four packages of the `effected` tool (`plugin`, `cli`, `mcp`, `engine`), which are an application and carry no library tier. `cli-kit`, `mcp-kit`, `kit` and `plugin` are new npm names, not yet published. `cli`, `mcp` and `engine` published before as the old kit libraries, and their next release is the tool package under the same name. `pnpm-plugin-effected` is already published.
+The roster is **46 packages**: 41 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`plugin`, `cli`, `mcp`, `engine`), which are an application and carry no library tier. `cli-kit`, `mcp-kit`, `kit` and `plugin` are new npm names, not yet published. `cli`, `mcp` and `engine` published before as the old kit libraries, and their next release is the tool package under the same name. `pnpm-plugin-effected` is already published.
 
 ### Consumers
 

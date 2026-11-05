@@ -2,7 +2,8 @@ import { Option, Predicate, Result, Schema } from "effect";
 import { CatalogEntry } from "./CatalogEntry.js";
 import type { DriftTolerance, OnDrift } from "./DriftPolicy.js";
 import { DriftPolicy } from "./DriftPolicy.js";
-import { HostedSchema, SCHEMASTORE_CATALOG_BASE, SCHEMASTORE_ID_BASE } from "./HostedSchema.js";
+import { HostedSchema, SCHEMASTORE_CATALOG_BASE, SCHEMASTORE_ID_BASE, isHostedSchema } from "./HostedSchema.js";
+import { stampVersion } from "./internal/version.js";
 import { SchemaTarget } from "./SchemaTarget.js";
 import type { SchemaLayout, SchemaVersion } from "./SchemaVersioning.js";
 import { SchemaVersioning } from "./SchemaVersioning.js";
@@ -195,6 +196,11 @@ export interface ResolvedSchema {
 	readonly drift: DriftTolerance;
 	/** The assembled catalog entry, when {@link SchemaEntryInput.catalog} was given. */
 	readonly catalog?: CatalogEntry;
+	/**
+	 * The {@link SchemaEntryInput.hosted} value exactly as it was given. It may come
+	 * from another copy of this package, and `SchemastoreVersion.of` reads which one.
+	 */
+	readonly hosted?: HostedSchema;
 }
 
 /**
@@ -247,6 +253,11 @@ const OptionsInput = Schema.declare((u): u is Readonly<Record<string, unknown>> 
 	expected: "an object",
 });
 
+// By brand, not `instanceOf`: a HostedSchema from another copy of this package
+// fails `instanceof` inside the config's own evaluation, where no tool's flag
+// can reach. Recognizing it here lets the engine decide about the mismatch.
+const HostedInput = Schema.declare(isHostedSchema, { expected: "a HostedSchema" });
+
 const CatalogBlockInput = Schema.Struct({
 	name: Schema.optionalKey(Schema.NonEmptyString),
 	description: Schema.String,
@@ -255,7 +266,7 @@ const CatalogBlockInput = Schema.Struct({
 
 const EntryInput = Schema.Struct({
 	schema: EffectSchemaInput,
-	hosted: Schema.optionalKey(Schema.instanceOf(HostedSchema, { expected: "a HostedSchema" })),
+	hosted: Schema.optionalKey(HostedInput),
 	versions: Schema.optionalKey(Schema.Array(Schema.String)),
 	current: Schema.optionalKey(Schema.String),
 	published: Schema.optionalKey(Schema.Boolean),
@@ -311,6 +322,11 @@ type Entry = typeof EntryInput.Type;
 // the hand-spelled fields and the config default. Either way HostedSchema
 // owns the hosting and version rules, so the two spellings cannot diverge.
 const resolveIdentity = (name: string, entry: Entry, defaultBaseUrl: string | undefined): HostedSchema => {
+	const decodeIdentity = (fields: Readonly<Record<string, unknown>>): HostedSchema =>
+		Result.getOrThrowWith(
+			Schema.decodeUnknownResult(HostedSchema)(withoutUndefined(fields)),
+			(error) => new Error(`defineConfig: ${error.message.replace(/\n\s*/g, " ")}`),
+		);
 	if (entry.hosted !== undefined) {
 		if (entry.hosted.name !== name) {
 			return fail(`schema "${name}" is keyed differently from its hosted identity "${entry.hosted.name}"`);
@@ -323,23 +339,26 @@ const resolveIdentity = (name: string, entry: Entry, defaultBaseUrl: string | un
 				`schema "${name}" declares ${spelled.map((key) => `"${key}"`).join(", ")} beside hosted; the hosted identity owns them`,
 			);
 		}
-		return entry.hosted;
+		if (entry.hosted instanceof HostedSchema) {
+			return entry.hosted;
+		}
+		// Another copy's value: its raw fields are the shared contract, so this
+		// copy's own rules and derivations answer, whatever that copy's getters do.
+		const { baseUrl, versions, current, layout, appendVersion } = entry.hosted;
+		return decodeIdentity({ name, baseUrl, versions, current, layout, appendVersion });
 	}
 	const baseUrl = entry.baseUrl ?? defaultBaseUrl;
 	if (baseUrl === undefined) {
 		return fail(`schema "${name}" has no baseUrl and the config declares no default`);
 	}
-	const decoded = Schema.decodeUnknownResult(HostedSchema)(
-		withoutUndefined({
-			name,
-			baseUrl,
-			versions: entry.versions,
-			current: entry.current,
-			layout: entry.layout,
-			appendVersion: entry.appendVersion,
-		}),
-	);
-	return Result.getOrThrowWith(decoded, (error) => new Error(`defineConfig: ${error.message.replace(/\n\s*/g, " ")}`));
+	return decodeIdentity({
+		name,
+		baseUrl,
+		versions: entry.versions,
+		current: entry.current,
+		layout: entry.layout,
+		appendVersion: entry.appendVersion,
+	});
 };
 
 const resolveEntry = (
@@ -404,6 +423,7 @@ const resolveEntry = (
 		frozen,
 		drift: entry.drift ?? defaults.drift,
 		...(catalog !== undefined ? { catalog } : {}),
+		...(entry.hosted !== undefined ? { hosted: entry.hosted } : {}),
 	};
 };
 
@@ -565,7 +585,7 @@ export const defineConfig = (input: SchemastoreConfigInput): SchemastoreConfig =
 	const documents = schemas.flatMap((s) => [s.target.path, ...s.frozen.map((f) => f.path)]);
 	assertCatalogDirHoldsOnlySlices(catalogDir, outputDir, documents);
 	assertUniquePaths([...documents, `${catalogDir}/${config.name}.json`, `${catalogDir}/../catalog.json`]);
-	return {
+	const result: SchemastoreConfig = {
 		[ConfigBrand]: true,
 		name: config.name,
 		outputDir,
@@ -573,6 +593,7 @@ export const defineConfig = (input: SchemastoreConfigInput): SchemastoreConfig =
 		catalogDir,
 		schemas,
 	};
+	return stampVersion(result);
 };
 
 /**

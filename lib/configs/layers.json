@@ -1,7 +1,7 @@
 {
 	"layers": [
 		["@effected/plugin"],
-		["@effected/app", "@effected/cli", "@effected/github-actions", "@effected/mcp", "@effected/schemastore-cli"],
+		["@effected/app", "@effected/cli", "@effected/github-actions", "@effected/mcp"],
 		[
 			"@effected/cli-kit",
 			"@effected/engine",
@@ -51,7 +51,6 @@
 	"requiredEdges": [
 		"@effected/mcp-kit -> @effected/kit",
 		"@effected/workspaces -> @effected/npm",
-		"@effected/schemastore-cli -> @effected/cli-kit",
 		"@effected/app -> @effected/xdg"
 	]
 }

@@ -97,7 +97,7 @@ const notStubbed = (method: string) => () =>
  * Like {@link SchemaValidator}, this package ships the contract and its
  * doubles only: skip validation with {@link InstanceValidator.noop}, stub it
  * with {@link InstanceValidator.layerTest}. The one real implementation is
- * `@effected/schemastore-cli`'s `AjvInstanceValidator.layer` — the same ajv
+ * `@effected/engine/schema`'s `AjvInstanceValidator.layer` — the same ajv
  * strict-mode setup `AjvValidator` gates documents with, pointed at an
  * instance — which the `schemastore validate` command composes for you and
  * which that package also exports for a program that drives the contract
@@ -115,7 +115,7 @@ const notStubbed = (method: string) => () =>
  * });
  *
  * // Provide the engine at the edge — the CLI does this for you:
- * //   Effect.provide(program, AjvInstanceValidator.layer)   (from @effected/schemastore-cli)
+ * //   Effect.provide(program, AjvInstanceValidator.layer)   (from @effected/engine/schema)
  * Effect.runPromise(Effect.provide(program, InstanceValidator.noop));
  * // => []
  * ```
@@ -130,7 +130,7 @@ export class InstanceValidator extends Context.Service<InstanceValidator, Instan
 	 * engine. A pure `Layer.succeed`, bound to a const so the layer memoizes
 	 * by reference. Use it to switch validation off deliberately — for the
 	 * real engine, provide `AjvInstanceValidator.layer` from
-	 * `@effected/schemastore-cli`.
+	 * `@effected/engine/schema`.
 	 */
 	static readonly noop: Layer.Layer<InstanceValidator> = Layer.succeed(InstanceValidator, {
 		validate: () => Effect.succeed([]),

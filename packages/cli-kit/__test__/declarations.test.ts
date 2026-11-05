@@ -496,6 +496,7 @@ const UI_TYPES_AND_VALUES = [
 	"inkProps",
 	"useGlyphs",
 	"useKeys",
+	"useStyle",
 	"useTerminalSize",
 	"useTheme",
 ];
@@ -518,6 +519,7 @@ const UI_VALUES = [
 	"inkProps",
 	"useGlyphs",
 	"useKeys",
+	"useStyle",
 	"useTerminalSize",
 	"useTheme",
 ];

@@ -10,4 +10,6 @@ pnpm exec effected --version
 
 The `effected` catalog in `@effected/pnpm-plugin-effected` lists this package, so a consumer writes `"@effected/plugin": "catalog:effected"`. That plugin also hoists this package publicly, so its bins reach every package of a pnpm workspace, even when only one leaf package declares it.
 
+The package also exports `defineSchemastore`, the typed helper for a `schemastore.config.ts` that `effected schema build|check|validate` loads.
+
 > **Pre-`1.0.0`.** Part of the `@effected/*` kit; unstable across `0.x` releases. Pin an exact version.

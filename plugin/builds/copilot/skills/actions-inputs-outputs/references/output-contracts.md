@@ -159,8 +159,8 @@ not a runtime failure discovered by a downstream consumer.
 
 ### Generating the committed JSON Schema
 
-The committed document is produced by the `schemastore` command
-(`@effected/schemastore-cli`) over `@effected/schemastore`, never by
+The committed document is produced by the `effected schema` command
+(installed through `@effected/plugin`) over `@effected/schemastore`, never by
 hand-assembling `Schema.toJsonSchemaDocument`'s output and never by a
 generator script of your own. The library owns the whole generate → lint →
 validate → gate → write loop — core's draft 2020-12 generation lowered to
@@ -168,7 +168,7 @@ Draft-07 (the dialect every editor integration reads), the `#/definitions` →
 `#/$defs` `$ref` rewrite that lowering makes necessary, the structural lint,
 a content-comparing write through a deterministic serializer, with the
 engine gate as a `SchemaValidator` requirement in `R` — and the command
-supplies that engine (`AjvValidator.layer`, ajv strict mode) and adds what
+supplies that engine (`AjvValidator.layer` from `@effected/engine/schema`, ajv strict mode) and adds what
 the pipeline does not own: the drift policy, the frozen-label checks, the
 report and the exit codes. An action repository writes three things: the
 schema's **hosted identity** next to the schema, a `schemastore.config.ts`,
@@ -176,8 +176,8 @@ and two scripts.
 
 **Two packages, two roles.** `@effected/schemastore` is a regular
 `dependency` — the action's own code reads the identity from it at runtime
-to write `$schema`. `@effected/schemastore-cli` is a `devDependency` — it
-builds and checks the documents, and it is where `ajv` lives, so the
+to write `$schema`. `@effected/plugin` is a `devDependency` (through `catalog:effected`) — it
+builds and checks the documents, and `ajv` lives behind it, so the
 action's bundle never carries an engine (silk-release-action measured this:
 ajv absent from the prod install and from `dist/`).
 
@@ -213,10 +213,10 @@ export class ScanResult extends Schema.Class<ScanResult>("ScanResult")(
 ```ts
 // lib/scripts/schemastore.config.ts — `src/` is action source only, so the
 // config lives under lib/scripts/ and the scripts pass its path explicitly
-import { defineConfig } from "@effected/schemastore";
+import { defineSchemastore } from "@effected/plugin";
 import { ScanResult, ScanResultIdentity } from "../../src/schema/scan-result.js";
 
-export default defineConfig({
+export default defineSchemastore({
   // This config's identity: its catalog slice is <outputDir>/catalogs/<name>.json.
   name: "scan-result",
   // Relative paths resolve against this file's directory, not the repo root.
@@ -230,8 +230,8 @@ export default defineConfig({
 ```json
 {
   "scripts": {
-    "schema:build": "schemastore build lib/scripts/schemastore.config.ts",
-    "schema:check": "schemastore check lib/scripts/schemastore.config.ts"
+    "schema:build": "effected schema build lib/scripts/schemastore.config.ts",
+    "schema:check": "effected schema check lib/scripts/schemastore.config.ts"
   }
 }
 ```
@@ -373,7 +373,7 @@ array was always one refactor away from). Put it in `ci:test`:
 ```json
 {
   "scripts": {
-    "ci:test": "schemastore check lib/scripts/schemastore.config.ts && vitest run --coverage"
+    "ci:test": "effected schema check lib/scripts/schemastore.config.ts && vitest run --coverage"
   }
 }
 ```

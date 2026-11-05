@@ -14,7 +14,7 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:53:05Z
+  at: 2026-11-05T06:55:47Z
 verified:
   - by: human:spencer
     at: 2026-09-24T06:10:09Z
@@ -22,13 +22,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-11-02T17:04:46Z
+  - by: human:spencer
+    at: 2026-11-05T14:25:52Z
 integrity:
   generated:
-    body: ea0e5492562a3d08
+    body: 911cac0f8616e738
   verified:
     by: human:spencer
-    at: 2026-11-02T17:04:46Z
-    content: 34ddb44cdec4f84a
+    at: 2026-11-05T14:25:52Z
+    content: ee4ec89ad6ab7519
 ---
 
 # PackedInstall packs the prod npm directory by default
@@ -43,7 +45,7 @@ directory, where pnpm honours `publishConfig.directory` and rewrites
 the build has already made publish-ready.
 
 Probe P3 packed five packages (`kit`, `mcp-kit`, `cli-kit`, `schemastore`,
-`schemastore-cli`) both ways under npm 11.19.1, pnpm 12.5.1 and bun 1.4.2,
+`schemastore-cli`, a package since moved into the effected tool) both ways under npm 11.19.1, pnpm 12.5.1 and bun 1.4.2,
 with yarn absent from the machine.[^p3-probe] Its eight criteria and what it
 recorded:
 

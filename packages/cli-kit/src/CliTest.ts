@@ -1,5 +1,5 @@
 import type { PlatformError, Scope } from "effect";
-import { Duration, Effect, Fiber, FileSystem, Option, Path, Stream, SubscriptionRef } from "effect";
+import { Duration, Effect, Fiber, FileSystem, Option, Path, Schema, Stream, SubscriptionRef } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { Fmt } from "./Fmt.js";
 
@@ -49,6 +49,44 @@ export interface RunOptions {
 	 * child that ignores the signal would otherwise keep the scope from closing forever, and leave the process behind.
 	 */
 	readonly forceKillAfter?: Duration.Input | undefined;
+	/**
+	 * The exit code the run must end with. Any other ending, a signal included, fails with a {@link CliTestFailure}
+	 * carrying the code, the signal and the child's stderr in its message. Omitted, a non-zero exit is data.
+	 */
+	readonly expectExit?: number | undefined;
+}
+
+/**
+ * A run ended otherwise than {@link RunOptions.expectExit} required.
+ *
+ * @remarks
+ * Audience: the person reading a failed test. The message holds what the child did and its stderr, so a suite that
+ * only cares about the happy path needs no hand-rolled helper to see why it did not get it.
+ *
+ * @public
+ */
+export class CliTestFailure extends Schema.TaggedError<CliTestFailure>()("CliTestFailure", {
+	expected: Schema.Number,
+	exitCode: Schema.NullOr(Schema.Number),
+	signal: Schema.NullOr(Schema.String),
+	stderr: Schema.String,
+}) {
+	/**
+	 * What was expected, what happened, and the child's stderr.
+	 *
+	 * @remarks
+	 * Assigning to it is ignored: a runner or logger that rewrites `error.message` must not make this error throw,
+	 * which a getter-only property does in strict mode.
+	 */
+	override get message(): string {
+		return `expected exit ${this.expected}, but the bin ${
+			this.signal === null ? `exited with code ${this.exitCode}` : `was ended by ${this.signal}`
+		}\nstderr:\n${this.stderr}`;
+	}
+
+	override set message(_value: string) {
+		// Ignored by design: see the getter.
+	}
 }
 
 /**
@@ -237,7 +275,7 @@ export class CliTest {
 		});
 
 	/**
-	 * Run `execPath bin ...args`; a non-zero exit is returned, never failed.
+	 * Run `execPath bin ...args`; a non-zero exit is returned, never failed, unless `expectExit` is set.
 	 *
 	 * @remarks
 	 * `stdin` is never left as an inherited open pipe: when omitted or `""`
@@ -250,7 +288,11 @@ export class CliTest {
 		bin: string,
 		args: ReadonlyArray<string>,
 		options: RunOptions,
-	): Effect.Effect<RunResult, PlatformError.PlatformError, ChildProcessSpawner.ChildProcessSpawner> => {
+	): Effect.Effect<
+		RunResult,
+		PlatformError.PlatformError | CliTestFailure,
+		ChildProcessSpawner.ChildProcessSpawner
+	> => {
 		const forceKillAfter = forceKillAfterOf(options);
 		return Effect.scoped(
 			Effect.gen(function* () {
@@ -262,7 +304,16 @@ export class CliTest {
 					[text(handle.stdout), text(handle.stderr), endingOf(handle.exitCode)],
 					{ concurrency: "unbounded" },
 				);
-				return { ...ending, stdout, stderr };
+				const result: RunResult = { ...ending, stdout, stderr };
+				if (options.expectExit !== undefined && result.exitCode !== options.expectExit) {
+					return yield* new CliTestFailure({
+						expected: options.expectExit,
+						exitCode: result.exitCode,
+						signal: result.signal,
+						stderr,
+					});
+				}
+				return result;
 			}),
 		);
 	};

@@ -198,6 +198,10 @@ export interface PipelineCheckResult {
 	readonly contractBlocked: boolean;
 	/** What differs between the on-disk content and the new document. */
 	readonly change: WriteChange;
+	/** The canonical text a build would write. */
+	readonly generated: string;
+	/** The file's text as it is on disk; absent when the file is missing. */
+	readonly existing?: string;
 	/** Every finding, blocking or not. */
 	readonly findings: ReadonlyArray<PipelineFinding>;
 }
@@ -307,7 +311,7 @@ const gate = (
  *
  * Requires `SchemaFile` and `SchemaValidator` in `R`; provide
  * `SchemaFile.layer` and an engine — `AjvValidator.layer` from
- * `@effected/schemastore-cli`, which is what the `schemastore` command
+ * `@effected/engine/schema`, which is what the `effected schema` command
  * composes, or `SchemaValidator.noop` to skip validation — plus a platform
  * `FileSystem` / `Path` at the edge. Findings come back as **values**, so
  * the package never chooses your log wording — but the gating decision,
@@ -317,7 +321,7 @@ const gate = (
  * @example
  * ```ts
  * import { SchemaFile, SchemaPipeline, SchemaTarget } from "@effected/schemastore";
- * import { AjvValidator } from "@effected/schemastore-cli";
+ * import { AjvValidator } from "@effected/engine/schema";
  * import { NodeServices } from "@effect/platform-node";
  * import { Effect, Layer, Schema } from "effect";
  *
@@ -491,7 +495,7 @@ export class SchemaPipeline {
 					...(target.rootAnnotations !== undefined ? { rootAnnotations: target.rootAnnotations } : {}),
 				});
 				const findings = yield* gather(document, options);
-				const { wouldWrite, change } = yield* files.check(target.path, document, options?.write);
+				const { wouldWrite, change, generated, existing } = yield* files.check(target.path, document, options?.write);
 				results.push({
 					$id: target.$id,
 					path: target.path,
@@ -499,6 +503,8 @@ export class SchemaPipeline {
 					blocked: blockingFindings(findings, options).length > 0,
 					contractBlocked: contractBlocks(target, change, options),
 					change,
+					generated,
+					...(existing !== undefined ? { existing } : {}),
 					findings,
 				});
 			}

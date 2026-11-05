@@ -121,13 +121,12 @@ source wins and the concept is a finding to report.
    1a. **Publishing a structured output?** One `Schema.Class` exported from
        the action feeds `ActionOutputs.setJson` and asserts `$schema` from a
        `HostedSchema` declared beside it; `lib/scripts/schemastore.config.ts`
-       hands the same identity to `defineConfig` as `hosted`, and the
-       `schemastore` command (`schema:build` / `schema:check`, the CI gate)
+       hands the same identity to `defineSchemastore` (from `@effected/plugin`) as `hosted`, and the
+       `effected schema` command (`schema:build` / `schema:check`, the CI gate)
        does the rest — no generator script, no layer composition in the
        config, no hand-rolled drift test. `@effected/schemastore` is a
        runtime `dependency` (the identity is read at runtime) and
-       `@effected/schemastore-cli` a `devDependency` (it is where ajv
-       lives). `actions-inputs-outputs`' output-contracts reference is the
+       `@effected/plugin` a `devDependency` (ajv lives behind it). `actions-inputs-outputs`' output-contracts reference is the
        recipe; never hand-roll the
        lowering or a byte-comparing drift test. Gate CI on the command's
        exit code: its failures arrive on stderr as the `@effected/cli-kit`

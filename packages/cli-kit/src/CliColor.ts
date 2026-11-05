@@ -4,6 +4,21 @@ import { Effect, Layer } from "effect";
 import { CliOutput } from "effect/cli";
 
 /**
+ * How subcommand help renders flags the command does not own, as core's `CliOutput.defaultFormatter` takes them.
+ *
+ * @remarks
+ * `inheritedFlags` covers flags a parent command shares with its subcommands (for example `CliAudience.flags()`);
+ * `globalFlags` covers the built-ins such as `--help` and `--version`. Each is `"full"` (core's default, every flag
+ * listed), `"summary"` (a one-line pointer) or `"none"`.
+ *
+ * @public
+ */
+export interface CliHelpFlags {
+	readonly inheritedFlags?: "full" | "summary" | "none" | undefined;
+	readonly globalFlags?: "full" | "summary" | "none" | undefined;
+}
+
+/**
  * Whether a CLI's output should carry ANSI colour, decided once and shared by
  * everything that renders — help text, error output, and any rendered result.
  *
@@ -45,6 +60,10 @@ export class CliColor {
 	 * result to a `const` or the decision is re-read every time it is
 	 * provided.
 	 *
+	 * `helpFlags` sets how subcommand help renders the flags a parent declared (`inheritedFlags`) and the
+	 * program-wide built-ins (`globalFlags`): `"full"` (core's default), `"summary"` or `"none"`. It is passed to
+	 * core's `defaultFormatter` beside the colour decision, so choosing a mode costs no colour.
+	 *
 	 * The `never` in its output does not mean it installs nothing.
 	 * `CliOutput.Formatter` is a `Context.Reference`, whose key type is
 	 * `never`, so this layer sets the formatter reference rather than
@@ -56,10 +75,11 @@ export class CliColor {
 	 */
 	static readonly formatterLayer = (
 		overrides: Partial<CliOutput.Formatter> = {},
+		helpFlags?: CliHelpFlags,
 	): Layer.Layer<never, never, Stdio.Stdio> =>
 		Layer.unwrap(
 			Effect.map(CliColor.enabled, (colors) =>
-				CliOutput.layer({ ...CliOutput.defaultFormatter({ colors }), ...overrides }),
+				CliOutput.layer({ ...CliOutput.defaultFormatter({ colors, ...helpFlags }), ...overrides }),
 			),
 		);
 }

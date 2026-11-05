@@ -39,7 +39,7 @@ export {
 	type CliAudienceFlagsOptions,
 	type RequiresAudienceFlags,
 } from "./CliAudience.js";
-export { CliColor } from "./CliColor.js";
+export { CliColor, type CliHelpFlags } from "./CliColor.js";
 export {
 	CliEnv,
 	type CliEnvOptions,

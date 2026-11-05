@@ -10,5 +10,5 @@
  */
 export const MAX_NESTING_DEPTH = 256;
 
-// `@effected/schemastore-cli`'s `AjvValidator` hand-copies this value as its
+// `@effected/engine/schema`'s `AjvValidator` hand-copies this value as its
 // keyword-walk cap (the constant is not exported); change both together.

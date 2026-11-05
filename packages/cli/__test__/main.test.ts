@@ -5,7 +5,7 @@ import { MemoryFileSystem } from "@effected/memfs";
 import { Cause, ConfigProvider, Effect, Exit, Layer, Path, Runtime, Stdio, Terminal } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 import { TestConsole } from "effect/testing";
-import { run } from "../src/main.js";
+import { mainOptions, run } from "../src/main.js";
 import { CLI_VERSION } from "../src/version.js";
 
 const environment = (args: ReadonlyArray<string>) =>
@@ -33,7 +33,9 @@ const environment = (args: ReadonlyArray<string>) =>
 const runMain = (args: ReadonlyArray<string>, options: Parameters<typeof run>[0] = {}) =>
 	Effect.gen(function* () {
 		const exit = yield* Effect.exit(
-			run(options, environment(args)).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
+			run(options, { cwd: "/repo" }, environment(args)).pipe(
+				Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} }))),
+			),
 		);
 		const code = Exit.isFailure(exit) ? Runtime.getErrorExitCode(Cause.squash(exit.cause)) : 0;
 		const out = (yield* TestConsole.logLines).map(String).join("\n");
@@ -76,4 +78,11 @@ describe("effected", () => {
 			assert.include(err, "no-such-flag");
 		}),
 	);
+});
+
+describe("the span trail of an installed effected", () => {
+	it("main names its own module as the program's", () => {
+		assert.strictEqual(mainOptions.env.appModule, new URL("../src/main.ts", import.meta.url).href);
+		assert.strictEqual(mainOptions.exitCode, 3, "the documented infrastructure tier");
+	});
 });

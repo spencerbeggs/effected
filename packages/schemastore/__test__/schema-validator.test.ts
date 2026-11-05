@@ -25,7 +25,7 @@ const stubEngine = Layer.succeed(SchemaValidator, {
 
 describe("SchemaValidator", () => {
 	// The contract and its doubles only: the shipped engine is
-	// @effected/schemastore-cli's AjvValidator, tested there.
+	// @effected/engine/schema's AjvValidator, tested there.
 	layer(SchemaValidator.noop)((it) => {
 		it.effect("the noop layer validates nothing and answers a clean pass", () =>
 			Effect.gen(function* () {

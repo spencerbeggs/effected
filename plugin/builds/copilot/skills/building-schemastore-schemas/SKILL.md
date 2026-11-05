@@ -1,6 +1,6 @@
 ---
 name: building-schemastore-schemas
-description: Use when publishing JSON Schema documents from Effect Schemas with @effected/schemastore and the schemastore CLI — writing or fixing a schemastore.config.ts, deciding whether a schema is published, reading a DRIFT or held line, choosing a version label, annotating a schema for VS Code / taplo / tombi / IntelliJ, wiring schema:build and schema:check into package scripts, turbo and CI, or retiring a hand-rolled generate-schema.ts.
+description: Use when publishing JSON Schema documents from Effect Schemas with @effected/schemastore and the `effected schema` command — writing or fixing a schemastore.config.ts, deciding whether a schema is published, reading a DRIFT or held line, choosing a version label, annotating a schema for VS Code / taplo / tombi / IntelliJ, wiring schema:build and schema:check into package scripts, turbo and CI, or retiring a hand-rolled generate-schema.ts.
 ---
 
 # Building SchemaStore schemas
@@ -8,11 +8,13 @@ description: Use when publishing JSON Schema documents from Effect Schemas with 
 `@effected/schemastore` turns an Effect Schema into a SchemaStore-shaped
 Draft-07 JSON Schema document: generate, lint, validate under ajv strict mode,
 classify the change against the file on disk, write if the content moved.
-`@effected/schemastore-cli` ships the plumbing every consumer used to write
-around it — a config file, a `build` and a `check` command, a per-schema
-`published` flag, a drift policy, and exit codes CI can read. This skill is
-for two readers: the agent adopting the pair in a consumer repository, and the
-author designing the schema documents themselves.
+The `effected schema` command ships the plumbing every consumer used to write
+around it — a config file, `build`, `check` and `validate` subcommands, a
+per-schema `published` flag, a drift policy, and exit codes CI can read. An
+agent reaches the same engine through the `schema_check`, `schema_build` and
+`schema_validate` MCP tools. This skill is for two readers: the agent
+adopting the tool in a consumer repository, and the author designing the
+schema documents themselves.
 
 The package reference in `effected-packages` (`references/schemastore.md`)
 covers the library's module surface — `SchemaPipeline`, `StoreDocument`,
@@ -23,26 +25,28 @@ it; it covers the config, the document, the versioning and the gate.
 
 | Construct | Import | Reach for it when |
 | --- | --- | --- |
-| `defineConfig` | `@effected/schemastore` | the default export of `schemastore.config.ts` — a record keyed by schema name; validates, derives every `$id`/`path`/catalog URL, fills drift defaults |
+| `defineSchemastore` | `@effected/plugin` | the default export of `schemastore.config.ts` — a record keyed by schema name; validates, derives every `$id`/`path`/catalog URL, fills drift defaults. It is `defineConfig` from `@effected/schemastore` under the tool's name; a repository with only `@effected/mcp` imports `defineConfig` instead |
 | `SchemaTarget.make` | `@effected/schemastore` | the library-level primitive `defineConfig` lowers each entry onto; reach for it directly only when driving `SchemaPipeline` outside the CLI |
 | `DriftPolicy` | `@effected/schemastore` | reading the `strict` / `semantic` / `allow` table in code, or a test that classifies a change the way the CLI will |
 | `SchemaVersioning` | `@effected/schemastore` | parsing a label, ordering versions, `next(version, "contract")`, `fileName`/`schemaUrl` for a test asserting the derived layout |
 | `CatalogEntry.lintFileMatch` | `@effected/schemastore` | checking `fileMatch` patterns against SchemaStore's hygiene rules before a reviewer does |
-| `schemastore build` / `schemastore check` | `@effected/schemastore-cli` (bin) | the `schema:build` and `schema:check` scripts; `check` is the CI gate |
+| `effected schema build` / `check` / `validate` | `@effected/plugin` (bin) | the `schema:build` and `schema:check` scripts; `check` is the CI gate; `validate` checks a payload against a published document |
+| `schema_check` / `schema_validate` / `schema_build` | `@effected/plugin` or `@effected/mcp` (MCP tools) | an agent checking drift or validating a payload in place (read-only), or writing the documents (`schema_build`) |
+| `AjvValidator`, `AjvInstanceValidator` | `@effected/engine/schema` | a program driving `SchemaPipeline` itself needs the shipped ajv engines |
 | `KeywordFamilies.isDeclared` | `@effected/schemastore` | asking whether a non-standard keyword will survive the gate before annotating with it |
 
-Every type a config needs comes from `@effected/schemastore`, which the CLI
-declares as a peer; the one thing importable from `@effected/schemastore-cli`
-is `AjvValidator.layer`, the shipped ajv engine, for a program driving
-`SchemaPipeline` itself. Install both at one version: the library as a
-dependency (the application reads its `HostedSchema` at runtime), the CLI as
-a devDependency.
+Install `@effected/plugin` as a root devDependency through `catalog:effected`;
+it brings the `effected` command and the `effected-mcp` server (`@effected/mcp`
+alone also works for the MCP tools). Every other type a config needs comes
+from `@effected/schemastore`, which the application keeps as a dependency
+when it reads its `HostedSchema` at runtime.
 
 ## Standards
 
 - **Put the whole schema setup in one `schemastore.config.ts` and two
-  scripts.** `schema:build` runs `schemastore build`, `schema:check` runs
-  `schemastore check`; make turbo's `build` depend on `schema:build`. Scripts,
+  scripts.** `schema:build` runs `effected schema build`, `schema:check` runs
+  `effected schema check`; run them next to the config or pass its path (no
+  config found is exit `2`); make turbo's `build` depend on `schema:build`. Scripts,
   flags and a drift test are the CLI's job, not a generator script's. See
   [references/config.md](references/config.md) and
   [references/ci-gate.md](references/ci-gate.md).
@@ -94,6 +98,16 @@ a devDependency.
   under `--on-drift=warn`), `1` is drift, a gate failure, or a stale document
   a build would write, `2` is a config problem, `64` is a usage error. See
   [references/ci-gate.md](references/ci-gate.md).
+- **Let an agent use the `schema_*` tools instead of shelling out.**
+  `schema_check` and `schema_validate` are read-only and `schema_build`
+  writes. Drift and staleness arrive as ordinary results with the verdict;
+  only a config that fails to load or a broken engine is a tool error. See
+  [references/ci-gate.md](references/ci-gate.md).
+- **Align the tool and the library through the catalog, not the flag.** When
+  the config's `@effected/schemastore` differs from the tool's, the CLI fails
+  with exit `2` naming both versions; `--ignore-version-mismatch` runs on with
+  a warning, and the MCP tools run and carry a `versionMismatch` warning in
+  the result. See [references/ci-gate.md](references/ci-gate.md).
 - **Retire the generator script when the config lands** — the script, its
   drift test, the `CATALOGUED`-style constant and the hand-written catalog
   entry. See
@@ -140,7 +154,9 @@ a devDependency.
   overwrite each other. See
   [references/multi-config.md](references/multi-config.md).
 - A failure is the `@effected/cli-kit` standard report on stderr (`✗ DriftError: …`, then an `in:` span line when it failed inside a span); gate on the exit code, never on the line's leading characters.
-- A `--format=json` run puts human text on stderr; parse stdout only. See
+- Under `--agent` the format defaults to JSON; otherwise a person gets human
+  text and `check` shows a coloured line diff. A JSON run puts human text on
+  stderr; parse stdout only. See
   [references/ci-gate.md](references/ci-gate.md).
 
 ## Out of scope — see the named skill
@@ -180,6 +196,7 @@ a devDependency.
   or renaming a config, and reading a blocked merge. Load when: a monorepo
   has more than one config, or configs share an `outputDir`.
 - [references/migrating-a-generator-script.md](references/migrating-a-generator-script.md) —
-  the `generate-schema.ts` → `schemastore.config.ts` mapping and what to
-  delete. Load when: a repository still owns a hand-rolled generator over
-  `SchemaPipeline`.
+  the `generate-schema.ts` → `schemastore.config.ts` mapping, what to
+  delete, and a short section for moving off the retired `schemastore` bin.
+  Load when: a repository still owns a hand-rolled generator over
+  `SchemaPipeline`, or still calls the retired `schemastore` bin.

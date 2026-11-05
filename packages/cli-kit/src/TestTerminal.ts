@@ -49,6 +49,8 @@ export interface TestTerminalHandle {
 	readonly reads: Effect.Effect<{ readonly keys: number; readonly lines: number; readonly subscriptions: number }>;
 }
 
+const FORBIDDEN = "TestTerminal: this path must not read the terminal (forbidInput is set)";
+
 /**
  * A scripted `Terminal` for testing prompts and anything that reads the terminal.
  *
@@ -68,11 +70,17 @@ export class TestTerminal {
 	/**
 	 * Build a test terminal.
 	 *
-	 * @param options - the reported size; 80 by 24 by default
+	 * @remarks
+	 * With `forbidInput`, `readInput` and `readLine` die with a message saying this path must not read the terminal,
+	 * where the default double hands back an empty queue (a stray read hangs) and quits `readLine`. `size`, `columns`,
+	 * `rows`, `display` and `resize` behave as ever, so a "this path never prompts" platform keeps a real terminal size.
+	 *
+	 * @param options - the reported size, 80 by 24 by default; `forbidInput` to die on any input read
 	 */
 	static readonly make = (options?: {
 		readonly columns?: number | undefined;
 		readonly rows?: number | undefined;
+		readonly forbidInput?: boolean | undefined;
 	}): Effect.Effect<TestTerminalHandle> =>
 		Effect.gen(function* () {
 			const queue = yield* Queue.unbounded<Terminal.UserInput, Cause.Done>();
@@ -106,14 +114,20 @@ export class TestTerminal {
 							Queue.endUnsafe(subscriber);
 						}),
 				),
-				readInput: Effect.sync(() => {
-					subscriptions++;
-					return queue;
-				}),
-				readLine: Effect.suspend(() => {
-					lines++;
-					return Effect.fail(new Terminal.QuitError({}));
-				}),
+				readInput:
+					options?.forbidInput === true
+						? Effect.die(new Error(FORBIDDEN))
+						: Effect.sync(() => {
+								subscriptions++;
+								return queue;
+							}),
+				readLine:
+					options?.forbidInput === true
+						? Effect.die(new Error(FORBIDDEN))
+						: Effect.suspend(() => {
+								lines++;
+								return Effect.fail(new Terminal.QuitError({}));
+							}),
 				display: (text) =>
 					Effect.sync(() => {
 						written.push(text);

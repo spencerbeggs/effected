@@ -16,10 +16,10 @@ sources:
     resource: ../../packages/lockfiles/src
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-15T15:38:20Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: f7023a22ec7fb274
+    body: 1c5029d4a1993911
 ---
 
 # Dependency policy: R1-R4
@@ -45,9 +45,9 @@ propagates the tier to nobody, and `ajv` is build-time tooling a
 consumer installs as a devDependency, so the runtime-graph weight R1
 guards against was never on anyone's bill. The second fact stopped
 holding once applications imported the library at runtime for
-`HostedSchema`, and on 2026-09-15 the engine moved to the
-`schemastore-cli` companion and the package returned to boundary
-([the engine lives in the CLI](../decisions/schemastore-engine-lives-in-the-cli.md)).
+`HostedSchema`, and on 2026-09-15 the engine moved out to the
+command's package and the package returned to boundary
+([the engine lives in the effected tool](../decisions/schemastore-engine-lives-in-the-cli.md)).
 A retier candidate should be checked against those same two facts
 before being accepted — and re-checked when a consumer's use changes.
 

@@ -24,11 +24,12 @@ export interface MainOptions {
  * `McpGuard.run` installs the crash guards before `load` evaluates the server
  * graph, so a throw during module evaluation is still reported on stderr; this
  * module therefore carries no static runtime import (`Distribution` is
- * type-only). Policy is `exitBeforeConnect` for both events: the one tool is
- * read-only and stateless, so a stray error while serving has no state to
- * corrupt and the guard logs and keeps serving, while the same error before
- * serving means a broken boot and exits `1`. Nothing here writes to stdout;
- * it is the JSON-RPC wire.
+ * type-only). Policy is `exitBeforeConnect` for both events: the server holds
+ * no state between calls, and a stray error while serving is likely a config's
+ * own (config modules run in this process), so the guard logs and keeps
+ * serving, while the same error before serving means a broken boot and exits
+ * `1`. Nothing here writes to stdout; it is the JSON-RPC wire. A config can, so
+ * a tool call runs under `StdioCapture`, its stdout diverted to stderr.
  *
  * @public
  */
@@ -41,10 +42,18 @@ export const main = (options: MainOptions = {}): Promise<void> =>
 			// No static imports of the server graph above this line.
 			const NodeRuntime = await import("@effect/platform-node/NodeRuntime");
 			const NodeStdio = await import("@effect/platform-node/NodeStdio");
+			const NodeFileSystem = await import("@effect/platform-node/NodeFileSystem");
+			const NodePath = await import("@effect/platform-node/NodePath");
+			const { StdioCapture } = await import("@effected/mcp-kit/node");
 			const { Layer } = await import("effect");
 			const { ServerLayer } = await import("./server.js");
 
-			const layer = ServerLayer(options).pipe(Layer.provide(NodeStdio.layer));
+			const capture = StdioCapture.install(process);
+			const layer = ServerLayer({
+				...options,
+				cwd: process.cwd(),
+				confineStdout: capture.capture({ stdout: capture.toStderr }),
+			}).pipe(Layer.provide(Layer.mergeAll(NodeStdio.layer, NodeFileSystem.layer, NodePath.layer)));
 			return { layer, runMain: NodeRuntime.runMain };
 		},
 	});

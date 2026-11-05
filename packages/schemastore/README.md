@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Publish Effect Schemas as SchemaStore-shaped Draft-07 JSON Schema documents. Core `effect` already generates JSON Schema (`Schema.toJsonSchemaDocument`) and lowers it to Draft-07 (`JsonSchema.toDocumentDraft07`); this package owns what [SchemaStore](https://www.schemastore.org) and the editors expect around that output — the publication shape, the hosted identity a document is published under, the keyword-family gate, catalog entries, lints, versioning, canonical JSON and content-comparing file IO — and the [`schemastore`](https://www.npmjs.com/package/@effected/schemastore-cli) command runs all of it from one config file.
+Publish Effect Schemas as SchemaStore-shaped Draft-07 JSON Schema documents. Core `effect` already generates JSON Schema (`Schema.toJsonSchemaDocument`) and lowers it to Draft-07 (`JsonSchema.toDocumentDraft07`); this package owns what [SchemaStore](https://www.schemastore.org) and the editors expect around that output — the publication shape, the hosted identity a document is published under, the keyword-family gate, catalog entries, lints, versioning, canonical JSON and content-comparing file IO — and the [`effected schema`](https://www.npmjs.com/package/@effected/plugin) command runs all of it from one config file.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
 > Effect v4 (`effect` `~4.1.0`) and still in `0.x` development. Stable Effect
@@ -21,14 +21,14 @@ Publish Effect Schemas as SchemaStore-shaped Draft-07 JSON Schema documents. Cor
 
 ## Install
 
-Two packages, one version, two roles: this library is a regular dependency of the application that publishes a schema (its code reads the schema's identity at runtime), and the command is a devDependency that builds and checks the documents.
+Two roles: this library is a regular dependency of the application that publishes a schema (its code reads the schema's identity at runtime), and `@effected/plugin` is a devDependency that provides the `effected schema` command, which builds and checks the documents.
 
 ```bash
 pnpm add @effected/schemastore effect
-pnpm add -D @effected/schemastore-cli
+pnpm add -D @effected/plugin
 ```
 
-Requires Node.js >=24.11.0. ESM-only. `effect` v4 is the only peer; `@effected/semver` (version ordering) is the only runtime dependency. There is no validation engine here — `SchemaValidator` is a contract, and the shipped ajv strict-mode engine is `AjvValidator` in the CLI — so importing this package at runtime never installs or bundles ajv.
+Requires Node.js >=24.11.0. ESM-only. `effect` v4 is the only peer; `@effected/semver` (version ordering) is the only runtime dependency. There is no validation engine here — `SchemaValidator` is a contract, and the shipped ajv strict-mode engine is `AjvValidator` in `@effected/engine/schema` — so importing this package at runtime never installs or bundles ajv.
 
 ## How the two packages fit together
 
@@ -72,13 +72,13 @@ export default defineConfig({
 ```json
 {
   "scripts": {
-    "schema:build": "schemastore build",
-    "schema:check": "schemastore check"
+    "schema:build": "effected schema build",
+    "schema:check": "effected schema check"
   }
 }
 ```
 
-`schemastore build` writes `schemas/5.2/silk-release-action.output-5.2.json` with `$id` equal to `OutputSchemaIdentity.$id`, closed objects (`additionalProperties: false`), and the `$schema` literal the application asserts. `schemastore check` is the CI gate: it fails when a build would write anything. Bumping the version is one constant. Everything the command does — the drift policy, the `published` flag, frozen labels, the catalog file, exit codes — is documented on the [CLI's page](https://www.npmjs.com/package/@effected/schemastore-cli).
+`effected schema build` writes `schemas/5.2/silk-release-action.output-5.2.json` with `$id` equal to `OutputSchemaIdentity.$id`, closed objects (`additionalProperties: false`), and the `$schema` literal the application asserts. `effected schema check` is the CI gate: it fails when a build would write anything. Bumping the version is one constant. Everything the command does — the drift policy, the `published` flag, frozen labels, the catalog file, exit codes — is documented on the [tool's page](https://www.npmjs.com/package/@effected/plugin).
 
 `HostedSchema.github({ repo, branch?, path?, ... })` serves files raw from a repository (`branch` defaults to `main`); `HostedSchema.schemastore({ name, ... })` publishes to SchemaStore (`$id` on `json.schemastore.org`, the catalog URL on `www.schemastore.org`, flat layout); `HostedSchema.custom({ baseUrl, ... })` takes any `https://` directory as a string or `URL`. Each validates the identity — `current` must be one of `versions`, two spellings of one label are refused — and throws a plain `Error` naming the reason. `$id`, `url` and `fileName` answer the current document; `idFor`, `urlFor` and `fileNameFor` answer any advertised version. Versioned files carry SchemaStore's `-<version>` suffix by default; when the version directory should name the file alone (`schemas/6.0/output.json`, natural when the repository already names the tool), pass `appendVersion: false` — it needs the `"versioned"` layout, since under `"flat"` every version would share one file name. A consumer test pins `target.path === \`${outputDir}/${identity.fileName}\`` to catch a swapped `hosted:` the CLI cannot see.
 
@@ -105,11 +105,11 @@ const program = Effect.gen(function* () {
 
 Objects are closed by default — a published document is a contract, and this package does not follow core's open default. `jsonSchema: { onExcessProperty: "ignore" }` on one target (or one `defineConfig` entry) reopens that document.
 
-`SchemaPipeline.run(targets)` is the emit loop over a target manifest — generate, lint, validate, gate, write — requiring `SchemaFile` and `SchemaValidator` in `R`. Provide the file service and an engine at the edge; the engine is the CLI's:
+`SchemaPipeline.run(targets)` is the emit loop over a target manifest — generate, lint, validate, gate, write — requiring `SchemaFile` and `SchemaValidator` in `R`. Provide the file service and an engine at the edge; the engine is `@effected/engine/schema`'s:
 
 ```ts
 import { SchemaFile, SchemaPipeline, SchemaTarget } from "@effected/schemastore";
-import { AjvValidator } from "@effected/schemastore-cli";
+import { AjvValidator } from "@effected/engine/schema";
 import { NodeServices } from "@effect/platform-node";
 import { Effect, Layer, Schema } from "effect";
 
@@ -137,7 +137,7 @@ const program = SchemaPipeline.run(targets).pipe(
 - `SchemaVersioning` / `SchemaVersion` — one-to-three-component version labels, `Order`, `latest`, `isPinned`, `next`, and the `fileName` / `schemaUrl` / `catalogUrls` derivations.
 - `CatalogEntry` — the `catalog.json` entry as a `Schema.Class`, `assemble` for both catalog modes, and the `fileMatch` hygiene lint.
 - `DocumentLint` — the total structural lint (`UnresolvedRef`, `UnknownKeyword`, `DepthExceeded`, `DescriptionWithoutUrl`, …), findings as values.
-- `SchemaValidator` — the validation contract: `noop` switches it off, `makeTest` / `layerTest` are the doubles; `ValidationFinding` and `SchemaValidatorError` are its values. The engine is `AjvValidator` in `@effected/schemastore-cli`.
+- `SchemaValidator` — the validation contract: `noop` switches it off, `makeTest` / `layerTest` are the doubles; `ValidationFinding` and `SchemaValidatorError` are its values. The engine is `AjvValidator` in `@effected/engine/schema`.
 - `DocumentDiff` — `classify` two documents as `"none"` / `"annotations"` / `"contract"`, the signal for whether a change needs a new version.
 - `DriftPolicy` — the lifecycle rule the CLI applies: `published` documents are held to a tolerance (`strict` / `semantic` / `allow`), unpublished ones regenerate in place.
 - `SchemaPipeline` — the emit loop: `run` / `check`, `runOne` / `checkOne`, the gate and the contract guard.

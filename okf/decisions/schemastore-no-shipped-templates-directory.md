@@ -8,17 +8,19 @@ sources:
     resource: ../../packages/schemastore/package.json
 generated:
   by: "claude-code/opus-5"
-  at: 2026-09-14T04:45:45Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: 6afbdcd93b222773
+    body: 9c6831557305973e
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 8c077770e4ccc0d7
+    at: 2026-11-05T14:25:52Z
+    content: 57180e6c2ad1d4c7
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-05T14:25:52Z
 ---
 
 # No shipped templates/ directory
@@ -55,7 +57,6 @@ A consumer scaffolding a new schema-publishing pipeline copies the
 reference script from the template repository or skill reference rather
 than importing anything from `@effected/schemastore`'s own package
 contents beyond its public modules. With the
-[`@effected/schemastore-cli`](../modules/schemastore-cli.md) companion
+[`effected schema`](../interfaces/schema-commands.md) command
 there is no longer a canonical generator script to copy at all: the
-consumer writes a `schemastore.config.ts` and runs the `schemastore`
-bin, so the question this decision answered is moot for new consumers.
+consumer writes a `schemastore.config.ts` and runs `effected schema`, so the question this decision answered is moot for new consumers.

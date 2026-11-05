@@ -87,9 +87,9 @@ const notStubbed = (method: string) => () =>
  * This package ships the contract and its doubles only: skip validation
  * with {@link SchemaValidator.noop}, stub it with
  * {@link SchemaValidator.layerTest}. The one real implementation is
- * `@effected/schemastore-cli`'s `AjvValidator.layer` — ajv strict mode over
+ * `@effected/engine/schema`'s `AjvValidator.layer` — ajv strict mode over
  * the declared `KeywordFamilies` and the standard `ajv-formats`
- * vocabulary — which the `schemastore` command composes for you and which
+ * vocabulary — which the `effected schema` command composes for you and which
  * that package also exports for a program that drives `SchemaPipeline`
  * itself. Keeping the engine there keeps `ajv` out of every application that
  * imports this package at runtime (to read a `HostedSchema`, say) and out of
@@ -108,7 +108,7 @@ const notStubbed = (method: string) => () =>
  * });
  *
  * // Provide the engine at the edge — the CLI does this for you:
- * //   Effect.provide(program, AjvValidator.layer)   (from @effected/schemastore-cli)
+ * //   Effect.provide(program, AjvValidator.layer)   (from @effected/engine/schema)
  * Effect.runPromise(Effect.provide(program, SchemaValidator.noop));
  * // => []
  * ```
@@ -122,7 +122,7 @@ export class SchemaValidator extends Context.Service<SchemaValidator, SchemaVali
 	 * No-op: `validate` always succeeds with no findings, never consulting an
 	 * engine. A pure `Layer.succeed`, bound to a const so the layer memoizes
 	 * by reference. Use it to switch validation off deliberately — for the
-	 * real engine, provide `AjvValidator.layer` from `@effected/schemastore-cli`.
+	 * real engine, provide `AjvValidator.layer` from `@effected/engine/schema`.
 	 */
 	static readonly noop: Layer.Layer<SchemaValidator> = Layer.succeed(SchemaValidator, {
 		validate: () => Effect.succeed([]),

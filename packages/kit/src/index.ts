@@ -14,5 +14,6 @@ export {
 export { ErrorText } from "./ErrorText.js";
 export { Exclusive, type ExclusivePromiseOptions, type ExclusiveRunOptions, ExclusiveTimeout } from "./Exclusive.js";
 export { LaunchContext, type ProjectDirInput, type ResolveInput } from "./LaunchContext.js";
+export { PathContainment } from "./PathContainment.js";
 export { type ProcessCwdHost, ProcessScope, ProcessScopeError } from "./ProcessScope.js";
 export { Remediation } from "./Remediation.js";

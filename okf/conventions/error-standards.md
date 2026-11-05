@@ -23,10 +23,10 @@ sources:
     resource: ../../packages/store/__test__/StoreLifecycle.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: fe655462bd9eecda
+    body: eef209c873b5a4a0
 ---
 
 # Error handling standards
@@ -196,7 +196,7 @@ The shipped copies carry the same text under the kit's tab indentation and a
 leading comment naming this section as the source; `cmp` across
 `packages/*/src/internal/causeMessage.ts` must report them identical. There
 are nine, every one with the getter guards above: `@effected/kit`,
-`images`, `jsonc`, `jsonl`, `npm`, `package-json`, `schemastore-cli`,
+`images`, `jsonc`, `jsonl`, `npm`, `package-json`, `engine`,
 `store` and `workspaces`. `@effected/kit` is the one that also
 publishes it, as `ErrorText.causeMessage`, the read a consumer's own error
 rendering should use instead of copying the module (see
@@ -210,7 +210,7 @@ function object as `Fmt.causeMessage` and carries no copy of its own (see
   `undefined` or `[object Object]`. A site that must produce a string for
   splicing names its own fallback: `?? String(cause)`, or a constant such as
   `"value is not JSON-serializable"`.
-- A site that needs more than the message (the schemastore CLI prefers an
+- A site that needs more than the message (the schemastore command prefers an
   import failure's `stack`, which names the module and line that threw)
   reads that property through the same `hasProperty` + `isString` guard and
   falls through to `causeMessage`.
@@ -222,9 +222,9 @@ function object as `Fmt.causeMessage` and carries no copy of its own (see
   a message past the depth bound, and a throwing `message` getter, a throwing
   `cause` getter and a throwing getter deep in the chain (each yields the
   partial text, never a throw).
-- Two site-local `instanceof Error` reads remain in `@effected/schemastore-cli`
-  outside the sites #1082 named, `src/AjvValidator.ts` (the ajv compile
-  catch) and `src/cli/commands/validate.ts` (the `JSON.parse` catch); both
+- Two site-local `instanceof Error` reads remain in `@effected/engine`
+  outside the sites #1082 named, `src/schema/AjvValidator.ts` (the ajv compile
+  catch) and `src/schema/SchemaValidate.ts` (the `JSON.parse` catch); both
   are pending convergence onto the package's `causeMessage` copy.
   `@effected/jsonc`'s `JsoncFingerprint.ts` (the thrown-digest catch)
   converged in the same wave and carries its own copy. The other

@@ -19,10 +19,10 @@ sources:
     resource: "npm:pluginfinity"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T16:44:32Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: 986d98881fcc4f10
+    body: acab99d4f051c602
 ---
 
 # ai-plugin
@@ -174,8 +174,9 @@ ladder and probe preconditions — see
 
 **Consumer adoption of a kit package**: `building-schemastore-schemas`,
 teaching a consumer repository to publish SchemaStore-shaped JSON Schema
-documents through `@effected/schemastore` and its CLI companion — the
-config file, the drift policy, document authoring, and the CI gate.
+documents through `@effected/schemastore` and the `effected schema`
+command of the effected tool — the config file (`defineSchemastore` from
+`@effected/plugin`), the drift policy, document authoring, and the CI gate.
 
 **Consumer upgrades**: `effected-renovate`, which is user-invoked only
 (`disable-model-invocation: true`). It moves a consumer repository onto a
@@ -316,7 +317,7 @@ user's explicit agreement.
 
 ## The effected MCP server
 
-`pluginfinity.config.ts` declares one `mcpServers` entry, `effected`, for both hosts: `sh ${PLUGIN_ROOT}/bin/start-mcp.sh`. The launcher is a POSIX `sh` script on pluginfinity's server library. It runs the project's installed `effected-mcp` bin (from [`@effected/plugin`](plugin.md)), and when that is not installed it prints the `@effected/plugin` install line for the project's package manager on stderr and falls back to a one-off run of [`@effected/mcp`](mcp.md). The fallback exists because a one-off runner cannot choose between two bins of one package, so the front end carries the bin too ([shared bins](../decisions/carrier-only-declares-bins.md)). Nothing prints to stdout before the `exec`: stdout is the JSON-RPC wire. The server answers one `identity` tool. `__test__/launchers.bats` runs the built launcher against a fake project with a stubbed bin on each host. The SessionStart briefing names the server.
+`pluginfinity.config.ts` declares one `mcpServers` entry, `effected`, for both hosts: `sh ${PLUGIN_ROOT}/bin/start-mcp.sh`. The launcher is a POSIX `sh` script on pluginfinity's server library. It runs the project's installed `effected-mcp` bin (from [`@effected/plugin`](plugin.md)), and when that is not installed it prints the `@effected/plugin` install line for the project's package manager on stderr and falls back to a one-off run of [`@effected/mcp`](mcp.md). The fallback exists because a one-off runner cannot choose between two bins of one package, so the front end carries the bin too ([shared bins](../decisions/carrier-only-declares-bins.md)). Nothing prints to stdout before the `exec`: stdout is the JSON-RPC wire. The server answers an `identity` tool and the `schema_check`, `schema_build` and `schema_validate` tools ([the schema commands](../interfaces/schema-commands.md) as data). `__test__/launchers.bats` runs the built launcher against a fake project with a stubbed bin on each host. The SessionStart briefing names the server.
 
 ## Versioning and distribution
 

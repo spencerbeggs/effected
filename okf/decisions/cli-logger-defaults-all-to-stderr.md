@@ -6,7 +6,7 @@ status: stable
 tags: [architecture, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-05T06:55:47Z
 verified:
   - by: human:spencer
     at: 2026-09-23T19:50:29Z
@@ -14,13 +14,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-11-02T17:04:46Z
+  - by: human:spencer
+    at: 2026-11-05T14:25:52Z
 integrity:
   generated:
-    body: 4be85ca6c4479409
+    body: 0427c292d239c7d5
   verified:
     by: human:spencer
-    at: 2026-11-02T17:04:46Z
-    content: 471c28c4d75217ad
+    at: 2026-11-05T14:25:52Z
+    content: 80bc2fdf56172258
 ---
 
 # D3: `CliLogger` default `stderrFrom` flips to `"All"`
@@ -35,7 +37,7 @@ out.json` must carry only the program's intentional output on stdout, and
 a diagnostic `Effect.logInfo` call mixed into that stream corrupts a
 consumer piping the output into a JSON parser. Silk's own hand-rolled
 logger already routes warnings to stdout with the identical bug pattern,
-and okfit and schemastore-cli each work around the current default by
+and okfit and the former schemastore-cli each worked around the current default by
 routing their own diagnostic logging away from `Effect.log*` entirely
 rather than trusting the shared logger.
 

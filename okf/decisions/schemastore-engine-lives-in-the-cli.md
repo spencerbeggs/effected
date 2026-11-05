@@ -1,7 +1,7 @@
 ---
 type: Decision
-title: The ajv engine lives in the CLI, and the library returns to boundary tier
-description: "The one shipped SchemaValidator engine is @effected/schemastore-cli's AjvValidator.layer — and the one shipped InstanceValidator engine its AjvInstanceValidator.layer — so ajv is a cost only the command pays; @effected/schemastore keeps the contracts and their doubles, drops ajv and ajv-formats, and retiers from integrated back to boundary."
+title: The ajv engine lives in the effected tool, and the library returns to boundary tier
+description: "The one shipped SchemaValidator engine is AjvValidator.layer — and the one shipped InstanceValidator engine AjvInstanceValidator.layer — both in @effected/engine's schema subpath, so ajv is a cost only the effected tool pays; @effected/schemastore keeps the contracts and their doubles, drops ajv and ajv-formats, and retiers from integrated back to boundary."
 status: stable
 supersedes: schemastore-retier-to-integrated.md
 tags:
@@ -15,30 +15,32 @@ sources:
     last_modified: 2026-09-15T00:00:00Z
   - id: library-package-json
     resource: ../../packages/schemastore/package.json
-  - id: cli-package-json
-    resource: ../../packages/schemastore-cli/package.json
+  - id: engine-package-json
+    resource: ../../packages/engine/package.json
   - id: ajv-validator
-    resource: ../../packages/schemastore-cli/src/AjvValidator.ts
+    resource: ../../packages/engine/src/schema/AjvValidator.ts
   - id: ajv-instance-validator
-    resource: ../../packages/schemastore-cli/src/AjvInstanceValidator.ts
+    resource: ../../packages/engine/src/schema/AjvInstanceValidator.ts
   - id: schema-validator
     resource: ../../packages/schemastore/src/SchemaValidator.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-02T18:12:26Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: 800700e1f8070ef5
+    body: 817b9fc6045fe8e3
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: fd836c05cb9d51e4
+    at: 2026-11-05T14:25:52Z
+    content: 93b8e194e00ad59a
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-05T14:25:52Z
 ---
 
-# The ajv engine lives in the CLI, and the library returns to boundary tier
+# The ajv engine lives in the effected tool, and the library returns to boundary tier
 
 ## Context
 
@@ -49,11 +51,12 @@ The argument rested on one premise: the library was build-time tooling
 every consumer installed as a devDependency of its own generator script,
 so ajv's weight in a runtime graph was never on anyone's bill.
 
-Two things changed that premise. The generator scripts collapsed into
-[`@effected/schemastore-cli`](../modules/schemastore-cli.md), which
-became the only consumer that composes the real engine — every other
-caller either drives `SchemaPipeline` through the command or never
-validates at all. And applications began importing the library at
+Two things changed that premise. The generator scripts collapsed into a
+command, first a companion package and now the
+[`effected schema`](../interfaces/schema-commands.md) command of the
+[effected tool](schema-commands-live-in-the-tool.md), which is the only
+consumer that composes the real engine — every other caller either drives
+`SchemaPipeline` through the command or never validates at all. And applications began importing the library at
 *runtime*: `HostedSchema` is the one value an application derives its
 `$schema` URL from, so silk-release-action — a bundled GitHub Action —
 moved `@effected/schemastore` from `devDependencies` to
@@ -64,8 +67,8 @@ never run a validation.
 ## Decision
 
 The one shipped `SchemaValidator` implementation is
-`AjvValidator.layer`, exported from `@effected/schemastore-cli`'s single
-`.` entry.[^ajv-validator][^cli-package-json] It is the same engine the
+`AjvValidator.layer`, exported from
+[`@effected/engine`](../modules/engine.md)'s `./schema` subpath.[^ajv-validator][^engine-package-json] It is the same engine the
 library shipped — ajv strict mode over the Draft-07 meta-schema, every
 declared `KeywordFamilies` keyword registered, `ajv-formats` with
 `keywords: false`, a fresh instance per call, findings as values and
@@ -77,7 +80,7 @@ The same split governs the payload half, added with the `schemastore
 validate` command: the library ships the `InstanceValidator` contract —
 the service, `InstanceValidatorShape`, `InstanceValidatorOptions`,
 `InstanceValidatorError`, `InstanceFinding`, `noop`, `makeTest` and
-`layerTest` — and no engine; the CLI's single `.` entry exports the one
+`layerTest` — and no engine; the engine's `./schema` subpath exports the one
 shipped implementation, `AjvInstanceValidator.layer`. It builds through
 the SAME shared setup as `AjvValidator` (`internal/ajv.ts` `makeAjv`),
 pointed at a payload instance instead of the meta-schema, so a document
@@ -95,15 +98,15 @@ runtime dependency.[^library-package-json] Under
 [R1](../conventions/dependency-policy.md#r1-tiers-1-and-2-take-no-external-runtime-dependencies)
 that is a boundary package, and the tier flips back.
 
-The CLI stays a companion: its canonical use is the command, and its
-exports — `AjvValidator`, and with the `validate` command
-`AjvInstanceValidator` — exist so a program that drives `SchemaPipeline`
-or validates payloads itself can compose the same engines the commands
-run — nothing is hidden from a consumer with a reason to wire the layers
-differently. Both exports are engine layers over the library's own
-contracts, not surfaces of their own. The peer
-rule is untouched: `effect` and `@effected/schemastore` remain the
-CLI's peers.
+The engine package is an application package with no library tier:
+its canonical use is the command, and its `./schema` exports —
+`AjvValidator` and `AjvInstanceValidator` — exist so a program that
+drives `SchemaPipeline` or validates payloads itself can compose the same
+engines the commands run — nothing is hidden from a consumer with a
+reason to wire the layers differently. Both exports are engine layers over
+the library's own contracts, not surfaces of their own. `@effected/schemastore`
+is the engine's pinned dependency rather than a peer
+([why](schema-commands-live-in-the-tool.md)).
 
 ## Alternatives rejected
 
@@ -115,14 +118,14 @@ edge every importer pays for and one consumer uses.
 
 **A third package, `@effected/schemastore-ajv`.** Declined twice now.
 The retier decision declined it because the library already owned the
-shape; this decision declines it because the CLI already exists, is the
-only real-engine consumer, and an export from it costs nothing a new
-package would not also cost.
+shape; this decision declines it because the command's package already
+exists, is the only real-engine consumer, and an export from it costs
+nothing a new package would not also cost.
 
 **Contract inversion with the engine as an optional peer of the
 library.** An optional peer still surfaces on every install that does
 not want it, and leaves the library's own module reaching for an engine
-it does not ship. The CLI as the engine's home gives the same "library
+it does not ship. The tool as the engine's home gives the same "library
 declares, another package implements" shape without a peer.
 
 ## Consequences
@@ -135,38 +138,32 @@ declares, another package implements" shape without a peer.
   substance: every registration rule it records (declared families
   before compiling, `ajv-formats` vocabulary only, an unknown format
   still a strict-mode rejection) now describes `AjvValidator`, and its
-  "in this package itself" wording is read as the CLI.
+  "in this package itself" wording is read as the engine package.
 - [No layerDefault](schemastore-no-layer-default.md) still holds, with
   the real layer named `AjvValidator.layer` rather than
   `SchemaValidator.layer`; the library's `SchemaValidator` ships the
   contract and the doubles only.
 - A consumer that composed `SchemaValidator.layer` from the library
-  imports `AjvValidator` from `@effected/schemastore-cli` instead; a
+  imports `AjvValidator` from `@effected/engine/schema` instead; a
   consumer that only builds documents, derives URLs or lints never
   installs ajv again.
-- The CLI grows a declaration bundle and an api-extractor model
-  (`website/lib/models/schemastore-cli/`) for the one entry; the
-  `emitDts: false` departure from the scaffold is gone.
-- The [companion package](../glossary/companion-package.md) definition
-  narrows from "exports nothing" to "its API is not why you install it":
-  the tier still does not apply, because the only exports are engine
-  layers over the library's own contracts (`AjvValidator`,
-  `AjvInstanceValidator`), not surfaces of their own.
+- The engines live with the commands, in the engine package's `./schema`
+  subpath; the choice that the library ships no engine stands wherever
+  they are.
 
 [^owner]: The owner's design conversation of 2026-09-15: silk-release-action
     moving `@effected/schemastore` to `dependencies` for `HostedSchema`,
     the CLI as the only real-engine consumer, and the "nothing is
     hidden" reason for exporting the layer.
-[^ajv-validator]: `packages/schemastore-cli/src/AjvValidator.ts` —
+[^ajv-validator]: `packages/engine/src/schema/AjvValidator.ts` —
     `AjvValidator.layer`, the strict-mode engine with `KeywordFamilies`
     registration and `addFormats(ajv, { keywords: false })`.
-[^ajv-instance-validator]: `packages/schemastore-cli/src/AjvInstanceValidator.ts` —
+[^ajv-instance-validator]: `packages/engine/src/schema/AjvInstanceValidator.ts` —
     `AjvInstanceValidator.layer`, the payload engine over the shared
     `internal/ajv.ts` `makeAjv`; findings as `InstanceFinding` values,
     compile failures as `InstanceValidatorError`.
-[^cli-package-json]: `packages/schemastore-cli/package.json` — the `.`
-    export to `src/index.ts`, and `ajv` / `ajv-formats` as regular
-    dependencies.
+[^engine-package-json]: `packages/engine/package.json` — the `./schema`
+    export, and `ajv` / `ajv-formats` as regular dependencies.
 [^schema-validator]: `packages/schemastore/src/SchemaValidator.ts` — the
     contract, the error and finding classes, `noop`, `makeTest` and
     `layerTest`; no `layer` and no ajv import.

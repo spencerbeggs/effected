@@ -4,7 +4,7 @@
 
 This is **effected**, a pnpm monorepo (npm org `@effected`) building an **Effect v4 app kit**: a coherent set of libraries designed v4-first. Scope is closed by five consuming applications, not by how many source repos remain.
 
-The monorepo holds libraries, two companions and one tool, `effected` (see `okf/decisions/one-tool-beside-the-libraries.md`) — every other application stays in an external repo.
+The monorepo holds libraries, one companion and one tool, `effected` (see `okf/decisions/one-tool-beside-the-libraries.md`) — every other application stays in an external repo.
 
 **Releases are changeset-driven: CI builds the changesets and releases the packages they name.** A release may be the whole kit or a single package — both are ordinary. Everything published is `0.x` and unstable. Effect v4 is now stable, which makes a kit `1.0.0` possible, not automatic: the kit takes it when it chooses to.
 
@@ -21,6 +21,7 @@ Durable project knowledge lives as OKF concepts under `okf/`, not in prose here.
 - Fork pull requests → `okf/runbooks/enable-fork-pull-request-review.md`, `okf/gotchas/unprotected-environment-runs-fork-code-with-secrets.md` — Load when: a PR from a fork shows a waiting or failed `Fork Approval` job, or enabling the gate on a repository.
 - Adding a package → `okf/runbooks/add-a-kit-package.md`, `okf/runbooks/add-a-workspace-package.md` — Load when: starting a new `@effected` library or scaffolding a new workspace package.
 - Format packages (parse/format/edit surface, fidelity guarantee, sync-vs-effectful primitives) → `okf/conventions/format-package-convention.md`, `okf/conventions/sync-primitive-policy.md` — Load when: designing a formatting or parsing entry point, or reasoning about a formatter's fidelity guarantee.
+- The `effected` tool's schemastore commands (`effected schema build|check|validate`, the `schema_*` MCP tools, flags, exit codes, drift, catalog, the version check) → `okf/interfaces/schema-commands.md`, `okf/decisions/schema-commands-live-in-the-tool.md`, `okf/decisions/schema-version-mismatch-check.md`, `okf/limitations/mcp-config-reload-cache.md` — Load when: changing `packages/cli/src/commands/schema`, `packages/engine/src/schema` or `packages/mcp/src/tools/schema.ts`, or the tool's `workspace:*` pin chain.
 - Plugin → `okf/modules/ai-plugin.md`, `okf/conventions/author-the-plugin-once.md` — Load when: working in `plugin/` on the "effected" agent plugin, the one pluginfinity source of its Claude Code and Copilot builds.
 - Consumer-facing text (plugin skills, agents, hooks, TSDoc) names no Effect prerelease version and tells no since-version history → `okf/conventions/consumer-text-states-current-effect-behaviour.md` — Load when: writing or reviewing a skill, agent, hook or TSDoc comment.
 - Construct index → `okf/models/construct-annotations.md`, `okf/conventions/construct-index-is-generated.md` — Load when: adding or annotating an exported construct, or touching `generate-constructs.mts` / `construct-annotations.json`.
@@ -38,7 +39,7 @@ Durable project knowledge lives as OKF concepts under `okf/`, not in prose here.
 
 ### Kit composition
 
-The kit is **47 publishable packages**: 41 libraries, two companions (`pnpm-plugin-effected` and `schemastore-cli`) and the four packages of the `effected` tool (`@effected/plugin`, the carrier a consumer installs, plus its `cli`, `mcp` and `engine`; see `okf/decisions/one-tool-beside-the-libraries.md`); `@effected/cli-kit`, `@effected/mcp-kit`, `@effected/kit` and `@effected/plugin` are new npm names, not yet published; `@effected/cli`, `@effected/mcp` and `@effected/engine` published before as the old kit libraries, and their next release is the tool package under the same name. New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
+The kit is **46 publishable packages**: 41 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`@effected/plugin`, the carrier a consumer installs, plus its `cli`, `mcp` and `engine`; see `okf/decisions/one-tool-beside-the-libraries.md`); `@effected/cli-kit`, `@effected/mcp-kit`, `@effected/kit` and `@effected/plugin` are new npm names, not yet published; `@effected/cli`, `@effected/mcp` and `@effected/engine` published before as the old kit libraries, and their next release is the tool package under the same name. New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
 
 **The carrier libraries are `@effected/cli-kit`, `@effected/mcp-kit` and `@effected/kit`; `@effected/cli`, `@effected/mcp` and `@effected/engine` are the `effected` tool's own packages.** The old names were renamed with no shim, and `@effected/app` kept its name → `okf/decisions/carrier-libraries-take-kit-names.md`. A stale import of an old name fails at build, not at install.
 
@@ -58,7 +59,7 @@ The kit is **47 publishable packages**: 41 libraries, two companions (`pnpm-plug
 
 ### Package context files
 
-Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. The roster of all 47 — what each one is, and the parenthetical tier tag every **library** carries (pure / boundary / integrated, per `okf/glossary/library-tier.md`) — lives in `okf/project.md`'s packages table. Load it when: choosing which package owns a capability, or checking a package's tier or scope before working in it.
+Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. The roster of all 46 — what each one is, and the parenthetical tier tag every **library** carries (pure / boundary / integrated, per `okf/glossary/library-tier.md`) — lives in `okf/project.md`'s packages table. Load it when: choosing which package owns a capability, or checking a package's tier or scope before working in it.
 
 ## Build Pipeline
 

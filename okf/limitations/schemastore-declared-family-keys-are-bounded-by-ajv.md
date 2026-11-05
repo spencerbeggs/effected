@@ -10,13 +10,13 @@ sources:
   - id: keyword-families
     resource: ../../packages/schemastore/src/KeywordFamilies.ts
   - id: engine-suite
-    resource: ../../packages/schemastore-cli/__test__/ajv-validator.test.ts
+    resource: ../../packages/engine/__test__/schema/AjvValidator.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: 27f8711760d663d0
+    body: 73c751c449964d32
 ---
 
 # A declared-family key must be a name ajv can register, and its payload cannot carry an $id
@@ -42,7 +42,7 @@ every published document:
 
 ## Symptom
 
-The CLI's `AjvValidator` rejects the whole document with one root-pathed
+The engine's `AjvValidator` rejects the whole document with one root-pathed
 `ValidationFinding`, never an error: a bad key name is reported as a
 finding rather than a mechanism failure, and a buried `$id` fails the
 compile the same way.[^engine-suite] `DocumentLint` answers nothing —
@@ -75,7 +75,7 @@ with the engine's next major.
 [^keyword-families]: `packages/schemastore/src/KeywordFamilies.ts` — the
     `x-ai-` namespace doc block: the character rule, the `$id`/`$anchor`
     rule and the empty-string `$id` case.
-[^engine-suite]: `packages/schemastore-cli/__test__/ajv-validator.test.ts`
+[^engine-suite]: `packages/engine/__test__/schema/AjvValidator.test.ts`
     — "reports a declared keyword ajv's name grammar rejects as a finding,
     not an error" and "does not descend into a declared keyword's
     payload".

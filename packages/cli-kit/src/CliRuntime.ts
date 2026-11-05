@@ -258,6 +258,11 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	 * `formatVersion`); a Formatter the platform provides is shadowed by
 	 * `main`'s, so pass it through `env.formatter` as well.
 	 *
+	 * The installed Formatter paints by stdout's terminal check. When `env` is set and stderr's colour decision
+	 * differs from stdout's, a usage error's help is rendered with `formatHelpDoc`, `formatError` and `formatErrors` rebuilt from
+	 * core's default formatter under stderr's decision (and `env.helpFlags`), so those methods follow stderr
+	 * unless given through `env.formatter`, which always wins. Every other method is left as installed.
+	 *
 	 * Two cases keep help on stdout even under `"stderr"`. A `CliOutput`
 	 * Presenter provided inside `program` replaces the routing. And with
 	 * `Command.runWith`'s `renderErrors: false` core presents the help as
@@ -655,7 +660,7 @@ export class CliRuntime {
 			env === undefined
 				? Layer.empty
 				: Layer.mergeAll(
-						CliColor.formatterLayer(options.env?.formatter),
+						CliColor.formatterLayer(options.env?.formatter, options.env?.helpFlags),
 						// Records how a failure is rendered, from the services this layer provides, for the report outside it.
 						Layer.effectDiscard(
 							Effect.gen(function* () {
@@ -684,7 +689,9 @@ export class CliRuntime {
 		const carried = options.distribution === undefined ? program : withCarrier(program, options.distribution);
 		const run = Effect.gen(function* () {
 			// Inside the platform provide, so the rerouting sees the platform's own Formatter.
-			yield* options.helpOnUsageError === "stderr" ? routeHelpOnUsageError(carried) : carried;
+			yield* options.helpOnUsageError === "stderr"
+				? routeHelpOnUsageError(carried, options.env?.formatter, options.env?.helpFlags)
+				: carried;
 			const exit = yield* CliExit;
 			const code = MutableRef.get(exit.code);
 			// CliExit.set validates, but the cell is a public MutableRef a program

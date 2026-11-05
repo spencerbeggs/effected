@@ -1,13 +1,13 @@
 # Migrating a generator script
 
-Repositories that adopted `@effected/schemastore` before the CLI each own a
+Repositories that adopted `@effected/schemastore` before the `effected schema` command each own a
 `lib/scripts/generate-schema.ts`: a `targets` array, a `--check` flag that
 calls `SchemaPipeline.check`, a `--force` flag that swaps the contract policy
 to `"allow"`, a per-result log line, a `SchemaContractChangeError` handler
 that names the next version, sometimes a `CATALOGUED` constant and a
 hand-rolled catalog-entry write — plus a `__test__/generate-schema.test.ts`
 that imports `targets` and asserts `SchemaPipeline.check` finds nothing to
-write. Stripped of comments they are one program, and the CLI is that
+write. Stripped of comments they are one program, and the command is that
 program. What varies between them is exactly the config it takes.
 
 ## The mapping
@@ -20,22 +20,22 @@ program. What varies between them is exactly the config it takes.
 | `SchemaVersioning.fileName(name, version)` in `path` | derived — `$id`, `path` and every catalog URL come from the schema's key, `outputDir`, `baseUrl` and `layout`; there is no `path` or `$id` to spell by hand |
 | `const JSON_SCHEMA_OPTIONS = { onExcessProperty: "error" }` shared across targets | nothing — closed objects are the default; `jsonSchema: { onExcessProperty: "ignore" }` only on an entry that must stay open |
 | `const SCHEMA_URL = \`${BASE}/${VERSION}/${name}-${VERSION}.json\`` re-derived in `src/` for `Schema.Literal` | `HostedSchema.github({ repo, path, name, versions })` built once in `src/`; `Schema.Literal(hosted.$id)` there and `{ schema, hosted }` in the config |
-| `--check` / `--dry-run` → `SchemaPipeline.check` | `schemastore check` |
+| `--check` / `--dry-run` → `SchemaPipeline.check` | `effected schema check` |
 | `--force` / `--allow-contract-change` → `contractChanges: "allow"` | `--force` (sugar for `--drift=allow`) |
 | `const CATALOGUED = false` selecting `"allow"` vs `"block-versioned"` | `published: false` on the schema entry; flip to `true` when the entry is accepted |
 | `CatalogEntry.assemble({ name, description, fileMatch, baseUrl, versions })` + `Schema.encodeSync` + a file write | the `catalog: { description, fileMatch }` block on each schema entry — `url` and `versions` derive from the schema's own key and `versions`, `name` defaults to the key (an optional `catalog.name` keeps a script's descriptive display name), and every entry lands in the config's slice `<catalogDir>/<name>.json`, merged into `catalog.json` beside `catalogDir` |
 | a previous published label kept as a second `SchemaTarget` in the array | append the new label to `versions` and set `current`; the old label freezes and is verified, not regenerated |
 | the `SchemaContractChangeError` handler printing `version → nextVersion` | the `DRIFT contract at published X → suggest Y` line and `nextVersion` in the JSON report |
 | per-result `Effect.logInfo` of advisory findings | the indented finding lines under each schema |
-| `NodeServices.layer` + `SchemaFile.layer` + `SchemaValidator.layer` wiring | the CLI's own runtime (the engine is now the CLI's `AjvValidator.layer`; the library ships only the contract) |
+| `NodeServices.layer` + `SchemaFile.layer` + `SchemaValidator.layer` wiring | the command's own runtime (the engine is `AjvValidator.layer` from `@effected/engine/schema`; the library ships only the contract) |
 | `__test__/generate-schema.test.ts` asserting nothing would be written | `schema:check` in CI |
-| `"generate-schema": "tsx lib/scripts/generate-schema.ts"` | `"schema:build": "schemastore build"`, `"schema:check": "schemastore check"` |
+| `"generate-schema": "tsx lib/scripts/generate-schema.ts"` | `"schema:build": "effected schema build"`, `"schema:check": "effected schema check"` |
 
 ## Steps
 
-1. Add `@effected/schemastore-cli` as a devDependency at the same version as
-   `@effected/schemastore`. Keep `effect` and `@effected/schemastore`.
-2. Write `schemastore.config.ts` beside the script (or at the repository
+1. Add `@effected/plugin` as a root devDependency through `catalog:effected`.
+   Keep `effect` and `@effected/schemastore`.
+2. Write `schemastore.config.ts` (default-exporting `defineSchemastore(...)` from `@effected/plugin`) beside the script (or at the repository
    root, where upward discovery finds it). Set the required top-level
    `name` — a simple file base name (no separators, no whitespace) that is
    the base name of this config's catalog slice `<catalogDir>/<name>.json`,
@@ -84,3 +84,18 @@ program. What varies between them is exactly the config it takes.
   never by writing the URL out twice.
 - Any test that imported `targets` from the script now imports the config's
   default export and reads `.schemas`.
+
+## Moving off the retired `schemastore` bin
+
+A repository that already runs `schemastore build|check|validate` from
+`@effected/schemastore-cli` changes four things; the config, the flags and the
+exit codes stay as they were:
+
+- Replace the `@effected/schemastore-cli` devDependency with `@effected/plugin`
+  (`catalog:effected`).
+- Rewrite each script and workflow step: `schemastore build` becomes
+  `effected schema build`, and likewise `check` and `validate`.
+- Optionally switch the config's import to `defineSchemastore` from
+  `@effected/plugin`; `defineConfig` from `@effected/schemastore` still works.
+- A program that imported `AjvValidator` or `AjvInstanceValidator` from the old
+  package imports them from `@effected/engine/schema`.

@@ -1,4 +1,5 @@
-import { Option, Result, Schema } from "effect";
+import { Option, Predicate, Result, Schema } from "effect";
+import { stampVersion } from "./internal/version.js";
 import type { SchemaLayout, SchemaVersion } from "./SchemaVersioning.js";
 import { SchemaVersioning } from "./SchemaVersioning.js";
 
@@ -372,6 +373,22 @@ export class HostedSchema extends Schema.Class<HostedSchema>("HostedSchema")(Hos
 		);
 	}
 }
+
+// A prototype property, so neither of these reaches an instance's own keys:
+// structural equality and `Schema` encoding never see them. The brand is what
+// `defineConfig` recognizes, because `instanceof` fails across two copies of
+// this package.
+const HostedSchemaBrand: unique symbol = Symbol.for("@effected/schemastore/HostedSchema");
+Object.defineProperty(HostedSchema.prototype, HostedSchemaBrand, { value: true });
+stampVersion(HostedSchema.prototype);
+
+/**
+ * Whether a value is a `HostedSchema` from any copy of this package.
+ *
+ * @internal
+ */
+export const isHostedSchema = (value: unknown): value is HostedSchema =>
+	Predicate.hasProperty(value, HostedSchemaBrand) && value[HostedSchemaBrand] === true;
 
 // The one validating path every named constructor takes: a decode, so the
 // class check's message reaches the thrown Error (`make` buries it in `cause`).

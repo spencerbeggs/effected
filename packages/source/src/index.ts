@@ -8,11 +8,18 @@
  * installed copies of this package interoperate. {@link SourcePosition}, {@link SourceRange},
  * {@link SourceSpan}, {@link SourceLocation} and {@link SourceDiagnostic} are
  * the structural shapes the kit's format packages already share, so a
- * consumer can be written once over any of them.
+ * consumer can be written once over any of them. {@link LineDiff} is a pure
+ * line diff grouped into unified-diff hunks.
  *
  * @packageDocumentation
  */
 
+export {
+	LineDiff,
+	type LineDiffHunk,
+	type LineDiffLine,
+	type LineDiffOptions,
+} from "./LineDiff.js";
 export { type LineBreaks, LineIndex, type LineIndexOptions } from "./LineIndex.js";
 export type { SourceDiagnostic, SourceLocation } from "./SourceDiagnostic.js";
 export type { SourceIndex } from "./SourceIndex.js";

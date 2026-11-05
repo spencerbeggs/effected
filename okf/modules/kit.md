@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/kit"
-description: The platform-free primitives a carrier-pattern tool's own engine package shares across its front ends — distribution stamping, remediation shape, never-throwing error text, launch-context resolution, a one-permit lane for process-global work with scoped restores, and transport-neutral crash guards.
+description: The platform-free primitives a carrier-pattern tool's own engine package shares across its front ends — distribution stamping, remediation shape, never-throwing error text, launch-context resolution, a one-permit lane for process-global work with scoped restores, a path-containment check that fails closed, and transport-neutral crash guards.
 status: stable
 kind: package
 resource: ../../packages/kit
@@ -9,10 +9,10 @@ layer: pure
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:53:05Z
+  at: 2026-11-05T03:48:06Z
 integrity:
   generated:
-    body: 0fcf8e3d38a3c06a
+    body: 518233086bcbfb52
 ---
 
 # @effected/kit
@@ -67,6 +67,8 @@ object, which loses TSDoc on its members in the built `.d.ts`.
 | `Exclusive.promise({ try, catch, abandon? })` | static function | `Effect<A, E>`. A promise whose interruption aborts `signal` and then **waits** for it to settle, where `Effect.promise` and `Effect.tryPromise` abandon it. A rejection or a synchronous throw from `try` fails through `catch`; a `catch` that throws dies with what it threw. `abandon: true` aborts and resumes at once, for a promise that ignores its signal. |
 | `ExclusiveTimeout` | tagged error | `{ timeout, message }`, `timeout` the formatted duration. By the time a caller sees it, the body's finalizers have run and the permit is released. |
 | `ExclusiveRunOptions`, `ExclusivePromiseOptions<A, E>` | interfaces | The option shapes of `run` and `promise`. |
+| `PathContainment.isWithinLexical(path, root, candidate)` | static function | `(Path.Path, string, string) => boolean`: whether `candidate` is `root` or under it, comparing resolved spellings only (`..` and trailing separators normalised, links not followed). A sibling sharing a prefix is outside. Pure. |
+| `PathContainment.isWithin(root, candidate)` | static function | `Effect<boolean, never, FileSystem \| Path>`: the same question answered from real paths (#1201). The candidate's nearest existing ancestor is resolved with `realPath` and the missing tail appended; a component that is a dangling link is followed to its target (forty hops at most, a loop is outside), so a link out of the root is outside even when its target is absent. Fails closed: only `NotFound` counts as absent, any other failure on a candidate component answers `false`, and the lexical answer stands in only when the root's own real path is `NotFound`. A relative candidate resolves against `root`, in both forms. A point-in-time check. Requires core's `FileSystem` in `R`; the kit owns no backend. Tests use `@effected/memfs` (a devDependency). |
 | `ProcessScope.chdir(host, directory)` | static function | `Effect<void, ProcessScopeError, Scope>`. Enters `directory` and returns to the previous working directory when the scope closes. When the previous one cannot be read (deleted, so `cwd()` throws), the change still happens and nothing is restored; a restore that throws is ignored for the same reason. |
 | `ProcessScope.env(env, patch)` | static function | `Effect<void, never, Scope>`. Applies `patch` to an env record and restores every patched key on close. An `undefined` value deletes the key, and a key absent before is deleted again on restore: nothing ever assigns `undefined`, which Node's `process.env` would store as the string `"undefined"`. |
 | `ProcessCwdHost`, `ProcessScopeError` | interface, tagged error | `ProcessCwdHost` is `{ cwd(), chdir(directory) }`, which Node's `process` satisfies. `ProcessScopeError` is `reason: "ChdirFailed"`, `path`, `message`, `cause`; nothing was changed, so nothing is restored. |

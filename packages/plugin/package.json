@@ -2,7 +2,7 @@
 	"name": "@effected/plugin",
 	"version": "0.1.0",
 	"private": true,
-	"description": "Install this one package to get the effected command and the effected-mcp server. Depends on @effected/cli and @effected/mcp.",
+	"description": "Install this one package to get the effected command and the effected-mcp server. Depends on @effected/cli and @effected/mcp, and exports defineSchemastore for a schemastore.config.ts.",
 	"keywords": ["effect", "effected", "cli", "mcp", "agent"],
 	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/plugin#readme",
 	"bugs": {
@@ -35,8 +35,9 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@effected/cli": "workspace:^",
-		"@effected/mcp": "workspace:^",
+		"@effected/cli": "workspace:*",
+		"@effected/mcp": "workspace:*",
+		"@effected/schemastore": "workspace:*",
 		"effect": "catalog:effected"
 	},
 	"devDependencies": {

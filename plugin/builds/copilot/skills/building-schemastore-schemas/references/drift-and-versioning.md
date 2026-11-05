@@ -28,7 +28,7 @@ Two rules are fixed and never relitigated per call site:
 ## The lifecycle: iterate, publish, then freeze a new label to change the contract
 
 A schema entry's `versions` names every label the catalog advertises;
-`current` (default: the newest) is the ONE label `schemastore build`
+`current` (default: the newest) is the ONE label `effected schema build`
 generates — every other label is a **frozen** file the CLI verifies still
 exists on disk but never regenerates:
 

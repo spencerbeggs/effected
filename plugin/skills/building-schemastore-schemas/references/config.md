@@ -10,19 +10,24 @@ use.
 
 The module is loaded through `jiti` created against the config file's own
 path, so its relative specifiers and its `effect` / `@effected/schemastore`
-imports resolve from the consumer's tree, never from the CLI's. That is what
+imports resolve from the consumer's tree, never from the tool's. That is what
 keeps the config and the pipeline on one `effect` and one
 `@effected/schemastore` instance: the `SchemaTarget` you construct must be the
 class the pipeline matches, and the annotation symbols on your schema must be
-the ones core's `Schema.toJsonSchemaDocument` reads. Install
-`@effected/schemastore` and `@effected/schemastore-cli` at the same version —
-they release together as a fixed pair, and the CLI's peer range on the
-library is exact.
+the ones core's `Schema.toJsonSchemaDocument` reads. Install `@effected/plugin`
+(root devDependency, `catalog:effected`) and `@effected/schemastore` so the
+catalog resolves one version of the library; when the config's copy differs
+from the tool's, the command fails with exit `2` naming both versions (see
+`ci-gate.md`).
 
 ## `defineConfig`
 
 The default export is a `defineConfig(...)` value: a required config
 `name`, and the schemas keyed by schema name.
+Write it as `defineSchemastore` from `@effected/plugin`, which is
+`defineConfig` from `@effected/schemastore` under the tool's name. A repository
+with only `@effected/mcp` installed imports `defineConfig` from
+`@effected/schemastore` instead; the value is identical.
 `defineConfig` is pure — no IO, no Effect — and validates the whole input,
 derives every `$id`/`path`/catalog URL from ONE layout, fills drift
 defaults, assembles every catalog entry, and brands the result so the
@@ -30,10 +35,10 @@ loader recognises it. A malformed config fails typed at load (exit `2`)
 rather than as a `TypeError` deep in the pipeline.
 
 ```ts
-import { defineConfig } from "@effected/schemastore";
+import { defineSchemastore } from "@effected/plugin";
 import { OkfitConfig } from "./src/config-schema.js";
 
-export default defineConfig({
+export default defineSchemastore({
   name: "okfit",
   outputDir: "schemas",
   baseUrl: "schemastore",
@@ -230,7 +235,7 @@ appears only when a flag forced one tolerance over every schema's own.
 
 Relative `outputDir`, `catalogDir`, and every derived schema/frozen `path`
 resolve against the **config file's directory**, never the working
-directory. A root-level `schemastore build packages/x/schemastore.config.ts`
+directory. A root-level `effected schema build packages/x/schemastore.config.ts`
 and a `pnpm --filter x schema:build` must write identical files. Absolute
 paths pass through unchanged, so an existing `resolve(REPO_ROOT, …)`
 `outputDir` keeps working.

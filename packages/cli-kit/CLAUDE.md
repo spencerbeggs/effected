@@ -3,7 +3,7 @@
 The boundary layer of an `effect/cli` program: `CliLogger`,
 `CliRuntime` (including `CliRuntime.main`), `CliExit`, `CliColor`,
 `SchemaIssueRenderer`, `ConfigIssueRenderer` — plus a `./testing` subpath
-exporting `CliTest`, for spawning a built bin hermetically in tests. Every
+exporting `CliTest` (with its `CliTestFailure`, raised by `expectExit`), for spawning a built bin hermetically in tests. Every
 export but `CliTest` is presentation, and `CliTest` is test tooling behind
 its own entrypoint so it never enters a CLI's runtime import graph.
 
@@ -53,7 +53,7 @@ installs its optional peers — `@./okf/decisions/ui-tier-is-integrated-on-opt-i
 — Load when: adding a dependency or a peer to this package.
 
 **Nothing in the kit may depend on this but an application or a companion.**
-The one kit package that does is `schemastore-cli`, a companion that carries no
+The one kit package that does is `@effected/cli`, a tool package that carries no
 tier and imports only the boundary root, so nothing inherits a tier from `./ui`.
 Same posture as `app`: the two are siblings, not layers — `app` is the control
 plane, `cli-kit` the presentation boundary, and neither imports the other.
@@ -76,7 +76,7 @@ or commands, or touching `MainOptions.distribution`.
 `lazy`, `map`, `live`, `liveDetached`, `routeStream`, `lazyView`, `context`), `DocView`, `UiProvider`, the widgets (`Select`, `TextInput`, `MultiSelect`, `Confirm`,
 `Toggle`, `Tabs`, `Viewport`), the key layer (`UiKey`, `KeyTable`, `useKeys`,
 `KeyHelp`) and the theme bridge (`Styled`, `inkProps`, `useTheme`,
-`useGlyphs`, `useTerminalSize`). `./ui/testing` holds `CliUiTest`: `render`
+`useGlyphs`, `useStyle`, `useTerminalSize`). `./ui/testing` holds `CliUiTest`: `render`
 for one screen, `view` for a display-only element (no `result`), `session`
 for a program that runs several (with a `transcript` and `written` of the terminal, and
 `renderPath: "production"` to observe `clear`), `live` for a live view, and `chunk` on every handle to send keys in

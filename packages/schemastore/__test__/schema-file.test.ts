@@ -253,7 +253,12 @@ describe("SchemaFile", () => {
 				const change = yield* files.check(TARGET, document);
 				// Content is clean AND the writer would do nothing — the two
 				// answers agree under the default compare mode.
-				assert.deepStrictEqual(change, { wouldWrite: false, change: "none" });
+				assert.deepStrictEqual(change, {
+					wouldWrite: false,
+					change: "none",
+					generated: canonicalText,
+					existing: reflowed,
+				});
 				assert.isTrue(DocumentDiff.isClean(change.change));
 			}).pipe(Effect.provide(env({ [TARGET]: reflowed }, noWrites("check must never write")))),
 		);
@@ -265,7 +270,12 @@ describe("SchemaFile", () => {
 			Effect.gen(function* () {
 				const files = yield* SchemaFile;
 				const result = yield* files.check(TARGET, document, { compare: "bytes" });
-				assert.deepStrictEqual(result, { wouldWrite: true, change: "none" });
+				assert.deepStrictEqual(result, {
+					wouldWrite: true,
+					change: "none",
+					generated: canonicalText,
+					existing: reflowed,
+				});
 				const volume = yield* MemoryFileSystem.Volume;
 				assert.strictEqual(volume.text(TARGET), reflowed, "check never writes, even when it would");
 			}).pipe(Effect.provide(env({ [TARGET]: reflowed }, noWrites("check must never write")))),
@@ -281,13 +291,18 @@ describe("SchemaFile", () => {
 				const missing = yield* checkTarget.pipe(
 					Effect.provide(env({ "/repo/schemas/other.schema.json": canonicalText }, noWrites("check"))),
 				);
-				assert.deepStrictEqual(missing, { wouldWrite: true, change: "created" });
+				assert.deepStrictEqual(missing, { wouldWrite: true, change: "created", generated: canonicalText });
 				assert.isFalse(DocumentDiff.isClean(missing.change), "a file that did not exist is not clean");
 
 				const drifted = yield* checkTarget.pipe(
 					Effect.provide(env({ [TARGET]: JSON.stringify({ type: "array" }) }, noWrites("check"))),
 				);
-				assert.deepStrictEqual(drifted, { wouldWrite: true, change: "contract" });
+				assert.deepStrictEqual(drifted, {
+					wouldWrite: true,
+					change: "contract",
+					generated: canonicalText,
+					existing: JSON.stringify({ type: "array" }),
+				});
 			}),
 		);
 	});

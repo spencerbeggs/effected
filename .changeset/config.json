@@ -23,7 +23,7 @@
 		}
 	],
 	"commit": false,
-	"fixed": [["@effected/schemastore", "@effected/schemastore-cli"]],
+	"fixed": [],
 	"ignore": ["docs", "scratchpad"],
 	"privatePackages": {
 		"tag": true,

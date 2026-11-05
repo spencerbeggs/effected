@@ -16,10 +16,10 @@ sources:
     resource: ../../plugin/skills/structuring-an-action/SKILL.md
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-03T04:19:44Z
+  at: 2026-11-05T06:55:47Z
 integrity:
   generated:
-    body: e7d6fe6502b48423
+    body: 4a543ab85e95f15d
 ---
 
 # Build a GitHub Action repository to the kit's canonical shape
@@ -180,8 +180,8 @@ ajv-validated, drift-checked files — via the `schemastore` command over a
 config, or a hand-rolled drift test. The identity is declared once beside
 the schema, and the payload's `$schema` and the committed document's `$id`
 both derive from it. `@effected/schemastore` is a runtime dependency (the
-identity is read at runtime); `@effected/schemastore-cli` is a
-devDependency and is where the ajv engine lives, so the bundle never
+identity is read at runtime); `@effected/plugin` is a
+devDependency (it carries `effected schema`, where the ajv engine lives), so the bundle never
 carries one. Flat, line-list actions skip this entirely. Version labels in
 emitted file names are one-to-three-component labels ordered by SemVer
 precedence, and a `published` document's contract change is refused before

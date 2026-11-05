@@ -14,7 +14,7 @@
  * (`DocumentDiff`), the validation contracts and their doubles
  * (`SchemaValidator` for documents, `InstanceValidator` for a payload
  * against a published document — the shipped ajv engines are `AjvValidator`
- * and `AjvInstanceValidator` in `@effected/schemastore-cli`, so this
+ * and `AjvInstanceValidator` in `@effected/engine/schema`, so this
  * package installs no engine), the
  * hosted identity an application derives its `$schema` from and
  * `defineConfig` derives `$id` from (`HostedSchema`), and the emit pipeline
@@ -109,6 +109,7 @@ export {
 	defineConfig,
 	isSchemastoreConfig,
 } from "./SchemastoreConfig.js";
+export { SchemastoreVersion } from "./SchemastoreVersion.js";
 export { SchemaTarget } from "./SchemaTarget.js";
 export {
 	SchemaValidator,
