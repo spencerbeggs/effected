@@ -45,6 +45,8 @@
 * Updated config-file
 * Updated package-json
 * Updated @effected/workspaces: monorepo tooling
+* Updated The Catalog Sync check goes RED when it found and fixed drift
+* Updated xdg stays independent of core UserDirectories
 
 ## 2026-11-02
 

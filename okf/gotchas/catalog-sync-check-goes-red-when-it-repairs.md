@@ -13,10 +13,10 @@ sources:
     resource: ../../.github/workflows/catalog-sync.yml
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-11-05T16:58:35Z
 integrity:
   generated:
-    body: 7d8f5e1c0b8dbe0b
+    body: 4066fa0e2880b5d4
 ---
 
 # The Catalog Sync check goes RED when it found and fixed drift
@@ -55,11 +55,11 @@ neither is a bug:
   purely as a trigger to keep `main`'s catalog fresh; it does not
   validate the contents of the PR that triggered it. A feature branch's
   own pending changesets reach the catalog only once that branch merges,
-  so the branch's own PR page never shows a catalog diff, even while the
-  `Catalog Sync` check run appears on it.
-- **The trigger fires on pull requests to `changeset-release/main` as
-  well as to `main`**,[^catalog-sync-workflow] which is what puts this
-  job in the release path — opening the release PR is itself what
+  so the branch's own PR page never shows a catalog diff.
+- **The job acts only on the release PR.**[^catalog-sync-workflow] The
+  workflow triggers on pull requests to `main`, but the job's `if:`
+  runs it only when the head branch is `changeset-release/main`, so an
+  ordinary PR skips it by design. Opening the release PR is what
   triggers the sync that lands inside that PR before anything publishes.
 
 ## The check
