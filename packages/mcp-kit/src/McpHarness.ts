@@ -1,6 +1,6 @@
 import { ErrorText } from "@effected/kit";
 import type { Cause, Scope } from "effect";
-import { Console, Deferred, Effect, Exit, Fiber, Layer, Queue, Sink, Stdio, Stream } from "effect";
+import { Console, Context, Deferred, Effect, Exit, Fiber, Layer, Queue, Sink, Stdio, Stream } from "effect";
 import { McpProtocol } from "effect/ai";
 import type { ClientInfo } from "./internal/wire.js";
 import {
@@ -57,7 +57,7 @@ const showArg = (arg: unknown): string => {
  *
  * @public
  */
-export interface McpHarnessOptions {
+export interface McpHarnessOptions<S = never> {
 	/** The revision this client speaks. Defaults to `McpProtocol.v2025_11_25`; a stateless adapter switches to `server/discover` and per-request `_meta`. */
 	readonly protocol?: McpProtocol.ProtocolAdapter | undefined;
 	/** The `clientInfo` sent in `initialize` and in stateless `_meta`. */
@@ -66,6 +66,16 @@ export interface McpHarnessOptions {
 	readonly captureLogs?: boolean | undefined;
 	/** Treat any stdout line that is not JSON-RPC as a defect. Defaults to `true`. */
 	readonly strictStdout?: boolean | undefined;
+	/**
+	 * A pre-built context of the services the server needs, provided to it as built.
+	 *
+	 * @remarks
+	 * Build the services once, seed them from the test, and pass them here: the tools then read the instance the test
+	 * wrote to, where providing the services' layer instead would build a second one. A `Stdio` in the context is
+	 * dropped: the harness supplies the queue-backed one, and a platform layer's real process `Stdio` must never
+	 * reach the server. The type removes `S` from the server's requirements.
+	 */
+	readonly services?: Context.Context<S> | undefined;
 }
 
 interface HarnessParts {
@@ -149,6 +159,24 @@ interface HarnessParts {
  * 	yield* harness.initialize;
  * 	const tools = yield* harness.listTools;
  * 	return tools.map((tool) => tool.name);
+ * }).pipe(Effect.scoped);
+ * ```
+ *
+ * Services the test also seeds go in `options.services`, built once. End the
+ * session with `harness.close` (the server answers what is in flight, then
+ * stops) or, when a request may never complete, `harness.stop` (the server is
+ * interrupted at once):
+ *
+ * ```ts
+ * import { McpHarness } from "@effected/mcp-kit/testing";
+ * import { Context, Effect } from "effect";
+ *
+ * // `Database` is a service the server's tools need, and the test seeds it.
+ * const program = Effect.gen(function* () {
+ * 	const database = yield* makeDatabase;
+ * 	const harness = yield* McpHarness.make(ServerLayer, { services: Context.make(Database, database) });
+ * 	yield* harness.initialize;
+ * 	yield* harness.stop;
  * }).pipe(Effect.scoped);
  * ```
  *
@@ -251,10 +279,10 @@ export class McpHarness {
 	}
 
 	/** Build `server` over queue-backed stdio and return a client for it; fails with the layer's own error if it cannot build. */
-	static readonly make = <ROut, E, R>(
+	static readonly make = <ROut, E, R, S = never>(
 		server: Layer.Layer<ROut, E, R>,
-		options: McpHarnessOptions = {},
-	): Effect.Effect<McpHarness, E, Scope.Scope | Exclude<R, Stdio.Stdio>> =>
+		options: McpHarnessOptions<S> = {},
+	): Effect.Effect<McpHarness, E, Scope.Scope | Exclude<R, Stdio.Stdio | S>> =>
 		Effect.gen(function* () {
 			const protocol = options.protocol ?? McpProtocol.v2025_11_25;
 			const clientInfo: ClientInfo = options.clientInfo ?? DEFAULT_CLIENT_INFO;
@@ -302,10 +330,17 @@ export class McpHarness {
 				error: toStderr,
 				warn: toStderr,
 			};
-			const provided =
+			const withLogs =
 				options.captureLogs === false
 					? server.pipe(Layer.provide(stdio))
 					: server.pipe(Layer.provide(stdio), Layer.provide(Layer.succeed(Console.Console, captured)));
+			// The harness's own Stdio is the only one the server may see. `services` supplies S, so S leaves the
+			// requirements; the type cannot see through a context.
+			const provided = (
+				options.services === undefined
+					? withLogs
+					: withLogs.pipe(Layer.provide(Layer.succeedContext(Context.omit(Stdio.Stdio)(options.services))))
+			) as Layer.Layer<ROut, E, Exclude<R, Stdio.Stdio | S>>;
 
 			const route = (line: string): Effect.Effect<void> => {
 				const parsed = parseFrame(line);

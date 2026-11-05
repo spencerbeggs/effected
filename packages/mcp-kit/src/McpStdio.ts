@@ -1,5 +1,6 @@
 import type { Array as Arr, Scope, Stdio } from "effect";
 import { Cause, Effect, Exit, Layer, References, Runtime } from "effect";
+import type { McpSchema } from "effect/ai";
 import { McpProtocol, McpServer } from "effect/ai";
 import { LaunchFailed } from "./internal/LaunchFailed.js";
 import { makeGuardedStdio } from "./internal/StdinFrames.js";
@@ -18,6 +19,21 @@ export interface McpStdioOptions<RA = never, RE = never, RR = never> {
 	readonly instructions?: string | undefined;
 	/** A one-line description of the server, reported to the client. */
 	readonly description?: string | undefined;
+	/** The server's website, reported in `server/discover` and `initialize`. */
+	readonly websiteUrl?: string | undefined;
+	/** Icons for the server, reported to the client. */
+	readonly icons?: ReadonlyArray<McpSchema.Icon> | undefined;
+	/** Capability extensions the server advertises, keyed `vendor/name`. */
+	readonly extensions?: (typeof McpSchema.ServerCapabilities)["Type"]["extensions"] | undefined;
+	/**
+	 * How long a client may treat each list result as fresh, per result kind.
+	 *
+	 * @remarks
+	 * Core's `cacheHints`, forwarded unchanged. Only the stateless `2026-07-28` revision carries them; earlier
+	 * revisions ignore the option. Omitted kinds keep a zero `ttl`. A positive `ttl` lets a client keep showing a list
+	 * after registrations change, until it expires: raise it only for a list that is fixed for the server's lifetime.
+	 */
+	readonly cacheHints?: McpServer.CacheHints | undefined;
 	/** Defaults to {@link McpStdio.protocols}. Read its ordering rules before overriding. */
 	readonly protocols?: Arr.NonEmptyReadonlyArray<McpProtocol.ProtocolAdapter> | undefined;
 	/**
@@ -209,6 +225,10 @@ export class McpStdio {
 			version: options.version,
 			instructions: options.instructions,
 			description: options.description,
+			websiteUrl: options.websiteUrl,
+			icons: options.icons,
+			extensions: options.extensions,
+			cacheHints: options.cacheHints,
 			protocols: options.protocols ?? McpStdio.protocols,
 			registrations: options.registrations,
 		}).pipe(
