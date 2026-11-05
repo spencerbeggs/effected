@@ -13,6 +13,7 @@ describe("the @effected/env entrypoint", () => {
 			"CurrentRuntimeEnv",
 			"EnvOverride",
 			"RuntimeEnv",
+			"Sgr",
 			"ShellExports",
 			"ShellExportsError",
 			"ShellQuoteError",

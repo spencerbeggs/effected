@@ -54,6 +54,7 @@
 * Updated glob
 * Updated glob is a full-fidelity vendored port, not a minimal runtime dependency
 * Updated semver
+* Updated @effected/env
 
 ## 2026-11-02
 
