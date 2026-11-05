@@ -1,5 +1,35 @@
 # @effected/github-actions
 
+## 0.32.0
+
+### Breaking Changes
+
+- `ActionServices` gains `Signature` (#1205), and `ActionRuntime.layer` provides it through `NodeCrypto.layerSignature`, so `GitHubApp.layer` now typechecks inside `Action.run`. A custom layer that stands in for the runtime platform must provide `Signature` too.
+
+### Features
+
+- `ActionInput.schema` takes optional parse options (#1206) that are forwarded to the decode, so `{ onExcessProperty: "error" }` rejects keys the schema does not name. [#1239][#1239]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github | dependency | updated | 0.28.0 | 0.29.0 |
+| @effected/glob | dependency | updated | 0.18.0 | 0.19.0 |
+| @effected/markdown | dependency | updated | 0.26.0 | 0.27.0 |
+| @effected/npm | dependency | updated | 0.30.0 | 0.30.1 |
+| @effected/sbom | dependency | updated | 0.20.0 | 0.20.1 |
+| @effected/semver | dependency | updated | 0.21.0 | 0.22.0 |
+| @effected/templates | dependency | updated | 0.17.0 | 0.18.0 |
+| @effected/walker | dependency | updated | 0.25.0 | 0.25.1 |
+| @effected/yaml | dependency | updated | 0.28.0 | 0.29.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1239]: https://github.com/spencerbeggs/effected/pull/1239
+
 ## 0.31.0
 
 ### Breaking Changes

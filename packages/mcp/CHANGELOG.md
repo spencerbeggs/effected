@@ -1,5 +1,27 @@
 # @effected/mcp
 
+## 0.14.0
+
+### Features
+
+- New MCP tools `schema_build`, `schema_check` and `schema_validate` expose the schema pipeline to agents. [#1233][#1233]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/engine | dependency | updated | 0.12.0 | 0.13.0 |
+| @effected/glob | dependency | updated | 0.18.0 | 0.19.0 |
+| @effected/kit | dependency | updated | 0.12.0 | 0.13.0 |
+| @effected/mcp-kit | dependency | updated | 0.13.0 | 0.14.0 |
+| @effected/walker | dependency | updated | 0.25.0 | 0.25.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1233]: https://github.com/spencerbeggs/effected/pull/1233
+
 ## 0.13.0
 
 ### Breaking Changes

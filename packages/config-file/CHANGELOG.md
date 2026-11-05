@@ -1,5 +1,30 @@
 # @effected/config-file
 
+## 0.25.0
+
+### Features
+
+- `ConfigFile` writes are atomic through `@effected/files`: a crash leaves the old file or the new one, never a truncated config (#1234).
+
+- Behaviour a consumer can trip on: the file's directory needs write permission, a read-only target is refused, the file's inode is replaced, and a symlinked target keeps its link and an existing file keeps its mode. [#1237][#1237]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/glob | dependency | updated | 0.18.0 | 0.19.0 |
+| @effected/jsonc | dependency | updated | 0.23.0 | 0.24.0 |
+| @effected/toml | dependency | updated | 0.19.0 | 0.19.1 |
+| @effected/walker | dependency | updated | 0.25.0 | 0.25.1 |
+| @effected/yaml | dependency | updated | 0.28.0 | 0.29.0 |
+| @effected/files | dependency | added | — | 0.1.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1237]: https://github.com/spencerbeggs/effected/pull/1237
+
 ## 0.24.0
 
 ### Dependencies

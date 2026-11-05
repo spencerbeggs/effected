@@ -1,5 +1,33 @@
 # @effected/schemastore
 
+## 0.30.0
+
+### Features
+
+- `SchemaFile` writes schema documents atomically through `@effected/files`, so a reader sees the old document or the new one, never a torn one (#1234). A failed write is still a `SchemaFileWriteError` naming the schema file, not the temp.
+
+- The directory holding a schema file needs write permission. [#1237][#1237]
+
+* `SchemastoreVersion` reads the `@effected/schemastore` version stamped on a `defineConfig` result and on `HostedSchema` values, so a tool can tell when a config's values came from a different copy of the package than its own.
+* `PipelineCheckResult` and the result of `SchemaFile.check` now report `generated` and `existing` so a caller can show what drifted.
+* `ResolvedSchema.hosted` exposes the hosted form of a resolved schema, and `hosted` is recognized by brand across duplicate package copies.
+* The `@effected/semver` dependency is now an exact version, so the installed `@effected/schemastore` and `@effected/semver` always agree. [#1233][#1233]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/semver | dependency | updated | 0.21.0 | 0.22.0 |
+| @effected/files | dependency | added | — | 0.1.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1233]: https://github.com/spencerbeggs/effected/pull/1233
+
+[#1237]: https://github.com/spencerbeggs/effected/pull/1237
+
 ## 0.29.0
 
 ### Dependencies

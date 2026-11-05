@@ -1,5 +1,17 @@
 # @effected/memfs
 
+## 0.24.0
+
+### Bug Fixes
+
+- `NodeSyncFileSystem.layerWithPath` (#1173) now provides the host's own `Path` rather than core's POSIX-only one, so a program using both services reads Windows paths correctly beside the real filesystem. This is not yet exercised on Windows. [#1239][#1239]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1239]: https://github.com/spencerbeggs/effected/pull/1239
+
 ## 0.23.0
 
 ### Maintenance

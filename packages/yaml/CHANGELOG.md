@@ -1,5 +1,23 @@
 # @effected/yaml
 
+## 0.29.0
+
+### Breaking Changes
+
+- `modify` with `indent` or `indentSequences` (#1219) no longer re-lays out the whole document on a scalar edit. It splices the one region, so the scalar's comment and quote style survive. Callers who relied on the re-layout should call `YamlFormat.format` for it. [#1239][#1239]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/source | dependency | updated | 0.3.0 | 0.4.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1239]: https://github.com/spencerbeggs/effected/pull/1239
+
 ## 0.28.0
 
 ### Dependencies

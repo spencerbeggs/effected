@@ -1,5 +1,13 @@
 # @effected/toml
 
+## 0.19.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/source | dependency | updated | 0.3.0 | 0.4.0 |
+
 ## 0.19.0
 
 ### Dependencies

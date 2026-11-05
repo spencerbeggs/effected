@@ -1,5 +1,36 @@
 # @effected/workspaces
 
+## 0.43.0
+
+### Features
+
+- `SourceBoundary.platformFree(builtins)` (#1196) builds the boundary rule for platform-free code: every Node built-in, bare or `node:`-prefixed, and `@effect/platform*`. Pass `builtinModules` from `node:module` as `builtins`. [#1239][#1239]
+
+* `SourceBoundary` has a new `{ promiseInExclusive }` rule that flags `Effect.promise(`, `Effect.runPromise(` and `Effect.runPromiseExit(` inside a `<lane>.run(` call, where the lane is bound from `Exclusive.make` in the same file or named in `lanes` (#1184). Core's `Effect.promise` abandons the promise when the lane's timeout interrupts the body, so the permit is released while the work still runs; `Exclusive.promise` aborts and waits. Offences report the rule as `"promiseInExclusive"`.
+
+* The check is lexical: a helper called from the body, an aliased `Effect` import or a member receiver such as `this.lane.run(` passes. [#1237][#1237]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/glob | dependency | updated | 0.18.0 | 0.19.0 |
+| @effected/jsonc | dependency | updated | 0.23.0 | 0.24.0 |
+| @effected/lockfiles | dependency | updated | 0.22.0 | 0.22.1 |
+| @effected/npm | dependency | updated | 0.30.0 | 0.30.1 |
+| @effected/package-json | dependency | updated | 0.29.0 | 0.30.0 |
+| @effected/semver | dependency | updated | 0.21.0 | 0.22.0 |
+| @effected/walker | dependency | updated | 0.25.0 | 0.25.1 |
+| @effected/yaml | dependency | updated | 0.28.0 | 0.29.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1237]: https://github.com/spencerbeggs/effected/pull/1237
+
+[#1239]: https://github.com/spencerbeggs/effected/pull/1239
+
 ## 0.42.0
 
 ### Breaking Changes

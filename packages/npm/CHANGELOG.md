@@ -1,5 +1,13 @@
 # @effected/npm
 
+## 0.30.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/semver | dependency | updated | 0.21.0 | 0.22.0 |
+
 ## 0.30.0
 
 ### Dependencies

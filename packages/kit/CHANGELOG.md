@@ -1,5 +1,17 @@
 # @effected/engine
 
+## 0.13.0
+
+### Features
+
+- `PathContainment` checks that a resolved path stays inside a root directory, so callers can reject traversal outside it with one reusable primitive. [#1233][#1233]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1233]: https://github.com/spencerbeggs/effected/pull/1233
+
 ## 0.12.0
 
 ### Breaking Changes

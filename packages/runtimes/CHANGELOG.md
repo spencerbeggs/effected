@@ -1,5 +1,13 @@
 # @effected/runtimes
 
+## 0.18.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/semver | dependency | updated | 0.21.0 | 0.22.0 |
+
 ## 0.18.0
 
 ### Dependencies

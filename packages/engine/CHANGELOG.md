@@ -1,5 +1,35 @@
 # @effected/engine
 
+## 0.13.0
+
+### Features
+
+- `effected schema build` writes schema documents and catalog files atomically (#1234). A reader sees the old file or the new one, though a build still writes several files in turn.
+
+- `syncFile` now fails with `SchemaFileWriteError` naming the slice the user asked for, rather than a bare platform error naming a temp.
+
+- The output directories need write permission. [#1237][#1237]
+
+* New `@effected/engine/schema` subpath: the schema runner, report schemas, config loader, validators and version check that back `effected schema build|check|validate` and the matching MCP tools. [#1233][#1233]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.23.0 | 0.24.0 |
+| @effected/kit | dependency | updated | 0.12.0 | 0.13.0 |
+| @effected/schemastore | dependency | updated | 0.29.0 | 0.30.0 |
+| @effected/source | dependency | updated | 0.3.0 | 0.4.0 |
+| @effected/files | dependency | added | — | 0.1.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1233]: https://github.com/spencerbeggs/effected/pull/1233
+
+[#1237]: https://github.com/spencerbeggs/effected/pull/1237
+
 ## 0.12.0
 
 ### Breaking Changes
