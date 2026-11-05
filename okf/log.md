@@ -56,6 +56,7 @@
 * Updated semver
 * Updated @effected/env
 * Updated @effected/workspaces/testing: the repo-shape checks
+* Updated @effected/memfs
 
 ## 2026-11-02
 
