@@ -12,7 +12,7 @@ const MAX_LINK_HOPS = 40;
 /**
  * The path the rename must land on: the file behind any symlinks, so the link
  * survives. `realPath` cannot resolve a dangling link, so that case is walked
- * by hand with `readLink`.
+ * by hand with `readLink`, resolving each link's text where the OS would.
  */
 const resolveFinalPath = (fs: FileSystem.FileSystem, path: Path.Path, target: string) =>
 	Effect.gen(function* () {
@@ -25,7 +25,8 @@ const resolveFinalPath = (fs: FileSystem.FileSystem, path: Path.Path, target: st
 			const link = yield* Effect.result(fs.readLink(current));
 			if (Result.isFailure(link)) return current;
 			if (hops === MAX_LINK_HOPS) return yield* Effect.fail(real.failure);
-			current = path.resolve(path.dirname(current), link.success);
+			// Against the directory's real path, as the OS does: a lexical `..` would climb a symlinked parent's alias.
+			current = path.resolve(yield* fs.realPath(path.dirname(current)), link.success);
 		}
 	});
 
@@ -49,7 +50,8 @@ export class AtomicFile {
 	 * The content goes to a temp file named `.effected-<random>.tmp` in the
 	 * target's directory, is synced, and is renamed over the target. A failure or
 	 * an interruption before the rename removes the temp and leaves the target
-	 * untouched.
+	 * untouched. A temp name that is already taken fails `AlreadyExists` and leaves
+	 * that file alone.
 	 *
 	 * A symlinked target keeps its link: the write lands on the file the link
 	 * points to, and a dangling link creates that file. An existing file keeps its
@@ -90,10 +92,20 @@ export class AtomicFile {
 		const temp = path.join(path.dirname(final), `.effected-${suffix.toString(36)}.tmp`);
 		const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
 
+		// The temp is ours to remove only once our open made it: `wx` failing means it is another writer's. Uninterruptible
+		// so an interrupt cannot land between the open and arming the cleanup, which would leak the temp.
+		let opened = false;
 		yield* Effect.gen(function* () {
 			yield* Effect.scoped(
 				Effect.gen(function* () {
-					const file = yield* fs.open(temp, mode === undefined ? { flag: "wx" } : { flag: "wx", mode });
+					const file = yield* fs.open(temp, mode === undefined ? { flag: "wx" } : { flag: "wx", mode }).pipe(
+						Effect.tap(() =>
+							Effect.sync(() => {
+								opened = true;
+							}),
+						),
+						Effect.uninterruptible,
+					);
 					yield* file.writeAll(bytes);
 					yield* file.sync;
 				}),
@@ -101,6 +113,6 @@ export class AtomicFile {
 			// open's mode is subject to umask, so it can land narrower than the original.
 			if (mode !== undefined) yield* fs.chmod(temp, mode);
 			yield* fs.rename(temp, final);
-		}).pipe(Effect.onError(() => fs.remove(temp, { force: true }).pipe(Effect.ignore)));
+		}).pipe(Effect.onError(() => (opened ? fs.remove(temp, { force: true }).pipe(Effect.ignore) : Effect.void)));
 	});
 }

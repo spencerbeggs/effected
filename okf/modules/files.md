@@ -10,10 +10,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T15:34:07Z
+  at: 2026-11-05T15:37:11Z
 integrity:
   generated:
-    body: 7b2990cb69bf61ef
+    body: e432b0185dd09466
 ---
 
 # `@effected/files`
@@ -39,13 +39,13 @@ AtomicFile.write(target: string, content: string | Uint8Array):
 
 ## The choreography
 
-1. Resolve the final path. `realPath(target)` if it answers. On `NotFound`, try `readLink(target)`: success means a dangling link, so resolve the link text against the link's directory and repeat, 40 hops at most, then fail with the last error. Any `readLink` failure means the target is simply absent, so that path is used as given. Other `realPath` failures propagate.
+1. Resolve the final path. `realPath(target)` if it answers. On `NotFound`, try `readLink(target)`: success means a dangling link, so resolve the link text against the `realPath` of the link's directory, as the OS does, and repeat, 40 hops at most, then fail with the last error. A failure of that directory's `realPath` propagates. Any `readLink` failure means the target is simply absent, so that path is used as given. Other `realPath` failures propagate.
 2. Read the existing mode with `stat(final)`, masked `0o7777`. `NotFound` means no mode.
 3. The temp is `.effected-<base36 random>.tmp` in the final path's directory. The name does not contain the target's basename, so a long name cannot overflow the name limit.
 4. In a scope, open the temp with flag `wx` and the existing mode if there is one, write all the bytes, and sync. A string is encoded as UTF-8.
 5. When a mode exists, `chmod` the temp, because the mode given to `open` is subject to umask.
 6. Rename the temp over the final path.
-7. Any failure or interruption in steps 4 to 6 removes the temp and keeps the original cause.
+7. Once `open` has succeeded, any failure or interruption in steps 4 to 6 removes the temp and keeps the original cause. A failed `open` removes nothing, so a name collision fails `AlreadyExists` and leaves the other writer's file alone. The open and the arming of this cleanup are one uninterruptible step, so an interrupt cannot leak the temp between them.
 
 ## Limits
 

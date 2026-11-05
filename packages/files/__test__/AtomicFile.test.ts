@@ -4,7 +4,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { MemoryFileSystemFaultsFactory, MemoryFileSystemSeed } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, Exit, Fiber, FileSystem, Latch, PlatformError } from "effect";
+import { Effect, Exit, Fiber, FileSystem, Latch, PlatformError, Random } from "effect";
 import { AtomicFile } from "../src/index.js";
 
 const DIR = "/work";
@@ -29,12 +29,13 @@ const linkChain = (count: number): MemoryFileSystemSeed => {
 };
 
 /**
- * A volume whose `realPath` answers `NotFound` for everything, so the hop budget
- * is the only thing that stops the walk. A real `realPath` reports `ELOOP` first.
+ * A volume whose `realPath` answers `NotFound` for everything but the directory
+ * holding the links, so the hop budget is the only thing that stops the walk. A
+ * real `realPath` reports `ELOOP` first.
  */
 const realPathAlwaysAbsent = (seed: MemoryFileSystemSeed) =>
 	MemoryFileSystem.layerWithPath(seed, {
-		faults: { realPath: (path) => Effect.fail(failure("realPath", path, "NotFound")) },
+		faults: { realPath: (path) => (path === DIR ? undefined : Effect.fail(failure("realPath", path, "NotFound"))) },
 	});
 
 /** Replaces `writeAll` on every file opened, leaving the rest of the file real. */
@@ -386,6 +387,93 @@ describe("AtomicFile.write", () => {
 				assert.deepStrictEqual(yield* temps, []);
 			}).pipe(Effect.provide(layer));
 		}),
+	);
+
+	it.effect("interruption while the temp is being opened still removes the temp", () =>
+		Effect.gen(function* () {
+			const entered = yield* Latch.make();
+			const held = yield* Latch.make();
+			// The temp exists on the volume by the time open is held, as after the host's open returns.
+			const layer = MemoryFileSystem.layerWithPath(
+				{ [TARGET]: "old" },
+				{
+					faults: (base) => ({
+						open: (path, options) =>
+							base.open(path, options).pipe(Effect.tap(() => Effect.andThen(entered.open, held.await))),
+					}),
+				},
+			);
+			yield* Effect.gen(function* () {
+				const fiber = yield* Effect.forkChild(AtomicFile.write(TARGET, "new"));
+				yield* entered.await;
+				assert.strictEqual((yield* temps).length, 1, "the temp exists while open is held");
+				const interrupting = yield* Effect.forkChild(Fiber.interrupt(fiber));
+				yield* Effect.yieldNow;
+				yield* held.open;
+				yield* Fiber.join(interrupting);
+				assert.isTrue(Exit.hasInterrupts(yield* Fiber.await(fiber)));
+				const volume = yield* MemoryFileSystem.Volume;
+				assert.strictEqual(volume.text(TARGET), "old");
+				assert.deepStrictEqual(yield* temps, []);
+			}).pipe(Effect.provide(layer));
+		}),
+	);
+
+	it.effect("a temp name collision fails and leaves the other writer's file alone", () =>
+		Effect.gen(function* () {
+			const suffix = yield* Random.nextIntBetween(0, 0x7fffffff).pipe(Random.withSeed("collide"));
+			const taken = `${DIR}/.effected-${suffix.toString(36)}.tmp`;
+			yield* Effect.gen(function* () {
+				const error = yield* Effect.flip(AtomicFile.write(TARGET, "new").pipe(Random.withSeed("collide")));
+				assert.strictEqual(error.reason._tag, "AlreadyExists");
+				const volume = yield* MemoryFileSystem.Volume;
+				assert.strictEqual(volume.text(TARGET), "old");
+				assert.strictEqual(volume.text(taken), "the other writer's");
+			}).pipe(Effect.provide(MemoryFileSystem.layerWithPath({ [TARGET]: "old", [taken]: "the other writer's" })));
+		}),
+	);
+
+	it.effect("a dangling link through a symlinked parent lands where the OS would", () =>
+		Effect.gen(function* () {
+			const link = "/work/sub/alias/dl";
+			yield* AtomicFile.write(link, "new");
+			const fs = yield* FileSystem.FileSystem;
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text("/work/other/landing.txt"), "new");
+			assert.isFalse(volume.has("/work/sub/landing.txt"));
+			assert.strictEqual(yield* fs.realPath(link), "/work/other/landing.txt");
+			assert.strictEqual(yield* fs.readFileString(link), "new");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath({
+					"/work/sub": MemoryFileSystem.directory(),
+					"/work/sub/alias": MemoryFileSystem.symlink("/work/other/deep"),
+					"/work/other/deep/dl": MemoryFileSystem.symlink("../landing.txt"),
+				}),
+			),
+		),
+	);
+
+	it.effect("a failure resolving a dangling link's directory propagates", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(AtomicFile.write(TARGET, "new"));
+			assert.strictEqual(error.reason._tag, "PermissionDenied");
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.isFalse(volume.has("/work/missing.json"));
+			assert.deepStrictEqual(yield* temps, []);
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ [TARGET]: MemoryFileSystem.symlink("missing.json") },
+					{
+						faults: {
+							realPath: (path) =>
+								path === DIR ? Effect.fail(failure("realPath", path, "PermissionDenied")) : undefined,
+						},
+					},
+				),
+			),
+		),
 	);
 
 	it.effect("a target that is a directory fails and removes the temp", () =>

@@ -14,7 +14,9 @@
 - **The temp name never contains the target's basename**, so a 255-byte name cannot overflow. memfs has no name limit, so the test stands in for the host's `ENAMETOOLONG` with an `open` fault.
 - **`chmod` after `open` stays**, because `open`'s mode is subject to umask. memfs has no umask, so the test narrows the mode with an `open` fault.
 - **The temp cleanup sits outside `Effect.scoped`**, so the file is closed before it is removed.
-- **The hop budget is only reachable where `realPath` answers `NotFound` for a long chain.** Real `realPath` usually reports `ELOOP` first, and memfs does at 40 links, so the budget's tests fault `realPath`.
+- **The cleanup arms only after our `open` succeeded, in one uninterruptible step.** A failed `wx` open means the name is another writer's, so it must not be removed.
+- **A link's text resolves against the `realPath` of its directory, never lexically.** A lexical `..` through a symlinked parent lands in the wrong directory and reports success.
+- **The hop budget is only reachable where `realPath` answers `NotFound` for a long chain.** Real `realPath` usually reports `ELOOP` first, and memfs does at 40 links, so the budget's tests fault `realPath` everywhere but the links' directory.
 
 ```bash
 pnpm vitest run --project @effected/files   # from the repo root
