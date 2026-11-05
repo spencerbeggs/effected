@@ -51,6 +51,7 @@
 * Added Atomic writes live in their own package, @effected/files, not in @effected/kit or @effected/store
 * Updated jsonc
 * Updated The package-json decode-free text path
+* Updated glob
 
 ## 2026-11-02
 

@@ -123,6 +123,8 @@ Effect.runPromise(Effect.result(GlobPattern.compile("a".repeat(70_000)))).then(c
 - `GlobPattern.compile(source, options?)` — `Effect<GlobPattern, GlobPatternError>`; the fallible boundary, and the only one.
 - `GlobPattern#matches(candidate)` — total, pure, no error channel.
 - `GlobPattern#hasMagic` / `negated` / `enumerationPrefix` / `crossesSegments` — metadata for directory enumerators.
+- `GlobPattern#literalPrefix` — the literal leading directory segments before the first magic segment, unescaped and without a trailing slash (`src/{a,b}/*.ts` gives `src`; `src/a.ts` gives itself; `""` when the first segment is magic). Braces are not expanded: an unescaped `{` is magic.
+- `extglobBang` option — read a leading `!(` as the `!(…)` extglob rather than whole-pattern negation, as picomatch does. Off by default, so the minimatch reading holds; `!a` still negates. Parity with picomatch at this one point only (set `dot` too to agree with Vitest). `nonegate: true` also gives picomatch's answer for `!(`, but disables every `!` negation. `GlobSet` has no options surface and strips one leading `!` itself as its exclusion marker.
 - `GlobPattern.escape(literal)` / `unescape(pattern)` — build patterns safely from user-supplied literals.
 - `GlobPattern.FromString` — a `Schema.Codec<GlobPattern, string>` for embedding patterns in config schemas.
 - `GlobPatternOptions` — the full minimatch options surface, schema-validated. Options refine matching; they never admit a pattern that the defaults reject.

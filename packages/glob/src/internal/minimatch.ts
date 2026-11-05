@@ -566,7 +566,10 @@ export class Minimatch {
 		let negate = false;
 		let negateOffset = 0;
 
+		const extglobBang = !!this.options.extglobBang && !this.options.noext;
 		for (let i = 0; i < pattern.length && pattern.charAt(i) === "!"; i++) {
+			// Adaptation: a `!` opening an extglob is not a negation (see EngineOptions.extglobBang).
+			if (extglobBang && pattern.charAt(i + 1) === "(" && !/^\?[!=<:]/.test(pattern.slice(i + 2, i + 4))) break;
 			negate = !negate;
 			negateOffset++;
 		}

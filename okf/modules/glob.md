@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T14:19:29Z
+  at: 2026-11-05T18:33:41Z
 integrity:
   generated:
-    body: 89f5a8debbe3c1f4
+    body: e2fa3dbc053de837
 ---
 
 # glob
@@ -48,6 +48,10 @@ A `FromString` transformation schema exists for embedding patterns in config sch
 `enumerationPrefix` (the longest literal directory prefix) and `crossesSegments` (whether the pattern can match more than one level below that prefix — true iff it contains `**` or a `/` after the first magic segment) are API with no upstream analogue, designed for the enumerator contract; a substring-to-last-`/` prefix is wrong once `**` is real. Both are computed under default options, and their interaction with `matchBase` or windows modes stays defined only for default-options patterns.
 
 `enumerationPrefix` is meaningful for **non-negated** patterns only: it is computed from the *inner* pattern, but a negated pattern's `matches` inverts, matching everything the inner pattern does not — and those matches can land outside the prefix. A negated pattern's walk must therefore ignore the prefix entirely and deep-walk from the root unconditionally, regardless of `crossesSegments`.
+
+**`literalPrefix`** is the unexpanded counterpart: the literal leading segments before the first magic segment, unescaped, spelling kept, no trailing slash, `""` for the base and `/` for a root-anchored magic pattern. An unescaped `{` is magic (braces are not expanded, unless `nobrace`), an all-literal pattern yields itself, and a negated pattern yields its inner prefix, so guard on `negated` as for the others. `enumerationPrefix` keeps its slash-terminated, brace-common form for its consumers.
+
+**`extglobBang`** is an opt-in option (an engine adaptation in `parseNegate`) that stops negation before a `!` opening an extglob, as picomatch does, except before `(?` plus one of `!=<:` and under `noext`. It is off by default because the package matches its minimatch oracle by contract, and the compliance rows that pin a leading `!(` as negation stay as they are. It promises parity with picomatch at that one point only. `nonegate: true` already gives picomatch's answer for `!(`, but also turns off plain `!a`. `GlobSet` cannot reach the option: it has no options surface and strips one `!` itself as the exclusion marker, so `!(src)/**` in a set excludes `(src)/**`.
 
 **`enumerationRoots`** keeps the alternatives apart where those two fold them into one answer (the shared prefix, "deep if any is"): it returns one `EnumerationRoot { prefix, deep, spellings }` per brace alternative, so `packages/{a,b}/src/*.ts` reads `packages/a/src/` and `packages/b/src/`, one level each, rather than all of `packages/`. `prefix` is canonical and slash-terminated (no `.` or empty segment, a `..` resolved against the segment before it, a leading `..` kept so a walker can still refuse the climb; `""` is the walk's own base), so `{src,./src}/*.ts` has the single root `src/`; an all-literal alternative's final segment is a file name and is excluded from the prefix. A root inside a `deep` root's prefix is dropped and its spellings join that root's, so two kept roots never yield the same file. A climbing prefix (`../x/`) is never inside the base root `""`: it stays its own root, so a walker refuses it and `{**/*.md,../x/*.ts}` yields only the `.md` files, as a standalone climb yields nothing. `spellings` lists every literal prefix the root covers as the pattern spells it, in pattern order: matching is spelling-sensitive (`./src/*.ts` does not match `src/a.ts`), so a walker tests a canonical path once per spelling and answers in the earliest one that matches. Like the other getters it reads the inner pattern and ignores negation. [walker](walker.md)'s per-root walk is its consumer.
 

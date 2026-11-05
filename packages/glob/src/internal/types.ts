@@ -37,6 +37,12 @@ export interface EngineOptions {
 	readonly nocomment?: boolean;
 	/** do not treat patterns starting with `!` as a negation */
 	readonly nonegate?: boolean;
+	/**
+	 * Adaptation (not in upstream): stop negation before a `!` that opens an
+	 * extglob (`!(`), as picomatch does. Inert under `noext` and before a `(?`
+	 * group opener.
+	 */
+	readonly extglobBang?: boolean;
 	/** treat `**` the same as `*` */
 	readonly noglobstar?: boolean;
 	/** do not expand extglobs like `+(a|b)` */
