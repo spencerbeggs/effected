@@ -6,12 +6,15 @@
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { CliAudience, CliRuntime } from "@effected/cli-kit";
+import { CliAudience, CliLogger, CliRuntime } from "@effected/cli-kit";
 import type { Distribution } from "@effected/kit";
 import type { Layer } from "effect";
 import type { CliOutput } from "effect/cli";
-import { rootCommand } from "./commands/root.js";
+import { makeRootCommand } from "./commands/root.js";
+import type { SchemaCommandDeps } from "./commands/schema/execute.js";
 import { CLI_VERSION } from "./version.js";
+
+export type { SchemaCommandDeps } from "./commands/schema/execute.js";
 
 /**
  * Options a carrier's bin shim passes to {@link main}. `distribution` names
@@ -33,6 +36,9 @@ const versionFormatter: Pick<CliOutput.Formatter, "formatVersion"> = {
 	formatVersion: (name: string, version: string): string => `${name} ${version}`,
 };
 
+/** stdout is the report and nothing else, so every log level goes to stderr. */
+const logger = CliLogger.layer({ stderrFrom: "All" });
+
 /**
  * The `effected` program under `CliRuntime.main`, over `platform`: what
  * {@link main} runs with the Node services, and what a test runs over a test
@@ -40,16 +46,17 @@ const versionFormatter: Pick<CliOutput.Formatter, "formatVersion"> = {
  *
  * @public
  */
-export const run = <RP, EP>(options: MainOptions, platform: Layer.Layer<RP, EP>) =>
-	CliRuntime.main(CliAudience.run(rootCommand, { version: CLI_VERSION }), {
+export const run = <RP, EP>(options: MainOptions, deps: SchemaCommandDeps, platform: Layer.Layer<RP, EP>) =>
+	CliRuntime.main(CliAudience.run(makeRootCommand(deps), { version: CLI_VERSION }), {
 		platform,
+		logger,
 		distribution: options.distribution ?? null,
 		// The infrastructure tier for a typed error that carries no code of its own.
 		exitCode: 3,
 		// A usage error's help goes to stderr beside the parse errors; an explicit
 		// `--help` stays on stdout.
 		helpOnUsageError: "stderr",
-		env: { appModule: import.meta.url, formatter: versionFormatter },
+		env: { appModule: import.meta.url, formatter: versionFormatter, helpFlags: { inheritedFlags: "summary" } },
 	});
 
 /**
@@ -59,5 +66,6 @@ export const run = <RP, EP>(options: MainOptions, platform: Layer.Layer<RP, EP>)
  * @public
  */
 export const main = (options: MainOptions = {}): void => {
-	NodeRuntime.runMain(run(options, NodeServices.layer));
+	// The ONLY place the process is read for the command tree.
+	NodeRuntime.runMain(run(options, { cwd: process.cwd() }, NodeServices.layer));
 };

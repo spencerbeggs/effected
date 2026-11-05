@@ -5,5 +5,14 @@
  * @packageDocumentation
  */
 
-export { rootCommand } from "./commands/root.js";
+export { makeRootCommand } from "./commands/root.js";
+export {
+	CatalogMergeError,
+	DriftError,
+	GateError,
+	NoConfigError,
+	StaleError,
+	ValidationFailedError,
+} from "./commands/schema/errors.js";
+export type { SchemaCommandDeps } from "./commands/schema/execute.js";
 export { CLI_VERSION } from "./version.js";

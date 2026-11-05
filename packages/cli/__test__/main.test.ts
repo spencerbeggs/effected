@@ -33,7 +33,9 @@ const environment = (args: ReadonlyArray<string>) =>
 const runMain = (args: ReadonlyArray<string>, options: Parameters<typeof run>[0] = {}) =>
 	Effect.gen(function* () {
 		const exit = yield* Effect.exit(
-			run(options, environment(args)).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
+			run(options, { cwd: "/repo" }, environment(args)).pipe(
+				Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} }))),
+			),
 		);
 		const code = Exit.isFailure(exit) ? Runtime.getErrorExitCode(Cause.squash(exit.cause)) : 0;
 		const out = (yield* TestConsole.logLines).map(String).join("\n");

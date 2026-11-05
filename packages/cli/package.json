@@ -43,13 +43,17 @@
 		"@effected/glob": "workspace:^",
 		"@effected/kit": "workspace:^",
 		"@effected/walker": "workspace:^",
-		"effect": "catalog:effected"
+		"effect": "catalog:effected",
+		"ink": "catalog:silk:peers",
+		"react": "catalog:silk:peers"
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
 		"@effected/memfs": "workspace:*",
+		"@effected/schemastore": "workspace:*",
 		"@savvy-web/bundler": "^2.7.3",
 		"@types/node": "catalog:build",
+		"@types/react": "catalog:build",
 		"typescript": "catalog:build"
 	},
 	"engines": {

@@ -229,6 +229,13 @@ catalogs:
     ink:
       specifier: ^8.0.0
       version: 8.0.0
+  silk:peers:
+    ink:
+      specifier: ^8.0.0
+      version: 8.0.0
+    react:
+      specifier: ^19.3.0
+      version: 19.3.1
 
 overrides:
   tsdown>rolldown-plugin-dts: ^0.29.0
@@ -354,6 +361,12 @@ importers:
       effect:
         specifier: catalog:effected
         version: 4.1.2
+      ink:
+        specifier: catalog:silk:peers
+        version: 8.0.0(@types/react@19.3.0)(react@19.3.1)
+      react:
+        specifier: catalog:silk:peers
+        version: 19.3.1
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effected
@@ -361,12 +374,18 @@ importers:
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
+      '@effected/schemastore':
+        specifier: workspace:*
+        version: link:../schemastore/dist/dev/pkg
       '@savvy-web/bundler':
         specifier: ^2.7.3
         version: 2.7.3(@types/node@26.6.6)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(redis@6.3.1)(tsx@4.23.15)(typescript@7.1.0-beta)
       '@types/node':
         specifier: catalog:build
         version: 26.6.6
+      '@types/react':
+        specifier: catalog:build
+        version: 19.3.0
       typescript:
         specifier: catalog:build
         version: 7.1.0-beta
