@@ -30,7 +30,8 @@ materialize them into the typed `GlobPatternError`. Upstream let `ast.ts` and
 ## Hardening invariant
 
 Malformed or hostile input fails through the typed `E` channel — never a
-defect, never `RangeError: Maximum call stack size exceeded`, never a hang.
+defect, never `RangeError: Maximum call stack size exceeded`. Matching time is
+polynomial, bounded by the recursion cap; a hostile pattern can still be slow.
 `matches()` is **total**: every compile-time guard throws before an instance
 exists; nothing throws at match time.
 
@@ -39,8 +40,9 @@ Upstream guards **preserved**: the 64KB `MAX_PATTERN_LENGTH`; brace-expansion's
 evaluation (both load-bearing DoS fixes); the CVE-2022-3517 ReDoS-safe brace
 pre-check regex; `maxExtglobRecursion` (default 2, over-nesting **degrades to
 literal**, never errors); `maxGlobstarRecursion` (default 200, exceeding it is
-upstream's deliberate **false negative** — never converted to an error; under
-`partial`, a walk the cap cuts short ends in a match, as in minimatch 11).
+upstream's deliberate **false negative** — never converted to an error; the cap
+only ever produces a false negative, and under `partial` a walk that used up
+the path is a correct match, as in minimatch 11).
 
 New guards **added**, all at `MAX_NESTING_DEPTH = 256` (`internal/limits.ts`):
 

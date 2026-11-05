@@ -360,8 +360,9 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	});
 
 	/**
-	 * Whether `candidate` matches this pattern. Total: never throws, never
-	 * hangs. The globstar backtracking cap is a documented false negative
+	 * Whether `candidate` matches this pattern. Total: never throws. Time is
+	 * polynomial, bounded by the recursion cap, so a hostile pattern against a
+	 * long candidate can still be slow. The globstar backtracking cap is a documented false negative
 	 * (upstream's deliberate correctness-for-security trade), never an error.
 	 */
 	matches(candidate: string): boolean {
