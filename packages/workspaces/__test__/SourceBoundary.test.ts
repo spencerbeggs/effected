@@ -267,6 +267,29 @@ describe("SourceBoundary.check", () => {
 			assert.deepStrictEqual(details(text), ["promiseInExclusive lane.run: Effect.runPromise"]);
 		});
 
+		it("treats a lanes entry literally: a metacharacter neither throws nor widens the match", () => {
+			const opts = (lane: string) => ({ promiseInExclusive: { lanes: [lane] } });
+			assert.deepStrictEqual(details("a(.run(Effect.promise(f), {});", opts("a(")), [
+				"promiseInExclusive a(.run: Effect.promise",
+			]);
+			assert.deepStrictEqual(details("aXb.run(Effect.promise(f), {});", opts("a.b")), []);
+			assert.deepStrictEqual(details("a.b.run(Effect.promise(f), {});", opts("a.b")), [
+				"promiseInExclusive a.b.run: Effect.promise",
+			]);
+		});
+
+		it("sees Effect.promise<T>( and Effect.runPromiseExit( in a lane body", () => {
+			const text = [
+				"const lane = yield* Exclusive.make;",
+				"lane.run(Effect.promise<void>(() => f()), {});",
+				"lane.run(Effect.sync(() => Effect.runPromiseExit(g)), {});",
+			].join("\n");
+			assert.deepStrictEqual(details(text), [
+				"promiseInExclusive lane.run: Effect.promise",
+				"promiseInExclusive lane.run: Effect.runPromiseExit",
+			]);
+		});
+
 		it("misses a helper called from the body and a body bound to a variable first (documented limit)", () => {
 			const text = [
 				"const lane = yield* Exclusive.make;",

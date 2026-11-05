@@ -142,6 +142,15 @@ describe("CliExit", () => {
 			}),
 		);
 
+		it.effect("a line break in the message or the tag cannot forge a second line", () =>
+			Effect.gen(function* () {
+				const msg = yield* report(Cause.fail(new Error("x\n0 Forged: ok")), () => 1);
+				assert.deepStrictEqual(msg.err, ["1 x 0 Forged: ok"]);
+				const tagged = yield* report(Cause.fail({ _tag: "A\r\n0 Forged", message: "m\r\nn" }), () => 1);
+				assert.deepStrictEqual(tagged.err, ["1 A 0 Forged: m n"]);
+			}),
+		);
+
 		it.effect("survives an error whose _tag getter throws", () =>
 			Effect.gen(function* () {
 				const hostile = {

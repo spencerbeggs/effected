@@ -1,6 +1,7 @@
 // Atomic replacement of one file: write a temp file beside the target, sync it,
 // then rename it into place, so a reader or a crash sees the old content or the
-// new content and never a truncated file. A link realPath cannot follow is the
+// new content and never a truncated file. A target the caller may not write is
+// refused first, as a plain write would. A link realPath cannot follow is the
 // one exception: it is written through directly. FileSystem and Path arrive
 // through R; this package owns no filesystem backend.
 
@@ -32,8 +33,8 @@ export class AtomicFile {
 	 * that file alone.
 	 *
 	 * A symlinked target keeps its link: the write lands on the file the link
-	 * points to. An existing file keeps its
-	 * permission bits. A string is written as UTF-8 and bytes are written verbatim.
+	 * points to. An existing file keeps its permission bits, and one the caller
+	 * may not write is refused with `PermissionDenied` before any temp is created. A string is written as UTF-8 and bytes are written verbatim.
 	 * Parent directories are not created; an absent parent fails `NotFound`.
 	 *
 	 * Limits:
@@ -44,6 +45,8 @@ export class AtomicFile {
 	 *   for the old one keep the old content.
 	 * - The directory is not synced, so the rename itself may not survive power
 	 *   loss.
+	 * - A rename creates a new inode, so ownership, ACLs and extended attributes
+	 *   of the old file are not kept.
 	 * - A killed process can leave a `.effected-*.tmp` file behind.
 	 * - A link `realPath` cannot follow (dangling, or with a symlink before `..` in
 	 *   its text under Node) is written through directly, without atomicity.
@@ -79,6 +82,9 @@ export class AtomicFile {
 			Effect.map((info): number | undefined => info.mode & 0o7777),
 			Effect.catch((error) => (error.reason._tag === "NotFound" ? Effect.succeed(undefined) : Effect.fail(error))),
 		);
+		// A rename needs only the directory's permission, so without this a read-only file would be replaced where a plain
+		// write refuses. Ask the platform, never the mode bits: ACLs and ownership decide too.
+		if (mode !== undefined) yield* fs.access(final, { writable: true });
 		const suffix = yield* Random.nextIntBetween(0, 0x7fffffff);
 		const temp = path.join(path.dirname(final), `.effected-${suffix.toString(36)}.tmp`);
 

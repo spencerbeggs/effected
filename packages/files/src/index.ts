@@ -1,5 +1,5 @@
 /**
- * Atomic single-file writes over core `FileSystem` and `Path`, both required
+ * Atomic file and directory writes over core `FileSystem` and `Path`, both required
  * in `R`.
  *
  * {@link AtomicFile.write} replaces a file through a synced temp file and a

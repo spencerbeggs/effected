@@ -103,8 +103,9 @@ export class CliExit extends Context.Service<CliExit, CliExitShape>()("@effected
 	 * @remarks
 	 * The cause is squashed and the line is `<code> <tag>: <message>`, or
 	 * `<code> <message>` when the error has no string `_tag`. The message comes
-	 * from `Fmt.errorText` and is sanitized with `Fmt.sanitize`, so a hostile
-	 * error can neither throw nor write an escape. Reading `_tag` is guarded
+	 * from `Fmt.errorText` and is sanitized with `Fmt.sanitize` and its line breaks
+	 * become a space, so a hostile error can neither throw, write an escape nor
+	 * forge a second line. Reading `_tag` is guarded
 	 * too: a getter that throws means no tag.
 	 *
 	 * An interrupt-only cause is not a failure to report: nothing is written or
@@ -131,10 +132,9 @@ export class CliExit extends Context.Service<CliExit, CliExitShape>()("@effected
 					} catch {
 						// A throwing `_tag` getter means no tag.
 					}
-					const message = Fmt.sanitize(Fmt.errorText(error));
-					return CliExit.report(
-						code,
-						tag === undefined ? `${code} ${message}` : `${code} ${Fmt.sanitize(tag)}: ${message}`,
-					);
+					// `Fmt.sanitize` keeps line breaks, so a message could otherwise forge a second stderr line.
+					const oneLine = (text: string) => Fmt.sanitize(text).replace(/\r?\n|\r/gu, " ");
+					const message = oneLine(Fmt.errorText(error));
+					return CliExit.report(code, tag === undefined ? `${code} ${message}` : `${code} ${oneLine(tag)}: ${message}`);
 				});
 }

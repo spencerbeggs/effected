@@ -455,7 +455,7 @@
 	"files": {
 		"AtomicDirectory": "replace a directory atomically, stage in a sibling then rename into place, write a file set without a half-written tree",
 		"AtomicDirectoryError": "handle an atomic directory write failure, validate clear stage write or promote step failed",
-		"AtomicFile": "write a file atomically, temp file then rename, crash cannot truncate the file, keep symlink and permissions on save"
+		"AtomicFile": "write a file atomically, temp file then rename, keep symlink and permissions on save"
 	},
 	"glob": {
 		"GlobPattern": "compile a glob pattern, test if a path matches, minimatch dialect",

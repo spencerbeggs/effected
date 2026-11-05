@@ -10,15 +10,15 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T15:50:42Z
+  at: 2026-11-05T17:16:21Z
 integrity:
   generated:
-    body: 047388e4ba552b37
+    body: e0cb7e1ea3e00ec4
 ---
 
 # `@effected/files`
 
-`@effected/files` holds the one atomic single-file write the kit shares. A plain `writeFile` truncates its target first, so a crash during the write leaves the user with a short or empty file. `AtomicFile.write` leaves either the old content or the new content, whole. A link `realPath` cannot follow is the one exception: it is written through directly.
+`@effected/files` holds the one atomic single-file write the kit shares. A plain `writeFile` truncates its target first, so a crash during the write leaves the user with a short or empty file. `AtomicFile.write` refuses a target the caller may not write, then leaves either the old content or the new content, whole. A link `realPath` cannot follow is the one exception: it is written through directly.
 
 ## Tier and dependencies
 
@@ -50,7 +50,9 @@ AtomicFile.write(target: string, content: string | Uint8Array):
 ## Limits
 
 - The directory needs write permission. A read-only directory fails.
+- A read-only target is refused: an existing target must pass `access` with `writable` before any temp is created, so a file the caller may not write fails `PermissionDenied` as a plain write would. The platform decides, never the mode bits, and root bypasses it as it does a plain write.
 - A hard link to the target is broken: the name gets a new inode and the other names keep the old content.
+- A rename creates a new inode, so ownership, ACLs and extended attributes are not kept.
 - The directory is not synced, so the rename itself may not survive power loss.
 - A killed process can leave a `.effected-*.tmp` behind. Nothing sweeps it.
 - A link `realPath` cannot follow (dangling, or with a symlink before `..` in its text under Node) is written through directly, without atomicity. Node's `realpath` applies link text lexically on POSIX, so it answers `NotFound` for the second shape even when the destination exists. That case has old content a crash can truncate.

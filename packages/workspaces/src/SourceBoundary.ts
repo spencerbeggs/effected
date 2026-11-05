@@ -34,14 +34,16 @@ import { DEFAULT_EXTENSIONS, walkSources } from "./internal/sourceWalk.js";
  * and a member access on a namespace binding (`import * as m from ...` or the
  * TypeScript `import m = require(...)`, then `m.App`). `from` must equal the specifier
  * exactly; a subpath is a different module. `{ promiseInExclusive }` forbids
- * `Effect.promise(` and `Effect.runPromise(` inside the argument span of a
+ * `Effect.promise(`, `Effect.runPromise(` and `Effect.runPromiseExit(` inside the argument span of a
  * `<lane>.run(` call, where `<lane>` is a name the same file binds from
  * `Exclusive.make` (`const lane = yield* Exclusive.make`) or one listed in
  * `lanes`. Core's `Effect.promise` abandons the promise when the lane's timeout
  * interrupts the body, so the permit is released while the work still runs;
  * `Exclusive.promise` aborts and waits. `Exclusive.promise` and
  * `Effect.tryPromise` are not flagged. The check is lexical: a helper called
- * from the body, or a body bound to a variable before `run`, passes. See
+ * from the body, a body bound to a variable before `run`, a member receiver
+ * (`this.lane.run(`), an aliased import of `Effect`, a destructured `run` and a
+ * call through a local alias of `Effect.promise` all pass. See
  * {@link SourceBoundary}'s remarks for what this lexer cannot see.
  *
  * To confine a token to named files rather than forbid it everywhere, forbid
@@ -488,12 +490,13 @@ const isNodeModule = (specifier: string, module: string): boolean =>
 
 const LANE_BINDING =
 	/(?<![\p{ID_Continue}$.#])(?:const|let|var)\s+([\p{ID_Start}$_][\p{ID_Continue}$]*)\s*=\s*(?:yield\s*\*|await)?\s*Exclusive\s*\.\s*make(?![\p{ID_Continue}$])/gu;
-const PROMISE_CALL = /(?<![\p{ID_Continue}$.#])Effect\s*\.\s*(promise|runPromise)\s*\(/gu;
+const PROMISE_CALL =
+	/(?<![\p{ID_Continue}$.#])Effect\s*\.\s*(promise|runPromiseExit|runPromise)\s*(?:<[^()]*>\s*)?\(/gu;
 
 /** Where `code` calls `<lane>.run(`, as the offsets just inside the opening paren and of the matching close (end of text when unbalanced). */
 const runSpans = (code: string, lane: string): ReadonlyArray<{ readonly from: number; readonly to: number }> => {
 	const call = new RegExp(
-		`(?<![\\p{ID_Continue}$.#])${lane.replace(/\$/gu, "\\$")}\\s*(?:\\?\\.|\\.)\\s*run\\s*\\(`,
+		`(?<![\\p{ID_Continue}$.#])${lane.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\s*(?:\\?\\.|\\.)\\s*run\\s*\\(`,
 		"gu",
 	);
 	return [...code.matchAll(call)].map((match) => {
@@ -794,6 +797,19 @@ const FIXTURES: ReadonlyArray<BoundaryFixture> = [
 	{
 		name: "promiseInExclusive: Effect.runPromise in a lane body",
 		source: "const lane = yield* Exclusive.make;\nlane.run(Effect.sync(() => Effect.runPromise(g)), { timeout: 1 });",
+		rule: { promiseInExclusive: {} },
+		flagged: true,
+	},
+	{
+		name: "promiseInExclusive: Effect.promise with a type argument in a lane body",
+		source: "const lane = yield* Exclusive.make;\nlane.run(Effect.promise<void>(() => f()), { timeout: 1 });",
+		rule: { promiseInExclusive: {} },
+		flagged: true,
+	},
+	{
+		name: "promiseInExclusive: Effect.runPromiseExit in a lane body",
+		source:
+			"const lane = yield* Exclusive.make;\nlane.run(Effect.sync(() => Effect.runPromiseExit(g)), { timeout: 1 });",
 		rule: { promiseInExclusive: {} },
 		flagged: true,
 	},

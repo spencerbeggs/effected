@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Atomic file and directory writes for Effect. `AtomicFile.write`: write a temp file beside the target, sync it, and rename it into place, so a crash never leaves a truncated file. A link `realPath` cannot follow is the one exception: it is written through directly. `AtomicDirectory.write` replaces a whole directory so a reader sees the old tree or the new one.
+Atomic file and directory writes for Effect. `AtomicFile.write`: refuse a target the caller may not write, then write a temp file beside it, sync it, and rename it into place, so a crash never leaves a truncated file. A link `realPath` cannot follow is the one exception: it is written through directly. `AtomicDirectory.write` replaces a whole directory so a reader sees the old tree or the new one.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, still in `0.x`
 > development.
@@ -40,7 +40,7 @@ const save = AtomicFile.write("/home/me/.config/tool/config.json", '{"theme":"da
 ```
 
 - **A symlink keeps its link.** The write lands on the file behind it.
-- **An existing file keeps its permission bits.**
+- **An existing file keeps its permission bits**, and one the caller may not write is refused.
 - **A failure or an interruption before the rename** removes the temp and leaves the target untouched. The one exception is in Limits.
 - **Parent directories are not created.** An absent parent fails `NotFound`.
 
@@ -64,7 +64,9 @@ It stages in the sibling `.<name>.staging` (same parent, so every `rename` stays
 ## Limits
 
 - The directory needs write permission. A read-only directory fails, with no non-atomic fallback.
+- A read-only target is refused with `PermissionDenied` before any temp is created, as a plain write would. The check asks the platform, so root bypasses it, as it does a plain write.
 - A hard link is broken: other names for the old inode keep the old content.
+- A rename creates a new inode, so ownership, ACLs and extended attributes are not kept.
 - The directory is not synced, so the rename itself may not survive power loss.
 - A killed process can leave a `.effected-*.tmp` file beside the target.
 - A link `realPath` cannot follow (dangling, or with a symlink before `..` in its text under Node) is written through directly, without atomicity.

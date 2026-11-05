@@ -8,10 +8,10 @@ resource: ../../packages/cli-kit
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T16:26:11Z
+  at: 2026-11-05T17:16:21Z
 integrity:
   generated:
-    body: 57bebed6be2bac73
+    body: a0a90d909180dbba
 ---
 
 # @effected/cli-kit
@@ -74,10 +74,11 @@ The dependency closure is declared in full. Required peers: `effect`,
 `@effected/env`, and `@effected/walker` with `@effected/glob` beneath it
 (`CliLinks` finds the project root with `Walker`: [the walker
 edge](../decisions/cli-takes-the-walker-edge.md)). Optional peers:
-`ink`, `react` and `@types/react` (for `./ui`). Three regular dependencies, none of them
+`ink`, `react` and `@types/react` (for `./ui`). Four regular dependencies, none of them
 carrying a shared-instance contract and none with an `@effected` peer of
 its own, so they leave the peer closure unchanged: the pure
 [`@effected/github-commands`](github-commands.md);
+[`@effected/source`](source.md), which `Fmt.suggest` delegates to for its `EditDistance.suggest`;
 [`@effected/kit`](kit.md), for `MainOptions.distribution`, whose
 `CurrentDistribution` is a string-keyed `Context.Reference` a duplicate copy
 still meets ([decision](../decisions/cli-engine-edge.md)); and

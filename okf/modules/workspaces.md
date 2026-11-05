@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T16:47:04Z
+  at: 2026-11-05T17:16:21Z
 integrity:
   generated:
-    body: 40b05bdde3dd63b5
+    body: bee0a13a36a0849e
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -204,9 +204,9 @@ constructor:[^testing-ts]
   `process` read, a forbidden import, a forbidden name imported from a module
   (`forbidImportedNames`), a forbidden token, a
   `stdout.write`, any console reference (`console`) or one that can reach
-  stdout (`console-stdout`), an `Effect.promise` or `Effect.runPromise` inside
+  stdout (`console-stdout`), an `Effect.promise`, `Effect.runPromise` or `Effect.runPromiseExit` inside
   an `Exclusive` lane's `run` body (`promiseInExclusive`, lexical: a helper
-  called from the body passes), with pure `check` and `referencesProcess`, a
+  called from the body, a member receiver, an aliased `Effect` or a destructured `run` passes), with pure `check` and `referencesProcess`, a
   `scan` over `FileSystem` with whole-file `allow` and per-rule `allowRules`
   exemptions, and shipped positive controls behind `verifyFixtures`.
 - `ImportGraph` (with `ReachabilityScan`, `ReachOffence`, `UnresolvedImport`,

@@ -516,6 +516,55 @@ describe("AtomicFile.write", () => {
 		),
 	);
 
+	// memfs never enforces modes and its `access` checks existence only, so the refusal is driven by an `access` fault
+	// that denies a writable check on the target. The real-disk behaviour is in the wave report.
+	it.effect("a target the caller may not write is refused before any temp is created", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(AtomicFile.write(TARGET, "new"));
+			assert.strictEqual(error.reason._tag, "PermissionDenied");
+			assert.strictEqual(error.reason.method, "access");
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text(TARGET), "old");
+			const fs = yield* FileSystem.FileSystem;
+			assert.strictEqual((yield* fs.stat(TARGET)).mode & 0o7777, 0o444);
+			assert.deepStrictEqual(yield* temps, []);
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ [TARGET]: MemoryFileSystem.file("old", { mode: 0o444 }) },
+					{
+						faults: {
+							access: (path, options) =>
+								options?.writable === true && path === TARGET
+									? Effect.fail(failure("access", path, "PermissionDenied"))
+									: undefined,
+						},
+					},
+				),
+			),
+		),
+	);
+
+	it.effect("a writable target succeeds, and an absent target is not access-checked", () =>
+		Effect.gen(function* () {
+			const checked: Array<string> = [];
+			yield* AtomicFile.write(TARGET, "new").pipe(
+				Effect.provideService(FileSystem.FileSystem, {
+					...(yield* FileSystem.FileSystem),
+					access: (path: string, options?: { readonly writable?: boolean | undefined }) => {
+						checked.push(`${path}:${options?.writable === true}`);
+						return Effect.void;
+					},
+				}),
+			);
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text(TARGET), "new");
+			assert.deepStrictEqual(checked, [`${TARGET}:true`]);
+			yield* AtomicFile.write("/work/fresh.json", "x");
+			assert.strictEqual(volume.text("/work/fresh.json"), "x");
+		}).pipe(Effect.provide(MemoryFileSystem.layerWithPath({ [TARGET]: "old" }))),
+	);
+
 	it.effect("a target that is a directory fails and removes the temp", () =>
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(AtomicFile.write("/work/dir", "new"));

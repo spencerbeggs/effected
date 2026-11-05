@@ -47,6 +47,7 @@
 * Updated @effected/workspaces: monorepo tooling
 * Updated The Catalog Sync check goes RED when it found and fixed drift
 * Updated xdg stays independent of core UserDirectories
+* Updated D9: CliTest uses core ChildProcess, with no peer on @effected/commands
 
 ## 2026-11-02
 

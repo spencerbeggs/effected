@@ -1142,7 +1142,8 @@ describe("Runner.run catalog slices", () => {
 			const fs = yield* FileSystem.FileSystem;
 			const stale = "[]\n";
 			const error = yield* Effect.flip(Runner.run(cataloged("a", ["alpha"]), options("build")));
-			assert.strictEqual(error._tag, "PlatformError");
+			assert.strictEqual(error._tag, "SchemaFileWriteError");
+			assert.strictEqual(error._tag === "SchemaFileWriteError" ? error.path : undefined, sliceOf("a"));
 			assert.strictEqual(yield* fs.readFileString(sliceOf("a")), stale, "the previous slice survives");
 			const leftovers = (yield* fs.readDirectory(DIR)).filter((name) => name.endsWith(".tmp"));
 			assert.deepStrictEqual(leftovers, [], "the temp is removed");

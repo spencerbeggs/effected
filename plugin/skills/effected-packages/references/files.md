@@ -1,6 +1,6 @@
 # @effected/files
 
-`AtomicFile.write` replaces one file through a temp file beside it, a sync and a rename, so a crash leaves the old content or the new content and never a truncated file. A link `realPath` cannot follow is the one exception: it is written through directly. `FileSystem` and `Path` are in `R`, and the error is plain `PlatformError`, so an adopter keeps its existing `mapError`.
+`AtomicFile.write` refuses a target the caller may not write, then replaces one file through a temp file beside it, a sync and a rename, so a crash leaves the old content or the new content and never a truncated file. A link `realPath` cannot follow is the one exception: it is written through directly. `FileSystem` and `Path` are in `R`, and the error is plain `PlatformError`, so an adopter keeps its existing `mapError`.
 
 ## Import
 
@@ -35,6 +35,8 @@ const save = (file: string, text: string) =>
 - **A link `realPath` cannot follow (dangling, or with a symlink before `..` in its text under Node) is written through directly, without atomicity.**
 - **An existing file keeps its permission bits.** A new file gets the platform default.
 - **The directory needs write permission.** A read-only directory fails, with no non-atomic fallback.
+- **A read-only target file is refused** with `PermissionDenied` before any temp is created, as a plain write would; root bypasses it.
+- **Ownership, ACLs and extended attributes are not kept**, because a rename creates a new inode.
 - **A hard link is broken.** Other names for the old inode keep the old content.
 - **The directory is not synced**, so the rename itself may not survive power loss.
 - **A killed process can leave a `.effected-*.tmp`** beside the target. Nothing sweeps it.

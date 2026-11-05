@@ -1,6 +1,6 @@
 # @effected/files
 
-Two atomic writes. `AtomicFile.write`: replace one file through a synced temp file and a rename, so a crash leaves the old content or the new content and never a truncated file. A link `realPath` cannot follow is the one exception: it is written through directly. `AtomicDirectory.write` replaces a whole directory through a staged sibling and two renames.
+Two atomic writes. `AtomicFile.write`: refuse a target the caller may not write, then replace one file through a synced temp file and a rename, so a crash leaves the old content or the new content and never a truncated file. A link `realPath` cannot follow is the one exception: it is written through directly. `AtomicDirectory.write` replaces a whole directory through a staged sibling and two renames.
 
 **Design doc:** `@./okf/modules/files.md`, load before changing the choreography or a ruling.
 
@@ -11,6 +11,7 @@ Two atomic writes. `AtomicFile.write`: replace one file through a synced temp fi
 - **`AtomicFile`'s error channel is plain `PlatformError`.** Never add a tagged error to it: every adopter keeps its existing `mapError`, and adopting this must change no public error type.
 - **Never create parent directories.** Adopters already do.
 - **Never fall back to a non-atomic write.** A read-only directory fails loudly.
+- **An existing target is checked with `fs.access(final, { writable: true })` before any temp.** Never check mode bits. memfs's `access` ignores modes, so the test faults `access`.
 - **The temp name never contains the target's basename**, so a 255-byte name cannot overflow. memfs has no name limit, so the test stands in for the host's `ENAMETOOLONG` with an `open` fault.
 - **`chmod` after `open` stays**, because `open`'s mode is subject to umask. memfs has no umask, so the test narrows the mode with an `open` fault.
 - **The temp cleanup sits outside `Effect.scoped`**, so the file is closed before it is removed.
