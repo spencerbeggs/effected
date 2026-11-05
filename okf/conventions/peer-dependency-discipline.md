@@ -12,10 +12,10 @@ sources:
     resource: ../../pnpm-workspace.yaml
 generated:
   by: "claude-code/opus-5"
-  at: 2026-11-05T06:55:47Z
+  at: 2026-11-05T07:16:00Z
 integrity:
   generated:
-    body: f1f5ac686ca39334
+    body: 4f25f6faa0686817
 ---
 
 # Peer-dependency discipline
@@ -100,7 +100,10 @@ uses `workspace:^`. Two enumerated exceptions stay `workspace:*`:
   what the tool writes with no carrier version to show for it, and a
   bump of `schemastore` instead ripples down the chain, which is the
   point. The exception covers exactly those five edges and is a property
-  of a tool whose output is the product; a library edge never earns it,
+  of a tool whose output is the product. The engine's edges to
+  `@effected/source` and `@effected/jsonc` stay `workspace:^`: they shape
+  diff hunks and finding locations, not the schema documents the pin
+  protects; a library edge never earns it,
   and a test in `@effected/plugin` reads the manifests to keep it exact
   ([why the commands live in the tool](../decisions/schema-commands-live-in-the-tool.md)).
 

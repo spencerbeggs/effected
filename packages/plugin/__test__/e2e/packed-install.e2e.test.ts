@@ -482,6 +482,7 @@ describe.skipIf(!RUNNABLE)("packed install (@effected/plugin)", () => {
 				() =>
 					Effect.gen(function* () {
 						const result = yield* SchemaInstall;
+						assert.isAbove(result.consumers.length, 0);
 						const consumer = result.consumers.find((candidate) => candidate.manager === manager);
 						if (consumer === undefined) {
 							yield* Effect.log(`${manager} unavailable: not proven here; CI requires it`);

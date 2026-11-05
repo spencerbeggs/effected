@@ -21,8 +21,9 @@ The `effected schema` command ships the plumbing every consumer used to write
 around it — a config file, `build`, `check` and `validate` subcommands, a
 per-schema `published` flag, a drift policy, and exit codes CI can read. An
 agent reaches the same engine through the `schema_check`, `schema_build` and
-`schema_validate` MCP tools. This skill is for two readers: the agent adopting the pair in a consumer repository, and the
-author designing the schema documents themselves.
+`schema_validate` MCP tools. This skill is for two readers: the agent
+adopting the tool in a consumer repository, and the author designing the
+schema documents themselves.
 
 The package reference in `effected-packages` (`references/schemastore.md`)
 covers the library's module surface — `SchemaPipeline`, `StoreDocument`,

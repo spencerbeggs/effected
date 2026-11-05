@@ -33,13 +33,10 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@effected/env": "workspace:^",
-		"@effected/glob": "workspace:^",
 		"@effected/jsonc": "workspace:^",
 		"@effected/kit": "workspace:^",
 		"@effected/schemastore": "workspace:*",
 		"@effected/source": "workspace:^",
-		"@effected/walker": "workspace:^",
 		"ajv": "8.20.0",
 		"ajv-formats": "3.0.1",
 		"effect": "catalog:effected",

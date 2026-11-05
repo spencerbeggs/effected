@@ -557,12 +557,6 @@ importers:
 
   packages/engine:
     dependencies:
-      '@effected/env':
-        specifier: workspace:^
-        version: link:../env/dist/dev/pkg
-      '@effected/glob':
-        specifier: workspace:^
-        version: link:../glob/dist/dev/pkg
       '@effected/jsonc':
         specifier: workspace:^
         version: link:../jsonc/dist/dev/pkg
@@ -575,9 +569,6 @@ importers:
       '@effected/source':
         specifier: workspace:^
         version: link:../source/dist/dev/pkg
-      '@effected/walker':
-        specifier: workspace:^
-        version: link:../walker/dist/dev/pkg
       ajv:
         specifier: 8.20.0
         version: 8.20.0
@@ -1077,9 +1068,6 @@ importers:
       '@effected/engine':
         specifier: workspace:*
         version: link:../engine/dist/dev/pkg
-      '@effected/glob':
-        specifier: workspace:^
-        version: link:../glob/dist/dev/pkg
       '@effected/kit':
         specifier: workspace:^
         version: link:../kit/dist/dev/pkg

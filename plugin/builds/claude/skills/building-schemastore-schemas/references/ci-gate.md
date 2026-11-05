@@ -115,7 +115,8 @@ effected schema validate <payload.json> [config] [--schema <path|$id|url>] [--fo
 published document (`--schema` names it by path, `$id` or URL; omitted, the
 payload's own `$schema` decides). Each finding carries
 `location: { file, line, column }`, one-based, pointing at the offending value
-in the payload. A payload that does not conform exits `1`.
+in the payload; `location` is present whenever the payload parses. A payload
+that does not conform exits `1`.
 
 ## When the tool and the library disagree
 
@@ -131,6 +132,11 @@ refuse for it: they run and put a `versionMismatch` warning in the result.
 An agent working in the repository can call `schema_check` and
 `schema_validate` (read-only) and `schema_build` (writes) instead of shelling
 out. They take the same `config`, `drift`, `onDrift` and `force` parameters.
+Their result is not the CLI's `--format=json` document: the MCP `report` is the
+`RunReport` class encoding (`onDrift` and `policy` flat; `frozen`, `conflicts`
+and `invalid` always present), while the CLI document nests
+`drift: { onDrift, policy? }` and omits empty arrays. `RunReport.Json` decodes
+the CLI document into the class.
 
 - Drift and staleness are ordinary results carrying the verdict and each
   changed document's diff. Only a config that fails to load or a broken

@@ -44,4 +44,10 @@ declared here and again by `@effected/plugin`. Shared logic belongs in
 - A long-running server reloads a `.ts`, `.mts`, untyped `.js` or `.json` config
   on every call. A `.mjs`, `.cjs` or `.js` config under `"type": "module"`, and a
   sibling package's built output, need a server restart to pick up an edit.
-- `validate` findings carry `location: { file, line, column }`, one-based.
+- The result is not the CLI's `--format=json` document. The MCP `report` is the
+  `RunReport` class encoding (`onDrift` and `policy` flat; `frozen`, `conflicts`
+  and `invalid` always present), where the CLI document nests
+  `drift: { onDrift, policy? }` and omits empty arrays. `RunReport.Json`
+  decodes the CLI document into the class.
+- `validate` findings carry `location: { file, line, column }`, one-based,
+  whenever the payload parses.

@@ -15,7 +15,7 @@ The standalone `@effected/schemastore-cli` package and its `schemastore` bin are
 2. **Swap the dependency.** Add `@effected/plugin` through `catalog:effected` as a root devDependency, and delete `@effected/schemastore-cli`. While its catalog reference remains, install fails, because the catalog no longer names it.
 3. **Rename the scripts and workflow steps.** `schemastore build <config>` becomes `effected schema build <config>`; do the same for `check` and `validate`. Look in `package.json` scripts, CI workflows, turbo tasks and prose that quotes the command.
 4. **Change the config import.** In each `schemastore.config.*`, write `import { defineSchemastore } from "@effected/plugin"` and call `defineSchemastore(...)` where the file called `defineConfig(...)`. A repository that installs only `@effected/mcp` and not `@effected/plugin` keeps `defineConfig` from `@effected/schemastore`.
-5. **Fix ajv imports.** The ajv-backed validators moved to the `@effected/engine/schema` subpath. Re-point any import of them from the old CLI package.
+5. **Fix ajv imports.** The ajv-backed validators moved to the `@effected/engine/schema` subpath. Re-point any import of them from the old CLI package, and add `@effected/engine` to the repository's own dependencies: it was transitive through the old CLI, and `@effected/plugin` does not expose it.
 
 Two behaviours are new. Check them against your own run rather than assuming:
 
