@@ -837,11 +837,35 @@ describe("JsoncModifier", () => {
 				}),
 			);
 
-			it.effect("a created ancestor appends: insertAfter names a sibling of the final key only", () =>
+			it.effect("insertAfter places the outermost created key in the deepest existing object", () =>
 				Effect.gen(function* () {
 					assert.strictEqual(
 						yield* created('{\n  "a": 1,\n  "b": 2\n}\n', ["c", "d"], 3, { insertAfter: "a" }),
-						'{\n  "a": 1,\n  "b": 2,\n  "c": {\n    "d": 3\n  }\n}\n',
+						'{\n  "a": 1,\n  "c": {\n    "d": 3\n  },\n  "b": 2\n}\n',
+					);
+					assert.strictEqual(
+						yield* created('{\n  "o": {\n    "a": 1,\n    "b": 2\n  },\n  "z": 1\n}\n', ["o", "c", "d"], 3, {
+							insertAfter: "a",
+						}),
+						'{\n  "o": {\n    "a": 1,\n    "c": {\n      "d": 3\n    },\n    "b": 2\n  },\n  "z": 1\n}\n',
+					);
+				}),
+			);
+
+			it.effect("insertAfter looks in that object only, and appends when the sibling is absent there", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* created('{\n  "a": 1,\n  "o": {\n    "b": 2\n  }\n}\n', ["o", "c", "d"], 3, { insertAfter: "a" }),
+						'{\n  "a": 1,\n  "o": {\n    "b": 2,\n    "c": {\n      "d": 3\n    }\n  }\n}\n',
+					);
+				}),
+			);
+
+			it.effect("a sibling's trailing comment stays with it above a created key", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* created('{\n  "a": 1, // about a\n  "b": 2\n}\n', ["c", "d"], 3, { insertAfter: "a" }),
+						'{\n  "a": 1, // about a\n  "c": {\n    "d": 3\n  },\n  "b": 2\n}\n',
 					);
 				}),
 			);

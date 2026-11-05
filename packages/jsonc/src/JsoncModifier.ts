@@ -70,10 +70,13 @@ export interface JsoncModifyOptions {
 	 */
 	readonly formattingOptions?: JsoncFormattingOptionsLike;
 	/**
-	 * Place a new object member directly after this sibling, which is a key of
-	 * the object receiving it. Appended as usual when the object has no such key.
-	 * Has no effect on a replace, a delete, an array, or a member written under
-	 * an ancestor {@link JsoncModifyOptions.createParents} had to create.
+	 * Place the new object member directly after this sibling, a key of the
+	 * object receiving it. Appended as usual when the object has no such key. Has
+	 * no effect on a replace, a delete, or an array. With
+	 * {@link JsoncModifyOptions.createParents}, the member being inserted is the
+	 * outermost created key and the object receiving it is the deepest one that
+	 * exists, so `["catalogs", "silk", "effect"]` with `insertAfter: "workspaces"`
+	 * puts `catalogs` directly after `workspaces`.
 	 *
 	 * The sibling keeps a comment trailing it on its own line, however the comma
 	 * falls. A sibling sharing its line with something other than a comment keeps

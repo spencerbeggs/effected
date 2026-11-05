@@ -144,10 +144,12 @@ export class PackageJsonModifyError extends Schema.TaggedError<PackageJsonModify
  */
 export interface PackageModifyOptions {
 	/**
-	 * Place a new key directly after this sibling, a key of the object receiving
-	 * it. Appended as usual when the object has no such key. Has no effect on a
-	 * replace, a delete, or a key written under an ancestor `createParents` had to
-	 * create.
+	 * Place the new key directly after this sibling, a key of the object
+	 * receiving it. Appended as usual when the object has no such key. Has no
+	 * effect on a replace or a delete. With `createParents`, the key being inserted
+	 * is the outermost created one and the object receiving it is the deepest that
+	 * exists, so `["catalogs", "silk", "effect"]` with `insertAfter: "workspaces"`
+	 * puts `catalogs` directly after `workspaces`.
 	 */
 	readonly insertAfter?: string;
 	/**

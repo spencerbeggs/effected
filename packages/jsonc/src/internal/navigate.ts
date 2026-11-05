@@ -116,7 +116,8 @@ const lineIndent = (text: string, offset: number): string => {
  * Resolve `path` against `text`, returning where the target is (or where it
  * would be inserted). `path` must be non-empty — the whole-document case is
  * handled by the caller. A new object member goes after the key `insertAfter`
- * when the final container holds it, and after the last member otherwise.
+ * when the object receiving it holds that key, and after the last member
+ * otherwise. Under a missing ancestor, that object is the deepest one existing.
  */
 export function navigate(text: string, path: JsoncPath, insertAfter?: string): NavigateResult {
 	if (path.length === 0) {
@@ -250,7 +251,7 @@ export function navigate(text: string, path: JsoncPath, insertAfter?: string): N
 					lastValueEnd = skipValue();
 					lastCommaAfter = commaHere();
 					// Last one wins, as it does when a duplicated key is parsed.
-					if (key === insertAfter && depth === path.length) {
+					if (key === insertAfter) {
 						anchor = { keyStart, end: lastValueEnd, comma: lastCommaAfter };
 					}
 				} else {

@@ -29,6 +29,32 @@ describe("PackageJsonFile.modify — options", () => {
 		}),
 	);
 
+	it.effect("a created catalogs key lands directly after workspaces", () =>
+		Effect.gen(function* () {
+			const handle = MemoryFileSystem.makeSync({
+				[TARGET]:
+					'{\n\t"name": "root",\n\t"workspaces": [\n\t\t"packages/*"\n\t],\n\t"scripts": {\n\t\t"build": "turbo"\n\t}\n}\n',
+			});
+			const layer = PackageJsonFile.layer.pipe(Layer.provide(Layer.mergeAll(handle.layer, Path.layer)));
+			const text = yield* Effect.gen(function* () {
+				const file = yield* PackageJsonFile;
+				return yield* file.modify(TARGET, [
+					{
+						path: ["catalogs", "silk", "effect"],
+						value: "^4.1.1",
+						insertAfter: "workspaces",
+						createParents: true,
+					},
+				]);
+			}).pipe(Effect.provide(layer));
+
+			const expected =
+				'{\n\t"name": "root",\n\t"workspaces": [\n\t\t"packages/*"\n\t],\n\t"catalogs": {\n\t\t"silk": {\n\t\t\t"effect": "^4.1.1"\n\t\t}\n\t},\n\t"scripts": {\n\t\t"build": "turbo"\n\t}\n}\n';
+			assert.strictEqual(text, expected);
+			assert.strictEqual(handle.volume.text(TARGET), expected);
+		}),
+	);
+
 	it.effect("an option on one edit does not reach the next", () =>
 		Effect.gen(function* () {
 			const source = '{\n  "name": "x"\n}\n';
