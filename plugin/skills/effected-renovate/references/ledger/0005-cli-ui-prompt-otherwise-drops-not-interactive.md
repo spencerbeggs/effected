@@ -6,6 +6,7 @@ shows: typed
 applies:
   "@effected/cli-kit": ">=0.27.0"
 detect: ["catchTag\\(\"NotInteractive\""]
+changesets: ["cli-kit-drops-config-peer"]
 ---
 
 `CliUi.prompt` called with an `otherwise` that is not `undefined` now fails with `Cancelled` alone: a non-interactive run answers with `otherwise`, so it cannot fail. Without one, or with `{ otherwise: undefined }`, `NotInteractive` stays in the error type.
