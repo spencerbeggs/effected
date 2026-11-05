@@ -44,6 +44,7 @@
 * Updated @effected/templates
 * Updated config-file
 * Updated package-json
+* Updated @effected/workspaces: monorepo tooling
 
 ## 2026-11-02
 

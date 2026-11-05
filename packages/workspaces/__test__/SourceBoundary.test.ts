@@ -207,6 +207,77 @@ describe("SourceBoundary.check", () => {
 		);
 	});
 
+	describe("promiseInExclusive", () => {
+		const rule: BoundaryRule = { promiseInExclusive: {} };
+		const details = (text: string, r: BoundaryRule = rule) =>
+			SourceBoundary.check("f.ts", text, [r]).map((offence) => `${offence.rule} ${offence.detail}`);
+
+		it("flags Effect.promise and Effect.runPromise inside the run body of a lane bound from Exclusive.make", () => {
+			const text = [
+				"const lane = yield* Exclusive.make;",
+				'lane.run(Effect.promise(() => f()), { timeout: "1s" });',
+				"lane.run(Effect.gen(function* () { yield* Effect.runPromise(g); }), { timeout: 1 });",
+			].join("\n");
+			assert.deepStrictEqual(details(text), [
+				"promiseInExclusive lane.run: Effect.promise",
+				"promiseInExclusive lane.run: Effect.runPromise",
+			]);
+		});
+
+		it("locates the offending call, not the run call", () => {
+			const [offence] = SourceBoundary.check(
+				"f.ts",
+				"const l = yield* Exclusive.make;\nl.run(Effect.promise(f), {});",
+				[rule],
+			);
+			assert.strictEqual(offence?.label, "f.ts:2:7 promiseInExclusive l.run: Effect.promise");
+		});
+
+		it("reads receivers from the lanes option when the lane is passed in", () => {
+			const text = 'lane.run(Effect.promise(() => f()), { timeout: "1s" });';
+			assert.deepStrictEqual(details(text), []);
+			assert.deepStrictEqual(details(text, { promiseInExclusive: { lanes: ["lane"] } }), [
+				"promiseInExclusive lane.run: Effect.promise",
+			]);
+		});
+
+		it("spares Exclusive.promise, Effect.tryPromise, strings, comments and an unbound receiver", () => {
+			const text = [
+				"const lane = yield* Exclusive.make;",
+				"lane.run(Exclusive.promise(lane, (s) => f(s)), { timeout: 1 });",
+				"lane.run(Effect.tryPromise(() => f()), { timeout: 1 });",
+				'lane.run(Effect.succeed("Effect.promise(x)"), { timeout: 1 });',
+				"lane.run(Effect.succeed(1) /* Effect.promise( */, { timeout: 1 });",
+				"other.run(Effect.promise(() => f()), { timeout: 1 });",
+			].join("\n");
+			assert.deepStrictEqual(details(text), []);
+		});
+
+		it("stops at the run call's closing paren, past template substitutions", () => {
+			const text = [
+				"const lane = yield* Exclusive.make;",
+				"lane.run(Effect.succeed(`a ${f(`(`)} )`), { timeout: 1 });",
+				"const later = Effect.promise(() => f());",
+			].join("\n");
+			assert.deepStrictEqual(details(text), []);
+		});
+
+		it("sees a promise inside a template substitution within the body", () => {
+			const text = "const lane = yield* Exclusive.make;\nlane.run(Effect.sync(() => `${Effect.runPromise(g)}`), {});";
+			assert.deepStrictEqual(details(text), ["promiseInExclusive lane.run: Effect.runPromise"]);
+		});
+
+		it("misses a helper called from the body and a body bound to a variable first (documented limit)", () => {
+			const text = [
+				"const lane = yield* Exclusive.make;",
+				"const body = Effect.promise(() => f());",
+				"lane.run(body, {});",
+				"lane.run(helper(), {});",
+			].join("\n");
+			assert.deepStrictEqual(details(text), []);
+		});
+	});
+
 	describe("forbidImportedNames", () => {
 		const rule: BoundaryRule = {
 			forbidImportedNames: { from: "@effected/app", names: ["App", "AppStore", "AppCache"] },
