@@ -78,7 +78,7 @@ describe("GitCommit", () => {
 					{ status: 200, body: { object: { sha: "head", type: "commit" } } },
 					{ status: 200, body: { sha: "head", tree: { sha: "headtree" }, parents: [] } },
 					{ status: 201, body: { sha: "newtree" } },
-					{ status: 201, body: { sha: "newcommit", html_url: "https://github.com/acme/widget/commit/newcommit" } },
+					{ status: 201, body: { sha: "newcommit" } },
 					{ status: 200, body: {} },
 				],
 				GitCommit,

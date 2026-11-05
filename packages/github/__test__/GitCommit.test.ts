@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { CreatedCommit, FileContent, GitCommit } from "../src/GitCommit.js";
+import { GitHubError } from "../src/GitHubError.js";
 import { Repo } from "../src/Repo.js";
 import type { Reply } from "./fixtures.js";
 import { REPO, defectMessage, harness } from "./harness.js";
@@ -78,6 +79,39 @@ describe("GitCommit commit URLs", () => {
 			assert.strictEqual(script.count(), 5);
 			// The ref move targets the created commit, not the head it was built on.
 			assert.strictEqual(JSON.parse(script.calls[4]?.body ?? "{}").sha, SHA);
+		}),
+	);
+
+	it.effect("a reply with a sha and no html_url still gives createCommit and commitFiles their sha", () =>
+		Effect.gen(function* () {
+			const bare: Reply = { status: 201, body: { sha: SHA } };
+			const one = yield* run([bare], (c) => c.createCommit(input));
+			assert.strictEqual(one.value, SHA);
+			const replies = commitFilesReplies(URL_DOTCOM).map((r, i) => (i === 3 ? bare : r));
+			const many = yield* run(replies, (c) => c.commitFiles({ branch: "b", message: "m", changes }));
+			assert.strictEqual(many.value, SHA);
+			// The ref was moved onto the commit.
+			assert.strictEqual(many.script.calls[4]?.method, "PATCH");
+			assert.strictEqual(JSON.parse(many.script.calls[4]?.body ?? "{}").sha, SHA);
+		}),
+	);
+
+	it.effect("the WithUrl members fail typed, naming the commit, when the reply has no html_url", () =>
+		Effect.gen(function* () {
+			const bare: Reply = { status: 201, body: { sha: SHA } };
+			const direct = yield* Effect.flip(
+				run([bare], (c) => c.createCommitWithUrl(input)).pipe(Effect.map((r) => r.value)),
+			);
+			assert.instanceOf(direct, GitHubError);
+			assert.include(direct.reason, SHA);
+			const replies = commitFilesReplies(URL_DOTCOM).map((r, i) => (i === 3 ? bare : r));
+			const files = yield* run(replies, (c) =>
+				Effect.flip(c.commitFilesWithUrl({ branch: "b", message: "m", changes })),
+			);
+			assert.instanceOf(files.value, GitHubError);
+			assert.include(files.value.reason, SHA);
+			// The commit exists and the ref was already moved before the check.
+			assert.strictEqual(files.script.calls[4]?.method, "PATCH");
 		}),
 	);
 

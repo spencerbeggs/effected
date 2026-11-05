@@ -1162,6 +1162,8 @@ describe("interrupting a call aborts its fetch", () => {
 			yield* Deferred.await(hang.started);
 			const abortedBefore = hang.aborted();
 			if (options.interrupt) yield* Fiber.interrupt(fiber);
+			// Time passing after the interrupt must not bring a retry back.
+			if (options.interrupt) yield* TestClock.adjust(Duration.minutes(10));
 			const afterInterrupt = { calls: hang.calls(), aborted: hang.aborted(), bodyCancelled: hang.bodyCancelled() };
 			if (!options.interrupt) yield* Fiber.interrupt(fiber);
 			return { abortedBefore, ...afterInterrupt, final: { aborted: hang.aborted() } };
@@ -1196,6 +1198,15 @@ describe("interrupting a call aborts its fetch", () => {
 	it.effect("a hung body read is cancelled with the call", () =>
 		Effect.gen(function* () {
 			const result = yield* drive("body", (c) => c.request("GET /repos/{owner}/{repo}", ROUTE_PARAMS));
+			assert.strictEqual(result.calls, 1);
+			assert.strictEqual(result.aborted, 1);
+			assert.strictEqual(result.bodyCancelled, 1);
+		}),
+	);
+
+	it.effect("a hung body read under paginate is cancelled with the walk", () =>
+		Effect.gen(function* () {
+			const result = yield* drive("body", (c) => c.paginate("GET /repos/{owner}/{repo}/issues", ROUTE_PARAMS));
 			assert.strictEqual(result.calls, 1);
 			assert.strictEqual(result.aborted, 1);
 			assert.strictEqual(result.bodyCancelled, 1);
