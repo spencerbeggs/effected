@@ -376,6 +376,15 @@ export interface CacheSqliteOptions extends CacheOptions {
 	 * The SQLite driver opens one connection per layer build, so once per
 	 * build is once per connection. A failure fails the layer as a
 	 * `CacheError` with `operation: "setup"`.
+	 *
+	 * @example
+	 * ```ts
+	 * // Several pragmas: sequence the statements; the first failure fails the layer.
+	 * const CacheLive = Cache.layerSqlite({
+	 * 	filename: "cache.db",
+	 * 	onConnect: (sql) => Effect.andThen(sql`PRAGMA synchronous = NORMAL`, sql`PRAGMA temp_store = MEMORY`),
+	 * });
+	 * ```
 	 */
 	readonly onConnect?: (sql: SqlClient.SqlClient) => Effect.Effect<unknown, SqlError.SqlError>;
 }
