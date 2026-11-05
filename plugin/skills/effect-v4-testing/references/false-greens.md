@@ -750,7 +750,7 @@ nonzero, which CI reads as a failure with no failing test to point at.
 
 Snapshot and restore it in a `finally` around any test that exercises such
 code, alongside the console spy and any env mutation
-(`packages/github-actions/__test__/Action.test.ts:45-55`):
+(`packages/github-actions/__test__/Action.test.ts:47-57`):
 
 ```ts
 import { assert, it } from "@effect/vitest";
