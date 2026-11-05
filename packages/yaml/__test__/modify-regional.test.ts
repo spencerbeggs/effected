@@ -171,10 +171,9 @@ describe("YamlFormat.modify region-confined scalar replacement (#659)", () => {
 		assert.strictEqual(modifyToString("b: 'x'\na: 1\n", ["b"], "y", { sortKeys: true }), "a: 1\nb: y\n");
 	});
 
-	it("falls back to the whole-document pipeline on indent", () => {
-		// The fast path would keep the original 4-space indentation; the
-		// pipeline re-indents to 2. Pins the `indent !== undefined` clause.
-		assert.strictEqual(modifyToString("a:\n    k: 'x'\n", ["a", "k"], "y", { indent: 2 }), "a:\n  k: y\n");
+	it("splices a scalar in place when indent is passed", () => {
+		// indent shapes NEW output; a replaced scalar keeps its surroundings.
+		assert.strictEqual(modifyToString("a:\n    k: 'x'\n", ["a", "k"], "y", { indent: 2 }), "a:\n    k: 'y'\n");
 	});
 
 	it("falls back to the whole-document pipeline on finalNewline", () => {
@@ -183,10 +182,31 @@ describe("YamlFormat.modify region-confined scalar replacement (#659)", () => {
 		assert.strictEqual(modifyToString("a: 'x'\n", ["a"], "y", { finalNewline: false }), "a: y");
 	});
 
-	it("falls back to the whole-document pipeline on indentSequences", () => {
-		// The fast path would keep the indented sequence item; the pipeline
-		// dedents it. Pins the `indentSequences !== undefined` clause.
-		assert.strictEqual(modifyToString("a:\n  - 'x'\n", ["a", 0], "y", { indentSequences: false }), "a:\n- y\n");
+	it("splices a scalar in place when indentSequences is passed", () => {
+		assert.strictEqual(modifyToString("a:\n  - 'x'\n", ["a", 0], "y", { indentSequences: false }), "a:\n  - 'y'\n");
+	});
+
+	it("keeps a trailing comment and quotes with indent and indentSequences — the #1219 repro", () => {
+		const text = 'catalog:\n  "typescript": "^5.8.0" # bumped by export\n';
+		assert.strictEqual(
+			modifyToString(text, ["catalog", "typescript"], "^5.9.0", { indent: 2, indentSequences: true }),
+			'catalog:\n  "typescript": "^5.9.0" # bumped by export\n',
+		);
+	});
+
+	it("an insert with indent honours it", () => {
+		assert.strictEqual(modifyToString("a:\n    b: 1\n", ["a", "c"], 2, { indent: 2 }), "a:\n  b: 1\n  c: 2\n");
+	});
+
+	it("an object replacement with indent honours it", () => {
+		assert.strictEqual(modifyToString("a: 1\n", ["a"], { x: 1 }, { indent: 4 }), "a:\n    x: 1\n");
+	});
+
+	it("defaultScalarStyle still forces the fallback with indent", () => {
+		assert.strictEqual(
+			modifyToString("a:\n    k: 'x' # c\n", ["a", "k"], "y", { indent: 2, defaultScalarStyle: "double-quoted" }),
+			"a:\n  k: y\n",
+		);
 	});
 
 	it("keeps typed navigation errors unchanged", () => {
