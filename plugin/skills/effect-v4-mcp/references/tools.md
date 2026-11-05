@@ -558,10 +558,15 @@ Under `KeyValueStore.layerMemory`, two calls with `requestId: "r1"` answer
   a miss or a skipped write, logged at debug level, never a tool error. A
   handler failure stores nothing, and neither does an `ok: false` envelope
   result — a "not found" must not replay after the thing exists.
-- **Wrap inside `catchAsEnvelope`**:
-  `ToolReplay.wrap(options)(handler)` first, then
-  `.pipe(ToolOutcome.catchAsEnvelope({ … }))` around it, so the envelope sees
-  the handler's real errors and replay sees only real successes.
+- **Either order of `catchAsEnvelope` and `wrap` is safe.** `wrap` skips
+  storing an `ok: false` result, so replay may sit outside a handler that
+  already catches into the envelope. Wrapping first and putting
+  `.pipe(ToolOutcome.catchAsEnvelope({ … }))` around it also works; the envelope
+  then sees the handler's real errors.
+- **Call `wrap` once, where the handler is built** (the effect form of
+  `Toolkit.toLayer`, as above), never inside the per-request handler: that
+  rebuilds the codec every call and moves the wiring check's throw from server
+  build to the first call.
 - **Replay, not exactly-once.** Two concurrent calls with one key both miss
   and both run the mutation. Serialize them yourself when that matters.
 

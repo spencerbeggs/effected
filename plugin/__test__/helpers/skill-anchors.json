@@ -1704,6 +1704,14 @@
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
+			"anchor": "SchemaIssue.ts:147",
+			"source": "effect:SchemaIssue.ts",
+			"symbols": {
+				"147": "export type Issue ="
+			}
+		},
+		{
+			"file": "effect-v4-schema/SKILL.md",
 			"anchor": "SchemaIssue.ts:768",
 			"source": "effect:SchemaIssue.ts",
 			"symbols": {

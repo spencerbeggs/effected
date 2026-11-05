@@ -61,6 +61,13 @@ test poisons its neighbours — false reds first, false greens later. Acquire an
 release spies with `Effect.acquireUseRelease` instead →
 [references/false-greens.md](./references/false-greens.md).
 
+**A repo without `@effect/vitest` can still test Effect code**: a plain Vitest
+`it` calling a small `Effect.runPromise` helper. What it loses is what
+`it.effect` installs: a per-test `Scope` and the virtual `TestClock` and
+`TestConsole` (`Effect.scoped` and `TestClock.layer()` add the scope and the clock back
+by hand), plus `layer(...)` sharing and `it.effect.prop`. The skill's `it.effect`
+examples assume the package is installed.
+
 ## The default runner: `it.effect` + `Effect.gen`
 
 ```ts
@@ -252,7 +259,9 @@ A mock service is a `Context.Service` with a test `Layer`, swapped `Live` →
 `Test` at this boundary, never inside test bodies.
 
 **Testing a boundary-tier package that does real IO needs no platform package.**
-`Path.layer` comes from `effect` core (`Path.ts:931`) and the filesystem double
+`Path.layer` comes from `effect` core (`Path.ts:931`) and is the POSIX `Path`
+only (`/` separator, POSIX semantics): provide it in tests, never in code under
+`src/`, where it would give Windows users POSIX paths. The filesystem double
 is `@effected/memfs`, a pure package with no `node:*` import — core ships
 **no** `FileSystem.layer`, only the deny-by-default `layerNoop` (`FileSystem.ts:848`),
 which is not a double

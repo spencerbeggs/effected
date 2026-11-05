@@ -374,7 +374,8 @@ Effect v4's consolidated core **declares** the platform service contracts —
 provides `ChildProcessSpawner | FileSystem | Path | Stdio | Terminal`
 in one layer; crypto is not in it — the `effect/crypto` services such as
 `Digest` come from `NodeCrypto.layer` or a family layer like
-`NodeCrypto.layerDigest`, or core's `Digest.layerWebCrypto`). All of these contracts are tagged `@stability unstable` — a
+`NodeCrypto.layerDigest`, or core's `Digest.layerWebCrypto`; a consumer's own doc
+comment saying `NodeServices.layer` provides crypto is stale, so fix it). All of these contracts are tagged `@stability unstable` — a
 minor `effect` release may change their shape — which does not change the
 rule below; it means a library re-verifies its usage when the installed
 `effect` moves. That split fixes the house default:

@@ -87,6 +87,7 @@ NodeRuntime.runMain(
 - Provide `@effect/platform-node`'s `NodeServices.layer` once, as `main`'s `platform`, to satisfy `Command.Environment`.
 - Fail a usage error (`Effect.fail(new CliError.UserError(...))`); succeed a query that legitimately matches nothing.
 - Write program output with `Console.log` or `Doc.print`, one-line outcomes with `CliMessage`, and diagnostics with `Effect.log*` — the streams must never trade places.
+- `CliFormat.flag`'s `markdown` is the kit's `Render.markdown` of your report `Doc`, so a CLI that prints its own markdown string offers it under another name in `custom` (`custom: ["markdown"]` throws: a built-in name cannot be custom) and branches on it before `CliFormat.print`.
 - Build a report as a `Doc` and let the audience pick the renderer; offer `--format` with `CliFormat.flag` and print through `CliFormat.print`; reach for `Render.markdown` only for a file or a step summary.
 - Ask for input only through `CliPrompt.fallback`, `CliUi.prompt` or `CliUi.fallback`, each with a non-interactive default.
 - Set `"jsx": "react-jsx"` for a `.tsx` screen, keep each screen in its own module with a default export, and mount it with `CliUi.lazy`, so JSX never loads in the command module.
