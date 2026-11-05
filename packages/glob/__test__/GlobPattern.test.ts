@@ -536,6 +536,13 @@ describe("GlobPattern.literalPrefix (#1200)", () => {
 			Result.getOrThrow(GlobPattern.compileResult(source, GlobPatternOptions.make(options))).literalPrefix;
 		assert.strictEqual(prefix("src/lib/**", { nocase: true }), "src/lib");
 		assert.strictEqual(prefix("src/a.ts", { nocase: true }), "src/a.ts");
+		// Spelling only: case is never folded, so this is no safe walk root on a case-sensitive filesystem.
+		assert.strictEqual(prefix("SRC/Lib/**", { nocase: true }), "SRC/Lib");
+		const folded = Result.getOrThrow(
+			GlobPattern.compileResult("SRC/Lib/**", GlobPatternOptions.make({ nocase: true })),
+		);
+		assert.isTrue(folded.matches("src/lib/a.ts"));
+		assert.strictEqual(folded.enumerationPrefix, "");
 		assert.strictEqual(prefix("src/lib/**", { nocaseMagicOnly: true }), "src/lib");
 		assert.strictEqual(prefix("src/lib/**/*.ts", { noglobstar: true }), "src/lib");
 		assert.strictEqual(prefix("src/lib/*.ts", { matchBase: true }), "src/lib");

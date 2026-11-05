@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T18:33:41Z
+  at: 2026-11-05T18:39:02Z
 integrity:
   generated:
-    body: e2fa3dbc053de837
+    body: c6fb4ab69e098285
 ---
 
 # glob
@@ -49,7 +49,7 @@ A `FromString` transformation schema exists for embedding patterns in config sch
 
 `enumerationPrefix` is meaningful for **non-negated** patterns only: it is computed from the *inner* pattern, but a negated pattern's `matches` inverts, matching everything the inner pattern does not — and those matches can land outside the prefix. A negated pattern's walk must therefore ignore the prefix entirely and deep-walk from the root unconditionally, regardless of `crossesSegments`.
 
-**`literalPrefix`** is the unexpanded counterpart: the literal leading segments before the first magic segment, unescaped, spelling kept, no trailing slash, `""` for the base and `/` for a root-anchored magic pattern. An unescaped `{` is magic (braces are not expanded, unless `nobrace`), an all-literal pattern yields itself, and a negated pattern yields its inner prefix, so guard on `negated` as for the others. `enumerationPrefix` keeps its slash-terminated, brace-common form for its consumers.
+**`literalPrefix`** is the unexpanded counterpart: the literal leading segments before the first magic segment, unescaped, spelling kept, no trailing slash, `""` for the base and `/` for a root-anchored magic pattern. An unescaped `{` is magic (braces are not expanded, unless `nobrace`), an all-literal pattern yields itself, and a negated pattern yields its inner prefix, so guard on `negated` as for the others. `literalPrefix` is spelling-only and never folds case: under `nocase`, `SRC/Lib/**` gives `SRC/Lib` although the pattern also matches `src/lib/a.ts`, so it is not a safe walk root on a case-sensitive filesystem. `enumerationPrefix` is more conservative there, since `nocase` turns a letter segment into a case-insensitive matcher and it stops at it. `enumerationPrefix` keeps its slash-terminated, brace-common form for its consumers.
 
 **`extglobBang`** is an opt-in option (an engine adaptation in `parseNegate`) that stops negation before a `!` opening an extglob, as picomatch does, except before `(?` plus one of `!=<:` and under `noext`. It is off by default because the package matches its minimatch oracle by contract, and the compliance rows that pin a leading `!(` as negation stay as they are. It promises parity with picomatch at that one point only. `nonegate: true` already gives picomatch's answer for `!(`, but also turns off plain `!a`. `GlobSet` cannot reach the option: it has no options surface and strips one `!` itself as the exclusion marker, so `!(src)/**` in a set excludes `(src)/**`.
 

@@ -433,6 +433,12 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 * Computed under this pattern's options; its `matchBase` and win32
 	 * interaction is undefined, as for the other getters.
 	 *
+	 * It returns the pattern's spelling and never folds case: under `nocase`,
+	 * `SRC/Lib/**` gives `SRC/Lib`, though the pattern also matches `src/lib/a.ts`.
+	 * It is not a safe walk root there on a case-sensitive filesystem. (
+	 * {@link GlobPattern.enumerationPrefix} is more conservative: `nocase` turns a
+	 * letter segment into a case-insensitive matcher, so it stops there.)
+	 *
 	 * Like {@link GlobPattern.enumerationPrefix} it reads the inner pattern of a
 	 * negated one: guard on {@link GlobPattern.negated} at the call site.
 	 */
