@@ -14,11 +14,13 @@ integrity:
     body: a2870a86aa72a922
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 4747b289716663e2
+    at: 2026-11-05T14:25:52Z
+    content: 18f0ff94039b5a7a
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-05T14:25:52Z
 ---
 
 # A schemastore outputDir is never exclusively the command's

@@ -31,11 +31,13 @@ integrity:
     body: 817b9fc6045fe8e3
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: fd836c05cb9d51e4
+    at: 2026-11-05T14:25:52Z
+    content: 93b8e194e00ad59a
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-05T14:25:52Z
 ---
 
 # The ajv engine lives in the effected tool, and the library returns to boundary tier

@@ -28,13 +28,15 @@ integrity:
     body: 17b07d77765bd87f
   verified:
     by: human:spencer
-    at: 2026-11-02T17:04:46Z
-    content: 9acb7baef8a022d2
+    at: 2026-11-05T14:25:52Z
+    content: d763e9594f1d6d7a
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
   - by: human:spencer
     at: 2026-11-02T17:04:46Z
+  - by: human:spencer
+    at: 2026-11-05T14:25:52Z
 ---
 
 # The cli root stays boundary, and ./ui is integrated only for consumers who opt in

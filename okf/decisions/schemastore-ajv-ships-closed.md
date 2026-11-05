@@ -14,11 +14,13 @@ integrity:
     body: 9f40b249c2b18669
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 04ebc8bd014f5c88
+    at: 2026-11-05T14:25:52Z
+    content: 16a8989f5cf8a400
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-05T14:25:52Z
 ---
 
 # The validation gate ships a real ajv engine, closed by default

@@ -22,13 +22,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-11-02T17:04:46Z
+  - by: human:spencer
+    at: 2026-11-05T14:25:52Z
 integrity:
   generated:
     body: 911cac0f8616e738
   verified:
     by: human:spencer
-    at: 2026-11-02T17:04:46Z
-    content: 34ddb44cdec4f84a
+    at: 2026-11-05T14:25:52Z
+    content: ee4ec89ad6ab7519
 ---
 
 # PackedInstall packs the prod npm directory by default

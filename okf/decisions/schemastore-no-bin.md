@@ -18,13 +18,15 @@ integrity:
     body: b2e04578b3f20289
   verified:
     by: human:spencer
-    at: 2026-11-02T17:04:46Z
-    content: 1a38124cf1d89298
+    at: 2026-11-05T14:25:52Z
+    content: 852da906e74cb6ca
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
   - by: human:spencer
     at: 2026-11-02T17:04:46Z
+  - by: human:spencer
+    at: 2026-11-05T14:25:52Z
 ---
 
 # No bin on the library — the executable lives in the effected tool

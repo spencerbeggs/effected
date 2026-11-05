@@ -15,13 +15,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-11-02T17:04:46Z
+  - by: human:spencer
+    at: 2026-11-05T14:25:52Z
 integrity:
   generated:
     body: 5efdf00eae2716a8
   verified:
     by: human:spencer
-    at: 2026-11-02T17:04:46Z
-    content: adc21d31d7cb5ca0
+    at: 2026-11-05T14:25:52Z
+    content: '290221193e481258'
 ---
 
 # CliLinks finds the project root with @effected/walker

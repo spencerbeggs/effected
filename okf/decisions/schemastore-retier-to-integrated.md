@@ -16,11 +16,13 @@ integrity:
     body: 8a4eadf663cd5053
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: efdada30979bcc78
+    at: 2026-11-05T14:25:52Z
+    content: 01a03c830ead7f8a
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-05T14:25:52Z
 ---
 
 # Schemastore retiers from boundary to integrated for a direct ajv dependency

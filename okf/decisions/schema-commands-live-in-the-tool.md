@@ -2,7 +2,7 @@
 type: Decision
 title: The schemastore commands live in the effected tool, and the companion package is removed
 description: "build, check and validate moved from the @effected/schemastore-cli companion into the effected tool as effected schema and the schema_build, schema_check and schema_validate MCP tools, with the logic in @effected/engine and a workspace:* pin chain from the carrier down to schemastore, so one install gives a consumer the command, the server and the config import and a kit dependency cannot move on its own."
-status: draft
+status: stable
 tags:
   - architecture
   - release
@@ -26,6 +26,13 @@ generated:
 integrity:
   generated:
     body: 4434f81aa1487d59
+  verified:
+    by: human:spencer
+    at: 2026-11-05T14:25:52Z
+    content: 8ae557e04128782a
+verified:
+  - by: human:spencer
+    at: 2026-11-05T14:25:52Z
 ---
 
 # The schemastore commands live in the effected tool, and the companion package is removed

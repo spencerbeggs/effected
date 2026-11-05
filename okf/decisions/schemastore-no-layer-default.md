@@ -16,11 +16,13 @@ integrity:
     body: 7bf6021d8edb7b28
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: f822e081c618a877
+    at: 2026-11-05T14:25:52Z
+    content: ee85885c71bfe905
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-05T14:25:52Z
 ---
 
 # No layerDefault on SchemaValidator or SchemaFile

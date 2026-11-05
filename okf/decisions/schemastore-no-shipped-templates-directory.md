@@ -14,11 +14,13 @@ integrity:
     body: 9c6831557305973e
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 8c077770e4ccc0d7
+    at: 2026-11-05T14:25:52Z
+    content: 57180e6c2ad1d4c7
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-05T14:25:52Z
 ---
 
 # No shipped templates/ directory

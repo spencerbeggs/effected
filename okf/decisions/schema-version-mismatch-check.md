@@ -2,7 +2,7 @@
 type: Decision
 title: A config from another schemastore version fails the CLI and only warns the MCP
 description: "The effected tool compares the @effected/schemastore version stamped on a config's values with the version it was built against: effected schema refuses a mismatch at exit 2 unless --ignore-version-mismatch is given, the MCP tools run anyway and return a loud warning, the version is stamped from process.env.__PACKAGE_VERSION__ and a HostedSchema is recognized by a Symbol.for brand so the engine, not the config's own evaluation, decides."
-status: draft
+status: stable
 tags:
   - architecture
   - deps
@@ -28,6 +28,13 @@ generated:
 integrity:
   generated:
     body: 33afaf7e916c5552
+  verified:
+    by: human:spencer
+    at: 2026-11-05T14:25:52Z
+    content: d61cc9690596d6d1
+verified:
+  - by: human:spencer
+    at: 2026-11-05T14:25:52Z
 ---
 
 # A config from another schemastore version fails the CLI and only warns the MCP
