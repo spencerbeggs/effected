@@ -655,7 +655,7 @@ export class CliRuntime {
 			env === undefined
 				? Layer.empty
 				: Layer.mergeAll(
-						CliColor.formatterLayer(options.env?.formatter),
+						CliColor.formatterLayer(options.env?.formatter, options.env?.helpFlags),
 						// Records how a failure is rendered, from the services this layer provides, for the report outside it.
 						Layer.effectDiscard(
 							Effect.gen(function* () {
@@ -684,7 +684,9 @@ export class CliRuntime {
 		const carried = options.distribution === undefined ? program : withCarrier(program, options.distribution);
 		const run = Effect.gen(function* () {
 			// Inside the platform provide, so the rerouting sees the platform's own Formatter.
-			yield* options.helpOnUsageError === "stderr" ? routeHelpOnUsageError(carried) : carried;
+			yield* options.helpOnUsageError === "stderr"
+				? routeHelpOnUsageError(carried, options.env?.formatter, options.env?.helpFlags)
+				: carried;
 			const exit = yield* CliExit;
 			const code = MutableRef.get(exit.code);
 			// CliExit.set validates, but the cell is a public MutableRef a program

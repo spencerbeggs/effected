@@ -62,6 +62,22 @@ export interface CliEnvOptions {
 	 */
 	readonly formatter?: Partial<CliOutput.Formatter> | undefined;
 	/**
+	 * How subcommand help renders flags it does not own, passed to core's `CliOutput.defaultFormatter` beside the
+	 * colour decision. Only `CliRuntime.main` reads this.
+	 *
+	 * @remarks
+	 * `inheritedFlags` covers flags a parent command shares with its subcommands (for example `CliAudience.flags()`);
+	 * `globalFlags` covers the built-ins such as `--help` and `--version`. Each is `"full"` (core's default, every flag
+	 * listed), `"summary"` (a one-line pointer) or `"none"`. Setting a mode here keeps the kit's colour decision, which
+	 * supplying your own `formatHelpDoc` through {@link CliEnvOptions.formatter} would lose.
+	 */
+	readonly helpFlags?:
+		| {
+				readonly inheritedFlags?: "full" | "summary" | "none" | undefined;
+				readonly globalFlags?: "full" | "summary" | "none" | undefined;
+		  }
+		| undefined;
+	/**
 	 * How an absolute path is shown: a function, or `{ relativeTo: root }` to show a path under `root` relative to it.
 	 * The identity by default.
 	 *

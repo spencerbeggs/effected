@@ -45,6 +45,10 @@ export class CliColor {
 	 * result to a `const` or the decision is re-read every time it is
 	 * provided.
 	 *
+	 * `helpFlags` sets how subcommand help renders the flags a parent declared (`inheritedFlags`) and the
+	 * program-wide built-ins (`globalFlags`): `"full"` (core's default), `"summary"` or `"none"`. It is passed to
+	 * core's `defaultFormatter` beside the colour decision, so choosing a mode costs no colour.
+	 *
 	 * The `never` in its output does not mean it installs nothing.
 	 * `CliOutput.Formatter` is a `Context.Reference`, whose key type is
 	 * `never`, so this layer sets the formatter reference rather than
@@ -56,10 +60,14 @@ export class CliColor {
 	 */
 	static readonly formatterLayer = (
 		overrides: Partial<CliOutput.Formatter> = {},
+		helpFlags?: {
+			readonly inheritedFlags?: "full" | "summary" | "none" | undefined;
+			readonly globalFlags?: "full" | "summary" | "none" | undefined;
+		},
 	): Layer.Layer<never, never, Stdio.Stdio> =>
 		Layer.unwrap(
 			Effect.map(CliColor.enabled, (colors) =>
-				CliOutput.layer({ ...CliOutput.defaultFormatter({ colors }), ...overrides }),
+				CliOutput.layer({ ...CliOutput.defaultFormatter({ colors, ...helpFlags }), ...overrides }),
 			),
 		);
 }
