@@ -13,7 +13,7 @@ import { Effect, FileSystem, Option, Path, Ref, Schema } from "effect";
 import { Tool } from "effect/ai";
 
 const CONFIG_DESCRIPTION =
-	"The schemastore config, resolved against the workspace root and refused outside it. Omitted, discovery walks upward from the server's working directory.";
+	"The schemastore config, resolved against the workspace root and refused outside it. Omitted, discovery walks upward from the server's working directory, stopping at the workspace root.";
 
 const RunParameters = Schema.Struct({
 	config: Schema.optionalKey(Schema.String.annotate({ description: CONFIG_DESCRIPTION })),
@@ -202,14 +202,15 @@ export const makeSchemaHandlers = (options: SchemaToolOptions = {}) =>
 						),
 			);
 
-		// Given, it is held to the root. Otherwise discovery starts where the server did, while relative parameters
-		// resolve against the root, so the engine is handed what was found; finding nothing leaves the engine to report it.
+		// Given, it is held to the root. Otherwise discovery starts where the server did and stops at the root: a config is
+		// code, and an agent did not choose one found above the checkout. Relative parameters resolve against the root, so
+		// the engine is handed what was found; finding nothing leaves the engine to report it.
 		const configOf = (
 			config: string | undefined,
 		): Effect.Effect<{ readonly config?: string }, ToolRefusal, FileSystem.FileSystem | Path.Path> =>
 			config !== undefined
 				? Effect.as(inside("config", config), { config })
-				: Effect.match(ConfigLoader.discover(cwd), {
+				: Effect.match(ConfigLoader.discover(cwd, root), {
 						onFailure: () => ({}),
 						onSuccess: (found) => ({ config: found }),
 					});
@@ -248,6 +249,7 @@ export const makeSchemaHandlers = (options: SchemaToolOptions = {}) =>
 					const scoped = yield* configOf(params.config);
 					const loaded = yield* ConfigLoader.load({
 						cwd: root,
+						ceiling: root,
 						...(scoped.config !== undefined ? { explicit: scoped.config } : {}),
 						...importer,
 					});
@@ -261,7 +263,7 @@ export const makeSchemaHandlers = (options: SchemaToolOptions = {}) =>
 								force: params.force ?? false,
 								versionMismatch: "warn",
 							},
-							{ cwd: root, importModule: () => Promise.resolve(loaded.config), onProgress },
+							{ cwd: root, discoveryCeiling: root, importModule: () => Promise.resolve(loaded.config), onProgress },
 						),
 						{ timeout: WALK_TIMEOUT },
 					);
@@ -297,7 +299,7 @@ export const makeSchemaHandlers = (options: SchemaToolOptions = {}) =>
 								...scoped,
 								versionMismatch: "warn",
 							},
-							{ cwd: root, ...importer, onProgress },
+							{ cwd: root, discoveryCeiling: root, ...importer, onProgress },
 						);
 					}),
 				),

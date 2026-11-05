@@ -211,6 +211,7 @@ describe("schema tools", () => {
 				cwd: "/repo/packages/a",
 				seed: {
 					[`${ROOT}/pnpm-workspace.yaml`]: "",
+					[CONFIG_PATH]: "",
 					"/repo/packages/a/.keep": "",
 					[DOC_PATH]: emitted(Fixture),
 					"/repo/data.json": '{ "name": "x" }',
@@ -416,15 +417,74 @@ describe("schema tools", () => {
 
 	it.effect("a version mismatch returns the warning in the result and still runs", () =>
 		Effect.gen(function* () {
-			const { harness, volume } = yield* serve({ config: stamped(configOf(Fixture), "9.9.9") });
+			const { harness, volume } = yield* serve({
+				config: stamped(configOf(Fixture), "9.9.9"),
+				seed: {
+					[`${ROOT}/pnpm-workspace.yaml`]: "",
+					[CONFIG_PATH]: "",
+					"/repo/data.json": `{ "$schema": "${DOC_ID}", "name": "x" }`,
+				},
+			});
 			const built = resultOf(yield* harness.callTool("schema_build", {}));
 			assert.strictEqual(built.isError ?? false, false);
 			assert.include(runOf(built).versionMismatch?.message ?? "", "9.9.9");
 			assert.isTrue(volume.has(DOC_PATH));
 			const checked = resultOf(yield* harness.callTool("schema_check", {}));
 			assert.include(runOf(checked).versionMismatch?.message ?? "", "9.9.9");
+			const validated = resultOf(yield* harness.callTool("schema_validate", { payload: "data.json" }));
+			assert.strictEqual(validated.isError ?? false, false);
+			const report = validated.structuredContent as {
+				readonly valid: boolean;
+				readonly versionMismatch?: { readonly message: string };
+			};
+			assert.isTrue(report.valid);
+			assert.include(report.versionMismatch?.message ?? "", "9.9.9");
 		}).pipe(Effect.scoped),
 	);
+
+	describe("discovery stops at the root", () => {
+		const CHECKOUT = "/top/repo";
+		const STRAY = "/top/schemastore.config.ts";
+		const AT_ROOT = `${CHECKOUT}/schemastore.config.ts`;
+		const BELOW = `${CHECKOUT}/pkg/schemastore.config.ts`;
+		const seedWith = (...configs: ReadonlyArray<string>): MemoryFileSystemSeed => ({
+			[`${CHECKOUT}/pnpm-workspace.yaml`]: "",
+			[`${CHECKOUT}/pkg/.keep`]: "",
+			[`${CHECKOUT}/data.json`]: "{}",
+			...Object.fromEntries(configs.map((config) => [config, ""])),
+		});
+		const cases = [
+			["schema_check", {}],
+			["schema_build", {}],
+			// An identity is the one reference that needs the config.
+			["schema_validate", { payload: "data.json", schema: "https://example.com/schemas/app.json" }],
+		] as const;
+
+		for (const [tool, args] of cases) {
+			it.effect(`${tool} does not load a config above the root`, () =>
+				Effect.gen(function* () {
+					const { harness, loads } = yield* serve({ seed: seedWith(STRAY), cwd: `${CHECKOUT}/pkg` });
+					const result = resultOf(yield* harness.callTool(tool, args));
+					assert.isTrue(result.isError);
+					assert.include(textOf(result), "No schemastore config found");
+					assert.deepStrictEqual(loads, []);
+				}).pipe(Effect.scoped),
+			);
+
+			it.effect(`${tool} loads a config at the root or below it`, () =>
+				Effect.gen(function* () {
+					for (const [config, expected] of [
+						[AT_ROOT, AT_ROOT],
+						[BELOW, BELOW],
+					] as const) {
+						const { harness, loads } = yield* serve({ seed: seedWith(STRAY, config), cwd: `${CHECKOUT}/pkg` });
+						yield* harness.callTool(tool, args);
+						assert.deepStrictEqual(loads, [expected]);
+					}
+				}).pipe(Effect.scoped),
+			);
+		}
+	});
 
 	it.effect("a refusal after a warned mismatch carries the warning", () =>
 		Effect.gen(function* () {
