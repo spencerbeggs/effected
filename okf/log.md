@@ -41,6 +41,9 @@
 * Updated spencerbeggs/okfit
 * Added @effected/files
 * Updated store
+* Updated @effected/templates
+* Updated config-file
+* Updated package-json
 
 ## 2026-11-02
 

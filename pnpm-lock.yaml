@@ -494,6 +494,10 @@ importers:
     publishDirectory: dist/dev/pkg
 
   packages/config-file:
+    dependencies:
+      '@effected/files':
+        specifier: workspace:^
+        version: link:../files/dist/dev/pkg
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effected
@@ -1239,6 +1243,9 @@ importers:
 
   packages/package-json:
     dependencies:
+      '@effected/files':
+        specifier: workspace:^
+        version: link:../files/dist/dev/pkg
       '@effected/jsonc':
         specifier: workspace:^
         version: link:../jsonc/dist/dev/pkg
@@ -1552,6 +1559,10 @@ importers:
     publishDirectory: dist/dev/pkg
 
   packages/templates:
+    dependencies:
+      '@effected/files':
+        specifier: workspace:^
+        version: link:../files/dist/dev/pkg
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effected

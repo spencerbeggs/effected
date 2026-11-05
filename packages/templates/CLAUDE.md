@@ -10,10 +10,11 @@ there with their reasoning.
 
 ## What this package is
 
-**Boundary tier.** `effect` is the only peer; zero runtime dependencies, zero
-`@effected` edges. `FileSystem` is required in `R`; **`Path` is not** — paths
-are opaque strings handed straight to `FileSystem`, and this package never
-joins, resolves or splits one. `@effect/platform-node` is a devDependency, for
+**Boundary tier.** `effect` is the only peer; the one runtime dependency is
+`@effected/files`. `FileSystem` and `Path` are required in `R`: a sync writes
+through `AtomicFile.write`, which needs `Path` for the temp file beside the
+target, so a crash cannot truncate the user's file. Reads stay `FileSystem`
+alone. `@effect/platform-node` is a devDependency, for
 the integration suite only.
 
 v1 scope is **managed sections only**. Whole-file templating is out of scope
