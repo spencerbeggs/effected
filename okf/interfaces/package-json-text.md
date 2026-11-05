@@ -14,7 +14,7 @@ sources:
     resource: ../../packages/package-json/__test__/fixtures
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T21:11:48Z
+  at: 2026-11-05T18:21:57Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:16.643Z
@@ -24,7 +24,7 @@ verified:
     at: 2026-10-29T00:43:21Z
 integrity:
   generated:
-    body: dabb8c7acf8b8d00
+    body: bdae357cc466e363
   verified:
     by: human:spencer
     at: 2026-10-29T00:43:21Z
@@ -64,13 +64,17 @@ stable contract:
   edit surface, so every byte outside the edited span — key order,
   indentation, line endings, trailing newline — survives.
   **`modify`** / **`modifyToString`** are their spanned `Effect` forms.
+  All four take `options?: PackageModifyOptions`: `insertAfter` places a
+  new key directly after a sibling, and `createParents` builds missing
+  object ancestors, never overwriting a wrong-typed one or inventing an
+  array.
   Both jsonc failures, a path that cannot be navigated and a value that
   cannot be serialized (a `bigint`, a circular structure, a function or
   symbol), surface as `PackageJsonModifyError` with the jsonc error on
   `cause`; a navigation failure wins when both apply.
 
 `PackageJsonFile.modify` is the same surgical operation read-modify-write
-against a path, skipping the write entirely when the result is
+against a path, with those two options per edit, skipping the write entirely when the result is
 byte-identical to what was read.
 
 ## Byte-agreement with the ecosystem oracle

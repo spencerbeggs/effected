@@ -46,8 +46,13 @@ export interface Located {
 export interface Insert {
 	readonly _tag: "Insert";
 	readonly container: "object" | "array";
-	/** Offset at which new content should be inserted. */
+	/**
+	 * Tight end offset of the entry the new one follows, or where the first entry
+	 * goes when the container is empty.
+	 */
 	readonly at: number;
+	/** Offset of the comma token immediately following that entry, if any. */
+	readonly commaAfter?: number | undefined;
 	/** Whether the container is empty (affects surrounding punctuation). */
 	readonly isFirst: boolean;
 	/** Offset of the container's opening token. */
@@ -55,11 +60,22 @@ export interface Insert {
 	/** Leading whitespace of the line holding the container's opening token. */
 	readonly parentIndent: string;
 	/**
-	 * Leading whitespace of the last entry's line, the column a new entry lines
-	 * up with. Undefined when the container is empty or that entry still sits on
+	 * Leading whitespace of that entry's line, the column a new entry lines up
+	 * with. Undefined when the container is empty or that entry still sits on
 	 * the line of the opening token, where the indent says nothing about members.
 	 */
 	readonly memberIndent?: string | undefined;
+}
+
+/**
+ * An object on the way to the target lacks the next key. Distinct from
+ * {@link Mismatch}, where the key exists and holds the wrong type: this one can
+ * be repaired by creating the missing object at the insertion point it carries.
+ */
+export interface MissingAncestor extends Omit<Insert, "_tag" | "container"> {
+	readonly _tag: "MissingAncestor";
+	/** Index into the path of the segment the object lacks. */
+	readonly segmentIndex: number;
 }
 
 /** A structural type mismatch: expected an object or array but found otherwise. */
@@ -75,7 +91,7 @@ export interface NoOp {
 }
 
 /** The outcome of navigating a {@link JsoncPath} through JSONC source. */
-export type NavigateResult = Located | Insert | Mismatch | NoOp;
+export type NavigateResult = Located | Insert | MissingAncestor | Mismatch | NoOp;
 
 export const isLineBreak = (char: string): boolean => char === "\n" || char === "\r";
 
@@ -99,9 +115,10 @@ const lineIndent = (text: string, offset: number): string => {
 /**
  * Resolve `path` against `text`, returning where the target is (or where it
  * would be inserted). `path` must be non-empty — the whole-document case is
- * handled by the caller.
+ * handled by the caller. A new object member goes after the key `insertAfter`
+ * when the final container holds it, and after the last member otherwise.
  */
-export function navigate(text: string, path: JsoncPath): NavigateResult {
+export function navigate(text: string, path: JsoncPath, insertAfter?: string): NavigateResult {
 	if (path.length === 0) {
 		return { _tag: "NoOp" };
 	}
@@ -168,23 +185,27 @@ export function navigate(text: string, path: JsoncPath): NavigateResult {
 		};
 	}
 
-	function insert(
-		container: "object" | "array",
+	function insertionPoint(
 		at: number,
+		commaAfter: number | undefined,
 		isFirst: boolean,
 		open: number,
-		lastStart: number | undefined,
-	): Insert {
-		const memberOnOwnLine = lastStart !== undefined && lineStart(text, lastStart) > open;
+		entryStart: number | undefined,
+	): Omit<Insert, "_tag" | "container"> {
+		const onOwnLine = entryStart !== undefined && lineStart(text, entryStart) > open;
 		return {
-			_tag: "Insert",
-			container,
 			at,
+			commaAfter,
 			isFirst,
 			open,
 			parentIndent: lineIndent(text, open),
-			memberIndent: memberOnOwnLine ? lineIndent(text, lastStart) : undefined,
+			memberIndent: onOwnLine ? lineIndent(text, entryStart) : undefined,
 		};
+	}
+
+	// The comma token at the cursor, just past a value that was skipped.
+	function commaHere(): number | undefined {
+		return currentToken === "Comma" ? scanner.getTokenOffset() : undefined;
 	}
 
 	let depth = 0;
@@ -201,6 +222,8 @@ export function navigate(text: string, path: JsoncPath): NavigateResult {
 			let isFirst = true;
 			let lastComma: number | undefined;
 			let lastKeyStart: number | undefined;
+			let lastCommaAfter: number | undefined;
+			let anchor: { readonly keyStart: number; readonly end: number; readonly comma: number | undefined } | undefined;
 
 			while (currentToken !== "CloseBrace" && currentToken !== "EOF") {
 				if (!isFirst && currentToken === "Comma") {
@@ -225,18 +248,28 @@ export function navigate(text: string, path: JsoncPath): NavigateResult {
 						break; // descend into this value on the next segment
 					}
 					lastValueEnd = skipValue();
+					lastCommaAfter = commaHere();
+					// Last one wins, as it does when a duplicated key is parsed.
+					if (key === insertAfter && depth === path.length) {
+						anchor = { keyStart, end: lastValueEnd, comma: lastCommaAfter };
+					}
 				} else {
 					currentToken = scanner.scan();
 					lastValueEnd = scanner.getTokenOffset();
+					lastCommaAfter = undefined;
 				}
 				isFirst = false;
 			}
 
-			if (!found && depth === path.length) {
-				return insert("object", lastValueEnd, isFirst, open, lastKeyStart);
+			if (!found) {
+				const point =
+					anchor !== undefined
+						? insertionPoint(anchor.end, anchor.comma, false, open, anchor.keyStart)
+						: insertionPoint(lastValueEnd, lastCommaAfter, isFirst, open, lastKeyStart);
+				return depth === path.length
+					? { _tag: "Insert", container: "object", ...point }
+					: { _tag: "MissingAncestor", segmentIndex: depth - 1, ...point };
 			}
-			// Intermediate miss: fall through to the next segment, where the
-			// closing brace token will fail the OpenBrace/OpenBracket check.
 		} else {
 			if (currentToken !== "OpenBracket") {
 				return { _tag: "Mismatch", depth, expected: "array" };
@@ -247,6 +280,7 @@ export function navigate(text: string, path: JsoncPath): NavigateResult {
 			let lastEnd = scanner.getTokenOffset();
 			let lastComma: number | undefined;
 			let lastElementStart: number | undefined;
+			let lastCommaAfter: number | undefined;
 
 			while (currentToken !== "CloseBracket" && currentToken !== "EOF") {
 				if (idx > 0 && currentToken === "Comma") {
@@ -264,11 +298,16 @@ export function navigate(text: string, path: JsoncPath): NavigateResult {
 				}
 				lastElementStart = scanner.getTokenOffset();
 				lastEnd = skipValue();
+				lastCommaAfter = commaHere();
 				idx++;
 			}
 
 			if (idx <= segment && depth === path.length) {
-				return insert("array", lastEnd, idx === 0, open, lastElementStart);
+				return {
+					_tag: "Insert",
+					container: "array",
+					...insertionPoint(lastEnd, lastCommaAfter, idx === 0, open, lastElementStart),
+				};
 			}
 		}
 	}

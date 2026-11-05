@@ -6,7 +6,7 @@
 // navigation miss; value serialization goes through `Jsonc.stringifyResult`.
 
 import { Effect, Result, Schema } from "effect";
-import type { Located } from "./internal/navigate.js";
+import type { Insert, Located } from "./internal/navigate.js";
 import { isBlank, isLineBreak, navigate } from "./internal/navigate.js";
 import type { JsoncStringifyError } from "./Jsonc.js";
 import { Jsonc } from "./Jsonc.js";
@@ -50,22 +50,47 @@ export class JsoncModificationError extends Schema.TaggedError<JsoncModification
 }
 
 /**
- * Options for `JsoncModifier.modify`: formatting controls for generated text.
+ * Options for `JsoncModifier.modify`: formatting controls for generated text,
+ * where a new object member goes, and whether missing ancestors are created.
  *
  * @public
  */
 export interface JsoncModifyOptions {
 	/**
 	 * Formatting applied to inserted/replaced content. `tabSize` and
-	 * `insertSpaces` set the indentation unit and `eol` the line ending; each
-	 * left out is inferred from the document, the unit from its first indented
-	 * line (two spaces when there is none) and `eol` from its first line break.
-	 * The column a value starts from always comes from its position in the
-	 * document. Accepts a `JsoncFormattingOptions` instance or a plain literal
-	 * (e.g. `{ insertSpaces: false, tabSize: 2 }`) — see
-	 * {@link JsoncFormattingOptionsLike}.
+	 * `insertSpaces` decide the indentation unit together: give either and the
+	 * document is not consulted for it, so `insertSpaces: false` is a tab and
+	 * otherwise the unit is `tabSize` spaces, two when `tabSize` is left out.
+	 * Give neither and the unit comes from the document's first indented line,
+	 * or two spaces when there is none. `eol` is separate, and left out comes
+	 * from the document's first line break. The column a value starts from always
+	 * comes from its position in the document. Accepts a `JsoncFormattingOptions`
+	 * instance or a plain literal (e.g. `{ insertSpaces: false, tabSize: 2 }`) —
+	 * see {@link JsoncFormattingOptionsLike}.
 	 */
 	readonly formattingOptions?: JsoncFormattingOptionsLike;
+	/**
+	 * Place a new object member directly after this sibling, which is a key of
+	 * the object receiving it. Appended as usual when the object has no such key.
+	 * Has no effect on a replace, a delete, an array, or a member written under
+	 * an ancestor {@link JsoncModifyOptions.createParents} had to create.
+	 *
+	 * The sibling keeps a comment trailing it on its own line, however the comma
+	 * falls. A sibling sharing its line with something other than a comment keeps
+	 * the plain insert shape: the new member opens a line straight after the
+	 * sibling's value, and whatever followed the value follows the new member.
+	 * So `{ "a": 1, "b": 2 }` after `a` gives `{ "a": 1,\n  "k": 9, "b": 2 }`.
+	 */
+	readonly insertAfter?: string;
+	/**
+	 * Create missing object ancestors of the target. Off by default, when a
+	 * missing ancestor fails with {@link JsoncModificationError}. An ancestor that
+	 * exists with the wrong type still fails and is never overwritten, a numeric
+	 * segment under a missing ancestor still fails (`expected: "array"`), because
+	 * arrays are never invented, and so does a missing array element. A delete
+	 * under a missing ancestor succeeds with no edits.
+	 */
+	readonly createParents?: boolean;
 }
 
 const startOfBlanks = (text: string, offset: number): number => {
@@ -94,6 +119,53 @@ const detectIndentUnit = (text: string): string | undefined => {
 const detectEol = (text: string): string => {
 	const newline = text.indexOf("\n");
 	return newline > 0 && text.charAt(newline - 1) === "\r" ? "\r\n" : "\n";
+};
+
+/**
+ * Where the comments trailing an entry end, reading from `from`: the end of the
+ * line they close, or undefined when something else shares that line. A line
+ * comment stops at any line break the scanner honours, U+2028 and U+2029 too,
+ * so what follows one of those is not mistaken for comment text.
+ */
+const endOfTrailingComments = (text: string, from: number): number | undefined => {
+	const endsComment = (char: string) => isLineBreak(char) || char === "\u2028" || char === "\u2029";
+	let at = endOfBlanks(text, from);
+	while (text.startsWith("/*", at) || text.startsWith("//", at)) {
+		if (text.startsWith("/*", at)) {
+			const close = text.indexOf("*/", at + 2);
+			at = close === -1 ? text.length : close + 2;
+		} else {
+			while (at < text.length && !endsComment(text.charAt(at))) at++;
+		}
+		at = endOfBlanks(text, at);
+	}
+	return at === text.length || endsComment(text.charAt(at)) ? at : undefined;
+};
+
+/**
+ * The edits writing `line` as a new entry after an existing one, leaving the
+ * comments trailing that entry on its side of the new line.
+ *
+ * With no comma on the entry's line, the comma goes straight after the value
+ * and the new line after the comments, which takes two edits when there are
+ * any. With a comma on the line, the new line goes after the comments and takes
+ * the comma that separates it from whatever comes next. When something else
+ * shares the line there is no line end to use: the new line opens at the value.
+ */
+const afterEntry = (text: string, target: Insert, line: string, eol: string): ReadonlyArray<JsoncEdit> => {
+	const inserted = (offset: number, content: string) => JsoncEdit.make({ offset, length: 0, content });
+	const plain = inserted(target.at, `,${eol}${line}`);
+	const lineEnd = endOfTrailingComments(text, target.at);
+	if (lineEnd !== undefined) {
+		return text.slice(target.at, lineEnd).trim() === ""
+			? [plain]
+			: [inserted(target.at, ","), inserted(lineEnd, `${eol}${line}`)];
+	}
+	if (target.commaAfter === undefined) {
+		return [plain];
+	}
+	const afterComma = endOfTrailingComments(text, target.commaAfter + 1);
+	return afterComma === undefined ? [plain] : [inserted(afterComma, `${eol}${line},`)];
 };
 
 /**
@@ -191,15 +263,21 @@ export class JsoncModifier {
 	 *
 	 * Passing `value === undefined` deletes the target property or element
 	 * (including its surrounding comma). A missing insertion target appends after
-	 * the last property/element. Any other value is serialized through
-	 * {@link Jsonc.stringifyResult}, then placed at its position in the document:
-	 * a new member lines up with its last sibling, and a member of an empty
-	 * container sits one unit in from the container's line. Every generated line
-	 * takes the document's line ending, unless `formattingOptions` says otherwise.
+	 * the last property/element, or after the sibling named by `insertAfter`. Any
+	 * other value is serialized through {@link Jsonc.stringifyResult}, then placed
+	 * at its position in the document: a new member lines up with the sibling it
+	 * follows and leaves that sibling's trailing comment with it, and a member of
+	 * an empty container sits one unit in from the container's line. Every
+	 * generated line takes the document's line ending, unless `formattingOptions`
+	 * says otherwise. An inline container keeps a plain shape: a new member opens
+	 * its own line at the sibling's value, carrying along whatever followed it.
 	 *
 	 * A delete takes the whole line of an entry that had one to itself, and
-	 * collapses a container left with nothing in it to `{}` or `[]`. A comment in
-	 * the container survives a delete of its first or only entry.
+	 * collapses a container left with nothing in it to `{}` or `[]`. It removes
+	 * the comments inside what it cuts: those between the entry's key and its
+	 * comma and, for an entry after the first, everything back to the preceding
+	 * comma, which takes in a comment trailing the previous member and any comment
+	 * on a line above the entry. Comments outside that range stay.
 	 *
 	 * @remarks
 	 * The error channel carries two failure kinds, kept apart deliberately:
@@ -232,7 +310,8 @@ export class JsoncModifier {
 	 * @param value - The plain JavaScript value to write; `undefined` deletes
 	 *   the target instead.
 	 * @param options - Optional {@link JsoncModifyOptions} controlling
-	 *   formatting of generated content.
+	 *   formatting of generated content, where a new member goes, and whether
+	 *   missing ancestors are created.
 	 * @returns A `Result` succeeding with the edits to apply (via
 	 *   `JsoncEdit.applyAll`), or failing with {@link JsoncModificationError} or
 	 *   {@link JsoncStringifyError}.
@@ -276,7 +355,18 @@ export class JsoncModifier {
 			);
 		}
 
-		const result = navigate(text, path);
+		const result = navigate(text, path, options?.insertAfter);
+
+		// Write `entry` into the container `target` resolved to.
+		const insertEntry = (target: Insert, key: string | undefined, entry: unknown) => {
+			const indent = target.memberIndent ?? `${target.parentIndent}${indentUnit}`;
+			return Result.map(serialize(entry, indent), (serialized) => {
+				const line = `${indent}${key === undefined ? "" : `${JSON.stringify(key)}: `}${serialized}`;
+				return target.isFirst
+					? single(openContainer(text, target.open, target.at, line, target.parentIndent, eol))
+					: afterEntry(text, target, line, eol);
+			});
+		};
 
 		switch (result._tag) {
 			case "Mismatch":
@@ -290,6 +380,33 @@ export class JsoncModifier {
 
 			case "NoOp":
 				return Result.succeed([]);
+
+			case "MissingAncestor": {
+				const failure = (depth: number, expected: "object" | "array") =>
+					Result.fail(new JsoncModificationError({ path, expected, depth }));
+				const below = path.slice(result.segmentIndex + 1);
+				if (options?.createParents !== true) {
+					// The segment after the missing one is the first to fail: the
+					// shape every caller has always seen for a path that runs out.
+					return failure(result.segmentIndex + 2, typeof below[0] === "string" ? "object" : "array");
+				}
+				if (value === undefined) {
+					return Result.succeed([]);
+				}
+				const numeric = below.findIndex((segment) => typeof segment !== "string");
+				if (numeric !== -1) {
+					return failure(result.segmentIndex + numeric + 2, "array");
+				}
+				// Check the value by itself first: wrapped in an object, a function
+				// or symbol would be dropped by JSON semantics instead of refused.
+				return Result.flatMap(serialize(value, ""), () =>
+					insertEntry(
+						{ ...result, _tag: "Insert", container: "object" },
+						String(path[result.segmentIndex]),
+						below.reduceRight<unknown>((nested, segment) => ({ [segment]: nested }), value),
+					),
+				);
+			}
 
 			case "Located": {
 				if (value === undefined) {
@@ -310,17 +427,7 @@ export class JsoncModifier {
 				if (value === undefined) {
 					return Result.succeed([]);
 				}
-				const indent = result.memberIndent ?? `${result.parentIndent}${indentUnit}`;
-				return Result.map(serialize(value, indent), (serialized) => {
-					const member =
-						result.container === "object"
-							? `${JSON.stringify(String(path[path.length - 1]))}: ${serialized}`
-							: serialized;
-					if (!result.isFirst) {
-						return single(JsoncEdit.make({ offset: result.at, length: 0, content: `,${eol}${indent}${member}` }));
-					}
-					return single(openContainer(text, result.open, result.at, `${indent}${member}`, result.parentIndent, eol));
-				});
+				return insertEntry(result, result.container === "object" ? String(path[path.length - 1]) : undefined, value);
 			}
 		}
 	}
@@ -347,7 +454,8 @@ export class JsoncModifier {
 	 * @param value - The plain JavaScript value to write, serialized through
 	 *   `Jsonc.stringifyResult`; `undefined` deletes the target instead.
 	 * @param options - Optional {@link JsoncModifyOptions} controlling
-	 *   formatting of generated content.
+	 *   formatting of generated content, where a new member goes, and whether
+	 *   missing ancestors are created.
 	 * @returns An `Effect` that succeeds with the edits to apply (via
 	 *   `JsoncEdit.applyAll`), or fails with {@link JsoncModificationError} when
 	 *   `path` cannot be navigated or {@link JsoncStringifyError} when `value`

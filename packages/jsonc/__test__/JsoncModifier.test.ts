@@ -489,11 +489,369 @@ describe("JsoncModifier", () => {
 				}),
 			);
 
+			it.effect("a delete cuts the comments inside its range and no others", () =>
+				Effect.gen(function* () {
+					// Between the value and its comma: inside the cut.
+					assert.strictEqual(yield* edited('{\n  "a": 1 /* gone */,\n  "b": 2\n}', ["a"], undefined), '{\n  "b": 2\n}');
+					// Back to the preceding comma: the previous member's comment and any
+					// line above this entry are inside the cut.
+					assert.strictEqual(
+						yield* edited('{\n  "a": 1, // gone\n  // gone too\n  "b": 2 // stays\n}', ["b"], undefined),
+						'{\n  "a": 1 // stays\n}',
+					);
+				}),
+			);
+
 			it.effect("deleting the sole member keeps a comment and the braces", () =>
 				Effect.gen(function* () {
 					assert.strictEqual(yield* edited('{\n  // keep\n  "a": 1\n}', ["a"], undefined), "{\n  // keep\n}");
 					assert.strictEqual(yield* edited('{\n  "a": 1 // keep\n}', ["a"], undefined), "{\n  // keep\n}");
 					assert.strictEqual(yield* edited('{ "a": 1 /* keep */ }', ["a"], undefined), "{ /* keep */ }");
+				}),
+			);
+		});
+
+		describe("insertAfter", () => {
+			const after = (text: string, key: string, value: unknown, insertAfter: string) =>
+				Effect.map(JsoncModifier.modify(text, [key], value, { insertAfter }), (edits) => apply(text, edits));
+
+			it.effect("insertAfter places the new key directly after the sibling", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* after('{\n  "a": 1,\n  "b": 2\n}\n', "k", 9, "a"),
+						'{\n  "a": 1,\n  "k": 9,\n  "b": 2\n}\n',
+					);
+				}),
+			);
+
+			it.effect("insertAfter indents a multi-line value and follows the file's eol", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* after('{\r\n\t"a": 1,\r\n\t"b": 2\r\n}\r\n', "k", { x: 1 }, "a"),
+						'{\r\n\t"a": 1,\r\n\t"k": {\r\n\t\t"x": 1\r\n\t},\r\n\t"b": 2\r\n}\r\n',
+					);
+				}),
+			);
+
+			it.effect("insertAfter the last sibling needs a comma after that sibling, not after the new key", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* after('{\n  "a": 1,\n  "b": 2\n}\n', "k", 9, "b"),
+						'{\n  "a": 1,\n  "b": 2,\n  "k": 9\n}\n',
+					);
+				}),
+			);
+
+			it.effect("insertAfter on an absent sibling appends", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* after('{\n  "a": 1,\n  "b": 2\n}\n', "k", 9, "nope"),
+						'{\n  "a": 1,\n  "b": 2,\n  "k": 9\n}\n',
+					);
+					assert.strictEqual(yield* after("{}", "k", 9, "nope"), '{\n  "k": 9\n}');
+				}),
+			);
+
+			it.effect("insertAfter is ignored on replace", () =>
+				Effect.gen(function* () {
+					const text = '{\n  "a": 1,\n  "b": 2\n}\n';
+					assert.strictEqual(yield* after(text, "b", 3, "a"), '{\n  "a": 1,\n  "b": 3\n}\n');
+				}),
+			);
+
+			it.effect("insertAfter only matches a sibling, never a key nested in one", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* after('{\n  "o": {\n    "a": 1\n  },\n  "b": 2\n}\n', "k", 9, "a"),
+						'{\n  "o": {\n    "a": 1\n  },\n  "b": 2,\n  "k": 9\n}\n',
+					);
+				}),
+			);
+
+			it.effect("insertAfter is ignored by an array", () =>
+				Effect.gen(function* () {
+					const text = "[\n  1,\n  2\n]\n";
+					const edits = yield* JsoncModifier.modify(text, [2], 3, { insertAfter: "0" });
+					assert.strictEqual(apply(text, edits), "[\n  1,\n  2,\n  3\n]\n");
+				}),
+			);
+
+			describe("a sibling's own trailing comment stays with it", () => {
+				it.effect("insertAfter after a member followed by a comment stays comment-safe", () =>
+					Effect.gen(function* () {
+						assert.strictEqual(
+							yield* after('{\n  "a": 1, // about a\n  "b": 2\n}\n', "k", 9, "a"),
+							'{\n  "a": 1, // about a\n  "k": 9,\n  "b": 2\n}\n',
+						);
+					}),
+				);
+
+				it.effect("when the comment holds a comma", () =>
+					Effect.gen(function* () {
+						assert.strictEqual(
+							yield* after('{\n  "a": 1, // about, a\n  "b": 2\n}\n', "k", 9, "a"),
+							'{\n  "a": 1, // about, a\n  "k": 9,\n  "b": 2\n}\n',
+						);
+					}),
+				);
+
+				it.effect("when the sibling is last and has no comma yet", () =>
+					Effect.gen(function* () {
+						assert.strictEqual(
+							yield* after('{\n  "a": 1 // about a\n}\n', "k", 9, "a"),
+							'{\n  "a": 1, // about a\n  "k": 9\n}\n',
+						);
+					}),
+				);
+
+				it.effect("when the sibling is last with a trailing comma", () =>
+					Effect.gen(function* () {
+						assert.strictEqual(
+							yield* after('{\n  "a": 1, // about a\n}\n', "k", 9, "a"),
+							'{\n  "a": 1, // about a\n  "k": 9,\n}\n',
+						);
+					}),
+				);
+
+				it.effect("when the comment sits between the value and the comma", () =>
+					Effect.gen(function* () {
+						assert.strictEqual(
+							yield* after('{\n  "a": 1 /* about a */,\n  "b": 2\n}\n', "k", 9, "a"),
+							'{\n  "a": 1 /* about a */,\n  "k": 9,\n  "b": 2\n}\n',
+						);
+					}),
+				);
+
+				it.effect("when the comma leads the next line", () =>
+					Effect.gen(function* () {
+						assert.strictEqual(
+							yield* after('{\n  "a": 1 // about a\n  , "b": 2\n}\n', "k", 9, "a"),
+							'{\n  "a": 1, // about a\n  "k": 9\n  , "b": 2\n}\n',
+						);
+					}),
+				);
+
+				it.effect("when a block comment runs over lines", () =>
+					Effect.gen(function* () {
+						assert.strictEqual(
+							yield* after('{\n  "a": 1, /* about\n  a */\n  "b": 2\n}\n', "k", 9, "a"),
+							'{\n  "a": 1, /* about\n  a */\n  "k": 9,\n  "b": 2\n}\n',
+						);
+					}),
+				);
+
+				it.effect("when the sibling's value spans lines", () =>
+					Effect.gen(function* () {
+						assert.strictEqual(
+							yield* after('{\n  "a": {\n    "x": 1\n  }, // about a\n  "b": 2\n}\n', "k", 9, "a"),
+							'{\n  "a": {\n    "x": 1\n  }, // about a\n  "k": 9,\n  "b": 2\n}\n',
+						);
+					}),
+				);
+
+				it.effect("in a CRLF file", () =>
+					Effect.gen(function* () {
+						assert.strictEqual(
+							yield* after('{\r\n  "a": 1 // about a\r\n}\r\n', "k", 9, "a"),
+							'{\r\n  "a": 1, // about a\r\n  "k": 9\r\n}\r\n',
+						);
+					}),
+				);
+
+				it.effect("when U+2028 ends the comment and the next member shares the physical line", () =>
+					Effect.gen(function* () {
+						const text = '{\n  "a": 1, // about a   "b": 2\n}\n';
+						const out = yield* after(text, "k", 9, "a");
+						assert.strictEqual(out, '{\n  "a": 1, // about a\n  "k": 9,   "b": 2\n}\n');
+						assert.deepStrictEqual(yield* Jsonc.parse(out), { a: 1, k: 9, b: 2 });
+					}),
+				);
+
+				it.effect("a plain append keeps the last member's comment the same way", () =>
+					Effect.gen(function* () {
+						assert.strictEqual(
+							yield* edited('{\n  "a": 1 // about a\n}\n', ["k"], 9),
+							'{\n  "a": 1, // about a\n  "k": 9\n}\n',
+						);
+						assert.strictEqual(yield* edited("[\n  1 // one\n]\n", [1], 2), "[\n  1, // one\n  2\n]\n");
+					}),
+				);
+
+				it.effect("and a comment on a line of its own stays below the new member", () =>
+					Effect.gen(function* () {
+						assert.strictEqual(
+							yield* after('{\n  "a": 1,\n  // about b\n  "b": 2\n}\n', "k", 9, "a"),
+							'{\n  "a": 1,\n  "k": 9,\n  // about b\n  "b": 2\n}\n',
+						);
+					}),
+				);
+			});
+
+			describe("an inline container keeps the existing insert shape", () => {
+				it.effect("the new key opens a line and whatever followed the sibling stays after it", () =>
+					Effect.gen(function* () {
+						assert.strictEqual(yield* after('{ "a": 1, "b": 2 }', "k", 9, "a"), '{ "a": 1,\n  "k": 9, "b": 2 }');
+						assert.strictEqual(yield* after('{ "a": 1, "b": 2 }', "k", 9, "b"), '{ "a": 1, "b": 2,\n  "k": 9 }');
+					}),
+				);
+
+				it.effect("a sibling sharing its line with the next one takes that line's indent", () =>
+					Effect.gen(function* () {
+						assert.strictEqual(
+							yield* after('{\n\t"a": 1, "b": 2\n}\n', "k", 9, "a"),
+							'{\n\t"a": 1,\n\t"k": 9, "b": 2\n}\n',
+						);
+					}),
+				);
+
+				it.effect("a comment sharing the line with the closer ends up after the new key", () =>
+					Effect.gen(function* () {
+						assert.strictEqual(yield* after('{ "a": 1 /* c */ }', "k", 9, "a"), '{ "a": 1,\n  "k": 9 /* c */ }');
+					}),
+				);
+			});
+		});
+
+		describe("createParents", () => {
+			const created = (
+				text: string,
+				path: ReadonlyArray<string | number>,
+				value: unknown,
+				options?: JsoncModifyOptions,
+			) => edited(text, path, value, { createParents: true, ...options });
+
+			it.effect('createParents builds ["catalogs","silk","effect"] with correct indentation', () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* created('{\n\t"name": "x"\n}\n', ["catalogs", "silk", "effect"], "^4"),
+						'{\n\t"name": "x",\n\t"catalogs": {\n\t\t"silk": {\n\t\t\t"effect": "^4"\n\t\t}\n\t}\n}\n',
+					);
+				}),
+			);
+
+			it.effect("createParents starts from the deepest ancestor that exists", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* created('{\n  "catalogs": {\n    "a": {}\n  }\n}\n', ["catalogs", "silk", "effect"], "^4"),
+						'{\n  "catalogs": {\n    "a": {},\n    "silk": {\n      "effect": "^4"\n    }\n  }\n}\n',
+					);
+					assert.strictEqual(
+						yield* created("{}", ["a", "b"], { c: 1 }),
+						'{\n  "a": {\n    "b": {\n      "c": 1\n    }\n  }\n}',
+					);
+				}),
+			);
+
+			it.effect("createParents writes a key that needs escaping, and __proto__, as data", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* created("{}", ["__proto__", 'q"x'], 1),
+						'{\n  "__proto__": {\n    "q\\"x": 1\n  }\n}',
+					);
+				}),
+			);
+
+			it.effect("createParents changes nothing when every ancestor exists", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* created('{\n  "a": {\n    "b": 1\n  }\n}', ["a", "b"], 2),
+						'{\n  "a": {\n    "b": 2\n  }\n}',
+					);
+				}),
+			);
+
+			it.effect("createParents off keeps today's exact error", () =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip(JsoncModifier.modify('{ "z": 1 }', ["catalogs", "silk", "effect"], "^4"));
+					assert.strictEqual(error._tag, "JsoncModificationError");
+					assert.strictEqual(
+						error.message,
+						"Modification failed at path [catalogs, silk, effect]: expected object at depth 2",
+					);
+					const numeric = yield* Effect.flip(JsoncModifier.modify('{ "z": 1 }', ["a", 0], 1));
+					assert.strictEqual(numeric.message, "Modification failed at path [a, 0]: expected array at depth 2");
+					const del = yield* Effect.flip(JsoncModifier.modify('{ "z": 1 }', ["a", "b"], undefined));
+					assert.strictEqual(del.message, "Modification failed at path [a, b]: expected object at depth 2");
+				}),
+			);
+
+			it.effect("createParents does not overwrite a wrong-typed ancestor", () =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip(JsoncModifier.modify('{ "a": 1 }', ["a", "b"], 2, { createParents: true }));
+					assert.strictEqual(error.message, "Modification failed at path [a, b]: expected object at depth 2");
+				}),
+			);
+
+			it.effect("createParents refuses a numeric segment under a missing ancestor", () =>
+				Effect.gen(function* () {
+					const direct = yield* Effect.flip(JsoncModifier.modify("{}", ["a", 0], 1, { createParents: true }));
+					assert.strictEqual(direct.message, "Modification failed at path [a, 0]: expected array at depth 2");
+					const deeper = yield* Effect.flip(JsoncModifier.modify("{}", ["a", "b", 0], 1, { createParents: true }));
+					assert.strictEqual(deeper.message, "Modification failed at path [a, b, 0]: expected array at depth 3");
+				}),
+			);
+
+			it.effect("createParents does not invent a missing array element", () =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip(
+						JsoncModifier.modify('{ "xs": [1] }', ["xs", 5, "a"], 2, { createParents: true }),
+					);
+					assert.strictEqual(error.message, "Modification failed at path [xs, 5, a]: expected object at depth 3");
+				}),
+			);
+
+			it.effect("createParents descends through an existing array element", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* created('{\n  "xs": [\n    {}\n  ]\n}\n', ["xs", 0, "a", "b"], 1),
+						'{\n  "xs": [\n    {\n      "a": {\n        "b": 1\n      }\n    }\n  ]\n}\n',
+					);
+				}),
+			);
+
+			it.effect("a delete under a missing ancestor is a no-op and creates nothing", () =>
+				Effect.gen(function* () {
+					const edits = yield* JsoncModifier.modify('{ "z": 1 }', ["a", "b"], undefined, { createParents: true });
+					assert.deepStrictEqual(edits, []);
+				}),
+			);
+
+			it.effect("an unserializable value still fails under a created parent", () =>
+				Effect.gen(function* () {
+					for (const [value, code] of [
+						[() => 1, "TopLevelUnrepresentable"],
+						[Symbol("s"), "TopLevelUnrepresentable"],
+						[10n, "BigIntValue"],
+					] as const) {
+						const error = yield* Effect.flip(JsoncModifier.modify("{}", ["a", "b"], value, { createParents: true }));
+						assert.instanceOf(error, JsoncStringifyError);
+						if (error._tag === "JsoncStringifyError") assert.strictEqual(error.code, code);
+					}
+				}),
+			);
+
+			it.effect("a numeric refusal wins over an unserializable value", () =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip(JsoncModifier.modify("{}", ["a", 0], 10n, { createParents: true }));
+					assert.strictEqual(error._tag, "JsoncModificationError");
+				}),
+			);
+
+			it.effect("a created ancestor appends: insertAfter names a sibling of the final key only", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* created('{\n  "a": 1,\n  "b": 2\n}\n', ["c", "d"], 3, { insertAfter: "a" }),
+						'{\n  "a": 1,\n  "b": 2,\n  "c": {\n    "d": 3\n  }\n}\n',
+					);
+				}),
+			);
+
+			it.effect("insertAfter applies when only the final key is missing", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* created('{\n  "o": {\n    "a": 1,\n    "b": 2\n  }\n}\n', ["o", "k"], 9, { insertAfter: "a" }),
+						'{\n  "o": {\n    "a": 1,\n    "k": 9,\n    "b": 2\n  }\n}\n',
+					);
 				}),
 			);
 		});
@@ -540,6 +898,33 @@ describe("JsoncModifier", () => {
 					const deleted = yield* edited(text, [key], undefined);
 					const { [key]: _removed, ...rest } = doc;
 					assert.deepStrictEqual(yield* Jsonc.parse(deleted), normal(rest));
+				}),
+			);
+
+			it.effect.prop(
+				"inserting after a sibling, with a comment closing every line",
+				[Doc, Schema.Json, Layout],
+				([doc, value, layout]) =>
+					Effect.gen(function* () {
+						const keys = Object.keys(doc);
+						const sibling = keys[keys.length >> 1];
+						if (sibling === undefined || "fresh" in doc || keys.some((k) => !plainKey(k))) return;
+						const text = JSON.stringify(doc, null, layout.indent)
+							.split("\n")
+							.map((line) => `${line} // about, this`)
+							.join(layout.eol);
+						const edits = yield* JsoncModifier.modify(text, ["fresh"], value, { insertAfter: sibling });
+						const out = apply(text, edits);
+						assert.deepStrictEqual(yield* Jsonc.parse(out), normal({ ...doc, fresh: value }));
+						assert.strictEqual(out.split("// about, this").length, text.split("// about, this").length);
+					}),
+			);
+
+			it.effect.prop("creating parents", [Doc, Schema.Json, Layout], ([doc, value, layout]) =>
+				Effect.gen(function* () {
+					if ("fresh" in doc || Object.keys(doc).some((k) => !plainKey(k))) return;
+					const out = yield* edited(render(doc, layout), ["fresh", "a", "b"], value, { createParents: true });
+					assert.deepStrictEqual(yield* Jsonc.parse(out), normal({ ...doc, fresh: { a: { b: value } } }));
 				}),
 			);
 
