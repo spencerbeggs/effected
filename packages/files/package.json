@@ -1,6 +1,6 @@
 {
 	"name": "@effected/files",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "Atomic single-file replacement over core FileSystem: write a temp file beside the target, sync it, and rename it into place, so a crash never leaves a truncated file. A link realPath cannot follow is written through directly.",
 	"keywords": ["atomic", "write", "file", "rename", "filesystem", "effect", "effected"],

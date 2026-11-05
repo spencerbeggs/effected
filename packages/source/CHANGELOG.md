@@ -1,5 +1,27 @@
 # @effected/source
 
+## 0.4.0
+
+### Features
+
+- `LineDiff` computes a line-level diff between two texts, for rendering changes in reports and terminals. [#1233][#1233]
+
+* `EditDistance` provides pure Levenshtein distance and "did you mean" suggestions as plain functions with no Effect and no IO (#1190). `EditDistance.suggest(input, candidates, options?)` returns the candidates within `maxDistance` edits (`2` by default, or a function of the input). [#1237][#1237]
+
+```ts
+import { EditDistance } from "@effected/source";
+
+EditDistance.suggest("stauts", ["status", "stack", "build"]); // => ["status"]
+```
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1233]: https://github.com/spencerbeggs/effected/pull/1233
+
+[#1237]: https://github.com/spencerbeggs/effected/pull/1237
+
 ## 0.3.0
 
 ### Maintenance

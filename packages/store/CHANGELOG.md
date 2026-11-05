@@ -1,5 +1,32 @@
 # @effected/store
 
+## 0.24.0
+
+### Breaking Changes
+
+- `AtomicDirectory`, `AtomicDirectoryError` and `AtomicDirectoryFiles` are removed from `@effected/store` and now live in `@effected/files`, with no re-export shim (#1234).
+
+- Add `@effected/files` and change the import: [#1237][#1237]
+
+```ts
+// before
+import { AtomicDirectory } from "@effected/store";
+// after
+import { AtomicDirectory } from "@effected/files";
+```
+
+### Documentation
+
+- The `onConnect` option (#1182) on `Store.layerSqlite` and `Cache.layerSqlite` now shows how to run several pragmas by sequencing the statements, where the first failure fails the layer. [#1239][#1239]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1237]: https://github.com/spencerbeggs/effected/pull/1237
+
+[#1239]: https://github.com/spencerbeggs/effected/pull/1239
+
 ## 0.23.0
 
 ### Maintenance

@@ -1,5 +1,33 @@
 # @effected/package-json
 
+## 0.30.0
+
+### Features
+
+- `PackageFieldEdit` (#1208, #1209) and `PackageJsonFormat.modify*` accept `insertAfter`, which places a new key directly after a named sibling, and `createParents`, which builds missing object ancestors instead of failing. A new `PackageModifyOptions` type names both options.
+- Edits follow the `@effected/jsonc` layout fixes: inserted values are indented to their position, CRLF files keep their line endings, and deletes clean up after themselves, so output bytes change for deletes and for callers without `formattingOptions`. [#1239][#1239]
+
+* `PackageJsonFile` writes are atomic through `@effected/files`: a crash leaves the old file or the new one, never a truncated `package.json` (#1234).
+
+* Behaviour a consumer can trip on: the file's directory needs write permission, a read-only target is refused, the file's inode is replaced, and a symlinked target keeps its link and an existing file keeps its mode. [#1237][#1237]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.23.0 | 0.24.0 |
+| @effected/npm | dependency | updated | 0.30.0 | 0.30.1 |
+| @effected/semver | dependency | updated | 0.21.0 | 0.22.0 |
+| @effected/files | dependency | added | — | 0.1.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1237]: https://github.com/spencerbeggs/effected/pull/1237
+
+[#1239]: https://github.com/spencerbeggs/effected/pull/1239
+
 ## 0.29.0
 
 ### Dependencies

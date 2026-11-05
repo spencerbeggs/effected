@@ -1,5 +1,35 @@
 # @effected/ai-plugins
 
+## 0.48.0
+
+### Features
+
+- The consumer upgrade ledger gains entries for this sweep: `AtomicDirectory` moved to `@effected/files`, `ManagedSection` requiring `Path`, `@effected/cli-kit` dropping its `@effected/config-file` peer, the `CliUi.prompt` `otherwise` overloads, adopting the new helpers, and writes needing directory permission (#1176, #1185, #1203).
+- The `effected-packages` skill and construct index cover `@effected/files`, `EditDistance`, `CliExit.report`, `McpToolkit.provideLifetime` and the `promiseInExclusive` boundary rule.
+
+* Skills teach `effected schema` for building, checking and validating SchemaStore schemas.
+
+### Documentation
+
+- The observability skill (#1215) now covers the OTLP gate, export intervals and endpoint URLs.
+- The package reference skills for `env`, `github`, `github-actions`, `glob`, `jsonc`, `markdown`, `memfs`, `npm`, `package-json`, `semver` and `store`, plus the Actions and GitHub API skills, follow the package changes in this release. [#1239][#1239]
+
+* The `effect-v4-cli`, `effect-v4-mcp`, `effect-v4-schema`, `effect-v4-services-layers` and `effect-v4-testing` skills are corrected to match the sweep's behaviour (#1089). [#1237][#1237]
+
+### Maintenance
+
+- The consumer upgrade ledger is reset for the new round. [#1233][#1233]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1233]: https://github.com/spencerbeggs/effected/pull/1233
+
+[#1237]: https://github.com/spencerbeggs/effected/pull/1237
+
+[#1239]: https://github.com/spencerbeggs/effected/pull/1239
+
 ## 0.47.0
 
 ### Features

@@ -1,5 +1,26 @@
 # @effected/plugin
 
+## 0.2.0
+
+### Features
+
+- `defineSchemastore` is exported for typing a project's SchemaStore configuration.
+- `@effected/plugin` now pins `@effected/cli`, `@effected/mcp` and `@effected/schemastore` to exact versions so the chain installs together. [#1233][#1233]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli | dependency | updated | 0.26.0 | 0.27.0 |
+| @effected/mcp | dependency | updated | 0.13.0 | 0.14.0 |
+| @effected/schemastore | dependency | updated | 0.29.0 | 0.30.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1233]: https://github.com/spencerbeggs/effected/pull/1233
+
 ## 0.1.0
 
 ### Features

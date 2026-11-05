@@ -1,5 +1,37 @@
 # @effected/mcp
 
+## 0.14.0
+
+### Features
+
+- `McpToolkit.provideLifetime(layer)` meets the request-level dependencies a tool declares from a layer built once for the server's lifetime (#1202). It builds in the server graph's memo map, so a failure fails the server build rather than a request and finalizers run at shutdown. It captures only what the layer outputs, so a key the build merely ran under never shadows the request's own.
+
+```ts
+const Lifetime = McpToolkit.provideLifetime(InspectorLive);
+const ToolsLayer = McpToolkit.layer(Kit).pipe(Layer.provide(Lifetime), Layer.provide(KitHandlers));
+```
+
+- `McpStdio.layer` accepts `websiteUrl`, `icons`, `extensions` and `cacheHints`, advertised in the server's metadata.
+- `McpHarness` accepts `services` to provide extra services to the server under test, and `stop` is now documented. [#1233][#1233]
+
+### Documentation
+
+- `ToolReplay.wrap` TSDoc is clarified (#1176). [#1237][#1237]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/kit | dependency | updated | 0.12.0 | 0.13.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1233]: https://github.com/spencerbeggs/effected/pull/1233
+
+[#1237]: https://github.com/spencerbeggs/effected/pull/1237
+
 ## 0.13.0
 
 ### Breaking Changes

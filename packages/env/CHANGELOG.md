@@ -1,5 +1,17 @@
 # @effected/env
 
+## 0.11.0
+
+### Features
+
+- `Sgr` (#1197) adds terminal text helpers for colour and attribute sequences: `Sgr.strip` removes SGR sequences from text, and `Sgr.paint` wraps text in basic styles (bold, dim, italic, underline and the 16 base colours) for a given colour level. [#1239][#1239]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1239]: https://github.com/spencerbeggs/effected/pull/1239
+
 ## 0.10.0
 
 ### Breaking Changes
