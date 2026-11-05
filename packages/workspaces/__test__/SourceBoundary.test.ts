@@ -212,6 +212,20 @@ describe("SourceBoundary.check", () => {
 		const details = (text: string, r: BoundaryRule = rule) =>
 			SourceBoundary.check("f.ts", text, [r]).map((offence) => `${offence.rule} ${offence.detail}`);
 
+		it("stays linear on a long run of whitespace after a binding's =", () => {
+			const text = `const lane =${"\t".repeat(200_000)}x;`;
+			const started = performance.now();
+			assert.deepStrictEqual(details(text), []);
+			// The quadratic form took about 19 seconds here, so this bound leaves room for a slow runner.
+			assert.isBelow(performance.now() - started, 2_000);
+		});
+
+		it("still finds a lane bound across lines, with or without yield* or await", () => {
+			for (const binding of ["= yield*\n\tExclusive.make", "=\n\tExclusive.make", "= await  Exclusive . make"]) {
+				assert.lengthOf(details(`const lane ${binding};\nlane.run(Effect.promise(() => f()), { timeout: 1 });`), 1);
+			}
+		});
+
 		it("flags Effect.promise and Effect.runPromise inside the run body of a lane bound from Exclusive.make", () => {
 			const text = [
 				"const lane = yield* Exclusive.make;",

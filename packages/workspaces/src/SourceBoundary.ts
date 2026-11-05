@@ -489,7 +489,7 @@ const isNodeModule = (specifier: string, module: string): boolean =>
 	[module, `node:${module}`].some((name) => specifier === name || specifier.startsWith(`${name}/`));
 
 const LANE_BINDING =
-	/(?<![\p{ID_Continue}$.#])(?:const|let|var)\s+([\p{ID_Start}$_][\p{ID_Continue}$]*)\s*=\s*(?:yield\s*\*|await)?\s*Exclusive\s*\.\s*make(?![\p{ID_Continue}$])/gu;
+	/(?<![\p{ID_Continue}$.#])(?:const|let|var)\s+([\p{ID_Start}$_][\p{ID_Continue}$]*)\s*=\s*(?:(?:yield\s*\*|await)\s*)?Exclusive\s*\.\s*make(?![\p{ID_Continue}$])/gu;
 const PROMISE_CALL =
 	/(?<![\p{ID_Continue}$.#])Effect\s*\.\s*(promise|runPromiseExit|runPromise)\s*(?:<[^()]*>\s*)?\(/gu;
 
