@@ -756,4 +756,20 @@ describe("SchemaPipeline", () => {
 			}),
 		);
 	});
+
+	describe("the diff inputs", () => {
+		it.effect("check returns generated text, and existing only when the file exists", () =>
+			Effect.gen(function* () {
+				const canonical = emitted(Config, target.$id);
+				const onDisk = `${canonical.trimEnd()}\n\n`;
+				const missing = yield* Effect.provide(SchemaPipeline.checkOne(target), memLayers({}));
+				assert.strictEqual(missing.generated, canonical);
+				assert.isFalse(Object.hasOwn(missing, "existing"));
+
+				const present = yield* Effect.provide(SchemaPipeline.checkOne(target), memLayers({ [target.path]: onDisk }));
+				assert.strictEqual(present.generated, canonical);
+				assert.strictEqual(present.existing, onDisk);
+			}),
+		);
+	});
 });

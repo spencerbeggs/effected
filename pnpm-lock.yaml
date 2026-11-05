@@ -1341,7 +1341,7 @@ importers:
   packages/schemastore:
     dependencies:
       '@effected/semver':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../semver/dist/dev/pkg
     devDependencies:
       '@effect/platform-node':

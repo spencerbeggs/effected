@@ -109,6 +109,7 @@ export {
 	defineConfig,
 	isSchemastoreConfig,
 } from "./SchemastoreConfig.js";
+export { SchemastoreVersion } from "./SchemastoreVersion.js";
 export { SchemaTarget } from "./SchemaTarget.js";
 export {
 	SchemaValidator,
