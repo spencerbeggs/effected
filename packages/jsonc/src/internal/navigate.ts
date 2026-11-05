@@ -31,6 +31,15 @@ export interface Located {
 	readonly commaBefore?: number | undefined;
 	/** Offset of the comma token immediately following the value, if any. */
 	readonly commaAfter?: number | undefined;
+	/** Leading whitespace of the line holding `keyStart`. */
+	readonly lineIndent: string;
+	/** Offset of the container's opening token. */
+	readonly open: number;
+	/**
+	 * Offset of the container's closing token when this entry is the container's
+	 * last, or undefined when another entry follows it.
+	 */
+	readonly close?: number | undefined;
 }
 
 /** The target does not exist; an insertion point was resolved instead. */
@@ -41,8 +50,16 @@ export interface Insert {
 	readonly at: number;
 	/** Whether the container is empty (affects surrounding punctuation). */
 	readonly isFirst: boolean;
-	/** Depth of the insertion (path length) for indentation. */
-	readonly depth: number;
+	/** Offset of the container's opening token. */
+	readonly open: number;
+	/** Leading whitespace of the line holding the container's opening token. */
+	readonly parentIndent: string;
+	/**
+	 * Leading whitespace of the last entry's line, the column a new entry lines
+	 * up with. Undefined when the container is empty or that entry still sits on
+	 * the line of the opening token, where the indent says nothing about members.
+	 */
+	readonly memberIndent?: string | undefined;
 }
 
 /** A structural type mismatch: expected an object or array but found otherwise. */
@@ -59,6 +76,25 @@ export interface NoOp {
 
 /** The outcome of navigating a {@link JsoncPath} through JSONC source. */
 export type NavigateResult = Located | Insert | Mismatch | NoOp;
+
+export const isLineBreak = (char: string): boolean => char === "\n" || char === "\r";
+
+export const isBlank = (char: string): boolean => char === " " || char === "\t";
+
+/** Offset of the first character of the line holding `offset`. */
+const lineStart = (text: string, offset: number): number => {
+	let start = offset;
+	while (start > 0 && !isLineBreak(text.charAt(start - 1))) start--;
+	return start;
+};
+
+/** The spaces and tabs that open the line holding `offset`. */
+const lineIndent = (text: string, offset: number): string => {
+	const start = lineStart(text, offset);
+	let end = start;
+	while (isBlank(text.charAt(end))) end++;
+	return text.slice(start, end);
+};
 
 /**
  * Resolve `path` against `text`, returning where the target is (or where it
@@ -102,6 +138,55 @@ export function navigate(text: string, path: JsoncPath): NavigateResult {
 		return skipBalancedValue(skipCursor);
 	}
 
+	// Complete a Located result from the token just past the value. Reading the
+	// token after a comma is safe: every caller returns straight away.
+	function located(
+		container: "object" | "array",
+		open: number,
+		keyStart: number,
+		valueStart: number,
+		commaBefore: number | undefined,
+	): Located {
+		const valueEnd = skipValue();
+		let commaAfter: number | undefined;
+		if (currentToken === "Comma") {
+			commaAfter = scanner.getTokenOffset();
+			currentToken = scanner.scan();
+		}
+		const closes = currentToken === (container === "object" ? "CloseBrace" : "CloseBracket");
+		return {
+			_tag: "Located",
+			container,
+			keyStart,
+			valueStart,
+			valueEnd,
+			commaBefore,
+			commaAfter,
+			lineIndent: lineIndent(text, keyStart),
+			open,
+			close: closes ? scanner.getTokenOffset() : undefined,
+		};
+	}
+
+	function insert(
+		container: "object" | "array",
+		at: number,
+		isFirst: boolean,
+		open: number,
+		lastStart: number | undefined,
+	): Insert {
+		const memberOnOwnLine = lastStart !== undefined && lineStart(text, lastStart) > open;
+		return {
+			_tag: "Insert",
+			container,
+			at,
+			isFirst,
+			open,
+			parentIndent: lineIndent(text, open),
+			memberIndent: memberOnOwnLine ? lineIndent(text, lastStart) : undefined,
+		};
+	}
+
 	let depth = 0;
 	for (const segment of path) {
 		depth++;
@@ -109,19 +194,24 @@ export function navigate(text: string, path: JsoncPath): NavigateResult {
 			if (currentToken !== "OpenBrace") {
 				return { _tag: "Mismatch", depth, expected: "object" };
 			}
+			const open = scanner.getTokenOffset();
 			currentToken = scanner.scan();
 			let found = false;
 			let lastValueEnd = scanner.getTokenOffset();
 			let isFirst = true;
 			let lastComma: number | undefined;
+			let lastKeyStart: number | undefined;
 
 			while (currentToken !== "CloseBrace" && currentToken !== "EOF") {
 				if (!isFirst && currentToken === "Comma") {
 					lastComma = scanner.getTokenOffset();
 					currentToken = scanner.scan();
+					// A trailing comma: the closer ends the scan, it is not an entry.
+					if (currentToken === "CloseBrace") break;
 				}
 				if (currentToken === "String") {
 					const keyStart = scanner.getTokenOffset();
+					lastKeyStart = keyStart;
 					const key = scanner.getTokenValue();
 					currentToken = scanner.scan(); // skip key
 					if (currentToken === "Colon") {
@@ -130,18 +220,7 @@ export function navigate(text: string, path: JsoncPath): NavigateResult {
 					if (key === segment) {
 						found = true;
 						if (depth === path.length) {
-							const valueStart = scanner.getTokenOffset();
-							const valueEnd = skipValue();
-							const commaAfter = currentToken === "Comma" ? scanner.getTokenOffset() : undefined;
-							return {
-								_tag: "Located",
-								container: "object",
-								keyStart,
-								valueStart,
-								valueEnd,
-								commaBefore: lastComma,
-								commaAfter,
-							};
+							return located("object", open, keyStart, scanner.getTokenOffset(), lastComma);
 						}
 						break; // descend into this value on the next segment
 					}
@@ -154,7 +233,7 @@ export function navigate(text: string, path: JsoncPath): NavigateResult {
 			}
 
 			if (!found && depth === path.length) {
-				return { _tag: "Insert", container: "object", at: lastValueEnd, isFirst, depth };
+				return insert("object", lastValueEnd, isFirst, open, lastKeyStart);
 			}
 			// Intermediate miss: fall through to the next segment, where the
 			// closing brace token will fail the OpenBrace/OpenBracket check.
@@ -162,39 +241,34 @@ export function navigate(text: string, path: JsoncPath): NavigateResult {
 			if (currentToken !== "OpenBracket") {
 				return { _tag: "Mismatch", depth, expected: "array" };
 			}
+			const open = scanner.getTokenOffset();
 			currentToken = scanner.scan();
 			let idx = 0;
 			let lastEnd = scanner.getTokenOffset();
 			let lastComma: number | undefined;
+			let lastElementStart: number | undefined;
 
 			while (currentToken !== "CloseBracket" && currentToken !== "EOF") {
 				if (idx > 0 && currentToken === "Comma") {
 					lastComma = scanner.getTokenOffset();
 					currentToken = scanner.scan();
+					// A trailing comma: the closer ends the scan, it is not an element.
+					if (currentToken === "CloseBracket") break;
 				}
 				if (idx === segment) {
 					if (depth === path.length) {
 						const valueStart = scanner.getTokenOffset();
-						const valueEnd = skipValue();
-						const commaAfter = currentToken === "Comma" ? scanner.getTokenOffset() : undefined;
-						return {
-							_tag: "Located",
-							container: "array",
-							keyStart: valueStart,
-							valueStart,
-							valueEnd,
-							commaBefore: lastComma,
-							commaAfter,
-						};
+						return located("array", open, valueStart, valueStart, lastComma);
 					}
 					break; // descend into this element on the next segment
 				}
+				lastElementStart = scanner.getTokenOffset();
 				lastEnd = skipValue();
 				idx++;
 			}
 
 			if (idx <= segment && depth === path.length) {
-				return { _tag: "Insert", container: "array", at: lastEnd, isFirst: idx === 0, depth };
+				return insert("array", lastEnd, idx === 0, open, lastElementStart);
 			}
 		}
 	}

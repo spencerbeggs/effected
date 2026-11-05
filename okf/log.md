@@ -49,6 +49,7 @@
 * Updated xdg stays independent of core UserDirectories
 * Updated D9: CliTest uses core ChildProcess, with no peer on @effected/commands
 * Added Atomic writes live in their own package, @effected/files, not in @effected/kit or @effected/store
+* Updated jsonc
 
 ## 2026-11-02
 

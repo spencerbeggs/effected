@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Exit, Result } from "effect";
+import { Effect, Exit, Result, Schema } from "effect";
+import type { JsoncModifyOptions } from "../src/index.js";
 import {
 	Jsonc,
 	JsoncEdit,
@@ -207,6 +208,356 @@ describe("JsoncModifier", () => {
 				assert.deepStrictEqual(yield* Jsonc.parse(apply("{}", edits)), { a: 1 });
 			}),
 		);
+	});
+
+	// Every expectation in this block is the exact output bytes: indentation and
+	// line endings are the contract under test, and a parse-equal check cannot
+	// see either.
+	describe("formatting of edits", () => {
+		const edited = (text: string, path: ReadonlyArray<string | number>, value: unknown, options?: JsoncModifyOptions) =>
+			Effect.map(JsoncModifier.modify(text, path, value, options), (edits) => apply(text, edits));
+
+		describe("insert", () => {
+			it.effect("an inserted multi-line value lands at its member's depth, with and without formattingOptions", () =>
+				Effect.gen(function* () {
+					const spaces = '{\n  "a": 1,\n  "deps": {\n    "x": "1"\n  }\n}\n';
+					assert.strictEqual(
+						yield* edited(spaces, ["deps", "catalog"], { effect: "^4" }),
+						'{\n  "a": 1,\n  "deps": {\n    "x": "1",\n    "catalog": {\n      "effect": "^4"\n    }\n  }\n}\n',
+					);
+					const tabs = '{\n\t"private": true\n}\n';
+					assert.strictEqual(
+						yield* edited(
+							tabs,
+							["catalog"],
+							{ effect: "^4" },
+							{ formattingOptions: { insertSpaces: false, tabSize: 2 } },
+						),
+						'{\n\t"private": true,\n\t"catalog": {\n\t\t"effect": "^4"\n\t}\n}\n',
+					);
+				}),
+			);
+
+			it.effect("a nested object is right at every depth", () =>
+				Effect.gen(function* () {
+					const text = '{\n    "o": {\n        "p": 1\n    }\n}\n';
+					assert.strictEqual(
+						yield* edited(text, ["o", "q"], { a: { b: { c: [1] } } }),
+						'{\n    "o": {\n        "p": 1,\n        "q": {\n            "a": {\n                "b": {\n                    "c": [\n                        1\n                    ]\n                }\n            }\n        }\n    }\n}\n',
+					);
+				}),
+			);
+
+			it.effect("an array insert of an object is indented", () =>
+				Effect.gen(function* () {
+					const text = '{\n  "xs": [\n    1\n  ]\n}\n';
+					assert.strictEqual(
+						yield* edited(text, ["xs", 1], { x: 1 }),
+						'{\n  "xs": [\n    1,\n    {\n      "x": 1\n    }\n  ]\n}\n',
+					);
+				}),
+			);
+
+			it.effect("a tab file gets tabs with no formattingOptions", () =>
+				Effect.gen(function* () {
+					const text = '{\n\t"o": {\n\t\t"p": 1\n\t}\n}\n';
+					assert.strictEqual(
+						yield* edited(text, ["o", "q"], { r: 1 }),
+						'{\n\t"o": {\n\t\t"p": 1,\n\t\t"q": {\n\t\t\t"r": 1\n\t\t}\n\t}\n}\n',
+					);
+				}),
+			);
+
+			it.effect("a CRLF file gets CRLF on every inserted line", () =>
+				Effect.gen(function* () {
+					const text = '{\r\n\t"a": 1\r\n}\r\n';
+					assert.strictEqual(
+						yield* edited(text, ["b"], { x: { y: 1 } }),
+						'{\r\n\t"a": 1,\r\n\t"b": {\r\n\t\t"x": {\r\n\t\t\t"y": 1\r\n\t\t}\r\n\t}\r\n}\r\n',
+					);
+				}),
+			);
+
+			it.effect("an empty container takes its parent's line plus the document's unit", () =>
+				Effect.gen(function* () {
+					const text = '{\n    "a": 1,\n    "o": {}\n}\n';
+					assert.strictEqual(
+						yield* edited(text, ["o", "k"], { x: 1 }),
+						'{\n    "a": 1,\n    "o": {\n        "k": {\n            "x": 1\n        }\n    }\n}\n',
+					);
+				}),
+			);
+
+			it.effect("an empty container in a CRLF file is opened with CRLF", () =>
+				Effect.gen(function* () {
+					const text = '{\r\n  "o": {}\r\n}\r\n';
+					assert.strictEqual(yield* edited(text, ["o", "k"], 1), '{\r\n  "o": {\r\n    "k": 1\r\n  }\r\n}\r\n');
+				}),
+			);
+
+			it.effect("a document with no indented line falls back to two spaces", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* edited("{}", ["a"], { b: 1 }), '{\n  "a": {\n    "b": 1\n  }\n}');
+				}),
+			);
+
+			it.effect("an empty container spread over lines leaves no blank line or stray space", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* edited("{\n}\n", ["a"], 1), '{\n  "a": 1\n}\n');
+					assert.strictEqual(yield* edited("{ }", ["a"], 1), '{\n  "a": 1\n}');
+					assert.strictEqual(yield* edited("[\n]\n", [0], 1), "[\n  1\n]\n");
+				}),
+			);
+
+			it.effect("a comment in an empty container stays above the new member", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* edited("{\n  // keep\n}\n", ["a"], 1), '{\n  // keep\n  "a": 1\n}\n');
+					assert.strictEqual(yield* edited("{ /* keep */ }", ["a"], 1), '{ /* keep */\n  "a": 1\n}');
+				}),
+			);
+
+			it.effect("the unit is not fooled by a block comment's star column", () =>
+				Effect.gen(function* () {
+					const text = '/*\n * header\n */\n{\n\t"o": {}\n}\n';
+					assert.strictEqual(
+						yield* edited(text, ["o", "k"], 1),
+						'/*\n * header\n */\n{\n\t"o": {\n\t\t"k": 1\n\t}\n}\n',
+					);
+				}),
+			);
+
+			it.effect("an inline sibling gives no member line, so the new member takes the parent's line plus a unit", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* edited('{ "a": 1 }', ["b"], { c: 1 }), '{ "a": 1,\n  "b": {\n    "c": 1\n  } }');
+				}),
+			);
+
+			it.effect("a sibling sharing its line with another still gives the member line", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* edited('{\n\t"a": 1, "b": 2\n}\n', ["c"], 3),
+						'{\n\t"a": 1, "b": 2,\n\t"c": 3\n}\n',
+					);
+				}),
+			);
+
+			it.effect("explicit formattingOptions win for the unit, the sibling's line for the position", () =>
+				Effect.gen(function* () {
+					const text = '{\n\t"a": 1\n}\n';
+					assert.strictEqual(
+						yield* edited(text, ["b"], { x: 1 }, { formattingOptions: { tabSize: 4 } }),
+						'{\n\t"a": 1,\n\t"b": {\n\t    "x": 1\n\t}\n}\n',
+					);
+					assert.strictEqual(
+						yield* edited('{\n    "o": {}\n}\n', ["o", "k"], 1, { formattingOptions: { insertSpaces: false } }),
+						'{\n    "o": {\n    \t"k": 1\n    }\n}\n',
+					);
+				}),
+			);
+
+			it.effect("an explicit eol wins over the document's", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* edited('{\n  "a": 1\n}\n', ["b"], { x: 1 }, { formattingOptions: { eol: "\r\n" } }),
+						'{\n  "a": 1,\r\n  "b": {\r\n    "x": 1\r\n  }\n}\n',
+					);
+				}),
+			);
+
+			it.effect("eol-only formattingOptions still infer the unit", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* edited('{\n\t"a": 1\n}\n', ["b"], { x: 1 }, { formattingOptions: { eol: "\n" } }),
+						'{\n\t"a": 1,\n\t"b": {\n\t\t"x": 1\n\t}\n}\n',
+					);
+				}),
+			);
+
+			it.effect("a trailing comma keeps the insert inside the container", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* edited('{\n  "a": 1,\n}\n', ["b"], 2), '{\n  "a": 1,\n  "b": 2,\n}\n');
+					assert.strictEqual(yield* edited("[\n  1,\n]\n", [1], 2), "[\n  1,\n  2,\n]\n");
+				}),
+			);
+		});
+
+		describe("replace", () => {
+			it.effect("a replaced multi-line value at depth 2 is indented to its member", () =>
+				Effect.gen(function* () {
+					const text = '{\n\t"o": {\n\t\t"a": 1\n\t}\n}\n';
+					const expected = '{\n\t"o": {\n\t\t"a": {\n\t\t\t"x": {\n\t\t\t\t"y": 1\n\t\t\t}\n\t\t}\n\t}\n}\n';
+					assert.strictEqual(yield* edited(text, ["o", "a"], { x: { y: 1 } }), expected);
+					assert.strictEqual(
+						yield* edited(text, ["o", "a"], { x: { y: 1 } }, { formattingOptions: { insertSpaces: false } }),
+						expected,
+					);
+				}),
+			);
+
+			it.effect("a replace in a CRLF file gets CRLF on every line", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* edited('{\r\n  "a": 1\r\n}\r\n', ["a"], { x: 1 }),
+						'{\r\n  "a": {\r\n    "x": 1\r\n  }\r\n}\r\n',
+					);
+				}),
+			);
+
+			it.effect("a replace on a one-line scalar stays byte-minimal", () =>
+				Effect.gen(function* () {
+					const text = '{\n\t"a": 1, // keep\n\t"b": 2\n}\n';
+					const edits = yield* JsoncModifier.modify(text, ["b"], 3);
+					assert.strictEqual(edits.length, 1);
+					assert.strictEqual(edits[0].offset, text.indexOf("2"));
+					assert.strictEqual(edits[0].length, 1);
+					assert.strictEqual(edits[0].content, "3");
+				}),
+			);
+
+			it.effect("a whole-document replace follows the document's unit and eol", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* edited('{\r\n\t"a": 1\r\n}', [], { b: 2 }), '{\r\n\t"b": 2\r\n}');
+				}),
+			);
+		});
+
+		describe("delete", () => {
+			it.effect("deleting the last member leaves {}", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* edited('{\n\t"deps": {\n\t\t"a": "1"\n\t}\n}\n', ["deps", "a"], undefined),
+						'{\n\t"deps": {}\n}\n',
+					);
+					assert.strictEqual(yield* edited("[\n  1\n]\n", [0], undefined), "[]\n");
+					assert.strictEqual(yield* edited('{\r\n  "a": 1,\r\n}\r\n', ["a"], undefined), "{}\r\n");
+				}),
+			);
+
+			it.effect('an inline { "a": 1 } delete gives {}', () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* edited('{ "a": 1 }', ["a"], undefined), "{}");
+					assert.strictEqual(yield* edited("[ 1 ]", [0], undefined), "[]");
+				}),
+			);
+
+			it.effect("deleting the first of several leaves no blank line", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* edited('{\n  "a": 1,\n  "b": 2\n}', ["a"], undefined), '{\n  "b": 2\n}');
+					assert.strictEqual(yield* edited("[\n\t1,\n\t2\n]\n", [0], undefined), "[\n\t2\n]\n");
+					assert.strictEqual(
+						yield* edited('{\r\n  "a": {\r\n    "x": 1\r\n  },\r\n  "b": 2\r\n}\r\n', ["a"], undefined),
+						'{\r\n  "b": 2\r\n}\r\n',
+					);
+				}),
+			);
+
+			it.effect("deleting the first inline member leaves one space", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* edited('{ "a": 1, "b": 2 }', ["a"], undefined), '{ "b": 2 }');
+					assert.strictEqual(yield* edited("[1, 2, 3]", [0], undefined), "[2, 3]");
+				}),
+			);
+
+			it.effect("deleting a later inline member keeps the space before the closer", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* edited('{ "a": 1, "b": 2 }', ["b"], undefined), '{ "a": 1 }');
+				}),
+			);
+
+			it.effect("deleting a later member leaves no blank line", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* edited('{\n  "a": 1,\n  "b": 2\n}', ["b"], undefined), '{\n  "a": 1\n}');
+					assert.strictEqual(yield* edited('{\n  "a": 1\n  , "b": 2\n}', ["b"], undefined), '{\n  "a": 1\n}');
+				}),
+			);
+
+			it.effect("deleting the first member keeps a trailing comment", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* edited('{\n  "a": 1, // one\n  "b": 2\n}', ["a"], undefined),
+						'{\n  // one\n  "b": 2\n}',
+					);
+				}),
+			);
+
+			it.effect("deleting the first member keeps a comment above it", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(
+						yield* edited('{\n  // above\n  "a": 1,\n  "b": 2\n}', ["a"], undefined),
+						'{\n  // above\n  "b": 2\n}',
+					);
+				}),
+			);
+
+			it.effect("deleting the sole member keeps a comment and the braces", () =>
+				Effect.gen(function* () {
+					assert.strictEqual(yield* edited('{\n  // keep\n  "a": 1\n}', ["a"], undefined), "{\n  // keep\n}");
+					assert.strictEqual(yield* edited('{\n  "a": 1 // keep\n}', ["a"], undefined), "{\n  // keep\n}");
+					assert.strictEqual(yield* edited('{ "a": 1 /* keep */ }', ["a"], undefined), "{ /* keep */ }");
+				}),
+			);
+		});
+
+		describe("every edit's output parses to the expected value", () => {
+			const Doc = Schema.Record(Schema.String, Schema.Json);
+			const Layout = Schema.Struct({
+				indent: Schema.Literals(["  ", "    ", "\t"]),
+				eol: Schema.Literals(["\n", "\r\n"]),
+				comment: Schema.Boolean,
+			});
+			const render = (doc: unknown, layout: typeof Layout.Type) => {
+				const lines = JSON.stringify(doc, null, layout.indent).split("\n");
+				const withComment =
+					layout.comment && lines.length > 1
+						? [lines[0], `${layout.indent}// a comment, with a comma`, ...lines.slice(1)]
+						: lines;
+				return withComment.join(layout.eol);
+			};
+			// JSON.stringify normalizes what the Json arbitrary can produce and a
+			// document cannot hold, such as -0.
+			const normal = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
+			const plainKey = (key: string) => key !== "__proto__";
+
+			it.effect.prop(
+				"setting an object member",
+				[Doc, Schema.String, Schema.Json, Layout],
+				([doc, key, value, layout]) =>
+					Effect.gen(function* () {
+						if (!plainKey(key) || Object.keys(doc).some((k) => !plainKey(k))) return;
+						const out = yield* edited(render(doc, layout), [key], value);
+						assert.deepStrictEqual(yield* Jsonc.parse(out), normal({ ...doc, [key]: value }));
+					}),
+			);
+
+			it.effect.prop("replacing and deleting an object member", [Doc, Schema.Json, Layout], ([doc, value, layout]) =>
+				Effect.gen(function* () {
+					const keys = Object.keys(doc);
+					const key = keys[0];
+					if (key === undefined || keys.some((k) => !plainKey(k))) return;
+					const text = render(doc, layout);
+					const replaced = yield* edited(text, [key], value);
+					assert.deepStrictEqual(yield* Jsonc.parse(replaced), normal({ ...doc, [key]: value }));
+					const deleted = yield* edited(text, [key], undefined);
+					const { [key]: _removed, ...rest } = doc;
+					assert.deepStrictEqual(yield* Jsonc.parse(deleted), normal(rest));
+				}),
+			);
+
+			it.effect.prop(
+				"appending to and deleting from an array",
+				[Schema.Array(Schema.Json), Schema.Json, Layout],
+				([doc, value, layout]) =>
+					Effect.gen(function* () {
+						const text = render(doc, layout);
+						const appended = yield* edited(text, [doc.length], value);
+						assert.deepStrictEqual(yield* Jsonc.parse(appended), normal([...doc, value]));
+						if (doc.length > 0) {
+							const deleted = yield* edited(text, [0], undefined);
+							assert.deepStrictEqual(yield* Jsonc.parse(deleted), normal(doc.slice(1)));
+						}
+					}),
+			);
+		});
 	});
 
 	describe("errors", () => {

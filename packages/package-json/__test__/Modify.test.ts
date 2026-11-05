@@ -90,6 +90,44 @@ describe("PackageJsonFormat.modifyToString", () => {
 		}),
 	);
 
+	it.effect("indents an inserted object to its member in a tab-indented source", () =>
+		Effect.gen(function* () {
+			const source = '{\n\t"pnpm": {\n\t\t"overrides": {}\n\t}\n}\n';
+			const output = yield* PackageJsonFormat.modifyToString(source, ["pnpm", "catalog"], { effect: "^4.1.1" });
+			assert.strictEqual(
+				output,
+				'{\n\t"pnpm": {\n\t\t"overrides": {},\n\t\t"catalog": {\n\t\t\t"effect": "^4.1.1"\n\t\t}\n\t}\n}\n',
+			);
+		}),
+	);
+
+	it.effect("indents a replaced object to its member, in CRLF throughout", () =>
+		Effect.gen(function* () {
+			const source = '{\r\n  "pnpm": {\r\n    "catalog": "x"\r\n  }\r\n}\r\n';
+			const output = yield* PackageJsonFormat.modifyToString(source, ["pnpm", "catalog"], { effect: "^4.1.1" });
+			assert.strictEqual(
+				output,
+				'{\r\n  "pnpm": {\r\n    "catalog": {\r\n      "effect": "^4.1.1"\r\n    }\r\n  }\r\n}\r\n',
+			);
+		}),
+	);
+
+	it.effect("deletes a map's last entry down to an empty map", () =>
+		Effect.gen(function* () {
+			const source = '{\n\t"name": "x",\n\t"dependencies": {\n\t\t"effect": "^4.1.1"\n\t}\n}\n';
+			const output = yield* PackageJsonFormat.modifyToString(source, ["dependencies", "effect"], undefined);
+			assert.strictEqual(output, '{\n\t"name": "x",\n\t"dependencies": {}\n}\n');
+		}),
+	);
+
+	it.effect("deletes a first key and leaves no blank line", () =>
+		Effect.gen(function* () {
+			const source = '{\n  "name": "x",\n  "version": "1.0.0"\n}\n';
+			const output = yield* PackageJsonFormat.modifyToString(source, ["name"], undefined);
+			assert.strictEqual(output, '{\n  "version": "1.0.0"\n}\n');
+		}),
+	);
+
 	it.effect("passes a nonsemver version through untouched — the modify path never decodes", () =>
 		Effect.gen(function* () {
 			// "1.0" is legal for an unpublished root and rejected by every decode
