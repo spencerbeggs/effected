@@ -2,8 +2,8 @@
 // construction, one format-vocabulary registration, one declared-keyword
 // walk. AjvValidator (documents) and AjvInstanceValidator (payloads) must
 // not drift apart — a document the gate admits has to compile in the
-// instance engine too, or `schemastore validate` would refuse a document
-// `schemastore check` just passed.
+// instance engine too, or `effected schema validate` would refuse a document
+// `effected schema check` just passed.
 
 import { KeywordFamilies } from "@effected/schemastore";
 import type { Ajv as AjvType } from "ajv";
