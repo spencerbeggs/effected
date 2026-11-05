@@ -64,6 +64,23 @@ export class CommitRef extends Schema.Class<CommitRef>("CommitRef")({
 }) {}
 
 /**
+ * A commit just created through the Git Database API: its sha and the URL
+ * GitHub reports for viewing it.
+ *
+ * @remarks
+ * `htmlUrl` is the `html_url` of the creation reply, so it carries the right
+ * host on GitHub Enterprise Server with no host arithmetic.
+ *
+ * @public
+ */
+export class CreatedCommit extends Schema.Class<CreatedCommit>("CreatedCommit")({
+	/** The new commit's sha. */
+	sha: Schema.String,
+	/** The commit's web URL, as GitHub reported it. */
+	htmlUrl: Schema.String,
+}) {}
+
+/**
  * Commits and trees in GitHub's Git Database API.
  *
  * @public
@@ -82,6 +99,12 @@ export interface GitCommitShape {
 		readonly tree: string;
 		readonly parents: ReadonlyArray<string>;
 	}) => Effect.Effect<string, GitHubError, Repo>;
+	/** {@link GitCommitShape.createCommit}, also returning the commit's `html_url`. */
+	readonly createCommitWithUrl: (options: {
+		readonly message: string;
+		readonly tree: string;
+		readonly parents: ReadonlyArray<string>;
+	}) => Effect.Effect<CreatedCommit, GitHubError, Repo>;
 	/**
 	 * Write `changes` onto `branch` as one commit, returning its sha.
 	 *
@@ -107,6 +130,12 @@ export interface GitCommitShape {
 		readonly message: string;
 		readonly changes: ReadonlyArray<FileChange>;
 	}) => Effect.Effect<string, GitHubError, Repo>;
+	/** {@link GitCommitShape.commitFiles}, also returning the commit's `html_url`. */
+	readonly commitFilesWithUrl: (options: {
+		readonly branch: string;
+		readonly message: string;
+		readonly changes: ReadonlyArray<FileChange>;
+	}) => Effect.Effect<CreatedCommit, GitHubError, Repo>;
 }
 
 /**
@@ -147,7 +176,9 @@ export class GitCommit extends Context.Service<GitCommit, GitCommitShape>()("@ef
 		get: overrides.get ?? (() => dies("get")),
 		createTree: overrides.createTree ?? (() => dies("createTree")),
 		createCommit: overrides.createCommit ?? (() => dies("createCommit")),
+		createCommitWithUrl: overrides.createCommitWithUrl ?? (() => dies("createCommitWithUrl")),
 		commitFiles: overrides.commitFiles ?? (() => dies("commitFiles")),
+		commitFilesWithUrl: overrides.commitFilesWithUrl ?? (() => dies("commitFilesWithUrl")),
 	});
 
 	/** {@link GitCommit.makeTest} behind a `Layer`. */
@@ -195,7 +226,7 @@ const make = (client: GitHubClient["Service"]): GitCommitShape => {
 		return tree.sha;
 	});
 
-	const createCommit = Effect.fn("GitCommit.createCommit")(function* (options: {
+	const createCommitWithUrl = Effect.fn("GitCommit.createCommit")(function* (options: {
 		readonly message: string;
 		readonly tree: string;
 		readonly parents: ReadonlyArray<string>;
@@ -209,37 +240,41 @@ const make = (client: GitHubClient["Service"]): GitCommitShape => {
 			tree: options.tree,
 			parents: [...options.parents],
 		});
-		return commit.sha;
+		return CreatedCommit.make({ sha: commit.sha, htmlUrl: commit.html_url });
+	});
+
+	const commitFilesWithUrl = Effect.fn("GitCommit.commitFiles")(function* (options: {
+		readonly branch: string;
+		readonly message: string;
+		readonly changes: ReadonlyArray<FileChange>;
+	}) {
+		const { owner, repo } = yield* Repo;
+		const short = options.branch.replace(/^refs\/heads\//, "").replace(/^heads\//, "");
+		yield* Effect.annotateCurrentSpan({ owner, repo, branch: short, changes: options.changes.length });
+		const ref = yield* client.request("GET /repos/{owner}/{repo}/git/ref/{ref}", {
+			owner,
+			repo,
+			ref: `heads/${short}`,
+		});
+		const head = yield* get(ref.object.sha);
+		const tree = yield* createTree({ changes: options.changes, baseTree: head.treeSha });
+		const commit = yield* createCommitWithUrl({ message: options.message, tree, parents: [head.sha] });
+		yield* client.request("PATCH /repos/{owner}/{repo}/git/refs/{ref}", {
+			owner,
+			repo,
+			ref: `heads/${short}`,
+			sha: commit.sha,
+			force: false,
+		});
+		return commit;
 	});
 
 	return {
 		get,
 		createTree,
-		createCommit,
-		commitFiles: Effect.fn("GitCommit.commitFiles")(function* (options: {
-			readonly branch: string;
-			readonly message: string;
-			readonly changes: ReadonlyArray<FileChange>;
-		}) {
-			const { owner, repo } = yield* Repo;
-			const short = options.branch.replace(/^refs\/heads\//, "").replace(/^heads\//, "");
-			yield* Effect.annotateCurrentSpan({ owner, repo, branch: short, changes: options.changes.length });
-			const ref = yield* client.request("GET /repos/{owner}/{repo}/git/ref/{ref}", {
-				owner,
-				repo,
-				ref: `heads/${short}`,
-			});
-			const head = yield* get(ref.object.sha);
-			const tree = yield* createTree({ changes: options.changes, baseTree: head.treeSha });
-			const commit = yield* createCommit({ message: options.message, tree, parents: [head.sha] });
-			yield* client.request("PATCH /repos/{owner}/{repo}/git/refs/{ref}", {
-				owner,
-				repo,
-				ref: `heads/${short}`,
-				sha: commit,
-				force: false,
-			});
-			return commit;
-		}),
+		createCommit: (options) => Effect.map(createCommitWithUrl(options), (commit) => commit.sha),
+		createCommitWithUrl,
+		commitFiles: (options) => Effect.map(commitFilesWithUrl(options), (commit) => commit.sha),
+		commitFilesWithUrl,
 	};
 };

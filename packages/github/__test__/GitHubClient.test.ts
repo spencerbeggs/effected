@@ -1,5 +1,17 @@
 import { assert, describe, it } from "@effect/vitest";
-import { ConfigProvider, Duration, Effect, Exit, Layer, Option, Redacted, Schema, Stream } from "effect";
+import {
+	ConfigProvider,
+	Deferred,
+	Duration,
+	Effect,
+	Exit,
+	Fiber,
+	Layer,
+	Option,
+	Redacted,
+	Schema,
+	Stream,
+} from "effect";
 import { TestClock } from "effect/testing";
 import type { RecordedCall } from "../src/GitHubClient.js";
 import { GitHubClient, GitHubFixtures } from "../src/GitHubClient.js";
@@ -9,8 +21,8 @@ import { GraphQLDocument } from "../src/GraphQL.js";
 import { Repo } from "../src/Repo.js";
 import { RateLimitSnapshot, RetryPolicy } from "../src/Resilience.js";
 import { PageOptions } from "../src/Rest.js";
-import type { Reply } from "./fixtures.js";
-import { linkNext, rateLimitHeaders, scriptedFetch } from "./fixtures.js";
+import type { HangMode, Reply } from "./fixtures.js";
+import { hangingFetch, linkNext, rateLimitHeaders, scriptedFetch } from "./fixtures.js";
 import { defectMessage } from "./harness.js";
 
 const TOKEN = Redacted.make("ghs_test");
@@ -1120,6 +1132,84 @@ describe("GitHubClient api-version", () => {
 				assert.match(defectMessage(exit) ?? "", /apiVersion option must be a calendar version/, JSON.stringify(bad));
 				assert.strictEqual(script.count(), 0);
 			}
+		}),
+	);
+});
+
+describe("interrupting a call aborts its fetch", () => {
+	const ROUTE_PARAMS = { owner: "acme", repo: "widget" } as const;
+	const Viewer = GraphQLDocument.make({
+		name: "viewerLogin",
+		document: "query { viewer { login } }",
+		response: Schema.Struct({ viewer: Schema.Struct({ login: Schema.String }) }),
+	})<Record<string, never>>();
+
+	/**
+	 * Fork `read` on a client with the DEFAULT retry policy, wait until the fetch
+	 * is hanging, then either interrupt or (the control) leave it running.
+	 * Returns the counters read after the interrupt, and the aborts seen before it.
+	 */
+	const drive = <A, E>(
+		mode: HangMode,
+		read: (client: GitHubClient["Service"]) => Effect.Effect<A, E>,
+		options: { readonly interrupt: boolean } = { interrupt: true },
+	) => {
+		const hang = hangingFetch(mode);
+		const layer = GitHubClient.layerFromToken({ token: TOKEN, fetch: hang.fetch });
+		return Effect.gen(function* () {
+			const client = yield* GitHubClient;
+			const fiber = yield* Effect.forkChild(read(client));
+			yield* Deferred.await(hang.started);
+			const abortedBefore = hang.aborted();
+			if (options.interrupt) yield* Fiber.interrupt(fiber);
+			const afterInterrupt = { calls: hang.calls(), aborted: hang.aborted(), bodyCancelled: hang.bodyCancelled() };
+			if (!options.interrupt) yield* Fiber.interrupt(fiber);
+			return { abortedBefore, ...afterInterrupt, final: { aborted: hang.aborted() } };
+		}).pipe(Effect.provide(layer));
+	};
+
+	const rows: ReadonlyArray<
+		readonly [string, HangMode, (client: GitHubClient["Service"]) => Effect.Effect<unknown, unknown>]
+	> = [
+		["request", "request", (c) => c.request("GET /repos/{owner}/{repo}", ROUTE_PARAMS)],
+		["paginate, first page", "request", (c) => c.paginate("GET /repos/{owner}/{repo}/issues", ROUTE_PARAMS)],
+		["paginate, second page", "secondPage", (c) => c.paginate("GET /repos/{owner}/{repo}/issues", ROUTE_PARAMS)],
+		[
+			"paginateStream, second page",
+			"secondPage",
+			(c) => Stream.runCollect(c.paginateStream("GET /repos/{owner}/{repo}/issues", ROUTE_PARAMS)),
+		],
+		["graphql", "request", (c) => c.graphql(Viewer, {})],
+	];
+
+	for (const [name, mode, read] of rows) {
+		it.effect(`${name}: one fetch, one abort, no retry`, () =>
+			Effect.gen(function* () {
+				const result = yield* drive(mode, read);
+				assert.strictEqual(result.abortedBefore, 0);
+				assert.strictEqual(result.aborted, 1);
+				assert.strictEqual(result.calls, mode === "secondPage" ? 2 : 1);
+			}),
+		);
+	}
+
+	it.effect("a hung body read is cancelled with the call", () =>
+		Effect.gen(function* () {
+			const result = yield* drive("body", (c) => c.request("GET /repos/{owner}/{repo}", ROUTE_PARAMS));
+			assert.strictEqual(result.calls, 1);
+			assert.strictEqual(result.aborted, 1);
+			assert.strictEqual(result.bodyCancelled, 1);
+		}),
+	);
+
+	it.effect("control: a call nobody interrupts is never aborted", () =>
+		Effect.gen(function* () {
+			const result = yield* drive("request", (c) => c.request("GET /repos/{owner}/{repo}", ROUTE_PARAMS), {
+				interrupt: false,
+			});
+			assert.strictEqual(result.calls, 1);
+			assert.strictEqual(result.aborted, 0);
+			assert.strictEqual(result.final.aborted, 1);
 		}),
 	);
 });
