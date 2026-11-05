@@ -1,8 +1,8 @@
 // The shared body of `effected schema build` and `check`, and of the MCP's
 // `schema_build` and `schema_check`: load the config, check its version, merge the
-// flags over its onDrift and per-schema drift, run, append the step summary, and
-// answer with the report and its verdict. Exit codes and rendering stay with the
-// front ends, which read the verdict as data.
+// flags over its onDrift and per-schema drift, run, and answer with the report and
+// its verdict. Exit codes, rendering and the step summary stay with the front ends:
+// a read-only MCP call inside an Actions step must not write the summary.
 
 import type {
 	CanonicalJsonError,
@@ -22,12 +22,15 @@ import { Effect, Option, Schema } from "effect";
 import { AjvValidator } from "./AjvValidator.js";
 import type { ConfigLoadError, ConfigNotFoundError } from "./ConfigLoader.js";
 import { ConfigLoader } from "./ConfigLoader.js";
-import { Report } from "./Report.js";
-import type { CatalogDirError, FrozenVersionIdMismatchError, FrozenVersionMissingError } from "./Runner.js";
+import type {
+	CatalogDirError,
+	FrozenVersionIdMismatchError,
+	FrozenVersionMissingError,
+	SchemaChecked,
+} from "./Runner.js";
 import { Runner } from "./Runner.js";
 import type { SchemaReport } from "./RunReport.js";
 import { RunReport } from "./RunReport.js";
-import { StepSummary } from "./StepSummary.js";
 import { VersionCheck, VersionMismatch, VersionMismatchError } from "./VersionCheck.js";
 
 /**
@@ -68,13 +71,22 @@ export interface SchemaRunInput {
  * Progress through one run.
  *
  * @remarks
- * A schema's outcome depends on every other schema, since one refusal holds them
- * all, so every `SchemaDone` follows the whole walk.
+ * `Started` precedes the walk and carries any version mismatch the run is going
+ * on past, so a front end can warn before a later failure loses it: an error from
+ * the walk does not carry it. `SchemaChecked` arrives as each schema's check
+ * finishes, before the next one starts, with what is known per schema. Whether a
+ * clean schema ends `held` depends on its siblings, so `SchemaDone`, the final
+ * state, follows the whole walk.
  *
  * @public
  */
 export type SchemaProgress =
-	| { readonly _tag: "Started"; readonly names: ReadonlyArray<string> }
+	| {
+			readonly _tag: "Started";
+			readonly names: ReadonlyArray<string>;
+			readonly versionMismatch?: VersionMismatch;
+	  }
+	| ({ readonly _tag: "SchemaChecked" } & SchemaChecked)
 	| { readonly _tag: "SchemaDone"; readonly report: SchemaReport };
 
 /**
@@ -139,8 +151,8 @@ const verdictOf = (report: RunReport): SchemaRunResult["verdict"] => {
  * before anything is generated. A failing gate, refused drift, blocked catalog or
  * stale tree is a verdict rather than a failure, so a front end can always show
  * the report; the error channel holds a run that could not start or finish.
- * `check` never writes a document: {@link Runner.run}'s one `writing` predicate
- * decides that.
+ * `check` writes nothing: {@link Runner.run}'s one `writing` predicate decides
+ * that for documents, and appending the step summary is left to the CLI.
  *
  * @public
  */
@@ -181,19 +193,25 @@ export class SchemaRun {
 			const { tool, found, message } = mismatch.value;
 			return yield* new VersionMismatchError({ tool, found, message });
 		}
-		yield* deps.onProgress?.({ _tag: "Started", names: loaded.config.schemas.map((schema) => schema.name) }) ??
-			Effect.void;
+		const { onProgress } = deps;
+		yield* onProgress?.({
+			_tag: "Started",
+			names: loaded.config.schemas.map((schema) => schema.name),
+			...(Option.isSome(mismatch) ? { versionMismatch: mismatch.value } : {}),
+		}) ?? Effect.void;
 		const policy = input.force ? "allow" : input.drift;
 		const report = yield* Runner.run(loaded.config, {
 			mode: input.mode,
 			configPath: loaded.path,
 			onDrift: input.onDrift ?? loaded.config.onDrift,
 			...(policy !== undefined ? { policy } : {}),
+			...(onProgress !== undefined
+				? { onChecked: (checked: SchemaChecked) => onProgress({ _tag: "SchemaChecked", ...checked }) }
+				: {}),
 		}).pipe(Effect.provide(SchemaFile.layer), Effect.provide(deps.validator ?? AjvValidator.layer));
 		for (const schema of report.schemas) {
-			yield* deps.onProgress?.({ _tag: "SchemaDone", report: schema }) ?? Effect.void;
+			yield* onProgress?.({ _tag: "SchemaDone", report: schema }) ?? Effect.void;
 		}
-		yield* StepSummary.append(Report.markdown(report));
 		return SchemaRunResult.make({
 			report,
 			verdict: verdictOf(report),

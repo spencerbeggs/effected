@@ -20,6 +20,7 @@ export {
 	FrozenVersionMissingError,
 	type RunOptions,
 	Runner,
+	type SchemaChecked,
 } from "./Runner.js";
 export {
 	CatalogConflict,

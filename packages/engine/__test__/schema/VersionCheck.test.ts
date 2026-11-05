@@ -3,7 +3,7 @@ import type { MemoryFileSystemSeed } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
 import { HostedSchema, SchemastoreVersion, defineConfig } from "@effected/schemastore";
 import { Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
-import type { SchemaRunInput } from "../../src/schema/SchemaRun.js";
+import type { SchemaProgress, SchemaRunInput } from "../../src/schema/SchemaRun.js";
 import { SchemaRun } from "../../src/schema/SchemaRun.js";
 import { VersionCheck } from "../../src/schema/VersionCheck.js";
 
@@ -144,6 +144,26 @@ describe("SchemaRun under a version mismatch", () => {
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(SchemaRun.run(input("warn"), deps(frozenConfig())));
 			assert.strictEqual(error._tag, "FrozenVersionMissingError");
+		}).pipe(Effect.provide(volume())),
+	);
+
+	it.effect("under 'warn', Started carries the mismatch before a later failure loses it", () =>
+		Effect.gen(function* () {
+			const events: Array<SchemaProgress> = [];
+			const error = yield* Effect.flip(
+				SchemaRun.run(input("warn"), {
+					...deps(frozenConfig()),
+					onProgress: (event) =>
+						Effect.sync(() => {
+							events.push(event);
+						}),
+				}),
+			);
+			assert.strictEqual(error._tag, "FrozenVersionMissingError");
+			assert.lengthOf(events, 1);
+			const [started] = events;
+			assert.strictEqual(started?._tag, "Started");
+			assert.strictEqual(started?._tag === "Started" ? started.versionMismatch?.found[0]?.version : undefined, "9.9.9");
 		}).pipe(Effect.provide(volume())),
 	);
 

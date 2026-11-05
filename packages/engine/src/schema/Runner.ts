@@ -1,7 +1,7 @@
 // The shared build/check walk: first, every advertised frozen version is
 // checked — it must exist, and the `$id` it declares must be the derived one
 // — so a schema that advertises a label with nothing on disk, or a file that
-// self-identifies elsewhere, is refused before anything is generated. Then `SchemaPipeline.check`
+// self-identifies elsewhere, is refused before anything is generated. Then `SchemaPipeline.checkOne`
 // classifies every current target, `DriftPolicy` applies the lifecycle rule
 // the library lacks (per schema, or forced by a flag over every schema at
 // once), and only when nothing is refused does `SchemaPipeline.run` write.
@@ -15,9 +15,9 @@
 import type {
 	CanonicalJsonError,
 	DriftTolerance,
+	DriftVerdict,
 	OnDrift,
 	PipelineResult,
-	ResolvedSchema,
 	SchemaConversionError,
 	SchemaFile,
 	SchemaFileReadError,
@@ -26,6 +26,7 @@ import type {
 	SchemaValidatorError,
 	SchemastoreConfig,
 	UndeclaredAnnotationKeyError,
+	WriteChange,
 } from "@effected/schemastore";
 import { CanonicalJson, CatalogEntry, DriftPolicy, SchemaPipeline, SchemaVersioning } from "@effected/schemastore";
 import { LineDiff } from "@effected/source";
@@ -156,6 +157,24 @@ const listingFailureReason = (error: PlatformError.PlatformError): string => {
 };
 
 /**
+ * What one schema's check established, which nothing about its siblings can
+ * change. Its final `outcome` can still become `held` when a sibling is refused,
+ * so that waits for {@link SchemaReport}.
+ *
+ * @public
+ */
+export interface SchemaChecked {
+	/** The schema's key in the config. */
+	readonly name: string;
+	/** What differs between the on-disk document and the generated one. */
+	readonly change: WriteChange;
+	/** The drift policy's verdict under the tolerance applied to this schema. */
+	readonly verdict: DriftVerdict;
+	/** Whether this schema's findings block a build. */
+	readonly blocked: boolean;
+}
+
+/**
  * What {@link Runner.run} is asked to do.
  *
  * @public
@@ -168,6 +187,8 @@ export interface RunOptions {
 	readonly onDrift: OnDrift;
 	/** Present only when a flag forced one tolerance over every schema's own. */
 	readonly policy?: DriftTolerance;
+	/** Told as each schema's check finishes, before the next one starts. */
+	readonly onChecked?: (checked: SchemaChecked) => Effect.Effect<void>;
 }
 
 // The tool owns the drift policy: the library's version guard is off so the
@@ -214,24 +235,52 @@ const parsesEqual = (existing: string, text: string): boolean => {
 	return Result.isSuccess(before) && Result.isSuccess(after) && CanonicalJson.equals(before.success, after.success);
 };
 
-// A document in the kit's canonical layout, so a repo that formats its schemas
-// with spaces does not see every line changed: `check` compares by content and
-// the diff must agree. Text that does not parse has no canonical form, and is
-// the thing to show. Core's `readFileString` already drops a BOM through its
-// `TextDecoder`; this holds for a `FileSystem` that does not derive it.
-const canonicalForm = (existing: string): string => {
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	Predicate.isObject(value) && !Array.isArray(value);
+
+// `value` with each object's keys in `order`'s sequence, and any key `order`
+// lacks after them as it stood. `Object.fromEntries` defines own properties, so a
+// `__proto__` key in the file stays data. The caller has already serialized
+// `value`, which bounds its depth, so this recursion cannot overflow.
+const alignKeys = (value: unknown, order: unknown): unknown => {
+	if (Array.isArray(value)) {
+		return value.map((element, index) => alignKeys(element, Array.isArray(order) ? order[index] : undefined));
+	}
+	if (!isRecord(value)) {
+		return value;
+	}
+	const reference = isRecord(order) ? order : {};
+	const shared = Object.keys(reference).filter((key) => Object.hasOwn(value, key));
+	const rest = Object.keys(value).filter((key) => !Object.hasOwn(reference, key));
+	return Object.fromEntries(
+		[...shared, ...rest].map((key) => [
+			key,
+			alignKeys(value[key], Object.hasOwn(reference, key) ? reference[key] : undefined),
+		]),
+	);
+};
+
+// A document in the kit's canonical layout and the generated document's key
+// order, so a repo that formats its schemas with spaces or sorts their keys does
+// not see every line changed: `check` compares by content and the diff must
+// agree. Text that does not parse has no canonical form, and is the thing to show.
+const canonicalForm = (existing: string, generated: string): string => {
+	// Core's `readFileString` decodes through `TextDecoder`, which already drops a
+	// BOM on real and memfs reads. This covers a `FileSystem` that overrides it.
 	const text = existing.charCodeAt(0) === 0xfeff ? existing.slice(1) : existing;
 	const parsed = decodeJson(text);
-	if (Result.isFailure(parsed)) {
+	if (Result.isFailure(parsed) || Result.isFailure(CanonicalJson.serializeResult(parsed.success))) {
 		return text;
 	}
-	return Result.getOrElse(CanonicalJson.serializeResult(parsed.success), () => text);
+	const order = decodeJson(generated);
+	const aligned = Result.isSuccess(order) ? alignKeys(parsed.success, order.success) : parsed.success;
+	return Result.getOrElse(CanonicalJson.serializeResult(aligned), () => text);
 };
 
 // What a run would change, or changed: the on-disk text comes from the check
 // that ran before any write, so a build's diff describes what it replaced.
 const documentDiff = (path: string, generated: string, existing: string | undefined): DocumentDiff => {
-	const hunks = LineDiff.compute(existing === undefined ? "" : canonicalForm(existing), generated);
+	const hunks = LineDiff.compute(existing === undefined ? "" : canonicalForm(existing, generated), generated);
 	return DocumentDiff.make({
 		hunks,
 		unified: LineDiff.unified(hunks, { before: existing === undefined ? "/dev/null" : path, after: path }),
@@ -461,7 +510,7 @@ const syncCatalog = Effect.fn("Runner.syncCatalog")(function* (
 /**
  * The shared `build` / `check` walk: verify every advertised frozen version
  * exists, classify every current target through `DriftPolicy` over
- * `SchemaPipeline.check`, then write through `SchemaPipeline.run` only when
+ * `SchemaPipeline.checkOne`, then write through `SchemaPipeline.run` only when
  * nothing is refused.
  *
  * @remarks
@@ -626,16 +675,17 @@ export class Runner {
 		}
 		const catalogNames = Result.isSuccess(listing) ? listing.success : [];
 
-		// `check` and `run` answer one result per target, in target order, so
-		// indexing `config.schemas` and the run results by the check index is
-		// total — the cast below asserts that (the `SchemaPipeline.runOne`
-		// precedent), with no defensive re-check.
+		// `run` answers one result per target, in target order, so indexing the run
+		// results by the check index is total — the cast below asserts that (the
+		// `SchemaPipeline.runOne` precedent), with no defensive re-check.
 		const targets = config.schemas.map((schema) => schema.target);
-		const checks = yield* SchemaPipeline.check(targets, pipelineOptions);
-		const gateFailed = checks.some((check) => check.blocked);
-		const classified = checks.map((check, i) => {
-			const schema = config.schemas[i] as ResolvedSchema;
+		const classified = [];
+		// One target at a time, so a front end sees each schema as it finishes: a
+		// check holds nothing across targets, and only the final `held` outcome
+		// waits on the siblings.
+		for (const schema of config.schemas) {
 			const target = schema.target;
+			const check = yield* SchemaPipeline.checkOne(target, pipelineOptions);
 			const policy = options.policy ?? schema.drift;
 			const verdict = DriftPolicy.classify({ published: target.published, change: check.change }, policy);
 			// A prerelease label declares its own instability: `next` would answer
@@ -644,8 +694,12 @@ export class Runner {
 				target.version !== undefined && check.change === "contract" && SchemaVersioning.isPinned(target.version)
 					? SchemaVersioning.next(target.version, "contract")
 					: undefined;
-			return { schema, target, check, verdict, policy, nextVersion };
-		});
+			classified.push({ schema, target, check, verdict, policy, nextVersion });
+			if (options.onChecked !== undefined) {
+				yield* options.onChecked({ name: schema.name, change: check.change, verdict, blocked: check.blocked });
+			}
+		}
+		const gateFailed = classified.some((entry) => entry.check.blocked);
 		const drifted = classified.some((entry) => entry.verdict === "drift");
 		const refused = gateFailed || (drifted && options.onDrift === "error");
 		const writing = options.mode === "build" && !refused;

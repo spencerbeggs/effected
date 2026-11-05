@@ -3,11 +3,12 @@ import type { MemoryFileSystemSeed } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
 import type { SchemastoreConfig } from "@effected/schemastore";
 import { SchemaValidator, StoreDocument, ValidationFinding, defineConfig } from "@effected/schemastore";
-import { ConfigProvider, Effect, FileSystem, Layer, Path, Result, Schema } from "effect";
+import { ConfigProvider, Deferred, Effect, FileSystem, Layer, Path, Result, Schema } from "effect";
 import { Report } from "../../src/schema/Report.js";
 import { RunReport } from "../../src/schema/RunReport.js";
 import type { SchemaProgress, SchemaRunDeps, SchemaRunInput } from "../../src/schema/SchemaRun.js";
 import { SchemaRun } from "../../src/schema/SchemaRun.js";
+import { StepSummary } from "../../src/schema/StepSummary.js";
 
 const base = Path.layer;
 const volume = (seed: MemoryFileSystemSeed = {}) => Layer.merge(base, MemoryFileSystem.layerWith(seed));
@@ -147,6 +148,48 @@ describe("SchemaRun.run", () => {
 		),
 	);
 
+	it.effect("a key-reordered document with one real change shows only that change", () =>
+		Effect.gen(function* () {
+			const hunksOver = (text: string) =>
+				SchemaRun.run(input(), deps(configOf(Changed))).pipe(
+					Effect.map((result) => result.report.schemas[0]?.diff?.hunks),
+					Effect.provide(volume({ ...seedConfig, [DOC_PATH]: text })),
+				);
+			const reverse = (value: unknown): unknown =>
+				Array.isArray(value)
+					? value.map(reverse)
+					: typeof value === "object" && value !== null
+						? Object.fromEntries(
+								Object.entries(value)
+									.reverse()
+									.map(([key, inner]) => [key, reverse(inner)]),
+							)
+						: value;
+			const canonical = emitted(Fixture);
+			const reordered = JSON.stringify(reverse(JSON.parse(canonical)));
+			assert.notStrictEqual(reordered, JSON.stringify(JSON.parse(canonical)));
+			const expected = yield* hunksOver(canonical);
+			assert.isAbove(expected?.length ?? 0, 0);
+			assert.deepStrictEqual(yield* hunksOver(reordered), expected);
+		}),
+	);
+
+	it.effect("a key only the file holds stays in the diff, as data even when named __proto__", () =>
+		Effect.gen(function* () {
+			const onDisk = JSON.stringify(JSON.parse(emitted(Fixture))).replace(/^\{/, '{"__proto__":{"x":1},"old":true,');
+			const result = yield* SchemaRun.run(input(), deps(configOf(Fixture))).pipe(
+				Effect.provide(volume({ ...seedConfig, [DOC_PATH]: onDisk })),
+			);
+			const removed = (result.report.schemas[0]?.diff?.hunks ?? [])
+				.flatMap((hunk) => hunk.lines)
+				.filter((line) => line.kind === "remove")
+				.map((line) => line.text.trim());
+			assert.include(removed, '"__proto__": {');
+			assert.isTrue(removed.some((text) => text.startsWith('"old": true')));
+			assert.isUndefined(({} as { x?: unknown }).x);
+		}),
+	);
+
 	it.effect("--force with --drift=strict fails ConflictingFlagsError before loading", () =>
 		Effect.gen(function* () {
 			let loaded = false;
@@ -173,7 +216,7 @@ describe("SchemaRun.run", () => {
 		}).pipe(Effect.provide(volume({ ...seedConfig, [DOC_PATH]: emitted(Fixture) }))),
 	);
 
-	it.effect("onProgress sees Started, then one SchemaDone per schema", () =>
+	it.effect("onProgress sees Started, one SchemaChecked per schema, then one SchemaDone per schema", () =>
 		Effect.gen(function* () {
 			const events: Array<SchemaProgress> = [];
 			const config = defineConfig({
@@ -193,12 +236,69 @@ describe("SchemaRun.run", () => {
 			);
 			assert.deepStrictEqual(
 				events.map((event) => event._tag),
-				["Started", "SchemaDone", "SchemaDone"],
+				["Started", "SchemaChecked", "SchemaChecked", "SchemaDone", "SchemaDone"],
 			);
-			const [started, first, second] = events;
+			const [started, checked, , first, second] = events;
 			assert.deepStrictEqual(started?._tag === "Started" ? started.names : [], ["app", "other"]);
+			assert.isFalse(started !== undefined && "versionMismatch" in started);
+			assert.deepStrictEqual(checked, {
+				_tag: "SchemaChecked",
+				name: "app",
+				change: "created",
+				verdict: "write",
+				blocked: false,
+			});
 			assert.strictEqual(first?._tag === "SchemaDone" ? first.report.name : "", "app");
 			assert.strictEqual(second?._tag === "SchemaDone" ? second.report.name : "", "other");
+		}).pipe(Effect.provide(volume(seedConfig))),
+	);
+
+	it.effect("the first schema's event arrives before the second schema's check starts", () =>
+		Effect.gen(function* () {
+			const log: Array<string> = [];
+			// The second validation waits for the first schema's event, so a run that
+			// held its events until after the walk could never finish.
+			const firstChecked = yield* Deferred.make<void>();
+			let validations = 0;
+			const latched = Layer.succeed(SchemaValidator, {
+				validate: () =>
+					Effect.gen(function* () {
+						validations++;
+						log.push(`validate ${validations}`);
+						if (validations === 2) {
+							yield* Deferred.await(firstChecked);
+						}
+						return [];
+					}),
+			});
+			const config = defineConfig({
+				name: "test",
+				outputDir: "schemas",
+				baseUrl: BASE,
+				schemas: { app: { schema: Fixture }, other: { schema: Changed } },
+			});
+			yield* SchemaRun.run(
+				input(),
+				deps(config, {
+					validator: latched,
+					onProgress: (event) =>
+						Effect.gen(function* () {
+							log.push(event._tag === "SchemaChecked" ? `checked ${event.name}` : event._tag);
+							if (event._tag === "SchemaChecked" && event.name === "app") {
+								yield* Deferred.succeed(firstChecked, undefined);
+							}
+						}),
+				}),
+			);
+			assert.deepStrictEqual(log, [
+				"Started",
+				"validate 1",
+				"checked app",
+				"validate 2",
+				"checked other",
+				"SchemaDone",
+				"SchemaDone",
+			]);
 		}).pipe(Effect.provide(volume(seedConfig))),
 	);
 
@@ -338,10 +438,13 @@ describe("SchemaRun.run", () => {
 		),
 	);
 
-	it.effect("the step summary is appended with the fenced diff", () =>
+	it.effect("a run does not touch GITHUB_STEP_SUMMARY, which is the CLI's to append", () =>
 		Effect.gen(function* () {
 			const fs = yield* FileSystem.FileSystem;
-			yield* SchemaRun.run(input(), deps(configOf(Changed)));
+			const result = yield* SchemaRun.run(input(), deps(configOf(Changed)));
+			assert.isFalse(yield* fs.exists("/summary.md"));
+			// The control: the sink is live, and the report renders the fenced diff.
+			assert.isTrue(yield* StepSummary.append(Report.markdown(result.report)));
 			const summary = yield* fs.readFileString("/summary.md");
 			assert.include(summary, "### effected schema check");
 			assert.include(summary, "```diff");
