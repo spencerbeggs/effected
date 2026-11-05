@@ -3,6 +3,7 @@
 ## 2026-11-05
 
 * Updated @effected/source
+* Updated @effected/kit
 
 ## 2026-11-02
 

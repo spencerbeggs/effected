@@ -903,6 +903,9 @@ importers:
       '@effect/vitest':
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs/dist/dev/pkg
       '@effected/workspaces':
         specifier: workspace:*
         version: link:../workspaces/dist/dev/pkg
