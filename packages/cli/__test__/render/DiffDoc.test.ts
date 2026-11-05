@@ -93,6 +93,54 @@ describe("DiffDoc", () => {
 		assert.include(Render.plain([DiffDoc.render("a.json", diff)], plainCtx), "… 3 more lines");
 	});
 
+	it("expands each tab to two spaces, so a tab-indented document keeps the shape of a git diff", () => {
+		const diff: DocumentDiff = {
+			hunks: [
+				{
+					oldStart: 1,
+					oldLines: 6,
+					newStart: 1,
+					newLines: 9,
+					lines: [
+						line("context", '\t"properties": {'),
+						line("context", '\t\t"name": {'),
+						line("remove", '\t\t\t"description": "The project name",'),
+						line("add", '\t\t\t"description": "The bundle\'s project name",'),
+						line("context", '\t\t\t"type": "string"'),
+						line("context", "\t\t},"),
+						line("add", '\t\t"strict": {'),
+						line("add", '\t\t\t"type": "boolean"'),
+						line("add", "\t\t},"),
+					],
+				},
+			],
+			unified: "",
+		};
+		assert.strictEqual(
+			Render.plain([DiffDoc.render("schemas/okfit.json", diff)], plainCtx).trimEnd(),
+			[
+				"@@ schemas/okfit.json @@",
+				'   "properties": {',
+				'     "name": {',
+				'-      "description": "The project name",',
+				'+      "description": "The bundle\'s project name",',
+				'       "type": "string"',
+				"     },",
+				'+    "strict": {',
+				'+      "type": "boolean"',
+				"+    },",
+			].join("\n"),
+		);
+	});
+
+	it("expands a tab inside a line, not only the indent", () => {
+		const diff: DocumentDiff = {
+			hunks: [{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 1, lines: [line("add", "a\tb")] }],
+			unified: "",
+		};
+		assert.include(Render.plain([DiffDoc.render("a.json", diff)], plainCtx), "+a  b");
+	});
+
 	it("a line with noNewline is followed by git's marker", () => {
 		const diff: DocumentDiff = {
 			hunks: [

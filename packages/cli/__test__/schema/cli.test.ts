@@ -152,6 +152,29 @@ describe("effected schema", () => {
 		}),
 	);
 
+	it.effect("an explicit path that is not there says so, rather than listing file names to look for", () =>
+		Effect.gen(function* () {
+			const { code, err } = yield* runCli(schema("build", "nope.ts"), { deps, seed: { "/repo/.keep": "" } });
+			assert.strictEqual(code, 2);
+			const text = report(err);
+			assert.include(text, "/repo/nope.ts does not exist");
+			assert.notInclude(text, "Looked for");
+			assert.notInclude(text, "schemastore.config.mjs");
+		}),
+	);
+
+	it.effect("validate's example puts the payload first, since the first positional is the payload", () =>
+		Effect.gen(function* () {
+			const { code, err } = yield* runCli(schema("validate", "payload.json"), {
+				deps,
+				// A `$schema` that is not a file, so resolving it needs a config, and there is none.
+				seed: { "/repo/payload.json": `${JSON.stringify({ $schema: BASIC_ID, name: "x" })}\n` },
+			});
+			assert.strictEqual(code, 2);
+			assert.include(report(err), "effected schema validate payload.json lib/schemastore.config.ts");
+		}),
+	);
+
 	it.effect("the example names the command that was run", () =>
 		Effect.gen(function* () {
 			const { code, err } = yield* runCli(schema("check"), { deps, seed: { "/repo/.keep": "" } });
@@ -198,6 +221,32 @@ describe("effected schema", () => {
 			assert.include(warning, SchemastoreVersion.current);
 			assert.isTrue(volume.paths().length > 1, "it wrote");
 			assert.notInclude(out.join("\n"), "0.0.1", "the warning stays off stdout");
+		}),
+	);
+
+	it.effect("--agent --ignore-version-mismatch carries the mismatch in the stdout document", () =>
+		Effect.gen(function* () {
+			const { code, stdoutCalls } = yield* runCli(schema("build", "--agent", "--ignore-version-mismatch"), {
+				deps: depsFor(foreignConfig),
+				seed: { [CONFIG_PATH]: "" },
+			});
+			assert.strictEqual(code, 0);
+			assert.lengthOf(stdoutCalls, 1);
+			const parsed = JSON.parse(stdoutCalls[0] as string) as {
+				versionMismatch?: { tool: string; found: ReadonlyArray<{ version: string }>; message: string };
+			};
+			assert.strictEqual(parsed.versionMismatch?.tool, SchemastoreVersion.current);
+			assert.strictEqual(parsed.versionMismatch?.found[0]?.version, "0.0.1");
+			assert.include(parsed.versionMismatch?.message ?? "", "0.0.1");
+			// The document is still the report's.
+			assert.strictEqual(Schema.decodeUnknownSync(RunReport.Json)(JSON.parse(stdoutCalls[0] as string)).mode, "build");
+		}),
+	);
+
+	it.effect("--format=json with no mismatch has no versionMismatch key", () =>
+		Effect.gen(function* () {
+			const { stdoutCalls } = yield* runCli(schema("check", "--format=json"), { deps, seed: builtSeed });
+			assert.isFalse("versionMismatch" in (JSON.parse(stdoutCalls[0] as string) as object));
 		}),
 	);
 
@@ -395,7 +444,7 @@ describe("effected schema", () => {
 	it.effect("writes no summary when GITHUB_STEP_SUMMARY is unset", () =>
 		Effect.gen(function* () {
 			const { volume } = yield* runCli(schema("check"), { deps, seed: { [CONFIG_PATH]: "" } });
-			assert.isFalse(volume.has("/summary.md"));
+			assert.deepStrictEqual(volume.paths(), [CONFIG_PATH], "check wrote nothing at all, a summary included");
 		}),
 	);
 
@@ -524,6 +573,20 @@ describe("effected schema", () => {
 			const built = yield* runCli(schema("build"), { deps: uncataloged, seed: builtSeed });
 			assert.strictEqual(built.code, 0);
 			assert.isTrue(built.volume.has(SLICE_PATH), "build reports the orphaned slice but never deletes it");
+
+			// With the slice deleted by hand, the merged catalog is the orphan.
+			const { [SLICE_PATH]: _slice, ...withoutSlice } = builtSeed;
+			const next = yield* runCli(schema("check"), { deps: uncataloged, seed: withoutSlice });
+			assert.strictEqual(next.code, 1);
+			assert.include(
+				next.out,
+				`orphaned catalog ${CATALOG_PATH} (no catalog slice remains — delete it by hand; build never will)`,
+			);
+			assert.include(report(next.err), "1 orphaned output(s) must be deleted by hand; build never will.");
+			assert.notInclude(report(next.err), "stale", "a build cannot clear it, so the message prescribes none");
+			const rebuilt = yield* runCli(schema("build"), { deps: uncataloged, seed: withoutSlice });
+			assert.strictEqual(rebuilt.code, 0);
+			assert.isTrue(rebuilt.volume.has(CATALOG_PATH), "build reports the orphaned merged catalog but never deletes it");
 		}),
 	);
 

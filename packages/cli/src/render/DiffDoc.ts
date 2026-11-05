@@ -18,13 +18,17 @@ export interface DiffDocOptions {
 
 type Row = InlineInput;
 
+// A renderer turns a tab into one space, which flattens a tab-indented document.
+const expandTabs = (text: string): string => text.replaceAll("\t", "  ");
+
 /**
  * A schema's line diff as a `Doc`, in git's shape: an `@@ path @@` header, context lines as they are, removes in the
  * `error` token and adds in the `success` token.
  *
  * @remarks
- * Every line's text goes into the document as a `Doc.text` run, which is data: the renderers remove escape and
- * control characters from it and never read it as markup, so a diff of untrusted text cannot repaint the terminal.
+ * Each tab in a line's text is expanded to two spaces, so a tab-indented document keeps its shape. Every line's text
+ * goes into the document as a `Doc.text` run, which is data: the renderers remove escape and control characters from it
+ * and never read it as markup, so a diff of untrusted text cannot repaint the terminal.
  * A document with more than one hunk separates them with a muted `@@ -a,b +c,d @@` range row. The cap counts every
  * row after the header (diff lines, range rows and `\ No newline at end of file` markers) and the tail names exactly
  * how many were cut. Nothing here loads Ink or React.
@@ -47,12 +51,13 @@ export class DiffDoc {
 				rows.push(Doc.text(`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`, "muted"));
 			}
 			for (const line of hunk.lines) {
+				const text = expandTabs(line.text);
 				rows.push(
 					line.kind === "add"
-						? Doc.text(`+${line.text}`, "success")
+						? Doc.text(`+${text}`, "success")
 						: line.kind === "remove"
-							? Doc.text(`-${line.text}`, "error")
-							: Doc.text(` ${line.text}`),
+							? Doc.text(`-${text}`, "error")
+							: Doc.text(` ${text}`),
 				);
 				if (line.noNewline === true) rows.push(Doc.text("\\ No newline at end of file", "muted"));
 			}

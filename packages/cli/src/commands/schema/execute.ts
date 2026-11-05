@@ -45,11 +45,16 @@ export const warnVersionMismatch = (mismatch: VersionMismatch): Effect.Effect<vo
 	Effect.logWarning(`VERSION MISMATCH IGNORED (--ignore-version-mismatch): ${mismatch.message}`);
 
 /** A missing config, with the way out; a load failure's first line, with the rest (a stack) kept at debug. */
-export const configFailures = (command: string) => ({
+export const configFailures = (usage: string, config: Option.Option<string>) => ({
 	ConfigNotFoundError: (error: ConfigNotFoundError) =>
 		Effect.fail(
 			CliRuntime.reported(
-				new NoConfigError({ names: ConfigLoader.CONFIG_NAMES, searched: error.searched, command }),
+				new NoConfigError({
+					names: ConfigLoader.CONFIG_NAMES,
+					searched: error.searched,
+					explicit: Option.isSome(config),
+					usage,
+				}),
 				2,
 			),
 		),
@@ -97,10 +102,10 @@ const humanDocument = (report: RunReport) => {
 };
 
 // stdout is the report and nothing else; every line meant for a person watching stderr goes through the logger.
-const emit = (report: RunReport, format: "human" | "json") =>
+const emit = (report: RunReport, format: "human" | "json", versionMismatch: VersionMismatch | undefined) =>
 	Effect.gen(function* () {
 		if (format === "json") {
-			yield* Console.log(Report.json(report));
+			yield* Console.log(Report.json(report, versionMismatch));
 			for (const line of Report.human(report)) yield* Effect.logInfo(line);
 		} else {
 			yield* Doc.print([humanDocument(report)]);
@@ -202,7 +207,7 @@ export const execute = Effect.fn("effected.schema.execute")(function* (
 			: walk(() => Effect.void)
 	).pipe(
 		Effect.catchTags({
-			...configFailures(mode),
+			...configFailures(`${mode} lib/schemastore.config.ts`, input.config),
 			ConflictingFlagsError: (error) => Effect.fail(CliRuntime.reported(error, 64)),
 			VersionMismatchError: (error) => Effect.fail(CliRuntime.reported(error, 2)),
 			FrozenVersionMissingError: (error) => Effect.fail(CliRuntime.reported(error, 1)),
@@ -212,7 +217,7 @@ export const execute = Effect.fn("effected.schema.execute")(function* (
 		}),
 	);
 
-	yield* emit(result.report, format);
+	yield* emit(result.report, format, result.versionMismatch);
 	// Here and not in the engine: a read-only `schema_check` over MCP inside an Actions step must not write the summary.
 	yield* StepSummary.append(Report.markdown(result.report));
 	yield* failOnVerdict(result);

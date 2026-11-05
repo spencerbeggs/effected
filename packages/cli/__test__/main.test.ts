@@ -5,7 +5,7 @@ import { MemoryFileSystem } from "@effected/memfs";
 import { Cause, ConfigProvider, Effect, Exit, Layer, Path, Runtime, Stdio, Terminal } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 import { TestConsole } from "effect/testing";
-import { run } from "../src/main.js";
+import { mainOptions, run } from "../src/main.js";
 import { CLI_VERSION } from "../src/version.js";
 
 const environment = (args: ReadonlyArray<string>) =>
@@ -78,4 +78,11 @@ describe("effected", () => {
 			assert.include(err, "no-such-flag");
 		}),
 	);
+});
+
+describe("the span trail of an installed effected", () => {
+	it("main names its own module as the program's", () => {
+		assert.strictEqual(mainOptions.env.appModule, new URL("../src/main.ts", import.meta.url).href);
+		assert.strictEqual(mainOptions.exitCode, 3, "the documented infrastructure tier");
+	});
 });

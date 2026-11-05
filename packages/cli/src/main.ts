@@ -36,6 +36,18 @@ const versionFormatter: Pick<CliOutput.Formatter, "formatVersion"> = {
 	formatVersion: (name: string, version: string): string => `${name} ${version}`,
 };
 
+/**
+ * How `CliRuntime.main` runs the command: exit `3` for a typed error that carries no code of its own, the infrastructure
+ * tier, and this module as the program's own, so the failure report's span trail keeps the command's spans when it is
+ * installed under `node_modules/@effected/` and leaves out the kit's.
+ *
+ * @public
+ */
+export const mainOptions = {
+	exitCode: 3,
+	env: { appModule: import.meta.url },
+} as const;
+
 /** stdout is the report and nothing else, so every log level goes to stderr. */
 const logger = CliLogger.layer({ stderrFrom: "All" });
 
@@ -51,12 +63,11 @@ export const run = <RP, EP>(options: MainOptions, deps: SchemaCommandDeps, platf
 		platform,
 		logger,
 		distribution: options.distribution ?? null,
-		// The infrastructure tier for a typed error that carries no code of its own.
-		exitCode: 3,
+		exitCode: mainOptions.exitCode,
 		// A usage error's help goes to stderr beside the parse errors; an explicit
 		// `--help` stays on stdout.
 		helpOnUsageError: "stderr",
-		env: { appModule: import.meta.url, formatter: versionFormatter, helpFlags: { inheritedFlags: "summary" } },
+		env: { ...mainOptions.env, formatter: versionFormatter, helpFlags: { inheritedFlags: "summary" } },
 	});
 
 /**

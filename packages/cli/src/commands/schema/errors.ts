@@ -112,7 +112,7 @@ export class ValidationFailedError extends Schema.TaggedError<ValidationFailedEr
 /**
  * No schemastore config was found. Exit `2`: the command could not run, where exit `1` means it ran and found a
  * problem. The engine's error says what was searched; this adds the way out, which is the front end's to state because
- * it names the command that was run.
+ * it shows the command that was run.
  *
  * @public
  */
@@ -121,10 +121,15 @@ export class NoConfigError extends Schema.TaggedError<NoConfigError>()("NoConfig
 	names: Schema.Array(Schema.String),
 	/** The directories walked, or the one explicit path checked. */
 	searched: Schema.Array(Schema.String),
-	/** The subcommand that was run. */
-	command: Schema.String,
+	/** Whether `searched` is the one path the user named. */
+	explicit: Schema.Boolean,
+	/** What follows `effected schema` in the example: the subcommand and its positionals, with a config path. */
+	usage: Schema.String,
 }) {
 	override get message(): string {
-		return `No schemastore config found. Looked for ${this.names.join(", ")} in: ${this.searched.join(", ")}.\nRun next to a config, or pass its path, for example: effected schema ${this.command} lib/schemastore.config.ts`;
+		const lead = this.explicit
+			? `The schemastore config ${this.searched.join(", ")} does not exist.`
+			: `No schemastore config found. Looked for ${this.names.join(", ")} in: ${this.searched.join(", ")}.`;
+		return `${lead}\nRun next to a config, or pass its path, for example: effected schema ${this.usage}`;
 	}
 }

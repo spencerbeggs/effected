@@ -3,9 +3,9 @@
 // the config's schema names, none of which is what is being validated.
 
 import { CliRuntime, Doc } from "@effected/cli-kit";
-import type { LocatedFinding, ValidateReport } from "@effected/engine/schema";
-import { SchemaValidate } from "@effected/engine/schema";
-import { Console, Effect, Option } from "effect";
+import type { LocatedFinding } from "@effected/engine/schema";
+import { SchemaValidate, ValidateReport } from "@effected/engine/schema";
+import { Console, Effect, Option, Schema } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 import { ValidationFailedError } from "./errors.js";
 import type { SchemaCommandDeps } from "./execute.js";
@@ -36,17 +36,6 @@ const humanLines = (report: ValidateReport): ReadonlyArray<string> =>
 				`${report.findings.length} finding(s): ${report.payload} does not conform to ${report.$ref}`,
 			];
 
-// The document `schemastore validate` wrote, so moving a repo is a script rename, plus where each finding sits.
-const jsonDocument = (report: ValidateReport): string =>
-	JSON.stringify({
-		payload: report.payload,
-		schema: report.$ref,
-		document: report.source,
-		valid: report.valid,
-		findings: report.findings,
-		...(report.versionMismatch !== undefined ? { versionMismatch: report.versionMismatch } : {}),
-	});
-
 /** Run one `validate`. */
 export const runValidate = Effect.fn("effected.schema.validate")(function* (
 	input: ValidateInput,
@@ -69,7 +58,7 @@ export const runValidate = Effect.fn("effected.schema.validate")(function* (
 		},
 	).pipe(
 		Effect.catchTags({
-			...configFailures("validate"),
+			...configFailures("validate payload.json lib/schemastore.config.ts", input.config),
 			VersionMismatchError: (error) => Effect.fail(CliRuntime.reported(error, 2)),
 			PayloadError: (error) => Effect.fail(CliRuntime.reported(error, 2)),
 			SchemaResolutionError: (error) => Effect.fail(CliRuntime.reported(error, 2)),
@@ -78,7 +67,7 @@ export const runValidate = Effect.fn("effected.schema.validate")(function* (
 	);
 	const lines = humanLines(report);
 	if (format === "json") {
-		yield* Console.log(jsonDocument(report));
+		yield* Console.log(JSON.stringify(Schema.encodeSync(ValidateReport.Json)(report)));
 		for (const line of lines) yield* Effect.logInfo(line);
 	} else {
 		yield* Doc.print([
