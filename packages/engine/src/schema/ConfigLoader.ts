@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { PathContainment } from "@effected/kit";
 import type { SchemastoreConfig } from "@effected/schemastore";
 import { CatalogEntry, SchemaVersioning, isSchemastoreConfig } from "@effected/schemastore";
 import { Effect, FileSystem, Path, Predicate, Result, Schema } from "effect";
@@ -73,6 +74,8 @@ export interface ConfigLoadOptions {
 	readonly explicit?: string;
 	/** Where discovery starts and what `explicit` is resolved against. */
 	readonly cwd: string;
+	/** The last directory discovery checks; see {@link ConfigLoader.discover}. Does not bound `explicit`. */
+	readonly ceiling?: string;
 	/**
 	 * The module importer. Defaults to a `jiti` importer that transpiles the
 	 * consumer's TypeScript in place and evaluates it afresh on every call;
@@ -279,12 +282,25 @@ export class ConfigLoader {
 	/**
 	 * Walk upward from `start` until a config file is found; fails with the
 	 * list of directories searched when none is.
+	 *
+	 * @remarks
+	 * With a `ceiling`, the walk checks that directory and stops, comparing real
+	 * paths so a link cannot walk past it. A server answering an agent passes one:
+	 * a config is code, and on a checkout under a shared directory such as `/tmp`
+	 * the one found above it is someone else's. A `start` outside the ceiling
+	 * searches nothing rather than walking unbounded. Omitted, the walk runs to the
+	 * filesystem root, which is right when a person ran the command.
 	 */
-	static readonly discover = Effect.fn("ConfigLoader.discover")(function* (start: string) {
+	static readonly discover = Effect.fn("ConfigLoader.discover")(function* (start: string, ceiling?: string) {
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
+		const real = (p: string) => fs.realPath(p).pipe(Effect.orElseSucceed(() => p));
 		const searched: Array<string> = [];
 		let dir = path.resolve(start);
+		if (ceiling !== undefined && !(yield* PathContainment.isWithin(ceiling, dir))) {
+			return yield* Effect.fail(new ConfigNotFoundError({ searched }));
+		}
+		const stop = ceiling === undefined ? undefined : yield* real(path.resolve(ceiling));
 		for (;;) {
 			searched.push(dir);
 			for (const name of ConfigLoader.CONFIG_NAMES) {
@@ -294,7 +310,7 @@ export class ConfigLoader {
 				}
 			}
 			const parent = path.dirname(dir);
-			if (parent === dir) {
+			if (parent === dir || (stop !== undefined && (yield* real(dir)) === stop)) {
 				return yield* Effect.fail(new ConfigNotFoundError({ searched }));
 			}
 			dir = parent;
@@ -362,7 +378,7 @@ export class ConfigLoader {
 				return yield* Effect.fail(new ConfigNotFoundError({ searched: [configPath] }));
 			}
 		} else {
-			configPath = yield* ConfigLoader.discover(options.cwd);
+			configPath = yield* ConfigLoader.discover(options.cwd, options.ceiling);
 		}
 		const failed = (cause: unknown) => new ConfigLoadError({ path: configPath, reason: describeImportFailure(cause) });
 		const module =

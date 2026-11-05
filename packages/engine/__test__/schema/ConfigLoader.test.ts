@@ -40,6 +40,69 @@ describe("ConfigLoader.discover", () => {
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.mjs": "", "/repo/schemastore.config.ts": "" }))),
 	);
 
+	it.effect("a ceiling stops the walk after checking its own directory", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(ConfigLoader.discover("/top/repo/a", "/top/repo"));
+			assert.instanceOf(error, ConfigNotFoundError);
+			assert.deepStrictEqual(error.searched, ["/top/repo/a", "/top/repo"]);
+		}).pipe(Effect.provide(platform({ "/top/schemastore.config.ts": "", "/top/repo/a/.keep": "" }))),
+	);
+
+	it.effect("a config in the ceiling directory is found", () =>
+		Effect.gen(function* () {
+			assert.strictEqual(yield* ConfigLoader.discover("/top/repo/a", "/top/repo"), "/top/repo/schemastore.config.ts");
+		}).pipe(
+			Effect.provide(
+				platform({
+					"/top/schemastore.config.ts": "",
+					"/top/repo/schemastore.config.ts": "",
+					"/top/repo/a/.keep": "",
+				}),
+			),
+		),
+	);
+
+	it.effect("a ceiling reached through a link still stops the walk", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(ConfigLoader.discover("/top/link/a", "/top/repo"));
+			assert.deepStrictEqual(error.searched, ["/top/link/a", "/top/link"]);
+		}).pipe(
+			Effect.provide(
+				Layer.mergeAll(
+					MemoryFileSystem.layerWith({
+						"/schemastore.config.ts": "",
+						"/top/schemastore.config.ts": "",
+						"/top/repo/a/.keep": "",
+						"/top/link": MemoryFileSystem.symlink("/top/repo"),
+					}),
+					Path.layer,
+				),
+			),
+		),
+	);
+
+	it.effect("a start outside the ceiling searches nothing, rather than walking unbounded", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(ConfigLoader.discover("/other/a", "/top/repo"));
+			assert.deepStrictEqual(error.searched, []);
+		}).pipe(
+			Effect.provide(platform({ "/other/schemastore.config.ts": "", "/other/a/.keep": "", "/top/repo/.keep": "" })),
+		),
+	);
+
+	it.effect("load carries the ceiling to discovery", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				ConfigLoader.load({
+					cwd: "/top/repo",
+					ceiling: "/top/repo",
+					importModule: () => Promise.resolve({ default: config }),
+				}),
+			);
+			assert.instanceOf(error, ConfigNotFoundError);
+		}).pipe(Effect.provide(platform({ "/top/schemastore.config.ts": "", "/top/repo/.keep": "" }))),
+	);
+
 	it.effect("fails typed with the directories searched", () =>
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(ConfigLoader.discover("/repo/a/b"));

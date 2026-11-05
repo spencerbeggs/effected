@@ -97,6 +97,8 @@ export type SchemaProgress =
 export interface SchemaRunDeps {
 	/** Where config discovery starts and what an explicit path resolves against. */
 	readonly cwd: string;
+	/** The last directory discovery checks; omitted, the filesystem root. Set it when an agent, not a person, asked. */
+	readonly discoveryCeiling?: string;
 	/** The config module importer; omitted, `ConfigLoader`'s `jiti` default. */
 	readonly importModule?: (path: string) => Promise<unknown>;
 	/** The validator engine; omitted, `AjvValidator.layer`. */
@@ -186,6 +188,7 @@ export class SchemaRun {
 		const loaded = yield* ConfigLoader.load({
 			cwd: deps.cwd,
 			...(input.config !== undefined ? { explicit: input.config } : {}),
+			...(deps.discoveryCeiling !== undefined ? { ceiling: deps.discoveryCeiling } : {}),
 			...(deps.importModule !== undefined ? { importModule: deps.importModule } : {}),
 		});
 		const mismatch = VersionCheck.inspect(loaded.config);

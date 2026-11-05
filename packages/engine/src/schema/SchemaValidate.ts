@@ -393,6 +393,7 @@ export class SchemaValidate {
 			const loaded = yield* ConfigLoader.load({
 				cwd: deps.cwd,
 				...(input.config !== undefined ? { explicit: input.config } : {}),
+				...(deps.discoveryCeiling !== undefined ? { ceiling: deps.discoveryCeiling } : {}),
 				...(deps.importModule !== undefined ? { importModule: deps.importModule } : {}),
 			});
 			mismatch = VersionCheck.inspect(loaded.config);

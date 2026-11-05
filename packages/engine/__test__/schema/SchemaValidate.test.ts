@@ -71,6 +71,20 @@ const Rows = {
 	},
 };
 
+describe("SchemaValidate discovery", () => {
+	it.effect("deps.discoveryCeiling bounds discovery when an identity needs the config", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				SchemaValidate.run(
+					{ payload: "/repo/a/payload.json", schema: BASIC_ID, versionMismatch: "fail" },
+					deps(basicConfig(), { cwd: "/repo/a", discoveryCeiling: "/repo/a" }),
+				),
+			);
+			assert.strictEqual(error._tag, "ConfigNotFoundError");
+		}).pipe(Effect.provide(volume({ [CONFIG_PATH]: "", "/repo/a/payload.json": "{}" }))),
+	);
+});
+
 describe("SchemaValidate.run", () => {
 	it.effect("a conforming payload validates against its $schema identity", () =>
 		Effect.gen(function* () {

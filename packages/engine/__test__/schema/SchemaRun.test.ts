@@ -43,6 +43,15 @@ const deps = (config: SchemastoreConfig, overrides: Partial<SchemaRunDeps> = {})
 const seedConfig: MemoryFileSystemSeed = { [CONFIG_PATH]: "" };
 
 describe("SchemaRun.run", () => {
+	it.effect("deps.discoveryCeiling bounds discovery", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				SchemaRun.run(input(), deps(configOf(Fixture), { cwd: "/repo/a", discoveryCeiling: "/repo/a" })),
+			);
+			assert.strictEqual(error._tag, "ConfigNotFoundError");
+		}).pipe(Effect.provide(volume({ [CONFIG_PATH]: "", "/repo/a/.keep": "" }))),
+	);
+
 	it.effect("a clean check is verdict ok with no diff", () =>
 		Effect.gen(function* () {
 			const result = yield* SchemaRun.run(input(), deps(configOf(Fixture)));
