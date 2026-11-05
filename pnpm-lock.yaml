@@ -1262,11 +1262,14 @@ importers:
   packages/plugin:
     dependencies:
       '@effected/cli':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../cli/dist/dev/pkg
       '@effected/mcp':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../mcp/dist/dev/pkg
+      '@effected/schemastore':
+        specifier: workspace:*
+        version: link:../schemastore/dist/dev/pkg
       effect:
         specifier: catalog:effected
         version: 4.1.2

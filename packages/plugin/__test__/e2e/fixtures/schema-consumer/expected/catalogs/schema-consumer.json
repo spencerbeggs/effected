@@ -1,0 +1,13 @@
+[
+	{
+		"name": "output",
+		"description": "schema-consumer fixture output",
+		"fileMatch": [
+			"output.json"
+		],
+		"url": "https://raw.githubusercontent.com/effected-fixtures/schema-consumer/main/1.0/output-1.0.json",
+		"versions": {
+			"1.0": "https://raw.githubusercontent.com/effected-fixtures/schema-consumer/main/1.0/output-1.0.json"
+		}
+	}
+]

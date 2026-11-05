@@ -5,13 +5,13 @@ import { Run } from "@effected/commands";
 import { McpProbe, McpProcess } from "@effected/mcp-kit/testing";
 import { Workspaces } from "@effected/workspaces";
 import type {
-	InstalledConsumer,
 	PackedInstallOptions,
 	PackedInstallPreflightOptions,
 	PackedInstallResult,
 } from "@effected/workspaces/testing";
-import { PackedInstall } from "@effected/workspaces/testing";
-import { Duration, Effect, FileSystem, Layer, Redacted } from "effect";
+import { InstalledConsumer, PackedInstall } from "@effected/workspaces/testing";
+import { Context, Duration, Effect, FileSystem, Layer, Redacted } from "effect";
+import effectPackage from "effect/package.json" with { type: "json" };
 import { ChildProcess } from "effect/process";
 
 const ROOT = resolve(import.meta.dirname, "..", "..", "..", "..");
@@ -81,6 +81,34 @@ const BUDGET = PackedInstall.timeoutBudget({
 	// Per consumer: two --version runs, an MCP handshake and an MCP session; plus the two pnpm workspaces.
 	perConsumer: "4 minutes",
 });
+
+/**
+ * The schema cases, one install shared across them and each case a subdirectory of it. npm and pnpm only: they are the
+ * two layouts that decide how the config's import resolves, and the two CI requires. The consumer's own code imports
+ * these two, and pnpm links only what a consumer declares.
+ */
+const SCHEMA_RUN: PackedInstallOptions = {
+	...RUN,
+	managers: ["npm", "pnpm"],
+	consumerDependencies: { "@effected/schemastore": "*", effect: effectPackage.version },
+};
+/** The MCP server installed alone, with no carrier, so a config cannot reach `@effected/plugin`. */
+const MCP_RUN: PackedInstallOptions = { ...SCHEMA_RUN, carrier: "@effected/mcp", bins: ["effected-mcp"] };
+const SCHEMA_BUDGET = PackedInstall.timeoutBudget({
+	managers: SCHEMA_RUN.managers,
+	installTimeout: SCHEMA_RUN.installTimeout,
+	packTimeout: SCHEMA_RUN.packTimeout,
+	packages: PACKED,
+});
+const SCHEMA_CASE: Duration.Input = "3 minutes";
+// Two more installs than the shared one, which `SCHEMA_CASE` does not allow for.
+const MISMATCH_CASE: Duration.Input = "8 minutes";
+const vitestGuard = (budget: Duration.Input) => Duration.toMillis(Duration.fromInputUnsafe(budget)) + 60_000;
+
+const FIXTURE = resolve(import.meta.dirname, "fixtures/schema-consumer");
+const FIXTURE_FILES = ["schemastore.config.ts", "src/output.ts"];
+// A version no release of the package has: not "0.0.0", which the check reads as an unbuilt source run.
+const STALE_VERSION = "0.0.1";
 
 const VERSION = /^effected \d+\.\d+\.\d+ via @effected\/plugin (\d+\.\d+\.\d+)$/;
 
@@ -186,6 +214,183 @@ const pnpmWorkspace = (
 		return yield* pnpm(["exec", "effected", "--version"], `${directory}/packages/app`);
 	});
 
+class SchemaInstall extends Context.Service<SchemaInstall, PackedInstallResult>()("test/SchemaInstall") {}
+const SchemaLive = Layer.effect(SchemaInstall, PackedInstall.run(SCHEMA_RUN)).pipe(Layer.provideMerge(Live));
+
+class McpInstall extends Context.Service<McpInstall, PackedInstallResult>()("test/McpInstall") {}
+const McpLive = Layer.effect(McpInstall, PackedInstall.run(MCP_RUN)).pipe(Layer.provideMerge(Live));
+
+const toolEnv = (result: PackedInstallResult) => ({
+	XDG_DATA_HOME: `${result.scratch}/xdg`,
+	XDG_STATE_HOME: `${result.scratch}/xdg-state`,
+});
+
+/** A copy of the fixture in a subdirectory of the consumer, whose `node_modules` it resolves through. */
+const project = (consumer: InstalledConsumer, name: string, config: (source: string) => string = (source) => source) =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		const directory = `${consumer.directory}/${name}`;
+		yield* fs.makeDirectory(`${directory}/src`, { recursive: true });
+		for (const file of FIXTURE_FILES) {
+			const source = yield* fs.readFileString(`${FIXTURE}/${file}`);
+			yield* fs.writeFileString(`${directory}/${file}`, file === "schemastore.config.ts" ? config(source) : source);
+		}
+		return directory;
+	});
+
+const filesUnder = (directory: string) =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		const files = new Map<string, string>();
+		for (const entry of yield* fs.readDirectory(directory, { recursive: true })) {
+			if ((yield* fs.stat(`${directory}/${entry}`)).type === "File") {
+				files.set(entry, yield* fs.readFileString(`${directory}/${entry}`));
+			}
+		}
+		return new Map([...files].sort(([a], [b]) => a.localeCompare(b)));
+	});
+
+/**
+ * What the build wrote, byte for byte, against the committed copy. A smoke test for developing the kit, so an `effect`
+ * advance that changes the generated output changes this copy. Read what changed first; then regenerate it in place,
+ * because the fixture's `outputDir` is `expected`: run `pnpm exec effected schema build` from the fixture's directory.
+ */
+const assertExpected = (directory: string, label: string) =>
+	Effect.gen(function* () {
+		const written = yield* filesUnder(`${directory}/expected`);
+		const expected = yield* filesUnder(`${FIXTURE}/expected`);
+		assert.isAbove(expected.size, 0, "the committed copy holds documents");
+		assert.deepStrictEqual([...written.entries()], [...expected.entries()], label);
+	});
+
+interface SchemaToolCall {
+	readonly result?: {
+		readonly isError?: boolean;
+		readonly content?: ReadonlyArray<{ readonly text?: string }>;
+		readonly structuredContent?: {
+			readonly verdict?: string;
+			readonly versionMismatch?: {
+				readonly tool?: string;
+				readonly found?: ReadonlyArray<{ readonly version?: string }>;
+			};
+		};
+	};
+}
+
+/** `schema_check` over the installed `effected-mcp`, from `cwd`. */
+const schemaCheck = (consumer: InstalledConsumer, cwd: string, env: Record<string, string>) =>
+	Effect.gen(function* () {
+		const child = yield* McpProcess.spawn(yield* consumer.carrierCommand("effected-mcp", [], { env, cwd }));
+		yield* child.handshake();
+		yield* child.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "schema_check", arguments: {} } });
+		const called = (yield* child.readUntilResponse(2)).response as SchemaToolCall;
+		yield* child.closeStdin;
+		return { result: called.result, exitCode: yield* child.exitCode, stderr: yield* child.stderrFinal };
+	}).pipe(Effect.scoped, Effect.timeout("1 minute"));
+
+/**
+ * The partial bump as a consumer's tree holds it: the tool on its own `@effected/schemastore`, and beside it the one the
+ * consumer declares, at another version. The stale copy is the real tarball with its version and its stamp rewritten.
+ */
+const staleSchemastore = (result: PackedInstallResult) =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		const directory = `${result.scratch}/stale-schemastore`;
+		const tarball = result.tarballs["@effected/schemastore"];
+		assert.isDefined(tarball, "@effected/schemastore was packed");
+		const tar = (args: ReadonlyArray<string>) =>
+			Run.collect(ChildProcess.make("tar", args, { stdin: "ignore" }), { timeout: "30 seconds" }).pipe(
+				Effect.tap((output) => Effect.sync(() => assert.isTrue(output.succeeded, output.stderr))),
+			);
+		yield* fs.makeDirectory(directory, { recursive: true });
+		yield* tar(["-xzf", `${tarball}`, "-C", directory]);
+		const manifestPath = `${directory}/package/package.json`;
+		const manifest = JSON.parse(yield* fs.readFileString(manifestPath)) as { readonly version: string };
+		yield* fs.writeFileString(manifestPath, JSON.stringify({ ...manifest, version: STALE_VERSION }));
+		const stampPath = `${directory}/package/internal/version.js`;
+		const stamp = yield* fs.readFileString(stampPath);
+		assert.include(stamp, `"${manifest.version}"`, "the built stamp is a literal this can rewrite");
+		yield* fs.writeFileString(stampPath, stamp.replaceAll(`"${manifest.version}"`, `"${STALE_VERSION}"`));
+		const stale = `${result.scratch}/stale-schemastore.tgz`;
+		yield* tar(["-czf", stale, "-C", directory, "package"]);
+		return { stale, tool: manifest.version };
+	});
+
+/**
+ * A consumer whose direct `@effected/schemastore` is the stale tarball while the carrier and the engine keep the real
+ * one, so the override for the package is scoped to those two. npm and pnpm both spell that, and the case runs under each.
+ */
+const mismatchedConsumer = (result: PackedInstallResult, consumer: InstalledConsumer, stale: string) =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		const directory = `${result.scratch}/mismatched-${consumer.manager}`;
+		const file = (pkg: string) => `file:${result.tarballs[pkg]}`;
+		const rest = Object.keys(result.tarballs).filter(
+			(pkg) => pkg !== CARRIER && pkg !== "@effected/schemastore" && pkg !== "@effected/engine",
+		);
+		const flat = Object.fromEntries(rest.map((pkg) => [pkg, file(pkg)]));
+		const real = file("@effected/schemastore");
+		const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
+		const dependencies = {
+			[CARRIER]: file(CARRIER),
+			"@effected/schemastore": `file:${stale}`,
+			effect: effectPackage.version,
+		};
+		yield* fs.makeDirectory(directory, { recursive: true });
+		if (consumer.manager === "pnpm") {
+			yield* fs.writeFileString(
+				`${directory}/package.json`,
+				json({
+					name: "mismatched",
+					version: "0.0.0",
+					private: true,
+					devEngines: { packageManager: { name: "pnpm", version: consumer.managerVersion, onFail: "ignore" } },
+					dependencies,
+				}),
+			);
+			// JSON is valid YAML.
+			yield* fs.writeFileString(
+				`${directory}/pnpm-workspace.yaml`,
+				json({
+					minimumReleaseAge: 0,
+					overrides: {
+						...flat,
+						"@effected/engine": file("@effected/engine"),
+						[`${CARRIER}>@effected/schemastore`]: real,
+						"@effected/engine>@effected/schemastore": real,
+					},
+				}),
+			);
+		} else {
+			yield* fs.writeFileString(
+				`${directory}/package.json`,
+				json({
+					name: "mismatched",
+					version: "0.0.0",
+					private: true,
+					packageManager: `npm@${consumer.managerVersion}`,
+					dependencies,
+					overrides: {
+						...flat,
+						"@effected/engine": { ".": file("@effected/engine"), "@effected/schemastore": real },
+						[CARRIER]: { "@effected/schemastore": real },
+					},
+				}),
+			);
+		}
+		const args =
+			consumer.manager === "pnpm"
+				? ["install", "--config.ignore-scripts=true"]
+				: ["install", "--ignore-scripts", "--no-audit", "--no-fund"];
+		const env = consumer.env === undefined ? PackedInstall.scrubEnv(RUN.env) : Redacted.value(consumer.env);
+		const install = yield* Run.collect(
+			ChildProcess.make(consumer.manager, args, { cwd: directory, env, extendEnv: false, stdin: "ignore" }),
+			{ timeout: "3 minutes" },
+		);
+		assert.isTrue(install.succeeded, `${consumer.manager} install: ${install.stdout}\n${install.stderr}`);
+		return InstalledConsumer.make({ ...consumer, directory });
+	});
+
 describe.runIf(GATE.action === "fail")("packed install (@effected/plugin) prod build", () => {
 	it("dist/prod exists (run `pnpm build --filter @effected/plugin... --filter @effected/pnpm-plugin-effected` before the tests)", () => {
 		assert.fail(GATE.message);
@@ -233,7 +438,7 @@ describe.skipIf(!RUNNABLE)("packed install (@effected/plugin)", () => {
 						const session = yield* mcpSession(consumer, env);
 						assert.deepStrictEqual(
 							session.listed.result?.tools?.map((tool) => tool.name),
-							["identity"],
+							["identity", "schema_check", "schema_build", "schema_validate"],
 							label,
 						);
 						assert.strictEqual(session.called.result?.isError ?? false, false, label);
@@ -267,6 +472,190 @@ describe.skipIf(!RUNNABLE)("packed install (@effected/plugin)", () => {
 				}).pipe(Effect.scoped, Effect.timeout(BUDGET)),
 			// vitest's own guard a minute above the Effect's, so a named PackedInstallError fires first.
 			Duration.toMillis(BUDGET) + 60_000,
+		);
+	});
+
+	layer(SchemaLive, { excludeTestServices: true, timeout: SCHEMA_BUDGET })((it) => {
+		for (const manager of SCHEMA_RUN.managers) {
+			it.effect(
+				`${manager} consumer: effected schema build writes the expected documents`,
+				() =>
+					Effect.gen(function* () {
+						const result = yield* SchemaInstall;
+						const consumer = result.consumers.find((candidate) => candidate.manager === manager);
+						if (consumer === undefined) {
+							yield* Effect.log(`${manager} unavailable: not proven here; CI requires it`);
+							return;
+						}
+						const cwd = yield* project(consumer, "build");
+						const built = yield* consumer.runCarrierBin("effected", ["schema", "build"], {
+							env: toolEnv(result),
+							cwd,
+						});
+						assert.strictEqual(built.exitCode, 0, `${built.stdout}\n${built.stderr}`);
+						yield* assertExpected(cwd, manager);
+					}).pipe(Effect.timeout(SCHEMA_CASE)),
+				vitestGuard(SCHEMA_CASE),
+			);
+		}
+
+		it.effect(
+			"the fixture's HostedSchema from its own @effected/schemastore passes the check",
+			() =>
+				Effect.gen(function* () {
+					const fs = yield* FileSystem.FileSystem;
+					const result = yield* SchemaInstall;
+					assert.isAbove(result.consumers.length, 0);
+					for (const consumer of result.consumers) {
+						const label = consumer.manager;
+						const cwd = yield* project(consumer, "hosted");
+						const options = { env: toolEnv(result), cwd };
+						const built = yield* consumer.runCarrierBin("effected", ["schema", "build"], options);
+						assert.strictEqual(built.exitCode, 0, `${label}: ${built.stdout}\n${built.stderr}`);
+						const checked = yield* consumer.runCarrierBin("effected", ["schema", "check"], options);
+						assert.strictEqual(checked.exitCode, 0, `${label}: ${checked.stdout}\n${checked.stderr}`);
+
+						// The consumer's runtime code, on the same copy, writes the payload the document validates.
+						const env = consumer.env === undefined ? PackedInstall.scrubEnv(RUN.env) : Redacted.value(consumer.env);
+						const payload = yield* Run.text(
+							ChildProcess.make(process.execPath, ["src/output.ts"], { cwd, env, extendEnv: false, stdin: "ignore" }),
+							{ timeout: "30 seconds" },
+						);
+						yield* fs.writeFileString(`${cwd}/payload.json`, payload);
+						const validated = yield* consumer.runCarrierBin(
+							"effected",
+							["schema", "validate", "payload.json"],
+							options,
+						);
+						assert.strictEqual(validated.exitCode, 0, `${label}: ${validated.stdout}\n${validated.stderr}`);
+					}
+				}).pipe(Effect.timeout(SCHEMA_CASE)),
+			vitestGuard(SCHEMA_CASE),
+		);
+
+		it.effect(
+			"effected schema check exits 0 after a build, and 1 after a document is edited",
+			() =>
+				Effect.gen(function* () {
+					const fs = yield* FileSystem.FileSystem;
+					const result = yield* SchemaInstall;
+					assert.isAbove(result.consumers.length, 0);
+					for (const consumer of result.consumers) {
+						const label = consumer.manager;
+						const cwd = yield* project(consumer, "edited");
+						const options = { env: toolEnv(result), cwd };
+						const built = yield* consumer.runCarrierBin("effected", ["schema", "build"], options);
+						assert.strictEqual(built.exitCode, 0, `${label}: ${built.stdout}\n${built.stderr}`);
+						const clean = yield* consumer.runCarrierBin("effected", ["schema", "check"], options);
+						assert.strictEqual(clean.exitCode, 0, `${label}: ${clean.stdout}\n${clean.stderr}`);
+
+						const document = `${cwd}/expected/1.0/output-1.0.json`;
+						const text = yield* fs.readFileString(document);
+						const edited = text.replace('"additionalProperties": false', '"additionalProperties": true');
+						assert.notStrictEqual(edited, text, "the edit changed the document");
+						yield* fs.writeFileString(document, edited);
+						const dirty = yield* consumer.runCarrierBin("effected", ["schema", "check"], options);
+						assert.strictEqual(dirty.exitCode, 1, `${label}: ${dirty.stdout}\n${dirty.stderr}`);
+					}
+				}).pipe(Effect.timeout(SCHEMA_CASE)),
+			vitestGuard(SCHEMA_CASE),
+		);
+
+		it.effect(
+			"a mismatched schemastore: CLI exits 2, --ignore-version-mismatch proceeds, MCP warns",
+			() =>
+				Effect.gen(function* () {
+					const fs = yield* FileSystem.FileSystem;
+					const result = yield* SchemaInstall;
+					assert.isAbove(result.consumers.length, 0);
+					const { stale, tool } = yield* staleSchemastore(result);
+					for (const installed of result.consumers) {
+						const label = installed.manager;
+						const consumer = yield* mismatchedConsumer(result, installed, stale);
+						const cwd = yield* project(consumer, "mismatch");
+						const env = toolEnv(result);
+						const options = { env, cwd };
+
+						const refused = yield* consumer.runCarrierBin("effected", ["schema", "build"], options);
+						const refusal = `${refused.stdout}\n${refused.stderr}`;
+						assert.strictEqual(refused.exitCode, 2, `${label}: ${refusal}`);
+						assert.include(refusal, tool, label);
+						assert.include(refusal, STALE_VERSION, label);
+						assert.isFalse(yield* fs.exists(`${cwd}/expected`), `${label}: a refused run writes nothing`);
+
+						const warned = yield* consumer.runCarrierBin(
+							"effected",
+							["schema", "build", "--ignore-version-mismatch"],
+							options,
+						);
+						const warning = `${warned.stdout}\n${warned.stderr}`;
+						assert.strictEqual(warned.exitCode, 0, `${label}: ${warning}`);
+						assert.include(warning, tool, label);
+						assert.include(warning, STALE_VERSION, label);
+						yield* assertExpected(cwd, label);
+
+						const session = yield* schemaCheck(consumer, cwd, env);
+						assert.notStrictEqual(session.result?.isError, true, `${label}: ${JSON.stringify(session.result)}`);
+						const mismatch = session.result?.structuredContent?.versionMismatch;
+						assert.strictEqual(mismatch?.tool, tool, label);
+						assert.deepStrictEqual(
+							mismatch?.found?.map((found) => found.version),
+							[STALE_VERSION],
+							label,
+						);
+						assert.strictEqual(session.exitCode, 0, `${label}: ${session.stderr}`);
+					}
+				}).pipe(Effect.timeout(MISMATCH_CASE)),
+			vitestGuard(MISMATCH_CASE),
+		);
+	});
+
+	layer(McpLive, { excludeTestServices: true, timeout: SCHEMA_BUDGET })((it) => {
+		it.effect(
+			"@effected/mcp installed alone serves schema_check for a config importing @effected/schemastore",
+			() =>
+				Effect.gen(function* () {
+					const fs = yield* FileSystem.FileSystem;
+					const result = yield* McpInstall;
+					assert.isAbove(result.consumers.length, 0);
+					for (const consumer of result.consumers) {
+						const label = consumer.manager;
+						assert.isFalse(yield* fs.exists(`${consumer.directory}/node_modules/@effected/plugin`), label);
+						const cwd = yield* project(consumer, "alone", (source) => {
+							const rewritten = source.replace(
+								'import { defineSchemastore } from "@effected/plugin";',
+								'import { defineConfig as defineSchemastore } from "@effected/schemastore";',
+							);
+							assert.notStrictEqual(rewritten, source, "the config's import was rewritten");
+							return rewritten;
+						});
+						const session = yield* schemaCheck(consumer, cwd, toolEnv(result));
+						assert.notStrictEqual(session.result?.isError, true, `${label}: ${JSON.stringify(session.result)}`);
+						assert.strictEqual(session.result?.structuredContent?.verdict, "stale", label);
+						assert.isUndefined(session.result?.structuredContent?.versionMismatch, label);
+						assert.strictEqual(session.exitCode, 0, `${label}: ${session.stderr}`);
+					}
+				}).pipe(Effect.timeout(SCHEMA_CASE)),
+			vitestGuard(SCHEMA_CASE),
+		);
+
+		it.effect(
+			"a config importing @effected/plugin with only @effected/mcp installed gets the install line",
+			() =>
+				Effect.gen(function* () {
+					const result = yield* McpInstall;
+					assert.isAbove(result.consumers.length, 0);
+					for (const consumer of result.consumers) {
+						const label = consumer.manager;
+						const cwd = yield* project(consumer, "no-carrier");
+						const session = yield* schemaCheck(consumer, cwd, toolEnv(result));
+						assert.isTrue(session.result?.isError, `${label}: ${JSON.stringify(session.result)}`);
+						assert.isUndefined(session.result?.structuredContent, label);
+						assert.include(session.result?.content?.[0]?.text ?? "", "pnpm add -D @effected/plugin", label);
+						assert.strictEqual(session.exitCode, 0, `${label}: ${session.stderr}`);
+					}
+				}).pipe(Effect.timeout(SCHEMA_CASE)),
+			vitestGuard(SCHEMA_CASE),
 		);
 	});
 });
