@@ -35,10 +35,10 @@ both reach the same folder through a different number of `..` segments.
 
 ```ts
 // packages/tool/schemastore.config.ts
-import { defineConfig } from "@effected/schemastore";
+import { defineSchemastore } from "@effected/plugin";
 import { ToolConfig } from "./src/config-schema.js";
 
-export default defineConfig({
+export default defineSchemastore({
   name: "tool",
   outputDir: "../../site/public/schemas",
   baseUrl: "https://example.com/schemas",
@@ -55,10 +55,10 @@ export default defineConfig({
 
 ```ts
 // packages/plugin/schemastore.config.ts
-import { defineConfig } from "@effected/schemastore";
+import { defineSchemastore } from "@effected/plugin";
 import { PluginManifest } from "./src/manifest-schema.js";
 
-export default defineConfig({
+export default defineSchemastore({
   name: "plugin",
   outputDir: "../../site/public/schemas",
   baseUrl: "https://example.com/schemas",
@@ -79,8 +79,8 @@ paths above make them location-independent:
 ```json
 {
   "scripts": {
-    "schema:build": "schemastore build",
-    "schema:check": "schemastore check"
+    "schema:build": "effected schema build",
+    "schema:check": "effected schema check"
   }
 }
 ```

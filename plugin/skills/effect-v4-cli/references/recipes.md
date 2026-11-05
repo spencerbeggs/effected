@@ -27,10 +27,10 @@ import { CliAudience, CliRuntime } from "@effected/cli-kit"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Command } from "effect/cli"
 
-declare const rootCommand: Command.Command<"demo", Record<string, never>>
+declare const demoCommand: Command.Command<"demo", Record<string, never>>
 
 export const main = (): void => {
-  const root = rootCommand.pipe(Command.withSharedFlags(CliAudience.flags()))
+  const root = demoCommand.pipe(Command.withSharedFlags(CliAudience.flags()))
   NodeRuntime.runMain(
     CliRuntime.main(CliAudience.run(root, { version: "1.0.0" }), {
       platform: NodeServices.layer,

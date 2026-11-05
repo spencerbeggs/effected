@@ -46,10 +46,10 @@ Derived from the purpose (question 1) and capabilities (question 6); the enginee
 - Surfaces, the single format module, stamp decision.
 
 ## Schema publication (when a JSON contract crosses the boundary, or its removal when none does)
-- Config file: `lib/scripts/schemastore.config.ts` (`defineConfig`: `name`, `outputDir`, one entry per contract keyed by and `hosted` by its `HostedSchema`).
+- Config file: `lib/scripts/schemastore.config.ts` (`defineSchemastore`: `name`, `outputDir`, one entry per contract keyed by and `hosted` by its `HostedSchema`).
 - `published`: `false` at bootstrap; flipped to `true` at first release.
 - Version label(s) in the identity's `versions`.
-- Scripts: `schema:build` / `schema:check` over `schemastore build|check lib/scripts/schemastore.config.ts`; `schema:check` in `ci:test` is the drift gate.
+- Scripts: `schema:build` / `schema:check` over `effected schema build|check lib/scripts/schemastore.config.ts`; `schema:check` in `ci:test` is the drift gate.
 - Structured output declined (question 5 "scalars only"): the removal step, citing the template's `docs/04-output-schema.md` "Remove the structured output" checklist.
 
 ## Self-dogfood

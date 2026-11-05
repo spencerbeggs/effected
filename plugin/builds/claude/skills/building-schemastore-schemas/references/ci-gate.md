@@ -1,6 +1,6 @@
 # The CI gate
 
-`schemastore check` is the identical walk to `build` with no writes: it
+`effected schema check` is the identical walk to `build` with no writes: it
 reports what a build would do under the same flags and exits under the same
 conditions — plus one more: it exits `1` whenever a build would write
 anything, because a committed document that differs from what the config
@@ -13,15 +13,15 @@ the drift test every generator script used to carry.
 ```json
 {
   "scripts": {
-    "schema:build": "schemastore build lib/scripts/schemastore.config.ts",
-    "schema:check": "schemastore check lib/scripts/schemastore.config.ts"
+    "schema:build": "effected schema build lib/scripts/schemastore.config.ts",
+    "schema:check": "effected schema check lib/scripts/schemastore.config.ts"
   }
 }
 ```
 
 The config path is the positional argument. Without one the command
 discovers a `schemastore.config.*` by walking **upward** from the working
-directory, so bare `schemastore build` / `schemastore check` find a config
+directory, so bare `effected schema build` / `effected schema check` find a config
 only in the working directory or one of its ancestors — never one under
 `lib/scripts/`. A GitHub
 Action repository keeps `src/` for action source alone, so its config lives
@@ -43,7 +43,7 @@ the generated files as `schema:build`'s outputs:
 Locally, `schema:build` regenerates and you commit the result; in CI,
 `schema:check` proves the committed documents match the schemas. A `check`
 that reports `would write` means someone changed a schema and did not run
-the build; it fails with ``N document(s) are stale; run `schemastore build` and commit the result.`` at exit `1`. An orphaned output (a catalog slice no schema declares, a merged catalog with no slice left, a document an `appendVersion` or `layout` rename left behind) fails the same way, but its line reads `N orphaned output(s) must be deleted by hand; build never will.` — a build does not clear it.
+the build; it fails with ``N document(s) are stale; run `effected schema build` and commit the result.`` at exit `1`. An orphaned output (a catalog slice no schema declares, a merged catalog with no slice left, a document an `appendVersion` or `layout` rename left behind) fails the same way, but its line reads `N orphaned output(s) must be deleted by hand; build never will.` — a build does not clear it.
 
 ## Make the formatter agree with the writer
 
@@ -81,14 +81,15 @@ mismatch the override removes.
 
 The CLI has no indent option, so a repository that formats JSON with spaces
 cannot make the two agree. There, format after the build instead —
-`"schema:build": "schemastore build && biome format --write schemas"` — and
+`"schema:build": "effected schema build && biome format --write schemas"` — and
 `check` stays green because it compares content, not bytes.
 
 ## Commands and flags
 
 ```text
-schemastore build [config] [--drift=strict|semantic|allow] [--on-drift=error|warn] [--force] [--format=human|json]
-schemastore check [config] [--drift=strict|semantic|allow] [--on-drift=error|warn] [--force] [--format=human|json]
+effected schema build [config] [--drift=strict|semantic|allow] [--on-drift=error|warn] [--force] [--format=human|json] [--ignore-version-mismatch]
+effected schema check [config] [--drift=strict|semantic|allow] [--on-drift=error|warn] [--force] [--format=human|json] [--ignore-version-mismatch]
+effected schema validate <payload.json> [config] [--schema <path|$id|url>] [--format=human|json] [--ignore-version-mismatch]
 ```
 
 - `--drift` and `--on-drift` are separate overrides: `--drift` replaces
@@ -99,8 +100,48 @@ schemastore check [config] [--drift=strict|semantic|allow] [--on-drift=error|war
   its own (config) tolerance.
 - `--force` is sugar for `--drift=allow`.
 - `--format=json` emits one JSON document on stdout and moves human text to
-  stderr, so stdout stays parseable.
-- A bare `schemastore` or `--help` prints help and exits `0`.
+  stderr, so stdout stays parseable. Without `--format`, an `--agent` run
+  defaults to JSON and everyone else gets human text.
+- `check` shows a person a coloured line diff of each changed document; the
+  JSON report carries the same change as `diff.hunks` and `diff.unified`.
+- `--ignore-version-mismatch` is covered in the section below.
+- A bare `effected schema` or `--help` prints help and exits `0`.
+- Run next to a config, or pass its path as the positional argument; no
+  config found is exit `2`.
+
+## Validating a payload
+
+`effected schema validate <payload.json>` checks one JSON payload against a
+published document (`--schema` names it by path, `$id` or URL; omitted, the
+payload's own `$schema` decides). Each finding carries
+`location: { file, line, column }`, one-based, pointing at the offending value
+in the payload. A payload that does not conform exits `1`.
+
+## When the tool and the library disagree
+
+The config's values come from the `@effected/schemastore` the repository
+installs; the tool carries its own. When the two versions differ, the CLI
+fails with exit `2` naming both. Align them through the catalog
+(`catalog:effected`) so one version resolves. `--ignore-version-mismatch`
+runs on anyway with a warning, for a deliberate one-off. The MCP tools never
+refuse for it: they run and put a `versionMismatch` warning in the result.
+
+## The MCP tools
+
+An agent working in the repository can call `schema_check` and
+`schema_validate` (read-only) and `schema_build` (writes) instead of shelling
+out. They take the same `config`, `drift`, `onDrift` and `force` parameters.
+
+- Drift and staleness are ordinary results carrying the verdict and each
+  changed document's diff. Only a config that fails to load or a broken
+  engine is a tool error.
+- A path the caller passes is confined to the workspace root, and config
+  discovery stops there. A config's own `outputDir` and catalog paths are not
+  confined; the config is code the repository already trusts.
+- A long-running server holds what it imported. A `.ts`, `.mts`, untyped
+  `.js` or `.json` config reloads on every call. A `.mjs`, `.cjs` or
+  `.js` config under `"type": "module"`, and the built output of a sibling
+  package the config imports, need a server restart to pick up an edit.
 
 ## Exit codes
 
@@ -223,7 +264,7 @@ opt in; a `schema:check` step on a GitHub runner gets the table for free.
 ## The dependency-bump posture
 
 An automated dependency-bump workflow (an `effect` advance that changes what
-`toJsonSchemaDocument` emits, say) should run `schemastore build
+`toJsonSchemaDocument` emits, say) should run `effected schema build
 --on-drift=warn`: the bump lands, the drifting schema is rewritten, exit code
 is `0`, and the step summary and stderr shout one warning per drifting
 schema. A human then reads the warning and decides whether the change

@@ -138,7 +138,7 @@ The load-bearing details:
 - **`outputDir` resolves against the config file's own directory, never
   the shell's working directory**, so `"../../../../schemas"` lands at the
   repository root.
-  Verified in `@effected/schemastore-cli`'s loader: `ConfigLoader.load`
+  Verified in `ConfigLoader` from `@effected/engine/schema`: `ConfigLoader.load`
   computes `directory = path.dirname(configPath)` from wherever the config
   file was actually found, then `ConfigLoader.resolvePaths` resolves
   `outputDir` (and every other relative path in the config) against that
@@ -173,8 +173,8 @@ The load-bearing details:
   two different tiers of file.
 - **It lives under `lib/configs/`, not `src/`.** This is build-time
   tooling — the script that *generates* the published document — not
-  runtime code the package ships to consumers. `@effected/schemastore-cli`
-  is a `devDependency` for exactly this reason: it drives `schema:build`
+  runtime code the package ships to consumers. `@effected/plugin`
+  (which carries `effected schema`) is a `devDependency` for exactly this reason: it drives `schema:build`
   and `schema:check` as package scripts, never imported by anything under
   `src/`. `@effected/schemastore` itself, by contrast, is a
   **peerDependency** on core (plus the matching `devDependency` for core's
