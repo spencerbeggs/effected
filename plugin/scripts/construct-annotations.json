@@ -987,6 +987,7 @@
 		"VersionNotFoundError": "handle a version missing from the cache during diff next or prev navigation"
 	},
 	"source": {
+		"EditDistance": "edit distance between two strings, levenshtein, did you mean suggestions, nearest candidate, typo hint",
 		"LineIndex": "convert offset to line and character, lsp position, count lines, line start end",
 		"LineDiff": "diff two texts line by line, hunks with context, plain values, unified diff"
 	},

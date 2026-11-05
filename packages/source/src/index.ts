@@ -9,11 +9,13 @@
  * {@link SourceSpan}, {@link SourceLocation} and {@link SourceDiagnostic} are
  * the structural shapes the kit's format packages already share, so a
  * consumer can be written once over any of them. {@link LineDiff} is a pure
- * line diff grouped into unified-diff hunks.
+ * line diff grouped into unified-diff hunks. {@link EditDistance} is a pure
+ * Levenshtein distance and "did you mean" list.
  *
  * @packageDocumentation
  */
 
+export { EditDistance, type EditDistanceSuggestOptions } from "./EditDistance.js";
 export {
 	LineDiff,
 	type LineDiffHunk,

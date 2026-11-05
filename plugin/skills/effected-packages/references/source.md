@@ -18,6 +18,7 @@ import type { LineBreaks, SourceDiagnostic, SourceIndex, SourceLocation, SourceP
 - **`positionAt(offset)`** and **`offsetAt(position)`**: the conversion both ways.
 - **`spanOf(range)`** (offsets to an LSP `Range`), **`rangeOf(span)`** (back), **`locationOf(range)`** (the range plus its start position, the shape a diagnostic carries).
 - **`SourceIndex`**: the public surface of `LineIndex` as a structural interface, which `LineIndex` implements. Name it, never the class, in any signature that takes or returns an index: the class has `private` members, so TypeScript compares it nominally and a `LineIndex` from a second installed copy fails with TS2345. `YamlDiagnostic.fromRaw`, `MarkdownDiagnostic.fromRaw` and `MarkdownDocument.lineIndex` use it.
+- **`EditDistance.between(a, b)`** and **`EditDistance.suggest(input, candidates, { maxDistance? })`**: Levenshtein distance, and the "did you mean" list: the candidates at the smallest distance up to `maxDistance` (2 by default; a number, or a function of the input), ties in the order given, each once, `[]` when none is that close. A maximum that is not a non-negative integer throws a `RangeError`. For a library that cannot depend on `@effected/cli-kit`; `Fmt.suggest` delegates to it.
 - **`lineBreaks`**: `"lsp"` (default) ends a line at `\n`, `\r\n` or a bare `\r`; `"lf"` at `\n` only (a `\r\n` stays one terminator, a bare `\r` is text); `"unicode"` adds U+2028 and U+2029.
 
 ## Usage

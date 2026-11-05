@@ -38,7 +38,8 @@
 	"dependencies": {
 		"@effected/commands": "workspace:^",
 		"@effected/github-commands": "workspace:^",
-		"@effected/kit": "workspace:^"
+		"@effected/kit": "workspace:^",
+		"@effected/source": "workspace:^"
 	},
 	"devDependencies": {
 		"@effect/platform-node": "catalog:effected",

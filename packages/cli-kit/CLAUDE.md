@@ -23,7 +23,7 @@ on a trusted line; a theme's glyph set (separators, ellipsis) is configuration.
 `Fmt` carries the text helpers: `Fmt.describe`, `Fmt.causeMessage` (the kit's
 guarded cause read, never throwing) and `Fmt.errorText` are `@effected/kit`'s
 `ErrorText` functions, delegated rather than copied, and `Fmt.suggest` is the
-"did you mean" list with `effect/cli`'s own two-edit threshold. `CliFormat.flag`
+"did you mean" list with `effect/cli`'s own two-edit threshold (`@effected/source`'s `EditDistance.suggest`, delegated). `CliFormat.flag`
 takes `aliases` and `custom` formats; a CLI that still accepts `--json` declares it itself. `CliRuntime.main` takes `exitCodes` (by
 tag), `distribution` (the carrier: engine's `CurrentDistribution` plus the
 `--version` suffix, wrapping whatever formatter is in effect) and
@@ -58,12 +58,13 @@ tier and imports only the boundary root, so nothing inherits a tier from `./ui`.
 Same posture as `app`: the two are siblings, not layers — `app` is the control
 plane, `cli-kit` the presentation boundary, and neither imports the other.
 
-**Three regular dependencies, no new peers:** `@effected/github-commands`,
+**Four regular dependencies, no new peers:** `@effected/github-commands`,
+`@effected/source` (`Fmt.suggest` delegates to its `EditDistance.suggest`; pure, no dependencies),
 `@effected/kit` (the root's `CliRuntime` imports `withDistribution` and
 `withDistributionVersion` for `MainOptions.distribution`) and
 `@effected/commands` (ONLY its `./node-sync` subpath, ONLY from
 `ui/internal/inkChalk.ts`, ONLY by a dynamic `import()` when a screen
-mounts). None has an `@effected` peer, so the peer closure is unchanged.
+mounts). None of the four has an `@effected` peer, so the peer closure is unchanged.
 `boundary.test.ts` pins that `.` and `./testing` reach no
 `@effected/commands` module and that the Ink loader alone reaches
 `./node-sync`. Why a regular dependency on engine →

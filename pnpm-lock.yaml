@@ -402,6 +402,9 @@ importers:
       '@effected/kit':
         specifier: workspace:^
         version: link:../kit/dist/dev/pkg
+      '@effected/source':
+        specifier: workspace:^
+        version: link:../source/dist/dev/pkg
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effected
