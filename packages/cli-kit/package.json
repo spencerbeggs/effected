@@ -63,7 +63,6 @@
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
-		"@effected/config-file": "workspace:^",
 		"@effected/env": "workspace:^",
 		"@effected/glob": "workspace:^",
 		"@effected/walker": "workspace:^",
@@ -73,9 +72,6 @@
 		"react": "catalog:silk:peers"
 	},
 	"peerDependenciesMeta": {
-		"@effected/config-file": {
-			"optional": true
-		},
 		"@types/react": {
 			"optional": true
 		},

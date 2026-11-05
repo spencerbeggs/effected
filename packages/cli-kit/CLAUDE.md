@@ -278,23 +278,6 @@ second control proving it resolves the main entry too (`index.ts` reaches
 test-spawning machinery — `effect/process`'s `ChildProcessSpawner`
 included — into its runtime bundle.
 
-## The optional peer, and the rule that makes it honest
-
-`@effected/config-file` is a `workspace:^` peer with
-`peerDependenciesMeta.optional: true`, consumed only by `ConfigIssueRenderer` —
-the same arrangement `@effected/markdown` has with `yaml`/`toml`/`jsonc`.
-
-**`ConfigIssueRenderer` must stay a module no other module imports.** An
-optional peer whose import is reachable from a shared module is not optional; it
-is a crash for every consumer who took the manifest at its word. Shared
-rendering lives in `src/internal/format.ts`, which both renderers import and
-neither re-exports. The entrypoint re-exporting `ConfigIssueRenderer` is fine.
-
-Verify this with a build, not by reading: no runtime `import` of
-`@effected/config-file` may appear in `dist/prod/npm/pkg/**/*.js` outside
-`ConfigIssueRenderer`'s own module. The `.d.ts` carries a type-only import of
-`ConfigValidationError`, which is erased.
-
 ## Testing
 
 The whole surface is testable without stubbing globals: provide a capturing

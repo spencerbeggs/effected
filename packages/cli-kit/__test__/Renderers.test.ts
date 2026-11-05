@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
 import { assert, describe, it } from "@effect/vitest";
+import type { ConfigValidationError } from "@effected/config-file";
 import { Effect, Result, Schema } from "effect";
+import type { ConfigIssueSource } from "../src/ConfigIssueRenderer.js";
 import { ConfigIssueRenderer } from "../src/ConfigIssueRenderer.js";
 import { SchemaIssueRenderer } from "../src/SchemaIssueRenderer.js";
 
@@ -142,5 +145,27 @@ describe("ConfigIssueRenderer", () => {
 		);
 		assert.deepStrictEqual(ConfigIssueRenderer.render(undefined as never), []);
 		assert.deepStrictEqual(ConfigIssueRenderer.render(null as never), []);
+	});
+});
+
+describe("ConfigIssueRenderer's parameter", () => {
+	it("accepts a real ConfigValidationError without a cast, and a bare empty object", () => {
+		// Compile-time: the real error stays assignable to the structural parameter type.
+		const assignable = (error: ConfigValidationError): ConfigIssueSource => error;
+		const real = (error: ConfigValidationError): ReadonlyArray<string> => ConfigIssueRenderer.render(error);
+		assert.isFunction(assignable);
+		assert.isFunction(real);
+		const bare: ConfigIssueSource = {};
+		assert.deepStrictEqual(ConfigIssueRenderer.render(bare), []);
+		assert.deepStrictEqual(ConfigIssueRenderer.render({}), ConfigIssueRenderer.render({ issue: undefined }));
+	});
+
+	it("does not declare @effected/config-file as a peer", () => {
+		const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+			readonly peerDependencies?: Record<string, string>;
+			readonly peerDependenciesMeta?: Record<string, unknown>;
+		};
+		assert.isUndefined(manifest.peerDependencies?.["@effected/config-file"]);
+		assert.isUndefined(manifest.peerDependenciesMeta?.["@effected/config-file"]);
 	});
 });

@@ -8,10 +8,10 @@ resource: ../../packages/cli-kit
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T06:55:47Z
+  at: 2026-11-05T16:14:19Z
 integrity:
   generated:
-    body: d9c3173b537863c9
+    body: 61fbdf9c7d9410bb
 ---
 
 # @effected/cli-kit
@@ -74,8 +74,7 @@ The dependency closure is declared in full. Required peers: `effect`,
 `@effected/env`, and `@effected/walker` with `@effected/glob` beneath it
 (`CliLinks` finds the project root with `Walker`: [the walker
 edge](../decisions/cli-takes-the-walker-edge.md)). Optional peers:
-`@effected/config-file` (for `ConfigIssueRenderer`), and `ink`, `react` and
-`@types/react` (for `./ui`). Three regular dependencies, none of them
+`ink`, `react` and `@types/react` (for `./ui`). Three regular dependencies, none of them
 carrying a shared-instance contract and none with an `@effected` peer of
 its own, so they leave the peer closure unchanged: the pure
 [`@effected/github-commands`](github-commands.md);
@@ -120,7 +119,7 @@ Exports are static classes with a private constructor — never an
 | `ReportFailuresOptions.render` | `(error: unknown, details: FailureDetails) => string \| ReadonlyArray<string>`. `error` is `Cause.squash(cause)`; `FailureDetails` is `{ cause, isDefect, isCancelled, isNotInteractive, exitCode, defaultLines, lines }`, with `exitCode` the code this failure exits with (the error's own `Runtime.errorExitCode`, else its `exitCodes` entry for a typed failure, else `exitCode`, else `1`), decided before `render` runs so a render can print it (a hook that parses a fixed stderr shape reads the tag off `error` itself, `Predicate.hasProperty(error, "_tag")`, and the code from here; constructing a `FailureDetails` literal now needs `exitCode`), and `isDefect = !Cause.hasFails(cause)` (the literal absence of a typed failure, unchanged) and `isCancelled` / `isNotInteractive` true when the squashed `error` is the kit's `Cancelled` / `NotInteractive`, whichever channel it arrived through (a `CliPrompt.fallback` quit is a defect, a `CliUi.run` one a typed failure), so a `render` that gives defects an issue-report footer checks them first; the flags change no exit code and no default line and `defaultLines` the report the kit would write for this run (its audience, colour, links and `displayPath`), so a `render` returning them writes exactly the default report — exact because `squash` prefers a `Fail` over a `Die`. `lines({ status? })` is the same report (`lines()` equals `defaultLines`); `status: false` drops the leading status and keeps the run's settings, so a prefixing render keeps `displayPath` (vitest-agent A2). Added so a consumer stops guessing "typed" from an `Error` carrying a string `_tag`, which a defect can also be. A one-parameter renderer still fits. A consumer `render`'s lines are text the kit did not build, so the report applies the output policy to them: neutralized under GitHub Actions (always when no environment services exist), and stripped of escapes for an agent or a CI audience (GitHub Actions detects as `ci`); for a person their own escapes are kept (the kit cannot tell colour from injection), so a `render` sanitises the data it interpolates. If that rendering dies, the report falls back to the plain path and then to the error's own text, sanitised and neutralized. The default is `CliFailure.toDoc` rendered through `Render.context("stderr")` and the audience-chosen renderer, still written through `CliLogger` (so `--log-level` and the logger options are unchanged). `reportFailures` catches outside the layers `main` provides, so `main` gives it a per-run cell the environment layer fills with the render target, and `CliAudience.runWith` rewrites it once an audience flag is read. `CliRuntime.defaultRender(error, details, { status? })` is the same document as plain lines, exported so a consumer `render` hands the failures it does not own back (`Cancelled` and `NotInteractive` are their own fixed line); `status: false` leaves off the leading status glyph or `[FAIL]`, so a program-name prefix reads cleanly. |
 | `ReportFailuresOptions.usageExitCode` | Remaps a `ShowHelp` that carries errors to this code, default 64 (D7). A `ShowHelp` with no errors keeps exit 0. |
 | `SchemaIssueRenderer` | `SchemaIssue` tree → actionable lines, over core's formatter |
-| `ConfigIssueRenderer` | The same for `@effected/config-file`'s `ConfigValidationError`, plus a "did you mean" hint on an `unknown key` line when the struct at that path declares a near match (#1114): `unknown key at theme.colour (did you mean "color"?)`. The candidates are the declared keys core's `UnexpectedKey` leaf carries on its `ast` (an `Objects` node's string property names; every branch's under a union), so no schema is passed and nothing from the optional peer is loaded; the list is `Fmt.suggest`'s, each key sanitised, joined `"a", "b" or "c"`. A key with no near match is drawn exactly as `SchemaIssueRenderer` draws it. `SchemaIssueRenderer` and the failure report do not add the hint. |
+| `ConfigIssueRenderer` | The same for `@effected/config-file`'s `ConfigValidationError` (the parameter is the structural `ConfigIssueSource`, `{ readonly issue?: unknown }`), plus a "did you mean" hint on an `unknown key` line when the struct at that path declares a near match (#1114): `unknown key at theme.colour (did you mean "color"?)`. The candidates are the declared keys core's `UnexpectedKey` leaf carries on its `ast` (an `Objects` node's string property names; every branch's under a union), so no schema is passed and nothing from `@effected/config-file` is loaded; the list is `Fmt.suggest`'s, each key sanitised, joined `"a", "b" or "c"`. A key with no near match is drawn exactly as `SchemaIssueRenderer` draws it. `SchemaIssueRenderer` and the failure report do not add the hint. |
 
 ### The presentation layer
 
@@ -314,27 +313,9 @@ rule rather than the user's mistake, so it is rewritten to `unknown key
 
 `ConfigIssueRenderer` is the same treatment for
 `@effected/config-file`'s `ConfigValidationError`, whose `issue` tree is the
-same shape. It is the reason this package peers on `@effected/config-file`
-rather than the other way around: rendering is presentation and belongs at
-the boundary.
-
-**`@effected/config-file` is an optional peer**
-(`peerDependenciesMeta.optional: true`), mirroring `@effected/markdown`'s
-arrangement with `jsonc`/`toml`/`yaml`. The manifest declaration is the easy
-half; the load-bearing half is that `ConfigIssueRenderer` is its own module
-that nothing but the entry point imports, with shared rendering in
-`packages/cli-kit/src/internal/format.ts`. An optional peer reached from a
-shared module is not optional — it is a runtime crash for every consumer
-who believed the manifest. This is verified by build, not by reading: every
-runtime import in every emitted chunk must be `effect` or relative, and the
-package's only references to `@effected/config-file` are comments and one
-type-only import in the `.d.ts`. One consequence follows: because that
-type appears in a public signature, a consumer who has not installed the
-optional peer sees the type fail to resolve in that one module — harmless
-at runtime, invisible under the common `skipLibCheck: true`, but real. This
-is the kit's established trade — `@effected/markdown` ships the identical
-pattern — not a new one: an optional peer buys install-time freedom and
-costs type resolution in the module that names it.
+same shape. It takes the structural `ConfigIssueSource`, so this package
+names nothing from `@effected/config-file` and carries no peer on it: a real
+`ConfigValidationError` is assignable, and rendering stays at the boundary.
 
 ## Decisions settled against core's source
 
