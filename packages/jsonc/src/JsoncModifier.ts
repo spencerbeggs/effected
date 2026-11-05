@@ -119,12 +119,12 @@ const endOfBlanks = (text: string, offset: number): number => {
 };
 
 /**
- * The unit of indentation a document uses, from its first indented line: a tab,
- * or that line's run of spaces. The `*` of a block comment's continuation line
- * says nothing about the document, so that line is passed over.
+ * The unit of indentation a document uses, from its first indented line of
+ * code: a tab, or that line's run of spaces. Comments are blanked first, so a
+ * header comment's own indentation says nothing about the document.
  */
 const detectIndentUnit = (text: string): string | undefined => {
-	const indent = /^(\t+| +)[^\s*]/m.exec(text)?.[1];
+	const indent = /^(\t+| +)\S/m.exec(Jsonc.stripComments(text, " "))?.[1];
 	return indent?.startsWith("\t") ? "\t" : indent;
 };
 
