@@ -38,6 +38,7 @@
 	"dependencies": {
 		"@effect/platform-node": "catalog:effected",
 		"@effected/engine": "workspace:*",
+		"@effected/glob": "workspace:^",
 		"@effected/kit": "workspace:^",
 		"@effected/mcp-kit": "workspace:^",
 		"@effected/walker": "workspace:^",
