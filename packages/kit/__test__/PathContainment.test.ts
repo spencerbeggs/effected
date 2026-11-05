@@ -1,6 +1,6 @@
 import { assert, describe, layer } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, Layer, Path } from "effect";
+import { Effect, Layer, Path, PlatformError } from "effect";
 import { PathContainment } from "../src/PathContainment.js";
 
 const Env = Layer.merge(
@@ -10,6 +10,12 @@ const Env = Layer.merge(
 		"/repo/out": MemoryFileSystem.symlink("/etc"),
 		"/etc/x": "",
 		"/link": MemoryFileSystem.symlink("/repo"),
+		"/repo/evil": MemoryFileSystem.symlink("/etc/cron.d/evil"),
+		"/repo/dangdir": MemoryFileSystem.symlink("/nowhere"),
+		"/repo/loop-a": MemoryFileSystem.symlink("/repo/loop-b"),
+		"/repo/loop-b": MemoryFileSystem.symlink("/repo/loop-a"),
+		"/repo/inner": MemoryFileSystem.symlink("/repo/dest"),
+		"/repo/dest/f": "",
 	}),
 );
 
@@ -60,6 +66,41 @@ describe("PathContainment", () => {
 				assert.isFalse(yield* PathContainment.isWithin("/repo", "/repo/out/new/b.json"));
 			}),
 		);
+		it.effect("the candidate itself an outward symlink to an existing target is outside", () =>
+			Effect.gen(function* () {
+				assert.isFalse(yield* PathContainment.isWithin("/repo", "/repo/out"));
+			}),
+		);
+		it.effect("a dangling link as the candidate is followed out, not read as absent", () =>
+			Effect.gen(function* () {
+				assert.isFalse(yield* PathContainment.isWithin("/repo", "/repo/evil"));
+			}),
+		);
+		it.effect("a dangling link with a tail beneath it is outside", () =>
+			Effect.gen(function* () {
+				assert.isFalse(yield* PathContainment.isWithin("/repo", "/repo/dangdir/new/b.json"));
+			}),
+		);
+		it.effect("a link staying inside the root (even to a missing tail) is inside", () =>
+			Effect.gen(function* () {
+				assert.isTrue(yield* PathContainment.isWithin("/repo", "/repo/inner/f"));
+				assert.isTrue(yield* PathContainment.isWithin("/repo", "/repo/inner/new/b"));
+			}),
+		);
+		it.effect("a symlink loop is outside", () =>
+			Effect.gen(function* () {
+				assert.isFalse(yield* PathContainment.isWithin("/repo", "/repo/loop-a"));
+				assert.isFalse(yield* PathContainment.isWithin("/repo", "/repo/loop-a/x"));
+			}),
+		);
+		it.effect("a relative candidate resolves against the root, not the working directory", () =>
+			Effect.gen(function* () {
+				assert.isTrue(yield* PathContainment.isWithin("/repo", "a.json"));
+				assert.isTrue(yield* PathContainment.isWithin("/repo", "new/b.json"));
+				assert.isFalse(yield* PathContainment.isWithin("/repo", "../etc/x"));
+				assert.isFalse(yield* PathContainment.isWithin("/repo", "out/x"));
+			}),
+		);
 		it.effect("a dot-dot escape is outside through the effectful form too", () =>
 			Effect.gen(function* () {
 				assert.isFalse(yield* PathContainment.isWithin("/repo", "/repo/../etc/x"));
@@ -72,6 +113,37 @@ describe("PathContainment", () => {
 			Effect.gen(function* () {
 				assert.isTrue(yield* PathContainment.isWithin("/missing", "/missing/a"));
 				assert.isFalse(yield* PathContainment.isWithin("/missing", "/other/a"));
+			}),
+		);
+	});
+
+	layer(Path.layer)((it) => {
+		const denied = (method: string, path: string) =>
+			PlatformError.systemError({ _tag: "PermissionDenied", module: "FileSystem", method, pathOrDescriptor: path });
+		const seed = { "/repo/locked/f": "", "/repo/a.json": "{}" };
+
+		it.effect("a non-NotFound failure on a candidate component answers false", () =>
+			Effect.gen(function* () {
+				const result = yield* PathContainment.isWithin("/repo", "/repo/locked/new").pipe(
+					Effect.provide(
+						MemoryFileSystem.layerWith(seed, {
+							faults: { realPath: (p) => (p === "/repo/locked/new" ? Effect.fail(denied("realPath", p)) : undefined) },
+						}),
+					),
+				);
+				assert.isFalse(result);
+			}),
+		);
+		it.effect("a non-NotFound failure reading the root's real path answers false, not the lexical answer", () =>
+			Effect.gen(function* () {
+				const result = yield* PathContainment.isWithin("/repo", "/repo/a.json").pipe(
+					Effect.provide(
+						MemoryFileSystem.layerWith(seed, {
+							faults: { realPath: (p) => (p === "/repo" ? Effect.fail(denied("realPath", p)) : undefined) },
+						}),
+					),
+				);
+				assert.isFalse(result);
 			}),
 		);
 	});
