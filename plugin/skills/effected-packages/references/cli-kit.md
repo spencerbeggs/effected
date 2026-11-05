@@ -52,6 +52,7 @@ pnpm add -D @types/react @types/node
 | `CliRuntime.reportFailures()` | an unhandled failure rendered through *your* logger, on stderr, with the right exit code, outside `main` |
 | `CliRuntime.reported(error, code)` | your command already printed its own diagnostics and must not be reported twice — outside `reportFailures`/`main` only |
 | `CliExit.set(code)` | a handler found findings and must exit non-zero without failing — under `CliRuntime.main` only |
+| `CliExit.report(code, line)` / `CliExit.reportCause(cause, codeOf)` | a hook-style command: one stderr line plus the exit code, still succeeding so finalizers run; the caller must still return |
 | `CliColor.enabled` / `CliColor.formatterLayer()` | the stdout colour decision as a boolean, and core's formatter coloured by it, in a program without `env` |
 | `CliPrompt.fallback(prompt, { flag, otherwise })` | a flag or argument that prompts with core's `Prompt` only when interactive |
 | `Cancelled`, `NotInteractive` | the one quit error (exit `130`) and the prompt-without-a-person error (exit `64`) |
