@@ -43,6 +43,7 @@ export type ActionServices =
   | Digest.Digest
   | Mac.Mac
   | SecureRandom.SecureRandom
+  | Signature.Signature
   | HttpClient.HttpClient;
 ```
 
@@ -50,9 +51,11 @@ Spelled out rather than inferred, on purpose: a program written against
 `ActionServices` is a program `Action.run` can run, and the compiler says so
 before the runner does. `NodeServices` carries
 `ChildProcessSpawner | FileSystem | Path | Stdio | Terminal` and no crypto, so
-`Action.run`'s runtime adds `NodeCrypto.layerDigest`, `NodeCrypto.layerMac`
-and `NodeCrypto.layerSecureRandom` for `Digest.Digest`, `Mac.Mac` and
-`SecureRandom.SecureRandom` (all from `effect/crypto`) — so every member resolves
+`Action.run`'s runtime adds `NodeCrypto.layerDigest`, `NodeCrypto.layerMac`,
+`NodeCrypto.layerSecureRandom` and `NodeCrypto.layerSignature` for
+`Digest.Digest`, `Mac.Mac`, `SecureRandom.SecureRandom` and
+`Signature.Signature` (all from `effect/crypto`; `GitHubApp.layer` needs the
+last) — so every member resolves
 for free inside `ActionServices`, with no separate
 `@effect/platform-node` mention at the call site.
 

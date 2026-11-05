@@ -1,7 +1,7 @@
 import { NodeCrypto, NodeServices } from "@effect/platform-node";
 import { WorkflowCommand } from "@effected/github-commands";
 import { Cause, Effect, Exit, Layer, LogLevel, Option, References, Result } from "effect";
-import type { Digest, Mac, SecureRandom } from "effect/crypto";
+import type { Digest, Mac, SecureRandom, Signature } from "effect/crypto";
 import type { HttpClient } from "effect/http";
 import { FetchHttpClient } from "effect/http";
 import { ActionEnvironment } from "./ActionEnvironment.js";
@@ -29,6 +29,7 @@ export type ActionServices =
 	| Digest.Digest
 	| Mac.Mac
 	| SecureRandom.SecureRandom
+	| Signature.Signature
 	| HttpClient.HttpClient;
 
 /**
@@ -56,11 +57,12 @@ export class ActionRuntime {
 	 * and the workflow-command `Logger`.
 	 *
 	 * @remarks
-	 * The platform is `NodeServices.layer` plus Node's `Digest`, `Mac` and
-	 * `SecureRandom` crypto layers (`NodeCrypto.layerDigest`,
-	 * `NodeCrypto.layerMac` and `NodeCrypto.layerSecureRandom`), which
-	 * `NodeServices.layer` does not carry; `BlobStore.layerS3` takes its
-	 * digests and HMACs from them.
+	 * The platform is `NodeServices.layer` plus Node's `Digest`, `Mac`,
+	 * `SecureRandom` and `Signature` crypto layers (`NodeCrypto.layerDigest`,
+	 * `NodeCrypto.layerMac`, `NodeCrypto.layerSecureRandom` and
+	 * `NodeCrypto.layerSignature`), which `NodeServices.layer` does not carry;
+	 * `BlobStore.layerS3` takes its digests and HMACs from them, and
+	 * `GitHubApp.layer` signs its app JWT with `Signature`.
 	 *
 	 * A bound constant rather than a factory. A layer-returning function mints a
 	 * fresh layer per call, and layers memoize by reference — a factory here
@@ -95,6 +97,7 @@ export class ActionRuntime {
 				NodeCrypto.layerDigest,
 				NodeCrypto.layerMac,
 				NodeCrypto.layerSecureRandom,
+				NodeCrypto.layerSignature,
 				FetchHttpClient.layer,
 			),
 		),

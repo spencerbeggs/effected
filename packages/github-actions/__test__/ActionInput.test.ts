@@ -364,6 +364,21 @@ describe("ActionInput", () => {
 			}),
 		);
 
+		it.effect("rejects an excess key when the parse options ask for it", () =>
+			readFails(ActionInput.schema("cfg", Schema.Struct({ level: Schema.Number }), { onExcessProperty: "error" }), {
+				INPUT_CFG: '{"level":3,"extra":true}',
+			}),
+		);
+
+		it.effect("ignores an excess key without parse options", () =>
+			Effect.gen(function* () {
+				const value = yield* readOk(ActionInput.schema("cfg", Schema.Struct({ level: Schema.Number })), {
+					INPUT_CFG: '{"level":3,"extra":true}',
+				});
+				assert.deepStrictEqual(value, { level: 3 });
+			}),
+		);
+
 		it.effect("rejects an input that is not JSON at all", () =>
 			readFails(ActionInput.schema("cfg", Schema.Struct({ level: Schema.Number })), { INPUT_CFG: "nope" }),
 		);
