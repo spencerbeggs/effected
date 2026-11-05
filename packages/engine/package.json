@@ -23,7 +23,8 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
-		"./package.json": "./package.json"
+		"./package.json": "./package.json",
+		"./schema": "./src/schema/index.ts"
 	},
 	"scripts": {
 		"build:dev": "node savvy.build.ts --target dev",
@@ -32,11 +33,22 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@effected/env": "workspace:^",
+		"@effected/glob": "workspace:^",
+		"@effected/jsonc": "workspace:^",
 		"@effected/kit": "workspace:^",
-		"effect": "catalog:effected"
+		"@effected/schemastore": "workspace:*",
+		"@effected/source": "workspace:^",
+		"@effected/walker": "workspace:^",
+		"ajv": "8.20.0",
+		"ajv-formats": "3.0.1",
+		"effect": "catalog:effected",
+		"jiti": "^2.6.0"
 	},
 	"devDependencies": {
+		"@effect/platform-node": "catalog:effected",
 		"@effect/vitest": "catalog:effected",
+		"@effected/memfs": "workspace:*",
 		"@savvy-web/bundler": "^2.7.3",
 		"@types/node": "catalog:build",
 		"typescript": "catalog:build"
