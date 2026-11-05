@@ -11,6 +11,6 @@
 * `CreatedCommit` (#1207) carries the new commit's `sha` and its `htmlUrl`, taken from GitHub's reply so it has the right host on GitHub Enterprise Server.
 * `createCommitWithUrl` and `commitFilesWithUrl` return a `CreatedCommit`. A reply with no `html_url` fails with a `GitHubError` that names the commit already created.
 
-## Bug Fixes
+## Documentation
 
-* Interrupting a request now aborts its underlying fetch (#1217). This is tested and documented.
+* Interrupting a request aborts its underlying fetch (#1217). That was already the behaviour; it is now tested and documented.
