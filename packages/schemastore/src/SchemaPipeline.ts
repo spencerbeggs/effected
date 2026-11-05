@@ -311,7 +311,7 @@ const gate = (
  *
  * Requires `SchemaFile` and `SchemaValidator` in `R`; provide
  * `SchemaFile.layer` and an engine — `AjvValidator.layer` from
- * `@effected/schemastore-cli`, which is what the `schemastore` command
+ * `@effected/engine/schema`, which is what the `effected schema` command
  * composes, or `SchemaValidator.noop` to skip validation — plus a platform
  * `FileSystem` / `Path` at the edge. Findings come back as **values**, so
  * the package never chooses your log wording — but the gating decision,
@@ -321,7 +321,7 @@ const gate = (
  * @example
  * ```ts
  * import { SchemaFile, SchemaPipeline, SchemaTarget } from "@effected/schemastore";
- * import { AjvValidator } from "@effected/schemastore-cli";
+ * import { AjvValidator } from "@effected/engine/schema";
  * import { NodeServices } from "@effect/platform-node";
  * import { Effect, Layer, Schema } from "effect";
  *

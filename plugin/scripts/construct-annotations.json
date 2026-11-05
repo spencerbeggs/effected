@@ -9,8 +9,15 @@
 	"cli": {
 		"CLI_VERSION": "the effected command's own version, replaced at build, what effected --version prints",
 		"main": "run the effected command on Node, the effected bin entry, a carrier bin shim passes its distribution",
-		"rootCommand": "the effected command tree, effect/cli root command, version and help only",
-		"run": "run the effected program over a test platform layer in-process, drive the cli in a test"
+		"run": "run the effected program over a test platform layer in-process, drive the cli in a test",
+		"makeRootCommand": "build the effected command tree over a process boundary, wire audience flags, test the cli with its own process values",
+		"mainOptions": "how the effected program runs, exit 3 for uncoded typed errors, failure report span trail",
+		"CatalogMergeError": "merged schemastore catalog could not be assembled, duplicate catalog url or entry name across slices",
+		"DriftError": "published schema drifted under onDrift error, nothing written, exit 1",
+		"GateError": "schema failed lint or validation gate, nothing written, exit 1",
+		"NoConfigError": "no schemastore config found, exit 2, usage failure of effected schema",
+		"StaleError": "effected schema check found committed documents out of date, CI drift gate, exit 1",
+		"ValidationFailedError": "payload does not conform to schema, validation verdict, exit 1"
 	},
 	"cli-kit": {
 		"Cancelled": "user quit a prompt or screen with esc or ctrl-c, exit 130",
@@ -62,7 +69,9 @@
 		"useKeys": "dispatch ink keystrokes through a key table, chunk-safe",
 		"useTerminalSize": "usable terminal columns and rows inside an ink component",
 		"useTheme": "read the cli theme inside an ink component",
-		"CliFormat": "add a --format flag, alias or custom formats, print json, print json without the flag"
+		"CliFormat": "add a --format flag, alias or custom formats, print json, print json without the flag",
+		"CliTestFailure": "a spawned cli test run exited otherwise than expected, assert exit code, read child stderr",
+		"useStyle": "resolve Ink Text props from a theme token, honour consumer theme overrides in a component"
 	},
 	"commands": {
 		"CommandFailedError": "handle a command that failed to spawn, exited non-zero, or timed out",
@@ -140,7 +149,41 @@
 	},
 	"engine": {
 		"Identity": "build the effected tool identity report, version distribution and resolved effect version for a front end",
-		"IdentityReport": "what the effected tool reports about itself, tool name, version, carrier distribution, effect version"
+		"IdentityReport": "what the effected tool reports about itself, tool name, version, carrier distribution, effect version",
+		"AjvInstanceValidator": "the shipped ajv strict-mode InstanceValidator engine layer, the one real implementation effected schema validate composes, provide it to validate payloads yourself",
+		"AjvValidator": "the shipped ajv strict-mode SchemaValidator engine layer, the one real implementation effected schema build composes, provide it to drive SchemaPipeline yourself",
+		"ConfigLoader": "find and load schemastore.config.ts, walk upward discovery, jiti import, explicit config path",
+		"ConfigLoadError": "schemastore config exists but could not be loaded, import threw, bad default export",
+		"ConfigNotFoundError": "no schemastore config found by discovery or at explicit --config path",
+		"ConflictingFlagsError": "force combined with a drift policy other than allow, contradictory flags usage error",
+		"CatalogConflict": "catalog url or display name advertised twice across slices, merge refuses a winner",
+		"CatalogDirError": "catalogDir exists but cannot be listed, file in place of directory, permission failure",
+		"CatalogReport": "catalog line of a schema run report, this config slice and merged catalog",
+		"CatalogSliceReport": "this config's catalog slice file, entry array rewritten wholesale per run",
+		"MergedCatalogReport": "merged schemastore catalog.json, every slice united and sorted by url",
+		"InvalidSlice": "a catalog slice the merge could not use, unreadable, not JSON, not an array",
+		"DocumentDiff": "what differs between a document on disk and the generated one, line hunks, drift report",
+		"LineDiffHunkSchema": "schema for one line diff hunk of a document diff, decode wire form",
+		"LineDiffLineSchema": "schema for one line of a diff hunk, decode wire form",
+		"FrozenVersionIdMismatchError": "frozen schema file lacks or changes its derived $id, checked before build",
+		"FrozenVersionMissingError": "advertised frozen schema version file missing on disk, checked before build",
+		"LocatedFinding": "one way a payload fails its schema with source location, validation finding with line and column",
+		"SourcePoint": "one-based line and column of a place in a file, UTF-16 columns",
+		"MissingSchemaRefError": "payload names no schema and none given, nothing to validate against",
+		"PayloadError": "payload file unreadable or not JSON, nothing validated",
+		"SchemaResolutionError": "schema reference resolves to no readable document, not a file nor a derived identity",
+		"Report": "render a schemastore run report for a terminal, as JSON or as GitHub step summary markdown",
+		"RunReport": "whole schemastore build or check run as a value, drives renderers and exit codes",
+		"SchemaReport": "one schema's line in a run report, status and drift outcome",
+		"Runner": "shared build and check walk, verify frozen versions, classify drift policy, write when clean",
+		"SchemaRun": "run effected schema build or check as an Effect, load config, version check, drift policy, write documents",
+		"SchemaRunResult": "answer of one schema run, report, verdict, version mismatch passed",
+		"SchemaValidate": "validate a payload file against a published schema, resolve by file then derived identity, effected schema validate",
+		"StepSummary": "append a rendered report to GITHUB_STEP_SUMMARY in a GitHub Action",
+		"ValidateReport": "answer of one validate, valid flag and located findings, non-conforming payload is a result",
+		"VersionCheck": "compare schemastore versions stamped on a config with the version the tool was built against",
+		"VersionMismatch": "config built from a different schemastore copy than the tool, mismatch report",
+		"VersionMismatchError": "run refused a schemastore version mismatch before generating anything, exit 2"
 	},
 	"kit": {
 		"CurrentDistribution": "read which carrier package installed this run without it appearing in R, defaults to none",
@@ -156,7 +199,8 @@
 		"ProcessScope": "scoped chdir, env var and stream patches restored when the scope closes",
 		"ProcessScopeError": "changing the working directory or process state failed",
 		"withDistribution": "provide the carrier package name and version a tool was installed through",
-		"withDistributionVersion": "append the via carrier suffix to a --version line formatter"
+		"withDistributionVersion": "append the via carrier suffix to a --version line formatter",
+		"PathContainment": "check a caller-supplied path stays inside a workspace root, refuse path traversal, containment guard"
 	},
 	"env": {
 		"Audience": "tell a human from an agent or CI job, override variable, flag-sourced",
@@ -919,11 +963,8 @@
 		"ValidationFinding": "one ajv validation problem in a document, a value never an error",
 		"UndeclaredAnnotationKeyError": "refuse an annotation key outside the declared language-server families, fail a schemastore document build naming every offending key, gate includeAnnotationKey",
 		"defineConfig": "validate and assemble a schemastore.config.ts value, fill drift defaults, derive catalog versions",
-		"isSchemastoreConfig": "recognize a config module's default export as one defineConfig produced"
-	},
-	"schemastore-cli": {
-		"AjvInstanceValidator": "the shipped ajv strict-mode InstanceValidator engine layer, the one real implementation the validate command composes, provide it to validate payloads yourself",
-		"AjvValidator": "the shipped ajv strict-mode SchemaValidator engine layer, the one real implementation the schemastore command composes, provide it to drive SchemaPipeline yourself"
+		"isSchemastoreConfig": "recognize a config module's default export as one defineConfig produced",
+		"SchemastoreVersion": "which copy of schemastore produced a config value, detect mismatched duplicate installs"
 	},
 	"semver": {
 		"Comparator": "check if a version satisfies an operator constraint, single comparator like >=1.2.3",
@@ -941,7 +982,8 @@
 		"VersionNotFoundError": "handle a version missing from the cache during diff next or prev navigation"
 	},
 	"source": {
-		"LineIndex": "convert offset to line and character, lsp position, count lines, line start end"
+		"LineIndex": "convert offset to line and character, lsp position, count lines, line start end",
+		"LineDiff": "diff two texts line by line, hunks with context, plain values, unified diff"
 	},
 	"spdx": {
 		"AndNode": "spdx AND compound expression node, conjunction of two license expressions",

@@ -6,6 +6,10 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `LineBreaks` | TypeAlias | Which characters end a line, for `LineIndex.make`. | |
+| `LineDiff` | Class | Line diffs as plain values: no Effect, no JSON, no colour. | diff two texts line by line, hunks with context, plain values, unified diff |
+| `LineDiffHunk` | Interface | A run of changes with its surrounding context. | |
+| `LineDiffLine` | Interface | One line of a hunk. | |
+| `LineDiffOptions` | Interface | Options for `LineDiff.compute`. | |
 | `LineIndex` | Class | A line table over one source text, built once and queried many times: offset to `{ line, character }` and back, the number of lines, and where each line starts and ends. | convert offset to line and character, lsp position, count lines, line start end |
 | `LineIndexOptions` | Interface | Options for `LineIndex.make`. | |
 | `SourceDiagnostic` | Interface | A diagnostic about a source text: a machine-readable `code`, a human-readable `message`, and its `SourceLocation`. | |

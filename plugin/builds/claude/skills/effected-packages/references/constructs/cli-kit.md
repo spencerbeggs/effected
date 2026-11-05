@@ -31,6 +31,7 @@
 | `CliFormatName` | TypeAlias | An output format a `--format` flag can offer: `auto` (the renderer the audience gets, as `Doc.print` picks it), one of the `Doc` renderers by name, or `json`, the command's data rather than its document. | |
 | `CliFormatOutput` | Interface | What `CliFormat.print` prints: the command's document and, for `json`, its data. | |
 | `CliFormatPrintOptions` | Interface | Options for `CliFormat.print`. | |
+| `CliHelpFlags` | Interface | How subcommand help renders flags the command does not own, as core's `CliOutput.defaultFormatter` takes them. | |
 | `CliInteractive` | Class | Whether this run may prompt a person: a human audience, with a terminal on both standard input and standard output, and a `TERM` that is not `dumb`. | may this run prompt a person, human audience on a tty, not TERM=dumb |
 | `CliLinks` | Class | Editor-aware links for file targets: where a link to a file opens. | open file links in vscode or as file urls, osc 8, never for agents |
 | `CliLinksLinkerOptions` | Interface | The options of `CliLinks.linker`. | |
@@ -50,6 +51,7 @@
 | `CliPromptTarget` | TypeAlias | Which missing parameter a fallback stands in for, so a non-interactive run can fail with core's own error. | |
 | `CliRuntime` | Class | Report a CLI program's failures through the program's own logger. | report a cli program's failures through its own logger, set exit code |
 | `CliTest` | Class | Spawn a built CLI bin hermetically and read its exit code and streams as data. | from `@effected/cli-kit/testing` — spawn a cli bin in a sandbox, read exit and output, stream or signal |
+| `CliTestFailure` | Class | A run ended otherwise than `RunOptions.expectExit` required. | from `@effected/cli-kit/testing` — a spawned cli test run exited otherwise than expected, assert exit code, read child stderr |
 | `CliTheme` | Class | The presentation of a CLI: colour tokens, glyphs and statuses, decided once from the terminal. | paint text by semantic token per stream, colour level aware, status glyphs, the agent-never-gets-an-escape rule |
 | `CliThemeOptions` | Interface | Options for `CliTheme.layer`. | |
 | `CliThemeShape` | Interface | The shape of the `CliTheme` service: a colour level, a glyph set and the functions that use them. | |
@@ -192,5 +194,6 @@
 | `serializer` | Variable | `CliUiTest.serializer`: it claims a string carrying escapes or token markup and prints it as token markup with each line's trailing spaces trimmed. See `CliUiTest.serializer` for what it claims. | from `@effected/cli-kit/ui/testing/serializer` — register the cli frame snapshot serializer through vitest snapshotSerializers config |
 | `useGlyphs` | Function | The glyph set of the mounted screen, so a component draws Unicode or ASCII glyphs to match the rest of the output. | from `@effected/cli-kit/ui` — read the cli glyph set inside an ink component |
 | `useKeys` | Function | Read the keys of `table` and dispatch the action each one matches; keys the table does not bind are ignored. | from `@effected/cli-kit/ui` — dispatch ink keystrokes through a key table, chunk-safe |
+| `useStyle` | Function | The Ink `Text` props for `token`, resolved through the mounted screen's theme. | from `@effected/cli-kit/ui` — resolve Ink Text props from a theme token, honour consumer theme overrides in a component |
 | `useTerminalSize` | Function | The usable terminal size: the stdout Ink draws on, less one column and one row, re-read on every render and when the terminal resizes; or, under a `UiProvider` given a `size`, that size less one column and one row. | from `@effected/cli-kit/ui` — usable terminal columns and rows inside an ink component |
 | `useTheme` | Function | The theme of the stream the mounted screen draws on. | from `@effected/cli-kit/ui` — read the cli theme inside an ink component |

@@ -73,7 +73,6 @@ Every package is `unstable`; see [release strategy](#release-strategy).
 | Package | Stability | Description |
 | ------- | --------- | ----------- |
 | [@effected/pnpm-plugin-effected](packages/pnpm-plugin-effected) | unstable | pnpm config dependency shipping one catalog, `effected`, that pins Effect and the `@effected/*` kit, for dependencies and peer ranges alike |
-| [@effected/schemastore-cli](packages/schemastore-cli) | unstable | The `schemastore` command: build and check SchemaStore-shaped JSON Schema documents from a `schemastore.config.ts`, with a per-schema published flag and a drift policy |
 
 ## Release strategy
 

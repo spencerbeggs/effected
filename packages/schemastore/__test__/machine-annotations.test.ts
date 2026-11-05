@@ -7,7 +7,7 @@ const $id = "https://example.com/x-ai.schema.json";
 // End-to-end through StoreDocument.fromSchema + DocumentLint — no
 // SchemaPipeline, no engine. Proves the x-ai- family reaches the emitted
 // document exactly like any other declared family and passes the lint; the
-// real-engine half lives in schemastore-cli's ajv-validator suite.
+// real-engine half lives in @effected/engine's ajv-validator suite.
 describe("the x-ai- machine-annotation family, end to end", () => {
 	// Field-level annotation at the DEFINITION site. Root-level "x-ai" (no
 	// dash) is the negative control: it is not a declared family (bare

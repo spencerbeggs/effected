@@ -53,7 +53,7 @@ installs its optional peers — `@./okf/decisions/ui-tier-is-integrated-on-opt-i
 — Load when: adding a dependency or a peer to this package.
 
 **Nothing in the kit may depend on this but an application or a companion.**
-The one kit package that does is `schemastore-cli`, a companion that carries no
+The one kit package that does is `@effected/cli`, a tool package that carries no
 tier and imports only the boundary root, so nothing inherits a tier from `./ui`.
 Same posture as `app`: the two are siblings, not layers — `app` is the control
 plane, `cli-kit` the presentation boundary, and neither imports the other.

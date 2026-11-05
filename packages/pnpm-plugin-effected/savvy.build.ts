@@ -371,12 +371,6 @@ await build({
 							strategy: "lock-minor",
 							source: "workspace",
 						},
-						"@effected/schemastore-cli": {
-							range: "^0.29.0",
-							peer: "^0.29.0",
-							strategy: "lock-minor",
-							source: "workspace",
-						},
 						"@effected/semver": {
 							range: "^0.21.0",
 							peer: "^0.21.0",
@@ -468,8 +462,8 @@ await build({
 			// with it. A catalog range alone cannot promise that: a caret admits a satellite the
 			// core has not published yet (Effect-TS/effect#8994 shipped every 4.0.3 satellite a
 			// day before core, and the pairing dies at import), and a catalog never reaches a
-			// dependency's own dependencies (@effected/store and @effected/schemastore-cli depend
-			// on satellites directly). The line scope leaves a tool still built on a release
+			// dependency's own dependencies (@effected/store depends on satellites
+			// directly). The line scope leaves a tool still built on a release
 			// candidate alone: 4.0.0-rc.118 sits outside ^4.0.0. @effect/tsgo versions on its
 			// own 0.x line and gets its own line-scoped pin, so one tsgo serves the graph too.
 			// The `include` patterns select the family; the kit's `@effected/*` entries match neither

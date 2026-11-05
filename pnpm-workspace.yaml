@@ -61,7 +61,6 @@ catalogs:
     "@effected/sbom": ^0.20.0
     "@effected/schema-org": ^0.14.0
     "@effected/schemastore": ^0.29.0
-    "@effected/schemastore-cli": ^0.29.0
     "@effected/semver": ^0.21.0
     "@effected/source": ^0.3.0
     "@effected/spdx": ^0.19.0
@@ -136,7 +135,6 @@ catalogs:
     "@effected/sbom": ^0.20.0
     "@effected/schema-org": ^0.14.0
     "@effected/schemastore": ^0.29.0
-    "@effected/schemastore-cli": ^0.29.0
     "@effected/semver": ^0.21.0
     "@effected/source": ^0.3.0
     "@effected/spdx": ^0.19.0
