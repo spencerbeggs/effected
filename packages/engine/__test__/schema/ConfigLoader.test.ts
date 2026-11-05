@@ -541,6 +541,40 @@ describe("ConfigLoader.load", () => {
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.ts": "" }))),
 	);
 
+	it.effect("adds the version hint when defineConfig refused a hosted value", () =>
+		Effect.gen(function* () {
+			const refused = new Error('defineConfig: schema "a" Expected a HostedSchema at ["hosted"]');
+			refused.stack = `Error: ${refused.message}\n    at /repo/schemastore.config.ts:1:1`;
+			const error = yield* Effect.flip(
+				ConfigLoader.load({
+					explicit: "schemastore.config.ts",
+					cwd: "/repo",
+					importModule: () => Promise.reject(refused),
+				}),
+			);
+			assert.instanceOf(error, ConfigLoadError);
+			const [first, ...rest] = error.reason.split("\n");
+			assert.include(first ?? "", 'Expected a HostedSchema at ["hosted"]');
+			assert.include(first ?? "", "@effected/schemastore may be older than the tool's");
+			assert.include(first ?? "", "catalog:effected");
+			assert.deepStrictEqual(rest, ["    at /repo/schemastore.config.ts:1:1"]);
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.ts": "" }))),
+	);
+
+	it.effect("adds no version hint to any other import failure", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				ConfigLoader.load({
+					explicit: "schemastore.config.ts",
+					cwd: "/repo",
+					importModule: () => Promise.reject({ message: 'defineConfig: Expected string at ["baseUrl"]' }),
+				}),
+			);
+			assert.instanceOf(error, ConfigLoadError);
+			assert.notInclude(error.reason, "may be older");
+		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.ts": "" }))),
+	);
+
 	it.effect("adds no install line for another package that cannot be resolved", () =>
 		Effect.gen(function* () {
 			for (const name of ["@effected/plugin-extra", "left-pad"]) {

@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
@@ -26,6 +27,28 @@ const project = Effect.gen(function* () {
 	yield* fs.symlink(ENGINE_MODULES, path.join(dir, "node_modules"));
 	const write = (name: string, text: string) => fs.writeFileString(path.join(dir, name), text);
 	return { dir, write };
+});
+
+// The same, with a real `node_modules` a test can add packages to. A package
+// linked from a directory outside it stands for a sibling workspace package,
+// whose real path is not under `node_modules`.
+const projectWithPackages = Effect.gen(function* () {
+	const fs = yield* FileSystem.FileSystem;
+	const path = yield* Path.Path;
+	const dir = yield* Effect.acquireRelease(fs.makeTempDirectory({ prefix: "engine-reload-" }), (made) =>
+		fs.remove(made, { recursive: true }).pipe(Effect.ignore),
+	);
+	const modules = path.join(dir, "node_modules");
+	yield* fs.makeDirectory(modules);
+	for (const linked of ["@effected", "effect"]) {
+		yield* fs.symlink(path.join(ENGINE_MODULES, linked), path.join(modules, linked));
+	}
+	const write = (name: string, text: string) =>
+		fs
+			.makeDirectory(path.dirname(path.join(dir, name)), { recursive: true })
+			.pipe(Effect.andThen(fs.writeFileString(path.join(dir, name), text)));
+	const link = (target: string, name: string) => fs.symlink(path.join(dir, target), path.join(modules, name));
+	return { dir, write, link };
 });
 
 const config = (name: string, header = "", description = '"d"') => `
@@ -151,21 +174,164 @@ describe("ConfigLoader.load reloads", () => {
 		TIMEOUT,
 	);
 
-	// A limit, pinned so its documentation stays true. jiti hands an imported
-	// `.mjs` to the native loader under an async evaluation, and no option clears
-	// that cache. Consumers' sources are TypeScript, which does reload.
+	const descriptionOf = (dir: string) =>
+		ConfigLoader.load({ cwd: dir }).pipe(Effect.map((loaded) => loaded.config.schemas[0]?.catalog?.description));
+
+	for (const [title, header] of [
+		["a .json the config imports", 'import data from "./shape.json";\nconst { description } = data;'],
+		[
+			'a .json the config imports with { type: "json" }',
+			'import data from "./shape.json" with { type: "json" };\nconst { description } = data;',
+		],
+	] as const) {
+		it.effect(
+			`a second load sees an edit to ${title}`,
+			() =>
+				Effect.gen(function* () {
+					const { dir, write } = yield* project;
+					yield* write("schemastore.config.ts", config("c", header, "description"));
+					yield* write("shape.json", '{ "description": "before" }\n');
+					assert.strictEqual(yield* descriptionOf(dir), "before");
+					yield* write("shape.json", '{ "description": "after" }\n');
+					assert.strictEqual(yield* descriptionOf(dir), "after");
+				}).pipe(Effect.provide(Platform)),
+			TIMEOUT,
+		);
+	}
+
 	it.effect(
-		"an imported .mjs is not reloaded: the native loader caches it",
+		"a reload leaves the process's own CommonJS modules cached, outside node_modules too",
 		() =>
 			Effect.gen(function* () {
 				const { dir, write } = yield* project;
-				yield* write("schemastore.config.ts", config("c", 'import { description } from "./shape.mjs";', "description"));
-				yield* write("shape.mjs", 'export const description = "before";\n');
-				const first = yield* ConfigLoader.load({ cwd: dir });
-				assert.strictEqual(first.config.schemas[0]?.catalog?.description, "before");
-				yield* write("shape.mjs", 'export const description = "after";\n');
-				const second = yield* ConfigLoader.load({ cwd: dir });
-				assert.strictEqual(second.config.schemas[0]?.catalog?.description, "before");
+				yield* write("schemastore.config.ts", config("c"));
+				yield* write("host.cjs", "exports.Mark = class Mark {};\n");
+				const host = `${dir}/host.cjs`;
+				const require = createRequire(host);
+				const first = require(host);
+				yield* ConfigLoader.load({ cwd: dir });
+				assert.strictEqual(require(host), first);
+			}).pipe(Effect.provide(Platform)),
+		TIMEOUT,
+	);
+
+	// Limits, pinned so their documentation stays true. jiti hands each of these
+	// to Node's ESM loader under an async evaluation, and nothing clears that
+	// cache. The remedy is restarting the server.
+	describe("what stays cached until the process restarts", () => {
+		const before = 'export const description = "before";\n';
+		const after = 'export const description = "after";\n';
+		for (const [title, file, specifier, packageJson, first, second] of [
+			["an imported .mjs", "shape.mjs", "./shape.mjs", undefined, before, after],
+			[
+				"an imported .cjs",
+				"shape.cjs",
+				"./shape.cjs",
+				undefined,
+				'module.exports = { description: "before" };\n',
+				'module.exports = { description: "after" };\n',
+			],
+			["an imported .js under type: module", "shape.js", "./shape.js", '{ "type": "module" }\n', before, after],
+		] as const) {
+			it.effect(
+				`${title} is not reloaded`,
+				() =>
+					Effect.gen(function* () {
+						const { dir, write } = yield* project;
+						if (packageJson !== undefined) {
+							yield* write("package.json", packageJson);
+						}
+						yield* write(
+							"schemastore.config.ts",
+							config("c", `import { description } from "${specifier}";`, "description"),
+						);
+						yield* write(file, first);
+						assert.strictEqual(yield* descriptionOf(dir), "before");
+						yield* write(file, second);
+						assert.strictEqual(yield* descriptionOf(dir), "before");
+					}).pipe(Effect.provide(Platform)),
+				TIMEOUT,
+			);
+		}
+
+		it.effect(
+			"a sibling workspace package's built .js under type: module is not reloaded",
+			() =>
+				Effect.gen(function* () {
+					const { dir, write, link } = yield* projectWithPackages;
+					yield* write(
+						"packages/sibling/dist/package.json",
+						'{ "name": "sibling", "type": "module", "exports": "./index.js" }\n',
+					);
+					yield* write("packages/sibling/dist/index.js", before);
+					yield* link("packages/sibling/dist", "sibling");
+					yield* write("schemastore.config.ts", config("c", 'import { description } from "sibling";', "description"));
+					assert.strictEqual(yield* descriptionOf(dir), "before");
+					yield* write("packages/sibling/dist/index.js", after);
+					assert.strictEqual(yield* descriptionOf(dir), "before");
+				}).pipe(Effect.provide(Platform)),
+			TIMEOUT,
+		);
+	});
+
+	it.effect(
+		"type: module and CommonJS packages keep one instance across reloads, and an untyped ESM package does not",
+		() =>
+			Effect.gen(function* () {
+				const { dir, write } = yield* projectWithPackages;
+				const key = Symbol.for("@effected/engine/test/package-kinds-probe");
+				const seen: Array<{ readonly typed: unknown; readonly commonjs: unknown; readonly untyped: unknown }> = [];
+				Object.defineProperty(globalThis, key, { value: seen, configurable: true });
+				const esm = "export class Mark {}\n";
+				yield* write(
+					"node_modules/typed/package.json",
+					'{ "name": "typed", "type": "module", "exports": "./index.js" }\n',
+				);
+				yield* write("node_modules/typed/index.js", esm);
+				yield* write("node_modules/commonjs/package.json", '{ "name": "commonjs", "main": "./index.js" }\n');
+				yield* write("node_modules/commonjs/index.js", "exports.Mark = class Mark {};\n");
+				yield* write("node_modules/untyped/package.json", '{ "name": "untyped", "main": "./index.js" }\n');
+				yield* write("node_modules/untyped/index.js", esm);
+				yield* write(
+					"schemastore.config.ts",
+					config(
+						"c",
+						`import { Mark as typed } from "typed";
+						import { Mark as commonjs } from "commonjs";
+						import { Mark as untyped } from "untyped";
+						(globalThis as any)[Symbol.for("@effected/engine/test/package-kinds-probe")].push({ typed, commonjs, untyped });`,
+					),
+				);
+				yield* ConfigLoader.load({ cwd: dir });
+				yield* ConfigLoader.load({ cwd: dir });
+				assert.lengthOf(seen, 2);
+				assert.strictEqual(seen[0]?.typed, seen[1]?.typed);
+				assert.strictEqual(seen[0]?.commonjs, seen[1]?.commonjs);
+				assert.notStrictEqual(seen[0]?.untyped, seen[1]?.untyped);
+			}).pipe(Effect.provide(Platform)),
+		TIMEOUT,
+	);
+
+	it.effect(
+		"a hosted value defineConfig refuses fails with the version hint",
+		() =>
+			Effect.gen(function* () {
+				const { dir, write } = yield* project;
+				yield* write(
+					"schemastore.config.ts",
+					`import { defineConfig } from "@effected/schemastore";
+					import { Schema } from "effect";
+					export default defineConfig({
+						name: "c",
+						outputDir: "schemas",
+						schemas: { a: { schema: Schema.Struct({ n: Schema.String }), hosted: { name: "a", baseUrl: "https://x/s" } as never } },
+					});`,
+				);
+				const error = yield* Effect.flip(ConfigLoader.load({ cwd: dir }));
+				assert.instanceOf(error, ConfigLoadError);
+				const [first] = error.reason.split("\n");
+				assert.include(first ?? "", "Expected a HostedSchema");
+				assert.include(first ?? "", "may be older");
 			}).pipe(Effect.provide(Platform)),
 		TIMEOUT,
 	);

@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import type { SchemastoreConfig } from "@effected/schemastore";
 import { CatalogEntry, SchemaVersioning, isSchemastoreConfig } from "@effected/schemastore";
 import { Effect, FileSystem, Path, Predicate, Result, Schema } from "effect";
@@ -86,18 +87,38 @@ export interface ConfigLoadOptions {
 //
 // Every call evaluates afresh, because a long-lived server would otherwise keep
 // answering from the config it loaded first. `moduleCache: false` and
-// `fsCache: false` re-evaluate what jiti transpiles, which is the TypeScript the
-// config reaches; packages stay native imports, so one `@effected/schemastore`
-// and one `effect` survive every reload. `evalModule` rather than `import`
-// because `import` hands a root `.mjs`, or a `.js` under `type: module`, to the
-// native loader, whose cache no option clears. The same native path means an
-// `.mjs` the config imports is not reloaded, and no jiti option reaches it.
-const jitiImport = async (path: string, source: string): Promise<unknown> =>
-	createJiti(path, { interopDefault: true, moduleCache: false, fsCache: false }).evalModule(source, {
+// `fsCache: false` re-evaluate what jiti transpiles: TypeScript, and a `.js` with
+// no `type: module` above it. `evalModule` rather than `import` because `import`
+// hands a root `.mjs`, or a `.js` under `type: module`, to Node's ESM loader.
+//
+// jiti reads an imported `.json` through `require`, and `moduleCache: false` does
+// not touch that cache, so those entries are evicted here. Only `.json`, and
+// never under `node_modules`: evicting every other entry made no imported file
+// any fresher, and gave the host process a second instance of its own CommonJS
+// modules.
+//
+// What jiti imports natively stays cached by Node's ESM loader, and nothing
+// clears that: an imported `.mjs`, `.cjs` or `.js` under `type: module`, a sibling
+// workspace package's built `.js` included. That same route is what keeps one
+// instance of a `type: module` or CommonJS package, `@effected/schemastore` and
+// `effect` among them. An untyped package of ESM `.js` is transpiled instead and
+// gets a new instance on each reload. This rests on jiti's routing, which is why
+// its range is a tilde.
+const IN_NODE_MODULES = /[\\/]node_modules[\\/]/;
+
+const jitiImport = async (path: string, source: string): Promise<unknown> => {
+	const { cache } = createRequire(path);
+	for (const key of Object.keys(cache)) {
+		if (key.endsWith(".json") && !IN_NODE_MODULES.test(key)) {
+			Reflect.deleteProperty(cache, key);
+		}
+	}
+	return createJiti(path, { interopDefault: true, moduleCache: false, fsCache: false }).evalModule(source, {
 		filename: path,
 		async: true,
 		forceTranspile: true,
 	});
+};
 
 // An import failure's stack names the module and the line that threw, which
 // the message alone does not, so a non-empty `stack` is preferred; otherwise
@@ -110,17 +131,31 @@ const describeCause = (cause: unknown): string => {
 	return stack ?? causeMessage(cause) ?? String(cause);
 };
 
-const MISSING_PLUGIN = /Cannot find (?:module|package) '@effected\/plugin['/]/;
+// What to add to an import failure, by its text. The second is the first partial
+// bump a user can hit: a copy of `@effected/schemastore` from before the brand
+// checks `hosted` with `instanceof`, throwing inside the config's own evaluation
+// with no versions named, so the version check never gets to run.
+const IMPORT_HINTS: ReadonlyArray<readonly [pattern: RegExp, hint: string]> = [
+	[
+		/Cannot find (?:module|package) '@effected\/plugin['/]/,
+		"Install it as a devDependency: pnpm add -D @effected/plugin",
+	],
+	[
+		/Expected a HostedSchema/,
+		"The config's @effected/schemastore may be older than the tool's. Align @effected/schemastore and @effected/plugin on one version, as catalog:effected does",
+	],
+];
 
-// The install line joins the first line, because a front end shows only that
-// line and keeps the rest of `reason` (the stack) for debug output.
+// A hint joins the first line, because a front end shows only that line and
+// keeps the rest of `reason` (the stack) for debug output.
 const describeImportFailure = (cause: unknown): string => {
 	const text = describeCause(cause);
-	if (!MISSING_PLUGIN.test(text)) {
+	const hint = IMPORT_HINTS.find(([pattern]) => pattern.test(text))?.[1];
+	if (hint === undefined) {
 		return text;
 	}
 	const [first, ...rest] = text.split("\n");
-	return [`${first}. Install it as a devDependency: pnpm add -D @effected/plugin`, ...rest].join("\n");
+	return [`${first}. ${hint}`, ...rest].join("\n");
 };
 
 // `defineConfig` validates every field it can check by shape, but a
@@ -218,9 +253,15 @@ const VERSION_STAMP = Symbol.for("@effected/schemastore/version");
  * directory wins and, within one directory, `.ts` beats `.mjs`. `load` either
  * takes the explicit path or discovers one, imports it, checks the default
  * export is a `defineConfig(...)` value, and resolves relative paths against
- * the config's directory. Each `load` evaluates the config and the TypeScript it
- * imports afresh, while packages keep one instance across reloads; a hand-written
- * `.mjs` the config imports stays cached by the native loader.
+ * the config's directory.
+ *
+ * Each `load` evaluates the config, and the TypeScript and `.json` it imports,
+ * afresh. A `type: module` or CommonJS package keeps one instance across reloads.
+ * An imported `.mjs`, `.cjs` or `.js` under `type: module` stays cached by Node's
+ * ESM loader, and a sibling workspace package resolved to built `.js` under
+ * `type: module` is the same case: an edit to any of these is not seen until the
+ * process restarts, so restart a long-lived server to pick one up. An untyped
+ * package of ESM `.js` gets a new instance on each reload.
  *
  * @public
  */
