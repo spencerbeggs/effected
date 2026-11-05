@@ -33,6 +33,7 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@effected/files": "workspace:^",
 		"@effected/jsonc": "workspace:^",
 		"@effected/kit": "workspace:^",
 		"@effected/schemastore": "workspace:*",

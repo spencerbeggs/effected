@@ -41,6 +41,8 @@ const noWrites = (reason: string): MemoryFileSystemFaults => ({
 	makeDirectory: MemoryFileSystem.die(new Error(`makeDirectory must not run: ${reason}`)),
 	writeFile: MemoryFileSystem.die(new Error(`writeFile must not run: ${reason}`)),
 	writeFileString: MemoryFileSystem.die(new Error(`writeFileString must not run: ${reason}`)),
+	open: MemoryFileSystem.die(new Error(`open must not run: ${reason}`)),
+	rename: MemoryFileSystem.die(new Error(`rename must not run: ${reason}`)),
 });
 
 // SchemaFile over an in-memory volume. `provideMerge` keeps the memfs
@@ -177,9 +179,28 @@ describe("SchemaFile", () => {
 					env(
 						{},
 						{
-							writeFileString: (path) =>
-								path === TARGET ? Effect.fail(permissionDenied("writeFileString", path)) : undefined,
+							open: (path) =>
+								path.startsWith("/repo/schemas/.effected-") ? Effect.fail(permissionDenied("open", path)) : undefined,
 						},
+					),
+				),
+			),
+		);
+
+		it.effect("a failed rename keeps the previous document and removes the temp", () =>
+			Effect.gen(function* () {
+				const files = yield* SchemaFile;
+				const error = yield* Effect.flip(files.write(TARGET, document));
+				assert.instanceOf(error, SchemaFileWriteError);
+				assert.strictEqual(error.path, TARGET);
+				const volume = yield* MemoryFileSystem.Volume;
+				assert.strictEqual(volume.text(TARGET), `${canonicalText}stale`);
+				assert.deepStrictEqual(volume.paths(), [TARGET]);
+			}).pipe(
+				Effect.provide(
+					env(
+						{ [TARGET]: `${canonicalText}stale` },
+						{ rename: (from) => Effect.fail(permissionDenied("rename", from)) },
 					),
 				),
 			),
@@ -202,6 +223,7 @@ describe("SchemaFile", () => {
 							writeFileString: MemoryFileSystem.die(
 								new Error("must not write when the directory could not be created"),
 							),
+							open: MemoryFileSystem.die(new Error("must not write when the directory could not be created")),
 						},
 					),
 				),

@@ -1137,6 +1137,56 @@ describe("Runner.run catalog slices", () => {
 		),
 	);
 
+	it.effect("a failed rename keeps the previous slice and removes the temp", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const stale = "[]\n";
+			const error = yield* Effect.flip(Runner.run(cataloged("a", ["alpha"]), options("build")));
+			assert.strictEqual(error._tag, "PlatformError");
+			assert.strictEqual(yield* fs.readFileString(sliceOf("a")), stale, "the previous slice survives");
+			const leftovers = (yield* fs.readDirectory(DIR)).filter((name) => name.endsWith(".tmp"));
+			assert.deepStrictEqual(leftovers, [], "the temp is removed");
+		}).pipe(
+			Effect.provide(
+				faultyLayers(
+					{ [sliceOf("a")]: "[]\n" },
+					{
+						rename: (_from, to) =>
+							to === sliceOf("a") ? Effect.fail(platformFailure("PermissionDenied", "rename", to)) : undefined,
+					},
+				),
+			),
+		),
+	);
+
+	it.effect("a leftover .effected-*.tmp in catalogDir is not read as a slice and is not reported orphaned", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const report = yield* Runner.run(cataloged("a", ["alpha"]), options("build"));
+			assert.deepStrictEqual(report.catalog?.merged?.slices, [sliceOf("a")]);
+			assert.deepStrictEqual(report.catalog?.merged?.invalid, []);
+			assert.isUndefined(report.orphaned);
+			assert.isTrue(yield* fs.exists(`${DIR}/.effected-k3j9x.tmp`), "the leftover is not touched");
+		}).pipe(Effect.provide(layers({ [`${DIR}/.effected-k3j9x.tmp`]: "{ half written" }))),
+	);
+
+	it.effect("check with a leftover temp in outputDir reports no drift and writes nothing", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const built = yield* Runner.run(cataloged("a", ["alpha"]), options("build"));
+			assert.isTrue(built.wrote);
+			yield* fs.writeFileString("/repo/schemas/.effected-k3j9x.tmp", "{ half written");
+			yield* fs.writeFileString(`${DIR}/.effected-k3j9x.tmp`, "{ half written");
+			const before = yield* fs.readDirectory("/repo/schemas", { recursive: true });
+			const checked = yield* Runner.run(cataloged("a", ["alpha"]), options("check"));
+			assert.isFalse(checked.wrote);
+			assert.isUndefined(checked.orphaned);
+			assert.strictEqual(checked.catalog?.slice?.outcome, "unchanged");
+			assert.strictEqual(checked.catalog?.merged?.outcome, "unchanged");
+			assert.deepStrictEqual(yield* fs.readDirectory("/repo/schemas", { recursive: true }), before);
+		}).pipe(Effect.provide(layers({}))),
+	);
+
 	it.effect("an orphaned slice is merged as it sits on disk, like every other config sees it", () =>
 		Effect.gen(function* () {
 			yield* Runner.run(cataloged("a", ["alpha"]), options("build"));

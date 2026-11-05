@@ -12,6 +12,7 @@
 // `catalogDir` is the union of every slice there; both are compared
 // structurally against what is on disk.
 
+import { AtomicFile } from "@effected/files";
 import type {
 	CanonicalJsonError,
 	DriftTolerance,
@@ -328,7 +329,7 @@ const syncFile = Effect.fn("Runner.syncFile")(function* (
 	if (outcome === "written") {
 		// Mirrors `SchemaFile.write`: create the parent, then write.
 		yield* fs.makeDirectory(path.dirname(file), { recursive: true });
-		yield* fs.writeFileString(file, text);
+		yield* AtomicFile.write(file, text);
 	}
 	return outcome;
 });

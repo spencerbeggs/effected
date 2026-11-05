@@ -106,8 +106,8 @@ export interface SchemaToolOptions {
 	readonly confineStdout?: <A, E, R>(self: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
 }
 
-// The walks write without renaming into place, so a reader between a truncate and its write sees a torn document. The
-// bound is only there because a lane requires one: a walk is local work.
+// Each file is replaced atomically, but a build writes several, so a reader between two of them sees a mix of old and
+// new across files. The bound is only there because a lane requires one: a walk is local work.
 const WALK_TIMEOUT = "2 minutes";
 
 // The nearest pnpm workspace, otherwise the nearest git checkout, otherwise where the server started.
@@ -176,8 +176,8 @@ const payloadRef = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struc
  * `schema_build` and `schema_check` load the config OUTSIDE the lane and hand the engine what was loaded. A timed-out
  * lane interrupts its body, and the engine's `Effect.tryPromise` around the import abandons the promise on interrupt,
  * so a load inside would leave a config still evaluating while the next call holds the permit. A hanging config
- * therefore never holds up another call. `schema_validate` stays out: it only reads, and a document torn under it is a
- * refusal, never a wrong answer.
+ * therefore never holds up another call. `schema_validate` stays out: it only reads one document, and each document is
+ * replaced atomically, so it sees the old text or the new.
  *
  * @public
  */

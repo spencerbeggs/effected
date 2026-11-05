@@ -557,6 +557,9 @@ importers:
 
   packages/engine:
     dependencies:
+      '@effected/files':
+        specifier: workspace:^
+        version: link:../files/dist/dev/pkg
       '@effected/jsonc':
         specifier: workspace:^
         version: link:../jsonc/dist/dev/pkg
@@ -1423,6 +1426,9 @@ importers:
 
   packages/schemastore:
     dependencies:
+      '@effected/files':
+        specifier: workspace:^
+        version: link:../files/dist/dev/pkg
       '@effected/semver':
         specifier: workspace:*
         version: link:../semver/dist/dev/pkg
