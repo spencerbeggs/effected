@@ -57,7 +57,10 @@ export const memoryFs = (
 			// refused `open` of that temp, and the counter ticks on the rename that lands it.
 			open: (path) => {
 				const unwritable = options.unwritable;
-				if (unwritable !== undefined && String(path).startsWith(`${unwritable.slice(0, unwritable.lastIndexOf("/") + 1)}.effected-`)) {
+				if (
+					unwritable !== undefined &&
+					String(path).startsWith(`${unwritable.slice(0, unwritable.lastIndexOf("/") + 1)}.effected-`)
+				) {
 					return Effect.fail(systemError("PermissionDenied", "open", String(path)));
 				}
 				return undefined;
