@@ -10,10 +10,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T16:08:15Z
+  at: 2026-11-05T20:18:15Z
 integrity:
   generated:
-    body: 2e248b34a0b0d8f3
+    body: efe48f9e35aeb43f
 ---
 
 # package-json
@@ -125,7 +125,7 @@ Each error is a `Schema.TaggedError` defined in the module of the concept that r
 
 ## Services and layers
 
-Layers are exported as consts inside each concept module, memoized by reference (never getters) and provided at boundaries only — business logic requires services and never calls `Effect.provide` locally. `PackageJsonFile` is the only IO service, working over core `FileSystem`/`Path` so its layer requires no platform peer. It carries three pairs of operations against a path: the strict `read`/`write`, the presence-lenient `readManifest`/`writeManifest`, and the byte-preserving `modify` (see [the decode-free text path interface](../interfaces/package-json-text.md)) — so a caller picks a tolerance tier without leaving the service. Write creates the parent directory, then replaces the file through `AtomicFile.write` from `@effected/files`, so a crash cannot truncate it, and both steps fail as the narrowed write error. Read deliberately has no `exists` pre-check — that is a TOCTOU window — and instead reads the text directly, routing only the `PlatformError` whose `reason._tag` is `"NotFound"` to `PackageJsonNotFoundError`. Resolution is deliberately kept out of `write`: write writes what it is given, and resolution is an explicit step the caller composes, since a writer that silently resolved would make writing a file mutate its contents. The resolver services are not defined here — `Package.resolve` imports the tags from `@effected/npm` and requires them from context, per [contract inversion](../decisions/contract-inversion-default.md).
+Layers are exported as consts inside each concept module, memoized by reference (never getters) and provided at boundaries only — business logic requires services and never calls `Effect.provide` locally. `PackageJsonFile` is the only IO service, working over core `FileSystem`/`Path` so its layer requires no platform peer. It carries three pairs of operations against a path: the strict `read`/`write`, the presence-lenient `readManifest`/`writeManifest`, and the byte-preserving `modify`, which accepts `insertAfter` and `createParents` through `PackageModifyOptions` (see [the decode-free text path interface](../interfaces/package-json-text.md)) — so a caller picks a tolerance tier without leaving the service. Write creates the parent directory, then replaces the file through `AtomicFile.write` from `@effected/files`, so a crash cannot truncate it, and both steps fail as the narrowed write error. Read deliberately has no `exists` pre-check — that is a TOCTOU window — and instead reads the text directly, routing only the `PlatformError` whose `reason._tag` is `"NotFound"` to `PackageJsonNotFoundError`. Resolution is deliberately kept out of `write`: write writes what it is given, and resolution is an explicit step the caller composes, since a writer that silently resolved would make writing a file mutate its contents. The resolver services are not defined here — `Package.resolve` imports the tags from `@effected/npm` and requires them from context, per [contract inversion](../decisions/contract-inversion-default.md).
 
 ## The decode-free text path
 

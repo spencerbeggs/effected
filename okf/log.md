@@ -59,6 +59,8 @@
 * Updated @effected/memfs
 * Updated github-actions
 * Updated @effected/markdown
+* Updated @effected/github
+* Updated @effected/yaml
 
 ## 2026-11-02
 
