@@ -594,7 +594,9 @@ export class Mdast {
 	 * from the display derivation behind `DocumentHeading.text` and
 	 * `DocumentSection.text`, which render a hard break as a space and drop
 	 * raw HTML. Reach for `toText` when matching what remark tooling computes
-	 * (slugs, search indexes); reach for the document accessors for display.
+	 * (search indexes); reach for the document accessors for display. For
+	 * heading anchors use `MarkdownDocument.headingSlugs`, which derives from
+	 * the display text so raw HTML stays out of the slug.
 	 *
 	 * The walk recurses once per nesting level. Every tree `Markdown.parse` or
 	 * `Mdast.fromMdast` produces stays within the package's nesting cap, but a

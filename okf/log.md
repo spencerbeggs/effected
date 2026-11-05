@@ -58,6 +58,7 @@
 * Updated @effected/workspaces/testing: the repo-shape checks
 * Updated @effected/memfs
 * Updated github-actions
+* Updated @effected/markdown
 
 ## 2026-11-02
 

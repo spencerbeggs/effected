@@ -1,0 +1,156 @@
+{
+	"slugs": [
+		{
+			"input": "Hello World",
+			"slug": "hello-world"
+		},
+		{
+			"input": "a & b",
+			"slug": "a--b"
+		},
+		{
+			"input": "foo_bar",
+			"slug": "foo_bar"
+		},
+		{
+			"input": " spaced ",
+			"slug": "-spaced-"
+		},
+		{
+			"input": "emoji 🎉 here",
+			"slug": "emoji--here"
+		},
+		{
+			"input": "é",
+			"slug": "é"
+		},
+		{
+			"input": "Café",
+			"slug": "café"
+		},
+		{
+			"input": "C++ & C#",
+			"slug": "c--c"
+		},
+		{
+			"input": "Über uns",
+			"slug": "über-uns"
+		},
+		{
+			"input": "What's new?",
+			"slug": "whats-new"
+		},
+		{
+			"input": "a  b",
+			"slug": "a--b"
+		},
+		{
+			"input": "a-b",
+			"slug": "a-b"
+		},
+		{
+			"input": "2nd ¼ ²",
+			"slug": "2nd--"
+		},
+		{
+			"input": "日本語 見出し",
+			"slug": "日本語-見出し"
+		},
+		{
+			"input": "Ⓐ circled",
+			"slug": "ⓐ-circled"
+		},
+		{
+			"input": "1. Intro",
+			"slug": "1-intro"
+		},
+		{
+			"input": "`code` span",
+			"slug": "code-span"
+		},
+		{
+			"input": "",
+			"slug": ""
+		},
+		{
+			"input": "---",
+			"slug": "---"
+		},
+		{
+			"input": "Ünï cödé",
+			"slug": "ünï-cödé"
+		},
+		{
+			"input": "tab\there",
+			"slug": "tabhere"
+		},
+		{
+			"input": "MiXeD CaSe",
+			"slug": "mixed-case"
+		}
+	],
+	"sequences": [
+		{
+			"inputs": [
+				"dup",
+				"dup",
+				"dup-1",
+				"dup"
+			],
+			"slugs": [
+				"dup",
+				"dup-1",
+				"dup-1-1",
+				"dup-2"
+			]
+		},
+		{
+			"inputs": [
+				"a",
+				"a",
+				"a"
+			],
+			"slugs": [
+				"a",
+				"a-1",
+				"a-2"
+			]
+		},
+		{
+			"inputs": [
+				"a-1",
+				"a",
+				"a"
+			],
+			"slugs": [
+				"a-1",
+				"a",
+				"a-2"
+			]
+		},
+		{
+			"inputs": [
+				"x & y",
+				"x  y",
+				"x & y"
+			],
+			"slugs": [
+				"x--y",
+				"x--y-1",
+				"x--y-2"
+			]
+		},
+		{
+			"inputs": [
+				"",
+				"",
+				""
+			],
+			"slugs": [
+				"",
+				"-1",
+				"-2"
+			]
+		}
+	]
+}
