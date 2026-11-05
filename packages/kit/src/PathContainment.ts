@@ -90,7 +90,13 @@ export class PathContainment {
 					if (hops > MAX_LINK_HOPS) {
 						return false;
 					}
-					existing = path.resolve(path.dirname(existing), link.success, ...tail);
+					// Resolve against the canonical parent: an earlier component may itself be a
+					// link, and `..` in a relative target climbs from where the parent really is.
+					const parent = yield* Effect.result(fs.realPath(path.dirname(existing)));
+					if (parent._tag === "Failure") {
+						return false;
+					}
+					existing = path.resolve(parent.success, link.success, ...tail);
 					tail = [];
 					continue;
 				}

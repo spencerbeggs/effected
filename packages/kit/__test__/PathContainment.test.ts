@@ -16,6 +16,8 @@ const Env = Layer.merge(
 		"/repo/loop-b": MemoryFileSystem.symlink("/repo/loop-a"),
 		"/repo/inner": MemoryFileSystem.symlink("/repo/dest"),
 		"/repo/dest/f": "",
+		"/repo/d": MemoryFileSystem.symlink("/etc/sub"),
+		"/etc/sub/dang": MemoryFileSystem.symlink("../inside"),
 	}),
 );
 
@@ -85,6 +87,13 @@ describe("PathContainment", () => {
 			Effect.gen(function* () {
 				assert.isTrue(yield* PathContainment.isWithin("/repo", "/repo/inner/f"));
 				assert.isTrue(yield* PathContainment.isWithin("/repo", "/repo/inner/new/b"));
+			}),
+		);
+		it.effect("a relative dangling target resolves against the canonical parent, not an outward-link spelling", () =>
+			Effect.gen(function* () {
+				// /repo/d -> /etc/sub, and /etc/sub/dang -> ../inside: the OS lands on /etc/inside.
+				assert.isFalse(yield* PathContainment.isWithin("/repo", "/repo/d/dang"));
+				assert.isFalse(yield* PathContainment.isWithin("/repo", "/repo/d/dang/new"));
 			}),
 		);
 		it.effect("a symlink loop is outside", () =>
