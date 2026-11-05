@@ -73,6 +73,17 @@ describe("NodeSyncFileSystem.layerWithPath's Path is the host's", () => {
 		}),
 	);
 
+	it.effect("members are node:path's own functions", () =>
+		Effect.gen(function* () {
+			const host = yield* hostPath;
+			assert.strictEqual(host.sep, NodePathModule.sep);
+			assert.strictEqual(host.join, NodePathModule.join);
+			assert.strictEqual(host.resolve, NodePathModule.resolve);
+			assert.strictEqual(host.relative, NodePathModule.relative);
+			assert.strictEqual(host.normalize, NodePathModule.normalize);
+		}),
+	);
+
 	it.effect("sep, join and resolve equal node:path's", () =>
 		Effect.gen(function* () {
 			const host = yield* hostPath;
@@ -100,6 +111,18 @@ describe("NodeSyncFileSystem.layerWithPath's Path is the host's", () => {
 			assert.strictEqual(error._tag, "BadArgument");
 			assert.strictEqual(error.module, "Path");
 			assert.strictEqual(error.method, "fromFileUrl");
+			assert.isDefined(error.cause);
+		}),
+	);
+
+	it.effect("a non-string path fails toFileUrl as BadArgument with the cause", () =>
+		Effect.gen(function* () {
+			const host = yield* hostPath;
+			const error = yield* Effect.flip(host.toFileUrl(1 as never));
+			assert.strictEqual(error._tag, "BadArgument");
+			assert.strictEqual(error.module, "Path");
+			assert.strictEqual(error.method, "toFileUrl");
+			assert.isDefined(error.cause);
 		}),
 	);
 
