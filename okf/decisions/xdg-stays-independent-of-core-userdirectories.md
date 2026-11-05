@@ -24,11 +24,13 @@ integrity:
     body: d5655129894d74ae
   verified:
     by: human:spencer
-    at: 2026-10-25T20:04:29Z
-    content: e3f0c7ecec6a926d
+    at: 2026-11-05T17:32:05Z
+    content: 674df15ab0df202d
 verified:
   - by: human:spencer
     at: 2026-10-25T20:04:29Z
+  - by: human:spencer
+    at: 2026-11-05T17:32:05Z
 ---
 
 # xdg stays independent of core UserDirectories
