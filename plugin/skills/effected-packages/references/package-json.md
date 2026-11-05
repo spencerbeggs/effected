@@ -1,6 +1,6 @@
 # @effected/package-json
 
-package.json parsing, editing, validation and file IO as Effect schemas. Integrated tier: it carries one real external runtime dependency (`spdx-expression-parse` for SPDX license validation) plus `@effected/npm` and `@effected/semver`.
+package.json parsing, editing, validation and file IO as Effect schemas. Integrated tier: it carries one real external runtime dependency (`spdx-expression-parse` for SPDX license validation) plus `@effected/npm`, `@effected/semver` and `@effected/files` (atomic writes).
 
 ## Import
 

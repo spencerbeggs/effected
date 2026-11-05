@@ -249,7 +249,8 @@ const unstubbed = (member: string) => (): Effect.Effect<never> =>
  * @example
  * ```ts
  * import { CommentStyle, ManagedSection, SectionId } from "@effected/templates";
- * import { Effect } from "effect";
+ * import { NodeFileSystem, NodePath } from "@effect/platform-node";
+ * import { Effect, Layer } from "effect";
  *
  * const Base = SectionId.make({ key: "base", commentStyle: CommentStyle.hash });
  * const Tool = SectionId.make({ key: "tool", commentStyle: CommentStyle.hash });
@@ -262,6 +263,10 @@ const unstubbed = (member: string) => (): Effect.Effect<never> =>
  *     Tool.section("run-the-tool"),
  *   ]);
  * });
+ *
+ * // `FileSystem` and `Path` come from a platform layer at the edge.
+ * const live = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+ * Effect.runPromise(program.pipe(Effect.provide(ManagedSection.layer), Effect.provide(live)));
  * ```
  *
  * @public

@@ -42,7 +42,8 @@ describe("ManagedSection", () => {
 			const handle = MemoryFileSystem.makeSync({ [HOOK]: original }, { faults: { rename: renameDenied } });
 			return Effect.gen(function* () {
 				const service = yield* ManagedSection;
-				yield* Effect.flip(service.sync(HOOK, section("example-tool", "echo new")));
+				const error = yield* Effect.flip(service.sync(HOOK, section("example-tool", "echo new")));
+				assert.strictEqual(error._tag, "SectionFileError");
 				const kept = handle.volume.text(HOOK) ?? "";
 				assert.include(kept, "echo user-line");
 				assert.include(kept, "echo after");
@@ -96,9 +97,9 @@ describe("ManagedSection", () => {
 
 	describe("sync", () => {
 		it.effect("creates the file when it does not exist", () => {
-			// The hook's PARENT must exist: this package requires no `Path`, so it
-			// cannot derive a directory to create, and a real filesystem refuses a
-			// write into a missing one. The file itself is what this test creates.
+			// The hook's PARENT must exist: this package never creates a directory,
+			// and a real filesystem refuses a write into a missing one. The file
+			// itself is what this test creates.
 			const fs = memoryFs({ ".husky": MemoryFileSystem.directory() });
 			return withFs(
 				fs,

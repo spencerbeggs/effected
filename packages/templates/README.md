@@ -35,7 +35,7 @@ npm install @effected/templates effect
 pnpm add @effected/templates effect
 ```
 
-Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency, and the only dependency of any kind.
+Requires Node.js >=24.11.0. `effect` v4 is the only peer dependency. `@effected/files` comes along as an ordinary dependency, and it backs the atomic write.
 
 All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
 
