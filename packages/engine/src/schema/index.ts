@@ -43,5 +43,15 @@ export {
 	type SchemaRunInput,
 	SchemaRunResult,
 } from "./SchemaRun.js";
+export {
+	LocatedFinding,
+	MissingSchemaRefError,
+	PayloadError,
+	SchemaResolutionError,
+	SchemaValidate,
+	type SchemaValidateInput,
+	SourcePoint,
+	ValidateReport,
+} from "./SchemaValidate.js";
 export { StepSummary } from "./StepSummary.js";
 export { VersionCheck, VersionMismatch, VersionMismatchError } from "./VersionCheck.js";
