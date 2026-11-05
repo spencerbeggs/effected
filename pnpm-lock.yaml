@@ -336,6 +336,9 @@ importers:
       '@effected/cli-kit':
         specifier: workspace:^
         version: link:../cli-kit/dist/dev/pkg
+      '@effected/engine':
+        specifier: workspace:*
+        version: link:../engine/dist/dev/pkg
       '@effected/env':
         specifier: workspace:^
         version: link:../env/dist/dev/pkg
