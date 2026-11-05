@@ -17,6 +17,8 @@ export interface LineDiffLine {
 	readonly oldLine?: number;
 	/** 1-based line in the new text; absent on a `remove`. */
 	readonly newLine?: number;
+	/** Set on a line that is the last of its text and has no terminating `\n`. */
+	readonly noNewline?: true;
 }
 
 /**
@@ -49,10 +51,23 @@ interface Op {
 	readonly text: string;
 }
 
-const splitLines = (text: string): ReadonlyArray<string> =>
-	text === "" ? [] : (text.endsWith("\n") ? text.slice(0, -1) : text).split("\n");
+/**
+ * Lines as comparison keys: "T" plus the text for a terminated line, "U" plus
+ * the text for an unterminated last line, so two lines with the same text but
+ * different termination are not equal.
+ */
+const splitLines = (text: string): ReadonlyArray<string> => {
+	if (text === "") return [];
+	const terminated = text.endsWith("\n");
+	const parts = (terminated ? text.slice(0, -1) : text).split("\n");
+	return parts.map((part, index) => (index === parts.length - 1 && !terminated ? `U${part}` : `T${part}`));
+};
 
-/** Myers over two line arrays; `undefined` when the distance exceeds `max`. */
+/**
+ * Myers over two line arrays; `undefined` when the distance exceeds `max`.
+ * Memory holds one snapshot per edit step, so it grows quadratically with the
+ * edit distance and is bounded by `max`.
+ */
 const myers = (a: ReadonlyArray<string>, b: ReadonlyArray<string>, max: number): ReadonlyArray<Op> | undefined => {
 	const n = a.length;
 	const m = b.length;
@@ -109,8 +124,10 @@ const myers = (a: ReadonlyArray<string>, b: ReadonlyArray<string>, max: number):
  * Line diffs as plain values: no Effect, no JSON, no colour.
  *
  * Text is split on `\n`, one final `\n` terminating the last line rather than
- * starting another, so a missing final newline is not itself a difference. A
- * trailing `\r` stays in the line, so a CRLF difference is visible.
+ * starting another. A last line without that terminator carries `noNewline`
+ * and does not equal the same text with it. A trailing `\r` stays in the line,
+ * so a CRLF difference is visible. Memory grows quadratically with the edit
+ * distance and is bounded by `maxEditDistance`.
  *
  * @public
  */
@@ -177,18 +194,20 @@ export class LineDiff {
 			let newLines = 0;
 			for (let i = start; i < end; i++) {
 				const op = ops[i] as Op;
+				const text = op.text.slice(1);
+				const flag = op.text.startsWith("U") ? ({ noNewline: true } as const) : {};
 				const oldLine = oldBefore[i] as number;
 				const newLine = newBefore[i] as number;
 				if (op.kind === "add") {
 					newLines++;
-					lines.push({ kind: "add", text: op.text, newLine: newLine + 1 });
+					lines.push({ kind: "add", text, newLine: newLine + 1, ...flag });
 				} else if (op.kind === "remove") {
 					oldLines++;
-					lines.push({ kind: "remove", text: op.text, oldLine: oldLine + 1 });
+					lines.push({ kind: "remove", text, oldLine: oldLine + 1, ...flag });
 				} else {
 					oldLines++;
 					newLines++;
-					lines.push({ kind: "context", text: op.text, oldLine: oldLine + 1, newLine: newLine + 1 });
+					lines.push({ kind: "context", text, oldLine: oldLine + 1, newLine: newLine + 1, ...flag });
 				}
 			}
 			const oldFirst = oldBefore[start] as number;
@@ -214,6 +233,7 @@ export class LineDiff {
 			out.push(`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`);
 			for (const line of hunk.lines) {
 				out.push(`${line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " "}${line.text}`);
+				if (line.noNewline) out.push("\\ No newline at end of file");
 			}
 		}
 		return `${out.join("\n")}\n`;
