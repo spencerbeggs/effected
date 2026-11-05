@@ -243,7 +243,7 @@ const hasUnescapedBrace = (segment: string): boolean => {
 // engine itself decides: one all-string part means no magic.
 const literalSegment = (segment: string, options: EngineOptions): string | undefined => {
 	if (segment === "") return "";
-	const set = new Minimatch(segment, { ...options, nobrace: true, nonegate: true, nocomment: true }).set;
+	const set = new Minimatch(segment, { ...options, nobrace: true, nonegate: true, nocomment: true, nocase: false }).set;
 	const only = set.length === 1 && set[0]?.length === 1 ? set[0][0] : undefined;
 	return typeof only === "string" ? only : undefined;
 };

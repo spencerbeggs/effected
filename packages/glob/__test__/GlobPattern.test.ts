@@ -487,8 +487,17 @@ describe("GlobPattern extglobBang (#1172)", () => {
 		assert.isTrue(check("!(a)", "a", GlobPatternOptions.make({ extglobBang: true, noext: true })));
 	});
 
-	it("keeps (? lookaround-style openers as negation", () => {
-		assert.isTrue(Result.getOrThrow(GlobPattern.compileResult("!(?:a)", on)).negated);
+	it("keeps (? group openers as negation", () => {
+		for (const source of ["!(?:a)", "!(?=a)", "!(?<a)", "!(?!a)"]) {
+			assert.isTrue(Result.getOrThrow(GlobPattern.compileResult(source, on)).negated, source);
+		}
+	});
+
+	it("!!!(a): two bangs cancel, then the extglob", () => {
+		const p = Result.getOrThrow(GlobPattern.compileResult("!!!(a)", on));
+		assert.isFalse(p.negated);
+		assert.isFalse(p.matches("a"));
+		assert.isTrue(p.matches("b"));
 	});
 });
 
@@ -521,6 +530,20 @@ describe("GlobPattern.literalPrefix (#1200)", () => {
 			assert.strictEqual(Result.getOrThrow(GlobPattern.compileResult(source)).literalPrefix, expected);
 		});
 	}
+
+	it("is the same under options that reach the per-segment check", () => {
+		const prefix = (source: string, options: Record<string, boolean>): string =>
+			Result.getOrThrow(GlobPattern.compileResult(source, GlobPatternOptions.make(options))).literalPrefix;
+		assert.strictEqual(prefix("src/lib/**", { nocase: true }), "src/lib");
+		assert.strictEqual(prefix("src/a.ts", { nocase: true }), "src/a.ts");
+		assert.strictEqual(prefix("src/lib/**", { nocaseMagicOnly: true }), "src/lib");
+		assert.strictEqual(prefix("src/lib/**/*.ts", { noglobstar: true }), "src/lib");
+		assert.strictEqual(prefix("src/lib/*.ts", { matchBase: true }), "src/lib");
+		assert.strictEqual(prefix("a//b/*", { preserveMultipleSlashes: true }), "a//b");
+		assert.strictEqual(prefix("src/+(a)/x", { noext: true }), "src/+(a)/x");
+		assert.strictEqual(prefix("src/a/*.ts", { dot: true }), "src/a");
+		assert.strictEqual(prefix("a\\b/*", { windowsPathsNoEscape: true }), "a/b");
+	});
 
 	it("treats a brace as literal under nobrace", () => {
 		const p = Result.getOrThrow(GlobPattern.compileResult("src/{a,b}/x", GlobPatternOptions.make({ nobrace: true })));

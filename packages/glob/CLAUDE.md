@@ -60,12 +60,16 @@ silently truncated — silent truncation silently changes match semantics.
 NaN/non-integer caps die as `TypeError` defects via `assertCap` (wiring bugs,
 not input).
 
-## The two behavioral deviations from upstream
+## The two behavioral deviations from upstream (and one opt-in adaptation)
 
 1. **No ambient environment detection**: `platform` is an explicit option
    defaulting to `"posix"`; `process.platform` is never read. Win32 handling
    (UNC, drive letters, backslash splitting) is kept behind the option.
 2. **Typed budget exhaustion** instead of silent truncation (above).
+
+Beside them, `extglobBang` is an **opt-in adaptation** (off by default, so the
+oracle contract and its compliance rows hold): `parseNegate` stops before a `!`
+that opens an extglob, as picomatch does. It is parity at that one point only.
 
 Plus the workspaces-inherited mandate: **`**` is real** — `packages/**`
 matches `packages/a/b` (glob-core's issue-#62 rewrite is not carried forward).
