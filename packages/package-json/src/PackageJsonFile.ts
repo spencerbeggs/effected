@@ -13,7 +13,7 @@ import type { PackageDecodeError, PackageFormatOptions } from "./Package.js";
 import { Package } from "./Package.js";
 import type { PackageExportsError, PackageExportsManifest, PackageExportsOptions } from "./PackageExports.js";
 import { ExportEntry, PackageExports } from "./PackageExports.js";
-import type { PackageJsonModifyError } from "./PackageJsonFormat.js";
+import type { PackageJsonModifyError, PackageModifyOptions } from "./PackageJsonFormat.js";
 import { PackageJsonFormat } from "./PackageJsonFormat.js";
 import { PackageManifest } from "./PackageManifest.js";
 
@@ -92,11 +92,12 @@ export class PackageJsonWriteError extends Schema.TaggedError<PackageJsonWriteEr
  * One surgical field edit for {@link PackageJsonFile}'s `modify`: set `value`
  * at `path`, or delete the key there when `value` is `undefined` (the
  * `@effected/jsonc` / `@effected/yaml` modify convention — deletion is spelled
- * with an explicit `value: undefined`, so it is always deliberate).
+ * with an explicit `value: undefined`, so it is always deliberate). The
+ * {@link PackageModifyOptions} apply to this edit alone.
  *
  * @public
  */
-export interface PackageFieldEdit {
+export interface PackageFieldEdit extends PackageModifyOptions {
 	/** The field path, e.g. `["packageManager"]` or `["devEngines", "runtime", "version"]`. */
 	readonly path: JsoncPath;
 	/** The plain JSON value to write, or `undefined` to delete the target key. */
@@ -303,7 +304,8 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 				for (const edit of edits) {
 					// Each edit re-navigates the current text, so a later edit may
 					// target a key an earlier one inserted; overlap cannot arise.
-					text = yield* PackageJsonFormat.modifyToString(text, edit.path, edit.value).pipe(
+					const { path: fieldPath, value, ...options } = edit;
+					text = yield* PackageJsonFormat.modifyToString(text, fieldPath, value, options).pipe(
 						// The service's invalid-JSON tag is PackageJsonParseError,
 						// whichever entry point met it — normalize the text-level
 						// syntax error at this boundary.

@@ -49,6 +49,18 @@
 * Updated xdg stays independent of core UserDirectories
 * Updated D9: CliTest uses core ChildProcess, with no peer on @effected/commands
 * Added Atomic writes live in their own package, @effected/files, not in @effected/kit or @effected/store
+* Updated jsonc
+* Updated The package-json decode-free text path
+* Updated glob
+* Updated glob is a full-fidelity vendored port, not a minimal runtime dependency
+* Updated semver
+* Updated @effected/env
+* Updated @effected/workspaces/testing: the repo-shape checks
+* Updated @effected/memfs
+* Updated github-actions
+* Updated @effected/markdown
+* Updated @effected/github
+* Updated @effected/yaml
 
 ## 2026-11-02
 

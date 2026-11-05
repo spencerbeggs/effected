@@ -75,8 +75,11 @@ tempted to reach for `as`.
   request to another GitHub host is a second client configured for it; a
   body field named `url` (a webhook config) goes inside `data`. The client
   doubles (`makeTest`, `layerTest`, `layerFixture`) refuse the same calls with
-  the same error, held to github.com's API host, and an interrupted
-  `paginate` / `paginateStream` aborts its in-flight page request. `RestData<R>`,
+  the same error, held to github.com's API host. **Interrupting any call
+  (`request`, `paginate`, `paginateStream`, `graphql`) aborts its fetch, body
+  read included, and is not retried, so `Effect.timeout` around a call is
+  safe**; a `fetch` option that ignores its signal frees the caller while the
+  request runs on. `RestData<R>`,
   `RestResponse<R>`, `RestRoute`, `RestPaginatingRoute` and `RestItem<R>` are the
   rest of the type vocabulary.
 - **A route outside the generated map goes through `requestDecoded(route,
@@ -242,7 +245,8 @@ tempted to reach for `as`.
   second existence check** — prefer the upsert to catching it yourself.
 - **`GitCommit`** — `get(sha)` → `CommitRef`, `createTree({ changes, baseTree? })`,
   `createCommit({ message, tree, parents })`, `commitFiles({ branch, message,
-  changes })`, over a `FileChange` union of `FileContent` (with `FileMode`
+  changes })` (each with a `…WithUrl` sibling returning `CreatedCommit`
+  `{ sha, htmlUrl }`), over a `FileChange` union of `FileContent` (with `FileMode`
   `100644 | 100755 | 120000`) and `FileDeletion`. **Never spell a rebase as
   `GitBranch.upsert` then `commitFiles`**: that leaves a window in which the
   branch *is* the base, an open PR from it has an empty diff, and GitHub

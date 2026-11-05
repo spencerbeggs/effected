@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T14:19:29Z
+  at: 2026-11-05T18:52:13Z
 integrity:
   generated:
-    body: 89f5a8debbe3c1f4
+    body: 4d8488f03d39c64a
 ---
 
 # glob
@@ -49,6 +49,10 @@ A `FromString` transformation schema exists for embedding patterns in config sch
 
 `enumerationPrefix` is meaningful for **non-negated** patterns only: it is computed from the *inner* pattern, but a negated pattern's `matches` inverts, matching everything the inner pattern does not — and those matches can land outside the prefix. A negated pattern's walk must therefore ignore the prefix entirely and deep-walk from the root unconditionally, regardless of `crossesSegments`.
 
+**`literalPrefix`** is the unexpanded counterpart: the literal leading segments before the first magic segment, unescaped, spelling kept, no trailing slash, `""` for the base and `/` for a root-anchored magic pattern. An unescaped `{` is magic (braces are not expanded, unless `nobrace`), an all-literal pattern yields itself, and a negated pattern yields its inner prefix, so guard on `negated` as for the others. `literalPrefix` is spelling-only and never folds case: under `nocase`, `SRC/Lib/**` gives `SRC/Lib` although the pattern also matches `src/lib/a.ts`, so it is not a safe walk root on a case-sensitive filesystem. `enumerationPrefix` is more conservative there, since `nocase` turns a letter segment into a case-insensitive matcher and it stops at it. `enumerationPrefix` keeps its slash-terminated, brace-common form for its consumers.
+
+**`extglobBang`** is an opt-in option (an engine adaptation in `parseNegate`) that stops negation before a `!` opening an extglob, as picomatch does, except before `(?` plus one of `!=<:` and under `noext`. It is off by default because the package matches its minimatch oracle by contract, and the compliance rows that pin a leading `!(` as negation stay as they are. It promises parity with picomatch at that one point only. `nonegate: true` already gives picomatch's answer for `!(`, but also turns off plain `!a`. `GlobSet` cannot reach the option: it has no options surface and strips one `!` itself as the exclusion marker, so `!(src)/**` in a set excludes `(src)/**`.
+
 **`enumerationRoots`** keeps the alternatives apart where those two fold them into one answer (the shared prefix, "deep if any is"): it returns one `EnumerationRoot { prefix, deep, spellings }` per brace alternative, so `packages/{a,b}/src/*.ts` reads `packages/a/src/` and `packages/b/src/`, one level each, rather than all of `packages/`. `prefix` is canonical and slash-terminated (no `.` or empty segment, a `..` resolved against the segment before it, a leading `..` kept so a walker can still refuse the climb; `""` is the walk's own base), so `{src,./src}/*.ts` has the single root `src/`; an all-literal alternative's final segment is a file name and is excluded from the prefix. A root inside a `deep` root's prefix is dropped and its spellings join that root's, so two kept roots never yield the same file. A climbing prefix (`../x/`) is never inside the base root `""`: it stays its own root, so a walker refuses it and `{**/*.md,../x/*.ts}` yields only the `.md` files, as a standalone climb yields nothing. `spellings` lists every literal prefix the root covers as the pattern spells it, in pattern order: matching is spelling-sensitive (`./src/*.ts` does not match `src/a.ts`), so a walker tests a canonical path once per spelling and answers in the earliest one that matches. Like the other getters it reads the inner pattern and ignores negation. [walker](walker.md)'s per-root walk is its consumer.
 
 **`dot` defaults to `false`**, as minimatch's does: `*` and `**` never match a dotfile or a dot-directory. Vitest matches its include and exclude globs with `dot: true`, so a pattern meant to agree with Vitest says so with `GlobPatternOptions.make({ dot: true })`.
@@ -61,7 +65,7 @@ A `Schema.Class` over an array of pattern strings with **set** semantics: a lead
 
 ## Hardening
 
-Upstream already carries substantial DoS hardening, **preserved** in the port: the 64KB pattern-length cap at every entry; brace-expansion's output budget, its recursion-to-loop rewrite, and lazy tail evaluation; and the ReDoS-safe brace pre-check regex mitigating CVE-2022-3517. Two upstream guards are kept as **authorities**, not tightened: extglob recursion (over-nesting degrades to literal and does not error) and globstar recursion (exceeding it is upstream's deliberate false-negative "correctness for security" trade) — both are invariants, so `matches` stays total.
+Upstream already carries substantial DoS hardening, **preserved** in the port: the 64KB pattern-length cap at every entry; brace-expansion's output budget, its recursion-to-loop rewrite, and lazy tail evaluation; and the ReDoS-safe brace pre-check regex mitigating CVE-2022-3517. Two upstream guards are kept as **authorities**, not tightened: extglob recursion (over-nesting degrades to literal and does not error) and globstar recursion (exceeding it is upstream's deliberate false-negative "correctness for security" trade) — both are invariants, so `matches` stays total. `**` matching remembers the places a walk has tried, so sections that all fail cost polynomial time rather than exponential, with or without `partial`.
 
 New depth guards at the shared nesting cap cover the remaining AST and brace-expansion recursion. `balancedMatch.ts` is fully iterative — no stack surface, no guard, and none should be added. One upstream hole is closed: coalescible nested extglobs recurse with a zero depth increment in stock minimatch, so it stack-overflows at default options on a roughly 60KB adoption chain that sits under its own length cap; the vendored AST parser adds a structural depth backstop counting every descent and failing typed, guarding that surface independently of the extglob recursion option. Cap defaults live in `internal/limits.ts`. Three caps are caller-settable options, validated by the options schema so an invalid value is rejected as a wiring defect before any guard sees it; the internal-only caps follow the [walker](walker.md) `maxDepth` rule — a NaN or non-integer reaching a guard can only come from code, is programmer error, and dies as a defect. Malformed input at every surface exits through the typed error, never a defect, never a hang.
 
@@ -71,7 +75,9 @@ Named `Effect.fn` spans on the public fallible boundaries only — the two `comp
 
 ## Testing
 
-`@effect/vitest`, `it.effect`, `assert.*` — never `expect`; tests in `__test__/`. No platform packages, no mock layers (no `R`), no `TestClock`. The engine is tested below the facade as well as through the public surface, in three families: a compliance fixture table asserting expected result *and* oracle agreement on every row; oracle property tests generating over the full dialect against the real `minimatch` package, asserting the vendored engine agrees modulo the two documented deviations (if the engine disagrees with the oracle, fix the engine, never the expectation); and a hostility suite — oversized patterns, expansion bombs, deep brace nesting, extglob adoption chains, long globstar chains, deep comma-part chains — each failing through the typed error with the right reason, never a stack overflow, OOM or hang, plus the NaN and non-integer cap defect guards.
+`@effect/vitest`, `it.effect`, `assert.*` — never `expect`; tests in `__test__/`. No platform packages, no mock layers (no `R`), no `TestClock`. The engine is tested below the facade as well as through the public surface, in three families: a compliance fixture table asserting expected result *and* oracle agreement on every row; oracle property tests generating over the full dialect against the real `minimatch` package, asserting the vendored engine agrees modulo the documented deviations (if the engine disagrees with the oracle, fix the engine, never the expectation); and a hostility suite — oversized patterns, expansion bombs, deep brace nesting, extglob adoption chains, long globstar chains, deep comma-part chains — each failing through the typed error with the right reason, never a stack overflow, OOM or hang, plus the NaN and non-integer cap defect guards.
+
+The oracle has one standing exception. The port takes minimatch 11.0.4's `**` fixes and nothing else from that rewrite, because minimatch 10.x answers wrongly on some patterns with more than one `**` and under `partial`. The oracle stays on 10.x, since moving it means deciding 11's deliberate changes, so `__test__/globstar.test.ts` pins these with hard-coded rows and a reference matcher, and the oracle properties skip patterns with two or more `**`.
 
 ## Consumer contract
 

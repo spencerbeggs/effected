@@ -458,3 +458,102 @@ describe("GlobPattern.compileResult", () => {
 		assert.isTrue(Result.isFailure(r));
 	});
 });
+
+describe("GlobPattern extglobBang (#1172)", () => {
+	const on = GlobPatternOptions.make({ extglobBang: true });
+	const check = (source: string, candidate: string, options?: GlobPatternOptions): boolean =>
+		Result.getOrThrow(GlobPattern.compileResult(source, options)).matches(candidate);
+
+	it("reads a leading !( as an extglob when on", () => {
+		assert.isFalse(check("!(src)/**", "src/x.ts", on));
+		assert.isTrue(check("!(src)/**", "lib/x.ts", on));
+		assert.isFalse(check("!(a)", "a", on));
+		assert.isTrue(check("!(a)", "b", on));
+		assert.isTrue(check("!(a)", "(a)", on));
+	});
+
+	it("still negates a plain !a, and !!(a) negates once then extglobs", () => {
+		assert.isFalse(check("!a", "a", on));
+		assert.isTrue(check("!a", "b", on));
+		assert.isTrue(check("!!(a)", "a", on));
+		assert.isTrue(Result.getOrThrow(GlobPattern.compileResult("!a", on)).negated);
+		assert.isFalse(Result.getOrThrow(GlobPattern.compileResult("!(a)", on)).negated);
+	});
+
+	it("is off by default and under noext", () => {
+		assert.isTrue(check("!(src)/**", "src/x.ts"));
+		assert.isFalse(check("!(a)", "(a)"));
+		assert.isTrue(check("!(a)", "a", GlobPatternOptions.make({ extglobBang: false })));
+		assert.isTrue(check("!(a)", "a", GlobPatternOptions.make({ extglobBang: true, noext: true })));
+	});
+
+	it("keeps (? group openers as negation", () => {
+		for (const source of ["!(?:a)", "!(?=a)", "!(?<a)", "!(?!a)"]) {
+			assert.isTrue(Result.getOrThrow(GlobPattern.compileResult(source, on)).negated, source);
+		}
+	});
+
+	it("!!!(a): two bangs cancel, then the extglob", () => {
+		const p = Result.getOrThrow(GlobPattern.compileResult("!!!(a)", on));
+		assert.isFalse(p.negated);
+		assert.isFalse(p.matches("a"));
+		assert.isTrue(p.matches("b"));
+	});
+});
+
+describe("GlobPattern.literalPrefix (#1200)", () => {
+	const table: ReadonlyArray<readonly [string, string]> = [
+		["src/lib/**/*.ts", "src/lib"],
+		["*.ts", ""],
+		["**", ""],
+		["", ""],
+		["src/{a,b}/*.ts", "src"],
+		["{a,b}/c", ""],
+		["src/a.ts", "src/a.ts"],
+		["src", "src"],
+		["src/", "src"],
+		["./src/**", "./src"],
+		["../x/*.ts", "../x"],
+		["/abs/*.ts", "/abs"],
+		["/*.ts", "/"],
+		["a\\*b/c/*", "a*b/c"],
+		["a\\{b/*", "a{b"],
+		["src/+(a)/x", "src"],
+		["src/[ab]/x", "src"],
+		["src/a?/x", "src"],
+		["!src/**/*.ts", "src"],
+		["#comment", ""],
+		["a//b/*", "a/b"],
+	];
+	for (const [source, expected] of table) {
+		it(`${JSON.stringify(source)} -> ${JSON.stringify(expected)}`, () => {
+			assert.strictEqual(Result.getOrThrow(GlobPattern.compileResult(source)).literalPrefix, expected);
+		});
+	}
+
+	it("is the same under options that reach the per-segment check", () => {
+		const prefix = (source: string, options: Record<string, boolean>): string =>
+			Result.getOrThrow(GlobPattern.compileResult(source, GlobPatternOptions.make(options))).literalPrefix;
+		assert.strictEqual(prefix("src/lib/**", { nocase: true }), "src/lib");
+		assert.strictEqual(prefix("src/a.ts", { nocase: true }), "src/a.ts");
+		// Spelling only: case is never folded, so this is no safe walk root on a case-sensitive filesystem.
+		assert.strictEqual(prefix("SRC/Lib/**", { nocase: true }), "SRC/Lib");
+		const folded = Result.getOrThrow(
+			GlobPattern.compileResult("SRC/Lib/**", GlobPatternOptions.make({ nocase: true })),
+		);
+		assert.isTrue(folded.matches("src/lib/a.ts"));
+		assert.strictEqual(folded.enumerationPrefix, "");
+		assert.strictEqual(prefix("src/lib/**", { nocaseMagicOnly: true }), "src/lib");
+		assert.strictEqual(prefix("src/lib/**/*.ts", { noglobstar: true }), "src/lib");
+		assert.strictEqual(prefix("src/lib/*.ts", { matchBase: true }), "src/lib");
+		assert.strictEqual(prefix("a//b/*", { preserveMultipleSlashes: true }), "a//b");
+		assert.strictEqual(prefix("src/+(a)/x", { noext: true }), "src/+(a)/x");
+		assert.strictEqual(prefix("src/a/*.ts", { dot: true }), "src/a");
+		assert.strictEqual(prefix("a\\b/*", { windowsPathsNoEscape: true }), "a/b");
+	});
+
+	it("treats a brace as literal under nobrace", () => {
+		const p = Result.getOrThrow(GlobPattern.compileResult("src/{a,b}/x", GlobPatternOptions.make({ nobrace: true })));
+		assert.strictEqual(p.literalPrefix, "src/{a,b}/x");
+	});
+});

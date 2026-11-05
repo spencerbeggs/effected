@@ -1,6 +1,6 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
-import type { GitHubError } from "./GitHubError.js";
+import { GitHubError } from "./GitHubError.js";
 import { unstubbed } from "./internal/unstubbed.js";
 import { Repo } from "./Repo.js";
 
@@ -64,6 +64,23 @@ export class CommitRef extends Schema.Class<CommitRef>("CommitRef")({
 }) {}
 
 /**
+ * A commit just created through the Git Database API: its sha and the URL
+ * GitHub reports for viewing it.
+ *
+ * @remarks
+ * `htmlUrl` is the `html_url` of the creation reply, so it carries the right
+ * host on GitHub Enterprise Server with no host arithmetic.
+ *
+ * @public
+ */
+export class CreatedCommit extends Schema.Class<CreatedCommit>("CreatedCommit")({
+	/** The new commit's sha. */
+	sha: Schema.String,
+	/** The commit's web URL, as GitHub reported it. */
+	htmlUrl: Schema.String,
+}) {}
+
+/**
  * Commits and trees in GitHub's Git Database API.
  *
  * @public
@@ -82,6 +99,12 @@ export interface GitCommitShape {
 		readonly tree: string;
 		readonly parents: ReadonlyArray<string>;
 	}) => Effect.Effect<string, GitHubError, Repo>;
+	/** {@link GitCommitShape.createCommit}, also returning the commit's `html_url`. */
+	readonly createCommitWithUrl: (options: {
+		readonly message: string;
+		readonly tree: string;
+		readonly parents: ReadonlyArray<string>;
+	}) => Effect.Effect<CreatedCommit, GitHubError, Repo>;
 	/**
 	 * Write `changes` onto `branch` as one commit, returning its sha.
 	 *
@@ -107,6 +130,12 @@ export interface GitCommitShape {
 		readonly message: string;
 		readonly changes: ReadonlyArray<FileChange>;
 	}) => Effect.Effect<string, GitHubError, Repo>;
+	/** {@link GitCommitShape.commitFiles}, also returning the commit's `html_url`. */
+	readonly commitFilesWithUrl: (options: {
+		readonly branch: string;
+		readonly message: string;
+		readonly changes: ReadonlyArray<FileChange>;
+	}) => Effect.Effect<CreatedCommit, GitHubError, Repo>;
 }
 
 /**
@@ -147,7 +176,9 @@ export class GitCommit extends Context.Service<GitCommit, GitCommitShape>()("@ef
 		get: overrides.get ?? (() => dies("get")),
 		createTree: overrides.createTree ?? (() => dies("createTree")),
 		createCommit: overrides.createCommit ?? (() => dies("createCommit")),
+		createCommitWithUrl: overrides.createCommitWithUrl ?? (() => dies("createCommitWithUrl")),
 		commitFiles: overrides.commitFiles ?? (() => dies("commitFiles")),
+		commitFilesWithUrl: overrides.commitFilesWithUrl ?? (() => dies("commitFilesWithUrl")),
 	});
 
 	/** {@link GitCommit.makeTest} behind a `Layer`. */
@@ -195,7 +226,7 @@ const make = (client: GitHubClient["Service"]): GitCommitShape => {
 		return tree.sha;
 	});
 
-	const createCommit = Effect.fn("GitCommit.createCommit")(function* (options: {
+	const createRaw = Effect.fn("GitCommit.createCommit")(function* (options: {
 		readonly message: string;
 		readonly tree: string;
 		readonly parents: ReadonlyArray<string>;
@@ -209,37 +240,62 @@ const make = (client: GitHubClient["Service"]): GitCommitShape => {
 			tree: options.tree,
 			parents: [...options.parents],
 		});
-		return commit.sha;
+		// Unvalidated: the sha-only members must not start failing on a reply
+		// that carries a sha and no URL. Only the `WithUrl` members check it.
+		return { sha: commit.sha, htmlUrl: commit.html_url as string | undefined };
 	});
+
+	const commitFilesRaw = Effect.fn("GitCommit.commitFiles")(function* (options: {
+		readonly branch: string;
+		readonly message: string;
+		readonly changes: ReadonlyArray<FileChange>;
+	}) {
+		const { owner, repo } = yield* Repo;
+		const short = options.branch.replace(/^refs\/heads\//, "").replace(/^heads\//, "");
+		yield* Effect.annotateCurrentSpan({ owner, repo, branch: short, changes: options.changes.length });
+		const ref = yield* client.request("GET /repos/{owner}/{repo}/git/ref/{ref}", {
+			owner,
+			repo,
+			ref: `heads/${short}`,
+		});
+		const head = yield* get(ref.object.sha);
+		const tree = yield* createTree({ changes: options.changes, baseTree: head.treeSha });
+		const commit = yield* createRaw({ message: options.message, tree, parents: [head.sha] });
+		yield* client.request("PATCH /repos/{owner}/{repo}/git/refs/{ref}", {
+			owner,
+			repo,
+			ref: `heads/${short}`,
+			sha: commit.sha,
+			force: false,
+		});
+		return commit;
+	});
+
+	/**
+	 * The URL check, run after the work (and for `commitFiles`, the ref move) is
+	 * done: a reply without `html_url` leaves a real commit, so the failure names it.
+	 */
+	const withUrl = (
+		operation: string,
+		created: { readonly sha: string; readonly htmlUrl: string | undefined },
+	): Effect.Effect<CreatedCommit, GitHubError> =>
+		typeof created.htmlUrl === "string"
+			? Effect.succeed(CreatedCommit.make({ sha: created.sha, htmlUrl: created.htmlUrl }))
+			: Effect.fail(
+					GitHubError.decode(
+						operation,
+						`the commit ${created.sha} was created, but GitHub's reply carried no html_url`,
+					),
+				);
 
 	return {
 		get,
 		createTree,
-		createCommit,
-		commitFiles: Effect.fn("GitCommit.commitFiles")(function* (options: {
-			readonly branch: string;
-			readonly message: string;
-			readonly changes: ReadonlyArray<FileChange>;
-		}) {
-			const { owner, repo } = yield* Repo;
-			const short = options.branch.replace(/^refs\/heads\//, "").replace(/^heads\//, "");
-			yield* Effect.annotateCurrentSpan({ owner, repo, branch: short, changes: options.changes.length });
-			const ref = yield* client.request("GET /repos/{owner}/{repo}/git/ref/{ref}", {
-				owner,
-				repo,
-				ref: `heads/${short}`,
-			});
-			const head = yield* get(ref.object.sha);
-			const tree = yield* createTree({ changes: options.changes, baseTree: head.treeSha });
-			const commit = yield* createCommit({ message: options.message, tree, parents: [head.sha] });
-			yield* client.request("PATCH /repos/{owner}/{repo}/git/refs/{ref}", {
-				owner,
-				repo,
-				ref: `heads/${short}`,
-				sha: commit,
-				force: false,
-			});
-			return commit;
-		}),
+		createCommit: (options) => Effect.map(createRaw(options), (commit) => commit.sha),
+		createCommitWithUrl: (options) =>
+			Effect.flatMap(createRaw(options), (commit) => withUrl("GitCommit.createCommitWithUrl", commit)),
+		commitFiles: (options) => Effect.map(commitFilesRaw(options), (commit) => commit.sha),
+		commitFilesWithUrl: (options) =>
+			Effect.flatMap(commitFilesRaw(options), (commit) => withUrl("GitCommit.commitFilesWithUrl", commit)),
 	};
 };

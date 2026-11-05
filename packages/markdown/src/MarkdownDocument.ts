@@ -14,6 +14,7 @@ import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import { preprocessLines } from "./internal/preprocess.js";
 import { normalizeLabelText } from "./internal/references.js";
 import { rootHeadingBounds } from "./internal/sectionBounds.js";
+import { dedupeSlugs, slugify } from "./internal/slug.js";
 import type { MarkdownParseError, MarkdownParseOptions } from "./Markdown.js";
 import { parsePassResult } from "./Markdown.js";
 import { MarkdownDiagnostic } from "./MarkdownDiagnostic.js";
@@ -454,6 +455,25 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	}
 
 	/**
+	 * The GitHub-style anchor slug of every heading, parallel to
+	 * {@link MarkdownDocument.headings} and in document order.
+	 *
+	 * @remarks
+	 * Slugs are made unique the way `github-slugger` does it: a repeat takes
+	 * `-1`, `-2`, ... and the suffixed slug is itself reserved, so the headings
+	 * `dup`, `dup`, `dup-1`, `dup` yield `dup`, `dup-1`, `dup-1-1`, `dup-2`.
+	 *
+	 * Each slug is derived from {@link DocumentHeading.text}, so raw HTML in a
+	 * heading contributes nothing, and an image's `alt` text is included as
+	 * extracted. Parity is with `github-slugger`, not with GitHub itself, whose
+	 * algorithm is not public; how GitHub treats image alt in a heading is not
+	 * verified.
+	 */
+	get headingSlugs(): ReadonlyArray<string> {
+		return dedupeSlugs(this.headings.map((heading) => heading.text));
+	}
+
+	/**
 	 * The document's heading-delimited sections, flat and in document order.
 	 *
 	 * @remarks
@@ -642,6 +662,23 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 			}
 		});
 		return matches;
+	}
+
+	/**
+	 * The GitHub-style anchor slug of one heading text, undeduplicated.
+	 *
+	 * @remarks
+	 * Lowercases, drops every character `github-slugger` drops, then turns each
+	 * space into one hyphen — no trimming, no collapsing — so `a & b` is
+	 * `a--b`. Repeated calls with the same text give the same slug; use
+	 * {@link MarkdownDocument.headingSlugs} for the document's unique anchors.
+	 * Parity is with `github-slugger`, not with GitHub itself.
+	 *
+	 * @param text - The heading text, such as a {@link DocumentHeading}'s `text`.
+	 * @returns The slug.
+	 */
+	static slug(text: string): string {
+		return slugify(text);
 	}
 
 	/**

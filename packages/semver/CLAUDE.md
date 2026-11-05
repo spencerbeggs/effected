@@ -20,6 +20,7 @@ changing the public API, the error set, or the grammar pipeline.
 - `src/Range.ts` — `Range`, `ComparatorSet` (type), `InvalidRangeError`,
   `UnsatisfiableConstraintError`
 - `src/VersionDiff.ts` — `VersionDiff`
+- `src/VersionSpecifier.ts` — `VersionSpecifier`, `InvalidVersionSpecifierError`
 - `src/VersionCache.ts` — `VersionCache`, `VersionCacheShape` (type),
   `EmptyCacheError`, `VersionNotFoundError`, `UnsatisfiedRangeError`
 

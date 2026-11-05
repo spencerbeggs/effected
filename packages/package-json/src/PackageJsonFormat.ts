@@ -136,6 +136,33 @@ export class PackageJsonModifyError extends Schema.TaggedError<PackageJsonModify
 }
 
 /**
+ * Options for {@link PackageJsonFormat.modify} and its siblings, and for each
+ * edit of `PackageJsonFile.modify`. Indentation and line endings are not among
+ * them: those always follow the source.
+ *
+ * @public
+ */
+export interface PackageModifyOptions {
+	/**
+	 * Place the new key directly after this sibling, a key of the object
+	 * receiving it. Appended as usual when the object has no such key. Has no
+	 * effect on a replace or a delete. With `createParents`, the key being inserted
+	 * is the outermost created one and the object receiving it is the deepest that
+	 * exists, so `["catalogs", "silk", "effect"]` with `insertAfter: "workspaces"`
+	 * puts `catalogs` directly after `workspaces`.
+	 */
+	readonly insertAfter?: string;
+	/**
+	 * Create missing object ancestors of the target. Off by default, when a
+	 * missing ancestor fails with {@link PackageJsonModifyError}. An ancestor that
+	 * exists with the wrong type still fails and is never overwritten, and a
+	 * numeric segment under a missing ancestor still fails: arrays are never
+	 * invented. A delete under a missing ancestor succeeds with no edits.
+	 */
+	readonly createParents?: boolean;
+}
+
+/**
  * Decode-free canonical sort and format statics. Not instantiable.
  *
  * @remarks
@@ -333,7 +360,9 @@ export class PackageJsonFormat {
 	 *
 	 * Passing `value === undefined` deletes the target key (including its
 	 * comma) — the `@effected/jsonc` / `@effected/yaml` modify convention. A
-	 * missing insertion target appends after the last key of its container.
+	 * missing insertion target appends after the last key of its container, or
+	 * after the sibling named by `options.insertAfter`. A missing ancestor fails
+	 * unless `options.createParents` is set.
 	 *
 	 * @remarks
 	 * Fails {@link PackageJsonSyntaxError} when `source` is not a JSON object,
@@ -353,6 +382,8 @@ export class PackageJsonFormat {
 	 * @param path - the field path, e.g. `["packageManager"]` or
 	 *   `["devEngines", "runtime", "version"]`
 	 * @param value - the plain JSON value to write, or `undefined` to delete
+	 * @param options - where a new key goes, and whether missing ancestors are
+	 *   created
 	 * @returns the edits to apply via `JsoncEdit.applyAll`, or the failure
 	 *
 	 * @example
@@ -368,6 +399,7 @@ export class PackageJsonFormat {
 		source: string,
 		path: JsoncPath,
 		value: unknown,
+		options?: PackageModifyOptions,
 	): Result.Result<ReadonlyArray<JsoncEdit>, PackageJsonSyntaxError | PackageJsonModifyError> {
 		// package.json is strict JSON; a syntactic precondition keeps garbage
 		// input a typed failure instead of undefined scanner behavior.
@@ -379,7 +411,7 @@ export class PackageJsonFormat {
 				eol: source.includes("\r\n") ? "\r\n" : "\n",
 			};
 			return Result.mapError(
-				JsoncModifier.modifyResult(source, path, value, { formattingOptions }),
+				JsoncModifier.modifyResult(source, path, value, { ...options, formattingOptions }),
 				// Both jsonc failures — JsoncModificationError (navigation) and
 				// JsoncStringifyError (serialization) — become this package's error.
 				(cause) => new PackageJsonModifyError({ path, cause }),
@@ -396,11 +428,14 @@ export class PackageJsonFormat {
 	 * @param source - the package.json file contents (strict JSON)
 	 * @param path - the field path, e.g. `["packageManager"]`
 	 * @param value - the plain JSON value to write, or `undefined` to delete
+	 * @param options - where a new key goes, and whether missing ancestors are
+	 *   created
 	 * @returns the edits to apply via `JsoncEdit.applyAll` — or use
 	 *   {@link PackageJsonFormat.modifyToString} for the applied text in one step
 	 */
-	static readonly modify = Effect.fn("PackageJsonFormat.modify")((source: string, path: JsoncPath, value: unknown) =>
-		Effect.fromResult(PackageJsonFormat.modifyResult(source, path, value)),
+	static readonly modify = Effect.fn("PackageJsonFormat.modify")(
+		(source: string, path: JsoncPath, value: unknown, options?: PackageModifyOptions) =>
+			Effect.fromResult(PackageJsonFormat.modifyResult(source, path, value, options)),
 	);
 
 	/**
@@ -414,6 +449,8 @@ export class PackageJsonFormat {
 	 * @param source - the package.json file contents (strict JSON)
 	 * @param path - the field path, e.g. `["packageManager"]`
 	 * @param value - the plain JSON value to write, or `undefined` to delete
+	 * @param options - where a new key goes, and whether missing ancestors are
+	 *   created
 	 * @returns the modified text, or the failure
 	 *
 	 * @example
@@ -430,8 +467,9 @@ export class PackageJsonFormat {
 		source: string,
 		path: JsoncPath,
 		value: unknown,
+		options?: PackageModifyOptions,
 	): Result.Result<string, PackageJsonSyntaxError | PackageJsonModifyError> {
-		return Result.map(PackageJsonFormat.modifyResult(source, path, value), (edits) =>
+		return Result.map(PackageJsonFormat.modifyResult(source, path, value, options), (edits) =>
 			JsoncEdit.applyAll(source, edits),
 		);
 	}
@@ -457,7 +495,7 @@ export class PackageJsonFormat {
 	 * ```
 	 */
 	static readonly modifyToString = Effect.fn("PackageJsonFormat.modifyToString")(
-		(source: string, path: JsoncPath, value: unknown) =>
-			Effect.fromResult(PackageJsonFormat.modifyToStringResult(source, path, value)),
+		(source: string, path: JsoncPath, value: unknown, options?: PackageModifyOptions) =>
+			Effect.fromResult(PackageJsonFormat.modifyToStringResult(source, path, value, options)),
 	);
 }

@@ -81,6 +81,7 @@ export {
 export { type BranchOutcome, GitBranch, type GitBranchShape } from "./GitBranch.js";
 export {
 	CommitRef,
+	CreatedCommit,
 	FileChange,
 	FileContent,
 	FileDeletion,

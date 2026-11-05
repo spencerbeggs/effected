@@ -23,11 +23,13 @@ Full-fidelity glob matching as Effect schemas. The complete minimatch dialect �
 
 Glob matching is compilation: a pattern string becomes a predicate over candidate strings, and compilation is the step that can fail. A pattern can exceed the length cap, expand past the brace-expansion budget, or nest past the depth cap. Most glob libraries paper over that boundary by throwing, by silently truncating an over-budget expansion (which quietly changes what the pattern matches), or by overflowing the stack on input a user was allowed to supply.
 
-This package puts the failure where it belongs. `GlobPattern.compile` is the one fallible entry point: it returns `Effect<GlobPattern, GlobPatternError>`, and the error carries the `reason`, the `limit` and the `actual` value rather than a message you have to parse. Once a `GlobPattern` exists, `matches` is total — pure, synchronous, no error channel, and no hostile pattern can make it overflow, allocate unboundedly or hang, because every guard fired before the instance was constructed.
+This package puts the failure where it belongs. `GlobPattern.compile` is the one fallible entry point: it returns `Effect<GlobPattern, GlobPatternError>`, and the error carries the `reason`, the `limit` and the `actual` value rather than a message you have to parse. Once a `GlobPattern` exists, `matches` is total — pure, synchronous, no error channel, and no hostile pattern can make it overflow or allocate unboundedly, because every guard fired before the instance was constructed. Matching time is polynomial, bounded by the recursion cap, so a hostile pattern against a long candidate can still be slow.
 
 The dialect is not a subset. The engine is a ported-with-attribution vendoring of minimatch, property-tested against the real minimatch as an oracle on every build, with every upstream DoS guard preserved and new depth guards added on the recursion surfaces upstream left open. Vendoring rather than depending is what keeps the package free of runtime dependencies: `effect` is the only peer, and the minimatch oracle is a devDependency confined to the test suite.
 
 One deliberate deviation from upstream: no ambient environment detection. `platform` is an explicit option defaulting to `"posix"`, and `process.platform` is never read, so a pattern behaves identically on every machine. All win32 path handling stays behind the option, for the caller who knows they need it.
+
+`**` matching also goes past the minimatch version it is ported from. minimatch 10.x gives wrong answers on some patterns with more than one `**`, such as `**/a/b/c/**/d/**` against `d/a/b/c/d/b`, and under `partial`. This engine carries the fixes from minimatch 11, and only those.
 
 ## Install
 
@@ -123,6 +125,8 @@ Effect.runPromise(Effect.result(GlobPattern.compile("a".repeat(70_000)))).then(c
 - `GlobPattern.compile(source, options?)` — `Effect<GlobPattern, GlobPatternError>`; the fallible boundary, and the only one.
 - `GlobPattern#matches(candidate)` — total, pure, no error channel.
 - `GlobPattern#hasMagic` / `negated` / `enumerationPrefix` / `crossesSegments` — metadata for directory enumerators.
+- `GlobPattern#literalPrefix` — the literal leading directory segments before the first magic segment, unescaped and without a trailing slash (`src/{a,b}/*.ts` gives `src`; `src/a.ts` gives itself; `""` when the first segment is magic). Braces are not expanded: an unescaped `{` is magic.
+- `extglobBang` option — read a leading `!(` as the `!(…)` extglob rather than whole-pattern negation, as picomatch does. Off by default, so the minimatch reading holds; `!a` still negates. Parity with picomatch at this one point only (set `dot` too to agree with Vitest). `nonegate: true` also gives picomatch's answer for `!(`, but disables every `!` negation. `GlobSet` has no options surface and strips one leading `!` itself as its exclusion marker.
 - `GlobPattern.escape(literal)` / `unescape(pattern)` — build patterns safely from user-supplied literals.
 - `GlobPattern.FromString` — a `Schema.Codec<GlobPattern, string>` for embedding patterns in config schemas.
 - `GlobPatternOptions` — the full minimatch options surface, schema-validated. Options refine matching; they never admit a pattern that the defaults reject.
@@ -133,7 +137,7 @@ Effect.runPromise(Effect.result(GlobPattern.compile("a".repeat(70_000)))).then(c
 
 The engine in `src/internal/` is ported with attribution from:
 
-- [minimatch](https://github.com/isaacs/minimatch) 10.2.5 — Isaac Z. Schlueter and Contributors, BlueOak-1.0.0
+- [minimatch](https://github.com/isaacs/minimatch) 10.2.5, with the `**` fixes from 11.0.4 — Isaac Z. Schlueter and Contributors, BlueOak-1.0.0
 - [brace-expansion](https://github.com/juliangruber/brace-expansion) 5.0.7 — Julian Gruber, MIT
 - [balanced-match](https://github.com/juliangruber/balanced-match) 4.0.4 — Julian Gruber, MIT
 

@@ -1,7 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
+import { GitHubApp } from "@effected/github";
 import { Cause, Config, ConfigProvider, Context, Effect, FileSystem, Layer, References, Schema } from "effect";
-import { Mac } from "effect/crypto";
+import { Mac, Signature } from "effect/crypto";
 import { vi } from "vitest";
+import type { ActionRunOptions } from "../src/index.js";
 import { Action, ActionEnvironment, ActionInput, ActionOutputs, ActionRuntime, describeCause } from "../src/index.js";
 
 class Extra extends Context.Service<Extra, { readonly describe: Effect.Effect<string, unknown> }>()("test/Extra") {}
@@ -382,6 +384,25 @@ describe("Action.run", () => {
 			);
 		}).pipe(Effect.provide(ActionRuntime.layer)),
 	);
+
+	it.effect("provides a working Signature, which GitHubApp signs its app JWT with", () =>
+		Effect.gen(function* () {
+			const data = new TextEncoder().encode("payload");
+			const signature = yield* Signature.Signature;
+			const { privateKey, publicKey } = yield* signature.generateKeyPair(Signature.ed25519);
+			const signed = yield* signature.sign(privateKey, data);
+			assert.isTrue(yield* signature.verify(publicKey, signed, data));
+			// Positive control: the same signature over other data must not verify.
+			assert.isFalse(yield* signature.verify(publicKey, signed, new TextEncoder().encode("other")));
+		}).pipe(Effect.provide(ActionRuntime.layer)),
+	);
+
+	it("lets GitHubApp.layer through Action.run's layer option, which needs Signature in ActionServices", () => {
+		// Compile-time assertion: `GitHubApp.layer` requires `Signature`, so it
+		// typechecks as the option only when `ActionServices` carries it.
+		const options: ActionRunOptions<GitHubApp> = { layer: GitHubApp.layer };
+		assert.isDefined(options);
+	});
 });
 
 describe("Action.run step debugging", () => {

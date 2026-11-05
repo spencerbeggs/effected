@@ -9,6 +9,7 @@
 // there); these fixtures can.
 
 import { assert, describe, it } from "@effect/vitest";
+import { JsoncEdit } from "@effected/jsonc";
 import { Effect, Result } from "effect";
 import { PackageJsonFormat, PackageJsonModifyError, PackageJsonSyntaxError } from "../src/PackageJsonFormat.js";
 
@@ -90,6 +91,44 @@ describe("PackageJsonFormat.modifyToString", () => {
 		}),
 	);
 
+	it.effect("indents an inserted object to its member in a tab-indented source", () =>
+		Effect.gen(function* () {
+			const source = '{\n\t"pnpm": {\n\t\t"overrides": {}\n\t}\n}\n';
+			const output = yield* PackageJsonFormat.modifyToString(source, ["pnpm", "catalog"], { effect: "^4.1.1" });
+			assert.strictEqual(
+				output,
+				'{\n\t"pnpm": {\n\t\t"overrides": {},\n\t\t"catalog": {\n\t\t\t"effect": "^4.1.1"\n\t\t}\n\t}\n}\n',
+			);
+		}),
+	);
+
+	it.effect("indents a replaced object to its member, in CRLF throughout", () =>
+		Effect.gen(function* () {
+			const source = '{\r\n  "pnpm": {\r\n    "catalog": "x"\r\n  }\r\n}\r\n';
+			const output = yield* PackageJsonFormat.modifyToString(source, ["pnpm", "catalog"], { effect: "^4.1.1" });
+			assert.strictEqual(
+				output,
+				'{\r\n  "pnpm": {\r\n    "catalog": {\r\n      "effect": "^4.1.1"\r\n    }\r\n  }\r\n}\r\n',
+			);
+		}),
+	);
+
+	it.effect("deletes a map's last entry down to an empty map", () =>
+		Effect.gen(function* () {
+			const source = '{\n\t"name": "x",\n\t"dependencies": {\n\t\t"effect": "^4.1.1"\n\t}\n}\n';
+			const output = yield* PackageJsonFormat.modifyToString(source, ["dependencies", "effect"], undefined);
+			assert.strictEqual(output, '{\n\t"name": "x",\n\t"dependencies": {}\n}\n');
+		}),
+	);
+
+	it.effect("deletes a first key and leaves no blank line", () =>
+		Effect.gen(function* () {
+			const source = '{\n  "name": "x",\n  "version": "1.0.0"\n}\n';
+			const output = yield* PackageJsonFormat.modifyToString(source, ["name"], undefined);
+			assert.strictEqual(output, '{\n  "version": "1.0.0"\n}\n');
+		}),
+	);
+
 	it.effect("passes a nonsemver version through untouched — the modify path never decodes", () =>
 		Effect.gen(function* () {
 			// "1.0" is legal for an unpublished root and rejected by every decode
@@ -131,6 +170,57 @@ describe("PackageJsonFormat.modifyToString", () => {
 			assert.deepStrictEqual(error.path, ["name", "sub"]);
 			// The structured cause is the underlying JsoncModificationError.
 			assert.strictEqual((error.cause as { readonly _tag?: string })._tag, "JsoncModificationError");
+		}),
+	);
+});
+
+describe("PackageJsonFormat modify options", () => {
+	it.effect("insertAfter places the new key directly after the sibling, in all four forms", () =>
+		Effect.gen(function* () {
+			const source = '{\n  "name": "x",\n  "version": "1.0.0"\n}\n';
+			const expected = '{\n  "name": "x",\n  "private": true,\n  "version": "1.0.0"\n}\n';
+			const options = { insertAfter: "name" };
+			assert.strictEqual(yield* PackageJsonFormat.modifyToString(source, ["private"], true, options), expected);
+			const text = PackageJsonFormat.modifyToStringResult(source, ["private"], true, options);
+			if (Result.isFailure(text)) return assert.fail("expected modifyToStringResult to succeed");
+			assert.strictEqual(text.success, expected);
+			const edits = yield* PackageJsonFormat.modify(source, ["private"], true, options);
+			assert.strictEqual(JsoncEdit.applyAll(source, edits), expected);
+			const result = PackageJsonFormat.modifyResult(source, ["private"], true, options);
+			if (Result.isFailure(result)) return assert.fail("expected modifyResult to succeed");
+			assert.deepStrictEqual(result.success, edits);
+		}),
+	);
+
+	it.effect("createParents builds missing ancestors in the source's own style", () =>
+		Effect.gen(function* () {
+			const output = yield* PackageJsonFormat.modifyToString(
+				'{\r\n\t"name": "x"\r\n}\r\n',
+				["pnpm", "catalog", "effect"],
+				"^4",
+				{
+					createParents: true,
+				},
+			);
+			assert.strictEqual(
+				output,
+				'{\r\n\t"name": "x",\r\n\t"pnpm": {\r\n\t\t"catalog": {\r\n\t\t\t"effect": "^4"\r\n\t\t}\r\n\t}\r\n}\r\n',
+			);
+		}),
+	);
+
+	it.effect("createParents off fails PackageJsonModifyError with today's message", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				PackageJsonFormat.modifyToString('{"z":1}', ["catalogs", "silk", "effect"], "^4"),
+			);
+			if (!(error instanceof PackageJsonModifyError)) {
+				return assert.fail(`expected PackageJsonModifyError, got ${error._tag}`);
+			}
+			assert.strictEqual(
+				error.message,
+				"Failed to modify package.json at path [catalogs, silk, effect]: Modification failed at path [catalogs, silk, effect]: expected object at depth 2",
+			);
 		}),
 	);
 });

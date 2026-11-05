@@ -8,10 +8,10 @@ resource: ../../packages/yaml
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T19:27:35Z
+  at: 2026-11-05T20:18:15Z
 integrity:
   generated:
-    body: f78b91228cfadca5
+    body: 1cb41b23171ba359
 ---
 
 # @effected/yaml
@@ -401,7 +401,9 @@ through one shared `stringifyDefectToError` triage. `modify` lowers the
 caller's value counting depth from the target's own path depth, because the
 stringifier counts from the document root; a value that fits at `[]` can
 fail `NestingDepthExceeded` a few keys down, and it fails typed, never as a
-defect.
+defect. A scalar edit splices only the one region, even when `indent` or
+`indentSequences` is set, so the scalar's comment and quote style survive;
+a caller who wants the whole document re-laid out calls `YamlFormat.format`.
 
 `modify` and `Yaml.stringify` agree on what every JavaScript value means,
 and a test pins the agreement byte for byte: a `bigint` renders bare on both

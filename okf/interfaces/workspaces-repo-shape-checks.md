@@ -48,10 +48,10 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-05T19:28:39Z
 integrity:
   generated:
-    body: 4d3ae3f3f39e3bb6
+    body: ab7362edd376071e
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -203,6 +203,8 @@ The known misses:
   `["node:*", ...builtinModules]` from `node:module`, which also forbids npm
   packages named like a built-in (`events`, `buffer`). The subpath ships no
   built-in list of its own, because one would drift with Node releases.
+  `SourceBoundary.platformFree(builtinModules)` builds that rule (plus
+  `@effect/platform*`) from the caller's list.
 
 ### The console rules
 

@@ -46,3 +46,4 @@ export {
 	VersionNotFoundError,
 } from "./VersionCache.js";
 export { VersionDiff } from "./VersionDiff.js";
+export { InvalidVersionSpecifierError, VersionSpecifier } from "./VersionSpecifier.js";

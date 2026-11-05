@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-02T15:53:05Z
+  at: 2026-11-05T19:36:13Z
 integrity:
   generated:
-    body: d2ce4d360939b805
+    body: c3acc97a5b9a8fc1
 ---
 
 # github-actions
@@ -111,9 +111,9 @@ and tree-shakes sees the benefit. The composed runtime layer
 services for the same reason: folding them in would put the Azure client
 in the bundle of every action that merely sets an output. It does carry
 the `effect/crypto` services: `ActionServices` includes `Digest.Digest`,
-`Mac.Mac` and `SecureRandom.SecureRandom`, and `ActionRuntime.layer`
-provides all three from `NodeCrypto` (`layerDigest`, `layerMac`,
-`layerSecureRandom`) beside `NodeServices.layer`, which carries no crypto. A
+`Mac.Mac`, `SecureRandom.SecureRandom` and `Signature.Signature`, and
+`ActionRuntime.layer` provides all four from `NodeCrypto` (`layerDigest`,
+`layerMac`, `layerSecureRandom`, `layerSignature`) beside `NodeServices.layer`, which carries no crypto. A
 hand-composed `BlobStore.layerS3` must provide `Digest.Digest` and `Mac.Mac`
 itself.
 

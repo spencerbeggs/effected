@@ -49,6 +49,7 @@
 | `CompleteCheckRunOptions` | Interface | Options for `CheckRunShape.complete`. | |
 | `ConcludeCheckRun` | TypeAlias | Conclude the surrounding `CheckRunShape.withCheckRun` explicitly. | |
 | `CreateCheckRunOptions` | Interface | Options for `CheckRunShape.create`. | |
+| `CreatedCommit` | Class | A commit just created through the Git Database API: its sha and the URL GitHub reports for viewing it. | a just-created commit's sha and its html_url, including on github enterprise server |
 | `DeliveriesOptions` | Interface | Options for `AuthenticatedAppShape.deliveries`. | |
 | `DeliveryAttempt` | Class | One delivery of the app's webhook, as `GET /app/hook/deliveries` lists it. | one webhook delivery attempt: id guid status code event action installation |
 | `DeploymentEnvironment` | Class | Create or update, list and delete a repository's deployment environments. | create update list and delete a deployment environment, environment protection rules |

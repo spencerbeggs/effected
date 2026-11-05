@@ -673,16 +673,16 @@ function tryRegionalScalarEdit(
 	if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
 		return undefined;
 	}
-	// Document-shaping options (sortKeys, indent, indentSequences, finalNewline)
-	// and explicit style requests all steer the whole-document pipeline.
+	// Document-shaping options (sortKeys, finalNewline) and explicit style
+	// requests all steer the whole-document pipeline. `indent` and
+	// `indentSequences` do not: they lay out NEW output, and a replaced scalar
+	// adds none, so the splice keeps the document's own layout.
 	// Silently dropping them on the fast path would change the output without
 	// error, so bail out to the existing compose → replace → re-stringify path.
 	if (
 		options?.defaultScalarStyle !== undefined ||
 		options?.forceDefaultStyles ||
 		options?.sortKeys === true ||
-		options?.indent !== undefined ||
-		options?.indentSequences !== undefined ||
 		options?.finalNewline !== undefined
 	)
 		return undefined;
@@ -881,10 +881,14 @@ export class YamlFormat {
 	 * no edits. Anything else — removals (`value === undefined`), nulls,
 	 * insertions, object/array values, block or multi-line scalars, tagged or anchored
 	 * targets, or any document-shaping / explicit-style option
-	 * (`defaultScalarStyle`, `forceDefaultStyles`, `sortKeys`, `indent`,
-	 * `indentSequences`, `finalNewline`) — falls back to re-serialising the
+	 * (`defaultScalarStyle`, `forceDefaultStyles`, `sortKeys`,
+	 * `finalNewline`) — falls back to re-serialising the
 	 * whole document, which normalises line endings to LF, applies those
 	 * options, and renders the replacement in the stringifier's styles.
+	 * `indent` and `indentSequences` do not force the fallback: they lay out
+	 * newly written structure (insertions, object and array values), while a
+	 * scalar replacement keeps the document's existing indentation. To
+	 * re-indent a document, call `YamlFormat.format`.
 	 *
 	 * Three replacement values have no rendering and fail typed rather than
 	 * hanging, overflowing the stack or corrupting the document: one

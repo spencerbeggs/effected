@@ -88,6 +88,7 @@ export {
 	PackageJsonFormat,
 	PackageJsonModifyError,
 	PackageJsonSyntaxError,
+	type PackageModifyOptions,
 } from "./PackageJsonFormat.js";
 export { PackageManager } from "./PackageManager.js";
 export type { DevEnginePackageManagerEntry } from "./PackageManagerRange.js";

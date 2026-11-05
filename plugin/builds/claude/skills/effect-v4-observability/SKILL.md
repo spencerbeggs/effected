@@ -218,8 +218,9 @@ const TelemetryLayer = Otlp.layerJson({
   resource: { serviceName: "todo-service", serviceVersion: "1.0.0" }
 }).pipe(Layer.provide(FetchHttpClient.layer))
 
-// Or from the standard OTEL_* environment (OTEL_SDK_DISABLED,
-// OTEL_EXPORTER_OTLP_*, OTEL_BSP_*); this form takes the serialization explicitly.
+// Or from the standard OTEL_* environment (OTEL_SDK_DISABLED, OTEL_EXPORTER_OTLP_*,
+// OTEL_<SIGNAL>_EXPORTER, OTEL_BSP_*); this form takes the serialization explicitly.
+// It exports nothing until OTEL_<SIGNAL>_EXPORTER includes `otlp` (see below).
 const TelemetryFromEnv = Otlp.layerFromConfig({ resource: { serviceName: "todo-service" } }).pipe(
   Layer.provide(OtlpSerialization.layerJson),
   Layer.provide(FetchHttpClient.layer)
@@ -231,6 +232,32 @@ const AppLayer = Layer.mergeAll(DomainLayer, HttpLayer).pipe(Layer.provide(Telem
 - `layer` / `layerJson` / `layerProtobuf` / `layerFromConfig` are the four
   entry points; the per-signal modules (`OtlpTracer`, `OtlpLogger`,
   `OtlpMetrics`) exist for an app exporting only one signal.
+- **`layerFromConfig` is gated by the environment, per signal.**
+  `Otlp.layerFromConfig` and `OtlpMetrics.layerFromConfig` (and the tracer and
+  logger equivalents) export nothing — the layer installs only a flusher, and
+  flushing is a no-op — unless `OTEL_<SIGNAL>_EXPORTER` (`OTEL_TRACES_EXPORTER`,
+  `OTEL_METRICS_EXPORTER`, `OTEL_LOGS_EXPORTER`) includes `otlp` **and** an
+  endpoint is set; `OTEL_SDK_DISABLED=true` also disables it. An unset
+  `OTEL_<SIGNAL>_EXPORTER` counts as an empty list, so set it explicitly. A
+  configuration error in these layers is a defect (`Effect.orDie`), not a typed
+  failure. The explicit `layer` / `layerJson` / `layerProtobuf` forms take their
+  options directly and have no exporter gate.
+- Default export intervals differ by signal: traces 5 s, logs 1 s, metrics
+  10 s. Override with `tracerExportInterval`, `loggerExportInterval` and
+  `metricsExportInterval` on `Otlp.layer` / `layerJson` / `layerProtobuf` (the
+  per-signal modules take plain `exportInterval`); `layerFromConfig`
+  reads `OTEL_BSP_SCHEDULE_DELAY` (traces), `OTEL_BLRP_SCHEDULE_DELAY` (logs) and
+  `OTEL_METRIC_EXPORT_INTERVAL` (metrics).
+- **Request URLs reach exported spans.** Whenever a tracer is live, `effect/http`'s
+  `HttpClient` records `url.full`, `url.path` and `url.query` on each request
+  span, and the OTLP tracer ships them off the machine. Only the names in
+  `UrlParams.CurrentRedactedNames` are redacted by default (the signed-URL
+  names `X-Amz-Signature`, `X-Amz-Credential`, `X-Amz-Security-Token`,
+  `AWSAccessKeyId`, `Signature`, `sig`, `X-Goog-Signature`), so a `?token=`
+  query value is exported as written. `url.path` is never redacted, so a secret
+  in the path goes out as written too. Extend the list by providing
+  `UrlParams.CurrentRedactedNames`; a custom list replaces the defaults.
+  The exporter's own posts are not traced.
 - The layers own export batching and shutdown (`shutdownTimeout`) — **never
   flush or shut an exporter down from business code.**
 

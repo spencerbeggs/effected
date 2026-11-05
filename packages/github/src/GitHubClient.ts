@@ -39,6 +39,12 @@ export interface GitHubClientShape {
 	 * route that resolves to another origin, fails `kind: "rejected"` with no
 	 * status and nothing sent.
 	 *
+	 * **Interrupting aborts the fetch.** The fiber's `AbortSignal` reaches the
+	 * fetch, so an interrupt (an `Effect.timeout`, a cancelled caller) cancels the
+	 * in-flight HTTP request, a body read included, and the attempt is not
+	 * retried. A `fetch` option that ignores its signal still releases the caller
+	 * at once, while that request runs on.
+	 *
 	 * @example
 	 * ```ts
 	 * import { GitHubClient } from "@effected/github";
@@ -93,6 +99,12 @@ export interface GitHubClientShape {
 	 * header whose next page names another origin fails the walk
 	 * `kind: "rejected"` before that page is requested, rather than sending the
 	 * token there or ending the walk early as if the collection were complete.
+	 *
+	 * **Interrupting aborts the fetch.** The fiber's `AbortSignal` reaches the
+	 * fetch, so an interrupt (an `Effect.timeout`, a cancelled caller) cancels the
+	 * in-flight HTTP request, a body read included, and the attempt is not
+	 * retried. A `fetch` option that ignores its signal still releases the caller
+	 * at once, while that request runs on.
 	 */
 	readonly paginate: <R extends Rest.PaginatingRoute>(
 		route: R,
@@ -107,6 +119,12 @@ export interface GitHubClientShape {
 	 * Lazy in requests: a downstream `Stream.take` stops the walk rather than
 	 * filtering pages that were already fetched. Confined to the configured
 	 * host exactly as {@link GitHubClientShape.paginate} is.
+	 *
+	 * **Interrupting aborts the fetch.** The fiber's `AbortSignal` reaches the
+	 * fetch, so an interrupt (an `Effect.timeout`, a cancelled caller) cancels the
+	 * in-flight HTTP request, a body read included, and the attempt is not
+	 * retried. A `fetch` option that ignores its signal still releases the caller
+	 * at once, while that request runs on.
 	 */
 	readonly paginateStream: <R extends Rest.PaginatingRoute>(
 		route: R,

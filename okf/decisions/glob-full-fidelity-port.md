@@ -8,17 +8,19 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-11-05T20:11:24Z
 integrity:
   generated:
-    body: cdd2764a005bb8e3
+    body: 4b78acda9e2d08e4
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 02e532a532cf4da6
+    at: 2026-11-05T20:23:04Z
+    content: add51726d1da1f4e
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-05T20:23:04Z
 ---
 
 # glob is a full-fidelity vendored port, not a minimal runtime dependency
@@ -41,4 +43,4 @@ verified:
 
 ## Consequences
 
-The port carries the full upstream dialect's surface area, options, and edge-case behavior, plus vendored-code attribution obligations (every ported file keeps its license header, never edited). Two functional deviations from upstream were made deliberately in the process: no ambient environment detection (`platform` is an explicit option defaulting to `"posix"`, matching the `walker` precedent that a pure library never reads ambient process state), and typed budget exhaustion instead of upstream's silent truncation on expansion overflow. Both are recorded so a future maintainer porting an upstream fix does not "restore" either behavior by mistake. The trade for shipping the full dialect is a larger vendored surface to keep in sync with upstream security fixes, offset by the oracle-based differential test suite that flags any drift from real `minimatch` behavior outside the two documented deviations.
+The port carries the full upstream dialect's surface area, options, and edge-case behavior, plus vendored-code attribution obligations (every ported file keeps its license header, never edited). Three functional deviations from upstream were made deliberately in the process: no ambient environment detection (`platform` is an explicit option defaulting to `"posix"`, matching the `walker` precedent that a pure library never reads ambient process state), typed budget exhaustion instead of upstream's silent truncation on expansion overflow, and `**` matching that takes minimatch 11.0.4's fixes (and nothing else from that rewrite) where the oracle still has the bugs. All three are recorded so a future maintainer porting an upstream fix does not "restore" any of them by mistake. The trade for shipping the full dialect is a larger vendored surface to keep in sync with upstream security fixes, offset by the oracle-based differential test suite that flags any drift from real `minimatch` behavior outside the three documented deviations (the opt-in `extglobBang` option is an adaptation that is off by default, so it never changes what the oracle compares).

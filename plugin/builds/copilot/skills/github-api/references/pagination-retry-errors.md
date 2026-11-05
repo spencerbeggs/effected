@@ -52,6 +52,15 @@ not recorded in `fixtures.requested`.
 interrupt (an `Effect.timeout`, a cancelled caller) cancels the HTTP request
 rather than leaving it running, and no further page is requested.
 
+**Interrupting any call aborts its fetch.** The same holds for `request` and
+`graphql`: the fiber's `AbortSignal` reaches the fetch, so an `Effect.timeout`
+around a call is safe, and an interrupted attempt is not retried under the
+default policy. A hung body read is cancelled with it. Two limits on what is
+proven: the evidence is a scripted fetch (its body a synthetic stream), not real
+undici sockets, and a fetch that ignores its signal releases the caller at once
+while the request runs on. There is no `timeout` option on the client; bound a
+call with `Effect.timeout`.
+
 `RestPaginatingRoute` is narrower than `RestRoute` — only the routes GitHub's
 pagination plugin actually knows how to walk. Handing a non-paginating route
 to `client.paginate` is therefore a **compile** error, not a runtime

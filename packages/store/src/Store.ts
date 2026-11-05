@@ -357,6 +357,19 @@ export interface StoreSqliteOptions extends StoreOptions {
 	 * 	onConnect: (sql) => sql`PRAGMA synchronous = NORMAL`,
 	 * });
 	 * ```
+	 *
+	 * @example
+	 * For several settings, sequence the statements; each is an `Effect`, so
+	 * `Effect.andThen` (or `Effect.gen`) chains them and the first failure
+	 * fails the layer:
+	 *
+	 * ```ts
+	 * const StoreLive = Store.layerSqlite({
+	 * 	filename: "sessions.db",
+	 * 	migrations,
+	 * 	onConnect: (sql) => Effect.andThen(sql`PRAGMA synchronous = NORMAL`, sql`PRAGMA temp_store = MEMORY`),
+	 * });
+	 * ```
 	 */
 	readonly onConnect?: (sql: SqlClient.SqlClient) => Effect.Effect<unknown, SqlError.SqlError>;
 }

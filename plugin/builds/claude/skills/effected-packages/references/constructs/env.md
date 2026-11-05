@@ -17,6 +17,8 @@
 | `RuntimeEnv` | Class | A snapshot of who is running the program: the agent, the CI and its run, the terminal, and the session. | agent, CI and terminal detection snapshot, persist as plain JSON |
 | `RuntimeEnvOverrides` | Interface | The fields `CurrentRuntimeEnv.layerTest` can override. | |
 | `SessionSource` | TypeAlias | Where a `TerminalSession` came from, in priority order: `tmux` (`TMUX_PANE`), `screen` (`STY`), `windows-terminal` (`WT_SESSION`), `wezterm` (`WEZTERM_PANE`), `kitty` (`KITTY_WINDOW_ID`), `term-session` (`TERM_SESSION_ID`, set by iTerm2 and Terminal.app). | |
+| `Sgr` | Class | SGR-only terminal text helpers: strip colour and attribute sequences, or paint text with basic styles. | strip colour and attribute escape codes only, keep cursor moves and hyperlinks, paint text bold dim italic underline or basic colours at a colour level |
+| `SgrStyle` | TypeAlias | A basic SGR style: an attribute or one of the 16 base foreground colours. | |
 | `ShellExports` | Class | Read and write shell export files in one strict dialect: what `printf 'export %s=%q\\n'` and `ShellExports.format` write, and Claude Code's `session-env` files use. | parse and write shell export files, read session env, quote one shell word, posix sh quoting, always quote, quote without throwing |
 | `ShellExportsError` | Class | The first place a text leaves the `ShellExports` dialect. The whole text is rejected: once one statement is not understood, no earlier variable can be trusted. | shell export text rejected, line, column and reason |
 | `ShellExportsErrorReason` | TypeAlias | Why `ShellExports.parseResult` or `ShellExports.parseBytesResult` rejected a text. | |

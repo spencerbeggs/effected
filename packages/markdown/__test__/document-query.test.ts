@@ -4,6 +4,7 @@
 // root-inclusive), identity into `MarkdownFormat.modify`, and the getters'
 // thrown-defect posture on an over-deep foreign tree.
 
+import { readFileSync } from "node:fs";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Option, Result, Stream } from "effect";
 import { MAX_NESTING_DEPTH } from "../src/internal/limits.js";
@@ -176,5 +177,44 @@ describe("guard posture", () => {
 	it("returns early without visiting the deep region when a shallow node matches", () => {
 		const document = overDeepDocument();
 		assert.strictEqual(Option.getOrThrow(document.find("root")), document.root);
+	});
+});
+
+describe("heading slugs", () => {
+	const fixture = JSON.parse(readFileSync(new URL("./fixtures/slugs/slugs.json", import.meta.url), "utf8")) as {
+		slugs: ReadonlyArray<{ input: string; slug: string }>;
+		sequences: ReadonlyArray<{ inputs: ReadonlyArray<string>; slugs: ReadonlyArray<string> }>;
+	};
+
+	it("slug matches github-slugger on every fixture input", () => {
+		for (const row of fixture.slugs) {
+			assert.strictEqual(MarkdownDocument.slug(row.input), row.slug, JSON.stringify(row.input));
+		}
+	});
+
+	it("headingSlugs reproduces github-slugger's duplicate sequences", () => {
+		for (const row of fixture.sequences) {
+			const doc = parseDoc(row.inputs.map((text) => `# ${text}`).join("\n\n"));
+			assert.deepStrictEqual(doc.headingSlugs, row.slugs);
+		}
+		const dup = parseDoc("# dup\n\n# dup\n\n# dup-1\n\n# dup\n");
+		assert.deepStrictEqual(dup.headingSlugs, ["dup", "dup-1", "dup-1-1", "dup-2"]);
+	});
+
+	it("is parallel to headings and includes nested headings", () => {
+		const doc = parseDoc("# Top\n\n> ## Quoted\n\n- ### Listed\n\n# Top\n");
+		assert.strictEqual(doc.headingSlugs.length, doc.headings.length);
+		assert.deepStrictEqual(doc.headingSlugs, ["top", "quoted", "listed", "top-1"]);
+	});
+
+	it("takes the display text: raw HTML contributes nothing", () => {
+		const doc = parseDoc("# a <span>x</span> b\n");
+		assert.deepStrictEqual(doc.headingSlugs, ["a-x-b"]);
+		assert.isFalse(doc.headingSlugs[0]?.includes("span"));
+	});
+
+	it("uses inline code values and image alt as extracted", () => {
+		const doc = parseDoc("# Use `Foo_Bar` ![the alt](x.png)\n");
+		assert.deepStrictEqual(doc.headingSlugs, ["use-foo_bar-the-alt"]);
 	});
 });

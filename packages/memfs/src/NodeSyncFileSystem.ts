@@ -12,6 +12,8 @@
  */
 
 import * as NFS from "node:fs";
+import * as NodePath from "node:path";
+import * as NodeUrl from "node:url";
 import type { PlatformError as PlatformErrorNs } from "effect";
 import { BigInt as BI, ByteSize, Effect, FileSystem, Layer, Option, Path, PlatformError, Stream } from "effect";
 import { errnoTag } from "./internal/errno.js";
@@ -205,6 +207,34 @@ const make: FileSystem.FileSystem = FileSystem.FileSystem.of({
 
 const layer: Layer.Layer<FileSystem.FileSystem> = Layer.succeed(FileSystem.FileSystem, make);
 
+// The host's `Path`: `node:path` plus the two URL members it lacks. Typed so
+// the exported static is a plain layer, not `typeof` a local.
+const hostPath: Path.Path = Path.make({
+	sep: NodePath.sep,
+	basename: NodePath.basename,
+	dirname: NodePath.dirname,
+	extname: NodePath.extname,
+	format: NodePath.format,
+	isAbsolute: NodePath.isAbsolute,
+	join: NodePath.join,
+	normalize: NodePath.normalize,
+	parse: NodePath.parse,
+	relative: NodePath.relative,
+	resolve: NodePath.resolve,
+	toNamespacedPath: NodePath.toNamespacedPath,
+	fromFileUrl: (url) =>
+		Effect.try({
+			try: () => NodeUrl.fileURLToPath(url),
+			catch: (cause) => new PlatformError.BadArgument({ module: "Path", method: "fromFileUrl", cause }),
+		}),
+	toFileUrl: (path) =>
+		Effect.try({
+			try: () => NodeUrl.pathToFileURL(path),
+			catch: (cause) => new PlatformError.BadArgument({ module: "Path", method: "toFileUrl", cause }),
+		}),
+});
+const hostPathLayer: Layer.Layer<Path.Path> = Layer.succeed(Path.Path, hostPath);
+
 /**
  * A read-only, synchronous `FileSystem` over `node:fs`.
  *
@@ -251,16 +281,18 @@ export class NodeSyncFileSystem {
 	static readonly layer: Layer.Layer<FileSystem.FileSystem> = layer;
 
 	/**
-	 * {@link NodeSyncFileSystem.layer} with core's `Path.layer` merged in:
+	 * {@link NodeSyncFileSystem.layer} with the host's own `Path` merged in:
 	 * provides `FileSystem.FileSystem` and `Path.Path` from one layer.
 	 *
 	 * @remarks
-	 * `Path.layer` is core's POSIX implementation, and it is synchronous, so a
-	 * program using both services still runs under `Effect.runSync`. On Windows,
-	 * provide the platform's own `Path` beside {@link NodeSyncFileSystem.layer}
-	 * instead.
+	 * The `Path` is built from `node:path` (win32 rules on Windows, POSIX
+	 * elsewhere), with `fromFileUrl` and `toFileUrl` from `node:url` failing as
+	 * `BadArgument`, the same shape the platform's own `Path` layer has. Every
+	 * member is synchronous, so a program using both services still runs under
+	 * `Effect.runSync`. It is not core's POSIX-only `Path.layer`, which would
+	 * misread Windows paths beside the real filesystem.
 	 */
-	static readonly layerWithPath: Layer.Layer<FileSystem.FileSystem | Path.Path> = Layer.merge(layer, Path.layer);
+	static readonly layerWithPath: Layer.Layer<FileSystem.FileSystem | Path.Path> = Layer.merge(layer, hostPathLayer);
 
 	private constructor() {}
 }

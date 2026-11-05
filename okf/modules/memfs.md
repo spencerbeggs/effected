@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-05T19:31:57Z
 integrity:
   generated:
-    body: e01a397408e2d641
+    body: b3269f847a7fb072
 ---
 
 # @effected/memfs
@@ -365,7 +365,7 @@ not. Listings, `paths()` and `snapshot()` keep stored spellings.
 `@effected/memfs/node-sync` exports `NodeSyncFileSystem.fileSystem` (a
 `FileSystem` **value**, not an Effect; renamed from `make` before any
 release), `NodeSyncFileSystem.layer`, and `NodeSyncFileSystem.layerWithPath`
-(the same with core's synchronous `Path.layer` merged in).
+(the same with the host's own synchronous `Path`, built from `node:path`, merged in).
 
 - The read members — `access`/`exists`, `stat`, `readFile`/`readFileString`,
   `readDirectory` (including `recursive`), `readLink`, `realPath` — run on

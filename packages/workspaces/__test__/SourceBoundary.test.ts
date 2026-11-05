@@ -1,5 +1,6 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: these strings are source text under test
 import { readFileSync } from "node:fs";
+import { builtinModules } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
@@ -583,5 +584,28 @@ describe("SourceBoundary on the real tree", () => {
 		);
 		assert.notInclude(SourceBoundary.importSpecifiers(text), "url");
 		assert.include(SourceBoundary.importSpecifiers(text), "effect/process");
+	});
+});
+
+describe("SourceBoundary.platformFree", () => {
+	const rule = SourceBoundary.platformFree(builtinModules);
+
+	it("flags a bare built-in, a node: built-in and a platform package", () => {
+		const text = [
+			'import fs from "fs";',
+			'import { join } from "node:path";',
+			'import { NodeServices } from "@effect/platform-node";',
+		].join("\n");
+		assert.deepStrictEqual(lines(text, rule), [1, 2, 3]);
+	});
+
+	it("spares effect and a relative import", () => {
+		assert.deepStrictEqual(lines('import { Effect } from "effect";\nimport { a } from "./a.js";', rule), []);
+	});
+
+	it("is exactly node:*, @effect/platform* and the caller's list", () => {
+		assert.deepStrictEqual(SourceBoundary.platformFree(["fs"]), {
+			forbidImports: ["node:*", "@effect/platform*", "fs"],
+		});
 	});
 });

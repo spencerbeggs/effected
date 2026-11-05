@@ -57,6 +57,16 @@ export class GlobPatternOptions extends Schema.Class<GlobPatternOptions>("GlobPa
 	nocomment: Schema.optionalKey(Schema.Boolean),
 	/** Do not treat a pattern starting with `!` as a negation. */
 	nonegate: Schema.optionalKey(Schema.Boolean),
+	/**
+	 * Read a leading `!(` as the `!(…)` extglob instead of whole-pattern
+	 * negation, as picomatch (and so Vitest) does. A plain `!a` still negates, and
+	 * `!!(a)` negates once and then reads the extglob. Off by default, which keeps
+	 * minimatch's reading. Inert under `noext`. This is parity at that one point,
+	 * not with picomatch generally; set `dot` separately to agree with it.
+	 * `nonegate: true` also gives picomatch's answer for `!(`, but turns off every
+	 * `!` negation.
+	 */
+	extglobBang: Schema.optionalKey(Schema.Boolean),
 	/** Treat `**` the same as `*`. */
 	noglobstar: Schema.optionalKey(Schema.Boolean),
 	/** Do not expand extglobs like `+(a|b)`. */
@@ -119,6 +129,7 @@ const toEngineOptions = (o?: GlobPatternOptions): EngineOptions => ({
 	...(o?.nobrace !== undefined && { nobrace: o.nobrace }),
 	...(o?.nocomment !== undefined && { nocomment: o.nocomment }),
 	...(o?.nonegate !== undefined && { nonegate: o.nonegate }),
+	...(o?.extglobBang !== undefined && { extglobBang: o.extglobBang }),
 	...(o?.noglobstar !== undefined && { noglobstar: o.noglobstar }),
 	...(o?.noext !== undefined && { noext: o.noext }),
 	...(o?.dot !== undefined && { dot: o.dot }),
@@ -194,6 +205,47 @@ const canonicalPrefix = (literals: ReadonlyArray<string>): string => {
 		else kept.push(segment);
 	}
 	return kept.length === 0 ? "" : `${kept.join("/")}/`;
+};
+
+// Split on unescaped `/`. A backslash escapes the next character (the engine has
+// already turned every `\\` into `/` under windowsPathsNoEscape). Empty segments
+// collapse, as the engine collapses `//`, except a leading one, which marks the
+// root. A trailing slash adds nothing.
+const splitSegments = (pattern: string, preserveMultipleSlashes: boolean): Array<string> => {
+	const parts: Array<string> = [];
+	let current = "";
+	for (let i = 0; i < pattern.length; i++) {
+		const c = pattern.charAt(i);
+		if (c === "\\" && i + 1 < pattern.length) {
+			current += c + pattern.charAt(i + 1);
+			i++;
+		} else if (c === "/") {
+			parts.push(current);
+			current = "";
+		} else current += c;
+	}
+	parts.push(current);
+	return parts.filter(
+		(part, index) => part !== "" || index === 0 || (preserveMultipleSlashes && index < parts.length - 1),
+	);
+};
+
+const hasUnescapedBrace = (segment: string): boolean => {
+	for (let i = 0; i < segment.length; i++) {
+		const c = segment.charAt(i);
+		if (c === "\\") i++;
+		else if (c === "{") return true;
+	}
+	return false;
+};
+
+// A segment's literal value (escapes undone), or undefined when it carries magic. The
+// engine itself decides: one all-string part means no magic.
+const literalSegment = (segment: string, options: EngineOptions): string | undefined => {
+	if (segment === "") return "";
+	const set = new Minimatch(segment, { ...options, nobrace: true, nonegate: true, nocomment: true, nocase: false }).set;
+	const only = set.length === 1 && set[0]?.length === 1 ? set[0][0] : undefined;
+	return typeof only === "string" ? only : undefined;
 };
 
 /**
@@ -308,8 +360,9 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	});
 
 	/**
-	 * Whether `candidate` matches this pattern. Total: never throws, never
-	 * hangs. The globstar backtracking cap is a documented false negative
+	 * Whether `candidate` matches this pattern. Total: never throws. Time is
+	 * polynomial, bounded by the recursion cap, so a hostile pattern against a
+	 * long candidate can still be slow. The globstar backtracking cap is a documented false negative
 	 * (upstream's deliberate correctness-for-security trade), never an error.
 	 */
 	matches(candidate: string): boolean {
@@ -363,6 +416,48 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 		}
 		if (common === undefined || common.length === 0) return "";
 		return `${common.join("/")}/`;
+	}
+
+	/**
+	 * The literal leading directory segments before the first segment that
+	 * carries magic, unescaped, joined with `/` and with no trailing slash. `""`
+	 * when the first segment is magic (the base, as for
+	 * {@link GlobPattern.enumerationPrefix}).
+	 *
+	 * @remarks
+	 * Braces are not expanded: an unescaped `{` makes its segment magic, so
+	 * `src/{a,b}/*.ts` gives `src` (unless `nobrace` is on). A pattern with no
+	 * magic at all gives the whole pattern, so `src/a.ts` gives `src/a.ts`. The
+	 * spelling is kept (`./src/**` gives `./src`, `../x/*.ts` gives `../x`), a
+	 * root stays (`/*.ts` gives `/`), and an escape is undone (`a\*b/c/*` gives
+	 * `a*b/c`). Extglobs, classes and `?` are magic. A comment gives `""`.
+	 * Computed under this pattern's options; its `matchBase` and win32
+	 * interaction is undefined, as for the other getters.
+	 *
+	 * It returns the pattern's spelling and never folds case: under `nocase`,
+	 * `SRC/Lib/**` gives `SRC/Lib`, though the pattern also matches `src/lib/a.ts`.
+	 * It is not a safe walk root there on a case-sensitive filesystem.
+	 * {@link GlobPattern.enumerationPrefix} is more conservative: `nocase` turns a
+	 * letter segment into a case-insensitive matcher, so it stops there.
+	 *
+	 * Like {@link GlobPattern.enumerationPrefix} it reads the inner pattern of a
+	 * negated one: guard on {@link GlobPattern.negated} at the call site.
+	 */
+	get literalPrefix(): string {
+		const engine = this.#engineOf();
+		if (engine.comment || engine.empty) return "";
+		const options = engine.options;
+		const braces = !options.nobrace;
+		const literals: Array<string> = [];
+		const segments = splitSegments(engine.pattern, engine.preserveMultipleSlashes);
+		for (const segment of segments) {
+			if (braces && hasUnescapedBrace(segment)) break;
+			const literal = literalSegment(segment, options);
+			if (literal === undefined) break;
+			literals.push(literal);
+		}
+		if (literals.length === 1 && literals[0] === "") return "/";
+		return literals.join("/");
 	}
 
 	/**

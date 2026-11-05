@@ -35,10 +35,10 @@ sources:
     resource: https://github.com/spencerbeggs/effected/issues/1030
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T18:08:21Z
+  at: 2026-11-05T19:48:11Z
 integrity:
   generated:
-    body: b6e96463df3154e1
+    body: a2a5a82d8edcae19
 ---
 
 # `@effected/markdown`
@@ -371,7 +371,7 @@ once. `find`/`findAll` take a node-type tag (narrowing the result through
 type-guard, or a plain predicate; they walk in pre-order — the same order
 the visitor enters nodes, starting at the root — and return matches by
 identity, so a match feeds `MarkdownFormat.modify` directly. Headings list
-in document order; sections are delimited by root-level headings only, with ranges
+in document order, and `headingSlugs` gives each one's GitHub-style anchor, deduplicated the way `github-slugger` does it and derived from `DocumentHeading.text` (vendored table in `src/internal/slug.ts`, ISC; parity is with `github-slugger`, not GitHub itself); `MarkdownDocument.slug` is the undeduplicated primitive; sections are delimited by root-level headings only, with ranges
 spanning their subsections so the edit layer can splice whole sections;
 links pass URL strings through unmodified, with reference forms resolved
 through the definition index and an unresolvable foreign reference leaving
@@ -491,7 +491,7 @@ options. The one value the projection changes is a code node's: a parsed
 `Code.value` keeps its final line ending and plain mdast does not, so
 `toText` strips it, giving `"let x"` rather than `"let x\n"` for a one-line
 fenced block[^mdast-totext]. This is the remark-ecosystem derivation, for
-matching what remark tooling computes (slugs, search indexes). It is
+matching what remark tooling computes (search indexes). It is
 distinct from the display text on `DocumentHeading.text` and
 `DocumentSection.text`, which render a hard break as a space and drop raw
 HTML.

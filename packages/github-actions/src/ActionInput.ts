@@ -1,4 +1,4 @@
-import type { Layer, Redacted } from "effect";
+import type { Layer, Redacted, SchemaAST } from "effect";
 import { Config, ConfigProvider, Context, Effect, Schema, SchemaIssue } from "effect";
 import { decodeJson } from "./internal/json.js";
 
@@ -445,14 +445,22 @@ export class ActionInput {
 	 * yields `Config<Option<A>>` with missing → `None` and a malformed value
 	 * still failing — core's `Config.option` lets validation errors propagate,
 	 * which is exactly the missing-versus-malformed split above.
+	 *
+	 * `options` is forwarded to the decode unchanged, so
+	 * `{ onExcessProperty: "error" }` rejects keys the schema does not name
+	 * (they are ignored by default). The failure message itself is not
+	 * customizable.
 	 */
-	static schema<A, I>(name: string, schema: Schema.Codec<A, I>): Config.Config<A> {
+	static schema<A, I>(name: string, schema: Schema.Codec<A, I>, options?: SchemaAST.ParseOptions): Config.Config<A> {
 		return Config.String(inputVariable(name)).pipe(
 			Config.mapEffect((raw) =>
 				decodeJson(raw).pipe(
 					Effect.mapError((cause) => configError(`Input "${name}" is not valid JSON`, raw, cause)),
 					Effect.flatMap((parsed) =>
-						Schema.decodeUnknownEffect(schema)(parsed).pipe(
+						Schema.decodeUnknownEffect(
+							schema,
+							options,
+						)(parsed).pipe(
 							Effect.mapError((cause) => configError(`Input "${name}" did not satisfy its schema`, parsed, cause)),
 						),
 					),

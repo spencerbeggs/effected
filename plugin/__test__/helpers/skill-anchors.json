@@ -721,11 +721,11 @@
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "packages/github-actions/__test__/Action.test.ts:45-55",
+			"anchor": "packages/github-actions/__test__/Action.test.ts:47-57",
 			"source": "repo:packages/github-actions/__test__/Action.test.ts",
 			"symbols": {
-				"45": "const previousExit = process.exitCode",
-				"55": "process.exitCode = previousExit"
+				"47": "const previousExit = process.exitCode",
+				"57": "process.exitCode = previousExit"
 			}
 		},
 		{
@@ -2314,10 +2314,10 @@
 		},
 		{
 			"file": "hardening-a-parser-port/SKILL.md",
-			"anchor": "navigate.ts:101",
+			"anchor": "navigate.ts:155",
 			"source": "repo:packages/jsonc/src/internal/navigate.ts",
 			"symbols": {
-				"101": "function skipValue(): number"
+				"155": "function skipValue(): number"
 			}
 		},
 		{

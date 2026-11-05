@@ -15,6 +15,8 @@ export type { ColorLevel } from "./ColorLevel.js";
 export { EnvOverride } from "./EnvOverride.js";
 export type { CiRun, RuntimeEnvOverrides, SessionSource, TermProgram, TerminalSession } from "./RuntimeEnv.js";
 export { CurrentRuntimeEnv, RuntimeEnv } from "./RuntimeEnv.js";
+export type { SgrStyle } from "./Sgr.js";
+export { Sgr } from "./Sgr.js";
 export type { ShellExportsErrorReason, ShellQuoteOptions } from "./ShellExports.js";
 export { ShellExports, ShellExportsError, ShellQuoteError } from "./ShellExports.js";
 export type { StreamEnv, TerminalEnvOptions, TerminalEnvShape, TerminalEnvTestOptions } from "./TerminalEnv.js";

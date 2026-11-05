@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T17:16:21Z
+  at: 2026-11-05T20:18:15Z
 integrity:
   generated:
-    body: bee0a13a36a0849e
+    body: 2d5816eaca321f6c
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -209,6 +209,9 @@ constructor:[^testing-ts]
   called from the body, a member receiver, an aliased `Effect` or a destructured `run` passes), with pure `check` and `referencesProcess`, a
   `scan` over `FileSystem` with whole-file `allow` and per-rule `allowRules`
   exemptions, and shipped positive controls behind `verifyFixtures`.
+  `SourceBoundary.platformFree(builtins)` builds the platform-free rule: every
+  Node built-in, bare or `node:`-prefixed, plus `@effect/platform*`; the caller
+  passes `builtinModules` from `node:module`.
 - `ImportGraph` (with `ReachabilityScan`, `ReachOffence`, `UnresolvedImport`,
   `ReachabilityOptions`, `NoEntriesError`, `EntryNotFoundError`,
   `UndeclaredScan`, `UndeclaredImport` and `UndeclaredOptions`): the two

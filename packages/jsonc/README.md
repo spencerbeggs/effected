@@ -114,6 +114,10 @@ Effect.runPromise(program).then(console.log);
 // }
 ```
 
+Generated text follows the document it lands in. A new member lines up with its last sibling, a multi-line value is indented to its member, and every generated line takes the file's line ending, so a tab-indented CRLF file stays one. Pass `formattingOptions` to set the indentation unit or line ending yourself. Deleting an entry takes its line with it and collapses an emptied container to `{}` or `[]`, unless a comment is still in there.
+
+A new member goes last unless `insertAfter` names the sibling it should follow, and that sibling keeps a comment trailing it. `createParents` builds missing object ancestors instead of failing; it never overwrites a value of the wrong type and never invents an array.
+
 `JsoncFormatter.format` produces the same kind of edit array for whitespace normalization, so a formatter pass is a diff rather than a rewrite.
 
 > **Migrating from `jsonc-effect` 0.3.x?** That library's value spans over-reached

@@ -1,3 +1,4 @@
+import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { NodeServices } from "@effect/platform-node";
@@ -24,7 +25,8 @@ describe("engine purity", () => {
 							"node:process",
 							"stdout-write",
 							"console",
-							{ forbidImports: ["node:*", "@effect/platform*", "@effected/*"] },
+							SourceBoundary.platformFree(builtinModules),
+							{ forbidImports: ["@effected/*"] },
 						],
 					});
 					assert.include(scan.files, "LaunchContext.ts", "the scan read the real tree");

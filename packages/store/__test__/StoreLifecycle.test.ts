@@ -285,6 +285,28 @@ describe("onConnect", () => {
 		}),
 	);
 
+	it.effect("a hook can set several pragmas: both take effect on the connection", () =>
+		Effect.gen(function* () {
+			// The documented multi-pragma body: sequence the statements with Effect.andThen.
+			const settings = yield* Effect.gen(function* () {
+				const store = yield* Store;
+				const synchronous = yield* store.client`PRAGMA synchronous`;
+				const tempStore = yield* store.client`PRAGMA temp_store`;
+				return { synchronous: synchronous[0]?.synchronous, tempStore: tempStore[0]?.temp_store };
+			}).pipe(
+				Effect.provide(
+					Store.layerSqlite({
+						filename: freshFile(),
+						migrations: parentChild,
+						onConnect: (sql) => Effect.andThen(sql`PRAGMA synchronous = NORMAL`, sql`PRAGMA temp_store = MEMORY`),
+					}),
+				),
+			);
+			// synchronous NORMAL = 1 (default FULL = 2); temp_store MEMORY = 2 (default 0).
+			assert.deepStrictEqual(settings, { synchronous: 1, tempStore: 2 });
+		}),
+	);
+
 	it.effect("the hook runs before the ledger: a failing hook leaves the file without one", () =>
 		Effect.gen(function* () {
 			const filename = freshFile();

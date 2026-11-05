@@ -17,6 +17,14 @@
 //   #matchGlobStarBodySections limit check is kept verbatim: exceeding it is
 //   upstream's intentional false negative — an acceptable break in
 //   correctness for security — and must never throw; match() stays total.
+// - The ** matching in #matchGlobstar and #matchGlobStarBodySections takes
+//   minimatch 11.0.4's fixes, and nothing else from that rewrite: each body
+//   section's last start comes from the portions that it and the later sections
+//   need, not the earlier ones; a body stops short of the tail (fileLength) and
+//   the last ** does not walk it; under partial the body is the rest of the
+//   pattern, so it can run past the path, and it matches only when the path is
+//   used up; and a walk stops at a place already tried (tried), which keeps
+//   sections that all fail from taking exponential time.
 // - braceExpand keeps the CVE-2022-3517 ReDoS-safe pre-check regex verbatim
 //   (credit: Yeting Li). Budget exhaustion inside the expander throws the
 //   typed guard signal instead of silently truncating (see
@@ -566,7 +574,10 @@ export class Minimatch {
 		let negate = false;
 		let negateOffset = 0;
 
+		const extglobBang = !!this.options.extglobBang && !this.options.noext;
 		for (let i = 0; i < pattern.length && pattern.charAt(i) === "!"; i++) {
+			// Adaptation: a `!` opening an extglob is not a negation (see EngineOptions.extglobBang).
+			if (extglobBang && pattern.charAt(i + 1) === "(" && !/^\?[!=<:]/.test(pattern.slice(i + 2, i + 4))) break;
 			negate = !negate;
 			negateOffset++;
 		}
@@ -717,9 +728,9 @@ export class Minimatch {
 		// now we know that there's one or more body sections, which can
 		// be matched anywhere from the 0 index (because the head was pruned)
 		// through to the length-fileTailMatch index.
-		// split the body up into sections, and note the minimum index it can
-		// be found at (start with the length of all previous segments)
-		// [section, before, after]
+		// split the body up into sections, and note the number of portions
+		// that must come after the start of each one
+		// [section, need]
 		const bodySegments: Array<[Array<ParseReturn>, number]> = [[[], 0]];
 		let currentBody: [Array<ParseReturn>, number] = bodySegments[0] as [Array<ParseReturn>, number];
 		let nonGsParts = 0;
@@ -734,26 +745,43 @@ export class Minimatch {
 				nonGsParts++;
 			}
 		}
-		let i = bodySegments.length - 1;
-		const fileLength = file.length - fileTailMatch;
-		for (const b of bodySegments) {
-			b[1] = fileLength - ((nonGsPartsSums[i--] as number) + b[0].length);
+		// the portions in this section and the ones after it
+		for (const [index, b] of bodySegments.entries()) {
+			b[1] = nonGsParts - (nonGsPartsSums[index] as number);
 		}
 
-		return !!this.#matchGlobStarBodySections(file, bodySegments, fileIndex, 0, partial, 0, !!fileTailMatch);
+		return !!this.#matchGlobStarBodySections(
+			file,
+			bodySegments,
+			file.length - fileTailMatch,
+			fileIndex,
+			0,
+			partial,
+			0,
+			!!fileTailMatch,
+			new Set(),
+		);
 	}
 
 	// return false for "nope, not matching"
 	// return null for "not matching, cannot keep trying"
 	#matchGlobStarBodySections(
 		file: Array<string>,
-		// pattern section, last possible position for it
+		// pattern section, and the portions that it and the rest need
 		bodySegments: Array<[Array<ParseReturn>, number]>,
+		// the end of the file portions that the body can match
+		fileLength: number,
 		fileIndexInput: number,
 		bodyIndex: number,
 		partial: boolean,
 		globStarDepth: number,
 		sawTailInput: boolean,
+		// the places a walk has already tried, as
+		// bodyIndex * (file.length + 1) + fileIndex. A walk from a place does
+		// the same no matter how it got there, and it only comes back if it
+		// found no match, so a walk that gets to one stops. globStarDepth always
+		// equals bodyIndex, so the recursion cap can not make two walks differ.
+		tried: Set<number>,
 	): boolean | null {
 		let fileIndex = fileIndexInput;
 		let sawTail = sawTailInput;
@@ -768,8 +796,14 @@ export class Minimatch {
 		// can't possibly be a valid matching condition.
 		const bs = bodySegments[bodyIndex];
 		if (!bs) {
-			// just make sure that there's no bad dots
-			for (let i = fileIndex; i < file.length; i++) {
+			// with partial, the body is the rest of the pattern, so it matches
+			// if no portions are left, or only the '' of a trailing / (as a/*
+			// matches a/b/). A ** at the end walks them as its own empty section.
+			if (partial) {
+				return fileIndex >= fileLength || (fileIndex === fileLength - 1 && file[fileIndex] === "");
+			}
+			// just make sure that there's no bad dots before the tail
+			for (let i = fileIndex; i < fileLength; i++) {
 				sawTail = true;
 				const f = file[i] as string;
 				if (f === "." || f === ".." || (!this.options.dot && f.startsWith("."))) {
@@ -779,10 +813,16 @@ export class Minimatch {
 			return sawTail;
 		}
 
-		// have a non-globstar body section to test
-		const [body, after] = bs;
+		// have a non-globstar body section to test, up to the last index where
+		// it can start
+		const [body, need] = bs;
+		// with partial, the path can end before the body does
+		const after = partial ? fileLength : fileLength - need;
 		while (fileIndex <= after) {
-			const m = this.#matchOne(file.slice(0, fileIndex + body.length), body, partial, fileIndex, 0);
+			const key = bodyIndex * (file.length + 1) + fileIndex;
+			if (tried.has(key)) return false;
+			tried.add(key);
+			const m = this.#matchOne(file, body, partial, fileIndex, 0, fileIndex + body.length);
 			// if limit exceeded, no match. intentional false negative,
 			// acceptable break in correctness for security.
 			if (m && globStarDepth < this.maxGlobstarRecursion) {
@@ -790,18 +830,22 @@ export class Minimatch {
 				const sub = this.#matchGlobStarBodySections(
 					file,
 					bodySegments,
+					fileLength,
 					fileIndex + body.length,
 					bodyIndex + 1,
 					partial,
 					globStarDepth + 1,
 					sawTail,
+					tried,
 				);
 				if (sub !== false) {
 					return sub;
 				}
 			}
-			const f = file[fileIndex];
-			if (f === "." || f === ".." || (f !== undefined && !this.options.dot && f.startsWith("."))) {
+			// the ** does not walk past the last place the body can start
+			if (fileIndex === after) break;
+			const f = file[fileIndex] as string;
+			if (f === "." || f === ".." || (!this.options.dot && f.startsWith("."))) {
 				return false;
 			}
 
@@ -817,12 +861,18 @@ export class Minimatch {
 		partial: boolean,
 		fileIndex: number,
 		patternIndex: number,
+		// only match the file portions before this index
+		fileEnd = file.length,
 	) {
 		let fi: number;
 		let pi: number;
 		let pl: number;
 		let fl: number;
-		for (fi = fileIndex, pi = patternIndex, fl = file.length, pl = pattern.length; fi < fl && pi < pl; fi++, pi++) {
+		for (
+			fi = fileIndex, pi = patternIndex, fl = Math.min(fileEnd, file.length), pl = pattern.length;
+			fi < fl && pi < pl;
+			fi++, pi++
+		) {
 			this.debug("matchOne loop");
 			const p = pattern[pi] as ParseReturn;
 			const f = file[fi] as string;

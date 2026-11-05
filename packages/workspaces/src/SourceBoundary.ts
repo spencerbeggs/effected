@@ -60,7 +60,8 @@ import { DEFAULT_EXTENSIONS, walkSources } from "./internal/sourceWalk.js";
  * `{ forbidImports: ["node:*", ...builtinModules] }` with `builtinModules`
  * from `node:module`. That also forbids npm packages that share a built-in's
  * name (`events`, `buffer`, `punycode`). No built-in list ships here: it
- * would drift with Node releases.
+ * would drift with Node releases. {@link SourceBoundary.platformFree} builds
+ * the rule from that list.
  *
  * @public
  */
@@ -935,9 +936,27 @@ export class SourceBoundary {
 	static readonly referencesProcess = (text: string, options?: ReferenceOptions): boolean =>
 		processReads(lex(text).code, [...EXEMPT, ...(options?.ignoreTokens ?? [])]).length > 0;
 
-	/** Every module specifier `text` imports: static, side-effect, re-export, type-only, `import(...)` with a literal, and `require(...)`. */
+	/**
+	 * Every module specifier `text` imports: static, side-effect, re-export, type-only, `import(...)` with a literal, and `require(...)`.
+	 *
+	 * @remarks
+	 * One entry per occurrence, in source order: a module imported twice appears twice. Wrap the result in
+	 * `new Set(...)` for the set of modules.
+	 */
 	static readonly importSpecifiers = (text: string): ReadonlyArray<string> =>
 		specifierLiterals(lex(text)).map((literal) => literal.value);
+
+	/**
+	 * The rule for platform-free code: every Node built-in, bare or `node:`-prefixed, and `@effect/platform*`.
+	 *
+	 * @remarks
+	 * Pass `builtinModules` from `node:module` as `builtins`; no list ships here because it would drift with Node
+	 * releases. A bare-name list also forbids npm packages that share a built-in's name (`events`, `buffer`,
+	 * `punycode`).
+	 */
+	static readonly platformFree = (builtins: ReadonlyArray<string>): BoundaryRule => ({
+		forbidImports: ["node:*", "@effect/platform*", ...builtins],
+	});
 
 	/** Whether `text` imports the Node built-in `module`, in either its `node:` or bare form. */
 	static readonly importsNode = (text: string, module: string): boolean =>
