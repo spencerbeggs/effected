@@ -71,11 +71,21 @@ export class CliTestFailure extends Schema.TaggedError<CliTestFailure>()("CliTes
 	signal: Schema.NullOr(Schema.String),
 	stderr: Schema.String,
 }) {
-	/** What was expected, what happened, and the child's stderr. */
+	/**
+	 * What was expected, what happened, and the child's stderr.
+	 *
+	 * @remarks
+	 * Assigning to it is ignored: a runner or logger that rewrites `error.message` must not make this error throw,
+	 * which a getter-only property does in strict mode.
+	 */
 	override get message(): string {
 		return `expected exit ${this.expected}, but the bin ${
-			this.signal === null ? `exited with exit ${this.exitCode}` : `was ended by ${this.signal}`
+			this.signal === null ? `exited with code ${this.exitCode}` : `was ended by ${this.signal}`
 		}\nstderr:\n${this.stderr}`;
+	}
+
+	override set message(_value: string) {
+		// Ignored by design: see the getter.
 	}
 }
 

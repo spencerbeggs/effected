@@ -72,7 +72,11 @@ describe("CliTest", () => {
 			const error = yield* Effect.flip(CliTest.run(BIN, [], { ...options, expectExit: 0 }));
 			assert.strictEqual(error._tag, "CliTestFailure");
 			assert.include(error.message, "expected exit 0");
-			assert.include(error.message, "exit 3");
+			assert.include(error.message, "exited with code 3");
+			assert.doesNotThrow(() => {
+				(error as { message: string }).message = "prefixed";
+			});
+			assert.include(error.message, "expected exit 0", "assigning to message is ignored");
 			assert.include(error.message, "error: something failed");
 			const signalled = yield* Effect.flip(
 				CliTest.run("-e", ["process.kill(process.pid, 'SIGTERM')"], { ...options, expectExit: 0 }),
