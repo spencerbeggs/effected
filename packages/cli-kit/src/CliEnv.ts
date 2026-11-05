@@ -3,6 +3,7 @@ import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
 import type { Effect, Layer, Stdio, Terminal } from "effect";
 import { ConfigProvider, Layer as LayerModule, Option } from "effect";
 import type { CliOutput } from "effect/cli";
+import type { CliHelpFlags } from "./CliColor.js";
 import { CliInteractive } from "./CliInteractive.js";
 import type { CliLinks, EditorLinks } from "./CliLinks.js";
 import { ambientLinksLayer } from "./CliLinks.js";
@@ -71,12 +72,7 @@ export interface CliEnvOptions {
 	 * listed), `"summary"` (a one-line pointer) or `"none"`. Setting a mode here keeps the kit's colour decision, which
 	 * supplying your own `formatHelpDoc` through {@link CliEnvOptions.formatter} would lose.
 	 */
-	readonly helpFlags?:
-		| {
-				readonly inheritedFlags?: "full" | "summary" | "none" | undefined;
-				readonly globalFlags?: "full" | "summary" | "none" | undefined;
-		  }
-		| undefined;
+	readonly helpFlags?: CliHelpFlags | undefined;
 	/**
 	 * How an absolute path is shown: a function, or `{ relativeTo: root }` to show a path under `root` relative to it.
 	 * The identity by default.

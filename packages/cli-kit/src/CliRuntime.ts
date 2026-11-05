@@ -258,6 +258,11 @@ export interface MainOptions<RP, EP> extends ReportFailuresOptions {
 	 * `formatVersion`); a Formatter the platform provides is shadowed by
 	 * `main`'s, so pass it through `env.formatter` as well.
 	 *
+	 * The installed Formatter paints by stdout's terminal check. When `env` is set and stderr's colour decision
+	 * differs from stdout's, a usage error's help is rendered with `formatHelpDoc`, `formatError` and `formatErrors` rebuilt from
+	 * core's default formatter under stderr's decision (and `env.helpFlags`), so those methods follow stderr
+	 * unless given through `env.formatter`, which always wins. Every other method is left as installed.
+	 *
 	 * Two cases keep help on stdout even under `"stderr"`. A `CliOutput`
 	 * Presenter provided inside `program` replaces the routing. And with
 	 * `Command.runWith`'s `renderErrors: false` core presents the help as

@@ -4,6 +4,21 @@ import { Effect, Layer } from "effect";
 import { CliOutput } from "effect/cli";
 
 /**
+ * How subcommand help renders flags the command does not own, as core's `CliOutput.defaultFormatter` takes them.
+ *
+ * @remarks
+ * `inheritedFlags` covers flags a parent command shares with its subcommands (for example `CliAudience.flags()`);
+ * `globalFlags` covers the built-ins such as `--help` and `--version`. Each is `"full"` (core's default, every flag
+ * listed), `"summary"` (a one-line pointer) or `"none"`.
+ *
+ * @public
+ */
+export interface CliHelpFlags {
+	readonly inheritedFlags?: "full" | "summary" | "none" | undefined;
+	readonly globalFlags?: "full" | "summary" | "none" | undefined;
+}
+
+/**
  * Whether a CLI's output should carry ANSI colour, decided once and shared by
  * everything that renders — help text, error output, and any rendered result.
  *
@@ -60,10 +75,7 @@ export class CliColor {
 	 */
 	static readonly formatterLayer = (
 		overrides: Partial<CliOutput.Formatter> = {},
-		helpFlags?: {
-			readonly inheritedFlags?: "full" | "summary" | "none" | undefined;
-			readonly globalFlags?: "full" | "summary" | "none" | undefined;
-		},
+		helpFlags?: CliHelpFlags,
 	): Layer.Layer<never, never, Stdio.Stdio> =>
 		Layer.unwrap(
 			Effect.map(CliColor.enabled, (colors) =>

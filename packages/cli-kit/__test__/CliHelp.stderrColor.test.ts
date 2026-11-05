@@ -1,8 +1,9 @@
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { ConfigProvider, Console, Effect, Layer, Stdio } from "effect";
-import { Command, Flag } from "effect/cli";
+import { CliOutput, Command, Flag } from "effect/cli";
 import { CliAudience, CliRuntime } from "../src/index.js";
+import { stderrFormatter } from "../src/internal/HelpRouting.js";
 
 const sub = Command.make("sub", { count: Flag.Int("count").pipe(Flag.withDefault(1)) }, () => Effect.void);
 const app = Command.make("app").pipe(Command.withSharedFlags(CliAudience.flags()), Command.withSubcommands([sub]));
@@ -18,6 +19,7 @@ const run = (
 		readonly stderrIsTerminal: boolean;
 		readonly helpOnUsageError?: "stderr";
 		readonly helpFlags?: { readonly inheritedFlags?: "full" | "summary" | "none" };
+		readonly formatter?: Partial<CliOutput.Formatter>;
 	},
 ) =>
 	Effect.gen(function* () {
@@ -33,6 +35,7 @@ const run = (
 			env: {
 				stderrIsTerminal: Effect.succeed(options.stderrIsTerminal),
 				...(options.helpFlags === undefined ? {} : { helpFlags: options.helpFlags }),
+				...(options.formatter === undefined ? {} : { formatter: options.formatter }),
 			},
 		}).pipe(
 			Effect.exit,
@@ -77,4 +80,49 @@ describe("env.helpFlags", () => {
 			assert.isTrue(painted(none.out), none.out);
 		}),
 	);
+});
+
+describe("when stdout and stderr disagree, the rebuilt help keeps what the caller set", () => {
+	const disagree = { stderrIsTerminal: false, helpOnUsageError: "stderr" } as const;
+
+	it.effect("env.formatter overrides win over the rebuilt methods", () =>
+		Effect.gen(function* () {
+			const { err } = yield* run(["sub", "--nope"], {
+				...disagree,
+				formatter: { formatHelpDoc: () => "OVERRIDE HELP", formatVersion: () => "OVERRIDE VERSION" },
+			});
+			assert.include(err, "OVERRIDE HELP");
+			assert.isFalse(painted(err.replace("OVERRIDE HELP", "")), err);
+		}),
+	);
+
+	it.effect("helpFlags applies on the stderr path", () =>
+		Effect.gen(function* () {
+			const full = yield* run(["sub", "--nope"], disagree);
+			assert.include(full.err, "INHERITED FLAGS");
+			const none = yield* run(["sub", "--nope"], { ...disagree, helpFlags: { inheritedFlags: "none" } });
+			assert.notInclude(none.err, "INHERITED FLAGS");
+			assert.isFalse(painted(none.err), none.err);
+		}),
+	);
+});
+
+describe("stderrFormatter", () => {
+	const current: CliOutput.Formatter = {
+		...CliOutput.defaultFormatter({ colors: true }),
+		formatCliError: () => "CUSTOM CLI ERROR",
+		formatVersion: () => "CUSTOM VERSION",
+	};
+
+	it("keeps the non-colour methods of the installed formatter, formatVersion included", () => {
+		const rebuilt = stderrFormatter(current, false, undefined, undefined);
+		assert.strictEqual(rebuilt.formatCliError, current.formatCliError);
+		assert.strictEqual(rebuilt.formatVersion, current.formatVersion);
+		assert.notStrictEqual(rebuilt.formatHelpDoc, current.formatHelpDoc);
+	});
+
+	it("applies overrides last", () => {
+		const formatError = () => "OVERRIDE";
+		assert.strictEqual(stderrFormatter(current, false, { formatError }, undefined).formatError, formatError);
+	});
 });
