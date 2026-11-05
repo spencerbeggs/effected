@@ -702,7 +702,7 @@
 		"McpStdio": "serve mcp over stdio, keep stdout the json-rpc wire, exit 0 on stdin close",
 		"McpTestFailure": "mcp test client failure, stream ended, server stopped, timed out",
 		"McpToolAudit": "lint served tools list, closed inputs, titles, hints, object-rooted outputs",
-		"McpToolkit": "name every unknown tool argument in one InvalidParams, strict by default",
+		"McpToolkit": "name every unknown tool argument in one InvalidParams, strict by default, meet declared tool dependencies from a layer built once for the server lifetime",
 		"ToolFailure": "fold remediation into tool error message, truncate echoed caller values",
 		"ToolInputSchema": "find unknown tool arguments at every depth, object-root a union input",
 		"ToolOutputSchema": "object-root a union tool success schema so outputSchema is served",

@@ -456,4 +456,74 @@ export class McpToolkit {
 				);
 			}),
 		).pipe(Layer.provide(McpServer.McpServer.layer));
+
+	/**
+	 * Meet the request-level dependencies a tool declares with `dependencies`
+	 * or `addDependency` from a layer built once for the server's lifetime.
+	 * Provide the result to {@link McpToolkit.layer}.
+	 *
+	 * @remarks
+	 * The layer builds with the server's graph, so a failure fails the server
+	 * build rather than a request, and its finalizers run at server shutdown.
+	 * It builds in that graph's memo map: a layer the graph also builds is
+	 * shared, and two servers each wrapped whole in `Layer.fresh` build their
+	 * own.
+	 *
+	 * It captures what the layer outputs and nothing else, so a key the build
+	 * merely ran under (a span, a request-level reference) never shadows the
+	 * request's own, which capturing `Effect.context` in hand-written
+	 * middleware does. The outputs are taken as given: a layer that outputs
+	 * `Effect.context()` wholesale, through `Layer.effectContext`, still leaks
+	 * everything it read.
+	 *
+	 * A service that varies per request still needs its own
+	 * `McpServer.middleware`. A service only the handlers' construction needs
+	 * is captured by the effect form of `Toolkit.toLayer` and declared nowhere.
+	 *
+	 * Each call mints a fresh layer; bind the result to a `const` or the
+	 * middleware builds again.
+	 *
+	 * @example
+	 * ```ts
+	 * import { McpToolkit } from "@effected/mcp-kit";
+	 * import { Layer } from "effect";
+	 *
+	 * // `Kit` declares `dependencies: [Inspector]`; `InspectorLive` builds it once.
+	 * const Lifetime = McpToolkit.provideLifetime(InspectorLive);
+	 * const ToolsLayer = McpToolkit.layer(Kit).pipe(Layer.provide(Lifetime), Layer.provide(KitHandlers));
+	 * ```
+	 */
+	static readonly provideLifetime = <S, E, R>(
+		layer: Layer.Layer<S, E, R>,
+	): Layer.Layer<McpServer.McpRequest.From<"Requires", S>, E, R> => {
+		// Provided only to the middleware below, so it never reaches a handler or another call's layer.
+		const Lifetime = Context.Service<"@effected/mcp-kit/LifetimeContext", Context.Context<S>>(
+			"@effected/mcp-kit/LifetimeContext",
+		);
+		// `Layer.fromBuild` hands over the map this graph builds with. The fiber's own
+		// `Layer.CurrentMemoMap` is not it under `Layer.fresh`, and building there would
+		// share this layer between servers that `Layer.fresh` isolates.
+		const capture = Layer.fromBuild((memoMap, scope) =>
+			Effect.map(Layer.buildWithMemoMap(layer, memoMap, scope), (context) =>
+				Context.make(
+					Lifetime,
+					// `buildWithMemoMap` adds `CurrentMemoMap` to the layer's outputs, and it is the
+					// only key it adds (Layer.ts). A new key in core's built context needs adding here.
+					// The cast states what TypeScript cannot reduce for a generic `S`: `S` less a key
+					// the layer does not output is still `S`.
+					Context.omit(Layer.CurrentMemoMap)(context) as Context.Context<S>,
+				),
+			),
+		);
+		// `Effect.updateContext` rather than `Effect.provideContext`, which types its result
+		// `Exclude<S, S>`: TypeScript cannot reduce that for a generic `S`. Both merge `context`
+		// over the fiber's, so `context` wins on a shared key and every other key is untouched.
+		return McpServer.middleware<{ provides: S }>()(
+			Effect.map(
+				Effect.service(Lifetime),
+				(context) => (effect) =>
+					Effect.updateContext(effect, (current: Context.Context<never>) => Context.merge(current, context)),
+			),
+		).layer.pipe(Layer.provide(capture));
+	};
 }

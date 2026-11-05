@@ -20,6 +20,26 @@ not interchangeable:
   => Effect.provideService(effect, S, value))`, with its `.layer` provided to
   the toolkit layer. `Layer.provide(Layer.succeed(S, …))` does **not**
   satisfy it — the marker stays in `R` and the server fails to typecheck.
+- **Declared, with a value fixed for the server's lifetime** — keep the
+  `dependencies` and meet them with `McpToolkit.provideLifetime(layer)`,
+  provided to `McpToolkit.layer`. The layer builds once with the server's
+  graph: a failure fails the server build, its finalizers run at shutdown,
+  and it shares the graph's memo map, so a layer the graph also builds is
+  built once and a server wrapped whole in `Layer.fresh` builds its own. It
+  captures what the layer outputs and nothing else. A hand-written
+  `McpServer.middleware` over `Effect.context` captures everything the build
+  ran under, and a span or request-level reference from the build then
+  shadows the request's own. A layer that outputs `Effect.context()`
+  wholesale leaks the same way, so output the services.
+
+~~~ts
+import { McpToolkit } from "@effected/mcp-kit"
+import { Layer } from "effect"
+
+// `Kit` declares `dependencies: [Inspector]`; `InspectorLive` builds it once.
+const Lifetime = McpToolkit.provideLifetime(InspectorLive)
+const ToolsLayer = McpToolkit.layer(Kit).pipe(Layer.provide(Lifetime), Layer.provide(KitHandlers))
+~~~
 
 A handler that yields a service it neither captured nor declared fails to
 typecheck: `Tool.HandlerServices` infers `never` for an undeclared tool, so

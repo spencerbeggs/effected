@@ -291,6 +291,11 @@ scopes:
   `options.unknownKeyMessage` is deprecated and ignored. Pass `{ strict: "annotated" }` to leave
   unannotated tools lenient, or annotate an individual tool
   `Tool.Strict` false to opt it out under the default.
+- **`McpToolkit.provideLifetime(layer)`** — meets the services tools declare
+  in `dependencies` from a layer built once with the server's graph. Provide
+  the result to `McpToolkit.layer`. It captures what the layer outputs and
+  nothing else, so nothing the build ran under shadows a request's own span
+  or references; a layer that outputs `Effect.context()` wholesale still leaks.
 
 ```ts
 import { McpToolkit } from "@effected/mcp-kit";

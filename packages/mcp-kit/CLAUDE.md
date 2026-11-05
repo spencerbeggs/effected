@@ -53,7 +53,7 @@ that ships `./guard`.
 `ToolOutcomeFailure`, `ToolOutcomeFailures`, `ToolReplayOptions`, `ToolReplayStore`,
 `McpStdioOptions`, `McpStdioRegistrationServices`, `McpLaunchOptions`, `McpToolkitOptions`, `UnionHandlerOptions`, `UnionTool`,
 `UnionToolOptions`, `UnknownKeysLevel` and `FormatUnknownKeysOptions`
-types. `McpToolkit` also carries `unionTool` and `unionHandler`.
+types. `McpToolkit` also carries `unionTool`, `unionHandler` and `provideLifetime`.
 
 `@effected/mcp-kit/guard` (`src/guard.ts`): `McpGuard` (`run`, and `parseInjectCrash`, which is `ProcessGuard.parseInjectCrash`), plus the
 `InjectCrash` (its return), `McpGuardHost`, `McpGuardPolicy`, `McpGuardedServer` and
@@ -227,6 +227,14 @@ carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `lis
   alone. Only a `unionTool` gets a kit decode (core refuses union roots),
   with the same `errors: "all"` and the same lines. `unknownKeyMessage` on
   both option types is a deprecated no-op, kept for one minor.
+- **`McpToolkit.provideLifetime` captures through `Layer.fromBuild`, never the
+  fiber's `Layer.CurrentMemoMap`.** Under `Layer.fresh` the two differ: the
+  fiber's map would share the layer between servers `Layer.fresh` isolates
+  (probed: 1 build where the plain layer gives 2). `buildWithMemoMap` adds
+  `CurrentMemoMap` to the layer's outputs, the only key it adds, so that one
+  is omitted; a new key in core's built context needs adding there. Without
+  `Layer.fresh` a handler still sees the server's map, through core's own
+  registration capture.
 - **`ToolOutcome` and `ToolRefusal` share one error shape**
   (`ToolFailure.fields` plus `_tag`). A refusal is a declared failure
   (`isError`, message text only); an outcome is `{ ok: false, error }` on the
