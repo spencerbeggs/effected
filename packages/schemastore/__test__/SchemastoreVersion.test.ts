@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Equal, Option, Schema } from "effect";
-import { HostedSchema, SchemastoreVersion, defineConfig } from "../src/index.js";
+import { HostedSchema, SchemastoreVersion, defineConfig, isSchemastoreConfig } from "../src/index.js";
 
 const STAMP = Symbol.for("@effected/schemastore/version");
 const BRAND = Symbol.for("@effected/schemastore/HostedSchema");
@@ -49,6 +49,9 @@ describe("SchemastoreVersion", () => {
 		});
 		assert.isFalse(Object.getOwnPropertyDescriptor(config, STAMP)?.enumerable);
 		assert.isFalse(Object.hasOwn({ ...config }, STAMP));
+		const brand = Symbol.for("@effected/schemastore/SchemastoreConfig");
+		assert.isTrue(Object.getOwnPropertyDescriptor(config, brand)?.enumerable);
+		assert.isTrue(isSchemastoreConfig({ ...config }));
 	});
 });
 
