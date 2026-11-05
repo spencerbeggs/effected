@@ -27,10 +27,10 @@ sources:
     title: "LSP 3.17 Position: zero-based, UTF-16 by default, line endings \\n, \\r\\n and \\r"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T20:28:31Z
+  at: 2026-11-05T03:39:20Z
 integrity:
   generated:
-    body: e66fa7a4c9197920
+    body: 9b3ad5e19121971e
 ---
 
 # @effected/source
@@ -84,6 +84,7 @@ API. `SourceDiagnostic` only names the shape they already share, so a consumer
 | Module | Exports | Concept |
 | --- | --- | --- |
 | `LineIndex` | `LineIndex`, `LineBreaks`, `LineIndexOptions` | A line table built once over a text by one forward scan; every query is a binary search. `positionAt` / `offsetAt` convert both ways; `lineCount`, `lineAt`, `lineStart`, `lineEnd` (excluding the terminator) and `lineText`; `spanOf` / `rangeOf` between offsets and an LSP `Range`; `locationOf` for the shape a diagnostic carries. |
+| `LineDiff` | `LineDiff`, `LineDiffHunk`, `LineDiffLine`, `LineDiffOptions` | A pure line diff: `compute(before, after, options?)` runs Myers over the lines (common prefix and suffix trimmed first; past `maxEditDistance`, default 4096, the middle becomes one remove-all, add-all block) and groups the edits into unified-diff hunks with `context` lines (default 3); `unified(hunks, labels)` prints git-style text. Lines split on `\n` (a final `\n` ends the last line) and keep a trailing `\r`. No Effect, no colour. |
 | `SourceIndex` | `SourceIndex` | `LineIndex`'s public surface as a structural interface: the type to name in a signature that takes or returns an index, so two installed copies interoperate. |
 | `SourcePosition` | `SourcePosition` | `{ line, character }`, zero-based, `character` in UTF-16 code units: an LSP `Position`. |
 | `SourceRange` | `SourceRange` | `{ offset, length }` in UTF-16 code units. |
@@ -218,7 +219,7 @@ oracle**: a regular-expression splitter sharing no code with it, over every
 string of up to six characters drawn from `{a, \n, \r, U+2028, \uD83D,
 \uDE00}`, every offset, and all three rules, including the
 position-to-offset round trip. `__test__/entrypoints.test.ts` pins the export
-list (`LineIndex` is the only runtime value), that `src/` imports nothing but
+list (`LineDiff` and `LineIndex` are the only runtime values), that `src/` imports nothing but
 itself, and that the manifest declares no dependency or peer.
 
 [issue-1126]: https://github.com/spencerbeggs/effected/issues/1126

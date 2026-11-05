@@ -19,9 +19,9 @@ const specifiersIn = (source: string): ReadonlyArray<string> =>
 	[...source.matchAll(/(?:\bfrom\s*|\bimport\s*\(?\s*)["']([^"']+)["']/g)].map((match) => match[1] ?? "");
 
 describe("@effected/source entrypoint", () => {
-	it("exports LineIndex and no other runtime value", async () => {
+	it("exports LineDiff and LineIndex and no other runtime value", async () => {
 		const main = await import("../src/index.js");
-		assert.deepStrictEqual(Object.keys(main).sort(), ["LineIndex"]);
+		assert.deepStrictEqual(Object.keys(main).sort(), ["LineDiff", "LineIndex"]);
 	});
 
 	it("imports nothing but its own modules, so it stays dependency-free", () => {

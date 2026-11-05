@@ -1,5 +1,9 @@
 # Log
 
+## 2026-11-05
+
+* Updated @effected/source
+
 ## 2026-11-02
 
 * Updated A plugin skill is a lean index over references
