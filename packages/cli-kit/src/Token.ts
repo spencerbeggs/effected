@@ -91,7 +91,8 @@ export class Token {
 	 * @remarks
 	 * An explicit style resolves to itself. A token name resolves to its override when `overrides` has one, else
 	 * its default; a name that is not a token (including an `Object.prototype` member) resolves to the empty
-	 * style. This is the same resolution `CliTheme.paint` applies, which is what `StreamTheme.style` reports.
+	 * style. It is theme-blind: it knows only the default palette and the `overrides` you pass, never a mounted
+	 * theme, so a component under `CliUi` that wants the screen's theme uses `useStyle`. This is the same resolution `CliTheme.paint` applies, which is what `StreamTheme.style` reports.
 	 *
 	 * @param token - a token name or an explicit style
 	 * @param overrides - styles that replace the default of a token, as `CliThemeOptions.tokens` does

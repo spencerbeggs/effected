@@ -74,6 +74,7 @@ export {
 	type TerminalSize,
 	inkProps,
 	useGlyphs,
+	useStyle,
 	useTerminalSize,
 	useTheme,
 } from "./ui/UiTheme.js";

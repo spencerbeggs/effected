@@ -74,6 +74,6 @@ describe("entrypoint boundary", () => {
 			"Status",
 			"Token",
 		]);
-		assert.deepStrictEqual(Object.keys(testing).sort(), ["CliTest", "TestTerminal"]);
+		assert.deepStrictEqual(Object.keys(testing).sort(), ["CliTest", "CliTestFailure", "TestTerminal"]);
 	});
 });

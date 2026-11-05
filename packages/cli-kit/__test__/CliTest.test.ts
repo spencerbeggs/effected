@@ -62,4 +62,22 @@ describe("CliTest", () => {
 			}).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 		{ timeout: 5000 },
 	);
+
+	it.effect("expectExit passes on a match and fails naming code and stderr", () =>
+		Effect.gen(function* () {
+			const sandbox = yield* CliTest.sandbox({ path: process.env.PATH ?? "" });
+			const options = { sandbox, execPath: process.execPath };
+			const ok = yield* CliTest.run(BIN, [], { ...options, expectExit: 3 });
+			assert.strictEqual(ok.exitCode, 3);
+			const error = yield* Effect.flip(CliTest.run(BIN, [], { ...options, expectExit: 0 }));
+			assert.strictEqual(error._tag, "CliTestFailure");
+			assert.include(error.message, "expected exit 0");
+			assert.include(error.message, "exit 3");
+			assert.include(error.message, "error: something failed");
+			const signalled = yield* Effect.flip(
+				CliTest.run("-e", ["process.kill(process.pid, 'SIGTERM')"], { ...options, expectExit: 0 }),
+			);
+			assert.include(signalled.message, "SIGTERM");
+		}).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+	);
 });

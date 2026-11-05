@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import { Text } from "ink";
 import type { ReactElement } from "react";
 import { createElement } from "react";
-import { Styled, inkProps, useGlyphs, useTerminalSize, useTheme } from "../../src/ui.js";
+import { Styled, inkProps, useGlyphs, useStyle, useTerminalSize, useTheme } from "../../src/ui.js";
 import { CliUiTest } from "../../src/ui-testing.js";
 
 describe("inkProps", () => {
@@ -73,6 +73,14 @@ describe("the theme bridge under CliUiTest", () => {
 			assert.strictEqual((yield* handle.plainFrame).trim(), "79x23");
 			yield* handle.resize(100, 30);
 			assert.strictEqual((yield* handle.plainFrame).trim(), "99x29");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("useStyle resolves through the mounted theme, so a token decodes to its marker, not a raw colour", () =>
+		Effect.gen(function* () {
+			const Probe = (): ReactElement => createElement(Text, useStyle("success"), "ok");
+			const handle = yield* CliUiTest.render(() => createElement(Probe));
+			assert.strictEqual((yield* handle.frame).trim(), "[success]ok[/success]");
 		}).pipe(Effect.scoped),
 	);
 });

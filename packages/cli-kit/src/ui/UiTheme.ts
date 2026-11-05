@@ -102,6 +102,26 @@ export const useTheme = (): Cli.StreamTheme => useScreen().theme;
 export const useGlyphs = (): Cli.GlyphSet => useScreen().glyphs;
 
 /**
+ * The Ink `Text` props for `token`, resolved through the mounted screen's theme.
+ *
+ * @remarks
+ * The route a component takes to honour the theme: it sees a consumer's token overrides and `CliUiTest.styled`'s
+ * marker palette, and gives no styling props at colour `none`. `inkProps(Token.resolve(token))` resolves against the
+ * default palette and ignores the mounted theme, so under `CliUiTest.styled` it renders a raw colour where this
+ * renders the token.
+ *
+ * A React hook: call it from a component rendered inside a `CliUi.run` screen or a `UiProvider`.
+ *
+ * @param token - a theme token, or an explicit style
+ *
+ * @public
+ */
+export const useStyle = (token: Cli.TokenName | Cli.Style): InkTextProps => {
+	const theme = useTheme();
+	return inkProps(theme.style(token), theme.color);
+};
+
+/**
  * Text painted with a theme token or style, through the mounted screen's theme.
  *
  * @remarks

@@ -8,5 +8,5 @@
  *
  * @packageDocumentation
  */
-export { CliTest, type RunOptions, type RunResult, type Sandbox, type SpawnedBin } from "./CliTest.js";
+export { CliTest, CliTestFailure, type RunOptions, type RunResult, type Sandbox, type SpawnedBin } from "./CliTest.js";
 export { type KeyInput, TestTerminal, type TestTerminalHandle } from "./TestTerminal.js";
