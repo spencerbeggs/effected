@@ -215,6 +215,12 @@ await build({
 							strategy: "lock-minor",
 							source: "workspace",
 						},
+						"@effected/files": {
+							range: "^0.1.0",
+							peer: "^0.1.0",
+							strategy: "lock-minor",
+							source: "workspace",
+						},
 						"@effected/engine": {
 							range: "^0.12.0",
 							peer: "^0.12.0",

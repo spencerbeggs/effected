@@ -627,6 +627,28 @@ importers:
         version: 7.1.0-beta
     publishDirectory: dist/dev/pkg
 
+  packages/files:
+    devDependencies:
+      '@effect/vitest':
+        specifier: catalog:effected
+        version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs/dist/dev/pkg
+      '@savvy-web/bundler':
+        specifier: ^2.7.3
+        version: 2.7.3(@types/node@26.6.6)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(redis@6.3.1)(tsx@4.23.15)(typescript@7.1.0-beta)
+      '@types/node':
+        specifier: catalog:build
+        version: 26.6.6
+      effect:
+        specifier: catalog:effected
+        version: 4.1.2
+      typescript:
+        specifier: catalog:build
+        version: 7.1.0-beta
+    publishDirectory: dist/dev/pkg
+
   packages/git:
     devDependencies:
       '@effect/platform-node':
@@ -1816,6 +1838,9 @@ importers:
       '@effected/env':
         specifier: workspace:*
         version: link:../packages/env/dist/dev/pkg
+      '@effected/files':
+        specifier: workspace:*
+        version: link:../packages/files/dist/dev/pkg
       '@effected/git':
         specifier: workspace:*
         version: link:../packages/git/dist/dev/pkg

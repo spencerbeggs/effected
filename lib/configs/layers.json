@@ -25,6 +25,7 @@
 			"@effected/commands",
 			"@effected/kit",
 			"@effected/env",
+			"@effected/files",
 			"@effected/git",
 			"@effected/github-commands",
 			"@effected/github-references",

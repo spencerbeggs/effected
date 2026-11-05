@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T06:55:47Z
+  at: 2026-11-05T15:34:07Z
 integrity:
   generated:
-    body: d5bc5ce01642e2ef
+    body: a550dde5d6f0b1f6
 ---
 
 # effected
@@ -41,6 +41,7 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `lockfiles` | pure | extraction from `workspaces`; bun/npm/pnpm/yarn parsers |
 | `store` | integrated | extraction from `xdg`; migrated SQLite `Store` and TTL `Cache` |
 | `xdg` | boundary | port of `xdg-effect`; does not depend on `store` |
+| `files` | boundary | invention; `AtomicFile.write`, the atomic single-file write adopted across the kit, over core `FileSystem` and `Path` in `R` |
 | `workspaces` | integrated | port of `workspaces-effect`; discovery, dependency graph, catalogs, change detection |
 | `runtimes` | boundary | port of `runtime-resolver`'s library half |
 | `tsconfig-json` | boundary | invention; zero `typescript` imports |
@@ -76,7 +77,7 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `mcp` | tool — no tier | invention; the `effected-mcp` stdio server with the `identity` tool and the `schema_build`, `schema_check` and `schema_validate` tools over `effect/ai`, `mcp-kit` and `engine` |
 | `engine` | tool — no tier | invention; the tool's shared logic that both front ends report through: `Identity.report`, and the `./schema` subpath (config loader, runner, report classes, version check, the two shipped ajv engines), built on `kit` and `schemastore` |
 
-The roster is **46 packages**: 41 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`plugin`, `cli`, `mcp`, `engine`), which are an application and carry no library tier. `cli-kit`, `mcp-kit`, `kit` and `plugin` are new npm names, not yet published. `cli`, `mcp` and `engine` published before as the old kit libraries, and their next release is the tool package under the same name. `pnpm-plugin-effected` is already published.
+The roster is **47 packages**: 42 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`plugin`, `cli`, `mcp`, `engine`), which are an application and carry no library tier. `cli-kit`, `mcp-kit`, `kit` and `plugin` are new npm names, not yet published. `cli`, `mcp` and `engine` published before as the old kit libraries, and their next release is the tool package under the same name. `pnpm-plugin-effected` is already published.
 
 ### Consumers
 

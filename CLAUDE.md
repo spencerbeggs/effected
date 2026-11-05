@@ -39,7 +39,7 @@ Durable project knowledge lives as OKF concepts under `okf/`, not in prose here.
 
 ### Kit composition
 
-The kit is **46 publishable packages**: 41 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`@effected/plugin`, the carrier a consumer installs, plus its `cli`, `mcp` and `engine`; see `okf/decisions/one-tool-beside-the-libraries.md`); `@effected/cli-kit`, `@effected/mcp-kit`, `@effected/kit` and `@effected/plugin` are new npm names, not yet published; `@effected/cli`, `@effected/mcp` and `@effected/engine` published before as the old kit libraries, and their next release is the tool package under the same name. New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
+The kit is **47 publishable packages**: 42 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`@effected/plugin`, the carrier a consumer installs, plus its `cli`, `mcp` and `engine`; see `okf/decisions/one-tool-beside-the-libraries.md`); `@effected/cli-kit`, `@effected/mcp-kit`, `@effected/kit` and `@effected/plugin` are new npm names, not yet published; `@effected/cli`, `@effected/mcp` and `@effected/engine` published before as the old kit libraries, and their next release is the tool package under the same name. New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
 
 **The carrier libraries are `@effected/cli-kit`, `@effected/mcp-kit` and `@effected/kit`; `@effected/cli`, `@effected/mcp` and `@effected/engine` are the `effected` tool's own packages.** The old names were renamed with no shim, and `@effected/app` kept its name → `okf/decisions/carrier-libraries-take-kit-names.md`. A stale import of an old name fails at build, not at install.
 
@@ -59,7 +59,7 @@ The kit is **46 publishable packages**: 41 libraries, one companion (`pnpm-plugi
 
 ### Package context files
 
-Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. The roster of all 46 — what each one is, and the parenthetical tier tag every **library** carries (pure / boundary / integrated, per `okf/glossary/library-tier.md`) — lives in `okf/project.md`'s packages table. Load it when: choosing which package owns a capability, or checking a package's tier or scope before working in it.
+Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. The roster of all 47 — what each one is, and the parenthetical tier tag every **library** carries (pure / boundary / integrated, per `okf/glossary/library-tier.md`) — lives in `okf/project.md`'s packages table. Load it when: choosing which package owns a capability, or checking a package's tier or scope before working in it.
 
 ## Build Pipeline
 

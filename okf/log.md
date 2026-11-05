@@ -39,6 +39,7 @@
 * Updated ai-plugin
 * Updated effected
 * Updated spencerbeggs/okfit
+* Added @effected/files
 
 ## 2026-11-02
 

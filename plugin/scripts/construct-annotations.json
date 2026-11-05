@@ -452,6 +452,9 @@
 		"transformSecurityAndAnalysis": "translate a security_and_analysis block into the shape the repository patch endpoint expects",
 		"versionFromTag": "extract a version string out of a tag name, the default tag-to-semver convention"
 	},
+	"files": {
+		"AtomicFile": "write a file atomically, temp file then rename, crash cannot truncate the file, keep symlink and permissions on save"
+	},
 	"glob": {
 		"GlobPattern": "compile a glob pattern, test if a path matches, minimatch dialect",
 		"GlobPatternError": "handle malformed glob pattern, pattern too long, brace expansion budget exceeded, nesting depth exceeded",
