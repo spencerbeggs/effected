@@ -1,3 +1,4 @@
+import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { NodeServices } from "@effect/platform-node";
@@ -24,7 +25,8 @@ describe("mcp boundary", () => {
 							"node:process",
 							"stdout-write",
 							"console",
-							{ forbidImports: ["node:*", "@effect/platform*", "@effected/cli-kit", "@effected/workspaces"] },
+							SourceBoundary.platformFree(builtinModules),
+							{ forbidImports: ["@effected/cli-kit", "@effected/workspaces"] },
 						],
 						// The ./node subpath's one licence: StdioCapture imports node:async_hooks (the capture context)
 						// and node:stream (StdioCapture.nullWritable). Its host is
