@@ -167,11 +167,11 @@ describe("writeDtsEmitTsconfig", () => {
 			exclude?: string[];
 		};
 		// Inherits the base via an ABSOLUTE extends (keeps the base's own relative paths resolving) and
-		// adds only the flag that makes TS6 declaration emit order union/type members deterministically.
+		// adds the flag that makes TS6 declaration emit order union/type members deterministically.
 		// The base is named CANONICALLY (symlinks resolved): the tsgo generator keys project files by
 		// realpath, so a symlinked tmpdir base must be spelled the way rolldown spells module ids.
 		assert.strictEqual(emitted.extends, realpathSync.native(base));
-		assert.deepStrictEqual(emitted.compilerOptions, { stableTypeOrdering: true });
+		assert.deepStrictEqual(emitted.compilerOptions, { stableTypeOrdering: true, customConditions: null, paths: null });
 		// The base's absolute include set is restated verbatim (it was already absolute).
 		assert.deepStrictEqual(emitted.include, baseCfg.include);
 		assert.deepStrictEqual(emitted.exclude, baseCfg.exclude);
@@ -180,18 +180,30 @@ describe("writeDtsEmitTsconfig", () => {
 		assert.isUndefined(stillBase.compilerOptions.stableTypeOrdering);
 	});
 
-	it("clears customConditions and paths inherited from the base", async () => {
+	it("always clears customConditions and paths, whether or not the base declares them", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "dtscfg-reset-"));
-		const base = join(dir, "tsconfig-bundle.json");
+		const declared = join(dir, "declared.json");
 		await writeFile(
-			base,
+			declared,
 			JSON.stringify({
 				compilerOptions: { customConditions: ["source"], paths: { "@x/*": ["./src/*"] }, strict: true },
 			}),
 		);
-		const out = writeDtsEmitTsconfig(base);
-		const emitted = JSON.parse(await readFile(out, "utf-8")) as { compilerOptions: Record<string, unknown> };
-		assert.deepStrictEqual(emitted.compilerOptions, { stableTypeOrdering: true, customConditions: null, paths: null });
+		const plain = join(dir, "plain.json");
+		await writeFile(plain, JSON.stringify({ compilerOptions: { strict: true } }));
+		// A base the kit loader cannot parse must not silently skip the reset either.
+		const broken = join(dir, "broken.json");
+		await writeFile(broken, "{ not json");
+		for (const base of [declared, plain, broken]) {
+			const emitted = JSON.parse(await readFile(writeDtsEmitTsconfig(base), "utf-8")) as {
+				compilerOptions: Record<string, unknown>;
+			};
+			assert.deepStrictEqual(emitted.compilerOptions, {
+				stableTypeOrdering: true,
+				customConditions: null,
+				paths: null,
+			});
+		}
 	});
 
 	it("pins TypeScript's default include to the base's own directory when the base declares none", async () => {

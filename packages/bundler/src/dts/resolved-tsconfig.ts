@@ -151,28 +151,12 @@ function absoluteFileSet(
 }
 
 /**
- * Compiler options the dts program must never inherit: `customConditions` and `paths` exist to make the
- * TYPECHECK program resolve siblings from source (an export condition, a path alias), while the declaration
- * program must resolve them the way the package manifest says.
+ * Compiler options the dts program must never inherit, each written as `null`: `customConditions` and `paths`
+ * exist to make the TYPECHECK program resolve siblings from source (an export condition, a path alias), while the
+ * declaration program must resolve them the way the package manifest says. They are cleared unconditionally rather
+ * than only when the base declares them, so nothing about how the base resolves can leave the leak open.
  */
-const DTS_RESET_OPTIONS = ["customConditions", "paths"] as const;
-
-/**
- * The {@link DTS_RESET_OPTIONS} the base resolves to a value, each mapped to `null` (the tsconfig spelling that
- * clears an inherited option in an extending config). A base that declares neither contributes nothing; a base the
- * loader cannot resolve contributes nothing either.
- */
-function inheritedOptionResets(configPath: string): Record<string, null> {
-	let options: Record<string, unknown>;
-	try {
-		options = { ...TsconfigLoaderSync.resolve(configPath, tsconfigSyncOptions).compilerOptions };
-	} catch {
-		return {};
-	}
-	const resets: Record<string, null> = {};
-	for (const key of DTS_RESET_OPTIONS) if (options[key] !== undefined) resets[key] = null;
-	return resets;
-}
+const DTS_RESET_OPTIONS: Record<string, null> = { customConditions: null, paths: null };
 
 /**
  * tsconfig globs have only `*`, `?` and `**`: an extglob's parentheses, or a leading `#` or `!`, are literal
@@ -235,10 +219,11 @@ export function writeResolvedTsconfig(options: ResolvedTsconfigOptions): string 
  *   wrapper's own directory — the OS temp dir — so the project would be every stray temp file on
  *   the machine and never the package's sources.
  *
- * The wrapper also clears `customConditions` and `paths` when the base resolves either (written as `null`, which
- * the TypeScript compiler reads as removing the inherited value; the kit's own tsconfig loader does not accept it): the declaration program must resolve sibling packages the way the package
+ * The wrapper also ALWAYS clears `customConditions` and `paths` (written as `null`, which the TypeScript compiler
+ * reads as removing an inherited value): the declaration program must resolve sibling packages the way the package
  * manifest says, never through a typecheck-only condition or path alias that would pull source files into the
- * emitted declarations.
+ * emitted declarations. The only reader of this file is the tsgo declaration generator; nothing in the bundler
+ * reads it back through the kit's `TsconfigLoaderSync`, which rejects `null` compiler options.
  *
  * Best-effort: if the base tsconfig cannot be read or parsed (e.g. a synthetic test path that was
  * never written), the original path is returned unchanged — the emit then simply keeps TS's
@@ -262,7 +247,7 @@ export function writeDtsEmitTsconfig(resolvedTsconfigPath: string): string {
 	// to reap, intentionally consistent with `writeResolvedTsconfig`'s pid-scoped temp pattern.
 	const cfg = {
 		extends: canonicalBase,
-		compilerOptions: { stableTypeOrdering: true, ...inheritedOptionResets(canonicalBase) },
+		compilerOptions: { stableTypeOrdering: true, ...DTS_RESET_OPTIONS },
 		...absoluteFileSet(canonicalBase, baseDir),
 	};
 	const path = join(tmpdir(), `tsconfig-dts-emit-${process.pid}-${absBase.replace(/[^\w]/g, "_")}.json`);

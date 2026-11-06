@@ -14,6 +14,8 @@ let client: API | undefined;
 /**
  * Parse `source` as a TypeScript module and hand its syntax tree to `use`, releasing the server-side
  * retention afterwards. Pure parsing — no I/O, no type information. The tree must not escape `use`.
+ *
+ * @internal
  */
 export function withParsedSource<T>(fileName: string, source: string, use: (sf: SourceFile) => T): T {
 	client ??= new API();
