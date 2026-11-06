@@ -19,10 +19,10 @@ sources:
     title: "bundler: @effected/bundler and the top-level @effected/plugin package"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T22:24:55Z
+  at: 2026-11-06T23:49:47Z
 integrity:
   generated:
-    body: ded946b98f11aff4
+    body: 54af469aa61eabd9
 ---
 
 # The kit builds itself with the bundler running from source under tsx
@@ -43,6 +43,10 @@ The kit built with `@savvy-web/bundler`, which depended on published copies of t
 - **A direct run,** such as `node_modules/.bin/effected` or the plugin's `start-mcp.sh`: no `nodeOptions` applies, so the four source bins register tsx themselves when `import.meta.url` ends in `.ts`, and import everything else dynamically after that. The branch is dead in a built `.js` bin. tsx stays the workspace root's devDependency and no package declares it. Its specifier is computed, because rolldown folds a literal or a `const` and inlines tsx into the published package while `issues.json` stays clean. `packages/plugin/__test__/bin-launch.test.ts` pins both halves.
 
 **`nodeOptions` does not reach every child safely.** `--import=tsx` resolves from each process's cwd, and children inherit it, so a child that a pnpm script starts in a directory that cannot resolve tsx dies at startup. The root vitest config clears `NODE_OPTIONS` for tests, and a test that runs sibling source in a child loads tsx itself. Nothing shields a repo script that spawns a tool in a temp directory.
+
+**A self-hosting consumer has the same contract.** A repository whose root depends on its own carrier through `workspace:*` runs that carrier's bins from source, so `node_modules/.bin/<tool>` has no `nodeOptions` under a hook, an MCP loader or a bare shell. The kit's answer works there unchanged: the bin file registers tsx itself when it runs from `.ts`, by the guarded dynamic import of `tsx/esm/api` above, and imports everything else dynamically after that, with `tsx` as a root devDependency. Then `.bin/<tool>` runs outside pnpm, and no e2e harness needs an absolute loader. Launching through `pnpm run` is not the contract.
+
+**The `nodeOptions` recipe is repo-global, and a tool that loads its own bundles can break under it.** Every process a pnpm script starts inherits it. rspress is the known case: `rspress build` fails loading its SSG bundle under `--import=tsx` and passes without it. The escape is `NODE_OPTIONS=` at the front of that script. A root `build` script also uses `--filter=!docs` when a website package has its own `build` task, or every root build runs the site.
 
 The cost is the usual one for a self-hosting toolchain: a broken kit package can break the build of the kit. `savvy-web/systems` already lives with that. The published bundler is validated by the packed-install e2e, a real consumer install, which is where consumer behaviour should be proven.
 

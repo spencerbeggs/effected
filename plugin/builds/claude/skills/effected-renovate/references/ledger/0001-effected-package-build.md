@@ -19,7 +19,9 @@ The kit no longer builds with `@savvy-web/bundler`. `@effected/plugin` carries t
 6. **Move each `build({...})` option to `effected.toml`.** Tables are `[package.build]`, `[package.build.meta]` and `[package.tsdoctor]`. Decoding is strict, so a key that did not survive fails the build by name instead of being ignored.
    - `dtsExternals`, `externals`, `bundledPackages`, `bundleNodeModules` and `exe` keep their names under `[package.build]`. `formats` is `format`.
    - `meta.tsdoc.suppressWarnings` and `meta.tsdoc.tagDefinitions` move to `[package.build.meta.tsdoc]`. The `{ messageId: "ae-forgotten-export", pattern: "_base" }` rule is now the default, so delete it unless the list has other rules: a list you write replaces the default, so keep it there in that case.
-   - `meta.localPaths` and `devManifest` are gone. Delete them.
+   - `meta.localPaths` keeps its name, under `[package.build.meta]`, as paths relative to the package. `devManifest` is gone, so delete it.
+   - A post-build script that copies non-module assets into the package becomes `[package.build] copy = [...]`, or a `public/` directory, which is copied with no config. `from` is relative to the package and `to` to the emitted package root. A pattern export matching nothing emitted warns as `exports-pattern-unmatched`.
+   - `bundledPackages` naming a workspace sibling inlines the sibling's built declarations, so that package's own `turbo.json` needs `dependsOn: ["^build"]` on `build`. A subpath inlines only when listed.
    - `plugins` is a list of module paths resolved against the package directory, not plugin values. A module's default export is a rolldown plugin or a factory of one. Move an inline plugin to its own file.
    - `transform` has no function form. `[package.build.manifest] drop = [...]` lists the top-level keys to drop from the emitted `package.json`. A transform that rewrites a value has no counterpart, so check each one before you delete it.
    - `tsdoctor` moves to `[package.tsdoctor]`.
@@ -27,7 +29,9 @@ The kit no longer builds with `@savvy-web/bundler`. `@effected/plugin` carries t
 7. **Repoint the tsconfig.** Each `extends` of `@savvy-web/bundler/tsconfig/ecma.json` becomes `@effected/plugin/tsconfig/ecma.json`.
 8. **Ignore the journals.** Each build appends to `.cache/effected/build.jsonl` and `.cache/effected/issues.jsonl` at the workspace root, so add `.cache` to `.gitignore`.
 
-A repository that installs the tool from npm runs a built bin and needs nothing else. Only a pnpm 12 workspace that runs its `effected` bin from source also needs `nodeOptions: --import=tsx` in `pnpm-workspace.yaml`.
+A repository that installs the tool from npm runs a built bin and needs nothing else. Only a pnpm 12 workspace that runs its `effected` bin from source also needs `nodeOptions: --import=tsx` in `pnpm-workspace.yaml`. That setting is repo-global: every process a pnpm script starts inherits it, and a tool that loads its own bundles can break, `rspress build` being the known case. The escape is `NODE_OPTIONS=` at the front of that script. A root `build` script also uses `--filter=!docs` when a website package has its own `build` task.
+
+**Self-hosting repositories.** A root that depends on its own carrier through `workspace:*` runs that carrier's bins from source, and `.bin/<tool>` under a hook, an MCP loader or a bare shell has no `nodeOptions`. Have the bin file register tsx itself when it runs from `.ts`, by the guarded import in `effect-v4-cli`'s bin-only-package reference, with `tsx` as a root devDependency. Then `.bin/<tool>` works outside pnpm, and no e2e harness needs an absolute loader.
 
 The artifacts keep their paths: `dist/prod/<group>/{pkg,meta}`, `dist/prod/targets.json` and `dist/prod/issues.json`. Readers of those need no change.
 

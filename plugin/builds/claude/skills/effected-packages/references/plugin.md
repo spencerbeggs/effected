@@ -43,6 +43,13 @@ Each bin is a shim calling its front end's `main()` with
 same bin names so each also installs alone; the carrier's shims are the ones a
 carrier install runs.
 
+## A repository that runs its own bins from source
+
+Consuming `@effected/plugin` from the registry runs a built bin and needs none of this. A repository whose root depends on **its own** carrier through `workspace:*` runs that carrier's bins from source, with two rules:
+
+- **The bin registers tsx itself.** `.bin/<tool>` under a hook, an MCP loader or a bare shell has no `nodeOptions`, so the bin file carries the guarded import (see `effect-v4-cli`'s [bin-only-package](../../effect-v4-cli/references/bin-only-package.md)), with `tsx` as a root devDependency. No e2e harness then needs an absolute loader.
+- **`nodeOptions: --import=tsx` in `pnpm-workspace.yaml` is repo-global.** Every process a pnpm script starts inherits it, and a tool that loads its own bundles can break: `rspress build` is the known case. The escape is `NODE_OPTIONS=` at the front of that script. A root `build` script also uses `--filter=!docs` when a website package has its own `build` task.
+
 ## Exports
 
 - **`defineSchemastore`** — `defineConfig` from `@effected/schemastore` under the

@@ -80,7 +80,7 @@ Builds the package in the current directory from its `package.json` plus an
 optional `effected.toml`; a package with neither needs no config. The
 `[package.build]` table holds `format`, `externals`, `bundle`, `bundledPackages`,
 `dtsExternals`, `bundleNodeModules`, `minify`, `emitDts`, `define`, `plugins`
-(module paths exporting a rolldown plugin), `overrides`, `looseFiles`, `jsx`,
+(module paths exporting a rolldown plugin), `overrides`, `looseFiles`, `copy`, `jsx`,
 `manifest.drop`, `meta` and `exe`; `[package.tsdoctor]` shapes the emitted
 `tsdoctor.json`. `meta.tsdoc.suppressWarnings` defaults to
 `[{ messageId = "ae-forgotten-export", pattern = "_base" }]` and
@@ -94,7 +94,7 @@ Artifacts land in `dist/prod/<group>/{pkg,meta}` with `dist/prod/targets.json`
 and `dist/prod/issues.json` beside them; each build also appends to
 `.cache/effected/build.jsonl` and `issues.jsonl` at the workspace root. **Read
 `issues.json`'s `buildOk` first**: a crashed build can leave every bucket empty.
-`--no-exe` skips the single-executable compile; `--verbose` measures gzip sizes.
+`--no-exe` skips the single-executable compile, which otherwise runs on any host; `--verbose` measures gzip sizes.
 
 Exit codes: `0` built; `1` the build failed or recorded an error; `2` the config
 or a plugin would not load, or the directory is not a package; `3` a file could

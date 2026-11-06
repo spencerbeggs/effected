@@ -26,10 +26,10 @@ sources:
     resource: ../../packages/bundler/src/action/ActionBuilder.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T22:22:26Z
+  at: 2026-11-06T23:49:47Z
 integrity:
   generated:
-    body: a6355e24c76a35c7
+    body: ad74e137f7e63b7b
 ---
 
 # The effected build commands: package build and action build
@@ -60,7 +60,7 @@ Neither takes a path. The working directory is the package; in this repository r
 | Flag | Effect |
 | --- | --- |
 | `--format=human\|json` | The report's form. The default follows the audience, as `effected schema`'s does |
-| `--no-exe` | Skips the single-executable compile. The manifest still points at the binary |
+| `--no-exe` | Skips the single-executable compile, which is the only skip: without it the binary compiles on any host, for its declared target. The manifest still points at the binary |
 | `--verbose` | Measures gzip sizes for the report |
 
 - **Exit 1** is `BuildFailedError`: the build crashed, or it finished having recorded an error.

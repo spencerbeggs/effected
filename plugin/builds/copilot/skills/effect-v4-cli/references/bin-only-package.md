@@ -36,3 +36,25 @@ Three consequences follow, and each looks like a gap until you know why:
 The trap this replaces: reading `Cannot merge zero API models` as an
 extractor bug, or as a sign the bin needs an `index.ts` to satisfy the gate.
 See `effect-api-extractor-bases` for how the gate reads for the *other* case.
+
+## A bin that also runs from source
+
+A repository whose root depends on its own carrier through `workspace:*` runs that carrier's bin from source. `node_modules/.bin/<tool>` under a hook, an MCP loader or a bare shell gets no `nodeOptions`, and sibling imports then fail with `ERR_MODULE_NOT_FOUND` on a `.js` path. So the bin file registers tsx itself, before anything resolves a sibling's source, with every other import dynamic and `tsx` as a root devDependency:
+
+~~~ts
+#!/usr/bin/env node
+
+// Linked source needs tsx, and a pnpm script loads it through nodeOptions. A direct run of the bin does not, so it
+// registers tsx here, before anything resolves a sibling's source. A built `.js` bin never takes this branch. tsx is
+// the workspace root's alone, and the specifier is computed because rolldown inlines a literal, or a const it can fold,
+// into the published package.
+if (import.meta.url.endsWith(".ts")) {
+  const tsx = ["tsx", "esm", "api"].join("/");
+  const { register } = (await import(tsx)) as { readonly register: () => void };
+  register();
+}
+
+const { main } = await import("@effected/cli/main");
+~~~
+
+The last line is the kit's own; import your front end's entry there. A static import would resolve before the branch runs. `.bin/<tool>` then works outside pnpm, and no e2e harness needs an absolute loader.

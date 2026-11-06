@@ -16,10 +16,10 @@ sources:
     title: "Decisions this plan takes, items 1 and 3"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T22:24:55Z
+  at: 2026-11-06T23:49:47Z
 integrity:
   generated:
-    body: 906a8a469fc2d5ec
+    body: a42fef08f5a08fcc
 ---
 
 # The kit has one build target, and workspace links point at package roots
@@ -33,7 +33,7 @@ The pipeline had two targets running the same passes, and the dev target existed
 - **One target.** There is no `dist/dev`. With no `publishConfig.directory` and no `linkDirectory`, every workspace link points at the package root, which is all the dev build ever did.
 - **Source manifests keep `"exports": { ".": "./src/index.ts" }`** as they do today. tsgo, vitest, rolldown and API Extractor's bundled TypeScript 6 resolve a `.ts` export target natively, so none of them needs a setting.[^plan]
 - **[`dist/prod/<group>/{pkg,meta}`, `dist/prod/targets.json` and `dist/prod/issues.json`](../interfaces/build-artifacts.md) stayed byte-stable through the switch.** The kit's own releases run through `silk-release-action`, which hardcodes `dist/prod`, and tsdoctor reads the meta directory.
-- **Turbo `build` depends on `types:check` and not on `^build`**, so the kit builds in parallel. The spike took this path for the declaration pass: it held from source at 1.03 times the `dist/dev` time, and API Extractor held for cli-kit under `ci: true` and was byte-identical across the kit under `ci: false`, so neither showed a need for the `paths` fallback or `^build`. The numbers and their limits are in [the module's spike section](../modules/bundler.md#source-sibling-spike).[^plan]
+- **Turbo `build` depends on `types:check` and not on `^build`**, so the kit builds in parallel. The spike took this path for the declaration pass: it held from source at 1.03 times the `dist/dev` time, and API Extractor held for cli-kit under `ci: true` and was byte-identical across the kit under `ci: false`, so neither showed a need for the `paths` fallback or `^build`. The numbers and their limits are in [the module's spike section](../modules/bundler.md#source-sibling-spike).[^plan] **The one exception is a consumer that inlines a sibling's types:** tsgo cannot declare a sibling's source, so `bundledPackages` naming one reads the sibling's built declarations through a `paths` map, and that package's own `turbo.json` adds `dependsOn: ["^build"]`. No kit package does this, and the build names the sibling when its declarations are absent.
 
 **`types:check` depends on `^types:check`.** Linked source means a package's typecheck reads its siblings' files, but turbo hashes only a task's own package. Without the chain, a sibling's signature change replays a cached pass, and `build` inherits the gap through its own dependency. The chain moves each task's hash with every sibling it depends on, and it builds nothing, so `build` still needs no `^build`.
 

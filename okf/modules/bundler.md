@@ -27,10 +27,10 @@ sources:
     title: "The source-sibling spike, run with EFFECTED_SPIKE=1"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T23:00:10Z
+  at: 2026-11-06T23:49:47Z
 integrity:
   generated:
-    body: a3d180beafa51928
+    body: ea50f556dd551b5f
 ---
 
 # @effected/bundler
@@ -110,7 +110,7 @@ What the result rests on:
 
 **A sibling's source is accounted as suppressed.** 23 of the 48 packages reported `ae-wrong-input-file-type` once, naming a file in a sibling's `src/`, because API Extractor's diagnostics run follows a sibling import to its `.ts` source. It does not reach the model. The handler classifies that message as suppressed when the file's realpath lies outside the package's own, so `issues.json` stays clean; the same message about a file inside the package stays a warning, since that means its own declarations reached its source. The suppression also hides a file reached through a tsconfig `paths` alias that resolves outside the package.
 
-Inlining is the other edge: **`bundledPackages` naming a sibling that resolves to source fails the build** with `tsgo did not generate a declaration file`, since tsgo declares only the package's own project. It is loud, the spike pins it, and no kit package sets `bundledPackages`.
+Inlining is the other edge: **tsgo declares only the package's own project, so `bundledPackages` naming a sibling inlines the sibling's built declarations rather than its source.** The partition's dts-emit tsconfig maps that sibling, and only that sibling, to `dist/prod/<canonical group>/pkg`, the one case that writes `paths`, and a sibling with no build fails `ConfigValidationError` before any pass. A package inlining a sibling therefore needs `dependsOn: ["^build"]`, the single exception to the no-`^build` verdict. The spike pins both halves, and no kit package sets `bundledPackages`; [vitest-agent](../consumers/vitest-agent.md) does, for its reporter and UI API docs.
 
 The edge this leaves: **a sibling's public function whose return type its entry point does not export gives a consumer's inferred declaration a silent `any` from source**, with no warning, no error and `buildOk: true`. The rolled-up `dist` gave a different wrong answer for the same site, a dangling name or a copied structure. The kit cannot grow such a site while it stays clean: the sibling's own API Extractor gate makes a public function returning an unexported type fatal in CI. A package outside that gate gets no such report.
 

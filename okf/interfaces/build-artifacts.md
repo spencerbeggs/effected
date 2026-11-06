@@ -28,10 +28,10 @@ sources:
     resource: ../../packages/engine/src/build/BuildRun.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T22:22:26Z
+  at: 2026-11-06T23:49:47Z
 integrity:
   generated:
-    body: 02a5d38aeca80f05
+    body: 0d25da58fa452278
 ---
 
 # The build artifacts: dist/prod, targets.json, issues.json and the journals
@@ -59,7 +59,7 @@ An [`effected package build`](build-commands.md) leaves these on disk. Tools out
 
 ## `<group>/pkg` and `<group>/meta`
 
-A group is one distinct published name, from `publishConfig.targets`; with none declared there is one group, `npm`.[^bundler] `pkg` holds the JS, the declarations, the emitted `package.json` and, for an `exe` build, `bin/<binary>`. Declaration source maps are stripped from it.
+A group is one distinct published name, from `publishConfig.targets`; with none declared there is one group, `npm`.[^bundler] `pkg` holds the JS, the declarations, the emitted `package.json` and, for an `exe` build, `bin/<binary>`, compiled whatever the host: `@tsdown/exe` cross-compiles. Its `exports["."]` points at the binary, and it has a `bin` only when the source manifest declares one. Declaration source maps are stripped from it. A `dist/prod/<group>/pkg` is also what a consumer's `bundledPackages` reads when it names this package as a sibling.
 
 `meta` holds three files every time it exists: `<unscoped>.api.json`, the final `package.json` and a portable `tsconfig.json`. **`tsdoctor.json` and `og/` are conditional, and a build removes a previous build's copies first,** so a package that stops producing them stops advertising them.[^generate] There is no `meta` at all under `meta = false`, under `emitDts = false`, or for an exe-only package. `tsdoctor.json` is decoded by readers outside this repository, and its fields grow additively.
 

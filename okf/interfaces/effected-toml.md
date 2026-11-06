@@ -21,10 +21,10 @@ sources:
     resource: ../../packages/bundler/src/config/plugins.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T22:22:26Z
+  at: 2026-11-06T23:49:47Z
 integrity:
   generated:
-    body: 00cac87d3909a597
+    body: 8eb38744f816e4c8
 ---
 
 # effected.toml: the build config's tables, defaults and discovery
@@ -59,7 +59,7 @@ The merged document decodes once, strictly. An unknown key is a failure rather t
 | `format` | `["esm"]` | Output module formats, `esm` and `cjs` |
 | `externals` | `[]` | Packages kept external |
 | `bundle` | `[]` | Packages force-bundled into the JS output; declarations are not inlined by this |
-| `bundledPackages` | `[]` | External packages whose declarations are inlined into the bundled `.d.ts` |
+| `bundledPackages` | `[]` | External packages whose declarations are inlined into the bundled `.d.ts`. [A workspace sibling inlines from its build](#inlining-a-workspace-sibling) |
 | `dtsExternals` | `[]` | Packages externalized in the declaration pass only; declare them as dependencies so consumers can resolve the emitted imports |
 | `bundleNodeModules` | `false` | Bundles non-external `node_modules` and workspace dependencies into the JS and the declarations |
 | `minify` | `false` | Minifies the output |
@@ -68,6 +68,7 @@ The merged document decodes once, strictly. An unknown key is a failure rather t
 | `plugins` | `[]` | See [the two code keys](#the-two-code-keys) |
 | `overrides` | `[]` | `[[package.build.overrides]]`: format and bundling settings pinned to some export paths |
 | `looseFiles` | `{}` | Standalone files at literal output paths, outside the exports, declaration and meta graph: a source path or `{ source, format? }` |
+| `copy` | `[]` | [Non-module assets](#non-module-assets) copied into each group's `pkg/`: a path or glob, or `{ from, to?, flatten? }` |
 | `jsx` | inferred from the tsconfig | `{ runtime?, importSource? }`, with `runtime` `automatic` or `classic` |
 | `manifest` | `{ drop = [] }` | See [the two code keys](#the-two-code-keys) |
 | `meta` | a table of defaults | The API model's settings, or `false` to opt out and still run the declaration pass |
@@ -79,9 +80,34 @@ An override's `entries` is required and each must be a canonical export path, `"
 
 | Key | Default | Meaning |
 | --- | --- | --- |
+| `localPaths` | `[]` | Directories, relative to the package, that the canonical group's API model is copied into: the `.api.json`, the meta `package.json` and `tsconfig.json`, and `tsdoctor.json` when one was emitted. For a docs site that reads the model from its own tree |
 | `optimistic` | `"auto"` | Forward-looks the meta bundle's versions from pending changesets. `auto` is `false` under CI and `true` locally |
 | `tsdoc.suppressWarnings` | `[{ messageId = "ae-forgotten-export", pattern = "_base" }]` | API Extractor messages to suppress. A list **replaces** the default, so an empty one suppresses nothing |
 | `tsdoc.tagDefinitions` | `[]` | Custom TSDoc tags: `{ tagName, syntaxKind, allowMultiple? }` |
+
+### Non-module assets
+
+A `public/` directory needs no config: its contents are copied verbatim into each group's `pkg/` root. `copy` is the explicit way, for files that live elsewhere, and is tsdown's `copy` option as data.
+
+```toml
+[package.build]
+copy = ["../shared/schemas", { from = "assets/*.png", to = "img" }]
+```
+
+- **`from`, or a bare string, is a path or glob relative to the package directory.** A directory is copied whole under its own name, so `../shared/schemas` lands at `pkg/schemas`.
+- **`to` is relative to the group's `pkg/` root**, where tsdown alone would read it against the package directory and put every group's copy in one place. One that leaves `pkg/` fails `ConfigValidationError`.
+- **`flatten` defaults to `true`**, dropping each source's directories.
+- **A package that only compiles a binary runs no JS pass,** so `copy` there fails `ConfigValidationError` rather than doing nothing.
+
+An `exports` pattern such as `./schemas/*.json` that matches no file in the emitted package is a `warn` in `issues.json`, with `source: "config"` and code `exports-pattern-unmatched`. It does not fail the build.
+
+### Inlining a workspace sibling
+
+A sibling resolves to source, and the declaration pass cannot declare source outside its own project, so a `bundledPackages` entry that is a sibling inlines from **the sibling's built declarations**, as a registry package's would. An entry is a sibling when the realpath of `node_modules/<name>` lies inside the workspace root and outside any `node_modules`.
+
+- **The sibling has to be built first.** With no `dist/prod/<canonical group>/pkg/index.d.ts`, the build fails `ConfigValidationError` before any pass, naming it. A turbo `build` task that inlines a sibling's types needs `dependsOn: ["^build"]` in that package's own `turbo.json`, which no other package needs.
+- **A subpath is matched exactly, as for a registry package.** `bundledPackages = ["@x/a"]` leaves an import of `@x/a/sub` in place, and listing `@x/a/sub` as well inlines it.
+- **The dependency stays in the emitted manifest.** Only the declarations change, so the JS pass still imports it.
 
 `exe` takes `fileName` (required), `entry` (`./src/bin.ts` when absent), `nodeVersion`, `seaConfig` and `targets` (inferred from the package's `os` and `cpu` when absent). The schema accepts a list, and the build accepts exactly one binary with one target.
 
