@@ -90,16 +90,13 @@ jobs:
         # Resolves each catalogued package's next release version from the local
         # workspace, rewrites the catalog literal in place, and writes the
         # fixed-name changeset when anything moved. The script imports kit packages
-        # through their dev builds, which the install in Setup Runtime supplies:
-        # every workspace package's `prepare` runs `turbo run build:dev`. Running
-        # that install with `ignore-scripts` would leave both catalog steps unable
-        # to load the script.
+        # through their source, over the workspace links, so it needs no build.
         run: pnpm catalog:sync
 
       - name: Format the rewrite
         # Scope Biome to the only file the sync rewrites, so an unrelated
         # unfixable lint diagnostic elsewhere in the repo cannot abort this job.
-        run: pnpm exec biome check --write packages/pnpm-plugin-effected/savvy.build.ts
+        run: pnpm exec biome check --write packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts
 
       - name: Check for changes
         id: changes
@@ -112,7 +109,7 @@ jobs:
         # while doing nothing, which is the failure class this whole design exists
         # to eliminate.
         run: |
-          if [ -z "$(git status --porcelain -- packages/pnpm-plugin-effected/savvy.build.ts .changeset/catalog-sync.md)" ]; then
+          if [ -z "$(git status --porcelain -- packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts .changeset/catalog-sync.md)" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -160,7 +157,7 @@ jobs:
           # Stage exactly the paths this job owns, then read the staged status back:
           # that picks up the untracked changeset file alongside the rewritten
           # catalog, and normalizes both into a path list.
-          git add -- packages/pnpm-plugin-effected/savvy.build.ts .changeset/catalog-sync.md
+          git add -- packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts .changeset/catalog-sync.md
 
           additions='[]'
           while IFS= read -r -d '' path; do
