@@ -407,6 +407,8 @@ describe.skipIf(!RUNNABLE)("packed install (@effected/plugin)", () => {
 					const manifest = JSON.parse(yield* fs.readFileString(`${ROOT}/packages/plugin/package.json`)) as {
 						readonly version: string;
 					};
+					// The tool's own build chain ships in the closure a consumer installs.
+					assert.includeMembers([...PACKED], ["@effected/bundler", "@effected/changesets", "@effected/engine"]);
 					const result = yield* PackedInstall.run(RUN);
 					assert.deepStrictEqual(Object.keys(result.tarballs), [...PACKED]);
 					assert.isAbove(result.consumers.length, 0);
