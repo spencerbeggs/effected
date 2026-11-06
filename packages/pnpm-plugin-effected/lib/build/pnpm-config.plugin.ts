@@ -185,8 +185,8 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/cli": {
-					range: "^0.27.0",
-					peer: "^0.27.0",
+					range: "^0.28.0",
+					peer: "^0.28.0",
 					strategy: "lock-minor",
 					source: "workspace",
 				},
@@ -227,8 +227,8 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/engine": {
-					range: "^0.13.0",
-					peer: "^0.13.0",
+					range: "^0.14.0",
+					peer: "^0.14.0",
 					strategy: "lock-minor",
 					source: "workspace",
 				},
@@ -317,8 +317,8 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/mcp": {
-					range: "^0.14.0",
-					peer: "^0.14.0",
+					range: "^0.15.0",
+					peer: "^0.15.0",
 					strategy: "lock-minor",
 					source: "workspace",
 				},
@@ -353,8 +353,8 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/plugin": {
-					range: "^0.2.0",
-					peer: "^0.2.0",
+					range: "^0.3.0",
+					peer: "^0.3.0",
 					strategy: "lock-minor",
 					source: "workspace",
 				},
@@ -437,7 +437,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/workspaces": {
-					range: "^0.43.0",
+					range: "^0.43.1",
 					peer: "^0.43.0",
 					strategy: "lock-minor",
 					source: "workspace",
