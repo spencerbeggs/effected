@@ -23,10 +23,10 @@ sources:
     title: "Membership, the minor-locked Effect-family entries, the derived pins and the one consumer catalog"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T19:28:10Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 975bca47ed5d29de
+    body: b074395ab7480a1d
 ---
 
 # pnpm-plugin-effected
@@ -98,7 +98,7 @@ The two `catalog:` scripts are a different class, and **agents may run them**: `
 
 These catalogs are the mechanism behind the kit's peer-dependency discipline. The root `pnpm-workspace.yaml` sets exactly one resolver-relevant key, `autoInstallPeers: true`: no `dedupePeerDependents`, no `dedupeDirectDeps`, no `.npmrc`. This package declares **no** `effect` devDependency, and that absence is deliberate, because it ships and tests no `effect`-importing code. The devDependency it once carried steered the resolver to bind the bundler's `@effected/*` peers to the workspace's `effect`. Once the build toolchain carried its own `effect`, that steering inverted and leaked the workspace's copy into the toolchain's peers. Do not reintroduce it.
 
-[^savvy-build]: `packages/pnpm-plugin-effected/savvy.build.ts`
+[^savvy-build]: `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts`
 [^pnpmfile]: `packages/pnpm-plugin-effected/src/pnpmfile.ts`
 [^index]: `packages/pnpm-plugin-effected/src/index.ts`
 [^catalog-test]: `packages/pnpm-plugin-effected/__test__/catalog.test.ts`

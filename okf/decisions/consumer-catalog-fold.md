@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: Consumers see one catalog, effected, folded by the plugin's hook from split declarations
-description: "@effected/pnpm-plugin-effect is renamed @effected/pnpm-plugin-effected and serves consumers exactly one catalog, effected, holding the Effect family and the kit; savvy.build.ts still declares effect and effected separately with :peers twins because the override directive and the upgrade CLI work per catalog, and the plugin's updateConfig folds them. The split declaration and the fold are superseded by one-declared-effected-catalog; the one consumer catalog and the rename stand."
+description: "@effected/pnpm-plugin-effect is renamed @effected/pnpm-plugin-effected and serves consumers exactly one catalog, effected, holding the Effect family and the kit; lib/build/pnpm-config.plugin.ts still declares effect and effected separately with :peers twins because the override directive and the upgrade CLI work per catalog, and the plugin's updateConfig folds them. The split declaration and the fold are superseded by one-declared-effected-catalog; the one consumer catalog and the rename stand."
 status: stable
 tags:
   - deps
@@ -27,10 +27,10 @@ sources:
     title: "The @effect/tsgo auto-patch, split out of 1146"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-01T21:43:51Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: a8290944ef0d8f01
+    body: 94baa41a0a0f47f5
   verified:
     by: human:spencer
     at: 2026-11-01T21:41:54Z
@@ -56,7 +56,7 @@ The declarations could not simply merge. `overridesFromCatalogs` and the registr
 
 The package is renamed `@effected/pnpm-plugin-effected` (directory `packages/pnpm-plugin-effected`) and continues the old package's version line. The old name gets no further release.
 
-`savvy.build.ts` still declares `effect` and `effected`, each with a `:peers` twin. The plugin's own `src/pnpmfile.ts` wraps the generated `updateConfig`: it folds `effect` into `effected`, lets a consumer's own `effected` entries win, and deletes `effect`, `effect:peers` and `effected:peers` from what pnpm sees.[^pnpmfile] `src/index.ts` exports the same folded view as `catalogs`.[^index] A consumer therefore sees exactly one catalog, `effected`, and writes `catalog:effected` in every dependency field. `__test__/catalog.test.ts` asserts the built hook exposes only `effected` and that it carries both halves.[^catalog-test]
+`lib/build/pnpm-config.plugin.ts` still declares `effect` and `effected`, each with a `:peers` twin. The plugin's own `src/pnpmfile.ts` wraps the generated `updateConfig`: it folds `effect` into `effected`, lets a consumer's own `effected` entries win, and deletes `effect`, `effect:peers` and `effected:peers` from what pnpm sees.[^pnpmfile] `src/index.ts` exports the same folded view as `catalogs`.[^index] A consumer therefore sees exactly one catalog, `effected`, and writes `catalog:effected` in every dependency field. `__test__/catalog.test.ts` asserts the built hook exposes only `effected` and that it carries both halves.[^catalog-test]
 
 This repository does not run the hook on itself. `pnpm pnpm:export` writes the declarations into the root `pnpm-workspace.yaml`, so the repository's manifests keep `catalog:effect` and `catalog:effect:peers`, and the kit's published `effect` peers keep their floored ranges.
 

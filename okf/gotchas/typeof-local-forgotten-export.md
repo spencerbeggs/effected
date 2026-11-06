@@ -16,10 +16,10 @@ sources:
     resource: ../../packages/spdx/src/SpdxExpression.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-25T19:59:29Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: bc469123ea5a912c
+    body: 77c7a397cac1b0f9
   verified:
     by: human:spencer
     at: 2026-10-25T20:07:35Z
@@ -33,8 +33,7 @@ verified:
 
 ## What a reader sees
 
-After `@savvy-web/bundler` 2.6.1 (`@savvy-web/tsdown-plugins` 2.11.0 or
-later), a package whose source did not change fails its prod build with
+Under TypeScript 7.1's declaration emit, a package whose source did not change fails its prod build with
 `ae-forgotten-export`, one per affected member, and its API docs page
 renders those members with no signature. The signal comes from the
 bundler's declaration emit, outside this repository.[^systems-issue-824]
@@ -42,7 +41,7 @@ bundler's declaration emit, outside this repository.[^systems-issue-824]
 ## What a reader wrongly concludes
 
 That the bundler regressed, or that the named symbol needs an `export`
-keyword or a suppression entry in `savvy.build.ts`.
+keyword or a suppression entry in its build config.
 
 ## What is actually true
 

@@ -39,8 +39,7 @@ Durable knowledge lives in the bundle, not here. Start at
 
 ## Operating rules
 
-- `pnpm build --filter @effected/github`; never run `savvy.build.ts`
-  directly. `savvy.build.ts` suppresses only the synthesized `_base` schema
+- `pnpm build --filter @effected/github`. The bundler's default config suppresses only the synthesized `_base` schema
   class warnings — never widen it.
 - Tests: `@effect/vitest`, `it.effect`, `assert.*` — never `expect`; in
   `__test__/`, run root-relative with `--coverage.enabled=false` for a

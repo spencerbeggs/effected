@@ -8,10 +8,10 @@ tags:
   - compat
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: d08f148ad9b8e4b3
+    body: eeabb5ca41b6810f
   verified:
     by: human:spencer
     at: 2026-10-31T19:39:48Z
@@ -63,7 +63,7 @@ camelCase spelling as the primary form.
 
 A catalog name spelled `effect3`, `effect3:peers`, `effectPeers` or
 `effect3Peers` appearing anywhere in this workspace — in
-`pnpm-workspace.yaml`, in a package manifest, or in `savvy.build.ts` — is
+`pnpm-workspace.yaml`, in a package manifest, or in `lib/build/pnpm-config.plugin.ts` — is
 a stale reference to repair, not a surface to restore. Any future
 Effect major-version migration that genuinely needs dual-line testing
 support designs that support fresh against the current generator, rather

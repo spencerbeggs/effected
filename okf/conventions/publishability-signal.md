@@ -14,10 +14,10 @@ sources:
     resource: ../../packages/pnpm-plugin-effected/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 8fcb1412a25b4c56
+    body: ef5f3ff2ee2f053b
 ---
 
 # Read publishability from publishConfig.access, never from private
@@ -26,7 +26,7 @@ Never read a package's source `package.json` `"private": true` as
 evidence that it will not publish. Every source manifest in this repo
 sets `"private": true`, intentionally, on all thirty-one publishable
 packages and every non-publishing workspace member alike — the field
-distinguishes nothing here.[^github-actions-package] `@savvy-web/bundler`'s
+distinguishes nothing here.[^github-actions-package] `@effected/bundler`'s
 `publishConfig` transform produces the actual publishable manifest at
 build time from that private source manifest, and the transform's output
 is what actually reaches the registry.
@@ -34,8 +34,7 @@ is what actually reaches the registry.
 The machine-checkable publishability signal is `publishConfig.access ===
 "public"`. A publishing package declares it directly in the source
 manifest — `github-actions/package.json` carries `"publishConfig": {
-"access": "public", "directory": "dist/dev/pkg", "linkDirectory": true,
-"targets": { "npm": true } }`.[^github-actions-package] Any tooling that
+"access": "public", "targets": { "npm": true } }`.[^github-actions-package] Any tooling that
 needs to ask "does this package publish" — a catalog-membership check, a
 release-scope calculation, a dependency audit — must ask the question
 this way. Asking `private === false` instead classifies every package in
@@ -54,7 +53,7 @@ release — it does not, and never has.
     `"publishConfig": { "access": "public", ... }` block, the shape every
     publishing package in the workspace shares.
 [^pnpm-plugin-effected-package]: `packages/pnpm-plugin-effected/package.json`
-    and its build (`savvy.build.ts`) — the companion package that ships
+    and its plugin module (`lib/build/pnpm-config.plugin.ts`) — the companion package that ships
     the catalog naming every other package's next-release version; see
     [the catalog-sync CLI](../interfaces/catalog-sync-cli.md) for how
     that catalog is kept in step with what actually publishes.

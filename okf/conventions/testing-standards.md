@@ -19,10 +19,10 @@ sources:
     resource: ../../vitest.setup.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-24T00:35:53Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 23bd4b59c3afeb1d
+    body: 683bb69240ef618c
 ---
 
 # Testing standards
@@ -95,32 +95,30 @@ harness is the standing example of that exception.
 
 ## The build before the run is not a given
 
-The root `globalSetup` rebuilds `dist/dev` through `AgentPlugin.runScript`
-before every vitest run, and every cross-package import resolves to a
-sibling's `dist/dev/pkg` (the `publishConfig.directory` the workspace
-link points at), never to its `src/`. So a downstream test sees an
-upstream `src` edit only when that build actually ran — and `runScript`
-has a short-circuit that skips it: a done-marker it writes on each
+Every cross-package import resolves to a sibling's `src/` over the workspace
+link, so an ordinary test sees an upstream edit with no build. Tests that read
+built output are the exception: the root `globalSetup` rebuilds those packages'
+`dist/prod` through `AgentPlugin.runScript` before every vitest run, so such a
+test sees an edit only when that build actually ran — and `runScript` has a short-circuit that skips it: a done-marker it writes on each
 success, trusted without re-running the command while it is younger than
 `VITEST_AGENT_RUNSCRIPT_BUILT_RECENTLY_MS` (30 s by default). The window
 exists so a *concurrent* second vitest process trusts the winner's build
 instead of racing it, but it applies to the next *sequential* run just
-the same: edit a leaf package's `src`, run a downstream project inside
-30 s of the previous run, and the test reads the previous `dist/dev`.
-Reproduced with a sentinel export added to `@effected/semver` and a
-`@effected/npm` test asserting on it — the run inside the window failed
-with `semver/dist/dev/issues.json`'s `generatedAt` unmoved; the same run
-with the window disabled rebuilt and passed.[^vitest-setup]
+the same: edit a package's `src`, run a built-output test inside 30 s of the
+previous run, and the test reads the previous `dist/prod`. It was reproduced,
+under the earlier dev target, with a sentinel export and a downstream test: the
+run inside the window failed with the build's `generatedAt` unmoved, and the
+same run with the window disabled rebuilt and passed.[^vitest-setup]
 
 The setup therefore pins the window to 1 ms unless the environment
 already sets it, so every run rebuilds; turbo's cache keeps that a
 few-second no-op when nothing changed, and the lock still serializes
 concurrent runs. Two consequences for diagnosis:
 
-- **A downstream test that ignores an upstream edit is a build that did
-  not run, not a turbo input gap.** `build:dev` already lists `src/**`.
-  Check `dist/dev/issues.json`'s `generatedAt` against the edit before
-  reading the test as wrong.
+- **A built-output test that ignores an edit is a build that did not run,
+  not a turbo input gap.** `build` already lists `src/**`. Check
+  `dist/prod/issues.json`'s `generatedAt` against the edit before reading the
+  test as wrong.
 - **Never set `VITEST_AGENT_RUNSCRIPT_BUILT_RECENTLY_MS` above 1 in this
   repo** to make runs feel faster; the time saved is turbo's cache
   hit, and the price is a stale build read silently.

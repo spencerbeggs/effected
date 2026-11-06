@@ -22,13 +22,13 @@ sources:
     resource: ../../.repos/effect/packages/effect/src/eventlog/EventLogSessionAuth.ts
     title: "Core's precedent for reading globalThis.crypto.subtle and failing when it is absent"
   - id: build
-    resource: ../../packages/jwt/savvy.build.ts
+    resource: ../../packages/jwt/effected.toml
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T19:37:34Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 29abe0f9a36a06a9
+    body: 8c06aeac86733757
 ---
 
 # `@effected/jwt`
@@ -89,7 +89,7 @@ The package follows the [module-per-concept layout](../conventions/module-per-co
 
 `src/TestIssuer.ts` names root types through a type-only `import type * as Root from "@effected/jwt"` self-reference and imports runtime values relatively, the [`@effected/images`](images.md) pattern, with `dtsExternals` set. The build emits one module per source file, so `TestIssuer` uses the root's own classes rather than copies. The bundler's second API Extractor pass maps the self-reference to the root's built declarations rather than into `src`, so it neither crashes nor reports `ae-wrong-input-file-type` (the failure [the self-reference gotcha](../gotchas/self-reference-api-extractor-pass-looks-clean-when-it-crashes.md) describes). The prod build settles with zero warnings, and the pass is proven to run: emptying the second pattern below brings back all seventeen `ae-forgotten-export` warnings for `testing.d.ts`.[^build]
 
-The suppression list in `savvy.build.ts` is exactly two entries, both `ae-forgotten-export`:
+The suppression list in `effected.toml` is exactly two entries, both `ae-forgotten-export`:
 
 - the house `_base` pattern, for the heritage types Effect's class factories synthesize;
 - the self-reference names, matched only for `testing.d.ts`: `Root` itself and the sixteen root symbols `TestIssuer`'s signatures reach transitively (`CachedJwks`, `DecodedJws`, `JoseHeader`, `Jwk`, `Jwks`, `JwksResolver`, `JwksResolverOptions`, `JwksResolverShape`, `JwksStore`, `JwksStoreShape`, `JwtAlgorithm`, `JwtError`, `JwtErrorReason`, `SigningKey`, `VerificationKey`, `VerifyOptions`), every one exported by the root entry point.
@@ -100,4 +100,4 @@ The suppression list in `savvy.build.ts` is exactly two entries, both `ae-forgot
 
 [`@effected/github`](github.md) takes a regular dependency on this package for GitHub App authentication and Actions OIDC verification. The first external consumer is savvy-web/silk-app. The issues driving the work are 768 (the two JWT halves), 970 (the installation token store), 975 (additive `Installation` fields) and 827 (`GitHubError.fromResponse`).
 
-[^build]: `packages/jwt/savvy.build.ts`, whose comments state the suppression's scope; the gate's result is `packages/jwt/dist/prod/issues.json` after a build (zero warnings, four suppressed: three `_base` entries and `Root`).
+[^build]: `packages/jwt/effected.toml`, whose comments state the suppression's scope; the gate's result is `packages/jwt/dist/prod/issues.json` after a build (zero warnings, four suppressed: three `_base` entries and `Root`).

@@ -321,7 +321,5 @@ pnpm vitest run packages/app       # from the repo root
 pnpm build --filter @effected/app  # from the repo root
 ```
 
-- `savvy.build.ts` carries **no `_base` suppression** — this package defines no
-  class factories of its own, so there is nothing to suppress. Do not add one
-  speculatively.
-- Never run `node savvy.build.ts --target prod` directly.
+- This package defines no class factories of its own, so the bundler's default
+  `_base` suppression has nothing to match. Do not add another speculatively.

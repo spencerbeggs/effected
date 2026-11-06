@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-08T03:52:57Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: ed3778019cb6e0a5
+    body: fcd6fd9a6774fc42
 ---
 
 # lockfiles
@@ -89,7 +89,7 @@ Fixture naming carries two load-bearing conventions. A directory named `unsuppor
 
 ## Build
 
-Scaffolded from a pure sibling, model paths under `website/lib/models/lockfiles`. The model and error classes are class factories, so `savvy.build.ts` carries the narrow `_base` API Extractor suppression; a clean prod gate reports 12 suppressed `_base` entries, `PackageManagerLock_base` being the newest. Because it has workspace peers, the package needs a `prepare` script so turbo's upstream-build ordering applies.
+Scaffolded from a pure sibling. The model and error classes are class factories, so the bundler's default config carries the narrow `_base` API Extractor suppression; a clean prod gate reports 12 suppressed `_base` entries, `PackageManagerLock_base` being the newest.
 
 ## Consumer contract
 

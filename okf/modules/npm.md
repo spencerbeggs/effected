@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: e03439368a85c935
+    body: 6a101e8c0f6e81ca
 ---
 
 # npm
@@ -37,7 +37,7 @@ Module-per-concept in `src/`, no barrels below `index.ts`. The placements that a
 - `index.ts` owns the composite `Default` layer (both no-op resolver layers merged), the cycle-free home for the merge.
 - `internal/npmLog.ts` holds the two pure readers of npm's `--loglevel=silly` stderr — the `PublishOutcome.auth` classifier and the `PublishError.output` filter — so both are table-tested without a spawner.
 
-Every Effect class factory is written inline, with the synthesized `_base` heritage symbols suppressed narrowly in `savvy.build.ts` per the kit's API Extractor policy.
+Every Effect class factory is written inline, with the synthesized `_base` heritage symbols suppressed narrowly in the bundler's default config per the kit's API Extractor policy.
 
 ## Resolver contracts
 
@@ -112,4 +112,4 @@ Suites in `__test__/` per concept. Shared layers are provided through a top-leve
 
 ## Build
 
-Every Effect class factory is inline with no exported `*_base` const; `savvy.build.ts` suppresses `ae-forgotten-export` for the `_base` pattern, so a clean *prod* `issues.json` carries empty `warnings`/`errors` and one `suppressed` entry per such class. `suppressed: 0` in the prod gate means the build did not run properly, while `dist/dev/issues.json` legitimately has `suppressed: []` — the dev target does not run API Extractor. `pnpm build --filter @effected/npm` runs the dev+prod pipeline; never invoke `node savvy.build.ts --target prod` directly — see [the direct prod build gotcha](../gotchas/direct-prod-build-fakes-a-clean-gate.md).
+Every Effect class factory is inline with no exported `*_base` const; the bundler's default config suppresses `ae-forgotten-export` for the `_base` pattern, so a clean *prod* `issues.json` carries empty `warnings`/`errors` and one `suppressed` entry per such class. `suppressed: 0` in the prod gate means the build did not run properly, while `dist/dev/issues.json` legitimately has `suppressed: []` — the dev target does not run API Extractor. `pnpm build --filter @effected/npm` runs the build through turbo; never invoke `node savvy.build.ts --target prod` directly — see [the direct prod build gotcha](../gotchas/direct-prod-build-fakes-a-clean-gate.md).

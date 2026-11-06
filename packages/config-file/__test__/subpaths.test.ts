@@ -114,7 +114,7 @@ describe("the built codec declarations", () => {
 			const dts = readFileSync(join(BUILT, `${entry}.d.ts`), "utf8");
 			const declarations = [...dts.matchAll(TOP_LEVEL_DECLARATION)];
 			// Every top-level declaration is the exported codec: an unexported one is what the scoped
-			// ae-forgotten-export suppression in savvy.build.ts would otherwise hide.
+			// ae-forgotten-export suppression in effected.toml would otherwise hide.
 			assert.deepStrictEqual(
 				declarations.map((match) => [match[1] !== undefined, match[2]]),
 				[[true, codec]],

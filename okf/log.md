@@ -39,6 +39,54 @@
 * Updated Running the bundler script directly fakes a clean build gate
 * Updated State which count moved and why, whenever a gate's number changes
 * Updated workspace
+* Updated @effected/commands
+* Updated @effected/images
+* Updated @effected/jsonl
+* Updated @effected/jwt
+* Updated @effected/memfs
+* Updated @effected/schema-org
+* Updated @effected/schemastore
+* Updated @effected/templates
+* Updated @effected/workspaces/testing: the repo-shape checks
+* Updated @effected/workspaces: monorepo tooling
+* Updated @effected/yaml
+* Updated A package that names its own root types once showed one warning or none, until the bundler resolved the self-reference to declarations
+* Updated Add a workspace package
+* Updated Advance the effect pin
+* Updated Agents never run pnpm:up, pnpm:preview, or pnpm:export
+* Updated Consumers see one catalog, effected, folded by the plugin's hook from split declarations
+* Updated Dependency policy: R1-R4
+* Updated Every package carries the same manifest shape and file set
+* Updated Library tier (pure / boundary / integrated)
+* Updated New ae-forgotten-export errors after a bundler bump are TypeScript 7.1 emitting typeof a module local, not a bundler regression
+* Updated PackedInstall packs the prod npm directory by default
+* Updated Peer-dependency discipline
+* Updated Read publishability from publishConfig.access, never from private
+* Updated Testing standards
+* Updated The effect catalog holds the Effect family to one minor with tilde ranges
+* Updated The effect family is pinned graph-wide by overrides derived from the catalog
+* Updated The effected catalog holds next-release versions, and the publish order follows
+* Updated The effected catalog literal
+* Updated The plugin declares one catalog, effected, and pins only the Effect family by include pattern
+* Updated The ui declarations reference the root's types by the package's own name
+* Updated There is no Effect v3 catalog and no camelCase catalog alias
+* Updated ae-forgotten-export on _base looks like a real export bug; it is a synthesized, un-nameable symbol
+* Updated ai-plugin
+* Updated app
+* Updated config-file
+* Updated glob
+* Updated jsonc
+* Updated lockfiles
+* Updated npm
+* Updated package-json
+* Updated pnpm:export keeps a catalog the plugin no longer declares
+* Updated runtimes
+* Updated semver
+* Updated store
+* Updated toml
+* Updated walker
+* Updated website
+* Updated xdg
 
 ## 2026-11-05
 

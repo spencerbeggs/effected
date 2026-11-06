@@ -22,17 +22,17 @@ sources:
   - id: package-manager-decision-ts
     resource: ../../packages/workspaces/src/internal/packageManagerDecision.ts
   - id: savvy-build-ts
-    resource: ../../packages/workspaces/savvy.build.ts
+    resource: ../../packages/workspaces/package.json
   - id: workspaces-ts
     resource: ../../packages/workspaces/src/Workspaces.ts
   - id: testing-ts
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T20:18:15Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 2d5816eaca321f6c
+    body: 8e574886192f63d7
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -507,7 +507,7 @@ test grew a new call.
 
 ## Build
 
-`savvy.build.ts` carries a suppression scoped narrowly to the
+The bundler's default config carries a suppression scoped narrowly to the
 `ae-forgotten-export` diagnostic on symbols matching `_base`, for the
 synthesized bases api-extractor generates for class factories.[^savvy-build-ts]
 That narrow scope has proven itself: a `@public` signature once named a
@@ -550,7 +550,7 @@ suppressed.
 [^package-manager-decision-ts]: `packages/workspaces/src/internal/packageManagerDecision.ts`
     — `decidePackageManager`; the parity table is
     `__test__/PackageManagerDetectorSync.test.ts`.
-[^savvy-build-ts]: `packages/workspaces/savvy.build.ts:7` — the
+[^savvy-build-ts]: `the bundler's default config:7` — the
     `suppressWarnings` entry naming `ae-forgotten-export` and the `_base`
     pattern.
 [^workspaces-ts]: `packages/workspaces/src/Workspaces.ts` —

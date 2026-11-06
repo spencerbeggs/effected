@@ -17,10 +17,10 @@ sources:
     title: "jsonc: a lenient JsoncFingerprint canonicalization mode (bigint, undefined, toJSON)"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-05T18:21:57Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 618881d24e3d41ef
+    body: dedfd5c26da3aece
 ---
 
 # jsonc
@@ -129,7 +129,7 @@ The sync hashing twins (`hashResult`/`hashTextResult`) bind the platform in the 
 
 ## Build
 
-Every Effect class factory is written inline with no exported `*_base` const; the synthesized `_base` heritage symbols are suppressed narrowly in `savvy.build.ts` and land in the `issues.json` `suppressed` bucket, keeping it zero-warning. Never widen the suppression.
+Every Effect class factory is written inline with no exported `*_base` const; the synthesized `_base` heritage symbols are suppressed narrowly in the bundler's default config and land in the `issues.json` `suppressed` bucket, keeping it zero-warning. Never widen the suppression.
 
 [^owner-unicode]: The owner ruled on 2026-10-28 that jsonc keeps counting
     U+2028 and U+2029 as line breaks when it adopts `@effected/source`.

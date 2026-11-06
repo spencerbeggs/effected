@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: The plugin declares one catalog, effected, and pins only the Effect family by include pattern
-description: "savvy.build.ts declares a single effected catalog (plus its effected:peers twin) holding the Effect family and the kit; overridesFromCatalogs selects the family with include patterns, so no @effected/* package is ever pinned graph-wide, and this repository's own manifests write catalog:effected like a consumer's."
+description: "lib/build/pnpm-config.plugin.ts declares a single effected catalog (plus its effected:peers twin) holding the Effect family and the kit; overridesFromCatalogs selects the family with include patterns, so no @effected/* package is ever pinned graph-wide, and this repository's own manifests write catalog:effected like a consumer's."
 status: stable
 tags:
   - deps
@@ -9,7 +9,7 @@ tags:
   - dx
 sources:
   - id: savvy-build
-    resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
+    resource: ../../packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts
     title: "The one effected catalog and the overridesFromCatalogs include patterns"
   - id: pnpmfile
     resource: ../../packages/pnpm-plugin-effected/src/pnpmfile.ts
@@ -28,13 +28,13 @@ sources:
     title: "The root workspace's effected and effected:peers catalogs"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-01T21:43:51Z
+  at: 2026-11-06T20:09:15Z
 verified:
   - by: human:spencer
     at: 2026-11-01T21:41:54Z
 integrity:
   generated:
-    body: 95456db4162e7fe7
+    body: b4454cf7eea71732
   verified:
     by: human:spencer
     at: 2026-11-01T21:41:54Z
@@ -49,7 +49,7 @@ integrity:
 
 ## Decision
 
-`savvy.build.ts` declares **one** catalog, `effected`: the Effect family (`effect`, every `@effect/*` package, `@effect/tsgo` included) followed by every publishable `@effected/*` package except the plugin itself. Its `peer` fields emit the `effected:peers` twin.[^savvy-build]
+`lib/build/pnpm-config.plugin.ts` declares **one** catalog, `effected`: the Effect family (`effect`, every `@effect/*` package, `@effect/tsgo` included) followed by every publishable `@effected/*` package except the plugin itself. Its `peer` fields emit the `effected:peers` twin.[^savvy-build]
 
 The derived family pins come from `overridesFromCatalogs: { catalog: "effected", include: ["effect", "@effect/*"] }`. The patterns use core `effect/Glob` semantics, so `*` does not cross the scope `/` and no `@effected/*` name matches either one. A member matched by both `include` and `exclude` is excluded, and an `include` entry that matches no member throws at build time rather than silently pinning nothing.[^upstream-include] `peerDependencyRules.allowedVersionsFromCatalogs.catalog` names `effected` too.
 
@@ -74,7 +74,7 @@ The kit is never pinned graph-wide. A kit package added to the catalog gains no 
 The module: [pnpm-plugin-effected](../modules/pnpm-plugin-effected.md).
 
 [^upstream-include]: <https://github.com/spencerbeggs/rolldown-pnpm-config/issues/277>
-[^savvy-build]: `packages/pnpm-plugin-effected/savvy.build.ts`
+[^savvy-build]: `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts`
 [^pnpmfile]: `packages/pnpm-plugin-effected/src/pnpmfile.ts`
 [^workspace-yaml]: `pnpm-workspace.yaml`
 [^catalog-test]: `packages/pnpm-plugin-effected/__test__/catalog.test.ts`

@@ -28,7 +28,7 @@ Two atomic writes. `AtomicFile.write`: refuse a target the caller may not write,
 
 ```bash
 pnpm vitest run --project @effected/files   # from the repo root
-pnpm build --filter @effected/files         # never node savvy.build.ts
+pnpm build --filter @effected/files
 ```
 
 Tests live in `__test__/`, use `@effect/vitest` with `assert.*` (never `expect`), and take `FileSystem` from `@effected/memfs`, never `layerNoop`. Faults on `writeFile` reach only the write-through path; the atomic path writes through `open`.

@@ -101,4 +101,4 @@ pnpm vitest run packages/store          # from the repo root
 pnpm build --filter @effected/store     # from the repo root
 ```
 
-`savvy.build.ts` carries the standard narrow `ae-forgotten-export` suppression for the synthesized `_base` symbols of the schema and service classes. Never run `node savvy.build.ts --target prod` directly — it skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate.
+The bundler's default config carries the standard narrow `ae-forgotten-export` suppression for the synthesized `_base` symbols of the schema and service classes.

@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/commands/src/LocalExec.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 31bf82b4ed74a42e
+    body: 211c452aecc7463c
 ---
 
 # @effected/commands
@@ -688,7 +688,7 @@ logging inside the combinators.
   `No projects matched the filter` (exit 1).
 
 Build through `pnpm build --filter @effected/commands`, never the raw
-script. `savvy.build.ts` carries the narrow `_base` suppression for the
+script. The bundler's default config carries the narrow `_base` suppression for the
 synthesized class-factory bases; never widen it. A genuine
 `ae-unresolved-link` warning is fixed, not suppressed: a schema-declared
 field and a shape-interface member are not `{@link}` targets, so spell them

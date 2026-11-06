@@ -48,10 +48,10 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T19:28:39Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: ab7362edd376071e
+    body: 862cf914f74d841f
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -635,7 +635,7 @@ prod build existing.[^packed-install-ts]
 ### Preflight: a missing prod build is a decision, not an error
 
 `PackedInstall.run` packs `dist/prod/npm/pkg` by default, and a test job that
-only ran `build:dev` has none of it: the run fails `PackSourceMissing`.
+never built has none of it: the run fails `PackSourceMissing`.
 `PackedInstall.preflight({ carrier, closure?, overrides?, workspaceOverrides?,
 packFrom? })` answers first, from the run's own planner, with
 `{ ready, missing }`: `missing` is the absolute `package.json` paths under

@@ -107,7 +107,7 @@ primitives). Outside `index.ts`, modules import explicitly — no barrels.
 - `Range.isSubset` (and thus `equivalent`, `simplify`) is a conservative
   approximation; false negatives are expected and safe. Read the in-source
   remark before "fixing" it.
-- `savvy.build.ts` carries a **narrow** api-extractor suppression,
+- The bundler's default config carries a **narrow** api-extractor suppression,
   `{ messageId: "ae-forgotten-export", pattern: "_base" }`, for the heritage
   symbols inline class factories synthesize. Never widen it — four sibling
   packages depend on this precedent staying narrow.
@@ -121,9 +121,5 @@ live in `__test__/fixtures/`.
 
 ```bash
 pnpm vitest run packages/semver          # this package's tests
-pnpm build --filter @effected/semver     # dev + prod, from the repo root
+pnpm build --filter @effected/semver   # from the repo root
 ```
-
-Never run `node savvy.build.ts --target prod` directly: it skips `build:dev`,
-emits no `.d.ts`, and leaves a truncated `issues.json` that looks exactly like
-a clean gate.

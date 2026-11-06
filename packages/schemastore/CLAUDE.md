@@ -69,10 +69,7 @@ pnpm vitest run packages/schemastore --coverage.enabled=false
 pnpm build --filter @effected/schemastore
 ```
 
-Never run `node savvy.build.ts --target prod` directly — it skips `build:dev`
-and leaves a truncated `issues.json` shaped like a clean gate.
-
-`savvy.build.ts` carries one narrow suppression
+The bundler's default config carries one narrow suppression
 (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the heritage
 symbols; `SchemaTarget`'s class/interface merge carries the house
 `biome-ignore lint/suspicious/noUnsafeDeclarationMerging` with the

@@ -218,11 +218,8 @@ pnpm vitest run packages/sbom --coverage.enabled=false
 pnpm build --filter @effected/sbom
 ```
 
-`savvy.build.ts` carries the **narrow** `_base` suppression for Effect's
+The bundler's default config carries the **narrow** `_base` suppression for Effect's
 class-factory heritage types. **Never widen it** — an internal type named on a
 `@public` signature is a different symbol and stays unmasked (two public input
 interfaces here spell their shared members out twice rather than extend a
 private base, for exactly that reason).
-
-Never run `node savvy.build.ts --target prod` directly: it skips `build:dev`,
-emits no `.d.ts`, and leaves a truncated `issues.json` shaped like a clean gate.

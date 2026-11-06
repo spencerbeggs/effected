@@ -96,14 +96,14 @@ an in-memory host whose `sleep` is where "another process" acts.
 
 ```bash
 pnpm vitest run packages/commands/__test__   # from the repo root, always
-pnpm build --filter @effected/commands       # never `node savvy.build.ts`
+pnpm build --filter @effected/commands
 ```
 
 Run vitest from the repo root. From *inside* the package vitest does not load
 the root config, so `--project @effected/commands` fails with
 `No projects matched the filter` and a positional filter finds no test files.
 
-`savvy.build.ts` carries the narrow `_base` suppression
+The bundler's default config carries the narrow `_base` suppression
 (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the
 synthesized class-factory bases; a clean prod `issues.json` has 0 warnings,
 0 errors. **Never widen it** — a genuine `ae-unresolved-link` is fixed by

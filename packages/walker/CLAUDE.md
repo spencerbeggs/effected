@@ -248,10 +248,8 @@ are parity matrices over one memfs volume. `WalkerSyncPath` mirrors core
 
 ## Build
 
-`savvy.build.ts` carries the one narrow `_base` suppression
+The bundler's default config carries the one narrow `_base` suppression
 (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the synthesized
 base of the class factory behind each of the package's three tagged errors:
 `DescendError`, `PathEscapeError` and `GlobExpansionError`. It is one pattern
 covering all three. Never widen it.
-
-Never run `node savvy.build.ts --target prod` directly.

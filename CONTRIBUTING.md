@@ -108,7 +108,7 @@ Dependency versions are shared through pnpm catalogs in `pnpm-workspace.yaml`, s
 
 `@effected/pnpm-plugin-effected` declares the catalogs the repo uses: the `effect` pair, which pins Effect itself, and the `effected` pair, which names every publishable kit package except `@effected/pnpm-plugin-effected` itself. Its pnpmfile folds them into the one catalog consumers see, `effected`, which carries the Effect family and the kit together and which consumers reference as `catalog:effected` everywhere, peers included.
 
-Advancing the Effect pin is a two-step, human-run flow. `pnpm:up` rewrites the catalog ranges in `packages/pnpm-plugin-effected/savvy.build.ts`; `pnpm:export` writes the catalogs into the root `pnpm-workspace.yaml`. Neither touches `pnpm-lock.yaml` — the lockfile moves on your next install. Review the diff before committing:
+Advancing the Effect pin is a two-step, human-run flow. `pnpm:up` rewrites the catalog ranges in `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts`; `pnpm:export` writes the catalogs into the root `pnpm-workspace.yaml`. Neither touches `pnpm-lock.yaml` — the lockfile moves on your next install. Review the diff before committing:
 
 ```bash
 pnpm pnpm:preview   # print the generated catalogs without writing anything
@@ -123,23 +123,23 @@ pnpm catalog:check  # read-only: report where the catalog has drifted from the w
 pnpm catalog:sync   # rewrite the catalog and write a changeset if anything moved
 ```
 
-`catalog:sync` touches only `packages/pnpm-plugin-effected/savvy.build.ts` and one fixed-name changeset. Catalog entries hold each package's **next** release, so a pending changeset alone can move an entry — and because `lock-minor` floors peer patches, a first sync normalizing a peer range down by a patch is correct rather than drift.
+`catalog:sync` touches only `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts` and one fixed-name changeset. Catalog entries hold each package's **next** release, so a pending changeset alone can move an entry — and because `lock-minor` floors peer patches, a first sync normalizing a peer range down by a patch is correct rather than drift.
 
 ## Build pipeline
 
-[Turbo](https://turbo.build/) orchestrates the build graph across packages. Each package builds with [@savvy-web/bundler](https://github.com/savvy-web/bundler) and emits dual outputs: a development build under `dist/dev/` and a production build under `dist/prod/`.
+[Turbo](https://turbo.build/) orchestrates the build graph across packages. Each package builds with `effected package build`, from the workspace's own source, into `dist/prod/`.
 
 ```bash
-pnpm build     # build dev + prod outputs for every package via Turbo
+pnpm build     # build every package via Turbo
 ```
 
 Build a single package by filtering:
 
 ```bash
-pnpm build --filter @effected/semver     # build one package and its upstream deps
+pnpm build --filter @effected/semver     # build one package, after typechecking it and its upstream deps
 ```
 
-The production build depends on type-checking and the development build, so always build through `pnpm build`. Do not run the underlying `savvy.build.ts` script with a production target directly — it skips the development build, emits no type declarations, and can leave a truncated report that looks like a clean run.
+The build depends on type-checking, so build through `pnpm build`. A direct `effected package build` in a package directory is allowed, but it skips the typecheck and the cache.
 
 ## Testing
 

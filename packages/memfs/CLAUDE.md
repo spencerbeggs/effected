@@ -74,4 +74,4 @@ pnpm vitest run --project @effected/memfs   # from the repo root
 pnpm build --filter @effected/memfs
 ```
 
-Never run `node savvy.build.ts --target prod` directly. `savvy.build.ts` carries the narrow `_base` suppression — never widen it. `package.json` stays `"private": true`.
+The bundler's default config carries the narrow `_base` suppression — never widen it. `package.json` stays `"private": true`.

@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:01:27Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 0a80d976ff67fdc4
+    body: 07f39bcb73f3d5df
 ---
 
 # workspace
@@ -70,7 +70,7 @@ The build-tooling versions (`typescript`, `@types/node`, the bundler's own stack
 
 `pnpm peers check` carries one expected, rotating occupant: a downstream package pinning an older `@effected/*` caret than the kit's current release, always in the *toolchain* graph rather than this workspace, always clearing when that tool republishes against the current release. Any other warning is a genuine closure defect to fix upstream, not a second expected residual. Always check the lockfile diff after an install — a plain `pnpm install` has once stripped the turbo, biome and tsgo platform binaries from it. After renaming a workspace package, install deliberately and review that diff before running any script: pnpm's pre-run dependency check otherwise installs on the next `pnpm run` ([the verify-deps gotcha](../gotchas/verify-deps-before-run.md)).
 
-**User-run only:** `pnpm pnpm:up`, `pnpm pnpm:preview` and `pnpm pnpm:export` advance and export the Effect catalogs, mutating the lockfile and the root `pnpm-workspace.yaml`. Agents must not invoke them — surface the command and let the user run it. Agents may run `pnpm catalog:check` (a read-only drift gate) and `pnpm catalog:sync`, which write nothing but `packages/pnpm-plugin-effected/savvy.build.ts` and one fixed-name changeset.
+**User-run only:** `pnpm pnpm:up`, `pnpm pnpm:preview` and `pnpm pnpm:export` advance and export the Effect catalogs, mutating the lockfile and the root `pnpm-workspace.yaml`. Agents must not invoke them — surface the command and let the user run it. Agents may run `pnpm catalog:check` (a read-only drift gate) and `pnpm catalog:sync`, which write nothing but `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts` and one fixed-name changeset.
 
 ## Testing
 

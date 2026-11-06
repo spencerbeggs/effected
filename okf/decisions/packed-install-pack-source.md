@@ -14,7 +14,7 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T06:55:47Z
+  at: 2026-11-06T20:09:15Z
 verified:
   - by: human:spencer
     at: 2026-09-24T06:10:09Z
@@ -26,7 +26,7 @@ verified:
     at: 2026-11-05T14:25:52Z
 integrity:
   generated:
-    body: 911cac0f8616e738
+    body: 3be89fb13595c8eb
   verified:
     by: human:spencer
     at: 2026-11-05T14:25:52Z
@@ -60,9 +60,9 @@ recorded:
 | C7: the installed code runs from the consumer root | S2 passes everywhere. S1 passes under npm and bun, and fails `ERR_MODULE_NOT_FOUND` on `@effected/kit` under pnpm, identically for both candidates |
 | C8: `pnpm pack` rewrites `workspace:^` in a never-installed workspace | no: it fails `ERR_PNPM_CANNOT_RESOLVE_WORKSPACE_PROTOCOL`, exit 1 |
 
-C4 is the discriminator. Under the effected bundler `publishConfig.directory`
-names `dist/dev/pkg`, so candidate A packs the **dev** build: source maps
-present, `tsdoc-metadata.json` absent. Candidate B is the file list a release
+C4 is the discriminator. When this was decided, `publishConfig.directory`
+named the dev target, so candidate A packed the **dev** build: source maps
+present, `tsdoc-metadata.json` absent. That target is gone, and candidate B stays the default. Candidate B is the file list a release
 actually publishes.
 
 The literal outcome rule read "F", because neither candidate cleared C7 under

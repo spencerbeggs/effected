@@ -10,10 +10,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T20:28:29Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: bc78d301fefaa39c
+    body: bca1e5a17dd8420b
 ---
 
 # `@effected/jsonl`
@@ -221,7 +221,7 @@ Module-per-concept, no barrels, no namespace objects. See `packages/jsonl/src/`:
   `./node` entry, `node.ts`, re-exports `NodeJournalWatcher` and nothing
   else; `NodeJournalWatcher.ts` is the one module that imports `node:*`.
   `node.ts` names root types through `import type * as Jsonl from
-  "@effected/jsonl"`, and `savvy.build.ts` keeps that import external in the
+  "@effected/jsonl"`, and `effected.toml` keeps that import external in the
   declarations (`dtsExternals`) and suppresses `ae-forgotten-export` for the
   `node.d.ts` entry point only — the same arrangement as [cli's ui
   declarations](../decisions/ui-declarations-reference-the-root-by-name.md).

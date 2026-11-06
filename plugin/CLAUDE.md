@@ -34,7 +34,7 @@ construct-index bats suites.
   source and builds together. `pnpm exec pluginfinity build --check` from here
   exits 1 when a build lags its source; the pre-push hook and CI's
   `pnpm plugin:check` gate both enforce it.
-- **`build:dev` and `build:prod` are uncached on purpose** (`turbo.json`): a turbo cache hit would
+- **`build` is uncached on purpose** (`turbo.json`): a turbo cache hit would
   replay outputs over every file in `builds/`.
 - **pluginfinity ships only `skills/`, `agents/` and `hooks/`, and ships all of
   `hooks/`.** Put tooling in `scripts/` and test fixtures under

@@ -19,5 +19,5 @@ Source-text positions as plain values: `LineIndex` converts a UTF-16 offset to a
 
 ```bash
 pnpm vitest run packages/source/__test__
-pnpm build --filter '@effected/sourc*'   # never the raw savvy.build.ts
+pnpm build --filter '@effected/sourc*'
 ```

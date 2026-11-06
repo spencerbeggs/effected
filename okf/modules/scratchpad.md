@@ -13,10 +13,10 @@ sources:
     resource: ../../scratchpad/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T19:10:31Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: a85ffbc724843cd6
+    body: 9249ca4318732bd2
 ---
 
 # scratchpad
@@ -37,7 +37,7 @@ instead.
 `packages/*` glob's sibling entry in `pnpm-workspace.yaml` — so
 `workspace:*` dependencies resolve and turbo, vitest-agent and pnpm treat
 it like any other member. But it is a fixture, not a package: `"private":
-true`, no `publishConfig`, no `savvy.build.ts`, no build scripts. Its
+true`, no `publishConfig`, no the bundler's default config, no build scripts. Its
 only scripts are the three runners (`probe`, `check`, `reset`).
 
 Its manifest lists `effect: catalog:effected` and every published

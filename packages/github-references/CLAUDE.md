@@ -56,7 +56,7 @@ Tests live in `__test__/`, use `@effect/vitest`, assert with `assert.*` — neve
 
 ```bash
 pnpm vitest run --project @effected/github-references   # this package's tests, from the repo root
-pnpm build --filter @effected/github-references         # dev + prod, from the repo root
+pnpm build --filter @effected/github-references   # from the repo root
 ```
 
-Never run `node savvy.build.ts --target prod` directly. `package.json` stays `"private": true`.
+`package.json` stays `"private": true`.

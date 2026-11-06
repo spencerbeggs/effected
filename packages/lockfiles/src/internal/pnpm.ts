@@ -214,8 +214,8 @@ const resolveEdges = (
 				const target = resolveLinkTarget("", version.slice(LINK_PREFIX.length));
 				if (target !== undefined && instanceIds.has(target)) edges.set(name, target);
 				// A target that is no importer may still be one's DECLARED publish
-				// directory — `link:packages/lib/dist/dev/pkg` where `packages/lib`
-				// declares `publishDirectory: dist/dev/pkg`. The declaration is exact
+				// directory — `link:packages/lib/dist/pkg` where `packages/lib`
+				// declares `publishDirectory: dist/pkg`. The declaration is exact
 				// evidence, so the map is consulted unconditionally.
 				else if (target !== undefined && publishDirTargets.has(target)) {
 					edges.set(name, publishDirTargets.get(target) as string);
@@ -288,7 +288,7 @@ const WORKSPACE_PREFIX = "workspace:";
  * The importer a `link:` target lands INSIDE, longest path first.
  *
  * pnpm's `publishConfig.linkDirectory` makes a workspace link point at the
- * package's publish directory rather than its root — `link:../bundler/dist/dev/pkg`
+ * package's publish directory rather than its root — `link:../bundler/dist/pkg`
  * where `packages/bundler` is the importer — so the target itself is a build
  * output that is no importer and never will be. The owning importer is the
  * longest ancestor of the target that IS one; longest-first so a nested importer

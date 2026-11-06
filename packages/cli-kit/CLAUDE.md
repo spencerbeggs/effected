@@ -99,11 +99,11 @@ snapshot test here uses `expect` for the snapshot alone. `okf/modules/cli-kit.md
   naming both, never a silent fallback.
 - **The ui declarations name the root by its package name.** `src/ui/**`
   imports root types as `import type * as Cli from "@effected/cli-kit"`, and
-  `savvy.build.ts` keeps `@effected/cli-kit` and `@effected/cli-kit/ui` external
+  `effected.toml` keeps `@effected/cli-kit` and `@effected/cli-kit/ui` external
   (`dtsExternals`), so `ui.d.ts` imports the root instead of inlining a copy
   a consumer's root layers could not satisfy —
   `@./okf/decisions/ui-declarations-reference-the-root-by-name.md` — Load
-  when: touching `savvy.build.ts`, an entrypoint, or a root type a ui
+  when: touching `effected.toml`, an entrypoint, or a root type a ui
   signature names. API Extractor's per-module pass cannot read those
   entries, so `declarations.test.ts` stands in for it: the built exports
   match the source and the pinned reviewed lists, every export carries a
@@ -314,5 +314,5 @@ caller's scope closes, `SIGKILL` following `SIGTERM` after `forceKillAfter`
 
 ```bash
 pnpm vitest run packages/cli-kit        # from the repo root
-pnpm build --filter @effected/cli-kit   # cold; never the raw savvy.build.ts
+pnpm build --filter @effected/cli-kit   # cold
 ```

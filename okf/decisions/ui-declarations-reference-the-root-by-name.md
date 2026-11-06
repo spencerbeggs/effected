@@ -6,7 +6,7 @@ status: stable
 tags: [architecture, bundle, dx]
 sources:
   - id: cli-build-config
-    resource: ../../packages/cli-kit/savvy.build.ts
+    resource: ../../packages/cli-kit/effected.toml
     title: "The cli build: dtsExternals and the scoped suppression"
   - id: cli-declarations-test
     resource: ../../packages/cli-kit/__test__/declarations.test.ts
@@ -19,10 +19,10 @@ sources:
     title: The probe that found the split declarations
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: c09b62d3b3c74569
+    body: 7f52fece420b320e
   verified:
     by: human:spencer
     at: 2026-11-02T17:04:46Z
@@ -91,8 +91,8 @@ gitignored, so only the website's API pages are affected.
 
 The fix belongs upstream. The meta pass should treat the package's own name as
 external when it is listed in `dtsExternals`, or model multi-entry packages so
-that cross-entry types need no suppression. An issue for `@savvy-web/bundler` is
-drafted and not yet filed.
+that cross-entry types need no suppression. The bundler now lives in this repository, at
+`@effected/bundler`.
 
 ## Alternatives rejected
 
@@ -106,6 +106,6 @@ drafted and not yet filed.
   specified API.
 
 [^split-declarations-probe]: Consumer probe over the built `index.d.ts` and `ui.d.ts`, 2026-10-01.
-[^cli-build-config]: `../../packages/cli-kit/savvy.build.ts`
+[^cli-build-config]: `../../packages/cli-kit/effected.toml`
 [^cli-declarations-test]: `../../packages/cli-kit/__test__/declarations.test.ts`
 [^cli-boundary-test]: `../../packages/cli-kit/__test__/boundary.test.ts`

@@ -20,7 +20,7 @@ A pnpm **config dependency**, built with `rolldown-pnpm-config`. All catalog con
 
 ## What consumers see: one catalog
 
-A consumer sees exactly one catalog, **`effected`**: the Effect family plus every publishable `@effected/*` package but this one. The generated merge lets a consumer's own `effected` entries win, and the hook deletes `effected:peers`. `__test__/catalog.test.ts` pins this against the built `dist/dev/pkg/pnpmfile.mjs`. Why → `@./okf/decisions/consumer-catalog-fold.md`, `@./okf/decisions/one-declared-effected-catalog.md`.
+A consumer sees exactly one catalog, **`effected`**: the Effect family plus every publishable `@effected/*` package but this one. The generated merge lets a consumer's own `effected` entries win, and the hook deletes `effected:peers`. `__test__/catalog.test.ts` pins this against the built `dist/prod/npm/pkg/pnpmfile.mjs`. Why → `@./okf/decisions/consumer-catalog-fold.md`, `@./okf/decisions/one-declared-effected-catalog.md`.
 
 **`pnpm pack` runs no `readPackage` hook**, so a consumer peer written as `catalog:effected` publishes the install range (patch included), not a floored one. Do not try to fix that in a hook; a consumer that wants a floored peer writes it by hand.
 

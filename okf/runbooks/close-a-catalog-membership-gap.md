@@ -10,13 +10,13 @@ sources:
   - id: catalog-sync-script
     resource: ../../lib/scripts/catalog-sync.ts
   - id: pnpm-plugin-effected-savvy-build
-    resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
+    resource: ../../packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T16:08:05Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: b8c3e1009b279835
+    body: 6cc797898ce55fb2
 ---
 
 # Close a catalog membership gap
@@ -28,7 +28,7 @@ missing from the `effected` catalog literal — a **membership gap**, not
 ordinary version drift. This happens when a new publishable package has
 been added to `packages/*` (its `publishConfig.access === "public"`) but
 has not yet been added to the catalog `PnpmConfigPlugin(...)` call in
-`packages/pnpm-plugin-effected/savvy.build.ts`.[^pnpm-plugin-effected-savvy-build]
+`packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts`.[^pnpm-plugin-effected-savvy-build]
 
 Membership is not something `pnpm catalog:sync` can close by running
 again: the upstream `rolldown-pnpm-config upgrade` CLI walks the catalog
@@ -41,7 +41,7 @@ changeset for a catalog it knows is still incomplete.[^catalog-sync-script]
 
 1. Run `pnpm catalog:check` and read its output — it names exactly which
    package(s) are missing from the catalog.
-2. Open `packages/pnpm-plugin-effected/savvy.build.ts` and find the inline
+2. Open `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts` and find the inline
    `PnpmConfigPlugin({ ... })` call. Do not move this literal into a
    separate `const`; the upstream CLI locates it by statically walking
    this exact call argument.
@@ -89,6 +89,6 @@ next-release resolution, ripples included.
     `missingFromCatalog` membership computation and the ripple-drift
     message: "These carry no changeset of their own, so the upgrade CLI
     cannot see them. Run `pnpm catalog:sync`."
-[^pnpm-plugin-effected-savvy-build]: `packages/pnpm-plugin-effected/savvy.build.ts`, the `effected` catalog block
+[^pnpm-plugin-effected-savvy-build]: `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts`, the `effected` catalog block
     — the inline `PnpmConfigPlugin({ ... })` call where a new entry is
     added by hand.

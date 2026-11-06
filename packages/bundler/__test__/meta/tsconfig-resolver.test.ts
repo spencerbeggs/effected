@@ -10,7 +10,7 @@ describe("resolvePortableTsconfig", () => {
 		const cwd = new URL("../../", import.meta.url).pathname;
 		const result = resolvePortableTsconfig(cwd);
 		assert.strictEqual(result.$schema, "https://json.schemastore.org/tsconfig");
-		// Full effective options inherited from @savvy-web/bundler/ecma.json.
+		// Full effective options inherited from @effected/plugin/tsconfig/ecma.json.
 		assert.strictEqual(result.compilerOptions.target, "es2025");
 		assert.strictEqual(result.compilerOptions.module, "nodenext");
 		assert.strictEqual(result.compilerOptions.moduleResolution, "nodenext");

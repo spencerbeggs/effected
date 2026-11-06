@@ -65,11 +65,9 @@ These are deliberate, and each is ruled or stated in TSDoc. Do not "fix" one wit
 ```bash
 pnpm exec vitest run --project @effected/changesets --coverage.enabled=false  # from the repo root
 pnpm --filter @effected/changesets run types:check
-pnpm build --filter @effected/changesets                                      # dev + prod, in order
+pnpm build --filter @effected/changesets
 ```
-
-Never run `node savvy.build.ts --target prod` directly. It skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate.
 
 Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*`, never `expect`. In-memory tests use `@effected/memfs`. The oracle test runs over the real filesystem because the oracle does. Never run `pnpm install` inside a fixture.
 
-`savvy.build.ts` carries one narrow API Extractor suppression: `{ messageId: "ae-forgotten-export", pattern: "_base" }`, covering the heritage symbols synthesized by inline class factories. Never widen it. `package.json` stays `"private": true`; the bundler emits the publishable manifest.
+The bundler's default config carries one narrow API Extractor suppression: `{ messageId: "ae-forgotten-export", pattern: "_base" }`, covering the heritage symbols synthesized by inline class factories. Never widen it. `package.json` stays `"private": true`; the bundler emits the publishable manifest.

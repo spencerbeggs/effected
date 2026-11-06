@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-05T19:12:42Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 59f22ea73c2a023a
+    body: fb006141497814b6
 ---
 
 # semver
@@ -79,4 +79,4 @@ Named `Effect.fn` spans on the effectful, failure-carrying public boundaries onl
 
 ## Build
 
-Class factories are written inline (`export class X extends Schema.Class<X>("X")({...}) {}`), which synthesizes `_base` heritage symbols API Extractor cannot resolve; `savvy.build.ts` suppresses them narrowly (`ae-forgotten-export` scoped to the `_base` pattern), keeping `dist/prod/issues.json` zero-warning via the `suppressed` bucket. Never widen this suppression — sibling packages depend on this precedent staying narrow.
+Class factories are written inline (`export class X extends Schema.Class<X>("X")({...}) {}`), which synthesizes `_base` heritage symbols API Extractor cannot resolve; the bundler's default config suppresses them narrowly (`ae-forgotten-export` scoped to the `_base` pattern), keeping `dist/prod/issues.json` zero-warning via the `suppressed` bucket. Never widen this suppression — sibling packages depend on this precedent staying narrow.
