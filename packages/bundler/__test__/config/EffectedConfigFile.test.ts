@@ -3,6 +3,7 @@ import { MemoryFileSystem } from "@effected/memfs";
 import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import { Effect, FileSystem, Layer, PlatformError } from "effect";
 import {
+	ActionConfig,
 	EffectedConfig,
 	EffectedConfigError,
 	EffectedConfigFile,
@@ -58,11 +59,43 @@ describe("EffectedConfigFile.load", () => {
 
 	it.effect("answers package defaults when the files found have no package table", () =>
 		Effect.gen(function* () {
-			const resolved = yield* load({ [`${ROOT}/effected.toml`]: "[action]\nname = 1\n" });
+			const resolved = yield* load({ [`${ROOT}/effected.toml`]: '[action.entries]\nmain = "src/run.ts"\n' });
 			assert.strictEqual(resolved.sources.root, `${ROOT}/effected.toml`);
-			assert.deepStrictEqual(resolved.config.action, { name: 1 });
+			assert.strictEqual(resolved.config.action?.entries.main, "src/run.ts");
 			assert.strictEqual(resolved.config.package.build.emitDts, true);
 			assert.deepStrictEqual(resolved.config.package.build.format, ["esm"]);
+		}),
+	);
+
+	it.effect("answers the action defaults from an empty action table", () =>
+		Effect.gen(function* () {
+			const resolved = yield* load({ [`${PKG}/effected.toml`]: "[action]\n" });
+			assert.instanceOf(resolved.config.action, ActionConfig);
+			assert.strictEqual(resolved.config.action?.entries.main, "src/main.ts");
+			assert.strictEqual(resolved.config.action?.build.minify, true);
+			assert.strictEqual(resolved.config.action?.persistLocal.path, ".github/actions/local");
+		}),
+	);
+
+	it.effect("decodes a worker table whose keys carry dashes, and merges the action table across tiers", () =>
+		Effect.gen(function* () {
+			const resolved = yield* load({
+				[`${ROOT}/effected.toml`]: "[action.build]\nminify = false\n",
+				[`${PKG}/effected.toml`]: '[action.entries.workers]\nchangelog-silk = "src/changelog/silk.ts"\n',
+			});
+			assert.deepStrictEqual(resolved.config.action?.entries.workers, { "changelog-silk": "src/changelog/silk.ts" });
+			assert.strictEqual(resolved.config.action?.build.minify, false);
+		}),
+	);
+
+	it.effect("fails a removed action key with its path, blaming the file that wrote it", () =>
+		Effect.gen(function* () {
+			const error = yield* load({
+				[`${PKG}/effected.toml`]: '[action.build]\nnativeDynamicImports = ["@changesets/apply-release-plan"]\n',
+			}).pipe(Effect.flip);
+			assert.instanceOf(error, EffectedConfigError);
+			assert.strictEqual(error.issuePath, "action.build.nativeDynamicImports");
+			assert.strictEqual(error.path, `${PKG}/effected.toml`);
 		}),
 	);
 

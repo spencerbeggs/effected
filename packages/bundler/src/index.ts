@@ -10,6 +10,13 @@ export { resolveManifest } from "./catalog/resolve-catalogs.js";
 export type { NextVersions } from "./changesets/next-versions.js";
 export { resolveNextVersions } from "./changesets/next-versions.js";
 export {
+	ActionBuildOptions,
+	ActionConfig,
+	ActionEntries,
+	ActionPersistLocal,
+	ActionValidation,
+} from "./config/ActionConfig.js";
+export {
 	BuildFormat,
 	BuildPlatform,
 	EffectedConfig,

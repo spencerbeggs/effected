@@ -5,6 +5,11 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `ActionBuildOptions` | Class | How an action's bundles are built, the `[action.build]` table. | minify, source maps, externals, stub out ignored packages in action bundles |
+| `ActionConfig` | Class | A GitHub Action's build settings, the `[action]` table of `effected.toml`. | configure a github action build, the action table of effected.toml |
+| `ActionEntries` | Class | The bundles a GitHub Action ships, the `[action.entries]` table. | declare lifecycle entry points and worker bundles for an action |
+| `ActionPersistLocal` | Class | The local copy of an action's build for testing with nektos/act, the `[action.persistLocal]` table. | copy an action build locally for nektos act testing |
+| `ActionValidation` | Class | What an action build checks before it builds, the `[action.validation]` table. | require action.yml, cap bundle size, treat warnings as errors |
 | `AmbientDtsEntry` | Interface | One ambient `.d.ts` export resolved for copy + manifest. | |
 | `BuildCollector` | Class | Stateful build-event accumulator. The write surface is synchronous so it can be called directly from tsdown's customLogger and API Extractor's messageCallback (both invoked synchronously). `snapshot` builds the immutable BuildReport the Effect render pipeline consumes. | accumulate build events, record warnings and pass timings, snapshot the report |
 | `BuildCollectorTag` | Class | | service tag to provide or read the running build's event collector |

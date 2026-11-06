@@ -120,10 +120,10 @@ describe("EffectedConfig", () => {
 		}),
 	);
 
-	it.effect("leaves the action table open until its own schema lands", () =>
+	it.effect("closes the action table to unknown keys", () =>
 		Effect.gen(function* () {
-			const config = yield* decode({ action: { anything: 1 } });
-			assert.deepStrictEqual(config.action, { anything: 1 });
+			const paths = yield* failedPaths({ action: { anything: 1 } });
+			assert.deepStrictEqual(paths, [["action", "anything"]]);
 		}),
 	);
 });

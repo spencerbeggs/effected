@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import { ActionConfig } from "./ActionConfig.js";
 
 /**
  * A module format the build can emit.
@@ -412,6 +413,6 @@ export class PackageConfig extends Schema.Class<PackageConfig>("PackageConfig")(
 export class EffectedConfig extends Schema.Class<EffectedConfig>("EffectedConfig")({
 	/** The package tables. */
 	package: Schema.optionalKey(PackageConfig),
-	/** The GitHub Action table, not yet modeled. */
-	action: Schema.optionalKey(Schema.Unknown),
+	/** The GitHub Action table. Absent for a library. */
+	action: Schema.optionalKey(ActionConfig),
 }) {}

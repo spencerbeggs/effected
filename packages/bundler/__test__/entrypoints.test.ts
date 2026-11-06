@@ -3,6 +3,11 @@ import * as BundlerPackage from "../src/index.js";
 
 it("the root exports exactly the public surface", () => {
 	assert.deepStrictEqual(Object.keys(BundlerPackage).sort(), [
+		"ActionBuildOptions",
+		"ActionConfig",
+		"ActionEntries",
+		"ActionPersistLocal",
+		"ActionValidation",
 		"BuildCollector",
 		"BuildCollectorTag",
 		"BuildFormat",

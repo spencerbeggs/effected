@@ -7,6 +7,11 @@
 		"AppTest": "hermetic app layer for tests over an in-memory filesystem, from the testing entrypoint"
 	},
 	"bundler": {
+		"ActionBuildOptions": "minify, source maps, externals, stub out ignored packages in action bundles",
+		"ActionConfig": "configure a github action build, the action table of effected.toml",
+		"ActionEntries": "declare lifecycle entry points and worker bundles for an action",
+		"ActionPersistLocal": "copy an action build locally for nektos act testing",
+		"ActionValidation": "require action.yml, cap bundle size, treat warnings as errors",
 		"BuildCollector": "accumulate build events, record warnings and pass timings, snapshot the report",
 		"BuildCollectorTag": "service tag to provide or read the running build's event collector",
 		"BuildFormat": "output module format choices, esm or cjs, for a build",
