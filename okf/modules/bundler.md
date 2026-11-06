@@ -22,12 +22,15 @@ sources:
   - id: spec
     resource: ../../docs/superpowers/specs/2026-11-06-bundler-research.md
     title: "The bundler research report and the owner's rulings"
+  - id: spike
+    resource: ../../packages/bundler/__test__/e2e/kit-leaf.e2e.test.ts
+    title: "The source-sibling spike, run with EFFECTED_SPIKE=1"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T15:31:31Z
+  at: 2026-11-06T17:08:05Z
 integrity:
   generated:
-    body: b805731e1d192e6e
+    body: 70f8c863e0c59d13
 ---
 
 # @effected/bundler
@@ -85,6 +88,27 @@ Other tools read these, so a change to one moves with its readers:
 
 The emitted `tsdoctor.json` is a wire format with readers outside this repository. Its fields grow additively, and moving the schema here does not change a byte of what is written.[^spec]
 
+## Source-sibling spike
+
+**Verdict, measured 2026-11-06: the declaration pass holds with siblings resolved to source, so no `paths` fallback and no `^build` dependency are needed for it.** API Extractor over source siblings is not proven, because the meta pass is not ported yet; it stays open until that pass runs against the same setup.[^spike]
+
+`packages/cli-kit` was built in a scratch workspace of its `@effected/*` closure, with no sibling `dist` anywhere. Three alternating runs each, one fresh process per run:
+
+| Siblings resolve to | dts pass | js pass | Whole build | Peak RSS |
+| --- | --- | --- | --- | --- |
+| source | 462-468 ms | 112-113 ms | 751-757 ms | 294-296 MB |
+| `dist/dev` | 453-458 ms | 171-177 ms | 793-801 ms | 298-303 MB |
+
+The dts pass takes 1.03 times as long, against the fallback's limit of 2. Both rows run this bundler, because the old one reports no per-pass time. The old bundler's own `build:prod` emits the same `index.d.ts` and `package.json` byte for byte.
+
+What the result rests on:
+
+- **cli-kit alone cannot fail this test.** Its public types are explicit, so its declarations stay byte-identical with every sibling link removed. A probe with inferred types crossing a sibling boundary is what discriminates: from source it emits `import("@effected/env").AudienceKind`, and with the links gone the same source emits `any`.
+- **A kit-wide sweep agrees.** 48 of the 49 package directories with a `src/` built from source with no `.d.ts` byte difference from the old bundler. `pnpm-plugin-effected` was not compared, since it needs a virtual-module plugin the sweep did not pass. The sweep was a one-off and read each package's build options from its `savvy.build.ts` by pattern.
+- **A symlinked `src/` would have answered the wrong question.** tsgo and rolldown realpath it, and its siblings then resolve through the main checkout's links.
+
+The edge this leaves: **a sibling's public function whose return type its entry point does not export gives a consumer's inferred declaration a silent `any` from source**, with no warning, no error and `buildOk: true`. The rolled-up `dist` gave a different wrong answer for the same site, a dangling name or a copied structure. The kit has no such site today, and the spike pins the behaviour, but nothing in a normal build would report a new one.
+
 ## Accepted debt
 
 The ported internals keep their shape: mostly plain async code over `node:fs`, ported module for module because that code is tested and proven. Only the public boundary (`Bundler.build`, `ActionBuilder.build` and every error) is Effect with typed failures. That is a known departure from [requiring core in `R`](../conventions/require-in-r-default.md), accepted to keep the port honest. A follow-up issue is to be filed against that convention; it does not exist yet.
@@ -100,3 +124,4 @@ The ported internals keep their shape: mostly plain async code over `node:fs`, p
 [^issue-1225]: Issue 1225, `bundler: move @tsdoctor/manifest's schema into the kit`.
 [^issue-1227]: Issue 1227, `plugin: build GitHub Actions through the effected CLI`.
 [^spec]: `docs/superpowers/specs/2026-11-06-bundler-research.md`, sections 1, 2, 5 and 12.
+[^spike]: `packages/bundler/__test__/e2e/kit-leaf.e2e.test.ts`.

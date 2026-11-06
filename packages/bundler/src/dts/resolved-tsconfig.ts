@@ -1,4 +1,5 @@
 // packages/bundler/src/dts/resolved-tsconfig.ts
+import { createHash } from "node:crypto";
 import { existsSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -184,6 +185,20 @@ function canonicalGlob(absPath: string): string {
 	return /^\/*$/.test(tail) ? canonicalPrefix : join(canonicalPrefix, tail);
 }
 
+/** The longest filename the platforms we build on accept. */
+const MAX_FILE_NAME = 255;
+
+/**
+ * A temp filename deterministic per (pid, key). The key is a path, sanitized into the name when it fits and hashed
+ * when it does not: a deep checkout would otherwise fail the write with `ENAMETOOLONG`, and the dts-emit name
+ * embeds the already-sanitized bundle name, so it reaches the limit first.
+ */
+function tempTsconfigName(prefix: string, key: string): string {
+	const name = `${prefix}-${process.pid}-${key.replace(/[^\w]/g, "_")}.json`;
+	if (name.length <= MAX_FILE_NAME) return name;
+	return `${prefix}-${process.pid}-${createHash("sha256").update(key).digest("hex").slice(0, 32)}.json`;
+}
+
 /**
  * Write the resolved tsconfig to a temp file and return its absolute path.
  *
@@ -191,7 +206,7 @@ function canonicalGlob(absPath: string): string {
  */
 export function writeResolvedTsconfig(options: ResolvedTsconfigOptions): string {
 	const cfg = buildResolvedTsconfig(options);
-	const path = join(tmpdir(), `tsconfig-bundle-${process.pid}-${options.cwd.replace(/[^\w]/g, "_")}.json`);
+	const path = join(tmpdir(), tempTsconfigName("tsconfig-bundle", options.cwd));
 	writeFileSync(path, `${JSON.stringify(cfg, null, "\t")}\n`, "utf-8");
 	return path;
 }
@@ -250,7 +265,7 @@ export function writeDtsEmitTsconfig(resolvedTsconfigPath: string): string {
 		compilerOptions: { stableTypeOrdering: true, ...DTS_RESET_OPTIONS },
 		...absoluteFileSet(canonicalBase, baseDir),
 	};
-	const path = join(tmpdir(), `tsconfig-dts-emit-${process.pid}-${absBase.replace(/[^\w]/g, "_")}.json`);
+	const path = join(tmpdir(), tempTsconfigName("tsconfig-dts-emit", absBase));
 	writeFileSync(path, `${JSON.stringify(cfg, null, "\t")}\n`, "utf-8");
 	return path;
 }

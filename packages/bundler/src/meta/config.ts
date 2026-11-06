@@ -12,12 +12,12 @@ export interface TsdocTagDefinition {
 }
 
 /**
- * An api-extractor message-suppression rule. messageId is exact-matched; pattern (regex or substring) is AND-matched against the text.
+ * An api-extractor message-suppression rule. messageId is exact-matched; pattern (regex or substring) is matched against the text. A rule with both needs both to match.
  *
  * @public
  */
 export interface WarningSuppressionRule {
-	readonly messageId: string;
+	readonly messageId?: string | undefined;
 	readonly pattern?: string | undefined;
 }
 

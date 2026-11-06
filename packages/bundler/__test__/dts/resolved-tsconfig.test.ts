@@ -5,7 +5,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
-import { buildResolvedTsconfig, writeDtsEmitTsconfig } from "../../src/dts/resolved-tsconfig.js";
+import { buildResolvedTsconfig, writeDtsEmitTsconfig, writeResolvedTsconfig } from "../../src/dts/resolved-tsconfig.js";
 
 describe("buildResolvedTsconfig", () => {
 	it("inherits the package's own compilerOptions", async () => {
@@ -144,6 +144,28 @@ describe("buildResolvedTsconfig", () => {
 		await writeFile(join(dir, "tsconfig.json"), JSON.stringify({ compilerOptions: { jsx: "preserve" } }));
 		const cfg = buildResolvedTsconfig({ cwd: dir });
 		assert.strictEqual(cfg.compilerOptions.jsx, "preserve");
+	});
+});
+
+describe("temp tsconfig names", () => {
+	// The dts-emit name embeds the bundle name, so a checkout path of about 130 characters already overflows a filename.
+	const deep = (leaf: string) => join(tmpdir(), "a".repeat(120), leaf);
+
+	it("writes both files for a checkout path too long to sanitize into a filename", async () => {
+		const bundle = writeResolvedTsconfig({ cwd: deep("one") });
+		const emit = writeDtsEmitTsconfig(bundle);
+		assert.notStrictEqual(emit, bundle);
+		assert.strictEqual(
+			(JSON.parse(await readFile(emit, "utf-8")) as { extends: string }).extends,
+			realpathSync.native(bundle),
+		);
+	});
+
+	it("keeps two long paths apart", () => {
+		assert.notStrictEqual(
+			writeResolvedTsconfig({ cwd: deep("one".repeat(60)) }),
+			writeResolvedTsconfig({ cwd: deep("two".repeat(60)) }),
+		);
 	});
 });
 

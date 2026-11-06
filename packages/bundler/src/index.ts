@@ -1,3 +1,12 @@
+export type {
+	BundlerBuildOptions,
+	BundlerExeBuildOptions,
+	BundlerMetaPassOptions,
+	BundlerPackageJson,
+	BundlerSeams,
+} from "./Bundler.js";
+export { Bundler, BundlerBuildResult } from "./Bundler.js";
+export { BundlerError, BundlerPhase } from "./BundlerError.js";
 export type { ManifestLike } from "./catalog/resolve-catalogs.js";
 export { resolveManifest } from "./catalog/resolve-catalogs.js";
 export {
@@ -46,6 +55,7 @@ export {
 	extractAmbientDts,
 	mixedDtsExportError,
 } from "./entries/ambient-dts.js";
+export { deriveExportPaths } from "./entries/export-paths.js";
 export type { ExtractOptions, ExtractResult, PackageJsonLike } from "./entries/extract.js";
 export { createEntryName, extractEntries } from "./entries/extract.js";
 export type { PackageJsonEntriesOptions } from "./entries/package-json-entries.js";
@@ -60,6 +70,7 @@ export type {
 	PkgOsCpu,
 } from "./exe/config.js";
 export { DEFAULT_EXE_NODE_VERSION, normalizeExeOptions } from "./exe/config.js";
+export { computeExeFileName } from "./exe/filename.js";
 export type { JsxConfig as ResolvedJsxConfig, TsconfigJsx } from "./jsx/config.js";
 export { readTsconfigJsx, resolveJsxConfig } from "./jsx/config.js";
 export type { BuildEmittedManifestOptions, EmitManifestOptions, TargetGroupRef } from "./manifest/emit-manifest.js";

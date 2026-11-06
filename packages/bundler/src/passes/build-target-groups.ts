@@ -175,6 +175,8 @@ export interface BuildTargetGroupsOptions {
 	readonly exeRewrite?: ExeRewrite | undefined;
 	/** Injectable for tests; defaults to tsdown's build. */
 	readonly build?: TsdownBuild;
+	/** Told when a pass starts, so a caller can name the pass a thrown error came from. */
+	readonly onPass?: ((pass: PassKind) => void) | undefined;
 	/** When set, muzzle tsdown (silent + customLogger) and capture metrics/timing into this collector. */
 	readonly collector?: BuildCollector | undefined;
 	/** Compute gzip sizes for emitted files (verbose render). Forwarded to the metrics plugin. */
@@ -269,6 +271,7 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 
 	// Run a build pass under a timer, recording elapsed into the collector.
 	const timed = async (groupId: string, pass: PassKind, run: () => Promise<unknown>): Promise<void> => {
+		options.onPass?.(pass);
 		const timer = createTimer();
 		try {
 			await run();
