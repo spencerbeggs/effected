@@ -108,7 +108,7 @@ snapshot test here uses `expect` for the snapshot alone. `okf/modules/cli-kit.md
   entries, so `declarations.test.ts` stands in for it: the built exports
   match the source and the pinned reviewed lists, every export carries a
   release tag, nothing is left unexported, and a consumer compiled against
-  `dist/dev` resolves `CliTheme` from the root. `tsdocLinks.test.ts` keeps
+  `dist/prod/npm/pkg` resolves `CliTheme` from the root. `tsdocLinks.test.ts` keeps
   `{@link}` targets resolvable. The two "could not harvest per-module source
   locations" build warnings are those entries and are accepted.
 - **`CliUi.live` is a scoped live view over a `Stream`, not a screen.** It folds

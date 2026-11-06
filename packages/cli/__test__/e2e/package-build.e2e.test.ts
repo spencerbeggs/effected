@@ -4,11 +4,14 @@
 
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { afterAll, assert, describe, it } from "@effect/vitest";
 
 const CLI = resolve(import.meta.dirname, "../..");
 const BIN = join(CLI, "dist/prod/npm/pkg/bin/effected.js");
+// The built bin's siblings resolve to their source through the workspace links.
+const TSX = createRequire(import.meta.url).resolve("tsx");
 const JSONC = resolve(CLI, "../jsonc");
 
 mkdirSync(join(CLI, "dist"), { recursive: true });
@@ -23,7 +26,7 @@ cpSync(JSONC, cwd, {
 symlinkSync(join(JSONC, "node_modules"), join(cwd, "node_modules"));
 
 const effected = (args: ReadonlyArray<string>, directory = cwd) =>
-	spawnSync(process.execPath, [BIN, "package", "build", ...args], {
+	spawnSync(process.execPath, ["--import", TSX, BIN, "package", "build", ...args], {
 		cwd: directory,
 		encoding: "utf8",
 		env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "" },

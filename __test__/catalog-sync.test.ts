@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, assert, describe, it } from "vitest";
 import type { CatalogMove, StatusRunner, UpgradeResult, UpgradeRunner } from "../lib/scripts/catalog-sync.js";
@@ -8,6 +8,7 @@ import {
 	CHANGESET_PATH,
 	CONFIG_PATH,
 	PLUGIN,
+	PLUGIN_CONFIG,
 	catalogEntries,
 	check,
 	releasePlan,
@@ -69,7 +70,7 @@ async function rejects(promise: Promise<unknown>, pattern: RegExp): Promise<void
 function makeRoot(config: string): string {
 	const root = mkdtempSync(join(tmpdir(), "catalog-sync-"));
 	roots.push(root);
-	mkdirSync(join(root, "packages/pnpm-plugin-effected"), { recursive: true });
+	mkdirSync(dirname(join(root, CONFIG_PATH)), { recursive: true });
 	mkdirSync(join(root, ".changeset"), { recursive: true });
 	writeFileSync(join(root, CONFIG_PATH), config);
 	return root;
@@ -80,7 +81,7 @@ function runner(rewrite?: string, stdout = ""): UpgradeRunner & { calls: { args:
 	const calls: { args: readonly string[]; cwd: string }[] = [];
 	const fn = async (args: readonly string[], cwd: string): Promise<UpgradeResult> => {
 		calls.push({ args, cwd });
-		if (rewrite !== undefined) writeFileSync(join(cwd, "savvy.build.ts"), rewrite);
+		if (rewrite !== undefined) writeFileSync(join(cwd, PLUGIN_CONFIG), rewrite);
 		return { code: 0, stdout };
 	};
 	return Object.assign(fn, { calls });
@@ -146,7 +147,7 @@ describe("catalog:sync", () => {
 		await sync({ ...quiet, root, run });
 
 		assert.lengthOf(run.calls, 1);
-		assert.deepStrictEqual(run.calls[0]?.args, ["upgrade", "savvy.build.ts", "--yes", "--format", "json"]);
+		assert.deepStrictEqual(run.calls[0]?.args, ["upgrade", PLUGIN_CONFIG, "--yes", "--format", "json"]);
 		assert.strictEqual(run.calls[0]?.cwd, join(root, "packages/pnpm-plugin-effected"));
 	});
 
@@ -181,7 +182,7 @@ describe("catalog:check", () => {
 
 		assert.strictEqual(await check({ ...quiet, root, run }), 0);
 		assert.strictEqual(await check({ ...quiet, root, run: async () => ({ code: 1, stdout: "" }) }), 1);
-		assert.deepStrictEqual(run.calls[0]?.args, ["upgrade", "savvy.build.ts", "--check"]);
+		assert.deepStrictEqual(run.calls[0]?.args, ["upgrade", PLUGIN_CONFIG, "--check"]);
 		assert.strictEqual(readFileSync(join(root, CONFIG_PATH), "utf8"), SYNCED);
 		assert.isFalse(existsSync(join(root, CHANGESET_PATH)));
 	});

@@ -65,4 +65,4 @@ pnpm build --filter @effected/npm     # dev + prod
 
 Never run `node savvy.build.ts --target prod` directly (root `CLAUDE.md` says
 why). A prod `issues.json` with `suppressed: 0` means the build did not run
-properly; `dist/dev/issues.json` legitimately has `suppressed: []`.
+properly.

@@ -6,8 +6,7 @@
 	"license": "MIT",
 	"type": "module",
 	"scripts": {
-		"build:dev": "pluginfinity build",
-		"build:prod": "pluginfinity build",
+		"build": "pluginfinity build",
 		"validate": "pluginfinity validate"
 	},
 	"devDependencies": {

@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: The kit builds itself with the bundler running from source under tsx
-description: "The root .npmrc sets node-options=--import=tsx, and tsx and @effected/plugin are root devDependencies, so the effected bin runs from source in every pnpm run and turbo task; nothing is built before the bundler can build, and a bundler fix reaches the kit's build with no release in between."
+description: "The root pnpm-workspace.yaml sets nodeOptions to --import=tsx, and tsx and @effected/plugin are root devDependencies, so the effected bin runs from source in every pnpm run and turbo task; nothing is built before the bundler can build, and a bundler fix reaches the kit's build with no release in between."
 status: draft
 tags:
   - architecture
@@ -19,10 +19,10 @@ sources:
     title: "bundler: @effected/bundler and the top-level @effected/plugin package"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T15:28:18Z
+  at: 2026-11-06T19:28:10Z
 integrity:
   generated:
-    body: 848e7166119782f3
+    body: e8e213d14ac0e9f6
 ---
 
 # The kit builds itself with the bundler running from source under tsx
@@ -33,7 +33,7 @@ The kit builds with `@savvy-web/bundler`, which depends on published copies of t
 
 ## Decision
 
-- **The root `.npmrc` sets `node-options=--import=tsx`,** and `tsx` is a root devDependency, so every `pnpm run` and turbo task can execute TypeScript across the workspace.[^plan]
+- **The root `pnpm-workspace.yaml` sets `nodeOptions: --import=tsx`,** because pnpm 12 ignores `node-options` in `.npmrc`, and `tsx` is a root devDependency, so every `pnpm run` and turbo task can execute TypeScript across the workspace.[^plan]
 - **`@effected/plugin` is a root devDependency,** so `effected`, through its `src/bin/effected.ts` bin, runs from source in those same tasks. Each `@effected/*` import resolves through a [root workspace link](one-build-target-from-source-links.md) to that package's source.
 - **Published bins are rewritten to `dist` by the manifest transform,** as they are today. A consumer never runs source or needs `tsx`.
 

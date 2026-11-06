@@ -78,7 +78,7 @@ One module per concept. `src/index.ts` is the only re-exporting module.
 `src/guard.ts` and `src/ProcessGuard.ts` import nothing, not even `effect`
 or a type: the guards must be listening before anything a server's
 `main.ts` loads evaluates. `__test__/entrypoints.test.ts` pins the source
-graph AND the built `dist/dev/pkg/guard.js` graph to `guard` +
+graph AND the built `dist/prod/npm/pkg/guard.js` graph to `guard` +
 `ProcessGuard` with zero packages; `@effected/mcp-kit`'s own entrypoint test
 re-checks the installed copy, because `McpGuard.ts` statically imports it.
 The host is structural (`on`/`emit`/`stderr`/`exit`), so the purity rule

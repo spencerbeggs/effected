@@ -324,7 +324,4 @@ pnpm build --filter @effected/app  # from the repo root
 - `savvy.build.ts` carries **no `_base` suppression** — this package defines no
   class factories of its own, so there is nothing to suppress. Do not add one
   speculatively.
-- The workspace peers mean the **`prepare` script is load-bearing**: `xdg`,
-  `store`, `config-file` and `memfs` link at their `dist/dev/pkg` and must be
-  built before this package's tests resolve them in a fresh checkout.
 - Never run `node savvy.build.ts --target prod` directly.

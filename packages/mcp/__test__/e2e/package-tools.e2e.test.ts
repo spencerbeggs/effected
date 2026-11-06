@@ -3,6 +3,7 @@
 // process, so what they print must not reach the wire. The root `globalSetup` rebuilds `dist/prod` before every run.
 
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, assert, describe, it } from "@effect/vitest";
@@ -12,6 +13,8 @@ import { ChildProcess } from "effect/process";
 
 const MCP = resolve(import.meta.dirname, "../..");
 const BIN = join(MCP, "dist/prod/npm/pkg/bin/effected-mcp.js");
+// The built bin's siblings resolve to their source through the workspace links.
+const TSX = createRequire(import.meta.url).resolve("tsx");
 const JSONC = resolve(MCP, "../jsonc");
 
 mkdirSync(join(MCP, "dist"), { recursive: true });
@@ -45,7 +48,7 @@ describe("the built effected-mcp bin", () => {
 		() =>
 			Effect.gen(function* () {
 				const server = yield* McpProcess.spawn(
-					ChildProcess.make(process.execPath, [BIN], {
+					ChildProcess.make(process.execPath, ["--import", TSX, BIN], {
 						cwd,
 						env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "" },
 					}),

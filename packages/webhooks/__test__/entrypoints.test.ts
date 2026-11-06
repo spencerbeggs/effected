@@ -72,11 +72,11 @@ describe("root entrypoint", () => {
 		assert.deepStrictEqual(nodeImports, []);
 	});
 
-	it("depends on a @effected/crypto build that imports nothing from node: either", () => {
+	it("depends on a @effected/crypto that imports nothing from node: either", () => {
 		const entry = fileURLToPath(import.meta.resolve("@effected/crypto"));
 		const reachable = [...reachableFrom(entry)];
-		// positive control: the walk reached the built engines and read real imports
-		assert.isTrue(reachable.some((file) => file.endsWith("internal/hmac.js")));
+		// positive control: the walk reached the engines and read real imports
+		assert.isTrue(reachable.some((file) => file.endsWith("internal/hmac.ts")));
 		assert.isTrue(specifiersOf(entry).some((specifier) => specifier.startsWith("./")));
 		const nodeImports = reachable.flatMap((file) =>
 			specifiersOf(file)

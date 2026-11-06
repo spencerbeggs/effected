@@ -8,7 +8,8 @@ const PACKAGES_DIR = fileURLToPath(new URL("../../", import.meta.url));
 const PLUGIN = "@effected/pnpm-plugin-effected";
 const KIT = "@effected/";
 const FAMILY = "@effect/";
-const SOURCE = () => readFileSync(join(PACKAGE_ROOT, "savvy.build.ts"), "utf8");
+const CONFIG = "lib/build/pnpm-config.plugin.ts";
+const SOURCE = () => readFileSync(join(PACKAGE_ROOT, CONFIG), "utf8");
 
 /** The one declared catalog's entries whose name starts with `prefix`. */
 function entriesWith(prefix: string): Map<string, string> {
@@ -31,14 +32,13 @@ function effectEntry(): string {
  * `PnpmConfigPlugin(...)` call because that is how `rolldown-pnpm-config`
  * finds it: its `upgrade` CLI statically walks the call argument for
  * `.catalogs.<name>.packages`. Hoisting the literal into an exported `const`
- * would make it importable here and invisible to the rewriter, and importing
- * `savvy.build.ts` at all would run the bundler, so this reads the source the
- * same way the CLI does.
+ * would make it importable here and invisible to the rewriter, so this reads the
+ * source the same way the CLI does.
  */
 function readCatalogEntries(catalog: string): Map<string, string> {
-	const source = readFileSync(join(PACKAGE_ROOT, "savvy.build.ts"), "utf8");
+	const source = SOURCE();
 	const anchor = source.indexOf(`${catalog}: {`);
-	assert.notStrictEqual(anchor, -1, `no \`${catalog}\` catalog declared in savvy.build.ts`);
+	assert.notStrictEqual(anchor, -1, `no \`${catalog}\` catalog declared in ${CONFIG}`);
 	const packagesAt = source.indexOf("packages: {", anchor);
 	assert.notStrictEqual(packagesAt, -1, `\`${catalog}\` catalog has no packages map`);
 	const open = source.indexOf("{", packagesAt);

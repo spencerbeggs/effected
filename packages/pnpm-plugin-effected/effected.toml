@@ -1,0 +1,7 @@
+[package.build]
+bundleNodeModules = true
+# Holds the catalog literal at its PnpmConfigPlugin(...) call, which the upgrade CLI walks statically.
+plugins = ["./lib/build/pnpm-config.plugin.ts"]
+
+[package.build.looseFiles]
+"pnpmfile.mjs" = "./src/pnpmfile.ts"

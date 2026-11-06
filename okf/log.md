@@ -33,6 +33,7 @@
 * Updated The catalog:sync / catalog:check CLI
 * Updated Ghost workspace
 * Updated scratchpad
+* Updated pnpm-plugin-effected
 
 ## 2026-11-05
 

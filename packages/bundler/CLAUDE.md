@@ -59,7 +59,7 @@ Other tools read these, so a change to one moves with its readers. Paths are und
 
 ```bash
 pnpm exec vitest run --project @effected/bundler --coverage.enabled=false   # this package's tests
-pnpm build --filter @effected/bundler                                       # dev + prod, in order
+pnpm build --filter @effected/bundler                                       # through turbo, never the bin alone
 ```
 
 Run vitest from the repository root, and read the exit code as well as the `Tests:` line. Two e2es are opt-in because they cost more or follow other packages:
@@ -73,4 +73,4 @@ EFFECTED_PARITY=1 pnpm exec vitest run --project @effected/bundler --coverage.en
 
 `__test__/fixtures/parity/` holds verbatim bytes, and `biome.json` keeps the formatter off it. Its bytes follow jsonc's source and pending changesets, which is why that test is opt-in.
 
-This package resolves its `@effected/*` dependencies through `dist/dev` until the link switch, so rebuild a sibling before testing against a change to it. Never run `node savvy.build.ts --target prod` directly. Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*`, never `expect`. Port tests carry a one-line provenance header naming their source.
+This package resolves its `@effected/*` dependencies through workspace links to their source, so no sibling needs a build first. Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*`, never `expect`. Port tests carry a one-line provenance header naming their source.

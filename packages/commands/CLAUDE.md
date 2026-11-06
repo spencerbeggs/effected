@@ -91,8 +91,8 @@ only** — never a dependency or peer. `RunOnce`'s `Effect` driver is tested
 over `@effected/memfs` (a devDependency) and `TestClock`; its sync driver over
 an in-memory host whose `sleep` is where "another process" acts.
 `__test__/e2e/RunOnce.e2e.test.ts` races four real `node` processes through
-`__test__/e2e/fixtures/run-once-child.mjs`, which imports the **dev build**
-(`dist/dev/pkg`) — rebuild before trusting it after a source edit.
+`__test__/e2e/fixtures/run-once-child.mjs`, which imports the **build**
+(`dist/prod/npm/pkg`); the root globalSetup rebuilds it before every run.
 
 ```bash
 pnpm vitest run packages/commands/__test__   # from the repo root, always

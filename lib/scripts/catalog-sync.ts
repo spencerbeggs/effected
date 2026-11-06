@@ -3,9 +3,9 @@
  *
  * The CLI is the only writer. `rolldown-pnpm-config upgrade --yes` resolves every
  * `source: "workspace"` entry against the local workspace and rewrites the literal in
- * `savvy.build.ts`; this script decides whether that rewrite earns a changeset. Builds
- * never write — an earlier revision of the seam rewrote the config from the build's
- * freeze path, which made a developer's `build:dev` and every CI build mutate the repo.
+ * `lib/build/pnpm-config.plugin.ts`; this script decides whether that rewrite earns a changeset.
+ * Builds never write — an earlier revision of the seam rewrote the config from the build's
+ * freeze path, which made a developer's build and every CI build mutate the repo.
  */
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -45,8 +45,11 @@ const defaultWrite = (text: string): void => {
 /** The package whose build config carries the catalog, and which the changeset bumps. */
 export const PLUGIN = "@effected/pnpm-plugin-effected";
 
+/** The config file the CLI rewrites, relative to the plugin package. */
+export const PLUGIN_CONFIG = "lib/build/pnpm-config.plugin.ts";
+
 /** The config file the CLI rewrites, relative to the repository root. */
-export const CONFIG_PATH = "packages/pnpm-plugin-effected/savvy.build.ts";
+export const CONFIG_PATH = `packages/pnpm-plugin-effected/${PLUGIN_CONFIG}`;
 
 /** Fixed name: repeated runs overwrite one changeset rather than accumulating many. */
 export const CHANGESET_PATH = ".changeset/catalog-sync.md";
@@ -252,12 +255,12 @@ const MEMBERSHIP_CATALOG = "effected";
  * The `@effected/*` names a catalog literal declares.
  *
  * @remarks
- * Reads `savvy.build.ts` as SOURCE TEXT, the same way the upgrade CLI does,
+ * Reads the plugin module as SOURCE TEXT, the same way the upgrade CLI does,
  * and for the same reason: the literal must stay inline at the
  * `PnpmConfigPlugin(...)` call site or the CLI's static walk cannot find it.
  * Hoisting it into an exported `const` would make it importable here and
- * invisible to the rewriter, and importing `savvy.build.ts` would run the
- * bundler.
+ * invisible to the rewriter, and importing the module would run the plugin
+ * factory.
  */
 /**
  * The index of the `}` closing the `{` at or after `from`, by depth scan.
@@ -525,7 +528,7 @@ export async function sync(options: SyncOptions = {}): Promise<boolean> {
 
 	const before = readConfig(root);
 	const { code, stdout } = await run(
-		["upgrade", "savvy.build.ts", "--yes", "--format", "json"],
+		["upgrade", PLUGIN_CONFIG, "--yes", "--format", "json"],
 		join(root, "packages/pnpm-plugin-effected"),
 	);
 	if (code !== 0) throw new Error(`rolldown-pnpm-config upgrade --yes exited ${code}`);
@@ -567,7 +570,7 @@ export async function check(options: SyncOptions = {}): Promise<number> {
 	const run = options.run ?? defaultRunner;
 	const write = options.write ?? defaultWrite;
 	const { code, stdout } = await run(
-		["upgrade", "savvy.build.ts", "--check"],
+		["upgrade", PLUGIN_CONFIG, "--check"],
 		join(root, "packages/pnpm-plugin-effected"),
 	);
 	if (stdout !== "") write(stdout);

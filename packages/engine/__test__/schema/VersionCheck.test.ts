@@ -53,7 +53,7 @@ const deps = (config: unknown) => ({
 });
 
 describe("VersionCheck.inspect", () => {
-	it("the built copy carries a real version, or the suites below prove nothing", () => {
+	it("this copy carries a real version, or the suites below prove nothing", () => {
 		assert.notStrictEqual(SchemastoreVersion.current, "0.0.0");
 	});
 
