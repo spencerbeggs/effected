@@ -15,6 +15,7 @@ const PLUGIN = resolve(import.meta.dirname, "..");
 const ENTRY = join(PLUGIN, "dist/dev/pkg/index.js");
 const HOOK = join(PLUGIN, "__test__/fixtures/record-resolved.mjs");
 const CONTROL = join(PLUGIN, "__test__/fixtures/load-front-end.mjs");
+const BUILD_CONTROL = join(PLUGIN, "__test__/fixtures/load-build-engine.mjs");
 
 const scratch = mkdtempSync(join(tmpdir(), "effected-plugin-entry-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
@@ -33,7 +34,7 @@ const record = (name: string, script: string) => {
 };
 
 const EXPENSIVE =
-	/\/packages\/(?:cli|mcp|engine)\/|\/node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?(?:ajv|ajv-formats|ink|react|jiti)\//;
+	/\/packages\/(?:cli|mcp|engine|bundler)\/|\/node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?(?:ajv|ajv-formats|ink|react|jiti|tsdown)\//;
 const expensive = (modules: ReadonlyArray<string>) => modules.filter((url) => EXPENSIVE.test(url));
 
 // The manifest's own text, because a built manifest has already rewritten the protocol.
@@ -59,7 +60,17 @@ describe("@effected/plugin's root entry", () => {
 		}
 	});
 
-	it("the root entry reaches no CLI, MCP, ajv or ink", () => {
+	it("control: the recorder sees the bundler and tsdown when something does load them", () => {
+		const hits = expensive(record("build-control", BUILD_CONTROL));
+		for (const expected of ["/packages/bundler/", "/tsdown/"]) {
+			assert.isTrue(
+				hits.some((url) => url.includes(expected)),
+				expected,
+			);
+		}
+	});
+
+	it("the root entry reaches no CLI, MCP, bundler, tsdown, ajv or ink", () => {
 		const modules = record("root", ENTRY);
 		assert.isTrue(
 			modules.some((url) => url.includes("/packages/schemastore/")),
@@ -76,6 +87,8 @@ describe("@effected/plugin's root entry", () => {
 			["cli", "@effected/engine"],
 			["mcp", "@effected/engine"],
 			["engine", "@effected/schemastore"],
+			["engine", "@effected/bundler"],
+			["bundler", "@effected/changesets"],
 			["schemastore", "@effected/semver"],
 		] as const;
 		for (const [from, to] of chain) {
