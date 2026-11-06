@@ -51,7 +51,7 @@
 		"@effect/vitest": "catalog:effected",
 		"@effected/memfs": "workspace:*",
 		"@effected/schemastore": "workspace:*",
-		"@savvy-web/bundler": "^2.7.3",
+		"@savvy-web/bundler": "^2.7.4",
 		"@types/node": "catalog:build",
 		"@types/react": "catalog:build",
 		"typescript": "catalog:build"

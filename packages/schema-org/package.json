@@ -25,7 +25,7 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
-		"@savvy-web/bundler": "^2.7.3",
+		"@savvy-web/bundler": "^2.7.4",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effected",
 		"oxc-parser": "^0.157.0",

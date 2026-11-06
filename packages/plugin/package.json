@@ -47,7 +47,7 @@
 		"@effected/kit": "workspace:*",
 		"@effected/mcp-kit": "workspace:*",
 		"@effected/workspaces": "workspace:*",
-		"@savvy-web/bundler": "^2.7.3",
+		"@savvy-web/bundler": "^2.7.4",
 		"@types/node": "catalog:build",
 		"typescript": "catalog:build"
 	},
