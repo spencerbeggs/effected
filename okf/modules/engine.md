@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/engine"
-description: "The effected tool's shared logic, consumed by its CLI and MCP front ends: the identity report both describe themselves with, and the ./schema subpath that holds everything effected schema does, from loading a schemastore config to the shipped ajv engines."
+description: "The effected tool's shared logic, consumed by its CLI and MCP front ends: the identity report both describe themselves with, the ./schema subpath that holds everything effected schema does, from loading a schemastore config to the shipped ajv engines, and the ./build subpath behind effected package build and effected action build."
 status: draft
 kind: package
 resource: ../../packages/engine

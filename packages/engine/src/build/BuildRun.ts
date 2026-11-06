@@ -1,4 +1,4 @@
-// The shared body of `effected build` and the MCP's build tool: load the config and plugins, run the bundler,
+// The shared body of `effected package build` and the MCP's `package_build`: load the config and plugins, run the bundler,
 // read its issues.json back, append to the workspace journals, and answer with a verdict. Exit codes and rendering
 // stay with the front ends.
 

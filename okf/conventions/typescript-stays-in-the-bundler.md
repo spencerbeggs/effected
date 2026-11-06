@@ -1,7 +1,7 @@
 ---
 type: Convention
-title: No @effected/* package imports or peers typescript, except @effected/bundler
-description: "Only @effected/bundler imports or peers the typescript package, peering it from catalog:build:peers because rolldown-plugin-dts' tsgo generator resolves it by import.meta.resolve; every other package keeps typescript-shaped knowledge as data, and API Extractor keeps its own TypeScript 6."
+title: Only @effected/bundler imports typescript, and only it and the tool's packages peer it
+description: "Only @effected/bundler imports the typescript package. It and the tool's cli, mcp and plugin peer it at one literal range that excludes nightlies: rolldown-plugin-dts' tsgo generator resolves it by import.meta.resolve, and npm's resolver needs the peer at the installed package. Every other package keeps typescript-shaped knowledge as data, and API Extractor keeps its own TypeScript 6."
 status: draft
 stale_after: "2027-05-06T00:00:00Z"
 supersedes: ../conventions/no-typescript-imports.md
@@ -20,15 +20,15 @@ sources:
     resource: ../../packages/tsconfig-json/src/TsEnumCodec.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T22:24:55Z
+  at: 2026-11-06T22:28:49Z
 integrity:
   generated:
-    body: aac042ac0a629d6b
+    body: d8bcf25af8944c94
 ---
 
-# No @effected/* package imports or peers typescript, except @effected/bundler
+# Only @effected/bundler imports typescript, and only it and the tool's packages peer it
 
-Never import `typescript` from `packages/*/src`, at runtime or as `import type`, and never add it as a `dependency` or `peerDependency` of an `@effected/*` library. `@effected/bundler` is the one importer. The tool's three front packages peer it for the bundler's sake and import nothing from it.
+Outside `@effected/bundler`, never import `typescript` from `packages/*/src`, at runtime or as `import type`. Never add it as a `dependency` of any `@effected/*` package, or as a `peerDependency` of one other than the bundler and the tool's `cli`, `mcp` and `plugin`, which peer it for the bundler's sake and import nothing from it.
 
 ## The exception
 

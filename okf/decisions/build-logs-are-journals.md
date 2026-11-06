@@ -15,17 +15,17 @@ sources:
     title: "Decisions this plan takes, item 4"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T22:24:55Z
+  at: 2026-11-06T22:28:49Z
 integrity:
   generated:
-    body: 9958bc24f7a07d73
+    body: 848caf3e7b660de5
 ---
 
 # Build logs are two append-only journals at the workspace root, derived from a cached per-package issues.json
 
 ## Context
 
-`dist/<target>/issues.json` is load-bearing: the silk plugin's `tsdoc-diagnostics` monitor, the `tsdoctor` agent, the gate-count convention and the constructs generator all read it, with `buildOk` checked first and freshness judged by time. It has to be written on every terminal path, by atomic rename, and declared as a turbo output, so that a cache replay restores it alongside `dist`.[^spec] The owner ruled that logs live at `<root>/.cache/effected/<log-type>.*`, one location every package reads and writes, so that an agentic watcher has a guessable path.[^spec]
+`dist/prod/issues.json` is load-bearing: the silk plugin's `tsdoc-diagnostics` monitor, the `tsdoctor` agent, the gate-count convention and the constructs generator all read it, with `buildOk` checked first and freshness judged by time. It has to be written on every terminal path, by atomic rename, and declared as a turbo output, so that a cache replay restores it alongside `dist`.[^spec] The owner ruled that logs live at `<root>/.cache/effected/<log-type>.*`, one location every package reads and writes, so that an agentic watcher has a guessable path.[^spec]
 
 Those two facts pull apart. Turbo caches per package and cannot restore a root file on a cache hit, and parallel package builds share that file.[^plan]
 

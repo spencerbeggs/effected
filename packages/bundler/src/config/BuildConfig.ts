@@ -255,15 +255,14 @@ export class PackageBuildConfig extends Schema.Class<PackageBuildConfig>("Packag
 	 */
 	bundleNodeModules: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
 	/**
-	 * Minifies prod output; dev is never minified.
+	 * Minifies the output.
 	 *
 	 * @remarks
 	 * Off by default: minified Node libraries trip security scanners and degrade stack traces.
 	 */
 	minify: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
 	/**
-	 * Emits the bundled `.d.ts` pass for dev and prod, and with it the prod meta pass that reads those
-	 * declarations.
+	 * Runs the bundled `.d.ts` pass and, with it, the meta pass that reads those declarations.
 	 *
 	 * @remarks
 	 * `false` is for JS-only artifacts that never consume declarations. It differs from `meta = false`, which

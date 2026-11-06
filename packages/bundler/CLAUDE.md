@@ -2,7 +2,7 @@
 
 The kit's build pipeline as a library: `Bundler.build` takes a package directory and a decoded config and writes `dist/prod`: the JS and declaration passes over tsdown, the emitted manifest, `targets.json`, the API Extractor meta bundle with its `tsdoctor.json`, an optional SEA binary, and `issues.json`.
 
-**Tier: integrated.** It imports tsdown, rolldown, `rolldown-plugin-dts`, `@microsoft/api-extractor` and `@tsdown/exe` at runtime, and peers `typescript` (the only kit package that does). `satori` and `@resvg/resvg-js` are optional peers. The internals are ported plain async code over `node:fs`; only the public boundary is Effect with typed failures, a recorded debt.
+**Tier: integrated.** It imports tsdown, rolldown, `rolldown-plugin-dts`, `@microsoft/api-extractor` and `@tsdown/exe` at runtime, and peers `typescript`, as the tool's `cli`, `mcp` and `plugin` do. It is the only kit package that imports it. `satori` and `@resvg/resvg-js` are optional peers. The internals are ported plain async code over `node:fs`; only the public boundary is Effect with typed failures, a recorded debt.
 
 **For the full design:** → `@./okf/modules/bundler.md`
 

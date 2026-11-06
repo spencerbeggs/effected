@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/cli"
-description: "The effected command: effected schema build, check and validate over effect/cli and @effected/cli-kit, with --version and --help, run by a bin that a carrier shim can wrap with its own distribution identity."
+description: "The effected command: effected package build, effected action build and effected schema build, check and validate over effect/cli and @effected/cli-kit, with --version and --help, run by a bin that a carrier shim can wrap with its own distribution identity."
 status: draft
 kind: package
 resource: ../../packages/cli

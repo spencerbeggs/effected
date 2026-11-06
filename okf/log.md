@@ -102,6 +102,7 @@
 * Updated The monorepo holds one tool, effected, beside its libraries
 * Updated The numeric-enum codec is data, not a typescript dependency
 * Updated spencerbeggs/tsdoctor
+* Updated Only @effected/bundler imports typescript, and only it and the tool's packages peer it
 
 ## 2026-11-05
 

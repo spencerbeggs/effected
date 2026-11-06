@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/mcp"
-description: "The effected-mcp server: a stdio MCP server with an identity tool and the schema_check, schema_build and schema_validate tools on effect/ai and @effected/mcp-kit, run by a bin that a carrier shim can wrap with its own distribution identity."
+description: "The effected-mcp server: a stdio MCP server with an identity tool, the package_build and action_build tools, and the schema_check, schema_build and schema_validate tools on effect/ai and @effected/mcp-kit, run by a bin that a carrier shim can wrap with its own distribution identity."
 status: draft
 kind: package
 resource: ../../packages/mcp

@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/plugin"
-description: "The effected tool's carrier: the one package a consumer installs as a root devDependency, declaring the effected and effected-mcp bins as shims that pass its own distribution identity to the CLI and MCP front ends, re-exporting defineSchemastore for a schemastore config, and pinning the chain below it exactly."
+description: "The effected tool's carrier: the one package a consumer installs as a root devDependency, declaring the effected and effected-mcp bins as shims that pass its own distribution identity to the CLI and MCP front ends, re-exporting defineSchemastore for a schemastore config, shipping the tsconfig presets as ./tsconfig/*, and pinning the chain below it exactly."
 status: draft
 kind: package
 resource: ../../packages/plugin
