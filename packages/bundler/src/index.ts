@@ -9,6 +9,8 @@ export { Bundler, BundlerBuildResult } from "./Bundler.js";
 export { BundlerError, BundlerPhase } from "./BundlerError.js";
 export type { ManifestLike } from "./catalog/resolve-catalogs.js";
 export { resolveManifest } from "./catalog/resolve-catalogs.js";
+export type { NextVersions } from "./changesets/next-versions.js";
+export { resolveNextVersions } from "./changesets/next-versions.js";
 export {
 	BuildFormat,
 	BuildPlatform,
