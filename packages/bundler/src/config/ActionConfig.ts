@@ -44,6 +44,14 @@ export class ActionBuildOptions extends Schema.Class<ActionBuildOptions>("Action
 	 * For an optional transitive dependency the action never exercises, such as a native module.
 	 */
 	ignore: Schema.Array(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+	/**
+	 * Whether to import each bundle in a fresh Node after building it, which proves it loads.
+	 *
+	 * @remarks
+	 * A bundle can build cleanly and not load, and this is the only check that finds out. Turn it off for an action
+	 * with no `GITHUB_ACTIONS` guard around its program, because the import runs that program for real.
+	 */
+	importCheck: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
 }) {}
 
 /**

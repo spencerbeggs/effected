@@ -21,7 +21,7 @@ const configOf = (document: unknown = {}) => Schema.decodeUnknownSync(ActionConf
 const validate = (
 	seed: Readonly<Record<string, string>>,
 	document: unknown = {},
-	options: { readonly ci?: boolean } = { ci: false },
+	options: { readonly ci: boolean } = { ci: false },
 ) =>
 	ActionValidation.validate(configOf(document), CWD, options).pipe(
 		Effect.provide(MemoryFileSystem.layerWithPath(seed)),
@@ -61,7 +61,7 @@ describe("ActionValidation.validate", () => {
 		}),
 	);
 
-	it.effect("reports a missing main entry as an error, with gab's message and suggestion", () =>
+	it.effect("reports a missing main entry as an error, with its path and a suggestion", () =>
 		Effect.gen(function* () {
 			const result = yield* validate({ [`${CWD}/action.yml`]: GOOD_YML });
 			assert.isFalse(result.valid);
@@ -130,7 +130,7 @@ describe("ActionValidation.validate", () => {
 		}),
 	);
 
-	it.effect("warns on absent branding, with gab's texts", () =>
+	it.effect("warns on absent branding, naming what to add", () =>
 		Effect.gen(function* () {
 			const result = yield* validate({
 				...good,
@@ -190,6 +190,24 @@ describe("ActionValidation.validate", () => {
 			);
 			assert.deepStrictEqual(present.errors, []);
 		}),
+	);
+
+	it.effect(
+		"errors on an explicit pre or post whose file is missing, and takes the conventional ones as optional",
+		() =>
+			Effect.gen(function* () {
+				const missing = yield* validate(good, { entries: { pre: "src/setup.ts", post: "src/teardown.ts" } });
+				assert.isFalse(missing.valid);
+				assert.deepStrictEqual(codes(missing.errors), ["ENTRY_FILE_MISSING", "ENTRY_FILE_MISSING"]);
+				assert.strictEqual(missing.errors[0]?.file, "src/setup.ts");
+				assert.include(missing.errors[1]?.message ?? "", "post");
+
+				const implicit = yield* validate(good);
+				assert.deepStrictEqual(implicit.errors, []);
+
+				const present = yield* validate({ ...good, [`${CWD}/src/setup.ts`]: "" }, { entries: { pre: "src/setup.ts" } });
+				assert.deepStrictEqual(present.errors, []);
+			}),
 	);
 
 	it.effect("reports an unreadable maxBundleSize before any build", () =>

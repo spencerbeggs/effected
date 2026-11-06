@@ -64,8 +64,8 @@ interface EntryToBuild {
 }
 
 /**
- * The entries to build. `pre` and `post` are built when their file exists, the configured one or else the
- * conventional `src/pre.ts` and `src/post.ts`.
+ * The entries to build. A `pre` or `post` the config names must exist, and the conventional `src/pre.ts` and
+ * `src/post.ts` are built when they do.
  */
 const entriesToBuild = (
 	config: ActionConfig,
@@ -76,12 +76,17 @@ const entriesToBuild = (
 	if (!existsSync(mainSource)) {
 		return Result.fail(new BundleFailed({ entry: main, cause: new Error("Main entry point not found") }));
 	}
-	const lifecycle = [
-		{ name: "pre", source: resolve(cwd, pre ?? DEFAULT_LIFECYCLE_ENTRIES.pre) },
-		{ name: "post", source: resolve(cwd, post ?? DEFAULT_LIFECYCLE_ENTRIES.post) },
-	].filter(({ source }) => existsSync(source));
-
-	const entries: Array<EntryToBuild> = [{ name: "main", source: mainSource }, ...lifecycle];
+	const entries: Array<EntryToBuild> = [{ name: "main", source: mainSource }];
+	for (const [name, explicit, fallback] of [
+		["pre", pre, DEFAULT_LIFECYCLE_ENTRIES.pre],
+		["post", post, DEFAULT_LIFECYCLE_ENTRIES.post],
+	] as const) {
+		const source = resolve(cwd, explicit ?? fallback);
+		if (existsSync(source)) entries.push({ name, source });
+		else if (explicit !== undefined) {
+			return Result.fail(new BundleFailed({ entry: name, cause: new Error(`Entry point not found: ${explicit}`) }));
+		}
+	}
 	for (const [name, source] of Object.entries(workers)) {
 		const reason = invalidWorkerName(name);
 		if (reason !== undefined) return Result.fail(new BundleFailed({ entry: name, cause: new Error(reason) }));
@@ -96,64 +101,89 @@ const entriesToBuild = (
 	return Result.succeed(entries);
 };
 
-const bundleEntry = async (entry: EntryToBuild, config: ActionConfig, cwd: string): Promise<BundleResult> => {
+/** Bundles one entry and, unless the config turns it off, proves the bundle loads. A failure comes back as a result. */
+const bundleEntry = async (
+	entry: EntryToBuild,
+	config: ActionConfig,
+	cwd: string,
+	signal: AbortSignal,
+): Promise<BundleResult> => {
 	const started = Date.now();
-	const { minify, sourceMap, externals, ignore } = config.build;
+	const { minify, sourceMap, externals, ignore, importCheck } = config.build;
 	const warnings: Array<string> = [];
-	const build = await rolldown({
-		input: { [entry.name]: entry.source },
-		cwd,
-		platform: "node",
-		treeshake: true,
-		// A module in both lists is stubbed: the ignore plugin only sees what is not external.
-		external: [/^node:/, ...externals.filter((name) => !ignore.includes(name))],
-		// Rolldown's node default leads with `main`, which takes a UMD build whose factory receives `require` as a
-		// value. Its relative requires then stay runtime calls, so the bundle cannot load, and the build reports nothing.
-		resolve: { mainFields: ["module", "main"] },
-		transform: {
-			define: {
-				// A bundled CommonJS module may read these. Rolldown leaves them bare, and they throw when reached.
-				__dirname: "import.meta.dirname",
-				__filename: "import.meta.filename",
-				"process.env.NODE_ENV": '"production"',
-			},
-		},
-		plugins: [ignoreStubPlugin(ignore)],
-		onLog(level, log) {
-			if (level === "warn") warnings.push(stripVTControlCharacters(log.message));
-		},
-	});
+	const logged = () => (warnings.length > 0 ? { warnings } : {});
 	try {
-		await build.write({
-			dir: join(cwd, "dist"),
-			format: "esm",
-			entryFileNames: "[name].js",
-			minify,
-			sourcemap: sourceMap,
-			// One file per entry: a dynamic import of a static path folds into its parent.
-			codeSplitting: false,
-			comments: { legal: true, annotation: false, jsdoc: false },
+		const build = await rolldown({
+			input: { [entry.name]: entry.source },
+			cwd,
+			platform: "node",
+			treeshake: true,
+			// A module in both lists is stubbed: the ignore plugin only sees what is not external.
+			external: [/^node:/, ...externals.filter((name) => !ignore.includes(name))],
+			// Rolldown's node default leads with `main`, which takes a UMD build whose factory receives `require` as a
+			// value. Its relative requires then stay runtime calls, so the bundle cannot load, and the build reports nothing.
+			resolve: { mainFields: ["module", "main"] },
+			transform: {
+				define: {
+					// A bundled CommonJS module may read these. Rolldown leaves them bare, and they throw when reached.
+					__dirname: "import.meta.dirname",
+					__filename: "import.meta.filename",
+					"process.env.NODE_ENV": '"production"',
+				},
+			},
+			plugins: [ignoreStubPlugin(ignore)],
+			onLog(level, log) {
+				if (level === "warn") warnings.push(stripVTControlCharacters(log.message));
+			},
 		});
-	} finally {
-		await build.close();
-	}
+		try {
+			await build.write({
+				dir: join(cwd, "dist"),
+				format: "esm",
+				entryFileNames: "[name].js",
+				minify,
+				sourcemap: sourceMap,
+				// One file per entry: a dynamic import of a static path folds into its parent.
+				codeSplitting: false,
+				comments: { legal: true, annotation: false, jsdoc: false },
+			});
+		} finally {
+			await build.close();
+		}
 
-	const file = join(cwd, "dist", `${entry.name}.js`);
-	const verdict = await checkImport(file, { cwd: join(cwd, "dist"), externals });
-	const logged = warnings.length > 0 ? { warnings } : {};
-	if (verdict.kind === "failed") {
-		return BundleResult.make({ success: false, error: `${entry.name} does not load: ${verdict.message}`, ...logged });
+		const file = join(cwd, "dist", `${entry.name}.js`);
+		if (importCheck) {
+			const verdict = await checkImport(file, { externals, signal });
+			if (verdict.kind === "failed") {
+				return BundleResult.make({
+					success: false,
+					error: `${entry.name} does not load: ${verdict.message}`,
+					...logged(),
+				});
+			}
+			if (verdict.kind === "external-missing") {
+				warnings.push(
+					`${verdict.packageName} is in build.externals and is not installed, so the load check stopped there`,
+				);
+			}
+		}
+		return BundleResult.make({
+			success: true,
+			stats: BundleStats.make({
+				entry: entry.name,
+				size: statSync(file).size,
+				duration: Date.now() - started,
+				outputPath: `dist/${entry.name}.js`,
+			}),
+			...logged(),
+		});
+	} catch (cause) {
+		return BundleResult.make({
+			success: false,
+			error: `${entry.name} failed to bundle: ${causeMessage(cause) ?? String(cause)}`,
+			...logged(),
+		});
 	}
-	return BundleResult.make({
-		success: true,
-		stats: BundleStats.make({
-			entry: entry.name,
-			size: statSync(file).size,
-			duration: Date.now() - started,
-			outputPath: `dist/${entry.name}.js`,
-		}),
-		...logged,
-	});
 };
 
 /**
@@ -172,13 +202,15 @@ export class ActionBundle {
 	 * Each bundle is self-contained apart from `node:` builtins and `build.externals`, and the output does not depend
 	 * on when or where it is built.
 	 *
-	 * Each bundle is then imported in a fresh Node with no `GITHUB_*` variable, because a bundle can build cleanly and
-	 * not load. An action's `GITHUB_ACTIONS` guard stays closed, but an action with no guard runs for real, in `dist`.
-	 * A failure asking for an input passes, and so does a missing package listed in `build.externals`.
+	 * Each bundle is then imported in a fresh Node, because a bundle can build cleanly and not load. Set
+	 * `build.importCheck = false` to skip that. The child has no `GITHUB_*` variable, token or `PATH`, and runs in a
+	 * temporary directory, for at most a minute. An action's `GITHUB_ACTIONS` guard stays closed, but an action with no
+	 * guard runs for real there. A failure asking for an input passes. A package listed in `build.externals` that is not
+	 * installed passes with a warning on the entry, and the check learns nothing about the bundle past that import.
 	 *
-	 * An entry that fails to bundle or load is reported in the result with the others still built, and its file may
-	 * remain in `dist`. A missing `main` or worker source and a bad worker name fail {@link BundleFailed} before `dist`
-	 * is touched.
+	 * An entry that fails to bundle or load is reported in the result with the others still built, and leaves no bundle
+	 * in `dist`. A missing `main`, a `pre`, `post` or worker the config names with no file, and a bad worker name fail
+	 * {@link BundleFailed} before `dist` is touched. Interrupting the build kills a running load check.
 	 *
 	 * @param options - `cwd` is the action's directory; `clean` removes `dist` first.
 	 */
@@ -214,19 +246,16 @@ export class ActionBundle {
 
 		const results: Array<BundleResult> = [];
 		for (const entry of entries) {
-			const result = yield* Effect.tryPromise({
-				try: () => bundleEntry(entry, config, cwd),
-				catch: (cause) => cause,
-			}).pipe(
-				Effect.catch((cause) =>
-					Effect.succeed(
-						BundleResult.make({
-							success: false,
-							error: `${entry.name} failed to bundle: ${causeMessage(cause) ?? String(cause)}`,
-						}),
-					),
-				),
-			);
+			const result = yield* Effect.promise((signal) => bundleEntry(entry, config, cwd, signal));
+			if (!result.success) {
+				yield* Effect.try({
+					try: () => {
+						rmSync(join(dist, `${entry.name}.js`), { force: true });
+						rmSync(join(dist, `${entry.name}.js.map`), { force: true });
+					},
+					catch: (cause) => new CleanError({ directory: dist, cause }),
+				});
+			}
 			results.push(result);
 		}
 

@@ -85,6 +85,7 @@ describe("ActionBuilder.build", () => {
 					config: configOf({ persistLocal: { enabled: false } }),
 					validate: false,
 					persist: false,
+					ci: false,
 				});
 				assert.isTrue(result.validation.valid);
 				assert.deepStrictEqual(result.validation.errors, []);
@@ -162,7 +163,7 @@ describe("ActionBuilder.build", () => {
 	it.live("fails with what bundling and persisting raise", () =>
 		Effect.gen(function* () {
 			const missing = yield* withFiles({}, (cwd) =>
-				ActionBuilder.build({ cwd, config: configOf(), validate: false, persist: false }).pipe(Effect.flip),
+				ActionBuilder.build({ cwd, config: configOf(), validate: false, persist: false, ci: false }).pipe(Effect.flip),
 			);
 			assert.instanceOf(missing, BundleFailed);
 

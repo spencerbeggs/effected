@@ -27,10 +27,10 @@ sources:
     title: "The source-sibling spike, run with EFFECTED_SPIKE=1"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T21:14:54Z
+  at: 2026-11-06T21:36:35Z
 integrity:
   generated:
-    body: 3d5d89ca799875bc
+    body: 5e1c16c3d06928c5
 ---
 
 # @effected/bundler
@@ -135,7 +135,7 @@ Every bundle imports from a directory outside the checkout with no `GITHUB_*` va
 `ActionBundle` carries all of this, and each setting has a test that fails without it. What the action builder has to carry:
 
 - **Module-first resolution, a requirement of the action bundler.** Rolldown's node default is `["main", "module"]`, which takes jsonc-parser's UMD build. Its factory receives `require` as a value, so its relative requires stay runtime calls: `Cannot find module './impl/format'` at import, in `main` and both workers, and a clean build. Set `resolve.mainFields` to `["module", "main"]`.
-- **An import check.** That break shows up only when the bundle loads, so a clean rolldown run does not show a bundle works.
+- **An import check.** That break shows up only when the bundle loads, so a clean rolldown run does not show a bundle works. It runs in a temporary directory with a scrubbed environment and a hard bound, and `build.importCheck = false` turns it off for an action with no `GITHUB_ACTIONS` guard.
 - **`__dirname` and `__filename`.** Rolldown leaves them bare, and they die with a `ReferenceError` when called, not at import, so an import check misses them. No bundle here references either. A fixture shows `transform.define` to `import.meta.dirname` and `import.meta.filename` works.
 - **`process.env.NODE_ENV` defined as `"production"`.** Rspack's production mode did this, and rolldown does not.
 - **A real path for the cwd.** In unminified output rolldown names each module relative to its cwd, so a cwd reached through a symlink writes the machine's layout into the bundle and breaks byte-identical builds.

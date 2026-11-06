@@ -42,8 +42,8 @@ export class ValidationResult extends Schema.Class<ValidationResult>("Validation
  * @public
  */
 export interface ActionValidationRunOptions {
-	/** Whether this run is under CI, which is what an unset `validation.strict` follows. Read from the process when absent. */
-	readonly ci?: boolean;
+	/** Whether this run is under CI, which is what an unset `validation.strict` follows. */
+	readonly ci: boolean;
 }
 
 const UNIT_BYTES: Readonly<Record<string, number>> = { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3 };
@@ -171,7 +171,7 @@ const checkEntries = Effect.fnUntraced(function* (config: ActionConfig, cwd: str
 	const fs = yield* FileSystem.FileSystem;
 	const path = yield* Path.Path;
 	const errors: Array<ValidationIssue> = [];
-	const { main, workers } = config.entries;
+	const { main, pre, post, workers } = config.entries;
 	if (!(yield* fs.exists(path.resolve(cwd, main)))) {
 		errors.push(
 			issue(
@@ -181,6 +181,21 @@ const checkEntries = Effect.fnUntraced(function* (config: ActionConfig, cwd: str
 				"Create src/main.ts or specify a different path in config",
 			),
 		);
+	}
+	for (const [name, source] of [
+		["pre", pre],
+		["post", post],
+	] as const) {
+		if (source !== undefined && !(yield* fs.exists(path.resolve(cwd, source)))) {
+			errors.push(
+				issue(
+					"ENTRY_FILE_MISSING",
+					`The ${name} entry point was not found: ${source}`,
+					source,
+					`Create ${source} or remove entries.${name} from the config`,
+				),
+			);
+		}
 	}
 	for (const [name, source] of Object.entries(workers)) {
 		const reason = invalidWorkerName(name);
@@ -212,17 +227,15 @@ export class ActionValidation {
 	 * Whether `env` describes a CI run, by `@effected/env`'s one rule: a known provider's marker, or a truthy `CI` or
 	 * `CONTINUOUS_INTEGRATION`.
 	 */
-	static isCI(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
+	static isCI(env: Readonly<Record<string, string | undefined>>): boolean {
 		return Option.isSome(RuntimeEnv.fromRecord(env).ci);
 	}
 
 	/**
 	 * Whether warnings stop this build: `validation.strict` when it is set, otherwise whether this is a CI run.
-	 *
-	 * @param options - `ci` is read from the process when absent.
 	 */
-	static isStrict(config: ActionConfig, options?: ActionValidationRunOptions): boolean {
-		return config.validation.strict ?? options?.ci ?? ActionValidation.isCI();
+	static isStrict(config: ActionConfig, options: ActionValidationRunOptions): boolean {
+		return config.validation.strict ?? options.ci;
 	}
 
 	/**
@@ -230,20 +243,20 @@ export class ActionValidation {
 	 *
 	 * @remarks
 	 * Every finding comes back in the result, whatever its severity: the effect fails only when a file cannot be
-	 * read. A missing `main` or worker source, a bad worker name, an unreadable `maxBundleSize` and a broken
+	 * read. A missing `main`, a `pre`, `post` or worker the config names with no file, a bad worker name, an unreadable `maxBundleSize` and a broken
 	 * `action.yml` are errors. A missing `action.yml` and missing recommended fields are warnings, and `valid` turns
 	 * false on them in strict mode.
 	 *
 	 * @param cwd - The action's directory.
-	 * @param options - `ci` is read from the process when absent.
+	 * @param options - `ci` says whether this run is under CI. Answer it once at `main`, with {@link ActionValidation.isCI}.
 	 */
 	static readonly validate: (
 		config: ActionConfig,
 		cwd: string,
-		options?: ActionValidationRunOptions,
+		options: ActionValidationRunOptions,
 	) => Effect.Effect<ValidationResult, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path> = Effect.fn(
 		"ActionValidation.validate",
-	)(function* (config: ActionConfig, cwd: string, options?: ActionValidationRunOptions) {
+	)(function* (config: ActionConfig, cwd: string, options: ActionValidationRunOptions) {
 		const entryErrors = yield* checkEntries(config, cwd);
 		const { maxBundleSize } = config.validation;
 		const sizeErrors =

@@ -306,7 +306,7 @@ export class ActionYmlInput extends Schema.Class<ActionYmlInput>("ActionYmlInput
 	description: Schema.String,
 	/** Whether a workflow must supply the input. */
 	required: Schema.optionalKey(Schema.Boolean),
-	/** The value used when a workflow supplies none. */
+	/** The value used when a workflow supplies none. A string only, so a YAML `default: true` is a schema error: quote it. */
 	default: Schema.optionalKey(Schema.String),
 	/** The warning shown when a workflow supplies the input. */
 	deprecationMessage: Schema.optionalKey(Schema.String),

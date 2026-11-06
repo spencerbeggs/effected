@@ -77,6 +77,17 @@ describe("EffectedConfigFile.load", () => {
 		}),
 	);
 
+	it.effect("reads importCheck from TOML, defaulting it on", () =>
+		Effect.gen(function* () {
+			const off = yield* load({ [`${PKG}/effected.toml`]: "[action.build]\nimportCheck = false\n" });
+			assert.isFalse(off.config.action?.build.importCheck);
+			const on = yield* load({ [`${PKG}/effected.toml`]: "[action.build]\nminify = false\n" });
+			assert.isTrue(on.config.action?.build.importCheck);
+			const wrong = yield* load({ [`${PKG}/effected.toml`]: '[action.build]\nimportCheck = "no"\n' }).pipe(Effect.flip);
+			assert.strictEqual(wrong.issuePath, "action.build.importCheck");
+		}),
+	);
+
 	it.effect("decodes a worker table whose keys carry dashes, and merges the action table across tiers", () =>
 		Effect.gen(function* () {
 			const resolved = yield* load({

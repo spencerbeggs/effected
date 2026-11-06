@@ -244,6 +244,9 @@ jobs:
 	it.effect("takes an action.yml without runs, or that does not parse", () =>
 		Effect.gen(function* () {
 			yield* inVolume({ [`${CWD}/action.yml`]: 'name: "T"\ndescription: "No runs"\n' }, persist());
+			yield* inVolume({ [`${CWD}/action.yml`]: 'name: "T"\ndescription: "Empty runs"\nruns:\n' }, persist());
+			yield* inVolume({ [`${CWD}/action.yml`]: 'name: "T"\ndescription: "Scalar runs"\nruns: node24\n' }, persist());
+			yield* inVolume({ [`${CWD}/action.yml`]: "null\n" }, persist());
 			yield* inVolume({ [`${CWD}/action.yml`]: "name: [unclosed\n" }, persist());
 		}),
 	);

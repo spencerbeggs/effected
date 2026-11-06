@@ -103,8 +103,11 @@ const checkRunsPaths = Effect.fnUntraced(function* (actionYml: string, outputPat
 	if (!(yield* fs.exists(actionYml))) return;
 	const parsed = Yaml.parseResult(yield* fs.readFileString(actionYml));
 	if (Result.isFailure(parsed)) return;
-	const runs = (parsed.success as { readonly runs?: Readonly<Record<string, unknown>> } | null)?.runs;
-	if (runs === undefined) return;
+	const runs = (parsed.success as { readonly runs?: unknown } | null)?.runs as
+		| Readonly<Record<string, unknown>>
+		| null
+		| undefined;
+	if (runs === undefined || runs === null) return;
 	for (const entryType of ["main", "pre", "post"]) {
 		const specifiedPath = runs[entryType];
 		if (typeof specifiedPath !== "string" || specifiedPath.length === 0) continue;

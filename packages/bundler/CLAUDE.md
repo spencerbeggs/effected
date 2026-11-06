@@ -53,8 +53,7 @@ Other tools read these, so a change to one moves with its readers. Paths are und
 - **`bundledPackages` naming a sibling that resolves to source fails the build** with `tsgo did not generate a declaration file`, because tsgo declares only the package's own project. No kit package sets it.
 - **A sibling's source is accounted as suppressed.** API Extractor's diagnostics run follows a source link to a `.ts` file and reports `ae-wrong-input-file-type`. When the file's realpath lies outside the package, that goes in the `suppressed` bucket through `isForeignInputFileMessage`, which is a classification rather than a `suppressWarnings` rule. Inside the package it stays a warning, since it means the package's own declarations reached its source.
 - **A suppression rule with neither `messageId` nor `pattern` matches nothing**, though the schema accepts one.
-- **`ActionBundle.build` runs what it builds.** Its load check imports each bundle in a fresh Node with only `PATH` and `HOME` set. An action's `GITHUB_ACTIONS` guard stays closed, but an action with no guard runs for real, in `dist`.
-- **An explicit `entries.pre` or `entries.post` whose file is missing is skipped silently**, as the previous builder did, and `action.yml` can then name a file that was never built. Only `PersistLocal` notices.
+- **`ActionBundle.build` runs what it builds.** Its load check imports each bundle in a fresh Node with only `HOME` and `TMPDIR` set, both a temporary directory it then removes, for at most a minute. An action's `GITHUB_ACTIONS` guard stays closed, but an action with no guard runs for real there, and with no `PATH`. `build.importCheck = false` turns the check off.
 
 ## Working here
 

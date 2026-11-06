@@ -311,8 +311,8 @@ describe.skipIf(TARGET === undefined)("the action spike", () => {
 					rspackBytes: hasEntryBaseline ? statSync(baseline).size : null,
 					chunks: output.output.filter((item) => item.type === "chunk").length,
 					ms,
-					verdict: await checkImport(join(out, `${entry}.js`), { cwd: out }),
-					rspackVerdict: hasEntryBaseline ? await checkImport(baseline, { cwd: baselineDir }) : null,
+					verdict: await checkImport(join(out, `${entry}.js`)),
+					rspackVerdict: hasEntryBaseline ? await checkImport(baseline) : null,
 				});
 			}
 
@@ -342,7 +342,7 @@ describe.skipIf(TARGET === undefined)("the action spike", () => {
 			const umdEntry = await bundle("main", join(target, "src/main.ts"), target, umd, [], {
 				mainFields: ["main", "module"],
 			});
-			const umdVerdict = await checkImport(join(umd, "main.js"), { cwd: umd });
+			const umdVerdict = await checkImport(join(umd, "main.js"));
 
 			// With GITHUB_ACTIONS set the entries run for real, as far as they get with no input, state or token.
 			const runtime = [];

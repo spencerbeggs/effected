@@ -65,8 +65,8 @@ export interface ActionBuilderOptions {
 	readonly validate: boolean;
 	/** Whether to copy the build locally. `persistLocal.enabled = false` turns that off too. */
 	readonly persist: boolean;
-	/** Whether this run is under CI, which is what an unset `validation.strict` follows. Read from the process when absent. */
-	readonly ci?: boolean;
+	/** Whether this run is under CI, which is what an unset `validation.strict` follows. */
+	readonly ci: boolean;
 }
 
 /**
@@ -106,8 +106,12 @@ export class ActionBuilder {
 	 * It writes nothing to stdout; rendering belongs to the caller. A step that fails stops the ones after it, so an
 	 * invalid action leaves `dist` as it was, and a failed build or size check persists nothing. In strict mode, set
 	 * by `validation.strict` or else by running under CI, a warning fails like an error. With `validate` false, neither
-	 * validation nor the size check runs. Each bundle is still imported to prove it loads, per
-	 * {@link ActionBundle.build}.
+	 * validation nor the size check runs. `build.importCheck` alone decides whether each bundle is imported to prove it
+	 * loads, per {@link ActionBundle.build}.
+	 *
+	 * Validation and persisting go through the provided `FileSystem`, while bundling always works on the real disk,
+	 * because rolldown does. A memory filesystem therefore suits {@link ActionValidation} and {@link PersistLocal} tests,
+	 * not this method.
 	 */
 	static readonly build: (
 		options: ActionBuilderOptions,
@@ -115,11 +119,10 @@ export class ActionBuilder {
 		"ActionBuilder.build",
 	)(function* (options: ActionBuilderOptions) {
 		const { config, cwd } = options;
-		const run = options.ci !== undefined ? { ci: options.ci } : undefined;
-		const strict = ActionValidation.isStrict(config, run);
+		const strict = ActionValidation.isStrict(config, options);
 
 		const before = options.validate
-			? yield* ActionValidation.validate(config, cwd, run)
+			? yield* ActionValidation.validate(config, cwd, options)
 			: ActionValidation.resultOf([], [], false);
 		if (!before.valid) return yield* failValidation(before);
 
