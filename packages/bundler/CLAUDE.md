@@ -62,14 +62,15 @@ pnpm exec vitest run --project @effected/bundler --coverage.enabled=false   # th
 pnpm build --filter @effected/bundler                                       # through turbo, never the bin alone
 ```
 
-Run vitest from the repository root, and read the exit code as well as the `Tests:` line. Two e2es are opt-in because they cost more or follow other packages:
+Run vitest from the repository root, and read the exit code as well as the `Tests:` line. Three e2es are opt-in because they cost more, follow other packages or need another checkout:
 
 ```bash
 EFFECTED_SPIKE=1 pnpm exec vitest run --project @effected/bundler --coverage.enabled=false kit-leaf   # cli-kit from source siblings
 EFFECTED_PARITY=1 pnpm exec vitest run --project @effected/bundler --coverage.enabled=false parity    # jsonc against the previous bundler's bytes
+EFFECTED_ACTION_SPIKE=/path/to/silk-release-action pnpm exec vitest run --project @effected/bundler --coverage.enabled=false action-spike   # rolldown on a real action
 ```
 
-`EFFECTED_SPIKE_DIR` keeps the spike's scratch workspace somewhere to inspect. `__test__/e2e/exe-only.e2e.test.ts` runs by default and skips, saying why, on a host other than darwin-arm64 or when the Node runtime cannot be fetched.
+`EFFECTED_SPIKE_DIR` keeps the spike's scratch workspace somewhere to inspect, and `EFFECTED_ACTION_SPIKE_DIR` keeps the action spike's bundles and `report.json`. `__test__/e2e/exe-only.e2e.test.ts` runs by default and skips, saying why, on a host other than darwin-arm64 or when the Node runtime cannot be fetched.
 
 `__test__/fixtures/parity/` holds verbatim bytes, and `biome.json` keeps the formatter off it. Its bytes follow jsonc's source and pending changesets, which is why that test is opt-in.
 

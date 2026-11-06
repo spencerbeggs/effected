@@ -27,10 +27,10 @@ sources:
     title: "The source-sibling spike, run with EFFECTED_SPIKE=1"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T17:47:56Z
+  at: 2026-11-06T20:37:02Z
 integrity:
   generated:
-    body: 8b2ac6191e359762
+    body: ea51a3da70223c48
 ---
 
 # @effected/bundler
@@ -113,6 +113,38 @@ What the result rests on:
 Inlining is the other edge: **`bundledPackages` naming a sibling that resolves to source fails the build** with `tsgo did not generate a declaration file`, since tsgo declares only the package's own project. It is loud, the spike pins it, and no kit package sets `bundledPackages`.
 
 The edge this leaves: **a sibling's public function whose return type its entry point does not export gives a consumer's inferred declaration a silent `any` from source**, with no warning, no error and `buildOk: true`. The rolled-up `dist` gave a different wrong answer for the same site, a dangling name or a copied structure. The kit cannot grow such a site while it stays clean: the sibling's own API Extractor gate makes a public function returning an unexported type fatal in CI. A package outside that gate gets no such report.
+
+## Action bundle spike
+
+**Verdict, measured 2026-11-06: rolldown can bundle silk-release-action's five entries, one self-contained ESM file each, smaller than rspack and with the same runtime behaviour as far as a run can get. It needs one setting that its default gets wrong silently: `resolve.mainFields` must lead with `module`.** The spike is `packages/bundler/__test__/e2e/action-spike.e2e.test.ts`, opt-in through `EFFECTED_ACTION_SPIKE`.
+
+It ran silk-release-action 5.10.6 on rolldown 1.2.16 and Node 26.13.0, with `platform: "node"`, `format: "esm"`, treeshake and minify on, `codeSplitting: false`, `node:` builtins external, and `supports-color` and `kerberos` aliased to a virtual throwing stub. The rspack column is that repository's committed `dist/`:
+
+| Entry | rolldown | rspack | Build |
+| --- | --- | --- | --- |
+| `pre` | 348,634 B | 406,590 B | 161-174 ms |
+| `main` | 2,368,768 B | 2,452,915 B | 324-352 ms |
+| `post` | 348,553 B | 406,398 B | 115-152 ms |
+| `changelog-silk` | 1,072,406 B | 1,095,259 B | 149-155 ms |
+| `changelog-default` | 1,072,413 B | 1,095,266 B | 144-149 ms |
+
+Every bundle imports from a directory outside the checkout with no `GITHUB_*` variable set, carries no build-machine path, and is byte-identical from a second build. With `GITHUB_ACTIONS` set, `pre`, `main` and `post` exit as the rspack bundles do and report the same `::error::` lines. `main` stops at the missing `INPUT_APP-CLIENT-ID`, so nothing past the input read has run in either bundle.
+
+**Warnings.** With rolldown's default checks a build logs nothing: not for `import.meta`, not for a `require` of a builtin, not for the computed `import()` in `@changesets/apply-release-plan`, and not for the broken UMD bundle below. With `checks.circularDependency` on it logs only `CIRCULAR_DEPENDENCY`: 17 for `pre`, 18 for `main`, 17 for `post` and 2 for each worker, all in third-party packages (apache-arrow, `@redis/client`, semver, jju).
+
+What the action builder has to carry:
+
+- **Module-first resolution.** Rolldown's node default is `["main", "module"]`, which takes jsonc-parser's UMD build. Its factory receives `require` as a value, so its relative requires stay runtime calls: `Cannot find module './impl/format'` at import, in `main` and both workers, and a clean build. Set `resolve.mainFields` to `["module", "main"]`.
+- **An import check.** That break shows up only when the bundle loads, so a clean rolldown run does not show a bundle works.
+- **`__dirname` and `__filename`.** Rolldown leaves them bare, and they die with a `ReferenceError` when called, not at import, so an import check misses them. No bundle here references either. A fixture shows `transform.define` to `import.meta.dirname` and `import.meta.filename` works.
+- **One build per entry**, with `codeSplitting: false`, plus `dist/package.json` holding `{ "type": "module" }`.
+- **`ignore` as a `resolveId` and `load` plugin.** A virtual module needs no stub file on disk. Both stubs reached `main` and neither loaded at import. A package imported statically rather than through a guarded `require` or `import()` would throw at load.
+- **`comments: { legal: true, annotation: false, jsdoc: false }`.** It keeps license banners inline, 4 `/*!` blocks in `main` against rspack's 3, with no sidecar file to fold back. `legalComments` is deprecated in favor of it. Comments marked `@preserve`, such as `v8 ignore` ones, stay too, as they do under rspack.
+- **Circular-dependency checks off, or filtered to first-party modules.** Turned on, they report only third-party cycles here.
+
+Three rspack workarounds have no counterpart. A CJS `require` of a builtin goes through `createRequire(import.meta.url)` and has real CommonJS semantics, `import.meta.url` stays a runtime expression, and a computed `import()` stays native, which is why `[action.build]` has no `nativeDynamicImports`. The fixture runs all three.
+
+Not measured: `build.externals`, `build.sourceMap`, Windows, and any path through `main` past its inputs.
 
 ## Accepted debt
 
