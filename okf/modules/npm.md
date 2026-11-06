@@ -9,11 +9,11 @@ tags:
   - architecture
   - dx
 generated:
-  by: "claude-code/opus-5.5"
-  at: 2026-11-06T20:09:15Z
+  by: "okfit/claude-code"
+  at: 2026-11-06T22:24:55Z
 integrity:
   generated:
-    body: 6a101e8c0f6e81ca
+    body: 8e3de9f6919efd34
 ---
 
 # npm
@@ -112,4 +112,4 @@ Suites in `__test__/` per concept. Shared layers are provided through a top-leve
 
 ## Build
 
-Every Effect class factory is inline with no exported `*_base` const; the bundler's default config suppresses `ae-forgotten-export` for the `_base` pattern, so a clean *prod* `issues.json` carries empty `warnings`/`errors` and one `suppressed` entry per such class. `suppressed: 0` in the prod gate means the build did not run properly, while `dist/dev/issues.json` legitimately has `suppressed: []` — the dev target does not run API Extractor. `pnpm build --filter @effected/npm` runs the build through turbo; never invoke `node savvy.build.ts --target prod` directly — see [the direct prod build gotcha](../gotchas/direct-prod-build-fakes-a-clean-gate.md).
+Every Effect class factory is inline with no exported `*_base` const; the bundler's default config suppresses `ae-forgotten-export` for the `_base` pattern, so a clean `dist/prod/issues.json` carries empty `warnings`/`errors` and one `suppressed` entry per such class. An empty `suppressed` means the meta pass did not run. `pnpm build --filter @effected/npm` runs the build [through turbo](../conventions/build-through-turbo-only.md).

@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/commands/src/LocalExec.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-06T22:24:55Z
 integrity:
   generated:
-    body: 211c452aecc7463c
+    body: 54780f1a88f81e5d
 ---
 
 # @effected/commands
@@ -511,7 +511,7 @@ protocol, and why each of its rules is there, is
   `lib/scripts/run-once-model-full.ts` (`pnpm --filter @effected/commands
   model:full`, offline only, never CI), and
   `__test__/e2e/RunOnce.e2e.test.ts` races four real `node` processes
-  through a fixture that imports the dev build.
+  through a fixture that imports the built `dist/prod/npm/pkg`.
 
 ## Prebuilt binaries and launcher argv
 

@@ -8,10 +8,10 @@ tags:
   - compat
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-11-06T22:24:55Z
 integrity:
   generated:
-    body: 487b1546d262f025
+    body: 17e54eced2a37a74
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -33,7 +33,7 @@ TypeScript's compiler options use string spellings in `tsconfig.json` (`"target"
 
 ## Alternatives rejected
 
-**Importing `typescript` to read its enums directly** was rejected outright: it would violate the kit-wide zero-`typescript`-imports rule this package exists partly to enforce (see [no typescript imports](../conventions/no-typescript-imports.md)), and it would make the whole package's install cost jump by however large `typescript` itself is, for consumers who otherwise need nothing from it. **Depending on `typescript` as a type-only import** was also rejected — the hard rule is "zero `typescript` imports anywhere, including type imports," precisely so a structural or type-only dependency cannot quietly reappear as a build-time coupling to a specific TypeScript version.
+**Importing `typescript` to read its enums directly** was rejected outright: it would violate the rule keeping `typescript` imports inside the bundler, which this package exists partly to enforce (see [typescript stays in the bundler](../conventions/typescript-stays-in-the-bundler.md)), and it would make the whole package's install cost jump by however large `typescript` itself is, for consumers who otherwise need nothing from it. **Depending on `typescript` as a type-only import** was also rejected — the hard rule is "zero `typescript` imports anywhere, including type imports," precisely so a structural or type-only dependency cannot quietly reappear as a build-time coupling to a specific TypeScript version.
 
 ## Consequences
 

@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-06T22:24:55Z
 integrity:
   generated:
-    body: 62b533ace221f709
+    body: 4a75c0393363d6fd
 ---
 
 # effected
@@ -74,10 +74,10 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `changesets` | boundary | invention; a parser for changeset files and `.changeset/config.json` and a release planner, with `@changesets/get-release-plan` kept as a test oracle only |
 | `bundler` | integrated | port of `@savvy-web/tsdown-plugins` and `@savvy-web/bundler`, the `tsdoctor.json` schema from `@tsdoctor/manifest`, and a rolldown rewrite of `@savvy-web/github-action-builder`; a `typescript` peer shared only with the tool's `cli`, `mcp` and `plugin` |
 | `pnpm-plugin-effected` | companion — no tier | invention; the one `effected` catalog (the Effect family on one minor, and the kit) plus the graph-wide Effect pins, and the public hoist of `@effected/plugin`; renamed from `pnpm-plugin-effect` |
-| `plugin` | tool — no tier | invention; the `effected` tool's carrier, the one package a consumer installs (a root devDependency through `catalog:effected`): declares the `effected` and `effected-mcp` bins as shims passing its own distribution identity, re-exports `defineSchemastore`, and pins the chain below it exactly |
-| `cli` | tool — no tier | invention; the `effected` command (`schema build`, `check` and `validate`, `--version`, `--help`) over `effect/cli`, `cli-kit` and `engine`; the name was `cli-kit`'s before [the rename](decisions/carrier-libraries-take-kit-names.md) |
-| `mcp` | tool — no tier | invention; the `effected-mcp` stdio server with the `identity` tool and the `schema_build`, `schema_check` and `schema_validate` tools over `effect/ai`, `mcp-kit` and `engine` |
-| `engine` | tool — no tier | invention; the tool's shared logic that both front ends report through: `Identity.report`, and the `./schema` subpath (config loader, runner, report classes, version check, the two shipped ajv engines), built on `kit` and `schemastore` |
+| `plugin` | tool — no tier | invention; the `effected` tool's carrier, the one package a consumer installs (a root devDependency through `catalog:effected`): declares the `effected` and `effected-mcp` bins as shims passing its own distribution identity, re-exports `defineSchemastore`, ships the tsconfig presets as `./tsconfig/*`, and pins the chain below it exactly |
+| `cli` | tool — no tier | invention; the `effected` command (`package build`, `action build`, `schema build`, `check` and `validate`, `--version`, `--help`) over `effect/cli`, `cli-kit` and `engine`; the name was `cli-kit`'s before [the rename](decisions/carrier-libraries-take-kit-names.md) |
+| `mcp` | tool — no tier | invention; the `effected-mcp` stdio server with the `identity` tool and the `package_build`, `action_build`, `schema_build`, `schema_check` and `schema_validate` tools over `effect/ai`, `mcp-kit` and `engine` |
+| `engine` | tool — no tier | invention; the tool's shared logic that both front ends report through: `Identity.report`, and the `./schema` subpath (config loader, runner, report classes, version check, the two shipped ajv engines), and the `./build` subpath (`BuildRun`, `ActionRun` and their result classes), built on `kit`, `schemastore` and `bundler` |
 
 The roster is **49 packages**: 44 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`plugin`, `cli`, `mcp`, `engine`), which are an application and carry no library tier. `cli-kit`, `mcp-kit`, `kit`, `plugin`, `changesets` and `bundler` are new npm names, not yet published. `cli`, `mcp` and `engine` published before as the old kit libraries, and their next release is the tool package under the same name. `pnpm-plugin-effected` is already published.
 

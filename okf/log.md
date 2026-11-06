@@ -93,6 +93,15 @@
 * Added The build artifacts: dist/prod, targets.json, issues.json and the journals
 * Added The effected build commands: package build and action build
 * Added effected.toml: the build config's tables, defaults and discovery
+* Updated @effected/cli
+* Updated @effected/engine
+* Updated @effected/mcp
+* Updated @effected/plugin
+* Updated Keep the tree resolved to one effect copy
+* Updated Releases are changeset-driven and scope-agnostic
+* Updated The monorepo holds one tool, effected, beside its libraries
+* Updated The numeric-enum codec is data, not a typescript dependency
+* Updated spencerbeggs/tsdoctor
 
 ## 2026-11-05
 

@@ -48,10 +48,10 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-06T22:24:55Z
 integrity:
   generated:
-    body: 862cf914f74d841f
+    body: dc81578842871eef
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -578,8 +578,8 @@ never `devDependencies`.[^packed-install-plan-ts]
 `packFrom` defaults to `{ directory: "dist/prod/npm/pkg" }`, which `npm pack`s
 the effected bundler's prod output: the same file list a release
 publishes. `"source"` runs `pnpm pack` in the package directory instead. That
-packs whatever `publishConfig.directory` names, which under the effected
-bundler is the **dev** build, and it needs a workspace that has been
+packs whatever `publishConfig.directory` names, and a package on the effected
+bundler names none, so it packs the source tree rather than the build; it needs a workspace that has been
 `pnpm install`ed, or the pack fails `PackFailed` naming the missing
 install.[^packed-install-ts] A packed manifest whose runtime maps still carry a
 `workspace:`, `catalog:`, `link:` or relative `file:` specifier fails

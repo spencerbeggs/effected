@@ -19,10 +19,10 @@ sources:
     title: "bundler: @effected/bundler and the top-level @effected/plugin package"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:18:23Z
+  at: 2026-11-06T22:24:55Z
 integrity:
   generated:
-    body: 39435bbfd0187421
+    body: ded946b98f11aff4
 ---
 
 # The kit builds itself with the bundler running from source under tsx
@@ -35,7 +35,7 @@ The kit built with `@savvy-web/bundler`, which depended on published copies of t
 
 - **The root `pnpm-workspace.yaml` sets `nodeOptions: --import=tsx`,** because pnpm 12 ignores `node-options` in `.npmrc`, and `tsx` is a root devDependency, so every `pnpm run` and turbo task can execute TypeScript across the workspace.[^plan]
 - **`@effected/plugin` is a root devDependency,** so `effected`, through its `src/bin/effected.ts` bin, runs from source in those same tasks. Each `@effected/*` import resolves through a [root workspace link](one-build-target-from-source-links.md) to that package's source.
-- **Published bins are rewritten to `dist` by the manifest transform,** as they are today. A consumer never runs source or needs `tsx`.
+- **Published bins are rewritten to `dist` by the manifest transform.** A consumer never runs source or needs `tsx`.
 
 **The source bins have two launch paths in this checkout.**
 

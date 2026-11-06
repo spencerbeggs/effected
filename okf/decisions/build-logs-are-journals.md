@@ -15,10 +15,10 @@ sources:
     title: "Decisions this plan takes, item 4"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T15:28:18Z
+  at: 2026-11-06T22:24:55Z
 integrity:
   generated:
-    body: c288d2c1c90edc6e
+    body: 9958bc24f7a07d73
 ---
 
 # Build logs are two append-only journals at the workspace root, derived from a cached per-package issues.json
@@ -33,7 +33,7 @@ Those two facts pull apart. Turbo caches per package and cannot restore a root f
 
 - **Two append-only journals under the workspace root:** `.cache/effected/build.jsonl` and `.cache/effected/issues.jsonl`, written with [`@effected/jsonl`](../modules/jsonl.md) and keyed by package.
 - **A per-package `dist/prod/issues.json` remains the cached artifact,** and the journal is derived from it. The journal is a view for watchers. The package artifact is what a reader trusts for one package's result, and a cache replay restores it where a [clean log alone would prove nothing](../gotchas/turbo-cache-hit-replays-clean-log.md).
-- **No initialisation step.** `**/.cache` is already gitignored and `Journal` creates the file, so the pnpm plugin has nothing to set up.
+- **No initialisation step.** `**/.cache` is already gitignored, and each journal's `layerAt` creates its directory and file, since `Journal.append` refuses a missing file and `Journal` creates neither on its own. The pnpm plugin has nothing to set up.
 
 ## Alternatives rejected
 
@@ -43,7 +43,8 @@ Those two facts pull apart. Turbo caches per package and cannot restore a root f
 
 ## Related
 
-- [`@effected/bundler`](../modules/bundler.md) writes both.
+- [`@effected/bundler`](../modules/bundler.md) owns both journals, and [`@effected/engine`](../modules/engine.md) records to them after a build.
+- [The build artifacts](../interfaces/build-artifacts.md) state their shape and their readers.
 - [Build through turbo](../conventions/build-through-turbo-only.md) and [the cache-hit gotcha](../gotchas/turbo-cache-hit-replays-clean-log.md) state how `issues.json` is read.
 - [The single build target](one-build-target-from-source-links.md) keeps `dist/prod/issues.json` in place.
 

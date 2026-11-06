@@ -20,19 +20,21 @@ sources:
     resource: ../../packages/tsconfig-json/src/TsEnumCodec.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T15:28:18Z
+  at: 2026-11-06T22:24:55Z
 integrity:
   generated:
-    body: 7728b0ae3f744e43
+    body: aac042ac0a629d6b
 ---
 
 # No @effected/* package imports or peers typescript, except @effected/bundler
 
-Never import `typescript` from `packages/*/src`, at runtime or as `import type`, and never add it as a `dependency` or `peerDependency` of an `@effected/*` package. `@effected/bundler` is the one exception.
+Never import `typescript` from `packages/*/src`, at runtime or as `import type`, and never add it as a `dependency` or `peerDependency` of an `@effected/*` library. `@effected/bundler` is the one importer. The tool's three front packages peer it for the bundler's sake and import nothing from it.
 
 ## The exception
 
-[`@effected/bundler`](../modules/bundler.md) peers `typescript` from `catalog:build:peers`, because `rolldown-plugin-dts`' tsgo generator resolves it by `import.meta.resolve("typescript")`, so the compiler has to be reachable from the bundler's own position in the graph.[^plan] It also reads the compiler API from TypeScript 7.1's `typescript/sync` and `typescript/ast` subpaths. The root `typescript` export carries only version strings.[^spec]
+[`@effected/bundler`](../modules/bundler.md) peers `typescript` because `rolldown-plugin-dts`' tsgo generator resolves it by `import.meta.resolve("typescript")`, so the compiler has to be reachable from the bundler's own position in the graph.[^plan] It also reads the compiler API from TypeScript 7.1's `typescript/sync` and `typescript/ast` subpaths. The root `typescript` export carries only version strings.[^spec]
+
+The range is the literal `7.1.0-beta || 7.1.0-rc || >=7.1.0 <8`, not `catalog:build:peers`, because that catalog value pins a prerelease exactly and a plain lower bound would admit `-dev` nightlies. [`@effected/plugin`](../modules/plugin.md), [`@effected/cli`](../modules/cli.md) and [`@effected/mcp`](../modules/mcp.md) declare the same literal, so a consumer's install surfaces the peer: with none at the installed package, npm's resolver never finishes on the prerelease that `tsdown`'s optional range does not admit. The plugin's `entry.test.ts` holds the four manifests to one string.
 
 Do not widen the exception. A package that wants compiler behaviour takes it through the bundler or states the need as a new Decision.
 

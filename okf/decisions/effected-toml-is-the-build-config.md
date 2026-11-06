@@ -15,10 +15,10 @@ sources:
     title: "Decisions this plan takes, item 5"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:18:23Z
+  at: 2026-11-06T22:24:55Z
 integrity:
   generated:
-    body: b92b601889abdefb
+    body: 6d18cdb56e3382a0
 ---
 
 # effected.toml is the only build config, and code enters through two data keys
@@ -31,13 +31,15 @@ Each of the kit's 47 packages carried a `savvy.build.ts`, and they used almost n
 
 **`effected.toml` is the only config file.** It is read with [`@effected/config-file`](../modules/config-file.md) over [`@effected/toml`](../modules/toml.md).
 
-**Both root and package configs exist, with precedence.** The owner ruled this discovery order:[^spec]
+**Both root and package configs exist, with precedence.** The owner ruled the candidates:[^spec]
 
 1. `<root>/.config/effected.toml`
 2. `<root>/effected.toml`
 3. `<pkg>/.config/effected.toml`
 4. `<pkg>/effected.toml`
 5. `<pkg>/lib/configs/effected.toml`
+
+The first two are the root tier and the last three the package tier. **Within a tier the first file found is the only one read, and the package tier merges over the root.** The merge runs on the raw documents: objects merge per key, and arrays and scalars replace whole. The result decodes once, strictly, so defaults apply after precedence and an unknown key fails with its path rather than quietly taking a default. [The interface](../interfaces/effected-toml.md) states every key.
 
 **Code enters through two data keys, and nowhere else:**[^plan]
 
@@ -63,6 +65,7 @@ drop = ["dependencies"]
 ## Related
 
 - [`@effected/bundler`](../modules/bundler.md) owns the `EffectedConfig` schema, the discovery and the plugin loading.
+- [The `effected.toml` contract](../interfaces/effected-toml.md) is the consumer's view of this.
 - [The schema commands](../interfaces/schema-commands.md) set the `jiti` loading precedent.
 
 [^spec]: `docs/superpowers/specs/2026-11-06-bundler-research.md`, sections 2, 5, 9 and 12.

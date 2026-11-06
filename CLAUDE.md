@@ -33,6 +33,7 @@ Durable project knowledge lives as OKF concepts under `okf/`, not in prose here.
 ### Detail folded into the bundle
 
 - Package roster with tiers and provenance → `okf/project.md` — Load when: choosing which package owns a capability, or checking a package's tier or scope.
+- The `effected` tool's build commands, config and artifacts (`effected package build`, `effected action build`, the `package_build` and `action_build` MCP tools, every `effected.toml` key, `dist/prod`, `targets.json`, `issues.json`, the journals and who reads each) → `okf/interfaces/build-commands.md`, `okf/interfaces/effected-toml.md`, `okf/interfaces/build-artifacts.md` — Load when: changing `packages/cli/src/commands/{package,action}`, `packages/engine/src/build`, `packages/mcp/src/tools/{package,action}.ts` or a load-bearing bundler output, or reading a build's result.
 - Build and test mechanics (turbo/bundler pipeline, typechecking, vitest pre-build and gates) → `okf/modules/workspace.md`, `okf/conventions/build-through-turbo-only.md`, `okf/conventions/testing-standards.md`, `okf/conventions/evidence-ladder.md`, `okf/conventions/state-the-reason-when-a-gate-count-moves.md` — Load when: asking how the turbo/bundler pipeline, typechecking or the vitest setup actually works.
 - Dependency catalogs and peer closure → `okf/modules/workspace.md`, `okf/conventions/peer-dependency-discipline.md`, `okf/conventions/one-resolved-effect-copy.md`, `okf/gotchas/expected-peers-check-occupant.md` — Load when: reading a `pnpm peers check` warning, or touching catalogs and peer declarations.
 - Vendored repos → `okf/modules/workspace.md`, `okf/runbooks/sync-vendored-repos.md`, `okf/runbooks/advance-the-effect-pin.md` — Load when: consulting, syncing or re-pinning `.repos/effect` or a sibling vendored submodule.
@@ -71,7 +72,7 @@ Mechanics → `okf/modules/workspace.md`, `okf/conventions/build-through-turbo-o
 
 **Workspace links resolve to `src/`.** There is no dev build and no `prepare`, so a sibling never needs building before a typecheck or a test. Only tests that read their own `dist` build first, through `vitest.setup.ts`.
 
-**The config is `effected.toml`, and only six packages need one** (`cli-kit`, `config-file`, `images`, `jsonl`, `jwt`, `pnpm-plugin-effected`). In precedence order, later winning: root `.config/effected.toml`, root `effected.toml`, then the package's `.config/effected.toml`, `effected.toml` and `lib/configs/effected.toml`.
+**The config is `effected.toml`, and only six packages need one** (`cli-kit`, `config-file`, `images`, `jsonl`, `jwt`, `pnpm-plugin-effected`). Within a tier the first file found is the only one read: root `.config/effected.toml`, then `effected.toml`; package `.config/effected.toml`, then `effected.toml`, then `lib/configs/effected.toml`. The package tier merges over the root: objects per key, arrays and scalars replace.
 
 **The `effected` bin runs from source.** In a pnpm script or turbo task, `nodeOptions` in `pnpm-workspace.yaml` loads tsx. A direct run of `node_modules/.bin/effected` or `effected-mcp` registers tsx itself. Why → `okf/decisions/bundler-bootstraps-from-source.md`.
 

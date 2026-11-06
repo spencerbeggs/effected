@@ -22,10 +22,10 @@ sources:
     last_modified: 2026-11-02T00:00:00Z
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T06:55:47Z
+  at: 2026-11-06T22:24:55Z
 integrity:
   generated:
-    body: 9ad424b71a2f60e6
+    body: bbc81096a8fbfb64
   verified:
     by: human:spencer
     at: 2026-11-05T14:25:52Z
@@ -41,7 +41,7 @@ verified:
 
 ## Context
 
-The [project](../project.md) said the repository held "libraries only" and that anything with a user-run entry point stayed in its own repo. The kit is now about to ship a tool: `effected`, a command and a stdio MCP server that a consumer installs as one root devDependency and that the [agent plugin](../modules/ai-plugin.md) launches. The tool will grow to bundle packages, build GitHub Actions and export tsconfig presets, and already runs the schemastore functions (`effected schema`), all of which are kit libraries applied. Issue 1147 required the exception to be recorded rather than assumed.
+The [project](../project.md) said the repository held "libraries only" and that anything with a user-run entry point stayed in its own repo. The kit is now about to ship a tool: `effected`, a command and a stdio MCP server that a consumer installs as one root devDependency and that the [agent plugin](../modules/ai-plugin.md) launches. The tool bundles packages, builds GitHub Actions, exports tsconfig presets and runs the schemastore functions (`effected schema`), all of which are kit libraries applied. Issue 1147 required the exception to be recorded rather than assumed.
 
 ## Decision
 

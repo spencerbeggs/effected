@@ -14,7 +14,7 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-06T22:24:55Z
 verified:
   - by: human:spencer
     at: 2026-09-24T06:10:09Z
@@ -26,7 +26,7 @@ verified:
     at: 2026-11-05T14:25:52Z
 integrity:
   generated:
-    body: 3be89fb13595c8eb
+    body: 68f48b97eee89cd9
   verified:
     by: human:spencer
     at: 2026-11-05T14:25:52Z
@@ -39,7 +39,7 @@ integrity:
 
 `PackedInstall` needs a tarball per closure package, and a package can be
 packed from two places. Candidate A runs `pnpm pack` in the package's source
-directory, where pnpm honours `publishConfig.directory` and rewrites
+directory, where pnpm honoured `publishConfig.directory` and rewrites
 `workspace:` and `catalog:` specifiers. Candidate B runs `npm pack` in
 `dist/prod/npm/pkg`, the effected bundler's prod npm output, whose manifest
 the build has already made publish-ready.
@@ -85,8 +85,8 @@ pnpm's isolated layout as the reason.
 
 ## Alternatives rejected
 
-**`"source"` as the default (candidate A).** It proves the dev build, not the
-published one: a file the prod build drops, or a map the prod build omits,
+**`"source"` as the default (candidate A).** It does not pack the published
+file list: a file the prod build drops, or a map the prod build omits,
 would pass here and differ in the release. It also fails outright in a
 workspace that has never been `pnpm install`ed (C8), which is exactly the
 state of a fresh CI checkout that skipped install, or a generated fixture.

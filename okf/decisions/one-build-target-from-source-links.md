@@ -16,24 +16,24 @@ sources:
     title: "Decisions this plan takes, items 1 and 3"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T19:54:22Z
+  at: 2026-11-06T22:24:55Z
 integrity:
   generated:
-    body: 2078e3a66605266a
+    body: 906a8a469fc2d5ec
 ---
 
 # The kit has one build target, and workspace links point at package roots
 
 ## Context
 
-The current pipeline has two targets running the same passes, and the dev target exists for one reason: pnpm linking. `publishConfig.directory: dist/dev/pkg` with `linkDirectory: true` makes every sibling link resolve to built output, which is why every package carries a `prepare` build, why `types:check` depends on `^build:dev`, why the vitest setup builds before tests, and why an unbuilt sibling is a dangling symlink.[^spec]
+The pipeline had two targets running the same passes, and the dev target existed for one reason: pnpm linking. `publishConfig.directory: dist/dev/pkg` with `linkDirectory: true` made every sibling link resolve to built output, which is why every package carried a `prepare` build, why `types:check` depended on `^build:dev`, why the vitest setup built before tests, and why an unbuilt sibling was a dangling symlink.[^spec]
 
 ## Decision
 
-- **One target.** `dist/dev` goes away. Dropping `publishConfig.directory` and `linkDirectory` makes every workspace link point at the package root, which is all the dev build ever did.
-- **Source manifests keep `"exports": { ".": "./src/index.ts" }`** as they do today. tsgo, vitest, rolldown and API Extractor's bundled TypeScript 6 are expected to resolve a `.ts` export target natively, so none of them needs a setting.[^plan]
-- **`dist/prod/<group>/{pkg,meta}`, `dist/prod/targets.json` and `dist/prod/issues.json` stay byte-stable on this branch.** The kit's own releases run through `silk-release-action`, which hardcodes `dist/prod`, and tsdoctor reads the meta directory.
-- **Turbo `build` depends on `types:check` and not on `^build`**, so the kit builds in parallel. The spike took this path for the declaration pass: it holds from source at 1.03 times the `dist/dev` time, and API Extractor holds for cli-kit under `ci: true` and is byte-identical across the kit under `ci: false`, so neither shows a need for the `paths` fallback or `^build`. A `ci: true` sweep of the kit belongs to the switch itself. The numbers and their limits are in [the module's spike section](../modules/bundler.md#source-sibling-spike).[^plan]
+- **One target.** There is no `dist/dev`. With no `publishConfig.directory` and no `linkDirectory`, every workspace link points at the package root, which is all the dev build ever did.
+- **Source manifests keep `"exports": { ".": "./src/index.ts" }`** as they do today. tsgo, vitest, rolldown and API Extractor's bundled TypeScript 6 resolve a `.ts` export target natively, so none of them needs a setting.[^plan]
+- **[`dist/prod/<group>/{pkg,meta}`, `dist/prod/targets.json` and `dist/prod/issues.json`](../interfaces/build-artifacts.md) stayed byte-stable through the switch.** The kit's own releases run through `silk-release-action`, which hardcodes `dist/prod`, and tsdoctor reads the meta directory.
+- **Turbo `build` depends on `types:check` and not on `^build`**, so the kit builds in parallel. The spike took this path for the declaration pass: it held from source at 1.03 times the `dist/dev` time, and API Extractor held for cli-kit under `ci: true` and was byte-identical across the kit under `ci: false`, so neither showed a need for the `paths` fallback or `^build`. The numbers and their limits are in [the module's spike section](../modules/bundler.md#source-sibling-spike).[^plan]
 
 **`types:check` depends on `^types:check`.** Linked source means a package's typecheck reads its siblings' files, but turbo hashes only a task's own package. Without the chain, a sibling's signature change replays a cached pass, and `build` inherits the gap through its own dependency. The chain moves each task's hash with every sibling it depends on, and it builds nothing, so `build` still needs no `^build`.
 
@@ -41,13 +41,13 @@ The current pipeline has two targets running the same passes, and the dev target
 
 - **A `source` exports condition.** The probe showed a custom condition lets raw Node run a sibling's source, and that tsgo and vitest honour it once configured.[^spec] The owner first ruled the name would be `source` or `development`. The condition still does not earn its place: the kit's source imports its own files as `./x.js`, which Node's type stripping does not rewrite, so raw Node cannot run the kit's source either way. It would add dist paths to 47 manifests and a conditions setting to four tools, for no consumer.[^plan]
 - **Keeping the dev target beside prod.** That keeps every cost above, and in-workspace resolution would keep hiding what a consumer sees. The packed-install e2e is where consumer behaviour is proven.
-- **Collapsing to `dist/<group>` on this branch.** The owner floated it and it remains the likely end state, but it moves a path three external readers depend on. It is a follow-up sequenced with `silk-release-action`, not part of this switch.
+- **Collapsing to `dist/<group>` in the same switch.** The owner floated it and it remains the likely end state, but it moves a path three external readers depend on. It is a follow-up sequenced with `silk-release-action`.
 
 ## Related
 
 - [The bundler bootstraps from source](bundler-bootstraps-from-source.md) depends on these links.
 - [`@effected/bundler`](../modules/bundler.md) emits the outputs this Decision holds stable.
-- [The workspace module](../modules/workspace.md) and [build through turbo](../conventions/build-through-turbo-only.md) describe the two-target pipeline until the switch lands.
+- [The workspace module](../modules/workspace.md) and [build through turbo](../conventions/build-through-turbo-only.md) describe the pipeline this leaves.
 
 [^spec]: `docs/superpowers/specs/2026-11-06-bundler-research.md`, sections 2, 4, 5 and 12.
 [^plan]: `docs/superpowers/plans/2026-11-06-bundler-branch.md`, the section "Decisions this plan takes".

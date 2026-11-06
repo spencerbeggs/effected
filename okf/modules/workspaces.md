@@ -22,17 +22,17 @@ sources:
   - id: package-manager-decision-ts
     resource: ../../packages/workspaces/src/internal/packageManagerDecision.ts
   - id: savvy-build-ts
-    resource: ../../packages/workspaces/package.json
+    resource: ../../packages/bundler/src/config/BuildConfig.ts
   - id: workspaces-ts
     resource: ../../packages/workspaces/src/Workspaces.ts
   - id: testing-ts
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-06T22:24:55Z
 integrity:
   generated:
-    body: 8e574886192f63d7
+    body: ba3f01dcecc429ac
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -550,8 +550,8 @@ suppressed.
 [^package-manager-decision-ts]: `packages/workspaces/src/internal/packageManagerDecision.ts`
     — `decidePackageManager`; the parity table is
     `__test__/PackageManagerDetectorSync.test.ts`.
-[^savvy-build-ts]: `the bundler's default config:7` — the
-    `suppressWarnings` entry naming `ae-forgotten-export` and the `_base`
+[^savvy-build-ts]: `packages/bundler/src/config/BuildConfig.ts`: `TsdocConfig`'s
+    `suppressWarnings` default, naming `ae-forgotten-export` and the `_base`
     pattern.
 [^workspaces-ts]: `packages/workspaces/src/Workspaces.ts` —
     `WorkspacesGitOptions`, and `resolverLayer` and `resolveManifest`
