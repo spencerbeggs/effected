@@ -20,3 +20,5 @@ export {
 	TsdoctorRegistryRef,
 	WarningSuppressionRule,
 } from "./config/BuildConfig.js";
+export { EffectedConfigError, EffectedConfigFile, ResolvedEffectedConfig } from "./config/EffectedConfigFile.js";
+export { merge } from "./config/merge.js";
