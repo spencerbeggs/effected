@@ -52,7 +52,6 @@
 		"@microsoft/api-extractor": "catalog:build",
 		"@microsoft/tsdoc": "catalog:build",
 		"@microsoft/tsdoc-config": "catalog:build",
-		"@tsdoctor/manifest": "^0.4.0",
 		"@tsdown/exe": "catalog:build",
 		"jiti": "~2.7.0",
 		"rolldown": "catalog:build",

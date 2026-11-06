@@ -83,6 +83,22 @@ export {
 	transformExports,
 	transformManifest,
 } from "./manifest/transform.js";
+export type { KnownRegistryType } from "./meta/BundleManifest.js";
+export {
+	BundleManifest,
+	BundleManifestError,
+	KNOWN_REGISTRY_TYPES,
+	MANIFEST_SPEC,
+	OpenGraphConfig,
+	OpenGraphImage,
+	ProjectIdentity,
+	RegistryRef,
+	SbomRef,
+	TSDOCTOR_MANIFEST_FILENAME,
+	decodeBundleManifest,
+	encodeBundleManifest,
+	isKnownRegistryType,
+} from "./meta/BundleManifest.js";
 export type {
 	MetaOptions,
 	NormalizedMeta,
@@ -91,6 +107,7 @@ export type {
 	WarningSuppressionRule as MetaWarningSuppressionRule,
 } from "./meta/config.js";
 export { normalizeMetaOptions } from "./meta/config.js";
+export { ManifestSource, decodeManifestSource } from "./meta/ManifestSource.js";
 export type { OgImageGenerator, OgImageInfo, TsdoctorMetaOptions } from "./meta/tsdoctor-config.js";
 export type {
 	BuildTargetGroupsOptions,

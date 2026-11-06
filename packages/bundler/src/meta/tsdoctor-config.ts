@@ -1,4 +1,4 @@
-import type { OpenGraphImage, RegistryRef } from "@tsdoctor/manifest";
+import type { OpenGraphImage, RegistryRef } from "./BundleManifest.js";
 
 /**
  * What an Open Graph image generator receives: the merged identity of the
