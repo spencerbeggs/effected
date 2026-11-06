@@ -8,10 +8,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-17T04:41:11Z
+  at: 2026-11-06T01:55:28Z
 integrity:
   generated:
-    body: 9820e305410881b5
+    body: 5fea7540f466d568
 ---
 
 # Design a GitHub Action repository on the kit
@@ -32,7 +32,7 @@ arbitrary checklist.
 1. **Recon against the installed kit.** Inventory the needed capabilities
    at construct level, not package level — verify against installed
    versions, not memory. Record what genuinely is absent; those become
-   shims (see [the canon's §B8](../conventions/github-action-canon.md#b8-blessed-shims-live-in-srcshims)).
+   shims (see [the canon's §B8](../conventions/github-action-canon.md#b8--blessed-shims-live-in-srcshims)).
    Re-run this step on every kit bump.
 2. **Freeze the I/O contract.** Inputs and outputs as data: `NAMES` const
    tuples, with defaults written once in `action.yml` and mirrored — never

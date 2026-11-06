@@ -1,5 +1,25 @@
 # Log
 
+## 2026-11-06
+
+* Updated "Wait for the kit" leaves raw spawns and duplicated regex behind
+* Updated @effected/mcp-kit
+* Updated @effected/workspaces discovery and detection
+* Updated @effected/workspaces peer-dependency checking
+* Updated An upgrade-ledger entry is one change, selected by the versions a consumer's upgrade crosses
+* Updated D: strict MCP input default for Claude Code
+* Updated Design a GitHub Action repository on the kit
+* Updated FORCE_COLOR is honoured, with Node's getColorDepth precedence
+* Updated One tracking package versions both plugin builds
+* Updated Regenerate the GitHub Action template repository
+* Updated Require the consolidated core's contract in R; never re-implement or re-declare it
+* Updated Schemastore retiers from boundary to integrated for a direct ajv dependency
+* Updated Strict MCP input is reported by core; McpToolkit appends the accepted params instead of pre-checking
+* Updated The ajv engine lives in the effected tool, and the library returns to boundary tier
+* Updated The effect catalog takes caret ranges on the stable line
+* Updated The libsodium sealed box stays in @effected/github until a second consumer appears
+* Updated The schemastore commands live in the effected tool, and the companion package is removed
+
 ## 2026-11-05
 
 * Updated @effected/source

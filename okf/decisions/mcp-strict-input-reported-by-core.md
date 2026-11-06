@@ -3,7 +3,6 @@ type: Decision
 title: "Strict MCP input is reported by core; McpToolkit appends the accepted params instead of pre-checking"
 description: "Core's strict tool decode reports every unknown key, missing field and invalid field in one InvalidParams, so McpToolkit.layer drops its unknown-key pre-check and instead appends an Accepted params line per offending level to core's report, unionHandler decodes with errors: \"all\" and appends the same lines, and ToolInputSchema stays public for Tool.dynamic payloads."
 status: stable
-supersedes: mcp-strict-input-upstream-first.md
 tags: [architecture]
 sources:
   - id: core-decode
@@ -24,7 +23,7 @@ sources:
     last_modified: 2026-09-28T00:00:00Z
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-06T01:55:28Z
 verified:
   - by: human:spencer
     at: 2026-09-28T17:11:35Z
@@ -34,20 +33,22 @@ verified:
     at: 2026-10-23T01:00:25Z
   - by: human:spencer
     at: 2026-11-02T17:04:46Z
+  - by: human:spencer
+    at: 2026-11-06T01:54:11Z
 integrity:
   generated:
-    body: a54eac1e2e2078fc
+    body: 00e9ee073444155d
   verified:
     by: human:spencer
-    at: 2026-11-02T17:04:46Z
-    content: ad63fd15892bb0ef
+    at: 2026-11-06T01:54:11Z
+    content: b4de48e99a2eec5a
 ---
 
 # Strict MCP input is reported by core; McpToolkit appends the accepted params instead of pre-checking
 
 ## Context
 
-[D2](mcp-strict-input-upstream-first.md) rested on two core gaps. The
+An earlier decision, D2, rested on two core gaps. The
 first was that a `Tool.Strict` tool's rejection named only the first
 unknown key. Both gaps were filed upstream as that decision required. The
 first-key gap is closed[^upstream-8495][^upstream-8508]: core's

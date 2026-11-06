@@ -20,6 +20,8 @@ sources:
     resource: ../../packages/engine/package.json
   - id: engine-schema
     resource: ../../packages/engine/src/schema/index.ts
+  - id: six
+    resource: schemastore-no-bin.md
 generated:
   by: "okfit/claude-code"
   at: 2026-11-05T06:58:37Z
@@ -28,11 +30,13 @@ integrity:
     body: 4434f81aa1487d59
   verified:
     by: human:spencer
-    at: 2026-11-05T14:25:52Z
-    content: 8ae557e04128782a
+    at: 2026-11-06T01:54:11Z
+    content: 705e1b99ae60eac6
 verified:
   - by: human:spencer
     at: 2026-11-05T14:25:52Z
+  - by: human:spencer
+    at: 2026-11-06T01:54:11Z
 ---
 
 # The schemastore commands live in the effected tool, and the companion package is removed

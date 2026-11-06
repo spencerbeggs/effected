@@ -3,7 +3,6 @@ type: Decision
 title: "FORCE_COLOR is honoured, with Node's getColorDepth precedence"
 description: "@effected/env reads FORCE_COLOR ahead of NO_COLOR, NODE_DISABLE_COLORS, TERM=dumb and the TTY gate, in the order Node's tty getColorDepth uses, replacing the kit's earlier decision to ignore it."
 status: stable
-supersedes: cli-color-ignores-force-color.md
 tags: [architecture, dx]
 sources:
   - id: boundary-test
@@ -11,24 +10,26 @@ sources:
     title: "The colour-depth precedence tests: FORCE_COLOR ahead of NO_COLOR, NODE_DISABLE_COLORS, TERM=dumb and the TTY gate"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-01T15:30:50Z
+  at: 2026-11-06T01:55:28Z
 integrity:
   generated:
-    body: f592932ed3c63fce
+    body: e685672cc5391450
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 37c02a39ff95086b
+    at: 2026-11-06T01:54:11Z
+    content: 951e1207594e2982
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-06T01:54:11Z
 ---
 
 # FORCE_COLOR is honoured, with Node's getColorDepth precedence
 
 ## Context
 
-[D8](cli-color-ignores-force-color.md) kept `FORCE_COLOR` unread so that
+An earlier decision, D8, kept `FORCE_COLOR` unread so that
 `CliColor` would agree with core's own formatter. The interactive CLI kit
 moves the colour decision into [`@effected/env`](../modules/env.md), where
 it is shared by the CLI, MCP servers and test tooling, and where a consumer
