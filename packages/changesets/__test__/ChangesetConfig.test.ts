@@ -41,11 +41,20 @@ it.effect("an empty object decodes to the documented defaults", () =>
 		assert.deepStrictEqual(config.linked, []);
 		assert.deepStrictEqual(config.ignore, []);
 		assert.strictEqual(config.updateInternalDependencies, "patch");
-		assert.deepStrictEqual(config.privatePackages, { tag: false, version: true });
+		assert.deepStrictEqual(config.privatePackages, { tag: false, version: false });
 		assert.strictEqual(config.access, "restricted");
 		assert.isFalse(config.commit);
 	}).pipe(Effect.provide(withConfig("{}"))),
 );
+
+for (const flag of [true, false]) {
+	it.effect(`privatePackages: ${flag} sets both tag and version`, () =>
+		Effect.gen(function* () {
+			const config = yield* ChangesetConfig.read("/repo");
+			assert.deepStrictEqual(config.privatePackages, { tag: flag, version: flag });
+		}).pipe(Effect.provide(withConfig(`{"privatePackages":${flag}}`))),
+	);
+}
 
 it.effect("fixed groups round-trip", () =>
 	Effect.gen(function* () {

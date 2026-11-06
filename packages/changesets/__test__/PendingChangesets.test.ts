@@ -10,6 +10,10 @@ const Populated = MemoryFileSystem.layerWithPath({
 	"/repo/.changeset/alpha.md": change("@effected/a", "minor", "Alpha."),
 	"/repo/.changeset/mid.md": change("@effected/m", "major", "Mid."),
 	"/repo/.changeset/README.md": "# Changesets\n",
+	"/repo/.changeset/readme.md": "# Changesets\n",
+	"/repo/.changeset/AGENTS.md": "# Agents\n",
+	"/repo/.changeset/CLAUDE.md": "# Claude\n",
+	"/repo/.changeset/GEMINI.md": "# Gemini\n",
 	"/repo/.changeset/.gitkeep": "",
 	"/repo/.changeset/config.json": "{}",
 });

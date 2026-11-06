@@ -1,0 +1,7 @@
+{
+  "baseBranch": "main",
+  "privatePackages": {
+    "version": false,
+    "tag": false
+  }
+}

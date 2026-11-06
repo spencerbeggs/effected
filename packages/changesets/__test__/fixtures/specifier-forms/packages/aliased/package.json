@@ -1,0 +1,7 @@
+{
+  "name": "aliased",
+  "version": "1.0.0",
+  "dependencies": {
+    "a": "npm:a@1.2.0"
+  }
+}

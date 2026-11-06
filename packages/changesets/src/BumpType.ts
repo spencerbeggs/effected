@@ -8,7 +8,7 @@ import { Schema } from "effect";
 export const BumpType = Schema.Literals(["patch", "minor", "major"]);
 
 /**
- * The type of a {@link BumpType} value.
+ * The type of a `BumpType` value.
  *
  * @public
  */

@@ -20,10 +20,10 @@ sources:
     title: "The bundler research report and the owner's rulings"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T15:27:21Z
+  at: 2026-11-06T15:50:41Z
 integrity:
   generated:
-    body: a8e2be98aa1286d0
+    body: c3ab94f01cf00f95
 ---
 
 # @effected/changesets
@@ -36,7 +36,7 @@ It exists because `@savvy-web/tsdown-plugins` carries `@changesets/get-release-p
 
 ## Tier and dependency posture
 
-[Boundary tier](../glossary/library-tier.md): the file parsers are pure, and reading a workspace's changesets requires core's `FileSystem` and `Path` in `R`, with the platform layer supplied at the edge. Its runtime dependencies are [`yaml`](yaml.md) for frontmatter, [`semver`](semver.md) for ranges and bumps, and [`workspaces`](workspaces.md) for the packages and dependency edges a plan walks. Each edge follows the [peer discipline](../conventions/peer-dependency-discipline.md).
+[Boundary tier](../glossary/library-tier.md): the file parsers are pure, and reading a workspace's changesets requires core's `FileSystem` and `Path` in `R`, with the platform layer supplied at the edge. Its runtime dependencies are [`yaml`](yaml.md) for frontmatter, [`semver`](semver.md) for ranges and bumps, [`glob`](glob.md) for `ignore` patterns, and [`workspaces`](workspaces.md) for the packages and dependency edges a plan walks. Each edge follows the [peer discipline](../conventions/peer-dependency-discipline.md).
 
 `@changesets/get-release-plan` is its **test oracle only**. The planner's answers are compared against it in tests, and it never reaches a published manifest's `dependencies` or `peerDependencies`. A disagreement between the two is a bug in this package until shown otherwise.
 

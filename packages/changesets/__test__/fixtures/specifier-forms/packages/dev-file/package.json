@@ -1,0 +1,7 @@
+{
+  "name": "dev-file",
+  "version": "1.0.0",
+  "devDependencies": {
+    "a": "file:../a"
+  }
+}

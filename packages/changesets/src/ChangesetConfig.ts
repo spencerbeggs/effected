@@ -4,6 +4,13 @@ import { ChangesetConfigError, UnsupportedChangesetModeError } from "./errors.js
 
 const Groups = Schema.Array(Schema.Array(Schema.String));
 
+const expandPrivatePackages = (json: unknown): unknown => {
+	const flag = (json as { privatePackages?: unknown } | null)?.privatePackages;
+	return typeof flag === "boolean"
+		? { ...(json as Record<string, unknown>), privatePackages: { tag: flag, version: flag } }
+		: json;
+};
+
 /**
  * The decoded `.changeset/config.json`, with the defaults changesets
  * documents. Keys the schema does not model (`changelog`, `$schema`,
@@ -24,10 +31,15 @@ export class ChangesetConfig extends Schema.Class<ChangesetConfig>("ChangesetCon
 	updateInternalDependencies: Schema.Literals(["patch", "minor"]).pipe(
 		Schema.withDecodingDefaultKey(Effect.succeed("patch" as const)),
 	),
-	/** Whether private packages are tagged and versioned. */
+	/**
+	 * Whether private packages are tagged and versioned. Both default to `false`,
+	 * as `@changesets/config` has them, so a private package releases only when
+	 * the file opts in. {@link ChangesetConfig.read} also takes the boolean form,
+	 * which sets both.
+	 */
 	privatePackages: Schema.Struct({
 		tag: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
-		version: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+		version: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
 	}).pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
 	/** The publish access level. Defaults to `restricted`. */
 	access: Schema.Literals(["public", "restricted"]).pipe(
@@ -72,7 +84,7 @@ export class ChangesetConfig extends Schema.Class<ChangesetConfig>("ChangesetCon
 			try: () => JSON.parse(text) as unknown,
 			catch: (cause) => new ChangesetConfigError({ reason: `not valid JSON: ${(cause as Error).message}` }),
 		});
-		const decoded = yield* Schema.decodeUnknownEffect(ChangesetConfig)(json).pipe(
+		const decoded = yield* Schema.decodeUnknownEffect(ChangesetConfig)(expandPrivatePackages(json)).pipe(
 			Effect.mapError((error) => new ChangesetConfigError({ reason: error.message })),
 		);
 		const known = new Set(Object.keys(ChangesetConfig.fields));

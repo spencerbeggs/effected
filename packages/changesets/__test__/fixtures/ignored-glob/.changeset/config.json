@@ -1,0 +1,7 @@
+{
+  "baseBranch": "main",
+  "ignore": [
+    "@x/*",
+    "!@x/keep"
+  ]
+}

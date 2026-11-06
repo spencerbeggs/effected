@@ -18,8 +18,10 @@ export class PendingChangeset extends Schema.Class<PendingChangeset>("PendingCha
 	summary: Schema.String,
 }) {}
 
+const CONTEXT_FILES: ReadonlySet<string> = new Set(["AGENTS.md", "CLAUDE.md", "GEMINI.md"]);
+
 const isChangesetName = (name: string): boolean =>
-	name.endsWith(".md") && !name.startsWith(".") && name !== "README.md";
+	name.endsWith(".md") && !name.startsWith(".") && !/^README\.md$/i.test(name) && !CONTEXT_FILES.has(name);
 
 const selectNames = (names: ReadonlyArray<string>): ReadonlyArray<string> => names.filter(isChangesetName).sort();
 
@@ -68,8 +70,8 @@ const isNotFound = (error: PlatformError.PlatformError): boolean => error.reason
 export class PendingChangesets {
 	/**
 	 * Read every pending changeset under `<root>/.changeset/`, ordered by file
-	 * name. `README.md`, dotfiles and non-`.md` files are skipped; a missing
-	 * directory answers `[]`.
+	 * name. A readme in any case, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, dotfiles
+	 * and non-`.md` files are skipped; a missing directory answers `[]`.
 	 *
 	 * @param root - The repository root.
 	 */

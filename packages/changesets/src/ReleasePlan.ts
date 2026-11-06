@@ -3,11 +3,13 @@ import { GlobPattern } from "@effected/glob";
 import type { InvalidVersionError } from "@effected/semver";
 import { Range, SemVer } from "@effected/semver";
 import type { WorkspacePackage } from "@effected/workspaces";
-import { Result, Schema } from "effect";
+import { WorkspaceDiscovery } from "@effected/workspaces";
+import { Effect, Result, Schema } from "effect";
 import type { BumpType } from "./BumpType.js";
-import type { ChangesetConfig } from "./ChangesetConfig.js";
+import { ChangesetConfig } from "./ChangesetConfig.js";
 import { UnknownPackageError, UnsupportedChangesetModeError } from "./errors.js";
 import type { PendingChangeset } from "./PendingChangesets.js";
+import { PendingChangesets } from "./PendingChangesets.js";
 
 type ReleaseType = BumpType | "none";
 
@@ -120,13 +122,24 @@ const rippleType = (
 	return type;
 };
 
+/**
+ * `semver.inc`'s rule, which `SemVerBump` deliberately does not follow: a bump
+ * a prerelease is already heading for completes it rather than incrementing.
+ */
+const increment = (version: SemVer, type: BumpType): SemVer => {
+	const completes =
+		version.prerelease.length > 0 &&
+		(type === "patch" || (version.patch === 0 && (type === "minor" || version.minor === 0)));
+	return completes ? SemVer.truncate(version, "prerelease") : version.bump[type]();
+};
+
 const bump = (
 	version: string | undefined,
 	type: ReleaseType,
 ): Result.Result<string | undefined, InvalidVersionError> =>
 	type === "none" || version === undefined
 		? Result.succeed(version)
-		: Result.map(SemVer.parseResult(version), (parsed) => parsed.bump[type]().toString());
+		: Result.map(SemVer.parseResult(version), (parsed) => increment(parsed, type).toString());
 
 const ignoredNames = (
 	packages: ReadonlyArray<WorkspacePackage>,
@@ -196,15 +209,18 @@ export class PlannedRelease extends Schema.Class<PlannedRelease>("PlannedRelease
  *   unsatisfied non-dev range bumps `patch`; only unsatisfied devDependency
  *   ranges list the package as `none`.
  * - A skipped package is ignored, private while `privatePackages.version` is
- *   off, or version-less. Naming one in a changeset does nothing, and it never
+ *   off (its default), or version-less. Naming one in a changeset does nothing, and it never
  *   bumps, but it is still listed as `none` when it depends on anything in the
  *   plan, whether or not the range holds, and it carries that listing onward
  *   to its own skipped dependents. A `none` entry ripples to nothing else.
  * - `ignore` entries are globs over the workspace's names, with `!` negation
  *   applying in order.
+ * - A bump a prerelease is already heading for completes it, as `semver.inc`
+ *   does: a `major` of `2.0.0-rc.1` is `2.0.0`, where `SemVerBump` answers
+ *   `3.0.0`.
  * - The options `bumpVersionsWithWorkspaceProtocolOnly` and
  *   `___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH.updateInternalDependents`
- *   are honoured from {@link ChangesetConfig.extra}.
+ *   are honoured from the config's `extra`.
  *
  * One deliberate difference: a version-less package is not listed at all, where
  * the oracle lists it with no versions, because a {@link PlannedRelease} states
@@ -223,9 +239,10 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 * `packages` lacks, with `InvalidVersionError` when a package that must bump
 	 * has a version that is not semver, and with
 	 * {@link UnsupportedChangesetModeError} when a `fixed` or `linked` group is
-	 * non-empty. The configurations and changesets the oracle rejects outright
-	 * (a changeset mixing skipped and released packages, a public package
-	 * depending on a skipped one) are planned, not refused.
+	 * non-empty. What the oracle rejects outright and this does not check is
+	 * planned, not refused: a changeset mixing skipped and released packages, a
+	 * public package depending on a skipped one, and `privatePackages` with `tag`
+	 * on and `version` off.
 	 *
 	 * @param input - The workspace packages (without the workspace root), the
 	 * pending changesets and the config.
@@ -310,4 +327,19 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 		releases.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 		return Result.succeed(ReleasePlan.make({ releases }));
 	}
+
+	/**
+	 * Discover the workspace's packages, read its config and pending changesets,
+	 * and {@link ReleasePlan.assemble | assemble} the plan.
+	 *
+	 * @param root - The repository root.
+	 */
+	static readonly read = Effect.fn("ReleasePlan.read")(function* (root: string) {
+		const discovery = yield* WorkspaceDiscovery;
+		const discovered = yield* discovery.listPackages();
+		const config = yield* ChangesetConfig.read(root);
+		const changesets = yield* PendingChangesets.read(root);
+		const packages = discovered.filter((pkg) => !pkg.isRootWorkspace);
+		return yield* Effect.fromResult(ReleasePlan.assemble({ packages, changesets, config }));
+	});
 }

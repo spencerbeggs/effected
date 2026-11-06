@@ -1,0 +1,10 @@
+{
+  "name": "edge-decided-by-dev",
+  "version": "1.0.0",
+  "dependencies": {
+    "a": "~1.2.0"
+  },
+  "devDependencies": {
+    "a": "catalog:"
+  }
+}
