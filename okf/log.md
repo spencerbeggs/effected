@@ -22,6 +22,13 @@
 * Added @effected/bundler
 * Added @effected/changesets
 * Updated effected
+* Added Build logs are two append-only journals at the workspace root, derived from a cached per-package issues.json
+* Added No @effected/* package imports or peers typescript, except @effected/bundler
+* Updated No @effected/* package imports typescript
+* Added The kit builds itself with the bundler running from source under tsx
+* Added The kit has one build target, and workspace links point at package roots
+* Added effected.toml is the only build config, and code enters through two data keys
+* Updated tsconfig-json
 
 ## 2026-11-05
 

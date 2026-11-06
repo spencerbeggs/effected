@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T15:27:21Z
+  at: 2026-11-06T15:28:18Z
 integrity:
   generated:
-    body: f8cde26c4852ad8f
+    body: dbac3ef23e78f624
 ---
 
 # effected
@@ -109,4 +109,4 @@ The repository's monorepo tooling and layout are documented in [the workspace mo
 - **`@effected/json-schema`.** Off the roadmap entirely: its core value is superseded by Effect v4's `Schema.toJsonSchemaDocument`, and the one internal dependency on it (from `xdg`) was a dead facade that has been cut. It would be revisited only if a consuming application appeared.
 - **`ts-vfs`.** Lives in the external `type-registry-effect` repo; carries the `typescript` / `@typescript/vfs` peers the kit's "no `@effected/*` package imports `typescript`" posture excludes.
 - **The `runtime-resolver` binary.** Ships from the external `runtime-resolver` repo against the published `runtimes` package, so the library's own consumers never need `@effect/platform-node`.
-- **Importing `typescript`.** No `@effected/*` package imports the `typescript` package; version-coupled facts it would otherwise need (such as `tsconfig-json`'s enum mappings) are carried as data instead.
+- **Importing `typescript`.** No `@effected/*` package imports or peers the `typescript` package [except `bundler`](conventions/typescript-stays-in-the-bundler.md); version-coupled facts another package would otherwise need (such as `tsconfig-json`'s enum mappings) are carried as data instead.

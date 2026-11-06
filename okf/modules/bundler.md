@@ -24,10 +24,10 @@ sources:
     title: "The bundler research report and the owner's rulings"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T15:27:21Z
+  at: 2026-11-06T15:28:18Z
 integrity:
   generated:
-    body: b36243f0066308a7
+    body: 7f2a6f68189a88a3
 ---
 
 # @effected/bundler
@@ -43,7 +43,7 @@ It exists to end a loop. The kit built with a tool that depended on the kit, so 
 [Integrated tier](../glossary/library-tier.md): it imports tsdown, rolldown, `rolldown-plugin-dts`, `@microsoft/api-extractor` and `@tsdown/exe` at runtime. It stands on kit libraries rather than hand-rolling what they own, among them [`config-file`](config-file.md) and [`toml`](toml.md) for its config and [`jsonl`](jsonl.md) for its journals.
 
 - [`@effected/changesets`](changesets.md) is a `workspace:*` dependency, published exact, and so is this package under [`@effected/engine`](engine.md), per [the pin chain](../conventions/peer-dependency-discipline.md#cross-effected-dependencies).
-- `typescript` is a peerDependency, from `catalog:build:peers`. This package is the only one in the kit that peers it. API Extractor keeps its own bundled TypeScript 6.
+- `typescript` is a peerDependency, from `catalog:build:peers`. This package is [the only one in the kit that peers it](../conventions/typescript-stays-in-the-bundler.md). API Extractor keeps its own bundled TypeScript 6.
 
 ## Module layout
 
@@ -87,6 +87,13 @@ The emitted `tsdoctor.json` is a wire format with readers outside this repositor
 ## Accepted debt
 
 The ported internals keep their shape: mostly plain async code over `node:fs`, ported module for module because that code is tested and proven. Only the public boundary (`Bundler.build`, `ActionBuilder.build` and every error) is Effect with typed failures. That is a known departure from [requiring core in `R`](../conventions/require-in-r-default.md), accepted to keep the port honest. A follow-up issue is to be filed against that convention; it does not exist yet.
+
+## Decisions
+
+- [One build target from source links](../decisions/one-build-target-from-source-links.md)
+- [The bundler bootstraps from source](../decisions/bundler-bootstraps-from-source.md)
+- [`effected.toml` is the build config](../decisions/effected-toml-is-the-build-config.md)
+- [Build logs are journals](../decisions/build-logs-are-journals.md)
 
 [^issue-1224]: Issue 1224, `bundler: create @effected/bundler`.
 [^issue-1225]: Issue 1225, `bundler: move @tsdoctor/manifest's schema into the kit`.
