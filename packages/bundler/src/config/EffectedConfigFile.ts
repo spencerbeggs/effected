@@ -2,7 +2,7 @@ import { TomlCodec } from "@effected/config-file/toml";
 import { WorkspaceDiscovery } from "@effected/workspaces";
 import { Effect, FileSystem, Path, Predicate, Schema, SchemaIssue } from "effect";
 import { causeMessage } from "../internal/causeMessage.js";
-import { EffectedConfig } from "./BuildConfig.js";
+import { EffectedConfig, PackageConfig } from "./BuildConfig.js";
 import { merge } from "./merge.js";
 
 /** Root tier candidates, first found wins. */
@@ -30,13 +30,24 @@ export class EffectedConfigError extends Schema.TaggedError<EffectedConfigError>
 }
 
 /**
+ * The effective config {@link EffectedConfigFile.load} answers: an {@link EffectedConfig} whose `package` table
+ * is always present, with every default when no file wrote one, so a consumer never branches on its absence.
+ *
+ * @public
+ */
+export class ResolvedConfig extends EffectedConfig.extend<ResolvedConfig>("ResolvedConfig")({
+	/** The package tables. */
+	package: PackageConfig.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
+}) {}
+
+/**
  * A package's effective `effected.toml` config and the files it came from.
  *
  * @public
  */
 export class ResolvedEffectedConfig extends Schema.Class<ResolvedEffectedConfig>("ResolvedEffectedConfig")({
 	/** The merged, decoded config. */
-	config: EffectedConfig,
+	config: ResolvedConfig,
 	/** The file each tier read, absent for a tier that found none. */
 	sources: Schema.Struct({
 		/** The workspace root tier's file. */
@@ -89,8 +100,12 @@ const depthIn = (document: unknown, segments: ReadonlyArray<PropertyKey>): numbe
 };
 
 /**
- * The tier that wrote what an issue points at: the one reaching furthest along its path, the package on a tie
- * because the package wins the merge.
+ * The tier that wrote what an issue points at: the one reaching furthest along its path.
+ *
+ * @remarks
+ * A tier that contains the key reaches further than one that does not, so a tie means both contain it or
+ * neither does. The package takes a tie: when both contain it the package's value is the one that decoded, and
+ * for a missing required key both tables are equally incomplete.
  */
 const blame = (
 	segments: ReadonlyArray<PropertyKey>,
@@ -129,7 +144,8 @@ export class EffectedConfigFile {
 	 * document decodes once, so defaults apply after precedence.
 	 *
 	 * Decoding rejects unknown keys and reports all of them. When no workspace root sits above `cwd`, `cwd`
-	 * is the root. No file anywhere is not a failure: the config is empty and `sources` has no keys.
+	 * is the root. No file anywhere is not a failure: `config.package` holds every default and `sources` has no
+	 * keys.
 	 *
 	 * @param options - `cwd` is the package directory; `root` skips workspace discovery.
 	 */
@@ -157,7 +173,7 @@ export class EffectedConfigFile {
 		const root = yield* readFirst(rootDirectory, ROOT_CANDIDATES);
 		const pkg = rootDirectory === cwd ? undefined : yield* readFirst(cwd, PACKAGE_CANDIDATES);
 
-		const config = yield* Schema.decodeUnknownEffect(EffectedConfig)(merge(root?.document ?? {}, pkg?.document ?? {}), {
+		const config = yield* Schema.decodeUnknownEffect(ResolvedConfig)(merge(root?.document ?? {}, pkg?.document ?? {}), {
 			onExcessProperty: "error",
 			errors: "all",
 		}).pipe(

@@ -2,7 +2,14 @@ import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import { Effect, FileSystem, Layer, PlatformError } from "effect";
-import { EffectedConfigError, EffectedConfigFile, MetaConfig, merge } from "../../src/index.js";
+import {
+	EffectedConfig,
+	EffectedConfigError,
+	EffectedConfigFile,
+	MetaConfig,
+	PackageConfig,
+	merge,
+} from "../../src/index.js";
 
 const ROOT = "/repo";
 const PKG = "/repo/packages/a";
@@ -30,12 +37,32 @@ const metaOf = (meta: unknown): MetaConfig => {
 };
 
 describe("EffectedConfigFile.load", () => {
-	it.effect("takes defaults and reports no source when no file exists anywhere", () =>
+	it.effect("answers every package default and no source when no file exists anywhere", () =>
 		Effect.gen(function* () {
 			const resolved = yield* load({});
-			assert.isUndefined(resolved.config.package);
+			assert.instanceOf(resolved.config, EffectedConfig);
+			assert.instanceOf(resolved.config.package, PackageConfig);
+			assert.strictEqual(resolved.config.package.build.minify, false);
+			assert.deepStrictEqual(resolved.config.package.build.format, ["esm"]);
+			const meta = metaOf(resolved.config.package.build.meta);
+			assert.strictEqual(meta.optimistic, "auto");
+			assert.deepStrictEqual(
+				meta.tsdoc.suppressWarnings.map((rule) => ({ messageId: rule.messageId, pattern: rule.pattern })),
+				[{ messageId: "ae-forgotten-export", pattern: "_base" }],
+			);
+			assert.isUndefined(resolved.config.package.tsdoctor);
 			assert.isUndefined(resolved.config.action);
 			assert.deepStrictEqual({ ...resolved.sources }, {});
+		}),
+	);
+
+	it.effect("answers package defaults when the files found have no package table", () =>
+		Effect.gen(function* () {
+			const resolved = yield* load({ [`${ROOT}/effected.toml`]: "[action]\nname = 1\n" });
+			assert.strictEqual(resolved.sources.root, `${ROOT}/effected.toml`);
+			assert.deepStrictEqual(resolved.config.action, { name: 1 });
+			assert.strictEqual(resolved.config.package.build.emitDts, true);
+			assert.deepStrictEqual(resolved.config.package.build.format, ["esm"]);
 		}),
 	);
 
@@ -45,8 +72,8 @@ describe("EffectedConfigFile.load", () => {
 				[`${ROOT}/.config/effected.toml`]: "[package.build]\nminify = true\n",
 				[`${ROOT}/effected.toml`]: "[package.build]\nminify = false\nemitDts = false\n",
 			});
-			assert.strictEqual(resolved.config.package?.build.minify, true);
-			assert.strictEqual(resolved.config.package?.build.emitDts, true, "the losing candidate is not merged");
+			assert.strictEqual(resolved.config.package.build.minify, true);
+			assert.strictEqual(resolved.config.package.build.emitDts, true, "the losing candidate is not merged");
 			assert.strictEqual(resolved.sources.root, `${ROOT}/.config/effected.toml`);
 			assert.isUndefined(resolved.sources.package);
 		}),
@@ -55,7 +82,7 @@ describe("EffectedConfigFile.load", () => {
 	it.effect("falls through to the root file when .config has none", () =>
 		Effect.gen(function* () {
 			const resolved = yield* load({ [`${ROOT}/effected.toml`]: "[package.build]\nminify = true\n" });
-			assert.strictEqual(resolved.config.package?.build.minify, true);
+			assert.strictEqual(resolved.config.package.build.minify, true);
 			assert.strictEqual(resolved.sources.root, `${ROOT}/effected.toml`);
 		}),
 	);
@@ -68,15 +95,15 @@ describe("EffectedConfigFile.load", () => {
 			const file = (externals: string) => `[package.build]\nexternals = ["${externals}"]\n`;
 
 			const first = yield* load({ [dot]: file("dot"), [plain]: file("plain"), [lib]: file("lib") });
-			assert.deepStrictEqual(first.config.package?.build.externals, ["dot"]);
+			assert.deepStrictEqual(first.config.package.build.externals, ["dot"]);
 			assert.strictEqual(first.sources.package, dot);
 
 			const second = yield* load({ [plain]: file("plain"), [lib]: file("lib") });
-			assert.deepStrictEqual(second.config.package?.build.externals, ["plain"]);
+			assert.deepStrictEqual(second.config.package.build.externals, ["plain"]);
 			assert.strictEqual(second.sources.package, plain);
 
 			const third = yield* load({ [lib]: file("lib") });
-			assert.deepStrictEqual(third.config.package?.build.externals, ["lib"]);
+			assert.deepStrictEqual(third.config.package.build.externals, ["lib"]);
 			assert.strictEqual(third.sources.package, lib);
 		}),
 	);
@@ -90,8 +117,8 @@ describe("EffectedConfigFile.load", () => {
 				},
 				ROOT,
 			);
-			assert.strictEqual(resolved.config.package?.build.minify, true);
-			assert.strictEqual(resolved.config.package?.build.emitDts, true, "lib/configs is a package candidate only");
+			assert.strictEqual(resolved.config.package.build.minify, true);
+			assert.strictEqual(resolved.config.package.build.emitDts, true, "lib/configs is a package candidate only");
 			assert.strictEqual(resolved.sources.root, `${ROOT}/effected.toml`);
 			assert.isUndefined(resolved.sources.package);
 		}),
@@ -114,7 +141,7 @@ describe("EffectedConfigFile.load", () => {
 				[`${ROOT}/effected.toml`]: "[package.build]\nminify = false\n",
 				[`${PKG}/effected.toml`]: "[package.build]\nminify = true\n",
 			});
-			assert.strictEqual(resolved.config.package?.build.minify, true);
+			assert.strictEqual(resolved.config.package.build.minify, true);
 			assert.strictEqual(resolved.sources.root, `${ROOT}/effected.toml`);
 			assert.strictEqual(resolved.sources.package, `${PKG}/effected.toml`);
 		}),
@@ -126,7 +153,7 @@ describe("EffectedConfigFile.load", () => {
 				[`${ROOT}/effected.toml`]: '[package.build]\nexternals = ["a"]\n',
 				[`${PKG}/effected.toml`]: '[package.build]\nexternals = ["b"]\n',
 			});
-			assert.deepStrictEqual(resolved.config.package?.build.externals, ["b"]);
+			assert.deepStrictEqual(resolved.config.package.build.externals, ["b"]);
 		}),
 	);
 
@@ -136,7 +163,7 @@ describe("EffectedConfigFile.load", () => {
 				[`${ROOT}/effected.toml`]: '[[package.build.meta.tsdoc.suppressWarnings]]\nmessageId = "root-rule"\n',
 				[`${PKG}/effected.toml`]: "[package.build.meta]\noptimistic = false\n",
 			});
-			const meta = metaOf(resolved.config.package?.build.meta);
+			const meta = metaOf(resolved.config.package.build.meta);
 			assert.strictEqual(meta.optimistic, false);
 			assert.deepStrictEqual(
 				meta.tsdoc.suppressWarnings.map((rule) => rule.messageId),
@@ -151,9 +178,9 @@ describe("EffectedConfigFile.load", () => {
 				[`${ROOT}/effected.toml`]: "[package.build]\nminify = true\n",
 				[`${PKG}/effected.toml`]: "[package.build]\nemitDts = false\n",
 			});
-			assert.strictEqual(resolved.config.package?.build.minify, true);
-			assert.strictEqual(resolved.config.package?.build.emitDts, false);
-			assert.strictEqual(metaOf(resolved.config.package?.build.meta).optimistic, "auto");
+			assert.strictEqual(resolved.config.package.build.minify, true);
+			assert.strictEqual(resolved.config.package.build.emitDts, false);
+			assert.strictEqual(metaOf(resolved.config.package.build.meta).optimistic, "auto");
 		}),
 	);
 
@@ -163,13 +190,13 @@ describe("EffectedConfigFile.load", () => {
 				[`${ROOT}/effected.toml`]: "[package.build.meta]\noptimistic = true\n",
 				[`${PKG}/effected.toml`]: "[package.build]\nmeta = false\n",
 			});
-			assert.strictEqual(disabled.config.package?.build.meta, false);
+			assert.strictEqual(disabled.config.package.build.meta, false);
 
 			const enabled = yield* load({
 				[`${ROOT}/effected.toml`]: "[package.build]\nmeta = false\n",
 				[`${PKG}/effected.toml`]: "[package.build.meta]\noptimistic = true\n",
 			});
-			assert.strictEqual(metaOf(enabled.config.package?.build.meta).optimistic, true);
+			assert.strictEqual(metaOf(enabled.config.package.build.meta).optimistic, true);
 		}),
 	);
 
@@ -183,8 +210,8 @@ describe("EffectedConfigFile.load", () => {
 					}),
 				),
 			);
-			assert.strictEqual(resolved.config.package?.build.minify, true);
-			assert.strictEqual(resolved.config.package?.build.emitDts, false);
+			assert.strictEqual(resolved.config.package.build.minify, true);
+			assert.strictEqual(resolved.config.package.build.emitDts, false);
 		}),
 	);
 
@@ -193,7 +220,7 @@ describe("EffectedConfigFile.load", () => {
 			const resolved = yield* EffectedConfigFile.load({ cwd: "/solo" }).pipe(
 				Effect.provide(world({ "/solo/effected.toml": "[package.build]\nminify = true\n" })),
 			);
-			assert.strictEqual(resolved.config.package?.build.minify, true);
+			assert.strictEqual(resolved.config.package.build.minify, true);
 			assert.strictEqual(resolved.sources.root, "/solo/effected.toml");
 			assert.isUndefined(resolved.sources.package);
 		}),
@@ -264,6 +291,19 @@ describe("EffectedConfigFile.load", () => {
 		}),
 	);
 
+	it.effect("blames the package when both tiers reach a missing key equally far", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(
+				load({
+					[`${ROOT}/effected.toml`]: '[package.build.exe]\nentry = "./a.ts"\n',
+					[`${PKG}/effected.toml`]: '[package.build.exe]\nnodeVersion = "25.9.0"\n',
+				}),
+			);
+			assert.strictEqual(error.issuePath, "package.build.exe.fileName");
+			assert.strictEqual(error.path, `${PKG}/effected.toml`);
+		}),
+	);
+
 	it.effect("reports a read failure that is not absence rather than skipping the candidate", () =>
 		Effect.gen(function* () {
 			const target = `${ROOT}/.config/effected.toml`;
@@ -325,7 +365,8 @@ describe("EffectedConfigFile.load", () => {
 			yield* fs.makeDirectory(`${ROOT}/x`, { recursive: true });
 			yield* fs.writeFileString(`${ROOT}/effected.toml`, "[package.build]\nminify = true\n");
 			const resolved = yield* EffectedConfigFile.load({ cwd: `${ROOT}/x`, root: `${ROOT}/x` });
-			assert.isUndefined(resolved.config.package);
+			assert.strictEqual(resolved.config.package.build.minify, false);
+			assert.isUndefined(resolved.sources.root);
 		}).pipe(Effect.provide(world(workspace))),
 	);
 });
