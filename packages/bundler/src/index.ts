@@ -1,6 +1,5 @@
 export type {
 	BundlerBuildOptions,
-	BundlerExeBuildOptions,
 	BundlerPackageJson,
 	BundlerSeams,
 } from "./Bundler.js";
@@ -62,6 +61,8 @@ export { createEntryName, extractEntries } from "./entries/extract.js";
 export type { PackageJsonEntriesOptions } from "./entries/package-json-entries.js";
 export { packageJsonEntries } from "./entries/package-json-entries.js";
 export { ConfigValidationError, MetaGenerationError, TsdoctorEmitError } from "./errors.js";
+export type { ExeBuild, RunExeBuildOptions } from "./exe/build.js";
+export { runExeBuild } from "./exe/build.js";
 export type {
 	ExeConfig as ExeOptions,
 	ExeSeaConfig as ExeSeaOptions,

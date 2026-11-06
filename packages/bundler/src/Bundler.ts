@@ -13,7 +13,7 @@ import { deriveExportPaths } from "./entries/export-paths.js";
 import { createEntryName } from "./entries/extract.js";
 import { packageJsonEntries } from "./entries/package-json-entries.js";
 import { ConfigValidationError } from "./errors.js";
-import type { NormalizedExe } from "./exe/config.js";
+import type { RunExeBuildOptions } from "./exe/build.js";
 import { normalizeExeOptions } from "./exe/config.js";
 import { computeExeFileName } from "./exe/filename.js";
 import { causeMessage } from "./internal/causeMessage.js";
@@ -55,20 +55,6 @@ export interface BundlerPackageJson {
 }
 
 /**
- * What the SEA compile is handed: one binary spec list and the directory it writes to.
- *
- * @public
- */
-export interface BundlerExeBuildOptions {
-	readonly cwd: string;
-	readonly outDir: string;
-	readonly specs: ReadonlyArray<NormalizedExe>;
-	readonly collector: BuildCollector;
-	readonly groupId: string;
-	readonly verbose: boolean;
-}
-
-/**
  * The orchestrator's side effects, each replaceable so a test can run it without tsdown, API Extractor or a
  * compiler. Every member defaults to the real implementation.
  *
@@ -86,7 +72,7 @@ export interface BundlerSeams {
 	/** Imports an optional peer of an Open Graph renderer, the check that it is installed. */
 	readonly importOgPeer: (specifier: string) => Promise<unknown>;
 	/** The SEA compile. */
-	readonly runExeBuild: (options: BundlerExeBuildOptions) => Promise<void>;
+	readonly runExeBuild: (options: RunExeBuildOptions) => Promise<void>;
 	/** Writes `dist/prod/issues.json` and answers its path. */
 	readonly writeIssues: (options: {
 		readonly cwd: string;
@@ -147,10 +133,9 @@ export class BundlerBuildResult extends Schema.Class<BundlerBuildResult>("Bundle
 const defaultRunMetaPass: BundlerSeams["runMetaPass"] = (options) =>
 	import("./meta/run-pass.js").then((module) => module.runMetaPass(options));
 
-// Phase 4 swaps this one binding for `(o) => import("./exe/build.js").then((m) => m.runExeBuild(o))`.
-const defaultRunExeBuild: BundlerSeams["runExeBuild"] = async () => {
-	throw new Error("the SEA build is not ported yet");
-};
+// Loaded on first use, for the one kind of package that compiles a binary.
+const defaultRunExeBuild: BundlerSeams["runExeBuild"] = (options) =>
+	import("./exe/build.js").then((module) => module.runExeBuild(options));
 
 /** Reduce a thrown value to the `{ name?, message }` shape the issues artifact stamps on a failed build. */
 function describeFailure(err: unknown): { name?: string; message: string } {

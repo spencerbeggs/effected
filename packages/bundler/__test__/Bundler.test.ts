@@ -4,11 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, assert, describe, it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
-import type { BundlerBuildOptions, BundlerExeBuildOptions, BundlerPackageJson, BundlerSeams } from "../src/Bundler.js";
+import type { BundlerBuildOptions, BundlerPackageJson, BundlerSeams } from "../src/Bundler.js";
 import { Bundler } from "../src/Bundler.js";
 import { BundlerError } from "../src/BundlerError.js";
 import { PackageBuildConfig, TsdoctorConfig } from "../src/config/BuildConfig.js";
 import { ConfigValidationError } from "../src/errors.js";
+import type { RunExeBuildOptions } from "../src/exe/build.js";
 import type { GenerateMetaOptions } from "../src/meta/generate.js";
 import type { RunMetaPassOptions } from "../src/meta/run-pass.js";
 import type { BuildTargetGroupsOptions } from "../src/passes/build-target-groups.js";
@@ -49,7 +50,7 @@ const harness = (input: {
 	const issues: IssuesCall[] = [];
 	const bindings: string[] = [];
 	const metas: RunMetaPassOptions[] = [];
-	const exes: BundlerExeBuildOptions[] = [];
+	const exes: RunExeBuildOptions[] = [];
 	const tsconfigs: Array<{ cwd: string; jsx: unknown }> = [];
 	const options: BundlerBuildOptions = {
 		cwd: "/abs/pkg",
@@ -1108,19 +1109,6 @@ describe("Bundler.build exe", () => {
 			const build = firstBuild(h.builds);
 			assert.deepStrictEqual(build.entry, { index: "./src/index.ts" });
 			assert.deepStrictEqual(build.exeRewrite, { source: "./src/bin.ts", fileName: "p-darwin-arm64", dir: "bin" });
-		}),
-	);
-
-	it.effect("fails phase exe until the real compile is ported, with the manifest already emitted", () =>
-		Effect.gen(function* () {
-			const cwd = makeTmp();
-			const h = harness({ pkg: exePkg(), config: { exe: { fileName: "p" } }, options: { cwd } });
-			const { runExeBuild: _dropped, ...seams } = h.options.seams ?? {};
-			const error = yield* Effect.flip(Bundler.build({ ...h.options, seams }));
-			assert.instanceOf(error, BundlerError);
-			assert.strictEqual(error.phase, "exe");
-			assert.match(error.message, /not ported yet/);
-			assert.isTrue(existsSync(join(cwd, "dist", "prod", "npm", "pkg", "package.json")));
 		}),
 	);
 });

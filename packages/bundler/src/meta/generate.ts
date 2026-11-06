@@ -369,7 +369,7 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 				unscopedName: unscopedName(packageName),
 				...(cacheSalt === undefined
 					? {}
-					: { cache: { directory: join(cwd, "node_modules", ".cache", "tsdown-plugins", "og"), salt: cacheSalt } }),
+					: { cache: { directory: join(cwd, "node_modules", ".cache", "effected", "og"), salt: cacheSalt } }),
 			});
 			composeInput.generatedImage = generated;
 			generatedImageRelative = generated.path;

@@ -1,5 +1,5 @@
 // Ported from savvy-web/systems packages/tsdown-plugins/__test__/meta/generate.tsdoctor.test.ts on 2026-11-06
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
@@ -232,5 +232,19 @@ describe("generateMeta tsdoctor sidecar", { timeout: 60_000 }, () => {
 			tsdoctor: { config: undefined, leaf: undefined, project: undefined, targets: [] },
 		});
 		assert.strictEqual(existsSync(join(s.outMetaDir, "tsdoctor.json")), false);
+	});
+});
+
+describe("generateMeta Open Graph cache", () => {
+	it("persists a salted render under node_modules/.cache/effected/og", async () => {
+		const s = scaffold({ name: "@scope/fixture", version: "1.0.0" });
+		const generate = Object.assign(async () => PNG_1X1, { cacheSalt: "salt" });
+		await generateMeta({
+			...baseOptions(s),
+			tsdoctor: { config: { openGraph: { generate } }, leaf: undefined, project: undefined, targets: [] },
+		});
+		const directory = join(s.cwd, "node_modules", ".cache", "effected", "og");
+		assert.isTrue(existsSync(directory));
+		assert.isNotEmpty(readdirSync(directory));
 	});
 });
