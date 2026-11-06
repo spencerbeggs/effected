@@ -53,3 +53,19 @@ export class UnsupportedChangesetModeError extends Schema.TaggedError<Unsupporte
 		return `Changesets ${this.mode} mode is not supported`;
 	}
 }
+
+/**
+ * A changeset names a package the workspace does not contain.
+ *
+ * @public
+ */
+export class UnknownPackageError extends Schema.TaggedError<UnknownPackageError>()("UnknownPackageError", {
+	/** The package name the changeset gave. */
+	packageName: Schema.String,
+	/** The changeset file that named it. */
+	changeset: Schema.String,
+}) {
+	override get message(): string {
+		return `Changeset ${this.changeset} names ${this.packageName}, which is not in the workspace`;
+	}
+}

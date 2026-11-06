@@ -456,6 +456,9 @@ importers:
 
   packages/changesets:
     dependencies:
+      '@effected/glob':
+        specifier: workspace:^
+        version: link:../glob/dist/dev/pkg
       '@effected/semver':
         specifier: workspace:^
         version: link:../semver/dist/dev/pkg
@@ -469,6 +472,9 @@ importers:
       '@changesets/get-release-plan':
         specifier: ^5.0.2
         version: 5.0.2
+      '@effect/platform-node':
+        specifier: catalog:effected
+        version: 4.1.2(effect@4.1.2)(redis@6.3.1)
       '@effect/vitest':
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
