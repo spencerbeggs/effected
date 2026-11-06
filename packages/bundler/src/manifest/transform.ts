@@ -35,7 +35,7 @@ const NON_PUBLISHED_FIELDS = [
 
 /**
  * The default `transform` applied to every package's manifest when its
- * `savvy.build.ts` does not provide one of its own. Strips the build/dev-only
+ * build config does not provide one of its own. Strips the build/dev-only
  * fields in `NON_PUBLISHED_FIELDS` from the emitted package.json.
  *
  * This is the pattern nearly every package repeated by hand (inherited from

@@ -5,7 +5,7 @@ description: The @effected package index — what each kit package contains and 
 
 # The @effected package index
 
-`@effected/*` is an Effect v4-first app kit: 47 packages (42 libraries, the
+`@effected/*` is an Effect v4-first app kit: 49 packages (44 libraries, the
 `pnpm-plugin-effected` companion, and the four packages of
 the `effected` tool) designed against the
 v4 line, released together, with every

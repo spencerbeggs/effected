@@ -37,7 +37,7 @@ export interface GenerateMetaOptions {
 	readonly packageName: string;
 	/** Resolved tsconfig (from writeResolvedTsconfig) for the api-extractor compiler. */
 	readonly tsconfigPath: string;
-	/** Directory holding the tsdown-emitted per-file .d.ts (e.g. dist/dev/pkg). */
+	/** Directory holding the tsdown-emitted per-file .d.ts (e.g. dist/prod/npm/pkg). */
 	readonly dtsDir: string;
 	/**
 	 * Per-module declarations dir used ONLY for a second, diagnostics-only API Extractor run that

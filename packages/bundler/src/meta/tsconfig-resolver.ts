@@ -45,7 +45,7 @@ export interface PortableTsconfig {
  *
  * @remarks
  * Resolves the package's own `<cwd>/tsconfig.json` (which extends the shared
- * `@savvy-web/bundler/ecma.json` base) via `@effected/tsconfig-json`'s
+ * `@effected/plugin/tsconfig/ecma.json` base) via `@effected/tsconfig-json`'s
  * synchronous `TsconfigLoaderSync` (tsc-parity `extends` resolution) so the
  * result carries the full effective options (target/module/strict/jsx/lib),
  * then projects them through the kit's `PortableTsconfig.make` allow-list

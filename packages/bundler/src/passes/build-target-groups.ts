@@ -50,9 +50,8 @@ export interface CssOptions {
  * SAME outDir as the base build (clean:false). Each partition is built from ITS OWN values
  * only — an option this override omits is simply absent for this partition, not inherited
  * from the base build (partition 0 in `buildTargetGroups`). Callers that want a base-build
- * value to also apply to an override must pass it again explicitly. This is relied upon
- * deliberately by at least one consumer: `packages/silk/savvy.build.ts` has an override that
- * depends on NOT inheriting the base build's externals. `entry` is a subset of the package's
+ * value to also apply to an override must pass it again explicitly. An override can
+ * therefore depend on NOT inheriting the base build's externals. `entry` is a subset of the package's
  * entries (`entryName -> source path`).
  * @public
  */

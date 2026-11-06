@@ -80,7 +80,7 @@ export interface CopyAmbientDtsOptions {
 	readonly ambient: ReadonlyArray<AmbientDtsEntry>;
 	/** Package root the `source` paths are relative to. */
 	readonly srcCwd: string;
-	/** The built package dir to copy into (e.g. `dist/dev/pkg`). */
+	/** The built package dir to copy into (e.g. `dist/prod/npm/pkg`). */
 	readonly outDir: string;
 }
 

@@ -220,7 +220,7 @@ export const dtsPassDtsOptions = (tsconfig: string): DtsPassDtsOptions => ({
 });
 
 /**
- * The output dir for a group: `dist/dev/pkg` for dev, `dist/prod/\<group\>/pkg` for a prod group.
+ * The output dir for a group: `dist/prod/\<group\>/pkg`, or `dist/dev/pkg` for the unused dev group.
  *
  * @public
  */
