@@ -22,7 +22,9 @@ import { readTsconfigJsx, resolveJsxConfig } from "./jsx/config.js";
 import { buildEmittedManifest } from "./manifest/emit-manifest.js";
 import type { MetaOptions } from "./meta/config.js";
 import type { GenerateMetaOptions, MetaResult } from "./meta/generate.js";
+import { OgGenerateError, resolveOgGenerator } from "./meta/og-image.js";
 import type { RunMetaPassOptions } from "./meta/run-pass.js";
+import type { OgImageGenerator } from "./meta/tsdoctor-config.js";
 import { tsdoctorMetaOptionsOf } from "./meta/tsdoctor-config.js";
 import type { BuildTargetGroupsOptions, CssOptions, EntryOverride } from "./passes/build-target-groups.js";
 import { buildTargetGroups as realBuildTargetGroups } from "./passes/build-target-groups.js";
@@ -81,6 +83,8 @@ export interface BundlerSeams {
 	readonly generateMeta: (options: GenerateMetaOptions) => Promise<MetaResult>;
 	/** The optimistic next-version read inside the real meta pass. */
 	readonly resolveNextVersions: (cwd: string) => Promise<{ readonly versions: ReadonlyMap<string, string> }>;
+	/** Imports an optional peer of an Open Graph renderer, the check that it is installed. */
+	readonly importOgPeer: (specifier: string) => Promise<unknown>;
 	/** The SEA compile. */
 	readonly runExeBuild: (options: BundlerExeBuildOptions) => Promise<void>;
 	/** Writes `dist/prod/issues.json` and answers its path. */
@@ -277,6 +281,36 @@ function partitionOverrides(
 /** A decoded empty `[package.build.meta]` table, which a config that never wrote one also decodes to. */
 const defaultMetaFingerprint = JSON.stringify(Schema.decodeUnknownSync(MetaConfig)({}));
 
+/**
+ * The generator the tsdoctor table names, if any. A failure is named in `issues.json` the way the meta pass names a
+ * renderer failure, since it never reaches that pass.
+ */
+async function resolveConfiguredGenerator(
+	options: BundlerBuildOptions,
+	packageName: string,
+	groups: ReadonlyArray<BuildGroupSpec>,
+	collector: BuildCollector,
+	seams: Partial<BundlerSeams>,
+): Promise<OgImageGenerator | undefined> {
+	const name = options.tsdoctor?.openGraph?.generate;
+	if (name === undefined) return undefined;
+	try {
+		return await Effect.runPromise(
+			resolveOgGenerator(name, {
+				packageName,
+				...(seams.importOgPeer !== undefined ? { importModule: seams.importOgPeer } : {}),
+			}),
+		);
+	} catch (err) {
+		if (err instanceof OgGenerateError) {
+			for (const g of groups) {
+				collector.recordError(g.id, { source: "meta", level: "error", code: "og-generate-failed", text: err.message });
+			}
+		}
+		throw err;
+	}
+}
+
 /** The mutable facts the failure path reads: how far the build got, and whose build it is. */
 interface BuildProgress {
 	phase: BundlerPhase;
@@ -450,7 +484,8 @@ async function runBuild(
 		// `emitDts: false` skipped writing them.
 		if (meta !== undefined && config.emitDts && (config.exe === undefined || hasJsEntries)) {
 			progress.phase = "meta";
-			const tsdoctor = options.tsdoctor !== undefined ? tsdoctorMetaOptionsOf(options.tsdoctor) : undefined;
+			const generate = await resolveConfiguredGenerator(options, packageName, groups, collector, seams);
+			const tsdoctor = options.tsdoctor !== undefined ? tsdoctorMetaOptionsOf(options.tsdoctor, generate) : undefined;
 			await (seams.runMetaPass ?? defaultRunMetaPass)({
 				cwd,
 				packageName,

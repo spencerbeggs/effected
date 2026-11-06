@@ -25,6 +25,40 @@ export class OgGenerateError extends Data.TaggedError("OgGenerateError")<{
 	}
 }
 
+/**
+ * The renderer an `[package.tsdoctor.openGraph] generate` name selects.
+ *
+ * @remarks
+ * Nothing renders here, but a build asking for an image fails now rather than after its passes when a peer is absent.
+ * Both peers are optional, so the renderer's module and its peers load only for a package that asks. `importModule`
+ * replaces the dynamic import of a peer.
+ *
+ * @public
+ */
+export const resolveOgGenerator = (
+	name: "satori",
+	options: { readonly packageName: string; readonly importModule?: (specifier: string) => Promise<unknown> },
+): Effect.Effect<OgImageGenerator, OgGenerateError> =>
+	Effect.tryPromise({
+		try: async () => {
+			const importModule = options.importModule ?? ((specifier: string) => import(specifier));
+			try {
+				await Promise.all(OG_RENDERER_PEERS[name].map(importModule));
+			} catch (cause) {
+				throw new Error(
+					`generate = "${name}" needs the optional peers ${OG_RENDERER_PEERS[name].join(" and ")}; install both to generate Open Graph images`,
+					{ cause },
+				);
+			}
+			const { ogImage } = await import("./og-satori.js");
+			return ogImage.satori();
+		},
+		catch: (cause) => new OgGenerateError({ packageName: options.packageName, cause }),
+	});
+
+/** The optional peers each renderer needs. */
+const OG_RENDERER_PEERS = { satori: ["satori", "@resvg/resvg-js"] } as const;
+
 /** The image types an Open Graph consumer can render; anything else fails rather than shipping a mislabeled file. */
 const ACCEPT = ["png", "jpeg", "webp"] as const satisfies ReadonlyArray<ImageFormat>;
 

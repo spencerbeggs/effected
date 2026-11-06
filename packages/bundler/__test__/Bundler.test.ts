@@ -968,6 +968,55 @@ describe("Bundler.build meta pass", () => {
 		}),
 	);
 
+	it.effect("resolves the renderer a tsdoctor table names, and hands the pass its generator", () =>
+		Effect.gen(function* () {
+			const tsdoctor = Schema.decodeUnknownSync(TsdoctorConfig)({ openGraph: { generate: "satori" } });
+			const h = harness({ config: { meta: {} }, options: { tsdoctor }, seams: { importOgPeer: async () => ({}) } });
+			yield* Bundler.build(h.options);
+			assert.isFunction(h.metas[0]?.meta.tsdoctor?.openGraph?.generate);
+		}),
+	);
+
+	it.effect("names both peers in issues.json and fails phase meta when a renderer's peer is absent", () =>
+		Effect.gen(function* () {
+			const tsdoctor = Schema.decodeUnknownSync(TsdoctorConfig)({ openGraph: { generate: "satori" } });
+			const h = harness({
+				config: { meta: {} },
+				options: { tsdoctor },
+				seams: {
+					importOgPeer: async (specifier) => {
+						if (specifier === "@resvg/resvg-js") throw new Error("Cannot find module");
+					},
+				},
+			});
+			const error = yield* Effect.flip(Bundler.build(h.options));
+			assert.instanceOf(error, BundlerError);
+			assert.strictEqual(error.phase, "meta");
+			assert.match(error.message, /satori and @resvg\/resvg-js/);
+			assert.strictEqual(h.metas.length, 0);
+			const recorded = h.issues[0]?.reports[0]?.targetGroups.flatMap((group) => group.errors) ?? [];
+			assert.strictEqual(recorded[0]?.code, "og-generate-failed");
+		}),
+	);
+
+	it.effect("does not touch the renderer's peers for a table that asks for no image", () =>
+		Effect.gen(function* () {
+			const tsdoctor = Schema.decodeUnknownSync(TsdoctorConfig)({ tagline: "t" });
+			const imported: string[] = [];
+			const h = harness({
+				config: { meta: {} },
+				options: { tsdoctor },
+				seams: {
+					importOgPeer: async (specifier) => {
+						imported.push(specifier);
+					},
+				},
+			});
+			yield* Bundler.build(h.options);
+			assert.deepStrictEqual(imported, []);
+		}),
+	);
+
 	it.effect("strips declaration maps from the published dirs after the meta pass read them", () =>
 		Effect.gen(function* () {
 			const cwd = makeTmp();
