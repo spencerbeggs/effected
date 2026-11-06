@@ -23,6 +23,7 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
+		"./build": "./src/build/index.ts",
 		"./package.json": "./package.json",
 		"./schema": "./src/schema/index.ts"
 	},
@@ -33,11 +34,14 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@effected/bundler": "workspace:*",
 		"@effected/files": "workspace:^",
 		"@effected/jsonc": "workspace:^",
+		"@effected/jsonl": "workspace:^",
 		"@effected/kit": "workspace:^",
 		"@effected/schemastore": "workspace:*",
 		"@effected/source": "workspace:^",
+		"@effected/workspaces": "workspace:^",
 		"ajv": "8.20.0",
 		"ajv-formats": "3.0.1",
 		"effect": "catalog:effected",

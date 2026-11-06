@@ -739,12 +739,18 @@ importers:
 
   packages/engine:
     dependencies:
+      '@effected/bundler':
+        specifier: workspace:*
+        version: link:../bundler/dist/dev/pkg
       '@effected/files':
         specifier: workspace:^
         version: link:../files/dist/dev/pkg
       '@effected/jsonc':
         specifier: workspace:^
         version: link:../jsonc/dist/dev/pkg
+      '@effected/jsonl':
+        specifier: workspace:^
+        version: link:../jsonl/dist/dev/pkg
       '@effected/kit':
         specifier: workspace:^
         version: link:../kit/dist/dev/pkg
@@ -754,6 +760,9 @@ importers:
       '@effected/source':
         specifier: workspace:^
         version: link:../source/dist/dev/pkg
+      '@effected/workspaces':
+        specifier: workspace:^
+        version: link:../workspaces/dist/dev/pkg
       ajv:
         specifier: 8.20.0
         version: 8.20.0

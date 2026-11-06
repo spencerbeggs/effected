@@ -5,6 +5,9 @@
 # Generated TypeScript declaration files for config files
 *.config.d.ts
 **/build
+# A source directory named build is source: the engine and CLI modules behind `effected build`.
+!packages/*/src/**/build
+!packages/*/__test__/**/build
 **/dist
 # construct-index fixtures commit a static api-extractor doc model under a
 # dist/ path to mirror real build output; never actually built, so **/dist
