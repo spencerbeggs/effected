@@ -603,6 +603,7 @@ describe("Bundler.build reporting", () => {
 			assert.strictEqual(h.issues.length, 1);
 			assert.strictEqual(h.issues[0]?.buildOk, false);
 			assert.deepStrictEqual(h.issues[0]?.failure, { name: "Error", message: "boom" });
+			assert.strictEqual(h.bindings.length, 0, "a failed build must not leave a targets.json for the release action");
 			assert.strictEqual(h.issues[0]?.reports[0]?.targetGroups[0]?.errors[0]?.text, "kaboom");
 		}),
 	);
@@ -759,6 +760,43 @@ describe("Bundler.build meta pass", () => {
 		}),
 	);
 
+	it.effect("runs for a config that never mentions meta", () =>
+		Effect.gen(function* () {
+			const h = harness({ options: { config: decodeConfig({}) } });
+			yield* Bundler.build(h.options);
+			assert.strictEqual(h.metas.length, 1);
+		}),
+	);
+
+	it.effect("runs for an exe package that also has JS entries, after the binding", () =>
+		Effect.gen(function* () {
+			let bindingsAtMeta = -1;
+			const bindings: string[] = [];
+			const h = harness({
+				pkg: {
+					name: "m",
+					version: "1.0.0",
+					os: ["darwin"],
+					cpu: ["arm64"],
+					exports: { ".": "./src/index.ts", "./bin": "./src/bin.ts" },
+				},
+				config: { meta: {}, exe: { fileName: "m" } },
+				options: { noExe: true },
+				seams: {
+					writeTargetsBinding: () => {
+						bindings.push("written");
+						return "/abs/pkg/dist/prod/targets.json";
+					},
+					runMetaPass: async () => {
+						bindingsAtMeta = bindings.length;
+					},
+				},
+			});
+			yield* Bundler.build(h.options);
+			assert.strictEqual(bindingsAtMeta, 1);
+		}),
+	);
+
 	it.effect("forwards the generateMeta and resolveNextVersions seams only when set", () =>
 		Effect.gen(function* () {
 			const generateMeta = async () => ({});
@@ -881,7 +919,9 @@ describe("Bundler.build exe", () => {
 			const h = harness({ pkg: exePkg(), config: { exe: { fileName: "p" } }, options: { cwd, noExe: true } });
 			yield* Bundler.build(h.options);
 			assert.strictEqual(h.exes.length, 0);
-			assert.strictEqual((readManifest(cwd).exports as Record<string, unknown>)["."], "./bin/p-darwin-arm64");
+			const manifest = readManifest(cwd);
+			assert.strictEqual((manifest.exports as Record<string, unknown>)["."], "./bin/p-darwin-arm64");
+			assert.deepStrictEqual(manifest.files, ["bin/p-darwin-arm64"]);
 		}),
 	);
 
@@ -921,6 +961,78 @@ describe("Bundler.build exe", () => {
 			assert.strictEqual(error.phase, "exe");
 			assert.match(error.message, /not ported yet/);
 			assert.isTrue(existsSync(join(cwd, "dist", "prod", "npm", "pkg", "package.json")));
+		}),
+	);
+});
+
+describe("Bundler.build resolves from options.cwd, never the process directory", () => {
+	// A workspace whose catalog and sibling exist nowhere else: resolved from the process directory (this repo), neither
+	// specifier has an answer, so the build fails rather than emitting these versions.
+	const makeWorkspace = (): { readonly root: string; readonly cwd: string; readonly pkg: BundlerPackageJson } => {
+		const root = makeTmp();
+		writeFileSync(
+			join(root, "pnpm-workspace.yaml"),
+			"packages:\n  - packages/*\ncatalog:\n  only-in-this-workspace: 1.2.3\n",
+		);
+		writeFileSync(join(root, "package.json"), JSON.stringify({ name: "root", version: "0.0.0", private: true }));
+		const sibling = join(root, "packages", "sibling-only-here");
+		mkdirSync(sibling, { recursive: true });
+		writeFileSync(join(sibling, "package.json"), JSON.stringify({ name: "sibling-only-here", version: "4.5.6" }));
+		const cwd = join(root, "packages", "subject");
+		mkdirSync(cwd, { recursive: true });
+		return {
+			root,
+			cwd,
+			pkg: {
+				name: "subject",
+				version: "1.0.0",
+				os: ["darwin"],
+				cpu: ["arm64"],
+				exports: { ".": "./src/bin.ts" },
+				dependencies: { "only-in-this-workspace": "catalog:", "sibling-only-here": "workspace:^" },
+			},
+		};
+	};
+	const resolved = { "only-in-this-workspace": "1.2.3", "sibling-only-here": "^4.5.6" };
+
+	it.effect("for the standalone manifest of an exe-only package", () =>
+		Effect.gen(function* () {
+			const { cwd, pkg } = makeWorkspace();
+			assert.notStrictEqual(process.cwd(), cwd);
+			const h = harness({ pkg, config: { exe: { fileName: "subject" } }, options: { cwd, noExe: true } });
+			yield* Bundler.build(h.options);
+			const manifest = JSON.parse(readFileSync(join(cwd, "dist", "prod", "npm", "pkg", "package.json"), "utf-8"));
+			assert.deepStrictEqual(manifest.dependencies, resolved);
+		}),
+	);
+
+	it.effect("for the manifest the JS pass emits", () =>
+		Effect.gen(function* () {
+			const { cwd, pkg } = makeWorkspace();
+			writeFileSync(join(cwd, "package.json"), JSON.stringify(pkg));
+			const emitted: Array<Record<string, unknown>> = [];
+			const h = harness({
+				pkg,
+				options: { cwd },
+				seams: {
+					buildTargetGroups: (o) =>
+						buildTargetGroups({
+							...o,
+							build: async (config) => {
+								const plugins = config.plugins as ReadonlyArray<{ name: string; generateBundle?: () => Promise<void> }>;
+								await plugins
+									.find((plugin) => plugin.name === "savvy:emit-manifest")
+									?.generateBundle?.call({
+										emitFile: (file: { fileName: string; source: string }) => {
+											if (file.fileName === "package.json") emitted.push(JSON.parse(file.source));
+										},
+									} as never);
+							},
+						}),
+				},
+			});
+			yield* Bundler.build(h.options);
+			assert.deepStrictEqual(emitted[0]?.dependencies, resolved);
 		}),
 	);
 });

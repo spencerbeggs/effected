@@ -24,6 +24,10 @@
  * 48 of the kit's 49 packages from source with zero `.d.ts` byte differences from the old bundler; the 49th,
  * pnpm-plugin-effected, needs its virtual-module plugin, which that sweep did not pass.
  *
+ * `bundledPackages` naming a sibling that resolves to source fails the build (tsgo declares only the package's own
+ * project), and no kit package uses it. No build here changes directory, so this also proves the emitted manifest's
+ * workspace specifiers resolve from `options.cwd`.
+ *
  * Not proven here: API Extractor over source siblings, because the meta pass is not ported yet.
  */
 import { execFileSync } from "node:child_process";
@@ -37,6 +41,7 @@ import {
 	realpathSync,
 	renameSync,
 	rmSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -45,35 +50,44 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
 import { Bundler } from "../../src/Bundler.js";
 import { PackageBuildConfig } from "../../src/config/BuildConfig.js";
+import { collectExportNames } from "../../src/dts/reexport-stub.js";
 
 const REPO = resolve(import.meta.dirname, "../../../..");
 const SPIKE_ENABLED = process.env.EFFECTED_SPIKE === "1";
 const SPIKE_TIMEOUT = 300_000;
 
-/** Names a declaration file imports from a sibling and also declares itself: a sibling type carried inline. */
-const inlinedSiblingTypes = (dts: string): ReadonlyArray<string> => {
-	const names = [...dts.matchAll(/^import \{([^}]*)\} from "@effected\/[^"]+";$/gm)].flatMap((match) =>
-		(match[1] ?? "").split(",").map((name) => name.trim().split(" as ").at(-1) ?? ""),
-	);
-	return names.filter((name) =>
+/** Which of a sibling's exported names a declaration file declares at its top level, whether or not it imports them. */
+const inlinedSiblingTypes = (dts: string, siblingNames: ReadonlyArray<string>): ReadonlyArray<string> =>
+	siblingNames.filter((name) =>
 		new RegExp(
-			`^(?:export )?declare (?:abstract )?(?:class|const|function|interface|namespace|type) ${name}\\b`,
+			`^(?:export )?(?:declare )?(?:abstract )?(?:class|const|let|var|enum|function|interface|namespace|type) ${name}\\b`,
 			"m",
 		).test(dts),
 	);
+
+/** The names a package's `src/index.ts` exports, which must be statically enumerable for the check to mean anything. */
+const exportedNames = (packageDir: string): ReadonlyArray<string> => {
+	const names = collectExportNames(readFileSync(join(packageDir, "src", "index.ts"), "utf-8"));
+	assert.isTrue(names.complete, `${packageDir} has a star re-export`);
+	assert.isAbove(names.names.size, 0);
+	return [...names.names];
 };
 
 const bareSiblingImports = (dts: string): ReadonlyArray<string> =>
 	[...dts.matchAll(/^import .* from "(@effected\/[^"]+)";$/gm)].flatMap((match) => (match[1] ? [match[1]] : []));
 
 describe("the spike's inlining detector", () => {
-	it("names a sibling type carried inline", () => {
-		const dts = 'import { Distribution } from "@effected/kit";\ndeclare class Distribution {}\n';
-		assert.deepStrictEqual(inlinedSiblingTypes(dts), ["Distribution"]);
+	it("names a sibling type carried inline, with no import line to give it away", () => {
+		assert.deepStrictEqual(inlinedSiblingTypes("declare class Distribution {}\n", ["Distribution", "Other"]), [
+			"Distribution",
+		]);
+		assert.deepStrictEqual(inlinedSiblingTypes("interface Distribution {}\n", ["Distribution"]), ["Distribution"]);
+		assert.deepStrictEqual(inlinedSiblingTypes("type Distribution = string;\n", ["Distribution"]), ["Distribution"]);
 	});
-	it("passes a declaration that only imports it", () => {
-		const dts = 'import { Distribution } from "@effected/kit";\ndeclare class Other {}\n';
-		assert.deepStrictEqual(inlinedSiblingTypes(dts), []);
+	it("passes a declaration that only imports it or mentions it in a member", () => {
+		const dts =
+			'import { Distribution } from "@effected/kit";\ndeclare class Other {\n  type Distribution: string;\n}\n';
+		assert.deepStrictEqual(inlinedSiblingTypes(dts, ["Distribution"]), []);
 		assert.deepStrictEqual(bareSiblingImports(dts), ["@effected/kit"]);
 	});
 });
@@ -163,22 +177,18 @@ const makeWorkspace = (root: string): void => {
 	});
 };
 
-const buildCliKit = (cwd: string) => {
+// Never changes directory: the workspace specifiers in the emitted manifest resolve from `cwd`, so this also proves a
+// real build does not depend on the process's own directory.
+const buildCliKit = (cwd: string, extra: Record<string, unknown> = {}) => {
 	const config = Schema.decodeUnknownSync(PackageBuildConfig)({
 		meta: false,
 		dtsExternals: ["@effected/cli-kit", "@effected/cli-kit/ui"],
+		...extra,
 	});
-	// The emitted manifest's workspace specifiers resolve against process.cwd().
-	return Effect.acquireUseRelease(
-		Effect.sync(() => {
-			const previous = process.cwd();
-			process.chdir(cwd);
-			rmSync(join(cwd, "dist"), { recursive: true, force: true });
-			return previous;
-		}),
-		() => Bundler.build({ cwd, config, tsdoctor: undefined, noExe: true, verbose: false, plugins: [], ci: false }),
-		(previous) => Effect.sync(() => process.chdir(previous)),
-	);
+	return Effect.suspend(() => {
+		rmSync(join(cwd, "dist"), { recursive: true, force: true });
+		return Bundler.build({ cwd, config, tsdoctor: undefined, noExe: true, verbose: false, plugins: [], ci: false });
+	});
 };
 
 describe.skipIf(!SPIKE_ENABLED)("cli-kit from source siblings", () => {
@@ -202,7 +212,15 @@ describe.skipIf(!SPIKE_ENABLED)("cli-kit from source siblings", () => {
 				const imports = bareSiblingImports(dts);
 				assert.include(imports, "@effected/env");
 				assert.include(imports, "@effected/kit");
-				assert.deepStrictEqual(inlinedSiblingTypes(dts), []);
+				const siblingNames = [
+					...exportedNames(join(root, "packages", "env")),
+					...exportedNames(join(root, "packages", "kit")),
+				];
+				assert.deepStrictEqual(inlinedSiblingTypes(dts, siblingNames), []);
+				assert.notStrictEqual(process.cwd(), cwd);
+				const emitted = readManifest(pkgDir);
+				assert.notInclude(JSON.stringify(emitted), "workspace:");
+				assert.notInclude(JSON.stringify(emitted), "catalog:");
 				assert.notMatch(dts, /from "\.\.?\/[^"]*(?:packages|src)\//);
 				const issues = JSON.parse(readFileSync(result.issuesPath, "utf-8")) as { buildOk: boolean; errors: unknown[] };
 				assert.strictEqual(issues.buildOk, true);
@@ -216,6 +234,31 @@ describe.skipIf(!SPIKE_ENABLED)("cli-kit from source siblings", () => {
 						workerPeakRssKb: process.resourceUsage().maxRSS,
 					}),
 				);
+
+				// Inlining a sibling that resolves to source is refused outright: tsgo declares only the package's own project.
+				const refused = yield* Effect.flip(buildCliKit(cwd, { bundledPackages: ["@effected/env"] }));
+				assert.strictEqual(refused._tag, "BundlerError");
+				assert.match(refused.message, /tsgo did not generate a declaration file/);
+
+				// The control for the check above: real inlining from a rolled-up sibling must trip it.
+				const envDir = join(root, "packages", "env");
+				yield* Bundler.build({
+					cwd: envDir,
+					config: Schema.decodeUnknownSync(PackageBuildConfig)({ meta: false }),
+					tsdoctor: undefined,
+					noExe: true,
+					verbose: false,
+					plugins: [],
+					ci: false,
+				});
+				const envLink = join(links, "env");
+				rmSync(envLink);
+				symlinkSync(join(envDir, "dist", "prod", "npm", "pkg"), envLink);
+				yield* buildCliKit(cwd, { bundledPackages: ["@effected/env"] });
+				assert.isNotEmpty(inlinedSiblingTypes(readFileSync(join(pkgDir, "index.d.ts"), "utf-8"), siblingNames));
+				rmSync(envLink);
+				symlinkSync(envDir, envLink);
+				rmSync(join(envDir, "dist"), { recursive: true, force: true });
 
 				// The probe: every export's type is inferred across a sibling boundary, so the declaration needs the sibling.
 				const manifest = readManifest(cwd);
@@ -241,7 +284,7 @@ export const probeHidden = () => makeSpikeHidden();
 				yield* buildCliKit(cwd);
 				const fromSource = readFileSync(join(pkgDir, "probe.d.ts"), "utf-8");
 				assert.match(fromSource, /probeLayer: \(kind: import\("@effected\/env"\)\.AudienceKind/);
-				assert.deepStrictEqual(inlinedSiblingTypes(fromSource), []);
+				assert.deepStrictEqual(inlinedSiblingTypes(fromSource, siblingNames), []);
 				// The known edge, pinned: a sibling's public function returning a type its entry point does not export
 				// degrades to `any`, silently. The kit has no such site today; see okf/modules/bundler.md.
 				assert.match(fromSource, /probeHidden: any;/);

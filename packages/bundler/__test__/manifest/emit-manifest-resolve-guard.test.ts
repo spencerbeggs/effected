@@ -27,6 +27,7 @@ describe("buildEmittedManifest resolveManifest guard", () => {
 			dependencies: { effect: "^3.0.0" },
 		};
 		const out = await buildEmittedManifest({
+			cwd: "/abs/pkg",
 			pkg,
 			targetGroup: { id: "npm", name: "@x/p", isProd: true },
 			devManifest: "preserve",
@@ -44,11 +45,12 @@ describe("buildEmittedManifest resolveManifest guard", () => {
 			dependencies: { effect: "catalog:silk" },
 		};
 		await buildEmittedManifest({
+			cwd: "/abs/pkg",
 			pkg,
 			targetGroup: { id: "npm", name: "@x/p", isProd: true },
 			devManifest: "preserve",
 		});
 		assert.strictEqual(mockResolveManifest.mock.calls.length, 1);
-		assert.deepStrictEqual(mockResolveManifest.mock.calls[0], [pkg]);
+		assert.deepStrictEqual(mockResolveManifest.mock.calls[0], [pkg, "/abs/pkg"]);
 	});
 });

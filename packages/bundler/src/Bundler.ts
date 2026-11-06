@@ -133,7 +133,7 @@ export interface BundlerSeams {
  * @public
  */
 export interface BundlerBuildOptions {
-	/** The package root. */
+	/** The package root, as an absolute path. The build never reads the process's own directory. */
 	readonly cwd: string;
 	/** The decoded `[package.build]` table. */
 	readonly config: PackageBuildConfig;
@@ -503,6 +503,7 @@ async function runBuild(
 					progress.phase = "manifest";
 					const manifest = await buildEmittedManifest({
 						pkg,
+						cwd,
 						targetGroup: { id: g.id, name: g.name, isProd: true },
 						devManifest: "preserve",
 						drop: config.manifest.drop,
@@ -562,9 +563,6 @@ export class Bundler {
 	 * It writes nothing to stdout; rendering the report belongs to the caller. A structurally invalid config fails
 	 * {@link ConfigValidationError} before any build work, and anything thrown afterwards fails
 	 * {@link BundlerError} naming the phase. Both paths write `issues.json` stamped `buildOk: false` first.
-	 *
-	 * Workspace specifiers in the emitted manifest resolve against `process.cwd()`, so run it from inside the
-	 * package's workspace.
 	 */
 	static readonly build: (
 		options: BundlerBuildOptions,

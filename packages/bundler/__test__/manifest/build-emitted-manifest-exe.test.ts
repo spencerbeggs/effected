@@ -5,6 +5,7 @@ import { buildEmittedManifest } from "../../src/manifest/emit-manifest.js";
 describe("buildEmittedManifest exeRewrite", () => {
 	it("forwards exeRewrite into transformManifest", async () => {
 		const out = await buildEmittedManifest({
+			cwd: "/abs/pkg",
 			pkg: { name: "p", version: "1.0.0", exports: { ".": "./src/bin.ts", "./package.json": "./package.json" } },
 			targetGroup: { id: "dev", name: "p", isProd: false },
 			devManifest: "preserve",

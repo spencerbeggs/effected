@@ -31,6 +31,7 @@ describe("manifestNeedsCatalogResolution", () => {
 describe("buildEmittedManifest", () => {
 	it("dev group with devManifest=preserve keeps catalog: specifiers and stays private", async () => {
 		const out = await buildEmittedManifest({
+			cwd: "/abs/pkg",
 			pkg: {
 				name: "@x/p",
 				version: "1.0.0",
@@ -49,6 +50,7 @@ describe("buildEmittedManifest", () => {
 
 	it("applies the targetGroup name to package.json.name", async () => {
 		const out = await buildEmittedManifest({
+			cwd: "/abs/pkg",
 			pkg: { name: "base", version: "1.0.0" } as never,
 			targetGroup: { id: "github", name: "@scope/base", isProd: false },
 			devManifest: "preserve",
@@ -58,6 +60,7 @@ describe("buildEmittedManifest", () => {
 
 	it("drops the named top-level keys from the emitted manifest", async () => {
 		const out = await buildEmittedManifest({
+			cwd: "/abs/pkg",
 			pkg: { name: "base", version: "1.0.0", dependencies: { effect: "^3" }, keywords: ["a"] } as never,
 			targetGroup: { id: "npm", name: "base", isProd: true },
 			devManifest: "preserve",

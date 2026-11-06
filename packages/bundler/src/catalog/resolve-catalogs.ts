@@ -26,8 +26,8 @@ const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
 /**
  * Resolve every `catalog:`/`workspace:` specifier in a manifest to a concrete spec,
  * delegating to `@effected/workspaces`' one-shot `Workspaces.resolveManifest`. The
- * resolver re-discovers the workspace root from `process.cwd()` on every call (run
- * this from inside the target workspace) and assembles catalogs durably (inline +
+ * resolver re-discovers the workspace root from `cwd` on every call, never from the
+ * process directory, and assembles catalogs durably (inline +
  * config-dependency hook-replay + lockfile), so no transient
  * `.pnpm-workspace-state-v1.json` is required.
  *
@@ -37,10 +37,10 @@ const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
  * resolution mechanism itself fails.
  * @public
  */
-export function resolveManifest(pkg: ManifestLike): Promise<ManifestLike> {
+export function resolveManifest(pkg: ManifestLike, cwd: string): Promise<ManifestLike> {
 	const program = Effect.gen(function* () {
 		const manifest = yield* Manifest.decode(pkg);
-		const resolved = manifest.needsResolution ? yield* Workspaces.resolveManifest(manifest) : manifest;
+		const resolved = manifest.needsResolution ? yield* Workspaces.resolveManifest(manifest, { cwd }) : manifest;
 		return resolved.toRecord() as ManifestLike;
 	});
 	return Effect.runPromise(program.pipe(Effect.provide(platform)));

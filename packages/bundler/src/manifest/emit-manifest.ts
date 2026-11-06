@@ -19,6 +19,8 @@ export interface TargetGroupRef {
 /** @public */
 export interface BuildEmittedManifestOptions {
 	readonly pkg: Json;
+	/** The package directory. Catalog and workspace specifiers resolve against the workspace found from here. */
+	readonly cwd: string;
 	readonly targetGroup: TargetGroupRef;
 	readonly devManifest: "preserve" | "resolve";
 	/** Top-level keys deleted from the emitted manifest, after the standard stripping. */
@@ -58,14 +60,14 @@ export function manifestNeedsCatalogResolution(pkg: Json): boolean {
  * @public
  */
 export async function buildEmittedManifest(options: BuildEmittedManifestOptions): Promise<Json> {
-	const { pkg, targetGroup, devManifest, drop } = options;
+	const { pkg, cwd, targetGroup, devManifest, drop } = options;
 	const shouldResolve = (targetGroup.isProd || devManifest === "resolve") && manifestNeedsCatalogResolution(pkg);
 	let base: Json = pkg;
 	if (shouldResolve) {
 		// resolveManifest delegates to @effected/workspaces' resolvers (returns a Promise)
-		// and discovers the workspace from process.cwd(). ManifestLike and Json are
+		// and discovers the workspace from cwd. ManifestLike and Json are
 		// structurally compatible records, so the casts are safe at this boundary.
-		base = (await resolveManifest(pkg as unknown as ManifestLike)) as unknown as Json;
+		base = (await resolveManifest(pkg as unknown as ManifestLike, cwd)) as unknown as Json;
 	}
 	// Apply the declarative rename so the drop step and the emitted manifest both see it.
 	base = { ...base, name: targetGroup.name };
@@ -109,6 +111,7 @@ export function emitManifest(options: EmitManifestOptions): Plugin {
 			const pkg = JSON.parse(await readFile(join(sourceDir, "package.json"), "utf-8")) as Json;
 			const manifest = await buildEmittedManifest({
 				pkg,
+				cwd: sourceDir,
 				targetGroup: options.targetGroup,
 				devManifest: options.devManifest ?? "preserve",
 				drop: options.drop,

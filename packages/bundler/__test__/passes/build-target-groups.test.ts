@@ -255,25 +255,19 @@ describe("buildTargetGroups", () => {
 		}) as never;
 
 		const emitted: Array<Record<string, unknown>> = [];
-		const prevCwd = process.cwd();
-		process.chdir(dir);
-		try {
-			await buildTargetGroups({
-				cwd: dir,
-				version: "1.0.0",
-				entry: { index: "src/index.ts" },
-				tsconfigPath: join(dir, "tsconfig.json"),
-				groups: [
-					{ id: "npm", name: "base" },
-					{ id: "github", name: "@scope/base" },
-				],
-				devManifest: "preserve",
-				drop: ["dependencies"],
-				build,
-			});
-		} finally {
-			process.chdir(prevCwd);
-		}
+		await buildTargetGroups({
+			cwd: dir,
+			version: "1.0.0",
+			entry: { index: "src/index.ts" },
+			tsconfigPath: join(dir, "tsconfig.json"),
+			groups: [
+				{ id: "npm", name: "base" },
+				{ id: "github", name: "@scope/base" },
+			],
+			devManifest: "preserve",
+			drop: ["dependencies"],
+			build,
+		});
 
 		// Two passes per group share an outDir, so dedup before comparing.
 		assert.deepStrictEqual([...new Set(calls.map((c) => c.outDir))].sort(), [
