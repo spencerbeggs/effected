@@ -156,6 +156,7 @@ minimumReleaseAgeExclude:
   - "@effect/tsgo-*"
   - "@savvy-web/pnpm-plugin-silk"
   - effect
+nodeOptions: --import=tsx
 overrides:
   "@effect/ai-anthropic@^4.0.0": 4.1.2
   "@effect/ai-openai-compat@^4.0.0": 4.1.2

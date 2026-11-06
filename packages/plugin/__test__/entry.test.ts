@@ -1,6 +1,6 @@
 // A config file imports this package's root to reach `defineSchemastore`, so the root must stay cheap. `vi.mock` cannot
 // show that, because it cannot intercept a dependency vitest externalizes, so the built entry runs in a child process
-// under a preload that records every module the process resolves. The root `globalSetup` rebuilds `dist/dev` before
+// under a preload that records every module the process resolves. The root `globalSetup` rebuilds `dist/prod` before
 // every run, so the entry is this tree's.
 
 import { spawnSync } from "node:child_process";
@@ -12,7 +12,7 @@ import { defineConfig } from "@effected/schemastore";
 import { defineSchemastore } from "../src/index.js";
 
 const PLUGIN = resolve(import.meta.dirname, "..");
-const ENTRY = join(PLUGIN, "dist/dev/pkg/index.js");
+const ENTRY = join(PLUGIN, "dist/prod/npm/pkg/index.js");
 const HOOK = join(PLUGIN, "__test__/fixtures/record-resolved.mjs");
 const CONTROL = join(PLUGIN, "__test__/fixtures/load-front-end.mjs");
 const BUILD_CONTROL = join(PLUGIN, "__test__/fixtures/load-build-engine.mjs");

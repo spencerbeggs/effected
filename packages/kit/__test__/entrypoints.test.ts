@@ -5,7 +5,7 @@ import { assert, describe, it } from "@effect/vitest";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = resolve(ROOT, "src");
-const BUILT = resolve(ROOT, "dist", "dev", "pkg");
+const BUILT = resolve(ROOT, "dist", "prod", "npm", "pkg");
 
 /**
  * Every static RUNTIME import specifier in a module: `import type` and
@@ -48,7 +48,7 @@ describe("./guard loads nothing before its guards listen", () => {
 
 	it("the built ./guard reaches only ProcessGuard.js, and no package at all", () => {
 		const entry = resolve(BUILT, "guard.js");
-		assert.isTrue(existsSync(entry), "build:dev must have emitted dist/dev/pkg/guard.js");
+		assert.isTrue(existsSync(entry), "the build must have emitted dist/prod/npm/pkg/guard.js");
 		const { modules, packages } = runtimeGraphOf(entry, ".js");
 		assert.deepStrictEqual(relative(BUILT, modules), ["ProcessGuard.js", "guard.js"]);
 		assert.deepStrictEqual([...packages], []);

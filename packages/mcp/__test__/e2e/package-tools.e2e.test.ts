@@ -1,6 +1,6 @@
 // The built bin over real stdio and a real package: a copy of `packages/jsonc`, under this package's `dist` because its
 // `catalog:` and `workspace:` specifiers need the real workspace above it. tsdown and API Extractor run in the server's
-// process, so what they print must not reach the wire. The root `globalSetup` rebuilds `dist/dev` before every run.
+// process, so what they print must not reach the wire. The root `globalSetup` rebuilds `dist/prod` before every run.
 
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -11,7 +11,7 @@ import { Effect } from "effect";
 import { ChildProcess } from "effect/process";
 
 const MCP = resolve(import.meta.dirname, "../..");
-const BIN = join(MCP, "dist/dev/pkg/bin/effected-mcp.js");
+const BIN = join(MCP, "dist/prod/npm/pkg/bin/effected-mcp.js");
 const JSONC = resolve(MCP, "../jsonc");
 
 mkdirSync(join(MCP, "dist"), { recursive: true });

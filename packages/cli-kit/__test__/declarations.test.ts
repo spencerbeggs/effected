@@ -7,8 +7,8 @@ import { assert, describe, it } from "@effect/vitest";
 
 const PACKAGE = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SRC = join(PACKAGE, "src");
-/** The dev build: the test pre-build refreshes it, and its declaration rollup is the one the prod build ships. */
-const BUILT = join(PACKAGE, "dist", "dev");
+/** The npm group of the build: the test pre-build refreshes it, and its declaration rollup is the one that ships. */
+const BUILT = join(PACKAGE, "dist", "prod", "npm");
 const TSC = join(PACKAGE, "node_modules", ".bin", "tsc");
 
 /** The public names a source entrypoint re-exports: every name in its `export { … } from` lines, aliases resolved. */

@@ -218,14 +218,14 @@ describe("overrides", () => {
 		return pins;
 	}
 	const PINS = { ...familyPins(), [RC117]: "4.0.0-rc.117", [RC118]: "4.0.0-rc.118" };
-	const PNPMFILE = join(PACKAGE_ROOT, "dist/dev/pkg/pnpmfile.mjs");
+	const PNPMFILE = join(PACKAGE_ROOT, "dist/prod/npm/pkg/pnpmfile.mjs");
 
 	/**
 	 * The built hook, not the source literal: what a consumer runs is the
 	 * `updateConfig` the bundler emits, so this is the only place the merge with a
-	 * consumer's own overrides can be observed. `dist/dev/pkg` is the
-	 * `publishConfig.directory`, so it is the published hook, and it is the
-	 * target the test pre-build keeps fresh.
+	 * consumer's own overrides can be observed. `dist/prod/npm/pkg` is what the
+	 * release packs, so it is the published hook, and it is the target the test
+	 * pre-build keeps fresh.
 	 */
 	async function updateConfig(config: Record<string, unknown>): Promise<Record<string, unknown>> {
 		assert.isTrue(existsSync(PNPMFILE), "build the plugin before testing its pnpmfile");
@@ -261,7 +261,7 @@ describe("overrides", () => {
 });
 
 describe("the consumer's catalog", () => {
-	const PNPMFILE = join(PACKAGE_ROOT, "dist/dev/pkg/pnpmfile.mjs");
+	const PNPMFILE = join(PACKAGE_ROOT, "dist/prod/npm/pkg/pnpmfile.mjs");
 
 	async function catalogsFor(config: Record<string, unknown>): Promise<Record<string, Record<string, string>>> {
 		assert.isTrue(existsSync(PNPMFILE), "build the plugin before testing its pnpmfile");
@@ -296,7 +296,7 @@ describe("the consumer's catalog", () => {
 });
 
 describe("the effected tool", () => {
-	const PNPMFILE = join(PACKAGE_ROOT, "dist/dev/pkg/pnpmfile.mjs");
+	const PNPMFILE = join(PACKAGE_ROOT, "dist/prod/npm/pkg/pnpmfile.mjs");
 	// The tool's four packages and the three carrier libraries they replaced the
 	// names of, plus the app kit: a consumer moving from a kit library to its `-kit`
 	// name, or adding the tool, reaches each one through `catalog:effected`.

@@ -300,6 +300,9 @@ importers:
       '@effected/changesets':
         specifier: workspace:*
         version: link:packages/changesets/dist/dev/pkg
+      '@effected/plugin':
+        specifier: workspace:*
+        version: link:packages/plugin/dist/dev/pkg
       '@effected/workspaces':
         specifier: workspace:*
         version: link:packages/workspaces/dist/dev/pkg
@@ -315,6 +318,9 @@ importers:
       effect:
         specifier: catalog:effected
         version: 4.1.2
+      tsx:
+        specifier: ^4.23.12
+        version: 4.23.15
 
   packages/app:
     devDependencies:

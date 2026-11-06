@@ -1,6 +1,6 @@
 // The presets a consumer's tsconfig extends. What matters is what a consumer resolves, so these read the built package
 // and let the compiler follow `@effected/plugin/tsconfig/ecma.json` through its exports map. The root `globalSetup`
-// rebuilds `dist/dev` before every run.
+// rebuilds `dist/prod` before every run.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -9,7 +9,7 @@ import { join, resolve } from "node:path";
 import { afterAll, assert, describe, it } from "@effect/vitest";
 
 const PLUGIN = resolve(import.meta.dirname, "..");
-const BUILT = join(PLUGIN, "dist/dev/pkg");
+const BUILT = join(PLUGIN, "dist/prod/npm/pkg");
 const TSC = join(PLUGIN, "node_modules/.bin/tsc");
 
 const scratch = mkdtempSync(join(tmpdir(), "effected-plugin-presets-"));

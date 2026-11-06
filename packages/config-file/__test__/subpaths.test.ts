@@ -1,26 +1,13 @@
 import { spawnSync } from "node:child_process";
-import {
-	existsSync,
-	mkdirSync,
-	mkdtempSync,
-	readFileSync,
-	realpathSync,
-	rmSync,
-	symlinkSync,
-	writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
 
 const PACKAGE = join(dirname(fileURLToPath(import.meta.url)), "..");
-/** The dev build: the test pre-build refreshes it, and its module graph and declarations are the ones prod ships. */
-const BUILT = join(PACKAGE, "dist", "dev", "pkg");
-/** The prod build, when a prod build has run: the graph a consumer installs, so a prod-only chunk cannot leak an engine. */
-const PROD = join(PACKAGE, "dist", "prod", "npm", "pkg");
-/** Every built package root to walk: dev always, prod when present. */
-const BUILDS: ReadonlyArray<string> = existsSync(join(PROD, "index.js")) ? [BUILT, PROD] : [BUILT];
+/** The build: the test pre-build refreshes it, and its graph is the one a consumer installs, so no chunk can leak an engine. */
+const BUILT = join(PACKAGE, "dist", "prod", "npm", "pkg");
 const TSC = join(PACKAGE, "node_modules", ".bin", "tsc");
 
 /** The three format engines, each an optional peer reachable from its own subpath only. */
@@ -69,20 +56,16 @@ const kitPackages = (packages: ReadonlyArray<string>): ReadonlyArray<string> =>
 
 describe("the built module graph", () => {
 	it("keeps the root entry off every format engine: it reaches @effected/files, @effected/walker and effect only", () => {
-		for (const build of BUILDS) {
-			const reached = packagesReachedFrom(join(build, "index.js"));
-			assert.include(reached, "effect", `the control: the root graph was walked (${build})`);
-			assert.deepStrictEqual(kitPackages(reached), ["@effected/files", "@effected/walker"], build);
-			for (const engine of ENGINES) assert.notInclude(reached, engine, `${engine} (${build})`);
-		}
+		const reached = packagesReachedFrom(join(BUILT, "index.js"));
+		assert.include(reached, "effect", "the control: the root graph was walked");
+		assert.deepStrictEqual(kitPackages(reached), ["@effected/files", "@effected/walker"]);
+		for (const engine of ENGINES) assert.notInclude(reached, engine, engine);
 	});
 
 	it("lets each codec subpath reach its own engine and no other", () => {
-		for (const build of BUILDS) {
-			for (const { entry, engine } of SUBPATHS) {
-				const reached = packagesReachedFrom(join(build, `${entry}.js`));
-				assert.deepStrictEqual(kitPackages(reached), [engine], `${entry} (${build})`);
-			}
+		for (const { entry, engine } of SUBPATHS) {
+			const reached = packagesReachedFrom(join(BUILT, `${entry}.js`));
+			assert.deepStrictEqual(kitPackages(reached), [engine], entry);
 		}
 	});
 

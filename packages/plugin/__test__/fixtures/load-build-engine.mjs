@@ -2,6 +2,6 @@
 // which the bundler loads only for a build, is imported from where the bundler resolves it.
 import { createRequire } from "node:module";
 
-await import(new URL("../../../engine/dist/dev/pkg/build.js", import.meta.url).href);
+await import(new URL("../../../engine/dist/prod/npm/pkg/build.js", import.meta.url).href);
 const fromBundler = createRequire(new URL("../../../bundler/package.json", import.meta.url));
 await import(fromBundler.resolve("tsdown"));

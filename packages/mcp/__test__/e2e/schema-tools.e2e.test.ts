@@ -1,6 +1,6 @@
 // The built bin over real stdio: stdout is the JSON-RPC wire, and a config is arbitrary code running in the server's
 // process, so what it prints must not reach the wire. An in-process harness cannot see this, because `console.log`
-// there goes to the test runner. The root `globalSetup` rebuilds `dist/dev` before every run, so the bin is this tree's.
+// there goes to the test runner. The root `globalSetup` rebuilds `dist/prod` before every run, so the bin is this tree's.
 
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,7 +11,7 @@ import { McpProcess } from "@effected/mcp-kit/testing";
 import { Effect } from "effect";
 import { ChildProcess } from "effect/process";
 
-const BIN = resolve(import.meta.dirname, "../../dist/dev/pkg/bin/effected-mcp.js");
+const BIN = resolve(import.meta.dirname, "../../dist/prod/npm/pkg/bin/effected-mcp.js");
 const MODULES = resolve(import.meta.dirname, "../../node_modules");
 
 const scratch = mkdtempSync(join(tmpdir(), "effected-mcp-e2e-"));

@@ -1,6 +1,6 @@
 // The built bin over a real package: a copy of `packages/jsonc`, with real tsdown, tsgo and API Extractor. The copy sits
 // under this package's `dist` because its `catalog:` and `workspace:` specifiers need the real workspace above it. The
-// root `globalSetup` rebuilds `dist/dev` before every run, so the bin is this tree's.
+// root `globalSetup` rebuilds `dist/prod` before every run, so the bin is this tree's.
 
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 import { afterAll, assert, describe, it } from "@effect/vitest";
 
 const CLI = resolve(import.meta.dirname, "../..");
-const BIN = join(CLI, "dist/dev/pkg/bin/effected.js");
+const BIN = join(CLI, "dist/prod/npm/pkg/bin/effected.js");
 const JSONC = resolve(CLI, "../jsonc");
 
 mkdirSync(join(CLI, "dist"), { recursive: true });
