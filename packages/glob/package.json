@@ -33,7 +33,7 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
-		"@savvy-web/bundler": "^2.7.3",
+		"@savvy-web/bundler": "^2.7.4",
 		"@types/node": "catalog:build",
 		"effect": "catalog:effected",
 		"minimatch": "10.2.6",
