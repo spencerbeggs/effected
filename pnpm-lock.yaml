@@ -294,6 +294,15 @@ importers:
 
   .:
     devDependencies:
+      '@effect/platform-node':
+        specifier: catalog:effected
+        version: 4.1.2(effect@4.1.2)(redis@6.3.1)
+      '@effected/changesets':
+        specifier: workspace:*
+        version: link:packages/changesets/dist/dev/pkg
+      '@effected/workspaces':
+        specifier: workspace:*
+        version: link:packages/workspaces/dist/dev/pkg
       '@okfit/plugin':
         specifier: ^0.5.30
         version: 0.5.30(@effected/memfs@0.24.0(effect@4.1.2))(@types/react@19.3.0)(redis@6.3.1)
@@ -303,6 +312,9 @@ importers:
       '@vitest-agent/plugin':
         specifier: ^6.0.6
         version: 6.0.6(@effected/jsonc@0.24.0(effect@4.1.2))(@effected/toml@0.19.1(effect@4.1.2))(@effected/yaml@0.29.0(effect@4.1.2))(@types/react@19.3.0)(@vitest/coverage-istanbul@5.1.0)(@vitest/coverage-v8@5.1.0)(ink@8.0.0(@types/react@19.3.0)(react@19.3.1))(react@19.3.1)(redis@6.3.1)(vitest@5.1.0)
+      effect:
+        specifier: catalog:effected
+        version: 4.1.2
 
   packages/app:
     devDependencies:

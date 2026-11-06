@@ -20,10 +20,10 @@ sources:
     title: "The bundler research report and the owner's rulings"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T15:50:41Z
+  at: 2026-11-06T16:08:05Z
 integrity:
   generated:
-    body: c3ab94f01cf00f95
+    body: e6ed92c75ea269b6
 ---
 
 # @effected/changesets
@@ -32,7 +32,7 @@ integrity:
 
 `@effected/changesets` parses changeset files and `.changeset/config.json`, and plans a release from them: which packages a set of pending changesets bumps, to which versions, including the packages bumped only because a dependency moved.[^issue-1148] Each changeset file reads to its file name, its releases and its summary.[^issue-1131] Nothing in the package writes a changeset, versions a package or publishes one.
 
-It exists because `@savvy-web/tsdown-plugins` carries `@changesets/get-release-plan` at runtime to compute next versions, and `catalog:sync` reads the plan out of `changeset status --output`. The owner ruled that this package is created on the bundler branch, and that `@changesets/get-release-plan` stays only as a devDependency.[^spec]
+It exists because `@savvy-web/tsdown-plugins` carries `@changesets/get-release-plan` at runtime to compute next versions, and `catalog:sync` read the plan out of `changeset status --output`. The owner ruled that this package is created on the bundler branch, and that `@changesets/get-release-plan` stays only as a devDependency.[^spec]
 
 ## Tier and dependency posture
 
@@ -43,7 +43,7 @@ It exists because `@savvy-web/tsdown-plugins` carries `@changesets/get-release-p
 ## Consumers
 
 - [`@effected/bundler`](bundler.md) computes optimistic next versions for the meta bundle's manifest from the plan. This is the first consumer.
-- `catalog:sync`, documented in [the catalog sync interface](../interfaces/catalog-sync-cli.md), reads the release plan today through `changeset status --output`.
+- `catalog:sync`, documented in [the catalog sync interface](../interfaces/catalog-sync-cli.md), reads the release plan through `ReleasePlan.read`.
 - [silk-release-action](../consumers/silk-release-action.md) is a planned consumer; it has not adopted the package.
 
 Changeset lint rules are not part of this package yet. They wait on the markdown lint work tracked in issue 1030.

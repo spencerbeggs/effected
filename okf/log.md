@@ -29,6 +29,8 @@
 * Added The kit has one build target, and workspace links point at package roots
 * Added effected.toml is the only build config, and code enters through two data keys
 * Updated tsconfig-json
+* Updated Close a catalog membership gap
+* Updated The catalog:sync / catalog:check CLI
 
 ## 2026-11-05
 

@@ -272,8 +272,8 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 * {@link UnsupportedChangesetModeError} when a `fixed` or `linked` group is
 	 * non-empty. What the oracle rejects outright and this does not check is
 	 * planned, not refused: a changeset mixing skipped and released packages, a
-	 * public package depending on a skipped one, `privatePackages` with `tag` on
-	 * and `version` off, and an `ignore` entry matching no package.
+	 * public package depending on a skipped one, and `privatePackages` with `tag`
+	 * on and `version` off.
 	 *
 	 * @param input - The packages to plan, the pending changesets and the
 	 * config. {@link ReleasePlan.read} decides whether the workspace root is one

@@ -12,6 +12,10 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { ReleasePlan as ChangesetsPlan } from "@effected/changesets";
+import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
+import { Effect, Layer } from "effect";
 
 /** One upgrade CLI invocation: its exit code and whatever it wrote to stdout. */
 export interface UpgradeResult {
@@ -28,7 +32,7 @@ export interface SyncOptions {
 	readonly root?: string;
 	/** Override the upgrade invocation. Defaults to the real CLI. */
 	readonly run?: UpgradeRunner;
-	/** Override the `changeset status` invocation. Defaults to the real CLI. */
+	/** Override the release-plan read. Defaults to `@effected/changesets`. */
 	readonly status?: StatusRunner;
 	/** Where progress and gate output goes. Defaults to stdout; tests pass a sink. */
 	readonly write?: (text: string) => void;
@@ -384,38 +388,50 @@ export function membershipFailure(missing: readonly string[]): string {
 // the moment the release branch bumps it — reliably, on the one branch where
 // the catalog matters most (effected#542).
 //
-// `changeset status --output` already computes the true plan, ripples
-// included, so this asks it rather than reimplementing changesets' dependency
-// resolution.
+// `@effected/changesets` computes the true plan, ripples included, and its
+// tests hold it to `@changesets/get-release-plan`, so this asks it rather than
+// reimplementing changesets' dependency resolution.
 
 /** One package's next release version, as changesets computes it. */
 export type ReleasePlan = ReadonlyMap<string, string>;
 
-/** Runs `changeset status --output`. Injectable so tests need no changesets CLI. */
+/**
+ * Writes the release plan to `outputPath` as `{ releases: [{ name, type, newVersion }] }`.
+ * Injectable so tests need no workspace to plan.
+ */
 export type StatusRunner = (outputPath: string, cwd: string) => Promise<UpgradeResult>;
 
 const defaultStatusRunner: StatusRunner = (outputPath, cwd) =>
-	new Promise((resolve, reject) => {
-		const child = spawn("pnpm", ["exec", "changeset", "status", `--output=${outputPath}`], {
-			cwd,
-			stdio: ["ignore", "pipe", "ignore"],
-		});
-		let stdout = "";
-		child.stdout.setEncoding("utf8");
-		child.stdout.on("data", (chunk: string) => {
-			stdout += chunk;
-		});
-		child.on("error", reject);
-		child.on("close", (code) => resolve({ code: code ?? 1, stdout }));
-	});
+	ChangesetsPlan.read(cwd).pipe(
+		Effect.map((plan) => {
+			const releases = plan.releases.map(({ name, type, newVersion }) => ({ name, type, newVersion }));
+			writeFileSync(outputPath, JSON.stringify({ releases }));
+			return { code: 0, stdout: "" };
+		}),
+		// `releasePlan` carries on without a plan, so say here why there is none:
+		// otherwise a plan that cannot be read looks like no ripples at all.
+		Effect.catch((error) =>
+			Effect.sync(() => {
+				process.stderr.write(`catalog-sync: no release plan, ripples not checked: ${error.message}\n`);
+				return { code: 1, stdout: "" };
+			}),
+		),
+		Effect.provide(
+			WorkspaceDiscovery.layer({ cwd }).pipe(
+				Layer.provide(WorkspaceRoot.layer),
+				Layer.provideMerge(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
+			),
+		),
+		Effect.runPromise,
+	);
 
 /**
  * Every package changesets would release, and the version it would get.
  *
  * @remarks
- * Empty when there are no pending changesets — `changeset status` exits
- * non-zero in that case, which is not an error here: no changesets means no
- * ripples, so there is nothing for this to contribute.
+ * Empty when there are no pending changesets: no changesets means no ripples,
+ * so there is nothing for this to contribute. Also empty when the plan cannot
+ * be read; the runner reports why.
  */
 export async function releasePlan(root: string, run: StatusRunner = defaultStatusRunner): Promise<ReleasePlan> {
 	const dir = mkdtempSync(join(tmpdir(), "catalog-plan-"));

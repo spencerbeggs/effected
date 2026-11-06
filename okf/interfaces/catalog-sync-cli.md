@@ -17,7 +17,7 @@ sources:
     resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-01T21:43:51Z
+  at: 2026-11-06T16:08:05Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:14.366Z
@@ -29,7 +29,7 @@ verified:
     at: 2026-11-01T21:41:54Z
 integrity:
   generated:
-    body: cc849c6ab926fd7f
+    body: 2ead6f062e9d28ea
   verified:
     by: human:spencer
     at: 2026-11-01T21:41:54Z
@@ -99,7 +99,8 @@ on purpose:
   ripple, carrying no changeset of its own naming it. The upgrade CLI
   cannot see these either, since it resolves from `source: "workspace"`
   entries plus pending changesets and a ripple has neither. The sync
-  script instead asks `changeset status --output` for the true release
+  script instead asks `ReleasePlan.read` from
+  [`@effected/changesets`](../modules/changesets.md) for the true release
   plan, ripples included, and `sync` rewrites the affected entries'
   `range` and floors the `peer` patch under the `lock-minor` strategy.
 

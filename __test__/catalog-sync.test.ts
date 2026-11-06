@@ -311,7 +311,7 @@ describe("catalog membership gate", () => {
 });
 
 describe("dependency-ripple bumps", () => {
-	/** A `changeset status --output` double: writes the plan the real CLI would. */
+	/** A release-plan double: writes the plan the real read would. */
 	function planRunner(releases: readonly { name: string; newVersion: string; type?: string }[]): StatusRunner {
 		return async (outputPath) => {
 			writeFileSync(outputPath, JSON.stringify({ releases: releases.map((r) => ({ type: "patch", ...r })) }));

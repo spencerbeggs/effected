@@ -90,7 +90,7 @@ Builds run through turbo and `@savvy-web/bundler`; mechanics → `okf/modules/wo
 **That guarantee covers direct bumps; membership and dependency ripples each needed their own answer, and the two resolve oppositely.** The upgrade CLI walks the catalog literal, so a package absent from it is invisible to the sync and cannot be added by one, and a package bumped only as a dependency **ripple** carries no changeset naming it, so the CLI cannot see that either. `catalog:check` now fails on both, naming the affected packages. From there they part company:
 
 - **A membership gap is yours to close by hand**, at the `PnpmConfigPlugin(...)` call site — `catalog:sync` refuses before writing rather than guessing, because a new package's first release range is a judgement rather than something derivable from the workspace.
-- **A ripple gap closes itself.** `catalog:sync` reads the real release plan from `changeset status --output` and rewrites the affected entries, flooring each peer patch per `lock-minor`. Do not hand-edit one — the next sync overwrites it.
+- **A ripple gap closes itself.** `catalog:sync` reads the real release plan through `@effected/changesets` and rewrites the affected entries, flooring each peer patch per `lock-minor`. Do not hand-edit one — the next sync overwrites it.
 
 Two properties of that job surprise readers, and neither is a bug:
 

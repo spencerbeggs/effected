@@ -13,10 +13,10 @@ sources:
     resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-06T16:08:05Z
 integrity:
   generated:
-    body: ce8fe4915911a06e
+    body: b8c3e1009b279835
 ---
 
 # Close a catalog membership gap
@@ -69,8 +69,8 @@ its catalog entry at the old version even after the catalog already knows
 about the package (no membership gap, just stale version data for an
 already-known member).
 
-`catalog:sync` closes this on its own: it asks `changeset status
---output` for the real release plan, ripples included, and rewrites the
+`catalog:sync` closes this on its own: it asks `ReleasePlan.read` from
+`@effected/changesets` for the real release plan, ripples included, and rewrites the
 affected entries' `range`, flooring the `peer` patch under
 `lock-minor`.[^catalog-sync-script] **Never hand-edit a ripple entry** —
 the next `catalog:sync` run overwrites whatever you wrote, and a
