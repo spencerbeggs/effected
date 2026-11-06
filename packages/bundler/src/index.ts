@@ -30,6 +30,11 @@ export {
 } from "./config/EffectedConfigFile.js";
 export { merge } from "./config/merge.js";
 export { PluginLoadError, loadPlugins } from "./config/plugins.js";
+export type { ModuleExportNames, ReexportBarrelAnalysis } from "./dts/reexport-stub.js";
+export { analyzeReexportBarrel, collectExportNames, renderReexportStub } from "./dts/reexport-stub.js";
+export { findRelativeSpecifiers } from "./dts/relative-imports.js";
+export type { ResolvedTsconfig, ResolvedTsconfigOptions } from "./dts/resolved-tsconfig.js";
+export { buildResolvedTsconfig, writeDtsEmitTsconfig, writeResolvedTsconfig } from "./dts/resolved-tsconfig.js";
 export type { AmbientDtsEntry, DtsExportClass, ExtractAmbientOptions } from "./entries/ambient-dts.js";
 export {
 	ambientOutName,
@@ -44,6 +49,8 @@ export { createEntryName, extractEntries } from "./entries/extract.js";
 export type { PackageJsonEntriesOptions } from "./entries/package-json-entries.js";
 export { packageJsonEntries } from "./entries/package-json-entries.js";
 export { ConfigValidationError } from "./errors.js";
+export type { JsxConfig as ResolvedJsxConfig, TsconfigJsx } from "./jsx/config.js";
+export { readTsconfigJsx, resolveJsxConfig } from "./jsx/config.js";
 export type { BuildEmittedManifestOptions, EmitManifestOptions, TargetGroupRef } from "./manifest/emit-manifest.js";
 export { buildEmittedManifest, emitManifest, manifestNeedsCatalogResolution } from "./manifest/emit-manifest.js";
 export type { DualExports, ExeRewrite, Json, TransformManifestOptions } from "./manifest/transform.js";
