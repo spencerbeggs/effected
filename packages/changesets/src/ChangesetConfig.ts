@@ -25,9 +25,17 @@ export class ChangesetConfig extends Schema.Class<ChangesetConfig>("ChangesetCon
 	fixed: Groups.pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 	/** Groups of packages whose versions are kept in step. */
 	linked: Groups.pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
-	/** Packages that never release. */
+	/**
+	 * Packages that never bump: globs over the workspace's package names, with
+	 * `!` negation applying in order. A release plan can still list a matching
+	 * package as `none` when it depends on something in the plan.
+	 */
 	ignore: Schema.Array(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
-	/** The bump a dependent receives when an internal dependency bumps. */
+	/**
+	 * The smallest bump for which `changeset version` rewrites an internal
+	 * dependency range. It is not the bump a dependent receives: a release plan
+	 * always bumps a dependent `patch`.
+	 */
 	updateInternalDependencies: Schema.Literals(["patch", "minor"]).pipe(
 		Schema.withDecodingDefaultKey(Effect.succeed("patch" as const)),
 	),

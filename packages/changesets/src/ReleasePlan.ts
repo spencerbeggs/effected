@@ -2,9 +2,10 @@ import { posix } from "node:path";
 import { GlobPattern } from "@effected/glob";
 import type { InvalidVersionError } from "@effected/semver";
 import { Range, SemVer } from "@effected/semver";
-import type { WorkspacePackage } from "@effected/workspaces";
-import { WorkspaceDiscovery } from "@effected/workspaces";
-import { Effect, Result, Schema } from "effect";
+import type { WorkspaceRootNotFoundError } from "@effected/workspaces";
+import { WorkspaceDiscovery, WorkspaceDiscoveryError, WorkspacePackage } from "@effected/workspaces";
+import type { PlatformError } from "effect";
+import { Effect, FileSystem, Path, Result, Schema } from "effect";
 import type { BumpType } from "./BumpType.js";
 import { ChangesetConfig } from "./ChangesetConfig.js";
 import { UnknownPackageError, UnsupportedChangesetModeError } from "./errors.js";
@@ -112,7 +113,7 @@ const rippleType = (
 	release: Draft,
 	alwaysRipple: boolean,
 ): "patch" | "none" | undefined => {
-	if (release.oldVersion === undefined || release.newVersion === undefined) return undefined;
+	if (release.type === "none" || release.oldVersion === undefined || release.newVersion === undefined) return undefined;
 	let type: "patch" | "none" | undefined;
 	for (const [kind, specifier] of declaredRanges(dependent, dependency, release.oldVersion)) {
 		if (!alwaysRipple && satisfies(release.newVersion, specifier)) continue;
@@ -168,6 +169,34 @@ const unsafeOption = (config: ChangesetConfig, key: string): unknown => {
 	return typeof options === "object" && options !== null ? (options as Record<string, unknown>)[key] : undefined;
 };
 
+const LoneManifest = Schema.Struct({
+	name: Schema.NonEmptyString,
+	version: Schema.optionalKey(Schema.String),
+	private: Schema.optionalKey(Schema.Boolean),
+});
+
+/** The package of a repository with no workspace file, which discovery has no root for. */
+const readLonePackage = Effect.fnUntraced(function* (root: string, notFound: WorkspaceRootNotFoundError) {
+	const fs = yield* FileSystem.FileSystem;
+	const path = yield* Path.Path;
+	const packageJsonPath = path.join(root, "package.json");
+	const text = yield* fs
+		.readFileString(packageJsonPath)
+		.pipe(
+			Effect.catch(
+				(error): Effect.Effect<never, WorkspaceRootNotFoundError | PlatformError.PlatformError> =>
+					error.reason._tag === "NotFound" ? Effect.fail(notFound) : Effect.fail(error),
+			),
+		);
+	const invalid = (kind: "invalidJson" | "invalidShape") => (cause: unknown) =>
+		new WorkspaceDiscoveryError({ root, path: packageJsonPath, kind, cause });
+	const json = yield* Effect.try({ try: () => JSON.parse(text) as unknown, catch: invalid("invalidJson") });
+	const manifest = yield* Schema.decodeUnknownEffect(LoneManifest)(json).pipe(Effect.mapError(invalid("invalidShape")));
+	return [
+		WorkspacePackage.make({ ...manifest, path: root, packageJsonPath, relativePath: ".", workspaceRoot: root }),
+	] as ReadonlyArray<WorkspacePackage>;
+});
+
 /**
  * One package's place in a {@link ReleasePlan}.
  *
@@ -212,7 +241,9 @@ export class PlannedRelease extends Schema.Class<PlannedRelease>("PlannedRelease
  *   off (its default), or version-less. Naming one in a changeset does nothing, and it never
  *   bumps, but it is still listed as `none` when it depends on anything in the
  *   plan, whether or not the range holds, and it carries that listing onward
- *   to its own skipped dependents. A `none` entry ripples to nothing else.
+ *   to its own skipped dependents. A `none` entry bumps nothing: its version
+ *   does not move, so no range on it is checked, even with
+ *   `updateInternalDependents` set to `always`.
  * - `ignore` entries are globs over the workspace's names, with `!` negation
  *   applying in order.
  * - A bump a prerelease is already heading for completes it, as `semver.inc`
@@ -241,11 +272,12 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 * {@link UnsupportedChangesetModeError} when a `fixed` or `linked` group is
 	 * non-empty. What the oracle rejects outright and this does not check is
 	 * planned, not refused: a changeset mixing skipped and released packages, a
-	 * public package depending on a skipped one, and `privatePackages` with `tag`
-	 * on and `version` off.
+	 * public package depending on a skipped one, `privatePackages` with `tag` on
+	 * and `version` off, and an `ignore` entry matching no package.
 	 *
-	 * @param input - The workspace packages (without the workspace root), the
-	 * pending changesets and the config.
+	 * @param input - The packages to plan, the pending changesets and the
+	 * config. {@link ReleasePlan.read} decides whether the workspace root is one
+	 * of the packages.
 	 */
 	static assemble(input: {
 		readonly packages: ReadonlyArray<WorkspacePackage>;
@@ -332,14 +364,27 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 * Discover the workspace's packages, read its config and pending changesets,
 	 * and {@link ReleasePlan.assemble | assemble} the plan.
 	 *
+	 * `root` decides all three, whatever directory the `WorkspaceDiscovery` layer
+	 * was built from. The workspace root package is left out while other packages
+	 * exist. When there are none it is the package and is planned, including when
+	 * `root` has only a `package.json` and no workspace file. The oracle refuses
+	 * `packages: []` and patterns that match nothing; here they plan the root too,
+	 * because discovery reports them the same way. A root listed in `packages:`
+	 * alongside others stays out, where the oracle plans it. A root with a
+	 * catalog-only workspace file answers for itself, where the oracle climbs to
+	 * any enclosing workspace.
+	 *
 	 * @param root - The repository root.
 	 */
 	static readonly read = Effect.fn("ReleasePlan.read")(function* (root: string) {
 		const discovery = yield* WorkspaceDiscovery;
-		const discovered = yield* discovery.listPackages();
+		const discovered = yield* discovery
+			.listPackagesIn(root)
+			.pipe(Effect.catchTag("WorkspaceRootNotFoundError", (error) => readLonePackage(root, error)));
 		const config = yield* ChangesetConfig.read(root);
 		const changesets = yield* PendingChangesets.read(root);
-		const packages = discovered.filter((pkg) => !pkg.isRootWorkspace);
+		const members = discovered.filter((pkg) => !pkg.isRootWorkspace);
+		const packages = members.length > 0 ? members : discovered;
 		return yield* Effect.fromResult(ReleasePlan.assemble({ packages, changesets, config }));
 	});
 }

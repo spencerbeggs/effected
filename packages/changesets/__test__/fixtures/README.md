@@ -41,4 +41,9 @@ disagrees, work out which of the two moved before changing either.
 | `workspace-protocol-only` | `bumpVersionsWithWorkspaceProtocolOnly` removes the plain range's edge. |
 | `update-always` | `updateInternalDependents: always` ripples a satisfied range. |
 | `prerelease-versions` | A bump from a prerelease version follows `semver.inc`. |
+| `none-no-ripple-missed-range` | A `none` entry ripples nothing onward even when a dependent's range on it is unsatisfied. |
+| `none-no-ripple-caret` | The same `none` entry with a plain `workspace:^` dependent. |
+| `none-no-ripple-always` | The same, with `updateInternalDependents: always`. |
+| `single-package` | The root is the only package, so it is planned. The test copies this fixture to a temporary directory, with and without its catalog-only `pnpm-workspace.yaml`, because inside this repository the oracle climbs to this repository's root. |
+| `root-named-with-members` | A changeset naming the root is rejected while other packages exist. |
 | `unknown-package` | A changeset naming a package outside the workspace is rejected by both. |

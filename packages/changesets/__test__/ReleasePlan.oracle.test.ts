@@ -1,9 +1,12 @@
+import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getReleasePlan } from "@changesets/get-release-plan";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
 import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 import { ReleasePlan } from "../src/ReleasePlan.js";
 
 interface Projected {
@@ -35,15 +38,13 @@ const oracle = (root: string) =>
 			}),
 	);
 
-const ours = (root: string) =>
-	ReleasePlan.read(root).pipe(
-		Effect.provide(
-			WorkspaceDiscovery.layer({ cwd: root }).pipe(
-				Layer.provide(WorkspaceRoot.layer),
-				Layer.provideMerge(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
-			),
-		),
+const discovery = (cwd: string) =>
+	WorkspaceDiscovery.layer({ cwd }).pipe(
+		Layer.provide(WorkspaceRoot.layer),
+		Layer.provideMerge(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
 	);
+
+const ours = (root: string) => ReleasePlan.read(root).pipe(Effect.provide(discovery(root)));
 
 /**
  * Each case's expected `name -> type` pins what the fixture exists to exercise,
@@ -84,6 +85,9 @@ const cases: Record<string, Record<string, string>> = {
 	"reader-skips": { a: "patch" },
 	"workspace-protocol-only": { a: "minor", protocol: "patch" },
 	"update-always": { a: "patch", b: "patch" },
+	"none-no-ripple-missed-range": { a: "patch", b: "none" },
+	"none-no-ripple-caret": { a: "patch", b: "none" },
+	"none-no-ripple-always": { a: "patch", b: "none" },
 	"prerelease-versions": {
 		"major-pre": "major",
 		"minor-pre": "minor",
@@ -125,9 +129,68 @@ describe("ReleasePlan against @changesets/get-release-plan", () => {
 		Effect.gen(function* () {
 			const root = fixture("unknown-package");
 			const theirs = yield* Effect.exit(oracle(root));
-			assert.strictEqual(theirs._tag, "Failure");
+			assert.isTrue(Exit.isFailure(theirs) && Cause.pretty(theirs.cause).includes("not in the workspace"));
 			const mine = yield* Effect.flip(ours(root));
 			assert.strictEqual(mine._tag, "UnknownPackageError");
+		}),
+	);
+
+	// Outside any enclosing workspace: inside this repository the oracle climbs past
+	// a root with no package patterns and answers about this repository instead.
+	for (const [label, keepWorkspaceFile] of [
+		["a catalog-only workspace file", true],
+		["no workspace file", false],
+	] as const) {
+		it.effect(`plans the root as the only package with ${label}`, () =>
+			Effect.acquireUseRelease(
+				Effect.sync(() => {
+					const root = mkdtempSync(join(tmpdir(), "release-plan-"));
+					cpSync(fixture("single-package"), root, { recursive: true });
+					if (!keepWorkspaceFile) rmSync(join(root, "pnpm-workspace.yaml"));
+					return root;
+				}),
+				(root) =>
+					Effect.gen(function* () {
+						const theirs = project((yield* oracle(root)).releases);
+						assert.deepStrictEqual(
+							theirs.map((r) => [r.name, r.type]),
+							[["solo", "minor"]],
+						);
+						assert.deepStrictEqual(project((yield* ours(root)).releases), theirs);
+					}),
+				(root) => Effect.sync(() => rmSync(root, { recursive: true, force: true })),
+			),
+		);
+	}
+
+	it.effect("reports no workspace root for a directory with no package.json", () =>
+		Effect.acquireUseRelease(
+			Effect.sync(() => mkdtempSync(join(tmpdir(), "release-plan-"))),
+			(root) =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip(ours(root));
+					assert.strictEqual(error._tag, "WorkspaceRootNotFoundError");
+				}),
+			(root) => Effect.sync(() => rmSync(root, { recursive: true, force: true })),
+		),
+	);
+
+	it.effect("keeps the root out when other packages exist", () =>
+		Effect.gen(function* () {
+			const mine = yield* ours(fixture("minor-ripple-0x"));
+			assert.isFalse(mine.releases.some((r) => r.name === "minor-ripple-0x-root"));
+			const unknown = yield* Effect.flip(ours(fixture("root-named-with-members")));
+			assert.strictEqual(unknown._tag, "UnknownPackageError");
+			const theirs = yield* Effect.exit(oracle(fixture("root-named-with-members")));
+			assert.isTrue(Exit.isFailure(theirs) && Cause.pretty(theirs.cause).includes("not in the workspace"));
+		}),
+	);
+
+	it.effect("plans the workspace at root, not the one the layer was built from", () =>
+		Effect.gen(function* () {
+			const root = fixture("single-patch");
+			const mine = yield* ReleasePlan.read(root).pipe(Effect.provide(discovery(fixture("two-changesets-max"))));
+			assert.deepStrictEqual(project(mine.releases), project((yield* oracle(root)).releases));
 		}),
 	);
 
