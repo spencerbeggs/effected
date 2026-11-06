@@ -19,10 +19,10 @@ sources:
     title: "bundler: @effected/bundler and the top-level @effected/plugin package"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T19:28:10Z
+  at: 2026-11-06T19:54:32Z
 integrity:
   generated:
-    body: e8e213d14ac0e9f6
+    body: f54df9d6220aa167
 ---
 
 # The kit builds itself with the bundler running from source under tsx
@@ -36,6 +36,13 @@ The kit builds with `@savvy-web/bundler`, which depends on published copies of t
 - **The root `pnpm-workspace.yaml` sets `nodeOptions: --import=tsx`,** because pnpm 12 ignores `node-options` in `.npmrc`, and `tsx` is a root devDependency, so every `pnpm run` and turbo task can execute TypeScript across the workspace.[^plan]
 - **`@effected/plugin` is a root devDependency,** so `effected`, through its `src/bin/effected.ts` bin, runs from source in those same tasks. Each `@effected/*` import resolves through a [root workspace link](one-build-target-from-source-links.md) to that package's source.
 - **Published bins are rewritten to `dist` by the manifest transform,** as they are today. A consumer never runs source or needs `tsx`.
+
+**The source bins have two launch paths in this checkout.**
+
+- **A pnpm script or turbo task:** `nodeOptions` loads tsx before the bin starts.
+- **A direct run,** such as `node_modules/.bin/effected` or the plugin's `start-mcp.sh`: no `nodeOptions` applies, so the four source bins register tsx themselves when `import.meta.url` ends in `.ts`, and import everything else dynamically after that. The branch is dead in a built `.js` bin. tsx stays the workspace root's devDependency and no package declares it. Its specifier is computed, because rolldown folds a literal or a `const` and inlines tsx into the published package while `issues.json` stays clean. `packages/plugin/__test__/bin-launch.test.ts` pins both halves.
+
+**`nodeOptions` does not reach every child safely.** `--import=tsx` resolves from each process's cwd, and children inherit it, so a child that a pnpm script starts in a directory that cannot resolve tsx dies at startup. The root vitest config clears `NODE_OPTIONS` for tests, and a test that runs sibling source in a child loads tsx itself. Nothing shields a repo script that spawns a tool in a temp directory.
 
 The cost is the usual one for a self-hosting toolchain: a broken kit package can break the build of the kit. `savvy-web/systems` already lives with that. The published bundler is validated by the packed-install e2e, a real consumer install, which is where consumer behaviour should be proven.
 
