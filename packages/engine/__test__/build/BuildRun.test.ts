@@ -5,7 +5,8 @@ import { BuildReport, EffectedConfigError, TargetGroupReport, flattenIssues, ser
 import { JournalWatcher } from "@effected/jsonl";
 import type { MemoryFileSystemHandle, MemoryFileSystemSeed } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, FileSystem, Layer, Path, Schema, Stream } from "effect";
+import { Effect, FileSystem, Layer, Path, PlatformError, Schema, Stream } from "effect";
+import { TestClock } from "effect/testing";
 import type { BuildProgress, BuildRunDeps } from "../../src/build/BuildRun.js";
 import { BuildRun, NotAPackageError } from "../../src/build/BuildRun.js";
 import { BuildRunResult } from "../../src/build/BuildRunResult.js";
@@ -113,7 +114,12 @@ describe("BuildRun.run", () => {
 				seams: seamsFor(handle, {
 					writeIssues: ({ cwd, buildOk }) => {
 						const path = `${cwd}/dist/prod/issues.json`;
-						handle.write(path, serializeIssues(flattenIssues([report], { target: "prod", generatedAt: "t", buildOk })));
+						handle.write(
+							path,
+							serializeIssues(
+								flattenIssues([report], { target: "prod", generatedAt: "2026-11-06T12:00:00.000Z", buildOk }),
+							),
+						);
 						return path;
 					},
 				}),
@@ -185,6 +191,60 @@ describe("BuildRun.run", () => {
 			assert.strictEqual(result.verdict, "failed");
 			assert.strictEqual(result.issues.buildOk, false);
 			assert.include(result.issues.failure?.message ?? "", "issues.json");
+		}),
+	);
+
+	it.effect("a finished build whose artifact write failed never takes a pass from a previous build's file", () =>
+		Effect.gen(function* () {
+			yield* TestClock.setTime(Date.parse("2026-11-06T12:00:00.000Z"));
+			const stale = serializeIssues(
+				flattenIssues([], { target: "prod", generatedAt: "2026-11-06T11:59:59.999Z", buildOk: true }),
+			);
+			const handle = yield* volume({ ...workspace, [ISSUES_PATH]: stale });
+			const result = yield* run(handle, {
+				seams: seamsFor(handle, {
+					writeIssues: () => {
+						throw new Error("disk full");
+					},
+				}),
+			});
+
+			assert.strictEqual(result.verdict, "failed");
+			assert.strictEqual(result.issues.buildOk, false);
+			assert.include(result.issues.failure?.message ?? "", "older than this build");
+			assert.strictEqual(linesOf(handle, BUILD_JOURNAL)[0].data.buildOk, false);
+		}),
+	);
+
+	it.effect("an artifact stamped in the millisecond the build started is this build's", () =>
+		Effect.gen(function* () {
+			yield* TestClock.setTime(Date.parse("2026-11-06T12:00:00.000Z"));
+			const result = yield* run(yield* volume());
+
+			assert.strictEqual(result.verdict, "ok");
+		}),
+	);
+
+	it.effect("an IO failure under workspace discovery stays a PlatformError, not a config fault", () =>
+		Effect.gen(function* () {
+			const handle = yield* MemoryFileSystem.makeHandle(workspace, {
+				faults: (base) => ({
+					readFileString: (path, encoding) =>
+						path.endsWith("pnpm-workspace.yaml")
+							? Effect.fail(
+									PlatformError.systemError({
+										_tag: "PermissionDenied",
+										module: "FileSystem",
+										method: "readFileString",
+										pathOrDescriptor: path,
+									}),
+								)
+							: base.readFileString(path, encoding),
+				}),
+			});
+			const error = yield* Effect.flip(run(handle));
+
+			assert.strictEqual(error._tag, "PlatformError");
 		}),
 	);
 

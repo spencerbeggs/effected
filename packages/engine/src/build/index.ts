@@ -4,6 +4,8 @@
  * @packageDocumentation
  */
 
+export type { BuildIssues, BuildReport } from "@effected/bundler";
+export { renderCiAnnotations } from "@effected/bundler";
 export {
 	type BuildProgress,
 	BuildRun,

@@ -3,6 +3,7 @@
 // stay with the front ends.
 
 import type {
+	BuildIssues,
 	BuildReport,
 	BundlerSeams,
 	ConfigValidationError,
@@ -25,7 +26,17 @@ import type { AppendError, JournalWatcher } from "@effected/jsonl";
 import { NodeJournalWatcher } from "@effected/jsonl/node";
 import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import type { PlatformError } from "effect";
-import { DateTime, Effect, FileSystem, Layer, Option, Path, Predicate, Schema } from "effect";
+import {
+	DateTime,
+	Effect,
+	FileSystem,
+	Layer,
+	Option,
+	Path,
+	PlatformError as PlatformErrorModule,
+	Predicate,
+	Schema,
+} from "effect";
 import { BuildRunResult } from "./BuildRunResult.js";
 
 /**
@@ -68,7 +79,7 @@ export interface BuildRunInput {
 export type BuildProgress =
 	| { readonly _tag: "Started"; readonly package: string; readonly config: ResolvedEffectedConfig }
 	| { readonly _tag: "PassDone"; readonly pass: PassReport["id"]; readonly group: string }
-	| { readonly _tag: "Done"; readonly issues: typeof BuildIssuesSchema.Type };
+	| { readonly _tag: "Done"; readonly issues: BuildIssues };
 
 /**
  * What the process boundary supplies, and the test seams.
@@ -108,12 +119,28 @@ const readPackageName = Effect.fnUntraced(function* (cwd: string) {
 	return Predicate.hasProperty(manifest, "name") && Predicate.isString(manifest.name) ? manifest.name : "unknown";
 });
 
-/** The workspace root above `cwd`, which is `cwd` itself when there is none. */
-const workspaceRootOf = (cwd: string) =>
+/**
+ * The workspace root above `cwd`, which is `cwd` itself when there is none.
+ *
+ * @remarks
+ * Discovery wraps a failed read as a `WorkspaceDiscoveryError`. That is the disk's fault rather than the config's, so
+ * its `PlatformError` is unwrapped; a workspace file with the wrong content stays a config fault.
+ */
+const workspaceRootOf = (
+	cwd: string,
+): Effect.Effect<string, EffectedConfigError | PlatformError.PlatformError, WorkspaceDiscovery> =>
 	WorkspaceDiscovery.use((discovery) => discovery.infoIn(cwd)).pipe(
 		Effect.map((info) => info.root),
-		Effect.catchTag("WorkspaceRootNotFoundError", () => Effect.succeed(cwd)),
-		Effect.mapError((error) => new EffectedConfigErrorClass({ path: cwd, reason: error.message })),
+		Effect.catchTags({
+			WorkspaceRootNotFoundError: () => Effect.succeed(cwd),
+			WorkspaceDiscoveryError: (error) =>
+				Effect.fail(
+					error.cause instanceof PlatformErrorModule.PlatformError
+						? error.cause
+						: new EffectedConfigErrorClass({ path: error.path, reason: error.message }),
+				),
+			WorkspacePatternError: (error) => Effect.fail(new EffectedConfigErrorClass({ path: cwd, reason: error.message })),
+		}),
 	);
 
 /** How a build ended, success or crash alike: what it recorded, and where its artifact should be. */
@@ -129,14 +156,16 @@ const decodeIssues = Schema.decodeUnknownEffect(Schema.fromJsonString(BuildIssue
  * The build's `issues.json`, or the same document rebuilt from the report when it cannot stand for this build.
  *
  * @remarks
- * The bundler swallows a failed artifact write, so after a crash the file on disk may be a previous build's pass:
- * a crash never takes `buildOk: true` from it. A finished build whose artifact cannot be read has no gate a reader
- * could trust, so that is a failure too.
+ * The bundler swallows a failed artifact write, so the file on disk may be a previous build's. One stamped before this
+ * build started is therefore never read as its answer, and after a crash neither is a `buildOk: true`. A finished build
+ * with no artifact of its own has no gate a reader could trust, so that is a failure too.
  */
-const readIssues = Effect.fnUntraced(function* (outcome: BuildOutcome, packageName: string) {
+const readIssues = Effect.fnUntraced(function* (outcome: BuildOutcome, packageName: string, startedAt: number) {
 	const fs = yield* FileSystem.FileSystem;
 	const artifact = yield* fs.readFileString(outcome.issuesPath).pipe(Effect.flatMap(decodeIssues), Effect.option);
-	if (Option.isSome(artifact) && (Option.isNone(outcome.crash) || !artifact.value.buildOk)) {
+	// `>=` rather than `<` on the negative, so a stamp that does not parse is not this build's either.
+	const fresh = Option.isSome(artifact) && Date.parse(artifact.value.generatedAt) >= startedAt;
+	if (fresh && (Option.isNone(outcome.crash) || !artifact.value.buildOk)) {
 		return artifact.value;
 	}
 	const issues = flattenIssues([outcome.report], {
@@ -145,10 +174,10 @@ const readIssues = Effect.fnUntraced(function* (outcome: BuildOutcome, packageNa
 		buildOk: false,
 		failure: Option.getOrElse(outcome.crash, () => ({
 			name: "BuildRunError",
-			message: `the build finished but ${outcome.issuesPath} could not be read`,
+			message: `the build finished but ${outcome.issuesPath} ${Option.isSome(artifact) ? "is older than this build" : "could not be read"}`,
 		})),
 	});
-	return { ...issues, package: packageName } satisfies typeof BuildIssuesSchema.Type;
+	return { ...issues, package: packageName } satisfies BuildIssues;
 });
 
 /**
@@ -194,6 +223,7 @@ export class BuildRun {
 		});
 		yield* onProgress?.({ _tag: "Started", package: packageName, config: resolved }) ?? Effect.void;
 
+		const startedAt = DateTime.toEpochMillis(yield* DateTime.now);
 		const outcome: BuildOutcome = yield* Bundler.build({
 			cwd,
 			config: build,
@@ -228,7 +258,7 @@ export class BuildRun {
 			}
 		}
 
-		const issues = yield* readIssues(outcome, packageName);
+		const issues = yield* readIssues(outcome, packageName, startedAt);
 		const journals = Layer.mergeAll(BuildJournal.layerAt(root), IssueJournal.layerAt(root)).pipe(
 			Layer.provide(deps.journalWatcher ?? NodeJournalWatcher.layer),
 		);

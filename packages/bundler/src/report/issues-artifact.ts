@@ -46,9 +46,9 @@ export interface BuildIssues {
 		/** The error message, truncated to 2000 characters. */
 		message: string;
 	};
-	warnings: PlainDiagnostic[];
-	errors: PlainDiagnostic[];
-	suppressed: PlainDiagnostic[];
+	warnings: ReadonlyArray<PlainDiagnostic>;
+	errors: ReadonlyArray<PlainDiagnostic>;
+	suppressed: ReadonlyArray<PlainDiagnostic>;
 }
 
 /**

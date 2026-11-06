@@ -546,6 +546,9 @@ importers:
       '@effect/vitest':
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
+      '@effected/jsonl':
+        specifier: workspace:*
+        version: link:../jsonl/dist/dev/pkg
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg
@@ -1303,6 +1306,9 @@ importers:
       '@effect/vitest':
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
+      '@effected/jsonl':
+        specifier: workspace:*
+        version: link:../jsonl/dist/dev/pkg
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs/dist/dev/pkg

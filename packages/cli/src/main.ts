@@ -10,10 +10,12 @@ import { CliAudience, CliLogger, CliRuntime } from "@effected/cli-kit";
 import type { Distribution } from "@effected/kit";
 import type { Layer } from "effect";
 import type { CliOutput } from "effect/cli";
+import type { CommandDeps } from "./commands/root.js";
 import { makeRootCommand } from "./commands/root.js";
-import type { SchemaCommandDeps } from "./commands/schema/execute.js";
 import { CLI_VERSION } from "./version.js";
 
+export type { PackageCommandDeps } from "./commands/package/execute.js";
+export type { CommandDeps } from "./commands/root.js";
 export type { SchemaCommandDeps } from "./commands/schema/execute.js";
 
 /**
@@ -58,7 +60,7 @@ const logger = CliLogger.layer({ stderrFrom: "All" });
  *
  * @public
  */
-export const run = <RP, EP>(options: MainOptions, deps: SchemaCommandDeps, platform: Layer.Layer<RP, EP>) =>
+export const run = <RP, EP>(options: MainOptions, deps: CommandDeps, platform: Layer.Layer<RP, EP>) =>
 	CliRuntime.main(CliAudience.run(makeRootCommand(deps), { version: CLI_VERSION }), {
 		platform,
 		logger,
@@ -78,5 +80,7 @@ export const run = <RP, EP>(options: MainOptions, deps: SchemaCommandDeps, platf
  */
 export const main = (options: MainOptions = {}): void => {
 	// The ONLY place the process is read for the command tree.
-	NodeRuntime.runMain(run(options, { cwd: process.cwd() }, NodeServices.layer));
+	NodeRuntime.runMain(
+		run(options, { cwd: process.cwd(), ci: Boolean(process.env.CI || process.env.GITHUB_ACTIONS) }, NodeServices.layer),
+	);
 };

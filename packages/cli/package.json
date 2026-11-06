@@ -49,6 +49,7 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
+		"@effected/jsonl": "workspace:*",
 		"@effected/memfs": "workspace:*",
 		"@effected/schemastore": "workspace:*",
 		"@savvy-web/bundler": "^2.7.4",

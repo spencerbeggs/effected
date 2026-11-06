@@ -46,6 +46,7 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
+		"@effected/jsonl": "workspace:*",
 		"@effected/memfs": "workspace:*",
 		"@effected/schemastore": "workspace:*",
 		"@effected/workspaces": "workspace:*",
