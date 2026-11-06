@@ -24,10 +24,10 @@ sources:
     title: "The bundler research report and the owner's rulings"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T15:28:18Z
+  at: 2026-11-06T15:31:37Z
 integrity:
   generated:
-    body: 7f2a6f68189a88a3
+    body: b805731e1d192e6e
 ---
 
 # @effected/bundler
@@ -43,6 +43,7 @@ It exists to end a loop. The kit built with a tool that depended on the kit, so 
 [Integrated tier](../glossary/library-tier.md): it imports tsdown, rolldown, `rolldown-plugin-dts`, `@microsoft/api-extractor` and `@tsdown/exe` at runtime. It stands on kit libraries rather than hand-rolling what they own, among them [`config-file`](config-file.md) and [`toml`](toml.md) for its config and [`jsonl`](jsonl.md) for its journals.
 
 - [`@effected/changesets`](changesets.md) is a `workspace:*` dependency, published exact, and so is this package under [`@effected/engine`](engine.md), per [the pin chain](../conventions/peer-dependency-discipline.md#cross-effected-dependencies).
+- `effect` is a peerDependency from `catalog:effected:peers` with a devDependency from `catalog:effected`, like every kit package; the systems bundler's regular-dependency choice is not carried over, because [the one-resolved-effect-copy rule](../conventions/one-resolved-effect-copy.md) needs the consumer's copy.
 - `typescript` is a peerDependency, from `catalog:build:peers`. This package is [the only one in the kit that peers it](../conventions/typescript-stays-in-the-bundler.md). API Extractor keeps its own bundled TypeScript 6.
 
 ## Module layout
