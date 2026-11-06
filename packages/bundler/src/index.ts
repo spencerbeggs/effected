@@ -108,7 +108,19 @@ export type {
 } from "./meta/config.js";
 export { normalizeMetaOptions } from "./meta/config.js";
 export { ManifestSource, decodeManifestSource } from "./meta/ManifestSource.js";
+export { rewriteMetaVersions } from "./meta/optimistic.js";
+export type { PortableTsconfig, ResolvedCompilerOptions } from "./meta/tsconfig-resolver.js";
+export { resolvePortableTsconfig } from "./meta/tsconfig-resolver.js";
 export type { OgImageGenerator, OgImageInfo, TsdoctorMetaOptions } from "./meta/tsdoctor-config.js";
+export type { ComposeManifestInput, ManifestRepository, ManifestTarget } from "./meta/tsdoctor-manifest.js";
+export {
+	composeTsdoctorManifest,
+	githubOwnerRepo,
+	ogImageInfoOf,
+	registriesFromTargets,
+} from "./meta/tsdoctor-manifest.js";
+export type { TsdoctorSources } from "./meta/tsdoctor-source.js";
+export { TsdoctorSourceError, loadTsdoctorSources } from "./meta/tsdoctor-source.js";
 export type {
 	BuildTargetGroupsOptions,
 	CssOptions,
