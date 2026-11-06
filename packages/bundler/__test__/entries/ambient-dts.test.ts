@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/entry/ambient-dts.test.ts on 2026-11-06
 // packages/bundler/__test__/entries/ambient-dts.test.ts
 import { assert, describe, it } from "@effect/vitest";
 import {

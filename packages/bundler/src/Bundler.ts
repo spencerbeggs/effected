@@ -21,6 +21,9 @@ import type { JsxConfig as ResolvedJsxConfig, TsconfigJsx } from "./jsx/config.j
 import { readTsconfigJsx, resolveJsxConfig } from "./jsx/config.js";
 import { buildEmittedManifest } from "./manifest/emit-manifest.js";
 import type { MetaOptions } from "./meta/config.js";
+import type { GenerateMetaOptions, MetaResult } from "./meta/generate.js";
+import type { RunMetaPassOptions } from "./meta/run-pass.js";
+import { tsdoctorMetaOptionsOf } from "./meta/tsdoctor-config.js";
 import type { BuildTargetGroupsOptions, CssOptions, EntryOverride } from "./passes/build-target-groups.js";
 import { buildTargetGroups as realBuildTargetGroups } from "./passes/build-target-groups.js";
 import { normalizeLooseFiles } from "./passes/loose-files.js";
@@ -50,30 +53,6 @@ export interface BundlerPackageJson {
 }
 
 /**
- * What the meta pass is handed: the facts it needs to write `dist/prod/<group>/meta` for every group.
- *
- * @public
- */
-export interface BundlerMetaPassOptions {
-	readonly cwd: string;
-	readonly packageName: string;
-	readonly tsconfigPath: string;
-	readonly groups: ReadonlyArray<BuildGroupSpec>;
-	readonly entries: Record<string, string>;
-	readonly exportsMap: Record<string, string> | undefined;
-	readonly overrides: PackageBuildConfig["overrides"];
-	readonly meta: MetaOptions;
-	readonly tsdoctor: TsdoctorConfig | undefined;
-	readonly collector: BuildCollector;
-	readonly ci: boolean;
-	readonly targets?: ReadonlyArray<{ group: string; id: string; registry: string }> | undefined;
-	/** Replaces the API Extractor run. Forwarded only when the caller set it. */
-	readonly generateMeta?: BundlerSeams["generateMeta"];
-	/** Replaces the changeset-backed next-version read. Forwarded only when the caller set it. */
-	readonly resolveNextVersions?: BundlerSeams["resolveNextVersions"];
-}
-
-/**
  * What the SEA compile is handed: one binary spec list and the directory it writes to.
  *
  * @public
@@ -97,14 +76,9 @@ export interface BundlerSeams {
 	/** The JS and declaration passes. */
 	readonly buildTargetGroups: (options: BuildTargetGroupsOptions) => Promise<void>;
 	/** The meta pass, once per build. */
-	readonly runMetaPass: (options: BundlerMetaPassOptions) => Promise<void>;
-	/**
-	 * The API Extractor run inside the real meta pass.
-	 *
-	 * @remarks
-	 * The parameter is `never` so any fake assigns to it; the meta pass owns the option shape.
-	 */
-	readonly generateMeta: (options: never) => Promise<unknown>;
+	readonly runMetaPass: (options: RunMetaPassOptions) => Promise<void>;
+	/** The API Extractor run inside the real meta pass. */
+	readonly generateMeta: (options: GenerateMetaOptions) => Promise<MetaResult>;
 	/** The optimistic next-version read inside the real meta pass. */
 	readonly resolveNextVersions: (cwd: string) => Promise<{ readonly versions: ReadonlyMap<string, string> }>;
 	/** The SEA compile. */
@@ -165,10 +139,9 @@ export class BundlerBuildResult extends Schema.Class<BundlerBuildResult>("Bundle
 	targetsPath: Schema.UndefinedOr(Schema.String),
 }) {}
 
-// Phase 3 swaps this one binding for `(o) => import("./meta/run-pass.js").then((m) => m.runMetaPass(o))`.
-const defaultRunMetaPass: BundlerSeams["runMetaPass"] = async () => {
-	throw new Error("the meta pass is not ported yet");
-};
+// Loaded on first use: the meta pass reaches API Extractor and its own TypeScript, which nothing else here needs.
+const defaultRunMetaPass: BundlerSeams["runMetaPass"] = (options) =>
+	import("./meta/run-pass.js").then((module) => module.runMetaPass(options));
 
 // Phase 4 swaps this one binding for `(o) => import("./exe/build.js").then((m) => m.runExeBuild(o))`.
 const defaultRunExeBuild: BundlerSeams["runExeBuild"] = async () => {
@@ -351,8 +324,14 @@ async function runBuild(
 		const exportsMap = pkg.exports as Record<string, string> | undefined;
 		const publishTargets = readPublishTargets(pkg);
 		const osCpu = { os: (pkg.os as string[] | undefined) ?? [], cpu: (pkg.cpu as string[] | undefined) ?? [] };
+		// "auto" resolves here, against `ci`: left for the meta pass, it would read the process environment instead.
 		const meta: MetaOptions | undefined =
-			config.meta === false ? undefined : { optimistic: config.meta.optimistic, tsdoc: config.meta.tsdoc };
+			config.meta === false
+				? undefined
+				: {
+						optimistic: config.meta.optimistic === "auto" ? !options.ci : config.meta.optimistic,
+						tsdoc: config.meta.tsdoc,
+					};
 		const hasLooseFiles = Object.keys(config.looseFiles).length > 0;
 
 		// Fast-fail config validation, before any build work. An untouched meta table is not a request for a model:
@@ -471,6 +450,7 @@ async function runBuild(
 		// `emitDts: false` skipped writing them.
 		if (meta !== undefined && config.emitDts && (config.exe === undefined || hasJsEntries)) {
 			progress.phase = "meta";
+			const tsdoctor = options.tsdoctor !== undefined ? tsdoctorMetaOptionsOf(options.tsdoctor) : undefined;
 			await (seams.runMetaPass ?? defaultRunMetaPass)({
 				cwd,
 				packageName,
@@ -479,8 +459,7 @@ async function runBuild(
 				entries,
 				exportsMap,
 				overrides: config.overrides,
-				meta,
-				tsdoctor: options.tsdoctor,
+				meta: { ...meta, ...(tsdoctor !== undefined ? { tsdoctor } : {}) },
 				collector,
 				ci: options.ci,
 				targets: resolution.targets,

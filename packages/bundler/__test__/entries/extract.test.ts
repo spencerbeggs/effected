@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/entry/extract.test.ts on 2026-11-06
 // packages/bundler/__test__/entries/extract.test.ts
 import { assert, describe, it } from "@effect/vitest";
 import { extractEntries } from "../../src/entries/extract.js";

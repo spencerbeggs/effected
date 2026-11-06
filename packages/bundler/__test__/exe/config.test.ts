@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/exe/config.test.ts on 2026-11-06
 import { assert, describe, it } from "@effect/vitest";
 import { normalizeExeOptions } from "../../src/exe/config.js";
 

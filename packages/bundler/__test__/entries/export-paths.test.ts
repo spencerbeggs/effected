@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/meta/run-pass.test.ts (deriveExportPaths) on 2026-11-06
 import { assert, describe, it } from "@effect/vitest";
 import { deriveExportPaths } from "../../src/entries/export-paths.js";
 

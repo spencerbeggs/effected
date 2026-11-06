@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/jsx/config.test.ts on 2026-11-06
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

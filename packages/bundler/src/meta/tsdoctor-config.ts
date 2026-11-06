@@ -1,3 +1,4 @@
+import type { TsdoctorConfig } from "../config/BuildConfig.js";
 import type { OpenGraphImage, RegistryRef } from "./BundleManifest.js";
 
 /**
@@ -60,4 +61,30 @@ export interface TsdoctorMetaOptions {
 		| undefined;
 	/** Registries; `false` disables the default derived from `targets.json`. */
 	readonly registries?: ReadonlyArray<RegistryRef> | false | undefined;
+}
+
+/**
+ * The options the meta pass takes, from the decoded `[package.tsdoctor]` table. The table names a renderer, and the
+ * caller passes the generator it resolved to; a table that asks for none needs none.
+ */
+export function tsdoctorMetaOptionsOf(config: TsdoctorConfig, generate?: OgImageGenerator): TsdoctorMetaOptions {
+	const { name, tagline, description, registries, openGraph } = config;
+	return {
+		...(name !== undefined ? { name } : {}),
+		...(tagline !== undefined ? { tagline } : {}),
+		...(description !== undefined ? { description } : {}),
+		...(registries !== undefined
+			? { registries: registries === false ? false : registries.map((r) => ({ ...r })) }
+			: {}),
+		...(openGraph !== undefined
+			? {
+					openGraph: {
+						...(openGraph.images !== undefined ? { images: openGraph.images.map((image) => ({ ...image })) } : {}),
+						...(openGraph.themeColor !== undefined ? { themeColor: openGraph.themeColor } : {}),
+						...(openGraph.cacheSalt !== undefined ? { cacheSalt: openGraph.cacheSalt } : {}),
+						...(generate !== undefined ? { generate } : {}),
+					},
+				}
+			: {}),
+	};
 }

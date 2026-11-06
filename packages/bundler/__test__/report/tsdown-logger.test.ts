@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/report/tsdown-logger.test.ts on 2026-11-06
 import { assert, describe, it } from "@effect/vitest";
 import { BuildCollector } from "../../src/report/collector.js";
 import { createTsdownLogger } from "../../src/report/tsdown-logger.js";

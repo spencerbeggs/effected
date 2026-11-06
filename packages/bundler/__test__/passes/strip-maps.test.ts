@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/build/strip-maps.test.ts on 2026-11-06
 // packages/bundler/__test__/build/strip-maps.test.ts
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";

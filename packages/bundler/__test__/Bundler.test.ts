@@ -1,19 +1,16 @@
+// Ported from savvy-web/systems packages/bundler/__test__/run*.test.ts on 2026-11-06, with seams in place of argv targets
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, assert, describe, it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
-import type {
-	BundlerBuildOptions,
-	BundlerExeBuildOptions,
-	BundlerMetaPassOptions,
-	BundlerPackageJson,
-	BundlerSeams,
-} from "../src/Bundler.js";
+import type { BundlerBuildOptions, BundlerExeBuildOptions, BundlerPackageJson, BundlerSeams } from "../src/Bundler.js";
 import { Bundler } from "../src/Bundler.js";
 import { BundlerError } from "../src/BundlerError.js";
-import { PackageBuildConfig } from "../src/config/BuildConfig.js";
+import { PackageBuildConfig, TsdoctorConfig } from "../src/config/BuildConfig.js";
 import { ConfigValidationError } from "../src/errors.js";
+import type { GenerateMetaOptions } from "../src/meta/generate.js";
+import type { RunMetaPassOptions } from "../src/meta/run-pass.js";
 import type { BuildTargetGroupsOptions } from "../src/passes/build-target-groups.js";
 import { buildTargetGroups } from "../src/passes/build-target-groups.js";
 import type { BuildReport } from "../src/report/schema.js";
@@ -51,7 +48,7 @@ const harness = (input: {
 	const builds: BuildTargetGroupsOptions[] = [];
 	const issues: IssuesCall[] = [];
 	const bindings: string[] = [];
-	const metas: BundlerMetaPassOptions[] = [];
+	const metas: RunMetaPassOptions[] = [];
 	const exes: BundlerExeBuildOptions[] = [];
 	const tsconfigs: Array<{ cwd: string; jsx: unknown }> = [];
 	const options: BundlerBuildOptions = {
@@ -746,13 +743,13 @@ describe("Bundler.build meta pass", () => {
 			const h = harness({ config: { meta: {} }, options: { ci: true, tsdoctor } });
 			yield* Bundler.build(h.options);
 			assert.strictEqual(h.metas.length, 1);
-			const meta = h.metas[0] as BundlerMetaPassOptions;
+			const meta = h.metas[0] as RunMetaPassOptions;
 			assert.strictEqual(meta.ci, true);
 			assert.strictEqual(meta.packageName, "base");
 			assert.strictEqual(meta.tsconfigPath, "/fake/tsconfig.json");
 			assert.deepStrictEqual(meta.groups, [{ id: "npm", name: "base" }]);
 			assert.deepStrictEqual(meta.entries, { index: "./src/index.ts" });
-			assert.strictEqual(meta.meta.optimistic, "auto");
+			assert.strictEqual(meta.meta.optimistic, false);
 			assert.deepStrictEqual(
 				meta.targets?.map((t) => t.group),
 				["npm"],
@@ -799,7 +796,7 @@ describe("Bundler.build meta pass", () => {
 
 	it.effect("forwards the generateMeta and resolveNextVersions seams only when set", () =>
 		Effect.gen(function* () {
-			const generateMeta = async () => ({});
+			const generateMeta = async () => ({ apiJsonPath: "x", apiJsonFilename: "x" });
 			const resolveNextVersions = async () => ({ versions: new Map<string, string>() });
 			const set = harness({ config: { meta: {} }, seams: { generateMeta, resolveNextVersions } });
 			yield* Bundler.build(set.options);
@@ -848,14 +845,126 @@ describe("Bundler.build meta pass", () => {
 		}),
 	);
 
-	it.effect("fails phase meta until the real meta pass is ported", () =>
+	it.effect("hands the meta pass the decoded tsdoctor table", () =>
 		Effect.gen(function* () {
-			const h = harness({ config: { meta: {} } });
-			const { runMetaPass: _dropped, ...seams } = h.options.seams ?? {};
-			const error = yield* Effect.flip(Bundler.build({ ...h.options, seams }));
-			assert.instanceOf(error, BundlerError);
-			assert.strictEqual(error.phase, "meta");
-			assert.match(error.message, /not ported yet/);
+			const tsdoctor = Schema.decodeUnknownSync(TsdoctorConfig)({ tagline: "Every shape", registries: false });
+			const h = harness({ config: { meta: {} }, options: { tsdoctor } });
+			yield* Bundler.build(h.options);
+			assert.deepStrictEqual(h.metas[0]?.meta.tsdoctor, { tagline: "Every shape", registries: false });
+		}),
+	);
+
+	// The real meta pass over an injected API Extractor run, from the upstream run-meta cases.
+	const overRealPass = (input: Parameters<typeof harness>[0]) => {
+		const generated: GenerateMetaOptions[] = [];
+		const nextVersionReads: string[] = [];
+		const h = harness({
+			...input,
+			seams: {
+				generateMeta: async (o) => {
+					generated.push(o);
+					return { apiJsonPath: "x", apiJsonFilename: "x" };
+				},
+				resolveNextVersions: async (cwd) => {
+					nextVersionReads.push(cwd);
+					return { versions: new Map([["base", "1.0.0"]]) };
+				},
+				...input.seams,
+			},
+		});
+		const { runMetaPass: _real, ...seams } = h.options.seams ?? {};
+		return { options: { ...h.options, seams }, h, generated, nextVersionReads };
+	};
+	const targeted = (targets: unknown): BundlerPackageJson => ({
+		name: "base",
+		version: "1.0.0",
+		exports: { ".": "./src/index.ts" },
+		publishConfig: { targets },
+	});
+
+	it.effect("reaches the real pass by default, and calls generateMeta once for a config that never mentions meta", () =>
+		Effect.gen(function* () {
+			const run = overRealPass({ options: { config: decodeConfig({}) } });
+			yield* Bundler.build(run.options);
+			assert.strictEqual(run.generated.length, 1);
+			assert.strictEqual(run.generated[0]?.dtsDir, "/abs/pkg/dist/prod/npm/pkg");
+			assert.strictEqual(run.generated[0]?.aeInputDir, "/abs/pkg/dist/prod/npm/declarations");
+		}),
+	);
+
+	it.effect("runs generateMeta once per prod group", () =>
+		Effect.gen(function* () {
+			const run = overRealPass({ pkg: targeted({ npm: true, github: "@scope/base-gh" }), config: { meta: {} } });
+			yield* Bundler.build(run.options);
+			assert.deepStrictEqual(run.generated.map((g) => g.outMetaDir).sort(), [
+				"/abs/pkg/dist/prod/github/meta",
+				"/abs/pkg/dist/prod/npm/meta",
+			]);
+		}),
+	);
+
+	it.effect("builds the meta of a group not named after the package", () =>
+		Effect.gen(function* () {
+			const run = overRealPass({ pkg: targeted({ github: "@scope/x" }), config: { meta: {} } });
+			yield* Bundler.build(run.options);
+			assert.strictEqual(run.generated.length, 1);
+			assert.include(run.generated[0]?.dtsDir ?? "", "github");
+		}),
+	);
+
+	it.effect("rewrites versions when optimistic is on", () =>
+		Effect.gen(function* () {
+			const run = overRealPass({ config: { meta: { optimistic: true } }, options: { ci: true } });
+			yield* Bundler.build(run.options);
+			assert.deepStrictEqual(run.nextVersionReads, ["/abs/pkg"]);
+			assert.strictEqual(run.generated[0]?.manifestTransform?.({ name: "base", version: "0.0.0" }).version, "1.0.0");
+		}),
+	);
+
+	it.effect("does not read next versions when optimistic is off", () =>
+		Effect.gen(function* () {
+			const run = overRealPass({ config: { meta: { optimistic: false } }, options: { ci: false } });
+			yield* Bundler.build(run.options);
+			assert.deepStrictEqual(run.nextVersionReads, []);
+			assert.isUndefined(run.generated[0]?.manifestTransform);
+		}),
+	);
+
+	// Whichever way the process environment says, because `ci` is the only input: a CI-set environment would pass the
+	// first case for the wrong reason, and an unset one the second.
+	it.effect("resolves an auto optimistic setting from the ci option, never the environment", () =>
+		Effect.gen(function* () {
+			const saved = { CI: process.env.CI, GITHUB_ACTIONS: process.env.GITHUB_ACTIONS };
+			yield* Effect.acquireUseRelease(
+				Effect.void,
+				() =>
+					Effect.gen(function* () {
+						process.env.CI = "true";
+						const local = overRealPass({ config: { meta: {} }, options: { ci: false } });
+						yield* Bundler.build(local.options);
+						assert.deepStrictEqual(local.nextVersionReads, ["/abs/pkg"]);
+						delete process.env.CI;
+						delete process.env.GITHUB_ACTIONS;
+						const ci = overRealPass({ config: { meta: {} }, options: { ci: true } });
+						yield* Bundler.build(ci.options);
+						assert.deepStrictEqual(ci.nextVersionReads, []);
+					}),
+				() =>
+					Effect.sync(() => {
+						for (const [key, value] of Object.entries(saved)) {
+							if (value === undefined) delete process.env[key];
+							else process.env[key] = value;
+						}
+					}),
+			);
+		}),
+	);
+
+	it.effect("forwards ci to the API Extractor run", () =>
+		Effect.gen(function* () {
+			const run = overRealPass({ config: { meta: {} }, options: { ci: true } });
+			yield* Bundler.build(run.options);
+			assert.strictEqual(run.generated[0]?.ci, true);
 		}),
 	);
 

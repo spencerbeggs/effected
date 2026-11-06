@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/config-validation/validator.test.ts on 2026-11-06
 import { assert, layer } from "@effect/vitest";
 import { Effect } from "effect";
 import type { ValidationInput } from "../../src/config-validation/ConfigValidator.js";

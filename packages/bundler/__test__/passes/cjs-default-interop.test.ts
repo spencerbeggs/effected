@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/build/cjs-default-interop.test.ts on 2026-11-06
 // packages/bundler/__test__/build/cjs-default-interop.test.ts
 import { assert, describe, it } from "@effect/vitest";
 import { cjsDefaultInterop } from "../../src/passes/cjs-default-interop.js";

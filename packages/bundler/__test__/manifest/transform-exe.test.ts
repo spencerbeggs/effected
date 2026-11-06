@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/manifest/transform-exe.test.ts on 2026-11-06
 // packages/bundler/__test__/manifest/transform-exe.test.ts
 import { assert, describe, it } from "@effect/vitest";
 import { transformManifest } from "../../src/manifest/transform.js";

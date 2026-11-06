@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/manifest/emit-manifest.test.ts on 2026-11-06
 // packages/bundler/__test__/manifest/emit-manifest.test.ts
 import { assert, describe, it } from "@effect/vitest";
 import { buildEmittedManifest, manifestNeedsCatalogResolution } from "../../src/manifest/emit-manifest.js";

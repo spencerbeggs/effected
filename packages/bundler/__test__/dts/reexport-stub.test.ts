@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/dts/reexport-stub.test.ts on 2026-11-06
 // packages/bundler/__test__/dts/reexport-stub.test.ts
 import { assert, describe, it } from "@effect/vitest";
 import { analyzeReexportBarrel, collectExportNames, renderReexportStub } from "../../src/dts/reexport-stub.js";

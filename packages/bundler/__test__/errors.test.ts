@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/errors.test.ts on 2026-11-06
 import { assert, describe, it } from "@effect/vitest";
 import { ConfigValidationError, MetaGenerationError, TsdoctorEmitError } from "../src/errors.js";
 

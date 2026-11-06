@@ -1,7 +1,6 @@
 export type {
 	BundlerBuildOptions,
 	BundlerExeBuildOptions,
-	BundlerMetaPassOptions,
 	BundlerPackageJson,
 	BundlerSeams,
 } from "./Bundler.js";
@@ -109,8 +108,12 @@ export type {
 	WarningSuppressionRule as MetaWarningSuppressionRule,
 } from "./meta/config.js";
 export { normalizeMetaOptions } from "./meta/config.js";
+export type { GenerateMetaOptions, MetaResult } from "./meta/generate.js";
 export { ManifestSource, decodeManifestSource } from "./meta/ManifestSource.js";
+export type { OgImageCacheOptions, WriteGeneratedOgImageOptions } from "./meta/og-image.js";
+export { OgGenerateError, resolveOgCacheSalt, writeGeneratedOgImage } from "./meta/og-image.js";
 export { rewriteMetaVersions } from "./meta/optimistic.js";
+export type { RunMetaPassOptions } from "./meta/run-pass.js";
 export type { PortableTsconfig, ResolvedCompilerOptions } from "./meta/tsconfig-resolver.js";
 export { resolvePortableTsconfig } from "./meta/tsconfig-resolver.js";
 export type { OgImageGenerator, OgImageInfo, TsdoctorMetaOptions } from "./meta/tsdoctor-config.js";

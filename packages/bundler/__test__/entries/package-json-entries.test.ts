@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/entry/package-json-entries.test.ts on 2026-11-06
 // packages/bundler/__test__/entries/package-json-entries.test.ts
 import { assert, describe, it } from "@effect/vitest";
 import { packageJsonEntries } from "../../src/entries/package-json-entries.js";

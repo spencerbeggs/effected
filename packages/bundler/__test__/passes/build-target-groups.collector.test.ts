@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/build/build-target-groups.collector.test.ts on 2026-11-06
 // packages/bundler/__test__/build/build-target-groups.collector.test.ts
 import { assert, describe, it } from "@effect/vitest";
 import { buildTargetGroups } from "../../src/passes/build-target-groups.js";

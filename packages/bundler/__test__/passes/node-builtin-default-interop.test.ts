@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/build/node-builtin-default-interop.test.ts on 2026-11-06
 // packages/bundler/__test__/build/node-builtin-default-interop.test.ts
 import { assert, describe, it } from "@effect/vitest";
 import { nodeBuiltinDefaultInterop } from "../../src/passes/node-builtin-default-interop.js";

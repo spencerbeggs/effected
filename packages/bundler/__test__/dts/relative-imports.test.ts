@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/dts/relative-imports.test.ts on 2026-11-06
 // packages/bundler/__test__/dts/relative-imports.test.ts
 import { assert, describe, it } from "@effect/vitest";
 import { findRelativeSpecifiers } from "../../src/dts/relative-imports.js";

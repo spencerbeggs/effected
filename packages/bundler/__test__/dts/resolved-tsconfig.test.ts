@@ -1,3 +1,4 @@
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/dts/resolved-tsconfig.test.ts on 2026-11-06
 import { realpathSync } from "node:fs";
 // packages/bundler/__test__/dts/resolved-tsconfig.test.ts
 
