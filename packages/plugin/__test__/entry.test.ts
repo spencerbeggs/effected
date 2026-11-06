@@ -79,12 +79,13 @@ describe("@effected/plugin's root entry", () => {
 		assert.deepStrictEqual(expensive(modules), []);
 	});
 
+	// The beta the kit builds on, the RC, and every stable 7.x; a `-dev` nightly matches none of the three.
 	it("the four packages that peer typescript agree on one literal range", () => {
 		for (const pkg of ["bundler", "cli", "mcp", "plugin"]) {
 			const { peerDependencies } = JSON.parse(readFileSync(resolve(PLUGIN, "..", pkg, "package.json"), "utf8")) as {
 				readonly peerDependencies: Readonly<Record<string, string>>;
 			};
-			assert.strictEqual(peerDependencies.typescript, ">=7.1.0-beta <8", pkg);
+			assert.strictEqual(peerDependencies.typescript, "7.1.0-beta || 7.1.0-rc || >=7.1.0 <8", pkg);
 		}
 	});
 
