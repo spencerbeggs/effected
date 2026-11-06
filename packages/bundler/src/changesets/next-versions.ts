@@ -48,9 +48,9 @@ export async function resolveNextVersions(cwd: string): Promise<NextVersions> {
 			// never part of packages[] and therefore never seeded into the versions map.
 			if (p.isRootWorkspace) continue;
 			// A manifest with no `version` is a legal member (`@effected/workspaces` 0.19.0 retired
-			// its `missingVersion` failure), and there is no current version to seed. A changeset
-			// that bumps it still overlays a `newVersion` below; absent that, the package is simply
-			// not in the map — which is what an unknown version means to every consumer.
+			// its `missingVersion` failure), and there is no current version to seed. The plan does not
+			// list it either, even when a changeset names it, so the package is simply not in the map —
+			// which is what an unknown version means to every consumer.
 			if (p.version === undefined) continue;
 			versions.set(p.name, p.version);
 		}

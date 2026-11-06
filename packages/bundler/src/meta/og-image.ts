@@ -5,7 +5,8 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import type { ImageFormat } from "@effected/images";
 import type { ImageBackendSetParams } from "@effected/images/cache";
 import { ImageBackend, ImageCache, ImageCacheKey } from "@effected/images/cache";
-import { Data, Effect, Layer, Option, Result, Schema } from "effect";
+import { Data, Effect, Layer, Option, Predicate, Result, Schema } from "effect";
+import { causeMessage } from "../internal/causeMessage.js";
 import type { OpenGraphImage } from "./BundleManifest.js";
 import type { OgImageGenerator, OgImageInfo } from "./tsdoctor-config.js";
 
@@ -42,19 +43,32 @@ export const resolveOgGenerator = (
 	Effect.tryPromise({
 		try: async () => {
 			const importModule = options.importModule ?? ((specifier: string) => import(specifier));
-			try {
-				await Promise.all(OG_RENDERER_PEERS[name].map(importModule));
-			} catch (cause) {
-				throw new Error(
-					`generate = "${name}" needs the optional peers ${OG_RENDERER_PEERS[name].join(" and ")}; install both to generate Open Graph images`,
-					{ cause },
-				);
-			}
+			const peers = OG_RENDERER_PEERS[name];
+			await Promise.all(
+				peers.map((peer) =>
+					importModule(peer).catch((cause: unknown) => {
+						// "Install both" is only true of the peer itself: one installed but broken, say a native binding missing
+						// for this platform, needs its own error.
+						throw new Error(
+							isPeerNotFound(cause, peer)
+								? `generate = "${name}" needs the optional peers ${peers.join(" and ")}; install both to generate Open Graph images`
+								: `generate = "${name}" could not load the installed peer ${peer}: ${causeMessage(cause) ?? String(cause)}`,
+							{ cause },
+						);
+					}),
+				),
+			);
 			const { ogImage } = await import("./og-satori.js");
 			return ogImage.satori();
 		},
 		catch: (cause) => new OgGenerateError({ packageName: options.packageName, cause }),
 	});
+
+/** Whether an import failed because the peer itself is not installed, rather than something it loads in turn. */
+const isPeerNotFound = (cause: unknown, peer: string): boolean =>
+	Predicate.hasProperty(cause, "code") &&
+	(cause.code === "ERR_MODULE_NOT_FOUND" || cause.code === "MODULE_NOT_FOUND") &&
+	(causeMessage(cause) ?? "").includes(`'${peer}'`);
 
 /** The optional peers each renderer needs. */
 const OG_RENDERER_PEERS = { satori: ["satori", "@resvg/resvg-js"] } as const;

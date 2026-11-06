@@ -37,7 +37,23 @@ function addChangeset(id: string, body: string): void {
 }
 
 describe("resolveNextVersions", () => {
-	it("overlays a none release, a dev-dependent listed at its current version, while its dependency bumps", async () => {
+	it("keeps a real bump beside a changeset naming another package none", async () => {
+		addChangeset("bump", '---\n"@scope/a": minor\n---\n\nminor');
+		addChangeset("quiet", '---\n"@scope/b": none\n---\n\nno release');
+		const result = await resolveNextVersions(join(root, "packages", "a"));
+		assert.strictEqual(result.versions.get("@scope/a"), "1.1.0");
+		assert.strictEqual(result.versions.get("@scope/b"), "2.0.0");
+	});
+
+	it("leaves out a version-less member even when a changeset names it", async () => {
+		writeFileSync(join(root, "packages", "b", "package.json"), JSON.stringify({ name: "@scope/b" }));
+		addChangeset("bump", '---\n"@scope/a": minor\n"@scope/b": major\n---\n\nboth');
+		const result = await resolveNextVersions(join(root, "packages", "a"));
+		assert.strictEqual(result.versions.get("@scope/a"), "1.1.0");
+		assert.isFalse(result.versions.has("@scope/b"));
+	});
+
+	it("leaves a dev-dependent at its current version while its dependency bumps", async () => {
 		pkg(join(root, "packages", "b"), "@scope/b", "2.0.0", { devDependencies: { "@scope/a": "workspace:*" } });
 		addChangeset("bump", '---\n"@scope/a": minor\n---\n\nminor');
 		const result = await resolveNextVersions(join(root, "packages", "a"));

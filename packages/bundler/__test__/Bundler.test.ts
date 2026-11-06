@@ -985,7 +985,9 @@ describe("Bundler.build meta pass", () => {
 				options: { tsdoctor },
 				seams: {
 					importOgPeer: async (specifier) => {
-						if (specifier === "@resvg/resvg-js") throw new Error("Cannot find module");
+						if (specifier === "@resvg/resvg-js") {
+							throw Object.assign(new Error(`Cannot find package '${specifier}'`), { code: "ERR_MODULE_NOT_FOUND" });
+						}
 					},
 				},
 			});

@@ -345,3 +345,59 @@ describe("api-extractor tsconfig scoping (#354)", () => {
 		assert.strictEqual(out, missing);
 	});
 });
+
+describe("runApiExtractor classifies a .ts input by where it lives", () => {
+	const run = (target: "own" | "sibling") => {
+		const root = mkdtempSync(join(tmpdir(), "ae-input-"));
+		const dir = join(root, "pkg");
+		mkdirSync(join(dir, "src"), { recursive: true });
+		const sibling = join(root, "sibling");
+		mkdirSync(sibling, { recursive: true });
+		const file = target === "own" ? join(dir, "src", "real.ts") : join(sibling, "real.ts");
+		writeFileSync(file, "export interface Real { readonly a: string }\n");
+		writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "fixture", version: "1.0.0" }));
+		const tsconfigPath = join(dir, "tsconfig.json");
+		writeFileSync(
+			tsconfigPath,
+			JSON.stringify({
+				compilerOptions: {
+					module: "nodenext",
+					moduleResolution: "nodenext",
+					strict: true,
+					skipLibCheck: true,
+					types: [],
+				},
+			}),
+		);
+		const entryDtsPath = join(dir, "entry.d.ts");
+		writeFileSync(entryDtsPath, '/** @public */\nexport type { Real } from "reached";\n');
+		const warned: string[] = [];
+		const suppressed: string[] = [];
+		runApiExtractor({
+			cwd: dir,
+			packageJsonPath: join(dir, "package.json"),
+			entryDtsPath,
+			tsconfigPath,
+			tsdocConfigPath: writeTsdocConfig(dir, {}),
+			apiJsonPath: join(dir, "fixture.api.json"),
+			emitDocModel: false,
+			selfReferencePaths: { reached: [file] },
+			suppressWarnings: [],
+			onMessage: (entry) => warned.push(entry.code ?? ""),
+			onSuppressed: (entry) => suppressed.push(entry.code ?? ""),
+		});
+		return { warned, suppressed };
+	};
+
+	it("keeps a warning for a file in the package", () => {
+		const { warned, suppressed } = run("own");
+		assert.include(warned, "ae-wrong-input-file-type");
+		assert.notInclude(suppressed, "ae-wrong-input-file-type");
+	}, 60_000);
+
+	it("records a suppression for a file outside it", () => {
+		const { warned, suppressed } = run("sibling");
+		assert.notInclude(warned, "ae-wrong-input-file-type");
+		assert.include(suppressed, "ae-wrong-input-file-type");
+	}, 60_000);
+});

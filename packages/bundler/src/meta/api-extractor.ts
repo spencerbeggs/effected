@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { TsconfigLoaderSync } from "@effected/tsconfig-json";
 import type { ExtractorMessage } from "@microsoft/api-extractor";
 import { Extractor, ExtractorConfig, ExtractorLogLevel } from "@microsoft/api-extractor";
@@ -163,6 +163,33 @@ export function mapExtractorMessage(message: ExtractorMessage): DiagnosticInput 
 	};
 }
 
+/**
+ * A path with its symlinks resolved. A tail that does not exist is kept on its deepest ancestor that does, so a missing
+ * file cannot read as outside a package whose own path resolved through a link.
+ */
+const canonicalPath = (path: string): string => {
+	try {
+		return realpathSync.native(path);
+	} catch {
+		const parent = dirname(path);
+		return parent === path ? path : join(canonicalPath(parent), basename(path));
+	}
+};
+
+/**
+ * Whether a message says API Extractor followed an import to a `.ts` file outside this package. That is what a
+ * workspace link to a sibling's source looks like, and the model does not change. The same message about a file in this
+ * package stays a warning: it means the package's own declarations reached its source.
+ */
+export function isForeignInputFileMessage(
+	message: Pick<ExtractorMessage, "messageId" | "sourceFilePath">,
+	cwd: string,
+): boolean {
+	if (message.messageId !== "ae-wrong-input-file-type" || message.sourceFilePath === undefined) return false;
+	const fromPackage = relative(canonicalPath(cwd), canonicalPath(resolve(cwd, message.sourceFilePath)));
+	return fromPackage === ".." || fromPackage.startsWith(`..${sep}`) || isAbsolute(fromPackage);
+}
+
 /** Run API Extractor over a single entry's .d.ts, writing the .api.json (and optionally tsdoc-metadata.json). Throws on failure. */
 export function runApiExtractor(options: RunApiExtractorOptions): void {
 	const suppressor = createMessageSuppressor(options.suppressWarnings);
@@ -244,9 +271,9 @@ export function runApiExtractor(options: RunApiExtractorOptions): void {
 		localBuild: true,
 		showVerboseMessages: false,
 		messageCallback: (message: ExtractorMessage): void => {
-			// Apply user suppressions first — a suppressed message must not fail CI or warn. Map it
-			// BEFORE setting None so the pre-suppression level is captured for the accounting.
-			if (suppressor.matches(message.messageId, message.text)) {
+			// Apply user suppressions and the foreign-input classification first — a suppressed message must not fail CI
+			// or warn. Map it BEFORE setting None so the pre-suppression level is captured for the accounting.
+			if (suppressor.matches(message.messageId, message.text) || isForeignInputFileMessage(message, options.cwd)) {
 				if (options.onSuppressed !== undefined) {
 					const entry = mapExtractorMessage(message);
 					if (entry !== undefined) options.onSuppressed(entry);

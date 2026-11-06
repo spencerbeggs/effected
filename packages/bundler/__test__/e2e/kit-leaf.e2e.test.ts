@@ -28,10 +28,13 @@
  * project), and no kit package uses it. No build here changes directory, so this also proves the emitted manifest's
  * workspace specifiers resolve from `options.cwd`.
  *
- * API Extractor over source siblings holds too: with `ci: true` and cli-kit's own suppressions the build succeeds with
- * no errors and writes `cli-kit.api.json`. A one-off sweep with meta on built the same 48 packages, and every `.d.ts`,
- * `.api.json`, meta `package.json`, `tsconfig.json` and `tsdoctor.json` matched the old bundler byte for byte. One
- * difference is left: 23 packages gain an `ae-wrong-input-file-type` warning, which this test pins.
+ * API Extractor over source siblings holds for cli-kit under CI's rules: with `ci: true` and its own suppressions the
+ * build succeeds with no errors and writes `cli-kit.api.json`. That is the only package proven under `ci: true`. A
+ * one-off sweep with meta on built the same 48 packages under `ci: false` and no suppressions, so `ae-forgotten-export`
+ * could not be fatal there; a `ci: true` sweep belongs to Phase 6. It found every generated `.d.ts`, `.api.json`, meta
+ * `package.json`, `tsconfig.json` and `tsdoctor.json` byte-identical to the old bundler's (`kit` and `mcp-kit` also list
+ * a stale `engine.api.json` and `mcp.api.json` left in the old dist, which neither bundler wrote). 23 of those packages
+ * reported `ae-wrong-input-file-type` naming a sibling's source; that is now accounted as suppressed, which this pins.
  */
 import { execFileSync } from "node:child_process";
 import {
@@ -48,7 +51,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
 import { Bundler } from "../../src/Bundler.js";
@@ -259,13 +262,23 @@ describe.skipIf(!SPIKE_ENABLED)("cli-kit from source siblings", () => {
 					buildOk: boolean;
 					errors: ReadonlyArray<{ code?: string; text: string }>;
 					warnings: ReadonlyArray<{ code?: string; file?: string; text: string }>;
+					suppressed: ReadonlyArray<{ code?: string; file?: string; text: string }>;
 				};
 				assert.strictEqual(modelIssues.buildOk, true);
 				assert.deepStrictEqual(modelIssues.errors, []);
-				// Pinned, not endorsed: the diagnostics run reads a sibling's `.ts` once and says so. See okf/modules/bundler.md.
-				const aeWarnings = modelIssues.warnings.filter((w) => w.code?.startsWith("ae-"));
-				assert.deepStrictEqual([...new Set(aeWarnings.map((w) => w.code))], ["ae-wrong-input-file-type"]);
-				assert.isTrue(aeWarnings.every((w) => w.file?.startsWith(realpathSync(join(root, "packages", "env")))));
+				// The diagnostics run reads a sibling's `.ts` and says so: expected of a source link, so accounted as suppressed.
+				assert.deepStrictEqual(
+					modelIssues.warnings.filter((w) => w.code?.startsWith("ae-")),
+					[],
+				);
+				const foreign = modelIssues.suppressed.filter((w) => w.code === "ae-wrong-input-file-type");
+				assert.isNotEmpty(foreign);
+				const packagesDir = realpathSync(join(root, "packages"));
+				for (const entry of foreign) {
+					const fromPackages = relative(packagesDir, entry.file ?? "");
+					assert.isFalse(fromPackages.startsWith(".."), entry.file);
+					assert.isFalse(fromPackages.startsWith(`cli-kit${sep}`), entry.file);
+				}
 				const model = JSON.parse(readFileSync(join(modelDir, "cli-kit.api.json"), "utf-8")) as { name: string };
 				assert.strictEqual(model.name, "@effected/cli-kit");
 

@@ -79,6 +79,47 @@ describe("runMetaPass", () => {
 		assert.strictEqual(calls[0]?.aeInputDir, join(cwd, "dist", "prod", "npm", "declarations"));
 	});
 
+	const localPathsByGroup = async (groups: ReadonlyArray<{ id: string; name: string }>) => {
+		const seen: Record<string, ReadonlyArray<string>> = {};
+		await runMetaPass({
+			cwd: "/pkg",
+			packageName: "@scope/pkg",
+			tsconfigPath: "/pkg/tsconfig.json",
+			groups,
+			entries: { index: "./src/index.ts" },
+			exportsMap: { ".": "./src/index.ts" },
+			meta: { localPaths: ["../models"] },
+			collector: new BuildCollector(),
+			ci: false,
+			generateMeta: async (opts) => {
+				seen[opts.outMetaDir.split("/").at(-2) as string] = opts.localPaths;
+				return { apiJsonPath: "/x", apiJsonFilename: "pkg.api.json" };
+			},
+			loadTsdoctorSources: async () => ({ leaf: undefined, project: undefined, discoveryFailure: undefined }),
+		});
+		return seen;
+	};
+
+	it("copies into localPaths only for the group named after the package", async () => {
+		assert.deepStrictEqual(
+			await localPathsByGroup([
+				{ id: "github", name: "@org/pkg" },
+				{ id: "npm", name: "@scope/pkg" },
+			]),
+			{ github: [], npm: ["../models"] },
+		);
+	});
+
+	it("falls back to the first group for localPaths when none is named after the package", async () => {
+		assert.deepStrictEqual(
+			await localPathsByGroup([
+				{ id: "github", name: "@org/pkg" },
+				{ id: "other", name: "@other/pkg" },
+			]),
+			{ github: ["../models"], other: [] },
+		);
+	});
+
 	it("loads the tsdoctor sources once and hands each group its own targets", async () => {
 		const loads: string[] = [];
 		const seen: Array<{ group: string; tsdoctor: GenerateMetaOptions["tsdoctor"] }> = [];
