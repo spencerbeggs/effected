@@ -9,7 +9,7 @@
 
 ## Breaking Changes
 
-* `typescript` (`7.1.0-beta || 7.1.0-rc || >=7.1.0 <8`) and `@types/node` are now peer dependencies. Install them alongside the plugin, or expect a peer warning
+* `typescript` (`7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`) and `@types/node` are now peer dependencies. Install them alongside the plugin, or expect a peer warning
 
 ## Other
 

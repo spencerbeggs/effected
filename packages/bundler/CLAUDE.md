@@ -8,7 +8,7 @@ The kit's build pipeline as a library: `Bundler.build` takes a package directory
 
 Load when changing the public API, a load-bearing output, or the seams.
 
-`typescript` is peered as the literal `7.1.0-beta || 7.1.0-rc || >=7.1.0 <8`, not `catalog:build:peers`, because that catalog value pins a prerelease exactly and a plain lower bound would admit `-dev` nightlies; the plugin's `entry.test.ts` holds the four manifests to the same string.
+`typescript` is peered as the literal `7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`, not `catalog:build:peers`, because that catalog value pins a prerelease exactly and a plain lower bound would admit `-dev` nightlies; the plugin's `entry.test.ts` holds the four manifests to the same string.
 
 ## Module layout
 
@@ -51,7 +51,7 @@ Other tools read these, so a change to one moves with its readers. Paths are und
 
 - **`cwd` must be absolute.** The build resolves catalogs and workspaces from it and never from the process directory, but a relative `cwd` would resolve against the process. It is documented, not enforced.
 - **`bundledPackages` naming a sibling that resolves to source fails the build** with `tsgo did not generate a declaration file`, because tsgo declares only the package's own project. No kit package sets it.
-- **A sibling's source is accounted as suppressed.** API Extractor's diagnostics run follows a source link to a `.ts` file and reports `ae-wrong-input-file-type`. When the file's realpath lies outside the package, that goes in the `suppressed` bucket through `isForeignInputFileMessage`, which is a classification rather than a `suppressWarnings` rule. Inside the package it stays a warning, since it means the package's own declarations reached its source.
+- **A sibling's source is accounted as suppressed.** API Extractor's diagnostics run follows a source link to a `.ts` file and reports `ae-wrong-input-file-type`. When the file's realpath lies outside the package, that goes in the `suppressed` bucket through `isForeignInputFileMessage`, which is a classification rather than a `suppressWarnings` rule. Inside the package it stays a warning, since it means the package's own declarations reached its source. The suppression also hides a file reached through a tsconfig `paths` alias that resolves outside the package.
 - **A suppression rule with neither `messageId` nor `pattern` matches nothing**, though the schema accepts one.
 - **`ActionBundle.build` runs what it builds.** Its load check imports each bundle in a fresh Node with only `HOME` and `TMPDIR` set, both a temporary directory it then removes, for at most a minute. An action's `GITHUB_ACTIONS` guard stays closed, but an action with no guard runs for real there, and with no `PATH`. `build.importCheck = false` turns the check off.
 

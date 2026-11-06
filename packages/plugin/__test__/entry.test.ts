@@ -85,7 +85,7 @@ describe("@effected/plugin's root entry", () => {
 			const { peerDependencies } = JSON.parse(readFileSync(resolve(PLUGIN, "..", pkg, "package.json"), "utf8")) as {
 				readonly peerDependencies: Readonly<Record<string, string>>;
 			};
-			assert.strictEqual(peerDependencies.typescript, "7.1.0-beta || 7.1.0-rc || >=7.1.0 <8", pkg);
+			assert.strictEqual(peerDependencies.typescript, "7.1.0-beta || 7.1.1-rc || >=7.1.0 <8", pkg);
 		}
 	});
 

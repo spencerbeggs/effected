@@ -18,7 +18,7 @@ The one tool package a consumer installs, as a root devDependency:
 
 `catalog:effected` comes from `@effected/pnpm-plugin-effected`, which also hoists
 this package publicly so its bins resolve from any workspace package, not only
-the root. `typescript` is a peer (`7.1.0-beta || 7.1.0-rc || >=7.1.0 <8`), which the
+the root. `typescript` is a peer (`7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`), which the
 build needs. Do not install `@effected/cli`, `@effected/mcp` or `@effected/engine`
 directly. `@effected/mcp` alone also works when only the MCP tools are wanted.
 

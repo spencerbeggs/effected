@@ -8,7 +8,7 @@ import { extractAmbientDts } from "../entries/ambient-dts.js";
 import type { PackageJsonLike } from "../entries/extract.js";
 import type { TargetGroupRef } from "../manifest/emit-manifest.js";
 import { emitManifest } from "../manifest/emit-manifest.js";
-import type { DualExports, ExeRewrite, Json } from "../manifest/transform.js";
+import type { DualExports, ExeRewrite } from "../manifest/transform.js";
 import type { BuildCollector, PassKind } from "../report/collector.js";
 import { buildMetricsPlugin } from "../report/metrics-plugin.js";
 import { createTimer } from "../report/timer.js";

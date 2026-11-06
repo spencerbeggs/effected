@@ -1,6 +1,6 @@
 # @effected/bundler
 
-The kit's build pipeline as a library: the code behind `effected package build` and `effected action build`. `Bundler.build` takes a package directory and a decoded config and writes `dist/prod`: the JS and declaration passes, the emitted `package.json`, `targets.json`, the API Extractor meta bundle with its `tsdoctor.json`, an optional single-executable binary, and `issues.json`. `ActionBuilder.build` validates, bundles and persists a GitHub Action. Integrated tier: it carries tsdown, rolldown, API Extractor and `@tsdown/exe` at runtime and peers `typescript` (`7.1.0-beta || 7.1.0-rc || >=7.1.0 <8`). A consumer builds with the commands from `@effected/plugin`; import this package only to embed or test the pipeline.
+The kit's build pipeline as a library: the code behind `effected package build` and `effected action build`. `Bundler.build` takes a package directory and a decoded config and writes `dist/prod`: the JS and declaration passes, the emitted `package.json`, `targets.json`, the API Extractor meta bundle with its `tsdoctor.json`, an optional single-executable binary, and `issues.json`. `ActionBuilder.build` validates, bundles and persists a GitHub Action. Integrated tier: it carries tsdown, rolldown, API Extractor and `@tsdown/exe` at runtime and peers `typescript` (`7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`). A consumer builds with the commands from `@effected/plugin`; import this package only to embed or test the pipeline.
 
 ## Import
 

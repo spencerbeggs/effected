@@ -11,7 +11,7 @@ changesets: ["bright-tools-build", "calm-bundles-build", "keen-builds-land", "pr
 
 The kit no longer builds with `@savvy-web/bundler`. `@effected/plugin` carries the replacement: `effected package build` reads an optional `effected.toml`, and most packages need no file at all. An action repository's `build:prod` hit belongs to the `effected action build` entry, not this one.
 
-1. **Install the tool.** Add `@effected/plugin` through `catalog:effected` as a root devDependency, if it is not there already. Its `typescript` peer is `7.1.0-beta || 7.1.0-rc || >=7.1.0 <8`, so check the repository's TypeScript satisfies it.
+1. **Install the tool.** Add `@effected/plugin` through `catalog:effected` as a root devDependency, if it is not there already. Its `typescript` peer is `7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`, so check the repository's TypeScript satisfies it.
 2. **Remove the old builder.** Delete `@savvy-web/bundler` from every package's devDependencies and delete each `savvy.build.ts`, after moving its options (step 6).
 3. **Replace the scripts.** `build:dev`, `build:prod` and `prepare` become one script, `"build": "effected package build"`. There is no dev build and no target flag.
 4. **Replace the turbo tasks.** `build:dev` and `build:prod` become `build`, with `dependsOn: ["types:check"]`. `types:check` now has `dependsOn: ["^types:check"]`, because nothing has to be built before a typecheck.

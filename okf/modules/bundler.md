@@ -27,10 +27,10 @@ sources:
     title: "The source-sibling spike, run with EFFECTED_SPIKE=1"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T22:24:55Z
+  at: 2026-11-06T23:00:10Z
 integrity:
   generated:
-    body: 56db897d3b50b024
+    body: a3d180beafa51928
 ---
 
 # @effected/bundler
@@ -47,7 +47,7 @@ It exists to end a loop. The kit built with a tool that depended on the kit, so 
 
 - [`@effected/changesets`](changesets.md) is a `workspace:*` dependency, published exact, and so is this package under [`@effected/engine`](engine.md), per [the pin chain](../conventions/peer-dependency-discipline.md#cross-effected-dependencies).
 - `effect` is a peerDependency from `catalog:effected:peers` with a devDependency from `catalog:effected`, like every kit package; the systems bundler's regular-dependency choice is not carried over, because [the one-resolved-effect-copy rule](../conventions/one-resolved-effect-copy.md) needs the consumer's copy.
-- `typescript` is a peerDependency at the literal `7.1.0-beta || 7.1.0-rc || >=7.1.0 <8`, nightlies excluded, a range the tool's `cli`, `mcp` and `plugin` share ([the rule](../conventions/typescript-stays-in-the-bundler.md)). This is the only package that imports it. API Extractor keeps its own bundled TypeScript 6. The tsconfig presets ship from [the carrier](plugin.md), not from here.
+- `typescript` is a peerDependency at the literal `7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`, nightlies excluded, a range the tool's `cli`, `mcp` and `plugin` share ([the rule](../conventions/typescript-stays-in-the-bundler.md)). This is the only package that imports it. API Extractor keeps its own bundled TypeScript 6. The tsconfig presets ship from [the carrier](plugin.md), not from here.
 
 ## Module layout
 
@@ -108,7 +108,7 @@ What the result rests on:
 - **API Extractor's output does not move, within what the sweep measured.** A second sweep with the meta pass on built the same 48 packages, and every `.api.json`, meta `package.json`, `tsconfig.json` and `tsdoctor.json` matched the old bundler byte for byte, with no errors. That sweep ran with `ci: false` and no suppressions, so `ae-forgotten-export` could not be fatal in it. Only cli-kit is proven under `ci: true`, with its own suppressions. `kit` and `mcp-kit` also list a stale `engine.api.json` and `mcp.api.json` in the old dist, which neither bundler wrote.
 - **A symlinked `src/` would have answered the wrong question.** tsgo and rolldown realpath it, and its siblings then resolve through the main checkout's links.
 
-**A sibling's source is accounted as suppressed.** 23 of the 48 packages reported `ae-wrong-input-file-type` once, naming a file in a sibling's `src/`, because API Extractor's diagnostics run follows a sibling import to its `.ts` source. It does not reach the model. The handler classifies that message as suppressed when the file's realpath lies outside the package's own, so `issues.json` stays clean; the same message about a file inside the package stays a warning, since that means its own declarations reached its source.
+**A sibling's source is accounted as suppressed.** 23 of the 48 packages reported `ae-wrong-input-file-type` once, naming a file in a sibling's `src/`, because API Extractor's diagnostics run follows a sibling import to its `.ts` source. It does not reach the model. The handler classifies that message as suppressed when the file's realpath lies outside the package's own, so `issues.json` stays clean; the same message about a file inside the package stays a warning, since that means its own declarations reached its source. The suppression also hides a file reached through a tsconfig `paths` alias that resolves outside the package.
 
 Inlining is the other edge: **`bundledPackages` naming a sibling that resolves to source fails the build** with `tsgo did not generate a declaration file`, since tsgo declares only the package's own project. It is loud, the spike pins it, and no kit package sets `bundledPackages`.
 

@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/tsconfig-json/src/TsEnumCodec.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T22:28:49Z
+  at: 2026-11-06T23:00:10Z
 integrity:
   generated:
-    body: d8bcf25af8944c94
+    body: 1c3e627d9ac97629
 ---
 
 # Only @effected/bundler imports typescript, and only it and the tool's packages peer it
@@ -34,7 +34,7 @@ Outside `@effected/bundler`, never import `typescript` from `packages/*/src`, at
 
 [`@effected/bundler`](../modules/bundler.md) peers `typescript` because `rolldown-plugin-dts`' tsgo generator resolves it by `import.meta.resolve("typescript")`, so the compiler has to be reachable from the bundler's own position in the graph.[^plan] It also reads the compiler API from TypeScript 7.1's `typescript/sync` and `typescript/ast` subpaths. The root `typescript` export carries only version strings.[^spec]
 
-The range is the literal `7.1.0-beta || 7.1.0-rc || >=7.1.0 <8`, not `catalog:build:peers`, because that catalog value pins a prerelease exactly and a plain lower bound would admit `-dev` nightlies. [`@effected/plugin`](../modules/plugin.md), [`@effected/cli`](../modules/cli.md) and [`@effected/mcp`](../modules/mcp.md) declare the same literal, so a consumer's install surfaces the peer: with none at the installed package, npm's resolver never finishes on the prerelease that `tsdown`'s optional range does not admit. The plugin's `entry.test.ts` holds the four manifests to one string.
+The range is the literal `7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`, not `catalog:build:peers`, because that catalog value pins a prerelease exactly and a plain lower bound would admit `-dev` nightlies. [`@effected/plugin`](../modules/plugin.md), [`@effected/cli`](../modules/cli.md) and [`@effected/mcp`](../modules/mcp.md) declare the same literal, so a consumer's install surfaces the peer: with none at the installed package, npm's resolver never finishes on the prerelease that `tsdown`'s optional range does not admit. The plugin's `entry.test.ts` holds the four manifests to one string.
 
 Do not widen the exception. A package that wants compiler behaviour takes it through the bundler or states the need as a new Decision.
 
