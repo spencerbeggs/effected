@@ -1,5 +1,13 @@
+export type { ActionBuilderError, ActionBuilderOptions } from "./action/ActionBuilder.js";
+export { ActionBuildResult, ActionBuilder, BuildFailed, ValidationFailed } from "./action/ActionBuilder.js";
 export { ActionBundle, BuildResult, BundleResult, BundleStats } from "./action/ActionBundle.js";
-export { BundleFailed, CleanError, WriteError } from "./action/ActionErrors.js";
+export {
+	ActionYmlPathError,
+	BundleFailed,
+	CleanError,
+	PersistLocalError,
+	WriteError,
+} from "./action/ActionErrors.js";
 export type { ActionValidationRunOptions } from "./action/ActionValidation.js";
 export { ActionValidation, ValidationIssue, ValidationResult } from "./action/ActionValidation.js";
 export {
@@ -11,6 +19,7 @@ export {
 	ActionYmlOutput,
 	ActionYmlRuns,
 } from "./action/ActionYml.js";
+export { PersistLocal, PersistLocalResult } from "./action/PersistLocal.js";
 export type {
 	BundlerBuildOptions,
 	BundlerPackageJson,

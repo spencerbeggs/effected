@@ -27,10 +27,10 @@ sources:
     title: "The source-sibling spike, run with EFFECTED_SPIKE=1"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:50:06Z
+  at: 2026-11-06T21:14:54Z
 integrity:
   generated:
-    body: 89bbf2aad97b7048
+    body: 3d5d89ca799875bc
 ---
 
 # @effected/bundler
@@ -132,11 +132,13 @@ Every bundle imports from a directory outside the checkout with no `GITHUB_*` va
 
 **Warnings.** With rolldown's default checks a build logs nothing: not for `import.meta`, not for a `require` of a builtin, not for the computed `import()` in `@changesets/apply-release-plan`, and not for the broken UMD bundle below. With `checks.circularDependency` on it logs only `CIRCULAR_DEPENDENCY`: 17 for `pre`, 18 for `main`, 17 for `post` and 2 for each worker, all in third-party packages (apache-arrow, `@redis/client`, semver, jju).
 
-What the action builder has to carry:
+`ActionBundle` carries all of this, and each setting has a test that fails without it. What the action builder has to carry:
 
 - **Module-first resolution, a requirement of the action bundler.** Rolldown's node default is `["main", "module"]`, which takes jsonc-parser's UMD build. Its factory receives `require` as a value, so its relative requires stay runtime calls: `Cannot find module './impl/format'` at import, in `main` and both workers, and a clean build. Set `resolve.mainFields` to `["module", "main"]`.
 - **An import check.** That break shows up only when the bundle loads, so a clean rolldown run does not show a bundle works.
 - **`__dirname` and `__filename`.** Rolldown leaves them bare, and they die with a `ReferenceError` when called, not at import, so an import check misses them. No bundle here references either. A fixture shows `transform.define` to `import.meta.dirname` and `import.meta.filename` works.
+- **`process.env.NODE_ENV` defined as `"production"`.** Rspack's production mode did this, and rolldown does not.
+- **A real path for the cwd.** In unminified output rolldown names each module relative to its cwd, so a cwd reached through a symlink writes the machine's layout into the bundle and breaks byte-identical builds.
 - **One build per entry**, with `codeSplitting: false`, plus `dist/package.json` holding `{ "type": "module" }`.
 - **`ignore` as a `resolveId` and `load` plugin.** A virtual module needs no stub file on disk. Both stubs reached `main` and neither loaded at import. A package imported statically rather than through a guarded `require` or `import()` would throw at load.
 - **`comments: { legal: true, annotation: false, jsdoc: false }`.** It keeps license banners inline, 4 `/*!` blocks in `main` against rspack's 3, with no sidecar file to fold back. `legalComments` is deprecated in favor of it. Comments marked `@preserve`, such as `v8 ignore` ones, stay too, as they do under rspack.

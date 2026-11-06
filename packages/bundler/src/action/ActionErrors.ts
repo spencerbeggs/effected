@@ -48,3 +48,37 @@ export class WriteError extends Schema.TaggedError<WriteError>()("WriteError", {
 		return `Could not write ${this.path}: ${causeMessage(this.cause) ?? String(this.cause)}`;
 	}
 }
+
+/**
+ * A file could not be copied to the local action directory.
+ *
+ * @public
+ */
+export class PersistLocalError extends Schema.TaggedError<PersistLocalError>()("PersistLocalError", {
+	/** The path involved. */
+	path: Schema.String,
+	/** What went wrong. */
+	cause: Schema.Defect(),
+}) {
+	override get message(): string {
+		return `Could not persist ${this.path}: ${causeMessage(this.cause) ?? String(this.cause)}`;
+	}
+}
+
+/**
+ * A `runs` path in `action.yml` names no file in the local action directory.
+ *
+ * @public
+ */
+export class ActionYmlPathError extends Schema.TaggedError<ActionYmlPathError>()("ActionYmlPathError", {
+	/** The `runs` key: `main`, `pre` or `post`. */
+	entryType: Schema.String,
+	/** The path as `action.yml` writes it. */
+	specifiedPath: Schema.String,
+	/** Where that path resolves to. */
+	expectedPath: Schema.String,
+}) {
+	override get message(): string {
+		return `action.yml runs.${this.entryType} is ${this.specifiedPath}, and ${this.expectedPath} does not exist`;
+	}
+}

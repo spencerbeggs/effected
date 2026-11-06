@@ -6,6 +6,10 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `ActionBuildOptions` | Class | How an action's bundles are built, the `[action.build]` table. | minify, source maps, externals, stub out ignored packages in action bundles |
+| `ActionBuildResult` | Class | What a whole action build did. | what validating, bundling and persisting an action produced |
+| `ActionBuilder` | Class | Builds a GitHub Action. | build a github action end to end, validate, bundle, size check, persist |
+| `ActionBuilderError` | TypeAlias | What `ActionBuilder.build` can fail with. | |
+| `ActionBuilderOptions` | Interface | What `ActionBuilder.build` takes. | |
 | `ActionBundle` | Class | Bundles a GitHub Action with rolldown. | bundle a github action with rolldown, one self-contained file per entry |
 | `ActionConfig` | Class | A GitHub Action's build settings, the `[action]` table of `effected.toml`. | configure a github action build, the action table of effected.toml |
 | `ActionEntries` | Class | The bundles a GitHub Action ships, the `[action.entries]` table. | declare lifecycle entry points and worker bundles for an action |
@@ -19,11 +23,13 @@
 | `ActionYmlBrandingIcon` | Variable + TypeAlias | The decoded type of `(ActionYmlBrandingIcon:variable)`. | allowed feather icon names for action branding |
 | `ActionYmlInput` | Class | One input an action declares. | declare one workflow input, its default and deprecation message |
 | `ActionYmlOutput` | Class | One output an action declares. | declare one output an action sets |
+| `ActionYmlPathError` | Class | A `runs` path in `action.yml` names no file in the local action directory. | a runs path in action.yml names no file in the local copy |
 | `ActionYmlRuns` | Class | How an action runs, the `runs` key. | node24 main, pre, post steps and their conditions in action.yml |
 | `AmbientDtsEntry` | Interface | One ambient `.d.ts` export resolved for copy + manifest. | |
 | `BuildCollector` | Class | Stateful build-event accumulator. The write surface is synchronous so it can be called directly from tsdown's customLogger and API Extractor's messageCallback (both invoked synchronously). `snapshot` builds the immutable BuildReport the Effect render pipeline consumes. | accumulate build events, record warnings and pass timings, snapshot the report |
 | `BuildCollectorTag` | Class | | service tag to provide or read the running build's event collector |
 | `BuildEmittedManifestOptions` | Interface | | |
+| `BuildFailed` | Class | An entry of an action failed to bundle or does not load. | an action entry failed to bundle or does not load |
 | `BuildFormat` | Variable + TypeAlias | The decoded type of `(BuildFormat:variable)`. | output module format choices, esm or cjs, for a build |
 | `BuildFormatOption` | TypeAlias | An output module format the build can emit. | |
 | `BuildGroupSpec` | Interface | A prod/dev group to build: its folder id and the resolved package name its manifest carries. | |
@@ -119,6 +125,9 @@
 | `PackageJsonLike` | Interface | | |
 | `PassKind` | TypeAlias | | |
 | `PassReport` | Class | One build pass within a target group (js / dts / loose / exe / meta). | one pass's timing and files, js, dts, loose, exe or meta |
+| `PersistLocal` | Class | Copies an action's build to a local action directory, for testing with nektos/act. | copy an action build for local nektos act testing, generate the act template |
+| `PersistLocalError` | Class | A file could not be copied to the local action directory. | copying an action build to its local directory failed |
+| `PersistLocalResult` | Class | What a persist did. | files copied and skipped by a local action persist |
 | `PkgOsCpu` | Interface | The package's own os/cpu fields, used to infer a single platform target. | |
 | `PlainDiagnostic` | Interface | A diagnostic flattened to a plain JSON object (only defined fields are present). | |
 | `PlainDiagnosticSchema` | Variable | The schema of a `PlainDiagnostic`, for reading one back from `issues.json` or a journal. | read one diagnostic back from issues.json or a journal line |
@@ -165,6 +174,7 @@
 | `TsdoctorSources` | Interface | The two source tiers a build reads: the package's own file and the workspace root's. | |
 | `TsdownBuild` | TypeAlias | Signature compatible with tsdown's `build(inlineConfig)`. | |
 | `TsdownLogger` | Interface | Structural match for tsdown's Logger interface (tsdown 0.22.x). | |
+| `ValidationFailed` | Class | Validation stopped an action build, before bundling or on a bundle's size afterwards. | action validation or a strict warning stopped the build |
 | `ValidationInput` | Interface | The normalized facts the validator checks, assembled by the bundler before any build work. | |
 | `ValidationIssue` | Class | One problem a validation found. | one action validation finding with code, file and suggestion |
 | `ValidationResult` | Class | What a validation found. | whether an action may build, its errors and warnings |

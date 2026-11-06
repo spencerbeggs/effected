@@ -23,8 +23,7 @@ Load when changing the public API, a load-bearing output, or the seams.
 - `report/`: the collector and `issues.json`.
 - `journal/`: `BuildJournal` and `IssueJournal`, the workspace root's `.cache/effected/*.jsonl`. `layerAt(root)` creates the directory and the file, because `Journal.append` refuses a missing file. A record derives from `issues.json`, and the engine writes it, not `Bundler.build`.
 - `public/assets/`: the Open Graph card's font, copied to the package root.
-
-`action/` is empty until its phase lands.
+- `action/`: GitHub Action builds. `ActionBuilder` orders `ActionValidation`, `ActionBundle` and `PersistLocal`; `ActionYml` is the schema of `action.yml`. `import-check.ts` is the post-build load check.
 
 ## Load-bearing outputs
 
@@ -54,6 +53,8 @@ Other tools read these, so a change to one moves with its readers. Paths are und
 - **`bundledPackages` naming a sibling that resolves to source fails the build** with `tsgo did not generate a declaration file`, because tsgo declares only the package's own project. No kit package sets it.
 - **A sibling's source is accounted as suppressed.** API Extractor's diagnostics run follows a source link to a `.ts` file and reports `ae-wrong-input-file-type`. When the file's realpath lies outside the package, that goes in the `suppressed` bucket through `isForeignInputFileMessage`, which is a classification rather than a `suppressWarnings` rule. Inside the package it stays a warning, since it means the package's own declarations reached its source.
 - **A suppression rule with neither `messageId` nor `pattern` matches nothing**, though the schema accepts one.
+- **`ActionBundle.build` runs what it builds.** Its load check imports each bundle in a fresh Node with only `PATH` and `HOME` set. An action's `GITHUB_ACTIONS` guard stays closed, but an action with no guard runs for real, in `dist`.
+- **An explicit `entries.pre` or `entries.post` whose file is missing is skipped silently**, as the previous builder did, and `action.yml` can then name a file that was never built. Only `PersistLocal` notices.
 
 ## Working here
 
