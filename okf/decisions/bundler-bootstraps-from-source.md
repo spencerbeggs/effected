@@ -19,10 +19,10 @@ sources:
     title: "bundler: @effected/bundler and the top-level @effected/plugin package"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T23:49:47Z
+  at: 2026-11-06T23:52:34Z
 integrity:
   generated:
-    body: 54af469aa61eabd9
+    body: 182a25162c610cf7
 ---
 
 # The kit builds itself with the bundler running from source under tsx
@@ -45,6 +45,18 @@ The kit built with `@savvy-web/bundler`, which depended on published copies of t
 **`nodeOptions` does not reach every child safely.** `--import=tsx` resolves from each process's cwd, and children inherit it, so a child that a pnpm script starts in a directory that cannot resolve tsx dies at startup. The root vitest config clears `NODE_OPTIONS` for tests, and a test that runs sibling source in a child loads tsx itself. Nothing shields a repo script that spawns a tool in a temp directory.
 
 **A self-hosting consumer has the same contract.** A repository whose root depends on its own carrier through `workspace:*` runs that carrier's bins from source, so `node_modules/.bin/<tool>` has no `nodeOptions` under a hook, an MCP loader or a bare shell. The kit's answer works there unchanged: the bin file registers tsx itself when it runs from `.ts`, by the guarded dynamic import of `tsx/esm/api` above, and imports everything else dynamically after that, with `tsx` as a root devDependency. Then `.bin/<tool>` runs outside pnpm, and no e2e harness needs an absolute loader. Launching through `pnpm run` is not the contract.
+
+**A self-hosting repository with `.tsx` sources puts `/** @jsxRuntime automatic */` at the top of every `.tsx` file.** tsx applies one tsconfig per process, found from the working directory, and only to files that tsconfig includes. From a root whose tsconfig does not include package sources, a linked package's JSX compiles to classic `React.createElement`, and a TTY run of a live view then fails with `React is not defined` while a captured run stays green. A probe of tsx's API settled the alternatives, each of which depends on the process or reaches one package:
+
+| Setting, with a linked `.tsx` under test | Result |
+| --- | --- |
+| Bare `register()` or `--import=tsx`, from the root | classic |
+| `jsx: react-jsx` added to a root tsconfig that does not include package sources | classic |
+| `register({ tsconfig })` naming one package's tsconfig | automatic for that package, classic for every other |
+| A root tsconfig with `jsx` and an `include` reaching package sources | automatic from the root, classic from inside any package with its own tsconfig |
+| The pragma | automatic in every case |
+
+`register()` does take a `tsconfig` option. The kit's bins deliberately call it bare, because a single tsconfig cannot serve every linked package, so the pragma is the working-directory-independent answer either way. **The kit is not exposed:** it tracks no `.tsx` under `packages/*/src`, and `cli-kit`'s views are plain `.ts`, so its own suite cannot catch this class. Built output is unaffected, since the declaration and JS passes read the package's own tsconfig.
 
 **The `nodeOptions` recipe is repo-global, and a tool that loads its own bundles can break under it.** Every process a pnpm script starts inherits it. rspress is the known case: `rspress build` fails loading its SSG bundle under `--import=tsx` and passes without it. The escape is `NODE_OPTIONS=` at the front of that script. A root `build` script also uses `--filter=!docs` when a website package has its own `build` task, or every root build runs the site.
 

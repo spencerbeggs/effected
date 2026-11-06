@@ -58,3 +58,11 @@ const { main } = await import("@effected/cli/main");
 ~~~
 
 The last line is the kit's own; import your front end's entry there. A static import would resolve before the branch runs. `.bin/<tool>` then works outside pnpm, and no e2e harness needs an absolute loader.
+
+**Every `.tsx` file in such a repository starts with the pragma:**
+
+~~~tsx
+/** @jsxRuntime automatic */
+~~~
+
+tsx applies one tsconfig per process, found from the working directory, and only to files that tsconfig includes. Without the pragma, a linked package's JSX run from a root whose tsconfig does not include it compiles to classic `React.createElement`: a TTY run of a live view warns `React is not defined` and loses its output, the run still exits 0, and a captured run stays green. `register()` takes a `tsconfig` option, but one tsconfig cannot serve every linked package, so the bin calls it bare; a root tsconfig whose `include` reaches package sources works from the root and not from inside a package with its own tsconfig. Built output is unaffected. The kit tracks no `.tsx` under `packages/*/src` and `cli-kit`'s views are plain `.ts`, so the kit's own suite does not exercise this.

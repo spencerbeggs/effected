@@ -27,10 +27,10 @@ sources:
     title: "The source-sibling spike, run with EFFECTED_SPIKE=1"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T23:49:47Z
+  at: 2026-11-06T23:52:34Z
 integrity:
   generated:
-    body: ea50f556dd551b5f
+    body: 8f2e345d69e5369f
 ---
 
 # @effected/bundler
@@ -151,6 +151,8 @@ Not measured: `build.externals`, `build.sourceMap`, Windows, and any path throug
 ## Accepted debt
 
 The ported internals keep their shape: mostly plain async code over `node:fs`, ported module for module because that code is tested and proven. Only the public boundary (`Bundler.build`, `ActionBuilder.build` and every error) is Effect with typed failures. That is a known departure from [requiring core in `R`](../conventions/require-in-r-default.md), accepted to keep the port honest. A follow-up issue is to be filed against that convention; it does not exist yet.
+
+Live-view e2e coverage on a real pty is also a follow-up, because a captured run cannot see the [JSX-under-tsx class of failure](../decisions/bundler-bootstraps-from-source.md).
 
 ## Decisions
 
