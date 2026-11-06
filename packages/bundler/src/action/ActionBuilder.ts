@@ -20,6 +20,8 @@ export class ValidationFailed extends Schema.TaggedError<ValidationFailed>()("Va
 	message: Schema.String,
 	/** Everything it found. */
 	validation: ValidationResult,
+	/** How bundling went, when validation stopped the build after it. */
+	build: Schema.optionalKey(BuildResult),
 }) {}
 
 /**
@@ -34,6 +36,8 @@ export class BuildFailed extends Schema.TaggedError<BuildFailed>()("BuildFailed"
 	failedEntries: Schema.Number,
 	/** Every entry's result. */
 	build: BuildResult,
+	/** What validation found before bundling. */
+	validation: ValidationResult,
 }) {}
 
 /**
@@ -83,12 +87,13 @@ export class ActionBuildResult extends Schema.Class<ActionBuildResult>("ActionBu
 	persisted: Schema.Boolean,
 }) {}
 
-const failValidation = (validation: ValidationResult): ValidationFailed =>
+const failValidation = (validation: ValidationResult, build?: BuildResult): ValidationFailed =>
 	new ValidationFailed({
 		errorCount: validation.errors.length,
 		warningCount: validation.warnings.length,
 		message: validation.errors.length > 0 ? "Validation failed" : "Warnings treated as errors in strict mode",
 		validation,
+		...(build !== undefined ? { build } : {}),
 	});
 
 /**
@@ -132,6 +137,7 @@ export class ActionBuilder {
 				message: build.error ?? "One or more entries failed to build",
 				failedEntries: build.entries.filter((entry) => !entry.success).length,
 				build,
+				validation: before,
 			});
 		}
 
@@ -146,7 +152,7 @@ export class ActionBuilder {
 			[...before.warnings, ...oversized],
 			strict && options.validate,
 		);
-		if (!validation.valid) return yield* failValidation(validation);
+		if (!validation.valid) return yield* failValidation(validation, build);
 
 		const persisted = options.persist && config.persistLocal.enabled;
 		if (persisted) yield* PersistLocal.persist(config, { cwd });

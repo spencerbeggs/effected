@@ -57,6 +57,7 @@ describe("ActionBuilder.build", () => {
 					assert.strictEqual(error.errorCount, 1);
 					assert.strictEqual(error.warningCount, 0);
 					assert.strictEqual(error.validation.errors[0]?.code, "ACTION_YML_SYNTAX_ERROR");
+					assert.isUndefined(error.build);
 				}
 				assert.isTrue(existsSync(join(cwd, "dist", "old.js")));
 			}).pipe(Effect.provide(Live)),
@@ -134,6 +135,7 @@ describe("ActionBuilder.build", () => {
 					config: configOf({ validation: { maxBundleSize: "1b", strict: true }, persistLocal: { path: ".strict" } }),
 				}).pipe(Effect.flip);
 				assert.instanceOf(strict, ValidationFailed);
+				if (strict instanceof ValidationFailed) assert.isTrue(strict.build?.success);
 				assert.isFalse(existsSync(join(cwd, ".strict")), "a failed size check does not persist");
 
 				const roomy = yield* ActionBuilder.build({
@@ -154,6 +156,7 @@ describe("ActionBuilder.build", () => {
 				if (error instanceof BuildFailed) {
 					assert.strictEqual(error.failedEntries, 1);
 					assert.include(error.build.entries[0]?.error ?? "", "broken at load");
+					assert.isTrue(error.validation.valid);
 				}
 				assert.isFalse(existsSync(join(cwd, ".github")), "a failed build does not persist");
 			}).pipe(Effect.provide(Live)),

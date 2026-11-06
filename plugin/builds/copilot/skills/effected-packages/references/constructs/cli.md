@@ -5,6 +5,10 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `ActionBuildFailedError` | Class | Validation stopped the build or an entry failed. Exit `1`. | action validation stopped the build or an entry failed, exit code 1 |
+| `ActionCommandDeps` | TypeAlias | What `effected action` is given by the process boundary. `main` reads `cwd` and `ci`, and nothing else reads the process. | |
+| `ActionConfigError` | Class | The build could not start: its `effected.toml` would not load, it has no `[action]` table, or the directory is not a package. Exit `2`: exit `1` means it ran and found a problem. | action build could not start, bad config or no action table, exit code 2 |
+| `ActionRunError` | Class | The build could not finish: an entry is missing with validation off, or a file could not be cleaned, written or copied. Exit `3`, the infrastructure tier. | action build could not finish, missing entry or unwritable file, exit code 3 |
 | `BuildFailedError` | Class | The build crashed or recorded an error. Exit `1`. | package build crashed or recorded errors, exit code 1 |
 | `CLI_VERSION` | Variable | The `effected` command's version. The bundler replaces the exact expression `process.env.__PACKAGE_VERSION__` with the package version at build time, so it must stay spelled this way. | the effected command's own version, replaced at build, what effected --version prints |
 | `CatalogMergeError` | Class | The merged catalog could not be assembled: a catalog URL or entry name is advertised more than once across the slices, or a slice is not a catalog entry array. Nothing is merged silently, so the merged catalog was left as it is. Exit `1` under both `build` and `check`: only an edit to the slices or the configs clears it. | merged schemastore catalog could not be assembled, duplicate catalog url or entry name across slices |

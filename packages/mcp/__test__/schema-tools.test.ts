@@ -91,6 +91,7 @@ describe("schema tools", () => {
 			const { harness } = yield* serve();
 			const tools = yield* harness.listTools;
 			assert.deepStrictEqual(tools.map((tool) => tool.name).sort(), [
+				"action_build",
 				"identity",
 				"package_build",
 				"schema_build",

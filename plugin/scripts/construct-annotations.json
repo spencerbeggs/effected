@@ -197,6 +197,9 @@
 		"NoConfigError": "no schemastore config found, exit 2, usage failure of effected schema",
 		"StaleError": "effected schema check found committed documents out of date, CI drift gate, exit 1",
 		"ValidationFailedError": "payload does not conform to schema, validation verdict, exit 1",
+		"ActionBuildFailedError": "action validation stopped the build or an entry failed, exit code 1",
+		"ActionConfigError": "action build could not start, bad config or no action table, exit code 2",
+		"ActionRunError": "action build could not finish, missing entry or unwritable file, exit code 3",
 		"BuildFailedError": "package build crashed or recorded errors, exit code 1",
 		"PackageConfigError": "package build could not start, bad config or plugin, exit code 2"
 	},
@@ -365,6 +368,9 @@
 		"VersionCheck": "compare schemastore versions stamped on a config with the version the tool was built against",
 		"VersionMismatch": "config built from a different schemastore copy than the tool, mismatch report",
 		"VersionMismatchError": "run refused a schemastore version mismatch before generating anything, exit 2",
+		"ActionRun": "run one github action build for a front end, verdict and partial result",
+		"ActionRunResult": "an action build's verdict and what validation and bundling did",
+		"NotAnActionError": "action build requested where effected.toml has no action table",
 		"BuildRun": "run one package build for a front end, verdict and journal lines",
 		"BuildRunResult": "one build's verdict, issues artifact, recorded report and config files read",
 		"NotAPackageError": "build requested in a directory without a readable package.json"

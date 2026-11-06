@@ -64,7 +64,8 @@ const verdictOfThrown = (thrown: ThrownError, externals: ReadonlyArray<string>):
 	if (thrown.code !== undefined && MODULE_NOT_FOUND_CODES.has(thrown.code)) {
 		// ESM says `package` and a CommonJS require says `module`, for the same missing package.
 		const packageName = /^Cannot find (?:package|module) '([^']+)'/.exec(thrown.message)?.[1];
-		return packageName !== undefined && externals.includes(packageName)
+		return packageName !== undefined &&
+			externals.some((name) => packageName === name || packageName.startsWith(`${name}/`))
 			? { kind: "external-missing", packageName, message }
 			: { kind: "failed", message };
 	}

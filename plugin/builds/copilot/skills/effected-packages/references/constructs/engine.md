@@ -5,6 +5,10 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `ActionRun` | Class | Runs one GitHub Action build. | from `@effected/engine/build` — run one github action build for a front end, verdict and partial result |
+| `ActionRunDeps` | TypeAlias | What the process boundary supplies for an action build: the parts of `BuildRunDeps` it uses. | from `@effected/engine/build` |
+| `ActionRunInput` | Interface | What one action build was asked to do, as the flags or tool parameters said it. | from `@effected/engine/build` |
+| `ActionRunResult` | Class | One action build's answer: the verdict a front end maps to an exit code or returns as data, and what the build did. | from `@effected/engine/build` — an action build's verdict and what validation and bundling did |
 | `AjvInstanceValidator` | Class | The shipped `InstanceValidator` implementation: the same ajv strict-mode setup `AjvValidator` gates documents with — the declared `KeywordFamilies` keywords and the standard `ajv-formats` vocabulary registered, through the one shared `makeAjv` — pointed at a payload instance instead of the meta-schema. | from `@effected/engine/schema` — the shipped ajv strict-mode InstanceValidator engine layer, the one real implementation effected schema validate composes, provide it to validate payloads yourself |
 | `AjvValidator` | Class | The shipped `SchemaValidator` implementation: ajv strict mode over the Draft-07 meta-schema, with every declared `KeywordFamilies` keyword and the standard `ajv-formats` vocabulary registered. | from `@effected/engine/schema` — the shipped ajv strict-mode SchemaValidator engine layer, the one real implementation effected schema build composes, provide it to drive SchemaPipeline yourself |
 | `BuildProgress` | TypeAlias | Progress through one build. | from `@effected/engine/build` |
@@ -34,6 +38,7 @@
 | `MergedCatalogReport` | Class | The merged catalog, `catalog.json` in `catalogDir`'s parent: every slice in `catalogDir` united and sorted by entry `url`, with the running config's slice replaced by the entries it computes now when it declares any — so `check` compares against what a build would produce. A config that declares none merges its orphaned slice as it sits on disk, as every other config sees it, so whichever config sharing the directory builds last writes the identical file. | from `@effected/engine/schema` — merged schemastore catalog.json, every slice united and sorted by url |
 | `MissingSchemaRefError` | Class | The payload names no schema and none was given, so there is nothing to validate against. A usage error: the remedy is in how it was invoked. | from `@effected/engine/schema` — payload names no schema and none given, nothing to validate against |
 | `NotAPackageError` | Class | The directory asked to build has no readable `package.json`. | from `@effected/engine/build` — build requested in a directory without a readable package.json |
+| `NotAnActionError` | Class | The directory asked to build as an action has no `[action]` table in its config, so it is a library. | from `@effected/engine/build` — action build requested where effected.toml has no action table |
 | `PayloadError` | Class | The payload file could not be read or parsed: it does not exist, the filesystem refused it, or its contents are not JSON. Nothing was validated. | from `@effected/engine/schema` — payload file unreadable or not JSON, nothing validated |
 | `Report` | Class | Renders a `RunReport` for a terminal, a JSON consumer or a GitHub step summary. | from `@effected/engine/schema` — render a schemastore run report for a terminal, as JSON or as GitHub step summary markdown |
 | `RunOptions` | Interface | What `Runner.run` is asked to do. | from `@effected/engine/schema` |

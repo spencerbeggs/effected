@@ -14,6 +14,7 @@ import type { CommandDeps } from "./commands/root.js";
 import { makeRootCommand } from "./commands/root.js";
 import { CLI_VERSION } from "./version.js";
 
+export type { ActionCommandDeps } from "./commands/action/execute.js";
 export type { PackageCommandDeps } from "./commands/package/execute.js";
 export type { CommandDeps } from "./commands/root.js";
 export type { SchemaCommandDeps } from "./commands/schema/execute.js";

@@ -102,7 +102,7 @@ export interface BuildRunDeps {
 }
 
 /** The name in the directory's `package.json`, or why it is not a package. */
-const readPackageName = Effect.fnUntraced(function* (cwd: string) {
+export const readPackageName = Effect.fnUntraced(function* (cwd: string) {
 	const fs = yield* FileSystem.FileSystem;
 	const pathService = yield* Path.Path;
 	const text = yield* fs
@@ -126,7 +126,7 @@ const readPackageName = Effect.fnUntraced(function* (cwd: string) {
  * Discovery wraps a failed read as a `WorkspaceDiscoveryError`. That is the disk's fault rather than the config's, so
  * its `PlatformError` is unwrapped; a workspace file with the wrong content stays a config fault.
  */
-const workspaceRootOf = (
+export const workspaceRootOf = (
 	cwd: string,
 ): Effect.Effect<string, EffectedConfigError | PlatformError.PlatformError, WorkspaceDiscovery> =>
 	WorkspaceDiscovery.use((discovery) => discovery.infoIn(cwd)).pipe(
