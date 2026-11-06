@@ -54,3 +54,15 @@ export {
 	transformExports,
 	transformManifest,
 } from "./manifest/transform.js";
+export { writeTargetsBinding } from "./targets/binding.js";
+export type {
+	PublishTargetObject,
+	PublishTargetValue,
+	PublishTargets,
+	ReleaseChannel,
+	ResolvedGroup,
+	ResolvedTarget,
+	TargetResolution,
+} from "./targets/config.js";
+export { RELEASE_CHANNELS, isTargetObject } from "./targets/config.js";
+export { releaseWarnings, resolveTargets } from "./targets/resolve-targets.js";
