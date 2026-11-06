@@ -9,7 +9,7 @@
 			"formatter": {
 				"enabled": false
 			},
-			"includes": ["__test__/fixtures/parity/**"],
+			"includes": ["__test__/fixtures/parity/**", "__test__/fixtures/readme/**"],
 			"linter": {
 				"enabled": false
 			}
