@@ -62,7 +62,7 @@ Upgrading is `pnpm update --config @effected/pnpm-plugin-effected` (restore the 
 
 One suite, `__test__/catalog.test.ts`:
 
-- **The `effected` declaration.** It reads the `PnpmConfigPlugin(...)` literal from `savvy.build.ts` the way the upgrade CLI does, without importing it, and asserts every publishable package except the plugin is a member.
+- **The `effected` declaration.** It reads the `PnpmConfigPlugin(...)` literal from its `effected.toml` plugin module (`lib/build/pnpm-config.plugin.ts`) the way the upgrade CLI does, without importing it, and asserts every publishable package except the plugin is a member.
 - **The `effect` declaration.** Every 4.x entry is held to one minor under `lock-minor` at `effect`'s own version.
 - **The overrides.** It imports the built `pnpmfile.mjs` and checks the family pins merge with a consumer's own `overrides`, with a consumer value for the same selector winning.
 - **The consumer's catalog.** The hook exposes exactly one catalog, `effected`, carrying the Effect family and the kit, and keeps a consumer's own catalogs.

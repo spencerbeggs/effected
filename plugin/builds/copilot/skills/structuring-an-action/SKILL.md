@@ -11,7 +11,7 @@ The canonical shape of a GitHub Action repository built on `@effected`: what fil
 
 ```text
 action.yml              # single source of every input/output name AND default; code mirrors it, never re-declares it
-action.config.ts         # builder entries, minify, persistLocal; escape hatches added per need with a forensic comment
+effected.toml            # [action] tables: entries, build (minify, externals, ignore, importCheck), validation, persistLocal; escape hatches added per need with a forensic comment
 lib/scripts/             # non-compilable scripts (a cache-invalidating location) + bundle-truth guards; schemastore.config.ts lives here when schemas/ exists, named explicitly by the schema:* scripts
 schemas/                  # versioned output-contract documents, <version>/<name>-<version>.json; only when a JSON contract crosses the boundary
 <action>.input.schema.json  # unversioned input schema at the root, only when a JSON input crosses the boundary
@@ -43,7 +43,7 @@ docs/                     # numbered user docs, incl. an optional-module chapter
 .github/actions/local/    # a committed local-build target for smoke-testing the bundle
 dist/                     # committed bundles; CI rebuilds and diffs them so a stale bundle cannot merge
 package.json              # a dependency enters when src imports it, closed over required peers
-tsconfig.json             # extends the builder's action config and nothing else
+tsconfig.json             # extends @effected/plugin/tsconfig/ecma.json and nothing else
 CLAUDE.md                 # how to use this repo, plus the shim register
 ```
 

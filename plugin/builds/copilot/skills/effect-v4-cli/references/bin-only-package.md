@@ -1,26 +1,24 @@
 # A bin-only CLI package
 
-Loaded from `effect-v4-cli`. Covers `emitDts: false`, the `exports: "./package.json"` shape, and why `Cannot merge zero API models` is not an extractor bug.
+Loaded from `effect-v4-cli`. Covers `emitDts = false`, the `exports: "./package.json"` shape, and why `Cannot merge zero API models` is not an extractor bug.
 
-## A bin-only CLI package: `emitDts: false`, `exports` = `./package.json`
+## A bin-only CLI package: `emitDts = false`, `exports` = `./package.json`
 
 A CLI that exports nothing for import — `bin` only — is a legitimate package
 shape, and the build pipeline has an opinion about it. With `exports` limited
-to `"./package.json"` and no `index.ts`, the default `@savvy-web/bundler`
-build still runs the declaration pass and then the prod meta (API Extractor)
+to `"./package.json"` and no `index.ts`, the default `effected package build`
+still runs the declaration pass and then the prod meta (API Extractor)
 pass over **zero** entry points, and dies with the opaque
-`Cannot merge zero API models`. The switch is `emitDts: false` in
-`savvy.build.ts` — documented on `BuildConfigInput.emitDts` as *"intended for
-JS-only artifacts that never consume declarations (e2e fixtures, bins,
-internal tools)"* — which skips the dts pass and, with nothing to read, the
+`Cannot merge zero API models`. The switch is `emitDts = false` under
+`[package.build]` in the package's `effected.toml` — meant for JS-only
+artifacts that never consume declarations (bins, internal tools) — which skips the dts pass and, with nothing to read, the
 meta pass, while still emitting JS, the byte-variant targets and the
 transformed `package.json`:
 
-~~~ts
-// savvy.build.ts of a bin-only package
-import { build } from "@savvy-web/bundler";
-
-await build({ emitDts: false });
+~~~toml
+# effected.toml of a bin-only package
+[package.build]
+emitDts = false
 ~~~
 
 Three consequences follow, and each looks like a gap until you know why:

@@ -158,7 +158,7 @@ Pin the window in the setup, before the `runScript` call:
 
 ```ts
 process.env.VITEST_AGENT_RUNSCRIPT_BUILT_RECENTLY_MS ??= "1";
-AgentPlugin.runScript("pnpm exec turbo run build:dev --output-logs=errors-only");
+AgentPlugin.runScript("pnpm exec turbo run build --output-logs=errors-only");
 ```
 
 A 1 ms window keeps the lock's serialization and drops the trust; turbo's

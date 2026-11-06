@@ -65,7 +65,7 @@ Read each listed entry before you touch the code it names. An entry states a sha
 pnpm build
 ```
 
-Work the typed entries first; the compiler confirms them. Then check each package's `dist/prod/issues.json` when the repository builds with `@savvy-web/bundler`: read `buildOk` first, because a crashed build's empty buckets look like a clean one, then treat every `errors` entry and every `warnings` entry marked `ciFatal: true` as a failure. API Extractor findings are warnings locally and errors in CI.
+Work the typed entries first; the compiler confirms them. Then check each package's `dist/prod/issues.json` when the repository builds with `effected package build`: read `buildOk` first, because a crashed build's empty buckets look like a clean one, then treat every `errors` entry and every `warnings` entry marked `ciFatal: true` as a failure. API Extractor findings are warnings locally and errors in CI.
 
 ## Step 6: test
 

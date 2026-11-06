@@ -488,7 +488,7 @@ vitest setup or a reusable workflow's test job usually builds only
 `dist/dev`. A plain skip gate then skips in CI for ever and the suite stays
 green having proven nothing (okfit's first version would have done exactly
 that). That is why the gate fails under `CI` rather than skipping: add the
-prod build (`build:prod`, or `pnpm build` of the carrier's closure) as a step
+prod build (`pnpm build` of the carrier's closure) as a step
 before the test step, and the fail branch can never fire.
 
 ### Driving a bin with input
