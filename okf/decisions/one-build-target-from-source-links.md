@@ -16,10 +16,10 @@ sources:
     title: "Decisions this plan takes, items 1 and 3"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T17:08:05Z
+  at: 2026-11-06T17:36:40Z
 integrity:
   generated:
-    body: 2cbb2cc56a9dafd7
+    body: bd4da4357b6448e3
 ---
 
 # The kit has one build target, and workspace links point at package roots
@@ -33,7 +33,7 @@ The current pipeline has two targets running the same passes, and the dev target
 - **One target.** `dist/dev` goes away. Dropping `publishConfig.directory` and `linkDirectory` makes every workspace link point at the package root, which is all the dev build ever did.
 - **Source manifests keep `"exports": { ".": "./src/index.ts" }`** as they do today. tsgo, vitest, rolldown and API Extractor's bundled TypeScript 6 are expected to resolve a `.ts` export target natively, so none of them needs a setting.[^plan]
 - **`dist/prod/<group>/{pkg,meta}`, `dist/prod/targets.json` and `dist/prod/issues.json` stay byte-stable on this branch.** The kit's own releases run through `silk-release-action`, which hardcodes `dist/prod`, and tsdoctor reads the meta directory.
-- **Turbo `build` depends on `types:check` and not on `^build`**, so the kit builds in parallel. The spike took this path for the declaration pass: it holds from source at 1.03 times the `dist/dev` time, so it needs neither the `paths` fallback nor `^build`; the numbers and the edge they leave are in [the module's spike section](../modules/bundler.md#source-sibling-spike). API Extractor over source siblings is the one piece not yet proven, and its result can still change this clause.[^plan]
+- **Turbo `build` depends on `types:check` and not on `^build`**, so the kit builds in parallel. The spike took this path for the declaration pass: it holds from source at 1.03 times the `dist/dev` time, and API Extractor's output is byte-identical from source, so neither needs the `paths` fallback or `^build`. The numbers, and the warning the switch adds, are in [the module's spike section](../modules/bundler.md#source-sibling-spike).[^plan]
 
 ## Alternatives rejected
 

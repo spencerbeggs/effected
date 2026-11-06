@@ -27,10 +27,10 @@ sources:
     title: "The source-sibling spike, run with EFFECTED_SPIKE=1"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T17:19:01Z
+  at: 2026-11-06T17:36:40Z
 integrity:
   generated:
-    body: dc504d0b3a0d4715
+    body: 42ce6dbc9e2350ab
 ---
 
 # @effected/bundler
@@ -90,7 +90,7 @@ The emitted `tsdoctor.json` is a wire format with readers outside this repositor
 
 ## Source-sibling spike
 
-**Verdict, measured 2026-11-06: the declaration pass holds with siblings resolved to source, so no `paths` fallback and no `^build` dependency are needed for it.** API Extractor over source siblings is not proven, because the meta pass is not ported yet; it stays open until that pass runs against the same setup.[^spike]
+**Verdict, measured 2026-11-06: the declaration pass and API Extractor both hold with siblings resolved to source, so neither needs a `paths` fallback or a `^build` dependency.** One warning is left to settle before the switch, described below.[^spike]
 
 `packages/cli-kit` was built in a scratch workspace of its `@effected/*` closure, with no sibling `dist` anywhere. Three alternating runs each, one fresh process per run:
 
@@ -105,7 +105,10 @@ What the result rests on:
 
 - **cli-kit alone cannot fail this test.** Its public types are explicit, so its declarations stay byte-identical with every sibling link removed. A probe with inferred types crossing a sibling boundary is what discriminates: from source it emits `import("@effected/env").AudienceKind`, and with the links gone the same source emits `any`.
 - **A kit-wide sweep agrees.** 48 of the 49 package directories with a `src/` built from source with no `.d.ts` byte difference from the old bundler. `pnpm-plugin-effected` was not compared, since it needs a virtual-module plugin the sweep did not pass. The sweep was a one-off and read each package's build options from its `savvy.build.ts` by pattern.
+- **API Extractor's output does not move.** A second sweep with the meta pass on built the same 48 packages, and every `.api.json`, meta `package.json`, `tsconfig.json` and `tsdoctor.json` matched the old bundler byte for byte, with no errors. cli-kit also builds with `ci: true` and its own suppressions.
 - **A symlinked `src/` would have answered the wrong question.** tsgo and rolldown realpath it, and its siblings then resolve through the main checkout's links.
+
+**The switch adds one warning: 23 of the 48 packages report `ae-wrong-input-file-type` once**, naming a file in a sibling's `src/`. API Extractor's diagnostics run follows a sibling import to its `.ts` source, and says so. It is a warning rather than an error, even with `ci: true`, and it does not reach the model. Today's `dist/dev` links never produce it, so it appears only when the links move, and `issues.json` would then carry it for about half the kit. The spike pins it.
 
 Inlining is the other edge: **`bundledPackages` naming a sibling that resolves to source fails the build** with `tsgo did not generate a declaration file`, since tsgo declares only the package's own project. It is loud, the spike pins it, and no kit package sets `bundledPackages`.
 

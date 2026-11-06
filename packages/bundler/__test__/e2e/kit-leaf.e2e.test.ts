@@ -28,7 +28,10 @@
  * project), and no kit package uses it. No build here changes directory, so this also proves the emitted manifest's
  * workspace specifiers resolve from `options.cwd`.
  *
- * Not proven here: API Extractor over source siblings, because the meta pass is not ported yet.
+ * API Extractor over source siblings holds too: with `ci: true` and cli-kit's own suppressions the build succeeds with
+ * no errors and writes `cli-kit.api.json`. A one-off sweep with meta on built the same 48 packages, and every `.d.ts`,
+ * `.api.json`, meta `package.json`, `tsconfig.json` and `tsdoctor.json` matched the old bundler byte for byte. One
+ * difference is left: 23 packages gain an `ae-wrong-input-file-type` warning, which this test pins.
  */
 import { execFileSync } from "node:child_process";
 import {
@@ -179,7 +182,7 @@ const makeWorkspace = (root: string): void => {
 
 // Never changes directory: the workspace specifiers in the emitted manifest resolve from `cwd`, so this also proves a
 // real build does not depend on the process's own directory.
-const buildCliKit = (cwd: string, extra: Record<string, unknown> = {}) => {
+const buildCliKit = (cwd: string, extra: Record<string, unknown> = {}, ci = false) => {
 	const config = Schema.decodeUnknownSync(PackageBuildConfig)({
 		meta: false,
 		dtsExternals: ["@effected/cli-kit", "@effected/cli-kit/ui"],
@@ -187,7 +190,7 @@ const buildCliKit = (cwd: string, extra: Record<string, unknown> = {}) => {
 	});
 	return Effect.suspend(() => {
 		rmSync(join(cwd, "dist"), { recursive: true, force: true });
-		return Bundler.build({ cwd, config, tsdoctor: undefined, noExe: true, verbose: false, plugins: [], ci: false });
+		return Bundler.build({ cwd, config, tsdoctor: undefined, noExe: true, verbose: false, plugins: [], ci });
 	});
 };
 
@@ -234,6 +237,37 @@ describe.skipIf(!SPIKE_ENABLED)("cli-kit from source siblings", () => {
 						workerPeakRssKb: process.resourceUsage().maxRSS,
 					}),
 				);
+
+				// API Extractor over source siblings: the whole build as CI runs it, with cli-kit's own suppressions.
+				const withModel = yield* buildCliKit(
+					cwd,
+					{
+						meta: {
+							tsdoc: {
+								suppressWarnings: [
+									{ messageId: "ae-forgotten-export", pattern: "_base" },
+									{ messageId: "ae-forgotten-export", pattern: "entry point ui(?:-testing)?\\.d\\.ts$" },
+								],
+							},
+						},
+					},
+					true,
+				);
+				const modelDir = join(cwd, "dist", "prod", "npm", "meta");
+				assert.isTrue(existsSync(join(modelDir, "cli-kit.api.json")));
+				const modelIssues = JSON.parse(readFileSync(withModel.issuesPath, "utf-8")) as {
+					buildOk: boolean;
+					errors: ReadonlyArray<{ code?: string; text: string }>;
+					warnings: ReadonlyArray<{ code?: string; file?: string; text: string }>;
+				};
+				assert.strictEqual(modelIssues.buildOk, true);
+				assert.deepStrictEqual(modelIssues.errors, []);
+				// Pinned, not endorsed: the diagnostics run reads a sibling's `.ts` once and says so. See okf/modules/bundler.md.
+				const aeWarnings = modelIssues.warnings.filter((w) => w.code?.startsWith("ae-"));
+				assert.deepStrictEqual([...new Set(aeWarnings.map((w) => w.code))], ["ae-wrong-input-file-type"]);
+				assert.isTrue(aeWarnings.every((w) => w.file?.startsWith(realpathSync(join(root, "packages", "env")))));
+				const model = JSON.parse(readFileSync(join(modelDir, "cli-kit.api.json"), "utf-8")) as { name: string };
+				assert.strictEqual(model.name, "@effected/cli-kit");
 
 				// Inlining a sibling that resolves to source is refused outright: tsgo declares only the package's own project.
 				const refused = yield* Effect.flip(buildCliKit(cwd, { bundledPackages: ["@effected/env"] }));
