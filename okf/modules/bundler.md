@@ -24,10 +24,10 @@ sources:
     title: "The bundler research report and the owner's rulings"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T15:28:18Z
+  at: 2026-11-06T15:31:31Z
 integrity:
   generated:
-    body: 7f2a6f68189a88a3
+    body: b805731e1d192e6e
 ---
 
 # @effected/bundler
