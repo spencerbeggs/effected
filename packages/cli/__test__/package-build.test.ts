@@ -209,6 +209,17 @@ describe("effected package build", () => {
 		}),
 	);
 
+	it.effect("an unreadable package.json is the infrastructure tier: exit 3, through the command's own error", () =>
+		Effect.gen(function* () {
+			const { code, errText } = yield* cli([], {
+				seed: { "/repo/package.json": workspace["/repo/package.json"] ?? "", [`${CWD}/package.json/not-a-file`]: "" },
+			});
+			assert.strictEqual(code, 3);
+			assert.include(errText, "PackageRunError");
+			assert.include(errText, "package.json");
+		}),
+	);
+
 	it.effect("an unknown flag is usage: exit 64", () =>
 		Effect.gen(function* () {
 			const { code } = yield* cli(["--no-such-flag"]);

@@ -24,6 +24,7 @@ const cli = (
 	args: ReadonlyArray<string>,
 	files: Readonly<Record<string, string | null>> = GOOD,
 	env: Readonly<Record<string, string>> = {},
+	ci = false,
 ) =>
 	Effect.acquireUseRelease(
 		Effect.sync(() => {
@@ -38,7 +39,7 @@ const cli = (
 		(cwd) =>
 			Effect.gen(function* () {
 				const exit = yield* Effect.exit(
-					run({}, { cwd, ci: false }, environment(["action", "build", ...args], Live)).pipe(
+					run({}, { cwd, ci }, environment(["action", "build", ...args], Live)).pipe(
 						Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: { ...env } }))),
 					),
 				);
@@ -195,6 +196,36 @@ describe("effected action build", () => {
 			const { code, errText } = yield* cli(["--no-validate"], { ...GOOD, "src/main.ts": null });
 			assert.strictEqual(code, 3);
 			assert.include(errText, "Main entry point not found");
+		}),
+	);
+
+	it.effect("a warning under CI is strict: exit 1, saying warnings are errors", () =>
+		Effect.gen(function* () {
+			const { code, outText, errText, dist } = yield* cli(["--human"], { ...GOOD, "action.yml": null }, {}, true);
+			assert.strictEqual(code, 1);
+			assert.include(outText, "ACTION_YML_MISSING");
+			assert.include(errText, "warnings are errors in strict mode");
+			assert.deepStrictEqual(dist, []);
+		}),
+	);
+
+	it.effect("the same warning outside CI builds, so the test above is about ci", () =>
+		Effect.gen(function* () {
+			const { code, errText } = yield* cli(["--human", "--no-persist"], { ...GOOD, "action.yml": null }, {}, false);
+			assert.strictEqual(code, 0, errText);
+		}),
+	);
+
+	it.effect("an unreadable package.json is the infrastructure tier: exit 3, through the command's own error", () =>
+		Effect.gen(function* () {
+			const { code, errText } = yield* cli(["--human"], {
+				...GOOD,
+				"package.json": null,
+				"package.json/not-a-file": "",
+			});
+			assert.strictEqual(code, 3);
+			assert.include(errText, "ActionRunError");
+			assert.include(errText, "package.json");
 		}),
 	);
 

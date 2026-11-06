@@ -51,6 +51,7 @@ export const execute = Effect.fn("effected.action.execute")(function* (input: Ex
 			WriteError: stopped,
 			PersistLocalError: stopped,
 			ActionYmlPathError: stopped,
+			PlatformError: stopped,
 		}),
 	);
 

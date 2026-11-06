@@ -10,7 +10,7 @@ import type { Option } from "effect";
 import { Console, Effect, Schema } from "effect";
 import { IssuesDoc } from "../../render/IssuesDoc.js";
 import { resolveFormat } from "../schema/execute.js";
-import { BuildFailedError, PackageConfigError } from "./errors.js";
+import { BuildFailedError, PackageConfigError, PackageRunError } from "./errors.js";
 
 /**
  * What `effected package` is given by the process boundary, and the test seams: the engine's dependencies, less the
@@ -53,6 +53,7 @@ export const execute = Effect.fn("effected.package.execute")(function* (input: E
 			PluginLoadError: refused,
 			NotAPackageError: refused,
 			ConfigValidationError: refused,
+			PlatformError: (error) => Effect.fail(CliRuntime.reported(new PackageRunError({ message: error.message }), 3)),
 		}),
 	);
 	const { issues } = result;

@@ -74,14 +74,51 @@ describe("action_build", () => {
 		),
 	);
 
-	it.live("builds and persists by default, from the server's directory", () =>
+	it.live("builds without persisting by default, from the server's directory", () =>
 		serving(GOOD, (harness, cwd) =>
 			Effect.gen(function* () {
 				const result = resultOf(yield* harness.callTool("action_build", {}));
 				assert.notStrictEqual(result.isError, true, textOf(result));
 				assert.strictEqual(result.structuredContent?.verdict, "ok");
-				assert.isTrue(result.structuredContent?.result?.persisted);
+				assert.isFalse(result.structuredContent?.result?.persisted);
 				assert.include(readdirSync(join(cwd, "dist")), "main.js");
+				assert.sameMembers(readdirSync(cwd), ["action.yml", "dist", "effected.toml", "package.json", "src"]);
+			}),
+		),
+	);
+
+	it.live("persist: true writes the local action directory and the act template", () =>
+		serving(GOOD, (harness, cwd) =>
+			Effect.gen(function* () {
+				const result = resultOf(yield* harness.callTool("action_build", { persist: true }));
+				assert.notStrictEqual(result.isError, true, textOf(result));
+				assert.isTrue(result.structuredContent?.result?.persisted);
+				assert.include(readdirSync(join(cwd, ".github/actions/local/dist")), "main.js");
+				assert.include(readdirSync(cwd), ".actrc");
+				assert.include(readdirSync(join(cwd, ".github/workflows")), "act-test.yml");
+			}),
+		),
+	);
+
+	it.live("names what persist writes in the tool and parameter descriptions", () =>
+		serving(GOOD, (harness) =>
+			Effect.gen(function* () {
+				const tool = (yield* harness.listTools).find((candidate) => candidate.name === "action_build");
+				const described = JSON.stringify(tool ?? {});
+				for (const file of [".github/actions/local", ".actrc", ".github/workflows/act-test.yml"]) {
+					assert.include(described, file);
+				}
+				assert.include(described, "Omitted, false");
+			}),
+		),
+	);
+
+	it.live("refuses an unreadable package.json, saying what to check", () =>
+		serving({ ...GOOD, "package.json": null, "package.json/not-a-file": "" }, (harness, cwd) =>
+			Effect.gen(function* () {
+				const result = resultOf(yield* harness.callTool("action_build", {}));
+				assert.isTrue(result.isError);
+				assert.include(textOf(result), `Check that ${join(cwd, "package.json")}`);
 			}),
 		),
 	);
@@ -157,7 +194,7 @@ describe("action_build", () => {
 			{ ...GOOD, "action.yml": GOOD["action.yml"]?.replace("dist/main.js", "dist/elsewhere.js") ?? null },
 			(harness) =>
 				Effect.gen(function* () {
-					const result = resultOf(yield* harness.callTool("action_build", {}));
+					const result = resultOf(yield* harness.callTool("action_build", { persist: true }));
 					assert.isTrue(result.isError);
 					assert.include(textOf(result), "dist/elsewhere.js");
 				}),

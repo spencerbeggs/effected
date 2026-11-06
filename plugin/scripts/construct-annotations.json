@@ -201,6 +201,7 @@
 		"ActionConfigError": "action build could not start, bad config or no action table, exit code 2",
 		"ActionRunError": "action build could not finish, missing entry or unwritable file, exit code 3",
 		"BuildFailedError": "package build crashed or recorded errors, exit code 1",
+		"PackageRunError": "package build hit an unreadable or unwritable file, exit code 3",
 		"PackageConfigError": "package build could not start, bad config or plugin, exit code 2"
 	},
 	"cli-kit": {

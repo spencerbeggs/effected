@@ -40,7 +40,7 @@ export class ActionConfigError extends Schema.TaggedError<ActionConfigError>()("
 }) {}
 
 /**
- * The build could not finish: an entry is missing with validation off, or a file could not be cleaned, written or
+ * The build could not finish: an entry is missing with validation off, or a file could not be read, cleaned, written or
  * copied. Exit `3`, the infrastructure tier.
  *
  * @remarks

@@ -7,7 +7,7 @@
 
 export { ActionBuildFailedError, ActionConfigError, ActionRunError } from "./commands/action/errors.js";
 export type { ActionCommandDeps } from "./commands/action/execute.js";
-export { BuildFailedError, PackageConfigError } from "./commands/package/errors.js";
+export { BuildFailedError, PackageConfigError, PackageRunError } from "./commands/package/errors.js";
 export type { PackageCommandDeps } from "./commands/package/execute.js";
 export type { CommandDeps } from "./commands/root.js";
 export { makeRootCommand } from "./commands/root.js";

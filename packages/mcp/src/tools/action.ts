@@ -9,6 +9,7 @@ import { Effect, FileSystem, Path, Schema } from "effect";
 import { Tool } from "effect/ai";
 import { findRoot, inside } from "../root.js";
 import type { PackageToolOptions } from "./package.js";
+import { platformErrorHint } from "./package.js";
 
 /**
  * The `action_build` tool: builds one GitHub Action into its `dist`.
@@ -17,7 +18,7 @@ import type { PackageToolOptions } from "./package.js";
  */
 export const actionBuild = Tool.make("action_build", {
 	description:
-		'Builds one GitHub Action from the [action] table of its effected.toml into dist: validates the config and action.yml, bundles each entry into one file, checks that each loads, and copies the build to the local action directory. Validation stopping the build or an entry failing arrives as the result\'s verdict "failed", not as an error. Reloads the config on every call. The load check imports each bundle, which runs an action with no GITHUB_ACTIONS guard unless [action.build] importCheck is false.',
+		'Builds one GitHub Action from the [action] table of its effected.toml into dist: validates the config and action.yml, bundles each entry into one file, and checks that each loads. It writes only dist unless persist is true, which also copies the build to .github/actions/local and generates .actrc and .github/workflows/act-test.yml. Validation stopping the build or an entry failing arrives as the result\'s verdict "failed", not as an error. Reloads the config on every call. The load check imports each bundle, which runs an action with no GITHUB_ACTIONS guard unless [action.build] importCheck is false.',
 	parameters: Schema.Struct({
 		cwd: Schema.optionalKey(
 			Schema.String.annotate({
@@ -32,7 +33,8 @@ export const actionBuild = Tool.make("action_build", {
 		),
 		persist: Schema.optionalKey(
 			Schema.Boolean.annotate({
-				description: "Copy the build to the local action directory, unless the config disables it. Omitted, true.",
+				description:
+					"Copy the build to .github/actions/local and generate .actrc and .github/workflows/act-test.yml when they are absent, unless the config disables it. Omitted, false.",
 			}),
 		),
 	}),
@@ -71,8 +73,8 @@ const refusalOf = (error: ActionFailure, root: string): ToolRefusal => {
 			return refuse(`Point runs.${error.entryType} in action.yml at a built file, or pass persist: false.`);
 		case "ExclusiveTimeout":
 			return refuse("The build may still be writing dist; wait before calling the tool again.");
-		default:
-			return refuse("Fix what the message names and call the tool again.");
+		case "PlatformError":
+			return refuse(platformErrorHint(error));
 	}
 };
 
@@ -95,7 +97,7 @@ export const makeActionHandlers = (options: PackageToolOptions, lane: Exclusive)
 					if (params.cwd !== undefined) yield* inside(root, "cwd", params.cwd);
 					return yield* lane.run(
 						ActionRun.run(
-							{ validate: params.validate ?? true, persist: params.persist ?? true },
+							{ validate: params.validate ?? true, persist: params.persist ?? false },
 							{
 								cwd: params.cwd !== undefined ? path.resolve(root, params.cwd) : cwd,
 								ci: options.ci ?? false,

@@ -6,6 +6,7 @@ import type { BuildRunDeps } from "@effected/engine/build";
 import { BuildRun, BuildRunResult } from "@effected/engine/build";
 import type { Exclusive, ExclusiveTimeout } from "@effected/kit";
 import { ToolFailure, ToolRefusal } from "@effected/mcp-kit";
+import type { PlatformError } from "effect";
 import { Effect, FileSystem, Path, Schema } from "effect";
 import { Tool } from "effect/ai";
 import { findRoot, inside } from "../root.js";
@@ -64,6 +65,17 @@ const BUILD_TIMEOUT = "10 minutes";
 
 type BuildFailure = Effect.Error<ReturnType<typeof BuildRun.run>> | ExclusiveTimeout;
 
+/**
+ * What an agent can do about a filesystem failure: look at the path, when it names one.
+ *
+ * @internal
+ */
+export const platformErrorHint = (error: PlatformError.PlatformError): string => {
+	const path = "pathOrDescriptor" in error.reason ? error.reason.pathOrDescriptor : undefined;
+	const subject = path !== undefined ? String(path) : "the path the message names";
+	return `Check that ${subject} is the right kind of file and can be read and written, then call the tool again.`;
+};
+
 const refusalOf = (error: BuildFailure, root: string): ToolRefusal => {
 	const refuse = (hint: string): ToolRefusal =>
 		ToolRefusal.refuse(ToolFailure.truncate(error.message, ToolFailure.ENGINE_ECHO_LIMIT), { hint });
@@ -77,6 +89,8 @@ const refusalOf = (error: BuildFailure, root: string): ToolRefusal => {
 			return refuse(`Pass cwd: a package directory under the workspace root ${root}.`);
 		case "ExclusiveTimeout":
 			return refuse("The build may still be writing dist/prod; wait before calling the tool again.");
+		case "PlatformError":
+			return refuse(platformErrorHint(error));
 		default:
 			return refuse("Fix what the message names and call the tool again.");
 	}

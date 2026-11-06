@@ -35,3 +35,12 @@ export class BuildFailedError extends Schema.TaggedError<BuildFailedError>()("Bu
 export class PackageConfigError extends Schema.TaggedError<PackageConfigError>()("PackageConfigError", {
 	message: Schema.String,
 }) {}
+
+/**
+ * A file the build needs could not be read or written. Exit `3`, the infrastructure tier.
+ *
+ * @public
+ */
+export class PackageRunError extends Schema.TaggedError<PackageRunError>()("PackageRunError", {
+	message: Schema.String,
+}) {}
