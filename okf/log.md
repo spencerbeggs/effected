@@ -90,6 +90,9 @@
 * Updated The catalog sync moved the effect catalog onto Effect 4.1 under a kit built on 4.0
 * Updated The effect catalog locks every entry to an exact version, held by overrides
 * Updated The plugin's catalog paired 4.0.3 satellites with core effect 4.0.2
+* Added The build artifacts: dist/prod, targets.json, issues.json and the journals
+* Added The effected build commands: package build and action build
+* Added effected.toml: the build config's tables, defaults and discovery
 
 ## 2026-11-05
 
