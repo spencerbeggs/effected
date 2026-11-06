@@ -1,0 +1,5 @@
+name: cjs-node-interop
+description: Integration fixture for issue #79 — CJS node: builtin interop.
+runs:
+  using: node24
+  main: dist/main.js

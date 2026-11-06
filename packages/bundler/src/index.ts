@@ -1,3 +1,5 @@
+export { ActionBundle, BuildResult, BundleResult, BundleStats } from "./action/ActionBundle.js";
+export { BundleFailed, CleanError, WriteError } from "./action/ActionErrors.js";
 export type { ActionValidationRunOptions } from "./action/ActionValidation.js";
 export { ActionValidation, ValidationIssue, ValidationResult } from "./action/ActionValidation.js";
 export {

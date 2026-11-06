@@ -39,14 +39,27 @@
  *   and a computed `import()`, including the one in `@changesets/apply-release-plan`, stays native.
  */
 import { execFile } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+	cpSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
+import { Effect, Layer, Schema } from "effect";
 import type { Plugin } from "rolldown";
 import { rolldown } from "rolldown";
 import { checkImport } from "../../src/action/import-check.js";
+import { ActionBundle, ActionConfig, ActionValidation } from "../../src/index.js";
 
 const TARGET = process.env.EFFECTED_ACTION_SPIKE;
 const KEEP_DIR = process.env.EFFECTED_ACTION_SPIKE_DIR;
@@ -228,6 +241,44 @@ describe.skipIf(TARGET === undefined)("the action spike", () => {
 			rmSync(dir, { recursive: true, force: true });
 		}
 	});
+
+	it(
+		"ActionBundle builds the real action, and ActionValidation reads its action.yml",
+		async () => {
+			// A directory that links to the checkout's sources, so the build's dist stays out of that repository.
+			const farm = mkdtempSync(join(tmpdir(), "effected-action-farm-"));
+			try {
+				for (const name of ["src", "node_modules", "package.json", "tsconfig.json", "action.yml", "types"]) {
+					if (existsSync(join(target, name))) symlinkSync(join(target, name), join(farm, name));
+				}
+				const config = Schema.decodeUnknownSync(ActionConfig)({
+					entries: {
+						pre: ENTRIES.pre,
+						main: ENTRIES.main,
+						post: ENTRIES.post,
+						workers: { "changelog-silk": ENTRIES["changelog-silk"], "changelog-default": ENTRIES["changelog-default"] },
+					},
+					build: { ignore: [...IGNORE] },
+				});
+				const built = await Effect.runPromise(ActionBundle.build(config, { cwd: farm, clean: true }));
+				assert.isTrue(built.success, JSON.stringify(built));
+				assert.lengthOf(built.entries, 5);
+
+				const validated = await Effect.runPromise(
+					ActionValidation.validate(config, farm, { ci: false }).pipe(
+						Effect.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
+					),
+				);
+				if (KEEP_DIR !== undefined) {
+					writeFileSync(join(KEEP_DIR, "action-bundle.json"), `${JSON.stringify({ built, validated }, null, "\t")}\n`);
+				}
+				assert.deepStrictEqual(validated.errors, []);
+			} finally {
+				rmSync(farm, { recursive: true, force: true });
+			}
+		},
+		SPIKE_TIMEOUT,
+	);
 
 	it(
 		"bundles every entry into one file that imports with no GITHUB_ variable set",

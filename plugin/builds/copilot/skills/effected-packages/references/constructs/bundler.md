@@ -6,6 +6,7 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `ActionBuildOptions` | Class | How an action's bundles are built, the `[action.build]` table. | minify, source maps, externals, stub out ignored packages in action bundles |
+| `ActionBundle` | Class | Bundles a GitHub Action with rolldown. | bundle a github action with rolldown, one self-contained file per entry |
 | `ActionConfig` | Class | A GitHub Action's build settings, the `[action]` table of `effected.toml`. | configure a github action build, the action table of effected.toml |
 | `ActionEntries` | Class | The bundles a GitHub Action ships, the `[action.entries]` table. | declare lifecycle entry points and worker bundles for an action |
 | `ActionPersistLocalOptions` | Class | The local copy of an action's build for testing with nektos/act, the `[action.persistLocal]` table. | copy an action build locally for nektos act testing |
@@ -32,9 +33,13 @@
 | `BuildPlatform` | Variable + TypeAlias | The decoded type of `(BuildPlatform:variable)`. | target runtime choices, node, browser or neutral |
 | `BuildPlatformOption` | TypeAlias | Bundling platform for the JS pass. Defaults to "node". Use "browser" for web runtime partitions. | |
 | `BuildReport` | Class | | per-package report of every target group, pass and emitted file |
+| `BuildResult` | Class | How a whole action bundle went. | whether an action bundle succeeded, per-entry outcomes and duration |
 | `BuildTargetGroupsOptions` | Interface | | |
+| `BundleFailed` | Class | An entry could not go through the bundler, or could not be bundled at all. | an action entry is missing, unsafely named or could not bundle |
 | `BundleManifest` | Variable + TypeAlias | The decoded type of `(BundleManifest:variable)`. | tsdoctor.json schema, emitted metadata for a package's api docs bundle |
 | `BundleManifestError` | Class | Raised when a present `tsdoctor.json` cannot be parsed or does not satisfy the `(BundleManifest:variable)` schema. | unparseable or invalid tsdoctor.json sidecar failure |
+| `BundleResult` | Class | How one entry's bundling went. | one action entry's outcome, its error, stats and rolldown warnings |
+| `BundleStats` | Class | What one bundle came to. | one action bundle's size, build time and output path |
 | `Bundler` | Class | Builds one package: the JS and declaration passes for every publish group, the emitted manifest, `dist/prod/targets.json`, the API model, an optional SEA binary, and `dist/prod/issues.json`. | build one package to dist/prod, js and declarations, manifest, api model, single executable |
 | `BundlerBuildOptions` | Interface | The inputs of one package build. | |
 | `BundlerBuildResult` | Class | A finished build. | finished build's outcome, its report and issues artifact |
@@ -42,6 +47,7 @@
 | `BundlerPackageJson` | Interface | The `package.json` fields the build reads. Any other field reaches the emitted manifest untouched. | |
 | `BundlerPhase` | Variable + TypeAlias | The decoded type of `(BundlerPhase:variable)`. | which stage a build failed in, for reporting a failure |
 | `BundlerSeams` | Interface | The orchestrator's side effects, each replaceable so a test can run it without tsdown, API Extractor or a compiler. Every member defaults to the real implementation. | |
+| `CleanError` | Class | The output directory could not be cleaned. | removing an action build's dist directory failed |
 | `ComposeManifestInput` | Interface | Everything `composeTsdoctorManifest` needs: the three authoring tiers plus the build facts that derive the rest. | |
 | `ConfigValidationError` | Class | A build config is structurally invalid; raised before any build work. | structurally invalid build config, refused before any build work |
 | `ConfigValidator` | Class | Fast-fail config validator; runs first in the bundler over the resolved config. | fast-fail structural check of a resolved build config |
@@ -163,6 +169,7 @@
 | `ValidationIssue` | Class | One problem a validation found. | one action validation finding with code, file and suggestion |
 | `ValidationResult` | Class | What a validation found. | whether an action may build, its errors and warnings |
 | `WarningSuppressionRule` | Class | An API Extractor message-suppression rule. | silence api extractor messages by message id and pattern |
+| `WriteError` | Class | An output file could not be written. | writing an action build's output file failed |
 | `WriteGeneratedOgImageOptions` | Interface | Options for `writeGeneratedOgImage`. | |
 | `ambientOutName` | Function | Output basename (including the preserved declaration extension) for an ambient export, derived from the export KEY — consistent with how JS entries are named. | output file name for a types-only export, from its export key |
 | `analyzeReexportBarrel` | Function | Analyze an entry source as a candidate pure re-export barrel: classify its re-exported names into value vs type-only and report whether it is expressible as a thin stub. Pure parsing — no I/O. | classify a barrel's re-exports as value or type, can it become a stub |
