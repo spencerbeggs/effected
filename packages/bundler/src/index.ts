@@ -54,6 +54,24 @@ export {
 	transformExports,
 	transformManifest,
 } from "./manifest/transform.js";
+export { renderCiAnnotations } from "./report/ci-annotations.js";
+export type { DiagnosticInput, PassKind } from "./report/collector.js";
+export { BuildCollector, BuildCollectorTag } from "./report/collector.js";
+export type { BuildIssues, PlainDiagnostic } from "./report/issues-artifact.js";
+export { flattenIssues, serializeIssues, writeIssuesArtifact } from "./report/issues-artifact.js";
+export { buildMetricsPlugin } from "./report/metrics-plugin.js";
+export {
+	BuildReport,
+	DiagnosticEntry,
+	EmittedFile,
+	PassReport,
+	ReportTimings,
+	TargetGroupReport,
+} from "./report/schema.js";
+export type { Timer } from "./report/timer.js";
+export { createTimer, formatTime } from "./report/timer.js";
+export type { TsdownLogger } from "./report/tsdown-logger.js";
+export { createTsdownLogger } from "./report/tsdown-logger.js";
 export { writeTargetsBinding } from "./targets/binding.js";
 export type {
 	PublishTargetObject,
