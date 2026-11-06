@@ -51,7 +51,7 @@ export class ActionBuildOptions extends Schema.Class<ActionBuildOptions>("Action
  *
  * @public
  */
-export class ActionValidation extends Schema.Class<ActionValidation>("ActionValidation")({
+export class ActionValidationOptions extends Schema.Class<ActionValidationOptions>("ActionValidationOptions")({
 	/** Whether `action.yml` must exist and be valid. */
 	requireActionYml: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
 	/** The size past which a bundle is reported, such as `"5mb"` or `"500kb"`. */
@@ -65,7 +65,7 @@ export class ActionValidation extends Schema.Class<ActionValidation>("ActionVali
  *
  * @public
  */
-export class ActionPersistLocal extends Schema.Class<ActionPersistLocal>("ActionPersistLocal")({
+export class ActionPersistLocalOptions extends Schema.Class<ActionPersistLocalOptions>("ActionPersistLocalOptions")({
 	/** Whether to copy the build output locally. */
 	enabled: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
 	/** The local action directory, relative to the package. */
@@ -89,7 +89,7 @@ export class ActionConfig extends Schema.Class<ActionConfig>("ActionConfig")({
 	/** How to build them. */
 	build: ActionBuildOptions.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
 	/** What to check before building. */
-	validation: ActionValidation.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
+	validation: ActionValidationOptions.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
 	/** The local copy for testing with nektos/act. */
-	persistLocal: ActionPersistLocal.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
+	persistLocal: ActionPersistLocalOptions.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
 }) {}

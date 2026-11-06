@@ -1,3 +1,14 @@
+export type { ActionValidationRunOptions } from "./action/ActionValidation.js";
+export { ActionValidation, ValidationIssue, ValidationResult } from "./action/ActionValidation.js";
+export {
+	ActionYml,
+	ActionYmlBranding,
+	ActionYmlBrandingColor,
+	ActionYmlBrandingIcon,
+	ActionYmlInput,
+	ActionYmlOutput,
+	ActionYmlRuns,
+} from "./action/ActionYml.js";
 export type {
 	BundlerBuildOptions,
 	BundlerPackageJson,
@@ -13,8 +24,8 @@ export {
 	ActionBuildOptions,
 	ActionConfig,
 	ActionEntries,
-	ActionPersistLocal,
-	ActionValidation,
+	ActionPersistLocalOptions,
+	ActionValidationOptions,
 } from "./config/ActionConfig.js";
 export {
 	BuildFormat,

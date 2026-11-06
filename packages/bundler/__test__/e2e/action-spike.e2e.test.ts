@@ -46,6 +46,7 @@ import { pathToFileURL } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
 import type { Plugin } from "rolldown";
 import { rolldown } from "rolldown";
+import { checkImport } from "../../src/action/import-check.js";
 
 const TARGET = process.env.EFFECTED_ACTION_SPIKE;
 const KEEP_DIR = process.env.EFFECTED_ACTION_SPIKE_DIR;
@@ -152,23 +153,6 @@ const importArguments = (file: string): ReadonlyArray<string> => [
 	`await import(${JSON.stringify(pathToFileURL(file).href)});`,
 ];
 
-type ImportVerdict =
-	| { readonly kind: "imported" }
-	| { readonly kind: "missing-input"; readonly output: string }
-	| { readonly kind: "failed"; readonly output: string };
-
-/** A failure of the action asking for an input it was not given, rather than of the bundle being broken. */
-const MISSING_INPUT = /\bINPUT_[A-Z-]+|\binput\b.*\b(?:required|missing|not supplied)\b/i;
-
-const importVerdict = async (file: string, cwd: string): Promise<ImportVerdict> => {
-	const { exitCode, output } = await runNode(importArguments(file), cwd);
-	return exitCode === 0
-		? { kind: "imported" }
-		: MISSING_INPUT.test(output)
-			? { kind: "missing-input", output }
-			: { kind: "failed", output };
-};
-
 /** The `::error::` lines a run reported. */
 const errorLines = (output: string): ReadonlyArray<string> =>
 	output.split("\n").filter((line) => line.startsWith("::error::"));
@@ -211,27 +195,6 @@ const LEGACY_FIXTURE: Readonly<Record<string, string>> = {
 
 describe.skipIf(TARGET === undefined)("the action spike", () => {
 	const target = TARGET ?? "";
-
-	it("the import check tells a broken bundle from a working one", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "effected-action-control-"));
-		try {
-			writeFileSync(join(dir, "package.json"), ESM_MANIFEST);
-			const verdictFor = (name: string, source: string): Promise<ImportVerdict> => {
-				writeFileSync(join(dir, name), source);
-				return importVerdict(join(dir, name), dir);
-			};
-			assert.strictEqual((await verdictFor("fine.js", "export const a = 1;\n")).kind, "imported");
-			const dynamicRequire = 'throw new Error("Dynamic require of \\"fs\\" is not supported");\n';
-			assert.strictEqual((await verdictFor("require.js", dynamicRequire)).kind, "failed");
-			assert.strictEqual((await verdictFor("missing.js", 'import "not-installed-anywhere";\n')).kind, "failed");
-			const unsetInput = 'throw new Error("Expected string at INPUT_APP-CLIENT-ID");\n';
-			assert.strictEqual((await verdictFor("input.js", unsetInput)).kind, "missing-input");
-			const notSupplied = 'throw new Error("Input required and not supplied: token");\n';
-			assert.strictEqual((await verdictFor("supplied.js", notSupplied)).kind, "missing-input");
-		} finally {
-			rmSync(dir, { recursive: true, force: true });
-		}
-	});
 
 	it("rolldown leaves __dirname bare, and keeps require, import.meta.url and a computed import working", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "effected-action-legacy-"));
@@ -297,8 +260,8 @@ describe.skipIf(TARGET === undefined)("the action spike", () => {
 					rspackBytes: hasEntryBaseline ? statSync(baseline).size : null,
 					chunks: output.output.filter((item) => item.type === "chunk").length,
 					ms,
-					verdict: await importVerdict(join(out, `${entry}.js`), out),
-					rspackVerdict: hasEntryBaseline ? await importVerdict(baseline, baselineDir) : null,
+					verdict: await checkImport(join(out, `${entry}.js`), { cwd: out }),
+					rspackVerdict: hasEntryBaseline ? await checkImport(baseline, { cwd: baselineDir }) : null,
 				});
 			}
 
@@ -328,7 +291,7 @@ describe.skipIf(TARGET === undefined)("the action spike", () => {
 			const umdEntry = await bundle("main", join(target, "src/main.ts"), target, umd, [], {
 				mainFields: ["main", "module"],
 			});
-			const umdVerdict = await importVerdict(join(umd, "main.js"), umd);
+			const umdVerdict = await checkImport(join(umd, "main.js"), { cwd: umd });
 
 			// With GITHUB_ACTIONS set the entries run for real, as far as they get with no input, state or token.
 			const runtime = [];
@@ -367,15 +330,18 @@ describe.skipIf(TARGET === undefined)("the action spike", () => {
 				1,
 			);
 			assert.strictEqual(umdVerdict.kind, "failed");
-			assert.include(umdVerdict.kind === "failed" ? umdVerdict.output : "", "./impl/format");
+			assert.include(umdVerdict.kind === "failed" ? umdVerdict.message : "", "./impl/format");
 
 			for (const { entry, rolldownRun, rspackRun } of runtime) {
 				assert.strictEqual(rolldownRun.exitCode, rspackRun.exitCode, entry);
 				assert.deepStrictEqual(errorLines(rolldownRun.output), errorLines(rspackRun.output), entry);
 			}
 			if (hasBaseline) {
+				// Read directly rather than through checkImport's predicate, so it can catch that predicate being wrong.
 				const mainRun = runtime.find(({ entry }) => entry === "main");
-				assert.match(mainRun?.rolldownRun.output ?? "", MISSING_INPUT);
+				const mainErrors = errorLines(mainRun?.rolldownRun.output ?? "");
+				assert.lengthOf(mainErrors, 1);
+				assert.include(mainErrors[0] ?? "", 'at ["INPUT_APP-CLIENT-ID"]');
 			}
 		},
 		SPIKE_TIMEOUT,

@@ -5,8 +5,8 @@ import {
 	ActionBuildOptions,
 	ActionConfig,
 	ActionEntries,
-	ActionPersistLocal,
-	ActionValidation,
+	ActionPersistLocalOptions,
+	ActionValidationOptions,
 	EffectedConfig,
 } from "../../src/index.js";
 
@@ -101,13 +101,13 @@ describe("ActionBuildOptions", () => {
 	);
 });
 
-describe("ActionValidation", () => {
-	const validation = (document: unknown) => Schema.decodeUnknownEffect(ActionValidation)(document, strict);
+describe("ActionValidationOptions", () => {
+	const validation = (document: unknown) => Schema.decodeUnknownEffect(ActionValidationOptions)(document, strict);
 
 	it.effect("applies defaults when decoding an empty table", () =>
 		Effect.gen(function* () {
 			const decoded = yield* validation({});
-			assert.instanceOf(decoded, ActionValidation);
+			assert.instanceOf(decoded, ActionValidationOptions);
 			assert.strictEqual(decoded.requireActionYml, true);
 			assert.notProperty(decoded, "maxBundleSize");
 			assert.notProperty(decoded, "strict");
@@ -131,13 +131,13 @@ describe("ActionValidation", () => {
 	);
 });
 
-describe("ActionPersistLocal", () => {
-	const persistLocal = (document: unknown) => Schema.decodeUnknownEffect(ActionPersistLocal)(document, strict);
+describe("ActionPersistLocalOptions", () => {
+	const persistLocal = (document: unknown) => Schema.decodeUnknownEffect(ActionPersistLocalOptions)(document, strict);
 
 	it.effect("applies defaults when decoding an empty table", () =>
 		Effect.gen(function* () {
 			const decoded = yield* persistLocal({});
-			assert.instanceOf(decoded, ActionPersistLocal);
+			assert.instanceOf(decoded, ActionPersistLocalOptions);
 			assert.strictEqual(decoded.enabled, true);
 			assert.strictEqual(decoded.path, ".github/actions/local");
 			assert.strictEqual(decoded.actTemplate, true);
@@ -161,8 +161,8 @@ describe("ActionConfig", () => {
 			assert.instanceOf(config, ActionConfig);
 			assert.instanceOf(config.entries, ActionEntries);
 			assert.instanceOf(config.build, ActionBuildOptions);
-			assert.instanceOf(config.validation, ActionValidation);
-			assert.instanceOf(config.persistLocal, ActionPersistLocal);
+			assert.instanceOf(config.validation, ActionValidationOptions);
+			assert.instanceOf(config.persistLocal, ActionPersistLocalOptions);
 			assert.strictEqual(config.entries.main, "src/main.ts");
 			assert.strictEqual(config.build.minify, true);
 			assert.strictEqual(config.validation.requireActionYml, true);

@@ -27,10 +27,10 @@ sources:
     title: "The source-sibling spike, run with EFFECTED_SPIKE=1"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:37:02Z
+  at: 2026-11-06T20:50:06Z
 integrity:
   generated:
-    body: ea51a3da70223c48
+    body: 89bbf2aad97b7048
 ---
 
 # @effected/bundler
@@ -134,7 +134,7 @@ Every bundle imports from a directory outside the checkout with no `GITHUB_*` va
 
 What the action builder has to carry:
 
-- **Module-first resolution.** Rolldown's node default is `["main", "module"]`, which takes jsonc-parser's UMD build. Its factory receives `require` as a value, so its relative requires stay runtime calls: `Cannot find module './impl/format'` at import, in `main` and both workers, and a clean build. Set `resolve.mainFields` to `["module", "main"]`.
+- **Module-first resolution, a requirement of the action bundler.** Rolldown's node default is `["main", "module"]`, which takes jsonc-parser's UMD build. Its factory receives `require` as a value, so its relative requires stay runtime calls: `Cannot find module './impl/format'` at import, in `main` and both workers, and a clean build. Set `resolve.mainFields` to `["module", "main"]`.
 - **An import check.** That break shows up only when the bundle loads, so a clean rolldown run does not show a bundle works.
 - **`__dirname` and `__filename`.** Rolldown leaves them bare, and they die with a `ReferenceError` when called, not at import, so an import check misses them. No bundle here references either. A fixture shows `transform.define` to `import.meta.dirname` and `import.meta.filename` works.
 - **One build per entry**, with `codeSplitting: false`, plus `dist/package.json` holding `{ "type": "module" }`.

@@ -8,8 +8,17 @@
 | `ActionBuildOptions` | Class | How an action's bundles are built, the `[action.build]` table. | minify, source maps, externals, stub out ignored packages in action bundles |
 | `ActionConfig` | Class | A GitHub Action's build settings, the `[action]` table of `effected.toml`. | configure a github action build, the action table of effected.toml |
 | `ActionEntries` | Class | The bundles a GitHub Action ships, the `[action.entries]` table. | declare lifecycle entry points and worker bundles for an action |
-| `ActionPersistLocal` | Class | The local copy of an action's build for testing with nektos/act, the `[action.persistLocal]` table. | copy an action build locally for nektos act testing |
-| `ActionValidation` | Class | What an action build checks before it builds, the `[action.validation]` table. | require action.yml, cap bundle size, treat warnings as errors |
+| `ActionPersistLocalOptions` | Class | The local copy of an action's build for testing with nektos/act, the `[action.persistLocal]` table. | copy an action build locally for nektos act testing |
+| `ActionValidation` | Class | Checks an action's config, entry points and `action.yml`, and the size of what it built. | check action config, entry points, action.yml and bundle sizes before shipping |
+| `ActionValidationOptions` | Class | What an action build checks before it builds, the `[action.validation]` table. | require action.yml, cap bundle size, treat warnings as errors |
+| `ActionValidationRunOptions` | Interface | How `ActionValidation.validate` decides strict mode. | |
+| `ActionYml` | Class | A decoded `action.yml`, per GitHub's metadata syntax for actions. | parse and decode action.yml metadata, github action manifest shape |
+| `ActionYmlBranding` | Class | An action's Marketplace branding. | marketplace icon and color of an action |
+| `ActionYmlBrandingColor` | Variable + TypeAlias | The decoded type of `(ActionYmlBrandingColor:variable)`. | allowed marketplace branding colors for an action |
+| `ActionYmlBrandingIcon` | Variable + TypeAlias | The decoded type of `(ActionYmlBrandingIcon:variable)`. | allowed feather icon names for action branding |
+| `ActionYmlInput` | Class | One input an action declares. | declare one workflow input, its default and deprecation message |
+| `ActionYmlOutput` | Class | One output an action declares. | declare one output an action sets |
+| `ActionYmlRuns` | Class | How an action runs, the `runs` key. | node24 main, pre, post steps and their conditions in action.yml |
 | `AmbientDtsEntry` | Interface | One ambient `.d.ts` export resolved for copy + manifest. | |
 | `BuildCollector` | Class | Stateful build-event accumulator. The write surface is synchronous so it can be called directly from tsdown's customLogger and API Extractor's messageCallback (both invoked synchronously). `snapshot` builds the immutable BuildReport the Effect render pipeline consumes. | accumulate build events, record warnings and pass timings, snapshot the report |
 | `BuildCollectorTag` | Class | | service tag to provide or read the running build's event collector |
@@ -151,6 +160,8 @@
 | `TsdownBuild` | TypeAlias | Signature compatible with tsdown's `build(inlineConfig)`. | |
 | `TsdownLogger` | Interface | Structural match for tsdown's Logger interface (tsdown 0.22.x). | |
 | `ValidationInput` | Interface | The normalized facts the validator checks, assembled by the bundler before any build work. | |
+| `ValidationIssue` | Class | One problem a validation found. | one action validation finding with code, file and suggestion |
+| `ValidationResult` | Class | What a validation found. | whether an action may build, its errors and warnings |
 | `WarningSuppressionRule` | Class | An API Extractor message-suppression rule. | silence api extractor messages by message id and pattern |
 | `WriteGeneratedOgImageOptions` | Interface | Options for `writeGeneratedOgImage`. | |
 | `ambientOutName` | Function | Output basename (including the preserved declaration extension) for an ambient export, derived from the export KEY — consistent with how JS entries are named. | output file name for a types-only export, from its export key |
