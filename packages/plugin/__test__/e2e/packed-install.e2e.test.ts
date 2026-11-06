@@ -55,7 +55,7 @@ const CATALOG_PNPMFILE = `${ROOT}/packages/pnpm-plugin-effected/dist/prod/npm/pk
 // Module evaluation, before `describe` runs. PackedInstall packs `dist/prod/npm/pkg` (the release
 // artifact): with it absent the suite skips locally and FAILS under CI, so it never stops proving the
 // published tarballs silently. The release workflow runs `ci:test` before `ci:build`, so the root
-// `ci:test` script prod-builds this carrier's closure first. The gate reads `CI` through `Config`.
+// `ci:test` script builds this carrier's closure first. The gate reads `CI` through `Config`.
 const GATE = await Effect.runPromise(
 	Effect.all([PackedInstall.preflight(RUN), PackedInstall.preflight(CATALOG_PLUGIN)]).pipe(
 		Effect.map(([carrier, catalog]) => ({

@@ -15,17 +15,17 @@ sources:
     title: "Decisions this plan takes, item 5"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T15:28:18Z
+  at: 2026-11-06T20:18:23Z
 integrity:
   generated:
-    body: 22f62d439d262f76
+    body: b92b601889abdefb
 ---
 
 # effected.toml is the only build config, and code enters through two data keys
 
 ## Context
 
-Each of the kit's 47 packages carries a `savvy.build.ts`, and they use almost none of its option surface: `meta.localPaths` in 45, the `_base` suppression in 42, `dtsExternals` in five, `plugins` in one. Outside the kit, `vitest-agent` adds `bundledPackages`, `exe`, a sidecar `transform` and `meta: false`, and `silk-release-action` uses action entries and a few build options. A data-only config covers 46 of the 47 kit packages. The remaining one is `pnpm-plugin-effected`, whose `PnpmConfigPlugin` holds the catalog literal at its call site.[^spec]
+Each of the kit's 47 packages carried a `savvy.build.ts`, and they used almost none of its option surface: `meta.localPaths` in 45, the `_base` suppression in 42, `dtsExternals` in five, `plugins` in one. Outside the kit, `vitest-agent` adds `bundledPackages`, `exe`, a sidecar `transform` and `meta: false`, and `silk-release-action` uses action entries and a few build options. A data-only config covered 46 of the 47 kit packages. The remaining one was `pnpm-plugin-effected`, whose `PnpmConfigPlugin` held the catalog literal at its call site.[^spec]
 
 ## Decision
 

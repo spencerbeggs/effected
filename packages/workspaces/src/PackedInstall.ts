@@ -744,7 +744,7 @@ export interface PackedInstallGate {
 }
 
 // npm-packing the prod output is byte-identical to the published tarball;
-// pnpm-packing the source packs the dev build.
+// pnpm-packing the source packs whatever publishConfig.directory names.
 const DEFAULT_PACK_FROM: PackSource = { directory: "dist/prod/npm/pkg" };
 const WORKSPACE_PROTOCOL_NOT_INSTALLED = "ERR_PNPM_CANNOT_RESOLVE_WORKSPACE_PROTOCOL";
 const TAIL = 2000;
@@ -1115,9 +1115,8 @@ export class PackedInstall {
 	 * (default `{ directory: "dist/prod/npm/pkg" }`), the same file whose
 	 * absence makes the run fail `PackSourceMissing`. Under `packFrom: "source"`
 	 * the packer builds nothing of its own, so nothing is checked and the
-	 * result is ready. A package a bundler's dev build produced is no
-	 * substitute: the prod output exists only after the prod build, which a
-	 * test job's usual `build:dev` pre-step does not run. Pair it with
+	 * result is ready. The output exists only after the build, which a test job
+	 * has to run first. Pair it with
 	 * {@link PackedInstall.gate} to skip locally and fail under CI.
 	 *
 	 * Fails as `closure` does, plus `Io` when a path cannot be inspected.
@@ -1200,7 +1199,7 @@ export class PackedInstall {
 			if (preflight.ready) return { action: "run", message: "" } satisfies PackedInstallGate;
 			const ci = yield* Config.option(Config.String("CI")).pipe(Effect.orElseSucceed(() => Option.none<string>()));
 			const underCi = Option.isSome(ci) && !["", "0", "false"].includes(ci.value.toLowerCase());
-			const message = `the pack source is missing: ${preflight.missing.join(", ")}; run the prod build (build:prod) before the packed-install tests`;
+			const message = `the pack source is missing: ${preflight.missing.join(", ")}; run pnpm build --filter <package> before the packed-install tests`;
 			return (
 				underCi
 					? { action: "fail", message: `${message}; it must not be skipped under CI` }

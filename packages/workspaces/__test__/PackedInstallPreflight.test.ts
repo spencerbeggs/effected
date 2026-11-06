@@ -88,7 +88,7 @@ describe("PackedInstall.preflight and gate", () => {
 				const gate = yield* PackedInstall.gate(missing).pipe(withEnv(env));
 				assert.strictEqual(gate.action, "skip", JSON.stringify(env));
 				assert.include(gate.message, "/a/package.json, /b/package.json");
-				assert.include(gate.message, "build:prod");
+				assert.include(gate.message, "pnpm build --filter");
 			}
 			for (const ci of ["true", "1", "yes"]) {
 				const gate = yield* PackedInstall.gate(missing).pipe(withEnv({ CI: ci }));
