@@ -68,7 +68,15 @@ describe("the built effected-mcp bin", () => {
 
 				yield* server.send(call(3, { cwd: "/" }));
 				const refused = yield* server.readUntilResponse(3);
-				assert.isTrue((refused.response.result as { readonly isError?: boolean }).isError);
+				const refusal = refused.response.result as {
+					readonly isError?: boolean;
+					readonly content?: ReadonlyArray<{ readonly text?: string }>;
+				};
+				assert.isTrue(refusal.isError);
+				assert.include(
+					refusal.content?.map((part) => part.text ?? "").join("") ?? "",
+					'The cwd "/" is outside the workspace root',
+				);
 
 				yield* server.closeStdin;
 				assert.strictEqual(yield* server.exitCode, 0);

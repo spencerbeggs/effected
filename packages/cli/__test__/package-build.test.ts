@@ -192,7 +192,10 @@ describe("effected package build", () => {
 				seed: { ...workspace, [CONFIG]: '[[package.build.overrides]]\nentries = ["nope"]\n' },
 			});
 			assert.strictEqual(code, 2);
-			assert.include(errText, "overrides");
+			assert.include(
+				errText,
+				'Config validation failed at "overrides": entry "nope" must be a canonical export path — use "." for the root or a "./"-prefixed subpath (e.g. "./changesets/markdownlint")',
+			);
 		}),
 	);
 
@@ -314,6 +317,18 @@ describe("effected package build", () => {
 			assert.lengthOf(out, 1);
 			assert.doesNotThrow(() => JSON.parse(out[0] as string));
 			assert.include(errText, "::error ");
+		}),
+	);
+
+	it.effect("under CI a diagnostic cannot repaint the terminal through an annotation", () =>
+		Effect.gen(function* () {
+			const { outText, errText } = yield* cli(["--ci"], {
+				diagnose: (collector) =>
+					collector.recordWarning("npm", { source: "tsdown", level: "warn", text: "bad\u001b[2Jtext" }),
+			});
+			assert.include(outText, "::warning title=@scope/a (npm)::bad[2Jtext");
+			assert.notInclude(outText, "\u001b");
+			assert.notInclude(errText, "\u001b");
 		}),
 	);
 
