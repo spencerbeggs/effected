@@ -1,0 +1,45 @@
+{
+	"//": "Copied verbatim from @savvy-web/silk@4.5.7 tsconfig/node/root.json on 2026-11-06.",
+	"$schema": "https://json.schemastore.org/tsconfig",
+	"compilerOptions": {
+		"composite": true,
+		"declaration": true,
+		"module": "nodenext",
+		"outDir": "dist",
+		"resolveJsonModule": true,
+		"strict": true,
+		"strictNullChecks": true,
+		"target": "es2025",
+		"types": ["node"]
+	},
+	"exclude": [
+		"${configDir}/node_modules",
+		"${configDir}/dist/**/*",
+		"${configDir}/__test__/fixtures/*.ts",
+		"${configDir}/__test__/fixtures/*.tsx",
+		"${configDir}/__test__/fixtures/*.cts",
+		"${configDir}/__test__/fixtures/*.mts",
+		"${configDir}/__test__/**/fixtures/**/*",
+		"${configDir}/__fixtures__/**/*"
+	],
+	"include": [
+		"${configDir}/types/*.ts",
+		"${configDir}/package.json",
+		"${configDir}/*.ts",
+		"${configDir}/*.cts",
+		"${configDir}/*.mts",
+		"${configDir}/src/**/*.ts",
+		"${configDir}/src/**/*.tsx",
+		"${configDir}/src/**/*.cts",
+		"${configDir}/src/**/*.mts",
+		"${configDir}/lib/**/*.ts",
+		"${configDir}/lib/**/*.tsx",
+		"${configDir}/lib/**/*.cts",
+		"${configDir}/lib/**/*.mts",
+		"${configDir}/__test__/**/*.ts",
+		"${configDir}/__test__/**/*.tsx",
+		"${configDir}/__test__/**/*.cts",
+		"${configDir}/__test__/**/*.mts",
+		"${configDir}/public/**/*.json"
+	]
+}

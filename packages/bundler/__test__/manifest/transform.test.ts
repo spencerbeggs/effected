@@ -247,6 +247,18 @@ describe("manifest transform", () => {
 	});
 });
 
+describe("transformExports — non-code exports", () => {
+	it("passes a wildcard export of data files through verbatim", () => {
+		assert.deepStrictEqual(transformExports({ "./tsconfig/*": "./tsconfig/*" }), { "./tsconfig/*": "./tsconfig/*" });
+	});
+
+	it("strips public/ from one, which is where the build copies it from", () => {
+		assert.deepStrictEqual(transformExports({ "./tsconfig/*": "./public/tsconfig/*" }), {
+			"./tsconfig/*": "./tsconfig/*",
+		});
+	});
+});
+
 describe("transformExports — ambient .d.ts exports", () => {
 	it("rewrites a { types: '*.d.ts' } export to the export-key-derived dist pointer", () => {
 		const out = transformExports({

@@ -54,6 +54,10 @@
 		"@types/node": "catalog:build",
 		"typescript": "catalog:build"
 	},
+	"peerDependencies": {
+		"@types/node": "catalog:build:peers",
+		"typescript": "catalog:build:peers"
+	},
 	"engines": {
 		"node": ">=24.11.0"
 	},

@@ -22,7 +22,8 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
-		"./package.json": "./package.json"
+		"./package.json": "./package.json",
+		"./tsconfig/*": "./public/tsconfig/*"
 	},
 	"bin": {
 		"effected": "./src/bin/effected.ts",
@@ -50,6 +51,10 @@
 		"@savvy-web/bundler": "^2.7.4",
 		"@types/node": "catalog:build",
 		"typescript": "catalog:build"
+	},
+	"peerDependencies": {
+		"@types/node": "catalog:build:peers",
+		"typescript": "catalog:build:peers"
 	},
 	"engines": {
 		"node": ">=24.11.0"
