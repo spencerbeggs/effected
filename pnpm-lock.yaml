@@ -335,6 +335,38 @@ importers:
         version: 7.1.0-beta
     publishDirectory: dist/dev/pkg
 
+  packages/changesets:
+    dependencies:
+      '@effected/semver':
+        specifier: workspace:^
+        version: link:../semver/dist/dev/pkg
+      '@effected/workspaces':
+        specifier: workspace:^
+        version: link:../workspaces/dist/dev/pkg
+      '@effected/yaml':
+        specifier: workspace:^
+        version: link:../yaml/dist/dev/pkg
+    devDependencies:
+      '@changesets/get-release-plan':
+        specifier: ^5.0.2
+        version: 5.0.2
+      '@effect/vitest':
+        specifier: catalog:effected
+        version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
+      '@savvy-web/bundler':
+        specifier: ^2.7.4
+        version: 2.7.4(@types/node@26.6.6)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(redis@6.3.1)(tsx@4.23.15)(typescript@7.1.0-beta)
+      '@types/node':
+        specifier: catalog:build
+        version: 26.6.6
+      effect:
+        specifier: catalog:effected
+        version: 4.1.2
+      typescript:
+        specifier: catalog:build
+        version: 7.1.0-beta
+    publishDirectory: dist/dev/pkg
+
   packages/cli:
     dependencies:
       '@effect/platform-node':
