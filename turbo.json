@@ -34,6 +34,7 @@
 		},
 		"types:check": {
 			"cache": true,
+			"dependsOn": ["^types:check"],
 			"inputs": [
 				"$TURBO_DEFAULT$",
 				"*.ts",
