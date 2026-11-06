@@ -1,5 +1,5 @@
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { Effect } from "effect";
 import { TsdoctorEmitError } from "../errors.js";
 import { runApiExtractor } from "./api-extractor.js";
@@ -391,7 +391,7 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 	// Copy the trio into each localPaths dir (api.json + package.json + tsconfig.json), plus the
 	// sidecar and its generated image when they exist.
 	for (const localPath of localPaths) {
-		const dest = join(cwd, localPath);
+		const dest = resolve(cwd, localPath);
 		mkdirSync(dest, { recursive: true });
 		copyFileSync(apiJsonPath, join(dest, apiJsonFilename));
 		copyFileSync(bundlePackageJson, join(dest, "package.json"));

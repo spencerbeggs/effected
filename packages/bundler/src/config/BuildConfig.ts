@@ -50,7 +50,7 @@ export class EntryOverride extends Schema.Class<EntryOverride>("EntryOverride")(
 	externals: Schema.optionalKey(Schema.Array(Schema.String)),
 	/** Whether this partition bundles its `node_modules` dependencies. */
 	bundleNodeModules: Schema.optionalKey(Schema.Boolean),
-	/** Packages whose declarations are inlined into this partition's bundled `.d.ts`. */
+	/** Packages whose declarations are inlined into this partition's bundled `.d.ts`; a workspace sibling must be built first. */
 	bundledPackages: Schema.optionalKey(Schema.Array(Schema.String)),
 	/** Packages externalized in this partition's declaration pass only. */
 	dtsExternals: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -78,6 +78,20 @@ export class LooseFileSpec extends Schema.Class<LooseFileSpec>("LooseFileSpec")(
 	source: Schema.String,
 	/** Module format. Required only for an ambiguous `.js` key; inferred from `.mjs` and `.cjs`. */
 	format: Schema.optionalKey(BuildFormat),
+}) {}
+
+/**
+ * One non-module asset to copy into each publish group's `pkg/` directory, in the shape of tsdown's `copy` option.
+ *
+ * @public
+ */
+export class CopyEntry extends Schema.Class<CopyEntry>("CopyEntry")({
+	/** Source paths or globs, relative to the package directory. A directory is copied whole. */
+	from: Schema.Union([Schema.String, Schema.Array(Schema.String)]),
+	/** The destination directory, relative to the group's `pkg/` root, which is the default. It may not leave `pkg/`. */
+	to: Schema.optionalKey(Schema.String),
+	/** Whether to drop each source's directory structure. tsdown defaults this to `true`. */
+	flatten: Schema.optionalKey(Schema.Boolean),
 }) {}
 
 /**
@@ -159,6 +173,14 @@ export class TsdocConfig extends Schema.Class<TsdocConfig>("TsdocConfig")({
  */
 export class MetaConfig extends Schema.Class<MetaConfig>("MetaConfig")({
 	/**
+	 * Directories, relative to the package directory, that the canonical group's API model is copied into.
+	 *
+	 * @remarks
+	 * For a docs site reading the model from its own tree. Each one receives the `.api.json`, the meta `package.json`
+	 * and `tsconfig.json`, and `tsdoctor.json` when one was emitted.
+	 */
+	localPaths: Schema.Array(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+	/**
 	 * Forward-looks the meta bundle's own version and its workspace siblings' dependency versions to their
 	 * next release versions from pending changesets.
 	 *
@@ -238,7 +260,13 @@ export class PackageBuildConfig extends Schema.Class<PackageBuildConfig>("Packag
 	 * package's types into the emitted `.d.ts` too.
 	 */
 	bundle: Schema.Array(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
-	/** External packages whose declarations are inlined into the bundled `.d.ts`; all others stay external. */
+	/**
+	 * External packages whose declarations are inlined into the bundled `.d.ts`; all others stay external.
+	 *
+	 * @remarks
+	 * A workspace sibling inlines from its built declarations, so it has to be built first; the build fails naming it
+	 * when they are absent.
+	 */
 	bundledPackages: Schema.Array(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 	/**
 	 * Packages externalized in the declaration pass only: imported from the emitted `.d.ts` rather than
@@ -290,6 +318,16 @@ export class PackageBuildConfig extends Schema.Class<PackageBuildConfig>("Packag
 	looseFiles: Schema.Record(Schema.String, Schema.Union([Schema.String, LooseFileSpec])).pipe(
 		Schema.withDecodingDefaultKey(Effect.succeed({})),
 	),
+	/**
+	 * Non-module assets copied into each group's `pkg/` directory by the JS pass.
+	 *
+	 * @remarks
+	 * tsdown's `copy` option as data: a string is a path or glob relative to the package directory, copied into the
+	 * `pkg/` root, and {@link CopyEntry} adds a destination. A `public/` directory is already copied verbatim with no
+	 * config; this is the explicit way, for files that live elsewhere. A package that compiles only a binary runs no JS
+	 * pass, so setting this there fails validation.
+	 */
+	copy: Schema.Array(Schema.Union([Schema.String, CopyEntry])).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 	/** JSX transform settings; inferred from the package's tsconfig when absent. */
 	jsx: Schema.optionalKey(JsxConfig),
 	/** What the build changes in the emitted `package.json`. */

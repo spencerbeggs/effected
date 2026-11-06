@@ -24,9 +24,10 @@
  * 48 of the kit's 49 packages from source with zero `.d.ts` byte differences from the old bundler; the 49th,
  * pnpm-plugin-effected, needs its virtual-module plugin, which that sweep did not pass.
  *
- * `bundledPackages` naming a sibling that resolves to source fails the build (tsgo declares only the package's own
- * project), and no kit package uses it. No build here changes directory, so this also proves the emitted manifest's
- * workspace specifiers resolve from `options.cwd`.
+ * `bundledPackages` naming a sibling inlines from the sibling's built declarations, and fails naming the sibling when
+ * it has none (tsgo declares only the package's own project, so its source would not do); no kit package uses it. No
+ * build here changes directory, so this also proves the emitted manifest's workspace specifiers resolve from
+ * `options.cwd`.
  *
  * API Extractor over source siblings holds for cli-kit under CI's rules: with `ci: true` and its own suppressions the
  * build succeeds with no errors and writes `cli-kit.api.json`. That is the only package proven under `ci: true`. A
@@ -181,6 +182,9 @@ const makeWorkspace = (root: string): void => {
 		cwd: root,
 		stdio: "pipe",
 	});
+	// Every package's tsconfig extends the carrier's shared base, which the real root gets from its devDependency.
+	mkdirSync(join(root, "node_modules", "@effected"), { recursive: true });
+	symlinkSync(join(REPO, "packages", "plugin"), join(root, "node_modules", "@effected", "plugin"));
 };
 
 // Never changes directory: the workspace specifiers in the emitted manifest resolve from `cwd`, so this also proves a
@@ -202,7 +206,8 @@ describe.skipIf(!SPIKE_ENABLED)("cli-kit from source siblings", () => {
 		"builds with bare sibling imports, nothing inlined, and inferred sibling types that need the source",
 		() =>
 			Effect.gen(function* () {
-				const root = process.env.EFFECTED_SPIKE_DIR ?? mkdtempSync(join(tmpdir(), "bundler-spike-"));
+				// Canonical, because tsgo keys its project by realpath and a symlinked `cwd`, such as macOS's temp directory, misses.
+				const root = realpathSync(process.env.EFFECTED_SPIKE_DIR ?? mkdtempSync(join(tmpdir(), "bundler-spike-")));
 				yield* Effect.sync(() => makeWorkspace(root));
 				const cwd = join(root, "packages", "cli-kit");
 				const links = join(cwd, "node_modules", "@effected");
@@ -282,12 +287,13 @@ describe.skipIf(!SPIKE_ENABLED)("cli-kit from source siblings", () => {
 				const model = JSON.parse(readFileSync(join(modelDir, "cli-kit.api.json"), "utf-8")) as { name: string };
 				assert.strictEqual(model.name, "@effected/cli-kit");
 
-				// Inlining a sibling that resolves to source is refused outright: tsgo declares only the package's own project.
+				// Inlining a sibling with no build is refused before any pass: tsgo cannot declare its source.
 				const refused = yield* Effect.flip(buildCliKit(cwd, { bundledPackages: ["@effected/env"] }));
-				assert.strictEqual(refused._tag, "BundlerError");
-				assert.match(refused.message, /tsgo did not generate a declaration file/);
+				assert.strictEqual(refused._tag, "ConfigValidationError");
+				assert.include(refused.message, "Build @effected/env first");
 
-				// The control for the check above: real inlining from a rolled-up sibling must trip it.
+				// Once it is built, the same config inlines it through the source link. That is also the control for the
+				// nothing-inlined check above: real inlining must trip it.
 				const envDir = join(root, "packages", "env");
 				yield* Bundler.build({
 					cwd: envDir,
@@ -298,13 +304,8 @@ describe.skipIf(!SPIKE_ENABLED)("cli-kit from source siblings", () => {
 					plugins: [],
 					ci: false,
 				});
-				const envLink = join(links, "env");
-				rmSync(envLink);
-				symlinkSync(join(envDir, "dist", "prod", "npm", "pkg"), envLink);
 				yield* buildCliKit(cwd, { bundledPackages: ["@effected/env"] });
 				assert.isNotEmpty(inlinedSiblingTypes(readFileSync(join(pkgDir, "index.d.ts"), "utf-8"), siblingNames));
-				rmSync(envLink);
-				symlinkSync(envDir, envLink);
 				rmSync(join(envDir, "dist"), { recursive: true, force: true });
 
 				// The probe: every export's type is inferred across a sibling boundary, so the declaration needs the sibling.

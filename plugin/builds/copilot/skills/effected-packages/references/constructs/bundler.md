@@ -58,6 +58,7 @@
 | `ConfigValidationError` | Class | A build config is structurally invalid; raised before any build work. | structurally invalid build config, refused before any build work |
 | `ConfigValidator` | Class | Fast-fail config validator; runs first in the bundler over the resolved config. | fast-fail structural check of a resolved build config |
 | `CopyAmbientDtsOptions` | Interface | | |
+| `CopyEntry` | Class | One non-module asset to copy into each publish group's `pkg/` directory, in the shape of tsdown's `copy` option. | copy non-module assets into the published package, ship json schemas or data files beside the build |
 | `CssOptions` | Interface | CSS handling for a partition's JS pass, forwarded VERBATIM to tsdown's `css` option (consumed by `@tsdown/css`). Structurally typed so tsdown-plugins takes no dependency on `@tsdown/css`. The package whose runtime is built must install `@tsdown/css`; tsdown loads it lazily. | |
 | `DEFAULT_EXE_NODE_VERSION` | Variable | Default Node runtime embedded in the SEA (parity with the vitest-agent reference). | node runtime version embedded in a single-executable binary by default |
 | `DeriveOptions` | Interface | | |
@@ -65,6 +66,7 @@
 | `DerivedTsdownOptions` | Interface | The JS pass: per-module JavaScript, no declarations. | |
 | `DiagnosticEntry` | Class | A captured warning or error, from tsdown's logger, rolldown's onLog, API Extractor, the meta pass's own sidecar work (`tsdoctor.json` sources, Open Graph generation), or an advisory finding about the build config itself (`config`, e.g. a `publishConfig.targets` set no final release reaches). | one captured warning or error, tsdown, rolldown, api extractor or config |
 | `DiagnosticInput` | Interface | | |
+| `DtsEmitTsconfigOptions` | Interface | What a dts-emit tsconfig adds for one partition. | |
 | `DtsExportClass` | TypeAlias | Classification of a single export value for ambient-.d.ts handling. | |
 | `DtsPassDtsOptions` | Interface | The `dts` block both declaration passes hand to tsdown. | |
 | `DualExports` | TypeAlias | Which exports get a CJS `require` condition. `true`/`false` apply uniformly to every TS export; a Set marks ONLY the listed export keys (e.g. "./changesets/markdownlint") as dual — used by per-entry format overrides. | |

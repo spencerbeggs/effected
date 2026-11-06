@@ -246,3 +246,20 @@ describe("writeDtsEmitTsconfig", () => {
 		assert.strictEqual(writeDtsEmitTsconfig(missing), missing);
 	});
 });
+
+describe("writeDtsEmitTsconfig with a sibling's paths", () => {
+	it("writes exactly the given map, in its own file, and leaves the plain variant cleared", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "rtc-paths-"));
+		const base = join(dir, "tsconfig.json");
+		await writeFile(base, JSON.stringify({ compilerOptions: { paths: { typecheck: ["./src/x.ts"] } } }));
+		const paths = { "@fixture/a": ["/sib/index.d.ts"], "@fixture/a/*": ["/sib/*.d.ts"] };
+		const mapped = writeDtsEmitTsconfig(base, { paths });
+		const plain = writeDtsEmitTsconfig(base);
+		assert.notStrictEqual(mapped, plain);
+		const read = async (path: string) =>
+			(JSON.parse(await readFile(path, "utf-8")) as { compilerOptions: { paths: unknown } }).compilerOptions.paths;
+		assert.deepStrictEqual(await read(mapped), paths);
+		assert.isNull(await read(plain));
+		assert.isNull(await read(writeDtsEmitTsconfig(base, { paths: {} })));
+	});
+});

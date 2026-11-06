@@ -45,6 +45,7 @@
 		"CleanError": "removing an action build's dist directory failed",
 		"ConfigValidationError": "structurally invalid build config, refused before any build work",
 		"ConfigValidator": "fast-fail structural check of a resolved build config",
+		"CopyEntry": "copy non-module assets into the published package, ship json schemas or data files beside the build",
 		"DEFAULT_EXE_NODE_VERSION": "node runtime version embedded in a single-executable binary by default",
 		"DiagnosticEntry": "one captured warning or error, tsdown, rolldown, api extractor or config",
 		"EffectedConfig": "decoded effected.toml document, typed build config",

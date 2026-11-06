@@ -212,6 +212,16 @@ export function writeResolvedTsconfig(options: ResolvedTsconfigOptions): string 
 }
 
 /**
+ * What a dts-emit tsconfig adds for one partition.
+ *
+ * @public
+ */
+export interface DtsEmitTsconfigOptions {
+	/** The `paths` map of the bundled workspace siblings. Absent or empty, `paths` stays cleared. */
+	readonly paths?: Readonly<Record<string, ReadonlyArray<string>>> | undefined;
+}
+
+/**
  * Derive a dts-EMIT variant of an already-written resolved tsconfig that adds
  * `stableTypeOrdering: true`, and return its path. This makes the TypeScript declaration emitter
  * (rolldown-plugin-dts' tsgo generator over this package's `typescript`) order union/type members
@@ -237,7 +247,8 @@ export function writeResolvedTsconfig(options: ResolvedTsconfigOptions): string 
  * The wrapper also ALWAYS clears `customConditions` and `paths` (written as `null`, which the TypeScript compiler
  * reads as removing an inherited value): the declaration program must resolve sibling packages the way the package
  * manifest says, never through a typecheck-only condition or path alias that would pull source files into the
- * emitted declarations. The only reader of this file is the tsgo declaration generator; nothing in the bundler
+ * emitted declarations. The one exception is `options.paths`, the bundled workspace siblings resolved to their built
+ * declarations, which is the only `paths` map this file ever carries. The only reader of this file is the tsgo declaration generator; nothing in the bundler
  * reads it back through the kit's `TsconfigLoaderSync`, which rejects `null` compiler options.
  *
  * Best-effort: if the base tsconfig cannot be read or parsed (e.g. a synthetic test path that was
@@ -246,7 +257,7 @@ export function writeResolvedTsconfig(options: ResolvedTsconfigOptions): string 
  *
  * @public
  */
-export function writeDtsEmitTsconfig(resolvedTsconfigPath: string): string {
+export function writeDtsEmitTsconfig(resolvedTsconfigPath: string, options: DtsEmitTsconfigOptions = {}): string {
 	const absBase = isAbsolute(resolvedTsconfigPath) ? resolvedTsconfigPath : resolve(resolvedTsconfigPath);
 	// Best-effort: a base that does not exist (e.g. a synthetic test path) gets no variant — return it
 	// unchanged so the emit keeps TS's default ordering rather than aborting at this layer.
@@ -260,12 +271,15 @@ export function writeDtsEmitTsconfig(resolvedTsconfigPath: string): string {
 	// location. The filename is deterministic per (pid, base), so repeated calls within a process
 	// overwrite the same file rather than accumulating; cross-process temp files are left for the OS
 	// to reap, intentionally consistent with `writeResolvedTsconfig`'s pid-scoped temp pattern.
+	const paths = options.paths !== undefined && Object.keys(options.paths).length > 0 ? options.paths : undefined;
 	const cfg = {
 		extends: canonicalBase,
-		compilerOptions: { stableTypeOrdering: true, ...DTS_RESET_OPTIONS },
+		compilerOptions: { stableTypeOrdering: true, ...DTS_RESET_OPTIONS, ...(paths !== undefined ? { paths } : {}) },
 		...absoluteFileSet(canonicalBase, baseDir),
 	};
-	const path = join(tmpdir(), tempTsconfigName("tsconfig-dts-emit", absBase));
+	// A partition that inlines siblings gets its own file: a partition that does not must keep `paths` cleared.
+	const key = paths !== undefined ? `${absBase}:${Object.keys(paths).join(",")}` : absBase;
+	const path = join(tmpdir(), tempTsconfigName("tsconfig-dts-emit", key));
 	writeFileSync(path, `${JSON.stringify(cfg, null, "\t")}\n`, "utf-8");
 	return path;
 }

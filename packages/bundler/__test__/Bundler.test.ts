@@ -201,6 +201,101 @@ describe("Bundler.build orchestration", () => {
 		}),
 	);
 
+	it.effect("forwards copy to the passes as decoded", () =>
+		Effect.gen(function* () {
+			const h = harness({
+				config: { copy: ["../shared/schemas", { from: "assets/*.png", to: "img", flatten: false }] },
+			});
+			yield* Bundler.build(h.options);
+			const copy = firstBuild(h.builds).copy;
+			assert.strictEqual(copy?.[0], "../shared/schemas");
+			assert.deepInclude(copy?.[1], { from: "assets/*.png", to: "img", flatten: false });
+		}),
+	);
+
+	it.effect("refuses a copy destination outside pkg/, before any pass", () =>
+		Effect.gen(function* () {
+			for (const to of ["../outside", "/abs/elsewhere", "a/../../b"]) {
+				const h = harness({ config: { copy: [{ from: "x", to }] } });
+				const failure = yield* Effect.flip(Bundler.build(h.options));
+				assert.instanceOf(failure, ConfigValidationError);
+				assert.strictEqual(failure.path, "copy");
+				assert.isEmpty(h.builds);
+			}
+		}),
+	);
+
+	it.effect("refuses copy on a package with no JS pass to run it", () =>
+		Effect.gen(function* () {
+			const h = harness({
+				config: { copy: ["x"], exe: { fileName: "tool", targets: [{ platform: "darwin", arch: "arm64" }] } },
+				pkg: { name: "tool", version: "1.0.0", exports: { ".": "./src/bin.ts" } },
+			});
+			const failure = yield* Effect.flip(Bundler.build(h.options));
+			assert.instanceOf(failure, ConfigValidationError);
+			assert.strictEqual(failure.path, "copy");
+		}),
+	);
+
+	it.effect("hands meta.localPaths to the meta pass, and validates them against the package", () =>
+		Effect.gen(function* () {
+			const cwd = makeTmp();
+			const h = harness({
+				config: { meta: { localPaths: ["../models/pkg"] } },
+				options: { cwd },
+			});
+			yield* Bundler.build(h.options);
+			assert.deepStrictEqual(h.metas[0]?.meta.localPaths, ["../models/pkg"]);
+
+			// A file in the way is found relative to the package, wherever the process is.
+			writeFileSync(join(cwd, "not-a-dir"), "");
+			const blocked = harness({ config: { meta: { localPaths: ["not-a-dir"] } }, options: { cwd } });
+			const failure = yield* Effect.flip(Bundler.build(blocked.options));
+			assert.instanceOf(failure, ConfigValidationError);
+			assert.strictEqual(failure.path, "meta.localPaths");
+		}),
+	);
+
+	it.effect("warns, without failing, on an exports pattern matching nothing in the emitted package", () =>
+		Effect.gen(function* () {
+			const cwd = makeTmp();
+			const pkg = join(cwd, "dist", "prod", "npm", "pkg");
+			const emit = (exportsMap: unknown, files: ReadonlyArray<string> = []): void => {
+				mkdirSync(pkg, { recursive: true });
+				writeFileSync(join(pkg, "package.json"), JSON.stringify({ exports: exportsMap }));
+				for (const file of files) {
+					mkdirSync(join(pkg, file, ".."), { recursive: true });
+					writeFileSync(join(pkg, file), "{}");
+				}
+			};
+			const warningsOf = (h: ReturnType<typeof harness>) =>
+				h.issues[0]?.reports[0]?.targetGroups.flatMap((group) => group.warnings) ?? [];
+
+			emit({ "./schemas/*.json": "./schemas/*.json" });
+			const unmatched = harness({
+				options: { cwd },
+				seams: {
+					buildTargetGroups: async (o) => {
+						o.collector?.registerGroup("npm", []);
+					},
+				},
+			});
+			const result = yield* Bundler.build(unmatched.options);
+			assert.strictEqual(unmatched.issues[0]?.buildOk, true);
+			assert.isDefined(result);
+			const warning = warningsOf(unmatched)[0];
+			assert.strictEqual(warning?.code, "exports-pattern-unmatched");
+			assert.strictEqual(warning?.source, "config");
+			assert.strictEqual(warning?.level, "warn");
+			assert.include(warning?.text ?? "", "./schemas/*.json");
+
+			emit({ "./schemas/*.json": "./schemas/*.json" }, ["schemas/run.json"]);
+			const matched = harness({ options: { cwd } });
+			yield* Bundler.build(matched.options);
+			assert.deepStrictEqual(warningsOf(matched), []);
+		}),
+	);
+
 	it.effect("omits the settings a default config leaves empty, so the passes see them absent", () =>
 		Effect.gen(function* () {
 			const h = harness({});
@@ -217,6 +312,7 @@ describe("Bundler.build orchestration", () => {
 				"dualExports",
 				"subdirExports",
 				"looseFiles",
+				"copy",
 				"extraPlugins",
 				"exeRewrite",
 			]) {

@@ -1,6 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Schema, SchemaIssue } from "effect";
-import { EffectedConfig, MetaConfig, PackageBuildConfig, PackageConfig } from "../../src/index.js";
+import { CopyEntry, EffectedConfig, MetaConfig, PackageBuildConfig, PackageConfig } from "../../src/index.js";
 
 const decode = (document: unknown) =>
 	Schema.decodeUnknownEffect(EffectedConfig)(document, { onExcessProperty: "error", errors: "all" });
@@ -47,6 +47,7 @@ describe("EffectedConfig", () => {
 			assert.deepStrictEqual(build?.plugins, []);
 			assert.deepStrictEqual(build?.overrides, []);
 			assert.deepStrictEqual(build?.looseFiles, {});
+			assert.deepStrictEqual(build?.copy, []);
 			assert.isUndefined(build?.jsx);
 			assert.deepStrictEqual(build?.manifest.drop, []);
 			assert.isUndefined(build?.exe);
@@ -257,6 +258,30 @@ describe("TsdoctorConfig", () => {
 				const paths = yield* failedPaths({ package: { tsdoctor: { openGraph: { images: [image] } } } });
 				assert.deepStrictEqual(paths, [["package", "tsdoctor", "openGraph", "images", 0]]);
 			}
+		}),
+	);
+});
+
+describe("the copy and meta.localPaths keys", () => {
+	it.effect("decodes a path and an entry, and rejects a key tsdown's shape has but the data form does not", () =>
+		Effect.gen(function* () {
+			const config = yield* buildOf({
+				copy: ["../shared/schemas", { from: ["a/*.json", "b"], to: "schemas", flatten: false }],
+			});
+			assert.strictEqual(config.copy[0], "../shared/schemas");
+			assert.instanceOf(config.copy[1], CopyEntry);
+			assert.deepStrictEqual((config.copy[1] as CopyEntry).from, ["a/*.json", "b"]);
+			const failure = yield* Effect.flip(buildOf({ copy: [{ from: "x", rename: "y" }] }));
+			assert.include(String(failure), "rename");
+		}),
+	);
+
+	it.effect("defaults meta.localPaths to none, and keeps what a table writes", () =>
+		Effect.gen(function* () {
+			const empty = yield* buildOf({});
+			assert.deepStrictEqual((empty.meta as MetaConfig).localPaths, []);
+			const set = yield* buildOf({ meta: { localPaths: ["../../website/lib/models/pkg"] } });
+			assert.deepStrictEqual((set.meta as MetaConfig).localPaths, ["../../website/lib/models/pkg"]);
 		}),
 	);
 });

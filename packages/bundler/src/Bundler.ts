@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Effect, Schema } from "effect";
 import type { Plugin } from "rolldown";
 import type { BundlerPhase } from "./BundlerError.js";
@@ -20,6 +20,7 @@ import { causeMessage } from "./internal/causeMessage.js";
 import type { JsxConfig as ResolvedJsxConfig, TsconfigJsx } from "./jsx/config.js";
 import { readTsconfigJsx, resolveJsxConfig } from "./jsx/config.js";
 import { buildEmittedManifest } from "./manifest/emit-manifest.js";
+import { unmatchedExportPatterns } from "./manifest/export-patterns.js";
 import type { MetaOptions } from "./meta/config.js";
 import type { GenerateMetaOptions, MetaResult } from "./meta/generate.js";
 import { OgGenerateError, resolveOgGenerator } from "./meta/og-image.js";
@@ -263,6 +264,27 @@ function partitionOverrides(
 	return { partitions, baseEntries, dualExports, subdirExports };
 }
 
+/** Refuses a `copy` the build could not honour: no JS pass to run it, or a destination outside `pkg/`. */
+function validateCopy(config: PackageBuildConfig, hasJsEntries: boolean): void {
+	if (config.copy.length === 0) return;
+	if (!hasJsEntries && config.exe !== undefined) {
+		throw new ConfigValidationError({
+			path: "copy",
+			reason: "a package that only compiles a binary runs no JS pass, so nothing would copy these files",
+		});
+	}
+	for (const entry of config.copy) {
+		if (typeof entry === "string" || entry.to === undefined) continue;
+		const fromPkg = relative("/pkg", resolve("/pkg", entry.to));
+		if (isAbsolute(entry.to) || fromPkg === ".." || fromPkg.startsWith(`..${sep}`)) {
+			throw new ConfigValidationError({
+				path: "copy",
+				reason: `"to" must stay inside the group's pkg/ directory (got "${entry.to}")`,
+			});
+		}
+	}
+}
+
 /** A decoded empty `[package.build.meta]` table, which a config that never wrote one also decodes to. */
 const defaultMetaFingerprint = JSON.stringify(Schema.decodeUnknownSync(MetaConfig)({}));
 
@@ -348,6 +370,7 @@ async function runBuild(
 			config.meta === false
 				? undefined
 				: {
+						localPaths: config.meta.localPaths,
 						optimistic: config.meta.optimistic === "auto" ? !options.ci : config.meta.optimistic,
 						tsdoc: config.meta.tsdoc,
 					};
@@ -364,7 +387,10 @@ async function runBuild(
 					...(publishTargets !== undefined ? { targets: publishTargets } : {}),
 					...(config.exe !== undefined ? { exe: config.exe } : {}),
 					osCpu,
-					...(meta !== undefined && metaIsExplicit ? { meta } : {}),
+					// The validator stats these, so they resolve against the package rather than the process directory.
+					...(meta !== undefined && metaIsExplicit
+						? { meta: { ...meta, localPaths: meta.localPaths?.map((path) => resolve(cwd, path)) } }
+						: {}),
 					...(hasLooseFiles ? { looseFiles: config.looseFiles } : {}),
 				}),
 			).pipe(Effect.provide(ConfigValidator.layer)),
@@ -408,6 +434,8 @@ async function runBuild(
 					"a types-only package with only ambient .d.ts exports is not supported — add at least one JS entry (or an exe) alongside the ambient declarations",
 			});
 		}
+
+		validateCopy(config, hasJsEntries);
 
 		const { partitions, baseEntries, dualExports, subdirExports } = partitionOverrides(
 			config,
@@ -456,6 +484,7 @@ async function runBuild(
 				...(dualExports !== undefined ? { dualExports } : {}),
 				...(subdirExports.size > 0 ? { subdirExports } : {}),
 				...(looseFiles !== undefined ? { looseFiles } : {}),
+				...(config.copy.length > 0 ? { copy: config.copy } : {}),
 				...(options.plugins.length > 0 ? { extraPlugins: options.plugins } : {}),
 				...(exeRewrite !== undefined ? { exeRewrite } : {}),
 			});
@@ -537,6 +566,19 @@ async function runBuild(
 						);
 					}
 				}
+			}
+		}
+
+		// A pattern export that nothing in the package matches resolves to nothing for a consumer, and the build has no
+		// other reason to notice.
+		for (const g of groups) {
+			for (const { key, target } of unmatchedExportPatterns(join(cwd, "dist", "prod", g.id, "pkg"))) {
+				collector.recordWarning(g.id, {
+					source: "config",
+					level: "warn",
+					code: "exports-pattern-unmatched",
+					text: `The exports pattern "${key}" points at "${target}", which matches no file in the emitted package. Ship the files from public/ or with [package.build] copy.`,
+				});
 			}
 		}
 

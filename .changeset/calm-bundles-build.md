@@ -9,3 +9,10 @@
 * `ActionBuilder.build` bundles a GitHub Action from the `[action]` table of its `effected.toml` on rolldown, with `ActionValidation` and `PersistLocal` as separate steps
 * Takes over the `tsdoctor.json` schema from `@tsdoctor/manifest`
 * Emitted artifacts for the kit's packages are byte-identical to the previous bundler's output
+* Adds `[package.build] copy` for shipping non-module assets in each publish group's `pkg/`, in the shape of tsdown's `copy` option, beside the zero-config `public/` directory
+* Adds `[package.build.meta] localPaths` for copying the canonical group's API model into a directory a docs site reads
+* Warns with `exports-pattern-unmatched` in `issues.json` when a manifest `exports` pattern matches no emitted file
+
+## Bug Fixes
+
+* `bundledPackages` naming a workspace sibling now inlines the sibling's built declarations, as it does a registry package's, instead of failing with `tsgo did not generate a declaration file`; an unbuilt sibling fails `ConfigValidationError` before any pass, naming it and the `dependsOn: ["^build"]` its consumer needs

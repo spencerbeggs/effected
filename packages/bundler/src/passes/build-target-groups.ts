@@ -2,6 +2,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import type { Plugin } from "rolldown";
+import type { CopyEntry } from "../config/BuildConfig.js";
+import { packageNameOf, resolveBundledSiblings, siblingPaths } from "../dts/bundled-siblings.js";
 import { analyzeReexportBarrel, collectExportNames, renderReexportStub } from "../dts/reexport-stub.js";
 import { writeDtsEmitTsconfig } from "../dts/resolved-tsconfig.js";
 import { extractAmbientDts } from "../entries/ambient-dts.js";
@@ -163,6 +165,12 @@ export interface BuildTargetGroupsOptions {
 	 */
 	readonly looseFiles?: ReadonlyArray<NormalizedLooseFile> | undefined;
 	/**
+	 * Non-module assets for each group's pkg/ dir, handed to tsdown's `copy` on the base partition's JS pass, after its
+	 * clean. A `to` is taken relative to the group's pkg/ dir, where tsdown alone would read it against `cwd` and write
+	 * every group's copy to one place.
+	 */
+	readonly copy?: ReadonlyArray<string | CopyEntry> | undefined;
+	/**
 	 * Which export keys get a CJS `require` condition in the emitted manifest. Pass a Set
 	 * when overrides give different entries different formats; omit for the uniform
 	 * `format`-includes-cjs behavior.
@@ -202,6 +210,17 @@ export interface BuildTargetGroupsOptions {
  * here instead of a self-contained rollup.
  */
 const STUB_BASE_ENTRY = "index";
+
+/** The configured copy entries as tsdown takes them for one group, with each `to` anchored to that group's outDir. */
+const copyEntriesFor = (entries: ReadonlyArray<string | CopyEntry>, outDir: string): ReadonlyArray<unknown> =>
+	entries.map((entry) => {
+		if (typeof entry === "string") return entry;
+		return {
+			from: entry.from,
+			...(entry.to !== undefined ? { to: join(outDir, entry.to) } : {}),
+			...(entry.flatten !== undefined ? { flatten: entry.flatten } : {}),
+		};
+	});
 
 /**
  * Run tsdown.build() per TargetGroup. Composable so the escape hatch gets multi-group too.
@@ -251,6 +270,21 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 	// bundled TypeScript 6, which predates the flag and would hard-error on the unknown compiler option.
 	// Derived once; falls back to the original path when it cannot be read (synthetic test paths).
 	const dtsEmitTsconfigPath = writeDtsEmitTsconfig(options.tsconfigPath);
+
+	// A bundled workspace sibling resolves to source, which tsgo cannot declare, so a partition inlining one gets a
+	// tsconfig mapping it to the sibling's built declarations. Resolved before any pass runs, so a sibling that has not
+	// been built fails the build here. Only a partition's own siblings reach its map.
+	const bundledSiblings = await resolveBundledSiblings(options.cwd, [
+		...(options.bundledPackages ?? []),
+		...(options.overrides ?? []).flatMap((override) => override.bundledPackages ?? []),
+	]);
+	const emitTsconfigFor = (bundled: ReadonlyArray<string> | undefined): string => {
+		const packages = new Set(bundled?.map(packageNameOf));
+		const siblings = bundledSiblings.filter((sibling) => packages.has(sibling.name));
+		return siblings.length > 0
+			? writeDtsEmitTsconfig(options.tsconfigPath, { paths: siblingPaths(siblings) })
+			: dtsEmitTsconfigPath;
+	};
 
 	const collector = options.collector;
 	const verbose = options.verbose ?? false;
@@ -311,7 +345,7 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 				cwd: options.cwd,
 				version: options.version,
 				entry: part.entry,
-				tsconfigPath: dtsEmitTsconfigPath,
+				tsconfigPath: emitTsconfigFor(partBundledPackages),
 				devManifest: options.devManifest,
 				...(partExternals !== undefined ? { externals: partExternals } : {}),
 				...(partBundleNodeModules !== undefined ? { bundleNodeModules: partBundleNodeModules } : {}),
@@ -383,6 +417,7 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 					...timingChecks,
 					...instrument(group.id),
 					...(part.css !== undefined ? { css: part.css } : {}),
+					...(isBase && options.copy?.length ? { copy: copyEntriesFor(options.copy, partOutDir) } : {}),
 					...(partExternals?.length || partBundle?.length
 						? {
 								deps: {

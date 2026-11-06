@@ -41,6 +41,7 @@ export {
 export {
 	BuildFormat,
 	BuildPlatform,
+	CopyEntry,
 	EffectedConfig,
 	EntryOverride,
 	ExeConfig,
@@ -73,7 +74,7 @@ export { ConfigValidator } from "./config-validation/ConfigValidator.js";
 export type { ModuleExportNames, ReexportBarrelAnalysis } from "./dts/reexport-stub.js";
 export { analyzeReexportBarrel, collectExportNames, renderReexportStub } from "./dts/reexport-stub.js";
 export { findRelativeSpecifiers } from "./dts/relative-imports.js";
-export type { ResolvedTsconfig, ResolvedTsconfigOptions } from "./dts/resolved-tsconfig.js";
+export type { DtsEmitTsconfigOptions, ResolvedTsconfig, ResolvedTsconfigOptions } from "./dts/resolved-tsconfig.js";
 export { buildResolvedTsconfig, writeDtsEmitTsconfig, writeResolvedTsconfig } from "./dts/resolved-tsconfig.js";
 export type { AmbientDtsEntry, DtsExportClass, ExtractAmbientOptions } from "./entries/ambient-dts.js";
 export {

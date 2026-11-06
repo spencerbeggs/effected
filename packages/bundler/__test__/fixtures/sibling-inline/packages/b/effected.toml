@@ -1,0 +1,2 @@
+[package.build]
+bundledPackages = ["@fixture/a", "@fixture/a/deep/thing"]

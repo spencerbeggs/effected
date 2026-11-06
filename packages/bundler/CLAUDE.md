@@ -31,13 +31,17 @@ Other tools read these, so a change to one moves with its readers. Paths are und
 
 | Output | Read by |
 | --- | --- |
-| `dist/prod/<group>/pkg` | the release action packs it; `PackedInstall` and the scratchpad's artifact mode |
+| `dist/prod/<group>/pkg` | the release action packs it; `PackedInstall` and the scratchpad's artifact mode; a consumer's `bundledPackages` naming this package, for `index.d.ts` |
 | `dist/prod/<group>/meta` | tsdoctor, the release action, the construct generator |
 | `dist/prod/targets.json` | the release action |
 | `dist/prod/issues.json` | every gate. Check `buildOk` first, never `errors.length`: a crash can leave every bucket empty |
 | `process.env.__PACKAGE_VERSION__` | the `define` that `packages/plugin` and `packages/cli` read |
 
 `tsdoctor.json` is a wire format with readers outside this repository. Its fields grow additively.
+
+`[package.build.meta] localPaths` copies the canonical group's model into directories relative to the package, for a consumer's docs site. The kit's own packages do not set it. `[package.build] copy` hands non-module assets to tsdown on the base partition's JS pass, once per group, with each `to` anchored to that group's `pkg/`; `public/` is the zero-config way. A manifest `exports` pattern matching no emitted file is a `warn`, code `exports-pattern-unmatched`.
+
+An exe package's SEA compiles on any host, for its declared target: `@tsdown/exe` cross-compiles, and `--no-exe` is the only skip. Its manifest's `exports["."]` points at the binary, and it has a `bin` only when the source manifest declares one.
 
 ## Seams
 
@@ -50,7 +54,8 @@ Other tools read these, so a change to one moves with its readers. Paths are und
 ## Limits
 
 - **`cwd` must be absolute.** The build resolves catalogs and workspaces from it and never from the process directory, but a relative `cwd` would resolve against the process. It is documented, not enforced.
-- **`bundledPackages` naming a sibling that resolves to source fails the build** with `tsgo did not generate a declaration file`, because tsgo declares only the package's own project. No kit package sets it.
+- **`bundledPackages` naming a workspace sibling inlines its built declarations, so the sibling must be built first.** tsgo declares only the package's own project, so `dts/bundled-siblings.ts` finds the sibling through the realpath of its `node_modules` link and `writeDtsEmitTsconfig` gives that partition a `paths` map to the sibling's `dist/prod/<canonical group>/pkg`, the one case that writes `paths`. With no built `index.d.ts` the build fails `ConfigValidationError` before any pass. A consumer's turbo `build` task then needs `dependsOn: ["^build"]` in that package's own `turbo.json`. No kit package sets it.
+- **A symlinked `cwd` fails the declaration pass** with `No TypeScript Go project found`, because tsgo keys its project by realpath. A shell's working directory is already canonical, so this reaches a caller passing a path such as macOS's `/var` temp directory. The e2es realpath theirs.
 - **A sibling's source is accounted as suppressed.** API Extractor's diagnostics run follows a source link to a `.ts` file and reports `ae-wrong-input-file-type`. When the file's realpath lies outside the package, that goes in the `suppressed` bucket through `isForeignInputFileMessage`, which is a classification rather than a `suppressWarnings` rule. Inside the package it stays a warning, since it means the package's own declarations reached its source. The suppression also hides a file reached through a tsconfig `paths` alias that resolves outside the package.
 - **A suppression rule with neither `messageId` nor `pattern` matches nothing**, though the schema accepts one.
 - **`ActionBundle.build` runs what it builds.** Its load check imports each bundle in a fresh Node with only `HOME` and `TMPDIR` set, both a temporary directory it then removes, for at most a minute. An action's `GITHUB_ACTIONS` guard stays closed, but an action with no guard runs for real there, and with no `PATH`. `build.importCheck = false` turns the check off.

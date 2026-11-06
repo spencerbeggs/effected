@@ -41,6 +41,7 @@ it("the root exports exactly the public surface", () => {
 		"CleanError",
 		"ConfigValidationError",
 		"ConfigValidator",
+		"CopyEntry",
 		"DEFAULT_EXE_NODE_VERSION",
 		"DiagnosticEntry",
 		"EffectedConfig",
