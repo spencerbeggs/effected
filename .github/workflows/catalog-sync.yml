@@ -89,8 +89,11 @@ jobs:
       - name: Sync the catalog
         # Resolves each catalogued package's next release version from the local
         # workspace, rewrites the catalog literal in place, and writes the
-        # fixed-name changeset when anything moved. No build is required: the
-        # versions come from the manifests and the pending changesets.
+        # fixed-name changeset when anything moved. The script imports kit packages
+        # through their dev builds, which the install in Setup Runtime supplies:
+        # every workspace package's `prepare` runs `turbo run build:dev`. Running
+        # that install with `ignore-scripts` would leave both catalog steps unable
+        # to load the script.
         run: pnpm catalog:sync
 
       - name: Format the rewrite

@@ -17,7 +17,7 @@ sources:
     resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T16:08:05Z
+  at: 2026-11-06T16:11:32Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:14.366Z
@@ -29,7 +29,7 @@ verified:
     at: 2026-11-01T21:41:54Z
 integrity:
   generated:
-    body: 2ead6f062e9d28ea
+    body: ab8697fae41681dd
   verified:
     by: human:spencer
     at: 2026-11-01T21:41:54Z
@@ -103,6 +103,10 @@ on purpose:
   [`@effected/changesets`](../modules/changesets.md) for the true release
   plan, ripples included, and `sync` rewrites the affected entries'
   `range` and floors the `peer` patch under the `lock-minor` strategy.
+  A plan that cannot be read fails both commands with a non-zero exit
+  and the reason on stderr, and `sync` fails before it writes anything:
+  no pending changesets is a successful empty plan, so every failure is
+  a real fault.
 
 Publishability, for both membership questions, is always
 `publishConfig.access === "public"`, never `private === false` — see

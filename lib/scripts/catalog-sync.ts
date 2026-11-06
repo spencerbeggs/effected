@@ -397,7 +397,8 @@ export type ReleasePlan = ReadonlyMap<string, string>;
 
 /**
  * Writes the release plan to `outputPath` as `{ releases: [{ name, type, newVersion }] }`.
- * Injectable so tests need no workspace to plan.
+ * A non-zero `code` means no plan, with the reason in `stdout`. Injectable so
+ * tests need no workspace to plan.
  */
 export type StatusRunner = (outputPath: string, cwd: string) => Promise<UpgradeResult>;
 
@@ -408,14 +409,7 @@ const defaultStatusRunner: StatusRunner = (outputPath, cwd) =>
 			writeFileSync(outputPath, JSON.stringify({ releases }));
 			return { code: 0, stdout: "" };
 		}),
-		// `releasePlan` carries on without a plan, so say here why there is none:
-		// otherwise a plan that cannot be read looks like no ripples at all.
-		Effect.catch((error) =>
-			Effect.sync(() => {
-				process.stderr.write(`catalog-sync: no release plan, ripples not checked: ${error.message}\n`);
-				return { code: 1, stdout: "" };
-			}),
-		),
+		Effect.catch((error) => Effect.succeed({ code: 1, stdout: error.message })),
 		Effect.provide(
 			WorkspaceDiscovery.layer({ cwd }).pipe(
 				Layer.provide(WorkspaceRoot.layer),
@@ -429,16 +423,16 @@ const defaultStatusRunner: StatusRunner = (outputPath, cwd) =>
  * Every package changesets would release, and the version it would get.
  *
  * @remarks
- * Empty when there are no pending changesets: no changesets means no ripples,
- * so there is nothing for this to contribute. Also empty when the plan cannot
- * be read; the runner reports why.
+ * Empty when there are no pending changesets: no changesets means no ripples.
+ * Every failure of the read is a real fault, so it rejects rather than answer
+ * an empty plan, which would pass the gate with ripples unchecked.
  */
 export async function releasePlan(root: string, run: StatusRunner = defaultStatusRunner): Promise<ReleasePlan> {
 	const dir = mkdtempSync(join(tmpdir(), "catalog-plan-"));
 	const outputPath = join(dir, "status.json");
 	try {
-		await run(outputPath, root);
-		if (!existsSync(outputPath)) return new Map();
+		const { code, stdout } = await run(outputPath, root);
+		if (code !== 0) throw new Error(stdout === "" ? `the read exited ${code}` : stdout);
 		const doc = JSON.parse(readFileSync(outputPath, "utf8")) as {
 			releases?: { name: string; newVersion: string; type: string }[];
 		};
@@ -449,10 +443,8 @@ export async function releasePlan(root: string, run: StatusRunner = defaultStatu
 			if (release.type !== "none") plan.set(release.name, release.newVersion);
 		}
 		return plan;
-	} catch {
-		// A plan this cannot read is not worth failing a sync over; the CLI's own
-		// resolution still covers every directly-bumped package.
-		return new Map();
+	} catch (error) {
+		throw new Error(`Release plan could not be read: ${error instanceof Error ? error.message : String(error)}`);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
@@ -527,6 +519,10 @@ export async function sync(options: SyncOptions = {}): Promise<boolean> {
 	const missing = missingFromCatalog(root);
 	if (missing.length > 0) throw new Error(membershipFailure(missing));
 
+	// Read first: the CLI writes the config, and a plan that cannot be read must
+	// fail the run before anything has changed.
+	const plan = await releasePlan(root, options.status);
+
 	const before = readConfig(root);
 	const { code, stdout } = await run(
 		["upgrade", "savvy.build.ts", "--yes", "--format", "json"],
@@ -541,7 +537,7 @@ export async function sync(options: SyncOptions = {}): Promise<boolean> {
 
 	// The CLI cannot see a package bumped only as a dependency ripple, so ask
 	// changesets for the real plan and close the gap it leaves.
-	const ripples = rippleMismatches(root, await releasePlan(root, options.status));
+	const ripples = rippleMismatches(root, plan);
 	applyRipples(root, ripples);
 	for (const ripple of ripples) {
 		write(`  effected.${ripple.pkg}  ${ripple.from} -> ${ripple.to}  (ripple)\n`);
@@ -603,18 +599,18 @@ export async function check(options: SyncOptions = {}): Promise<number> {
 }
 
 if (import.meta.main) {
-	if (process.argv.includes("--check")) {
-		// Propagate the gate's verdict: non-zero is drift, and the caller is a CI gate.
-		process.exitCode = await check();
-	} else {
-		try {
+	try {
+		if (process.argv.includes("--check")) {
+			// Propagate the gate's verdict: non-zero is drift, and the caller is a CI gate.
+			process.exitCode = await check();
+		} else {
 			const changed = await sync();
 			console.log(changed ? `Catalog synced; wrote ${CHANGESET_PATH}` : "Catalog already in sync; nothing written");
-		} catch (error) {
-			// A membership gap is an actionable instruction, not a crash. A stack trace
-			// buries the one line telling the reader which package to add and where.
-			process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-			process.exitCode = 1;
 		}
+	} catch (error) {
+		// A membership gap or an unreadable plan is an actionable instruction, not a
+		// crash. A stack trace buries the one line telling the reader what to fix.
+		process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+		process.exitCode = 1;
 	}
 }
