@@ -1,6 +1,6 @@
 import { Yaml } from "@effected/yaml";
 import { Effect, Result, Schema } from "effect";
-import { BumpType } from "./BumpType.js";
+import { ReleaseType } from "./BumpType.js";
 import { ChangesetParseError } from "./errors.js";
 
 /**
@@ -9,13 +9,13 @@ import { ChangesetParseError } from "./errors.js";
  * @public
  */
 export class ParsedChangeset extends Schema.Class<ParsedChangeset>("ParsedChangeset")({
-	/** Package name to requested bump, in file order. */
-	releases: Schema.ReadonlyMap(Schema.String, BumpType),
+	/** Package name to requested release type, in file order. */
+	releases: Schema.ReadonlyMap(Schema.String, ReleaseType),
 	/** The markdown after the front matter. */
 	summary: Schema.String,
 }) {}
 
-const Releases = Schema.Record(Schema.String, BumpType);
+const Releases = Schema.Record(Schema.String, ReleaseType);
 const decodeReleases = Schema.decodeUnknownResult(Releases);
 
 const fail = (reason: string, line?: number): Result.Result<never, ChangesetParseError> =>
@@ -38,7 +38,8 @@ const parseText = (text: string): Result.Result<ParsedChangeset, ChangesetParseE
 			fail(`front matter is not valid YAML: ${error.message}`, (error.diagnostics[0]?.line ?? 0) + 2),
 		onSuccess: (parsed) =>
 			Result.match(decodeReleases(parsed ?? {}), {
-				onFailure: (error) => fail(`front matter must map package names to patch, minor or major: ${error.message}`, 2),
+				onFailure: (error) =>
+					fail(`front matter must map package names to patch, minor, major or none: ${error.message}`, 2),
 				onSuccess: (releases) =>
 					Result.succeed(ParsedChangeset.make({ releases: new Map(Object.entries(releases)), summary })),
 			}),
@@ -47,7 +48,7 @@ const parseText = (text: string): Result.Result<ParsedChangeset, ChangesetParseE
 
 /**
  * Parsing a changeset markdown file: YAML front matter mapping package names
- * to bumps, then the summary.
+ * to release types, then the summary.
  *
  * @public
  */

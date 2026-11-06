@@ -13,6 +13,7 @@ it("the root exports exactly the public surface", () => {
 		"PendingChangesets",
 		"PlannedRelease",
 		"ReleasePlan",
+		"ReleaseType",
 		"UnknownPackageError",
 		"UnsupportedChangesetModeError",
 	]);

@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { Effect, FileSystem, Path, PlatformError, Result, Schema } from "effect";
-import { BumpType } from "./BumpType.js";
+import { ReleaseType } from "./BumpType.js";
 import { ChangesetFile } from "./ChangesetFile.js";
 import { ChangesetParseError } from "./errors.js";
 
@@ -12,8 +12,8 @@ import { ChangesetParseError } from "./errors.js";
 export class PendingChangeset extends Schema.Class<PendingChangeset>("PendingChangeset")({
 	/** The file name, relative to `.changeset/`. */
 	file: Schema.String,
-	/** Package name to requested bump, in file order. */
-	releases: Schema.ReadonlyMap(Schema.String, BumpType),
+	/** Package name to requested release type, in file order. */
+	releases: Schema.ReadonlyMap(Schema.String, ReleaseType),
 	/** The markdown after the front matter. */
 	summary: Schema.String,
 }) {}

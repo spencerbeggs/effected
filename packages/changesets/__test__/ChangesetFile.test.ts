@@ -18,7 +18,20 @@ it.effect("parses front matter releases and the summary", () =>
 	}),
 );
 
-it.effect("rejects a bump outside patch|minor|major", () =>
+it.effect("accepts none, which names a package and moves no version", () =>
+	Effect.gen(function* () {
+		const parsed = yield* ChangesetFile.parse('---\n"@effected/a": none\n"@effected/b": patch\n---\n');
+		assert.deepStrictEqual(
+			[...parsed.releases],
+			[
+				["@effected/a", "none"],
+				["@effected/b", "patch"],
+			],
+		);
+	}),
+);
+
+it.effect("rejects a release type outside patch|minor|major|none", () =>
 	Effect.gen(function* () {
 		const error = yield* Effect.flip(ChangesetFile.parse('---\n"@effected/a": huge\n---\n'));
 		assert.strictEqual(error._tag, "ChangesetParseError");

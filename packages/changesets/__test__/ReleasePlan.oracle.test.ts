@@ -88,6 +88,9 @@ const cases: Record<string, Record<string, string>> = {
 	"none-no-ripple-missed-range": { a: "patch", b: "none" },
 	"none-no-ripple-caret": { a: "patch", b: "none" },
 	"none-no-ripple-always": { a: "patch", b: "none" },
+	"explicit-none": { a: "patch", b: "none" },
+	"explicit-none-loses-to-bump": { b: "minor" },
+	"explicit-none-rippled": { a: "patch", b: "patch" },
 	"prerelease-versions": {
 		"major-pre": "major",
 		"minor-pre": "minor",

@@ -27,6 +27,9 @@ disagrees, work out which of the two moved before changing either.
 | `dev-dependent-none` | A devDependency-only dependent is listed `none` and ripples nothing onward. |
 | `ignored-package` | An ignored package named in a changeset does not release. |
 | `private-no-version` | `privatePackages.version: false` holds a private package back. |
+| `explicit-none` | A changeset naming a package `none` lists it beside another file's real bump, and moves nothing. |
+| `explicit-none-loses-to-bump` | `none` and a real bump for one package: the bump wins. |
+| `explicit-none-rippled` | A dependency's ripple upgrades a package named `none`. |
 | `two-changesets-max` | The highest bump across changesets wins. |
 | `private-default` | With no `privatePackages` key, a private package does not release. |
 | `private-partial-object` | `privatePackages: {}` defaults `version` to `false` too. |

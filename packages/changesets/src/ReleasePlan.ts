@@ -6,13 +6,11 @@ import type { WorkspaceRootNotFoundError } from "@effected/workspaces";
 import { WorkspaceDiscovery, WorkspaceDiscoveryError, WorkspacePackage } from "@effected/workspaces";
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Path, Result, Schema } from "effect";
-import type { BumpType } from "./BumpType.js";
+import type { BumpType, ReleaseType } from "./BumpType.js";
 import { ChangesetConfig } from "./ChangesetConfig.js";
 import { UnknownPackageError, UnsupportedChangesetModeError } from "./errors.js";
 import type { PendingChangeset } from "./PendingChangesets.js";
 import { PendingChangesets } from "./PendingChangesets.js";
-
-type ReleaseType = BumpType | "none";
 
 const DEPENDENCY_KINDS = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"] as const;
 type DependencyKind = (typeof DEPENDENCY_KINDS)[number];
@@ -237,6 +235,8 @@ export class PlannedRelease extends Schema.Class<PlannedRelease>("PlannedRelease
  * - Once an edge exists every kind naming the dependency is checked: one
  *   unsatisfied non-dev range bumps `patch`; only unsatisfied devDependency
  *   ranges list the package as `none`.
+ * - A changeset may name a package `none`. It is listed as `none` unless another changeset or a ripple gives it a
+ *   real bump, and it ripples nothing.
  * - A skipped package is ignored, private while `privatePackages.version` is
  *   off (its default), or version-less. Naming one in a changeset does nothing, and it never
  *   bumps, but it is still listed as `none` when it depends on anything in the
@@ -297,7 +297,7 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 		const isSkipped = (pkg: WorkspacePackage): boolean =>
 			ignored.has(pkg.name) || (pkg.private && !config.privatePackages.version) || pkg.version === undefined;
 
-		const named = new Map<string, { type: BumpType; files: Array<string> }>();
+		const named = new Map<string, { type: ReleaseType; files: Array<string> }>();
 		for (const changeset of changesets) {
 			for (const [name, type] of changeset.releases) {
 				const pkg = byName.get(name);

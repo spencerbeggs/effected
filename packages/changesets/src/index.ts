@@ -11,7 +11,7 @@
  * @packageDocumentation
  */
 
-export { BumpType } from "./BumpType.js";
+export { BumpType, ReleaseType } from "./BumpType.js";
 export { ChangesetConfig } from "./ChangesetConfig.js";
 export { ChangesetFile, ParsedChangeset } from "./ChangesetFile.js";
 export {

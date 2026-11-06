@@ -10,7 +10,7 @@ Load when changing the public API, the package's dependency edges, or who consum
 
 ## Module layout
 
-- `BumpType.ts`: `patch | minor | major`. It excludes `none`, so a changeset saying `"a": none` is a `ChangesetParseError`. The oracle accepts it; this stays a failure by ruling.
+- `BumpType.ts`: `BumpType` is `patch | minor | major`, and `ReleaseType` adds `none`, which a changeset may write: it names the package and moves no version.
 - `ChangesetFile.ts`: `parseSync` and `parse` for one file, to `ParsedChangeset`.
 - `PendingChangesets.ts`: `read` and `readSync` for `.changeset/`, to `PendingChangeset`.
 - `ChangesetConfig.ts`: the decoded config and `read`. Keys it does not model are kept on `extra`. `read` also accepts the boolean form of `privatePackages`, which the class schema alone rejects.
@@ -38,7 +38,6 @@ These are deliberate, and each is ruled or stated in TSDoc. Do not "fix" one wit
 **Refused where the oracle plans:**
 
 - A non-empty `fixed` or `linked` group, and `.changeset/pre.json`: `UnsupportedChangesetModeError`.
-- `"a": none` in a changeset: `ChangesetParseError`.
 - A root listed in `packages:` alongside other packages, for example `[".", "packages/*"]`: a changeset naming it gets `UnknownPackageError`.
 
 **Planned where the oracle refuses:**
