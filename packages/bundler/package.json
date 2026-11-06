@@ -1,0 +1,94 @@
+{
+	"name": "@effected/bundler",
+	"version": "0.0.0",
+	"private": true,
+	"description": "The kit's build pipeline: effected.toml config, tsdown JS and declaration passes, API Extractor meta, SEA, GitHub Action bundles and build journals.",
+	"keywords": ["bundler", "build", "tsdown", "rolldown", "api-extractor", "effect", "effected"],
+	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/bundler#readme",
+	"bugs": {
+		"url": "https://github.com/spencerbeggs/effected/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/spencerbeggs/effected.git",
+		"directory": "packages/bundler"
+	},
+	"license": "MIT",
+	"author": {
+		"name": "C. Spencer Beggs",
+		"email": "spencer@beggs.codes",
+		"url": "https://spencerbeg.gs"
+	},
+	"sideEffects": false,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./package.json": "./package.json"
+	},
+	"scripts": {
+		"build:dev": "node savvy.build.ts --target dev",
+		"build:prod": "node savvy.build.ts --target prod",
+		"prepare": "turbo run build:dev",
+		"types:check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@effect/platform-node": "catalog:effected",
+		"@effected/changesets": "workspace:*",
+		"@effected/config-file": "workspace:^",
+		"@effected/env": "workspace:^",
+		"@effected/files": "workspace:^",
+		"@effected/glob": "workspace:^",
+		"@effected/images": "workspace:^",
+		"@effected/jsonl": "workspace:^",
+		"@effected/npm": "workspace:^",
+		"@effected/package-json": "workspace:^",
+		"@effected/semver": "workspace:^",
+		"@effected/toml": "workspace:^",
+		"@effected/tsconfig-json": "workspace:^",
+		"@effected/walker": "workspace:^",
+		"@effected/workspaces": "workspace:^",
+		"@effected/yaml": "workspace:^",
+		"@jridgewell/sourcemap-codec": "^1.6.0",
+		"@microsoft/api-extractor": "catalog:build",
+		"@microsoft/tsdoc": "catalog:build",
+		"@microsoft/tsdoc-config": "catalog:build",
+		"@tsdown/exe": "catalog:build",
+		"jiti": "~2.7.0",
+		"rolldown": "catalog:build",
+		"rolldown-plugin-dts": "^0.29.0",
+		"tsdown": "catalog:build"
+	},
+	"devDependencies": {
+		"@effect/vitest": "catalog:effected",
+		"@savvy-web/bundler": "^2.7.4",
+		"@types/node": "catalog:build",
+		"effect": "catalog:effected",
+		"typescript": "catalog:build"
+	},
+	"peerDependencies": {
+		"@resvg/resvg-js": "^2.6.2",
+		"@types/node": "catalog:build:peers",
+		"effect": "catalog:effected:peers",
+		"satori": "^0.63.2",
+		"typescript": "catalog:build:peers"
+	},
+	"peerDependenciesMeta": {
+		"@resvg/resvg-js": {
+			"optional": true
+		},
+		"satori": {
+			"optional": true
+		}
+	},
+	"engines": {
+		"node": ">=24.11.0"
+	},
+	"publishConfig": {
+		"access": "public",
+		"directory": "dist/dev/pkg",
+		"linkDirectory": true,
+		"targets": {
+			"npm": true
+		}
+	}
+}
