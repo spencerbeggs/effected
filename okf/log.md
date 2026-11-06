@@ -34,6 +34,11 @@
 * Updated Ghost workspace
 * Updated scratchpad
 * Updated pnpm-plugin-effected
+* Updated A turbo cache hit reads exactly like a fresh build in the log
+* Updated Build through turbo
+* Updated Running the bundler script directly fakes a clean build gate
+* Updated State which count moved and why, whenever a gate's number changes
+* Updated workspace
 
 ## 2026-11-05
 

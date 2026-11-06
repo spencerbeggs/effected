@@ -2,7 +2,7 @@
 type: Gotcha
 title: Running the bundler script directly fakes a clean build gate
 description: "node savvy.build.ts --target prod skips build:dev, emits no .d.ts, and leaves a truncated issues.json shaped exactly like a passing gate."
-status: stable
+status: deprecated
 resource: ../../turbo.json
 stale_after: 2027-03-13T00:00:00Z
 tags:
@@ -10,13 +10,15 @@ tags:
   - ci
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-14T02:44:47Z
+  at: 2026-11-06T20:01:27Z
 integrity:
   generated:
-    body: cf8e173e3ceb758e
+    body: 7e554af27ecfecb4
 ---
 
 # Running the bundler script directly fakes a clean build gate
+
+**Deprecated.** The script it describes no longer exists, and one build target leaves no truncated output to mistake for a gate. Current rule: [build through turbo](../conventions/build-through-turbo-only.md). The text below records the old pipeline.
 
 ## What a reader sees
 
