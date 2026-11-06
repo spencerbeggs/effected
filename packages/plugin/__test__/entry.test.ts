@@ -79,6 +79,15 @@ describe("@effected/plugin's root entry", () => {
 		assert.deepStrictEqual(expensive(modules), []);
 	});
 
+	it("the four packages that peer typescript agree on one literal range", () => {
+		for (const pkg of ["bundler", "cli", "mcp", "plugin"]) {
+			const { peerDependencies } = JSON.parse(readFileSync(resolve(PLUGIN, "..", pkg, "package.json"), "utf8")) as {
+				readonly peerDependencies: Readonly<Record<string, string>>;
+			};
+			assert.strictEqual(peerDependencies.typescript, ">=7.1.0-beta <8", pkg);
+		}
+	});
+
 	it("every link in the chain is workspace:*", () => {
 		const chain = [
 			["plugin", "@effected/cli"],

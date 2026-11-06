@@ -8,6 +8,8 @@ The kit's build pipeline as a library: `Bundler.build` takes a package directory
 
 Load when changing the public API, a load-bearing output, or the seams.
 
+`typescript` is peered as the literal `>=7.1.0-beta <8`, not `catalog:build:peers`, because that catalog value pins a prerelease exactly; the plugin's `entry.test.ts` holds the four manifests to the same string.
+
 ## Module layout
 
 - `Bundler.ts`: the orchestrator, `BundlerSeams`, `BundlerBuildResult`. `BundlerError.ts`: the failure, naming a `BundlerPhase` and carrying the collector's report.

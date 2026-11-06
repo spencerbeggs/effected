@@ -45,8 +45,9 @@ const fatalReport = decode({
 
 describe("renderCiAnnotations", () => {
 	it("emits ::error with file/line, one line per diagnostic", () => {
+		// Properties are comma-separated. The upstream port joined title and file with a space, which made file part of the title.
 		assert.deepStrictEqual(renderCiAnnotations(report), [
-			"::error title=@x/p (npm) file=a.ts,line=3::boom",
+			"::error title=@x/p (npm),file=a.ts,line=3::boom",
 			"::warning title=@x/p (npm)::heads up",
 		]);
 	});
@@ -118,7 +119,7 @@ describe("renderCiAnnotations", () => {
 		it("a file name cannot forge a property or end the property list", () => {
 			assert.strictEqual(
 				hostile({ file: "a,line=99::forged", line: 3 }),
-				"::error title=p (npm) file=a%2Cline=99%3A%3Aforged,line=3::t",
+				"::error title=p (npm),file=a%2Cline=99%3A%3Aforged,line=3::t",
 			);
 		});
 

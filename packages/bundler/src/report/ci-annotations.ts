@@ -31,14 +31,14 @@ export function renderCiAnnotations(report: BuildReport): ReadonlyArray<string> 
 	for (const g of report.targetGroups) {
 		for (const e of g.errors) {
 			const loc =
-				e.file !== undefined ? ` file=${escapeProperty(e.file)}${e.line !== undefined ? `,line=${e.line}` : ""}` : "";
+				e.file !== undefined ? `,file=${escapeProperty(e.file)}${e.line !== undefined ? `,line=${e.line}` : ""}` : "";
 			lines.push(
 				`::error title=${escapeProperty(report.package)} (${escapeProperty(g.id)})${loc}::${escapeData(e.text)}`,
 			);
 		}
 		for (const w of g.warnings) {
 			const loc =
-				w.file !== undefined ? ` file=${escapeProperty(w.file)}${w.line !== undefined ? `,line=${w.line}` : ""}` : "";
+				w.file !== undefined ? `,file=${escapeProperty(w.file)}${w.line !== undefined ? `,line=${w.line}` : ""}` : "";
 			lines.push(
 				`::warning title=${escapeProperty(report.package)} (${escapeProperty(g.id)})${loc}::${escapeData(w.text)}`,
 			);
