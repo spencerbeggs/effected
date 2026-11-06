@@ -1,6 +1,8 @@
 import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { BuildReport, DiagnosticEntry } from "./schema.js";
+import { Schema } from "effect";
+import type { BuildReport } from "./schema.js";
+import { DiagnosticEntry } from "./schema.js";
 
 /**
  * A diagnostic flattened to a plain JSON object (only defined fields are present).
@@ -48,6 +50,41 @@ export interface BuildIssues {
 	errors: PlainDiagnostic[];
 	suppressed: PlainDiagnostic[];
 }
+
+/**
+ * The schema of a {@link PlainDiagnostic}, for reading one back from `issues.json` or a journal.
+ *
+ * @public
+ */
+export const PlainDiagnosticSchema = Schema.Struct({
+	source: DiagnosticEntry.fields.source,
+	level: DiagnosticEntry.fields.level,
+	text: Schema.String,
+	code: Schema.optionalKey(Schema.String),
+	ciFatal: Schema.optionalKey(Schema.Boolean),
+	file: Schema.optionalKey(Schema.String),
+	line: Schema.optionalKey(Schema.Number),
+	column: Schema.optionalKey(Schema.Number),
+});
+
+/**
+ * The schema of a {@link BuildIssues} artifact, for reading `dist/<target>/issues.json` back.
+ *
+ * @remarks
+ * `buildOk` is required here: an artifact without the stamp is unknown rather than a pass, so it does not decode.
+ *
+ * @public
+ */
+export const BuildIssuesSchema = Schema.Struct({
+	generatedAt: Schema.String,
+	package: Schema.String,
+	target: Schema.Literals(["dev", "prod"]),
+	buildOk: Schema.Boolean,
+	failure: Schema.optionalKey(Schema.Struct({ name: Schema.optionalKey(Schema.String), message: Schema.String })),
+	warnings: Schema.Array(PlainDiagnosticSchema),
+	errors: Schema.Array(PlainDiagnosticSchema),
+	suppressed: Schema.Array(PlainDiagnosticSchema),
+});
 
 /** Copy a DiagnosticEntry to a plain object, omitting undefined optionals for stable output. */
 function toPlain(d: DiagnosticEntry): PlainDiagnostic {

@@ -19,9 +19,10 @@ Load when changing the public API, a load-bearing output, or the seams.
 - `changesets/`: optimistic next versions through `@effected/changesets`.
 - `exe/`: single-executable builds.
 - `report/`: the collector and `issues.json`.
+- `journal/`: `BuildJournal` and `IssueJournal`, the workspace root's `.cache/effected/*.jsonl`. `layerAt(root)` creates the directory and the file, because `Journal.append` refuses a missing file. A record derives from `issues.json`, and the engine writes it, not `Bundler.build`.
 - `public/assets/`: the Open Graph card's font, copied to the package root.
 
-`action/` and `journal/` are empty until their phases land.
+`action/` is empty until its phase lands.
 
 ## Load-bearing outputs
 

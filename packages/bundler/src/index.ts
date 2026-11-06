@@ -73,6 +73,7 @@ export type {
 } from "./exe/config.js";
 export { DEFAULT_EXE_NODE_VERSION, normalizeExeOptions } from "./exe/config.js";
 export { computeExeFileName } from "./exe/filename.js";
+export { BuildJournal, IssueJournal } from "./journal/BuildJournal.js";
 export type { JsxConfig as ResolvedJsxConfig, TsconfigJsx } from "./jsx/config.js";
 export { readTsconfigJsx, resolveJsxConfig } from "./jsx/config.js";
 export type { BuildEmittedManifestOptions, EmitManifestOptions, TargetGroupRef } from "./manifest/emit-manifest.js";
@@ -164,7 +165,13 @@ export { renderCiAnnotations } from "./report/ci-annotations.js";
 export type { DiagnosticInput, PassKind } from "./report/collector.js";
 export { BuildCollector, BuildCollectorTag } from "./report/collector.js";
 export type { BuildIssues, PlainDiagnostic } from "./report/issues-artifact.js";
-export { flattenIssues, serializeIssues, writeIssuesArtifact } from "./report/issues-artifact.js";
+export {
+	BuildIssuesSchema,
+	PlainDiagnosticSchema,
+	flattenIssues,
+	serializeIssues,
+	writeIssuesArtifact,
+} from "./report/issues-artifact.js";
 export { buildMetricsPlugin } from "./report/metrics-plugin.js";
 export {
 	BuildReport,
