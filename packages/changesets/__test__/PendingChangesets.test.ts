@@ -14,6 +14,15 @@ const Populated = MemoryFileSystem.layerWithPath({
 	"/repo/.changeset/config.json": "{}",
 });
 
+const Unsorted = MemoryFileSystem.layerWithPath(
+	{
+		"/repo/.changeset/alpha.md": change("@effected/a", "minor", "Alpha."),
+		"/repo/.changeset/mid.md": change("@effected/m", "major", "Mid."),
+		"/repo/.changeset/zeta.md": change("@effected/z", "patch", "Zeta."),
+	},
+	{ faults: { readDirectory: () => Effect.succeed(["zeta.md", "mid.md", "alpha.md"]) } },
+);
+
 const Malformed = MemoryFileSystem.layerWithPath({
 	"/repo/.changeset/good.md": change("@effected/a", "minor", "Fine."),
 	"/repo/.changeset/bad.md": '---\n"@effected/a": huge\n---\n',
@@ -31,6 +40,16 @@ it.effect("reads only the changeset files, sorted by name", () =>
 		assert.strictEqual(pending[0]?.releases.get("@effected/a"), "minor");
 		assert.strictEqual(pending[0]?.summary, "Alpha.\n");
 	}).pipe(Effect.provide(Populated)),
+);
+
+it.effect("sorts by file name regardless of the order the directory lists", () =>
+	Effect.gen(function* () {
+		const pending = yield* PendingChangesets.read("/repo");
+		assert.deepStrictEqual(
+			pending.map((p) => p.file),
+			["alpha.md", "mid.md", "zeta.md"],
+		);
+	}).pipe(Effect.provide(Unsorted)),
 );
 
 it.effect("a missing .changeset directory answers an empty list", () =>
@@ -59,18 +78,22 @@ it("readSync reads real files from disk, sorted, and answers [] for a missing di
 		if (Result.isSuccess(missing)) assert.deepStrictEqual(missing.success, []);
 
 		mkdirSync(join(root, ".changeset"));
+		writeFileSync(join(root, ".changeset", "c.md"), change("@effected/c", "patch", "C."));
 		writeFileSync(join(root, ".changeset", "b.md"), change("@effected/b", "patch", "B."));
 		writeFileSync(join(root, ".changeset", "a.md"), change("@effected/a", "minor", "A."));
 		writeFileSync(join(root, ".changeset", "README.md"), "# readme\n");
+		writeFileSync(join(root, ".changeset", ".gitkeep"), "");
+		writeFileSync(join(root, ".changeset", ".hidden.md"), "not a changeset");
+		writeFileSync(join(root, ".changeset", "config.json"), "{}");
 		const result = PendingChangesets.readSync(root);
 		assert.isTrue(Result.isSuccess(result));
 		if (Result.isSuccess(result))
 			assert.deepStrictEqual(
 				result.success.map((p) => p.file),
-				["a.md", "b.md"],
+				["a.md", "b.md", "c.md"],
 			);
 
-		writeFileSync(join(root, ".changeset", "c.md"), "no front matter");
+		writeFileSync(join(root, ".changeset", "d.md"), "no front matter");
 		const bad = PendingChangesets.readSync(root);
 		assert.isTrue(Result.isFailure(bad));
 	} finally {

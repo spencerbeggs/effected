@@ -35,7 +35,11 @@ export class ChangesetConfig extends Schema.Class<ChangesetConfig>("ChangesetCon
 	),
 	/** `false`, `true` or a commit-message generator spec; carried as-is. */
 	commit: Schema.Unknown.pipe(Schema.withDecodingDefaultKey(Effect.succeed(false))),
-	/** Every key of the file the schema does not model, such as `changelog` or `$schema`. */
+	/**
+	 * Every key of the file the schema does not model, such as `changelog` or
+	 * `$schema`. A file key literally named `extra` is not carried: the field
+	 * name is reserved.
+	 */
 	extra: Schema.Record(Schema.String, Schema.Unknown).pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
 }) {
 	/**
