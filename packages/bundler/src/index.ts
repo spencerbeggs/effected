@@ -1,1 +1,22 @@
-export {};
+export {
+	BuildFormat,
+	BuildPlatform,
+	EffectedConfig,
+	EntryOverride,
+	ExeConfig,
+	ExeSeaConfig,
+	ExeTargetConfig,
+	JsxConfig,
+	LooseFileSpec,
+	ManifestConfig,
+	MetaConfig,
+	PackageBuildConfig,
+	PackageConfig,
+	TsdocConfig,
+	TsdocTagDefinition,
+	TsdoctorConfig,
+	TsdoctorOpenGraphConfig,
+	TsdoctorOpenGraphImage,
+	TsdoctorRegistryRef,
+	WarningSuppressionRule,
+} from "./config/BuildConfig.js";
