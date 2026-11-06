@@ -19,3 +19,37 @@ export class ChangesetParseError extends Schema.TaggedError<ChangesetParseError>
 		return `Invalid changeset${where}: ${this.reason}`;
 	}
 }
+
+/**
+ * `.changeset/config.json` is missing, is not valid JSON, or does not match
+ * the documented shape.
+ *
+ * @public
+ */
+export class ChangesetConfigError extends Schema.TaggedError<ChangesetConfigError>()("ChangesetConfigError", {
+	/** `"missing"` when the file does not exist, otherwise what was wrong. */
+	reason: Schema.String,
+}) {
+	override get message(): string {
+		return `Invalid changeset config: ${this.reason}`;
+	}
+}
+
+/**
+ * The repository uses a changesets mode the release planner does not model:
+ * pre-release (`.changeset/pre.json` present), snapshot, or a `fixed` or
+ * `linked` group.
+ *
+ * @public
+ */
+export class UnsupportedChangesetModeError extends Schema.TaggedError<UnsupportedChangesetModeError>()(
+	"UnsupportedChangesetModeError",
+	{
+		/** The unsupported mode. */
+		mode: Schema.Literals(["pre", "snapshot", "fixed", "linked"]),
+	},
+) {
+	override get message(): string {
+		return `Changesets ${this.mode} mode is not supported`;
+	}
+}
