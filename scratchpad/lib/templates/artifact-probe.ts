@@ -1,8 +1,8 @@
 /**
  * Artifact probe — runs the BUILT prod artifact (dist/prod/npm/pkg) while
- * typing it with the workspace (dev-build) surface, for "does the published
+ * typing it with the workspace (source) surface, for "does the published
  * artifact behave the same" questions. The double cast through unknown is
- * required: dev and prod declarations of private-field classes are nominally
+ * required: source and built declarations of private-field classes are nominally
  * distinct.
  *
  * Build the target first: pnpm build --filter @effected/semver

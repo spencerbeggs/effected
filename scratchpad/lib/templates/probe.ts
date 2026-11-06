@@ -1,9 +1,7 @@
 /**
  * Free-form probe — WORKSPACE mode. Bare @effected imports resolve to each
- * package's dist/dev build (pnpm links workspace deps via publishConfig
- * directory), kept fresh by install prepare hooks and the vitest pre-build.
- * After editing a package's src, rebuild before trusting a tsx probe:
- * pnpm build --filter @effected/<pkg>
+ * package's src through the workspace link, so no rebuild is needed after a
+ * source edit.
  *
  * Run from the repo root: pnpm scratchpad:probe probes/probe.ts
  * This file is disposable — pnpm scratchpad:reset reseeds it.

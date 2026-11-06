@@ -31,6 +31,8 @@
 * Updated tsconfig-json
 * Updated Close a catalog membership gap
 * Updated The catalog:sync / catalog:check CLI
+* Updated Ghost workspace
+* Updated scratchpad
 
 ## 2026-11-05
 
