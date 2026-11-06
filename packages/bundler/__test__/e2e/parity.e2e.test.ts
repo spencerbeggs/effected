@@ -64,12 +64,10 @@ describe.skipIf(process.env.EFFECTED_PARITY !== "1")("parity with the previous b
 				({ cwd }) =>
 					Effect.gen(function* () {
 						const { config } = yield* EffectedConfigFile.load({ cwd });
-						const build = config.package?.build;
-						if (build === undefined) return yield* Effect.die("the config has no package table");
 						const result = yield* Bundler.build({
 							cwd,
-							config: build,
-							tsdoctor: config.package?.tsdoctor,
+							config: config.package.build,
+							tsdoctor: config.package.tsdoctor,
 							noExe: true,
 							verbose: false,
 							plugins: [],

@@ -54,12 +54,10 @@ describe("an exe-only package", () => {
 				const exit = await Effect.runPromiseExit(
 					Effect.gen(function* () {
 						const { config } = yield* EffectedConfigFile.load({ cwd });
-						const build = config.package?.build;
-						if (build === undefined) return yield* Effect.die("the config has no package table");
 						return yield* Bundler.build({
 							cwd,
-							config: build,
-							tsdoctor: config.package?.tsdoctor,
+							config: config.package.build,
+							tsdoctor: config.package.tsdoctor,
 							noExe: false,
 							verbose: false,
 							plugins: [],

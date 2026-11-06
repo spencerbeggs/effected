@@ -39,8 +39,8 @@ const program = Effect.gen(function* () {
   const { config } = yield* EffectedConfigFile.load({ cwd });
   const result = yield* Bundler.build({
     cwd,
-    config: config.package?.build ?? (yield* Effect.die("no package table")),
-    tsdoctor: config.package?.tsdoctor,
+    config: config.package.build,
+    tsdoctor: config.package.tsdoctor,
     noExe: false,
     verbose: false,
     plugins: [],
