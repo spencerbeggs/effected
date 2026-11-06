@@ -1,5 +1,7 @@
 # Module
 
+* [@effected/bundler](bundler.md) - The kit's build pipeline as an integrated library: package and GitHub Action builds, API Extractor and the tsdoctor.json schema, SEA executables, the issues.json report and the build journals, returned as typed results that the effected tool's engine wraps for its two front ends.
+* [@effected/changesets](changesets.md) - Boundary-tier reader for changeset files and .changeset/config.json, plus a release planner held to @changesets/get-release-plan as a test oracle, so the bundler and the kit's tooling stop carrying that package at runtime.
 * [@effected/cli](cli.md) - The effected command: effected schema build, check and validate over effect/cli and @effected/cli-kit, with --version and --help, run by a bin that a carrier shim can wrap with its own distribution identity.
 * [@effected/cli-kit](cli-kit.md) - The presentation boundary of an effect/cli program — audience, colour, theme, messages, logging, failure reporting and schema-issue renderers in a React-free root, with interactive Ink screens behind ./ui and their test harness behind ./ui/testing.
 * [@effected/commands](commands.md) - The kit's tool-and-output layer over core's subprocess contract — structured running, CLI tool discovery, run-once serialization across processes, prebuilt-binary resolution, launcher argv parsing, and (behind ./node-sync) anchored module resolution.

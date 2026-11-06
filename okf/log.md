@@ -19,6 +19,9 @@
 * Updated The effect catalog takes caret ranges on the stable line
 * Updated The libsodium sealed box stays in @effected/github until a second consumer appears
 * Updated The schemastore commands live in the effected tool, and the companion package is removed
+* Added @effected/bundler
+* Added @effected/changesets
+* Updated effected
 
 ## 2026-11-05
 

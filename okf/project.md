@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T15:50:42Z
+  at: 2026-11-06T15:27:21Z
 integrity:
   generated:
-    body: bb4e624cc9191042
+    body: f8cde26c4852ad8f
 ---
 
 # effected
@@ -71,13 +71,15 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `oidc` | boundary | invention; the OIDC vocabulary over `jwt`: the `IdentityToken` issuer contract (moved from `sbom`), ID-token claims, an unverified decode and an audience-guarded verify |
 | `crypto` | boundary | extraction from `github-actions` and `savvy-web/build` intake; HMAC, constant-time comparison and AWS SigV4 over core `Mac` and `Digest` in `R`, no `node:` import |
 | `webhooks` | boundary | extraction from `savvy-web/build` intake; inbound webhook signature verification presets (Standard Webhooks, GitHub, Stripe, Sanity, HMAC header, shared secret) over `crypto` |
+| `changesets` | boundary | invention; a parser for changeset files and `.changeset/config.json` and a release planner, with `@changesets/get-release-plan` kept as a test oracle only |
+| `bundler` | integrated | port of `@savvy-web/tsdown-plugins` and `@savvy-web/bundler`, the `tsdoctor.json` schema from `@tsdoctor/manifest`, and a rolldown rewrite of `@savvy-web/github-action-builder`; the only package that peers `typescript` |
 | `pnpm-plugin-effected` | companion — no tier | invention; the one `effected` catalog (the Effect family on one minor, and the kit) plus the graph-wide Effect pins, and the public hoist of `@effected/plugin`; renamed from `pnpm-plugin-effect` |
 | `plugin` | tool — no tier | invention; the `effected` tool's carrier, the one package a consumer installs (a root devDependency through `catalog:effected`): declares the `effected` and `effected-mcp` bins as shims passing its own distribution identity, re-exports `defineSchemastore`, and pins the chain below it exactly |
 | `cli` | tool — no tier | invention; the `effected` command (`schema build`, `check` and `validate`, `--version`, `--help`) over `effect/cli`, `cli-kit` and `engine`; the name was `cli-kit`'s before [the rename](decisions/carrier-libraries-take-kit-names.md) |
 | `mcp` | tool — no tier | invention; the `effected-mcp` stdio server with the `identity` tool and the `schema_build`, `schema_check` and `schema_validate` tools over `effect/ai`, `mcp-kit` and `engine` |
 | `engine` | tool — no tier | invention; the tool's shared logic that both front ends report through: `Identity.report`, and the `./schema` subpath (config loader, runner, report classes, version check, the two shipped ajv engines), built on `kit` and `schemastore` |
 
-The roster is **47 packages**: 42 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`plugin`, `cli`, `mcp`, `engine`), which are an application and carry no library tier. `cli-kit`, `mcp-kit`, `kit` and `plugin` are new npm names, not yet published. `cli`, `mcp` and `engine` published before as the old kit libraries, and their next release is the tool package under the same name. `pnpm-plugin-effected` is already published.
+The roster is **49 packages**: 44 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`plugin`, `cli`, `mcp`, `engine`), which are an application and carry no library tier. `cli-kit`, `mcp-kit`, `kit`, `plugin`, `changesets` and `bundler` are new npm names, not yet published. `cli`, `mcp` and `engine` published before as the old kit libraries, and their next release is the tool package under the same name. `pnpm-plugin-effected` is already published.
 
 ### Consumers
 
