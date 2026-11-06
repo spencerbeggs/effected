@@ -6,11 +6,11 @@
 import type { SchemaProgress, SchemaRunDeps, VersionMismatch } from "@effected/engine/schema";
 import { ConfigLoader, SchemaRun, SchemaRunResult, SchemaValidate, ValidateReport } from "@effected/engine/schema";
 import type { ExclusiveTimeout } from "@effected/kit";
-import { Exclusive, PathContainment } from "@effected/kit";
+import { Exclusive } from "@effected/kit";
 import { ToolFailure, ToolRefusal } from "@effected/mcp-kit";
-import { Walker } from "@effected/walker";
 import { Effect, FileSystem, Option, Path, Ref, Schema } from "effect";
 import { Tool } from "effect/ai";
+import { findRoot, inside } from "../root.js";
 
 const CONFIG_DESCRIPTION =
 	"The schemastore config, resolved against the workspace root and refused outside it. Omitted, discovery walks upward from the server's working directory, stopping at the workspace root.";
@@ -110,17 +110,6 @@ export interface SchemaToolOptions {
 // new across files. The bound is only there because a lane requires one: a walk is local work.
 const WALK_TIMEOUT = "2 minutes";
 
-// The nearest pnpm workspace, otherwise the nearest git checkout, otherwise where the server started.
-const findRoot = (cwd: string) =>
-	Effect.gen(function* () {
-		const fs = yield* FileSystem.FileSystem;
-		const path = yield* Path.Path;
-		const chain = yield* Walker.ascend(cwd);
-		const holding = (marker: string) => Walker.findRoot(chain, (dir) => fs.exists(path.join(dir, marker)));
-		const workspace = yield* holding("pnpm-workspace.yaml");
-		return Option.isSome(workspace) ? workspace.value : Option.getOrElse(yield* holding(".git"), () => cwd);
-	});
-
 type EngineFailure =
 	| Effect.Error<ReturnType<typeof SchemaRun.run>>
 	| Effect.Error<ReturnType<typeof SchemaValidate.run>>
@@ -190,17 +179,7 @@ export const makeSchemaHandlers = (options: SchemaToolOptions = {}) =>
 		const lane = yield* Exclusive.make;
 		const importer = options.importModule !== undefined ? { importModule: options.importModule } : {};
 
-		const inside = (label: string, candidate: string) =>
-			Effect.flatMap(PathContainment.isWithin(root, candidate), (within) =>
-				within
-					? Effect.void
-					: Effect.fail(
-							ToolRefusal.refuse(
-								`The ${label} "${ToolFailure.truncate(candidate)}" is outside the workspace root ${root}.`,
-								{ hint: `Pass a path under ${root}.` },
-							),
-						),
-			);
+		const within = (label: string, candidate: string) => inside(root, label, candidate);
 
 		// Given, it is held to the root. Otherwise discovery starts where the server did and stops at the root: a config is
 		// code, and an agent did not choose one found above the checkout. Relative parameters resolve against the root, so
@@ -209,7 +188,7 @@ export const makeSchemaHandlers = (options: SchemaToolOptions = {}) =>
 			config: string | undefined,
 		): Effect.Effect<{ readonly config?: string }, ToolRefusal, FileSystem.FileSystem | Path.Path> =>
 			config !== undefined
-				? Effect.as(inside("config", config), { config })
+				? Effect.as(within("config", config), { config })
 				: Effect.match(ConfigLoader.discover(cwd, root), {
 						onFailure: () => ({}),
 						onSuccess: (found) => ({ config: found }),
@@ -276,7 +255,7 @@ export const makeSchemaHandlers = (options: SchemaToolOptions = {}) =>
 			schema_validate: (params: typeof schemaValidate.parametersSchema.Type) =>
 				call((onProgress) =>
 					Effect.gen(function* () {
-						yield* inside("payload", params.payload);
+						yield* within("payload", params.payload);
 						// The engine reads the payload's own `$schema` as a path too. Resolving a reference the way the engine
 						// does holds a URL-shaped one to the root as well, and passing it on means the one checked is the one used.
 						const ref =
@@ -290,7 +269,7 @@ export const makeSchemaHandlers = (options: SchemaToolOptions = {}) =>
 									(payload) => payload.$schema,
 								),
 							);
-						if (ref !== undefined) yield* inside("schema", ref);
+						if (ref !== undefined) yield* within("schema", ref);
 						const scoped = yield* configOf(params.config);
 						return yield* SchemaValidate.run(
 							{

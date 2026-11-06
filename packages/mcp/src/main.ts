@@ -52,6 +52,7 @@ export const main = (options: MainOptions = {}): Promise<void> =>
 			const layer = ServerLayer({
 				...options,
 				cwd: process.cwd(),
+				ci: Boolean(process.env.CI || process.env.GITHUB_ACTIONS),
 				confineStdout: capture.capture({ stdout: capture.toStderr }),
 			}).pipe(Layer.provide(Layer.mergeAll(NodeStdio.layer, NodeFileSystem.layer, NodePath.layer)));
 			return { layer, runMain: NodeRuntime.runMain };
