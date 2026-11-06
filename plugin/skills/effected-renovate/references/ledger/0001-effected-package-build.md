@@ -6,7 +6,7 @@ shows: behavioural
 applies:
   "@effected/plugin": ">=0.3.0"
 detect: ["savvy\\.build\\.ts", "\"@savvy-web/bundler\"", "publishConfig\\.directory|linkDirectory", "build:(dev|prod)"]
-changesets: []
+changesets: ["bright-tools-build", "calm-bundles-build", "keen-builds-land", "proud-presets-ship", "quick-agents-build"]
 ---
 
 The kit no longer builds with `@savvy-web/bundler`. `@effected/plugin` carries the replacement: `effected package build` reads an optional `effected.toml`, and most packages need no file at all. An action repository's `build:prod` hit belongs to the `effected action build` entry, not this one.

@@ -6,7 +6,7 @@ shows: behavioural
 applies:
   "@effected/plugin": ">=0.3.0"
 detect: ["\"@savvy-web/github-action-builder\"", "github-action-builder (build|validate)", "action\\.config\\.ts", "nativeDynamicImports"]
-changesets: []
+changesets: ["bright-tools-build", "calm-bundles-build", "keen-builds-land", "proud-presets-ship", "quick-agents-build"]
 ---
 
 `effected action build` replaces `github-action-builder build`, and `[action]` tables in `effected.toml` replace `action.config.ts` and its `defineConfig`. An action's output does not move: `dist/main.js` and its siblings stay where they were, so `runs.main`, `runs.pre` and `runs.post` in `action.yml` need no edit.

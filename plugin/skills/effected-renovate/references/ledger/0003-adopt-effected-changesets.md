@@ -5,7 +5,8 @@ kind: adopt
 shows: none
 applies:
   "@effected/changesets": ">=0.1.0"
-changesets: []
+  "@effected/plugin": ">=0.3.0"
+changesets: ["steady-ledgers-plan"]
 ---
 
 Offer this to the user; never apply it unasked. It replaces hand-rolled front-matter splits and readers of `changeset status --output`. The kit's own `catalog:sync` moved to it.
