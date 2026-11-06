@@ -1,5 +1,19 @@
 {
 	"$schema": "https://biomejs.dev/schemas/2.6.4/schema.json",
 	"extends": "//",
+	"overrides": [
+		{
+			"assist": {
+				"enabled": false
+			},
+			"formatter": {
+				"enabled": false
+			},
+			"includes": ["__test__/fixtures/parity/**"],
+			"linter": {
+				"enabled": false
+			}
+		}
+	],
 	"root": false
 }

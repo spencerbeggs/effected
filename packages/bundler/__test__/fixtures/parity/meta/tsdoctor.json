@@ -1,0 +1,10 @@
+{
+  "spec": 1,
+  "registries": [
+    {
+      "type": "npm",
+      "name": "npm",
+      "url": "https://www.npmjs.com/package/@effected/jsonc"
+    }
+  ]
+}
