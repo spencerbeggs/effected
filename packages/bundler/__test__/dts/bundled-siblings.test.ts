@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { afterAll, assert, describe, it } from "@effect/vitest";
 import { packageNameOf, resolveBundledSiblings, siblingPaths } from "../../src/dts/bundled-siblings.js";
 import { ConfigValidationError } from "../../src/errors.js";
+import { buildTargetGroups } from "../../src/passes/build-target-groups.js";
 
 const roots: string[] = [];
 afterAll(() => {
@@ -122,5 +123,41 @@ describe("siblingPaths", () => {
 				"@x/a/deep/thing": ["/s/pkg/deep-thing.d.ts"],
 			},
 		);
+	});
+});
+
+describe("buildTargetGroups resolving a bundled sibling", () => {
+	const run = (cwd: string, emitDts: boolean) => {
+		let builds = 0;
+		return buildTargetGroups({
+			cwd,
+			version: "1.0.0",
+			entry: { index: "./src/index.ts" },
+			tsconfigPath: join(cwd, "no-such-tsconfig.json"),
+			groups: [{ id: "npm", name: "b" }],
+			devManifest: "preserve",
+			bundledPackages: ["@x/a"],
+			emitDts,
+			build: async () => {
+				builds += 1;
+			},
+		}).then(
+			() => ({ builds, failure: undefined }),
+			(failure: unknown) => ({ builds, failure }),
+		);
+	};
+
+	it("fails an unbuilt sibling before any pass when the declaration pass will read it", async () => {
+		const { cwd } = workspace();
+		const { builds, failure } = await run(cwd, true);
+		assert.instanceOf(failure, ConfigValidationError);
+		assert.strictEqual(builds, 0);
+	});
+
+	it("does not look for the sibling's declarations when declarations are off", async () => {
+		const { cwd } = workspace();
+		const { builds, failure } = await run(cwd, false);
+		assert.isUndefined(failure);
+		assert.strictEqual(builds, 1);
 	});
 });

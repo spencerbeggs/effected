@@ -248,8 +248,9 @@ export interface DtsEmitTsconfigOptions {
  * reads as removing an inherited value): the declaration program must resolve sibling packages the way the package
  * manifest says, never through a typecheck-only condition or path alias that would pull source files into the
  * emitted declarations. The one exception is `options.paths`, the bundled workspace siblings resolved to their built
- * declarations, which is the only `paths` map this file ever carries. The only reader of this file is the tsgo declaration generator; nothing in the bundler
- * reads it back through the kit's `TsconfigLoaderSync`, which rejects `null` compiler options.
+ * declarations, which is the only `paths` map this file ever carries. The only reader of this file is the tsgo
+ * declaration generator; nothing in the bundler reads it back through the kit's `TsconfigLoaderSync`, which rejects
+ * `null` compiler options.
  *
  * Best-effort: if the base tsconfig cannot be read or parsed (e.g. a synthetic test path that was
  * never written), the original path is returned unchanged — the emit then simply keeps TS's

@@ -39,7 +39,7 @@ See `effect-api-extractor-bases` for how the gate reads for the *other* case.
 
 ## A bin that also runs from source
 
-A repository whose root depends on its own carrier through `workspace:*` runs that carrier's bin from source. `node_modules/.bin/<tool>` under a hook, an MCP loader or a bare shell gets no `nodeOptions`, and sibling imports then fail with `ERR_MODULE_NOT_FOUND` on a `.js` path. So the bin file registers tsx itself, before anything resolves a sibling's source, with every other import dynamic and `tsx` as a root devDependency:
+A repository whose root depends on its own carrier through `workspace:*` runs that carrier's bin from source. `node_modules/.bin/<tool>` under a hook, an MCP loader or a bare shell gets no `nodeOptions`, and the run then dies with `ERR_MODULE_NOT_FOUND` naming a `.js` file under a linked package's `src/`. So the bin file registers tsx itself, before anything resolves a sibling's source, with every other import dynamic and `tsx` as a root devDependency:
 
 ~~~ts
 #!/usr/bin/env node

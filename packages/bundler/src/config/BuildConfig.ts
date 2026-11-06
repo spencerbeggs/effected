@@ -50,7 +50,7 @@ export class EntryOverride extends Schema.Class<EntryOverride>("EntryOverride")(
 	externals: Schema.optionalKey(Schema.Array(Schema.String)),
 	/** Whether this partition bundles its `node_modules` dependencies. */
 	bundleNodeModules: Schema.optionalKey(Schema.Boolean),
-	/** Packages whose declarations are inlined into this partition's bundled `.d.ts`; a workspace sibling must be built first. */
+	/** Packages whose declarations are inlined into this partition's `.d.ts`; a workspace sibling must be built first. */
 	bundledPackages: Schema.optionalKey(Schema.Array(Schema.String)),
 	/** Packages externalized in this partition's declaration pass only. */
 	dtsExternals: Schema.optionalKey(Schema.Array(Schema.String)),

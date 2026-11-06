@@ -16,11 +16,11 @@ export interface BundledSibling {
 	readonly name: string;
 	/** The absolute `dist/prod/<canonical group>/pkg` directory holding its declarations. */
 	readonly pkgDir: string;
-	/** Absolute declaration files of its nested subpaths, which `<name>/*` cannot reach: their emitted names are flattened. */
+	/** Absolute declaration files of its nested subpaths, which `<name>/*` cannot reach: emitted names are flattened. */
 	readonly nestedExports: Readonly<Record<string, string>>;
 }
 
-/** The package a `bundledPackages` entry belongs to: an entry may name one of its subpaths, as tsdown matches them exactly. */
+/** The package a `bundledPackages` entry belongs to: an entry may name a subpath, since tsdown matches them exactly. */
 export const packageNameOf = (entry: string): string =>
 	entry
 		.split("/")

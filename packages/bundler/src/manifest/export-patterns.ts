@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, sep } from "node:path";
 
 /**
@@ -51,13 +51,9 @@ export function unmatchedExportPatterns(pkgDir: string): ReadonlyArray<Unmatched
 			.map((target) => ({ key, target })),
 	);
 	if (patterns.length === 0) return [];
-	const files = (readdirSync(pkgDir, { recursive: true, withFileTypes: true }) as import("node:fs").Dirent[])
-		.filter((entry) => entry.isFile())
-		.map((entry) =>
-			join(entry.parentPath, entry.name)
-				.slice(pkgDir.length + 1)
-				.split(sep)
-				.join("/"),
-		);
+	// Stat rather than the entry's own type, which says "symlink" for a linked file. A dangling link answers undefined.
+	const files = readdirSync(pkgDir, { recursive: true, encoding: "utf-8" })
+		.filter((path) => statSync(join(pkgDir, path), { throwIfNoEntry: false })?.isFile() === true)
+		.map((path) => path.split(sep).join("/"));
 	return patterns.filter(({ target }) => !matchesAny(target, files));
 }

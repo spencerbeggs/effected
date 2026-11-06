@@ -273,11 +273,15 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 
 	// A bundled workspace sibling resolves to source, which tsgo cannot declare, so a partition inlining one gets a
 	// tsconfig mapping it to the sibling's built declarations. Resolved before any pass runs, so a sibling that has not
-	// been built fails the build here. Only a partition's own siblings reach its map.
-	const bundledSiblings = await resolveBundledSiblings(options.cwd, [
-		...(options.bundledPackages ?? []),
-		...(options.overrides ?? []).flatMap((override) => override.bundledPackages ?? []),
-	]);
+	// been built fails the build here. Only a partition's own siblings reach its map. With declarations off, no pass
+	// reads them, so a sibling's build is not required.
+	const bundledSiblings =
+		options.emitDts === false
+			? []
+			: await resolveBundledSiblings(options.cwd, [
+					...(options.bundledPackages ?? []),
+					...(options.overrides ?? []).flatMap((override) => override.bundledPackages ?? []),
+				]);
 	const emitTsconfigFor = (bundled: ReadonlyArray<string> | undefined): string => {
 		const packages = new Set(bundled?.map(packageNameOf));
 		const siblings = bundledSiblings.filter((sibling) => packages.has(sibling.name));
