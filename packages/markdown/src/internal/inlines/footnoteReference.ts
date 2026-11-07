@@ -87,6 +87,12 @@ export const footnoteReferenceFallback: LinkCloseFallback = (scanner, opener, br
 	if (matched) {
 		node.data.identifier = key.toLowerCase();
 		node.data.label = rawLabel;
+	} else if (key !== "") {
+		// The miss is the marker a `footnote-undefined` lint exists to report,
+		// and this is the last moment its span is known: as text it coalesces
+		// with its neighbours. A label that normalizes to nothing (`[^ ]`) is
+		// no label at all, so it is not reported.
+		scanner.noteUnresolvedFootnote(rawLabel, key.toLowerCase(), start, scanner.pos);
 	}
 
 	// Replace the opener and everything the brackets enclosed with the one

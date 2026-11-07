@@ -16,12 +16,11 @@ import type { BlockPassResult } from "./internal/blockParser.js";
 import { parseBlocks } from "./internal/blockParser.js";
 import { isGuardExceeded, isRawMarkdownError } from "./internal/carriers.js";
 import { parsePhrasingText } from "./internal/phrasing.js";
-import { stringifyBlocks } from "./internal/stringify.js";
-import { assertWithinNestingDepth } from "./internal/treeDepth.js";
 import { MarkdownDiagnostic } from "./MarkdownDiagnostic.js";
 import type { FlowContent, PhrasingContent } from "./MarkdownNode.js";
 import { Root } from "./MarkdownNode.js";
-import { MarkdownTransform } from "./MarkdownTransform.js";
+import type { MarkdownStringifyError, MarkdownStringifyOptions } from "./MarkdownStringify.js";
+import { stringify, stringifyResult } from "./MarkdownStringify.js";
 
 /**
  * The markdown dialects the parser can be pointed at. `"gfm"` — CommonMark
@@ -41,20 +40,6 @@ export const MarkdownDialect = Schema.Literals(["commonmark", "gfm"]);
  * @public
  */
 export type MarkdownDialect = typeof MarkdownDialect.Type;
-
-/**
- * Options for `Markdown.stringify` and `Markdown.stringifyResult`.
- *
- * @public
- */
-export interface MarkdownStringifyOptions {
-	/**
-	 * Ignore fidelity fields (marker characters, fence style, heading
-	 * spelling) and emit the canonical form. Defaults to `false`, which honours
-	 * them.
-	 */
-	readonly canonical?: boolean;
-}
 
 /**
  * Options controlling parse behavior: `dialect` (omitted, `"gfm"`) and
@@ -103,30 +88,6 @@ export class MarkdownParseError extends Schema.TaggedError<MarkdownParseError>()
 	override get message(): string {
 		const { code, line, character, message } = this.diagnostic;
 		return `Markdown parse failed: ${code} at ${line + 1}:${character + 1} ${message}`;
-	}
-}
-
-/**
- * Stringify failure: the {@link MarkdownDiagnostic} describing why the tree
- * was refused.
- *
- * @remarks
- * Serialization is total over parser-produced trees — the parser cannot
- * produce one that nests past the guard, because parsing it would have been
- * refused first. The only failures here are hardening-guard trips on
- * synthesized or decoded hostile trees, symmetric with
- * {@link MarkdownParseError}'s posture on parse. Stringify has no source
- * text to derive positions from, so the diagnostic's `line`/`character` are
- * `0` and `offset` carries whatever the offending node's position claimed.
- *
- * @public
- */
-export class MarkdownStringifyError extends Schema.TaggedError<MarkdownStringifyError>()("MarkdownStringifyError", {
-	diagnostic: MarkdownDiagnostic,
-}) {
-	override get message(): string {
-		const { code, message } = this.diagnostic;
-		return `Markdown stringify failed: ${code} ${message}`;
 	}
 }
 
@@ -338,6 +299,14 @@ export class Markdown {
 	 * {@link Markdown.parseResult}.
 	 *
 	 * @remarks
+	 * **Delegates to the free function {@link stringifyResult}**, so the two
+	 * spellings can never emit different bytes. A bundle that only emits
+	 * markdown should import that function — or the whole
+	 * `@effected/markdown/stringify` entry point, which carries the node
+	 * classes too — rather than this static: a bundler cannot drop an unused
+	 * static, so reaching serialization through `Markdown` keeps the parser in
+	 * the bundle.
+	 *
 	 * **A single flow node is defined as its one-child document**: passing
 	 * `node` is exactly `stringifyResult(Root.make({ children: [node] }))` —
 	 * the same code path, the same trailing `\n`, the same canonical choices.
@@ -445,32 +414,7 @@ export class Markdown {
 		node: Root | FlowContent,
 		options?: MarkdownStringifyOptions,
 	): Result.Result<string, MarkdownStringifyError> {
-		try {
-			// One path: a lone flow node is serialized as the one-block list a
-			// `Root` holding it would carry. No wrapper is constructed, so a node
-			// fails or succeeds here exactly as it would inside a `Root`.
-			// The canonicalizing walk is unguarded recursion; probe the depth
-			// iteratively first so both paths fail typed at the same limit.
-			if (options?.canonical === true) assertWithinNestingDepth(node);
-			const source = options?.canonical === true ? MarkdownTransform.canonicalize(node) : node;
-			return Result.succeed(stringifyBlocks(source.type === "root" ? source.children : [source]));
-		} catch (caught) {
-			if (isGuardExceeded(caught)) {
-				return Result.fail(
-					new MarkdownStringifyError({
-						diagnostic: MarkdownDiagnostic.make({
-							code: caught.reason,
-							message: caught.message,
-							offset: caught.offset,
-							length: 0,
-							line: 0,
-							character: 0,
-						}),
-					}),
-				);
-			}
-			throw caught;
-		}
+		return stringifyResult(node, options);
 	}
 
 	/**
@@ -479,6 +423,9 @@ export class Markdown {
 	 * — synchronous callers can use that variant directly.
 	 *
 	 * @remarks
+	 * This static IS the free function {@link stringify}, the one the
+	 * parser-free `@effected/markdown/stringify` entry point exports.
+	 *
 	 * The canonical form is a **stability commitment** and safe to assert
 	 * against byte-for-byte; the choices it makes, and the reason changing one
 	 * is a breaking change, are documented on
@@ -501,10 +448,10 @@ export class Markdown {
 	 * @returns An `Effect` that succeeds with markdown source, or fails with
 	 *   {@link MarkdownStringifyError}.
 	 */
-	static readonly stringify = Effect.fn("Markdown.stringify")(
-		(node: Root | FlowContent, options?: MarkdownStringifyOptions) =>
-			Effect.fromResult(Markdown.stringifyResult(node, options)),
-	);
+	static readonly stringify: (
+		node: Root | FlowContent,
+		options?: MarkdownStringifyOptions,
+	) => Effect.Effect<string, MarkdownStringifyError> = stringify;
 
 	/**
 	 * A `Schema<Root, string>` decoding markdown source into a {@link Root}

@@ -59,7 +59,14 @@ import { appendChild, childrenOf, insertAfter, makeInlineNode, unlink } from "./
 import type { InlineDialectName } from "./inlineRegistry.js";
 import { inlineDialect } from "./inlineRegistry.js";
 import { C_TILDE, insertStrikethrough } from "./inlines/strikethrough.js";
-import type { Bracket, Delimiter, InlineDialect, InlineScanner, InlineSource } from "./inlineTypes.js";
+import type {
+	Bracket,
+	Delimiter,
+	InlineDialect,
+	InlineScanner,
+	InlineSource,
+	RawUnresolvedFootnote,
+} from "./inlineTypes.js";
 import { MAX_NESTING_DEPTH } from "./limits.js";
 import { globalOf, stickyOf } from "./patterns.js";
 import { sourceOffsetAt } from "./segments.js";
@@ -127,6 +134,8 @@ class InlineParser implements InlineScanner {
 	private readonly positionOf: PositionOf;
 	/** The output list's root; only ever a container for the children. */
 	private readonly root: InlineNode;
+	/** Where unresolved footnote markers are reported; the caller owns it. */
+	private readonly unresolvedFootnotes: Array<RawUnresolvedFootnote>;
 
 	constructor(
 		source: InlineSource,
@@ -134,7 +143,9 @@ class InlineParser implements InlineScanner {
 		positionOf: PositionOf,
 		refmap: ReadonlyMap<string, Definition>,
 		footnoteLabels: ReadonlySet<string>,
+		unresolvedFootnotes: Array<RawUnresolvedFootnote>,
 	) {
+		this.unresolvedFootnotes = unresolvedFootnotes;
 		this.source = source;
 		this.subject = source.text;
 		this.dialect = dialect;
@@ -465,6 +476,10 @@ class InlineParser implements InlineScanner {
 		}
 	}
 
+	noteUnresolvedFootnote(label: string, identifier: string, from: number, to: number): void {
+		this.unresolvedFootnotes.push({ label, identifier, position: this.position(from, to) });
+	}
+
 	// --- positions and materialization --------------------------------------
 
 	private offsetAt(index: number): number {
@@ -657,7 +672,8 @@ class InlineParser implements InlineScanner {
  * dangling `[foo]` is literal text, per the spec — and when one does form it
  * is emitted as a `linkReference` carrying the identifier rather than an
  * eagerly resolved link. `position` comes from the block pass, which owns the
- * line index.
+ * line index. A GFM footnote marker with no matching definition stays literal
+ * text and is reported to `unresolvedFootnotes`, when the caller passes one.
  */
 export const parseInlines = (
 	source: InlineSource,
@@ -665,5 +681,6 @@ export const parseInlines = (
 	position: PositionOf,
 	dialect: InlineDialectName = "commonmark",
 	footnoteLabels: ReadonlySet<string> = new Set(),
+	unresolvedFootnotes: Array<RawUnresolvedFootnote> = [],
 ): ReadonlyArray<PhrasingContent> =>
-	new InlineParser(source, inlineDialect(dialect), position, refmap, footnoteLabels).parse();
+	new InlineParser(source, inlineDialect(dialect), position, refmap, footnoteLabels, unresolvedFootnotes).parse();

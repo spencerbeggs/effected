@@ -9,7 +9,8 @@
 import type { SourceIndex } from "@effected/source";
 import { LineIndex } from "@effected/source";
 import { Effect, Option, Result, Schema } from "effect";
-import { scanFrontmatter } from "./internal/blocks/frontmatter.js";
+import type { FrontmatterFenceState } from "./FrontmatterSource.js";
+import { scanFrontmatter, scanRawFence } from "./internal/blocks/frontmatter.js";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import { preprocessLines } from "./internal/preprocess.js";
 import { normalizeLabelText } from "./internal/references.js";
@@ -32,6 +33,7 @@ import type {
 	MarkdownNodeOfType,
 	MarkdownNodeType,
 	PhrasingContent,
+	Position,
 } from "./MarkdownNode.js";
 import { Definition, Root } from "./MarkdownNode.js";
 
@@ -195,6 +197,27 @@ export interface DocumentLink {
 	readonly url?: string;
 }
 
+/**
+ * A GFM footnote marker with no matching definition, from
+ * {@link MarkdownDocument.unresolvedFootnoteReferences}: the `[^label]` the
+ * parse left as literal text.
+ *
+ * @remarks
+ * `label` is the raw source between `[^` and `]`, verbatim, and
+ * `identifier` the same label case-folded the way a resolved
+ * {@link FootnoteReference}'s `identifier` is, so it compares directly
+ * against a `FootnoteDefinition`'s. `position` spans the whole marker, `[`
+ * through `]`, with the same unist points and UTF-16 offsets every node
+ * carries.
+ *
+ * @public
+ */
+export interface UnresolvedFootnoteReference {
+	readonly label: string;
+	readonly identifier: string;
+	readonly position: Position;
+}
+
 // The accessor walks recurse over the tree, so they share the engine's depth
 // cap. A getter has no typed error channel, so — like `applyAll`'s overlap
 // guard — an over-deep tree (reachable only via a hand-built or foreign
@@ -290,6 +313,14 @@ const phrasingText = (nodes: ReadonlyArray<PhrasingContent>): string => {
 const lineIndexes = new WeakMap<MarkdownDocument, SourceIndex>();
 
 /**
+ * Each document's unresolved footnote markers, recorded by the parse (or
+ * derived once, for a document built with `make`). A side table for the
+ * reason the line index is one: it describes the source, so it is no part of
+ * the document's schema, equality or encoded form.
+ */
+const unresolvedFootnotes = new WeakMap<MarkdownDocument, ReadonlyArray<UnresolvedFootnoteReference>>();
+
+/**
  * A parsed markdown document: the original `source`, the mdast-shaped
  * {@link Root} tree, the non-fatal {@link MarkdownDiagnostic}s the parse
  * produced, and the link-reference `definitions` index.
@@ -383,6 +414,28 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 	}
 
 	/**
+	 * What the head of `source` says about frontmatter, regardless of how the
+	 * document was parsed: `"absent"`, `"unclosed"` or `"closed"`.
+	 *
+	 * @remarks
+	 * The fence-state accessor a frontmatter linter needs: an opening fence
+	 * with no closing fence is not frontmatter (the grammar's rule, which is
+	 * remark-frontmatter's too), so the parse reads it as ordinary content
+	 * and {@link MarkdownDocument.frontmatter} is `Option.none()` — exactly as
+	 * for a document with no fence. `"unclosed"` tells the two apart, so the
+	 * missing closing fence can be diagnosed instead of silently ignored.
+	 *
+	 * `"closed"` holds exactly when {@link MarkdownDocument.hasFrontmatterBlock}
+	 * does. The fence set is the closed grammar's (`---` yaml, `+++` toml,
+	 * `---json` json); a linter accepting fewer fences checks the format too,
+	 * through `FrontmatterSource.split(source).fenceFormat`. Derived from
+	 * `source` on every access, like the other accessors.
+	 */
+	get frontmatterFence(): FrontmatterFenceState {
+		return scanRawFence(this.source).state;
+	}
+
+	/**
 	 * The line index over `source`: offsets to zero-based `{ line, character }`
 	 * and back, with exactly the rules this package's own positions use.
 	 *
@@ -430,6 +483,56 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 		const index = LineIndex.make(this.source);
 		lineIndexes.set(this, index);
 		return index;
+	}
+
+	/**
+	 * Every GFM footnote marker — `[^label]` — that has no matching footnote
+	 * definition, in source order.
+	 *
+	 * @remarks
+	 * A footnote reference forms only when a definition with its label exists
+	 * somewhere in the document, so an undefined marker never becomes a
+	 * {@link FootnoteReference} node: it stays literal text, merged with the
+	 * text around it, and `findAll("footnoteReference")` cannot see it. This
+	 * accessor reports exactly those markers, each with its label and span,
+	 * recorded by the parse at the moment it rejected them — so it excludes
+	 * every place the parser would not read a marker: code spans, code
+	 * blocks, autolinks, HTML, a backslash-escaped bracket, and a bracket
+	 * pair that formed a link instead (`[^a](/url)`). A marker whose label
+	 * normalizes to nothing (`[^ ]`) is not a label and is not reported.
+	 *
+	 * The node tree is unchanged: this is an accessor beside it, not a node
+	 * shape. Under the `commonmark` dialect, which has no footnotes, it is
+	 * always empty. A document built with `make` or decoded, rather than
+	 * parsed, has no record, so the first access derives one by parsing
+	 * `source` as GFM — with frontmatter capture exactly when `root` is
+	 * headed by a {@link Frontmatter} node — and caches it. That parse can
+	 * only fail on a source nesting past the hardening cap, which a getter
+	 * has no channel for, so it throws as a defect.
+	 *
+	 * @example
+	 * ```ts
+	 * import { MarkdownDocument } from "@effected/markdown";
+	 * import { Result } from "effect";
+	 *
+	 * const result = MarkdownDocument.parseResult("See [^a] and [^b], not `[^c]`.\n\n[^a]: Defined.\n");
+	 * if (Result.isSuccess(result)) {
+	 *   const [marker] = result.success.unresolvedFootnoteReferences;
+	 *   console.log(marker?.label, marker?.position.start.offset); // => b 13
+	 * }
+	 * ```
+	 */
+	get unresolvedFootnoteReferences(): ReadonlyArray<UnresolvedFootnoteReference> {
+		const cached = unresolvedFootnotes.get(this);
+		if (cached !== undefined) return cached;
+		const head = this.root.children[0];
+		const pass = parsePassResult(this.source, { dialect: "gfm", frontmatter: head?.type === "frontmatter" });
+		if (Result.isFailure(pass)) {
+			throw new Error(`unresolvedFootnoteReferences: the source cannot be parsed: ${pass.failure.message}`);
+		}
+		const markers = pass.success.unresolvedFootnotes;
+		unresolvedFootnotes.set(this, markers);
+		return markers;
 	}
 
 	/**
@@ -711,6 +814,7 @@ export class MarkdownDocument extends Schema.Class<MarkdownDocument>("MarkdownDo
 			// The parse already built an index over this exact source; hand it
 			// to the document rather than rescanning on first access.
 			lineIndexes.set(document, pass.lineIndex);
+			unresolvedFootnotes.set(document, pass.unresolvedFootnotes);
 			return document;
 		});
 	}

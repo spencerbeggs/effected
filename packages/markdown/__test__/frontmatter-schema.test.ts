@@ -86,15 +86,22 @@ describe("MarkdownFrontmatter.schema", () => {
 		}),
 	);
 
-	it.effect("an unclosed fence is not frontmatter, so the reason is absent", () =>
+	it.effect("an unclosed fence is not frontmatter, so the reason is unclosed, never captureDisabled", () =>
 		Effect.gen(function* () {
 			// An opening fence with no close IS a thematic break plus content —
 			// parsing with capture ON would capture nothing either, so
-			// captureDisabled would be a lie here.
-			const document = yield* MarkdownDocument.parse("---\ntitle: Hello\n\n# Body\n");
-			const error = yield* Effect.flip(MarkdownFrontmatter.schema(Meta, YamlFrontmatter)(document));
-			assert.instanceOf(error, FrontmatterMissingError);
-			assert.strictEqual(error.reason, "absent");
+			// captureDisabled would be a lie here. The author meant a block,
+			// though, so the reason names the missing closing fence.
+			for (const frontmatter of [false, true]) {
+				const document = yield* MarkdownDocument.parse(
+					"---\ntitle: Hello\n\n# Body\n",
+					MarkdownParseOptions.make({ frontmatter }),
+				);
+				const error = yield* Effect.flip(MarkdownFrontmatter.schema(Meta, YamlFrontmatter)(document));
+				assert.instanceOf(error, FrontmatterMissingError);
+				assert.strictEqual(error.reason, "unclosed");
+				assert.strictEqual(error.message, "the source opens with a frontmatter fence that is never closed");
+			}
 		}),
 	);
 

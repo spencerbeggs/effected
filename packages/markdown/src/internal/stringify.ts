@@ -79,8 +79,8 @@ import type {
 	Text,
 } from "../MarkdownNode.js";
 import { GuardExceeded } from "./carriers.js";
+import { ENTITY } from "./grammar.js";
 import { MAX_NESTING_DEPTH } from "./limits.js";
-import { ENTITY } from "./unescape.js";
 
 /** How inline content is being assembled. */
 interface InlineContext {

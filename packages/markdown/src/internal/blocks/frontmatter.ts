@@ -50,6 +50,12 @@ export interface FrontmatterCapture {
 	readonly format: FrontmatterFormat;
 	/** Raw text between the fences — original terminators, no fence lines. */
 	readonly value: string;
+	/**
+	 * Absolute offset of the value's first character: the start of the line
+	 * after the opening fence. Equal to the closing fence's line start when
+	 * the block has no value lines.
+	 */
+	readonly valueStart: number;
 	/** How many source lines the block spans, both fences included. */
 	readonly lineCount: number;
 	/** Absolute offset of the closing fence's last character, exclusive. */
@@ -101,6 +107,7 @@ export const scanFrontmatter = (lines: ReadonlyArray<SourceLine>, text: string):
 		return {
 			format: rule.format,
 			value: parts.join(""),
+			valueStart: lines[1]?.start ?? line.start,
 			lineCount: index + 1,
 			endOffset: line.start + line.text.length,
 		};
@@ -131,6 +138,16 @@ export interface RawFrontmatterCapture {
 	/** The line terminator following the opening fence line. */
 	readonly newline: RawNewline;
 	/**
+	 * Absolute offset of `value`'s first byte: immediately after the opening
+	 * fence line's terminator.
+	 */
+	readonly valueStart: number;
+	/**
+	 * Absolute offset one past `value`'s last byte: the closing fence line's
+	 * start. `valueEnd - valueStart === value.length`.
+	 */
+	readonly valueEnd: number;
+	/**
 	 * Absolute offset of the first byte after the closing fence line and its
 	 * line terminator — where the body begins. Equal to the source length
 	 * when the closing fence ends the document.
@@ -151,29 +168,43 @@ const terminatorAt = (source: string, offset: number): RawNewline | null => {
 };
 
 /**
- * Scan raw source for a frontmatter block — the same closed fence grammar as
+ * What the head of a raw source says about frontmatter: no opening fence at
+ * offset 0 (`absent`), an opening fence with no closing fence (`unclosed`,
+ * carrying the format the opening fence declared — which per the grammar is
+ * NOT frontmatter, so both scans report no block), or a complete block
+ * (`closed`).
+ */
+export type RawFence =
+	| { readonly state: "absent" }
+	| { readonly state: "unclosed"; readonly format: FrontmatterFormat }
+	| ({ readonly state: "closed" } & RawFrontmatterCapture);
+
+/**
+ * Scan raw source for a frontmatter fence — the same closed fence grammar as
  * {@link scanFrontmatter}, over unpreprocessed bytes, returning exact
  * offsets. The two scans agree on every input about WHETHER a block exists
  * (the preprocessor's substitutions are length-preserving and can only break
  * a fence match both scans require); this one exists for the string-level
- * split/join surface, whose contract is byte exactness.
+ * split/join surface, whose contract is byte exactness, and it additionally
+ * tells an unclosed opening fence apart from no fence at all.
  *
- * Returns `null` when the document has no frontmatter — no fence at offset
- * 0, or an opening fence with no closing fence, which per the grammar is not
- * frontmatter at all.
+ * An opening fence line that ends the source with no terminator is
+ * `unclosed`: it is exactly a fence, and nothing after it can close it.
  */
-export const scanRawFrontmatter = (source: string): RawFrontmatterCapture | null => {
-	// The opening fence line: source up to the first terminator. It must be
-	// exactly a fence and must be terminated — a closing fence needs
-	// somewhere to live.
+export const scanRawFence = (source: string): RawFence => {
+	// The opening fence line: source up to the first terminator.
 	let index = 0;
 	while (index < source.length && terminatorAt(source, index) === null) {
 		index += 1;
 	}
-	const openNewline = index < source.length ? (terminatorAt(source, index) as RawNewline) : null;
 	const rule = FENCES.get(source.slice(0, index));
-	if (rule === undefined || openNewline === null) {
-		return null;
+	if (rule === undefined) {
+		return { state: "absent" };
+	}
+	const openNewline = index < source.length ? (terminatorAt(source, index) as RawNewline) : null;
+	if (openNewline === null) {
+		// The fence is the whole source: a closing fence has nowhere to live.
+		return { state: "unclosed", format: rule.format };
 	}
 	const valueStart = index + openNewline.length;
 
@@ -188,9 +219,12 @@ export const scanRawFrontmatter = (source: string): RawFrontmatterCapture | null
 		}
 		if (source.slice(lineStart, index) === rule.close) {
 			return {
+				state: "closed",
 				format: rule.format,
 				value: source.slice(valueStart, lineStart),
 				newline: openNewline,
+				valueStart,
+				valueEnd: lineStart,
 				bodyOffset: terminator === null ? index : index + terminator.length,
 			};
 		}
@@ -201,5 +235,5 @@ export const scanRawFrontmatter = (source: string): RawFrontmatterCapture | null
 		lineStart = index;
 	}
 
-	return null;
+	return { state: "unclosed", format: rule.format };
 };

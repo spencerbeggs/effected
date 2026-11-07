@@ -138,10 +138,15 @@ export interface FrontmatterCodec {
  * block, but the document carries no capture node: it was parsed without
  * `frontmatter: true` (the toggle defaults off), so spec-correct CommonMark
  * read the fences as ordinary content.
+ * `"unclosed"` — the source opens with a frontmatter fence that no closing
+ * fence follows. Per the grammar that is not frontmatter, so there is no
+ * block to decode, but the author almost certainly meant one: the fix is
+ * the missing closing fence (`MarkdownDocument.frontmatterFence` reports the
+ * same fact).
  *
  * @public
  */
-export const FrontmatterMissingReason = Schema.Literals(["absent", "captureDisabled"]);
+export const FrontmatterMissingReason = Schema.Literals(["absent", "captureDisabled", "unclosed"]);
 
 /**
  * Why a frontmatter decoder found no capture on a document.
@@ -155,14 +160,16 @@ export type FrontmatterMissingReason = typeof FrontmatterMissingReason.Type;
  * frontmatter capture.
  *
  * @remarks
- * `reason` distinguishes the two ways this happens: `"absent"` when the
+ * `reason` distinguishes the three ways this happens: `"absent"` when the
  * source genuinely has no frontmatter block, `"captureDisabled"` when the
  * source opens with one but the document was parsed with the capture toggle
  * off (`MarkdownParseOptions.frontmatter` defaults to `false`) — the fix
- * there is parsing with `frontmatter: true`, not editing the document. The
- * discriminant is computed from the same structural signal
- * `MarkdownDocument.hasFrontmatterBlock` exposes, so the error and the
- * accessor can never disagree.
+ * there is parsing with `frontmatter: true`, not editing the document — and
+ * `"unclosed"` when the source opens with a fence that never closes. The
+ * discriminant is computed from the same structural signals
+ * `MarkdownDocument.hasFrontmatterBlock` and
+ * `MarkdownDocument.frontmatterFence` expose, so the error and the accessors
+ * can never disagree.
  *
  * Cause-free: there is nothing to diagnose beyond the absence itself.
  * Consumers wanting optional semantics can
@@ -177,7 +184,9 @@ export class FrontmatterMissingError extends Schema.TaggedError<FrontmatterMissi
 	override get message(): string {
 		return this.reason === "captureDisabled"
 			? "the source opens with a frontmatter block, but it was not captured; parse with `frontmatter: true`"
-			: "the document has no frontmatter block";
+			: this.reason === "unclosed"
+				? "the source opens with a frontmatter fence that is never closed"
+				: "the document has no frontmatter block";
 	}
 }
 
@@ -320,7 +329,13 @@ export class MarkdownFrontmatter {
 					// parsed with the toggle off — the accessor and this error agree by
 					// construction.
 					Effect.fail(
-						new FrontmatterMissingError({ reason: document.hasFrontmatterBlock ? "captureDisabled" : "absent" }),
+						new FrontmatterMissingError({
+							reason: document.hasFrontmatterBlock
+								? "captureDisabled"
+								: document.frontmatterFence === "unclosed"
+									? "unclosed"
+									: "absent",
+						}),
 					)
 				: codec.decode(node).pipe(
 						Effect.flatMap((data) =>
