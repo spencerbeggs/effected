@@ -47,12 +47,14 @@ sources:
     resource: https://github.com/spencerbeggs/effected/issues/1187
   - id: issue-1189
     resource: https://github.com/spencerbeggs/effected/issues/1189
+  - id: visitor-traverse-tests
+    resource: ../../packages/markdown/__test__/visitor-traverse.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-07T01:49:42Z
+  at: 2026-11-07T03:13:10Z
 integrity:
   generated:
-    body: 605b1b010c6dedbb
+    body: 1b54652dd77c9c20
 ---
 
 # `@effected/markdown`
@@ -61,7 +63,7 @@ integrity:
 Schema classes: parse into mdast-shaped nodes carrying UTF-16 code-unit offsets, compute
 offset-splice edits, format, modify by node, rewrite trees with typed
 transforms, project to and from plain mdast,
-walk the tree synchronously or as a `Stream`, and read and write frontmatter through
+walk the tree synchronously, as a `Stream` or through skip-aware callbacks, and read and write frontmatter through
 free-standing codecs. It also carries the MDX node vocabulary (construction
 and serialization only), a phrasing-level parse entry point, and a
 string-level frontmatter split/join facade, and a second, parser-free entry
@@ -409,7 +411,24 @@ re-iterable `Iterable` that walks afresh on every iteration — and
 `MarkdownVisitor.visit` is the `Stream` defined in terms of it, so the two
 yield identical events; `walk` exists for callers that cannot suspend, such
 as a lint rule a host calls synchronously[^issue-1030]. Either way a
-foreign-tree depth trip yields exactly one terminal error event. Navigation
+foreign-tree depth trip yields exactly one terminal error event.
+`MarkdownVisitor.traverse` is the third form over the same engine: `enter`
+and `exit` callbacks with `SKIP` (do not descend; the node's `exit` still
+runs) and `EXIT` (stop at once, no pending exits), each handed the node's
+`path`, `depth` and an `ancestors` snapshot (frozen, and shared by every
+callback that sees the same ancestors, so a walk copies once per distinct
+ancestor stack rather than twice per node), and an optional node-type
+selector (one type or an array) that narrows the callbacks'
+node type through `MarkdownNodeOfType` while the walk still descends
+through every node. The engine is one generator: each `Enter` receives the
+consumer's reply through `next(...)` down a `yield*` delegation chain, so a
+skip is the walk not descending rather than a filter over a full walk, and
+`walk`'s `for…of` — which always replies `undefined` — can never skip.
+`traverse` returns `Option.none()`, or `Option.some` of the depth-guard
+diagnostic, the same trip `walk` reports as an `Error` event. It is not
+spelled `visitSync`: the [sync-primitive policy](../conventions/sync-primitive-policy.md)
+reserves `*Sync` for blocking-IO facades. `@effected/markdown-lint`'s rules
+are its first consumer[^visitor-traverse-tests]. Navigation
 accessors are
 derived getters using a plain sync walk whose depth guard is a thrown
 defect, since getters have no error channel, and every one of them
@@ -762,3 +781,4 @@ from the ported CommonMark version.
 [^issue-1218]: <https://github.com/spencerbeggs/effected/issues/1218>
 [^issue-1187]: <https://github.com/spencerbeggs/effected/issues/1187>
 [^issue-1189]: <https://github.com/spencerbeggs/effected/issues/1189>
+[^visitor-traverse-tests]: `packages/markdown/__test__/visitor-traverse.test.ts` — `traverse` against `walk` over the whole CommonMark spec corpus, `SKIP`/`EXIT`, selectors, ancestors and the depth trip.

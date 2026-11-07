@@ -292,6 +292,27 @@ console.log(headings);
 // [ 1 ]
 ```
 
+`MarkdownVisitor.traverse` drives the same walk through `enter`/`exit` callbacks that steer it: return `MarkdownVisitor.SKIP` from `enter` to keep the walk out of a node's children (its `exit` still runs), or `MarkdownVisitor.EXIT` to stop. Each callback also gets the node's `path`, `depth` and `ancestors`. Give it a node type, or an array of them, and only matching nodes reach the callbacks, typed as that node class — the walk still descends through everything else:
+
+```ts
+import { Markdown, MarkdownVisitor } from "@effected/markdown";
+import { Result } from "effect";
+
+const root = Result.getOrThrow(Markdown.parseResult("# A\n\n> # B\n\n## C\n"));
+const depths: Array<number> = [];
+MarkdownVisitor.traverse(root, ["heading", "blockquote"], {
+  enter: (node) => {
+    if (node.type === "blockquote") return MarkdownVisitor.SKIP; // headings quoted inside are not visited
+    depths.push(node.depth);
+    return undefined;
+  },
+});
+console.log(depths);
+// [ 1, 2 ]
+```
+
+`traverse` returns `Option.none()`, or the `NestingDepthExceeded` diagnostic when a hand-built tree nested past the depth cap ended the walk; a parsed tree never does.
+
 ## mdast interop
 
 The node classes already use mdast's type names and field shapes; `Mdast.toMdast` strips the fidelity fields this package adds — bullet characters, fence style, ATX-versus-setext spelling — (keeping only a `Text` node's `escapeStyle` when set, see [Literal text](#literal-text)) and emits plain spec-valid mdast JSON that the remark ecosystem consumes directly, including `mdast-util-to-hast` if you want hast:
@@ -428,7 +449,7 @@ The bytes are exactly `Markdown.stringify`'s — those statics delegate to these
 - `FrontmatterSource` — string-level frontmatter `split`/`join` over the same closed fence grammar, byte-exact boundaries and value offsets, a `FrontmatterFenceState` that tells an unclosed fence from none, no parsing of value or body; for bodies the CommonMark engine should not touch.
 - `MarkdownEdit` / `MarkdownRange` (with `applyAll`) — the non-mutating text-edit vocabulary, field-identical to `@effected/jsonc`'s, `@effected/yaml`'s and `@effected/toml`'s.
 - `MarkdownFormat` — `format`/`formatToString` compute conservative marker-normalization edits; `modify`/`modifyToString` replace a node by identity through the canonical stringifier.
-- `MarkdownVisitor` — walk a parsed tree as `Enter`/`Exit` events with child-index paths and depth: synchronously as a lazy `Iterable` (`walk`), or as a `Stream` (`visit`).
+- `MarkdownVisitor` — walk a parsed tree as `Enter`/`Exit` events with child-index paths and depth: synchronously as a lazy `Iterable` (`walk`), as a `Stream` (`visit`), or through `enter`/`exit` callbacks with `SKIP`/`EXIT` signals, ancestors and type-narrowed selectors (`traverse`).
 - `Mdast` — `toMdast` projects to plain mdast JSON; `fromMdast`/`fromMdastResult` admit a foreign mdast tree with validation.
 - `MarkdownFrontmatter.schema` plus the `YamlFrontmatter`, `TomlFrontmatter` and `JsonFrontmatter` codecs — typed frontmatter decoding over optional per-format peers, with four separately catchable failure modes and a `FrontmatterMissingReason` on the absent one.
 - `SchemaResolver` — classify a frontmatter `$schema` declaration into `ByUrl`/`ByPath`/`Inline`/`ByName` and resolve names against a registry, with no IO and no dependencies.
