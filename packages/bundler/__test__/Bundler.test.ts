@@ -554,6 +554,15 @@ describe("Bundler.build validation", () => {
 		),
 	);
 
+	it.effect("refuses a condition-object export the build cannot point at, before any JS pass", () =>
+		refused(
+			{
+				pkg: { name: "p", version: "1.0.0", exports: { ".": "./src/index.ts", "./foo": { require: "./src/foo.ts" } } },
+			},
+			/exports\."\.\/foo"/,
+		),
+	);
+
 	it.effect("names the validate phase when setup throws something other than a config fault", () =>
 		Effect.gen(function* () {
 			const h = harness({

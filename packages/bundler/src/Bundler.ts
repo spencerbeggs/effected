@@ -21,6 +21,7 @@ import type { JsxConfig as ResolvedJsxConfig, TsconfigJsx } from "./jsx/config.j
 import { readTsconfigJsx, resolveJsxConfig } from "./jsx/config.js";
 import { buildEmittedManifest } from "./manifest/emit-manifest.js";
 import { unmatchedExportPatterns } from "./manifest/export-patterns.js";
+import { assertBuildableConditionExports } from "./manifest/transform.js";
 import type { MetaOptions } from "./meta/config.js";
 import type { GenerateMetaOptions, MetaResult } from "./meta/generate.js";
 import { OgGenerateError, resolveOgGenerator } from "./meta/og-image.js";
@@ -426,6 +427,9 @@ async function runBuild(
 		// Ambient types-only .d.ts exports are validated here (mixed-export + collision) and copied by the build.
 		const ambient = extractAmbientDts({ exports: pkg.exports, bin: pkg.bin }, {});
 		assertNoEntryCollisions(Object.keys(entries), ambient);
+		// A condition-object export the manifest cannot point at built files is refused here, before any build work,
+		// not from inside the JS pass's manifest plugin.
+		assertBuildableConditionExports(pkg.exports);
 		// A types-only package has nothing for the JS pass to build, and tsdown would throw an opaque "No input files".
 		if (ambient.length > 0 && !hasJsEntries && config.exe === undefined) {
 			throw new ConfigValidationError({

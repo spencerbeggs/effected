@@ -34,7 +34,7 @@ const record = (name: string, script: string) => {
 };
 
 const EXPENSIVE =
-	/\/packages\/(?:cli|mcp|engine|bundler)\/|\/node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?(?:ajv|ajv-formats|ink|react|jiti|tsdown)\//;
+	/\/packages\/(?:cli|mcp|engine|bundler)\/|\/node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?(?:ajv|ajv-formats|ink|react|jiti|tsdown|rolldown|typescript)\//;
 const expensive = (modules: ReadonlyArray<string>) => modules.filter((url) => EXPENSIVE.test(url));
 
 // The manifest's own text, because a built manifest has already rewritten the protocol.
@@ -60,9 +60,10 @@ describe("@effected/plugin's root entry", () => {
 		}
 	});
 
-	it("control: the recorder sees the bundler and tsdown when something does load them", () => {
+	it("control: the recorder sees the bundler and its toolchain when something does load them", () => {
 		const hits = expensive(record("build-control", BUILD_CONTROL));
-		for (const expected of ["/packages/bundler/", "/tsdown/"]) {
+		// Workspace links resolve to source, so the bundler is `packages/bundler/src/`; it builds on rolldown and TypeScript.
+		for (const expected of ["/packages/bundler/src/", "/tsdown/", "/rolldown/", "/typescript/"]) {
 			assert.isTrue(
 				hits.some((url) => url.includes(expected)),
 				expected,
@@ -70,7 +71,7 @@ describe("@effected/plugin's root entry", () => {
 		}
 	});
 
-	it("the root entry reaches no CLI, MCP, bundler, tsdown, ajv or ink", () => {
+	it("the root entry reaches no CLI, MCP, bundler, tsdown, rolldown, typescript, ajv or ink", () => {
 		const modules = record("root", ENTRY);
 		assert.isTrue(
 			modules.some((url) => url.includes("/packages/schemastore/")),

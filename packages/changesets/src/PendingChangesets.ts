@@ -96,7 +96,10 @@ export class PendingChangesets {
 	static readSync(
 		root: string,
 	): Result.Result<ReadonlyArray<PendingChangeset>, ChangesetParseError | PlatformError.PlatformError> {
-		const dir = `${root.replace(/[\\/]+$/, "")}/.changeset`;
+		// A scan, not a `[\\/]+$` regex: the regex backtracks quadratically on a long separator run.
+		let end = root.length;
+		while (end > 0 && (root[end - 1] === "/" || root[end - 1] === "\\")) end--;
+		const dir = `${root.slice(0, end)}/.changeset`;
 		let names: Array<string>;
 		try {
 			names = readdirSync(dir);

@@ -46,13 +46,15 @@ export const main = (options: MainOptions = {}): Promise<void> =>
 			const NodePath = await import("@effect/platform-node/NodePath");
 			const { StdioCapture } = await import("@effected/mcp-kit/node");
 			const { Layer } = await import("effect");
+			const { ActionValidation } = await import("@effected/engine/build");
 			const { ServerLayer } = await import("./server.js");
 
 			const capture = StdioCapture.install(process);
 			const layer = ServerLayer({
 				...options,
 				cwd: process.cwd(),
-				ci: Boolean(process.env.CI || process.env.GITHUB_ACTIONS),
+				// `@effected/env`'s one CI rule: `CI=false` is not CI, and a provider marker alone is.
+				ci: ActionValidation.isCI(process.env),
 				confineStdout: capture.capture({ stdout: capture.toStderr }),
 			}).pipe(Layer.provide(Layer.mergeAll(NodeStdio.layer, NodeFileSystem.layer, NodePath.layer)));
 			return { layer, runMain: NodeRuntime.runMain };

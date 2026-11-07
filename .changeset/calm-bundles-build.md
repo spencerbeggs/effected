@@ -12,6 +12,7 @@
 * Adds `[package.build] copy` for shipping non-module assets in each publish group's `pkg/`, in the shape of tsdown's `copy` option, beside the zero-config `public/` directory; a directory `from` keeps its own basename under `to`, so `copy = ["../../schemas"]` ships `pkg/schemas/...` while `{ from = "../../schemas", to = "schemas" }` nests it as `pkg/schemas/schemas/...`
 * Adds `[package.build.meta] localPaths` for copying the canonical group's API model into a directory a docs site reads
 * Warns with `exports-pattern-unmatched` in `issues.json` when a manifest `exports` pattern matches no emitted file (an exports `*` spans `/`, so a wrongly nested copy still satisfies it)
+* A subpath export written as a condition object whose `import`, `default` and `types` conditions all name one TypeScript source is published under its export key, like the bare-string form; any other condition object holding a TypeScript source fails `ConfigValidationError` before any pass, instead of a manifest that points at a file the build never writes
 
 ## Bug Fixes
 

@@ -5,7 +5,13 @@
  */
 
 export type { BuildIssues, BuildReport, BundleResult, ValidationIssue } from "@effected/bundler";
-export { ActionBuildResult, BuildResult, ValidationResult, renderCiAnnotations } from "@effected/bundler";
+export {
+	ActionBuildResult,
+	ActionValidation,
+	BuildResult,
+	ValidationResult,
+	renderCiAnnotations,
+} from "@effected/bundler";
 export { ActionRun, type ActionRunDeps, type ActionRunInput, NotAnActionError } from "./ActionRun.js";
 export { ActionRunResult } from "./ActionRunResult.js";
 export {

@@ -2,6 +2,7 @@
 import { PackageJsonFormat } from "@effected/package-json";
 import { ambientOutName, classifyDtsExport, mixedDtsExportError } from "../entries/ambient-dts.js";
 import { createEntryName } from "../entries/extract.js";
+import { ConfigValidationError } from "../errors.js";
 
 /** @public */
 export type Json = Record<string, unknown>;
@@ -154,6 +155,74 @@ function stripPublicPrefix(value: unknown): unknown {
 	return typeof value === "string" && value.startsWith("./public/") ? `./${value.slice("./public/".length)}` : value;
 }
 
+/** The conditions the entry pass reads a source from, in its order (`resolveSourcePath` in `entries/extract.ts`). */
+const ENTRY_SOURCE_CONDITIONS = ["import", "default", "types"] as const;
+
+/** Whether `value`, at any depth, holds a TS source string. */
+const holdsTsSource = (value: unknown): boolean =>
+	typeof value === "string"
+		? isTs(value)
+		: value !== null && typeof value === "object" && Object.values(value as Json).some(holdsTsSource);
+
+const conditionObjectError = (exportKey: string, reason: string): ConfigValidationError =>
+	new ConfigValidationError({ path: `exports."${exportKey}"`, reason });
+
+/**
+ * The TS source a condition-object export value names, when it names one the manifest can rewrite;
+ * `undefined` when it holds no TS source at all (it passes through as authored).
+ *
+ * The entry pass builds a condition object from ONE source, the first of `import`, `default` and
+ * `types` that is set, and names the output after the export KEY (`"./foo": { "import": "./src/foo.ts" }`
+ * emits `foo.js`). So a condition object whose every condition is one of those three, each naming that
+ * same TS source, maps unambiguously onto the export key's own conditions and is rewritten exactly as
+ * the bare-string form is. Any other shape holding a TS source is refused with a
+ * {@link ConfigValidationError} rather than rewritten, because the manifest would point at files the
+ * build never writes: two different sources (only the first is built), a condition the entry pass
+ * does not read (`node`, `browser`, `require`, ...; write the bare string and configure dual output
+ * instead of a hand-written `require`), or a nested condition object.
+ */
+const conditionObjectSource = (exportKey: string, value: unknown): string | undefined => {
+	if (value === null || typeof value !== "object" || !holdsTsSource(value)) return undefined;
+	const conditions = value as Json;
+	const sources = new Set<unknown>();
+	for (const [condition, target] of Object.entries(conditions)) {
+		if (!(ENTRY_SOURCE_CONDITIONS as ReadonlyArray<string>).includes(condition) || typeof target !== "string") {
+			throw conditionObjectError(
+				exportKey,
+				`a condition object holding a TypeScript source may use only flat ${ENTRY_SOURCE_CONDITIONS.join("/")} conditions; "${condition}" is not one the build reads its entry from`,
+			);
+		}
+		sources.add(target);
+	}
+	const [source] = sources;
+	if (sources.size !== 1 || typeof source !== "string" || !isTs(source)) {
+		throw conditionObjectError(
+			exportKey,
+			"every condition of a condition object holding a TypeScript source must name that one source; the build emits one entry per export key",
+		);
+	}
+	return source;
+};
+
+/**
+ * Refuse, before any build work, every subpath export {@link transformExports} would refuse as an
+ * unbuildable condition object (see {@link conditionObjectSource}). `Bundler.build` calls it beside
+ * the ambient `.d.ts` validation, so the refusal is a {@link ConfigValidationError} up front rather
+ * than a throw from inside the JS pass's manifest plugin; the transform keeps its own throw as a
+ * backstop. Walks the same keys the transform rewrites, skipping `.json`/`.d.ts` keys and ambient
+ * exports; a mixed `.d.ts` export is left to `extractAmbientDts`, which runs first.
+ *
+ * @internal
+ */
+export function assertBuildableConditionExports(exports: unknown): void {
+	if (exports === null || typeof exports !== "object") return;
+	for (const [key, value] of Object.entries(exports as Json)) {
+		if (key === "./package.json" || key.endsWith(".json") || isDeclarationFile(key)) continue;
+		if (classifyDtsExport(value).kind !== "none") continue;
+		conditionObjectSource(key, value);
+	}
+}
+
 /**
  * Rewrite an exports map: TS string targets become a types/import conditions object.
  * Each TS condition also gets a `require` entry when `dual` is `true` (uniform) or when
@@ -169,6 +238,12 @@ function stripPublicPrefix(value: unknown): unknown {
  * when the build's dts pass was skipped (issue #198) so the manifest does not point at a `.d.ts`
  * that was never written. Defaults to `true`. Ambient `.d.ts` exports (hand-authored, copied
  * verbatim regardless of the dts pass) are unaffected — their `types` condition is always kept.
+ *
+ * A condition-object value whose flat `import`/`default`/`types` conditions all name one TS source
+ * (`"./foo": { "import": "./src/foo.ts" }`) is rewritten like the bare string, named after the export
+ * key as the entry pass names it. Any other condition object holding a TS source throws
+ * {@link ConfigValidationError}, since its targets would never be built; one holding none passes
+ * through as authored.
  * @public
  */
 export function transformExports(
@@ -195,7 +270,7 @@ export function transformExports(
 				out[key] = { types: `./${ambientOutName(key, cls.source)}` };
 				continue;
 			}
-			if (typeof value === "string" && isTs(value)) {
+			if ((typeof value === "string" && isTs(value)) || conditionObjectSource(key, value) !== undefined) {
 				out[key] = tsConditions(key, isDualKey(dual, key), subdirExports, emitDts);
 			} else {
 				out[key] = transformExports(value, dual, subdirExports, emitDts);

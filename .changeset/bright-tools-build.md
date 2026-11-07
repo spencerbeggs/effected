@@ -8,6 +8,7 @@
 * Adds `effected action build`, which builds a GitHub Action; `--no-validate` skips validation and `--no-persist` skips copying the build to the local action directory
 * `effected action build` persists to the local action directory by default (`--no-persist` turns it off), while the MCP `action_build` tool persists only with `persist: true`
 * Both commands take `--format` like `effected schema`, and report through the exit code: 0 the build succeeded, 1 the build or its validation failed, 2 the config, a plugin or the directory is at fault (not a package, or not an action), 3 the run could not finish, 64 a usage error
+* Both commands decide CI the way `@effected/env` does: a provider marker, or a truthy `CI` or `CONTINUOUS_INTEGRATION` (`false`, `0`, `off`, `no` and empty read as unset), so `CI=false` never makes warnings fatal
 
 ## Breaking Changes
 

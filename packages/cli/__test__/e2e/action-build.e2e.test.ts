@@ -23,11 +23,16 @@ cpSync(FIXTURE, cwd, { recursive: true });
 writeFileSync(join(cwd, "package.json"), JSON.stringify({ name: "default-minify", version: "1.0.0" }));
 writeFileSync(join(cwd, "effected.toml"), '[action.entries]\nmain = "src/main.ts"\n');
 
-const effected = (args: ReadonlyArray<string>) =>
+// The same action with no `action.yml`: validation warns `ACTION_YML_MISSING`, which fails the build only under CI.
+const unvalidated = join(scratch, "no-action-yml");
+cpSync(cwd, unvalidated, { recursive: true });
+rmSync(join(unvalidated, "action.yml"));
+
+const effected = (args: ReadonlyArray<string>, directory = cwd, env: Record<string, string> = {}) =>
 	spawnSync(process.execPath, ["--import", TSX, BIN, "action", "build", ...args], {
-		cwd,
+		cwd: directory,
 		encoding: "utf8",
-		env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "" },
+		env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", ...env },
 		timeout: 110_000,
 	});
 
@@ -55,6 +60,21 @@ describe("the built effected bin", () => {
 		assert.strictEqual(document.verdict, "ok");
 		assert.isTrue(document.result.build.success);
 	});
+
+	// `main` reads CI by `@effected/env`'s rule: `CI=false` is not CI, and a provider marker alone is.
+	const ciCases: ReadonlyArray<readonly [string, Record<string, string>, number]> = [
+		["CI=false is not CI: a warning does not fail the build", { CI: "false" }, 0],
+		["CI=true is CI: a warning fails the build", { CI: "true" }, 1],
+		["a JENKINS_URL marker alone is CI: a warning fails the build", { JENKINS_URL: "https://jenkins.example/" }, 1],
+	];
+	for (const [name, env, expected] of ciCases) {
+		it(name, { timeout: 120_000 }, () => {
+			const { status, stdout, stderr } = effected(["--human", "--no-persist"], unvalidated, env);
+			assert.strictEqual(status, expected, stderr);
+			const strict = `${stdout}${stderr}`.includes("warnings are errors in strict mode");
+			assert.strictEqual(strict, expected === 1);
+		});
+	}
 
 	it("exits 2 on a directory with no [action] table", { timeout: 60_000 }, () => {
 		const library = join(scratch, "library");

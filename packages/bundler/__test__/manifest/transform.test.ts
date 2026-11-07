@@ -327,3 +327,41 @@ describe("auto ./package.json export injection", () => {
 		assert.isUndefined(out.exports);
 	});
 });
+
+describe("transformExports — condition-object exports", () => {
+	it("names a { import } condition object's outputs after the export key, as the JS pass does", () => {
+		const out = transformExports({ "./foo": { import: "./src/foo.ts" } }) as Record<string, unknown>;
+		assert.deepStrictEqual(out["./foo"], { types: "./foo.d.ts", import: "./foo.js", default: "./foo.js" });
+	});
+	it("collapses { import, types } naming one TS source into the export key's conditions", () => {
+		const out = transformExports({ "./foo": { types: "./src/foo.ts", import: "./src/foo.ts" } }, true) as Record<
+			string,
+			unknown
+		>;
+		assert.deepStrictEqual(out["./foo"], {
+			types: "./foo.d.ts",
+			import: "./foo.js",
+			require: "./foo.cjs",
+			default: "./foo.js",
+		});
+	});
+	it("refuses a condition object whose conditions name different TS sources", () => {
+		assert.throws(
+			() => transformExports({ "./foo": { import: "./src/foo.ts", default: "./src/other.ts" } }),
+			/exports\."\.\/foo"/,
+		);
+	});
+	it("refuses a TS source under a condition the entry pass does not build", () => {
+		assert.throws(() => transformExports({ "./foo": { node: "./src/foo.ts" } }), /exports\."\.\/foo"/);
+		assert.throws(() => transformExports({ "./foo": { import: { node: "./src/foo.ts" } } }), /exports\."\.\/foo"/);
+	});
+	it("passes a condition object of non-TS targets through unchanged (control)", () => {
+		const exports = {
+			".": "./src/index.ts",
+			"./data": { import: "./public/data.mjs", require: "./data.cjs", default: "./data.mjs" },
+		};
+		const out = transformExports(exports) as Record<string, unknown>;
+		assert.deepStrictEqual(out["./data"], { import: "./data.mjs", require: "./data.cjs", default: "./data.mjs" });
+		assert.deepStrictEqual(out["."], { types: "./index.d.ts", import: "./index.js", default: "./index.js" });
+	});
+});

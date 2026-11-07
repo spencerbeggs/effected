@@ -10,6 +10,7 @@ import { CliAudience, CliLogger, CliRuntime } from "@effected/cli-kit";
 import type { Distribution } from "@effected/kit";
 import type { Layer } from "effect";
 import type { CliOutput } from "effect/cli";
+import { isCI } from "./ci.js";
 import type { CommandDeps } from "./commands/root.js";
 import { makeRootCommand } from "./commands/root.js";
 import { CLI_VERSION } from "./version.js";
@@ -81,7 +82,5 @@ export const run = <RP, EP>(options: MainOptions, deps: CommandDeps, platform: L
  */
 export const main = (options: MainOptions = {}): void => {
 	// The ONLY place the process is read for the command tree.
-	NodeRuntime.runMain(
-		run(options, { cwd: process.cwd(), ci: Boolean(process.env.CI || process.env.GITHUB_ACTIONS) }, NodeServices.layer),
-	);
+	NodeRuntime.runMain(run(options, { cwd: process.cwd(), ci: isCI(process.env) }, NodeServices.layer));
 };

@@ -104,3 +104,40 @@ it("readSync reads real files from disk, sorted, and answers [] for a missing di
 		rmSync(root, { recursive: true, force: true });
 	}
 });
+
+it("readSync reads the same directory whatever trailing separators the root carries", async () => {
+	const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+	const { tmpdir } = await import("node:os");
+	const { join } = await import("node:path");
+	const root = mkdtempSync(join(tmpdir(), "changesets-"));
+	try {
+		mkdirSync(join(root, ".changeset"));
+		writeFileSync(join(root, ".changeset", "a.md"), change("@effected/a", "minor", "A."));
+		const files = (input: string) => {
+			const result = PendingChangesets.readSync(input);
+			assert.isTrue(Result.isSuccess(result), `readSync(${JSON.stringify(input)}) failed`);
+			return Result.isSuccess(result) ? result.success.map((p) => p.file) : [];
+		};
+		const bare = files(root);
+		assert.deepStrictEqual(bare, ["a.md"]);
+		assert.deepStrictEqual(files(`${root}/`), bare);
+		assert.deepStrictEqual(files(`${root}//`), bare);
+		assert.deepStrictEqual(files(`${root}\\`), bare);
+		assert.deepStrictEqual(files(`${root}/\\/`), bare);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+it("readSync trims a long run of separators in linear time", () => {
+	// A run that does not end the string is the backtracking case for a `[\\/]+$` trim.
+	const root = `/r${"/".repeat(100_000)}x`;
+	const started = performance.now();
+	const result = PendingChangesets.readSync(root);
+	const elapsed = performance.now() - started;
+	// On this host the path is past the OS limit, so the read fails; a host or a trim that
+	// collapsed the run would answer an empty list instead. Either is fine: what matters is
+	// that the answer comes fast, and that it is an answer, not a throw.
+	assert.isTrue(Result.isFailure(result) || Result.isSuccess(result));
+	assert.isBelow(elapsed, 500, `readSync took ${elapsed.toFixed(0)}ms`);
+});

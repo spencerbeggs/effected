@@ -74,6 +74,15 @@ describe("the built effected bin", () => {
 			modules.some((url) => url.includes("/engine/")),
 			"the recorder saw the engine",
 		);
-		assert.isFalse(modules.some((url) => /\/bundler\/dist\//.test(url) || /\/tsdown\//.test(url)));
+		// Workspace links resolve to source, so the bundler shows up as `packages/bundler/src/`, never a `dist`; its
+		// toolchain is rolldown and TypeScript.
+		const eager = modules.filter((url) =>
+			/\/packages\/bundler\/src\/|\/@effected\/bundler\/|\/rolldown|\/node_modules\/typescript\//.test(url),
+		);
+		assert.strictEqual(
+			eager.length,
+			0,
+			`--version loaded the bundler or its toolchain: ${eager.slice(0, 5).join(", ")}`,
+		);
 	});
 });
