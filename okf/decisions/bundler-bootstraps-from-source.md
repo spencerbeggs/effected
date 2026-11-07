@@ -19,10 +19,10 @@ sources:
     title: "bundler: @effected/bundler and the top-level @effected/plugin package"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T23:52:34Z
+  at: 2026-11-07T00:15:31Z
 integrity:
   generated:
-    body: 182a25162c610cf7
+    body: 8ace4ddfcd717364
 ---
 
 # The kit builds itself with the bundler running from source under tsx
@@ -44,7 +44,7 @@ The kit built with `@savvy-web/bundler`, which depended on published copies of t
 
 **`nodeOptions` does not reach every child safely.** `--import=tsx` resolves from each process's cwd, and children inherit it, so a child that a pnpm script starts in a directory that cannot resolve tsx dies at startup. The root vitest config clears `NODE_OPTIONS` for tests, and a test that runs sibling source in a child loads tsx itself. Nothing shields a repo script that spawns a tool in a temp directory.
 
-**A self-hosting consumer has the same contract.** A repository whose root depends on its own carrier through `workspace:*` runs that carrier's bins from source, so `node_modules/.bin/<tool>` has no `nodeOptions` under a hook, an MCP loader or a bare shell. The kit's answer works there unchanged: the bin file registers tsx itself when it runs from `.ts`, by the guarded dynamic import of `tsx/esm/api` above, and imports everything else dynamically after that, with `tsx` as a root devDependency. Then `.bin/<tool>` runs outside pnpm, and no e2e harness needs an absolute loader. Launching through `pnpm run` is not the contract.
+**A self-hosting consumer has the same contract.** A repository whose root depends on its own carrier through `workspace:*` runs that carrier's bins from source, so `node_modules/.bin/<tool>` has no `nodeOptions` under a hook, an MCP loader or a bare shell. The kit's answer works there unchanged: the bin file registers tsx itself when it runs from `.ts`, by the guarded dynamic import of `tsx/esm/api` above, and imports everything else dynamically after that, with `tsx` as a root devDependency. Then `.bin/<tool>` runs outside pnpm. The contract has three cases: a SOURCE bin self-registers tsx; a BUILT bin's self-registration branch is dead, and in a linked workspace that built bin still imports siblings from source, so a test that spawns a built bin in the workspace passes `--import <absolute file URL of tsx>` (as the kit's own `packages/cli/__test__/e2e/*.e2e.test.ts` do); an installed consumer needs nothing. Launching through `pnpm run` is not the contract.
 
 **A self-hosting repository with `.tsx` sources puts `/** @jsxRuntime automatic */` at the top of every `.tsx` file.** tsx applies one tsconfig per process, found from the working directory, and only to files that tsconfig includes. From a root whose tsconfig does not include package sources, a linked package's JSX compiles to classic `React.createElement`, and a TTY run of a live view then fails with `React is not defined` while a captured run stays green. A probe of tsx's API settled the alternatives, each of which depends on the process or reaches one package:
 

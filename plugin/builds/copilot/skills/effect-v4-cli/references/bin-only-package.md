@@ -57,7 +57,7 @@ if (import.meta.url.endsWith(".ts")) {
 const { main } = await import("@effected/cli/main");
 ~~~
 
-The last line is the kit's own; import your front end's entry there. A static import would resolve before the branch runs. `.bin/<tool>` then works outside pnpm, and no e2e harness needs an absolute loader.
+The last line is the kit's own; import your front end's entry there. A static import would resolve before the branch runs. `.bin/<tool>` then works outside pnpm. The contract: a SOURCE bin self-registers tsx; a BUILT bin's self-registration branch is dead, and in a linked workspace that built bin still imports siblings from source, so a test that spawns a built bin in the workspace passes `--import <absolute file URL of tsx>` (as the kit's own `packages/cli/__test__/e2e/*.e2e.test.ts` do); an installed consumer needs nothing.
 
 **Every `.tsx` file in such a repository starts with the pragma:**
 

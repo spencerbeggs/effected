@@ -21,10 +21,10 @@ sources:
     resource: ../../packages/bundler/src/config/plugins.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T23:49:47Z
+  at: 2026-11-07T00:15:31Z
 integrity:
   generated:
-    body: 8eb38744f816e4c8
+    body: 1b0560b4fbc88171
 ---
 
 # effected.toml: the build config's tables, defaults and discovery
@@ -94,12 +94,12 @@ A `public/` directory needs no config: its contents are copied verbatim into eac
 copy = ["../shared/schemas", { from = "assets/*.png", to = "img" }]
 ```
 
-- **`from`, or a bare string, is a path or glob relative to the package directory.** A directory is copied whole under its own name, so `../shared/schemas` lands at `pkg/schemas`.
+- **`from`, or a bare string, is a path or glob relative to the package directory.** A directory is copied whole and keeps its own basename under `to` (tsdown semantics), so `../shared/schemas` lands at `pkg/schemas`. To ship `schemas/` at the package root write `copy = ["../../schemas"]`; `copy = [{ from = "../../schemas", to = "schemas" }]` nests it as `pkg/schemas/schemas/...`.
 - **`to` is relative to the group's `pkg/` root**, where tsdown alone would read it against the package directory and put every group's copy in one place. One that leaves `pkg/` fails `ConfigValidationError`.
 - **`flatten` defaults to `true`**, dropping each source's directories.
 - **A package that only compiles a binary runs no JS pass,** so `copy` there fails `ConfigValidationError` rather than doing nothing.
 
-An `exports` pattern such as `./schemas/*.json` that matches no file in the emitted package is a `warn` in `issues.json`, with `source: "config"` and code `exports-pattern-unmatched`. It does not fail the build.
+An `exports` pattern such as `./schemas/*.json` that matches no file in the emitted package is a `warn` in `issues.json`, with `source: "config"` and code `exports-pattern-unmatched`. It does not fail the build. An `exports` `*` spans `/` (Node semantics), so a file at a deeper path than intended still satisfies the pattern and the warning cannot catch a wrongly nested copy.
 
 ### Inlining a workspace sibling
 

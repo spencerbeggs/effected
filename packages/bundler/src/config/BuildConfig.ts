@@ -86,7 +86,11 @@ export class LooseFileSpec extends Schema.Class<LooseFileSpec>("LooseFileSpec")(
  * @public
  */
 export class CopyEntry extends Schema.Class<CopyEntry>("CopyEntry")({
-	/** Source paths or globs, relative to the package directory. A directory is copied whole. */
+	/**
+	 * Source paths or globs, relative to the package directory. A directory is copied whole and keeps its own basename
+	 * under `to`, so `{ from: "../../schemas", to: "schemas" }` emits `pkg/schemas/schemas/...`; use the bare string
+	 * `"../../schemas"` to ship `schemas/` at the package root.
+	 */
 	from: Schema.Union([Schema.String, Schema.Array(Schema.String)]),
 	/** The destination directory, relative to the group's `pkg/` root, which is the default. It may not leave `pkg/`. */
 	to: Schema.optionalKey(Schema.String),
@@ -323,7 +327,8 @@ export class PackageBuildConfig extends Schema.Class<PackageBuildConfig>("Packag
 	 *
 	 * @remarks
 	 * tsdown's `copy` option as data: a string is a path or glob relative to the package directory, copied into the
-	 * `pkg/` root, and {@link CopyEntry} adds a destination. A `public/` directory is already copied verbatim with no
+	 * `pkg/` root, and {@link CopyEntry} adds a destination. A directory keeps its basename, so `"../../schemas"` ships
+	 * `pkg/schemas/...`. A `public/` directory is already copied verbatim with no
 	 * config; this is the explicit way, for files that live elsewhere. A package that compiles only a binary runs no JS
 	 * pass, so setting this there fails validation.
 	 */

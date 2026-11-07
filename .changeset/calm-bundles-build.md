@@ -9,9 +9,9 @@
 * `ActionBuilder.build` bundles a GitHub Action from the `[action]` table of its `effected.toml` on rolldown, with `ActionValidation` and `PersistLocal` as separate steps
 * Takes over the `tsdoctor.json` schema from `@tsdoctor/manifest`
 * Emitted artifacts for the kit's packages are byte-identical to the previous bundler's output
-* Adds `[package.build] copy` for shipping non-module assets in each publish group's `pkg/`, in the shape of tsdown's `copy` option, beside the zero-config `public/` directory
+* Adds `[package.build] copy` for shipping non-module assets in each publish group's `pkg/`, in the shape of tsdown's `copy` option, beside the zero-config `public/` directory; a directory `from` keeps its own basename under `to`, so `copy = ["../../schemas"]` ships `pkg/schemas/...` while `{ from = "../../schemas", to = "schemas" }` nests it as `pkg/schemas/schemas/...`
 * Adds `[package.build.meta] localPaths` for copying the canonical group's API model into a directory a docs site reads
-* Warns with `exports-pattern-unmatched` in `issues.json` when a manifest `exports` pattern matches no emitted file
+* Warns with `exports-pattern-unmatched` in `issues.json` when a manifest `exports` pattern matches no emitted file (an exports `*` spans `/`, so a wrongly nested copy still satisfies it)
 
 ## Bug Fixes
 

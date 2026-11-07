@@ -1,5 +1,10 @@
 # Log
 
+## 2026-11-07
+
+* Updated The kit builds itself with the bundler running from source under tsx
+* Updated effected.toml: the build config's tables, defaults and discovery
+
 ## 2026-11-06
 
 * Updated "Wait for the kit" leaves raw spawns and duplicated regex behind

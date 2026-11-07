@@ -39,7 +39,7 @@ Other tools read these, so a change to one moves with its readers. Paths are und
 
 `tsdoctor.json` is a wire format with readers outside this repository. Its fields grow additively.
 
-`[package.build.meta] localPaths` copies the canonical group's model into directories relative to the package, for a consumer's docs site. The kit's own packages do not set it. `[package.build] copy` hands non-module assets to tsdown on the base partition's JS pass, once per group, with each `to` anchored to that group's `pkg/`; `public/` is the zero-config way. A manifest `exports` pattern matching no emitted file is a `warn`, code `exports-pattern-unmatched`.
+`[package.build.meta] localPaths` copies the canonical group's model into directories relative to the package, for a consumer's docs site. The kit's own packages do not set it. `[package.build] copy` hands non-module assets to tsdown on the base partition's JS pass, once per group, with each `to` anchored to that group's `pkg/`; `public/` is the zero-config way. A directory `from` keeps its own basename under `to`: `copy = ["../../schemas"]` ships `pkg/schemas/...`, while `{ from = "../../schemas", to = "schemas" }` nests it as `pkg/schemas/schemas/...`. A manifest `exports` pattern matching no emitted file is a `warn`, code `exports-pattern-unmatched`. An `exports` `*` spans `/` (Node semantics), so a file at a deeper path than intended still satisfies the pattern and the warning cannot catch a wrongly nested copy.
 
 An exe package's SEA compiles on any host, for its declared target: `@tsdown/exe` cross-compiles, and `--no-exe` is the only skip. Its manifest's `exports["."]` points at the binary, and it has a `bin` only when the source manifest declares one.
 
