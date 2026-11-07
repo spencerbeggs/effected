@@ -43,7 +43,7 @@ On Node, requires Node.js >=24.11.0; it also runs on any other WebCrypto runtime
 
 | Operation | Requires |
 | --- | --- |
-| `StandardWebhooks.verify`, `GitHub.verify`, `Stripe.verify`, `Sanity.verify`, `HmacHeader.verify`, `SharedSecret.verify` | `Mac.Mac` |
+| `StandardWebhooks.verify`, `GitHub.verify`, `Stripe.verify`, `Sanity.verify`, `HmacHeader.verify`, `SharedSecret.verify`, `SharedSecret.attest`, `SharedSecret.verifyAttested` | `Mac.Mac` |
 | `Webhooks.checkFreshness` | nothing |
 
 No verifier needs `Digest` or `SecureRandom` itself; `SecureRandom` is what the WebCrypto `Mac` layer is built on.
@@ -185,9 +185,37 @@ const verifyCloudflare = (delivery: WebhookRequest) => SharedSecret.verify(deliv
 
 For a sender that puts the secret itself in a header, such as Cloudflare's `cf-webhook-auth`, or a path secret your proxy moves into one. It compares with `ConstantTime.secretsEqual` from `@effected/crypto`, which MACs both sides under a fresh key first, so neither the secret's length nor a matching prefix leaks. That is why it needs `Mac` too. The value is compared exactly as the lookup returns it, never trimmed, because trimming would loosen a secret comparison. A fetch `Request`'s `Headers` already strips surrounding whitespace before your lookup sees it, so through the adapter above a padded secret matches.
 
+### Archive and replay a shared-secret delivery
+
+A shared-secret vendor's "signature" is the route secret itself, so an archive of raw deliveries must never keep that header, and without it an archived delivery cannot be re-verified on replay. `SharedSecret.attest` mints a proof to archive in its place, and `SharedSecret.verifyAttested` accepts either the live secret or that proof:
+
+```ts
+import type { WebhookRequest } from "@effected/webhooks";
+import { SharedSecret } from "@effected/webhooks";
+import { Effect } from "effect";
+
+const route = { header: "cf-webhook-auth", attestation: "x-archive-attestation", context: ["cloudflare", "production"] };
+
+// On arrival: verify the live secret, then mint the attestation to archive instead of the secret header.
+const receive = (delivery: WebhookRequest) =>
+  Effect.gen(function* () {
+    yield* SharedSecret.verify(delivery, { header: route.header });
+    return yield* SharedSecret.attest(delivery, { context: route.context });
+  });
+// Effect<string, WebhookVerificationError | AttestationContextError, Mac>
+
+// On arrival or on replay: the live secret when the delivery carries it, else the archived attestation.
+const verifyRoute = (delivery: WebhookRequest) => SharedSecret.verifyAttested(delivery, route);
+// Effect<void, WebhookVerificationError | AttestationContextError, Mac>
+```
+
+An attestation is the lower-case hex HMAC-SHA256, under the route secret's UTF-8 bytes, of a domain-separated prefix followed by the raw body. The prefix is `effected-attestation.v1.<count>.<part>.<part>.`: the versioned tag (`SharedSecret.ATTESTATION_TAG`), the number of context parts, then each part, every one followed by `.`. For `["cloudflare", "production"]` it is `effected-attestation.v1.2.cloudflare.production.`. The tag keeps an attestation from doubling as any vendor's HMAC of the body under a reused secret, the context binds it to its route, and the count keeps a part from moving across the boundary into the body. Each context part must be non-empty and must not contain `.`; otherwise both functions fail with `AttestationContextError` (with the offending `index` and a `reason` of `empty` or `contains_separator`), before any header is read.
+
+`verifyAttested` runs two steps. When `header` is given and the delivery carries it with a non-empty value, the live secret is compared raw, exactly as `SharedSecret.verify` compares it, and that answer is final: a wrong secret is `bad_signature` even beside a valid attestation, and a whitespace-only value is a wrong secret. Otherwise it reads the `attestation` header and checks it with `Hmac.verify` from `@effected/crypto`, which decodes the hex and compares bytes in constant time, so either case verifies. Neither present is `missing_signature`. Omit `header` to accept only the attestation. Archive the attestation under a header name the vendor never sends, and strip that header from what arrives on the wire, so an attestation is only ever read back from your own archive. Forging one needs the secret, so accepting it admits nothing the live secret would not.
+
 ## Errors
 
-Every verifier fails with `WebhookVerificationError` alone. It carries `reason`, the routing key; `preset`, the scheme being verified (`StandardWebhooks`, `GitHub`, `Stripe`, `Sanity`, `HmacHeader` or `SharedSecret`); and an optional human-readable `detail`. Route on `reason`, never on `message` or `detail`, which never carry the secret, a signature or the body.
+Every preset's `verify` fails with `WebhookVerificationError` alone. It carries `reason`, the routing key; `preset`, the scheme being verified (`StandardWebhooks`, `GitHub`, `Stripe`, `Sanity`, `HmacHeader` or `SharedSecret`); and an optional human-readable `detail`. Route on `reason`, never on `message` or `detail`, which never carry the secret, a signature or the body.
 
 | `reason` | Meaning | Typical status |
 | --- | --- | --- |
@@ -203,7 +231,7 @@ const statusFor = (error: WebhookVerificationError): 400 | 401 =>
   error.reason === "missing_signature" || error.reason === "bad_signature" ? 401 : 400;
 ```
 
-Because the signature is checked first, a stale delivery with a bad signature reports `bad_signature`. A wiring mistake is a defect, not a typed failure: a Standard Webhooks secret that is not `whsec_` base64, an empty secret for an HMAC preset (which core `Mac` refuses as `InvalidKey`), or a `CryptoError` from a misbehaving `Mac` layer. On the WebCrypto layer, a runtime with no `crypto.subtle` dies too. `WebhookVerificationReason` and `WebhookPreset` are exported as schemas.
+Because the signature is checked first, a stale delivery with a bad signature reports `bad_signature`. `SharedSecret.attest` and `SharedSecret.verifyAttested` can also fail with `AttestationContextError` for a context part that is empty or contains `.`; it is typed because a context is usually built from routing, so a caller can answer it rather than crash. A wiring mistake is a defect, not a typed failure: a Standard Webhooks secret that is not `whsec_` base64, an empty secret for an HMAC preset (which core `Mac` refuses as `InvalidKey`), or a `CryptoError` from a misbehaving `Mac` layer. On the WebCrypto layer, a runtime with no `crypto.subtle` dies too. `WebhookVerificationReason` and `WebhookPreset` are exported as schemas.
 
 ## Testing
 

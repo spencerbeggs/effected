@@ -6,6 +6,7 @@ import { DateTime, Effect, Exit, Layer, Option, Redacted, Schema } from "effect"
 import { Mac, SecureRandom } from "effect/crypto";
 import { TestClock } from "effect/testing";
 import type {
+	AttestationContextError,
 	SanityVerified,
 	StandardWebhooksVerified,
 	StripeVerified,
@@ -78,6 +79,26 @@ export const verifyCustom = (delivery: WebhookRequest): Effect.Effect<void, Webh
 export const verifyCloudflare = (delivery: WebhookRequest): Effect.Effect<void, WebhookVerificationError, Mac.Mac> =>
 	SharedSecret.verify(delivery, { header: "cf-webhook-auth" });
 
+// README: Archive and replay a shared-secret delivery
+const route = {
+	header: "cf-webhook-auth",
+	attestation: "x-archive-attestation",
+	context: ["cloudflare", "production"],
+};
+
+export const receive = (
+	delivery: WebhookRequest,
+): Effect.Effect<string, WebhookVerificationError | AttestationContextError, Mac.Mac> =>
+	Effect.gen(function* () {
+		yield* SharedSecret.verify(delivery, { header: route.header });
+		return yield* SharedSecret.attest(delivery, { context: route.context });
+	});
+
+export const verifyRoute = (
+	delivery: WebhookRequest,
+): Effect.Effect<void, WebhookVerificationError | AttestationContextError, Mac.Mac> =>
+	SharedSecret.verifyAttested(delivery, route);
+
 // README: Errors
 export const statusFor = (error: WebhookVerificationError): 400 | 401 =>
 	error.reason === "missing_signature" || error.reason === "bad_signature" ? 401 : 400;
@@ -95,8 +116,10 @@ const deliver = (headers: Record<string, string>, body: string, secret: string) 
 		);
 	});
 
-const reasonOf = <A, R>(effect: Effect.Effect<A, WebhookVerificationError, R>) =>
-	Effect.flip(effect).pipe(Effect.map((error) => error.reason));
+const reasonOf = <A, R>(effect: Effect.Effect<A, WebhookVerificationError | AttestationContextError, R>) =>
+	Effect.flip(effect).pipe(
+		Effect.map((error) => (error._tag === "WebhookVerificationError" ? error.reason : error._tag)),
+	);
 
 describe("README examples", () => {
 	for (const [name, live] of [
@@ -204,6 +227,24 @@ describe("README examples", () => {
 			);
 		});
 	}
+
+	layer(MacLive)("archive and replay", (it) => {
+		it.effect("verifies live, archives the attestation instead of the secret, and verifies the replay", () =>
+			Effect.gen(function* () {
+				const body = '{"event":"purge"}';
+				const arrived = yield* deliver({ "cf-webhook-auth": "cf-secret" }, body, "cf-secret");
+				const attestation = yield* receive(arrived);
+				yield* verifyRoute(arrived);
+				// The archive keeps the attestation, never the secret header.
+				const replayed = yield* deliver({ "x-archive-attestation": attestation }, body, "cf-secret");
+				yield* verifyRoute(replayed);
+				const tampered = yield* deliver({ "x-archive-attestation": attestation }, `${body} `, "cf-secret");
+				assert.strictEqual(yield* reasonOf(verifyRoute(tampered)), "bad_signature");
+				const bare = yield* deliver({}, body, "cf-secret");
+				assert.strictEqual(yield* reasonOf(verifyRoute(bare)), "missing_signature");
+			}),
+		);
+	});
 
 	it("maps reasons to HTTP statuses", () => {
 		const of = (reason: WebhookVerificationError["reason"]) => statusFor({ reason } as WebhookVerificationError);
