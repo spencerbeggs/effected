@@ -371,7 +371,8 @@ const firstEnv = (
  *     env: process.env,
  *     platform: process.platform,
  *   });
- *   return Option.getOrElse(settings.minimumReleaseAge, () => 0);
+ *   // Unset means pnpm's own default, 1440 minutes, not an open gate.
+ *   return Option.getOrElse(settings.minimumReleaseAge, () => 1440);
  * });
  * ```
  *
@@ -484,7 +485,8 @@ export class PnpmSettings extends Schema.Class<PnpmSettings>("PnpmSettings")({
 
 	/**
 	 * `minimumReleaseAge`: the minutes a version must have been published before
-	 * pnpm installs it, or `None` when no source sets it.
+	 * pnpm installs it, or `None` when no source sets it. `None` is not an
+	 * open gate: pnpm then applies its built-in default of 1440 minutes.
 	 *
 	 * @remarks
 	 * Only a non-negative safe integer counts, as pnpm 12 reads the setting
