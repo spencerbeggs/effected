@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T18:52:13Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 4d8488f03d39c64a
+    body: 9fde883a34fda348
 ---
 
 # glob
@@ -85,4 +85,4 @@ Glob itself does **no** enumeration — pure string→predicate only, and that i
 
 ## Build
 
-Scaffolded from a pure sibling, with model paths under `website/lib/models/glob`. The class factories mean `savvy.build.ts` carries the narrow `_base` API Extractor suppression; never widen it. No `prepare` script: glob is a pure leaf with no workspace dependencies.
+Scaffolded from a pure sibling. The class factories mean the bundler's default config carries the narrow `_base` API Extractor suppression; never widen it.

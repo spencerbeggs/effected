@@ -1,0 +1,5 @@
+---
+"a": minor
+---
+
+A change.

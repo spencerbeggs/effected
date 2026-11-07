@@ -14,7 +14,7 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T06:55:47Z
+  at: 2026-11-06T22:24:55Z
 verified:
   - by: human:spencer
     at: 2026-09-24T06:10:09Z
@@ -26,7 +26,7 @@ verified:
     at: 2026-11-05T14:25:52Z
 integrity:
   generated:
-    body: 911cac0f8616e738
+    body: 68f48b97eee89cd9
   verified:
     by: human:spencer
     at: 2026-11-05T14:25:52Z
@@ -39,7 +39,7 @@ integrity:
 
 `PackedInstall` needs a tarball per closure package, and a package can be
 packed from two places. Candidate A runs `pnpm pack` in the package's source
-directory, where pnpm honours `publishConfig.directory` and rewrites
+directory, where pnpm honoured `publishConfig.directory` and rewrites
 `workspace:` and `catalog:` specifiers. Candidate B runs `npm pack` in
 `dist/prod/npm/pkg`, the effected bundler's prod npm output, whose manifest
 the build has already made publish-ready.
@@ -60,9 +60,9 @@ recorded:
 | C7: the installed code runs from the consumer root | S2 passes everywhere. S1 passes under npm and bun, and fails `ERR_MODULE_NOT_FOUND` on `@effected/kit` under pnpm, identically for both candidates |
 | C8: `pnpm pack` rewrites `workspace:^` in a never-installed workspace | no: it fails `ERR_PNPM_CANNOT_RESOLVE_WORKSPACE_PROTOCOL`, exit 1 |
 
-C4 is the discriminator. Under the effected bundler `publishConfig.directory`
-names `dist/dev/pkg`, so candidate A packs the **dev** build: source maps
-present, `tsdoc-metadata.json` absent. Candidate B is the file list a release
+C4 is the discriminator. When this was decided, `publishConfig.directory`
+named the dev target, so candidate A packed the **dev** build: source maps
+present, `tsdoc-metadata.json` absent. That target is gone, and candidate B stays the default. Candidate B is the file list a release
 actually publishes.
 
 The literal outcome rule read "F", because neither candidate cleared C7 under
@@ -85,8 +85,8 @@ pnpm's isolated layout as the reason.
 
 ## Alternatives rejected
 
-**`"source"` as the default (candidate A).** It proves the dev build, not the
-published one: a file the prod build drops, or a map the prod build omits,
+**`"source"` as the default (candidate A).** It does not pack the published
+file list: a file the prod build drops, or a map the prod build omits,
 would pass here and differ in the release. It also fails outright in a
 workspace that has never been `pnpm install`ed (C8), which is exactly the
 state of a fresh CI checkout that skipped install, or a generated fixture.

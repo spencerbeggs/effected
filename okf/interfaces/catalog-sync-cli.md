@@ -1,7 +1,7 @@
 ---
 type: Interface
 title: The catalog:sync / catalog:check CLI
-description: Two root package.json scripts over lib/scripts/catalog-sync.ts that resolve every catalogued @effected/* package's next-release version, rewrite the effected catalog literal in packages/pnpm-plugin-effected/savvy.build.ts, and gate on both catalog membership and version drift.
+description: Two root package.json scripts over lib/scripts/catalog-sync.ts that resolve every catalogued @effected/* package's next-release version, rewrite the effected catalog literal in packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts, and gate on both catalog membership and version drift.
 status: stable
 kind: cli
 resource: ../../lib/scripts/catalog-sync.ts
@@ -14,10 +14,10 @@ sources:
   - id: catalog-sync-script
     resource: ../../lib/scripts/catalog-sync.ts
   - id: pnpm-plugin-effected-savvy-build
-    resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
+    resource: ../../packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-01T21:43:51Z
+  at: 2026-11-06T20:09:15Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:14.366Z
@@ -29,7 +29,7 @@ verified:
     at: 2026-11-01T21:41:54Z
 integrity:
   generated:
-    body: cc849c6ab926fd7f
+    body: 46424b9e7a8017c0
   verified:
     by: human:spencer
     at: 2026-11-01T21:41:54Z
@@ -46,7 +46,7 @@ integrity:
   `"catalog:sync": "tsx lib/scripts/catalog-sync.ts"`.[^root-package-scripts]
 - The rewrite target is the `effected` catalog literal declared inline at
   the `PnpmConfigPlugin(...)` call site inside
-  `packages/pnpm-plugin-effected/savvy.build.ts`.[^pnpm-plugin-effected-savvy-build]
+  `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts`.[^pnpm-plugin-effected-savvy-build]
   The literal must stay inline there — hoisting it into an exported
   `const` makes it invisible to the upstream `rolldown-pnpm-config
   upgrade` CLI that walks the call argument statically.
@@ -69,7 +69,7 @@ and exits non-zero if either check finds anything wrong. It writes
 nothing.
 
 `catalog:sync` — the only writer. Rewrites the catalog literal in
-`packages/pnpm-plugin-effected/savvy.build.ts` in place and writes one
+`packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts` in place and writes one
 fixed-name changeset (`.changeset/catalog-sync.md`) when anything moved.
 Builds never write this file; only a human or a workflow invoking
 `catalog:sync` deliberately does.
@@ -99,9 +99,14 @@ on purpose:
   ripple, carrying no changeset of its own naming it. The upgrade CLI
   cannot see these either, since it resolves from `source: "workspace"`
   entries plus pending changesets and a ripple has neither. The sync
-  script instead asks `changeset status --output` for the true release
+  script instead asks `ReleasePlan.read` from
+  [`@effected/changesets`](../modules/changesets.md) for the true release
   plan, ripples included, and `sync` rewrites the affected entries'
   `range` and floors the `peer` patch under the `lock-minor` strategy.
+  A plan that cannot be read fails both commands with a non-zero exit
+  and the reason on stderr, and `sync` fails before it writes anything:
+  no pending changesets is a successful empty plan, so every failure is
+  a real fault.
 
 Publishability, for both membership questions, is always
 `publishConfig.access === "public"`, never `private === false` — see
@@ -111,7 +116,7 @@ Publishability, for both membership questions, is always
 
 `catalog:sync` runs the upstream CLI with `--json`, used only for
 **reporting** which entries moved. Whether the catalog moved at all is
-decided separately, by diffing `savvy.build.ts` around the invocation —
+decided separately, by diffing `lib/build/pnpm-config.plugin.ts` around the invocation —
 the file is the artifact that matters, and a diff of it cannot disagree
 with itself. A change in the upstream CLI's JSON shape can only degrade
 the log line, never the verdict.
@@ -137,6 +142,6 @@ not it wrote anything.
     `catalogMembers`, `publishablePackages` and `missingFromCatalog`
     functions that compute membership independently of the upstream
     upgrade CLI.
-[^pnpm-plugin-effected-savvy-build]: `packages/pnpm-plugin-effected/savvy.build.ts`, the `effected` catalog block
+[^pnpm-plugin-effected-savvy-build]: `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts`, the `effected` catalog block
     — the inline `PnpmConfigPlugin({ ... })` call carrying the catalog
     literal the CLI rewrites.

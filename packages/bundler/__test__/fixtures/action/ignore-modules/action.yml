@@ -1,0 +1,5 @@
+name: ignore-modules
+description: Integration fixture for the build.ignore option (issue #81).
+runs:
+  using: node24
+  main: dist/main.js

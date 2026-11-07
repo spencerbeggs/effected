@@ -1,0 +1,7 @@
+{
+  "name": "onward",
+  "version": "1.0.0",
+  "dependencies": {
+    "peer": "workspace:*"
+  }
+}

@@ -1,0 +1,5 @@
+---
+"ghost": patch
+---
+
+A change.

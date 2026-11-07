@@ -52,11 +52,9 @@ Exported from `src/index.ts`:
 
 ```bash
 pnpm vitest run packages/jsonc/__test__   # this package's tests
-pnpm build --filter @effected/jsonc       # dev + prod, in order
+pnpm build --filter @effected/jsonc
 ```
-
-Never run `node savvy.build.ts --target prod` directly. It skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate.
 
 Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*` — never `expect`.
 
-`savvy.build.ts` carries one narrow API Extractor suppression: `{ messageId: "ae-forgotten-export", pattern: "_base" }`, covering the heritage symbols synthesized by inline class factories. Never widen it. `package.json` stays `"private": true` — the bundler emits the publishable manifest.
+The bundler's default config carries one narrow API Extractor suppression: `{ messageId: "ae-forgotten-export", pattern: "_base" }`, covering the heritage symbols synthesized by inline class factories. Never widen it. `package.json` stays `"private": true` — the bundler emits the publishable manifest.

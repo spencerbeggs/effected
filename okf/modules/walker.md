@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/walker/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-29T16:09:16Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: d87d4771c5e99524
+    body: 9778ea42d18bc491
 ---
 
 # walker
@@ -421,7 +421,7 @@ nearer directories win.
 
 ## Build
 
-`savvy.build.ts` carries the one narrow `{ messageId:
+The bundler's default config carries the one narrow `{ messageId:
 "ae-forgotten-export", pattern: "_base" }` suppression for the
 synthesized base of the `DescendError` class factory. Gate on a
 zero-warning `dist/prod/issues.json` via `pnpm build --filter

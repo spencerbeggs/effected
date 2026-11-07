@@ -44,7 +44,7 @@ Downstream repositories upgrade with the plugin's `/effected-renovate` skill. It
    - Record the previous `effect` version: it becomes the lower edge of every Effect entry's threshold.
    - List the other kit work this release will carry: `ls .changeset/` and `git log <last release commit>..HEAD`. Each pending changeset that a consumer must act on becomes a ledger entry in phase 5.
 2. **Catalog (user)**
-   - Check whether `packages/pnpm-plugin-effected/savvy.build.ts` already names `$ARGUMENTS`. If not, ask the user to run `pnpm pnpm:up`, then `pnpm pnpm:export`, then install, and to add the changesets (catalog sync plus their bump policy for the packages).
+   - Check whether `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts` already names `$ARGUMENTS`. If not, ask the user to run `pnpm pnpm:up`, then `pnpm pnpm:export`, then install, and to add the changesets (catalog sync plus their bump policy for the packages).
    - When they're done, confirm the lockfile resolves `effect@$ARGUMENTS`, and compare the platform-binary lines against `HEAD:pnpm-lock.yaml`:
      `grep -cE "^  '?@?(turbo|biomejs/cli|typescript/native-preview)[^:]*(darwin|linux|win32)"`
      The counts must match.
@@ -93,7 +93,7 @@ Downstream repositories upgrade with the plugin's `/effected-renovate` skill. It
     - Read the reviews: `gh pr view <n> --json reviews` plus `gh api repos/{owner}/{repo}/pulls/<n>/comments`.
     - Verify each finding against source before fixing it, fix the valid ones in one commit, and tell the user which you skipped and why.
     - If a fix changes a shape or a behaviour an entry states, update the entry in the same commit.
-    - If the effected catalog in `pnpm-workspace.yaml` lags `savvy.build.ts`, ask the user to re-run `pnpm pnpm:export`.
+    - If the effected catalog in `pnpm-workspace.yaml` lags `lib/build/pnpm-config.plugin.ts`, ask the user to re-run `pnpm pnpm:export`.
 
 ## Record mode
 
@@ -114,7 +114,7 @@ Closes the current round so the ledger starts empty from the release that is now
    - **fold**: a trap or process step that will recur on any future upgrade. It moves into `SKILL.md` or the standing traps table, written timelessly.
    - **drop**: specific to this round, or no longer true.
    Apply only the fates the user approves.
-3. **Rewrite `BASELINE.md`**: `previous` becomes the tag from step 1, and `floor` becomes the versions the round's entries brought consumers to (the highest `applies` threshold per package, plus `effect`). Move every entry's `renames` into `BASELINE.md`'s `renames` map, keeping the ones already there: `bump-config-deps.mjs` reads renames only from the shipped ledger, never a fetched round, so a rename dropped here is lost for every consumer still on the old name.
+3. **Rewrite `BASELINE.md`**: `previous` becomes the tag from step 1, and `floor` becomes the versions the round's entries brought consumers to (the highest `applies` threshold per package, plus `effect`), keeping every package already in `floor` that the round did not raise: a package that leaves the floor stops triggering the chain, so a consumer lagging only on it silently misses the older rounds. Move every entry's `renames` into `BASELINE.md`'s `renames` map, keeping the ones already there: `bump-config-deps.mjs` reads renames only from the shipped ledger, never a fetched round, so a rename dropped here is lost for every consumer still on the old name.
 4. **Empty the round**: delete every `NNNN-*.md` entry file, and every row below the marker in `traps.md`. Entry ids restart at `0001`.
 5. Run `applicable.mjs --check` and the bats suite, rebuild the plugin, and write an `@effected/ai-plugins` changeset (a patch: the skill's process is unchanged). Do not commit.
 

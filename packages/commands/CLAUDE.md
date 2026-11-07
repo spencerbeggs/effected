@@ -91,19 +91,19 @@ only** — never a dependency or peer. `RunOnce`'s `Effect` driver is tested
 over `@effected/memfs` (a devDependency) and `TestClock`; its sync driver over
 an in-memory host whose `sleep` is where "another process" acts.
 `__test__/e2e/RunOnce.e2e.test.ts` races four real `node` processes through
-`__test__/e2e/fixtures/run-once-child.mjs`, which imports the **dev build**
-(`dist/dev/pkg`) — rebuild before trusting it after a source edit.
+`__test__/e2e/fixtures/run-once-child.mjs`, which imports the **build**
+(`dist/prod/npm/pkg`); the root globalSetup rebuilds it before every run.
 
 ```bash
 pnpm vitest run packages/commands/__test__   # from the repo root, always
-pnpm build --filter @effected/commands       # never `node savvy.build.ts`
+pnpm build --filter @effected/commands
 ```
 
 Run vitest from the repo root. From *inside* the package vitest does not load
 the root config, so `--project @effected/commands` fails with
 `No projects matched the filter` and a positional filter finds no test files.
 
-`savvy.build.ts` carries the narrow `_base` suppression
+The bundler's default config carries the narrow `_base` suppression
 (`{ messageId: "ae-forgotten-export", pattern: "_base" }`) for the
 synthesized class-factory bases; a clean prod `issues.json` has 0 warnings,
 0 errors. **Never widen it** — a genuine `ae-unresolved-link` is fixed by

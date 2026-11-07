@@ -26,7 +26,7 @@ Durable knowledge lives in the OKF bundle at the repo root. Start at `okf/module
 - Do not delete the dual-stream backpressure integration test; it is the sole regression guard for `runCollected`'s `{ concurrency: "unbounded" }`.
 - `@effect/platform-node` is a devDependency for the integration suites only; never in `dependencies` or `peerDependencies`.
 - A consumer needing a git read this package lacks gets `@effected/commands`' `Run.collect` (the README recipe), never `src/internal/run.ts`.
-- Never widen the narrow `_base` suppression in `savvy.build.ts`; never run `node savvy.build.ts --target prod` directly.
+- Never widen the narrow `_base` suppression in the bundler's default config.
 
 ## Commands
 

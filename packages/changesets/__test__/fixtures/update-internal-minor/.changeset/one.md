@@ -1,0 +1,5 @@
+---
+"a": major
+---
+
+A change.

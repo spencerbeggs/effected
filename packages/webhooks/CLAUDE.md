@@ -18,7 +18,7 @@ Inbound webhook signature verification as pure functions over a header lookup, t
 
 ```bash
 pnpm vitest run packages/webhooks        # from the repo root
-pnpm build --filter @effected/webhooks   # never node savvy.build.ts
+pnpm build --filter @effected/webhooks
 ```
 
 Tests live in `__test__/`, use `@effect/vitest` with `assert.*` (never `expect`).

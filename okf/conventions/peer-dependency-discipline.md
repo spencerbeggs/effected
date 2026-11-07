@@ -12,10 +12,10 @@ sources:
     resource: ../../pnpm-workspace.yaml
 generated:
   by: "claude-code/opus-5"
-  at: 2026-11-05T07:16:00Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 4f25f6faa0686817
+    body: ad5f1440e5bbfcb9
 ---
 
 # Peer-dependency discipline
@@ -69,12 +69,11 @@ with each catalog advance.
 - Every package typechecks with `tsc --noEmit` against
   `typescript: catalog:build`; `@effect/tsgo` is not a package
   dependency.
-- The root `package.json` carries only the two toolchain devDependencies
-  (silk and the vitest-agent plugin); everything else is an
-  auto-installed peer. `@savvy-web/bundler` is a `devDependency` of every
-  package that builds — it is what `savvy.build.ts` imports — and must
-  never be a `dependency`, or the publishable manifest ships a build tool
-  at runtime.
+- The root `package.json` carries the toolchain devDependencies: silk, the
+  vitest-agent plugin, `tsx` and `@effected/plugin`. `@effected/plugin` carries
+  the `effected` bin every package builds through, and it must never be a
+  package's dependency, or the publishable manifest ships a build tool at
+  runtime.
 
 The pnpm resolver bug that once forced workarounds here — a v4 `effect`
 peer binding into v3-wanting importers — is fixed upstream in

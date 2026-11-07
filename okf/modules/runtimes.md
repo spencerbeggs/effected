@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T19:10:23Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: f2580b0f14b35e93
+    body: e4c1681845510042
 ---
 
 # runtimes
@@ -148,7 +148,7 @@ what the freshness error exists to catch.
 
 ## Build
 
-`savvy.build.ts` carries the narrow `_base` suppression per
+The bundler's default config carries the narrow `_base` suppression per
 [the API-Extractor class-factories gotcha](../gotchas/api-extractor-forgotten-export-on-class-factories.md). Gate:
 a cold `pnpm build --filter @effected/runtimes` produces a zero-warning
 `dist/prod/issues.json` whose suppressed bucket holds only synthesized

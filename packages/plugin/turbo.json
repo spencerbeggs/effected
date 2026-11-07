@@ -1,4 +1,0 @@
-{
-	"$schema": "https://turborepo.com/schema.v2.json",
-	"extends": ["//"]
-}

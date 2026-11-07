@@ -1,0 +1,5 @@
+[package.build]
+copy = ["../shared/schemas", { from = "../shared/schemas/5.0/run.json", to = "named" }]
+
+[package.build.meta]
+localPaths = ["../models/copy-assets"]

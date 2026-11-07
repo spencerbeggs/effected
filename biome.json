@@ -3,16 +3,6 @@
 	"extends": ["@savvy-web/silk/biome"],
 	"overrides": [
 		{
-			"includes": ["**/savvy.build.ts"],
-			"linter": {
-				"rules": {
-					"correctness": {
-						"noUndeclaredDependencies": "off"
-					}
-				}
-			}
-		},
-		{
 			"assist": {
 				"enabled": false
 			},

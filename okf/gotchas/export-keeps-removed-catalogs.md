@@ -1,7 +1,7 @@
 ---
 type: Gotcha
 title: pnpm:export keeps a catalog the plugin no longer declares
-description: "rolldown-pnpm-config export merges the plugin's declared catalogs over the ones already in pnpm-workspace.yaml, so a catalog removed from savvy.build.ts survives the export as an orphan that still resolves; delete it from the root pnpm-workspace.yaml by hand."
+description: "rolldown-pnpm-config export merges the plugin's declared catalogs over the ones already in pnpm-workspace.yaml, so a catalog removed from lib/build/pnpm-config.plugin.ts survives the export as an orphan that still resolves; delete it from the root pnpm-workspace.yaml by hand."
 status: draft
 resource: ../../pnpm-workspace.yaml
 stale_after: "2027-05-01T00:00:00Z"
@@ -19,17 +19,17 @@ sources:
     title: "The orphaned effect and effect:peers blocks were removed by hand after the catalog merge"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-01T21:43:51Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 866141fb05e3f098
+    body: 94d6daecc38b1ca4
 ---
 
 # pnpm:export keeps a catalog the plugin no longer declares
 
 ## What a reader sees
 
-After a catalog is removed from `packages/pnpm-plugin-effected/savvy.build.ts` and the user runs `pnpm pnpm:export`, the export reports success, yet the root `pnpm-workspace.yaml` still carries the removed catalog's block. A manifest still naming it keeps installing.
+After a catalog is removed from `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts` and the user runs `pnpm pnpm:export`, the export reports success, yet the root `pnpm-workspace.yaml` still carries the removed catalog's block. A manifest still naming it keeps installing.
 
 ## What they wrongly conclude
 
@@ -43,7 +43,7 @@ The orphan is worse than clutter: it keeps a stale `catalog:` reference resolvin
 
 ## The fix
 
-After removing a catalog from `savvy.build.ts` and running `pnpm pnpm:export`, delete that catalog's block (and its `:peers` twin) from the root `pnpm-workspace.yaml` by hand, then grep the workspace manifests for the old `catalog:` name. A remaining reference fails the next install, which is the signal that the removal is complete.
+After removing a catalog from `lib/build/pnpm-config.plugin.ts` and running `pnpm pnpm:export`, delete that catalog's block (and its `:peers` twin) from the root `pnpm-workspace.yaml` by hand, then grep the workspace manifests for the old `catalog:` name. A remaining reference fails the next install, which is the signal that the removal is complete.
 
 [^merge-strategy]: <https://github.com/spencerbeggs/rolldown-pnpm-config/blob/main/package/src/runtime/strategies/catalogs.ts>
 [^owner]: Conversation with the repository owner, 2026-11-01.

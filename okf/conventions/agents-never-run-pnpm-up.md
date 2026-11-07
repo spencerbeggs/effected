@@ -12,10 +12,10 @@ sources:
     resource: ../../CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 05acaccd32517153
+    body: c253dabf2553b31d
 ---
 
 # Agents never run pnpm:up, pnpm:preview, or pnpm:export
@@ -30,7 +30,7 @@ to the user and let them run it — the sequence is `pnpm:up` followed by
 `pnpm catalog:check` and `pnpm catalog:sync` are a different class of
 command and agents may run both: `catalog:check` is a read-only drift gate,
 and `catalog:sync` writes nothing beyond
-`packages/pnpm-plugin-effected/savvy.build.ts` and one fixed-name changeset.
+`packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts` and one fixed-name changeset.
 Both exist to keep the published `effected` catalog current for external
 consumers, and neither should be grouped with the user-run `pnpm:*` class
 merely because the names look similar.

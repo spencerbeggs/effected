@@ -98,10 +98,10 @@ _paths() {
 @test "positive control: forced, the gate actually runs and passes on a clean tree" {
 	# Without this, every test above is satisfied by a gate that never runs.
 	#
-	# Skipped under CI: the job builds only build:dev before the tests, so the
+	# Skipped under CI: the job builds only the packages its tests read, so most
 	# api-extractor doc models (dist/prod/npm/meta/*.api.json) are absent and
-	# the gate answers by running a full `pnpm build` (build:prod for every
-	# package, about 136 s of the step's 143 s, measured on CI). The pre-push
+	# the gate answers by running a full `pnpm build`, which took about 136 s of
+	# the step's 143 s when measured on CI under the old two-target build. The pre-push
 	# hook already runs this gate against the real tree on every relevant push,
 	# and the release phase's `plugin:check` covers the committed builds, so the
 	# forced run buys CI nothing it does not already have. Locally it still runs.

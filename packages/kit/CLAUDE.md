@@ -78,7 +78,7 @@ One module per concept. `src/index.ts` is the only re-exporting module.
 `src/guard.ts` and `src/ProcessGuard.ts` import nothing, not even `effect`
 or a type: the guards must be listening before anything a server's
 `main.ts` loads evaluates. `__test__/entrypoints.test.ts` pins the source
-graph AND the built `dist/dev/pkg/guard.js` graph to `guard` +
+graph AND the built `dist/prod/npm/pkg/guard.js` graph to `guard` +
 `ProcessGuard` with zero packages; `@effected/mcp-kit`'s own entrypoint test
 re-checks the installed copy, because `McpGuard.ts` statically imports it.
 The host is structural (`on`/`emit`/`stderr`/`exit`), so the purity rule
@@ -99,9 +99,5 @@ never `expect`.
 
 ```bash
 pnpm vitest run --project @effected/kit   # this package's tests, from the repo root
-pnpm build --filter @effected/kit         # dev + prod, from the repo root
+pnpm build --filter @effected/kit   # from the repo root
 ```
-
-Never run `node savvy.build.ts --target prod` directly: it skips
-`build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` that
-looks exactly like a clean gate.

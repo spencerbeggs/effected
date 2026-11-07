@@ -25,6 +25,14 @@ import { main } from "@effected/mcp/main";
   commands as tools. `schema_check` and `schema_validate` are read-only;
   `schema_build` writes. They take `config`, `drift`, `onDrift` and `force`
   (`schema_validate` takes `payload` and `schema`).
+- **`package_build`** — `effected package build` as a tool (`cwd?`, `noExe?`). A
+  build that crashes or records an error is the verdict `failed` with its
+  issues, not an error; an error means the config or a plugin would not load, or
+  the directory is not a package or lies outside the workspace root.
+- **`action_build`** — `effected action build` as a tool (`cwd?`, `validate?`,
+  `persist?`). `persist` defaults to false, so it writes only `dist`; `true` also
+  writes `.github/actions/local`, `.actrc` and `.github/workflows/act-test.yml`.
+  The load check imports each bundle unless `[action.build] importCheck` is false.
 - **`MCP_VERSION`** — this package's own version, replaced at build.
 
 Stdout is the JSON-RPC wire; nothing here writes to it. The `effected-mcp` bin is

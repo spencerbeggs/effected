@@ -16,14 +16,14 @@ sources:
     resource: "npm:@savvy-web/tsdown-plugins@2.10.0"
     title: "meta/api-extractor.js gives the second pass selfReferencePaths, mapping the package's export specifiers to its declaration files"
   - id: jsonl-build
-    resource: ../../packages/jsonl/savvy.build.ts
+    resource: ../../packages/jsonl/effected.toml
     title: "The node.d.ts ae-forgotten-export suppression the control emptied"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:53:05Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 0a0ff41c79f10645
+    body: fc7812ddb54a8797
 ---
 
 # A package that names its own root types once showed one warning or none, until the bundler resolved the self-reference to declarations
@@ -60,5 +60,5 @@ the bundler before trusting the gate.
 [^issues]: `packages/images/dist/prod/issues.json`, produced by the bundler
     build, not a file in version control.
 [^tsdown-plugins]: `npm:@savvy-web/tsdown-plugins@2.10.0`, `meta/api-extractor.js`.
-[^jsonl-build]: `packages/jsonl/savvy.build.ts`, the `node.d.ts`
+[^jsonl-build]: `packages/jsonl/effected.toml`, the `node.d.ts`
     `ae-forgotten-export` suppression.

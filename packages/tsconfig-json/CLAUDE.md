@@ -58,10 +58,10 @@ pnpm build --filter @effected/tsconfig-json   # from the repo root
 ```
 
 - Resolution suites run on in-memory fixture trees from `__test__/fixtures.ts`: `@effected/memfs` (a devDependency) seeded from a `Map`, merged with core `Path.layer` — **no platform package, even in tests**. The volume creates real parent directories, so `exists` is directory-true and the file-only divergence above is **observable in tests** rather than hidden; the previous `layerNoop`-over-a-`Map` stub was structurally file-only and masked it. The **discovery** suite's permission-denied case is the same volume with an `exists` fault on a candidate that is genuinely present, so disarming the fault moves the answer. `TsconfigLoaderSync`'s suites pass the handle's node-shaped `sync` port (`MemoryFileSystem.makeSync(seed).sync`) as the consumer's `SyncFileSystem` — it satisfies the interface structurally; the win32 suite reaches the POSIX volume through a two-member spelling shim (`C:\proj` → `/C:/proj`) and nothing more. The production `makeNoop` adapter in `TsconfigLoaderSync.ts` is the facade itself, not a test double.
-- `savvy.build.ts` carries the standard **narrow** suppression `{ messageId: "ae-forgotten-export", pattern: "_base" }`; exactly 3 suppressed entries are expected in `issues.json` (the two error bases plus `JsxConfig_base`). Never widen it, and never run `node savvy.build.ts --target prod` directly.
+- The bundler's default config carries the standard **narrow** suppression `{ messageId: "ae-forgotten-export", pattern: "_base" }`; exactly 3 suppressed entries are expected in `issues.json` (the two error bases plus `JsxConfig_base`). Never widen it, and never PLACEHOLDER_RUN
 
 ## Consumers this API was designed against
 
 - `rspress-plugin-api-extractor`'s tsconfig-parser — the `0.1.0` gate proof.
-- `@savvy-web/bundler`'s tsconfig-resolver.
+- `@effected/bundler`'s tsconfig-resolver.
 - `type-registry-effect` (external; the former `@effected/ts-vfs`) — `TsEnumCodec.encodeCompilerOptions` produces the shape its `TsEnvironment` hands to `@typescript/vfs`.

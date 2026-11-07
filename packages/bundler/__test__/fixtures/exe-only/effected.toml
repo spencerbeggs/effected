@@ -1,0 +1,8 @@
+[package.build]
+meta = false
+
+[package.build.manifest]
+drop = ["dependencies"]
+
+[package.build.exe]
+fileName = "probe-sidecar"

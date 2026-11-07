@@ -2,7 +2,7 @@
 type: Convention
 title: No @effected/* package imports typescript
 description: "@effected/* packages never import the typescript package, at runtime or as import type; version-coupled TypeScript knowledge is owned by tsconfig-json as data tables, and direct TS-API usage stays confined to external consumers until a TypeScript 7.1 JS-compatible API exists."
-status: stable
+status: deprecated
 stale_after: "2027-03-13T00:00:00Z"
 tags:
   - compat
@@ -14,13 +14,15 @@ sources:
     resource: ../../packages/tsconfig-json/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-11-06T15:28:18Z
 integrity:
   generated:
-    body: 25d4881fadbc4ba8
+    body: de5aa0c0da8126af
 ---
 
 # No @effected/* package imports typescript
+
+Deprecated: [no package imports or peers typescript, except the bundler](typescript-stays-in-the-bundler.md) replaces this rule. The text below is the rule as it stood.
 
 No package under `packages/*` imports the `typescript` package, at
 runtime or as an `import type` — `typescript` appears only as a

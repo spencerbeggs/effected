@@ -1,0 +1,8 @@
+# Socket Security project config (https://docs.socket.dev/docs/socket-yml).
+# Test fixtures declare fake dependencies (`a`, `b`, `c`) that resolve to real npm
+# packages when scanned; they are never installed, so Socket must not read them.
+version: 2
+projectIgnorePaths:
+  - "**/__test__/fixtures/**"
+  - "**/__fixtures__/**"
+  - "**/test/fixtures/**"

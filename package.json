@@ -19,13 +19,11 @@
 	},
 	"type": "module",
 	"scripts": {
-		"build": "turbo run build:dev build:prod --log-order=grouped --log-prefix=none",
-		"build:dev": "node savvy.build.ts --target dev",
-		"build:prod": "node savvy.build.ts --target prod",
+		"build": "turbo run build --filter=!docs --log-order=grouped --log-prefix=none",
 		"catalog:check": "tsx lib/scripts/catalog-sync.ts --check",
 		"catalog:sync": "tsx lib/scripts/catalog-sync.ts",
-		"ci:build": "CI=\"true\" turbo run build:dev build:prod --log-order=grouped --output-logs=full --log-prefix=none",
-		"ci:test": "CI=\"true\" turbo run build:prod --filter='@effected/plugin...' --filter=@effected/pnpm-plugin-effected --output-logs=errors-only --log-prefix=none && CI=\"true\" vitest run --passWithNoTests",
+		"ci:build": "CI=\"true\" turbo run build --filter=!docs --log-order=grouped --output-logs=full --log-prefix=none",
+		"ci:test": "CI=\"true\" turbo run build --filter='@effected/plugin...' --filter=@effected/pnpm-plugin-effected --filter=@effected/cli-kit --filter=@effected/config-file --filter=@effected/kit --filter=@effected/commands --output-logs=errors-only --log-prefix=none && CI=\"true\" vitest run --passWithNoTests",
 		"claude": "claude --plugin-dir plugin/builds/claude",
 		"claude:debug": "PLUGINFINITY_DEBUG=1 claude --plugin-dir plugin/builds/claude",
 		"copilot": "copilot --plugin-dir plugin/builds/copilot",
@@ -53,9 +51,15 @@
 		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {
+		"@effect/platform-node": "catalog:effected",
+		"@effected/changesets": "workspace:*",
+		"@effected/plugin": "workspace:*",
+		"@effected/workspaces": "workspace:*",
 		"@okfit/plugin": "^0.5.30",
 		"@savvy-web/silk": "^4.5.7",
-		"@vitest-agent/plugin": "^6.0.6"
+		"@vitest-agent/plugin": "^6.0.6",
+		"effect": "catalog:effected",
+		"tsx": "^4.23.12"
 	},
 	"engines": {
 		"node": ">=24.11.0"

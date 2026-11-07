@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T19:31:57Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: b3269f847a7fb072
+    body: 83b322f9c993c5d9
 ---
 
 # @effected/memfs
@@ -994,8 +994,7 @@ MIT license.
 
 Tests live in `__test__/`, use `@effect/vitest`, and assert with
 `assert.*` — never `expect`, per
-[the testing standards](../conventions/testing-standards.md). Never run
-`node savvy.build.ts --target prod` directly. `savvy.build.ts` carries
+[the testing standards](../conventions/testing-standards.md). The bundler's default config carries
 the narrow `_base` suppression documented in
 [the API Extractor gotcha](../gotchas/api-extractor-forgotten-export-on-class-factories.md)
 — never widen it. `package.json` stays `"private": true`.

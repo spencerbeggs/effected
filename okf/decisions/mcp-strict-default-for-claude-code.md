@@ -6,24 +6,26 @@ status: stable
 tags: [architecture]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-23T22:22:55Z
+  at: 2026-11-06T01:55:28Z
 integrity:
   generated:
-    body: e966e2b28fed6e13
+    body: 73cc9bc2d878daa4
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 066c268c3ba463e9
+    at: 2026-11-06T01:54:11Z
+    content: 9514674ee01e5d89
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-06T01:54:11Z
 ---
 
 # D: strict MCP input default for Claude Code
 
 ## Context
 
-[D2](mcp-strict-input-upstream-first.md) shipped `ToolInputSchema` and
+An earlier decision, D2, shipped `ToolInputSchema` and
 deferred `McpToolkit`'s default strictness to phase 2, gated on a probe:
 would a real agent client ever place its own protocol machinery — a
 protocol version, client info, a progress token, a tool-use id — inside a

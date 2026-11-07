@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/xdg/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T20:19:51Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 11dd44274515026c
+    body: dc1446eb76c1dc8d
 ---
 
 # xdg
@@ -304,12 +304,8 @@ Defects propagate — xdg adds no `catchCause` anywhere.
 
 ## Build
 
-`savvy.build.ts` carries the standard narrow `{ messageId:
-"ae-forgotten-export", pattern: "_base" }` suppression. The workspace
-peers mean xdg needs the `prepare` script — see
-[the package manifest and scaffold convention](../conventions/package-manifest-and-scaffold.md#cross-package-build-dependencies)
-— since the peers link at their built output and must be built before
-xdg's own tests can resolve them in a fresh checkout. Gate on a
+The bundler's default config carries the standard narrow `{ messageId:
+"ae-forgotten-export", pattern: "_base" }` suppression. Gate on a
 zero-warning `dist/prod/issues.json` via `pnpm build --filter
 @effected/xdg`.
 

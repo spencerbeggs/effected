@@ -1,0 +1,19 @@
+# ./node names the root's types through the package's own name; keep that import external in the declarations so
+# node.d.ts refers to the root's JournalWatcher instead of carrying a copy.
+[package.build]
+dtsExternals = ["@effected/jsonl"]
+
+[package.build.meta.tsdoc]
+suppressWarnings = [
+  # The narrow, house-standard suppression for the anonymous heritage types Effect's class factories synthesize
+  # (Schema.Class, TaggedClass, TaggedError, Context.Service). The emitted .d.ts names each base as a module-local
+  # `declare const X_base` whose full shape is inlined into the exported class, so it is genuinely un-nameable and
+  # un-needed by consumers. Scoped to `_base` ONLY: never widen it. An internal type named on a public signature is a
+  # different symbol and stays un-masked.
+  { messageId = "ae-forgotten-export", pattern = "_base" },
+  # The second API Extractor pass resolves ./node's self-referencing "@effected/jsonl" import to the built root
+  # declarations, but still reports every root type it reaches as forgotten from node.d.ts. Scoped to that one entry:
+  # the root entry keeps the full check, and node.ts exports its one class and names nothing of its own on a public
+  # signature.
+  { messageId = "ae-forgotten-export", pattern = 'entry point node\.d\.ts$' },
+]

@@ -1,0 +1,44 @@
+{
+  "generatedAt": "2026-06-21T00:00:00.000Z",
+  "package": "@x/p",
+  "target": "prod",
+  "buildOk": false,
+  "failure": {
+    "name": "ConfigValidationError",
+    "message": "bad config"
+  },
+  "warnings": [
+    {
+      "source": "api-extractor",
+      "level": "warn",
+      "text": "missing release tag",
+      "code": "ae-missing-release-tag",
+      "ciFatal": true,
+      "file": "src/index.ts",
+      "line": 12,
+      "column": 3
+    },
+    {
+      "source": "tsdown",
+      "level": "warn",
+      "text": "heads up"
+    }
+  ],
+  "errors": [
+    {
+      "source": "rolldown",
+      "level": "error",
+      "text": "boom",
+      "file": "src/a.ts",
+      "line": 3
+    }
+  ],
+  "suppressed": [
+    {
+      "source": "tsdown",
+      "level": "warn",
+      "text": "TypeScript Go is experimental.",
+      "code": "TSGO_EXPERIMENTAL"
+    }
+  ]
+}

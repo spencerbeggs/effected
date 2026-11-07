@@ -1,14 +1,17 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, assert, describe, it } from "vitest";
 import type { CatalogMove, StatusRunner, UpgradeResult, UpgradeRunner } from "../lib/scripts/catalog-sync.js";
 import {
 	CHANGESET_PATH,
 	CONFIG_PATH,
 	PLUGIN,
+	PLUGIN_CONFIG,
 	catalogEntries,
 	check,
+	releasePlan,
 	renderChangeset,
 	renderCommitMessage,
 	rippleMismatches,
@@ -42,13 +45,32 @@ function addPublishable(root: string, name: string): void {
 }
 
 /** Output goes nowhere: what the script prints is the CLI's concern, and it leaks through the reporter otherwise. */
-const quiet = { write: () => {} } as const;
+/** A plan read that finds nothing pending. */
+const emptyPlan: StatusRunner = async (outputPath) => {
+	writeFileSync(outputPath, JSON.stringify({ releases: [] }));
+	return { code: 0, stdout: "" };
+};
+
+const quiet = { write: () => {}, status: emptyPlan } as const;
+
+const fixtureWorkspace = (name: string): string =>
+	fileURLToPath(new URL(`../packages/changesets/__test__/fixtures/${name}`, import.meta.url));
+
+/** Asserts `promise` rejects with a message matching `pattern`. */
+async function rejects(promise: Promise<unknown>, pattern: RegExp): Promise<void> {
+	const error = await promise.then(
+		() => undefined,
+		(cause: unknown) => cause,
+	);
+	assert.instanceOf(error, Error);
+	assert.match((error as Error).message, pattern);
+}
 
 /** A repo-shaped temp tree: the config the CLI would rewrite, and a .changeset directory. */
 function makeRoot(config: string): string {
 	const root = mkdtempSync(join(tmpdir(), "catalog-sync-"));
 	roots.push(root);
-	mkdirSync(join(root, "packages/pnpm-plugin-effected"), { recursive: true });
+	mkdirSync(dirname(join(root, CONFIG_PATH)), { recursive: true });
 	mkdirSync(join(root, ".changeset"), { recursive: true });
 	writeFileSync(join(root, CONFIG_PATH), config);
 	return root;
@@ -59,7 +81,7 @@ function runner(rewrite?: string, stdout = ""): UpgradeRunner & { calls: { args:
 	const calls: { args: readonly string[]; cwd: string }[] = [];
 	const fn = async (args: readonly string[], cwd: string): Promise<UpgradeResult> => {
 		calls.push({ args, cwd });
-		if (rewrite !== undefined) writeFileSync(join(cwd, "savvy.build.ts"), rewrite);
+		if (rewrite !== undefined) writeFileSync(join(cwd, PLUGIN_CONFIG), rewrite);
 		return { code: 0, stdout };
 	};
 	return Object.assign(fn, { calls });
@@ -125,7 +147,7 @@ describe("catalog:sync", () => {
 		await sync({ ...quiet, root, run });
 
 		assert.lengthOf(run.calls, 1);
-		assert.deepStrictEqual(run.calls[0]?.args, ["upgrade", "savvy.build.ts", "--yes", "--format", "json"]);
+		assert.deepStrictEqual(run.calls[0]?.args, ["upgrade", PLUGIN_CONFIG, "--yes", "--format", "json"]);
 		assert.strictEqual(run.calls[0]?.cwd, join(root, "packages/pnpm-plugin-effected"));
 	});
 
@@ -160,7 +182,7 @@ describe("catalog:check", () => {
 
 		assert.strictEqual(await check({ ...quiet, root, run }), 0);
 		assert.strictEqual(await check({ ...quiet, root, run: async () => ({ code: 1, stdout: "" }) }), 1);
-		assert.deepStrictEqual(run.calls[0]?.args, ["upgrade", "savvy.build.ts", "--check"]);
+		assert.deepStrictEqual(run.calls[0]?.args, ["upgrade", PLUGIN_CONFIG, "--check"]);
 		assert.strictEqual(readFileSync(join(root, CONFIG_PATH), "utf8"), SYNCED);
 		assert.isFalse(existsSync(join(root, CHANGESET_PATH)));
 	});
@@ -311,7 +333,7 @@ describe("catalog membership gate", () => {
 });
 
 describe("dependency-ripple bumps", () => {
-	/** A `changeset status --output` double: writes the plan the real CLI would. */
+	/** A release-plan double: writes the plan the real read would. */
 	function planRunner(releases: readonly { name: string; newVersion: string; type?: string }[]): StatusRunner {
 		return async (outputPath) => {
 			writeFileSync(outputPath, JSON.stringify({ releases: releases.map((r) => ({ type: "patch", ...r })) }));
@@ -399,20 +421,67 @@ describe("dependency-ripple bumps", () => {
 		assert.include(spec, 'peer: "^0.4.0"');
 	});
 
-	it("a plan that cannot be read is not fatal", async () => {
-		// The CLI's own resolution still covers every directly-bumped package, so
-		// an unreadable plan degrades to the previous behaviour rather than
-		// failing a sync that is otherwise correct.
+	it("fails the check when the plan runner exits non-zero, carrying its reason", async () => {
+		// Every failure of the read is a real fault: no pending changesets is a
+		// successful empty plan. A green gate here would leave ripples unchecked.
 		const root = makeRoot(catalogConfig(["@effected/sbom"]));
 		addPublishable(root, "@effected/sbom");
 
-		const code = await check({
-			...quiet,
-			root,
-			run: async () => ({ code: 0, stdout: "" }),
-			status: async () => ({ code: 1, stdout: "" }),
-		});
+		await rejects(
+			check({
+				...quiet,
+				root,
+				run: async () => ({ code: 0, stdout: "" }),
+				status: async () => ({ code: 1, stdout: "fixed mode is not supported" }),
+			}),
+			/Release plan could not be read: fixed mode is not supported/,
+		);
+	});
 
-		assert.strictEqual(code, 0);
+	it("fails the sync before the CLI writes anything when the plan cannot be read", async () => {
+		const root = makeRoot(catalogConfig(["@effected/sbom"]));
+		addPublishable(root, "@effected/sbom");
+		const run = runner(catalogConfig(["@effected/sbom"]).replace("^0.1.0", "^0.2.0"));
+		const before = readFileSync(join(root, CONFIG_PATH), "utf8");
+
+		await rejects(
+			sync({ ...quiet, root, run, status: async () => ({ code: 1, stdout: "no plan" }) }),
+			/Release plan could not be read: no plan/,
+		);
+
+		assert.deepStrictEqual(run.calls, []);
+		assert.strictEqual(readFileSync(join(root, CONFIG_PATH), "utf8"), before);
+		assert.isFalse(existsSync(join(root, CHANGESET_PATH)));
+	});
+
+	it("fails when a runner reports success but writes no plan", async () => {
+		await rejects(
+			releasePlan(makeRoot(catalogConfig([])), async () => ({ code: 0, stdout: "" })),
+			/Release plan could not be read/,
+		);
+	});
+
+	it("fails when the plan is not JSON", async () => {
+		await rejects(
+			releasePlan(makeRoot(catalogConfig([])), async (outputPath) => {
+				writeFileSync(outputPath, "not json");
+				return { code: 0, stdout: "" };
+			}),
+			/Release plan could not be read/,
+		);
+	});
+
+	it("the default runner plans a real workspace, dropping nothing but none entries", async () => {
+		const plan = await releasePlan(fixtureWorkspace("dev-dependent-none"));
+		assert.deepStrictEqual([...plan], [["a", "1.2.1"]]);
+		const ripple = await releasePlan(fixtureWorkspace("minor-ripple-0x"));
+		assert.deepStrictEqual([...ripple].sort(), [
+			["a", "0.24.0"],
+			["b", "1.0.1"],
+		]);
+	});
+
+	it("the default runner fails with the read's own message", async () => {
+		await rejects(releasePlan(fixtureWorkspace("unknown-package")), /Release plan could not be read: .*names ghost/);
 	});
 });

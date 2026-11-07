@@ -25,15 +25,13 @@
 		"./package.json": "./package.json"
 	},
 	"scripts": {
-		"build:dev": "node savvy.build.ts --target dev",
-		"build:prod": "node savvy.build.ts --target prod",
-		"pnpm:export": "rolldown-pnpm-config export",
-		"pnpm:preview": "rolldown-pnpm-config preview",
-		"pnpm:up": "rolldown-pnpm-config upgrade savvy.build.ts",
+		"build": "effected package build",
+		"pnpm:export": "cd lib/build && rolldown-pnpm-config export",
+		"pnpm:preview": "cd lib/build && rolldown-pnpm-config preview",
+		"pnpm:up": "rolldown-pnpm-config upgrade lib/build/pnpm-config.plugin.ts",
 		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {
-		"@savvy-web/bundler": "^2.7.4",
 		"@types/node": "catalog:build",
 		"rolldown-pnpm-config": "^2.4.2",
 		"typescript": "catalog:build"
@@ -43,8 +41,6 @@
 	},
 	"publishConfig": {
 		"access": "public",
-		"directory": "dist/dev/pkg",
-		"linkDirectory": true,
 		"targets": {
 			"npm": true
 		}

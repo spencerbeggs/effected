@@ -132,7 +132,7 @@ type Load = Effect.Effect<ReadonlyArray<NodeRelease>, InvalidScheduleDateError |
  * `ae-forgotten-export` — *"The symbol NodeResolverShape needs to be exported by
  * the entry point index.d.ts"*, `ciFatal: true` — because the synthesized
  * `NodeResolver_base` then names a symbol no consumer can import. The `_base`
- * suppression in `savvy.build.ts` deliberately does not cover that: it is scoped
+ * suppression in the bundler's defaults deliberately does not cover that: it is scoped
  * to the synthesized bases themselves, so a genuine surface leak still fails the
  * gate. (Measured: deduping takes `dist/prod/issues.json` from 0 warnings to 1.)
  *

@@ -1,0 +1,53 @@
+{
+	"package": "@x/p",
+	"targetGroups": [
+		{
+			"id": "npm",
+			"entries": ["index", "bin/cli"],
+			"passes": [
+				{ "id": "js", "files": [{ "path": "index.js", "bytes": 60 }], "ms": 731 },
+				{ "id": "dts", "files": [{ "path": "index.d.ts", "bytes": 2400, "gzip": 890 }], "ms": 205 }
+			],
+			"warnings": [
+				{
+					"source": "api-extractor",
+					"level": "warn",
+					"text": "missing release tag",
+					"code": "ae-missing-release-tag",
+					"ciFatal": true,
+					"file": "src/index.ts",
+					"line": 12,
+					"column": 3
+				},
+				{ "source": "tsdown", "level": "warn", "text": "heads up" }
+			],
+			"errors": [{ "source": "rolldown", "level": "error", "text": "boom", "file": "src/a.ts", "line": 3 }],
+			"suppressed": [
+				{ "source": "tsdown", "level": "warn", "text": "TypeScript Go is experimental.", "code": "TSGO_EXPERIMENTAL" }
+			],
+			"timings": { "totalMs": 936 }
+		},
+		{
+			"id": "github",
+			"entries": ["index"],
+			"passes": [],
+			"warnings": [
+				{
+					"source": "api-extractor",
+					"level": "warn",
+					"text": "missing release tag",
+					"code": "ae-missing-release-tag",
+					"ciFatal": true,
+					"file": "src/index.ts",
+					"line": 12,
+					"column": 3
+				}
+			],
+			"errors": [],
+			"suppressed": [
+				{ "source": "tsdown", "level": "warn", "text": "TypeScript Go is experimental.", "code": "TSGO_EXPERIMENTAL" }
+			],
+			"timings": { "totalMs": 10 }
+		}
+	]
+}

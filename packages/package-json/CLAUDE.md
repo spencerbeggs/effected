@@ -40,7 +40,7 @@ package roster. Load the concept a task needs:
 - `okf/decisions/format-naming.md`, `okf/conventions/format-package-convention.md`
   — Load when: naming or shaping a formatter static.
 - `okf/gotchas/api-extractor-forgotten-export-on-class-factories.md` — Load
-  when: a build reports `ae-forgotten-export`; `savvy.build.ts` carries a
+  when: a build reports `ae-forgotten-export`; the bundler's default config carries a
   **narrow** `_base` suppression — never widen it.
 
 `Package.resolve` expands `catalog:` / `workspace:` specifiers through the
@@ -70,5 +70,4 @@ pnpm build --filter @effected/package-json     # from the repo root
 ```
 
 Tests live in `__test__/` (`integration/*.int.test.ts` for `PackageJsonFile`),
-use `@effect/vitest`, and assert with `assert.*` — **never `expect`**. Never
-run `node savvy.build.ts --target prod` directly.
+use `@effect/vitest`, and assert with `assert.*` — **never `expect`**.

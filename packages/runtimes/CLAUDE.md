@@ -64,8 +64,6 @@ pnpm vitest run packages/runtimes     # from the repo root
 pnpm build --filter @effected/runtimes
 ```
 
-Never run `node savvy.build.ts --target prod` directly — it skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate.
-
 ## Regenerating the bundled defaults
 
 `pnpm --filter @effected/runtimes exec tsx lib/scripts/generate-defaults.ts` refreshes the three offline snapshots in `src/internal/defaults/`. It fetches the live feeds through the package's own `internal/feeds.ts` layers — the same tag-strip/skip/parse rules the library uses at runtime, never duplicated — and splices only each exported const's initializer byte-span via `oxc-parser`, leaving headers, imports and TSDoc untouched (the `@effected/spdx` generate-data pattern).

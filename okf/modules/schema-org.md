@@ -8,10 +8,10 @@ resource: ../../packages/schema-org
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 2142a75997af3fbc
+    body: 48b32786e73df4ba
 ---
 
 # @effected/schema-org
@@ -346,7 +346,7 @@ Each is a cut with a reason, not an oversight:
 
 ## Build
 
-Class factories written inline, with `savvy.build.ts` suppressing
+Class factories written inline, with the bundler's default config suppressing
 `ae-forgotten-export` narrowly on the `_base` pattern — never widened. The
 `@public` shared field records are genuine surface, documented as such
 rather than suppressed. Two entrypoints means two `exports` keys and

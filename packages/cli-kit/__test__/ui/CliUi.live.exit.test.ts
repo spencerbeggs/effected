@@ -1,7 +1,6 @@
 // Real-process check of okf/decisions/live-tick-is-a-scoped-schedule.md: a live view's tick is an Effect schedule forked into the run's scope, so closing the
 // scope interrupts it and the process exits at once. A tick left on a ref'd timer would keep the child alive.
-// Runs the package sources through Node's type stripping (fixtures/register-ts.mjs); see CliStdin.test.ts for the
-// preconditions (a built @effected/env, type-strip-clean sources).
+// Runs the package sources under tsx (fixtures/register-ts.mjs).
 import { join } from "node:path";
 import { NodeServices } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";

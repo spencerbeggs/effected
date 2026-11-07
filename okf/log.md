@@ -1,5 +1,114 @@
 # Log
 
+## 2026-11-07
+
+* Updated The kit builds itself with the bundler running from source under tsx
+* Updated effected.toml: the build config's tables, defaults and discovery
+
+## 2026-11-06
+
+* Updated "Wait for the kit" leaves raw spawns and duplicated regex behind
+* Updated @effected/mcp-kit
+* Updated @effected/workspaces discovery and detection
+* Updated @effected/workspaces peer-dependency checking
+* Updated An upgrade-ledger entry is one change, selected by the versions a consumer's upgrade crosses
+* Updated D: strict MCP input default for Claude Code
+* Updated Design a GitHub Action repository on the kit
+* Updated FORCE_COLOR is honoured, with Node's getColorDepth precedence
+* Updated One tracking package versions both plugin builds
+* Updated Regenerate the GitHub Action template repository
+* Updated Require the consolidated core's contract in R; never re-implement or re-declare it
+* Updated Schemastore retiers from boundary to integrated for a direct ajv dependency
+* Updated Strict MCP input is reported by core; McpToolkit appends the accepted params instead of pre-checking
+* Updated The ajv engine lives in the effected tool, and the library returns to boundary tier
+* Updated The effect catalog takes caret ranges on the stable line
+* Updated The libsodium sealed box stays in @effected/github until a second consumer appears
+* Updated The schemastore commands live in the effected tool, and the companion package is removed
+* Added @effected/bundler
+* Added @effected/changesets
+* Updated effected
+* Added Build logs are two append-only journals at the workspace root, derived from a cached per-package issues.json
+* Added No @effected/* package imports or peers typescript, except @effected/bundler
+* Updated No @effected/* package imports typescript
+* Added The kit builds itself with the bundler running from source under tsx
+* Added The kit has one build target, and workspace links point at package roots
+* Added effected.toml is the only build config, and code enters through two data keys
+* Updated tsconfig-json
+* Updated Close a catalog membership gap
+* Updated The catalog:sync / catalog:check CLI
+* Updated Ghost workspace
+* Updated scratchpad
+* Updated pnpm-plugin-effected
+* Updated A turbo cache hit reads exactly like a fresh build in the log
+* Updated Build through turbo
+* Updated Running the bundler script directly fakes a clean build gate
+* Updated State which count moved and why, whenever a gate's number changes
+* Updated workspace
+* Updated @effected/commands
+* Updated @effected/images
+* Updated @effected/jsonl
+* Updated @effected/jwt
+* Updated @effected/memfs
+* Updated @effected/schema-org
+* Updated @effected/schemastore
+* Updated @effected/templates
+* Updated @effected/workspaces/testing: the repo-shape checks
+* Updated @effected/workspaces: monorepo tooling
+* Updated @effected/yaml
+* Updated A package that names its own root types once showed one warning or none, until the bundler resolved the self-reference to declarations
+* Updated Add a workspace package
+* Updated Advance the effect pin
+* Updated Agents never run pnpm:up, pnpm:preview, or pnpm:export
+* Updated Consumers see one catalog, effected, folded by the plugin's hook from split declarations
+* Updated Dependency policy: R1-R4
+* Updated Every package carries the same manifest shape and file set
+* Updated Library tier (pure / boundary / integrated)
+* Updated New ae-forgotten-export errors after a bundler bump are TypeScript 7.1 emitting typeof a module local, not a bundler regression
+* Updated PackedInstall packs the prod npm directory by default
+* Updated Peer-dependency discipline
+* Updated Read publishability from publishConfig.access, never from private
+* Updated Testing standards
+* Updated The effect catalog holds the Effect family to one minor with tilde ranges
+* Updated The effect family is pinned graph-wide by overrides derived from the catalog
+* Updated The effected catalog holds next-release versions, and the publish order follows
+* Updated The effected catalog literal
+* Updated The plugin declares one catalog, effected, and pins only the Effect family by include pattern
+* Updated The ui declarations reference the root's types by the package's own name
+* Updated There is no Effect v3 catalog and no camelCase catalog alias
+* Updated ae-forgotten-export on _base looks like a real export bug; it is a synthesized, un-nameable symbol
+* Updated ai-plugin
+* Updated app
+* Updated config-file
+* Updated glob
+* Updated jsonc
+* Updated lockfiles
+* Updated npm
+* Updated package-json
+* Updated pnpm:export keeps a catalog the plugin no longer declares
+* Updated runtimes
+* Updated semver
+* Updated store
+* Updated toml
+* Updated walker
+* Updated website
+* Updated xdg
+* Updated The catalog sync moved the effect catalog onto Effect 4.1 under a kit built on 4.0
+* Updated The effect catalog locks every entry to an exact version, held by overrides
+* Updated The plugin's catalog paired 4.0.3 satellites with core effect 4.0.2
+* Added The build artifacts: dist/prod, targets.json, issues.json and the journals
+* Added The effected build commands: package build and action build
+* Added effected.toml: the build config's tables, defaults and discovery
+* Updated @effected/cli
+* Updated @effected/engine
+* Updated @effected/mcp
+* Updated @effected/plugin
+* Updated Keep the tree resolved to one effect copy
+* Updated Releases are changeset-driven and scope-agnostic
+* Updated The monorepo holds one tool, effected, beside its libraries
+* Updated The numeric-enum codec is data, not a typescript dependency
+* Updated spencerbeggs/tsdoctor
+* Updated Only @effected/bundler imports typescript, and only it and the tool's packages peer it
+
 ## 2026-11-05
 
 * Updated @effected/source

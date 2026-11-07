@@ -10,7 +10,7 @@ tags:
   - architecture
 sources:
   - id: savvy-build
-    resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
+    resource: ../../packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts
     title: "The one declared effected catalog, overridesFromCatalogs and the authored overrides"
   - id: pnpmfile
     resource: ../../packages/pnpm-plugin-effected/src/pnpmfile.ts
@@ -23,10 +23,10 @@ sources:
     title: "Membership, the minor-locked Effect-family entries, the derived pins and the one consumer catalog"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T16:44:32Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: b075c772f2aa8d96
+    body: b074395ab7480a1d
 ---
 
 # pnpm-plugin-effected
@@ -52,7 +52,7 @@ A consumer peer written as `catalog:effected` publishes the catalog's install ra
 
 ## What it declares
 
-`savvy.build.ts` **declares** one catalog through `rolldown-pnpm-config`'s `PnpmConfigPlugin`, `effected`, and its entries' `peer` fields emit an `effected:peers` twin.[^savvy-build] Each entry carries a `range`, a `peer` and a `strategy`, and the literal stays inline at the call site, because the `upgrade` CLI finds it by statically walking that argument. See [the effected catalog literal](../models/effected-catalog-literal.md) for its shape.
+`lib/build/pnpm-config.plugin.ts` **declares** one catalog through `rolldown-pnpm-config`'s `PnpmConfigPlugin`, `effected`, and its entries' `peer` fields emit an `effected:peers` twin.[^savvy-build] Each entry carries a `range`, a `peer` and a `strategy`, and the literal stays inline at the call site, because the `upgrade` CLI finds it by statically walking that argument. See [the effected catalog literal](../models/effected-catalog-literal.md) for its shape.
 
 The catalog holds two halves, and the test reads each one by name prefix.[^catalog-test] The Effect family is pinned graph-wide and the kit is not; the override directive's `include` patterns draw that line inside the one catalog (see [the derived family pins](#the-derived-family-pins-and-the-scoped-platform-node-shared-overrides)).
 
@@ -90,15 +90,15 @@ Each pins the shared package to its parent's own version. A tool built on a rele
 
 ## Maintainer workflows
 
-Three root scripts drive catalog maintenance and are **user-run only**. They rewrite this package's `savvy.build.ts` and the root `pnpm-workspace.yaml`, which moves resolution on the next install. `pnpm pnpm:up` runs the `upgrade` CLI interactively over `savvy.build.ts` and recomputes each peer floor, `pnpm pnpm:export` writes the catalogs and overrides into `pnpm-workspace.yaml`, and `pnpm pnpm:preview` shows the result without writing. An Effect minor goes through [advance the effect pin](../runbooks/advance-the-effect-pin.md), which edits the tilde ranges, re-pins `.repos/effect` in the same commit, and releases the kit with it.
+Three root scripts drive catalog maintenance and are **user-run only**. They rewrite this package's `lib/build/pnpm-config.plugin.ts` and the root `pnpm-workspace.yaml`, which moves resolution on the next install. `pnpm pnpm:up` runs the `upgrade` CLI interactively over `lib/build/pnpm-config.plugin.ts` and recomputes each peer floor, `pnpm pnpm:export` writes the catalogs and overrides into `pnpm-workspace.yaml`, and `pnpm pnpm:preview` shows the result without writing. An Effect minor goes through [advance the effect pin](../runbooks/advance-the-effect-pin.md), which edits the tilde ranges, re-pins `.repos/effect` in the same commit, and releases the kit with it.
 
-The two `catalog:` scripts are a different class, and **agents may run them**: `pnpm catalog:sync` and `pnpm catalog:check` touch only `savvy.build.ts` and one fixed-name changeset, and CI runs them on every pull request to `main` and to `changeset-release/main`. See [the catalog:sync / catalog:check CLI](../interfaces/catalog-sync-cli.md). Under a tilde, the sync's `upgrade --yes` can move the Effect family to a new patch but never to a new minor.
+The two `catalog:` scripts are a different class, and **agents may run them**: `pnpm catalog:sync` and `pnpm catalog:check` touch only `lib/build/pnpm-config.plugin.ts` and one fixed-name changeset, and CI runs them on every pull request to `main` and to `changeset-release/main`. See [the catalog:sync / catalog:check CLI](../interfaces/catalog-sync-cli.md). Under a tilde, the sync's `upgrade --yes` can move the Effect family to a new patch but never to a new minor.
 
 ## Relationship to the peer discipline
 
 These catalogs are the mechanism behind the kit's peer-dependency discipline. The root `pnpm-workspace.yaml` sets exactly one resolver-relevant key, `autoInstallPeers: true`: no `dedupePeerDependents`, no `dedupeDirectDeps`, no `.npmrc`. This package declares **no** `effect` devDependency, and that absence is deliberate, because it ships and tests no `effect`-importing code. The devDependency it once carried steered the resolver to bind the bundler's `@effected/*` peers to the workspace's `effect`. Once the build toolchain carried its own `effect`, that steering inverted and leaked the workspace's copy into the toolchain's peers. Do not reintroduce it.
 
-[^savvy-build]: `packages/pnpm-plugin-effected/savvy.build.ts`
+[^savvy-build]: `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts`
 [^pnpmfile]: `packages/pnpm-plugin-effected/src/pnpmfile.ts`
 [^index]: `packages/pnpm-plugin-effected/src/index.ts`
 [^catalog-test]: `packages/pnpm-plugin-effected/__test__/catalog.test.ts`

@@ -9,17 +9,17 @@ tags:
   - bundle
 sources:
   - id: schemastore-build
-    resource: ../../packages/schemastore/savvy.build.ts
+    resource: ../../packages/schemastore/package.json
   - id: config-file-package-json
     resource: ../../packages/config-file/package.json
   - id: lockfiles-src
     resource: ../../packages/lockfiles/src
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T06:55:47Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 1c5029d4a1993911
+    body: 0668dc70d1f8059f
 ---
 
 # Dependency policy: R1-R4
@@ -111,8 +111,7 @@ decisions — a package whose platform-specific half is tier 3 and whose
 core logic is tier 2 should be split so the tier-2 half's consumers do
 not pay for a tier-3 install they never asked for.
 
-[^schemastore-build]: `packages/schemastore/savvy.build.ts` — the build
-    configuration for the one package retiered after publishing, first
+[^schemastore-build]: `packages/schemastore/package.json` — the manifest of the one package retiered after publishing, first
     to integrated and then back to boundary.
 [^config-file-package-json]: `packages/config-file/package.json` —
     declares no runtime dependency outside `effect` and `@effected/*`

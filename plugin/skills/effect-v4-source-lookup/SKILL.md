@@ -378,17 +378,16 @@ what the probe is *about* before picking:
 
 | the probe's subject | venue |
 | --- | --- |
-| `effect` itself, or a **published/built** kit package | the scratchpad. Bare `@effected/<pkg>` imports resolve to that package's `dist/dev` build (verified: `scratchpad/node_modules/@effected/yaml` → `packages/yaml/dist/dev/pkg`), which is the honest artifact-shaped answer. |
+| `effect` itself, or a **published/built** kit package | the scratchpad. Bare `@effected/<pkg>` imports resolve to that package's `src/` through the workspace link, and deep-importing `dist/prod/npm/pkg/index.js` is the artifact mode for the built answer. |
 | the package's **OWN uncommitted `src/`** | **the package root**, per precondition 3 — a probe file at `packages/<pkg>/probe.ts` importing `./src/…` relatively. |
 
-The second row is the one agents get wrong, and the failure is silent: the
-scratchpad resolves `dist/dev`, so a probe there measures the **last build**,
-not your edit, and reports the old behavior with total confidence — the exact
-"resolves to recollection" failure the ladder exists to prevent. You can force
-the scratchpad to see the edit with `pnpm build --filter @effected/<pkg>`
-first, and that is the right move when you also want to know the *built
-artifact* behaves that way; it is the wrong move when you are iterating,
-because every edit costs a build and a forgotten one is undetectable.
+The second row is the one agents get wrong: the scratchpad
+sees committed and uncommitted `src/` alike through the link, but it carries
+its own config and tsconfig, so a probe there does not exercise the package's
+own `tsconfig.json`, `effected.toml` or test setup. Use the package root when
+the answer depends on those; build with `pnpm build --filter @effected/<pkg>`
+and use artifact mode when you want to know the *built artifact* behaves that
+way.
 
 Two riders on the package-root form, both learned by leaving mess behind:
 

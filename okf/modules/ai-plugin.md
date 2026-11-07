@@ -19,10 +19,10 @@ sources:
     resource: "npm:pluginfinity"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T06:55:47Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: acab99d4f051c602
+    body: cb3c10b45c7f5e40
 ---
 
 # ai-plugin
@@ -88,10 +88,9 @@ ships to both hosts, so test fixtures for the hook live under
 ## Building
 
 `pnpm build --filter @effected/ai-plugins` runs `pluginfinity build`,
-which rewrites both builds from the source. Both `build:dev` and
-`build:prod` run it, so a CI or release build regenerates `builds/`
-before the release bumps the manifests. `plugin/turbo.json` sets both
-tasks to `cache: false` with `builds/**` as their outputs, because a
+which rewrites both builds from the source. Its `build` task runs it, so a CI or release build regenerates `builds/`
+before the release bumps the manifests. `plugin/turbo.json` sets the
+task to `cache: false` with `builds/**` as their outputs, because a
 turbo cache hit would replay outputs over every file in
 `builds/`.[^turbo-json] Biome and markdownlint skip `plugin/builds/`.
 
@@ -337,8 +336,8 @@ promoted to end users only when the maintainer is ready.
     `"pluginfinity": "^0.3.0"` as its only devDependency.
 [^claude-plugin-json]: `plugin/builds/claude/.claude-plugin/plugin.json` —
     `name: "effected"`.
-[^turbo-json]: `plugin/turbo.json` — `build:dev` and `build:prod` each
-    have `cache: false` and `outputs: ["builds/**"]`.
+[^turbo-json]: `plugin/turbo.json` — `build` has
+    `cache: false` and `outputs: ["builds/**"]`.
 [^pluginfinity-config]: `plugin/pluginfinity.config.ts` — `hooks.SessionStart`
     names `hooks/session-start/orientation.sh`, and `copilot: true`
     carries no override.

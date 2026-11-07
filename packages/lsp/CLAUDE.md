@@ -119,9 +119,5 @@ each flag pins.
 
 ```bash
 pnpm vitest run --project @effected/lsp   # from the repo root
-pnpm build --filter @effected/lsp         # dev + prod, from the repo root
+pnpm build --filter @effected/lsp   # from the repo root
 ```
-
-Never run `node savvy.build.ts --target prod` directly: it skips
-`build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` that
-looks exactly like a clean gate.

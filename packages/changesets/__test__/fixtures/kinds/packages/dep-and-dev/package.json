@@ -1,0 +1,10 @@
+{
+  "name": "dep-and-dev",
+  "version": "1.0.0",
+  "dependencies": {
+    "a": "workspace:*"
+  },
+  "devDependencies": {
+    "a": "workspace:*"
+  }
+}

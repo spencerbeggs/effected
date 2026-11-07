@@ -43,11 +43,11 @@ The `__test__/serializer.test.ts` fixture is mandatory and includes a **positive
 
 ```bash
 pnpm vitest run packages/schema-org        # this package's tests
-pnpm build --filter @effected/schema-org   # dev + prod, from the repo root
+pnpm build --filter @effected/schema-org   # from the repo root
 ```
 
 Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*` — **never `expect`**.
 
-Never run `node savvy.build.ts --target prod` directly: it skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate. A clean build log does not prove a build ran either — a turbo cache hit replays the previous output, so check `dist/prod/issues.json`'s `generatedAt` postdates your last edit.
+A clean build log does not prove a build ran either — a turbo cache hit replays the previous output, so check `dist/prod/issues.json`'s `generatedAt` postdates your last edit.
 
-Inline class factories synthesize `_base` heritage symbols; `savvy.build.ts` suppresses `ae-forgotten-export` narrowly on that pattern. Never widen it — an internal type named on a `@public` signature is genuine surface and must be exported or inlined.
+Inline class factories synthesize `_base` heritage symbols; the bundler's default config suppresses `ae-forgotten-export` narrowly on that pattern. Never widen it — an internal type named on a `@public` signature is genuine surface and must be exported or inlined.

@@ -3,15 +3,19 @@
  *
  * The CLI is the only writer. `rolldown-pnpm-config upgrade --yes` resolves every
  * `source: "workspace"` entry against the local workspace and rewrites the literal in
- * `savvy.build.ts`; this script decides whether that rewrite earns a changeset. Builds
- * never write — an earlier revision of the seam rewrote the config from the build's
- * freeze path, which made a developer's `build:dev` and every CI build mutate the repo.
+ * `lib/build/pnpm-config.plugin.ts`; this script decides whether that rewrite earns a changeset.
+ * Builds never write — an earlier revision of the seam rewrote the config from the build's
+ * freeze path, which made a developer's build and every CI build mutate the repo.
  */
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import { ReleasePlan as ChangesetsPlan } from "@effected/changesets";
+import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
+import { Effect, Layer } from "effect";
 
 /** One upgrade CLI invocation: its exit code and whatever it wrote to stdout. */
 export interface UpgradeResult {
@@ -28,7 +32,7 @@ export interface SyncOptions {
 	readonly root?: string;
 	/** Override the upgrade invocation. Defaults to the real CLI. */
 	readonly run?: UpgradeRunner;
-	/** Override the `changeset status` invocation. Defaults to the real CLI. */
+	/** Override the release-plan read. Defaults to `@effected/changesets`. */
 	readonly status?: StatusRunner;
 	/** Where progress and gate output goes. Defaults to stdout; tests pass a sink. */
 	readonly write?: (text: string) => void;
@@ -41,8 +45,11 @@ const defaultWrite = (text: string): void => {
 /** The package whose build config carries the catalog, and which the changeset bumps. */
 export const PLUGIN = "@effected/pnpm-plugin-effected";
 
+/** The config file the CLI rewrites, relative to the plugin package. */
+export const PLUGIN_CONFIG = "lib/build/pnpm-config.plugin.ts";
+
 /** The config file the CLI rewrites, relative to the repository root. */
-export const CONFIG_PATH = "packages/pnpm-plugin-effected/savvy.build.ts";
+export const CONFIG_PATH = `packages/pnpm-plugin-effected/${PLUGIN_CONFIG}`;
 
 /** Fixed name: repeated runs overwrite one changeset rather than accumulating many. */
 export const CHANGESET_PATH = ".changeset/catalog-sync.md";
@@ -248,12 +255,12 @@ const MEMBERSHIP_CATALOG = "effected";
  * The `@effected/*` names a catalog literal declares.
  *
  * @remarks
- * Reads `savvy.build.ts` as SOURCE TEXT, the same way the upgrade CLI does,
+ * Reads the plugin module as SOURCE TEXT, the same way the upgrade CLI does,
  * and for the same reason: the literal must stay inline at the
  * `PnpmConfigPlugin(...)` call site or the CLI's static walk cannot find it.
  * Hoisting it into an exported `const` would make it importable here and
- * invisible to the rewriter, and importing `savvy.build.ts` would run the
- * bundler.
+ * invisible to the rewriter, and importing the module would run the plugin
+ * factory.
  */
 /**
  * The index of the `}` closing the `{` at or after `from`, by depth scan.
@@ -384,45 +391,51 @@ export function membershipFailure(missing: readonly string[]): string {
 // the moment the release branch bumps it — reliably, on the one branch where
 // the catalog matters most (effected#542).
 //
-// `changeset status --output` already computes the true plan, ripples
-// included, so this asks it rather than reimplementing changesets' dependency
-// resolution.
+// `@effected/changesets` computes the true plan, ripples included, and its
+// tests hold it to `@changesets/get-release-plan`, so this asks it rather than
+// reimplementing changesets' dependency resolution.
 
 /** One package's next release version, as changesets computes it. */
 export type ReleasePlan = ReadonlyMap<string, string>;
 
-/** Runs `changeset status --output`. Injectable so tests need no changesets CLI. */
+/**
+ * Writes the release plan to `outputPath` as `{ releases: [{ name, type, newVersion }] }`.
+ * A non-zero `code` means no plan, with the reason in `stdout`. Injectable so
+ * tests need no workspace to plan.
+ */
 export type StatusRunner = (outputPath: string, cwd: string) => Promise<UpgradeResult>;
 
 const defaultStatusRunner: StatusRunner = (outputPath, cwd) =>
-	new Promise((resolve, reject) => {
-		const child = spawn("pnpm", ["exec", "changeset", "status", `--output=${outputPath}`], {
-			cwd,
-			stdio: ["ignore", "pipe", "ignore"],
-		});
-		let stdout = "";
-		child.stdout.setEncoding("utf8");
-		child.stdout.on("data", (chunk: string) => {
-			stdout += chunk;
-		});
-		child.on("error", reject);
-		child.on("close", (code) => resolve({ code: code ?? 1, stdout }));
-	});
+	ChangesetsPlan.read(cwd).pipe(
+		Effect.map((plan) => {
+			const releases = plan.releases.map(({ name, type, newVersion }) => ({ name, type, newVersion }));
+			writeFileSync(outputPath, JSON.stringify({ releases }));
+			return { code: 0, stdout: "" };
+		}),
+		Effect.catch((error) => Effect.succeed({ code: 1, stdout: error.message })),
+		Effect.provide(
+			WorkspaceDiscovery.layer({ cwd }).pipe(
+				Layer.provide(WorkspaceRoot.layer),
+				Layer.provideMerge(Layer.merge(NodeFileSystem.layer, NodePath.layer)),
+			),
+		),
+		Effect.runPromise,
+	);
 
 /**
  * Every package changesets would release, and the version it would get.
  *
  * @remarks
- * Empty when there are no pending changesets — `changeset status` exits
- * non-zero in that case, which is not an error here: no changesets means no
- * ripples, so there is nothing for this to contribute.
+ * Empty when there are no pending changesets: no changesets means no ripples.
+ * Every failure of the read is a real fault, so it rejects rather than answer
+ * an empty plan, which would pass the gate with ripples unchecked.
  */
 export async function releasePlan(root: string, run: StatusRunner = defaultStatusRunner): Promise<ReleasePlan> {
 	const dir = mkdtempSync(join(tmpdir(), "catalog-plan-"));
 	const outputPath = join(dir, "status.json");
 	try {
-		await run(outputPath, root);
-		if (!existsSync(outputPath)) return new Map();
+		const { code, stdout } = await run(outputPath, root);
+		if (code !== 0) throw new Error(stdout === "" ? `the read exited ${code}` : stdout);
 		const doc = JSON.parse(readFileSync(outputPath, "utf8")) as {
 			releases?: { name: string; newVersion: string; type: string }[];
 		};
@@ -433,10 +446,8 @@ export async function releasePlan(root: string, run: StatusRunner = defaultStatu
 			if (release.type !== "none") plan.set(release.name, release.newVersion);
 		}
 		return plan;
-	} catch {
-		// A plan this cannot read is not worth failing a sync over; the CLI's own
-		// resolution still covers every directly-bumped package.
-		return new Map();
+	} catch (error) {
+		throw new Error(`Release plan could not be read: ${error instanceof Error ? error.message : String(error)}`);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
@@ -511,9 +522,13 @@ export async function sync(options: SyncOptions = {}): Promise<boolean> {
 	const missing = missingFromCatalog(root);
 	if (missing.length > 0) throw new Error(membershipFailure(missing));
 
+	// Read first: the CLI writes the config, and a plan that cannot be read must
+	// fail the run before anything has changed.
+	const plan = await releasePlan(root, options.status);
+
 	const before = readConfig(root);
 	const { code, stdout } = await run(
-		["upgrade", "savvy.build.ts", "--yes", "--format", "json"],
+		["upgrade", PLUGIN_CONFIG, "--yes", "--format", "json"],
 		join(root, "packages/pnpm-plugin-effected"),
 	);
 	if (code !== 0) throw new Error(`rolldown-pnpm-config upgrade --yes exited ${code}`);
@@ -525,7 +540,7 @@ export async function sync(options: SyncOptions = {}): Promise<boolean> {
 
 	// The CLI cannot see a package bumped only as a dependency ripple, so ask
 	// changesets for the real plan and close the gap it leaves.
-	const ripples = rippleMismatches(root, await releasePlan(root, options.status));
+	const ripples = rippleMismatches(root, plan);
 	applyRipples(root, ripples);
 	for (const ripple of ripples) {
 		write(`  effected.${ripple.pkg}  ${ripple.from} -> ${ripple.to}  (ripple)\n`);
@@ -555,7 +570,7 @@ export async function check(options: SyncOptions = {}): Promise<number> {
 	const run = options.run ?? defaultRunner;
 	const write = options.write ?? defaultWrite;
 	const { code, stdout } = await run(
-		["upgrade", "savvy.build.ts", "--check"],
+		["upgrade", PLUGIN_CONFIG, "--check"],
 		join(root, "packages/pnpm-plugin-effected"),
 	);
 	if (stdout !== "") write(stdout);
@@ -587,18 +602,18 @@ export async function check(options: SyncOptions = {}): Promise<number> {
 }
 
 if (import.meta.main) {
-	if (process.argv.includes("--check")) {
-		// Propagate the gate's verdict: non-zero is drift, and the caller is a CI gate.
-		process.exitCode = await check();
-	} else {
-		try {
+	try {
+		if (process.argv.includes("--check")) {
+			// Propagate the gate's verdict: non-zero is drift, and the caller is a CI gate.
+			process.exitCode = await check();
+		} else {
 			const changed = await sync();
 			console.log(changed ? `Catalog synced; wrote ${CHANGESET_PATH}` : "Catalog already in sync; nothing written");
-		} catch (error) {
-			// A membership gap is an actionable instruction, not a crash. A stack trace
-			// buries the one line telling the reader which package to add and where.
-			process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-			process.exitCode = 1;
 		}
+	} catch (error) {
+		// A membership gap or an unreadable plan is an actionable instruction, not a
+		// crash. A stack trace buries the one line telling the reader what to fix.
+		process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+		process.exitCode = 1;
 	}
 }

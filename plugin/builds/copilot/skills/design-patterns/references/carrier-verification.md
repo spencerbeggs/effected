@@ -484,11 +484,11 @@ needs no vitest wrapper. Manager availability needs no gate of its own:
 
 **The pull-request test job must run the prod build before the
 packed-install tests.** `PackedInstall` packs `dist/prod/npm/pkg`, and a
-vitest setup or a reusable workflow's test job usually builds only
-`dist/dev`. A plain skip gate then skips in CI for ever and the suite stays
+vitest setup or a reusable workflow's test job usually builds nothing,
+because workspace links resolve to `src/`. A plain skip gate then skips in CI for ever and the suite stays
 green having proven nothing (okfit's first version would have done exactly
 that). That is why the gate fails under `CI` rather than skipping: add the
-prod build (`build:prod`, or `pnpm build` of the carrier's closure) as a step
+prod build (`pnpm build` of the carrier's closure) as a step
 before the test step, and the fail branch can never fire.
 
 ### Driving a bin with input

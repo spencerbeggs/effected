@@ -4,8 +4,8 @@
 // file and holds the lock for a while, so every other contender must wait.
 import { appendFileSync } from "node:fs";
 import { Result } from "effect";
-import { RunOnce } from "../../../dist/dev/pkg/index.js";
-import { nodeRunOnceHost } from "../../../dist/dev/pkg/node-sync.js";
+import { RunOnce } from "../../../dist/prod/npm/pkg/index.js";
+import { nodeRunOnceHost } from "../../../dist/prod/npm/pkg/node-sync.js";
 
 const [dir, key, counter] = process.argv.slice(2);
 const result = RunOnce.runSync({ dir, key, pollMs: 20 }, nodeRunOnceHost, () => {

@@ -14,7 +14,7 @@ export interface PnpmConfig {
 }
 
 /**
- * `savvy.build.ts` declares one catalog, `effected`, and its `:peers` twin. The
+ * `lib/build/pnpm-config.plugin.ts` declares one catalog, `effected`, and its `:peers` twin. The
  * twin serves this repo's own published peer floors, through the root
  * `pnpm-workspace.yaml` that `pnpm:export` writes; a consumer never needs it,
  * since its packed peer takes the `effected` range (`pnpm pack` runs no hook),

@@ -4,28 +4,28 @@ title: "ae-forgotten-export on _base looks like a real export bug; it is a synth
 description: API Extractor reports ae-forgotten-export on the anonymous heritage base an Effect class factory synthesizes; the fix is a narrow, logged suppression, never a hand-written base export.
 status: stable
 stale_after: "2027-03-13T00:00:00Z"
-resource: ../../packages/config-file/savvy.build.ts
+resource: ../../packages/config-file/effected.toml
 tags:
   - ci
   - dx
 sources:
   - id: config-file-build
-    resource: ../../packages/config-file/savvy.build.ts
+    resource: ../../packages/config-file/effected.toml
   - id: config-file-md
     resource: ../../packages/config-file/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-25T19:59:29Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 6b0ff2c617021f7f
+    body: bd99439f958180dc
 ---
 
 # ae-forgotten-export on _base looks like a real export bug; it is a synthesized, un-nameable symbol
 
 ## What a reader sees
 
-A package build using `@savvy-web/bundler`'s API Extractor pass fails
+A package build using `@effected/bundler`'s API Extractor pass fails
 CI-fatally with `ae-forgotten-export` naming a symbol like
 `ConfigFile_base` or `SemVer_base` — a name that appears nowhere in the
 package's source. The diagnostic reads exactly like every other
@@ -52,17 +52,15 @@ nothing nameable to export.
 
 House policy is to write the class factory inline — no split-out base
 const, no hand-written annotation trying to name the anonymous type —
-and suppress the synthesized-base warning narrowly in the package's
-`savvy.build.ts`:
+and let the bundler's default suppression narrowly cover the synthesized-base
+warning:
 
-```typescript
-tsdoc: {
-  suppressWarnings: [{ messageId: "ae-forgotten-export", pattern: "_base" }],
-},
+```toml
+suppressWarnings = [{ messageId = "ae-forgotten-export", pattern = "_base" }]
 ```
 
-`@effected/config-file`'s `savvy.build.ts` carries exactly this
-suppression.[^config-file-build] The suppression is scoped to the
+A package's `effected.toml` that sets `suppressWarnings` replaces the default, so it restates this rule, as
+`@effected/config-file`'s does.[^config-file-build] The suppression is scoped to the
 `_base` pattern only: it still shows up in the build's `issues.json`
 under the `suppressed` bucket rather than disappearing silently, and it
 must never be widened. An internal type named on a `@public` method or
@@ -79,16 +77,15 @@ suppressed — see
 
 ## The check
 
-Confirm a `savvy.build.ts` diagnostic names a `*_base` symbol before
+Confirm a build diagnostic names a `*_base` symbol before
 reaching for the suppression, and confirm the package's `issues.json`
 still lists it in `suppressed` (not silently absent) after adding the
 entry — a suppression that vanishes the diagnostic from the report
 entirely, rather than moving it to the suppressed bucket, is being
 applied more broadly than the narrow pattern allows.
 
-[^config-file-build]: `packages/config-file/savvy.build.ts:7` —
-    `suppressWarnings: [{ messageId: "ae-forgotten-export", pattern:
-    "_base" }]`.
+[^config-file-build]: `packages/config-file/effected.toml` — the
+    `suppressWarnings` list's `_base` entry.
 [^config-file-md]: `packages/config-file/CLAUDE.md` §"The codecs" /
-    testing section — "`savvy.build.ts` carries a narrow suppression …
-    Never widen it."
+    testing section — "`effected.toml` carries two narrow suppressions …
+    Never widen either."

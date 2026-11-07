@@ -1,8 +1,9 @@
 // The built bin over real stdio: stdout is the JSON-RPC wire, and a config is arbitrary code running in the server's
 // process, so what it prints must not reach the wire. An in-process harness cannot see this, because `console.log`
-// there goes to the test runner. The root `globalSetup` rebuilds `dist/dev` before every run, so the bin is this tree's.
+// there goes to the test runner. The root `globalSetup` rebuilds `dist/prod` before every run, so the bin is this tree's.
 
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -11,7 +12,9 @@ import { McpProcess } from "@effected/mcp-kit/testing";
 import { Effect } from "effect";
 import { ChildProcess } from "effect/process";
 
-const BIN = resolve(import.meta.dirname, "../../dist/dev/pkg/bin/effected-mcp.js");
+const BIN = resolve(import.meta.dirname, "../../dist/prod/npm/pkg/bin/effected-mcp.js");
+// The built bin's siblings resolve to their source through the workspace links.
+const TSX = createRequire(import.meta.url).resolve("tsx");
 const MODULES = resolve(import.meta.dirname, "../../node_modules");
 
 const scratch = mkdtempSync(join(tmpdir(), "effected-mcp-e2e-"));
@@ -52,7 +55,10 @@ describe("the built effected-mcp bin", () => {
 		() =>
 			Effect.gen(function* () {
 				const server = yield* McpProcess.spawn(
-					ChildProcess.make(process.execPath, [BIN], { cwd: scratch, env: { PATH: process.env.PATH ?? "" } }),
+					ChildProcess.make(process.execPath, ["--import", TSX, BIN], {
+						cwd: scratch,
+						env: { PATH: process.env.PATH ?? "" },
+					}),
 				);
 				yield* server.send(INITIALIZE);
 				yield* server.readUntilResponse(1);

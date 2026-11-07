@@ -16,10 +16,10 @@ sources:
     resource: ../../packages/store/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T15:50:42Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 6ad86279f9f9e2bc
+    body: c40f106ce95e7c45
 ---
 
 # store
@@ -385,11 +385,11 @@ an ordinary TEXT primary key.
 
 ## Build
 
-`savvy.build.ts` carries the standard narrow `{ messageId:
+The bundler's default config carries the standard narrow `{ messageId:
 "ae-forgotten-export", pattern: "_base" }` suppression for the
 synthesized bases of the schema and service classes. Gate on a
 zero-warning `dist/prod/issues.json` via `pnpm build --filter
-@effected/store`, never the raw `savvy.build.ts` script directly.
+@effected/store`.
 
 [^store-claude-md]: `packages/store/CLAUDE.md` — module layout, the
     layer trio, and the error/defect line.

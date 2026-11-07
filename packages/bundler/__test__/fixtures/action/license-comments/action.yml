@@ -1,0 +1,5 @@
+name: license-comments fixture
+description: Fixture for issue #94 — license-comment handling in bundled output.
+runs:
+  using: node24
+  main: dist/main.js

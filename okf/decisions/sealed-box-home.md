@@ -25,19 +25,21 @@ sources:
     title: "Core effect/crypto: Digest (MD5 and SHA only), SecureRandom, and keyed services including X25519 key agreement and ChaCha20/XChaCha20-Poly1305 AEAD, but no XSalsa20-Poly1305 and no BLAKE2b"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-06T01:55:28Z
 integrity:
   generated:
-    body: b52d4bd8209778a8
+    body: a7fbb85de7bb2ae8
   verified:
     by: human:spencer
-    at: 2026-10-31T19:39:48Z
-    content: da8abe4964c24e72
+    at: 2026-11-06T01:54:11Z
+    content: 4aefdfd92aa7c538
 verified:
   - by: human:spencer
     at: 2026-10-25T20:04:29Z
   - by: human:spencer
     at: 2026-10-31T19:39:48Z
+  - by: human:spencer
+    at: 2026-11-06T01:54:11Z
 ---
 
 # The libsodium sealed box stays in `@effected/github` until a second consumer appears
@@ -52,7 +54,7 @@ WebCrypto offers X25519 on some runtimes, but no XSalsa20-Poly1305 and no BLAKE2
 
 The sealed box stays where it is: a private leaf of `@effected/github`, reachable only from `RepositorySecret`, built on `tweetnacl` and `blakejs`. Nothing is exported, no subpath is added, and `@effected/crypto` takes no runtime dependency.
 
-The deciding evidence is the dependency policy, not taste. [R1](../conventions/dependency-policy.md#r1-tiers-1-and-2-take-no-external-runtime-dependencies) makes a package with an external runtime dependency integrated whatever its own imports say, and [R2](../conventions/dependency-policy.md#r2-tier-3-propagates) propagates that tier through every `@effected/*` edge. `crypto` is boundary with `effect` as its only peer,[^crypto-manifest] and [`webhooks`](../modules/webhooks.md), which is boundary, and [`github-actions`](../modules/github-actions.md) both depend on it. Adding `tweetnacl` and `blakejs` to `crypto`, even behind a subpath no root consumer links, retiers `crypto` to integrated and drags `webhooks` with it, because tier is read from the manifest graph rather than from what a bundler happens to drop. A Workers webhook handler would then carry two cryptographic libraries it never calls on its install bill. `github` is already integrated for octokit, so the pair costs it nothing in tier, and the one consumer that needs a sealed box, `reposets`, already depends on `github` for the resource services that send the box.
+The deciding evidence is the dependency policy, not taste. [R1](../conventions/dependency-policy.md#r1--tiers-1-and-2-take-no-external-runtime-dependencies) makes a package with an external runtime dependency integrated whatever its own imports say, and [R2](../conventions/dependency-policy.md#r2--tier-3-propagates) propagates that tier through every `@effected/*` edge. `crypto` is boundary with `effect` as its only peer,[^crypto-manifest] and [`webhooks`](../modules/webhooks.md), which is boundary, and [`github-actions`](../modules/github-actions.md) both depend on it. Adding `tweetnacl` and `blakejs` to `crypto`, even behind a subpath no root consumer links, retiers `crypto` to integrated and drags `webhooks` with it, because tier is read from the manifest graph rather than from what a bundler happens to drop. A Workers webhook handler would then carry two cryptographic libraries it never calls on its install bill. `github` is already integrated for octokit, so the pair costs it nothing in tier, and the one consumer that needs a sealed box, `reposets`, already depends on `github` for the resource services that send the box.
 
 ## Alternatives rejected
 

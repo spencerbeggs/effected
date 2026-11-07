@@ -1,0 +1,18 @@
+{
+	"groups": [
+		{
+			"id": "npm",
+			"name": "@effected/jsonc",
+			"dir": "dist/prod/npm/pkg"
+		}
+	],
+	"targets": [
+		{
+			"id": "npm",
+			"group": "npm",
+			"name": "@effected/jsonc",
+			"registry": "https://registry.npmjs.org",
+			"releases": "all"
+		}
+	]
+}

@@ -185,7 +185,7 @@ is no Effect to run); service suites use `it.effect`.
 
 ## Build
 
-`savvy.build.ts` carries the narrow `{ messageId: "ae-forgotten-export", pattern:
+The bundler's default config carries the narrow `{ messageId: "ae-forgotten-export", pattern:
 "_base" }` suppression for the synthesized schema/service class heritage.
 **Never widen it.** An internal type named on a signature is a *different*
 symbol that still fails the gate and must be inlined structurally — a named

@@ -13,21 +13,20 @@ sources:
     resource: ../../turbo.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-24T05:36:02Z
+  at: 2026-11-06T20:01:27Z
 integrity:
   generated:
-    body: 64149521eea6ed56
+    body: 9e8d528a49a4dbb9
 ---
 
 # State which count moved and why, whenever a gate's number changes
 
 Three of this repository's gates work by asserting that a number did
-**not** change: the `suppressed:` count in `dist/<target>/issues.json`
+**not** change: the `suppressed:` count in `dist/prod/issues.json`
 (where `suppressed: 0` usually means a build gate never actually ran, see
 [a turbo cache hit reads like a fresh
-build](../gotchas/turbo-cache-hit-replays-clean-log.md) and [running the
-bundler script directly](../gotchas/direct-prod-build-fakes-a-clean-gate.md)
-for the two ways that number can lie), the `Tests:` line a vitest run
+build](../gotchas/turbo-cache-hit-replays-clean-log.md)
+for how that number can lie), the `Tests:` line a vitest run
 reports (see [a vitest positional filter is a substring match, and a package-dir run never loads the root config](../gotchas/vitest-positional-filter-is-cwd-relative.md)
 for how a filter miss reports the same `0/0` shape as an empty suite),
 and `packages.length`-style assertions in fixture tests. Each has

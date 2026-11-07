@@ -292,20 +292,19 @@ Full manifest: `okf/conventions/package-manifest-and-scaffold.md`,
 `okf/runbooks/add-a-workspace-package.md`. The load-bearing subset:
 
 - **Stub `src/index.ts` BEFORE the first install.** A manifest with no
-  entrypoint breaks every `pnpm run` in the repo (the `prepare: turbo run
-  build:dev` chain). Unconditional.
+  entrypoint breaks the package's `build` and `types:check`. Unconditional.
 - Copy a pure sibling (toml is the cleanest recent template); fix the
   per-package fields it is easy to leave stale: `name`,
-  `repository.directory`, `homepage` (the `/tree/main/` segment is
-  load-bearing), and BOTH model paths (`turbo.json` outputs and
-  `savvy.build.ts` `localPaths` must name the package's OWN
-  `website/lib/models/<name>`).
-- Build only via `pnpm build --filter @effected/<name>` — never
-  `node savvy.build.ts --target prod` directly (skips `build:dev`, emits a
-  truncated `issues.json` shaped exactly like a clean gate).
+  `repository.directory` and `homepage` (the `/tree/main/` segment is
+  load-bearing).
+- Build via `pnpm build --filter @effected/<name>`, which runs
+  `effected package build` after the typecheck; a direct run skips that gate
+  and the cache. A package needs no `effected.toml` unless it departs from the
+  defaults.
 - The Schema class factories need the narrow
-  `{ messageId: "ae-forgotten-export", pattern: "_base" }` suppression in
-  `savvy.build.ts` — never widen it (see `effect-api-extractor-bases`).
+  `{ messageId: "ae-forgotten-export", pattern: "_base" }` suppression, which is
+  the build's default `meta.tsdoc.suppressWarnings` — never widen it (see
+  `effect-api-extractor-bases`).
 - After the first install, check the lockfile diff: a plain install has
   stripped optional platform binaries before.
 - Tests in `__test__/`, `@effect/vitest`, `assert.*` never `expect`.

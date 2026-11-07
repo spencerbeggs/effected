@@ -18,7 +18,7 @@ Durable knowledge about this package lives in `okf/`, not here. Load the concept
 - Lint rules are tested through `__test__/rules/harness.ts` (input → expected diagnostics → expected fixed output), never a bespoke suite; a fixture input must parse cleanly unless it declares `expectsParseErrors`.
 - The nine byte-pinned fixtures under `__test__/fixtures/explicit-key/` and the `yaml@2.9.0` literals in `__test__/comment-model-oracle.test.ts` are the contract — never regenerate them.
 - The yaml-test-suite e2e harness stays at 100% with empty skip maps; a new entry in the format-idempotence ledger is a loss bug to fix, not to park.
-- `savvy.build.ts` carries a narrow `{ messageId: "ae-forgotten-export", pattern: "_base" }` suppression — never widen it.
+- The bundler's default config carries a narrow `{ messageId: "ae-forgotten-export", pattern: "_base" }` suppression — never widen it.
 
 ## Testing and building
 
@@ -26,5 +26,5 @@ Test conventions follow the root context file (`__test__/`, `it.effect`, `assert
 
 ```bash
 pnpm vitest run packages/yaml            # this package's tests
-pnpm build --filter @effected/yaml       # dev + prod, from the repo root
+pnpm build --filter @effected/yaml   # from the repo root
 ```

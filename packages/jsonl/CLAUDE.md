@@ -206,7 +206,7 @@ the next session does not rediscover them:
 
 ## Build
 
-`savvy.build.ts` carries the narrow `{ messageId: "ae-forgotten-export",
+`effected.toml` carries the narrow `{ messageId: "ae-forgotten-export",
 pattern: "_base" }` suppression for the synthesized `Schema.Class` /
 `Schema.TaggedError` heritage types. **Never widen it** — an internal type
 named on a public signature is a different symbol and stays un-masked. A
@@ -216,6 +216,5 @@ import to the built root declarations, but still reports every root type it
 reaches as `ae-forgotten-export` against `node.d.ts`, so the scoped
 suppression stays. A clean build reports 0 warnings.
 
-Gate on `pnpm build --filter @effected/jsonl`, never the raw
-`node savvy.build.ts` script, and read `dist/prod/issues.json` rather than
+Gate on `pnpm build --filter @effected/jsonl`, and read `dist/prod/issues.json` rather than
 console output.

@@ -1,0 +1,5 @@
+name: default-minify
+description: Integration fixture — a default-config build must minify without NODE_ENV.
+runs:
+  using: node24
+  main: dist/main.js

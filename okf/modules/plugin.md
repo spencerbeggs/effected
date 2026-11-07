@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/plugin"
-description: "The effected tool's carrier: the one package a consumer installs as a root devDependency, declaring the effected and effected-mcp bins as shims that pass its own distribution identity to the CLI and MCP front ends, re-exporting defineSchemastore for a schemastore config, and pinning the chain below it exactly."
+description: "The effected tool's carrier: the one package a consumer installs as a root devDependency, declaring the effected and effected-mcp bins as shims that pass its own distribution identity to the CLI and MCP front ends, re-exporting defineSchemastore for a schemastore config, shipping the tsconfig presets as ./tsconfig/*, and pinning the chain below it exactly."
 status: draft
 kind: package
 resource: ../../packages/plugin
@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T06:55:47Z
+  at: 2026-11-06T23:00:10Z
 integrity:
   generated:
-    body: 0756ad582eae31d2
+    body: d6fb847b01219479
 ---
 
 # @effected/plugin
@@ -24,11 +24,13 @@ integrity:
 
 - `effected` and `effected-mcp` bins, each a shim calling its front end's `main()` with `distribution: { name: "@effected/plugin", version }`, so `effected --version` ends with `via @effected/plugin <version>`.
 - `defineSchemastore`: `@effected/schemastore`'s `defineConfig` under another name, for a `schemastore.config.ts` ([the contract](../interfaces/schema-commands.md#the-config-contract)). The root stays cheap to import from a config: it reaches no front end, no engine, no `ajv`, no `jiti` and no Ink, which a built-entry test pins.
+- `./tsconfig/*`: the presets a consumer's tsconfig extends, `@effected/plugin/tsconfig/ecma.json` and `root.json`, from `public/tsconfig/`, because the build copies only `public/` into the package.
 - `PLUGIN_VERSION`, replaced at build. No logic belongs here.
 
 ## Boundaries
 
-- **The pin chain.** This package depends on `cli`, `mcp` and `schemastore`; `cli` and `mcp` on `engine`; `engine` on `schemastore`; `schemastore` on `semver`. Every link is `workspace:*`, publishing exact, so a patch of any of them reaches a consumer only with a new carrier version, and bumping `schemastore` ripples down the chain ([an enumerated `workspace:*` exception](../conventions/peer-dependency-discipline.md#cross-effected-dependencies), and [why the commands live here](../decisions/schema-commands-live-in-the-tool.md)). A test reads the manifests; never loosen a link to `workspace:^`.
+- **The pin chain.** This package depends on `cli`, `mcp` and `schemastore`; `cli` and `mcp` on `engine`; `engine` on `schemastore` and `bundler`; `schemastore` on `semver`. Every link is `workspace:*`, publishing exact, so a patch of any of them reaches a consumer only with a new carrier version, and bumping `schemastore` ripples down the chain ([an enumerated `workspace:*` exception](../conventions/peer-dependency-discipline.md#cross-effected-dependencies), and [why the commands live here](../decisions/schema-commands-live-in-the-tool.md)). A test reads the manifests; never loosen a link to `workspace:^`.
+- **The `typescript` peer.** This package, [cli](cli.md), [mcp](mcp.md) and [bundler](bundler.md) peer `typescript` at the literal `7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`, not `catalog:build:peers`, because that catalog value pins a prerelease exactly and a plain lower bound would admit `-dev` nightlies. `entry.test.ts` holds the four manifests to one string. The peer here and on the front ends also keeps npm's resolver from spinning forever on the bundler's peer ([the rule](../conventions/typescript-stays-in-the-bundler.md)).
 - **Shared bins.** The front ends declare the same bin names so each installs alone and the agent plugin's one-off fallback can run `@effected/mcp`; the packed-install e2e sets `allowSharedBins` and proves the shims with `runCarrierBin` ([the pattern](../decisions/carrier-only-declares-bins.md)).
 - **Hoist.** [pnpm-plugin-effected](pnpm-plugin-effected.md) sets `publicHoistPattern: ["@effected/plugin"]`. The packed-install e2e showed it matters only when a leaf workspace package declares the carrier; a root devDependency's bin already resolves.
 - **Closure.** It is installed at the root, so its dependency closure must install with no peer warnings beside kit libraries ([peer discipline](../conventions/peer-dependency-discipline.md)).

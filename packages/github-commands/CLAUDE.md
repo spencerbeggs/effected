@@ -22,5 +22,5 @@ The GitHub Actions workflow-command grammar as pure functions: `WorkflowCommand`
 
 ```bash
 pnpm vitest run --project @effected/github-commands
-pnpm build --filter @effected/github-commands   # never the raw savvy.build.ts
+pnpm build --filter @effected/github-commands
 ```

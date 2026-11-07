@@ -10,10 +10,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T20:18:15Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: efe48f9e35aeb43f
+    body: c951f42dd078f2f2
 ---
 
 # package-json
@@ -141,4 +141,4 @@ Per the kit's observability standard, `Effect.fn("name")` at public fallible bou
 
 ## Build
 
-Every Effect class factory is written inline with no exported `*_base` const; the synthesized `_base` heritage symbols are suppressed narrowly in `savvy.build.ts`. `pnpm build --filter @effected/package-json` runs the dev+prod pipeline; never invoke `node savvy.build.ts --target prod` directly.
+Every Effect class factory is written inline with no exported `*_base` const; the synthesized `_base` heritage symbols are suppressed narrowly in the bundler's default config. `pnpm build --filter @effected/package-json` runs the build through turbo.

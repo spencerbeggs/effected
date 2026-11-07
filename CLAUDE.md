@@ -33,13 +33,14 @@ Durable project knowledge lives as OKF concepts under `okf/`, not in prose here.
 ### Detail folded into the bundle
 
 - Package roster with tiers and provenance → `okf/project.md` — Load when: choosing which package owns a capability, or checking a package's tier or scope.
+- The `effected` tool's build commands, config and artifacts (`effected package build`, `effected action build`, the `package_build` and `action_build` MCP tools, every `effected.toml` key, `dist/prod`, `targets.json`, `issues.json`, the journals and who reads each) → `okf/interfaces/build-commands.md`, `okf/interfaces/effected-toml.md`, `okf/interfaces/build-artifacts.md` — Load when: changing `packages/cli/src/commands/{package,action}`, `packages/engine/src/build`, `packages/mcp/src/tools/{package,action}.ts` or a load-bearing bundler output, or reading a build's result.
 - Build and test mechanics (turbo/bundler pipeline, typechecking, vitest pre-build and gates) → `okf/modules/workspace.md`, `okf/conventions/build-through-turbo-only.md`, `okf/conventions/testing-standards.md`, `okf/conventions/evidence-ladder.md`, `okf/conventions/state-the-reason-when-a-gate-count-moves.md` — Load when: asking how the turbo/bundler pipeline, typechecking or the vitest setup actually works.
 - Dependency catalogs and peer closure → `okf/modules/workspace.md`, `okf/conventions/peer-dependency-discipline.md`, `okf/conventions/one-resolved-effect-copy.md`, `okf/gotchas/expected-peers-check-occupant.md` — Load when: reading a `pnpm peers check` warning, or touching catalogs and peer declarations.
 - Vendored repos → `okf/modules/workspace.md`, `okf/runbooks/sync-vendored-repos.md`, `okf/runbooks/advance-the-effect-pin.md` — Load when: consulting, syncing or re-pinning `.repos/effect` or a sibling vendored submodule.
 
 ### Kit composition
 
-The kit is **47 publishable packages**: 42 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`@effected/plugin`, the carrier a consumer installs, plus its `cli`, `mcp` and `engine`; see `okf/decisions/one-tool-beside-the-libraries.md`); `@effected/cli-kit`, `@effected/mcp-kit`, `@effected/kit` and `@effected/plugin` are new npm names, not yet published; `@effected/cli`, `@effected/mcp` and `@effected/engine` published before as the old kit libraries, and their next release is the tool package under the same name. New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
+The kit is **49 publishable packages**: 44 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`@effected/plugin`, the carrier a consumer installs, plus its `cli`, `mcp` and `engine`; see `okf/decisions/one-tool-beside-the-libraries.md`); `@effected/cli-kit`, `@effected/mcp-kit`, `@effected/kit` and `@effected/plugin` are new npm names, not yet published; `@effected/cli`, `@effected/mcp` and `@effected/engine` published before as the old kit libraries, and their next release is the tool package under the same name. New packages follow `okf/runbooks/add-a-kit-package.md`: an `okf/modules/<pkg>.md` Module concept first, then port.
 
 **The carrier libraries are `@effected/cli-kit`, `@effected/mcp-kit` and `@effected/kit`; `@effected/cli`, `@effected/mcp` and `@effected/engine` are the `effected` tool's own packages.** The old names were renamed with no shim, and `@effected/app` kept its name → `okf/decisions/carrier-libraries-take-kit-names.md`. A stale import of an old name fails at build, not at install.
 
@@ -59,19 +60,29 @@ The kit is **47 publishable packages**: 42 libraries, one companion (`pnpm-plugi
 
 ### Package context files
 
-Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. The roster of all 47 — what each one is, and the parenthetical tier tag every **library** carries (pure / boundary / integrated, per `okf/glossary/library-tier.md`) — lives in `okf/project.md`'s packages table. Load it when: choosing which package owns a capability, or checking a package's tier or scope before working in it.
+Each package has its own `CLAUDE.md` and documents itself. Read it before working there; do not duplicate its content here. The roster of all 49 — what each one is, and the parenthetical tier tag every **library** carries (pure / boundary / integrated, per `okf/glossary/library-tier.md`) — lives in `okf/project.md`'s packages table. Load it when: choosing which package owns a capability, or checking a package's tier or scope before working in it.
 
 ## Build Pipeline
 
-Builds run through turbo and `@savvy-web/bundler`; mechanics → `okf/modules/workspace.md`, `okf/conventions/build-through-turbo-only.md`. The rules:
+Mechanics → `okf/modules/workspace.md`, `okf/conventions/build-through-turbo-only.md`. The rules:
 
-**Never run `node savvy.build.ts --target prod` directly.** It skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate. Build through `pnpm build --filter <pkg>`.
+**Build through `pnpm build --filter <pkg>`.** It runs `effected package build` through turbo, after the package's `types:check`. A direct `effected package build` in a package directory is allowed, but it skips the typecheck gate and the cache.
 
-**A clean build log does not prove a build ran either** — a turbo cache hit replays the previous run's output verbatim. The tell is `dist/<target>/issues.json`'s `generatedAt`, which must postdate your last source edit.
+**There is one build target.** Artifacts land in `dist/prod/<group>/{pkg,meta}`, with `dist/prod/targets.json` and `dist/prod/issues.json` beside them. Each build also appends to `.cache/effected/build.jsonl` and `.cache/effected/issues.jsonl` at the workspace root.
+
+**Workspace links resolve to `src/`.** There is no dev build and no `prepare`, so a sibling never needs building before a typecheck or a test. Only tests that read their own `dist` build first, through `vitest.setup.ts`.
+
+**The config is `effected.toml`, and only six packages need one** (`cli-kit`, `config-file`, `images`, `jsonl`, `jwt`, `pnpm-plugin-effected`). Within a tier the first file found is the only one read: root `.config/effected.toml`, then `effected.toml`; package `.config/effected.toml`, then `effected.toml`, then `lib/configs/effected.toml`. The package tier merges over the root: objects per key, arrays and scalars replace.
+
+**The `effected` bin runs from source.** In a pnpm script or turbo task, `nodeOptions` in `pnpm-workspace.yaml` loads tsx. A direct run of `node_modules/.bin/effected` or `effected-mcp` registers tsx itself. Why → `okf/decisions/bundler-bootstraps-from-source.md`.
+
+**`@effected/plugin` is a root devDependency and must never be a package's dependency.** `tsx` is the workspace root's alone too.
+
+**`typescript` is peered only by `@effected/bundler` and the tool packages `@effected/cli`, `@effected/mcp` and `@effected/plugin`**, at `7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`.
+
+**A clean build log does not prove a build ran** — a turbo cache hit replays the previous run's output verbatim. The tell is `dist/prod/issues.json`'s `generatedAt`, which must postdate your last source edit; a hit also adds no line to `.cache/effected/build.jsonl`.
 
 **A public member initialized with a bare non-exported local is declared `typeof local` under TypeScript 7.1's declaration emit** — `ae-forgotten-export`, fatal in CI. Fix the site (inline, static method, or an annotation with its reason); never suppress, never export the local → `okf/gotchas/typeof-local-forgotten-export.md`.
-
-**Never put `@savvy-web/bundler` in `dependencies`** — it is every building package's `devDependency`; there, the published manifest ships a build tool at runtime.
 
 **Source `package.json` files are `"private": true`** — intentional; never set `"private": false`, and never infer from it that a package will not publish. The bundler's `publishConfig` transform produces the publishable manifest at build time, and publishability is `publishConfig.access === "public"`.
 
@@ -83,14 +94,14 @@ Builds run through turbo and `@savvy-web/bundler`; mechanics → `okf/modules/wo
 
 **User-run only:** `pnpm pnpm:up`, `pnpm pnpm:preview` and `pnpm pnpm:export` advance and export the Effect catalogs, mutating the lockfile and the root `pnpm-workspace.yaml`. **Agents must not invoke them** — surface the command and let the user run it (advancing the Effect pin is `pnpm:up` then `pnpm:export`; a new Effect minor also needs the tilde ranges edited, per `okf/runbooks/advance-the-effect-pin.md`).
 
-**Agents may run** `pnpm catalog:check` (read-only drift gate) and `pnpm catalog:sync`, which write nothing but `packages/pnpm-plugin-effected/savvy.build.ts` and one fixed-name changeset. They keep the published `effected` catalog current — do not lump them in with the `pnpm:*` class.
+**Agents may run** `pnpm catalog:check` (read-only drift gate) and `pnpm catalog:sync`, which write nothing but `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts` and one fixed-name changeset. They keep the published `effected` catalog current — do not lump them in with the `pnpm:*` class.
 
 **A release does not need a hand-run `catalog:sync` — CI guarantees it.** `.github/workflows/catalog-sync.yml` runs on a `pull_request` to `main` only when the head branch is `changeset-release/main` (the job's `if:` skips every other PR by design), so opening the release PR is itself the trigger: the job syncs the catalog, writes `.changeset/catalog-sync.md`, and the release PR picks up the resulting plugin bump before publishing. The catalog therefore cannot publish out of step with the packages it names.
 
 **That guarantee covers direct bumps; membership and dependency ripples each needed their own answer, and the two resolve oppositely.** The upgrade CLI walks the catalog literal, so a package absent from it is invisible to the sync and cannot be added by one, and a package bumped only as a dependency **ripple** carries no changeset naming it, so the CLI cannot see that either. `catalog:check` now fails on both, naming the affected packages. From there they part company:
 
 - **A membership gap is yours to close by hand**, at the `PnpmConfigPlugin(...)` call site — `catalog:sync` refuses before writing rather than guessing, because a new package's first release range is a judgement rather than something derivable from the workspace.
-- **A ripple gap closes itself.** `catalog:sync` reads the real release plan from `changeset status --output` and rewrites the affected entries, flooring each peer patch per `lock-minor`. Do not hand-edit one — the next sync overwrites it.
+- **A ripple gap closes itself.** `catalog:sync` reads the real release plan through `@effected/changesets` and rewrites the affected entries, flooring each peer patch per `lock-minor`. Do not hand-edit one — the next sync overwrites it.
 
 Two properties of that job surprise readers, and neither is a bug:
 

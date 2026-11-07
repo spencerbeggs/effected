@@ -33,31 +33,26 @@ the config file (`fileURLToPath(new URL("vitest.setup.ts", import.meta.url))`).
 The setup file it names is not one you were meant to create; creating it forks
 the setup permanently.
 
-**The stale-upstream-dist red herring** (a red that lies rather than a green):
-in a kit monorepo, a downstream package's tests resolve workspace siblings
-through their BUILT dist (the lockfile links `version: link:../npm/dist/dev/pkg`),
-so adding an export to an upstream package makes every downstream suite fail
-to LOAD with `Cannot read properties of undefined (reading 'ast')` — the new
-export exists in source, is `undefined` in the stale artifact, and the schema
-built from it dies at module load pointing nowhere near the cause. When you
-add an export to an upstream kit package, `pnpm build --filter <upstream>`
-before running any downstream suite; that error message at suite load IS the
-stale-dist signature.
+**Workspace siblings resolve to `src/`.** In a kit monorepo a downstream
+package's tests import a sibling's source through the workspace link, so an
+export added upstream is visible at once and no sibling needs building first.
+Only a test that reads its own built output (`dist/prod`, a packed install)
+needs a build, and a stale one is a red or green that lies about the edit.
 
-**A `globalSetup` that rebuilds `dist/dev` is not a guarantee either.** A
+**A `globalSetup` that builds is not a guarantee.** A
 root setup that runs the build through `@vitest-agent/plugin`'s
 `AgentPlugin.runScript` is skipped outright when the done-marker `runScript`
 wrote on its last success is younger than
 `VITEST_AGENT_RUNSCRIPT_BUILT_RECENTLY_MS` (30 s by default). The window is
 meant for a concurrent second vitest process to trust the winner's build, but
-it applies to the next *sequential* run just the same: edit an upstream
-`src`, run a downstream project inside the window, and the test reads the
-previous `dist/dev` — a green that proves nothing about the edit, or a red
+it applies to the next *sequential* run just the same: edit the
+source, run a project that reads its own `dist` inside the window, and the test
+reads the previous build — a green that proves nothing about the edit, or a red
 that blames the wrong thing. Pin the window in the setup itself,
 `process.env.VITEST_AGENT_RUNSCRIPT_BUILT_RECENTLY_MS ??= "1"` before the
 `runScript` call: the lock still serializes concurrent runs, and turbo's cache
 keeps the rebuild a fast no-op when nothing changed. The tell, when a
-downstream test ignores an upstream edit, is `dist/<target>/issues.json`'s
+test ignores an edit to the output it reads, is `dist/prod/issues.json`'s
 `generatedAt` sitting before the edit: a build that did not run, not a turbo
 input gap.
 
