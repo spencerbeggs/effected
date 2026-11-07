@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-07T01:50:49Z
+  at: 2026-11-07T14:40:40Z
 integrity:
   generated:
-    body: f97b64ac6f64d017
+    body: d81488c7504017ea
 ---
 
 # @effected/github
@@ -243,8 +243,17 @@ The module is a pure core under a thin IO shell. `classifyTokenReply`,
 body; `send` is the only code that touches `fetch`. The classification order
 is load-bearing: a 5xx, 429 or 408 is temporary whatever its body says; an
 `error` body is a refusal whatever the status says, because GitHub refuses a
-code or refresh token with HTTP 200; a non-success status with no `error` is a
-refusal of the app's request; only then is a success read as tokens.
+code or refresh token with HTTP 200; a 403 whose REST `message` names a rate
+limit (matched case-insensitively on "rate limit", or on "abuse detection",
+GitHub's older secondary-limit wording) is temporary, because
+GitHub's primary REST rate limit answers 403 and its secondary limits answer
+403 or 429, and `send` keeps no headers to read `x-ratelimit-remaining` from;
+any other non-success status with no `error` is a refusal of the app's
+request; only then is a success read as tokens. Both `classifyTokenReply`
+and `classifyRevokeReply` apply the 403 rule, and only to a 403: a 401, 404 or
+422 whose message mentions a rate limit keeps its own classification. The
+match follows GitHub's English wording, so a reworded body falls back to the
+plain 403 refusal.
 
 These classifiers are the one recorded exception to the package rule that
 status codes are classified only through `GitHubError`'s shared `classify`.
@@ -263,7 +272,8 @@ GitHub's `error` code and description and carries a `remedy`:
 `"reconnect"` for a dead code, refresh token or grant (`bad_refresh_token`,
 `bad_verification_code`, `expired_token`, a 422 on revoke), and
 `"reconfigure"` for the app's own mistakes (`incorrect_client_credentials`,
-`redirect_uri_mismatch`, an unrecognised code, a 401/403/404 on revoke). The
+`redirect_uri_mismatch`, an unrecognised code, a 401/403/404 on revoke other
+than a rate-limited 403). The
 `remedy` field is what keeps a final failure from signing every user out:
 silk-app's hand-rolled flow, which this replaces, already refused to treat
 `incorrect_client_credentials` as a dead grant for exactly that reason, and a

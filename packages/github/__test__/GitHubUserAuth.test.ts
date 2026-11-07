@@ -29,6 +29,16 @@ const NEW_REFRESH = "ghr_rotatedRefreshToken9876";
 
 const NOW = 1_700_000_000_000;
 
+/** GitHub's primary REST rate-limit body, which it answers with HTTP 403. */
+const PRIMARY_RATE_LIMIT =
+	"API rate limit exceeded for user ID 1. If you reach out to GitHub Support for help, please include the request ID.";
+/** GitHub's secondary rate-limit body, which it answers with HTTP 403 or 429. */
+const SECONDARY_RATE_LIMIT =
+	"You have exceeded a secondary rate limit. Please wait a few minutes before you try again.";
+/** GitHub's older wording for a secondary rate limit, which never says "rate limit". */
+const ABUSE_DETECTION =
+	"You have triggered an abuse detection mechanism and have been temporarily blocked from content creation. Please retry your request again later.";
+
 const tokenBody = {
 	access_token: ACCESS,
 	expires_in: 28_800,
@@ -267,6 +277,67 @@ describe("GitHubUserAuth.refresh", () => {
 		),
 	);
 
+	it.effect("a 403 whose message names a rate limit is temporary, primary or secondary", () =>
+		Effect.gen(function* () {
+			for (const message of [PRIMARY_RATE_LIMIT, SECONDARY_RATE_LIMIT]) {
+				for (const operation of [refresh, exchange]) {
+					const error = yield* withReplies([{ status: 403, body: { message } }], () => Effect.flip(operation));
+					assert.instanceOf(error, GitHubUserAuthTemporary, message);
+					if (error._tag !== "GitHubUserAuthTemporary") return;
+					assert.strictEqual(error.kind, "status");
+					assert.strictEqual(error.status, 403);
+				}
+			}
+		}),
+	);
+
+	it.effect("a 403 with any other message stays final, remedy reconfigure, code http_403", () =>
+		withReplies([{ status: 403, body: { message: "Forbidden" } }], () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(refresh);
+				assert.instanceOf(error, GitHubUserAuthFinal);
+				if (error._tag !== "GitHubUserAuthFinal") return;
+				assert.strictEqual(error.code, "http_403");
+				assert.strictEqual(error.remedy, "reconfigure");
+			}),
+		),
+	);
+
+	it.effect("an error body naming a rate limit is still a refusal: the error body wins over the status", () =>
+		// The body carries a REST `message` naming a rate limit too, so the
+		// rate-limit rule WOULD fire if it ran before the `error` check.
+		withReplies(
+			[
+				{
+					status: 403,
+					body: {
+						error: "incorrect_client_credentials",
+						error_description: "rate limit or not",
+						message: SECONDARY_RATE_LIMIT,
+					},
+				},
+			],
+			() =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip(refresh);
+					assert.instanceOf(error, GitHubUserAuthFinal);
+					if (error._tag !== "GitHubUserAuthFinal") return;
+					assert.strictEqual(error.code, "incorrect_client_credentials");
+					assert.strictEqual(error.remedy, "reconfigure");
+				}),
+		),
+	);
+
+	it.effect("a 200 with only a rate-limit message and no token is malformed: the rule is for 403 alone", () =>
+		withReplies([{ status: 200, body: { message: PRIMARY_RATE_LIMIT } }], () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(refresh);
+				assert.instanceOf(error, GitHubUserAuthTemporary);
+				if (error._tag === "GitHubUserAuthTemporary") assert.strictEqual(error.kind, "malformed");
+			}),
+		),
+	);
+
 	it.effect("a 404 with no error code is final, remedy reconfigure, code http_404", () =>
 		withReplies([{ status: 404, body: { message: "Not Found" } }], () =>
 			Effect.gen(function* () {
@@ -419,6 +490,75 @@ describe("GitHubUserAuth.revokeGrant", () => {
 			const error = yield* withReplies([{ status: 500 }], () => Effect.flip(revoke));
 			assert.strictEqual(error._tag, "GitHubUserAuthTemporary");
 		}),
+	);
+
+	it.effect("a 403 whose message names a rate limit is temporary, primary or secondary, any case", () =>
+		Effect.gen(function* () {
+			for (const message of [PRIMARY_RATE_LIMIT, SECONDARY_RATE_LIMIT, "API RATE LIMIT EXCEEDED", ABUSE_DETECTION]) {
+				const error = yield* withReplies([{ status: 403, body: { message } }], () => Effect.flip(revoke));
+				assert.instanceOf(error, GitHubUserAuthTemporary, message);
+				if (error._tag !== "GitHubUserAuthTemporary") return;
+				assert.strictEqual(error.operation, "revokeGrant");
+				assert.strictEqual(error.kind, "status");
+				assert.strictEqual(error.status, 403);
+			}
+		}),
+	);
+
+	it.effect("a 403 with any other message stays final, remedy reconfigure", () =>
+		withReplies([{ status: 403, body: { message: "Must have admin rights to Repository." } }], () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(revoke);
+				assert.instanceOf(error, GitHubUserAuthFinal);
+				if (error._tag !== "GitHubUserAuthFinal") return;
+				assert.strictEqual(error.remedy, "reconfigure");
+				assert.strictEqual(error.code, "http_403");
+				assert.strictEqual(error.status, 403);
+			}),
+		),
+	);
+
+	it.effect("a rate-limit message on any status but 403 changes nothing: 401 reconfigure, 422 reconnect", () =>
+		Effect.gen(function* () {
+			for (const status of [401, 404]) {
+				const error = yield* withReplies([{ status, body: { message: PRIMARY_RATE_LIMIT } }], () =>
+					Effect.flip(revoke),
+				);
+				assert.instanceOf(error, GitHubUserAuthFinal, String(status));
+				if (error._tag !== "GitHubUserAuthFinal") return;
+				assert.strictEqual(error.code, `http_${status}`);
+				assert.strictEqual(error.remedy, "reconfigure");
+			}
+			const error = yield* withReplies([{ status: 422, body: { message: SECONDARY_RATE_LIMIT } }], () =>
+				Effect.flip(revoke),
+			);
+			assert.instanceOf(error, GitHubUserAuthFinal);
+			if (error._tag !== "GitHubUserAuthFinal") return;
+			assert.strictEqual(error.code, "validation_failed");
+			assert.strictEqual(error.remedy, "reconnect");
+		}),
+	);
+
+	it.effect("a 403 with no JSON message stays final, remedy reconfigure", () =>
+		withReplies([{ status: 403, body: "rate limit, but not a REST body" }], () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(revoke);
+				assert.instanceOf(error, GitHubUserAuthFinal);
+				if (error._tag === "GitHubUserAuthFinal") assert.strictEqual(error.remedy, "reconfigure");
+			}),
+		),
+	);
+
+	it.effect("429 is temporary, whatever its message", () =>
+		withReplies([{ status: 429, body: { message: "Too Many Requests" } }], () =>
+			Effect.gen(function* () {
+				const error = yield* Effect.flip(revoke);
+				assert.instanceOf(error, GitHubUserAuthTemporary);
+				if (error._tag !== "GitHubUserAuthTemporary") return;
+				assert.strictEqual(error.kind, "status");
+				assert.strictEqual(error.status, 429);
+			}),
+		),
 	);
 });
 

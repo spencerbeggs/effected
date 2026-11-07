@@ -132,7 +132,10 @@ export type GitHubUserTokens = typeof GitHubUserTokens.Type;
  *   (`redirect_uri_mismatch`), refresh tokens being turned off for it
  *   (`unsupported_grant_type`), or a code GitHub sent that this package does
  *   not know. Nothing about the user's grant is learned, and reconnecting the
- *   user does not help; an operator has to fix the app.
+ *   user does not help; an operator has to fix the app. A 401, 403 or 404
+ *   with no `error` code lands here too — but never a 403 whose message
+ *   names a rate limit (or GitHub's older "abuse detection" wording), which
+ *   is a {@link GitHubUserAuthTemporary}.
  *
  * **Never wipe a user's tokens on `GitHubUserAuthFinal` alone.** The obvious
  * handler, `Effect.catchTag("GitHubUserAuthFinal", () => forgetUser(id))`,
@@ -179,7 +182,9 @@ export class GitHubUserAuthFinal extends Schema.TaggedError<GitHubUserAuthFinal>
  *
  * - `"network"` — `fetch` threw, or the body could not be read;
  * - `"timeout"` — no complete answer within the layer's `timeout`;
- * - `"status"` — GitHub answered 5xx, 429 or 408;
+ * - `"status"` — GitHub answered 5xx, 429 or 408, or a 403 whose message
+ *   names a rate limit or "abuse detection" (GitHub's primary REST rate
+ *   limit answers 403, and its secondary limits answer 403 or 429);
  * - `"malformed"` — a success status whose body is not a token reply, or a
  *   refresh that answered a token with no refresh token.
  *
@@ -531,6 +536,25 @@ const isRetryableStatus = (status: number): boolean => status >= 500 || status =
 
 const isSuccess = (status: number): boolean => status >= 200 && status < 300;
 
+/**
+ * GitHub's rate-limit wording: "rate limit" in its current bodies, "abuse
+ * detection" in the older secondary-limit body ("You have triggered an abuse
+ * detection mechanism …"). The match follows GitHub's English wording; a
+ * reworded body falls back to the plain 403 classification.
+ */
+const RATE_LIMIT_MESSAGE = /rate limit|abuse detection/i;
+
+/**
+ * A 403 whose decoded REST `message` names a rate limit. GitHub's primary
+ * REST rate limit answers 403, and its secondary limits answer 403 or 429;
+ * the reply's headers are not kept, so the body's message ("API rate limit
+ * exceeded for …", "You have exceeded a secondary rate limit …") is what tells
+ * it from a 403 refusal of the app's credentials. Takes the already-decoded
+ * message so a classifier reads the body through one decode.
+ */
+const isRateLimited403 = (status: number, message: Option.Option<typeof RestMessage.Type>): boolean =>
+	status === 403 && Option.isSome(message) && RATE_LIMIT_MESSAGE.test(message.value.message);
+
 const final = (
 	operation: GitHubUserAuthOperation,
 	status: number,
@@ -559,8 +583,9 @@ const temporary = (
  * @remarks
  * The order is load-bearing. A retryable status wins over its body (a 503
  * page is never a refusal); an `error` body wins over the status (GitHub
- * refuses with 200); a non-success status with no `error` is a refusal of the
- * app's request; only then is a success read as tokens.
+ * refuses with 200); a 403 with no `error` whose message names a rate limit
+ * is temporary; any other non-success status with no `error` is a refusal of
+ * the app's request; only then is a success read as tokens.
  */
 const classifyTokenReply = (
 	operation: GitHubUserAuthOperation,
@@ -577,6 +602,7 @@ const classifyTokenReply = (
 		const remedy = RECONNECT_CODES.has(code) ? "reconnect" : "reconfigure";
 		return final(operation, status, code, remedy, refusal.value.error_description, secrets);
 	}
+	if (isRateLimited403(status, decodeRestMessage(json))) return temporary(operation, "status", { status });
 	if (!isSuccess(status)) {
 		return final(operation, status, `http_${status}`, "reconfigure", undefined, secrets);
 	}
@@ -620,7 +646,9 @@ const toTokens = (reply: TokenReply, nowMillis: number): GitHubUserTokens | unde
  * @remarks
  * 204 is success. 422 is GitHub's documented answer for an access token that
  * is not a live token of this app, so the grant is already gone. 401, 403 and
- * 404 are what GitHub answers a wrong client id or secret with.
+ * 404 are what GitHub answers a wrong client id or secret with — except a 403
+ * whose message names a rate limit, which is GitHub's primary (or a
+ * secondary) rate limit and so temporary.
  *
  * GitHub documents 422 as "Validation failed, or the endpoint has been
  * spammed", so a 422 can also be an abuse refusal of a grant that still
@@ -636,6 +664,7 @@ const classifyRevokeReply = (
 	if (isSuccess(status)) return undefined;
 	if (isRetryableStatus(status)) return temporary("revokeGrant", "status", { status });
 	const message = decodeRestMessage(parseJson(text));
+	if (isRateLimited403(status, message)) return temporary("revokeGrant", "status", { status });
 	const description = Option.isSome(message) ? message.value.message : undefined;
 	return status === 422
 		? final("revokeGrant", status, "validation_failed", "reconnect", description, secrets)

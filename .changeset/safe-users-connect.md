@@ -11,7 +11,7 @@ Runs the OAuth web flow a GitHub App or OAuth App uses to act as a user: `exchan
 Every failure is one of two errors:
 
 * `GitHubUserAuthFinal`: GitHub refused. It keeps the `code` and carries a `remedy`
-* `GitHubUserAuthTemporary`: `network`, `timeout`, `status` (5xx, 429, 408) or `malformed`. Retry later and keep the tokens you hold
+* `GitHubUserAuthTemporary`: `network`, `timeout`, `status` (5xx, 429, 408, or a 403 whose message names a rate limit) or `malformed`. Retry later and keep the tokens you hold
 
 Branch on `remedy`, not on the error being final. `reconnect` means the user's grant is dead, while `reconfigure` means the app is wrong. `incorrect_client_credentials` lands on `reconfigure`, so a handler that drops tokens on any final failure signs every user out when a client secret is rotated.
 
