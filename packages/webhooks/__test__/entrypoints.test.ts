@@ -39,6 +39,7 @@ describe("root entrypoint", () => {
 	it("exports the public surface and nothing from src/internal", async () => {
 		const main = await import("../src/index.js");
 		assert.deepStrictEqual(Object.keys(main).sort(), [
+			"AttestationContextError",
 			"GitHub",
 			"HmacHeader",
 			"Sanity",

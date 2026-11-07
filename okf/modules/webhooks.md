@@ -17,15 +17,18 @@ sources:
   - id: intake-vendors
     resource: https://github.com/savvy-web/build/tree/main/intake/src/vendors
     title: "Intake's vendor verifiers: svix, github, stripe, sanity, linear, cloudflare, coolify"
+  - id: intake-attestation
+    resource: https://github.com/savvy-web/build/blob/main/intake/src/Attestation.ts
+    title: "Intake's archived attestation for shared-secret vendors"
   - id: intake-route
     resource: https://github.com/savvy-web/build/blob/main/intake/src/VendorRoute.ts
     title: "InboundRequest and the verification-failure status mapping"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-31T19:49:35Z
+  at: 2026-11-07T01:50:02Z
 integrity:
   generated:
-    body: 0eabf6e70ccbaf80
+    body: 4afaeab3f315d6f1
 ---
 
 # `@effected/webhooks`
@@ -38,7 +41,7 @@ Boundary tier, with no `node:` import, so a verifier runs in a Node service or a
 
 ## What stays with the caller
 
-Delivery identity, vendor naming, routing, payload decoding and attestation are the caller's. Intake keeps `InboundRequest`, `Vendor`, `DeliveryId` and its archived-attestation fallback; a verifier returns the parsed parts of the signature (the message id and timestamp where the scheme carries them) and the caller decides what a delivery id is.[^intake-route]
+Delivery identity, vendor naming, routing, payload decoding and archiving are the caller's. Intake keeps `InboundRequest`, `Vendor` and `DeliveryId`; the package mints and checks the attestation a shared-secret archive needs (see [Archive and replay](#archive-and-replay)), but which header carries it and where it is stored stay with the caller. A verifier returns the parsed parts of the signature (the message id and timestamp where the scheme carries them) and the caller decides what a delivery id is.[^intake-route]
 
 ## Input
 
@@ -68,17 +71,26 @@ Linear signs with a bare hex HMAC over the body, which `HmacHeader` covers, but 
 
 `HmacHeader` verifies with `crypto`'s `Hmac.verify`, which decodes the signature and compares bytes, so any spelling that decodes to the right MAC is accepted: hex in either case, and padded base64 that is not the canonical spelling. Core's base64 decoder requires padding, so unpadded base64 does not decode and is `bad_signature`. `GitHub`, `Stripe`, `Sanity` and `StandardWebhooks` compare their encoded signature strings.
 
+## Archive and replay
+
+A consumer that archives raw deliveries and re-verifies them on replay keeps each HMAC vendor's signature header in the archive. A shared-secret vendor's header is the route secret itself, so it must never be archived, and an archived delivery without it cannot be re-verified. Intake solved this by minting its own proof on arrival, and the package lifts it onto the `SharedSecret` preset so any archive-and-replay consumer gets domain separation and a constant-time check without rolling its own.[^intake-attestation]
+
+- `SharedSecret.attest(request, { context })` returns the lower-case hex HMAC-SHA256, under the route secret's UTF-8 bytes, of a domain-separated prefix followed by the raw body. The caller mints it only after the live secret verified and archives it under a header name the vendor never sends, stripping that header from what arrives on the wire.
+- `SharedSecret.verifyAttested(request, { header?, attestation, context })` runs two steps. When `header` is given and the delivery carries it non-empty, the live secret is compared raw, as `SharedSecret.verify` compares it, and that answer is final (a wrong secret beside a valid attestation is `bad_signature`; a whitespace-only value is a wrong secret). Otherwise the `attestation` header, trimmed, is checked with `crypto`'s `Hmac.verify`, which decodes the hex and compares bytes with `Mac.verify` in constant time. Neither present is `missing_signature`. So one call verifies a delivery live and on replay, as intake's own shared-secret verifier does.
+
+The prefix is a versioned constant, `SharedSecret.ATTESTATION_TAG` = `effected-attestation.v1`, followed by the context part count and each part, every element followed by `.`: `effected-attestation.v1.2.coolify.production.` for `["coolify", "production"]`, `effected-attestation.v1.0.` for an empty context. The tag keeps an attestation from doubling as any vendor's HMAC of the body under a reused secret; the context binds it to its route; the count makes the prefix self-delimiting. Intake's `intake-attestation.v1.<vendor>.<environment>.` needs no count because it always has two parts, but a variable-length context without one is ambiguous: `["a"]` over the body `b.x` and `["a", "b"]` over `x` would sign the same bytes. A context part that is empty or contains `.` fails with `AttestationContextError` (the offending `index`, and `reason` `empty` or `contains_separator`) before any header is read. It is typed rather than a defect because a context is usually built from routing, so a caller can answer it. Changing the format means a new version in the tag, never an edit to `v1`.
+
 ## Ordering
 
 The signature is checked before the timestamp, in every preset. A stale delivery with a bad signature reports `bad_signature`, so an attacker learns nothing about the tolerance window from an unsigned probe.
 
 ## Errors
 
-`WebhookVerificationError` carries `reason` `missing_signature`, `malformed`, `bad_signature` or `stale_timestamp`, plus the preset name. A signature header that is present but off its grammar (a Stripe header with no `v1`, a GitHub value that is not `sha256=` and 64 lower-case hex digits) is `bad_signature`, as intake and the vendor libraries treat it; `malformed` is for an absent or ill-shaped auxiliary header, such as a Standard Webhooks timestamp that is not `^\d{1,15}$`. A core `CryptoError` from `Hmac.sign`, `Hmac.verify` or `ConstantTime.secretsEqual` can only mean a refused key or a misbehaving `Mac` layer, so it is a defect too (and a runtime with no `crypto.subtle` on the WebCrypto layer dies outright), and every preset's `E` is `WebhookVerificationError` alone. The audience is calling code: intake maps `missing_signature` and `bad_signature` to 401 and `malformed` and `stale_timestamp` to 400. A malformed *secret* (a `whsec_` value that is not base64) is a wiring mistake, not an attacker's input, so it is a defect at verify time rather than a typed failure.
+`WebhookVerificationError` carries `reason` `missing_signature`, `malformed`, `bad_signature` or `stale_timestamp`, plus the preset name. A signature header that is present but off its grammar (a Stripe header with no `v1`, a GitHub value that is not `sha256=` and 64 lower-case hex digits) is `bad_signature`, as intake and the vendor libraries treat it; `malformed` is for an absent or ill-shaped auxiliary header, such as a Standard Webhooks timestamp that is not `^\d{1,15}$`. A core `CryptoError` from `Hmac.sign`, `Hmac.verify` or `ConstantTime.secretsEqual` can only mean a refused key or a misbehaving `Mac` layer, so it is a defect too (and a runtime with no `crypto.subtle` on the WebCrypto layer dies outright), and every preset's `verify` has `WebhookVerificationError` alone as its `E`. `SharedSecret.attest` and `SharedSecret.verifyAttested` add `AttestationContextError` for an unencodable context. The audience is calling code: intake maps `missing_signature` and `bad_signature` to 401 and `malformed` and `stale_timestamp` to 400. A malformed *secret* (a `whsec_` value that is not base64) is a wiring mistake, not an attacker's input, so it is a defect at verify time rather than a typed failure.
 
 ## Observability
 
-One named span per preset `verify`, annotated with the preset and the outcome reason; never the secret, the signature or the body.
+One named span per preset `verify`, annotated with the preset and the outcome reason; never the secret, the signature or the body. `SharedSecret.attest` and `SharedSecret.verifyAttested` have their own spans, and `verifyAttested` also records which step decided (`webhook.verified_by`: `secret` or `attestation`).
 
 ## Testing
 
@@ -86,8 +98,9 @@ Pure functions over one service, so the suite needs one layer: `MacLive` in `__t
 
 ## Consumers
 
-`savvy-web/build` intake, for every vendor it receives from.
+`savvy-web/build` intake, for every vendor it receives from, and for its shared-secret archive-and-replay path.
 
 [^owner]: conversation with the repository owner
 [^intake-vendors]: <https://github.com/savvy-web/build/tree/main/intake/src/vendors>
 [^intake-route]: <https://github.com/savvy-web/build/blob/main/intake/src/VendorRoute.ts>
+[^intake-attestation]: <https://github.com/savvy-web/build/blob/main/intake/src/Attestation.ts>

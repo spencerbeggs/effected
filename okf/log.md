@@ -9,6 +9,7 @@
 * Updated walker
 * Updated @effected/markdown
 * Updated @effected/crypto
+* Updated @effected/webhooks
 
 ## 2026-11-06
 
