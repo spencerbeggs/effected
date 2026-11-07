@@ -1,0 +1,34 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      '@wsbump/b':
+        specifier: workspace:*
+        version: link:packages/b
+
+  packages/a:
+    dependencies:
+      '@wsbump/b':
+        specifier: workspace:*
+        version: link:../b
+
+  packages/b:
+    dependencies:
+      ms:
+        specifier: ^2.0.0
+        version: 2.0.0
+
+packages:
+
+  ms@2.0.0:
+    resolution: {integrity: sha512-Tpp60P6IUJDTuOq/5Z8cdskzJujfwqfOTkrwIwj7IRISpnkJnT6SyJ4PCPnGMoFjC9ddhal5KVIYtAt97ix05A==}
+
+snapshots:
+
+  ms@2.0.0: {}

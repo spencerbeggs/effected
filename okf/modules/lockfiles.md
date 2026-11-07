@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-07T01:50:21Z
+  at: 2026-11-07T14:40:50Z
 integrity:
   generated:
-    body: 5ecc419aeb26e9d4
+    body: e25b7e720bdb1bf5
 ---
 
 # lockfiles
@@ -82,7 +82,7 @@ Both change records carry `specifier` and `version` as `{ before, after }`, each
 The normalization is where a resolved version lives, which differs by format:
 
 - **pnpm** records `{ specifier, version }` on catalog entries and on importer dependencies, so both are read directly; the importer version is the plain version with the peer suffix already split off, and a workspace link reads `link:<path>`.
-- **bun** and **npm** record versions on package entries only. An importer dependency's version is read through the importer's own resolved edge: a workspace importer's row carries `resolved`, and the root importer, which has no row, resolves at the top of the key scheme (`node_modules/<name>` for npm, `<name>` for bun), the same first step the parsers' positional walks take. A workspace dependency therefore reads the workspace package's own version. A bun catalog entry's version is the single version its consumers resolved to; with no consumer it is the package's version if the lockfile holds exactly one non-workspace version of it; disagreeing consumers or several versions give no version, never a guess. bun's unnamed `catalog` section is the catalog named `"default"`, matching pnpm. npm has no catalogs.
+- **bun** and **npm** record versions on package entries only. An importer dependency's version is read through the importer's own resolved edge: a workspace importer's row carries `resolved`, and the root importer, which has no row, resolves at the top of the key scheme (`node_modules/<name>` for npm, `<name>` for bun), the same first step the parsers' positional walks take. An edge that lands on a workspace package reads `link:<path>`, the POSIX path from the importer's directory to the workspace's, which is exactly what pnpm records for the same edge (`link:../b` from `packages/a`, `link:packages/b` from the root). It never reads the workspace package's own version: bun and npm record that version on the workspace row, so a release that bumped only the workspace reported every dependent as `changed` under an identical specifier while pnpm reported nothing. The `wsbump-*` fixture pairs pin the three formats to one answer; a workspace row that records no directory gives no version. A bun catalog entry's version is the single version its consumers resolved to; with no consumer it is the package's version if the lockfile holds exactly one non-workspace version of it; disagreeing consumers or several versions give no version, never a guess. bun's unnamed `catalog` section is the catalog named `"default"`, matching pnpm. npm has no catalogs.
 - **yarn** records no importers and no catalogs, so two yarn lockfiles always compare empty.
 
 A `CatalogChange` also lists its `consumers` (importer path and `depType` of every `catalog:` reference to the entry), read from the `after` lockfile except for a removed entry, whose consumers are read from `before`, since nobody references a removed entry afterwards. Reading them from `after` would silently drop every consumer of a removal, which is the bug the ported code had already been burned by. Importer specifiers stay classified (`ImporterDependency`'s codec), so a catalog bump, which shows in `catalogs` and again in `importers` for each consumer whose version moved, can be kept apart by `specifier.after?._tag`. Importers are matched by path, which `withImporterNames` leaves alone, so renaming either side first changes nothing.

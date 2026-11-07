@@ -181,8 +181,8 @@ describe("LockfileDiff.compare", () => {
 					"packages/core react peerDependencies added -->catalog: -->19.2.4",
 					"packages/core typescript devDependencies removed ^5.3.0->- 5.9.3->-",
 					"packages/core zod dependencies added -->catalog: -->3.25.76",
-					// A workspace dependency resolves to the workspace package's own version.
-					"packages/new-pkg @test-monorepo/utils dependencies added -->workspace:* -->1.0.0",
+					// A workspace dependency reads the link pnpm records, not the workspace's own version.
+					"packages/new-pkg @test-monorepo/utils dependencies added -->workspace:* -->link:../utils",
 					"packages/utils chalk dependencies removed ^5.3.0->- 5.6.2->-",
 					"packages/utils vitest devDependencies added -->catalog:testing -->3.2.4",
 				]);
@@ -243,7 +243,7 @@ describe("LockfileDiff.compare", () => {
 					"packages/core react peerDependencies added -->^19.0.0 -->19.2.4",
 					"packages/core typescript devDependencies removed ^5.3.0->- 5.9.3->-",
 					"packages/core zod dependencies added -->^3.23.0 -->3.25.76",
-					"packages/new-pkg @test-monorepo/utils dependencies added -->* -->1.0.0",
+					"packages/new-pkg @test-monorepo/utils dependencies added -->* -->link:../utils",
 					"packages/utils chalk dependencies removed ^5.3.0->- 5.6.2->-",
 					"packages/utils vitest devDependencies added -->^3.0.0 -->3.2.4",
 				]);
@@ -344,6 +344,57 @@ describe("LockfileDiff.compare", () => {
 				assert.deepStrictEqual(catalogLines(LockfileDiff.compare(before, after)), [
 					"default/react added -->^18.0.0 -->- [.:dependencies,packages/lib:dependencies]",
 				]);
+			}),
+		);
+	});
+
+	describe("workspace links compare alike in pnpm, bun and npm", () => {
+		// The `wsbump-before` → `wsbump-after` fixture pairs (hand-authored; see
+		// the fixtures README) are one workspace in three formats: the root and
+		// packages/a depend on packages/b through a workspace link, and the
+		// release bumps packages/b from 1.0.0 to 1.0.1 and its `ms` from 2.0.0 to
+		// 2.1.3. pnpm records the link edge as `link:<path>` and never records
+		// packages/b's own version, so only `ms` moves. bun and npm record
+		// packages/b's version on its workspace row; reading the edge through that
+		// row would report every dependent as changed on every release.
+		const formats = [
+			{ format: "pnpm", file: "pnpm-lock.yaml" },
+			{ format: "bun", file: "bun.lock" },
+			{ format: "npm", file: "package-lock.json" },
+		] as const;
+		const expected = ["packages/b ms dependencies changed ^2.0.0->^2.0.0 2.0.0->2.1.3"];
+
+		it.effect("a sibling's version bump is not a change to its dependents, and all three diffs agree", () =>
+			Effect.gen(function* () {
+				const answers: Array<ReadonlyArray<string>> = [];
+				for (const { format, file } of formats) {
+					const before = yield* parseFixture(`${format}/wsbump-before/${file}`, format);
+					const after = yield* parseFixture(`${format}/wsbump-after/${file}`, format);
+					const diff = LockfileDiff.compare(before, after);
+					assert.deepStrictEqual(diff.catalogs, [], format);
+					assert.deepStrictEqual(importerLines(diff), expected, format);
+					answers.push(importerLines(diff));
+				}
+				assert.deepStrictEqual(answers[1], answers[0]);
+				assert.deepStrictEqual(answers[2], answers[0]);
+			}),
+		);
+
+		it.effect("a workspace edge resolves to the link pnpm records, relative to the importer", () =>
+			Effect.gen(function* () {
+				for (const { format, file } of formats) {
+					const lockfile = yield* parseFixture(`${format}/wsbump-before/${file}`, format);
+					// Every dependency added at once, so each resolved version is on show.
+					const empty = Lockfile.make({ ...lockfile, importers: [] });
+					const versions = LockfileDiff.compare(empty, lockfile).importers.map(
+						(c) => `${c.importer} ${c.name} ${c.version.after ?? "-"}`,
+					);
+					assert.deepStrictEqual(
+						versions,
+						[". @wsbump/b link:packages/b", "packages/a @wsbump/b link:../b", "packages/b ms 2.0.0"],
+						format,
+					);
+				}
 			}),
 		);
 	});

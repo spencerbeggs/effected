@@ -124,8 +124,9 @@ export class CatalogChange extends Schema.Class<CatalogChange>("CatalogChange")(
  * - `version` — the version the dependency resolved to on each side, present
  *   only where the lockfile lets it be resolved: pnpm records it per importer
  *   dependency (a workspace link reads `link:<path>`); for bun and npm it is
- *   read through the importer's resolved edge to the package entry; yarn
- *   records no importers at all.
+ *   read through the importer's resolved edge to the package entry, and an
+ *   edge to a workspace package reads the same `link:<path>` pnpm records,
+ *   never the workspace's own version; yarn records no importers at all.
  * - `kind` — `"added"`, `"removed"` or `"changed"`, under the same rule as
  *   `CatalogChange`: a `changed` record has a specifier on both sides, and
  *   either the specifier differs or both resolved versions are known and
@@ -180,6 +181,25 @@ const makeResolver = (lockfile: Lockfile): Resolver => {
 	return { lockfile, workspaceRows };
 };
 
+/** The segments of a root-relative directory, none for the root `"."`. */
+const segmentsOf = (dir: string): ReadonlyArray<string> =>
+	dir === "." || dir === "" ? [] : dir.split("/").filter((segment) => segment !== "" && segment !== ".");
+
+/**
+ * The `link:` value pnpm records for an edge from the importer directory
+ * `from` to the workspace directory `to`, both root-relative: the POSIX path
+ * from one to the other (`link:../b` from `packages/a`, `link:packages/b`
+ * from the root).
+ */
+const linkVersion = (from: string, to: string): string => {
+	const source = segmentsOf(from);
+	const target = segmentsOf(to);
+	let common = 0;
+	while (common < source.length && common < target.length && source[common] === target[common]) common++;
+	const path = [...source.slice(common).map(() => ".."), ...target.slice(common)].join("/");
+	return `link:${path === "" ? "." : path}`;
+};
+
 /**
  * The version one importer dependency resolved to, or `undefined` when the
  * lockfile does not let it be resolved.
@@ -191,6 +211,12 @@ const makeResolver = (lockfile: Lockfile): Resolver => {
  * resolves at the top of the format's own key scheme (`node_modules/<name>`
  * for npm, `<name>` for bun) — the same first step the parsers' positional
  * walks take from the root. yarn records no importers.
+ *
+ * An edge that lands on a workspace package reads as the `link:<path>` pnpm
+ * records for it, never the workspace's own version: bun and npm carry that
+ * version on the workspace row, so reading it would report every dependent
+ * as changed whenever the workspace is released, where pnpm reports nothing.
+ * A workspace row that records no directory gives `undefined`.
  */
 const importerVersion = (resolver: Resolver, importer: string, dep: ImporterDependency): string | undefined => {
 	const { lockfile } = resolver;
@@ -204,7 +230,10 @@ const importerVersion = (resolver: Resolver, importer: string, dep: ImporterDepe
 		target = row !== undefined && Object.hasOwn(row.resolved, dep.name) ? row.resolved[dep.name] : undefined;
 	}
 	if (target === undefined) return undefined;
-	return Option.getOrUndefined(Option.map(lockfile.packageByInstanceId(target), (pkg) => pkg.version));
+	const pkg = Option.getOrUndefined(lockfile.packageByInstanceId(target));
+	if (pkg === undefined) return undefined;
+	if (!pkg.isWorkspace) return pkg.version;
+	return pkg.relativePath === undefined ? undefined : linkVersion(importer, pkg.relativePath);
 };
 
 // ── Catalog normalization ──────────────────────────────────────────────────
@@ -495,7 +524,10 @@ export class LockfileDiff extends Schema.Class<LockfileDiff>("LockfileDiff")({
 	 *   each importer dependency, so both versions are read directly.
 	 * - **bun** and **npm** record resolved versions on package entries, not on
 	 *   the catalog or the importer. An importer dependency's version is read
-	 *   through the importer's resolved edge to its package entry. A bun
+	 *   through the importer's resolved edge to its package entry. An edge to a
+	 *   workspace package reads `link:<path>`, the path from the importer to the
+	 *   workspace as pnpm records it, so a release that bumps only a workspace's
+	 *   own version is not a change to its dependents in any format. A bun
 	 *   catalog entry's version is the one version its consumers resolved to;
 	 *   with no consumer it is the package's version when the lockfile holds
 	 *   exactly one, and absent when consumers disagree or the name resolves
