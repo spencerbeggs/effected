@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T22:28:49Z
+  at: 2026-11-07T03:36:22Z
 integrity:
   generated:
-    body: aaa9d66c1d7aac74
+    body: d12013edc2f47ac4
 ---
 
 # effected
@@ -54,6 +54,8 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `mcp-kit` | boundary | invention; the MCP boundary (stdio wiring, tool-failure shaping, strict-input walkers) over `effect/ai`, plus `./testing` clients |
 | `lsp` | boundary | invention; LSP base-protocol framing (byte-counted `Content-Length` encode, an incremental decoder and a `Stream` transform) as pure functions, plus `LspProbe`, the packed-install boot proof for a Language Server bin, behind `./testing` |
 | `markdown` | pure | invention; CommonMark + GFM as pure schemas |
+| `markdown-lint` | pure | invention; a markdownlint-compatible `LintRule` defined once over `markdown` trees, run by `MarkdownLint`, a pure programmatic host, or by `MarkdownlintAdapter` as a markdownlint custom rule, with no markdownlint import; one regular dependency, `markdown` |
+| `shell` | pure | invention; a tolerant shell-syntax lexer and segmenter (`ShellSyntax.parse`, `ShellCommand.fromSegment`) that reports which simple commands an untrusted command string would run, never failing and never evaluating; `effect` is its only peer and it has no dependency at all |
 | `commands` | boundary | part-port of `@savvy-web/silk-effects`' `ToolDiscovery` plus invention |
 | `templates` | boundary | port of `@savvy-web/silk-effects`' `ManagedSection` |
 | `memfs` | pure | invention; a virtual POSIX volume behind core's `FileSystem` key — carries **no `@effected/*` edge, ever** |
@@ -71,6 +73,7 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `oidc` | boundary | invention; the OIDC vocabulary over `jwt`: the `IdentityToken` issuer contract (moved from `sbom`), ID-token claims, an unverified decode and an audience-guarded verify |
 | `crypto` | boundary | extraction from `github-actions` and `savvy-web/build` intake; HMAC, constant-time comparison and AWS SigV4 over core `Mac` and `Digest` in `R`, no `node:` import |
 | `webhooks` | boundary | extraction from `savvy-web/build` intake; inbound webhook signature verification presets (Standard Webhooks, GitHub, Stripe, Sanity, HMAC header, shared secret) over `crypto` |
+| `s3` | boundary | invention, generalized from `savvy-web/build` intake's hand-rolled archive; a minimal client for one bucket of an S3-compatible store (conditional `put`, `get`, `head`, `delete`, a strict ListObjectsV2) over core `HttpClient`, `Digest` and `Mac` in `R`, signing with `crypto`'s `SigV4`, no `node:` import |
 | `changesets` | boundary | invention; a parser for changeset files and `.changeset/config.json` and a release planner, with `@changesets/get-release-plan` kept as a test oracle only |
 | `bundler` | integrated | port of `@savvy-web/tsdown-plugins` and `@savvy-web/bundler`, the `tsdoctor.json` schema from `@tsdoctor/manifest`, and a rolldown rewrite of `@savvy-web/github-action-builder`; a `typescript` peer shared only with the tool's `cli`, `mcp` and `plugin` |
 | `pnpm-plugin-effected` | companion — no tier | invention; the one `effected` catalog (the Effect family on one minor, and the kit) plus the graph-wide Effect pins, and the public hoist of `@effected/plugin`; renamed from `pnpm-plugin-effect` |
@@ -79,7 +82,7 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `mcp` | tool — no tier | invention; the `effected-mcp` stdio server with the `identity` tool and the `package_build`, `action_build`, `schema_build`, `schema_check` and `schema_validate` tools over `effect/ai`, `mcp-kit` and `engine` |
 | `engine` | tool — no tier | invention; the tool's shared logic that both front ends report through: `Identity.report`, and the `./schema` subpath (config loader, runner, report classes, version check, the two shipped ajv engines), and the `./build` subpath (`BuildRun`, `ActionRun` and their result classes), built on `kit`, `schemastore` and `bundler` |
 
-The roster is **49 packages**: 44 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`plugin`, `cli`, `mcp`, `engine`), which are an application and carry no library tier. `cli-kit`, `mcp-kit`, `kit`, `plugin`, `changesets` and `bundler` are new npm names, not yet published. `cli`, `mcp` and `engine` published before as the old kit libraries, and their next release is the tool package under the same name. `pnpm-plugin-effected` is already published.
+The roster is **52 packages**: 47 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`plugin`, `cli`, `mcp`, `engine`), which are an application and carry no library tier. `cli-kit`, `mcp-kit`, `kit`, `plugin`, `changesets`, `bundler`, `shell`, `s3` and `markdown-lint` are new npm names, not yet published. `cli`, `mcp` and `engine` published before as the old kit libraries, and their next release is the tool package under the same name. `pnpm-plugin-effected` is already published.
 
 ### Consumers
 
