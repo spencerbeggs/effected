@@ -9,6 +9,7 @@
 
 import { decodeAnsiC } from "./ansiC.js";
 import { consumeHeredocBodies, endsWord, readHeredocDelimiter } from "./heredoc.js";
+import type { NestedRoot, NestedScan } from "./nested.js";
 import { ARITH_BRACKET, ARITH_GROUP, ARITH_SUBST, BACKTICK, BRACE, SUBST, backtickBody, scanNested } from "./nested.js";
 import type {
 	RawCommandSubstitution,
@@ -372,6 +373,25 @@ class Lexer {
 	}
 
 	/**
+	 * `scanNested`, reporting every quoted run it found that bash may expand
+	 * anyway (`QuotedSubstitutionInExpansion`), and every one POSIX-mode bash
+	 * would read as syntax (`QuotedCloserInExpansion`). Every scan the lexer
+	 * keeps goes through here; a demoted arithmetic root reports none.
+	 * `inDoubleQuotes` is whether the opener sat in double quotes or a heredoc
+	 * body.
+	 */
+	private nested(from: number, limit: number, root: NestedRoot, inDoubleQuotes = false): NestedScan {
+		const scan = scanNested(this.source, from, limit, root, inDoubleQuotes);
+		this.quotedRuns(scan);
+		return scan;
+	}
+
+	private quotedRuns(scan: NestedScan): void {
+		for (const run of scan.quoted) this.diagnose("QuotedSubstitutionInExpansion", run.start, run.end - run.start);
+		for (const run of scan.closers) this.diagnose("QuotedCloserInExpansion", run.start, run.end - run.start);
+	}
+
+	/**
 	 * Try the `((` at `at`, whose body starts at `bodyStart`, as an arithmetic
 	 * command. Returns the offset after it, or -1 when it is two subshells
 	 * (`((cmd) )`), which the caller then lexes as groups. An unterminated one
@@ -379,7 +399,7 @@ class Lexer {
 	 */
 	private arithmeticCommand(at: number, bodyStart: number): number {
 		const n = this.length;
-		const scan = scanNested(this.source, bodyStart, n, ARITH_GROUP);
+		const scan = this.nested(bodyStart, n, ARITH_GROUP);
 		if (scan.demoted) {
 			this.arithmeticFailUntil = scan.end;
 			this.heredocOffUntil = Math.max(this.heredocOffUntil, scan.end);
@@ -511,7 +531,7 @@ class Lexer {
 	private subscriptedWord(segment: RawSegment, at: number, open: number): number {
 		const source = this.source;
 		const n = this.length;
-		const scan = scanNested(source, open + 1, n, ARITH_BRACKET);
+		const scan = this.nested(open + 1, n, ARITH_BRACKET);
 		if (!scan.terminated) {
 			this.diagnose("UnterminatedSubscript", at, n - at);
 			const word: RawWord = {
@@ -624,7 +644,7 @@ class Lexer {
 				// `endsWord` let this through, so a `(` follows: process substitution.
 				flush(i);
 				const bodyStart = skipContinuations(source, i + 1) + 1;
-				const scan = scanNested(source, bodyStart, n, SUBST);
+				const scan = this.nested(bodyStart, n, SUBST);
 				if (!scan.terminated) {
 					this.diagnose("UnterminatedProcessSubstitution", i, n - i);
 					parts.push({ kind: "opaque", start: i, end: n, substitutions: scan.substitutions });
@@ -736,7 +756,22 @@ class Lexer {
 			}
 			const element = this.lexWord(j, NORMAL);
 			for (const part of element.parts) collectSubstitutions(part, substitutions);
+			if (source[j] === "[") this.arrayKey(j, element.end);
 			j = element.end;
+		}
+	}
+
+	/**
+	 * The `[key]` of an array element starting at `open` and ending at `end`.
+	 * bash evaluates an indexed array's key as arithmetic, where a quoted run
+	 * still expands (`x=(['$(cmd)']=1)` runs `cmd`), so a key followed by `=`
+	 * or `+=` reports its quoted runs. The scan stops at the element's end, so
+	 * every element is read at most twice.
+	 */
+	private arrayKey(open: number, end: number): void {
+		const scan = scanNested(this.source, open + 1, end, ARITH_BRACKET);
+		if (scan.terminated && this.assignmentOperator(skipContinuations(this.source, scan.end, end)) !== -1) {
+			this.quotedRuns(scan);
 		}
 	}
 
@@ -930,8 +965,8 @@ class Lexer {
 			const inner = skipContinuations(source, open + 1, limit);
 			const arithmetic = inner < limit && source[inner] === "(";
 			const scan = arithmetic
-				? scanNested(source, inner + 1, limit, ARITH_SUBST)
-				: scanNested(source, open + 1, limit, SUBST);
+				? this.nested(inner + 1, limit, ARITH_SUBST, inDoubleQuotes)
+				: this.nested(open + 1, limit, SUBST);
 			if (!scan.terminated) {
 				this.diagnose(scan.arithmetic ? "UnterminatedArithmetic" : "UnterminatedCommandSubstitution", i, limit - i);
 				return { kind: "opaque", start: i, end: limit, substitutions: scan.substitutions };
@@ -960,7 +995,7 @@ class Lexer {
 		if (next === "[") {
 			// The legacy arithmetic expansion `$[…]`: like `$((…))`, a `<<`
 			// inside it is a shift, never a heredoc.
-			const scan = scanNested(source, open + 1, limit, ARITH_BRACKET);
+			const scan = this.nested(open + 1, limit, ARITH_BRACKET, inDoubleQuotes);
 			if (!scan.terminated) {
 				this.diagnose("UnterminatedArithmetic", i, limit - i);
 				return { kind: "opaque", start: i, end: limit, substitutions: scan.substitutions };
@@ -976,7 +1011,7 @@ class Lexer {
 			};
 		}
 		if (next === "{") {
-			const scan = scanNested(source, open + 1, limit, BRACE);
+			const scan = this.nested(open + 1, limit, BRACE, inDoubleQuotes);
 			if (!scan.terminated) {
 				this.diagnose("UnterminatedParameterExpansion", i, limit - i);
 				return { kind: "opaque", start: i, end: limit, substitutions: scan.substitutions };
@@ -1043,7 +1078,7 @@ class Lexer {
 	 * removes the backslash before `"` in its body.
 	 */
 	private backtick(i: number, limit: number, inDoubleQuotes: boolean): RawCommandSubstitution | RawPart {
-		const scan = scanNested(this.source, i + 1, limit, BACKTICK);
+		const scan = this.nested(i + 1, limit, BACKTICK);
 		if (!scan.terminated) {
 			this.diagnose("UnterminatedBacktick", i, limit - i);
 			return { kind: "opaque", start: i, end: limit, substitutions: NO_SUBSTITUTIONS };

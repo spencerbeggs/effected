@@ -7,7 +7,7 @@
 // call stack, so a megabyte of `$(` is one linear pass.
 
 import { consumeHeredocBodies, readHeredocDelimiter } from "./heredoc.js";
-import type { RawSubstitution } from "./raw.js";
+import type { RawSpan, RawSubstitution } from "./raw.js";
 import { skipContinuations } from "./raw.js";
 
 /** A `$(`, `<(` or `>(` body: ends at `)`. @internal */
@@ -49,6 +49,97 @@ const ARITH_PAREN = 9;
  * @internal
  */
 export const ARITH_BRACKET = 10;
+/**
+ * A `'…'` run opened inside an expansion context: a `${…}` body, arithmetic
+ * (`$((…))`, `((…))`, `$[…]`) or a bracket subscript. It ends at the next
+ * `'`, like `SQUOTE`, because bash honours the quote while it looks for the
+ * closer. What it holds is another matter: inside `"${x:-'…'}"`, a heredoc's
+ * `${…}`, any arithmetic and an indexed array's subscript, bash keeps the
+ * quote characters and still expands the text between them, so
+ * `echo "${x:-'$(cmd)'}"` runs `cmd`. Whether it does depends on the quoting
+ * around the `${`, on the operator (`${x//a/'$(cmd)'}` runs nothing) and on
+ * whether the array is associative, none of which a skip scan can know. So a
+ * run holding a `$(` or a backtick is recorded in `NestedScan.quoted`, which
+ * the lexer reports as `QuotedSubstitutionInExpansion`: fail closed, never
+ * skipped. A substitution part is not placed for it, because bash reads the
+ * run twice, once as a quote to match the closer and once as expansion
+ * text, and the two readings need not agree on where a `$(…)` ends.
+ *
+ * Honouring the quote to find the closer is bash's default mode only. In
+ * POSIX mode (`set -o posix`, or an inherited `POSIXLY_CORRECT`) a `'` inside
+ * a double-quoted `${…}` is an ordinary character, so `}` in
+ * `echo "${x:-'}"; cmd; echo "'}"` closes the expansion early and `cmd` runs,
+ * where the default mode runs nothing. The two readings differ only when the
+ * POSIX reading of the run's text is unbalanced (`posixReadingDiffers`): a
+ * `}` or `]` it takes as a closer, or a `"`, `${` or `$[` left open. Such a run
+ * inside an expansion frame that sits in double quotes (or a heredoc body,
+ * which over-reports, since a heredoc body ends at its delimiter line in
+ * either mode) is recorded in `NestedScan.closers`, which the lexer reports
+ * as `QuotedCloserInExpansion`. A run holding a `$(` or a backtick is already
+ * in `quoted`. Arithmetic and unquoted `${…}` honour the quote in both modes
+ * (checked under bash 5.3), but a frame inherits double quotes from the `"`
+ * around it, so a run in `"$(( ${x:-'}'} ))"` is still reported.
+ */
+const EXPANSION_SQUOTE = 11;
+/** A `$'…'` run opened inside an expansion context: see `EXPANSION_SQUOTE`. */
+const EXPANSION_ANSIC = 12;
+
+/** Whether `kind` is a frame inside which a quoted run is still expanded. */
+const expandsQuotes = (kind: number): boolean =>
+	kind === BRACE || kind === ARITH_SUBST || kind === ARITH_GROUP || kind === ARITH_PAREN || kind === ARITH_BRACKET;
+
+/**
+ * Whether `source[from, to)` holds a `$(` (through backslash-newlines) or a
+ * backtick: the openers of a command substitution. One pass, no lookahead
+ * past `to`.
+ *
+ * @internal
+ */
+export const holdsSubstitutionOpener = (source: string, from: number, to: number): boolean => {
+	for (let i = from; i < to; i += 1) {
+		const c = source[i];
+		if (c === "`") return true;
+		if (c === "$") {
+			const next = skipContinuations(source, i + 1, to);
+			if (next < to && source[next] === "(") return true;
+		}
+	}
+	return false;
+};
+
+/**
+ * Whether POSIX-mode bash, which takes a `'` inside a double-quoted expansion
+ * for an ordinary character, reads the run text `source[from, to)` as anything
+ * other than balanced: a `}` or `]` it would take as the enclosing closer, or
+ * a `"`, `${` or `$[` still open at `to`. A balanced text (`'${y:-v}'`,
+ * `'""'`, `'\}'`) leaves both readings on the same closer. One pass, its
+ * stack bounded by the run, no lookahead past `to`.
+ *
+ * @internal
+ */
+export const posixReadingDiffers = (source: string, from: number, to: number): boolean => {
+	// The closers the POSIX reading is waiting for, innermost last.
+	const open: Array<string> = [];
+	for (let i = from; i < to; i += 1) {
+		const c = source[i];
+		const top = open[open.length - 1];
+		if (c === "\\") i += 1;
+		else if (c === '"') {
+			if (top === '"') open.pop();
+			else open.push('"');
+		} else if (c === "}" || c === "]") {
+			if (top === c) open.pop();
+			else if (top !== '"') return true;
+		} else if (c === "$") {
+			const next = skipContinuations(source, i + 1, to);
+			if (next < to && (source[next] === "{" || source[next] === "[")) {
+				open.push(source[next] === "{" ? "}" : "]");
+				i = next;
+			}
+		}
+	}
+	return open.length > 0;
+};
 
 /** @internal */
 export type NestedRoot =
@@ -81,6 +172,20 @@ export interface NestedScan {
 	 * are listed.
 	 */
 	readonly substitutions: ReadonlyArray<RawSubstitution>;
+	/**
+	 * The `'…'` and `$'…'` runs directly inside an expansion context of the
+	 * body (not inside another substitution) that hold a substitution opener,
+	 * quote characters included. Empty for a `SUBST` or `BACKTICK` root, whose
+	 * body a caller parses again, and for an arithmetic root that turned out
+	 * to be a substitution or two subshells.
+	 */
+	readonly quoted: ReadonlyArray<RawSpan>;
+	/**
+	 * The `'…'` and `$'…'` runs, kept on the same terms as `quoted`, inside an
+	 * expansion frame that sits in double quotes, whose text POSIX-mode bash
+	 * would read as syntax (see `EXPANSION_SQUOTE`).
+	 */
+	readonly closers: ReadonlyArray<RawSpan>;
 }
 
 /**
@@ -169,16 +274,35 @@ interface Entry {
  * them. A `case` pattern's `)` inside a body closes it early; that is a known
  * limit of skipping rather than parsing.
  *
+ * `inDoubleQuotes` says whether the root opener sat inside double quotes or a
+ * heredoc body, which only an expansion root (`${`, arithmetic) can.
+ *
  * @internal
  */
-export const scanNested = (source: string, start: number, limit: number, root: NestedRoot): NestedScan => {
+export const scanNested = (
+	source: string,
+	start: number,
+	limit: number,
+	root: NestedRoot,
+	inDoubleQuotes = false,
+): NestedScan => {
 	const kinds: Array<number> = [root];
+	// Where each frame's opener starts, and where its body starts.
+	const starts: Array<number> = [start];
 	const opens: Array<number> = [start];
 	// Index into `entries` a frame records into, or -1.
 	const records: Array<number> = [-1];
 	// Whether the frame raised `substDepth` (only real substitution frames do).
 	const counted: Array<boolean> = [false];
+	// Whether the frame sits in double quotes: a `"` frame does, command text
+	// does not, and an expansion or quoted-run frame inherits it.
+	const quotedContext: Array<boolean> = [inDoubleQuotes && root !== SUBST && root !== BACKTICK];
 	const entries: Array<Entry> = [];
+	const quoted: Array<RawSpan> = [];
+	const closers: Array<RawSpan> = [];
+	// A substitution root's body is parsed again by the caller, who sees its
+	// quoted runs there.
+	const recordsQuoted = root !== SUBST && root !== BACKTICK;
 	let substDepth = 0;
 	let rootArithmetic = root === ARITH_SUBST || root === ARITH_GROUP || root === ARITH_BRACKET;
 	let pending: Array<{ readonly delimiter: string; readonly stripTabs: boolean; readonly quoted: boolean }> = [];
@@ -199,19 +323,26 @@ export const scanNested = (source: string, start: number, limit: number, root: N
 				raises = true;
 			}
 		}
+		const inherits = quotedContext[quotedContext.length - 1] as boolean;
 		kinds.push(kind);
+		starts.push(at);
 		opens.push(at + opener);
 		records.push(record);
 		counted.push(raises);
+		quotedContext.push(
+			kind === DQUOTE ? true : kind === SUBST || kind === GROUP || kind === BACKTICK ? false : inherits,
+		);
 	};
 
 	// Pop the top frame, whose closer ends at `closerEnd`. Returns true when
 	// the root itself closed.
 	const pop = (closerEnd: number): boolean => {
 		const kind = kinds.pop() as number;
+		starts.pop();
 		opens.pop();
 		const record = records.pop() as number;
 		const raised = counted.pop() as boolean;
+		quotedContext.pop();
 		if (kinds.length === 0) return true;
 		if (raised) substDepth -= 1;
 		const entry = record === -1 ? undefined : entries[record];
@@ -220,6 +351,23 @@ export const scanNested = (source: string, start: number, limit: number, root: N
 			if (kind === ARITH_SUBST) entry.arithmetic = true;
 		}
 		return false;
+	};
+
+	// A `'` at `i`: an ordinary single quote, or one bash expands inside.
+	const singleQuote = (): void => {
+		push(expandsQuotes(kinds[kinds.length - 1] as number) ? EXPANSION_SQUOTE : SQUOTE, i, 1);
+		i += 1;
+	};
+
+	// The quoted run on top of the stack closed just before `end`.
+	const closeQuotedRun = (end: number): void => {
+		const at = kinds.length - 1;
+		if (!recordsQuoted || substDepth !== 0) return;
+		const from = opens[at] as number;
+		if (holdsSubstitutionOpener(source, from, end - 1)) quoted.push({ start: starts[at] as number, end });
+		if (quotedContext[at] === true && posixReadingDiffers(source, from, end - 1)) {
+			closers.push({ start: starts[at] as number, end });
+		}
 	};
 
 	// `$` inside a body: open whatever it introduces.
@@ -245,7 +393,7 @@ export const scanNested = (source: string, start: number, limit: number, root: N
 			push(ARITH_BRACKET, i, opener);
 			i = open + 1;
 		} else if (next === "'" && allowAnsiC) {
-			push(ANSIC, i, opener);
+			push(expandsQuotes(kinds[kinds.length - 1] as number) ? EXPANSION_ANSIC : ANSIC, i, opener);
 			i = open + 1;
 		} else {
 			i += 1;
@@ -271,20 +419,22 @@ export const scanNested = (source: string, start: number, limit: number, root: N
 	while (i < limit) {
 		const top = kinds[kinds.length - 1] as number;
 		const c = source[i] as string;
-		if (top === SQUOTE) {
+		if (top === SQUOTE || top === EXPANSION_SQUOTE) {
 			const close = source.indexOf("'", i);
 			if (close === -1 || close >= limit) {
 				i = limit;
 				break;
 			}
 			i = close + 1;
+			if (top === EXPANSION_SQUOTE) closeQuotedRun(i);
 			pop(i);
 			continue;
 		}
-		if (top === ANSIC) {
+		if (top === ANSIC || top === EXPANSION_ANSIC) {
 			if (c === "\\") i += 2;
 			else if (c === "'") {
 				i += 1;
+				if (top === EXPANSION_ANSIC) closeQuotedRun(i);
 				pop(i);
 			} else i += 1;
 			continue;
@@ -312,10 +462,8 @@ export const scanNested = (source: string, start: number, limit: number, root: N
 			else if (c === "}") {
 				i += 1;
 				if (pop(i)) return finish(i, true, false);
-			} else if (c === "'") {
-				push(SQUOTE, i, 1);
-				i += 1;
-			} else if (c === '"') {
+			} else if (c === "'") singleQuote();
+			else if (c === '"') {
 				push(DQUOTE, i, 1);
 				i += 1;
 			} else if (c === "$") dollar(true, false);
@@ -329,8 +477,7 @@ export const scanNested = (source: string, start: number, limit: number, root: N
 					i += 2;
 					break;
 				case "'":
-					push(SQUOTE, i, 1);
-					i += 1;
+					singleQuote();
 					break;
 				case '"':
 					push(DQUOTE, i, 1);
@@ -361,8 +508,7 @@ export const scanNested = (source: string, start: number, limit: number, root: N
 					i += 2;
 					break;
 				case "'":
-					push(SQUOTE, i, 1);
-					i += 1;
+					singleQuote();
 					break;
 				case '"':
 					push(DQUOTE, i, 1);
@@ -390,6 +536,7 @@ export const scanNested = (source: string, start: number, limit: number, root: N
 					} else {
 						// `$( (…) …)` or `( (…) …)`: the `)` closed the inner parenthesis.
 						kinds[kinds.length - 1] = top === ARITH_SUBST ? SUBST : GROUP;
+						quotedContext[quotedContext.length - 1] = false;
 						if (kinds.length === 1) rootArithmetic = false;
 						i += 1;
 					}
@@ -524,12 +671,17 @@ export const scanNested = (source: string, start: number, limit: number, root: N
 				});
 			}
 		}
+		// An arithmetic root that became a substitution or two subshells is
+		// command text, where those quotes were real ones.
+		const keepsQuoted = root === BRACE || (rootArithmetic && !demoted);
 		return {
 			end: Math.min(end, limit),
 			terminated,
 			arithmetic: rootArithmetic && !demoted,
 			demoted,
 			substitutions: complete,
+			quoted: keepsQuoted ? quoted : [],
+			closers: keepsQuoted ? closers : [],
 		};
 	}
 };

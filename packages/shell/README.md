@@ -38,7 +38,7 @@ Requires Node.js >=24.11.0. `effect` is a peer dependency. ESM-only: import it f
 
 ```ts
 import { ShellSyntax } from "@effected/shell";
-import type { ShellCommand, ShellScript } from "@effected/shell";
+import type { ShellCommand, ShellScript, ShellWord } from "@effected/shell";
 import { Option } from "effect";
 
 const MAX_DEPTH = 8;
@@ -67,29 +67,82 @@ const gitSubcommand = (command: ShellCommand): string | null | undefined => {
 // 'a[$(cmd)]', or a variable holding one, still runs cmd. The parse cannot see
 // inside that evaluation, so refuse them (see "Known limits").
 const ARITHMETIC_TESTS: ReadonlySet<string> = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge", "-v"]);
-// Arithmetic over a name, and `${x@P}`, `${!x}`, a subscript or a substring offset over one.
+// Arithmetic over a name; `${!x}`, `${x@P}` and a subscript over one; and a
+// substring offset or length over one, special parameters included (`${s:x}`,
+// `${@:x}`, `${-:x}`, `${a[@]: -x}`), which the `:-`, `:=`, `:?` and `:+`
+// operators are not.
 const EVALUATES_A_NAME =
-  /(?:\$\(\(|\$\[|\(\()[^A-Za-z_]*[A-Za-z_]|\$\{(?:!|[^}]*@P|#?\w*\[[^\]]*[A-Za-z_$]|\w*:[^-=?+}]*[A-Za-z_$])/;
+  /(?:\$\(\(|\$\[|\(\()[^A-Za-z_]*[A-Za-z_]|\$\{(?:!|[^}]*@P|#?\w*\[[^\]]*[A-Za-z_$]|(?:[@*#?$!0-9-]|\w+(?:\[[^\]]*\])?):(?![-=?+])[^}]*[A-Za-z_$])/;
+// A subscript over a name: in an assignment's name, or an array literal's key (`a=([x]=1)`).
+const SUBSCRIPT_OVER_A_NAME = /\[[^\]]*[A-Za-z_$]/;
+// Commands that change how bash parses or what a name runs, and commands that
+// run a command they are given (unmodelled wrappers among them).
+const REFUSED_COMMANDS: ReadonlySet<string> = new Set([
+  "shopt", "alias", "hash", "enable", "builtin", "eval", "source", ".", "bash", "sh",
+  "su", "ssh", "xargs", "nice", "timeout", "stdbuf", "setsid", "doas", "chroot",
+]);
+// PS4 is prompt-expanded before every command xtrace traces; POSIXLY_CORRECT
+// switches the parser to POSIX mode, which also expands aliases; BASH_ALIASES
+// and BASH_CMDS are the alias and command-hash tables, so a write to either
+// makes a name run something else. `${NAME:=…}`, `for NAME` and a brace word
+// write them with no assignment token, so refuse any mention of one, read with
+// quotes and backslashes removed (`POSIX''LY_CORRECT` is the same name).
+const REFUSED_VARIABLE = /(?<!\w)(?:PS4|POSIXLY_CORRECT|BASH_ALIASES|BASH_CMDS)(?!\w)/;
+
+// bash removes a backslash-newline before it reads a token, so every text test
+// reads the text joined. Removing one inside single quotes only adds matches.
+const joined = (text: string): string => text.replaceAll("\\\n", "");
+
+// The name an assignment builtin's argument assigns, as written before its
+// first `=`; `null` when a variable, a substitution or a brace may supply it.
+const assignedName = (word: ShellWord): string | null => {
+  const literal = Option.getOrNull(word.literal);
+  if (literal !== null) return literal.split("=", 1)[0] ?? "";
+  const head = word.raw.split("=", 1)[0] ?? "";
+  return /[$`{]/.test(head) ? null : head.replace(/["'\\]/g, "");
+};
+
+// `[[ … ]]` is split into segments on `&&`, `||` and `(`, so a test can sit in
+// a later segment than its `[[`: follow it across them by the unquoted words.
+const arithmeticTest = (script: ShellScript): boolean => {
+  let inTest = false;
+  for (const segment of script.segments) {
+    for (const word of segment.words) {
+      const raw = joined(word.raw);
+      if (raw === "[[") inTest = true;
+      else if (raw === "]]") inTest = false;
+      else if (inTest && ARITHMETIC_TESTS.has(Option.getOrElse(word.literal, () => ""))) return true;
+    }
+  }
+  return false;
+};
 
 const evaluatesText = (script: ShellScript, command: ShellCommand): boolean => {
   const { segment } = command;
-  // `[[ … ]]` can run straight into `then git …` in one segment, so read its words.
-  const words = segment.words.map((word) => Option.getOrNull(word.literal));
-  if (words.includes("[[") && words.some((word) => word !== null && ARITHMETIC_TESTS.has(word))) return true;
   const texts = [
     ...segment.words.map((word) => word.raw),
     ...segment.assignments.map((assignment) => assignment.raw),
     ...segment.redirections.map(({ target }) =>
       target.kind === "heredoc" ? (target.quoted ? "" : target.body) : target.raw,
     ),
-  ];
+  ].map(joined);
   if (texts.some((text) => EVALUATES_A_NAME.test(text))) return true;
-  if (segment.assignments.some((assignment) => /\[[^\]]*[A-Za-z_$]/.test(assignment.name))) return true;
+  if (texts.some((text) => REFUSED_VARIABLE.test(text.replace(/["'\\]/g, "")))) return true;
+  for (const { name, value } of segment.assignments) {
+    if (SUBSCRIPT_OVER_A_NAME.test(name)) return true;
+    if (value.raw.startsWith("(") && SUBSCRIPT_OVER_A_NAME.test(value.raw)) return true;
+  }
   const name = Option.getOrUndefined(command.name);
+  const base = name?.slice(name.lastIndexOf("/") + 1);
+  if (base !== undefined && REFUSED_COMMANDS.has(base)) return true;
   const args = command.args.map((word) => Option.getOrNull(word.literal));
   // `declare x=( … )`: the parse splits an array value off as a subshell.
   const arrayValue = command.args.some((word) => script.source[word.end] === "(");
-  switch (name?.slice(name.lastIndexOf("/") + 1)) {
+  // What an assignment builtin's arguments assign, past its options.
+  const assigned = command.args
+    .filter((word) => !/^[-+]/.test(Option.getOrElse(word.literal, () => "")))
+    .map(assignedName);
+  switch (base) {
     case "let":
     case "read":
     case "trap":
@@ -97,15 +150,25 @@ const evaluatesText = (script: ShellScript, command: ShellCommand): boolean => {
     case "declare":
     case "typeset":
     case "local":
-      return arrayValue || args.some((arg) => arg !== null && /^[-+][A-Za-z]*[in]/.test(arg));
+      // These evaluate a subscript in the name they assign: `declare 'a[$(cmd)]=1'`.
+      return (
+        arrayValue ||
+        args.some((arg) => arg !== null && /^[-+][A-Za-z]*[in]/.test(arg)) ||
+        assigned.some((assignee) => assignee === null || assignee.includes("["))
+      );
     case "export":
     case "readonly":
-      return arrayValue;
+      return arrayValue || assigned.some((assignee) => assignee === null);
+    case "set":
+      // Turning on xtrace (PS4 may be inherited) or POSIX mode.
+      return args.some((arg) => arg === null || /^-[A-Za-z]*x/.test(arg) || arg === "xtrace" || arg === "posix");
     case "printf":
       return args[0]?.startsWith("-v") === true;
     case "test":
     case "[":
       return args.includes("-v");
+    case "find":
+      return args.some((arg) => arg === null || /^-(?:exec|execdir|ok|okdir)$/.test(arg));
     default:
       return false;
   }
@@ -113,7 +176,7 @@ const evaluatesText = (script: ShellScript, command: ShellCommand): boolean => {
 
 // Refuse a commit, and refuse anything the guard cannot vouch for.
 const refuses = (script: ShellScript, depth = 0): boolean => {
-  if (script.diagnostics.length > 0) return true;
+  if (script.diagnostics.length > 0 || arithmeticTest(script)) return true;
   for (const command of script.commands()) {
     // No name WITH args is a command it cannot name (`$GIT commit`, or a
     // wrapper option it does not know). No name and no args is a segment that
@@ -135,7 +198,7 @@ console.log(refuses(ShellSyntax.parse("if git diff --quiet; then git status; fi"
 // => false
 ```
 
-`commands()` resolves each segment. It skips the words that name no command: reserved words (`if`, `then`, `!`, `{`, `coproc` and the rest), a whole `[[ … ]]`, the arithmetic command `(( … ))`, `for NAME` before `do`, `function NAME`, and assignments, because bash lets `if [[ 1 ]] then git commit; fi` run `git` with no separator. When a `[[ … ]]` or `(( … ))` is the whole command, as in `[[ -n $x ]]` or `for ((i = 0; i < n; i++))`, it is the name: `[[` or `((`, since bash evaluates it. It then unwraps `sudo`, `env`, `command`, `exec`, `nohup` and `time` with their options, so `sudo -u root env "FOO=a b" git commit` resolves to `git` with `wrappers: ["sudo", "env"]`; a wrapper is matched by its last path segment, so `/usr/bin/env` unwraps too. Long options resolve by unique prefix, as `getopt_long` reads them (`env --unse FOO git` is `--unset`), and an option the wrapper's table does not know, or an ambiguous prefix, stops resolution with no name, because it may take the word after it. `env` reads options up to `--` or its first other word, and from there every word holding an `=` is an assignment (`env -- -x=1 git`, `env =x git`). A command name that is not a literal (`$GIT commit`) resolves to `None` with the words as `args`. The guard above is pinned by the package's own tests against every bypass shape they hold. A real guard also refuses, or interprets, commands that run a command string, such as `bash -c`, `eval` and `xargs`.
+`commands()` resolves each segment. It skips the words that name no command: reserved words (`if`, `then`, `!`, `{`, `coproc` and the rest), a whole `[[ … ]]`, the arithmetic command `(( … ))`, `for NAME` before `do`, `function NAME`, and assignments, because bash lets `if [[ 1 ]] then git commit; fi` run `git` with no separator. When a `[[ … ]]` or `(( … ))` is the whole command, as in `[[ -n $x ]]` or `for ((i = 0; i < n; i++))`, it is the name: `[[` or `((`, since bash evaluates it. It then unwraps `sudo`, `env`, `command`, `exec`, `nohup` and `time` with their options, so `sudo -u root env "FOO=a b" git commit` resolves to `git` with `wrappers: ["sudo", "env"]`; a wrapper is matched by its last path segment, so `/usr/bin/env` unwraps too. Long options resolve by unique prefix, as `getopt_long` reads them (`env --unse FOO git` is `--unset`), and an option the wrapper's table does not know, or an ambiguous prefix, stops resolution with no name, because it may take the word after it. `env` reads options up to `--` or its first other word, and from there every word holding an `=` is an assignment (`env -- -x=1 git`, `env =x git`). A command name that is not a literal (`$GIT commit`) resolves to `None` with the words as `args`. The guard above is pinned by the package's own tests against every bypass shape they hold. A real guard also refuses, or interprets, commands that run a command string, such as `bash -c`, `eval`, `su -c` and `xargs`, and the argv wrappers this package does not unwrap: `nice`, `timeout`, `stdbuf`, `setsid`, `doas`, `chroot`, `builtin` and the like (`ionice`, `taskset`, `flock`, `unbuffer`, `runuser`). Each of those is reported as the command name, with the command it runs among its `args`. The guard above refuses a short list of them by name; a real one needs the full list for the platforms it runs on.
 
 ### Words, quoting and literals
 
@@ -201,14 +264,36 @@ Every offset is a UTF-16 index into `ShellScript.source`. To turn one into a lin
 
 - **Never evaluates.** No variable, tilde, brace, glob, arithmetic or command-substitution expansion, and no execution. An expansion is a marked part with its span, and its body is opaque text.
 - **Never fails.** `parse` returns for every string, in time linear in its length, and never throws. An unterminated quote, substitution or heredoc becomes an `opaque` part running to the end of the input, plus a `ShellDiagnostic`.
-- **Fails closed.** Where the grammar is not modelled (`[[ … ]]`, `case` patterns, function bodies), the segmenter over-splits, reporting a command the shell might not run rather than hiding one. It never reads a heredoc that may not be there. `<<` is a shift in every arithmetic context: `(( … ))`, `$(( … ))`, the legacy `$[ … ]`, and the `[ … ]` subscript of a command-position word that starts `NAME[`, which bash reads as a matched pair with or without an `=` after it. So `(( x = 1 << 2 ))`, `echo $[1 << 2]` and `a[1 << 2]=x` hide no line after them, and a `#` inside a subscript starts no comment. Inside `$( … )` a subscript is read at every word start, not only in command position, which can only over-report. Command position follows bash's own rule, so `a[$(x)]=1 b[1<<2]=y`, `time -p a[1<<2]=x`, `function f { a[1<<2]=x` and `if [[ x ]] then a[1<<2]=x` hide nothing either. A backslash-newline is gone before any token is read, as in bash: `a\⏎[`, `$\⏎[`, `(\⏎(`, `<\⏎<` and a delimiter line written `E\⏎ND` all mean what they mean joined; a backslash before a CRLF escapes the CR, so the LF still ends the command. A heredoc delimiter holding a `$(`, `$((`, `$[`, `${`, backtick, `<(` or `>(` reads no body and records `ExpansionInHeredocDelimiter`, because bash rebuilds a `$( … )` from its parse and the delimiter line cannot be known. A metacharacter inside `x=( … )` is a syntax error after which bash discards that line and runs the next, so the array ends at that newline with a diagnostic. A CRLF line break counts as a line break for the same reason. A script records at most 1000 diagnostics, then one `DiagnosticLimitReached`.
+- **Fails closed.** Where the grammar is not modelled (`[[ … ]]`, `case` patterns, function bodies), the segmenter over-splits, reporting a command the shell might not run rather than hiding one. It never reads a heredoc that may not be there. `<<` is a shift in every arithmetic context: `(( … ))`, `$(( … ))`, the legacy `$[ … ]`, and the `[ … ]` subscript of a command-position word that starts `NAME[`, which bash reads as a matched pair with or without an `=` after it. So `(( x = 1 << 2 ))`, `echo $[1 << 2]` and `a[1 << 2]=x` hide no line after them, and a `#` inside a subscript starts no comment. Inside `$( … )` a subscript is read at every word start, not only in command position, which can only over-report. Command position follows bash's own rule, so `a[$(x)]=1 b[1<<2]=y`, `time -p a[1<<2]=x`, `function f { a[1<<2]=x` and `if [[ x ]] then a[1<<2]=x` hide nothing either. A backslash-newline is gone before any token is read, as in bash: `a\⏎[`, `$\⏎[`, `(\⏎(`, `<\⏎<` and a delimiter line written `E\⏎ND` all mean what they mean joined; a backslash before a CRLF escapes the CR, so the LF still ends the command. A heredoc delimiter holding a `$(`, `$((`, `$[`, `${`, backtick, `<(` or `>(` reads no body and records `ExpansionInHeredocDelimiter`, because bash rebuilds a `$( … )` from its parse and the delimiter line cannot be known. A `'…'` or `$'…'` run inside a `${ … }`, an arithmetic expression or a subscript that holds a `$(` or a backtick records `QuotedSubstitutionInExpansion`: bash honours those quotes to find the closer, then, inside a double-quoted or heredoc `${ … }`, in arithmetic and in an indexed array's key, keeps the quote characters and runs what they hold, so `echo "${x:-'$(cmd)'}"`, `(( '$(cmd)' ))` and `x=(['$(cmd)']=1)` run `cmd`. Which operator and quoting keep the run literal (`"${x//a/'$(cmd)'}"` runs nothing) is not modelled, so every such run is reported, and no substitution part is placed for it, since bash's two readings of the run need not agree on where a `$( … )` in it ends. Honouring those quotes to find the closer is bash's default mode: POSIX mode (`set -o posix`, or an inherited `POSIXLY_CORRECT`) takes a `'` inside a double-quoted `${ … }` for an ordinary character, so in `echo "${x:-'}"; cmd; echo "'}"` the first `}` closes the expansion and `cmd` runs, where the default mode runs nothing. A run inside a double-quoted or heredoc expansion whose text that reading would not leave balanced (a `}` or `]` it takes as the closer, or a `"`, `${` or `$[` left open) records `QuotedCloserInExpansion`; a balanced run such as `'${y:-v}'` reads the same in both modes and records nothing. A metacharacter inside `x=( … )` is a syntax error after which bash discards that line and runs the next, so the array ends at that newline with a diagnostic. A CRLF line break counts as a line break for the same reason. A script records at most 1000 diagnostics, then one `DiagnosticLimitReached`.
 - **Not an execution vocabulary.** The result types are deliberately not core `CommandLine`'s, so analyzer output cannot be handed straight to a spawner. Validate, then build what you run with `CommandLine`.
 
 Commands that take a command string (`bash -c`, `eval`, `xargs`, `find -exec`, `ssh`) are reported as their own name; interpreting their arguments is the caller's job.
 
 ### Known limits
 
-This was checked against GNU bash 5.3 only, with the reviewed shapes, every position of a backslash-newline in them, and a random differential fuzz. That is evidence, not proof, and dash, zsh and POSIX-mode bash were not tested. A guard must not treat `commands()` as a complete gate until these are closed. Two parser modes hide a command with no diagnostic: under `shopt -s extglob` (or an inherited `BASHOPTS`), `echo @(<<E)` and `cat <<E@(x)` read a heredoc bash does not, and under `shopt -s expand_aliases` an alias body is never read (`alias c='git commit'`, then `c`). So refuse `shopt` and `alias`, which are reported as command names, and control the environment. Text handed to another parser is not read: `eval`, `bash -c`, `source`, `xargs`, `find -exec` and `ssh` are reported as their own name. A script with any diagnostic may hide a command (`x=$(echo a[ )` swallows the lines after it as one unterminated substitution), so treat every diagnostic as a refusal, as the guard above does.
+This was checked against GNU bash 5.3 only, with the reviewed shapes, every position of a backslash-newline in them, and a random differential fuzz. That is evidence, not proof. dash and zsh were not tested, and POSIX-mode bash only for the quote rule above. A guard must not treat `commands()` as a complete gate until these are closed. Three parser modes hide a command with no diagnostic:
+
+- Under `shopt -s extglob` (or an inherited `BASHOPTS`), `echo @(<<E)` and `cat <<E@(x)` read a heredoc bash does not.
+- Under `shopt -s expand_aliases`, an alias body is never read (`alias c='git commit'`, then `c`).
+- POSIX mode (`set -o posix`, or an inherited `POSIXLY_CORRECT`) was checked only for the quote rule above. It also expands aliases in a non-interactive shell, so `BASH_ALIASES[1]=cmd` on one line and `1` on the next runs `cmd` with no `alias` command anywhere.
+
+So refuse `shopt`, `alias`, `set -o posix` and any write to `POSIXLY_CORRECT`, and control the environment, which an inherited `POSIXLY_CORRECT` or `BASHOPTS` belongs to. Not every write is an assignment token: `: ${POSIXLY_CORRECT:=1}`, `for POSIXLY_CORRECT in 1`, `select POSIXLY_CORRECT in 1` and a brace word such as `declare {POSIXLY_CORRECT,y}=1` (or `{POSIX''LY_CORRECT,y}`) each turned POSIX mode on under bash 5.3, so the guard above refuses any word that mentions the name once its quotes and backslashes are removed. A name can also be made to run something else: `hash -p /path/to/cmd ls` makes `ls` run `cmd`, `enable -n printf` makes `printf` run the first `printf` on `PATH`, and a write to `BASH_CMDS` (the table `hash -p` writes) or `BASH_ALIASES` (the alias table) does the same with any key, one with no letter included: `BASH_CMDS[1]=/path/to/cmd; 1` runs `cmd`, and so do `BASH_CMDS+=([1]=…)` and `BASH_CMDS=([1]=…)`. These are reported as `hash`, `enable` or an assignment, then the rebound name, so refuse them beside `alias`: the guard above refuses any mention of `BASH_CMDS` or `BASH_ALIASES`.
+
+A guard that matches `raw` text must remove each backslash-newline first, as bash does before it reads a token. The parse already joins them (`[\⏎[` resolves to `[[`), but `raw` keeps them, so `[\⏎[ x -eq 0 ]]`, `(\⏎( x ))`, `$\⏎{!x}` and `"${y@\⏎P}"` slip past a pattern that reads `raw` as written. The guard above reads every text joined.
+
+Text handed to another parser is not read: `eval`, `bash -c`, `source`, `xargs`, `find -exec` and `ssh` are reported as their own name. Nor is text bash evaluates as arithmetic, a name or a prompt, where a quoted `'a[$(cmd)]'`, or a variable holding one, runs `cmd`. Each of these ran `cmd` under bash 5.3, and a guard must refuse them, as the one above does:
+
+- `let 'a[$(cmd)]'`, `trap 'cmd' EXIT` and `read 'a[$(cmd)]'`.
+- `declare -i v='a[$(cmd)]'`, likewise `typeset -i` and `local -i`, a nameref (`declare -n r='a[$(cmd)]'`), and any later assignment to an integer variable.
+- A subscripted name given to `declare`, `typeset` or `local`, with any options: `declare 'a[$(cmd)]=1'`, `declare -g "a[\$(cmd)]=1"`, `declare a\[\$\(cmd\)\]=1`, `declare "a[x]=1"` over `x='a[$(cmd)]'`, and a name a variable supplies (`declare "$x"`, `declare "$x=1"`). `export` and `readonly` run nothing for the same word.
+- `printf -v 'a[$(cmd)]' %s 1`, `[ -v 'a[$(cmd)]' ]` and `test -v 'a[$(cmd)]'`.
+- `[[ 'a[$(cmd)]' -eq 0 ]]` and the other arithmetic tests (`-ne`, `-lt`, `-le`, `-gt`, `-ge`), bare names included (`[[ x -eq 0 ]]`), and `[[ -v 'a[$(cmd)]' ]]`. This parse splits a `[[ … ]]` into segments on `&&`, `||` and `(`, so an operand can surface as a fake command name in a later segment: `[[ 0 == 1 || 'a[$(cmd)]' -eq 0 ]]` reports the commands `[[` and `a[$(cmd)]`. A guard must follow a `[[` to its unquoted `]]` across segments, as the one above does.
+- Arithmetic over a variable: `x='a[$(cmd)]'`, then `(( x ))`, `$(( x ))`, `$(( $x ))`, `$[ x ]` or `for ((i = x; …))`.
+- A variable as a subscript, an array literal's key, a substring offset or length, or an indirection: `${a[x]}`, `a[x]=2`, `a=([x]=1)`, `a+=([$x]=1)`, `${a:x}`, `${@:x}`, `${a[@]:x}`, `${s: -x}`, `${s:0:-x}`, `${!x}`, and a special parameter's substring (`${-:x}`, `${?:x}`, `${$:x}`, `${#:x}`).
+- Prompt expansion. One form is `x='$(cmd)'`, then `"${x@P}"`. Another is `PS4`, which bash expands before every command that xtrace traces: `PS4='$(cmd)'; set -x; :`, likewise `set -o xtrace`, `shopt -so xtrace` and `bash -x`, or an inherited `PS4` or `SHELLOPTS`. The guard above refuses both halves, turning xtrace on and any mention of `PS4`.
+- An assignment builtin's array value, `declare -a x=(['$(cmd)']=1)`, likewise `export` and `readonly`. This parse splits the value off as a subshell, so even `declare -A h=([k]=1)`, which runs nothing, leaves a segment the guard cannot name.
+
+`[[ … ]]` and `(( … ))` resolve to the names `[[` and `((` when they are the whole command, so a refusal list can match them. Run straight into `then` or `do` in one segment, they resolve to the command after them, so read the segment's words for them too. An option or operator a variable supplies (`[ "$op" x ]`, `declare "$o" v=…`) is read only when bash runs the command, so a guard that matches the literal forms must also refuse those. A script with any diagnostic may hide a command (`x=$(echo a[ )` swallows the lines after it as one unterminated substitution), so treat every diagnostic as a refusal, as the guard above does.
 
 ## License
 

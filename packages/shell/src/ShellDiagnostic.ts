@@ -20,6 +20,23 @@ import { SHELL_DIAGNOSTIC_CODES } from "./internal/raw.js";
  *   `$[`, `${`, backtick, `<(` or `>(`. bash reads the word as a matched pair
  *   and rebuilds a `$( … )` from its parse, so the delimiter line cannot be
  *   known. No body is read, and the lines after it are reported as commands.
+ * - `QuotedSubstitutionInExpansion`: a `'…'` or `$'…'` run inside a
+ *   `${…}`, an arithmetic expression (`$((…))`, `((…))`, `$[…]`) or a
+ *   subscript holds a `$(` or a backtick. bash honours those quotes only to
+ *   find the closer: inside a double-quoted or heredoc `${…}`, in arithmetic
+ *   and in an indexed array's subscript it keeps the quote characters and
+ *   still runs the substitution, so `echo "${x:-'$(cmd)'}"` runs `cmd`. Which
+ *   operator and quoting keep the run literal is not modelled, so every such
+ *   run is reported, and no substitution part is placed for it.
+ * - `QuotedCloserInExpansion`: a `'…'` or `$'…'` run inside an expansion
+ *   that sits in double quotes or a heredoc body holds a `}` or `]` with no
+ *   opener before it, or leaves a `"`, `${` or `$[` open (`'}'`, `'"'`,
+ *   `'${'`; a balanced `'${y:-v}'` is not reported). The parse follows bash's
+ *   default mode, which honours the
+ *   quote while it looks for the closer. POSIX mode (`set -o posix`, or an
+ *   inherited `POSIXLY_CORRECT`) takes that `'` for an ordinary character, so
+ *   in `echo "${x:-'}"; cmd; echo "'}"` the first `}` closes the expansion and
+ *   `cmd` runs, where the default mode runs nothing.
  * - `UnterminatedSubscript`: the `[` subscript of a command-position word
  *   starting `NAME[` has no matching `]`. bash reads that subscript as a
  *   matched pair to the end of the input, so the word became an `opaque`
@@ -60,6 +77,8 @@ const MESSAGES: Readonly<Record<ShellDiagnosticCode, string>> = {
 	UnterminatedArithmetic: "arithmetic expression is not closed",
 	UnterminatedSubscript: "array subscript ([ … ]) is not closed",
 	ExpansionInHeredocDelimiter: "heredoc delimiter holds an expansion, so its body cannot be found",
+	QuotedSubstitutionInExpansion: "a quoted run inside an expansion holds a substitution bash may still run",
+	QuotedCloserInExpansion: "a quoted run inside a double-quoted expansion holds syntax POSIX-mode bash would act on",
 	UnterminatedHeredoc: "heredoc has no delimiter line",
 	EmptyParameterExpansion: "parameter expansion is empty",
 	InvalidAnsiCEscape: "escape names a code point above U+10FFFF",

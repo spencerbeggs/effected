@@ -5,7 +5,7 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
-import type { ShellCommand, ShellScript } from "../src/index.js";
+import type { ShellCommand, ShellScript, ShellWord } from "../src/index.js";
 import { ShellSyntax } from "../src/index.js";
 
 const baseName = (name: string): string => name.slice(name.lastIndexOf("/") + 1);
@@ -70,9 +70,9 @@ describe("(( … )) is arithmetic, where << is a shift and opens no heredoc", ()
 		}
 		const expansion = ShellSyntax.parse("echo $((1 << 2))").segments[0]?.words[1]?.parts[0];
 		assert.isTrue(expansion?.kind === "arithmetic" && !expansion.command);
-		// It runs no command: a guard sees no name and no args.
+		// It runs no command, but bash evaluates it, so it names itself `((`.
 		const [command] = ShellSyntax.parse("(( x > 1 ))").commands();
-		assert.isTrue(command !== undefined && Option.isNone(command.name) && command.args.length === 0);
+		assert.isTrue(command !== undefined && Option.getOrNull(command.name) === "((" && command.args.length === 0);
 	});
 
 	it("lists the substitutions inside an arithmetic command", () => {
@@ -563,7 +563,8 @@ describe("compound commands whose closing word runs into the next command", () =
 
 	it("control: a for list and a case head name no command", () => {
 		assert.strictEqual(resolve("for x in git commit; do :; done").name, "for");
-		assert.strictEqual(resolve("[[ git ]]").name, null);
+		// A whole `[[ … ]]` names itself, never the words inside it.
+		assert.strictEqual(resolve("[[ git ]]").name, "[[");
 		assert.strictEqual(resolve("[[ git").name, "[[");
 	});
 });
@@ -685,6 +686,713 @@ describe("smaller fixes", () => {
 	});
 });
 
+/** Every diagnostic code, through every substitution, depth-first. */
+const allCodes = (script: ShellScript, depth = 0): ReadonlyArray<string> => [
+	...script.diagnostics.map((d) => d.code),
+	...(depth < 16 ? script.substitutions().flatMap((part) => allCodes(ShellSyntax.parse(part.body), depth + 1)) : []),
+];
+
+const QUOTED = "QuotedSubstitutionInExpansion";
+
+describe("a quoted run that bash expands anyway is reported, never skipped", () => {
+	// Each was run with GNU bash 5.3.20 as `c1(){ echo RAN >&2; }; <input>`:
+	// bash runs c1 in every one. Inside `${…}` in double quotes or a heredoc,
+	// inside arithmetic and inside an indexed array's subscript, bash honours
+	// a `'…'` run only to find the closer, then expands what it holds.
+	const hidden: ReadonlyArray<string> = [
+		`echo "\${x:-'$(c1)'}"`,
+		`echo "\${x:-'\`c1\`'}"`,
+		`echo "\${x:-$'$(c1)'}"`,
+		`cat <<E\n\${x:-'$(c1)'}\nE\n`,
+		`echo "$(echo "\${x:-'$(c1)'}")"`,
+		`echo "\${x:-\${y:-'$(c1)'}}"`,
+		`echo \${x:-"\${y:-'$(c1)'}"}`,
+		`echo "\${x:-'\${y:-$(c1)}'}"`,
+		`echo "\${x:-$'\\x41$(c1)'}"`,
+		`[[ "\${x:-'$(c1)'}" ]]`,
+		`echo $(( '$(c1)' ))`,
+		`(( '$(c1)' ))`,
+		// A bare `(` inside arithmetic is still arithmetic (ARITH_PAREN).
+		`echo $(( ( '$(c1)' ) ))`,
+		`(( ( '$(c1)' ) ))`,
+		`echo $[ '$(c1)' ]`,
+		`echo $(( \${x:-'$(c1)'} ))`,
+		`a['$(c1)']=1`,
+		`echo \${a['$(c1)']}`,
+		`x=(['$(c1)']=1)`,
+		`x=$(echo "\${x:-'$(c1)'}")`,
+	];
+	for (const input of hidden) {
+		it(JSON.stringify(input), () => {
+			assert.include(allCodes(ShellSyntax.parse(input)), QUOTED);
+		});
+	}
+
+	it("reports each run it finds, at the run", () => {
+		const input = `echo "\${x:-'$(c1)'}" "\${y:-'$(c2)'}"`;
+		const script = ShellSyntax.parse(input);
+		assert.deepStrictEqual(
+			script.diagnostics.map((d) => [d.code, input.slice(d.offset, d.offset + d.length)]),
+			[
+				[QUOTED, "'$(c1)'"],
+				[QUOTED, "'$(c2)'"],
+			],
+		);
+	});
+
+	it("control: the same shapes without the opener record nothing", () => {
+		for (const input of [
+			`echo "\${x:-'c1'}"`,
+			`echo "\${x:-$'c1'}"`,
+			`cat <<E\n\${x:-'c1'}\nE\n`,
+			`echo "$(echo "\${x:-'c1'}")"`,
+			`echo "\${x:-'\${y:-c1}'}"`,
+			`echo $(( '1' ))`,
+			`a['1']=1`,
+			`x=(['1']=1)`,
+			// A double-quoted run holds an ordinary substitution, listed as one.
+			`echo "\${x:-"$(c1)"}"`,
+		]) {
+			assert.deepStrictEqual(allCodes(ShellSyntax.parse(input)), [], input);
+		}
+		assert.deepStrictEqual(
+			ShellSyntax.parse(`echo "\${x:-"$(c1)"}"`)
+				.substitutions()
+				.map((s) => s.body),
+			["c1"],
+		);
+		// Outside any expansion a single-quoted $( is literal, as bash reads it.
+		assert.deepStrictEqual(codes("echo '$(c1)' \"'$(c2)'\""), []);
+	});
+
+	it("over-reports where bash keeps the run quoted, which bash 5.3 runs nothing for", () => {
+		// `x=a; echo "${x//a/'$(c1)'}"` prints `$(c1)` and `echo ${x:-'$(c1)'}`
+		// prints `$(c1)`: the scanner does not model which operator or quoting
+		// keeps the run literal, so both are reported.
+		assert.include(codes(`echo "\${x//a/'$(c1)'}"`), QUOTED);
+		assert.include(codes(`echo \${x:-'$(c1)'}`), QUOTED);
+	});
+
+	it("a demoted $(( … )) is a substitution whose re-parsed body is read as command text", () => {
+		// `$((echo '$(c1)') )` is a command substitution holding a subshell, where
+		// the quotes are real; bash runs nothing inside them.
+		assert.deepStrictEqual(allCodes(ShellSyntax.parse(`echo $((echo '$(c1)') )`)), []);
+	});
+
+	it("the README guard refuses them", () => {
+		for (const input of [
+			`echo "\${x:-'$(git commit)'}"`,
+			`echo "\${x:-'\`git commit\`'}"`,
+			`echo "\${x:-$'$(git commit)'}"`,
+			`cat <<E\n\${x:-'$(git commit)'}\nE\n`,
+			`echo "$(echo "\${x:-'$(git commit)'}")"`,
+			`echo "\${x:-'$(git status)'}" "\${y:-'$(git commit)'}"`,
+			`(( '$(git commit)' ))`,
+		]) {
+			assert.isTrue(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+});
+
+describe("wrapper options are read as getopt_long reads them", () => {
+	// Each `env` case was run as `genv …` against GNU coreutils 9.12 (and the
+	// BSD one as /usr/bin/env on macOS), each `sudo` case against sudo 1.9.17's
+	// option errors, with `sh -c 'echo RAN'` as the command: every one runs it.
+	const cases: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = [
+		["env --unse FOO git commit", ["env"]],
+		["env --chd /tmp git commit", ["env"]],
+		["env -- -x=1 git commit", ["env"]],
+		["env =x git commit", ["env"]],
+		["env -a foo git commit", ["env"]],
+		["env --ar foo git commit", ["env"]],
+		["env -P /bin git commit", ["env"]],
+		["env time --out f git commit", ["env", "time"]],
+		["sudo --us root git commit", ["sudo"]],
+		["sudo --login git commit", ["sudo"]],
+		["sudo -a type git commit", ["sudo"]],
+	];
+	for (const [input, wrappers] of cases) {
+		it(input, () => {
+			assert.deepStrictEqual(resolve(input), { name: "git", wrappers });
+		});
+	}
+
+	it("control: a long option that is no prefix of a known one stops with no name", () => {
+		for (const input of [
+			"env --unsef FOO git commit",
+			"env --chdx /tmp git commit",
+			"env time --outx f git commit",
+			"sudo --usx root git commit",
+		]) {
+			assert.strictEqual(resolve(input).name, null, input);
+		}
+	});
+
+	it("an ambiguous prefix is unknown, as getopt_long rejects it", () => {
+		// genv: "option '--i' is ambiguous; possibilities: '--ignore-environment' '--ignore-signal'".
+		assert.deepStrictEqual(resolve("env --i FOO git commit"), { name: null, wrappers: ["env"] });
+		assert.deepStrictEqual(resolve("env --d FOO git commit"), { name: null, wrappers: ["env"] });
+		// sudo: "option `--c' is ambiguous", and `--logi` is login or login-class.
+		assert.deepStrictEqual(resolve("sudo --c 3 git commit"), { name: null, wrappers: ["sudo"] });
+		assert.deepStrictEqual(resolve("sudo --logi git commit"), { name: null, wrappers: ["sudo"] });
+		// Control: a longer prefix is unique again.
+		assert.deepStrictEqual(resolve("env --ignore-e FOO git commit"), { name: "FOO", wrappers: ["env"] });
+	});
+
+	it("an option env does not know is unknown, never a flag that hides its argument", () => {
+		assert.deepStrictEqual(resolve("env -x FOO git commit"), { name: null, wrappers: ["env"] });
+		// Control: a known flag is skipped and the next word is the command.
+		assert.deepStrictEqual(resolve("env -i FOO git commit"), { name: "FOO", wrappers: ["env"] });
+	});
+
+	it("env --split stops with no name", () => {
+		assert.deepStrictEqual(resolve("env --split 'git commit'"), { name: null, wrappers: ["env"] });
+		assert.deepStrictEqual(resolve("env --sp='git commit'"), { name: null, wrappers: ["env"] });
+		// Control: without it the quoted string is the command name.
+		assert.deepStrictEqual(resolve("env 'git commit'"), { name: "git commit", wrappers: ["env"] });
+	});
+
+	it("env reads options only before its first assignment or command, then any word with = is an assignment", () => {
+		// Control for `env -- -x=1`: before `--`, a word starting - is an option.
+		assert.deepStrictEqual(resolve("env -x=1 git commit"), { name: null, wrappers: ["env"] });
+		// Control for `env =x`: no = makes it the command.
+		assert.deepStrictEqual(resolve("env x git commit"), { name: "x", wrappers: ["env"] });
+		// genv A=1 -i sh: "‘-i’: No such file or directory".
+		assert.deepStrictEqual(resolve("env A=1 -i git commit"), { name: "-i", wrappers: ["env"] });
+		assert.deepStrictEqual(resolve("env -- -i git commit"), { name: "-i", wrappers: ["env"] });
+		// A lone - keeps options open, as BSD env reads it (GNU runs `-u`): over-reported.
+		assert.deepStrictEqual(resolve("env -i - -u HOME git commit"), { name: "git", wrappers: ["env"] });
+	});
+
+	it("control for -a and -P: a flag takes no argument", () => {
+		assert.deepStrictEqual(resolve("env -i foo git commit"), { name: "foo", wrappers: ["env"] });
+	});
+});
+
+describe("bash's evaluators of quoted text are reported, not hidden", () => {
+	// Each runs `git commit` under GNU bash 5.3.20 (checked with a function
+	// in its place), and the parse cannot see inside the evaluation: a guard
+	// must refuse it by name, and the README guard does.
+	const evaluators: ReadonlyArray<readonly [string, string]> = [
+		["[[ 'a[$(git commit)]' -eq 0 ]]", "[["],
+		["[[ 'a[$(git commit)]' -lt 0 ]]", "[["],
+		["[[ -v 'a[$(git commit)]' ]]", "[["],
+		["let 'a[$(git commit)]'", "let"],
+		["declare -i v='a[$(git commit)]'", "declare"],
+		["typeset -i v='a[$(git commit)]'", "typeset"],
+		["local -i v='a[$(git commit)]'", "local"],
+		["declare -n r='a[$(git commit)]'", "declare"],
+		["printf -v 'a[$(git commit)]' %s 1", "printf"],
+		["read 'a[$(git commit)]'", "read"],
+		["[ -v 'a[$(git commit)]' ]", "["],
+		["test -v 'a[$(git commit)]'", "test"],
+		["trap 'git commit' EXIT", "trap"],
+		["(( x ))", "(("],
+		["for ((i=x; i<0; i++))", "(("],
+	];
+	for (const [input, name] of evaluators) {
+		it(input, () => {
+			const [command] = ShellSyntax.parse(input).commands();
+			assert.strictEqual(Option.getOrNull(command?.name ?? Option.none()), name);
+			assert.isTrue(refuses(ShellSyntax.parse(input)));
+		});
+	}
+
+	it("a variable bash evaluates as arithmetic or a prompt makes the guard refuse", () => {
+		for (const input of [
+			"x='a[$(git commit)]'; (( x ))",
+			"x='a[$(git commit)]'; echo $(( x ))",
+			"x='a[$(git commit)]'; echo $[ x ]",
+			"x='a[$(git commit)]'; echo $(( $x ))",
+			`x='$(git commit)'; echo "\${x@P}"`,
+			`x='a[$(git commit)]'; echo \${!x}`,
+			`x='a[$(git commit)]'; echo \${a[x]}`,
+			`a=abc; x='a[$(git commit)]'; echo \${a:x}`,
+			"x='a[$(git commit)]'; a[x]=2",
+			"x='a[$(git commit)]'; [[ x -eq 0 ]]",
+			"if [[ x -eq 0 ]] then git status; fi",
+			"if (( x )) then git status; fi",
+			`echo "\${y:-$(( x ))}"`,
+			"cat <<E\n$(( x ))\nE\n",
+			// An assignment builtin's array value, which this parse splits as a
+			// subshell: bash evaluates its keys as arithmetic.
+			"declare -a x=(['$(git commit)']=1)",
+			"export x=(['$(git commit)']=1)",
+			"readonly x=(['$(git commit)']=1)",
+		]) {
+			assert.isTrue(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+
+	it("control: the same text where bash evaluates nothing is allowed", () => {
+		for (const input of [
+			"[[ 'a[$(git commit)]' == 0 ]]",
+			"declare v='a[$(git commit)]'",
+			"printf %s 'a[$(git commit)]'",
+			"[ -n 'a[$(git commit)]' ]",
+			"(( 2 > 1 ))",
+			"echo $(( 1 + 2 ))",
+			`x='a[$(git commit)]'; echo "\${x@Q}" \${x:-1} $x`,
+			`echo \${a[0]} \${#a[@]} \${a[@]}`,
+			"export FOO= BAR=1",
+			"declare -a x",
+		]) {
+			assert.isFalse(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+
+	it("[[ … ]] and (( … )) name themselves when they are the whole command", () => {
+		assert.deepStrictEqual(resolve("[[ -n x ]]"), { name: "[[", wrappers: [] });
+		assert.deepStrictEqual(resolve("! [[ -n x ]]"), { name: "[[", wrappers: [] });
+		assert.deepStrictEqual(resolve("(( 1 ))"), { name: "((", wrappers: [] });
+		assert.deepStrictEqual(resolve("time (( 1 ))"), { name: "((", wrappers: ["time"] });
+		// Running straight into `then` they name the command after them, so
+		// the guard reads the segment's words for them too.
+		assert.strictEqual(resolve("if [[ -n x ]] then git status; fi").name, "git");
+		assert.strictEqual(resolve("if (( 1 )) then git status; fi").name, "git");
+		// A segment that runs nothing still names nothing.
+		assert.deepStrictEqual(resolve("fi"), { name: null, wrappers: [] });
+	});
+});
+
+// Round 1 of the adversarial review. Every "refuses" shape below runs the
+// command in place of `git commit` under GNU bash 5.3.20 (checked with an
+// executable that touches a marker file), and every control runs nothing, or
+// is marked as an over-report.
+
+describe("[[ … ]] is split on &&, || and (, so its arithmetic tests are tracked across segments", () => {
+	it("the split puts an operand in command position, named as if it ran", () => {
+		// What the guard has to cope with: the operand after `||` is a fake command name.
+		assert.deepStrictEqual(names("[[ 0 == 1 || 'a[$(c1)]' -eq 0 ]]"), ["[[", "a[$(c1)]"]);
+		assert.deepStrictEqual(codes("[[ 0 == 1 || 'a[$(c1)]' -eq 0 ]]"), []);
+	});
+
+	it("the README guard refuses an arithmetic test anywhere between [[ and its ]]", () => {
+		for (const input of [
+			"[[ 0 == 1 || 'a[$(git commit)]' -eq 0 ]]",
+			"x='a[$(git commit)]'; [[ 1 && x -eq 0 ]]",
+			"x='a[$(git commit)]'; [[ ( x -eq 0 ) ]]",
+			"[[ 0 == 1 || -v 'a[$(git commit)]' ]]",
+			"x='a[$(git commit)]'; [[ ! ( 1 && x -ge 0 ) ]]",
+			// A quoted ]] is an operand, not the closer.
+			"x='a[$(git commit)]'; [[ ']]' == y || x -eq 0 ]]",
+			"x='a[$(git commit)]'; [[ 1 ]] && [[ x -eq 0 ]]",
+		]) {
+			assert.isTrue(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+
+	it("control: no arithmetic test inside the [[ … ]], or one after its ]], is allowed", () => {
+		for (const input of [
+			// bash runs nothing: == compares strings.
+			"[[ 0 == 1 || 'a[$(git commit)]' == 0 ]]",
+			"[[ -n x && -n y ]] && git status",
+			"[[ ( -n x ) ]] && git status",
+			// After the closer, -eq is an argument of an ordinary command.
+			"[[ -n x ]] && echo -eq",
+		]) {
+			assert.isFalse(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+});
+
+describe("a subscripted name given to an assignment builtin is evaluated", () => {
+	it("is reported only as the builtin's own name, with no diagnostic", () => {
+		assert.deepStrictEqual(names("declare 'a[$(c1)]=1'"), ["declare"]);
+		assert.deepStrictEqual(codes("declare 'a[$(c1)]=1'"), []);
+	});
+
+	it("the README guard refuses declare, typeset and local with one, in every spelling", () => {
+		for (const input of [
+			"declare 'a[$(git commit)]=1'",
+			"typeset 'a[$(git commit)]=1'",
+			"f(){ local 'a[$(git commit)]=1'; }; f",
+			"declare -g 'a[$(git commit)]=1'",
+			"declare -a 'a[$(git commit)]=1'",
+			"declare -x 'a[$(git commit)]=1'",
+			"declare -- 'a[$(git commit)]=1'",
+			"declare b=1 'a[$(git commit)]=1'",
+			'declare "a[\\$(git commit)]=1"',
+			"declare a\\[\\$\\(git\\ commit\\)\\]=1",
+			"x='a[$(git commit)]'; declare \"a[x]=1\"",
+			// The name from a variable.
+			"x='a[$(git commit)]=1'; declare \"$x\"",
+			"x='a[$(git commit)]'; declare \"$x=1\"",
+		]) {
+			assert.isTrue(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+
+	it("control: export and readonly do not evaluate the name, and a plain value is allowed", () => {
+		for (const input of [
+			"export 'a[$(git commit)]=1'",
+			"readonly 'a[$(git commit)]=1'",
+			"declare v='a[$(git commit)]'",
+			"local x=$(git status)",
+			'local x="$1"',
+			"declare a=1 b=2",
+		]) {
+			assert.isFalse(refuses(ShellSyntax.parse(input)), input);
+		}
+		// Over-report: with no `=`, bash 5.3 runs nothing for `declare 'a[$(c1)]'`.
+		assert.isTrue(refuses(ShellSyntax.parse("declare 'a[$(git commit)]'")));
+	});
+});
+
+describe("PS4 is prompt-expanded before every command xtrace traces", () => {
+	it("is reported only as set and :, with no diagnostic", () => {
+		assert.deepStrictEqual(names("PS4='$(c1)'; set -x; :"), [null, "set", ":"]);
+		assert.deepStrictEqual(codes("PS4='$(c1)'; set -x; :"), []);
+	});
+
+	it("the README guard refuses turning xtrace on, and any assignment to PS4", () => {
+		for (const input of [
+			"PS4='$(git commit)'; set -x; :",
+			"set -o xtrace; PS4='`git commit`'; :",
+			"set -x; PS4='$(git commit)' :",
+			"set -x; f(){ :; }; PS4='$(git commit)'; f",
+			"PS4='$(git commit)'; set -euxo pipefail; :",
+			"shopt -so xtrace; PS4='$(git commit)'; :",
+			"declare PS4='$(git commit)'; set -x; :",
+			"export PS4='$(git commit)'; set -x; :",
+		]) {
+			assert.isTrue(refuses(ShellSyntax.parse(input)), input);
+		}
+		// Over-reports: each half alone runs nothing under bash 5.3 (an
+		// inherited PS4 or xtrace is the other half, hence both are refused).
+		assert.isTrue(refuses(ShellSyntax.parse("PS4='$(git commit)'; :")));
+		assert.isTrue(refuses(ShellSyntax.parse("set -x; :")));
+	});
+
+	it("control: other set options, turning xtrace off, and PS3 are allowed", () => {
+		// bash 5.3 does not prompt-expand PS3 here: `PS3='$(c1)'; :` runs nothing.
+		for (const input of ["set -e", "set -euo pipefail", "set +x", "PS3='$(git commit)'; :"]) {
+			assert.isFalse(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+});
+
+const CLOSER = "QuotedCloserInExpansion";
+
+describe("POSIX mode reads a quote inside a double-quoted expansion as an ordinary character", () => {
+	// `set -o posix` (or POSIXLY_CORRECT=1), then the input: bash runs c1. In
+	// the default mode the same line runs nothing, and the parse follows the
+	// default reading, so a quoted run whose text that reading would act on is
+	// reported.
+	const hidden: ReadonlyArray<string> = [
+		`echo "\${x:-'}"; c1; echo "'}"`,
+		`echo "\${x:-$'}"; c1; echo "'}"`,
+		`echo "$(echo "\${x:-'}"; c1; echo "'}")"`,
+	];
+	for (const input of hidden) {
+		it(JSON.stringify(input), () => {
+			assert.include(allCodes(ShellSyntax.parse(input)), CLOSER);
+		});
+	}
+
+	it("also reports a run holding a nested quote, opener or subscript closer", () => {
+		// The two readings disagree on these too (bash 5.3 prints different
+		// text, or fails in one mode only), though none of these runs c1.
+		for (const input of [
+			`echo "\${x:-\${y:-'}"; c1; echo "'}}"`,
+			`echo "\${x:-'"'}"`,
+			`echo "\${x:-'\${'}"`,
+			`declare -A a; echo "\${a['}"; c1; echo "']}"`,
+		]) {
+			assert.include(allCodes(ShellSyntax.parse(input)), CLOSER, input);
+		}
+	});
+
+	it("reports the run, at the run", () => {
+		const input = `echo "\${x:-'}"; c1; echo "'}"`;
+		assert.deepStrictEqual(
+			ShellSyntax.parse(input).diagnostics.map((d) => [d.code, input.slice(d.offset, d.offset + d.length)]),
+			[[CLOSER, `'}"; c1; echo "'`]],
+		);
+	});
+
+	it("control: outside double quotes, or with nothing the other reading acts on, nothing is recorded", () => {
+		for (const input of [
+			// Unquoted, the quotes are real in both modes: bash runs c1 either way.
+			`echo \${x:-'}'}; c1`,
+			`echo "\${x:-'a'}"`,
+			`echo "\${x:-'a\\b'}"`,
+			// Balanced text leaves both readings on the same closer: bash 5.3 prints
+			// the same text in either mode for each of these.
+			`echo "\${x:-'\${y:-c}'}"; c1`,
+			`echo "\${x:-'""'}"; c1`,
+			`echo "\${x:-'\\}'}"; c1`,
+			// Arithmetic honours the quotes in both modes.
+			`echo "$(( '1' ))"`,
+			`echo $(( ')' ))`,
+		]) {
+			assert.deepStrictEqual(allCodes(ShellSyntax.parse(input)), [], input);
+		}
+	});
+
+	it("the README guard refuses the run, and turning POSIX mode on", () => {
+		for (const input of [
+			`echo "\${x:-'}"; git commit; echo "'}"`,
+			"set -o posix",
+			"POSIXLY_CORRECT=1 git status",
+			"export POSIXLY_CORRECT=1",
+		]) {
+			assert.isTrue(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+});
+
+describe("a variable as a substring offset or length is evaluated as arithmetic", () => {
+	it("the README guard refuses every name form and every offset spelling", () => {
+		for (const input of [
+			`x='a[$(git commit)]'; echo "\${@:x}"`,
+			`x='a[$(git commit)]'; echo "\${*:x}"`,
+			`x='a[$(git commit)]'; a=(1 2); echo "\${a[@]:x}"`,
+			`x='a[$(git commit)]'; s=abc; echo "\${s: -x}"`,
+			`x='a[$(git commit)]'; s=abc; echo "\${s:1-x}"`,
+			`x='a[$(git commit)]'; s=abc; echo "\${s:0:-x}"`,
+			`x='a[$(git commit)]'; s=abc; echo "\${s:1+x}"`,
+		]) {
+			assert.isTrue(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+
+	it("control: a numeric offset and the :- :+ := :? operators are allowed", () => {
+		for (const input of [
+			`s=abc; echo "\${s:1}" "\${s: -1}" "\${s:0:-1}" "\${@:2}" "\${a[@]:1:2}"`,
+			`echo "\${x:-default}" "\${x:+set}" "\${x:=v}" "\${x:?unset}"`,
+		]) {
+			assert.isFalse(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+});
+
+describe("an array literal's key over a variable is evaluated as arithmetic", () => {
+	it("the README guard refuses it", () => {
+		for (const input of [
+			"x='a[$(git commit)]'; a=([x]=1)",
+			"x='a[$(git commit)]'; a+=([x]=1)",
+			"x='a[$(git commit)]'; a=([$x]=1)",
+			"x='a[$(git commit)]'; a=([1+x]=1)",
+		]) {
+			assert.isTrue(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+
+	it("control: a numeric key is allowed", () => {
+		assert.isFalse(refuses(ShellSyntax.parse("a=([0]=1 [2]=3)")));
+		assert.isFalse(refuses(ShellSyntax.parse("a=(1 2)")));
+		// Over-report: bash evaluates no associative key, but this parse splits
+		// `declare`'s array value off as a subshell whose word names nothing.
+		assert.isTrue(refuses(ShellSyntax.parse("declare -A h=([k]=1)")));
+	});
+});
+
+describe("names that run something else, and commands that run another command", () => {
+	it("hash -p and enable -n rebind a name, with no diagnostic", () => {
+		assert.deepStrictEqual(names("hash -p /tmp/c1 ls; ls"), ["hash", "ls"]);
+		assert.deepStrictEqual(codes("hash -p /tmp/c1 ls; ls"), []);
+	});
+
+	it("the README guard refuses them, alias and shopt, and unmodelled wrappers", () => {
+		for (const input of [
+			"hash -p /tmp/x ls; ls",
+			"enable -n printf; printf x",
+			"alias c='git commit'",
+			"shopt -s extglob",
+			"builtin eval 'git commit'",
+			"eval 'git commit'",
+			"bash -c 'git commit'",
+			"nice git commit",
+			"timeout 5 git commit",
+			"find . -exec git commit \\;",
+		]) {
+			assert.isTrue(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+
+	it("control: find without -exec is allowed", () => {
+		assert.isFalse(refuses(ShellSyntax.parse("find . -name '*.ts'")));
+	});
+});
+
+// Round-2 re-review. Every shape below ran c1 under bash 5.3.20 (c1 prints 1),
+// and the round-1 guard allowed it with no diagnostic.
+const X = "x='a[$(git commit)]'; ";
+const CONT = "\\\n";
+
+describe("a backslash-newline does not hide a shape from the guard (R1)", () => {
+	// [split, joined]: bash joins `\⏎` before it tokenizes, and so does the parse
+	// (it names `[[` and `((` for the split forms), but the guard read `raw`.
+	const pairs: ReadonlyArray<readonly [string, string]> = [
+		[`[${CONT}[ 'a[$(git commit)]' -eq 0 ]]`, "[[ 'a[$(git commit)]' -eq 0 ]]"],
+		[`[${CONT}[ -v 'a[$(git commit)]' ]]`, "[[ -v 'a[$(git commit)]' ]]"],
+		[`[${CONT}[ 0 == 1 || -v 'a[$(git commit)]' ]]`, "[[ 0 == 1 || -v 'a[$(git commit)]' ]]"],
+		[`${X}[${CONT}[ 0 == 1 || x -eq 0 ]]`, `${X}[[ 0 == 1 || x -eq 0 ]]`],
+		[`${X}(${CONT}( x ))`, `${X}(( x ))`],
+		[`${X}echo $(${CONT}( x ))`, `${X}echo $(( x ))`],
+		[`${X}echo $${CONT}[ x ]`, `${X}echo $[ x ]`],
+		[`${X}echo $${CONT}{a[x]}`, `${X}echo \${a[x]}`],
+		[`${X}echo \${${CONT}a[x]}`, `${X}echo \${a[x]}`],
+		[`${X}echo \${a${CONT}[x]}`, `${X}echo \${a[x]}`],
+		[`${X}echo $${CONT}{!x}`, `${X}echo \${!x}`],
+		[`y='$(git commit)'; echo "\${y@${CONT}P}"`, `y='$(git commit)'; echo "\${y@P}"`],
+		[`${X}echo "$${CONT}{s:x}"`, `${X}echo "\${s:x}"`],
+		[`${X}echo "\${${CONT}s:x}"`, `${X}echo "\${s:x}"`],
+		[`${X}echo "\${s${CONT}:x}"`, `${X}echo "\${s:x}"`],
+	];
+
+	for (const [split, joined] of pairs) {
+		it(`refuses ${JSON.stringify(split)}`, () => {
+			assert.deepStrictEqual(codes(split), [], "no diagnostic: the guard is the only line of defence");
+			assert.isTrue(refuses(ShellSyntax.parse(joined)), `control, joined: ${joined}`);
+			assert.isTrue(refuses(ShellSyntax.parse(split)), split);
+		});
+	}
+
+	it("control: a continuation in an ordinary command is allowed", () => {
+		assert.isFalse(refuses(ShellSyntax.parse(`git ${CONT}status`)));
+		assert.isFalse(refuses(ShellSyntax.parse(`echo a${CONT}b && git ${CONT}diff`)));
+	});
+});
+
+describe("POSIX mode set by a writer that is not an assignment token (R2)", () => {
+	// POSIX mode expands aliases in a non-interactive shell: each enabler, then
+	// `BASH_ALIASES[1]=c1` and `1`, ran c1. `true` in its place ran nothing.
+	const aliasLines = "\nBASH_ALIASES[1]=c1\n1";
+	const enablers = [
+		`: \${POSIXLY_CORRECT:=1}`,
+		`: \${POSIXLY_CORRECT=1}`,
+		"for POSIXLY_CORRECT in 1; do :; done",
+		"select POSIXLY_CORRECT in 1; do break; done <<< 1",
+		"declare {POSIXLY_CORRECT,y}=1",
+		"export {POSIXLY_CORRECT,y}=1",
+		"declare {POSIX''LY_CORRECT,y}=1",
+		// Quotes split the name with no brace: only the quote-free mention sees it.
+		"export POSIX''LY_CORRECT=1",
+		'declare "POSIX""LY_CORRECT=1"',
+		"declare {$'POSIX\\x4cY_CORRECT',y}=1",
+		`POSIX${CONT}LY_CORRECT=1`,
+	];
+
+	for (const enabler of enablers) {
+		it(`refuses ${JSON.stringify(enabler)}`, () => {
+			assert.isTrue(refuses(ShellSyntax.parse(enabler)), enabler);
+			assert.isTrue(refuses(ShellSyntax.parse(`${enabler}${aliasLines}`)), enabler);
+		});
+	}
+
+	it("refuses a brace that builds the name, which no mention can match", () => {
+		// `export {POSIXLY_CORREC,X}T=1` turned POSIX mode on; `declare
+		// {BASH_CMD,X}S[1]=/tmp/c1; 1` ran c1. Control: `export {A,X}=1` ran nothing,
+		// and is refused too (over-report: any brace in the name is unreadable).
+		for (const input of [
+			"export {POSIXLY_CORREC,X}T=1",
+			"declare {POSIXLY_CORREC,X}T=1",
+			"declare {BASH_CMD,X}S[1]=/tmp/c1; 1",
+			"declare PS{4,}=1",
+		]) {
+			assert.isTrue(refuses(ShellSyntax.parse(input)), input);
+		}
+		assert.isTrue(refuses(ShellSyntax.parse("export {A,X}=1")));
+		assert.isFalse(refuses(ShellSyntax.parse("export A=1 X=1")));
+	});
+
+	it("refuses any write to BASH_ALIASES, a letter-free key included", () => {
+		// The assignment-only segment names nothing; the next names the alias key.
+		assert.deepStrictEqual(names("BASH_ALIASES[1]=c1\n1"), [null, "1"]);
+		assert.isTrue(refuses(ShellSyntax.parse("BASH_ALIASES[1]=c1")));
+		assert.isTrue(refuses(ShellSyntax.parse("BASH_ALIASES=([1]=c1)")));
+	});
+
+	it("control: the same alias lines after `true`, and a key on another array, are allowed", () => {
+		// bash runs nothing for `true`, then the two lines, outside POSIX mode;
+		// the guard still refuses them for the BASH_ALIASES write, so the control
+		// is the enabler-free, alias-free form.
+		assert.isFalse(refuses(ShellSyntax.parse("true\nX[1]=c1\n1")));
+	});
+
+	it("over-report, pinned: writers bash does not take into POSIX mode are refused", () => {
+		// mapfile, getopts and a heredoc `${…:=}` ran nothing under bash 5.3.20.
+		for (const input of [
+			"mapfile -t POSIXLY_CORRECT <<< 1",
+			"getopts a POSIXLY_CORRECT -a",
+			`cat <<E\n\${POSIXLY_CORRECT:=1}\nE`,
+			"echo PS4",
+		]) {
+			assert.isTrue(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+});
+
+describe("BASH_CMDS rebinds a name like hash -p (R3)", () => {
+	const bin = "/tmp/c1";
+	const shapes = [
+		`BASH_CMDS[1]=${bin}; 1`,
+		`BASH_CMDS[+]=${bin}; +`,
+		`BASH_CMDS[@]=${bin}; @`,
+		`BASH_CMDS[1.2]=${bin}; 1.2`,
+		`BASH_CMDS[" "]=${bin}; " "`,
+		`BASH_CMDS+=([1]=${bin}); 1`,
+		`BASH_CMDS=([1]=${bin}); 1`,
+		`declare -A BASH_CMDS; BASH_CMDS[1]=${bin}; 1`,
+		`f(){ BASH_CMDS[1]=${bin}; }; f; 1`,
+		`BASH_CMDS[1]=${bin}; command 1`,
+		`BASH_CMDS[1]=${bin}; exec 1`,
+		`BASH${CONT}_CMDS[1]=${bin}; 1`,
+		"BASH_CMDS[1]=/usr/bin/git; 1 commit",
+	];
+
+	it("the parse names the rebound key, with no diagnostic", () => {
+		assert.deepStrictEqual(names(`BASH_CMDS[1]=${bin}; 1`), [null, "1"]);
+		assert.deepStrictEqual(codes(`BASH_CMDS[1]=${bin}; 1`), []);
+	});
+
+	for (const shape of shapes) {
+		it(`refuses ${JSON.stringify(shape)}`, () => {
+			assert.isTrue(refuses(ShellSyntax.parse(shape)), shape);
+		});
+	}
+
+	it("control: a write to another array is allowed", () => {
+		assert.isFalse(refuses(ShellSyntax.parse(`X[1]=${bin}; 1`)));
+		// Over-report, pinned: bash runs nothing for a quoted export of the word.
+		assert.isTrue(refuses(ShellSyntax.parse(`export 'BASH_CMDS[1]=${bin}'; 1`)));
+	});
+});
+
+describe("a substring offset over a special parameter (R4)", () => {
+	const shapes = [
+		`${X}echo "\${-:x}"`,
+		`${X}echo "\${?:x}"`,
+		`${X}echo "\${$:x}"`,
+		`${X}echo "\${#:x}"`,
+		`${X}echo "\${-: -x}"`,
+		`${X}echo "\${?: -x}"`,
+		`${X}echo "\${$: -x}"`,
+		`${X}echo "\${#: -x}"`,
+		`${X}echo \${-:x}`,
+	];
+
+	for (const shape of shapes) {
+		it(`refuses ${JSON.stringify(shape)}`, () => {
+			assert.isTrue(refuses(ShellSyntax.parse(shape)), shape);
+		});
+	}
+
+	it("control: the bare parameter, a length and a default are allowed", () => {
+		// bash runs nothing for any of these with x='a[$(c1)]'.
+		for (const input of [
+			`echo "\${-}" "\${#}"`,
+			`echo "\${#x}"`,
+			`echo "\${-:-x}" "\${?:+x}"`,
+			`echo "\${#a[@]}" "\${#a[@]:x}"`,
+		]) {
+			assert.isFalse(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+});
+
 // The README's guard, verbatim in shape: every shape above must make it refuse.
 const MAX_DEPTH = 8;
 const GIT_OPTIONS_WITH_ARGUMENT: ReadonlySet<string> = new Set([
@@ -709,10 +1417,113 @@ const gitSubcommand = (command: ShellCommand): string | null | undefined => {
 	return undefined;
 };
 
+const ARITHMETIC_TESTS: ReadonlySet<string> = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge", "-v"]);
+const EVALUATES_A_NAME =
+	/(?:\$\(\(|\$\[|\(\()[^A-Za-z_]*[A-Za-z_]|\$\{(?:!|[^}]*@P|#?\w*\[[^\]]*[A-Za-z_$]|(?:[@*#?$!0-9-]|\w+(?:\[[^\]]*\])?):(?![-=?+])[^}]*[A-Za-z_$])/;
+const SUBSCRIPT_OVER_A_NAME = /\[[^\]]*[A-Za-z_$]/;
+const REFUSED_COMMANDS: ReadonlySet<string> = new Set([
+	"shopt",
+	"alias",
+	"hash",
+	"enable",
+	"builtin",
+	"eval",
+	"source",
+	".",
+	"bash",
+	"sh",
+	"su",
+	"ssh",
+	"xargs",
+	"nice",
+	"timeout",
+	"stdbuf",
+	"setsid",
+	"doas",
+	"chroot",
+]);
+const REFUSED_VARIABLE = /(?<!\w)(?:PS4|POSIXLY_CORRECT|BASH_ALIASES|BASH_CMDS)(?!\w)/;
+
+const joined = (text: string): string => text.replaceAll("\\\n", "");
+
+const assignedName = (word: ShellWord): string | null => {
+	const literal = Option.getOrNull(word.literal);
+	if (literal !== null) return literal.split("=", 1)[0] ?? "";
+	const head = word.raw.split("=", 1)[0] ?? "";
+	return /[$`{]/.test(head) ? null : head.replace(/["'\\]/g, "");
+};
+
+const arithmeticTest = (script: ShellScript): boolean => {
+	let inTest = false;
+	for (const segment of script.segments) {
+		for (const word of segment.words) {
+			const raw = joined(word.raw);
+			if (raw === "[[") inTest = true;
+			else if (raw === "]]") inTest = false;
+			else if (inTest && ARITHMETIC_TESTS.has(Option.getOrElse(word.literal, () => ""))) return true;
+		}
+	}
+	return false;
+};
+
+const evaluatesText = (script: ShellScript, command: ShellCommand): boolean => {
+	const { segment } = command;
+	const texts = [
+		...segment.words.map((word) => word.raw),
+		...segment.assignments.map((assignment) => assignment.raw),
+		...segment.redirections.map(({ target }) =>
+			target.kind === "heredoc" ? (target.quoted ? "" : target.body) : target.raw,
+		),
+	].map(joined);
+	if (texts.some((text) => EVALUATES_A_NAME.test(text))) return true;
+	if (texts.some((text) => REFUSED_VARIABLE.test(text.replace(/["'\\]/g, "")))) return true;
+	for (const { name, value } of segment.assignments) {
+		if (SUBSCRIPT_OVER_A_NAME.test(name)) return true;
+		if (value.raw.startsWith("(") && SUBSCRIPT_OVER_A_NAME.test(value.raw)) return true;
+	}
+	const name = Option.getOrUndefined(command.name);
+	const base = name === undefined ? undefined : baseName(name);
+	if (base !== undefined && REFUSED_COMMANDS.has(base)) return true;
+	const args = command.args.map((word) => Option.getOrNull(word.literal));
+	const arrayValue = command.args.some((word) => script.source[word.end] === "(");
+	const assigned = command.args
+		.filter((word) => !/^[-+]/.test(Option.getOrElse(word.literal, () => "")))
+		.map(assignedName);
+	switch (base) {
+		case "let":
+		case "read":
+		case "trap":
+			return true;
+		case "declare":
+		case "typeset":
+		case "local":
+			return (
+				arrayValue ||
+				args.some((arg) => arg !== null && /^[-+][A-Za-z]*[in]/.test(arg)) ||
+				assigned.some((assignee) => assignee === null || assignee.includes("["))
+			);
+		case "export":
+		case "readonly":
+			return arrayValue || assigned.some((assignee) => assignee === null);
+		case "set":
+			return args.some((arg) => arg === null || /^-[A-Za-z]*x/.test(arg) || arg === "xtrace" || arg === "posix");
+		case "printf":
+			return args[0]?.startsWith("-v") === true;
+		case "test":
+		case "[":
+			return args.includes("-v");
+		case "find":
+			return args.some((arg) => arg === null || /^-(?:exec|execdir|ok|okdir)$/.test(arg));
+		default:
+			return false;
+	}
+};
+
 const refuses = (script: ShellScript, depth = 0): boolean => {
-	if (script.diagnostics.length > 0) return true;
+	if (script.diagnostics.length > 0 || arithmeticTest(script)) return true;
 	for (const command of script.commands()) {
 		if (Option.isNone(command.name) && command.args.length > 0) return true;
+		if (evaluatesText(script, command)) return true;
 		const subcommand = gitSubcommand(command);
 		if (subcommand === null || subcommand === "commit") return true;
 	}
@@ -744,6 +1555,13 @@ describe("the README guard", () => {
 			"git -c user.name=x commit",
 			"if [[ 1 ]] then git commit; fi",
 			`echo ${"$(".repeat(12)}git commit${")".repeat(12)}`,
+			// bash evaluates n as arithmetic, and a value of 'a[$(cmd)]' runs cmd.
+			"(( n > 1 )) && git push",
+			`echo "\${x:-'$(git commit)'}"`,
+			"env --unse FOO git commit",
+			"sudo --us root git commit",
+			"env --i FOO git commit",
+			"[[ 'a[$(git commit)]' -eq 0 ]]",
 		];
 		for (const shape of shapes) assert.isTrue(refuses(ShellSyntax.parse(shape)), shape);
 	});
@@ -754,7 +1572,7 @@ describe("the README guard", () => {
 			"if git diff --quiet; then git status; fi",
 			"{ git log; git status; }",
 			"for f in a b; do git add $f; done",
-			"(( n > 1 )) && git push",
+			"(( 2 > 1 )) && git push",
 			"git -C dir status",
 			"a[0]=1 git status",
 			"echo $[1 + 2] && git status",

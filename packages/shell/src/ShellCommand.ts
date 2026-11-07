@@ -9,82 +9,175 @@ import { ShellSegment } from "./ShellSegment.js";
 import { ShellWord } from "./ShellWord.js";
 
 interface WrapperSpec {
-	/** Short options that take an argument. */
+	/** Short options that take an argument, attached or as the next word. */
 	readonly short: string;
-	/** Long options (without `--`) that take an argument when written without `=`. */
+	/** Short options that take none. */
+	readonly flags: string;
+	/** Long options (without `--`) that take an argument, after `=` or as the next word. */
 	readonly long: ReadonlySet<string>;
+	/** Long options that take none, or only an optional one written after `=`. */
+	readonly longFlags: ReadonlySet<string>;
 	/** Short options after which the command cannot be read statically. */
 	readonly stopShort: string;
 	readonly stopLong: ReadonlySet<string>;
 	/** Short options that make the wrapper itself the command (it runs nothing). */
 	readonly keepShort: string;
 	/**
-	 * Which `NAME=value` words are skipped before the command: `"argv"` tests
-	 * the word after quote removal, as `env` and `sudo` read their argv;
-	 * `"shell"` tests the unquoted source, as the shell reads an assignment
-	 * after the `time` reserved word.
+	 * Which `NAME=value` words are skipped before the command:
+	 *
+	 * - `"env"`: `env`'s argv after quote removal. Options are read only up to
+	 *   `--` or the first word that is not one; from there every word holding
+	 *   an `=` is an assignment, so `env -- -x=1 git` and `env =x git` run
+	 *   `git`, while in `env A=1 -i git` the `-i` is the command.
+	 * - `"sudo"`: `sudo`'s argv after quote removal. A word holding an `=` that
+	 *   does not start `-` is an assignment wherever it sits among the
+	 *   options, and after `--` too, which over-reports rather than hides.
+	 * - `"shell"`: the unquoted source, as the shell reads an assignment after
+	 *   the `time` reserved word.
 	 */
-	readonly assignments: "none" | "argv" | "shell";
-	/** Whether a lone `-` is an option. */
+	readonly assignments: "none" | "env" | "sudo" | "shell";
+	/** Whether a lone `-` is an option, skipped without ending the options. */
 	readonly dashAlone: boolean;
 }
 
 const none: ReadonlySet<string> = new Set();
 
+// Each table is the union of the implementations a command string may meet,
+// so that no option is read as taking no argument when one of them takes
+// one: an option missing from a table resolves to no name rather than to the
+// word after it. Long options resolve by unique prefix, as `getopt_long`
+// reads them.
 const WRAPPERS: ReadonlyMap<string, WrapperSpec> = new Map<string, WrapperSpec>([
 	[
+		// sudo 1.9 (`parse_args.c`: `+Aa:BbC:c:D:Eeg:Hh::iKklNnPp:R:r:SsT:t:U:u:Vv`).
+		// `-h` takes the next word as a host when it does not start `-`.
 		"sudo",
 		{
-			short: "ugChpDrtTUR",
+			short: "aCcDghpRrTtUu",
+			flags: "ABbEeHiKklNnPSsVv",
 			long: new Set([
-				"user",
-				"group",
+				"auth-type",
 				"close-from",
+				"login-class",
+				"chdir",
+				"group",
 				"host",
 				"prompt",
-				"chdir",
+				"chroot",
 				"role",
 				"type",
 				"command-timeout",
 				"other-user",
-				"chroot",
+				"user",
+			]),
+			longFlags: new Set([
+				"askpass",
+				"background",
+				"bell",
+				"preserve-env",
+				"edit",
+				"set-home",
+				"help",
+				"login",
+				"remove-timestamp",
+				"reset-timestamp",
+				"list",
+				"non-interactive",
+				"no-update",
+				"preserve-groups",
+				"stdin",
+				"shell",
+				"version",
+				"validate",
 			]),
 			stopShort: "",
 			stopLong: none,
 			keepShort: "",
-			assignments: "argv",
+			assignments: "sudo",
 			dashAlone: false,
 		},
 	],
 	[
+		// GNU coreutils 9.x (`-a`/`--argv0` is new in 9.x), with BSD env's `-P`
+		// and FreeBSD's `-L` and `-U`, which take an argument.
 		"env",
 		{
-			short: "uC",
-			long: new Set(["unset", "chdir"]),
+			short: "aCuPLU",
+			flags: "i0v",
+			long: new Set(["argv0", "chdir", "unset", "env0-from"]),
+			longFlags: new Set([
+				"ignore-environment",
+				"null",
+				"block-signal",
+				"default-signal",
+				"ignore-signal",
+				"list-signal-handling",
+				"debug",
+				"help",
+				"version",
+			]),
 			stopShort: "S",
 			stopLong: new Set(["split-string"]),
 			keepShort: "",
-			assignments: "argv",
+			assignments: "env",
 			dashAlone: true,
 		},
 	],
 	[
+		// The bash builtin: `command [-pVv]`.
 		"command",
-		{ short: "", long: none, stopShort: "", stopLong: none, keepShort: "vV", assignments: "none", dashAlone: false },
+		{
+			short: "",
+			flags: "p",
+			long: none,
+			longFlags: none,
+			stopShort: "",
+			stopLong: none,
+			keepShort: "vV",
+			assignments: "none",
+			dashAlone: false,
+		},
 	],
 	[
+		// The bash builtin: `exec [-cl] [-a name]`.
 		"exec",
-		{ short: "a", long: none, stopShort: "", stopLong: none, keepShort: "", assignments: "none", dashAlone: false },
+		{
+			short: "a",
+			flags: "cl",
+			long: none,
+			longFlags: none,
+			stopShort: "",
+			stopLong: none,
+			keepShort: "",
+			assignments: "none",
+			dashAlone: false,
+		},
 	],
 	[
+		// GNU nohup takes only `--help` and `--version`; BSD nohup only `--`.
 		"nohup",
-		{ short: "", long: none, stopShort: "", stopLong: none, keepShort: "", assignments: "none", dashAlone: false },
+		{
+			short: "",
+			flags: "",
+			long: none,
+			longFlags: new Set(["help", "version"]),
+			stopShort: "",
+			stopLong: none,
+			keepShort: "",
+			assignments: "none",
+			dashAlone: false,
+		},
 	],
 	[
+		// The bash reserved word (`-p`), GNU time 1.9 (`+af:o:pqvV`, with
+		// `--format`, `--output`, `--append`, `--portability`, `--quiet`,
+		// `--verbose`) and BSD time (`ahlo:p`).
 		"time",
 		{
 			short: "fo",
+			flags: "ahlpqvV",
 			long: new Set(["format", "output"]),
+			longFlags: new Set(["append", "help", "portability", "quiet", "verbose", "version"]),
 			stopShort: "",
 			stopLong: none,
 			keepShort: "",
@@ -93,6 +186,29 @@ const WRAPPERS: ReadonlyMap<string, WrapperSpec> = new Map<string, WrapperSpec>(
 		},
 	],
 ]);
+
+type LongOption = "argument" | "flag" | "stop" | "unknown";
+
+/**
+ * A long option name as `getopt_long` resolves it: an exact match wins, then
+ * a unique prefix of one known name. No match, or a prefix of more than one
+ * name, is `"unknown"`: the tool rejects it, and the analyzer cannot tell
+ * whether it would have taken an argument.
+ */
+const longOption = (spec: WrapperSpec, name: string): LongOption => {
+	const kind = (option: string): LongOption =>
+		spec.stopLong.has(option) ? "stop" : spec.long.has(option) ? "argument" : "flag";
+	if (spec.stopLong.has(name) || spec.long.has(name) || spec.longFlags.has(name)) return kind(name);
+	let found: string | undefined;
+	for (const set of [spec.stopLong, spec.long, spec.longFlags]) {
+		for (const option of set) {
+			if (!option.startsWith(name)) continue;
+			if (found !== undefined) return "unknown";
+			found = option;
+		}
+	}
+	return found === undefined || name === "" ? "unknown" : kind(found);
+};
 
 const RESERVED: ReadonlySet<string> = new Set(SHELL_RESERVED_WORDS);
 
@@ -117,6 +233,10 @@ const isArithmeticCommand = (word: ShellWord | undefined): boolean => {
 	return only !== undefined && rest.length === 0 && only.kind === "arithmetic" && only.command;
 };
 
+/** `"[["` for a bare `[[` word, `"(("` for an arithmetic command, else `undefined`. */
+const conditionalName = (word: ShellWord | undefined): "[[" | "((" | undefined =>
+	keyword(word) === "[[" ? "[[" : isArithmeticCommand(word) ? "((" : undefined;
+
 const startsCompound = (word: ShellWord | undefined): boolean => {
 	const value = keyword(word);
 	return (value !== undefined && COMPOUND_HEADS.has(value)) || isArithmeticCommand(word);
@@ -130,9 +250,6 @@ const startsCompound = (word: ShellWord | undefined): boolean => {
  */
 const SHELL_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?\+?=/;
 const isShellAssignment = (word: ShellWord): boolean => SHELL_ASSIGNMENT.test(removeContinuations(word.raw));
-
-/** An assignment as `env` and `sudo` read their argv, after quote removal. */
-const ARGV_ASSIGNMENT = /^[^=-][^=]*=/;
 
 /**
  * The literal text a word starts with, after quote removal, up to its first
@@ -220,9 +337,13 @@ const skipOptions = (words: ReadonlyArray<ShellWord>, from: number, spec: Wrappe
 			index += 1;
 			continue;
 		}
-		// `env B=$X git`: the shell expands the value, but `B=` is literal, so
-		// `env` still reads an assignment.
-		if (spec.assignments === "argv" && ARGV_ASSIGNMENT.test(literalPrefix(word))) {
+		// The text the wrapper is sure to see: `env B=$X git` expands the value,
+		// but `B=` is literal, so `env` still reads an assignment.
+		const prefix = literalPrefix(word);
+		const option = options && prefix.startsWith("-");
+		if (!option && (spec.assignments === "env" || spec.assignments === "sudo") && prefix.includes("=")) {
+			// `env` reads no option after its first assignment.
+			if (spec.assignments === "env") options = false;
 			index += 1;
 			continue;
 		}
@@ -230,7 +351,7 @@ const skipOptions = (words: ReadonlyArray<ShellWord>, from: number, spec: Wrappe
 		// A word with no literal ends resolution at it: the caller reports no name.
 		if (Option.isNone(literal)) return { kind: "next", index };
 		const value = literal.value;
-		if (options && value.startsWith("-")) {
+		if (option) {
 			if (value === "--") {
 				// `env -- FOO=1 git` still reads `FOO=1` as an assignment.
 				options = false;
@@ -244,22 +365,29 @@ const skipOptions = (words: ReadonlyArray<ShellWord>, from: number, spec: Wrappe
 			}
 			if (value.startsWith("--")) {
 				const equals = value.indexOf("=");
-				const name = equals === -1 ? value.slice(2) : value.slice(2, equals);
-				if (spec.stopLong.has(name)) return { kind: "unknown", index };
-				index += equals === -1 && spec.long.has(name) ? 2 : 1;
+				const resolved = longOption(spec, equals === -1 ? value.slice(2) : value.slice(2, equals));
+				if (resolved === "stop" || resolved === "unknown") return { kind: "unknown", index };
+				index += equals === -1 && resolved === "argument" ? 2 : 1;
 				continue;
 			}
 			let consumed = 1;
 			for (let k = 1; k < value.length; k += 1) {
-				const option = value[k] as string;
-				if (spec.stopShort.includes(option)) return { kind: "unknown", index };
-				if (spec.keepShort.includes(option)) return { kind: "keep" };
-				if (spec.short.includes(option)) {
+				const short = value[k] as string;
+				if (spec.stopShort.includes(short)) return { kind: "unknown", index };
+				if (spec.keepShort.includes(short)) return { kind: "keep" };
+				if (spec.short.includes(short)) {
 					if (k === value.length - 1) consumed = 2;
 					break;
 				}
+				// An option the table does not know may take an argument.
+				if (!spec.flags.includes(short)) return { kind: "unknown", index };
 			}
 			index += consumed;
+			continue;
+		}
+		// `env - -i git`: a lone `-` after the options is `-i` too.
+		if (value === "-" && spec.dashAlone) {
+			index += 1;
 			continue;
 		}
 		return { kind: "next", index };
@@ -278,15 +406,25 @@ const skipOptions = (words: ReadonlyArray<ShellWord>, from: number, spec: Wrappe
  * `sudo env FOO=1 git commit` resolves to `git` with `wrappers`
  * `["sudo", "env"]`.
  *
+ * A segment whose only command is a `[[ … ]]` or an arithmetic command
+ * `((…))` resolves to the name `[[` or `((`, with the words after it as
+ * `args`: bash evaluates it, and evaluation can run a command that no
+ * substitution shows (`[[ 'a[$(cmd)]' -eq 0 ]]` runs `cmd`), so a guard
+ * needs a name to refuse. Run straight into `then` or `do` in the same
+ * segment (`if [[ x ]] then git commit; fi`) it is skipped, and the command
+ * after it is the name.
+ *
  * Two shapes resolve to `None`, and a guard must tell them apart by `args`:
  *
  * - **No command at all**, with no args: a segment with no words, or only
- *   words that run nothing, such as `fi`, `}`, `done`, `(( x > 1 ))` or the
- *   assignments of `FOO=$(cmd)`. Any substitution inside one is still listed
- *   by `ShellScript.substitutions`.
+ *   words that run nothing, such as `fi`, `}`, `done` or the assignments of
+ *   `FOO=$(cmd)`. Any substitution inside one is still listed by
+ *   `ShellScript.substitutions`.
  * - **A command the analyzer cannot name**, with `args` the words from the
  *   one resolution stopped at, inclusive: a command word with no literal
- *   (`$GIT commit` gives the args `$GIT`, `commit`), or an `env -S` string.
+ *   (`$GIT commit` gives the args `$GIT`, `commit`), an `env -S` string, or
+ *   a wrapper option its table does not know (`env --i FOO git` gives the
+ *   args `--i`, `FOO`, `git`).
  *
  * `name` is the word as written: `/usr/bin/git` stays `/usr/bin/git`, so
  * compare its last path segment. Wrappers are matched by that segment, so
@@ -305,15 +443,30 @@ export class ShellCommand extends Schema.Class<ShellCommand>("ShellCommand")({
 	 * The wrapper commands {@link ShellCommand.fromSegment} unwraps.
 	 *
 	 * @remarks
-	 * `sudo` (with its option arguments and `NAME=value` words), `env` (`-i`,
-	 * `-`, `-u NAME`, `-C DIR`, the long forms and `NAME=value` words),
+	 * `sudo` (sudo 1.9's options and `NAME=value` words), `env` (GNU
+	 * coreutils 9.x, whose `-a NAME` / `--argv0` is new in 9.x, with BSD's
+	 * `-P DIR` and FreeBSD's `-L` and `-U`, `-`, and `NAME=value` words),
 	 * `command` (`-p`), `exec` (`-a NAME`, `-c`, `-l`), `nohup` and `time`
-	 * (`-p`, GNU `time`'s `-f`, `-o`, `-a`, `-v`, and unquoted assignments,
-	 * since `time` is a reserved word). A `NAME=value` word counts after
-	 * quote removal for `env` and `sudo`, as they read their argv, so
-	 * `env "FOO=a b" git` unwraps to `git`; a quoted option (`env "-i"`) is
-	 * an option too. A wrapper is recognized by its last path segment, so
-	 * `/usr/bin/env` unwraps. `command -v` and
+	 * (the reserved word's `-p`, GNU and BSD `time`'s options, and unquoted
+	 * assignments, since `time` is a reserved word). Each option table is the
+	 * union of those implementations, so no option one of them reads with an
+	 * argument is read as a flag.
+	 *
+	 * Options are read as `getopt_long` reads them: a long option is its
+	 * exact name or a unique prefix of one (`env --unse FOO` is `--unset`,
+	 * `sudo --us root` is `--user`), clustered short options end at the
+	 * first that takes an argument, and an option the table does not know,
+	 * or a prefix of more than one name (`env --i`), stops resolution with no
+	 * name, since it may take the word after it. `env` reads options up to
+	 * `--` or its first other word, and from there every word holding an `=`
+	 * is an assignment, so `env -- -x=1 git` and `env =x git` unwrap to `git`
+	 * while `env A=1 -i git` runs `-i`; a lone `-` is skipped without ending
+	 * the options, as BSD `env` reads it. `sudo` reads a `NAME=value` word
+	 * among its options. A `NAME=value` word counts after quote removal for
+	 * `env` and `sudo`, as they read their argv, so `env "FOO=a b" git`
+	 * unwraps to `git`; a quoted option (`env "-i"`) is an option too. A
+	 * wrapper is recognized by its last path segment, so `/usr/bin/env`
+	 * unwraps. `command -v` and
 	 * `command -V` only look a name up, so they do not unwrap: the command is
 	 * `command`. `env -S` splits a string into a command line, which is not
 	 * modelled, so resolution stops with no name. Other wrappers (`nice`,
@@ -363,10 +516,19 @@ export class ShellCommand extends Schema.Class<ShellCommand>("ShellCommand")({
 		const wrappers: Array<string> = [];
 		const resolved = (name: Option.Option<string>, args: ReadonlyArray<ShellWord>): ShellCommand =>
 			ShellCommand.make({ segment, name, args, wrappers });
-		let index = skipPrefix(words, 0);
+		let from = 0;
+		let index = skipPrefix(words, from);
 		for (;;) {
 			const word = words[index];
-			if (word === undefined) return resolved(Option.none(), []);
+			if (word === undefined) {
+				// Nothing named a command: a `[[ … ]]` or `((…))` skipped on the
+				// way is the command, since bash evaluates it.
+				for (let k = from; k < words.length; k += 1) {
+					const test = conditionalName(words[k]);
+					if (test !== undefined) return resolved(Option.some(test), words.slice(k + 1));
+				}
+				return resolved(Option.none(), []);
+			}
 			const literal = word.literal;
 			if (Option.isNone(literal)) return resolved(Option.none(), words.slice(index));
 			const spec = WRAPPERS.get(basename(literal.value));
@@ -376,6 +538,7 @@ export class ShellCommand extends Schema.Class<ShellCommand>("ShellCommand")({
 			wrappers.push(literal.value);
 			if (step.kind === "unknown") return resolved(Option.none(), words.slice(step.index));
 			// `time` is a reserved word timing a whole pipeline: `time { git commit; }`.
+			from = step.index;
 			index = basename(literal.value) === "time" ? skipPrefix(words, step.index) : step.index;
 		}
 	}

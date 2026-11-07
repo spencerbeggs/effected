@@ -86,6 +86,20 @@ const UNITS: ReadonlyArray<string> = [
 	"<<a\na\\\n",
 	"$(a[1<<b] ",
 	"$( a ",
+	// A quoted run inside an expansion is read twice: to match, then for openers.
+	"${'",
+	`"\${x:-'$(a)'}" `,
+	"$(('",
+	"$(('$(a)' ",
+	"$['",
+	"a['$(a)']=1 ",
+	"x=(['$(a)']=1 ",
+	"${$'",
+	// A quoted run in a double-quoted `${…}` is read a third time, as POSIX mode would.
+	`"\${x:-'}'} `,
+	`"\${x:-'\${y:-"a"}'} `,
+	"env --u ",
+	"sudo --c ",
 ];
 
 describe("hostile input", () => {
@@ -111,6 +125,34 @@ describe("hostile input", () => {
 		time(small);
 		const quarter = time(small);
 		const full = time(large);
+		assert.isBelow(full.ms / Math.max(quarter.ms, 5), 10);
+		assert.isBelow(full.ms, 10_000);
+	});
+
+	it("one megabyte-long quoted run inside a braced expansion is checked for openers in linear time", {
+		timeout: 60_000,
+	}, () => {
+		const build = (length: number): string => `echo "\${x:-'${repeatTo("a$ ", length)}'}"`;
+		time(build(MEGABYTE / 4));
+		const quarter = time(build(MEGABYTE / 4));
+		const full = time(build(MEGABYTE));
+		assert.deepStrictEqual(full.script.diagnostics, []);
+		assert.isBelow(full.ms / Math.max(quarter.ms, 5), 10);
+		assert.isBelow(full.ms, 10_000);
+	});
+
+	it("one megabyte-long quoted run of openers is read as POSIX mode would in linear time", {
+		timeout: 60_000,
+	}, () => {
+		// Every `${` stays open, so the reader's stack grows with the run.
+		const build = (length: number): string => `echo "\${x:-'${repeatTo('${"', length)}'}"`;
+		time(build(MEGABYTE / 4));
+		const quarter = time(build(MEGABYTE / 4));
+		const full = time(build(MEGABYTE));
+		assert.deepStrictEqual(
+			full.script.diagnostics.map((d) => d.code),
+			["QuotedCloserInExpansion"],
+		);
 		assert.isBelow(full.ms / Math.max(quarter.ms, 5), 10);
 		assert.isBelow(full.ms, 10_000);
 	});

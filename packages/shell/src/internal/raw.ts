@@ -59,6 +59,8 @@ export const SHELL_DIAGNOSTIC_CODES = [
 	"UnterminatedArithmetic",
 	"UnterminatedSubscript",
 	"ExpansionInHeredocDelimiter",
+	"QuotedSubstitutionInExpansion",
+	"QuotedCloserInExpansion",
 	"MissingRedirectionTarget",
 	"EmptyCommand",
 	"DiagnosticLimitReached",

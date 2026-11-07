@@ -24,10 +24,10 @@ sources:
     title: "GNU Bash Reference Manual: shell syntax, quoting, expansions, redirections"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-07T03:57:53Z
+  at: 2026-11-07T16:20:05Z
 integrity:
   generated:
-    body: c8d55709debccecf
+    body: 1ae1169be6f315a7
 ---
 
 # @effected/shell
@@ -149,6 +149,28 @@ pair and rebuilds a `$( … )` from its parse, so `<<$(  true  )` ends at a line
 `$(true)` and the delimiter line cannot be known. `$'…'` and `$"…"` delimiters
 are their quoted text.
 
+A `'…'` or `$'…'` run inside `${…}`, an arithmetic expression or a subscript
+(an array value's `[key]=` included) that holds `$(` or a backtick records
+`QuotedSubstitutionInExpansion`. bash honours the quote while it finds the
+closer, then, in a double-quoted or heredoc `${…}`, in any arithmetic and in an
+indexed array's key, keeps the quote characters and runs the substitution:
+`echo "${x:-'$(cmd)'}"`, `(( '$(cmd)' ))` and `x=(['$(cmd)']=1)` all run `cmd`.
+The operator and quoting that keep a run literal (`"${x//a/'$(cmd)'}"` runs
+nothing) are not modelled, so every such run is reported, and no substitution
+part is placed for it, since bash's matching and expansion readings of the run
+need not agree on where a `$( … )` in it ends.
+
+Honouring the quote to find the closer is bash's default mode only. POSIX mode
+(`set -o posix`, or an inherited `POSIXLY_CORRECT`) takes a `'` inside a
+double-quoted `${…}` for an ordinary character, so in
+`echo "${x:-'}"; cmd; echo "'}"` the first `}` closes the expansion and `cmd`
+runs, where the default mode runs nothing. The nested scanner tracks, per frame,
+whether it sits in double quotes or a heredoc body, and a run there whose text
+the POSIX reading leaves unbalanced (a `}` or `]` it takes as the closer, or a
+`"`, `${` or `$[` left open) records `QuotedCloserInExpansion`. A balanced run
+(`'${y:-v}'`) reads the same in both modes and records nothing; arithmetic and
+an unquoted `${…}` honour the quote in both modes.
+
 ### Command resolution
 
 `ShellCommand.fromSegment` is pure and static, so a consumer can resolve any
@@ -162,6 +184,15 @@ commit; fi`, `for ((;;)) { git commit; }`, `function f { git commit; }` and
 Assignments after any of those count too (`if [[ x ]] then FOO=1 git`), and
 the lexer itself records an assignment after a reserved word or `time`.
 
+Each wrapper's options are read as `getopt_long` reads them, from a table that
+is the union of its implementations (GNU and BSD `env`, sudo 1.9, the `time`
+reserved word and GNU and BSD `time`): a long option is its exact name or a
+unique prefix of one (`env --unse X` is `--unset`), and an unknown option or an
+ambiguous prefix (`env --i`) stops resolution with `name` `None`, since it may
+take the word after it. `env` reads options up to `--` or its first other word,
+then takes every word holding an `=` as an assignment (`env -- -x=1 git`,
+`env =x git`); `sudo` reads assignments among its options.
+
 `env` and `sudo` read their argv after quote removal, so `env "FOO=a b" git`
 and `env "-i" git` unwrap; `time` is a reserved word, so only an unquoted
 assignment follows it. A wrapper is recognized by its last path segment
@@ -170,9 +201,12 @@ assignment follows it. A wrapper is recognized by its last path segment
 `command`. `env -S` splits a string into a command line this package does not
 model, so it stops with `name` `None`. When a word in command position, or a
 wrapper option, has no literal, resolution stops: `name` is `None` and `args`
-are the words from that word on. A segment that runs no command (`fi`, `}`,
-`(( x > 1 ))`) also has `name` `None`, but with no `args`, which is how a
-guard tells the two apart.
+are the words from that word on. A segment that runs no command (`fi`, `}`)
+also has `name` `None`, but with no `args`, which is how a guard tells the two
+apart. A segment whose only command is a `[[ … ]]` or `((…))` resolves to the
+name `[[` or `((`, because bash evaluates it and evaluation can run a command
+no substitution shows; run straight into `then` or `do`, it is skipped and the
+command after it is the name.
 
 Nested commands are the caller's to inspect: `script.substitutions()` lists
 every `$(…)`, backtick and `<(…)` / `>(…)` at this level, including those
@@ -222,7 +256,7 @@ unterminated with diagnostics, so it fails closed. Commands that take a
 command string (`bash -c`, `eval`, `xargs`, `find -exec`, `ssh`) are reported
 as their own name; interpreting their arguments is the caller's.
 
-This was checked against GNU bash 5.3 only, with the reviewed shapes, every position of a backslash-newline in them, and a random differential fuzz. That is evidence, not proof, and dash, zsh and POSIX-mode bash were not tested. A guard must not treat `commands()` as a complete gate until these are closed. Two parser modes hide a command with no diagnostic: under `shopt -s extglob` (or an inherited `BASHOPTS`), `echo @(<<E)` and `cat <<E@(x)` read a heredoc bash does not, and under `shopt -s expand_aliases` an alias body is never read (`alias c='git commit'`, then `c`). So refuse `shopt` and `alias`, which are reported as command names, and control the environment. Text handed to another parser is not read: `eval`, `bash -c`, `source`, `xargs`, `find -exec` and `ssh` are reported as their own name. A script with any diagnostic may hide a command (`x=$(echo a[ )` swallows the lines after it as one unterminated substitution), so treat every diagnostic as a refusal, as the README guard does.
+This was checked against GNU bash 5.3 only, with the reviewed shapes, every position of a backslash-newline in them, and a random differential fuzz. That is evidence, not proof: dash and zsh were not tested, and POSIX-mode bash only for the quote rule above. A guard must not treat `commands()` as a complete gate until these are closed. Three parser modes hide a command with no diagnostic: under `shopt -s extglob` (or an inherited `BASHOPTS`), `echo @(<<E)` and `cat <<E@(x)` read a heredoc bash does not; under `shopt -s expand_aliases` an alias body is never read (`alias c='git commit'`, then `c`); and POSIX mode is otherwise unchecked, except that it expands aliases in a non-interactive shell (`BASH_ALIASES[1]=cmd`, then `1` on the next line). So refuse `shopt`, `alias`, `set -o posix` and any write to `POSIXLY_CORRECT`, assignment tokens or not (`: ${POSIXLY_CORRECT:=1}`, `for POSIXLY_CORRECT in 1`, `select POSIXLY_CORRECT in 1`, `declare {POSIXLY_CORRECT,y}=1` each turned it on), which are reported as command names and assignments, and control the environment (an inherited `POSIXLY_CORRECT`, `BASHOPTS`, `SHELLOPTS` or `PS4`). `hash -p /path/cmd ls`, `enable -n printf` and a write to `BASH_CMDS` or `BASH_ALIASES` with any key, letter-free ones included (`BASH_CMDS[1]=/path/cmd; 1`, `BASH_CMDS=([1]=…)`), make a name run something else, the `alias` class: refuse them too (the README guard refuses any mention of `PS4`, `POSIXLY_CORRECT`, `BASH_CMDS` or `BASH_ALIASES` once quotes and backslashes are removed). A guard over `raw` text must remove `\⏎` first, as bash does: the parse joins it (`[\⏎[` is `[[`) but `raw` keeps it, so `[\⏎[ x -eq 0 ]]`, `(\⏎( x ))` and `$\⏎{!x}` slip past an unjoined pattern. Text handed to another parser is not read: `eval`, `bash -c`, `source`, `xargs`, `find -exec` and `ssh` are reported as their own name, and so are argv wrappers `ShellCommand` does not unwrap (`nice`, `timeout`, `stdbuf`, `setsid`, `doas`, `chroot`, `builtin`). Nor is text bash evaluates as arithmetic, a name or a prompt, where a quoted `'a[$(cmd)]'`, or a variable holding one, runs `cmd` (each checked under bash 5.3): `let`, `trap`, `read`, `declare -i` / `typeset -i` / `local -i`, a nameref (`declare -n`) and later assignments to an integer variable, a subscripted name given to `declare` / `typeset` / `local` with any options (`declare 'a[$(cmd)]=1'`, or a name a variable supplies, `declare "$x"`; `export` and `readonly` run nothing for it), `printf -v`, `[ -v` and `test -v`, `[[ … ]]` with an arithmetic test (`-eq -ne -lt -le -gt -ge`, bare names included) or `-v`, `(( … ))` / `$(( … ))` / `$[ … ]` / `for (( … ))` over a variable, a variable as a subscript, array-literal key, substring offset or length, or indirection (`${a[x]}`, `a[x]=2`, `a=([x]=1)`, `${a:x}`, `${@:x}`, `${a[@]:x}`, `${s: -x}`, `${!x}`, special parameters too: `${-:x}`, `${?:x}`, `${$:x}`, `${#:x}`), `${x@P}` and `PS4` under xtrace (`PS4='$(cmd)'; set -x; :`, also `set -o xtrace`, `shopt -so xtrace`, `bash -x`), and an assignment builtin's array value (`declare -a x=(['$(cmd)']=1)`, `export`, `readonly`), which the lexer splits off as a subshell. A guard must refuse these by name, as the README guard does. The segmenter also splits a `[[ … ]]` on `&&`, `||` and `(`, so its operands surface as fake command names in later segments (`[[ 0 == 1 || 'a[$(cmd)]' -eq 0 ]]` names `a[$(cmd)]`): the README guard follows a `[[` to its unquoted `]]` across segments. An option a variable supplies (`[ "$op" x ]`) is read only at run time. A script with any diagnostic may hide a command (`x=$(echo a[ )` swallows the lines after it as one unterminated substitution), so treat every diagnostic as a refusal, as the README guard does.
 
 [^issue-1204]: <https://github.com/spencerbeggs/effected/issues/1204>
 [^systems-guard]: savvy-web/systems,
