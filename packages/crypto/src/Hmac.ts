@@ -2,10 +2,8 @@ import type { Redacted } from "effect";
 import { Effect, Result } from "effect";
 import type { CryptoError } from "effect/crypto";
 import { Mac } from "effect/crypto";
-import * as Base64 from "effect/encoding/Base64";
-import * as Base64Url from "effect/encoding/Base64Url";
-import * as Hex from "effect/encoding/Hex";
 import { messageBytes, secretBytes } from "./internal/bytes.js";
+import { decodeBytes, encodeBytes } from "./internal/encoding.js";
 import { hmacBytes, macAlgorithm } from "./internal/hmac.js";
 
 /**
@@ -125,34 +123,10 @@ export interface HmacVerifyStringOptions extends HmacInput {
  */
 export type HmacVerifyOptions = HmacVerifyBytesOptions | HmacVerifyStringOptions;
 
-const encode = (bytes: Uint8Array, encoding: HmacEncoding): Uint8Array | string => {
-	switch (encoding) {
-		case "bytes":
-			return bytes;
-		case "hex":
-			return Hex.encode(bytes);
-		case "base64":
-			return Base64.encode(bytes);
-		case "base64url":
-			return Base64Url.encode(bytes);
-	}
-};
-
-const decode = (value: string, encoding: HmacStringEncoding): Result.Result<Uint8Array, unknown> => {
-	switch (encoding) {
-		case "hex":
-			return Hex.decode(value);
-		case "base64":
-			return Base64.decode(value);
-		case "base64url":
-			return Base64Url.decode(value);
-	}
-};
-
 const signAny = Effect.fn("Hmac.sign")(function* (options: HmacSignOptions) {
 	yield* Effect.annotateCurrentSpan("algorithm", options.algorithm);
 	const mac = yield* hmacBytes(options.algorithm, secretBytes(options.key), messageBytes(options.message));
-	return encode(mac, options.encoding ?? "bytes");
+	return encodeBytes(mac, options.encoding ?? "bytes");
 });
 
 function sign(options: HmacSignBytesOptions): Effect.Effect<Uint8Array, CryptoError.CryptoError, Mac.Mac>;
@@ -167,7 +141,7 @@ const verify = Effect.fn("Hmac.verify")(function* (options: HmacVerifyOptions) {
 	const key = yield* Mac.key(macAlgorithm(options.algorithm), secretBytes(options.key));
 	// A signature that does not decode is a wrong signature, not an error.
 	const received =
-		"encoding" in options ? decode(options.signature, options.encoding) : Result.succeed(options.signature);
+		"encoding" in options ? decodeBytes(options.signature, options.encoding) : Result.succeed(options.signature);
 	if (Result.isFailure(received)) return false;
 	const mac = yield* Mac.Mac;
 	return yield* mac.verify(key, received.success, messageBytes(options.message));

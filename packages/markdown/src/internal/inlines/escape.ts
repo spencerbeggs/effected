@@ -5,9 +5,9 @@
 // `parseBackslash`: a backslash escapes the punctuation that follows it, ends
 // the line as a hard break, or stands for itself.
 
+import { ESCAPABLE } from "../grammar.js";
 import { makeInlineNode } from "../inlineNode.js";
 import type { InlineConstruct } from "../inlineTypes.js";
-import { ESCAPABLE } from "../unescape.js";
 
 const C_BACKSLASH = 0x5c;
 const C_NEWLINE = 0x0a;

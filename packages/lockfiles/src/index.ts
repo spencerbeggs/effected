@@ -15,6 +15,10 @@
  * `PnpmEnvLockfile.configDependencies` the config dependencies it records,
  * each with its integrity.
  *
+ * `LockfileDiff.compare` reports what moved between two parsed lockfiles:
+ * catalog entries and importer dependencies added, removed or changed, with
+ * resolved versions normalized across formats.
+ *
  * Every entrypoint takes content as a string; this package performs no IO.
  *
  * @example
@@ -37,6 +41,7 @@ export { BunExtension } from "./BunExtension.js";
 export { ConfigDependencyLock } from "./ConfigDependencyLock.js";
 export { ImporterDependency } from "./ImporterDependency.js";
 export { Lockfile, LockfileFramingError, LockfileParseError } from "./Lockfile.js";
+export { CatalogChange, ImporterChange, LockfileDiff } from "./LockfileDiff.js";
 export { LockfileFormat, filenameFor, filenamesFor, fromFilename } from "./LockfileFormat.js";
 export { LockfileImporter } from "./LockfileImporter.js";
 export { LockfileIntegrity, WorkspaceManifest } from "./LockfileIntegrity.js";

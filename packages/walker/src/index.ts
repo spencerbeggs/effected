@@ -20,6 +20,9 @@
  * Every upward form that touches the filesystem, and the physical check, has a
  * `*Sync` twin over the same caller-supplied port as `descendSync`.
  *
+ * Paths: `PosixPath` is POSIX path arithmetic as plain synchronous functions,
+ * reading no working directory, for pure code that cannot put `Path` in `R`.
+ *
  * @packageDocumentation
  */
 
@@ -53,10 +56,14 @@ export {
 	descendSync,
 } from "./DescendSync.js";
 export { type CompileAndExpandOptions, GlobExpansionError, compileAndExpand } from "./Expand.js";
+export { PosixPath } from "./PosixPath.js";
 export {
 	type AscendOptions,
 	type AscendSyncOptions,
 	type AscendWithinSyncOptions,
+	type FindUpwardSyncWithOptions,
+	type UpwardAcceptCache,
+	type UpwardAccepted,
 	type UpwardMatches,
 	Walker,
 } from "./Walker.js";

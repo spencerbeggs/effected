@@ -4,6 +4,26 @@
 
 * Updated The kit builds itself with the bundler running from source under tsx
 * Updated effected.toml: the build config's tables, defaults and discovery
+* Updated glob
+* Added glob does not bound total matching work on hostile patterns
+* Updated walker
+* Updated @effected/markdown
+* Updated @effected/crypto
+* Updated @effected/webhooks
+* Updated @effected/files
+* Updated lockfiles
+* Updated npm
+* Updated @effected/workspaces: monorepo tooling
+* Updated @effected/github
+* Added bun below 1.4.4 hoists api-extractor's typescript over the tool's peer
+* Updated @effected/markdown frontmatter
+* Added @effected/s3
+* Added Raw S3 objects get their own boundary package, with a ListObjectsV2 reader that fails a wrong root
+* Added @effected/markdown-lint
+* Added The markdownlint-compatible lint shape is its own pure package; @effected/markdown gains only the callback visitor
+* Updated effected
+* Added @effected/shell
+* Added Shell syntax analysis is its own pure package, @effected/shell, not a commands subpath or core CommandLine
 
 ## 2026-11-06
 

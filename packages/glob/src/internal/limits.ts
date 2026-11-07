@@ -10,6 +10,19 @@ export const EXPANSION_MAX = 100_000;
 /** Default bound on non-adjacent globstar backtracking. Upstream minimatch. */
 export const MAX_GLOBSTAR_RECURSION = 200;
 
+/**
+ * Ceiling on a caller-raised maxGlobstarRecursion. The body-section walk
+ * recurses once per `**` section it descends, so the cap is a stack depth. On
+ * Node 26's default stack the walk first overflowed at about 3,250 sections
+ * with nothing else on the stack, 2,100 with 5,000 frames of the caller's own
+ * recursion beneath it, and 1,600 under `--stack-size=500` (half the default).
+ * A walk at 1,000 uses under a third of the default stack and about 62% of the
+ * halved one, so it leaves a margin in every measured case.
+ * GlobPattern.matches still absorbs an overflow as the cap's false negative,
+ * for callers whose stack is deeper or smaller than measured.
+ */
+export const MAX_GLOBSTAR_RECURSION_CEILING = 1000;
+
 /** Default extglob parse depth; over-nesting degrades to literal. Upstream minimatch. */
 export const MAX_EXTGLOB_RECURSION = 2;
 

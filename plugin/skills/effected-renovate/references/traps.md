@@ -18,3 +18,8 @@ Things the upgrade process has hit in real repositories, each with what it looks
 ## Found this round
 
 <!-- effected-renovate: traps found since the last ledger reset go below this line -->
+
+| Looks like | Actually |
+| --- | --- |
+| `Cannot find module 'effect/package.json'` from the root after a good install | `node -p` resolves from the current directory, and the root does not declare `effect`. Check with `pnpm why effect --depth 0` instead. |
+| Biome's `noUndeclaredDependencies` reports `@effected/plugin` in a workspace package | The package holds a `schemastore.config.*` that imports from `@effected/plugin`, which only the root declares. Declare it in that package too. |

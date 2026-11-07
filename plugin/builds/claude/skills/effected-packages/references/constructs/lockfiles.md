@@ -6,9 +6,12 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `BunExtension` | Class | Extension data specific to bun lockfiles, attached to `Lockfile.extension` when the format is `"bun"`. | bun lockfile extension data, catalog, catalogs, overrides and trustedDependencies |
+| `CatalogChange` | Class | One catalog entry that moved between two lockfiles, as reported by `LockfileDiff.compare`. | catalog entry added, removed or changed between lockfiles, version before and after, consumers |
 | `ConfigDependencyLock` | Class | One config dependency a `pnpm-lock.yaml` records, with the integrity pnpm recorded for it — read from the lockfile's env preamble by `PnpmEnvLockfile.configDependencies`. | config dependency integrity from lockfile, verify config dependency fetch |
+| `ImporterChange` | Class | One importer dependency that moved between two lockfiles, as reported by `LockfileDiff.compare`. | importer dependency added, removed or changed between two lockfiles, specifier and version |
 | `ImporterDependency` | Class | One declared dependency of one workspace importer, as the lockfile records it. | one workspace importer's declared dependency as the lockfile records it |
 | `Lockfile` | Class | The unified lockfile model all four formats normalize into. | parse a pnpm npm yarn or bun lockfile into one unified lockfile model |
+| `LockfileDiff` | Class | What moved between two lockfiles: catalog entries and importer dependencies whose specifier or resolved version changed, or that were added or removed. | compare two lockfiles, what moved after an install or update, catalog and importer changes |
 | `LockfileFormat` | Variable + TypeAlias | The union of supported lockfile format names. | the lockfile format literal: bun, npm, pnpm or yarn |
 | `LockfileFramingError` | Class | Failure of `Lockfile.parse`: the content parsed as text, but no single lockfile document could be located in it. | handle a lockfile whose yaml stream carries no lockfile document, e.g. a config-dependencies-only pnpm-lock.yaml |
 | `LockfileImporter` | Class | One workspace importer's declared dependencies, as the lockfile records them. | one workspace importer's declared dependencies, keyed by importer path |

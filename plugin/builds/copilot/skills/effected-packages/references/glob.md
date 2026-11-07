@@ -5,7 +5,7 @@ The complete minimatch dialect (extglobs, braces, POSIX classes, true globstar, 
 ## Import
 
 ```ts
-import { GlobPattern, GlobPatternOptions, GlobSet } from "@effected/glob";
+import { GlobPattern, GlobPatternOptions, GlobSet, Wildcard, WildcardOptions } from "@effected/glob";
 import type { EnumerationRoot } from "@effected/glob";
 ```
 
@@ -22,12 +22,13 @@ Single entrypoint; no subpaths.
 | `platform` | `"posix"` | separator/root dialect; never reads `process.platform` |
 | `noglobstar` | `false` | disable `**` crossing segments, falling back to single-segment `*` |
 | `braceExpandMax` | `100000` | brace-expansion budget; tightenable, never raisable above the stock cap |
-| `maxGlobstarRecursion` / `maxExtglobRecursion` | engine defaults | recursion caps backing the false-negative trade-offs in Gotchas below |
+| `maxGlobstarRecursion` / `maxExtglobRecursion` | engine defaults | recursion caps backing the false-negative trade-offs in Gotchas below; `maxGlobstarRecursion` is an integer from 1 to 1000, and a value outside that range throws at `make` |
 
 ## Core API
 
 - **`GlobPattern`** — `Schema.Class` over one encoded field `source`. `GlobPattern.compile(source, options?)` → `Effect<GlobPattern, GlobPatternError>` is the fallible boundary (`GlobPattern.compileResult` is its synchronous `Result` twin); after that `matches(candidate)` is **total** (pure boolean, never throws). `FromString` embeds patterns in config schemas. Metadata: `hasMagic`, `negated`, `enumerationPrefix` (longest literal directory prefix shared by every brace alternative — `""` when the first segment carries magic), `crossesSegments` (true iff the pattern can match more than one level below `enumerationPrefix` — a globstar, or a magic segment followed by more segments). Both fold every brace alternative into one answer. **`enumerationRoots`** → `ReadonlyArray<EnumerationRoot>` keeps them apart — one root per alternative, each `{ prefix, deep, spellings }` (`prefix` canonical and slash-terminated, `""` for the base; `deep` when matches can lie more than one level below it; `spellings` every literal prefix the pattern spells that root with, in pattern order) — so `packages/{a,b}/src/*.ts` reads `packages/a/src/` and `packages/b/src/` one level each rather than all of `packages/`. Roots are distinct, one inside a `deep` root is absorbed into it, and two kept roots never yield the same file. These getters exist for one consumer shape — an enumerator deciding where to read and how deep (`@effected/walker`'s `descend` walks per root) — and all ignore whole-pattern negation: guard on `negated` and enumerate a negated pattern from `cwd`. **`literalPrefix`** is the literal leading directory segments before the first magic segment, unescaped, no trailing slash (`src/{a,b}/*.ts` → `src`; an unescaped `{` is magic; no magic → the whole pattern; `""` when the first segment is magic). The `extglobBang` option reads a leading `!(` as the extglob, as picomatch does (off by default; `!a` still negates; parity at that one point only; `nonegate: true` also avoids `!(` negation but disables every `!`; `GlobSet` has no options and strips one `!` itself). Statics `escape`/`unescape` for user-supplied literals.
 - **`GlobSet`** — set semantics over many patterns: leading `!` marks an exclusion filter; `matches(candidate) = someInclude && !someExclude`. `GlobSet.compile(patterns)` → `Effect<GlobSet, GlobPatternError>`, failing typed on the FIRST uncompilable member (the error's `pattern` field names the offender, bang included for exclusions). Accessors: `literals` (deduped effective literal include paths, unescaped, first-seen order — an exact-lookup fast path), `wildcards` (compiled magic include alternatives), `excludes` (compiled exclusion patterns, leading bang stripped), `isExcluded(candidate)`.
+- **`Wildcard`** — a separate matcher for allow-list patterns like `agent:*`, not a glob dialect. `*` matches any run of characters other than whitespace, `?` one character other than whitespace, and everything else is literal. There is no separator, so `*` crosses `/`, and `[`, `{`, `!`, `\` and a leading `.` mean nothing special. `Wildcard.compile(pattern, options?)` → `(candidate: string) => boolean` and `Wildcard.matches(pattern, candidate, options?)` → `boolean`; neither throws, and matching never backtracks (at most pattern length × candidate length). `WildcardOptions.make({ nocase: true })` compares literals under Unicode simple case folding. Reach for it instead of escaping a string into a `RegExp`, or instead of a glob when `/` must not be special.
 
 ## Usage
 
@@ -90,3 +91,5 @@ None exported (minimatch is the internal test oracle only).
 - Extglob over-nesting degrades to literal matching (no error); globstar recursion over the cap is a deliberate false negative — both preserved upstream trade-offs.
 - Answers on patterns with more than one `**`, and on `partial` with any `**`, follow minimatch 11's fixes and can differ from minimatch 10.x: `**/a/b/c/**/d/**` matches `d/a/b/c/d/b` here and not there. Nothing else from minimatch 11 applies: `a/b/` still matches `a/b/?(x)`.
 - Windows-style matching requires explicit `{ platform: "win32" }`.
+- **Untrusted patterns: bound the input yourself.** Matching stays polynomial, and the package does not bound its total work (`**/a/**/*{0..999}*` against a 13.9 KB path takes about 33 s). `matches` is synchronous, so `Effect.timeout` around it still waits for the whole match. Limit the pattern's and the candidate's length, lower `braceExpandMax` so the pattern fails at compile with `ExpansionBudgetExceeded`, and enforce a real deadline off the calling thread (a terminated worker, a subprocess).
+- `matches` never throws a stack overflow. On less stack than the accepted recursion cap needs, it answers as though no alternative matched: `false`, or `true` for a negated pattern. `GlobSet.matches` inherits this.

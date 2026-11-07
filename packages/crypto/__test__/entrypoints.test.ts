@@ -42,6 +42,7 @@ describe("root entrypoint", () => {
 			"DriftUnchanged",
 			"Fingerprint",
 			"FingerprintError",
+			"Hash",
 			"Hmac",
 			"HttpRedaction",
 			"SigV4",
@@ -59,6 +60,7 @@ describe("root entrypoint", () => {
 		const reachable = [...reachableFrom(resolve(SRC, "index.ts"))];
 		// positive control: the walker resolves through to the internal engines
 		assert.isTrue(reachable.some((file) => file.endsWith("internal/hmac.ts")));
+		assert.isTrue(reachable.some((file) => file.endsWith("internal/encoding.ts")));
 		assert.isTrue(reachable.some((file) => file.endsWith("SigV4.ts")));
 		assert.isTrue(reachable.some((file) => file.endsWith("internal/canonical.ts")));
 		assert.isTrue(reachable.some((file) => file.endsWith("HttpRedaction.ts")));

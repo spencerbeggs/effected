@@ -41,9 +41,6 @@ export interface TransportOptions {
 	readonly apiVersion: string;
 }
 
-/** The REST api-version a client pins when its options name none. */
-export const DEFAULT_API_VERSION = "2026-03-10";
-
 /** What a client layer holds. */
 export interface Transport {
 	/**

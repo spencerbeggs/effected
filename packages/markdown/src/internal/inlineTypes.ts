@@ -11,7 +11,7 @@
 // is what lets the GFM constructs (autolink literals, strikethrough) register
 // without touching the parser.
 
-import type { Definition } from "../MarkdownNode.js";
+import type { Definition, Position } from "../MarkdownNode.js";
 import type { RawInlineSegment } from "./blockTypes.js";
 import type { InlineNode } from "./inlineNode.js";
 
@@ -163,6 +163,27 @@ export interface InlineScanner {
 	deactivateLinkOpeners(): void;
 	/** Run the emphasis algorithm down to `stackBottom`. */
 	processEmphasis(stackBottom: Delimiter | undefined): void;
+	/**
+	 * Record a footnote marker spanning local `[from, to)` that formed no
+	 * reference for want of a definition; `identifier` is its case-folded
+	 * label.
+	 */
+	noteUnresolvedFootnote(label: string, identifier: string, from: number, to: number): void;
+}
+
+/**
+ * A GFM footnote marker the inline pass met with no matching definition: the
+ * `[^label]` that stays literal text. Recorded at formation time, the only
+ * moment its span is still known — once the miss becomes text it coalesces
+ * with its neighbours.
+ */
+export interface RawUnresolvedFootnote {
+	/** The raw source between `[^` and `]`, verbatim. */
+	readonly label: string;
+	/** The label case-folded the way a resolved reference's identifier is. */
+	readonly identifier: string;
+	/** The whole marker's span, `[` through `]`, in the original source. */
+	readonly position: Position;
 }
 
 /** One inline construct: upstream's `parse*` methods, one per module. */

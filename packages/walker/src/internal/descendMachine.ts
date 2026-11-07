@@ -13,6 +13,7 @@
 
 import type { GlobPattern } from "@effected/glob";
 import { isPinnedAbsolute } from "./absolute.js";
+import { segmentBound, skipsHiddenDirectories } from "./patternBounds.js";
 import { resolveSegments } from "./segments.js";
 import { trimTrailing } from "./trimTrailing.js";
 
@@ -93,6 +94,13 @@ export const DEFAULT_PRUNE: ReadonlyArray<string> = ["node_modules", ".git"];
 
 /** A glob pattern's one separator: its backslash is an escape, never a separator. */
 const isSlash = (character: string): boolean => character === "/";
+
+/** The number of segments in a canonical, cwd-relative POSIX path. */
+const segmentCount = (relative: string): number => {
+	let count = 1;
+	for (const character of relative) if (character === "/") count += 1;
+	return count;
+};
 
 /** Shared empty ancestor chain: frames under `followSymlinks: false` never consult theirs. */
 const NO_ANCESTORS: ReadonlyArray<string> = Object.freeze([]);
@@ -223,6 +231,12 @@ export function* descendMachine<S, C>(
 		return done(answer !== undefined && wanted ? [{ path: pattern.source, info: answer.info }] : []);
 	}
 
+	// What the pattern itself rules out, so the walk never reads a directory no
+	// match can lie in: deeper than any match's segment count (no globstar), or
+	// hidden when the pattern cannot match inside a hidden directory (`dot: false`
+	// and no segment naming one). Both only ever skip READS, never a match.
+	const bound = segmentBound(pattern);
+	const skipHidden = skipsHiddenDirectories(pattern);
 	const results: Array<MachineEntry<S>> = [];
 
 	/**
@@ -344,6 +358,10 @@ export function* descendMachine<S, C>(
 				if (stat.kind !== "Directory" || !deep) continue;
 				// Prune suppresses DIRECTORIES only — a FILE named `.git` stays matchable.
 				if (prune.has(entry)) continue;
+				// A directory the pattern cannot reach into is never read. Checked
+				// before `maxDepth`, which governs only directories the walk reads.
+				if (skipHidden && entry.startsWith(".")) continue;
+				if (bound !== undefined && segmentCount(relative) >= bound) continue;
 				// Symlinked directories: skipped unless followSymlinks; when followed,
 				// the per-branch real-path chain detects a cycle. Only a LINK pays a
 				// realPath — a plain directory's real path is its parent's plus its name.

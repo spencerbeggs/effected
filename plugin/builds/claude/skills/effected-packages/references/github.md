@@ -37,6 +37,7 @@ transport is `fetch`.
 | `Repo` | naming which repository a call targets; every resource method carries it in `R`, resolved per call |
 | `GitHubApp` | minting, scoping and revoking installation tokens from App credentials, or building a client from them (as an installation, as the app itself, or from a token cached across request scopes) |
 | `InstallationTokenStore` | the seam that keeps installation tokens between request scopes (a Worker's KV, a Durable Object), for `GitHubApp.cachedToken` |
+| `GitHubUserAuth`, `GitHubUserTokens` | acting as a user: the OAuth web flow's code exchange, token refresh and grant revocation |
 | `ActionsOidc`, `ActionsOidcClaims` | verifying a GitHub Actions OIDC token a workflow presents to your service, into typed claims |
 | `GitHubRepository` | repository settings: read, patch, apply a config blob, default branch, node id, owner type, topics |
 | `GitBranch`, `GitTag`, `GitCommit` | git-data plumbing — refs, trees, commits, committing files through the API without a checkout |
@@ -191,6 +192,33 @@ tempted to reach for `as`.
   can be registered again by someone else. `ActionsOidc.testClaims(overrides?)`
   is a wire-shaped payload for tests, signed with `@effected/jwt/testing`'s
   `TestIssuer`. The module does not reach octokit.
+- **`GitHubUserAuth`** — the OAuth web flow a GitHub App or OAuth App uses to act
+  as a user. `Context.Service` with `exchange({ code, codeVerifier?, redirectUri? })`
+  → `GitHubUserTokens`, `refresh({ refreshToken })` → `ExpiringUserTokens` and
+  `revokeGrant({ accessToken })` → `void`, each failing `GitHubUserAuthError`. It
+  speaks to `fetch` directly, never through `GitHubClient`, so a Worker that only
+  signs users in links neither octokit nor the JWT signer.
+  `GitHubUserAuth.layer({ clientId, clientSecret, fetch?, tokenUrl?, apiUrl?,
+  apiVersion?, userAgent?, timeout? })` takes the secret as `Redacted` (`timeout`
+  defaults to ten seconds; the URLs are for GitHub Enterprise Server); doubles are
+  `makeTest` and `layerTest`. `GitHubUserTokens` is the union of
+  `ExpiringUserTokens` (access and refresh tokens, `expiresAt`,
+  `refreshTokenExpiresAt`, `isExpired(now, skew?)`, `isRefreshExpired(now, skew?)`)
+  and `NonExpiringUserTokens` (an app that does not expire user tokens),
+  discriminated on `expiry`. Both encode to JSON for persistence, with the tokens as
+  plain strings and the times as ISO instants; encrypting that at rest is the
+  caller's job. `GitHubUserAuthFinal` (`operation`, `code`, `description?`,
+  `status`, `remedy: "reconnect" | "reconfigure"`) is a refusal, including the
+  HTTP 200 `error` body GitHub answers a bad code or refresh token with.
+  **Branch on `remedy`, never on the tag alone:** `incorrect_client_credentials` is
+  final too, and a handler that drops tokens on every `GitHubUserAuthFinal` signs
+  everyone out the moment the client secret is rotated.
+  `GitHubUserAuthTemporary` (`operation`, `kind: "network" | "timeout" | "status" |
+  "malformed"`, `status?`, `cause?`) means retry later and keep the tokens. One
+  temporary failure has already spent the refresh token: GitHub rotates it on every
+  refresh it processes, so a refresh that failed after reaching GitHub answers
+  `bad_refresh_token` when retried, and the user signs in again. No secret, code,
+  verifier or token appears in an error message or a kept cause.
 - **`BotIdentity`** — `forApp({ appSlug, appUserId? })`, `githubActions`, and
   `signoff`, which renders the DCO trailer. A commit made through the Git Data
   API bypasses `git commit -s`, and a hand-built trailer fails late as a red DCO

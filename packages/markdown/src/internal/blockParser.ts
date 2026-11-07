@@ -51,6 +51,7 @@ import type {
 import { makeBlockNode } from "./blockTypes.js";
 import type { RawDiagnostic } from "./carriers.js";
 import { GuardExceeded } from "./carriers.js";
+import type { RawUnresolvedFootnote } from "./inlineTypes.js";
 import { MAX_NESTING_DEPTH } from "./limits.js";
 import { pointAt } from "./point.js";
 import type { SourceLine } from "./preprocess.js";
@@ -91,6 +92,12 @@ export interface BlockPassResult {
 	 * Always empty under the `commonmark` dialect, which has no such construct.
 	 */
 	readonly footnoteLabels: ReadonlySet<string>;
+	/**
+	 * Every GFM footnote marker with no matching definition, in document
+	 * order. The markers stay literal text in `root`; this is the one place
+	 * their spans survive. Always empty under `commonmark`.
+	 */
+	readonly unresolvedFootnotes: ReadonlyArray<RawUnresolvedFootnote>;
 	/**
 	 * The parse's own line index over the source, built once: the facade
 	 * materializes diagnostics against it and hands it to the document, so
@@ -498,6 +505,7 @@ class BlockParser implements BlockScanner {
 			format: capture.format,
 			value: capture.value,
 			position: this.position(0, capture.endOffset),
+			valueStart: capture.valueStart,
 		});
 		const position =
 			root.position.end.offset >= capture.endOffset ? root.position : this.position(0, capture.endOffset);
@@ -626,11 +634,19 @@ class BlockParser implements BlockScanner {
 		const footnoteLabels = new Set<string>();
 		const definitionNodes = new Map<BlockNode, Definition>();
 		const rawInlines: RawInlineSlice[] = [];
+		const unresolvedFootnotes: RawUnresolvedFootnote[] = [];
 
 		const context: MaterializeContext = {
 			position: (start, end) => this.position(start, end),
 			inlineSlice: (block) =>
-				prepareInline(block, (start, end) => this.position(start, end), refmap, this.dialectName, footnoteLabels),
+				prepareInline(
+					block,
+					(start, end) => this.position(start, end),
+					refmap,
+					this.dialectName,
+					footnoteLabels,
+					unresolvedFootnotes,
+				),
 			registerInline: (parent: InlineHost, prepared: PreparedInline) => {
 				rawInlines.push({
 					parent,
@@ -650,7 +666,12 @@ class BlockParser implements BlockScanner {
 
 		const root = this.withFrontmatter(materialized);
 
-		return { root, rawInlines, carriers: [], refmap, footnoteLabels, lineIndex: this.lineIndex };
+		// Materialization visits leaves in tree order, which for a footnote
+		// definition nested after the paragraph that cites it is not source
+		// order; sort so the record reads top to bottom.
+		unresolvedFootnotes.sort((a, b) => a.position.start.offset - b.position.start.offset);
+
+		return { root, rawInlines, carriers: [], refmap, footnoteLabels, unresolvedFootnotes, lineIndex: this.lineIndex };
 	}
 }
 

@@ -64,11 +64,41 @@ export interface NpmConfigSource {
  */
 export interface NpmConfigLoadOptions {
 	/**
-	 * Where the project lookup starts — npm's working directory. The project
-	 * npmrc is `.npmrc` in the nearest directory at or above it holding a
-	 * `package.json` or a `node_modules`, else in this directory.
+	 * Where the project lookup starts — npm's working directory. By default the
+	 * project npmrc is `.npmrc` in the nearest directory at or above it holding
+	 * a `package.json` or a `node_modules`, else in this directory;
+	 * {@link NpmConfigLoadOptions.projectDir} and
+	 * {@link NpmConfigLoadOptions.workspaceRoot} change that.
 	 */
 	readonly cwd: string;
+	/**
+	 * The project directory, given outright: the project npmrc is
+	 * `<projectDir>/.npmrc` and nothing is searched for. A relative path
+	 * resolves against `cwd`. Wins over
+	 * {@link NpmConfigLoadOptions.workspaceRoot} when both are set.
+	 *
+	 * @remarks
+	 * For a caller that already knows its root (a workspace tool that found it
+	 * once), so the npmrc it reads and the root it works in cannot differ.
+	 */
+	readonly projectDir?: string | undefined;
+	/**
+	 * Read the project npmrc at the workspace root rather than the nearest
+	 * package, as pnpm does: the nearest directory at or above `cwd` holding a
+	 * `pnpm-workspace.yaml`, or a `package.json` with a `workspaces` field (npm,
+	 * yarn and bun workspaces). With no such directory the default lookup
+	 * applies. Defaults to `false`.
+	 *
+	 * @remarks
+	 * Without it, a program run from `packages/a` of a pnpm workspace reads
+	 * `packages/a/.npmrc` (or none) and misses the root `.npmrc` that pnpm
+	 * itself honours there — a scoped registry or token configured once at the
+	 * root silently goes unused. The nearest marker wins, and a `workspaces`
+	 * field is taken as a marker without matching its globs against `cwd`
+	 * (npm checks that `cwd` is one of the root's workspaces; this does not).
+	 * A `package.json` that cannot be read or parsed is not a marker.
+	 */
+	readonly workspaceRoot?: boolean | undefined;
 	/**
 	 * The environment, as a plain record (pass `process.env` at the edge). Read
 	 * for `npm_config_*` settings, `${VAR}` substitution and `HOME`.
@@ -88,6 +118,24 @@ export interface NpmConfigLoadOptions {
 	 */
 	readonly globalPrefix?: string | undefined;
 }
+
+/**
+ * Whether a `package.json` text declares workspaces: a non-null `workspaces`
+ * array or object (yarn's `{ packages: [...] }` form). Malformed JSON, or a
+ * document that is not an object, declares none.
+ */
+const declaresWorkspaces = (text: string): boolean => {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(text);
+	} catch {
+		return false;
+	}
+	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+	if (!Object.hasOwn(parsed, "workspaces")) return false;
+	const workspaces: unknown = (parsed as Record<string, unknown>).workspaces;
+	return workspaces !== null && typeof workspaces === "object";
+};
 
 /** npm's `${VAR}` / `${VAR?}` expression, with backslash escapes (`@npmcli/config`'s `env-replace`). */
 const ENV_EXPRESSION = /(?<!\\)(\\*)\$\{([^${}?]+)(\?)?\}/g;
@@ -271,10 +319,12 @@ const envLayer = (env: Readonly<Record<string, string | undefined>>): string => 
  *
  * Precedence, highest first: `npm_config_*` environment variables, the
  * project npmrc, the user npmrc, the global npmrc. `${VAR}` and `${VAR?}`
- * substitute from the environment in keys and values. **Not supported**:
- * command-line flags, npm's builtin npmrc, workspace-root project discovery
- * (the project is the nearest `package.json` or `node_modules` directory),
- * client certificates (`certfile`/`keyfile`), `always-auth`, and the
+ * substitute from the environment in keys and values. The project is the
+ * nearest `package.json` or `node_modules` directory unless
+ * {@link NpmConfigLoadOptions.projectDir} names it or
+ * {@link NpmConfigLoadOptions.workspaceRoot} asks for the workspace root.
+ * **Not supported**: command-line flags, npm's builtin npmrc, client
+ * certificates (`certfile`/`keyfile`), `always-auth`, and the
  * deprecated unscoped credentials.
  *
  * Credentials are held as `Redacted` values, so logging or serializing a
@@ -461,8 +511,14 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 	 * user and global npmrc and the environment.
 	 *
 	 * @remarks
-	 * The project npmrc is `.npmrc` in the nearest directory at or above `cwd`
-	 * holding a `package.json` or a `node_modules`; the user npmrc is the
+	 * The project npmrc is `.npmrc` in the project directory, chosen in this
+	 * order: `projectDir` when given; with `workspaceRoot: true`, the nearest
+	 * directory at or above `cwd` holding a `pnpm-workspace.yaml` or a
+	 * `package.json` with a `workspaces` field; otherwise (and when no
+	 * workspace root is found) the nearest directory at or above `cwd` holding
+	 * a `package.json` or a `node_modules`, else `cwd` itself. Relative
+	 * `userconfig`, `globalconfig` and `prefix` settings resolve against that
+	 * directory. The user npmrc is the
 	 * `userconfig` setting or `~/.npmrc`; the global npmrc is the
 	 * `globalconfig` setting or `<prefix>/etc/npmrc` (see
 	 * {@link NpmConfigLoadOptions.globalPrefix}). A path setting starting `~/`
@@ -502,20 +558,40 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 			return undefined;
 		};
 
-		// The project directory: npm's `localPrefix`.
-		let projectDir = path.resolve(options.cwd);
-		for (let dir = projectDir; ; ) {
-			if (
-				(yield* fs.exists(path.join(dir, "package.json")).pipe(Effect.orElseSucceed(() => false))) ||
-				(yield* fs.exists(path.join(dir, "node_modules")).pipe(Effect.orElseSucceed(() => false)))
-			) {
-				projectDir = dir;
-				break;
-			}
-			const parent = path.dirname(dir);
-			if (parent === dir) break;
-			dir = parent;
-		}
+		// A probe that cannot answer is "not here", as npm's own walk treats it.
+		const has = (file: string) => fs.exists(file).pipe(Effect.orElseSucceed(() => false));
+		const isWorkspaceRoot = (dir: string) =>
+			Effect.gen(function* () {
+				if (yield* has(path.join(dir, "pnpm-workspace.yaml"))) return true;
+				const manifest = yield* fs
+					.readFileString(path.join(dir, "package.json"))
+					.pipe(Effect.orElseSucceed(() => undefined));
+				return manifest !== undefined && declaresWorkspaces(manifest);
+			});
+		const isPackageDir = (dir: string) =>
+			Effect.gen(function* () {
+				return (yield* has(path.join(dir, "package.json"))) || (yield* has(path.join(dir, "node_modules")));
+			});
+		/** The nearest directory at or above `start` that `matches`, if any. */
+		const ascend = (start: string, matches: (dir: string) => Effect.Effect<boolean>) =>
+			Effect.gen(function* () {
+				for (let dir = start; ; ) {
+					if (yield* matches(dir)) return dir;
+					const parent = path.dirname(dir);
+					if (parent === dir) return undefined;
+					dir = parent;
+				}
+			});
+
+		// The project directory: an explicit one, else the workspace root when
+		// asked for, else npm's `localPrefix`.
+		const cwd = path.resolve(options.cwd);
+		const projectDir =
+			options.projectDir !== undefined
+				? path.resolve(cwd, options.projectDir)
+				: ((options.workspaceRoot === true ? yield* ascend(cwd, isWorkspaceRoot) : undefined) ??
+					(yield* ascend(cwd, isPackageDir)) ??
+					cwd);
 
 		const environment: NpmConfigSource = { text: envLayer(env) };
 		const projectFile = path.join(projectDir, ".npmrc");

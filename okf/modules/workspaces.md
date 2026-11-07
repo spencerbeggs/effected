@@ -27,12 +27,14 @@ sources:
     resource: ../../packages/workspaces/src/Workspaces.ts
   - id: testing-ts
     resource: ../../packages/workspaces/src/testing.ts
+  - id: pnpm-settings-ts
+    resource: ../../packages/workspaces/src/PnpmSettings.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T22:24:55Z
+  at: 2026-11-07T01:50:39Z
 integrity:
   generated:
-    body: ba3f01dcecc429ac
+    body: e0d4b11034f03127
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -190,6 +192,94 @@ static class with a private constructor rather than an `as const` namespace
 object, because an `as const` object's member types are inferred in the
 built `.d.ts` and lose their TSDoc, while `static readonly` members keep it
 with unaffected call syntax.
+
+## pnpm settings
+
+`PnpmSettings` answers what `pnpm config get <key>` answers for a pnpm
+setting, without spawning pnpm. Its first consumer is
+rolldown-pnpm-config's `upgrade`, which applies pnpm's release-age gate
+itself and needs `minimumReleaseAge` and `minimumReleaseAgeExclude`.
+It is a `Schema.Class` value, not a service: the merge and the typed reads
+are pure (`PnpmSettings.fromSourcesResult` over text), and
+`PnpmSettings.load` is a thin shell that locates the two files and reads
+them through core `FileSystem`.[^pnpm-settings-ts]
+
+Precedence, highest first: a `pnpm_config_<snake>` or
+`PNPM_CONFIG_<SNAKE>` variable, the workspace root's
+`pnpm-workspace.yaml`, then pnpm's global `config.yaml`. A higher source
+replaces a lower one's value whole; lists are not merged. This order was
+read off pnpm itself with `pnpm config get` over hermetic `HOME` and
+`XDG_CONFIG_HOME` trees, for both in-window majors: the pnpm 12 native
+binary and the pnpm 11 JS build, whose `getConfigDir` and env reader were
+also read in source. The probes settled what the reader leaves out, too.
+pnpm 11 and 12 take no pnpm setting from `.npmrc` (only registry and auth
+keys), from `npm_config_*` variables or from the old global `rc` file. A
+registry or a credential is `@effected/npm`'s `NpmConfig`, which reads
+exactly those files. The global directory is `$XDG_CONFIG_HOME/pnpm`,
+else `~/Library/Preferences/pnpm` on darwin, `%LOCALAPPDATA%\pnpm\config`
+on win32, and `~/.config/pnpm` elsewhere. `platform` and `env` are required
+options, because the package reads no ambient `process`.
+
+The workspace file is found the way pnpm's `findWorkspaceDir` finds it,
+read in the pnpm 11 source and probed against both majors:
+
+- A `PNPM_CONFIG_WORKSPACE_DIR` / `NPM_CONFIG_WORKSPACE_DIR` variable (either
+  case) names the directory, unconditionally.
+- Otherwise the ascent starts from the real path of `cwd`
+  (`FileSystem.realPath`, the lexical path when that fails), through
+  `Walker.ascend` and `Walker.findUpward`, to the nearest
+  `pnpm-workspace.yaml`. A misnamed manifest (`pnpm-workspace.yml`,
+  `.pnpm-workspace.yaml` and five more spellings) is passed over, as pnpm 12
+  passes it. pnpm 11 fails below one with
+  `ERR_PNPM_BAD_WORKSPACE_MANIFEST_NAME`.
+- The found manifest applies only when `cwd` belongs to it: `cwd` is the
+  root, `cwd` holds no `package.json`/`package.json5`/`package.yaml`, or
+  `cwd` matches the `packages:` patterns. Membership matches
+  `<dir>/package.json` against `<pattern>/package.json` through a
+  `GlobSet`, so `examples/**` excludes `examples` itself; a `!` pattern
+  excludes, a `/`-leading one is skipped, and an absent list is `["."]`, the
+  root alone. A single-package repo with no `packages:` key therefore gives
+  a nested project (an example app, a fixture) no workspace settings, as
+  pnpm does. A directory under `node_modules` or `bower_components` is never
+  a member. pnpm 12 diverges there: it counts a top-level `node_modules`
+  matched by `*`.
+
+The typed reads follow pnpm 12 where the majors differ:
+
+- An environment value is parsed as the type the accessor asks for, and one
+  that does not parse falls through to the next source. pnpm 11 instead keeps
+  an unparseable list value as a string.
+  - An integer setting (`minimumReleaseAge`) takes canonical digits only, once
+    trimmed: pnpm 12 skips `05`, `00`, `+5`, `-0`, `5.0`, `0x10`, `0b11`, `1e2`
+    and `1_000`, all of which pnpm 11 coerces through `Number`. The value must
+    be a safe integer, where pnpm 12 reads an unsigned 64-bit one.
+  - `getNumber` takes a canonical decimal (optional `-`, an optional
+    fraction, no leading zero).
+  - A boolean is exactly `true` or `false`, trimmed and lowercase.
+  - A list is a JSON array of strings.
+- An empty variable is unset. pnpm 11 reads an empty
+  `PNPM_CONFIG_MINIMUM_RELEASE_AGE` as `0`.
+- When both spellings are set, the uppercase one wins. pnpm 11's answer
+  depends on the order the variables appear in the environment.
+- In a file, pnpm 12 coerces before it type-checks, and so does the reader:
+  a boolean setting reads `true`/`yes`/`y`/`on` and `false`/`no`/`n`/`off`,
+  quoted or not, trimmed and in any case. An integer setting reads a quoted
+  canonical digit string. pnpm 11 returns such strings as written.
+- A file value that still has the wrong type answers `None` rather than
+  falling through, because pnpm 12 refuses to load the file (`invalid u64`,
+  `invalid boolean`). A YAML number is read as decoded, so an unquoted `5.0`
+  or `1e2` reads as 5 or 100 where pnpm 12 refuses the file.
+- A `null` is unset, so the global file answers. pnpm 11 instead reports
+  the `null`, shadowing the global value. An empty list shadows in both.
+
+The reader does not model three things. Built-in defaults stay out, because
+`pnpm config get` shows `minimumReleaseAge` as unset too. Command-line flags
+stay out. So do the per-setting source restrictions pnpm applies to a few
+machine-level settings.
+
+`WorkspaceCatalogs.releaseAgeGate()` answers a different question: the gate
+declared by the workspace file plus replayed config-dependency hooks, with
+no environment or global layer.
 
 ## The `./testing` subpath
 
@@ -558,3 +648,7 @@ suppressed.
     (`static readonly` members near the end of the file).
 [^testing-ts]: `packages/workspaces/src/testing.ts` — the third entry point
     and its re-exports.
+[^pnpm-settings-ts]: `packages/workspaces/src/PnpmSettings.ts` —
+    `PnpmSettings`, `PnpmSettingsError` and the load and source option
+    interfaces; the tests are `__test__/PnpmSettings.test.ts` and
+    `__test__/PnpmSettingsLoad.test.ts`.

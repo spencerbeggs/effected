@@ -1,7 +1,7 @@
 ---
 type: Module
 title: glob
-description: Full-fidelity glob matching as pure string-to-predicate Effect Schema compilation, vendoring the complete minimatch dialect.
+description: Full-fidelity glob matching as pure string-to-predicate Effect Schema compilation, vendoring the complete minimatch dialect, plus a separate wildcard-only matcher with no separator semantics.
 status: stable
 kind: package
 resource: ../../packages/glob
@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-07T01:15:38Z
 integrity:
   generated:
-    body: 9fde883a34fda348
+    body: 7f6e4e59a5917a11
 ---
 
 # glob
@@ -31,7 +31,7 @@ integrity:
 
 ## Module layout
 
-Two concept modules plus the vendored engine: `GlobPattern.ts` (single-pattern compilation, matching, metadata, options, and the error) and `GlobSet.ts` (multi-pattern include/exclude sets). `internal/` holds the vendored engine plus `limits.ts` (the zero-dependency leaf holding every numeric cap and the raw guard signal) and `types.ts` (an engine leaf that breaks the upstream AST/index type cycle `noImportCycles` forbids). The split is a cycle firewall: the engine throws raw guard records at compile time and never imports the facade, and only the two facade modules materialize them into the typed error.
+Three concept modules plus the vendored engine: `GlobPattern.ts` (single-pattern compilation, matching, metadata, options, and the error), `GlobSet.ts` (multi-pattern include/exclude sets) and `Wildcard.ts` (the wildcard-only matcher, which does not touch the engine). `internal/` holds the vendored engine plus `limits.ts` (the zero-dependency leaf holding every numeric cap and the raw guard signal) and `types.ts` (an engine leaf that breaks the upstream AST/index type cycle `noImportCycles` forbids). The split is a cycle firewall: the engine throws raw guard records at compile time and never imports the facade, and only the two facade modules materialize them into the typed error.
 
 ## GlobPattern
 
@@ -59,6 +59,12 @@ A `FromString` transformation schema exists for embedding patterns in config sch
 
 The contract has held under three independent consumers unmodified — `workspaces`' enumerator, `walker`'s `descend`, and `github-actions`' cache-path search-root derivation, the last under real filesystem enumeration with round-trip and real-runner coverage. What remains open: no dedicated conformance run against a reference enumerator (`@actions/glob` or similar) has been performed, so the enumeration semantics are materially de-risked, not closed.
 
+## Wildcard
+
+`Wildcard` is a second, separate matcher, and **not a glob dialect**: `*` matches any run of zero or more characters other than whitespace, `?` exactly one character other than whitespace, and every other character only itself. There is no separator, so `*` crosses `/`; `[`, `{`, `!`, `\` and a leading `.` are ordinary characters, with no classes, braces, negation, escapes or dotfile rule. It exists for allow-list patterns such as okfit's actor patterns (`agent:*` against `agent:okfit/claude-code`), where both this package's dialect and core's `effect/Glob` stop `*` at `/` and read brackets and braces. `Wildcard.compile(pattern, options?)` returns a predicate, `Wildcard.matches` compiles and matches in one call, and `WildcardOptions` is a `Schema.Class` carrying `nocase`, which compares literals under Unicode simple case folding (the `iu` regex flags). Characters are code points, and whitespace is the `u`-flag `\s` set.
+
+Compiling and matching are pure, synchronous and total. Matching is a Thompson-style simulation over the pattern's tokens, never a regular expression built from the pattern, because a backtracking `\S*a\S*a…` regex is polynomial with a large exponent in the number of stars; the simulation costs at most pattern tokens × candidate code points, and consecutive stars collapse to one token, so a pattern of 100,000 stars is one token.
+
 ## GlobSet
 
 A `Schema.Class` over an array of pattern strings with **set** semantics: a leading `!` marks an exclusion, and a candidate matches when some include matches and no exclude does. `compileResult` is the primitive here too, with `compile` derived from it exactly as on `GlobPattern`. Structural accessors serve the enumerator: deduped non-magic includes, magic includes, excludes, and an exclusion predicate. `GlobSet` pins default options internally and takes **no options surface** — it is the drift-free contract, deliberately distinct from minimatch's whole-match `!` negation, which applies at the single-pattern level. Classification is pinned **per expanded alternative**, so a braced pattern expanding to both a literal and a wildcard contributes each alternative to its own bucket.
@@ -67,7 +73,11 @@ A `Schema.Class` over an array of pattern strings with **set** semantics: a lead
 
 Upstream already carries substantial DoS hardening, **preserved** in the port: the 64KB pattern-length cap at every entry; brace-expansion's output budget, its recursion-to-loop rewrite, and lazy tail evaluation; and the ReDoS-safe brace pre-check regex mitigating CVE-2022-3517. Two upstream guards are kept as **authorities**, not tightened: extglob recursion (over-nesting degrades to literal and does not error) and globstar recursion (exceeding it is upstream's deliberate false-negative "correctness for security" trade) — both are invariants, so `matches` stays total. `**` matching remembers the places a walk has tried, so sections that all fail cost polynomial time rather than exponential, with or without `partial`.
 
-New depth guards at the shared nesting cap cover the remaining AST and brace-expansion recursion. `balancedMatch.ts` is fully iterative — no stack surface, no guard, and none should be added. One upstream hole is closed: coalescible nested extglobs recurse with a zero depth increment in stock minimatch, so it stack-overflows at default options on a roughly 60KB adoption chain that sits under its own length cap; the vendored AST parser adds a structural depth backstop counting every descent and failing typed, guarding that surface independently of the extglob recursion option. Cap defaults live in `internal/limits.ts`. Three caps are caller-settable options, validated by the options schema so an invalid value is rejected as a wiring defect before any guard sees it; the internal-only caps follow the [walker](walker.md) `maxDepth` rule — a NaN or non-integer reaching a guard can only come from code, is programmer error, and dies as a defect. Malformed input at every surface exits through the typed error, never a defect, never a hang.
+`maxGlobstarRecursion` is the one recursion cap a caller can raise, and the body-section walk recurses once per `**` section, so the cap is a stack depth. It is schema-bounded at 1,000. Measured on Node 26's default stack, the walk first overflowed at about 3,250 sections with nothing else on the stack, at about 2,100 with 5,000 frames of the caller's own recursion beneath it, and at about 1,600 under `--stack-size=500`, half the default; a walk at the ceiling uses under a third of the default stack and about 62% of the halved one, so it leaves a margin in each case. Because stack depth varies by runtime and by the caller's own stack, `GlobPattern.matches` also catches a `RangeError` from the engine, and only that, answering as though no alternative matched: `false`, or `true` for a negated pattern. For a brace pattern with several alternatives that can differ from the cap's answer, since the cap fails only the alternative it cuts short and the engine tries the rest. `GlobSet` matches through `GlobPattern.matches` and inherits the answer.
+
+Matching stays polynomial, and the package does not bound total matching work: a literal segment between two globstars against 50,000 portions takes seconds, and a brace-multiplied pattern against a 14 KB path tens of seconds. Matching is synchronous and blocks the calling thread, so an in-process `Effect.timeout` cannot cut a slow match short. A caller with untrusted patterns or paths bounds the input before matching (pattern length and source, candidate length or portion count) and lowers `braceExpandMax`, which turns the brace case into a compile-time `ExpansionBudgetExceeded`; a deadline, where one is needed, is enforced off-thread, by a worker that is terminated, a subprocess, or the host's own deadline. See [the hostile-pattern decision](../decisions/glob-hostile-pattern-bound.md).
+
+New depth guards at the shared nesting cap cover the remaining AST and brace-expansion recursion. `balancedMatch.ts` is fully iterative — no stack surface, no guard, and none should be added. One upstream hole is closed: coalescible nested extglobs recurse with a zero depth increment in stock minimatch, so it stack-overflows at default options on a roughly 60KB adoption chain that sits under its own length cap; the vendored AST parser adds a structural depth backstop counting every descent and failing typed, guarding that surface independently of the extglob recursion option. Cap defaults live in `internal/limits.ts`. Three caps are caller-settable options (`braceExpandMax` and `maxGlobstarRecursion` bounded above, `maxExtglobRecursion` not, since its over-nesting degrades to literal under the parser's structural depth backstop), validated by the options schema so an invalid value is rejected as a wiring defect before any guard sees it; the internal-only caps follow the [walker](walker.md) `maxDepth` rule — a NaN or non-integer reaching a guard can only come from code, is programmer error, and dies as a defect. Malformed input at every surface exits through the typed error, never a defect, never a hang.
 
 ## Observability
 
@@ -75,7 +85,7 @@ Named `Effect.fn` spans on the public fallible boundaries only — the two `comp
 
 ## Testing
 
-`@effect/vitest`, `it.effect`, `assert.*` — never `expect`; tests in `__test__/`. No platform packages, no mock layers (no `R`), no `TestClock`. The engine is tested below the facade as well as through the public surface, in three families: a compliance fixture table asserting expected result *and* oracle agreement on every row; oracle property tests generating over the full dialect against the real `minimatch` package, asserting the vendored engine agrees modulo the documented deviations (if the engine disagrees with the oracle, fix the engine, never the expectation); and a hostility suite — oversized patterns, expansion bombs, deep brace nesting, extglob adoption chains, long globstar chains, deep comma-part chains — each failing through the typed error with the right reason, never a stack overflow, OOM or hang, plus the NaN and non-integer cap defect guards.
+`@effect/vitest`, `it.effect`, `assert.*` — never `expect`; tests in `__test__/`. No platform packages, no mock layers (no `R`), no `TestClock`. The engine is tested below the facade as well as through the public surface, in three families: a compliance fixture table asserting expected result *and* oracle agreement on every row; oracle property tests generating over the full dialect against the real `minimatch` package, asserting the vendored engine agrees modulo the documented deviations (if the engine disagrees with the oracle, fix the engine, never the expectation); and a hostility suite — oversized patterns, expansion bombs, deep brace nesting, extglob adoption chains, long globstar chains, deep comma-part chains — each failing through the typed error with the right reason, never a stack overflow, OOM or hang, plus the NaN and non-integer cap defect guards. Beside them, `match-limits.test.ts` pins the `maxGlobstarRecursion` ceiling, a stack sweep proving `matches` answers rather than throws when the engine overflows, and a lowered `braceExpandMax` failing the hostile brace case at compile; `Wildcard.test.ts` covers the wildcard matcher, with a mutation control on whitespace stopping `*`.
 
 The oracle has one standing exception. The port takes minimatch 11.0.4's `**` fixes and nothing else from that rewrite, because minimatch 10.x answers wrongly on some patterns with more than one `**` and under `partial`. The oracle stays on 10.x, since moving it means deciding 11's deliberate changes, so `__test__/globstar.test.ts` pins these with hard-coded rows and a reference matcher, and the oracle properties skip patterns with two or more `**`.
 

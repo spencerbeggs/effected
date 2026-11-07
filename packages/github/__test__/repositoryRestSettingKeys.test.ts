@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { assert, describe, it } from "@effect/vitest";
 import { OUTPUT, checkRemovals, extract, generate, render } from "../lib/scripts/generate-rest-setting-keys.js";
 import { GRAPHQL_ONLY_SETTINGS } from "../src/GitHubRepository.js";
-import { DEFAULT_API_VERSION } from "../src/internal/octokit.js";
+import { DEFAULT_API_VERSION } from "../src/internal/apiVersion.js";
 import { REMOVED_BY_PINNED_VERSION, REPOSITORY_REST_SETTING_KEYS } from "../src/internal/repositoryRestSettingKeys.js";
 
 /**

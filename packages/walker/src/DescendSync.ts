@@ -64,6 +64,21 @@ export interface WalkerSyncFileSystem {
 	readonly lstat: (path: string) => WalkerSyncStats;
 	/** The real path of `path`, links resolved (`realpathSync`). */
 	readonly realPath: (path: string) => string;
+	/**
+	 * The contents of the file at `path`, links followed, decoded as UTF-8
+	 * (`readFileSync(path, "utf8")`).
+	 *
+	 * @remarks
+	 * No walk reads a file: this member is for the caller's own reads beside
+	 * the walk — the accept callback of `Walker.findUpwardSyncWith` reading
+	 * each candidate `package.json`, say — so code that walks and then reads
+	 * what it found needs one port, not two. UTF-8 text rather than bytes
+	 * because that is what `@effected/memfs`'s sync port answers, so a memfs
+	 * handle's `sync` port keeps satisfying this interface as it is. Failure
+	 * throws a node-shaped error like every other member: `ENOENT` for an
+	 * absent path, `EISDIR` for a directory.
+	 */
+	readonly readFile: (path: string) => string;
 }
 
 /**

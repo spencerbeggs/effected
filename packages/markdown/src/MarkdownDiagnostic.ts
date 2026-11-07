@@ -41,13 +41,13 @@ export type MarkdownParseErrorCode = typeof MarkdownParseErrorCode.Type;
  * shape. `line`/`character` are zero-based, `character` in UTF-16 code units,
  * with `\n`, `\r\n` and a bare `\r` as line breaks: exactly
  * `LineIndex.make(source).positionAt(offset)`, and the same index
- * {@link MarkdownDocument.lineIndex} returns. An offset at the `\n` of a
+ * `MarkdownDocument.lineIndex` returns. An offset at the `\n` of a
  * `\r\n` reads as the end of its line.
  *
  * The one-based `line`/`column` unist `Point`s carried on `MarkdownNode`
  * positions read the same index, one-based: a deliberate, different
  * convention for the AST rather than a mismatch to reconcile (see
- * {@link MarkdownDocument.lineIndex} for the exact mapping).
+ * `MarkdownDocument.lineIndex` for the exact mapping).
  *
  * @public
  */

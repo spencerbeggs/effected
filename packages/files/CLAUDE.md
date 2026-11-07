@@ -1,6 +1,6 @@
 # @effected/files
 
-Two atomic writes. `AtomicFile.write`: refuse a target the caller may not write, then replace one file through a synced temp file and a rename, so a crash leaves the old content or the new content and never a truncated file. A link `realPath` cannot follow is the one exception: it is written through directly. `AtomicDirectory.write` replaces a whole directory through a staged sibling and two renames.
+Two atomic writes. `AtomicFile.write`: refuse a target the caller may not write, then replace one file through a synced temp file and a rename, so a crash leaves the old content or the new content and never a truncated file. A symlinked target is followed by default or replaced with `{ links: "replace" }`. When following, a link `realPath` cannot follow is the one exception: it is written through directly. `AtomicDirectory.write` replaces a whole directory through a staged sibling and two renames.
 
 **Design doc:** `@./okf/modules/files.md`, load before changing the choreography or a ruling.
 
@@ -18,6 +18,8 @@ Two atomic writes. `AtomicFile.write`: refuse a target the caller may not write,
 - **The temp's cleanup arms only after our `open` succeeded, in one uninterruptible step.** A failed `wx` open means the name is another writer's, so it must not be removed.
 - **A link `realPath` cannot follow is written through with `writeFile`, and the filesystem resolves it.** That covers a dangling link, and a symlink before `..` in the link text under Node, whose `realpath` is lexical on POSIX. It is deliberately not atomic. Never add a lexical resolution, a segment walker or a placeholder file. memfs's `realPath` follows the second shape, so its test faults `realPath` to stand in for Node.
 - **There is no hop budget.** A chain too long to follow fails with the filesystem's error.
+- **`links: "replace"` reads the target only with `lstat`.** No `realPath`, `stat`, `readLink` or write-through. The mode comes from that `lstat`, and a link contributes no mode and no `access` check, so its destination is never consulted. The temp sits in the target's own directory. The default stays `"follow"`; any other value is a defect.
+- **`links` governs the last component only.** Symlinked parents are traversed in both modes; never add a parent walk here (containment is `@effected/walker`'s `confineReal`).
 
 ### AtomicDirectory
 

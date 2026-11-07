@@ -14,6 +14,12 @@
 // at the type level with no parse-error channel. Consumers compose
 // `Markdown.parse` (or `Mdast.fromMdast`) with `MarkdownVisitor.visit`.
 //
+// A third form, `traverse`, drives the same engine with enter/exit callbacks
+// and `skip`/`exit` signals: the generator receives each `Enter`'s answer
+// through `next(action)` (delegated down the `yield*` chain), so skipping a
+// subtree is the engine not descending, never a filter over a full walk, and
+// the three forms still share one depth guard and one event order.
+//
 // Guard posture: a tree this package's own parser produced can never exceed
 // `MAX_NESTING_DEPTH` (the parse guard refuses deeper input), and neither
 // can a decoded foreign tree (`Mdast.fromMdast`) — the decode boundary
@@ -23,11 +29,11 @@
 // `NestingDepthExceeded` diagnostic and ends, never a defect and never a
 // stream failure (the yaml visitor's diagnostics-as-events precedent).
 
-import { Data, Stream } from "effect";
+import { Data, Option, Stream } from "effect";
 import { MAX_NESTING_DEPTH } from "./internal/limits.js";
 import { MarkdownDiagnostic } from "./MarkdownDiagnostic.js";
 import type { MarkdownPath } from "./MarkdownEdit.js";
-import type { MarkdownNode, Root } from "./MarkdownNode.js";
+import type { MarkdownNode, MarkdownNodeOfType, MarkdownNodeType, Root } from "./MarkdownNode.js";
 
 /**
  * The discriminated union of markdown visitor events, in document pre-order.
@@ -56,9 +62,67 @@ export type MarkdownVisitorEvent = Data.TaggedEnum<{
 export const MarkdownVisitorEvent = Data.taggedEnum<MarkdownVisitorEvent>();
 
 /**
+ * What a `MarkdownVisitor.traverse` callback tells the walk to do next.
+ *
+ * @remarks
+ * - `"continue"` (or returning nothing) walks on normally.
+ * - `"skip"` from an `enter` callback does not descend into the node's
+ *   children; the node's own `exit` callback still runs, so enter and exit
+ *   stay balanced. From an `exit` callback it means the same as `"continue"`.
+ * - `"exit"` from either callback ends the whole walk at once: no further
+ *   callback runs, not even the pending `exit` callbacks of the ancestors.
+ *
+ * The three values are also the statics `MarkdownVisitor.CONTINUE`,
+ * `MarkdownVisitor.SKIP` and `MarkdownVisitor.EXIT`.
+ *
+ * @public
+ */
+export type MarkdownVisitAction = "continue" | "skip" | "exit";
+
+/**
+ * Where a `MarkdownVisitor.traverse` callback's node sits in the tree.
+ *
+ * @public
+ */
+export interface MarkdownVisitContext {
+	/** Child indexes from the root to the node; the root's own path is empty. */
+	readonly path: MarkdownPath;
+	/** Zero-based depth; the root is `0`. */
+	readonly depth: number;
+	/**
+	 * The node's ancestors, root first and parent last; empty for the root. A
+	 * frozen snapshot that the walk never changes, so a callback may keep it;
+	 * callbacks that see the same ancestors share one array.
+	 */
+	readonly ancestors: ReadonlyArray<MarkdownNode>;
+}
+
+/**
+ * The callbacks `MarkdownVisitor.traverse` calls: `enter` when the walk
+ * reaches a node, `exit` when it leaves it, both optional. `N` narrows the
+ * node type when `traverse` is given a type selector.
+ *
+ * @remarks
+ * A callback returns a {@link MarkdownVisitAction}, or nothing to continue.
+ * A `throw` from a callback is not caught: it propagates out of `traverse`
+ * unchanged, because a callback that throws has broken its own contract and
+ * the walk has no channel that could honestly carry it.
+ *
+ * @public
+ */
+export interface MarkdownTraverseVisitor<N extends MarkdownNode = MarkdownNode> {
+	/** Called when the walk reaches a matching node, before its children. */
+	readonly enter?: (node: N, context: MarkdownVisitContext) => MarkdownVisitAction | undefined;
+	/** Called when the walk leaves a matching node, after its children. */
+	readonly exit?: (node: N, context: MarkdownVisitContext) => MarkdownVisitAction | undefined;
+}
+
+/**
  * Walks a parsed markdown tree as a lazy sequence of `Enter`/`Exit` events in
- * document pre-order — synchronously with {@link MarkdownVisitor.walk}, or as
- * a `Stream` with {@link MarkdownVisitor.visit}. Not instantiable.
+ * document pre-order — synchronously with {@link MarkdownVisitor.walk}, as a
+ * `Stream` with {@link MarkdownVisitor.visit}, or through enter/exit callbacks
+ * that can skip a subtree or stop the walk with `MarkdownVisitor.traverse`.
+ * Not instantiable.
  *
  * @example
  * ```ts
@@ -128,6 +192,149 @@ export class MarkdownVisitor {
 	}
 
 	/**
+	 * The {@link MarkdownVisitAction} that walks on normally — the same as
+	 * returning nothing from a `MarkdownVisitor.traverse` callback.
+	 */
+	static readonly CONTINUE: "continue" = "continue";
+
+	/**
+	 * The {@link MarkdownVisitAction} that, returned from an `enter` callback,
+	 * stops `MarkdownVisitor.traverse` from descending into the node.
+	 */
+	static readonly SKIP: "skip" = "skip";
+
+	/**
+	 * The {@link MarkdownVisitAction} that ends a `MarkdownVisitor.traverse`
+	 * walk at once.
+	 */
+	static readonly EXIT: "exit" = "exit";
+
+	/**
+	 * Walk `root` synchronously in document pre-order, calling `visitor.enter`
+	 * when the walk reaches each node and `visitor.exit` when it leaves it.
+	 *
+	 * @remarks
+	 * The callback form of {@link MarkdownVisitor.walk}, over the same engine:
+	 * the same order, the same `path` and `depth`, the same depth guard. Two
+	 * things it adds. A callback steers the walk — `MarkdownVisitor.SKIP` from
+	 * `enter` keeps the walk out of that node's children (its `exit` still
+	 * runs), and `MarkdownVisitor.EXIT` from either callback ends the walk.
+	 * And each callback receives the node's ancestors, root first.
+	 *
+	 * Given a type selector — one node `type`, or an array of them — only
+	 * matching nodes reach the callbacks, typed as that node class
+	 * (`traverse(root, "heading", { enter: (heading) => … })` hands the
+	 * callback a `Heading`). The walk still descends through every node, so a
+	 * selector filters callbacks, never the tree; `SKIP` applies to the matched
+	 * node's subtree.
+	 *
+	 * Returns `Option.none()` when the walk ends normally or by `EXIT`, and
+	 * `Option.some` of a `NestingDepthExceeded` {@link MarkdownDiagnostic} when
+	 * the depth guard ended it — which only a hand-constructed tree can do: a
+	 * tree from `Markdown.parse` or `Mdast.fromMdast` never trips it. Not named
+	 * `traverseResult`, because a depth trip is not a failure of the walk but
+	 * the end of it, reported the way `walk` reports it as an `Error` event.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Markdown, MarkdownVisitor } from "@effected/markdown";
+	 * import { Result } from "effect";
+	 *
+	 * const root = Result.getOrThrow(Markdown.parseResult("# A\n\n> # B\n\n## C\n"));
+	 * const depths: Array<number> = [];
+	 * MarkdownVisitor.traverse(root, ["heading", "blockquote"], {
+	 *   enter: (node) => {
+	 *     if (node.type === "blockquote") return MarkdownVisitor.SKIP;
+	 *     depths.push(node.depth);
+	 *     return undefined;
+	 *   },
+	 * });
+	 * console.log(depths);
+	 * // => [1, 2]
+	 * ```
+	 *
+	 * @param root - The tree to walk.
+	 * @param visitor - The `enter`/`exit` callbacks.
+	 * @returns `Option.none()`, or the depth-guard diagnostic that ended the walk.
+	 */
+	static traverse(root: Root, visitor: MarkdownTraverseVisitor): Option.Option<MarkdownDiagnostic>;
+	/**
+	 * Walk `root`, calling `visitor` only for nodes whose `type` is `type` (or
+	 * one of the types in the array), each typed as its node class.
+	 *
+	 * @param root - The tree to walk.
+	 * @param type - The node type, or types, the callbacks receive.
+	 * @param visitor - The `enter`/`exit` callbacks, typed by `type`.
+	 * @returns `Option.none()`, or the depth-guard diagnostic that ended the walk.
+	 */
+	static traverse<T extends MarkdownNodeType>(
+		root: Root,
+		type: T | ReadonlyArray<T>,
+		visitor: MarkdownTraverseVisitor<MarkdownNodeOfType<T>>,
+	): Option.Option<MarkdownDiagnostic>;
+	static traverse(
+		root: Root,
+		selectorOrVisitor: MarkdownNodeType | ReadonlyArray<MarkdownNodeType> | MarkdownTraverseVisitor,
+		maybeVisitor?: MarkdownTraverseVisitor,
+	): Option.Option<MarkdownDiagnostic> {
+		const selected: ReadonlySet<string> | undefined =
+			typeof selectorOrVisitor === "string"
+				? new Set([selectorOrVisitor])
+				: Array.isArray(selectorOrVisitor)
+					? new Set<string>(selectorOrVisitor)
+					: undefined;
+		const visitor = (selected === undefined ? selectorOrVisitor : maybeVisitor) as MarkdownTraverseVisitor | undefined;
+		const enter = visitor?.enter;
+		const exit = visitor?.exit;
+		const ancestors: Array<MarkdownNode> = [];
+		// snapshots[n] is a frozen copy of the first n ancestors, shared by
+		// every callback that sees that stack: a parent's enter and exit, and
+		// all of its children. A push replaces the stack's top, so it drops
+		// the snapshot of the new length; a pop leaves every shorter prefix,
+		// and its snapshot, intact. A copy is made only when a callback runs,
+		// once per distinct stack rather than twice per node.
+		const snapshots: Array<ReadonlyArray<MarkdownNode>> = [];
+		const snapshot = (): ReadonlyArray<MarkdownNode> => {
+			const cached = snapshots[ancestors.length];
+			if (cached !== undefined) return cached;
+			const copy = Object.freeze(ancestors.slice());
+			snapshots[ancestors.length] = copy;
+			return copy;
+		};
+		const events = walkNode(root, [], 0);
+		let reply: MarkdownVisitAction | undefined;
+		for (;;) {
+			const step = events.next(reply);
+			reply = undefined;
+			if (step.done === true) return Option.none();
+			const event = step.value;
+			if (event._tag === "Error") return Option.some(event.diagnostic);
+			const matches = selected === undefined || selected.has(event.node.type);
+			if (event._tag === "Enter") {
+				if (matches && enter !== undefined) {
+					const action = enter(event.node, { path: event.path, depth: event.depth, ancestors: snapshot() });
+					if (action === "exit") {
+						events.return(false);
+						return Option.none();
+					}
+					if (action === "skip") reply = "skip";
+				}
+				ancestors.push(event.node);
+				if (snapshots.length > ancestors.length) snapshots.length = ancestors.length;
+			} else {
+				ancestors.pop();
+				if (matches && exit !== undefined) {
+					const action = exit(event.node, { path: event.path, depth: event.depth, ancestors: snapshot() });
+					if (action === "exit") {
+						events.return(false);
+						return Option.none();
+					}
+				}
+			}
+		}
+	}
+
+	/**
 	 * Create a lazy `Stream` of `MarkdownVisitorEvent` walking `root` in
 	 * document pre-order: `Enter` and `Exit` for every node including the
 	 * root and every leaf. Events are produced on demand, so combining with
@@ -156,7 +363,18 @@ export class MarkdownVisitor {
 	}
 }
 
-function* walkNode(node: MarkdownNode, path: MarkdownPath, depth: number): Generator<MarkdownVisitorEvent> {
+// The one engine behind `walk`, `visit` and `traverse`. Each `Enter` yield
+// receives the consumer's reply through `next(...)`: `"skip"` keeps the walk
+// out of the node's children. `walk` iterates with `for…of`, which always
+// replies `undefined`, so it never skips. Children are walked by `yield*`
+// delegation so a reply reaches the generator that yielded the `Enter`, and
+// each level returns `true` when the depth guard ended the walk, which stops
+// every ancestor at once with nothing after the `Error` event.
+function* walkNode(
+	node: MarkdownNode,
+	path: MarkdownPath,
+	depth: number,
+): Generator<MarkdownVisitorEvent, boolean, MarkdownVisitAction | undefined> {
 	if (depth > MAX_NESTING_DEPTH) {
 		// Zero-based diagnostic line/character derived from the node's own
 		// 1-based position (there is no source text in a tree walk); foreign
@@ -173,26 +391,21 @@ function* walkNode(node: MarkdownNode, path: MarkdownPath, depth: number): Gener
 			path,
 			depth,
 		});
-		return;
+		return true;
 	}
 
-	yield MarkdownVisitorEvent.Enter({ node, path, depth });
+	const reply = yield MarkdownVisitorEvent.Enter({ node, path, depth });
 
-	if ("children" in node) {
+	if (reply !== "skip" && "children" in node) {
 		const children = node.children as ReadonlyArray<MarkdownNode>;
 		for (let index = 0; index < children.length; index++) {
 			const child = children[index] as MarkdownNode;
-			const events = walkNode(child, [...path, index], depth + 1);
-			for (const event of events) {
-				yield event;
-				if (event._tag === "Error") {
-					// Terminal: abort the whole walk, mirroring stringify's
-					// whole-operation typed failure.
-					return;
-				}
-			}
+			// Terminal: a depth trip anywhere below aborts the whole walk,
+			// mirroring stringify's whole-operation typed failure.
+			if (yield* walkNode(child, [...path, index], depth + 1)) return true;
 		}
 	}
 
 	yield MarkdownVisitorEvent.Exit({ node, path, depth });
+	return false;
 }

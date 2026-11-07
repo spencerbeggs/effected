@@ -77,6 +77,7 @@ export {
 	type RegistrySeed,
 	type RegistryTarget,
 	type SeededVersion,
+	VersionManifest,
 } from "./NpmRegistry.js";
 export {
 	CachingPackageManager,

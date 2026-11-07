@@ -227,9 +227,40 @@ const AppClient = GitHubApp.clientLayer({
 
 Only `GitHubApp` and its statics import the JWT signer — a consumer authenticating with a plain token never reaches it.
 
+## Acting as a user: the OAuth web flow
+
+`GitHubUserAuth` runs the OAuth web flow a GitHub App (or an OAuth App) uses to act as a user: `exchange` trades the code GitHub redirected back with, and its PKCE verifier, for the user's tokens; `refresh` renews an expiring grant; `revokeGrant` deletes the user's whole grant with HTTP Basic client authentication. It speaks to `fetch` directly, never through `GitHubClient`, so a Worker that only signs users in links neither octokit nor the JWT signer:
+
+```ts
+import { GitHubUserAuth } from "@effected/github";
+import { Effect, Redacted } from "effect";
+
+// bind once — layers memoize by reference
+const UserAuth = GitHubUserAuth.layer({
+  clientId: "Iv23liExample",
+  clientSecret: Redacted.make(process.env.GITHUB_CLIENT_SECRET as string),
+});
+
+const renew = (refreshToken: Redacted.Redacted<string>) =>
+  Effect.gen(function* () {
+    const auth = yield* GitHubUserAuth;
+    return yield* auth.refresh({ refreshToken });
+  }).pipe(
+    // "reconnect": the user's grant is dead; "reconfigure": the app's secret or settings
+    // are wrong, so keep the tokens and let it fail on to an operator
+    Effect.catchTag("GitHubUserAuthFinal", (error) =>
+      error.remedy === "reconnect" ? Effect.succeed("sign-in-again" as const) : Effect.fail(error),
+    ),
+  );
+```
+
+`exchange` answers `GitHubUserTokens`: `ExpiringUserTokens` (access token, refresh token, and the instants both expire, from `Clock`) or `NonExpiringUserTokens` when the app does not expire user tokens; `refresh` always answers the expiring pair, and GitHub rotates the refresh token on every refresh. Both are encodable, with the tokens as plain strings and the times as ISO instants.
+
+Every failure is `GitHubUserAuthFinal` (GitHub refused; its `code`, `description` and `status` are kept) or `GitHubUserAuthTemporary` (network, timeout, 5xx or 429, or a body that is not a token reply — retry later and keep the tokens you hold). One temporary failure has already spent the refresh token: GitHub rotates it on every refresh it processes, so a refresh that failed after reaching GitHub (a 2xx `malformed`, or a `network` or `timeout` that ended mid-reply) answers `bad_refresh_token` when retried, and the user signs in again. GitHub refuses a bad code or refresh token with HTTP 200 and an `error` body, which is read as the refusal it is. **Branch on `remedy`, never on the tag alone:** `incorrect_client_credentials` is final too, and a handler that drops every user's tokens on any `GitHubUserAuthFinal` signs everyone out the moment the client secret is rotated. The client secret, the code, the verifier and the tokens appear in no error message and no kept cause. `tokenUrl`, `apiUrl`, `apiVersion`, `userAgent`, `timeout` (ten seconds) and `fetch` are options, for GitHub Enterprise Server, Workers and tests.
+
 ## Errors
 
-`GitHubError` covers REST, `GitHubGraphQLError` covers GraphQL, `GitHubAppError` covers app authentication, and `TokenPermissions` produces its own `TokenPermissionError` — four kinds, not one per resource:
+`GitHubError` covers REST, `GitHubGraphQLError` covers GraphQL, `GitHubAppError` covers app authentication, `GitHubUserAuthFinal` / `GitHubUserAuthTemporary` cover the OAuth user flow, and `TokenPermissions` produces its own `TokenPermissionError` — five kinds, not one per resource:
 
 ```ts
 import { GitHubError } from "@effected/github";
@@ -304,6 +335,7 @@ const TestClient = GitHubClient.layerFixture(fixtures);
 - `GitHubError` / `GitHubGraphQLError` — one error per transport, `kind`-routed with `hasKind` for `Effect.catchIf`; a REST 422's validation entries ride on `validation`, matched with `hasValidationCode`.
 - `RetryPolicy` — the client's one retry policy: full-jitter backoff, server-advised delays honored up to a ceiling.
 - `GitHubApp` — App JWT signing, installation token minting/revocation, app and installation identity, and `clientLayer` for an App-authenticated `GitHubClient`.
+- `GitHubUserAuth` — the OAuth web flow for acting as a user: PKCE code exchange, refresh, and grant revoke over a bare `fetch`, with failures split into final (`remedy: "reconnect"` or `"reconfigure"`) and temporary.
 - `GitBranch` / `GitTag` — Git Database API refs, with `upsert` collapsing the create-or-reset dance to one call and `GitTag.latestSemver` picking the newest version-shaped tag in one pass.
 - `CheckRun` — `withCheckRun` concludes on every exit path; `CheckRunOutput.truncated()` cuts rendered output to GitHub's byte limits.
 - `PullRequest` / `PullRequestComment` — upserts for both, `listFiles` answering with the same full `CommitFile` records a commit read returns, `headSha`/`baseSha` on `PullRequestInfo`, plus `CommentMarker` for finding a sticky comment again. `PullRequestInfo.mergeCommitSha` is read from GraphQL `mergeCommit.oid` for merged pull requests only, because the REST object no longer carries it: `get`, `update` and `upsert` always fill it, while `list` and `listAssociatedWithCommit` fill it only with `mergeCommits: true` (one GraphQL call per 100 merged pull requests).

@@ -8,8 +8,8 @@
 // `decodeHTMLStrict` returns the input unchanged for an unknown name.
 
 import { decodeEntity } from "../entities.js";
+import { ENTITY } from "../grammar.js";
 import type { InlineConstruct } from "../inlineTypes.js";
-import { ENTITY } from "../unescape.js";
 
 const C_AMPERSAND = 0x26;
 

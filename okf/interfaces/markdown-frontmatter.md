@@ -9,7 +9,7 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-11-07T02:02:05Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:41.636Z
@@ -17,7 +17,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: 19b597f45e46ef74
+    body: 05f269156eb28341
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -48,13 +48,21 @@ way, so the toggle is a consumer opt-in and the conformance harnesses run
 untouched. The fence grammar is a closed set — the yaml, toml and JSON
 spellings, with the `gray-matter` and `remark-frontmatter` npm packages as
 the external authorities the grammar was checked against. An unclosed fence
-is not frontmatter and emits no diagnostic. The capture runs as an offset-0
+is not frontmatter and emits no diagnostic; the document's fence state reports
+it instead, so a linter can. The capture runs as an offset-0
 pre-scan in the block-parser constructor rather than as a registry
 construct, because it fires at most once and before any block. One capture
 node exists, not per-format classes: mdast has no JSON frontmatter type
 name, so a per-format split would invent a non-mdast type anyway, and one
 shape keeps the codec contract format-uniform. The root's children widen to
 admit frontmatter at the root and nowhere else.
+
+The node's optional `valueStart` is the UTF-16 code-unit offset in the parsed
+source where its value begins, the start of the line after the opening fence.
+A format parser's offset inside the value plus `valueStart` is the offset in
+the whole file, with no fence arithmetic in the consumer. The parser always
+sets it; a node built with `make` or admitted by `Mdast.fromMdast` has none,
+and neither the stringifier nor the `Mdast` projection reads it.
 
 ## Read and write
 
@@ -95,23 +103,30 @@ a yaml frontmatter block do not survive a write. Per-key surgical frontmatter
 editing over the format packages' own edit layers is recorded future work;
 the siblings already ship the machinery it would sit on.
 
-## Absence is two facts, and the discriminant is derived
+## Absence is three facts, and the discriminant is derived
 
-The missing-frontmatter error carries a required reason, because a
-genuinely blockless document and a document that opens with a fence but was
-parsed without the capture toggle are different problems with different
-fixes: the first needs content, the second needs a parse option.
+The missing-frontmatter error carries a required reason, because three
+different problems look the same from an empty capture, and each has its own
+fix. `absent` is a genuinely blockless document, which needs content.
+`captureDisabled` is a document with a well-formed block that was parsed
+without the capture toggle, which needs a parse option. `unclosed` is a
+document whose opening fence no closing fence follows: per the grammar that is
+not frontmatter, so nothing is captured, but the author almost certainly meant
+a block, and the fix is the missing closing fence.
 
-The accessor that answers this is derived, not stored: it runs the same
-offset-0 pre-scan the parser runs when capture is enabled, so it is true
-exactly when parsing this source with capture on would produce a node. A
-stored flag set at parse time would be a second source of truth for a
-question the source already answers, and the failure mode would be silent —
-a document constructed or edited without going through that path would
-report an absence contradicting its own bytes. Because the error's reason
-reads the same accessor, the error, the getter and the capture agree by
-construction. The cost is honest: it recomputes per access like every other
-navigation accessor, so a caller checking repeatedly should bind it once.
+Two accessors answer this, both derived, not stored. `hasFrontmatterBlock`
+runs the same offset-0 pre-scan the parser runs when capture is enabled, so it
+is true exactly when parsing this source with capture on would produce a node.
+`frontmatterFence` reports the head of the source as `absent`, `unclosed` or
+`closed` however the document was parsed, and `closed` holds exactly when
+`hasFrontmatterBlock` does. A stored flag set at parse time would be a second
+source of truth for a question the source already answers, and the failure
+mode would be silent — a document constructed or edited without going through
+that path would report an absence contradicting its own bytes. Because the
+error's reason reads the same accessors, the error, the getters and the capture
+agree by construction. The cost is honest: they recompute per access like every
+other navigation accessor, so a caller checking repeatedly should bind them
+once.
 
 ## The `$schema` declaration grammar and resolver seam
 
@@ -164,8 +179,14 @@ offset-0 pre-scan (`---` yaml, `+++` toml, `---json` json; a fence line is
 exactly the fence; an unclosed fence is not frontmatter) via a shared
 primitive, so the string-level and parsed-tree surfaces can never disagree
 about whether a document has frontmatter. Unlike the parse path, there is no
-capture toggle at this level, so absence is one fact here — the tree parse
-path's two-reason absence does not apply, since this surface always looks.
+capture toggle at this level, so `captureDisabled` does not apply, since this
+surface always looks: the block is absent exactly when the source has no closed
+one. The other two reasons remain, and `split` tells them apart with `fence`
+(`FrontmatterFenceState`: `absent` for no opening fence, `unclosed` for one that
+never closes, `closed` for a block) and `fenceFormat`, the format the opening
+fence declared whenever there was one. `join` reads neither. A block `split`
+produced also records `valueStart` and `valueEnd`, UTF-16 code-unit offsets with
+`source.slice(valueStart, valueEnd) === value`, which `join` ignores too.
 
 `FrontmatterSourceBlock.value` deliberately differs from the parsed
 `Frontmatter` node's `value`: the string-level surface keeps every line's own
