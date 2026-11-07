@@ -9,8 +9,9 @@
  * `PullRequest`, `GitHubRelease` and others) turn multi-call sequences into one
  * call, and a configuration tier writes secrets, variables, rulesets,
  * deployment environments and security settings. `GitHubApp` mints and revokes
- * installation tokens, and `AuthenticatedApp` reads the app itself and its
- * webhook deliveries.
+ * installation tokens, `AuthenticatedApp` reads the app itself and its webhook
+ * deliveries, and `GitHubUserAuth` runs the OAuth web flow an app uses to act
+ * as a user.
  *
  * @example
  * ```ts
@@ -142,6 +143,21 @@ export {
 	repositoryPatch,
 	transformSecurityAndAnalysis,
 } from "./GitHubRepository.js";
+export {
+	ExpiringUserTokens,
+	GitHubUserAuth,
+	type GitHubUserAuthError,
+	GitHubUserAuthFinal,
+	GitHubUserAuthOperation,
+	type GitHubUserAuthOptions,
+	type GitHubUserAuthShape,
+	GitHubUserAuthTemporary,
+	GitHubUserTokens,
+	NonExpiringUserTokens,
+	type UserAuthExchangeRequest,
+	type UserAuthRefreshRequest,
+	type UserAuthRevokeRequest,
+} from "./GitHubUserAuth.js";
 export {
 	GitTag,
 	type GitTagShape,
