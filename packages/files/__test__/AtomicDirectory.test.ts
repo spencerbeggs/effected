@@ -353,4 +353,48 @@ describe("AtomicDirectory.write", () => {
 			if (exit._tag === "Failure") assert.isTrue(exit.cause.reasons.some((reason) => reason._tag === "Die"));
 		}).pipe(Effect.provide(volume({}))),
 	);
+
+	it.effect("a root that is a link to an outside directory is replaced, and the outside tree is untouched", () =>
+		Effect.gen(function* () {
+			yield* AtomicDirectory.write(ROOT, new Map([["package.json", "{}"]]));
+			const fs = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(fs.lstat(ROOT)?.kind, "directory");
+			assert.strictEqual(fs.text("/cache/pkg/package.json"), "{}");
+			assert.strictEqual(fs.text("/outside/tree/keep.txt"), "keep");
+			assert.deepStrictEqual(fs.readDirectory("/outside/tree"), ["keep.txt"]);
+			assert.isFalse(fs.has(OLD));
+			assert.isFalse(fs.has(STAGING));
+		}).pipe(
+			Effect.provide(
+				Layer.merge(
+					MemoryFileSystem.layerWith({
+						"/outside/tree/keep.txt": "keep",
+						[ROOT]: MemoryFileSystem.symlink("/outside/tree"),
+					}),
+					Path.layer,
+				),
+			),
+		),
+	);
+
+	it.effect("a root that is a dangling link fails to promote and creates nothing at its destination", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(AtomicDirectory.write(ROOT, new Map([["package.json", "{}"]])));
+			assert.strictEqual(error.operation, "promote");
+			const fs = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(fs.readLink(ROOT), "/outside/tree");
+			assert.isFalse(fs.has("/outside/tree"));
+			assert.deepStrictEqual(fs.readDirectory("/outside"), []);
+		}).pipe(
+			Effect.provide(
+				Layer.merge(
+					MemoryFileSystem.layerWith({
+						"/outside": MemoryFileSystem.directory(),
+						[ROOT]: MemoryFileSystem.symlink("/outside/tree"),
+					}),
+					Path.layer,
+				),
+			),
+		),
+	);
 });
