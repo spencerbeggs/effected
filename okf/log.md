@@ -14,6 +14,7 @@
 * Updated lockfiles
 * Updated npm
 * Updated @effected/workspaces: monorepo tooling
+* Updated @effected/github
 
 ## 2026-11-06
 

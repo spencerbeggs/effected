@@ -27,7 +27,7 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseSync } from "oxc-parser";
-import { DEFAULT_API_VERSION } from "../../src/internal/octokit.js";
+import { DEFAULT_API_VERSION } from "../../src/internal/apiVersion.js";
 
 const require = createRequire(import.meta.url);
 
