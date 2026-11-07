@@ -15,6 +15,7 @@
 * Updated npm
 * Updated @effected/workspaces: monorepo tooling
 * Updated @effected/github
+* Added bun below 1.4.4 hoists api-extractor's typescript over the tool's peer
 
 ## 2026-11-06
 
