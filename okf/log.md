@@ -8,6 +8,7 @@
 * Added glob does not bound total matching work on hostile patterns
 * Updated walker
 * Updated @effected/markdown
+* Updated @effected/crypto
 
 ## 2026-11-06
 
