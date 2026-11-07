@@ -43,7 +43,13 @@ pnpm clean --lockfile --yes && pnpm install --ignore-scripts
 
 Dropping the lockfile is load-bearing. Its first document pins each config dependency independently of `pnpm-workspace.yaml`, and its body pins every resolved version, so a bumped pin plus a plain `pnpm install` reports the lockfile up to date and keeps the old versions. A `clean` script in the root `package.json` overrides the built-in `pnpm clean`: check `jq -r '.scripts.clean // empty' package.json` first, and if it does not remove `pnpm-lock.yaml` and every `node_modules`, delete them directly.
 
-Verify by resolution, not by reading manifests: `node -p "require('effect/package.json').version"` must print the catalog's Effect version.
+Verify by resolution, not by reading manifests:
+
+```bash
+pnpm why effect --depth 0
+```
+
+It must print the catalog's Effect version as an `effect@<version>` heading, with what depends on it beneath. It reads the installed graph of every workspace project, so it works from the root whichever package declares `effect`. `node -p "require('effect/package.json').version"` resolves from the current directory instead: it works only from a package that declares `effect`, and from a root that does not, it fails with `Cannot find module` after a good install.
 
 ## Step 3: confirm one `effect`
 

@@ -13,6 +13,15 @@
 | `Fingerprint` | Class | Stable fingerprints of JSON-shaped values, and the three-way drift decision built on them. | stable sha256 fingerprint of a json value, sorted keys, three-way drift detection applied live desired |
 | `FingerprintDecideInput` | Interface | The three fingerprints `Fingerprint.decide` compares. | |
 | `FingerprintError` | Class | A value handed to `Fingerprint` has no canonical JSON form, so it cannot be fingerprinted. | handle a value with no canonical json form, bigint cycle map or class instance refused |
+| `Hash` | Class | Message digests over core's `Digest` service, taking the same messages and returning the same encodings as `Hmac.sign`. | digest a multi-part message, hash bytes to hex or base64, sha-256 sha-512 md5 |
+| `HashAlgorithm` | TypeAlias | The digest algorithms `Hash.digest` computes: every algorithm core's `Digest` service supports. | |
+| `HashDigestBytesOptions` | Interface | The input to `Hash.digest` for a raw-bytes digest. | |
+| `HashDigestOptions` | TypeAlias | The input to `Hash.digest`. | |
+| `HashDigestStringOptions` | Interface | The input to `Hash.digest` for an encoded-string digest. | |
+| `HashEncoding` | TypeAlias | How a digest is returned: the same encodings as `HmacEncoding`. | |
+| `HashInput` | Interface | What every digest takes: the algorithm and the message. | |
+| `HashMessage` | TypeAlias | A message to hash: bytes, a string, or a list of parts. | |
+| `HashStringEncoding` | TypeAlias | The string encodings of a digest: every `HashEncoding` but `bytes`. | |
 | `Hmac` | Class | HMAC sign and verify (RFC 2104) with SHA-256 or SHA-512, over core's `Mac` service. | compute or verify hmac-sha256 or sha512, redacted key, hex base64 base64url output, over core mac |
 | `HmacAlgorithm` | TypeAlias | The hash an HMAC is computed over. | |
 | `HmacEncoding` | TypeAlias | How an HMAC is returned, or how a received one is encoded. | |

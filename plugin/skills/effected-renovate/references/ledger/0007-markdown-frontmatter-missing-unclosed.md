@@ -6,6 +6,7 @@ shows: behavioural
 applies:
   "@effected/markdown": ">=0.28.0"
 detect: ["FrontmatterMissing(Reason|Error)", "captureDisabled"]
+changesets: ["clear-fences-report"]
 closes: ["spencerbeggs/effected#1187"]
 ---
 
