@@ -63,13 +63,63 @@ const gitSubcommand = (command: ShellCommand): string | null | undefined => {
   return undefined;
 };
 
+// bash evaluates what these read as arithmetic or code, where a quoted
+// 'a[$(cmd)]', or a variable holding one, still runs cmd. The parse cannot see
+// inside that evaluation, so refuse them (see "Known limits").
+const ARITHMETIC_TESTS: ReadonlySet<string> = new Set(["-eq", "-ne", "-lt", "-le", "-gt", "-ge", "-v"]);
+// Arithmetic over a name, and `${x@P}`, `${!x}`, a subscript or a substring offset over one.
+const EVALUATES_A_NAME =
+  /(?:\$\(\(|\$\[|\(\()[^A-Za-z_]*[A-Za-z_]|\$\{(?:!|[^}]*@P|#?\w*\[[^\]]*[A-Za-z_$]|\w*:[^-=?+}]*[A-Za-z_$])/;
+
+const evaluatesText = (script: ShellScript, command: ShellCommand): boolean => {
+  const { segment } = command;
+  // `[[ … ]]` can run straight into `then git …` in one segment, so read its words.
+  const words = segment.words.map((word) => Option.getOrNull(word.literal));
+  if (words.includes("[[") && words.some((word) => word !== null && ARITHMETIC_TESTS.has(word))) return true;
+  const texts = [
+    ...segment.words.map((word) => word.raw),
+    ...segment.assignments.map((assignment) => assignment.raw),
+    ...segment.redirections.map(({ target }) =>
+      target.kind === "heredoc" ? (target.quoted ? "" : target.body) : target.raw,
+    ),
+  ];
+  if (texts.some((text) => EVALUATES_A_NAME.test(text))) return true;
+  if (segment.assignments.some((assignment) => /\[[^\]]*[A-Za-z_$]/.test(assignment.name))) return true;
+  const name = Option.getOrUndefined(command.name);
+  const args = command.args.map((word) => Option.getOrNull(word.literal));
+  // `declare x=( … )`: the parse splits an array value off as a subshell.
+  const arrayValue = command.args.some((word) => script.source[word.end] === "(");
+  switch (name?.slice(name.lastIndexOf("/") + 1)) {
+    case "let":
+    case "read":
+    case "trap":
+      return true;
+    case "declare":
+    case "typeset":
+    case "local":
+      return arrayValue || args.some((arg) => arg !== null && /^[-+][A-Za-z]*[in]/.test(arg));
+    case "export":
+    case "readonly":
+      return arrayValue;
+    case "printf":
+      return args[0]?.startsWith("-v") === true;
+    case "test":
+    case "[":
+      return args.includes("-v");
+    default:
+      return false;
+  }
+};
+
 // Refuse a commit, and refuse anything the guard cannot vouch for.
 const refuses = (script: ShellScript, depth = 0): boolean => {
   if (script.diagnostics.length > 0) return true;
   for (const command of script.commands()) {
-    // No name WITH args is a command it cannot name (`$GIT commit`). No name
-    // and no args is a segment that runs nothing, such as `fi` or `(( n > 1 ))`.
+    // No name WITH args is a command it cannot name (`$GIT commit`, or a
+    // wrapper option it does not know). No name and no args is a segment that
+    // runs nothing, such as `fi`.
     if (Option.isNone(command.name) && command.args.length > 0) return true;
+    if (evaluatesText(script, command)) return true;
     const subcommand = gitSubcommand(command);
     if (subcommand === null || subcommand === "commit") return true;
   }
@@ -85,7 +135,7 @@ console.log(refuses(ShellSyntax.parse("if git diff --quiet; then git status; fi"
 // => false
 ```
 
-`commands()` resolves each segment. It skips the words that name no command: reserved words (`if`, `then`, `!`, `{`, `coproc` and the rest), a whole `[[ … ]]`, the arithmetic command `(( … ))`, `for NAME` before `do`, `function NAME`, and assignments, because bash lets `if [[ 1 ]] then git commit; fi` run `git` with no separator. It then unwraps `sudo`, `env`, `command`, `exec`, `nohup` and `time` with their options, so `sudo -u root env "FOO=a b" git commit` resolves to `git` with `wrappers: ["sudo", "env"]`; a wrapper is matched by its last path segment, so `/usr/bin/env` unwraps too. A command name that is not a literal (`$GIT commit`) resolves to `None` with the words as `args`. The guard above is pinned by the package's own tests against every bypass shape they hold. A real guard also refuses, or interprets, commands that run a command string, such as `bash -c`, `eval` and `xargs`.
+`commands()` resolves each segment. It skips the words that name no command: reserved words (`if`, `then`, `!`, `{`, `coproc` and the rest), a whole `[[ … ]]`, the arithmetic command `(( … ))`, `for NAME` before `do`, `function NAME`, and assignments, because bash lets `if [[ 1 ]] then git commit; fi` run `git` with no separator. When a `[[ … ]]` or `(( … ))` is the whole command, as in `[[ -n $x ]]` or `for ((i = 0; i < n; i++))`, it is the name: `[[` or `((`, since bash evaluates it. It then unwraps `sudo`, `env`, `command`, `exec`, `nohup` and `time` with their options, so `sudo -u root env "FOO=a b" git commit` resolves to `git` with `wrappers: ["sudo", "env"]`; a wrapper is matched by its last path segment, so `/usr/bin/env` unwraps too. Long options resolve by unique prefix, as `getopt_long` reads them (`env --unse FOO git` is `--unset`), and an option the wrapper's table does not know, or an ambiguous prefix, stops resolution with no name, because it may take the word after it. `env` reads options up to `--` or its first other word, and from there every word holding an `=` is an assignment (`env -- -x=1 git`, `env =x git`). A command name that is not a literal (`$GIT commit`) resolves to `None` with the words as `args`. The guard above is pinned by the package's own tests against every bypass shape they hold. A real guard also refuses, or interprets, commands that run a command string, such as `bash -c`, `eval` and `xargs`.
 
 ### Words, quoting and literals
 

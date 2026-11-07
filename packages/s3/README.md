@@ -22,7 +22,7 @@ An archive, a cache or an ingest service that stores raw objects needs four thin
 This package is the small client, with the failure modes decided:
 
 - **A listing never reads as empty by accident.** A `200` whose body is an `<Error>` document fails as `S3RequestFailed`; an HTML page from a proxy, an empty body, or anything else whose root is not `ListBucketResult` fails as `S3MalformedResponse`. A truncated page without a continuation token, an entry without a `Key`, or a `KeyCount` that disagrees with the entries read also fails, rather than handing back fewer keys.
-- **Conditional writes are typed.** A lost `ifNoneMatch` or `ifMatch` is `S3PreconditionFailed`; a missing object is `S3NotFound`; an unchanged one is `S3NotModified`. A missing bucket (`NoSuchBucket`), or a `404` from something that is not the store, is `S3RequestFailed`, never "no such object".
+- **Conditional writes are typed.** A lost `ifNoneMatch` or `ifMatch` is `S3PreconditionFailed`; a conditional write that raced another write to the key (`409 ConditionalRequestConflict`) is `S3ConditionalConflict`, which AWS says to retry; a missing object is `S3NotFound`; an unchanged one is `S3NotModified`. A missing bucket (`NoSuchBucket`), or a `404` from something that is not the store, is `S3RequestFailed`, never "no such object".
 - **What is signed is what is sent.** The key goes on the wire exactly as SigV4 encoded and signed it, `!'()*` and non-ASCII included, and every header the client sets is signed.
 - **Nothing leaks.** Every kept cause goes through `HttpRedaction.cause`, so no `authorization` header or session token survives in an error; no trace context is sent to the store; every response body is drained.
 
@@ -54,7 +54,7 @@ Every method's `R` is `never` after that.
 
 ```ts
 import { S3Client } from "@effected/s3";
-import { Effect, Layer, Redacted } from "effect";
+import { Effect, Layer, Redacted, Schedule } from "effect";
 import { Digest, Mac, SecureRandom } from "effect/crypto";
 import { FetchHttpClient } from "effect/http";
 
@@ -79,6 +79,14 @@ const archive = (key: string, json: string) =>
   Effect.gen(function* () {
     const s3 = yield* S3Client;
     return yield* s3.put(key, json, { ifNoneMatch: "*", contentType: "application/json" }).pipe(
+      // The write raced another one to this key and was not decided: retry it, as
+      // AWS documents, after a pause that lets the write still in flight land. The
+      // client never retries on its own.
+      Effect.retry({
+        while: (error) => error._tag === "S3ConditionalConflict",
+        schedule: Schedule.exponential("100 millis"),
+        times: 3,
+      }),
       Effect.as("created" as const),
       // Somebody already wrote this key: exactly the redelivery case.
       Effect.catchTag("S3PreconditionFailed", () => Effect.succeed("exists" as const)),
@@ -115,13 +123,14 @@ Every error carries `operation`, `bucket` and `key` (the prefix, for a listing).
 | --- | --- |
 | `S3NotFound` | `404` to a `head`, or a `404` to a `get` whose `<Error>` document's `Code` is `NoSuchKey`; any other `404` to a `get` (`NoSuchBucket`, an HTML page from a proxy, an empty body) is `S3RequestFailed` |
 | `S3NotModified` | `304` to a `get` with `ifNoneMatch`; carries the `etag` |
-| `S3PreconditionFailed` | `412` to a conditional `put` |
+| `S3PreconditionFailed` | `412` to a conditional `put`: the condition lost |
+| `S3ConditionalConflict` | `409` to a conditional `put` whose `<Error>` document's `Code` is `ConditionalRequestConflict`: the write raced another write to the key and was not decided; retry it. A `409` with any other code is `S3RequestFailed` |
 | `S3RequestFailed` | any other refusal; `status`, and `code`, `s3Message` and `requestId` from the `<Error>` document when there is one (a `200` `<Error>` listing included) |
 | `S3MalformedResponse` | an answer the client cannot read: a listing whose root is not `ListBucketResult`, a page missing an element it depends on, a success without an ETag; `expected` and `received` say what |
 | `S3TransportError` | the request did not complete; `cause` is the redacted client error |
-| `S3InvalidRequest` | the input cannot be sent (an empty key, a key over 1024 bytes or with a `.`/`..` segment, a bad metadata name, two metadata names that differ only in case, a header value outside printable ASCII, a `maxKeys` outside 1 to 1000); nothing was signed or sent |
+| `S3InvalidRequest` | the input cannot be sent (an empty key, a key over 1024 bytes or with a `.`/`..` segment, a key, listing option or string body holding a lone UTF-16 surrogate, a bad metadata name, two metadata names that differ only in case, a header value outside printable ASCII, a `maxKeys` outside 1 to 1000); nothing was signed or sent |
 
-`S3PutError`, `S3GetError`, `S3HeadError`, `S3DeleteError` and `S3ListError` name exactly what each operation can raise; `S3Error` is all seven.
+`S3PutError`, `S3GetError`, `S3HeadError`, `S3DeleteError` and `S3ListError` name exactly what each operation can raise; `S3Error` is all eight.
 
 No method times out or retries on its own. Bound an operation with `Effect.timeout` and retry with `Effect.retry` at the call site; a timed-out request is interrupted and its connection released.
 

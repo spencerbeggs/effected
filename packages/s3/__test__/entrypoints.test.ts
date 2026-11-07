@@ -38,6 +38,7 @@ describe("root entrypoint", () => {
 		const main = await import("../src/index.js");
 		assert.deepStrictEqual(Object.keys(main).sort(), [
 			"S3Client",
+			"S3ConditionalConflict",
 			"S3InvalidRequest",
 			"S3InvalidRequestReason",
 			"S3ListPage",

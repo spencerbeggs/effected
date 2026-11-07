@@ -4,6 +4,8 @@ import { Cause, DateTime, Effect, Exit, Layer, Option, Redacted, Stream } from "
 import { HttpClient, HttpClientError } from "effect/http";
 import type { S3ClientShape } from "../src/S3Client.js";
 import { S3Client } from "../src/S3Client.js";
+import type { S3InvalidRequestReason } from "../src/S3Error.js";
+import { S3ConditionalConflict, S3InvalidRequest, S3PreconditionFailed } from "../src/S3Error.js";
 import type { FakeS3, SeenRequest } from "./utils/fake-s3.js";
 import {
 	ACCESS_KEY_ID,
@@ -114,6 +116,70 @@ describe("S3Client.put", () => {
 				const won = yield* s3.put("doc", "v2", { ifMatch: first.etag });
 				assert.notStrictEqual(won.etag, first.etag);
 			}),
+		),
+	);
+
+	it.effect("a 409 ConditionalRequestConflict is S3ConditionalConflict, a lost race to retry", () =>
+		withStore(
+			(s3, store) =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip(s3.put("once", "v", { ifNoneMatch: "*" }));
+					if (error._tag !== "S3ConditionalConflict") return assert.fail(`raised ${error._tag}`);
+					assert.strictEqual(error.operation, "put");
+					assert.strictEqual(error.bucket, "archive");
+					assert.strictEqual(error.key, "once");
+					assert.include(error.message, "retry the write");
+					assert.lengthOf(store.seen, 1);
+				}),
+			fakeS3((request) =>
+				request.method === "PUT"
+					? xmlError(409, "ConditionalRequestConflict", "A conflicting operation occurred. Retry the request.")
+					: undefined,
+			),
+		),
+	);
+
+	it.effect("a 409 with any other code stays S3RequestFailed", () =>
+		withStore(
+			(s3) =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip(s3.put("once", "v", { ifNoneMatch: "*" }));
+					if (error._tag !== "S3RequestFailed") return assert.fail(`raised ${error._tag}`);
+					assert.strictEqual(error.status, 409);
+					assert.strictEqual(error.code, "OperationAborted");
+				}),
+			fakeS3((request) =>
+				request.method === "PUT"
+					? xmlError(409, "OperationAborted", "A conflicting conditional operation is in progress.")
+					: undefined,
+			),
+		),
+	);
+
+	it.effect("a 409 with no error document stays S3RequestFailed", () =>
+		withStore(
+			(s3) =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip(s3.put("once", "v", { ifNoneMatch: "*" }));
+					if (error._tag !== "S3RequestFailed") return assert.fail(`raised ${error._tag}`);
+					assert.strictEqual(error.status, 409);
+					assert.isUndefined(error.code);
+				}),
+			fakeS3((request) => (request.method === "PUT" ? new Response("conflict", { status: 409 }) : undefined)),
+		),
+	);
+
+	it.effect("a ConditionalRequestConflict code on another status is not read as the conflict", () =>
+		withStore(
+			(s3) =>
+				Effect.gen(function* () {
+					const error = yield* Effect.flip(s3.put("once", "v"));
+					if (error._tag !== "S3RequestFailed") return assert.fail(`raised ${error._tag}`);
+					assert.strictEqual(error.status, 400);
+				}),
+			fakeS3((request) =>
+				request.method === "PUT" ? xmlError(400, "ConditionalRequestConflict", "odd store") : undefined,
+			),
 		),
 	);
 
@@ -582,6 +648,52 @@ describe("input is refused before anything is signed or sent", () => {
 		["maxKeys 1.5", (s3) => s3.list({ maxKeys: 1.5 }), "max-keys", "maxKeys"],
 		["maxKeys NaN", (s3) => s3.list({ maxKeys: Number.NaN }), "max-keys", "maxKeys"],
 		["listAll maxKeys 0", (s3) => Stream.runCollect(s3.listAll({ maxKeys: 0 })), "max-keys", "maxKeys"],
+		// A lone UTF-16 surrogate makes `encodeURIComponent` throw inside signing,
+		// which would die as a defect; it must be refused typed, with nothing sent.
+		["a put key with a lone surrogate", (s3) => s3.put("\ud800", "v"), "malformed-unicode", "key"],
+		["a get key with a lone surrogate", (s3) => s3.get("a/\udc00"), "malformed-unicode", "key"],
+		["a head key with a lone surrogate", (s3) => s3.head("\ud83d"), "malformed-unicode", "key"],
+		["a delete key with a lone surrogate", (s3) => s3.delete("x\ud800y"), "malformed-unicode", "key"],
+		[
+			"a lone surrogate in a key over 1024 bytes is malformed first",
+			(s3) => s3.put(`\ud800${"a".repeat(1100)}`, "v"),
+			"malformed-unicode",
+			"key",
+		],
+		["a list prefix with a lone surrogate", (s3) => s3.list({ prefix: "\ud800" }), "malformed-unicode", "prefix"],
+		[
+			"a list delimiter with a lone surrogate",
+			(s3) => s3.list({ delimiter: "\udfff" }),
+			"malformed-unicode",
+			"delimiter",
+		],
+		[
+			"a list startAfter with a lone surrogate",
+			(s3) => s3.list({ startAfter: "\ud800" }),
+			"malformed-unicode",
+			"startAfter",
+		],
+		[
+			"a list continuationToken with a lone surrogate",
+			(s3) => s3.list({ continuationToken: "\ud800" }),
+			"malformed-unicode",
+			"continuationToken",
+		],
+		[
+			"a listAll prefix with a lone surrogate",
+			(s3) => Stream.runCollect(s3.listAll({ prefix: "\ud800" })),
+			"malformed-unicode",
+			"prefix",
+		],
+		// `TextEncoder` would replace the half with U+FFFD and the store would hold
+		// bytes the caller never wrote, under a payload hash that agrees with them.
+		["a put string body with a lone surrogate", (s3) => s3.put("k", "a\ud800b"), "malformed-unicode", "body"],
+		[
+			"a listAll startAfter with a lone surrogate",
+			(s3) => Stream.runCollect(s3.listAll({ startAfter: "\udc00" })),
+			"malformed-unicode",
+			"startAfter",
+		],
 	];
 	for (const [name, run, reason, field] of cases) {
 		it.effect(name, () =>
@@ -609,6 +721,61 @@ describe("input is refused before anything is signed or sent", () => {
 			}),
 		),
 	);
+
+	it.effect("a well-formed astral key round-trips through put, get, head, list and delete (positive control)", () =>
+		withStore((s3, store) =>
+			Effect.gen(function* () {
+				// A surrogate PAIR is well formed: only a lone half is refused.
+				const key = "📦/🎉.json";
+				yield* s3.put(key, "party");
+				assert.strictEqual((yield* s3.get(key)).text, "party");
+				assert.strictEqual((yield* s3.head(key)).key, key);
+				const page = yield* s3.list({ prefix: "📦/", delimiter: "🎉", startAfter: "📦" });
+				assert.deepStrictEqual(page.commonPrefixes, ["📦/🎉"]);
+				yield* s3.delete(key);
+				assert.isFalse(store.objects.has(key));
+				// A string body with a surrogate pair is well formed and stored as written.
+				yield* s3.put("emoji", "📦🎉");
+				assert.strictEqual(new TextDecoder().decode(store.objects.get("emoji")?.body), "📦🎉");
+				// Bytes are sent as given: U+FFFD's own encoding is not refused.
+				yield* s3.put("replacement", new Uint8Array([0xef, 0xbf, 0xbd]));
+				assert.deepStrictEqual([...(store.objects.get("replacement")?.body ?? [])], [0xef, 0xbf, 0xbd]);
+				assert.lengthOf(store.seen, 7);
+				assert.isTrue(store.seen.every((request) => request.signatureValid));
+			}),
+		),
+	);
+
+	it("the precondition and conflict errors only ever name put", () => {
+		// Only `put` sends a write condition, so neither error can be minted for another operation.
+		for (const operation of ["get", "head", "delete", "list"] as const) {
+			assert.throws(() =>
+				S3PreconditionFailed.make({ operation: operation as unknown as "put", bucket: "b", key: "k" }),
+			);
+			assert.throws(() =>
+				S3ConditionalConflict.make({ operation: operation as unknown as "put", bucket: "b", key: "k" }),
+			);
+		}
+		assert.strictEqual(S3PreconditionFailed.make({ operation: "put", bucket: "b", key: "k" }).operation, "put");
+		assert.strictEqual(S3ConditionalConflict.make({ operation: "put", bucket: "b", key: "k" }).operation, "put");
+	});
+
+	it("every refusal reason names its own rule in the message", () => {
+		const rules = {
+			"empty-key": "the key is empty",
+			"key-too-long": "longer than 1024 UTF-8 bytes",
+			"dot-segment": "which a URL collapses",
+			"malformed-unicode": "lone UTF-16 surrogate",
+			"metadata-name": "not an HTTP token",
+			"metadata-duplicate": "differ only in case",
+			"header-value": "outside printable US-ASCII",
+			"max-keys": "maxKeys must be an integer from 1 to 1000",
+		} as const satisfies Record<S3InvalidRequestReason, string>;
+		for (const [reason, text] of Object.entries(rules) as ReadonlyArray<[S3InvalidRequestReason, string]>) {
+			const error = new S3InvalidRequest({ operation: "put", bucket: "b", key: "k", reason, field: "f" });
+			assert.include(error.message, text, reason);
+		}
+	});
 });
 
 describe("addressing and signing", () => {

@@ -74,11 +74,18 @@ export class S3NotModified extends Schema.TaggedError<S3NotModified>()("S3NotMod
  * `ifNoneMatch: "*"` loses when an object already holds the key, which is exactly
  * the first-write-wins case; `ifMatch` loses when the object changed.
  *
+ * A conditional write that races another write to the same key can also lose as
+ * {@link S3ConditionalConflict} (a `409`) instead: the condition was never
+ * evaluated, so the write may still win. A first-write-wins caller handles both:
+ * retry on `S3ConditionalConflict`, and treat `S3PreconditionFailed` as "another
+ * writer already holds the key". Catching this error alone reads a lost race as an
+ * infrastructure failure.
+ *
  * @public
  */
 export class S3PreconditionFailed extends Schema.TaggedError<S3PreconditionFailed>()("S3PreconditionFailed", {
-	/** Always `put`. */
-	operation: S3Operation,
+	/** Always `put`: the only operation that sends a write condition. */
+	operation: Schema.Literal("put"),
 	/** The bucket the client is bound to. */
 	bucket: Schema.String,
 	/** The object key. */
@@ -87,6 +94,39 @@ export class S3PreconditionFailed extends Schema.TaggedError<S3PreconditionFaile
 	/** A sentence naming the key. */
 	override get message(): string {
 		return `${subject(this.operation, this.bucket, this.key)}: precondition failed`;
+	}
+}
+
+/**
+ * A conditional `put` raced another write to the same key: a `409` whose `<Error>`
+ * document's `Code` is `ConditionalRequestConflict`. Retry the write.
+ *
+ * @remarks
+ * AWS documents this answer for a conditional write (`ifNoneMatch` or `ifMatch`)
+ * that overlaps a concurrent write, or a delete, of the same key, and says to retry
+ * the upload: unlike {@link S3PreconditionFailed}, the condition did not lose, it
+ * was not decided. The client does not retry on its own (no method does); compose
+ * `Effect.retry` at the call site with a schedule that backs off, so the write still
+ * in flight can land before the next attempt, for example
+ * `Effect.retry({ while: (error) => error._tag === "S3ConditionalConflict", schedule: Schedule.exponential("100 millis"), times: 3 })`.
+ * An immediate retry is likely to meet the same conflict.
+ * A retried `ifNoneMatch: "*"` write that then finds the key taken fails as
+ * `S3PreconditionFailed`, which is the first-write-wins answer. A `409` with any
+ * other `Code`, or with no error document, stays {@link S3RequestFailed}.
+ *
+ * @public
+ */
+export class S3ConditionalConflict extends Schema.TaggedError<S3ConditionalConflict>()("S3ConditionalConflict", {
+	/** Always `put`: the only operation that sends a write condition. */
+	operation: Schema.Literal("put"),
+	/** The bucket the client is bound to. */
+	bucket: Schema.String,
+	/** The object key. */
+	key: Schema.String,
+}) {
+	/** A sentence naming the key and saying to retry. */
+	override get message(): string {
+		return `${subject(this.operation, this.bucket, this.key)}: conflicted with a concurrent write; retry the write`;
 	}
 }
 
@@ -195,6 +235,7 @@ export const S3InvalidRequestReason = Schema.Literals([
 	"empty-key",
 	"key-too-long",
 	"dot-segment",
+	"malformed-unicode",
 	"metadata-name",
 	"metadata-duplicate",
 	"header-value",
@@ -204,13 +245,27 @@ export const S3InvalidRequestReason = Schema.Literals([
 /**
  * Why a request was refused before it was signed: `empty-key`, `key-too-long`
  * (over 1024 UTF-8 bytes), `dot-segment` (a `.` or `..` path segment, which a URL
- * collapses), `metadata-name` (not an HTTP token), `metadata-duplicate` (two
+ * collapses), `malformed-unicode` (a key, listing option or string body holding a
+ * lone UTF-16 surrogate, which has no UTF-8 encoding: a key or option cannot be
+ * percent-encoded or signed, and a body would be stored with U+FFFD in its place), `metadata-name` (not an HTTP token), `metadata-duplicate` (two
  * names that differ only in case, which would be one header), `header-value` (a character
  * outside printable US-ASCII) or `max-keys` (not an integer from 1 to 1000).
  *
  * @public
  */
 export type S3InvalidRequestReason = typeof S3InvalidRequestReason.Type;
+
+/** One rule per reason; a `Record` so a reason added without a rule fails to compile. */
+const INVALID_REQUEST_RULES: Readonly<Record<S3InvalidRequestReason, string>> = {
+	"empty-key": "the key is empty",
+	"key-too-long": "the key is longer than 1024 UTF-8 bytes",
+	"dot-segment": 'the key has a "." or ".." segment, which a URL collapses',
+	"malformed-unicode": "the value holds a lone UTF-16 surrogate, which cannot be encoded or signed",
+	"metadata-name": "the metadata name is not an HTTP token",
+	"metadata-duplicate": "two metadata names differ only in case and would be one header",
+	"header-value": "the value holds a character outside printable US-ASCII",
+	"max-keys": "maxKeys must be an integer from 1 to 1000",
+};
 
 /**
  * The caller's input cannot be sent: nothing was signed or sent.
@@ -226,24 +281,12 @@ export class S3InvalidRequest extends Schema.TaggedError<S3InvalidRequest>()("S3
 	key: Schema.String,
 	/** Which rule the input broke. */
 	reason: S3InvalidRequestReason,
-	/** The option or header that broke it: `key`, `maxKeys`, `range`, `metadata.<name>` and so on. */
+	/** The option or header that broke it: `key`, `body`, `maxKeys`, `range`, `metadata.<name>` and so on. */
 	field: Schema.String,
 }) {
 	/** A sentence naming the field and the rule. */
 	override get message(): string {
-		const rule =
-			this.reason === "empty-key"
-				? "the key is empty"
-				: this.reason === "key-too-long"
-					? "the key is longer than 1024 UTF-8 bytes"
-					: this.reason === "dot-segment"
-						? 'the key has a "." or ".." segment, which a URL collapses'
-						: this.reason === "metadata-name"
-							? "the metadata name is not an HTTP token"
-							: this.reason === "header-value"
-								? "the value holds a character outside printable US-ASCII"
-								: "maxKeys must be an integer from 1 to 1000";
-		return `${subject(this.operation, this.bucket, this.key)} refused: ${this.field}: ${rule}`;
+		return `${subject(this.operation, this.bucket, this.key)} refused: ${this.field}: ${INVALID_REQUEST_RULES[this.reason]}`;
 	}
 }
 
@@ -256,6 +299,7 @@ export type S3Error =
 	| S3NotFound
 	| S3NotModified
 	| S3PreconditionFailed
+	| S3ConditionalConflict
 	| S3RequestFailed
 	| S3MalformedResponse
 	| S3TransportError
@@ -268,6 +312,7 @@ export type S3Error =
  */
 export type S3PutError =
 	| S3PreconditionFailed
+	| S3ConditionalConflict
 	| S3RequestFailed
 	| S3MalformedResponse
 	| S3TransportError

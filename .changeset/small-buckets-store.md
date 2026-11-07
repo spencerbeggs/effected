@@ -10,7 +10,7 @@
 
 ```ts
 import { S3Client } from "@effected/s3";
-import { Effect, Redacted } from "effect";
+import { Effect, Redacted, Schedule } from "effect";
 
 // Bind the layer to a const: a layer factory mints a fresh layer per call.
 const Archive = S3Client.layer({
@@ -27,6 +27,12 @@ const archive = (key: string, json: string) =>
   Effect.gen(function* () {
     const s3 = yield* S3Client;
     return yield* s3.put(key, json, { ifNoneMatch: "*", contentType: "application/json" }).pipe(
+      // A write that raced another one to the key was never decided: back off and retry.
+      Effect.retry({
+        while: (error) => error._tag === "S3ConditionalConflict",
+        schedule: Schedule.exponential("100 millis"),
+        times: 3,
+      }),
       Effect.as("created" as const),
       // Somebody already wrote this key: exactly the redelivery case.
       Effect.catchTag("S3PreconditionFailed", () => Effect.succeed("exists" as const)),
@@ -35,8 +41,8 @@ const archive = (key: string, json: string) =>
 ```
 
 * A listing never reads as empty by accident: an `<Error>` document on a `200` fails as `S3RequestFailed`, and a proxy's HTML page, an empty body or a page that lost entries fails as `S3MalformedResponse`
-* Conditional operations are typed: `S3PreconditionFailed`, `S3NotFound` and `S3NotModified`. A missing bucket, or a `404` from something that is not the store, is `S3RequestFailed` rather than "no such object". `head` has no body to tell these apart
-* Caller input that cannot be sent fails as `S3InvalidRequest` before anything goes out
+* Conditional operations are typed: `S3PreconditionFailed`, `S3ConditionalConflict` (a `409` `ConditionalRequestConflict`, to retry), `S3NotFound` and `S3NotModified`. A missing bucket, or a `404` from something that is not the store, is `S3RequestFailed` rather than "no such object". `head` has no body to tell these apart
+* Caller input that cannot be sent fails as `S3InvalidRequest` before anything goes out, including a key, listing option or string body holding a lone UTF-16 surrogate (`malformed-unicode`)
 * Causes are redacted, so no `authorization` header or session token survives in an error
 
 Bodies are read fully into memory, and a listing key XML 1.0 cannot carry fails the whole listing.

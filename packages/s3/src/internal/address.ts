@@ -129,20 +129,41 @@ const MAX_KEY_BYTES = 1024;
  * Why a key cannot be sent, or `undefined` when it can.
  *
  * @remarks
- * Empty, longer than 1024 UTF-8 bytes, or holding a segment that is exactly `.` or
- * `..`: every URL parser collapses such a segment, so the store would receive
- * another key than the one signed.
+ * Empty, holding a lone UTF-16 surrogate, longer than 1024 UTF-8 bytes, or
+ * holding a segment that is exactly `.` or `..`: every URL parser collapses such a
+ * segment, so the store would receive another key than the one signed.
+ *
+ * Well-formedness is checked before the length: `TextEncoder` replaces a lone
+ * surrogate with U+FFFD, so the byte count would look valid, and
+ * `encodeURIComponent` then throws inside signing, a defect rather than a typed
+ * refusal.
  *
  * @internal
  */
 export const keyProblem = (key: string): S3InvalidRequestReason | undefined =>
 	key === ""
 		? "empty-key"
-		: encoder.encode(key).byteLength > MAX_KEY_BYTES
-			? "key-too-long"
-			: key.split("/").some((segment) => segment === "." || segment === "..")
-				? "dot-segment"
-				: undefined;
+		: !isWellFormed(key)
+			? "malformed-unicode"
+			: encoder.encode(key).byteLength > MAX_KEY_BYTES
+				? "key-too-long"
+				: key.split("/").some((segment) => segment === "." || segment === "..")
+					? "dot-segment"
+					: undefined;
+
+/**
+ * Whether a string holds no lone UTF-16 surrogate, so it has a UTF-8 encoding and
+ * `encodeURIComponent` can percent-encode it.
+ *
+ * @remarks
+ * The only rule a listing option (`prefix`, `delimiter`, `startAfter`,
+ * `continuationToken`) is held to: each rides in the signed query, where SigV4
+ * percent-encodes it and no URL parser collapses a `.` segment, and an empty or
+ * long prefix is a question for the store, not a request that cannot be sent.
+ *
+ * @internal
+ */
+export const isWellFormed = (value: string): boolean => value.isWellFormed();
 
 /** An HTTP token (RFC 9110 `tchar`), the only shape a header name may take. */
 const TOKEN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;

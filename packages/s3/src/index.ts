@@ -18,6 +18,7 @@ export type {
 export { S3Client } from "./S3Client.js";
 export type { S3DeleteError, S3Error, S3GetError, S3HeadError, S3ListError, S3PutError } from "./S3Error.js";
 export {
+	S3ConditionalConflict,
 	S3InvalidRequest,
 	S3InvalidRequestReason,
 	S3MalformedResponse,

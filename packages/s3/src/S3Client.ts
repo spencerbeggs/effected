@@ -9,6 +9,7 @@ import {
 	isHeaderValue,
 	isMaxKeys,
 	isToken,
+	isWellFormed,
 	keyProblem,
 	objectPath,
 	resolveAddress,
@@ -27,6 +28,7 @@ import type {
 	S3PutError,
 } from "./S3Error.js";
 import {
+	S3ConditionalConflict,
 	S3InvalidRequest,
 	S3MalformedResponse,
 	S3NotFound,
@@ -99,10 +101,14 @@ export interface S3PutOptions {
 	/**
 	 * `"*"` writes only when no object holds the key, so the first write wins;
 	 * an ETag writes only when the object's ETag differs. A lost condition is
-	 * `S3PreconditionFailed`.
+	 * `S3PreconditionFailed`; a write that raced another one to the key is
+	 * `S3ConditionalConflict`, to retry.
 	 */
 	readonly ifNoneMatch?: string;
-	/** Write only when the object's ETag is this one; a lost condition is `S3PreconditionFailed`. */
+	/**
+	 * Write only when the object's ETag is this one; a lost condition is
+	 * `S3PreconditionFailed`, a race with another write `S3ConditionalConflict`.
+	 */
 	readonly ifMatch?: string;
 	/**
 	 * The `Content-Type` to store.
@@ -179,7 +185,15 @@ export interface S3ListAllOptions {
  * @public
  */
 export interface S3ClientShape {
-	/** Write an object; a lost `ifNoneMatch` or `ifMatch` is `S3PreconditionFailed`. */
+	/**
+	 * Write an object; a lost `ifNoneMatch` or `ifMatch` is `S3PreconditionFailed`,
+	 * and a conditional write that raced another write to the key (a `409`
+	 * `ConditionalRequestConflict`) is `S3ConditionalConflict`: retry the write, as
+	 * AWS documents. A first-write-wins caller handles both; the client retries
+	 * neither. A string body is sent as UTF-8; one holding a lone UTF-16 surrogate
+	 * has no UTF-8 encoding and is refused as `S3InvalidRequest`
+	 * (`malformed-unicode`, field `body`). A `Uint8Array` body is sent as given.
+	 */
 	readonly put: (
 		key: string,
 		body: Uint8Array | string,
@@ -363,6 +377,11 @@ const makeClient = (
 		) {
 			yield* Effect.annotateCurrentSpan({ bucket, key });
 			yield* checkKey("put", key);
+			// `TextEncoder` writes U+FFFD for a lone surrogate, so the store would hold
+			// bytes the caller never wrote, under a payload hash that agrees with them.
+			if (typeof body === "string" && !isWellFormed(body)) {
+				return yield* invalid("put", key, "malformed-unicode", "body");
+			}
 			const bytes = typeof body === "string" ? encoder.encode(body) : body;
 			const contentType =
 				putOptions?.contentType ??
@@ -392,6 +411,17 @@ const makeClient = (
 				contentType,
 			});
 			if (answer.status === 412) return yield* new S3PreconditionFailed({ operation: "put", bucket, key });
+			if (answer.status === 409) {
+				const document = yield* errorDocument(answer);
+				// AWS answers a conditional write that races another write with
+				// `409 ConditionalRequestConflict` and says to retry; any other 409
+				// (`OperationAborted`, a proxy's page) stays a plain refusal.
+				const code = Option.flatMap(document, (doc) => Option.fromUndefinedOr(doc.code));
+				if (Option.isSome(code) && code.value === "ConditionalRequestConflict") {
+					return yield* new S3ConditionalConflict({ operation: "put", bucket, key });
+				}
+				return yield* failed("put", key, answer.status, document);
+			}
 			if (!isSuccess(answer.status)) return yield* requestFailed("put", key, answer);
 			return yield* fromResult("put", key, answer.status, readPutResult(answer.headers));
 		});
@@ -456,6 +486,14 @@ const makeClient = (
 		const list = Effect.fn("S3Client.list")(function* (listOptions?: S3ListOptions) {
 			const prefix = listOptions?.prefix ?? "";
 			yield* Effect.annotateCurrentSpan({ bucket, prefix });
+			// Each string option rides in the signed query: a lone surrogate would make
+			// `encodeURIComponent` throw inside signing, a defect, not a refusal.
+			for (const field of ["prefix", "delimiter", "startAfter", "continuationToken"] as const) {
+				const value = listOptions?.[field];
+				if (value !== undefined && !isWellFormed(value)) {
+					return yield* invalid("list", prefix, "malformed-unicode", field);
+				}
+			}
 			if (listOptions?.maxKeys !== undefined && !isMaxKeys(listOptions.maxKeys)) {
 				return yield* invalid("list", prefix, "max-keys", "maxKeys");
 			}

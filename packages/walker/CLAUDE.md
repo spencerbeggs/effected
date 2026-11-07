@@ -124,7 +124,19 @@ hands in — never re-derived here.
   the machine before the `maxDepth` check). Without a globstar no directory
   deeper than the source's separator count can reach is queued. Under
   `dot: false` no hidden directory is queued unless a segment names one.
-  Glob exposes no `dot`, so a differential `matches` probe proves it. They skip
+  Glob exposes no `dot`, so a differential `matches` probe proves it. A
+  slash-less pattern is never pruned: under `matchBase` it matches by
+  basename (`**` matches `.a/f.js`), which the probe cannot see. Nor is one
+  with a `..` segment: glob pops `<p>/..`, so `x/../**` compiles to the
+  one-segment row `**`, which `matchBase` applies to. Nor is one made only
+  of globstar and `.` segments: glob merges adjacent globstars at every
+  level (and drops a middle `.` at level 2), so `**/**` and `**/./**`
+  compile to `**` too. The one exception is a leading `.`, which glob
+  keeps: `./**` stays two segments and still prunes.
+  `__test__/PatternBoundsSweep.test.ts` compiles every pattern of up to
+  three segments over a fixed alphabet and every option that rewrites rows,
+  and pins that nothing pruned matches inside a hidden directory: extend its
+  alphabet, never patch one spelling at a time. They skip
   READS only, never a match, so the answer is unchanged. They are why a bounded
   pattern never trips `maxDepth` or an unreadable directory it has no reason
   to enter. Never make either bound "tighter" by guessing: an unmodelled

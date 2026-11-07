@@ -96,6 +96,19 @@ describe("input checks", () => {
 		assert.isUndefined(keyProblem(".hidden/file."));
 	});
 
+	it("keyProblem refuses a lone surrogate, which TextEncoder would silently replace", () => {
+		for (const key of ["\ud800", "\udc00", "a\ud83d", "\udfffb", "x/\ud800/y"]) {
+			assert.strictEqual(keyProblem(key), "malformed-unicode", JSON.stringify(key));
+		}
+		// Checked before the byte length: the replacement character would miscount it.
+		assert.strictEqual(keyProblem(`\ud800${"a".repeat(1100)}`), "malformed-unicode");
+		// A surrogate pair is well formed.
+		assert.isUndefined(keyProblem("📦/🎉"));
+		// 256 four-byte emoji is exactly 1024 bytes; one more is too long.
+		assert.isUndefined(keyProblem("🎉".repeat(256)));
+		assert.strictEqual(keyProblem("🎉".repeat(257)), "key-too-long");
+	});
+
 	it("isToken", () => {
 		assert.isTrue(isToken("x.y_z-1~"));
 		assert.isFalse(isToken(""));
