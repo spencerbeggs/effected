@@ -12,6 +12,7 @@
 * Updated @effected/webhooks
 * Updated @effected/files
 * Updated lockfiles
+* Updated npm
 
 ## 2026-11-06
 

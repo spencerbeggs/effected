@@ -141,6 +141,37 @@ Effect.runPromise(program.pipe(Effect.provide(NpmRegistry.layer), Effect.provide
 
 A `github-packages` target reads through the packument instead: that registry answers the per-version endpoint with a 405 whatever the credentials, so `version` routes there up front — and any other registry that answers 405 falls back the same way, so "is this version published" gives the same answer everywhere.
 
+`manifest(name, version)` reads the dependency fields of one version by that same route: a `VersionManifest` carrying `dependencies`, `peerDependencies`, `optionalDependencies`, `peerDependenciesMeta` and `engines`, each absent when the document does not declare it. A resolver that lists versions and reads their peers therefore goes through one registry, one credential and one routing rule rather than two that can disagree:
+
+```ts
+import { NpmRegistry } from "@effected/npm";
+import { Effect, Option } from "effect";
+
+const peersOf = (name: string, version: string) =>
+  Effect.gen(function* () {
+    const registry = yield* NpmRegistry;
+    const found = yield* registry.manifest(name, version);
+    return Option.map(found, (manifest) => manifest.peerDependencies ?? {});
+  });
+```
+
+A malformed dependency record fails `RegistryReadError` with kind `"decode"` rather than reading as "no peers"; an `engines` value in the legacy array form old publishes carry is omitted instead, so it cannot fail the read of a version that resolves fine. `VersionManifest` is also the schema: decoding a version document with it is the same check, except that it rejects the legacy `engines` form.
+
+`NpmConfig.load({ cwd, env })` resolves the npm configuration a read should use — the project, user and global npmrc plus `npm_config_*` — and `config.targetFor(name)` hands `NpmRegistry` the package's registry and the credential configured for that host, never another's. The project npmrc is found the way npm finds it, in the nearest directory holding a `package.json` or `node_modules`. In a monorepo that is the wrong file when the program runs from a member package, so two options move it: `workspaceRoot: true` reads it at the nearest directory holding a `pnpm-workspace.yaml` or a `package.json` with a `workspaces` field (falling back to the default when there is none), and `projectDir` names the directory outright, winning over `workspaceRoot`:
+
+```ts
+import { NpmConfig, NpmRegistry } from "@effected/npm";
+import { Effect } from "effect";
+
+const versionsFromAnywhere = (name: string, cwd: string, env: Record<string, string | undefined>) =>
+  Effect.gen(function* () {
+    const config = yield* NpmConfig.load({ cwd, env, workspaceRoot: true });
+    const registry = yield* NpmRegistry;
+    return yield* registry.versions(name, config.targetFor(name));
+  });
+// needs FileSystem and Path for the load, and HttpClient for the read, at the edge
+```
+
 `PackagePublish` runs the rest of a release through `@effected/commands`' `Run`: `pack` writes the tarball and reports both its npm integrity and a local sha256 (the attestation subject), `publishTarball` uploads bytes packed earlier, and `dryRun` reports packability without contacting a registry. `publishTarball`'s `PublishOutcome` reports `auth` — `"oidc-exchange"`, `"configured-credential"` or `"unknown"` — read from npm's own log lines. npm names its auth path only below its default log level, so the publish runs at `--loglevel=silly`, which overrides a `loglevel` set in an npmrc or the environment (only a `--loglevel` in the executor's `extraArgs` comes later and wins, and that run reports `"unknown"`); a failure's `PublishError.output` is filtered back to npm's default levels. `tokenAuth: true` blanks `NPM_ID_TOKEN` and the Actions token-service variables so npm publishes with the npmrc credential, and drops `--provenance`, which on GitHub Actions needs that token service. Every step fails typed as `PublishError`, routed by `kind`, rather than throwing on a non-zero npm exit. `NpmExecutor.ambient` runs the runner's own npm; `NpmExecutor.dlx("npm@11")` fetches a pinned one through the project's launcher, which is what OIDC trusted publishing needs on runners that still ship npm 10.x.
 
 `NpmExecutor` is a value you copy rather than a flag bag: `withCacheDir(dir)` redirects npm's cache — worth doing on a runner whose `$HOME` is not writable, or where the cache belongs on the same volume as the workspace — and `withExtraArgs(args)` is the generic vent for a flag this package has not named. Both return a new executor, and `withExtraArgs` replaces rather than accumulates, so a copy is a complete statement of its own flags. `--cache` outranks both `npm_config_cache` and an npmrc `cache`, so `withCacheDir` overrides a cache someone configured deliberately — the combinator stays dumb about ambient state, and checking for one is the caller's call.
@@ -255,7 +286,9 @@ Effect.runPromise(CorepackIntegrityHash.fromSri(npmIntegrity)).then(console.log)
 - `IntegrityHash` — a brand over the three textual integrity forms (SRI, corepack, yarn), with `algorithmOf`.
 - `CorepackIntegrityHash` — the corepack-form narrowing a `packageManager` pin needs, plus the one-way SRI bridge: the `FromSri` codec, the `fromSri` effect over it, and `InvalidSriIntegrityHashError` carrying the input that would not convert.
 - `ReleaseAgeGate` / `PartialReleaseAgeGate` — pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude` gate as pure vocabulary: `combine` merges contributions from multiple config sources strictest-age-wins, and `filterVersions` / `isExcluded` drop candidate versions younger than the cutoff against a caller-supplied clock, so a resolver never picks a version pnpm would reject. `matchesExclude` is pnpm's flat-`*` matcher, deliberately not `@effected/glob`'s dialect. `PartialReleaseAgeGate` is the permissive inbound form each source contributes.
-- `NpmRegistry` — registry reads over `HttpClient`: `version`, `versions`, `distTags` and `publishTimes`, each taking a per-call `RegistryTarget` carrying the registry and an optional `credential`, with `version` reading a GitHub Packages target through the packument; `layerTest` and the fully-working `layerSeeded` are the test doubles.
+- `NpmRegistry` — registry reads over `HttpClient`: `version`, `manifest`, `versions`, `distTags` and `publishTimes`, each taking a per-call `RegistryTarget` carrying the registry and an optional `credential`, with `version` and `manifest` reading a GitHub Packages target through the packument; `layerTest` and the fully-working `layerSeeded` are the test doubles.
+- `VersionManifest` — one version's `dependencies`, `peerDependencies`, `optionalDependencies`, `peerDependenciesMeta` and `engines`, as `NpmRegistry.manifest` answers them; the class is also the decoder for a version document.
+- `NpmConfig` — npmrc and `npm_config_*` resolution for registry reads: `load` (with `projectDir` and `workspaceRoot` to choose the project npmrc), the pure `fromSourcesResult`, and `registryFor` / `credentialFor` / `targetFor`, which only ever pair a credential with the host it was configured for; `NpmConfigError` is its typed failure.
 - `PackagePublish` — the pack/publish workflow over `@effected/commands`: `setupAuth` (taking a `PublishCredential`), `pack`, `publishTarball` (reporting `PublishOutcome.auth`) and `dryRun`, with `PackedTarball` carrying both npm's integrity and a local sha256 digest, and a `recording()` double that journals `setupAuth` calls.
 - `PackageTarball` — fetch, verify and extract a published tarball as a scoped resource, with `TarballError` routed by `reason: notFound | http | integrityMismatch | extractFailed`.
 - `RegistryCredential` — the closed auth union both `setupAuth` and `RegistryTarget` take (`token` for npm's `_authToken`, `basic` for its `_auth`), plus `basicCredentialFromPairResult` for a caller holding a username and password; `WorkloadCredential` and `workloadCredential` for the publish-only workload arm, and `PublishCredential` for the union `setupAuth` takes.
