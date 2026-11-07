@@ -10,6 +10,7 @@
 * Updated @effected/markdown
 * Updated @effected/crypto
 * Updated @effected/webhooks
+* Updated @effected/files
 
 ## 2026-11-06
 

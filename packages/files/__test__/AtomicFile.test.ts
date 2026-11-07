@@ -585,3 +585,338 @@ describe("AtomicFile.write", () => {
 		}).pipe(Effect.provide(MemoryFileSystem.layerWithPath({ [DIR]: MemoryFileSystem.directory() }))),
 	);
 });
+
+/** A target link planted in the checkout, pointing at a file outside it. */
+const OUTSIDE = "/outside/secret.txt";
+
+/** The `.effected-*` entries in `dir`. */
+const tempsIn = (dir: string) =>
+	Effect.gen(function* () {
+		const volume = yield* MemoryFileSystem.Volume;
+		return (volume.readDirectory(dir) ?? []).filter((name) => name.startsWith(".effected-"));
+	});
+
+describe("AtomicFile.write links option", () => {
+	// The issue's table, one row per planted shape and mode.
+	for (const links of [undefined, "follow"] as const) {
+		const label = links === undefined ? "the default" : `links: "follow"`;
+		const options = links === undefined ? undefined : { links };
+
+		it.effect(`${label}: a link to an existing outside file overwrites it and keeps the link`, () =>
+			Effect.gen(function* () {
+				yield* AtomicFile.write(TARGET, "new", options);
+				const volume = yield* MemoryFileSystem.Volume;
+				assert.strictEqual(volume.text(OUTSIDE), "new");
+				assert.strictEqual(volume.readLink(TARGET), OUTSIDE);
+				assert.deepStrictEqual(yield* tempsIn(DIR), []);
+				assert.deepStrictEqual(yield* tempsIn("/outside"), []);
+			}).pipe(
+				Effect.provide(
+					MemoryFileSystem.layerWithPath({ [OUTSIDE]: "outside", [TARGET]: MemoryFileSystem.symlink(OUTSIDE) }),
+				),
+			),
+		);
+
+		it.effect(`${label}: a dangling link creates the file it points to and keeps the link`, () =>
+			Effect.gen(function* () {
+				yield* AtomicFile.write(TARGET, "new", options);
+				const volume = yield* MemoryFileSystem.Volume;
+				assert.strictEqual(volume.text(OUTSIDE), "new");
+				assert.strictEqual(volume.readLink(TARGET), OUTSIDE);
+			}).pipe(
+				Effect.provide(
+					MemoryFileSystem.layerWithPath({
+						"/outside": MemoryFileSystem.directory(),
+						[TARGET]: MemoryFileSystem.symlink(OUTSIDE),
+					}),
+				),
+			),
+		);
+	}
+
+	it.effect('links: "replace": a link to an existing outside file is replaced and the outside file is untouched', () =>
+		Effect.gen(function* () {
+			yield* AtomicFile.write(TARGET, "new", { links: "replace" });
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text(OUTSIDE), "outside");
+			assert.strictEqual(volume.lstat(TARGET)?.kind, "file");
+			assert.isUndefined(volume.readLink(TARGET));
+			assert.strictEqual(volume.text(TARGET), "new");
+			assert.deepStrictEqual(volume.readDirectory(DIR), ["config.json"]);
+			assert.deepStrictEqual(volume.readDirectory("/outside"), ["secret.txt"]);
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath({ [OUTSIDE]: "outside", [TARGET]: MemoryFileSystem.symlink(OUTSIDE) }),
+			),
+		),
+	);
+
+	it.effect('links: "replace": a dangling link is replaced and nothing is created at its destination', () =>
+		Effect.gen(function* () {
+			yield* AtomicFile.write(TARGET, "new", { links: "replace" });
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.isFalse(volume.has(OUTSIDE));
+			assert.deepStrictEqual(volume.readDirectory("/outside"), []);
+			assert.strictEqual(volume.lstat(TARGET)?.kind, "file");
+			assert.strictEqual(volume.text(TARGET), "new");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath({
+					"/outside": MemoryFileSystem.directory(),
+					[TARGET]: MemoryFileSystem.symlink(OUTSIDE),
+				}),
+			),
+		),
+	);
+
+	it.effect('links: "replace": a dangling link into an absent directory is replaced, where "follow" fails', () =>
+		Effect.gen(function* () {
+			yield* AtomicFile.write(TARGET, "new", { links: "replace" });
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.isFalse(volume.has("/work/absent"));
+			assert.strictEqual(volume.text(TARGET), "new");
+		}).pipe(
+			Effect.provide(MemoryFileSystem.layerWithPath({ [TARGET]: MemoryFileSystem.symlink("absent/landing.txt") })),
+		),
+	);
+
+	it.effect('links: "replace": the temp is opened beside the link, never beside its destination', () => {
+		const opened: Array<{ readonly path: string; readonly flag: unknown; readonly mode: unknown }> = [];
+		return Effect.gen(function* () {
+			yield* AtomicFile.write(TARGET, "new", { links: "replace" });
+			assert.strictEqual(opened.length, 1);
+			assert.match(opened[0]?.path ?? "", /^\/work\/\.effected-[0-9a-z]+\.tmp$/);
+			assert.strictEqual(opened[0]?.flag, "wx");
+			// A link has no mode of its own worth keeping, and the outside file's is not consulted.
+			assert.isUndefined(opened[0]?.mode);
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ [OUTSIDE]: MemoryFileSystem.file("outside", { mode: 0o600 }), [TARGET]: MemoryFileSystem.symlink(OUTSIDE) },
+					{
+						faults: {
+							open: (path, options) => {
+								opened.push({ path, flag: options?.flag, mode: options?.mode });
+								return undefined;
+							},
+						},
+					},
+				),
+			),
+		);
+	});
+
+	it.effect('links: "replace": the outside file\'s mode does not reach the new file', () =>
+		Effect.gen(function* () {
+			yield* AtomicFile.write(TARGET, "new", { links: "replace" });
+			const fs = yield* FileSystem.FileSystem;
+			assert.notStrictEqual((yield* fs.lstat(TARGET)).mode & 0o7777, 0o4711);
+			assert.strictEqual((yield* fs.stat(OUTSIDE)).mode & 0o7777, 0o4711);
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath({
+					[OUTSIDE]: MemoryFileSystem.file("outside", { mode: 0o4711 }),
+					[TARGET]: MemoryFileSystem.symlink(OUTSIDE),
+				}),
+			),
+		),
+	);
+
+	it.effect('links: "replace": a read-only outside file does not block replacing the link', () =>
+		Effect.gen(function* () {
+			yield* AtomicFile.write(TARGET, "new", { links: "replace" });
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text(TARGET), "new");
+			assert.strictEqual(volume.text(OUTSIDE), "outside");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ [OUTSIDE]: "outside", [TARGET]: MemoryFileSystem.symlink(OUTSIDE) },
+					{
+						faults: {
+							// Denies a writable check through the link or on the outside file itself.
+							access: (path, options) =>
+								options?.writable === true ? Effect.fail(failure("access", path, "PermissionDenied")) : undefined,
+						},
+					},
+				),
+			),
+		),
+	);
+
+	it.effect('links: "replace": a regular file keeps its mode', () =>
+		Effect.gen(function* () {
+			yield* AtomicFile.write(TARGET, "new", { links: "replace" });
+			const fs = yield* FileSystem.FileSystem;
+			assert.strictEqual((yield* fs.stat(TARGET)).mode & 0o7777, 0o640);
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text(TARGET), "new");
+		}).pipe(
+			Effect.provide(MemoryFileSystem.layerWithPath({ [TARGET]: MemoryFileSystem.file("old", { mode: 0o640 }) })),
+		),
+	);
+
+	it.effect('links: "replace": a regular file the caller may not write is still refused', () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(AtomicFile.write(TARGET, "new", { links: "replace" }));
+			assert.strictEqual(error.reason._tag, "PermissionDenied");
+			assert.strictEqual(error.reason.method, "access");
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text(TARGET), "old");
+			assert.deepStrictEqual(yield* temps, []);
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ [TARGET]: "old" },
+					{
+						faults: {
+							access: (path, options) =>
+								options?.writable === true ? Effect.fail(failure("access", path, "PermissionDenied")) : undefined,
+						},
+					},
+				),
+			),
+		),
+	);
+
+	it.effect('links: "replace": an absent target is created', () =>
+		Effect.gen(function* () {
+			yield* AtomicFile.write(TARGET, "new", { links: "replace" });
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text(TARGET), "new");
+			assert.deepStrictEqual(volume.readDirectory(DIR), ["config.json"]);
+		}).pipe(Effect.provide(MemoryFileSystem.layerWithPath({ [DIR]: MemoryFileSystem.directory() }))),
+	);
+
+	it.effect('links: "replace": only the first link of a chain is replaced', () =>
+		Effect.gen(function* () {
+			yield* AtomicFile.write("/work/l0", "new", { links: "replace" });
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text("/work/l0"), "new");
+			assert.strictEqual(volume.readLink("/work/l1"), "l2");
+			assert.isFalse(volume.has("/work/missing"));
+		}).pipe(Effect.provide(MemoryFileSystem.layerWithPath(linkChain(3)))),
+	);
+
+	it.effect('links: "replace": a link in a cycle is replaced, not resolved', () =>
+		Effect.gen(function* () {
+			yield* AtomicFile.write("/work/a", "new", { links: "replace" });
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text("/work/a"), "new");
+			assert.strictEqual(volume.readLink("/work/b"), "a");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath({
+					"/work/a": MemoryFileSystem.symlink("b"),
+					"/work/b": MemoryFileSystem.symlink("a"),
+				}),
+			),
+		),
+	);
+
+	it.effect('links: "replace": a symlinked parent directory is still traversed', () =>
+		Effect.gen(function* () {
+			yield* AtomicFile.write("/work/alias/config.json", "new", { links: "replace" });
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text("/outside/deep/config.json"), "new");
+			assert.strictEqual(volume.readLink("/work/alias"), "/outside/deep");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath({
+					"/outside/deep": MemoryFileSystem.directory(),
+					"/work/alias": MemoryFileSystem.symlink("/outside/deep"),
+				}),
+			),
+		),
+	);
+
+	it.effect('links: "replace": a failed rename keeps the link and its destination and removes the temp', () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(AtomicFile.write(TARGET, "new", { links: "replace" }));
+			assert.strictEqual(error.reason._tag, "PermissionDenied");
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.readLink(TARGET), OUTSIDE);
+			assert.strictEqual(volume.text(OUTSIDE), "outside");
+			assert.deepStrictEqual(yield* temps, []);
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ [OUTSIDE]: "outside", [TARGET]: MemoryFileSystem.symlink(OUTSIDE) },
+					{ faults: { rename: (from) => Effect.fail(failure("rename", from, "PermissionDenied")) } },
+				),
+			),
+		),
+	);
+
+	it.effect('links: "replace": an lstat failure other than NotFound propagates and nothing is written', () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(AtomicFile.write(TARGET, "new", { links: "replace" }));
+			assert.strictEqual(error.reason._tag, "PermissionDenied");
+			assert.strictEqual(error.reason.method, "lstat");
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text(TARGET), "old");
+			assert.deepStrictEqual(yield* temps, []);
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ [TARGET]: "old" },
+					{ faults: { lstat: (path) => Effect.fail(failure("lstat", path, "PermissionDenied")) } },
+				),
+			),
+		),
+	);
+
+	it.effect('links: "replace" never reads the link through realPath or stat', () => {
+		const called: Array<string> = [];
+		return Effect.gen(function* () {
+			yield* AtomicFile.write(TARGET, "new", { links: "replace" });
+			assert.deepStrictEqual(
+				called.filter((method) => method !== "lstat"),
+				[],
+			);
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ [OUTSIDE]: "outside", [TARGET]: MemoryFileSystem.symlink(OUTSIDE) },
+					{
+						faults: {
+							lstat: () => {
+								called.push("lstat");
+								return undefined;
+							},
+							realPath: () => {
+								called.push("realPath");
+								return undefined;
+							},
+							stat: () => {
+								called.push("stat");
+								return undefined;
+							},
+							readLink: () => {
+								called.push("readLink");
+								return undefined;
+							},
+						},
+					},
+				),
+			),
+		);
+	});
+
+	it.effect("an unknown links value is a defect, and nothing is written", () =>
+		Effect.gen(function* () {
+			const exit = yield* Effect.exit(
+				AtomicFile.write(TARGET, "new", { links: "nofollow" } as unknown as { readonly links: "replace" }),
+			);
+			if (Exit.isFailure(exit)) {
+				assert.isTrue(Exit.hasDies(exit));
+				assert.isFalse(Exit.hasFails(exit));
+			} else {
+				assert.fail("expected a defect, but the write succeeded");
+			}
+			const volume = yield* MemoryFileSystem.Volume;
+			assert.strictEqual(volume.text(TARGET), "old");
+			assert.deepStrictEqual(yield* temps, []);
+		}).pipe(Effect.provide(MemoryFileSystem.layerWithPath({ [TARGET]: "old" }))),
+	);
+});

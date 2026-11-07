@@ -129,6 +129,14 @@ export class AtomicDirectory {
 	 * writers to the same `root` race each other. Serialize writes to one
 	 * `root`.
 	 *
+	 * **Symlinks.** A `root` that is a symbolic link is never written
+	 * through. A link to a directory is renamed to `.<name>.old` and removed,
+	 * and removal does not follow it, so the new tree takes the link's place
+	 * and the tree it pointed to is left alone. A dangling link fails with
+	 * operation `"promote"`, since a directory cannot be renamed over a
+	 * non-directory, and nothing is created where it points. Symlinked parent
+	 * directories of `root` are traversed, as with any path.
+	 *
 	 * A filesystem root such as `/` has no sibling to stage in and is a
 	 * defect. A relative `root` resolves against the process working
 	 * directory, as every `FileSystem` call does.
