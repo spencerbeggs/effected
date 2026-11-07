@@ -11,6 +11,7 @@
 * Updated @effected/crypto
 * Updated @effected/webhooks
 * Updated @effected/files
+* Updated lockfiles
 
 ## 2026-11-06
 
