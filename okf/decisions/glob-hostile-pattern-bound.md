@@ -1,0 +1,49 @@
+---
+type: Decision
+title: glob does not bound total matching work on hostile patterns
+description: "@effected/glob keeps matching polynomial without a work budget or a lower brace-expansion default; matching is synchronous, so a caller taking untrusted patterns or long paths bounds the input and lowers braceExpandMax, and enforces any deadline off-thread."
+status: stable
+tags:
+  - architecture
+  - dx
+sources:
+  - id: glob-module
+    resource: ../modules/glob.md
+generated:
+  by: "okfit/claude-code"
+  at: 2026-11-07T01:49:22Z
+integrity:
+  generated:
+    body: 9e813aeac831202f
+---
+
+# glob does not bound total matching work on hostile patterns
+
+## Context
+
+`GlobPattern.matches` is total and its time is polynomial: the exponential `**` case was fixed by the `tried` set, and every recursion surface is capped. A hostile pattern against a long candidate can still be slow. Two cases were measured in the review of that fix:
+
+| Pattern | Candidate | Time |
+| --- | --- | --- |
+| `**/a/**` | 50,000 portions | 3.3 s |
+| `**/a/**/*{0..999}*` | 13.9 KB path | 33.4 s |
+
+Every engine the review compared behaves the same, minimatch 11 included, so the cost is inherited from the dialect rather than introduced by the port. The second case is slow because brace expansion multiplies the alternatives, and 1,000 alternatives sit well inside the default `braceExpandMax` of 100,000. Patterns are usually written by a developer; this matters where a pattern or a long path comes from untrusted input.
+
+## Decision
+
+Matching stays polynomial, and the kit does not bound total matching work. A caller that matches a pattern or a path taken from untrusted input is responsible for bounding it, and has to do so before the match starts. `matches` is synchronous: it blocks the calling thread until it returns, so an in-process timeout cannot cut it short. `Effect.timeout` around `Effect.sync(() => pattern.matches(path))` waits for the whole match, because the match never yields and the timer fiber cannot run. A probe confirmed it: `**/a/**` matched against 50,000 `a` portions followed by a `.x` portion, under `Effect.timeout("100 millis")`, ran to completion and returned after about 3,550 ms, while an `Effect.sleep("2 seconds")` control under the same timeout failed at about 100 ms.
+
+So the levers are on the input:
+
+- limit the pattern's length, and where a pattern may come from;
+- limit the candidate's length or number of portions;
+- lower `braceExpandMax` in `GlobPatternOptions`. A lowered `braceExpandMax` turns the second case into a compile-time `GlobPatternError` with reason `ExpansionBudgetExceeded`, which fails fast and deterministically; a test pins exactly that.
+
+A caller that needs a deadline as well enforces it off the calling thread: a worker that is terminated when the deadline passes, a subprocess, or the host's own request deadline. The guidance sits in the `GlobPattern.matches` TSDoc and in the package README.
+
+## Alternatives rejected
+
+**A budget on total matching work, answering a false negative when spent** was rejected. The globstar recursion cap already answers with a documented false negative, but that cap is reached only by patterns no one writes by hand. A work budget would be reached by ordinary patterns against long enough paths, so a walker or an enumerator would silently miss files, and silently missing files is worse than being slow. Slowness is visible, and its cause is bounded by the input: a caller who bounds the pattern and the candidate before matching, or moves the match off-thread under a deadline, controls it. A false negative looks like a correct answer, and no caller can tell it from one. Turning the budget into an error instead would give `matches` an error channel, and its totality is the property every consumer relies on.
+
+**A lower default `braceExpandMax`** was rejected. It would reject at compile some patterns that compile today, which is a breaking change for every consumer, to defend against a case that needs an untrusted pattern to arise. It would also not help the first case, which has no braces at all. The cap stays a lever the caller pulls when the pattern's source warrants it.

@@ -120,6 +120,42 @@ Effect.runPromise(Effect.result(GlobPattern.compile("a".repeat(70_000)))).then(c
 // { reason: "PatternTooLong", limit: 65536, actual: 70000, pattern: "aaaa…" }
 ```
 
+## Hostile input
+
+Matching stays polynomial, and the package does not bound its total work. Two measured cases:
+
+| Pattern | Candidate | Time |
+| --- | --- | --- |
+| `**/a/**` | 50,000 portions | about 3 s |
+| `**/a/**/*{0..999}*` | a 13.9 KB path | about 33 s |
+
+The second is slow because brace expansion multiplies the alternatives, within the default `braceExpandMax` of 100,000. Matching is synchronous and blocks the calling thread until it returns, so an in-process timeout cannot stop it: `Effect.timeout` around `Effect.sync(() => pattern.matches(path))` still waits for the whole match. When a pattern or a path comes from untrusted input, bound the input before matching:
+
+- limit the pattern's length, and where a pattern may come from;
+- limit the candidate's length or number of portions;
+- lower `braceExpandMax`: with `GlobPatternOptions.make({ braceExpandMax: 100 })` the second pattern fails at compile with `ExpansionBudgetExceeded` instead of matching slowly.
+
+Where a deadline is needed, enforce it off the calling thread: run the match in a worker that is terminated when the deadline passes, in a subprocess, or under the host's own request deadline.
+
+`maxGlobstarRecursion` is bounded at 1,000, so no accepted value overflows the stack on a default Node stack. If a caller runs `matches` with less stack than that, a stack overflow is never thrown: `matches` answers as though no alternative matched, which is `false` for an ordinary pattern and `true` for a negated one. That is not always the recursion cap's answer for a brace pattern with several alternatives, because the cap fails only the alternative it cuts short and the engine goes on to try the rest, while an overflow answers for the whole pattern.
+
+## Wildcard
+
+`Wildcard` is a separate matcher for patterns like `agent:*` in an allow-list. It is not a glob dialect: `*` matches any run of characters other than whitespace, `?` matches one character other than whitespace, and every other character is literal. There is no separator, so `*` crosses `/`, and `[`, `{`, `!`, `\` and a leading `.` mean nothing special.
+
+```ts
+import { Wildcard, WildcardOptions } from "@effected/glob";
+
+const isAgent = Wildcard.compile("agent:*");
+console.log(isAgent("agent:okfit/claude-code"), isAgent("agent: x"));
+// true false
+
+console.log(Wildcard.matches("HUMAN:*", "human:spencer", WildcardOptions.make({ nocase: true })));
+// true
+```
+
+`nocase` compares literals under Unicode simple case folding, as a regular expression with the `i` and `u` flags does. Characters are code points, and whitespace is what `\s` matches under the `u` flag. Compiling and matching never throw. Matching does not backtrack, so it costs at most the pattern's length times the candidate's, and consecutive stars collapse to one.
+
 ## Features
 
 - `GlobPattern.compile(source, options?)` — `Effect<GlobPattern, GlobPatternError>`; the fallible boundary, and the only one.
@@ -130,6 +166,8 @@ Effect.runPromise(Effect.result(GlobPattern.compile("a".repeat(70_000)))).then(c
 - `GlobPattern.escape(literal)` / `unescape(pattern)` — build patterns safely from user-supplied literals.
 - `GlobPattern.FromString` — a `Schema.Codec<GlobPattern, string>` for embedding patterns in config schemas.
 - `GlobPatternOptions` — the full minimatch options surface, schema-validated. Options refine matching; they never admit a pattern that the defaults reject.
+- `maxGlobstarRecursion` option — from `1` to `1000`, default `200`; a walk past it is a false negative, never an error.
+- `Wildcard.compile(pattern, options?)` / `Wildcard.matches(pattern, candidate, options?)` — `*` and `?` only, no separator semantics; `WildcardOptions` carries `nocase`.
 - `GlobSet.compile(patterns)` — include/exclude sets with `literals`, `wildcards` and `excludes` accessors plus `isExcluded`.
 - `GlobPatternError` — `_tag`-routable, carrying `pattern`, `reason`, `limit` and `actual`.
 

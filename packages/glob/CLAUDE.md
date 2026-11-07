@@ -1,8 +1,8 @@
 # @effected/glob
 
 Full-fidelity glob matching as Effect schemas: the complete minimatch dialect
-compiled to pure string predicates. Seventh migration. 12 `src/` files
-(10 engine + 2 facade), 7 test files.
+compiled to pure string predicates, plus the separate `Wildcard` matcher.
+Seventh migration. 13 `src/` files (10 engine + 3 facade), 9 test files.
 
 **Tier: pure.** Peer-depends on `effect` only. Zero runtime deps, no IO, no
 services. The `minimatch` devDependency is the **test oracle only** — pinned
@@ -33,7 +33,19 @@ Malformed or hostile input fails through the typed `E` channel — never a
 defect, never `RangeError: Maximum call stack size exceeded`. Matching time is
 polynomial, bounded by the recursion cap; a hostile pattern can still be slow.
 `matches()` is **total**: every compile-time guard throws before an instance
-exists; nothing throws at match time.
+exists; nothing throws at match time. `maxGlobstarRecursion` is schema-bounded
+at `MAX_GLOBSTAR_RECURSION_CEILING = 1000` (`internal/limits.ts`): the
+body-section walk recurses once per `**` section, and on Node 26's default
+stack it first overflowed at about 3,250 sections (2,100 under 5,000 caller
+frames, 1,600 at `--stack-size=500`). `GlobPattern.matches` also catches a
+`RangeError` (and only that) and answers the cap's no-match answer — `false`,
+or `true` for a negated pattern — for a caller with less stack than measured.
+Never widen that catch, and never raise the ceiling without re-measuring.
+The kit does not bound total matching work (`@./okf/decisions/glob-hostile-pattern-bound.md`):
+callers with untrusted patterns bound the input and lower `braceExpandMax`.
+Matching is synchronous and blocks the thread, so never recommend
+`Effect.timeout` as the lever; a deadline has to be enforced off-thread
+(a terminated worker, a subprocess, the host's own deadline).
 
 Upstream guards **preserved**: the 64KB `MAX_PATTERN_LENGTH`; brace-expansion's
 `EXPANSION_MAX` budget, the `{a},b}` for-loop rewrite and lazy `post`
@@ -117,6 +129,12 @@ matches `packages/a/b` (glob-core's issue-#62 rewrite is not carried forward).
   `Schema.Literals([...])` for the reason union: the v3 variadic
   `Schema.Literal(a, b, c)` **silently ignores arguments after the first** in
   beta.94.
+- `Wildcard` / `WildcardOptions` (`Wildcard.ts`) — `*` and `?` only, no
+  separator, brace, class, negation, escape or dotfile semantics; a wildcard
+  never matches whitespace; `nocase` is Unicode simple folding (`iu`). Not a
+  glob dialect and shares nothing with the engine. Matching is an NFA
+  simulation over tokens, **never a regex built from the pattern** (a
+  backtracking `\S*a\S*a…` regex is a ReDoS); consecutive stars collapse.
 - `GlobSet` — include/exclude SET semantics (leading `!` = exclusion filter,
   distinct from minimatch whole-pattern negation — both exist on purpose).
   Classifies **per expanded brace alternative**. Pins default options; no
