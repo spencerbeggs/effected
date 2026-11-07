@@ -19,7 +19,7 @@
  * `MarkdownFormat` computes marker-normalization and surgical-replacement
  * edits over it. {@link Mdast} is the remark-ecosystem interop boundary:
  * projection to plain mdast JSON and checked decoding back;
- * {@link MarkdownVisitor} streams a tree walk; {@link MarkdownTransform}
+ * {@link MarkdownVisitor} walks a tree as events or through skip-aware callbacks; {@link MarkdownTransform}
  * maps, re-levels and sections trees without source text; and the document's navigation
  * accessors (headings, sections, links) serve outline and link extraction.
  *
@@ -163,6 +163,7 @@ export type {
 	ShiftHeadingsOptions,
 } from "./MarkdownTransform.js";
 export { MarkdownTransform } from "./MarkdownTransform.js";
+export type { MarkdownTraverseVisitor, MarkdownVisitAction, MarkdownVisitContext } from "./MarkdownVisitor.js";
 export { MarkdownVisitor, MarkdownVisitorEvent } from "./MarkdownVisitor.js";
 export type { MdastNode, MdastToTextOptions } from "./Mdast.js";
 export { Mdast, MdastDecodeError } from "./Mdast.js";

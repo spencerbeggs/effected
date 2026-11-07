@@ -1,0 +1,2796 @@
+{
+	"producedBy": {
+		"systemsCommit": "3cb3a9ffe7c104084d0469e7dd4f662e2005541e",
+		"markdownlint": "0.41.1",
+		"effectedMarkdown": "0.27.0"
+	},
+	"cases": [
+		{
+			"id": 1,
+			"sources": [
+				"rules__heading-hierarchy > passes with h2 only",
+				"markdownlint__rules__heading-hierarchy > passes with h2 only"
+			],
+			"markdown": "## Features\n\nSome content\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 2,
+			"sources": [
+				"rules__heading-hierarchy > passes with h2 and h3",
+				"markdownlint__rules__heading-hierarchy > passes with h2 and h3"
+			],
+			"markdown": "## Features\n\n### Sub-feature\n\nContent\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 3,
+			"sources": [
+				"rules__heading-hierarchy > passes with multiple h2 sections with h3 subsections",
+				"markdownlint__rules__heading-hierarchy > passes with multiple h2 sections with h3 subsections"
+			],
+			"markdown": "## Features\n\n### API\n\nContent\n\n## Bug Fixes\n\n### UI\n\nContent\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 4,
+			"sources": [
+				"rules__heading-hierarchy > passes with h2 → h3 → h4 progression",
+				"markdownlint__rules__heading-hierarchy > passes with h2 -> h3 -> h4 progression"
+			],
+			"markdown": "## Features\n\n### API\n\n#### Details\n\nContent\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 5,
+			"sources": [
+				"rules__heading-hierarchy > passes with no headings",
+				"rules__required-sections > passes with no headings",
+				"markdownlint__rules__heading-hierarchy > passes with no headings",
+				"markdownlint__rules__required-sections > passes with no headings"
+			],
+			"markdown": "Just a paragraph\n",
+			"programmatic": [
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 1,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 6,
+			"sources": [
+				"rules__heading-hierarchy > passes with a single h2 heading",
+				"rules__uncategorized-content > passes with only an h2 heading",
+				"markdownlint__rules__heading-hierarchy > passes with a single h2 heading",
+				"markdownlint__rules__uncategorized-content > passes with only an h2 heading"
+			],
+			"markdown": "## Features\n",
+			"programmatic": [
+				{
+					"rule": "changeset-content-structure",
+					"line": 1,
+					"column": 1,
+					"message": "Empty section: heading has no content before the next section or end of file. Add a list of changes (e.g., \"- Added feature X\") under this heading, or remove the empty heading. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-content-structure",
+						"CSH003"
+					],
+					"ruleDescription": "Sections must have content, code blocks need languages, list items need text",
+					"errorDetail": "Empty section: heading has no content before the next section or end of file. Add a list of changes (e.g., \"- Added feature X\") under this heading, or remove the empty heading. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 7,
+			"sources": [
+				"rules__heading-hierarchy > passes when h3 resets to h2",
+				"markdownlint__rules__heading-hierarchy > passes when h3 resets to h2"
+			],
+			"markdown": "## Features\n\n### Sub\n\nContent\n\n## Bug Fixes\n\nContent\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 8,
+			"sources": [
+				"rules__heading-hierarchy > rejects h1 heading",
+				"markdownlint__rules__heading-hierarchy > rejects h1 heading"
+			],
+			"markdown": "# Title\n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-heading-hierarchy",
+					"line": 1,
+					"column": 1,
+					"message": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md"
+				},
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 3,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-heading-hierarchy",
+						"CSH001"
+					],
+					"ruleDescription": "Heading hierarchy must start at h2 with no h1 or depth skips",
+					"errorDetail": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				},
+				{
+					"lineNumber": 3,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 9,
+			"sources": [
+				"rules__heading-hierarchy > rejects h1 after h2",
+				"markdownlint__rules__heading-hierarchy > rejects h1 after h2"
+			],
+			"markdown": "## Features\n\n# Title\n",
+			"programmatic": [
+				{
+					"rule": "changeset-heading-hierarchy",
+					"line": 3,
+					"column": 1,
+					"message": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 3,
+					"ruleNames": [
+						"changeset-heading-hierarchy",
+						"CSH001"
+					],
+					"ruleDescription": "Heading hierarchy must start at h2 with no h1 or depth skips",
+					"errorDetail": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 10,
+			"sources": [
+				"rules__heading-hierarchy > rejects h2 → h4 skip",
+				"rules__heading-hierarchy > reports correct skip details in message",
+				"markdownlint__rules__heading-hierarchy > rejects h2 -> h4 skip",
+				"markdownlint__rules__heading-hierarchy > reports correct skip details in message"
+			],
+			"markdown": "## Features\n\n#### Details\n",
+			"programmatic": [
+				{
+					"rule": "changeset-heading-hierarchy",
+					"line": 3,
+					"column": 1,
+					"message": "Heading level skipped: expected h3 or lower, found h4. Headings must increase sequentially (h2 → h3 → h4). Add the missing intermediate level or reduce this heading's depth. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 3,
+					"ruleNames": [
+						"changeset-heading-hierarchy",
+						"CSH001"
+					],
+					"ruleDescription": "Heading hierarchy must start at h2 with no h1 or depth skips",
+					"errorDetail": "Heading level skipped: expected h3 or lower, found h4. Headings must increase sequentially (h2 → h3 → h4). Add the missing intermediate level or reduce this heading's depth. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 11,
+			"sources": [
+				"rules__heading-hierarchy > rejects h3 → h5 skip",
+				"markdownlint__rules__heading-hierarchy > rejects h3 -> h5 skip"
+			],
+			"markdown": "## Features\n\n### Sub\n\n##### Deep\n",
+			"programmatic": [
+				{
+					"rule": "changeset-heading-hierarchy",
+					"line": 5,
+					"column": 1,
+					"message": "Heading level skipped: expected h4 or lower, found h5. Headings must increase sequentially (h2 → h3 → h4). Add the missing intermediate level or reduce this heading's depth. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 5,
+					"ruleNames": [
+						"changeset-heading-hierarchy",
+						"CSH001"
+					],
+					"ruleDescription": "Heading hierarchy must start at h2 with no h1 or depth skips",
+					"errorDetail": "Heading level skipped: expected h4 or lower, found h5. Headings must increase sequentially (h2 → h3 → h4). Add the missing intermediate level or reduce this heading's depth. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 12,
+			"sources": [
+				"rules__heading-hierarchy > reports multiple violations",
+				"markdownlint__rules__heading-hierarchy > reports multiple violations"
+			],
+			"markdown": "# Title\n\n## Features\n\n#### Skip\n",
+			"programmatic": [
+				{
+					"rule": "changeset-heading-hierarchy",
+					"line": 1,
+					"column": 1,
+					"message": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md"
+				},
+				{
+					"rule": "changeset-heading-hierarchy",
+					"line": 5,
+					"column": 1,
+					"message": "Heading level skipped: expected h3 or lower, found h4. Headings must increase sequentially (h2 → h3 → h4). Add the missing intermediate level or reduce this heading's depth. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-heading-hierarchy",
+						"CSH001"
+					],
+					"ruleDescription": "Heading hierarchy must start at h2 with no h1 or depth skips",
+					"errorDetail": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				},
+				{
+					"lineNumber": 5,
+					"ruleNames": [
+						"changeset-heading-hierarchy",
+						"CSH001"
+					],
+					"ruleDescription": "Heading hierarchy must start at h2 with no h1 or depth skips",
+					"errorDetail": "Heading level skipped: expected h3 or lower, found h4. Headings must increase sequentially (h2 → h3 → h4). Add the missing intermediate level or reduce this heading's depth. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 13,
+			"sources": [
+				"rules__heading-hierarchy > handles h2 → h4 after h3 resets to new h2",
+				"markdownlint__rules__heading-hierarchy > handles h2 -> h4 after h3 resets to new h2"
+			],
+			"markdown": "## A\n\n### B\n\n## C\n\n#### D\n",
+			"programmatic": [
+				{
+					"rule": "changeset-heading-hierarchy",
+					"line": 7,
+					"column": 1,
+					"message": "Heading level skipped: expected h3 or lower, found h4. Headings must increase sequentially (h2 → h3 → h4). Add the missing intermediate level or reduce this heading's depth. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md"
+				},
+				{
+					"rule": "changeset-required-sections",
+					"line": 1,
+					"column": 1,
+					"message": "Unknown section \"A\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md"
+				},
+				{
+					"rule": "changeset-required-sections",
+					"line": 5,
+					"column": 1,
+					"message": "Unknown section \"C\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 7,
+					"ruleNames": [
+						"changeset-heading-hierarchy",
+						"CSH001"
+					],
+					"ruleDescription": "Heading hierarchy must start at h2 with no h1 or depth skips",
+					"errorDetail": "Heading level skipped: expected h3 or lower, found h4. Headings must increase sequentially (h2 → h3 → h4). Add the missing intermediate level or reduce this heading's depth. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				},
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-required-sections",
+						"CSH002"
+					],
+					"ruleDescription": "Section headings must match known changeset categories",
+					"errorDetail": "Unknown section \"A\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				},
+				{
+					"lineNumber": 5,
+					"ruleNames": [
+						"changeset-required-sections",
+						"CSH002"
+					],
+					"ruleDescription": "Section headings must match known changeset categories",
+					"errorDetail": "Unknown section \"C\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 14,
+			"sources": [
+				"rules__heading-hierarchy > includes documentation URL in error messages",
+				"markdownlint__rules__heading-hierarchy > includes documentation URL in error messages"
+			],
+			"markdown": "# Title\n",
+			"programmatic": [
+				{
+					"rule": "changeset-heading-hierarchy",
+					"line": 1,
+					"column": 1,
+					"message": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-heading-hierarchy",
+						"CSH001"
+					],
+					"ruleDescription": "Heading hierarchy must start at h2 with no h1 or depth skips",
+					"errorDetail": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 15,
+			"sources": [
+				"rules__heading-hierarchy > positions the finding on the offending heading"
+			],
+			"markdown": "## A\n\n#### B\n",
+			"programmatic": [
+				{
+					"rule": "changeset-heading-hierarchy",
+					"line": 3,
+					"column": 1,
+					"message": "Heading level skipped: expected h3 or lower, found h4. Headings must increase sequentially (h2 → h3 → h4). Add the missing intermediate level or reduce this heading's depth. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md"
+				},
+				{
+					"rule": "changeset-required-sections",
+					"line": 1,
+					"column": 1,
+					"message": "Unknown section \"A\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 3,
+					"ruleNames": [
+						"changeset-heading-hierarchy",
+						"CSH001"
+					],
+					"ruleDescription": "Heading hierarchy must start at h2 with no h1 or depth skips",
+					"errorDetail": "Heading level skipped: expected h3 or lower, found h4. Headings must increase sequentially (h2 → h3 → h4). Add the missing intermediate level or reduce this heading's depth. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				},
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-required-sections",
+						"CSH002"
+					],
+					"ruleDescription": "Section headings must match known changeset categories",
+					"errorDetail": "Unknown section \"A\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 16,
+			"sources": [
+				"rules__required-sections > passes with a valid heading",
+				"markdownlint__rules__required-sections > passes with a valid heading"
+			],
+			"markdown": "## Features\n\nContent\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 17,
+			"sources": [
+				"rules__required-sections > passes with multiple valid headings",
+				"markdownlint__rules__required-sections > passes with multiple valid headings"
+			],
+			"markdown": "## Features\n\nContent\n\n## Bug Fixes\n\nContent\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 18,
+			"sources": [
+				"rules__required-sections > passes with all 13 category headings",
+				"markdownlint__rules__required-sections > passes with all 13 category headings"
+			],
+			"markdown": "## Breaking Changes\n\nContent\n\n## Features\n\nContent\n\n## Bug Fixes\n\nContent\n\n## Performance\n\nContent\n\n## Documentation\n\nContent\n\n## Refactoring\n\nContent\n\n## Tests\n\nContent\n\n## Build System\n\nContent\n\n## CI\n\nContent\n\n## Dependencies\n\nContent\n\n## Maintenance\n\nContent\n\n## Reverts\n\nContent\n\n## Other\n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 37,
+					"column": 1,
+					"message": "Dependencies section must contain a table, not a list or paragraph. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 37,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "Dependencies section must contain a table, not a list or paragraph. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 19,
+			"sources": [
+				"rules__required-sections > passes with case-insensitive match",
+				"markdownlint__rules__required-sections > passes with case-insensitive match"
+			],
+			"markdown": "## features\n\nContent\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 20,
+			"sources": [
+				"rules__required-sections > passes with case-insensitive match",
+				"markdownlint__rules__required-sections > passes with case-insensitive match"
+			],
+			"markdown": "## FEATURES\n\nContent\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 21,
+			"sources": [
+				"rules__required-sections > passes with case-insensitive match",
+				"markdownlint__rules__required-sections > passes with case-insensitive match"
+			],
+			"markdown": "## bug fixes\n\nContent\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 22,
+			"sources": [
+				"rules__required-sections > ignores non-h2 headings",
+				"markdownlint__rules__required-sections > ignores non-h2 headings"
+			],
+			"markdown": "### Random Subsection\n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 3,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 3,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 23,
+			"sources": [
+				"rules__required-sections > ignores non-h2 headings",
+				"markdownlint__rules__required-sections > ignores non-h2 headings"
+			],
+			"markdown": "#### Deep Heading\n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 3,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 3,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 24,
+			"sources": [
+				"rules__required-sections > rejects an unknown heading",
+				"markdownlint__rules__required-sections > rejects an unknown heading"
+			],
+			"markdown": "## Improvements\n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-required-sections",
+					"line": 1,
+					"column": 1,
+					"message": "Unknown section \"Improvements\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-required-sections",
+						"CSH002"
+					],
+					"ruleDescription": "Section headings must match known changeset categories",
+					"errorDetail": "Unknown section \"Improvements\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 25,
+			"sources": [
+				"rules__required-sections > rejects a typo heading",
+				"markdownlint__rules__required-sections > rejects a typo heading"
+			],
+			"markdown": "## Featurs\n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-required-sections",
+					"line": 1,
+					"column": 1,
+					"message": "Unknown section \"Featurs\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-required-sections",
+						"CSH002"
+					],
+					"ruleDescription": "Section headings must match known changeset categories",
+					"errorDetail": "Unknown section \"Featurs\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 26,
+			"sources": [
+				"rules__required-sections > reports multiple unknown headings",
+				"markdownlint__rules__required-sections > reports multiple unknown headings"
+			],
+			"markdown": "## Foo\n\nContent\n\n## Bar\n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-required-sections",
+					"line": 1,
+					"column": 1,
+					"message": "Unknown section \"Foo\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md"
+				},
+				{
+					"rule": "changeset-required-sections",
+					"line": 5,
+					"column": 1,
+					"message": "Unknown section \"Bar\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-required-sections",
+						"CSH002"
+					],
+					"ruleDescription": "Section headings must match known changeset categories",
+					"errorDetail": "Unknown section \"Foo\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				},
+				{
+					"lineNumber": 5,
+					"ruleNames": [
+						"changeset-required-sections",
+						"CSH002"
+					],
+					"ruleDescription": "Section headings must match known changeset categories",
+					"errorDetail": "Unknown section \"Bar\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 27,
+			"sources": [
+				"rules__required-sections > includes valid headings list in error message",
+				"markdownlint__rules__required-sections > includes valid headings list in error message"
+			],
+			"markdown": "## Unknown\n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-required-sections",
+					"line": 1,
+					"column": 1,
+					"message": "Unknown section \"Unknown\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-required-sections",
+						"CSH002"
+					],
+					"ruleDescription": "Section headings must match known changeset categories",
+					"errorDetail": "Unknown section \"Unknown\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 28,
+			"sources": [
+				"rules__required-sections > rejects empty heading text",
+				"markdownlint__rules__required-sections > rejects empty heading text"
+			],
+			"markdown": "## \n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-required-sections",
+					"line": 1,
+					"column": 1,
+					"message": "Unknown section \"\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-required-sections",
+						"CSH002"
+					],
+					"ruleDescription": "Section headings must match known changeset categories",
+					"errorDetail": "Unknown section \"\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 29,
+			"sources": [
+				"rules__required-sections > includes documentation URL in error messages",
+				"markdownlint__rules__required-sections > includes documentation URL in error messages"
+			],
+			"markdown": "## Invalid\n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-required-sections",
+					"line": 1,
+					"column": 1,
+					"message": "Unknown section \"Invalid\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-required-sections",
+						"CSH002"
+					],
+					"ruleDescription": "Section headings must match known changeset categories",
+					"errorDetail": "Unknown section \"Invalid\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 30,
+			"sources": [
+				"rules__content-structure > passes with section containing a paragraph",
+				"markdownlint__rules__content-structure > passes with section containing a paragraph"
+			],
+			"markdown": "## Features\n\nSome content here.\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 31,
+			"sources": [
+				"rules__content-structure > passes with section containing a list",
+				"markdownlint__rules__content-structure > passes with section containing a list"
+			],
+			"markdown": "## Features\n\n- Item one\n- Item two\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 32,
+			"sources": [
+				"rules__content-structure > passes with code block that has a language",
+				"markdownlint__rules__content-structure > passes with code block that has a language"
+			],
+			"markdown": "```ts\nconst x = 1;\n```\n",
+			"programmatic": [
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 1,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 33,
+			"sources": [
+				"rules__content-structure > passes with multiple valid sections",
+				"rules__uncategorized-content > passes with multiple sections",
+				"markdownlint__rules__content-structure > passes with multiple valid sections",
+				"markdownlint__rules__uncategorized-content > passes with multiple sections"
+			],
+			"markdown": "## Features\n\n- Added X\n\n## Bug Fixes\n\n- Fixed Y\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 34,
+			"sources": [
+				"rules__content-structure > passes with h3 subsection under h2",
+				"rules__uncategorized-content > passes with h2 followed by h3 subsections",
+				"markdownlint__rules__content-structure > passes with h3 subsection under h2",
+				"markdownlint__rules__uncategorized-content > passes with h2 followed by h3 subsections"
+			],
+			"markdown": "## Features\n\n### API\n\n- Added endpoint\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 35,
+			"sources": [
+				"rules__content-structure > rejects empty section (h2 followed by h2)",
+				"rules__content-structure > includes documentation URL in error messages",
+				"markdownlint__rules__content-structure > rejects empty section (h2 followed by h2)",
+				"markdownlint__rules__content-structure > includes documentation URL in error messages",
+				"api__linter > detects empty section"
+			],
+			"markdown": "## Features\n\n## Bug Fixes\n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-content-structure",
+					"line": 1,
+					"column": 1,
+					"message": "Empty section: heading has no content before the next section or end of file. Add a list of changes (e.g., \"- Added feature X\") under this heading, or remove the empty heading. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-content-structure",
+						"CSH003"
+					],
+					"ruleDescription": "Sections must have content, code blocks need languages, list items need text",
+					"errorDetail": "Empty section: heading has no content before the next section or end of file. Add a list of changes (e.g., \"- Added feature X\") under this heading, or remove the empty heading. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 36,
+			"sources": [
+				"rules__content-structure > rejects empty section at end of file",
+				"markdownlint__rules__content-structure > rejects empty section at end of file"
+			],
+			"markdown": "## Features\n\n- Content\n\n## Bug Fixes\n",
+			"programmatic": [
+				{
+					"rule": "changeset-content-structure",
+					"line": 5,
+					"column": 1,
+					"message": "Empty section: heading has no content before the next section or end of file. Add a list of changes (e.g., \"- Added feature X\") under this heading, or remove the empty heading. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 5,
+					"ruleNames": [
+						"changeset-content-structure",
+						"CSH003"
+					],
+					"ruleDescription": "Sections must have content, code blocks need languages, list items need text",
+					"errorDetail": "Empty section: heading has no content before the next section or end of file. Add a list of changes (e.g., \"- Added feature X\") under this heading, or remove the empty heading. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 37,
+			"sources": [
+				"rules__content-structure > rejects multiple empty sections",
+				"markdownlint__rules__content-structure > rejects multiple empty sections"
+			],
+			"markdown": "## Features\n\n## Bug Fixes\n\n## Other\n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-content-structure",
+					"line": 1,
+					"column": 1,
+					"message": "Empty section: heading has no content before the next section or end of file. Add a list of changes (e.g., \"- Added feature X\") under this heading, or remove the empty heading. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md"
+				},
+				{
+					"rule": "changeset-content-structure",
+					"line": 3,
+					"column": 1,
+					"message": "Empty section: heading has no content before the next section or end of file. Add a list of changes (e.g., \"- Added feature X\") under this heading, or remove the empty heading. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-content-structure",
+						"CSH003"
+					],
+					"ruleDescription": "Sections must have content, code blocks need languages, list items need text",
+					"errorDetail": "Empty section: heading has no content before the next section or end of file. Add a list of changes (e.g., \"- Added feature X\") under this heading, or remove the empty heading. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				},
+				{
+					"lineNumber": 3,
+					"ruleNames": [
+						"changeset-content-structure",
+						"CSH003"
+					],
+					"ruleDescription": "Sections must have content, code blocks need languages, list items need text",
+					"errorDetail": "Empty section: heading has no content before the next section or end of file. Add a list of changes (e.g., \"- Added feature X\") under this heading, or remove the empty heading. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 38,
+			"sources": [
+				"rules__content-structure > rejects code block without language",
+				"markdownlint__rules__content-structure > rejects code block without language"
+			],
+			"markdown": "```\nconst x = 1;\n```\n",
+			"programmatic": [
+				{
+					"rule": "changeset-content-structure",
+					"line": 1,
+					"column": 1,
+					"message": "Code block is missing a language identifier. Add a language after the opening fence (e.g., ```ts, ```json, ```bash). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md"
+				},
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 1,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-content-structure",
+						"CSH003"
+					],
+					"ruleDescription": "Sections must have content, code blocks need languages, list items need text",
+					"errorDetail": "Code block is missing a language identifier. Add a language after the opening fence (e.g., ```ts, ```json, ```bash). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				},
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 39,
+			"sources": [
+				"rules__content-structure > rejects code block with empty string language",
+				"markdownlint__rules__content-structure > rejects code block with empty string language"
+			],
+			"markdown": "```\ncode here\n```\n",
+			"programmatic": [
+				{
+					"rule": "changeset-content-structure",
+					"line": 1,
+					"column": 1,
+					"message": "Code block is missing a language identifier. Add a language after the opening fence (e.g., ```ts, ```json, ```bash). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md"
+				},
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 1,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-content-structure",
+						"CSH003"
+					],
+					"ruleDescription": "Sections must have content, code blocks need languages, list items need text",
+					"errorDetail": "Code block is missing a language identifier. Add a language after the opening fence (e.g., ```ts, ```json, ```bash). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				},
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 40,
+			"sources": [
+				"rules__content-structure > rejects empty list item",
+				"markdownlint__rules__content-structure > rejects empty list item"
+			],
+			"markdown": "- \n",
+			"programmatic": [
+				{
+					"rule": "changeset-content-structure",
+					"line": 1,
+					"column": 1,
+					"message": "Empty list item. Each list item must contain descriptive text (e.g., \"- Fixed login timeout issue\"). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md"
+				},
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 1,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-content-structure",
+						"CSH003"
+					],
+					"ruleDescription": "Sections must have content, code blocks need languages, list items need text",
+					"errorDetail": "Empty list item. Each list item must contain descriptive text (e.g., \"- Fixed login timeout issue\"). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				},
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 41,
+			"sources": [
+				"rules__content-structure > passes list items with content",
+				"markdownlint__rules__content-structure > passes list items with content"
+			],
+			"markdown": "- Valid item\n- Another item\n",
+			"programmatic": [
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 1,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 42,
+			"sources": [
+				"rules__content-structure > reports violations from multiple rule checks",
+				"markdownlint__rules__content-structure > reports violations from multiple rule checks"
+			],
+			"markdown": "## Features\n\n## Bug Fixes\n\n```\ncode\n```\n\n- \n",
+			"programmatic": [
+				{
+					"rule": "changeset-content-structure",
+					"line": 1,
+					"column": 1,
+					"message": "Empty section: heading has no content before the next section or end of file. Add a list of changes (e.g., \"- Added feature X\") under this heading, or remove the empty heading. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md"
+				},
+				{
+					"rule": "changeset-content-structure",
+					"line": 5,
+					"column": 1,
+					"message": "Code block is missing a language identifier. Add a language after the opening fence (e.g., ```ts, ```json, ```bash). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md"
+				},
+				{
+					"rule": "changeset-content-structure",
+					"line": 9,
+					"column": 1,
+					"message": "Empty list item. Each list item must contain descriptive text (e.g., \"- Fixed login timeout issue\"). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-content-structure",
+						"CSH003"
+					],
+					"ruleDescription": "Sections must have content, code blocks need languages, list items need text",
+					"errorDetail": "Empty section: heading has no content before the next section or end of file. Add a list of changes (e.g., \"- Added feature X\") under this heading, or remove the empty heading. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				},
+				{
+					"lineNumber": 5,
+					"ruleNames": [
+						"changeset-content-structure",
+						"CSH003"
+					],
+					"ruleDescription": "Sections must have content, code blocks need languages, list items need text",
+					"errorDetail": "Code block is missing a language identifier. Add a language after the opening fence (e.g., ```ts, ```json, ```bash). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				},
+				{
+					"lineNumber": 9,
+					"ruleNames": [
+						"changeset-content-structure",
+						"CSH003"
+					],
+					"ruleDescription": "Sections must have content, code blocks need languages, list items need text",
+					"errorDetail": "Empty list item. Each list item must contain descriptive text (e.g., \"- Fixed login timeout issue\"). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 43,
+			"sources": [
+				"rules__uncategorized-content > passes with content under h2 heading",
+				"markdownlint__rules__uncategorized-content > passes with content under h2 heading"
+			],
+			"markdown": "## Features\n\n- Added CLI\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 44,
+			"sources": [
+				"rules__uncategorized-content > passes with empty document",
+				"markdownlint__rules__uncategorized-content > passes with empty document"
+			],
+			"markdown": "",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 45,
+			"sources": [
+				"rules__uncategorized-content > rejects bare paragraph before first h2",
+				"markdownlint__rules__uncategorized-content > rejects bare paragraph before first h2"
+			],
+			"markdown": "This is uncategorized text.\n\n## Features\n\n- Added CLI\n",
+			"programmatic": [
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 1,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 46,
+			"sources": [
+				"rules__uncategorized-content > rejects bare list before first h2",
+				"markdownlint__rules__uncategorized-content > rejects bare list before first h2"
+			],
+			"markdown": "- Uncategorized item\n\n## Features\n\n- Added CLI\n",
+			"programmatic": [
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 1,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 47,
+			"sources": [
+				"rules__uncategorized-content > rejects bare code block before first h2",
+				"markdownlint__rules__uncategorized-content > rejects bare code block before first h2"
+			],
+			"markdown": "```ts\nconst x = 1;\n```\n\n## Features\n\n- Added CLI\n",
+			"programmatic": [
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 1,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 48,
+			"sources": [
+				"rules__uncategorized-content > rejects content with no headings at all",
+				"markdownlint__rules__uncategorized-content > rejects content with no headings at all"
+			],
+			"markdown": "Just a paragraph with no headings.\n",
+			"programmatic": [
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 1,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 49,
+			"sources": [
+				"rules__uncategorized-content > rejects multiple uncategorized nodes before first h2",
+				"markdownlint__rules__uncategorized-content > rejects multiple uncategorized nodes before first h2"
+			],
+			"markdown": "First paragraph.\n\n- A list\n\n## Features\n\n- Added CLI\n",
+			"programmatic": [
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 1,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				},
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 3,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				},
+				{
+					"lineNumber": 3,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 50,
+			"sources": [
+				"rules__uncategorized-content > rejects content before h2 even with h3 present"
+			],
+			"markdown": "Uncategorized.\n\n### Subsection\n\n## Features\n\n- Added CLI\n",
+			"programmatic": [
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 1,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 51,
+			"sources": [
+				"rules__uncategorized-content > does not flag content after the first h2",
+				"markdownlint__rules__uncategorized-content > does not flag content after the first h2"
+			],
+			"markdown": "## Features\n\nValid content here.\n\nMore valid content.\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 52,
+			"sources": [
+				"rules__uncategorized-content > ignores HTML comment before first h2",
+				"markdownlint__rules__uncategorized-content > ignores HTML comment before first h2"
+			],
+			"markdown": "<!-- note -->\n\n## Features\n\n- Added CLI\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 53,
+			"sources": [
+				"rules__uncategorized-content > ignores HTML comment with no headings",
+				"markdownlint__rules__uncategorized-content > ignores HTML comment with no headings"
+			],
+			"markdown": "<!-- just a comment -->\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 54,
+			"sources": [
+				"rules__uncategorized-content > includes documentation URL in error messages",
+				"markdownlint__rules__uncategorized-content > includes documentation URL in error messages"
+			],
+			"markdown": "Uncategorized text.\n",
+			"programmatic": [
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 1,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 55,
+			"sources": [
+				"rules__dependency-table-format > accepts a valid dependency table"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| typescript | devDependency | updated | ^5.4.0 | ^5.6.0 |\n| new-pkg | dependency | added | — | ^1.0.0 |\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 56,
+			"sources": [
+				"rules__dependency-table-format > flags a table-less section under a setext heading",
+				"markdownlint__rules__dependency-table-format > flags a table-less section under a setext heading"
+			],
+			"markdown": "Dependencies\n------------\n\nRoutine maintenance only.\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 1,
+					"column": 1,
+					"message": "Dependencies section must contain a table, not a list or paragraph. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "Dependencies section must contain a table, not a list or paragraph. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 57,
+			"sources": [
+				"rules__dependency-table-format > accepts a valid table under a setext heading",
+				"markdownlint__rules__dependency-table-format > passes a valid table under a setext heading"
+			],
+			"markdown": "Dependencies\n------------\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| effect | dependency | updated | 3.18.0 | 3.19.1 |\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 58,
+			"sources": [
+				"rules__dependency-table-format > accepts a table with all types"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| a | dependency | updated | 1.0.0 | 2.0.0 |\n| b | devDependency | updated | 1.0.0 | 2.0.0 |\n| c | peerDependency | updated | 1.0.0 | 2.0.0 |\n| d | optionalDependency | updated | 1.0.0 | 2.0.0 |\n| e | workspace | updated | 1.0.0 | 2.0.0 |\n| f | config | updated | 1.0.0 | 2.0.0 |\n| node | runtime | updated | 25.6.0 | 26.0.0 |\n| pnpm | packageManager | updated | 11.22.0 | 11.23.0 |\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 59,
+			"sources": [
+				"rules__dependency-table-format > ignores non-Dependencies sections"
+			],
+			"markdown": "## Features\n\n- Added feature X\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 60,
+			"sources": [
+				"rules__dependency-table-format > reports error when Dependencies has a list instead of table"
+			],
+			"markdown": "## Dependencies\n\n- foo: 1.0.0 → 2.0.0\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 1,
+					"column": 1,
+					"message": "Dependencies section must contain a table, not a list or paragraph. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "Dependencies section must contain a table, not a list or paragraph. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 61,
+			"sources": [
+				"rules__dependency-table-format > reports error for wrong column names"
+			],
+			"markdown": "## Dependencies\n\n| Package | Kind | Action | From | To |\n| --- | --- | --- | --- | --- |\n| foo | dependency | updated | 1.0.0 | 2.0.0 |\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 3,
+					"column": 1,
+					"message": "Table must have columns: Dependency, Type, Action, From, To. Got: package, kind, action, from, to. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 3,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "Dependencies table must have columns: Dependency, Type, Action, From, To. Got: package, kind, action, from, to. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 62,
+			"sources": [
+				"rules__dependency-table-format > reports error for invalid type value"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| foo | devDep | updated | 1.0.0 | 2.0.0 |\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 3,
+					"column": 1,
+					"message": "Expected \"dependency\" | \"devDependency\" | \"peerDependency\" | \"optionalDependency\" | \"workspace\" | \"config\" | \"runtime\" | \"packageManager\"\n  at [\"type\"]. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 5,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "Invalid dependency type 'devDep'. Valid types are: dependency, devDependency, peerDependency, optionalDependency, workspace, config, runtime, packageManager. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 63,
+			"sources": [
+				"rules__dependency-table-format > reports error when from is not em dash for added"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| foo | dependency | added | 1.0.0 | 2.0.0 |\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 3,
+					"column": 1,
+					"message": "'from' must be '—' when action is 'added' (got '1.0.0'). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 5,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "'from' must be '—' when action is 'added' (got '1.0.0'). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 64,
+			"sources": [
+				"rules__dependency-table-format > reports error when to is not em dash for removed"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| foo | dependency | removed | 1.0.0 | 2.0.0 |\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 3,
+					"column": 1,
+					"message": "'to' must be '—' when action is 'removed' (got '2.0.0'). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 5,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "'to' must be '—' when action is 'removed' (got '2.0.0'). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 65,
+			"sources": [
+				"rules__dependency-table-format > reports error for empty table (no data rows)"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 3,
+					"column": 1,
+					"message": "Dependency table must have at least one data row. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 3,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "Dependencies table must have at least one data row. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 66,
+			"sources": [
+				"rules__dependency-table-format > passes when prose precedes the table",
+				"markdownlint__rules__dependency-table-format > passes when prose precedes the table"
+			],
+			"markdown": "## Dependencies\n\nRoutine dependency maintenance.\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| effect | dependency | updated | 3.18.0 | 3.19.1 |\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 67,
+			"sources": [
+				"rules__dependency-table-format > passes when prose follows the table",
+				"markdownlint__rules__dependency-table-format > passes when prose follows the table"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| effect | dependency | updated | 3.18.0 | 3.19.1 |\n\nAll updates are backward compatible.\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 68,
+			"sources": [
+				"rules__dependency-table-format > fails a prose-only section, reporting at the Dependencies heading",
+				"markdownlint__rules__dependency-table-format > fails a prose-only section, reporting at the Dependencies heading"
+			],
+			"markdown": "## Dependencies\n\nUpdated effect to 3.19.1.\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 1,
+					"column": 1,
+					"message": "Dependencies section must contain a table, not a list or paragraph. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "Dependencies section must contain a table, not a list or paragraph. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 69,
+			"sources": [
+				"rules__dependency-table-format > does not scan past the next heading for a table",
+				"markdownlint__rules__dependency-table-format > does not scan past the next heading for a table"
+			],
+			"markdown": "## Dependencies\n\nProse only.\n\n## Other\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| effect | dependency | updated | 3.18.0 | 3.19.1 |\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 1,
+					"column": 1,
+					"message": "Dependencies section must contain a table, not a list or paragraph. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "Dependencies section must contain a table, not a list or paragraph. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 70,
+			"sources": [
+				"rules__dependency-table-format > still validates a table found after prose"
+			],
+			"markdown": "## Dependencies\n\nRoutine maintenance.\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| foo | devDep | updated | 1.0.0 | 2.0.0 |\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 5,
+					"column": 1,
+					"message": "Expected \"dependency\" | \"devDependency\" | \"peerDependency\" | \"optionalDependency\" | \"workspace\" | \"config\" | \"runtime\" | \"packageManager\"\n  at [\"type\"]. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 7,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "Invalid dependency type 'devDep'. Valid types are: dependency, devDependency, peerDependency, optionalDependency, workspace, config, runtime, packageManager. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 71,
+			"sources": [
+				"rules__dependency-table-format > accepts a tilde range written without the legacy escape",
+				"rules__dependency-table-format > accepts the legacy escaped spelling too, with no drift between the two",
+				"markdownlint__rules__dependency-table-format > accepts an unescaped tilde range, as the fixed serializer now writes it"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| @effected/semver | dependency | updated | ~0.2.0 | ~0.2.1 |\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 72,
+			"sources": [
+				"rules__dependency-table-format > accepts an underscore package name written without the legacy escape"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| some_pkg | dependency | updated | 1.0.0 | 2.0.0 |\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 73,
+			"sources": [
+				"rules__dependency-table-format > accepts the legacy escaped spelling too, with no drift between the two",
+				"markdownlint__rules__dependency-table-format > accepts a tilde range written with the legacy escape"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| @effected/semver | dependency | updated | \\~0.2.0 | \\~0.2.1 |\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 74,
+			"sources": [
+				"rules__dependency-table-format > reports a wrong header at the table with the parser's message"
+			],
+			"markdown": "## Dependencies\n\n| A | B |\n| - | - |\n| x | y |\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 3,
+					"column": 1,
+					"message": "Table must have columns: Dependency, Type, Action, From, To. Got: a, b. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 3,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "Dependencies table must have columns: Dependency, Type, Action, From, To. Got: a, b. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 75,
+			"sources": [
+				"rules__dependency-table-format > includes rule documentation URL"
+			],
+			"markdown": "## Dependencies\n\n- bad content\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 1,
+					"column": 1,
+					"message": "Dependencies section must contain a table, not a list or paragraph. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "Dependencies section must contain a table, not a list or paragraph. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 76,
+			"sources": [
+				"rules__dependency-table-format > passes: table then prose then next heading (adopt-kit-wave)",
+				"markdownlint__rules__dependency-table-format > passes: table then prose then next heading (adopt-kit-wave)"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| :--------- | :--- | :----- | :--- | :-- |\n| @effected/workspaces | dependency | updated | 0.12.0 | 0.13.0 |\n| @effected/git | dependency | updated | 0.7.0 | 0.8.0 |\n| @effected/github | dependency | updated | 0.4.1 | 0.4.2 |\n| @savvy-web/silk-effects | dependency | updated | 5.7.1 | 5.8.1 |\n| @savvy-web/silk | devDependency | updated | 3.7.1 | 3.7.4 |\n\nThese move together deliberately. Each is a 0.x package whose caret range pins\nthe minor, so bumping one alone leaves @savvy-web/silk-effects on the previous\nminor and resolves two copies into the bundle.\n\n## Maintenance\n\n- Routine upkeep.\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 77,
+			"sources": [
+				"rules__dependency-table-format > passes: padded delimiters + hard-wrapped paragraphs (adopt-npm-pin-vocabulary)",
+				"markdownlint__rules__dependency-table-format > passes: padded delimiters + hard-wrapped paragraphs (adopt-npm-pin-vocabulary)"
+			],
+			"markdown": "## Dependencies\n\n| Dependency               | Type          | Action  | From    | To      |\n| :----------------------- | :------------ | :------ | :------ | :------ |\n| @effected/npm            | dependency    | updated | ^0.10.0 | ^0.11.0 |\n| @effected/github         | dependency    | updated | ^0.6.0  | ^0.7.0  |\n| @savvy-web/silk-effects  | dependency    | updated | ^5.9.2  | ^6.0.0  |\n\n`@effected/github` had to move because `@effected/github-actions@0.9.1` depends\non it and the lockfile still held `0.6.0`, whose `GitHubClient` embeds\n`@octokit/types@16`.\n\n`@savvy-web/silk-effects@6.0.0` brings `@effected/github-references` in\ntransitively, which now backs its closing-reference parsing; this action has no\ndirect call site for that grammar.\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 78,
+			"sources": [
+				"rules__dependency-table-format > passes: table-only with em-dash and catalog specifier (effect-beta-107-wave)",
+				"markdownlint__rules__dependency-table-format > passes: table-only with em-dash and catalog specifier (effect-beta-107-wave)"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| :--- | :--- | :--- | :--- | :--- |\n| effect | dependency | updated | catalog:effect | catalog:effect |\n| @effect/platform | dependency | updated | 0.90.0 | 0.91.0 |\n| @effected/legacy-shim | dependency | removed | 0.3.0 | — |\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 79,
+			"sources": [
+				"markdownlint__rules__heading-hierarchy > rejects a setext h1 heading like its kit sibling"
+			],
+			"markdown": "Title\n=====\n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-heading-hierarchy",
+					"line": 1,
+					"column": 1,
+					"message": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md"
+				},
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 4,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-heading-hierarchy",
+						"CSH001"
+					],
+					"ruleDescription": "Heading hierarchy must start at h2 with no h1 or depth skips",
+					"errorDetail": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				},
+				{
+					"lineNumber": 4,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 80,
+			"sources": [
+				"markdownlint__rules__required-sections > rejects an unknown setext h2 section like its kit sibling"
+			],
+			"markdown": "Bogus Section\n-------------\n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-required-sections",
+					"line": 1,
+					"column": 1,
+					"message": "Unknown section \"Bogus Section\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-required-sections",
+						"CSH002"
+					],
+					"ruleDescription": "Section headings must match known changeset categories",
+					"errorDetail": "Unknown section \"Bogus Section\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 81,
+			"sources": [
+				"markdownlint__rules__required-sections > does not treat a backslash before a space as an escape"
+			],
+			"markdown": "## Bug Fixes\n\nContent\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 82,
+			"sources": [
+				"markdownlint__rules__required-sections > does not treat a backslash before a space as an escape"
+			],
+			"markdown": "## Bug\\ Fixes\n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-required-sections",
+					"line": 1,
+					"column": 1,
+					"message": "Unknown section \"Bug\\ Fixes\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-required-sections",
+						"CSH002"
+					],
+					"ruleDescription": "Section headings must match known changeset categories",
+					"errorDetail": "Unknown section \"Bug\\ Fixes\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 83,
+			"sources": [
+				"markdownlint__rules__required-sections > treats an escaped-punctuation heading the same as its parsed form"
+			],
+			"markdown": "## Other\n\nContent\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 84,
+			"sources": [
+				"markdownlint__rules__required-sections > treats an escaped-punctuation heading the same as its parsed form"
+			],
+			"markdown": "## Bug\\_Fixes\n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-required-sections",
+					"line": 1,
+					"column": 1,
+					"message": "Unknown section \"Bug_Fixes\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-required-sections",
+						"CSH002"
+					],
+					"ruleDescription": "Section headings must match known changeset categories",
+					"errorDetail": "Unknown section \"Bug_Fixes\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 85,
+			"sources": [
+				"markdownlint__rules__required-sections > treats an escaped-punctuation heading the same as its parsed form"
+			],
+			"markdown": "## Bug_Fixes\n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-required-sections",
+					"line": 1,
+					"column": 1,
+					"message": "Unknown section \"Bug_Fixes\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-required-sections",
+						"CSH002"
+					],
+					"ruleDescription": "Section headings must match known changeset categories",
+					"errorDetail": "Unknown section \"Bug_Fixes\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 86,
+			"sources": [
+				"markdownlint__rules__content-structure > rejects an empty setext h2 section like its kit sibling"
+			],
+			"markdown": "Features\n--------\n",
+			"programmatic": [
+				{
+					"rule": "changeset-content-structure",
+					"line": 1,
+					"column": 1,
+					"message": "Empty section: heading has no content before the next section or end of file. Add a list of changes (e.g., \"- Added feature X\") under this heading, or remove the empty heading. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-content-structure",
+						"CSH003"
+					],
+					"ruleDescription": "Sections must have content, code blocks need languages, list items need text",
+					"errorDetail": "Empty section: heading has no content before the next section or end of file. Add a list of changes (e.g., \"- Added feature X\") under this heading, or remove the empty heading. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 87,
+			"sources": [
+				"markdownlint__rules__uncategorized-content > accepts content under a setext h2 heading like its kit sibling"
+			],
+			"markdown": "Features\n--------\n\n- Added X\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 88,
+			"sources": [
+				"markdownlint__rules__dependency-table-format > passes a well-formed table"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| effect | dependency | updated | 3.18.0 | 3.19.1 |\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 89,
+			"sources": [
+				"markdownlint__rules__dependency-table-format > passes an em-dash sentinel for an addition"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| new-pkg | dependency | added | — | ^1.0.0 |\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 90,
+			"sources": [
+				"markdownlint__rules__dependency-table-format > rejects an invalid version"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| effect | dependency | updated | not-a-version | 3.19.1 |\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 3,
+					"column": 1,
+					"message": "Expected a string matching the RegExp ^(\\u2014|[~^]?\\d+\\.\\d+\\.\\d+(?:[-+.][\\w.+-]+)?|(?:catalog|workspace|npm|jsr|file|link|portal):[^\\s|]+)$\n  at [\"from\"]. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 5,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "Invalid 'from' value 'not-a-version'. Must be a semver string or em dash (—). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 91,
+			"sources": [
+				"markdownlint__rules__dependency-table-format > rejects an invalid dependency type"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| effect | bogusType | updated | 3.18.0 | 3.19.1 |\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 3,
+					"column": 1,
+					"message": "Expected \"dependency\" | \"devDependency\" | \"peerDependency\" | \"optionalDependency\" | \"workspace\" | \"config\" | \"runtime\" | \"packageManager\"\n  at [\"type\"]. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 5,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "Invalid dependency type 'bogusType'. Valid types are: dependency, devDependency, peerDependency, optionalDependency, workspace, config, runtime, packageManager. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 92,
+			"sources": [
+				"markdownlint__rules__dependency-table-format > passes runtime and packageManager rows (#544)"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| node | runtime | updated | 25.6.0 | 26.0.0 |\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 93,
+			"sources": [
+				"markdownlint__rules__dependency-table-format > passes runtime and packageManager rows (#544)"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| pnpm | packageManager | updated | 11.22.0 | 11.23.0 |\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 94,
+			"sources": [
+				"markdownlint__rules__dependency-table-format > ignores a setext level-1 Dependencies heading (wrong depth, same as atx)"
+			],
+			"markdown": "Dependencies\n============\n\nProse only.\n",
+			"programmatic": [
+				{
+					"rule": "changeset-heading-hierarchy",
+					"line": 1,
+					"column": 1,
+					"message": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md"
+				},
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 4,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-heading-hierarchy",
+						"CSH001"
+					],
+					"ruleDescription": "Heading hierarchy must start at h2 with no h1 or depth skips",
+					"errorDetail": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				},
+				{
+					"lineNumber": 4,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 95,
+			"sources": [
+				"markdownlint__rules__dependency-table-format > fails a list-only section, reporting at the Dependencies heading"
+			],
+			"markdown": "## Dependencies\n\n- effect: 3.18.0 → 3.19.1\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 1,
+					"column": 1,
+					"message": "Dependencies section must contain a table, not a list or paragraph. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "Dependencies section must contain a table, not a list or paragraph. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 96,
+			"sources": [
+				"markdownlint__rules__dependency-table-format > still validates a table found after prose"
+			],
+			"markdown": "## Dependencies\n\nRoutine maintenance.\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| effect | bogusType | updated | 3.18.0 | 3.19.1 |\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 5,
+					"column": 1,
+					"message": "Expected \"dependency\" | \"devDependency\" | \"peerDependency\" | \"optionalDependency\" | \"workspace\" | \"config\" | \"runtime\" | \"packageManager\"\n  at [\"type\"]. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 7,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "Invalid dependency type 'bogusType'. Valid types are: dependency, devDependency, peerDependency, optionalDependency, workspace, config, runtime, packageManager. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 97,
+			"sources": [
+				"markdownlint__rules__dependency-table-format > accepts an underscore package name written with the legacy escape"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| some\\_pkg | dependency | updated | 1.0.0 | 2.0.0 |\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 98,
+			"sources": [
+				"markdownlint__rules__dependency-table-format > still rejects a genuinely invalid version that merely contains an escape"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| effect | dependency | updated | \\~not-a-version | 3.19.1 |\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 3,
+					"column": 1,
+					"message": "Expected a string matching the RegExp ^(\\u2014|[~^]?\\d+\\.\\d+\\.\\d+(?:[-+.][\\w.+-]+)?|(?:catalog|workspace|npm|jsr|file|link|portal):[^\\s|]+)$\n  at [\"from\"]. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 5,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "Invalid 'from' value '~not-a-version'. Must be a semver string or em dash (—). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 99,
+			"sources": [
+				"api__linter > reports file-relative lines, counting the frontmatter block"
+			],
+			"markdown": "---\n\"@x/y\": patch\n---\n\nStray paragraph\n",
+			"programmatic": [
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 5,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 5,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 100,
+			"sources": [
+				"api__linter > recognizes CRLF frontmatter and reports file-relative lines"
+			],
+			"markdown": "---\r\n\"@x/y\": minor\r\n---\r\n\r\n## Features\r\n\r\n- Added lint rules\r\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 101,
+			"sources": [
+				"api__linter > recognizes CRLF frontmatter and reports file-relative lines"
+			],
+			"markdown": "---\r\n\"@x/y\": patch\r\n---\r\n\r\nStray paragraph\r\n",
+			"programmatic": [
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 5,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 5,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 102,
+			"sources": [
+				"api__linter > does not treat a mid-document fence pair as frontmatter"
+			],
+			"markdown": "## Features\n\n- One\n\n---\nsome: yaml\n---\n\nMore\n",
+			"programmatic": [
+				{
+					"rule": "changeset-required-sections",
+					"line": 6,
+					"column": 1,
+					"message": "Unknown section \"some: yaml\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 6,
+					"ruleNames": [
+						"changeset-required-sections",
+						"CSH002"
+					],
+					"ruleDescription": "Section headings must match known changeset categories",
+					"errorDetail": "Unknown section \"some: yaml\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 103,
+			"sources": [
+				"api__linter > returns no messages for valid content"
+			],
+			"markdown": "---\n\"@savvy-web/changesets\": minor\n---\n\n## Features\n\n- Added lint rules\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 104,
+			"sources": [
+				"api__linter > detects h1 heading after stripping frontmatter"
+			],
+			"markdown": "---\n\"@savvy-web/changesets\": minor\n---\n\n# Title\n\nContent\n",
+			"programmatic": [
+				{
+					"rule": "changeset-heading-hierarchy",
+					"line": 5,
+					"column": 1,
+					"message": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md"
+				},
+				{
+					"rule": "changeset-uncategorized-content",
+					"line": 7,
+					"column": 1,
+					"message": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 5,
+					"ruleNames": [
+						"changeset-heading-hierarchy",
+						"CSH001"
+					],
+					"ruleDescription": "Heading hierarchy must start at h2 with no h1 or depth skips",
+					"errorDetail": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				},
+				{
+					"lineNumber": 7,
+					"ruleNames": [
+						"changeset-uncategorized-content",
+						"CSH004"
+					],
+					"ruleDescription": "All content must be placed under a category heading (## heading)",
+					"errorDetail": "Content must be placed under a category heading (## heading). Move this content under an appropriate section like \"## Features\" or \"## Bug Fixes\". If it doesn't fit an existing category, use \"## Other\". See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH004.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 105,
+			"sources": [
+				"api__linter > detects unknown section heading"
+			],
+			"markdown": "## Improvements\n\n- Something\n",
+			"programmatic": [
+				{
+					"rule": "changeset-required-sections",
+					"line": 1,
+					"column": 1,
+					"message": "Unknown section \"Improvements\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-required-sections",
+						"CSH002"
+					],
+					"ruleDescription": "Section headings must match known changeset categories",
+					"errorDetail": "Unknown section \"Improvements\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 106,
+			"sources": [
+				"api__linter > detects code block missing language"
+			],
+			"markdown": "## Features\n\n```\ncode\n```\n",
+			"programmatic": [
+				{
+					"rule": "changeset-content-structure",
+					"line": 3,
+					"column": 1,
+					"message": "Code block is missing a language identifier. Add a language after the opening fence (e.g., ```ts, ```json, ```bash). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 3,
+					"ruleNames": [
+						"changeset-content-structure",
+						"CSH003"
+					],
+					"ruleDescription": "Sections must have content, code blocks need languages, list items need text",
+					"errorDetail": "Code block is missing a language identifier. Add a language after the opening fence (e.g., ```ts, ```json, ```bash). See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH003.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 107,
+			"sources": [
+				"api__linter > uses provided file path in messages",
+				"api__linter > uses default file path when not provided",
+				"api__linter > returns structured LintMessage objects",
+				"api__linter > aggregates messages from all files"
+			],
+			"markdown": "# Bad\n",
+			"programmatic": [
+				{
+					"rule": "changeset-heading-hierarchy",
+					"line": 1,
+					"column": 1,
+					"message": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-heading-hierarchy",
+						"CSH001"
+					],
+					"ruleDescription": "Heading hierarchy must start at h2 with no h1 or depth skips",
+					"errorDetail": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 108,
+			"sources": [
+				"api__linter > validates a file from disk",
+				"api__linter > validates multiple files in a directory",
+				"api__linter > excludes README.md"
+			],
+			"markdown": "---\n\"pkg\": minor\n---\n\n## Features\n\n- Added X\n",
+			"programmatic": [],
+			"markdownlint": []
+		},
+		{
+			"id": 109,
+			"sources": [
+				"api__linter > reports errors for an invalid file"
+			],
+			"markdown": "---\n\"pkg\": minor\n---\n\n# Bad Title\n",
+			"programmatic": [
+				{
+					"rule": "changeset-heading-hierarchy",
+					"line": 5,
+					"column": 1,
+					"message": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 5,
+					"ruleNames": [
+						"changeset-heading-hierarchy",
+						"CSH001"
+					],
+					"ruleDescription": "Heading hierarchy must start at h2 with no h1 or depth skips",
+					"errorDetail": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 110,
+			"sources": [
+				"api__linter > validates multiple files in a directory"
+			],
+			"markdown": "---\n\"pkg\": patch\n---\n\n# Title\n",
+			"programmatic": [
+				{
+					"rule": "changeset-heading-hierarchy",
+					"line": 5,
+					"column": 1,
+					"message": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 5,
+					"ruleNames": [
+						"changeset-heading-hierarchy",
+						"CSH001"
+					],
+					"ruleDescription": "Heading hierarchy must start at h2 with no h1 or depth skips",
+					"errorDetail": "h1 headings are not allowed in changeset files. Use h2 (##) for top-level sections like \"## Features\" or \"## Bug Fixes\". h1 is reserved for the version title generated by the changelog formatter. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH001.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 111,
+			"sources": [
+				"api__linter > aggregates messages from all files"
+			],
+			"markdown": "## Unknown\n\n- content\n",
+			"programmatic": [
+				{
+					"rule": "changeset-required-sections",
+					"line": 1,
+					"column": 1,
+					"message": "Unknown section \"Unknown\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-required-sections",
+						"CSH002"
+					],
+					"ruleDescription": "Section headings must match known changeset categories",
+					"errorDetail": "Unknown section \"Unknown\". Valid h2 headings are: Breaking Changes, Features, Bug Fixes, Performance, Documentation, Refactoring, Tests, Build System, CI, Dependencies, Maintenance, Reverts, Other. Heading comparison is case-insensitive. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH002.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 112,
+			"sources": [
+				"api__linter > rejects a prose Dependencies section"
+			],
+			"markdown": "## Dependencies\n\nBumped effect from 3.18.0 to 3.19.0.\n",
+			"programmatic": [
+				{
+					"rule": "changeset-dependency-table-format",
+					"line": 1,
+					"column": 1,
+					"message": "Dependencies section must contain a table, not a list or paragraph. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md"
+				}
+			],
+			"markdownlint": [
+				{
+					"lineNumber": 1,
+					"ruleNames": [
+						"changeset-dependency-table-format",
+						"CSH005"
+					],
+					"ruleDescription": "Dependencies section must contain a valid dependency table",
+					"errorDetail": "Dependencies section must contain a table, not a list or paragraph. See: https://github.com/savvy-web/systems/blob/main/packages/silk-effects/docs/rules/CSH005.md",
+					"errorContext": null,
+					"errorRange": null,
+					"fixInfo": null
+				}
+			]
+		},
+		{
+			"id": 113,
+			"sources": [
+				"api__linter > accepts a well-formed Dependencies table"
+			],
+			"markdown": "## Dependencies\n\n| Dependency | Type | Action | From | To |\n| --- | --- | --- | --- | --- |\n| effect | dependency | updated | 3.18.0 | 3.19.0 |\n",
+			"programmatic": [],
+			"markdownlint": []
+		}
+	]
+}
