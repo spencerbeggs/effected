@@ -1091,6 +1091,7 @@
 	},
 	"s3": {
 		"S3Client": "put get head delete list objects in r2 or s3 from a worker",
+		"S3ConditionalConflict": "conditional put raced a concurrent write, 409 conditionalrequestconflict, retry with backoff",
 		"S3InvalidRequest": "handle a key or metadata refused before signing, nothing was sent",
 		"S3InvalidRequestReason": "route why a request was refused locally, bad key metadata or maxKeys",
 		"S3ListPage": "read one listobjectsv2 page, keys, common prefixes, continuation token",
