@@ -1,6 +1,6 @@
 ---
 name: effect-api-extractor-bases
-description: Use when API Extractor reports ae-forgotten-export for the anonymous base of an Effect class factory (Schema.Class, TaggedClass, TaggedError, Opaque, Context.Service) under the silk bundler — and for the OTHER ae-*/tsdoc-* diagnostics a package build surfaces, ae-unresolved-link above all ({@link} selector rules for merged value+type names, overloaded functions (the parenthesized index selector), namespace-object members, inherited members, schema-declared Schema.Class fields, and cross-package symbols, where backticks are the only correct form), plus how to read issues.json without being fooled. The house policy for bases is to write the factory INLINE and suppress the synthesized X_base warning narrowly via savvy.build.ts meta.tsdoc.suppressWarnings [{ messageId ae-forgotten-export, pattern _base }] — no @public base const, no hand-written annotation. Yields a zero-warning issues.json with the base warnings in the suppressed bucket.
+description: Use when API Extractor reports ae-forgotten-export for the anonymous base of an Effect class factory (Schema.Class, TaggedClass, TaggedError, Opaque, Context.Service) under the `effected package build` pipeline — and for the OTHER ae-*/tsdoc-* diagnostics a package build surfaces, ae-unresolved-link above all ({@link} selector rules for merged value+type names, overloaded functions (the parenthesized index selector), namespace-object members, inherited members, schema-declared Schema.Class fields, and cross-package symbols, where backticks are the only correct form), plus how to read issues.json without being fooled. The house policy for bases is to write the factory INLINE and suppress the synthesized X_base warning narrowly via effected.toml [package.build.meta.tsdoc] suppressWarnings (the default already carries { messageId ae-forgotten-export, pattern _base }) — no @public base const, no hand-written annotation. Yields a zero-warning issues.json with the base warnings in the suppressed bucket.
 ---
 
 # API Extractor × Effect class factories
@@ -8,26 +8,19 @@ description: Use when API Extractor reports ae-forgotten-export for the anonymou
 `class X extends Schema.Class<X>("X")({...}) {}` (and `TaggedClass` /
 `TaggedError` / `Opaque` / `Context.Service`) produces an anonymous
 heritage type. API Extractor reports it as `ae-forgotten-export` on a
-synthesized `X_base` symbol — CI-fatal under the silk bundler.
+synthesized `X_base` symbol — CI-fatal under `effected package build`.
 
 ## The policy: inline factory + scoped `_base` suppression
 
 Write the factory **inline** — no split-out base const, no hand-written
-annotation — and suppress the synthesized-base warning narrowly in the
-package's `savvy.build.ts`:
+annotation — and suppress the synthesized-base warning narrowly. The build's
+default `meta.tsdoc.suppressWarnings` is exactly that one rule, so a package
+with no `effected.toml` already has it. A package that sets its own list
+replaces the default and must restate the rule in its `effected.toml`:
 
-```ts
-// savvy.build.ts
-import { build } from "@savvy-web/bundler";
-
-await build({
-  meta: {
-    localPaths: ["../../website/lib/models/X"],
-    tsdoc: {
-      suppressWarnings: [{ messageId: "ae-forgotten-export", pattern: "_base" }],
-    },
-  },
-});
+```toml
+[package.build.meta.tsdoc]
+suppressWarnings = [{ messageId = "ae-forgotten-export", pattern = "_base" }]
 ```
 
 ```text
@@ -443,18 +436,17 @@ fix.)
 ## A bin-only package has no API model — `emitDts: false`, not a fake entry point
 
 A package whose published surface is a `bin` and nothing else (`exports`
-limited to `"./package.json"`, no `index.ts`) fails `build:prod` under the
-default bundler config with `Cannot merge zero API models`. Nothing is wrong
+limited to `"./package.json"`, no `index.ts`) fails the build under the
+default config with `Cannot merge zero API models`. Nothing is wrong
 with the package: the declaration pass ran over zero entry points and the
 prod meta pass then had nothing to extract. The fix is **not** an `index.ts`
 that exports nothing, and not a `meta: false` (which still runs the dts
-pass). It is `emitDts: false` in `savvy.build.ts`:
+pass). It is `emitDts = false` in the package's `effected.toml`:
 
-```ts
-import { build } from "@savvy-web/bundler";
-
-// Bin-only: no declarations to bundle, no API model to extract.
-await build({ emitDts: false });
+```toml
+# Bin-only: no declarations to bundle, no API model to extract.
+[package.build]
+emitDts = false
 ```
 
 `BuildConfigInput.emitDts` is documented as the switch for *"JS-only artifacts
@@ -513,11 +505,11 @@ in backticks instead of `{@link}`. `packages/commands/CLAUDE.md` and
 
 `issues.json` is a **false-green oracle**. Four rules, each learned by being burned:
 
-1. **Build through Turbo, never the raw script.** `build:prod` dependsOn
-   `types:check` and `build:dev`. Running `node savvy.build.ts --target prod`
-   directly skips `build:dev`, emits no `.d.ts`, and API Extractor dies inside
-   `SourceMapper` with *"The referenced path was not found: …/pkg/index.d.ts"*.
-   Use `pnpm build --filter <pkg>` from the repo root.
+1. **Build through Turbo.** `pnpm build --filter <pkg>` from the repo root runs
+   `types:check` first and caches. A direct `effected package build` in the
+   package directory is allowed but skips that gate and the cache, so a type
+   error the typecheck would have caught surfaces as an API Extractor failure
+   instead.
 
 2. **A crashed build writes a truncated `issues.json`** — `errors: 0,
    warnings: 0, suppressed: 0` — byte-shaped exactly like a perfectly clean
@@ -536,7 +528,7 @@ in backticks instead of `{@link}`. `packages/commands/CLAUDE.md` and
    clean-shaped truncation — what looks like a nondeterministic bundler flake
    is usually contention. Treat any `issues.json` read as suspect unless it
    immediately follows YOUR serial, cold, exit-0 build of that package. And
-   **never `pkill -f` a shared build-tool pattern** (`pkill -f "savvy.build.ts"`
+   **never `pkill -f` a shared build-tool pattern** (`pkill -f "effected package build"`
    killed other sessions' legitimate builds — the actual root cause of one
    "flake" storm); kill your own child process by PID or not at all.
 
@@ -563,16 +555,14 @@ The inline factory + scoped `_base` suppression is the **single policy**, and
 the transitional backlog is **drained**: no package in the kit carries a
 `@public X_base` const. `grep -rln "_base" packages/*/src/` returns a single
 hit — a *comment* in `runtimes/src/NodeResolver.ts` explaining why the
-suppression is scoped. Which packages' `savvy.build.ts` still lack the
-suppression line is not a list worth hand-keeping — a package gains it the
-moment it gains its first class factory (`cli-kit` gained the line when `CliExit`,
-a `Context.Service`, shipped) — so read it live instead:
+suppression is scoped. The suppression is the build's default, so no package needs to carry the line unless it overrides
+`meta.tsdoc.suppressWarnings`. Find the packages that override it live:
 
 ```bash
-grep -L "_base" packages/*/savvy.build.ts
+grep -l "suppressWarnings" packages/*/effected.toml
 ```
 
-Every name that grep prints declares no class factory yet. If you find a
+Every package that grep prints must still list the `_base` rule. If you find a
 `@public X_base` const anywhere, it is new code written against the retired
 idiom, not residue: inline the factory into the heritage clause and delete
 the const.

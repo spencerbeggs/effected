@@ -13,7 +13,7 @@ sources:
     resource: ../../lib/scripts/catalog-sync.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-06T20:09:15Z
 verified:
   - by: human:spencer
     at: 2026-10-09T16:29:07Z
@@ -23,7 +23,7 @@ verified:
     at: 2026-10-31T19:39:48Z
 integrity:
   generated:
-    body: 92bafe389c27b9e1
+    body: 3fbca69a39d3bdef
   verified:
     by: human:spencer
     at: 2026-10-31T19:39:48Z
@@ -70,7 +70,7 @@ publishes. Nobody runs `catalog:sync` by hand ahead of a release.
 
 `.changeset/**` counts as a real version source for this reason —
 `packages/pnpm-plugin-effected/turbo.json` restates `$TURBO_ROOT$/.changeset/**`
-as a build input on both `build:dev` and `build:prod`, because the
+as an input of its `build` task, because the
 plugin's build reads versions from outside its own package directory and
 turbo's defaults do not describe that dependency by default.
 

@@ -13,20 +13,20 @@ Load when changing catalog strategy, advancing the Effect pin, or debugging work
 
 ## What it is
 
-A pnpm **config dependency**, built with `rolldown-pnpm-config`. All catalog configuration lives in `savvy.build.ts`, where `PnpmConfigPlugin` declares each catalogued package with a `range`, a `peer` and a `strategy`. Source is two small files over the virtual modules:
+A pnpm **config dependency**, built with `rolldown-pnpm-config`. All catalog configuration lives in `lib/build/pnpm-config.plugin.ts`, where `PnpmConfigPlugin` declares each catalogued package with a `range`, a `peer` and a `strategy`. Source is two small files over the virtual modules:
 
 - `src/pnpmfile.ts` wraps the generated `updateConfig` and **hides** the `effected:peers` twin.
 - `src/index.ts` exports the declared `effected` catalog as `catalogs`.
 
 ## What consumers see: one catalog
 
-A consumer sees exactly one catalog, **`effected`**: the Effect family plus every publishable `@effected/*` package but this one. The generated merge lets a consumer's own `effected` entries win, and the hook deletes `effected:peers`. `__test__/catalog.test.ts` pins this against the built `dist/dev/pkg/pnpmfile.mjs`. Why → `@./okf/decisions/consumer-catalog-fold.md`, `@./okf/decisions/one-declared-effected-catalog.md`.
+A consumer sees exactly one catalog, **`effected`**: the Effect family plus every publishable `@effected/*` package but this one. The generated merge lets a consumer's own `effected` entries win, and the hook deletes `effected:peers`. `__test__/catalog.test.ts` pins this against the built `dist/prod/npm/pkg/pnpmfile.mjs`. Why → `@./okf/decisions/consumer-catalog-fold.md`, `@./okf/decisions/one-declared-effected-catalog.md`.
 
 **`pnpm pack` runs no `readPackage` hook**, so a consumer peer written as `catalog:effected` publishes the install range (patch included), not a floored one. Do not try to fix that in a hook; a consumer that wants a floored peer writes it by hand.
 
 ## What it declares: one catalog, two halves
 
-`savvy.build.ts` **declares** one catalog, `effected`, with a `:peers` twin: the Effect family first, then the kit. **Do not split it again, and never widen the override filter**: the Effect family is pinned graph-wide and the kit is not, and the `overridesFromCatalogs` `include` patterns are what draw that line (see Overrides). `__test__/catalog.test.ts` asserts the catalog holds nothing but the family and the kit, and that no override pins an `@effected/*` package.
+`lib/build/pnpm-config.plugin.ts` **declares** one catalog, `effected`, with a `:peers` twin: the Effect family first, then the kit. **Do not split it again, and never widen the override filter**: the Effect family is pinned graph-wide and the kit is not, and the `overridesFromCatalogs` `include` patterns are what draw that line (see Overrides). `__test__/catalog.test.ts` asserts the catalog holds nothing but the family and the kit, and that no override pins an `@effected/*` package.
 
 This repository does not run the hook on itself. `pnpm:export` writes `effected` and `effected:peers` into the root `pnpm-workspace.yaml`, so this repo's manifests use the consumer's names, `catalog:effected` (dev) and `catalog:effected:peers` (peer), and the kit's published `effect` peer stays floored. **`pnpm:export` keeps catalogs the plugin no longer declares**: delete a removed one from `pnpm-workspace.yaml` by hand → `@./okf/gotchas/export-keeps-removed-catalogs.md`.
 
@@ -49,15 +49,15 @@ The Effect **v3** interop catalogs (`effect3` / `effect3:peers`) and the camelCa
 
 ## Two script classes — do not merge them
 
-**User-run only. Agents must not invoke these**; they rewrite this package's `savvy.build.ts` and the root `pnpm-workspace.yaml`, which moves every resolved version on the next install. Surface the command and let the user run it:
+**User-run only. Agents must not invoke these**; they rewrite this package's `lib/build/pnpm-config.plugin.ts` and the root `pnpm-workspace.yaml`, which moves every resolved version on the next install. Surface the command and let the user run it:
 
-- `pnpm pnpm:up` → `rolldown-pnpm-config upgrade savvy.build.ts`, interactively.
+- `pnpm pnpm:up` → `rolldown-pnpm-config upgrade lib/build/pnpm-config.plugin.ts`, interactively.
 - `pnpm pnpm:preview` → print the generated catalogs without writing.
 - `pnpm pnpm:export` → write the catalogs and derived overrides into the root `pnpm-workspace.yaml`, and surface drift.
 
-**Agents may run** the root `pnpm catalog:check` (read-only gate) and `pnpm catalog:sync` (rewrites only this package's `savvy.build.ts` plus one fixed-name changeset). Its `upgrade --yes` walks the whole literal, so it moves the Effect family to a new patch as well as the kit; the tilde stops it at the minor. CI syncs on every **PR** to `main` and to `changeset-release/main` (plus `workflow_dispatch`). Mechanics → `@./okf/interfaces/catalog-sync-cli.md` — Load when: touching the sync scripts, the catalog literal, or the workflow.
+**Agents may run** the root `pnpm catalog:check` (read-only gate) and `pnpm catalog:sync` (rewrites only this package's `lib/build/pnpm-config.plugin.ts` plus one fixed-name changeset). Its `upgrade --yes` walks the whole literal, so it moves the Effect family to a new patch as well as the kit; the tilde stops it at the minor. CI syncs on every **PR** to `main` and to `changeset-release/main` (plus `workflow_dispatch`). Mechanics → `@./okf/interfaces/catalog-sync-cli.md` — Load when: touching the sync scripts, the catalog literal, or the workflow.
 
-**Builds must never write the catalog** — an earlier seam rewrote it from the build's freeze path, making every `build:dev` and CI build mutate the repo.
+**Builds must never write the catalog** — an earlier seam rewrote it from the build's freeze path, making every local and CI build mutate the repo.
 
 ## Peer discipline this package exists to hold
 
@@ -69,5 +69,5 @@ Root `pnpm-workspace.yaml` sets exactly one resolver-relevant key: `autoInstallP
 
 - **After renaming this package (or any workspace package), the next `pnpm run` installs first** → `okf/gotchas/verify-deps-before-run.md`.
 - **Always check the lockfile diff after an install** — a plain install once stripped turbo / biome / tsgo platform binaries from it.
-- Never set `"private": false` — `publishConfig` (`directory: dist/dev/pkg`, `linkDirectory: true`) produces the publishable manifest at build time.
+- Never set `"private": false` — the build's `publishConfig` transform produces the publishable manifest.
 - Never write to `.repos/effect` (read-only vendored Effect source).

@@ -151,7 +151,7 @@ Notes that will otherwise cost a cycle:
 
 - A scoped test run **fails the repo-wide coverage thresholds by design**. Pass `--coverage.enabled=false`, and read the Tests line rather than the exit code.
 - Never invoke `biome` or `markdownlint-cli2` directly; use the `pnpm` scripts. Passing explicit paths to markdownlint widens the run instead of narrowing it.
-- Never run `savvy.build.ts` with a production target directly. Build through `pnpm build --filter @effected/<pkg>`.
+- Never run `effected package build` alone. Build through `pnpm build --filter @effected/<pkg>`.
 - Do not hand-format. The pre-commit hook runs Biome over staged files and re-stages the result. It also strips the executable bit from `.sh` files, which is deliberate.
 
 ## Phase 6 — open the pull request

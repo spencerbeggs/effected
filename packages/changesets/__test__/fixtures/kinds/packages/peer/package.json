@@ -1,0 +1,7 @@
+{
+  "name": "peer",
+  "version": "1.0.0",
+  "peerDependencies": {
+    "a": "workspace:*"
+  }
+}

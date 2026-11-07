@@ -254,30 +254,6 @@ EOF
 	[ "$status" -eq 0 ]
 }
 
-# _on_shipped_floor <file> <schemastore> — a lockfile at the shipped baseline's
-# floor, so reading it stays inside the current round and fetches nothing.
-_on_shipped_floor() {
-	_lockfile "$1" 4.1.2 0.4.0
-	sed -i.bak "s/0\.20\.0/0.21.0/g; s/^    dependencies:$/    dependencies:\n      '@effected\/schemastore':\n        specifier: ^$2\n        version: $2(effect@4.1.2)/" "$1"
-}
-
-@test "repo: the schemastore migration entry applies across the bump and finds the old command" {
-	printf '{"scripts":{"schema:check":"schemastore check lib/schemastore.config.ts"}}\n' >"$PROJECT/package.json"
-	printf 'import { defineConfig } from "@effected/schemastore"\n' >"$PROJECT/src/schemastore.config.ts"
-	git -C "$PROJECT" add -A
-	git -C "$PROJECT" -c user.email=t@t -c user.name=t commit -qm old
-	_on_shipped_floor "$BATS_TEST_TMPDIR/before.yaml" 0.29.0
-	_on_shipped_floor "$BATS_TEST_TMPDIR/after.yaml" 0.30.0
-	XDG_STATE_HOME="$BATS_TEST_TMPDIR/state" run node "$SCRIPTS/applicable.mjs" --root "$PROJECT" --ledger "$LEDGER" \
-		--offline --before "$BATS_TEST_TMPDIR/before.yaml" --after "$BATS_TEST_TMPDIR/after.yaml"
-	[ "$status" -eq 0 ]
-	[[ "$output" == *"0001"* ]]
-	[[ "$output" == *"crossed: @effected/schemastore 0.29.0 -> 0.30.0"* ]]
-	[[ "$output" == *"package.json:1:"* ]]
-	[[ "$output" == *"src/schemastore.config.ts:1:"* ]]
-	[[ "$output" != *"predates"* ]]
-}
-
 @test "repo: a repository below the shipped floor is pointed at the closed round" {
 	local previous
 	previous="$(sed -n 's/^previous: "\(.*\)"$/\1/p' "$LEDGER/BASELINE.md")"

@@ -114,7 +114,7 @@ describe("ConfigLoader.load reloads", () => {
 	);
 
 	it.effect(
-		"reloading keeps one @effected/schemastore",
+		"reloading keeps one effect, and a re-evaluated @effected/schemastore still reads its stamp",
 		() =>
 			Effect.gen(function* () {
 				const { dir, write } = yield* project;
@@ -135,12 +135,11 @@ describe("ConfigLoader.load reloads", () => {
 					const results = yield* SchemaPipeline.check(loaded.config.schemas.map((schema) => schema.target));
 					assert.include(results[0]?.generated ?? "", '"$id": "https://example.com/s/a.json"');
 				}
-				// Evaluated three times, so the config did reload, and every
-				// evaluation got the same module instances: a package re-evaluated
-				// per load would mint a new class each time.
+				// Evaluated three times, so the config did reload, and every evaluation got the same effect. @effected/schemastore
+				// resolves to its source here, and jiti re-evaluates what it transpiles, so its classes are new per load where an
+				// installed copy's are not: the test below pins that route for a `type: module` package.
 				assert.lengthOf(seen, 3);
 				for (const probe of seen) {
-					assert.strictEqual(probe.HostedSchema, seen[0]?.HostedSchema);
 					assert.strictEqual(probe.Schema, seen[0]?.Schema);
 				}
 			}).pipe(Effect.provide(Layer.merge(Platform, Pipeline))),

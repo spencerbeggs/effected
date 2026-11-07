@@ -7,10 +7,10 @@ status: stable
 tags: [bundle, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-11-06T22:24:55Z
 integrity:
   generated:
-    body: f33ef71ee8561f17
+    body: 0a65c30baaadf021
 ---
 
 # spencerbeggs/tsdoctor
@@ -199,11 +199,16 @@ the pull the other way is strong enough to be worth naming explicitly.
   answers what a `tsconfig` *says*; what a virtual TypeScript environment
   needs is this repository's own concern.
 - The bundle spec — the discovery ladder, the provenance tiers and their
-  ranking, the `tsdoctor.json` manifest shape and the change-detection
-  model. The kit supplies canonical hashing and fetching; which
+  ranking and the change-detection model. The kit supplies canonical hashing and fetching; which
   provenance tier wins is the spec's question.
 - RSPress integration — routing, React components, i18n and versioning.
   The adapter is a platform, not a kit concern.
+
+The `tsdoctor.json` manifest shape is the one piece that crossed that edge.
+Its `BundleManifest` schema now lives in
+[`@effected/bundler`](../modules/bundler.md) (issue 1225), which emits the file
+into each package's `meta/`; this repository reads it there, beside the API
+model, as [a build artifact](../interfaces/build-artifacts.md).
 
 ## Open questions
 

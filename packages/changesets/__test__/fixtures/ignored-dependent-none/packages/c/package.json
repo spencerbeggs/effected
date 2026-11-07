@@ -1,0 +1,7 @@
+{
+  "name": "c",
+  "version": "4.0.0",
+  "dependencies": {
+    "b": "workspace:*"
+  }
+}

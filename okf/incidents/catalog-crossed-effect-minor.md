@@ -25,7 +25,7 @@ sources:
   - id: import-probe
     resource: "Probe 2026-10-31: @effected/jsonc@0.21.0 beside effect@4.1.1 fails at import with: The requested module 'effect' does not provide an export named 'Crypto'"
   - id: savvy-build
-    resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
+    resource: ../../packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts
     title: "The tilde effect catalog"
 generated:
   by: "okfit/claude-code"

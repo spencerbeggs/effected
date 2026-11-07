@@ -14,10 +14,10 @@ sources:
     resource: ../../website/rspress.config.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 7f81002bc8a682eb
+    body: 418269f719a78d51
 ---
 
 # website
@@ -36,8 +36,7 @@ member.[^website-package-json]
   "docs"`).
 - `lib/models/` — per-package api-extractor doc models, one directory
   per `@effected` package (for example `lib/models/app`,
-  `lib/models/config-file`). These are `build:prod` artifacts produced by
-  each package's own build, not authored here, and are gitignored — the
+  `lib/models/config-file`). They are gitignored, and since the website froze no package build writes them, so a fresh checkout has none. They are the
   same doc models the plugin's construct-index generator reads from each
   package's `dist/prod/npm/meta/<dir>.api.json` rather than from this
   gitignored copy.
@@ -49,10 +48,8 @@ member.[^website-package-json]
 `apis: ApiExtractorPlugin.apis.fromDir("./lib/models")`, so the site
 renders API reference pages directly from whichever per-package model
 directories exist under `lib/models/` at build time.[^website-rspress-config]
-Since those models are `build:prod` artifacts of the individual
-packages, a package must be built with `pnpm build --filter
-@effected/<pkg>` before the website's own build will have current API
-reference content for it. The site also wires `pluginSitemap` and a
+With no build writing those models, a fresh site build has no API reference
+content. The site also wires `pluginSitemap` and a
 mermaid diagram plugin.
 
 ## Dependencies

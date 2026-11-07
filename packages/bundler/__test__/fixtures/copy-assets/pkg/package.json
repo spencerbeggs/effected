@@ -1,0 +1,18 @@
+{
+	"name": "@fixture/copy-assets",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./schemas/*.json": "./schemas/*.json",
+		"./package.json": "./package.json"
+	},
+	"publishConfig": {
+		"access": "public",
+		"targets": {
+			"npm": true,
+			"github": { "registry": "https://npm.pkg.github.com/", "name": "@other/copy-assets" }
+		}
+	}
+}

@@ -16,7 +16,7 @@ HMAC, constant-time comparison and AWS SigV4 request signing over core `effect/c
 
 ```bash
 pnpm vitest run packages/crypto        # from the repo root
-pnpm build --filter @effected/crypto   # never node savvy.build.ts
+pnpm build --filter @effected/crypto
 ```
 
 Tests live in `__test__/`, use `@effect/vitest` with `assert.*` (never `expect`).

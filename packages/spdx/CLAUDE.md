@@ -36,9 +36,7 @@ The `SpdxExpression` facade stays an `as const` object, NOT a static class: `exp
 
 ```bash
 pnpm vitest run packages/spdx          # this package's tests
-pnpm build --filter @effected/spdx     # dev + prod, from the repo root
+pnpm build --filter @effected/spdx   # from the repo root
 ```
 
 Tests live in `__test__/` (`oracle.int.test.ts` is integration), use `@effect/vitest`, and assert with `assert.*` — **never `expect`**.
-
-Never run `node savvy.build.ts --target prod` directly: it skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate.

@@ -1,0 +1,21 @@
+{
+	"name": "probe-sidecar-darwin-arm64",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"os": ["darwin"],
+	"cpu": ["arm64"],
+	"exports": {
+		".": "./src/bin.ts",
+		"./package.json": "./package.json"
+	},
+	"bin": {
+		"probe-sidecar": "./src/bin.ts"
+	},
+	"dependencies": {
+		"dropped-by-the-config": "^1.0.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

@@ -1,0 +1,7 @@
+{
+  "name": "workspace-junk",
+  "version": "1.0.0",
+  "dependencies": {
+    "a": "workspace:nonsense"
+  }
+}

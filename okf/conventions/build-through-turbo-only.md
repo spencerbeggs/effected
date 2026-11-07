@@ -1,7 +1,7 @@
 ---
 type: Convention
-title: Build through turbo, never by invoking the bundler script directly
-description: "Always build with `pnpm build --filter <pkg>`, which drives turbo's full task graph, and never invoke a package's savvy.build.ts directly or list @savvy-web/bundler as a runtime dependency."
+title: Build through turbo
+description: "Build with `pnpm build --filter <pkg>`, which runs `effected package build` through turbo after the typecheck; a direct run is allowed but skips the typecheck gate and the cache."
 status: stable
 stale_after: 2027-03-13T00:00:00Z
 tags:
@@ -14,34 +14,23 @@ sources:
     resource: ../../package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-14T02:44:47Z
+  at: 2026-11-06T20:01:27Z
 integrity:
   generated:
-    body: d3ba71f4783de297
+    body: 1f7ff8f1a79e035f
 ---
 
-# Build through turbo, never by invoking the bundler script directly
+# Build through turbo
 
-Always build a package with `pnpm build --filter <pkg>`, which drives
-turbo's task graph (`types:check` → `build:dev` → `build:prod`,
-transitively over `^build:dev` for upstream workspace
-dependencies).[^turbo-json][^root-package-json] Never run `node savvy.build.ts --target prod`
-directly — see [the gotcha this shortcut
-produces](../gotchas/direct-prod-build-fakes-a-clean-gate.md) for the
-truncated, clean-looking output it leaves behind.
+Build a package with `pnpm build --filter <pkg>`. Turbo runs the package's `types:check`, chained over its workspace dependencies, and then `effected package build`.[^turbo-json][^root-package-json]
 
-`@savvy-web/bundler` is a `devDependency` of every package that builds, and
-must never move into `dependencies`. It is what `savvy.build.ts`
-imports to run the build; declaring it as a runtime dependency would ship a
-build tool inside the published package rather than using it only to
-produce that package's artifacts.
+Running `effected package build` directly in a package directory is allowed, and it produces the same artifacts. It skips the typecheck gate and turbo's cache, so a type error goes unreported and the result is not a gate.
 
-A turbo cache hit can replay a stale artifact's log verbatim — see [the
-matching gotcha](../gotchas/turbo-cache-hit-replays-clean-log.md) for the
-`generatedAt` check that distinguishes a genuine build from a replay.
+`build` has no `^build`: workspace links resolve to each sibling's source, so no sibling is built first.
 
-[^turbo-json]: `turbo.json` — the `build:prod` task's
-    `dependsOn: ["types:check", "build:dev"]`, and `build:dev`'s own
-    `dependsOn: ["^build:dev"]` for upstream workspace dependencies.
-[^root-package-json]: `package.json:22` — `"build": "turbo run build:dev
-    build:prod --log-order=grouped --log-prefix=none"`.
+`@effected/plugin` is a root devDependency and must never be a package's dependency. It carries the `effected` bin, and a package dependency would ship a build tool inside the published package.
+
+A turbo cache hit replays the previous run's output and log verbatim. See [the matching gotcha](../gotchas/turbo-cache-hit-replays-clean-log.md) for the two checks that tell a genuine build from a replay.
+
+[^turbo-json]: `turbo.json`: `build` has `dependsOn: ["types:check"]`, and `types:check` has `dependsOn: ["^types:check"]`.
+[^root-package-json]: `package.json`: `"build": "turbo run build --filter=!docs --log-order=grouped --log-prefix=none"`.

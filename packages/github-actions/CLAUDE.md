@@ -70,7 +70,5 @@ pnpm build --filter @effected/github-actions
 ```
 
 Tests use `@effect/vitest` and `assert.*` — **never `expect`** — and live in
-`__test__/`. Never run `node savvy.build.ts --target prod`: it skips
-`build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped like
-a clean gate. Never add an `@actions/*` dependency, and never add the reverse
+`__test__/`. Never add an `@actions/*` dependency, and never add the reverse
 edge `sbom → github-actions`.

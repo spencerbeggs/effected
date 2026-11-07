@@ -20,17 +20,17 @@ sources:
     resource: https://github.com/spencerbeggs/rolldown-pnpm-config/pull/237
     title: "rolldown-pnpm-config 2.1.0: overridesFromCatalogs"
   - id: savvy-build
-    resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
+    resource: ../../packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts
     title: "The effect catalog block and the overridesFromCatalogs directive"
   - id: catalog-test
     resource: ../../packages/pnpm-plugin-effected/__test__/catalog.test.ts
     title: "The effect catalog describe and the derived family pins in the overrides describe"
 generated:
   by: okfit/claude-code
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 45d0a4ae82cdae25
+    body: ad1efcbbb65ec985
   verified:
     by: human:spencer
     at: 2026-10-31T19:39:48Z
@@ -48,7 +48,7 @@ verified:
 
 [The exact-lock decision](effect-catalog-locked-exact.md) answered the 2026-10-10 incident, in which every 4.0.3 satellite published a day before core `effect@4.0.3` ([the incident](../incidents/effect-satellites-published-without-core.md)), by pinning the catalog exact and publishing a hand-written HOLD block of 27 `"<name>@^4.0.0": "4.0.2"` overrides. It left open whether the catalog would return to carets, and it noted the hold had to be removed or moved by hand because the registry `upgrade` CLI rewrites catalogs only.
 
-Once core published, the owner asked whether the explicit overriding should stay permanently, since satellite-before-core publishes have bitten more than once.[^owner-ruling] Two facts settled the shape. First, the override must be family-wide and line-scoped: a parent-scoped `"<satellite>@<v>>effect": "<v>"` entry rewrites the satellite's declared peer range, but a peer is satisfied by whatever `effect` the consumer already has in scope, so the broken pairing survives; only `"effect@^4.0.0": "<v>"` moves the graph.[^override-probe] Second, the block cannot be computed inside `savvy.build.ts`: `rolldown-pnpm-config export` and `preview` statically evaluate the `PnpmConfigPlugin(...)` argument and refuse non-literal values, so a hand-written block drifts the first time the upgrade bot moves the catalog and nobody touches it.
+Once core published, the owner asked whether the explicit overriding should stay permanently, since satellite-before-core publishes have bitten more than once.[^owner-ruling] Two facts settled the shape. First, the override must be family-wide and line-scoped: a parent-scoped `"<satellite>@<v>>effect": "<v>"` entry rewrites the satellite's declared peer range, but a peer is satisfied by whatever `effect` the consumer already has in scope, so the broken pairing survives; only `"effect@^4.0.0": "<v>"` moves the graph.[^override-probe] Second, the block cannot be computed inside `lib/build/pnpm-config.plugin.ts`: `rolldown-pnpm-config export` and `preview` statically evaluate the `PnpmConfigPlugin(...)` argument and refuse non-literal values, so a hand-written block drifts the first time the upgrade bot moves the catalog and nobody touches it.
 
 ## Decision
 
@@ -76,5 +76,5 @@ The catalog's own range is a separate choice. This decision returned it to the s
 [^owner-ruling]: Conversation with the repository owner, 2026-10-11.
 [^override-probe]: Probe on pnpm 12.6.0, 2026-10-11.
 [^directive]: <https://github.com/spencerbeggs/rolldown-pnpm-config/pull/237>
-[^savvy-build]: `packages/pnpm-plugin-effected/savvy.build.ts`
+[^savvy-build]: `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts`
 [^catalog-test]: `packages/pnpm-plugin-effected/__test__/catalog.test.ts`

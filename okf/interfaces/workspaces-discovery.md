@@ -32,7 +32,7 @@ sources:
     resource: ../../packages/workspaces/src/internal/packageManagerDecision.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T17:47:12Z
+  at: 2026-11-06T01:55:28Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:49.503Z
@@ -40,13 +40,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
+  - by: human:spencer
+    at: 2026-11-06T01:54:11Z
 integrity:
   generated:
-    body: e0f7832cfd110f9a
+    body: 52c050b4a15a1bf2
   verified:
     by: human:spencer
-    at: 2026-10-29T00:43:21Z
-    content: 2e16167deac39cd0
+    at: 2026-11-06T01:54:11Z
+    content: 8d1725604ef104f2
 ---
 
 # @effected/workspaces discovery and detection
@@ -85,7 +87,7 @@ index, never `Array.shift()`, since `shift()` re-indexes the array on every
 dequeue and makes draining a near-budget worklist quadratic), the depth
 rule, the visit budget, and the prune list.[^traverse-ts] Both the Effect
 enumerator and the [sync escape
-hatch](../modules/workspaces.md#workspacessync-the-escape-hatch) drive this
+hatch](../modules/workspaces.md#workspacessync--the-escape-hatch) drive this
 one state machine, and neither re-decides any of it. The depth cap bounds
 what is enumerated, not merely what is descended into. The one deliberate
 divergence between the two entry points is what happens at a bound: the
@@ -295,7 +297,7 @@ as a `Result` whose failure is the detector's own error union; it probes
 `root` as given, with no ascent. Both surfaces run one pure decision in
 `internal/packageManagerDecision.ts`, and a parity table pins their
 agreement.[^package-manager-decision-ts] See
-[the sync escape hatch](../modules/workspaces.md#workspacessync-the-escape-hatch).
+[the sync escape hatch](../modules/workspaces.md#workspacessync--the-escape-hatch).
 
 ## Test doubles
 

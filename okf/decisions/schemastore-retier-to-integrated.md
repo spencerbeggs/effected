@@ -10,19 +10,21 @@ sources:
     resource: ../../packages/schemastore/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T06:55:47Z
+  at: 2026-11-06T01:55:28Z
 integrity:
   generated:
-    body: 8a4eadf663cd5053
+    body: c6fd1f760ef2b7a1
   verified:
     by: human:spencer
-    at: 2026-11-05T14:25:52Z
-    content: 01a03c830ead7f8a
+    at: 2026-11-06T01:54:11Z
+    content: 3e8700eb82b18f98
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
   - by: human:spencer
     at: 2026-11-05T14:25:52Z
+  - by: human:spencer
+    at: 2026-11-06T01:54:11Z
 ---
 
 # Schemastore retiers from boundary to integrated for a direct ajv dependency
@@ -45,7 +47,7 @@ retiered after it had already published.
 ## Decision
 
 Move `@effected/schemastore` from boundary to integrated tier, per
-[R1](../conventions/dependency-policy.md#r1-tiers-1-and-2-take-no-external-runtime-dependencies),
+[R1](../conventions/dependency-policy.md#r1--tiers-1-and-2-take-no-external-runtime-dependencies),
 by taking `ajv` as a direct runtime dependency and shipping a real
 engine implementation rather than a contract-only seam. `ajv` stays the
 only third-party runtime dependency and the sole reason for the tier,
@@ -55,7 +57,7 @@ Two facts made the retier admissible, and both must hold for any future
 retier to cite this as precedent:
 
 - **Nothing in the kit depends on `schemastore`**, so
-  [R2](../conventions/dependency-policy.md#r2-tier-3-propagates)
+  [R2](../conventions/dependency-policy.md#r2--tier-3-propagates)
   propagates the tier to nobody.
 - **`ajv` is build-time tooling a consumer installs as a devDependency**
   of their own generator script, so the runtime-graph weight R1 exists

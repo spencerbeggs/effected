@@ -18,7 +18,7 @@ JWS, JWT, JWK and JWKS sign and verify, safe for Cloudflare Workers: a thin laye
 
 ```bash
 pnpm vitest run packages/jwt        # from the repo root
-pnpm build --filter @effected/jwt   # never node savvy.build.ts
+pnpm build --filter @effected/jwt
 ```
 
 Tests live in `__test__/`, use `@effect/vitest` with `assert.*` (never `expect`).

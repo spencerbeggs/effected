@@ -8,10 +8,10 @@ resource: ../../packages/templates
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T16:08:15Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: c53ba4df405e377d
+    body: 7fa2684de729c9bc
 ---
 
 # @effected/templates
@@ -392,7 +392,7 @@ sections, so the reassignment path was never exercised.
 
 ## Build
 
-`savvy.build.ts` carries the one narrow `_base` suppression for the
+The bundler's default config carries the one narrow `_base` suppression for the
 synthesized schema-class bases; never widen it, and gate on a cold `pnpm
 build --filter @effected/templates` rather than the raw script. An
 internal type named on a method of a public class fails the gate even

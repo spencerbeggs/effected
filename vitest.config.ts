@@ -8,20 +8,32 @@ export default async () => {
 	const strategy = new DefaultDiscoverStrategy().extend({
 		buildProject: async (input, inherited) => {
 			if (input.name === "scratchpad" && process.env.CI) return null;
+			if (inherited === null) return null;
+			const test = {
+				...inherited.test,
+				env: {
+					...inherited.test?.env,
+					// pnpm sets this for the bootstrap, resolved from each process's cwd, so a child a test starts in a scratch
+					// directory dies on it. A test that runs sibling source in a child loads tsx itself.
+					NODE_OPTIONS: "",
+					// Linked source has no bundler define, and its 0.0.0 fallback makes the version comparison skip itself.
+					__PACKAGE_VERSION__: "0.0.0-source",
+				},
+			};
 			// @effected/cli-kit registers its own snapshot serializer the way a consumer does: through the config, by the
 			// module whose default export it is, never with expect.addSnapshotSerializer (effected#909).
-			if (input.name === "@effected/cli-kit" && inherited !== null) {
+			if (input.name === "@effected/cli-kit") {
 				return {
 					...inherited,
 					test: {
-						...inherited.test,
+						...test,
 						snapshotSerializers: [
 							fileURLToPath(new URL("packages/cli-kit/src/ui-testing-serializer.ts", import.meta.url)),
 						],
 					},
 				};
 			}
-			return inherited;
+			return { ...inherited, test };
 		},
 	});
 	const { projects, tags } = await AgentPlugin.discover(strategy);

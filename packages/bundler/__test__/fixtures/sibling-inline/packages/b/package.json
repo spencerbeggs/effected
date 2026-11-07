@@ -1,0 +1,16 @@
+{
+	"name": "@fixture/b",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./package.json": "./package.json"
+	},
+	"dependencies": {
+		"@fixture/a": "workspace:*"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

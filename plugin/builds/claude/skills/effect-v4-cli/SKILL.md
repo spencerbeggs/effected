@@ -83,7 +83,7 @@ NodeRuntime.runMain(
 - Pass `env: { appModule: import.meta.url }` to `CliRuntime.main` from a bin that is installed under `node_modules/@effected/`, so the failure report's span trail keeps its own spans.
 - Give a live view `render: CliUi.lazyView(() => import("./view.js"))` and a `final` document, so `--help`, agent, CI and piped runs never load React or Ink.
 - Report findings by succeeding and calling `CliExit.set(code)`, never by failing or calling `process.exit` in a handler.
-- Set `emitDts: false` in `savvy.build.ts` for a package whose `exports` is `"./package.json"` only.
+- Set `emitDts = false` under `[package.build]` in `effected.toml` for a package whose `exports` is `"./package.json"` only.
 - Confine every `process` read (`env`, `argv`, `cwd`, `execPath`, `isTTY`) to `bin.ts`, `main.ts` or `version.ts`; pass it down as a plain value.
 
 ## Footguns

@@ -74,11 +74,9 @@ Exported from `src/index.ts`:
 
 ```bash
 pnpm vitest run packages/toml/__test__   # this package's tests
-pnpm build --filter @effected/toml       # dev + prod, in order
+pnpm build --filter @effected/toml
 ```
-
-Never run `node savvy.build.ts --target prod` directly. It skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate.
 
 Tests live in `__test__/`, use `@effect/vitest`, and assert with `assert.*` — never `expect`.
 
-`savvy.build.ts` carries one narrow API Extractor suppression: `{ messageId: "ae-forgotten-export", pattern: "_base" }`, covering the heritage symbols synthesized by inline class factories — the largest such count in the repo, tracking the package's larger class surface. Never widen it. (For the current number, count `_base` in `dist/prod/issues.json` after a build; it moves with every class added, so it is not recorded here.) `package.json` stays `"private": true` — the bundler emits the publishable manifest.
+The bundler's default config carries one narrow API Extractor suppression: `{ messageId: "ae-forgotten-export", pattern: "_base" }`, covering the heritage symbols synthesized by inline class factories — the largest such count in the repo, tracking the package's larger class surface. Never widen it. (For the current number, count `_base` in `dist/prod/issues.json` after a build; it moves with every class added, so it is not recorded here.) `package.json` stays `"private": true` — the bundler emits the publishable manifest.

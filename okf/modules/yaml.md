@@ -8,10 +8,10 @@ resource: ../../packages/yaml
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T20:18:15Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 1cb41b23171ba359
+    body: d5d539a272d148e2
 ---
 
 # @effected/yaml
@@ -520,7 +520,7 @@ things matter at this level:
 
 All class factories are written inline with no exported `*_base` const; the
 synthesized `_base` heritage symbols — including the co-recursive AST bases
-and the visitor-event union — are suppressed narrowly in `savvy.build.ts` and
+and the visitor-event union — are suppressed narrowly in the bundler's default config and
 land in the `issues.json` `suppressed` bucket, keeping it zero-warning. Never
 widen the suppression. The `Schema.suspend` callbacks' own return-type
 annotations survive where recursion requires them, and genuinely reusable

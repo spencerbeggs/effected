@@ -17,10 +17,10 @@ sources:
     resource: ../../packages/commands/src
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-06T01:55:28Z
 integrity:
   generated:
-    body: f0ab6ed8ff02c868
+    body: 93b77ae4de120a63
 ---
 
 # Require the consolidated core's contract in R; never re-implement or re-declare it
@@ -47,10 +47,10 @@ services for behaviour, layers that compose. It never re-implements
 platform specifics. A library that needs a platform capability requires
 the core-declared service in its `R` channel, and the application
 provides the platform layer once at the edge. This is free under
-[R3](dependency-policy.md#r3-tier-2-does-not-propagate) — it is how
+[R3](dependency-policy.md#r3--tier-2-does-not-propagate) — it is how
 `walker`, `xdg` and `config-file` consume `FileSystem` — and it is
 categorically different from taking `@effect/platform-*` as a dependency
-edge, which is what [R2](dependency-policy.md#r2-tier-3-propagates)
+edge, which is what [R2](dependency-policy.md#r2--tier-3-propagates)
 taxes. The two must not be conflated.
 
 Three operating rules follow:

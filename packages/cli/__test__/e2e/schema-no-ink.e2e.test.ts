@@ -1,6 +1,6 @@
 // Agent and CI runs load neither Ink nor React. `vi.mock` cannot show this, because it cannot intercept a dependency
 // vitest externalizes and `@effected/cli-kit` resolves to built output, so the built bin runs in a child process
-// under a preload that records every module the process resolves. The root `globalSetup` rebuilds `dist/dev` before
+// under a preload that records every module the process resolves. The root `globalSetup` rebuilds `dist/prod` before
 // every run, so the bin is this tree's.
 
 import { spawnSync } from "node:child_process";
@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, assert, describe, it } from "@effect/vitest";
 
-const BIN = resolve(import.meta.dirname, "../../dist/dev/pkg/bin/effected.js");
+const BIN = resolve(import.meta.dirname, "../../dist/prod/npm/pkg/bin/effected.js");
 const HOOK = resolve(import.meta.dirname, "../fixtures/record-resolved.mjs");
 const FIXTURE = resolve(import.meta.dirname, "../fixtures/basic");
 const CLI_ROOT = resolve(import.meta.dirname, "../..");

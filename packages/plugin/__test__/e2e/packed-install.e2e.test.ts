@@ -55,7 +55,7 @@ const CATALOG_PNPMFILE = `${ROOT}/packages/pnpm-plugin-effected/dist/prod/npm/pk
 // Module evaluation, before `describe` runs. PackedInstall packs `dist/prod/npm/pkg` (the release
 // artifact): with it absent the suite skips locally and FAILS under CI, so it never stops proving the
 // published tarballs silently. The release workflow runs `ci:test` before `ci:build`, so the root
-// `ci:test` script prod-builds this carrier's closure first. The gate reads `CI` through `Config`.
+// `ci:test` script builds this carrier's closure first. The gate reads `CI` through `Config`.
 const GATE = await Effect.runPromise(
 	Effect.all([PackedInstall.preflight(RUN), PackedInstall.preflight(CATALOG_PLUGIN)]).pipe(
 		Effect.map(([carrier, catalog]) => ({
@@ -407,6 +407,8 @@ describe.skipIf(!RUNNABLE)("packed install (@effected/plugin)", () => {
 					const manifest = JSON.parse(yield* fs.readFileString(`${ROOT}/packages/plugin/package.json`)) as {
 						readonly version: string;
 					};
+					// The tool's own build chain ships in the closure a consumer installs.
+					assert.includeMembers([...PACKED], ["@effected/bundler", "@effected/changesets", "@effected/engine"]);
 					const result = yield* PackedInstall.run(RUN);
 					assert.deepStrictEqual(Object.keys(result.tarballs), [...PACKED]);
 					assert.isAbove(result.consumers.length, 0);
@@ -438,7 +440,7 @@ describe.skipIf(!RUNNABLE)("packed install (@effected/plugin)", () => {
 						const session = yield* mcpSession(consumer, env);
 						assert.deepStrictEqual(
 							session.listed.result?.tools?.map((tool) => tool.name),
-							["identity", "schema_check", "schema_build", "schema_validate"],
+							["identity", "schema_check", "schema_build", "schema_validate", "package_build", "action_build"],
 							label,
 						);
 						assert.strictEqual(session.called.result?.isError ?? false, false, label);

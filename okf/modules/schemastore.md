@@ -28,10 +28,10 @@ sources:
     resource: ../../packages/schemastore/src/StoreDocument.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T06:55:47Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: df805f66f5acb8cb
+    body: 2d1acd0452a7ac26
 ---
 
 # @effected/schemastore
@@ -692,7 +692,7 @@ index signature (`readonly [x: string]: unknown`), so
 augmentation. The lowering's per-attachment-site behaviour is not a
 recorded probe but a permanent test.[^annotation-tests]
 
-`savvy.build.ts` carries the narrow
+The bundler's default config carries the narrow
 `{ messageId: "ae-forgotten-export", pattern: "_base" }` suppression for
 the heritage symbols, and `SchemaTarget`'s class/interface merge carries
 a house `biome-ignore lint/suspicious/noUnsafeDeclarationMerging` under

@@ -118,13 +118,13 @@ Stop if you catch yourself doing any of these. Each has happened.
 
 - **Editing a skill to match a doc passage** when the claim is about runtime behaviour. That is the original error, repeated.
 - **"Fixing" something already correct.** During the `config-file` cycle two agents nearly re-exported a deliberately-deleted internal symbol onto the public API because they trusted a stale reference over the current tree. Read the current code before you believe a ticket.
-- **Widening a suppression to make a gate green.** The `_base` suppression in each `savvy.build.ts` is narrow and four packages depend on it staying narrow.
+- **Widening a suppression to make a gate green.** The `_base` suppression in the bundler's defaults is narrow and four packages depend on it staying narrow.
 - **Spreading `.repos/effect` across the plugin.** While the plugin is dogfooded from this repo alone, its agents and skills *may* assume the vendored tree — but only **two** files may name the path, for two different reasons, and everything else consults the skill:
   - `plugin/skills/effect-v4-source-lookup/SKILL.md` — resolves the ladder, so it owns the path for *reading*.
   - `plugin/hooks/session-start/orientation.sh`, the one SessionStart script both hosts run — reports the vendored-source posture and tells a repo that has no vendored tree where to put one, so it owns the path for *bootstrapping*. A hook that could not name the destination could not do its job.
 
   Any **third** hardcoded reference is the drift this red flag is about; collapse it into one of those two. See [pre-publish debt](#pre-publish-debt).
-- **Trusting a green build you did not run correctly.** `node savvy.build.ts --target prod` run directly skips `build:dev`, produces no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate. Build with `pnpm build --filter <pkg>` from the repo root.
+- **Trusting a green build you did not run correctly.** A turbo cache hit replays the previous run's log and `issues.json` verbatim, so build through `pnpm build --filter <pkg>` and check that `dist/prod/issues.json`'s `generatedAt` postdates the edit.
 - **Pointing a *writing* tool at the vendored tree.** `${CLAUDE_PROJECT_DIR}/.repos/effect` is read-only reference. On 2026-07-09, running `markdownlint-cli2` against it — merely to *check* whether it was excluded — silently rewrote 19 files, among them `migration/services.md` and `migration/forking.md`, because the repo's markdownlint config sets `"fix": true`. A corrupted rung-1 source is undetectable by reading it. If you must confirm the tree is untouched, `savvy repos status` (or the `repos_inspect` MCP tool) reports per-repo dirtiness. The fs and Bash guards now deny writes into `.repos/**` outright, but the status check remains the way to *verify*.
 
 ## Pre-publish debt

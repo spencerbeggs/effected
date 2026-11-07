@@ -191,11 +191,10 @@ source wins and the concept is a finding to report.
 
 ## What this agent does NOT do
 
-- **The action bundler and the scaffold.** `@savvy-web/github-action-builder`,
-  `action.config.ts`, rsbuild/rspack externals, the committed `dist/`, and the
-  `github-action-template` repo are downstream savvy-web tooling with their own
-  plugin. You write the action's *code*; you do not configure or debug its
-  bundle here.
+- **The action bundler and the scaffold.** `effected action build`, the
+  `[action]` tables of `effected.toml`, the committed `dist/`, and the
+  `github-action-template` repo belong to the build tool and the scaffold. You
+  write the action's *code*; you do not configure or debug its bundle here.
 - **Product scope and repo restructuring.** You implement against a decided
   design; you do not decide what the action should do.
 - **General Effect v4 feature work.** A new schema, service or CLI with no

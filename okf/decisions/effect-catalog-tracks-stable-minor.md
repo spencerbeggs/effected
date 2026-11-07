@@ -3,7 +3,6 @@ type: Decision
 title: The effect catalog takes caret ranges on the stable line
 description: "With Effect v4 stable, the effect and effect:peers catalogs give effect and every @effect/* package a caret range under lock-minor; the lockfile, not the catalog literal, fixes the exact version, and .repos/effect follows the lockfile."
 status: deprecated
-supersedes: effect-catalog-exact-pins.md
 tags:
   - architecture
   - compat
@@ -18,20 +17,20 @@ sources:
     title: "effect 4.0.0 release notes: packaging, versioning and stability tags"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-06T01:55:28Z
 verified:
   - by: human:spencer
     at: 2026-10-10T23:15:48Z
 integrity:
   generated:
-    body: a9caabbccd6801ca
+    body: 567722c87dcdb679
 ---
 
 # The effect catalog takes caret ranges on the stable line
 
 ## Context
 
-[The exact-pin decision](effect-catalog-exact-pins.md) held while Effect v4 was a run of release candidates. A caret on a prerelease floated across the release line, and a moving install could leave the vendored `.repos/effect` describing a surface that was not installed.
+The exact-pin decision held while Effect v4 was a run of release candidates. A caret on a prerelease floated across the release line, and a moving install could leave the vendored `.repos/effect` describing a surface that was not installed.
 
 Effect 4.0.0 is the first stable v4 release.[^effect-4-release] Its release notes make three promises that change the trade:
 

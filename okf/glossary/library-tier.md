@@ -11,10 +11,10 @@ sources:
     resource: ../project.md
 generated:
   by: "claude-code/opus-5"
-  at: 2026-11-05T06:55:47Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: c5c23dbed36085a6
+    body: 9c2f1d354c3089c0
 ---
 
 # Library tier (pure / boundary / integrated)
@@ -24,7 +24,7 @@ surface, answering the one question a consumer asks before taking an
 edge on it: what does depending on this cost me? Tier is a property of a
 package's own **runtime** surface — what it imports and whether it does
 IO — never of who consumes it. devDependencies never count toward tier:
-`@effect/vitest` and `@savvy-web/bundler` are test and build tooling,
+`@effect/vitest` and `@effected/plugin` are test and build tooling,
 irrelevant to the classification.
 
 ## The three tiers

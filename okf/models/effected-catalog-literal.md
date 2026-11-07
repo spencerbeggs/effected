@@ -1,25 +1,25 @@
 ---
 type: DataModel
 title: The effected catalog literal
-description: "The inline PnpmConfigPlugin call in savvy.build.ts declaring the one effected catalog, holding the Effect family and the kit, that the catalogs, the derived family pins and the allowed-versions table are generated from."
+description: "The inline PnpmConfigPlugin call in lib/build/pnpm-config.plugin.ts declaring the one effected catalog, holding the Effect family and the kit, that the catalogs, the derived family pins and the allowed-versions table are generated from."
 status: stable
-resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
+resource: ../../packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts
 tags:
   - release
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-01T21:43:51Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 28c2cc17c88d774e
+    body: 62daa2f489d8a8ac
 ---
 
 # The effected catalog literal
 
 ## Shape
 
-`packages/pnpm-plugin-effected/savvy.build.ts` calls `PnpmConfigPlugin({ ... })`
+`packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts` calls `PnpmConfigPlugin({ ... })`
 with a `catalogs` object carrying one declared catalog, `effected`, which
 generates an `effected:peers` twin from its `peer` fields; see [the one
 declared effected catalog](../decisions/one-declared-effected-catalog.md).
@@ -101,9 +101,8 @@ versions](../decisions/catalog-holds-next-release-versions.md).
 `rolldown-pnpm-config upgrade`'s CLI finds the catalog by statically
 walking the `PnpmConfigPlugin(...)` call argument for
 `.catalogs.<name>.packages`. Hoisting the literal into an exported
-`const` makes it invisible to that static walk. `savvy.build.ts` is
-itself a top-level `await build({...})` call, so a test cannot import it
-either — the package's own `__test__/catalog.test.ts` reads the source
+`const` makes it invisible to that static walk. Importing the module would
+run the plugin factory, so a test does not import it either — the package's own `__test__/catalog.test.ts` reads the source
 text the same way the CLI does, which is why that parsing approach exists
 at all rather than importing a value.
 

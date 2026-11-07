@@ -1,0 +1,10 @@
+{
+  "name": "dep-with-dev-file",
+  "version": "1.0.0",
+  "dependencies": {
+    "a": "~1.2.0"
+  },
+  "devDependencies": {
+    "a": "file:../a"
+  }
+}

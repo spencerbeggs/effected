@@ -282,9 +282,5 @@ never `expect`.
 
 ```bash
 pnpm vitest run --project @effected/mcp-kit   # this package's tests, from the repo root
-pnpm build --filter @effected/mcp-kit         # dev + prod, from the repo root
+pnpm build --filter @effected/mcp-kit   # from the repo root
 ```
-
-Never run `node savvy.build.ts --target prod` directly: it skips
-`build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` that
-looks exactly like a clean gate.

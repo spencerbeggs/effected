@@ -29,4 +29,4 @@ pnpm vitest run packages/lockfiles          # from the repo root
 pnpm build --filter @effected/lockfiles     # from the repo root
 ```
 
-Never run `node savvy.build.ts --target prod` directly — it skips `build:dev`, emits no `.d.ts`, and leaves a truncated `issues.json` shaped exactly like a clean gate. A clean `dist/prod/issues.json` carries **13** `_base` `suppressed` entries; `suppressed: 0` in the *prod* gate means the build did not run. A `suppressed: 13` in the log does not prove it ran either — a turbo cache hit replays the previous output verbatim; check that `dist/prod/issues.json`'s `generatedAt` postdates your last source edit (`okf/gotchas/turbo-cache-hit-replays-clean-log.md`).
+A clean `dist/prod/issues.json` carries **13** `_base` `suppressed` entries; `suppressed: 0` in the *prod* gate means the build did not run. A `suppressed: 13` in the log does not prove it ran either — a turbo cache hit replays the previous output verbatim; check that `dist/prod/issues.json`'s `generatedAt` postdates your last source edit (`okf/gotchas/turbo-cache-hit-replays-clean-log.md`).

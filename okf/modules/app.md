@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/app/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-27T13:22:20Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 72ea12750e29070b
+    body: 0c34467b22122cce
 ---
 
 # app
@@ -343,12 +343,8 @@ boundary is pinned by `__test__/entrypoints.test.ts` (see Module layout).
 
 ## Build
 
-`savvy.build.ts` carries **no suppression and needs none** — the package
-defines no class factories of its own, so there is no synthesized
-`_base` symbol to suppress. The workspace peers mean the `prepare`
-script is load-bearing: `xdg`, `store`, `config-file` and `memfs` link at
-their built output and must be built before this package's tests resolve
-them in a fresh checkout. Cross-package `{@link}` references resolve to
+The package defines no class factories of its own, so the bundler's default
+`_base` suppression has nothing to match. Cross-package `{@link}` references resolve to
 `ae-unresolved-link` — API Extractor resolves links within a package's
 own model only — so the house-safe spelling for a cross-package
 reference is a plain backticked name, never a `{@link}`. Gate on a

@@ -13,7 +13,7 @@ sources:
     resource: ../incidents/catalog-crossed-effect-minor.md
     title: "The catalog sync moved the effect catalog onto Effect 4.1 under a kit built on 4.0"
   - id: savvy-build
-    resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
+    resource: ../../packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts
     title: "The effect catalog block"
   - id: catalog-test
     resource: ../../packages/pnpm-plugin-effected/__test__/catalog.test.ts
@@ -23,10 +23,10 @@ sources:
     title: "The unattended upgrade --yes the sync runs"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 44622a2519a92021
+    body: 31c2bba4e1e992b7
   verified:
     by: human:spencer
     at: 2026-10-31T19:39:48Z
@@ -66,5 +66,5 @@ Every `effect` and `@effect/*` entry in the plugin's `effect` catalog is `range:
 
 [^incident]: [The catalog crossed an Effect minor](../incidents/catalog-crossed-effect-minor.md).
 [^sync-script]: `lib/scripts/catalog-sync.ts`
-[^savvy-build]: `packages/pnpm-plugin-effected/savvy.build.ts`
+[^savvy-build]: `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts`
 [^catalog-test]: `packages/pnpm-plugin-effected/__test__/catalog.test.ts`

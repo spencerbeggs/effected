@@ -1,0 +1,5 @@
+---
+"solo": minor
+---
+
+A change.

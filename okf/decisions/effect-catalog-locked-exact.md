@@ -18,7 +18,7 @@ sources:
     resource: https://github.com/Effect-TS/effect/issues/8994
     title: "Every @effect/* 4.0.3 satellite published to npm; core effect@4.0.3 did not"
   - id: savvy-build
-    resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
+    resource: ../../packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts
     title: "The effect catalog block and the HOLD overrides"
   - id: catalog-test
     resource: ../../packages/pnpm-plugin-effected/__test__/catalog.test.ts

@@ -449,14 +449,12 @@ code.** A filter that matches no test file prints `Tests: 0/0 passed` and exits
 disagreement between the two signals as the alarm, and read `unhandledErrors`
 alongside both. **Run vitest from the repo root** — from inside a package it
 does not load the root config — and never `--passWithNoTests`. In a kit
-monorepo, adding an export to an upstream package requires
-`pnpm build --filter <upstream>` before any downstream suite runs; a load-time
-`Cannot read properties of undefined (reading 'ast')` IS the stale-dist
-signature, and a `globalSetup` rebuild through `AgentPlugin.runScript` is
+monorepo a workspace link resolves to a sibling's `src/`, so no sibling needs
+building first; only a test that reads its own `dist` does, and a `globalSetup` build through `AgentPlugin.runScript` is
 not a guarantee against it: the script is skipped while its done-marker is
 younger than `VITEST_AGENT_RUNSCRIPT_BUILT_RECENTLY_MS` (30 s by default),
 so pin that to `1` in the setup or a run inside the window reads the
-previous `dist/dev`. The `ERR_LOAD_URL` setup-file case and the rest →
+previous build. The `ERR_LOAD_URL` setup-file case and the rest →
 **[references/running-the-suite.md](./references/running-the-suite.md)**.
 
 ## House conventions

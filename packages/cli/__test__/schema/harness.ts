@@ -8,6 +8,7 @@ import type { FileSystem } from "effect";
 import { Cause, ConfigProvider, Effect, Exit, Layer, Path, Result, Runtime, Schema, Stdio, Terminal } from "effect";
 import { ChildProcessSpawner } from "effect/process";
 import { TestConsole } from "effect/testing";
+import type { CommandDeps } from "../../src/commands/root.js";
 import type { SchemaCommandDeps } from "../../src/commands/schema/execute.js";
 import { run } from "../../src/main.js";
 
@@ -48,8 +49,9 @@ export const basicConfig = (
 		},
 	});
 
-export const depsFor = (config: unknown, overrides: Partial<SchemaCommandDeps> = {}): SchemaCommandDeps => ({
+export const depsFor = (config: unknown, overrides: Partial<SchemaCommandDeps> = {}): CommandDeps => ({
 	cwd: "/repo",
+	ci: false,
 	importModule: () => Promise.resolve({ default: config }),
 	...overrides,
 });
@@ -113,7 +115,7 @@ export const runCli = (args: ReadonlyArray<string>, options: CliOptions) =>
 		const outBefore = (yield* TestConsole.logLines).length;
 		const errBefore = (yield* TestConsole.errorLines).length;
 		const exit = yield* Effect.exit(
-			run({}, options.deps, environment(args, handle.layer, options.ttys, options.terminal)).pipe(
+			run({}, { ci: false, ...options.deps }, environment(args, handle.layer, options.ttys, options.terminal)).pipe(
 				Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: options.env ?? {} }))),
 			),
 		);

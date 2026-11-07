@@ -1,0 +1,7 @@
+{
+  "name": "missed-range",
+  "version": "1.0.0",
+  "dependencies": {
+    "a": "^0.1.0"
+  }
+}

@@ -17,7 +17,7 @@ The kit's OpenID Connect vocabulary over `@effected/jwt`: the `IdentityToken` is
 
 ```bash
 pnpm vitest run packages/oidc        # from the repo root
-pnpm build --filter @effected/oidc   # never node savvy.build.ts
+pnpm build --filter @effected/oidc
 ```
 
 Tests live in `__test__/`, use `@effect/vitest` with `assert.*` (never `expect`).

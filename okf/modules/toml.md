@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-28T17:01:30Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 0efce54a5a23127d
+    body: 51dcb611215d4ff8
 ---
 
 # toml
@@ -86,4 +86,4 @@ Named `Effect.fn` spans on the public fallible boundaries only. No per-node inst
 
 ## Build
 
-Scaffolded from a pure sibling with the api-extractor model wired at `website/lib/models/toml` in both `turbo.json` outputs and `savvy.build.ts`. The Schema class factories need the narrow `_base` suppression, one entry per class factory and no wider — this package carries the largest such count in the repository, tracking its larger class surface.
+Scaffolded from a pure sibling. The Schema class factories need the narrow `_base` suppression, one entry per class factory and no wider — this package carries the largest such count in the repository, tracking its larger class surface.

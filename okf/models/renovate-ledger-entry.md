@@ -19,12 +19,14 @@ sources:
     resource: ../../.claude/skills/effect-upgrade/SKILL.md
   - id: ere-probe
     resource: git grep -IE probe over okf/ on 2026-11-01
+  - id: floor-probe
+    resource: applicable.mjs fixture probe of floor membership on 2026-11-05
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T17:54:48Z
+  at: 2026-11-06T01:55:28Z
 integrity:
   generated:
-    body: 317623abd67b3623
+    body: 667d5cd96f4209d1
 ---
 
 # An upgrade-ledger entry is one change, selected by the versions a consumer's upgrade crosses
@@ -62,7 +64,14 @@ and so is any name that does not end in `.md`.
 | `floor` | A map of package name to a plain version (`X.Y.Z` or `X.Y.Z-pre`, no operator): the versions this round's consumers start from. May be empty. |
 
 The body is free prose. A reset rewrites `previous` and `floor`, and
-nothing else edits them.
+nothing else edits them. A reset only adds to `floor` or raises it: each
+package takes the round's highest `applies` threshold, and a package the
+round did not touch keeps its version. Only a package named in `floor`
+can trigger the chain, so a package dropped from it hides the older
+rounds from a consumer that lags only on that package. Such a consumer,
+moving `@effected/crypto` from 0.3.0 to 0.5.0 with `effect` already on the
+floor, saw 0 entries under a floor without `@effected/crypto` and 4 of 67
+with it.[^floor-probe]
 
 ## An entry
 
@@ -243,3 +252,6 @@ and runs with no plugin variables.
     upgrade ledger", "Record mode" and "Reset mode".
 [^ere-probe]: git grep -IE against okf/ on 2026-11-01: `4\.0\.[0-9]`
     matched 77 lines, `4\.0\.\d` matched 0.
+[^floor-probe]: `applicable.mjs` run on 2026-11-05 against a fixture lockfile
+    and a fixture baseline with `previous` at `@effected/ai-plugins@0.48.0`,
+    once with and once without `@effected/crypto` in `floor`.

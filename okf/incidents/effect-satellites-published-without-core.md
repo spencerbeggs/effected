@@ -26,7 +26,7 @@ sources:
     resource: https://github.com/spencerbeggs/effected/commit/c2919488
     title: "chore(pnpm-plugin-effect): update 27 catalog versions"
   - id: savvy-build
-    resource: ../../packages/pnpm-plugin-effected/savvy.build.ts
+    resource: ../../packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts
     title: "The exact effect catalog and the HOLD overrides"
 generated:
   by: "okfit/claude-code"

@@ -53,7 +53,7 @@ registry composition and a future one lands as construct modules only.
 
 ```bash
 pnpm vitest run packages/markdown/__test__   # this package's tests
-pnpm build --filter @effected/markdown       # dev + prod, in order
+pnpm build --filter @effected/markdown
 ```
 
 - Tests use `@effect/vitest` and `assert.*` — **never `expect`** — and live in
@@ -68,9 +68,7 @@ pnpm build --filter @effected/markdown       # dev + prod, in order
   on entry-for-entry data equality with the old map.
 - The `commonmark` oracle is an exact-pinned devDependency imported only by
   `__test__/oracle.property.test.ts` — never a runtime dep, never elsewhere.
-- Never run `node savvy.build.ts --target prod`: it skips `build:dev`, emits no
-  `.d.ts`, and leaves a truncated `issues.json` shaped like a clean gate.
-- `savvy.build.ts` carries one narrow API Extractor suppression
+- The bundler's default config carries one narrow API Extractor suppression
   (`ae-forgotten-export` / `_base`) for inline class-factory heritage symbols.
   **Never widen it.** `package.json` stays `"private": true` — the bundler
   emits the publishable manifest.

@@ -1,0 +1,7 @@
+{
+  "name": "tilde-range",
+  "version": "1.0.0",
+  "dependencies": {
+    "a": "~1.2.0"
+  }
+}

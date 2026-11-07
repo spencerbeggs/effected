@@ -66,7 +66,7 @@ file is ever reported `malformed` (a short prefix is `truncated`).
 ## Build and the self-reference
 
 `./cache` names root types through `import type * as Images from
-"@effected/images"`, and `savvy.build.ts` sets `dtsExternals:
+"@effected/images"`, and `effected.toml` sets `dtsExternals:
 ["@effected/images"]` so `cache.d.ts` refers to the root's types instead of
 copying them (the `cli-kit`/`jsonl` pattern). The `_base` suppression is the narrow
 house one; never widen it. A second suppression matches only the three messages `The symbol "Images" needs`, `ImageFacts` and `ImageParseError`: the type-only self-reference namespace and the two root types it reaches, reported against `cache.d.ts`. It is not a blanket `cache.d.ts` suppression. Only `Images` shows in `issues.json`'s `suppressed` array: the other two come from the self-reference pass with no file or line and are not listed once suppressed, but narrowing the pattern turns both into ciFatal warnings (checked with a cold build). A new named root type that a cache signature, or a member of `ImageFacts`, reaches would surface as a fourth message: write it structurally or derive it (`ImageExtension` is `ImageFacts["extension"]`, and the getter spells out its union) instead of widening the pattern. The bundler's second API Extractor pass
@@ -77,7 +77,7 @@ deprecated `okf/gotchas/self-reference-api-extractor-pass-looks-clean-when-it-cr
 
 ```bash
 pnpm vitest run packages/images        # from the repo root
-pnpm build --filter @effected/images   # never node savvy.build.ts
+pnpm build --filter @effected/images
 ```
 
 Tests live in `__test__/`, use `@effect/vitest` with `assert.*` (never

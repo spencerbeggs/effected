@@ -60,9 +60,8 @@ Everything durable about this package lives in `okf/`, not here. Start at
 
 ```bash
 pnpm vitest run packages/npm          # from the repo root
-pnpm build --filter @effected/npm     # dev + prod
+pnpm build --filter @effected/npm
 ```
 
-Never run `node savvy.build.ts --target prod` directly (root `CLAUDE.md` says
-why). A prod `issues.json` with `suppressed: 0` means the build did not run
-properly; `dist/dev/issues.json` legitimately has `suppressed: []`.
+A prod `issues.json` with `suppressed: 0` means the build did not run
+properly.

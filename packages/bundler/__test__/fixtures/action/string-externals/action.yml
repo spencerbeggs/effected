@@ -1,0 +1,5 @@
+name: string-externals
+description: Integration fixture for issue #81 — string externals regression.
+runs:
+  using: node24
+  main: dist/main.js

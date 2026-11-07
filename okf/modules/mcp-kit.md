@@ -9,10 +9,10 @@ layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T16:36:54Z
+  at: 2026-11-06T01:55:28Z
 integrity:
   generated:
-    body: 6c70a3c0b252856f
+    body: 34c4ce9bb6eee3c6
 ---
 
 # @effected/mcp-kit
@@ -268,8 +268,7 @@ now targets.
 
 ## See also
 
-- [Strict MCP input is reported by core](../decisions/mcp-strict-input-reported-by-core.md), which supersedes
-  [D2: strict MCP input is upstream-first](../decisions/mcp-strict-input-upstream-first.md)
+- [Strict MCP input is reported by core](../decisions/mcp-strict-input-reported-by-core.md)
 - [D10: `McpToolAudit` enforces object-rooted outputs by default](../decisions/mcp-tool-audit-object-rooted-outputs.md)
 - [D: strict default for Claude Code](../decisions/mcp-strict-default-for-claude-code.md)
 - [`@effected/mcp-kit/node` ships `StdioCapture`](../decisions/mcp-node-subpath.md)

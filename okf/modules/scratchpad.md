@@ -13,10 +13,10 @@ sources:
     resource: ../../scratchpad/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-01T21:43:51Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 94e8b75411a5d309
+    body: 9249ca4318732bd2
 ---
 
 # scratchpad
@@ -37,7 +37,7 @@ instead.
 `packages/*` glob's sibling entry in `pnpm-workspace.yaml` — so
 `workspace:*` dependencies resolve and turbo, vitest-agent and pnpm treat
 it like any other member. But it is a fixture, not a package: `"private":
-true`, no `publishConfig`, no `savvy.build.ts`, no build scripts. Its
+true`, no `publishConfig`, no the bundler's default config, no build scripts. Its
 only scripts are the three runners (`probe`, `check`, `reset`).
 
 Its manifest lists `effect: catalog:effected` and every published
@@ -79,23 +79,19 @@ vitest-agent plugin warns if a `.test.ts` file lands there.
 
 ## Two probe venues
 
-There is no zero-staleness venue: workspace imports do not resolve to
-`./src/index.ts`; both venues read built output and differ only in which
-build they read.
+Workspace mode reads source and artifact mode reads built output, so only
+artifact mode can go stale.
 
 - **Workspace mode** (the default for API-semantics probes): a bare
-  `@effected/<pkg>` import resolves through pnpm's workspace linking,
-  which honors each package's `publishConfig.linkDirectory`/`directory`,
-  to that package's `dist/dev/pkg` build. Probes type against the dev
-  build's declarations, kept fresh by install prepare hooks and the
-  vitest globalSetup turbo pre-build. After editing a package's `src/`,
-  run `pnpm build --filter @effected/<pkg>` before trusting a tsx probe;
-  test-shaped probes get the pre-build automatically.
+  `@effected/<pkg>` import resolves through the workspace link to that
+  package's `src/`, the target its source manifest's `exports` names. No
+  rebuild is needed after a source edit, and `pnpm scratchpad:check`
+  typechecks against the same source.
 - **Artifact mode**: deep-import
   `packages/<pkg>/dist/prod/npm/pkg/...` to interrogate the built prod
   artifact, typed via
   `as unknown as typeof import("@effected/<pkg>")` — the double cast is
-  required because dev and prod declarations of private-field classes
+  required because source and built declarations of private-field classes
   are nominally distinct. `lib/templates/artifact-probe.ts` demonstrates
   it. Build the target first.
 
@@ -132,10 +128,11 @@ Root convenience aliases: `scratchpad:probe`, `scratchpad:check`,
 ## Freshness: turbo pre-build in the root globalSetup
 
 The root `vitest.setup.ts`, wired as `globalSetup` in the root
-`vitest.config.ts`, runs `turbo run build:dev` through the vitest-agent
-plugin's script runner before every vitest run, CLI or MCP, any project —
-a turbo-cache no-op when nothing changed. Since workspace mode reads
-`dist/dev`, this matters for both venues, not just artifact probes.
+`vitest.config.ts`, runs `turbo run build` for the packages whose tests read
+their own `dist`, through the vitest-agent plugin's script runner, before
+every vitest run, CLI or MCP, any project. It is a turbo-cache no-op when
+nothing changed. Workspace mode reads source and does not depend on it; an
+artifact probe of a package outside that filter builds its target first.
 
 ## Reset
 
@@ -172,8 +169,7 @@ the venue rule rather than breaking it, which is why the committed
 
 ## Testing and build
 
-Not applicable in the ordinary sense: `scratchpad/` has no `build:dev` or
-`build:prod`, and CI never sees the project (skipped when `CI` is set).
+Not applicable in the ordinary sense: `scratchpad/` has no `build` task, and CI never sees the project (skipped when `CI` is set).
 Its own "tests" are the seeded `probe.test.ts` demonstration and whatever
 test-shaped probes an agent writes in the gitignored `__test__/*.test.ts`
 zone, none of which gate anything.

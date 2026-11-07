@@ -33,7 +33,7 @@ const environment = (args: ReadonlyArray<string>) =>
 const runMain = (args: ReadonlyArray<string>, options: Parameters<typeof run>[0] = {}) =>
 	Effect.gen(function* () {
 		const exit = yield* Effect.exit(
-			run(options, { cwd: "/repo" }, environment(args)).pipe(
+			run(options, { cwd: "/repo", ci: false }, environment(args)).pipe(
 				Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} }))),
 			),
 		);

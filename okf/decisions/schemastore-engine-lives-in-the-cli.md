@@ -25,19 +25,21 @@ sources:
     resource: ../../packages/schemastore/src/SchemaValidator.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T06:55:47Z
+  at: 2026-11-06T01:55:28Z
 integrity:
   generated:
-    body: 817b9fc6045fe8e3
+    body: f56c84b0ccdf21ab
   verified:
     by: human:spencer
-    at: 2026-11-05T14:25:52Z
-    content: 93b8e194e00ad59a
+    at: 2026-11-06T01:54:11Z
+    content: 5c85c89cdfd22fb6
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
   - by: human:spencer
     at: 2026-11-05T14:25:52Z
+  - by: human:spencer
+    at: 2026-11-06T01:54:11Z
 ---
 
 # The ajv engine lives in the effected tool, and the library returns to boundary tier
@@ -95,7 +97,7 @@ the `SchemaValidator` service, `SchemaValidatorShape`,
 `noop`, `makeTest` and `layerTest`.[^schema-validator] `ajv` and
 `ajv-formats` leave its dependencies; `@effected/semver` is its only
 runtime dependency.[^library-package-json] Under
-[R1](../conventions/dependency-policy.md#r1-tiers-1-and-2-take-no-external-runtime-dependencies)
+[R1](../conventions/dependency-policy.md#r1--tiers-1-and-2-take-no-external-runtime-dependencies)
 that is a boundary package, and the tier flips back.
 
 The engine package is an application package with no library tier:

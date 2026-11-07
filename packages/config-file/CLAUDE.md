@@ -286,7 +286,7 @@ reached from the root breaks every unbundled consumer that skipped it (#250).
 `__test__/subpaths.test.ts` walks the built module graph and fails on it.
 The codec modules `import type { ConfigCodec } from "@effected/config-file"`
 (the package's own name) so each subpath's declarations refer to the root's
-type; `savvy.build.ts` keeps that import external (`dtsExternals`) and scopes
+type; `effected.toml` keeps that import external (`dtsExternals`) and scopes
 an `ae-forgotten-export` suppression to the three subpath entries for API
 Extractor's false positive on the self-reference, the cli `./ui` precedent.
 The same test pins that each subpath `.d.ts` declares nothing but its codec,
@@ -314,7 +314,7 @@ pnpm build --filter @effected/config-file   # from the repo root
   "@effected/config-file"`, never a relative path. A relative import makes
   the declaration rollup copy the root's declarations into the subpath's
   `.d.ts`, which gives you a second, unrelated copy of each type. With the
-  self-name import, list the package name in `savvy.build.ts`'s
+  self-name import, list the package name in `effected.toml`'s
   `dtsExternals` so the import stays external. The emitted `.d.ts` is then
   correct, but API Extractor's second pass still reports every root type it
   reaches as `ae-forgotten-export` `needs to be exported by the entry point
@@ -323,9 +323,9 @@ pnpm build --filter @effected/config-file   # from the repo root
   never a bare messageId suppression, and extend `__test__/subpaths.test.ts`'s
   `SUBPATHS` list. The test's declarations check (only the exported codec is
   declared, `@public`, importing the root) is what proves the suppression
-  hid nothing. `@effected/cli-kit`'s `./ui` (`savvy.build.ts`,
+  hid nothing. `@effected/cli-kit`'s `./ui` (`effected.toml`,
   `__test__/declarations.test.ts`) is the same recipe at larger scale.
-- `savvy.build.ts` carries two **narrow** suppressions:
+- `effected.toml` carries two **narrow** suppressions:
   `{ messageId: "ae-forgotten-export", pattern: "_base" }`, and one scoped to
   the `jsonc`/`yaml`/`toml` entry points (see the codecs section). Never
   widen either.

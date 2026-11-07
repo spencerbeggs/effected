@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/workspaces/__test__/fixtures/peers/README.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T21:38:36Z
+  at: 2026-11-06T01:55:28Z
 integrity:
   generated:
-    body: 5e3f480d91f21917
+    body: cfce5a9b1ddfd84c
 ---
 
 # @effected/workspaces peer-dependency checking
@@ -122,7 +122,7 @@ therefore be part of the tree's identity, while suppression rules change
 only what pnpm *says* about a tree it would have built identically. So a
 lockfile-only peer check cannot be correct without external input, by
 construction, and the [config-dependency
-seam](workspaces-catalogs.md#configdependencyhooks-the-opt-in-replay-seam)
+seam](workspaces-catalogs.md#configdependencyhooks--the-opt-in-replay-seam)
 exists to supply that input rather than to guess at it.
 
 The rules have two sources: the `pnpm-workspace.yaml` block and

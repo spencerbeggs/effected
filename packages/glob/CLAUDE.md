@@ -135,10 +135,10 @@ identical and immune to ambient drift).
 
 ```bash
 pnpm vitest run --project @effected/glob   # this package's tests, from the repo root
-pnpm build --filter @effected/glob         # dev + prod, from the repo root
+pnpm build --filter @effected/glob   # from the repo root
 ```
 
-Never run `node savvy.build.ts --target prod` directly. `savvy.build.ts`
+The bundler's default config
 carries one narrow suppression `{ messageId: "ae-forgotten-export", pattern:
 "_base" }` for the four synthesized class heritage symbols — **never widen
 it**. `package.json` stays `"private": true`.

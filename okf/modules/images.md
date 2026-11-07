@@ -11,10 +11,10 @@ tags:
   - performance
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:53:05Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 638aae3935a02a1f
+    body: 12849d90666c2837
 ---
 
 # `@effected/images`
@@ -53,7 +53,7 @@ Verdict at the site, per [the require-in-R default](../conventions/require-in-r-
 
 ## Build and the self-reference
 
-Cache-side modules name root types through a type-only `import type * as Images from "@effected/images"` and import runtime values relatively, the `cli-kit` and `jsonl` pattern, with `dtsExternals` set so `cache.d.ts` refers to the root's types. The bundler's second API Extractor pass resolves that self-reference to the package's built declarations, so a clean build reports 0 warnings; the [deprecated gotcha](../gotchas/self-reference-api-extractor-pass-looks-clean-when-it-crashes.md) records the earlier `ae-wrong-input-file-type`. `savvy.build.ts` carries one narrow suppression for it besides the house `_base` one: `ae-forgotten-export` for exactly three messages, the `Images` namespace and the two root types the self-reference reaches, `ImageFacts` and `ImageParseError`, reported against `cache.d.ts`. Only the `Images` entry appears in `issues.json`'s `suppressed` array; the other two carry no file or line and are not listed once suppressed, yet a cold build with the pattern narrowed to `Images` reports both as ciFatal warnings, so all three alternatives are load-bearing. A new named root type reachable from `./cache` would surface as a fourth; keep such types structural or derived rather than widening the pattern.
+Cache-side modules name root types through a type-only `import type * as Images from "@effected/images"` and import runtime values relatively, the `cli-kit` and `jsonl` pattern, with `dtsExternals` set so `cache.d.ts` refers to the root's types. The bundler's second API Extractor pass resolves that self-reference to the package's built declarations, so a clean build reports 0 warnings; the [deprecated gotcha](../gotchas/self-reference-api-extractor-pass-looks-clean-when-it-crashes.md) records the earlier `ae-wrong-input-file-type`. `effected.toml` carries one narrow suppression for it besides the house `_base` one: `ae-forgotten-export` for exactly three messages, the `Images` namespace and the two root types the self-reference reaches, `ImageFacts` and `ImageParseError`, reported against `cache.d.ts`. Only the `Images` entry appears in `issues.json`'s `suppressed` array; the other two carry no file or line and are not listed once suppressed, yet a cold build with the pattern narrowed to `Images` reports both as ciFatal warnings, so all three alternatives are load-bearing. A new named root type reachable from `./cache` would surface as a fourth; keep such types structural or derived rather than widening the pattern.
 
 ## Hardening
 

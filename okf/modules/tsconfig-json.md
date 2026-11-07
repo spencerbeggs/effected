@@ -9,17 +9,17 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-11-06T20:09:15Z
 integrity:
   generated:
-    body: 847a622f1c35a1f5
+    body: 32fba74d958e9d1c
 ---
 
 # tsconfig-json
 
 ## Purpose
 
-`@effected/tsconfig-json` reads, decodes, validates, resolves and constructs `tsconfig.json` files: string-level schemas for the document shape, full `extends`-chain resolution matching `tsc` semantics, nearest-tsconfig upward discovery, a data-owned codec between string option values and TypeScript's numeric enums, and a portable-tsconfig filter for virtual-TS environments. It is a new invention scoped by named consumer surveys, not a port. It enforces the kit's TypeScript posture: version-coupled parts of tsconfig knowledge become plain data owned here, so no `@effected/*` package ever imports `typescript` — see [no typescript imports](../conventions/no-typescript-imports.md).
+`@effected/tsconfig-json` reads, decodes, validates, resolves and constructs `tsconfig.json` files: string-level schemas for the document shape, full `extends`-chain resolution matching `tsc` semantics, nearest-tsconfig upward discovery, a data-owned codec between string option values and TypeScript's numeric enums, and a portable-tsconfig filter for virtual-TS environments. It is a new invention scoped by named consumer surveys, not a port. It enforces the kit's TypeScript posture: version-coupled parts of tsconfig knowledge become plain data owned here, so no package needs `typescript` for them — see [typescript stays in the bundler](../conventions/typescript-stays-in-the-bundler.md).
 
 ## One package, not two
 
@@ -95,8 +95,8 @@ Typed errors owned by their modules, under the restrained-granularity rule of on
 
 ## Consumers this API was designed against
 
-`rspress-plugin-api-extractor`'s tsconfig parser loads a tsconfig by path, resolves extends, extracts a compiler-options subset, needs the extended-path metadata, and feeds numeric options to a virtual-TS environment. `@savvy-web/bundler`'s tsconfig resolver does the same load-and-resolve, followed by the numeric-to-portable-string conversion this package's string-level schemas eliminate outright. `type-registry-effect` (external) consumes numeric compiler options in its virtual-TS environment, which is the enum codec's encode target. Out of scope: the bundler's declaration-file AST walkers and the api-extractor plugin's Twoslash type-checking keep direct `typescript` as a sanctioned island — this package resolves and shapes configuration; it never runs a compiler.
+`rspress-plugin-api-extractor`'s tsconfig parser loads a tsconfig by path, resolves extends, extracts a compiler-options subset, needs the extended-path metadata, and feeds numeric options to a virtual-TS environment. `@effected/bundler`'s tsconfig resolver does the same load-and-resolve, followed by the numeric-to-portable-string conversion this package's string-level schemas eliminate outright. `type-registry-effect` (external) consumes numeric compiler options in its virtual-TS environment, which is the enum codec's encode target. Out of scope: the bundler's declaration-file AST walkers and the api-extractor plugin's Twoslash type-checking keep direct `typescript` as a sanctioned island — this package resolves and shapes configuration; it never runs a compiler.
 
 ## Build
 
-Standard gates: `tsc --noEmit`, a zero-warning `dist/prod/issues.json`, Biome and markdownlint clean, the full suite green. `savvy.build.ts` carries the standard narrow `_base` suppression; the prod gate expects a **non-zero** suppressed count — `suppressed: 0` means the build did not run properly.
+Standard gates: `tsc --noEmit`, a zero-warning `dist/prod/issues.json`, Biome and markdownlint clean, the full suite green. The bundler's default config carries the standard narrow `_base` suppression; the prod gate expects a **non-zero** suppressed count — `suppressed: 0` means the build did not run properly.

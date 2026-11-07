@@ -1,0 +1,33 @@
+{
+	"$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
+	"access": "restricted",
+	"baseBranch": "main",
+	"changelog": [
+		"@savvy-web/changelog",
+		{
+			"packages": {
+				"@effected/ai-plugins": {
+					"versionFiles": [
+						{
+							"glob": "plugin/builds/claude/.claude-plugin/plugin.json",
+							"paths": ["$.version"]
+						},
+						{
+							"glob": "plugin/builds/copilot/plugin.json",
+							"paths": ["$.version"]
+						}
+					]
+				}
+			},
+			"repo": "spencerbeggs/effected"
+		}
+	],
+	"commit": false,
+	"fixed": [],
+	"ignore": ["docs", "scratchpad"],
+	"privatePackages": {
+		"tag": true,
+		"version": true
+	},
+	"updateInternalDependencies": "patch"
+}

@@ -29,14 +29,13 @@ import type { WorkspacePackage } from "./WorkspacePackage.js";
  * @remarks
  * `{ directory }` runs `npm pack` in that subdirectory of each package, whose
  * manifest must already be publish-ready. The default,
- * `{ directory: "dist/prod/npm/pkg" }`, is `@savvy-web/bundler`'s prod npm
+ * `{ directory: "dist/prod/npm/pkg" }`, is `@effected/bundler`'s npm
  * output: the same file list a release publishes.
  *
  * `"source"` runs `pnpm pack` in the package directory: pnpm honours
  * `publishConfig.directory` and rewrites `workspace:` and `catalog:`
- * specifiers. Two costs. Under `@savvy-web/bundler`, `publishConfig.directory`
- * names the DEV build, so source mode proves the dev artifact, not the
- * published one. And pnpm can rewrite a `workspace:` specifier only in a
+ * specifiers. A package that sets `publishConfig.directory` to anything but its
+ * release output proves that directory, not the published one. And pnpm can rewrite a `workspace:` specifier only in a
  * workspace that has been `pnpm install`ed: in a never-installed one the pack
  * fails with `ERR_PNPM_CANNOT_RESOLVE_WORKSPACE_PROTOCOL`, which
  * `PackedInstall.run` reports as a `PackFailed` error naming the missing
@@ -74,7 +73,7 @@ export interface PackedInstallClosureOptions {
 	 * For a closure member that imports a surface of a dependency existing
 	 * only in a sibling checkout's unreleased build, which the registry's copy
 	 * lacks. A directory is `npm pack`ed, so it must be
-	 * publish-ready (for a package built by `@savvy-web/bundler`, its
+	 * publish-ready (for a package built by `@effected/bundler`, its
 	 * `dist/prod/npm/pkg`); a `.tgz` is used as it is. Either way the packed
 	 * manifest must be named as its key, carry no specifier only a workspace
 	 * could resolve, and it joins `PackedInstallResult.tarballs`. Each
@@ -745,7 +744,7 @@ export interface PackedInstallGate {
 }
 
 // npm-packing the prod output is byte-identical to the published tarball;
-// pnpm-packing the source packs the dev build.
+// pnpm-packing the source packs whatever publishConfig.directory names.
 const DEFAULT_PACK_FROM: PackSource = { directory: "dist/prod/npm/pkg" };
 const WORKSPACE_PROTOCOL_NOT_INSTALLED = "ERR_PNPM_CANNOT_RESOLVE_WORKSPACE_PROTOCOL";
 const TAIL = 2000;
@@ -1116,9 +1115,8 @@ export class PackedInstall {
 	 * (default `{ directory: "dist/prod/npm/pkg" }`), the same file whose
 	 * absence makes the run fail `PackSourceMissing`. Under `packFrom: "source"`
 	 * the packer builds nothing of its own, so nothing is checked and the
-	 * result is ready. A package a bundler's dev build produced is no
-	 * substitute: the prod output exists only after the prod build, which a
-	 * test job's usual `build:dev` pre-step does not run. Pair it with
+	 * result is ready. The output exists only after the build, which a test job
+	 * has to run first. Pair it with
 	 * {@link PackedInstall.gate} to skip locally and fail under CI.
 	 *
 	 * Fails as `closure` does, plus `Io` when a path cannot be inspected.
@@ -1174,9 +1172,8 @@ export class PackedInstall {
 	 * unreadable `CI` counts as unset. Ready is always `"run"`;
 	 * missing is `"skip"` off CI and `"fail"` on it, so a CI job that never ran
 	 * the prod build cannot pass by silently skipping the proof. The message
-	 * names every missing path. The test job must run the prod build
-	 * (`build:prod` for a `@savvy-web/bundler` package) before the packed-install
-	 * tests: a dev build leaves `dist/prod` absent.
+	 * names every missing path. The test job must run the build (`build` for an
+	 * `@effected/bundler` package) before the packed-install tests.
 	 *
 	 * @example
 	 * ```ts
@@ -1202,7 +1199,7 @@ export class PackedInstall {
 			if (preflight.ready) return { action: "run", message: "" } satisfies PackedInstallGate;
 			const ci = yield* Config.option(Config.String("CI")).pipe(Effect.orElseSucceed(() => Option.none<string>()));
 			const underCi = Option.isSome(ci) && !["", "0", "false"].includes(ci.value.toLowerCase());
-			const message = `the pack source is missing: ${preflight.missing.join(", ")}; run the prod build (build:prod) before the packed-install tests`;
+			const message = `the pack source is missing: ${preflight.missing.join(", ")}; run pnpm build --filter <package> before the packed-install tests`;
 			return (
 				underCi
 					? { action: "fail", message: `${message}; it must not be skipped under CI` }

@@ -14,10 +14,10 @@ sources:
     resource: ../../packages/github-actions/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:53:05Z
+  at: 2026-11-06T22:24:55Z
 integrity:
   generated:
-    body: b343e896a2194be0
+    body: b277b3aeec6579c3
   verified:
     by: human:spencer
     at: 2026-11-02T17:04:46Z
@@ -105,7 +105,7 @@ the `pnpm-plugin-effected` companion.
 | `@effected/xdg` | boundary | `vitest-agent`; zero runtime dependencies, does not depend on `store` |
 | `@effected/workspaces` | integrated | `vitest-agent`, `silk-update-action`, `savvy-web/systems`; implements `@effected/npm`'s resolver contracts |
 | `@effected/runtimes` | boundary | the `runtime-resolver` application's library half |
-| `@effected/tsconfig-json` | boundary | `rspress-plugin-api-extractor`'s tsconfig path and the `@savvy-web/bundler` port |
+| `@effected/tsconfig-json` | boundary | `rspress-plugin-api-extractor`'s tsconfig path and `@effected/bundler` |
 | `@effected/git` | boundary | typed git introspection over core's `ChildProcessSpawner`; consumers are `workspaces` and `savvy-web/systems` |
 | `@effected/spdx` | pure | vendored SPDX license expressions as pure schemas; `package-json` delegates license validation to it |
 | `@effected/app` | integrated | the composition layer over `xdg` + `config-file` + `store` |

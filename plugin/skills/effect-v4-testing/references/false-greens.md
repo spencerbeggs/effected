@@ -137,34 +137,34 @@ export default defineConfig({
 The tell is an `ERR_LOAD_URL` naming a setup file inside a *package*
 directory. Fix the config; do not add a cwd rule to work around it.
 
-### A `globalSetup` rebuild that was SKIPPED leaves a stale upstream `dist`
+### A `globalSetup` rebuild that was SKIPPED leaves a stale `dist`
 
-In a kit monorepo every cross-package import resolves to the sibling's built
-`dist/dev` (the `publishConfig.directory` the workspace link points at), never
-to its `src/`, so a downstream test sees an upstream `src` edit only when the
-build actually ran. A root `globalSetup` that rebuilds through
+In a kit monorepo a workspace link resolves to the sibling's `src/`, so a
+downstream test sees an upstream edit with no build. Only a test that reads
+its **own built output** (`dist/prod`, a packed install) depends on a build
+having run. A root `globalSetup` that builds through
 `@vitest-agent/plugin`'s `AgentPlugin.runScript` looks like that guarantee and
 is not one: `runScript` skips its command when the done-marker it wrote on
 the last success is younger than `VITEST_AGENT_RUNSCRIPT_BUILT_RECENTLY_MS`
 (30 s by default). The window exists so a *concurrent* second vitest process
 trusts the winner's build, but the next *sequential* run inside it is skipped
-too — edit a leaf package, run a downstream suite within 30 s, and it reads
-the previous build. A sentinel export added upstream and asserted downstream
-makes it visible: the run inside the window fails with the upstream
-`dist/dev/issues.json`'s `generatedAt` unmoved; with the window disabled the
+too — edit the package, run a suite that reads its `dist` within 30 s, and it reads
+the previous build. A sentinel export added to the source and asserted from
+the built output makes it visible: the run inside the window fails with
+`dist/prod/issues.json`'s `generatedAt` unmoved; with the window disabled the
 same run rebuilds and passes.
 
 Pin the window in the setup, before the `runScript` call:
 
 ```ts
 process.env.VITEST_AGENT_RUNSCRIPT_BUILT_RECENTLY_MS ??= "1";
-AgentPlugin.runScript("pnpm exec turbo run build:dev --output-logs=errors-only");
+AgentPlugin.runScript("pnpm exec turbo run build --output-logs=errors-only");
 ```
 
 A 1 ms window keeps the lock's serialization and drops the trust; turbo's
 cache keeps the re-run a fast no-op. Never raise it to make runs feel faster:
 the time saved is turbo's cache hit, and the price is a stale build read
-silently. Diagnosis rule: a downstream test that ignores an upstream edit is
+silently. Diagnosis rule: a test that ignores an edit to the output it reads is
 a build that did not run, not a turbo input gap — check `generatedAt` against
 the edit before reading the test as wrong.
 
