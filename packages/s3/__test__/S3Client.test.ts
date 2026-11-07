@@ -930,8 +930,8 @@ describe("transport failures", () => {
 			const error = yield* Effect.flip(s3.put("k", "v"));
 			if (error._tag !== "S3TransportError") return assert.fail(error.message);
 			const reachable = strings(error);
-			// Positive control: the walk does see into the cause.
-			assert.isTrue(reachable.some((text) => text.includes("account.r2.example.com")));
+			// Positive control: the walk does see into the cause (the endpoint host, as a whole label run).
+			assert.isTrue(reachable.some((text) => /(^|[^\w.-])account\.r2\.example\.com(?![\w-])/.test(text)));
 			for (const secret of [SESSION_TOKEN, "Signature=", SECRET_ACCESS_KEY]) {
 				assert.isFalse(
 					reachable.some((text) => text.includes(secret)),

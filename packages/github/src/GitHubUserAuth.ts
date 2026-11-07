@@ -690,8 +690,15 @@ const validUrl = (name: string, value: string): Effect.Effect<string> => {
 		return wiring(`the ${name} option must be an absolute URL, got ${JSON.stringify(value)}`);
 	}
 	return parsed.protocol === "https:" || parsed.protocol === "http:"
-		? Effect.succeed(value.replace(/\/+$/, ""))
+		? Effect.succeed(trimTrailingSlashes(value))
 		: wiring(`the ${name} option must be an http(s) URL, got ${JSON.stringify(value)}`);
+};
+
+/** A linear trim: a `/+$` regex backtracks quadratically on a long run of slashes. */
+const trimTrailingSlashes = (value: string): string => {
+	let end = value.length;
+	while (end > 0 && value[end - 1] === "/") end--;
+	return value.slice(0, end);
 };
 
 const makeUserAuth = (options: GitHubUserAuthOptions): Effect.Effect<GitHubUserAuthShape> =>
