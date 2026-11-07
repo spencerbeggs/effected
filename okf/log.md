@@ -17,6 +17,8 @@
 * Updated @effected/github
 * Added bun below 1.4.4 hoists api-extractor's typescript over the tool's peer
 * Updated @effected/markdown frontmatter
+* Added @effected/s3
+* Added Raw S3 objects get their own boundary package, with a ListObjectsV2 reader that fails a wrong root
 
 ## 2026-11-06
 

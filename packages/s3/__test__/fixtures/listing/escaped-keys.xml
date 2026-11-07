@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><IsTruncated>false</IsTruncated>
+<Contents><Key>a &amp; b &lt;c&gt; &quot;d&quot; &apos;e&apos;</Key><Size>1</Size><LastModified>2026-11-06T12:00:00Z</LastModified></Contents>
+<Contents><Key>caf&#233;/&#x1F600;.txt</Key><Size>2</Size><LastModified>2026-11-06T12:00:00Z</LastModified></Contents>
+<Contents><Key><![CDATA[cdata <raw> & key]]></Key><Size>3</Size><LastModified>2026-11-06T12:00:00Z</LastModified></Contents>
+<Contents><Key>  spaced key  </Key><Size>4</Size><LastModified>2026-11-06T12:00:00Z</LastModified></Contents>
+</ListBucketResult>
