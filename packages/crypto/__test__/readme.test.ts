@@ -1,5 +1,5 @@
 // The README's examples, compiled and run, so the published page cannot drift from the API.
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { NodeCrypto } from "@effect/platform-node";
 import { assert, describe, it, layer } from "@effect/vitest";
 import { Effect, Layer, Redacted, Schema } from "effect";
@@ -7,7 +7,7 @@ import type { CryptoError } from "effect/crypto";
 import { Digest, Mac, SecureRandom } from "effect/crypto";
 import { HttpClient, HttpClientError } from "effect/http";
 import type { FingerprintError, SigV4Credentials, SigV4PathError } from "../src/index.js";
-import { ConstantTime, Fingerprint, Hmac, HttpRedaction, SigV4 } from "../src/index.js";
+import { ConstantTime, Fingerprint, Hash, Hmac, HttpRedaction, SigV4 } from "../src/index.js";
 
 // README: What to provide
 export const CryptoLive: Layer.Layer<Mac.Mac | Digest.Digest> = Layer.mergeAll(
@@ -36,6 +36,10 @@ export const verifyDelivery = (
 	signature: string,
 ): Effect.Effect<boolean, CryptoError.CryptoError, Mac.Mac> =>
 	Hmac.verify({ algorithm: "SHA-256", key: secret, message: [`${timestamp}.`, body], signature, encoding: "hex" });
+
+// README: Hash a message
+export const archiveKey = (window: number, body: Uint8Array): Effect.Effect<string, never, Digest.Digest> =>
+	Hash.digest({ algorithm: "SHA-256", message: [`${window}.`, body], encoding: "hex" });
 
 // README: Compare in constant time
 const expectedHex = "9f86d081884c7d65";
@@ -141,6 +145,14 @@ describe("README examples", () => {
 					assert.isTrue(yield* verifyDelivery(secret, "1700000000", body, signature.toUpperCase()));
 					assert.isFalse(yield* verifyDelivery(secret, "1700000001", body, signature));
 					assert.isFalse(yield* verifyDelivery(secret, "1700000000", body, "not hex"));
+				}),
+			);
+
+			it.effect("hashes a prefix plus a body as node:crypto does", () =>
+				Effect.gen(function* () {
+					const body = utf8('{"ok":true}');
+					const oracle = createHash("sha256").update("2934792.").update(body).digest("hex");
+					assert.strictEqual(yield* archiveKey(2934792, body), oracle);
 				}),
 			);
 
