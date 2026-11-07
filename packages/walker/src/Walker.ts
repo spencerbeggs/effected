@@ -102,6 +102,52 @@ export interface UpwardMatches {
 }
 
 /**
+ * {@link Walker.findUpwardSyncWith}'s answer: the nearest directory the accept
+ * function took, and the value it answered for it.
+ *
+ * @public
+ */
+export interface UpwardAccepted<A> {
+	/** The accepted directory. */
+	readonly dir: string;
+	/** What the accept function answered for `dir`. */
+	readonly value: A;
+}
+
+/**
+ * A caller-owned memo of an accept function's answers, keyed by directory —
+ * the `get` / `set` subset of a `Map`, so a `Map<string, Option<A>>` (or an
+ * LRU of the same shape) satisfies it.
+ *
+ * @public
+ */
+export interface UpwardAcceptCache<A> {
+	/** The memoized answer for `dir`, or `undefined` when it has none. */
+	get(dir: string): Option.Option<A> | undefined;
+	/** Remember the answer for `dir`. */
+	set(dir: string, answer: Option.Option<A>): unknown;
+}
+
+/**
+ * Options for {@link Walker.findUpwardSyncWith}.
+ *
+ * @public
+ */
+export interface FindUpwardSyncWithOptions<A> {
+	/**
+	 * Memoize `accept`'s answer per directory, rejections included, so a hot
+	 * path that asks from many starts under one tree reads each ancestor once.
+	 *
+	 * @remarks
+	 * The cache is the caller's, and so is its invalidation: a cached answer
+	 * stands until the caller deletes it, however the file it was derived from
+	 * changes. Keep one cache per accept function — an answer is only as good
+	 * as the function that produced it.
+	 */
+	readonly cache?: UpwardAcceptCache<A>;
+}
+
+/**
  * Upward path traversal primitives: the directory chain from a start path to the
  * root, and first-match scans over it.
  *
@@ -445,6 +491,73 @@ export class Walker {
 		ops: WalkerSyncOps,
 	): Option.Option<string> {
 		return Option.fromUndefinedOr(runUpwardSync(findUpwardMachine(dirs, candidatesFor), ops.fileSystem));
+	}
+
+	/**
+	 * The nearest directory in `dirs` that `accept` takes, with the value it
+	 * answered, or `Option.none()` — an upward search that validates what it
+	 * finds, synchronously.
+	 *
+	 * @remarks
+	 * Directories are tried in order, nearest first, and the scan stops at the
+	 * first `Option.some`: nothing above it is asked. `accept` does the
+	 * reading, so "the nearest VALID `package.json`" is an accept that reads
+	 * and parses the candidate (through the port's `readFile`) and answers
+	 * `Option.none()` for one that is missing or does not parse, and the scan
+	 * keeps climbing. Walker itself touches no filesystem here.
+	 *
+	 * Take `dirs` from {@link Walker.ascendSync}, {@link Walker.ascendWithinSync}
+	 * or {@link Walker.ascendToMarkerSync}, so the search stops where they stop:
+	 * a lexical or physical ceiling, or a marker. `accept` is never asked about
+	 * a directory outside `dirs`.
+	 *
+	 * With `options.cache`, each directory's answer is memoized — an
+	 * `Option.none()` as much as an `Option.some` — and a cached directory is
+	 * not asked again, so repeated searches under one tree read each ancestor
+	 * once. Invalidation is the caller's; see
+	 * {@link FindUpwardSyncWithOptions.cache}.
+	 *
+	 * `accept` should answer, not throw: a throw propagates as the caller's
+	 * defect, and nothing is cached for that directory. Wrap a parse in
+	 * `try`/`catch` and answer `Option.none()`.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Walker } from "@effected/walker";
+	 * import { nodeWalkerSyncOps } from "@effected/walker/node-sync";
+	 * import { Option } from "effect";
+	 *
+	 * const ops = nodeWalkerSyncOps;
+	 * const cache = new Map<string, Option.Option<string>>();
+	 * const packageName = (dir: string): Option.Option<string> => {
+	 * 	try {
+	 * 		const manifest: unknown = JSON.parse(ops.fileSystem.readFile(ops.path.join(dir, "package.json")));
+	 * 		const name = typeof manifest === "object" && manifest !== null ? Reflect.get(manifest, "name") : undefined;
+	 * 		return typeof name === "string" ? Option.some(name) : Option.none();
+	 * 	} catch {
+	 * 		return Option.none();
+	 * 	}
+	 * };
+	 * const dirs = Walker.ascendSync("/repo/packages/app/src", { path: ops.path });
+	 * const owner = Walker.findUpwardSyncWith(dirs, packageName, { cache });
+	 * // => Option.some({ dir: "/repo/packages/app", value: "app" })
+	 * ```
+	 */
+	static findUpwardSyncWith<A>(
+		dirs: ReadonlyArray<string>,
+		accept: (dir: string) => Option.Option<A>,
+		options?: FindUpwardSyncWithOptions<A>,
+	): Option.Option<UpwardAccepted<A>> {
+		const cache = options?.cache;
+		for (const dir of dirs) {
+			let answer = cache?.get(dir);
+			if (answer === undefined) {
+				answer = accept(dir);
+				cache?.set(dir, answer);
+			}
+			if (Option.isSome(answer)) return Option.some({ dir, value: answer.value });
+		}
+		return Option.none();
 	}
 
 	/**

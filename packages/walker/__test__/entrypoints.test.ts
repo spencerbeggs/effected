@@ -44,6 +44,7 @@ describe("entrypoint boundary", () => {
 	it("positive control: `.` reaches the sync walk and the shared machine; ./node-sync imports node:", () => {
 		assert.isTrue(main.some((file) => file.endsWith("src/DescendSync.ts")));
 		assert.isTrue(main.some((file) => file.endsWith("src/internal/descendMachine.ts")));
+		assert.isTrue(main.some((file) => file.endsWith("src/PosixPath.ts")));
 		assert.isTrue(specifiersOf(resolve(SRC, "node-sync.ts")).includes("node:fs"));
 	});
 });
