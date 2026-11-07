@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/walker/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-07T01:49:33Z
 integrity:
   generated:
-    body: 9778ea42d18bc491
+    body: 04d90a188e3f07a2
 ---
 
 # walker
@@ -57,10 +57,11 @@ directory" is the gap `descend` fills.
 
 ## Module layout
 
-Two directions and one recipe: `Walker.ts` (upward), `Descend.ts`
+Two directions, one recipe and one path module: `Walker.ts` (upward), `Descend.ts`
 (downward, over core `FileSystem`), `DescendSync.ts` (the same walk over a
 caller-supplied synchronous port), `internal/descendMachine.ts` (the one
-walk both drive) and `Expand.ts` (the recipe), plus two entrypoints: the
+walk both drive), `Expand.ts` (the recipe) and `PosixPath.ts` (POSIX path
+arithmetic with no working directory), plus two entrypoints: the
 re-export-only `index.ts` and `node-sync.ts`, the
 `@effected/walker/node-sync` subpath.[^walker-claude-md] `descend` and `compileAndExpand` are bare
 functions, not statics on the `Walker` class, because they are different
@@ -161,6 +162,32 @@ predicate those are `Array.find`. `WalkerSyncPath` grew from `{ join }` to
 `{ sep, join, dirname, resolve, isAbsolute }`, mirroring core `Path`, so a
 sync form judges absoluteness and compares ceilings as its twin does.
 
+## A validating upward search is findUpwardSyncWith
+
+`Walker.findUpwardSyncWith(dirs, accept, options?)` answers the nearest
+directory in `dirs` whose `accept` returns `Option.some`, with that value,
+as `UpwardAccepted { dir, value }`; the scan stops at the hit. `accept` does
+the reading, so "the nearest valid `package.json`" is an accept that reads
+and parses the candidate and answers `Option.none()` for a missing or
+malformed one, and the search keeps climbing. Walker touches no filesystem in
+this form, so it runs no machine: the stop rules come from the chain the
+caller passes, which is `ascendSync`'s, `ascendWithinSync`'s or
+`ascendToMarkerSync`'s. That is why it takes `dirs` and not a start and its
+own stop options. `options.cache` is a caller-owned `{ get, set }` (a `Map`
+satisfies it) memoizing each directory's answer, `Option.none()` included,
+so a hot path such as Vitest's per-module package lookup reads each ancestor
+once. The cache is never invalidated by walker, and a throwing `accept`
+propagates with nothing cached for that directory: the callback's result is
+the answer, so a throw is the caller's defect, not a rejection. There is no
+`Effect` twin yet; inside Effect, `firstMatch` covers the boolean case.
+
+The sync port carries `readFile(path): string`, UTF-8 text
+(`readFileSync(path, "utf8")`), so an accept function reads through the same
+`WalkerSyncOps` the chain came from. It is text, not bytes, because that is
+what `@effected/memfs`'s sync port answers. A memfs handle's `sync` port
+satisfies the walker port unchanged, and `__test__/FindUpwardSyncWith.test.ts`
+pins that at compile time. No walk reads a file.
+
 ## The downward walk (descend)
 
 **One walk, two drivers.** The downward walk is one generator,
@@ -219,6 +246,21 @@ pattern's metadata:
   all: one stat decides.
 - A pattern that cannot match below one level never descends, reading a
   single level instead.
+- A pattern with no globstar reads no directory deeper than its segments
+  can reach, so `packages/*/README.md` reads `packages` and each
+  `packages/<name>` and nothing below them. Under `dot: false` the walk never
+  enters a hidden directory unless a segment names one. Both bounds live in
+  `internal/patternBounds.ts` and only ever skip reads, never a match. They
+  are checked before `maxDepth`, which therefore governs only directories the
+  walk reads: a bounded pattern does not trip a cap on a deep tree it has no
+  reason to enter. `@effected/glob` exposes neither its compiled segments nor
+  its `dot` option, so the depth bound counts the separators in the source.
+  Every separator in an alternative comes from the source, and only a
+  globstar crosses one. The dot rule is a differential probe: two candidates
+  built from the pattern, identical except for leading wildcards turned into
+  hidden names, prove `dot: false` when only the first matches. Syntax the
+  probe does not model (classes, braces, extglobs, escapes, a leading `?`) is
+  never pruned for dots, and a negated pattern is never bounded at all.
 - A negated pattern walks from `cwd` and always deep-walks: the
   enumeration prefix is computed from the inner pattern, but matching
   inverts, so its matches can land arbitrarily deep and outside the
@@ -376,6 +418,26 @@ other question: where under the base does an absolute path sit? They return
 candidate). A destination that does not exist yet resolves from its deepest
 existing ancestor, exactly as in `confineReal`. A relative base is still a
 defect. `options.missing` picks what absence means: `"ancestor"` (default) as above, or `"refuse"`, which answers `None` for any path that does not exist (an existing-and-inside check with no separate stat).
+
+## Paths without a working directory (PosixPath)
+
+`PosixPath` is POSIX path arithmetic as plain synchronous functions, for
+pure code that cannot put `Path` in `R`: `join`, `normalize`, `relative`,
+`dirname`, `basename`, `extname`, `isAbsolute` and `sep`. They are ported
+from the POSIX implementation behind core's `Path.layer`
+(`packages/effect/src/Path.ts`, which core adapted from Node), so each answer
+is core's and `node:path/posix`'s, and `__test__/PosixPath.test.ts` checks
+them against the latter. It is a static class whose methods never read
+`this`, so each one passes unbound. Two departures, both forced by the missing
+working directory. There is no `resolve`. And `relative` never resolves
+against one: two absolute paths answer as core does, and two relative paths
+are read against one unnamed directory. They answer when both climb equally
+or `to` is an ancestor of `from`, and throw when only a working directory
+could answer: a mixed pair, or one whose answer would have to name a directory
+above the shared one. The test checks that rule against the oracle rooted at
+125 working directories whose names collide with the fixtures. Throwing is
+the ruling, because a guessed name is the silent wrong answer. `Path` in `R`
+stays the house default wherever the platform should choose POSIX or win32.
 
 ## Hardening
 

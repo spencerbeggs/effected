@@ -6,6 +6,7 @@
 * Updated effected.toml: the build config's tables, defaults and discovery
 * Updated glob
 * Added glob does not bound total matching work on hostile patterns
+* Updated walker
 
 ## 2026-11-06
 
