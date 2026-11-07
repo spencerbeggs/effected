@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/walker/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-07T01:49:33Z
+  at: 2026-11-07T14:52:09Z
 integrity:
   generated:
-    body: 04d90a188e3f07a2
+    body: 13bb52655574a332
 ---
 
 # walker
@@ -249,7 +249,15 @@ pattern's metadata:
 - A pattern with no globstar reads no directory deeper than its segments
   can reach, so `packages/*/README.md` reads `packages` and each
   `packages/<name>` and nothing below them. Under `dot: false` the walk never
-  enters a hidden directory unless a segment names one. Both bounds live in
+  enters a hidden directory unless a segment names one, except for a pattern
+  `matchBase` could apply to: one glob compiles to a single-segment row. That
+  is a slash-less pattern, one with a `..` segment (glob pops `x/../**` to
+  `**`), or one made only of `**` and `.` segments (glob merges `**/**` and,
+  at optimization level 2, `**/./**` to `**`). A leading `.` is the exception,
+  because glob keeps it, so `./**` still prunes. Under `matchBase` such a
+  pattern matches by basename, which the probe cannot see, so it is never
+  pruned for dots; `__test__/PatternBoundsSweep.test.ts` pins the class over
+  every pattern of up to three segments. Both bounds live in
   `internal/patternBounds.ts` and only ever skip reads, never a match. They
   are checked before `maxDepth`, which therefore governs only directories the
   walk reads: a bounded pattern does not trip a cap on a deep tree it has no
@@ -259,8 +267,9 @@ pattern's metadata:
   globstar crosses one. The dot rule is a differential probe: two candidates
   built from the pattern, identical except for leading wildcards turned into
   hidden names, prove `dot: false` when only the first matches. Syntax the
-  probe does not model (classes, braces, extglobs, escapes, a leading `?`) is
-  never pruned for dots, and a negated pattern is never bounded at all.
+  probe does not model (classes, braces, extglobs, escapes, a leading `?`, a
+  slash-less pattern, a `..` segment, a pattern of only `**` and `.` segments
+  not led by `.`) is never pruned for dots, and a negated pattern is never bounded at all.
 - A negated pattern walks from `cwd` and always deep-walks: the
   enumeration prefix is computed from the inner pattern, but matching
   inverts, so its matches can land arbitrarily deep and outside the

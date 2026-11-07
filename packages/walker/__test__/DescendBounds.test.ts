@@ -23,27 +23,34 @@ const TREE: Readonly<Record<string, MemoryFileSystemSeedEntry>> = {
 	"/repo/packages/.hidden/README.md": "",
 };
 
-const effectReads: Array<string> = [];
-const handle = MemoryFileSystem.makeSync(TREE, {
-	spies: { readDirectory: (path: string) => void effectReads.push(path) },
-});
-const syncReads: Array<string> = [];
-const ops = {
-	fileSystem: {
-		...handle.sync,
-		readDirectory: (path: string) => {
-			syncReads.push(path);
-			return handle.sync.readDirectory(path);
+/** A volume whose reads both drivers count, so a walk's reads can be compared across them. */
+const volume = (tree: Readonly<Record<string, MemoryFileSystemSeedEntry>>) => {
+	const effectReads: Array<string> = [];
+	const handle = MemoryFileSystem.makeSync(tree, {
+		spies: { readDirectory: (path: string) => void effectReads.push(path) },
+	});
+	const syncReads: Array<string> = [];
+	const ops = {
+		fileSystem: {
+			...handle.sync,
+			readDirectory: (path: string) => {
+				syncReads.push(path);
+				return handle.sync.readDirectory(path);
+			},
 		},
-	},
-	path: posix,
+		path: posix,
+	};
+	return { effectReads, handle, syncReads, ops };
 };
 
-const compile = (source: string, dot = false): GlobPattern =>
-	Result.getOrThrow(GlobPattern.compileResult(source, GlobPatternOptions.make({ dot })));
+const repo = volume(TREE);
+
+const compile = (source: string, dot = false, options: Omit<GlobPatternOptions, "dot"> = {}): GlobPattern =>
+	Result.getOrThrow(GlobPattern.compileResult(source, GlobPatternOptions.make({ ...options, dot })));
 
 /** Both drivers' matches and reads; the two must agree before either is returned. */
-const walk = (pattern: GlobPattern, options: Omit<DescendOptions, "cwd"> = {}) => {
+const walk = (pattern: GlobPattern, options: Omit<DescendOptions, "cwd"> = {}, on = repo) => {
+	const { effectReads, handle, syncReads, ops } = on;
 	effectReads.length = 0;
 	syncReads.length = 0;
 	const viaEffect = Effect.runSync(
@@ -90,6 +97,58 @@ describe("descend reads only what the pattern can reach", () => {
 		assert.deepStrictEqual(reads, ["/repo/packages/.hidden"]);
 		const named = walk(compile("packages/{.hidden,a}/README.md"));
 		assert.deepStrictEqual(named.matches, ["packages/.hidden/README.md", "packages/a/README.md"]);
+	});
+
+	it("matchBase: a slash-less ** matches by basename, so the walk still reads hidden directories", () => {
+		// `**` under `matchBase` matches `.a/f.js` by its basename, though `dot` is off: the probe cannot see
+		// `matchBase`, so a slash-less pattern is never pruned.
+		const based = volume({ "/repo/.a/f.js": "", "/repo/b/f.js": "" });
+		const { matches, reads } = walk(compile("**", false, { matchBase: true }), {}, based);
+		assert.deepStrictEqual(matches, [".a/f.js", "b/f.js"]);
+		assert.include(reads, "/repo/.a");
+		// Control: `matchBase` changes only slash-less patterns, so one with a slash still skips the hidden directory.
+		const nested = volume({ "/repo/src/.a/f.js": "", "/repo/src/b/f.js": "" });
+		const control = walk(compile("src/**", false, { matchBase: true }), {}, nested);
+		assert.deepStrictEqual(control.matches, ["src/b/f.js"]);
+		assert.notInclude(control.reads, "/repo/src/.a");
+		assert.include(control.reads, "/repo/src/b");
+	});
+
+	it("matchBase: a .. segment collapses x/../** to one segment, so the walk still reads hidden directories", () => {
+		// glob pops `<p>/..` at the default optimization level, leaving the one-segment row `**`, which `matchBase`
+		// matches by basename: `x/../**` matches `.a/f.js` and `x/.h/g.js` though the source has a slash.
+		const tree = { "/repo/.a/f.js": "", "/repo/b/f.js": "", "/repo/x/keep.txt": "", "/repo/x/.h/g.js": "" };
+		for (const source of ["x/../**", "a/b/../../**", "*/../**"]) {
+			const { matches, reads } = walk(compile(source, false, { matchBase: true }), {}, volume(tree));
+			assert.deepStrictEqual(matches, [".a/f.js", "b/f.js", "x/.h/g.js", "x/keep.txt"], source);
+			assert.include(reads, "/repo/.a", source);
+			assert.include(reads, "/repo/x/.h", source);
+		}
+		// Control: the same tree under `x/**` keeps its slash and its two segments, so `.h` is still skipped.
+		const control = walk(compile("x/**", false, { matchBase: true }), {}, volume(tree));
+		assert.deepStrictEqual(control.matches, ["x/keep.txt"]);
+		assert.notInclude(control.reads, "/repo/x/.h");
+	});
+
+	it("matchBase: adjacent globstars merge **/** to one segment, so the walk still reads hidden directories", () => {
+		// glob merges a run of adjacent globstars at every optimization level, leaving the one-segment row `**`, which
+		// `matchBase` matches by basename: `**/**` matches `.a/f.js` and `x/.h/g.js` though the source has a slash.
+		const tree = { "/repo/.a/f.js": "", "/repo/b/f.js": "", "/repo/x/keep.txt": "", "/repo/x/.h/g.js": "" };
+		const cases: ReadonlyArray<readonly [string, Omit<GlobPatternOptions, "dot">]> = [
+			["**/**", { matchBase: true }],
+			["**/**/**", { matchBase: true }],
+			["**/./**", { matchBase: true, optimizationLevel: 2 }],
+		];
+		for (const [source, options] of cases) {
+			const { matches, reads } = walk(compile(source, false, options), {}, volume(tree));
+			assert.deepStrictEqual(matches, [".a/f.js", "b/f.js", "x/.h/g.js", "x/keep.txt"], source);
+			assert.include(reads, "/repo/.a", source);
+			assert.include(reads, "/repo/x/.h", source);
+		}
+		// Control: a globstar run under a literal keeps two segments, so the hidden directory is still skipped.
+		const control = walk(compile("x/**/**", false, { matchBase: true }), {}, volume(tree));
+		assert.deepStrictEqual(control.matches, ["x/keep.txt"]);
+		assert.notInclude(control.reads, "/repo/x/.h");
 	});
 
 	it("the depth bound is per pattern: one segment deeper reads one level deeper, and no further", () => {
@@ -169,5 +228,30 @@ describe("the pattern bounds", () => {
 		for (const [source, dot, expected] of cases) {
 			assert.strictEqual(skipsHiddenDirectories(compile(source, dot)), expected, `${source} dot=${dot}`);
 		}
+	});
+
+	it("skipsHiddenDirectories never prunes a pattern matchBase can match by basename: slash-less, or collapsed to one segment", () => {
+		const cases: ReadonlyArray<readonly [string, boolean]> = [
+			["**", false],
+			["*.js", false],
+			["*/", false],
+			["x/../**", false],
+			["a/b/../../**", false],
+			["*/../**", false],
+			["**/**", false],
+			["**/**/**", false],
+			["**/.", false],
+			["src/**", true],
+			["src/**/**", true],
+			["**/*.js", true],
+			["**/**/*.js", true],
+			["./**", true],
+			["./**/**", true],
+		];
+		for (const [source, expected] of cases) {
+			assert.strictEqual(skipsHiddenDirectories(compile(source, false, { matchBase: true })), expected, source);
+		}
+		// At optimization level 2 glob also drops a middle `.`, so `**/./**` merges to `**` too.
+		assert.isFalse(skipsHiddenDirectories(compile("**/./**", false, { matchBase: true, optimizationLevel: 2 })));
 	});
 });
