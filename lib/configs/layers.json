@@ -13,7 +13,13 @@
 			"@effected/workspaces",
 			"@effected/xdg"
 		],
-		["@effected/config-file", "@effected/lockfiles", "@effected/package-json", "@effected/tsconfig-json"],
+		[
+			"@effected/config-file",
+			"@effected/lockfiles",
+			"@effected/markdown-lint",
+			"@effected/package-json",
+			"@effected/tsconfig-json"
+		],
 		[
 			"@effected/github",
 			"@effected/markdown",
@@ -22,10 +28,9 @@
 			"@effected/schemastore",
 			"@effected/walker"
 		],
-		["@effected/oidc", "@effected/webhooks"],
+		["@effected/oidc", "@effected/s3", "@effected/webhooks"],
 		[
 			"@effected/commands",
-			"@effected/kit",
 			"@effected/env",
 			"@effected/git",
 			"@effected/github-commands",
@@ -35,9 +40,11 @@
 			"@effected/jsonc",
 			"@effected/jsonl",
 			"@effected/jwt",
+			"@effected/kit",
 			"@effected/memfs",
 			"@effected/schema-org",
 			"@effected/semver",
+			"@effected/shell",
 			"@effected/spdx",
 			"@effected/store",
 			"@effected/templates",

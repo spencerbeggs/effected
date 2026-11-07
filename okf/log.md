@@ -21,6 +21,7 @@
 * Added Raw S3 objects get their own boundary package, with a ListObjectsV2 reader that fails a wrong root
 * Added @effected/markdown-lint
 * Added The markdownlint-compatible lint shape is its own pure package; @effected/markdown gains only the callback visitor
+* Updated effected
 
 ## 2026-11-06
 
