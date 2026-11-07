@@ -1,13 +1,13 @@
 # @effected/lockfiles
 
-String-in, model-out parsing for all four package-manager lockfile formats (bun `bun.lock`, npm `package-lock.json`, pnpm `pnpm-lock.yaml`, yarn Berry `yarn.lock`) normalized into one `Lockfile` model of package *instances*, plus pure integrity checking against workspace manifests. Pure tier: no IO, no services, no `R` anywhere — every entrypoint takes a string or plain values.
+String-in, model-out parsing for all four package-manager lockfile formats (bun `bun.lock`, npm `package-lock.json`, pnpm `pnpm-lock.yaml`, yarn Berry `yarn.lock`) normalized into one `Lockfile` model of package *instances*, plus pure integrity checking against workspace manifests and a pure comparison of two lockfiles. Pure tier: no IO, no services, no `R` anywhere — every entrypoint takes a string or plain values.
 
 **Input domain is narrower than "any lockfile of that manager"**: `Lockfile.parse` requires pnpm `lockfileVersion` **9+** and npm `lockfileVersion` **3+** — stated in lockfile-*format* terms, never manager-version terms, because a lockfile records no manager version and format 9 is not exclusive to pnpm 11. An older format fails typed rather than parsing into a wrong or partial model — and it fails as *too old* (`isUnsupportedLockfileVersion(cause)`), never as malformed, because the version gate runs ahead of the shape decode.
 
 ## Import
 
 ```ts
-import { ConfigDependencyLock, Lockfile, LockfileFormat, LockfileIntegrity, PnpmEnvLockfile, isUnsupportedLockfileVersion } from "@effected/lockfiles";
+import { CatalogChange, ConfigDependencyLock, ImporterChange, Lockfile, LockfileDiff, LockfileFormat, LockfileIntegrity, PnpmEnvLockfile, isUnsupportedLockfileVersion } from "@effected/lockfiles";
 ```
 
 Single entrypoint; no subpaths.
@@ -22,6 +22,12 @@ Single entrypoint; no subpaths.
 - **`LockfileFormat`**, `filenameFor`, `fromFilename` — format ↔ filename mapping.
 - **`LockfileIntegrity.compare(lockfile, manifests: ReadonlyArray<WorkspaceManifest>)`** → `LockfileIntegrity` — a **plain pure function** (no Effect, no error channel — a data type reporting facts, not something that fails): `valid` (`true` when fully consistent), `missingWorkspaces` (names in the manifests but absent from the lockfile), `extraWorkspaces` (names in the lockfile with no matching manifest), `unsatisfiedConstraints` (`{ workspace, dependency, constraint, resolved, depType }[]` — `depType` is one of the four dependency-field literals; a lockfile resolving the same package at several versions reports every candidate in `resolved`, and the constraint is satisfied when ANY of them matches). Unparseable ranges and `workspace:`/`link:`/`file:` specifiers are skipped by design (best-effort). Named `compare`, not `check` — every v4 `Schema.Class` already reserves `static check(...)` for schema checks.
 - **`WorkspaceManifest`** — the minimal input shape `compare` checks a lockfile against: `name` plus the four optional dependency maps. Deliberately not a `@effected/package-json` type — this package takes manifests as plain values; `@effected/workspaces`' `WorkspacePackage.toWorkspaceManifest()` is the bridge from a real discovered package.
+- **`LockfileDiff.compare(before, after)`** → `LockfileDiff` — what moved between two parsed lockfiles, what an update tool reports after an install. A **plain pure function** like `LockfileIntegrity.compare`: no Effect, no error channel. `hasChanges` is `false` exactly when both arrays are empty.
+  - `catalogs: CatalogChange[]` — `catalog` (`"default"` for the default catalog in every format), `name`, `kind` (`"added" | "removed" | "changed"`), `specifier` and `version` as `{ before?, after? }`, and `consumers` (`{ importer, depType }[]`, the importers referencing the entry through `catalog:`, read from `before` for a removed entry).
+  - `importers: ImporterChange[]` — identified by `importer`, `name` and `depType` together, with `kind`, `version`, and `specifier` sides that are classified specifiers, so `_tag` tells a `catalog:` reference apart.
+  - A side that does not exist is absent, and so is a version that cannot be resolved. A record is `changed` when its specifier differs, or when its version resolves on both sides and differs; a version resolvable on one side only is not a change by itself.
+  - Resolved versions are normalized across formats. npm has no catalogs, and yarn records no importers, so two yarn lockfiles compare empty.
+  - A catalog bump shows in `catalogs` and also in `importers` for each consumer whose resolved version moved; filter on `specifier.after?._tag !== "catalog"` to keep the two apart.
 
 ## Usage
 
