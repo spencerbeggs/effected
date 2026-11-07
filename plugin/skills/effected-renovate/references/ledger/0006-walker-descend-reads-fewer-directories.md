@@ -6,6 +6,7 @@ shows: behavioural
 applies:
   "@effected/walker": ">=0.26.0"
 detect: ["descend(Entries)?(Sync)?\\(", "depthExceeded"]
+changesets: ["narrow-walks-read"]
 closes: ["spencerbeggs/effected#1194"]
 ---
 

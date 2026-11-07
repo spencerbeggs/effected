@@ -37,12 +37,12 @@
 | `InvalidSriIntegrityHashError` | Class | Indicates that a string could not be converted from npm's SRI form to the corepack integrity form. | handle failure converting an sri integrity string to corepack form |
 | `Manifest` | Class | A tolerant manifest as a domain model: the four dependency fields typed as string→string records, everything else preserved verbatim in `rest`. | resolve catalog: and workspace: specifiers in a tolerant package.json-shaped record to concrete version ranges |
 | `ManifestDecodeError` | Class | Indicates that an unknown value could not be decoded into a `Manifest`. | handle a manifest whose dependency fields fail to decode |
-| `NpmConfig` | Class | The npm configuration a registry read needs: the default and scoped registries and per-registry credentials, resolved from npmrc files and the environment the way the npm CLI resolves them. | read .npmrc, scoped registries, per-host auth token lookup, registry target from npm config |
+| `NpmConfig` | Class | The npm configuration a registry read needs: the default and scoped registries and per-registry credentials, resolved from npmrc files and the environment the way the npm CLI resolves them. | read .npmrc, scoped registries, per-host auth token, registry target, npmrc at the workspace root |
 | `NpmConfigError` | Class | An npm configuration could not be loaded. | handle npmrc load failure: unset env var in a token, unreadable npmrc file |
 | `NpmConfigLoadOptions` | Interface | Options for `NpmConfig.load`. | |
 | `NpmConfigSource` | Interface | One npmrc layer for `NpmConfig.fromSourcesResult`: the file's text and, for error messages, where it came from. | |
 | `NpmExecutor` | Class | Which `npm` runs a publish command. | choose which npm binary runs a publish command, ambient vs pinned |
-| `NpmRegistry` | Class | Reads package metadata from an npm-protocol registry over core `HttpClient`: one version, every version, dist-tags and per-version publish times. | read package metadata from an npm registry over http: version lookup, dist-tags, publish times |
+| `NpmRegistry` | Class | Reads package metadata from an npm-protocol registry over core `HttpClient`: one version, one version's dependency fields, every version, dist-tags and per-version publish times. | read npm registry metadata over http: version, manifest fields, dist-tags, publish times |
 | `NpmRegistryShape` | Interface | The `NpmRegistry` service shape. | |
 | `PackOptions` | Interface | Options shared by the packing operations. | |
 | `PackageManagerCache` | Class | Where each package manager caches by default — a facts table, one documented authority per row. | look up a package manager's default cache directory for a platform |
@@ -78,6 +78,7 @@
 | `TarballError` | Class | Raised when a published tarball cannot be fetched, verified or extracted. | handle a tarball that could not be fetched, verified or extracted, integrity mismatch |
 | `TokenCredential` | Interface | A bearer token — npm's `_authToken`, and the form every modern registry documents first. | |
 | `UnresolvedDependencyError` | Class | Raised when a `catalog:` or `workspace:` specifier in a manifest resolves to nothing: the catalog has no entry for the dependency, or no workspace package carries its name. Distinct from `DependencyResolutionError` — the resolution *mechanism* worked; the answer was `Option.none()`, which at the manifest level means the manifest cannot be projected to concrete ranges. | handle a catalog or workspace specifier that resolves to no entry |
+| `VersionManifest` | Class | The dependency-shaped fields of one published version's manifest, as the registry serves them. | one published version's dependencies, peer dependencies and engines, read peers from the registry |
 | `WorkloadCredential` | Interface | A short-lived registry token minted from a CI workload identity — written to npm's `_authToken`, and accepted by `PackagePublish.setupAuth` only. | |
 | `WorkspaceResolver` | Class | Contract for resolving pnpm `workspace:` dependency specifiers to concrete versions. | resolve a workspace: specifier to a concrete package version, workspace contract, noop default layer — implemented by `WorkspaceDiscovery` in `@effected/workspaces` |
 | `WorkspaceSpecifier` | Class | A `workspace:` reference. `range` carries the part after `workspace:` — a range modifier (`*`, `^`, `~`), a concrete range, or an alias form. | represent a parsed workspace: dependency reference and its range modifier |

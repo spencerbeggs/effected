@@ -6,6 +6,7 @@ shows: typed
 applies:
   "@effected/walker": ">=0.26.0"
 detect: ["WalkerSyncFileSystem", "WalkerSyncOps", "readDirectory[[:space:]]*:"]
+changesets: ["narrow-walks-read"]
 closes: ["spencerbeggs/effected#1181"]
 ---
 

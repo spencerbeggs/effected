@@ -5,13 +5,16 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `AttestationContextError` | Class | An attestation context that cannot be encoded unambiguously: a part is empty, or contains the `.` separator. | invalid attestation context part, empty or contains a separator |
 | `FreshnessOptions` | Interface | The tolerance option shared by the timestamped presets. | |
 | `GitHub` | Class | GitHub's `x-hub-signature-256` scheme. | verify a github webhook delivery, x-hub-signature-256 sha256 hmac |
 | `HmacHeader` | Class | A generic HMAC of the body in a caller-named header, for senders with no timestamp in the signed bytes. | verify a generic hmac signature header, hex or base64, linear webhooks |
 | `HmacHeaderOptions` | Interface | Where a generic HMAC signature lives and how it is written. | |
 | `Sanity` | Class | Sanity's `sanity-webhook-signature` scheme. | verify a sanity webhook signature, millisecond timestamp, base64url hmac |
 | `SanityVerified` | Interface | What a verified Sanity delivery carries besides its body. | |
-| `SharedSecret` | Class | A shared secret sent verbatim in a caller-named header, such as Cloudflare's `cf-webhook-auth`. | verify a shared-secret header, cloudflare or path secret, constant-time |
+| `SharedSecret` | Class | A shared secret sent verbatim in a caller-named header, such as Cloudflare's `cf-webhook-auth`, plus the attestation pair that lets an archived delivery be re-verified without archiving the secret. | verify a shared-secret header, constant-time, attest an archived delivery, verify on replay |
+| `SharedSecretAttestOptions` | Interface | What an attestation is bound to. | bind an archived webhook attestation to its route context |
+| `SharedSecretAttestedOptions` | Interface | Where an archived delivery's attestation lives, what it is bound to, and optionally where the live secret is. | accept the live secret or an archived attestation, replay a delivery |
 | `SharedSecretOptions` | Interface | Where a shared secret is delivered. | |
 | `StandardWebhooks` | Class | Standard Webhooks, the scheme Svix signs with (Clerk and Resend send through Svix). | verify svix or standard webhooks signature, whsec secret, rotated v1 keys |
 | `StandardWebhooksVerified` | Interface | What a verified Standard Webhooks delivery carries besides its body. | |

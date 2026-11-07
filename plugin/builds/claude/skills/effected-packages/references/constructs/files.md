@@ -8,4 +8,5 @@
 | `AtomicDirectory` | Class | Atomic whole-directory replacement over core `FileSystem`. | replace a directory atomically, stage in a sibling then rename into place, write a file set without a half-written tree |
 | `AtomicDirectoryError` | Class | `AtomicDirectory.write` could not lay down or promote a directory. | handle an atomic directory write failure, validate clear stage write or promote step failed |
 | `AtomicDirectoryFiles` | TypeAlias | The file set `AtomicDirectory.write` lays down: pairs of a path relative to the directory and the file's content. | |
-| `AtomicFile` | Class | Atomic single-file writes over core `FileSystem` and `Path`. | write a file atomically, temp file then rename, keep symlink and permissions on save |
+| `AtomicFile` | Class | Atomic single-file writes over core `FileSystem` and `Path`. | write a file atomically, temp then rename, keep or replace a symlink, keep permissions |
+| `AtomicFileOptions` | Interface | Options for `AtomicFile.write`. | replace a symlink atomically, follow or replace a symlinked target, untrusted checkout |

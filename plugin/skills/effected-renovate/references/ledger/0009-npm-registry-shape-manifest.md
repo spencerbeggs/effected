@@ -6,6 +6,7 @@ shows: typed
 applies:
   "@effected/npm": ">=0.31.0"
 detect: ["NpmRegistryShape", "Layer\\.succeed\\(NpmRegistry", "NpmRegistry\\.of\\("]
+changesets: ["whole-manifests-read"]
 closes: ["spencerbeggs/effected#1170"]
 ---
 

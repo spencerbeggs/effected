@@ -885,6 +885,14 @@
 		"stringify": "serialize a node tree to markdown without the parser, tree-shakable, effect form",
 		"stringifyResult": "serialize a node tree to markdown synchronously, parser-free bundle, result form"
 	},
+	"markdown-lint": {
+		"LintDiagnostic": "read a lint finding, line column detail range and autofix edit",
+		"LintFixInfo": "one-line autofix in markdownlint's shape, edit column delete count insert text",
+		"LintRule": "write a markdownlint custom rule over an mdast tree, define a rule once",
+		"MarkdownLint": "lint markdown programmatically without markdownlint, run rules over a string or parsed document",
+		"MarkdownlintAdapter": "run a kit lint rule inside markdownlint-cli2 or vs code as a custom rule",
+		"PositionMapping": "convert offsets to markdownlint line numbers, columns, ranges and one-line fixes"
+	},
 	"mcp": {
 		"MCP_VERSION": "the effected-mcp server's own version, replaced at build, reported by the identity tool",
 		"main": "run the effected-mcp server over stdio, the effected-mcp bin entry, a carrier bin shim passes its distribution"
@@ -1081,6 +1089,23 @@
 		"isLtsPhase": "check if a node lifecycle phase counts as long-term support",
 		"nodeReleaseLine": "compute the node release-line key for a version, e.g. v0.10 vs v20"
 	},
+	"s3": {
+		"S3Client": "put get head delete list objects in r2 or s3 from a worker",
+		"S3InvalidRequest": "handle a key or metadata refused before signing, nothing was sent",
+		"S3InvalidRequestReason": "route why a request was refused locally, bad key metadata or maxKeys",
+		"S3ListPage": "read one listobjectsv2 page, keys, common prefixes, continuation token",
+		"S3MalformedResponse": "handle an unreadable store answer, html proxy page, empty body, truncated page without token",
+		"S3NotFound": "handle a missing object on get or head, nosuchkey",
+		"S3NotModified": "conditional get with an etag, object unchanged, 304 answer",
+		"S3Object": "read a downloaded object's bytes or text, etag, metadata, content range",
+		"S3ObjectHead": "object metadata without the body, etag, size, content type, last modified",
+		"S3ObjectSummary": "one listed object, key size last modified, entry in a bucket listing stream",
+		"S3Operation": "which object operation an error came from, put get head delete list",
+		"S3PreconditionFailed": "first-write-wins put lost, if-none-match or if-match refused, 412 answer",
+		"S3PutResult": "etag and version id returned by an object write",
+		"S3RequestFailed": "handle a store refusal, status, error code, request id, nosuchbucket",
+		"S3TransportError": "request never completed, network failure with a redacted cause"
+	},
 	"sbom": {
 		"CYCLONEDX_BOM_PREDICATE": "attest an sbom, cyclonedx bom predicate type uri, in-toto predicateType for a bom",
 		"Component": "cyclonedx component entry, describe a dependency or root package in a bom",
@@ -1200,6 +1225,36 @@
 		"VersionDiff": "classify the change between two versions: major minor or patch",
 		"VersionNotFoundError": "handle a version missing from the cache during diff next or prev navigation",
 		"VersionSpecifier": "split a dependency specifier into operator and one version, keep caret and tilde, refuse compound ranges"
+	},
+	"shell": {
+		"ShellAnsiCPart": "decoded dollar-quoted string, ansi-c escapes in a shell word",
+		"ShellArithmeticPart": "arithmetic expansion or double-parenthesis command, shift is not a heredoc",
+		"ShellAssignment": "read a leading `FOO=1` environment prefix or variable assignment on a command",
+		"ShellBarePart": "unquoted literal text in a shell word, backslash escapes removed",
+		"ShellBracePart": "brace expansion span the shell would rewrite, fail closed on `git {commit,}`",
+		"ShellCommand": "resolve a segment's command name and args, unwrap sudo env exec nohup time",
+		"ShellCommandSubstitutionPart": "nested dollar-paren or backtick command text to parse and inspect",
+		"ShellComment": "read a shell comment's text and offsets",
+		"ShellDiagnostic": "refuse input a parse could not finish, unterminated quote or substitution with offset",
+		"ShellDiagnosticCode": "route why a command string parse was odd, unterminated quote heredoc bad escape",
+		"ShellDoubleQuotedPart": "double-quoted string in a shell word, list the expansions inside it",
+		"ShellExpansionPart": "variable, substitution or arithmetic expansion inside double quotes or a heredoc",
+		"ShellGlobPart": "unquoted pathname-expansion syntax in a shell word, star question-mark bracket",
+		"ShellHeredoc": "read a heredoc body and delimiter, commit message passed through a heredoc",
+		"ShellOpaquePart": "text a lexer could not finish, never literal, unterminated quote to end of input",
+		"ShellOperator": "control operators joining commands, and-or, pipe, semicolon, background, newline",
+		"ShellProcessSubstitutionPart": "process substitution body to parse and inspect, input or output direction",
+		"ShellRedirection": "read a command's output or input redirections, file descriptor, operator and target",
+		"ShellRedirectionOperator": "redirection operator vocabulary, output, append, input, heredoc, descriptor duplication",
+		"ShellScript": "list every command and substitution a command string would run, read diagnostics",
+		"ShellSegment": "one simple command between control operators, words, assignments, redirections",
+		"ShellSingleQuotedPart": "single-quoted literal text in a shell word",
+		"ShellSubstitutionPart": "every nested command or process substitution, recurse to find hidden commands",
+		"ShellSyntax": "parse a command string without executing it, guard a bash tool call",
+		"ShellTildePart": "home-directory tilde prefix the shell would expand, never literal",
+		"ShellVariablePart": "variable or parameter expansion, command name that cannot be read statically",
+		"ShellWord": "read an argument's literal value only if the shell passes it unchanged",
+		"ShellWordPart": "how a word is quoted or expanded, switch on part kind"
 	},
 	"source": {
 		"EditDistance": "edit distance between two strings, levenshtein, did you mean suggestions, nearest candidate, typo hint",

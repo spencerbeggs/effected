@@ -6,6 +6,7 @@ shows: behavioural
 applies:
   "@effected/glob": ">=0.20.0"
 detect: ["maxGlobstarRecursion"]
+changesets: ["firm-globs-cap"]
 closes: ["spencerbeggs/effected#1242"]
 ---
 
