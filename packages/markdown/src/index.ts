@@ -12,7 +12,10 @@
  * `TomlFrontmatter`, `JsonFrontmatter` — each peering optionally on its
  * format package. The edit vocabulary (`MarkdownEdit`, `MarkdownRange` and
  * `MarkdownEdit.applyAll`) carries the cross-package offset-splice parity
- * contract; `Markdown.stringify` serializes trees canonically, and
+ * contract; `Markdown.stringify` serializes trees canonically (and the free
+ * `stringify`/`stringifyResult` functions, also the whole surface of the
+ * parser-free `@effected/markdown/stringify` entry point, do the same without
+ * keeping the parser reachable), and
  * `MarkdownFormat` computes marker-normalization and surgical-replacement
  * edits over it. {@link Mdast} is the remark-ecosystem interop boundary:
  * projection to plain mdast JSON and checked decoding back;
@@ -63,20 +66,14 @@ export {
 	SchemaVersionUnresolvableError,
 } from "./FrontmatterResolver.js";
 export {
+	FrontmatterFenceState,
 	FrontmatterNewline,
 	FrontmatterSource,
 	FrontmatterSourceBlock,
 	FrontmatterSourceSplit,
 } from "./FrontmatterSource.js";
 export { JsonFrontmatter } from "./JsonFrontmatter.js";
-export type { MarkdownStringifyOptions } from "./Markdown.js";
-export {
-	Markdown,
-	MarkdownDialect,
-	MarkdownParseError,
-	MarkdownParseOptions,
-	MarkdownStringifyError,
-} from "./Markdown.js";
+export { Markdown, MarkdownDialect, MarkdownParseError, MarkdownParseOptions } from "./Markdown.js";
 export { MarkdownDiagnostic, MarkdownParseErrorCode } from "./MarkdownDiagnostic.js";
 export type {
 	DocumentHeading,
@@ -84,6 +81,7 @@ export type {
 	LinkBearingNode,
 	SectionHeadingMatch,
 	SectionQueryOptions,
+	UnresolvedFootnoteReference,
 } from "./MarkdownDocument.js";
 export { DocumentSection, MarkdownDocument } from "./MarkdownDocument.js";
 export type { MarkdownPath, MarkdownSegment } from "./MarkdownEdit.js";
@@ -154,6 +152,8 @@ export {
 	ThematicBreak,
 	ThematicBreakChar,
 } from "./MarkdownNode.js";
+export type { MarkdownStringifyOptions } from "./MarkdownStringify.js";
+export { MarkdownStringifyError, stringify, stringifyResult } from "./MarkdownStringify.js";
 export type {
 	MarkdownPhrasingOnlyType,
 	MarkdownTransformHandlers,

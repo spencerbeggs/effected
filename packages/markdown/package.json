@@ -23,6 +23,7 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
+		"./stringify": "./src/stringify.ts",
 		"./package.json": "./package.json"
 	},
 	"scripts": {

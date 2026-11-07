@@ -50,8 +50,8 @@ import type {
 	TableData,
 } from "../blockTypes.js";
 import { tableCellChildren, tableRowChildren } from "../blockTypes.js";
+import { ESCAPABLE } from "../grammar.js";
 import { sliceWithSegments } from "../segments.js";
-import { ESCAPABLE } from "../unescape.js";
 
 /**
  * Upstream's `MAX_AUTOCOMPLETED_CELLS`: the ceiling on cells the parser

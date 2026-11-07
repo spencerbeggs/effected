@@ -168,13 +168,30 @@ Effect.runPromise(program).then(console.log);
 
 Each stage fails typed and separately: no capture is a `FrontmatterMissingError` (catch the tag for optional semantics), a codec handed the wrong fence is a `FrontmatterFormatMismatchError`, unparseable content is a `FrontmatterDecodeError` carrying the format package's own positioned failure structurally, and schema-invalid data is a `FrontmatterValidationError` carrying the structured issue tree rather than a stringified rendering.
 
-Because capture is opt-in, "there is no frontmatter" has two meanings, and `FrontmatterMissingError.reason` tells them apart: `"absent"` when the source genuinely has no block, `"captureDisabled"` when it opens with one but was parsed with the toggle off — where the fix is a parse option, not a document edit. `MarkdownDocument.hasFrontmatterBlock` answers the same question directly, by re-running the parser's own pre-scan, so the accessor and the error can never disagree.
+"There is no frontmatter" has three meanings, and `FrontmatterMissingError.reason` tells them apart: `"absent"` when the source genuinely has no block, `"captureDisabled"` when it opens with one but was parsed with the toggle off — where the fix is a parse option, not a document edit — and `"unclosed"` when it opens with a fence that no closing fence follows. An unclosed fence is not frontmatter (the grammar's rule, and remark-frontmatter's), so nothing is captured, but the author almost certainly meant a block. `MarkdownDocument.hasFrontmatterBlock` and `MarkdownDocument.frontmatterFence` (`"absent"`, `"unclosed"` or `"closed"`) answer the same questions directly from the source, so the accessors and the error can never disagree.
+
+To report a YAML, TOML or JSON diagnostic against the whole file, add the parsed `Frontmatter` node's `valueStart` — the offset where its value begins, after the opening fence line and its terminator, whatever they were — to the offset the format parser reports inside the value. No fence arithmetic of your own:
+
+```ts
+import { MarkdownDocument, MarkdownParseOptions } from "@effected/markdown";
+import { Yaml } from "@effected/yaml";
+import { Option, Result } from "effect";
+
+const source = "---\r\ntitle: [unclosed\r\n---\r\n# Body\r\n";
+const doc = Result.getOrThrow(MarkdownDocument.parseResult(source, MarkdownParseOptions.make({ frontmatter: true })));
+const node = Option.getOrThrow(doc.frontmatter);
+const yaml = Yaml.parseResult(node.value);
+if (Result.isFailure(yaml)) {
+  const inFile = (node.valueStart ?? 0) + (yaml.failure.diagnostics[0]?.offset ?? 0);
+  console.log(doc.lineIndex.positionAt(inFile)); // the diagnostic's line and character in the file
+}
+```
 
 The three codecs — `YamlFrontmatter` (`---`), `TomlFrontmatter` (`+++`) and `JsonFrontmatter` (`---json`) — are free-standing named exports, one module each, deliberately never collected into a namespace object. Naming one codec is what pulls in its format engine, so a JSON-frontmatter consumer never pays for the yaml parser.
 
 Frontmatter blocks can also describe their own schema. `SchemaResolver.classify` sorts a `$schema` value into a tagged union — `ByUrl`, `ByPath`, `Inline` and `ByName` — and `SchemaResolver.fromRegistry` resolves `ByName` declarations like `skill@2.1.0` against schemas you register. URLs, paths and inline documents are carried as data and never fetched: this is a pure package and it performs no IO.
 
-When the body should not go through the CommonMark engine at all — an MDX page, a template, a snapshot-hash contract that needs byte-exact boundaries — `FrontmatterSource.split` runs the same closed fence grammar over the raw string and nothing else. It is total: it returns the block's format, the exact bytes between the fence lines and the body remainder (`body` is always exactly `source.slice(bodyOffset)`), with absence a representable result rather than an error. `FrontmatterSource.join` serializes the parts back, reproducing the original bytes for an unmodified round-trip. Two edges normalize instead of reproducing: a closing fence that ends the document without a line terminator gains one, and fence lines with mismatched terminators (say `---\r\n … ---\n`) re-emit both with the opening fence's. The value and body bytes survive verbatim in every case, and neither is ever parsed at this level — decoding stays the codec modules' business.
+When the body should not go through the CommonMark engine at all — an MDX page, a template, a snapshot-hash contract that needs byte-exact boundaries — `FrontmatterSource.split` runs the same closed fence grammar over the raw string and nothing else. It is total: it returns the block's format, the exact bytes between the fence lines with their offsets in the source (`valueStart`, `valueEnd`), and the body remainder (`body` is always exactly `source.slice(bodyOffset)`), with absence a representable result rather than an error. `fence` reports `"absent"`, `"unclosed"` or `"closed"`, and `fenceFormat` the format the opening fence declared, so an unclosed `---` is distinguishable from no fence at all. `FrontmatterSource.join` serializes the parts back, reproducing the original bytes for an unmodified round-trip. Two edges normalize instead of reproducing: a closing fence that ends the document without a line terminator gains one, and fence lines with mismatched terminators (say `---\r\n … ---\n`) re-emit both with the opening fence's. The value and body bytes survive verbatim in every case, and neither is ever parsed at this level — decoding stays the codec modules' business.
 
 ## Working with the tree
 
@@ -228,6 +245,17 @@ Effect.runPromise(program).then(console.log);
 ```
 
 `DocumentSection.body` is the section without its heading, and it is deliberately untrimmed — exactly the bytes `bodyRange` describes — so callers write `.body.trim()` when they want the tidy form.
+
+`unresolvedFootnoteReferences` lists every GFM footnote marker — `[^label]` — that has no matching definition, with its raw `label`, its case-folded `identifier` and its `position`. A reference only forms when its definition exists, so an undefined marker stays literal text, merged with its neighbours, and `findAll("footnoteReference")` cannot see it; the parse records each one at the moment it rejects it. Markers the parser never reads — in code spans and code blocks, autolinks, HTML, behind a backslash, or inside a bracket pair that formed a link — are not reported, and the node tree is unchanged:
+
+```ts
+import { MarkdownDocument } from "@effected/markdown";
+import { Result } from "effect";
+
+const doc = Result.getOrThrow(MarkdownDocument.parseResult("See [^a] and [^b], not `[^c]`.\n\n[^a]: Defined.\n"));
+console.log(doc.unresolvedFootnoteReferences.map((marker) => [marker.label, marker.position.start.offset]));
+// [ [ "b", 13 ] ]
+```
 
 For anything the accessors do not cover, `find` and `findAll` walk the whole tree in document pre-order. A string selector matches the node's `type` and narrows the result — `doc.findAll("heading")` is `ReadonlyArray<Heading>`, `doc.find("table")` is `Option<Table>` — and a type-guard predicate narrows the same way. The nodes come back by identity, so `doc.findAll("heading")[1]` addresses the second heading for `MarkdownFormat.modify` without raw child indexing.
 
@@ -374,14 +402,30 @@ Escapes that protect the surrounding **block** still apply, because dropping the
 
 To *normalize* an existing document to different choices, use `MarkdownFormat` with `MarkdownFormattingOptions`. That is the configurable surface; this one deliberately is not.
 
+## Emitting markdown without the parser
+
+A bundle that only builds trees and serializes them — a Worker rendering content to markdown, say — imports from `@effected/markdown/stringify`. That entry point exports the node classes, `stringify` and `stringifyResult`, `MarkdownStringifyError` and `MarkdownDiagnostic`, and nothing it reaches loads the block pass, the inline pass or the HTML entity table, so a bundler leaves all three out:
+
+```ts
+import { Heading, Root, Text, stringifyResult } from "@effected/markdown/stringify";
+import { Result } from "effect";
+
+const tree = Root.make({ children: [Heading.make({ depth: 2, children: [Text.make({ value: "Usage" })] })] });
+console.log(Result.getOrThrow(stringifyResult(tree)));
+// ## Usage
+```
+
+The bytes are exactly `Markdown.stringify`'s — those statics delegate to these functions — and the root entry exports the same functions and classes, by identity, so the free functions tree-shake from either import. What keeps the parser in a bundle is reaching serialization through the `Markdown` class: a bundler cannot drop an unused static member.
+
 ## Features
 
 - `Markdown` — `parse`/`stringify` as `Effect`s with typed `MarkdownParseError`/`MarkdownStringifyError` channels, the pure `parseResult`/`stringifyResult` twins for synchronous callers, and the `MarkdownFromString` two-way codec.
+- `stringify`/`stringifyResult` — the serializer as free functions, on the root entry and on the parser-free `@effected/markdown/stringify` entry point beside the node classes.
 - `Markdown.parsePhrasing`/`parsePhrasingResult` — parse a prose fragment as a single paragraph's inline content, without a full document parse and a paragraph splice: blank lines stay inline, references never form (no reference context), and positions are correct relative to the input string.
-- `MarkdownDocument` — source, tree, diagnostics and the link-definition index, plus the derived `headings`, `headingSlugs`, `sections` and `links` accessors, the `firstSection`/`sectionByHeading` finders over a `DocumentSection` (heading, depth, range, body), the `find`/`findAll` tree queries over type-narrowed selectors, and the `frontmatter` capture with `hasFrontmatterBlock` to tell an absent block from an uncaptured one.
+- `MarkdownDocument` — source, tree, diagnostics and the link-definition index, plus the derived `headings`, `headingSlugs`, `sections` and `links` accessors, the `firstSection`/`sectionByHeading` finders over a `DocumentSection` (heading, depth, range, body), the `find`/`findAll` tree queries over type-narrowed selectors, `unresolvedFootnoteReferences` for `[^label]` markers with no definition, and the `frontmatter` capture with `hasFrontmatterBlock` and `frontmatterFence` to tell an absent block from an uncaptured or unclosed one.
 - The mdast-shaped node classes — the CommonMark types plus GFM's `delete`, `table`, `tableRow`, `tableCell`, `footnoteDefinition`, `footnoteReference` and task-list `checked`, each carrying unist positions with byte offsets and this package's fidelity fields. `position` defaults to the zero-width synthetic sentinel, so a replacement fragment constructs in one line — `Text.make({ value: "shipped" })`.
 - The MDX node vocabulary — `MdxJsxFlowElement`/`MdxJsxTextElement` with their attribute carriers, `MdxFlowExpression`/`MdxTextExpression` and `MdxjsEsm`, shaped to the `mdast-util-mdx` contracts for construction and serialization (the parser reads no MDX syntax).
-- `FrontmatterSource` — string-level frontmatter `split`/`join` over the same closed fence grammar, byte-exact boundaries, no parsing of value or body; for bodies the CommonMark engine should not touch.
+- `FrontmatterSource` — string-level frontmatter `split`/`join` over the same closed fence grammar, byte-exact boundaries and value offsets, a `FrontmatterFenceState` that tells an unclosed fence from none, no parsing of value or body; for bodies the CommonMark engine should not touch.
 - `MarkdownEdit` / `MarkdownRange` (with `applyAll`) — the non-mutating text-edit vocabulary, field-identical to `@effected/jsonc`'s, `@effected/yaml`'s and `@effected/toml`'s.
 - `MarkdownFormat` — `format`/`formatToString` compute conservative marker-normalization edits; `modify`/`modifyToString` replace a node by identity through the canonical stringifier.
 - `MarkdownVisitor` — walk a parsed tree as `Enter`/`Exit` events with child-index paths and depth: synchronously as a lazy `Iterable` (`walk`), or as a `Stream` (`visit`).
