@@ -754,25 +754,38 @@ class Lexer {
 				this.diagnose("UnterminatedArrayAssignment", start, end - start);
 				return { start, end, parts: [{ kind: "opaque", start, end, substitutions }] };
 			}
-			const element = this.lexWord(j, NORMAL);
+			const key = source[j] === "[" ? this.arrayKey(j) : undefined;
+			if (key === null) {
+				// An unclosed key: bash reads it to the end of the input and rejects it.
+				return { start, end: n, parts: [{ kind: "opaque", start, end: n, substitutions }] };
+			}
+			const element = this.lexWord(j, NORMAL, key);
 			for (const part of element.parts) collectSubstitutions(part, substitutions);
-			if (source[j] === "[") this.arrayKey(j, element.end);
 			j = element.end;
 		}
 	}
 
 	/**
-	 * The `[key]` of an array element starting at `open` and ending at `end`.
-	 * bash evaluates an indexed array's key as arithmetic, where a quoted run
-	 * still expands (`x=(['$(cmd)']=1)` runs `cmd`), so a key followed by `=`
-	 * or `+=` reports its quoted runs. The scan stops at the element's end, so
-	 * every element is read at most twice.
+	 * The `[key]` of an array element whose `[` is at `open`, as a subscript
+	 * span for `lexWord`, or `null` when it is unclosed. bash reads a `[` that
+	 * starts an element as a matched pair, so the key runs to its matching `]`
+	 * across blanks, newlines, `)`, `#` and `;` (`x=([ '$(cmd)' ]=1)` is one
+	 * element). It evaluates an indexed array's key as arithmetic, where a
+	 * quoted run still expands, so a key followed by `=` or `+=` reports its
+	 * quoted runs. An unclosed key is opaque to the end with
+	 * `UnterminatedSubscript`, as in command position. The scan starts where
+	 * the element does and the element resumes after it, so each character is
+	 * read once.
 	 */
-	private arrayKey(open: number, end: number): void {
-		const scan = scanNested(this.source, open + 1, end, ARITH_BRACKET);
-		if (scan.terminated && this.assignmentOperator(skipContinuations(this.source, scan.end, end)) !== -1) {
-			this.quotedRuns(scan);
+	private arrayKey(open: number): Span | null {
+		const n = this.length;
+		const scan = scanNested(this.source, open + 1, n, ARITH_BRACKET);
+		if (!scan.terminated) {
+			this.diagnose("UnterminatedSubscript", open, n - open);
+			return null;
 		}
+		if (this.assignmentOperator(skipContinuations(this.source, scan.end)) !== -1) this.quotedRuns(scan);
+		return { start: open, end: scan.end, substitutions: scan.substitutions };
 	}
 
 	/** `endsWord`, except that `<(` and `>(` continue a word as a process substitution. */

@@ -24,10 +24,10 @@ sources:
     title: "GNU Bash Reference Manual: shell syntax, quoting, expansions, redirections"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-07T16:20:05Z
+  at: 2026-11-07T21:28:11Z
 integrity:
   generated:
-    body: 1ae1169be6f315a7
+    body: 94b5560dae60a5ce
 ---
 
 # @effected/shell
@@ -149,16 +149,26 @@ pair and rebuilds a `$( … )` from its parse, so `<<$(  true  )` ends at a line
 `$(true)` and the delimiter line cannot be known. `$'…'` and `$"…"` delimiters
 are their quoted text.
 
-A `'…'` or `$'…'` run inside `${…}`, an arithmetic expression or a subscript
-(an array value's `[key]=` included) that holds `$(` or a backtick records
-`QuotedSubstitutionInExpansion`. bash honours the quote while it finds the
-closer, then, in a double-quoted or heredoc `${…}`, in any arithmetic and in an
-indexed array's key, keeps the quote characters and runs the substitution:
-`echo "${x:-'$(cmd)'}"`, `(( '$(cmd)' ))` and `x=(['$(cmd)']=1)` all run `cmd`.
-The operator and quoting that keep a run literal (`"${x//a/'$(cmd)'}"` runs
-nothing) are not modelled, so every such run is reported, and no substitution
-part is placed for it, since bash's matching and expansion readings of the run
-need not agree on where a `$( … )` in it ends.
+Any `$` or backtick that reaches `${…}`, an arithmetic expression or a
+subscript (an array value's `[key]=` included) quoted or escaped records
+`QuotedSubstitutionInExpansion`, whatever follows it: in a `'…'` run, in a
+`$'…'` run after decoding, as a literal `$` in a `"…"` run directly inside the
+frame (`"$"`, `"a$"`, not the `$` of `"$HOME"` or `"$$"`), or after a
+backslash (`\$`, `` \` ``). So does a bare `$` before an escaped `(` or
+backtick (`x=([$\(cmd\)]=1)`, where removing the backslash leaves `$(`;
+`$\n` and a top-level `echo $\(cmd\)` run nothing). bash honours the
+quoting while it finds the closer, then, in a double-quoted or heredoc
+`${…}`, in any arithmetic and in an indexed array's key, removes it and
+reads the text again, so the `$` joins whatever follows it, the next run
+included: `echo "${x:-'$(cmd)'}"`, `"${x:-"$"(cmd)}"`,
+`"${x:-$'\x24'(cmd)}"`, `x=(['$'(cmd)]=1)` and `x=([\$\(cmd\)]=1)` all run
+`cmd`. The operator and quoting that keep the text literal
+(`"${x//a/'$(cmd)'}"` runs nothing), and what the `$` joins, are not
+modelled, so every such `$` is reported, and no substitution part is placed
+for it. A quoted `$` inside an expansion is rare in real commands, and an
+over-report beats a hide. A top-level word is not read again: `$'\x24(cmd)'`,
+`"$""(cmd)"` and `\$'(cmd)'` keep the literal `$(cmd)` and nothing is
+recorded.
 
 Honouring the quote to find the closer is bash's default mode only. POSIX mode
 (`set -o posix`, or an inherited `POSIXLY_CORRECT`) takes a `'` inside a
@@ -191,7 +201,18 @@ unique prefix of one (`env --unse X` is `--unset`), and an unknown option or an
 ambiguous prefix (`env --i`) stops resolution with `name` `None`, since it may
 take the word after it. `env` reads options up to `--` or its first other word,
 then takes every word holding an `=` as an assignment (`env -- -x=1 git`,
-`env =x git`); `sudo` reads assignments among its options.
+`env =x git`); `sudo` reads one among its options, never one starting `/` or
+`=` and never one right after an argv word that is exactly `--`, an option's
+value included (`sudo /opt/x=1/git`, `sudo -- A=1 git` and
+`sudo -p -- A=1 git` run that word, `sudo -p-- A=1 git` runs `git`), as its
+`parse_args.c` `is_envar` and `got_end_of_args` read them. A word before it
+that may expand to `--` (`sudo -p "$p" A=1 git`) names no command. Neither
+does any word a wrapper steps over, an option's separate value or an
+`env`/`sudo` `NAME=value` word, that may not reach it as exactly one argv
+word: an unquoted expansion, brace or glob (`env -u $v git`, `env A=$v git`,
+`sudo -u {root,x} git`), or a double-quoted `"$@"` or `"${a[@]}"`. bash
+splits it, and the wrapper may run a word the analyzer never sees. A
+double-quoted `"$v"` is one word and still unwraps.
 
 `env` and `sudo` read their argv after quote removal, so `env "FOO=a b" git`
 and `env "-i" git` unwrap; `time` is a reserved word, so only an unquoted

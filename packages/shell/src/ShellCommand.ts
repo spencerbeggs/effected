@@ -29,11 +29,20 @@ interface WrapperSpec {
 	 *   `--` or the first word that is not one; from there every word holding
 	 *   an `=` is an assignment, so `env -- -x=1 git` and `env =x git` run
 	 *   `git`, while in `env A=1 -i git` the `-i` is the command.
-	 * - `"sudo"`: `sudo`'s argv after quote removal. A word holding an `=` that
-	 *   does not start `-` is an assignment wherever it sits among the
-	 *   options, and after `--` too, which over-reports rather than hides.
+	 * - `"sudo"`: `sudo`'s argv after quote removal, read as `parse_args.c`'s
+	 *   `is_envar` and `got_end_of_args` read it. A word holding an `=` whose
+	 *   first character is neither `/` nor `=` is an assignment, wherever it
+	 *   sits among the options, unless the argv word right before it is
+	 *   exactly `--`, an option's value included. So `sudo /opt/x=1/git`,
+	 *   `sudo =x`, `sudo -- A=1` and `sudo -p -- A=1` run that word, while
+	 *   `sudo A=1 -u root git`, `sudo ./g=1 git` and `sudo -p-- A=1 git` run
+	 *   `git`. A word before it that may expand to `--` names no command.
 	 * - `"shell"`: the unquoted source, as the shell reads an assignment after
 	 *   the `time` reserved word.
+	 *
+	 * For `env` and `sudo`, an assignment word that may not reach the wrapper
+	 * as one argv word (`env A=$v git`) names no command, since bash may split
+	 * it into an assignment and the command.
 	 */
 	readonly assignments: "none" | "env" | "sudo" | "shell";
 	/** Whether a lone `-` is an option, skipped without ending the options. */
@@ -322,6 +331,38 @@ const skipPrefix = (words: ReadonlyArray<ShellWord>, from: number): number => {
 	return words.length;
 };
 
+/**
+ * Whether `word` may reach the wrapper as more or fewer than one argv word:
+ * an unquoted expansion, brace, glob or opaque part word-splits or expands to
+ * several, and so does a `@` expansion in double quotes (`"$@"`,
+ * `"${a[@]}"`). Bare, quoted and ANSI-C text, a tilde and any other
+ * double-quoted expansion (`"$v"`, `"$*"`) stay one word.
+ */
+const mayNotBeOneWord = (word: ShellWord | undefined): boolean =>
+	word?.parts.some((part) => {
+		switch (part.kind) {
+			case "bare":
+			case "singleQuoted":
+			case "ansiC":
+			case "tilde":
+				return false;
+			case "doubleQuoted":
+				return part.expansions.some((expansion) => expansion.kind === "variable" && expansion.expression.includes("@"));
+			default:
+				return true;
+		}
+	}) === true;
+
+/**
+ * Whether `word` is exactly `--` after quote removal: `"maybe"` when it has
+ * no literal and its literal prefix could still grow into one.
+ */
+const endOfArgs = (word: ShellWord | undefined): "yes" | "no" | "maybe" => {
+	if (word === undefined) return "no";
+	if (Option.isSome(word.literal)) return word.literal.value === "--" ? "yes" : "no";
+	return "--".startsWith(literalPrefix(word)) ? "maybe" : "no";
+};
+
 type Step =
 	| { readonly kind: "next"; readonly index: number }
 	| { readonly kind: "unknown"; readonly index: number }
@@ -337,11 +378,23 @@ const skipOptions = (words: ReadonlyArray<ShellWord>, from: number, spec: Wrappe
 			index += 1;
 			continue;
 		}
-		// The text the wrapper is sure to see: `env B=$X git` expands the value,
-		// but `B=` is literal, so `env` still reads an assignment.
+		// The text the wrapper is sure to see: `env B="$X" git` expands the
+		// value, but `B=` is literal, so `env` still reads an assignment.
 		const prefix = literalPrefix(word);
 		const option = options && prefix.startsWith("-");
-		if (!option && (spec.assignments === "env" || spec.assignments === "sudo") && prefix.includes("=")) {
+		const assignment =
+			spec.assignments === "env" || (spec.assignments === "sudo" && prefix[0] !== "/" && prefix[0] !== "=");
+		if (!option && assignment && prefix.includes("=")) {
+			if (spec.assignments === "sudo") {
+				// sudo's `got_end_of_args`: the argv word before this one is
+				// exactly `--`, whatever role it played, an option's value
+				// included. One that may expand to `--` leaves the role unknown.
+				const end = endOfArgs(words[index - 1]);
+				if (end === "maybe") return { kind: "unknown", index };
+				if (end === "yes") return { kind: "next", index };
+			}
+			// `env A=$v git` splits into `A=1` and the command `c1` when `v` is `1 c1`.
+			if (mayNotBeOneWord(word)) return { kind: "unknown", index };
 			// `env` reads no option after its first assignment.
 			if (spec.assignments === "env") options = false;
 			index += 1;
@@ -367,7 +420,10 @@ const skipOptions = (words: ReadonlyArray<ShellWord>, from: number, spec: Wrappe
 				const equals = value.indexOf("=");
 				const resolved = longOption(spec, equals === -1 ? value.slice(2) : value.slice(2, equals));
 				if (resolved === "stop" || resolved === "unknown") return { kind: "unknown", index };
-				index += equals === -1 && resolved === "argument" ? 2 : 1;
+				if (equals === -1 && resolved === "argument") {
+					if (mayNotBeOneWord(words[index + 1])) return { kind: "unknown", index };
+					index += 2;
+				} else index += 1;
 				continue;
 			}
 			let consumed = 1;
@@ -382,6 +438,9 @@ const skipOptions = (words: ReadonlyArray<ShellWord>, from: number, spec: Wrappe
 				// An option the table does not know may take an argument.
 				if (!spec.flags.includes(short)) return { kind: "unknown", index };
 			}
+			// The value word an option takes: `env -u $v git` runs `c1` when `v`
+			// is `X c1`, so a value that may split leaves the command unknown.
+			if (consumed === 2 && mayNotBeOneWord(words[index + 1])) return { kind: "unknown", index };
 			index += consumed;
 			continue;
 		}
@@ -462,13 +521,21 @@ export class ShellCommand extends Schema.Class<ShellCommand>("ShellCommand")({
 	 * is an assignment, so `env -- -x=1 git` and `env =x git` unwrap to `git`
 	 * while `env A=1 -i git` runs `-i`; a lone `-` is skipped without ending
 	 * the options, as BSD `env` reads it. `sudo` reads a `NAME=value` word
-	 * among its options. A `NAME=value` word counts after quote removal for
-	 * `env` and `sudo`, as they read their argv, so `env "FOO=a b" git`
-	 * unwraps to `git`; a quoted option (`env "-i"`) is an option too. A
+	 * among its options, but never one whose first character is `/` or `=`,
+	 * and never one right after an argv word that is exactly `--`, an
+	 * option's value included, so `sudo /opt/x=1/git`, `sudo =x` and
+	 * `sudo -p -- A=1 git` run that word. A `NAME=value` word counts after
+	 * quote removal for `env` and `sudo`, as they read their argv, so
+	 * `env "FOO=a b" git` unwraps to `git`; a quoted option (`env "-i"`) is an
+	 * option too. A word a wrapper steps over, an option's separate value or a
+	 * `NAME=value` word, that may not reach it as exactly one argv word stops
+	 * resolution with no name: an unquoted expansion, brace or glob
+	 * (`env -u $v git`, `exec -a {x,y} git`), or a double-quoted `"$@"`, since
+	 * bash splits it and the wrapper may run a word the analyzer never sees.
+	 * A double-quoted `"$v"` is one word, so `env -u "$v" git` unwraps. A
 	 * wrapper is recognized by its last path segment, so `/usr/bin/env`
-	 * unwraps. `command -v` and
-	 * `command -V` only look a name up, so they do not unwrap: the command is
-	 * `command`. `env -S` splits a string into a command line, which is not
+	 * unwraps. `command -v` and `command -V` only look a name up, so they do
+	 * not unwrap: the command is `command`. `env -S` splits a string into a command line, which is not
 	 * modelled, so resolution stops with no name. Other wrappers (`nice`,
 	 * `xargs`, `timeout`, `stdbuf`) are reported as the command.
 	 */

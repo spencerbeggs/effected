@@ -20,14 +20,20 @@ import { SHELL_DIAGNOSTIC_CODES } from "./internal/raw.js";
  *   `$[`, `${`, backtick, `<(` or `>(`. bash reads the word as a matched pair
  *   and rebuilds a `$( … )` from its parse, so the delimiter line cannot be
  *   known. No body is read, and the lines after it are reported as commands.
- * - `QuotedSubstitutionInExpansion`: a `'…'` or `$'…'` run inside a
- *   `${…}`, an arithmetic expression (`$((…))`, `((…))`, `$[…]`) or a
- *   subscript holds a `$(` or a backtick. bash honours those quotes only to
- *   find the closer: inside a double-quoted or heredoc `${…}`, in arithmetic
- *   and in an indexed array's subscript it keeps the quote characters and
- *   still runs the substitution, so `echo "${x:-'$(cmd)'}"` runs `cmd`. Which
- *   operator and quoting keep the run literal is not modelled, so every such
- *   run is reported, and no substitution part is placed for it.
+ * - `QuotedSubstitutionInExpansion`: a `$` or a backtick reaches a `${…}`,
+ *   an arithmetic expression (`$((…))`, `((…))`, `$[…]`) or a subscript
+ *   quoted: inside a `'…'` run, a `$'…'` run (after decoding), a `"…"` run
+ *   (a literal `$`, not the `$` of an expansion such as `$HOME` or `$$`) or
+ *   after a backslash, or a bare `$` stands before an escaped `(` or
+ *   backtick (`$\(`), which removing the backslash turns into `$(`. bash
+ *   honours that quoting only to find the closer: inside a double-quoted or
+ *   heredoc `${…}`, in arithmetic and in an indexed array's key it removes
+ *   the quotes and reads the text again, so the `$` joins whatever follows
+ *   it: `echo "${x:-'$(cmd)'}"`, `echo "${x:-"$"(cmd)}"`,
+ *   `"${x:-$'\x24(cmd)'}"` and `x=([\$\(cmd\)]=1)` each run `cmd`. Which
+ *   operator and quoting keep the text literal, and what the `$` joins, are
+ *   not modelled, so every such `$` is reported, whatever follows it, and no
+ *   substitution part is placed for it.
  * - `QuotedCloserInExpansion`: a `'…'` or `$'…'` run inside an expansion
  *   that sits in double quotes or a heredoc body holds a `}` or `]` with no
  *   opener before it, or leaves a `"`, `${` or `$[` open (`'}'`, `'"'`,
@@ -77,7 +83,8 @@ const MESSAGES: Readonly<Record<ShellDiagnosticCode, string>> = {
 	UnterminatedArithmetic: "arithmetic expression is not closed",
 	UnterminatedSubscript: "array subscript ([ … ]) is not closed",
 	ExpansionInHeredocDelimiter: "heredoc delimiter holds an expansion, so its body cannot be found",
-	QuotedSubstitutionInExpansion: "a quoted run inside an expansion holds a substitution bash may still run",
+	QuotedSubstitutionInExpansion:
+		"a quoted or escaped $ or backtick inside an expansion may open a substitution bash still runs",
 	QuotedCloserInExpansion: "a quoted run inside a double-quoted expansion holds syntax POSIX-mode bash would act on",
 	UnterminatedHeredoc: "heredoc has no delimiter line",
 	EmptyParameterExpansion: "parameter expansion is empty",

@@ -48,11 +48,13 @@ describe("ShellCommand.fromSegment", () => {
 			args: ["push"],
 			wrappers: ["sudo"],
 		});
-		assert.deepStrictEqual(resolve("sudo -u $USER git push"), { name: "git", args: ["push"], wrappers: ["sudo"] });
+		assert.deepStrictEqual(resolve('sudo -u "$USER" git push'), { name: "git", args: ["push"], wrappers: ["sudo"] });
+		// An unquoted value may split into more words than the option takes.
+		assert.strictEqual(resolve("sudo -u $USER git push").name, null);
 	});
 
-	it("unwraps env with -i, -, -u, -C and assignments, including expanding ones", () => {
-		assert.deepStrictEqual(resolve("env -i - -u HOME -C /tmp A=1 B=$X git status"), {
+	it("unwraps env with -i, -, -u, -C and assignments, including quoted expanding ones", () => {
+		assert.deepStrictEqual(resolve('env -i - -u HOME -C /tmp A=1 B="$X" git status'), {
 			name: "git",
 			args: ["status"],
 			wrappers: ["env"],
@@ -63,6 +65,8 @@ describe("ShellCommand.fromSegment", () => {
 			wrappers: ["env"],
 		});
 		assert.deepStrictEqual(resolve("env a-b=c git status"), { name: "git", args: ["status"], wrappers: ["env"] });
+		// An unquoted expansion in an assignment may split off a command.
+		assert.strictEqual(resolve("env B=$X git status").name, null);
 	});
 
 	it("stops with no name at env -S, which splits a string into a command line", () => {

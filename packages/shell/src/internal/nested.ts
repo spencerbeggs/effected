@@ -6,6 +6,7 @@
 // arithmetic understood. Depth is held on an explicit frame stack, never the
 // call stack, so a megabyte of `$(` is one linear pass.
 
+import { decodeAnsiC } from "./ansiC.js";
 import { consumeHeredocBodies, readHeredocDelimiter } from "./heredoc.js";
 import type { RawSpan, RawSubstitution } from "./raw.js";
 import { skipContinuations } from "./raw.js";
@@ -58,12 +59,22 @@ export const ARITH_BRACKET = 10;
  * quote characters and still expands the text between them, so
  * `echo "${x:-'$(cmd)'}"` runs `cmd`. Whether it does depends on the quoting
  * around the `${`, on the operator (`${x//a/'$(cmd)'}` runs nothing) and on
- * whether the array is associative, none of which a skip scan can know. So a
- * run holding a `$(` or a backtick is recorded in `NestedScan.quoted`, which
- * the lexer reports as `QuotedSubstitutionInExpansion`: fail closed, never
- * skipped. A substitution part is not placed for it, because bash reads the
- * run twice, once as a quote to match the closer and once as expansion
- * text, and the two readings need not agree on where a `$(…)` ends.
+ * whether the array is associative, none of which a skip scan can know.
+ * Nor can it know what the run joins: bash removes the quotes and reads the
+ * text again, so a `$` in the run opens a substitution with whatever follows
+ * it, the next run included (`x=(['$'(cmd)]=1)` runs `cmd`). So a run
+ * holding any `$` or backtick (`holdsDollarOrBacktick`) is recorded in
+ * `NestedScan.quoted`, which the lexer reports as
+ * `QuotedSubstitutionInExpansion`: fail closed, never skipped. The same goes
+ * for every other way a `$` or backtick reaches such a frame quoted: a
+ * `"…"` run directly inside it holding a literal `$` (`"$"`, `"a$"`, but not
+ * the `$` of `"$HOME"`) or an escaped `\$` or `` \` ``, and an escaped `\$` or
+ * `` \` `` in the frame itself (`x=([\$\(cmd\)]=1)`, `"${x:-"$"(cmd)}"` both
+ * run `cmd`), and a bare `$` before an escaped `(` or backtick, which
+ * removing the backslash turns into `$(` (`x=([$\(cmd\)]=1)` runs `cmd`).
+ * A substitution part is not placed for it, because bash reads the run
+ * twice, once as a quote to match the closer and once as expansion text, and
+ * the two readings need not agree on where a `$(…)` ends.
  *
  * Honouring the quote to find the closer is bash's default mode only. In
  * POSIX mode (`set -o posix`, or an inherited `POSIXLY_CORRECT`) a `'` inside
@@ -81,7 +92,16 @@ export const ARITH_BRACKET = 10;
  * around it, so a run in `"$(( ${x:-'}'} ))"` is still reported.
  */
 const EXPANSION_SQUOTE = 11;
-/** A `$'…'` run opened inside an expansion context: see `EXPANSION_SQUOTE`. */
+/**
+ * A `$'…'` run opened inside an expansion context: see `EXPANSION_SQUOTE`.
+ * bash decodes its escapes first and expands the decoded text, so
+ * `echo "${x:-$'\x24(cmd)'}"` runs `cmd`, and a decoded `$` or `(` joins the
+ * text beside it, inside the run (`$'$\x28cmd)'`) or after it
+ * (`$'\x24'(cmd)`, `$'$'(cmd)`, `$'$'"(cmd)"`). Such a run is checked raw
+ * and decoded (`ansiCRunHoldsOpener`): a `$` or a backtick anywhere in its
+ * decoded text records it, whatever follows. A `'…'` run is never decoded
+ * (`"${x:-'\x24(cmd)'}"` runs nothing).
+ */
 const EXPANSION_ANSIC = 12;
 
 /** Whether `kind` is a frame inside which a quoted run is still expanded. */
@@ -89,22 +109,49 @@ const expandsQuotes = (kind: number): boolean =>
 	kind === BRACE || kind === ARITH_SUBST || kind === ARITH_GROUP || kind === ARITH_PAREN || kind === ARITH_BRACKET;
 
 /**
- * Whether `source[from, to)` holds a `$(` (through backslash-newlines) or a
- * backtick: the openers of a command substitution. One pass, no lookahead
- * past `to`.
+ * Whether `source[from, to)` holds a `$` or a backtick at all. Inside a frame
+ * bash reads again after quote removal, a quoted or escaped `$` joins
+ * whatever follows it, the next run included, so any one of them may open a
+ * substitution. One pass, no lookahead past `to`.
  *
  * @internal
  */
-export const holdsSubstitutionOpener = (source: string, from: number, to: number): boolean => {
+export const holdsDollarOrBacktick = (source: string, from: number, to: number): boolean => {
 	for (let i = from; i < to; i += 1) {
 		const c = source[i];
-		if (c === "`") return true;
-		if (c === "$") {
-			const next = skipContinuations(source, i + 1, to);
-			if (next < to && source[next] === "(") return true;
-		}
+		if (c === "$" || c === "`") return true;
 	}
 	return false;
+};
+
+/**
+ * Whether the body `source[from, to)` of a `$'…'` run, as bash expands it,
+ * may open a command substitution: its decoded text holds a `$` or a
+ * backtick anywhere. A `$` may open one with what follows it, inside the run
+ * or after its closing quote, and a decoded `(` opens nothing without a `$`
+ * before it, which this check or the neighbouring run's catches. One decode,
+ * bounded by the run.
+ *
+ * @internal
+ */
+export const ansiCRunHoldsOpener = (source: string, from: number, to: number): boolean => {
+	const { value } = decodeAnsiC(source, from, to);
+	return value.includes("$") || value.includes("`");
+};
+
+const isNameOrDigit = (c: string | undefined): boolean =>
+	c !== undefined && ((c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") || c === "_");
+
+/**
+ * Whether the `$` at `at`, inside double quotes, is a literal character
+ * rather than the start of an expansion: what follows it is no name, digit,
+ * special parameter or `(`, `{`, `[` (`"$"`, `"a$ b"`, `"$'"`). The caller
+ * steps over `$$` itself, so `$` is not in the special set.
+ */
+const isLiteralDollar = (source: string, at: number, limit: number): boolean => {
+	const next = skipContinuations(source, at + 1, limit);
+	const c = next < limit ? source[next] : undefined;
+	return c === undefined || !(isNameOrDigit(c) || "@*#?!-({[".includes(c));
 };
 
 /**
@@ -173,9 +220,10 @@ export interface NestedScan {
 	 */
 	readonly substitutions: ReadonlyArray<RawSubstitution>;
 	/**
-	 * The `'…'` and `$'…'` runs directly inside an expansion context of the
-	 * body (not inside another substitution) that hold a substitution opener,
-	 * quote characters included. Empty for a `SUBST` or `BACKTICK` root, whose
+	 * The quoted spans directly inside an expansion context of the body (not
+	 * inside another substitution) through which a `$` or a backtick reaches
+	 * it: a `'…'`, `$'…'` or `"…"` run, quote characters included, or a
+	 * two-character `\$` or `` \` `` escape. Empty for a `SUBST` or `BACKTICK` root, whose
 	 * body a caller parses again, and for an arithmetic root that turned out
 	 * to be a substitution or two subshells.
 	 */
@@ -297,6 +345,10 @@ export const scanNested = (
 	// Whether the frame sits in double quotes: a `"` frame does, command text
 	// does not, and an expansion or quoted-run frame inherits it.
 	const quotedContext: Array<boolean> = [inDoubleQuotes && root !== SUBST && root !== BACKTICK];
+	// For a `"…"` frame directly inside an expansion frame: 1 once it has met a
+	// literal `$`, an escaped `$` or an escaped backtick, 0 until then. -1 for
+	// every other frame.
+	const literals: Array<number> = [-1];
 	const entries: Array<Entry> = [];
 	const quoted: Array<RawSpan> = [];
 	const closers: Array<RawSpan> = [];
@@ -324,6 +376,7 @@ export const scanNested = (
 			}
 		}
 		const inherits = quotedContext[quotedContext.length - 1] as boolean;
+		literals.push(kind === DQUOTE && expandsQuotes(kinds[kinds.length - 1] as number) ? 0 : -1);
 		kinds.push(kind);
 		starts.push(at);
 		opens.push(at + opener);
@@ -343,6 +396,7 @@ export const scanNested = (
 		const record = records.pop() as number;
 		const raised = counted.pop() as boolean;
 		quotedContext.pop();
+		literals.pop();
 		if (kinds.length === 0) return true;
 		if (raised) substDepth -= 1;
 		const entry = record === -1 ? undefined : entries[record];
@@ -364,10 +418,36 @@ export const scanNested = (
 		const at = kinds.length - 1;
 		if (!recordsQuoted || substDepth !== 0) return;
 		const from = opens[at] as number;
-		if (holdsSubstitutionOpener(source, from, end - 1)) quoted.push({ start: starts[at] as number, end });
+		if (
+			holdsDollarOrBacktick(source, from, end - 1) ||
+			(kinds[at] === EXPANSION_ANSIC && ansiCRunHoldsOpener(source, from, end - 1))
+		) {
+			quoted.push({ start: starts[at] as number, end });
+		}
 		if (quotedContext[at] === true && posixReadingDiffers(source, from, end - 1)) {
 			closers.push({ start: starts[at] as number, end });
 		}
+	};
+
+	// A `\` at `i` in an expansion frame: an escaped `$` or backtick reaches
+	// the text bash reads again, so it is recorded like a quoted one.
+	const escapeInExpansion = (): void => {
+		const next = source[i + 1];
+		if (recordsQuoted && substDepth === 0 && (next === "$" || next === "`")) quoted.push({ start: i, end: i + 2 });
+		i += 2;
+	};
+
+	// A literal or escaped `$`, or an escaped backtick, inside the `"…"` frame
+	// on top of the stack.
+	const literalInDoubleQuotes = (): void => {
+		const at = literals.length - 1;
+		if (literals[at] === 0) literals[at] = 1;
+	};
+
+	// The `"…"` frame on top of the stack closed just before `end`.
+	const closeDoubleQuotedRun = (end: number): void => {
+		const at = kinds.length - 1;
+		if (literals[at] === 1 && recordsQuoted && substDepth === 0) quoted.push({ start: starts[at] as number, end });
 	};
 
 	// `$` inside a body: open whatever it introduces.
@@ -396,6 +476,21 @@ export const scanNested = (
 			push(expandsQuotes(kinds[kinds.length - 1] as number) ? EXPANSION_ANSIC : ANSIC, i, opener);
 			i = open + 1;
 		} else {
+			// A bare `$` before an escaped `(` in a frame bash reads again:
+			// removing the backslash leaves `$(`, so `x=([$\(cmd\)]=1)` runs
+			// `cmd`. Recorded like a quoted `$`, on the same terms as the other
+			// recorders. An escaped backtick after it is recorded by
+			// `escapeInExpansion`.
+			if (
+				next === "\\" &&
+				open + 1 < limit &&
+				source[open + 1] === "(" &&
+				expandsQuotes(kinds[kinds.length - 1] as number) &&
+				recordsQuoted &&
+				substDepth === 0
+			) {
+				quoted.push({ start: i, end: open + 2 });
+			}
 			i += 1;
 		}
 	};
@@ -448,17 +543,28 @@ export const scanNested = (
 			continue;
 		}
 		if (top === DQUOTE) {
-			if (c === "\\") i += 2;
-			else if (c === '"') {
+			if (c === "\\") {
+				const next = source[i + 1];
+				if (next === "$" || next === "`") literalInDoubleQuotes();
+				i += 2;
+			} else if (c === '"') {
 				i += 1;
+				closeDoubleQuotedRun(i);
 				pop(i);
-			} else if (c === "$") dollar(false, true);
-			else if (c === "`") backtick(true);
+			} else if (c === "$") {
+				const next = skipContinuations(source, i + 1, limit);
+				// `$$` is the special parameter, not a literal `$` and then another.
+				if (next < limit && source[next] === "$") i = next + 1;
+				else {
+					if (isLiteralDollar(source, i, limit)) literalInDoubleQuotes();
+					dollar(false, true);
+				}
+			} else if (c === "`") backtick(true);
 			else i += 1;
 			continue;
 		}
 		if (top === BRACE) {
-			if (c === "\\") i += 2;
+			if (c === "\\") escapeInExpansion();
 			else if (c === "}") {
 				i += 1;
 				if (pop(i)) return finish(i, true, false);
@@ -474,7 +580,7 @@ export const scanNested = (
 		if (top === ARITH_BRACKET) {
 			switch (c) {
 				case "\\":
-					i += 2;
+					escapeInExpansion();
 					break;
 				case "'":
 					singleQuote();
@@ -505,7 +611,7 @@ export const scanNested = (
 		if (top === ARITH_SUBST || top === ARITH_GROUP || top === ARITH_PAREN) {
 			switch (c) {
 				case "\\":
-					i += 2;
+					escapeInExpansion();
 					break;
 				case "'":
 					singleQuote();

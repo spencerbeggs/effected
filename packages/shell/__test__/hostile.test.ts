@@ -18,6 +18,44 @@ const time = (input: string): { readonly ms: number; readonly script: ShellScrip
 	return { ms: performance.now() - started, script };
 };
 
+type Timing = ReturnType<typeof time>;
+
+/**
+ * The growth ratio of a parse from `build(quarterLength)` to
+ * `build(4 * quarterLength)`: linear is near 4, quadratic near 16. The quarter
+ * size starts at a quarter megabyte and doubles, up to 4 MB, until its run
+ * takes 5 ms, so a fast parse is measured on real work rather than on timer
+ * noise: under 5 ms a quadratic parse can read as linear. Each size is timed
+ * once after a warm-up. A ratio of 10 or more is timed again, up to three
+ * samples, keeping the fastest run of each size, so one pause in the full run
+ * cannot fail a linear parse, while a quadratic one fails every sample.
+ */
+const measure = (
+	build: (length: number) => string,
+): { readonly quarter: Timing; readonly full: Timing; readonly ratio: number; readonly length: number } => {
+	let quarterLength = MEGABYTE / 4;
+	let small = build(quarterLength);
+	time(small); // warm up
+	let quarter = time(small);
+	while (quarter.ms < 5 && quarterLength < 4 * MEGABYTE) {
+		quarterLength *= 2;
+		small = build(quarterLength);
+		time(small);
+		quarter = time(small);
+	}
+	const large = build(quarterLength * 4);
+	let full = time(large);
+	let ratio = full.ms / Math.max(quarter.ms, 5);
+	for (let sample = 1; sample < 3 && ratio >= 10; sample += 1) {
+		const again = time(small);
+		const fullAgain = time(large);
+		if (again.ms < quarter.ms) quarter = again;
+		if (fullAgain.ms < full.ms) full = fullAgain;
+		ratio = full.ms / Math.max(quarter.ms, 5);
+	}
+	return { quarter, full, ratio, length: quarterLength * 4 };
+};
+
 // Each unit is a construct whose naive handling is quadratic or recursive:
 // openers that never close, quotes that pair up, brackets with no `]`, braces
 // with no `}`, pending heredocs, and very many small segments.
@@ -43,7 +81,9 @@ const UNITS: ReadonlyArray<string> = [
 	"x ",
 	"> ",
 	"~",
-	"a=(",
+	// No `a=(` unit: repeating it leaves the first array unterminated, so the
+	// parse stops at once. The one-array tests below hold a megabyte of keys and
+	// of substitutions in a single array instead.
 	"\n",
 	"# \n",
 	"((",
@@ -53,7 +93,8 @@ const UNITS: ReadonlyArray<string> = [
 	"$((a)",
 	"`\\`",
 	"{a,$(b)}",
-	"x=($(a) ",
+	// No `x=($(a) ` unit, for the same reason: see "one array holding a
+	// megabyte of substitutions" below.
 	"env -- ",
 	"[[ ",
 	"$[",
@@ -93,8 +134,26 @@ const UNITS: ReadonlyArray<string> = [
 	"$(('$(a)' ",
 	"$['",
 	"a['$(a)']=1 ",
-	"x=(['$(a)']=1 ",
+	// No unit covers an array key: repeating `x=(['$(a)']=1 ` closes nothing,
+	// so the parse stops at the second `x=(` after a few characters. The
+	// one-array test below holds a megabyte of keys in a single array instead.
+	// An array key is a matched pair across blanks; an unclosed one runs to the end.
+	"x=([ ",
 	"${$'",
+	// An ANSI-C run inside an expansion is decoded before its opener check.
+	`"\${x:-$'\\x24' `,
+	// A quoted run ending in \$ is checked against the character after it.
+	`"\${x:-$'$'(a)} `,
+	"a['$'(a)]=1 ",
+	// A literal or escaped `$` reaching an expansion through a `"…"` run or a backslash.
+	`"\${x:-"$"(a)} `,
+	"a[\\$\\(a\\)]=1 ",
+	`"\${x:-\\$(a)} `,
+	// A bare `$` before an escaped `(` in a re-read frame, and `$$` in double quotes.
+	"a[$\\(a\\)]=1 ",
+	`"\${x:-"$$"} `,
+	// A wrapper's value word is checked for splitting.
+	"env -u $v ",
 	// A quoted run in a double-quoted `${…}` is read a third time, as POSIX mode would.
 	`"\${x:-'}'} `,
 	`"\${x:-'\${y:-"a"}'} `,
@@ -105,27 +164,30 @@ const UNITS: ReadonlyArray<string> = [
 describe("hostile input", () => {
 	for (const unit of UNITS) {
 		it(`a megabyte of ${JSON.stringify(unit)} parses in linear time`, { timeout: 60_000 }, () => {
-			const small = repeatTo(unit, MEGABYTE / 4);
-			const large = repeatTo(unit, MEGABYTE);
-			time(small); // warm up
-			const quarter = time(small);
-			const full = time(large);
-			assert.strictEqual(full.script.source.length, MEGABYTE);
-			// Linear growth is a ratio near 4; quadratic growth is near 16. The
-			// floor keeps a sub-millisecond quarter run from producing a noisy ratio.
-			const ratio = full.ms / Math.max(quarter.ms, 5);
+			const { quarter, full, ratio, length } = measure((size) => repeatTo(unit, size));
+			assert.strictEqual(full.script.source.length, length);
 			assert.isBelow(ratio, 10, `${JSON.stringify(unit)}: ${quarter.ms.toFixed(1)}ms -> ${full.ms.toFixed(1)}ms`);
 			assert.isBelow(full.ms, 10_000);
 		});
 	}
 
+	it("one array holding a megabyte of blank-holding keys parses in linear time", { timeout: 60_000 }, () => {
+		const build = (length: number): string => `x=(${repeatTo("[ '$(a)' ]=1 ", length)})`;
+		const { full, ratio } = measure(build);
+		assert.isBelow(ratio, 10);
+		assert.isBelow(full.ms, 10_000);
+	});
+
+	it("one array holding a megabyte of substitutions parses in linear time", { timeout: 60_000 }, () => {
+		const { full, ratio } = measure((length) => `x=(${repeatTo("$(a) ", length)})`);
+		assert.deepStrictEqual(full.script.diagnostics, []);
+		assert.isBelow(ratio, 10);
+		assert.isBelow(full.ms, 10_000);
+	});
+
 	it("a heredoc line joined from a megabyte of continuations parses in linear time", { timeout: 60_000 }, () => {
-		const small = `cat <<E\n${repeatTo("x\\\n", MEGABYTE / 4)}`;
-		const large = `cat <<E\n${repeatTo("x\\\n", MEGABYTE)}`;
-		time(small);
-		const quarter = time(small);
-		const full = time(large);
-		assert.isBelow(full.ms / Math.max(quarter.ms, 5), 10);
+		const { full, ratio } = measure((length) => `cat <<E\n${repeatTo("x\\\n", length)}`);
+		assert.isBelow(ratio, 10);
 		assert.isBelow(full.ms, 10_000);
 	});
 
@@ -133,11 +195,39 @@ describe("hostile input", () => {
 		timeout: 60_000,
 	}, () => {
 		const build = (length: number): string => `echo "\${x:-'${repeatTo("a$ ", length)}'}"`;
-		time(build(MEGABYTE / 4));
-		const quarter = time(build(MEGABYTE / 4));
-		const full = time(build(MEGABYTE));
-		assert.deepStrictEqual(full.script.diagnostics, []);
-		assert.isBelow(full.ms / Math.max(quarter.ms, 5), 10);
+		const { full, ratio } = measure(build);
+		// A quoted `$` in the run is reported once, whatever follows it.
+		assert.deepStrictEqual(
+			full.script.diagnostics.map((d) => d.code),
+			["QuotedSubstitutionInExpansion"],
+		);
+		assert.isBelow(ratio, 10);
+		assert.isBelow(full.ms, 10_000);
+	});
+
+	it("one megabyte-long ANSI-C run of escaped openers inside a braced expansion is decoded in linear time", {
+		timeout: 60_000,
+	}, () => {
+		const build = (length: number): string => `echo "\${x:-$'${repeatTo("\\x24", length)}'}"`;
+		const { full, ratio } = measure(build);
+		assert.deepStrictEqual(
+			full.script.diagnostics.map((d) => d.code),
+			["QuotedSubstitutionInExpansion"],
+		);
+		assert.isBelow(ratio, 10);
+		assert.isBelow(full.ms, 10_000);
+	});
+
+	it("one megabyte-long double-quoted run of literal $ inside a braced expansion is checked in linear time", {
+		timeout: 60_000,
+	}, () => {
+		const build = (length: number): string => `echo "\${x:-"${repeatTo("$ ", length)}"}"`;
+		const { full, ratio } = measure(build);
+		assert.deepStrictEqual(
+			full.script.diagnostics.map((d) => d.code),
+			["QuotedSubstitutionInExpansion"],
+		);
+		assert.isBelow(ratio, 10);
 		assert.isBelow(full.ms, 10_000);
 	});
 
@@ -146,14 +236,12 @@ describe("hostile input", () => {
 	}, () => {
 		// Every `${` stays open, so the reader's stack grows with the run.
 		const build = (length: number): string => `echo "\${x:-'${repeatTo('${"', length)}'}"`;
-		time(build(MEGABYTE / 4));
-		const quarter = time(build(MEGABYTE / 4));
-		const full = time(build(MEGABYTE));
+		const { full, ratio } = measure(build);
 		assert.deepStrictEqual(
 			full.script.diagnostics.map((d) => d.code),
-			["QuotedCloserInExpansion"],
+			["QuotedSubstitutionInExpansion", "QuotedCloserInExpansion"],
 		);
-		assert.isBelow(full.ms / Math.max(quarter.ms, 5), 10);
+		assert.isBelow(ratio, 10);
 		assert.isBelow(full.ms, 10_000);
 	});
 
