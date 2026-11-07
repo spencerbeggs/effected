@@ -22,6 +22,8 @@
 * Added @effected/markdown-lint
 * Added The markdownlint-compatible lint shape is its own pure package; @effected/markdown gains only the callback visitor
 * Updated effected
+* Added @effected/shell
+* Added Shell syntax analysis is its own pure package, @effected/shell, not a commands subpath or core CommandLine
 
 ## 2026-11-06
 
