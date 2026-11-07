@@ -27,10 +27,11 @@
 | `FrontmatterContent` | Variable + TypeAlias | The union of all frontmatter-content node types. | frontmatter node type union |
 | `FrontmatterDecodeError` | Class | Indicates that a frontmatter capture's content failed to parse in its declared format. | handle malformed frontmatter body, typed frontmatter parse failure |
 | `FrontmatterEncodeError` | Class | Indicates that frontmatter data failed to serialize in a codec's format. | handle frontmatter serialization failure, typed frontmatter write failure |
+| `FrontmatterFenceState` | Variable + TypeAlias | The union of all fence-state literals. | tell no frontmatter from an unclosed fence, lint a missing closing fence |
 | `FrontmatterFormat` | Variable + TypeAlias | The union of all frontmatter format string literals. | frontmatter fence format literals, yaml toml json frontmatter kind |
 | `FrontmatterFormatMismatchError` | Class | Indicates that a frontmatter codec was handed a capture of a different format — a yaml codec applied to a `+++` toml capture, for example. | handle wrong-format frontmatter codec applied, yaml codec given a toml capture |
 | `FrontmatterMissingError` | Class | Indicates that a document handed to a frontmatter decoder carries no frontmatter capture. | handle document with no frontmatter capture, typed missing-frontmatter failure |
-| `FrontmatterMissingReason` | Variable + TypeAlias | Why a frontmatter decoder found no capture on a document. | why frontmatter decode found no capture |
+| `FrontmatterMissingReason` | Variable + TypeAlias | Why a frontmatter decoder found no capture on a document. | why frontmatter decode found no capture: absent, capture disabled or unclosed fence |
 | `FrontmatterNewline` | Variable + TypeAlias | The union of all fence line-terminator literals. | frontmatter fence line terminator literals, lf vs crlf |
 | `FrontmatterResolveError` | TypeAlias | The union of everything declaration resolution can fail with. | |
 | `FrontmatterSchemaError` | TypeAlias | The union of everything a composed frontmatter decoder can fail with. | |
@@ -77,7 +78,7 @@
 | `MarkdownRangeLike` | TypeAlias | A range accepted at the `format`/`formatToString` call sites: either a `MarkdownRange` instance or a plain `{ offset, length }` literal (the two are structurally interchangeable — only `offset`/`length` are read). | |
 | `MarkdownSegment` | TypeAlias | A single path segment: a `number` for child indices in the node tree, or a `string` for named addressing (reserved, e.g. for definition identifiers). | |
 | `MarkdownStringifyError` | Class | Stringify failure: the `MarkdownDiagnostic` describing why the tree was refused. | handle a refused tree during stringify, typed stringify failure with diagnostic |
-| `MarkdownStringifyOptions` | Interface | Options for `Markdown.stringify` and `Markdown.stringifyResult`. | |
+| `MarkdownStringifyOptions` | Interface | Options for `stringify` and `stringifyResult` (and the `Markdown` statics of the same names). | |
 | `MarkdownTransform` | Class | Pure, total tree-to-tree transforms over the markdown node classes. Not instantiable. | map or rewrite a markdown tree with typed node handlers, replace links with link references, canonicalize a tree by clearing fidelity fields, shift or demote heading levels, find sections by child index after a transform |
 | `MarkdownTransformHandlers` | TypeAlias | The handler table for `MarkdownTransform.map`: at most one function per node `type` tag, each receiving the node narrowed to its class. | |
 | `MarkdownTransformResult` | TypeAlias | What `MarkdownTransform.map` returns for an input of type `N`: any `PhrasingContent` when `N` is phrasing-only (its handler may change its type), otherwise `N` itself. | |
@@ -128,4 +129,7 @@
 | `ThematicBreak` | Class | ThematicBreak — a horizontal rule (`---`, `***`, `___`). | build a thematic break node, construct a horizontal rule for stringify |
 | `ThematicBreakChar` | Variable + TypeAlias | The union of all thematic-break character literals. | thematic break character literals, dash asterisk underscore |
 | `TomlFrontmatter` | Variable | The toml frontmatter codec, over `@effected/toml`. | toml frontmatter codec, decode and encode toml frontmatter over @effected/toml |
+| `UnresolvedFootnoteReference` | Interface | A GFM footnote marker with no matching definition, from `MarkdownDocument.unresolvedFootnoteReferences`: the `[^label]` the parse left as literal text. | footnote marker with no definition, lint undefined footnotes, label and position |
 | `YamlFrontmatter` | Variable | The yaml frontmatter codec, over `@effected/yaml`. | yaml frontmatter codec, decode and encode yaml frontmatter over @effected/yaml |
+| `stringify` | Function | Serialize a `Root` tree, or a single `(FlowContent:type)` node, to canonical markdown. Defined in terms of `stringifyResult` — synchronous callers can use that variant directly. | serialize a node tree to markdown without the parser, tree-shakable, effect form |
+| `stringifyResult` | Function | Serialize a `Root` tree, or a single `(FlowContent:type)` node, to canonical markdown, synchronously, as a `Result`. | serialize a node tree to markdown synchronously, parser-free bundle, result form |

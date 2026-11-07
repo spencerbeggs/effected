@@ -16,6 +16,7 @@
 * Updated @effected/workspaces: monorepo tooling
 * Updated @effected/github
 * Added bun below 1.4.4 hoists api-extractor's typescript over the tool's peer
+* Updated @effected/markdown frontmatter
 
 ## 2026-11-06
 
