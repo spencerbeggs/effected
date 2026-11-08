@@ -5,6 +5,7 @@ import { DateTime, Effect, Layer, Redacted } from "effect";
 import { Digest, Mac, SecureRandom } from "effect/crypto";
 import type { SigV4Credentials, SigV4Request } from "../src/SigV4.js";
 import { SigV4 } from "../src/SigV4.js";
+import { SigV4EncodingError } from "../src/SigV4EncodingError.js";
 import { SigV4PathError } from "../src/SigV4PathError.js";
 
 // The oracle is AWS's own published examples, never this implementation's
@@ -374,6 +375,62 @@ layer(NodeCryptoLive)("SigV4.sign's request target", (it) => {
 					}
 				}
 			}
+		}),
+	);
+
+	it.effect("refuses a lone surrogate in each component, naming it, in canonicalize and sign alike", () =>
+		Effect.gen(function* () {
+			// The control: this is what used to kill signing as a defect.
+			assert.throws(() => encodeURIComponent("a\uD800b"), URIError);
+			// A lone high one, a lone low one, and a high one at the very end.
+			for (const lone of ["a\uD800b", "a\uDC00b", "ab\uD800"]) {
+				const cases: ReadonlyArray<
+					readonly [string, Partial<SigV4Request>, SigV4EncodingError["component"], string | undefined]
+				> = [
+					["method", { method: lone }, "method", undefined],
+					["host", { host: lone }, "host", undefined],
+					["path", { path: `bucket/${lone}` }, "path", undefined],
+					["query key (record)", { query: { [lone]: "v" } }, "query-key", undefined],
+					["query key (pairs)", { query: [[lone, "v"]] }, "query-key", undefined],
+					["query value", { query: { k: lone } }, "query-value", "k"],
+					["header name", { headers: { [lone]: "v" } }, "header-name", undefined],
+					["header value", { headers: { "x-note": lone } }, "header-value", "x-note"],
+				];
+				for (const [label, patch, component, subject] of cases) {
+					const request = { ...base, ...patch };
+					const fromSign = yield* Effect.flip(SigV4.sign(request, credentials));
+					const fromCanonicalize = yield* Effect.flip(SigV4.canonicalize(request, credentials));
+					for (const error of [fromSign, fromCanonicalize]) {
+						const where = `${label} ${JSON.stringify(lone)}`;
+						assert.instanceOf(error, SigV4EncodingError, where);
+						assert.strictEqual(error._tag, "SigV4EncodingError", where);
+						assert.strictEqual(error.component, component, where);
+						assert.strictEqual(error.subject, subject, where);
+						assert.include(error.message, component, where);
+					}
+				}
+			}
+		}),
+	);
+
+	it.effect("signs well-formed astral pairs in every component to the output it always produced", () =>
+		Effect.gen(function* () {
+			const signed = yield* SigV4.sign(
+				{
+					...base,
+					path: "bucket/\u{1F600}/\u00fc",
+					query: { k: "\u{1F600}" },
+					headers: { "x-note": "\u{1F600}" },
+				},
+				credentials,
+			);
+			assert.strictEqual(signed.path, "/bucket/%F0%9F%98%80/%C3%BC");
+			assert.strictEqual(signed.query, "k=%F0%9F%98%80");
+			// Captured from the signer as it was before the well-formedness check existed.
+			assert.strictEqual(
+				signed.headers.authorization,
+				"AWS4-HMAC-SHA256 Credential=AK/20240101/us-east-1/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date;x-note, Signature=523f44c691adce9ef7af14238a7492fe37e9e104e34e37885f48625fac989f8a",
+			);
 		}),
 	);
 

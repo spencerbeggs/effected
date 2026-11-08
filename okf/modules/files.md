@@ -10,10 +10,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-07T01:50:11Z
+  at: 2026-11-08T12:10:34Z
 integrity:
   generated:
-    body: a1d839e01ba2166f
+    body: 01835a12bee8e85a
 ---
 
 # `@effected/files`
@@ -42,7 +42,7 @@ AtomicFile.write(target: string, content: string | Uint8Array, options?: AtomicF
 - **A failure never falls back to a non-atomic write.** A directory without write permission fails loudly.
 - **`links` defaults to `"follow"`.** Keeping a link is right for a dotfile a user links in on purpose. `"replace"` is opt-in, and any other value is a defect, because it is a wiring mistake, not input.
 - **`links` governs only the last path component.** Symlinked parent directories are traversed in both modes. Containment of the whole path is `@effected/walker`'s `confineReal`, not this package's job.
-- **The kit's other writers keep following links.** `PackageJsonFile`, `ConfigFile`, `ManagedSection`, `SchemaFile` and the `effected schema build` runner call `AtomicFile.write` with two arguments. Passing `links` through each one is a follow-up.
+- **The kit's writers forward `links`, and follow by default.** `PackageJsonFile`, `ConfigFile`, `ManagedSection` and `SchemaFile` each accept `links` and pass it to `AtomicFile.write`; unset, they follow. The `effected schema build` runner still calls it with two arguments.
 
 ## The choreography
 
@@ -79,13 +79,13 @@ Which option each kit writer uses:
 
 | Writer | Package | Links |
 | --- | --- | --- |
-| `PackageJsonFile` writes | `package-json` | follow |
-| `ConfigFile` writes | `config-file` | follow |
-| `ManagedSection` writes | `templates` | follow |
-| `SchemaFile` writes | `schemastore` | follow |
-| `effected schema build` output | `engine` | follow |
+| `PackageJsonFile` writes | `package-json` | `links` option on `write`, `writeManifest` and `modify`; default follow |
+| `ConfigFile` writes | `config-file` | `links` on `ConfigFileOptions`; default follow |
+| `ManagedSection` writes | `templates` | `links` on `ManagedSectionOptions`; default follow |
+| `SchemaFile` writes | `schemastore` | `links` on `SchemaWriteOptions`; default follow |
+| `effected schema build` output | `engine` | follow, no option |
 
-Passing `links` through each writer is a follow-up.
+Each forwarding writer is pinned on memfs in both modes.
 
 `AtomicDirectory.write` never writes through a symlinked `root`. A link to a directory is renamed to `.<name>.old` and removed (removal does not follow it), so the tree it pointed to is left alone. A dangling link fails `promote`, because a directory cannot be renamed over a non-directory, and nothing is created where it points. Symlinked parent directories are traversed. Both shapes are pinned on memfs and were checked on a real disk.
 

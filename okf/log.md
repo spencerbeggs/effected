@@ -7,6 +7,12 @@
 * Updated lockfiles
 * Updated walker
 * Updated npm
+* Updated @effected/crypto
+* Updated @effected/files
+* Updated @effected/schemastore
+* Updated @effected/templates
+* Updated config-file
+* Updated package-json
 
 ## 2026-11-07
 

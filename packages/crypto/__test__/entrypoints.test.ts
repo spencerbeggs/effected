@@ -46,6 +46,7 @@ describe("root entrypoint", () => {
 			"Hmac",
 			"HttpRedaction",
 			"SigV4",
+			"SigV4EncodingError",
 			"SigV4PathError",
 		]);
 		const reexported = specifiersOf(resolve(SRC, "index.ts"));

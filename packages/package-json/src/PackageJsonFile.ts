@@ -105,6 +105,25 @@ export interface PackageFieldEdit extends PackageModifyOptions {
 }
 
 /**
+ * How {@link PackageJsonFile} writes a file, beside what it writes.
+ *
+ * @public
+ */
+export interface PackageJsonWriteOptions {
+	/**
+	 * What a symbolic link at the target means, as on `AtomicFile.write`.
+	 * Defaults to `"follow"`.
+	 *
+	 * @remarks
+	 * `"follow"` writes the file behind the link and keeps the link;
+	 * `"replace"` replaces the link itself with a regular file and never touches
+	 * what it pointed to: choose it for a manifest in a checkout nobody has
+	 * reviewed.
+	 */
+	readonly links?: "follow" | "replace";
+}
+
+/**
  * The shape of the {@link PackageJsonFile} service — the value produced by
  * {@link PackageJsonFile.make} and carried by its layer.
  *
@@ -131,7 +150,7 @@ export interface PackageJsonFileShape {
 	readonly write: (
 		path: string,
 		pkg: Package,
-		options?: PackageFormatOptions,
+		options?: PackageFormatOptions & PackageJsonWriteOptions,
 	) => Effect.Effect<void, PackageJsonWriteError>;
 	/**
 	 * Read and decode a package.json file through the presence-lenient
@@ -155,7 +174,7 @@ export interface PackageJsonFileShape {
 	readonly writeManifest: (
 		path: string,
 		manifest: PackageManifest,
-		options?: PackageFormatOptions,
+		options?: PackageFormatOptions & PackageJsonWriteOptions,
 	) => Effect.Effect<void, PackageJsonWriteError>;
 	/**
 	 * Apply surgical field edits to a package.json file **without decoding
@@ -177,6 +196,7 @@ export interface PackageJsonFileShape {
 	readonly modify: (
 		path: string,
 		edits: ReadonlyArray<PackageFieldEdit>,
+		options?: PackageJsonWriteOptions,
 	) => Effect.Effect<
 		string,
 		| PackageJsonReadError
@@ -256,13 +276,13 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 					return existing === undefined ? options : { ...options, sourceText: existing };
 				});
 
-			const writeText = (target: string, json: string) =>
+			const writeText = (target: string, json: string, links?: "follow" | "replace") =>
 				Effect.gen(function* () {
 					const directory = path.dirname(target);
 					yield* fs
 						.makeDirectory(directory, { recursive: true })
 						.pipe(Effect.mapError((cause) => new PackageJsonWriteError({ path: target, cause })));
-					yield* AtomicFile.write(target, json).pipe(
+					yield* AtomicFile.write(target, json, links === undefined ? undefined : { links }).pipe(
 						Effect.provideService(FileSystem.FileSystem, fs),
 						Effect.provideService(Path.Path, path),
 						Effect.mapError((cause) => new PackageJsonWriteError({ path: target, cause })),
@@ -276,10 +296,11 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 			const write = Effect.fn("PackageJsonFile.write")(function* (
 				target: string,
 				pkg: Package,
-				options?: PackageFormatOptions,
+				options?: PackageFormatOptions & PackageJsonWriteOptions,
 			) {
-				const effective = yield* withPreservedSource(target, options);
-				yield* writeText(target, pkg.toJsonString(effective));
+				const { links, ...format } = options ?? {};
+				const effective = yield* withPreservedSource(target, format);
+				yield* writeText(target, pkg.toJsonString(effective), links);
 			});
 
 			const readManifest = Effect.fn("PackageJsonFile.readManifest")(function* (target: string) {
@@ -289,15 +310,17 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 			const writeManifest = Effect.fn("PackageJsonFile.writeManifest")(function* (
 				target: string,
 				manifest: PackageManifest,
-				options?: PackageFormatOptions,
+				options?: PackageFormatOptions & PackageJsonWriteOptions,
 			) {
-				const effective = yield* withPreservedSource(target, options);
-				yield* writeText(target, manifest.toJsonString(effective));
+				const { links, ...format } = options ?? {};
+				const effective = yield* withPreservedSource(target, format);
+				yield* writeText(target, manifest.toJsonString(effective), links);
 			});
 
 			const modify = Effect.fn("PackageJsonFile.modify")(function* (
 				target: string,
 				edits: ReadonlyArray<PackageFieldEdit>,
+				writeOptions?: PackageJsonWriteOptions,
 			) {
 				const source = yield* readText(target);
 				let text = source;
@@ -315,7 +338,7 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 				// A no-op edit set leaves the bytes alone entirely — no write, no
 				// mtime churn.
 				if (text !== source) {
-					yield* writeText(target, text);
+					yield* writeText(target, text, writeOptions?.links);
 				}
 				return text;
 			});

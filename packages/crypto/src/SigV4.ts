@@ -4,6 +4,7 @@ import { Digest } from "effect/crypto";
 import * as Hex from "effect/encoding/Hex";
 import { utf8 } from "./internal/bytes.js";
 import { hmacBytes } from "./internal/hmac.js";
+import { SigV4EncodingError } from "./SigV4EncodingError.js";
 import { SigV4PathError } from "./SigV4PathError.js";
 
 const ALGORITHM = "AWS4-HMAC-SHA256";
@@ -119,6 +120,40 @@ const checkSegments = (path: string): Effect.Effect<void, SigV4PathError> => {
 	return segment === undefined ? Effect.void : Effect.fail(new SigV4PathError({ path, segment }));
 };
 
+type Component = ConstructorParameters<typeof SigV4EncodingError>[0]["component"];
+
+/**
+ * Every string that enters the canonical request as text (method, host, path,
+ * query, header names and values), refusing a lone surrogate: it has no
+ * UTF-8 form, so `encodeURIComponent` would throw and a `TextEncoder` would
+ * sign U+FFFD instead of what the caller sent.
+ */
+const checkWellFormed = (request: SigV4Request): Effect.Effect<void, SigV4EncodingError> => {
+	const refuse = (component: Component, value: string, subject?: string) =>
+		value.isWellFormed()
+			? undefined
+			: new SigV4EncodingError({ component, ...(subject === undefined ? {} : { subject }) });
+	const query = request.query;
+	const pairs: ReadonlyArray<readonly [string, string]> =
+		query === undefined
+			? []
+			: Array.isArray(query)
+				? (query as ReadonlyArray<readonly [string, string]>)
+				: Object.entries(query);
+	const headers = Object.entries(request.headers ?? {});
+	const failure =
+		refuse("method", request.method) ??
+		refuse("host", request.host) ??
+		refuse("path", request.path) ??
+		pairs
+			.map(([key, value]) => refuse("query-key", key) ?? refuse("query-value", value, key))
+			.find((e) => e !== undefined) ??
+		headers
+			.map(([name, value]) => refuse("header-name", name) ?? refuse("header-value", value, name))
+			.find((e) => e !== undefined);
+	return failure === undefined ? Effect.void : Effect.fail(failure);
+};
+
 const timestamps = (now: Date | DateTime.DateTime): { readonly amzDate: string; readonly dateStamp: string } => {
 	const millis = now instanceof Date ? now.getTime() : DateTime.toEpochMillis(now);
 	const amzDate = `${new Date(millis)
@@ -148,10 +183,11 @@ const sha256Hex = (data: Uint8Array): Effect.Effect<string, never, Digest.Digest
 const canonicalize = (
 	request: SigV4Request,
 	credentials: SigV4Credentials,
-): Effect.Effect<SigV4Canonical, SigV4PathError, Digest.Digest> =>
+): Effect.Effect<SigV4Canonical, SigV4PathError | SigV4EncodingError, Digest.Digest> =>
 	Effect.gen(function* () {
 		// Before anything is hashed: a path no URL can carry is never signed.
 		yield* checkSegments(request.path);
+		yield* checkWellFormed(request);
 		const { amzDate, dateStamp } = timestamps(request.now);
 		const body = utf8(request.body ?? new Uint8Array(0));
 		// An empty body's hash is a constant: no digest call for every GET and HEAD.
@@ -287,7 +323,9 @@ export class SigV4 {
 	 * requests. The path is encoded per segment, the query encoded and sorted
 	 * by name then value, and the payload hash is `payloadHash` when given or
 	 * the SHA-256 of the body otherwise. A path with a `.` or `..` segment
-	 * fails with {@link SigV4PathError} before anything is hashed. No HMAC is
+	 * fails with {@link SigV4PathError}, and a method, host, path, query key
+	 * or value, or header name or value holding a lone UTF-16 surrogate with
+	 * {@link SigV4EncodingError}, both before anything is hashed. No HMAC is
 	 * taken here, so it needs only `Digest.Digest` and never fails with
 	 * `CryptoError`.
 	 *
@@ -296,7 +334,7 @@ export class SigV4 {
 	static readonly canonicalize: (
 		request: SigV4Request,
 		credentials: SigV4Credentials,
-	) => Effect.Effect<SigV4Canonical, SigV4PathError, Digest.Digest> = canonicalize;
+	) => Effect.Effect<SigV4Canonical, SigV4PathError | SigV4EncodingError, Digest.Digest> = canonicalize;
 
 	/**
 	 * Derive the signing key: four nested HMAC-SHA256s over the date, region,
@@ -334,7 +372,11 @@ export class SigV4 {
 	 * and exactly what was signed reaches the wire. A path with a segment
 	 * that is exactly `.` or `..` fails with {@link SigV4PathError} before
 	 * signing: every URL parser collapses it, so the request would reach
-	 * another path than the one signed. That is caller input; core's
+	 * another path than the one signed, and a method, host, path, query key
+	 * or value, or header name or value holding a lone UTF-16 surrogate fails
+	 * with {@link SigV4EncodingError}, naming the component. A string `body` is
+	 * not checked: it is hashed as the same UTF-8 bytes `fetch` sends. Both are
+	 * caller input; core's
 	 * `CryptoError` is a wiring defect (a `Mac` layer refusing a key). Needs
 	 * `Mac.Mac` and `Digest.Digest` in `R`. The span carries the region and
 	 * service, never a key or the signature.
@@ -348,5 +390,9 @@ export class SigV4 {
 	static readonly sign: (
 		request: SigV4Request,
 		credentials: SigV4Credentials,
-	) => Effect.Effect<SigV4Signed, SigV4PathError | CryptoError.CryptoError, Digest.Digest | Mac.Mac> = sign;
+	) => Effect.Effect<
+		SigV4Signed,
+		SigV4PathError | SigV4EncodingError | CryptoError.CryptoError,
+		Digest.Digest | Mac.Mac
+	> = sign;
 }

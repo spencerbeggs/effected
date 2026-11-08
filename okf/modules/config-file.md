@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-08T12:10:34Z
 integrity:
   generated:
-    body: 610435de8e838c98
+    body: 97704b8b13a009f9
 ---
 
 # config-file
@@ -57,6 +57,8 @@ The service keeps a deliberate save-versus-write distinction — default path wi
 `ConfigFileOptions` and `ConfigReadOptions` both take `parseOptions`, threaded into every schema decode either performs. The motivating field is `onExcessProperty`, which core defaults to `"ignore"` — for a loader that default means a user's unknown keys are dropped in silence, so the package can report neither a typo'd section nor a deliberately-removed field. This cannot be expressed with the `validate` hook, since `validate` runs on the already-decoded value, by which point excess keys are already gone. Two properties keep `"error"` safe to adopt: keys covered by a `Schema.StructWithRest` rest are not excess, so a deliberate pass-through section keeps working under it; and it pairs naturally with `errors: "all"` (core defaults to `"first"`, which for a loader means a file with three typos surfaces one per run).
 
 `ConfigFile.read(path, { schema, codec })` is the one-shot form: reads, decodes and validates one explicit path with no service class, no layer and no tag, requiring only `FileSystem` in `R`. The service binds schema and codec at layer construction, right for a config file an application **has** (several candidate locations, saving, migrations, events); `read` takes its schema per call, so one call site can read several unrelated files without a service class each. It stays read-only and discovery-free, and the codec is an explicit argument, never inferred from a file extension — naming it at the call site is what preserves the free-standing-codec guarantee, since a consumer that only ever passes the JSON codec never references the other three modules. **Never add extension-based inference.**
+
+`ConfigFileOptions.links` (and the same key on the test-layer options) is forwarded to `AtomicFile.write` by every write, `write`, `save` and `update` alike: `"follow"` (the default) writes the file behind a symlinked config and keeps the link, `"replace"` replaces the link with a regular file and never touches what it pointed to.
 
 ## R-channel type safety
 
