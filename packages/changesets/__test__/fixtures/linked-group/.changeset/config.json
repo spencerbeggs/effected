@@ -1,0 +1,10 @@
+{
+  "baseBranch": "main",
+  "linked": [
+    [
+      "a",
+      "b",
+      "c"
+    ]
+  ]
+}

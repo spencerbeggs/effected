@@ -14,7 +14,8 @@ their `pnpm-workspace.yaml`, `package.json` files and `.changeset/` are read.
 The test runs `getReleasePlan` from `@changesets/get-release-plan@5.0.2`
 (`@changesets/assemble-release-plan@7.0.0`, `@changesets/config@4.0.1`) and
 `ReleasePlan.read` over each one and requires the same answer, so no expected plan
-is committed here. The expected `name -> type` table in the test pins only that the
+is committed here; the new cases' tables were taken from the oracle's own answer
+on each fixture, never written by hand. The expected `name -> type` table in the test pins only that the
 fixture still reaches its rule. When the oracle's version moves and a case
 disagrees, work out which of the two moved before changing either.
 
@@ -50,3 +51,15 @@ disagrees, work out which of the two moved before changing either.
 | `single-package` | The root is the only package, so it is planned. The test copies this fixture to a temporary directory, with and without its catalog-only `pnpm-workspace.yaml`, because inside this repository the oracle climbs to this repository's root. |
 | `root-named-with-members` | A changeset naming the root is rejected while other packages exist. |
 | `unknown-package` | A changeset naming a package outside the workspace is rejected by both. |
+| `fixed-group` | A fixed group releases every member at its highest bump from its highest version; a dependent of a member ripples from the group's version. |
+| `fixed-glob` | Fixed group entries are globs, with `!` negation. |
+| `fixed-ripple` | A ripple into one member pulls the group along, and the pulled member's own dependent then ripples: the loop repeats. |
+| `fixed-skipped-member` | A skipped member never releases, but its version still sets the group's highest. |
+| `fixed-duplicate` | A package in two fixed groups is rejected by both. |
+| `linked-group` | Only the linked members that release move, from the highest version of the whole group, a non-releasing member's included. |
+| `linked-ripple` | A rippled dependent in a linked group takes the group's bump. |
+| `linked-none` | A `none` entry in a linked group stays `none`. |
+| `pre-mode` | Pre mode appends `-<tag>.<n>`, drops the changesets under `.changeset/pre/`, and a dependent's range is checked against the prerelease version. |
+| `pre-exit` | Exit mode counts consumed changesets again and completes every numbered prerelease. |
+| `pre-groups` | In pre mode a fixed or linked group shares its highest pre-release number. |
+| `pre-legacy-layout` | An older `pre.json` listing consumed ids. The oracle moves those files as it reads, so the test runs it twice on a temporary copy and compares with the second, settled plan. Never run the oracle on this fixture in place. |

@@ -1,0 +1,5 @@
+---
+"d": major
+---
+
+A change.

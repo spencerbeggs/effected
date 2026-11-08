@@ -1,0 +1,11 @@
+{
+  "mode": "pre",
+  "tag": "next",
+  "initialVersions": {
+    "a": "1.0.0",
+    "b": "1.0.0"
+  },
+  "changesets": [
+    "consumed"
+  ]
+}

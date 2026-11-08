@@ -24,9 +24,10 @@ const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
  *
  * Walks up from `cwd` to the monorepo root via `@effected/workspaces`' `WorkspaceDiscovery`,
  * seeds the map with each package's CURRENT version, then overlays `newVersion` for
- * changeset-affected packages via `ReleasePlan.read`. Never rejects: any failure (not a
- * workspace, missing `.changeset/config.json`, a changesets mode the planner does not model,
- * parse error) degrades to current versions (or an empty map).
+ * changeset-affected packages via `ReleasePlan.read`, including pre-release versions in pre
+ * mode and fixed or linked groups. Never rejects: any failure (not a workspace, missing
+ * `.changeset/config.json`, an invalid config or `pre.json`, parse error) degrades to current
+ * versions (or an empty map).
  * @public
  */
 export async function resolveNextVersions(cwd: string): Promise<NextVersions> {
@@ -60,7 +61,7 @@ export async function resolveNextVersions(cwd: string): Promise<NextVersions> {
 			// the current version, so overlaying every release is safe.
 			for (const r of plan.releases) versions.set(r.name, r.newVersion);
 		} catch {
-			// No `.changeset/config.json`, an unsupported mode, or unreadable: keep current versions.
+			// No `.changeset/config.json`, an invalid config or pre.json, or unreadable: keep current versions.
 		}
 		return { root: rootDir, versions };
 	} catch {

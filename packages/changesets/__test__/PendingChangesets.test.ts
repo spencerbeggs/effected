@@ -24,12 +24,24 @@ const Unsorted = MemoryFileSystem.layerWithPath(
 		"/repo/.changeset/mid.md": change("@effected/m", "major", "Mid."),
 		"/repo/.changeset/zeta.md": change("@effected/z", "patch", "Zeta."),
 	},
-	{ faults: { readDirectory: () => Effect.succeed(["zeta.md", "mid.md", "alpha.md"]) } },
+	{
+		faults: {
+			readDirectory: (path) =>
+				path === "/repo/.changeset" ? Effect.succeed(["zeta.md", "mid.md", "alpha.md"]) : undefined,
+		},
+	},
 );
 
 const Malformed = MemoryFileSystem.layerWithPath({
 	"/repo/.changeset/good.md": change("@effected/a", "minor", "Fine."),
 	"/repo/.changeset/bad.md": '---\n"@effected/a": huge\n---\n',
+});
+
+const WithConsumed = MemoryFileSystem.layerWithPath({
+	"/repo/.changeset/fresh.md": change("@effected/a", "patch", "Fresh."),
+	"/repo/.changeset/pre/old.md": change("@effected/b", "minor", "Old."),
+	"/repo/.changeset/pre/README.md": "# Consumed\n",
+	"/repo/.changeset/pre/nested/deep.md": change("@effected/c", "major", "Deeper."),
 });
 
 const Empty = MemoryFileSystem.layerWithPath({ "/repo/package.json": "{}" });
@@ -54,6 +66,19 @@ it.effect("sorts by file name regardless of the order the directory lists", () =
 			["alpha.md", "mid.md", "zeta.md"],
 		);
 	}).pipe(Effect.provide(Unsorted)),
+);
+
+it.effect("reads the changesets a pre-release consumed after the rest, as pre/<name>", () =>
+	Effect.gen(function* () {
+		const pending = yield* PendingChangesets.read("/repo");
+		assert.deepStrictEqual(
+			pending.map((p) => [p.file, [...p.releases.keys()]]),
+			[
+				["fresh.md", ["@effected/a"]],
+				["pre/old.md", ["@effected/b"]],
+			],
+		);
+	}).pipe(Effect.provide(WithConsumed)),
 );
 
 it.effect("a missing .changeset directory answers an empty list", () =>
@@ -95,6 +120,16 @@ it("readSync reads real files from disk, sorted, and answers [] for a missing di
 			assert.deepStrictEqual(
 				result.success.map((p) => p.file),
 				["a.md", "b.md", "c.md"],
+			);
+
+		mkdirSync(join(root, ".changeset", "pre"));
+		writeFileSync(join(root, ".changeset", "pre", "old.md"), change("@effected/o", "major", "O."));
+		const consumed = PendingChangesets.readSync(root);
+		assert.isTrue(Result.isSuccess(consumed));
+		if (Result.isSuccess(consumed))
+			assert.deepStrictEqual(
+				consumed.success.map((p) => p.file),
+				["a.md", "b.md", "c.md", "pre/old.md"],
 			);
 
 		writeFileSync(join(root, ".changeset", "d.md"), "no front matter");
