@@ -299,6 +299,18 @@ const literalSegment = (segment: string, options: EngineOptions): string | undef
 	return typeof only === "string" ? only : undefined;
 };
 
+// Set by GlobPattern's static block, which can reach its private engine field.
+let adoptEngine: (source: string, engine: Minimatch) => GlobPattern;
+
+/**
+ * A pattern whose default-options engine the caller already compiled (and so
+ * checked): `GlobSet` compiles every member under one budget, and hands each
+ * engine over instead of having it built again on the first match.
+ *
+ * @internal
+ */
+export const patternWithEngine = (source: string, engine: Minimatch): GlobPattern => adoptEngine(source, engine);
+
 /**
  * A compiled glob pattern with a total `matches(candidate)` predicate, plus the
  * metadata a directory walker needs.
@@ -320,18 +332,6 @@ const literalSegment = (segment: string, options: EngineOptions): string | undef
  *
  * @public
  */
-// Set by GlobPattern's static block, which can reach its private engine field.
-let adoptEngine: (source: string, engine: Minimatch) => GlobPattern;
-
-/**
- * A pattern whose default-options engine the caller already compiled (and so
- * checked): `GlobSet` compiles every member under one budget, and hands each
- * engine over instead of having it built again on the first match.
- *
- * @internal
- */
-export const patternWithEngine = (source: string, engine: Minimatch): GlobPattern => adoptEngine(source, engine);
-
 export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	Schema.Struct({ source: Schema.String }).check(
 		Schema.makeFilter((v) => compilesUnderDefaults(v.source), { title: "compilable glob pattern" }),
