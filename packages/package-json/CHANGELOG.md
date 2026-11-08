@@ -1,5 +1,24 @@
 # @effected/package-json
 
+## 0.31.0
+
+### Features
+
+- `PackageJsonFile` accepts `links: "follow" | "replace"`, forwarded to `AtomicFile.write`. The default is `"follow"`: a write through a symlink updates its target. `"replace"` replaces the link itself [#1295][#1295]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/files | dependency | updated | 0.1.0 | 0.2.0 |
+| @effected/npm | dependency | updated | 0.30.1 | 0.31.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1295]: https://github.com/spencerbeggs/effected/pull/1295
+
 ## 0.30.0
 
 ### Features

@@ -1,5 +1,63 @@
 # @effected/workspaces
 
+## 0.44.0
+
+### Breaking Changes
+
+- `PnpmSettingsError.reason` gains `"membership"`. An exhaustive switch on `reason` needs the new case. [#1295][#1295]
+
+### Features
+
+#### `PnpmSettings`
+
+- Reads pnpm's effective settings, the values `pnpm config get <key>` reports, without spawning pnpm. `PnpmSettings.load` reads through `FileSystem` and `Path` and fails with `PnpmSettingsError`, and `PnpmSettings.fromSourcesResult` is the pure form over text.
+
+```ts
+import { NodeServices } from "@effect/platform-node";
+import { PnpmSettings } from "@effected/workspaces";
+import { Effect, Option } from "effect";
+
+const program = Effect.gen(function* () {
+  const settings = yield* PnpmSettings.load({ cwd: process.cwd(), env: process.env, platform: process.platform });
+  return {
+    cutoffMinutes: Option.getOrUndefined(settings.minimumReleaseAge), // number | undefined
+    exclude: settings.minimumReleaseAgeExclude, // ReadonlyArray<string>, [] when unset
+    strict: settings.getBoolean("minimumReleaseAgeStrict"), // Option<boolean>
+  };
+}).pipe(Effect.provide(NodeServices.layer));
+```
+
+- Typed reads are `get`, `getString`, `getNumber`, `getBoolean` and `getStringArray`, each answering an `Option`, and `origin` says where a value came from. Keys may be camelCase or kebab-case
+- The precedence, highest first, is the `pnpm_config_*` or `PNPM_CONFIG_*` environment variables, the workspace root's `pnpm-workspace.yaml`, then pnpm's global `config.yaml`. A higher source replaces a whole list
+- It follows pnpm 11 and 12, where `.npmrc`, `npm_config_*` and the global `rc` file hold no pnpm setting. Registries and credentials stay in `@effected/npm`'s `NpmConfig`
+- An unset `minimumReleaseAge` reads as `None`, as `pnpm config get` reports it undefined, so keep any fallback the caller applies [#1250][#1250]
+
+### Bug Fixes
+
+- `PnpmSettings.load` fails with `PnpmSettingsError` reason `"membership"` when the `packages:` patterns each compile but not together as a set
+
+* The packed-install gate message now says to run `pnpm build --filter <package>` before the packed-install tests, instead of pointing at the retired `build:prod` script [#1249][#1249]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/glob | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/lockfiles | dependency | updated | 0.22.1 | 0.23.0 |
+| @effected/npm | dependency | updated | 0.30.1 | 0.31.0 |
+| @effected/package-json | dependency | updated | 0.30.0 | 0.31.0 |
+| @effected/walker | dependency | updated | 0.25.1 | 0.26.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1249]: https://github.com/spencerbeggs/effected/pull/1249
+
+[#1250]: https://github.com/spencerbeggs/effected/pull/1250
+
+[#1295]: https://github.com/spencerbeggs/effected/pull/1295
+
 ## 0.43.0
 
 ### Features

@@ -1,5 +1,40 @@
 # @effected/engine
 
+## 0.14.0
+
+### Features
+
+#### Scaffold a GitHub Action
+
+- `effected action init` and the `action_init` MCP tool scaffold a new GitHub Action in a package directory: the `[action]` table of `effected.toml`, `action.yml`, `src/main.ts`, `src/program.ts` and `tsconfig.json`, ready for `effected action build`.
+
+- It refuses, writing nothing, when any of those files exists, unless `--force` is given. `--force` never overrides a conflict
+
+- It always refuses a symbolic link, a case variant of a target name, or a write outside the package directory
+
+- It edits no `package.json`: it reports the missing dependencies to add instead
+
+- The command exits 0 on success, 2 on a refusal and 3 when the run cannot finish [#1295][#1295]
+
+* Adds a `./build` subpath with `BuildRun` and `ActionRun`, the engine side of package and action builds, and their result classes `BuildRunResult` and `ActionRunResult`; it also re-exports the bundler's `ActionValidation`, whose `isCI` answers the CI question the way `@effected/env` does [#1249][#1249]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/bundler | dependency | updated | 0.0.0 | 0.1.0 |
+| @effected/files | dependency | updated | 0.1.0 | 0.2.0 |
+| @effected/schemastore | dependency | updated | 0.30.0 | 0.31.0 |
+| @effected/workspaces | dependency | updated | 0.43.0 | 0.44.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1249]: https://github.com/spencerbeggs/effected/pull/1249
+
+[#1295]: https://github.com/spencerbeggs/effected/pull/1295
+
 ## 0.13.0
 
 ### Features

@@ -1,5 +1,25 @@
 # @effected/config-file
 
+## 0.26.0
+
+### Features
+
+- `ConfigFile` accepts `links: "follow" | "replace"`, forwarded to `AtomicFile.write`. The default is `"follow"`: a write through a symlink updates its target. `"replace"` replaces the link itself [#1295][#1295]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/files | dependency | updated | 0.1.0 | 0.2.0 |
+| @effected/glob | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/walker | dependency | updated | 0.25.1 | 0.26.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1295]: https://github.com/spencerbeggs/effected/pull/1295
+
 ## 0.25.0
 
 ### Features

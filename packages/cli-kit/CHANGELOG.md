@@ -1,5 +1,15 @@
 # @effected/cli
 
+## 0.27.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/env | dependency | updated | 0.11.0 | 0.11.0 |
+| @effected/glob | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/walker | dependency | updated | 0.25.1 | 0.26.0 |
+
 ## 0.27.0
 
 ### Breaking Changes

@@ -1,5 +1,16 @@
 # @effected/app
 
+## 0.31.2
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/config-file | dependency | updated | 0.25.0 | 0.26.0 |
+| @effected/glob | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/walker | dependency | updated | 0.25.1 | 0.26.0 |
+| @effected/xdg | dependency | updated | 0.19.1 | 0.19.2 |
+
 ## 0.31.1
 
 ### Dependencies

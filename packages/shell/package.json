@@ -1,6 +1,6 @@
 {
 	"name": "@effected/shell",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "A tolerant shell-syntax lexer and segmenter for guards and agent tooling: which simple commands a string would run, with which words, never evaluated.",
 	"keywords": ["shell", "bash", "lexer", "parser", "guard", "effect", "effected"],

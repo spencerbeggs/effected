@@ -1,5 +1,34 @@
 # @effected/pnpm-plugin-effect
 
+## 0.23.0
+
+### Features
+
+- The published `effected` catalog gains `@effected/markdown-lint`, `@effected/s3` and `@effected/shell`, each at `^0.1.0`, so consumers can depend on them through `catalog:effected` [#1250][#1250]
+
+### Build System
+
+- The catalog literal moved from `savvy.build.ts` to `lib/build/pnpm-config.plugin.ts`, built by `effected package build`
+- The `effected` catalog gains entries for the new `@effected/bundler` and `@effected/changesets` packages [#1249][#1249]
+
+### Maintenance
+
+#### Updates 5 catalog:effected versions
+
+- `@effected/config-file` ^0.25.1 -> ^0.26.0 (peer ^0.26.0)
+- `@effected/package-json` ^0.30.1 -> ^0.31.0 (peer ^0.31.0)
+- `@effected/sbom` ^0.20.1 -> ^0.20.2 (peer ^0.20.0)
+- `@effected/schemastore` ^0.30.1 -> ^0.31.0 (peer ^0.31.0)
+- `@effected/templates` ^0.18.1 -> ^0.19.0 (peer ^0.19.0) [#1249][#1249]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1249]: https://github.com/spencerbeggs/effected/pull/1249
+
+[#1250]: https://github.com/spencerbeggs/effected/pull/1250
+
 ## 0.22.0
 
 ### Features
