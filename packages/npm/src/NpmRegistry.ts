@@ -246,11 +246,19 @@ const ManifestDocument = Schema.Struct({ ...VersionManifest.fields, engines: Sch
 /** The only `engines` form {@link VersionManifest} keeps. */
 const isEnginesRecord = Schema.is(Schema.Record(Schema.String, Schema.String));
 
-/** The packument fields this package reads. Unknown keys are ignored. */
+/**
+ * The packument fields this package reads. Unknown keys are ignored.
+ *
+ * @remarks
+ * `time` values are `Unknown` because the map is not all timestamps: a fully
+ * unpublished package carries `time.unpublished` as an object (`{ time,
+ * versions }`), and a strict string record would fail that packument's every
+ * read as `"decode"` instead of answering "known, no versions".
+ */
 const Packument = Schema.Struct({
 	"dist-tags": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 	versions: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
-	time: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+	time: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
 });
 
 /** The two `time` keys that are not versions. */
@@ -319,18 +327,45 @@ export interface NpmRegistryShape {
 		version: string,
 		target?: RegistryTarget,
 	) => Effect.Effect<Option.Option<VersionManifest>, RegistryReadError>;
-	/** Every published version. Empty when the package is not on that registry. */
-	readonly versions: (name: string, target?: RegistryTarget) => Effect.Effect<ReadonlyArray<string>, RegistryReadError>;
-	/** The dist-tag map (`latest`, `next`, …). Empty when the package is absent. */
+	/**
+	 * Every published version, or `None` when the package is not on that
+	 * registry.
+	 *
+	 * @remarks
+	 * `None` is the registry answering 404 for the packument: the package does
+	 * not exist there, or the target cannot see it. `Some([])` is a package the
+	 * registry knows that lists no versions, such as a fully unpublished one. A
+	 * caller that treats an unknown package as an error matches on the `Option`
+	 * (`Effect.fromOption`, `Option.match`), not on the list's length.
+	 */
+	readonly versions: (
+		name: string,
+		target?: RegistryTarget,
+	) => Effect.Effect<Option.Option<ReadonlyArray<string>>, RegistryReadError>;
+	/**
+	 * The dist-tag map (`latest`, `next`, …), or `None` when the package is not
+	 * on that registry.
+	 *
+	 * @remarks
+	 * `Some({})` is a package the registry knows with no tags.
+	 */
 	readonly distTags: (
 		name: string,
 		target?: RegistryTarget,
-	) => Effect.Effect<Record<string, string>, RegistryReadError>;
-	/** Per-version publish timestamps, from the packument's `time` map (without its `created` / `modified` keys). */
+	) => Effect.Effect<Option.Option<Record<string, string>>, RegistryReadError>;
+	/**
+	 * Per-version publish timestamps, from the packument's `time` map (without
+	 * its `created` / `modified` keys), or `None` when the package is not on that
+	 * registry.
+	 *
+	 * @remarks
+	 * `Some([])` is a package the registry knows with no readable per-version
+	 * timestamps.
+	 */
 	readonly publishTimes: (
 		name: string,
 		target?: RegistryTarget,
-	) => Effect.Effect<ReadonlyArray<PublishTime>, RegistryReadError>;
+	) => Effect.Effect<Option.Option<ReadonlyArray<PublishTime>>, RegistryReadError>;
 }
 
 /** Builds the service over an already-resolved `HttpClient`. */
@@ -531,10 +566,7 @@ const make = Effect.fnUntraced(function* () {
 			registry: HttpRedaction.url(target?.registry ?? DEFAULT_REGISTRY),
 		});
 		const document = yield* packument(name, target);
-		return Option.match(document, {
-			onNone: () => [] as ReadonlyArray<string>,
-			onSome: (found) => Object.keys(found.versions ?? {}),
-		});
+		return Option.map(document, (found): ReadonlyArray<string> => Object.keys(found.versions ?? {}));
 	});
 
 	const distTags = Effect.fn("NpmRegistry.distTags")(function* (name: string, target?: RegistryTarget) {
@@ -543,10 +575,7 @@ const make = Effect.fnUntraced(function* () {
 			registry: HttpRedaction.url(target?.registry ?? DEFAULT_REGISTRY),
 		});
 		const document = yield* packument(name, target);
-		return Option.match(document, {
-			onNone: () => ({}) as Record<string, string>,
-			onSome: (found) => ({ ...(found["dist-tags"] ?? {}) }),
-		});
+		return Option.map(document, (found): Record<string, string> => ({ ...(found["dist-tags"] ?? {}) }));
 	});
 
 	const publishTimes = Effect.fn("NpmRegistry.publishTimes")(function* (name: string, target?: RegistryTarget) {
@@ -555,21 +584,18 @@ const make = Effect.fnUntraced(function* () {
 			registry: HttpRedaction.url(target?.registry ?? DEFAULT_REGISTRY),
 		});
 		const document = yield* packument(name, target);
-		return Option.match(document, {
-			onNone: () => [] as ReadonlyArray<PublishTime>,
-			onSome: (found) => {
-				const entries: Array<PublishTime> = [];
-				for (const [key, value] of Object.entries(found.time ?? {})) {
-					if (NON_VERSION_TIME_KEYS.has(key)) continue;
-					// An unparseable timestamp drops the entry rather than failing the
-					// read: the caller's question is "when were these published", and
-					// one malformed row is not a reason to answer nothing.
-					const parsed = DateTime.make(value);
-					if (Option.isNone(parsed)) continue;
-					entries.push(PublishTime.make({ version: key, publishedAt: parsed.value }));
-				}
-				return entries;
-			},
+		return Option.map(document, (found): ReadonlyArray<PublishTime> => {
+			const entries: Array<PublishTime> = [];
+			for (const [key, value] of Object.entries(found.time ?? {})) {
+				if (NON_VERSION_TIME_KEYS.has(key) || typeof value !== "string") continue;
+				// An unparseable timestamp drops the entry rather than failing the
+				// read: the caller's question is "when were these published", and
+				// one malformed row is not a reason to answer nothing.
+				const parsed = DateTime.make(value);
+				if (Option.isNone(parsed)) continue;
+				entries.push(PublishTime.make({ version: key, publishedAt: parsed.value }));
+			}
+			return entries;
 		});
 	});
 
@@ -633,8 +659,9 @@ export interface RegistrySeed {
  *
  * @remarks
  * No `npm view` subprocess is involved. The registry is a **per-call**
- * argument, a 404 is `Option.none()` (or an empty collection) rather than an
- * error, and `integrity` is typed as this package's own {@link IntegrityHash}
+ * argument, and a 404 is `Option.none()` rather than an error on every read,
+ * so an unknown package is never confused with one that has no versions or
+ * tags; and `integrity` is typed as this package's own {@link IntegrityHash}
  * rather than a bare string. Failures are {@link RegistryReadError}. The live
  * {@link NpmRegistry.layer} requires `HttpClient`; tests use
  * {@link NpmRegistry.layerSeeded} or {@link NpmRegistry.layerTest}.
@@ -646,6 +673,27 @@ export interface RegistrySeed {
  * credential; a same-origin redirect keeps it. A failure's `cause` is a
  * redacted copy of core's `HttpClientError`: method, URL, status and
  * response headers survive, the credential does not.
+ *
+ * **Proxies and TLS trust are the client's, not this service's.** The service
+ * applies no npmrc transport setting (the proxies, the bypass lists,
+ * `strict-ssl`, the CA and client-certificate settings, top-level or per
+ * registry), because it owns no connection: every request goes through the
+ * `HttpClient` the caller provides. With core's `FetchHttpClient.layer` on
+ * Node, a registry reachable only through a proxy, or signed by an internal
+ * CA, fails every read as kind `"transport"`, where `npm view` or
+ * `pnpm view` succeeds. To honour the user's npmrc, read
+ * `NpmConfig.transport`, `NpmConfig.tlsFor(url, { packageManager })` and
+ * `NpmConfig.proxyFor(url, env, { packageManager })` (npm's or pnpm's
+ * routing, which differ) and configure the client from them. Either launch
+ * Node with `NODE_USE_ENV_PROXY=1` and `NODE_EXTRA_CA_CERTS`, or provide
+ * `FetchHttpClient.RequestInit` with a `dispatcher` (undici's `ProxyAgent`,
+ * its `requestTls` carrying the CA and client certificate and
+ * `rejectUnauthorized: strictSsl`) beside `FetchHttpClient.layer`. The
+ * dispatcher is the application's dependency, not this package's. The two
+ * routes read `NO_PROXY` differently: `proxyFor` matches it the way npm and pnpm do
+ * (dot-separated labels, no `*` wildcard, no ports), while Node's
+ * `NODE_USE_ENV_PROXY` follows the curl convention, where `*` bypasses every
+ * host and an entry with a port matches that port only.
  *
  * @example
  * ```ts
@@ -699,8 +747,15 @@ export class NpmRegistry extends Context.Service<NpmRegistry, NpmRegistryShape>(
 
 	/** A fully-working in-memory double over a {@link RegistrySeed}. */
 	static readonly makeSeeded = (seed: RegistrySeed): NpmRegistryShape => {
+		// `hasOwn` throughout: registry, package and version names are caller
+		// input, and a key like `constructor` must not read the prototype as a
+		// seeded entry.
+		const own = <V>(record: Record<string, V> | undefined, key: string): V | undefined =>
+			record !== undefined && Object.hasOwn(record, key) ? record[key] : undefined;
 		const at = (target: RegistryTarget | undefined): Record<string, Record<string, SeededVersion>> =>
-			seed.registries[target?.registry ?? DEFAULT_REGISTRY] ?? {};
+			own(seed.registries, target?.registry ?? DEFAULT_REGISTRY) ?? {};
+		/** The package's seeded versions on the target, or `None` when it is not seeded there. */
+		const seeded = (name: string, target: RegistryTarget | undefined) => Option.fromUndefinedOr(own(at(target), name));
 		// Every seeded member refuses a workload credential exactly as the live
 		// `read` does, so a double cannot pass a read that production refuses.
 		const guarded = <A>(name: string, target: RegistryTarget | undefined, answer: () => A) =>
@@ -708,7 +763,7 @@ export class NpmRegistry extends Context.Service<NpmRegistry, NpmRegistryShape>(
 		return {
 			version: (name, version, target) =>
 				guarded(name, target, () => {
-					const found = at(target)[name]?.[version];
+					const found = own(own(at(target), name), version);
 					return found === undefined
 						? Option.none()
 						: Option.some(
@@ -722,7 +777,7 @@ export class NpmRegistry extends Context.Service<NpmRegistry, NpmRegistryShape>(
 				}),
 			manifest: (name, version, target) =>
 				guarded(name, target, () => {
-					const found = at(target)[name]?.[version];
+					const found = own(own(at(target), name), version);
 					if (found === undefined) return Option.none();
 					// Conditional spreads: an unseeded field stays absent, never an
 					// explicit `undefined`, which the constructor rejects.
@@ -739,15 +794,30 @@ export class NpmRegistry extends Context.Service<NpmRegistry, NpmRegistryShape>(
 						}),
 					);
 				}),
-			versions: (name, target) => guarded(name, target, () => Object.keys(at(target)[name] ?? {})),
-			distTags: (name, target) => guarded(name, target, () => ({ ...(seed.distTags?.[name] ?? {}) })),
+			versions: (name, target) =>
+				guarded(name, target, () =>
+					Option.map(seeded(name, target), (versions): ReadonlyArray<string> => Object.keys(versions)),
+				),
+			// A package with seeded tags exists for `distTags` on every registry,
+			// because the `distTags` seed is not keyed by registry.
+			distTags: (name, target) =>
+				guarded(name, target, () => {
+					const tags = own(seed.distTags, name);
+					return tags !== undefined
+						? Option.some({ ...tags })
+						: Option.map(seeded(name, target), (): Record<string, string> => ({}));
+				}),
 			publishTimes: (name, target) =>
 				guarded(name, target, () =>
-					Object.entries(at(target)[name] ?? {}).flatMap(([version, facts]) => {
-						if (facts.publishedAt === undefined) return [];
-						const parsed = DateTime.make(facts.publishedAt);
-						return Option.isNone(parsed) ? [] : [PublishTime.make({ version, publishedAt: parsed.value })];
-					}),
+					Option.map(
+						seeded(name, target),
+						(versions): ReadonlyArray<PublishTime> =>
+							Object.entries(versions).flatMap(([version, facts]) => {
+								if (facts.publishedAt === undefined) return [];
+								const parsed = DateTime.make(facts.publishedAt);
+								return Option.isNone(parsed) ? [] : [PublishTime.make({ version, publishedAt: parsed.value })];
+							}),
+					),
 				),
 		};
 	};

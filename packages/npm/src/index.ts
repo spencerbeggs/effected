@@ -60,6 +60,9 @@ export {
 	NpmConfigError,
 	type NpmConfigLoadOptions,
 	type NpmConfigSource,
+	NpmRegistryTls,
+	NpmTransportSettings,
+	type ProxyForOptions,
 } from "./NpmConfig.js";
 export { NpmExecutor } from "./NpmExecutor.js";
 // Free-standing named exports, never gathered into a namespace object: a

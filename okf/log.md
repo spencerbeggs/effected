@@ -53,6 +53,7 @@
 * Updated The build artifacts: dist/prod, targets.json, issues.json and the journals
 * Added The bundle manifest is its own pure package, @effected/manifest, emitted as a platform-neutral bundle.json
 * Updated spencerbeggs/tsdoctor
+* Added NpmRegistry applies none of the npmrc proxy or TLS settings
 
 ## 2026-11-07
 
