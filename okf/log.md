@@ -17,6 +17,8 @@
 * Updated @effected/shell
 * Updated @effected/bundler
 * Updated effected.toml: the build config's tables, defaults and discovery
+* Updated @effected/oidc
+* Updated @effected/s3
 
 ## 2026-11-07
 

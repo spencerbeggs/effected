@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-08T12:10:24Z
+  at: 2026-11-08T15:15:33Z
 integrity:
   generated:
-    body: 504db699393a25cf
+    body: 1e515155e95fe20f
 ---
 
 # npm
@@ -110,7 +110,7 @@ Consumers today are `@effected/package-json` (`Package.resolve`, and re-exportin
 
 ## Testing
 
-Suites in `__test__/` per concept. Shared layers are provided through a top-level `layer(...)`, never per-test `Effect.provide`, and stubs build `Option` results with `Option.fromUndefinedOr`. The resolver-contract tests are light — no-op layers answer `None`, a stub-implementation layer proves the contract is implementable, and the resolution error preserves its structured cause — while the vocabulary tests carry the weight: specifier classification across the protocol set, the round-trip property, resolution projections, the section mapping, integrity across all three forms and the release-age gate's strictest-wins/union/totality behavior. Registry reads run against a stubbed core `HttpClient`, no platform package involved; publishing runs against `@effected/commands`' scripted-spawner fixture, which records argv, so "the token never reached argv" is an assertion rather than a hope. The auth classifier and the failure-output filter are table-tested over recorded npm transcripts, including the precedence case (an exchange followed by a provenance failure) that kills a first-marker-wins reading, and the workload `setupAuth` and read refusal are mutation-checked against the ternary and the missing guard they replaced. The tarball suite uses `@effected/memfs` as a devDependency so a write failure is a test input rather than a stub body, and its discriminating claims are ordering claims — a mismatched digest fails before anything is written, and a non-2xx never reaches the extractor.
+Suites in `__test__/` per concept. Shared layers are provided through a top-level `layer(...)`, never per-test `Effect.provide`, and stubs build `Option` results with `Option.fromUndefinedOr`. The resolver-contract tests are light — no-op layers answer `None`, a stub-implementation layer proves the contract is implementable, and the resolution error preserves its structured cause — while the vocabulary tests carry the weight: specifier classification across the protocol set, the round-trip property, resolution projections, the section mapping, integrity across all three forms and the release-age gate's strictest-wins/union/totality behavior. Registry reads run against a stubbed core `HttpClient`, no platform package involved, and `Interruption.test.ts` runs them over the real `FetchHttpClient` to pin that an interrupted read aborts its fetch, request or body, through core's own per-request `AbortController` (the package adds no wiring); publishing runs against `@effected/commands`' scripted-spawner fixture, which records argv, so "the token never reached argv" is an assertion rather than a hope. The auth classifier and the failure-output filter are table-tested over recorded npm transcripts, including the precedence case (an exchange followed by a provenance failure) that kills a first-marker-wins reading, and the workload `setupAuth` and read refusal are mutation-checked against the ternary and the missing guard they replaced. The tarball suite uses `@effected/memfs` as a devDependency so a write failure is a test input rather than a stub body, and its discriminating claims are ordering claims — a mismatched digest fails before anything is written, and a non-2xx never reaches the extractor.
 
 ## Build
 
