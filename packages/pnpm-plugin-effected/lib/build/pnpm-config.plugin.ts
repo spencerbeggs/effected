@@ -191,8 +191,8 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/s3": {
-					range: "^0.1.0",
-					peer: "^0.1.0",
+					range: "^0.2.0",
+					peer: "^0.2.0",
 					strategy: "lock-minor",
 					source: "workspace",
 				},
