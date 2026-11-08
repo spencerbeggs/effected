@@ -1,5 +1,17 @@
 # @effected/pnpm-plugin-effect
 
+## 0.23.1
+
+### Maintenance
+
+#### Updates 1 catalog:effected version
+
+- `@effected/s3` ^0.1.0 -> ^0.2.0 (peer ^0.2.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
 ## 0.23.0
 
 ### Features
