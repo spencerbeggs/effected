@@ -6,6 +6,7 @@
 * Updated glob does not bound total matching work on hostile patterns
 * Updated lockfiles
 * Updated walker
+* Updated npm
 
 ## 2026-11-07
 

@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-07T01:50:30Z
+  at: 2026-11-08T12:10:24Z
 integrity:
   generated:
-    body: 4a8011c1708218b1
+    body: 504db699393a25cf
 ---
 
 # npm
@@ -93,6 +93,8 @@ Three services replace a shelled-out `npm` CLI wherever the work can be done str
 **The scheme rule departs from npm on purpose: a credential goes over `https:` only.** npm matches the nerf-dart key and ignores the scheme, so a token configured for a host also goes to `http://` and `ws://` on that host, in cleartext. `credentialFor` answers `None` for any scheme but `https:`, except `http:` to a host and port that a configured registry (`registry` or an `@scope:registry`) itself names with an `http:` URL — the one explicit way a config says it means cleartext, which is what a local Verdaccio on `http://localhost:4873/` needs. A security review found the scheme gap; the fix is pinned in both directions.
 
 **Every secret-bearing setting is `Redacted`, not only the three credential fields.** `secrets` holds `_authToken`, `_auth`, `_password`, an inline `key` or `cert` (PEM text in the npmrc), and the as-written value of any setting whose URL carried userinfo (`registry=https://user:pass@host/`); `settings` keeps that URL with the userinfo removed, textually, so the rest is exactly as written. A higher layer replaces a key in both maps, so a lower layer's userinfo cannot outlive the URL that carried it. Userinfo is not turned into a credential: configure `_auth` for the host. Nothing reads `certfile`/`keyfile` contents (client certificates are unsupported), so only their paths are held, as settings.
+
+**`parseNpmrc` / `npmrcValue` / `NpmrcEntry`** (`src/Npmrc.ts`, root export — the package has one entrypoint, and the module is pure, so it costs a JSON-only consumer nothing) are the `.npmrc` text parser `NpmConfig` runs on, public for a consumer that needs one file's settings without the layered resolution (#1272). `parseNpmrc(text, env)` returns `NpmrcEntry` values (`key`, `value`, `unset`) in file order and cannot fail; `${VAR}` expansion follows npm's `env-replace` (unset `${VAR}` left as written and listed in `unset`, `${VAR?}` emptied, odd backslash run escapes). `unset` covers the key and the value. `key[]=v` lines come back as `array: true` entries (key without `[]`, as ini names it), and `NpmConfig` skips them. `npmrcValue(entries, key)` is the scalar lookup: `Option`, last occurrence wins, array entries never answer it; `npmrcValues` returns an array setting's values (empty list when absent). The `"missing-env"` credential rule stays in `NpmConfig`, built on `unset` (so an unset `${VAR}` in a credential key fails it too).
 
 Two deliberate departures from npm. A credential value naming an unset `${VAR}` fails `"missing-env"` naming the variable, key and file: npm leaves the literal `${VAR}` in place and sends it as the token, which turns a missing CI secret into a confusing 401; an ordinary setting keeps npm's literal behaviour. And credentials are stored as `Redacted` in a separate `secrets` map, so printing or serializing a config shows `<redacted>`, and the error message never carries a value, only names. Unsupported, and documented as such on the class: command-line flags, the builtin npmrc, client certificates and `always-auth`. Workspace-root discovery is opt-in rather than the default, because the default must stay npm's own lookup; it exists because a pnpm workspace run from a member package otherwise misses the root `.npmrc` pnpm honours there (effected#1170). Its ascent is done on core `FileSystem` and `Path` rather than `@effected/walker`, which this package does not depend on, and a `workspaces` field counts as a marker without matching its globs against `cwd` (npm checks membership; matching would need a glob dependency for a case the nearest-marker rule already gets right in practice). A `package.json` that cannot be read or parsed, or whose `workspaces` is not an array or object, is not a marker. Keys go through `Object.defineProperty`, so a `__proto__` line stays an own property.
 

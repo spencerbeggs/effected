@@ -4,6 +4,7 @@ import * as Base64 from "effect/encoding/Base64";
 import { nerfDartKeys } from "./internal/nerfDartKeys.js";
 import type { RegistryTarget } from "./NpmRegistry.js";
 import { DEFAULT_REGISTRY } from "./NpmRegistry.js";
+import { parseNpmrc } from "./Npmrc.js";
 import type { RegistryCredential } from "./RegistryCredential.js";
 import { basicCredentialFromPairResult } from "./RegistryCredential.js";
 
@@ -137,9 +138,6 @@ const declaresWorkspaces = (text: string): boolean => {
 	return workspaces !== null && typeof workspaces === "object";
 };
 
-/** npm's `${VAR}` / `${VAR?}` expression, with backslash escapes (`@npmcli/config`'s `env-replace`). */
-const ENV_EXPRESSION = /(?<!\\)(\\*)\$\{([^${}?]+)(\?)?\}/g;
-
 /**
  * Whether a key holds a secret: its last `:`-segment is a credential field, or
  * an inline client key or certificate (`key`, `cert`, PEM text in the npmrc).
@@ -160,98 +158,29 @@ const withoutUserinfo = (value: string): string | undefined =>
 	URL_USERINFO.test(value) ? value.replace(URL_USERINFO, "$1") : undefined;
 
 /**
- * npm's env substitution: `${VAR}` is replaced, `${VAR?}` is replaced or
- * emptied, an unset `${VAR}` is left as written, and an odd run of
- * backslashes escapes the expression. Returns the unset variables too.
+ * One npmrc's text as key/value pairs, with the credential rule on top:
+ * a credential key or value naming an unset variable fails `"missing-env"`, since npm
+ * would send the literal `${VAR}` text as the token, which is never a credential.
  */
-const substitute = (
-	text: string,
-	env: Readonly<Record<string, string | undefined>>,
-): { readonly value: string; readonly missing: ReadonlyArray<string> } => {
-	const missing: Array<string> = [];
-	const value = text.replace(ENV_EXPRESSION, (original, escapes: string, name: string, optional?: string) => {
-		if (escapes.length % 2 === 1) return original.slice((escapes.length + 1) / 2);
-		const found = Object.hasOwn(env, name) ? env[name] : undefined;
-		if (found === undefined && optional !== "?") missing.push(name);
-		return escapes.slice(escapes.length / 2) + (found ?? (optional === "?" ? "" : `\${${name}}`));
-	});
-	return { value, missing };
-};
-
-/** An unquoted ini value: stops at an unescaped `;` or `#`, as the `ini` package npm uses does. */
-const unquoted = (raw: string): string => {
-	let out = "";
-	for (let index = 0; index < raw.length; index++) {
-		const char = raw[index] as string;
-		if (char === "\\" && index + 1 < raw.length && ";#\\".includes(raw[index + 1] as string)) {
-			out += raw[index + 1];
-			index++;
-			continue;
-		}
-		if (char === ";" || char === "#") break;
-		out += char;
-	}
-	return out.trim();
-};
-
-/** An ini value, quoted (`"…"` decoded as JSON where it can be, `'…'` stripped) or not. */
-const iniValue = (raw: string): string => {
-	const value = raw.trim();
-	if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
-		try {
-			const parsed: unknown = JSON.parse(value);
-			if (typeof parsed === "string") return parsed;
-		} catch {
-			// Not valid JSON: fall through to stripping the quotes.
-		}
-		return value.slice(1, -1);
-	}
-	if (value.length >= 2 && value.startsWith("'") && value.endsWith("'")) return value.slice(1, -1);
-	return unquoted(value);
-};
-
-/**
- * Parses one npmrc's text into its key/value pairs, substituting `${VAR}`.
- *
- * @remarks
- * A `[section]` prefixes its keys with `section.`, which no setting this
- * module reads ever matches — npm does not read sections either. An array key
- * (`key[]=`) is skipped. A key with no `=` is `"true"`, as in `ini`. A
- * credential value naming an unset variable fails `"missing-env"`: npm would
- * send the literal `${VAR}` text as the token, which is never a credential.
- */
-const parseNpmrc = (
+const parseSource = (
 	source: NpmConfigSource,
 	env: Readonly<Record<string, string | undefined>>,
 ): Result.Result<ReadonlyArray<readonly [string, string]>, NpmConfigError> => {
 	const pairs: Array<readonly [string, string]> = [];
-	let section = "";
-	for (const rawLine of source.text.split(/\r?\n/)) {
-		const line = rawLine.trim();
-		if (line === "" || line.startsWith(";") || line.startsWith("#")) continue;
-		const header = /^\[([^\]]*)\]$/.exec(line);
-		if (header !== null) {
-			section = (header[1] as string).trim();
-			continue;
-		}
-		const equals = line.indexOf("=");
-		const rawKey = (equals === -1 ? line : line.slice(0, equals)).trim();
-		if (rawKey === "" || rawKey.endsWith("[]")) continue;
-		const key = substitute(iniValue(rawKey), env).value;
-		const fullKey = section === "" ? key : `${section}.${key}`;
-		const rawValue = equals === -1 ? "true" : iniValue(line.slice(equals + 1));
-		const { value, missing } = substitute(rawValue, env);
-		if (isSecretKey(fullKey) && missing.length > 0) {
+	for (const entry of parseNpmrc(source.text, env)) {
+		// Array settings (`ca[]=`) are not settings this module reads.
+		if (entry.array) continue;
+		if (isSecretKey(entry.key) && entry.unset.length > 0) {
 			return Result.fail(
 				new NpmConfigError({
 					reason: "missing-env",
-					variable: missing[0] as string,
-					key: fullKey,
+					variable: entry.unset[0] as string,
+					key: entry.key,
 					...(source.path === undefined ? {} : { path: source.path }),
 				}),
 			);
 		}
-		pairs.push([fullKey, value]);
+		pairs.push([entry.key, entry.value]);
 	}
 	return Result.succeed(pairs);
 };
@@ -479,7 +408,7 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 		const secrets: Record<string, Redacted.Redacted<string>> = {};
 		const files: Array<string> = [];
 		for (const source of [...sources, { text: envLayer(env) }]) {
-			const parsed = parseNpmrc(source, env);
+			const parsed = parseSource(source, env);
 			if (Result.isFailure(parsed)) return Result.fail(parsed.failure);
 			if (source.path !== undefined) files.push(source.path);
 			for (const [key, value] of parsed.success) {
@@ -548,7 +477,7 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 		const settingIn = (layers: ReadonlyArray<NpmConfigSource | undefined>, key: string): string | undefined => {
 			for (const layer of layers) {
 				if (layer === undefined) continue;
-				const parsed = parseNpmrc(layer, env);
+				const parsed = parseSource(layer, env);
 				if (Result.isFailure(parsed)) continue;
 				// The last occurrence wins within a file, as in the merge.
 				let found: string | undefined;
