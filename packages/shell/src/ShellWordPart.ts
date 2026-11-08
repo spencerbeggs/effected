@@ -264,7 +264,8 @@ export class ShellTildePart extends Schema.Class<ShellTildePart>("ShellTildePart
 
 /**
  * Text the lexer could not classify: an unterminated quote or substitution
- * running to the end of the input, an array assignment's `(…)` value, the
+ * running to the end of the input, an array value's `(…)` (in an assignment,
+ * or an assignment builtin's argument such as `declare -A h=([k]=1)`), the
  * `[ … ]` subscript of a command-position word starting `NAME[` that is not
  * an assignment (`a[1<<2]`, `a[$(cmd)]=1`), or the empty target of a
  * redirection with nothing after it.

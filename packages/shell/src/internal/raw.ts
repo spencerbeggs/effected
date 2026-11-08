@@ -299,6 +299,13 @@ export interface RawSegment {
 	 * an assignment.
 	 */
 	commandPosition: boolean;
+	/**
+	 * Whether a `NAME=(` or `NAME+=(` word is a compound assignment, bash's
+	 * `PST_ASSIGNOK`: set by an unquoted assignment builtin (`declare`,
+	 * `typeset`, `local`, `export`, `readonly`, `alias`) or `eval` / `let` as
+	 * the command word, and cleared by a redirection after it.
+	 */
+	compoundAssignment: boolean;
 	readonly words: Array<RawWord>;
 	readonly assignments: Array<RawAssignment>;
 	readonly redirections: Array<RawRedirection>;

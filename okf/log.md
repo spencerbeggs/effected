@@ -14,6 +14,7 @@
 * Updated config-file
 * Updated package-json
 * Updated @effected/markdown-lint
+* Updated @effected/shell
 
 ## 2026-11-07
 

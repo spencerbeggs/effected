@@ -278,14 +278,15 @@ const literalPrefix = (word: ShellWord): string => {
 const basename = (name: string): string => name.slice(name.lastIndexOf("/") + 1);
 
 /**
- * Skip, from `from`, the words before a command name that do not name one:
+ * Skip, from `from`, the words before a command name that do not name one,
+ * pushing the words of every `[[ … ]]` and `((…))` among them to `evaluated`:
  * reserved words, `[[ … ]]`, the arithmetic command `((…))`, the heads of
  * `for NAME`, `select NAME`, `function NAME` and `coproc NAME`, and
  * assignments. The shell lets a compound command's closing word be followed
  * directly by `then`, `do` or `{`, so `if [[ -n x ]] then git commit; fi`
  * is one segment whose command is `git`.
  */
-const skipPrefix = (words: ReadonlyArray<ShellWord>, from: number): number => {
+const skipPrefix = (words: ReadonlyArray<ShellWord>, from: number, evaluated: Array<ShellWord>): number => {
 	let index = from;
 	while (index < words.length) {
 		const word = words[index] as ShellWord;
@@ -293,12 +294,15 @@ const skipPrefix = (words: ReadonlyArray<ShellWord>, from: number): number => {
 		if (value === "[[") {
 			let close = index + 1;
 			while (close < words.length && keyword(words[close]) !== "]]") close += 1;
+			// An unclosed `[[` is the command: it and every word after it are its test.
+			evaluated.push(...words.slice(index, close + 1));
 			if (close === words.length) return index;
 			index = close + 1;
 			continue;
 		}
 		if (value === "for" || value === "select") {
 			if (isArithmeticCommand(words[index + 1])) {
+				evaluated.push(words[index + 1] as ShellWord);
 				index += 2;
 				continue;
 			}
@@ -319,6 +323,7 @@ const skipPrefix = (words: ReadonlyArray<ShellWord>, from: number): number => {
 			continue;
 		}
 		if ((value !== undefined && RESERVED.has(value)) || isArithmeticCommand(word)) {
+			if (isArithmeticCommand(word)) evaluated.push(word);
 			index += 1;
 			continue;
 		}
@@ -473,6 +478,17 @@ const skipOptions = (words: ReadonlyArray<ShellWord>, from: number, spec: Wrappe
  * segment (`if [[ x ]] then git commit; fi`) it is skipped, and the command
  * after it is the name.
  *
+ * `evaluated` lists the words of every `[[ … ]]` and arithmetic command
+ * `((…))` the segment evaluates, in source order, whether skipped on the way
+ * to the name or the name itself: each `[[ … ]]` from `[[` to its `]]` (to
+ * the segment's end when it has none), each `((…))` as its one word,
+ * `for ((…))` included. So `if [[ x -eq 0 ]] then git commit; fi` names
+ * `git`, with the `[[`, `x`, `-eq`, `0` and `]]` words in `evaluated`, and a
+ * guard refuses arithmetic tests by reading it rather than the segment's
+ * words. The segmenter splits a `[[ … ]]` on `&&`, `||` and `(`, so its
+ * later operands sit in later segments, outside this list: follow an
+ * unclosed one into them.
+ *
  * Two shapes resolve to `None`, and a guard must tell them apart by `args`:
  *
  * - **No command at all**, with no args: a segment with no words, or only
@@ -497,6 +513,7 @@ export class ShellCommand extends Schema.Class<ShellCommand>("ShellCommand")({
 	name: Schema.Option(Schema.String),
 	args: Schema.Array(ShellWord),
 	wrappers: Schema.Array(Schema.String),
+	evaluated: Schema.Array(ShellWord),
 }) {
 	/**
 	 * The wrapper commands {@link ShellCommand.fromSegment} unwraps.
@@ -581,10 +598,11 @@ export class ShellCommand extends Schema.Class<ShellCommand>("ShellCommand")({
 	static fromSegment(segment: ShellSegment): ShellCommand {
 		const words = segment.words;
 		const wrappers: Array<string> = [];
+		const evaluated: Array<ShellWord> = [];
 		const resolved = (name: Option.Option<string>, args: ReadonlyArray<ShellWord>): ShellCommand =>
-			ShellCommand.make({ segment, name, args, wrappers });
+			ShellCommand.make({ segment, name, args, wrappers, evaluated });
 		let from = 0;
-		let index = skipPrefix(words, from);
+		let index = skipPrefix(words, from, evaluated);
 		for (;;) {
 			const word = words[index];
 			if (word === undefined) {
@@ -606,7 +624,7 @@ export class ShellCommand extends Schema.Class<ShellCommand>("ShellCommand")({
 			if (step.kind === "unknown") return resolved(Option.none(), words.slice(step.index));
 			// `time` is a reserved word timing a whole pipeline: `time { git commit; }`.
 			from = step.index;
-			index = basename(literal.value) === "time" ? skipPrefix(words, step.index) : step.index;
+			index = basename(literal.value) === "time" ? skipPrefix(words, step.index, evaluated) : step.index;
 		}
 	}
 }
