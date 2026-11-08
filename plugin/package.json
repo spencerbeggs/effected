@@ -10,6 +10,6 @@
 		"validate": "pluginfinity validate"
 	},
 	"devDependencies": {
-		"pluginfinity": "^0.3.14"
+		"pluginfinity": "^0.3.15"
 	}
 }
