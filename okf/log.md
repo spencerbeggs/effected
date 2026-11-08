@@ -54,6 +54,8 @@
 * Added The bundle manifest is its own pure package, @effected/manifest, emitted as a platform-neutral bundle.json
 * Updated spencerbeggs/tsdoctor
 * Added NpmRegistry applies none of the npmrc proxy or TLS settings
+* Updated Add a kit package
+* Updated Add a workspace package
 
 ## 2026-11-07
 

@@ -32,9 +32,11 @@ Three facts are load-bearing:
   keyed without the registry axis.
 - **A 404 is `Option.none()`**, decided on the response status
   structurally, not by matching npm's stderr wording (which changes across
-  npm versions without notice). `version` returns `Option<PublishedVersion>`;
-  `versions`/`distTags`/`publishTimes` return an empty array/record for an
-  absent package rather than failing.
+  npm versions without notice). `version` returns `Option<PublishedVersion>`,
+  and `versions`/`distTags`/`publishTimes` return an `Option` too: `None` for
+  an absent package, `Some([])`/`Some({})` for one the registry knows that
+  lists nothing. Match on the `Option`, never on an empty collection's
+  length, which cannot tell a mistyped name from an unpublished package.
 - **`integrity` is typed as this kit's own `IntegrityHash` brand**, not a
   bare string — comparing it against `PackagePublish.pack`'s
   `PackedTarball.integrity` is a typed comparison, not a string-equals-and-hope.

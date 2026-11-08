@@ -85,7 +85,9 @@ release pipeline.
   the wrong engine silently changes which packages a gate exempts.
 - `NpmRegistry.layerTest()` with no overrides dies loudly by design on the
   first read — reach for `NpmRegistry.layerSeeded({ registries: {} })` when
-  a test wants a real, working empty registry instead.
+  a test wants a real, working empty registry instead. Every read of it
+  answers `Option.none()`, as a 404 does, including `versions`, `distTags`
+  and `publishTimes`.
 
 ## Additional resources
 

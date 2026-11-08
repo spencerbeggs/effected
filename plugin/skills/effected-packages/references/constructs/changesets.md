@@ -13,9 +13,11 @@
 | `ChangesetParseError` | Class | A changeset file could not be parsed: no front matter, a malformed YAML block, or a bump outside `patch \| minor \| major`. | changeset without front matter, malformed yaml, or an invalid bump |
 | `ParsedChangeset` | Class | One parsed changeset: the packages it releases and its summary text. | released packages and summary text of one changeset |
 | `PendingChangeset` | Class | One pending changeset read from `.changeset/`. | one unreleased changeset read from disk |
+| `PendingChangesetFailure` | Interface | One changeset file `PendingChangesets.readSettled` could not read or parse. | |
 | `PendingChangesets` | Class | Reading the pending changesets under a repository's `.changeset/` directory. | list and read unreleased changesets under .changeset |
 | `PlannedRelease` | Class | One package's place in a `ReleasePlan`. | one package's old version, new version and bump type in a plan |
 | `PreState` | Class | The decoded `.changeset/pre.json`: the repository is in pre-release mode (`changeset pre enter <tag>`), or leaving it (`changeset pre exit`). | read pre mode state from pre.json, tag, initial versions, consumed changesets |
 | `ReleasePlan` | Class | What a set of pending changesets releases: the packages they name and the packages reached as dependents, sorted by name. A package neither named nor reached is absent. | compute next versions from pending changesets, dependents and ripples included |
 | `ReleaseType` | Variable + TypeAlias | The type of a `ReleaseType` value. | package release outcomes, including none for an unreleased package |
+| `SettledChangesets` | Interface | Every pending changeset that parsed, and every one that did not, from `PendingChangesets.readSettled`. | |
 | `UnknownPackageError` | Class | A changeset names a package the workspace does not contain. | changeset names a package missing from the workspace |
