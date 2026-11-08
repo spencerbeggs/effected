@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-08T08:53:14Z
+  at: 2026-11-08T12:06:40Z
 integrity:
   generated:
-    body: 52afb0559d0811c1
+    body: cab137f3375ca9d1
 ---
 
 # glob

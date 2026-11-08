@@ -11,10 +11,10 @@ sources:
     resource: ../modules/glob.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-08T08:53:14Z
+  at: 2026-11-08T12:06:40Z
 integrity:
   generated:
-    body: f2e8512433876515
+    body: 8ed17dc485aa1ecb
 ---
 
 # glob does not bound total matching work on hostile patterns
