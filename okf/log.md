@@ -4,6 +4,7 @@
 
 * Updated glob
 * Updated glob does not bound total matching work on hostile patterns
+* Updated lockfiles
 
 ## 2026-11-07
 

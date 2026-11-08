@@ -1114,6 +1114,9 @@ importers:
       '@effect/vitest':
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
+      '@effected/glob':
+        specifier: workspace:*
+        version: link:../glob
       '@effected/jsonc':
         specifier: workspace:*
         version: link:../jsonc

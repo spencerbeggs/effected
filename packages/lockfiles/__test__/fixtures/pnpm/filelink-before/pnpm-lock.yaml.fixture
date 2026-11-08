@@ -1,0 +1,63 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+catalogs:
+  default:
+    '@fl/b':
+      specifier: workspace:*
+      version: workspace:*
+
+importers:
+
+  .:
+    dependencies:
+      '@fl/b':
+        specifier: 'catalog:'
+        version: link:packages/b
+      local-dir:
+        specifier: file:vendor/local-dir
+        version: file:vendor/local-dir
+      local-tar:
+        specifier: file:vendor/local-tar.tgz
+        version: file:vendor/local-tar.tgz
+
+  packages/a:
+    dependencies:
+      '@fl/b':
+        specifier: 'catalog:'
+        version: link:../b
+      local-dir:
+        specifier: file:../../vendor/local-dir
+        version: file:vendor/local-dir
+      local-tar:
+        specifier: file:../../vendor/local-tar.tgz
+        version: file:vendor/local-tar.tgz
+
+  packages/b:
+    dependencies:
+      ms:
+        specifier: 2.0.0
+        version: 2.0.0
+
+packages:
+
+  local-dir@file:vendor/local-dir:
+    resolution: {directory: vendor/local-dir, type: directory}
+
+  local-tar@file:vendor/local-tar.tgz:
+    resolution: {integrity: sha512-xsfW0Rf2mudmlnR/kFq6ahW+4nBTNh4mOrK2/Cs6cZYDBdaOQq+10A/rZf56/0TIiaruk/reRAvbYlbKlmqfkA==, tarball: file:vendor/local-tar.tgz}
+    version: 1.0.0
+
+  ms@2.0.0:
+    resolution: {integrity: sha512-Tpp60P6IUJDTuOq/5Z8cdskzJujfwqfOTkrwIwj7IRISpnkJnT6SyJ4PCPnGMoFjC9ddhal5KVIYtAt97ix05A==}
+
+snapshots:
+
+  local-dir@file:vendor/local-dir: {}
+
+  local-tar@file:vendor/local-tar.tgz: {}
+
+  ms@2.0.0: {}

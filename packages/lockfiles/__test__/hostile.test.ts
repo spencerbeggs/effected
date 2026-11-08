@@ -5,7 +5,9 @@
 // the delegated typed failures actually surface through Lockfile.parse.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Option } from "effect";
+import { Effect, Exit, Option, Result } from "effect";
+import { braceExpand } from "../../glob/node_modules/minimatch/dist/esm/index.js";
+import { braceAlternativesBound, compileGlob, stripTrailingDot } from "../src/internal/npm.js";
 import { Lockfile, LockfileParseError } from "../src/Lockfile.js";
 import type { LockfileFormat } from "../src/LockfileFormat.js";
 
@@ -512,4 +514,456 @@ describe("hostile input", () => {
 			}),
 		);
 	});
+});
+
+describe("npm workspace globs", () => {
+	const lockfileWith = (workspaces: ReadonlyArray<string>, links: ReadonlyArray<string> = []): string => {
+		const packages: Record<string, unknown> = { "": { name: "root", workspaces } };
+		for (const [index, dir] of links.entries()) {
+			packages[`node_modules/l${index}`] = { resolved: dir, link: true };
+			packages[dir] = { name: `l${index}`, version: "1.0.0" };
+		}
+		return JSON.stringify({ name: "root", lockfileVersion: 3, requires: true, packages });
+	};
+	const range = (n: number, at: (i: number) => string): ReadonlyArray<string> =>
+		Array.from({ length: n }, (_, i) => at(i));
+
+	/**
+	 * The CPU time one parse takes, the minimum of five samples. A GC or
+	 * scheduler pause only ever adds time, so the fastest sample is the
+	 * least-disturbed estimate, and every sample of a super-linear parse is
+	 * slow. CPU time (`process.cpuUsage`) is time the parse spent, not time the
+	 * process was descheduled; vitest runs each file in its own fork, so no
+	 * other test's CPU lands here.
+	 */
+	const cpuMs = (text: string, parses = 1, expect: "parses" | "fails" = "parses"): Effect.Effect<number> =>
+		Effect.sync(() => {
+			let best = Number.POSITIVE_INFINITY;
+			for (let pass = 0; pass < 5; pass += 1) {
+				const started = process.cpuUsage();
+				for (let parse = 0; parse < parses; parse += 1) {
+					const exit = Effect.runSyncExit(Lockfile.parse(text, { format: "npm" }));
+					// A unit that silently timed the wrong outcome would pass vacuously.
+					if (Exit.isSuccess(exit) !== (expect === "parses")) assert.fail(`expected the input to ${expect}`);
+				}
+				const used = process.cpuUsage(started);
+				best = Math.min(best, (used.user + used.system) / 1000);
+			}
+			return best;
+		});
+
+	it.effect("more than 1000 workspace patterns fails typed at validation, naming the limit and the count", () =>
+		Effect.gen(function* () {
+			const error = yield* parseError(lockfileWith(range(1001, (i) => `pkg${i}`)), "npm");
+			assert.strictEqual(error.stage, "validation");
+			assert.instanceOf(error.cause, Error);
+			assert.include(String((error.cause as Error).message), "1001 patterns");
+			assert.include(String((error.cause as Error).message), "the 1000 this parser reads");
+			// Control: exactly the limit parses.
+			const atLimit = yield* Lockfile.parse(lockfileWith(range(1000, (i) => `pkg${i}`)), { format: "npm" });
+			assert.strictEqual(atLimit.format, "npm");
+		}),
+	);
+
+	it.effect("more than 32 wildcard workspace patterns fails typed, however few the literal ones", () =>
+		Effect.gen(function* () {
+			const error = yield* parseError(lockfileWith(range(33, (i) => `pkg${i}/*`)), "npm");
+			assert.strictEqual(error.stage, "validation");
+			assert.include(String((error.cause as Error).message), "33 wildcard patterns");
+			assert.include(String((error.cause as Error).message), "the 32 this parser reads");
+			// Control: 32 wildcards beside 968 literal paths, both caps exactly met, parses.
+			const atLimit = yield* Lockfile.parse(
+				lockfileWith([...range(32, (i) => `pkg${i}/*`), ...range(968, (i) => `lit/${i}`)]),
+				{ format: "npm" },
+			);
+			assert.strictEqual(atLimit.format, "npm");
+		}),
+	);
+
+	it.effect("a literal path decides exactly as the same path spelled as a wildcard", () =>
+		Effect.gen(function* () {
+			// A one-character class (`[a]`) is a wildcard to the parser, so it takes
+			// the glob match; the bare name takes the set lookup. Both must agree.
+			const dirs = ["packages/a", "packages/b", "packages/ab", "packages/a/b", "other/a", "packages/a.b"];
+			const decide = (patterns: ReadonlyArray<string>) =>
+				Effect.map(Lockfile.parse(lockfileWith(patterns, dirs), { format: "npm" }), (lockfile) =>
+					lockfile.packages.filter((pkg) => pkg.isWorkspace).map((pkg) => pkg.relativePath),
+				);
+			const cases: ReadonlyArray<readonly [ReadonlyArray<string>, ReadonlyArray<string>]> = [
+				[["packages/a"], ["packages/[a]"]],
+				[["packages/a/"], ["packages/[a]/"]],
+				[
+					["packages/*", "!packages/b"],
+					["packages/*", "!packages/[b]"],
+				],
+				[
+					["packages/*", "!packages/a/"],
+					["packages/*", "!packages/[a]/"],
+				],
+				[
+					["packages/a.b", "packages/a/b"],
+					["packages/[a].b", "packages/[a]/b"],
+				],
+			];
+			for (const [literal, wildcard] of cases) {
+				const expected = yield* decide(wildcard);
+				assert.isAbove(expected.length, 0, `vacuous case ${wildcard.join(",")}`);
+				assert.deepStrictEqual(yield* decide(literal), expected, literal.join(","));
+			}
+		}),
+	);
+
+	it.effect(
+		"wildcard patterns that may expand past 256 brace alternatives fail typed, naming the limit and the count",
+		() =>
+			Effect.gen(function* () {
+				// `**` weighs 1, each negation of eight comma parts 8, and `{a..p}` 16
+				// (`{a..o}` 15); 32 wildcards and 256 characters at most.
+				const eight = (i: number) => `!n${i}/{a,b,c,d,e,f,g,h}/**`;
+				const error = yield* parseError(lockfileWith(["**", ...range(30, eight), "!m/{a..p}/**"]), "npm");
+				assert.strictEqual(error.stage, "validation");
+				assert.include(String((error.cause as Error).message), "may expand to 257 brace alternatives");
+				assert.include(String((error.cause as Error).message), "the 256 this parser reads");
+				// Control: exactly the budget (1 + 30 × 8 + 15) parses, and its
+				// alternatives are live: the rows they name are ignored.
+				const atLimit = yield* Lockfile.parse(
+					lockfileWith(["**", ...range(30, eight), "!m/{a..o}/**"], ["p/a", "n7/c/b", "m/o/z"]),
+					{ format: "npm" },
+				);
+				assert.deepStrictEqual(
+					atLimit.packages.filter((pkg) => pkg.isWorkspace).map((pkg) => pkg.relativePath),
+					["p/a"],
+				);
+			}),
+	);
+
+	it.effect(
+		"a sequence with endpoints too large for a double weighs as unbounded, never NaN, and cannot slip the budget",
+		() =>
+			Effect.gen(function* () {
+				const nines = "9".repeat(400);
+				const eights = `${"9".repeat(399)}8`;
+				// An endpoint past a safe integer saturates: brace expansion reads it as
+				// a double, gets `Infinity`, and counts towards it to its own cap
+				// (100,000 alternatives for two equal 400-digit endpoints).
+				assert.strictEqual(braceAlternativesBound(`q/{${nines}..${nines}}`), Number.POSITIVE_INFINITY);
+				assert.strictEqual(braceAlternativesBound(`q/{${eights}..${nines}}`), Number.POSITIVE_INFINITY);
+				assert.strictEqual(braceAlternativesBound(`q/{1..${nines}}`), Number.POSITIVE_INFINITY);
+				assert.strictEqual(braceAlternativesBound(`q/{-${nines}..${nines}}`), Number.POSITIVE_INFINITY);
+				assert.strictEqual(braceAlternativesBound(`q/{0..9007199254740992}`), Number.POSITIVE_INFINITY);
+				assert.strictEqual(braceAlternativesBound(`q/{1..9007199254740991}`), 9_007_199_254_740_991);
+				// Many groups saturate too, rather than overflowing to a non-integer.
+				assert.strictEqual(braceAlternativesBound("{a,b}".repeat(200)), Number.POSITIVE_INFINITY);
+				// The reviewer's repro (resized to the 32-wildcard ceiling): 30 negations of 8^4 alternatives beside 935
+				// literal positives, then a last positive whose sequence endpoints
+				// overflow a double. Before, the weight went NaN, `NaN > 256` was false,
+				// and the 12.7 KB field parsed in 6.9 s. Now it is refused.
+				const eight = "{a,b,c,d,e,f,g,h}";
+				const bomb = [...range(30, (i) => `!p/${eight.repeat(4)}${i}`), ...range(935, (i) => `lit/${i}`)];
+				// The 400-digit poison is now also past the 256-character ceiling; the
+				// 20-digit one is inside it, so it reaches the weight and saturates.
+				const twenty = "9".repeat(20);
+				for (const last of [`q/{${nines}..${nines}}`, `q/{1..${nines}}`, `q/{${twenty}..${twenty}}`]) {
+					const error = yield* parseError(lockfileWith([...bomb, last]), "npm");
+					assert.strictEqual(error.stage, "validation");
+				}
+				// An unbounded sequence alone is refused by the weight, not the length.
+				const unbounded = yield* parseError(lockfileWith(["p/**", `q/{${twenty}..${twenty}}`]), "npm");
+				assert.include(String((unbounded.cause as Error).message), "unboundedly many brace alternatives");
+			}),
+	);
+
+	it("the brace weight is never below the alternatives brace expansion really makes", () => {
+		// Checked against minimatch 11.0.5's own `braceExpand`, the expansion
+		// the glob engine follows (from @effected/glob's oracle devDependency).
+		// Over-estimating fails closed; under-estimating would let a pattern
+		// past the ceiling, so every shape must come out at or above.
+		const shapes = [
+			"p/{a,b}",
+			"{a,b}/{c,d}",
+			"p/{a,{b,c}}",
+			"{a},b}",
+			"{a,b}}",
+			"{{a,b},{c,d}}",
+			"x{1..9}",
+			"x{1..9..2}",
+			"x{a..e}",
+			"x{-3..3}",
+			"x{01..10}",
+			"{1..3}{a,b}",
+			"\\{a,b}",
+			"{a\\,b,c}",
+			"{a,b\\}",
+			"{a,,b}",
+			"{1..100}",
+			"p/{a,b,c,d,e,f,g,h}{a,b,c,d,e,f,g,h}",
+			"{a,{b,{c,{d,e}}}}",
+			"a{b,c{d,e}f}g{h,i}",
+			"{x,y}{1..3}{a..c}",
+			"}{a,b}{",
+			"{{a,b}",
+			"{a,b{c,d}",
+			"{a,b}{c,d{e,f}}{g,h}",
+			`q/{${"9".repeat(400)}..${"9".repeat(400)}}`,
+			`q/{${"9".repeat(399)}8..${"9".repeat(400)}}`,
+		];
+		for (const shape of shapes) {
+			assert.isAtLeast(braceAlternativesBound(shape), braceExpand(shape).length, shape);
+		}
+		// A deterministic sweep over a small brace alphabet: every string of up
+		// to six characters from `{ } , a \\ 1 .` (7^6 + … ≈ 137,000 strings).
+		const alphabet = ["{", "}", ",", "a", "\\", "1", "."];
+		let checked = 0;
+		const sweep = (prefix: string, depth: number): void => {
+			if (prefix !== "") {
+				checked += 1;
+				const real = braceExpand(prefix).length;
+				if (braceAlternativesBound(prefix) < real)
+					assert.fail(`${JSON.stringify(prefix)} weighs less than its ${real} alternatives`);
+			}
+			if (depth === 0) return;
+			for (const character of alphabet) sweep(prefix + character, depth - 1);
+		};
+		sweep("", 6);
+		assert.isAbove(checked, 100_000);
+	});
+
+	// Brace expansion: the wildcard ceiling counts patterns, but the engine
+	// matches each brace alternative, so 32 negations of `p/{a,…,h}` three
+	// times over (512 alternatives each) cost 32 × 512 compiled alternatives
+	// against every positive. The pre-pass weighs each wildcard pattern's
+	// alternatives before compiling any, and refuses the field past the
+	// budget, so the hostile list costs no more than reading it.
+	//
+	// RATIO-BASED: that list beside 936 literal positives, against 32 plain
+	// wildcard negations beside the same positives (about 30,000 cheap
+	// matches, milliseconds of real work). Measured: without the budget the
+	// brace list cost 6.1 ms -> 364 ms (~60x); with it, 6.2 ms -> 0.5 ms,
+	// refused in the pre-pass. The threshold of 10 sits between the two.
+	it.effect(
+		"brace bombs cost no more than a plain list of the same length",
+		() =>
+			Effect.gen(function* () {
+				const eight = "{a,b,c,d,e,f,g,h}";
+				const literals = range(936, (i) => `lit/${i}`);
+				yield* cpuMs(lockfileWith([...range(8, (i) => `!n${i}/*`), ...literals.slice(0, 50)]));
+				const small = yield* cpuMs(lockfileWith([...range(32, (i) => `!n${i}/*`), ...literals]));
+				const large = yield* cpuMs(
+					lockfileWith([...range(32, (i) => `!p/${eight.repeat(3)}${i}`), ...literals]),
+					1,
+					"fails",
+				);
+				const ratio = large / Math.max(small, 1);
+				assert.isBelow(
+					ratio,
+					10,
+					`the brace list cost ${ratio.toFixed(1)}x the plain one (${small.toFixed(1)}ms -> ${large.toFixed(1)}ms)`,
+				);
+			}),
+		120_000,
+	);
+
+	it("a pattern glob will not compile maps to a typed validation failure naming its index and glob's reason", () => {
+		// The ceilings now refuse every pattern glob is known to reject before it
+		// is compiled, so the compile failure is checked at the mapping itself.
+		const compiled = compileGlob(7, `${"a".repeat(65_537)}*`);
+		assert.isTrue(Result.isFailure(compiled));
+		if (!Result.isFailure(compiled)) return;
+		const failure = compiled.failure;
+		assert.strictEqual(failure.stage, "validation");
+		if (failure.stage !== "validation") return;
+		const cause = failure.cause as Error;
+		assert.include(cause.message, "pattern at index 7 will not compile: PatternTooLong");
+		assert.strictEqual((cause.cause as { readonly reason?: string }).reason, "PatternTooLong");
+		// Control: a pattern glob reads compiles.
+		assert.isTrue(Result.isSuccess(compileGlob(0, "packages/*")));
+	});
+
+	it("a trailing /. run is dropped exactly as the regex it replaced dropped it", () => {
+		// The regex read the run in quadratic time; the walk must give the same
+		// answer on every string, so it is checked against the regex on every
+		// string of up to nine characters over `/ . a` (29,523 strings), where
+		// the regex is still fast.
+		const byRegex = (pattern: string): string => {
+			const stripped = pattern.replace(/(?:\/\.)+\/?$/, "");
+			return stripped === "" ? pattern : stripped;
+		};
+		const alphabet = ["/", ".", "a"];
+		let checked = 0;
+		const sweep = (prefix: string, depth: number): void => {
+			checked += 1;
+			if (stripTrailingDot(prefix) !== byRegex(prefix)) {
+				assert.fail(`${JSON.stringify(prefix)}: ${stripTrailingDot(prefix)} vs ${byRegex(prefix)}`);
+			}
+			if (depth === 0) return;
+			for (const character of alphabet) sweep(prefix + character, depth - 1);
+		};
+		sweep("", 9);
+		assert.strictEqual(checked, 29_524);
+		assert.strictEqual(stripTrailingDot("packages/a/./."), "packages/a");
+		assert.strictEqual(stripTrailingDot("packages/*/./"), "packages/*");
+		assert.strictEqual(stripTrailingDot("packages/a/.."), "packages/a/..");
+	});
+
+	// A long run of `/.` segments in one positive pattern: the trailing-dot
+	// strip runs before any length guard can refuse the pattern, so it must be
+	// linear. The regex it replaced retried its run from every start position:
+	// a 488 KB pattern cost 30.9 s.
+	//
+	// RATIO-BASED: `q` + 10,000 `/.` pairs + `x` against 40,000 pairs. Both
+	// are past the 256-character ceiling, which is measured after the strip,
+	// so the strip runs in full and the field is then refused; each sample is
+	// thirty parses so the small side does milliseconds of real work, minimum
+	// of five samples, CPU time. Measured at ten parses: regex 542 ms ->
+	// 8389 ms (~15.5x); index walk 2.0 ms -> 7.4 ms (~3.6x). The threshold of 8
+	// sits between the two.
+	it.effect(
+		"a long run of /. segments in a positive pattern costs linear time",
+		() =>
+			Effect.gen(function* () {
+				const at = (pairs: number) => lockfileWith(["packages/*", `q${"/.".repeat(pairs)}x`]);
+				yield* cpuMs(at(1000), 30, "fails");
+				// Both sides are past the 256-character ceiling, which is measured
+				// after the strip, so the strip runs in full and the field is then
+				// refused.
+				const small = yield* cpuMs(at(10_000), 30, "fails");
+				const large = yield* cpuMs(at(40_000), 30, "fails");
+				const ratio = large / Math.max(small, 1);
+				assert.isBelow(
+					ratio,
+					8,
+					`4x the run cost ${ratio.toFixed(1)}x the CPU time (${small.toFixed(1)}ms -> ${large.toFixed(1)}ms); ` +
+						"the walk is ~3.6x, the regex ~15.5x",
+				);
+				// The 488 KB pattern that cost 30.9 s through the regex is refused
+				// typed: the strip is linear, and the length ceiling follows it.
+				const huge = yield* cpuMs(at(244_000), 1, "fails");
+				assert.isBelow(huge, 1000, `the 488 KB pattern took ${huge.toFixed(0)}ms`);
+			}),
+		120_000,
+	);
+
+	it.effect(
+		"a matched pattern longer than 256 characters fails typed; a plain-path positive of any length does not",
+		() =>
+			Effect.gen(function* () {
+				const wildcard = (length: number) => `p/*${"a".repeat(length - 3)}`;
+				assert.strictEqual(wildcard(257).length, 257);
+				const error = yield* parseError(lockfileWith(["packages/*", wildcard(257)]), "npm");
+				assert.strictEqual(error.stage, "validation");
+				const message = String((error.cause as Error).message);
+				assert.include(message, "pattern at index 1 is 257 characters long");
+				assert.include(message, "the 256 this parser reads");
+				// Every negation is matched, so a long plain-path negation is capped too.
+				const negation = yield* parseError(lockfileWith(["packages/*", `!lit/${"a".repeat(253)}`]), "npm");
+				assert.include(String((negation.cause as Error).message), "pattern at index 1 is 257 characters long");
+				// A positive is measured after its trailing `/.` run is dropped.
+				const dotted = yield* Lockfile.parse(lockfileWith(["packages/*", `${wildcard(256)}${"/.".repeat(50)}`]), {
+					format: "npm",
+				});
+				assert.strictEqual(dotted.format, "npm");
+				// Controls: exactly the limit parses, and a plain-path positive is a set
+				// lookup, uncapped.
+				const atLimit = yield* Lockfile.parse(lockfileWith(["packages/*", wildcard(256)]), { format: "npm" });
+				assert.strictEqual(atLimit.format, "npm");
+				const longPlain = yield* Lockfile.parse(lockfileWith(["packages/*", `lit/${"a".repeat(10_000)}`]), {
+					format: "npm",
+				});
+				assert.strictEqual(longPlain.format, "npm");
+			}),
+	);
+
+	// Pattern length: glob's matcher is polynomial, and a run of `x!(a)`
+	// against a near-miss candidate of similar length is about cubic. One such
+	// negation of 1,004 characters over 50 near-miss link rows cost 2.8 s; the
+	// pre-pass now refuses it. RATIO-BASED: that lockfile against the same at
+	// 254 characters (inside the ceiling, 200 rows so it does milliseconds of
+	// real work), minimum of five samples, CPU time. Measured: without the
+	// ceiling 25 ms -> 10,785 ms (~437x); with it 6.8 ms -> 1.0 ms (refused,
+	// ~0.1x). The threshold of 5 sits between the two.
+	it.effect(
+		"a long extglob pattern costs no more than a short one, being refused",
+		() =>
+			Effect.gen(function* () {
+				const at = (reps: number) =>
+					lockfileWith(
+						["p/**", `!p/*/${"x!(a)".repeat(reps)}`],
+						range(200, (i) => `p/q${i}/${"xb".repeat(reps - 1)}xa`),
+					);
+				yield* cpuMs(at(10));
+				const small = yield* cpuMs(at(50));
+				const large = yield* cpuMs(at(200), 1, "fails");
+				const ratio = large / Math.max(small, 1);
+				assert.isBelow(
+					ratio,
+					5,
+					`the 1,004-character pattern cost ${ratio.toFixed(1)}x the 254-character one (${small.toFixed(1)}ms -> ${large.toFixed(1)}ms)`,
+				);
+			}),
+		120_000,
+	);
+
+	// Shape A, the cancellation: every pattern is compiled once, as it is
+	// read, and a negation is then only *matched* against each later positive,
+	// never recompiled per pair. The per-pair recompile cost 1.6 s at 250
+	// negations and 250 positives (5.7 KB) and grew quadratically; the
+	// ceilings now bound the wildcard patterns to 32, so this pins the
+	// regression inside them.
+	//
+	// RATIO-BASED, on order alone: 16 negations that are costly to compile
+	// (246 characters of one-character classes) and 16 positives, negations
+	// first, so every negation meets every positive, against the same 32
+	// patterns positives first, where no negation has yet been read when a
+	// positive is. Both compile the same 32 patterns once; only the per-pair
+	// work differs. Each sample is ten parses. Measured: per-pair recompile
+	// 48 ms -> 321 ms (~6.8x); compile once 47 ms -> 47 ms (~1.0x). The
+	// threshold of 3 sits between the two.
+	it.effect(
+		"shape A: negations before positives cost what the same patterns cost positives first",
+		() =>
+			Effect.gen(function* () {
+				const negations = range(16, (i) => `!neg${i}/${"[a]".repeat(80)}*`);
+				const positives = range(16, (i) => `pos${i}/*`);
+				yield* cpuMs(lockfileWith([...positives.slice(0, 2), ...negations.slice(0, 2)]), 10);
+				const small = yield* cpuMs(lockfileWith([...positives, ...negations]), 10);
+				const large = yield* cpuMs(lockfileWith([...negations, ...positives]), 10);
+				const ratio = large / Math.max(small, 1);
+				assert.isBelow(
+					ratio,
+					3,
+					`negations first cost ${ratio.toFixed(1)}x positives first (${small.toFixed(1)}ms -> ${large.toFixed(1)}ms); ` +
+						"compile-once is ~1.0x, a per-pair recompile ~6.8x",
+				);
+			}),
+		120_000,
+	);
+
+	// Shape B, negations × link rows × path depth: `p/**` and 31 `/**`
+	// negations (the wildcard ceiling) over 1000 link rows, at path depth 2 and
+	// at depth 40. The workspace decision is made once per directory with two
+	// matches per wildcard negation; it used to be made in both parser passes,
+	// with a match per negation per ancestor besides, which a 592 KB lockfile
+	// turned into 88 s. Same method as shape A; the shallow side does about
+	// 62,000 matches. Measured: per-ancestor walk 33 ms -> 1105 ms (~33x);
+	// once per directory 17 ms -> 60 ms (~3.6x, the deep file being ten times
+	// the bytes). The threshold of 16 sits between the two.
+	it.effect(
+		"shape B: deep link targets under many negations cost a small multiple of shallow ones",
+		() =>
+			Effect.gen(function* () {
+				const negations = ["p/**", ...range(31, (i) => `!neg${i}/**`)];
+				const links = (depth: number) => range(1000, (i) => `p/${"d/".repeat(depth - 2)}${i}`);
+				yield* cpuMs(lockfileWith(negations.slice(0, 20), links(2).slice(0, 20)));
+				const small = yield* cpuMs(lockfileWith(negations, links(2)));
+				const large = yield* cpuMs(lockfileWith(negations, links(40)));
+				const ratio = large / Math.max(small, 1);
+				assert.isBelow(
+					ratio,
+					16,
+					`depth 40 cost ${ratio.toFixed(1)}x depth 2 (${small.toFixed(1)}ms -> ${large.toFixed(1)}ms); ` +
+						"deciding once per directory is ~5x, a per-ancestor walk ~49x",
+				);
+			}),
+		120_000,
+	);
 });
