@@ -47,6 +47,7 @@
 * Updated The ui declarations reference the root's types by the package's own name
 * Updated There is no Effect v3 catalog and no camelCase catalog alias
 * Updated effected.toml is the only build config, and code enters through two data keys
+* Updated @effected/workspaces/testing: the repo-shape checks
 
 ## 2026-11-07
 

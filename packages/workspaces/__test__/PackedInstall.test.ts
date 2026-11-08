@@ -31,6 +31,8 @@ const ENV = {
 	CI: "true",
 	INIT_CWD: "/repo",
 	NODE_V8_COVERAGE: "/cov",
+	NODE_OPTIONS: "--import=tsx",
+	pnpm_config_node_options: "--import=tsx",
 	npm_config_user_agent: "pnpm/12",
 	pnpm_config_verify_deps_before_run: "false",
 	PNPM_SCRIPT_SRC_DIR: "/repo/packages/carrier",
@@ -1044,6 +1046,11 @@ describe("InstalledConsumer.runBin", () => {
 					assert.strictEqual(spawn?.options.stdin, "ignore");
 				}),
 		);
+
+		it("command keeps an explicit NODE_OPTIONS layered after the scrub", () => {
+			const command = consumer.command("tool", [], { env: { NODE_OPTIONS: "--max-old-space-size=256" } });
+			assert.strictEqual(command.options.env?.NODE_OPTIONS, "--max-old-space-size=256");
+		});
 
 		it("command is the Command runBin spawns, stdin left to the spawner so a probe can write to it", () => {
 			const command = consumer.command("tool", ["--version"], {
