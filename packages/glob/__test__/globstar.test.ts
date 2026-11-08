@@ -1,10 +1,9 @@
 // Patterns with more than one `**`, and `partial` under `**`.
 //
-// The documented exception to the compliance gate's rule: minimatch 10.2.6, the
-// pinned oracle, has these bugs (they date from 10.2.3), so it cannot catch
-// them, and the answers below are hard-coded. Each was checked against
-// minimatch 11.0.4 and against the reference matcher at the end of this file.
-// See "deviations from upstream" in this package's CLAUDE.md.
+// minimatch 10.2.3 through 10.2.6 answered these wrongly, and the engine took
+// minimatch 11.0.4's fixes before the oracle moved to 11. The answers below are
+// hard-coded, as regressions, and checked against the oracle (11.0.5) and the
+// reference matcher at the end of this file.
 
 import { assert, describe, it } from "@effect/vitest";
 import { Arbitrary, Effect, Schema } from "effect";
@@ -23,7 +22,7 @@ const oracleSays = (pattern: string, candidate: string, options?: EngineOptions)
 
 const rep = (s: string, n: number): string => Array.from({ length: n }, () => s).join("/");
 
-// The rows the oracle gets wrong.
+// The rows minimatch 10.2.x got wrong.
 const fixed: ReadonlyArray<Row> = [
 	// a section's last start was computed from the wrong sections' lengths
 	["**/a/b/c/**/d/**", "d/a/b/c/d/b", true],
@@ -49,7 +48,7 @@ const fixed: ReadonlyArray<Row> = [
 	["c/**/a/.*/**/.*", "c/a/.q/a/c/x/.q", true, { partial: true }],
 ];
 
-// The neighbours that must not move: the oracle is right about these.
+// The neighbours that must not move: 10.2.x was right about these too.
 const held: ReadonlyArray<Row> = [
 	["**/a/b/c/**/d/**", "d/a/b/c/d", false],
 	["**/a/b/c/**/d/**", "a/b/d/c/d/b", false],
@@ -77,9 +76,9 @@ describe("more than one globstar", () => {
 		});
 	}
 
-	it("the pinned oracle still gets every fixed row wrong, or this exception can go", () => {
+	it("the oracle answers every fixed row the same way", () => {
 		for (const [pattern, candidate, expected, options] of fixed) {
-			assert.strictEqual(oracleSays(pattern, candidate, options), !expected, `${pattern} vs ${candidate}`);
+			assert.strictEqual(oracleSays(pattern, candidate, options), expected, `${pattern} vs ${candidate}`);
 		}
 	});
 
@@ -119,7 +118,7 @@ describe("hostility: globstar sections that all fail", () => {
 	});
 });
 
-// The reference for this class, since the oracle can not be it. It states the
+// A second reference for this class, beside the oracle. It states the
 // semantics in one place: a ** walks zero or more portions that are not . or ..
 // and, without dot, do not start with a dot; a final ** walks at least one; a
 // trailing "" may be dropped when the row ends in a portion; and under partial,
@@ -175,11 +174,10 @@ describe("more than one globstar: reference properties", () => {
 		[rowArb, pathArb, Arbitrary.schema(Schema.Boolean), Arbitrary.schema(Schema.Boolean)],
 		([row, candidate, dot, partial]) =>
 			Effect.sync(() => {
-				assert.strictEqual(
-					engine(row.join("/"), candidate, { dot, partial }),
-					reference(row, candidate, dot, partial),
-					`${row.join("/")} vs ${candidate} dot=${dot} partial=${partial}`,
-				);
+				const answer = engine(row.join("/"), candidate, { dot, partial });
+				const label = `${row.join("/")} vs ${candidate} dot=${dot} partial=${partial}`;
+				assert.strictEqual(answer, reference(row, candidate, dot, partial), label);
+				assert.strictEqual(answer, oracleSays(row.join("/"), candidate, { dot, partial }), `oracle: ${label}`);
 			}),
 		{ arbitrary: { runs: 2000 } },
 	);

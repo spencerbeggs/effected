@@ -1,6 +1,6 @@
 /**
- * HMAC, constant-time comparison and AWS SigV4 request signing, safe for
- * Cloudflare Workers. Every HMAC comes from core's `Mac.Mac` and every digest
+ * HMAC, message digests, constant-time comparison and AWS SigV4 request
+ * signing, safe for Cloudflare Workers. Every HMAC comes from core's `Mac.Mac` and every digest
  * from core's `Digest.Digest` (`effect/crypto`), both required in `R`; a
  * failure is core's `CryptoError`.
  * `Fingerprint` hashes a canonical JSON text for three-way drift detection.
@@ -14,6 +14,17 @@ export { DriftApply, DriftDecision, DriftDetected, DriftUnchanged } from "./Drif
 export type { FingerprintDecideInput } from "./Fingerprint.js";
 export { Fingerprint } from "./Fingerprint.js";
 export { FingerprintError } from "./FingerprintError.js";
+export type {
+	HashAlgorithm,
+	HashDigestBytesOptions,
+	HashDigestOptions,
+	HashDigestStringOptions,
+	HashEncoding,
+	HashInput,
+	HashMessage,
+	HashStringEncoding,
+} from "./Hash.js";
+export { Hash } from "./Hash.js";
 export type {
 	HmacAlgorithm,
 	HmacEncoding,

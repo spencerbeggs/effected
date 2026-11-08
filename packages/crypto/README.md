@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 
-HMAC sign and verify, constant-time comparison and AWS Signature Version 4 request signing for Effect v4, built on core `effect/crypto`'s `Mac` and `Digest` services. It has no `node:` import, so the same code runs on Node, Bun, Deno, browsers and Cloudflare Workers. It also ships `Fingerprint`, stable SHA-256 fingerprints of JSON-shaped values with a three-way drift decision, and `HttpRedaction`, which strips credentials from HTTP errors before you keep them.
+HMAC sign and verify, message digests, constant-time comparison and AWS Signature Version 4 request signing for Effect v4, built on core `effect/crypto`'s `Mac` and `Digest` services. It has no `node:` import, so the same code runs on Node, Bun, Deno, browsers and Cloudflare Workers. It also ships `Fingerprint`, stable SHA-256 fingerprints of JSON-shaped values with a three-way drift decision, and `HttpRedaction`, which strips credentials from HTTP errors before you keep them.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on
 > stable Effect v4 and still in `0.x` development. To keep your `effect` and
@@ -22,6 +22,7 @@ Core `effect/crypto` already computes and checks MACs (`Mac`), hashes bytes (`Di
 Reach for this package when you need what core leaves to you:
 
 - **The shapes webhooks and APIs use.** `Hmac` takes a `Redacted` string or raw bytes as the key, and a string, bytes or a list of parts as the message, so `${timestamp}.` plus a raw body is signed without building the joined buffer yourself. It returns, or verifies, `hex`, `base64` or `base64url` as well as bytes. A received signature that does not decode answers `false` instead of failing.
+- **Hashing a prefix plus a body.** `Hash.digest` takes the same messages and returns the same encodings as `Hmac.sign`, over core's `Digest`, so `sha256(window + "." + body)` is one call and hashes exactly what `node:crypto`'s `createHash().update(a).update(b)` hashes.
 - **Comparing a shared secret.** `ConstantTime.secretsEqual` MACs both sides under a fresh random key before comparing them, so neither the secret's length nor a matching prefix leaks.
 - **AWS SigV4.** `SigV4.sign` signs a request for S3 or any S3-compatible store (R2, MinIO, Spaces), and returns the exact encoded path and query it signed.
 - **Drift detection.** `Fingerprint.of` hashes a canonical JSON form of a value, and `Fingerprint.decide` turns three fingerprints into `Apply`, `Unchanged` or `Drift`.
@@ -49,7 +50,7 @@ The keyed and hashing operations require core services in `R`, which you provide
 | --- | --- |
 | `Hmac.sign`, `Hmac.verify`, `ConstantTime.secretsEqual`, `SigV4.signingKey` | `Mac.Mac` |
 | `SigV4.sign` | `Mac.Mac` and `Digest.Digest` |
-| `SigV4.canonicalize`, `Fingerprint.of` | `Digest.Digest` |
+| `Hash.digest`, `SigV4.canonicalize`, `Fingerprint.of` | `Digest.Digest` |
 
 `ConstantTime.equal`, `SigV4.encodePath`, `Fingerprint.decide`, `Fingerprint.canonicalizeResult` and every `HttpRedaction` method are pure and need nothing.
 
@@ -86,6 +87,18 @@ const verifyDelivery = (secret: Redacted.Redacted<string>, timestamp: string, bo
 ```
 
 `algorithm` is `SHA-256` or `SHA-512`. `encoding` is `hex` (lower case on output, either case on input), `base64` (padded), `base64url` (unpadded) or, when omitted on `sign`, raw bytes. A `Redacted` key is used as its UTF-8 bytes and read only where it is imported. `verify` decodes the received signature and checks it with core's constant-time `Mac.verify`, so any spelling that decodes to the right MAC verifies; one that does not decode, or has the wrong length, answers `false`. An empty key fails with `CryptoError`.
+
+## Hash a message
+
+```ts
+import { Hash } from "@effected/crypto";
+
+const archiveKey = (window: number, body: Uint8Array) =>
+  Hash.digest({ algorithm: "SHA-256", message: [`${window}.`, body], encoding: "hex" });
+// Effect<string, never, Digest>
+```
+
+`algorithm` is `MD5`, `SHA-1`, `SHA-256`, `SHA-384` or `SHA-512`, every algorithm core's `Digest` supports; MD5 and SHA-1 are broken for collision resistance, so use them only to match an existing protocol or checksum. The message and the encodings are those of `Hmac.sign`: a string is its UTF-8 bytes (a lone surrogate becomes `EF BF BD`, exactly as `node:crypto` writes it), a list is its parts' bytes joined in order, and `encoding` is `hex`, `base64`, `base64url` or, when omitted, raw bytes. Each part is encoded on its own, so a surrogate pair split across two parts is two lone surrogates, as it is across two `update` calls. A digest cannot fail. On `Digest.layerWebCrypto` a runtime with no `crypto.subtle` is a defect: a SHA digest dies, while MD5 runs in pure TypeScript and keeps working.
 
 ## Compare in constant time
 
@@ -208,7 +221,7 @@ The package ships no test double, because none is needed: provide the WebCrypto 
 
 ## What it does not do
 
-- **Hash a stream.** `Digest` hashes bytes already in memory, and no WebCrypto primitive hashes a stream, so hashing a file without holding it in memory needs `node:crypto`.
+- **Hash a stream.** `Hash` and `Digest` hash bytes already in memory, and no WebCrypto primitive hashes a stream, so hashing a file without holding it in memory needs `node:crypto`.
 - **Seal a box.** The libsodium sealed box that GitHub's secrets API needs lives in [`@effected/github`](https://www.npmjs.com/package/@effected/github), because its engines would add runtime dependencies here.
 - **Fingerprint by RFC 8785.** `Fingerprint` drops `undefined` members, which RFC 8785 refuses; for RFC 8785 canonical JSON, use `JsoncFingerprint` from [`@effected/jsonc`](https://www.npmjs.com/package/@effected/jsonc).
 - **Verify webhooks.** The vendor schemes (GitHub, Stripe, Standard Webhooks, Sanity) live in [`@effected/webhooks`](https://www.npmjs.com/package/@effected/webhooks), which is built on this package.

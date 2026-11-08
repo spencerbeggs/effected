@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-05T20:18:15Z
+  at: 2026-11-07T14:40:40Z
 integrity:
   generated:
-    body: da98ce333b1dd85e
+    body: d81488c7504017ea
 ---
 
 # @effected/github
@@ -115,6 +115,7 @@ The tree-shakability invariant is measured:
 | the App service or any of its client layers | the above plus the JWT signer | the crypto pair |
 | the Actions OIDC verifier (`ActionsOidc`) | `@effected/oidc` and `@effected/jwt`, nothing else | all octokit, the crypto pair |
 | the installation token store seam (`InstallationTokenStore`) | nothing but `effect` | the JWT signer, all octokit |
+| the OAuth user flow (`GitHubUserAuth`) | `effect` and `@effected/crypto` (for `HttpRedaction`) | all octokit, the JWT signer, the crypto pair |
 | `RepositorySecret` | the above plus `tweetnacl` and `blakejs` | the JWT signer |
 | the pure classes | nothing but `effect` (the GraphQL and REST error classes also reach `@effected/crypto`) | all octokit |
 
@@ -142,7 +143,8 @@ This invariant gets a test rather than a promise:
 `packages/github/__test__/reachability.test.ts` walks the runtime import
 graph of `src` statically (type-only imports skipped, since they are erased),
 asserting the token-only client does not reach the JWT signer and that the
-App module does, that `ActionsOidc` reaches `@effected/oidc` and
+App module does, that `GitHubUserAuth` reaches exactly `effect` and
+`@effected/crypto`, that `ActionsOidc` reaches `@effected/oidc` and
 `@effected/jwt` but not octokit, that `InstallationTokenStore` reaches nothing but `effect` (neither
 the signer nor the App module), and that `RepositorySecret` reaches the
 crypto pair while no other resource service does. Each "does not reach"
@@ -222,6 +224,82 @@ and fails on drift, including a header that names `DEFAULT_API_VERSION`;
 re-run the generator (`pnpm --filter @effected/github exec tsx
 lib/scripts/generate-rest-setting-keys.ts`) after bumping the octokit types
 or the default version.
+
+## The OAuth user flow
+
+`GitHubUserAuth` (`packages/github/src/GitHubUserAuth.ts`) is the OAuth web
+flow an app uses to act as a user: `exchange` (code plus PKCE verifier),
+`refresh` and `revokeGrant`. None of the three fit `GitHubClient`: the token
+endpoint is on the web host (`https://github.com/login/oauth/access_token`),
+and the grant revoke (`DELETE /applications/{client_id}/grant`) authenticates
+as the OAuth client with HTTP Basic. So the service calls an injectable
+`fetch` directly, with both URLs overridable for GitHub Enterprise Server, and
+its module imports no octokit. It takes the default api-version from
+`src/internal/apiVersion.ts`, an import-free module `GitHubClient` reads too,
+which is what lets it share the constant without linking octokit.
+
+The module is a pure core under a thin IO shell. `classifyTokenReply`,
+`classifyRevokeReply` and `toTokens` decide every outcome from a status and a
+body; `send` is the only code that touches `fetch`. The classification order
+is load-bearing: a 5xx, 429 or 408 is temporary whatever its body says; an
+`error` body is a refusal whatever the status says, because GitHub refuses a
+code or refresh token with HTTP 200; a 403 whose REST `message` names a rate
+limit (matched case-insensitively on "rate limit", or on "abuse detection",
+GitHub's older secondary-limit wording) is temporary, because
+GitHub's primary REST rate limit answers 403 and its secondary limits answer
+403 or 429, and `send` keeps no headers to read `x-ratelimit-remaining` from;
+any other non-success status with no `error` is a refusal of the app's
+request; only then is a success read as tokens. Both `classifyTokenReply`
+and `classifyRevokeReply` apply the 403 rule, and only to a 403: a 401, 404 or
+422 whose message mentions a rate limit keeps its own classification. The
+match follows GitHub's English wording, so a reworded body falls back to the
+plain 403 refusal.
+
+These classifiers are the one recorded exception to the package rule that
+status codes are classified only through `GitHubError`'s shared `classify`.
+The OAuth user flow's contract is a final/temporary split with a `remedy`,
+not `GitHubError`'s `kind`, and its token endpoint refuses with HTTP 200, so
+`classify` cannot express it. Do not route these replies through `classify`.
+
+Failures are two errors, and the split is the reason the service exists.
+`GitHubUserAuthTemporary` (`network`, `timeout`, `status`, `malformed`) is
+not a refusal of the grant: retry, keep the tokens. A refresh is the caveat:
+GitHub refresh tokens are single-use and rotate on success, so a refresh that
+GitHub processed but whose reply was lost or rejected (a 2xx `malformed`, or
+a `network` or `timeout` after the request arrived) has already spent the
+refresh token, and its retry answers `bad_refresh_token` (`reconnect`). `GitHubUserAuthFinal` keeps
+GitHub's `error` code and description and carries a `remedy`:
+`"reconnect"` for a dead code, refresh token or grant (`bad_refresh_token`,
+`bad_verification_code`, `expired_token`, a 422 on revoke), and
+`"reconfigure"` for the app's own mistakes (`incorrect_client_credentials`,
+`redirect_uri_mismatch`, an unrecognised code, a 401/403/404 on revoke other
+than a rate-limited 403). The
+`remedy` field is what keeps a final failure from signing every user out:
+silk-app's hand-rolled flow, which this replaces, already refused to treat
+`incorrect_client_credentials` as a dead grant for exactly that reason, and a
+handler wiping tokens on the tag alone would reintroduce it.
+
+Tokens are absolute instants against `Clock`, like `InstallationToken`, in a
+two-variant union discriminated by `expiry`: `ExpiringUserTokens` and
+`NonExpiringUserTokens` (an app with token expiry turned off). An expiring
+reply missing any of its three expiring fields is `malformed` rather than a
+non-expiring token, and `refresh` treats a non-expiring answer as `malformed`
+too, since it leaves the caller unable to refresh again.
+
+No credential reaches an error. Every description and every kept cause goes
+through a scrub that replaces the call's own client secret, code, verifier,
+tokens and Basic credential, then any GitHub-prefixed token shape (`ghu_`,
+`ghr_`, `github_pat_`, …), then `HttpRedaction.text`. The cause of a network
+failure is a rebuilt copy of what `fetch` threw, never the original, because
+a custom `fetch` can put the request body in its error. Token-reply decoding
+uses `Schema.decodeUnknownOption` and drops the failure, since a `SchemaError`
+over a token reply would carry the token. The timeout (ten seconds by default)
+covers the request and the whole body, aborts the `fetch` through its signal,
+and fails as `kind: "timeout"`. `send` reads the body inside the same
+`Effect.tryPromise` as the request on purpose: core aborts a `tryPromise`
+signal only while that effect is pending, so a second `tryPromise` for
+`response.text()` would leave a timeout during the body read abandoning the
+request with its connection open. The `hangingFetch("body")` test pins it.
 
 ## The api-version pin
 

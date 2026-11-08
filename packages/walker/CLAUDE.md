@@ -3,7 +3,8 @@
 Path traversal: upward (`Walker.ascend` / `ascendWithin` / `ascendToMarker` /
 `firstMatch` / `findUpward` / `findUpwardAll` / `findRoot`, plus `*Sync` twins)
 and downward (`descend`, the public glob-file walker), and path containment
-(`confineRelative` lexical, `confineReal` physical). Sixth
+(`confineRelative` lexical, `confineReal` physical), plus `PosixPath`
+(cwd-free POSIX path arithmetic for pure code). Sixth
 migration; the first package extracted from an already-merged sibling rather
 than ported from a `*-effect` repo.
 
@@ -119,6 +120,28 @@ hands in — never re-derived here.
 - The descent is a worklist dequeued by head index (never `Array.shift()`),
   and a pattern that cannot match below one level (`crossesSegments` false and
   not negated) reads a single level and never descends.
+- **The pattern bounds its own reads** (`internal/patternBounds.ts`, applied in
+  the machine before the `maxDepth` check). Without a globstar no directory
+  deeper than the source's separator count can reach is queued. Under
+  `dot: false` no hidden directory is queued unless a segment names one.
+  Glob exposes no `dot`, so a differential `matches` probe proves it. A
+  slash-less pattern is never pruned: under `matchBase` it matches by
+  basename (`**` matches `.a/f.js`), which the probe cannot see. Nor is one
+  with a `..` segment: glob pops `<p>/..`, so `x/../**` compiles to the
+  one-segment row `**`, which `matchBase` applies to. Nor is one made only
+  of globstar and `.` segments: glob merges adjacent globstars at every
+  level (and drops a middle `.` at level 2), so `**/**` and `**/./**`
+  compile to `**` too. The one exception is a leading `.`, which glob
+  keeps: `./**` stays two segments and still prunes.
+  `__test__/PatternBoundsSweep.test.ts` compiles every pattern of up to
+  three segments over a fixed alphabet and every option that rewrites rows,
+  and pins that nothing pruned matches inside a hidden directory: extend its
+  alphabet, never patch one spelling at a time. They skip
+  READS only, never a match, so the answer is unchanged. They are why a bounded
+  pattern never trips `maxDepth` or an unreadable directory it has no reason
+  to enter. Never make either bound "tighter" by guessing: an unmodelled
+  syntax answers "no bound". `__test__/DescendBounds.test.ts` counts reads
+  through both drivers.
 - `prune` suppresses **directories only** — a FILE named `.git` (a submodule
   or worktree gitlink) stays matchable.
 
@@ -168,7 +191,15 @@ the downward walk: **never put a rule in a driver**.
 `ascend` is pure and calls the machine's `ascendChain` with no driver, so its
 `R` stays `Path`. `__test__/WalkerSync.test.ts` and `ConfineReal.test.ts`
 are parity matrices over one memfs volume. `WalkerSyncPath` mirrors core
-`Path` (`sep`, `join`, `dirname`, `resolve`, `isAbsolute`).
+`Path` (`sep`, `join`, `dirname`, `resolve`, `isAbsolute`). The port also
+carries `readFile(path): string` (UTF-8, as memfs's sync port answers it),
+which no walk calls: it serves the caller's own reads beside a walk.
+
+- `findUpwardSyncWith(dirs, accept, { cache })` is the validating search:
+  the nearest dir whose `accept` returns `Option.some`. It runs no machine,
+  because walker reads nothing there. Stop rules come from the `dirs` chain.
+  The cache is a caller-owned per-directory memo of accept's answers,
+  rejections included. A throwing `accept` propagates uncached.
 
 - `ascendToMarker` stops at the nearest directory holding a marker ENTRY
   (any kind), probing nothing above it; empty markers / an empty name die.
@@ -198,6 +229,16 @@ are parity matrices over one memfs volume. `WalkerSyncPath` mirrors core
 - `match: "directory" | "any"` matches a directory as its parent's entry, by
   resolved kind; prune/boundaries/unentered links withhold only what lies
   below it.
+
+## `PosixPath`
+
+POSIX path arithmetic as static methods, ported from core's `posixImpl`
+(`Path.ts`), imported by nothing in the walker. No `resolve`. `relative`
+never reads a working directory: it answers two absolute paths as core does,
+and two relative paths when every working directory agrees. Otherwise it
+throws. `__test__/PosixPath.test.ts` holds it to `node:path/posix`, with
+`relative` checked against 125 colliding working directories. Never "fix" a
+throw by assuming a name.
 
 ## Invariants
 

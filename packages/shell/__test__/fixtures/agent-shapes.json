@@ -1,0 +1,1089 @@
+{
+	"provenance": "hand-authored from the shapes agents emit in Bash tool calls; see README.md",
+	"cases": [
+		{
+			"name": "chained add and commit",
+			"input": "git add -A && git commit -m \"feat: add x\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"git",
+							"add",
+							"-A"
+						],
+						"operator": "&&"
+					},
+					{
+						"words": [
+							"git",
+							"commit",
+							"-m",
+							"feat: add x"
+						],
+						"operator": null
+					}
+				],
+				"commands": [
+					[
+						"git",
+						"add",
+						"-A"
+					],
+					[
+						"git",
+						"commit",
+						"-m",
+						"feat: add x"
+					]
+				]
+			}
+		},
+		{
+			"name": "commit, push and a pipe after it",
+			"input": "git add . ; git commit -m 'a; b' && git push | cat",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"git",
+							"add",
+							"."
+						],
+						"operator": ";"
+					},
+					{
+						"words": [
+							"git",
+							"commit",
+							"-m",
+							"a; b"
+						],
+						"operator": "&&"
+					},
+					{
+						"words": [
+							"git",
+							"push"
+						],
+						"operator": "|"
+					},
+					{
+						"words": [
+							"cat"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "commit message from a quoted heredoc inside $(…)",
+			"input": "git commit -m \"$(cat <<'EOF'\nfeat: add the shell package\n\nIt's done (finally) && tested; see #1204.\nEOF\n)\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"git",
+							"commit",
+							"-m",
+							{
+								"raw": "\"$(cat <<'EOF'\nfeat: add the shell package\n\nIt's done (finally) && tested; see #1204.\nEOF\n)\"",
+								"kinds": [
+									"doubleQuoted"
+								]
+							}
+						],
+						"operator": null
+					}
+				],
+				"substitutions": [
+					{
+						"body": "cat <<'EOF'\nfeat: add the shell package\n\nIt's done (finally) && tested; see #1204.\nEOF\n",
+						"commands": [
+							[
+								"cat"
+							]
+						],
+						"heredocs": [
+							{
+								"heredoc": "EOF",
+								"quoted": true,
+								"body": "feat: add the shell package\n\nIt's done (finally) && tested; see #1204.\n"
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "commit message from an unquoted heredoc with a nested substitution",
+			"input": "git commit -m \"$(cat <<EOF\nfix: $(git rev-parse --short HEAD)\nEOF\n)\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"git",
+							"commit",
+							"-m",
+							{
+								"raw": "\"$(cat <<EOF\nfix: $(git rev-parse --short HEAD)\nEOF\n)\"",
+								"kinds": [
+									"doubleQuoted"
+								]
+							}
+						],
+						"operator": null
+					}
+				],
+				"substitutions": [
+					{
+						"body": "cat <<EOF\nfix: $(git rev-parse --short HEAD)\nEOF\n",
+						"commands": [
+							[
+								"cat"
+							]
+						],
+						"heredocs": [
+							{
+								"heredoc": "EOF",
+								"quoted": false,
+								"body": "fix: $(git rev-parse --short HEAD)\n"
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "gh pr create --body-file - fed by a quoted heredoc",
+			"input": "gh pr create --title \"feat: x\" --body-file - <<'EOF'\n## Summary\n\n- a && b; c | d\n- `code` and $(not run)\nEOF",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"gh",
+							"pr",
+							"create",
+							"--title",
+							"feat: x",
+							"--body-file",
+							"-"
+						],
+						"operator": "newline",
+						"redirections": [
+							[
+								null,
+								"<<",
+								{
+									"heredoc": "EOF",
+									"quoted": true,
+									"body": "## Summary\n\n- a && b; c | d\n- `code` and $(not run)\n"
+								}
+							]
+						]
+					}
+				],
+				"commands": [
+					[
+						"gh",
+						"pr",
+						"create",
+						"--title",
+						"feat: x",
+						"--body-file",
+						"-"
+					]
+				]
+			}
+		},
+		{
+			"name": "heredoc then a following command",
+			"input": "cat > notes.md <<'EOF'\nline && not a command\nEOF\ngit add notes.md",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"cat"
+						],
+						"operator": "newline",
+						"redirections": [
+							[
+								null,
+								">",
+								"notes.md"
+							],
+							[
+								null,
+								"<<",
+								{
+									"heredoc": "EOF",
+									"quoted": true,
+									"body": "line && not a command\n"
+								}
+							]
+						]
+					},
+					{
+						"words": [
+							"git",
+							"add",
+							"notes.md"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "tab-stripping heredoc",
+			"input": "cat <<-EOF\n\t\tindented\n\tEOF\necho after",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"cat"
+						],
+						"operator": "newline",
+						"redirections": [
+							[
+								null,
+								"<<-",
+								{
+									"heredoc": "EOF",
+									"quoted": false,
+									"body": "\t\tindented\n"
+								}
+							]
+						]
+					},
+					{
+						"words": [
+							"echo",
+							"after"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "an unquoted heredoc body is expanded",
+			"input": "cat > out <<EOF\n$(git push --force)\nEOF",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"cat"
+						],
+						"operator": "newline",
+						"redirections": [
+							[
+								null,
+								">",
+								"out"
+							],
+							[
+								null,
+								"<<",
+								{
+									"heredoc": "EOF",
+									"quoted": false,
+									"body": "$(git push --force)\n"
+								}
+							]
+						]
+					}
+				],
+				"substitutions": [
+					{
+						"body": "git push --force",
+						"commands": [
+							[
+								"git",
+								"push",
+								"--force"
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "env-prefixed command",
+			"input": "FOO=1 BAR=\"two words\" git commit -m x",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"git",
+							"commit",
+							"-m",
+							"x"
+						],
+						"operator": null,
+						"assignments": [
+							[
+								"FOO",
+								"1"
+							],
+							[
+								"BAR",
+								"two words"
+							]
+						]
+					}
+				],
+				"commands": [
+					[
+						"git",
+						"commit",
+						"-m",
+						"x"
+					]
+				]
+			}
+		},
+		{
+			"name": "cd then a command",
+			"input": "cd packages/shell && pnpm vitest run",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"cd",
+							"packages/shell"
+						],
+						"operator": "&&"
+					},
+					{
+						"words": [
+							"pnpm",
+							"vitest",
+							"run"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "sudo wrapper",
+			"input": "sudo -u root -E git commit -m x",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"sudo",
+							"-u",
+							"root",
+							"-E",
+							"git",
+							"commit",
+							"-m",
+							"x"
+						],
+						"operator": null
+					}
+				],
+				"commands": [
+					[
+						"git",
+						"commit",
+						"-m",
+						"x"
+					]
+				]
+			}
+		},
+		{
+			"name": "env wrapper with options and assignments",
+			"input": "env -i -u HOME GIT_AUTHOR_NAME=bot git commit",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"env",
+							"-i",
+							"-u",
+							"HOME",
+							"GIT_AUTHOR_NAME=bot",
+							"git",
+							"commit"
+						],
+						"operator": null
+					}
+				],
+				"commands": [
+					[
+						"git",
+						"commit"
+					]
+				]
+			}
+		},
+		{
+			"name": "command wrapper",
+			"input": "command git commit --amend",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"command",
+							"git",
+							"commit",
+							"--amend"
+						],
+						"operator": null
+					}
+				],
+				"commands": [
+					[
+						"git",
+						"commit",
+						"--amend"
+					]
+				]
+			}
+		},
+		{
+			"name": "command -v only looks a name up",
+			"input": "command -v git && git commit",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"command",
+							"-v",
+							"git"
+						],
+						"operator": "&&"
+					},
+					{
+						"words": [
+							"git",
+							"commit"
+						],
+						"operator": null
+					}
+				],
+				"commands": [
+					[
+						"command",
+						"-v",
+						"git"
+					],
+					[
+						"git",
+						"commit"
+					]
+				]
+			}
+		},
+		{
+			"name": "stacked wrappers",
+			"input": "sudo env FOO=1 nohup time -p git push &",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"sudo",
+							"env",
+							"FOO=1",
+							"nohup",
+							"time",
+							"-p",
+							"git",
+							"push"
+						],
+						"operator": "&"
+					}
+				],
+				"commands": [
+					[
+						"git",
+						"push"
+					]
+				]
+			}
+		},
+		{
+			"name": "exec with -a",
+			"input": "exec -a name git status",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"exec",
+							"-a",
+							"name",
+							"git",
+							"status"
+						],
+						"operator": null
+					}
+				],
+				"commands": [
+					[
+						"git",
+						"status"
+					]
+				]
+			}
+		},
+		{
+			"name": "brace group",
+			"input": "{ git add -A; git commit -m x; }",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"{",
+							"git",
+							"add",
+							"-A"
+						],
+						"operator": ";"
+					},
+					{
+						"words": [
+							"git",
+							"commit",
+							"-m",
+							"x"
+						],
+						"operator": ";"
+					},
+					{
+						"words": [
+							"}"
+						],
+						"operator": null
+					}
+				],
+				"commands": [
+					[
+						"git",
+						"add",
+						"-A"
+					],
+					[
+						"git",
+						"commit",
+						"-m",
+						"x"
+					],
+					[
+						null
+					]
+				]
+			}
+		},
+		{
+			"name": "if/then/fi",
+			"input": "if git diff --quiet; then echo clean; else git commit -am wip; fi",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"if",
+							"git",
+							"diff",
+							"--quiet"
+						],
+						"operator": ";"
+					},
+					{
+						"words": [
+							"then",
+							"echo",
+							"clean"
+						],
+						"operator": ";"
+					},
+					{
+						"words": [
+							"else",
+							"git",
+							"commit",
+							"-am",
+							"wip"
+						],
+						"operator": ";"
+					},
+					{
+						"words": [
+							"fi"
+						],
+						"operator": null
+					}
+				],
+				"commands": [
+					[
+						"git",
+						"diff",
+						"--quiet"
+					],
+					[
+						"echo",
+						"clean"
+					],
+					[
+						"git",
+						"commit",
+						"-am",
+						"wip"
+					],
+					[
+						null
+					]
+				]
+			}
+		},
+		{
+			"name": "subshell then a chained command",
+			"input": "(cd dir && make) && git commit",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"cd",
+							"dir"
+						],
+						"operator": "&&",
+						"groupDepth": 1
+					},
+					{
+						"words": [
+							"make"
+						],
+						"operator": "&&",
+						"groupDepth": 1
+					},
+					{
+						"words": [
+							"git",
+							"commit"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "CRLF line breaks",
+			"input": "git add -A\r\ngit commit -m wip\r\n",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"git",
+							"add",
+							"-A"
+						],
+						"operator": "newline"
+					},
+					{
+						"words": [
+							"git",
+							"commit",
+							"-m",
+							"wip"
+						],
+						"operator": "newline"
+					}
+				]
+			}
+		},
+		{
+			"name": "CRLF heredoc delimiter line",
+			"input": "cat <<'EOF'\r\nbody\r\nEOF\r\necho next",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"cat"
+						],
+						"operator": "newline",
+						"redirections": [
+							[
+								null,
+								"<<",
+								{
+									"heredoc": "EOF",
+									"quoted": true,
+									"body": "body\r\n"
+								}
+							]
+						]
+					},
+					{
+						"words": [
+							"echo",
+							"next"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "unterminated double quote",
+			"input": "git commit -m \"wip",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"git",
+							"commit",
+							"-m",
+							{
+								"raw": "\"wip",
+								"kinds": [
+									"opaque"
+								]
+							}
+						],
+						"operator": null
+					}
+				],
+				"diagnostics": [
+					"UnterminatedDoubleQuote"
+				]
+			}
+		},
+		{
+			"name": "unterminated command substitution inside double quotes",
+			"input": "git commit -m \"$(cat <<EOF",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"git",
+							"commit",
+							"-m",
+							{
+								"raw": "\"$(cat <<EOF",
+								"kinds": [
+									"opaque"
+								]
+							}
+						],
+						"operator": null
+					}
+				],
+				"diagnostics": [
+					"UnterminatedCommandSubstitution",
+					"UnterminatedDoubleQuote"
+				]
+			}
+		},
+		{
+			"name": "unterminated heredoc",
+			"input": "cat <<EOF\nno delimiter",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"cat"
+						],
+						"operator": "newline",
+						"redirections": [
+							[
+								null,
+								"<<",
+								{
+									"heredoc": "EOF",
+									"quoted": false,
+									"body": "no delimiter"
+								}
+							]
+						]
+					}
+				],
+				"diagnostics": [
+					"UnterminatedHeredoc"
+				]
+			}
+		},
+		{
+			"name": "stderr redirect into a pipe",
+			"input": "pnpm test 2>&1 | tail -20",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"pnpm",
+							"test"
+						],
+						"operator": "|",
+						"redirections": [
+							[
+								2,
+								">&",
+								"1"
+							]
+						]
+					},
+					{
+						"words": [
+							"tail",
+							"-20"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "multi-line script with a comment",
+			"input": "set -e\ncd pkg\n# commit it\ngit commit -m \"a\nb\"\n",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"set",
+							"-e"
+						],
+						"operator": "newline"
+					},
+					{
+						"words": [
+							"cd",
+							"pkg"
+						],
+						"operator": "newline"
+					},
+					{
+						"words": [
+							"git",
+							"commit",
+							"-m",
+							"a\nb"
+						],
+						"operator": "newline"
+					}
+				],
+				"comments": [
+					" commit it"
+				]
+			}
+		},
+		{
+			"name": "backtick substitution",
+			"input": "git commit -m \"build `date +%F`\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"git",
+							"commit",
+							"-m",
+							{
+								"raw": "\"build `date +%F`\"",
+								"kinds": [
+									"doubleQuoted"
+								]
+							}
+						],
+						"operator": null
+					}
+				],
+				"substitutions": [
+					{
+						"body": "date +%F",
+						"commands": [
+							[
+								"date",
+								"+%F"
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "brace expansion hides a subcommand",
+			"input": "git {commit,} -m x",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"git",
+							{
+								"raw": "{commit,}",
+								"kinds": [
+									"brace"
+								]
+							},
+							"-m",
+							"x"
+						],
+						"operator": null
+					}
+				],
+				"commands": [
+					[
+						"git",
+						{
+							"raw": "{commit,}",
+							"kinds": [
+								"brace"
+							]
+						},
+						"-m",
+						"x"
+					]
+				]
+			}
+		},
+		{
+			"name": "variable command name",
+			"input": "$GIT commit -m x",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "$GIT",
+								"kinds": [
+									"variable"
+								]
+							},
+							"commit",
+							"-m",
+							"x"
+						],
+						"operator": null
+					}
+				],
+				"commands": [
+					[
+						null,
+						{
+							"raw": "$GIT",
+							"kinds": [
+								"variable"
+							]
+						},
+						"commit",
+						"-m",
+						"x"
+					]
+				]
+			}
+		},
+		{
+			"name": "redirection before the command",
+			"input": "> out.txt echo hi",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"echo",
+							"hi"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								null,
+								">",
+								"out.txt"
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "test command bracket",
+			"input": "[ -f package.json ] && git commit",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"[",
+							"-f",
+							"package.json",
+							"]"
+						],
+						"operator": "&&"
+					},
+					{
+						"words": [
+							"git",
+							"commit"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "line continuation",
+			"input": "git commit \\\n  -m wip",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"git",
+							"commit",
+							"-m",
+							"wip"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "parameter expansion hiding a substitution",
+			"input": "echo ${MSG:-$(git push)}",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"echo",
+							{
+								"raw": "${MSG:-$(git push)}",
+								"kinds": [
+									"variable"
+								]
+							}
+						],
+						"operator": null
+					}
+				],
+				"substitutions": [
+					{
+						"body": "git push",
+						"commands": [
+							[
+								"git",
+								"push"
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "leading and operator",
+			"input": "&& git commit",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"git",
+							"commit"
+						],
+						"operator": null
+					}
+				],
+				"diagnostics": [
+					"EmptyCommand"
+				]
+			}
+		}
+	]
+}

@@ -64,7 +64,17 @@ export interface DescendOptions {
 	 * matches, answered as spelled. `cwd` itself is never a match.
 	 */
 	readonly match?: "file" | "directory" | "any";
-	/** Hard cap on directory depth below the pattern's literal prefix. Defaults to 256. */
+	/**
+	 * Hard cap on directory depth below the pattern's literal prefix. Defaults to 256.
+	 *
+	 * @remarks
+	 * It applies to the directories the walk reads, and the pattern decides
+	 * which those are: a pattern with no globstar is never read below the
+	 * depth its segments reach, so `packages/{a,b}/README.md` under a cap of 1
+	 * does not fail on a deep tree below `packages/a` it has no reason to enter.
+	 * Going past the cap where a match could lie is still a typed
+	 * `depthExceeded` failure, never a truncation.
+	 */
 	readonly maxDepth?: number;
 	/** Directory names never descended into. Defaults to `["node_modules", ".git"]`; a custom list replaces the default. */
 	readonly prune?: ReadonlyArray<string>;
@@ -401,7 +411,10 @@ export function descend(
  * directory that vanishes between its parent's listing and its own read is a
  * benign race and reads as empty. A pattern that cannot match below one level
  * (no globstar, no mid-pattern magic segment) reads a single level and never
- * descends.
+ * descends. More generally the walk reads only directories a match can lie
+ * in: a pattern with no globstar is never read deeper than its segments
+ * reach, and under `dot: false` a hidden directory is never entered unless a
+ * segment of the pattern names one. Neither bound changes the answer.
  *
  * The descent is a worklist, not a recursion — it cannot overflow the stack —
  * dequeued by head index, never `Array.shift()`. Like `ascend`, `maxDepth`

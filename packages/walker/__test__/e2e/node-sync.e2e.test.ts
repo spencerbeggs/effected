@@ -7,10 +7,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import { GlobPattern } from "@effected/glob";
-import { Result } from "effect";
+import { Option, Result } from "effect";
 import { confineRealSync } from "../../src/ConfineReal.js";
 import { descendEntriesSync, descendSync } from "../../src/DescendSync.js";
 import { nodeWalkerSyncOps } from "../../src/node-sync.js";
+import { Walker } from "../../src/Walker.js";
 
 const withTree = <A>(f: (root: string) => A): A => {
 	const root = mkdtempSync(join(tmpdir(), "walker-e2e-"));
@@ -95,6 +96,36 @@ describe("confineRealSync over node:fs", () => {
 			assert.isTrue(Result.isSuccess(result));
 			if (Result.isSuccess(result)) writeFileSync(result.success, "x");
 			assert.isTrue(existsSync(join(base, "new.txt")));
+		});
+	});
+});
+
+describe("readFile and findUpwardSyncWith over node:fs", () => {
+	it("readFile decodes UTF-8 and throws ENOENT; the validating search climbs past a malformed manifest", () => {
+		withTree((root) => {
+			writeFileSync(join(root, "package.json"), JSON.stringify({ name: "héllo" }));
+			writeFileSync(join(root, "src", "package.json"), "{ not json");
+			const { fileSystem, path } = nodeWalkerSyncOps;
+			assert.strictEqual(fileSystem.readFile(join(root, "src", "a.ts")), "a");
+			let code: unknown;
+			try {
+				fileSystem.readFile(join(root, "missing"));
+			} catch (error) {
+				code = Reflect.get(Object(error), "code");
+			}
+			assert.strictEqual(code, "ENOENT");
+			const accept = (dir: string): Option.Option<unknown> => {
+				try {
+					return Option.some(JSON.parse(fileSystem.readFile(path.join(dir, "package.json"))));
+				} catch {
+					return Option.none();
+				}
+			};
+			const dirs = Walker.ascendSync(join(root, "src", "lib"), { stopAt: root, path });
+			assert.deepStrictEqual(
+				Walker.findUpwardSyncWith(dirs, accept),
+				Option.some({ dir: root, value: { name: "héllo" } }),
+			);
 		});
 	});
 });

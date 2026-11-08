@@ -1,6 +1,6 @@
 # @effected/lockfiles
 
-Pure lockfile parsing for the four package-manager formats — bun (`bun.lock` JSONC), npm (`package-lock.json`), pnpm (`pnpm-lock.yaml`) and yarn Berry (`yarn.lock`) — normalized into one unified `Lockfile` model, plus pure integrity checking of that model against workspace manifests. The `LockfileReader` service (root find, PM detect, file IO, dispatch) lives in the consumer, `@effected/workspaces`, never here.
+Pure lockfile parsing for the four package-manager formats — bun (`bun.lock` JSONC), npm (`package-lock.json`), pnpm (`pnpm-lock.yaml`) and yarn Berry (`yarn.lock`) — normalized into one unified `Lockfile` model, plus pure integrity checking of that model against workspace manifests and a pure before/after lockfile comparison (`LockfileDiff`). The `LockfileReader` service (root find, PM detect, file IO, dispatch) lives in the consumer, `@effected/workspaces`, never here.
 
 ## Knowledge bundle
 
@@ -10,6 +10,7 @@ Durable knowledge about this package lives in `okf/`, not here. Load the concept
 - Instances and resolution — `instanceId`, `resolved`, `unresolvedEdges`, peer declarations, the pnpm `link:` / publish-directory / `npm:` alias readings → the "Per-format identity and resolution" section of `okf/modules/lockfiles.md`, plus `okf/invariants/lockfiles-npm-bun-never-populate-unresolved-edges.md`, `okf/invariants/lockfiles-positional-walk-is-deepest-first.md`, `okf/limitations/lockfiles-yarn-carries-no-peer-edges.md`, `okf/gotchas/yarn-berry-lockfile-has-no-devdependencies-section.md` — Load when: touching any per-format resolution walk or the fields a consumer's peer check reads.
 - Document framing (a pnpm lockfile is a YAML *stream*; the lockfile is the **last** document; `LockfileFramingError`) → `okf/decisions/lockfile-is-a-yaml-stream.md` — Load when: touching `src/internal/documents.ts` or anything that selects a document.
 - The env preamble (`PnpmEnvLockfile.packageManager` reads the **first** of two documents into `PackageManagerLock`; `none` for nothing recorded, a typed failure for a recorded version the preamble cannot back) → the "The env preamble: the pinned package manager" section of `okf/modules/lockfiles.md` — Load when: touching `src/PnpmEnvLockfile.ts`, `src/PackageManagerLock.ts` or `src/internal/pnpmEnv.ts`.
+- Comparing two lockfiles (`LockfileDiff.compare`: kinds, the one-sided-version rule, per-format version normalization, catalog consumers) → the "Comparing two lockfiles" section of `okf/modules/lockfiles.md` — Load when: touching `src/LockfileDiff.ts` or anything a before/after diff reads.
 - Contract edges (bun tuple shape, importer-name map carries names only, pnpm root importer is not a package row) → `okf/limitations/lockfiles-*.md` — Load when: a consumer asks for something the model does not carry.
 
 ## Operating instructions
@@ -29,4 +30,4 @@ pnpm vitest run packages/lockfiles          # from the repo root
 pnpm build --filter @effected/lockfiles     # from the repo root
 ```
 
-A clean `dist/prod/issues.json` carries **13** `_base` `suppressed` entries; `suppressed: 0` in the *prod* gate means the build did not run. A `suppressed: 13` in the log does not prove it ran either — a turbo cache hit replays the previous output verbatim; check that `dist/prod/issues.json`'s `generatedAt` postdates your last source edit (`okf/gotchas/turbo-cache-hit-replays-clean-log.md`).
+A clean `dist/prod/issues.json` carries **16** `_base` `suppressed` entries; `suppressed: 0` in the *prod* gate means the build did not run. A count of 16 `_base` entries in the log does not prove it ran either — a turbo cache hit replays the previous output verbatim; check that `dist/prod/issues.json`'s `generatedAt` postdates your last source edit (`okf/gotchas/turbo-cache-hit-replays-clean-log.md`).

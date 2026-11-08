@@ -62,6 +62,18 @@ import { MAX_NESTING_DEPTH } from "../src/internal/limits.js";
 import { preprocessLines } from "../src/internal/preprocess.js";
 import { renderHtml } from "./e2e/support/htmlWriter.js";
 
+// Runs `fn` and fails on any throw. chai's `assert.doesNotThrow(fn, "text")`
+// reads a string second argument as an error-message matcher, so it passes
+// when `fn` throws anything whose message lacks that text: never use it with
+// a label here.
+const noThrow = (fn: () => unknown, label: string): void => {
+	try {
+		fn();
+	} catch (e) {
+		assert.fail(`${label}: threw ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`);
+	}
+};
+
 describe("recursion surfaces", () => {
 	describe("container nesting (surfaces 1, 2 and 3)", () => {
 		it("trips the guard rather than overflowing on deep blockquotes", () => {
@@ -261,7 +273,7 @@ describe("adversarial characters", () => {
 
 	it("parses a lone surrogate without throwing", () => {
 		for (const source of ["a\uD800b\n", "a\uDFFFb\n", "\uD800\n", "*\uD800*\n", "[\uD800](/u)\n"]) {
-			assert.doesNotThrow(() => renderHtml(parseBlocks(source).root), `failed for ${JSON.stringify(source)}`);
+			noThrow(() => renderHtml(parseBlocks(source).root), `failed for ${JSON.stringify(source)}`);
 		}
 	});
 
@@ -274,7 +286,7 @@ describe("adversarial characters", () => {
 
 	it("parses an unterminated construct at the end of input without throwing", () => {
 		for (const source of ["`code", "[link](", "![img][", "<!-- comment", "***", "> ", "- ", "```"]) {
-			assert.doesNotThrow(() => renderHtml(parseBlocks(source).root), `failed for ${JSON.stringify(source)}`);
+			noThrow(() => renderHtml(parseBlocks(source).root), `failed for ${JSON.stringify(source)}`);
 		}
 	});
 

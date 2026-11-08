@@ -53,5 +53,8 @@ Durable knowledge lives in the bundle, not here. Start at
   imported by `RepositorySecret` and nothing else.
 - Wrap a `static readonly layer` factory in an arrow; classify status codes
   only through `GitHubError`'s shared `classify` (`fromOctokit` /
-  `fromResponse`); narrow ids only through `internal/ids.ts`; paginate
-  every list read.
+  `fromResponse`) — the one exception is `GitHubUserAuth`, whose OAuth
+  final/temporary-with-`remedy` contract is not `GitHubError`'s `kind` and
+  whose token endpoint refuses with HTTP 200, so it classifies its own
+  replies (`okf/modules/github.md`); narrow ids only through
+  `internal/ids.ts`; paginate every list read.

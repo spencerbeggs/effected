@@ -74,6 +74,61 @@ export class PublishedVersion extends Schema.Class<PublishedVersion>("PublishedV
 }) {}
 
 /**
+ * The dependency-shaped fields of one published version's manifest, as the
+ * registry serves them.
+ *
+ * @remarks
+ * What a resolver needs to ask of a candidate version before it picks one —
+ * its peers above all — read through the same registry, auth and routing as
+ * {@link NpmRegistryShape.version}, so the version list and the peer table can
+ * never come from two registry paths that disagree. A separate class rather
+ * than more fields on {@link PublishedVersion}: a version probe does not pay
+ * to validate dependency records it never reads, and a malformed record in an
+ * old version cannot turn a "is this published?" answer into a failure.
+ *
+ * Every field but `name` and `version` is absent when the document does not
+ * carry it, never an empty record: "declares no peers" and "the registry did
+ * not say" are the same answer on the wire, and an `{}` here would claim more
+ * than the document did.
+ *
+ * The class is also the decoder: `Schema.decodeUnknownEffect(VersionManifest)`
+ * over a version document (from a packument's `versions` map or the
+ * per-version endpoint) is exactly what {@link NpmRegistryShape.manifest}
+ * runs, apart from `engines` (see the field). Unknown keys are ignored.
+ *
+ * @public
+ */
+export class VersionManifest extends Schema.Class<VersionManifest>("VersionManifest")({
+	/** The package name as the version document reports it. */
+	name: Schema.String,
+	/** The version as the version document reports it. */
+	version: Schema.String,
+	/** `dependencies`: package name → specifier. */
+	dependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+	/** `peerDependencies`: package name → range. */
+	peerDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+	/** `optionalDependencies`: package name → specifier. */
+	optionalDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+	/** `peerDependenciesMeta`: peer name → its metadata (`optional`). Other keys a publisher wrote are dropped. */
+	peerDependenciesMeta: Schema.optionalKey(
+		Schema.Record(Schema.String, Schema.Struct({ optional: Schema.optionalKey(Schema.Boolean) })),
+	),
+	/**
+	 * `engines`: engine name → range.
+	 *
+	 * @remarks
+	 * {@link NpmRegistryShape.manifest} keeps this only when the document holds
+	 * a string → string record and otherwise omits it: old publishes carry the
+	 * legacy array form (`["node >= 0.8"]`), and an advisory field in a form
+	 * nothing reads must not fail the peer read of a version that resolves
+	 * fine. The four dependency fields get no such leniency — a malformed one
+	 * fails the read with kind `"decode"`, because reading it as absent would
+	 * answer "no peers" for a version that has them.
+	 */
+	engines: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+}) {}
+
+/**
  * When one version of a package was published.
  *
  * @remarks
@@ -170,8 +225,8 @@ const refuseWorkload = (
 		: Effect.void;
 };
 
-/** The version-manifest fields this package reads. Unknown keys are ignored. */
-const VersionManifest = Schema.Struct({
+/** The version-document fields `version` reads. Unknown keys are ignored. */
+const VersionDocument = Schema.Struct({
 	name: Schema.String,
 	version: Schema.String,
 	dist: Schema.optionalKey(
@@ -181,6 +236,15 @@ const VersionManifest = Schema.Struct({
 		}),
 	),
 });
+
+/**
+ * The version-document fields `manifest` reads: {@link VersionManifest}'s, with
+ * `engines` taken as-is so its legacy array form is dropped rather than fatal.
+ */
+const ManifestDocument = Schema.Struct({ ...VersionManifest.fields, engines: Schema.optionalKey(Schema.Unknown) });
+
+/** The only `engines` form {@link VersionManifest} keeps. */
+const isEnginesRecord = Schema.is(Schema.Record(Schema.String, Schema.String));
 
 /** The packument fields this package reads. Unknown keys are ignored. */
 const Packument = Schema.Struct({
@@ -238,6 +302,23 @@ export interface NpmRegistryShape {
 		version: string,
 		target?: RegistryTarget,
 	) => Effect.Effect<Option.Option<PublishedVersion>, RegistryReadError>;
+	/**
+	 * One published version's dependency fields — `dependencies`,
+	 * `peerDependencies`, `optionalDependencies`, `peerDependenciesMeta` and
+	 * `engines` — or `None` when that version is not on that registry.
+	 *
+	 * @remarks
+	 * Read by the same route as {@link NpmRegistryShape.version}: the
+	 * per-version endpoint, the packument for a `github-packages` target, and
+	 * the packument again after a 405 from any other registry. A malformed
+	 * dependency record fails with kind `"decode"`; an `engines` value that is
+	 * not a string record is omitted (see {@link VersionManifest}).
+	 */
+	readonly manifest: (
+		name: string,
+		version: string,
+		target?: RegistryTarget,
+	) => Effect.Effect<Option.Option<VersionManifest>, RegistryReadError>;
 	/** Every published version. Empty when the package is not on that registry. */
 	readonly versions: (name: string, target?: RegistryTarget) => Effect.Effect<ReadonlyArray<string>, RegistryReadError>;
 	/** The dist-tag map (`latest`, `next`, …). Empty when the package is absent. */
@@ -343,30 +424,32 @@ const make = Effect.fnUntraced(function* () {
 	};
 
 	/**
-	 * Resolves one version by reading the whole packument and selecting it.
+	 * Resolves one version document by reading the whole packument and
+	 * selecting it.
 	 *
 	 * @remarks
 	 * The read path for registries that do not implement the per-version
 	 * endpoint — GitHub Packages answers it with 405 regardless of credentials,
-	 * so `version` routes here up front for that kind, and falls back here on a
-	 * 405 from any other registry.
+	 * so `versionDocument` routes here up front for that kind, and falls back
+	 * here on a 405 from any other registry.
 	 */
-	const versionFromPackument = (
+	const versionFromPackument = <A, I>(
+		schema: Schema.Codec<A, I>,
 		name: string,
 		versionNumber: string,
 		registry: string,
 		target: RegistryTarget | undefined,
-	): Effect.Effect<Option.Option<typeof VersionManifest.Type>, RegistryReadError> =>
+	): Effect.Effect<Option.Option<A>, RegistryReadError> =>
 		read(Packument, packageUrl(registry, name), name, registry, target).pipe(
 			Effect.flatMap((document) => {
-				if (Option.isNone(document)) return Effect.succeed(Option.none<typeof VersionManifest.Type>());
+				if (Option.isNone(document)) return Effect.succeed(Option.none<A>());
 				const published = document.value.versions;
 				// `hasOwn` rather than a bare index: the version number is caller
 				// input, and a key like `constructor` must not read the prototype.
 				if (published === undefined || !Object.hasOwn(published, versionNumber)) {
-					return Effect.succeed(Option.none<typeof VersionManifest.Type>());
+					return Effect.succeed(Option.none<A>());
 				}
-				return Schema.decodeUnknownEffect(VersionManifest)(published[versionNumber]).pipe(
+				return Schema.decodeUnknownEffect(schema)(published[versionNumber]).pipe(
 					Effect.map(Option.some),
 					Effect.catch((cause) =>
 						Effect.fail(
@@ -377,29 +460,68 @@ const make = Effect.fnUntraced(function* () {
 			}),
 		);
 
+	/**
+	 * One version's document, decoded with `schema`, through the one routing
+	 * rule every per-version read shares: a `github-packages` target reads the
+	 * packument up front, any other registry tries the per-version endpoint and
+	 * falls back to the packument on a 405.
+	 *
+	 * @remarks
+	 * `version` and `manifest` both go through here, so the two cannot reach one
+	 * version by different paths. The caller has already opened the span.
+	 */
+	const versionDocument = <A, I>(
+		schema: Schema.Codec<A, I>,
+		name: string,
+		versionNumber: string,
+		target: RegistryTarget | undefined,
+	): Effect.Effect<Option.Option<A>, RegistryReadError> => {
+		const registry = target?.registry ?? DEFAULT_REGISTRY;
+		return classifyRegistry(registry) === "github-packages"
+			? versionFromPackument(schema, name, versionNumber, registry, target)
+			: read(schema, packageUrl(registry, name, versionNumber), name, registry, target).pipe(
+					Effect.catch((error) =>
+						error.kind === "status" && error.status === 405
+							? versionFromPackument(schema, name, versionNumber, registry, target)
+							: Effect.fail(error),
+					),
+				);
+	};
+
 	const version = Effect.fn("NpmRegistry.version")(function* (
 		name: string,
 		versionNumber: string,
 		target?: RegistryTarget,
 	) {
-		const registry = target?.registry ?? DEFAULT_REGISTRY;
-		yield* Effect.annotateCurrentSpan({ package: name, version: versionNumber, registry: HttpRedaction.url(registry) });
-		const manifest = yield* classifyRegistry(registry) === "github-packages"
-			? versionFromPackument(name, versionNumber, registry, target)
-			: read(VersionManifest, packageUrl(registry, name, versionNumber), name, registry, target).pipe(
-					Effect.catch((error) =>
-						error.kind === "status" && error.status === 405
-							? versionFromPackument(name, versionNumber, registry, target)
-							: Effect.fail(error),
-					),
-				);
-		return Option.map(manifest, (found) =>
+		yield* Effect.annotateCurrentSpan({
+			package: name,
+			version: versionNumber,
+			registry: HttpRedaction.url(target?.registry ?? DEFAULT_REGISTRY),
+		});
+		const document = yield* versionDocument(VersionDocument, name, versionNumber, target);
+		return Option.map(document, (found) =>
 			PublishedVersion.make({
 				name: found.name,
 				version: found.version,
 				...integrityField(found.dist?.integrity),
 				...(found.dist?.tarball === undefined ? {} : { tarball: found.dist.tarball }),
 			}),
+		);
+	});
+
+	const manifest = Effect.fn("NpmRegistry.manifest")(function* (
+		name: string,
+		versionNumber: string,
+		target?: RegistryTarget,
+	) {
+		yield* Effect.annotateCurrentSpan({
+			package: name,
+			version: versionNumber,
+			registry: HttpRedaction.url(target?.registry ?? DEFAULT_REGISTRY),
+		});
+		const document = yield* versionDocument(ManifestDocument, name, versionNumber, target);
+		return Option.map(document, ({ engines, ...fields }) =>
+			VersionManifest.make({ ...fields, ...(isEnginesRecord(engines) ? { engines } : {}) }),
 		);
 	});
 
@@ -451,7 +573,7 @@ const make = Effect.fnUntraced(function* () {
 		});
 	});
 
-	return { version, versions, distTags, publishTimes } satisfies NpmRegistryShape;
+	return { version, manifest, versions, distTags, publishTimes } satisfies NpmRegistryShape;
 });
 
 /** The default for an unstubbed {@link NpmRegistry.makeTest} member. */
@@ -474,6 +596,16 @@ export interface SeededVersion {
 	readonly tarball?: string | undefined;
 	/** Publish timestamp as an ISO-8601 string, if any. */
 	readonly publishedAt?: string | undefined;
+	/** `dependencies`, for `manifest`. */
+	readonly dependencies?: Readonly<Record<string, string>> | undefined;
+	/** `peerDependencies`, for `manifest`. */
+	readonly peerDependencies?: Readonly<Record<string, string>> | undefined;
+	/** `optionalDependencies`, for `manifest`. */
+	readonly optionalDependencies?: Readonly<Record<string, string>> | undefined;
+	/** `peerDependenciesMeta`, for `manifest`. */
+	readonly peerDependenciesMeta?: Readonly<Record<string, { readonly optional?: boolean }>> | undefined;
+	/** `engines`, for `manifest`. */
+	readonly engines?: Readonly<Record<string, string>> | undefined;
 }
 
 /**
@@ -496,7 +628,8 @@ export interface RegistrySeed {
 
 /**
  * Reads package metadata from an npm-protocol registry over core `HttpClient`:
- * one version, every version, dist-tags and per-version publish times.
+ * one version, one version's dependency fields, every version, dist-tags and
+ * per-version publish times.
  *
  * @remarks
  * No `npm view` subprocess is involved. The registry is a **per-call**
@@ -546,6 +679,7 @@ export class NpmRegistry extends Context.Service<NpmRegistry, NpmRegistryShape>(
 	 */
 	static readonly makeTest = (overrides: Partial<NpmRegistryShape> = {}): NpmRegistryShape => ({
 		version: notStubbed("version"),
+		manifest: notStubbed("manifest"),
 		versions: notStubbed("versions"),
 		distTags: notStubbed("distTags"),
 		publishTimes: notStubbed("publishTimes"),
@@ -585,6 +719,25 @@ export class NpmRegistry extends Context.Service<NpmRegistry, NpmRegistryShape>(
 									...(found.tarball === undefined ? {} : { tarball: found.tarball }),
 								}),
 							);
+				}),
+			manifest: (name, version, target) =>
+				guarded(name, target, () => {
+					const found = at(target)[name]?.[version];
+					if (found === undefined) return Option.none();
+					// Conditional spreads: an unseeded field stays absent, never an
+					// explicit `undefined`, which the constructor rejects.
+					const { dependencies, peerDependencies, optionalDependencies, peerDependenciesMeta, engines } = found;
+					return Option.some(
+						VersionManifest.make({
+							name,
+							version,
+							...(dependencies === undefined ? {} : { dependencies }),
+							...(peerDependencies === undefined ? {} : { peerDependencies }),
+							...(optionalDependencies === undefined ? {} : { optionalDependencies }),
+							...(peerDependenciesMeta === undefined ? {} : { peerDependenciesMeta }),
+							...(engines === undefined ? {} : { engines }),
+						}),
+					);
 				}),
 			versions: (name, target) => guarded(name, target, () => Object.keys(at(target)[name] ?? {})),
 			distTags: (name, target) => guarded(name, target, () => ({ ...(seed.distTags?.[name] ?? {}) })),

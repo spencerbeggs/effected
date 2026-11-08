@@ -377,6 +377,42 @@ Generalize it:
 > fixtures. Discriminate on the framing (position, document index, an explicit
 > marker), and make the choice explicit in the code.
 
+## A port that builds a `RegExp` from input: force its compile inside the typed catch
+
+`new RegExp(source)` succeeding proves only that the syntax parsed. V8 builds
+the code on the first `exec`, and a source too large for it throws a
+`SyntaxError` ("Regular expression too large") there. It builds that code
+separately for a one-byte (Latin-1) subject and a two-byte one, each on its
+first `exec` of that kind, and a source of non-Latin-1 literals compiles
+trivially for a one-byte subject, which can never match it. If the first
+`exec` of either kind is a match, the throw escapes a total `matches` as a
+defect, outside every typed catch. `@effected/glob` met both: about 32,000
+literal characters and one wildcard threw on `matches("x")`, and
+`"ā".repeat(33_000) + "*"` survived a one-byte warm-up and threw on
+`matches("ā…")`.
+
+So run the regexp once on each kind of subject where it is built, inside the
+catch that turns a `SyntaxError` into the typed failure:
+
+```ts
+const compileOrFail = (source: string, flags: string): RegExp => {
+  try {
+    const regexp = new RegExp(source, flags)
+    regexp.test("") // forces V8's lazy one-byte compile
+    regexp.test("\u0100") // and its two-byte one, so a match is never the first exec of either
+    return regexp
+  } catch (e) {
+    if (e instanceof SyntaxError) throw new GuardExceeded("InvalidRegExp", 0, 0)
+    throw e
+  }
+}
+```
+
+Only flags without `g` or `y` make that `test` stateless. A spy that counts
+`RegExp` constructions during matching cannot see this defect, because no
+construction happens there: pin it with a row whose source is too large, and
+assert that compiling fails typed and that `matches` never throws.
+
 ## A string replacement reads `$` patterns: substitute with `split`/`join`
 
 `String.prototype.replace` and `replaceAll` with a STRING replacement read

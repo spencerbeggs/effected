@@ -183,6 +183,19 @@ describe("bundle reachability", () => {
 		assert.deepStrictEqual([...reachableBareImports("InstallationTokenStore.ts")].sort(), ["effect"]);
 	});
 
+	it("the OAuth user flow reaches neither octokit nor the JWT signer", () => {
+		// A Worker that only signs users in imports this module; it must link
+		// neither the REST transport nor the App signer. The client module
+		// reaching octokit is the control: it proves the walker sees that edge,
+		// so its absence here is not a broken walker.
+		assert.isTrue(reachableBareImports("GitHubClient.ts").has("@octokit/core"), "control: the client reaches octokit");
+		assert.deepStrictEqual(
+			[...reachableBareImports("GitHubUserAuth.ts")].sort(),
+			["@effected/crypto", "effect", "effect/encoding"],
+			"GitHubUserAuth.ts",
+		);
+	});
+
 	it("the octokit type packages are reachable only as types", () => {
 		// `@octokit/types` ships no JavaScript at all, and `plugin-paginate-rest`'s
 		// generated route map is likewise types. Leaning on them costs zero runtime

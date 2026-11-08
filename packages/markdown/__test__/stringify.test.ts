@@ -10,7 +10,7 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Result, Schema } from "effect";
-import { Markdown, MarkdownStringifyError } from "../src/Markdown.js";
+import { Markdown } from "../src/Markdown.js";
 import {
 	Blockquote,
 	Break,
@@ -41,6 +41,7 @@ import {
 	Text,
 	ThematicBreak,
 } from "../src/MarkdownNode.js";
+import { MarkdownStringifyError } from "../src/MarkdownStringify.js";
 
 /** A throwaway span. Stringify never reads offsets, only shapes. */
 const span = (): Position =>

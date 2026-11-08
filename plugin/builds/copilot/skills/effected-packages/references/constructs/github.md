@@ -56,6 +56,7 @@
 | `DeploymentEnvironmentInfo` | Interface | A deployment environment, as listing returns it. | |
 | `DeploymentEnvironmentShape` | Interface | Create or update, list and delete a repository's deployment environments. | |
 | `DispatchedRun` | Class | The run a `workflow_dispatch` created, as GitHub reports it when asked. | the run id and urls github returns when a workflow dispatch is asked for run details |
+| `ExpiringUserTokens` | Class | A user-to-server token pair that expires: what GitHub issues to a GitHub App with "Expire user authorization tokens" turned on, which is the default. | user access and refresh token pair, check expiry, persist a user grant |
 | `ExtraPermission` | Class | A permission the token has and did not need. | a permission a token was granted beyond what was required |
 | `FileChange` | Variable + TypeAlias | One change in a commit. | a file content write or deletion to include in a commit's tree |
 | `FileContent` | Class | A file to write in a commit. | a file to write in a commit, path content and blob mode |
@@ -88,6 +89,14 @@
 | `GitHubReleaseShape` | Interface | Create, read, list and update releases, and upload and list their assets. | |
 | `GitHubRepository` | Class | Read and update a repository's settings, including settings only GraphQL can write, read and replace its topics, and look up its default branch, node id and owner type. | read patch repository settings, apply settings blob across rest graphql |
 | `GitHubRepositoryShape` | Interface | Read and update a repository's settings and topics, and look up its default branch, node id and owner type. | |
+| `GitHubUserAuth` | Class | The OAuth web flow a GitHub App (or an OAuth App) uses to act as a user: PKCE code exchange, refresh, and grant revoke. | oauth web flow, exchange a code for user tokens, refresh, revoke a grant, pkce |
+| `GitHubUserAuthError` | TypeAlias | Every failure of a `GitHubUserAuth` operation: final (reconnect or reconfigure) or temporary (retry later). | |
+| `GitHubUserAuthFinal` | Class | GitHub refused the call, and repeating it will not change the answer. | oauth refused, reconnect or reconfigure remedy, bad refresh token, sign in again |
+| `GitHubUserAuthOperation` | Variable + TypeAlias | The decoded type of `(GitHubUserAuthOperation:variable)`. | which oauth step failed: exchange, refresh or revoke |
+| `GitHubUserAuthOptions` | Interface | How a `GitHubUserAuth` layer is built. | configure the oauth client id and secret, enterprise server token url, timeout |
+| `GitHubUserAuthShape` | Interface | The operations of `GitHubUserAuth`. | |
+| `GitHubUserAuthTemporary` | Class | The call did not get an answer GitHub meant: try it again later. | oauth network, timeout, 5xx or malformed reply, retry later, keep tokens |
+| `GitHubUserTokens` | Variable + TypeAlias | The decoded type of `(GitHubUserTokens:variable)`: `ExpiringUserTokens` `\|` `NonExpiringUserTokens`. | decode or persist a user's oauth tokens, expiring or non-expiring union |
 | `GitHubValidationCode` | Variable | The validation codes GitHub documents for a 422's `errors[].code`. | missing missing_field invalid already_exists unprocessable custom, github 422 validation error codes |
 | `GitHubValidationEntry` | Class | One entry from a failed response's `data.errors` array, as GitHub sent it. | one entry from a failed rest response's errors array, resource field code and message |
 | `GitTag` | Class | Create, move, resolve, list and delete tag refs through GitHub's Git Database API, and find the newest version-shaped tag. | create reset resolve and delete a tag ref, find newest semver-shaped tag |
@@ -104,6 +113,7 @@
 | `LinkedIssue` | Class | An issue a pull request closes. | an issue a pull request closes, whether linked manually or github-inferred |
 | `ListCheckRunsOptions` | Interface | Options for `CheckRunShape.list`. | |
 | `MergeMethod` | Variable | How a pull request is merged. | merge squash rebase, how a pull request is merged |
+| `NonExpiringUserTokens` | Class | A user access token that does not expire: what GitHub issues to an OAuth App, or to a GitHub App with "Expire user authorization tokens" turned off. It carries no refresh token and no expiry. | user access token with no expiry and no refresh token |
 | `OwnerType` | TypeAlias | Whether an account is a user or an organization. | |
 | `PageOptions` | Class | How far a paginated read should go. | how many items per page and how many pages to walk |
 | `PermissionGap` | Class | A permission the token does not have enough of. | a permission a token is missing or holds too weak a level of |
@@ -160,6 +170,9 @@
 | `TokenRequest` | Interface | What to mint an installation token for. | |
 | `UpdateCheckRunOptions` | Interface | Options for `CheckRunShape.update`. | |
 | `UpsertedPullRequest` | Interface | What `PullRequestShape.upsert` did. | |
+| `UserAuthExchangeRequest` | Interface | The code a user brought back from GitHub's authorize page. | |
+| `UserAuthRefreshRequest` | Interface | A refresh token to renew. | |
+| `UserAuthRevokeRequest` | Interface | A user's grant to revoke. | |
 | `VariableInfo` | Interface | A variable's name and value, as listing returns it. | |
 | `VersionFromTag` | TypeAlias | Read a version out of a tag name. | |
 | `WorkflowDispatch` | Class | Dispatch workflows, wait for the run they start, and list the repository's workflows. | trigger a workflow dispatch event and get back the run it created, poll a dispatched run until it finishes, cancel a run |

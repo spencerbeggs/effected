@@ -7,12 +7,7 @@
 // destinations, link titles and fenced-code info strings.
 
 import { decodeEntity } from "./entities.js";
-
-/** The punctuation set a backslash may escape, per the spec. */
-export const ESCAPABLE = "[!\"#$%&'()*+,./:;<=>?@[\\\\\\]^_`{|}~-]";
-
-/** One entity, in any of the three spec forms. */
-export const ENTITY = "&(?:#x[a-f0-9]{1,6}|#[0-9]{1,7}|[a-z][a-z0-9]{1,31});";
+import { ENTITY, ESCAPABLE } from "./grammar.js";
 
 const reBackslashOrAmp = /[\\&]/;
 const reEntityOrEscapedChar = new RegExp(`\\\\${ESCAPABLE}|${ENTITY}`, "gi");

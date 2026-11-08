@@ -1073,6 +1073,14 @@ export type FrontmatterFormat = typeof FrontmatterFormat.Type;
  * via `MarkdownParseOptions.frontmatter` — mdast's "limited to one node, only
  * as head" constraint is structural here, not validated.
  *
+ * `valueStart` is the UTF-16 code-unit offset in the parsed source where
+ * `value` begins: the start of the line after the opening fence, whatever
+ * that fence and its line terminator were. An offset a YAML, TOML or JSON
+ * parser reports inside `value` plus `valueStart` is the offset in the whole
+ * file. The parser always sets it; a node built with `make` or admitted by
+ * `Mdast.fromMdast` has none, and neither the stringifier nor the `Mdast`
+ * projection reads it.
+ *
  * @public
  */
 export class Frontmatter extends Schema.Class<Frontmatter>("Frontmatter")({
@@ -1080,6 +1088,7 @@ export class Frontmatter extends Schema.Class<Frontmatter>("Frontmatter")({
 	format: FrontmatterFormat,
 	value: Schema.String,
 	position: NodePosition,
+	valueStart: Schema.optionalKey(Schema.Number),
 }) {}
 
 /**

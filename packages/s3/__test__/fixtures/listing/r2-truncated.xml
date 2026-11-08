@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Name>archive</Name><Contents><Key>webhooks/a.json</Key><Size>12</Size><LastModified>2026-11-06T12:00:00.000Z</LastModified><ETag>"e1"</ETag><StorageClass>STANDARD</StorageClass></Contents><IsTruncated>true</IsTruncated><MaxKeys>1</MaxKeys><KeyCount>1</KeyCount><Prefix>webhooks/</Prefix><NextContinuationToken>1ueGcxLPRx1Tr/XYExHnhbYLgveDs2J/wm36Hy4vbOwM=</NextContinuationToken></ListBucketResult>

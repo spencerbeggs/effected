@@ -2,7 +2,7 @@
 	"name": "@effected/files",
 	"version": "0.1.0",
 	"private": true,
-	"description": "Atomic single-file replacement over core FileSystem: write a temp file beside the target, sync it, and rename it into place, so a crash never leaves a truncated file. A link realPath cannot follow is written through directly.",
+	"description": "Atomic single-file replacement over core FileSystem: write a temp file beside the target, sync it, and rename it into place, so a crash never leaves a truncated file. A symlinked target is followed by default or replaced on request.",
 	"keywords": ["atomic", "write", "file", "rename", "filesystem", "effect", "effected"],
 	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/files#readme",
 	"bugs": {

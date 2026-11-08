@@ -33,12 +33,28 @@ sources:
     resource: https://github.com/spencerbeggs/effected/issues/1029
   - id: issue-1030
     resource: https://github.com/spencerbeggs/effected/issues/1030
+  - id: stringify-module
+    resource: ../../packages/markdown/src/MarkdownStringify.ts
+  - id: stringify-entry-tests
+    resource: ../../packages/markdown/__test__/stringify-entry.test.ts
+  - id: footnote-unresolved-tests
+    resource: ../../packages/markdown/__test__/footnote-unresolved.test.ts
+  - id: frontmatter-fence-tests
+    resource: ../../packages/markdown/__test__/frontmatter-fence.test.ts
+  - id: issue-1218
+    resource: https://github.com/spencerbeggs/effected/issues/1218
+  - id: issue-1187
+    resource: https://github.com/spencerbeggs/effected/issues/1187
+  - id: issue-1189
+    resource: https://github.com/spencerbeggs/effected/issues/1189
+  - id: visitor-traverse-tests
+    resource: ../../packages/markdown/__test__/visitor-traverse.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-05T19:48:11Z
+  at: 2026-11-07T03:13:10Z
 integrity:
   generated:
-    body: a2a5a82d8edcae19
+    body: 1b54652dd77c9c20
 ---
 
 # `@effected/markdown`
@@ -47,10 +63,11 @@ integrity:
 Schema classes: parse into mdast-shaped nodes carrying UTF-16 code-unit offsets, compute
 offset-splice edits, format, modify by node, rewrite trees with typed
 transforms, project to and from plain mdast,
-walk the tree synchronously or as a `Stream`, and read and write frontmatter through
+walk the tree synchronously, as a `Stream` or through skip-aware callbacks, and read and write frontmatter through
 free-standing codecs. It also carries the MDX node vocabulary (construction
 and serialization only), a phrasing-level parse entry point, and a
-string-level frontmatter split/join facade. It carries the full-parity
+string-level frontmatter split/join facade, and a second, parser-free entry
+point (`@effected/markdown/stringify`) for bundles that only emit markdown. It carries the full-parity
 ambition of its format siblings — parse, edit, format and a shared surface
 contract, not a read-only projection — and is second in size only to
 `@effected/yaml` at roughly 14,000 lines of `src` across 15 public modules
@@ -219,6 +236,39 @@ interface](../interfaces/markdown-mdx.md).
 
 The one stringify option is `canonical: true` (on `stringify` and `stringifyResult`), which ignores fidelity fields. It is defined as `stringify(MarkdownTransform.canonicalize(tree))`, and both read the single fidelity-field table in `src/internal/fidelity.ts`, so the option and the transform cannot drift. `Text.escapeStyle` is an emitter instruction, not a fidelity field, and survives.
 
+### Serialization without the parser: the `./stringify` entry point
+
+Serialization lives in `packages/markdown/src/MarkdownStringify.ts` as the
+free functions `stringify` and `stringifyResult` (with
+`MarkdownStringifyError` and `MarkdownStringifyOptions`), and the `Markdown`
+statics delegate to them: `Markdown.stringify` *is* the free function, span
+name `Markdown.stringify` included, and `Markdown.stringifyResult` calls
+it[^stringify-module]. The reason is bundle size, not style: a bundler cannot
+drop an unused static member of a class, so serialization reachable only
+through `Markdown` kept the block and inline passes in every bundle that
+stringified a tree, which silk-app's markdown-emitting Worker could not
+afford[^issue-1218]. The package therefore ships a second entry point,
+`@effected/markdown/stringify` (`src/stringify.ts`), exporting the node
+vocabulary, the two functions, the error and `MarkdownDiagnostic` — the
+types its own signatures name, as a second API Extractor surface requires.
+Its built declarations re-export from `index.d.ts` rather than carrying
+copies, and its runtime exports are the root's by identity, so a tree built
+from either import serializes through both.
+
+The entry's module graph is load-bearing: it must never reach `Markdown.ts`,
+`MarkdownDocument.ts`, the block or inline passes, or `internal/entityMap.ts`.
+The stringifier needed the entity *grammar* (to escape text that would read
+as a character reference) but imported it from `internal/unescape.ts`, which
+loads the entity table, so the grammar moved to the `internal/grammar.ts`
+leaf. A structural test walks the runtime imports from `src/stringify.ts`
+(type-only imports dropped, since they are erased) and pins the exclusion,
+with a positive control on the root entry and a mutation control on the
+walker[^stringify-entry-tests]. Measured with rolldown over the built
+package, `effect` and `@effected/source` external: a stringify-only bundle is
+about 21.7 KB minified (77.5 KB unminified) whether it imports
+`./stringify` or the free function from the root, against about 104.6 KB
+minified (266.6 KB) through `Markdown.stringifyResult`.
+
 `Markdown.stringify` and `Markdown.stringifyResult` accept `Root |
 FlowContent`. A lone flow node serializes as the one-block list `[node]`
 through the same internal path a root's children take
@@ -361,7 +411,24 @@ re-iterable `Iterable` that walks afresh on every iteration — and
 `MarkdownVisitor.visit` is the `Stream` defined in terms of it, so the two
 yield identical events; `walk` exists for callers that cannot suspend, such
 as a lint rule a host calls synchronously[^issue-1030]. Either way a
-foreign-tree depth trip yields exactly one terminal error event. Navigation
+foreign-tree depth trip yields exactly one terminal error event.
+`MarkdownVisitor.traverse` is the third form over the same engine: `enter`
+and `exit` callbacks with `SKIP` (do not descend; the node's `exit` still
+runs) and `EXIT` (stop at once, no pending exits), each handed the node's
+`path`, `depth` and an `ancestors` snapshot (frozen, and shared by every
+callback that sees the same ancestors, so a walk copies once per distinct
+ancestor stack rather than twice per node), and an optional node-type
+selector (one type or an array) that narrows the callbacks'
+node type through `MarkdownNodeOfType` while the walk still descends
+through every node. The engine is one generator: each `Enter` receives the
+consumer's reply through `next(...)` down a `yield*` delegation chain, so a
+skip is the walk not descending rather than a filter over a full walk, and
+`walk`'s `for…of` — which always replies `undefined` — can never skip.
+`traverse` returns `Option.none()`, or `Option.some` of the depth-guard
+diagnostic, the same trip `walk` reports as an `Error` event. It is not
+spelled `visitSync`: the [sync-primitive policy](../conventions/sync-primitive-policy.md)
+reserves `*Sync` for blocking-IO facades. `@effected/markdown-lint`'s rules
+are its first consumer[^visitor-traverse-tests]. Navigation
 accessors are
 derived getters using a plain sync walk whose depth guard is a thrown
 defect, since getters have no error channel, and every one of them
@@ -376,6 +443,22 @@ spanning their subsections so the edit layer can splice whole sections;
 links pass URL strings through unmodified, with reference forms resolved
 through the definition index and an unresolvable foreign reference leaving
 the URL genuinely absent.
+
+`unresolvedFootnoteReferences` lists the GFM `[^label]` markers with no
+matching definition — label, case-folded identifier, position. Reference
+formation consults the label index at formation time and leaves a miss as
+literal text that coalesces with its neighbours, so the marker's span exists
+only at that moment: the footnote construct reports it to a sink the block
+pass collects (`BlockPassResult.unresolvedFootnotes`, sorted to source order
+because a footnote definition's children materialize in tree order). The
+parse hands the record to the document through a `WeakMap` side table, as
+it does the line index, so the node tree, the schema and equality are
+unchanged. A document built with `make` derives the record once by parsing
+`source` as GFM, with frontmatter capture exactly when its root is headed by
+a frontmatter node. Markers the parser never reads (code, autolinks, HTML,
+escapes, a bracket pair that formed a link) are excluded by construction,
+and a label that normalizes to nothing is not
+reported[^issue-1189][^footnote-unresolved-tests].
 
 Every lookup that can miss returns `Option`
 ([lookups return Option](../conventions/lookups-return-option.md)): `find`, `firstSection`,
@@ -402,6 +485,22 @@ block and fences with trailing whitespace, and does not strip `---json`. A
 consumer bridging kit trees to markdownlint must parse the same text
 markdownlint parsed (its `frontMatterLines` plus `lines`) rather than assume
 the two agree on where the body starts.
+
+An opening fence with no closing fence is not frontmatter, but it is not
+silence either. `FrontmatterSource.split` reports a `fence` of `"absent"`,
+`"unclosed"` or `"closed"` with the `fenceFormat` the opening fence
+declared, `MarkdownDocument.frontmatterFence` is the same fact on a parsed
+document (`"closed"` exactly when `hasFrontmatterBlock`, pinned by an
+exhaustive sweep over short sources), and `FrontmatterMissingError.reason`
+gains `"unclosed"` beside `"absent"` and `"captureDisabled"`: an unclosed
+fence that used to report `"absent"` now reports `"unclosed"`. An opening
+fence that ends the file with no terminator is `"unclosed"`. Both the split's
+block (`valueStart`, `valueEnd`) and the parsed `Frontmatter` node
+(`valueStart`) place the value in the file, so a linter maps a YAML offset
+onto the file by addition instead of by fence-plus-terminator arithmetic.
+The node field is set by the parser only, never projected by `Mdast`, and
+ignored by the stringifier. Both came from okfit, which kept its own fence
+detection for exactly these two facts[^issue-1187][^frontmatter-fence-tests].
 
 The synthetic zero-width position sentinel is public, and position carries
 it as a make-only constructor default: decode still requires a real position
@@ -675,3 +774,11 @@ from the ported CommonMark version.
 [^systems-804]: <https://github.com/savvy-web/systems/issues/804>
 [^issue-1029]: <https://github.com/spencerbeggs/effected/issues/1029>
 [^issue-1030]: <https://github.com/spencerbeggs/effected/issues/1030>
+[^stringify-module]: `packages/markdown/src/MarkdownStringify.ts` — the free `stringify`/`stringifyResult`, `MarkdownStringifyError`, `MarkdownStringifyOptions`.
+[^stringify-entry-tests]: `packages/markdown/__test__/stringify-entry.test.ts` — the parser-free import graph, the export set and export identity.
+[^footnote-unresolved-tests]: `packages/markdown/__test__/footnote-unresolved.test.ts` — defined versus undefined markers, the exclusions, nesting and the `make` derivation.
+[^frontmatter-fence-tests]: `packages/markdown/__test__/frontmatter-fence.test.ts` — fence states, value offsets and the fence/`hasFrontmatterBlock` agreement sweep.
+[^issue-1218]: <https://github.com/spencerbeggs/effected/issues/1218>
+[^issue-1187]: <https://github.com/spencerbeggs/effected/issues/1187>
+[^issue-1189]: <https://github.com/spencerbeggs/effected/issues/1189>
+[^visitor-traverse-tests]: `packages/markdown/__test__/visitor-traverse.test.ts` — `traverse` against `walk` over the whole CommonMark spec corpus, `SKIP`/`EXIT`, selectors, ancestors and the depth trip.

@@ -3,8 +3,9 @@ import { Clock, Config, Context, Effect, Layer, Option, Schema, Stream } from "e
 import { GitHubError } from "./GitHubError.js";
 import type { GraphQLDocument } from "./GraphQL.js";
 import { GitHubGraphQLError } from "./GraphQL.js";
+import { API_VERSION_PATTERN, DEFAULT_API_VERSION } from "./internal/apiVersion.js";
 import { rawRequestRefusal, refusedRequest } from "./internal/confinement.js";
-import { DEFAULT_API_VERSION, expandOnDotcom, makeTransport } from "./internal/octokit.js";
+import { expandOnDotcom, makeTransport } from "./internal/octokit.js";
 import { fromArray, paginate } from "./internal/paginate.js";
 import { unstubbed } from "./internal/unstubbed.js";
 import { DOTCOM_API_BASE_URL, originOf, uploadsBaseUrlFor, withUploadChannel } from "./internal/uploads.js";
@@ -587,9 +588,6 @@ export class GitHubClient extends Context.Service<GitHubClient, GitHubClientShap
 	static readonly layerFixture = (fixtures: GitHubFixtures): Layer.Layer<GitHubClient> =>
 		Layer.succeed(GitHubClient, confineDouble(makeFixture(fixtures)));
 }
-
-/** A calendar api-version: `YYYY-MM-DD`. */
-const API_VERSION_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * The api-version a client pins: the option when it is a calendar version,

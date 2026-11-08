@@ -564,4 +564,140 @@ describe("NpmConfig.load", () => {
 			assert.strictEqual(error.path, "/home/u/.npmrc");
 		}),
 	);
+	describe("workspaceRoot", () => {
+		/** A pnpm workspace whose root and member both carry an npmrc; the run starts in the member. */
+		const pnpmWorkspace = {
+			"/work/repo/pnpm-workspace.yaml": "packages:\n  - packages/*\n",
+			"/work/repo/package.json": "{}",
+			"/work/repo/.npmrc": "@acme:registry=https://root/",
+			"/work/repo/packages/a/package.json": "{}",
+			"/work/repo/packages/a/.npmrc": "@acme:registry=https://member/",
+		};
+
+		it.effect("reads the project npmrc at the pnpm-workspace.yaml root, not the nearest package", () =>
+			Effect.gen(function* () {
+				const c = yield* load(pnpmWorkspace, { workspaceRoot: true });
+				assert.strictEqual(c.registryFor("@acme/x"), "https://root/");
+				assert.deepStrictEqual([...c.files], ["/work/repo/.npmrc"]);
+				// Control: the default is unchanged — the nearest package.json.
+				const nearest = yield* load(pnpmWorkspace);
+				assert.strictEqual(nearest.registryFor("@acme/x"), "https://member/");
+				assert.deepStrictEqual([...nearest.files], ["/work/repo/packages/a/.npmrc"]);
+			}),
+		);
+
+		it.effect("takes a package.json `workspaces` field as the root, in array and object form", () =>
+			Effect.gen(function* () {
+				for (const workspaces of [["packages/*"], { packages: ["packages/*"] }]) {
+					const c = yield* load(
+						{
+							"/work/repo/package.json": JSON.stringify({ name: "root", workspaces }),
+							"/work/repo/.npmrc": "registry=https://root/",
+							"/work/repo/packages/a/package.json": JSON.stringify({ name: "a" }),
+							"/work/repo/packages/a/.npmrc": "registry=https://member/",
+						},
+						{ workspaceRoot: true },
+					);
+					assert.strictEqual(c.registry, "https://root/");
+				}
+			}),
+		);
+
+		it.effect("a package.json that is malformed, not an object, or has a null `workspaces` is not a root", () =>
+			Effect.gen(function* () {
+				for (const text of ["{ not json", "null", "[]", '{ "workspaces": null }', '{ "workspaces": "packages/*" }']) {
+					const c = yield* load(
+						{
+							"/work/repo/package.json": text,
+							"/work/repo/.npmrc": "registry=https://root/",
+							"/work/repo/packages/a/package.json": "{}",
+							"/work/repo/packages/a/.npmrc": "registry=https://member/",
+						},
+						{ workspaceRoot: true },
+					);
+					assert.strictEqual(c.registry, "https://member/", `root package.json ${text}`);
+				}
+			}),
+		);
+
+		it.effect("the nearest marker wins over one further up", () =>
+			Effect.gen(function* () {
+				const c = yield* load(
+					{
+						"/work/pnpm-workspace.yaml": "packages: []\n",
+						"/work/.npmrc": "registry=https://outer/",
+						"/work/repo/package.json": JSON.stringify({ workspaces: ["packages/*"] }),
+						"/work/repo/.npmrc": "registry=https://inner/",
+						"/work/repo/packages/a/package.json": "{}",
+					},
+					{ workspaceRoot: true },
+				);
+				assert.strictEqual(c.registry, "https://inner/");
+			}),
+		);
+
+		it.effect("with no workspace marker anywhere, falls back to the nearest package", () =>
+			Effect.gen(function* () {
+				const c = yield* load(
+					{
+						"/work/repo/package.json": "{}",
+						"/work/repo/.npmrc": "registry=https://root/",
+						"/work/repo/packages/a/package.json": "{}",
+						"/work/repo/packages/a/.npmrc": "registry=https://member/",
+					},
+					{ workspaceRoot: true },
+				);
+				assert.strictEqual(c.registry, "https://member/");
+			}),
+		);
+
+		it.effect("resolves a relative userconfig against the workspace root", () =>
+			Effect.gen(function* () {
+				const c = yield* load(
+					{
+						...pnpmWorkspace,
+						"/work/repo/.npmrc": "userconfig=config/user.npmrc",
+						"/work/repo/config/user.npmrc": "registry=https://from-root-relative/",
+					},
+					{ workspaceRoot: true },
+				);
+				assert.strictEqual(c.registry, "https://from-root-relative/");
+			}),
+		);
+	});
+
+	describe("projectDir", () => {
+		const seed = {
+			"/work/pnpm-workspace.yaml": "packages: []\n",
+			"/work/.npmrc": "registry=https://workspace/",
+			"/work/repo/.npmrc": "registry=https://explicit/",
+			"/work/repo/packages/a/package.json": "{}",
+			"/work/repo/packages/a/.npmrc": "registry=https://member/",
+		};
+
+		it.effect("reads <projectDir>/.npmrc with no search, even past a nearer package.json", () =>
+			Effect.gen(function* () {
+				const c = yield* load(seed, { projectDir: "/work/repo" });
+				assert.strictEqual(c.registry, "https://explicit/");
+				assert.deepStrictEqual([...c.files], ["/work/repo/.npmrc"]);
+			}),
+		);
+
+		it.effect("resolves a relative projectDir against cwd", () =>
+			Effect.gen(function* () {
+				const c = yield* load(seed, { projectDir: "../.." });
+				assert.strictEqual(c.registry, "https://explicit/");
+			}),
+		);
+
+		it.effect("wins over workspaceRoot when both are set", () =>
+			Effect.gen(function* () {
+				const c = yield* load(seed, { projectDir: "/work/repo", workspaceRoot: true });
+				assert.strictEqual(c.registry, "https://explicit/");
+				// Control: workspaceRoot alone finds the outer marker.
+				const root = yield* load(seed, { workspaceRoot: true });
+				assert.strictEqual(root.registry, "https://workspace/");
+			}),
+		);
+	});
 });

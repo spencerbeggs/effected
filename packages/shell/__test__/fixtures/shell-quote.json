@@ -1,0 +1,2288 @@
+{
+	"provenance": "shell-quote 1.10.0 test/{parse,op,comment,set,env}.js, hand-ported; see README.md",
+	"cases": [
+		{
+			"name": "empty string",
+			"source": "test/parse.js",
+			"input": "",
+			"expect": {
+				"segments": []
+			}
+		},
+		{
+			"name": "empty substitution",
+			"source": "test/parse.js",
+			"input": "${}",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "${}",
+								"kinds": [
+									"variable"
+								]
+							}
+						],
+						"operator": null
+					}
+				],
+				"diagnostics": [
+					"EmptyParameterExpansion"
+				]
+			},
+			"divergence": "shell-quote throws; this package never fails and records a diagnostic"
+		},
+		{
+			"name": "incomplete substitution",
+			"source": "test/parse.js",
+			"input": "${",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "${",
+								"kinds": [
+									"opaque"
+								]
+							}
+						],
+						"operator": null
+					}
+				],
+				"diagnostics": [
+					"UnterminatedParameterExpansion"
+				]
+			},
+			"divergence": "shell-quote throws; here the rest of the input is one opaque part"
+		},
+		{
+			"name": "bare, single and double quoted",
+			"source": "test/parse.js",
+			"input": "a 'b' \"c\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a",
+							"b",
+							"c"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "mixed quoting with escaped quotes",
+			"source": "test/parse.js",
+			"input": "beep \"boop\" 'foo bar baz' \"it's \\\"so\\\" groovy\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep",
+							"boop",
+							"foo bar baz",
+							"it's \"so\" groovy"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "escaped space",
+			"source": "test/parse.js",
+			"input": "a b\\ c d",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a",
+							"b c",
+							"d"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "escaped dollar and backtick",
+			"source": "test/parse.js",
+			"input": "\\$beep bo\\`op",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"$beep",
+							"bo`op"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "escaped quotes inside double quotes",
+			"source": "test/parse.js",
+			"input": "echo \"foo = \\\"foo\\\"\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"echo",
+							"foo = \"foo\""
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "a space alone",
+			"source": "test/parse.js",
+			"input": " ",
+			"expect": {
+				"segments": []
+			}
+		},
+		{
+			"name": "a tab alone",
+			"source": "test/parse.js",
+			"input": "\t",
+			"expect": {
+				"segments": []
+			}
+		},
+		{
+			"name": "quotes join adjacent text",
+			"source": "test/parse.js",
+			"input": "a\"b c d\"e",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"ab c de"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "escapes and quotes join",
+			"source": "test/parse.js",
+			"input": "a\\ b\"c d\"\\ e f",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a bc d e",
+							"f"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "escapes, double and single quotes join",
+			"source": "test/parse.js",
+			"input": "a\\ b\"c d\"\\ e'f g' h",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a bc d ef g",
+							"h"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "single quote inside double quotes",
+			"source": "test/parse.js",
+			"input": "x \"bl'a\"'h'",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"x",
+							"bl'ah"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "single-quoted backslashes are two tokens",
+			"source": "test/parse.js",
+			"input": "'\\' '\\'",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"\\",
+							"\\"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "single-quoted backslash joined with an escaped quote",
+			"source": "test/parse.js",
+			"input": "'\\'\\''",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "'\\'\\''",
+								"kinds": [
+									"singleQuoted",
+									"bare",
+									"opaque"
+								]
+							}
+						],
+						"operator": null
+					}
+				],
+				"diagnostics": [
+					"UnterminatedSingleQuote"
+				]
+			},
+			"divergence": "shell-quote reads the last quote as closing; in bash it opens a new, unterminated quote (bash -n reports unexpected EOF)"
+		},
+		{
+			"name": "start-of-line comment",
+			"source": "test/parse.js",
+			"input": "# abc  def  ghi",
+			"expect": {
+				"segments": [],
+				"comments": [
+					" abc  def  ghi"
+				]
+			}
+		},
+		{
+			"name": "comment after a word",
+			"source": "test/parse.js",
+			"input": "xyz # abc  def  ghi",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"xyz"
+						],
+						"operator": null
+					}
+				],
+				"comments": [
+					" abc  def  ghi"
+				]
+			}
+		},
+		{
+			"name": "empty string is preserved",
+			"source": "test/parse.js",
+			"input": "-x \"\" -y",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"-x",
+							"",
+							"-y"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "control character mid-token (plain form of the custom-escape case)",
+			"source": "test/parse.js",
+			"input": "2;b",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"2"
+						],
+						"operator": ";"
+					},
+					{
+						"words": [
+							"b"
+						],
+						"operator": null
+					}
+				]
+			},
+			"divergence": "shell-quote's case passes a custom escape character; the plain input is ported instead"
+		},
+		{
+			"name": "close-escape-reopen produces a quote after a quoted backslash",
+			"source": "test/parse.js",
+			"input": "'\\'\\'",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"\\'"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "close-escape-reopen embeds a quote mid-word",
+			"source": "test/parse.js",
+			"input": "'a'\\''b'",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a'b"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "bareword joins a preceding quoted backslash",
+			"source": "test/parse.js",
+			"input": "'\\'x",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"\\x"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "quoted backslash joins surrounding barewords",
+			"source": "test/parse.js",
+			"input": "a'\\'b",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a\\b"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "empty single quotes",
+			"source": "test/parse.js",
+			"input": "''",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							""
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "empty single quotes join adjacent content",
+			"source": "test/parse.js",
+			"input": "''a''",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "quoted glob character is literal",
+			"source": "test/parse.js",
+			"input": "'*'",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"*"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "a lone single quote",
+			"source": "test/parse.js",
+			"input": "'",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "'",
+								"kinds": [
+									"opaque"
+								]
+							}
+						],
+						"operator": null
+					}
+				],
+				"diagnostics": [
+					"UnterminatedSingleQuote"
+				]
+			},
+			"divergence": "shell-quote drops it; bash rejects it; here it is an opaque part with a diagnostic"
+		},
+		{
+			"name": "an unterminated single quote",
+			"source": "test/parse.js",
+			"input": "'a",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "'a",
+								"kinds": [
+									"opaque"
+								]
+							}
+						],
+						"operator": null
+					}
+				],
+				"diagnostics": [
+					"UnterminatedSingleQuote"
+				]
+			},
+			"divergence": "shell-quote keeps the content as a literal; here it cannot be read as a literal"
+		},
+		{
+			"name": "an unmatched quote mid-word",
+			"source": "test/parse.js",
+			"input": "a'b",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "a'b",
+								"kinds": [
+									"bare",
+									"opaque"
+								]
+							}
+						],
+						"operator": null
+					}
+				],
+				"diagnostics": [
+					"UnterminatedSingleQuote"
+				]
+			},
+			"divergence": "shell-quote splits the token in two"
+		},
+		{
+			"name": "nested ${} consumed as one substitution",
+			"source": "test/parse.js",
+			"input": "${a${b}c}",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "${a${b}c}",
+								"kinds": [
+									"variable"
+								]
+							}
+						],
+						"operator": null
+					}
+				]
+			},
+			"divergence": "shell-quote expands it to an empty string; here it is unexpanded"
+		},
+		{
+			"name": "nested ${} at the end",
+			"source": "test/parse.js",
+			"input": "${a${b}}",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "${a${b}}",
+								"kinds": [
+									"variable"
+								]
+							}
+						],
+						"operator": null
+					}
+				]
+			},
+			"divergence": "shell-quote expands it"
+		},
+		{
+			"name": "a lone { inside ${} does not nest",
+			"source": "test/parse.js",
+			"input": "${foo{bar}",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "${foo{bar}",
+								"kinds": [
+									"variable"
+								]
+							}
+						],
+						"operator": null
+					}
+				]
+			},
+			"divergence": "shell-quote expands it"
+		},
+		{
+			"name": "a nested array-index expansion",
+			"source": "test/parse.js",
+			"input": "level=${levels[$RANDOM%${#levels[@]}]}",
+			"expect": {
+				"segments": [
+					{
+						"words": [],
+						"operator": null,
+						"assignments": [
+							[
+								"level",
+								{
+									"raw": "${levels[$RANDOM%${#levels[@]}]}",
+									"kinds": [
+										"variable"
+									]
+								}
+							]
+						]
+					}
+				]
+			},
+			"divergence": "shell-quote returns the word level= with the expansion dropped; here the leading assignment is its own record"
+		},
+		{
+			"name": "unquoted expansion is not split (splitUnquoted off)",
+			"source": "test/parse.js",
+			"input": "test a b $T",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"test",
+							"a",
+							"b",
+							{
+								"raw": "$T",
+								"kinds": [
+									"variable"
+								]
+							}
+						],
+						"operator": null
+					}
+				]
+			},
+			"divergence": "no environment is read; the variable is a marked part"
+		},
+		{
+			"name": "expansion joined to text",
+			"source": "test/parse.js",
+			"input": "a$T",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "a$T",
+								"kinds": [
+									"bare",
+									"variable"
+								]
+							}
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "braced expansion joined on both sides",
+			"source": "test/parse.js",
+			"input": "x${T}y",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "x${T}y",
+								"kinds": [
+									"bare",
+									"variable",
+									"bare"
+								]
+							}
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "quoted expansion is one part",
+			"source": "test/parse.js",
+			"input": "\"$T\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "\"$T\"",
+								"kinds": [
+									"doubleQuoted"
+								]
+							}
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "pipe with spaces",
+			"source": "test/op.js",
+			"input": "beep | boop",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": "|"
+					},
+					{
+						"words": [
+							"boop"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "pipe without spaces",
+			"source": "test/op.js",
+			"input": "beep|boop",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": "|"
+					},
+					{
+						"words": [
+							"boop"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "escaped pipe",
+			"source": "test/op.js",
+			"input": "beep \\| boop",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep",
+							"|",
+							"boop"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "quoted pipe",
+			"source": "test/op.js",
+			"input": "beep \"|boop\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep",
+							"|boop"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "background with space",
+			"source": "test/op.js",
+			"input": "echo zing &",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"echo",
+							"zing"
+						],
+						"operator": "&"
+					}
+				]
+			}
+		},
+		{
+			"name": "background without space",
+			"source": "test/op.js",
+			"input": "echo zing&",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"echo",
+							"zing"
+						],
+						"operator": "&"
+					}
+				]
+			}
+		},
+		{
+			"name": "escaped ampersand",
+			"source": "test/op.js",
+			"input": "echo zing\\&",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"echo",
+							"zing&"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "backslash-ampersand inside double quotes",
+			"source": "test/op.js",
+			"input": "echo \"zing\\&\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"echo",
+							"zing\\&"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "semicolon",
+			"source": "test/op.js",
+			"input": "beep;boop",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": ";"
+					},
+					{
+						"words": [
+							"boop"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "subshell",
+			"source": "test/op.js",
+			"input": "(beep;boop)",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": ";",
+						"groupDepth": 1
+					},
+					{
+						"words": [
+							"boop"
+						],
+						"operator": null,
+						"groupDepth": 1
+					}
+				]
+			},
+			"divergence": "parentheses are group delimiters recorded as groupDepth, not operator tokens"
+		},
+		{
+			"name": "output redirection",
+			"source": "test/op.js",
+			"input": "beep>boop",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								null,
+								">",
+								"boop"
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "fd-prefixed redirection",
+			"source": "test/op.js",
+			"input": "beep 2>boop",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								2,
+								">",
+								"boop"
+							]
+						]
+					}
+				]
+			},
+			"divergence": "shell-quote returns 2 as a word; bash reads it as the file descriptor"
+		},
+		{
+			"name": "input redirection",
+			"source": "test/op.js",
+			"input": "beep<boop",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								null,
+								"<",
+								"boop"
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "or with spaces",
+			"source": "test/op.js",
+			"input": "beep || boop",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": "||"
+					},
+					{
+						"words": [
+							"boop"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "or without spaces",
+			"source": "test/op.js",
+			"input": "beep||boop",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": "||"
+					},
+					{
+						"words": [
+							"boop"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "or, space before",
+			"source": "test/op.js",
+			"input": "beep ||boop",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": "||"
+					},
+					{
+						"words": [
+							"boop"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "or, space after",
+			"source": "test/op.js",
+			"input": "beep|| boop",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": "||"
+					},
+					{
+						"words": [
+							"boop"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "or with extra spaces",
+			"source": "test/op.js",
+			"input": "beep  ||   boop",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": "||"
+					},
+					{
+						"words": [
+							"boop"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "and",
+			"source": "test/op.js",
+			"input": "beep && boop",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": "&&"
+					},
+					{
+						"words": [
+							"boop"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "and then or",
+			"source": "test/op.js",
+			"input": "beep && boop || byte",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": "&&"
+					},
+					{
+						"words": [
+							"boop"
+						],
+						"operator": "||"
+					},
+					{
+						"words": [
+							"byte"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "and then or without spaces",
+			"source": "test/op.js",
+			"input": "beep&&boop||byte",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": "&&"
+					},
+					{
+						"words": [
+							"boop"
+						],
+						"operator": "||"
+					},
+					{
+						"words": [
+							"byte"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "escaped and",
+			"source": "test/op.js",
+			"input": "beep\\&\\&boop||byte",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep&&boop"
+						],
+						"operator": "||"
+					},
+					{
+						"words": [
+							"byte"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "half-escaped and",
+			"source": "test/op.js",
+			"input": "beep\\&&boop||byte",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep&"
+						],
+						"operator": "&"
+					},
+					{
+						"words": [
+							"boop"
+						],
+						"operator": "||"
+					},
+					{
+						"words": [
+							"byte"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "case terminator, pipe-ampersand and append",
+			"source": "test/op.js",
+			"input": "beep;;boop|&byte>>blip",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": ";;"
+					},
+					{
+						"words": [
+							"boop"
+						],
+						"operator": "|&"
+					},
+					{
+						"words": [
+							"byte"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								null,
+								">>",
+								"blip"
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "stderr to stdout",
+			"source": "test/op.js",
+			"input": "beep 2>&1",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								2,
+								">&",
+								"1"
+							]
+						]
+					}
+				]
+			},
+			"divergence": "shell-quote returns 2 as a word"
+		},
+		{
+			"name": "process substitution",
+			"source": "test/op.js",
+			"input": "beep<(boop)",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "beep<(boop)",
+								"kinds": [
+									"bare",
+									"processSubstitution"
+								]
+							}
+						],
+						"operator": null
+					}
+				]
+			},
+			"divergence": "bash joins a process substitution to the word it touches (echo a<(true) prints a/dev/fd/63); the body is opaque"
+		},
+		{
+			"name": "heredoc operator before a parenthesis",
+			"source": "test/op.js",
+			"input": "beep<<(boop)",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								null,
+								"<<",
+								{
+									"raw": "",
+									"kinds": [
+										"opaque"
+									]
+								}
+							]
+						]
+					},
+					{
+						"words": [
+							"boop"
+						],
+						"operator": null,
+						"groupDepth": 1
+					}
+				],
+				"diagnostics": [
+					"MissingRedirectionTarget"
+				]
+			},
+			"divergence": "bash rejects this as a syntax error; here the heredoc has no delimiter and the parenthesis opens a group"
+		},
+		{
+			"name": "duplicate input to fd 3",
+			"source": "test/op.js",
+			"input": "beep 3<&1",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								3,
+								"<&",
+								"1"
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "duplicate input without fd",
+			"source": "test/op.js",
+			"input": "beep <&1",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								null,
+								"<&",
+								"1"
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "close stdin",
+			"source": "test/op.js",
+			"input": "beep <&-",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								null,
+								"<&",
+								"-"
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "here-string, quoted",
+			"source": "test/op.js",
+			"input": "cat <<< \"hello world\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"cat"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								null,
+								"<<<",
+								"hello world"
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "here-string, bare",
+			"source": "test/op.js",
+			"input": "cat <<< hello",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"cat"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								null,
+								"<<<",
+								"hello"
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "here-string without spaces",
+			"source": "test/op.js",
+			"input": "cat<<<hello",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"cat"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								null,
+								"<<<",
+								"hello"
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "here-string without spaces, quoted",
+			"source": "test/op.js",
+			"input": "cat<<<\"hello world\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"cat"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								null,
+								"<<<",
+								"hello world"
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "glob pattern",
+			"source": "test/op.js",
+			"input": "tap test/*.test.js",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"tap",
+							{
+								"raw": "test/*.test.js",
+								"kinds": [
+									"bare",
+									"glob",
+									"bare"
+								]
+							}
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "quoted glob pattern",
+			"source": "test/op.js",
+			"input": "tap \"test/*.test.js\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"tap",
+							"test/*.test.js"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "hash inside a word",
+			"source": "test/comment.js",
+			"input": "beep#boop",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep#boop"
+						],
+						"operator": null
+					}
+				]
+			},
+			"divergence": "shell-quote starts a comment; bash starts one only at a word start (printf %s beep#boop prints beep#boop)"
+		},
+		{
+			"name": "comment after a space",
+			"source": "test/comment.js",
+			"input": "beep #boop",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": null
+					}
+				],
+				"comments": [
+					"boop"
+				]
+			}
+		},
+		{
+			"name": "comment with a leading space",
+			"source": "test/comment.js",
+			"input": "beep # boop",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": null
+					}
+				],
+				"comments": [
+					" boop"
+				]
+			}
+		},
+		{
+			"name": "comment containing an operator",
+			"source": "test/comment.js",
+			"input": "beep # > boop",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": null
+					}
+				],
+				"comments": [
+					" > boop"
+				]
+			}
+		},
+		{
+			"name": "comment containing quotes",
+			"source": "test/comment.js",
+			"input": "beep # \"> boop\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": null
+					}
+				],
+				"comments": [
+					" \"> boop\""
+				]
+			}
+		},
+		{
+			"name": "quoted hash",
+			"source": "test/comment.js",
+			"input": "beep \"#\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep",
+							"#"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "comment containing quoted hashes",
+			"source": "test/comment.js",
+			"input": "beep #\"#\"#",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": null
+					}
+				],
+				"comments": [
+					"\"#\"#"
+				]
+			}
+		},
+		{
+			"name": "comment after a redirection",
+			"source": "test/comment.js",
+			"input": "beep > boop # > foo",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"beep"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								null,
+								">",
+								"boop"
+							]
+						]
+					}
+				],
+				"comments": [
+					" > foo"
+				]
+			}
+		},
+		{
+			"name": "leading assignment",
+			"source": "test/set.js",
+			"input": "ABC=444 x y z",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"x",
+							"y",
+							"z"
+						],
+						"operator": null,
+						"assignments": [
+							[
+								"ABC",
+								"444"
+							]
+						]
+					}
+				]
+			},
+			"divergence": "shell-quote returns ABC=444 as a word; here it is an assignment record"
+		},
+		{
+			"name": "assignment with escaped spaces",
+			"source": "test/set.js",
+			"input": "ABC=3\\ 4\\ 5 x y z",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"x",
+							"y",
+							"z"
+						],
+						"operator": null,
+						"assignments": [
+							[
+								"ABC",
+								"3 4 5"
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "assignment with a quoted value",
+			"source": "test/set.js",
+			"input": "X=\"7 8 9\" printx",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"printx"
+						],
+						"operator": null,
+						"assignments": [
+							[
+								"X",
+								"7 8 9"
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "assignment alone, then a command",
+			"source": "test/set.js",
+			"input": "X=\"7 8 9\"; printx",
+			"expect": {
+				"segments": [
+					{
+						"words": [],
+						"operator": ";",
+						"assignments": [
+							[
+								"X",
+								"7 8 9"
+							]
+						]
+					},
+					{
+						"words": [
+							"printx"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "variable between words",
+			"source": "test/env.js",
+			"input": "a $XYZ c",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a",
+							{
+								"raw": "$XYZ",
+								"kinds": [
+									"variable"
+								]
+							},
+							"c"
+						],
+						"operator": null
+					}
+				]
+			},
+			"divergence": "shell-quote expands from an environment; nothing is expanded here"
+		},
+		{
+			"name": "braced variable inside a word",
+			"source": "test/env.js",
+			"input": "a${XYZ}c",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "a${XYZ}c",
+								"kinds": [
+									"bare",
+									"variable",
+									"bare"
+								]
+							}
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "braced variable twice",
+			"source": "test/env.js",
+			"input": "a${XYZ}c $XYZ",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "a${XYZ}c",
+								"kinds": [
+									"bare",
+									"variable",
+									"bare"
+								]
+							},
+							{
+								"raw": "$XYZ",
+								"kinds": [
+									"variable"
+								]
+							}
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "variables inside double quotes",
+			"source": "test/env.js",
+			"input": "\"-$X-$Y-\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "\"-$X-$Y-\"",
+								"kinds": [
+									"doubleQuoted"
+								]
+							}
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "variables inside single quotes are literal",
+			"source": "test/env.js",
+			"input": "'-$X-$Y-'",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"-$X-$Y-"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "double-quoted variable joined to text",
+			"source": "test/env.js",
+			"input": "qrs\"$zzz\"wxy",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "qrs\"$zzz\"wxy",
+								"kinds": [
+									"bare",
+									"doubleQuoted",
+									"bare"
+								]
+							}
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "single-quoted variable joined to text",
+			"source": "test/env.js",
+			"input": "qrs'$zzz'wxy",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"qrs$zzzwxy"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "unset braced variable joined to text",
+			"source": "test/env.js",
+			"input": "qrs${zzz}wxy",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "qrs${zzz}wxy",
+								"kinds": [
+									"bare",
+									"variable",
+									"bare"
+								]
+							}
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "a lone dollar is literal",
+			"source": "test/env.js",
+			"input": "qrs$wxy $",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "qrs$wxy",
+								"kinds": [
+									"bare",
+									"variable"
+								]
+							},
+							"$"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "a dollar before a closing quote is literal",
+			"source": "test/env.js",
+			"input": "grep \"xy$\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"grep",
+							"xy$"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "variable joined to text",
+			"source": "test/env.js",
+			"input": "ab$x",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "ab$x",
+								"kinds": [
+									"bare",
+									"variable"
+								]
+							}
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "escaped dollar",
+			"source": "test/env.js",
+			"input": "ab\\$x",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"ab$x"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "braced variable mid-word",
+			"source": "test/env.js",
+			"input": "ab${x}def",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							{
+								"raw": "ab${x}def",
+								"kinds": [
+									"bare",
+									"variable",
+									"bare"
+								]
+							}
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "escaped braced variable",
+			"source": "test/env.js",
+			"input": "ab\\${x}def",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"ab${x}def"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "escaped braced variable inside double quotes",
+			"source": "test/env.js",
+			"input": "\"ab\\${x}def\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"ab${x}def"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "variable in a here-string",
+			"source": "test/env.js",
+			"input": "a <<< $x",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								null,
+								"<<<",
+								{
+									"raw": "$x",
+									"kinds": [
+										"variable"
+									]
+								}
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "braced variable in a here-string",
+			"source": "test/env.js",
+			"input": "a <<< ${x}",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								null,
+								"<<<",
+								{
+									"raw": "${x}",
+									"kinds": [
+										"variable"
+									]
+								}
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "quoted variable in a here-string",
+			"source": "test/env.js",
+			"input": "a <<< \"$x\"",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a"
+						],
+						"operator": null,
+						"redirections": [
+							[
+								null,
+								"<<<",
+								{
+									"raw": "\"$x\"",
+									"kinds": [
+										"doubleQuoted"
+									]
+								}
+							]
+						]
+					}
+				]
+			}
+		},
+		{
+			"name": "special parameter $*",
+			"source": "test/env.js",
+			"input": "a $* c",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a",
+							{
+								"raw": "$*",
+								"kinds": [
+									"variable"
+								]
+							},
+							"c"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "special parameter $@",
+			"source": "test/env.js",
+			"input": "a $@ c",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a",
+							{
+								"raw": "$@",
+								"kinds": [
+									"variable"
+								]
+							},
+							"c"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "special parameter $#",
+			"source": "test/env.js",
+			"input": "a $# c",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a",
+							{
+								"raw": "$#",
+								"kinds": [
+									"variable"
+								]
+							},
+							"c"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "special parameter $?",
+			"source": "test/env.js",
+			"input": "a $? c",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a",
+							{
+								"raw": "$?",
+								"kinds": [
+									"variable"
+								]
+							},
+							"c"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "special parameter $-",
+			"source": "test/env.js",
+			"input": "a $- c",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a",
+							{
+								"raw": "$-",
+								"kinds": [
+									"variable"
+								]
+							},
+							"c"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "special parameter $$",
+			"source": "test/env.js",
+			"input": "a $$ c",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a",
+							{
+								"raw": "$$",
+								"kinds": [
+									"variable"
+								]
+							},
+							"c"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "special parameter $!",
+			"source": "test/env.js",
+			"input": "a $! c",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a",
+							{
+								"raw": "$!",
+								"kinds": [
+									"variable"
+								]
+							},
+							"c"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "special parameter $0",
+			"source": "test/env.js",
+			"input": "a $0 c",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a",
+							{
+								"raw": "$0",
+								"kinds": [
+									"variable"
+								]
+							},
+							"c"
+						],
+						"operator": null
+					}
+				]
+			}
+		},
+		{
+			"name": "special parameter $_",
+			"source": "test/env.js",
+			"input": "a $_ c",
+			"expect": {
+				"segments": [
+					{
+						"words": [
+							"a",
+							{
+								"raw": "$_",
+								"kinds": [
+									"variable"
+								]
+							},
+							"c"
+						],
+						"operator": null
+					}
+				]
+			}
+		}
+	]
+}

@@ -545,6 +545,7 @@ describe("NpmRegistry refuses a workload credential", () => {
 		readonly [string, (r: NpmRegistryShape, target: RegistryTarget) => Effect.Effect<unknown, RegistryReadError>]
 	> = [
 		["version", (r, target) => r.version("pkg", "1.1.0", target)],
+		["manifest", (r, target) => r.manifest("pkg", "1.1.0", target)],
 		["versions", (r, target) => r.versions("pkg", target)],
 		["distTags", (r, target) => r.distTags("pkg", target)],
 		["publishTimes", (r, target) => r.publishTimes("pkg", target)],

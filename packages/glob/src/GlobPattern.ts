@@ -8,14 +8,18 @@
 // facade materializes them into the typed GlobPatternError.
 
 import { Effect, Result, Schema, SchemaTransformation } from "effect";
-import { EXPANSION_MAX, isGuardExceeded } from "./internal/limits.js";
+import { EXPANSION_MAX, MAX_GLOBSTAR_RECURSION_CEILING, isGuardExceeded } from "./internal/limits.js";
 import type { EngineOptions } from "./internal/minimatch.js";
 import { GLOBSTAR, Minimatch, escape as engineEscape, unescape as engineUnescape } from "./internal/minimatch.js";
 
 /**
  * Typed failure raised when a glob pattern trips a compile-time guard:
- * over-length, brace-expansion budget exhaustion, or nesting past the depth
- * cap. Malformed input is never a defect — this is the only failure the
+ * over-length, brace-expansion budget exhaustion, nesting past the depth
+ * cap, or a pattern portion whose regular expression the runtime rejects
+ * (`InvalidRegExp`: a POSIX class such as `[[:alpha:]]` turns on the regexp
+ * `u` flag, and under it the engine's escapes for `,`, `#`, a space or `-` in
+ * the same portion are syntax errors; `limit` and `actual` are both 0, since
+ * no cap was passed). Malformed input is never a defect — this is the only failure the
  * package's fallible boundaries ({@link GlobPattern.compile} and
  * `GlobSet.compile`) can produce.
  *
@@ -24,11 +28,11 @@ import { GLOBSTAR, Minimatch, escape as engineEscape, unescape as engineUnescape
 export class GlobPatternError extends Schema.TaggedError<GlobPatternError>()("GlobPatternError", {
 	/** The pattern source that was rejected. */
 	pattern: Schema.String,
-	/** Which guard tripped: pattern length, brace-expansion budget, or nesting depth. */
-	reason: Schema.Literals(["PatternTooLong", "ExpansionBudgetExceeded", "NestingDepthExceeded"]),
-	/** The cap the pattern exceeded. */
+	/** Which guard tripped: pattern length, brace-expansion budget, nesting depth, or an unbuildable regexp. */
+	reason: Schema.Literals(["PatternTooLong", "ExpansionBudgetExceeded", "NestingDepthExceeded", "InvalidRegExp"]),
+	/** The cap the pattern exceeded (0 for `InvalidRegExp`). */
 	limit: Schema.Number,
-	/** The measured value that exceeded `limit`. */
+	/** The measured value that exceeded `limit` (0 for `InvalidRegExp`). */
 	actual: Schema.Number,
 }) {
 	override get message(): string {
@@ -47,6 +51,9 @@ export class GlobPatternError extends Schema.TaggedError<GlobPatternError>()("Gl
  * ambient process state. `braceExpandMax` is bounded above by the stock
  * budget (100,000) — caps tighten, never raise — which is what keeps a
  * GlobPattern value always defaults-compilable (see {@link GlobPattern}).
+ * `maxGlobstarRecursion` is bounded above at 1,000, a measured stack depth
+ * with a margin, so no accepted value makes matching overflow on a default
+ * stack.
  *
  * @public
  */
@@ -116,9 +123,31 @@ export class GlobPatternOptions extends Schema.Class<GlobPatternOptions>("GlobPa
 	braceExpandMax: Schema.optionalKey(
 		Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: EXPANSION_MAX })),
 	),
-	/** Maximum number of non-adjacent `**` segments the matcher recursively walks down. */
-	maxGlobstarRecursion: Schema.optionalKey(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))),
-	/** Maximum depth to traverse for nested extglobs like `*(a|b|c)`. */
+	/**
+	 * Maximum number of non-adjacent `**` segments the matcher recursively walks
+	 * down, from `1` to `1000`; the default is `200`. A walk past the cap is a
+	 * documented false negative, never an error.
+	 *
+	 * @remarks
+	 * The walk recurses once per `**` section, so this cap is a stack depth. On
+	 * Node 26's default stack the walk first overflowed at about 3,250 sections
+	 * with nothing else on the stack, at about 2,100 with 5,000 frames of the
+	 * caller's own recursion beneath it, and at about 1,600 under
+	 * `--stack-size=500`, half the default. A walk at the ceiling of 1,000 uses
+	 * under a third of the default stack and about 62% of the halved one, so it
+	 * leaves a margin in each of those cases. A caller running on a smaller
+	 * stack still gets an answer, not a throw: {@link GlobPattern.matches} answers
+	 * a stack overflow the way the cap does.
+	 */
+	maxGlobstarRecursion: Schema.optionalKey(
+		Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: MAX_GLOBSTAR_RECURSION_CEILING })),
+	),
+	/**
+	 * Accepted for compatibility, and validated as a positive integer, but it
+	 * limits nothing: every extglob is matched by minimatch 11's own matcher,
+	 * which has no such cap. Nesting deeper than 256 levels fails at compile
+	 * with `NestingDepthExceeded` whatever this is set to.
+	 */
 	maxExtglobRecursion: Schema.optionalKey(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))),
 }) {}
 
@@ -243,7 +272,16 @@ const hasUnescapedBrace = (segment: string): boolean => {
 // engine itself decides: one all-string part means no magic.
 const literalSegment = (segment: string, options: EngineOptions): string | undefined => {
 	if (segment === "") return "";
-	const set = new Minimatch(segment, { ...options, nobrace: true, nonegate: true, nocomment: true, nocase: false }).set;
+	let set: Minimatch["set"];
+	try {
+		set = new Minimatch(segment, { ...options, nobrace: true, nonegate: true, nocomment: true, nocase: false }).set;
+	} catch (e) {
+		// A segment compiled on its own can trip a guard the whole pattern did
+		// not (a `..` drops it there): a guard trips only on magic, so it is not
+		// a literal. A getter never throws.
+		if (isGuardExceeded(e)) return undefined;
+		throw e;
+	}
 	const only = set.length === 1 && set[0]?.length === 1 ? set[0][0] : undefined;
 	return typeof only === "string" ? only : undefined;
 };
@@ -326,9 +364,10 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 		const engineOptions = toEngineOptions(options);
 		return Result.try({
 			try: () => {
-				// Defaults first (the value invariant), then the effective engine.
-				new Minimatch(source, {});
-				const engine = new Minimatch(source, engineOptions);
+				// Defaults first (the value invariant), then the effective engine;
+				// with no options set the defaults engine is the effective one.
+				const defaults = new Minimatch(source, {});
+				const engine = Object.keys(engineOptions).length === 0 ? defaults : new Minimatch(source, engineOptions);
 				const pattern = new GlobPattern({ source });
 				pattern.#engine = engine;
 				pattern.#engineOptions = engineOptions;
@@ -347,7 +386,7 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	/**
 	 * Compile a pattern under the given options — the package's fallible
 	 * boundary, and the form Effect call sites should reach for. Guard trips
-	 * (over-length, expansion budget, nesting depth) fail typed with
+	 * (over-length, expansion budget, nesting depth, an unbuildable regexp) fail typed with
 	 * {@link GlobPatternError}; invalid options never reach here (they throw at
 	 * `GlobPatternOptions.make`, a wiring defect).
 	 *
@@ -362,11 +401,45 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	/**
 	 * Whether `candidate` matches this pattern. Total: never throws. Time is
 	 * polynomial, bounded by the recursion cap, so a hostile pattern against a
-	 * long candidate can still be slow. The globstar backtracking cap is a documented false negative
-	 * (upstream's deliberate correctness-for-security trade), never an error.
+	 * long candidate can still be slow. The globstar backtracking cap is a
+	 * documented false negative (upstream's deliberate correctness-for-security
+	 * trade), never an error.
+	 *
+	 * @remarks
+	 * A stack overflow inside the matcher, possible only when a raised
+	 * `maxGlobstarRecursion` meets a caller already deep in its own stack or a
+	 * runtime with a small one, is answered the way the cap answers: as though
+	 * no alternative matched. That is `false` for an ordinary pattern and `true`
+	 * for a negated one, which is also what a negated pattern answers when the
+	 * cap cuts its walk short. Only a `RangeError` is absorbed; anything else
+	 * the engine throws is a defect and propagates.
+	 *
+	 * Hostile input: matching stays polynomial, and this package does not bound
+	 * its total work. A literal segment between two globstars, matched against
+	 * a path of 50,000 portions, takes seconds; add a third segment of
+	 * `*{0..999}*` after another globstar and a 14 KB path takes tens of
+	 * seconds, because brace expansion multiplies the alternatives (the package
+	 * README spells both patterns out). Matching is synchronous and blocks the
+	 * calling thread until it returns, so an in-process timeout cannot cut it
+	 * short: wrapped in `Effect.sync` and raced by `Effect.timeout`, a slow match
+	 * still runs to completion before the timer can fire. A caller matching a
+	 * pattern or a path taken from untrusted input bounds the input before
+	 * matching: limit the pattern's length and where it may come from, limit the
+	 * candidate's length or portion count, and lower `braceExpandMax` in
+	 * {@link GlobPatternOptions}, which turns the second case into a compile-time
+	 * `ExpansionBudgetExceeded` failure. A deadline, where one is needed, is
+	 * enforced off the calling thread: a worker that is terminated when it
+	 * expires, a subprocess, or the host's own request deadline.
 	 */
 	matches(candidate: string): boolean {
-		return this.#engineOf().match(candidate);
+		const engine = this.#engineOf();
+		try {
+			return engine.match(candidate);
+		} catch (e) {
+			if (!(e instanceof RangeError)) throw e;
+			// The cap's own answer when no alternative is allowed to match.
+			return engine.options.flipNegate ? false : engine.negate;
+		}
 	}
 
 	/** Whether the pattern contains any magic (wildcards, classes, extglobs). */

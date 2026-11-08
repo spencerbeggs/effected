@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Lockfile parsing for [Effect](https://effect.website) v4: bun (`bun.lock`), npm (`package-lock.json`), pnpm (`pnpm-lock.yaml`) and yarn Berry (`yarn.lock`) all normalized into one `Lockfile` schema model, plus pure integrity checking of that model against workspace manifests. Four formats, one model, no IO and no external runtime dependencies.
+Lockfile parsing for [Effect](https://effect.website) v4: bun (`bun.lock`), npm (`package-lock.json`), pnpm (`pnpm-lock.yaml`) and yarn Berry (`yarn.lock`) all normalized into one `Lockfile` schema model, plus pure integrity checking of that model against workspace manifests and a pure before/after comparison of two lockfiles. Four formats, one model, no IO and no external runtime dependencies.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
 > Effect v4 (`effect` `~4.1.0`) and still in `0.x` development. Stable Effect
@@ -148,6 +148,52 @@ const react = reactId === undefined ? Option.none() : lockfile.packageByInstance
 
 `unresolvedEdges` names the edges the lockfile **records** but the model could not name. A name listed there is not absent — it is unanswered, so a missing `resolved` key must not be read as "nothing is there". A gate that cares about completeness checks that array before trusting an empty result.
 
+## Comparing two lockfiles
+
+`LockfileDiff.compare(before, after)` reports what moved between two parsed lockfiles — what an update tool reports after an install. It is total and pure, like `LockfileIntegrity.compare`: no Effect, no error channel, no IO.
+
+```ts
+import { Lockfile, LockfileDiff } from "@effected/lockfiles";
+import { Effect } from "effect";
+
+declare const beforeText: string; // the lockfile before `pnpm update`
+declare const afterText: string; // and after
+
+const program = Effect.gen(function* () {
+  const before = yield* Lockfile.parse(beforeText, { format: "pnpm" });
+  const after = yield* Lockfile.parse(afterText, { format: "pnpm" });
+  const diff = LockfileDiff.compare(before, after);
+
+  for (const change of diff.catalogs) {
+    // A side that does not exist, or a version that does not resolve, is absent.
+    const from = change.version.before ?? "-";
+    const to = change.version.after ?? "-";
+    console.log(`${change.catalog}/${change.name} ${change.kind}: ${from} -> ${to}`);
+  }
+  return diff.importers.filter((change) => change.specifier.after?._tag !== "catalog");
+});
+// With a default catalog entry `lodash: ^4.17.21` resolved at 4.17.23 before
+// and 4.17.24 after, and a new `zod` entry, this prints:
+// default/lodash changed: 4.17.23 -> 4.17.24
+// default/zod added: - -> 3.25.76
+```
+
+- `catalogs` holds one `CatalogChange` per catalog entry added, removed or changed: `catalog` (`"default"` for the default catalog in every format), `name`, `specifier` and `version` as `{ before, after }`, `kind`, and `consumers` — the importers that reference the entry through `catalog:`, read from the `before` lockfile for a removed entry.
+- `importers` holds one `ImporterChange` per importer dependency added, removed or changed, identified by `importer` path, `name` and `depType` together. `specifier` sides are classified specifiers, as on `ImporterDependency`, so `_tag` tells a `catalog:` reference apart.
+- A side that does not exist is absent, and so is a version that cannot be resolved. A record is `changed` when its specifier differs, or when its version resolves on both sides and differs; a version resolvable on one side only is not a change by itself.
+- `hasChanges` is `false` exactly when both arrays are empty.
+
+Where a resolved version lives differs by format, and the comparison normalizes it so the answer is the same for every format:
+
+| Format | Catalog entry version | Importer dependency version |
+| ------ | --------------------- | --------------------------- |
+| pnpm | recorded on the entry | recorded on the importer dependency (a workspace link reads `link:<path>`) |
+| bun | the one version the entry's consumers resolved to (consumers that disagree give no version); with no consumer, the package's version when the lockfile holds exactly one | read through the importer's resolved edge to its package entry |
+| npm | — (npm has no catalogs) | read through the importer's resolved edge to its package entry |
+| yarn | — | — (yarn records no importers, so two yarn lockfiles compare empty) |
+
+A catalog bump shows in `catalogs`, and also in `importers` for each consumer whose resolved version moved; filter on `specifier.after?._tag !== "catalog"` to keep the two apart, as above.
+
 ## Features
 
 - `Lockfile.parse(content, { format })` — the package's only fallible boundary; fails with `LockfileParseError` or `LockfileFramingError`.
@@ -155,6 +201,7 @@ const react = reactId === undefined ? Option.none() : lockfile.packageByInstance
 - `Lockfile#packagesNamed(name)`, `Lockfile#packageByInstanceId(id)` (`Option`-answering, over a lazily built index) and `Lockfile#workspacePackages` — total lookups over the model.
 - `LockfileFormat` with `filenameFor` / `fromFilename` — the format literal and its mapping to lockfile filenames.
 - `LockfileIntegrity.compare(lockfile, manifests)` — total, pure integrity checking with no error channel; the report carries `valid`, `missingWorkspaces`, `extraWorkspaces` and `unsatisfiedConstraints`. Constraint checking is best-effort by design: `workspace:` / `link:` / `file:` specifiers and rows whose range does not parse as SemVer are skipped.
+- `LockfileDiff.compare(before, after)` — total, pure before/after comparison: catalog entries (`CatalogChange`) and importer dependencies (`ImporterChange`) added, removed or changed, with resolved versions normalized across formats. See [Comparing two lockfiles](#comparing-two-lockfiles).
 - `WorkspaceManifest` — the manifest input shape for integrity checking: a package name plus four optional dependency records. Deliberately a plain value rather than a strict manifest model, so consumers can derive it from anything.
 - `ResolvedPackage` — one package *instance*: name, version, optional integrity hash, workspace flag and relative path, dependency map, the peer declarations (`peerDependencies`, `peerDependenciesMeta`), the opaque `instanceId`, the `resolved` name-to-instance map and the `unresolvedEdges` the model could not name.
 - `isUnsupportedLockfileVersion` and the `UnsupportedLockfileVersion` type — the predicate that narrows a `LockfileParseError.cause` to a version-gate rejection, so "too old" and "malformed" are told apart on a tag rather than on prose.

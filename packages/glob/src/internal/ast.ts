@@ -2,7 +2,7 @@
 // Copyright: Isaac Z. Schlueter and Contributors
 // License: BlueOak-1.0.0 (https://blueoakcouncil.org/license/1.0.0)
 //
-// Port notes, five changes from upstream:
+// Port notes:
 // 1. #parseAST gains a STRUCTURAL depth backstop at MAX_NESTING_DEPTH,
 //    independent of maxExtglobRecursion. Upstream increments its extDepth
 //    counter only for non-coalescible nestings (depthAdd = 0 on adoption),
@@ -21,12 +21,37 @@
 //    extglobs), guarded at MAX_NESTING_DEPTH.
 // 5. maxExtglobRecursion is validated by assertCap at fromGlob — a NaN or
 //    non-integer cap is a wiring bug and dies as a TypeError defect.
+// 6. toMMPattern catches a SyntaxError from new RegExp (and only that) and
+//    throws GuardExceeded("InvalidRegExp", 0, 0): upstream 10 let it escape.
+// 7. Only a portion that is exactly an empty extglob (`?()`, `*()`, `+()`,
+//    `@()`) is read with extglobs off, so `*()` is a `*` and a literal `()`,
+//    from minimatch 11; 10 made such a portion literal text, and `+(|)` and
+//    the like too.
+// 8. An extglob opener that is never closed is literal text, and what follows
+//    it reads as at the enclosing level, from minimatch 11; 10 kept the rest
+//    as one string, so the `*` of an unclosed `*(` stayed a wildcard.
+// 9. Every regexp the walk needs compiles with the pattern (PortionPlan), so
+//    matching builds none; a portion with an extglob builds no regexp of its
+//    own at all, since only the walk answers it. #parseGlob escapes an escaped
+//    character only if it is regexp syntax (11's reEscape set).
+// 10. #parseAST reads a class whole, as parseClass does, so a [ that never
+//    closes is a literal and extglobs after it still parse (minimatch 11); 10
+//    tracked an open class to the end of the portion, which turned off
+//    extglob parsing after an unclosed [.
+// Beside them, matchesPortion walks a portion under minimatch 11's matcher
+// rules (from @isaacs/nonrecursive-glob-match's Sim, which 11 matches with)
+// where the regexp would answer differently: a `.` or `..` path portion, a
+// dotfile without dot:true, and a portion with a `!(...)`, which 11 negates
+// exactly (the regexp negates it together with the rest of the portion). At a
+// restricted index no `*`, `?` or class takes the character, and a `*` reached
+// there ends that way of matching.
 // The shared option types come from the extracted types leaf (upstream let
 // ast.ts and index.ts import each other circularly; noImportCycles forbids
 // it here). The debug/inspect id plumbing is kept for diffability.
 
 import { parseClass } from "./braceExpressions.js";
 import { GuardExceeded, MAX_EXTGLOB_RECURSION, MAX_NESTING_DEPTH, assertCap } from "./limits.js";
+import { Matcher } from "./matcher.js";
 import type { EngineOptions, MMRegExp } from "./types.js";
 import { unescape as unescapePattern } from "./unescape.js";
 
@@ -158,7 +183,10 @@ const startNoDot = "(?!\\.)";
 const addPatternStart = new Set(["[", "."]);
 // cases where traversal is A-OK, no dot prevention needed
 const justDots = new Set(["..", "."]);
-const reSpecials = new Set("().*{}+?[]^$\\!");
+// An escaped character is written escaped only if it is regexp syntax: the
+// set of minimatch 11's reEscape. 10 missed `|`, so `\|` became an
+// alternation, and escaped `!`, which the u flag rejects.
+const reSpecials = new Set("\\^$.*+?()[]{}|/");
 const regExpEscape = (s: string): string => s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
 
 // any single thing other than /
@@ -173,6 +201,51 @@ const starNoEmpty = `${qmark}+?`;
 const guardDepth = (depth: number): void => {
 	if (depth > MAX_NESTING_DEPTH) {
 		throw new GuardExceeded("NestingDepthExceeded", MAX_NESTING_DEPTH, depth);
+	}
+};
+
+// The characters a class starting at `at` takes, or 1 when the `[` never
+// closes and is a literal.
+const classLength = (str: string, at: number, deadEnds: Set<number>): number => {
+	const [, , consumed] = parseClass(str, at, deadEnds);
+	return consumed || 1;
+};
+
+// A portion that is exactly an empty extglob, read with extglobs off.
+const isExactEmptyExt = (glob: string): boolean => /^[?*+@]\(\)$/.test(glob);
+
+/**
+ * What the matcher needs of one compiled magic portion, built when the
+ * pattern compiles: minimatch 11.0.5's own portion matcher (port note 9),
+ * every regexp in it already built. It answers every match of the portion.
+ */
+export interface PortionPlan {
+	readonly matcher: Matcher;
+}
+
+// The plan of each compiled portion regexp, set by toMMPattern.
+const plans = new WeakMap<object, PortionPlan>();
+export const portionPlan = (p: object): PortionPlan | undefined => plans.get(p);
+
+// A regexp the runtime rejects fails typed (port note 6); only a SyntaxError.
+// `new RegExp` checks the syntax only: V8 builds the bytecode on the first
+// exec, and a source too large for it throws there, and it builds a second
+// one for a two-byte subject, which can be too large where the one-byte one
+// was not. So the regexp runs once on each kind of subject here, inside the
+// catch, and a match is never the first exec of either. The two-byte run is
+// the live one: a search of 3,780 sources found none that fails only on a
+// one-byte subject, so `test("")` has no known killing shape. Both stay,
+// since nothing proves V8 never builds a one-byte program larger than the
+// two-byte one.
+const compileOrFail = (source: string, flags: string): RegExp => {
+	try {
+		const regexp = new RegExp(source, flags);
+		regexp.test("");
+		regexp.test("\u0100");
+		return regexp;
+	} catch (e) {
+		if (e instanceof SyntaxError) throw new GuardExceeded("InvalidRegExp", 0, 0);
+		throw e;
 	}
 };
 
@@ -192,6 +265,8 @@ export class AST {
 	#filledNegs = false;
 	#options: EngineOptions;
 	#toString: string | undefined;
+	// the portion's glob as written, kept on the root by fromGlob
+	#source = "";
 	// set to true if it's an extglob with no children
 	// (which really means one child of '')
 	#emptyExt = false;
@@ -325,7 +400,9 @@ export class AST {
 		if (this.#root === this) return true;
 		if (this.#parent?.type === "!") return true;
 		if (!this.#parent?.isEnd()) return false;
-		if (!this.type) return this.#parent?.isEnd();
+		// the parent is an end (just asked); asking again is 2^depth on a chain
+		// of null-typed nodes, which unclosed openers make (port note 8)
+		if (!this.type) return true;
 		// if not root, it'll always have a parent
 		const pl = this.#parent ? this.#parent.#parts.length : 0;
 		return this.#parentIndex === pl - 1;
@@ -353,15 +430,14 @@ export class AST {
 		opt: EngineOptions,
 		extDepth: number,
 		structDepth: number,
+		// one parseClass memo for this string, across the whole parse
+		deadEnds: Set<number>,
 	): number {
 		// Structural backstop (port note 1): actual recursion depth, counted on
 		// EVERY descent, unlike extDepth which adoption resets.
 		guardDepth(structDepth);
 		const maxDepth = opt.maxExtglobRecursion ?? MAX_EXTGLOB_RECURSION;
 		let escaping = false;
-		let inBrace = false;
-		let braceStart = -1;
-		let braceNeg = false;
 		if (ast.type === null) {
 			// outside of a extglob, append until we find a start
 			let i = pos;
@@ -376,22 +452,12 @@ export class AST {
 					continue;
 				}
 
-				if (inBrace) {
-					if (i === braceStart + 1) {
-						if (c === "^" || c === "!") {
-							braceNeg = true;
-						}
-					} else if (c === "]" && !(i === braceStart + 2 && braceNeg)) {
-						inBrace = false;
-					}
-					acc += c;
-					continue;
-				}
+				// Port note 10: a class is read whole, as parseClass reads it; a [
+				// that never closes is a literal and parsing goes on (minimatch 11).
 				if (c === "[") {
-					inBrace = true;
-					braceStart = i;
-					braceNeg = false;
-					acc += c;
+					const consumed = classLength(str, i - 1, deadEnds);
+					acc += str.slice(i - 1, i - 1 + consumed);
+					i += consumed - 1;
 					continue;
 				}
 
@@ -402,7 +468,7 @@ export class AST {
 					ast.push(acc);
 					acc = "";
 					const ext = new AST(c, ast);
-					i = AST.#parseAST(str, ext, i, opt, extDepth + 1, structDepth + 1);
+					i = AST.#parseAST(str, ext, i, opt, extDepth + 1, structDepth + 1, deadEnds);
 					ast.push(ext);
 					continue;
 				}
@@ -428,22 +494,10 @@ export class AST {
 				continue;
 			}
 
-			if (inBrace) {
-				if (i === braceStart + 1) {
-					if (c === "^" || c === "!") {
-						braceNeg = true;
-					}
-				} else if (c === "]" && !(i === braceStart + 2 && braceNeg)) {
-					inBrace = false;
-				}
-				acc += c;
-				continue;
-			}
 			if (c === "[") {
-				inBrace = true;
-				braceStart = i;
-				braceNeg = false;
-				acc += c;
+				const consumed = classLength(str, i - 1, deadEnds);
+				acc += str.slice(i - 1, i - 1 + consumed);
+				i += consumed - 1;
 				continue;
 			}
 
@@ -455,7 +509,7 @@ export class AST {
 				acc = "";
 				const ext = new AST(c, part);
 				part.push(ext);
-				i = AST.#parseAST(str, ext, i, opt, extDepth + depthAdd, structDepth + 1);
+				i = AST.#parseAST(str, ext, i, opt, extDepth + depthAdd, structDepth + 1, deadEnds);
 				continue;
 			}
 			if (c === "|") {
@@ -478,11 +532,33 @@ export class AST {
 		}
 
 		// unfinished extglob
-		// if we got here, it was a malformed extglob! not an extglob, but
-		// maybe something else in there.
+		// Port note 8, minimatch 11: an opener that is never closed is literal
+		// text (`*(` is a `*` and a `(`), and what follows it reads as it would
+		// at the enclosing level: the alternatives already parsed (closed
+		// extglobs in them stay extglobs) joined by literal `|`. Reusing them,
+		// rather than parsing the rest again, keeps nested unclosed openers
+		// linear. 10 kept the rest as one string, whose `*` and `?` stayed wild.
+		// As 11's literal() does, the portion counts as magic for a `*` or `?`
+		// opener, or when a `)` follows the opener anywhere.
+		part.push(acc);
+		parts.push(part);
+		const type = ast.type;
 		ast.type = null;
-		ast.#hasMagic = undefined;
-		ast.#parts = [str.substring(pos - 1)];
+		ast.#hasMagic = type === "*" || type === "?" || str.includes(")", pos + 1) || undefined;
+		ast.#parts = [];
+		ast.push(type === "*" || type === "?" ? `\\${type}(` : `${type}(`);
+		parts.forEach((alt, k) => {
+			if (k > 0) ast.push("|");
+			for (const c of alt.#parts) {
+				if (typeof c === "string") {
+					ast.push(c);
+				} else {
+					c.#parent = ast;
+					c.#parentIndex = ast.#parts.length;
+					ast.#parts.push(c);
+				}
+			}
+		});
 		return i;
 	}
 
@@ -584,12 +660,34 @@ export class AST {
 		this.#emptyExt = false;
 	}
 
+	// Whether this part holds an extglob anywhere.
+	hasExtglob(): boolean {
+		return this.type !== null || this.#parts.some((p) => typeof p !== "string" && p.hasExtglob());
+	}
+
+	// Port note 9: minimatch 11's matcher for this portion, built now; every
+	// regexp in it goes through compileOrFail.
+	#matcherPlan(): PortionPlan {
+		const options = this.#options;
+		const matcher = new Matcher(
+			this.#source,
+			{
+				...(options.nocase !== undefined && { nocase: options.nocase }),
+				...(options.dot !== undefined && { dot: options.dot }),
+				...(options.noext !== undefined && { noext: options.noext }),
+			},
+			compileOrFail,
+		);
+		return { matcher };
+	}
+
 	static fromGlob(pattern: string, options: EngineOptions = {}): AST {
 		if (options.maxExtglobRecursion !== undefined) {
 			assertCap("maxExtglobRecursion", options.maxExtglobRecursion);
 		}
 		const ast = new AST(null, undefined, options);
-		AST.#parseAST(pattern, ast, 0, options, 0, 0);
+		ast.#source = pattern;
+		AST.#parseAST(pattern, ast, 0, options, 0, 0, new Set());
 		return ast;
 	}
 
@@ -599,6 +697,21 @@ export class AST {
 		// should only be called on root
 		if (this !== this.#root) return this.#root.toMMPattern();
 		const glob = this.toString();
+		const nocase = !!this.#options.nocase;
+		// Port note 9: a portion with an extglob is answered only by minimatch
+		// 11's own matcher (matcher.ts), so it builds no regexp. 11 negates
+		// exactly the sub-pattern, which the regexp can not; filling a regexp's
+		// negations copied the rest of the portion into each one, doubling per
+		// negation; and 10's regexp for nested quantified extglobs
+		// (`*(*(a|b)*)`) backtracks exponentially. A portion that is exactly an
+		// empty extglob keeps its own rule (port note 7): `+()` and `@()` stay
+		// text.
+		if (this.hasExtglob() && !isExactEmptyExt(this.#source)) {
+			const plan = this.#matcherPlan();
+			const never = Object.assign(/(?!)/, { _src: "(?!)", _glob: glob });
+			plans.set(never, plan);
+			return never;
+		}
 		const [re, body, hasMagic, uflag] = this.toRegExpSource();
 		// if we're in nocase mode, and not nocaseMagicOnly, then we do
 		// still need a regular expression if we have to case-insensitively
@@ -611,11 +724,17 @@ export class AST {
 			return body;
 		}
 
-		const flags = (this.#options.nocase ? "i" : "") + (uflag ? "u" : "");
-		return Object.assign(new RegExp(`^${re}$`, flags), {
+		const flags = (nocase ? "i" : "") + (uflag ? "u" : "");
+		// Port note 6: a source the runtime rejects (under the u flag a POSIX
+		// class turns on, the escapes written for `,`, `#`, a space or `-`)
+		// fails typed.
+		const regexp = Object.assign(compileOrFail(`^${re}$`, flags), {
 			_src: re,
 			_glob: glob,
 		});
+		// 11's matcher answers this portion; the regexp only validated it.
+		plans.set(regexp, this.#matcherPlan());
+		return regexp;
 	}
 
 	get options(): EngineOptions {
@@ -635,7 +754,10 @@ export class AST {
 			this.#fillNegs();
 		}
 		if (!isExtglobAST(this)) {
-			const noEmpty = this.isStart() && this.isEnd() && !this.#parts.some((s) => typeof s !== "string");
+			// A lone `*` portion does not match the empty string; only when that
+			// `*` is the whole portion, not one string among several (an unclosed
+			// opener's literal text and what follows it, port note 8).
+			const noEmpty = this.isStart() && this.isEnd() && this.#parts.length === 1 && typeof this.#parts[0] === "string";
 			const src = this.#parts
 				.map((p) => {
 					const [re, _, hasMagic, uflag] =
@@ -694,15 +816,21 @@ export class AST {
 		const start = this.type === "!" ? "(?:(?!(?:" : "(?:";
 		let body = (this as AST & { type: ExtglobType }).#partsToRegExp(dot, depth);
 
-		if (this.isStart() && this.isEnd() && !body && this.type !== "!") {
-			// invalid extglob, has to at least be *something* present, if it's
-			// the entire path portion.
+		// Port note 7, minimatch 11: a portion that is exactly an empty extglob is
+		// read with extglobs off. `+()` and `@()` are literal strings; `?()` and
+		// `*()` are a `?` or `*` and then a literal `()`. Any other extglob with
+		// an empty body (`+(|)`, `*(*())`) keeps its meaning: it matches only the
+		// empty string, which no path portion is.
+		if (this.isStart() && this.isEnd() && !body && this.type !== "!" && isExactEmptyExt(this.#root.#source)) {
 			const s = this.toString();
 			const me = this as AST;
 			me.#parts = [s];
+			const magic = me.type === "?" || me.type === "*";
 			me.type = null;
-			me.#hasMagic = undefined;
-			return [s, unescapePattern(this.toString()), false, false];
+			me.#hasMagic = magic || undefined;
+			if (!magic) return [s, unescapePattern(s), false, false];
+			const [re, , , uflag] = AST.#parseGlob(s, true);
+			return [re, unescapePattern(s), true, uflag];
 		}
 
 		let bodyDotAllowed =
@@ -803,6 +931,8 @@ export class AST {
 		let uflag = false;
 		// multiple stars that aren't globstars coalesce into one *
 		let inStar = false;
+		// one parseClass memo for this glob
+		const deadEnds = new Set<number>();
 		for (let i = 0; i < glob.length; i++) {
 			const c = glob.charAt(i);
 			if (escaping) {
@@ -827,7 +957,7 @@ export class AST {
 				continue;
 			}
 			if (c === "[") {
-				const [src, needUflag, consumed, magic] = parseClass(glob, i);
+				const [src, needUflag, consumed, magic] = parseClass(glob, i, deadEnds);
 				if (consumed) {
 					re += src;
 					uflag = uflag || needUflag;
