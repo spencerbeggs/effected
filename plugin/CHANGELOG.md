@@ -1,5 +1,47 @@
 # @effected/ai-plugins
 
+## 0.49.0
+
+### Features
+
+- The `effected-renovate` upgrade ledger gains migration entries for this release's breaking and behavioural changes in `@effected/walker`, `@effected/markdown`, `@effected/glob` and `@effected/npm`
+- The ledger also gains opt-in adoption entries for the new surfaces in `glob`, `walker`, `markdown`, `npm`, `workspaces`, `lockfiles`, `crypto`, `webhooks`, `github` and `files`, each offered to the user and never applied unasked
+- The `effected-packages` skill and construct index now route to those new surfaces, including `Wildcard`, `PosixPath`, `@effected/markdown/stringify`, `Hash.digest`, `LockfileDiff`, `PnpmSettings` and `GitHubUserAuth`
+
+#### Upgrade ledger
+
+- Five new `effected-renovate` entries: the `@effected/glob` compile budget and kept-whole numeric ranges, the `@effected/lockfiles` glob peer and npm workspace reading, the `@effected/crypto` `SigV4EncodingError`, the `@effected/npm` key-variable rule and exported npmrc parser, and walks under `matchBase` reaching every match. Seven existing entries now describe the shapes this release ships, including `@effected/changesets` planning fixed, linked and pre releases and `effected action init`.
+
+#### Skills and references
+
+- `effect-v4-idioms` says core `HttpClient` already aborts its fetch on interruption, and when to use the `Effect.tryPromise` signal instead
+- The action skills, the action engineer agent and the GitHub Action canon name `effected action init` and the `effected.toml` `[action]` tables
+- Package references and the construct index cover every new export, with intent keywords for each value export [#1295][#1295]
+
+### Bug Fixes
+
+- `effected-renovate` now verifies the resolved Effect version with `pnpm why effect --depth 0`. The previous `node -p` check failed with `Cannot find module` after a good install, from a root that does not declare `effect`
+- A new ledger entry corrects the schemastore migration: declare `@effected/plugin` in the manifest of the package that holds `schemastore.config.*`, not only at the root, or Biome's `noUndeclaredDependencies` reports it. Both traps are also listed in the skill's traps reference [#1250][#1250]
+
+### Documentation
+
+- The plugin's skills teach the single-target `effected package build` and `effected action build`, and the upgrade ledger gains three entries for moving a consumer off `@savvy-web/bundler` [#1249][#1249]
+
+### Maintenance
+
+- Closes the `effected-renovate` upgrade-ledger round released in 0.48.0, so the shipped ledger starts empty from that release
+- A repository older than the new baseline still gets every entry it crossed, fetched from the 0.48.0 release tag [#1249][#1249]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1249]: https://github.com/spencerbeggs/effected/pull/1249
+
+[#1250]: https://github.com/spencerbeggs/effected/pull/1250
+
+[#1295]: https://github.com/spencerbeggs/effected/pull/1295
+
 ## 0.48.0
 
 ### Features

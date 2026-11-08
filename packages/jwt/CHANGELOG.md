@@ -1,5 +1,13 @@
 # @effected/jwt
 
+## 0.9.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/crypto | dependency | updated | 0.5.0 | 0.6.0 |
+
 ## 0.9.0
 
 ### Dependencies

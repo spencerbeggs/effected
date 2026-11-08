@@ -1,6 +1,6 @@
 {
 	"name": "@effected/s3",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "A minimal S3-compatible object client on Effect v4: conditional put, get, head, delete and strict ListObjectsV2 over SigV4, safe for Workers.",
 	"keywords": ["s3", "r2", "sigv4", "object-storage", "workers", "effect", "effected"],

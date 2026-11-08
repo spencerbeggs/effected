@@ -1,5 +1,36 @@
 # @effected/plugin
 
+## 0.3.0
+
+### Breaking Changes
+
+- `typescript` (`7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`) and `@types/node` are now peer dependencies. Install them alongside the plugin, or expect a peer warning
+
+### Features
+
+- `effected package build` now ships with the tool, replacing `@savvy-web/bundler`, and `effected action build` replaces `@savvy-web/github-action-builder`. The `effected-mcp` server gains the matching `package_build` and `action_build` tools
+- Adds the tsconfig presets `@effected/plugin/tsconfig/ecma.json` and `@effected/plugin/tsconfig/root.json`
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli | dependency | updated | 0.27.0 | 0.28.0 |
+| @effected/mcp | dependency | updated | 0.14.0 | 0.15.0 |
+| @effected/schemastore | dependency | updated | 0.30.0 | 0.31.0 |
+
+### Other
+
+- Upgrading: keep `@effected/plugin` as a root devDependency, never as a package's dependency
+- Replace the `@savvy-web/bundler` devDependency and its `build:dev` / `build:prod` / `prepare` scripts with one `"build": "effected package build"` script, and move `savvy.build.ts` settings into `effected.toml`
+- Build a GitHub Action with `effected action build` instead of `@savvy-web/github-action-builder` [#1249][#1249]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1249]: https://github.com/spencerbeggs/effected/pull/1249
+
 ## 0.2.0
 
 ### Features

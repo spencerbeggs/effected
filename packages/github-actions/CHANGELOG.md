@@ -1,5 +1,31 @@
 # @effected/github-actions
 
+## 0.32.1
+
+### Bug Fixes
+
+- `BlobStore`'s S3 backend fails a key holding a lone UTF-16 surrogate as `BlobStoreError` `invalidKey`, typed and before anything is sent, and an ill-formed host or header as `misconfigured` [#1295][#1295]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/crypto | dependency | updated | 0.5.0 | 0.6.0 |
+| @effected/github | dependency | updated | 0.29.0 | 0.30.0 |
+| @effected/glob | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/jwt | dependency | updated | 0.9.0 | 0.9.1 |
+| @effected/markdown | dependency | updated | 0.27.0 | 0.28.0 |
+| @effected/npm | dependency | updated | 0.30.1 | 0.31.0 |
+| @effected/sbom | dependency | updated | 0.20.1 | 0.20.2 |
+| @effected/templates | dependency | updated | 0.18.0 | 0.19.0 |
+| @effected/walker | dependency | updated | 0.25.1 | 0.26.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1295]: https://github.com/spencerbeggs/effected/pull/1295
+
 ## 0.32.0
 
 ### Breaking Changes

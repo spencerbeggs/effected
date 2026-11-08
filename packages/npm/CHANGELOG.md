@@ -1,5 +1,63 @@
 # @effected/npm
 
+## 0.31.0
+
+### Breaking Changes
+
+#### `NpmRegistryShape` requires `manifest`
+
+- The service shape gains a required `manifest` member, so a hand-written implementation or a `Layer.succeed(NpmRegistry, ...)` double stops compiling.
+
+- To migrate, add the member. A double that nothing calls `manifest` on can answer `Option.none()`. `NpmRegistry.layer`, `layerSeeded` and `makeSeeded` already carry it, and `makeTest` and `layerTest` die on it when unstubbed, as they do for the other members. Code that only reads the service changes nothing.
+
+### Features
+
+- `parseNpmrc`, `npmrcValue`, `npmrcValues` and `NpmrcEntry` read an `.npmrc` as ordered entries and look values up by key
+
+#### `NpmRegistry.manifest`
+
+- Reads one version's dependency fields through the registry service, so `pnpm view` no longer has to sit beside it. It answers an `Option` of the new `VersionManifest`, with `name`, `version`, `dependencies`, `peerDependencies`, `optionalDependencies`, `peerDependenciesMeta` and `engines`, and routes as `version` does, GitHub Packages included. A seeded version takes the same optional fields.
+
+```ts
+import { NpmRegistry } from "@effected/npm";
+import { Effect, Option } from "effect";
+
+const peersOf = (name: string, version: string) =>
+  Effect.gen(function* () {
+    const registry = yield* NpmRegistry;
+    const found = yield* registry.manifest(name, version);
+    return Option.map(found, (manifest) => manifest.peerDependencies ?? {});
+  });
+```
+
+- A 404 or an absent version is `Option.none()`. A malformed dependency record fails `RegistryReadError` with kind `decode` rather than reading as "no peers", and an `engines` value in the legacy array form is omitted.
+
+#### `NpmConfig.load` finds the workspace root's npmrc
+
+- Two new options help a tool that runs from a member package, where the default lookup misses the root `.npmrc`. The default lookup is unchanged.
+
+- `workspaceRoot: true` climbs from `cwd` to the nearest directory holding a `pnpm-workspace.yaml` or a `package.json` with a `workspaces` field, and falls back to the default lookup when there is none
+
+- `projectDir` names the directory outright, resolved against `cwd` when relative, and wins over `workspaceRoot` [#1250][#1250]
+
+### Bug Fixes
+
+- `NpmConfig` fails with the `missing-env` reason for an unset `${VAR}` in a key, as it already did for a value [#1295][#1295]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/crypto | dependency | updated | 0.5.0 | 0.6.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1250]: https://github.com/spencerbeggs/effected/pull/1250
+
+[#1295]: https://github.com/spencerbeggs/effected/pull/1295
+
 ## 0.30.1
 
 ### Dependencies
