@@ -8,6 +8,7 @@ Reach for it in an agent hook, an MCP tool or any guard that inspects a Bash com
 
 ```ts
 import { ShellCommand, ShellDiagnostic, ShellScript, ShellSegment, ShellSyntax, ShellWord } from "@effected/shell";
+import { ShellCommandWalk, ShellNestedScript, ShellTruncation } from "@effected/shell";
 import { ShellAssignment, ShellComment, ShellHeredoc, ShellRedirection } from "@effected/shell";
 import { ShellOperator, ShellRedirectionOperator, ShellDiagnosticCode, ShellWordPart, ShellExpansionPart, ShellSubstitutionPart } from "@effected/shell";
 ```
@@ -17,7 +18,8 @@ The twelve part classes are exported by name too (`ShellBarePart`, `ShellSingleQ
 ## Core API
 
 - **`ShellSyntax.parse(input)`** → `ShellScript`. Total and synchronous: a plain value, not a `Result`, in time linear in the input, and it never throws. **`ShellSyntax.parseEffect(input)`** → `Effect<ShellScript>` is the same behind a `ShellSyntax.parseEffect` span, with no failure channel.
-- **`ShellScript`** — `source`, `segments`, `comments`, `diagnostics`; **`commands()`** → `ReadonlyArray<ShellCommand>` resolves each segment, **`substitutions()`** → `ReadonlyArray<ShellSubstitutionPart>` lists every `$(…)`, backtick and `<(…)` / `>(…)` at this level in source order, including those inside double quotes, assignment values, `${…}`, arithmetic, brace spans, opaque parts and unquoted heredoc bodies.
+- **`ShellScript`** — `source`, `segments`, `comments`, `diagnostics`; **`commands()`** → `ReadonlyArray<ShellCommand>` resolves each segment, **`substitutions()`** → `ReadonlyArray<ShellSubstitutionPart>` lists every `$(…)`, backtick and `<(…)` / `>(…)` at this level in source order, including those inside double quotes, assignment values, `${…}`, arithmetic, brace spans, opaque parts and unquoted heredoc bodies. **`allCommands({ maxDepth })`** → `ShellCommandWalk` parses each of those bodies, and the bodies inside them, down to `maxDepth` (default `ShellScript.defaultMaxDepth`, 16).
+- **`ShellCommandWalk`** — `scripts` (a **`ShellNestedScript`** per distinct parsed body, breadth first: `depth`, `script`, `substitution: Option<ShellSubstitutionPart>`, `parent: Option<number>`; the top-level script is first at depth 0), `truncations` (a **`ShellTruncation`** per substitution the walk did not parse: `reason`, `"depth"` past the cap or `"budget"` past the walk's budget, and `depth`, `substitution`, `parent`), `maxDepth`, `truncated`, and `commands()` across every script. A body it did not parse is recorded, never dropped: refuse when `truncated` is `true`. Each nested script carries its own `diagnostics`. Each distinct substitution is parsed once, and the walk enforces its cost: body characters at most `maxDepth` times the input, at most 64 MiB (`ShellScript.walkCharacterLimit`) and 10,000 records, scripts and truncations together (`ShellScript.walkRecordLimit`), after which it records a `"budget"` truncation and stops. It keeps its work on a queue, not the call stack, and never throws; a `maxDepth` that is not a non-negative number reads as 0, and `Infinity` lifts the depth cap but not those limits.
 - **`ShellSegment`** — one simple command: `words`, `assignments` (leading `FOO=1` prefixes), `redirections`, `operator: Option<ShellOperator>` (`&&`, `||`, `;`, `;;`, `;&`, `;;&`, `|`, `|&`, `&`, `"newline"`), `groupDepth` (parenthesis nesting), `start`, `end`, and a `heredocs` getter. `(` and `)` end a segment and move `groupDepth` without being operators.
 - **`ShellWord`** — `start`, `end`, `raw`, `parts`, **`joined`** (`raw` with the backslash-newlines bash removes before tokenizing taken out; match patterns against it, never `raw`), and **`literal: Option<string>`**, `Some` only when the shell would pass the word unchanged: every part bare, single-quoted, ANSI-C quoted (decoded), or double-quoted with no expansion inside.
 - **`ShellWordPart`** — twelve classes discriminated on `kind`: `bare`, `singleQuoted`, `doubleQuoted` (with `expansions`), `ansiC`, `variable`, `commandSubstitution`, `arithmetic` (`command` is `true` for a `(( … ))` command), `processSubstitution`, `glob`, `brace`, `tilde`, `opaque`. `variable`, `arithmetic`, `brace` and `opaque` carry the `substitutions` inside them. `ShellExpansionPart` is the variable / command substitution / arithmetic union; `ShellSubstitutionPart` the command / process substitution union, each with a `body` of opaque shell text.
@@ -33,32 +35,30 @@ Every offset is a UTF-16 index into `ShellScript.source`. For line and character
 ## Usage
 
 ```ts
-import { ShellSyntax } from "@effected/shell";
 import type { ShellScript } from "@effected/shell";
 import { Option } from "effect";
 
-const MAX_DEPTH = 8;
-
-// Refuse anything the guard cannot vouch for; recursion is the caller's.
-const refuses = (script: ShellScript, depth = 0): boolean => {
-  if (script.diagnostics.length > 0) return true;
-  for (const command of script.commands()) {
-    // No name WITH args is a command it cannot name (`$GIT commit`).
-    if (Option.isNone(command.name) && command.args.length > 0) return true;
-    const name = Option.getOrUndefined(command.name);
-    // `name` is as written: compare its last path segment, so /usr/bin/git counts.
-    if (name !== undefined && name.slice(name.lastIndexOf("/") + 1) === "rm") return true;
-  }
-  const nested = script.substitutions();
-  // Too deep to check is a refusal, never a silent pass.
-  if (nested.length > 0 && depth >= MAX_DEPTH) return true;
-  return nested.some((part) => refuses(ShellSyntax.parse(part.body), depth + 1));
+// Refuse anything the guard cannot vouch for, at every depth of substitution.
+const refuses = (script: ShellScript): boolean => {
+  const walk = script.allCommands();
+  // A body past the depth cap was never read: a refusal, never a silent pass.
+  if (walk.truncated) return true;
+  return walk.scripts.some(({ script: nested }) => {
+    if (nested.diagnostics.length > 0) return true;
+    return nested.commands().some((command) => {
+      // No name WITH args is a command it cannot name (`$GIT commit`).
+      if (Option.isNone(command.name) && command.args.length > 0) return true;
+      const name = Option.getOrUndefined(command.name);
+      // `name` is as written: compare its last path segment, so /usr/bin/git counts.
+      return name !== undefined && name.slice(name.lastIndexOf("/") + 1) === "rm";
+    });
+  });
 };
 ```
 
 ## Traps
 
-- **`script.commands()` is one level deep.** A command inside `$(…)` appears only through `substitutions()`: parse each `part.body` and recurse. The caller owns the depth cap and must refuse, not drop, what is left at it.
+- **`script.commands()` is one level deep.** A command inside `$(…)` appears only through `substitutions()` or `allCommands()`. Use `allCommands()` rather than recursing by hand, read every nested script's `diagnostics`, and refuse a walk whose `truncated` is `true`. `walk.commands()` alone omits what lies past the cap.
 - **`name` being `None` means three things.** With `args` it is a command that cannot be read statically (`$GIT commit`); with a wrapper it is an option the wrapper table does not know (`env --split 'git commit'`) or a word the wrapper steps over that could split (`env -u $v git`); with no `args` it is a segment that runs nothing (`fi`, `}`). A guard must refuse the first two and pass the third.
 - **`[[` and `((` are names, and bash evaluates text inside them.** `[[ 'a[$(cmd)]' -eq 0 ]]`, `(( x ))` over a variable, `let`, `declare -i`, `printf -v`, `read`, `trap`, `${x@P}`, a variable as a subscript or substring offset, and `PS4` under xtrace each run a command the analyzer only names as text. The package README's guard refuses that whole class by name; copy it rather than writing your own, and match `joined`, never `raw`: bash removes `\⏎` (backslash-newline) before it tokenizes, so a split `[\⏎[` or `P\⏎S4=` slips past a regex over `raw`. The segmenter also splits `[[ … ]]` on `&&`, `||` and `(`, so its operands can surface as command names in later segments.
 - **Three parser modes hide a command with no diagnostic:** `shopt -s extglob`, `shopt -s expand_aliases` (and POSIX mode, which expands aliases in a script), and `set -o posix` or `POSIXLY_CORRECT`. Refuse `shopt`, `alias`, `set -o posix`, `hash -p`, `enable -n`, and any mention of `POSIXLY_CORRECT`, `BASH_ALIASES`, `BASH_CMDS` or `PS4`, and control the inherited environment.

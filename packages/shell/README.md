@@ -41,8 +41,6 @@ import { ShellSyntax } from "@effected/shell";
 import type { ShellCommand, ShellScript, ShellWord } from "@effected/shell";
 import { Option } from "effect";
 
-const MAX_DEPTH = 8;
-
 // git's global options that take a separate argument: `git -C dir commit`.
 const GIT_OPTIONS_WITH_ARGUMENT: ReadonlySet<string> = new Set([
   "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env",
@@ -240,23 +238,25 @@ const evaluatesText = (command: ShellCommand): boolean => {
   }
 };
 
-// Refuse a commit, and refuse anything the guard cannot vouch for.
-const refuses = (script: ShellScript, depth = 0): boolean => {
-  const commands = script.commands();
-  if (script.diagnostics.length > 0 || arithmeticTest(commands)) return true;
-  for (const command of commands) {
-    // No name WITH args is a command it cannot name (`$GIT commit`, or a
-    // wrapper option it does not know). No name and no args is a segment that
-    // runs nothing, such as `fi`.
-    if (Option.isNone(command.name) && command.args.length > 0) return true;
-    if (evaluatesText(command)) return true;
-    const subcommand = gitSubcommand(command);
-    if (subcommand === null || subcommand === "commit") return true;
-  }
-  const nested = script.substitutions();
-  // Too deep to check is a refusal, never a silent pass.
-  if (nested.length > 0 && depth >= MAX_DEPTH) return true;
-  return nested.some((part) => refuses(ShellSyntax.parse(part.body), depth + 1));
+// Refuse a commit, and refuse anything the guard cannot vouch for, at every
+// depth of substitution.
+const refuses = (script: ShellScript): boolean => {
+  const walk = script.allCommands();
+  // A substitution too deep to parse is a refusal, never a silent pass.
+  if (walk.truncated) return true;
+  return walk.scripts.some(({ script: nested }) => {
+    const commands = nested.commands();
+    if (nested.diagnostics.length > 0 || arithmeticTest(commands)) return true;
+    return commands.some((command) => {
+      // No name WITH args is a command it cannot name (`$GIT commit`, or a
+      // wrapper option it does not know). No name and no args is a segment that
+      // runs nothing, such as `fi`.
+      if (Option.isNone(command.name) && command.args.length > 0) return true;
+      if (evaluatesText(command)) return true;
+      const subcommand = gitSubcommand(command);
+      return subcommand === null || subcommand === "commit";
+    });
+  });
 };
 
 console.log(refuses(ShellSyntax.parse('git add -A && git commit -m "feat: x"')));
@@ -264,6 +264,8 @@ console.log(refuses(ShellSyntax.parse('git add -A && git commit -m "feat: x"')))
 console.log(refuses(ShellSyntax.parse("if git diff --quiet; then git status; fi")));
 // => false
 ```
+
+`allCommands()` is the guard's view of the whole string: the script and the body of every command and process substitution in it, parsed and walked to `maxDepth` (16 unless given), each nested script with its own `commands()` and `diagnostics`. A substitution whose body sits deeper than the cap is not parsed but recorded in `truncations` with the reason `"depth"`, never dropped, so the guard refuses when `truncated` is `true`. Each distinct substitution is parsed once, at the shallowest depth it is reached, and the walk enforces a budget: the bodies it lexes total at most `maxDepth` times the input (and at most `ShellScript.walkCharacterLimit`, 64 MiB), in at most `ShellScript.walkRecordLimit` (10,000) records, scripts and truncations together. The substitution that would pass it is recorded as a truncation with the reason `"budget"` and the walk stops, so the guard refuses that too. The walk is breadth first, holds its work on a queue rather than the call stack, and never throws. A `maxDepth` that is not a non-negative number reads as 0.
 
 `commands()` resolves each segment. It skips the words that name no command: reserved words (`if`, `then`, `!`, `{`, `coproc` and the rest), a whole `[[ … ]]`, the arithmetic command `(( … ))`, `for NAME` before `do`, `function NAME`, and assignments, because bash lets `if [[ 1 ]] then git commit; fi` run `git` with no separator. When a `[[ … ]]` or `(( … ))` is the whole command, as in `[[ -n $x ]]` or `for ((i = 0; i < n; i++))`, it is the name: `[[` or `((`, since bash evaluates it. Skipped or named, every `[[ … ]]` and `(( … ))` the segment evaluates is listed, word by word, in `evaluated`. It then unwraps `sudo`, `env`, `command`, `exec`, `nohup` and `time` with their options, so `sudo -u root env "FOO=a b" git commit` resolves to `git` with `wrappers: ["sudo", "env"]`; a wrapper is matched by its last path segment, so `/usr/bin/env` unwraps too. Long options resolve by unique prefix, as `getopt_long` reads them (`env --unse FOO git` is `--unset`), and an option the wrapper's table does not know, or an ambiguous prefix, stops resolution with no name, because it may take the word after it. `env` reads options up to `--` or its first other word, and from there every word holding an `=` is an assignment (`env -- -x=1 git`, `env =x git`). `sudo` reads one among its options, never one starting `/` or `=`, and never one right after an argv word that is exactly `--`, an option's value included, as its `parse_args.c` does: `sudo A=1 -u root git` and `sudo -p-- A=1 git` run `git`, but `sudo /opt/x=1/git`, `sudo =x`, `sudo -- A=1 git` and `sudo -p -- A=1 git` run that word. A word before it that may expand to `--` (`sudo -p "$p" A=1 git`) resolves to `None`. So does any word a wrapper steps over, an option's separate value or an `env`/`sudo` `NAME=value` word, that may not reach it as exactly one argv word: an unquoted expansion, brace or glob (`env -u $v git`, `env A=$v git`, `sudo -u {root,x} git`, `exec -a $v git`), or a double-quoted `"$@"` or `"${a[@]}"`. bash splits it, so `env -u $v git status` runs `c1` when `v` is `X c1`. A double-quoted `"$v"` is one word, so `env -u "$v" git` still resolves to `git`. A command name that is not a literal (`$GIT commit`) resolves to `None` with the words as `args`. The guard above is pinned by the package's own tests against every bypass shape they hold. A real guard also refuses, or interprets, commands that run a command string, such as `bash -c`, `eval`, `su -c` and `xargs`, and the argv wrappers this package does not unwrap: `nice`, `timeout`, `stdbuf`, `setsid`, `doas`, `chroot`, `builtin` and the like (`ionice`, `taskset`, `flock`, `unbuffer`, `runuser`). Each of those is reported as the command name, with the command it runs among its `args`. The guard above refuses a short list of them by name; a real one needs the full list for the platforms it runs on.
 
@@ -314,7 +316,8 @@ console.log(JSON.stringify(nested.segments[0]?.heredocs[0]?.body));
 | Export | What it is |
 | --- | --- |
 | `ShellSyntax` | `parse(input): ShellScript`, total and synchronous; `parseEffect(input)`, the same behind a span. |
-| `ShellScript` | `source`, `segments`, `comments`, `diagnostics`; `commands()` and `substitutions()`. |
+| `ShellScript` | `source`, `segments`, `comments`, `diagnostics`; `commands()`, `substitutions()` and `allCommands({ maxDepth })`; `defaultMaxDepth` (16), `walkRecordLimit` (10,000 scripts and truncations together) and `walkCharacterLimit` (64 MiB). |
+| `ShellCommandWalk`, `ShellNestedScript`, `ShellTruncation` | What `allCommands` returns: `scripts` (each with `depth`, `script`, `substitution`, `parent`), `truncations` (each with `reason`, `"depth"` or `"budget"`, and `depth`, `substitution`, `parent`), `maxDepth`, `truncated`, and `commands()` across every script. |
 | `ShellSegment`, `ShellOperator` | One simple command: `words`, `assignments`, `redirections`, `operator: Option<ShellOperator>` (`&&`, `\|\|`, `;`, `;;`, `;&`, `;;&`, `\|`, `\|&`, `&`, `"newline"`), `groupDepth`, `start`, `end`; the `heredocs` getter. |
 | `ShellWord` | `start`, `end`, `raw`, `parts`; `joined` (`raw` without its backslash-newlines) and `literal: Option<string>`. |
 | `ShellWordPart` and its twelve classes | `bare`, `singleQuoted`, `doubleQuoted` (with `expansions`), `ansiC`, `variable`, `commandSubstitution`, `arithmetic` (`$(( … ))` and `$[ … ]`; `command` is `true` for a `(( … ))` command), `processSubstitution`, `glob`, `brace`, `tilde`, `opaque`, discriminated on `kind`. `variable`, `arithmetic`, `brace` and `opaque` carry the `substitutions` inside them. `ShellExpansionPart` is the variable / substitution / arithmetic union; `ShellSubstitutionPart` the command / process substitution union. A backtick substitution's `body` is the text after bash's escape removal, which is what bash runs. |
@@ -361,7 +364,9 @@ Text handed to another parser is not read: `eval`, `bash -c`, `source`, `xargs`,
 - A quoted, escaped or expanded value an assignment builtin re-reads as an array. With an array target (an `a` or `A` option; for `declare` and `typeset`, a variable that already is an array; for `local`, a name already a local array in the same function, such as `f(){ local -a x; local x='($(cmd))'; }`) the builtin reads a value that looks like `( … )` as a compound assignment and expands its elements and keys again, so a single-quoted `$( … )` runs: `declare -a 'x=($(cmd))'`, `declare -A 'h=([k]=$(cmd))'`, `declare -a x=\(\$\(cmd\)\)`, `v='($(cmd))'; declare -a x="$v"`, and `x=(); declare x='($(cmd))'` with no option. The parse cannot see this, since the text is quoted, so the guard above refuses, for `declare`, `typeset` and `local`, every assignment whose value is not literal or holds `=(` after quote removal, since it cannot see what the variable or the enclosing function already declared, and for `export` and `readonly` the same only when an option word holds `a` or `A` or an expansion may supply one (bash re-read nothing for them otherwise). That over-refuses `declare x="$1"` and `local p="$PATH:…"`, which run nothing for a scalar; `export PATH="$PATH:…"` stays allowed.
 - An indexed array's key over a name in an assignment builtin's array value: `declare -a x=([k]=1)`, `declare x=([k]=1)`, `export x=([k]=1)` and `local`, `typeset` and `readonly` likewise, with `k='a[$(cmd)]'`. An `-A` before the value makes the keys strings, which bash does not evaluate (the unquoted literal `declare -A h=([k]=1)` runs nothing; a quoted or expanded one is the re-read case above), but an `-A` after it (`declare x=([k]=1) -A`) or `+A` does not. A quoted substitution in an indexed key (`declare -a x=(['$(cmd)']=1)`) records `QuotedSubstitutionInExpansion`, and an unquoted one is a substitution like any other.
 
-`[[ … ]]` and `(( … ))` resolve to the names `[[` and `((` when they are the whole command, so a refusal list can match them. Run straight into `then` or `do` in one segment, they resolve to the command after them (`if [[ x -eq 0 ]] then git commit; fi` names `git`). Either way their words are in `ShellCommand.evaluated`, so read that list for them, as the guard above does; for a `[[` the segmenter split, follow it into the segments after it. An option or operator a variable supplies (`[ "$op" x ]`, `declare "$o" v=…`) is read only when bash runs the command, so a guard that matches the literal forms must also refuse those. A script with any diagnostic may hide a command (`x=$(echo a[ )` swallows the lines after it as one unterminated substitution), so treat every diagnostic as a refusal, as the guard above does.
+`[[ … ]]` and `(( … ))` resolve to the names `[[` and `((` when they are the whole command, so a refusal list can match them. Run straight into `then` or `do` in one segment, they resolve to the command after them (`if [[ x -eq 0 ]] then git commit; fi` names `git`). Either way their words are in `ShellCommand.evaluated`, so read that list for them, as the guard above does; for a `[[` the segmenter split, follow it into the segments after it. An option or operator a variable supplies (`[ "$op" x ]`, `declare "$o" v=…`) is read only when bash runs the command, so a guard that matches the literal forms must also refuse those. A script with any diagnostic may hide a command (`x=$(echo a[ )` swallows the lines after it as one unterminated substitution), so treat every diagnostic as a refusal, as the guard above does, in every script `allCommands()` walks.
+
+`allCommands()` stops at `maxDepth` and at its budget: a body it did not parse is never read, so a walk with `truncated` set says nothing about what that body runs, and a guard must refuse it, as the one above does. A body is re-lexed at each depth, so the budget grows with the cap: `maxDepth` times the input, up to 64 MiB of bodies and 10,000 records (scripts and truncations together), whatever the cap, `Infinity` included. Hostile nesting of substitutions that overlap (a `$((a) …)` that falls back to a command substitution inside arithmetic or a subscript is listed beside the substitutions inside it) reaches the budget and is refused rather than walked.
 
 ## License
 

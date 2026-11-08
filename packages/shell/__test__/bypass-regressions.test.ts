@@ -5,8 +5,8 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
-import type { ShellCommand, ShellScript, ShellWord } from "../src/index.js";
-import { ShellSyntax } from "../src/index.js";
+import type { ShellCommand, ShellWord } from "../src/index.js";
+import { ShellScript, ShellSyntax } from "../src/index.js";
 
 const baseName = (name: string): string => name.slice(name.lastIndexOf("/") + 1);
 
@@ -2213,7 +2213,6 @@ describe("a special parameter inside double quotes in a re-read frame is an expa
 });
 
 // The README's guard, verbatim in shape: every shape above must make it refuse.
-const MAX_DEPTH = 8;
 const GIT_OPTIONS_WITH_ARGUMENT: ReadonlySet<string> = new Set([
 	"-C",
 	"-c",
@@ -2401,18 +2400,20 @@ const evaluatesText = (command: ShellCommand): boolean => {
 	}
 };
 
-const refuses = (script: ShellScript, depth = 0): boolean => {
-	const commands = script.commands();
-	if (script.diagnostics.length > 0 || arithmeticTest(commands)) return true;
-	for (const command of commands) {
-		if (Option.isNone(command.name) && command.args.length > 0) return true;
-		if (evaluatesText(command)) return true;
-		const subcommand = gitSubcommand(command);
-		if (subcommand === null || subcommand === "commit") return true;
-	}
-	const nested = script.substitutions();
-	if (nested.length > 0 && depth >= MAX_DEPTH) return true;
-	return nested.some((part) => refuses(ShellSyntax.parse(part.body), depth + 1));
+const refuses = (script: ShellScript): boolean => {
+	const walk = script.allCommands();
+	// A substitution too deep to parse is a refusal, never a silent pass.
+	if (walk.truncated) return true;
+	return walk.scripts.some(({ script: nested }) => {
+		const commands = nested.commands();
+		if (nested.diagnostics.length > 0 || arithmeticTest(commands)) return true;
+		return commands.some((command) => {
+			if (Option.isNone(command.name) && command.args.length > 0) return true;
+			if (evaluatesText(command)) return true;
+			const subcommand = gitSubcommand(command);
+			return subcommand === null || subcommand === "commit";
+		});
+	});
 };
 
 describe("the README guard", () => {
@@ -2474,6 +2475,20 @@ describe("the README guard", () => {
 		assert.isTrue(expandsASubscriptOverAName(`\${a[0[0]+x]}`));
 		assert.isFalse(expandsASubscriptOverAName(`\${a[0[0]]} [x]`));
 		assert.isFalse(expandsASubscriptOverAName(`\${a[0]} \${#a[@]}`));
+	});
+
+	it("refuses a substitution past allCommands' cap, and reads one at the cap", () => {
+		const nest = (depth: number, inner: string, open = "$("): string =>
+			`echo ${`${open}echo `.repeat(depth)}${inner}${")".repeat(depth)}`;
+		const cap = ShellScript.defaultMaxDepth;
+		for (const open of ["$(", "<(", ">("]) {
+			assert.isTrue(refuses(ShellSyntax.parse(nest(cap + 1, "hi", open))), `${open} over the cap`);
+			assert.isFalse(refuses(ShellSyntax.parse(nest(cap, "hi", open))), `${open} at the cap`);
+		}
+		// Past the cap the body is never read, so even a harmless one is refused.
+		assert.isTrue(refuses(ShellSyntax.parse(nest(cap + 2, "true"))));
+		assert.isTrue(refuses(ShellSyntax.parse(nest(cap - 1, "$(git commit)"))));
+		assert.isTrue(refuses(ShellSyntax.parse(`echo "$(echo \${x:-$(echo <(git commit))})"`)));
 	});
 
 	it("allows ordinary scripts, compound commands included", () => {
