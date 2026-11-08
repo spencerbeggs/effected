@@ -13,7 +13,7 @@ import { Effect, Result, Schema } from "effect";
 import type { GlobPattern } from "./GlobPattern.js";
 import { GlobPatternError, patternWithEngine } from "./GlobPattern.js";
 import type { CompileBudget } from "./internal/ast.js";
-import { compileBudget } from "./internal/ast.js";
+import { compileBudget, markBudget, rewindBudget } from "./internal/ast.js";
 import { isGuardExceeded } from "./internal/limits.js";
 import { Minimatch, braceAlternatives } from "./internal/minimatch.js";
 
@@ -33,21 +33,29 @@ interface Classified {
 // The alternatives of one include, each routed by its own magic, or undefined
 // when the include must stay whole: one alternative can not be written as
 // text (braceAlternatives), or does not compile alone though the whole did.
-// The whole is then one wildcard, whose answer is the union of them all.
+// The whole is then one wildcard, whose answer is the union of them all, and
+// the work its alternatives were charged is handed back first: the whole is
+// charged for what it builds, so a set near the budget is not refused early.
 const classifyInclude = (
 	pattern: string,
 	budget: CompileBudget,
+	whole: Minimatch,
 ): { readonly literals: Array<string>; readonly wildcards: Array<GlobPattern> } | undefined => {
 	const alternatives = braceAlternatives(pattern, {});
 	if (alternatives === undefined) return undefined;
+	const mark = markBudget(budget);
 	const literals: Array<string> = [];
 	const wildcards: Array<GlobPattern> = [];
 	for (const alternative of alternatives) {
 		let engine: Minimatch;
 		try {
-			engine = new Minimatch(alternative, {}, budget);
+			// An include with no brace to split is its own one alternative: its engine is already built.
+			engine = alternative === pattern ? whole : new Minimatch(alternative, {}, budget);
 		} catch (e) {
-			if (isGuardExceeded(e)) return undefined;
+			if (isGuardExceeded(e)) {
+				rewindBudget(budget, mark);
+				return undefined;
+			}
 			throw e;
 		}
 		if (engine.hasMagic()) {
@@ -83,12 +91,14 @@ const classify = (patterns: ReadonlyArray<string>, onMember: (pattern: string) =
 			excludes.push(patternWithEngine(target, new Minimatch(target, {}, budget)));
 			continue;
 		}
-		// the member must compile whole; this engine is kept only if the
-		// include stays whole, so it is checked on a budget of its own
-		new Minimatch(pattern, {});
-		const routed = classifyInclude(pattern, budget);
+		// The member must compile whole, on the set's budget: it is part of the
+		// one compile, and its alternatives reuse every validation it made, so
+		// only their graph items are charged again. The engine is kept when the
+		// include stays whole, never built twice.
+		const whole = new Minimatch(pattern, {}, budget);
+		const routed = classifyInclude(pattern, budget, whole);
 		if (routed === undefined) {
-			wildcards.push(patternWithEngine(pattern, new Minimatch(pattern, {}, budget)));
+			wildcards.push(patternWithEngine(pattern, whole));
 			continue;
 		}
 		wildcards.push(...routed.wildcards);
@@ -128,7 +138,14 @@ const allCompileUnderDefaults = (patterns: ReadonlyArray<string>): true | string
  * @remarks
  * A member starting with `!` is an exclusion, applied after positive matching.
  * This is set-level exclusion, distinct from a single {@link GlobPattern}'s
- * whole-pattern negation.
+ * whole-pattern negation. Exclusions are order-independent: an exclusion
+ * removes what it matches whatever its place in `patterns`, before or after
+ * the includes it filters, and no later include puts a path back. npm's
+ * `workspaces` negations are ordered instead: there a `!` pattern removes only
+ * what the patterns before it added, and a later positive adds a path again
+ * (`["packages/*", "!packages/a", "packages/a"]` keeps `packages/a` in npm and
+ * drops it here). A caller reproducing npm's rule applies its patterns in
+ * order itself.
  *
  * The structural accessors ({@link GlobSet.literals},
  * {@link GlobSet.wildcards}, {@link GlobSet.excludes}) serve directory
@@ -138,10 +155,14 @@ const allCompileUnderDefaults = (patterns: ReadonlyArray<string>): true | string
  *
  * A set is one compile: its members share one compile budget, and past it
  * {@link GlobSet.compileResult} fails typed with reason
- * `CompileBudgetExceeded`. Each POSIX class costs about 4,096 units in its
- * portion's validation regexp, so a set in which every member has one tops
- * out at roughly 1,900 members; sets of plain, brace and numeric-range
- * members compile at 20,000 members.
+ * `CompileBudgetExceeded`. A portion's validation regexp costs 1,536 units
+ * a Unicode property escape (`[[:alpha:]]` writes two, `[[:word:]]` four),
+ * once for each distinct portion in the set: members sharing one
+ * (`d1/[[:alpha:]]*.ts`, `d2/[[:alpha:]]*.ts`) are charged once and compile at
+ * 20,000 members, while a set in which every member has its own
+ * `[[:alpha:]]` portion tops out at about 2,550 members (about 1,280 for
+ * `[[:word:]]`). Sets of plain, brace and numeric-range members compile at
+ * 20,000 members.
  *
  * @example
  * ```ts

@@ -76,7 +76,15 @@ hands in — never re-derived here.
   boundary. Unreadable and depth-exceeded paths are spelled through the
   root's own earliest spelling (`./**` reports its base as `.`).
 - A literal pattern (no magic, no braces, not negated) fast-paths to one stat; missing is
-  zero matches. Braces are magic here (glob's `hasMagic` ignores them). A magic
+  zero matches. The stat and the answer are the compiled row glob matches
+  (`enumerationPrefix` of a one-row literal is the whole row), never the
+  source: an escape is undone (`src/\x/f.js` stats `src/x/f.js`), and at
+  level 1 and up glob has popped `<p>/..` (`f.js/x/..` answers `f.js`, as
+  minimatch and node-glob read it), and an answer that does not match as
+  spelled is none. A `.`, `..` or empty segment the row keeps (level 0) is
+  resolved physically by `resolvesPhysically`: it must follow an `lstat`
+  Directory, never a file, a missing name or a link, because `join`
+  normalizes it lexically where the kernel fails ENOTDIR or ENOENT (#1283). Braces are magic here (glob's `hasMagic` ignores them). A magic
   pattern walks each of `enumerationRoots` — one per brace alternative, each
   with its own prefix and depth, so `packages/{a,b}/src/*.ts` reads only those
   two directories; a **negated**
@@ -141,11 +149,11 @@ hands in — never re-derived here.
   94,528 compilations (braces, classes, extglobs and escapes included, under
   `matchBase`, `dot` and every level) with `descendSync` over a memfs tree
   against a brute-force `matches` filter, plus every bounded one again under
-  the tightest `maxDepth` its separators allow: zero differences. Two
-  literal fast-path classes outside the bounds are counted, not compared
-  (a literal running past a file through `.`/`..`, and an escaped literal,
-  which the fast path stats as spelled). Extend its alphabet, never patch one
-  spelling at a time. They skip
+  the tightest `maxDepth` its separators allow: zero differences. The
+  literal fast-path classes (a literal running past a file through `.`/`..`,
+  an escaped literal) are compared too: the filter resolves a literal's
+  spellings physically against the tree, as the fast path does (#1283).
+  Extend its alphabet, never patch one spelling at a time. They skip
   READS only, never a match, so the answer is unchanged. They are why a bounded
   pattern never trips `maxDepth` or an unreadable directory it has no reason
   to enter. Never make either bound "tighter" by guessing: an unmodelled

@@ -190,6 +190,21 @@ describe("GlobSet: set semantics truth table", () => {
 		}),
 	);
 
+	it.effect("exclusions are order-independent: a later include never puts an excluded path back", () =>
+		Effect.gen(function* () {
+			// npm's `workspaces` keeps `packages/a` here: its negation removes only what came before it.
+			for (const patterns of [
+				["packages/*", "!packages/a", "packages/a"],
+				["!packages/a", "packages/*", "packages/a"],
+				["packages/a", "packages/*", "!packages/a"],
+			]) {
+				const set = yield* GlobSet.compile(patterns);
+				assert.isFalse(set.matches("packages/a"), patterns.join(" "));
+				assert.isTrue(set.matches("packages/b"), patterns.join(" "));
+			}
+		}),
+	);
+
 	it.effect("an exclude-only set matches nothing", () =>
 		Effect.gen(function* () {
 			const set = yield* GlobSet.compile(["!a/*"]);

@@ -7,6 +7,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Arbitrary, Effect, Result, Schema } from "effect";
 import * as oracle from "minimatch";
 import { GlobPattern, GlobPatternOptions, GlobSet } from "../src/index.js";
+import { compileBudget, markBudget, rewindBudget } from "../src/internal/ast.js";
 import { expand } from "../src/internal/braceExpansion.js";
 import { GuardExceeded } from "../src/internal/limits.js";
 import { Minimatch, braceExpand } from "../src/internal/minimatch.js";
@@ -896,6 +897,87 @@ describe("hostility: regexp work of one compile", () => {
 		assert.isTrue(Result.isFailure(Schema.decodeUnknownResult(GlobPattern.FromString)(source)));
 	});
 
+	// The CPU time of the fastest of three runs, in milliseconds. Each run gets its own source, since V8 reuses the
+	// regexp it compiled for a source it has seen.
+	const cpu = (run: (sample: number) => unknown): number => {
+		let best = Number.POSITIVE_INFINITY;
+		for (let i = 0; i < 3; i++) {
+			const start = process.cpuUsage();
+			run(i);
+			const used = process.cpuUsage(start);
+			best = Math.min(best, (used.user + used.system) / 1000);
+		}
+		return best;
+	};
+
+	it("fails typed, before building it, a portion whose one validation regexp holds past 256 property escapes", () => {
+		// 3,800 `[[:print:]]` in one portion fit the compile budget and peaked at 3.2 GB while V8 built the regexp: one
+		// regexp holds about 400 KB an escape while it is built, whatever the compile spent before it.
+		const over = "[[:print:]]".repeat(3800);
+		const failed = GlobPattern.compileResult(over);
+		assert.isTrue(Result.isFailure(failed) && failed.failure.reason === "CompileBudgetExceeded");
+		if (Result.isFailure(failed)) {
+			assert.strictEqual(failed.failure.limit, 256);
+			assert.strictEqual(failed.failure.actual, 3800);
+		}
+		assert.strictEqual(
+			reasonOf(() => new Minimatch("[[:alpha:]]".repeat(129), {})),
+			"CompileBudgetExceeded",
+		);
+		// 256 escapes still compile and match, as the oracle does.
+		const at = "[[:print:]]".repeat(256);
+		const compiled = GlobPattern.compileResult(at);
+		assert.isTrue(Result.isSuccess(compiled));
+		if (Result.isSuccess(compiled)) {
+			for (const candidate of ["a".repeat(256), "a".repeat(255)])
+				assert.strictEqual(
+					compiled.success.matches(candidate),
+					oracle.minimatch(candidate, at),
+					candidate.length.toString(),
+				);
+		}
+		// The refusal does no regexp work: it costs less than compiling the 256 does (about 100 ms of real work).
+		assert.isBelow(
+			cpu((sample) => GlobPattern.compileResult(`${over}${sample}`)),
+			cpu((sample) => GlobPattern.compileResult(`${at}${sample}`)),
+		);
+	});
+
+	it("compiles a pattern's defaults engine and its effective engine on one budget", () => {
+		// A `nocase` pattern is built twice, under defaults (the value invariant) and under its options. On a budget
+		// each, it did twice the work one budget allows. `[[:digit:]]` sixteen times in 200 alternatives is about
+		// 5,000,000 units under defaults: it compiles, and with `nocase` its second engine passes the one budget.
+		const source = `${"[[:digit:]]".repeat(16)}{${Array.from({ length: 200 }, (_, i) => `q${i}`).join(",")}}`;
+		assert.isTrue(Result.isSuccess(GlobPattern.compileResult(source)));
+		const nocase = GlobPattern.compileResult(source, GlobPatternOptions.make({ nocase: true }));
+		assert.isTrue(Result.isFailure(nocase) && nocase.failure.reason === "CompileBudgetExceeded");
+		// Options that change no validation source share every check: `dot` builds the same regexps, charged once.
+		assert.isTrue(Result.isSuccess(GlobPattern.compileResult(source, GlobPatternOptions.make({ dot: false }))));
+	});
+
+	it("validates a portion repeated across a set once, so members sharing one POSIX-class portion compile", () => {
+		// Each member's `[[:alpha:]]*.ts` was validated, and charged about 4,100 units, again: 1,928 members tripped
+		// the budget. The validation regexp is one source, checked once in one compile.
+		const shared = GlobSet.compileResult(Array.from({ length: 5000 }, (_, i) => `d${i}/[[:alpha:]]*.ts`));
+		assert.isTrue(Result.isSuccess(shared));
+		if (Result.isSuccess(shared)) {
+			assert.isTrue(shared.success.matches("d4999/é.ts"));
+			assert.isFalse(shared.success.matches("d4999/1.ts"));
+		}
+	});
+
+	it("charges a distinct POSIX-class portion its measured cost, about 3,100 units for `[[:alpha:]]`", () => {
+		// 1,536 units a property escape (about 465 us at worst to build inside a compile, kept by nothing): distinct
+		// members fit about 2,550 to the budget, where 4,096 an escape fit about 1,930.
+		const member = (i: number): string => `d${i}/[[:alpha:]]${i}*.ts`;
+		const fits = GlobSet.compileResult(Array.from({ length: 2400 }, (_, i) => member(i)));
+		assert.isTrue(Result.isSuccess(fits));
+		if (Result.isSuccess(fits)) assert.isTrue(fits.success.matches("d2399/x2399.ts"));
+		const over = GlobSet.compileResult(Array.from({ length: 2700 }, (_, i) => member(i)));
+		assert.isTrue(Result.isFailure(over) && over.failure.reason === "CompileBudgetExceeded");
+		if (Result.isFailure(over)) assert.strictEqual(over.failure.limit, 8_000_000);
+	}, 30_000);
+
 	it("still compiles an expansion within the budget, and matches it as the oracle does", () => {
 		const source = "[[:alpha:]]{0..99}x{0..9}";
 		const compiled = GlobPattern.compileResult(source);
@@ -957,4 +1039,53 @@ describe("hostility: matcher graphs of one compile", () => {
 			assert.isFalse(few.success.matches("d1/$1a2"));
 		}
 	}, 30_000);
+
+	it("hands back what an include's alternatives were charged when it stays whole", () => {
+		// Split, each of 100 alternatives builds its own graph of the widest range; whole, the rows share one. Fill the
+		// budget so the whole fits and the split does not: the split trips, the include stays whole, and it must be
+		// charged only for the whole, not again on top of the alternatives built before the trip.
+		const range = "{-9007199254740991..9007199254740991}";
+		const include = `{${Array.from({ length: 100 }, (_, i) => `i${i}`).join(",")}}/${range}`;
+		const wholeBudget = compileBudget();
+		new Minimatch(include, {}, wholeBudget);
+		const budget = compileBudget();
+		const fillers: Array<string> = [];
+		for (let i = 0; ; i++) {
+			const before = budget.spent;
+			new Minimatch(`f${i}/${range}`, {}, budget);
+			if (budget.spent + 2 * (budget.spent - before) + wholeBudget.spent > 8_000_000) break;
+			fillers.push(`f${i}/${range}`);
+		}
+		const set = GlobSet.compileResult([...fillers, include]);
+		assert.isTrue(Result.isSuccess(set), Result.isFailure(set) ? set.failure.message : "");
+		if (Result.isSuccess(set)) {
+			assert.deepStrictEqual(set.success.wildcards.at(-1)?.source, include);
+			assert.isTrue(set.success.matches("i42/-7"));
+			assert.isFalse(set.success.matches("i100/7"));
+		}
+		// Control: the split alone does not fit beside the fillers, so the include was refused split.
+		const split = compileBudget();
+		for (const alternative of Array.from({ length: 100 }, (_, i) => `i${i}/${range}`))
+			new Minimatch(alternative, {}, split);
+		assert.isAbove(budget.spent + split.spent, 8_000_000);
+	}, 30_000);
+
+	it("rewinds a budget to a mark: its spend and the regexps and validations charged after it", () => {
+		const budget = compileBudget();
+		new Minimatch("a/[[:alpha:]]x*", {}, budget);
+		const mark = markBudget(budget);
+		const spent = budget.spent;
+		new Minimatch("b/[[:digit:]]y*", {}, budget);
+		const charged = budget.spent - spent;
+		assert.isAbove(charged, 1024);
+		rewindBudget(budget, mark);
+		assert.strictEqual(budget.spent, spent);
+		// The second compile, redone, pays the same again: nothing it built was left behind as already paid for.
+		new Minimatch("b/[[:digit:]]y*", {}, budget);
+		assert.strictEqual(budget.spent - spent, charged);
+		// The first compile's work stays paid: redoing it costs nothing more than its graph items.
+		const again = budget.spent;
+		new Minimatch("a/[[:alpha:]]x*", {}, budget);
+		assert.isBelow(budget.spent - again, 1024);
+	});
 });

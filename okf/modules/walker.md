@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/walker/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-08T15:15:23Z
+  at: 2026-11-08T17:45:32Z
 integrity:
   generated:
-    body: 5822c4beccc1a5af
+    body: 2825b7ae3356101c
 ---
 
 # walker
@@ -250,7 +250,13 @@ array on every dequeue. What earns a filesystem read is decided by the
 pattern's metadata:
 
 - A literal pattern — no magic, no braces, not negated, and not one glob
-  reports `matchesByBasename` — never walks at all: one stat decides.
+  reports `matchesByBasename` — never walks at all: one stat decides. It
+  stats, and answers, the row glob compiled, never the source: an escape is
+  undone (`src/\x/f.js` is `src/x/f.js`) and at level 1 and up `<p>/..` is
+  already popped (`f.js/x/..` answers `f.js`, as minimatch documents). A `.`,
+  `..` or empty segment the row keeps (level 0) must follow a real
+  directory, checked by `lstat`, because a joined stat path normalizes it
+  lexically where the kernel fails ENOTDIR or ENOENT (#1283).
 - A pattern that cannot match below one level never descends, reading a
   single level instead.
 - A pattern with no globstar reads no directory deeper than its segments
@@ -268,7 +274,9 @@ pattern's metadata:
   segments, and walks each one (braces, classes, extglobs and escapes
   included) under `matchBase`, `dot` and every optimization level against a
   brute-force `matches` filter of a memfs tree, plus every bounded one under
-  the tightest `maxDepth` its separators allow: zero differences. Both bounds live in
+  the tightest `maxDepth` its separators allow: zero differences, the
+  literal fast-path classes included, whose spellings the filter resolves
+  physically against the tree. Both bounds live in
   `internal/patternBounds.ts` and only ever skip reads, never a match. They
   are checked before `maxDepth`, which therefore governs only directories the
   walk reads: a bounded pattern does not trip a cap on a deep tree it has no

@@ -63,7 +63,9 @@ import {
 	MAX_EXTGLOB_RECURSION,
 	MAX_NESTING_DEPTH,
 	MAX_REGEXP_WORK,
+	MAX_VALIDATION_PROPERTIES,
 	REGEXP_PROPERTY_WEIGHT,
+	VALIDATION_PROPERTY_WEIGHT,
 	assertCap,
 } from "./limits.js";
 import { Matcher } from "./matcher.js";
@@ -256,17 +258,53 @@ export const portionPlan = (p: object): PortionPlan | undefined => plans.get(p);
 // two-byte one.
 /**
  * The regexp work of one compile (MAX_REGEXP_WORK), shared by every portion of
- * one pattern, and the matcher regexps it already built: a regexp with no `g`
- * or `y` flag keeps no state, so every portion's matcher can share one (a
- * class such as `[[:alpha:]]` repeated in each of a brace expansion's
- * alternatives is built once).
+ * one pattern, the matcher regexps it already built, and the validation
+ * sources it already checked: a regexp with no `g` or `y` flag keeps no
+ * state, so every portion's matcher can share one (a class such as
+ * `[[:alpha:]]` repeated in each of a brace expansion's alternatives is built
+ * once), and a validation source proven once in a compile is proven for it
+ * (`d1/[[:alpha:]]*` and `d2/[[:alpha:]]*` validate `[[:alpha:]]*` once).
  */
 export interface CompileBudget {
 	spent: number;
 	readonly shared: Map<string, RegExp>;
+	readonly validated: Set<string>;
 }
 
-export const compileBudget = (): CompileBudget => ({ spent: 0, shared: new Map() });
+export const compileBudget = (): CompileBudget => ({ spent: 0, shared: new Map(), validated: new Set() });
+
+/** Where a budget stood, so work charged after it can be handed back ({@link rewindBudget}). */
+export interface BudgetMark {
+	readonly spent: number;
+	readonly shared: number;
+	readonly validated: number;
+}
+
+export const markBudget = (budget: CompileBudget): BudgetMark => ({
+	spent: budget.spent,
+	shared: budget.shared.size,
+	validated: budget.validated.size,
+});
+
+// Drop every entry past the first `keep` of an insertion-ordered collection.
+const dropAfter = <K>(keys: Iterable<K>, keep: number, remove: (key: K) => void): void => {
+	let index = 0;
+	const late: Array<K> = [];
+	for (const key of keys) if (index++ >= keep) late.push(key);
+	for (const key of late) remove(key);
+};
+
+/**
+ * Hand back the work charged since `mark`, and forget the regexps and
+ * validations it paid for: a compile that is abandoned and redone (a `GlobSet`
+ * include that stays whole after its alternatives were built) is charged once,
+ * and the redo pays for whatever it builds again.
+ */
+export const rewindBudget = (budget: CompileBudget, mark: BudgetMark): void => {
+	budget.spent = mark.spent;
+	dropAfter(budget.shared.keys(), mark.shared, (key) => budget.shared.delete(key));
+	dropAfter(budget.validated.keys(), mark.validated, (key) => budget.validated.delete(key));
+};
 
 const propertyEscapes = /\\[pP]\{/g;
 
@@ -281,6 +319,22 @@ const charge = (budget: CompileBudget, work: number): void => {
 
 const spend = (budget: CompileBudget, source: string): void =>
 	charge(budget, source.length + REGEXP_PROPERTY_WEIGHT * (source.match(propertyEscapes)?.length ?? 0));
+
+// A portion's validation regexp (port note 6): built, run on both kinds of
+// subject, and dropped, since the matcher answers the portion. Charged at what
+// that costs (VALIDATION_PROPERTY_WEIGHT per property escape, before it is
+// built), and only once per source and flags in one compile.
+const validate = (budget: CompileBudget, source: string, flags: string): void => {
+	const key = `${flags}/${source}`;
+	if (budget.validated.has(key)) return;
+	const escapes = source.match(propertyEscapes)?.length ?? 0;
+	if (escapes > MAX_VALIDATION_PROPERTIES) {
+		throw new GuardExceeded("CompileBudgetExceeded", MAX_VALIDATION_PROPERTIES, escapes);
+	}
+	charge(budget, source.length + VALIDATION_PROPERTY_WEIGHT * escapes);
+	compileOrFail(source, flags);
+	budget.validated.add(key);
+};
 
 // A matcher's graph items count GRAPH_ITEM_WEIGHT each against the same budget.
 const chargeItems =
@@ -818,15 +872,13 @@ export class AST {
 		const flags = (nocase ? "i" : "") + (uflag ? "u" : "");
 		// Port note 6: a source the runtime rejects (one too large for it)
 		// fails typed.
-		const source = `^${re}$`;
-		spend(budget, source);
-		const regexp = Object.assign(compileOrFail(source, flags), {
-			_src: re,
-			_glob: glob,
-		});
-		// 11's matcher answers this portion; the regexp only validated it.
-		plans.set(regexp, this.#matcherPlan(budget));
-		return regexp;
+		validate(budget, `^${re}$`, flags);
+		// 11's matcher answers this portion; the regexp only validated it, so
+		// none is kept: a never-matching placeholder carries the plan, as for an
+		// extglob portion (a kept POSIX-class regexp held about 25 KB).
+		const never = Object.assign(/(?!)/, { _src: re, _glob: glob });
+		plans.set(never, this.#matcherPlan(budget));
+		return never;
 	}
 
 	get options(): EngineOptions {

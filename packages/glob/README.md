@@ -111,7 +111,7 @@ Compilation is the only thing that fails, and it fails with one tagged error who
 | `ExpansionBudgetExceeded` | Brace expansion would produce more alternatives than the budget allows. Upstream truncates here, silently changing match semantics; this package fails instead. |
 | `NestingDepthExceeded` | Braces, extglobs or the AST nest past the depth cap. |
 | `InvalidRegExp` | A portion's regular expression is too large for the runtime, about 32,000 literal characters before one wildcard. minimatch 11 accepts it. `limit` and `actual` are both 0. |
-| `CompileBudgetExceeded` | Compiling the pattern would build more than one compile allows (8,000,000 units: a regexp's length, plus 2,048 for each Unicode property a POSIX class turns into, plus 4 for each item of a portion's matcher). A brace expansion that gives each of thousands of alternatives its own POSIX class, such as `[[:alpha:]]{0..99}{0..99}`, or its own copy of a numeric range kept whole, such as `{$,a}{-9007199254740991..9007199254740991}` twelve times over, fails here instead of exhausting memory. A `GlobSet` is one compile, so its members share the budget. minimatch 11 builds its matchers lazily and accepts the first; it refuses the second. |
+| `CompileBudgetExceeded` | Compiling the pattern would build more than one compile allows (8,000,000 units: a regexp's length, plus 2,048 for each Unicode property a POSIX class turns into in a matcher's class and 1,536 in a portion's validation regexp, charged once per distinct portion, plus 4 for each item of a portion's matcher), or one portion holds more than 256 Unicode properties (`limit` 256), such as `[[:print:]]` 257 times, whose one regexp would hold about 400 KB a property while it is built. A brace expansion that gives each of thousands of alternatives its own POSIX class, such as `[[:alpha:]]{0..99}{0..99}`, or its own copy of a numeric range kept whole, such as `{$,a}{-9007199254740991..9007199254740991}` twelve times over, fails here instead of exhausting memory. A `GlobSet` is one compile, so its members share the budget. minimatch 11 builds its matchers lazily and accepts the first; it refuses the second. |
 
 ```ts
 import { GlobPattern } from "@effected/glob";
@@ -139,7 +139,9 @@ Brace expansion multiplies the work of compiling and matching by its alternative
 - limit the candidate's length or number of portions;
 - lower `braceExpandMax`: with `GlobPatternOptions.make({ braceExpandMax: 100 })` a brace product such as `**/a/**/*{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}*` (1,024 alternatives) fails at compile with `ExpansionBudgetExceeded`.
 
-A `GlobSet` is one compile: its members share one compile budget, and past it the set fails typed with `CompileBudgetExceeded`. Each POSIX class costs about 4,096 units in its validation regexp, so a set in which every member has one, such as `[[:alpha:]]` in each line, tops out at roughly 1,900 members; sets of plain, brace and numeric-range lines compile at 20,000 lines.
+A `GlobSet` is one compile: its members share one compile budget, and past it the set fails typed with `CompileBudgetExceeded`. A portion's validation regexp is charged once for each distinct portion, 1,536 units for each Unicode property in it (`[[:alpha:]]` has two, `[[:word:]]` four): lines that share one portion, such as `d1/[[:alpha:]]*.ts` and `d2/[[:alpha:]]*.ts`, compile at 20,000 lines, while a set in which every line has its own `[[:alpha:]]` portion tops out at about 2,550 lines (about 1,280 for `[[:word:]]`). Sets of plain, brace and numeric-range lines compile at 20,000 lines.
+
+A `GlobSet`'s exclusions are order-independent: a `!` line removes what it matches wherever it sits, and no later line puts a path back. npm's `workspaces` negations are ordered, so `["packages/*", "!packages/a", "packages/a"]` keeps `packages/a` there and drops it here.
 
 Where a deadline is needed, enforce it off the calling thread: run the match in a worker that is terminated when the deadline passes, in a subprocess, or under the host's own request deadline.
 
@@ -166,7 +168,8 @@ console.log(Wildcard.matches("HUMAN:*", "human:spencer", WildcardOptions.make({ 
 
 - `GlobPattern.compile(source, options?)` — `Effect<GlobPattern, GlobPatternError>`; the fallible boundary, and the only one.
 - `GlobPattern#matches(candidate)` — total, pure, no error channel.
-- `GlobPattern#hasMagic` / `negated` / `enumerationPrefix` / `crossesSegments` — metadata for directory enumerators.
+- `GlobPattern#hasMagic` / `negated` / `enumerationPrefix` / `crossesSegments` — metadata for directory enumerators. `crossesSegments` is measured from the prefix every brace alternative shares, so `{apps,packages}/*` (prefix `""`) crosses segments.
+- `GlobPattern.alternativeCount(source, options?)` — `Result<number, GlobPatternError>`: how many alternatives a compile matches, counted without compiling (`{a,b}/{c,d}` is 4; a numeric range of 100 or more values is 1). Bounded by the expansion's own guards; pass `braceExpandMax` to stop it at a ceiling of your own.
 - `GlobPattern#literalPrefix` — the literal leading directory segments before the first magic segment, unescaped and without a trailing slash (`src/{a,b}/*.ts` gives `src`; `src/a.ts` gives itself; `""` when the first segment is magic). Braces are not expanded: an unescaped `{` is magic.
 - `extglobBang` option — read a leading `!(` as the `!(…)` extglob rather than whole-pattern negation, as picomatch does. Off by default, so the minimatch reading holds; `!a` still negates. Parity with picomatch at this one point only (set `dot` too to agree with Vitest). `nonegate: true` also gives picomatch's answer for `!(`, but disables every `!` negation. `GlobSet` has no options surface and strips one leading `!` itself as its exclusion marker.
 - `GlobPattern.escape(literal)` / `unescape(pattern)` — build patterns safely from user-supplied literals.

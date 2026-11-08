@@ -211,6 +211,19 @@ export const braceAlternatives = (pattern: string, options: EngineOptions = {}):
 	return alternatives;
 };
 
+/**
+ * How many alternatives a compile of `pattern` matches: the distinct results
+ * of its brace expansion, after a leading negation is read, with a numeric
+ * range of 100 or more values kept whole as one (as minimatch 11.0.5 keeps
+ * it). Zero for a comment or an empty pattern, which expand to nothing. It is
+ * the compile's own first two steps, so a count it returns is exact, and it
+ * builds no portion: the work is the expansion's, bounded by its own guards,
+ * whose trips it throws as a compile does. `braceExpandMax` caps the expansion
+ * before duplicates are dropped, so a trip says only "more than the cap".
+ */
+export const alternativeCount = (pattern: string, options: EngineOptions = {}): number =>
+	new Minimatch(pattern, options, compileBudget(), true).globSet.length;
+
 // replace stuff like \* with *
 const globMagic = /[?*]|[+@!]\(.*?\)|\[|\]/;
 
@@ -242,9 +255,17 @@ export class Minimatch {
 	// brace expansion can make the same portion in many rows, so they share
 	// one compiled portion, as minimatch 11 shares one Matcher
 	readonly #portions = new Map<string, ParseReturn>();
+	// stop once the braces are expanded: `alternativeCount` reads globSet alone
+	readonly #expandOnly: boolean;
 
-	constructor(pattern: string, options: EngineOptions = {}, budget: CompileBudget = compileBudget()) {
+	constructor(
+		pattern: string,
+		options: EngineOptions = {},
+		budget: CompileBudget = compileBudget(),
+		expandOnly = false,
+	) {
 		this.#budget = budget;
+		this.#expandOnly = expandOnly;
 		assertValidPattern(pattern);
 
 		this.options = options;
@@ -314,6 +335,7 @@ export class Minimatch {
 
 		// step 2: expand braces
 		this.globSet = [...new Set(this.#expandBraces())];
+		if (this.#expandOnly) return;
 
 		this.debug(this.pattern, this.globSet);
 

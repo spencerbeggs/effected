@@ -206,14 +206,14 @@ const MAX_WILDCARD_PATTERN_LENGTH = 256;
  * a pattern's braces and matches each alternative, so one pattern
  * (`p/{a,b,c,d,e,f,g,h}` four times over is 4,096 alternatives) can cost what
  * thousands do; the wildcard-pattern ceiling alone does not bound it. Each
- * pattern is weighed by {@link braceAlternativesBound}, an upper bound, so a
- * field near the ceiling may be refused that would in truth fit — it fails
- * closed, never open. The bound is loose for several groups in one pattern:
- * `{1..99}{a,b}` makes 198 alternatives, which the engine expands cheaply,
- * yet weighs 99² = 9,801, and `{a,b}{c,d}{e,f}{g,h}{i,j}` makes 32 and
- * weighs 6⁵ = 7,776, so a field holding either fails typed rather than
- * being read. Real `workspaces` fields hold nothing of the kind; a field that
- * needs one can list its alternatives as separate patterns.
+ * pattern is weighed by {@link braceWeight}: the exact number of
+ * alternatives the engine matches for it, each numeric range of 100 or more
+ * values (which the engine keeps whole) counted by its values. `{1..99}{a,b}`
+ * weighs 198 and `{a,b}{c,d}{e,f}{g,h}{i,j}` weighs 32, so a field holding
+ * either is read, while `{1..99}{a,b,c}` (297) and `{0..999}` (1,000) are
+ * refused. Real `workspaces` fields hold
+ * nothing of the kind; a field that needs more can list its alternatives as
+ * separate patterns.
  *
  * Measured at the budget over about 1 MB of link rows (darwin-arm64, node
  * 26.13.0, CPU time, best of three), `p/**` plus 31 negations of eight
@@ -227,67 +227,89 @@ const MAX_WILDCARD_PATTERN_LENGTH = 256;
  */
 const MAX_WILDCARD_ALTERNATIVES = 256;
 
-/** A numeric brace sequence, `{lo..hi}` or `{lo..hi..step}`. */
-const NUMERIC_SEQUENCE = /\{([-+]?\d+)\.\.([-+]?\d+)(?:\.\.[-+]?\d+)?\}/g;
-/** A one-character brace sequence, `{a..z}` or `{a..z..step}`. */
-const CHARACTER_SEQUENCE = /\{([^\\{},])\.\.([^\\{},])(?:\.\.[-+]?\d+)?\}/g;
+/**
+ * The options a pattern's alternatives are counted under: a negation is also
+ * compiled with `nocomment`, so a leading `#` is counted as text, never as a
+ * comment's zero, and the expansion stops one past the budget.
+ */
+const COUNT_OPTIONS = GlobPatternOptions.make({
+	nocomment: true,
+	nonegate: true,
+	braceExpandMax: MAX_WILDCARD_ALTERNATIVES + 1,
+});
 
 /**
- * An upper bound on how many alternatives brace expansion can make of a
- * pattern, computed without expanding it.
+ * A numeric range the glob engine keeps whole, as it finds one: unescaped, not
+ * after `$`, both ends safe integers, 100 or more values.
+ */
+const KEPT_RANGE = /(?<![\\$])\{(-?\d+)\.\.(-?\d+)\}/g;
+const KEPT_RANGE_MIN = 100;
+
+/** How a pattern is weighed against the brace budget, and whether that weight is the whole of it. */
+export interface BraceWeight {
+	/** The weight: the alternatives the engine matches, each kept-whole range counted by its values. */
+	readonly weight: number;
+	/** Whether counting stopped one past the budget, so the weight is a lower bound, not the size. */
+	readonly stopped: boolean;
+	/** Whether the weight is the exact alternative count: counting did not stop and no kept range was weighed. */
+	readonly exact: boolean;
+}
+
+/**
+ * Weigh a pattern's brace alternatives against {@link MAX_WILDCARD_ALTERNATIVES}.
  *
- * Every alternative-making group opens at an unescaped `{` (brace
- * expansion's own rewrites turn a `}` literal; they never add a `{`). A comma
- * group makes at most one alternative per part, a part at most (unescaped
- * commas in the whole pattern + 1); a sequence makes at most `|hi - lo| + 1`
- * (a step only lowers it). Nesting multiplies, a set of parts sums, and a sum
- * of `k` terms is at most `k` times its largest, so the product, over every
- * unescaped `{`, of the larger of those two per-group bounds bounds the whole.
- * It is loose — `{a,b}/{c,d}` makes 4 and is weighed 9 — and never low. A
- * backslash escapes the next character, as the engine reads a negation; a
- * positive is weighed after its backslashes become `/`, as it is compiled.
+ * The count is `GlobPattern.alternativeCount`, which runs the compile's own
+ * expansion and builds nothing. It stops one past the budget, so a hostile
+ * pattern costs no more than that many results to weigh; there, the weight is
+ * where counting stopped and `stopped` is true. Any other failure of the
+ * expansion (its 4,000,000-character guard, which a sequence whose endpoints
+ * overflow a double reaches, since it counts towards `Infinity`) weighs as
+ * unbounded.
+ *
+ * A numeric range of 100 or more values is one alternative to the engine,
+ * which matches it as one portion, but that portion's matcher graph costs as
+ * much to match against as the values would (up to 684 items, for every row
+ * it meets): 31 negations of nine `{0..9007199254740991}` segments and eight
+ * comma parts each, against 1.2 MB of rows, took 1.1 s as 248 alternatives.
+ * So each such range multiplies the weight by its value count, as an upper
+ * bound would, and a field holding one wide range fails typed. Where the
+ * engine expands a range after all (a `[` before it in its portion), the
+ * count holds its values already, and the product over-weighs it: closed.
+ * Either way the field fails closed.
  *
  * @internal
  */
-export const braceAlternativesBound = (pattern: string): number => {
-	let opens = 0;
-	let commas = 0;
-	for (let index = 0; index < pattern.length; index += 1) {
-		const character = pattern[index];
-		if (character === "\\") index += 1;
-		else if (character === "{") opens += 1;
-		else if (character === ",") commas += 1;
+export const braceWeight = (pattern: string): BraceWeight => {
+	const counted = GlobPattern.alternativeCount(pattern, COUNT_OPTIONS);
+	let weight: number;
+	let stopped = false;
+	let ranged = false;
+	if (Result.isSuccess(counted)) weight = counted.success;
+	else {
+		const { reason, limit, actual } = counted.failure;
+		stopped = reason === "ExpansionBudgetExceeded" && limit === MAX_WILDCARD_ALTERNATIVES + 1;
+		weight = stopped ? Math.max(actual, limit) : Number.POSITIVE_INFINITY;
 	}
-	if (opens === 0) return 1;
-	let widestSequence = 1;
-	for (const [, lo, hi] of pattern.matchAll(NUMERIC_SEQUENCE)) {
-		widestSequence = Math.max(widestSequence, sequenceSize(lo ?? "0", hi ?? "0"));
+	for (const [, lo, hi] of pattern.matchAll(KEPT_RANGE)) {
+		const a = Number(lo);
+		const b = Number(hi);
+		if (!Number.isSafeInteger(a) || !Number.isSafeInteger(b)) continue;
+		const values = Math.abs(a - b) + 1;
+		// The engine kept it whole only at 100 values or more; a smaller range is expanded, and counted.
+		if (values >= KEPT_RANGE_MIN) {
+			weight *= values;
+			ranged = true;
+		}
 	}
-	for (const [, lo, hi] of pattern.matchAll(CHARACTER_SEQUENCE)) {
-		widestSequence = Math.max(widestSequence, Math.abs((hi?.codePointAt(0) ?? 0) - (lo?.codePointAt(0) ?? 0)) + 1);
-	}
-	const bound = Math.max(commas + 1, widestSequence) ** opens;
-	// Saturate: a bound that is not a safe integer is "too many", never NaN.
-	return Number.isSafeInteger(bound) ? bound : Number.POSITIVE_INFINITY;
+	return { weight, stopped, exact: !stopped && !ranged && Number.isFinite(weight) };
 };
 
 /**
- * `|hi - lo| + 1` for a numeric sequence's endpoints, or `Infinity` when
- * either endpoint is past `Number.MAX_SAFE_INTEGER` or the size is. Brace
- * expansion reads an endpoint as a double, and one too large for it becomes
- * `Infinity`, which it then counts towards forever (to its own expansion
- * cap): `{9…9..9…9}` with 400 digits makes 100,000 alternatives, not one. The
- * endpoints are read as `BigInt`, so two of them never subtract to `NaN`.
+ * {@link braceWeight}'s weight alone.
+ *
+ * @internal
  */
-const sequenceSize = (lo: string, hi: string): number => {
-	const max = BigInt(Number.MAX_SAFE_INTEGER);
-	const low = BigInt(lo);
-	const high = BigInt(hi);
-	if (low > max || low < -max || high > max || high < -max) return Number.POSITIVE_INFINITY;
-	const span = high - low;
-	const size = (span < 0n ? -span : span) + 1n;
-	return size > max ? Number.POSITIVE_INFINITY : Number(size);
-};
+export const braceAlternativeCount = (pattern: string): number => braceWeight(pattern).weight;
 
 /** Characters that make a pattern more than a plain path, conservatively. */
 const GLOB_SYNTAX = /[*?[\]{}()!+@#\\,]/;
@@ -430,6 +452,10 @@ const workspaceMatcher = (
 	const read: Array<{ readonly index: number; readonly negated: boolean; readonly pattern: string }> = [];
 	let wildcards = 0;
 	let alternatives = 0;
+	// Whether some pattern's count stopped at the budget (the sum is then where counting stopped), and whether some
+	// weight is not an exact count (a stopped one, or a kept range weighed by its values): the sum is then no size.
+	let stopped = false;
+	let inexact = false;
 	for (const [index, entry] of declared.entries()) {
 		if (typeof entry !== "string") continue;
 		const bangs = /^!+/.exec(entry)?.[0].length ?? 0;
@@ -454,7 +480,10 @@ const workspaceMatcher = (
 		wildcards += 1;
 		// A positive is compiled with backslashes turned to `/`, so it is
 		// weighed as compiled; a negation is compiled as written.
-		alternatives += braceAlternativesBound(negated ? pattern : pattern.replace(/\\/g, "/"));
+		const weighed = braceWeight(negated ? pattern : pattern.replace(/\\/g, "/"));
+		alternatives += weighed.weight;
+		stopped ||= weighed.stopped;
+		inexact ||= !weighed.exact;
 	}
 	if (wildcards > MAX_WILDCARD_WORKSPACE_PATTERNS) {
 		return Result.fail(
@@ -471,8 +500,12 @@ const workspaceMatcher = (
 		return Result.fail(
 			validationFailure(
 				new Error(
-					`the root entry's workspaces field's wildcard patterns may expand to ${Number.isFinite(alternatives) ? alternatives : "unboundedly many"} brace alternatives, ` +
-						`more than the ${MAX_WILDCARD_ALTERNATIVES} this parser reads`,
+					// Only an exact sum is a size: a stopped count is a lower bound, a kept range's weight an upper one.
+					!Number.isFinite(alternatives)
+						? `the root entry's workspaces field's wildcard patterns may expand to unboundedly many brace alternatives, more than the ${MAX_WILDCARD_ALTERNATIVES} this parser reads`
+						: inexact
+							? `the root entry's workspaces field's wildcard patterns may expand to more than the ${MAX_WILDCARD_ALTERNATIVES} brace alternatives this parser reads${stopped ? ` (counting stopped at ${alternatives})` : ""}`
+							: `the root entry's workspaces field's wildcard patterns may expand to ${alternatives} brace alternatives, more than the ${MAX_WILDCARD_ALTERNATIVES} this parser reads`,
 				),
 			),
 		);

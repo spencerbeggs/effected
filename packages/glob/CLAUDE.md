@@ -222,8 +222,10 @@ The engine answers as the 11.0.5 oracle does, except the divergences below:
 - **Shared compile work** (`CompileBudget`, `ast.ts`): one compile shares
   each identical portion across rows (`#portions`, as 11 shares a `Matcher`)
   and each identical matcher regexp, and counts its work against
-  `MAX_REGEXP_WORK` (8,000,000 units): a regexp's source length plus 2,048
-  per `\p{...}` (measured about 10 KB and 300 us each), and
+  `MAX_REGEXP_WORK` (8,000,000 units): a kept regexp's source length plus
+  2,048 per `\p{...}` (a matcher's class regexps, shared), a portion's
+  validation regexp's length plus `VALIDATION_PROPERTY_WEIGHT` (1,536) per
+  `\p{...}`, and
   `GRAPH_ITEM_WEIGHT` (4) per matcher graph item, charged before the graph is
   built (matcher port note 6; an item holds about 50 bytes). A kept range is
   684 items for the widest ends, and each brace alternative around it holds
@@ -238,8 +240,37 @@ The engine answers as the 11.0.5 oracle does, except the divergences below:
   typed as `CompileBudgetExceeded` before the regexp or graph is built:
   `[[:alpha:]]{0..99}{0..99}{0..9}` (100,000 alternatives, each with its own
   validation regexp) ran the process out of memory at about 1 GB and now
-  fails in about 0.7 s at about 150 MB. 11 builds matchers lazily and compiles
-  it in 275 ms: a documented refusal (below).
+  fails in about 1.2 s at about 370 MB of peak RSS. 11 builds matchers lazily
+  and compiles it in 275 ms: a documented refusal (below).
+- **Validation regexps** (#1287, `validate` in `ast.ts`): a non-extglob
+  magic portion's `^…$` regexp is validation only, so it is built, run on
+  both subjects and **dropped**: the portion's `set` entry is a
+  never-matching placeholder carrying the plan, as for an extglob portion
+  (a kept POSIX-class regexp held about 25 KB). Its source is checked
+  **once per compile** (`CompileBudget.validated`; V8 reuses a compiled
+  source anyway), so `GlobSet` members sharing `[[:alpha:]]*.ts` cost it
+  once and compile at 20,000. The weight is measured time, **inside one
+  compile filled to the budget** (a source built alone reads 30% cheap): the
+  costliest escape (`[[:print:]]`'s `\p{C}`) costs about 465 us under both
+  `u` and `nocase`'s `iu`, a literal character 0.30 to 0.33 us, so 1,536; a
+  set whose every member has its own `[[:alpha:]]` portion fits about 2,550
+  members, `[[:word:]]` about 1,280. A compile is ONE budget: `compileResult`
+  builds its defaults engine (the value invariant) and its effective engine
+  on one budget, and builds the class unchecked (the defaults engine was the
+  check); `GlobSet` compiles each include whole on the set's budget and
+  reuses that engine when the include stays whole or has one alternative.
+  Before, each had a budget of its own, so `nocase` did twice one budget's
+  work (6 s at HEAD) and a set about twice (3.5 s). Time adds up across a
+  compile but the memory V8 holds while it builds ONE regexp (about 400 KB
+  an escape, superlinear past about 1,000) does not, so one validation
+  regexp is capped on its own at `MAX_VALIDATION_PROPERTIES` = 256 escapes
+  (about 94 MB and 105 ms at the cap), failing typed `CompileBudgetExceeded`
+  with `limit` 256; before it, 3,800 `[[:print:]]` in one portion fit the
+  budget and peaked at 3.2 GB. **Never keep the validation regexp, and never
+  drop the per-regexp cap to "simplify" the charge.** `GlobSet`'s
+  `classifyInclude` marks the budget before an include's alternatives and
+  rewinds it (`rewindBudget`: spend, shared regexps and validations after
+  the mark) when the include stays whole, so the whole is charged once.
 - **Fast paths**: 11 has no `*.ext`/`?ext` fast path, and neither does the
   kit now; 10's compared an escaped extension with its backslash (`*\.` did
   not match `a.`).
@@ -272,7 +303,7 @@ cause is a portion's regexp too large for the runtime (about 32,000 literal
 characters and a wildcard in one portion; `hostility.test.ts` still reaches
 it); and `CompileBudgetExceeded`, a compile whose work passes
 `MAX_REGEXP_WORK` (thousands of alternatives each with its own POSIX class,
-`[[:alpha:]]{0..99}{0..99}`, or about 4,000 POSIX-class properties in one
+`[[:alpha:]]{0..99}{0..99}`, or more than 256 POSIX-class properties in one
 portion), which 11 compiles because it builds its matchers lazily; a kept
 range copied into thousands of alternatives, which 11 refuses as too long;
 or a `GlobSet` whose members together pass it, where each alone compiles. Those are
@@ -350,8 +381,10 @@ it**. `package.json` stays `"private": true`.
 ## Open questions (design-doc OPEN items)
 
 - **The enumeration contract is materially de-risked, not closed.**
-  `enumerationPrefix`/`crossesSegments` have now held unmodified under three
-  independent consumers — `@effected/workspaces`' enumerator (shipped; the
+  `enumerationPrefix`/`crossesSegments` have now held under three
+  independent consumers (`crossesSegments` was corrected once, #1282: it is
+  measured from the prefix every alternative shares, so `{apps,packages}/*`
+  crosses segments; single-alternative patterns answer as before) — `@effected/workspaces`' enumerator (shipped; the
   "when that package ports" caveat this item used to carry is spent),
   `@effected/walker`'s `descend`, and `@effected/github-actions`' cache
   search-root derivation, the last under real filesystem enumeration. What

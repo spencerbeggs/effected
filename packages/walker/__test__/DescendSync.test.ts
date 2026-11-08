@@ -442,6 +442,49 @@ describe("a literal pattern through a symlinked directory", () => {
 	);
 });
 
+describe("the literal fast path reads a literal as glob does (#1283)", () => {
+	const level0 = (source: string): GlobPattern =>
+		Result.getOrThrow(GlobPattern.compileResult(source, GlobPatternOptions.make({ optimizationLevel: 0 })));
+
+	it.effect("stats an escaped literal without its backslash, and answers it as it matches", () =>
+		Effect.gen(function* () {
+			const pattern = compile("src/\\lib/util.ts");
+			assert.isTrue(pattern.matches("src/lib/util.ts"));
+			const answer = { ok: ["src/lib/util.ts"] };
+			assert.deepStrictEqual(yield* viaEffect(pattern, {}), answer);
+			assert.deepStrictEqual(viaSync(pattern, {}), answer);
+		}),
+	);
+
+	it.effect("never resolves a `..`, `.` or empty segment through a file or a missing directory", () =>
+		Effect.gen(function* () {
+			// Each matches as spelled at level 0, where glob pops nothing; a real stat fails ENOTDIR or ENOENT on each.
+			for (const source of ["readme.md/x/..", "readme.md/../readme.md", "readme.md/.", "nowhere/../readme.md"]) {
+				const pattern = level0(source);
+				assert.isTrue(pattern.matches(source), source);
+				assert.deepStrictEqual(yield* viaEffect(pattern, {}), { ok: [] }, source);
+				assert.deepStrictEqual(viaSync(pattern, {}), { ok: [] }, source);
+			}
+			// Nor through a symlinked directory, whose `..` the kernel resolves from its target.
+			assert.deepStrictEqual(viaSync(level0("links/one/../readme.md"), { followSymlinks: true }), { ok: [] });
+			// Control: through a real directory the same shape resolves, and answers in its own spelling.
+			const through = { ok: ["src/../readme.md"] };
+			assert.deepStrictEqual(yield* viaEffect(level0("src/../readme.md"), {}), through);
+			assert.deepStrictEqual(viaSync(level0("src/../readme.md"), {}), through);
+		}),
+	);
+
+	it.effect("answers the row glob compiled at level 1, where `<p>/..` is popped as glob documents", () =>
+		Effect.gen(function* () {
+			// `readme.md/x/..` compiles to `readme.md` and matches it, as minimatch and node-glob read it.
+			const pattern = compile("readme.md/x/..");
+			assert.isTrue(pattern.matches("readme.md"));
+			assert.deepStrictEqual(yield* viaEffect(pattern, {}), { ok: ["readme.md"] });
+			assert.deepStrictEqual(viaSync(pattern, {}), { ok: ["readme.md"] });
+		}),
+	);
+});
+
 describe("a symlinked walk base", () => {
 	it.effect("is not entered without followSymlinks, in either form", () =>
 		Effect.gen(function* () {

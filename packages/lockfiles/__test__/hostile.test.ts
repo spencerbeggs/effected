@@ -6,8 +6,8 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Exit, Option, Result } from "effect";
-import { braceExpand } from "../../glob/node_modules/minimatch/dist/esm/index.js";
-import { braceAlternativesBound, compileGlob, stripTrailingDot } from "../src/internal/npm.js";
+import { Minimatch } from "../../glob/node_modules/minimatch/dist/esm/index.js";
+import { braceAlternativeCount, compileGlob, stripTrailingDot } from "../src/internal/npm.js";
 import { Lockfile, LockfileParseError } from "../src/Lockfile.js";
 import type { LockfileFormat } from "../src/LockfileFormat.js";
 
@@ -634,7 +634,57 @@ describe("npm workspace globs", () => {
 					atLimit.packages.filter((pkg) => pkg.isWorkspace).map((pkg) => pkg.relativePath),
 					["p/a"],
 				);
+				// Each pattern is weighed by its exact count: `{1..99}{a,b}` is 198 alternatives, read, where an upper bound
+				// weighed it 9,801 and refused the field; `{1..99}{a,b,c}`, 297, is refused.
+				const exact = yield* Lockfile.parse(lockfileWith(["**", "!n/{1..99}{a,b}"], ["p/a", "n/7b"]), {
+					format: "npm",
+				});
+				assert.deepStrictEqual(
+					exact.packages.filter((pkg) => pkg.isWorkspace).map((pkg) => pkg.relativePath),
+					["p/a"],
+				);
+				const over = yield* parseError(lockfileWith(["**", "!n/{1..99}{a,b,c}"]), "npm");
+				assert.include(String((over.cause as Error).message), "brace alternatives");
+				// Where counting stopped at the budget, the message says so rather than presenting it as the size:
+				// `{a,b}` 48 times is 2^48 alternatives.
+				const stopped = yield* parseError(lockfileWith(["**", `!${"{a,b}".repeat(48)}`]), "npm");
+				assert.include(
+					String((stopped.cause as Error).message),
+					"may expand to more than the 256 brace alternatives this parser reads (counting stopped at ",
+				);
 			}),
+	);
+
+	it.effect(
+		"a numeric range kept whole weighs its value count, so wide-range negations fail typed fast",
+		() =>
+			Effect.gen(function* () {
+				// The engine matches `{0..9007199254740991}` as one portion, but its graph costs what the values would: 31
+				// negations of nine such segments and eight comma parts, weighed 248 as alternatives, parsed 1.2 MB of rows
+				// in 1.1 s. Weighed by its values, the field is refused before any pattern is compiled.
+				const wide = "{0..9007199254740991}";
+				const rows = range(3000, (i) => `p/${"9007199254740991/".repeat(9)}q${i}`);
+				const ranges = lockfileWith(
+					["p/**", ...range(31, (i) => `!p/${`${wide}/`.repeat(9)}{a,b,c,d,e,f,g,h}${i}`)],
+					rows,
+				);
+				const error = yield* parseError(ranges, "npm");
+				assert.strictEqual(error.stage, "validation");
+				// A range's weight bounds its cost from above; it is no size, so the message gives none.
+				assert.include(
+					String((error.cause as Error).message),
+					"may expand to more than the 256 brace alternatives this parser reads",
+				);
+				// The same field with `*` in place of each range parses: about 300 ms of real matching. The refusal costs
+				// less than that.
+				const plain = lockfileWith(["p/**", ...range(31, (i) => `!p/${"*/".repeat(9)}{a,b,c,d,e,f,g,h}${i}`)], rows);
+				assert.isBelow(yield* cpuMs(ranges, 1, "fails"), yield* cpuMs(plain, 1, "parses"));
+				// A range of 100 values or more weighs its values, one of 99 is expanded and weighs its alternatives.
+				assert.strictEqual(braceAlternativeCount("q/{0..199}"), 200);
+				assert.strictEqual(braceAlternativeCount("q/{a,b}/{0..199}"), 400);
+				assert.strictEqual(braceAlternativeCount("q/{1..99}{a,b}"), 198);
+			}),
+		60_000,
 	);
 
 	it.effect(
@@ -643,17 +693,24 @@ describe("npm workspace globs", () => {
 			Effect.gen(function* () {
 				const nines = "9".repeat(400);
 				const eights = `${"9".repeat(399)}8`;
-				// An endpoint past a safe integer saturates: brace expansion reads it as
-				// a double, gets `Infinity`, and counts towards it to its own cap
-				// (100,000 alternatives for two equal 400-digit endpoints).
-				assert.strictEqual(braceAlternativesBound(`q/{${nines}..${nines}}`), Number.POSITIVE_INFINITY);
-				assert.strictEqual(braceAlternativesBound(`q/{${eights}..${nines}}`), Number.POSITIVE_INFINITY);
-				assert.strictEqual(braceAlternativesBound(`q/{1..${nines}}`), Number.POSITIVE_INFINITY);
-				assert.strictEqual(braceAlternativesBound(`q/{-${nines}..${nines}}`), Number.POSITIVE_INFINITY);
-				assert.strictEqual(braceAlternativesBound(`q/{0..9007199254740992}`), Number.POSITIVE_INFINITY);
-				assert.strictEqual(braceAlternativesBound(`q/{1..9007199254740991}`), 9_007_199_254_740_991);
-				// Many groups saturate too, rather than overflowing to a non-integer.
-				assert.strictEqual(braceAlternativesBound("{a,b}".repeat(200)), Number.POSITIVE_INFINITY);
+				// An endpoint past a safe integer weighs past the budget: brace expansion
+				// reads it as a double, gets `Infinity`, and counts towards it until a
+				// guard stops it (100,000 alternatives for two equal 400-digit endpoints).
+				for (const shape of [
+					`q/{${nines}..${nines}}`,
+					`q/{${eights}..${nines}}`,
+					`q/{1..${nines}}`,
+					`q/{-${nines}..${nines}}`,
+					`q/{0..9007199254740992}`,
+				]) {
+					const weight = braceAlternativeCount(shape);
+					assert.isAbove(weight, 256, shape.slice(0, 12));
+					assert.isFalse(Number.isNaN(weight), shape.slice(0, 12));
+				}
+				// A safe range of 100 or more values is one portion to the engine, and weighs its value count.
+				assert.strictEqual(braceAlternativeCount(`q/{1..9007199254740991}`), 9_007_199_254_740_991);
+				// Many groups stop one past the budget, rather than expanding 2^200 alternatives.
+				assert.isAbove(braceAlternativeCount("{a,b}".repeat(200)), 256);
 				// The reviewer's repro (resized to the 32-wildcard ceiling): 30 negations of 8^4 alternatives beside 935
 				// literal positives, then a last positive whose sequence endpoints
 				// overflow a double. Before, the weight went NaN, `NaN > 256` was false,
@@ -667,17 +724,22 @@ describe("npm workspace globs", () => {
 					const error = yield* parseError(lockfileWith([...bomb, last]), "npm");
 					assert.strictEqual(error.stage, "validation");
 				}
-				// An unbounded sequence alone is refused by the weight, not the length.
+				// An unbounded sequence alone is refused by the weight, not the length: twenty nines are one double,
+				// 1e20, which brace expansion counts towards forever, to its 4,000,000-character guard.
 				const unbounded = yield* parseError(lockfileWith(["p/**", `q/{${twenty}..${twenty}}`]), "npm");
 				assert.include(String((unbounded.cause as Error).message), "unboundedly many brace alternatives");
 			}),
 	);
 
-	it("the brace weight is never below the alternatives brace expansion really makes", () => {
-		// Checked against minimatch 11.0.5's own `braceExpand`, the expansion
-		// the glob engine follows (from @effected/glob's oracle devDependency).
-		// Over-estimating fails closed; under-estimating would let a pattern
-		// past the ceiling, so every shape must come out at or above.
+	it("the brace weight is the count of alternatives the engine matches, never below it", () => {
+		// Checked against minimatch 11.0.5's own expansion, the one the glob
+		// engine follows (from @effected/glob's oracle devDependency): its
+		// `globSet`, the distinct alternatives after a range of 100 or more
+		// values is kept whole. Under-counting would let a pattern past the
+		// ceiling, so a weight is equal to it with no kept range, at or past it
+		// with one, and past the budget where the oracle's expansion runs to its
+		// own cap.
+		const oracle = (shape: string): number => new Minimatch(shape, { nocomment: true, nonegate: true }).globSet.length;
 		const shapes = [
 			"p/{a,b}",
 			"{a,b}/{c,d}",
@@ -695,7 +757,8 @@ describe("npm workspace globs", () => {
 			"{a\\,b,c}",
 			"{a,b\\}",
 			"{a,,b}",
-			"{1..100}",
+			"{1..99}{a,b}",
+			"{a,b}{c,d}{e,f}{g,h}{i,j}",
 			"p/{a,b,c,d,e,f,g,h}{a,b,c,d,e,f,g,h}",
 			"{a,{b,{c,{d,e}}}}",
 			"a{b,c{d,e}f}g{h,i}",
@@ -704,12 +767,17 @@ describe("npm workspace globs", () => {
 			"{{a,b}",
 			"{a,b{c,d}",
 			"{a,b}{c,d{e,f}}{g,h}",
-			`q/{${"9".repeat(400)}..${"9".repeat(400)}}`,
-			`q/{${"9".repeat(399)}8..${"9".repeat(400)}}`,
+			"#{a,b}",
 		];
-		for (const shape of shapes) {
-			assert.isAtLeast(braceAlternativesBound(shape), braceExpand(shape).length, shape);
-		}
+		for (const shape of shapes) assert.strictEqual(braceAlternativeCount(shape), oracle(shape), shape);
+		// A range of 100 values or more is one alternative to the engine, weighed by its values: never below it.
+		assert.strictEqual(oracle("{1..100}"), 1);
+		assert.strictEqual(braceAlternativeCount("{1..100}"), 100);
+		// The over-refusal the upper bound made is gone: these weighed 9,801 and 7,776.
+		assert.strictEqual(braceAlternativeCount("{1..99}{a,b}"), 198);
+		assert.strictEqual(braceAlternativeCount("{a,b}{c,d}{e,f}{g,h}{i,j}"), 32);
+		for (const shape of [`q/{${"9".repeat(400)}..${"9".repeat(400)}}`, `q/{${"9".repeat(399)}8..${"9".repeat(400)}}`])
+			assert.isAbove(braceAlternativeCount(shape), 256, shape.slice(0, 12));
 		// A deterministic sweep over a small brace alphabet: every string of up
 		// to six characters from `{ } , a \\ 1 .` (7^6 + … ≈ 137,000 strings).
 		const alphabet = ["{", "}", ",", "a", "\\", "1", "."];
@@ -717,9 +785,11 @@ describe("npm workspace globs", () => {
 		const sweep = (prefix: string, depth: number): void => {
 			if (prefix !== "") {
 				checked += 1;
-				const real = braceExpand(prefix).length;
-				if (braceAlternativesBound(prefix) < real)
-					assert.fail(`${JSON.stringify(prefix)} weighs less than its ${real} alternatives`);
+				const real = oracle(prefix);
+				if (braceAlternativeCount(prefix) !== real)
+					assert.fail(
+						`${JSON.stringify(prefix)} weighs ${braceAlternativeCount(prefix)}, not its ${real} alternatives`,
+					);
 			}
 			if (depth === 0) return;
 			for (const character of alphabet) sweep(prefix + character, depth - 1);

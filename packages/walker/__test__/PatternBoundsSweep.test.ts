@@ -53,7 +53,7 @@ const sources = (): Array<string> => {
 const LEVELS: ReadonlyArray<0 | 1 | 2 | undefined> = [undefined, 0, 1, 2];
 
 const COMPILED = 94_528;
-const LITERAL_FAST_PATH = 9408;
+const LITERALS = 9408;
 const DOT_ONLY = 414;
 
 describe("skipsHiddenDirectories over every short pattern", () => {
@@ -157,6 +157,36 @@ const alternatives = (source: string): Array<string> =>
  * the source globstar, `.`, star (a comment cannot spell it), a spelling no walk forms, so the walk is held
  * between the two answers.
  */
+/** The walker's literal fast path: a pattern with no magic, no brace, no negation, not matched by basename. */
+const literalFastPath = (pattern: GlobPattern): boolean =>
+	!pattern.hasMagic && !pattern.negated && !/[{}]/.test(pattern.source) && !pattern.matchesByBasename;
+
+/** Every directory of the tree, slash-free at both ends. */
+const DIRECTORIES = new Set(
+	FILES.flatMap((file) =>
+		file
+			.split("/")
+			.slice(0, -1)
+			.map((_, i, all) => all.slice(0, i + 1).join("/")),
+	),
+);
+
+/**
+ * Whether a spelling's `.`, `..` and empty segments resolve the way a real stat resolves them: each follows a
+ * directory of the tree (`f.js/../` fails ENOTDIR, `q/../` ENOENT), where joining would collapse them lexically.
+ */
+const resolvesPhysically = (spelling: string): boolean => {
+	const raw = spelling.split("/");
+	for (let index = 1; index < raw.length; index++) {
+		const segment = raw[index];
+		if (segment !== "" && segment !== "." && segment !== "..") continue;
+		const before = resolveSegments(raw.slice(0, index));
+		if (before === undefined) return false;
+		if (before.length > 0 && !DIRECTORIES.has(before.join("/"))) return false;
+	}
+	return true;
+};
+
 const bruteForce = (pattern: GlobPattern, source: string, dotLed: boolean): Array<string> => {
 	const spellings: Array<{ readonly spelling: string; readonly prefix: string }> = [{ spelling: "", prefix: "" }];
 	if (dotLed) spellings.push({ spelling: "./", prefix: "" });
@@ -178,7 +208,11 @@ const bruteForce = (pattern: GlobPattern, source: string, dotLed: boolean): Arra
 	}
 	return FILES.filter((file) =>
 		spellings.some(
-			({ spelling, prefix }) => file.startsWith(prefix) && pattern.matches(spelling + file.slice(prefix.length)),
+			({ spelling, prefix }) =>
+				file.startsWith(prefix) &&
+				pattern.matches(spelling + file.slice(prefix.length)) &&
+				// A literal is stat-ed, so the kernel's resolution applies to its spelling (#1283).
+				(!literalFastPath(pattern) || resolvesPhysically(spelling + file.slice(prefix.length))),
 		),
 	).sort();
 };
@@ -200,7 +234,7 @@ describe("descend over every short pattern", () => {
 		let compiled = 0;
 		let deepBasename = 0;
 		let bounded = 0;
-		let literalFastPath = 0;
+		let literals = 0;
 		let dotOnly = 0;
 		const wide: Array<string> = [];
 		for (const a of WIDE) {
@@ -240,19 +274,15 @@ describe("descend over every short pattern", () => {
 								else if (JSON.stringify(tight.success) !== JSON.stringify(walked.success))
 									differences.push(`${label} maxDepth=${maxDepth} answered ${JSON.stringify(tight.success)}`);
 							}
-							// A literal whose path runs on past a file through `.` or `..` (`f.js/.`, `f.js/x/..`) takes the one-stat
-							// fast path, which joins (and so normalizes) the source; no file of the tree is spelled that way. That is
-							// the literal path's own rule, not a bound: it is counted, not compared (a follow-up of #1261).
-							// The same fast path stats an escaped literal as spelled, backslash included (`src/\x/f.js` names no file),
-							// though glob reads the escape: counted, not compared, for the same reason.
+							// A literal that runs past a file through `.`, `..` or an empty segment (`f.js/x/..` at level 0), or an escaped
+							// literal (`src/\\x/f.js`): the fast path stats it as glob reads it, resolving those segments physically, and the
+							// filter below resolves its spellings the same way, so the class is compared like every other (#1283).
 							if (
 								!pattern.hasMagic &&
 								!pattern.matchesByBasename &&
 								/\/\.\.?(\/|$)|\\/.test(source.replace(/^(\.\/)+/, ""))
-							) {
-								literalFastPath += 1;
-								continue;
-							}
+							)
+								literals += 1;
 							// Complete against the strict filter, sound against the `./`-led one, and every answer matches as spelled.
 							const strict = bruteForce(pattern, source, false);
 							const loose = bruteForce(pattern, source, true);
@@ -276,7 +306,7 @@ describe("descend over every short pattern", () => {
 		assert.strictEqual(compiled, COMPILED);
 		assert.isAbove(deepBasename, 1000);
 		assert.isAbove(bounded, 10_000);
-		assert.strictEqual(literalFastPath, LITERAL_FAST_PATH);
+		assert.strictEqual(literals, LITERALS);
 		// Files only a `./` spelling no walk forms reaches (`**/./*` against `./a.js`): pinned, not a bound.
 		assert.strictEqual(dotOnly, DOT_ONLY);
 		// About a minute under coverage. Exhaustive on purpose; never sample it down.
