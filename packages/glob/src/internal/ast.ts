@@ -23,6 +23,8 @@
 //    non-integer cap is a wiring bug and dies as a TypeError defect.
 // 6. toMMPattern catches a SyntaxError from new RegExp (and only that) and
 //    throws GuardExceeded("InvalidRegExp", 0, 0): upstream 10 let it escape.
+//    Now that only regexp syntax is escaped (port note 9), its cause is a
+//    regexp too large for the runtime.
 // 7. Only a portion that is exactly an empty extglob (`?()`, `*()`, `+()`,
 //    `@()`) is read with extglobs off, so `*()` is a `*` and a literal `()`,
 //    from minimatch 11; 10 made such a portion literal text, and `+(|)` and
@@ -32,12 +34,17 @@
 //    as one string, so the `*` of an unclosed `*(` stayed a wildcard.
 // 9. Every regexp the walk needs compiles with the pattern (PortionPlan), so
 //    matching builds none; a portion with an extglob builds no regexp of its
-//    own at all, since only the walk answers it. #parseGlob escapes an escaped
-//    character only if it is regexp syntax (11's reEscape set).
+//    own at all, since only the walk answers it. #parseGlob and parseClass
+//    escape a character only if it is regexp syntax (11's reEscape set), so
+//    a `,`, `#`, `-` or space beside a POSIX class is valid under its u flag.
 // 10. #parseAST reads a class whole, as parseClass does, so a [ that never
 //    closes is a literal and extglobs after it still parse (minimatch 11); 10
 //    tracked an open class to the end of the portion, which turned off
 //    extglob parsing after an unclosed [.
+// 11. A portion with a numeric range of 100 or more values, which minimatch
+//    11 does not expand (Minimatch#expandBraces marks it), is answered by
+//    11's matcher with its rangeMark (rangePortion), from minimatch 11; 10
+//    expanded every range.
 // Beside them, matchesPortion walks a portion under minimatch 11's matcher
 // rules (from @isaacs/nonrecursive-glob-match's Sim, which 11 matches with)
 // where the regexp would answer differently: a `.` or `..` path portion, a
@@ -50,7 +57,15 @@
 // it here). The debug/inspect id plumbing is kept for diffability.
 
 import { parseClass } from "./braceExpressions.js";
-import { GuardExceeded, MAX_EXTGLOB_RECURSION, MAX_NESTING_DEPTH, assertCap } from "./limits.js";
+import {
+	GRAPH_ITEM_WEIGHT,
+	GuardExceeded,
+	MAX_EXTGLOB_RECURSION,
+	MAX_NESTING_DEPTH,
+	MAX_REGEXP_WORK,
+	REGEXP_PROPERTY_WEIGHT,
+	assertCap,
+} from "./limits.js";
 import { Matcher } from "./matcher.js";
 import type { EngineOptions, MMRegExp } from "./types.js";
 import { unescape as unescapePattern } from "./unescape.js";
@@ -183,11 +198,13 @@ const startNoDot = "(?!\\.)";
 const addPatternStart = new Set(["[", "."]);
 // cases where traversal is A-OK, no dot prevention needed
 const justDots = new Set(["..", "."]);
-// An escaped character is written escaped only if it is regexp syntax: the
-// set of minimatch 11's reEscape. 10 missed `|`, so `\|` became an
-// alternation, and escaped `!`, which the u flag rejects.
+// A character is written escaped only if it is regexp syntax: the set of
+// minimatch 11's reEscape, for an escaped character and a loose one alike. 10
+// missed `|`, so `\|` became an alternation, and escaped `!`, `,`, `#`, `-` and
+// whitespace, which are not syntax, so the u flag a POSIX class turns on
+// rejected them.
 const reSpecials = new Set("\\^$.*+?()[]{}|/");
-const regExpEscape = (s: string): string => s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+const regExpEscape = (s: string): string => s.replace(/[\\^$.*+?()[\]{}|/]/g, "\\$&");
 
 // any single thing other than /
 const qmark = "[^/]";
@@ -237,6 +254,54 @@ export const portionPlan = (p: object): PortionPlan | undefined => plans.get(p);
 // one-byte subject, so `test("")` has no known killing shape. Both stay,
 // since nothing proves V8 never builds a one-byte program larger than the
 // two-byte one.
+/**
+ * The regexp work of one compile (MAX_REGEXP_WORK), shared by every portion of
+ * one pattern, and the matcher regexps it already built: a regexp with no `g`
+ * or `y` flag keeps no state, so every portion's matcher can share one (a
+ * class such as `[[:alpha:]]` repeated in each of a brace expansion's
+ * alternatives is built once).
+ */
+export interface CompileBudget {
+	spent: number;
+	readonly shared: Map<string, RegExp>;
+}
+
+export const compileBudget = (): CompileBudget => ({ spent: 0, shared: new Map() });
+
+const propertyEscapes = /\\[pP]\{/g;
+
+// Counts a regexp's work against the budget, and fails typed past it before
+// the regexp is built.
+const charge = (budget: CompileBudget, work: number): void => {
+	budget.spent += work;
+	if (budget.spent > MAX_REGEXP_WORK) {
+		throw new GuardExceeded("CompileBudgetExceeded", MAX_REGEXP_WORK, budget.spent);
+	}
+};
+
+const spend = (budget: CompileBudget, source: string): void =>
+	charge(budget, source.length + REGEXP_PROPERTY_WEIGHT * (source.match(propertyEscapes)?.length ?? 0));
+
+// A matcher's graph items count GRAPH_ITEM_WEIGHT each against the same budget.
+const chargeItems =
+	(budget: CompileBudget) =>
+	(items: number): void =>
+		charge(budget, items * GRAPH_ITEM_WEIGHT);
+
+// compileOrFail for a matcher, through the budget: a regexp already built for
+// this pattern is shared, and costs nothing more.
+const sharedCompile =
+	(budget: CompileBudget) =>
+	(source: string, flags: string): RegExp => {
+		const key = `${flags}/${source}`;
+		const known = budget.shared.get(key);
+		if (known !== undefined) return known;
+		spend(budget, source);
+		const regexp = compileOrFail(source, flags);
+		budget.shared.set(key, regexp);
+		return regexp;
+	};
+
 const compileOrFail = (source: string, flags: string): RegExp => {
 	try {
 		const regexp = new RegExp(source, flags);
@@ -247,6 +312,31 @@ const compileOrFail = (source: string, flags: string): RegExp => {
 		if (e instanceof SyntaxError) throw new GuardExceeded("InvalidRegExp", 0, 0);
 		throw e;
 	}
+};
+
+// A portion with a numeric range that minimatch 11 keeps whole (port note
+// 11): only 11's matcher reads the range mark, so, as for an extglob portion,
+// it builds no regexp, and a never-matching placeholder carries its plan.
+export const rangePortion = (
+	pattern: string,
+	options: EngineOptions,
+	rangeMark: string,
+	budget: CompileBudget = compileBudget(),
+): MMRegExp => {
+	const matcher = new Matcher(
+		pattern,
+		{
+			...(options.nocase !== undefined && { nocase: options.nocase }),
+			...(options.dot !== undefined && { dot: options.dot }),
+			...(options.noext !== undefined && { noext: options.noext }),
+			rangeMark,
+		},
+		sharedCompile(budget),
+		chargeItems(budget),
+	);
+	const never = Object.assign(/(?!)/, { _src: "(?!)", _glob: pattern });
+	plans.set(never, { matcher });
+	return never;
 };
 
 let ID = 0;
@@ -667,7 +757,7 @@ export class AST {
 
 	// Port note 9: minimatch 11's matcher for this portion, built now; every
 	// regexp in it goes through compileOrFail.
-	#matcherPlan(): PortionPlan {
+	#matcherPlan(budget: CompileBudget): PortionPlan {
 		const options = this.#options;
 		const matcher = new Matcher(
 			this.#source,
@@ -676,7 +766,8 @@ export class AST {
 				...(options.dot !== undefined && { dot: options.dot }),
 				...(options.noext !== undefined && { noext: options.noext }),
 			},
-			compileOrFail,
+			sharedCompile(budget),
+			chargeItems(budget),
 		);
 		return { matcher };
 	}
@@ -693,9 +784,9 @@ export class AST {
 
 	// returns the regular expression if there's magic, or the unescaped
 	// string if not.
-	toMMPattern(): MMRegExp | string {
+	toMMPattern(budget: CompileBudget = compileBudget()): MMRegExp | string {
 		// should only be called on root
-		if (this !== this.#root) return this.#root.toMMPattern();
+		if (this !== this.#root) return this.#root.toMMPattern(budget);
 		const glob = this.toString();
 		const nocase = !!this.#options.nocase;
 		// Port note 9: a portion with an extglob is answered only by minimatch
@@ -707,7 +798,7 @@ export class AST {
 		// empty extglob keeps its own rule (port note 7): `+()` and `@()` stay
 		// text.
 		if (this.hasExtglob() && !isExactEmptyExt(this.#source)) {
-			const plan = this.#matcherPlan();
+			const plan = this.#matcherPlan(budget);
 			const never = Object.assign(/(?!)/, { _src: "(?!)", _glob: glob });
 			plans.set(never, plan);
 			return never;
@@ -725,15 +816,16 @@ export class AST {
 		}
 
 		const flags = (nocase ? "i" : "") + (uflag ? "u" : "");
-		// Port note 6: a source the runtime rejects (under the u flag a POSIX
-		// class turns on, the escapes written for `,`, `#`, a space or `-`)
+		// Port note 6: a source the runtime rejects (one too large for it)
 		// fails typed.
-		const regexp = Object.assign(compileOrFail(`^${re}$`, flags), {
+		const source = `^${re}$`;
+		spend(budget, source);
+		const regexp = Object.assign(compileOrFail(source, flags), {
 			_src: re,
 			_glob: glob,
 		});
 		// 11's matcher answers this portion; the regexp only validated it.
-		plans.set(regexp, this.#matcherPlan());
+		plans.set(regexp, this.#matcherPlan(budget));
 		return regexp;
 	}
 

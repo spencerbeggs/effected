@@ -175,6 +175,21 @@ describe("GlobPattern metadata", () => {
 		}),
 	);
 
+	it.effect("a numeric range of 100 or more values is one magic portion, as minimatch 11 keeps it", () =>
+		Effect.gen(function* () {
+			const g = yield* GlobPattern.compile("logs/{0..199}/out.txt");
+			assert.isTrue(g.hasMagic);
+			assert.strictEqual(g.enumerationPrefix, "logs/");
+			assert.isTrue(g.crossesSegments);
+			assert.deepStrictEqual(g.enumerationRoots, [{ prefix: "logs/", deep: true, spellings: ["logs/"] }]);
+			assert.isTrue(g.matches("logs/150/out.txt"));
+			// a smaller range is expanded, so its alternatives are literal
+			const small = yield* GlobPattern.compile("logs/{0..98}/out.txt");
+			assert.isFalse(small.hasMagic);
+			assert.lengthOf(small.enumerationRoots, 99);
+		}),
+	);
+
 	it.effect("enumerationRoots prefixes are canonical, and a root keeps every spelling it covers", () =>
 		Effect.gen(function* () {
 			const roots = (source: string) => GlobPattern.compileResult(source).pipe(Result.getOrThrow).enumerationRoots;

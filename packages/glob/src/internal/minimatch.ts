@@ -46,9 +46,20 @@
 //   upstream throws a RangeError (a partial split would match some paths and
 //   not others); the dedupe is a keyed lookup in place of a pairwise compare,
 //   and partsMatch, which only that compare used, is gone.
+// - Brace expansion takes minimatch 11.0.5's #expandBraces (expandMarked): a
+//   numeric range of 100 or more values is not expanded but marked, and its
+//   portion is answered by 11's matcher (rangePortion), so it is magic and no
+//   budget applies to it. braceAlternatives, for GlobSet, writes each
+//   alternative back as pattern text (no 11 counterpart).
+// - One compile shares its regexp work (CompileBudget, MAX_REGEXP_WORK): an
+//   identical portion in many rows is compiled once (#portions, as 11 shares
+//   a Matcher), identical matcher regexps are built once, and past the budget
+//   the compile fails typed (CompileBudgetExceeded) instead of running out of
+//   memory; 11 builds its matchers lazily and compiles such a pattern.
 
 import { assertValidPattern } from "./assertValidPattern.js";
-import { AST, portionPlan } from "./ast.js";
+import type { CompileBudget } from "./ast.js";
+import { AST, compileBudget, portionPlan, rangePortion } from "./ast.js";
 import { expand } from "./braceExpansion.js";
 import { EXPANSION_MAX, GuardExceeded, MAX_GLOBSTAR_RECURSION, MAX_SPLIT_CELLS, assertCap } from "./limits.js";
 import type { EngineOptions, MMRegExp, ParseReturn, ParseReturnFiltered, Platform } from "./types.js";
@@ -108,6 +119,98 @@ export const braceExpand = (pattern: string, options: EngineOptions = {}): Array
 	return expand(pattern, opts);
 };
 
+// A numeric range with at least this many values is matched as one pattern
+// portion, rather than expanded, as minimatch 11.0.5 does. For a glob walk,
+// that is one directory read, in place of a stat for each value.
+const RANGE_MIN = 100;
+// a {lo..hi} range that is not escaped, and not a ${...} variable
+const rangeRe = /(?<![\\$])\{(-?\d+)\.\.(-?\d+)\}/g;
+
+/** A pattern's brace expansion with its large numeric ranges kept whole. */
+interface MarkedExpansion {
+	readonly set: Array<string>;
+	// the char that marks a range in `set`, as `<mark>lo..hi<mark>`; undefined
+	// when every range was expanded
+	readonly mark: string | undefined;
+}
+
+// minimatch 11.0.5's #expandBraces: expand braces, except numeric ranges such
+// as {0..999} with at least RANGE_MIN values. Each of those stays in its
+// pattern as `<mark>0..999<mark>`, for the Matcher to test. If a range might
+// be inside a [...] class, expand all of them instead.
+const expandMarked = (pattern: string, options: EngineOptions): MarkedExpansion => {
+	const all = (): MarkedExpansion => ({ set: braceExpand(pattern, options), mark: undefined });
+	if (options.nobrace) return all();
+	let code = 0xe000;
+	while (pattern.includes(String.fromCharCode(code))) {
+		if (++code > 0xf8ff) return all();
+	}
+	const mark = String.fromCharCode(code);
+	let found = false;
+	const marked = pattern.replace(rangeRe, (m, lo: string, hi: string) => {
+		const a = Number(lo);
+		const b = Number(hi);
+		if (!Number.isSafeInteger(a) || !Number.isSafeInteger(b) || Math.abs(a - b) + 1 < RANGE_MIN) {
+			return m;
+		}
+		found = true;
+		return `${mark}${lo}..${hi}${mark}`;
+	});
+	if (!found) return all();
+	const set = braceExpand(marked, options);
+	for (const p of set) {
+		for (const portion of p.split("/")) {
+			const c = portion.indexOf("[");
+			if (c !== -1 && c < portion.lastIndexOf(mark)) return all();
+		}
+	}
+	return { set, mark };
+};
+
+/**
+ * The brace alternatives of `pattern` as pattern text, under default options,
+ * for `GlobSet`'s per-alternative classification; undefined when one of them
+ * can not be written as text that reads alone as it does in the whole, and
+ * the caller keeps the pattern whole. Expansion unescapes braces (`\{a,b}`
+ * makes `{a,b}`), and an alternative is not expanded again in the whole, so
+ * each brace it still has is escaped. A numeric range of 100 or more values
+ * stays one `{lo..hi}` portion, as minimatch 11.0.5 keeps it, and an
+ * unescaped `\` just before it is dropped (11's matcher takes it with the
+ * range). After a `$` or a literal (escaped) backslash, `{lo..hi}` would not
+ * read as a range, so the answer is undefined.
+ *
+ * An alternative is compiled alone, so one that is exactly `!` (a negation
+ * alone), `#` (a comment) or `/` does not mean alone what it means in the
+ * whole; the other text does.
+ */
+export const braceAlternatives = (pattern: string, options: EngineOptions = {}): Array<string> | undefined => {
+	const { set, mark } = expandMarked(pattern, options);
+	// the run of `\` that ends `out`
+	const slashes = (out: string): number => /\\*$/.exec(out)?.[0].length ?? 0;
+	const alternatives: Array<string> = [];
+	for (const alt of set) {
+		let out = "";
+		for (let i = 0; i < alt.length; i++) {
+			const c = alt.charAt(i);
+			const end = c === mark ? alt.indexOf(mark, i + 1) : -1;
+			if (end !== -1) {
+				const [lo = "", hi = ""] = alt.slice(i + 1, end).split("..");
+				// the matcher takes an unescaped `\` just before a range with it
+				if (slashes(out) % 2 === 1) out = out.slice(0, -1);
+				if (out.endsWith("\\") || out.endsWith("$")) return undefined;
+				out += `{${lo}..${hi}}`;
+				i = end;
+			} else if ((c === "{" || c === "}") && slashes(out) % 2 === 0) {
+				out += `\\${c}`;
+			} else {
+				out += c;
+			}
+		}
+		alternatives.push(out);
+	}
+	return alternatives;
+};
+
 // replace stuff like \* with *
 const globMagic = /[?*]|[+@!]\(.*?\)|\[|\]/;
 
@@ -131,8 +234,17 @@ export class Minimatch {
 	platform: Platform;
 	windowsNoMagicRoot: boolean;
 	maxGlobstarRecursion: number;
+	// the char that marks numeric ranges in globSet, if any
+	#rangeMark: string | undefined;
+	// the work of this compile (MAX_REGEXP_WORK), and its shared regexps; a
+	// caller compiling several patterns as one (GlobSet) passes one budget
+	readonly #budget: CompileBudget;
+	// brace expansion can make the same portion in many rows, so they share
+	// one compiled portion, as minimatch 11 shares one Matcher
+	readonly #portions = new Map<string, ParseReturn>();
 
-	constructor(pattern: string, options: EngineOptions = {}) {
+	constructor(pattern: string, options: EngineOptions = {}, budget: CompileBudget = compileBudget()) {
+		this.#budget = budget;
 		assertValidPattern(pattern);
 
 		this.options = options;
@@ -201,7 +313,7 @@ export class Minimatch {
 		this.parseNegate();
 
 		// step 2: expand braces
-		this.globSet = [...new Set(this.braceExpand())];
+		this.globSet = [...new Set(this.#expandBraces())];
 
 		this.debug(this.pattern, this.globSet);
 
@@ -968,6 +1080,14 @@ export class Minimatch {
 		return braceExpand(this.pattern, this.options);
 	}
 
+	// minimatch 11.0.5: braces expand, except a numeric range of 100 or more
+	// values, which stays marked in its portion for the Matcher (expandMarked).
+	#expandBraces(): Array<string> {
+		const { set, mark } = expandMarked(this.pattern, this.options);
+		this.#rangeMark = mark;
+		return set;
+	}
+
 	parse(pattern: string): ParseReturn {
 		assertValidPattern(pattern);
 
@@ -975,10 +1095,19 @@ export class Minimatch {
 		if (pattern === "**") return GLOBSTAR;
 		if (pattern === "") return "";
 
-		// 10's `*`, `*.*`, `*.<ext>` and `?…` fast tests are gone: minimatch 11's
+		const known = this.#portions.get(pattern);
+		if (known !== undefined) return known;
+		// a portion with a marked range is magic, answered by 11's matcher. 10's
+		// `*`, `*.*`, `*.<ext>` and `?…` fast tests are gone: minimatch 11's
 		// matcher answers every magic portion (port note 9 in ast.ts), with its
 		// own linear path for a chain of `*`, `?` and literals.
-		return AST.fromGlob(pattern, this.options).toMMPattern();
+		const rangeMark = this.#rangeMark;
+		const parsed =
+			rangeMark !== undefined && pattern.includes(rangeMark)
+				? rangePortion(pattern, this.options, rangeMark, this.#budget)
+				: AST.fromGlob(pattern, this.options).toMMPattern(this.#budget);
+		this.#portions.set(pattern, parsed);
+		return parsed;
 	}
 
 	slashSplit(p: string) {

@@ -6,7 +6,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Arbitrary, Effect, Result, Schema } from "effect";
 import * as oracle from "minimatch";
-import { GlobPattern, GlobPatternOptions } from "../src/index.js";
+import { GlobPattern, GlobPatternOptions, GlobSet } from "../src/index.js";
 import { expand } from "../src/internal/braceExpansion.js";
 import { GuardExceeded } from "../src/internal/limits.js";
 import { Minimatch, braceExpand } from "../src/internal/minimatch.js";
@@ -401,11 +401,10 @@ describe("hostility: matches is total", () => {
 		}
 	});
 
-	it("compiles a one-character class beside a POSIX class in an extglob portion, as the oracle does", () => {
-		// An extglob portion is matched by minimatch 11's own matcher, whose
-		// classes escape only [ ] \ and -, so [,] beside a POSIX class is valid
-		// there and matches as 11 does. A portion with no extglob still builds
-		// the u-flag regexp, where [,] is the invalid escape \, and fails typed.
+	it("compiles a one-character class beside a POSIX class, as the oracle does", () => {
+		// A one-character class is its character, escaped only if it is regexp
+		// syntax (11's reEscape set), so [,] beside a POSIX class is valid in a
+		// portion with or without an extglob, and matches as 11 does.
 		for (const [source, path] of [
 			["x!(a)[,][[:alpha:]]", "x,q"],
 			["x!(a)[#][[:alpha:]]", "x#q"],
@@ -417,10 +416,18 @@ describe("hostility: matches is total", () => {
 				assert.strictEqual(compiled.success.matches(path), oracle.minimatch(path, source), `${source} vs ${path}`);
 			}
 		}
-		for (const source of ["x[,][[:alpha:]]", "x[#][[:alpha:]]"]) {
+		for (const [source, path] of [
+			["x[,][[:alpha:]]", "x,q"],
+			["x[#][[:alpha:]]", "x#q"],
+			["x[-][[:digit:]]", "x-1"],
+			["x[ ][[:alpha:]]", "x q"],
+		] as const) {
 			const compiled = GlobPattern.compileResult(source);
-			assert.isTrue(Result.isFailure(compiled) && compiled.failure.reason === "InvalidRegExp", source);
-			assert.isTrue(Result.isFailure(Schema.decodeUnknownResult(GlobPattern.FromString)(source)), source);
+			assert.isTrue(Result.isSuccess(compiled), source);
+			if (Result.isSuccess(compiled)) {
+				assert.isTrue(compiled.success.matches(path), `${source} vs ${path}`);
+				assert.strictEqual(compiled.success.matches(path), oracle.minimatch(path, source), `${source} vs ${path}`);
+			}
 		}
 	});
 
@@ -798,4 +805,156 @@ describe("hostility: nesting the parse does not descend", () => {
 		const adopted = GlobPattern.compileResult(`x${"@(".repeat(300)}a${")".repeat(300)}`);
 		assert.isTrue(Result.isFailure(adopted) && adopted.failure.reason === "NestingDepthExceeded");
 	});
+});
+
+describe("hostility: GlobSet and kept numeric ranges", () => {
+	const huge = "{-9007199254740991..9007199254740991}";
+
+	it("never throws from matches when a range after `$` or `\\` can not be split out", () => {
+		// Once written as the extglob of its numbers, each alternative of this
+		// 294-character pattern (k = 7) ran past the 64 KB pattern cap inside matches.
+		for (const k of [1, 7]) {
+			for (const member of [`{$,a}${huge}`, `{a\\\\,b}${huge}`, `{a\\,b}${huge}`]) {
+				const pattern = member.repeat(k);
+				const whole = GlobPattern.compileResult(pattern);
+				const set = GlobSet.compileResult([pattern]);
+				assert.isTrue(Result.isSuccess(whole) && Result.isSuccess(set), `${k} × ${member}`);
+				if (Result.isSuccess(whole) && Result.isSuccess(set)) {
+					for (const candidate of ["a1", "$5", "a\\5", "b-3", `${"a7".repeat(k)}`, `${"$-9".repeat(k)}`]) {
+						noThrow(() => set.success.matches(candidate), `${k} × ${member} vs ${candidate}`);
+						assert.strictEqual(
+							set.success.matches(candidate),
+							whole.success.matches(candidate),
+							`${k} × ${member} vs ${candidate}`,
+						);
+					}
+				}
+			}
+		}
+	}, 30_000);
+
+	it("compiles or fails typed, and then matches without throwing, over hostile range mixes", () => {
+		const pieces = [
+			"{$,a}",
+			"{a\\,b}",
+			"{a\\\\,b}",
+			"\\",
+			"\\\\",
+			"$",
+			"{0..199}",
+			huge,
+			"{0..99}",
+			"{0..1000000}",
+			"x",
+			"/",
+			"[ab]",
+			"*",
+			"{x,y}",
+			"\\{",
+			"}",
+			"@(",
+			")",
+		];
+		let seed = 1278;
+		const next = (n: number): number => {
+			seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+			return seed % n;
+		};
+		for (let i = 0; i < 400; i++) {
+			let pattern = "";
+			for (let j = 1 + next(8); j > 0; j--) pattern += pieces[next(pieces.length)];
+			let set: GlobSet | undefined;
+			noThrow(() => {
+				const compiled = GlobSet.compileResult([pattern, `!${pattern}x`]);
+				if (Result.isSuccess(compiled)) set = compiled.success;
+			}, pattern);
+			if (set === undefined) continue;
+			const compiled = set;
+			for (const candidate of ["a5", "$150", "x/7", "ab", "a\\5", "{a,b}", "x", "-9007199254740991"]) {
+				noThrow(() => compiled.matches(candidate), `${pattern} vs ${candidate}`);
+			}
+			noThrow(() => [compiled.literals, compiled.wildcards, compiled.excludes], pattern);
+		}
+	}, 60_000);
+});
+
+describe("hostility: regexp work of one compile", () => {
+	it("fails typed before building the regexps of a brace expansion past the budget", () => {
+		// 100,000 alternatives, each with its own u-flag class regexp: this ran
+		// the process out of memory at about 1 GB. Every construction path fails
+		// typed instead.
+		const source = "[[:alpha:]]{0..99}{0..99}{0..9}";
+		assert.strictEqual(
+			reasonOf(() => new Minimatch(source, {})),
+			"CompileBudgetExceeded",
+		);
+		const compiled = GlobPattern.compileResult(source);
+		assert.isTrue(Result.isFailure(compiled) && compiled.failure.reason === "CompileBudgetExceeded");
+		if (Result.isFailure(compiled)) assert.strictEqual(compiled.failure.limit, 8_000_000);
+		const set = GlobSet.compileResult(["a/**", source]);
+		assert.isTrue(Result.isFailure(set) && set.failure.reason === "CompileBudgetExceeded");
+		assert.isTrue(Result.isFailure(Schema.decodeUnknownResult(GlobPattern.FromString)(source)));
+	});
+
+	it("still compiles an expansion within the budget, and matches it as the oracle does", () => {
+		const source = "[[:alpha:]]{0..99}x{0..9}";
+		const compiled = GlobPattern.compileResult(source);
+		assert.isTrue(Result.isSuccess(compiled));
+		if (Result.isSuccess(compiled)) {
+			for (const candidate of ["a57x3", "a57x30", "157x3", "é0x9"]) {
+				assert.strictEqual(compiled.success.matches(candidate), oracle.minimatch(candidate, source), candidate);
+			}
+		}
+	});
+});
+
+describe("hostility: matcher graphs of one compile", () => {
+	const kept = "{$,a}{-9007199254740991..9007199254740991}";
+
+	it("fails typed before building the graphs of a range copied into thousands of alternatives", () => {
+		// 504 characters, 4,096 alternatives each holding twelve copies of a
+		// widest range: this took 16.7 s and 4.2 GB before graphs were charged.
+		const source = kept.repeat(12);
+		assert.strictEqual(
+			reasonOf(() => new Minimatch(source, {})),
+			"CompileBudgetExceeded",
+		);
+		const compiled = GlobPattern.compileResult(source);
+		assert.isTrue(Result.isFailure(compiled) && compiled.failure.reason === "CompileBudgetExceeded");
+		const set = GlobSet.compileResult([source]);
+		assert.isTrue(Result.isFailure(set) && set.failure.reason === "CompileBudgetExceeded");
+	});
+
+	it("still compiles the range copied into 128 alternatives, and matches it as the oracle does", () => {
+		const source = kept.repeat(7);
+		const compiled = GlobPattern.compileResult(source);
+		assert.isTrue(Result.isSuccess(compiled));
+		if (Result.isSuccess(compiled)) {
+			for (const candidate of [
+				"$1a2$3a4$5a6$7",
+				"a1a2a3a4a5a6a-9007199254740991",
+				"a1a2",
+				"$1$2$3$4$5$6$9007199254740992",
+			]) {
+				assert.strictEqual(compiled.success.matches(candidate), oracle.minimatch(candidate, source), candidate);
+			}
+		}
+	});
+
+	it("charges every member of a set to one budget", () => {
+		// each member compiles alone; twenty of them are one compile, past it
+		const member = (i: number, k: number): string => `d${i}/${kept.repeat(k)}`;
+		assert.isTrue(Result.isSuccess(GlobPattern.compileResult(member(0, 8))));
+		const many = GlobSet.compileResult(Array.from({ length: 20 }, (_, i) => member(i, 8)));
+		assert.isTrue(Result.isFailure(many) && many.failure.reason === "CompileBudgetExceeded");
+		if (Result.isFailure(many)) assert.strictEqual(many.failure.pattern, member(1, 8));
+		assert.throws(() => GlobSet.make({ patterns: Array.from({ length: 20 }, (_, i) => member(i, 8)) }));
+		// a few compile, and match through the engines built for them
+		const few = GlobSet.compileResult([member(0, 7), member(1, 7), `!${member(2, 2)}`]);
+		assert.isTrue(Result.isSuccess(few));
+		if (Result.isSuccess(few)) {
+			assert.isTrue(few.success.matches("d0/$1a2$3a4$5a6$7"));
+			assert.isFalse(few.success.matches("d1/$1a2"));
+		}
+	}, 30_000);
 });

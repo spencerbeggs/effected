@@ -16,10 +16,14 @@ import { GLOBSTAR, Minimatch, escape as engineEscape, unescape as engineUnescape
  * Typed failure raised when a glob pattern trips a compile-time guard:
  * over-length, brace-expansion budget exhaustion, nesting past the depth
  * cap, or a pattern portion whose regular expression the runtime rejects
- * (`InvalidRegExp`: a POSIX class such as `[[:alpha:]]` turns on the regexp
- * `u` flag, and under it the engine's escapes for `,`, `#`, a space or `-` in
- * the same portion are syntax errors; `limit` and `actual` are both 0, since
- * no cap was passed). Malformed input is never a defect — this is the only failure the
+ * (`InvalidRegExp`: one too large for the runtime's regexp engine, such as
+ * about 32,000 literal characters and a wildcard in one portion; `limit` and
+ * `actual` are both 0, since no cap was passed), or the work of one compile
+ * past its budget (`CompileBudgetExceeded`, limit 8,000,000 units, its
+ * regexps and matcher graphs together: a brace expansion that gives each of
+ * thousands of alternatives its own POSIX class regexp, such as
+ * `[[:alpha:]]{0..99}{0..99}`, which minimatch 11 compiles, or its own copy
+ * of a numeric range kept whole; a `GlobSet` is one compile). Malformed input is never a defect — this is the only failure the
  * package's fallible boundaries ({@link GlobPattern.compile} and
  * `GlobSet.compile`) can produce.
  *
@@ -28,8 +32,17 @@ import { GLOBSTAR, Minimatch, escape as engineEscape, unescape as engineUnescape
 export class GlobPatternError extends Schema.TaggedError<GlobPatternError>()("GlobPatternError", {
 	/** The pattern source that was rejected. */
 	pattern: Schema.String,
-	/** Which guard tripped: pattern length, brace-expansion budget, nesting depth, or an unbuildable regexp. */
-	reason: Schema.Literals(["PatternTooLong", "ExpansionBudgetExceeded", "NestingDepthExceeded", "InvalidRegExp"]),
+	/**
+	 * Which guard tripped: pattern length, brace-expansion budget, nesting
+	 * depth, an unbuildable regexp, or the regexp work of one compile.
+	 */
+	reason: Schema.Literals([
+		"PatternTooLong",
+		"ExpansionBudgetExceeded",
+		"NestingDepthExceeded",
+		"InvalidRegExp",
+		"CompileBudgetExceeded",
+	]),
 	/** The cap the pattern exceeded (0 for `InvalidRegExp`). */
 	limit: Schema.Number,
 	/** The measured value that exceeded `limit` (0 for `InvalidRegExp`). */
@@ -307,6 +320,18 @@ const literalSegment = (segment: string, options: EngineOptions): string | undef
  *
  * @public
  */
+// Set by GlobPattern's static block, which can reach its private engine field.
+let adoptEngine: (source: string, engine: Minimatch) => GlobPattern;
+
+/**
+ * A pattern whose default-options engine the caller already compiled (and so
+ * checked): `GlobSet` compiles every member under one budget, and hands each
+ * engine over instead of having it built again on the first match.
+ *
+ * @internal
+ */
+export const patternWithEngine = (source: string, engine: Minimatch): GlobPattern => adoptEngine(source, engine);
+
 export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	Schema.Struct({ source: Schema.String }).check(
 		Schema.makeFilter((v) => compilesUnderDefaults(v.source), { title: "compilable glob pattern" }),
@@ -314,6 +339,14 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 ) {
 	#engine: Minimatch | undefined;
 	#engineOptions: EngineOptions = {};
+
+	static {
+		adoptEngine = (source, engine) => {
+			const pattern = new GlobPattern({ source }, { disableChecks: true });
+			pattern.#engine = engine;
+			return pattern;
+		};
+	}
 
 	// Lazy for make/decode-built instances. The schema check guarantees this
 	// cannot throw for them (defaults are the stored options); a throw here is
@@ -416,18 +449,20 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 *
 	 * Hostile input: matching stays polynomial, and this package does not bound
 	 * its total work. A literal segment between two globstars, matched against
-	 * a path of 50,000 portions, takes seconds; add a third segment of
-	 * `*{0..999}*` after another globstar and a 14 KB path takes tens of
-	 * seconds, because brace expansion multiplies the alternatives (the package
-	 * README spells both patterns out). Matching is synchronous and blocks the
+	 * a path of 50,000 portions, takes seconds (the package README spells the
+	 * pattern out), and brace expansion multiplies the work of compiling and
+	 * matching by its alternatives. Matching is synchronous and blocks the
 	 * calling thread until it returns, so an in-process timeout cannot cut it
 	 * short: wrapped in `Effect.sync` and raced by `Effect.timeout`, a slow match
 	 * still runs to completion before the timer can fire. A caller matching a
 	 * pattern or a path taken from untrusted input bounds the input before
 	 * matching: limit the pattern's length and where it may come from, limit the
 	 * candidate's length or portion count, and lower `braceExpandMax` in
-	 * {@link GlobPatternOptions}, which turns the second case into a compile-time
-	 * `ExpansionBudgetExceeded` failure. A deadline, where one is needed, is
+	 * {@link GlobPatternOptions}, which turns a brace product past it (such as
+	 * `**\/a/**\/*{a,b}{a,b}…*`, ten groups and 1,024 alternatives, against a
+	 * `braceExpandMax` of 100) into a compile-time `ExpansionBudgetExceeded`
+	 * failure. A numeric range of 100 or more values (`{0..999}`) is not
+	 * expanded, so the budget does not apply to it. A deadline, where one is
 	 * enforced off the calling thread: a worker that is terminated when it
 	 * expires, a subprocess, or the host's own request deadline.
 	 */
@@ -442,7 +477,11 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 		}
 	}
 
-	/** Whether the pattern contains any magic (wildcards, classes, extglobs). */
+	/**
+	 * Whether the pattern contains any magic (wildcards, classes, extglobs, or
+	 * a numeric brace range of 100 or more values, which is matched as one
+	 * portion rather than expanded, as minimatch 11 does).
+	 */
 	get hasMagic(): boolean {
 		return this.#engineOf().hasMagic();
 	}

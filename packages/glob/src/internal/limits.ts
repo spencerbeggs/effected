@@ -53,7 +53,42 @@ export const MAX_EXTGLOB_RECURSION = 2;
 export const MAX_NESTING_DEPTH = 256;
 
 /** The reasons a compile-time guard can trip; mirrors GlobPatternError's reason union. */
-export type GuardReason = "PatternTooLong" | "ExpansionBudgetExceeded" | "NestingDepthExceeded" | "InvalidRegExp";
+export type GuardReason =
+	| "PatternTooLong"
+	| "ExpansionBudgetExceeded"
+	| "NestingDepthExceeded"
+	| "InvalidRegExp"
+	| "CompileBudgetExceeded";
+
+/**
+ * The work one compile may do: the regexps it builds and the matcher graphs.
+ * A regexp costs its source length (about four bytes of compiled code each),
+ * plus
+ * REGEXP_PROPERTY_WEIGHT for each `\p{...}` or `\P{...}` escape (a POSIX class
+ * turns into one or two of them, and V8 expands each into its full Unicode
+ * set: measured about 10 KB and 300 us to build, against about 4 bytes and
+ * 0.23 us for a literal character). A brace expansion multiplies the portions
+ * that need a regexp, so `[[:alpha:]]{0..99}{0..99}{0..9}` (100,000
+ * alternatives, each with its own class regexp) ran the process out of memory
+ * at about 1 GB. A matcher graph costs GRAPH_ITEM_WEIGHT per item, before it
+ * is built: a numeric range kept whole is 684 items for the widest ends, and
+ * brace alternatives around it give each alternative its own copy, so `{$,a}`
+ * and a range twelve times over built 4,096 graphs of 8,200 items, 4.2 GB. Past the budget the compile fails typed, before
+ * the regexp or graph that would pass it is built. 8,000,000 units is about
+ * 4,000 property escapes (about 1.5 s and 40 MB), 8,000,000 literal
+ * characters, or 2,000,000 graph items (about 100 MB).
+ */
+export const MAX_REGEXP_WORK = 8_000_000;
+
+/** The work units one `\p{...}` property escape counts for. */
+export const REGEXP_PROPERTY_WEIGHT = 2048;
+
+/**
+ * The work units one matcher graph item counts for: a built item holds about
+ * 50 bytes (`{$,a}` and a widest range nine times over, 512 graphs of 6,700
+ * items, kept 181 MB), so the budget holds about 2,000,000 items.
+ */
+export const GRAPH_ITEM_WEIGHT = 4;
 
 /**
  * Raw compile-time guard-trip signal. The engine throws it; ONLY the facade

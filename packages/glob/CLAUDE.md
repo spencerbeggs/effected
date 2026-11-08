@@ -2,7 +2,7 @@
 
 Full-fidelity glob matching as Effect schemas: the complete minimatch dialect
 compiled to pure string predicates, plus the separate `Wildcard` matcher.
-Seventh migration. 13 `src/` files (10 engine + 3 facade), 9 test files.
+Seventh migration. 14 `src/` files (11 engine + 3 facade), 9 test files.
 
 **Tier: pure.** Peer-depends on `effect` only. Zero runtime deps, no IO, no
 services. The `minimatch` devDependency is the **test oracle only** — pinned
@@ -41,8 +41,7 @@ polynomial, bounded by the recursion cap; a hostile pattern can still be slow.
 Every magic portion is matched by minimatch 11.0.5's own one-portion
 matcher, vendored as `internal/matcher.ts` and `internal/matcherClass.ts`
 (`@isaacs/nonrecursive-glob-match` 1.1.0, BlueOak-1.0.0). The portion's regexp
-is compile-time validation only (`compileOrFail`, `InvalidRegExp`; dropping it
-is #1279's scope): matching through it backtracked O(n^k) on k stars
+is compile-time validation only (`compileOrFail`, `InvalidRegExp`): matching through it backtracked O(n^k) on k stars
 separated by literals (`*a` fourteen times then `b` took 25 s against 40
 characters) and read UTF-16 code units where 11 reads code points (`?` did
 not match `😀`). The matcher tests a chain of `*`, `?`, classes and literals
@@ -196,9 +195,51 @@ The engine answers as the 11.0.5 oracle does, except the divergences below:
   negations doubled per negation (`x` + 25 × `!(a)`, 101 bytes, ran out of
   memory). Any other magic portion still builds its regexp, as validation
   only. Only a portion that is exactly `+()` or `@()` stays text.
-- **Escapes**: an escaped character reaches the regexp escaped only if it is
-  regexp syntax, 11's `reEscape` set `\ ^ $ . * + ? ( ) [ ] { } | /`. 10
-  missed `|` (`\|*` was an alternation that matched `b`) and escaped `!`.
+- **Escapes**: a character reaches the regexp escaped only if it is regexp
+  syntax, 11's `reEscape` set `\ ^ $ . * + ? ( ) [ ] { } | /`, whether it was
+  escaped in the glob, loose, or a one-character class (`#parseGlob`,
+  `parseClass`). 10 missed `|` (`\|*` was an alternation that matched `b`)
+  and escaped `!`, `,`, `#`, `-` and whitespace, which the `u` flag a POSIX
+  class turns on rejects (`[[:alpha:]]-*` failed `InvalidRegExp`, #1279).
+- **Numeric ranges** (#1278): a `{lo..hi}` of 100 or more values, unescaped,
+  not after `$`, with safe-integer ends, is not expanded but marked
+  (`expandMarked`, 11's `#expandBraces`, including its fall-back to expanding
+  all when a `[` precedes a mark in its portion); the marked portion is
+  answered by 11's matcher with its `rangeMark` (`rangePortion`,
+  `internal/numericRange.ts`). So `hasMagic` is true, `enumerationRoots` and
+  `enumerationPrefix` stop at it, and no budget applies to it. `GlobSet`
+  classifies with `braceAlternatives` (no 11 counterpart): each alternative is
+  written back as text, a kept range as `{lo..hi}` (an unescaped `\` just
+  before it dropped, as 11's matcher takes it with the range), and every brace
+  the expansion unescaped escaped again, so `\{a,b}` is the literal `{a,b}`
+  and is never expanded twice. After a `$` or a literal (escaped) backslash a
+  range would not read alone as one, so that include, like one whose
+  alternative does not compile alone, stays one wildcard: the whole pattern.
+  `GlobSet.compileResult` classifies eagerly, and the schema check classifies
+  too, so no guard can trip in `matches`. An alternative that is exactly `!`,
+  `#` or `/` does not mean alone what it means in the whole (as on 0.x before
+  this); the rest do.
+- **Shared compile work** (`CompileBudget`, `ast.ts`): one compile shares
+  each identical portion across rows (`#portions`, as 11 shares a `Matcher`)
+  and each identical matcher regexp, and counts its work against
+  `MAX_REGEXP_WORK` (8,000,000 units): a regexp's source length plus 2,048
+  per `\p{...}` (measured about 10 KB and 300 us each), and
+  `GRAPH_ITEM_WEIGHT` (4) per matcher graph item, charged before the graph is
+  built (matcher port note 6; an item holds about 50 bytes). A kept range is
+  684 items for the widest ends, and each brace alternative around it holds
+  its own copy: `{$,a}{-9007199254740991..9007199254740991}` twelve times
+  (504 characters) took 16.7 s and 4.2 GB, and now fails typed in about
+  0.2 s at about 125 MB of heap; seven times still compiles (about 110 ms,
+  35 MB), eight times too, and nine fails, as 11 refuses nine and more. A
+  `GlobSet` is one compile: `classify` builds every engine it keeps under one
+  budget and hands it to its pattern (`patternWithEngine`), so twenty members
+  that each compile alone can fail the set typed (twenty at eight times
+  retained 1.6 GB with a budget each). Past the budget the compile fails
+  typed as `CompileBudgetExceeded` before the regexp or graph is built:
+  `[[:alpha:]]{0..99}{0..99}{0..9}` (100,000 alternatives, each with its own
+  validation regexp) ran the process out of memory at about 1 GB and now
+  fails in about 0.7 s at about 150 MB. 11 builds matchers lazily and compiles
+  it in 275 ms: a documented refusal (below).
 - **Fast paths**: 11 has no `*.ext`/`?ext` fast path, and neither does the
   kit now; 10's compared an escaped extension with its backslash (`*\.` did
   not match `a.`).
@@ -213,27 +254,29 @@ The engine answers as the 11.0.5 oracle does, except the divergences below:
 - **`optimizationLevel` 2**: the `**/..` split bound and the keyed dedupe
   (above), which also fixes `{**/x,x/y}`.
 
-Not taken from 11: the `normalize` option,
-the `minimatch()` cache, and numeric ranges as one portion (below). The kit
+Not taken from 11: the `normalize` option and
+the `minimatch()` cache. The kit
 still accepts `maxExtglobRecursion`, which 11 removed, but it limits nothing
 now (above).
 
 ## Documented divergences from the oracle
 
-Two differences in match answers remain, each named in
-`compliance.test.ts`, never a blanket skip: numeric ranges and the oracle's
-brace merge (both below). Beside them, a pattern can fail typed where 11
-matches: an over-budget expansion; nesting past `MAX_NESTING_DEPTH` (256,
-where brace-expansion 5.0.12 turns literal at 1,000); and `InvalidRegExp`
-(#1279: 11 has no regexp to reject). That last one is a POSIX class beside
-a loose `,`, `#`, space or `-` in a portion with no extglob, whose `u`-flag
-regexp the runtime rejects; or, in any portion, a one-character class such
-as `[,]` beside a POSIX class, whose class regexp is `\,` under `u`; or a
-regexp too large for the runtime (about 32,000 literal characters and a
-wildcard in one portion). A
-portion with an extglob builds no regexp of its own, so a loose `,` there
-compiles and matches as 11 does.
-Those are typed failures, never wrong answers.
+One difference in match answers remains, named in `compliance.test.ts`,
+never a blanket skip: the oracle's brace merge (below). Beside it, a pattern
+can fail typed where 11 matches: an over-budget expansion (11 truncates; a
+range of 100 or more values is not expanded, so this is a comma set, a
+smaller range, or every range of a portion where a `[` precedes one); nesting
+past `MAX_NESTING_DEPTH` (256, where brace-expansion 5.0.12 turns literal at
+1,000); `InvalidRegExp` (11 has no regexp to reject), whose one known
+cause is a portion's regexp too large for the runtime (about 32,000 literal
+characters and a wildcard in one portion; `hostility.test.ts` still reaches
+it); and `CompileBudgetExceeded`, a compile whose work passes
+`MAX_REGEXP_WORK` (thousands of alternatives each with its own POSIX class,
+`[[:alpha:]]{0..99}{0..99}`, or about 4,000 POSIX-class properties in one
+portion), which 11 compiles because it builds its matchers lazily; a kept
+range copied into thousands of alternatives, which 11 refuses as too long;
+or a `GlobSet` whose members together pass it, where each alone compiles. Those are
+typed failures, never wrong answers.
 
 - **The oracle's brace merge** (an 11.0.5 defect). minimatch 11 joins a
   pattern's brace alternatives into one Matcher with `|`, so a `[` in one
@@ -247,15 +290,6 @@ Those are typed failures, never wrong answers.
   only those patterns by the union of 11's own per-alternative answers. 11.0.5
   also throws `TypeError: pattern is too long` from its row merge on some
   short brace patterns (one is 92 bytes), which the kit compiles.
-
-- **Numeric ranges of 100 or more values** (#1278). minimatch 11 matches
-  `{0..999}` as one pattern portion instead of expanding it, so its
-  `hasMagic()` is true there and it matches a range past `braceExpandMax`. The
-  engine expands every range: `hasMagic` stays false, `GlobSet` buckets and
-  `enumerationRoots` see the expanded alternatives, and a range past the budget
-  fails typed. In-budget matching agrees. `compliance.test.ts` carries the one
-  named exception, `hasLargeNumericRange` (11's own detection and its
-  100-value floor), never a blanket skip.
 
 ## Public surface
 
@@ -287,8 +321,9 @@ Those are typed failures, never wrong answers.
   backtracking `\S*a\S*a…` regex is a ReDoS); consecutive stars collapse.
 - `GlobSet` — include/exclude SET semantics (leading `!` = exclusion filter,
   distinct from minimatch whole-pattern negation — both exist on purpose).
-  Classifies **per expanded brace alternative**. Pins default options; no
-  options surface.
+  Classifies **per expanded brace alternative** (`braceAlternatives`, so a
+  numeric range of 100 or more values is one wildcard alternative). Pins
+  default options; no options surface.
 
 ## Testing and building
 
@@ -297,7 +332,7 @@ compliance gate (`compliance.test.ts` + `hostility.test.ts` +
 `globstar.test.ts`) runs against the raw engine: a 130-row fixture table asserting expected AND oracle agreement on
 every row, oracle property tests, and the hostile-input suite. **If the engine
 disagrees with the oracle, fix the engine, never the expectation** — except
-the documented deviations and the range divergence, each tested on its own
+the documented deviations and the brace-merge divergence, each tested on its own
 and never by a blanket skip. Oracle calls map `platform: "posix"` →
 `"linux"` (upstream's Platform type has no posix member; linux is behaviorally
 identical and immune to ambient drift).

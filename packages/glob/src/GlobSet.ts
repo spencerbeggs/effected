@@ -6,12 +6,16 @@
 // GlobSet pins DEFAULT options internally and takes no options surface of its
 // own, so a set means the same thing everywhere. Braced patterns classify per
 // expanded alternative, so {tools/cli,packages/*} contributes a literal AND a
-// wildcard.
+// wildcard; a numeric range of 100 or more values stays one alternative, a
+// wildcard, as minimatch 11 keeps it one portion.
 
 import { Effect, Result, Schema } from "effect";
-import { GlobPattern, GlobPatternError } from "./GlobPattern.js";
+import type { GlobPattern } from "./GlobPattern.js";
+import { GlobPatternError, patternWithEngine } from "./GlobPattern.js";
+import type { CompileBudget } from "./internal/ast.js";
+import { compileBudget } from "./internal/ast.js";
 import { isGuardExceeded } from "./internal/limits.js";
-import { Minimatch, braceExpand } from "./internal/minimatch.js";
+import { Minimatch, braceAlternatives } from "./internal/minimatch.js";
 
 // Strip exactly ONE leading bang: the set-level exclusion marker. A remaining
 // bang is then ordinary minimatch whole-pattern negation inside the exclude —
@@ -19,27 +23,101 @@ import { Minimatch, braceExpand } from "./internal/minimatch.js";
 const exclusionTarget = (pattern: string): string | undefined =>
 	pattern.startsWith("!") ? pattern.slice(1) : undefined;
 
-// The schema check: every member (exclusion bang stripped) must compile under
-// default options. Returning the guard message string makes it the thrown
-// validation message.
-const allCompileUnderDefaults = (patterns: ReadonlyArray<string>): true | string => {
-	for (const pattern of patterns) {
-		const target = exclusionTarget(pattern) ?? pattern;
-		try {
-			new Minimatch(target, {});
-		} catch (e) {
-			if (isGuardExceeded(e)) return `pattern ${JSON.stringify(pattern.slice(0, 64))}: ${e.message}`;
-			throw e;
-		}
-	}
-	return true;
-};
-
 interface Classified {
 	readonly literals: ReadonlyArray<string>;
 	readonly wildcards: ReadonlyArray<GlobPattern>;
 	readonly excludes: ReadonlyArray<GlobPattern>;
+	readonly literalSet: ReadonlySet<string>;
 }
+
+// The alternatives of one include, each routed by its own magic, or undefined
+// when the include must stay whole: one alternative can not be written as
+// text (braceAlternatives), or does not compile alone though the whole did.
+// The whole is then one wildcard, whose answer is the union of them all.
+const classifyInclude = (
+	pattern: string,
+	budget: CompileBudget,
+): { readonly literals: Array<string>; readonly wildcards: Array<GlobPattern> } | undefined => {
+	const alternatives = braceAlternatives(pattern, {});
+	if (alternatives === undefined) return undefined;
+	const literals: Array<string> = [];
+	const wildcards: Array<GlobPattern> = [];
+	for (const alternative of alternatives) {
+		let engine: Minimatch;
+		try {
+			engine = new Minimatch(alternative, {}, budget);
+		} catch (e) {
+			if (isGuardExceeded(e)) return undefined;
+			throw e;
+		}
+		if (engine.hasMagic()) {
+			wildcards.push(patternWithEngine(alternative, engine));
+			continue;
+		}
+		if (engine.comment) continue;
+		const row = engine.set.length === 1 ? engine.set[0] : undefined;
+		if (engine.negate || row === undefined || !row.every((part) => typeof part === "string")) {
+			wildcards.push(patternWithEngine(alternative, engine));
+			continue;
+		}
+		literals.push(row.join("/"));
+	}
+	return { literals, wildcards };
+};
+
+// Compile every member under default options and classify the set. A set is
+// one compile: every engine it keeps is built under one budget
+// (MAX_REGEXP_WORK) and handed to its pattern, so the set holds no more than
+// one pattern could. Only a guard trip escapes, as a GuardExceeded naming no
+// member; the caller knows which member it was compiling.
+const classify = (patterns: ReadonlyArray<string>, onMember: (pattern: string) => void = () => {}): Classified => {
+	const budget = compileBudget();
+	const literals: Array<string> = [];
+	const seenLiterals = new Set<string>();
+	const wildcards: Array<GlobPattern> = [];
+	const excludes: Array<GlobPattern> = [];
+	for (const pattern of patterns) {
+		onMember(pattern);
+		const target = exclusionTarget(pattern);
+		if (target !== undefined) {
+			excludes.push(patternWithEngine(target, new Minimatch(target, {}, budget)));
+			continue;
+		}
+		// the member must compile whole; this engine is kept only if the
+		// include stays whole, so it is checked on a budget of its own
+		new Minimatch(pattern, {});
+		const routed = classifyInclude(pattern, budget);
+		if (routed === undefined) {
+			wildcards.push(patternWithEngine(pattern, new Minimatch(pattern, {}, budget)));
+			continue;
+		}
+		wildcards.push(...routed.wildcards);
+		for (const key of routed.literals) {
+			if (!seenLiterals.has(key)) {
+				seenLiterals.add(key);
+				literals.push(key);
+			}
+		}
+	}
+	return { literals, wildcards, excludes, literalSet: seenLiterals };
+};
+
+// The schema check: every member (exclusion bang stripped) must compile under
+// default options, and the set must classify, so a constructed set never
+// fails later. Returning the guard message string makes it the thrown
+// validation message.
+const allCompileUnderDefaults = (patterns: ReadonlyArray<string>): true | string => {
+	let current = "";
+	try {
+		classify(patterns, (pattern) => {
+			current = pattern;
+		});
+	} catch (e) {
+		if (isGuardExceeded(e)) return `pattern ${JSON.stringify(current.slice(0, 64))}: ${e.message}`;
+		throw e;
+	}
+	return true;
+};
 
 /**
  * A compiled multi-pattern include/exclude set: `matches(candidate)` is true
@@ -57,6 +135,13 @@ interface Classified {
  * enumerators: literals fast-path an exact lookup, wildcards drive directory
  * reads from their `enumerationPrefix`, and `crossesSegments` triggers a
  * bounded recursive descent.
+ *
+ * A set is one compile: its members share one compile budget, and past it
+ * {@link GlobSet.compileResult} fails typed with reason
+ * `CompileBudgetExceeded`. Each POSIX class costs about 4,096 units in its
+ * portion's validation regexp, so a set in which every member has one tops
+ * out at roughly 1,900 members; sets of plain, brace and numeric-range
+ * members compile at 20,000 members.
  *
  * @example
  * ```ts
@@ -78,12 +163,15 @@ export class GlobSet extends Schema.Class<GlobSet>("GlobSet")(
 	),
 ) {
 	#classified: Classified | undefined;
-	#literalSet: ReadonlySet<string> | undefined;
 
-	// Lazy: the schema check guarantees every member is defaults-compilable, so
-	// classification cannot fail for constructed instances. Classification is
-	// per expanded alternative: brace-expand each include under default options
-	// and route each alternative by its own magic.
+	// Lazy for `make`/decode-constructed sets: the schema check already
+	// classified the same members, so this can not fail. `compileResult`
+	// classifies eagerly and hands its result over. Classification is per
+	// expanded alternative: brace-expand each include under default options and
+	// route each alternative by its own magic. A numeric range of 100 or more
+	// values is not expanded (minimatch 11 matches it as one portion), so its
+	// alternative is a wildcard, and an include whose alternatives can not be
+	// written alone as text stays one wildcard.
 	//
 	// The literal bucket keys on the engine's UNESCAPED single row, never the
 	// raw alternative source — the engine matches candidates in unescaped form,
@@ -92,44 +180,12 @@ export class GlobSet extends Schema.Class<GlobSet>("GlobSet")(
 	// nothing; anything else an exact-string key cannot represent (negation, a
 	// row the engine did not reduce to plain strings) is engine-matched instead.
 	#classify(): Classified {
-		if (this.#classified !== undefined) return this.#classified;
-		const literals: Array<string> = [];
-		const seenLiterals = new Set<string>();
-		const wildcards: Array<GlobPattern> = [];
-		const excludes: Array<GlobPattern> = [];
-		for (const pattern of this.patterns) {
-			const target = exclusionTarget(pattern);
-			if (target !== undefined) {
-				excludes.push(GlobPattern.make({ source: target }));
-				continue;
-			}
-			for (const alternative of braceExpand(pattern, {})) {
-				const engine = new Minimatch(alternative, {});
-				if (engine.hasMagic()) {
-					wildcards.push(GlobPattern.make({ source: alternative }));
-					continue;
-				}
-				if (engine.comment) continue;
-				const row = engine.set.length === 1 ? engine.set[0] : undefined;
-				if (engine.negate || row === undefined || !row.every((part) => typeof part === "string")) {
-					wildcards.push(GlobPattern.make({ source: alternative }));
-					continue;
-				}
-				const key = row.join("/");
-				if (!seenLiterals.has(key)) {
-					seenLiterals.add(key);
-					literals.push(key);
-				}
-			}
-		}
-		this.#classified = { literals, wildcards, excludes };
-		this.#literalSet = seenLiterals;
+		this.#classified ??= classify(this.patterns);
 		return this.#classified;
 	}
 
 	#literals(): ReadonlySet<string> {
-		if (this.#literalSet === undefined) this.#classify();
-		return this.#literalSet as ReadonlySet<string>;
+		return this.#classify().literalSet;
 	}
 
 	/**
@@ -151,23 +207,31 @@ export class GlobSet extends Schema.Class<GlobSet>("GlobSet")(
 	 * prefer {@link GlobSet.compile}, which carries the tracing span.
 	 */
 	static compileResult(patterns: ReadonlyArray<string>): Result.Result<GlobSet, GlobPatternError> {
-		for (const pattern of patterns) {
-			const target = exclusionTarget(pattern) ?? pattern;
-			const compiled = Result.try({
-				try: () => new Minimatch(target, {}),
-				catch: (e) => {
-					// Only a guard trip is a typed failure; anything else rethrows as a defect.
-					if (isGuardExceeded(e)) {
-						return new GlobPatternError({ pattern, reason: e.reason, limit: e.limit, actual: e.actual });
-					}
-					throw e;
-				},
-			});
-			if (Result.isFailure(compiled)) {
-				return Result.fail(compiled.failure);
-			}
-		}
-		return Result.succeed(new GlobSet({ patterns }));
+		// Classified now, so every guard trips here, typed, and never in matches.
+		let current = "";
+		const classified = Result.try({
+			try: () =>
+				classify(patterns, (pattern) => {
+					current = pattern;
+				}),
+			catch: (e) => {
+				// Only a guard trip is a typed failure; anything else rethrows as a defect.
+				if (isGuardExceeded(e)) {
+					return new GlobPatternError({ pattern: current, reason: e.reason, limit: e.limit, actual: e.actual });
+				}
+				throw e;
+			},
+		});
+		if (Result.isFailure(classified)) return Result.fail(classified.failure);
+		const set = GlobSet.#unchecked(patterns);
+		set.#classified = classified.success;
+		return Result.succeed(set);
+	}
+
+	// A set whose members were just classified: the schema check would only
+	// classify them again.
+	static #unchecked(patterns: ReadonlyArray<string>): GlobSet {
+		return new GlobSet({ patterns }, { disableChecks: true });
 	}
 
 	/**

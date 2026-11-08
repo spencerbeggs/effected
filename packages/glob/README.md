@@ -29,7 +29,7 @@ The dialect is not a subset. The engine is a ported-with-attribution vendoring o
 
 One deliberate deviation from upstream: no ambient environment detection. `platform` is an explicit option defaulting to `"posix"`, and `process.platform` is never read, so a pattern behaves identically on every machine. All win32 path handling stays behind the option, for the caller who knows they need it.
 
-The engine is ported from minimatch 10.2.5 and answers as minimatch 11.0.5 does, which is its test oracle. That includes 11's fixes to `**` matching (minimatch 10.x gives wrong answers on some patterns with more than one `**`, such as `**/a/b/c/**/d/**` against `d/a/b/c/d/b`, and under `partial`); an empty path portion matching only an empty pattern portion, so `a/b/` does not match `a/b/?(x)`; a `.` or `..` portion matching only literal dots, with or without `dot`; no wildcard taking the leading dot of a dotfile without `dot`, even a class such as `[.]` beside other magic or a `*` after an extglob that matched nothing (`[.]*` and `*(a|b)*` do not match `.a`); a `!(...)` negating exactly its own sub-pattern (`!(*)` matches nothing, and `x/a!(b)*` matches `x/ab`); an extglob opener that is never closed reading as literal text (`a*(` does not match `ax(`); a `[` that never closes reading as a literal, with extglobs after it still parsed (`[+(a)` matches `[a`); an escaped `\|` matching a literal `|`; and on win32, a `..` that cannot climb past a drive letter or a UNC share. Two differences in match answers remain. minimatch 11 matches a numeric range of 100 or more values, such as `{0..999}`, as a single portion, and this engine expands it, so `hasMagic` is `false` for such a pattern and a range past `braceExpandMax` fails at compile. And minimatch 11 joins a pattern's brace alternatives with `|` into one matcher, so a `[` in one alternative and a `]` in another become a class (`b**{Z..a}` does not match its own text there); this engine matches the union of the alternatives. Beside those, some patterns 11 accepts fail at compile here, always with a typed `GlobPatternError`: see [Errors](#errors).
+The engine is ported from minimatch 10.2.5 and answers as minimatch 11.0.5 does, which is its test oracle. That includes 11's fixes to `**` matching (minimatch 10.x gives wrong answers on some patterns with more than one `**`, such as `**/a/b/c/**/d/**` against `d/a/b/c/d/b`, and under `partial`); an empty path portion matching only an empty pattern portion, so `a/b/` does not match `a/b/?(x)`; a `.` or `..` portion matching only literal dots, with or without `dot`; no wildcard taking the leading dot of a dotfile without `dot`, even a class such as `[.]` beside other magic or a `*` after an extglob that matched nothing (`[.]*` and `*(a|b)*` do not match `.a`); a `!(...)` negating exactly its own sub-pattern (`!(*)` matches nothing, and `x/a!(b)*` matches `x/ab`); an extglob opener that is never closed reading as literal text (`a*(` does not match `ax(`); a `[` that never closes reading as a literal, with extglobs after it still parsed (`[+(a)` matches `[a`); an escaped `\|` matching a literal `|`; and on win32, a `..` that cannot climb past a drive letter or a UNC share. A numeric range of 100 or more values, such as `{0..999}`, is one pattern portion, as in minimatch 11: `hasMagic` is `true` for it, it is not expanded, and no expansion budget applies to it. One difference in match answers remains: minimatch 11 joins a pattern's brace alternatives with `|` into one matcher, so a `[` in one alternative and a `]` in another become a class (`b**{Z..a}` does not match its own text there); this engine matches the union of the alternatives. Beside it, some patterns 11 accepts fail at compile here, always with a typed `GlobPatternError`: see [Errors](#errors).
 
 ## Install
 
@@ -110,7 +110,8 @@ Compilation is the only thing that fails, and it fails with one tagged error who
 | `PatternTooLong` | The pattern exceeds the 64KB length cap. |
 | `ExpansionBudgetExceeded` | Brace expansion would produce more alternatives than the budget allows. Upstream truncates here, silently changing match semantics; this package fails instead. |
 | `NestingDepthExceeded` | Braces, extglobs or the AST nest past the depth cap. |
-| `InvalidRegExp` | A regular expression for the pattern is one the runtime rejects (#1279): a POSIX class such as `[[:alpha:]]` beside a loose `,`, `#`, space or `-` in a portion with no extglob (`[[:alpha:]]-*`), or a one-character class such as `[,]` beside a POSIX class in any portion (`x[,][[:alpha:]]`). Also a portion whose regular expression is too large for the runtime, about 32,000 literal characters before one wildcard. minimatch 11 accepts these. `limit` and `actual` are both 0. |
+| `InvalidRegExp` | A portion's regular expression is too large for the runtime, about 32,000 literal characters before one wildcard. minimatch 11 accepts it. `limit` and `actual` are both 0. |
+| `CompileBudgetExceeded` | Compiling the pattern would build more than one compile allows (8,000,000 units: a regexp's length, plus 2,048 for each Unicode property a POSIX class turns into, plus 4 for each item of a portion's matcher). A brace expansion that gives each of thousands of alternatives its own POSIX class, such as `[[:alpha:]]{0..99}{0..99}`, or its own copy of a numeric range kept whole, such as `{$,a}{-9007199254740991..9007199254740991}` twelve times over, fails here instead of exhausting memory. A `GlobSet` is one compile, so its members share the budget. minimatch 11 builds its matchers lazily and accepts the first; it refuses the second. |
 
 ```ts
 import { GlobPattern } from "@effected/glob";
@@ -123,21 +124,22 @@ Effect.runPromise(Effect.result(GlobPattern.compile("a".repeat(70_000)))).then(c
 
 ## Hostile input
 
-Matching stays polynomial, and the package does not bound its total work. Five measured cases:
+Matching stays polynomial, and the package does not bound its total work. Four measured cases:
 
 | Pattern | Candidate | Time |
 | --- | --- | --- |
 | `**/a/**` | 50,000 portions | about 3 s |
-| `**/a/**/*{0..999}*` | a 13.9 KB path | about 33 s |
 | `x` and 1,600 × `!(a)` (6.4 KB) | `x` and 1,600 × `b` | about 25 ms |
 | `*(a\|?)` × 10,000 (60 KB) | 1,000 × `a` | about 15 ms |
 | `x!(a)` × 1,000 | `xb` × 1,000 (2,000 characters) | about 1.6 s, about cubic in the length (22 ms at 400 characters); minimatch 11 is slower still |
 
-The second is slow because brace expansion multiplies the alternatives, within the default `braceExpandMax` of 100,000. Matching is synchronous and blocks the calling thread until it returns, so an in-process timeout cannot stop it: `Effect.timeout` around `Effect.sync(() => pattern.matches(path))` still waits for the whole match. When a pattern or a path comes from untrusted input, bound the input before matching:
+Brace expansion multiplies the work of compiling and matching by its alternatives, within the default `braceExpandMax` of 100,000; a numeric range of 100 or more values is not expanded. Matching is synchronous and blocks the calling thread until it returns, so an in-process timeout cannot stop it: `Effect.timeout` around `Effect.sync(() => pattern.matches(path))` still waits for the whole match. When a pattern or a path comes from untrusted input, bound the input before matching:
 
 - limit the pattern's length, and where a pattern may come from;
 - limit the candidate's length or number of portions;
-- lower `braceExpandMax`: with `GlobPatternOptions.make({ braceExpandMax: 100 })` the second pattern fails at compile with `ExpansionBudgetExceeded` instead of matching slowly.
+- lower `braceExpandMax`: with `GlobPatternOptions.make({ braceExpandMax: 100 })` a brace product such as `**/a/**/*{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}{a,b}*` (1,024 alternatives) fails at compile with `ExpansionBudgetExceeded`.
+
+A `GlobSet` is one compile: its members share one compile budget, and past it the set fails typed with `CompileBudgetExceeded`. Each POSIX class costs about 4,096 units in its validation regexp, so a set in which every member has one, such as `[[:alpha:]]` in each line, tops out at roughly 1,900 members; sets of plain, brace and numeric-range lines compile at 20,000 lines.
 
 Where a deadline is needed, enforce it off the calling thread: run the match in a worker that is terminated when the deadline passes, in a subprocess, or under the host's own request deadline.
 
