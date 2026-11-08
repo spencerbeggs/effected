@@ -2,17 +2,20 @@ import { join } from "node:path";
 import { resolveNextVersions as realResolveNextVersions } from "../changesets/next-versions.js";
 import { deriveExportPaths } from "../entries/export-paths.js";
 import { createEntryName } from "../entries/extract.js";
-import { TsdoctorEmitError } from "../errors.js";
+import { BundleManifestEmitError } from "../errors.js";
 import { declarationsDirFor } from "../passes/target-groups.js";
 import type { BuildCollector } from "../report/collector.js";
+import type { BundleManifestSources } from "./bundle-source.js";
+import {
+	BundleManifestSourceError,
+	loadBundleManifestSources as realLoadBundleManifestSources,
+} from "./bundle-source.js";
 import type { MetaOptions } from "./config.js";
 import { normalizeMetaOptions } from "./config.js";
 import type { GenerateMetaOptions, MetaResult } from "./generate.js";
 import { generateMeta as realGenerateMeta } from "./generate.js";
 import { OgGenerateError } from "./og-image.js";
 import { rewriteMetaVersions } from "./optimistic.js";
-import type { TsdoctorSources } from "./tsdoctor-source.js";
-import { TsdoctorSourceError, loadTsdoctorSources as realLoadTsdoctorSources } from "./tsdoctor-source.js";
 
 /**
  * Options for the meta-pass orchestrator.
@@ -35,12 +38,12 @@ export interface RunMetaPassOptions {
 	/** Injectable for tests; defaults to the real resolveNextVersions. Only called when optimistic. */
 	readonly resolveNextVersions?: (cwd: string) => Promise<{ versions: ReadonlyMap<string, string> }>;
 	/**
-	 * The resolved `targets.json` targets; each group's `tsdoctor.json` derives its registries from the
+	 * The resolved `targets.json` targets; each group's `bundle.json` derives its registries from the
 	 * targets bound to that group. Omitted (an escape-hatch build with no resolution) means none.
 	 */
 	readonly targets?: ReadonlyArray<{ group: string; id: string; registry: string }> | undefined;
-	/** Injectable for tests; defaults to the real loadTsdoctorSources. */
-	readonly loadTsdoctorSources?: (cwd: string) => Promise<TsdoctorSources>;
+	/** Injectable for tests; defaults to the real loadBundleManifestSources. */
+	readonly loadBundleManifestSources?: (cwd: string) => Promise<BundleManifestSources>;
 }
 
 /**
@@ -70,19 +73,19 @@ export async function runMetaPass(o: RunMetaPassOptions): Promise<void> {
 		? (m: Record<string, unknown>) => rewriteMetaVersions(m, nextVersions.versions, o.packageName)
 		: undefined;
 
-	// The tsdoctor.json source tiers are per package, not per group: load them once. A present but
+	// The bundle.json source tiers are per package, not per group: load them once. A present but
 	// invalid file fails the build here, before any group's meta bundle is written.
-	const loadSources = o.loadTsdoctorSources ?? realLoadTsdoctorSources;
-	let sources: TsdoctorSources;
+	const loadSources = o.loadBundleManifestSources ?? realLoadBundleManifestSources;
+	let sources: BundleManifestSources;
 	try {
 		sources = await loadSources(o.cwd);
 	} catch (err) {
-		if (err instanceof TsdoctorSourceError) {
+		if (err instanceof BundleManifestSourceError) {
 			for (const g of o.groups) {
 				o.collector.recordError(g.id, {
 					source: "meta",
 					level: "error",
-					code: "tsdoctor-source-invalid",
+					code: "bundle-manifest-source-invalid",
 					text: err.message,
 					file: err.path,
 				});
@@ -96,8 +99,20 @@ export async function runMetaPass(o: RunMetaPassOptions): Promise<void> {
 			o.collector.recordWarning(g.id, {
 				source: "meta",
 				level: "warn",
-				code: "tsdoctor-workspace-discovery-failed",
-				text: `Workspace discovery failed, so tsdoctor.json has no project tier: ${sources.discoveryFailure}`,
+				code: "bundle-manifest-workspace-discovery-failed",
+				text: `Workspace discovery failed, so bundle.json has no project tier: ${sources.discoveryFailure}`,
+			});
+		}
+	}
+
+	for (const path of sources.retiredSources ?? []) {
+		for (const g of o.groups) {
+			o.collector.recordWarning(g.id, {
+				source: "meta",
+				level: "warn",
+				code: "bundle-manifest-retired-source",
+				text: `${path} is no longer read; rename it to bundle.json`,
+				file: path,
 			});
 		}
 	}
@@ -122,7 +137,7 @@ export async function runMetaPass(o: RunMetaPassOptions): Promise<void> {
 				tsdoc: norm.tsdoc,
 				...(manifestTransform !== undefined ? { manifestTransform } : {}),
 				ci: o.ci,
-				tsdoctor: { config: norm.tsdoctor, leaf: sources.leaf, project: sources.project, targets },
+				bundle: { config: norm.bundle, leaf: sources.leaf, project: sources.project, targets },
 				onMessage: (e) => (e.level === "error" ? o.collector.recordError(g.id, e) : o.collector.recordWarning(g.id, e)),
 				onSuppressed: (e) => o.collector.recordSuppressed(g.id, e),
 			} satisfies GenerateMetaOptions);
@@ -135,11 +150,11 @@ export async function runMetaPass(o: RunMetaPassOptions): Promise<void> {
 					code: "og-generate-failed",
 					text: err.message,
 				});
-			} else if (err instanceof TsdoctorEmitError) {
+			} else if (err instanceof BundleManifestEmitError) {
 				o.collector.recordError(g.id, {
 					source: "meta",
 					level: "error",
-					code: "tsdoctor-emit-failed",
+					code: "bundle-manifest-emit-failed",
 					text: err.message,
 					file: err.path,
 				});

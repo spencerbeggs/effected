@@ -1,11 +1,11 @@
-// Ported from savvy-web/systems packages/tsdown-plugins/__test__/meta/generate.tsdoctor.test.ts on 2026-11-06
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/meta/generate.bundle.test.ts on 2026-11-06
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
+import { decodeBundleManifest } from "@effected/manifest";
 import { Effect } from "effect";
-import { TsdoctorEmitError } from "../../src/errors.js";
-import { decodeBundleManifest } from "../../src/meta/BundleManifest.js";
+import { BundleManifestEmitError } from "../../src/errors.js";
 import type { GenerateMetaOptions } from "../../src/meta/generate.js";
 import { generateMeta } from "../../src/meta/generate.js";
 
@@ -18,7 +18,7 @@ const PNG_1X1 = Uint8Array.from(
 );
 
 function scaffold(pkg: Record<string, unknown>): { cwd: string; dtsDir: string; outMetaDir: string } {
-	const cwd = mkdtempSync(join(tmpdir(), "meta-tsdoctor-"));
+	const cwd = mkdtempSync(join(tmpdir(), "meta-bundle-"));
 	writeFileSync(join(cwd, "package.json"), JSON.stringify({ name: "@scope/fixture", version: "1.0.0" }));
 	writeFileSync(
 		join(cwd, "tsconfig.json"),
@@ -64,17 +64,17 @@ async function decodeAt(path: string): Promise<unknown> {
 
 // Every case here runs a real API Extractor pass (about 1.5s locally, slower on CI runners), and the
 // stale-cleanup case runs three, so the 5s default is too tight for the suite.
-describe("generateMeta tsdoctor sidecar", { timeout: 60_000 }, () => {
-	it("writes tsdoctor.json for a private package from config and project tiers and copies it to localPaths", async () => {
+describe("generateMeta bundle sidecar", { timeout: 60_000 }, () => {
+	it("writes bundle.json for a private package from config and project tiers and copies it to localPaths", async () => {
 		const s = scaffold({ private: true });
 		await generateMeta({
 			...baseOptions(s),
-			tsdoctor: { config: { name: "Fixture" }, leaf: undefined, project: { name: "Proj" }, targets: [] },
+			bundle: { config: { name: "Fixture" }, leaf: undefined, project: { name: "Proj" }, targets: [] },
 		});
 		const expected = { spec: 1, name: "Fixture", project: { name: "Proj" } };
-		assert.deepStrictEqual(await decodeAt(join(s.outMetaDir, "tsdoctor.json")), expected);
-		assert.deepStrictEqual(await decodeAt(join(s.cwd, "models-a", "tsdoctor.json")), expected);
-		assert.deepStrictEqual(await decodeAt(join(s.cwd, "models-b", "tsdoctor.json")), expected);
+		assert.deepStrictEqual(await decodeAt(join(s.outMetaDir, "bundle.json")), expected);
+		assert.deepStrictEqual(await decodeAt(join(s.cwd, "models-a", "bundle.json")), expected);
+		assert.deepStrictEqual(await decodeAt(join(s.cwd, "models-b", "bundle.json")), expected);
 		assert.strictEqual(existsSync(join(s.outMetaDir, "og")), false);
 	});
 
@@ -82,7 +82,7 @@ describe("generateMeta tsdoctor sidecar", { timeout: 60_000 }, () => {
 		const s = scaffold({ private: false, repository: { type: "git", url: "git+https://github.com/o/r.git" } });
 		await generateMeta({
 			...baseOptions(s),
-			tsdoctor: {
+			bundle: {
 				config: undefined,
 				leaf: undefined,
 				project: undefined,
@@ -92,7 +92,7 @@ describe("generateMeta tsdoctor sidecar", { timeout: 60_000 }, () => {
 				],
 			},
 		});
-		assert.deepStrictEqual(await decodeAt(join(s.outMetaDir, "tsdoctor.json")), {
+		assert.deepStrictEqual(await decodeAt(join(s.outMetaDir, "bundle.json")), {
 			spec: 1,
 			registries: [
 				{ type: "npm", name: "npm", url: "https://www.npmjs.com/package/@scope/fixture" },
@@ -107,7 +107,7 @@ describe("generateMeta tsdoctor sidecar", { timeout: 60_000 }, () => {
 		await generateMeta({
 			...baseOptions(s),
 			manifestTransform: (p) => ({ ...p, version: "2.0.0" }),
-			tsdoctor: {
+			bundle: {
 				config: {
 					openGraph: {
 						images: [{ url: "https://example.com/og.png" }],
@@ -124,7 +124,7 @@ describe("generateMeta tsdoctor sidecar", { timeout: 60_000 }, () => {
 		});
 		// The generator sees the transformed (optimistic) version, not the built one.
 		assert.deepStrictEqual(seen, [{ name: "@scope/fixture", version: "2.0.0" }]);
-		assert.deepStrictEqual(await decodeAt(join(s.outMetaDir, "tsdoctor.json")), {
+		assert.deepStrictEqual(await decodeAt(join(s.outMetaDir, "bundle.json")), {
 			spec: 1,
 			tagline: "leaf tag",
 			openGraph: {
@@ -139,12 +139,12 @@ describe("generateMeta tsdoctor sidecar", { timeout: 60_000 }, () => {
 		}
 	});
 
-	it("writes no sidecar and no og/ when tsdoctor is undefined", async () => {
+	it("writes no sidecar and no og/ when bundle is undefined", async () => {
 		const s = scaffold({ private: true });
 		await generateMeta(baseOptions(s));
-		assert.strictEqual(existsSync(join(s.outMetaDir, "tsdoctor.json")), false);
+		assert.strictEqual(existsSync(join(s.outMetaDir, "bundle.json")), false);
 		assert.strictEqual(existsSync(join(s.outMetaDir, "og")), false);
-		assert.strictEqual(existsSync(join(s.cwd, "models-a", "tsdoctor.json")), false);
+		assert.strictEqual(existsSync(join(s.cwd, "models-a", "bundle.json")), false);
 	});
 
 	it("removes a previous build's sidecar and og/ from the meta dir and every localPaths copy", async () => {
@@ -155,45 +155,63 @@ describe("generateMeta tsdoctor sidecar", { timeout: 60_000 }, () => {
 			project: undefined,
 			targets: [],
 		};
-		await generateMeta({ ...baseOptions(s), tsdoctor: withImage });
+		await generateMeta({ ...baseOptions(s), bundle: withImage });
 		for (const dir of [s.outMetaDir, join(s.cwd, "models-a"), join(s.cwd, "models-b")]) {
-			assert.strictEqual(existsSync(join(dir, "tsdoctor.json")), true, dir);
+			assert.strictEqual(existsSync(join(dir, "bundle.json")), true, dir);
 			assert.strictEqual(existsSync(join(dir, "og", "fixture.png")), true, dir);
 		}
 		// Same package, generator dropped: the image must disappear everywhere while the manifest stays.
-		await generateMeta({ ...baseOptions(s), tsdoctor: { ...withImage, config: { name: "Fixture" } } });
+		await generateMeta({ ...baseOptions(s), bundle: { ...withImage, config: { name: "Fixture" } } });
 		for (const dir of [s.outMetaDir, join(s.cwd, "models-a"), join(s.cwd, "models-b")]) {
-			assert.deepStrictEqual(await decodeAt(join(dir, "tsdoctor.json")), { spec: 1, name: "Fixture" });
+			assert.deepStrictEqual(await decodeAt(join(dir, "bundle.json")), { spec: 1, name: "Fixture" });
 			assert.strictEqual(existsSync(join(dir, "og")), false, dir);
 		}
 		// Identity dropped too: nothing to say, so the stale sidecar goes as well.
 		await generateMeta(baseOptions(s));
 		for (const dir of [s.outMetaDir, join(s.cwd, "models-a"), join(s.cwd, "models-b")]) {
-			assert.strictEqual(existsSync(join(dir, "tsdoctor.json")), false, dir);
+			assert.strictEqual(existsSync(join(dir, "bundle.json")), false, dir);
 			assert.strictEqual(existsSync(join(dir, "fixture.api.json")), true, dir);
 		}
 	});
 
-	it("wraps a sidecar that fails to encode as TsdoctorEmitError naming the path", async () => {
+	it("deletes the retired tsdoctor.json from the meta dir and every localPaths copy, and never writes it", async () => {
+		const s = scaffold({ private: true });
+		const dirs = [s.outMetaDir, join(s.cwd, "models-a"), join(s.cwd, "models-b")];
+		for (const dir of dirs) {
+			mkdirSync(dir, { recursive: true });
+			writeFileSync(join(dir, "tsdoctor.json"), JSON.stringify({ spec: 1, name: "Stale" }));
+		}
+		await generateMeta({
+			...baseOptions(s),
+			bundle: { config: { name: "Fixture" }, leaf: undefined, project: undefined, targets: [] },
+		});
+		for (const dir of dirs) {
+			assert.strictEqual(existsSync(join(dir, "tsdoctor.json")), false, dir);
+			// positive control: the build did write its sidecar, under the new name
+			assert.deepStrictEqual(await decodeAt(join(dir, "bundle.json")), { spec: 1, name: "Fixture" });
+		}
+	});
+
+	it("wraps a sidecar that fails to encode as BundleManifestEmitError naming the path", async () => {
 		const s = scaffold({ private: true });
 		// A leaf image with neither path nor url violates the schema's XOR; the composer passes it
 		// through untouched, so encodeBundleManifest is what rejects it — inside generateMeta's wrapper.
 		const err = await generateMeta({
 			...baseOptions(s),
-			tsdoctor: {
+			bundle: {
 				config: undefined,
 				leaf: { openGraph: { images: [{} as { url: string }] } },
 				project: undefined,
 				targets: [],
 			},
 		}).catch((e: unknown) => e);
-		assert.instanceOf(err, TsdoctorEmitError);
-		assert.strictEqual((err as TsdoctorEmitError).path, join(s.outMetaDir, "tsdoctor.json"));
-		assert.strictEqual((err as TsdoctorEmitError).packageName, "@scope/fixture");
-		assert.strictEqual(existsSync(join(s.outMetaDir, "tsdoctor.json")), false);
+		assert.instanceOf(err, BundleManifestEmitError);
+		assert.strictEqual((err as BundleManifestEmitError).path, join(s.outMetaDir, "bundle.json"));
+		assert.strictEqual((err as BundleManifestEmitError).packageName, "@scope/fixture");
+		assert.strictEqual(existsSync(join(s.outMetaDir, "bundle.json")), false);
 	});
 
-	it("wraps a sidecar write that fails on disk as TsdoctorEmitError", async () => {
+	it("wraps a sidecar write that fails on disk as BundleManifestEmitError", async () => {
 		const s = scaffold({ private: true });
 		// The generator runs after the api-model trio is written and before the sidecar write, so it is
 		// the one seam where the meta dir can be made read-only without failing an earlier write. The
@@ -201,7 +219,7 @@ describe("generateMeta tsdoctor sidecar", { timeout: 60_000 }, () => {
 		try {
 			const err = await generateMeta({
 				...baseOptions(s),
-				tsdoctor: {
+				bundle: {
 					config: {
 						name: "Fixture",
 						openGraph: {
@@ -217,9 +235,9 @@ describe("generateMeta tsdoctor sidecar", { timeout: 60_000 }, () => {
 					targets: [],
 				},
 			}).catch((e: unknown) => e);
-			assert.instanceOf(err, TsdoctorEmitError);
-			assert.strictEqual((err as TsdoctorEmitError).path, join(s.outMetaDir, "tsdoctor.json"));
-			assert.strictEqual(((err as TsdoctorEmitError).cause as NodeJS.ErrnoException).code, "EACCES");
+			assert.instanceOf(err, BundleManifestEmitError);
+			assert.strictEqual((err as BundleManifestEmitError).path, join(s.outMetaDir, "bundle.json"));
+			assert.strictEqual(((err as BundleManifestEmitError).cause as NodeJS.ErrnoException).code, "EACCES");
 		} finally {
 			chmodSync(s.outMetaDir, 0o755);
 		}
@@ -229,9 +247,9 @@ describe("generateMeta tsdoctor sidecar", { timeout: 60_000 }, () => {
 		const s = scaffold({ private: true });
 		await generateMeta({
 			...baseOptions(s),
-			tsdoctor: { config: undefined, leaf: undefined, project: undefined, targets: [] },
+			bundle: { config: undefined, leaf: undefined, project: undefined, targets: [] },
 		});
-		assert.strictEqual(existsSync(join(s.outMetaDir, "tsdoctor.json")), false);
+		assert.strictEqual(existsSync(join(s.outMetaDir, "bundle.json")), false);
 	});
 });
 
@@ -241,7 +259,7 @@ describe("generateMeta Open Graph cache", () => {
 		const generate = Object.assign(async () => PNG_1X1, { cacheSalt: "salt" });
 		await generateMeta({
 			...baseOptions(s),
-			tsdoctor: { config: { openGraph: { generate } }, leaf: undefined, project: undefined, targets: [] },
+			bundle: { config: { openGraph: { generate } }, leaf: undefined, project: undefined, targets: [] },
 		});
 		const directory = join(s.cwd, "node_modules", ".cache", "effected", "og");
 		assert.isTrue(existsSync(directory));

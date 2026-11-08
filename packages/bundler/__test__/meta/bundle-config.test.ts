@@ -1,15 +1,15 @@
 import { assert, describe, it } from "@effect/vitest";
+import { decodeBundleManifest, encodeBundleManifest } from "@effected/manifest";
 import { Effect, Schema } from "effect";
-import { TsdoctorConfig } from "../../src/config/BuildConfig.js";
-import { decodeBundleManifest, encodeBundleManifest } from "../../src/meta/BundleManifest.js";
-import { tsdoctorMetaOptionsOf } from "../../src/meta/tsdoctor-config.js";
-import { composeTsdoctorManifest } from "../../src/meta/tsdoctor-manifest.js";
+import { BundleConfig } from "../../src/config/BuildConfig.js";
+import { bundleMetaOptionsOf } from "../../src/meta/bundle-config.js";
+import { composeBundleManifest } from "../../src/meta/bundle-manifest.js";
 
-const decode = Schema.decodeUnknownSync(TsdoctorConfig);
+const decode = Schema.decodeUnknownSync(BundleConfig);
 
-const composed = (config: TsdoctorConfig) =>
-	composeTsdoctorManifest({
-		config: tsdoctorMetaOptionsOf(config),
+const composed = (config: BundleConfig) =>
+	composeBundleManifest({
+		config: bundleMetaOptionsOf(config),
 		leaf: undefined,
 		project: undefined,
 		packageName: "@scope/pkg",
@@ -19,14 +19,14 @@ const composed = (config: TsdoctorConfig) =>
 		repository: undefined,
 	});
 
-describe("tsdoctorMetaOptionsOf", () => {
+describe("bundleMetaOptionsOf", () => {
 	it("maps an empty table to no options", () => {
-		assert.deepStrictEqual(tsdoctorMetaOptionsOf(decode({})), {});
+		assert.deepStrictEqual(bundleMetaOptionsOf(decode({})), {});
 	});
 
 	it("carries the identity, and registries false, as written", () => {
 		assert.deepStrictEqual(
-			tsdoctorMetaOptionsOf(decode({ name: "N", tagline: "T", description: "D", registries: false })),
+			bundleMetaOptionsOf(decode({ name: "N", tagline: "T", description: "D", registries: false })),
 			{
 				name: "N",
 				tagline: "T",
@@ -38,9 +38,9 @@ describe("tsdoctorMetaOptionsOf", () => {
 
 	it("drops the renderer's name, and sets the generator only when the caller resolved one", () => {
 		const table = decode({ openGraph: { generate: "satori", themeColor: "#000", cacheSalt: false } });
-		assert.deepStrictEqual(tsdoctorMetaOptionsOf(table), { openGraph: { themeColor: "#000", cacheSalt: false } });
+		assert.deepStrictEqual(bundleMetaOptionsOf(table), { openGraph: { themeColor: "#000", cacheSalt: false } });
 		const generate = Object.assign(async () => new Uint8Array(), {});
-		assert.strictEqual(tsdoctorMetaOptionsOf(table, generate).openGraph?.generate, generate);
+		assert.strictEqual(bundleMetaOptionsOf(table, generate).openGraph?.generate, generate);
 	});
 
 	it.effect("composes a manifest the wire schema encodes and decodes back", () =>

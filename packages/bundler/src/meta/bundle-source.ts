@@ -2,24 +2,23 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as NodePath from "@effect/platform-node/NodePath";
+import type { ManifestSource } from "@effected/manifest";
+import { BUNDLE_MANIFEST_FILENAME, decodeManifestSource } from "@effected/manifest";
 import { WorkspaceDiscovery, WorkspaceRootNotFoundError, Workspaces } from "@effected/workspaces";
 import { Data, Effect, Layer } from "effect";
-import { TSDOCTOR_MANIFEST_FILENAME } from "./BundleManifest.js";
-import type { ManifestSource } from "./ManifestSource.js";
-import { decodeManifestSource } from "./ManifestSource.js";
 
 /**
- * A present `tsdoctor.json` source file that could not be parsed or decoded. Absence is never
+ * A present `bundle.json` source file that could not be parsed or decoded. Absence is never
  * this error — a missing source tier is the normal case.
  *
  * @public
  */
-export class TsdoctorSourceError extends Data.TaggedError("TsdoctorSourceError")<{
+export class BundleManifestSourceError extends Data.TaggedError("BundleManifestSourceError")<{
 	readonly path: string;
 	readonly cause: unknown;
 }> {
 	get message(): string {
-		return `Invalid ${TSDOCTOR_MANIFEST_FILENAME} at ${this.path}`;
+		return `Invalid ${BUNDLE_MANIFEST_FILENAME} at ${this.path}`;
 	}
 }
 
@@ -28,7 +27,7 @@ export class TsdoctorSourceError extends Data.TaggedError("TsdoctorSourceError")
  *
  * @public
  */
-export interface TsdoctorSources {
+export interface BundleManifestSources {
 	readonly leaf: ManifestSource | undefined;
 	readonly project: ManifestSource | undefined;
 	/**
@@ -36,7 +35,21 @@ export interface TsdoctorSources {
 	 * absent; `runMetaPass` records it as a `meta` warning so the degradation is visible in `issues.json`.
 	 */
 	readonly discoveryFailure?: string | undefined;
+	/**
+	 * Source files under the retired name `tsdoctor.json`, at a tier with no `bundle.json`. They are never
+	 * read; `runMetaPass` records each as a `meta` warning so a missed rename is visible instead of the tier
+	 * silently disappearing. Absent when there are none.
+	 */
+	readonly retiredSources?: ReadonlyArray<string> | undefined;
 }
+
+/**
+ * The sidecar's and its source files' name before it became `bundle.json`. Nothing reads or writes it: a build
+ * deletes an emitted copy and reports an authored one.
+ *
+ * @internal
+ */
+export const RETIRED_MANIFEST_FILENAME = "tsdoctor.json";
 
 /** Bound once: the platform layer is stateless and layers memoize by reference. */
 const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
@@ -89,28 +102,38 @@ async function readSource(path: string): Promise<ManifestSource | undefined> {
 	try {
 		parsed = JSON.parse(readFileSync(path, "utf-8"));
 	} catch (cause) {
-		throw new TsdoctorSourceError({ path, cause });
+		throw new BundleManifestSourceError({ path, cause });
 	}
 	const result = await Effect.runPromise(Effect.result(decodeManifestSource(parsed, path)));
-	if (result._tag === "Failure") throw new TsdoctorSourceError({ path, cause: result.failure });
+	if (result._tag === "Failure") throw new BundleManifestSourceError({ path, cause: result.failure });
 	return result.success;
 }
 
 /**
- * Read the leaf (`<cwd>/tsdoctor.json`) and project (`<workspaceRoot>/tsdoctor.json`)
+ * Read the leaf (`<cwd>/bundle.json`) and project (`<workspaceRoot>/bundle.json`)
  * source tiers. Absence is normal; a present file that does not decode throws
- * {@link TsdoctorSourceError}. A package that IS the workspace root reads its file once, as the
+ * {@link BundleManifestSourceError}. A package that IS the workspace root reads its file once, as the
  * leaf, and has no project tier.
  *
  * @public
  */
-export async function loadTsdoctorSources(cwd: string): Promise<TsdoctorSources> {
+export async function loadBundleManifestSources(cwd: string): Promise<BundleManifestSources> {
 	const leafDir = canonical(cwd);
-	const leaf = await readSource(join(leafDir, TSDOCTOR_MANIFEST_FILENAME));
+	const tierDirs = [leafDir];
+	const leaf = await readSource(join(leafDir, BUNDLE_MANIFEST_FILENAME));
 	const { root, failure } = await findWorkspaceRoot(leafDir);
-	const project =
-		root !== undefined && canonical(root) !== leafDir
-			? await readSource(join(root, TSDOCTOR_MANIFEST_FILENAME))
-			: undefined;
-	return { leaf, project, ...(failure !== undefined ? { discoveryFailure: failure } : {}) };
+	const projectDir = root !== undefined && canonical(root) !== leafDir ? root : undefined;
+	if (projectDir !== undefined) tierDirs.push(projectDir);
+	const project = projectDir !== undefined ? await readSource(join(projectDir, BUNDLE_MANIFEST_FILENAME)) : undefined;
+	// Detection only: a retired-name file is never read, only reported, and only where the tier has no bundle.json.
+	const retiredSources = tierDirs
+		.filter((dir) => !existsSync(join(dir, BUNDLE_MANIFEST_FILENAME)))
+		.map((dir) => join(dir, RETIRED_MANIFEST_FILENAME))
+		.filter((path) => existsSync(path));
+	return {
+		leaf,
+		project,
+		...(failure !== undefined ? { discoveryFailure: failure } : {}),
+		...(retiredSources.length > 0 ? { retiredSources } : {}),
+	};
 }

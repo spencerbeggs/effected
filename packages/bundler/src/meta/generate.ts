@@ -1,20 +1,20 @@
 import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import type { ManifestSource, OpenGraphImage } from "@effected/manifest";
+import { BUNDLE_MANIFEST_FILENAME, encodeBundleManifest } from "@effected/manifest";
 import { Effect } from "effect";
-import { TsdoctorEmitError } from "../errors.js";
+import { BundleManifestEmitError } from "../errors.js";
 import { runApiExtractor } from "./api-extractor.js";
-import type { OpenGraphImage } from "./BundleManifest.js";
-import { TSDOCTOR_MANIFEST_FILENAME, encodeBundleManifest } from "./BundleManifest.js";
+import type { BundleMetaOptions } from "./bundle-config.js";
+import type { ManifestRepository, ManifestTarget } from "./bundle-manifest.js";
+import { composeBundleManifest, ogImageInfoOf } from "./bundle-manifest.js";
+import { RETIRED_MANIFEST_FILENAME } from "./bundle-source.js";
 import type { NormalizedMeta } from "./config.js";
-import type { ManifestSource } from "./ManifestSource.js";
 import { mergeApiModels } from "./merge-models.js";
 import { resolveOgCacheSalt, writeGeneratedOgImage } from "./og-image.js";
 import { scrubDeclarationMapsUnder } from "./scrub-declaration-maps.js";
 import { resolvePortableTsconfig } from "./tsconfig-resolver.js";
 import { writeTsdocConfig } from "./tsdoc-config.js";
-import type { TsdoctorMetaOptions } from "./tsdoctor-config.js";
-import type { ManifestRepository, ManifestTarget } from "./tsdoctor-manifest.js";
-import { composeTsdoctorManifest, ogImageInfoOf } from "./tsdoctor-manifest.js";
 
 function unscopedName(name: string): string {
 	const slash = name.lastIndexOf("/");
@@ -68,12 +68,12 @@ export interface GenerateMetaOptions {
 	/** When set, messages matched by `suppressWarnings` are routed here for accounting. */
 	readonly onSuppressed?: ((entry: import("../report/collector.js").DiagnosticInput) => void) | undefined;
 	/**
-	 * The `tsdoctor.json` sidecar inputs: the config tier, the two source tiers, and the targets bound
+	 * The `bundle.json` sidecar inputs: the config tier, the two source tiers, and the targets bound
 	 * to this group (registries derive from them). Omitted means no sidecar and no Open Graph image.
 	 */
-	readonly tsdoctor?:
+	readonly bundle?:
 		| {
-				readonly config: TsdoctorMetaOptions | undefined;
+				readonly config: BundleMetaOptions | undefined;
 				readonly leaf: ManifestSource | undefined;
 				readonly project: ManifestSource | undefined;
 				readonly targets: ReadonlyArray<ManifestTarget>;
@@ -337,31 +337,32 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 	const portableTsconfig = resolvePortableTsconfig(cwd, tsconfigPath);
 	writeFileSync(bundleTsconfig, `${JSON.stringify(portableTsconfig, null, 2)}\n`, "utf-8");
 
-	// Layer 3: the tsdoctor.json sidecar. Written only when there is something to say, through the
+	// Layer 3: the bundle.json sidecar. Written only when there is something to say, through the
 	// manifest package's encoder so the file is by construction what a reader decodes. The generated
 	// Open Graph image (when configured) is rendered first so the manifest can list it.
 	// The sidecar and its image are the bundle's only CONDITIONAL members, so a previous build's copies
-	// are removed first: a package that drops its tsdoctor.json or its generator must stop advertising
+	// are removed first: a package that drops its bundle.json or its generator must stop advertising
 	// the identity and og:image it no longer produces, in the meta dir and in every localPaths copy.
-	rmSync(join(outMetaDir, TSDOCTOR_MANIFEST_FILENAME), { force: true });
+	rmSync(join(outMetaDir, BUNDLE_MANIFEST_FILENAME), { force: true });
+	rmSync(join(outMetaDir, RETIRED_MANIFEST_FILENAME), { force: true });
 	rmSync(join(outMetaDir, "og"), { recursive: true, force: true });
 	let manifestPath: string | undefined;
 	let generatedImageRelative: string | undefined;
-	if (options.tsdoctor !== undefined) {
+	if (options.bundle !== undefined) {
 		const composeInput = {
-			config: options.tsdoctor.config,
-			leaf: options.tsdoctor.leaf,
-			project: options.tsdoctor.project,
+			config: options.bundle.config,
+			leaf: options.bundle.leaf,
+			project: options.bundle.project,
 			packageName,
 			isPrivate: finalPkg.private === true,
-			targets: options.tsdoctor.targets,
+			targets: options.bundle.targets,
 			generatedImage: undefined as OpenGraphImage | undefined,
 			repository: manifestRepositoryOf(finalPkg.repository),
 		};
-		const generate = options.tsdoctor.config?.openGraph?.generate;
+		const generate = options.bundle.config?.openGraph?.generate;
 		if (generate !== undefined) {
 			// The cache lives outside the meta dir, so the rmSync above clears only the output copy.
-			const cacheSalt = resolveOgCacheSalt(generate, options.tsdoctor.config?.openGraph?.cacheSalt);
+			const cacheSalt = resolveOgCacheSalt(generate, options.bundle.config?.openGraph?.cacheSalt);
 			const generated = await writeGeneratedOgImage({
 				generate,
 				info: ogImageInfoOf({ ...composeInput, version: String(finalPkg.version ?? "0.0.0") }),
@@ -374,15 +375,15 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 			composeInput.generatedImage = generated;
 			generatedImageRelative = generated.path;
 		}
-		const manifest = composeTsdoctorManifest(composeInput);
+		const manifest = composeBundleManifest(composeInput);
 		if (manifest !== undefined) {
-			const path = join(outMetaDir, TSDOCTOR_MANIFEST_FILENAME);
+			const path = join(outMetaDir, BUNDLE_MANIFEST_FILENAME);
 			try {
 				const encoded = await Effect.runPromise(encodeBundleManifest(manifest));
 				writeFileSync(path, `${JSON.stringify(encoded, null, 2)}\n`, "utf-8");
 			} catch (cause) {
 				// Same contract as the image: an encode or disk failure is named in issues.json, not raw.
-				throw new TsdoctorEmitError({ packageName, path, cause });
+				throw new BundleManifestEmitError({ packageName, path, cause });
 			}
 			manifestPath = path;
 		}
@@ -396,8 +397,9 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 		copyFileSync(apiJsonPath, join(dest, apiJsonFilename));
 		copyFileSync(bundlePackageJson, join(dest, "package.json"));
 		copyFileSync(bundleTsconfig, join(dest, "tsconfig.json"));
-		if (manifestPath !== undefined) copyFileSync(manifestPath, join(dest, TSDOCTOR_MANIFEST_FILENAME));
-		else rmSync(join(dest, TSDOCTOR_MANIFEST_FILENAME), { force: true });
+		if (manifestPath !== undefined) copyFileSync(manifestPath, join(dest, BUNDLE_MANIFEST_FILENAME));
+		else rmSync(join(dest, BUNDLE_MANIFEST_FILENAME), { force: true });
+		rmSync(join(dest, RETIRED_MANIFEST_FILENAME), { force: true });
 		rmSync(join(dest, "og"), { recursive: true, force: true });
 		if (generatedImageRelative !== undefined) {
 			mkdirSync(join(dest, "og"), { recursive: true });

@@ -7,10 +7,10 @@ status: stable
 tags: [bundle, dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T22:24:55Z
+  at: 2026-11-08T22:56:47Z
 integrity:
   generated:
-    body: 0a65c30baaadf021
+    body: 199ae28c6b4db45d
 ---
 
 # spencerbeggs/tsdoctor
@@ -204,11 +204,18 @@ the pull the other way is strong enough to be worth naming explicitly.
 - RSPress integration — routing, React components, i18n and versioning.
   The adapter is a platform, not a kit concern.
 
-The `tsdoctor.json` manifest shape is the one piece that crossed that edge.
-Its `BundleManifest` schema now lives in
-[`@effected/bundler`](../modules/bundler.md) (issue 1225), which emits the file
-into each package's `meta/`; this repository reads it there, beside the API
-model, as [a build artifact](../interfaces/build-artifacts.md).
+The `bundle.json` manifest shape is the one piece that crossed that edge.
+Its `BundleManifest` schema now lives in the pure
+[`@effected/manifest`](../modules/manifest.md) (issues 1225 and
+1301), with `effect` its only peer, so this repository's doc-site readers can
+decode it without installing the build toolchain.
+[`@effected/bundler`](../modules/bundler.md) emits the file into each
+package's `meta/`, and this repository reads it there, beside the API model,
+as [a build artifact](../interfaces/build-artifacts.md). The file was once `tsdoctor.json`; the bundler now writes only `bundle.json`
+and deletes a leftover `tsdoctor.json`, so this repository's discovery must
+look for the new name. Repointing `packages/bundle` and the platforms at the
+package and the file name, and deprecating `@tsdoctor/manifest`, is this
+repository's side, tracked in effected issue 1256.
 
 ## Open questions
 

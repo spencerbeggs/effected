@@ -1,5 +1,5 @@
-import type { TsdoctorConfig } from "../config/BuildConfig.js";
-import type { OpenGraphImage, RegistryRef } from "./BundleManifest.js";
+import type { OpenGraphImage, RegistryRef } from "@effected/manifest";
+import type { BundleConfig } from "../config/BuildConfig.js";
 
 /**
  * What an Open Graph image generator receives: the merged identity of the
@@ -33,13 +33,13 @@ export interface OgImageGenerator {
 }
 
 /**
- * The `meta.tsdoctor` block: the CONFIG tier of the emitted `tsdoctor.json`,
- * ranked over the package's `tsdoctor.json` (leaf) and the workspace root's
+ * The `meta.bundle` block: the CONFIG tier of the emitted `bundle.json`,
+ * ranked over the package's `bundle.json` (leaf) and the workspace root's
  * (project).
  *
  * @public
  */
-export interface TsdoctorMetaOptions {
+export interface BundleMetaOptions {
 	readonly name?: string | undefined;
 	readonly tagline?: string | undefined;
 	readonly description?: string | undefined;
@@ -64,10 +64,10 @@ export interface TsdoctorMetaOptions {
 }
 
 /**
- * The options the meta pass takes, from the decoded `[package.tsdoctor]` table. The table names a renderer, and the
+ * The options the meta pass takes, from the decoded `[package.bundle]` table. The table names a renderer, and the
  * caller passes the generator it resolved to; a table that asks for none needs none.
  */
-export function tsdoctorMetaOptionsOf(config: TsdoctorConfig, generate?: OgImageGenerator): TsdoctorMetaOptions {
+export function bundleMetaOptionsOf(config: BundleConfig, generate?: OgImageGenerator): BundleMetaOptions {
 	const { name, tagline, description, registries, openGraph } = config;
 	return {
 		...(name !== undefined ? { name } : {}),

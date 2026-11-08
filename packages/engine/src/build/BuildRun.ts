@@ -215,7 +215,7 @@ export class BuildRun {
 		const discovery = WorkspaceDiscovery.layer({ cwd }).pipe(Layer.provide(WorkspaceRoot.layer));
 		const root = yield* workspaceRootOf(cwd).pipe(Effect.provide(discovery));
 		const resolved = yield* EffectedConfigFile.load({ cwd, root }).pipe(Effect.provide(discovery));
-		const { build, tsdoctor } = resolved.config.package;
+		const { build, bundle } = resolved.config.package;
 		const plugins = yield* loadPlugins({
 			cwd,
 			modules: build.plugins,
@@ -227,7 +227,7 @@ export class BuildRun {
 		const outcome: BuildOutcome = yield* Bundler.build({
 			cwd,
 			config: build,
-			tsdoctor,
+			bundle,
 			noExe: input.noExe,
 			verbose: input.verbose,
 			plugins,

@@ -49,6 +49,10 @@
 * Updated effected.toml is the only build config, and code enters through two data keys
 * Updated @effected/workspaces/testing: the repo-shape checks
 * Updated @effected/plugin
+* Added @effected/manifest
+* Updated The build artifacts: dist/prod, targets.json, issues.json and the journals
+* Added The bundle manifest is its own pure package, @effected/manifest, emitted as a platform-neutral bundle.json
+* Updated spencerbeggs/tsdoctor
 
 ## 2026-11-07
 

@@ -28,6 +28,7 @@ const isDualKey = (dual: DualExports, exportKey: string): boolean =>
 const NON_PUBLISHED_FIELDS = [
 	"devDependencies",
 	"bundleDependencies",
+	"bundledDependencies",
 	"scripts",
 	"publishConfig",
 	"packageManager",

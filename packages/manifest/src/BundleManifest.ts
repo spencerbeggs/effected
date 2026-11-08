@@ -169,7 +169,7 @@ export const ProjectIdentity = Schema.Struct({
 export type ProjectIdentity = typeof ProjectIdentity.Type;
 
 /**
- * The versioned `tsdoctor.json` sidecar manifest — bundle layer 3.
+ * The versioned `bundle.json` sidecar manifest — bundle layer 3.
  *
  * @remarks
  * `spec` is the only required field; every other field enriches. Unknown
@@ -207,7 +207,7 @@ export const BundleManifest = Schema.Struct({
 export type BundleManifest = typeof BundleManifest.Type;
 
 /**
- * Raised when a present `tsdoctor.json` cannot be parsed or does not satisfy
+ * Raised when a present `bundle.json` cannot be parsed or does not satisfy
  * the {@link (BundleManifest:variable)} schema.
  *
  * @remarks
@@ -224,7 +224,7 @@ export class BundleManifestError extends Schema.TaggedError<BundleManifestError>
 }) {
 	override get message(): string {
 		const where = this.path !== undefined ? ` at ${this.path}` : "";
-		return `Invalid tsdoctor.json manifest${where}`;
+		return `Invalid bundle.json manifest${where}`;
 	}
 }
 
@@ -233,8 +233,8 @@ export class BundleManifestError extends Schema.TaggedError<BundleManifestError>
  *
  * @remarks
  * The typed boundary for manifest input that has already been parsed from
- * JSON (plugin options, fetched payloads). File-based reading lives in
- * `readBundle`, which routes through this after parsing.
+ * JSON (plugin options, fetched payloads). This package does no IO: a reader
+ * parses the file itself and routes the value through here.
  *
  * @public
  */
@@ -259,11 +259,11 @@ export const MANIFEST_SPEC = 1 as const;
  *
  * @public
  */
-export const TSDOCTOR_MANIFEST_FILENAME = "tsdoctor.json";
+export const BUNDLE_MANIFEST_FILENAME = "bundle.json";
 
 /**
  * Encode a {@link (BundleManifest:type)} into the JSON-ready value a writer
- * serializes as `tsdoctor.json`.
+ * serializes as `bundle.json`.
  *
  * @remarks
  * The writer's boundary. Going through the schema rather than

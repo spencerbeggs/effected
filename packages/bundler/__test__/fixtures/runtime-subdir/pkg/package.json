@@ -1,0 +1,22 @@
+{
+	"name": "@fixture/runtime-subdir",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": {
+			"effected-built": "./dist/prod/npm/pkg/index.js",
+			"default": "./src/index.ts"
+		},
+		"./runtime": {
+			"effected-built": "./dist/prod/npm/pkg/runtime/index.js",
+			"default": "./src/runtime/index.tsx"
+		}
+	},
+	"peerDependencies": {
+		"react": "*"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

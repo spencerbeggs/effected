@@ -197,7 +197,7 @@ const buildCliKit = (cwd: string, extra: Record<string, unknown> = {}, ci = fals
 	});
 	return Effect.suspend(() => {
 		rmSync(join(cwd, "dist"), { recursive: true, force: true });
-		return Bundler.build({ cwd, config, tsdoctor: undefined, noExe: true, verbose: false, plugins: [], ci });
+		return Bundler.build({ cwd, config, bundle: undefined, noExe: true, verbose: false, plugins: [], ci });
 	});
 };
 
@@ -298,7 +298,7 @@ describe.skipIf(!SPIKE_ENABLED)("cli-kit from source siblings", () => {
 				yield* Bundler.build({
 					cwd: envDir,
 					config: Schema.decodeUnknownSync(PackageBuildConfig)({ meta: false }),
-					tsdoctor: undefined,
+					bundle: undefined,
 					noExe: true,
 					verbose: false,
 					plugins: [],

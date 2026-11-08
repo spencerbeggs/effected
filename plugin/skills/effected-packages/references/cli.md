@@ -81,8 +81,8 @@ optional `effected.toml`; a package with neither needs no config. The
 `[package.build]` table holds `format`, `externals`, `bundle`, `bundledPackages`,
 `dtsExternals`, `bundleNodeModules`, `minify`, `emitDts`, `define`, `plugins`
 (module paths exporting a rolldown plugin), `overrides`, `looseFiles`, `copy`, `jsx`,
-`manifest.drop`, `meta` and `exe`; `[package.tsdoctor]` shapes the emitted
-`tsdoctor.json`. `meta.tsdoc.suppressWarnings` defaults to
+`manifest.drop`, `meta` and `exe`; `[package.bundle]` shapes the emitted
+`bundle.json`. `meta.tsdoc.suppressWarnings` defaults to
 `[{ messageId = "ae-forgotten-export", pattern = "_base" }]` and
 `meta.optimistic` previews the next versions from pending changesets. Config is
 found at `<root>/.config/effected.toml`, `<root>/effected.toml`,

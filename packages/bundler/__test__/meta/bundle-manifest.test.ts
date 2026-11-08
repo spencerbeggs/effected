@@ -1,11 +1,11 @@
-// Ported from savvy-web/systems packages/tsdown-plugins/__test__/meta/tsdoctor-manifest.test.ts on 2026-11-06
+// Ported from savvy-web/systems packages/tsdown-plugins/__test__/meta/bundle-manifest.test.ts on 2026-11-06
 import { assert, describe, it } from "@effect/vitest";
 import {
-	composeTsdoctorManifest,
+	composeBundleManifest,
 	githubOwnerRepo,
 	ogImageInfoOf,
 	registriesFromTargets,
-} from "../../src/meta/tsdoctor-manifest.js";
+} from "../../src/meta/bundle-manifest.js";
 
 const base = {
 	config: undefined,
@@ -17,21 +17,21 @@ const base = {
 	generatedImage: undefined,
 };
 
-describe("composeTsdoctorManifest", () => {
+describe("composeBundleManifest", () => {
 	it("returns undefined when nothing is configured and the package is private", () => {
-		assert.isUndefined(composeTsdoctorManifest({ ...base, isPrivate: true, targets: [] }));
+		assert.isUndefined(composeBundleManifest({ ...base, isPrivate: true, targets: [] }));
 	});
 
 	it("derives registries from targets for a public package", () => {
-		assert.deepStrictEqual(composeTsdoctorManifest(base), {
+		assert.deepStrictEqual(composeBundleManifest(base), {
 			spec: 1,
 			registries: [{ type: "npm", name: "npm", url: "https://www.npmjs.com/package/@scope/pkg" }],
 		});
 	});
 
 	it("skips derived registries for a private package and when registries is false", () => {
-		assert.isUndefined(composeTsdoctorManifest({ ...base, isPrivate: true }));
-		assert.deepStrictEqual(composeTsdoctorManifest({ ...base, config: { registries: false, name: "X" } }), {
+		assert.isUndefined(composeBundleManifest({ ...base, isPrivate: true }));
+		assert.deepStrictEqual(composeBundleManifest({ ...base, config: { registries: false, name: "X" } }), {
 			spec: 1,
 			name: "X",
 		});
@@ -39,15 +39,15 @@ describe("composeTsdoctorManifest", () => {
 
 	it("lets an explicit registries list (config over leaf) replace the derived one", () => {
 		const explicit = [{ type: "jsr", name: "jsr", url: "https://jsr.io/@scope/pkg" }];
-		assert.deepStrictEqual(composeTsdoctorManifest({ ...base, leaf: { registries: explicit } })?.registries, explicit);
+		assert.deepStrictEqual(composeBundleManifest({ ...base, leaf: { registries: explicit } })?.registries, explicit);
 		assert.deepStrictEqual(
-			composeTsdoctorManifest({ ...base, config: { registries: explicit }, leaf: { registries: [] } })?.registries,
+			composeBundleManifest({ ...base, config: { registries: explicit }, leaf: { registries: [] } })?.registries,
 			explicit,
 		);
 	});
 
 	it("lets config beat leaf beat project per field and keeps project nested", () => {
-		const manifest = composeTsdoctorManifest({
+		const manifest = composeBundleManifest({
 			...base,
 			config: { name: "Config" },
 			leaf: { name: "Leaf", tagline: "leaf tag" },
@@ -60,7 +60,7 @@ describe("composeTsdoctorManifest", () => {
 	});
 
 	it("puts the generated image first, then config, leaf, project images", () => {
-		const manifest = composeTsdoctorManifest({
+		const manifest = composeBundleManifest({
 			...base,
 			generatedImage: { path: "og/pkg.png", type: "image/png", width: 1200, height: 630 },
 			config: { openGraph: { images: [{ url: "https://c/og.png" }] } },
@@ -75,11 +75,11 @@ describe("composeTsdoctorManifest", () => {
 	});
 
 	it("omits openGraph entirely when no tier declares an image or theme color", () => {
-		assert.notProperty(composeTsdoctorManifest({ ...base, config: { name: "X" } }), "openGraph");
+		assert.notProperty(composeBundleManifest({ ...base, config: { name: "X" } }), "openGraph");
 	});
 
 	it("never writes an sbom pointer", () => {
-		const manifest = composeTsdoctorManifest({ ...base, leaf: { sbom: { path: "x.json" } } });
+		const manifest = composeBundleManifest({ ...base, leaf: { sbom: { path: "x.json" } } });
 		assert.isUndefined(manifest?.sbom);
 	});
 });

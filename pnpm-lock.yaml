@@ -396,6 +396,9 @@ importers:
       '@effected/jsonl':
         specifier: workspace:^
         version: link:../jsonl
+      '@effected/manifest':
+        specifier: workspace:^
+        version: link:../manifest
       '@effected/npm':
         specifier: workspace:^
         version: link:../npm
@@ -1156,6 +1159,21 @@ importers:
       '@effected/workspaces':
         specifier: workspace:*
         version: link:../workspaces
+      '@types/node':
+        specifier: catalog:build
+        version: 26.6.6
+      effect:
+        specifier: catalog:effected
+        version: 4.1.2
+      typescript:
+        specifier: catalog:build
+        version: 7.1.0-beta
+
+  packages/manifest:
+    devDependencies:
+      '@effect/vitest':
+        specifier: catalog:effected
+        version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
         specifier: catalog:build
         version: 26.6.6

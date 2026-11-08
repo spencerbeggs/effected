@@ -34,7 +34,7 @@ const build = (emits: string | undefined) =>
 		return Bundler.build({
 			cwd,
 			config: Schema.decodeUnknownSync(PackageBuildConfig)({ meta: false, exe: { fileName: "tool" } }),
-			tsdoctor: undefined,
+			bundle: undefined,
 			noExe: false,
 			verbose: false,
 			plugins: [],

@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 import { BundleManifest, BundleManifestError } from "./BundleManifest.js";
 
 /**
- * The shape an author checks in as a `tsdoctor.json` SOURCE file, at a
+ * The shape an author checks in as a `bundle.json` SOURCE file, at a
  * package root (the leaf tier) or a workspace root (the project tier).
  *
  * @remarks

@@ -7,7 +7,7 @@ import { Effect, Schema } from "effect";
 import type { BundlerBuildOptions, BundlerPackageJson, BundlerSeams } from "../src/Bundler.js";
 import { Bundler } from "../src/Bundler.js";
 import { BundlerError } from "../src/BundlerError.js";
-import { PackageBuildConfig, TsdoctorConfig } from "../src/config/BuildConfig.js";
+import { BundleConfig, PackageBuildConfig } from "../src/config/BuildConfig.js";
 import { ConfigValidationError } from "../src/errors.js";
 import type { RunExeBuildOptions } from "../src/exe/build.js";
 import type { GenerateMetaOptions } from "../src/meta/generate.js";
@@ -55,7 +55,7 @@ const harness = (input: {
 	const options: BundlerBuildOptions = {
 		cwd: "/abs/pkg",
 		config: decodeConfig({ meta: false, ...input.config }),
-		tsdoctor: undefined,
+		bundle: undefined,
 		noExe: false,
 		verbose: false,
 		plugins: [],
@@ -880,8 +880,8 @@ describe("Bundler.build failure phases", () => {
 describe("Bundler.build meta pass", () => {
 	it.effect("hands the meta pass its facts, with ci as an input", () =>
 		Effect.gen(function* () {
-			const tsdoctor = undefined;
-			const h = harness({ config: { meta: {} }, options: { ci: true, tsdoctor } });
+			const bundle = undefined;
+			const h = harness({ config: { meta: {} }, options: { ci: true, bundle } });
 			yield* Bundler.build(h.options);
 			assert.strictEqual(h.metas.length, 1);
 			const meta = h.metas[0] as RunMetaPassOptions;
@@ -986,12 +986,12 @@ describe("Bundler.build meta pass", () => {
 		}),
 	);
 
-	it.effect("hands the meta pass the decoded tsdoctor table", () =>
+	it.effect("hands the meta pass the decoded bundle table", () =>
 		Effect.gen(function* () {
-			const tsdoctor = Schema.decodeUnknownSync(TsdoctorConfig)({ tagline: "Every shape", registries: false });
-			const h = harness({ config: { meta: {} }, options: { tsdoctor } });
+			const bundle = Schema.decodeUnknownSync(BundleConfig)({ tagline: "Every shape", registries: false });
+			const h = harness({ config: { meta: {} }, options: { bundle } });
 			yield* Bundler.build(h.options);
-			assert.deepStrictEqual(h.metas[0]?.meta.tsdoctor, { tagline: "Every shape", registries: false });
+			assert.deepStrictEqual(h.metas[0]?.meta.bundle, { tagline: "Every shape", registries: false });
 		}),
 	);
 
@@ -1109,21 +1109,21 @@ describe("Bundler.build meta pass", () => {
 		}),
 	);
 
-	it.effect("resolves the renderer a tsdoctor table names, and hands the pass its generator", () =>
+	it.effect("resolves the renderer a bundle table names, and hands the pass its generator", () =>
 		Effect.gen(function* () {
-			const tsdoctor = Schema.decodeUnknownSync(TsdoctorConfig)({ openGraph: { generate: "satori" } });
-			const h = harness({ config: { meta: {} }, options: { tsdoctor }, seams: { importOgPeer: async () => ({}) } });
+			const bundle = Schema.decodeUnknownSync(BundleConfig)({ openGraph: { generate: "satori" } });
+			const h = harness({ config: { meta: {} }, options: { bundle }, seams: { importOgPeer: async () => ({}) } });
 			yield* Bundler.build(h.options);
-			assert.isFunction(h.metas[0]?.meta.tsdoctor?.openGraph?.generate);
+			assert.isFunction(h.metas[0]?.meta.bundle?.openGraph?.generate);
 		}),
 	);
 
 	it.effect("names both peers in issues.json and fails phase meta when a renderer's peer is absent", () =>
 		Effect.gen(function* () {
-			const tsdoctor = Schema.decodeUnknownSync(TsdoctorConfig)({ openGraph: { generate: "satori" } });
+			const bundle = Schema.decodeUnknownSync(BundleConfig)({ openGraph: { generate: "satori" } });
 			const h = harness({
 				config: { meta: {} },
-				options: { tsdoctor },
+				options: { bundle },
 				seams: {
 					importOgPeer: async (specifier) => {
 						if (specifier === "@resvg/resvg-js") {
@@ -1144,11 +1144,11 @@ describe("Bundler.build meta pass", () => {
 
 	it.effect("does not touch the renderer's peers for a table that asks for no image", () =>
 		Effect.gen(function* () {
-			const tsdoctor = Schema.decodeUnknownSync(TsdoctorConfig)({ tagline: "t" });
+			const bundle = Schema.decodeUnknownSync(BundleConfig)({ tagline: "t" });
 			const imported: string[] = [];
 			const h = harness({
 				config: { meta: {} },
-				options: { tsdoctor },
+				options: { bundle },
 				seams: {
 					importOgPeer: async (specifier) => {
 						imported.push(specifier);
@@ -1326,6 +1326,129 @@ describe("Bundler.build resolves from options.cwd, never the process directory",
 			});
 			yield* Bundler.build(h.options);
 			assert.deepStrictEqual(emitted[0]?.dependencies, resolved);
+		}),
+	);
+});
+
+describe("Bundler.build manifest set and the built condition", () => {
+	it.effect("renames every group, the binding and the API model through set.name, keeping a target's own name", () =>
+		Effect.gen(function* () {
+			const h = harness({
+				config: { meta: {}, manifest: { set: { name: "@modules/versioned", description: "v1" } } },
+				pkg: {
+					name: "@modules/versioned-v1",
+					version: "1.0.0",
+					exports: { ".": "./src/index.ts" },
+					publishConfig: { targets: { npm: true, mirror: { registry: "https://r", name: "@other/versioned" } } },
+				},
+			});
+			yield* Bundler.build(h.options);
+			const build = firstBuild(h.builds);
+			assert.deepStrictEqual(build.groups, [
+				{ id: "npm", name: "@modules/versioned" },
+				{ id: "mirror", name: "@other/versioned" },
+			]);
+			assert.deepStrictEqual(build.set, { name: "@modules/versioned", description: "v1" });
+			assert.strictEqual(h.metas[0]?.packageName, "@modules/versioned");
+		}),
+	);
+
+	it.effect("forward-looks the renamed package's own version from its source name", () =>
+		Effect.gen(function* () {
+			const h = harness({
+				config: { meta: {}, manifest: { set: { name: "@modules/versioned" } } },
+				pkg: { name: "@modules/versioned-v1", version: "1.0.0", exports: { ".": "./src/index.ts" } },
+				seams: {
+					resolveNextVersions: async () => ({ versions: new Map([["@modules/versioned-v1", "1.1.0"]]) }),
+				},
+			});
+			yield* Bundler.build(h.options);
+			const resolve = h.metas[0]?.resolveNextVersions;
+			if (resolve === undefined) return assert.fail("the meta pass got no next-version read");
+			const { versions } = yield* Effect.promise(() => resolve("/abs/pkg"));
+			assert.strictEqual(versions.get("@modules/versioned"), "1.1.0");
+			assert.strictEqual(versions.get("@modules/versioned-v1"), "1.1.0");
+		}),
+	);
+
+	it.effect("passes no set when none is written, so the manifest takes the default path", () =>
+		Effect.gen(function* () {
+			const h = harness({});
+			yield* Bundler.build(h.options);
+			assert.isUndefined(firstBuild(h.builds).set);
+		}),
+	);
+
+	it.effect("refuses set.version before any pass", () =>
+		Effect.gen(function* () {
+			const h = harness({ config: { manifest: { set: { version: "9.9.9" } } } });
+			const error = yield* Effect.flip(Bundler.build(h.options));
+			assert.instanceOf(error, ConfigValidationError);
+			assert.strictEqual((error as ConfigValidationError).path, "manifest.set.version");
+			assert.strictEqual(h.builds.length, 0);
+		}),
+	);
+
+	it.effect("builds from the source behind the built condition, and refuses one placed where Node skips it", () =>
+		Effect.gen(function* () {
+			const h = harness({
+				pkg: {
+					name: "lib",
+					version: "1.0.0",
+					exports: { ".": { "effected-built": "./dist/prod/npm/pkg/index.js", default: "./src/index.ts" } },
+				},
+			});
+			yield* Bundler.build(h.options);
+			assert.deepStrictEqual(firstBuild(h.builds).entry, { index: "./src/index.ts" });
+
+			const misplaced = harness({
+				pkg: {
+					name: "lib",
+					version: "1.0.0",
+					exports: { ".": { default: "./src/index.ts", "effected-built": "./dist/prod/npm/pkg/index.js" } },
+				},
+			});
+			const error = yield* Effect.flip(Bundler.build(misplaced.options));
+			assert.instanceOf(error, ConfigValidationError);
+			assert.strictEqual((error as ConfigValidationError).path, 'exports.".".effected-built');
+			assert.strictEqual(misplaced.builds.length, 0);
+		}),
+	);
+
+	it.effect("warns when a built-condition target is not the file the build emitted for its export", () =>
+		Effect.gen(function* () {
+			const cwd = makeTmp();
+			const pkgDir = join(cwd, "dist", "prod", "npm", "pkg");
+			mkdirSync(pkgDir, { recursive: true });
+			writeFileSync(join(pkgDir, "index.js"), "");
+			writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ exports: { ".": { import: "./index.js" } } }));
+			const warningsOf = (h: ReturnType<typeof harness>) =>
+				h.issues[0]?.reports[0]?.targetGroups.flatMap((group) => group.warnings) ?? [];
+			const withTarget = (target: string) =>
+				harness({
+					options: { cwd },
+					pkg: {
+						name: "lib",
+						version: "1.0.0",
+						exports: { ".": { "effected-built": target, default: "./src/index.ts" } },
+					},
+					seams: {
+						buildTargetGroups: async (o) => {
+							o.collector?.registerGroup("npm", []);
+						},
+					},
+				});
+
+			const matched = withTarget("./dist/prod/npm/pkg/index.js");
+			yield* Bundler.build(matched.options);
+			assert.deepStrictEqual(warningsOf(matched), []);
+
+			const stale = withTarget("./dist/prod/npm/pkg/lib.js");
+			yield* Bundler.build(stale.options);
+			const warning = warningsOf(stale)[0];
+			assert.strictEqual(warning?.code, "exports-built-condition-unmatched");
+			assert.include(warning?.text ?? "", 'Write "./dist/prod/npm/pkg/index.js"');
+			assert.strictEqual(stale.issues[0]?.buildOk, true);
 		}),
 	);
 });

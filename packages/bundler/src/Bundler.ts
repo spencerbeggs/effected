@@ -4,7 +4,7 @@ import { Effect, Schema } from "effect";
 import type { Plugin } from "rolldown";
 import type { BundlerPhase } from "./BundlerError.js";
 import { BundlerError } from "./BundlerError.js";
-import type { PackageBuildConfig, TsdoctorConfig } from "./config/BuildConfig.js";
+import type { BundleConfig, PackageBuildConfig } from "./config/BuildConfig.js";
 import { MetaConfig } from "./config/BuildConfig.js";
 import { ConfigValidator } from "./config-validation/ConfigValidator.js";
 import { writeResolvedTsconfig } from "./dts/resolved-tsconfig.js";
@@ -19,15 +19,18 @@ import { computeExeFileName } from "./exe/filename.js";
 import { causeMessage } from "./internal/causeMessage.js";
 import type { JsxConfig as ResolvedJsxConfig, TsconfigJsx } from "./jsx/config.js";
 import { readTsconfigJsx, resolveJsxConfig } from "./jsx/config.js";
+import { builtConditionTargets, mismatchedBuiltTargets, stripBuiltCondition } from "./manifest/built-condition.js";
 import { buildEmittedManifest } from "./manifest/emit-manifest.js";
 import { unmatchedExportPatterns } from "./manifest/export-patterns.js";
+import { emittedPackageName, validateManifestSet } from "./manifest/manifest-set.js";
+import type { Json } from "./manifest/transform.js";
 import { assertBuildableConditionExports } from "./manifest/transform.js";
+import type { OgImageGenerator } from "./meta/bundle-config.js";
+import { bundleMetaOptionsOf } from "./meta/bundle-config.js";
 import type { MetaOptions } from "./meta/config.js";
 import type { GenerateMetaOptions, MetaResult } from "./meta/generate.js";
 import { OgGenerateError, resolveOgGenerator } from "./meta/og-image.js";
 import type { RunMetaPassOptions } from "./meta/run-pass.js";
-import type { OgImageGenerator } from "./meta/tsdoctor-config.js";
-import { tsdoctorMetaOptionsOf } from "./meta/tsdoctor-config.js";
 import type { BuildTargetGroupsOptions, CssOptions, EntryOverride } from "./passes/build-target-groups.js";
 import { buildTargetGroups as realBuildTargetGroups } from "./passes/build-target-groups.js";
 import { normalizeLooseFiles } from "./passes/loose-files.js";
@@ -103,8 +106,8 @@ export interface BundlerBuildOptions {
 	readonly cwd: string;
 	/** The decoded `[package.build]` table. */
 	readonly config: PackageBuildConfig;
-	/** The decoded `[package.tsdoctor]` table, the config tier of the emitted `tsdoctor.json`. */
-	readonly tsdoctor: TsdoctorConfig | undefined;
+	/** The decoded `[package.bundle]` table, the config tier of the emitted `bundle.json`. */
+	readonly bundle: BundleConfig | undefined;
 	/** Skips the SEA compile. The manifest still points at the binary. */
 	readonly noExe: boolean;
 	/** Measures gzip sizes for the report. */
@@ -286,11 +289,42 @@ function validateCopy(config: PackageBuildConfig, hasJsEntries: boolean): void {
 	}
 }
 
+/** The `exports` of a group's emitted manifest, or `undefined` when there is none to read. */
+function readEmittedExports(cwd: string, groupId: string): unknown {
+	try {
+		return (JSON.parse(readFileSync(join(cwd, "dist", "prod", groupId, "pkg", "package.json"), "utf-8")) as Json)
+			.exports;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * The optimistic next-version read for a package `set.name` renames: changesets key the release by the workspace
+ * package's own name, so the emitted name takes that entry's version.
+ */
+function aliasNextVersions(
+	seam: BundlerSeams["resolveNextVersions"] | undefined,
+	sourceName: string,
+	emittedName: string,
+): BundlerSeams["resolveNextVersions"] {
+	const read: BundlerSeams["resolveNextVersions"] =
+		seam ?? ((cwd) => import("./changesets/next-versions.js").then((module) => module.resolveNextVersions(cwd)));
+	return async (cwd) => {
+		const { versions } = await read(cwd);
+		const own = versions.get(sourceName);
+		if (own === undefined) return { versions };
+		const aliased = new Map(versions);
+		aliased.set(emittedName, own);
+		return { versions: aliased };
+	};
+}
+
 /** A decoded empty `[package.build.meta]` table, which a config that never wrote one also decodes to. */
 const defaultMetaFingerprint = JSON.stringify(Schema.decodeUnknownSync(MetaConfig)({}));
 
 /**
- * The generator the tsdoctor table names, if any. A failure is named in `issues.json` the way the meta pass names a
+ * The generator the bundle table names, if any. A failure is named in `issues.json` the way the meta pass names a
  * renderer failure, since it never reaches that pass.
  */
 async function resolveConfiguredGenerator(
@@ -300,7 +334,7 @@ async function resolveConfiguredGenerator(
 	collector: BuildCollector,
 	seams: Partial<BundlerSeams>,
 ): Promise<OgImageGenerator | undefined> {
-	const name = options.tsdoctor?.openGraph?.generate;
+	const name = options.bundle?.openGraph?.generate;
 	if (name === undefined) return undefined;
 	try {
 		return await Effect.runPromise(
@@ -356,10 +390,17 @@ async function runBuild(
 	};
 
 	try {
-		const pkg = (seams.readPackageJson ?? readPackageJson)(cwd);
-		const version = pkg.version ?? "0.0.0";
-		const packageName = pkg.name ?? "unknown";
-		progress.packageName = packageName;
+		const sourcePkg = (seams.readPackageJson ?? readPackageJson)(cwd);
+		const version = sourcePkg.version ?? "0.0.0";
+		// The build reports under the workspace package's own name; everything it emits carries `set.name` when written.
+		const sourceName = sourcePkg.name ?? "unknown";
+		progress.packageName = sourceName;
+		validateManifestSet(config.manifest.set, config.manifest.drop);
+		const packageName = emittedPackageName(config.manifest.set, sourceName);
+		// The built-output link condition is checked here and removed before anything reads the exports: it is a
+		// workspace-only route, and a `./dist/prod/...` target would otherwise read as a build source.
+		const builtTargets = builtConditionTargets(sourcePkg.exports);
+		const pkg = stripBuiltCondition(sourcePkg);
 
 		const jsx = resolveJsxConfig((seams.readTsconfigJsx ?? readTsconfigJsx)(cwd), config.jsx);
 		const tsconfigPath = (seams.writeTsconfig ?? writeTsconfig)(cwd, jsx);
@@ -445,7 +486,7 @@ async function runBuild(
 			config,
 			entries,
 			exportsMap,
-			packageName,
+			sourceName,
 		);
 		const looseFiles = hasLooseFiles ? normalizeLooseFiles(config.looseFiles) : undefined;
 
@@ -470,6 +511,7 @@ async function runBuild(
 				externals: config.externals,
 				// Always passed, the empty list included: the manifest's standard stripping runs only when it is set.
 				drop: config.manifest.drop,
+				...(Object.keys(config.manifest.set).length > 0 ? { set: config.manifest.set } : {}),
 				format: config.format,
 				emitDts: config.emitDts,
 				emitDeclarations: true,
@@ -503,7 +545,7 @@ async function runBuild(
 		if (meta !== undefined && config.emitDts && (config.exe === undefined || hasJsEntries)) {
 			progress.phase = "meta";
 			const generate = await resolveConfiguredGenerator(options, packageName, groups, collector, seams);
-			const tsdoctor = options.tsdoctor !== undefined ? tsdoctorMetaOptionsOf(options.tsdoctor, generate) : undefined;
+			const bundleMeta = options.bundle !== undefined ? bundleMetaOptionsOf(options.bundle, generate) : undefined;
 			await (seams.runMetaPass ?? defaultRunMetaPass)({
 				cwd,
 				packageName,
@@ -512,12 +554,16 @@ async function runBuild(
 				entries,
 				exportsMap,
 				overrides: config.overrides,
-				meta: { ...meta, ...(tsdoctor !== undefined ? { tsdoctor } : {}) },
+				meta: { ...meta, ...(bundleMeta !== undefined ? { bundle: bundleMeta } : {}) },
 				collector,
 				ci: options.ci,
 				targets: resolution.targets,
 				...(seams.generateMeta !== undefined ? { generateMeta: seams.generateMeta } : {}),
-				...(seams.resolveNextVersions !== undefined ? { resolveNextVersions: seams.resolveNextVersions } : {}),
+				...(packageName !== sourceName
+					? { resolveNextVersions: aliasNextVersions(seams.resolveNextVersions, sourceName, packageName) }
+					: seams.resolveNextVersions !== undefined
+						? { resolveNextVersions: seams.resolveNextVersions }
+						: {}),
 			});
 		}
 
@@ -539,6 +585,7 @@ async function runBuild(
 						targetGroup: { id: g.id, name: g.name, isProd: true },
 						devManifest: "preserve",
 						drop: config.manifest.drop,
+						set: config.manifest.set,
 						exeRewrite,
 					});
 					mkdirSync(outDir, { recursive: true });
@@ -591,6 +638,23 @@ async function runBuild(
 							: target.includes("*")
 								? `The exports pattern "${key}" points at "${target}", which matches no file in the emitted package. Ship the files from public/ or with [package.build] copy.`
 								: `The export "${key}" points at "${target}", which is not a file in the emitted package. Point it at a source the build emits, or ship the file from public/ or with [package.build] copy.`,
+				});
+			}
+		}
+
+		// A built-condition target that names no file the build emitted for its export resolves to nothing for the
+		// plain-Node consumer it exists for.
+		if (builtTargets.length > 0) {
+			const emitted = groups.map((g) => ({ groupId: g.id, exports: readEmittedExports(cwd, g.id) }));
+			for (const { exportKey, target, expected } of mismatchedBuiltTargets(builtTargets, emitted)) {
+				collector.recordWarning(anchor, {
+					source: "config",
+					level: "warn",
+					code: "exports-built-condition-unmatched",
+					text:
+						expected !== undefined
+							? `The export "${exportKey}" names "${target}" under the effected-built condition, which is not the file the build emits for it. Write "${expected}".`
+							: `The export "${exportKey}" names "${target}" under the effected-built condition, but the build emits no JS file for that export.`,
 				});
 			}
 		}

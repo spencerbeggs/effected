@@ -1,0 +1,15 @@
+# The role @savvy-web/rspress-builder's `runtime: true` played: the plugin entry builds for Node, and the
+# `./runtime` export ships unbundled, one file per source, for the framework to compile per site.
+# `@theme` is the framework's alias: neither a dependency nor a base external, so only the override keeps it an import.
+[package.build]
+meta = false
+
+[[package.build.overrides]]
+entries = ["./runtime"]
+outSubdir = "runtime"
+platform = "browser"
+externals = ["react", "react/jsx-runtime", "@theme"]
+
+# Two workspace packages may emit as one published name.
+[package.build.manifest]
+set = { name = "@fixture/runtime", description = "The runtime fixture" }

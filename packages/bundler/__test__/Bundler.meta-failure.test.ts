@@ -21,7 +21,7 @@ describe("a crash inside the meta pass", () => {
 				Bundler.build({
 					cwd,
 					config: Schema.decodeUnknownSync(PackageBuildConfig)({}),
-					tsdoctor: undefined,
+					bundle: undefined,
 					noExe: true,
 					verbose: false,
 					plugins: [],

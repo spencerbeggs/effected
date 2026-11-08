@@ -39,6 +39,7 @@
 		"@effected/images": "workspace:^",
 		"@effected/jsonc": "workspace:^",
 		"@effected/jsonl": "workspace:^",
+		"@effected/manifest": "workspace:^",
 		"@effected/npm": "workspace:^",
 		"@effected/package-json": "workspace:^",
 		"@effected/semver": "workspace:^",

@@ -1,7 +1,6 @@
-import type { BundleManifest, OpenGraphImage, RegistryRef } from "./BundleManifest.js";
-import { MANIFEST_SPEC } from "./BundleManifest.js";
-import type { ManifestSource } from "./ManifestSource.js";
-import type { OgImageInfo, TsdoctorMetaOptions } from "./tsdoctor-config.js";
+import type { BundleManifest, ManifestSource, OpenGraphImage, RegistryRef } from "@effected/manifest";
+import { MANIFEST_SPEC } from "@effected/manifest";
+import type { BundleMetaOptions, OgImageInfo } from "./bundle-config.js";
 
 /**
  * A `targets.json` target as the manifest composer sees it: the human label and the registry endpoint.
@@ -14,13 +13,13 @@ export interface ManifestTarget {
 }
 
 /**
- * Everything {@link composeTsdoctorManifest} needs: the three authoring tiers plus the build facts
+ * Everything {@link composeBundleManifest} needs: the three authoring tiers plus the build facts
  * that derive the rest.
  *
  * @public
  */
 export interface ComposeManifestInput {
-	readonly config: TsdoctorMetaOptions | undefined;
+	readonly config: BundleMetaOptions | undefined;
 	readonly leaf: ManifestSource | undefined;
 	readonly project: ManifestSource | undefined;
 	readonly packageName: string;
@@ -133,7 +132,7 @@ export function registriesFromTargets(
  *
  * @public
  */
-export function composeTsdoctorManifest(input: ComposeManifestInput): BundleManifest | undefined {
+export function composeBundleManifest(input: ComposeManifestInput): BundleManifest | undefined {
 	const { config, leaf, project } = input;
 	const images: OpenGraphImage[] = [
 		...(input.generatedImage !== undefined ? [input.generatedImage] : []),

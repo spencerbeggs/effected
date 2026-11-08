@@ -1,3 +1,21 @@
+export type { KnownRegistryType } from "@effected/manifest";
+export {
+	BUNDLE_MANIFEST_FILENAME,
+	BundleManifest,
+	BundleManifestError,
+	KNOWN_REGISTRY_TYPES,
+	MANIFEST_SPEC,
+	ManifestSource,
+	OpenGraphConfig,
+	OpenGraphImage,
+	ProjectIdentity,
+	RegistryRef,
+	SbomRef,
+	decodeBundleManifest,
+	decodeManifestSource,
+	encodeBundleManifest,
+	isKnownRegistryType,
+} from "@effected/manifest";
 export type { ActionBuilderError, ActionBuilderOptions } from "./action/ActionBuilder.js";
 export { ActionBuildResult, ActionBuilder, BuildFailed, ValidationFailed } from "./action/ActionBuilder.js";
 export { ActionBundle, BuildResult, BundleResult, BundleStats } from "./action/ActionBundle.js";
@@ -41,6 +59,10 @@ export {
 export {
 	BuildFormat,
 	BuildPlatform,
+	BundleConfig,
+	BundleOpenGraphConfig,
+	BundleOpenGraphImage,
+	BundleRegistryRef,
 	CopyEntry,
 	EffectedConfig,
 	EntryOverride,
@@ -55,10 +77,6 @@ export {
 	PackageConfig,
 	TsdocConfig,
 	TsdocTagDefinition,
-	TsdoctorConfig,
-	TsdoctorOpenGraphConfig,
-	TsdoctorOpenGraphImage,
-	TsdoctorRegistryRef,
 	WarningSuppressionRule,
 } from "./config/BuildConfig.js";
 export {
@@ -90,7 +108,7 @@ export type { ExtractOptions, ExtractResult, PackageJsonLike } from "./entries/e
 export { createEntryName, extractEntries } from "./entries/extract.js";
 export type { PackageJsonEntriesOptions } from "./entries/package-json-entries.js";
 export { packageJsonEntries } from "./entries/package-json-entries.js";
-export { ConfigValidationError, MetaGenerationError, TsdoctorEmitError } from "./errors.js";
+export { BundleManifestEmitError, ConfigValidationError, MetaGenerationError } from "./errors.js";
 export type { ExeBuild, RunExeBuildOptions } from "./exe/build.js";
 export { runExeBuild } from "./exe/build.js";
 export type {
@@ -116,22 +134,16 @@ export {
 	transformExports,
 	transformManifest,
 } from "./manifest/transform.js";
-export type { KnownRegistryType } from "./meta/BundleManifest.js";
+export type { BundleMetaOptions, OgImageGenerator, OgImageInfo } from "./meta/bundle-config.js";
+export type { ComposeManifestInput, ManifestRepository, ManifestTarget } from "./meta/bundle-manifest.js";
 export {
-	BundleManifest,
-	BundleManifestError,
-	KNOWN_REGISTRY_TYPES,
-	MANIFEST_SPEC,
-	OpenGraphConfig,
-	OpenGraphImage,
-	ProjectIdentity,
-	RegistryRef,
-	SbomRef,
-	TSDOCTOR_MANIFEST_FILENAME,
-	decodeBundleManifest,
-	encodeBundleManifest,
-	isKnownRegistryType,
-} from "./meta/BundleManifest.js";
+	composeBundleManifest,
+	githubOwnerRepo,
+	ogImageInfoOf,
+	registriesFromTargets,
+} from "./meta/bundle-manifest.js";
+export type { BundleManifestSources } from "./meta/bundle-source.js";
+export { BundleManifestSourceError, loadBundleManifestSources } from "./meta/bundle-source.js";
 export type {
 	MetaOptions,
 	NormalizedMeta,
@@ -141,23 +153,12 @@ export type {
 } from "./meta/config.js";
 export { normalizeMetaOptions } from "./meta/config.js";
 export type { GenerateMetaOptions, MetaResult } from "./meta/generate.js";
-export { ManifestSource, decodeManifestSource } from "./meta/ManifestSource.js";
 export type { OgImageCacheOptions, WriteGeneratedOgImageOptions } from "./meta/og-image.js";
 export { OgGenerateError, resolveOgCacheSalt, resolveOgGenerator, writeGeneratedOgImage } from "./meta/og-image.js";
 export { rewriteMetaVersions } from "./meta/optimistic.js";
 export type { RunMetaPassOptions } from "./meta/run-pass.js";
 export type { PortableTsconfig, ResolvedCompilerOptions } from "./meta/tsconfig-resolver.js";
 export { resolvePortableTsconfig } from "./meta/tsconfig-resolver.js";
-export type { OgImageGenerator, OgImageInfo, TsdoctorMetaOptions } from "./meta/tsdoctor-config.js";
-export type { ComposeManifestInput, ManifestRepository, ManifestTarget } from "./meta/tsdoctor-manifest.js";
-export {
-	composeTsdoctorManifest,
-	githubOwnerRepo,
-	ogImageInfoOf,
-	registriesFromTargets,
-} from "./meta/tsdoctor-manifest.js";
-export type { TsdoctorSources } from "./meta/tsdoctor-source.js";
-export { TsdoctorSourceError, loadTsdoctorSources } from "./meta/tsdoctor-source.js";
 export type {
 	BuildTargetGroupsOptions,
 	CssOptions,
