@@ -14,7 +14,14 @@ import type { PnpmSettingsLoadOptions } from "../src/index.js";
 import { PnpmSettings } from "../src/index.js";
 import { manifest, platform } from "./fixtures.js";
 
+// Each pattern compiles alone, but the members share one compile budget, so the
+// set as a whole fails typed (`CompileBudgetExceeded`).
+const BIG_SET = Array.from({ length: 5000 }, (_, i) => `  - '**/[[:alpha:]]*${i}.x'`).join("\n");
+
 const tree: Readonly<Record<string, string>> = {
+	"/budget/pnpm-workspace.yaml": `packages:\n${BIG_SET}\nminimumReleaseAge: 100\n`,
+	"/budget/package.json": manifest("budget"),
+	"/budget/sub/package.json": manifest("sub"),
 	// The four global directories pnpm can pick, one value each.
 	"/home/u/Library/Preferences/pnpm/config.yaml": "minimumReleaseAge: 30\nminimumReleaseAgeExclude:\n  - g-darwin\n",
 	"/home/u/.config/pnpm/config.yaml": "minimumReleaseAge: 40\n",
@@ -225,6 +232,15 @@ layer(Platform)("PnpmSettings.load", (it) => {
 				const error = yield* PnpmSettings.load(darwin({ cwd: "/probe/sub" })).pipe(Effect.flip);
 				assert.strictEqual(error.reason, "read");
 				assert.strictEqual(error.path, "/probe/sub/package.json");
+			}),
+		);
+	});
+
+	describe("a pattern set that fails as a whole", () => {
+		it.effect('fails "membership" instead of answering not-a-member', () =>
+			Effect.gen(function* () {
+				const error = yield* PnpmSettings.load(darwin({ cwd: "/budget/sub" })).pipe(Effect.flip);
+				assert.strictEqual(error.reason, "membership");
 			}),
 		);
 	});
