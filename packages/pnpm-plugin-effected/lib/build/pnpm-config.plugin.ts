@@ -191,19 +191,19 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/markdown-lint": {
-					range: "^0.1.0",
+					range: "^0.1.1",
 					peer: "^0.1.0",
 					strategy: "lock-minor",
 					source: "workspace",
 				},
 				"@effected/s3": {
-					range: "^0.1.0",
+					range: "^0.1.1",
 					peer: "^0.1.0",
 					strategy: "lock-minor",
 					source: "workspace",
 				},
 				"@effected/shell": {
-					range: "^0.1.0",
+					range: "^0.1.1",
 					peer: "^0.1.0",
 					strategy: "lock-minor",
 					source: "workspace",
