@@ -108,6 +108,61 @@ describe("descend reads only what the pattern can reach", () => {
 		}),
 	);
 
+	it.effect(
+		"matchBase: *.js and x/../*.js match by basename at every depth, so the walk has no depth bound (#1261)",
+		() =>
+			Effect.gen(function* () {
+				const tree = { "/repo/a.js": "", "/repo/b/c.js": "", "/repo/b/d/e.js": "", "/repo/b/d/f/g.js": "" };
+				const all = ["a.js", "b/c.js", "b/d/e.js", "b/d/f/g.js"];
+				for (const source of ["*.js", "x/../*.js"]) {
+					const { matches, reads } = yield* walk(compile(source, false, { matchBase: true }), {}, volume(tree));
+					assert.deepStrictEqual(matches, all, source);
+					assert.include(reads, "/repo/b/d/f", source);
+					assert.isUndefined(segmentBound(compile(source, false, { matchBase: true })), source);
+				}
+				// A literal matches by basename too: it walks instead of taking the one-stat fast path.
+				const literal = yield* walk(compile("c.js", false, { matchBase: true }), {}, volume(tree));
+				assert.deepStrictEqual(literal.matches, ["b/c.js"]);
+				// Control: without matchBase the same patterns read one level and match only `a.js`.
+				const control = yield* walk(compile("*.js"), {}, volume(tree));
+				assert.deepStrictEqual(control.matches, ["a.js"]);
+				assert.deepStrictEqual(control.reads, ["/repo"]);
+				// A pattern of two portions keeps its bound under matchBase.
+				assert.strictEqual(segmentBound(compile("b/*.js", false, { matchBase: true })), 2);
+			}),
+	);
+
+	it.effect(
+		"matchBase: a multi-portion class, brace or extglob pattern keeps its depth bound under a tight maxDepth",
+		() =>
+			Effect.gen(function* () {
+				// matchBase changes nothing for these (every alternative has more than one portion), so a cap of 1 must not
+				// fail on a deep tree, and the deep and hidden directories stay unread.
+				const tree = {
+					"/repo/src/a/x.ts": "",
+					"/repo/src/a/deep/deeper/deepest/y.ts": "",
+					"/repo/src/b/z.ts": "",
+					"/repo/src/.h/q.ts": "",
+					"/repo/src/b/.h/q.ts": "",
+				};
+				for (const source of ["src/[ab]/*.ts", "src/{a,b}*/*.ts", "src/@(a|b)/*.ts"]) {
+					const pattern = compile(source, false, { matchBase: true });
+					const { matches, reads } = yield* walk(pattern, { maxDepth: 1 }, volume(tree));
+					assert.deepStrictEqual(matches, ["src/a/x.ts", "src/b/z.ts"], source);
+					assert.notInclude(reads, "/repo/src/a/deep", source);
+					assert.strictEqual(segmentBound(pattern), 3, source);
+				}
+			}),
+	);
+
+	it.effect("without matchBase a bare ** prunes hidden directories like any other pattern", () =>
+		Effect.gen(function* () {
+			const { matches, reads } = yield* walk(compile("**"), {}, volume({ "/repo/.a/f.js": "", "/repo/b/f.js": "" }));
+			assert.deepStrictEqual(matches, ["b/f.js"]);
+			assert.notInclude(reads, "/repo/.a");
+		}),
+	);
+
 	it.effect("matchBase: a slash-less ** matches by basename, so the walk still reads hidden directories", () =>
 		Effect.gen(function* () {
 			// `**` under `matchBase` matches `.a/f.js` by its basename, though `dot` is off: the probe cannot see
@@ -116,7 +171,7 @@ describe("descend reads only what the pattern can reach", () => {
 			const { matches, reads } = yield* walk(compile("**", false, { matchBase: true }), {}, based);
 			assert.deepStrictEqual(matches, [".a/f.js", "b/f.js"]);
 			assert.include(reads, "/repo/.a");
-			// Control: `matchBase` changes only slash-less patterns, so one with a slash still skips the hidden directory.
+			// Control: `matchBase` changes only one-portion patterns, so `src/**` still skips the hidden directory.
 			const nested = volume({ "/repo/src/.a/f.js": "", "/repo/src/b/f.js": "" });
 			const control = yield* walk(compile("src/**", false, { matchBase: true }), {}, nested);
 			assert.deepStrictEqual(control.matches, ["src/b/f.js"]);
@@ -255,17 +310,19 @@ describe("the pattern bounds", () => {
 		}
 	});
 
-	it("skipsHiddenDirectories never prunes a pattern matchBase can match by basename: slash-less, or collapsed to one segment", () => {
+	it("skipsHiddenDirectories never prunes a pattern matchBase matches by basename: slash-less, or compiled to one portion", () => {
 		const cases: ReadonlyArray<readonly [string, boolean]> = [
 			["**", false],
 			["*.js", false],
-			["*/", false],
+			// `*/` compiles to two portions (`*` and the directory-only empty one), so matchBase changes nothing for it.
+			["*/", true],
 			["x/../**", false],
 			["a/b/../../**", false],
 			["*/../**", false],
 			["**/**", false],
 			["**/**/**", false],
-			["**/.", false],
+			// glob keeps a trailing `.`, so `**/.` is two portions and matchBase changes nothing for it.
+			["**/.", true],
 			["src/**", true],
 			["src/**/**", true],
 			["**/*.js", true],

@@ -13,7 +13,7 @@
 
 import type { GlobPattern } from "@effected/glob";
 import { isPinnedAbsolute } from "./absolute.js";
-import { segmentBound, skipsHiddenDirectories } from "./patternBounds.js";
+import { matchesByBasename, segmentBound, skipsHiddenDirectories } from "./patternBounds.js";
 import { resolveSegments } from "./segments.js";
 import { trimTrailing } from "./trimTrailing.js";
 
@@ -218,8 +218,9 @@ export function* descendMachine<S, C>(
 	// a literal that climbs above `cwd`, one inside a boundary, or — without
 	// followSymlinks — one reached through a symlinked directory. Braces count
 	// as magic here: `hasMagic` ignores a brace group, but `src/{a,b}.ts` is
-	// not a path — stat-ing its source would match nothing.
-	if (!pattern.hasMagic && !pattern.negated && !/[{}]/.test(pattern.source)) {
+	// not a path — stat-ing its source would match nothing. Nor is a literal that
+	// `matchBase` matches by basename: `a.js` matches `b/a.js` too, so it walks.
+	if (!pattern.hasMagic && !pattern.negated && !/[{}]/.test(pattern.source) && !matchesByBasename(pattern)) {
 		const segments = resolveSegments(pattern.source.split("/"));
 		if (segments === undefined) return done([]);
 		if (yield* blocked(segments, segments.length - 1, segments.length - 1)) return done([]);

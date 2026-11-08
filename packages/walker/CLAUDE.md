@@ -125,19 +125,27 @@ hands in — never re-derived here.
   the machine before the `maxDepth` check). Without a globstar no directory
   deeper than the source's separator count can reach is queued. Under
   `dot: false` no hidden directory is queued unless a segment names one.
-  Glob exposes no `dot`, so a differential `matches` probe proves it. A
-  slash-less pattern is never pruned: under `matchBase` it matches by
-  basename (`**` matches `.a/f.js`), which the probe cannot see. Nor is one
-  with a `..` segment: glob pops `<p>/..`, so `x/../**` compiles to the
-  one-segment row `**`, which `matchBase` applies to. Nor is one made only
-  of globstar and `.` segments: glob merges adjacent globstars at every
-  level (and drops a middle `.` at level 2), so `**/**` and `**/./**`
-  compile to `**` too. The one exception is a leading `.`, which glob
-  keeps: `./**` stays two segments and still prunes.
+  Glob exposes no `dot`, so a differential `matches` probe proves it.
+  Neither bound holds, and nor does the literal fast path, for a pattern
+  glob reports `matchesByBasename`: `matchBase` is on and some brace
+  alternative compiles to ONE path portion, which matches by basename at any
+  depth (`*.js` and `x/../*.js` match `b/d/f/g.js`, #1261; `**` matches
+  `.a/f.js`; `c.js` matches `b/c.js`). glob reads it off the compiled rows,
+  the test matching itself applies, so walker never re-derives it from the
+  source: a multi-portion pattern (`src/[ab]/*.ts`, `src/{a,b}*/*.ts`) keeps
+  its depth bound and a tight `maxDepth` under `matchBase`, and a bare `**`
+  without `matchBase` prunes hidden directories like any other.
   `__test__/PatternBoundsSweep.test.ts` compiles every pattern of up to
   three segments over a fixed alphabet and every option that rewrites rows,
-  and pins that nothing pruned matches inside a hidden directory: extend its
-  alphabet, never patch one spelling at a time. They skip
+  pins that nothing pruned matches inside a hidden directory, and walks
+  94,528 compilations (braces, classes, extglobs and escapes included, under
+  `matchBase`, `dot` and every level) with `descendSync` over a memfs tree
+  against a brute-force `matches` filter, plus every bounded one again under
+  the tightest `maxDepth` its separators allow: zero differences. Two
+  literal fast-path classes outside the bounds are counted, not compared
+  (a literal running past a file through `.`/`..`, and an escaped literal,
+  which the fast path stats as spelled). Extend its alphabet, never patch one
+  spelling at a time. They skip
   READS only, never a match, so the answer is unchanged. They are why a bounded
   pattern never trips `maxDepth` or an unreadable directory it has no reason
   to enter. Never make either bound "tighter" by guessing: an unmodelled

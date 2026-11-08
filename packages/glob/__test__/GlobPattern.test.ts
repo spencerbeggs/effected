@@ -260,6 +260,103 @@ describe("GlobPattern metadata", () => {
 			);
 		}),
 	);
+
+	it("matchBase: an alternative compiled to one portion matches by basename and is deep from the base", () => {
+		const compile = (source: string, matchBase: boolean): GlobPattern =>
+			Result.getOrThrow(GlobPattern.compileResult(source, GlobPatternOptions.make({ matchBase })));
+		// #1261: `*.js` and `x/../*.js` match `b/d/f/g.js` by basename, so they are deep from `""`.
+		for (const source of ["*.js", "x/../*.js", "a.js", "**/**"]) {
+			const pattern = compile(source, true);
+			assert.isTrue(pattern.matchesByBasename, source);
+			assert.isTrue(pattern.matches("b/d/f/g.js") || source === "a.js", source);
+			assert.isTrue(pattern.crossesSegments, source);
+			assert.strictEqual(pattern.enumerationPrefix, "", source);
+			assert.deepStrictEqual(pattern.enumerationRoots, [{ prefix: "", deep: true, spellings: [""] }], source);
+		}
+		// Control: the same sources without matchBase stay shallow, and the getter is false.
+		assert.isFalse(compile("*.js", false).matchesByBasename);
+		assert.isFalse(compile("*.js", false).crossesSegments);
+		assert.deepStrictEqual(compile("x/../*.js", false).enumerationRoots, [
+			{ prefix: "", deep: false, spellings: [""] },
+		]);
+		// A row of more than one portion is not matched by basename: matchBase changes nothing for it, however the
+		// source is spelled (a class, a brace, an extglob, an escape).
+		for (const source of [
+			"src/*.ts",
+			"src/[ab]/*.ts",
+			"src/{a,b}*/*.ts",
+			"src/@(a|b)/*.ts",
+			"a\\*b/c.js",
+			"{a,b}/*.js",
+		])
+			assert.isFalse(compile(source, true).matchesByBasename, source);
+		assert.isFalse(compile("src/*.ts", true).crossesSegments);
+		assert.strictEqual(compile("src/*.ts", true).enumerationPrefix, "src/");
+		// A brace set keeps each alternative apart: only the slash-less one is deep, and it absorbs `src/`.
+		assert.deepStrictEqual(compile("{*.js,src/*.ts}", true).enumerationRoots, [
+			{ prefix: "", deep: true, spellings: ["", "src/"] },
+		]);
+		assert.isTrue(compile("{*.js,src/*.ts}", true).matchesByBasename);
+		// literalPrefix accounts for it too: a slash-less literal under matchBase also matches `a/src`.
+		assert.strictEqual(compile("src", true).literalPrefix, "");
+		assert.strictEqual(compile("src", false).literalPrefix, "src");
+		// make, decode and FromString compile under default options.
+		assert.isFalse(GlobPattern.make({ source: "*.js" }).matchesByBasename);
+	});
+
+	it("matchBase: every path a short pattern matches lies inside one of its enumeration roots", () => {
+		const alphabet = ["x", "*", "**", ".", "..", "*.js", "f.js", "src", "{x,src}", "[bx]*", "@(f.js|x)", "\\x"];
+		const paths = ["a.js", "x", "f.js", "b/c.js", "b/d/e.js", "b/d/f/g.js", "src/x", "src/f.js", "x/x/x/f.js", "x/src"];
+		const sources: Array<string> = [];
+		for (const a of alphabet) {
+			sources.push(a);
+			for (const b of alphabet) {
+				sources.push(`${a}/${b}`);
+				for (const c of alphabet) sources.push(`${a}/${b}/${c}`);
+			}
+		}
+		const escapes: Array<string> = [];
+		let checked = 0;
+		for (const source of sources) {
+			for (const level of [0, 1, 2]) {
+				const compiled = GlobPattern.compileResult(
+					source,
+					GlobPatternOptions.make({ matchBase: true, optimizationLevel: level }),
+				);
+				if (Result.isFailure(compiled)) continue;
+				const pattern = compiled.success;
+				const roots = pattern.enumerationRoots;
+				// Exactness: when no alternative matches by basename, matchBase changes no answer.
+				if (!pattern.matchesByBasename) {
+					const plain = Result.getOrThrow(
+						GlobPattern.compileResult(source, GlobPatternOptions.make({ optimizationLevel: level })),
+					);
+					for (const path of paths)
+						if (plain.matches(path) !== pattern.matches(path))
+							escapes.push(`${source} level=${level} not by basename, yet matchBase changes ${path}`);
+				}
+				for (const path of paths) {
+					if (!pattern.matches(path)) continue;
+					checked += 1;
+					const inside = (prefix: string, deep: boolean): boolean =>
+						path.startsWith(prefix) && (deep || !path.slice(prefix.length).includes("/"));
+					if (!roots.some((root) => inside(root.prefix, root.deep)))
+						escapes.push(`${source} level=${level} roots ${JSON.stringify(roots)} miss ${path}`);
+					// An all-literal multi-portion pattern's prefix names the file itself (an enumerator stats it), and a brace set
+					// whose alternatives' prefixes differ folds them to a shorter prefix that `crossesSegments` does not deepen
+					// (`{x,src}/*`; enumerationRoots keeps them apart), so neither is checked against the folded pair.
+					if (
+						(pattern.hasMagic || pattern.crossesSegments) &&
+						!source.includes("{") &&
+						!inside(pattern.enumerationPrefix, pattern.crossesSegments)
+					)
+						escapes.push(`${source} level=${level} prefix ${pattern.enumerationPrefix} miss ${path}`);
+				}
+			}
+		}
+		assert.isAbove(checked, 1000);
+		assert.deepStrictEqual(escapes.slice(0, 10), [], `${escapes.length} matched paths outside the roots`);
+	});
 });
 
 describe("GlobPattern construction and schema", () => {

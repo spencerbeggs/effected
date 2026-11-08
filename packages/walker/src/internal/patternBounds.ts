@@ -5,16 +5,34 @@
 // failures an unreadable one would raise).
 //
 // `@effected/glob` exposes neither the compiled segments nor the `dot` option,
-// so both bounds are computed from what it does expose: the pattern source and
-// `matches`. Each errs towards reading: an answer this module cannot prove is
-// "no bound".
+// so both bounds are computed from what it does expose: the pattern source,
+// `matches`, and `matchesByBasename`. Each errs towards reading: an answer this
+// module cannot prove is "no bound".
 
 import type { GlobPattern } from "@effected/glob";
 
+/** Characters whose glob meaning the probe below does not model: classes, braces, extglobs, escapes, a comment. */
+const UNMODELLED = /[[\]{}()!+@\\#]/;
+
+/** The source with one trailing `/` (the directory-only form, which adds no segment) removed. */
+const withoutTrailingSlash = (source: string): string =>
+	source.endsWith("/") && !source.endsWith("\\/") ? source.slice(0, -1) : source;
+
+/**
+ * Whether some alternative of `pattern` matches a path by its basename, at
+ * any depth below the walk base, so neither a literal stat nor a depth or
+ * hidden-directory bound holds. glob answers it from the compiled
+ * alternatives (`matchBase` on and an alternative of one path portion), so
+ * it is exact however the source is spelled: `x/../*.js` counts, and
+ * `src/[ab]/*.ts` does not.
+ */
+export const matchesByBasename = (pattern: GlobPattern): boolean => pattern.matchesByBasename;
+
 /**
  * An upper bound on the number of path segments any match of `pattern` has,
- * or `undefined` when matches can lie at any depth (a globstar, or a negated
- * pattern, whose matches land anywhere).
+ * or `undefined` when matches can lie at any depth (a globstar, a negated
+ * pattern, whose matches land anywhere, or a pattern `matchBase` matches by
+ * basename: {@link matchesByBasename}).
  *
  * A glob segment never matches across a `/` — only a globstar does — and
  * brace expansion only ever selects characters of the source, so the
@@ -26,18 +44,15 @@ import type { GlobPattern } from "@effected/glob";
  * or one `noglobstar` reads as `*` — means no bound.
  */
 export const segmentBound = (pattern: GlobPattern): number | undefined => {
-	if (pattern.negated) return undefined;
+	if (pattern.negated || matchesByBasename(pattern)) return undefined;
 	let source = pattern.source;
 	if (source.includes("**")) return undefined;
 	while (source.startsWith("./")) source = source.slice(2);
-	if (source.endsWith("/") && !source.endsWith("\\/")) source = source.slice(0, -1);
+	source = withoutTrailingSlash(source);
 	let separators = 0;
 	for (const character of source) if (character === "/" || character === "\\") separators += 1;
 	return separators + 1;
 };
-
-/** Characters whose glob meaning the probe below does not model: classes, braces, extglobs, escapes, a comment. */
-const UNMODELLED = /[[\]{}()!+@\\#]/;
 
 /**
  * Whether no match of `pattern` can lie inside a hidden directory (one whose
@@ -53,52 +68,34 @@ const UNMODELLED = /[[\]{}()!+@\\#]/;
  * whose syntax the probe does not model (classes, braces, extglobs, escapes,
  * a leading `?`, empty segments, negation) is never pruned.
  *
- * Nor is any pattern `matchBase` could apply to. Under `matchBase` a compiled
- * row with ONE segment matches a path by its basename, so `**` matches
- * `.a/f.js` even with `dot` off. The probe cannot see `matchBase`, because
- * glob does not expose it and the probe's hidden candidate fails either way.
- * A slash-less pattern compiles to one segment, so it is never pruned. A
- * pattern with a slash can collapse to one too: at the default optimization
- * level glob pops `<p>/..`, so `x/../**` compiles to the row `**`. A `..`
- * segment therefore refuses to prune. glob also merges a run of adjacent
- * globstars at every optimization level, and at level 2 drops a middle `.`
- * first, so two or three globstar segments in a row, or (at level 2) a
- * globstar, a `.` and a globstar, compile to the one row `**` (the sources
- * are spelled out in the tests; a comment cannot hold them). A pattern whose
- * every segment is a globstar or a `.` therefore refuses to prune, with one
- * deliberate exception: a FIRST segment of `.`. glob keeps a leading (and a
- * trailing) `.`, so `./**` stays the two-segment row `.`, `**`, `matchBase`
- * does not apply, and `./**` keeps its pruning. `./.` collapsing to `.`
- * names no entry a walk returns. `__test__/PatternBoundsSweep.test.ts`
+ * Nor is any pattern that matches by basename ({@link matchesByBasename}):
+ * under `matchBase` a one-portion alternative matches a path by its basename,
+ * so `**` matches `.a/f.js` even with `dot` off, and the probe cannot see
+ * that, because its hidden candidate fails either way. glob answers that
+ * exactly, so only such a pattern pays: without `matchBase`, or when every
+ * alternative has more than one portion, `matchBase` changes no answer and a
+ * bare `**` prunes like any other. `__test__/PatternBoundsSweep.test.ts`
  * compiles every pattern of up to three segments over a fixed alphabet,
  * under every optimization level, `matchBase` and `noglobstar`, and pins
- * that nothing this bound prunes matches a path inside a hidden directory;
- * a new collapse route in glob fails there. A slash-less pattern without a
- * globstar never reads a subdirectory anyway, so these refusals cost only
- * the hidden-directory reads of a bare `**` and of globstar-only runs.
+ * that nothing this bound prunes matches a path inside a hidden directory.
  */
 export const skipsHiddenDirectories = (pattern: GlobPattern): boolean => {
-	if (pattern.negated) return false;
+	if (pattern.negated || matchesByBasename(pattern)) return false;
 	let source = pattern.source;
 	const trailing = source.endsWith("/");
 	if (trailing) source = source.slice(0, -1);
-	if (source === "" || !source.includes("/") || UNMODELLED.test(source)) return false;
+	if (source === "" || UNMODELLED.test(source)) return false;
 	const segments = source.split("/");
 	let wildcardLed = false;
 	for (const segment of segments) {
 		if (segment === "") return false;
-		// glob collapses `<p>/..`, which can leave a one-segment row that `matchBase` matches by basename.
-		if (segment === "..") return false;
 		// `.` names the walk's own directory, never a hidden one.
 		if (segment === ".") continue;
-		// A segment that starts with a literal dot names a hidden entry.
+		// A segment that starts with a literal dot names a hidden entry (`..` included).
 		if (segment.startsWith(".")) return false;
 		if (segment.startsWith("?")) return false;
 		if (segment.startsWith("*")) wildcardLed = true;
 	}
-	// glob merges adjacent globstars (and, at level 2, drops a middle `.`), so a row made only of globstars and `.`
-	// can collapse to the one segment `**` that `matchBase` matches by basename. A leading `.` is kept, so `./**` is not.
-	if (segments[0] !== "." && segments.every((segment) => segment === "**" || segment === ".")) return false;
 	// Every segment starts with a literal other than `.`: none can match a hidden name, whatever `dot` is.
 	if (!wildcardLed) return true;
 	const spell = (hidden: boolean): string =>

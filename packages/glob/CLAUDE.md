@@ -367,5 +367,15 @@ it**. `package.json` stays `"private": true`.
   spelling-sensitive, which is why each root carries its `spellings` — never
   canonicalize a match. `dot` defaults to `false` (minimatch's default); Vitest
   globs use `dot: true`, so say so to agree with it. See `@./okf/modules/glob.md`.
-- Both getters are computed under default options; their `matchBase`/win32
-  interaction stays undefined (documented for default-options patterns only).
+- The enumerator getters (`enumerationPrefix`, `crossesSegments`,
+  `enumerationRoots`, `literalPrefix`) are computed under the pattern's own
+  options. Under `matchBase` a compiled row of ONE portion matches by
+  basename at any depth (`isBasenameRow` in `GlobPattern.ts`, the test
+  `Minimatch.match` applies), so it has no literal prefix and is deep from
+  `""` (#1261: `*.js` and `x/../*.js` match `b/d/f/g.js`). The public
+  `matchesByBasename` getter reports whether any row is one: walker reads it
+  instead of re-deriving the fact from the source, which went wrong twice
+  (#1250's hidden-directory rule, then a text reading that unbounded
+  `src/[ab]/*.ts`). Because the rule reads the compiled row, glob's collapse
+  routes (`<p>/..` popped, globstars merged, level 2's `.` drops) are covered
+  by construction. Win32 interaction of the getters stays undocumented.

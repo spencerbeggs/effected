@@ -299,6 +299,12 @@ const literalSegment = (segment: string, options: EngineOptions): string | undef
 	return typeof only === "string" ? only : undefined;
 };
 
+// Under `matchBase` a compiled row of ONE portion matches a path by its basename, at any depth: a walker reads
+// from the base, all the way down, to enumerate it. Only the compiled row decides it, never the source: glob pops
+// `<p>/..` and merges adjacent globstars, so `x/../*.js` and `**/**` are one-portion rows too.
+const isBasenameRow = (engine: Minimatch, row: ReadonlyArray<unknown>): boolean =>
+	engine.options.matchBase === true && row.length === 1;
+
 // Set by GlobPattern's static block, which can reach its private engine field.
 let adoptEngine: (source: string, engine: Minimatch) => GlobPattern;
 
@@ -492,10 +498,32 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	}
 
 	/**
+	 * Whether some brace alternative matches a path by its basename, at any
+	 * depth: the pattern was compiled with `matchBase` and that alternative
+	 * compiles to one path portion. `*.js` then matches `b/d/f/g.js`, and so does
+	 * `x/../*.js`, which compiles to `*.js`; `src/*.ts` does not, since it is two
+	 * portions and `matchBase` changes nothing about it. Always `false` without
+	 * `matchBase`, so for a pattern built by `make`, decode or `FromString`.
+	 *
+	 * @remarks
+	 * Read off the compiled alternatives, the same test matching applies, so it
+	 * is exact however the source is spelled. {@link GlobPattern.enumerationPrefix},
+	 * {@link GlobPattern.enumerationRoots}, {@link GlobPattern.crossesSegments}
+	 * and {@link GlobPattern.literalPrefix} already account for it. A directory
+	 * walker that bounds its reads by the pattern's depth or by hidden names
+	 * reads it to know that no such bound holds.
+	 */
+	get matchesByBasename(): boolean {
+		const engine = this.#engineOf();
+		return engine.set.some((row) => isBasenameRow(engine, row));
+	}
+
+	/**
 	 * The longest literal directory prefix: the common run of leading literal
 	 * segments across every brace alternative, joined and slash-terminated;
-	 * `""` when the first segment carries magic. Designed for directory
-	 * enumerators; well-defined for default-options patterns.
+	 * `""` when the first segment carries magic, or when an alternative
+	 * matches by basename ({@link GlobPattern.matchesByBasename}), since its
+	 * matches lie anywhere below the base. Designed for directory enumerators.
 	 *
 	 * @remarks
 	 * Meaningful for **non-negated** patterns only. For a negated pattern
@@ -509,15 +537,18 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 * semantics to express — check `negated` at the call site.
 	 */
 	get enumerationPrefix(): string {
-		const set = this.#engineOf().set;
+		const engine = this.#engineOf();
+		const set = engine.set;
 		if (set.length === 0) return "";
 		let common: Array<string> | undefined;
 		for (const row of set) {
 			const literals: Array<string> = [];
-			for (const part of row) {
-				if (typeof part !== "string") break;
-				literals.push(part);
-			}
+			// A row matched by basename lies anywhere below the base: it has no literal prefix.
+			if (!isBasenameRow(engine, row))
+				for (const part of row) {
+					if (typeof part !== "string") break;
+					literals.push(part);
+				}
 			if (common === undefined) {
 				common = literals;
 			} else {
@@ -543,8 +574,10 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 * spelling is kept (`./src/**` gives `./src`, `../x/*.ts` gives `../x`), a
 	 * root stays (`/*.ts` gives `/`), and an escape is undone (`a\*b/c/*` gives
 	 * `a*b/c`). Extglobs, classes and `?` are magic. A comment gives `""`.
-	 * Computed under this pattern's options; its `matchBase` and win32
-	 * interaction is undefined, as for the other getters.
+	 * Computed under this pattern's options. When an alternative matches by
+	 * basename ({@link GlobPattern.matchesByBasename}) it gives `""`, as
+	 * {@link GlobPattern.enumerationPrefix} does: under `matchBase` a slash-less
+	 * `src` also matches `a/src`.
 	 *
 	 * It returns the pattern's spelling and never folds case: under `nocase`,
 	 * `SRC/Lib/**` gives `SRC/Lib`, though the pattern also matches `src/lib/a.ts`.
@@ -557,7 +590,7 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 */
 	get literalPrefix(): string {
 		const engine = this.#engineOf();
-		if (engine.comment || engine.empty) return "";
+		if (engine.comment || engine.empty || this.matchesByBasename) return "";
 		const options = engine.options;
 		const braces = !options.nobrace;
 		const literals: Array<string> = [];
@@ -592,6 +625,11 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 * yield the same file: a shallow root's files lie exactly one level below
 	 * it, and no root lies inside a deep one.
 	 *
+	 * Under `matchBase` an alternative that compiles to one path portion
+	 * matches by basename at any depth, so its root is the base `""`, `deep`,
+	 * with the spelling `""`: `{*.js,src/*.ts}` has the roots `""` (deep) and
+	 * `src/` folded into it.
+	 *
 	 * Like the other enumerator getters it reads the inner pattern and ignores
 	 * whole-pattern negation: guard on {@link GlobPattern.negated}, and
 	 * enumerate a negated pattern from `cwd`.
@@ -601,10 +639,14 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 		const merged = new Map<string, { deep: boolean; spellings: Set<string> }>();
 		// Each spelling's first alternative, so a root lists its spellings in pattern order.
 		const firstSeen = new Map<string, number>();
-		for (const row of this.#engineOf().set) {
+		const engine = this.#engineOf();
+		for (const row of engine.set) {
+			const byBasename = isBasenameRow(engine, row);
 			const firstMagic = row.findIndex((part) => typeof part !== "string");
-			const literals = (firstMagic === -1 ? row.slice(0, -1) : row.slice(0, firstMagic)) as Array<string>;
-			const deep = row.includes(GLOBSTAR) || (firstMagic !== -1 && firstMagic < row.length - 1);
+			const literals = (
+				byBasename ? [] : firstMagic === -1 ? row.slice(0, -1) : row.slice(0, firstMagic)
+			) as Array<string>;
+			const deep = byBasename || row.includes(GLOBSTAR) || (firstMagic !== -1 && firstMagic < row.length - 1);
 			const prefix = canonicalPrefix(literals);
 			const spelling = literals.length === 0 ? "" : `${literals.join("/")}/`;
 			if (!firstSeen.has(spelling)) firstSeen.set(spelling, firstSeen.size);
@@ -636,7 +678,9 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	/**
 	 * Whether the pattern can match more than one level below
 	 * {@link GlobPattern.enumerationPrefix}: true iff any alternative contains
-	 * a globstar, or a magic segment followed by more segments. The enumerator
+	 * a globstar, or a magic segment followed by more segments, or (under
+	 * `matchBase`) compiles to one path portion, which matches by basename at
+	 * any depth. The enumerator
 	 * uses this to decide between a single-level read and a bounded recursive
 	 * descent.
 	 *
@@ -646,8 +690,9 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 * {@link GlobPattern.negated} at the call site.
 	 */
 	get crossesSegments(): boolean {
-		return this.#engineOf().set.some((row) => {
-			if (row.includes(GLOBSTAR)) return true;
+		const engine = this.#engineOf();
+		return engine.set.some((row) => {
+			if (isBasenameRow(engine, row) || row.includes(GLOBSTAR)) return true;
 			const firstMagic = row.findIndex((part) => typeof part !== "string");
 			return firstMagic !== -1 && firstMagic < row.length - 1;
 		});
