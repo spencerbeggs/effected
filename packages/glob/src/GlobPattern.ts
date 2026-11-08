@@ -14,8 +14,12 @@ import { GLOBSTAR, Minimatch, escape as engineEscape, unescape as engineUnescape
 
 /**
  * Typed failure raised when a glob pattern trips a compile-time guard:
- * over-length, brace-expansion budget exhaustion, or nesting past the depth
- * cap. Malformed input is never a defect — this is the only failure the
+ * over-length, brace-expansion budget exhaustion, nesting past the depth
+ * cap, or a pattern portion whose regular expression the runtime rejects
+ * (`InvalidRegExp`: a POSIX class such as `[[:alpha:]]` turns on the regexp
+ * `u` flag, and under it the engine's escapes for `,`, `#`, a space or `-` in
+ * the same portion are syntax errors; `limit` and `actual` are both 0, since
+ * no cap was passed). Malformed input is never a defect — this is the only failure the
  * package's fallible boundaries ({@link GlobPattern.compile} and
  * `GlobSet.compile`) can produce.
  *
@@ -24,11 +28,11 @@ import { GLOBSTAR, Minimatch, escape as engineEscape, unescape as engineUnescape
 export class GlobPatternError extends Schema.TaggedError<GlobPatternError>()("GlobPatternError", {
 	/** The pattern source that was rejected. */
 	pattern: Schema.String,
-	/** Which guard tripped: pattern length, brace-expansion budget, or nesting depth. */
-	reason: Schema.Literals(["PatternTooLong", "ExpansionBudgetExceeded", "NestingDepthExceeded"]),
-	/** The cap the pattern exceeded. */
+	/** Which guard tripped: pattern length, brace-expansion budget, nesting depth, or an unbuildable regexp. */
+	reason: Schema.Literals(["PatternTooLong", "ExpansionBudgetExceeded", "NestingDepthExceeded", "InvalidRegExp"]),
+	/** The cap the pattern exceeded (0 for `InvalidRegExp`). */
 	limit: Schema.Number,
-	/** The measured value that exceeded `limit`. */
+	/** The measured value that exceeded `limit` (0 for `InvalidRegExp`). */
 	actual: Schema.Number,
 }) {
 	override get message(): string {
@@ -138,7 +142,12 @@ export class GlobPatternOptions extends Schema.Class<GlobPatternOptions>("GlobPa
 	maxGlobstarRecursion: Schema.optionalKey(
 		Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: MAX_GLOBSTAR_RECURSION_CEILING })),
 	),
-	/** Maximum depth to traverse for nested extglobs like `*(a|b|c)`. */
+	/**
+	 * Accepted for compatibility, and validated as a positive integer, but it
+	 * limits nothing: every extglob is matched by minimatch 11's own matcher,
+	 * which has no such cap. Nesting deeper than 256 levels fails at compile
+	 * with `NestingDepthExceeded` whatever this is set to.
+	 */
 	maxExtglobRecursion: Schema.optionalKey(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))),
 }) {}
 
@@ -263,7 +272,16 @@ const hasUnescapedBrace = (segment: string): boolean => {
 // engine itself decides: one all-string part means no magic.
 const literalSegment = (segment: string, options: EngineOptions): string | undefined => {
 	if (segment === "") return "";
-	const set = new Minimatch(segment, { ...options, nobrace: true, nonegate: true, nocomment: true, nocase: false }).set;
+	let set: Minimatch["set"];
+	try {
+		set = new Minimatch(segment, { ...options, nobrace: true, nonegate: true, nocomment: true, nocase: false }).set;
+	} catch (e) {
+		// A segment compiled on its own can trip a guard the whole pattern did
+		// not (a `..` drops it there): a guard trips only on magic, so it is not
+		// a literal. A getter never throws.
+		if (isGuardExceeded(e)) return undefined;
+		throw e;
+	}
 	const only = set.length === 1 && set[0]?.length === 1 ? set[0][0] : undefined;
 	return typeof only === "string" ? only : undefined;
 };
@@ -346,9 +364,10 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 		const engineOptions = toEngineOptions(options);
 		return Result.try({
 			try: () => {
-				// Defaults first (the value invariant), then the effective engine.
-				new Minimatch(source, {});
-				const engine = new Minimatch(source, engineOptions);
+				// Defaults first (the value invariant), then the effective engine;
+				// with no options set the defaults engine is the effective one.
+				const defaults = new Minimatch(source, {});
+				const engine = Object.keys(engineOptions).length === 0 ? defaults : new Minimatch(source, engineOptions);
 				const pattern = new GlobPattern({ source });
 				pattern.#engine = engine;
 				pattern.#engineOptions = engineOptions;
@@ -367,7 +386,7 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	/**
 	 * Compile a pattern under the given options — the package's fallible
 	 * boundary, and the form Effect call sites should reach for. Guard trips
-	 * (over-length, expansion budget, nesting depth) fail typed with
+	 * (over-length, expansion budget, nesting depth, an unbuildable regexp) fail typed with
 	 * {@link GlobPatternError}; invalid options never reach here (they throw at
 	 * `GlobPatternOptions.make`, a wiring defect).
 	 *

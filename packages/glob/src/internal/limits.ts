@@ -7,6 +7,29 @@ export const MAX_PATTERN_LENGTH = 1024 * 64;
 /** Default brace-expansion output budget. Upstream brace-expansion's EXPANSION_MAX. */
 export const EXPANSION_MAX = 100_000;
 
+/**
+ * Bound on the path portions the optimizationLevel 2 `**` + `..` split may add
+ * across all the rows it copies. Upstream minimatch 11's maxSplitCells.
+ */
+export const MAX_SPLIT_CELLS = 1_000_000;
+
+/**
+ * Bound on the characters one brace expansion may hold: its results, and the
+ * alternatives of a comma set before they are combined. The count budget alone
+ * let a short pattern build very long results (CVE-2026-14257). Upstream
+ * brace-expansion's EXPANSION_MAX_LENGTH; there it truncates, here it fails
+ * typed.
+ */
+export const EXPANSION_MAX_LENGTH = 4_000_000;
+
+/**
+ * Bound on the restarts of the `{a},b}` rewrite in one expansion. Each restart
+ * reads the whole string again, so the rewrite is quadratic in the trailing
+ * braces. Upstream brace-expansion's EXPANSION_MAX_REWRITES: past it the rest
+ * of the string stays literal, as upstream leaves it.
+ */
+export const EXPANSION_MAX_REWRITES = 1_000;
+
 /** Default bound on non-adjacent globstar backtracking. Upstream minimatch. */
 export const MAX_GLOBSTAR_RECURSION = 200;
 
@@ -30,7 +53,7 @@ export const MAX_EXTGLOB_RECURSION = 2;
 export const MAX_NESTING_DEPTH = 256;
 
 /** The reasons a compile-time guard can trip; mirrors GlobPatternError's reason union. */
-export type GuardReason = "PatternTooLong" | "ExpansionBudgetExceeded" | "NestingDepthExceeded";
+export type GuardReason = "PatternTooLong" | "ExpansionBudgetExceeded" | "NestingDepthExceeded" | "InvalidRegExp";
 
 /**
  * Raw compile-time guard-trip signal. The engine throws it; ONLY the facade

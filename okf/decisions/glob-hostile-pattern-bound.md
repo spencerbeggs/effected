@@ -11,10 +11,10 @@ sources:
     resource: ../modules/glob.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-07T01:49:22Z
+  at: 2026-11-08T08:53:14Z
 integrity:
   generated:
-    body: 9e813aeac831202f
+    body: f2e8512433876515
 ---
 
 # glob does not bound total matching work on hostile patterns
@@ -28,7 +28,9 @@ integrity:
 | `**/a/**` | 50,000 portions | 3.3 s |
 | `**/a/**/*{0..999}*` | 13.9 KB path | 33.4 s |
 
-Every engine the review compared behaves the same, minimatch 11 included, so the cost is inherited from the dialect rather than introduced by the port. The second case is slow because brace expansion multiplies the alternatives, and 1,000 alternatives sit well inside the default `braceExpandMax` of 100,000. Patterns are usually written by a developer; this matters where a pattern or a long path comes from untrusted input.
+Every engine the review compared behaves the same, minimatch 11 included, so the cost is inherited from the dialect rather than introduced by the port. That premise was measured on `**` only.
+
+Extglobs were a second route, and there the cost was the port's, not the dialect's: a position walk over the pattern's parse that was polynomial (up to 144 s for a 43-byte pattern against 800 characters, and 37 s for a 64 KB chain against 200) where minimatch 11 took milliseconds. The engine now matches every magic portion with minimatch 11.0.5's own matcher, vendored, so that route is closed and the premise holds again: what is slow now is slow in 11 too. Besides the `**` cases above, that includes a chain of negations separated by literals, which 11's matcher keeps a run per negation for: `x!(a)` repeated against `xb` repeated is about cubic, 22 ms at a 400-character path and 1.6 s at 2,000 (11.0.5: slower still). The decision below covers it unchanged: bound the input.
 
 ## Decision
 

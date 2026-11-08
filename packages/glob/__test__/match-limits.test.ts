@@ -4,7 +4,8 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Result, Schema } from "effect";
-import { GlobPattern, GlobPatternError, GlobPatternOptions } from "../src/index.js";
+import { minimatch } from "minimatch";
+import { GlobPattern, GlobPatternError, GlobPatternOptions, GlobSet } from "../src/index.js";
 
 // `n` body sections between the first and last `**`, and a candidate that
 // walks every one of them.
@@ -104,4 +105,68 @@ describe("braceExpandMax against a hostile brace pattern", () => {
 			assert.strictEqual(e.limit, 100);
 		}),
 	);
+});
+
+describe("optimizationLevel 2 against a hostile **/.. pattern (GHSA-g3hv-75wg-m249)", () => {
+	it("fails typed at compile, and the pattern stays valid at default options", () => {
+		const hostile = `${"**/../a/b/".repeat(17)}z`;
+		assert.isTrue(Result.isSuccess(GlobPattern.compileResult(hostile)));
+		const compiled = GlobPattern.compileResult(hostile, GlobPatternOptions.make({ optimizationLevel: 2 }));
+		assert.isTrue(Result.isFailure(compiled));
+		if (Result.isFailure(compiled)) {
+			assert.instanceOf(compiled.failure, GlobPatternError);
+			assert.strictEqual(compiled.failure.reason, "ExpansionBudgetExceeded");
+			assert.strictEqual(compiled.failure.limit, 1_000_000);
+		}
+	});
+});
+
+describe("a portion whose regexp the runtime rejects", () => {
+	// A POSIX class turns on the regexp u flag, and under it the escapes the
+	// engine writes for `,`, `#`, a space or `-` are syntax errors. That is a
+	// typed failure, never a raw SyntaxError.
+	const shapes = ["[[:alpha:]]\\{a,b}", "[[:alpha:]],", "[[:alpha:]]#", "[[:alpha:]] a", "[[:alpha:]]-"];
+
+	it("fails typed with InvalidRegExp, on every construction path", () => {
+		for (const source of shapes) {
+			const compiled = GlobPattern.compileResult(source);
+			assert.isTrue(Result.isFailure(compiled), source);
+			if (Result.isFailure(compiled)) {
+				assert.instanceOf(compiled.failure, GlobPatternError);
+				assert.strictEqual(compiled.failure.reason, "InvalidRegExp", source);
+				assert.strictEqual(compiled.failure.pattern, source);
+			}
+			assert.isTrue(Result.isFailure(Schema.decodeUnknownResult(GlobPattern.FromString)(source)), source);
+			const viaEffect = Effect.runSync(Effect.result(GlobPattern.compile(source)));
+			assert.isTrue(Result.isFailure(viaEffect), source);
+			const set = GlobSet.compileResult(["a/**", `!${source}`]);
+			assert.isTrue(Result.isFailure(set) && set.failure.reason === "InvalidRegExp", source);
+		}
+	});
+
+	it("compiles the same class in a portion with an extglob, which builds no regexp", () => {
+		// The walk answers an extglob portion, so its loose `,` never reaches a
+		// u-flag regexp: it compiles and matches as minimatch 11 does.
+		for (const [source, path] of [
+			["x*(a)[[:alpha:]],", "xab,"],
+			["x+(a)[[:alpha:]]-", "xab-"],
+			["x!(a)[[:alpha:]] ", "xb "],
+		] as const) {
+			const compiled = GlobPattern.compileResult(source);
+			assert.isTrue(Result.isSuccess(compiled), source);
+			if (Result.isSuccess(compiled)) {
+				assert.strictEqual(compiled.success.matches(path), minimatch(path, source), `${source} vs ${path}`);
+				assert.isTrue(compiled.success.matches(path), `${source} vs ${path}`);
+			}
+		}
+	});
+
+	it("still compiles the class beside literals that need no escape, and matches it", () => {
+		const compiled = GlobPattern.compileResult("[[:alpha:]]a*");
+		assert.isTrue(Result.isSuccess(compiled));
+		if (Result.isSuccess(compiled)) {
+			assert.isTrue(compiled.success.matches("xab"));
+			assert.isFalse(compiled.success.matches("1ab"));
+		}
+	});
 });

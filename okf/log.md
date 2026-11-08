@@ -1,5 +1,10 @@
 # Log
 
+## 2026-11-08
+
+* Updated glob
+* Updated glob does not bound total matching work on hostile patterns
+
 ## 2026-11-07
 
 * Updated The kit builds itself with the bundler running from source under tsx

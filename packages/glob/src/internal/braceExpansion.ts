@@ -1,4 +1,4 @@
-// Ported from brace-expansion@5.0.7 (https://github.com/juliangruber/brace-expansion)
+// Ported from brace-expansion@5.0.12 (https://github.com/juliangruber/brace-expansion)
 // Copyright (c) 2013 Julian Gruber <julian@juliangruber.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -19,22 +19,39 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-// Port notes, three deliberate changes from upstream:
+// Port notes. expand_ follows 5.0.12's iterative scan: one loop consumes a
+// string's top-level groups left to right, so the {a},b} rewrite count
+// (EXPANSION_MAX_REWRITES, past which the rest stays literal exactly as upstream
+// leaves it) and the choice to drop empty results are held once per scan, and
+// a chain never recurses. It takes EXPANSION_MAX_LENGTH (CVE-2026-14257) on the
+// characters of the results and of a comma set's alternatives. parseCommaParts
+// keeps 5.0.7's recursive shape behind guard 2; 5.0.12's nesting depth of
+// 1,000 that degrades to literal is covered by guard 1. Three deliberate
+// changes from upstream:
 // 1. Depth guard on expand_ at MAX_NESTING_DEPTH — comma-bearing nesting
 //    descends one frame per level; the guard throws GuardExceeded
 //    ("NestingDepthExceeded") instead of overflowing the stack. The upstream
-//    {a},b} for-loop rewrite and the lazy post evaluation (both load-bearing
-//    DoS fixes; their upstream comments are preserved below) are kept exactly.
+//    {a},b} for-loop rewrite and the lazy tail evaluation (a group's tail is
+//    scanned only after the group, once; both load-bearing DoS fixes) are
+//    kept exactly.
 // 2. Depth guard on parseCommaParts — self-recursive on the post side;
-//    upstream relies only on the 64KB pattern-length cap.
+//    upstream 5.0.12 made it iterative.
 // 3. Budget exhaustion THROWS GuardExceeded("ExpansionBudgetExceeded") where
-//    upstream silently truncates the expansion list at max — silent truncation
-//    silently changes match semantics; the typed signal is the honest surface.
+//    upstream silently truncates the expansion list at max or at
+//    EXPANSION_MAX_LENGTH — silent truncation silently changes match semantics;
+//    the typed signal is the honest surface.
 //    The max cap itself is validated by assertCap: a NaN or non-integer max is
 //    programmer error and dies as a TypeError defect.
 
 import { balanced } from "./balancedMatch.js";
-import { EXPANSION_MAX, GuardExceeded, MAX_NESTING_DEPTH, assertCap } from "./limits.js";
+import {
+	EXPANSION_MAX,
+	EXPANSION_MAX_LENGTH,
+	EXPANSION_MAX_REWRITES,
+	GuardExceeded,
+	MAX_NESTING_DEPTH,
+	assertCap,
+} from "./limits.js";
 
 const escSlash = `\0SLASH${Math.random()}\0`;
 const escOpen = `\0OPEN${Math.random()}\0`;
@@ -145,35 +162,135 @@ const lte = (i: number, y: number): boolean => i <= y;
 
 const gte = (i: number, y: number): boolean => i >= y;
 
+// Every `acc[a] + pre + values[v]`, in order. Upstream's `combine` stops at
+// `max` results or EXPANSION_MAX_LENGTH characters and returns what it has;
+// here the first result that would be kept past either bound fails typed
+// (deviation 3). Empty results are dropped (when `dropEmpties`) before they
+// count, as upstream drops them.
+const combine = (
+	acc: ReadonlyArray<string>,
+	pre: string,
+	values: ReadonlyArray<string>,
+	max: number,
+	dropEmpties: boolean,
+): Array<string> => {
+	const out: Array<string> = [];
+	let length = 0;
+	for (let a = 0; a < acc.length; a++) {
+		for (let v = 0; v < values.length; v++) {
+			const expansion = acc[a] + pre + values[v];
+			if (dropEmpties && !expansion) continue;
+			if (out.length >= max) {
+				// A lower bound on the full expansion size: what is kept plus what
+				// remains of this combination.
+				throw new GuardExceeded("ExpansionBudgetExceeded", max, out.length + (acc.length - a) * values.length - v);
+			}
+			if (length + expansion.length > EXPANSION_MAX_LENGTH) {
+				throw new GuardExceeded("ExpansionBudgetExceeded", EXPANSION_MAX_LENGTH, length + expansion.length);
+			}
+			out.push(expansion);
+			length += expansion.length;
+		}
+	}
+	return out;
+};
+
+// The values of one numeric (`1..5`) or alphabetic (`a..e..2`) sequence body.
+const expandSequence = (body: string, isAlphaSequence: boolean, max: number): Array<string> => {
+	const n = body.split(/\.\./);
+	const N: Array<string> = [];
+	const n0 = n[0];
+	const n1 = n[1];
+	// A sequence body always splits into two or three parts.
+	if (n0 === undefined || n1 === undefined) return N;
+	const x = numeric(n0);
+	const y = numeric(n1);
+	const width = Math.max(n0.length, n1.length);
+	const n2 = n[2];
+	let incr = n.length === 3 && n2 !== undefined ? Math.max(Math.abs(numeric(n2)), 1) : 1;
+	let test = lte;
+	const reverse = y < x;
+	if (reverse) {
+		incr *= -1;
+		test = gte;
+	}
+	const pad = n.some(isPadded);
+
+	// Budget check up front: the member count is exactly computable, so an
+	// over-budget sequence trips before any work is done (upstream truncates the
+	// loop at max instead).
+	const total = Math.floor(Math.abs(y - x) / Math.abs(incr)) + 1;
+	if (total > max) {
+		throw new GuardExceeded("ExpansionBudgetExceeded", max, total);
+	}
+
+	let length = 0;
+	for (let i = x; test(i, y); i += incr) {
+		let c: string;
+		if (isAlphaSequence) {
+			c = String.fromCharCode(i);
+			if (c === "\\") {
+				c = "";
+			}
+		} else {
+			c = String(i);
+			if (pad) {
+				const need = width - c.length;
+				if (need > 0) {
+					const z = "0".repeat(need);
+					c = i < 0 ? `-${z}${c.slice(1)}` : `${z}${c}`;
+				}
+			}
+		}
+		if (length + c.length > EXPANSION_MAX_LENGTH) {
+			throw new GuardExceeded("ExpansionBudgetExceeded", EXPANSION_MAX_LENGTH, length + c.length);
+		}
+		N.push(c);
+		length += c.length;
+	}
+	return N;
+};
+
+// Consume the string's top-level brace groups left to right, threading the
+// running set of combined prefixes (`acc`), as brace-expansion 5.0.12 does. The
+// scan is one loop, so the {a},b} rewrite count and the choice to drop empty
+// results are held once for the whole chain; recursion happens only into a
+// group's own body (its comma parts, or a {{...}} body), each a fresh scan.
 // oxlint-disable-next-line func-style
 function expand_(str: string, max: number, isTopInput: boolean, depth: number): Array<string> {
 	if (depth > MAX_NESTING_DEPTH) {
 		throw new GuardExceeded("NestingDepthExceeded", MAX_NESTING_DEPTH, depth);
 	}
 
-	const expansions: Array<string> = [];
+	let acc: Array<string> = [""];
 	let current = str;
 	let isTop = isTopInput;
+	// How many times the `{a},b}` rewrite below has restarted the scan. Each
+	// pass re-reads the whole string, so leaving this unbounded is quadratic.
+	let rewrites = 0;
+	// Bash drops empty results, but only when the *first* top-level group is a
+	// comma set: a sequence like `{a..\}` may legitimately yield ''. The drop is
+	// on the final strings, so it applies to the `combine` that produces them
+	// (the one with no brace set left in the tail).
+	let dropEmpties = false;
+	let firstGroup = true;
 
-	// The `{a},b}` rewrite below restarts expansion on a rewritten string with
-	// the same `max` and `isTop = true`. Loop instead of recursing so a long run
-	// of non-expanding `{}` groups can't exhaust the call stack.
 	for (;;) {
 		const m = balanced("{", "}", current);
-		if (!m) return [current];
+		// No brace set left: the rest of the string is literal.
+		if (!m) {
+			return combine(acc, current, [""], max, dropEmpties);
+		}
 
 		// no need to expand pre, since it is guaranteed to be free of brace-sets
 		const pre = m.pre;
 
-		if (/\$$/.test(m.pre)) {
-			const post: Array<string> = m.post.length ? expand_(m.post, max, false, depth + 1) : [""];
-			if (post.length > max) {
-				throw new GuardExceeded("ExpansionBudgetExceeded", max, post.length);
-			}
-			for (const p of post) {
-				expansions.push(`${pre}{${m.body}}${p}`);
-			}
-			return expansions;
+		if (/\$$/.test(pre)) {
+			acc = combine(acc, `${pre}{${m.body}}`, [""], max, dropEmpties && !m.post.length);
+			firstGroup = false;
+			if (!m.post.length) break;
+			current = m.post;
+			continue;
 		}
 
 		const isNumericSequence = /^-?\d+\.\.-?\d+(?:\.\.-?\d+)?$/.test(m.body);
@@ -182,111 +299,64 @@ function expand_(str: string, max: number, isTopInput: boolean, depth: number): 
 		const isOptions = m.body.indexOf(",") >= 0;
 		if (!isSequence && !isOptions) {
 			// {a},b}
-			if (m.post.match(/,(?!,).*\}/)) {
+			if (rewrites < EXPANSION_MAX_REWRITES && m.post.match(/,(?!,).*\}/)) {
+				rewrites++;
 				current = `${m.pre}{${m.body}${escClose}${m.post}`;
 				isTop = true;
 				continue;
 			}
-			return [current];
+			// Nothing here expands, so the whole remaining string is literal.
+			return combine(acc, `${pre}{${m.body}}${m.post}`, [""], max, dropEmpties);
 		}
 
-		// Only expand post once we know this brace set actually expands. Computing
-		// it before the early returns above expanded post a second time on every
-		// non-expanding `{}`, which is what made inputs like `a{},{},{}...` blow up
-		// exponentially.
-		const post: Array<string> = m.post.length ? expand_(m.post, max, false, depth + 1) : [""];
+		if (firstGroup) {
+			dropEmpties = isTop && !isSequence;
+			firstGroup = false;
+		}
 
-		let n: Array<string>;
+		let values: Array<string>;
 		if (isSequence) {
-			n = m.body.split(/\.\./);
+			values = expandSequence(m.body, isAlphaSequence, max);
 		} else {
-			n = parseCommaParts(m.body, depth + 1);
+			let n = parseCommaParts(m.body, depth + 1);
 			const first = n[0];
 			if (n.length === 1 && first !== undefined) {
 				// x{{a,b}}y ==> x{a}y x{b}y
 				n = expand_(first, max, false, depth + 1).map(embrace);
 				if (n.length === 1) {
-					return post.map((p) => `${m.pre}${n[0]}${p}`);
+					acc = combine(acc, pre + n[0], [""], max, dropEmpties && !m.post.length);
+					if (!m.post.length) break;
+					current = m.post;
+					continue;
 				}
 			}
-		}
-
-		// at this point, n is the parts, and we know it's not a comma set
-		// with a single entry.
-		let N: Array<string>;
-
-		const n0 = n[0];
-		const n1 = n[1];
-		if (isSequence && n0 !== undefined && n1 !== undefined) {
-			const x = numeric(n0);
-			const y = numeric(n1);
-			const width = Math.max(n0.length, n1.length);
-			const n2 = n[2];
-			let incr = n.length === 3 && n2 !== undefined ? Math.max(Math.abs(numeric(n2)), 1) : 1;
-			let test = lte;
-			const reverse = y < x;
-			if (reverse) {
-				incr *= -1;
-				test = gte;
+			// Values `combine` is going to drop as empty produce no result, so they
+			// must not count against `max`: skip them outright.
+			let dropsEmpties = dropEmpties && !m.post.length && !pre;
+			for (let d = 0; dropsEmpties && d < acc.length; d++) {
+				if (acc[d]) dropsEmpties = false;
 			}
-			const pad = n.some(isPadded);
-
-			// Budget check up front: the member count is exactly computable, so an
-			// over-budget sequence trips before any work is done (upstream
-			// truncated the loop at max instead).
-			const total = Math.floor(Math.abs(y - x) / Math.abs(incr)) + 1;
-			if (total > max) {
-				throw new GuardExceeded("ExpansionBudgetExceeded", max, total);
-			}
-
-			N = [];
-
-			for (let i = x; test(i, y); i += incr) {
-				let c: string;
-				if (isAlphaSequence) {
-					c = String.fromCharCode(i);
-					if (c === "\\") {
-						c = "";
-					}
-				} else {
-					c = String(i);
-					if (pad) {
-						const need = width - c.length;
-						if (need > 0) {
-							const z = "0".repeat(need);
-							c = i < 0 ? `-${z}${c.slice(1)}` : `${z}${c}`;
-						}
-					}
-				}
-				N.push(c);
-			}
-		} else {
-			N = [];
-
+			// The alternatives are bounded together, not only each one by itself.
+			values = [];
+			let valuesLength = 0;
 			for (const part of n) {
-				N.push(...expand_(part, max, false, depth + 1));
-			}
-		}
-
-		for (let j = 0; j < N.length; j++) {
-			for (let k = 0; k < post.length; k++) {
-				const expansion = pre + N[j] + post[k];
-				if (!isTop || isSequence || expansion) {
-					if (expansions.length >= max) {
-						// Budget exhausted with work remaining: the actual reported is the
-						// count reached plus what remains in this group — a lower bound on
-						// the full expansion size.
-						throw new GuardExceeded(
-							"ExpansionBudgetExceeded",
-							max,
-							expansions.length + (N.length - j) * post.length - k,
-						);
+				for (const v of expand_(part, max, false, depth + 1)) {
+					if (dropsEmpties && !v) continue;
+					if (values.length >= max) {
+						throw new GuardExceeded("ExpansionBudgetExceeded", max, values.length + 1);
 					}
-					expansions.push(expansion);
+					if (valuesLength + v.length > EXPANSION_MAX_LENGTH) {
+						throw new GuardExceeded("ExpansionBudgetExceeded", EXPANSION_MAX_LENGTH, valuesLength + v.length);
+					}
+					values.push(v);
+					valuesLength += v.length;
 				}
 			}
 		}
 
-		return expansions;
+		acc = combine(acc, pre, values, max, dropEmpties && !m.post.length);
+		if (!m.post.length) break;
+		current = m.post;
 	}
+	return acc;
 }

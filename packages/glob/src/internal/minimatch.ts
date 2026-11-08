@@ -6,12 +6,20 @@
 // - NO ambient environment detection: defaultPlatform (process.platform and
 //   the __MINIMATCH_TESTING_PLATFORM__ env read) is deleted; platform is an
 //   explicit option defaulting to "posix". All win32 handling (UNC, drive
-//   letters, backslash splitting, windowsNoMagicRoot) is kept behind it.
+//   letters, backslash splitting, windowsNoMagicRoot) is kept behind it, and
+//   takes minimatch 11.0.5's root rules: a .. can not remove a drive letter or
+//   a UNC host and share (#rootIndex, in levelOneOptimize,
+//   levelTwoFileOptimize and firstPhasePreProcess); a UNC host and share
+//   compare without case; //?/UNC/host/share matches //host/share and back;
+//   and a matching drive letter starts the match after it rather than
+//   rewriting the compiled pattern's drive to the path's.
 // - Dropped surface: the minimatch() convenience function, filter, match,
 //   defaults(), sep, the nonull option (only meaningful for match lists),
 //   the debug option and its console.error wiring (the no-op debug() method
 //   and its call sites are kept so the bodies diff cleanly against
-//   upstream), and the deprecated allowWindowsEscape.
+//   upstream), the deprecated allowWindowsEscape, and makeRe() with its
+//   regexp field (11.0.5 removed it too; a portion with a !(...) has no
+//   regexp of its own, so a whole-pattern regexp could not be built).
 // - maxGlobstarRecursion is validated by assertCap (a NaN or non-integer cap
 //   is a wiring bug and dies as a TypeError defect). The
 //   #matchGlobStarBodySections limit check is kept verbatim: exceeding it is
@@ -30,14 +38,19 @@
 //   typed guard signal instead of silently truncating (see
 //   braceExpansion.ts).
 // - The fs-walk optimizer passes (adjascentGlobstarOptimize, spelled as
-//   upstream spells it, levelOneOptimize, levelTwoFileOptimize,
-//   firstPhasePreProcess, secondPhasePreProcess, partsMatch) are kept
-//   unchanged behind optimizationLevel.
+//   upstream spells it, levelOneOptimize, levelTwoFileOptimize) are kept
+//   behind optimizationLevel, with 11.0.5's win32 root guard. firstPhasePreProcess and
+//   secondPhasePreProcess take minimatch 11.0.5's fix for GHSA-g3hv-75wg-m249:
+//   the **/.. split stops at braceExpandMax rows or MAX_SPLIT_CELLS added path
+//   portions, and fails with the typed ExpansionBudgetExceeded signal where
+//   upstream throws a RangeError (a partial split would match some paths and
+//   not others); the dedupe is a keyed lookup in place of a pairwise compare,
+//   and partsMatch, which only that compare used, is gone.
 
 import { assertValidPattern } from "./assertValidPattern.js";
-import { AST } from "./ast.js";
+import { AST, portionPlan } from "./ast.js";
 import { expand } from "./braceExpansion.js";
-import { MAX_GLOBSTAR_RECURSION, assertCap } from "./limits.js";
+import { EXPANSION_MAX, GuardExceeded, MAX_GLOBSTAR_RECURSION, MAX_SPLIT_CELLS, assertCap } from "./limits.js";
 import type { EngineOptions, MMRegExp, ParseReturn, ParseReturnFiltered, Platform } from "./types.js";
 import { GLOBSTAR } from "./types.js";
 
@@ -46,71 +59,30 @@ export type { EngineOptions, MMRegExp, ParseReturn, ParseReturnFiltered, Platfor
 export { unescape } from "./unescape.js";
 export { GLOBSTAR };
 
-// Optimized checking for the most common glob patterns.
-const starDotExtRE = /^\*+([^+@!?*[(]*)$/;
-const starDotExtTest = (ext: string) => (f: string) => !f.startsWith(".") && f.endsWith(ext);
-const starDotExtTestDot = (ext: string) => (f: string) => f.endsWith(ext);
-const starDotExtTestNocase = (ext: string) => {
-	const lower = ext.toLowerCase();
-	return (f: string) => !f.startsWith(".") && f.toLowerCase().endsWith(lower);
-};
-const starDotExtTestNocaseDot = (ext: string) => {
-	const lower = ext.toLowerCase();
-	return (f: string) => f.toLowerCase().endsWith(lower);
-};
-const starDotStarRE = /^\*+\.\*+$/;
-const starDotStarTest = (f: string) => !f.startsWith(".") && f.includes(".");
-const starDotStarTestDot = (f: string) => f !== "." && f !== ".." && f.includes(".");
-const dotStarRE = /^\.\*+$/;
-const dotStarTest = (f: string) => f !== "." && f !== ".." && f.startsWith(".");
-const starRE = /^\*+$/;
-const starTest = (f: string) => f.length !== 0 && !f.startsWith(".");
-const starTestDot = (f: string) => f.length !== 0 && f !== "." && f !== "..";
-const qmarksRE = /^\?+([^+@!?*[(]*)?$/;
-const qmarksTestNocase = ([$0, ext = ""]: RegExpMatchArray) => {
-	const noext = qmarksTestNoExt([$0]);
-	if (!ext) return noext;
-	const lower = ext.toLowerCase();
-	return (f: string) => noext(f) && f.toLowerCase().endsWith(lower);
-};
-const qmarksTestNocaseDot = ([$0, ext = ""]: RegExpMatchArray) => {
-	const noext = qmarksTestNoExtDot([$0]);
-	if (!ext) return noext;
-	const lower = ext.toLowerCase();
-	return (f: string) => noext(f) && f.toLowerCase().endsWith(lower);
-};
-const qmarksTestDot = ([$0, ext = ""]: RegExpMatchArray) => {
-	const noext = qmarksTestNoExtDot([$0]);
-	return !ext ? noext : (f: string) => noext(f) && f.endsWith(ext);
-};
-const qmarksTest = ([$0, ext = ""]: RegExpMatchArray) => {
-	const noext = qmarksTestNoExt([$0]);
-	return !ext ? noext : (f: string) => noext(f) && f.endsWith(ext);
-};
-const qmarksTestNoExt = ([$0]: [string]) => {
-	const len = $0.length;
-	return (f: string) => f.length === len && !f.startsWith(".");
-};
-const qmarksTestNoExtDot = ([$0]: [string]) => {
-	const len = $0.length;
-	return (f: string) => f.length === len && f !== "." && f !== "..";
-};
+// a Windows drive letter portion, like `c:`
+const isDrive = (p: ParseReturn | undefined): boolean => typeof p === "string" && /^[a-z]:$/i.test(p);
 
-// any single thing other than /
-// don't need to escape / when using new RegExp()
-const qmark = "[^/]";
+// true for the `UNC` portion of a long UNC root, //?/UNC/host/share
+const isLongUNC = (p: ParseReturn | undefined): boolean => typeof p === "string" && /^unc$/i.test(p);
 
-// * => any number of characters
-const star = `${qmark}*?`;
-
-// ** when dots are allowed.  Anything goes, except .. and .
-// not (^ or / followed by one or two dots followed by $ or /),
-// followed by anything, any number of times.
-const twoStarDot = "(?:(?!(?:\\/|^)(?:\\.{1,2})($|\\/)).)*?";
-
-// not a ^ or / followed by a dot,
-// followed by anything, any number of times.
-const twoStarNoDot = "(?:(?!(?:\\/|^)\\.).)*?";
+// The index of the host in a row or split path that starts with a
+// Windows UNC root: 2 for `//host/share`, and 4 for
+// `//?/UNC/host/share`. Otherwise -1. `//?/c:` is not one.
+const uncHost = (p: ReadonlyArray<ParseReturn>): number => {
+	if (p[0] !== "" || p[1] !== "") return -1;
+	const h = p[2] !== "?" ? 2 : isLongUNC(p[3]) ? 4 : -1;
+	if (h === -1) return -1;
+	const host = p[h];
+	const share = p[h + 1];
+	return host !== undefined &&
+		host !== "" &&
+		host !== GLOBSTAR &&
+		share !== undefined &&
+		share !== "" &&
+		share !== GLOBSTAR
+		? h
+		: -1;
+};
 
 // Brace expansion:
 // a{b,c}d -> abd acd
@@ -138,7 +110,6 @@ export const braceExpand = (pattern: string, options: EngineOptions = {}): Array
 
 // replace stuff like \* with *
 const globMagic = /[?*]|[+@!]\(.*?\)|\[|\]/;
-const regExpEscape = (s: string): string => s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
 
 export class Minimatch {
 	options: EngineOptions;
@@ -161,7 +132,6 @@ export class Minimatch {
 	windowsNoMagicRoot: boolean;
 	maxGlobstarRecursion: number;
 
-	regexp: false | null | MMRegExp;
 	constructor(pattern: string, options: EngineOptions = {}) {
 		assertValidPattern(pattern);
 
@@ -178,7 +148,6 @@ export class Minimatch {
 			this.pattern = this.pattern.replace(/\\/g, "/");
 		}
 		this.preserveMultipleSlashes = !!options.preserveMultipleSlashes;
-		this.regexp = null;
 		this.negate = false;
 		this.nonegate = !!options.nonegate;
 		this.comment = false;
@@ -252,18 +221,20 @@ export class Minimatch {
 		// glob --> regexps
 		const set = this.globParts.map((s) => {
 			if (this.isWindows && this.windowsNoMagicRoot) {
-				// check if it's a drive or unc path.
+				// check if it's a drive or unc path. The root of a long UNC
+				// path, //?/UNC/host/share, is 6 portions.
+				const n = s[2] === "?" && isLongUNC(s[3]) ? 6 : 4;
 				const isUNC =
 					s[0] === "" &&
 					s[1] === "" &&
 					(s[2] === "?" || (s[2] !== undefined && !globMagic.test(s[2]))) &&
-					s[3] !== undefined &&
-					!globMagic.test(s[3]);
-				const isDrive = s[0] !== undefined && /^[a-z]:/i.test(s[0]);
+					// as 11: a root with a host and no share (`//b`) counts too
+					s.slice(3, n).every((p) => !globMagic.test(p));
+				const startsWithDrive = s[0] !== undefined && /^[a-z]:/i.test(s[0]);
 				if (isUNC) {
-					return [...s.slice(0, 4), ...s.slice(4).map((ss) => this.parse(ss))];
+					return [...s.slice(0, n), ...s.slice(n).map((ss) => this.parse(ss))];
 				}
-				if (isDrive) {
+				if (startsWithDrive) {
 					return [s[0] as ParseReturn, ...s.slice(1).map((ss) => this.parse(ss))];
 				}
 			}
@@ -284,9 +255,9 @@ export class Minimatch {
 					p[0] === "" &&
 					p[1] === "" &&
 					this.globParts[i]?.[2] === "?" &&
-					typeof p[3] === "string" &&
-					/^[a-z]:$/i.test(p[3])
+					(isDrive(p[3]) || isLongUNC(this.globParts[i]?.[3]))
 				) {
+					if (isLongUNC(this.globParts[i]?.[3])) p[3] = "UNC";
 					p[2] = "?";
 				}
 			}
@@ -348,16 +319,30 @@ export class Minimatch {
 		});
 	}
 
+	// On Windows, the index of the last root portion of a row: 0 for
+	// `c:/...`, 3 for `//?/c:/...` and `//host/share/...`, and 5 for
+	// `//?/UNC/host/share/...`. Otherwise -1.
+	#rootIndex(row: ReadonlyArray<ParseReturn>): number {
+		if (!this.isWindows) return -1;
+		if (isDrive(row[0])) return 0;
+		const uncDrive = row[0] === "" && row[1] === "" && row[2] === "?" && isDrive(row[3]);
+		if (uncDrive) return 3;
+		const h = uncHost(row);
+		return h === -1 ? -1 : h + 1;
+	}
+
 	// get rid of adjascent ** and resolve .. portions
 	levelOneOptimize(globParts: Array<Array<string>>) {
 		return globParts.map((partsInput) => {
+			// .. can not remove the root of a Windows path
+			const root = this.#rootIndex(partsInput) + 1;
 			const parts = partsInput.reduce((set: Array<string>, part) => {
 				const prev = set[set.length - 1];
 				if (part === "**" && prev === "**") {
 					return set;
 				}
 				if (part === "..") {
-					if (prev && prev !== ".." && prev !== "." && prev !== "**") {
+					if (set.length > root && prev && prev !== ".." && prev !== "." && prev !== "**") {
 						set.pop();
 						return set;
 					}
@@ -394,13 +379,15 @@ export class Minimatch {
 			}
 
 			// <pre>/<p>/../<rest> -> <pre>/<rest>
-			let dd = parts.indexOf("..", 1);
+			// .. can not remove the root of a Windows path
+			const root = this.#rootIndex(parts) + 1;
+			let dd = parts.indexOf("..", root + 1);
 			while (dd !== -1) {
 				const p = parts[dd - 1];
-				if (p && p !== "." && p !== ".." && p !== "**" && !(this.isWindows && /^[a-z]:$/i.test(p))) {
+				if (p && p !== "." && p !== ".." && p !== "**") {
 					didSomething = true;
 					parts.splice(dd - 1, 2);
-					dd -= 2;
+					dd = Math.max(dd - 2, root);
 				}
 				dd = parts.indexOf("..", dd + 1);
 			}
@@ -427,6 +414,12 @@ export class Minimatch {
 	// **/*/<rest> -> */**/<rest> <== not valid because ** doesn't follow
 	// this WOULD be allowed if ** did follow symlinks, or * didn't
 	firstPhasePreProcess(globParts: Array<Array<string>>) {
+		// each **/.. split doubles the patterns, and adds a copy of the
+		// whole pattern. Throw if either gets too large. A partial split
+		// would match some paths and not others, depending on which rows
+		// the pass reached first.
+		const braceExpandMax = assertCap("braceExpandMax", this.options.braceExpandMax ?? EXPANSION_MAX);
+		let splitCells = 0;
 		let didSomething = false;
 		do {
 			didSomething = false;
@@ -456,11 +449,20 @@ export class Minimatch {
 						gs = parts.indexOf("**", gs + 1);
 						continue;
 					}
+					// Check before changing parts or allocating the new row.
+					const addedCells = parts.length - 1;
+					if (globParts.length >= braceExpandMax) {
+						throw new GuardExceeded("ExpansionBudgetExceeded", braceExpandMax, globParts.length + 1);
+					}
+					if (splitCells + addedCells > MAX_SPLIT_CELLS) {
+						throw new GuardExceeded("ExpansionBudgetExceeded", MAX_SPLIT_CELLS, splitCells + addedCells);
+					}
 					didSomething = true;
 					// edit parts in place, and push the new one
 					parts.splice(gs, 1);
 					const other = parts.slice(0);
 					other[gs] = "**";
+					splitCells += addedCells;
 					globParts.push(other);
 					gs--;
 					gs = parts.indexOf("**", gs + 1);
@@ -485,7 +487,9 @@ export class Minimatch {
 				}
 
 				// <pre>/<p>/../<rest> -> <pre>/<rest>
-				let dd = parts.indexOf("..", 1);
+				// .. can not remove the root of a Windows path
+				const root = this.#rootIndex(parts) + 1;
+				let dd = parts.indexOf("..", root + 1);
 				while (dd !== -1) {
 					const p = parts[dd - 1];
 					if (p && p !== "." && p !== ".." && p !== "**") {
@@ -494,7 +498,7 @@ export class Minimatch {
 						const splin = needDot ? ["."] : [];
 						parts.splice(dd - 1, 2, ...splin);
 						if (parts.length === 0) parts.push("");
-						dd -= 2;
+						dd = Math.max(dd - 2, root);
 					}
 					dd = parts.indexOf("..", dd + 1);
 				}
@@ -505,66 +509,54 @@ export class Minimatch {
 	}
 
 	// second phase: multi-pattern dedupes
-	// {<pre>/*/<rest>,<pre>/<p>/<rest>} -> <pre>/*/<rest>
 	// {<pre>/<rest>,<pre>/<rest>} -> <pre>/<rest>
-	// {<pre>/**/<rest>,<pre>/<rest>} -> <pre>/**/<rest>
-	//
-	// {<pre>/**/<rest>,<pre>/**/<p>/<rest>} -> <pre>/**/<rest>
-	// ^-- not valid because ** doens't follow symlinks
+	// {<pre>/*/<rest>,<pre>/<p>/<rest>} -> <pre>/*/<rest>
 	secondPhasePreProcess(globParts: Array<Array<string>>): Array<Array<string>> {
-		for (let i = 0; i < globParts.length - 1; i++) {
-			for (let j = i + 1; j < globParts.length; j++) {
-				const a = globParts[i];
-				const b = globParts[j];
-				if (a === undefined || b === undefined) continue;
-				const matched = this.partsMatch(a, b, !this.preserveMultipleSlashes);
-				if (matched) {
-					globParts[i] = [];
-					globParts[j] = matched;
-					break;
-				}
-			}
-		}
-		return globParts.filter((gs) => gs.length);
-	}
+		const keys = new Set<string>();
+		const rows = globParts.filter((parts) => {
+			const key = parts.join("/");
+			if (keys.has(key)) return false;
+			keys.add(key);
+			return true;
+		});
 
-	partsMatch(a: Array<string>, b: Array<string>, emptyGSMatch = false): false | Array<string> {
-		let ai = 0;
-		let bi = 0;
-		const result: Array<string> = [];
-		let which = "";
-		while (ai < a.length && bi < b.length) {
-			const av = a[ai] as string;
-			const bv = b[bi] as string;
-			if (av === bv) {
-				result.push(which === "b" ? bv : av);
-				ai++;
-				bi++;
-			} else if (emptyGSMatch && av === "**" && bv === a[ai + 1]) {
-				result.push(av);
-				ai++;
-			} else if (emptyGSMatch && bv === "**" && av === b[bi + 1]) {
-				result.push(bv);
-				bi++;
-			} else if (av === "*" && bv && (this.options.dot || !bv.startsWith(".")) && bv !== "**") {
-				if (which === "b") return false;
-				which = "a";
-				result.push(av);
-				ai++;
-				bi++;
-			} else if (bv === "*" && av && (this.options.dot || !av.startsWith(".")) && av !== "**") {
-				if (which === "a") return false;
-				which = "b";
-				result.push(bv);
-				ai++;
-				bi++;
-			} else {
-				return false;
+		// A row is covered by another row that has `*` at some positions,
+		// and is the same at all others. Collect each distinct set of `*`
+		// positions, then look up each row with `*` put at those positions.
+		const stars = new Map<string, Array<number>>();
+		for (const parts of rows) {
+			const s: Array<number> = [];
+			for (let i = 0; i < parts.length; i++) {
+				if (parts[i] === "*") s.push(i);
 			}
+			if (s.length) stars.set(s.join(","), s);
 		}
-		// if we fall out of the loop, it means they two are identical
-		// as long as their lengths match
-		return a.length === b.length && result;
+		// Each row is checked against each set of `*` positions, so skip
+		// this if there are too many. The patterns match the same paths
+		// either way.
+		if (!stars.size || rows.length * stars.size > 100_000) return rows;
+
+		const { dot } = this.options;
+		return rows.filter((parts) => {
+			for (const s of stars.values()) {
+				if ((s[s.length - 1] as number) >= parts.length) continue;
+				const c = [...parts];
+				let ok = true;
+				let changed = false;
+				for (const i of s) {
+					const p = parts[i] as string;
+					if (p === "*") continue;
+					if (!p || p === "**" || (!dot && p.startsWith("."))) {
+						ok = false;
+						break;
+					}
+					c[i] = "*";
+					changed = true;
+				}
+				if (ok && changed && keys.has(c.join("/"))) return false;
+			}
+			return true;
+		});
 	}
 
 	parseNegate() {
@@ -596,10 +588,34 @@ export class Minimatch {
 		let fileStartIndex = 0;
 		let patternStartIndex = 0;
 
-		// UNC paths like //?/X:/... can match X:/... and vice versa
-		// Drive letters in absolute drive or unc paths are always compared
-		// case-insensitively.
-		if (this.isWindows) {
+		// resolve and reduce . and .. portions in the file as well.
+		// don't need to do the second phase, because it's only one string[]
+		const { optimizationLevel = 1 } = this.options;
+		const resolved = optimizationLevel >= 2 ? this.levelTwoFileOptimize(file) : file;
+
+		// UNC paths like //?/X:/... can match X:/... and vice versa, and
+		// //?/UNC/host/share/... can match //host/share/... and vice versa.
+		// Drive letters in absolute drive or unc paths, and the host and
+		// share of UNC paths, are always compared case-insensitively.
+		// Level 2 can resolve the share away (//h/s/../x), so the UNC root
+		// is found in the resolved parts.
+		const fh = this.isWindows ? uncHost(resolved) : -1;
+		const ph = fh === -1 ? -1 : uncHost(pattern);
+		if (ph !== -1) {
+			const host = pattern[ph];
+			const share = pattern[ph + 1];
+			if (typeof host !== "string" || typeof share !== "string") {
+				// a host or share with magic is matched as usual
+				fileStartIndex = fh;
+				patternStartIndex = ph;
+			} else if (
+				(resolved[fh] as string).toLowerCase() === host.toLowerCase() &&
+				(resolved[fh + 1] as string).toLowerCase() === share.toLowerCase()
+			) {
+				fileStartIndex = fh + 2;
+				patternStartIndex = ph + 2;
+			}
+		} else if (this.isWindows) {
 			const f0 = file[0];
 			const fileDrive = typeof f0 === "string" && /^[a-z]:$/i.test(f0);
 			const fileUNC =
@@ -624,21 +640,17 @@ export class Minimatch {
 			const pdi = patternUNC ? 3 : patternDrive ? 0 : undefined;
 			if (typeof fdi === "number" && typeof pdi === "number") {
 				const [fd, pd]: [string, string] = [file[fdi] as string, pattern[pdi] as string];
-				// start matching at the drive letter index of each
+				// the drives match, so start matching after them
 				if (fd.toLowerCase() === pd.toLowerCase()) {
-					pattern[pdi] = fd;
-					patternStartIndex = pdi;
-					fileStartIndex = fdi;
+					patternStartIndex = pdi + 1;
+					fileStartIndex = fdi + 1;
 				}
 			}
 		}
 
-		// resolve and reduce . and .. portions in the file as well.
-		// don't need to do the second phase, because it's only one string[]
-		const { optimizationLevel = 1 } = this.options;
-		if (optimizationLevel >= 2) {
-			file = this.levelTwoFileOptimize(file);
-		}
+		// the drive letters are found in the parts before level 2 resolves
+		// them, and the match uses the resolved parts
+		file = resolved;
 
 		if (pattern.includes(GLOBSTAR)) {
 			return this.#matchGlobstar(file, pattern, partial, fileStartIndex, patternStartIndex);
@@ -855,6 +867,19 @@ export class Minimatch {
 		return partial || null;
 	}
 
+	// One path portion against one magic pattern portion: minimatch 11.0.5's
+	// own matcher answers it, built when the pattern compiled, so nothing
+	// here builds a regexp or can throw. The portion's regexp is compile-time
+	// validation only (InvalidRegExp): 10's regexp backtracks O(n^k) on k stars
+	// separated by literals (`*a` fourteen times then `b` took 25 s against 40
+	// characters) and reads UTF-16 code units where 11 reads code points.
+	#matchesRegExpPortion(p: MMRegExp, f: string): boolean {
+		// An empty path portion only matches an empty pattern portion.
+		if (f === "") return false;
+		const plan = portionPlan(p);
+		return plan === undefined ? p.test(f) : plan.matcher.testUnchecked(f);
+	}
+
 	#matchOne(
 		file: Array<string>,
 		pattern: Array<ParseReturn>,
@@ -893,7 +918,11 @@ export class Minimatch {
 				hit = f === p;
 				this.debug("string match", p, f, hit);
 			} else {
-				hit = p.test(f);
+				// An empty path portion only matches an empty pattern portion, a .
+				// or .. portion only matches through literal dots, no wildcard takes
+				// the leading dot of a dotfile without `dot`, and a !(...) negates
+				// exactly its sub-pattern (all minimatch 11).
+				hit = this.#matchesRegExpPortion(p, f);
 				this.debug("pattern match", p, f, hit);
 			}
 
@@ -942,148 +971,14 @@ export class Minimatch {
 	parse(pattern: string): ParseReturn {
 		assertValidPattern(pattern);
 
-		const options = this.options;
-
 		// shortcuts
 		if (pattern === "**") return GLOBSTAR;
 		if (pattern === "") return "";
 
-		// far and away, the most common glob pattern parts are
-		// *, *.*, and *.<ext>  Add a fast check method for those.
-		let fastTest: null | ((f: string) => boolean) = null;
-		const mStar = pattern.match(starRE);
-		const mStarDotExt = mStar ? null : pattern.match(starDotExtRE);
-		const mQmarks = mStar || mStarDotExt ? null : pattern.match(qmarksRE);
-		const mStarDotStar = mStar || mStarDotExt || mQmarks ? null : pattern.match(starDotStarRE);
-		const mDotStar = mStar || mStarDotExt || mQmarks || mStarDotStar ? null : pattern.match(dotStarRE);
-		if (mStar) {
-			fastTest = options.dot ? starTestDot : starTest;
-		} else if (mStarDotExt) {
-			fastTest = (
-				options.nocase
-					? options.dot
-						? starDotExtTestNocaseDot
-						: starDotExtTestNocase
-					: options.dot
-						? starDotExtTestDot
-						: starDotExtTest
-			)(mStarDotExt[1] as string);
-		} else if (mQmarks) {
-			fastTest = (
-				options.nocase
-					? options.dot
-						? qmarksTestNocaseDot
-						: qmarksTestNocase
-					: options.dot
-						? qmarksTestDot
-						: qmarksTest
-			)(mQmarks);
-		} else if (mStarDotStar) {
-			fastTest = options.dot ? starDotStarTestDot : starDotStarTest;
-		} else if (mDotStar) {
-			fastTest = dotStarTest;
-		}
-
-		const re = AST.fromGlob(pattern, this.options).toMMPattern();
-		if (fastTest && typeof re === "object") {
-			// Avoids overriding in frozen environments
-			Reflect.defineProperty(re, "test", { value: fastTest });
-		}
-		return re;
-	}
-
-	makeRe() {
-		if (this.regexp || this.regexp === false) return this.regexp;
-
-		// at this point, this.set is a 2d array of partial
-		// pattern strings, or "**".
-		//
-		// It's better to use .match().  This function shouldn't
-		// be used, really, but it's pretty convenient sometimes,
-		// when you just want to work with a regex.
-		const set = this.set;
-
-		if (!set.length) {
-			this.regexp = false;
-			return this.regexp;
-		}
-		const options = this.options;
-
-		const twoStar = options.noglobstar ? star : options.dot ? twoStarDot : twoStarNoDot;
-		const flags = new Set(options.nocase ? ["i"] : []);
-
-		// regexpify non-globstar patterns
-		// if ** is only item, then we just do one twoStar
-		// if ** is first, and there are more, prepend (\/|twoStar\/)? to next
-		// if ** is last, append (\/twoStar|) to previous
-		// if ** is in the middle, append (\/|\/twoStar\/) to previous
-		// then filter out GLOBSTAR symbols
-		let re = set
-			.map((pattern) => {
-				const pp: Array<string | typeof GLOBSTAR> = pattern.map((p) => {
-					if (p instanceof RegExp) {
-						for (const f of p.flags.split("")) flags.add(f);
-					}
-					return typeof p === "string" ? regExpEscape(p) : p === GLOBSTAR ? GLOBSTAR : (p._src as string);
-				});
-				pp.forEach((p, i) => {
-					const next = pp[i + 1];
-					const prev = pp[i - 1];
-					if (p !== GLOBSTAR || prev === GLOBSTAR) {
-						return;
-					}
-					if (prev === undefined) {
-						if (next !== undefined && next !== GLOBSTAR) {
-							pp[i + 1] = `(?:\\/|${twoStar}\\/)?${next}`;
-						} else {
-							pp[i] = twoStar;
-						}
-					} else if (next === undefined) {
-						pp[i - 1] = `${prev}(?:\\/|\\/${twoStar})?`;
-					} else if (next !== GLOBSTAR) {
-						pp[i - 1] = `${prev}(?:\\/|\\/${twoStar}\\/)${next}`;
-						pp[i + 1] = GLOBSTAR;
-					}
-				});
-				const filtered = pp.filter((p) => p !== GLOBSTAR) as Array<string>;
-
-				// For partial matches, we need to make the pattern match
-				// any prefix of the full path. We do this by generating
-				// alternative patterns that match progressively longer prefixes.
-				if (this.partial && filtered.length >= 1) {
-					const prefixes: Array<string> = [];
-					for (let i = 1; i <= filtered.length; i++) {
-						prefixes.push(filtered.slice(0, i).join("/"));
-					}
-					return `(?:${prefixes.join("|")})`;
-				}
-
-				return filtered.join("/");
-			})
-			.join("|");
-
-		// need to wrap in parens if we had more than one thing with |,
-		// otherwise only the first will be anchored to ^ and the last to $
-		const [open, close] = set.length > 1 ? ["(?:", ")"] : ["", ""];
-		// must match entire pattern
-		// ending in a * or ** will make it less strict.
-		re = `^${open}${re}${close}$`;
-
-		// In partial mode, '/' should always match as it's a valid prefix for any pattern
-		if (this.partial) {
-			re = `^(?:\\/|${open}${re.slice(1, -1)}${close})$`;
-		}
-
-		// can match anything, as long as it's not this.
-		if (this.negate) re = `^(?!${re}).+$`;
-
-		try {
-			this.regexp = new RegExp(re, [...flags].join(""));
-		} catch {
-			// should be impossible
-			this.regexp = false;
-		}
-		return this.regexp;
+		// 10's `*`, `*.*`, `*.<ext>` and `?…` fast tests are gone: minimatch 11's
+		// matcher answers every magic portion (port note 9 in ast.ts), with its
+		// own linear path for a chain of `*`, `?` and literals.
+		return AST.fromGlob(pattern, this.options).toMMPattern();
 	}
 
 	slashSplit(p: string) {

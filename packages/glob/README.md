@@ -29,7 +29,7 @@ The dialect is not a subset. The engine is a ported-with-attribution vendoring o
 
 One deliberate deviation from upstream: no ambient environment detection. `platform` is an explicit option defaulting to `"posix"`, and `process.platform` is never read, so a pattern behaves identically on every machine. All win32 path handling stays behind the option, for the caller who knows they need it.
 
-`**` matching also goes past the minimatch version it is ported from. minimatch 10.x gives wrong answers on some patterns with more than one `**`, such as `**/a/b/c/**/d/**` against `d/a/b/c/d/b`, and under `partial`. This engine carries the fixes from minimatch 11, and only those.
+The engine is ported from minimatch 10.2.5 and answers as minimatch 11.0.5 does, which is its test oracle. That includes 11's fixes to `**` matching (minimatch 10.x gives wrong answers on some patterns with more than one `**`, such as `**/a/b/c/**/d/**` against `d/a/b/c/d/b`, and under `partial`); an empty path portion matching only an empty pattern portion, so `a/b/` does not match `a/b/?(x)`; a `.` or `..` portion matching only literal dots, with or without `dot`; no wildcard taking the leading dot of a dotfile without `dot`, even a class such as `[.]` beside other magic or a `*` after an extglob that matched nothing (`[.]*` and `*(a|b)*` do not match `.a`); a `!(...)` negating exactly its own sub-pattern (`!(*)` matches nothing, and `x/a!(b)*` matches `x/ab`); an extglob opener that is never closed reading as literal text (`a*(` does not match `ax(`); a `[` that never closes reading as a literal, with extglobs after it still parsed (`[+(a)` matches `[a`); an escaped `\|` matching a literal `|`; and on win32, a `..` that cannot climb past a drive letter or a UNC share. Two differences in match answers remain. minimatch 11 matches a numeric range of 100 or more values, such as `{0..999}`, as a single portion, and this engine expands it, so `hasMagic` is `false` for such a pattern and a range past `braceExpandMax` fails at compile. And minimatch 11 joins a pattern's brace alternatives with `|` into one matcher, so a `[` in one alternative and a `]` in another become a class (`b**{Z..a}` does not match its own text there); this engine matches the union of the alternatives. Beside those, some patterns 11 accepts fail at compile here, always with a typed `GlobPatternError`: see [Errors](#errors).
 
 ## Install
 
@@ -110,6 +110,7 @@ Compilation is the only thing that fails, and it fails with one tagged error who
 | `PatternTooLong` | The pattern exceeds the 64KB length cap. |
 | `ExpansionBudgetExceeded` | Brace expansion would produce more alternatives than the budget allows. Upstream truncates here, silently changing match semantics; this package fails instead. |
 | `NestingDepthExceeded` | Braces, extglobs or the AST nest past the depth cap. |
+| `InvalidRegExp` | A regular expression for the pattern is one the runtime rejects (#1279): a POSIX class such as `[[:alpha:]]` beside a loose `,`, `#`, space or `-` in a portion with no extglob (`[[:alpha:]]-*`), or a one-character class such as `[,]` beside a POSIX class in any portion (`x[,][[:alpha:]]`). Also a portion whose regular expression is too large for the runtime, about 32,000 literal characters before one wildcard. minimatch 11 accepts these. `limit` and `actual` are both 0. |
 
 ```ts
 import { GlobPattern } from "@effected/glob";
@@ -122,12 +123,15 @@ Effect.runPromise(Effect.result(GlobPattern.compile("a".repeat(70_000)))).then(c
 
 ## Hostile input
 
-Matching stays polynomial, and the package does not bound its total work. Two measured cases:
+Matching stays polynomial, and the package does not bound its total work. Five measured cases:
 
 | Pattern | Candidate | Time |
 | --- | --- | --- |
 | `**/a/**` | 50,000 portions | about 3 s |
 | `**/a/**/*{0..999}*` | a 13.9 KB path | about 33 s |
+| `x` and 1,600 × `!(a)` (6.4 KB) | `x` and 1,600 × `b` | about 25 ms |
+| `*(a\|?)` × 10,000 (60 KB) | 1,000 × `a` | about 15 ms |
+| `x!(a)` × 1,000 | `xb` × 1,000 (2,000 characters) | about 1.6 s, about cubic in the length (22 ms at 400 characters); minimatch 11 is slower still |
 
 The second is slow because brace expansion multiplies the alternatives, within the default `braceExpandMax` of 100,000. Matching is synchronous and blocks the calling thread until it returns, so an in-process timeout cannot stop it: `Effect.timeout` around `Effect.sync(() => pattern.matches(path))` still waits for the whole match. When a pattern or a path comes from untrusted input, bound the input before matching:
 
@@ -175,8 +179,9 @@ console.log(Wildcard.matches("HUMAN:*", "human:spencer", WildcardOptions.make({ 
 
 The engine in `src/internal/` is ported with attribution from:
 
-- [minimatch](https://github.com/isaacs/minimatch) 10.2.5, with the `**` fixes from 11.0.4 — Isaac Z. Schlueter and Contributors, BlueOak-1.0.0
-- [brace-expansion](https://github.com/juliangruber/brace-expansion) 5.0.7 — Julian Gruber, MIT
+- [minimatch](https://github.com/isaacs/minimatch) 10.2.5, with the behaviour of 11.0.5 — Isaac Z. Schlueter and Contributors, BlueOak-1.0.0
+- [@isaacs/nonrecursive-glob-match](https://github.com/isaacs/nonrecursive-glob-match) 1.1.0, the portion matcher minimatch 11.0.5 runs — Isaac Z. Schlueter and Contributors, BlueOak-1.0.0
+- [brace-expansion](https://github.com/juliangruber/brace-expansion) 5.0.12 — Julian Gruber, MIT
 - [balanced-match](https://github.com/juliangruber/balanced-match) 4.0.4 — Julian Gruber, MIT
 
 Each ported file carries its notice, and the real minimatch is used as the test oracle in this package's suite.
