@@ -129,7 +129,7 @@ Scaffolds a new GitHub Action in a directory holding a `package.json`, ready for
 `[action.persistLocal]` enabled), `action.yml` (`node24`, `runs.main`
 `dist/main.js`, branding), `src/main.ts` (the program import and the
 `GITHUB_ACTIONS` guard), `src/program.ts`, and a `tsconfig.json` extending
-`@effected/plugin/tsconfig/ecma.json`. `--name` and `--description` default to
+`@effected/plugin/tsconfig/action.json`. `--name` and `--description` default to
 `package.json`'s `name` (scope dropped) and `description`, and must be one line
 without control characters. Every path is inspected before anything is written:
 an existing file stops the run with nothing written unless `--force`, and a

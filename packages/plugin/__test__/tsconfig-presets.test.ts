@@ -3,7 +3,16 @@
 // rebuilds `dist/prod` before every run.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	readdirSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, assert, describe, it } from "@effect/vitest";
@@ -33,6 +42,18 @@ describe("the tsconfig presets", () => {
 	it("each names where it was copied from", () => {
 		assert.include(preset("ecma.json")["//"] ?? "", "@savvy-web/bundler");
 		assert.include(preset("root.json")["//"] ?? "", "@savvy-web/silk");
+		assert.include(preset("action.json")["//"] ?? "", "@savvy-web/github-action-builder");
+	});
+
+	it("action.json is the action preset: bundler resolution, node types, and no state written into dist", () => {
+		const { compilerOptions } = preset("action.json");
+		assert.strictEqual(compilerOptions.module, "ESNext");
+		assert.strictEqual(compilerOptions.moduleResolution, "bundler");
+		assert.deepStrictEqual(compilerOptions.types, ["node"]);
+		assert.strictEqual(compilerOptions.noEmit, true);
+		for (const key of ["incremental", "tsBuildInfoFile", "composite", "outDir", "declarationDir", "customConditions"]) {
+			assert.isFalse(key in compilerOptions, key);
+		}
 	});
 
 	it("root.json is the composite preset", () => {
@@ -46,6 +67,7 @@ describe("the tsconfig presets", () => {
 		assert.strictEqual(manifest.exports["./tsconfig/*"], "./tsconfig/*");
 		assert.isTrue(existsSync(join(BUILT, "tsconfig/ecma.json")), "ecma.json");
 		assert.isTrue(existsSync(join(BUILT, "tsconfig/root.json")), "root.json");
+		assert.isTrue(existsSync(join(BUILT, "tsconfig/action.json")), "action.json");
 	});
 
 	it("the manifest surfaces the bundler's peers to a consumer's install", () => {
@@ -66,6 +88,44 @@ describe("the tsconfig presets", () => {
 		assert.strictEqual(status, 0, stdout + stderr);
 		assert.include(stdout.toLowerCase(), '"verbatimmodulesyntax": true');
 	});
+});
+
+describe("the action preset, followed by the compiler", () => {
+	it("typechecks a CJS default import, excludes the consumer's own dist, and writes nothing", () => {
+		const consumer = join(scratch, "action-consumer");
+		mkdirSync(join(consumer, "node_modules/@effected"), { recursive: true });
+		mkdirSync(join(consumer, "node_modules/cjs-dep"), { recursive: true });
+		mkdirSync(join(consumer, "src"), { recursive: true });
+		mkdirSync(join(consumer, "dist"), { recursive: true });
+		symlinkSync(BUILT, join(consumer, "node_modules/@effected/plugin"));
+		symlinkSync(join(PLUGIN, "node_modules/@types"), join(consumer, "node_modules/@types"));
+		writeFileSync(
+			join(consumer, "node_modules/cjs-dep/package.json"),
+			JSON.stringify({ name: "cjs-dep", version: "1.0.0", main: "index.js", types: "index.d.ts" }),
+		);
+		writeFileSync(join(consumer, "node_modules/cjs-dep/index.js"), "module.exports = class Dep {};\n");
+		writeFileSync(join(consumer, "node_modules/cjs-dep/index.d.ts"), "declare class Dep {}\nexport = Dep;\n");
+		writeFileSync(
+			join(consumer, "tsconfig.json"),
+			JSON.stringify({ extends: "@effected/plugin/tsconfig/action.json" }),
+		);
+		writeFileSync(
+			join(consumer, "src/main.ts"),
+			'import { readFileSync } from "node:fs";\nimport Dep from "cjs-dep";\nexport const d = new Dep();\nexport const f = readFileSync;\n',
+		);
+		const { status, stdout, stderr } = spawnSync(TSC, ["-p", consumer], { cwd: consumer, encoding: "utf8" });
+		assert.strictEqual(status, 0, stdout + stderr);
+		assert.deepStrictEqual(readdirSync(consumer).sort(), ["dist", "node_modules", "src", "tsconfig.json"]);
+		assert.deepStrictEqual(readdirSync(join(consumer, "dist")), []);
+		const shown = spawnSync(TSC, ["--showConfig", "-p", consumer], { cwd: consumer, encoding: "utf8" });
+		assert.strictEqual(shown.status, 0, shown.stdout + shown.stderr);
+		const { exclude } = JSON.parse(shown.stdout) as { exclude: string[] };
+		assert.deepStrictEqual(
+			exclude.map((entry) => entry.slice(entry.indexOf("action-consumer"))),
+			["action-consumer/node_modules", "action-consumer/dist"],
+		);
+		assert.deepStrictEqual(readdirSync(join(consumer, "src")), ["main.ts"]);
+	}, 60_000);
 });
 
 describe("the ./env ambient declaration", () => {
