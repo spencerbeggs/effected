@@ -1,5 +1,5 @@
 /**
- * The `effected package build` and `effected action build` machinery the tool's front ends share.
+ * The `effected package build`, `effected action build` and `effected action init` machinery the tool's front ends share.
  *
  * @packageDocumentation
  */
@@ -12,6 +12,21 @@ export {
 	ValidationResult,
 	renderCiAnnotations,
 } from "@effected/bundler";
+export {
+	ActionInit,
+	type ActionInitDeps,
+	type ActionInitInput,
+	ActionInitResult,
+	ActionMetadataInvalidError,
+	ActionMetadataMissingError,
+	ActionScaffold,
+	ActionScaffoldFile,
+	type ActionScaffoldInput,
+	ScaffoldConflict,
+	ScaffoldConflictError,
+	ScaffoldExistsError,
+	ScaffoldWriteError,
+} from "./ActionInit.js";
 export { ActionRun, type ActionRunDeps, type ActionRunInput, NotAnActionError } from "./ActionRun.js";
 export { ActionRunResult } from "./ActionRunResult.js";
 export {

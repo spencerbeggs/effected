@@ -20,6 +20,12 @@
 * Updated @effected/oidc
 * Updated @effected/s3
 * Updated @effected/changesets
+* Updated @effected/cli
+* Updated @effected/engine
+* Updated @effected/mcp
+* Updated Build a GitHub Action repository to the kit's canonical shape
+* Updated The effected build commands: package build, action build and action init
+* Updated effected
 
 ## 2026-11-07
 

@@ -22,6 +22,7 @@ describe("effected-mcp", () => {
 			const tools = yield* harness.listTools;
 			assert.deepStrictEqual(tools.map((tool) => tool.name).sort(), [
 				"action_build",
+				"action_init",
 				"identity",
 				"package_build",
 				"schema_build",

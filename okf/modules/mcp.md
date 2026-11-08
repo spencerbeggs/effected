@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/mcp"
-description: "The effected-mcp server: a stdio MCP server with an identity tool, the package_build and action_build tools, and the schema_check, schema_build and schema_validate tools on effect/ai and @effected/mcp-kit, run by a bin that a carrier shim can wrap with its own distribution identity."
+description: "The effected-mcp server: a stdio MCP server with an identity tool, the package_build, action_build and action_init tools, and the schema_check, schema_build and schema_validate tools on effect/ai and @effected/mcp-kit, run by a bin that a carrier shim can wrap with its own distribution identity."
 status: draft
 kind: package
 resource: ../../packages/mcp
@@ -9,11 +9,11 @@ tags:
   - architecture
   - dx
 generated:
-  by: "okfit/claude-code"
-  at: 2026-11-06T22:24:55Z
+  by: "claude-code/opus-5.5"
+  at: 2026-11-08T17:37:31Z
 integrity:
   generated:
-    body: f7a19b13de7e27f4
+    body: 6e27455adb0e4efe
 ---
 
 # @effected/mcp
@@ -25,6 +25,7 @@ integrity:
 - `identity`: the tool name, this front end's version, the carrier `distribution` or `null`, and the resolved `effect` version, built by [engine](engine.md) and served as a real tool result.
 - `schema_check` (read-only, writes nothing), `schema_build` (writes) and `schema_validate` (read-only): the [schema commands](../interfaces/schema-commands.md) as tools. Parameters mirror the flags; each declares a result schema, the same classes the CLI's JSON encodes, so an agent reads a declared shape and a located diff instead of inferring one. Drift, staleness and a failed validation are ordinary results (a `verdict`, or `valid: false`); only a config that cannot be found or loaded, a path outside the workspace root, or a run that could not finish is a refusal.
 - `package_build` and `action_build` (both write): [the build commands](../interfaces/build-commands.md) as tools, answering the classes the CLI's JSON encodes. A build that crashes or records an error, or validation stopping one, is an ordinary result with the verdict `failed`; only a run that could not start or finish is a refusal. `action_build`'s `persist` defaults to false, the opposite of the command. They share one `Exclusive` lane with a 10-minute timeout, which cannot stop a build that is already running.
+- `action_init` (writes): [`effected action init`](../interfaces/build-commands.md#effected-action-init) as a tool, answering `ActionInitResult`. An existing file without `force`, a conflict (a symbolic link at any target or parent, the wrong kind of entry), a directory with no `package.json` and a missing or invalid name or description are refusals; the engine keeps every write inside `cwd`, so a committed link cannot reach past the root. It takes no lane: it writes sources, never `dist`.
 - `main(options?)`: runs the server over stdio under `McpGuard.run` with a lazy `load` and `exitBeforeConnect` for both crash events; `options.distribution` names the carrier.
 - `MCP_VERSION`: the package's own version, replaced at build.
 

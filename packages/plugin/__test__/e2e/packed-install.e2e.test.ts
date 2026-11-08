@@ -440,7 +440,15 @@ describe.skipIf(!RUNNABLE)("packed install (@effected/plugin)", () => {
 						const session = yield* mcpSession(consumer, env);
 						assert.deepStrictEqual(
 							session.listed.result?.tools?.map((tool) => tool.name),
-							["identity", "schema_check", "schema_build", "schema_validate", "package_build", "action_build"],
+							[
+								"identity",
+								"schema_check",
+								"schema_build",
+								"schema_validate",
+								"package_build",
+								"action_build",
+								"action_init",
+							],
 							label,
 						);
 						assert.strictEqual(session.called.result?.isError ?? false, false, label);

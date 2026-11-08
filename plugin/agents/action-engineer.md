@@ -192,8 +192,8 @@ source wins and the concept is a finding to report.
 ## What this agent does NOT do
 
 - **The action bundler and the scaffold.** `effected action build`, the
-  `[action]` tables of `effected.toml`, the committed `dist/`, and the
-  `github-action-template` repo belong to the build tool and the scaffold. You
+  `[action]` tables of `effected.toml`, and the committed `dist/` belong to the
+  build tool, and `effected action init` writes a new action's scaffold. You
   write the action's *code*; you do not configure or debug its bundle here.
 - **Product scope and repo restructuring.** You implement against a decided
   design; you do not decide what the action should do.
