@@ -435,6 +435,35 @@ exception is deliberate parity with a reference that itself uses a string
 replacement: `@effected/tsconfig-json` keeps `replace(/\*/g, subpath)`
 because tsc does, and pins it with a test.
 
+## A consumer-side regex over `raw` spans must strip continuations first
+
+A parser that keeps each token's `raw` source slice keeps whatever the format
+removes before it tokenizes. Shell is the sharp case: bash deletes every
+backslash-newline (`\⏎`) before it reads a token, and so does
+`@effected/shell`, which resolves `[\⏎[` to `[[`. But `raw` keeps the `\⏎` as
+written. A guard that runs a pattern over `raw` (`/\(\(/`, `/^\[\[$/`,
+`/PS4=/`) misses the split spelling, and bash runs the joined one:
+`[\⏎[ x -eq 0 ]]`, `(\⏎( x ))` and `P\⏎S4=…` each passed a guard that matched
+`raw`.
+
+Strip continuations before any text match, the way the format does: in
+`@effected/shell`, match `ShellWord.joined` and `ShellAssignment.joined`, never
+`raw`. When the parser offers no joined accessor, join exactly where the
+format joins (bash keeps `\⏎` inside single quotes and after an escaping
+backslash) and test every position a continuation can take in the pattern's
+input. A port that exposes `raw` should also expose the joined text, so each
+consumer does not have to write its own stripping and get it wrong.
+
+The same blindness hits a guard keyed on parse structure when the program
+re-parses an argument at run time. bash's `declare -a 'x=($(cmd))'` is a
+quoted word to the parser, with no array part. But `declare` re-reads a
+`( … )` value as a compound assignment when its target is an array, and runs
+`cmd`. `printf -v`, `read` and `trap` re-read their arguments in the same way.
+A rule that looks for the parsed construct (an `opaque` array part) never sees
+the quoted spelling of the same construct. For each argument the program
+re-reads, refuse any value that is not literal or that could take the
+re-read form after quote removal.
+
 ## The invariant that ties it together
 
 > Malformed input fails through the documented typed error channel

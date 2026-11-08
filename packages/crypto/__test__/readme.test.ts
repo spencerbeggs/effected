@@ -6,7 +6,7 @@ import { Effect, Layer, Redacted, Schema } from "effect";
 import type { CryptoError } from "effect/crypto";
 import { Digest, Mac, SecureRandom } from "effect/crypto";
 import { HttpClient, HttpClientError } from "effect/http";
-import type { FingerprintError, SigV4Credentials, SigV4PathError } from "../src/index.js";
+import type { FingerprintError, SigV4Credentials, SigV4EncodingError, SigV4PathError } from "../src/index.js";
 import { ConstantTime, Fingerprint, Hash, Hmac, HttpRedaction, SigV4 } from "../src/index.js";
 
 // README: What to provide
@@ -60,7 +60,7 @@ export const readFirstBytes = (
 	now: Date,
 ): Effect.Effect<
 	{ readonly url: string; readonly headers: Record<string, string> },
-	SigV4PathError | CryptoError.CryptoError,
+	SigV4PathError | SigV4EncodingError | CryptoError.CryptoError,
 	Digest.Digest | Mac.Mac
 > =>
 	SigV4.sign(

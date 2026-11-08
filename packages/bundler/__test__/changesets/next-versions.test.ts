@@ -71,17 +71,18 @@ describe("resolveNextVersions", () => {
 		assert.strictEqual(realpathSync(result.root), realpathSync(root));
 	});
 
-	it("degrades to current versions in a changesets mode the planner does not model", async () => {
+	it("plans pre-release versions in pre mode", async () => {
 		addChangeset("bump", '---\n"@scope/a": major\n---\n\nbreaking');
 		writeFileSync(
 			join(root, ".changeset", "pre.json"),
 			JSON.stringify({ mode: "pre", tag: "next", initialVersions: {}, changesets: [] }),
 		);
 		const pre = await resolveNextVersions(join(root, "packages", "a"));
-		assert.strictEqual(pre.versions.get("@scope/a"), "1.0.0");
+		assert.strictEqual(pre.versions.get("@scope/a"), "2.0.0-next.0");
+		assert.strictEqual(pre.versions.get("@scope/b"), "2.0.0");
 	});
 
-	it("degrades to current versions for a fixed group", async () => {
+	it("releases a fixed group together, from the group's highest version", async () => {
 		writeChangesetConfig();
 		writeFileSync(
 			join(root, ".changeset", "config.json"),
@@ -95,7 +96,8 @@ describe("resolveNextVersions", () => {
 		);
 		writeFileSync(join(root, ".changeset", "bump.md"), '---\n"@scope/a": major\n---\n\nbreaking');
 		const fixed = await resolveNextVersions(join(root, "packages", "a"));
-		assert.strictEqual(fixed.versions.get("@scope/a"), "1.0.0");
+		assert.strictEqual(fixed.versions.get("@scope/a"), "3.0.0");
+		assert.strictEqual(fixed.versions.get("@scope/b"), "3.0.0");
 	});
 
 	it("degrades to current versions for a changeset naming an unknown package", async () => {

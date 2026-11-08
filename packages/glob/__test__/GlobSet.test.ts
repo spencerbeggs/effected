@@ -131,6 +131,53 @@ describe("GlobSet: classification per expanded alternative (pinned decision)", (
 			assert.deepStrictEqual(set.literals, ["a", "b"]);
 		}),
 	);
+
+	it.effect("a numeric range of 100 or more values is one wildcard, as minimatch 11 keeps it one portion", () =>
+		Effect.gen(function* () {
+			const set = yield* GlobSet.compile(["{logs/{0..199}.txt,README}", "{0..9}"]);
+			assert.deepStrictEqual(set.literals, ["README", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+			assert.deepStrictEqual(
+				set.wildcards.map((w) => w.source),
+				["logs/{0..199}.txt"],
+			);
+			assert.isTrue(set.wildcards[0]?.hasMagic);
+			assert.isTrue(set.matches("logs/150.txt"));
+			assert.isFalse(set.matches("logs/200.txt"));
+			// past the expansion budget it compiles and matches, as one portion
+			const large = yield* GlobSet.compile(["x/{0..1000000}/y"]);
+			assert.deepStrictEqual(large.literals, []);
+			assert.isTrue(large.matches("x/999999/y"));
+			assert.isFalse(large.matches("x/1000001/y"));
+		}),
+	);
+
+	it.effect("an alternative means alone what it means in the whole pattern", () =>
+		Effect.gen(function* () {
+			// expansion unescapes a brace, and the alternative is not expanded again
+			const escaped = yield* GlobSet.compile(["\\{a,b}", "\\{0..9007199254740992}"]);
+			assert.deepStrictEqual(escaped.literals, ["{a,b}", "{0..9007199254740992}"]);
+			assert.isTrue(escaped.matches("{a,b}"));
+			assert.isFalse(escaped.matches("a"));
+			// an unescaped `\` just before a range is taken with it, so each
+			// alternative is its own wildcard; after a `$` a range alone would not
+			// read as one, so the include stays one wildcard, the whole pattern
+			for (const [pattern, yes, no, sources] of [
+				["{$,a}{0..199}", ["$5", "a199"], [`$${"{0..199}"}`, "$200"], ["{$,a}{0..199}"]],
+				["{a\\\\,b}{0..199}", ["a5", "b42"], ["a\\5", "a200"], ["a{0..199}", "b{0..199}"]],
+				["{$,a}{0..199}-{0..199}", ["$5-7", "a1-199"], ["$5-200"], ["{$,a}{0..199}-{0..199}"]],
+			] as const) {
+				const set = yield* GlobSet.compile([pattern]);
+				const whole = GlobPattern.make({ source: pattern });
+				assert.deepStrictEqual(
+					set.wildcards.map((w) => w.source),
+					[...sources],
+					pattern,
+				);
+				for (const c of yes) assert.isTrue(set.matches(c) && whole.matches(c), `${pattern} vs ${c}`);
+				for (const c of no) assert.isFalse(set.matches(c) || whole.matches(c), `${pattern} vs ${c}`);
+			}
+		}),
+	);
 });
 
 describe("GlobSet: set semantics truth table", () => {
@@ -140,6 +187,21 @@ describe("GlobSet: set semantics truth table", () => {
 			assert.isTrue(set.matches("a/y")); // include, not excluded
 			assert.isFalse(set.matches("a/x")); // include, excluded
 			assert.isFalse(set.matches("b/y")); // no include
+		}),
+	);
+
+	it.effect("exclusions are order-independent: a later include never puts an excluded path back", () =>
+		Effect.gen(function* () {
+			// npm's `workspaces` keeps `packages/a` here: its negation removes only what came before it.
+			for (const patterns of [
+				["packages/*", "!packages/a", "packages/a"],
+				["!packages/a", "packages/*", "packages/a"],
+				["packages/a", "packages/*", "!packages/a"],
+			]) {
+				const set = yield* GlobSet.compile(patterns);
+				assert.isFalse(set.matches("packages/a"), patterns.join(" "));
+				assert.isTrue(set.matches("packages/b"), patterns.join(" "));
+			}
 		}),
 	);
 

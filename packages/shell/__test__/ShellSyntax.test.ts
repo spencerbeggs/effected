@@ -450,3 +450,57 @@ describe("ShellSyntax.parseEffect", () => {
 		}),
 	);
 });
+
+describe("joined text", () => {
+	const C = "\\\n";
+
+	it("removes a backslash-newline at every position bash removes one", () => {
+		// [input, joined]: a continuation inside a bare run, a reserved word,
+		// an expansion opener, a double-quoted run, a substitution and a brace
+		// span, and at either end, each checked under bash 5.3.
+		for (const [input, expected] of [
+			[`[${C}[`, "[["],
+			[`gi${C}t`, "git"],
+			[`$${C}{!x}`, `\${!x}`],
+			[`"\${y@${C}P}"`, `"\${y@P}"`],
+			[`"a${C}b"`, '"ab"'],
+			[`$(${C}( x ))`, "$(( x ))"],
+			[`$(echo a${C}b)`, "$(echo ab)"],
+			[`{a,${C}b}`, "{a,b}"],
+			[`a${C}`, "a"],
+		] as const) {
+			const word = onlyWord(input);
+			assert.strictEqual(word.raw, input);
+			assert.strictEqual(word.joined, expected, JSON.stringify(input));
+		}
+	});
+
+	it("keeps one inside a top-level single-quoted or ANSI-C part, and after an escaping backslash", () => {
+		// bash prints `a\⏎b` for `echo 'a\⏎b'` and `echo $'a\⏎b'`, and keeps
+		// the newline of `a\\⏎b`, whose second backslash is escaped.
+		assert.strictEqual(onlyWord(`'a${C}b'`).joined, `'a${C}b'`);
+		assert.strictEqual(onlyWord(`$'a${C}b'`).joined, `$'a${C}b'`);
+		assert.strictEqual(onlyWord(`x${C}'a${C}b'${C}y`).joined, `x'a${C}b'y`);
+		// `a\\⏎b`: the newline ends the word. `a\\\⏎b`: an escaped backslash,
+		// then a continuation, one word `a\\b`.
+		assert.strictEqual(words("a\\\\\nb")[0]?.joined, "a\\\\");
+		assert.strictEqual(onlyWord(`a\\\\${C}b`).joined, "a\\\\b");
+	});
+
+	it("joins an assignment's name, operator and value", () => {
+		for (const [input, expected] of [
+			[`a${C}[x]=1`, "a[x]=1"],
+			[`a[x]${C}=1`, "a[x]=1"],
+			[`a+${C}=1`, "a+=1"],
+			[`a=${C}1`, "a=1"],
+			[`a=1${C}2`, "a=12"],
+			[`a=(${C}[x]=1)`, "a=([x]=1)"],
+			[`a='1${C}2'`, `a='1${C}2'`],
+		] as const) {
+			const [assignment] = ShellSyntax.parse(input).segments[0]?.assignments ?? [];
+			assert.isDefined(assignment, JSON.stringify(input));
+			assert.strictEqual(assignment?.raw, input);
+			assert.strictEqual(assignment?.joined, expected, JSON.stringify(input));
+		}
+	});
+});

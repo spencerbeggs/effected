@@ -5,7 +5,12 @@
  * @packageDocumentation
  */
 
-export { ActionBuildFailedError, ActionConfigError, ActionRunError } from "./commands/action/errors.js";
+export {
+	ActionBuildFailedError,
+	ActionConfigError,
+	ActionInitError,
+	ActionRunError,
+} from "./commands/action/errors.js";
 export type { ActionCommandDeps } from "./commands/action/execute.js";
 export { BuildFailedError, PackageConfigError, PackageRunError } from "./commands/package/errors.js";
 export type { PackageCommandDeps } from "./commands/package/execute.js";

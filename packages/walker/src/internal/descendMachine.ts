@@ -13,7 +13,7 @@
 
 import type { GlobPattern } from "@effected/glob";
 import { isPinnedAbsolute } from "./absolute.js";
-import { segmentBound, skipsHiddenDirectories } from "./patternBounds.js";
+import { matchesByBasename, segmentBound, skipsHiddenDirectories } from "./patternBounds.js";
 import { resolveSegments } from "./segments.js";
 import { trimTrailing } from "./trimTrailing.js";
 
@@ -204,6 +204,26 @@ export function* descendMachine<S, C>(
 		return false;
 	}
 
+	/**
+	 * Whether a literal's `.`, `..` and empty segments resolve as a real stat resolves them: the stat joins its path,
+	 * and joining normalizes them lexically, so `f.js/x/..` would reach `f.js` where the kernel fails it ENOTDIR (and
+	 * `x/../f.js` would reach `f.js` with no `x`). Each such segment must follow a real directory — not a link, whose
+	 * `..` the kernel resolves from its target. The segments before a plain one need no request: the final stat
+	 * crosses them itself. A leading empty segment is a root and a leading `.` is `cwd`, a directory already.
+	 */
+	function* resolvesPhysically(raw: ReadonlyArray<string>): Walk<boolean> {
+		for (let index = 1; index < raw.length; index += 1) {
+			const segment = raw[index];
+			if (segment !== "" && segment !== "." && segment !== "..") continue;
+			const before = resolveSegments(raw.slice(0, index));
+			if (before === undefined) return false;
+			if (before.length === 0) continue;
+			const answer = yield* ask({ _tag: "Lstat", path: join(options.cwd, before.join("/")) });
+			if (answer?.kind !== "Directory") return false;
+		}
+		return true;
+	}
+
 	/** The real path of a directory the cycle guard must identify, or `undefined` when the walk must not enter it. */
 	function* realPathOf(absolute: string, relative: string): Walk<string | undefined | { readonly fail: true }> {
 		const answer = yield* ask({ _tag: "RealPath", path: absolute });
@@ -218,17 +238,26 @@ export function* descendMachine<S, C>(
 	// a literal that climbs above `cwd`, one inside a boundary, or — without
 	// followSymlinks — one reached through a symlinked directory. Braces count
 	// as magic here: `hasMagic` ignores a brace group, but `src/{a,b}.ts` is
-	// not a path — stat-ing its source would match nothing.
-	if (!pattern.hasMagic && !pattern.negated && !/[{}]/.test(pattern.source)) {
-		const segments = resolveSegments(pattern.source.split("/"));
-		if (segments === undefined) return done([]);
+	// not a path — stat-ing its source would match nothing. Nor is a literal that
+	// `matchBase` matches by basename: `a.js` matches `b/a.js` too, so it walks.
+	//
+	// The path is the one glob matches, never the source: a literal pattern compiles to one row of strings, escapes
+	// undone (`src/\x/f.js` is `src/x/f.js`) and `<p>/..` popped at optimization level 1 and up, and its
+	// `enumerationPrefix` is that whole row, slash-terminated. Only that spelling can match, so it is the answer,
+	// and an answer that does not match as spelled (a row portion holding an escaped `/`) is none.
+	if (!pattern.hasMagic && !pattern.negated && !/[{}]/.test(pattern.source) && !matchesByBasename(pattern)) {
+		const spelled = pattern.enumerationPrefix.slice(0, -1);
+		const raw = spelled.split("/");
+		const segments = resolveSegments(raw);
+		if (segments === undefined || !pattern.matches(spelled)) return done([]);
 		if (yield* blocked(segments, segments.length - 1, segments.length - 1)) return done([]);
-		const answer = yield* ask({ _tag: "Stat", path: join(options.cwd, pattern.source) });
+		if (!(yield* resolvesPhysically(raw))) return done([]);
+		const answer = yield* ask({ _tag: "Stat", path: join(options.cwd, spelled) });
 		// `cwd` itself (a literal that resolves to no segment) is never a match.
 		const wanted =
 			(answer?.kind === "File" && matchFiles) ||
 			(answer?.kind === "Directory" && matchDirectories && segments.length > 0);
-		return done(answer !== undefined && wanted ? [{ path: pattern.source, info: answer.info }] : []);
+		return done(answer !== undefined && wanted ? [{ path: spelled, info: answer.info }] : []);
 	}
 
 	// What the pattern itself rules out, so the walk never reads a directory no

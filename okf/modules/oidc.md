@@ -26,10 +26,10 @@ sources:
     title: "jwt already performs issuer discovery and JWKS resolution"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-31T19:37:34Z
+  at: 2026-11-08T15:15:33Z
 integrity:
   generated:
-    body: 6cac7469caaf1244
+    body: 1275200870e484b2
 ---
 
 # `@effected/oidc`
@@ -68,7 +68,7 @@ Named `Effect.fn` spans on `Oidc.verify` and `Oidc.decodeUnverified`, annotated 
 
 ## Testing
 
-`Oidc.verify` is tested through `jwt`'s `TestIssuer`, so discovery and JWKS resolution run for real with no network. `IdentityToken` keeps its test layers.
+`Oidc.verify` is tested through `jwt`'s `TestIssuer`, so discovery and JWKS resolution run for real with no network. `IdentityToken` keeps its test layers. Interrupting `Oidc.verify` aborts the key fetch through core `HttpClient`'s own per-request `AbortController`, with no wiring here or in `jwt`; `__test__/interruption.test.ts` pins it over the real `FetchHttpClient` and a `fetch` that hangs on discovery.
 
 [^owner]: conversation with the repository owner
 [^identity-token]: `../../packages/oidc/src/IdentityToken.ts`

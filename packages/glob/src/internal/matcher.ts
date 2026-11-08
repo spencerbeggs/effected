@@ -4,8 +4,9 @@
 // Port notes: src/index.ts, the one-portion matcher minimatch 11.0.5 runs. The
 // kit answers every extglob portion, and every `.`, `..` or dotfile path
 // portion, with it, so those answers are 11's own. Changes from upstream:
-// 1. No `normalize` or `rangeMark` option (the kit has neither: it expands
-//    numeric ranges), and no `show`/`toString` debug listing. Three more
+// 1. No `normalize` option (the kit has none), and no `show`/`toString` debug
+//    listing. `rangeMark` is ported, with numeric-range.ts as numericRange.ts
+//    (its digit classes built through `compile`). Three more
 //    changes, none behavioural: only `testUnchecked` is ported (upstream's
 //    `test` adds a `/` check and a surrogate pre-scan; every caller passes
 //    one portion, as 11.0.5's own `portionMatch` does); `itemLengths` loops
@@ -29,9 +30,18 @@
 //    run it is. It keeps the graph from holding one node per star. It is a
 //    speed change only (a few ms on thirty thousand stars), so no test can
 //    tell it from upstream by its answers.
+// 6. Every graph item is charged to the caller's compile budget (`charge`)
+//    before the graph is built: a numeric range's items as numericRange
+//    makes them, every other token as one. Brace alternatives around a kept
+//    range make distinct portions, each with its own copy of the range's
+//    graph (`{$,a}{-9007199254740991..9007199254740991}` twelve times, 504
+//    characters, built 4,096 graphs of 8,200 items: 16.7 s and 4.2 GB).
+//    Upstream has no such bound; minimatch 11 refuses those patterns as too
+//    long.
 
 import { GuardExceeded, MAX_NESTING_DEPTH } from "./limits.js";
 import { parseMatcherClass } from "./matcherClass.js";
+import { numericRange } from "./numericRange.js";
 
 /** Options of one portion matcher. */
 export interface MatcherOptions {
@@ -41,6 +51,11 @@ export interface MatcherOptions {
 	readonly dot?: boolean;
 	/** do not match extglobs (treat them as normal strings) */
 	readonly noext?: boolean;
+	/**
+	 * the char that marks a numeric range, as `<mark>lo..hi<mark>`, which is
+	 * matched as the numbers from lo to hi
+	 */
+	readonly rangeMark?: string;
 }
 
 // parsed pattern items
@@ -84,6 +99,12 @@ type Node =
 /** Builds a regexp at construction; a source the runtime rejects throws the typed guard. */
 export type Compile = (source: string, flags: string) => RegExp;
 
+/**
+ * Counts graph items against the caller's compile budget before they are
+ * built, and throws the typed guard past it (port note 6).
+ */
+export type Charge = (items: number) => void;
+
 // the end of the pattern, or of a negated sub-pattern
 const MATCH: Node = { t: "match", id: 0 };
 
@@ -104,12 +125,45 @@ const litMatch = (l: Lit, c: string): boolean => {
 	return ascii[code] === 1;
 };
 
-const tokenize = (p: string, nocase: boolean, noext: boolean, compile: Compile): Array<Token> => {
+const tokenize = (
+	p: string,
+	nocase: boolean,
+	noext: boolean,
+	compile: Compile,
+	mark: string | undefined,
+	charge: Charge,
+): Array<Token> => {
 	const toks: Array<Token> = [];
 	// one class-parser memo for this pattern
 	const deadEnds = new Set<number>();
 	for (let i = 0; i < p.length; ) {
 		const c = String.fromCodePoint(p.codePointAt(i) as number);
+		if (mark) {
+			// a \ before a range would only escape its first char
+			const m = c === "\\" && p.startsWith(mark, i + 1) ? 1 : 0;
+			if (m || c === mark) {
+				const start = i + m + mark.length;
+				const end = p.indexOf(mark, start);
+				const r = /^(-?\d+)\.\.(-?\d+)$/.exec(p.slice(start, end));
+				const alts =
+					end !== -1 && r
+						? numericRange<Item>(r[1] as string, r[2] as string, lit, (a, b) => ({
+								t: "class",
+								re: compile(`^[${a}-${b}]$`, ""),
+							}))
+						: undefined;
+				if (alts) {
+					// port note 6: a range is charged by its items (56 alternatives
+					// and 684 items for the widest ends)
+					let items = alts.length;
+					for (const alt of alts) items += alt.length;
+					charge(items);
+					toks.push({ t: "ext", type: "@", alts });
+					i = end + mark.length;
+					continue;
+				}
+			}
+		}
 		if (c === "\\") {
 			// a trailing \ is a literal \
 			const e = p.codePointAt(i + 1);
@@ -684,7 +738,7 @@ export class Matcher {
 	#affix = false;
 	#dfa: Dfa | undefined;
 
-	constructor(pattern: string, options: MatcherOptions, compile: Compile) {
+	constructor(pattern: string, options: MatcherOptions, compile: Compile, charge: Charge = () => {}) {
 		this.pattern = pattern;
 		this.options = options;
 		const nocase = options.nocase ?? false;
@@ -703,7 +757,9 @@ export class Matcher {
 		// a pattern that is only an empty extglob is a literal string,
 		// except for `!()`, which matches any non-empty string
 		const literal = /^[?*+@]\(\)$/.test(pattern);
-		const toks = tokenize(pattern, nocase, noext || literal, compile);
+		const toks = tokenize(pattern, nocase, noext || literal, compile, options.rangeMark, charge);
+		// port note 6: every other token is one item of the graph
+		charge(toks.length);
 		const items = build(toks, pair(toks), 0, toks.length, true, 0)[0] as Array<Item>;
 		const [start, size] = compileNodes(items, fold);
 		this.#start = start;

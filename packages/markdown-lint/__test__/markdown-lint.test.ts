@@ -266,6 +266,18 @@ describe("MarkdownLint", () => {
 		assert.lengthOf(findings, 2);
 	});
 
+	it("lintDocument keeps a BOM the document carries, where lint drops it", () => {
+		const text = "\uFEFF# a\n";
+		const document = Result.getOrThrow(MarkdownDocument.parseResult(text));
+		// Through lintDocument the mark is part of the first line, so the line
+		// is no heading; through lint it is dropped and the line is a heading.
+		assert.lengthOf(MarkdownLint.lintDocument(document, [everyHeading("h")]), 0);
+		assert.lengthOf(MarkdownLint.lint(text, [everyHeading("h")]), 1);
+		// Stripping the mark before parsing gives lint's reading.
+		const stripped = Result.getOrThrow(MarkdownDocument.parseResult(text.slice(1)));
+		assert.lengthOf(MarkdownLint.lintDocument(stripped, [everyHeading("h")]), 1);
+	});
+
 	it.effect("lintEffect yields exactly lint's findings", () =>
 		Effect.gen(function* () {
 			const rules = [everyHeading("h")];

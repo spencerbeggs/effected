@@ -293,6 +293,24 @@ describe("Bundler.build orchestration", () => {
 			const matched = harness({ options: { cwd } });
 			yield* Bundler.build(matched.options);
 			assert.deepStrictEqual(warningsOf(matched), []);
+
+			// A literal target that is not a file warns too (#1259).
+			rmSync(pkg, { recursive: true, force: true });
+			emit({ "./foo": "./dist/foo.js" });
+			const literal = harness({ options: { cwd } });
+			yield* Bundler.build(literal.options);
+			const literalWarning = warningsOf(literal)[0];
+			assert.strictEqual(literalWarning?.code, "exports-pattern-unmatched");
+			assert.include(literalWarning?.text ?? "", "./dist/foo.js");
+			assert.include(literalWarning?.text ?? "", "is not a file");
+
+			// So does a bin target that is not a file.
+			writeFileSync(join(pkg, "package.json"), JSON.stringify({ bin: { tool: "bin/tool.js" } }));
+			const binTarget = harness({ options: { cwd } });
+			yield* Bundler.build(binTarget.options);
+			const binWarning = warningsOf(binTarget)[0];
+			assert.strictEqual(binWarning?.code, "exports-pattern-unmatched");
+			assert.include(binWarning?.text ?? "", 'The bin "tool" points at "bin/tool.js"');
 		}),
 	);
 
@@ -560,6 +578,23 @@ describe("Bundler.build validation", () => {
 				pkg: { name: "p", version: "1.0.0", exports: { ".": "./src/index.ts", "./foo": { require: "./src/foo.ts" } } },
 			},
 			/exports\."\.\/foo"/,
+		),
+	);
+
+	it.effect("refuses a ./dist/*.js pattern export before any pass (#1259)", () =>
+		refused(
+			{ pkg: { name: "p", version: "1.0.0", exports: { ".": "./src/index.ts", "./*": "./dist/*.js" } } },
+			/exports\."\.\/\*".*pattern over build sources/,
+		),
+	);
+
+	it.effect("refuses an exe source inside a condition object before any pass (#1259)", () =>
+		refused(
+			{
+				pkg: { name: "p", version: "1.0.0", exports: { ".": { import: "./src/bin.ts" } } },
+				config: { exe: { fileName: "tool", targets: [{ platform: "darwin", arch: "arm64" }] } },
+			},
+			/exports\."\.".*exe source/,
 		),
 	);
 
@@ -1185,6 +1220,11 @@ describe("Bundler.build exe", () => {
 			const h = harness({ pkg: exePkg(), config: { exe: { fileName: "p" } }, options: { cwd, noExe: true } });
 			yield* Bundler.build(h.options);
 			assert.strictEqual(h.exes.length, 0);
+			// The binary the build skipped is not reported as an export target with nothing behind it.
+			assert.deepStrictEqual(
+				h.issues[0]?.reports[0]?.targetGroups.flatMap((group) => group.warnings.map((w) => w.code)),
+				[],
+			);
 			const manifest = readManifest(cwd);
 			assert.strictEqual((manifest.exports as Record<string, unknown>)["."], "./bin/p-darwin-arm64");
 			assert.deepStrictEqual(manifest.files, ["bin/p-darwin-arm64"]);

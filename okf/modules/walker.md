@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/walker/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-07T14:52:09Z
+  at: 2026-11-08T17:45:32Z
 integrity:
   generated:
-    body: 13bb52655574a332
+    body: 2825b7ae3356101c
 ---
 
 # walker
@@ -178,8 +178,15 @@ satisfies it) memoizing each directory's answer, `Option.none()` included,
 so a hot path such as Vitest's per-module package lookup reads each ancestor
 once. The cache is never invalidated by walker, and a throwing `accept`
 propagates with nothing cached for that directory: the callback's result is
-the answer, so a throw is the caller's defect, not a rejection. There is no
-`Effect` twin yet; inside Effect, `firstMatch` covers the boolean case.
+the answer, so a throw is the caller's defect, not a rejection.
+
+`Walker.findUpwardWith(dirs, accept, options?)` is its Effect twin:
+`accept: (dir) => Effect<Option<A>, E, R>`, the same scan, the same
+`UpwardAccepted` answer and the same `options.cache` contract (it reuses
+`FindUpwardSyncWithOptions`). `accept`'s typed failure `E` is not absorbed:
+it fails the search with nothing cached for that directory, so a caller who
+wants a read failure to mean "not valid" recovers inside `accept`. Same
+tests as the sync form, in `__test__/FindUpwardWith.test.ts`.
 
 The sync port carries `readFile(path): string`, UTF-8 text
 (`readFileSync(path, "utf8")`), so an accept function reads through the same
@@ -242,34 +249,45 @@ a head index rather than `Array.shift()`, which re-indexes the whole
 array on every dequeue. What earns a filesystem read is decided by the
 pattern's metadata:
 
-- A literal pattern — no magic, no braces, not negated — never walks at
-  all: one stat decides.
+- A literal pattern — no magic, no braces, not negated, and not one glob
+  reports `matchesByBasename` — never walks at all: one stat decides. It
+  stats, and answers, the row glob compiled, never the source: an escape is
+  undone (`src/\x/f.js` is `src/x/f.js`) and at level 1 and up `<p>/..` is
+  already popped (`f.js/x/..` answers `f.js`, as minimatch documents). A `.`,
+  `..` or empty segment the row keeps (level 0) must follow a real
+  directory, checked by `lstat`, because a joined stat path normalizes it
+  lexically where the kernel fails ENOTDIR or ENOENT (#1283).
 - A pattern that cannot match below one level never descends, reading a
   single level instead.
 - A pattern with no globstar reads no directory deeper than its segments
   can reach, so `packages/*/README.md` reads `packages` and each
   `packages/<name>` and nothing below them. Under `dot: false` the walk never
-  enters a hidden directory unless a segment names one, except for a pattern
-  `matchBase` could apply to: one glob compiles to a single-segment row. That
-  is a slash-less pattern, one with a `..` segment (glob pops `x/../**` to
-  `**`), or one made only of `**` and `.` segments (glob merges `**/**` and,
-  at optimization level 2, `**/./**` to `**`). A leading `.` is the exception,
-  because glob keeps it, so `./**` still prunes. Under `matchBase` such a
-  pattern matches by basename, which the probe cannot see, so it is never
-  pruned for dots; `__test__/PatternBoundsSweep.test.ts` pins the class over
-  every pattern of up to three segments. Both bounds live in
+  enters a hidden directory unless a segment names one. Neither bound holds,
+  and nor does the literal fast path, for a pattern glob reports
+  `matchesByBasename`: `matchBase` is on and some brace alternative compiles
+  to a single path portion, which matches by basename at any depth, so `*.js`
+  and `x/../*.js` match `b/d/f/g.js` (#1261) and `**` matches `.a/f.js`. glob
+  answers it from the compiled rows, the test matching itself applies, so it
+  is exact however the source is spelled: `src/[ab]/*.ts` under `matchBase`
+  keeps its depth bound and a tight `maxDepth`. `__test__/PatternBoundsSweep.test.ts`
+  pins the hidden-directory class over every pattern of up to three
+  segments, and walks each one (braces, classes, extglobs and escapes
+  included) under `matchBase`, `dot` and every optimization level against a
+  brute-force `matches` filter of a memfs tree, plus every bounded one under
+  the tightest `maxDepth` its separators allow: zero differences, the
+  literal fast-path classes included, whose spellings the filter resolves
+  physically against the tree. Both bounds live in
   `internal/patternBounds.ts` and only ever skip reads, never a match. They
   are checked before `maxDepth`, which therefore governs only directories the
   walk reads: a bounded pattern does not trip a cap on a deep tree it has no
   reason to enter. `@effected/glob` exposes neither its compiled segments nor
-  its `dot` option, so the depth bound counts the separators in the source.
+  its `dot` option (it does expose `matchesByBasename`), so the depth bound counts the separators in the source.
   Every separator in an alternative comes from the source, and only a
   globstar crosses one. The dot rule is a differential probe: two candidates
   built from the pattern, identical except for leading wildcards turned into
   hidden names, prove `dot: false` when only the first matches. Syntax the
-  probe does not model (classes, braces, extglobs, escapes, a leading `?`, a
-  slash-less pattern, a `..` segment, a pattern of only `**` and `.` segments
-  not led by `.`) is never pruned for dots, and a negated pattern is never bounded at all.
+  probe does not model (classes, braces, extglobs, escapes, a leading `?`, an
+  empty segment, a `.`-led segment) is never pruned for dots, and a negated pattern is never bounded at all.
 - A negated pattern walks from `cwd` and always deep-walks: the
   enumeration prefix is computed from the inner pattern, but matching
   inverts, so its matches can land arbitrarily deep and outside the

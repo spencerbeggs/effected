@@ -85,10 +85,9 @@ it.effect("a bad access value is ChangesetConfigError", () =>
 	}).pipe(Effect.provide(withConfig('{"access":"private"}'))),
 );
 
-it.effect("a present pre.json fails with UnsupportedChangesetModeError", () =>
+it.effect("a present pre.json does not stop the config reading", () =>
 	Effect.gen(function* () {
-		const error = yield* Effect.flip(ChangesetConfig.read("/repo"));
-		assert.strictEqual(error._tag, "UnsupportedChangesetModeError");
-		if (error._tag === "UnsupportedChangesetModeError") assert.strictEqual(error.mode, "pre");
-	}).pipe(Effect.provide(withConfig("{}", { "/repo/.changeset/pre.json": '{"mode":"pre"}' }))),
+		const config = yield* ChangesetConfig.read("/repo");
+		assert.strictEqual(config.baseBranch, "main");
+	}).pipe(Effect.provide(withConfig("{}", { "/repo/.changeset/pre.json": '{"mode":"pre","tag":"next"}' }))),
 );

@@ -399,6 +399,107 @@ describe("LockfileDiff.compare", () => {
 		);
 	});
 
+	describe("local file: targets and workspace catalog entries compare alike in pnpm, bun and npm", () => {
+		// The `filelink-before` → `filelink-after` pairs are real pnpm, npm and
+		// bun output over one workspace (provenance in the fixtures README). The
+		// root and packages/a depend on a `file:` directory and a `file:` tarball
+		// under vendor/, neither of them a workspace; pnpm and bun also reach
+		// packages/b through a default catalog entry `workspace:*`. `after` bumps
+		// both local targets and packages/b from 1.0.0 to 1.0.1, and packages/b's
+		// `ms` from 2.0.0 to 2.1.3. pnpm records a local target by its
+		// root-relative path and a workspace catalog entry by its specifier, so
+		// only `ms` moves.
+		const formats = [
+			{ format: "pnpm", file: "pnpm-lock.yaml" },
+			{ format: "bun", file: "bun.lock" },
+			{ format: "npm", file: "package-lock.json" },
+		] as const;
+
+		it.effect("a version bump inside a local target or a workspace is no change, and all three diffs agree", () =>
+			Effect.gen(function* () {
+				for (const { format, file } of formats) {
+					const before = yield* parseFixture(`${format}/filelink-before/${file}`, format);
+					const after = yield* parseFixture(`${format}/filelink-after/${file}`, format);
+					const diff = LockfileDiff.compare(before, after);
+					assert.deepStrictEqual(diff.catalogs, [], format);
+					assert.deepStrictEqual(
+						importerLines(diff),
+						["packages/b ms dependencies changed 2.0.0->2.1.3 2.0.0->2.1.3"],
+						format,
+					);
+				}
+			}),
+		);
+
+		it.effect("a file: edge reads the root-relative file: path pnpm records, from every importer", () =>
+			Effect.gen(function* () {
+				const read = (lockfile: Lockfile) =>
+					LockfileDiff.compare(Lockfile.make({ ...lockfile, importers: [] }), lockfile).importers.map(
+						(c) => `${c.importer} ${c.name} ${c.version.after ?? "-"}`,
+					);
+				const local = [
+					". local-dir file:vendor/local-dir",
+					". local-tar file:vendor/local-tar.tgz",
+					"packages/a local-dir file:vendor/local-dir",
+					"packages/a local-tar file:vendor/local-tar.tgz",
+				];
+				const pnpm = read(yield* parseFixture("pnpm/filelink-before/pnpm-lock.yaml", "pnpm"));
+				// The control: these are the values pnpm itself writes.
+				assert.deepStrictEqual(pnpm, [
+					". @fl/b link:packages/b",
+					...local.slice(0, 2),
+					"packages/a @fl/b link:../b",
+					...local.slice(2),
+					"packages/b ms 2.0.0",
+				]);
+				const bun = read(yield* parseFixture("bun/filelink-before/bun.lock", "bun"));
+				assert.deepStrictEqual(bun, pnpm);
+				// npm has no catalogs, so its importers reach packages/b with `*`
+				// from packages/a only.
+				const npm = read(yield* parseFixture("npm/filelink-before/package-lock.json", "npm"));
+				assert.deepStrictEqual(npm, [
+					...local.slice(0, 2),
+					"packages/a @fl/b link:../b",
+					...local.slice(2),
+					"packages/b ms 2.0.0",
+				]);
+			}),
+		);
+
+		it.effect("a file: specifier that lands on a workspace reads as the workspace link pnpm records", () =>
+			Effect.gen(function* () {
+				// The `fileworkspace` captures: packages/a declares `@fl/b: file:../b`,
+				// where packages/b is a workspace. pnpm records the edge `link:../b`,
+				// so the workspace wins over the `file:` spelling.
+				const read = (lockfile: Lockfile) =>
+					LockfileDiff.compare(Lockfile.make({ ...lockfile, importers: [] }), lockfile).importers.map(
+						(c) => `${c.importer} ${c.name} ${c.version.after ?? "-"}`,
+					);
+				const pnpm = read(yield* parseFixture("pnpm/fileworkspace/pnpm-lock.yaml", "pnpm"));
+				assert.deepStrictEqual(pnpm, ["packages/a @fl/b link:../b", "packages/b ms 2.0.0"]);
+				assert.deepStrictEqual(read(yield* parseFixture("bun/fileworkspace/bun.lock", "bun")), pnpm);
+				// npm writes this edge exactly as it writes a `file:` directory that
+				// is no workspace; the root entry's `workspaces` globs tell them apart.
+				assert.deepStrictEqual(read(yield* parseFixture("npm/fileworkspace/package-lock.json", "npm")), pnpm);
+			}),
+		);
+
+		it.effect("a catalog entry that resolves to a workspace reads its own specifier, as pnpm records it", () =>
+			Effect.gen(function* () {
+				for (const { format, file } of formats.filter((f) => f.format !== "npm")) {
+					const lockfile = yield* parseFixture(`${format}/filelink-before/${file}`, format);
+					const { extension: _extension, ...withoutCatalogs } = lockfile;
+					const diff = LockfileDiff.compare(Lockfile.make(withoutCatalogs), lockfile);
+					assert.deepStrictEqual(
+						catalogLines(diff),
+						["default/@fl/b added -->workspace:* -->workspace:* [.:dependencies,packages/a:dependencies]"],
+						format,
+					);
+				}
+			}),
+		);
+	});
+
 	describe("yarn", () => {
 		it.effect("records no importers and no catalogs, so two yarn lockfiles compare empty", () =>
 			Effect.gen(function* () {

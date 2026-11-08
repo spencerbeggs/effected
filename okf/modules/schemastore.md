@@ -28,10 +28,10 @@ sources:
     resource: ../../packages/schemastore/src/StoreDocument.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-08T12:10:34Z
 integrity:
   generated:
-    body: 2d1acd0452a7ac26
+    body: aa45d8a82e65b970
 ---
 
 # @effected/schemastore
@@ -567,6 +567,8 @@ writes, since a CI drift job must not regenerate. An existing file that
 does not parse is classified as a contract change and repaired, not
 failed typed — failing would leave a hand-corrupted generated file
 permanently un-regenerable. A `check` result also carries the canonical text a write would put on disk (`generated`) and the file's text as it is (`existing`, absent when the file is missing), and `SchemaPipeline.check` forwards both on each target's result, so a caller can show a line diff for a document it did not write without reading the file again.
+
+`SchemaWriteOptions.links` (`"follow"` by default, or `"replace"`) is forwarded to `AtomicFile.write` when a write happens, so a schema path that is a symlink is either written through or replaced by a regular file. It decides how the write lands, not whether one is needed: the comparison still reads the file the link points to.
 
 ## Change classification: annotations versus contract
 

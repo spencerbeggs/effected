@@ -83,6 +83,66 @@ integrities, so a re-capture against a newer pnpm means updating them too.
 The failure cases in `PnpmEnvLockfile.test.ts` do not use these files. They
 build a preamble in the test itself and break one edge per test.
 
+## Local-target fixtures (`*/filelink-*`, `*/fileworkspace`)
+
+These are real output of pnpm 12.18.0, npm 11.20.0 and bun 1.4.4, captured on
+2026-11-08 on darwin-arm64 (node 26.13.0). They pin how `LockfileDiff.compare`
+reads a local `file:` target and a catalog entry that resolves to a workspace
+(`okf/modules/lockfiles.md`, "Comparing two lockfiles").
+
+The input workspace, `<d>`, was the same for every manager:
+
+- `packages/a` (`@fl/a`) and `packages/b` (`@fl/b`, depending on `ms`), under
+  the workspace glob `packages/*`.
+- `vendor/local-dir`, a directory package `local-dir`, and
+  `vendor/local-tar.tgz`, a tarball of a package `local-tar`. Neither is a
+  workspace.
+- The root depends on `local-dir: file:vendor/local-dir` and
+  `local-tar: file:vendor/local-tar.tgz`. `packages/a` depends on the same two
+  through `file:../../vendor/...`.
+- For pnpm and bun, the root and `packages/a` also depend on `@fl/b: catalog:`,
+  and the default catalog declares `@fl/b: workspace:*` (`pnpm-workspace.yaml`
+  for pnpm, `workspaces.catalog` in the root `package.json` for bun). npm has no
+  catalogs, so its `packages/a` depends on `@fl/b: *`.
+
+`before` has `local-dir`, `local-tar` and `@fl/b` at 1.0.0 and `ms` at 2.0.0.
+`after` has all three at 1.0.1 and `ms` at 2.1.3, with the tarball repacked
+under the same name.
+
+| Fixture | Command (in `<d>`) | Pins |
+| --- | --- | --- |
+| `pnpm/filelink-before`, `pnpm/filelink-after` | `pnpm install --store-dir <tmp>` | pnpm's own reading, which is the rule: each `file:` edge records `file:<root-relative path>` from every importer, a version bump inside a local target moves nothing on the importer, and the catalog entry records `{ specifier: workspace:*, version: workspace:* }`. |
+| `npm/filelink-before`, `npm/filelink-after` | `npm install --cache <tmp> --no-audit --no-fund` | npm writes the `file:` directory as a link row (`{ resolved: vendor/local-dir, link: true }`), like a workspace, and the tarball as a row carrying the inner version and `resolved: file:vendor/local-tar.tgz`. The workspace globs miss `vendor/local-dir`, so it is no workspace and no importer. Only `ms` moves in the diff. |
+| `bun/filelink-before`, `bun/filelink-after` | `BUN_INSTALL_CACHE_DIR=<tmp> bun install` | bun records the tarball's version importer-relative (`../../vendor/local-tar.tgz` under `@fl/a`) and the catalog entry as a bare `workspace:*`. Only `ms` moves in the diff. |
+
+The `fileworkspace` captures come from a variant of the same workspace. The root
+has no dependencies, `packages/a` depends only on `@fl/b: file:../b` (a `file:`
+specifier naming a workspace), and nothing declares a catalog. The commands are
+as above, run once.
+
+| Fixture | Pins |
+| --- | --- |
+| `pnpm/fileworkspace` | pnpm records the edge `link:../b`: the workspace target decides, not the `file:` spelling. |
+| `bun/fileworkspace` | bun names its workspaces, so the edge reads `link:../b` as pnpm's does. |
+| `npm/fileworkspace` | npm writes the link row exactly as it writes a `file:` directory that is no workspace. The root entry's `workspaces` globs make it a workspace, so the edge reads `link:../b` as pnpm's does. |
+
+Two more npm captures pin how npm reads the root `workspaces` globs. They were
+captured the same day with `npm install --cache <tmp> --no-audit --no-fund`,
+and checked against npm's own answer, `npm query .workspace`.
+
+| Fixture | Input | npm's workspaces | Pins |
+| --- | --- | --- | --- |
+| `npm/workspaceglobs` | `workspaces: ["./packages/*/", "!packages/skip", "!!extra/c", "tools/**", "!tools/deep/**"]`, with packages in `packages/a`, `packages/skip`, `packages/.hidden`, `extra/c` and `tools/deep/t`. The root depends through `file:` on `packages/skip`, `packages/.hidden` and `tools/deep/t`. | `packages/a`, `extra/c` | A leading `./` and trailing `/`, odd and even `!`, `*` not taking a dot directory, and a `/**` negation ignoring what lies beneath. The three `file:` links stay plain packages. |
+| `npm/workspaceclimb` | A root at `w/r` declaring `workspaces: ["../../x", "../y", "!../**"]`, with packages in `x` and `w/y` (`../../x` and `../y` from the root), and depending on both through `file:`. | `../../x` | A `/**` negation ignores a directory it matches (`../y`). A climbing `..` is a parent, never a child, so `!../**` does not reach `../../x`. |
+| `npm/workspacedotend` | `workspaces: ["packages/a/.", "tools/*/.", "libs/l/./", "neg/*", "!neg/n/."]`, with packages in `packages/a`, `packages/b`, `tools/t1`, `tools/t2`, `libs/l` and `neg/n`. The root depends on `packages/b` through `file:`. | `libs/l`, `neg/n`, `packages/a`, `tools/t1`, `tools/t2` | A positive pattern ending in `/.` or `/./` names the directory itself, while the negation `!neg/n/.` ignores nothing. `packages/b` stays a plain package. |
+| `npm/workspacealias` | `workspaces: ["packages/**", "!packages/b/**", "packages/b/a"]`, with packages in `packages/x`, `packages/b/a` and `packages/b/z`. The root depends on `z: file:packages/b/z`, an alias, not the workspace's own name. | all three | npm writes two link rows for `packages/b/z` (`node_modules/wpackages_b_z` and `node_modules/z`) with the same `resolved`. The directory is one importer, and both rows stay package instances. |
+| `npm/workspacecancel` | `workspaces: ["packages/**", "!packages/b/**", "packages/b/a"]`, with packages in `packages/x`, `packages/b/a` and `packages/b/z`. The root depends on `packages/b/z` through `file:`. | all three | A later positive pattern that the negation matches cancels the negation outright, as `@npmcli/map-workspaces` does. |
+
+To regenerate one, rebuild `<d>` as above in an empty directory, run its
+command, and copy the lockfile over the fixture unchanged. The tarball's gzip
+header carries a timestamp, so a re-capture changes its integrity and nothing
+else the tests read.
+
 ## Fixtures with recorded provenance
 
 The test that reads each fixture records where it came from. These entries

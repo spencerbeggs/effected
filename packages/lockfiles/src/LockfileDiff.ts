@@ -74,8 +74,10 @@ const kindMatchesSides = (input: {
  * - `version` — the entry's resolved version on each side, present only where
  *   it could be resolved. pnpm records it on the catalog entry; bun records
  *   it on package entries instead, so it is the version the entry's consumers
- *   resolved to (see `LockfileDiff.compare` for the rule). A side with no
- *   resolvable version is absent rather than guessed.
+ *   resolved to (see `LockfileDiff.compare` for the rule). An entry that
+ *   resolves to a workspace package reads its own specifier, as pnpm records
+ *   it (`workspace:*`), so a workspace release is no catalog change. A side
+ *   with no resolvable version is absent rather than guessed.
  * - `kind` — `"added"` (only `after` sides), `"removed"` (only `before`
  *   sides) or `"changed"` (both sides, and the specifier or both resolved
  *   versions differ). Construction rejects a record whose `kind` disagrees
@@ -125,8 +127,11 @@ export class CatalogChange extends Schema.Class<CatalogChange>("CatalogChange")(
  *   only where the lockfile lets it be resolved: pnpm records it per importer
  *   dependency (a workspace link reads `link:<path>`); for bun and npm it is
  *   read through the importer's resolved edge to the package entry, and an
- *   edge to a workspace package reads the same `link:<path>` pnpm records,
- *   never the workspace's own version; yarn records no importers at all.
+ *   edge reads what pnpm records for it: an edge to a workspace package
+ *   reads `link:<path>`, relative to the importer, never the workspace's own
+ *   version, and a `file:` edge to a local directory or tarball that is not a
+ *   workspace reads `file:<path>`, relative to the workspace root, never the
+ *   version inside it. yarn records no importers at all.
  * - `kind` — `"added"`, `"removed"` or `"changed"`, under the same rule as
  *   `CatalogChange`: a `changed` record has a specifier on both sides, and
  *   either the specifier differs or both resolved versions are known and
@@ -201,27 +206,39 @@ const linkVersion = (from: string, to: string): string => {
 };
 
 /**
- * The version one importer dependency resolved to, or `undefined` when the
- * lockfile does not let it be resolved.
- *
- * pnpm records the version on the importer dependency itself. bun and npm
- * record it on the package entry the importer resolved to, so it is read
+ * The `file:` value pnpm records for a `file:` specifier declared by the
+ * importer at `importer`: the target path made root-relative, so every
+ * importer that reaches one directory or tarball records the same value
+ * (`file:../../vendor/x` from `packages/a` and `file:vendor/x` from the root
+ * both read `file:vendor/x`). A path that climbs above the root keeps its
+ * leading `..` segments; an absolute path is kept as written.
+ */
+const fileVersion = (importer: string, raw: string): string => {
+	const path = raw.startsWith("file:") ? raw.slice("file:".length) : raw;
+	if (path.startsWith("/")) return `file:${path}`;
+	const out: Array<string> = [...segmentsOf(importer)];
+	for (const segment of path.split("/")) {
+		if (segment === "" || segment === ".") continue;
+		if (segment === ".." && out.length > 0 && out[out.length - 1] !== "..") out.pop();
+		else out.push(segment);
+	}
+	return `file:${out.length === 0 ? "." : out.join("/")}`;
+};
+
+/** Whether an importer dependency declares a local `file:` path (or a bare path, which means the same). */
+const isFileSpecifier = (dep: ImporterDependency): boolean =>
+	DependencySpecifier.protocolOf(dep.specifier.raw) === "file";
+
+/**
+ * The package entry one bun or npm importer dependency resolved to, read
  * through the importer's own resolved edge: a workspace importer's row
  * carries those edges in `resolved`, and the root importer, which has no row,
  * resolves at the top of the format's own key scheme (`node_modules/<name>`
  * for npm, `<name>` for bun) — the same first step the parsers' positional
- * walks take from the root. yarn records no importers.
- *
- * An edge that lands on a workspace package reads as the `link:<path>` pnpm
- * records for it, never the workspace's own version: bun and npm carry that
- * version on the workspace row, so reading it would report every dependent
- * as changed whenever the workspace is released, where pnpm reports nothing.
- * A workspace row that records no directory gives `undefined`.
+ * walks take from the root.
  */
-const importerVersion = (resolver: Resolver, importer: string, dep: ImporterDependency): string | undefined => {
+const importerTarget = (resolver: Resolver, importer: string, dep: ImporterDependency): ResolvedPackage | undefined => {
 	const { lockfile } = resolver;
-	if (lockfile.format === "pnpm") return dep.version;
-	if (lockfile.format !== "npm" && lockfile.format !== "bun") return undefined;
 	let target: string | undefined;
 	if (importer === ".") {
 		target = lockfile.format === "npm" ? `node_modules/${dep.name}` : dep.name;
@@ -229,11 +246,42 @@ const importerVersion = (resolver: Resolver, importer: string, dep: ImporterDepe
 		const row = resolver.workspaceRows.get(importer);
 		target = row !== undefined && Object.hasOwn(row.resolved, dep.name) ? row.resolved[dep.name] : undefined;
 	}
-	if (target === undefined) return undefined;
-	const pkg = Option.getOrUndefined(lockfile.packageByInstanceId(target));
+	return target === undefined ? undefined : Option.getOrUndefined(lockfile.packageByInstanceId(target));
+};
+
+/**
+ * The version one importer dependency resolved to, or `undefined` when the
+ * lockfile does not let it be resolved.
+ *
+ * pnpm records the version on the importer dependency itself. bun and npm
+ * record it on the package entry the importer resolved to (see
+ * {@link importerTarget}), and the reading follows pnpm's own rule for local
+ * targets, so all three formats agree:
+ *
+ * - an edge that lands on a workspace package reads `link:<path>`, relative
+ *   to the importer, never the workspace's own version: bun and npm carry that
+ *   version on the workspace row, so reading it would report every dependent
+ *   as changed whenever the workspace is released, where pnpm reports nothing.
+ *   A workspace row that records no directory gives `undefined`;
+ * - an edge declared `file:` that lands on anything else — a local directory
+ *   or tarball that is not a workspace — reads `file:<path>`, relative to the
+ *   workspace root, never the version inside it: pnpm records a local target
+ *   by where it is, so a version bump inside it is no change to the edge;
+ * - any other edge reads the package entry's version.
+ *
+ * yarn records no importers.
+ */
+const importerVersion = (resolver: Resolver, importer: string, dep: ImporterDependency): string | undefined => {
+	const { lockfile } = resolver;
+	if (lockfile.format === "pnpm") return dep.version;
+	if (lockfile.format !== "npm" && lockfile.format !== "bun") return undefined;
+	const pkg = importerTarget(resolver, importer, dep);
 	if (pkg === undefined) return undefined;
-	if (!pkg.isWorkspace) return pkg.version;
-	return pkg.relativePath === undefined ? undefined : linkVersion(importer, pkg.relativePath);
+	if (pkg.isWorkspace) {
+		return pkg.relativePath === undefined ? undefined : linkVersion(importer, pkg.relativePath);
+	}
+	if (isFileSpecifier(dep)) return fileVersion(importer, dep.specifier.raw);
+	return pkg.version;
 };
 
 // ── Catalog normalization ──────────────────────────────────────────────────
@@ -322,12 +370,20 @@ const catalogConsumers = (lockfile: Lockfile): ReadonlyMap<string, ReadonlyMap<s
 /**
  * The version a catalog entry resolved to on one side.
  *
- * In order: the version the entry itself records (pnpm); else the single
- * version every consumer whose version resolves agrees on (bun, where the
- * catalog records only a specifier); else, when no consumer resolves at all,
- * the package's version if the lockfile holds exactly one non-workspace
- * version of it. Consumers that disagree, or a name the lockfile resolves to
- * several versions, give `undefined` — an ambiguous join is not a version.
+ * In order: the version the entry itself records (pnpm); else, when the entry
+ * resolves to a workspace package, the entry's own specifier — the value pnpm
+ * records as the version of such an entry (`workspace:*` reads `workspace:*`,
+ * and a range a workspace satisfies reads that range), so a workspace release
+ * is no change to the catalog; else the single version every consumer whose
+ * version resolves agrees on (bun, where the catalog records only a
+ * specifier); else, when no consumer resolves at all, the package's version if
+ * the lockfile holds exactly one non-workspace version of it. Consumers that
+ * disagree, or a name the lockfile resolves to several versions, give
+ * `undefined` — an ambiguous join is not a version.
+ *
+ * An entry resolves to a workspace package when a consumer's edge lands on
+ * one, or, with no consumer to read, when the name is a workspace package's
+ * and the lockfile holds no other copy of it.
  */
 const catalogVersion = (
 	resolver: Resolver,
@@ -336,6 +392,18 @@ const catalogVersion = (
 	consumers: ReadonlyArray<Consumer>,
 ): string | undefined => {
 	if (entry.recordedVersion !== undefined) return entry.recordedVersion;
+	const { lockfile } = resolver;
+	const named = lockfile.packagesNamed(name);
+	const toWorkspace =
+		lockfile.format !== "npm" && lockfile.format !== "bun"
+			? false
+			: consumers.length > 0
+				? consumers.some((consumer) => {
+						const pkg = importerTarget(resolver, consumer.importer, consumer.dep);
+						return pkg?.isWorkspace === true;
+					})
+				: named.length > 0 && named.every((pkg) => pkg.isWorkspace);
+	if (toWorkspace) return entry.specifier;
 	const seen = new Set<string>();
 	for (const consumer of consumers) {
 		const version = importerVersion(resolver, consumer.importer, consumer.dep);
@@ -343,12 +411,7 @@ const catalogVersion = (
 	}
 	if (seen.size === 1) return [...seen][0];
 	if (seen.size > 1) return undefined;
-	const versions = new Set(
-		resolver.lockfile
-			.packagesNamed(name)
-			.filter((pkg) => !pkg.isWorkspace)
-			.map((pkg) => pkg.version),
-	);
+	const versions = new Set(named.filter((pkg) => !pkg.isWorkspace).map((pkg) => pkg.version));
 	return versions.size === 1 ? [...versions][0] : undefined;
 };
 
@@ -527,7 +590,11 @@ export class LockfileDiff extends Schema.Class<LockfileDiff>("LockfileDiff")({
 	 *   through the importer's resolved edge to its package entry. An edge to a
 	 *   workspace package reads `link:<path>`, the path from the importer to the
 	 *   workspace as pnpm records it, so a release that bumps only a workspace's
-	 *   own version is not a change to its dependents in any format. A bun
+	 *   own version is not a change to its dependents in any format. A `file:`
+	 *   edge to a local directory or tarball that is not a workspace reads
+	 *   `file:<path>`, root-relative as pnpm records it, so a version bump
+	 *   inside the target is no change either. A bun catalog entry that resolves to a workspace
+	 *   reads its own specifier, as pnpm records it. Any other bun
 	 *   catalog entry's version is the one version its consumers resolved to;
 	 *   with no consumer it is the package's version when the lockfile holds
 	 *   exactly one, and absent when consumers disagree or the name resolves

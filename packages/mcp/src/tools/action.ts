@@ -1,8 +1,8 @@
-// `action_build`: a thin shell over the engine. What is its own is keeping the directory inside the workspace root,
-// sharing the build lane, and turning a run that could not start or finish into a refusal an agent can read. Validation
-// stopping the build or an entry failing is the answer the agent asked for, so it stays an ordinary result.
+// `action_build` and `action_init`: thin shells over the engine. What is theirs is keeping the directory inside the
+// workspace root, sharing the build lane (`action_build` only), and turning a run that could not start or finish into a
+// refusal an agent can read. Validation stopping the build or an entry failing is the answer asked for: a result.
 
-import { ActionRun, ActionRunResult } from "@effected/engine/build";
+import { ActionInit, ActionInitResult, ActionRun, ActionRunResult } from "@effected/engine/build";
 import type { Exclusive, ExclusiveTimeout } from "@effected/kit";
 import { ToolFailure, ToolRefusal } from "@effected/mcp-kit";
 import { Effect, FileSystem, Path, Schema } from "effect";
@@ -46,6 +46,68 @@ export const actionBuild = Tool.make("action_build", {
 	.annotate(Tool.Idempotent, true)
 	.annotate(Tool.OpenWorld, false);
 
+/**
+ * The `action_init` tool: scaffolds a new GitHub Action.
+ *
+ * @public
+ */
+export const actionInit = Tool.make("action_init", {
+	description:
+		"Scaffolds a new GitHub Action in a package directory: the [action] table of effected.toml, action.yml, src/main.ts, src/program.ts and tsconfig.json, to the kit's canonical shape, ready for action_build. It refuses, writing nothing, when any of those files exists, unless force is true, and always when a path it writes is a symbolic link or the wrong kind of entry: it never follows a link and never writes outside cwd. It edits no package.json: the result names the dependencies to add and whether the package is type module.",
+	parameters: Schema.Struct({
+		cwd: Schema.optionalKey(
+			Schema.String.annotate({
+				description:
+					"The package directory, resolved against the workspace root and refused outside it. Omitted, the server's working directory.",
+			}),
+		),
+		name: Schema.optionalKey(
+			Schema.String.annotate({
+				description: "The action's display name in action.yml. Omitted, package.json's name without its scope.",
+			}),
+		),
+		description: Schema.optionalKey(
+			Schema.String.annotate({
+				description: "What the action does, for action.yml. Omitted, package.json's description.",
+			}),
+		),
+		force: Schema.optionalKey(
+			Schema.Boolean.annotate({ description: "Replace files that already exist. Omitted, false." }),
+		),
+	}),
+	success: ActionInitResult,
+	failure: ToolRefusal,
+})
+	.annotate(Tool.Title, "Scaffold a GitHub Action")
+	.annotate(Tool.Readonly, false)
+	.annotate(Tool.Idempotent, false)
+	.annotate(Tool.OpenWorld, false);
+
+type InitFailure = Effect.Error<ReturnType<typeof ActionInit.run>>;
+
+const initRefusalOf = (error: InitFailure, root: string): ToolRefusal => {
+	const refuse = (hint: string): ToolRefusal =>
+		ToolRefusal.refuse(ToolFailure.truncate(error.message, ToolFailure.ENGINE_ECHO_LIMIT), { hint });
+	switch (error._tag) {
+		case "NotAPackageError":
+			return refuse(`Pass cwd: a package directory under the workspace root ${root}, with a package.json.`);
+		case "ActionMetadataMissingError":
+			return refuse(`Pass ${error.field}, or set "${error.field}" in package.json.`);
+		case "ActionMetadataInvalidError":
+			return refuse(`Pass a ${error.field} on one line, without control characters.`);
+		case "ScaffoldConflictError":
+			return refuse(
+				"Remove or rename those paths: force never replaces a symbolic link or an entry of the wrong kind, and never writes outside cwd.",
+			);
+		case "ScaffoldWriteError":
+			return refuse(`Check that ${error.cwd} can be written; the files already written are named above.`);
+		case "ScaffoldExistsError":
+			return refuse("Pass force: true to replace them, or remove them first.");
+		case "PlatformError":
+			return refuse(platformErrorHint(error));
+	}
+};
+
 // A lane requires a bound, and a build is the longest thing this server does.
 const BUILD_TIMEOUT = "10 minutes";
 
@@ -79,7 +141,7 @@ const refusalOf = (error: ActionFailure, root: string): ToolRefusal => {
 };
 
 /**
- * The handler, closed over the filesystem and path the server was built with, the workspace root found once from
+ * The handlers, closed over the filesystem and path the server was built with, the workspace root found once from
  * `options.cwd`, and the lane it shares with every other build tool.
  *
  * @public
@@ -91,7 +153,22 @@ export const makeActionHandlers = (options: PackageToolOptions, lane: Exclusive)
 		const cwd = path.resolve(options.cwd ?? ".");
 		const root = yield* findRoot(cwd);
 
+		const target = (requested: string | undefined) => (requested !== undefined ? path.resolve(root, requested) : cwd);
+
 		return {
+			// No lane: it writes sources a build reads, never dist, and it is done in milliseconds.
+			action_init: (params: typeof actionInit.parametersSchema.Type): Effect.Effect<ActionInitResult, ToolRefusal> =>
+				Effect.gen(function* () {
+					if (params.cwd !== undefined) yield* inside(root, "cwd", params.cwd);
+					return yield* ActionInit.run(
+						{
+							...(params.name !== undefined ? { name: params.name } : {}),
+							...(params.description !== undefined ? { description: params.description } : {}),
+							force: params.force ?? false,
+						},
+						{ cwd: target(params.cwd) },
+					).pipe(Effect.mapError((error) => initRefusalOf(error, root)));
+				}).pipe(Effect.provideService(FileSystem.FileSystem, fs), Effect.provideService(Path.Path, path)),
 			action_build: (params: typeof actionBuild.parametersSchema.Type): Effect.Effect<ActionRunResult, ToolRefusal> =>
 				Effect.gen(function* () {
 					if (params.cwd !== undefined) yield* inside(root, "cwd", params.cwd);
@@ -99,7 +176,7 @@ export const makeActionHandlers = (options: PackageToolOptions, lane: Exclusive)
 						ActionRun.run(
 							{ validate: params.validate ?? true, persist: params.persist ?? false },
 							{
-								cwd: params.cwd !== undefined ? path.resolve(root, params.cwd) : cwd,
+								cwd: target(params.cwd),
 								ci: options.ci ?? false,
 							},
 						),

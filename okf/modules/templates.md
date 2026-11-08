@@ -8,10 +8,10 @@ resource: ../../packages/templates
 tags: [dx]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-08T12:10:34Z
 integrity:
   generated:
-    body: 7fa2684de729c9bc
+    body: 1eb674d41bbee127
 ---
 
 # @effected/templates
@@ -54,7 +54,7 @@ definition" is not a shell abstraction; it is a section id with
 `FileSystem` and `Path` arrive in `R` from the consumer's platform layer,
 the walker/xdg/git pattern. `Path` is required because a sync replaces the
 file through `AtomicFile.write`, which writes a temp file beside the target
-and renames it, so a crash cannot truncate the user's text. `@effect/platform-node` is a devDependency
+and renames it, so a crash cannot truncate the user's text. `ManagedSectionOptions.links` (`"follow"` by default, or `"replace"`) is forwarded to it, so a sync can replace a symlinked file instead of writing through it. `@effect/platform-node` is a devDependency
 for the integration suite only. No diff engine, no template engine, no
 `node:` import anywhere.
 

@@ -44,6 +44,7 @@
 | `NpmExecutor` | Class | Which `npm` runs a publish command. | choose which npm binary runs a publish command, ambient vs pinned |
 | `NpmRegistry` | Class | Reads package metadata from an npm-protocol registry over core `HttpClient`: one version, one version's dependency fields, every version, dist-tags and per-version publish times. | read npm registry metadata over http: version, manifest fields, dist-tags, publish times |
 | `NpmRegistryShape` | Interface | The `NpmRegistry` service shape. | |
+| `NpmrcEntry` | Class | One setting read from an `.npmrc` text: its key, its value after `${VAR}` expansion, and the variables the value named that the environment did not set. | one parsed .npmrc line, key, expanded value, unset env variables, array flag |
 | `PackOptions` | Interface | Options shared by the packing operations. | |
 | `PackageManagerCache` | Class | Where each package manager caches by default — a facts table, one documented authority per row. | look up a package manager's default cache directory for a platform |
 | `PackageManagerPin` | Class | A corepack package-manager pin: the `<name>@<version>[+<integrity>]` triple (e.g. `pnpm@11.17.0+sha512.abc…`), independent of any `package.json` field. | parse and print a corepack packageManager pin string, name@version+integrity |
@@ -86,6 +87,9 @@
 | `classifyRegistry` | Function | Classify a registry URL. | determine which well-known registry a url points at |
 | `isValidDependencySpecifier` | Function | Whether a string is a recognized dependency specifier: a semver range, exact version, dist-tag, URL, git ref, GitHub shorthand, file path, or an `npm:` / `catalog:` / `workspace:` protocol. | check if a string is a recognized dependency version specifier |
 | `isValidIntegrityHash` | Function | Whether a string is a valid integrity hash in the SRI (`<algo>-<base64>`), corepack (`<algo>.<hex>`) or yarn (`<cachekey>/<hex>`) form. | check if a string is a valid integrity hash in any supported form |
+| `npmrcValue` | Function | The value of `key` in parsed entries, or `Option.none()` when the file does not set it. The last occurrence wins, as in npm's merge. Array entries (`key[]=v`) are not scalar settings and are never answered here: a key set only that way is `Option.none()`; read it with `npmrcValues`. | look up the last value of an .npmrc key, Option when absent |
+| `npmrcValues` | Function | The values of the array setting `key` (`key[]=v` lines), in file order, or an empty array when the file has none. A list, not a lookup: an absent array is the empty list. | read every value of an .npmrc array setting such as ca |
+| `parseNpmrc` | Function | Parses one `.npmrc` text into its settings, in file order, expanding `${VAR}` from `env`. A pure function: no IO, and no failure — a malformed line is read the way the `ini` package npm uses reads it. | parse an .npmrc text into entries, expand env variables, never fails |
 | `registryDisplayName` | Function | A human-readable display name for a registry: `npm`, `GitHub Packages`, `JSR`, or the host. | human-readable registry name for prose: npm, GitHub Packages, JSR, or host |
 | `registryHost` | Function | The host of a registry URL, for use as a label. | extract the host portion of a registry url or bare host string |
 | `registryShortLabel` | Function | A compact label for a registry: `npm`, `github`, `jsr`, or the host. | compact registry label for a log or table: npm, github, jsr, or host |

@@ -101,6 +101,17 @@ export interface ManagedSectionShape {
 export interface ManagedSectionOptions {
 	/** Defaults to {@link SectionDialect.default}. */
 	readonly dialect?: SectionDialect;
+	/**
+	 * What a symbolic link at the synced file means, as on `AtomicFile.write`.
+	 * Defaults to `"follow"`.
+	 *
+	 * @remarks
+	 * `"follow"` writes the file behind the link and keeps the link;
+	 * `"replace"` replaces the link itself with a regular file and never touches
+	 * what it pointed to: choose it when the file may live in a checkout nobody
+	 * has reviewed.
+	 */
+	readonly links?: "follow" | "replace";
 }
 
 const notFound = (error: PlatformError.PlatformError): boolean => error.reason._tag === "NotFound";
@@ -148,7 +159,7 @@ const make = (
 			);
 
 		const store = (file: string, text: string): Effect.Effect<void, SectionFileError> =>
-			AtomicFile.write(file, text).pipe(
+			AtomicFile.write(file, text, options.links === undefined ? undefined : { links: options.links }).pipe(
 				Effect.provideService(FileSystem.FileSystem, fs),
 				Effect.provideService(Path.Path, path),
 				Effect.catchTag("PlatformError", (error) =>

@@ -1,0 +1,15 @@
+{
+  "baseBranch": "main",
+  "fixed": [
+    [
+      "a",
+      "b"
+    ]
+  ],
+  "linked": [
+    [
+      "c",
+      "d"
+    ]
+  ]
+}

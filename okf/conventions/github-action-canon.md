@@ -16,10 +16,10 @@ sources:
     resource: ../../plugin/skills/structuring-an-action/SKILL.md
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-05T06:55:47Z
+  at: 2026-11-08T17:37:31Z
 integrity:
   generated:
-    body: 4a543ab85e95f15d
+    body: f75cb9f492f612f1
 ---
 
 # Build a GitHub Action repository to the kit's canonical shape
@@ -59,10 +59,11 @@ worked template repository (see [regenerate the action template](../runbooks/reg
 `action.yml` is the **single source** of input and output names *and*
 their defaults — `node24`, `runs.pre?`/`main`/`post` pointing at
 `dist/*.js`, branding, and input documentation. Code mirrors those
-defaults; it never re-declares them. `action.config.ts` carries the
-builder entries (`pre?`, `main`, `post`, `workers?`), `minify`, and
-`persistLocal` enabled (§B6). Bundler escape hatches (`ignore`,
-`nativeDynamicImports`) are added per need, with a forensic comment
+defaults; it never re-declares them. The `[action]` tables of
+`effected.toml` carry the builder entries (`pre?`, `main`, `post`,
+`workers?`), `minify`, and `persistLocal` enabled (§B6); `effected action
+init` writes them for a new action. Bundler escape hatches (`ignore`) are
+added per need, with a forensic comment
 explaining why each entry exists (§B9), never copied forward from another
 action.
 
@@ -221,7 +222,7 @@ is why the shim slot exists.
 
 ### B9 — Bundler escape hatches are per-need
 
-Add a bundler escape-hatch entry (`ignore`, `nativeDynamicImports`) only
+Add a bundler escape-hatch entry (`[action.build] ignore`) only
 when that action's own dependency graph requires it, with a forensic
 comment explaining why the entry exists — an inert copy of someone else's
 entry outlives the reason it was added, and nothing fails when it is

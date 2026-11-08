@@ -1,7 +1,8 @@
 # @effected/walker
 
 Path traversal: upward (`Walker.ascend` / `ascendWithin` / `ascendToMarker` /
-`firstMatch` / `findUpward` / `findUpwardAll` / `findRoot`, plus `*Sync` twins)
+`firstMatch` / `findUpward` / `findUpwardAll` / `findRoot` / `findUpwardWith`, plus `*Sync` twins
+including `findUpwardSyncWith`)
 and downward (`descend`, the public glob-file walker), and path containment
 (`confineRelative` lexical, `confineReal` physical), plus `PosixPath`
 (cwd-free POSIX path arithmetic for pure code). Sixth
@@ -75,7 +76,15 @@ hands in — never re-derived here.
   boundary. Unreadable and depth-exceeded paths are spelled through the
   root's own earliest spelling (`./**` reports its base as `.`).
 - A literal pattern (no magic, no braces, not negated) fast-paths to one stat; missing is
-  zero matches. Braces are magic here (glob's `hasMagic` ignores them). A magic
+  zero matches. The stat and the answer are the compiled row glob matches
+  (`enumerationPrefix` of a one-row literal is the whole row), never the
+  source: an escape is undone (`src/\x/f.js` stats `src/x/f.js`), and at
+  level 1 and up glob has popped `<p>/..` (`f.js/x/..` answers `f.js`, as
+  minimatch and node-glob read it), and an answer that does not match as
+  spelled is none. A `.`, `..` or empty segment the row keeps (level 0) is
+  resolved physically by `resolvesPhysically`: it must follow an `lstat`
+  Directory, never a file, a missing name or a link, because `join`
+  normalizes it lexically where the kernel fails ENOTDIR or ENOENT (#1283). Braces are magic here (glob's `hasMagic` ignores them). A magic
   pattern walks each of `enumerationRoots` — one per brace alternative, each
   with its own prefix and depth, so `packages/{a,b}/src/*.ts` reads only those
   two directories; a **negated**
@@ -124,19 +133,27 @@ hands in — never re-derived here.
   the machine before the `maxDepth` check). Without a globstar no directory
   deeper than the source's separator count can reach is queued. Under
   `dot: false` no hidden directory is queued unless a segment names one.
-  Glob exposes no `dot`, so a differential `matches` probe proves it. A
-  slash-less pattern is never pruned: under `matchBase` it matches by
-  basename (`**` matches `.a/f.js`), which the probe cannot see. Nor is one
-  with a `..` segment: glob pops `<p>/..`, so `x/../**` compiles to the
-  one-segment row `**`, which `matchBase` applies to. Nor is one made only
-  of globstar and `.` segments: glob merges adjacent globstars at every
-  level (and drops a middle `.` at level 2), so `**/**` and `**/./**`
-  compile to `**` too. The one exception is a leading `.`, which glob
-  keeps: `./**` stays two segments and still prunes.
+  Glob exposes no `dot`, so a differential `matches` probe proves it.
+  Neither bound holds, and nor does the literal fast path, for a pattern
+  glob reports `matchesByBasename`: `matchBase` is on and some brace
+  alternative compiles to ONE path portion, which matches by basename at any
+  depth (`*.js` and `x/../*.js` match `b/d/f/g.js`, #1261; `**` matches
+  `.a/f.js`; `c.js` matches `b/c.js`). glob reads it off the compiled rows,
+  the test matching itself applies, so walker never re-derives it from the
+  source: a multi-portion pattern (`src/[ab]/*.ts`, `src/{a,b}*/*.ts`) keeps
+  its depth bound and a tight `maxDepth` under `matchBase`, and a bare `**`
+  without `matchBase` prunes hidden directories like any other.
   `__test__/PatternBoundsSweep.test.ts` compiles every pattern of up to
   three segments over a fixed alphabet and every option that rewrites rows,
-  and pins that nothing pruned matches inside a hidden directory: extend its
-  alphabet, never patch one spelling at a time. They skip
+  pins that nothing pruned matches inside a hidden directory, and walks
+  94,528 compilations (braces, classes, extglobs and escapes included, under
+  `matchBase`, `dot` and every level) with `descendSync` over a memfs tree
+  against a brute-force `matches` filter, plus every bounded one again under
+  the tightest `maxDepth` its separators allow: zero differences. The
+  literal fast-path classes (a literal running past a file through `.`/`..`,
+  an escaped literal) are compared too: the filter resolves a literal's
+  spellings physically against the tree, as the fast path does (#1283).
+  Extend its alphabet, never patch one spelling at a time. They skip
   READS only, never a match, so the answer is unchanged. They are why a bounded
   pattern never trips `maxDepth` or an unreadable directory it has no reason
   to enter. Never make either bound "tighter" by guessing: an unmodelled
@@ -200,6 +217,11 @@ which no walk calls: it serves the caller's own reads beside a walk.
   because walker reads nothing there. Stop rules come from the `dirs` chain.
   The cache is a caller-owned per-directory memo of accept's answers,
   rejections included. A throwing `accept` propagates uncached.
+- `findUpwardWith(dirs, accept, { cache })` is its Effect form: `accept` answers
+  `Effect<Option<A>, E, R>`, the scan and cache are the same, and `E` is not
+  absorbed — a failure or interruption of `accept` ends the search with nothing
+  cached for that directory (earlier entries stay). Recover inside `accept` to
+  treat a failed read as "not valid".
 
 - `ascendToMarker` stops at the nearest directory holding a marker ENTRY
   (any kind), probing nothing above it; empty markers / an empty name die.

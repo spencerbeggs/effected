@@ -1,4 +1,5 @@
-// What `effected action build` turns into exit codes. The engine answers a failed build as data, because the MCP returns
+// What `effected action build` and `effected action init` turn into exit codes.
+// The engine answers a failed build as data, because the MCP returns
 // it as data; here it becomes a failure, after the report has been emitted.
 
 import { Schema } from "effect";
@@ -41,7 +42,8 @@ export class ActionConfigError extends Schema.TaggedError<ActionConfigError>()("
 
 /**
  * The build could not finish: an entry is missing with validation off, or a file could not be read, cleaned, written or
- * copied. Exit `3`, the infrastructure tier.
+ * copied. `action init` fails with it too when a write fails after its checks, naming the files already written. Exit
+ * `3`, the infrastructure tier.
  *
  * @remarks
  * Carries the engine's message, as {@link ActionConfigError} does.
@@ -49,5 +51,19 @@ export class ActionConfigError extends Schema.TaggedError<ActionConfigError>()("
  * @public
  */
 export class ActionRunError extends Schema.TaggedError<ActionRunError>()("ActionRunError", {
+	message: Schema.String,
+}) {}
+
+/**
+ * `action init` could not start: the directory is not a package, the action's name or description was found nowhere
+ * or holds a control character, files it would write exist and `--force` was not given, or a path cannot be written
+ * over (a symbolic link, the wrong kind of entry), which `--force` never overrides. Exit `2`, and nothing was written.
+ *
+ * @remarks
+ * Carries the engine's message, as {@link ActionConfigError} does.
+ *
+ * @public
+ */
+export class ActionInitError extends Schema.TaggedError<ActionInitError>()("ActionInitError", {
 	message: Schema.String,
 }) {}

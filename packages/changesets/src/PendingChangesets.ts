@@ -10,13 +10,19 @@ import { ChangesetParseError } from "./errors.js";
  * @public
  */
 export class PendingChangeset extends Schema.Class<PendingChangeset>("PendingChangeset")({
-	/** The file name, relative to `.changeset/`. */
+	/**
+	 * The file name, relative to `.changeset/`: `pre/<name>.md` for a
+	 * changeset an earlier pre-release consumed.
+	 */
 	file: Schema.String,
 	/** Package name to requested release type, in file order. */
 	releases: Schema.ReadonlyMap(Schema.String, ReleaseType),
 	/** The markdown after the front matter. */
 	summary: Schema.String,
 }) {}
+
+/** The directory, under `.changeset/`, holding the changesets a pre-release consumed. */
+const PRE = "pre";
 
 const CONTEXT_FILES: ReadonlySet<string> = new Set(["AGENTS.md", "CLAUDE.md", "GEMINI.md"]);
 
@@ -70,8 +76,10 @@ const isNotFound = (error: PlatformError.PlatformError): boolean => error.reason
 export class PendingChangesets {
 	/**
 	 * Read every pending changeset under `<root>/.changeset/`, ordered by file
-	 * name. A readme in any case, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, dotfiles
-	 * and non-`.md` files are skipped; a missing directory answers `[]`.
+	 * name, then those under `<root>/.changeset/pre/`, which a pre-release
+	 * keeps after consuming them, as `pre/<name>.md`. A readme in any case,
+	 * `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, dotfiles and non-`.md` files are
+	 * skipped; a missing directory answers `[]`.
 	 *
 	 * @param root - The repository root.
 	 */
@@ -79,10 +87,14 @@ export class PendingChangesets {
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
 		const dir = path.join(root, ".changeset");
-		const names = yield* fs
-			.readDirectory(dir)
-			.pipe(Effect.catch((error) => (isNotFound(error) ? Effect.succeed([] as Array<string>) : Effect.fail(error))));
-		return yield* Effect.forEach(selectNames(names), (file) =>
+		const list = (directory: string) =>
+			fs
+				.readDirectory(directory)
+				.pipe(Effect.catch((error) => (isNotFound(error) ? Effect.succeed([] as Array<string>) : Effect.fail(error))));
+		const names = selectNames(yield* list(dir));
+		const consumed = selectNames(yield* list(path.join(dir, PRE)));
+		const files = [...names, ...consumed.map((name) => `${PRE}/${name}`)];
+		return yield* Effect.forEach(files, (file) =>
 			fs.readFileString(path.join(dir, file)).pipe(Effect.flatMap((text) => Effect.fromResult(toPending(file, text)))),
 		);
 	});
@@ -100,15 +112,20 @@ export class PendingChangesets {
 		let end = root.length;
 		while (end > 0 && (root[end - 1] === "/" || root[end - 1] === "\\")) end--;
 		const dir = `${root.slice(0, end)}/.changeset`;
-		let names: Array<string>;
-		try {
-			names = readdirSync(dir);
-		} catch (cause) {
-			const error = toPlatformError("readDirectory", dir, cause);
-			return isNotFound(error) ? Result.succeed([]) : Result.fail(error);
-		}
+		const list = (directory: string): Result.Result<ReadonlyArray<string>, PlatformError.PlatformError> => {
+			try {
+				return Result.succeed(selectNames(readdirSync(directory)));
+			} catch (cause) {
+				const error = toPlatformError("readDirectory", directory, cause);
+				return isNotFound(error) ? Result.succeed([]) : Result.fail(error);
+			}
+		};
+		const names = list(dir);
+		if (Result.isFailure(names)) return Result.fail(names.failure);
+		const consumed = list(`${dir}/${PRE}`);
+		if (Result.isFailure(consumed)) return Result.fail(consumed.failure);
 		const pending: Array<PendingChangeset> = [];
-		for (const file of selectNames(names)) {
+		for (const file of [...names.success, ...consumed.success.map((name) => `${PRE}/${name}`)]) {
 			let text: string;
 			try {
 				text = readFileSync(`${dir}/${file}`, "utf8");

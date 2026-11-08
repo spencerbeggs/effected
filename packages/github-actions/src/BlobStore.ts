@@ -290,6 +290,19 @@ const makeS3 = (
 									cause,
 								}),
 							),
+						// Text that is not well-formed Unicode: in the path or query it is the
+						// caller's key; in the host, a header or the method it is the layer's settings.
+						SigV4EncodingError: (cause) =>
+							Effect.fail(
+								cause.component === "path" || cause.component === "query-key" || cause.component === "query-value"
+									? new BlobStoreError({
+											reason: "invalidKey",
+											key,
+											detail: "the key holds a lone UTF-16 surrogate, which cannot be signed",
+											cause,
+										})
+									: unsignable(key, cause),
+							),
 						CryptoError: (cause) => Effect.fail(unsignable(key, cause)),
 					}),
 				);

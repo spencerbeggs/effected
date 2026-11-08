@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,14 +14,28 @@ interface Projected {
 	readonly type: string;
 	readonly oldVersion: string | undefined;
 	readonly newVersion: string | undefined;
+	readonly changesets: ReadonlyArray<string>;
 }
 
 const fixture = (name: string): string => fileURLToPath(new URL(`fixtures/${name}`, import.meta.url));
 
+/** A changeset id as the oracle writes one: the file name without `.md`. */
+const id = (file: string): string => file.replace(/\.md$/, "");
+
 const project = (releases: ReadonlyArray<Projected>): ReadonlyArray<Projected> =>
 	releases
-		.map(({ name, type, oldVersion, newVersion }) => ({ name, type, oldVersion, newVersion }))
+		.map(({ name, type, oldVersion, newVersion, changesets }) => ({
+			name,
+			type,
+			oldVersion,
+			newVersion,
+			changesets: changesets.map(id).sort(),
+		}))
 		.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+
+/** The plan's own changeset list, by id. */
+const planIds = (changesets: ReadonlyArray<{ readonly id: string } | { readonly file: string }>) =>
+	changesets.map((c) => ("id" in c ? c.id : id(c.file))).sort();
 
 // The oracle reports a range it draws no edge for through console.error.
 const oracle = (root: string) =>
@@ -97,6 +111,16 @@ const cases: Record<string, Record<string, string>> = {
 		"minor-pre-patched": "minor",
 		"patch-pre": "patch",
 	},
+	"fixed-group": { a: "minor", b: "minor", c: "minor", d: "patch" },
+	"fixed-glob": { "@x/a": "patch", "@x/b": "patch" },
+	"fixed-ripple": { a: "patch", b: "patch", c: "minor", e: "patch" },
+	"fixed-skipped-member": { a: "patch" },
+	"linked-group": { a: "minor", b: "minor" },
+	"linked-ripple": { a: "minor", b: "minor" },
+	"linked-none": { a: "minor", b: "none" },
+	"pre-mode": { a: "patch", b: "minor", c: "patch" },
+	"pre-exit": { a: "patch", b: "minor" },
+	"pre-groups": { a: "patch", b: "patch", c: "minor" },
 };
 
 describe("ReleasePlan against @changesets/get-release-plan", () => {
@@ -104,10 +128,15 @@ describe("ReleasePlan against @changesets/get-release-plan", () => {
 		it.effect(name, () =>
 			Effect.gen(function* () {
 				const root = fixture(name);
-				const theirs = project((yield* oracle(root)).releases);
-				const mine = project((yield* ours(root)).releases);
+				const theirPlan = yield* oracle(root);
+				const myPlan = yield* ours(root);
+				const theirs = project(theirPlan.releases);
+				const mine = project(myPlan.releases);
 				assert.deepStrictEqual(Object.fromEntries(theirs.map((r) => [r.name, r.type])), expected);
 				assert.deepStrictEqual(mine, theirs);
+				assert.deepStrictEqual(planIds(myPlan.changesets), planIds(theirPlan.changesets));
+				assert.deepStrictEqual(myPlan.preState?.mode, theirPlan.preState?.mode);
+				assert.deepStrictEqual(myPlan.preState?.tag, theirPlan.preState?.tag);
 			}),
 		);
 	}
@@ -118,7 +147,7 @@ describe("ReleasePlan against @changesets/get-release-plan", () => {
 			const theirs = project((yield* oracle(root)).releases);
 			assert.deepStrictEqual(
 				theirs.find((r) => r.name === "app"),
-				{ name: "app", type: "none", oldVersion: undefined, newVersion: undefined },
+				{ name: "app", type: "none", oldVersion: undefined, newVersion: undefined, changesets: [] },
 			);
 			const mine = project((yield* ours(root)).releases);
 			assert.deepStrictEqual(
@@ -176,6 +205,121 @@ describe("ReleasePlan against @changesets/get-release-plan", () => {
 				}),
 			(root) => Effect.sync(() => rmSync(root, { recursive: true, force: true })),
 		),
+	);
+
+	it.effect("rejects a package in two fixed groups, as the oracle does", () =>
+		Effect.gen(function* () {
+			const root = fixture("fixed-duplicate");
+			const theirs = yield* Effect.exit(oracle(root));
+			assert.isTrue(Exit.isFailure(theirs) && Cause.pretty(theirs.cause).includes("multiple groups of fixed packages"));
+			const mine = yield* Effect.flip(ours(root));
+			assert.strictEqual(mine._tag, "ChangesetConfigError");
+			assert.include(mine.message, "b is in more than one fixed group");
+		}),
+	);
+
+	// The older pre.json layout lists consumed changesets by id. The oracle moves
+	// them into .changeset/pre/ as it reads the file, after it has already read
+	// the changesets, so only its second run answers for the layout it wrote.
+	for (const [mode, firstNames, settledReleases] of [
+		["pre", ["a", "b"], [["b", "patch", ["fresh"]]]],
+		[
+			"exit",
+			["a", "b"],
+			[
+				["a", "major", ["pre/consumed"]],
+				["b", "patch", ["fresh"]],
+			],
+		],
+	] as const) {
+		it.effect(`plans an older-layout pre.json in ${mode} mode as the oracle settles on, writing nothing`, () =>
+			Effect.acquireUseRelease(
+				Effect.sync(() => {
+					const root = mkdtempSync(join(tmpdir(), "release-plan-"));
+					cpSync(fixture("pre-legacy-layout"), root, { recursive: true });
+					const preJson = join(root, ".changeset", "pre.json");
+					writeFileSync(preJson, readFileSync(preJson, "utf8").replace('"mode": "pre"', `"mode": "${mode}"`));
+					return root;
+				}),
+				(root) =>
+					Effect.gen(function* () {
+						const before = readFileSync(join(root, ".changeset", "pre.json"), "utf8");
+						assert.include(before, `"mode": "${mode}"`);
+						const myPlan = yield* ours(root);
+						assert.strictEqual(readFileSync(join(root, ".changeset", "pre.json"), "utf8"), before);
+						const first = project((yield* oracle(root)).releases);
+						const settledPlan = yield* oracle(root);
+						const settled = project(settledPlan.releases);
+						assert.deepStrictEqual(
+							first.map((r) => r.name),
+							[...firstNames],
+						);
+						assert.deepStrictEqual(
+							settled.map((r) => [r.name, r.type, r.changesets]),
+							settledReleases.map(([name, type, files]) => [name, type, [...files]]),
+						);
+						assert.deepStrictEqual(project(myPlan.releases), settled);
+						assert.deepStrictEqual(planIds(myPlan.changesets), planIds(settledPlan.changesets));
+						assert.deepStrictEqual(project((yield* ours(root)).releases), settled);
+					}),
+				(root) => Effect.sync(() => rmSync(root, { recursive: true, force: true })),
+			),
+		);
+	}
+
+	// A pre.json the oracle reads as pre mode but is malformed: it appends
+	// `-undefined.0` for a missing tag and treats any mode but `exit` as `pre`.
+	// Both are defects there, and here a typed failure.
+	for (const [label, preJson, oracleVersion] of [
+		["no tag", '{"mode":"pre"}', "1.0.1-undefined.0"],
+		["an unknown mode", '{"mode":"enter","tag":"next"}', "1.0.1-next.0"],
+	] as const) {
+		it.effect(`fails typed on a pre.json with ${label}, where the oracle plans it`, () =>
+			Effect.acquireUseRelease(
+				Effect.sync(() => {
+					const root = mkdtempSync(join(tmpdir(), "release-plan-"));
+					cpSync(fixture("pre-mode"), root, { recursive: true });
+					writeFileSync(join(root, ".changeset", "pre.json"), preJson);
+					return root;
+				}),
+				(root) =>
+					Effect.gen(function* () {
+						const theirs = project((yield* oracle(root)).releases);
+						assert.strictEqual(theirs.find((r) => r.name === "a")?.newVersion, oracleVersion);
+						const mine = yield* Effect.flip(ours(root));
+						assert.strictEqual(mine._tag, "ChangesetConfigError");
+					}),
+				(root) => Effect.sync(() => rmSync(root, { recursive: true, force: true })),
+			),
+		);
+	}
+
+	it.effect("normalises a v-prefixed version as the oracle does, and fails typed on an =-prefixed one", () =>
+		Effect.gen(function* () {
+			for (const name of ["loose-v-pre", "loose-v-groups"]) {
+				const theirs = project((yield* oracle(fixture(name))).releases);
+				assert.isTrue(
+					theirs.some((r) => r.oldVersion?.startsWith("v") === true),
+					name,
+				);
+				assert.deepStrictEqual(project((yield* ours(fixture(name))).releases), theirs, name);
+			}
+			// The oracle crashes on `=1.2.0` in pre mode and in a releasing group,
+			// and plans a bump of one with no new version at all.
+			for (const name of ["loose-eq-pre", "loose-eq-group"]) {
+				const theirs = yield* Effect.exit(oracle(fixture(name)));
+				assert.isTrue(Exit.isFailure(theirs), name);
+			}
+			const bumped = project((yield* oracle(fixture("loose-eq-bump"))).releases);
+			assert.deepStrictEqual(
+				bumped.find((r) => r.name === "a"),
+				{ name: "a", type: "minor", oldVersion: "=1.2.0", newVersion: null as unknown as string, changesets: ["one"] },
+			);
+			for (const name of ["loose-eq-pre", "loose-eq-group", "loose-eq-bump"]) {
+				const mine = yield* Effect.flip(ours(fixture(name)));
+				assert.isTrue(mine._tag === "InvalidVersionError" && mine.input === "=1.2.0", name);
+			}
+		}),
 	);
 
 	it.effect("keeps the root out when other packages exist", () =>

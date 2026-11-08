@@ -103,6 +103,18 @@ describe("NpmConfig env substitution", () => {
 	});
 });
 
+describe("NpmConfig array settings and key-side env holes", () => {
+	it("ignores key[]= array settings, as before", () => {
+		assert.strictEqual(config(["ca[]=x\nregistry=https://mirror.example/"]).registry, "https://mirror.example/");
+	});
+
+	it("fails missing-env for a credential key naming an unset variable", () => {
+		const result = NpmConfig.fromSourcesResult([{ text: `//${ref("HOST")}/:_authToken=t` }], {});
+		assert.isTrue(Result.isFailure(result));
+		if (Result.isFailure(result)) assert.strictEqual(result.failure.variable, "HOST");
+	});
+});
+
 describe("NpmConfig credentials", () => {
 	const auth = config([
 		`//registry.npmjs.org/:_authToken=${NPM_TOKEN}`,

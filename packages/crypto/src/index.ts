@@ -43,4 +43,5 @@ export { Hmac } from "./Hmac.js";
 export { HttpRedaction } from "./HttpRedaction.js";
 export type { SigV4Canonical, SigV4Credentials, SigV4Request, SigV4Signed } from "./SigV4.js";
 export { SigV4 } from "./SigV4.js";
+export { SigV4EncodingError } from "./SigV4EncodingError.js";
 export { SigV4PathError } from "./SigV4PathError.js";

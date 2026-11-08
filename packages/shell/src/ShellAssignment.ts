@@ -2,6 +2,7 @@
 // `FOO=1 git commit`.
 
 import { Schema } from "effect";
+import { removeContinuations } from "./internal/raw.js";
 import { ShellWord } from "./ShellWord.js";
 import { ShellSubstitutionPart } from "./ShellWordPart.js";
 
@@ -18,6 +19,8 @@ import { ShellSubstitutionPart } from "./ShellWordPart.js";
  * bash lexes an assignment value: no pathname or brace expansion, and a tilde after `=` or
  * `:` is marked. An empty value is an empty word whose `literal` is
  * `Some("")`. An array value, `arr=(a b)`, is one `opaque` part.
+ * `raw` is the source text, backslash-newlines included; `joined` removes
+ * them, as bash does before it reads a token.
  *
  * @public
  */
@@ -29,4 +32,17 @@ export class ShellAssignment extends Schema.Class<ShellAssignment>("ShellAssignm
 	start: Schema.Number,
 	end: Schema.Number,
 	raw: Schema.String,
-}) {}
+}) {
+	/**
+	 * `raw` with its backslash-newlines removed, as bash removes them before
+	 * it reads a token: `a\⏎[x]=1` is `a[x]=1`.
+	 *
+	 * @remarks
+	 * The name, subscript and operator are joined throughout, and the value
+	 * as {@link ShellWord.joined} joins it. Match a pattern against this,
+	 * never against `raw`.
+	 */
+	get joined(): string {
+		return removeContinuations(this.raw.slice(0, this.value.start - this.start)) + this.value.joined;
+	}
+}

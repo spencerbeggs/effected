@@ -59,6 +59,61 @@ const MAX_DIAGNOSTICS = 1000;
  */
 const PRECEDES_ASSIGNMENT: ReadonlySet<string> = new Set<string>([...SHELL_RESERVED_WORDS, "time"]);
 
+/**
+ * Command words after which bash reads `NAME=(` as a compound assignment
+ * (`parse.y` sets `PST_ASSIGNOK` for an `ASSIGNMENT_BUILTIN`, `eval` and
+ * `let`). Recognized only when written bare: `\declare x=(1)` and
+ * `"declare" x=(1)` are syntax errors under bash 5.3.
+ */
+const ASSIGNMENT_BUILTINS: ReadonlySet<string> = new Set([
+	"declare",
+	"typeset",
+	"local",
+	"export",
+	"readonly",
+	"alias",
+	"eval",
+	"let",
+]);
+
+/**
+ * Whether `text`, a word with its backslash-newlines removed, is the head of
+ * an assignment as bash's `token_is_assignment` reads one outside command
+ * position: `NAME=` or `NAME+=`, or `NAME[…]=` / `NAME[…]+=` whose `[`
+ * matches its `]` with nesting, quotes and escapes honoured (`y["]"]=` is
+ * one). A shape it does not recognize is no assignment, which only splits
+ * the array off as a subshell.
+ */
+const assignsArray = (text: string): boolean => {
+	let i = 0;
+	if (!isNameStart(text[i])) return false;
+	while (isNameChar(text[i])) i += 1;
+	if (text[i] === "[") {
+		let depth = 0;
+		for (; i < text.length; i += 1) {
+			const c = text[i];
+			if (c === "\\") i += 1;
+			else if (c === "'") {
+				const close = text.indexOf("'", i + 1);
+				if (close === -1) return false;
+				i = close;
+			} else if (c === '"') {
+				i += 1;
+				while (i < text.length && text[i] !== '"') i += text[i] === "\\" ? 2 : 1;
+				if (i >= text.length) return false;
+			} else if (c === "[") depth += 1;
+			else if (c === "]") {
+				depth -= 1;
+				if (depth === 0) break;
+			}
+		}
+		if (depth !== 0) return false;
+		i += 1;
+	}
+	const operator = text.slice(i);
+	return operator === "=" || operator === "+=";
+};
+
 /** What the previous word of the segment means for the next one's position. */
 const FOLLOWS_NOTHING = 0;
 /** After `time`: `-p` and `--` keep command position (TIMEOPT, TIMEIGN). */
@@ -329,6 +384,7 @@ class Lexer {
 				end: at,
 				groupDepth: this.depth,
 				commandPosition: true,
+				compoundAssignment: false,
 				words: [],
 				assignments: [],
 				redirections: [],
@@ -433,22 +489,27 @@ class Lexer {
 
 	private word(at: number): number {
 		const segment = this.segment(at);
-		if (segment.commandPosition) {
-			const source = this.source;
-			if (isNameStart(source[at])) {
-				let j = skipContinuations(source, at + 1);
-				while (isNameChar(source[j])) j = skipContinuations(source, j + 1);
-				if (source[j] === "[") return this.subscriptedWord(segment, at, j);
-				const equals = this.assignmentOperator(j);
-				if (equals !== -1) {
-					const name = removeContinuations(source.slice(at, j));
-					return this.assignment(segment, at, name, source[j] === "+", equals, NO_SUBSTITUTIONS);
-				}
+		const source = this.source;
+		if (segment.commandPosition && isNameStart(source[at])) {
+			let j = skipContinuations(source, at + 1);
+			while (isNameChar(source[j])) j = skipContinuations(source, j + 1);
+			if (source[j] === "[") return this.subscriptedWord(segment, at, j);
+			const equals = this.assignmentOperator(j);
+			if (equals !== -1) {
+				const name = removeContinuations(source.slice(at, j));
+				return this.assignment(segment, at, name, source[j] === "+", equals, NO_SUBSTITUTIONS);
 			}
 		}
 		// The dispatcher only calls this on a word character, so the word is
 		// never empty and the scan always advances.
-		const word = this.lexWord(at, NORMAL);
+		let word = this.lexWord(at, NORMAL);
+		if (
+			segment.compoundAssignment &&
+			source[word.end] === "(" &&
+			assignsArray(removeContinuations(source.slice(at, word.end)))
+		) {
+			word = this.withArrayValue(word);
+		}
 		segment.words.push(word);
 		this.position(segment, word);
 		segment.end = word.end;
@@ -514,6 +575,7 @@ class Lexer {
 			segment.commandPosition = true;
 			return;
 		}
+		if (armed && !reserved && text !== undefined && ASSIGNMENT_BUILTINS.has(text)) segment.compoundAssignment = true;
 		if (armed && text === "time") this.follows = FOLLOWS_TIME;
 		else if (armed && (text === "function" || text === "coproc")) this.follows = FOLLOWS_NAMER;
 		else if (armed && (text === "for" || text === "select")) this.follows = FOLLOWS_LOOP;
@@ -562,6 +624,26 @@ class Lexer {
 		return word.end;
 	}
 
+	/**
+	 * An assignment builtin's argument `word`, which stops at the `(` of an
+	 * array value (`declare -a x=(…)`), extended over the array and, when its
+	 * `)` closed it, the rest of the token: bash reads on after the `)`, so
+	 * `declare x=(a)#` holds no comment.
+	 */
+	private withArrayValue(word: RawWord): RawWord {
+		const value = this.arrayValue(word.end);
+		const parts = [...word.parts, value.part];
+		if (!value.closed) return { start: word.start, end: value.part.end, parts };
+		const rest = this.lexWord(value.part.end, NORMAL);
+		return { start: word.start, end: rest.end, parts: [...parts, ...rest.parts] };
+	}
+
+	/**
+	 * Lex one word from `start`. `subscript` is a scanned `[ … ]` span to
+	 * keep as one `opaque` part. An assignment value starting `(` is an array
+	 * value, and bash reads on after its `)` into the same token, so
+	 * `x=(a)#` holds no comment.
+	 */
 	private lexWord(start: number, mode: WordMode, subscript?: Span): RawWord {
 		const source = this.source;
 		const n = this.length;
@@ -582,10 +664,19 @@ class Lexer {
 			if (bareStart === -1) bareStart = i;
 		};
 
-		if (mode === ASSIGNMENT_VALUE && source[start] === "(") return this.arrayValue(start);
+		const arrayAt = mode === ASSIGNMENT_VALUE && source[start] === "(" ? start : -1;
 
-		while (i < n && !this.endsWordHere(i)) {
+		while (i < n && (i === arrayAt || !this.endsWordHere(i))) {
 			const c = source[i] as string;
+			if (i === arrayAt) {
+				flush(i);
+				const value = this.arrayValue(i);
+				parts.push(value.part);
+				// Unclosed, or cut off at a metacharacter: the word ends with it.
+				if (!value.closed) return { start, end: value.part.end, parts };
+				i = value.part.end;
+				continue;
+			}
 			if (subscript !== undefined && i === subscript.start) {
 				flush(i);
 				parts.push({ kind: "opaque", ...subscript });
@@ -720,9 +811,9 @@ class Lexer {
 	/**
 	 * An array assignment value, `(…)`, from its `(` at `start`: one `opaque`
 	 * part holding the substitutions of its elements, which are lexed as words
-	 * so `x=($(cmd))` cannot hide `cmd`.
+	 * so `x=($(cmd))` cannot hide `cmd`. `closed` is whether its `)` ended it.
 	 */
-	private arrayValue(start: number): RawWord {
+	private arrayValue(start: number): { readonly part: RawPart; readonly closed: boolean } {
 		const source = this.source;
 		const n = this.length;
 		const substitutions: Array<RawSubstitution> = [];
@@ -739,11 +830,11 @@ class Lexer {
 			}
 			if (j >= n) {
 				this.diagnose("UnterminatedArrayAssignment", start, n - start);
-				return { start, end: n, parts: [{ kind: "opaque", start, end: n, substitutions }] };
+				return { part: { kind: "opaque", start, end: n, substitutions }, closed: false };
 			}
 			if (source[j] === ")") {
 				j += 1;
-				return { start, end: j, parts: [{ kind: "opaque", start, end: j, substitutions }] };
+				return { part: { kind: "opaque", start, end: j, substitutions }, closed: true };
 			}
 			if (this.endsWordHere(j)) {
 				// Another metacharacter inside an array is a syntax error. bash
@@ -752,12 +843,12 @@ class Lexer {
 				const newline = source.indexOf("\n", j);
 				const end = newline === -1 ? n : newline;
 				this.diagnose("UnterminatedArrayAssignment", start, end - start);
-				return { start, end, parts: [{ kind: "opaque", start, end, substitutions }] };
+				return { part: { kind: "opaque", start, end, substitutions }, closed: false };
 			}
 			const key = source[j] === "[" ? this.arrayKey(j) : undefined;
 			if (key === null) {
 				// An unclosed key: bash reads it to the end of the input and rejects it.
-				return { start, end: n, parts: [{ kind: "opaque", start, end: n, substitutions }] };
+				return { part: { kind: "opaque", start, end: n, substitutions }, closed: false };
 			}
 			const element = this.lexWord(j, NORMAL, key);
 			for (const part of element.parts) collectSubstitutions(part, substitutions);
@@ -1118,6 +1209,8 @@ class Lexer {
 		const n = this.length;
 		const { operator, end: operatorEnd } = this.redirectionOperator(at);
 		const segment = this.segment(from);
+		// `declare 2>/dev/null x=(a)` is a syntax error: bash clears PST_ASSIGNOK.
+		segment.compoundAssignment = false;
 		let j = operatorEnd;
 		for (;;) {
 			if (source[j] === " " || source[j] === "\t") j += 1;

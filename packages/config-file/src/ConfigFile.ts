@@ -417,6 +417,17 @@ export interface ConfigFileOptions<A, I, RR, CE = ConfigCodecError> {
 	 */
 	readonly saveTarget?: "default" | "source";
 	/**
+	 * What a symbolic link at the file `save` and `update` write means, as on
+	 * the `links` option of `AtomicFile.write`. Defaults to `"follow"`.
+	 *
+	 * @remarks
+	 * `"follow"` writes the file behind the link and keeps the link;
+	 * `"replace"` replaces the link itself with a regular file and never
+	 * touches what it pointed to: choose it when the config may live in a
+	 * checkout nobody has reviewed.
+	 */
+	readonly links?: "follow" | "replace";
+	/**
 	 * The opt-in event hook. Pass the `ConfigEvents` class itself.
 	 *
 	 * @remarks
@@ -710,7 +721,11 @@ const makeImpl = <A, I, RR, CE>(
 			const serialized = yield* encodeTo(value, Option.some(target), encodeOptions, (error) =>
 				emit({ _tag: "StringifyFailed", codec: options.codec.name, error }),
 			);
-			yield* AtomicFile.write(target, serialized).pipe(
+			yield* AtomicFile.write(
+				target,
+				serialized,
+				options.links === undefined ? undefined : { links: options.links },
+			).pipe(
 				Effect.provideService(FileSystem.FileSystem, fs),
 				Effect.provideService(Path.Path, path),
 				Effect.mapError((cause) => new ConfigFileWriteError({ path: target, cause })),
@@ -864,6 +879,17 @@ export interface ConfigFileTestOptions<A, I, CE = ConfigCodecError> {
 	 * {@link ConfigDefaultPathMissingError}.
 	 */
 	readonly saveTarget?: "default" | "source";
+	/**
+	 * What a symbolic link at the file `save` and `update` write means, as on
+	 * the `links` option of `AtomicFile.write`. Defaults to `"follow"`.
+	 *
+	 * @remarks
+	 * `"follow"` writes the file behind the link and keeps the link;
+	 * `"replace"` replaces the link itself with a regular file and never
+	 * touches what it pointed to: choose it when the config may live in a
+	 * checkout nobody has reviewed.
+	 */
+	readonly links?: "follow" | "replace";
 }
 
 /**
@@ -1070,6 +1096,7 @@ export class ConfigFile {
 							// the same as omitting it.
 							...(options.validate !== undefined && { validate: options.validate }),
 							...(options.saveTarget !== undefined && { saveTarget: options.saveTarget }),
+							...(options.links !== undefined && { links: options.links }),
 						},
 						fs,
 						path,

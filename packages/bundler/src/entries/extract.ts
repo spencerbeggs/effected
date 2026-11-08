@@ -24,8 +24,13 @@ export interface ExtractResult {
 const isDeclarationFile = (p: string): boolean => p.endsWith(".d.ts") || p.endsWith(".d.cts") || p.endsWith(".d.mts");
 const isTypeScriptFile = (p: string): boolean => !isDeclarationFile(p) && (p.endsWith(".ts") || p.endsWith(".tsx"));
 
-/** /dist/*.js to /src/*.ts; otherwise unchanged. */
-const resolveToTypeScript = (p: string): string =>
+/**
+ * `/dist/*.js` to `/src/*.ts`; otherwise unchanged. The entry pass builds a `./dist/foo.js` export from
+ * `./src/foo.ts`, and the manifest transform reads the same mapping to point that export at the emitted file.
+ *
+ * @internal
+ */
+export const resolveToTypeScript = (p: string): string =>
 	p.endsWith(".js") && p.includes("/dist/") ? p.replace("/dist/", "/src/").replace(/\.js$/, ".ts") : p;
 
 /** Resolve an export value to a source path: import || default || types (NOT require). */

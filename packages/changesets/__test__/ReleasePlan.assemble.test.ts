@@ -3,6 +3,7 @@ import { WorkspacePackage } from "@effected/workspaces";
 import { Result } from "effect";
 import { ChangesetConfig } from "../src/ChangesetConfig.js";
 import { PendingChangeset } from "../src/PendingChangesets.js";
+import { PreState } from "../src/PreState.js";
 import { ReleasePlan } from "../src/ReleasePlan.js";
 
 type Dependencies = Pick<
@@ -335,10 +336,117 @@ describe("ReleasePlan.assemble", () => {
 		assert.deepStrictEqual(projected(result).at(-1), ["b", "none", "not-a-version", "not-a-version"]);
 	});
 
-	it("refuses a non-empty fixed or linked group", () => {
-		const fixed = failure(plan([pkg("a", "1.0.0")], [], { fixed: [["a"]] }));
-		assert.isTrue(fixed?._tag === "UnsupportedChangesetModeError" && fixed.mode === "fixed");
-		const linked = failure(plan([pkg("a", "1.0.0")], [], { linked: [["a"]] }));
-		assert.isTrue(linked?._tag === "UnsupportedChangesetModeError" && linked.mode === "linked");
+	it("rejects a package in two linked groups or in both a fixed and a linked group", () => {
+		const twice = failure(plan([pkg("a", "1.0.0"), pkg("b", "1.0.0")], [], { linked: [["a"], ["a", "b"]] }));
+		assert.isTrue(twice?._tag === "ChangesetConfigError" && twice.reason === "a is in more than one linked group");
+		const both = failure(plan([pkg("a", "1.0.0"), pkg("b", "1.0.0")], [], { fixed: [["a"]], linked: [["b", "a"]] }));
+		assert.isTrue(both?._tag === "ChangesetConfigError" && both.reason === "a is in both a fixed and a linked group");
+	});
+
+	it("leaves a fixed group alone while none of its members releases", () => {
+		const result = plan([pkg("a", "1.0.0"), pkg("b", "2.0.0"), pkg("c", "1.0.0")], [change("one.md", { c: "patch" })], {
+			fixed: [["a", "b"]],
+		});
+		assert.deepStrictEqual(projected(result), [["c", "patch", "1.0.0", "1.0.1"]]);
+	});
+
+	it("brings every fixed member to the group's highest bump and version", () => {
+		const result = plan(
+			[pkg("a", "1.0.0"), pkg("b", "1.4.0"), pkg("c", "0.9.0")],
+			[change("one.md", { a: "minor" }), change("two.md", { c: "patch" })],
+			{ fixed: [["a", "b", "c"]] },
+		);
+		assert.deepStrictEqual(projected(result), [
+			["a", "minor", "1.4.0", "1.5.0"],
+			["b", "minor", "1.4.0", "1.5.0"],
+			["c", "minor", "1.4.0", "1.5.0"],
+		]);
+	});
+
+	it("moves only the linked members that release", () => {
+		const result = plan(
+			[pkg("a", "1.0.0"), pkg("b", "1.4.0"), pkg("c", "0.9.0")],
+			[change("one.md", { a: "patch" }), change("two.md", { c: "minor" })],
+			{ linked: [["a", "b", "c"]] },
+		);
+		assert.deepStrictEqual(projected(result), [
+			["a", "minor", "1.4.0", "1.5.0"],
+			["c", "minor", "1.4.0", "1.5.0"],
+		]);
+	});
+
+	it("appends the pre-release tag and number in pre mode, and drops consumed changesets", () => {
+		const result = ReleasePlan.assemble({
+			packages: [pkg("a", "1.0.0"), pkg("b", "1.0.1-beta.2"), pkg("c", "1.0.0")],
+			changesets: [change("one.md", { a: "minor", b: "patch" }), change("pre/old.md", { c: "major" })],
+			config: config(),
+			pre: PreState.make({ mode: "pre", tag: "beta" }),
+		});
+		assert.deepStrictEqual(projected(result), [
+			["a", "minor", "1.0.0", "1.1.0-beta.0"],
+			["b", "patch", "1.0.1-beta.2", "1.0.1-beta.3"],
+		]);
+	});
+
+	it("carries the changesets it planned from and the pre state, leaving out those a pre-release consumed", () => {
+		const pre = PreState.make({ mode: "pre", tag: "beta", changesets: ["listed"] });
+		const result = ReleasePlan.assemble({
+			packages: [pkg("a", "1.0.0")],
+			changesets: [
+				change("one.md", { a: "patch" }),
+				change("listed.md", { a: "major" }),
+				change("pre/old.md", { a: "minor" }),
+			],
+			config: config(),
+			pre,
+		});
+		assert.isTrue(Result.isSuccess(result));
+		if (Result.isSuccess(result)) {
+			assert.deepStrictEqual(
+				result.success.changesets.map((c) => c.file),
+				["one.md"],
+			);
+			assert.strictEqual(result.success.preState, pre);
+		}
+		const exit = ReleasePlan.assemble({
+			packages: [pkg("a", "1.0.0")],
+			changesets: [change("listed.md", { a: "major" }), change("pre/old.md", { a: "minor" })],
+			config: config(),
+			pre: PreState.make({ mode: "exit", tag: "beta", changesets: ["listed"] }),
+		});
+		assert.isTrue(Result.isSuccess(exit));
+		if (Result.isSuccess(exit)) {
+			assert.deepStrictEqual(
+				exit.success.changesets.map((c) => c.file),
+				["pre/listed.md", "pre/old.md"],
+			);
+			assert.deepStrictEqual(exit.success.releases[0]?.changesets, ["pre/listed.md", "pre/old.md"]);
+		}
+		const plain = plan([pkg("a", "1.0.0")], [change("one.md", { a: "patch" })]);
+		assert.isTrue(Result.isSuccess(plain) && plain.success.preState === undefined);
+	});
+
+	it("counts consumed changesets again and completes every numbered prerelease on exit", () => {
+		const result = ReleasePlan.assemble({
+			packages: [pkg("a", "1.0.0"), pkg("b", "2.0.0-beta.0"), pkg("c", "1.0.0")],
+			changesets: [change("pre/old.md", { a: "minor" })],
+			config: config(),
+			pre: PreState.make({ mode: "exit", tag: "beta" }),
+		});
+		assert.deepStrictEqual(projected(result), [
+			["a", "minor", "1.0.0", "1.1.0"],
+			["b", "patch", "2.0.0-beta.0", "2.0.0"],
+		]);
+	});
+
+	it("fails on a prerelease number that is not a number in pre mode", () => {
+		const result = ReleasePlan.assemble({
+			packages: [pkg("a", "1.0.0-beta.x")],
+			changesets: [],
+			config: config(),
+			pre: PreState.make({ mode: "pre", tag: "beta" }),
+		});
+		const error = failure(result);
+		assert.isTrue(error?._tag === "InvalidVersionError" && error.input === "1.0.0-beta.x");
 	});
 });

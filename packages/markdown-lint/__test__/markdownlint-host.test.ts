@@ -284,6 +284,63 @@ describe("MarkdownlintAdapter under markdownlint", () => {
 		assert.deepStrictEqual(results.map(fromMarkdownlint), MarkdownLint.lint(text, [promoteH1]).map(asResult));
 	});
 
+	it("reports kit edits against the original BOM-prefixed text, and they apply as markdownlint's fixes do", async () => {
+		// The BOM fixture: the first finding is on line 1, behind the mark.
+		for (const text of ["﻿# Title\n\n# Again\n", "﻿\n# Late\n\nBody\n", "﻿---\ntitle: x\n---\n\n# One\n"]) {
+			const edits = MarkdownLint.lint(text, [promoteH1]).flatMap((finding) => Option.toArray(finding.edit));
+			assert.isAbove(edits.length, 0, JSON.stringify(text));
+			// Every edit addresses the original text: it lands on the `#`.
+			for (const edit of edits) assert.strictEqual(text.slice(edit.offset, edit.offset + edit.length), "#");
+			const results = await lintWith(text, [promoteH1]);
+			// markdownlint's applyFixes works on the string it is handed; hand it
+			// the text without the mark, as markdownlint itself lints it.
+			const bare = text.slice(1);
+			assert.strictEqual(
+				MarkdownEdit.applyAll(text, edits),
+				`﻿${helpers.applyFixes(bare, results)}`,
+				JSON.stringify(text),
+			);
+		}
+	});
+
+	it("keeps BOM edits exact for an insertion at offset 0, a BOM-only file, CRLF and a non-leading U+FEFF", async () => {
+		const insertAtStart = LintRule.make({
+			names: ["insert-at-start"],
+			description: "Inserts at the start of the text",
+			tags: ["test"],
+			check: (context, report) => {
+				report(
+					context.diagnostic({
+						at: { offset: 0, length: 0 },
+						detail: "Insert",
+						fix: { offset: 0, length: 0, content: "INS" },
+					}),
+				);
+			},
+		});
+		// One rule at a time: markdownlint drops a fix that collides with another
+		// at the same column, which is its conflict policy, not BOM handling.
+		for (const rules of [[insertAtStart], [promoteH1]]) {
+			for (const text of ["\uFEFF# T\n", "\uFEFF", "\uFEFF# T\r\n\r\n# U\r\n", "# T\n\n\uFEFFx\n# U\n"]) {
+				const edits = MarkdownLint.lint(text, rules).flatMap((finding) => Option.toArray(finding.edit));
+				// Only the insertion rule always has something to say; a heading
+				// rule has no edit on a file with no heading.
+				if (rules[0] === insertAtStart) assert.isAbove(edits.length, 0, JSON.stringify(text));
+				const lead = text.startsWith("\uFEFF") ? 1 : 0;
+				// An insertion at offset 0 of the bare text lands after the mark;
+				// a non-leading U+FEFF never shifts anything.
+				for (const edit of edits) assert.isAtLeast(edit.offset, lead, JSON.stringify(text));
+				const results = await lintWith(text, rules);
+				const bare = text.slice(lead);
+				assert.strictEqual(
+					MarkdownEdit.applyAll(text, edits),
+					text.slice(0, lead) + helpers.applyFixes(bare, results),
+					JSON.stringify(text),
+				);
+			}
+		}
+	});
+
 	it("accepts every adapted rule's metadata through markdownlint's own custom-rule validation", async () => {
 		const results = await markdownlint.lint({
 			strings: { input: "# x\n" },

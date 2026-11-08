@@ -1,6 +1,6 @@
 import { NodeCrypto } from "@effect/platform-node";
 import { assert, describe, it } from "@effect/vitest";
-import { SigV4, SigV4PathError } from "@effected/crypto";
+import { SigV4, SigV4EncodingError, SigV4PathError } from "@effected/crypto";
 import { DateTime, Effect, Layer, Option, Redacted, Schema } from "effect";
 import type { Digest } from "effect/crypto";
 import { CryptoError, Mac } from "effect/crypto";
@@ -312,6 +312,23 @@ describe("BlobStore", () => {
 							key.split("/").find((part) => part === "." || part === ".."),
 						);
 					}
+					assert.strictEqual(seen.length, 0, `${key}: nothing leaves the process`);
+				}
+			}),
+		);
+
+		it.effect("fails a key holding a lone UTF-16 surrogate as invalidKey, typed, and sends nothing", () =>
+			Effect.gen(function* () {
+				for (const key of ["a\ud800b", "x/\udc00", "tail\ud83d"]) {
+					const { seen, fake } = recordingFetch();
+					const error = yield* Effect.flip(
+						Effect.flatMap(BlobStore, (store) => store.has(key)).pipe(Effect.provide(s3(fake))),
+					);
+					assert.instanceOf(error, BlobStoreError, key);
+					assert.strictEqual(error.reason, "invalidKey", key);
+					assert.strictEqual(error.key, key);
+					assert.instanceOf(error.cause, SigV4EncodingError, key);
+					if (error.cause instanceof SigV4EncodingError) assert.strictEqual(error.cause.component, "path", key);
 					assert.strictEqual(seen.length, 0, `${key}: nothing leaves the process`);
 				}
 			}),

@@ -28,7 +28,7 @@ Reach for this package when you need what core leaves to you:
 - **Drift detection.** `Fingerprint.of` hashes a canonical JSON form of a value, and `Fingerprint.decide` turns three fingerprints into `Apply`, `Unchanged` or `Drift`.
 - **Keeping HTTP errors safely.** Core's `HttpClientError` keeps the live request, `authorization` header included, as a readable field. `HttpRedaction.cause` returns a copy with the credentials replaced.
 
-Every failure is core's `CryptoError` or one of this package's two tagged input errors; nothing in it reads the clock.
+Every failure is core's `CryptoError` or one of this package's three tagged input errors; nothing in it reads the clock.
 
 ## Install
 
@@ -142,14 +142,14 @@ const readFirstBytes = (credentials: SigV4Credentials, host: string, key: string
       headers: signed.headers,
     })),
   );
-// Effect<{ url: string; headers: Record<string, string> }, SigV4PathError | CryptoError, Digest | Mac>
+// Effect<{ url: string; headers: Record<string, string> }, SigV4PathError | SigV4EncodingError | CryptoError, Digest | Mac>
 ```
 
 `SigV4Credentials` holds `accessKeyId`, a `Redacted` `secretAccessKey`, an optional `Redacted` `sessionToken` (sent as `x-amz-security-token`), `region` (`auto` for R2) and `service`. The request carries its own signing instant in `now`, as a `Date` or a `DateTime`, so a signature is reproducible. Pass `path` and `query` unencoded: `sign` encodes the path one segment at a time (escaping `!'()*`, which `encodeURIComponent` leaves alone), sorts and encodes the query, and returns the strings it signed as `path` and `query`. Send exactly those; re-encoding them breaks the signature.
 
 The payload hash is the SHA-256 of `body` unless you pass `payloadHash`: `SigV4.EMPTY_PAYLOAD_HASH` for an empty body, `SigV4.UNSIGNED_PAYLOAD` for a streamed upload, or a hash you computed. The returned `headers` are yours, names lower-cased, plus `host`, `x-amz-date`, `x-amz-content-sha256`, the session token when there is one, and `authorization`.
 
-A path with a segment that is exactly `.` or `..` fails with `SigV4PathError` before anything is signed: every URL parser collapses such a segment, so the request would reach a different path from the one signed. `SigV4.canonicalize` and `SigV4.signingKey` are exported for pinning tests against AWS's documented examples.
+A path with a segment that is exactly `.` or `..` fails with `SigV4PathError` before anything is signed: every URL parser collapses such a segment, so the request would reach a different path from the one signed. A method, host, path, query key or value, or header name or value holding a lone UTF-16 surrogate fails with `SigV4EncodingError`, naming the component, rather than dying inside `encodeURIComponent`. `SigV4.canonicalize` and `SigV4.signingKey` are exported for pinning tests against AWS's documented examples.
 
 ## Detect drift
 
@@ -211,9 +211,10 @@ The copy keeps the method, the status and the URL, with userinfo and sensitive q
 | `CryptoError` (core, `effect/crypto`), reason `InvalidKey` | `Hmac.sign`, `Hmac.verify` | The key is empty. |
 | `CryptoError` (core), any reason | `Hmac`, `ConstantTime.secretsEqual`, `SigV4.sign`, `SigV4.signingKey` | The `Mac` layer refused or mishandled a key it should accept. A well-behaved layer does not reach this from `secretsEqual` or SigV4, whose keys are never empty. |
 | `SigV4PathError` | `SigV4.sign`, `SigV4.canonicalize` | The path has a segment that is exactly `.` or `..`. Carries `path` and `segment`. |
+| `SigV4EncodingError` | `SigV4.sign`, `SigV4.canonicalize` | A method, host, path, query key or value, or header name or value holds a lone UTF-16 surrogate; a string `body` is not checked. Carries `component` (`method`, `host`, `path`, `query-key`, `query-value`, `header-name`, `header-value`) and, when there is one, the `subject` (query key or header name). |
 | `FingerprintError` | `Fingerprint.of`, `Fingerprint.canonicalizeResult` | The value has no canonical JSON form. Carries `path` (a JSON-pointer-like location, `""` for the root) and `detail` (what was found there). |
 
-`CryptoError` means the wiring is wrong, so turn it into a defect with `Effect.orDie`. The two tagged errors are caller input: recover with `Effect.catchTag("SigV4PathError", ...)` or `Effect.catchTag("FingerprintError", ...)`. This package does not re-export `CryptoError`; import it from `effect/crypto`. On the WebCrypto layers, a runtime with no `crypto.subtle` is not a failure at all: the effect dies. `Hmac.verify` reports a malformed signature as `false`, never as an error.
+`CryptoError` means the wiring is wrong, so turn it into a defect with `Effect.orDie`. The tagged errors are caller input: recover with `Effect.catchTag("SigV4PathError", ...)`, `Effect.catchTag("SigV4EncodingError", ...)` or `Effect.catchTag("FingerprintError", ...)`. This package does not re-export `CryptoError`; import it from `effect/crypto`. On the WebCrypto layers, a runtime with no `crypto.subtle` is not a failure at all: the effect dies. `Hmac.verify` reports a malformed signature as `false`, never as an error.
 
 ## Testing
 

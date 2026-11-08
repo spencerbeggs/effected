@@ -18,6 +18,7 @@
 | `DescendSyncOptions` | Interface | Options for `descendSync` / `descendEntriesSync`: every `DescendOptions` field, plus the platform. | |
 | `DescendSyncRecordOptions` | Interface | `DescendSyncOptions` under `onUnreadable: "record"`. | |
 | `FindUpwardSyncWithOptions` | Interface | Options for `Walker.findUpwardSyncWith`. | |
+| `FindUpwardWithOptions` | TypeAlias | Options for `Walker.findUpwardWith`: the same shape as `FindUpwardSyncWithOptions`, so one cache serves both forms. | |
 | `GlobExpansionError` | Class | Typed failure raised by `compileAndExpand`: the single error the compile+expand recipe fails with, so a caller catches one tag rather than folding two error channels by hand. | handle pattern-to-files expansion failure, compile or descend stage error, wraps GlobPatternError or DescendError |
 | `PathEscapeError` | Class | An untrusted relative path would leave, or does not name anything under, the base directory it was confined to. | handle path escaping a base directory, zip slip, symlink escape, absolute or dot-dot refused |
 | `PathEscapeReason` | Variable + TypeAlias | The decoded type of `(PathEscapeReason:variable)`. | why a confined path was refused, traversal, symlink outside base, unresolvable, win32 reserved |

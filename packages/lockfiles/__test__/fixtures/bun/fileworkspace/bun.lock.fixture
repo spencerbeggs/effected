@@ -1,0 +1,30 @@
+{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "fl-root",
+    },
+    "packages/a": {
+      "name": "@fl/a",
+      "version": "1.0.0",
+      "dependencies": {
+        "@fl/b": "file:../b",
+      },
+    },
+    "packages/b": {
+      "name": "@fl/b",
+      "version": "1.0.0",
+      "dependencies": {
+        "ms": "2.0.0",
+      },
+    },
+  },
+  "packages": {
+    "@fl/a": ["@fl/a@workspace:packages/a"],
+
+    "@fl/b": ["@fl/b@workspace:packages/b"],
+
+    "ms": ["ms@2.0.0", "", {}, "sha512-Tpp60P6IUJDTuOq/5Z8cdskzJujfwqfOTkrwIwj7IRISpnkJnT6SyJ4PCPnGMoFjC9ddhal5KVIYtAt97ix05A=="],
+  }
+}

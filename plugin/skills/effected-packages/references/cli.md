@@ -117,3 +117,29 @@ Unless `importCheck = false`, each bundle is then imported in an isolated
 temporary directory with no `PATH`, which runs an action that has no
 `GITHUB_ACTIONS` guard. Exit `1` on validation errors or a failed entry; a missing
 `[action]` table or an unloadable config is `2`.
+
+## `effected action init`
+
+```text
+effected action init [--name=<name>] [--description=<text>] [--force] [--format=human|json]
+```
+
+Scaffolds a new GitHub Action in a directory holding a `package.json`, ready for
+`effected action build`: `effected.toml` (`[action.entries] main` and
+`[action.persistLocal]` enabled), `action.yml` (`node24`, `runs.main`
+`dist/main.js`, branding), `src/main.ts` (the program import and the
+`GITHUB_ACTIONS` guard), `src/program.ts`, and a `tsconfig.json` extending
+`@effected/plugin/tsconfig/ecma.json`. `--name` and `--description` default to
+`package.json`'s `name` (scope dropped) and `description`, and must be one line
+without control characters. Every path is inspected before anything is written:
+an existing file stops the run with nothing written unless `--force`, and a
+symbolic link at any file or directory it writes, or the wrong kind of entry, is
+refused even with `--force`, so it never writes outside the directory. It edits
+no `package.json`; the report names the packages to add
+(`@effected/github-actions`, `effect`, `@effect/platform-node`; devDependencies
+`@effected/plugin`, without which the build cannot read the tsconfig, and its
+peers `typescript` and `@types/node`) and whether `"type": "module"` is set.
+`--format json` prints one `ActionInitResult`. Exit `0` written; `2` no
+`package.json`, no usable name or description, an existing file without
+`--force`, or a conflict; `3` a write failed after the checks, naming the files
+already written.

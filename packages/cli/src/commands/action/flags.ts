@@ -16,3 +16,22 @@ export const buildFlags = {
 		Flag.withDescription("Skip copying the build to the local action directory"),
 	),
 };
+
+/** What `action init` takes. A name or description left out is read from `package.json`. */
+export const initFlags = {
+	format: formatFlag,
+	name: Flag.String("name").pipe(
+		Flag.optional,
+		Flag.withDescription("The action's display name in action.yml; omitted, package.json's name without its scope"),
+	),
+	description: Flag.String("description").pipe(
+		Flag.optional,
+		Flag.withDescription("What the action does, for action.yml; omitted, package.json's description"),
+	),
+	force: Flag.Boolean("force").pipe(
+		Flag.withDefault(false),
+		Flag.withDescription(
+			"Replace files that already exist; without it, any existing file stops the run before a write",
+		),
+	),
+};

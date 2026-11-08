@@ -140,6 +140,38 @@ describe("ShellCommand.fromSegment", () => {
 		assert.notInclude(ShellCommand.reservedWords, "for");
 	});
 
+	it("lists the [[ … ]] and (( … )) words it evaluates in evaluated, skipped or named", () => {
+		const evaluated = (input: string): { name: string | null; evaluated: ReadonlyArray<string> } => {
+			const command = ShellCommand.fromSegment(ShellSyntax.parse(input).segments[0] as ShellSegment);
+			return { name: Option.getOrNull(command.name), evaluated: command.evaluated.map((w) => w.raw) };
+		};
+		// Run on into `then` or `do`: skipped on the way to the command, and listed.
+		assert.deepStrictEqual(evaluated("if [[ x -eq 0 ]] then git commit; fi"), {
+			name: "git",
+			evaluated: ["[[", "x", "-eq", "0", "]]"],
+		});
+		assert.deepStrictEqual(evaluated("while (( x )) do git commit; done"), { name: "git", evaluated: ["(( x ))"] });
+		assert.deepStrictEqual(evaluated("for (( i = x; i < 1; i++ )) do git commit; done"), {
+			name: "git",
+			evaluated: ["(( i = x; i < 1; i++ ))"],
+		});
+		// bash 5.3 runs `git` here: two conditionals, then the command.
+		assert.deepStrictEqual(evaluated("if [[ a ]] then while (( c )) do git x; done; fi"), {
+			name: "git",
+			evaluated: ["[[", "a", "]]", "(( c ))"],
+		});
+		assert.deepStrictEqual(evaluated("time (( c ))"), { name: "((", evaluated: ["(( c ))"] });
+		// The whole command: named, and listed too.
+		assert.deepStrictEqual(evaluated("[[ x -eq 0 ]]"), { name: "[[", evaluated: ["[[", "x", "-eq", "0", "]]"] });
+		assert.deepStrictEqual(evaluated("(( x ))"), { name: "((", evaluated: ["(( x ))"] });
+		// Split on `||`, the first segment's `[[` runs to the segment's end.
+		assert.deepStrictEqual(evaluated("[[ 0 == 1 || x -eq 0 ]]"), { name: "[[", evaluated: ["[[", "0", "==", "1"] });
+		// Nothing evaluated: quoted, an argument, or no conditional at all.
+		assert.deepStrictEqual(evaluated("'[[' x ]]"), { name: "[[", evaluated: [] });
+		assert.deepStrictEqual(evaluated("echo [[ x ]]"), { name: "echo", evaluated: [] });
+		assert.deepStrictEqual(evaluated("git status"), { name: "git", evaluated: [] });
+	});
+
 	it("does not resolve an inherited Object.prototype member as a wrapper", () => {
 		assert.deepStrictEqual(resolve("constructor x"), { name: "constructor", args: ["x"], wrappers: [] });
 		assert.deepStrictEqual(resolve("__proto__ x"), { name: "__proto__", args: ["x"], wrappers: [] });

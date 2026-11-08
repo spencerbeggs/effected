@@ -12,10 +12,17 @@ const MEGABYTE = 1 << 20;
 const repeatTo = (unit: string, length: number): string =>
 	unit.repeat(Math.ceil(length / unit.length)).slice(0, length);
 
+/**
+ * The CPU time one parse takes (`process.cpuUsage`): time the parse spent, not
+ * time the process was descheduled, so a loaded machine slows a sample only
+ * through GC, which `measure`'s fastest-of-three re-timing absorbs. vitest
+ * runs each file in its own fork, so no other test's CPU lands here.
+ */
 const time = (input: string): { readonly ms: number; readonly script: ShellScript } => {
-	const started = performance.now();
+	const started = process.cpuUsage();
 	const script = ShellSyntax.parse(input);
-	return { ms: performance.now() - started, script };
+	const used = process.cpuUsage(started);
+	return { ms: (used.user + used.system) / 1000, script };
 };
 
 type Timing = ReturnType<typeof time>;
@@ -26,14 +33,17 @@ type Timing = ReturnType<typeof time>;
  * size starts at a quarter megabyte and doubles, up to 4 MB, until its run
  * takes 5 ms, so a fast parse is measured on real work rather than on timer
  * noise: under 5 ms a quadratic parse can read as linear. Each size is timed
- * once after a warm-up. A ratio of 10 or more is timed again, up to three
+ * once after a warm-up; a unit whose quarter-megabyte run sits at the floor
+ * starts larger (`LARGE_START`), so its small side always does milliseconds of
+ * real work. A ratio of 10 or more is timed again, up to three
  * samples, keeping the fastest run of each size, so one pause in the full run
  * cannot fail a linear parse, while a quadratic one fails every sample.
  */
 const measure = (
 	build: (length: number) => string,
+	startQuarter: number = MEGABYTE / 4,
 ): { readonly quarter: Timing; readonly full: Timing; readonly ratio: number; readonly length: number } => {
-	let quarterLength = MEGABYTE / 4;
+	let quarterLength = startQuarter;
 	let small = build(quarterLength);
 	time(small); // warm up
 	let quarter = time(small);
@@ -159,12 +169,28 @@ const UNITS: ReadonlyArray<string> = [
 	`"\${x:-'\${y:-"a"}'} `,
 	"env --u ",
 	"sudo --c ",
+	// An assignment builtin's array argument, its subscripted name matched
+	// through quotes, the token read on after its `)`, and a name whose `[`
+	// never matches before an `=(`.
+	"declare x=(a)# ",
+	'declare y["]"]=(a)b ',
+	"declare y[[[=( ",
 ];
+
+/**
+ * Units whose quarter-megabyte run takes about 5 ms, right at the floor: the
+ * doubling loop can stop at a small side whose timing is noise, and one GC
+ * pause in the full run then reads as growth. They start at a 1 MB quarter.
+ */
+const LARGE_START: ReadonlySet<string> = new Set(["$[a<<b "]);
 
 describe("hostile input", () => {
 	for (const unit of UNITS) {
 		it(`a megabyte of ${JSON.stringify(unit)} parses in linear time`, { timeout: 60_000 }, () => {
-			const { quarter, full, ratio, length } = measure((size) => repeatTo(unit, size));
+			const { quarter, full, ratio, length } = measure(
+				(size) => repeatTo(unit, size),
+				LARGE_START.has(unit) ? MEGABYTE : MEGABYTE / 4,
+			);
 			assert.strictEqual(full.script.source.length, length);
 			assert.isBelow(ratio, 10, `${JSON.stringify(unit)}: ${quarter.ms.toFixed(1)}ms -> ${full.ms.toFixed(1)}ms`);
 			assert.isBelow(full.ms, 10_000);

@@ -31,6 +31,7 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
+		"@effected/glob": "workspace:*",
 		"@effected/jsonc": "workspace:*",
 		"@effected/npm": "workspace:*",
 		"@effected/semver": "workspace:*",
@@ -40,6 +41,7 @@
 		"typescript": "catalog:build"
 	},
 	"peerDependencies": {
+		"@effected/glob": "workspace:^",
 		"@effected/jsonc": "workspace:^",
 		"@effected/npm": "workspace:^",
 		"@effected/semver": "workspace:^",

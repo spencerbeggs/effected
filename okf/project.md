@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-07T03:36:22Z
+  at: 2026-11-08T17:37:31Z
 integrity:
   generated:
-    body: d12013edc2f47ac4
+    body: b8ef951ff67739c8
 ---
 
 # effected
@@ -78,8 +78,8 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `bundler` | integrated | port of `@savvy-web/tsdown-plugins` and `@savvy-web/bundler`, the `tsdoctor.json` schema from `@tsdoctor/manifest`, and a rolldown rewrite of `@savvy-web/github-action-builder`; a `typescript` peer shared only with the tool's `cli`, `mcp` and `plugin` |
 | `pnpm-plugin-effected` | companion — no tier | invention; the one `effected` catalog (the Effect family on one minor, and the kit) plus the graph-wide Effect pins, and the public hoist of `@effected/plugin`; renamed from `pnpm-plugin-effect` |
 | `plugin` | tool — no tier | invention; the `effected` tool's carrier, the one package a consumer installs (a root devDependency through `catalog:effected`): declares the `effected` and `effected-mcp` bins as shims passing its own distribution identity, re-exports `defineSchemastore`, ships the tsconfig presets as `./tsconfig/*`, and pins the chain below it exactly |
-| `cli` | tool — no tier | invention; the `effected` command (`package build`, `action build`, `schema build`, `check` and `validate`, `--version`, `--help`) over `effect/cli`, `cli-kit` and `engine`; the name was `cli-kit`'s before [the rename](decisions/carrier-libraries-take-kit-names.md) |
-| `mcp` | tool — no tier | invention; the `effected-mcp` stdio server with the `identity` tool and the `package_build`, `action_build`, `schema_build`, `schema_check` and `schema_validate` tools over `effect/ai`, `mcp-kit` and `engine` |
+| `cli` | tool — no tier | invention; the `effected` command (`package build`, `action build`, `action init`, `schema build`, `check` and `validate`, `--version`, `--help`) over `effect/cli`, `cli-kit` and `engine`; the name was `cli-kit`'s before [the rename](decisions/carrier-libraries-take-kit-names.md) |
+| `mcp` | tool — no tier | invention; the `effected-mcp` stdio server with the `identity` tool and the `package_build`, `action_build`, `action_init`, `schema_build`, `schema_check` and `schema_validate` tools over `effect/ai`, `mcp-kit` and `engine` |
 | `engine` | tool — no tier | invention; the tool's shared logic that both front ends report through: `Identity.report`, and the `./schema` subpath (config loader, runner, report classes, version check, the two shipped ajv engines), and the `./build` subpath (`BuildRun`, `ActionRun` and their result classes), built on `kit`, `schemastore` and `bundler` |
 
 The roster is **52 packages**: 47 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`plugin`, `cli`, `mcp`, `engine`), which are an application and carry no library tier. `cli-kit`, `mcp-kit`, `kit`, `plugin`, `changesets`, `bundler`, `shell`, `s3` and `markdown-lint` are new npm names, not yet published. `cli`, `mcp` and `engine` published before as the old kit libraries, and their next release is the tool package under the same name. `pnpm-plugin-effected` is already published.

@@ -490,6 +490,21 @@ service's error contract**: `@effected/git`'s `runClassified` owns a fixed
 `Cause.TimeoutError` never escapes its methods — the ceiling is absorbed
 into the taxonomy, not exposed as a parameter.
 
+## Interruption reaches the network — never wire an `AbortSignal` into core `HttpClient`
+
+Core's `HttpClient` already cancels the request: `HttpClient.make` gives every
+request its own `AbortController` and aborts it when the calling fiber is
+interrupted, and keeps it armed while the body is read (text, JSON, bytes or a
+stream). So a timeout, a `Fiber.interrupt` or a lost race releases the
+connection with no code of yours. Never build an `AbortController`, merge a
+signal into request options, or pass one through a service for an
+`HttpClient` call — that duplicates core's wiring and drifts from it.
+
+For a promise **outside** `HttpClient` — an SDK such as octokit, or a raw
+`fetch` you cannot replace — use the signal `Effect.tryPromise` hands you:
+`Effect.tryPromise({ try: (signal) => sdk.call({ signal }), catch: … })`. It
+is aborted when the fiber is interrupted, the same way.
+
 ## Polling and repetition — `Effect.repeat` with options, not a recursive `Effect.sleep`
 
 A poll loop written as `const go = Effect.gen(function*() { ...; yield* Effect.sleep(d); return yield* go })`

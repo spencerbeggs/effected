@@ -93,7 +93,8 @@ describe("GlobPattern.matches under a stack overflow", () => {
 });
 
 describe("braceExpandMax against a hostile brace pattern", () => {
-	const hostile = "**/a/**/*{0..999}*";
+	// 1,024 alternatives, each walked by the ** pair
+	const hostile = `**/a/**/*${"{a,b}".repeat(10)}*`;
 
 	it.effect("fails fast at compile when lowered", () =>
 		Effect.gen(function* () {
@@ -105,6 +106,18 @@ describe("braceExpandMax against a hostile brace pattern", () => {
 			assert.strictEqual(e.limit, 100);
 		}),
 	);
+
+	it("leaves a numeric range of 100 or more values to the matcher, which expands nothing", () => {
+		// minimatch 11 matches {0..999} as one portion, so no budget applies to it
+		const range = "**/a/**/*{0..999}*";
+		const compiled = GlobPattern.compileResult(range, GlobPatternOptions.make({ braceExpandMax: 1 }));
+		assert.isTrue(Result.isSuccess(compiled));
+		if (Result.isSuccess(compiled)) {
+			for (const path of ["x/a/y/q500z", "x/a/q", "a/7"]) {
+				assert.strictEqual(compiled.success.matches(path), minimatch(path, range, { braceExpandMax: 1 }), path);
+			}
+		}
+	});
 });
 
 describe("optimizationLevel 2 against a hostile **/.. pattern (GHSA-g3hv-75wg-m249)", () => {
@@ -121,26 +134,40 @@ describe("optimizationLevel 2 against a hostile **/.. pattern (GHSA-g3hv-75wg-m2
 	});
 });
 
-describe("a portion whose regexp the runtime rejects", () => {
-	// A POSIX class turns on the regexp u flag, and under it the escapes the
-	// engine writes for `,`, `#`, a space or `-` are syntax errors. That is a
-	// typed failure, never a raw SyntaxError.
-	const shapes = ["[[:alpha:]]\\{a,b}", "[[:alpha:]],", "[[:alpha:]]#", "[[:alpha:]] a", "[[:alpha:]]-"];
+describe("a POSIX class beside punctuation (#1279)", () => {
+	// A POSIX class turns on the regexp u flag, under which an escape of a
+	// character that is not regexp syntax is a syntax error. The engine escapes
+	// only regexp syntax, as minimatch 11's reEscape does, so a loose `,`, `#`,
+	// space or `-` beside the class compiles and matches as 11 does.
+	const shapes = [
+		["[[:alpha:]]\\{a,b}", "x{a,b}"],
+		["[[:alpha:]],", "x,"],
+		["[[:alpha:]]#", "x#"],
+		["[[:alpha:]] a", "x a"],
+		["[[:alpha:]]-", "x-"],
+		["[[:alpha:]]-*", "x-yz"],
+	] as const;
 
-	it("fails typed with InvalidRegExp, on every construction path", () => {
-		for (const source of shapes) {
+	it("compiles and matches as minimatch 11 does, on every construction path", () => {
+		for (const [source, path] of shapes) {
 			const compiled = GlobPattern.compileResult(source);
-			assert.isTrue(Result.isFailure(compiled), source);
-			if (Result.isFailure(compiled)) {
-				assert.instanceOf(compiled.failure, GlobPatternError);
-				assert.strictEqual(compiled.failure.reason, "InvalidRegExp", source);
-				assert.strictEqual(compiled.failure.pattern, source);
+			assert.isTrue(Result.isSuccess(compiled), source);
+			if (Result.isSuccess(compiled)) {
+				for (const candidate of [path, "1,", "x", path.slice(1)]) {
+					assert.strictEqual(
+						compiled.success.matches(candidate),
+						minimatch(candidate, source),
+						`${source} vs ${candidate}`,
+					);
+				}
+				assert.isTrue(compiled.success.matches(path), `${source} vs ${path}`);
 			}
-			assert.isTrue(Result.isFailure(Schema.decodeUnknownResult(GlobPattern.FromString)(source)), source);
+			assert.isTrue(Result.isSuccess(Schema.decodeUnknownResult(GlobPattern.FromString)(source)), source);
 			const viaEffect = Effect.runSync(Effect.result(GlobPattern.compile(source)));
-			assert.isTrue(Result.isFailure(viaEffect), source);
-			const set = GlobSet.compileResult(["a/**", `!${source}`]);
-			assert.isTrue(Result.isFailure(set) && set.failure.reason === "InvalidRegExp", source);
+			assert.isTrue(Result.isSuccess(viaEffect), source);
+			const set = GlobSet.compileResult(["**", `!${source}`]);
+			assert.isTrue(Result.isSuccess(set), source);
+			if (Result.isSuccess(set)) assert.isFalse(set.success.matches(path), source);
 		}
 	});
 

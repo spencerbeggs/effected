@@ -5,10 +5,19 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `ActionInit` | Class | Scaffolds a new GitHub Action to the kit's canonical shape. | from `@effected/engine/build` — scaffold a new github action, plan files as data, write without overwriting |
+| `ActionInitDeps` | Interface | What the process boundary supplies for `action init`. | from `@effected/engine/build` |
+| `ActionInitInput` | Interface | What one `action init` was asked to do, as the flags or tool parameters said it. A name or description left out is read from `package.json`. | from `@effected/engine/build` |
+| `ActionInitResult` | Class | What one `action init` did. | from `@effected/engine/build` — what action init wrote or replaced and the dependencies still to add |
+| `ActionMetadataInvalidError` | Class | The action's name or description holds a control character or a lone surrogate, which `action.yml` cannot carry. | from `@effected/engine/build` — action init refused a name or description holding control characters |
+| `ActionMetadataMissingError` | Class | The action's name or description was neither given nor found in `package.json`, or was blank. | from `@effected/engine/build` — action init has no name or description, given or in package.json |
 | `ActionRun` | Class | Runs one GitHub Action build. | from `@effected/engine/build` — run one github action build for a front end, verdict and partial result |
 | `ActionRunDeps` | TypeAlias | What the process boundary supplies for an action build: the parts of `BuildRunDeps` it uses. | from `@effected/engine/build` |
 | `ActionRunInput` | Interface | What one action build was asked to do, as the flags or tool parameters said it. | from `@effected/engine/build` |
 | `ActionRunResult` | Class | One action build's answer: the verdict a front end maps to an exit code or returns as data, and what the build did. | from `@effected/engine/build` — an action build's verdict and what validation and bundling did |
+| `ActionScaffold` | Class | Everything a new action needs that `action init` writes, as data: the files, and the packages its source imports. | from `@effected/engine/build` — a new action scaffold as data, its files and the packages it imports |
+| `ActionScaffoldFile` | Class | One file of a scaffold: where it goes, relative to the action's directory, and its whole content. | from `@effected/engine/build` — one scaffold file, relative path and whole content |
+| `ActionScaffoldInput` | Interface | What the scaffold is built from: the two `action.yml` fields no default can supply. | from `@effected/engine/build` |
 | `AjvInstanceValidator` | Class | The shipped `InstanceValidator` implementation: the same ajv strict-mode setup `AjvValidator` gates documents with — the declared `KeywordFamilies` keywords and the standard `ajv-formats` vocabulary registered, through the one shared `makeAjv` — pointed at a payload instance instead of the meta-schema. | from `@effected/engine/schema` — the shipped ajv strict-mode InstanceValidator engine layer, the one real implementation effected schema validate composes, provide it to validate payloads yourself |
 | `AjvValidator` | Class | The shipped `SchemaValidator` implementation: ajv strict mode over the Draft-07 meta-schema, with every declared `KeywordFamilies` keyword and the standard `ajv-formats` vocabulary registered. | from `@effected/engine/schema` — the shipped ajv strict-mode SchemaValidator engine layer, the one real implementation effected schema build composes, provide it to drive SchemaPipeline yourself |
 | `BuildProgress` | TypeAlias | Progress through one build. | from `@effected/engine/build` |
@@ -44,6 +53,10 @@
 | `RunOptions` | Interface | What `Runner.run` is asked to do. | from `@effected/engine/schema` |
 | `RunReport` | Class | The whole run, as a value: the renderers and the exit-code mapping read this and nothing else. | from `@effected/engine/schema` — whole schemastore build or check run as a value, drives renderers and exit codes |
 | `Runner` | Class | The shared `build` / `check` walk: verify every advertised frozen version exists, classify every current target through `DriftPolicy` over `SchemaPipeline.checkOne`, then write through `SchemaPipeline.run` only when nothing is refused. | from `@effected/engine/schema` — shared build and check walk, verify frozen versions, classify drift policy, write when clean |
+| `ScaffoldConflict` | Class | One path a scaffold cannot be written over, whatever `force` says. | from `@effected/engine/build` — one path action init cannot write, symlink, wrong kind, unreadable, unwritable, outside |
+| `ScaffoldConflictError` | Class | Paths the scaffold would write cannot be written over: a symbolic link, the wrong kind of entry, an entry that could not be inspected, or a path resolving outside the action's directory. Nothing was written, and `force` does not change it. | from `@effected/engine/build` — action init refused symlinks or wrong-kind entries before any write, even with force |
+| `ScaffoldExistsError` | Class | The files a scaffold would write already exist, and overwriting was not asked for. Nothing was written. | from `@effected/engine/build` — action init refused, target files exist and force was not given |
+| `ScaffoldWriteError` | Class | A scaffold file or directory could not be written after every check passed. The files before it were written. | from `@effected/engine/build` — action init write failed after its checks, names files already written, exit code 3 |
 | `SchemaChecked` | Interface | What one schema's check established, which nothing about its siblings can change. Its final `outcome` can still become `held` when a sibling is refused, so that waits for `SchemaReport`. | from `@effected/engine/schema` |
 | `SchemaOutcome` | TypeAlias | What the run did with one schema. | from `@effected/engine/schema` |
 | `SchemaProgress` | TypeAlias | Progress through one run. | from `@effected/engine/schema` |

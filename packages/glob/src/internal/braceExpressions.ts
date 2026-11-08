@@ -11,6 +11,9 @@
 // `[` was quadratic). The posix table takes minimatch 11.0.5's `[:punct:]`
 // (`\p{P}\p{S}`, symbols included) and `[:print:]` (negated `\p{C}`, so
 // every char but controls); 10 left out symbols and matched only controls.
+// A one-character class is escaped only if it is regexp syntax (11's reEscape
+// set): 10 escaped `,`, `#`, `-` and whitespace too, which the u flag a POSIX
+// class elsewhere in the portion rejects.
 
 // translate the various posix character classes into unicode properties
 // this works across all unicode locales
@@ -48,8 +51,10 @@ const posixClassEntries = Object.entries(posixClasses);
 // only need to escape a few things inside of brace expressions
 // escapes: [ \ ] -
 const braceEscape = (s: string): string => s.replace(/[[\]\\-]/g, "\\$&");
-// escape all regexp magic characters
-const regexpEscape = (s: string): string => s.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+// escape the regexp syntax characters, minimatch 11's reEscape set: an escape
+// of anything else (`,`, `#`, `-`, whitespace) is a syntax error under the u
+// flag a POSIX class turns on
+const regexpEscape = (s: string): string => s.replace(/[\\^$.*+?()[\]{}|/]/g, "\\$&");
 
 // everything has already been escaped, we just have to join
 const rangesToString = (ranges: Array<string>): string => ranges.join("");

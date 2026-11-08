@@ -1,6 +1,6 @@
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Path, Schema } from "effect";
-import { ChangesetConfigError, UnsupportedChangesetModeError } from "./errors.js";
+import { ChangesetConfigError } from "./errors.js";
 
 const Groups = Schema.Array(Schema.Array(Schema.String));
 
@@ -21,9 +21,19 @@ const expandPrivatePackages = (json: unknown): unknown => {
 export class ChangesetConfig extends Schema.Class<ChangesetConfig>("ChangesetConfig")({
 	/** The branch releases are cut against. Defaults to `main`. */
 	baseBranch: Schema.String.pipe(Schema.withDecodingDefaultKey(Effect.succeed("main"))),
-	/** Groups of packages that always release together at one version. */
+	/**
+	 * Groups of packages that always release together at one version: when
+	 * one bumps, every member does, by the group's highest bump, from the
+	 * group's highest current version. Entries are globs over the
+	 * workspace's names, with `!` negation applying in order.
+	 */
 	fixed: Groups.pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
-	/** Groups of packages whose versions are kept in step. */
+	/**
+	 * Groups of packages whose versions are kept in step: the members that
+	 * release take the group's highest bump from its highest current version,
+	 * and members with nothing to release stay out. Entries are globs, as in
+	 * `fixed`.
+	 */
 	linked: Groups.pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 	/**
 	 * Packages that never bump: globs over the workspace's package names, with
@@ -66,8 +76,9 @@ export class ChangesetConfig extends Schema.Class<ChangesetConfig>("ChangesetCon
 	 * Read and decode `<root>/.changeset/config.json`.
 	 *
 	 * Fails with {@link ChangesetConfigError} when the file is missing
-	 * (`reason: "missing"`), is not JSON, or has a malformed value, and with
-	 * {@link UnsupportedChangesetModeError} when `.changeset/pre.json` exists.
+	 * (`reason: "missing"`), is not JSON, or has a malformed value. Whether the
+	 * repository is in pre-release mode is `.changeset/pre.json`, which
+	 * {@link PreState.read} reads.
 	 *
 	 * @param root - The repository root.
 	 */
@@ -85,9 +96,6 @@ export class ChangesetConfig extends Schema.Class<ChangesetConfig>("ChangesetCon
 							: Effect.fail(error),
 				),
 			);
-		if (yield* fs.exists(path.join(dir, "pre.json"))) {
-			return yield* new UnsupportedChangesetModeError({ mode: "pre" });
-		}
 		const json = yield* Effect.try({
 			try: () => JSON.parse(text) as unknown,
 			catch: (cause) => new ChangesetConfigError({ reason: `not valid JSON: ${(cause as Error).message}` }),

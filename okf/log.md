@@ -4,6 +4,28 @@
 
 * Updated glob
 * Updated glob does not bound total matching work on hostile patterns
+* Updated lockfiles
+* Updated walker
+* Updated npm
+* Updated @effected/crypto
+* Updated @effected/files
+* Updated @effected/schemastore
+* Updated @effected/templates
+* Updated config-file
+* Updated package-json
+* Updated @effected/markdown-lint
+* Updated @effected/shell
+* Updated @effected/bundler
+* Updated effected.toml: the build config's tables, defaults and discovery
+* Updated @effected/oidc
+* Updated @effected/s3
+* Updated @effected/changesets
+* Updated @effected/cli
+* Updated @effected/engine
+* Updated @effected/mcp
+* Updated Build a GitHub Action repository to the kit's canonical shape
+* Updated The effected build commands: package build, action build and action init
+* Updated effected
 
 ## 2026-11-07
 

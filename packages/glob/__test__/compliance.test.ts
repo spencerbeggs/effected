@@ -6,9 +6,8 @@
 //
 // Rule of the gate: if the vendored engine disagrees with the oracle, fix the
 // engine, never the expectation — except where a row exercises the documented
-// deviations (typed budget exhaustion; explicit platform) or the one documented
-// divergence, numeric ranges of 100 or more values (hasLargeNumericRange
-// below), which are tested separately and excluded from oracle comparison.
+// deviations (typed budget exhaustion; explicit platform), which are tested
+// separately and excluded from oracle comparison.
 
 import { assert, describe, it } from "@effect/vitest";
 import { Arbitrary, Effect, Schema } from "effect";
@@ -179,23 +178,6 @@ const table: ReadonlyArray<Row> = [
 	["a/b/", "a/b/", true],
 ];
 
-// Documented divergence: minimatch 11 matches a numeric range of 100 or more
-// values, such as {0..999}, as one pattern portion instead of expanding it, so
-// its hasMagic() is true for one, and it matches a range past braceExpandMax
-// where the engine fails typed. The engine expands every range. Matching an
-// in-budget range agrees, so only hasMagic and over-budget ranges take this
-// exception. The detection is 11.0.5's own: an unescaped {lo..hi}, not a
-// ${...} variable, with at least 100 values.
-const LARGE_RANGE_MIN = 100;
-const hasLargeNumericRange = (pattern: string): boolean => {
-	for (const m of pattern.matchAll(/(?<![\\$])\{(-?\d+)\.\.(-?\d+)\}/g)) {
-		const lo = Number(m[1]);
-		const hi = Number(m[2]);
-		if (Number.isSafeInteger(lo) && Number.isSafeInteger(hi) && Math.abs(lo - hi) + 1 >= LARGE_RANGE_MIN) return true;
-	}
-	return false;
-};
-
 // Documented oracle defect: minimatch 11 merges a pattern's brace alternatives
 // into one Matcher by joining them with `|`, so a `[` in one alternative and a
 // `]` in a later one become a class, and the alternatives between them are
@@ -331,36 +313,72 @@ describe("engine compliance: behavioral table", () => {
 		assert.isTrue(oracle(negated, negated, oracleOpts(opts)));
 	});
 
-	it("expands a range of 100 or more values, the documented range divergence", () => {
+	it("keeps a numeric range of 100 or more values one portion, as the oracle does", () => {
 		const opts: EngineOptions = { platform: "posix" };
-		for (const pattern of ["{0..199}", "a{1..150}b", "x/{-50..60}/y"]) {
-			assert.isTrue(hasLargeNumericRange(pattern), pattern);
-			// expanded, so not magic; the oracle matches it as one portion, so
-			// magic. If the oracle stops saying so, this exception can go.
-			assert.isFalse(new Minimatch(pattern, opts).hasMagic(), pattern);
-			assert.isTrue(new OracleMinimatch(pattern, oracleOpts(opts)).hasMagic(), `oracle: ${pattern}`);
-		}
-		assert.isFalse(hasLargeNumericRange("{0..98}"));
-		assert.isFalse(hasLargeNumericRange("\\{0..199}"));
-		// a $-prefixed shell variable is not a range
-		assert.isFalse(hasLargeNumericRange(`$${"{0..199}"}`));
-		// matching an in-budget range agrees with the oracle
-		for (const [pattern, candidate] of [
-			["{0..199}", "150"],
-			["{0..199}", "200"],
-			["{000..199}", "050"],
-			["a{1..150}b", "a99b"],
-			["{0..199..2}", "5"],
+		// one magic portion, not its numbers; below 100 values, an escaped range,
+		// a $-prefixed shell variable and a stepped range are expanded
+		for (const [pattern, magic] of [
+			["{0..199}", true],
+			["a{1..150}b", true],
+			["x/{-50..60}/y", true],
+			["{0..99}", true],
+			["{1..99}", false],
+			["{0..98}", false],
+			["\\{0..199}", false],
+			[`$${"{0..199}"}`, false],
+			["{0..300..3}", false],
 		] as const) {
-			assert.strictEqual(
-				new Minimatch(pattern, opts).match(candidate),
-				oracle(candidate, pattern, oracleOpts(opts)),
-				`${pattern} vs ${candidate}`,
-			);
+			assert.strictEqual(new Minimatch(pattern, opts).hasMagic(), magic, pattern);
+			assert.strictEqual(new OracleMinimatch(pattern, oracleOpts(opts)).hasMagic(), magic, `oracle: ${pattern}`);
 		}
-		// past the budget the engine fails typed; the oracle matches the range
-		assert.throws(() => new Minimatch("{0..200000}", opts), GuardExceeded);
-		assert.isTrue(oracle("5", "{0..200000}", oracleOpts(opts)));
+		for (const [pattern, candidate, expected] of [
+			["{0..199}", "150", true],
+			["{0..199}", "200", false],
+			["{0..199}", "0150", false],
+			["{000..199}", "050", true],
+			["{000..199}", "50", false],
+			["{-05..95}", "-05", true],
+			["{-05..95}", "007", true],
+			["{-150..-1}", "-100", true],
+			["{-150..-1}", "0", false],
+			["{199..0}", "42", true],
+			["a{1..150}b", "a99b", true],
+			["{0..199}-{0..199}", "7-198", true],
+			["{0..199..2}", "5", false],
+			["{x,{0..199}}", "x", true],
+			["{$,a}{0..199}", "$5", true],
+			// a \ just before a range is taken with it
+			["{a\\\\,b}{0..199}", "a5", true],
+			// a [ before the range in its portion expands it instead
+			["[x]{0..199}", "x150", true],
+			["{0..199}[x]", "150x", true],
+			// past the budget it still matches, as one portion
+			["{0..200000}", "5", true],
+			["{0..9007199254740991}", "9007199254740991", true],
+			["x/{0..1000000}/y", "x/999999/y", true],
+		] as const) {
+			assert.strictEqual(new Minimatch(pattern, opts).match(candidate), expected, `${pattern} vs ${candidate}`);
+			assert.strictEqual(oracle(candidate, pattern, oracleOpts(opts)), expected, `oracle: ${pattern} vs ${candidate}`);
+		}
+		// under every option the oracle answers alike
+		for (const options of [
+			{ nocase: true },
+			{ dot: true },
+			{ noext: true },
+			{ nobrace: true },
+			{ braceExpandMax: 10 },
+		]) {
+			const o: EngineOptions = { ...opts, ...options };
+			for (const candidate of ["150", "{0..199}", "1000"]) {
+				assert.strictEqual(
+					new Minimatch("{0..199}", o).match(candidate),
+					oracle(candidate, "{0..199}", oracleOpts(o)),
+					`${JSON.stringify(options)} vs ${candidate}`,
+				);
+			}
+		}
+		// an unsafe integer end is expanded, so past the budget it fails typed
+		assert.throws(() => new Minimatch("{0..9007199254740993}", opts), GuardExceeded);
 	});
 });
 
@@ -511,18 +529,12 @@ const ruleCandidateArb = Arbitrary.schema(
 	]),
 );
 
-// Every generated pattern is a fair question to the oracle except one with a
-// numeric range of 100 or more values, the documented divergence. The segments
-// above never make one; the predicate keeps the exception named if they do.
-const oracleCanJudge = (pattern: string): boolean => !hasLargeNumericRange(pattern);
-
 describe("engine compliance: oracle properties", () => {
 	it.effect.prop(
 		"matches exactly as upstream under default options",
 		[patternArb, candidateArb],
 		([pattern, candidate]) =>
 			Effect.sync(() => {
-				if (!oracleCanJudge(pattern)) return;
 				const opts: EngineOptions = { platform: "posix" };
 				assert.strictEqual(
 					new Minimatch(pattern, opts).match(candidate),
@@ -538,7 +550,6 @@ describe("engine compliance: oracle properties", () => {
 		[patternArb, candidateArb, optionBagArb],
 		([pattern, candidate, options]) =>
 			Effect.sync(() => {
-				if (!oracleCanJudge(pattern)) return;
 				const opts: EngineOptions = { platform: "posix", ...options };
 				assert.strictEqual(
 					new Minimatch(pattern, opts).match(candidate),

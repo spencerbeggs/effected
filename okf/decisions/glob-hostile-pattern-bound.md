@@ -11,22 +11,17 @@ sources:
     resource: ../modules/glob.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-08T08:53:14Z
+  at: 2026-11-08T12:06:40Z
 integrity:
   generated:
-    body: f2e8512433876515
+    body: 8ed17dc485aa1ecb
 ---
 
 # glob does not bound total matching work on hostile patterns
 
 ## Context
 
-`GlobPattern.matches` is total and its time is polynomial: the exponential `**` case was fixed by the `tried` set, and every recursion surface is capped. A hostile pattern against a long candidate can still be slow. Two cases were measured in the review of that fix:
-
-| Pattern | Candidate | Time |
-| --- | --- | --- |
-| `**/a/**` | 50,000 portions | 3.3 s |
-| `**/a/**/*{0..999}*` | 13.9 KB path | 33.4 s |
+`GlobPattern.matches` is total and its time is polynomial: the exponential `**` case was fixed by the `tried` set, and every recursion surface is capped. A hostile pattern against a long candidate can still be slow. `**/a/**` against 50,000 portions followed by a `.x` portion takes about 3.5 s, and a brace expansion multiplies the work of compiling and matching by its alternatives, up to the default `braceExpandMax` of 100,000. A numeric range of 100 or more values (`{0..999}`) is not expanded: as in minimatch 11 it is one portion, so it adds no alternatives. It still costs memory to compile, up to 684 matcher items for the widest ends, and brace alternatives around it give each alternative its own copy. So one compile's work is budgeted, its regexps and its matcher graphs together; a `GlobSet` is one compile. Past the budget the compile fails typed with reason `CompileBudgetExceeded`: `{$,a}{-9007199254740991..9007199254740991}` twelve times over (504 characters) took 16.7 s and 4.2 GB before graphs were charged, and now fails in about 0.2 s.
 
 Every engine the review compared behaves the same, minimatch 11 included, so the cost is inherited from the dialect rather than introduced by the port. That premise was measured on `**` only.
 
@@ -40,7 +35,7 @@ So the levers are on the input:
 
 - limit the pattern's length, and where a pattern may come from;
 - limit the candidate's length or number of portions;
-- lower `braceExpandMax` in `GlobPatternOptions`. A lowered `braceExpandMax` turns the second case into a compile-time `GlobPatternError` with reason `ExpansionBudgetExceeded`, which fails fast and deterministically; a test pins exactly that.
+- lower `braceExpandMax` in `GlobPatternOptions`. A lowered `braceExpandMax` turns a brace product past it into a compile-time `GlobPatternError` with reason `ExpansionBudgetExceeded`, which fails fast and deterministically: `match-limits.test.ts` ("fails fast at compile when lowered") compiles `**/a/**/*{a,b}…*`, ten groups and 1,024 alternatives, under the default and fails it under a `braceExpandMax` of 100.
 
 A caller that needs a deadline as well enforces it off the calling thread: a worker that is terminated when the deadline passes, a subprocess, or the host's own request deadline. The guidance sits in the `GlobPattern.matches` TSDoc and in the package README.
 

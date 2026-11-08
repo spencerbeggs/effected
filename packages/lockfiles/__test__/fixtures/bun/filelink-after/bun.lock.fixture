@@ -1,0 +1,48 @@
+{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "fl-root",
+      "dependencies": {
+        "@fl/b": "catalog:",
+        "local-dir": "file:vendor/local-dir",
+        "local-tar": "file:vendor/local-tar.tgz",
+      },
+    },
+    "packages/a": {
+      "name": "@fl/a",
+      "version": "1.0.0",
+      "dependencies": {
+        "@fl/b": "catalog:",
+        "local-dir": "file:../../vendor/local-dir",
+        "local-tar": "file:../../vendor/local-tar.tgz",
+      },
+    },
+    "packages/b": {
+      "name": "@fl/b",
+      "version": "1.0.1",
+      "dependencies": {
+        "ms": "2.1.3",
+      },
+    },
+  },
+  "catalog": {
+    "@fl/b": "workspace:*",
+  },
+  "packages": {
+    "@fl/a": ["@fl/a@workspace:packages/a"],
+
+    "@fl/b": ["@fl/b@workspace:packages/b"],
+
+    "local-dir": ["local-dir@file:vendor/local-dir", {}],
+
+    "local-tar": ["local-tar@vendor/local-tar.tgz", {}, "sha512-jaJ8IQ3pfDG6yohQc9qSKlw3l3K6lwXxvG61VXbjzbqomyjEdxz2srYeQhlTcBeyut/RbhIw2aqR8r2CeKFurA=="],
+
+    "ms": ["ms@2.1.3", "", {}, "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA=="],
+
+    "@fl/a/local-dir": ["local-dir@file:vendor/local-dir", {}],
+
+    "@fl/a/local-tar": ["local-tar@../../vendor/local-tar.tgz", {}, "sha512-jaJ8IQ3pfDG6yohQc9qSKlw3l3K6lwXxvG61VXbjzbqomyjEdxz2srYeQhlTcBeyut/RbhIw2aqR8r2CeKFurA=="],
+  }
+}

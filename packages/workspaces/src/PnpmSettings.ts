@@ -19,7 +19,11 @@ import { stringsOf } from "./internal/patterns.js";
  * `reason` routes: `"read"` — the file exists but could not be read (the
  * platform failure is the `cause`); `"parse"` — the file is not valid YAML (the
  * `YamlParseError` is the `cause`); `"shape"` — the file is valid YAML but its
- * document is not a mapping (a list or a scalar), which pnpm refuses too. A
+ * document is not a mapping (a list or a scalar), which pnpm refuses too;
+ * `"membership"` — the workspace's `packages:` patterns each compile alone but
+ * fail as a set (they share one compile budget; the `GlobError` is the
+ * `cause`), so whether the directory is a member cannot be decided and the
+ * load fails rather than reading the workspace file as not applying. A
  * file that does not exist is not an error: pnpm skips it, and so does
  * {@link PnpmSettings.load}. An empty file is an empty mapping.
  *
@@ -27,19 +31,21 @@ import { stringsOf } from "./internal/patterns.js";
  */
 export class PnpmSettingsError extends Schema.TaggedError<PnpmSettingsError>()("PnpmSettingsError", {
 	/** Why the file could not be used. */
-	reason: Schema.Literals(["read", "parse", "shape"]),
+	reason: Schema.Literals(["read", "parse", "shape", "membership"]),
 	/** The file involved, when the source named one. */
 	path: Schema.optionalKey(Schema.String),
-	/** The underlying failure, for `"read"` and `"parse"`. */
+	/** The underlying failure, for `"read"`, `"parse"` and `"membership"`. */
 	cause: Schema.optionalKey(Schema.Defect()),
 }) {
 	override get message(): string {
 		const where = this.path === undefined ? "pnpm settings file" : `pnpm settings file ${this.path}`;
 		return this.reason === "read"
 			? `Could not read ${where}`
-			: this.reason === "parse"
-				? `Could not parse ${where} as YAML`
-				: `The document in ${where} is not a mapping of settings`;
+			: this.reason === "membership"
+				? `The \`packages:\` patterns in ${where} compile one by one but not as a set, so workspace membership cannot be decided`
+				: this.reason === "parse"
+					? `Could not parse ${where} as YAML`
+					: `The document in ${where} is not a mapping of settings`;
 	}
 }
 
@@ -278,11 +284,13 @@ const normalizeBody = (body: string): string => {
  * workspace root) is a member under the manifest's `packages:` value, by
  * pnpm's rule: each pattern names a directory whose `package.json` must match,
  * a `!` pattern excludes, a pattern starting with `/` is skipped, and an absent
- * list is `["."]`, the root alone. A pattern that does not compile matches
- * nothing.
+ * list is `["."]`, the root alone. A single pattern that does not compile
+ * matches nothing; a set that compiles pattern by pattern but fails as a whole
+ * (the members share one compile budget) is neither member nor non-member, so
+ * it fails `"membership"` rather than answering `false`.
  */
-const isWorkspaceMember = (relative: string, packages: unknown): boolean => {
-	if (relative.split("/").some((segment) => IGNORED_SEGMENTS.has(segment))) return false;
+const isWorkspaceMember = (relative: string, packages: unknown): Result.Result<boolean, PnpmSettingsError> => {
+	if (relative.split("/").some((segment) => IGNORED_SEGMENTS.has(segment))) return Result.succeed(false);
 	const patterns = stringsOf(packages) ?? ["."];
 	const globs: Array<string> = [];
 	for (const pattern of patterns) {
@@ -294,7 +302,9 @@ const isWorkspaceMember = (relative: string, packages: unknown): boolean => {
 		if (Result.isSuccess(GlobSet.compileResult([glob]))) globs.push(glob);
 	}
 	const set = GlobSet.compileResult(globs);
-	return Result.isSuccess(set) && set.success.matches(`${relative}/package.json`);
+	return Result.isSuccess(set)
+		? Result.succeed(set.success.matches(`${relative}/package.json`))
+		: Result.fail(new PnpmSettingsError({ reason: "membership", cause: set.failure }));
 };
 
 /** The first non-empty value of the named variables, read as own properties. */
@@ -647,7 +657,8 @@ export class PnpmSettings extends Schema.Class<PnpmSettings>("PnpmSettings")({
 			// does not parse fails here exactly as it would below.
 			const mapping = yield* Effect.fromResult(mappingOf(source));
 			const packages = Object.hasOwn(mapping, "packages") ? mapping.packages : undefined;
-			return isWorkspaceMember(relative, packages) ? source : undefined;
+			const member = yield* Effect.fromResult(isWorkspaceMember(relative, packages));
+			return member ? source : undefined;
 		});
 
 		const workspaceFile =

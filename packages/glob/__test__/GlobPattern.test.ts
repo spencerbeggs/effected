@@ -4,7 +4,7 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { Arbitrary, Effect, Result, Schema } from "effect";
-import { minimatch as oracle } from "minimatch";
+import { Minimatch, minimatch as oracle } from "minimatch";
 import { GlobPattern, GlobPatternError, GlobPatternOptions } from "../src/index.js";
 
 describe("GlobPattern.compile", () => {
@@ -175,6 +175,21 @@ describe("GlobPattern metadata", () => {
 		}),
 	);
 
+	it.effect("a numeric range of 100 or more values is one magic portion, as minimatch 11 keeps it", () =>
+		Effect.gen(function* () {
+			const g = yield* GlobPattern.compile("logs/{0..199}/out.txt");
+			assert.isTrue(g.hasMagic);
+			assert.strictEqual(g.enumerationPrefix, "logs/");
+			assert.isTrue(g.crossesSegments);
+			assert.deepStrictEqual(g.enumerationRoots, [{ prefix: "logs/", deep: true, spellings: ["logs/"] }]);
+			assert.isTrue(g.matches("logs/150/out.txt"));
+			// a smaller range is expanded, so its alternatives are literal
+			const small = yield* GlobPattern.compile("logs/{0..98}/out.txt");
+			assert.isFalse(small.hasMagic);
+			assert.lengthOf(small.enumerationRoots, 99);
+		}),
+	);
+
 	it.effect("enumerationRoots prefixes are canonical, and a root keeps every spelling it covers", () =>
 		Effect.gen(function* () {
 			const roots = (source: string) => GlobPattern.compileResult(source).pipe(Result.getOrThrow).enumerationRoots;
@@ -245,6 +260,159 @@ describe("GlobPattern metadata", () => {
 			);
 		}),
 	);
+
+	it("crossesSegments is measured against the shared enumerationPrefix of a brace set (#1282)", () => {
+		const compile = (source: string): GlobPattern => Result.getOrThrow(GlobPattern.compileResult(source));
+		// Alternatives with different prefixes share `""`, and their matches lie two or three levels below it.
+		for (const [source, deepest] of [
+			["{apps,packages}/*", "packages/a"],
+			["{a,b/c}/*", "b/c/x"],
+			["{x,src}/*", "src/f.js"],
+		] as const) {
+			const pattern = compile(source);
+			assert.strictEqual(pattern.enumerationPrefix, "", source);
+			assert.isTrue(pattern.matches(deepest), source);
+			assert.isTrue(pattern.crossesSegments, source);
+		}
+		// An all-literal brace set reaches past the shared prefix too, while one sharing its whole literal run does not.
+		assert.isTrue(compile("{a,b}/f.js").crossesSegments);
+		assert.isTrue(compile("a/{*,b/c}").crossesSegments);
+		assert.isFalse(compile("{a,b}").crossesSegments);
+		assert.isFalse(compile("src/{a,b}*").crossesSegments);
+		assert.isFalse(compile("{src/*.ts,src/*.js}").crossesSegments);
+		assert.strictEqual(compile("{src/*.ts,src/*.js}").enumerationPrefix, "src/");
+	});
+
+	it("matchBase: an alternative compiled to one portion matches by basename and is deep from the base", () => {
+		const compile = (source: string, matchBase: boolean): GlobPattern =>
+			Result.getOrThrow(GlobPattern.compileResult(source, GlobPatternOptions.make({ matchBase })));
+		// #1261: `*.js` and `x/../*.js` match `b/d/f/g.js` by basename, so they are deep from `""`.
+		for (const source of ["*.js", "x/../*.js", "a.js", "**/**"]) {
+			const pattern = compile(source, true);
+			assert.isTrue(pattern.matchesByBasename, source);
+			assert.isTrue(pattern.matches("b/d/f/g.js") || source === "a.js", source);
+			assert.isTrue(pattern.crossesSegments, source);
+			assert.strictEqual(pattern.enumerationPrefix, "", source);
+			assert.deepStrictEqual(pattern.enumerationRoots, [{ prefix: "", deep: true, spellings: [""] }], source);
+		}
+		// Control: the same sources without matchBase stay shallow, and the getter is false.
+		assert.isFalse(compile("*.js", false).matchesByBasename);
+		assert.isFalse(compile("*.js", false).crossesSegments);
+		assert.deepStrictEqual(compile("x/../*.js", false).enumerationRoots, [
+			{ prefix: "", deep: false, spellings: [""] },
+		]);
+		// A row of more than one portion is not matched by basename: matchBase changes nothing for it, however the
+		// source is spelled (a class, a brace, an extglob, an escape).
+		for (const source of [
+			"src/*.ts",
+			"src/[ab]/*.ts",
+			"src/{a,b}*/*.ts",
+			"src/@(a|b)/*.ts",
+			"a\\*b/c.js",
+			"{a,b}/*.js",
+		])
+			assert.isFalse(compile(source, true).matchesByBasename, source);
+		assert.isFalse(compile("src/*.ts", true).crossesSegments);
+		assert.strictEqual(compile("src/*.ts", true).enumerationPrefix, "src/");
+		// A brace set keeps each alternative apart: only the slash-less one is deep, and it absorbs `src/`.
+		assert.deepStrictEqual(compile("{*.js,src/*.ts}", true).enumerationRoots, [
+			{ prefix: "", deep: true, spellings: ["", "src/"] },
+		]);
+		assert.isTrue(compile("{*.js,src/*.ts}", true).matchesByBasename);
+		// literalPrefix accounts for it too: a slash-less literal under matchBase also matches `a/src`.
+		assert.strictEqual(compile("src", true).literalPrefix, "");
+		assert.strictEqual(compile("src", false).literalPrefix, "src");
+		// make, decode and FromString compile under default options.
+		assert.isFalse(GlobPattern.make({ source: "*.js" }).matchesByBasename);
+	});
+
+	it("matchBase: every path a short pattern matches lies inside one of its enumeration roots", () => {
+		const alphabet = ["x", "*", "**", ".", "..", "*.js", "f.js", "src", "{x,src}", "[bx]*", "@(f.js|x)", "\\x"];
+		const paths = ["a.js", "x", "f.js", "b/c.js", "b/d/e.js", "b/d/f/g.js", "src/x", "src/f.js", "x/x/x/f.js", "x/src"];
+		const sources: Array<string> = [];
+		for (const a of alphabet) {
+			sources.push(a);
+			for (const b of alphabet) {
+				sources.push(`${a}/${b}`);
+				for (const c of alphabet) sources.push(`${a}/${b}/${c}`);
+			}
+		}
+		const escapes: Array<string> = [];
+		let checked = 0;
+		for (const source of sources) {
+			for (const level of [0, 1, 2]) {
+				const compiled = GlobPattern.compileResult(
+					source,
+					GlobPatternOptions.make({ matchBase: true, optimizationLevel: level }),
+				);
+				if (Result.isFailure(compiled)) continue;
+				const pattern = compiled.success;
+				const roots = pattern.enumerationRoots;
+				// Exactness: when no alternative matches by basename, matchBase changes no answer.
+				if (!pattern.matchesByBasename) {
+					const plain = Result.getOrThrow(
+						GlobPattern.compileResult(source, GlobPatternOptions.make({ optimizationLevel: level })),
+					);
+					for (const path of paths)
+						if (plain.matches(path) !== pattern.matches(path))
+							escapes.push(`${source} level=${level} not by basename, yet matchBase changes ${path}`);
+				}
+				for (const path of paths) {
+					if (!pattern.matches(path)) continue;
+					checked += 1;
+					const inside = (prefix: string, deep: boolean): boolean =>
+						path.startsWith(prefix) && (deep || !path.slice(prefix.length).includes("/"));
+					if (!roots.some((root) => inside(root.prefix, root.deep)))
+						escapes.push(`${source} level=${level} roots ${JSON.stringify(roots)} miss ${path}`);
+					// An all-literal multi-portion pattern's prefix names the file itself (an enumerator stats it), so it is not
+					// checked against the folded pair. A brace set is (`{x,src}/*` folds to `""` and crosses segments, #1282).
+					if (
+						(pattern.hasMagic || pattern.crossesSegments) &&
+						!inside(pattern.enumerationPrefix, pattern.crossesSegments)
+					)
+						escapes.push(`${source} level=${level} prefix ${pattern.enumerationPrefix} miss ${path}`);
+				}
+			}
+		}
+		assert.isAbove(checked, 1000);
+		assert.deepStrictEqual(escapes.slice(0, 10), [], `${escapes.length} matched paths outside the roots`);
+	});
+});
+
+describe("GlobPattern.alternativeCount", () => {
+	it("counts the alternatives a compile matches, without compiling, as minimatch 11.0.5 expands them", () => {
+		const count = (source: string, options?: GlobPatternOptions): number =>
+			Result.getOrThrow(GlobPattern.alternativeCount(source, options));
+		assert.strictEqual(count("packages/{a,b}/{src,lib}/*.ts"), 4);
+		assert.strictEqual(count("{a,b}{c,d}{e,f}{g,h}{i,j}"), 32);
+		assert.strictEqual(count("{1..99}{a,b}"), 198);
+		// a range of 100 or more values is one portion, duplicates count once, a comment or an empty pattern is 0
+		assert.strictEqual(count("{0..999}"), 1);
+		assert.strictEqual(count("{a,a}"), 1);
+		assert.strictEqual(count("#{a,b}"), 0);
+		assert.strictEqual(count("#{a,b}", GlobPatternOptions.make({ nocomment: true })), 2);
+		assert.strictEqual(count(""), 0);
+		assert.strictEqual(count("!{a,b}"), 2);
+		assert.strictEqual(count("{a,b}", GlobPatternOptions.make({ nobrace: true })), 1);
+		for (const source of ["{a,b}/{c,d}", "a{b,c{d,e}f}g{h,i}", "{x,y}{1..3}{a..c}", "\\{a,b}", "{a},b}"])
+			assert.strictEqual(count(source), new Minimatch(source, { platform: "linux" }).globSet.length, source);
+	});
+
+	it("is bounded and total: every guard fails typed, and the cap applies before duplicates are dropped", () => {
+		const reason = (source: string, options?: GlobPatternOptions): string => {
+			const counted = GlobPattern.alternativeCount(source, options);
+			return Result.isFailure(counted) ? counted.failure.reason : "counted";
+		};
+		const capped = GlobPatternOptions.make({ braceExpandMax: 256 });
+		assert.strictEqual(reason("{a,b}".repeat(9), capped), "ExpansionBudgetExceeded");
+		// 1,024 results before duplicates are dropped, though the distinct count is 1 (the empty string)
+		assert.strictEqual(reason("{,}".repeat(10), capped), "ExpansionBudgetExceeded");
+		assert.strictEqual(reason("{,}".repeat(10)), "counted");
+		assert.strictEqual(reason("{a,b}".repeat(200)), "ExpansionBudgetExceeded");
+		assert.strictEqual(reason(`${"{".repeat(300)}a,b${"}".repeat(300)}`), "NestingDepthExceeded");
+		assert.strictEqual(reason("a".repeat(70_000)), "PatternTooLong");
+		assert.strictEqual(reason(`q/{${"9".repeat(400)}..${"9".repeat(400)}}`, capped), "ExpansionBudgetExceeded");
+	});
 });
 
 describe("GlobPattern construction and schema", () => {

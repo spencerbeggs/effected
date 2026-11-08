@@ -5,8 +5,8 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
-import type { ShellCommand, ShellScript, ShellWord } from "../src/index.js";
-import { ShellSyntax } from "../src/index.js";
+import type { ShellCommand, ShellWord } from "../src/index.js";
+import { ShellScript, ShellSyntax } from "../src/index.js";
 
 const baseName = (name: string): string => name.slice(name.lastIndexOf("/") + 1);
 
@@ -1027,14 +1027,16 @@ describe("a subscripted name given to an assignment builtin is evaluated", () =>
 			"export 'a[$(git commit)]=1'",
 			"readonly 'a[$(git commit)]=1'",
 			"declare v='a[$(git commit)]'",
-			"local x=$(git status)",
-			'local x="$1"',
 			"declare a=1 b=2",
 		]) {
 			assert.isFalse(refuses(ShellSyntax.parse(input)), input);
 		}
 		// Over-report: with no `=`, bash 5.3 runs nothing for `declare 'a[$(c1)]'`.
 		assert.isTrue(refuses(ShellSyntax.parse("declare 'a[$(git commit)]'")));
+		// Over-report: a value that is not literal may be re-read as an array
+		// when `x` is already a local array (see the re-read describe below).
+		assert.isTrue(refuses(ShellSyntax.parse("local x=$(git status)")));
+		assert.isTrue(refuses(ShellSyntax.parse('local x="$1"')));
 	});
 });
 
@@ -1183,9 +1185,259 @@ describe("an array literal's key over a variable is evaluated as arithmetic", ()
 	it("control: a numeric key is allowed", () => {
 		assert.isFalse(refuses(ShellSyntax.parse("a=([0]=1 [2]=3)")));
 		assert.isFalse(refuses(ShellSyntax.parse("a=(1 2)")));
-		// Over-report: bash evaluates no associative key, but this parse splits
-		// `declare`'s array value off as a subshell whose word names nothing.
-		assert.isTrue(refuses(ShellSyntax.parse("declare -A h=([k]=1)")));
+		// bash evaluates no associative key, and runs nothing here.
+		assert.isFalse(refuses(ShellSyntax.parse("declare -A h=([k]=1)")));
+	});
+});
+
+// #1265. bash's parser reads `NAME=(` and `NAME+=(` as a compound assignment
+// after an assignment builtin (`PST_ASSIGNOK`). Each "runs" shape below ran a
+// marker command (`touch M`, here `git commit` or `c1`) under GNU bash 5.3.20,
+// and each control ran nothing or was a syntax error.
+// #1265 review, fix round 1. Each "refuses" shape ran `git commit` under GNU
+// bash 5.3.20 (a fake git on PATH marking `git commit`), and each control ran
+// nothing.
+describe("an assignment builtin re-reads a quoted or expanded value as an array", () => {
+	const V = "v='($(git commit))'; ";
+	const K = "k='a[$(git commit)]'; ";
+
+	it("the README guard refuses every value bash may re-read as a compound assignment", () => {
+		for (const input of [
+			"declare -a 'x=($(git commit))'",
+			"declare -a x='($(git commit))'",
+			"declare -a x='(`git commit`)'",
+			'declare -a "x=(\\$(git commit))"',
+			"declare -A 'h=([k]=$(git commit))'",
+			"declare -A 'h=([$(git commit)]=1)'",
+			"declare -A x='([$(git commit)]=1)'",
+			"declare -a x=\\(\\$\\(git\\ commit\\)\\)",
+			"declare -a x=$'($(git commit))'",
+			"typeset -a 'x=($(git commit))'",
+			"f(){ local -a 'x=($(git commit))'; }; f",
+			"readonly -a 'x=($(git commit))'",
+			"export -a 'x=($(git commit))'",
+			// No option: x is already an array, so declare and typeset re-read.
+			"x=(); declare 'x=($(git commit))'",
+			"declare -a x; declare x='($(git commit))'",
+			"x=(); typeset x+='($(git commit))'",
+			`${V}declare -a x="$v"`,
+			`${V}declare -a x=$v`,
+			`v='([$(git commit)]=1)'; declare -A x="$v"`,
+			`${V}x=(); declare x="$v"`,
+			`${V}x=(); declare x+="$v"`,
+			`${V}export -a x="$v"`,
+			`${V}readonly -a x="$v"`,
+			`${V}f(){ local -A x="$v"; }; f`,
+			`declare -a x="$(echo '($(git commit))')"`,
+			`declare -a x="("$(echo '$(git commit)')")"`,
+			`${K}declare -a 'x=([k]=1)'`,
+			`${K}declare -a x='([k]=1)'`,
+			`${K}declare -a x=\\([k]=1\\)`,
+			`${K}declare -ag 'x+=([k]=1)'`,
+		]) {
+			assert.isTrue(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+
+	it("the README guard refuses local over a name already a local array in the same function", () => {
+		// bash re-reads the value as an array, whatever local's own options.
+		for (const input of [
+			"f(){ local -a x; local x='($(git commit))'; }; f",
+			"f(){ local x=(a) x='($(git commit))'; }; f",
+			`${V}f(){ declare -a x; local x="$v"; }; f`,
+			"f(){ local x=(a); command local x='($(git commit))'; }; f",
+		]) {
+			assert.isTrue(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+
+	it("control: export and readonly with no array option are allowed", () => {
+		for (const input of [
+			`${V}x=(); export x="$v"`,
+			`${V}x=(); readonly x="$v"`,
+			"declare -a x=('$(git commit)')",
+			'export PATH="$PATH:/opt/bin"',
+		]) {
+			assert.isFalse(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+
+	it("over-report: declare, typeset and local refuse any value that is not literal or holds =(", () => {
+		// bash ran nothing for each (no array target in scope), but the text
+		// cannot show what the variable or the enclosing function declared.
+		for (const input of [
+			"declare 'x=($(git commit))'",
+			'declare x="$1"',
+			'f(){ local dir="$1"; }; f',
+			'f(){ local p="$PATH:/opt/bin"; }; f',
+			`${V}f(){ x=(); local x="$v"; }; f`,
+			"x=(); f(){ local x='($(git commit))'; }; f",
+			"f(){ x=(); local x='($(git commit))'; }; f",
+			"f(){ local -a x; g; }; g(){ local x='($(git commit))'; }; f",
+		]) {
+			assert.isTrue(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+});
+
+describe("export and readonly with -i evaluate an array's elements as arithmetic", () => {
+	const K = "k='a[$(git commit)]'; ";
+
+	it("the README guard refuses -i and -n in every spelling", () => {
+		for (const input of [
+			`${K}export -i x=(1 k)`,
+			`${K}export -i x=(k)`,
+			`${K}readonly -i x=(k 1)`,
+			`${K}readonly -ai x=(k)`,
+			`${K}readonly -A -i x=([a]=k)`,
+			`${K}f(){ readonly -i x\\\n=(k 1) -A\n}; f`,
+			`${K}export -ix x=(k)`,
+		]) {
+			assert.isTrue(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+
+	it("control: other options are allowed", () => {
+		for (const input of [`${K}export -l x=(k)`, "export -x FOO=1", "readonly FOO=1"]) {
+			assert.isFalse(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+});
+
+describe("an assignment builtin's NAME=( … ) argument is one word with an array value (#1265)", () => {
+	const argsOf = (input: string): ReadonlyArray<string> =>
+		ShellSyntax.parse(input)
+			.commands()[0]
+			?.args.map((w) => w.raw) ?? [];
+
+	it("reads the array as part of the argument, after every builtin bash reads it after", () => {
+		for (const head of ["declare", "typeset", "local", "export", "readonly", "alias", "eval", "let"]) {
+			assert.deepStrictEqual(argsOf(`${head} x=(a b)`), ["x=(a b)"], head);
+			assert.deepStrictEqual(names(`${head} x=(a b); git status`), [head, "git"], head);
+		}
+		assert.deepStrictEqual(argsOf("declare -A h=([k]=1 [a b]=2)"), ["-A", "h=([k]=1 [a b]=2)"]);
+		assert.deepStrictEqual(argsOf("declare -a x+=(a) y=(b)"), ["-a", "x+=(a)", "y=(b)"]);
+		// A newline inside the array is a blank, as in bash: `c1` is an element.
+		assert.deepStrictEqual(names("declare y=(a\nc1\n)"), ["declare"]);
+		// Reached through time, !, an assignment, a prefix redirection and `\⏎`.
+		for (const input of [
+			"time declare y=(a\nc1\n)",
+			"! declare y=(a\nc1\n)",
+			"FOO=1 declare y=(a\nc1\n)",
+			">/dev/null declare y=(a\nc1\n)",
+			"dec\\\nlare y\\\n=\\\n(a\nc1\n)",
+			"declare -- y=(a\nc1\n)",
+			"if [[ 1 ]] then declare y=(a\nc1\n); fi",
+		]) {
+			assert.notInclude(names(input), "c1", JSON.stringify(input));
+		}
+	});
+
+	it("known limit: eval's words after an array argument are its text, not commands", () => {
+		// bash runs c1: eval re-reads `y=(a) c1` as a prefix assignment and a
+		// command. The parse names eval only, as for any eval argument, and the
+		// README guard refuses eval by name.
+		assert.deepStrictEqual(names("eval y=(a) c1"), ["eval"]);
+		assert.isTrue(refuses(ShellSyntax.parse("eval y=(a) git commit")));
+	});
+
+	it("reads a subscripted name, matching its ] through quotes", () => {
+		assert.deepStrictEqual(argsOf("declare y[1]=(a)"), ["y[1]=(a)"]);
+		assert.deepStrictEqual(argsOf('declare y["]"]=(a)'), ['y["]"]=(a)']);
+		assert.deepStrictEqual(argsOf("declare y[$(echo 1)]=(a)"), ["y[$(echo 1)]=(a)"]);
+	});
+
+	it("reads on after the array's ) into the same word, so a # there starts no comment", () => {
+		// bash runs c1 in each: `#` inside a token is not a comment.
+		for (const input of ["x=(a)#; c1", "declare x=(a)#; c1", "declare y[1]=(a)#; c1", "x=(a)#\nc1"]) {
+			assert.include(names(input), "c1", JSON.stringify(input));
+			assert.lengthOf(ShellSyntax.parse(input).comments, 0, JSON.stringify(input));
+		}
+		assert.deepStrictEqual(argsOf("declare -A x=([a )]=1); c1"), ["-A", "x=([a )]=1)"]);
+		assert.include(names("declare -A x=([a )]=1); c1"), "c1");
+	});
+
+	it("control: where bash reads no compound assignment, the array still splits off", () => {
+		// Each is a syntax error under bash 5.3: a quoted or escaped builtin,
+		// a word that is not the command, a redirection after the builtin, a
+		// quoted name, a name that is not one, a subscript not followed by `=`.
+		for (const input of [
+			"\\declare y=(a\nc1\n)",
+			"'declare' y=(a\nc1\n)",
+			"echo y=(a\nc1\n)",
+			"command declare y=(a\nc1\n)",
+			"sudo declare y=(a\nc1\n)",
+			"declare 2>/dev/null y=(a\nc1\n)",
+			"declare <&0 y=(a\nc1\n)",
+			"declare 'y'=(a\nc1\n)",
+			"declare 1y=(a\nc1\n)",
+			"declare y[1][2]=(a\nc1\n)",
+			"declare y[a b]=(a\nc1\n)",
+		]) {
+			assert.include(names(input), "c1", JSON.stringify(input));
+		}
+	});
+
+	it("keeps every substitution in the array value reachable", () => {
+		for (const [input, body] of [
+			["declare -a x=($(touch marker))", "touch marker"],
+			["declare -a x=(`touch marker`)", "touch marker"],
+			["declare -a x=(<(touch marker))", "touch marker"],
+			["declare -a x=([$(touch marker)]=1)", "touch marker"],
+			["declare -A x=([a b]=$(touch marker))", "touch marker"],
+			["export x=($(touch marker))", "touch marker"],
+			["declare y[1]=($(touch marker))", "touch marker"],
+		] as const) {
+			const script = ShellSyntax.parse(input);
+			assert.deepStrictEqual(
+				script.substitutions().map((part) => part.body),
+				[body],
+				input,
+			);
+			assert.deepStrictEqual(script.diagnostics, [], input);
+		}
+	});
+
+	it("records a quoted substitution in an indexed key, as in a plain assignment", () => {
+		assert.include(codes("declare -a x=(['$(c1)']=1)"), QUOTED);
+		assert.include(codes("declare -a x=([ '$(c1)' ]=1)"), QUOTED);
+	});
+
+	it("the README guard refuses every array value that runs a command", () => {
+		for (const input of [
+			"declare -a x=($(git commit))",
+			"declare -a x=(['$(git commit)']=1)",
+			"declare -a x=([$(git commit)]=1)",
+			"local x=(`git commit`)",
+			"readonly x=(<(git commit))",
+			// Indexed keys are arithmetic: `k` holding 'a[$(cmd)]' runs cmd.
+			`k='a[$(git commit)]'; declare -a x=([k]=1)`,
+			`k='a[$(git commit)]'; declare x=([k]=1)`,
+			`k='a[$(git commit)]'; export x=([k]=1)`,
+			// An `-A` after the value does not make it associative.
+			`k='a[$(git commit)]'; declare x=([k]=1) -A`,
+			`k='a[$(git commit)]'; declare +A x=([k]=1)`,
+			"declare x=(a)#; git commit",
+			"x=(a)#; git commit",
+			"declare -A x=([a )]=1); git commit",
+		]) {
+			assert.isTrue(refuses(ShellSyntax.parse(input)), input);
+		}
+	});
+
+	it("control: the README guard allows array values that run nothing", () => {
+		for (const input of [
+			"declare -A h=([k]=1)",
+			"declare -A h=([k]=1 [a b]=2)",
+			`k='a[$(git commit)]'; declare -A x=([k]=1)`,
+			`k='a[$(git commit)]'; readonly -A x=([k]=1)`,
+			`k='a[$(git commit)]'; declare -gA x=([k]=1)`,
+			"declare -a x=(a b c)",
+			"declare -a x=([0]=a [1]=b)",
+			"export x=(a b)",
+		]) {
+			assert.isFalse(refuses(ShellSyntax.parse(input)), input);
+		}
 	});
 });
 
@@ -1241,6 +1493,9 @@ describe("a backslash-newline does not hide a shape from the guard (R1)", () => 
 		[`${X}echo "$${CONT}{s:x}"`, `${X}echo "\${s:x}"`],
 		[`${X}echo "\${${CONT}s:x}"`, `${X}echo "\${s:x}"`],
 		[`${X}echo "\${s${CONT}:x}"`, `${X}echo "\${s:x}"`],
+		// A redirection target is read joined too (`target.joined`, not `raw`).
+		[`${X}cat <$${CONT}{!x}`, `${X}cat <\${!x}`],
+		[`y='$(git commit)'; echo hi >"\${y@${CONT}P}"`, `y='$(git commit)'; echo hi >"\${y@P}"`],
 	];
 
 	for (const [split, joined] of pairs) {
@@ -1958,7 +2213,6 @@ describe("a special parameter inside double quotes in a re-read frame is an expa
 });
 
 // The README's guard, verbatim in shape: every shape above must make it refuse.
-const MAX_DEPTH = 8;
 const GIT_OPTIONS_WITH_ARGUMENT: ReadonlySet<string> = new Set([
 	"-C",
 	"-c",
@@ -2033,48 +2287,77 @@ const REFUSED_COMMANDS: ReadonlySet<string> = new Set([
 ]);
 const REFUSED_VARIABLE = /(?<!\w)(?:PS4|POSIXLY_CORRECT|BASH_ALIASES|BASH_CMDS)(?!\w)/;
 
-const joined = (text: string): string => text.replaceAll("\\\n", "");
-
 const assignedName = (word: ShellWord): string | null => {
 	const literal = Option.getOrNull(word.literal);
 	if (literal !== null) return literal.split("=", 1)[0] ?? "";
-	const head = word.raw.split("=", 1)[0] ?? "";
+	const head = word.joined.split("=", 1)[0] ?? "";
 	return /[$`{]/.test(head) ? null : head.replace(/["'\\]/g, "");
 };
 
-const arithmeticTest = (script: ShellScript): boolean => {
+const arrayValue = (word: ShellWord): string | undefined =>
+	word.parts.find((part) => part.kind === "opaque" && part.raw.startsWith("("))?.raw;
+
+// With an array target the builtin re-reads a quoted or expanded value as a
+// compound assignment, so `declare -a 'x=($(cmd))'` and `v='($(cmd))';
+// declare -a x="$v"` run cmd. Whether `word` assigns a value bash may re-read
+// that way: one not literal, or holding `=(` once quotes are removed, unless
+// it is the parse's own unquoted `x=( … )` array.
+const mayRereadAsArray = (word: ShellWord): boolean => {
+	if (!word.joined.includes("=")) return false;
+	const literal = Option.getOrNull(word.literal);
+	if (literal !== null) return literal.includes("=(");
+	const last = word.parts[word.parts.length - 1];
+	const parsedArray =
+		last?.kind === "opaque" &&
+		last.raw.startsWith("(") &&
+		word.parts.slice(0, -1).every((part) => part.kind === "bare");
+	return !parsedArray;
+};
+
+const arithmeticTest = (commands: ReadonlyArray<ShellCommand>): boolean => {
 	let inTest = false;
-	for (const segment of script.segments) {
-		for (const word of segment.words) {
-			const raw = joined(word.raw);
-			if (raw === "[[") inTest = true;
-			else if (raw === "]]") inTest = false;
+	for (const command of commands) {
+		for (const word of inTest ? command.segment.words : command.evaluated) {
+			if (word.joined === "[[") inTest = true;
+			else if (word.joined === "]]") inTest = false;
 			else if (inTest && ARITHMETIC_TESTS.has(Option.getOrElse(word.literal, () => ""))) return true;
 		}
 	}
 	return false;
 };
 
-const evaluatesText = (script: ShellScript, command: ShellCommand): boolean => {
+const evaluatesText = (command: ShellCommand): boolean => {
 	const { segment } = command;
 	const texts = [
-		...segment.words.map((word) => word.raw),
-		...segment.assignments.map((assignment) => assignment.raw),
+		...segment.words.map((word) => word.joined),
+		...segment.assignments.map((assignment) => assignment.joined),
 		...segment.redirections.map(({ target }) =>
-			target.kind === "heredoc" ? (target.quoted ? "" : target.body) : target.raw,
+			target.kind === "heredoc" ? (target.quoted ? "" : target.body.replaceAll("\\\n", "")) : target.joined,
 		),
-	].map(joined);
+	];
 	if (texts.some((text) => EVALUATES_A_NAME.test(text) || expandsASubscriptOverAName(text))) return true;
 	if (texts.some((text) => REFUSED_VARIABLE.test(text.replace(/["'\\]/g, "")))) return true;
 	for (const { name, value } of segment.assignments) {
 		if (subscriptOverAName(name)) return true;
-		if (value.raw.startsWith("(") && subscriptOverAName(value.raw)) return true;
+		if (value.joined.startsWith("(") && subscriptOverAName(value.joined)) return true;
 	}
 	const name = Option.getOrUndefined(command.name);
 	const base = name === undefined ? undefined : baseName(name);
 	if (base !== undefined && REFUSED_COMMANDS.has(base)) return true;
 	const args = command.args.map((word) => Option.getOrNull(word.literal));
-	const arrayValue = command.args.some((word) => script.source[word.end] === "(");
+	const indexedKeyOverAName = command.args.some((word, i) => {
+		const value = arrayValue(word);
+		if (value === undefined || !subscriptOverAName(value)) return false;
+		return !args.slice(0, i).some((arg) => arg !== null && /^-[A-Za-z]*A/.test(arg));
+	});
+	// `-i` evaluates every value as arithmetic, and `-n` makes a nameref, in
+	// any spelling: bundled (`-ix`), after `--`, or as `+i`.
+	const integerOrNameref = args.some((arg) => arg !== null && /^[-+][A-Za-z]*[in]/.test(arg));
+	// An `a` or `A` option, or a word an expansion supplies that may be one.
+	const arrayOption = command.args.some((word) => {
+		const literal = Option.getOrNull(word.literal);
+		return literal === null ? !word.joined.includes("=") : /^[-+][A-Za-z]*[aA]/.test(literal);
+	});
 	const assigned = command.args
 		.filter((word) => !/^[-+]/.test(Option.getOrElse(word.literal, () => "")))
 		.map(assignedName);
@@ -2086,14 +2369,23 @@ const evaluatesText = (script: ShellScript, command: ShellCommand): boolean => {
 		case "declare":
 		case "typeset":
 		case "local":
+			// These evaluate a subscript in the name they assign: `declare 'a[$(cmd)]=1'`.
+			// They re-read a value as an array whenever the target already is one,
+			// for `local`, one already local to the same function.
 			return (
-				arrayValue ||
-				args.some((arg) => arg !== null && /^[-+][A-Za-z]*[in]/.test(arg)) ||
+				indexedKeyOverAName ||
+				integerOrNameref ||
+				command.args.some(mayRereadAsArray) ||
 				assigned.some((assignee) => assignee === null || assignee.includes("["))
 			);
 		case "export":
 		case "readonly":
-			return arrayValue || assigned.some((assignee) => assignee === null);
+			return (
+				indexedKeyOverAName ||
+				integerOrNameref ||
+				(arrayOption && command.args.some(mayRereadAsArray)) ||
+				assigned.some((assignee) => assignee === null)
+			);
 		case "set":
 			return args.some((arg) => arg === null || /^-[A-Za-z]*x/.test(arg) || arg === "xtrace" || arg === "posix");
 		case "printf":
@@ -2108,17 +2400,20 @@ const evaluatesText = (script: ShellScript, command: ShellCommand): boolean => {
 	}
 };
 
-const refuses = (script: ShellScript, depth = 0): boolean => {
-	if (script.diagnostics.length > 0 || arithmeticTest(script)) return true;
-	for (const command of script.commands()) {
-		if (Option.isNone(command.name) && command.args.length > 0) return true;
-		if (evaluatesText(script, command)) return true;
-		const subcommand = gitSubcommand(command);
-		if (subcommand === null || subcommand === "commit") return true;
-	}
-	const nested = script.substitutions();
-	if (nested.length > 0 && depth >= MAX_DEPTH) return true;
-	return nested.some((part) => refuses(ShellSyntax.parse(part.body), depth + 1));
+const refuses = (script: ShellScript): boolean => {
+	const walk = script.allCommands();
+	// A substitution too deep to parse is a refusal, never a silent pass.
+	if (walk.truncated) return true;
+	return walk.scripts.some(({ script: nested }) => {
+		const commands = nested.commands();
+		if (nested.diagnostics.length > 0 || arithmeticTest(commands)) return true;
+		return commands.some((command) => {
+			if (Option.isNone(command.name) && command.args.length > 0) return true;
+			if (evaluatesText(command)) return true;
+			const subcommand = gitSubcommand(command);
+			return subcommand === null || subcommand === "commit";
+		});
+	});
 };
 
 describe("the README guard", () => {
@@ -2180,6 +2475,20 @@ describe("the README guard", () => {
 		assert.isTrue(expandsASubscriptOverAName(`\${a[0[0]+x]}`));
 		assert.isFalse(expandsASubscriptOverAName(`\${a[0[0]]} [x]`));
 		assert.isFalse(expandsASubscriptOverAName(`\${a[0]} \${#a[@]}`));
+	});
+
+	it("refuses a substitution past allCommands' cap, and reads one at the cap", () => {
+		const nest = (depth: number, inner: string, open = "$("): string =>
+			`echo ${`${open}echo `.repeat(depth)}${inner}${")".repeat(depth)}`;
+		const cap = ShellScript.defaultMaxDepth;
+		for (const open of ["$(", "<(", ">("]) {
+			assert.isTrue(refuses(ShellSyntax.parse(nest(cap + 1, "hi", open))), `${open} over the cap`);
+			assert.isFalse(refuses(ShellSyntax.parse(nest(cap, "hi", open))), `${open} at the cap`);
+		}
+		// Past the cap the body is never read, so even a harmless one is refused.
+		assert.isTrue(refuses(ShellSyntax.parse(nest(cap + 2, "true"))));
+		assert.isTrue(refuses(ShellSyntax.parse(nest(cap - 1, "$(git commit)"))));
+		assert.isTrue(refuses(ShellSyntax.parse(`echo "$(echo \${x:-$(echo <(git commit))})"`)));
 	});
 
 	it("allows ordinary scripts, compound commands included", () => {

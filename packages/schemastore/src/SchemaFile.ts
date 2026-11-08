@@ -153,6 +153,18 @@ export interface SchemaWriteOptions extends CanonicalJsonOptions {
 	 * enough to rewrite.
 	 */
 	readonly compare?: "bytes" | "value";
+	/**
+	 * What a symbolic link at the target means when `write` writes, as on
+	 * `AtomicFile.write`. Defaults to `"follow"`.
+	 *
+	 * @remarks
+	 * `"follow"` writes the file behind the link and keeps the link;
+	 * `"replace"` replaces the link itself with a regular file and never touches
+	 * what it pointed to: choose it for a schema path in a checkout nobody has
+	 * reviewed. The option decides how the write lands, not whether one is
+	 * needed: the comparison still reads the file the link points to.
+	 */
+	readonly links?: "follow" | "replace";
 }
 
 /**
@@ -331,7 +343,7 @@ export class SchemaFile extends Context.Service<SchemaFile, SchemaFileShape>()("
 				yield* fs
 					.makeDirectory(path.dirname(target), { recursive: true })
 					.pipe(Effect.mapError((cause) => SchemaFileWriteError.make({ path: target, cause })));
-				yield* AtomicFile.write(target, text).pipe(
+				yield* AtomicFile.write(target, text, options?.links === undefined ? undefined : { links: options.links }).pipe(
 					Effect.provideService(FileSystem.FileSystem, fs),
 					Effect.provideService(Path.Path, path),
 					Effect.mapError((cause) => SchemaFileWriteError.make({ path: target, cause })),

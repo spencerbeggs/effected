@@ -380,9 +380,14 @@ export function descend(
  * answers `./src/a.ts`, and `src/*.ts` answers `src/a.ts`. A file several
  * brace alternatives match under different spellings (`{src,./src}/*.ts`) is
  * answered once, in the spelling of the earliest of them in pattern order. A
- * literal pattern (no magic, not negated) fast-paths to a single stat: the
- * result is `[source]` when it resolves to a file, `[]` otherwise — a missing
- * path is zero matches, not an error. A magic pattern walks each of its
+ * literal pattern (no magic, not negated) fast-paths to a single stat of the
+ * path glob compiled it to — escapes undone (`src/\x/f.js` is `src/x/f.js`),
+ * and at optimization level 1 and up a `<p>/..` popped, as glob matches it —
+ * answered in that spelling when it resolves to a file, `[]` otherwise: a
+ * missing path is zero matches, not an error. A `.`, `..` or empty segment
+ * left in that path resolves as a real stat does, only after a real
+ * directory, so `f.js/x/..` at level 0 is `[]` where a lexical join would
+ * reach `f.js`. A magic pattern walks each of its
  * `GlobPattern.enumerationRoots`, reading each directory once however many
  * alternatives spell it; a NEGATED pattern can match paths outside those
  * roots, so it walks from `cwd` itself. A missing `cwd` or

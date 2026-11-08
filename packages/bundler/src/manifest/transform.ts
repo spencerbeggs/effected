@@ -1,7 +1,7 @@
 // packages/bundler/src/manifest/transform.ts
 import { PackageJsonFormat } from "@effected/package-json";
 import { ambientOutName, classifyDtsExport, mixedDtsExportError } from "../entries/ambient-dts.js";
-import { createEntryName } from "../entries/extract.js";
+import { createEntryName, resolveToTypeScript } from "../entries/extract.js";
 import { ConfigValidationError } from "../errors.js";
 
 /** @public */
@@ -85,6 +85,13 @@ export interface ExeRewrite {
 
 const sameSource = (a: string, b: string): boolean => stripLeadingDotSlash(a) === stripLeadingDotSlash(b);
 
+/**
+ * Whether a target names the exe source, in source form or in the built form the entry pass resolves to it
+ * (`./dist/bin.js` for `./src/bin.ts`). The entry pass leaves both out of the JS build, so both must point at the SEA.
+ */
+const namesExeSource = (target: string, source: string): boolean =>
+	sameSource(target, source) || sameSource(resolveToTypeScript(target), source);
+
 /** The export-path ("./bin/<file>") and files-entry ("bin/<file>") forms for a SEA. */
 const exeRelPath = (r: ExeRewrite): { exportPath: string; filesEntry: string } => {
 	const filesEntry = `${r.dir}/${r.fileName}`;
@@ -94,11 +101,11 @@ const exeRelPath = (r: ExeRewrite): { exportPath: string; filesEntry: string } =
 /** Rewrite exports values that equal the exe source to a plain SEA-path string. */
 const rewriteExeExports = (exports: unknown, r: ExeRewrite): unknown => {
 	const { exportPath } = exeRelPath(r);
-	if (typeof exports === "string") return sameSource(exports, r.source) ? exportPath : exports;
+	if (typeof exports === "string") return namesExeSource(exports, r.source) ? exportPath : exports;
 	if (exports && typeof exports === "object") {
 		const out: Json = {};
 		for (const [key, value] of Object.entries(exports as Json)) {
-			out[key] = typeof value === "string" && sameSource(value, r.source) ? exportPath : value;
+			out[key] = typeof value === "string" && namesExeSource(value, r.source) ? exportPath : value;
 		}
 		return out;
 	}
@@ -124,6 +131,13 @@ const toBuiltCjs = (exportKey: string, subdirExports?: ReadonlySet<string>): str
 
 const isDeclarationFile = (p: string): boolean => p.endsWith(".d.ts") || p.endsWith(".d.cts") || p.endsWith(".d.mts");
 const isTs = (p: string): boolean => !isDeclarationFile(p) && (p.endsWith(".ts") || p.endsWith(".tsx"));
+
+/**
+ * Whether the entry pass builds `p` into a JS entry: a TS source, or a `./dist/<name>.js` reference it resolves to
+ * `./src/<name>.ts` (see `resolveToTypeScript`). Either way the emitted file is named after the export KEY, so the
+ * manifest rewrites both forms to the same conditions.
+ */
+const isBuildSource = (p: string): boolean => isTs(resolveToTypeScript(p));
 
 /**
  * Build the conditions object for a TS export target (adds require when dual-format). `emitDts`
@@ -158,11 +172,16 @@ function stripPublicPrefix(value: unknown): unknown {
 /** The conditions the entry pass reads a source from, in its order (`resolveSourcePath` in `entries/extract.ts`). */
 const ENTRY_SOURCE_CONDITIONS = ["import", "default", "types"] as const;
 
-/** Whether `value`, at any depth, holds a TS source string. */
-const holdsTsSource = (value: unknown): boolean =>
+/** Every string target under an export value, at any depth. */
+const stringTargets = (value: unknown): ReadonlyArray<string> =>
 	typeof value === "string"
-		? isTs(value)
-		: value !== null && typeof value === "object" && Object.values(value as Json).some(holdsTsSource);
+		? [value]
+		: value !== null && typeof value === "object"
+			? Object.values(value as Json).flatMap(stringTargets)
+			: [];
+
+/** Whether `value`, at any depth, holds a build source (a TS source or a `./dist/*.js` reference). */
+const holdsTsSource = (value: unknown): boolean => stringTargets(value).some(isBuildSource);
 
 const conditionObjectError = (exportKey: string, reason: string): ConfigValidationError =>
 	new ConfigValidationError({ path: `exports."${exportKey}"`, reason });
@@ -195,7 +214,7 @@ const conditionObjectSource = (exportKey: string, value: unknown): string | unde
 		sources.add(target);
 	}
 	const [source] = sources;
-	if (sources.size !== 1 || typeof source !== "string" || !isTs(source)) {
+	if (sources.size !== 1 || typeof source !== "string" || !isBuildSource(source)) {
 		throw conditionObjectError(
 			exportKey,
 			"every condition of a condition object holding a TypeScript source must name that one source; the build emits one entry per export key",
@@ -205,20 +224,69 @@ const conditionObjectSource = (exportKey: string, value: unknown): string | unde
 };
 
 /**
+ * Refuse a build source holding a `*`. The entry pass builds one entry per export key from one literal source path,
+ * so a pattern such as `./dist/*.js` or `./src/*.ts` names no file it can build, and the files a consumer would
+ * resolve through it are never written. A `*` in the export KEY over a literal build source is refused too: the output
+ * is named after the key, so it would be named with the `*` in it.
+ */
+const assertNoWildcardSource = (exportKey: string, value: unknown): void => {
+	const targets = stringTargets(value);
+	const pattern = targets.find((target) => target.includes("*") && isBuildSource(target));
+	if (pattern !== undefined) {
+		throw conditionObjectError(
+			exportKey,
+			`"${pattern}" is a pattern over build sources; the build emits one entry per export key from one source, so list each subpath with its own source`,
+		);
+	}
+	// A pattern key over one literal source would name its emitted file after the key, `*` and all.
+	const source = exportKey.includes("*") ? targets.find(isBuildSource) : undefined;
+	if (source !== undefined) {
+		throw conditionObjectError(
+			exportKey,
+			`a pattern export key cannot name the build source "${source}"; the build names each entry's output after its key, so give the subpath a literal key`,
+		);
+	}
+};
+
+/** Options for {@link assertBuildableConditionExports}. */
+interface BuildableExportsOptions {
+	/** The exe entry source, compiled as a SEA rather than a JS entry. */
+	readonly exeSource?: string | undefined;
+}
+
+/**
  * Refuse, before any build work, every subpath export {@link transformExports} would refuse as an
- * unbuildable condition object (see {@link conditionObjectSource}). `Bundler.build` calls it beside
- * the ambient `.d.ts` validation, so the refusal is a {@link ConfigValidationError} up front rather
- * than a throw from inside the JS pass's manifest plugin; the transform keeps its own throw as a
- * backstop. Walks the same keys the transform rewrites, skipping `.json`/`.d.ts` keys and ambient
- * exports; a mixed `.d.ts` export is left to `extractAmbientDts`, which runs first.
+ * unbuildable condition object (see {@link conditionObjectSource}), every build source written as a
+ * `*` pattern, and, for an exe build, every condition object naming the exe source. `Bundler.build`
+ * calls it beside the ambient `.d.ts` validation, so the refusal is a {@link ConfigValidationError} up
+ * front rather than a throw from inside the JS pass's manifest plugin; the transform keeps its own
+ * throws as a backstop. Walks the same keys the transform rewrites, skipping `.json`/`.d.ts` keys and
+ * ambient exports; a mixed `.d.ts` export is left to `extractAmbientDts`, which runs first.
+ *
+ * The exe source is compiled into the SEA and left out of the JS pass, and only a bare-string export of
+ * it is rewritten to the binary's path, so a condition object naming it would point at JS the build
+ * never writes.
  *
  * @internal
  */
-export function assertBuildableConditionExports(exports: unknown): void {
+export function assertBuildableConditionExports(exports: unknown, options: BuildableExportsOptions = {}): void {
 	if (exports === null || typeof exports !== "object") return;
+	const { exeSource } = options;
 	for (const [key, value] of Object.entries(exports as Json)) {
 		if (key === "./package.json" || key.endsWith(".json") || isDeclarationFile(key)) continue;
+		if (
+			exeSource !== undefined &&
+			value !== null &&
+			typeof value === "object" &&
+			stringTargets(value).some((target) => namesExeSource(target, exeSource))
+		) {
+			throw conditionObjectError(
+				key,
+				`the exe source "${exeSource}" is compiled into the binary, not a JS entry; export it as a bare string so the manifest points at the binary`,
+			);
+		}
 		if (classifyDtsExport(value).kind !== "none") continue;
+		assertNoWildcardSource(key, value);
 		conditionObjectSource(key, value);
 	}
 }
@@ -244,6 +312,11 @@ export function assertBuildableConditionExports(exports: unknown): void {
  * key as the entry pass names it. Any other condition object holding a TS source throws
  * {@link ConfigValidationError}, since its targets would never be built; one holding none passes
  * through as authored.
+ *
+ * A subpath target written as the built path, `./dist/foo.js`, is a build source too: the entry pass
+ * builds it from `./src/foo.ts` and names the output after the export key, so it is rewritten exactly
+ * as `./src/foo.ts` would be. A build source holding a `*` (`./dist/*.js`, `./src/*.ts`) throws
+ * {@link ConfigValidationError}, since the build emits one entry per key from one literal source.
  * @public
  */
 export function transformExports(
@@ -265,12 +338,13 @@ export function transformExports(
 				continue;
 			}
 			const cls = classifyDtsExport(value);
-			if (cls.kind === "mixed") throw mixedDtsExportError(key);
+			if (cls.kind === "mixed") throw mixedDtsExportError(key, value);
 			if (cls.kind === "ambient") {
 				out[key] = { types: `./${ambientOutName(key, cls.source)}` };
 				continue;
 			}
-			if ((typeof value === "string" && isTs(value)) || conditionObjectSource(key, value) !== undefined) {
+			assertNoWildcardSource(key, value);
+			if ((typeof value === "string" && isBuildSource(value)) || conditionObjectSource(key, value) !== undefined) {
 				out[key] = tsConditions(key, isDualKey(dual, key), subdirExports, emitDts);
 			} else {
 				out[key] = transformExports(value, dual, subdirExports, emitDts);
@@ -282,16 +356,17 @@ export function transformExports(
 }
 
 /**
- * Rewrite bin: TS targets to bin/[command].js (string to bin/cli.js); strip leading ./ otherwise.
+ * Rewrite bin: TS targets, and `./dist/*.js` targets the entry pass builds from `./src/*.ts`, to
+ * bin/[command].js (string to bin/cli.js); strip leading ./ otherwise.
  *
  * @public
  */
 export function transformBin(bin: unknown): unknown {
-	if (typeof bin === "string") return isTs(bin) ? "bin/cli.js" : stripLeadingDotSlash(bin);
+	if (typeof bin === "string") return isBuildSource(bin) ? "bin/cli.js" : stripLeadingDotSlash(bin);
 	if (bin && typeof bin === "object") {
 		const out: Record<string, string> = {};
 		for (const [command, p] of Object.entries(bin as Record<string, string>)) {
-			out[command] = isTs(p) ? `bin/${command}.js` : stripLeadingDotSlash(p);
+			out[command] = isBuildSource(p) ? `bin/${command}.js` : stripLeadingDotSlash(p);
 		}
 		return out;
 	}
@@ -356,11 +431,11 @@ export function transformManifest(pkg: Json, options: TransformManifestOptions =
 		// `...rest` spread, result.bin is the same reference as pkg.bin). Handle string-form bin too —
 		// otherwise a `"bin": "./src/bin.ts"` declaration misses the rewrite and falls through to a JS path.
 		if (typeof result.bin === "string") {
-			if (sameSource(result.bin, r.source)) result.bin = exportPath;
+			if (namesExeSource(result.bin, r.source)) result.bin = exportPath;
 		} else if (result.bin && typeof result.bin === "object") {
 			const nextBin: Record<string, string> = {};
 			for (const [cmd, val] of Object.entries(result.bin as Record<string, string>)) {
-				nextBin[cmd] = sameSource(val, r.source) ? exportPath : val;
+				nextBin[cmd] = namesExeSource(val, r.source) ? exportPath : val;
 			}
 			result.bin = nextBin;
 		}

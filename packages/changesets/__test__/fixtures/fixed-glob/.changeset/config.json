@@ -1,0 +1,9 @@
+{
+  "baseBranch": "main",
+  "fixed": [
+    [
+      "@x/*",
+      "!@x/skip"
+    ]
+  ]
+}

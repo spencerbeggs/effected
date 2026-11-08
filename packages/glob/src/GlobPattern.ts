@@ -8,18 +8,33 @@
 // facade materializes them into the typed GlobPatternError.
 
 import { Effect, Result, Schema, SchemaTransformation } from "effect";
+import { compileBudget } from "./internal/ast.js";
 import { EXPANSION_MAX, MAX_GLOBSTAR_RECURSION_CEILING, isGuardExceeded } from "./internal/limits.js";
 import type { EngineOptions } from "./internal/minimatch.js";
-import { GLOBSTAR, Minimatch, escape as engineEscape, unescape as engineUnescape } from "./internal/minimatch.js";
+import {
+	GLOBSTAR,
+	Minimatch,
+	alternativeCount as engineAlternativeCount,
+	escape as engineEscape,
+	unescape as engineUnescape,
+} from "./internal/minimatch.js";
 
 /**
  * Typed failure raised when a glob pattern trips a compile-time guard:
  * over-length, brace-expansion budget exhaustion, nesting past the depth
  * cap, or a pattern portion whose regular expression the runtime rejects
- * (`InvalidRegExp`: a POSIX class such as `[[:alpha:]]` turns on the regexp
- * `u` flag, and under it the engine's escapes for `,`, `#`, a space or `-` in
- * the same portion are syntax errors; `limit` and `actual` are both 0, since
- * no cap was passed). Malformed input is never a defect — this is the only failure the
+ * (`InvalidRegExp`: one too large for the runtime's regexp engine, such as
+ * about 32,000 literal characters and a wildcard in one portion; `limit` and
+ * `actual` are both 0, since no cap was passed), or the work of one compile
+ * past its budget (`CompileBudgetExceeded`, limit 8,000,000 units, its
+ * regexps and matcher graphs together: a brace expansion that gives each of
+ * thousands of alternatives its own POSIX class regexp, such as
+ * `[[:alpha:]]{0..99}{0..99}`, which minimatch 11 compiles, or its own copy
+ * of a numeric range kept whole; a `GlobSet` is one compile; or limit 256,
+ * one portion holding more than 256 Unicode properties, such as
+ * `[[:print:]]` 257 times). Options that change a regexp (`nocase`, `dot`)
+ * share one budget with the default-options check, so such a compile fits
+ * about half of what a default-options compile does. Malformed input is never a defect — this is the only failure the
  * package's fallible boundaries ({@link GlobPattern.compile} and
  * `GlobSet.compile`) can produce.
  *
@@ -28,8 +43,17 @@ import { GLOBSTAR, Minimatch, escape as engineEscape, unescape as engineUnescape
 export class GlobPatternError extends Schema.TaggedError<GlobPatternError>()("GlobPatternError", {
 	/** The pattern source that was rejected. */
 	pattern: Schema.String,
-	/** Which guard tripped: pattern length, brace-expansion budget, nesting depth, or an unbuildable regexp. */
-	reason: Schema.Literals(["PatternTooLong", "ExpansionBudgetExceeded", "NestingDepthExceeded", "InvalidRegExp"]),
+	/**
+	 * Which guard tripped: pattern length, brace-expansion budget, nesting
+	 * depth, an unbuildable regexp, or the regexp work of one compile.
+	 */
+	reason: Schema.Literals([
+		"PatternTooLong",
+		"ExpansionBudgetExceeded",
+		"NestingDepthExceeded",
+		"InvalidRegExp",
+		"CompileBudgetExceeded",
+	]),
 	/** The cap the pattern exceeded (0 for `InvalidRegExp`). */
 	limit: Schema.Number,
 	/** The measured value that exceeded `limit` (0 for `InvalidRegExp`). */
@@ -286,6 +310,24 @@ const literalSegment = (segment: string, options: EngineOptions): string | undef
 	return typeof only === "string" ? only : undefined;
 };
 
+// Under `matchBase` a compiled row of ONE portion matches a path by its basename, at any depth: a walker reads
+// from the base, all the way down, to enumerate it. Only the compiled row decides it, never the source: glob pops
+// `<p>/..` and merges adjacent globstars, so `x/../*.js` and `**/**` are one-portion rows too.
+const isBasenameRow = (engine: Minimatch, row: ReadonlyArray<unknown>): boolean =>
+	engine.options.matchBase === true && row.length === 1;
+
+// Set by GlobPattern's static block, which can reach its private engine field.
+let adoptEngine: (source: string, engine: Minimatch) => GlobPattern;
+
+/**
+ * A pattern whose default-options engine the caller already compiled (and so
+ * checked): `GlobSet` compiles every member under one budget, and hands each
+ * engine over instead of having it built again on the first match.
+ *
+ * @internal
+ */
+export const patternWithEngine = (source: string, engine: Minimatch): GlobPattern => adoptEngine(source, engine);
+
 /**
  * A compiled glob pattern with a total `matches(candidate)` predicate, plus the
  * metadata a directory walker needs.
@@ -315,6 +357,14 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	#engine: Minimatch | undefined;
 	#engineOptions: EngineOptions = {};
 
+	static {
+		adoptEngine = (source, engine) => {
+			const pattern = new GlobPattern({ source }, { disableChecks: true });
+			pattern.#engine = engine;
+			return pattern;
+		};
+	}
+
 	// Lazy for make/decode-built instances. The schema check guarantees this
 	// cannot throw for them (defaults are the stored options); a throw here is
 	// an invariant violation and correctly dies as a defect.
@@ -340,7 +390,9 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 * The pattern must also compile under DEFAULT options, whatever the
 	 * effective options are — permissive options (say `nobrace` over a brace
 	 * bomb) do not admit a defaults-rejected pattern; the same typed error
-	 * surfaces instead.
+	 * surfaces instead. Both compiles share one compile budget, so options that
+	 * change a regexp (`nocase`, `dot`) fit about half of what a default-options
+	 * compile does before failing typed with `CompileBudgetExceeded`.
 	 *
 	 * @remarks
 	 * For synchronous call sites that cannot host an Effect — a lint-staged
@@ -365,10 +417,16 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 		return Result.try({
 			try: () => {
 				// Defaults first (the value invariant), then the effective engine;
-				// with no options set the defaults engine is the effective one.
-				const defaults = new Minimatch(source, {});
-				const engine = Object.keys(engineOptions).length === 0 ? defaults : new Minimatch(source, engineOptions);
-				const pattern = new GlobPattern({ source });
+				// with no options set the defaults engine is the effective one. Both
+				// are one compile, on one budget: built on a budget each, a `nocase`
+				// pattern did twice the work one budget allows (a validation source
+				// both share is checked once). The defaults engine just ran the
+				// schema check's own compile, so the class is built unchecked.
+				const budget = compileBudget();
+				const defaults = new Minimatch(source, {}, budget);
+				const engine =
+					Object.keys(engineOptions).length === 0 ? defaults : new Minimatch(source, engineOptions, budget);
+				const pattern = new GlobPattern({ source }, { disableChecks: true });
 				pattern.#engine = engine;
 				pattern.#engineOptions = engineOptions;
 				return pattern;
@@ -416,18 +474,20 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 *
 	 * Hostile input: matching stays polynomial, and this package does not bound
 	 * its total work. A literal segment between two globstars, matched against
-	 * a path of 50,000 portions, takes seconds; add a third segment of
-	 * `*{0..999}*` after another globstar and a 14 KB path takes tens of
-	 * seconds, because brace expansion multiplies the alternatives (the package
-	 * README spells both patterns out). Matching is synchronous and blocks the
+	 * a path of 50,000 portions, takes seconds (the package README spells the
+	 * pattern out), and brace expansion multiplies the work of compiling and
+	 * matching by its alternatives. Matching is synchronous and blocks the
 	 * calling thread until it returns, so an in-process timeout cannot cut it
 	 * short: wrapped in `Effect.sync` and raced by `Effect.timeout`, a slow match
 	 * still runs to completion before the timer can fire. A caller matching a
 	 * pattern or a path taken from untrusted input bounds the input before
 	 * matching: limit the pattern's length and where it may come from, limit the
 	 * candidate's length or portion count, and lower `braceExpandMax` in
-	 * {@link GlobPatternOptions}, which turns the second case into a compile-time
-	 * `ExpansionBudgetExceeded` failure. A deadline, where one is needed, is
+	 * {@link GlobPatternOptions}, which turns a brace product past it (such as
+	 * `**\/a/**\/*{a,b}{a,b}…*`, ten groups and 1,024 alternatives, against a
+	 * `braceExpandMax` of 100) into a compile-time `ExpansionBudgetExceeded`
+	 * failure. A numeric range of 100 or more values (`{0..999}`) is not
+	 * expanded, so the budget does not apply to it. A deadline, where one is
 	 * enforced off the calling thread: a worker that is terminated when it
 	 * expires, a subprocess, or the host's own request deadline.
 	 */
@@ -442,7 +502,11 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 		}
 	}
 
-	/** Whether the pattern contains any magic (wildcards, classes, extglobs). */
+	/**
+	 * Whether the pattern contains any magic (wildcards, classes, extglobs, or
+	 * a numeric brace range of 100 or more values, which is matched as one
+	 * portion rather than expanded, as minimatch 11 does).
+	 */
 	get hasMagic(): boolean {
 		return this.#engineOf().hasMagic();
 	}
@@ -453,10 +517,32 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	}
 
 	/**
+	 * Whether some brace alternative matches a path by its basename, at any
+	 * depth: the pattern was compiled with `matchBase` and that alternative
+	 * compiles to one path portion. `*.js` then matches `b/d/f/g.js`, and so does
+	 * `x/../*.js`, which compiles to `*.js`; `src/*.ts` does not, since it is two
+	 * portions and `matchBase` changes nothing about it. Always `false` without
+	 * `matchBase`, so for a pattern built by `make`, decode or `FromString`.
+	 *
+	 * @remarks
+	 * Read off the compiled alternatives, the same test matching applies, so it
+	 * is exact however the source is spelled. {@link GlobPattern.enumerationPrefix},
+	 * {@link GlobPattern.enumerationRoots}, {@link GlobPattern.crossesSegments}
+	 * and {@link GlobPattern.literalPrefix} already account for it. A directory
+	 * walker that bounds its reads by the pattern's depth or by hidden names
+	 * reads it to know that no such bound holds.
+	 */
+	get matchesByBasename(): boolean {
+		const engine = this.#engineOf();
+		return engine.set.some((row) => isBasenameRow(engine, row));
+	}
+
+	/**
 	 * The longest literal directory prefix: the common run of leading literal
 	 * segments across every brace alternative, joined and slash-terminated;
-	 * `""` when the first segment carries magic. Designed for directory
-	 * enumerators; well-defined for default-options patterns.
+	 * `""` when the first segment carries magic, or when an alternative
+	 * matches by basename ({@link GlobPattern.matchesByBasename}), since its
+	 * matches lie anywhere below the base. Designed for directory enumerators.
 	 *
 	 * @remarks
 	 * Meaningful for **non-negated** patterns only. For a negated pattern
@@ -470,15 +556,22 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 * semantics to express — check `negated` at the call site.
 	 */
 	get enumerationPrefix(): string {
-		const set = this.#engineOf().set;
-		if (set.length === 0) return "";
+		const common = this.#commonLiterals();
+		return common.length === 0 ? "" : `${common.join("/")}/`;
+	}
+
+	// The common run of leading literal portions across every compiled row: the portions `enumerationPrefix` joins.
+	#commonLiterals(): ReadonlyArray<string> {
+		const engine = this.#engineOf();
 		let common: Array<string> | undefined;
-		for (const row of set) {
+		for (const row of engine.set) {
 			const literals: Array<string> = [];
-			for (const part of row) {
-				if (typeof part !== "string") break;
-				literals.push(part);
-			}
+			// A row matched by basename lies anywhere below the base: it has no literal prefix.
+			if (!isBasenameRow(engine, row))
+				for (const part of row) {
+					if (typeof part !== "string") break;
+					literals.push(part);
+				}
 			if (common === undefined) {
 				common = literals;
 			} else {
@@ -487,8 +580,7 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 				common = common.slice(0, i);
 			}
 		}
-		if (common === undefined || common.length === 0) return "";
-		return `${common.join("/")}/`;
+		return common ?? [];
 	}
 
 	/**
@@ -504,8 +596,10 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 * spelling is kept (`./src/**` gives `./src`, `../x/*.ts` gives `../x`), a
 	 * root stays (`/*.ts` gives `/`), and an escape is undone (`a\*b/c/*` gives
 	 * `a*b/c`). Extglobs, classes and `?` are magic. A comment gives `""`.
-	 * Computed under this pattern's options; its `matchBase` and win32
-	 * interaction is undefined, as for the other getters.
+	 * Computed under this pattern's options. When an alternative matches by
+	 * basename ({@link GlobPattern.matchesByBasename}) it gives `""`, as
+	 * {@link GlobPattern.enumerationPrefix} does: under `matchBase` a slash-less
+	 * `src` also matches `a/src`.
 	 *
 	 * It returns the pattern's spelling and never folds case: under `nocase`,
 	 * `SRC/Lib/**` gives `SRC/Lib`, though the pattern also matches `src/lib/a.ts`.
@@ -518,7 +612,7 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 */
 	get literalPrefix(): string {
 		const engine = this.#engineOf();
-		if (engine.comment || engine.empty) return "";
+		if (engine.comment || engine.empty || this.matchesByBasename) return "";
 		const options = engine.options;
 		const braces = !options.nobrace;
 		const literals: Array<string> = [];
@@ -553,6 +647,11 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	 * yield the same file: a shallow root's files lie exactly one level below
 	 * it, and no root lies inside a deep one.
 	 *
+	 * Under `matchBase` an alternative that compiles to one path portion
+	 * matches by basename at any depth, so its root is the base `""`, `deep`,
+	 * with the spelling `""`: `{*.js,src/*.ts}` has the roots `""` (deep) and
+	 * `src/` folded into it.
+	 *
 	 * Like the other enumerator getters it reads the inner pattern and ignores
 	 * whole-pattern negation: guard on {@link GlobPattern.negated}, and
 	 * enumerate a negated pattern from `cwd`.
@@ -562,10 +661,14 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 		const merged = new Map<string, { deep: boolean; spellings: Set<string> }>();
 		// Each spelling's first alternative, so a root lists its spellings in pattern order.
 		const firstSeen = new Map<string, number>();
-		for (const row of this.#engineOf().set) {
+		const engine = this.#engineOf();
+		for (const row of engine.set) {
+			const byBasename = isBasenameRow(engine, row);
 			const firstMagic = row.findIndex((part) => typeof part !== "string");
-			const literals = (firstMagic === -1 ? row.slice(0, -1) : row.slice(0, firstMagic)) as Array<string>;
-			const deep = row.includes(GLOBSTAR) || (firstMagic !== -1 && firstMagic < row.length - 1);
+			const literals = (
+				byBasename ? [] : firstMagic === -1 ? row.slice(0, -1) : row.slice(0, firstMagic)
+			) as Array<string>;
+			const deep = byBasename || row.includes(GLOBSTAR) || (firstMagic !== -1 && firstMagic < row.length - 1);
 			const prefix = canonicalPrefix(literals);
 			const spelling = literals.length === 0 ? "" : `${literals.join("/")}/`;
 			if (!firstSeen.has(spelling)) firstSeen.set(spelling, firstSeen.size);
@@ -597,20 +700,76 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 	/**
 	 * Whether the pattern can match more than one level below
 	 * {@link GlobPattern.enumerationPrefix}: true iff any alternative contains
-	 * a globstar, or a magic segment followed by more segments. The enumerator
+	 * a globstar, or has more than one segment past that shared prefix, or
+	 * (under `matchBase`) compiles to one path portion, which matches by
+	 * basename at any depth. The enumerator
 	 * uses this to decide between a single-level read and a bounded recursive
 	 * descent.
 	 *
 	 * @remarks
+	 * The depth is measured from the prefix every alternative shares, not from
+	 * each alternative's own: `{apps,packages}/*` shares the prefix `""` and
+	 * matches `apps/a`, two levels below it, so it crosses segments, though
+	 * `apps/*` alone does not. {@link GlobPattern.enumerationRoots} keeps the
+	 * alternatives apart instead, for a walker that reads each one's own root.
+	 *
 	 * Like {@link GlobPattern.enumerationPrefix}, this reads the inner pattern
 	 * and does not account for whole-pattern negation; guard on
 	 * {@link GlobPattern.negated} at the call site.
 	 */
 	get crossesSegments(): boolean {
-		return this.#engineOf().set.some((row) => {
-			if (row.includes(GLOBSTAR)) return true;
-			const firstMagic = row.findIndex((part) => typeof part !== "string");
-			return firstMagic !== -1 && firstMagic < row.length - 1;
+		const engine = this.#engineOf();
+		// Measured against the SHARED prefix: `{apps,packages}/*` shares `""`, so its matches lie two levels below it,
+		// though each alternative alone is one level below its own literal run.
+		const shared = this.#commonLiterals().length;
+		return engine.set.some((row) => isBasenameRow(engine, row) || row.includes(GLOBSTAR) || row.length > shared + 1);
+	}
+
+	/**
+	 * How many alternatives a compile of `source` under `options` matches, counted
+	 * without compiling it: the distinct results of its brace expansion, after
+	 * a leading `!` is read, so `{a,b}/{c,d}` is 4 and `{a,b}{c,d}{e,f}{g,h}{i,j}`
+	 * is 32. A numeric range of 100 or more values is matched as one portion,
+	 * not expanded, so `{0..999}` is 1, while `{1..99}{a,b}` is 198. A comment or
+	 * an empty pattern is 0. It runs the compile's own expansion and stops
+	 * before any portion is built, so a count it answers is exact.
+	 *
+	 * @remarks
+	 * Bounded, and total for pattern input: the work is the brace expansion's,
+	 * and every guard that bounds it fails typed with {@link GlobPatternError},
+	 * as {@link GlobPattern.compileResult} would: past 64 KB (`PatternTooLong`),
+	 * nesting past 256 levels (`NestingDepthExceeded`), or more alternatives
+	 * than `braceExpandMax` (`ExpansionBudgetExceeded`). The cap applies to the
+	 * expansion before duplicates are dropped, as it does in a compile, so a
+	 * pattern whose distinct count is under the cap can still fail it
+	 * (`"{,}".repeat(10)` counts 0, yet expands 1,024 results first), and the
+	 * failure's `actual` is where the expansion stopped, a lower bound, not the
+	 * size. A caller weighing a pattern against a ceiling of its own passes that
+	 * ceiling as `braceExpandMax`, so the expansion stops there instead of at
+	 * 100,000, and reads a failure as "more than the ceiling". It does not check that the pattern compiles:
+	 * a compile can still fail where the count succeeds (a compile budget, an
+	 * unbuildable regexp). Invalid options throw at `GlobPatternOptions.make`.
+	 *
+	 * @example
+	 * ```ts
+	 * import { GlobPattern, GlobPatternOptions } from "@effected/glob";
+	 * import { Result } from "effect";
+	 *
+	 * GlobPattern.alternativeCount("packages/{a,b}/{src,lib}/*.ts"); // => Result.succeed(4)
+	 * const capped = GlobPattern.alternativeCount("{a,b}".repeat(9), GlobPatternOptions.make({ braceExpandMax: 256 }));
+	 * Result.isFailure(capped); // => true, ExpansionBudgetExceeded (512 alternatives)
+	 * ```
+	 */
+	static alternativeCount(source: string, options?: GlobPatternOptions): Result.Result<number, GlobPatternError> {
+		return Result.try({
+			try: () => engineAlternativeCount(source, toEngineOptions(options)),
+			catch: (e) => {
+				// Only a guard trip is a typed failure; anything else rethrows as a defect.
+				if (isGuardExceeded(e)) {
+					return new GlobPatternError({ pattern: source, reason: e.reason, limit: e.limit, actual: e.actual });
+				}
+				throw e;
+			},
 		});
 	}
 

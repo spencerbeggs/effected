@@ -9,12 +9,13 @@
 | `ChangesetConfig` | Class | The decoded `.changeset/config.json`, with the defaults changesets documents. Keys the schema does not model (`changelog`, `$schema`, `format`, ...) are kept on the instance rather than rejected. | read and decode .changeset/config.json with documented defaults |
 | `ChangesetConfigError` | Class | `.changeset/config.json` is missing, is not valid JSON, or does not match the documented shape. | changeset config missing, invalid json or wrong shape |
 | `ChangesetFile` | Class | Parsing a changeset markdown file: YAML front matter mapping package names to release types, then the summary. | parse a changeset markdown file, front matter and summary |
+| `ChangesetLint` | Class | The changeset style rules CSH001 to CSH005, each defined once as a `LintRule` over `@effected/markdown` trees, so one definition runs in `MarkdownLint` and, through `MarkdownlintAdapter`, in markdownlint and markdownlint-cli2. | from `@effected/changesets/lint` — lint changeset files, CSH001 to CSH005 rules for MarkdownLint and markdownlint-cli2 |
 | `ChangesetParseError` | Class | A changeset file could not be parsed: no front matter, a malformed YAML block, or a bump outside `patch \| minor \| major`. | changeset without front matter, malformed yaml, or an invalid bump |
 | `ParsedChangeset` | Class | One parsed changeset: the packages it releases and its summary text. | released packages and summary text of one changeset |
 | `PendingChangeset` | Class | One pending changeset read from `.changeset/`. | one unreleased changeset read from disk |
 | `PendingChangesets` | Class | Reading the pending changesets under a repository's `.changeset/` directory. | list and read unreleased changesets under .changeset |
 | `PlannedRelease` | Class | One package's place in a `ReleasePlan`. | one package's old version, new version and bump type in a plan |
+| `PreState` | Class | The decoded `.changeset/pre.json`: the repository is in pre-release mode (`changeset pre enter <tag>`), or leaving it (`changeset pre exit`). | read pre mode state from pre.json, tag, initial versions, consumed changesets |
 | `ReleasePlan` | Class | What a set of pending changesets releases: the packages they name and the packages reached as dependents, sorted by name. A package neither named nor reached is absent. | compute next versions from pending changesets, dependents and ripples included |
 | `ReleaseType` | Variable + TypeAlias | The type of a `ReleaseType` value. | package release outcomes, including none for an unreleased package |
 | `UnknownPackageError` | Class | A changeset names a package the workspace does not contain. | changeset names a package missing from the workspace |
-| `UnsupportedChangesetModeError` | Class | The repository uses a changesets mode the release planner does not model: pre-release (`.changeset/pre.json` present), snapshot, or a `fixed` or `linked` group. | pre-release, snapshot, fixed or linked mode the planner refuses |

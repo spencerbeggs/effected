@@ -79,6 +79,7 @@ export {
 	type SeededVersion,
 	VersionManifest,
 } from "./NpmRegistry.js";
+export { NpmrcEntry, npmrcValue, npmrcValues, parseNpmrc } from "./Npmrc.js";
 export {
 	CachingPackageManager,
 	type DefaultCacheDirectoryOptions,

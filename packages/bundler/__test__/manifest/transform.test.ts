@@ -2,6 +2,7 @@
 // packages/bundler/__test__/manifest/transform.test.ts
 import { assert, describe, it } from "@effect/vitest";
 import {
+	assertBuildableConditionExports,
 	defaultManifestTransform,
 	normalizeBinPaths,
 	transformBin,
@@ -363,5 +364,101 @@ describe("transformExports — condition-object exports", () => {
 		const out = transformExports(exports) as Record<string, unknown>;
 		assert.deepStrictEqual(out["./data"], { import: "./data.mjs", require: "./data.cjs", default: "./data.mjs" });
 		assert.deepStrictEqual(out["."], { types: "./index.d.ts", import: "./index.js", default: "./index.js" });
+	});
+});
+
+describe("transformExports — built-path (./dist/*.js) exports (#1259)", () => {
+	const conditions = (name: string) => ({ types: `./${name}.d.ts`, import: `./${name}.js`, default: `./${name}.js` });
+
+	it("points a literal ./dist/foo.js export at the file the entry pass emits for the key", () => {
+		const out = transformExports({ "./foo": "./dist/foo.js", "./a/b": "./dist/a/b.js" }) as Record<string, unknown>;
+		assert.deepStrictEqual(out["./foo"], conditions("foo"));
+		assert.deepStrictEqual(out["./a/b"], conditions("a-b"));
+	});
+	it("rewrites a { import } condition object naming ./dist/foo.js like the bare string", () => {
+		const out = transformExports({ "./foo": { import: "./dist/foo.js" } }) as Record<string, unknown>;
+		assert.deepStrictEqual(out["./foo"], conditions("foo"));
+	});
+	it("refuses a pattern export key over a literal build source, in source or built form", () => {
+		assert.throws(() => transformExports({ "./features/*": "./dist/features/x.js" }), /pattern export key/);
+		assert.throws(() => transformExports({ "./features/*": { import: "./src/features/x.ts" } }), /pattern export key/);
+		assert.throws(
+			() => assertBuildableConditionExports({ "./features/*": "./src/features/x.ts" }),
+			/pattern export key/,
+		);
+		// A pattern key over non-source files passes through (control).
+		assert.deepStrictEqual(transformExports({ "./tsconfig/*": "./tsconfig/*" }), { "./tsconfig/*": "./tsconfig/*" });
+	});
+	it("names the bare-string form in the refusal of a hand-written types-and-runtime pair", () => {
+		assert.throws(
+			() => transformExports({ "./foo": { types: "./dist/foo.d.ts", import: "./dist/foo.js" } }),
+			/Drop the `types` condition and write "\.\/foo": "\.\/dist\/foo\.js"/,
+		);
+	});
+	it("refuses a ./dist/*.js or ./src/*.ts pattern, bare or under a condition", () => {
+		assert.throws(() => transformExports({ "./*": "./dist/*.js" }), /exports\."\.\/\*".*pattern over build sources/);
+		assert.throws(() => transformExports({ "./*": "./src/*.ts" }), /pattern over build sources/);
+		assert.throws(() => transformExports({ "./*": { import: "./dist/*.js" } }), /pattern over build sources/);
+	});
+	it("passes a .js target outside dist/ and a non-source pattern through (control)", () => {
+		const out = transformExports({ "./x": "./lib/x.js", "./schemas/*.json": "./schemas/*.json" }) as Record<
+			string,
+			unknown
+		>;
+		assert.strictEqual(out["./x"], "./lib/x.js");
+		assert.strictEqual(out["./schemas/*.json"], "./schemas/*.json");
+	});
+	it("points a ./dist/*.js bin at the emitted bin file", () => {
+		assert.strictEqual(transformBin("./dist/cli.js"), "bin/cli.js");
+		assert.deepStrictEqual(transformBin({ tool: "./dist/tool.js", raw: "./lib/raw.js" }), {
+			tool: "bin/tool.js",
+			raw: "lib/raw.js",
+		});
+	});
+});
+
+describe("assertBuildableConditionExports (#1259)", () => {
+	it("refuses a ./dist/*.js pattern before any pass", () => {
+		assert.throws(() => assertBuildableConditionExports({ ".": "./src/index.ts", "./*": "./dist/*.js" }), /pattern/);
+	});
+	it("refuses a condition object naming the exe source, in source or built form", () => {
+		const exe = { exeSource: "./src/bin.ts" };
+		assert.throws(() => assertBuildableConditionExports({ ".": { import: "./src/bin.ts" } }, exe), /exe source/);
+		assert.throws(() => assertBuildableConditionExports({ ".": { default: "src/bin.ts" } }, exe), /exe source/);
+		assert.throws(() => assertBuildableConditionExports({ ".": { import: "./dist/bin.js" } }, exe), /exe source/);
+		assert.throws(
+			() => assertBuildableConditionExports({ "./x": { node: { import: "./src/bin.ts" } } }, exe),
+			/exe source/,
+		);
+	});
+	it("accepts the exe source as a bare string, and the same condition object with no exe (control)", () => {
+		assertBuildableConditionExports({ ".": "./src/bin.ts" }, { exeSource: "./src/bin.ts" });
+		assertBuildableConditionExports({ ".": { import: "./src/bin.ts" } });
+		assertBuildableConditionExports({ ".": { import: "./src/index.ts" } }, { exeSource: "./src/bin.ts" });
+	});
+});
+
+describe("transformManifest — an exe entry in built form (#1259)", () => {
+	const exeRewrite = { source: "./src/bin.ts", fileName: "tool-darwin-arm64", dir: "bin" };
+
+	it("points a ./dist/bin.js export of the exe source at the binary", () => {
+		const out = transformManifest({ name: "t", exports: { ".": "./dist/bin.js" } }, { exeRewrite }) as {
+			exports: Record<string, unknown>;
+		};
+		assert.strictEqual(out.exports["."], "./bin/tool-darwin-arm64");
+	});
+	it("points a ./dist/bin.js bin of the exe source at the binary, object or string form", () => {
+		const record = transformManifest({ name: "t", bin: { tool: "./dist/bin.js" } }, { exeRewrite }) as {
+			bin: Record<string, string>;
+		};
+		assert.deepStrictEqual(record.bin, { tool: "bin/tool-darwin-arm64" });
+		const single = transformManifest({ name: "t", bin: "./dist/bin.js" }, { exeRewrite }) as { bin: string };
+		assert.strictEqual(single.bin, "bin/tool-darwin-arm64");
+	});
+	it("leaves a ./dist/*.js export of another source to the JS rewrite (control)", () => {
+		const out = transformManifest({ name: "t", exports: { "./x": "./dist/x.js" } }, { exeRewrite }) as {
+			exports: Record<string, unknown>;
+		};
+		assert.deepStrictEqual(out.exports["./x"], { types: "./x.d.ts", import: "./x.js", default: "./x.js" });
 	});
 });

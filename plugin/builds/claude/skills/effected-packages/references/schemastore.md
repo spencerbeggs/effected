@@ -12,6 +12,8 @@ import { SchemaPipeline, SchemaTarget, SchemaFile, SchemaValidator, StoreDocumen
 
 **Platform**: `SchemaFile.layer` does real IO over core `FileSystem`/`Path` required in `R` — provide `@effect/platform-node` (or the Bun equivalent) at the edge. Nothing else in the package needs a platform.
 
+**Symlinked targets**: `SchemaFile.write`'s `SchemaWriteOptions.links` is `"follow"` (default, writes through a symlinked schema path and keeps the link) or `"replace"` (replaces the link with a regular file, leaving its destination alone). It is forwarded to `AtomicFile.write`.
+
 ## Start here: the pipeline
 
 **`SchemaPipeline` is the entry point.** Reach for the individual modules only when you need something it does not do — most consumers should not be hand-writing the generate → lint → validate → gate → write loop, and three consumers who did each wrote it differently.

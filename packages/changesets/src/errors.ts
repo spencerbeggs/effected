@@ -36,25 +36,6 @@ export class ChangesetConfigError extends Schema.TaggedError<ChangesetConfigErro
 }
 
 /**
- * The repository uses a changesets mode the release planner does not model:
- * pre-release (`.changeset/pre.json` present), snapshot, or a `fixed` or
- * `linked` group.
- *
- * @public
- */
-export class UnsupportedChangesetModeError extends Schema.TaggedError<UnsupportedChangesetModeError>()(
-	"UnsupportedChangesetModeError",
-	{
-		/** The unsupported mode. */
-		mode: Schema.Literals(["pre", "snapshot", "fixed", "linked"]),
-	},
-) {
-	override get message(): string {
-		return `Changesets ${this.mode} mode is not supported`;
-	}
-}
-
-/**
  * A changeset names a package the workspace does not contain.
  *
  * @public
