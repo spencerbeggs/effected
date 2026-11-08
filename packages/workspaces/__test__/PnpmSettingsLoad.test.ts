@@ -237,11 +237,15 @@ layer(Platform)("PnpmSettings.load", (it) => {
 	});
 
 	describe("a pattern set that fails as a whole", () => {
-		it.effect('fails "membership" instead of answering not-a-member', () =>
-			Effect.gen(function* () {
-				const error = yield* PnpmSettings.load(darwin({ cwd: "/budget/sub" })).pipe(Effect.flip);
-				assert.strictEqual(error.reason, "membership");
-			}),
+		it.effect(
+			'fails "membership" instead of answering not-a-member',
+			() =>
+				Effect.gen(function* () {
+					const error = yield* PnpmSettings.load(darwin({ cwd: "/budget/sub" })).pipe(Effect.flip);
+					assert.strictEqual(error.reason, "membership");
+				}),
+			// The set is built to exhaust glob's compile budget, which takes real CPU.
+			{ timeout: 60_000 },
 		);
 	});
 

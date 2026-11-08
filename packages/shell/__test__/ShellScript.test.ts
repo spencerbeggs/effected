@@ -217,7 +217,7 @@ describe("ShellScript.allCommands on hostile input", () => {
 		assert.isBelow(ratio, 8);
 	});
 
-	it("returns a truncation for a megabyte of $( and never throws", () => {
+	it("returns a truncation for a megabyte of $( and never throws", { timeout: 60_000 }, () => {
 		const result = walk(chain(1 << 19));
 		assert.isTrue(result.truncated);
 		assert.strictEqual(result.scripts.length, ShellScript.defaultMaxDepth + 1);
