@@ -51,12 +51,21 @@ export function ambientOutName(exportKey: string, source: string, exportsAsIndex
 	return `${createEntryName(exportKey, exportsAsIndexes)}${ext}`;
 }
 
-/** The shared mixed-export error (Decision 2), used by both the extractor and the manifest transform. @public */
-export function mixedDtsExportError(exportKey: string): ConfigValidationError {
+/**
+ * The shared mixed-export error (Decision 2), used by both the extractor and the manifest transform. The reason ends
+ * with the bare-string form to write instead, naming the export's runtime target when `value` holds one: a
+ * hand-written `{ "types": "./dist/foo.d.ts", "import": "./dist/foo.js" }` becomes `"./foo": "./dist/foo.js"`, which
+ * the bundler builds from `./src/foo.ts` and gives generated types. @public
+ */
+export function mixedDtsExportError(exportKey: string, value?: unknown): ConfigValidationError {
+	const conditions = value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
+	const runtime = ["import", "default"]
+		.map((condition) => conditions[condition])
+		.find((target): target is string => typeof target === "string");
+	const example = runtime ?? "./src/<name>.ts";
 	return new ConfigValidationError({
 		path: `exports."${exportKey}"`,
-		reason:
-			"an export with a runtime source (import/require/default) cannot also hand-author its `types` as a .d.ts; the bundler generates types from the source",
+		reason: `an export with a runtime source (import/require/default) cannot also hand-author its \`types\` as a .d.ts; the bundler generates types from the source. Drop the \`types\` condition and write "${exportKey}": "${example}"`,
 	});
 }
 
@@ -94,7 +103,7 @@ export function extractAmbientDts(
 		if (declarationExt(key) !== undefined) continue;
 		const cls = classifyDtsExport(value);
 		if (cls.kind === "none") continue;
-		if (cls.kind === "mixed") throw mixedDtsExportError(key);
+		if (cls.kind === "mixed") throw mixedDtsExportError(key, value);
 		const outName = ambientOutName(key, cls.source, exportsAsIndexes);
 		const prev = byName.get(outName);
 		if (prev !== undefined) {

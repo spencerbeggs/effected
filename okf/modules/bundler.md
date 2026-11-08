@@ -27,10 +27,10 @@ sources:
     title: "The source-sibling spike, run with EFFECTED_SPIKE=1"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T23:52:34Z
+  at: 2026-11-08T12:11:04Z
 integrity:
   generated:
-    body: 8f2e345d69e5369f
+    body: fa1c0b627ecd432f
 ---
 
 # @effected/bundler
@@ -86,6 +86,8 @@ Other tools read these, so a change to one moves with its readers. The full cont
 | `.cache/effected/build.jsonl`, `.cache/effected/issues.jsonl` | the root journals, keyed by package |
 | `process.env.__PACKAGE_VERSION__` | the define that `packages/plugin/src/version.ts` and `packages/cli/src/version.ts` read |
 
+An `exports` target written as the built path, `./dist/foo.js` bare or under `import`/`default`/`types`, is a build source: the entry pass builds it from `./src/foo.ts` and names the output after the export key, so the emitted manifest points it at that file, as for `./src/foo.ts`. A `bin` written that way is rewritten the same way. For an exe build, the entry source in either form (`./src/bin.ts` or `./dist/bin.js`) is left out of the JS pass, and a bare-string export or bin naming it points at the binary. A build source holding a `*` (`./dist/*.js`, `./src/*.ts`), and a `*` export key over a literal build source, fail `ConfigValidationError` before any pass, since the build emits one entry per key from one literal source and names it after the key; so does a condition object naming the exe source, which only a bare string can point at the binary. A literal `exports` or `bin` target that is not a file in the emitted package warns `exports-pattern-unmatched`, as a pattern matching nothing does; the SEA's path is exempt, since `--no-exe` writes no binary.
+
 The emitted `tsdoctor.json` is a wire format with readers outside this repository. Its fields grow additively, and moving the schema here does not change a byte of what is written.[^spec]
 
 ## Source-sibling spike
@@ -109,6 +111,8 @@ What the result rests on:
 - **A symlinked `src/` would have answered the wrong question.** tsgo and rolldown realpath it, and its siblings then resolve through the main checkout's links.
 
 **A sibling's source is accounted as suppressed.** 23 of the 48 packages reported `ae-wrong-input-file-type` once, naming a file in a sibling's `src/`, because API Extractor's diagnostics run follows a sibling import to its `.ts` source. It does not reach the model. The handler classifies that message as suppressed when the file's realpath lies outside the package's own, so `issues.json` stays clean; the same message about a file inside the package stays a warning, since that means its own declarations reached its source. The suppression also hides a file reached through a tsconfig `paths` alias that resolves outside the package.
+
+**An own-source leak is judged from the program's file list, not from that one message.** API Extractor reports `ae-wrong-input-file-type` for only the first non-declaration file of its program, so a sibling's file sorting first would hide an own `.ts` behind it. After each run the handler reads the program's source files and reports, as a warning with the same code and in the program's own path form, every non-declaration `.ts`, `.tsx`, `.mts` or `.cts` whose realpath lies inside the package and outside its `node_modules`, skipping a file API Extractor's own message already named. One rule decides own versus foreign for both: a file under the package's `node_modules`, linked or real, is foreign, so its message is suppressed too. `suppressWarnings` applies to the scanned file as to the message. An own `.js` reached under `allowJs` is not scanned.
 
 Inlining is the other edge: **tsgo declares only the package's own project, so `bundledPackages` naming a sibling inlines the sibling's built declarations rather than its source.** The partition's dts-emit tsconfig maps that sibling, and only that sibling, to `dist/prod/<canonical group>/pkg`, the one case that writes `paths`, and a sibling with no build fails `ConfigValidationError` before any pass. A package inlining a sibling therefore needs `dependsOn: ["^build"]`, the single exception to the no-`^build` verdict. The spike pins both halves, and no kit package sets `bundledPackages`; [vitest-agent](../consumers/vitest-agent.md) does, for its reporter and UI API docs.
 

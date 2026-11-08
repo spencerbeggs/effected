@@ -15,6 +15,8 @@
 * Updated package-json
 * Updated @effected/markdown-lint
 * Updated @effected/shell
+* Updated @effected/bundler
+* Updated effected.toml: the build config's tables, defaults and discovery
 
 ## 2026-11-07
 

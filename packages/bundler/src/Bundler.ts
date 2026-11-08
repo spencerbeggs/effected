@@ -429,7 +429,7 @@ async function runBuild(
 		assertNoEntryCollisions(Object.keys(entries), ambient);
 		// A condition-object export the manifest cannot point at built files is refused here, before any build work,
 		// not from inside the JS pass's manifest plugin.
-		assertBuildableConditionExports(pkg.exports);
+		assertBuildableConditionExports(pkg.exports, config.exe !== undefined ? { exeSource: exeEntrySource } : {});
 		// A types-only package has nothing for the JS pass to build, and tsdown would throw an opaque "No input files".
 		if (ambient.length > 0 && !hasJsEntries && config.exe === undefined) {
 			throw new ConfigValidationError({
@@ -573,15 +573,24 @@ async function runBuild(
 			}
 		}
 
-		// A pattern export that nothing in the package matches resolves to nothing for a consumer, and the build has no
-		// other reason to notice.
+		// An export or bin target that nothing in the package matches, a `*` pattern or a literal path, resolves to nothing
+		// for a consumer, and the build has no other reason to notice. The SEA's path is left out: `--no-exe` and an injected
+		// compile write no binary, and the drift guard above already asserts a real compile emitted it.
+		const exeExportPath = exeRewrite !== undefined ? `./${exeRewrite.dir}/${exeRewrite.fileName}` : undefined;
 		for (const g of groups) {
-			for (const { key, target } of unmatchedExportPatterns(join(cwd, "dist", "prod", g.id, "pkg"))) {
+			for (const { field, key, target } of unmatchedExportPatterns(join(cwd, "dist", "prod", g.id, "pkg"), {
+				...(exeExportPath !== undefined ? { ignore: [exeExportPath] } : {}),
+			})) {
 				collector.recordWarning(g.id, {
 					source: "config",
 					level: "warn",
 					code: "exports-pattern-unmatched",
-					text: `The exports pattern "${key}" points at "${target}", which matches no file in the emitted package. Ship the files from public/ or with [package.build] copy.`,
+					text:
+						field === "bin"
+							? `The bin "${key}" points at "${target}", which is not a file in the emitted package. Point it at a source the build emits, or ship the file from public/ or with [package.build] copy.`
+							: target.includes("*")
+								? `The exports pattern "${key}" points at "${target}", which matches no file in the emitted package. Ship the files from public/ or with [package.build] copy.`
+								: `The export "${key}" points at "${target}", which is not a file in the emitted package. Point it at a source the build emits, or ship the file from public/ or with [package.build] copy.`,
 				});
 			}
 		}

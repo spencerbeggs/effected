@@ -391,7 +391,11 @@ describe("runApiExtractor classifies a .ts input by where it lives", () => {
 
 	it("keeps a warning for a file in the package", () => {
 		const { warned, suppressed } = run("own");
-		assert.include(warned, "ae-wrong-input-file-type");
+		// Once: the program scan does not repeat a file API Extractor's own message already named.
+		assert.lengthOf(
+			warned.filter((code) => code === "ae-wrong-input-file-type"),
+			1,
+		);
 		assert.notInclude(suppressed, "ae-wrong-input-file-type");
 	}, 60_000);
 
@@ -399,5 +403,70 @@ describe("runApiExtractor classifies a .ts input by where it lives", () => {
 		const { warned, suppressed } = run("sibling");
 		assert.notInclude(warned, "ae-wrong-input-file-type");
 		assert.include(suppressed, "ae-wrong-input-file-type");
+	}, 60_000);
+});
+
+describe("runApiExtractor judges own-source leakage from the program's file list (#1260)", () => {
+	// The entry reaches a sibling's source first and its own source second, so API Extractor's one
+	// `ae-wrong-input-file-type`, which names only the first non-declaration file, names the sibling.
+	const run = (suppressWarnings: ReadonlyArray<{ readonly messageId: string }> = []) => {
+		const root = mkdtempSync(join(tmpdir(), "ae-order-"));
+		const dir = join(root, "pkg");
+		mkdirSync(join(dir, "src"), { recursive: true });
+		mkdirSync(join(root, "sibling"), { recursive: true });
+		const siblingFile = join(root, "sibling", "aaa.ts");
+		const ownFile = join(dir, "src", "zzz.ts");
+		writeFileSync(siblingFile, "export interface Sibling { readonly a: string }\n");
+		writeFileSync(ownFile, "export interface Own { readonly b: string }\n");
+		writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "fixture", version: "1.0.0" }));
+		const tsconfigPath = join(dir, "tsconfig.json");
+		writeFileSync(
+			tsconfigPath,
+			JSON.stringify({
+				compilerOptions: {
+					module: "nodenext",
+					moduleResolution: "nodenext",
+					strict: true,
+					skipLibCheck: true,
+					types: [],
+				},
+			}),
+		);
+		const entryDtsPath = join(dir, "entry.d.ts");
+		writeFileSync(
+			entryDtsPath,
+			'/** @public */\nexport type { Sibling } from "sibling-reached";\n/** @public */\nexport type { Own } from "own-reached";\n',
+		);
+		const warned: Array<{ code: string; file: string }> = [];
+		const suppressed: Array<{ code: string; file: string }> = [];
+		runApiExtractor({
+			cwd: dir,
+			packageJsonPath: join(dir, "package.json"),
+			entryDtsPath,
+			tsconfigPath,
+			tsdocConfigPath: writeTsdocConfig(dir, {}),
+			apiJsonPath: join(dir, "fixture.api.json"),
+			emitDocModel: false,
+			selfReferencePaths: { "sibling-reached": [siblingFile], "own-reached": [ownFile] },
+			suppressWarnings,
+			onMessage: (entry) => warned.push({ code: entry.code ?? "", file: entry.file ?? "" }),
+			onSuppressed: (entry) => suppressed.push({ code: entry.code ?? "", file: entry.file ?? "" }),
+		});
+		const named = (list: ReadonlyArray<{ code: string; file: string }>, file: string) =>
+			list.filter((entry) => entry.code === "ae-wrong-input-file-type" && entry.file.endsWith(file));
+		return { warned, suppressed, named };
+	};
+
+	it("reports an own source that sorts after a sibling's, and still suppresses the sibling", () => {
+		const { warned, suppressed, named } = run();
+		assert.lengthOf(named(suppressed, "aaa.ts"), 1);
+		assert.lengthOf(named(warned, "aaa.ts"), 0);
+		assert.lengthOf(named(warned, "zzz.ts"), 1);
+	}, 60_000);
+
+	it("honours a suppression rule for the scanned own source", () => {
+		const { warned, suppressed, named } = run([{ messageId: "ae-wrong-input-file-type" }]);
+		assert.lengthOf(named(warned, "zzz.ts"), 0);
+		assert.lengthOf(named(suppressed, "zzz.ts"), 1);
 	}, 60_000);
 });

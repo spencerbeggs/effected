@@ -21,10 +21,10 @@ sources:
     resource: ../../packages/bundler/src/config/plugins.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-07T00:15:31Z
+  at: 2026-11-08T12:11:04Z
 integrity:
   generated:
-    body: 1b0560b4fbc88171
+    body: 18f8acf86ee5f9d2
 ---
 
 # effected.toml: the build config's tables, defaults and discovery
@@ -99,7 +99,9 @@ copy = ["../shared/schemas", { from = "assets/*.png", to = "img" }]
 - **`flatten` defaults to `true`**, dropping each source's directories.
 - **A package that only compiles a binary runs no JS pass,** so `copy` there fails `ConfigValidationError` rather than doing nothing.
 
-An `exports` pattern such as `./schemas/*.json` that matches no file in the emitted package is a `warn` in `issues.json`, with `source: "config"` and code `exports-pattern-unmatched`. It does not fail the build. An `exports` `*` spans `/` (Node semantics), so a file at a deeper path than intended still satisfies the pattern and the warning cannot catch a wrongly nested copy.
+An `exports` or `bin` target that names no file in the emitted package is a `warn` in `issues.json`, with `source: "config"` and code `exports-pattern-unmatched`: a pattern such as `./schemas/*.json` that matches nothing, or a literal path that does not exist. The single-executable path is exempt, so a `--no-exe` build does not warn. It does not fail the build. An `exports` `*` spans `/` (Node semantics), so a file at a deeper path than intended still satisfies the pattern and the warning cannot catch a wrongly nested copy.
+
+A literal export or `bin` target written as the built file, such as `./dist/foo.js`, is rewritten to the file the build emits for it, including an executable's entry, which points at the binary. A `*` pattern over build sources (`./dist/*.js`, `./src/*.ts`), a `*` export key over a literal build source, and a condition object naming the executable source fail `ConfigValidationError` before any pass.
 
 ### Inlining a workspace sibling
 
