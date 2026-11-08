@@ -1,7 +1,8 @@
 # @effected/walker
 
 Path traversal: upward (`Walker.ascend` / `ascendWithin` / `ascendToMarker` /
-`firstMatch` / `findUpward` / `findUpwardAll` / `findRoot`, plus `*Sync` twins)
+`firstMatch` / `findUpward` / `findUpwardAll` / `findRoot` / `findUpwardWith`, plus `*Sync` twins
+including `findUpwardSyncWith`)
 and downward (`descend`, the public glob-file walker), and path containment
 (`confineRelative` lexical, `confineReal` physical), plus `PosixPath`
 (cwd-free POSIX path arithmetic for pure code). Sixth
@@ -200,6 +201,11 @@ which no walk calls: it serves the caller's own reads beside a walk.
   because walker reads nothing there. Stop rules come from the `dirs` chain.
   The cache is a caller-owned per-directory memo of accept's answers,
   rejections included. A throwing `accept` propagates uncached.
+- `findUpwardWith(dirs, accept, { cache })` is its Effect form: `accept` answers
+  `Effect<Option<A>, E, R>`, the scan and cache are the same, and `E` is not
+  absorbed — a failure or interruption of `accept` ends the search with nothing
+  cached for that directory (earlier entries stay). Recover inside `accept` to
+  treat a failed read as "not valid".
 
 - `ascendToMarker` stops at the nearest directory holding a marker ENTRY
   (any kind), probing nothing above it; empty markers / an empty name die.

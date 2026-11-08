@@ -5,6 +5,7 @@
 * Updated glob
 * Updated glob does not bound total matching work on hostile patterns
 * Updated lockfiles
+* Updated walker
 
 ## 2026-11-07
 

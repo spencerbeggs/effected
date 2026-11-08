@@ -148,6 +148,14 @@ export interface FindUpwardSyncWithOptions<A> {
 }
 
 /**
+ * Options for {@link Walker.findUpwardWith}: the same shape as
+ * {@link FindUpwardSyncWithOptions}, so one cache serves both forms.
+ *
+ * @public
+ */
+export type FindUpwardWithOptions<A> = FindUpwardSyncWithOptions<A>;
+
+/**
  * Upward path traversal primitives: the directory chain from a start path to the
  * root, and first-match scans over it.
  *
@@ -558,6 +566,57 @@ export class Walker {
 			if (Option.isSome(answer)) return Option.some({ dir, value: answer.value });
 		}
 		return Option.none();
+	}
+
+	/**
+	 * {@link Walker.findUpwardSyncWith}, with an effectful `accept` — the nearest
+	 * directory in `dirs` that `accept` takes, with the value it answered.
+	 *
+	 * @remarks
+	 * The same scan and the same cache contract: directories are tried in
+	 * order, nearest first, and the scan stops at the first `Option.some`.
+	 * `accept` answers `Effect<Option<A>, E, R>`; its failure `E` is not
+	 * absorbed — it fails the search, and nothing is cached for that
+	 * directory. To treat a read failure as "not valid", recover inside
+	 * `accept` (`Effect.catch(() => Effect.succeed(Option.none()))`). With
+	 * `options.cache`, each directory's answer is memoized, `Option.none()`
+	 * included, and a cached directory is not asked again; invalidation is the
+	 * caller's. Take `dirs` from {@link Walker.ascend}, {@link Walker.ascendWithin}
+	 * or {@link Walker.ascendToMarker} so the search stops where they stop.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Effect, FileSystem, Option } from "effect";
+	 * import { Walker } from "@effected/walker";
+	 *
+	 * const packageName = (dir: string) =>
+	 * 	Effect.gen(function* () {
+	 * 		const fs = yield* FileSystem.FileSystem;
+	 * 		const text = yield* fs.readFileString(`${dir}/package.json`);
+	 * 		const name: unknown = Reflect.get(JSON.parse(text), "name");
+	 * 		return typeof name === "string" ? Option.some(name) : Option.none();
+	 * 	}).pipe(Effect.catch(() => Effect.succeed(Option.none<string>())));
+	 *
+	 * const owner = (dirs: ReadonlyArray<string>) => Walker.findUpwardWith(dirs, packageName);
+	 * ```
+	 */
+	static findUpwardWith<A, E, R>(
+		dirs: ReadonlyArray<string>,
+		accept: (dir: string) => Effect.Effect<Option.Option<A>, E, R>,
+		options?: FindUpwardWithOptions<A>,
+	): Effect.Effect<Option.Option<UpwardAccepted<A>>, E, R> {
+		const cache = options?.cache;
+		return Effect.gen(function* () {
+			for (const dir of dirs) {
+				let answer = cache?.get(dir);
+				if (answer === undefined) {
+					answer = yield* accept(dir);
+					cache?.set(dir, answer);
+				}
+				if (Option.isSome(answer)) return Option.some({ dir, value: answer.value });
+			}
+			return Option.none();
+		});
 	}
 
 	/**

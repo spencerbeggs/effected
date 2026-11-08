@@ -83,14 +83,14 @@ const platform = Layer.mergeAll(handle.layer, Path.layer);
 
 type Outcome = { readonly ok: string } | { readonly refused: string } | { readonly defect: string };
 
-const viaEffect = (base: string, candidate: string): Outcome => {
-	const exit = Effect.runSyncExit(confineReal(base, candidate).pipe(Effect.provide(platform)));
-	if (Exit.isSuccess(exit)) return { ok: exit.value };
-	const failure = exit.cause.reasons.find((reason) => reason._tag === "Fail");
-	if (failure?._tag === "Fail" && failure.error instanceof PathEscapeError) return { refused: failure.error.reason };
-	const squashed = Cause.squash(exit.cause);
-	return { defect: squashed instanceof Error ? squashed.message.replace(/^Walker\.\w+: /, "") : String(squashed) };
-};
+const viaEffect = (base: string, candidate: string) =>
+	Effect.map(Effect.exit(confineReal(base, candidate).pipe(Effect.provide(platform))), (exit): Outcome => {
+		if (Exit.isSuccess(exit)) return { ok: exit.value };
+		const failure = exit.cause.reasons.find((reason) => reason._tag === "Fail");
+		if (failure?._tag === "Fail" && failure.error instanceof PathEscapeError) return { refused: failure.error.reason };
+		const squashed = Cause.squash(exit.cause);
+		return { defect: squashed instanceof Error ? squashed.message.replace(/^Walker\.\w+: /, "") : String(squashed) };
+	});
 
 const viaSync = (base: string, candidate: string, syncOps: WalkerSyncOps = ops): Outcome => {
 	try {
@@ -102,69 +102,88 @@ const viaSync = (base: string, candidate: string, syncOps: WalkerSyncOps = ops):
 };
 
 /** Asserts both forms give `expected`. */
-const both = (base: string, candidate: string, expected: Outcome) => {
-	assert.deepStrictEqual(viaEffect(base, candidate), expected, `confineReal(${base}, ${candidate})`);
-	assert.deepStrictEqual(viaSync(base, candidate), expected, `confineRealSync(${base}, ${candidate})`);
-};
+const both = (base: string, candidate: string, expected: Outcome) =>
+	Effect.gen(function* () {
+		assert.deepStrictEqual(yield* viaEffect(base, candidate), expected, `confineReal(${base}, ${candidate})`);
+		assert.deepStrictEqual(viaSync(base, candidate), expected, `confineRealSync(${base}, ${candidate})`);
+	});
 
 describe("confineReal / confineRealSync", () => {
-	it("accepts a relative path inside the base, answering its real path", () => {
-		both("/srv/site", "og/card.png", { ok: "/srv/site/og/card.png" });
-		both("/srv/site", "alias/card.png", { ok: "/srv/site/og/card.png" });
-	});
+	it.effect("accepts a relative path inside the base, answering its real path", () =>
+		Effect.gen(function* () {
+			yield* both("/srv/site", "og/card.png", { ok: "/srv/site/og/card.png" });
+			yield* both("/srv/site", "alias/card.png", { ok: "/srv/site/og/card.png" });
+		}),
+	);
 
-	it("accepts an absolute path already inside the base", () => {
-		both("/srv/site", "/srv/site/index.html", { ok: "/srv/site/index.html" });
-	});
+	it.effect("accepts an absolute path already inside the base", () =>
+		Effect.gen(function* () {
+			yield* both("/srv/site", "/srv/site/index.html", { ok: "/srv/site/index.html" });
+		}),
+	);
 
 	// The whole point: `confineRelative` accepts `out/y` (lexically inside), but the
 	// link carries it to `/etc/sub/y`.
-	it("refuses a path a symlink carries outside the base", () => {
-		both("/srv/site", "out/y", { refused: "outside" });
-		both("/srv/site", "out", { refused: "outside" });
-		both("/srv/site", "/srv/site/out/y", { refused: "outside" });
-	});
+	it.effect("refuses a path a symlink carries outside the base", () =>
+		Effect.gen(function* () {
+			yield* both("/srv/site", "out/y", { refused: "outside" });
+			yield* both("/srv/site", "out", { refused: "outside" });
+			yield* both("/srv/site", "/srv/site/out/y", { refused: "outside" });
+		}),
+	);
 
 	// `..` after a link climbs out of the link's TARGET, as the OS resolves it.
 	// A lexical-first resolution (`path.resolve`, node's JS `fs.realpath`) collapses
 	// `out/..` to the base and would accept `out/../passwd` as `/srv/site/passwd`;
 	// the OS opens `/etc/passwd`.
-	it("resolves a parent segment after a link physically, not lexically", () => {
-		both("/srv/site", "out/../passwd", { refused: "outside" });
-		both("/srv/site", "/srv/site/out/../../passwd", { refused: "outside" });
-		both("/srv/site", "alias/../index.html", { ok: "/srv/site/index.html" });
-	});
+	it.effect("resolves a parent segment after a link physically, not lexically", () =>
+		Effect.gen(function* () {
+			yield* both("/srv/site", "out/../passwd", { refused: "outside" });
+			yield* both("/srv/site", "/srv/site/out/../../passwd", { refused: "outside" });
+			yield* both("/srv/site", "alias/../index.html", { ok: "/srv/site/index.html" });
+		}),
+	);
 
-	it("refuses a plain absolute or traversing path outside the base", () => {
-		both("/srv/site", "/etc/passwd", { refused: "outside" });
-		both("/srv/site", "../site-evil/x", { refused: "outside" });
-		// A sibling sharing the base as a string prefix is not inside it.
-		both("/srv/site", "/srv/site-evil/x", { refused: "outside" });
-	});
+	it.effect("refuses a plain absolute or traversing path outside the base", () =>
+		Effect.gen(function* () {
+			yield* both("/srv/site", "/etc/passwd", { refused: "outside" });
+			yield* both("/srv/site", "../site-evil/x", { refused: "outside" });
+			// A sibling sharing the base as a string prefix is not inside it.
+			yield* both("/srv/site", "/srv/site-evil/x", { refused: "outside" });
+		}),
+	);
 
-	it("checks a path that does not exist yet from its real existing ancestor", () => {
-		both("/srv/site", "new/dir/file.txt", { ok: "/srv/site/new/dir/file.txt" });
-		both("/srv/site", "out/new.txt", { refused: "outside" });
-		both("/srv/site", "new/../../etc/x", { refused: "outside" });
-	});
+	it.effect("checks a path that does not exist yet from its real existing ancestor", () =>
+		Effect.gen(function* () {
+			yield* both("/srv/site", "new/dir/file.txt", { ok: "/srv/site/new/dir/file.txt" });
+			yield* both("/srv/site", "out/new.txt", { refused: "outside" });
+			yield* both("/srv/site", "new/../../etc/x", { refused: "outside" });
+		}),
+	);
 
-	it("refuses the base itself, however it is spelled", () => {
-		both("/srv/site", "", { refused: "empty" });
-		both("/srv/site", ".", { refused: "empty" });
-		both("/srv/site", "/srv/site/", { refused: "empty" });
-		both("/srv/site", "og/..", { refused: "empty" });
-	});
+	it.effect("refuses the base itself, however it is spelled", () =>
+		Effect.gen(function* () {
+			yield* both("/srv/site", "", { refused: "empty" });
+			yield* both("/srv/site", ".", { refused: "empty" });
+			yield* both("/srv/site", "/srv/site/", { refused: "empty" });
+			yield* both("/srv/site", "og/..", { refused: "empty" });
+		}),
+	);
 
-	it("refuses a NUL character before any filesystem access", () => {
-		both("/srv/site", `og${NUL}/x`, { refused: "nulByte" });
-	});
+	it.effect("refuses a NUL character before any filesystem access", () =>
+		Effect.gen(function* () {
+			yield* both("/srv/site", `og${NUL}/x`, { refused: "nulByte" });
+		}),
+	);
 
 	// Containment that cannot be verified is refused, never assumed.
-	it("refuses a path whose resolution fails for a reason other than absence", () => {
-		both("/srv/site", "locked/secret", { refused: "unresolvable" });
-		both("/srv/site", "loop/x", { refused: "unresolvable" });
-		both("/srv/site", "file.txt/x", { refused: "unresolvable" });
-	});
+	it.effect("refuses a path whose resolution fails for a reason other than absence", () =>
+		Effect.gen(function* () {
+			yield* both("/srv/site", "locked/secret", { refused: "unresolvable" });
+			yield* both("/srv/site", "loop/x", { refused: "unresolvable" });
+			yield* both("/srv/site", "file.txt/x", { refused: "unresolvable" });
+		}),
+	);
 
 	it.effect("carries the resolution failure as the cause", () =>
 		Effect.gen(function* () {
@@ -179,26 +198,32 @@ describe("confineReal / confineRealSync", () => {
 	// A dangling link does not resolve, yet it is not absent: writing through it
 	// creates its target. Absence is only absence when nothing — not even a link —
 	// lives at the path, so every dangling link is refused, its target unverified.
-	it("refuses a path through a dangling link, wherever its target points", () => {
-		both("/srv/site", "dangling", { refused: "unresolvable" });
-		both("/srv/site", "/srv/site/dangling", { refused: "unresolvable" });
-		both("/srv/site", "dangdir/x", { refused: "unresolvable" });
-		both("/srv/site", "dangling/../../etc/z", { refused: "unresolvable" });
-		both("/srv/site", "chain", { refused: "unresolvable" });
-		// Fail closed: a target inside the base is not proved by a link that does not resolve.
-		both("/srv/site", "inner-dangling", { refused: "unresolvable" });
-	});
+	it.effect("refuses a path through a dangling link, wherever its target points", () =>
+		Effect.gen(function* () {
+			yield* both("/srv/site", "dangling", { refused: "unresolvable" });
+			yield* both("/srv/site", "/srv/site/dangling", { refused: "unresolvable" });
+			yield* both("/srv/site", "dangdir/x", { refused: "unresolvable" });
+			yield* both("/srv/site", "dangling/../../etc/z", { refused: "unresolvable" });
+			yield* both("/srv/site", "chain", { refused: "unresolvable" });
+			// Fail closed: a target inside the base is not proved by a link that does not resolve.
+			yield* both("/srv/site", "inner-dangling", { refused: "unresolvable" });
+		}),
+	);
 
 	// Absence must be proved: a `NotFound` real path whose presence probe fails
 	// is not taken as "nothing here".
-	it("refuses an absent segment whose presence cannot be checked", () => {
-		both("/srv/site", "ghost", { refused: "unresolvable" });
-		both("/srv/site", "ghost/x", { refused: "unresolvable" });
-	});
+	it.effect("refuses an absent segment whose presence cannot be checked", () =>
+		Effect.gen(function* () {
+			yield* both("/srv/site", "ghost", { refused: "unresolvable" });
+			yield* both("/srv/site", "ghost/x", { refused: "unresolvable" });
+		}),
+	);
 
-	it("refuses a base that is a dangling link", () => {
-		both("/dangling-base", "a", { refused: "unresolvable" });
-	});
+	it.effect("refuses a base that is a dangling link", () =>
+		Effect.gen(function* () {
+			yield* both("/dangling-base", "a", { refused: "unresolvable" });
+		}),
+	);
 
 	it.effect("carries the dangling link's resolution failure as the cause", () =>
 		Effect.gen(function* () {
@@ -210,32 +235,40 @@ describe("confineReal / confineRealSync", () => {
 		}).pipe(Effect.provide(platform)),
 	);
 
-	it("resolves a base reached through a link", () => {
-		both("/link/site", "og/card.png", { ok: "/srv/site/og/card.png" });
-		both("/link/site", "/srv/site/index.html", { ok: "/srv/site/index.html" });
-		both("/link/site", "/link/site-evil/x", { refused: "outside" });
-	});
+	it.effect("resolves a base reached through a link", () =>
+		Effect.gen(function* () {
+			yield* both("/link/site", "og/card.png", { ok: "/srv/site/og/card.png" });
+			yield* both("/link/site", "/srv/site/index.html", { ok: "/srv/site/index.html" });
+			yield* both("/link/site", "/link/site-evil/x", { refused: "outside" });
+		}),
+	);
 
-	it("accepts paths under a base that does not exist yet, lexically", () => {
-		both("/srv/new", "a/b", { ok: "/srv/new/a/b" });
-		both("/srv/new", "../site/x", { refused: "outside" });
-	});
+	it.effect("accepts paths under a base that does not exist yet, lexically", () =>
+		Effect.gen(function* () {
+			yield* both("/srv/new", "a/b", { ok: "/srv/new/a/b" });
+			yield* both("/srv/new", "../site/x", { refused: "outside" });
+		}),
+	);
 
-	it("treats the filesystem root as a base like any other", () => {
-		both("/", "etc/passwd", { ok: "/etc/passwd" });
-		both("/", "/", { refused: "empty" });
-	});
+	it.effect("treats the filesystem root as a base like any other", () =>
+		Effect.gen(function* () {
+			yield* both("/", "etc/passwd", { ok: "/etc/passwd" });
+			yield* both("/", "/", { refused: "empty" });
+		}),
+	);
 
 	// The empty-base class: a relative base would resolve against the process
 	// working directory. It is wiring, so it dies (throws), never a typed refusal a
 	// caller could absorb into "allowed".
-	it("dies on a relative base, the empty string included", () => {
-		for (const base of ["", "srv/site", ".", `srv${NUL}`]) {
-			const effect = viaEffect(base, "x");
-			assert.isTrue("defect" in effect, `confineReal(${JSON.stringify(base)})`);
-			assert.deepStrictEqual(viaSync(base, "x"), effect);
-		}
-	});
+	it.effect("dies on a relative base, the empty string included", () =>
+		Effect.gen(function* () {
+			for (const base of ["", "srv/site", ".", `srv${NUL}`]) {
+				const effect = yield* viaEffect(base, "x");
+				assert.isTrue("defect" in effect, `confineReal(${JSON.stringify(base)})`);
+				assert.deepStrictEqual(viaSync(base, "x"), effect);
+			}
+		}),
+	);
 });
 
 // memfs's win32 port takes and answers win32 spellings, `realPath` included

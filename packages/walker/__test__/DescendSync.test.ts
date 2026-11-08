@@ -127,15 +127,18 @@ const normalOk = (value: unknown): unknown =>
 			}
 		: value;
 
-const viaEffect = (pattern: GlobPattern, options: Record<string, unknown>): Normal => {
-	const exit = Effect.runSyncExit(
-		descend(pattern, { cwd: "/repo", ...options } as unknown as DescendOptions).pipe(Effect.provide(platform)),
+const viaEffect = (pattern: GlobPattern, options: Record<string, unknown>) =>
+	Effect.map(
+		Effect.exit(
+			descend(pattern, { cwd: "/repo", ...options } as unknown as DescendOptions).pipe(Effect.provide(platform)),
+		),
+		(exit): Normal => {
+			if (Exit.isSuccess(exit)) return { ok: normalOk(exit.value) };
+			const error = exit.cause.reasons.find((reason) => reason._tag === "Fail");
+			if (error?._tag === "Fail" && error.error instanceof DescendError) return { error: normalError(error.error) };
+			throw new Error("unexpected cause");
+		},
 	);
-	if (Exit.isSuccess(exit)) return { ok: normalOk(exit.value) };
-	const error = exit.cause.reasons.find((reason) => reason._tag === "Fail");
-	if (error?._tag === "Fail" && error.error instanceof DescendError) return { error: normalError(error.error) };
-	throw new Error("unexpected cause");
-};
 
 const viaSync = (pattern: GlobPattern, options: Record<string, unknown>): Normal => {
 	const result = descendSync(pattern, { cwd: "/repo", ...options, ...ops } as unknown as Parameters<
@@ -181,241 +184,297 @@ const OPTIONS: ReadonlyArray<Record<string, unknown>> = [
 ];
 
 describe("descendSync parity with descend", () => {
-	it("answers identically for every pattern × option combination", () => {
-		let compared = 0;
-		let distinct = 0;
-		const seen = new Set<string>();
-		for (const [source, dot] of PATTERNS) {
-			for (const options of OPTIONS) {
-				const pattern = compile(source, dot);
-				const label = `${source} dot=${dot} ${JSON.stringify(options)}`;
-				const effect = viaEffect(pattern, options);
-				assert.deepStrictEqual(viaSync(pattern, options), effect, label);
-				compared++;
-				const key = JSON.stringify(effect);
-				if (!seen.has(key)) distinct++;
-				seen.add(key);
+	it.effect("answers identically for every pattern × option combination", () =>
+		Effect.gen(function* () {
+			let compared = 0;
+			let distinct = 0;
+			const seen = new Set<string>();
+			for (const [source, dot] of PATTERNS) {
+				for (const options of OPTIONS) {
+					const pattern = compile(source, dot);
+					const label = `${source} dot=${dot} ${JSON.stringify(options)}`;
+					const effect = yield* viaEffect(pattern, options);
+					assert.deepStrictEqual(viaSync(pattern, options), effect, label);
+					compared++;
+					const key = JSON.stringify(effect);
+					if (!seen.has(key)) distinct++;
+					seen.add(key);
+				}
 			}
-		}
-		assert.strictEqual(compared, PATTERNS.length * OPTIONS.length);
-		// Control: the matrix is not comparing a sea of identical empty answers.
-		assert.isAbove(distinct, 25);
-	});
+			assert.strictEqual(compared, PATTERNS.length * OPTIONS.length);
+			// Control: the matrix is not comparing a sea of identical empty answers.
+			assert.isAbove(distinct, 25);
+		}),
+	);
 
-	it("descendEntriesSync carries the same entries as descendEntries", () => {
-		const pattern = compile("**/*.ts");
-		const options = { cwd: "/repo", onUnreadable: "skip" } as const;
-		const effect = Effect.runSync(descendEntries(pattern, options).pipe(Effect.provide(platform)));
-		const sync = Result.getOrThrow(descendEntriesSync(pattern, { ...options, ...ops }));
-		assert.deepStrictEqual(
-			sync.map((entry) => [entry.path, entry.info.isFile(), entry.info.size]),
-			effect.map((entry) => [entry.path, entry.info.type === "File", Number(entry.info.size)]),
-		);
-		const mtimes = effect.map((entry) => Option.getOrThrow(entry.info.mtime).getTime());
-		assert.deepStrictEqual(
-			sync.map((entry) => Math.trunc(entry.info.mtimeMs)),
-			mtimes,
-		);
-	});
+	it.effect("descendEntriesSync carries the same entries as descendEntries", () =>
+		Effect.gen(function* () {
+			const pattern = compile("**/*.ts");
+			const options = { cwd: "/repo", onUnreadable: "skip" } as const;
+			const effect = yield* descendEntries(pattern, options).pipe(Effect.provide(platform));
+			const sync = Result.getOrThrow(descendEntriesSync(pattern, { ...options, ...ops }));
+			assert.deepStrictEqual(
+				sync.map((entry) => [entry.path, entry.info.isFile(), entry.info.size]),
+				effect.map((entry) => [entry.path, entry.info.type === "File", Number(entry.info.size)]),
+			);
+			const mtimes = effect.map((entry) => Option.getOrThrow(entry.info.mtime).getTime());
+			assert.deepStrictEqual(
+				sync.map((entry) => Math.trunc(entry.info.mtimeMs)),
+				mtimes,
+			);
+		}),
+	);
 
-	it("an invalid maxDepth is a defect in both forms", () => {
-		const pattern = compile("**");
-		assert.throws(() => descendSync(pattern, { cwd: "/repo", maxDepth: 0, ...ops }), /maxDepth/);
-		const exit = Effect.runSyncExit(descend(pattern, { cwd: "/repo", maxDepth: 0 }).pipe(Effect.provide(platform)));
-		assert.isTrue(Exit.isFailure(exit) && exit.cause.reasons.some((reason) => reason._tag === "Die"));
-	});
+	it.effect("an invalid maxDepth is a defect in both forms", () =>
+		Effect.gen(function* () {
+			const pattern = compile("**");
+			assert.throws(() => descendSync(pattern, { cwd: "/repo", maxDepth: 0, ...ops }), /maxDepth/);
+			const exit = yield* Effect.exit(descend(pattern, { cwd: "/repo", maxDepth: 0 }).pipe(Effect.provide(platform)));
+			assert.isTrue(Exit.isFailure(exit) && exit.cause.reasons.some((reason) => reason._tag === "Die"));
+		}),
+	);
 });
 
 describe("brace-only patterns are not literal paths", () => {
-	const both = (source: string, options: Record<string, unknown> = {}) => {
-		const pattern = compile(source);
-		const effect = viaEffect(pattern, options);
-		assert.deepStrictEqual(viaSync(pattern, options), effect, source);
-		return effect;
-	};
-
-	it("a brace group in the last segment expands", () => {
-		assert.deepStrictEqual(both("packages/a/src/{x,x.test}.ts"), {
-			ok: ["packages/a/src/x.test.ts", "packages/a/src/x.ts"],
+	const both = (source: string, options: Record<string, unknown> = {}) =>
+		Effect.gen(function* () {
+			const pattern = compile(source);
+			const effect = yield* viaEffect(pattern, options);
+			assert.deepStrictEqual(viaSync(pattern, options), effect, source);
+			return effect;
 		});
-	});
 
-	it("a brace group before a trailing magic segment expands", () => {
-		assert.deepStrictEqual(both("packages/{a,b}/src/*.ts"), {
-			ok: ["packages/a/src/x.test.ts", "packages/a/src/x.ts", "packages/b/src/y.ts"],
-		});
-	});
+	it.effect("a brace group in the last segment expands", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* both("packages/a/src/{x,x.test}.ts"), {
+				ok: ["packages/a/src/x.test.ts", "packages/a/src/x.ts"],
+			});
+		}),
+	);
 
-	it("a brace group spanning segments expands", () => {
-		assert.deepStrictEqual(both("{packages/a/src/x,packages/b/src/y}.ts"), {
-			ok: ["packages/a/src/x.ts", "packages/b/src/y.ts"],
-		});
-	});
+	it.effect("a brace group before a trailing magic segment expands", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* both("packages/{a,b}/src/*.ts"), {
+				ok: ["packages/a/src/x.test.ts", "packages/a/src/x.ts", "packages/b/src/y.ts"],
+			});
+		}),
+	);
+
+	it.effect("a brace group spanning segments expands", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* both("{packages/a/src/x,packages/b/src/y}.ts"), {
+				ok: ["packages/a/src/x.ts", "packages/b/src/y.ts"],
+			});
+		}),
+	);
 });
 
 describe("directories read for a braced pattern", () => {
-	const readsOf = (source: string) => {
-		effectReads.length = 0;
-		syncReads.length = 0;
-		const pattern = compile(source);
-		const effect = viaEffect(pattern, {});
-		const sync = viaSync(pattern, {});
-		assert.deepStrictEqual(sync, effect, source);
-		assert.deepStrictEqual(
-			[...syncReads].sort(),
-			[...effectReads].sort(),
-			`${source}: both forms read the same directories`,
-		);
-		return [...effectReads].sort();
-	};
+	const readsOf = (source: string) =>
+		Effect.gen(function* () {
+			effectReads.length = 0;
+			syncReads.length = 0;
+			const pattern = compile(source);
+			const effect = yield* viaEffect(pattern, {});
+			const sync = viaSync(pattern, {});
+			assert.deepStrictEqual(sync, effect, source);
+			assert.deepStrictEqual(
+				[...syncReads].sort(),
+				[...effectReads].sort(),
+				`${source}: both forms read the same directories`,
+			);
+			return [...effectReads].sort();
+		});
 
-	it("src/{index,lib/util}.ts reads one level of src and of src/lib, nothing deeper", () => {
-		assert.deepStrictEqual(readsOf("src/{index,lib/util}.ts"), ["/repo/src", "/repo/src/lib"]);
-	});
+	it.effect("src/{index,lib/util}.ts reads one level of src and of src/lib, nothing deeper", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* readsOf("src/{index,lib/util}.ts"), ["/repo/src", "/repo/src/lib"]);
+		}),
+	);
 
-	it("packages/{a,b}/src/*.ts reads only packages/a/src and packages/b/src", () => {
-		assert.deepStrictEqual(readsOf("packages/{a,b}/src/*.ts"), ["/repo/packages/a/src", "/repo/packages/b/src"]);
-	});
+	it.effect("packages/{a,b}/src/*.ts reads only packages/a/src and packages/b/src", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* readsOf("packages/{a,b}/src/*.ts"), [
+				"/repo/packages/a/src",
+				"/repo/packages/b/src",
+			]);
+		}),
+	);
 
-	it("{packages/a/src/x,packages/b/src/y}.ts reads each alternative's directory only", () => {
-		assert.deepStrictEqual(readsOf("{packages/a/src/x,packages/b/src/y}.ts"), [
-			"/repo/packages/a/src",
-			"/repo/packages/b/src",
-		]);
-	});
+	it.effect("{packages/a/src/x,packages/b/src/y}.ts reads each alternative's directory only", () =>
+		Effect.gen(function* () {
+			assert.deepStrictEqual(yield* readsOf("{packages/a/src/x,packages/b/src/y}.ts"), [
+				"/repo/packages/a/src",
+				"/repo/packages/b/src",
+			]);
+		}),
+	);
 
-	it("an alternative inside a deep one is read once, not twice", () => {
-		const reads = readsOf("{packages/a/**,packages/a/src/*.ts}");
-		assert.strictEqual(reads.filter((path) => path === "/repo/packages/a/src").length, 1);
-	});
+	it.effect("an alternative inside a deep one is read once, not twice", () =>
+		Effect.gen(function* () {
+			const reads = yield* readsOf("{packages/a/**,packages/a/src/*.ts}");
+			assert.strictEqual(reads.filter((path) => path === "/repo/packages/a/src").length, 1);
+		}),
+	);
 });
 
 describe("prefixes spelled with ./ or a second alternative", () => {
 	/** One pattern through both forms, which must agree on the answer and on the directories read. */
-	const walk = (source: string, options: Record<string, unknown> = {}, dot = false) => {
-		effectReads.length = 0;
-		syncReads.length = 0;
-		const pattern = compile(source, dot);
-		const effect = viaEffect(pattern, options);
-		assert.deepStrictEqual(viaSync(pattern, options), effect, source);
-		assert.deepStrictEqual([...syncReads].sort(), [...effectReads].sort(), `${source}: both forms read alike`);
-		return { result: effect, reads: [...effectReads].sort() };
-	};
+	const walk = (source: string, options: Record<string, unknown> = {}, dot = false) =>
+		Effect.gen(function* () {
+			effectReads.length = 0;
+			syncReads.length = 0;
+			const pattern = compile(source, dot);
+			const effect = yield* viaEffect(pattern, options);
+			assert.deepStrictEqual(viaSync(pattern, options), effect, source);
+			assert.deepStrictEqual([...syncReads].sort(), [...effectReads].sort(), `${source}: both forms read alike`);
+			return { result: effect, reads: [...effectReads].sort() };
+		});
 
 	const okOf = (result: unknown): ReadonlyArray<string> => (result as { ok: ReadonlyArray<string> }).ok;
 
-	it("./ names cwd itself, which is never a boundary: ./*.ts and ./**/*.ts still match under boundaries", () => {
-		const options = { boundaries: ["package.json"], onUnreadable: "skip" };
-		assert.deepStrictEqual(walk("./*.ts", options, true).result, { ok: ["./.env.ts"] });
-		const deep = okOf(walk("./**/*.ts", options).result);
-		assert.deepStrictEqual(
-			deep,
-			okOf(walk("**/*.ts", options).result).map((path) => `./${path}`),
-		);
-		assert.include(deep, "./src/index.ts");
-	});
+	it.effect("./ names cwd itself, which is never a boundary: ./*.ts and ./**/*.ts still match under boundaries", () =>
+		Effect.gen(function* () {
+			const options = { boundaries: ["package.json"], onUnreadable: "skip" };
+			assert.deepStrictEqual((yield* walk("./*.ts", options, true)).result, { ok: ["./.env.ts"] });
+			const deep = okOf((yield* walk("./**/*.ts", options)).result);
+			assert.deepStrictEqual(
+				deep,
+				okOf((yield* walk("**/*.ts", options)).result).map((path) => `./${path}`),
+			);
+			assert.include(deep, "./src/index.ts");
+		}),
+	);
 
-	it("answers in the pattern's own spelling: ./src/*.ts, src/./lib/*.ts and the literal ./readme.md keep it", () => {
-		assert.deepStrictEqual(walk("./src/*.ts").result, { ok: ["./src/index.ts"] });
-		assert.deepStrictEqual(walk("src/./lib/*.ts").result, { ok: ["src/./lib/util.ts"] });
-		assert.deepStrictEqual(walk("./readme.md").result, { ok: ["./readme.md"] });
-	});
+	it.effect(
+		"answers in the pattern's own spelling: ./src/*.ts, src/./lib/*.ts and the literal ./readme.md keep it",
+		() =>
+			Effect.gen(function* () {
+				assert.deepStrictEqual((yield* walk("./src/*.ts")).result, { ok: ["./src/index.ts"] });
+				assert.deepStrictEqual((yield* walk("src/./lib/*.ts")).result, { ok: ["src/./lib/util.ts"] });
+				assert.deepStrictEqual((yield* walk("./readme.md")).result, { ok: ["./readme.md"] });
+			}),
+	);
 
-	it("reports a directory in the root's spelling: ./** records ./locked", () => {
-		const { result } = walk("./**/*.ts", { onUnreadable: "record" });
-		assert.deepStrictEqual((result as { ok: { unreadable: ReadonlyArray<string> } }).ok.unreadable, ["./locked"]);
-	});
+	it.effect("reports a directory in the root's spelling: ./** records ./locked", () =>
+		Effect.gen(function* () {
+			const { result } = yield* walk("./**/*.ts", { onUnreadable: "record" });
+			assert.deepStrictEqual((result as { ok: { unreadable: ReadonlyArray<string> } }).ok.unreadable, ["./locked"]);
+		}),
+	);
 
-	it("{src,./src}/*.ts finds each file once, in the earliest alternative's spelling, and reads src once", () => {
-		const { result, reads } = walk("{src,./src}/*.ts");
-		assert.deepStrictEqual(result, { ok: ["src/index.ts"] });
-		assert.deepStrictEqual(reads, ["/repo/src"]);
-		assert.deepStrictEqual(walk("{./src,src}/*.ts").result, { ok: ["./src/index.ts"] });
-	});
+	it.effect("{src,./src}/*.ts finds each file once, in the earliest alternative's spelling, and reads src once", () =>
+		Effect.gen(function* () {
+			const { result, reads } = yield* walk("{src,./src}/*.ts");
+			assert.deepStrictEqual(result, { ok: ["src/index.ts"] });
+			assert.deepStrictEqual(reads, ["/repo/src"]);
+			assert.deepStrictEqual((yield* walk("{./src,src}/*.ts")).result, { ok: ["./src/index.ts"] });
+		}),
+	);
 
-	it("{.,src}/** reads every directory once, src included, and answers ** in the ./ spelling", () => {
-		const { result, reads } = walk("{.,src}/**", { onUnreadable: "skip" });
-		assert.deepStrictEqual(
-			okOf(result),
-			okOf(walk("**", { onUnreadable: "skip" }).result).map((path) => `./${path}`),
-		);
-		assert.strictEqual(new Set(reads).size, reads.length, `no directory read twice: ${reads.join(", ")}`);
-		assert.include(reads, "/repo/src");
-		// Reversed, the src alternative comes first: src's files answer in its spelling, the rest in ./'s.
-		const reversed = okOf(walk("{src,.}/**", { onUnreadable: "skip" }).result);
-		assert.include(reversed, "src/index.ts");
-		assert.notInclude(reversed, "./src/index.ts");
-		assert.include(reversed, "./readme.md");
-	});
+	it.effect("{.,src}/** reads every directory once, src included, and answers ** in the ./ spelling", () =>
+		Effect.gen(function* () {
+			const { result, reads } = yield* walk("{.,src}/**", { onUnreadable: "skip" });
+			assert.deepStrictEqual(
+				okOf(result),
+				okOf((yield* walk("**", { onUnreadable: "skip" })).result).map((path) => `./${path}`),
+			);
+			assert.strictEqual(new Set(reads).size, reads.length, `no directory read twice: ${reads.join(", ")}`);
+			assert.include(reads, "/repo/src");
+			// Reversed, the src alternative comes first: src's files answer in its spelling, the rest in ./'s.
+			const reversed = okOf((yield* walk("{src,.}/**", { onUnreadable: "skip" })).result);
+			assert.include(reversed, "src/index.ts");
+			assert.notInclude(reversed, "./src/index.ts");
+			assert.include(reversed, "./readme.md");
+		}),
+	);
 
-	it("an alternative absorbed into a deep root keeps its own spelling: {./**/*.md,src/*.ts}", () => {
-		const { result, reads } = walk("{./**/*.md,src/*.ts}", { onUnreadable: "skip" });
-		assert.deepStrictEqual(result, { ok: ["./readme.md", "src/index.ts"] });
-		assert.strictEqual(reads.filter((path) => path === "/repo/src").length, 1);
-	});
+	it.effect("an alternative absorbed into a deep root keeps its own spelling: {./**/*.md,src/*.ts}", () =>
+		Effect.gen(function* () {
+			const { result, reads } = yield* walk("{./**/*.md,src/*.ts}", { onUnreadable: "skip" });
+			assert.deepStrictEqual(result, { ok: ["./readme.md", "src/index.ts"] });
+			assert.strictEqual(reads.filter((path) => path === "/repo/src").length, 1);
+		}),
+	);
 
-	it("an alternative climbing above cwd contributes nothing beside a deep one, in either order", () => {
-		// Each climbing alternative alone is zero matches; beside `**` it must not re-spell cwd's own files.
-		assert.deepStrictEqual(walk("../x/*.md").result, { ok: [] });
-		const ts = okOf(walk("**/*.ts", { onUnreadable: "skip" }).result);
-		assert.deepStrictEqual(walk("{**/*.ts,../x/*.md}", { onUnreadable: "skip" }).result, { ok: ts });
-		assert.deepStrictEqual(walk("{../x/*.md,**/*.md}", { onUnreadable: "skip" }).result, { ok: ["readme.md"] });
-		assert.deepStrictEqual(walk("{**/*.md,src/../../x/*.md}", { onUnreadable: "skip" }).result, {
-			ok: ["readme.md"],
-		});
-	});
+	it.effect("an alternative climbing above cwd contributes nothing beside a deep one, in either order", () =>
+		Effect.gen(function* () {
+			// Each climbing alternative alone is zero matches; beside `**` it must not re-spell cwd's own files.
+			assert.deepStrictEqual((yield* walk("../x/*.md")).result, { ok: [] });
+			const ts = okOf((yield* walk("**/*.ts", { onUnreadable: "skip" })).result);
+			assert.deepStrictEqual((yield* walk("{**/*.ts,../x/*.md}", { onUnreadable: "skip" })).result, { ok: ts });
+			assert.deepStrictEqual((yield* walk("{../x/*.md,**/*.md}", { onUnreadable: "skip" })).result, {
+				ok: ["readme.md"],
+			});
+			assert.deepStrictEqual((yield* walk("{**/*.md,src/../../x/*.md}", { onUnreadable: "skip" })).result, {
+				ok: ["readme.md"],
+			});
+		}),
+	);
 
-	it("one prefix reached shallow and deep keeps the deep matches, whichever alternative comes first", () => {
-		const deep = { ok: ["src/index.ts", "src/lib/deep/core.test.ts", "src/lib/util.ts"] };
-		assert.deepStrictEqual(walk("{src/**/*.ts,src/*.ts}").result, deep);
-		assert.deepStrictEqual(walk("{src/*.ts,src/**/*.ts}").result, deep);
-	});
+	it.effect("one prefix reached shallow and deep keeps the deep matches, whichever alternative comes first", () =>
+		Effect.gen(function* () {
+			const deep = { ok: ["src/index.ts", "src/lib/deep/core.test.ts", "src/lib/util.ts"] };
+			assert.deepStrictEqual((yield* walk("{src/**/*.ts,src/*.ts}")).result, deep);
+			assert.deepStrictEqual((yield* walk("{src/*.ts,src/**/*.ts}")).result, deep);
+		}),
+	);
 });
 
 describe("a literal pattern through a symlinked directory", () => {
-	it("is refused without followSymlinks and answered under it, in either form", () => {
-		const pattern = compile("links/one/src/y.ts");
-		assert.deepStrictEqual(viaEffect(pattern, {}), { ok: [] });
-		assert.deepStrictEqual(viaSync(pattern, {}), { ok: [] });
-		const followed = { ok: ["links/one/src/y.ts"] };
-		assert.deepStrictEqual(viaEffect(pattern, { followSymlinks: true }), followed);
-		assert.deepStrictEqual(viaSync(pattern, { followSymlinks: true }), followed);
-	});
+	it.effect("is refused without followSymlinks and answered under it, in either form", () =>
+		Effect.gen(function* () {
+			const pattern = compile("links/one/src/y.ts");
+			assert.deepStrictEqual(yield* viaEffect(pattern, {}), { ok: [] });
+			assert.deepStrictEqual(viaSync(pattern, {}), { ok: [] });
+			const followed = { ok: ["links/one/src/y.ts"] };
+			assert.deepStrictEqual(yield* viaEffect(pattern, { followSymlinks: true }), followed);
+			assert.deepStrictEqual(viaSync(pattern, { followSymlinks: true }), followed);
+		}),
+	);
 
-	it("a symlink that is the FILE still matches by default", () => {
-		const pattern = compile("links/file.ts");
-		assert.deepStrictEqual(viaEffect(pattern, {}), { ok: ["links/file.ts"] });
-		assert.deepStrictEqual(viaSync(pattern, {}), { ok: ["links/file.ts"] });
-	});
+	it.effect("a symlink that is the FILE still matches by default", () =>
+		Effect.gen(function* () {
+			const pattern = compile("links/file.ts");
+			assert.deepStrictEqual(yield* viaEffect(pattern, {}), { ok: ["links/file.ts"] });
+			assert.deepStrictEqual(viaSync(pattern, {}), { ok: ["links/file.ts"] });
+		}),
+	);
 });
 
 describe("a symlinked walk base", () => {
-	it("is not entered without followSymlinks, in either form", () => {
-		for (const options of [{}, { followSymlinks: false }]) {
+	it.effect("is not entered without followSymlinks, in either form", () =>
+		Effect.gen(function* () {
+			for (const options of [{}, { followSymlinks: false }]) {
+				const pattern = compile("links/one/src/*.ts");
+				assert.deepStrictEqual(yield* viaEffect(pattern, options), { ok: [] });
+				assert.deepStrictEqual(viaSync(pattern, options), { ok: [] });
+			}
+		}),
+	);
+
+	it.effect("is not entered when the base ITSELF is the link, in either form", () =>
+		Effect.gen(function* () {
+			const pattern = compile("links/one/**/*.ts");
+			for (const options of [{}, { followSymlinks: false }]) {
+				assert.deepStrictEqual(yield* viaEffect(pattern, options), { ok: [] });
+				assert.deepStrictEqual(viaSync(pattern, options), { ok: [] });
+			}
+			// Control: followed, the same base holds matches.
+			const followed = { ok: ["links/one/package.json/not-a-marker.ts", "links/one/src/y.ts"] };
+			assert.deepStrictEqual(yield* viaEffect(pattern, { followSymlinks: true }), followed);
+			assert.deepStrictEqual(viaSync(pattern, { followSymlinks: true }), followed);
+		}),
+	);
+
+	it.effect("is entered under followSymlinks: true, in either form", () =>
+		Effect.gen(function* () {
 			const pattern = compile("links/one/src/*.ts");
-			assert.deepStrictEqual(viaEffect(pattern, options), { ok: [] });
-			assert.deepStrictEqual(viaSync(pattern, options), { ok: [] });
-		}
-	});
-
-	it("is not entered when the base ITSELF is the link, in either form", () => {
-		const pattern = compile("links/one/**/*.ts");
-		for (const options of [{}, { followSymlinks: false }]) {
-			assert.deepStrictEqual(viaEffect(pattern, options), { ok: [] });
-			assert.deepStrictEqual(viaSync(pattern, options), { ok: [] });
-		}
-		// Control: followed, the same base holds matches.
-		const followed = { ok: ["links/one/package.json/not-a-marker.ts", "links/one/src/y.ts"] };
-		assert.deepStrictEqual(viaEffect(pattern, { followSymlinks: true }), followed);
-		assert.deepStrictEqual(viaSync(pattern, { followSymlinks: true }), followed);
-	});
-
-	it("is entered under followSymlinks: true, in either form", () => {
-		const pattern = compile("links/one/src/*.ts");
-		const expected = { ok: ["links/one/src/y.ts"] };
-		assert.deepStrictEqual(viaEffect(pattern, { followSymlinks: true }), expected);
-		assert.deepStrictEqual(viaSync(pattern, { followSymlinks: true }), expected);
-	});
+			const expected = { ok: ["links/one/src/y.ts"] };
+			assert.deepStrictEqual(yield* viaEffect(pattern, { followSymlinks: true }), expected);
+			assert.deepStrictEqual(viaSync(pattern, { followSymlinks: true }), expected);
+		}),
+	);
 });
 
 describe("boundaries", () => {
@@ -454,14 +513,16 @@ describe("boundaries", () => {
 		assert.deepStrictEqual(run("packages/a/src/x.ts", { boundaries: [] }), ["packages/a/src/x.ts"]);
 	});
 
-	it("is the same in the Effect form", () => {
-		const effect = Effect.runSync(
-			descend(compile("**/*.ts"), { cwd: "/repo", onUnreadable: "skip", boundaries: ["package.json"] }).pipe(
-				Effect.provide(platform),
-			),
-		);
-		assert.deepStrictEqual(effect, run("**/*.ts"));
-	});
+	it.effect("is the same in the Effect form", () =>
+		Effect.gen(function* () {
+			const effect = yield* descend(compile("**/*.ts"), {
+				cwd: "/repo",
+				onUnreadable: "skip",
+				boundaries: ["package.json"],
+			}).pipe(Effect.provide(platform));
+			assert.deepStrictEqual(effect, run("**/*.ts"));
+		}),
+	);
 });
 
 describe("symlinks in the sync form", () => {

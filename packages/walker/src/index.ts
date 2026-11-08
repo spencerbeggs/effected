@@ -62,6 +62,7 @@ export {
 	type AscendSyncOptions,
 	type AscendWithinSyncOptions,
 	type FindUpwardSyncWithOptions,
+	type FindUpwardWithOptions,
 	type UpwardAcceptCache,
 	type UpwardAccepted,
 	type UpwardMatches,

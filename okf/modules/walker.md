@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/walker/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-07T14:52:09Z
+  at: 2026-11-08T12:10:14Z
 integrity:
   generated:
-    body: 13bb52655574a332
+    body: 7ad85a71c1bdc960
 ---
 
 # walker
@@ -178,8 +178,15 @@ satisfies it) memoizing each directory's answer, `Option.none()` included,
 so a hot path such as Vitest's per-module package lookup reads each ancestor
 once. The cache is never invalidated by walker, and a throwing `accept`
 propagates with nothing cached for that directory: the callback's result is
-the answer, so a throw is the caller's defect, not a rejection. There is no
-`Effect` twin yet; inside Effect, `firstMatch` covers the boolean case.
+the answer, so a throw is the caller's defect, not a rejection.
+
+`Walker.findUpwardWith(dirs, accept, options?)` is its Effect twin:
+`accept: (dir) => Effect<Option<A>, E, R>`, the same scan, the same
+`UpwardAccepted` answer and the same `options.cache` contract (it reuses
+`FindUpwardSyncWithOptions`). `accept`'s typed failure `E` is not absorbed:
+it fails the search with nothing cached for that directory, so a caller who
+wants a read failure to mean "not valid" recovers inside `accept`. Same
+tests as the sync form, in `__test__/FindUpwardWith.test.ts`.
 
 The sync port carries `readFile(path): string`, UTF-8 text
 (`readFileSync(path, "utf8")`), so an accept function reads through the same

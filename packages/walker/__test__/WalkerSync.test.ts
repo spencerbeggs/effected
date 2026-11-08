@@ -83,12 +83,12 @@ const ops: WalkerSyncOps = {
 const platform = Layer.mergeAll(handle.layer, Path.layer);
 
 /** Runs an `Effect` upward form, resolving its answer or the defect's message. */
-const viaEffect = <A>(effect: Effect.Effect<A, never, never>): { readonly ok: A } | { readonly defect: string } => {
-	const exit = Effect.runSyncExit(effect);
-	if (Exit.isSuccess(exit)) return { ok: exit.value };
-	const squashed = Cause.squash(exit.cause);
-	return { defect: squashed instanceof Error ? squashed.message : String(squashed) };
-};
+const viaEffect = <A>(effect: Effect.Effect<A, never, never>) =>
+	Effect.map(Effect.exit(effect), (exit): { readonly ok: A } | { readonly defect: string } => {
+		if (Exit.isSuccess(exit)) return { ok: exit.value };
+		const squashed = Cause.squash(exit.cause);
+		return { defect: squashed instanceof Error ? squashed.message : String(squashed) };
+	});
 
 /** Runs a sync upward form, resolving its answer or the thrown message. */
 const viaSync = <A>(run: () => A): { readonly ok: A } | { readonly defect: string } => {
@@ -119,11 +119,13 @@ describe("Walker upward sync parity", () => {
 		["/real/repo/packages/app", { maxDepth: Number.NaN }],
 	];
 	for (const [start, options] of ascendCases) {
-		it(`ascend ${start} ${JSON.stringify(options)}`, () => {
-			const effect = viaEffect(Walker.ascend(start, options).pipe(Effect.provide(Path.layer)));
-			const sync = viaSync(() => Walker.ascendSync(start, { ...options, path: posix }));
-			assert.deepStrictEqual(normal(sync), normal(effect));
-		});
+		it.effect(`ascend ${start} ${JSON.stringify(options)}`, () =>
+			Effect.gen(function* () {
+				const effect = yield* viaEffect(Walker.ascend(start, options).pipe(Effect.provide(Path.layer)));
+				const sync = viaSync(() => Walker.ascendSync(start, { ...options, path: posix }));
+				assert.deepStrictEqual(normal(sync), normal(effect));
+			}),
+		);
 	}
 
 	const withinCases: ReadonlyArray<readonly [string, Option.Option<string>, { maxDepth?: number }]> = [
@@ -137,11 +139,13 @@ describe("Walker upward sync parity", () => {
 		["/link/repo/packages/app", Option.some("real/repo"), {}],
 	];
 	for (const [start, ceiling, options] of withinCases) {
-		it(`ascendWithin ${start} ${String(Option.getOrUndefined(ceiling))} ${JSON.stringify(options)}`, () => {
-			const effect = viaEffect(Walker.ascendWithin(start, ceiling, options).pipe(Effect.provide(platform)));
-			const sync = viaSync(() => Walker.ascendWithinSync(start, ceiling, { ...options, ...ops }));
-			assert.deepStrictEqual(normal(sync), normal(effect));
-		});
+		it.effect(`ascendWithin ${start} ${String(Option.getOrUndefined(ceiling))} ${JSON.stringify(options)}`, () =>
+			Effect.gen(function* () {
+				const effect = yield* viaEffect(Walker.ascendWithin(start, ceiling, options).pipe(Effect.provide(platform)));
+				const sync = viaSync(() => Walker.ascendWithinSync(start, ceiling, { ...options, ...ops }));
+				assert.deepStrictEqual(normal(sync), normal(effect));
+			}),
+		);
 	}
 
 	const markerCases: ReadonlyArray<readonly [string, ReadonlyArray<string>, { maxDepth?: number }]> = [
@@ -158,11 +162,13 @@ describe("Walker upward sync parity", () => {
 		["/real/repo/packages/app", [".git"], { maxDepth: 2.5 }],
 	];
 	for (const [start, markers, options] of markerCases) {
-		it(`ascendToMarker ${start} ${JSON.stringify(markers)} ${JSON.stringify(options)}`, () => {
-			const effect = viaEffect(Walker.ascendToMarker(start, markers, options).pipe(Effect.provide(platform)));
-			const sync = viaSync(() => Walker.ascendToMarkerSync(start, markers, { ...options, ...ops }));
-			assert.deepStrictEqual(normal(sync), normal(effect));
-		});
+		it.effect(`ascendToMarker ${start} ${JSON.stringify(markers)} ${JSON.stringify(options)}`, () =>
+			Effect.gen(function* () {
+				const effect = yield* viaEffect(Walker.ascendToMarker(start, markers, options).pipe(Effect.provide(platform)));
+				const sync = viaSync(() => Walker.ascendToMarkerSync(start, markers, { ...options, ...ops }));
+				assert.deepStrictEqual(normal(sync), normal(effect));
+			}),
+		);
 	}
 
 	const candidateSets: ReadonlyArray<readonly [string, (dir: string) => ReadonlyArray<string>]> = [
@@ -173,18 +179,20 @@ describe("Walker upward sync parity", () => {
 		["denied marker", (dir) => [`${dir}/denied/.git`]],
 	];
 	for (const [name, candidatesFor] of candidateSets) {
-		it(`findUpward / findUpwardAll, ${name}`, () => {
-			const first = viaEffect(Walker.findUpward(dirs, candidatesFor).pipe(Effect.provide(platform)));
-			const all = viaEffect(Walker.findUpwardAll(dirs, candidatesFor).pipe(Effect.provide(platform)));
-			assert.deepStrictEqual(
-				viaSync(() => Walker.findUpwardSync(dirs, candidatesFor, ops)),
-				first,
-			);
-			assert.deepStrictEqual(
-				viaSync(() => Walker.findUpwardAllSync(dirs, candidatesFor, ops)),
-				all,
-			);
-		});
+		it.effect(`findUpward / findUpwardAll, ${name}`, () =>
+			Effect.gen(function* () {
+				const first = yield* viaEffect(Walker.findUpward(dirs, candidatesFor).pipe(Effect.provide(platform)));
+				const all = yield* viaEffect(Walker.findUpwardAll(dirs, candidatesFor).pipe(Effect.provide(platform)));
+				assert.deepStrictEqual(
+					viaSync(() => Walker.findUpwardSync(dirs, candidatesFor, ops)),
+					first,
+				);
+				assert.deepStrictEqual(
+					viaSync(() => Walker.findUpwardAllSync(dirs, candidatesFor, ops)),
+					all,
+				);
+			}),
+		);
 	}
 });
 
