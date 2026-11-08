@@ -33,6 +33,13 @@ import { main } from "@effected/mcp/main";
   `persist?`). `persist` defaults to false, so it writes only `dist`; `true` also
   writes `.github/actions/local`, `.actrc` and `.github/workflows/act-test.yml`.
   The load check imports each bundle unless `[action.build] importCheck` is false.
+- **`action_init`** — `effected action init` as a tool (`cwd?`, `name?`,
+  `description?`, `force?`), answering `ActionInitResult`. An existing file
+  without `force`, a symbolic link or wrong-kind entry at any path it writes
+  (refused even with `force`, so no write leaves `cwd`), a directory with no
+  `package.json`, and a missing or invalid name or description are refusals,
+  with nothing written. It edits no `package.json`;
+  the result names the dependencies to add.
 - **`MCP_VERSION`** — this package's own version, replaced at build.
 
 Stdout is the JSON-RPC wire; nothing here writes to it. The `effected-mcp` bin is

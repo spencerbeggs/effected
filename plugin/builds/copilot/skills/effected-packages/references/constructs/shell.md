@@ -12,6 +12,7 @@
 | `ShellBracePart` | Class | A span brace expansion would rewrite, such as `{commit,}` or `{1..3}`. | brace expansion span the shell would rewrite, fail closed on `git {commit,}` |
 | `ShellCommand` | Class | The command a segment runs, resolved from its words. | resolve a segment's command name and args, unwrap sudo env exec nohup time |
 | `ShellCommandSubstitutionPart` | Class | A command substitution: `$(…)` (`style` `"dollar"`) or a backtick pair (`style` `"backtick"`). | nested dollar-paren or backtick command text to parse and inspect |
+| `ShellCommandWalk` | Class | The result of `ShellScript.allCommands`: every script it parsed and every substitution it stopped at. | every command at every depth through substitutions, with truncations a guard must refuse |
 | `ShellComment` | Class | A comment, from an unquoted `#` at the start of a word to the end of its line. | read a shell comment's text and offsets |
 | `ShellDiagnostic` | Class | Something a parse could not finish or found malformed, with the span it concerns. | refuse input a parse could not finish, unterminated quote or substitution with offset |
 | `ShellDiagnosticCode` | Variable + TypeAlias | The union of `(ShellDiagnosticCode:variable)` string literals. | route why a command string parse was odd, unterminated quote heredoc bad escape |
@@ -19,7 +20,8 @@
 | `ShellExpansionPart` | Variable + TypeAlias | The union of the expansion part classes. | variable, substitution or arithmetic expansion inside double quotes or a heredoc |
 | `ShellGlobPart` | Class | Unquoted pathname-expansion syntax: `*`, `?` or a bracket expression `[…]`. A run of adjacent glob syntax is one part. | unquoted pathname-expansion syntax in a shell word, star question-mark bracket |
 | `ShellHeredoc` | Class | The body of a heredoc, attached as the target of the `<<` or `<<-` redirection that introduced it. | read a heredoc body and delimiter, commit message passed through a heredoc |
-| `ShellOpaquePart` | Class | Text the lexer could not classify: an unterminated quote or substitution running to the end of the input, an array assignment's `(…)` value, the `[ … ]` subscript of a command-position word starting `NAME[` that is not an assignment (`a[1<<2]`, `a[$(cmd)]=1`), or the empty target of a redirection with nothing after it. | text a lexer could not finish, never literal, unterminated quote to end of input |
+| `ShellNestedScript` | Class | One script in a `ShellCommandWalk`: the top-level script, or the parsed body of a command or process substitution. | one parsed substitution body reached by a walk, its depth and parent |
+| `ShellOpaquePart` | Class | Text the lexer could not classify: an unterminated quote or substitution running to the end of the input, an array value's `(…)` (in an assignment, or an assignment builtin's argument such as `declare -A h=([k]=1)`), the `[ … ]` subscript of a command-position word starting `NAME[` that is not an assignment (`a[1<<2]`, `a[$(cmd)]=1`), or the empty target of a redirection with nothing after it. | text a lexer could not finish, never literal, unterminated quote to end of input |
 | `ShellOperator` | Variable + TypeAlias | The union of `(ShellOperator:variable)` string literals. | control operators joining commands, and-or, pipe, semicolon, background, newline |
 | `ShellProcessSubstitutionPart` | Class | A process substitution, `<(…)` or `>(…)`. | process substitution body to parse and inspect, input or output direction |
 | `ShellRedirection` | Class | One redirection of a simple command. | read a command's output or input redirections, file descriptor, operator and target |
@@ -30,6 +32,7 @@
 | `ShellSubstitutionPart` | Variable + TypeAlias | The union of the substitution part classes. | every nested command or process substitution, recurse to find hidden commands |
 | `ShellSyntax` | Class | Lex and segment shell command strings. Never evaluates, never fails. | parse a command string without executing it, guard a bash tool call |
 | `ShellTildePart` | Class | A tilde prefix the shell would expand: `~`, `~user`, `~+` or `~-` at the start of a word, or after `=` or `:` in an assignment value. | home-directory tilde prefix the shell would expand, never literal |
+| `ShellTruncation` | Class | A substitution `ShellScript.allCommands` did not parse. | a substitution a walk did not parse, past the depth cap or work budget |
 | `ShellVariablePart` | Class | A parameter expansion: `$NAME`, a positional or special parameter (`$1`, `$@`, `$?`), or a braced `${…}` (`braced` `true`). | variable or parameter expansion, command name that cannot be read statically |
 | `ShellWord` | Class | One word of a command line, as written. | read an argument's literal value only if the shell passes it unchanged |
 | `ShellWordPart` | Variable + TypeAlias | The union of the word part classes. | how a word is quoted or expanded, switch on part kind |

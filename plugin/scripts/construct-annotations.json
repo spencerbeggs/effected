@@ -176,15 +176,16 @@
 		"ChangesetConfig": "read and decode .changeset/config.json with documented defaults",
 		"ChangesetConfigError": "changeset config missing, invalid json or wrong shape",
 		"ChangesetFile": "parse a changeset markdown file, front matter and summary",
+		"ChangesetLint": "lint changeset files, CSH001 to CSH005 rules for MarkdownLint and markdownlint-cli2",
 		"ChangesetParseError": "changeset without front matter, malformed yaml, or an invalid bump",
 		"ParsedChangeset": "released packages and summary text of one changeset",
 		"PendingChangeset": "one unreleased changeset read from disk",
 		"PendingChangesets": "list and read unreleased changesets under .changeset",
 		"PlannedRelease": "one package's old version, new version and bump type in a plan",
+		"PreState": "read pre mode state from pre.json, tag, initial versions, consumed changesets",
 		"ReleasePlan": "compute next versions from pending changesets, dependents and ripples included",
 		"ReleaseType": "package release outcomes, including none for an unreleased package",
-		"UnknownPackageError": "changeset names a package missing from the workspace",
-		"UnsupportedChangesetModeError": "pre-release, snapshot, fixed or linked mode the planner refuses"
+		"UnknownPackageError": "changeset names a package missing from the workspace"
 	},
 	"cli": {
 		"CLI_VERSION": "the effected command's own version, replaced at build, what effected --version prints",
@@ -203,7 +204,8 @@
 		"ActionRunError": "action build could not finish, missing entry or unwritable file, exit code 3",
 		"BuildFailedError": "package build crashed or recorded errors, exit code 1",
 		"PackageRunError": "package build hit an unreadable or unwritable file, exit code 3",
-		"PackageConfigError": "package build could not start, bad config or plugin, exit code 2"
+		"PackageConfigError": "package build could not start, bad config or plugin, exit code 2",
+		"ActionInitError": "action init could not start, no package.json, bad metadata, existing files, exit code 2"
 	},
 	"cli-kit": {
 		"Cancelled": "user quit a prompt or screen with esc or ctrl-c, exit 130",
@@ -375,7 +377,17 @@
 		"NotAnActionError": "action build requested where effected.toml has no action table",
 		"BuildRun": "run one package build for a front end, verdict and journal lines",
 		"BuildRunResult": "one build's verdict, issues artifact, recorded report and config files read",
-		"NotAPackageError": "build requested in a directory without a readable package.json"
+		"NotAPackageError": "build requested in a directory without a readable package.json",
+		"ActionInit": "scaffold a new github action, plan files as data, write without overwriting",
+		"ActionInitResult": "what action init wrote or replaced and the dependencies still to add",
+		"ActionScaffold": "a new action scaffold as data, its files and the packages it imports",
+		"ActionScaffoldFile": "one scaffold file, relative path and whole content",
+		"ScaffoldExistsError": "action init refused, target files exist and force was not given",
+		"ActionMetadataMissingError": "action init has no name or description, given or in package.json",
+		"ActionMetadataInvalidError": "action init refused a name or description holding control characters",
+		"ScaffoldConflict": "one path action init cannot write, symlink, wrong kind, unreadable, unwritable, outside",
+		"ScaffoldConflictError": "action init refused symlinks or wrong-kind entries before any write, even with force",
+		"ScaffoldWriteError": "action init write failed after its checks, names files already written, exit code 3"
 	},
 	"kit": {
 		"CurrentDistribution": "read which carrier package installed this run without it appearing in R, defaults to none",
@@ -987,7 +999,11 @@
 		"registryDisplayName": "human-readable registry name for prose: npm, GitHub Packages, JSR, or host",
 		"registryHost": "extract the host portion of a registry url or bare host string",
 		"registryShortLabel": "compact registry label for a log or table: npm, github, jsr, or host",
-		"workloadCredential": "build publish-only registry token from ci oidc identity token and registry prefix"
+		"workloadCredential": "build publish-only registry token from ci oidc identity token and registry prefix",
+		"NpmrcEntry": "one parsed .npmrc line, key, expanded value, unset env variables, array flag",
+		"parseNpmrc": "parse an .npmrc text into entries, expand env variables, never fails",
+		"npmrcValue": "look up the last value of an .npmrc key, Option when absent",
+		"npmrcValues": "read every value of an .npmrc array setting such as ca"
 	},
 	"oidc": {
 		"IdTokenClaims": "standard openid connect id token claims, azp nonce `auth_time` acr amr over the jwt registered claims",
@@ -1235,6 +1251,7 @@
 		"ShellBracePart": "brace expansion span the shell would rewrite, fail closed on `git {commit,}`",
 		"ShellCommand": "resolve a segment's command name and args, unwrap sudo env exec nohup time",
 		"ShellCommandSubstitutionPart": "nested dollar-paren or backtick command text to parse and inspect",
+		"ShellCommandWalk": "every command at every depth through substitutions, with truncations a guard must refuse",
 		"ShellComment": "read a shell comment's text and offsets",
 		"ShellDiagnostic": "refuse input a parse could not finish, unterminated quote or substitution with offset",
 		"ShellDiagnosticCode": "route why a command string parse was odd, unterminated quote heredoc bad escape",
@@ -1242,6 +1259,7 @@
 		"ShellExpansionPart": "variable, substitution or arithmetic expansion inside double quotes or a heredoc",
 		"ShellGlobPart": "unquoted pathname-expansion syntax in a shell word, star question-mark bracket",
 		"ShellHeredoc": "read a heredoc body and delimiter, commit message passed through a heredoc",
+		"ShellNestedScript": "one parsed substitution body reached by a walk, its depth and parent",
 		"ShellOpaquePart": "text a lexer could not finish, never literal, unterminated quote to end of input",
 		"ShellOperator": "control operators joining commands, and-or, pipe, semicolon, background, newline",
 		"ShellProcessSubstitutionPart": "process substitution body to parse and inspect, input or output direction",
@@ -1253,6 +1271,7 @@
 		"ShellSubstitutionPart": "every nested command or process substitution, recurse to find hidden commands",
 		"ShellSyntax": "parse a command string without executing it, guard a bash tool call",
 		"ShellTildePart": "home-directory tilde prefix the shell would expand, never literal",
+		"ShellTruncation": "a substitution a walk did not parse, past the depth cap or work budget",
 		"ShellVariablePart": "variable or parameter expansion, command name that cannot be read statically",
 		"ShellWord": "read an argument's literal value only if the shell passes it unchanged",
 		"ShellWordPart": "how a word is quoted or expanded, switch on part kind"
@@ -1561,6 +1580,7 @@
 		"Hmac": "compute or verify hmac-sha256 or sha512, redacted key, hex base64 base64url output, over core mac",
 		"HttpRedaction": "scrub credentials from a kept http error cause, redact authorization cookie api key headers, redact url userinfo token query, safe HttpClientError request response copy for logs",
 		"SigV4": "sign an aws or s3-compatible request, sigv4 authorization header, signing key",
+		"SigV4EncodingError": "sigv4 refused a lone surrogate in a path, query, header or method",
 		"SigV4PathError": "handle an s3 key or sigv4 path with a dot segment that a url would collapse"
 	},
 	"webhooks": {

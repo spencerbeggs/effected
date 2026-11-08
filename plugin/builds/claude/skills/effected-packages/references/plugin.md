@@ -30,10 +30,11 @@ directly. `@effected/mcp` alone also works when only the MCP tools are wanted.
   SchemaStore documents (see [cli.md](./cli.md); the procedure is the
   `building-schemastore-schemas` skill). `effected package build` builds a
   library into `dist/prod`, and `effected action build` bundles a GitHub Action
-  into `dist`; both are configured by `effected.toml`.
+  into `dist`; both are configured by `effected.toml`. `effected action init`
+  scaffolds a new action's `[action]` tables, `action.yml`, entry and tsconfig.
 - **`effected-mcp`** — the stdio MCP server: an `identity` tool reporting the
   tool version, the carrier, and the resolved `effect` version, and the
-  `schema_check`, `schema_validate`, `schema_build`, `package_build` and `action_build` tools (see
+  `schema_check`, `schema_validate`, `schema_build`, `package_build`, `action_build` and `action_init` tools (see
   [mcp.md](./mcp.md)). The effected agent
   plugin launches it, and falls back to a one-off run of `@effected/mcp` with the
   install line printed when the bin is not installed.

@@ -7,7 +7,7 @@ description: "Use ONLY when the user explicitly asks to bootstrap a fresh copy o
 
 A user-invoked interview that turns a fresh copy of the `github-action-template` repository into a planned action. It asks eight questions, one per message, each mapped to a decision the canon already forces; writes one plan file; presents it; and on approval dispatches the `action-engineer` agent to run `designing-an-action` from Phase 0. The interview covers the decision half of Phase −1 recon; the recon obligations below cover the verification half, and the engineer agent still verifies the resulting dossier at Phase 0.5 before any contract is frozen.
 
-This skill edits no source file, runs no build (the build is `effected action build`), and never touches the `[action]` tables of `effected.toml`. Those belong to the engineer agent and the repository's own gates.
+This skill edits no source file, runs no build (the build is `effected action build`), and never touches the `[action]` tables of `effected.toml`. `effected action init` writes those tables and the starting files for a new action; editing them afterwards belongs to the engineer agent and the repository's own gates.
 
 ## Precondition
 

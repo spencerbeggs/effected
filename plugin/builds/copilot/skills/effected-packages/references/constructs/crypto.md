@@ -40,6 +40,7 @@
 | `SigV4` | Class | AWS Signature Version 4 request signing, for S3 and S3-compatible stores such as R2, MinIO and Spaces. | sign an aws or s3-compatible request, sigv4 authorization header, signing key |
 | `SigV4Canonical` | Interface | The canonical form of a request, as `SigV4.canonicalize` returns it. | |
 | `SigV4Credentials` | Interface | The access key, optional session token and scope a signature needs. | |
+| `SigV4EncodingError` | Class | A SigV4 request component holds a lone UTF-16 surrogate, so it cannot be percent-encoded or signed. | sigv4 refused a lone surrogate in a path, query, header or method |
 | `SigV4PathError` | Class | A SigV4 request path holds a segment that is exactly `.` or `..`, so it cannot be sent as signed. | handle an s3 key or sigv4 path with a dot segment that a url would collapse |
 | `SigV4Request` | Interface | One request to sign. | |
 | `SigV4Signed` | Interface | What `SigV4.sign` returns: the headers to send and the request target they were signed for. | |

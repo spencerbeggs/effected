@@ -23,7 +23,7 @@ Single entrypoint; no subpaths.
 | `doc.check(section)` | compare against declared content without touching anything |
 | `doc.reconcile(sections)` | produce the new text plus per-section outcomes, in declared order |
 | `doc.remove(id)` | drop a block and collapse the blank lines it leaves |
-| `ManagedSection.sync` / `.syncAll` | make a file say what a tool declares, writing only on change |
+| `ManagedSection.sync` / `.syncAll` | make a file say what a tool declares, writing only on change; `layerWith({ links: "replace" })` replaces a symlinked file rather than writing through it (default `"follow"`) |
 | `ManagedSection.check` / `.checkAll` | drift detection over a real file (a `--check` mode) |
 | `ManagedSection.read` / `.readAll` / `.isManaged` / `.remove` | file-level inspection and removal |
 | `SectionDialect.make({ phrase, styles })` | narrow the marker vocabulary for a domain |
