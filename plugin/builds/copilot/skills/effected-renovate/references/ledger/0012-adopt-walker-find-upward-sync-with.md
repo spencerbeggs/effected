@@ -6,7 +6,8 @@ shows: none
 applies:
   "@effected/walker": ">=0.26.0"
 detect: ["BuildModuleInfoFs", "SessionEnvFileSystem"]
-closes: ["spencerbeggs/effected#1181"]
+closes: ["spencerbeggs/effected#1181", "spencerbeggs/effected#1271"]
+changesets: ["upward-walks-find"]
 ---
 
 Offer this to the user; never apply it unasked. It replaces a hand-rolled climb that reads each candidate and keeps going when it does not parse, such as the nearest *valid* `package.json`, along with the small read-only file port kept beside the walker's for it.
@@ -15,5 +16,6 @@ Offer this to the user; never apply it unasked. It replaces a hand-rolled climb 
 - **`options.cache`** is a caller-owned memo per directory. A `Map` satisfies it, which keeps the search cheap on a hot path.
 - **`WalkerSyncFileSystem.readFile`** gives `accept` its read, so code that walks and then reads needs one port.
 - A throwing `accept` propagates, so return `Option.none()` for a candidate that does not parse.
+- **`Walker.findUpwardWith(dirs, accept, options?)`** is the Effect form: `accept` answers an `Effect` of an `Option`, its typed failure fails the search, and it shares the cache contract (`FindUpwardWithOptions`).
 
 A port with a public shape of its own may have outside callers, so check that before removing one. Read the installed `.d.ts` for the exact shapes.

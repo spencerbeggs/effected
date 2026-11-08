@@ -6,12 +6,13 @@ shows: none
 applies:
   "@effected/workspaces": ">=0.44.0"
 detect: ["pnpm config get", "\"config\", \"get\""]
-closes: ["spencerbeggs/effected#1171"]
+closes: ["spencerbeggs/effected#1171", "spencerbeggs/effected#1285"]
+changesets: ["set-patterns-fail"]
 ---
 
 Offer this to the user; never apply it unasked. It replaces `pnpm config get` shell-outs, such as a tool applying pnpm's release-age gate itself.
 
-- **`PnpmSettings.load({ cwd, env, platform })`** locates and reads the files through `FileSystem` and `Path`, failing with `PnpmSettingsError`. `PnpmSettings.fromSourcesResult` is the pure form over text.
+- **`PnpmSettings.load({ cwd, env, platform })`** locates and reads the files through `FileSystem` and `Path`, failing with `PnpmSettingsError`, whose `reason` is `read`, `parse`, `shape` or `membership` (the workspace's `packages:` patterns compile one by one but not as a set, so membership cannot be decided). `PnpmSettings.fromSourcesResult` is the pure form over text.
 - **Typed reads** are `get`, `getString`, `getNumber`, `getBoolean` and `getStringArray`, each answering an `Option`. `origin` says where a value came from. Keys may be camelCase or kebab-case.
 - **`minimumReleaseAge`** answers an `Option`, and **`minimumReleaseAgeExclude`** answers an empty list when unset.
 
