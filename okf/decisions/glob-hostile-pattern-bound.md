@@ -2,7 +2,7 @@
 type: Decision
 title: glob does not bound total matching work on hostile patterns
 description: "@effected/glob keeps matching polynomial without a work budget or a lower brace-expansion default; matching is synchronous, so a caller taking untrusted patterns or long paths bounds the input and lowers braceExpandMax, and enforces any deadline off-thread."
-status: draft
+status: stable
 tags:
   - architecture
   - dx
@@ -15,6 +15,13 @@ generated:
 integrity:
   generated:
     body: 8ed17dc485aa1ecb
+  verified:
+    by: human:spencer
+    at: 2026-11-08T18:25:54Z
+    content: 230c6375ede67379
+verified:
+  - by: human:spencer
+    at: 2026-11-08T18:25:54Z
 ---
 
 # glob does not bound total matching work on hostile patterns

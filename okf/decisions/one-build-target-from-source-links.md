@@ -2,7 +2,7 @@
 type: Decision
 title: The kit has one build target, and workspace links point at package roots
 description: "dist/dev disappears: every workspace link resolves to a package root whose exports already name ./src/index.ts, so no sibling is built for typecheck or test, while dist/prod/<group>/{pkg,meta}, targets.json and issues.json stay byte-stable because silk-release-action hardcodes dist/prod. No source exports condition is added."
-status: draft
+status: stable
 tags:
   - architecture
   - dx
@@ -20,6 +20,13 @@ generated:
 integrity:
   generated:
     body: a42fef08f5a08fcc
+  verified:
+    by: human:spencer
+    at: 2026-11-08T18:25:54Z
+    content: 9019362a02e8e63f
+verified:
+  - by: human:spencer
+    at: 2026-11-08T18:25:54Z
 ---
 
 # The kit has one build target, and workspace links point at package roots

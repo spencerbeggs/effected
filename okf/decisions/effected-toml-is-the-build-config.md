@@ -2,7 +2,7 @@
 type: Decision
 title: effected.toml is the only build config, and code enters through two data keys
 description: "Build config lives in effected.toml, at the workspace root, the package, or both with precedence; plugins names rolldown plugin modules and manifest.drop replaces the sidecars' transform, so no savvy.build.ts remains and the 41 kit packages with nothing to say need no file at all."
-status: draft
+status: stable
 tags:
   - architecture
   - dx
@@ -19,6 +19,13 @@ generated:
 integrity:
   generated:
     body: 6d18cdb56e3382a0
+  verified:
+    by: human:spencer
+    at: 2026-11-08T18:25:54Z
+    content: 6e2856d92a75383b
+verified:
+  - by: human:spencer
+    at: 2026-11-08T18:25:54Z
 ---
 
 # effected.toml is the only build config, and code enters through two data keys

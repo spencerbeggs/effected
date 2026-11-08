@@ -20,8 +20,8 @@ integrity:
     body: b277b3aeec6579c3
   verified:
     by: human:spencer
-    at: 2026-11-02T17:04:46Z
-    content: c59fec5326ffe376
+    at: 2026-11-08T18:25:54Z
+    content: f878e91ee3563058
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -29,6 +29,8 @@ verified:
     at: 2026-10-31T19:39:48Z
   - by: human:spencer
     at: 2026-11-02T17:04:46Z
+  - by: human:spencer
+    at: 2026-11-08T18:25:54Z
 ---
 
 # Releases are changeset-driven and scope-agnostic

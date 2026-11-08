@@ -2,7 +2,7 @@
 type: Decision
 title: Build logs are two append-only journals at the workspace root, derived from a cached per-package issues.json
 description: "Every package build appends to .cache/effected/build.jsonl and .cache/effected/issues.jsonl, written with @effected/jsonl and keyed by package, so a watcher has one guessable path; dist/prod/issues.json stays the artifact turbo caches, because turbo cannot restore a shared root file on a cache hit."
-status: draft
+status: stable
 tags:
   - observability
   - dx
@@ -19,6 +19,13 @@ generated:
 integrity:
   generated:
     body: 848caf3e7b660de5
+  verified:
+    by: human:spencer
+    at: 2026-11-08T18:25:54Z
+    content: d4762abf28026a7e
+verified:
+  - by: human:spencer
+    at: 2026-11-08T18:25:54Z
 ---
 
 # Build logs are two append-only journals at the workspace root, derived from a cached per-package issues.json

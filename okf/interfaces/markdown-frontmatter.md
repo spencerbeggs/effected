@@ -15,13 +15,15 @@ verified:
     at: 2026-09-24T00:11:41.636Z
   - by: human:spencer
     at: 2026-10-13T21:42:59Z
+  - by: human:spencer
+    at: 2026-11-08T18:25:54Z
 integrity:
   generated:
     body: 05f269156eb28341
   verified:
     by: human:spencer
-    at: 2026-10-13T21:42:59Z
-    content: 42f1765d2ad1813e
+    at: 2026-11-08T18:25:54Z
+    content: e1c9a443a67b49d9
 ---
 
 # `@effected/markdown` frontmatter

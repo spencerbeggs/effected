@@ -29,11 +29,13 @@ integrity:
     body: 31c2bba4e1e992b7
   verified:
     by: human:spencer
-    at: 2026-10-31T19:39:48Z
-    content: 687a1965e002f4cb
+    at: 2026-11-08T18:25:54Z
+    content: 43f548400a3076de
 verified:
   - by: human:spencer
     at: 2026-10-31T19:39:48Z
+  - by: human:spencer
+    at: 2026-11-08T18:25:54Z
 ---
 
 # The effect catalog holds the Effect family to one minor with tilde ranges

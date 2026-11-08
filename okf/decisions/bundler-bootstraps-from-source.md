@@ -2,7 +2,7 @@
 type: Decision
 title: The kit builds itself with the bundler running from source under tsx
 description: "The root pnpm-workspace.yaml sets nodeOptions to --import=tsx, and tsx and @effected/plugin are root devDependencies, so the effected bin runs from source in every pnpm run and turbo task; nothing is built before the bundler can build, and a bundler fix reaches the kit's build with no release in between."
-status: draft
+status: stable
 tags:
   - architecture
   - dx
@@ -23,6 +23,13 @@ generated:
 integrity:
   generated:
     body: 8ace4ddfcd717364
+  verified:
+    by: human:spencer
+    at: 2026-11-08T18:25:54Z
+    content: 80b92feec283b687
+verified:
+  - by: human:spencer
+    at: 2026-11-08T18:25:54Z
 ---
 
 # The kit builds itself with the bundler running from source under tsx

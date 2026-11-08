@@ -194,5 +194,16 @@ packages:
   - scratchpad
   - website
 peerDependencyRules: {}
+permissions:
+  tsdown:
+    skills: true
 publicHoistPattern:
   - "@effected/plugin"
+skills:
+  dirs:
+    - .agent/skills
+    - .agents/skills
+    - .claude/skills
+    - .cursor/skills
+    - .gemini/skills
+    - .github/skills

@@ -2,7 +2,7 @@
 type: Decision
 title: Raw S3 objects get their own boundary package, with a ListObjectsV2 reader that fails a wrong root
 description: "The kit's S3 object client is a new boundary package, @effected/s3, over core HttpClient, Digest and Mac in R and @effected/crypto's SigV4; not BlobStore.layerS3 in github-actions, and not a subpath of crypto. Its ListObjectsV2 reader decodes through core effect/encoding/Xml and fails a body whose root is not ListBucketResult, never reading it as an empty listing."
-status: draft
+status: stable
 tags:
   - architecture
   - security
@@ -30,6 +30,13 @@ generated:
 integrity:
   generated:
     body: 926b057bdc2cd2e1
+  verified:
+    by: human:spencer
+    at: 2026-11-08T18:25:54Z
+    content: bbfbc4911e7cd54f
+verified:
+  - by: human:spencer
+    at: 2026-11-08T18:25:54Z
 ---
 
 # Raw S3 objects get their own boundary package, with a ListObjectsV2 reader that fails a wrong root

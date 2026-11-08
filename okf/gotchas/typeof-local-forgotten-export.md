@@ -2,7 +2,7 @@
 type: Gotcha
 title: "New ae-forgotten-export errors after a bundler bump are TypeScript 7.1 emitting typeof a module local, not a bundler regression"
 description: "Since @savvy-web/tsdown-plugins 2.11.0 (bundler 2.6.1) declarations come from TypeScript 7.1, which types a public member whose initializer is a bare non-exported local as typeof that local; API Extractor reports ae-forgotten-export (CI-fatal) and the API docs show no signature. Fix the site by inlining, a static method, or an explicit annotation; never suppress, never export the local."
-status: draft
+status: stable
 stale_after: "2027-04-25T00:00:00Z"
 tags: [ci, dx, docs, compat]
 sources:
@@ -22,11 +22,13 @@ integrity:
     body: 77c7a397cac1b0f9
   verified:
     by: human:spencer
-    at: 2026-10-25T20:07:35Z
-    content: 91997e8132de3136
+    at: 2026-11-08T18:25:54Z
+    content: 6f5cb2d4f397b349
 verified:
   - by: human:spencer
     at: 2026-10-25T20:07:35Z
+  - by: human:spencer
+    at: 2026-11-08T18:25:54Z
 ---
 
 # New ae-forgotten-export errors after a bundler bump are TypeScript 7.1 emitting typeof a module local, not a bundler regression

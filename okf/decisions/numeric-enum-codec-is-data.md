@@ -14,11 +14,13 @@ integrity:
     body: f6d324411ac6d441
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 4edbe0714f78f90e
+    at: 2026-11-08T18:25:54Z
+    content: 83365efd7d001ba3
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-08T18:25:54Z
 ---
 
 # The numeric-enum codec is data, not a typescript dependency

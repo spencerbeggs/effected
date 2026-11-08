@@ -26,6 +26,27 @@
 * Updated Build a GitHub Action repository to the kit's canonical shape
 * Updated The effected build commands: package build, action build and action init
 * Updated effected
+* Updated @effected/markdown frontmatter
+* Updated Build logs are two append-only journals at the workspace root, derived from a cached per-package issues.json
+* Updated Consumers see one catalog, effected, folded by the plugin's hook from split declarations
+* Updated New ae-forgotten-export errors after a bundler bump are TypeScript 7.1 emitting typeof a module local, not a bundler regression
+* Updated PackedInstall packs the prod npm directory by default
+* Updated Raw S3 objects get their own boundary package, with a ListObjectsV2 reader that fails a wrong root
+* Updated Releases are changeset-driven and scope-agnostic
+* Updated Shell syntax analysis is its own pure package, @effected/shell, not a commands subpath or core CommandLine
+* Updated The catalog:sync / catalog:check CLI
+* Updated The effect catalog holds the Effect family to one minor with tilde ranges
+* Updated The effect family is pinned graph-wide by overrides derived from the catalog
+* Updated The effected catalog holds next-release versions, and the publish order follows
+* Updated The kit builds itself with the bundler running from source under tsx
+* Updated The kit has one build target, and workspace links point at package roots
+* Updated The markdownlint-compatible lint shape is its own pure package; @effected/markdown gains only the callback visitor
+* Updated The monorepo holds one tool, effected, beside its libraries
+* Updated The numeric-enum codec is data, not a typescript dependency
+* Updated The plugin declares one catalog, effected, and pins only the Effect family by include pattern
+* Updated The ui declarations reference the root's types by the package's own name
+* Updated There is no Effect v3 catalog and no camelCase catalog alias
+* Updated effected.toml is the only build config, and code enters through two data keys
 
 ## 2026-11-07
 

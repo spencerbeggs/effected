@@ -2,7 +2,7 @@
 type: Decision
 title: "Shell syntax analysis is its own pure package, @effected/shell, not a commands subpath or core CommandLine"
 description: "A tolerant lexer and segmenter for untrusted command strings ships as the pure @effected/shell package with a never-fail, never-evaluate contract and result types that are deliberately not core's CommandLine.Word; a @effected/commands subpath and core CommandLine were both rejected."
-status: draft
+status: stable
 tags:
   - architecture
   - bundle
@@ -24,6 +24,13 @@ generated:
 integrity:
   generated:
     body: 80fd586435788f21
+  verified:
+    by: human:spencer
+    at: 2026-11-08T18:25:54Z
+    content: 6c2a5ae0c4022737
+verified:
+  - by: human:spencer
+    at: 2026-11-08T18:25:54Z
 ---
 
 # Shell syntax analysis is its own pure package, @effected/shell, not a commands subpath or core CommandLine

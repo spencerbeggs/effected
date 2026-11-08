@@ -21,13 +21,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-10-31T19:39:48Z
+  - by: human:spencer
+    at: 2026-11-08T18:25:54Z
 integrity:
   generated:
     body: 3fbca69a39d3bdef
   verified:
     by: human:spencer
-    at: 2026-10-31T19:39:48Z
-    content: 3aa87fe724282684
+    at: 2026-11-08T18:25:54Z
+    content: 71e52b688cd95c46
 ---
 
 # The effected catalog holds next-release versions, and the publish order follows

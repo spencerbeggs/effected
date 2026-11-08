@@ -2,7 +2,7 @@
 type: Decision
 title: The markdownlint-compatible lint shape is its own pure package; @effected/markdown gains only the callback visitor
 description: "A rule is defined once over kit trees in @effected/markdown-lint, a pure sibling of @effected/markdown that matches markdownlint's custom-rule contract structurally and imports no markdownlint; @effected/markdown adds only MarkdownVisitor.traverse."
-status: draft
+status: stable
 tags:
   - architecture
   - compat
@@ -18,6 +18,13 @@ generated:
 integrity:
   generated:
     body: 577060f9e892c1b2
+  verified:
+    by: human:spencer
+    at: 2026-11-08T18:25:54Z
+    content: d3629d49793e87d2
+verified:
+  - by: human:spencer
+    at: 2026-11-08T18:25:54Z
 ---
 
 # The markdownlint-compatible lint shape is its own pure package; @effected/markdown gains only the callback visitor

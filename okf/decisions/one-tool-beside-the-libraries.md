@@ -28,13 +28,15 @@ integrity:
     body: bbc81096a8fbfb64
   verified:
     by: human:spencer
-    at: 2026-11-05T14:25:52Z
-    content: 7c6b7073747ae2ff
+    at: 2026-11-08T18:25:54Z
+    content: ffd6243dbb11da4c
 verified:
   - by: human:spencer
     at: 2026-11-02T17:04:46Z
   - by: human:spencer
     at: 2026-11-05T14:25:52Z
+  - by: human:spencer
+    at: 2026-11-08T18:25:54Z
 ---
 
 # The monorepo holds one tool, effected, beside its libraries
