@@ -13,6 +13,7 @@
 * Updated @effected/templates
 * Updated config-file
 * Updated package-json
+* Updated @effected/markdown-lint
 
 ## 2026-11-07
 

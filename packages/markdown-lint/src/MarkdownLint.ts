@@ -3,10 +3,26 @@
 // markdownlint and no unified anywhere in the graph.
 
 import type { MarkdownDialect, MarkdownDocument } from "@effected/markdown";
-import { Effect, Result } from "effect";
+import { MarkdownEdit } from "@effected/markdown";
+import { Effect, Option, Result } from "effect";
 import { parseDocument, parseSettings, refusalDiagnostic, runRule } from "./internal/host.js";
-import type { LintDiagnostic } from "./LintDiagnostic.js";
+import { LintDiagnostic } from "./LintDiagnostic.js";
 import type { LintRule } from "./LintRule.js";
+
+/** `finding` with its kit edit moved `shift` code units right, to address the BOM-prefixed source. */
+const shiftEdit = (finding: LintDiagnostic, shift: number): LintDiagnostic =>
+	Option.isNone(finding.edit)
+		? finding
+		: LintDiagnostic.make({
+				...finding,
+				edit: Option.some(
+					MarkdownEdit.make({
+						offset: finding.edit.value.offset + shift,
+						length: finding.edit.value.length,
+						content: finding.edit.value.content,
+					}),
+				),
+			});
 
 /**
  * Options for {@link MarkdownLint.lint}.
@@ -92,7 +108,12 @@ export class MarkdownLint {
 	 *
 	 * A leading byte order mark (U+FEFF) is dropped before the parse, as
 	 * markdownlint drops it, so a BOM-prefixed file's first line is markdown
-	 * in both hosts and `LintContext.source` starts after the mark.
+	 * in both hosts and `LintContext.source` starts after the mark. A rule
+	 * never sees the mark, but the result addresses the source as given: each
+	 * finding's kit `edit` is moved past it, so
+	 * `MarkdownEdit.applyAll(source, edits)` needs no knowledge of the mark.
+	 * `lineNumber`, `column`, `range` and `fixInfo` stay in markdownlint's own
+	 * coordinates, which count from the text after the mark.
 	 *
 	 * Findings come in rule order, then in the order each rule reported them;
 	 * markdownlint instead sorts by rule name, then line. Line numbers count
@@ -115,10 +136,11 @@ export class MarkdownLint {
 		const name = options?.name ?? "<input>";
 		// markdownlint drops a leading byte order mark before its rules run
 		// (and before it numbers lines), so the programmatic host does too.
-		const text = source.charCodeAt(0) === 0xfeff ? source.slice(1) : source;
-		const parsed = parseDocument(text, parseSettings(options));
+		const shift = source.charCodeAt(0) === 0xfeff ? 1 : 0;
+		const parsed = parseDocument(source.slice(shift), parseSettings(options));
 		if (Result.isFailure(parsed)) return rules.map((rule) => refusalDiagnostic(parsed.failure, rule));
-		return rules.flatMap((rule) => runRule(parsed.success, rule, name));
+		const findings = rules.flatMap((rule) => runRule(parsed.success, rule, name));
+		return shift === 0 ? findings : findings.map((finding) => shiftEdit(finding, shift));
 	}
 
 	/**
@@ -128,7 +150,11 @@ export class MarkdownLint {
 	 * For a caller that holds a `MarkdownDocument` already — an editor
 	 * re-linting the document it just parsed. The rules see exactly this
 	 * document, so its parse options (dialect, frontmatter capture) are the
-	 * ones that hold. Same ordering, naming check and throws as
+	 * ones that hold. A byte order mark is not dropped on this path: a
+	 * BOM-prefixed document keeps it in its first line (so `\uFEFF# T` is not a
+	 * heading) and edit offsets address `document.source`. A caller who wants
+	 * {@link MarkdownLint.lint}'s reading strips a leading U+FEFF before parsing,
+	 * or calls `lint`. Same ordering, naming check and throws as
 	 * {@link MarkdownLint.lint}, and no refusal case: the parse already
 	 * happened.
 	 *

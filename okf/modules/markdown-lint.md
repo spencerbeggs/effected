@@ -23,10 +23,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-07T03:13:10Z
+  at: 2026-11-08T12:10:44Z
 integrity:
   generated:
-    body: 95a0d961cc81957e
+    body: 79c907072a33cadc
 ---
 
 # `@effected/markdown-lint`
@@ -119,9 +119,14 @@ normalizations (`\n` endings, HTML comment bodies masked as `.` runs of the
 same length); positions are unaffected. markdownlint also drops a leading
 byte order mark before splitting lines, so `MarkdownLint.lint` drops one
 too — otherwise a BOM-prefixed `# H` is a heading in one host and text in
-the other. `LintFrontmatter.lines` is the kit capture's block, which can
-differ from markdownlint's `frontMatterLines` (markdownlint's closing `---`
-swallows trailing blank lines, and it strips `{…}` and `...`-closed blocks
+the other. The mark is invisible to rules but not to the result:
+`MarkdownLint.lint` shifts each finding's kit `edit` past it, so edit offsets
+address the source as given and `MarkdownEdit.applyAll` needs no BOM
+knowledge, while `lineNumber`, `column`, `range` and `fixInfo` stay in
+markdownlint's own BOM-free coordinates (a differential test applies both to a
+BOM fixture and compares). `LintFrontmatter.lines` is the kit capture's
+block, which can differ from markdownlint's `frontMatterLines`
+(markdownlint's closing `---` swallows trailing blank lines, and it strips `{…}` and `...`-closed blocks
 the kit does not capture); the adapter renumbers by markdownlint's count, so
 line numbers agree regardless.
 

@@ -165,18 +165,31 @@ describe("pathological inputs", () => {
 	// absolute budget would not. Without `MAX_LINK_DESTINATION_PARENS` every
 	// failed inline-link attempt in this input re-scans to the end of the
 	// subject, and quadrupling the input costs ~16x (measured
-	// 303ms/1278ms/4842ms at 7.5k/15k/30k reps); linear costs ~4x (measured
-	// 9ms/32ms). The threshold of 8 sits between the two with margin on both
-	// sides. Watched red against the uncapped scan.
+	// 303ms/1278ms/4842ms at 7.5k/15k/30k reps); linear costs ~4x. The
+	// sizes (20k/80k reps) make the small side cost tens of milliseconds — at
+	// the old 7.5k it was under one, and load alone pushed the ratio to 8-13x
+	// (#1281) — and each size takes the minimum of five samples.
+	//
+	// The clock is CPU time (`process.cpuUsage`), not wall time: a pause from
+	// load descheduling the process is wall time the parse never spent, and the
+	// large side, long enough to be preempted more, absorbs more of it than the
+	// small. Measured with twelve busy loops beside the run, wall ratios were
+	// 9.8-13.8x and CPU ratios 5.3-6.1x (unloaded: ~4.3x either way). That is
+	// safe because vitest runs each test file in its own forked process, so
+	// no other test's CPU lands in this one. The threshold of 8 sits between
+	// linear and the ~16x quadratic with margin on both sides. Watched red
+	// against the uncapped scan.
 	it(
 		"unclosed links B scales linearly",
 		() => {
 			const timeAt = (reps: number): number => {
 				const input = "[a](b".repeat(reps);
-				// Two passes, keep the faster: damps JIT and GC noise without
-				// hiding an algorithmic blowup.
+				// The minimum of several samples: a GC or scheduler pause only ever
+				// ADDS time to a sample, so the fastest is the least-disturbed
+				// estimate, and it cannot hide an algorithmic blowup (every sample
+				// of a quadratic parse is slow).
 				let best = Number.POSITIVE_INFINITY;
-				for (let pass = 0; pass < 2; pass += 1) {
+				for (let pass = 0; pass < 5; pass += 1) {
 					const started = performance.now();
 					parseBlocks(input);
 					best = Math.min(best, performance.now() - started);
@@ -185,17 +198,17 @@ describe("pathological inputs", () => {
 			};
 
 			// Warm the path so the small measurement is not first-call cost.
-			timeAt(1000);
-			const small = timeAt(7500);
-			const large = timeAt(30000);
-			// Floor the denominator: a sub-millisecond small run would make the
-			// ratio noise, and 1ms is far above the quadratic's small-run cost
-			// anyway.
+			timeAt(2000);
+			// The small side does tens of milliseconds of real work, so a pause of
+			// a few milliseconds is noise on it rather than the measurement.
+			const small = timeAt(20000);
+			const large = timeAt(80000);
+			// Floor the denominator anyway, for a pathologically fast machine.
 			const ratio = large / Math.max(small, 1);
 			assert.isBelow(
 				ratio,
 				8,
-				`4x the input cost ${ratio.toFixed(1)}x the time (${small.toFixed(1)}ms -> ${large.toFixed(1)}ms); ` +
+				`4x the input cost ${ratio.toFixed(1)}x the CPU time (${small.toFixed(1)}ms -> ${large.toFixed(1)}ms); ` +
 					"linear is ~4x, the pre-cap quadratic was ~16x",
 			);
 		},
