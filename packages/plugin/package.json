@@ -22,6 +22,7 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
+		"./env": "./public/env.d.ts",
 		"./package.json": "./package.json",
 		"./tsconfig/*": "./public/tsconfig/*"
 	},

@@ -67,3 +67,44 @@ describe("the tsconfig presets", () => {
 		assert.include(stdout.toLowerCase(), '"verbatimmodulesyntax": true');
 	});
 });
+
+describe("the ./env ambient declaration", () => {
+	it("the built manifest exports it as types only, and the file is shipped", () => {
+		const manifest = JSON.parse(readFileSync(join(BUILT, "package.json"), "utf8")) as {
+			readonly exports: Record<string, unknown>;
+		};
+		assert.deepStrictEqual(manifest.exports["./env"], { types: "./env.d.ts" });
+		assert.isTrue(existsSync(join(BUILT, "env.d.ts")), "env.d.ts");
+	});
+
+	it("a consumer's triple-slash reference types process.env.__PACKAGE_VERSION__ under noPropertyAccessFromIndexSignature", () => {
+		const consumer = join(scratch, "env-consumer");
+		mkdirSync(join(consumer, "node_modules/@effected"), { recursive: true });
+		symlinkSync(BUILT, join(consumer, "node_modules/@effected/plugin"));
+		symlinkSync(join(PLUGIN, "node_modules/@types"), join(consumer, "node_modules/@types"));
+		writeFileSync(
+			join(consumer, "tsconfig.json"),
+			JSON.stringify({
+				compilerOptions: {
+					module: "nodenext",
+					strict: true,
+					noEmit: true,
+					noPropertyAccessFromIndexSignature: true,
+					types: ["node"],
+				},
+				include: ["*.ts"],
+			}),
+		);
+		writeFileSync(
+			join(consumer, "a.ts"),
+			'/// <reference types="@effected/plugin/env" />\nexport const v: string | undefined = process.env.__PACKAGE_VERSION__;\n',
+		);
+		const ok = spawnSync(TSC, ["-p", consumer], { encoding: "utf8" });
+		assert.strictEqual(ok.status, 0, ok.stdout + ok.stderr);
+
+		// Control: without the reference the same read is an error, so the pass above proves the declaration.
+		writeFileSync(join(consumer, "a.ts"), "export const v: string | undefined = process.env.__PACKAGE_VERSION__;\n");
+		const bad = spawnSync(TSC, ["-p", consumer], { encoding: "utf8" });
+		assert.notStrictEqual(bad.status, 0, "control must fail without the reference");
+	}, 60_000);
+});

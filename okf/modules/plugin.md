@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T23:00:10Z
+  at: 2026-11-08T22:17:30Z
 integrity:
   generated:
-    body: d6fb847b01219479
+    body: de10df41c89d2223
 ---
 
 # @effected/plugin
@@ -25,6 +25,7 @@ integrity:
 - `effected` and `effected-mcp` bins, each a shim calling its front end's `main()` with `distribution: { name: "@effected/plugin", version }`, so `effected --version` ends with `via @effected/plugin <version>`.
 - `defineSchemastore`: `@effected/schemastore`'s `defineConfig` under another name, for a `schemastore.config.ts` ([the contract](../interfaces/schema-commands.md#the-config-contract)). The root stays cheap to import from a config: it reaches no front end, no engine, no `ajv`, no `jiti` and no Ink, which a built-entry test pins.
 - `./tsconfig/*`: the presets a consumer's tsconfig extends, `@effected/plugin/tsconfig/ecma.json` and `root.json`, from `public/tsconfig/`, because the build copies only `public/` into the package.
+- `./env`: a types-only ambient declaration, `@effected/plugin/env`, for `process.env.__PACKAGE_VERSION__` (`readonly __PACKAGE_VERSION__?: string` on `NodeJS.ProcessEnv`). A consumer writes `/// <reference types="@effected/plugin/env" />` where it once referenced the savvy bundler's env types. It lives in `public/env.d.ts`, not `src/`: under `src/` it joins this package's own program, where `ProcessEnv` stops being a pure index signature and `bundler/src/meta/config.ts` fails a weak-type check. A test compiles a consumer under `noPropertyAccessFromIndexSignature` with a control that fails without the reference.
 - `PLUGIN_VERSION`, replaced at build. No logic belongs here.
 
 ## Boundaries

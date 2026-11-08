@@ -48,6 +48,7 @@
 * Updated There is no Effect v3 catalog and no camelCase catalog alias
 * Updated effected.toml is the only build config, and code enters through two data keys
 * Updated @effected/workspaces/testing: the repo-shape checks
+* Updated @effected/plugin
 
 ## 2026-11-07
 

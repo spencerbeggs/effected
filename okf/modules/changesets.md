@@ -18,15 +18,18 @@ sources:
   - id: issue-1255
     resource: https://github.com/spencerbeggs/effected/issues/1255
     title: "changesets: lint rules, pre and snapshot modes, fixed and linked groups"
+  - id: issue-1306
+    resource: https://github.com/spencerbeggs/effected/issues/1306
+    title: "changesets: a tolerant PendingChangesets read that skips a malformed changeset instead of failing the whole directory"
   - id: spec
     resource: ../../docs/superpowers/specs/2026-11-06-bundler-research.md
     title: "The bundler research report and the owner's rulings"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-08T17:36:58Z
+  at: 2026-11-08T22:17:30Z
 integrity:
   generated:
-    body: 8aa0f08811774047
+    body: 7f5124744a30940b
 ---
 
 # @effected/changesets
@@ -36,6 +39,10 @@ integrity:
 `@effected/changesets` parses changeset files and `.changeset/config.json`, and plans a release from them: which packages a set of pending changesets bumps, to which versions, including the packages bumped only because a dependency moved.[^issue-1148] Each changeset file reads to its file name, its releases and its summary.[^issue-1131] Nothing in the package writes a changeset, versions a package or publishes one.
 
 It exists because `@savvy-web/tsdown-plugins` carries `@changesets/get-release-plan` at runtime to compute next versions, and `catalog:sync` read the plan out of `changeset status --output`. The owner ruled that this package is created on the bundler branch, and that `@changesets/get-release-plan` stays only as a devDependency.[^spec]
+
+## Strict and settled reads
+
+`PendingChangesets.read` and `readSync` are all or nothing: the first file that does not read or parse fails the whole read, as `@changesets/*` does, and that is what the planner and `catalog:sync` rely on. `readSettled` and `readSettledSync` read the same files in the same order but skip a bad one, answering `{ changesets, failures }`. Each failure is `{ file, error }`, where `error` is the typed `ChangesetParseError` or `PlatformError`, never a string. They exist for read-only consumers that want a best-effort view of pending bumps, such as a CLI that projects next versions, where one bad file should not hide every other bump.[^issue-1306] A directory that cannot be listed still fails the settled read too, because then it is unknown which files exist.
 
 ## Tier and dependency posture
 
@@ -63,5 +70,6 @@ Snapshot versions are not planned. `getReleasePlan` takes no snapshot input, so 
 
 [^issue-1255]: Issue 1255, `changesets: lint rules, pre and snapshot modes, fixed and linked groups`.
 [^issue-1148]: Issue 1148, `changesets: an @effected/changesets package`.
+[^issue-1306]: Issue 1306, `changesets: a tolerant PendingChangesets read that skips a malformed changeset instead of failing the whole directory`.
 [^issue-1131]: Issue 1131, `workspaces: a reader for pending changeset bumps`.
 [^spec]: `docs/superpowers/specs/2026-11-06-bundler-research.md`, sections 8 and 12.
