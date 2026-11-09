@@ -1,7 +1,44 @@
 // Ported from savvy-web/systems packages/tsdown-plugins/__test__/build/target-groups.test.ts on 2026-11-06
 // packages/bundler/__test__/build/target-groups.test.ts
 import { assert, describe, it } from "@effect/vitest";
-import { deriveDtsPassOptions, deriveTargetGroupOptions } from "../../src/passes/target-groups.js";
+import {
+	deriveDtsPassOptions,
+	deriveTargetGroupOptions,
+	dtsOnlyOption,
+	dtsPassDtsOptions,
+} from "../../src/passes/target-groups.js";
+
+/** Split the declarations-only flag off a dts block, asserting exactly one spelling is set to true. */
+const splitDtsOnly = <T extends { dtsOnly?: true; emitDtsOnly?: true }>(dts: T) => {
+	const { dtsOnly, emitDtsOnly, ...rest } = dts;
+	assert.strictEqual([dtsOnly, emitDtsOnly].filter((v) => v === true).length, 1);
+	return rest;
+};
+
+describe("dtsOnlyOption", () => {
+	it("uses dtsOnly from rolldown-plugin-dts 0.30.0", () => {
+		assert.deepStrictEqual(dtsOnlyOption("0.30.0"), { dtsOnly: true });
+		assert.deepStrictEqual(dtsOnlyOption("0.31.2"), { dtsOnly: true });
+		assert.deepStrictEqual(dtsOnlyOption("1.0.0"), { dtsOnly: true });
+	});
+	it("uses emitDtsOnly below 0.30.0, where dtsOnly is silently ignored", () => {
+		assert.deepStrictEqual(dtsOnlyOption("0.29.0"), { emitDtsOnly: true });
+		assert.deepStrictEqual(dtsOnlyOption("0.29.9"), { emitDtsOnly: true });
+		assert.deepStrictEqual(dtsOnlyOption("0.30.0-beta.1"), { emitDtsOnly: true });
+	});
+	it("falls back to emitDtsOnly when the version is unknown or unparsable", () => {
+		assert.deepStrictEqual(dtsOnlyOption(undefined), { emitDtsOnly: true });
+		assert.deepStrictEqual(dtsOnlyOption("not-a-version"), { emitDtsOnly: true });
+	});
+	it("dtsPassDtsOptions sets exactly the chosen key", () => {
+		const modern = dtsPassDtsOptions("/tmp/t.json", "0.30.0");
+		assert.strictEqual(modern.dtsOnly, true);
+		assert.notProperty(modern, "emitDtsOnly");
+		const legacy = dtsPassDtsOptions("/tmp/t.json", "0.29.0");
+		assert.strictEqual(legacy.emitDtsOnly, true);
+		assert.notProperty(legacy, "dtsOnly");
+	});
+});
 
 describe("deriveTargetGroupOptions (JS pass)", () => {
 	const base = { cwd: "/abs/pkg", version: "1.2.3", entry: { index: "./src/index.ts" }, tsconfigPath: "/tmp/t.json" };
@@ -118,8 +155,8 @@ describe("deriveDtsPassOptions (dts pass)", () => {
 		assert.strictEqual(o.unbundle, false);
 		// dts-only emission on the tsgo (TypeScript 7.1 API) generator, naming this package's own
 		// typescript module explicitly so a consumer's hoisted copy can never be picked instead.
-		const { tsgo, ...dtsRest } = o.dts as { tsgo: { moduleUrl: string } };
-		assert.deepStrictEqual(dtsRest, { tsconfig: "/tmp/t.json", emitDtsOnly: true, generator: "tsgo" });
+		const { tsgo, ...dtsRest } = o.dts as { tsgo: { moduleUrl: string }; dtsOnly?: true; emitDtsOnly?: true };
+		assert.deepStrictEqual(splitDtsOnly(dtsRest), { tsconfig: "/tmp/t.json", generator: "tsgo" });
 		assert.match(tsgo.moduleUrl, /^file:\/\/.*\/typescript\//);
 		// must NOT wipe the JS pass output
 		assert.strictEqual(o.clean, false);
@@ -240,8 +277,12 @@ describe("deriveDeclarationsPassOptions", () => {
 		const d = deriveDeclarationsPassOptions(base);
 		assert.strictEqual(d.unbundle, true);
 		assert.strictEqual(d.outDir, "/repo/pkg/dist/prod/npm/declarations");
-		const { tsgo: declTsgo, ...declRest } = d.dts as { tsgo: { moduleUrl: string } };
-		assert.deepStrictEqual(declRest, { tsconfig: "/tmp/tsconfig.json", emitDtsOnly: true, generator: "tsgo" });
+		const { tsgo: declTsgo, ...declRest } = d.dts as {
+			tsgo: { moduleUrl: string };
+			dtsOnly?: true;
+			emitDtsOnly?: true;
+		};
+		assert.deepStrictEqual(splitDtsOnly(declRest), { tsconfig: "/tmp/tsconfig.json", generator: "tsgo" });
 		assert.match(declTsgo.moduleUrl, /^file:\/\/.*\/typescript\//);
 		assert.deepStrictEqual(d.format, ["esm"]);
 		assert.strictEqual(d.platform, "node");

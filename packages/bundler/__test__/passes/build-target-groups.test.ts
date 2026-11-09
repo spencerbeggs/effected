@@ -120,9 +120,9 @@ describe("buildTargetGroups", () => {
 			// #430: the base tsconfig exists on disk here, so `writeDtsEmitTsconfig` derives a
 			// dts-emit variant rather than passing the source path through verbatim — assert the
 			// derivation CONTRACT (naming pattern), not a literal path.
-			const devDtsConfig = devDts.dts as { tsconfig: string; emitDtsOnly: boolean; generator: string };
+			const devDtsConfig = devDts.dts as { tsconfig: string; dtsOnly?: true; emitDtsOnly?: true; generator: string };
 			assert.match(devDtsConfig.tsconfig, dtsEmitPattern);
-			assert.strictEqual(devDtsConfig.emitDtsOnly, true);
+			assert.strictEqual(devDtsConfig.dtsOnly ?? devDtsConfig.emitDtsOnly, true);
 			assert.strictEqual(devDtsConfig.generator, "tsgo");
 			// Stronger pin: the derived file exists and extends the real base by absolute CANONICAL path.
 			const derivedContents = JSON.parse(await readFile(devDtsConfig.tsconfig, "utf-8")) as {
@@ -306,7 +306,7 @@ describe("buildTargetGroups", () => {
 
 	it("attaches the cjs-default-interop plugin to BOTH the JS and dts passes only when format includes cjs", async () => {
 		// Capture plugin names per pass. The JS pass has dts === false; the dts pass has dts
-		// !== false (the emitDtsOnly pass). The dts-pass attachment is LOAD-BEARING: tsdown's
+		// !== false (the dtsOnly pass). The dts-pass attachment is LOAD-BEARING: tsdown's
 		// dts pass re-emits the .cjs for dual format and would overwrite the JS pass's footer,
 		// so the interop plugin MUST be present there too (a refactor dropping it would silently
 		// regress the lint:md fix while every JS-pass-only assertion still passes).
@@ -1221,9 +1221,9 @@ describe("buildTargetGroups", () => {
 			assert.strictEqual(rtDts.outDir, "/abs/pkg/dist/dev/pkg/runtime");
 			// #430: same derived-tsconfig contract as the JS+dts-pass test above — the base exists
 			// on disk, so the dts pass gets a derived temp tsconfig, not the source path verbatim.
-			const rtDtsConfig = rtDts.dts as { tsconfig: string; emitDtsOnly: boolean; generator: string };
+			const rtDtsConfig = rtDts.dts as { tsconfig: string; dtsOnly?: true; emitDtsOnly?: true; generator: string };
 			assert.match(rtDtsConfig.tsconfig, dtsEmitPattern);
-			assert.strictEqual(rtDtsConfig.emitDtsOnly, true);
+			assert.strictEqual(rtDtsConfig.dtsOnly ?? rtDtsConfig.emitDtsOnly, true);
 			assert.strictEqual(rtDtsConfig.generator, "tsgo");
 		});
 	});
@@ -1268,8 +1268,13 @@ describe("buildTargetGroups", () => {
 		});
 		const decl = calls.find((c) => c.unbundle === true && String(c.outDir).endsWith("/dist/prod/npm/declarations"));
 		assert.isDefined(decl);
-		const { tsgo, ...declDts } = (decl as { dts: unknown }).dts as { tsgo: { moduleUrl: string } };
-		assert.deepStrictEqual(declDts, { tsconfig: "/tmp/tsconfig.json", emitDtsOnly: true, generator: "tsgo" });
+		const { tsgo, dtsOnly, emitDtsOnly, ...declDts } = (decl as { dts: unknown }).dts as {
+			tsgo: { moduleUrl: string };
+			dtsOnly?: true;
+			emitDtsOnly?: true;
+		};
+		assert.strictEqual(dtsOnly ?? emitDtsOnly, true);
+		assert.deepStrictEqual(declDts, { tsconfig: "/tmp/tsconfig.json", generator: "tsgo" });
 		assert.match(tsgo.moduleUrl, /^file:\/\/.*\/typescript\//);
 		assert.strictEqual(decl?.clean, true);
 	});
