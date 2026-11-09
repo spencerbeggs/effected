@@ -267,7 +267,9 @@ core first — the kit deliberately requires core contracts (`FileSystem`,
 `ChildProcessSpawner`) rather than re-declaring them. `effect-v4-cli` and
 `effect-v4-mcp` teach the CLI and MCP boundaries in depth; `design-patterns`
 teaches the carrier pattern shared between a CLI and an MCP front end that
-`@effected/kit` supports.
+`@effected/kit` supports. `building-a-package` teaches `effected package build`
+and `effected.toml` for a library a consumer builds with the kit, and
+`authoring-tsdoc` the TSDoc and API Extractor rules that build enforces.
 
 **Construct-level coverage — does every export get named somewhere in
 `skills/` — is checked, not maintained by hand here.**

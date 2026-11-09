@@ -511,11 +511,15 @@ in backticks instead of `{@link}`. `packages/commands/CLAUDE.md` and
    error the typecheck would have caught surfaces as an API Extractor failure
    instead.
 
-2. **A crashed build writes a truncated `issues.json`** — `errors: 0,
-   warnings: 0, suppressed: 0` — byte-shaped exactly like a perfectly clean
-   gate. **`suppressed: 0` is the tell**: a package with class factories always
-   has one `_base` entry per factory. Always check the build's exit code before
-   trusting the file. Never conclude "clean" from the file alone.
+2. **A crashed build can leave every bucket empty** — byte-shaped exactly like
+   a perfectly clean gate. **Read `buildOk` first**: `false` (with `failure`
+   saying why) or a missing stamp means the buckets are not evidence. An
+   unexpected `suppressed` count is a second tell: counting only
+   `source: "api-extractor"` entries (tsdown advisory noise such as
+   `TSGO_EXPERIMENTAL` lands there too), a package with class factories has at
+   least one `_base` entry per factory. Never conclude "clean"
+   from empty buckets alone; `building-a-package`'s reading-issues reference
+   has the full read order.
 
 3. **An incremental build can hide warnings.** A stale `dist/.tsbuildinfo.lib`
    feeds API Extractor an old `.d.ts`, so a warning present in a cold build is
@@ -543,6 +547,15 @@ export names surface verbatim — a `Schema.Array` field emits as
 `Schema.$Array<…>`, `Schema.Record` as `Schema.$Record<…>`. Correct output,
 observed across multiple package builds; do not "fix" it, and do
 not read it as a wrong import in the source.
+
+## Related skills
+
+`authoring-tsdoc` owns the general policy this skill assumes: the binary
+release-tag rule, the supported-tag allow-list, custom tags, when a
+suppression is legitimate, the `typeof local` forgotten export, and every
+other `ae-*`/`tsdoc-*` fix. `building-a-package` owns `effected.toml` and the
+build itself. The `tsdoc-fixer` agent carries all three and runs the fix loop
+end to end.
 
 ## Rejected alternatives
 

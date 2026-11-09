@@ -35,7 +35,7 @@
 * [@effected/webhooks](webhooks.md) - Inbound webhook signature verification as pure functions over a header lookup, the raw body and the receive time, with presets for Standard Webhooks, GitHub, Stripe, Sanity, a generic HMAC header and a shared secret.
 * [@effected/workspaces: monorepo tooling](workspaces.md) - The integrated-tier package that finds a workspace root, enumerates its packages, walks the dependency graph, detects the package manager, assembles pnpm catalogs, checks peer dependencies, and reads git-scoped snapshots.
 * [@effected/yaml](yaml.md) - Pure-tier YAML 1.2 parsing, editing, formatting and linting as Effect schemas, with a vendored engine and full per-node comment fidelity.
-* [ai-plugin](ai-plugin.md) - The "effected" agent plugin: one pluginfinity source under plugin/ — skills, three specialist agents and a SessionStart briefing — built into committed Claude Code and GitHub Copilot plugins.
+* [ai-plugin](ai-plugin.md) - The "effected" agent plugin: one pluginfinity source under plugin/ — skills, four specialist agents, a SessionStart briefing and a Claude-Code-only build-diagnostics monitor — built into committed Claude Code and GitHub Copilot plugins.
 * [app](app.md) - The thin composition layer wiring xdg, config-file and store into an application control plane -- owns no domain logic, defines no service or error of its own, and re-exports nothing from the packages beneath it.
 * [config-file](config-file.md) - Composable config-file loading built around a codec × resolver × strategy pipeline, carrying all four config codecs.
 * [git](git.md) - Typed git for the kit — a read tier over a repository's state and a clearly-marked mutating tier, plus a pure git-config document model.

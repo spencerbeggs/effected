@@ -1,7 +1,7 @@
 ---
 type: Module
 title: ai-plugin
-description: "The \"effected\" agent plugin: one pluginfinity source under plugin/ — skills, three specialist agents and a SessionStart briefing — built into committed Claude Code and GitHub Copilot plugins."
+description: "The \"effected\" agent plugin: one pluginfinity source under plugin/ — skills, four specialist agents, a SessionStart briefing and a Claude-Code-only build-diagnostics monitor — built into committed Claude Code and GitHub Copilot plugins."
 status: stable
 kind: plugin
 resource: ../../plugin
@@ -19,10 +19,10 @@ sources:
     resource: "npm:pluginfinity"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-09T20:42:55Z
 integrity:
   generated:
-    body: cb3c10b45c7f5e40
+    body: 5e2c8e8e320b499d
 ---
 
 # ai-plugin
@@ -30,8 +30,9 @@ integrity:
 ## Overview
 
 `plugin/` is the workspace package `@effected/ai-plugins`, the single
-source of the "effected" agent plugin: a catalog of skills, three
-specialist subagents and a SessionStart briefing hook. It is dogfooded
+source of the "effected" agent plugin: a catalog of skills, four
+specialist subagents, a SessionStart briefing hook and, on Claude Code
+only, one background monitor. It is dogfooded
 during package work. `pluginfinity`, a devDependency from
 npm,[^pluginfinity-npm] builds the one source into two host plugins:
 
@@ -71,6 +72,7 @@ plugin/
   pluginfinity.config.ts   # manifest fields, hooks, per-target overrides
   turbo.json               # build tasks uncached
   skills/ agents/ hooks/   # the source dirs pluginfinity ships
+  monitors/                # build-diagnostics.mjs, shipped to the Claude build only
   bin/start-mcp.sh         # the effected-mcp launcher, copied into each build
   scripts/                 # construct-index generator, pre-push gate, anchor re-deriver (never shipped)
   __test__/                # bats suites and their fixtures
@@ -78,9 +80,10 @@ plugin/
   builds/copilot/          # GENERATED, committed
 ```
 
-pluginfinity ships nothing outside `skills/`, `agents/` and `hooks/`, so
-`scripts/` and `__test__/` sit beside the source without reaching a
-user's install. A skill's own `skills/<name>/scripts/` is different: it
+pluginfinity ships `skills/`, `agents/` and all of `hooks/`, plus each
+file a `monitors` entry's command names (`monitors/build-diagnostics.mjs`,
+Claude Code only), so `scripts/` and `__test__/` sit beside the source
+without reaching a user's install. A skill's own `skills/<name>/scripts/` is different: it
 ships inside the skill. The reverse also holds: the whole `hooks/` directory
 ships to both hosts, so test fixtures for the hook live under
 `__test__/fixtures/hooks/`, not under `hooks/`.
@@ -154,7 +157,7 @@ kit already ships: `effect-v4-module-index` (every core Effect v4 module
 in one table) and `effected-packages` (one table row per `@effected`
 package, per-package `references/`, and the generated construct index —
 see [construct-annotations](../models/construct-annotations.md) —
-preloaded by all three agents).
+preloaded by the first three agents).
 
 **Process** — decides what to write: `effect-v4-planning`, walking four
 design pillars (data types and errors, services and layers,
@@ -190,6 +193,13 @@ project-level `effect-upgrade` skill. See
 [the ledger entry model](../models/renovate-ledger-entry.md) and
 [the upgrade-ledger decision](../decisions/upgrade-ledger-in-the-plugin.md).
 
+**Building a kit package and its TSDoc**: `building-a-package`, the
+`effected package build` mechanics, `effected.toml` and the order to read
+`dist/prod/issues.json` in (`buildOk` before any bucket); and
+`authoring-tsdoc`, the release-tag policy, the supported tag allow-list, the
+fix for each `ae-*` and `tsdoc-*` diagnostic and the suppression policy.
+Both feed the `tsdoc-fixer` agent.
+
 **Architecture**: `design-patterns`, which indexes proven architecture
 patterns as loadable references, starting with the carrier package
 pattern for multi-bin tools.
@@ -215,10 +225,10 @@ authoring contract every one of these follows.
 
 ## Specialist agents
 
-Three subagents live under `plugin/agents/` — `effect-developer.md`,
-`effect-reviewer.md`, `action-engineer.md` — each arriving with its
-relevant skills preloaded via frontmatter `skills` lists. All three
-preload `effected-packages` and `effect-v4-house-style`, verify at
+Four subagents live under `plugin/agents/` — `effect-developer.md`,
+`effect-reviewer.md`, `action-engineer.md`, `tsdoc-fixer.md` — each
+arriving with its relevant skills preloaded via frontmatter `skills`
+lists. The first three preload `effected-packages` and `effect-v4-house-style`, verify at
 capability level by running the host repo's own gates (preferring
 structured session tools over hard-coded pnpm/turbo commands), and
 report `@effected` package improvement suggestions alongside skill rough
@@ -235,6 +245,38 @@ matching skill already loaded rather than reached for mid-task.
 - `action-engineer` — builds, extends, debugs and reviews GitHub
   Actions, release/publish pipelines and GitHub API programs; preloads
   the whole actions suite including `bootstrapping-an-action`.
+- `tsdoc-fixer` — drives one package's `ae-*` and `tsdoc-*` diagnostics to
+  zero, using `dist/prod/issues.json` from its own serial, fresh local
+  build as the evidence. It preloads `authoring-tsdoc`,
+  `effect-api-extractor-bases` and `building-a-package` and follows them
+  exactly; it does not preload `effected-packages` or the house-style
+  skill. Its contract is **source-only edits**: TSDoc comments, release
+  tags and the export statements a diagnostic calls for. A `package.json`
+  dependency, a `dtsExternals` or other `effected.toml` change, a new or
+  widened `suppressWarnings` rule, a public-signature reshape made only to
+  silence a diagnostic, a `@beta` or `@alpha` choice and a barrel
+  refactor are recommendations in its report, never applied. It stops on
+  one of four conditions: clean (`buildOk: true` and no `ae-*` or
+  `tsdoc-*` entry), no progress (a rebuild leaves the same `(code, text)`
+  set), out of its hands (every diagnostic left needs a recommended
+  change) or a cap of five fix-and-rebuild rounds, and each ends with its
+  step 7 report. It covers only packages built with `effected package
+  build` and stops on any other toolchain.
+
+## The build-diagnostics monitor
+
+`plugin/monitors/build-diagnostics.mjs`, registered under `monitors` in
+`pluginfinity.config.ts` as `build-diagnostics`, is a resident node
+process on Claude Code only; the Copilot build drops it with a
+monitor-omitted note, since Copilot has no monitors. It polls each
+package's `dist/prod/issues.json` and prints one line per package once its
+count of `ae-*` and `tsdoc-*` diagnostics settles at a non-zero value, so a
+count still moving while an agent fixes diagnostics is held back. It
+reports only an artifact it can vouch for: `buildOk` is true, the artifact
+is at least as new as the package's `src/` sources and the
+`effected.toml` files the build reads, and those inputs are clean in git.
+A gate that fails produces silence, never a line. A lock keeps a second
+monitor on the same project from reporting twice.
 
 ## What the bats suite pins
 
@@ -254,9 +296,17 @@ reads the source.
   pin is stated nowhere else. Build before running it.
 - `agent-skill-registration.bats` — each agent's frontmatter `skills`
   list, including a membership test naming every Actions skill
-  `action-engineer` must list, a check that pins the specialist roster
-  at exactly three, and a preload test per front-end skill confirming
+  `action-engineer` must list, a membership test naming the three skills
+  `tsdoc-fixer` must preload, a check that pins the specialist roster
+  at exactly four, and a preload test per front-end skill confirming
   both Effect agents list it under `skills:`, not merely in the body.
+- `monitor-build-diagnostics.bats` — the monitor, on the built script with
+  `--once` plus the registered command through pluginfinity's
+  `run_monitor`. Most cases assert silence: a crashed or unknown build, a
+  zero count, an artifact older than a source or `effected.toml`, an
+  uncommitted input, and an artifact under `node_modules` or `.repos`.
+  The rest pin settling, the lock and its reclaim, and that Copilot ships
+  no monitor. Build before running it.
 - `construct-index.bats` and `construct-index-gate.bats` — the generator
   and the pre-push gate; see
   [construct-annotations](../models/construct-annotations.md).

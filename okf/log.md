@@ -17,6 +17,7 @@
 * Updated scratchpad
 * Updated workspace
 * Updated @effected/bundler
+* Updated ai-plugin
 
 ## 2026-11-08
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SessionStart hook (no matcher: fires on every start, resume and compact, on
 # both hosts): brief the main agent that the "effected" plugin ships Effect v4
-# skills and three specialist subagents, that its own Effect knowledge is stale
+# skills and four specialist subagents, that its own Effect knowledge is stale
 # by construction, and that the answers are already on disk, so it must
 # delegate or load a skill rather than guess.
 #
@@ -70,7 +70,7 @@ fi
 CONTEXT=$(
 	cat <<CONTEXT
 <effect_plugin>
-The "effected" plugin is loaded: Effect v4 development skills plus three
+The "effected" plugin is loaded: Effect v4 development skills plus four
 specialist subagents, distilled from the @effected packages and the official
 Effect-TS v4 guides.
 
@@ -160,6 +160,15 @@ Available via the Skill tool (several also auto-load on trigger):
   Schemas with @effected/schemastore and the schemastore CLI: the config file,
   the published flag and drift policy, version labels, editor keyword
   families, and the CI gate that retires a hand-rolled generator script.
+- building-a-package — effected package build and effected.toml for a library
+  built with the kit: every [package.build] key, publish groups, copy, plugins,
+  looseFiles, outSubdir overrides, exe, manifest drop/set, the workspace wiring
+  (links to src/, nodeOptions tsx, the effected-built condition), and reading
+  dist/prod/issues.json with buildOk first.
+- authoring-tsdoc — TSDoc for the build's API Extractor pass: the binary
+  @public/@internal release-tag policy, every ae-*/tsdoc-* fix (typeof locals
+  included), the supported-tag allow-list, custom tags via tagDefinitions, and
+  when a suppressWarnings rule is legitimate.
 - effect-api-extractor-bases — inline class factories + the narrow _base
   suppression for a zero-warning API (no @public X_base const).
 - hardening-a-parser-port — depth guards, code-point/proto/C0 checks, and the
@@ -229,6 +238,12 @@ the agents are the delivery mechanism. The specialists:
   release/publish pipeline, or any program talking to the GitHub API. Carries
   the Actions suite above. Delegate whole action- and release-engineering
   tasks here.
+- tsdoc-fixer — for a package built with \`effected package build\` (an
+  effected.toml, or a build script running it): drives its ae-*/tsdoc-*
+  diagnostics to zero in source, reading issues.json buildOk first, and
+  rebuilds to confirm; config and suppression changes come back as
+  recommendations. Dispatch it when such a build reports API Extractor
+  diagnostics; not for packages built with another toolchain.
 </agents>
 
 The effected MCP server (\`effected\`) is bundled with this plugin; its tools are
