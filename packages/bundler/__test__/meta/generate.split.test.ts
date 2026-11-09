@@ -13,8 +13,9 @@
  *      Run B: entryDtsPath from aeInputDir, emitDocModel === false, onMessage is a wrapper forwarding to caller
  *  - When aeInputDir is omitted (back-compat): single run, caller's onMessage, emitDocModel not set
  *  - Rollup-only CI-fatal handling: a fatal only in Run A is surfaced (location stripped); a fatal in both
- *    runs is reported once with Run B's location; under ci=true Run A's error-level fatal is forwarded to
- *    the caller before the hard failure (non-fatal Run A diagnostics stay suppressed)
+ *    runs is reported once with Run B's location; under ci=true Run A's error-level fatal reaches the
+ *    caller although Run A fails (non-fatal Run A diagnostics stay suppressed), and Run B still runs for
+ *    every entry, its CI-fatal entries at error level, before the first failure is re-raised (#1317)
  */
 
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -459,6 +460,58 @@ describe("generateMeta — two-input split wiring", () => {
 			assert.include(String(calls[0].text), "Absorbed");
 			assert.strictEqual("file" in calls[0], false);
 		});
+	});
+
+	it("under CI runs Run B for every entry before re-raising the first failed Run A (#1317)", async () => {
+		const { cwd, dtsDir, aeInputDir } = scaffold();
+		const callerOnMessage = vi.fn();
+		const failure = new Error("API Extractor reported 1 error(s) and 0 warning(s)");
+		mockRunApiExtractor.mockImplementation(
+			(options: { apiJsonPath: string; entryDtsPath: string; onMessage?: (e: Record<string, unknown>) => void }) => {
+				const isRunA = options.entryDtsPath.startsWith(dtsDir);
+				if (isRunA && options.entryDtsPath.endsWith("index.d.ts")) throw failure;
+				if (isRunA) writeFileSync(options.apiJsonPath, "{}", "utf-8");
+				// Run B reports a CI-fatal entry the way it does without `ci`: warn, tagged ciFatal, located.
+				else
+					options.onMessage?.({
+						source: "api-extractor",
+						level: "warn",
+						code: "ae-forgotten-export",
+						ciFatal: true,
+						text: `The symbol "X" needs to be exported by the entry point ${options.entryDtsPath}`,
+						file: options.entryDtsPath,
+						line: 3,
+					});
+			},
+		);
+		const raised = await generateMeta({
+			cwd,
+			packageName: "@scope/fixture",
+			tsconfigPath: join(cwd, "tsconfig.json"),
+			dtsDir,
+			aeInputDir,
+			entries: { index: "index", sub: "sub" },
+			exportPaths: { index: ".", sub: "./sub" },
+			outMetaDir: join(cwd, "dist", "prod", "npm", "meta"),
+			localPaths: [],
+			tsdoc: { suppressWarnings: [], tagDefinitions: [] },
+			onMessage: callerOnMessage,
+			ci: true,
+		}).then(
+			() => undefined,
+			(e: unknown) => e,
+		);
+		// The same failure fails the build, after both entries' Run B.
+		assert.strictEqual(raised, failure);
+		assert.strictEqual(mockRunApiExtractor.mock.calls.length, 4);
+		const calls = callerOnMessage.mock.calls.map((c) => c[0] as Record<string, unknown>);
+		assert.deepStrictEqual(
+			calls.map((m) => [m.level, m.file, "ciFatal" in m]),
+			[
+				["error", join(aeInputDir, "index.d.ts"), false],
+				["error", join(aeInputDir, "sub.d.ts"), false],
+			],
+		);
 	});
 
 	describe("self-reference paths and harvest-failure code (#771)", () => {

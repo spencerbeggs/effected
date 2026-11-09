@@ -17,7 +17,7 @@
 
 1. **`generatedAt` postdates your last source edit.** A turbo cache hit replays the previous run's log verbatim and restores `issues.json` with it, so neither a clean log nor the file's mtime (a restore refreshes it) proves a build ran. An older `generatedAt` means the build never saw the edit, or the edited file is not an input of the task; rebuild with `--force` to tell which.
 2. **`buildOk` is `true`.** A crash can leave every bucket empty, byte-shaped like a clean gate, so never read `errors.length` alone. A missing `buildOk`, or a missing file, means unknown: rebuild. `buildOk: false` is one of two cases, and they read differently:
-   - **API Extractor failed the build.** `failure.name` is `MetaGenerationError` and `errors` holds `ae-*` entries. The build ran; read `errors`, which name the symbols to fix. Under CI this is how a forgotten export fails, and the artifact currently lists only the error-level entries, with no `file` or `line`, and no warnings at all.
+   - **API Extractor failed the build.** `failure.name` is `MetaGenerationError` and `errors` holds `ae-*` entries. The build ran; read `errors`, which name the symbols to fix. Under CI this is how a forgotten export fails. The artifact still lists what a local build of the same tree lists, every warning and every location, with the CI-fatal entries in `errors` instead of `warnings` marked `ciFatal: true`.
    - **Anything else is a crash.** Fix what `failure.message` says and rebuild before reading any bucket; they are not evidence.
 3. **No `errors`, and no warning with `ciFatal: true`.** A local build reports `ae-forgotten-export` as a warning marked `ciFatal: true`. Under CI the same message is an error: API Extractor fails, the build ends with `buildOk: false` and `failure.name` `MetaGenerationError`, and the command exits 1. A `ciFatal` warning is a CI failure you can still fix before pushing, with its location and every other warning beside it.
 4. **The warnings, by code.** `ae-*` and `tsdoc-*` codes come from API Extractor; fix them per `authoring-tsdoc`, without adding a suppression. `exports-pattern-unmatched` and `exports-built-condition-unmatched` are config warnings ([outputs.md](outputs.md), [workspace-wiring.md](workspace-wiring.md)). A warning with no `code` comes from tsdown or rolldown; read its `text`.
@@ -36,7 +36,7 @@ jq '{ generatedAt, buildOk, failure,
 **A location is a hint; the symbol in `text` is the anchor**, for `ae-*` as much as `tsdoc-*`.
 
 - API Extractor's diagnostics come from a second run over per-module declarations, so `file` is the source file, but `line` and `column` can name a neighbouring declaration: an `ae-missing-release-tag` on one export can be reported at the line of the export above it.
-- A diagnostic found only in the bundled rollup carries no location, and under CI none does. Find it by the symbol quoted in its `text` (`The symbol "Foo" needs to be exported…`, `"noDocs" is part of the package's API…`).
+- A diagnostic found only in the bundled rollup carries no location, under CI and locally alike. Find it by the symbol quoted in its `text` (`The symbol "Foo" needs to be exported…`, `"noDocs" is part of the package's API…`).
 - A `tsdoc-*` position can land on the declaration after the offending comment. Search for the construct the code names (a wrapped code span, a bare `@`, a `{@link}` target).
 
 ## Trustworthy evidence
