@@ -1,6 +1,7 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { Effect, Schema } from "effect";
+import type { FileSystem, Path } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
+import * as Fs from "effect/FileSystem";
+import * as PathService from "effect/Path";
 import type { Plugin } from "rolldown";
 import type { BundlerPhase } from "./BundlerError.js";
 import { BundlerError } from "./BundlerError.js";
@@ -29,7 +30,8 @@ import type { OgImageGenerator } from "./meta/bundle-config.js";
 import { bundleMetaOptionsOf } from "./meta/bundle-config.js";
 import type { MetaOptions } from "./meta/config.js";
 import type { GenerateMetaOptions, MetaResult } from "./meta/generate.js";
-import { OgGenerateError, resolveOgGenerator } from "./meta/og-image.js";
+import type { OgGenerateError } from "./meta/og-image.js";
+import { resolveOgGenerator } from "./meta/og-image.js";
 import type { RunMetaPassOptions } from "./meta/run-pass.js";
 import type { BuildTargetGroupsOptions, CssOptions, EntryOverride } from "./passes/build-target-groups.js";
 import { buildTargetGroups as realBuildTargetGroups } from "./passes/build-target-groups.js";
@@ -156,14 +158,21 @@ function describeFailure(err: unknown): { name?: string; message: string } {
 	return { message: String(err) };
 }
 
-/** Read and parse package.json at cwd, returning an empty object on any error. */
-function readPackageJson(cwd: string): BundlerPackageJson {
-	try {
-		return JSON.parse(readFileSync(join(cwd, "package.json"), "utf-8")) as BundlerPackageJson;
-	} catch {
-		return {};
-	}
-}
+/** Read and parse a JSON file, answering `undefined` on any error. */
+const readJsonOrUndefined = (file: string): Effect.Effect<unknown, never, FileSystem.FileSystem> =>
+	Effect.flatMap(Fs.FileSystem, (fs) =>
+		fs.readFileString(file).pipe(
+			Effect.flatMap((text) => Effect.try(() => JSON.parse(text) as unknown)),
+			Effect.orElseSucceed(() => undefined),
+		),
+	);
+
+/** Read and parse package.json at cwd, answering an empty object on any error. */
+const readPackageJson = (
+	cwd: string,
+	path: Path.Path,
+): Effect.Effect<BundlerPackageJson, never, FileSystem.FileSystem> =>
+	Effect.map(readJsonOrUndefined(path.join(cwd, "package.json")), (pkg) => (pkg ?? {}) as BundlerPackageJson);
 
 /** Write the resolved tsconfig with the resolved JSX settings in `compilerOptions`. */
 function writeTsconfig(cwd: string, jsx: ResolvedJsxConfig | undefined): string {
@@ -269,7 +278,8 @@ function partitionOverrides(
 }
 
 /** Refuses a `copy` the build could not honour: no JS pass to run it, or a destination outside `pkg/`. */
-function validateCopy(config: PackageBuildConfig, hasJsEntries: boolean): void {
+function validateCopy(config: PackageBuildConfig, hasJsEntries: boolean, path: Path.Path): void {
+	const { isAbsolute, relative, resolve, sep } = path;
 	if (config.copy.length === 0) return;
 	if (!hasJsEntries && config.exe !== undefined) {
 		throw new ConfigValidationError({
@@ -290,14 +300,14 @@ function validateCopy(config: PackageBuildConfig, hasJsEntries: boolean): void {
 }
 
 /** The `exports` of a group's emitted manifest, or `undefined` when there is none to read. */
-function readEmittedExports(cwd: string, groupId: string): unknown {
-	try {
-		return (JSON.parse(readFileSync(join(cwd, "dist", "prod", groupId, "pkg", "package.json"), "utf-8")) as Json)
-			.exports;
-	} catch {
-		return undefined;
-	}
-}
+const readEmittedExports = (
+	cwd: string,
+	groupId: string,
+	path: Path.Path,
+): Effect.Effect<unknown, never, FileSystem.FileSystem> =>
+	Effect.map(readJsonOrUndefined(path.join(cwd, "dist", "prod", groupId, "pkg", "package.json")), (manifest) =>
+		typeof manifest === "object" && manifest !== null ? (manifest as Json & { exports?: unknown }).exports : undefined,
+	);
 
 /**
  * The optimistic next-version read for a package `set.name` renames: changesets key the release by the workspace
@@ -327,30 +337,32 @@ const defaultMetaFingerprint = JSON.stringify(Schema.decodeUnknownSync(MetaConfi
  * The generator the bundle table names, if any. A failure is named in `issues.json` the way the meta pass names a
  * renderer failure, since it never reaches that pass.
  */
-async function resolveConfiguredGenerator(
+function resolveConfiguredGenerator(
 	options: BundlerBuildOptions,
 	packageName: string,
 	groups: ReadonlyArray<BuildGroupSpec>,
 	collector: BuildCollector,
 	seams: Partial<BundlerSeams>,
-): Promise<OgImageGenerator | undefined> {
+): Effect.Effect<OgImageGenerator | undefined, OgGenerateError> {
 	const name = options.bundle?.openGraph?.generate;
-	if (name === undefined) return undefined;
-	try {
-		return await Effect.runPromise(
-			resolveOgGenerator(name, {
-				packageName,
-				...(seams.importOgPeer !== undefined ? { importModule: seams.importOgPeer } : {}),
+	if (name === undefined) return Effect.succeed(undefined);
+	return resolveOgGenerator(name, {
+		packageName,
+		...(seams.importOgPeer !== undefined ? { importModule: seams.importOgPeer } : {}),
+	}).pipe(
+		Effect.tapError((err) =>
+			Effect.sync(() => {
+				for (const g of groups) {
+					collector.recordError(g.id, {
+						source: "meta",
+						level: "error",
+						code: "og-generate-failed",
+						text: err.message,
+					});
+				}
 			}),
-		);
-	} catch (err) {
-		if (err instanceof OgGenerateError) {
-			for (const g of groups) {
-				collector.recordError(g.id, { source: "meta", level: "error", code: "og-generate-failed", text: err.message });
-			}
-		}
-		throw err;
-	}
+		),
+	);
 }
 
 /** The mutable facts the failure path reads: how far the build got, and whose build it is. */
@@ -360,69 +372,91 @@ interface BuildProgress {
 }
 
 /**
- * The orchestration, in plain async code over the ported modules. A thrown value reaches the Effect boundary in
- * {@link Bundler.build}; the issues artifact is written on the way out of either terminal path.
+ * The orchestration. Its own reads and writes go through `FileSystem` and `Path`; the passes it hands to tsdown,
+ * API Extractor and the SEA compiler stay promise-returning and are awaited through `Effect.promise`, so a rejection
+ * reaches {@link Bundler.build} as the thrown value itself. A ported module's synchronous throw is a defect for the
+ * same reason. The issues artifact is written on the way out of either terminal path.
  */
-async function runBuild(
+const runBuild = Effect.fnUntraced(function* (
 	options: BundlerBuildOptions,
 	collector: BuildCollector,
 	progress: BuildProgress,
-): Promise<{ readonly issuesPath: string; readonly targetsPath: string | undefined }> {
+): Effect.fn.Return<
+	{ readonly issuesPath: string; readonly targetsPath: string | undefined },
+	unknown,
+	FileSystem.FileSystem | Path.Path
+> {
 	const { cwd, config, noExe, verbose, seams = {} } = options;
+	const fs = yield* Fs.FileSystem;
+	const path = yield* PathService.Path;
+	const { join, resolve } = path;
 	let issuesPath = join(cwd, "dist", "prod", "issues.json");
 
 	// Persist the structured diagnostics on every terminal path: a failed build is exactly when an agent wants to
 	// read why. `buildOk` is stamped because a crashed build can leave every diagnostic bucket empty, which is
 	// otherwise byte-identical to a clean gate. A write failure must never compound or mask the build's outcome.
-	const writeIssuesBestEffort = (err?: unknown): void => {
-		try {
-			const written = (seams.writeIssues ?? writeIssuesArtifact)({
+	const writeIssuesBestEffort = (err?: unknown): Effect.Effect<void, never, FileSystem.FileSystem | Path.Path> => {
+		// Assembling the input runs inside the swallow too, as it did inside the old `try`.
+		const write: Effect.Effect<string | undefined, unknown, FileSystem.FileSystem | Path.Path> = Effect.suspend(() => {
+			const input = {
 				cwd,
-				target: "prod",
+				target: "prod" as const,
 				reports: collector.snapshot(progress.packageName),
 				buildOk: err === undefined,
 				...(err !== undefined ? { failure: describeFailure(err) } : {}),
-			});
-			if (written !== undefined) issuesPath = written;
-		} catch {
+			};
+			return seams.writeIssues !== undefined
+				? Effect.sync(() => seams.writeIssues?.(input))
+				: writeIssuesArtifact(input);
+		});
+		return write.pipe(
+			Effect.tap((written) =>
+				Effect.sync(() => {
+					if (written !== undefined) issuesPath = written;
+				}),
+			),
 			// intentionally swallowed — see above
-		}
+			Effect.catchCause(() => Effect.void),
+		);
 	};
 
-	try {
-		const sourcePkg = (seams.readPackageJson ?? readPackageJson)(cwd);
-		const version = sourcePkg.version ?? "0.0.0";
-		// The build reports under the workspace package's own name; everything it emits carries `set.name` when written.
-		const sourceName = sourcePkg.name ?? "unknown";
-		progress.packageName = sourceName;
-		validateManifestSet(config.manifest.set, config.manifest.drop);
-		const packageName = emittedPackageName(config.manifest.set, sourceName);
-		// The built-output link condition is checked here and removed before anything reads the exports: it is a
-		// workspace-only route, and a `./dist/prod/...` target would otherwise read as a build source.
-		const builtTargets = builtConditionTargets(sourcePkg.exports);
-		const pkg = stripBuiltCondition(sourcePkg);
+	const exit = yield* Effect.exit(
+		Effect.gen(function* () {
+			const sourcePkg =
+				seams.readPackageJson !== undefined ? seams.readPackageJson(cwd) : yield* readPackageJson(cwd, path);
+			const version = sourcePkg.version ?? "0.0.0";
+			// The build reports under the workspace package's own name; everything it emits carries `set.name` when written.
+			const sourceName = sourcePkg.name ?? "unknown";
+			progress.packageName = sourceName;
+			validateManifestSet(config.manifest.set, config.manifest.drop);
+			const packageName = emittedPackageName(config.manifest.set, sourceName);
+			// The built-output link condition is checked here and removed before anything reads the exports: it is a
+			// workspace-only route, and a `./dist/prod/...` target would otherwise read as a build source.
+			const builtTargets = builtConditionTargets(sourcePkg.exports);
+			const pkg = stripBuiltCondition(sourcePkg);
 
-		const jsx = resolveJsxConfig((seams.readTsconfigJsx ?? readTsconfigJsx)(cwd), config.jsx);
-		const tsconfigPath = (seams.writeTsconfig ?? writeTsconfig)(cwd, jsx);
-		const exportsMap = pkg.exports as Record<string, string> | undefined;
-		const publishTargets = readPublishTargets(pkg);
-		const osCpu = { os: (pkg.os as string[] | undefined) ?? [], cpu: (pkg.cpu as string[] | undefined) ?? [] };
-		// "auto" resolves here, against `ci`: left for the meta pass, it would read the process environment instead.
-		const meta: MetaOptions | undefined =
-			config.meta === false
-				? undefined
-				: {
-						localPaths: config.meta.localPaths,
-						optimistic: config.meta.optimistic === "auto" ? !options.ci : config.meta.optimistic,
-						tsdoc: config.meta.tsdoc,
-					};
-		const hasLooseFiles = Object.keys(config.looseFiles).length > 0;
+			const tsconfigJsx =
+				seams.readTsconfigJsx !== undefined ? seams.readTsconfigJsx(cwd) : yield* readTsconfigJsx(cwd);
+			const jsx = resolveJsxConfig(tsconfigJsx, config.jsx);
+			const tsconfigPath = (seams.writeTsconfig ?? writeTsconfig)(cwd, jsx);
+			const exportsMap = pkg.exports as Record<string, string> | undefined;
+			const publishTargets = readPublishTargets(pkg);
+			const osCpu = { os: (pkg.os as string[] | undefined) ?? [], cpu: (pkg.cpu as string[] | undefined) ?? [] };
+			// "auto" resolves here, against `ci`: left for the meta pass, it would read the process environment instead.
+			const meta: MetaOptions | undefined =
+				config.meta === false
+					? undefined
+					: {
+							localPaths: config.meta.localPaths,
+							optimistic: config.meta.optimistic === "auto" ? !options.ci : config.meta.optimistic,
+							tsdoc: config.meta.tsdoc,
+						};
+			const hasLooseFiles = Object.keys(config.looseFiles).length > 0;
 
-		// Fast-fail config validation, before any build work. An untouched meta table is not a request for a model:
-		// a bin-only package with no exports map still builds.
-		const metaIsExplicit = config.meta !== false && JSON.stringify(config.meta) !== defaultMetaFingerprint;
-		await Effect.runPromise(
-			Effect.flatMap(ConfigValidator, (v) =>
+			// Fast-fail config validation, before any build work. An untouched meta table is not a request for a model:
+			// a bin-only package with no exports map still builds.
+			const metaIsExplicit = config.meta !== false && JSON.stringify(config.meta) !== defaultMetaFingerprint;
+			yield* Effect.flatMap(ConfigValidator, (v) =>
 				v.validate({
 					baseName: packageName,
 					hasExports: exportsMap !== undefined && Object.keys(exportsMap).length > 0,
@@ -435,237 +469,255 @@ async function runBuild(
 						: {}),
 					...(hasLooseFiles ? { looseFiles: config.looseFiles } : {}),
 				}),
-			).pipe(Effect.provide(ConfigValidator.layer)),
-		);
+			).pipe(Effect.provide(ConfigValidator.layer));
 
-		// Resolve the SEA spec once. The emitted filename is computed, not read from disk, so `noExe` can program the
-		// same manifest without a build, and the exe entry source is excluded from the JS pass so a pure-binary
-		// package emits no dead JS.
-		const exeSpecs = config.exe !== undefined ? normalizeExeOptions(config.exe, osCpu) : [];
-		// A package's exports["."] resolves to exactly one SEA, so the manifest rewrite below reads the first spec and
-		// target. Reject anything else rather than program the manifest for only the first binary.
-		if (config.exe !== undefined && (exeSpecs.length !== 1 || (exeSpecs[0]?.targets.length ?? 0) !== 1)) {
-			throw new ConfigValidationError({
-				path: "exe",
-				reason: `exe build requires exactly one binary with one target (got ${exeSpecs.length} spec(s), ${exeSpecs[0]?.targets.length ?? 0} target(s) on the first). A package's exports["."] resolves to a single SEA — cross-platform binaries must each ship as their own per-platform package.`,
+			// Resolve the SEA spec once. The emitted filename is computed, not read from disk, so `noExe` can program the
+			// same manifest without a build, and the exe entry source is excluded from the JS pass so a pure-binary
+			// package emits no dead JS.
+			const exeSpecs = config.exe !== undefined ? normalizeExeOptions(config.exe, osCpu) : [];
+			// A package's exports["."] resolves to exactly one SEA, so the manifest rewrite below reads the first spec and
+			// target. Reject anything else rather than program the manifest for only the first binary.
+			if (config.exe !== undefined && (exeSpecs.length !== 1 || (exeSpecs[0]?.targets.length ?? 0) !== 1)) {
+				throw new ConfigValidationError({
+					path: "exe",
+					reason: `exe build requires exactly one binary with one target (got ${exeSpecs.length} spec(s), ${exeSpecs[0]?.targets.length ?? 0} target(s) on the first). A package's exports["."] resolves to a single SEA — cross-platform binaries must each ship as their own per-platform package.`,
+				});
+			}
+			const exeSpec = exeSpecs[0];
+			const exeTarget = exeSpec?.targets[0];
+			const exeFileName = exeSpec && exeTarget ? computeExeFileName(exeSpec.fileName, exeTarget) : undefined;
+			const exeEntrySource = exeSpec?.entry ?? "./src/bin.ts";
+			const exeRewrite =
+				config.exe !== undefined && exeFileName !== undefined
+					? { source: exeEntrySource, fileName: exeFileName, dir: "bin" }
+					: undefined;
+
+			const entries = packageJsonEntries({
+				pkg: { exports: pkg.exports, bin: pkg.bin },
+				...(config.exe !== undefined ? { excludeSources: [exeEntrySource] } : {}),
 			});
-		}
-		const exeSpec = exeSpecs[0];
-		const exeTarget = exeSpec?.targets[0];
-		const exeFileName = exeSpec && exeTarget ? computeExeFileName(exeSpec.fileName, exeTarget) : undefined;
-		const exeEntrySource = exeSpec?.entry ?? "./src/bin.ts";
-		const exeRewrite =
-			config.exe !== undefined && exeFileName !== undefined
-				? { source: exeEntrySource, fileName: exeFileName, dir: "bin" }
-				: undefined;
+			const hasJsEntries = Object.keys(entries).length > 0;
 
-		const entries = packageJsonEntries({
-			pkg: { exports: pkg.exports, bin: pkg.bin },
-			...(config.exe !== undefined ? { excludeSources: [exeEntrySource] } : {}),
-		});
-		const hasJsEntries = Object.keys(entries).length > 0;
+			// Ambient types-only .d.ts exports are validated here (mixed-export + collision) and copied by the build.
+			const ambient = extractAmbientDts({ exports: pkg.exports, bin: pkg.bin }, {});
+			assertNoEntryCollisions(Object.keys(entries), ambient);
+			// A condition-object export the manifest cannot point at built files is refused here, before any build work,
+			// not from inside the JS pass's manifest plugin.
+			assertBuildableConditionExports(pkg.exports, config.exe !== undefined ? { exeSource: exeEntrySource } : {});
+			// A types-only package has nothing for the JS pass to build, and tsdown would throw an opaque "No input files".
+			if (ambient.length > 0 && !hasJsEntries && config.exe === undefined) {
+				throw new ConfigValidationError({
+					path: "exports",
+					reason:
+						"a types-only package with only ambient .d.ts exports is not supported — add at least one JS entry (or an exe) alongside the ambient declarations",
+				});
+			}
 
-		// Ambient types-only .d.ts exports are validated here (mixed-export + collision) and copied by the build.
-		const ambient = extractAmbientDts({ exports: pkg.exports, bin: pkg.bin }, {});
-		assertNoEntryCollisions(Object.keys(entries), ambient);
-		// A condition-object export the manifest cannot point at built files is refused here, before any build work,
-		// not from inside the JS pass's manifest plugin.
-		assertBuildableConditionExports(pkg.exports, config.exe !== undefined ? { exeSource: exeEntrySource } : {});
-		// A types-only package has nothing for the JS pass to build, and tsdown would throw an opaque "No input files".
-		if (ambient.length > 0 && !hasJsEntries && config.exe === undefined) {
-			throw new ConfigValidationError({
-				path: "exports",
-				reason:
-					"a types-only package with only ambient .d.ts exports is not supported — add at least one JS entry (or an exe) alongside the ambient declarations",
-			});
-		}
+			validateCopy(config, hasJsEntries, path);
 
-		validateCopy(config, hasJsEntries);
-
-		const { partitions, baseEntries, dualExports, subdirExports } = partitionOverrides(
-			config,
-			entries,
-			exportsMap,
-			sourceName,
-		);
-		const looseFiles = hasLooseFiles ? normalizeLooseFiles(config.looseFiles) : undefined;
-
-		const { groups, resolution } = deriveProdGroups(publishTargets, packageName);
-		// Advisory only: a valid target set no final release reaches. Attributed to the first group.
-		const anchor = resolution.groups[0]?.id ?? "npm";
-		for (const text of releaseWarnings(resolution)) {
-			collector.recordWarning(anchor, { source: "config", level: "warn", code: "targets-no-final-release", text });
-		}
-
-		// A pure-binary (exe-only) package has no JS entries, and tsdown would throw "No input files". Its manifest is
-		// emitted standalone in the exe step below.
-		if (hasJsEntries || config.exe === undefined) {
-			progress.phase = "js";
-			await (seams.buildTargetGroups ?? realBuildTargetGroups)({
-				cwd,
-				version,
-				entry: baseEntries,
-				tsconfigPath,
-				groups,
-				devManifest: "preserve",
-				externals: config.externals,
-				// Always passed, the empty list included: the manifest's standard stripping runs only when it is set.
-				drop: config.manifest.drop,
-				...(Object.keys(config.manifest.set).length > 0 ? { set: config.manifest.set } : {}),
-				format: config.format,
-				emitDts: config.emitDts,
-				emitDeclarations: true,
-				collector,
-				verbose,
-				onPass: (pass) => {
-					progress.phase = pass === "dts" ? "dts" : "js";
-				},
-				...(config.bundledPackages.length > 0 ? { bundledPackages: config.bundledPackages } : {}),
-				...(config.dtsExternals.length > 0 ? { dtsExternals: config.dtsExternals } : {}),
-				...(config.bundleNodeModules ? { bundleNodeModules: true } : {}),
-				...(config.bundle.length > 0 ? { bundle: config.bundle } : {}),
-				...(config.minify ? { minify: true } : {}),
-				...(Object.keys(config.define).length > 0 ? { define: config.define } : {}),
-				...(partitions.length > 0 ? { overrides: partitions } : {}),
-				...(dualExports !== undefined ? { dualExports } : {}),
-				...(subdirExports.size > 0 ? { subdirExports } : {}),
-				...(looseFiles !== undefined ? { looseFiles } : {}),
-				...(config.copy.length > 0 ? { copy: config.copy } : {}),
-				...(options.plugins.length > 0 ? { extraPlugins: options.plugins } : {}),
-				...(exeRewrite !== undefined ? { exeRewrite } : {}),
-			});
-		}
-
-		// The target-to-group binding the release action reads.
-		progress.phase = "manifest";
-		const targetsPath = (seams.writeTargetsBinding ?? realWriteTargetsBinding)(cwd, resolution);
-
-		// The meta bundle, for every group. An exe-only package has no declarations for API Extractor to read, and
-		// `emitDts: false` skipped writing them.
-		if (meta !== undefined && config.emitDts && (config.exe === undefined || hasJsEntries)) {
-			progress.phase = "meta";
-			const generate = await resolveConfiguredGenerator(options, packageName, groups, collector, seams);
-			const bundleMeta = options.bundle !== undefined ? bundleMetaOptionsOf(options.bundle, generate) : undefined;
-			await (seams.runMetaPass ?? defaultRunMetaPass)({
-				cwd,
-				packageName,
-				tsconfigPath,
-				groups,
+			const { partitions, baseEntries, dualExports, subdirExports } = partitionOverrides(
+				config,
 				entries,
 				exportsMap,
-				overrides: config.overrides,
-				meta: { ...meta, ...(bundleMeta !== undefined ? { bundle: bundleMeta } : {}) },
-				collector,
-				ci: options.ci,
-				targets: resolution.targets,
-				...(seams.generateMeta !== undefined ? { generateMeta: seams.generateMeta } : {}),
-				...(packageName !== sourceName
-					? { resolveNextVersions: aliasNextVersions(seams.resolveNextVersions, sourceName, packageName) }
-					: seams.resolveNextVersions !== undefined
-						? { resolveNextVersions: seams.resolveNextVersions }
-						: {}),
-			});
-		}
+				sourceName,
+			);
+			const looseFiles = hasLooseFiles ? normalizeLooseFiles(config.looseFiles) : undefined;
 
-		// Strip declaration source maps from the published dirs. The meta pass reads them for original-source
-		// positions, so this runs after it, but they reference sources the tarball does not ship.
-		progress.phase = "dts";
-		for (const g of groups) removeDeclarationMaps(join(cwd, "dist", "prod", g.id, "pkg"));
+			const { groups, resolution } = deriveProdGroups(publishTargets, packageName);
+			// Advisory only: a valid target set no final release reaches. Attributed to the first group.
+			const anchor = resolution.groups[0]?.id ?? "npm";
+			for (const text of releaseWarnings(resolution)) {
+				collector.recordWarning(anchor, { source: "config", level: "warn", code: "targets-no-final-release", text });
+			}
 
-		// The SEA step: compile the binary into each group's pkg/bin. It runs after the library build so that build's
-		// clean cannot wipe the binary. An exe-only package ran no JS pass, so its manifest is emitted here.
-		if (exeSpec !== undefined && exeRewrite !== undefined && exeFileName !== undefined) {
-			for (const g of groups) {
-				const outDir = join(cwd, "dist", "prod", g.id, "pkg");
-				if (!hasJsEntries) {
-					progress.phase = "manifest";
-					const manifest = await buildEmittedManifest({
-						pkg,
+			// A pure-binary (exe-only) package has no JS entries, and tsdown would throw "No input files". Its manifest is
+			// emitted standalone in the exe step below.
+			if (hasJsEntries || config.exe === undefined) {
+				progress.phase = "js";
+				const buildGroups = seams.buildTargetGroups ?? realBuildTargetGroups;
+				yield* Effect.promise(() =>
+					buildGroups({
 						cwd,
-						targetGroup: { id: g.id, name: g.name, isProd: true },
+						version,
+						entry: baseEntries,
+						tsconfigPath,
+						groups,
 						devManifest: "preserve",
+						externals: config.externals,
+						// Always passed, the empty list included: the manifest's standard stripping runs only when it is set.
 						drop: config.manifest.drop,
-						set: config.manifest.set,
-						exeRewrite,
-					});
-					mkdirSync(outDir, { recursive: true });
-					writeFileSync(join(outDir, "package.json"), `${JSON.stringify(manifest, null, "\t")}\n`);
-					for (const file of ["LICENSE", "README.md"]) {
-						try {
-							copyFileSync(join(cwd, file), join(outDir, file));
-						} catch {
+						...(Object.keys(config.manifest.set).length > 0 ? { set: config.manifest.set } : {}),
+						format: config.format,
+						emitDts: config.emitDts,
+						emitDeclarations: true,
+						collector,
+						verbose,
+						onPass: (pass) => {
+							progress.phase = pass === "dts" ? "dts" : "js";
+						},
+						...(config.bundledPackages.length > 0 ? { bundledPackages: config.bundledPackages } : {}),
+						...(config.dtsExternals.length > 0 ? { dtsExternals: config.dtsExternals } : {}),
+						...(config.bundleNodeModules ? { bundleNodeModules: true } : {}),
+						...(config.bundle.length > 0 ? { bundle: config.bundle } : {}),
+						...(config.minify ? { minify: true } : {}),
+						...(Object.keys(config.define).length > 0 ? { define: config.define } : {}),
+						...(partitions.length > 0 ? { overrides: partitions } : {}),
+						...(dualExports !== undefined ? { dualExports } : {}),
+						...(subdirExports.size > 0 ? { subdirExports } : {}),
+						...(looseFiles !== undefined ? { looseFiles } : {}),
+						...(config.copy.length > 0 ? { copy: config.copy } : {}),
+						...(options.plugins.length > 0 ? { extraPlugins: options.plugins } : {}),
+						...(exeRewrite !== undefined ? { exeRewrite } : {}),
+					}),
+				);
+			}
+
+			// The target-to-group binding the release action reads.
+			progress.phase = "manifest";
+			const targetsPath =
+				seams.writeTargetsBinding !== undefined
+					? seams.writeTargetsBinding(cwd, resolution)
+					: yield* realWriteTargetsBinding(cwd, resolution);
+
+			// The meta bundle, for every group. An exe-only package has no declarations for API Extractor to read, and
+			// `emitDts: false` skipped writing them.
+			if (meta !== undefined && config.emitDts && (config.exe === undefined || hasJsEntries)) {
+				progress.phase = "meta";
+				const generate = yield* resolveConfiguredGenerator(options, packageName, groups, collector, seams);
+				const bundleMeta = options.bundle !== undefined ? bundleMetaOptionsOf(options.bundle, generate) : undefined;
+				const runMetaPass = seams.runMetaPass ?? defaultRunMetaPass;
+				yield* Effect.promise(() =>
+					runMetaPass({
+						cwd,
+						packageName,
+						tsconfigPath,
+						groups,
+						entries,
+						exportsMap,
+						overrides: config.overrides,
+						meta: { ...meta, ...(bundleMeta !== undefined ? { bundle: bundleMeta } : {}) },
+						collector,
+						ci: options.ci,
+						targets: resolution.targets,
+						...(seams.generateMeta !== undefined ? { generateMeta: seams.generateMeta } : {}),
+						...(packageName !== sourceName
+							? { resolveNextVersions: aliasNextVersions(seams.resolveNextVersions, sourceName, packageName) }
+							: seams.resolveNextVersions !== undefined
+								? { resolveNextVersions: seams.resolveNextVersions }
+								: {}),
+					}),
+				);
+			}
+
+			// Strip declaration source maps from the published dirs. The meta pass reads them for original-source
+			// positions, so this runs after it, but they reference sources the tarball does not ship.
+			progress.phase = "dts";
+			for (const g of groups) yield* removeDeclarationMaps(join(cwd, "dist", "prod", g.id, "pkg"));
+
+			// The SEA step: compile the binary into each group's pkg/bin. It runs after the library build so that build's
+			// clean cannot wipe the binary. An exe-only package ran no JS pass, so its manifest is emitted here.
+			if (exeSpec !== undefined && exeRewrite !== undefined && exeFileName !== undefined) {
+				for (const g of groups) {
+					const outDir = join(cwd, "dist", "prod", g.id, "pkg");
+					if (!hasJsEntries) {
+						progress.phase = "manifest";
+						const manifest = yield* Effect.promise(() =>
+							buildEmittedManifest({
+								pkg,
+								cwd,
+								targetGroup: { id: g.id, name: g.name, isProd: true },
+								devManifest: "preserve",
+								drop: config.manifest.drop,
+								set: config.manifest.set,
+								exeRewrite,
+							}),
+						);
+						yield* fs.makeDirectory(outDir, { recursive: true });
+						yield* fs.writeFileString(join(outDir, "package.json"), `${JSON.stringify(manifest, null, "\t")}\n`);
+						for (const file of ["LICENSE", "README.md"]) {
 							// optional file absent — skip
+							yield* fs.copyFile(join(cwd, file), join(outDir, file)).pipe(Effect.ignore);
+						}
+					}
+					if (!noExe) {
+						progress.phase = "exe";
+						const binDir = join(outDir, "bin");
+						const runExeBuild = seams.runExeBuild ?? defaultRunExeBuild;
+						yield* Effect.promise(() =>
+							runExeBuild({
+								cwd,
+								outDir: binDir,
+								specs: exeSpecs,
+								collector,
+								groupId: g.id,
+								verbose,
+							}),
+						);
+						// Drift guard: the manifest points at the computed name, so assert the compiler emitted it. An injected
+						// compile writes nothing, so it is skipped then.
+						if (
+							seams.runExeBuild === undefined &&
+							!(yield* fs.exists(join(binDir, exeFileName)).pipe(Effect.orElseSucceed(() => false)))
+						) {
+							throw new Error(
+								`exe: expected compiled binary at ${join(binDir, exeFileName)} but it is missing — tsdown's emitted name may have drifted from computeExeFileName`,
+							);
 						}
 					}
 				}
-				if (!noExe) {
-					progress.phase = "exe";
-					const binDir = join(outDir, "bin");
-					await (seams.runExeBuild ?? defaultRunExeBuild)({
-						cwd,
-						outDir: binDir,
-						specs: exeSpecs,
-						collector,
-						groupId: g.id,
-						verbose,
+			}
+
+			// An export or bin target that nothing in the package matches, a `*` pattern or a literal path, resolves to nothing
+			// for a consumer, and the build has no other reason to notice. The SEA's path is left out: `--no-exe` and an injected
+			// compile write no binary, and the drift guard above already asserts a real compile emitted it.
+			const exeExportPath = exeRewrite !== undefined ? `./${exeRewrite.dir}/${exeRewrite.fileName}` : undefined;
+			for (const g of groups) {
+				for (const { field, key, target } of yield* unmatchedExportPatterns(join(cwd, "dist", "prod", g.id, "pkg"), {
+					...(exeExportPath !== undefined ? { ignore: [exeExportPath] } : {}),
+				})) {
+					collector.recordWarning(g.id, {
+						source: "config",
+						level: "warn",
+						code: "exports-pattern-unmatched",
+						text:
+							field === "bin"
+								? `The bin "${key}" points at "${target}", which is not a file in the emitted package. Point it at a source the build emits, or ship the file from public/ or with [package.build] copy.`
+								: target.includes("*")
+									? `The exports pattern "${key}" points at "${target}", which matches no file in the emitted package. Ship the files from public/ or with [package.build] copy.`
+									: `The export "${key}" points at "${target}", which is not a file in the emitted package. Point it at a source the build emits, or ship the file from public/ or with [package.build] copy.`,
 					});
-					// Drift guard: the manifest points at the computed name, so assert the compiler emitted it. An injected
-					// compile writes nothing, so it is skipped then.
-					if (seams.runExeBuild === undefined && !existsSync(join(binDir, exeFileName))) {
-						throw new Error(
-							`exe: expected compiled binary at ${join(binDir, exeFileName)} but it is missing — tsdown's emitted name may have drifted from computeExeFileName`,
-						);
-					}
 				}
 			}
-		}
 
-		// An export or bin target that nothing in the package matches, a `*` pattern or a literal path, resolves to nothing
-		// for a consumer, and the build has no other reason to notice. The SEA's path is left out: `--no-exe` and an injected
-		// compile write no binary, and the drift guard above already asserts a real compile emitted it.
-		const exeExportPath = exeRewrite !== undefined ? `./${exeRewrite.dir}/${exeRewrite.fileName}` : undefined;
-		for (const g of groups) {
-			for (const { field, key, target } of unmatchedExportPatterns(join(cwd, "dist", "prod", g.id, "pkg"), {
-				...(exeExportPath !== undefined ? { ignore: [exeExportPath] } : {}),
-			})) {
-				collector.recordWarning(g.id, {
-					source: "config",
-					level: "warn",
-					code: "exports-pattern-unmatched",
-					text:
-						field === "bin"
-							? `The bin "${key}" points at "${target}", which is not a file in the emitted package. Point it at a source the build emits, or ship the file from public/ or with [package.build] copy.`
-							: target.includes("*")
-								? `The exports pattern "${key}" points at "${target}", which matches no file in the emitted package. Ship the files from public/ or with [package.build] copy.`
-								: `The export "${key}" points at "${target}", which is not a file in the emitted package. Point it at a source the build emits, or ship the file from public/ or with [package.build] copy.`,
-				});
+			// A built-condition target that names no file the build emitted for its export resolves to nothing for the
+			// plain-Node consumer it exists for.
+			if (builtTargets.length > 0) {
+				const emitted = yield* Effect.forEach(groups, (g) =>
+					Effect.map(readEmittedExports(cwd, g.id, path), (exports) => ({ groupId: g.id, exports })),
+				);
+				for (const { exportKey, target, expected } of mismatchedBuiltTargets(builtTargets, emitted)) {
+					collector.recordWarning(anchor, {
+						source: "config",
+						level: "warn",
+						code: "exports-built-condition-unmatched",
+						text:
+							expected !== undefined
+								? `The export "${exportKey}" names "${target}" under the effected-built condition, which is not the file the build emits for it. Write "${expected}".`
+								: `The export "${exportKey}" names "${target}" under the effected-built condition, but the build emits no JS file for that export.`,
+					});
+				}
 			}
-		}
 
-		// A built-condition target that names no file the build emitted for its export resolves to nothing for the
-		// plain-Node consumer it exists for.
-		if (builtTargets.length > 0) {
-			const emitted = groups.map((g) => ({ groupId: g.id, exports: readEmittedExports(cwd, g.id) }));
-			for (const { exportKey, target, expected } of mismatchedBuiltTargets(builtTargets, emitted)) {
-				collector.recordWarning(anchor, {
-					source: "config",
-					level: "warn",
-					code: "exports-built-condition-unmatched",
-					text:
-						expected !== undefined
-							? `The export "${exportKey}" names "${target}" under the effected-built condition, which is not the file the build emits for it. Write "${expected}".`
-							: `The export "${exportKey}" names "${target}" under the effected-built condition, but the build emits no JS file for that export.`,
-				});
-			}
-		}
-
-		writeIssuesBestEffort();
-		return { issuesPath, targetsPath };
-	} catch (err) {
-		writeIssuesBestEffort(err);
-		throw err;
+			return targetsPath;
+		}),
+	);
+	if (Exit.isSuccess(exit)) {
+		yield* writeIssuesBestEffort();
+		return { issuesPath, targetsPath: exit.value };
 	}
-}
+	yield* writeIssuesBestEffort(Cause.squash(exit.cause));
+	return yield* Effect.failCause(exit.cause);
+});
 
 /**
  * Builds one package: the JS and declaration passes for every publish group, the emitted manifest,
@@ -681,29 +733,39 @@ export class Bundler {
 	 * It writes nothing to stdout; rendering the report belongs to the caller. A structurally invalid config fails
 	 * {@link ConfigValidationError} before any build work, and anything thrown afterwards fails
 	 * {@link BundlerError} naming the phase. Both paths write `issues.json` stamped `buildOk: false` first.
+	 *
+	 * The build's own reads and writes (`package.json`, the package's tsconfig, `targets.json`, `issues.json`, the
+	 * emitted manifest's checks) go through the provided `FileSystem` and `Path`, while tsdown, API Extractor and the
+	 * SEA compiler always work on the host disk. Provide the host's (`NodeServices.layer`) for a real build. A memory
+	 * filesystem suits a build whose passes are all replaced through `seams`.
 	 */
 	static readonly build: (
 		options: BundlerBuildOptions,
-	) => Effect.Effect<BundlerBuildResult, BundlerError | ConfigValidationError> = Effect.fn("Bundler.build")(function* (
-		options: BundlerBuildOptions,
-	) {
-		const collector = new BuildCollector();
-		const progress: BuildProgress = { phase: "validate", packageName: "unknown" };
-		const snapshot = (): BuildReport =>
-			collector.snapshot(progress.packageName)[0] ??
-			BuildReport.make({ package: progress.packageName, targetGroups: [] });
-		const { issuesPath, targetsPath } = yield* Effect.tryPromise({
-			try: () => runBuild(options, collector, progress),
-			catch: (cause): BundlerError | ConfigValidationError =>
-				cause instanceof ConfigValidationError
-					? cause
-					: BundlerError.make({
-							phase: progress.phase,
-							message: causeMessage(cause) ?? String(cause),
-							cause,
-							report: snapshot(),
-						}),
+	) => Effect.Effect<BundlerBuildResult, BundlerError | ConfigValidationError, FileSystem.FileSystem | Path.Path> =
+		Effect.fn("Bundler.build")(function* (options: BundlerBuildOptions) {
+			const collector = new BuildCollector();
+			const progress: BuildProgress = { phase: "validate", packageName: "unknown" };
+			const snapshot = (): BuildReport =>
+				collector.snapshot(progress.packageName)[0] ??
+				BuildReport.make({ package: progress.packageName, targetGroups: [] });
+			const { issuesPath, targetsPath } = yield* runBuild(options, collector, progress).pipe(
+				// A typed failure and a thrown value alike end the build: the ported modules throw, the effectful ones fail.
+				Effect.catchCause((cause) => {
+					// An interrupt-only cause carries no failure, so it is re-raised as is.
+					if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause as Cause.Cause<never>);
+					const err = Cause.squash(cause);
+					return Effect.fail(
+						err instanceof ConfigValidationError
+							? err
+							: BundlerError.make({
+									phase: progress.phase,
+									message: causeMessage(err) ?? String(err),
+									cause: err,
+									report: snapshot(),
+								}),
+					);
+				}),
+			);
+			return BundlerBuildResult.make({ report: snapshot(), issuesPath, targetsPath });
 		});
-		return BundlerBuildResult.make({ report: snapshot(), issuesPath, targetsPath });
-	});
 }

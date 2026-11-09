@@ -2,7 +2,7 @@
 
 The kit's build pipeline as a library: `Bundler.build` takes a package directory and a decoded config and writes `dist/prod`: the JS and declaration passes over tsdown, the emitted manifest, `targets.json`, the API Extractor meta bundle with its `bundle.json`, an optional SEA binary, and `issues.json`.
 
-**Tier: integrated.** It imports tsdown, rolldown, `rolldown-plugin-dts`, `@microsoft/api-extractor` and `@tsdown/exe` at runtime, and peers `typescript`, as the tool's `cli`, `mcp` and `plugin` do. It is the only kit package that imports it. `satori` and `@resvg/resvg-js` are optional peers. The internals are ported plain async code over `node:fs`; only the public boundary is Effect with typed failures, a recorded debt.
+**Tier: integrated.** It imports tsdown, rolldown, `rolldown-plugin-dts`, `@microsoft/api-extractor` and `@tsdown/exe` at runtime, and peers `typescript`, as the tool's `cli`, `mcp` and `plugin` do. It is the only kit package that imports it. `satori` and `@resvg/resvg-js` are optional peers. The orchestrator's and the action builder's own IO go through core `FileSystem` and `Path` in `R`, so a real build needs the host's layers (`NodeServices.layer`): tsdown, rolldown, API Extractor and the SEA compiler always use the host disk. The tsdown and meta passes are still ported async code over `node:fs`, a recorded debt (`okf/modules/bundler.md`).
 
 **For the full design:** → `@./okf/modules/bundler.md`
 
@@ -47,7 +47,7 @@ An exe package's SEA compiles on any host, for its declared target: `@tsdown/exe
 
 ## Seams
 
-`BundlerBuildOptions.seams` replaces any of `buildTargetGroups`, `runMetaPass`, `generateMeta`, `resolveNextVersions`, `importOgPeer`, `runExeBuild`, `writeIssues`, `readPackageJson`, `writeTsconfig`, `writeTargetsBinding` and `readTsconfigJsx`. Each defaults to the real one. A seam skips what it replaces, so the exe drift guard needs `vi.mock` rather than `runExeBuild`.
+`BundlerBuildOptions.seams` replaces any of `buildTargetGroups`, `runMetaPass`, `generateMeta`, `resolveNextVersions`, `importOgPeer`, `runExeBuild`, `writeIssues`, `readPackageJson`, `writeTsconfig`, `writeTargetsBinding` and `readTsconfigJsx`. Each defaults to the real one, but the seams keep their promise and sync types while several defaults now return an Effect (`writeIssues`, `readPackageJson`, `writeTargetsBinding`, `readTsconfigJsx`), so a test cannot pass the real function as a seam. A seam skips what it replaces, so the exe drift guard needs `vi.mock` rather than `runExeBuild`.
 
 `runMetaPass` and `runExeBuild` load on first use. `runMetaPass` and `generateMeta` stay off the root as values, because a re-export would load API Extractor and its TypeScript on every import; `__test__/entrypoints.test.ts` pins that.
 

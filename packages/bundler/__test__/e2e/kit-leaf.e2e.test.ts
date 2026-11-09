@@ -53,6 +53,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, sep } from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
 import { Bundler } from "../../src/Bundler.js";
@@ -197,7 +198,9 @@ const buildCliKit = (cwd: string, extra: Record<string, unknown> = {}, ci = fals
 	});
 	return Effect.suspend(() => {
 		rmSync(join(cwd, "dist"), { recursive: true, force: true });
-		return Bundler.build({ cwd, config, bundle: undefined, noExe: true, verbose: false, plugins: [], ci });
+		return Bundler.build({ cwd, config, bundle: undefined, noExe: true, verbose: false, plugins: [], ci }).pipe(
+			Effect.provide(NodeServices.layer),
+		);
 	});
 };
 
@@ -303,7 +306,7 @@ describe.skipIf(!SPIKE_ENABLED)("cli-kit from source siblings", () => {
 					verbose: false,
 					plugins: [],
 					ci: false,
-				});
+				}).pipe(Effect.provide(NodeServices.layer));
 				yield* buildCliKit(cwd, { bundledPackages: ["@effected/env"] });
 				assert.isNotEmpty(inlinedSiblingTypes(readFileSync(join(pkgDir, "index.d.ts"), "utf-8"), siblingNames));
 				rmSync(join(envDir, "dist"), { recursive: true, force: true });

@@ -16,6 +16,7 @@
 * Updated pnpm-plugin-effected
 * Updated scratchpad
 * Updated workspace
+* Updated @effected/bundler
 
 ## 2026-11-08
 

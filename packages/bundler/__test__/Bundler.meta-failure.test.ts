@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, assert, describe, it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
 import { Bundler } from "../src/Bundler.js";
@@ -36,7 +37,8 @@ describe("a crash inside the meta pass", () => {
 							throw new Error("API Extractor blew up");
 						},
 					},
-				}),
+					// The host disk: the real meta pass reads it, and the real issues writer writes there.
+				}).pipe(Effect.provide(NodeServices.layer)),
 			);
 			assert.instanceOf(error, BundlerError);
 			assert.strictEqual(error.phase, "meta");

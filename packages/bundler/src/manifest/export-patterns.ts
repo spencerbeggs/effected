@@ -1,5 +1,5 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { isAbsolute, join, sep } from "node:path";
+import type { PlatformError } from "effect";
+import { Effect, FileSystem, Path } from "effect";
 
 const stripDotSlash = (path: string): string => (path.startsWith("./") ? path.slice(2) : path);
 
@@ -49,16 +49,28 @@ export interface UnmatchedExportPatternsOptions {
  *
  * @public
  */
-export function unmatchedExportPatterns(
+export const unmatchedExportPatterns: (
 	pkgDir: string,
-	options: UnmatchedExportPatternsOptions = {},
-): ReadonlyArray<UnmatchedExportPattern> {
-	let manifest: { exports?: unknown; bin?: unknown };
-	try {
-		manifest = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf-8")) as typeof manifest;
-	} catch {
-		return [];
-	}
+	options?: UnmatchedExportPatternsOptions,
+) => Effect.Effect<
+	ReadonlyArray<UnmatchedExportPattern>,
+	PlatformError.PlatformError,
+	FileSystem.FileSystem | Path.Path
+> = Effect.fnUntraced(function* (pkgDir, options = {}) {
+	const fs = yield* FileSystem.FileSystem;
+	const path = yield* Path.Path;
+	// A file is one whose stat says so; a missing entry or a dangling link answers false.
+	const isFile = (file: string) =>
+		fs.stat(file).pipe(
+			Effect.map((info) => info.type === "File"),
+			Effect.orElseSucceed(() => false),
+		);
+	const read = yield* fs.readFileString(path.join(pkgDir, "package.json")).pipe(
+		Effect.flatMap((text) => Effect.try(() => JSON.parse(text) as { exports?: unknown; bin?: unknown })),
+		Effect.option,
+	);
+	if (read._tag === "None") return [];
+	const manifest = read.value;
 	const ignore = new Set((options.ignore ?? []).map(stripDotSlash));
 	const exportsMap = manifest.exports;
 	// A bare-string `exports` is the root target; only relative targets name a file in the package.
@@ -83,18 +95,19 @@ export function unmatchedExportPatterns(
 				? Object.entries(bin).filter((entry): entry is [string, string] => typeof entry[1] === "string")
 				: [];
 	const binTargets = binEntries
-		.filter(([, target]) => !isAbsolute(target) && !target.startsWith("../"))
+		.filter(([, target]) => !path.isAbsolute(target) && !target.startsWith("../"))
 		.map(([key, target]) => ({ field: "bin" as const, key, target }));
 	const targets = [...exportTargets, ...binTargets].filter(({ target }) => !ignore.has(stripDotSlash(target)));
 	const literals = targets.filter(({ target }) => !target.includes("*"));
-	const missingLiterals = literals.filter(
-		({ target }) => statSync(join(pkgDir, target), { throwIfNoEntry: false })?.isFile() !== true,
+	const missingLiterals = yield* Effect.filter(literals, ({ target }) =>
+		Effect.map(isFile(path.join(pkgDir, target)), (file) => !file),
 	);
 	const patterns = targets.filter(({ target }) => target.includes("*"));
 	if (patterns.length === 0) return missingLiterals;
-	// Stat rather than the entry's own type, which says "symlink" for a linked file. A dangling link answers undefined.
-	const files = readdirSync(pkgDir, { recursive: true, encoding: "utf-8" })
-		.filter((path) => statSync(join(pkgDir, path), { throwIfNoEntry: false })?.isFile() === true)
-		.map((path) => path.split(sep).join("/"));
+	// Stat rather than the entry's own type, which says "symlink" for a linked file. A dangling link answers false.
+	const entries = yield* fs.readDirectory(pkgDir, { recursive: true });
+	const files = (yield* Effect.filter(entries, (entry) => isFile(path.join(pkgDir, entry)))).map((entry) =>
+		entry.split(path.sep).join("/"),
+	);
 	return [...missingLiterals, ...patterns.filter(({ target }) => !matchesAny(target, files))];
-}
+});

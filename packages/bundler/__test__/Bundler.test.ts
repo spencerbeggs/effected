@@ -1,8 +1,12 @@
 // Ported from savvy-web/systems packages/bundler/__test__/run*.test.ts on 2026-11-06, with seams in place of argv targets
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, assert, describe, it } from "@effect/vitest";
+import type { MemoryFileSystemHandle } from "@effected/memfs";
+import { MemoryFileSystem } from "@effected/memfs";
+import type { FileSystem, Layer, Path } from "effect";
 import { Effect, Schema } from "effect";
 import type { BundlerBuildOptions, BundlerPackageJson, BundlerSeams } from "../src/Bundler.js";
 import { Bundler } from "../src/Bundler.js";
@@ -17,6 +21,27 @@ import { buildTargetGroups } from "../src/passes/build-target-groups.js";
 import type { BuildReport } from "../src/report/schema.js";
 
 const decodeConfig = Schema.decodeUnknownSync(PackageBuildConfig);
+
+/**
+ * Runs a build over a filesystem: a fresh empty volume unless the case names one, so the orchestrator's own reads and
+ * writes never reach the host disk.
+ */
+const buildIn = (
+	options: BundlerBuildOptions,
+	layer: Layer.Layer<FileSystem.FileSystem | Path.Path> = MemoryFileSystem.makeSync().layer,
+) => Bundler.build(options).pipe(Effect.provide(layer));
+
+/**
+ * The host disk, for a case running the real `buildTargetGroups` or `buildEmittedManifest`: both still read and write
+ * real files, and the orchestrator must see what they wrote.
+ */
+const onDisk = NodeServices.layer;
+
+/** A volume and the package directory a case seeds in it. */
+const volume = (): { readonly handle: MemoryFileSystemHandle; readonly cwd: string } => ({
+	handle: MemoryFileSystem.makeSync(),
+	cwd: "/ws/pkg",
+});
 
 const tmpDirs: string[] = [];
 const makeTmp = (): string => {
@@ -102,7 +127,7 @@ describe("Bundler.build orchestration", () => {
 	it.effect("builds one npm group named after the package when no targets are declared", () =>
 		Effect.gen(function* () {
 			const h = harness({});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			assert.deepStrictEqual(firstBuild(h.builds).groups, [{ id: "npm", name: "base" }]);
 			assert.strictEqual(h.builds.length, 1);
 		}),
@@ -111,7 +136,7 @@ describe("Bundler.build orchestration", () => {
 	it.effect("reads the version for the __PACKAGE_VERSION__ define from package.json", () =>
 		Effect.gen(function* () {
 			const h = harness({});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			assert.strictEqual(firstBuild(h.builds).version, "1.2.3");
 		}),
 	);
@@ -119,7 +144,7 @@ describe("Bundler.build orchestration", () => {
 	it.effect("forwards the injected tsconfig path and always asks for the prod declarations tree", () =>
 		Effect.gen(function* () {
 			const h = harness({});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			assert.deepStrictEqual(h.tsconfigs, [{ cwd: "/abs/pkg", jsx: undefined }]);
 			const build = firstBuild(h.builds);
 			assert.strictEqual(build.tsconfigPath, "/fake/tsconfig.json");
@@ -144,7 +169,7 @@ describe("Bundler.build orchestration", () => {
 	it.effect("infers automatic jsx from tsconfig and writes it into the generated tsconfig", () =>
 		Effect.gen(function* () {
 			const h = harness({ seams: jsxSeams({ jsx: "react-jsx", jsxImportSource: "preact" }) });
-			yield* Bundler.build(realTsconfig(h));
+			yield* buildIn(realTsconfig(h));
 			const co = writtenCompilerOptions(firstBuild(h.builds));
 			assert.strictEqual(co.jsx, "react-jsx");
 			assert.strictEqual(co.jsxImportSource, "preact");
@@ -157,7 +182,7 @@ describe("Bundler.build orchestration", () => {
 				config: { jsx: { runtime: "classic" } },
 				seams: jsxSeams({ jsx: "react-jsx", jsxImportSource: "react" }),
 			});
-			yield* Bundler.build(realTsconfig(h));
+			yield* buildIn(realTsconfig(h));
 			const co = writtenCompilerOptions(firstBuild(h.builds));
 			assert.strictEqual(co.jsx, "react");
 			assert.isUndefined(co.jsxImportSource);
@@ -167,7 +192,7 @@ describe("Bundler.build orchestration", () => {
 	it.effect("writes no jsx into the tsconfig when neither tsconfig nor config request it", () =>
 		Effect.gen(function* () {
 			const h = harness({ seams: jsxSeams({}) });
-			yield* Bundler.build(realTsconfig(h));
+			yield* buildIn(realTsconfig(h));
 			assert.isUndefined(writtenCompilerOptions(firstBuild(h.builds)).jsx);
 		}),
 	);
@@ -187,7 +212,7 @@ describe("Bundler.build orchestration", () => {
 					define: { "process.env.FLAG": '"on"' },
 				},
 			});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			const build = firstBuild(h.builds);
 			assert.deepStrictEqual(build.format, ["esm", "cjs"]);
 			assert.deepStrictEqual(build.externals, ["typescript"]);
@@ -206,7 +231,7 @@ describe("Bundler.build orchestration", () => {
 			const h = harness({
 				config: { copy: ["../shared/schemas", { from: "assets/*.png", to: "img", flatten: false }] },
 			});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			const copy = firstBuild(h.builds).copy;
 			assert.strictEqual(copy?.[0], "../shared/schemas");
 			assert.deepInclude(copy?.[1], { from: "assets/*.png", to: "img", flatten: false });
@@ -217,7 +242,7 @@ describe("Bundler.build orchestration", () => {
 		Effect.gen(function* () {
 			for (const to of ["../outside", "/abs/elsewhere", "a/../../b"]) {
 				const h = harness({ config: { copy: [{ from: "x", to }] } });
-				const failure = yield* Effect.flip(Bundler.build(h.options));
+				const failure = yield* Effect.flip(buildIn(h.options));
 				assert.instanceOf(failure, ConfigValidationError);
 				assert.strictEqual(failure.path, "copy");
 				assert.isEmpty(h.builds);
@@ -231,7 +256,7 @@ describe("Bundler.build orchestration", () => {
 				config: { copy: ["x"], exe: { fileName: "tool", targets: [{ platform: "darwin", arch: "arm64" }] } },
 				pkg: { name: "tool", version: "1.0.0", exports: { ".": "./src/bin.ts" } },
 			});
-			const failure = yield* Effect.flip(Bundler.build(h.options));
+			const failure = yield* Effect.flip(buildIn(h.options));
 			assert.instanceOf(failure, ConfigValidationError);
 			assert.strictEqual(failure.path, "copy");
 		}),
@@ -239,18 +264,18 @@ describe("Bundler.build orchestration", () => {
 
 	it.effect("hands meta.localPaths to the meta pass, and validates them against the package", () =>
 		Effect.gen(function* () {
-			const cwd = makeTmp();
+			const { handle, cwd } = volume();
 			const h = harness({
 				config: { meta: { localPaths: ["../models/pkg"] } },
 				options: { cwd },
 			});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options, handle.layer);
 			assert.deepStrictEqual(h.metas[0]?.meta.localPaths, ["../models/pkg"]);
 
 			// A file in the way is found relative to the package, wherever the process is.
-			writeFileSync(join(cwd, "not-a-dir"), "");
+			handle.write(join(cwd, "not-a-dir"), "");
 			const blocked = harness({ config: { meta: { localPaths: ["not-a-dir"] } }, options: { cwd } });
-			const failure = yield* Effect.flip(Bundler.build(blocked.options));
+			const failure = yield* Effect.flip(buildIn(blocked.options, handle.layer));
 			assert.instanceOf(failure, ConfigValidationError);
 			assert.strictEqual(failure.path, "meta.localPaths");
 		}),
@@ -258,15 +283,11 @@ describe("Bundler.build orchestration", () => {
 
 	it.effect("warns, without failing, on an exports pattern matching nothing in the emitted package", () =>
 		Effect.gen(function* () {
-			const cwd = makeTmp();
+			const { handle, cwd } = volume();
 			const pkg = join(cwd, "dist", "prod", "npm", "pkg");
 			const emit = (exportsMap: unknown, files: ReadonlyArray<string> = []): void => {
-				mkdirSync(pkg, { recursive: true });
-				writeFileSync(join(pkg, "package.json"), JSON.stringify({ exports: exportsMap }));
-				for (const file of files) {
-					mkdirSync(join(pkg, file, ".."), { recursive: true });
-					writeFileSync(join(pkg, file), "{}");
-				}
+				handle.write(join(pkg, "package.json"), JSON.stringify({ exports: exportsMap }));
+				for (const file of files) handle.write(join(pkg, file), "{}");
 			};
 			const warningsOf = (h: ReturnType<typeof harness>) =>
 				h.issues[0]?.reports[0]?.targetGroups.flatMap((group) => group.warnings) ?? [];
@@ -280,7 +301,7 @@ describe("Bundler.build orchestration", () => {
 					},
 				},
 			});
-			const result = yield* Bundler.build(unmatched.options);
+			const result = yield* buildIn(unmatched.options, handle.layer);
 			assert.strictEqual(unmatched.issues[0]?.buildOk, true);
 			assert.isDefined(result);
 			const warning = warningsOf(unmatched)[0];
@@ -291,23 +312,23 @@ describe("Bundler.build orchestration", () => {
 
 			emit({ "./schemas/*.json": "./schemas/*.json" }, ["schemas/run.json"]);
 			const matched = harness({ options: { cwd } });
-			yield* Bundler.build(matched.options);
+			yield* buildIn(matched.options, handle.layer);
 			assert.deepStrictEqual(warningsOf(matched), []);
 
 			// A literal target that is not a file warns too (#1259).
-			rmSync(pkg, { recursive: true, force: true });
+			handle.remove(pkg);
 			emit({ "./foo": "./dist/foo.js" });
 			const literal = harness({ options: { cwd } });
-			yield* Bundler.build(literal.options);
+			yield* buildIn(literal.options, handle.layer);
 			const literalWarning = warningsOf(literal)[0];
 			assert.strictEqual(literalWarning?.code, "exports-pattern-unmatched");
 			assert.include(literalWarning?.text ?? "", "./dist/foo.js");
 			assert.include(literalWarning?.text ?? "", "is not a file");
 
 			// So does a bin target that is not a file.
-			writeFileSync(join(pkg, "package.json"), JSON.stringify({ bin: { tool: "bin/tool.js" } }));
+			handle.write(join(pkg, "package.json"), JSON.stringify({ bin: { tool: "bin/tool.js" } }));
 			const binTarget = harness({ options: { cwd } });
-			yield* Bundler.build(binTarget.options);
+			yield* buildIn(binTarget.options, handle.layer);
 			const binWarning = warningsOf(binTarget)[0];
 			assert.strictEqual(binWarning?.code, "exports-pattern-unmatched");
 			assert.include(binWarning?.text ?? "", 'The bin "tool" points at "bin/tool.js"');
@@ -317,7 +338,7 @@ describe("Bundler.build orchestration", () => {
 	it.effect("omits the settings a default config leaves empty, so the passes see them absent", () =>
 		Effect.gen(function* () {
 			const h = harness({});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			const build = firstBuild(h.builds);
 			for (const key of [
 				"bundle",
@@ -343,10 +364,10 @@ describe("Bundler.build orchestration", () => {
 	it.effect("always passes the manifest drop list, the empty one included, so stripping always runs", () =>
 		Effect.gen(function* () {
 			const empty = harness({});
-			yield* Bundler.build(empty.options);
+			yield* buildIn(empty.options);
 			assert.deepStrictEqual(firstBuild(empty.builds).drop, []);
 			const listed = harness({ config: { manifest: { drop: ["scripts"] } } });
-			yield* Bundler.build(listed.options);
+			yield* buildIn(listed.options);
 			assert.deepStrictEqual(firstBuild(listed.builds).drop, ["scripts"]);
 		}),
 	);
@@ -359,7 +380,7 @@ describe("Bundler.build orchestration", () => {
 					looseFiles: { "pnpmfile.mjs": "./src/pnpmfile.ts", "pnpmfile.cjs": "./src/pnpmfile.ts" },
 				},
 			});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			assert.deepStrictEqual(firstBuild(h.builds).looseFiles, [
 				{
 					outFile: "pnpmfile.mjs",
@@ -383,7 +404,7 @@ describe("Bundler.build orchestration", () => {
 		Effect.gen(function* () {
 			const plugin = { name: "virtual-module" };
 			const h = harness({ options: { plugins: [plugin] } });
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			assert.strictEqual(firstBuild(h.builds).extraPlugins?.[0], plugin);
 		}),
 	);
@@ -409,7 +430,7 @@ describe("Bundler.build overrides", () => {
 					],
 				},
 			});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			const build = firstBuild(h.builds);
 			assert.deepStrictEqual(build.entry, { commitlint: "./src/commitlint/index.ts" });
 			assert.strictEqual(build.overrides?.length, 1);
@@ -431,7 +452,7 @@ describe("Bundler.build overrides", () => {
 					overrides: [{ entries: ["./changesets/markdownlint"], format: ["esm", "cjs"], bundleNodeModules: true }],
 				},
 			});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			const build = firstBuild(h.builds);
 			assert.deepStrictEqual([...(build.dualExports as Set<string>)].sort(), [
 				".",
@@ -445,7 +466,7 @@ describe("Bundler.build overrides", () => {
 	it.effect("leaves dualExports unset for an empty override table, keeping the uniform cjs behaviour", () =>
 		Effect.gen(function* () {
 			const h = harness({ config: { format: ["esm", "cjs"], overrides: [] } });
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			assert.isFalse("dualExports" in firstBuild(h.builds));
 		}),
 	);
@@ -463,7 +484,7 @@ describe("Bundler.build overrides", () => {
 				pkg: runtimePkg,
 				config: { overrides: [{ entries: ["./runtime"], platform: "browser", css, externals: ["react", "@theme"] }] },
 			});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			const ov = firstBuild(h.builds).overrides?.[0];
 			assert.strictEqual(ov?.platform, "browser");
 			assert.deepStrictEqual(ov?.css, css);
@@ -477,7 +498,7 @@ describe("Bundler.build overrides", () => {
 				pkg: runtimePkg,
 				config: { overrides: [{ entries: ["./runtime"], outSubdir: "runtime", platform: "browser" }] },
 			});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			const build = firstBuild(h.builds);
 			assert.strictEqual(build.overrides?.[0]?.outSubdir, "runtime");
 			assert.deepStrictEqual(build.overrides?.[0]?.entry, { index: "./src/runtime/index.tsx" });
@@ -489,7 +510,7 @@ describe("Bundler.build overrides", () => {
 	const rejected = (overrides: ReadonlyArray<unknown>, pattern: RegExp) =>
 		Effect.gen(function* () {
 			const h = harness({ pkg: runtimePkg, config: { overrides } });
-			const error = yield* Effect.flip(Bundler.build(h.options));
+			const error = yield* Effect.flip(buildIn(h.options));
 			assert.instanceOf(error, ConfigValidationError);
 			assert.match(error.message, pattern);
 			assert.strictEqual(h.builds.length, 0);
@@ -510,7 +531,7 @@ describe("Bundler.build validation", () => {
 	const refused = (input: Parameters<typeof harness>[0], pattern: RegExp) =>
 		Effect.gen(function* () {
 			const h = harness(input);
-			const error = yield* Effect.flip(Bundler.build(h.options));
+			const error = yield* Effect.flip(buildIn(h.options));
 			assert.instanceOf(error, ConfigValidationError);
 			assert.match(error.message, pattern);
 			assert.strictEqual(h.builds.length, 0);
@@ -560,7 +581,7 @@ describe("Bundler.build validation", () => {
 	it.effect("does not treat a default meta table as a request for a model", () =>
 		Effect.gen(function* () {
 			const h = harness({ pkg: { name: "pkg", version: "1.0.0", bin: "./src/bin.ts" }, config: { meta: {} } });
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			assert.strictEqual(h.builds.length, 1);
 		}),
 	);
@@ -607,7 +628,7 @@ describe("Bundler.build validation", () => {
 					},
 				},
 			});
-			const error = yield* Effect.flip(Bundler.build(h.options));
+			const error = yield* Effect.flip(buildIn(h.options));
 			assert.instanceOf(error, BundlerError);
 			assert.strictEqual(error.phase, "validate");
 			assert.strictEqual(h.builds.length, 0);
@@ -638,7 +659,7 @@ describe("Bundler.build targets", () => {
 	it.effect("builds one group per resolved prod group and writes the binding once", () =>
 		Effect.gen(function* () {
 			const h = harness({ pkg: pkg({ npm: true, github: "@scope/base" }) });
-			const result = yield* Bundler.build(h.options);
+			const result = yield* buildIn(h.options);
 			const groups = firstBuild(h.builds).groups;
 			assert.deepStrictEqual(groups.map((g) => g.id).sort(), ["github", "npm"]);
 			assert.strictEqual(groups.find((g) => g.id === "github")?.name, "@scope/base");
@@ -650,7 +671,7 @@ describe("Bundler.build targets", () => {
 	it.effect("ignores the legacy array form of publishConfig.targets", () =>
 		Effect.gen(function* () {
 			const h = harness({ pkg: pkg(["npm", "github"]) });
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			assert.deepStrictEqual(firstBuild(h.builds).groups, [{ id: "npm", name: "base" }]);
 		}),
 	);
@@ -658,7 +679,7 @@ describe("Bundler.build targets", () => {
 	it.effect("records a config warning when every target is prerelease-only", () =>
 		Effect.gen(function* () {
 			const h = harness({ pkg: pkg({ npm: { releases: "prerelease" } }) });
-			const result = yield* Bundler.build(h.options);
+			const result = yield* buildIn(h.options);
 			const warning = result.report.targetGroups[0]?.warnings[0];
 			assert.strictEqual(warning?.source, "config");
 			assert.strictEqual(warning?.code, "targets-no-final-release");
@@ -670,21 +691,21 @@ describe("Bundler.build targets", () => {
 			const h = harness({
 				pkg: pkg({ npm: { releases: "stable" }, pnpr: { from: "npm", registry: "https://r.test" } }),
 			});
-			const result = yield* Bundler.build(h.options);
+			const result = yield* buildIn(h.options);
 			assert.isFalse(JSON.stringify(result.report).includes("targets-no-final-release"));
 		}),
 	);
 
 	it.effect("writes the real targets.json and issues.json under dist/prod", () =>
 		Effect.gen(function* () {
-			const cwd = makeTmp();
+			const { handle, cwd } = volume();
 			const h = harness({ options: { cwd } });
 			const { writeTargetsBinding: _b, writeIssues: _i, ...seams } = h.options.seams ?? {};
-			const result = yield* Bundler.build({ ...h.options, seams });
+			const result = yield* buildIn({ ...h.options, seams }, handle.layer);
 			assert.strictEqual(result.issuesPath, join(cwd, "dist", "prod", "issues.json"));
 			assert.strictEqual(result.targetsPath, join(cwd, "dist", "prod", "targets.json"));
-			assert.isTrue(existsSync(result.targetsPath as string));
-			const issues = JSON.parse(readFileSync(result.issuesPath, "utf-8")) as { buildOk: boolean; target: string };
+			assert.isTrue(handle.volume.has(result.targetsPath as string));
+			const issues = JSON.parse(handle.volume.text(result.issuesPath) ?? "") as { buildOk: boolean; target: string };
 			assert.strictEqual(issues.buildOk, true);
 			assert.strictEqual(issues.target, "prod");
 		}),
@@ -702,7 +723,7 @@ describe("Bundler.build reporting", () => {
 	it.effect("answers the collector's report on success", () =>
 		Effect.gen(function* () {
 			const h = harness({ seams: { buildTargetGroups: async (o) => recording(o) } });
-			const result = yield* Bundler.build(h.options);
+			const result = yield* buildIn(h.options);
 			assert.strictEqual(result.report.package, "base");
 			assert.strictEqual(result.report.targetGroups[0]?.passes[0]?.files[0]?.path, "index.js");
 		}),
@@ -711,7 +732,7 @@ describe("Bundler.build reporting", () => {
 	it.effect("writes issues once, stamped buildOk true, on success", () =>
 		Effect.gen(function* () {
 			const h = harness({});
-			const result = yield* Bundler.build(h.options);
+			const result = yield* buildIn(h.options);
 			assert.strictEqual(h.issues.length, 1);
 			assert.strictEqual(h.issues[0]?.target, "prod");
 			assert.strictEqual(h.issues[0]?.buildOk, true);
@@ -732,7 +753,7 @@ describe("Bundler.build reporting", () => {
 					},
 				},
 			});
-			const error = yield* Effect.flip(Bundler.build(h.options));
+			const error = yield* Effect.flip(buildIn(h.options));
 			assert.instanceOf(error, BundlerError);
 			assert.strictEqual(error.phase, "js");
 			assert.strictEqual(error.message, "boom");
@@ -756,7 +777,7 @@ describe("Bundler.build reporting", () => {
 					publishConfig: { targets: { a: { from: "nope", registry: "https://r" } } },
 				},
 			});
-			const error = yield* Effect.flip(Bundler.build(h.options));
+			const error = yield* Effect.flip(buildIn(h.options));
 			assert.strictEqual(error._tag, "ConfigValidationError");
 			assert.strictEqual(h.issues.length, 1);
 			assert.strictEqual(h.issues[0]?.buildOk, false);
@@ -774,7 +795,7 @@ describe("Bundler.build reporting", () => {
 					},
 				},
 			});
-			const error = yield* Effect.flip(Bundler.build(h.options));
+			const error = yield* Effect.flip(buildIn(h.options));
 			assert.instanceOf(error, BundlerError);
 			assert.strictEqual(error.phase, "validate");
 			assert.strictEqual(error.report.package, "base");
@@ -791,7 +812,7 @@ describe("Bundler.build reporting", () => {
 					},
 				},
 			});
-			const result = yield* Bundler.build(h.options);
+			const result = yield* buildIn(h.options);
 			assert.strictEqual(result.issuesPath, "/abs/pkg/dist/prod/issues.json");
 		}),
 	);
@@ -808,7 +829,7 @@ describe("Bundler.build reporting", () => {
 					},
 				},
 			});
-			const error = yield* Effect.flip(Bundler.build(h.options));
+			const error = yield* Effect.flip(buildIn(h.options));
 			assert.instanceOf(error, BundlerError);
 			assert.strictEqual(error.message, "boom");
 		}),
@@ -823,7 +844,7 @@ describe("Bundler.build reporting", () => {
 					},
 				},
 			});
-			const error = yield* Effect.flip(Bundler.build(h.options));
+			const error = yield* Effect.flip(buildIn(h.options));
 			assert.instanceOf(error, BundlerError);
 			assert.strictEqual(error.message, "a string");
 			assert.deepStrictEqual(h.issues[0]?.failure, { message: "a string" });
@@ -846,7 +867,7 @@ describe("Bundler.build failure phases", () => {
 	it.effect("names the js pass", () =>
 		Effect.gen(function* () {
 			const h = harness({ seams: failingPass((c) => c.dts === false), options: { cwd: makeTmp() } });
-			const error = yield* Effect.flip(Bundler.build(h.options));
+			const error = yield* Effect.flip(buildIn(h.options, onDisk));
 			assert.instanceOf(error, BundlerError);
 			assert.strictEqual(error.phase, "js");
 		}),
@@ -855,7 +876,7 @@ describe("Bundler.build failure phases", () => {
 	it.effect("names the dts pass", () =>
 		Effect.gen(function* () {
 			const h = harness({ seams: failingPass((c) => c.dts !== false), options: { cwd: makeTmp() } });
-			const error = yield* Effect.flip(Bundler.build(h.options));
+			const error = yield* Effect.flip(buildIn(h.options, onDisk));
 			assert.instanceOf(error, BundlerError);
 			assert.strictEqual(error.phase, "dts");
 		}),
@@ -870,7 +891,7 @@ describe("Bundler.build failure phases", () => {
 					},
 				},
 			});
-			const error = yield* Effect.flip(Bundler.build(h.options));
+			const error = yield* Effect.flip(buildIn(h.options));
 			assert.instanceOf(error, BundlerError);
 			assert.strictEqual(error.phase, "manifest");
 		}),
@@ -882,7 +903,7 @@ describe("Bundler.build meta pass", () => {
 		Effect.gen(function* () {
 			const bundle = undefined;
 			const h = harness({ config: { meta: {} }, options: { ci: true, bundle } });
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			assert.strictEqual(h.metas.length, 1);
 			const meta = h.metas[0] as RunMetaPassOptions;
 			assert.strictEqual(meta.ci, true);
@@ -901,7 +922,7 @@ describe("Bundler.build meta pass", () => {
 	it.effect("runs for a config that never mentions meta", () =>
 		Effect.gen(function* () {
 			const h = harness({ options: { config: decodeConfig({}) } });
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			assert.strictEqual(h.metas.length, 1);
 		}),
 	);
@@ -930,7 +951,7 @@ describe("Bundler.build meta pass", () => {
 					},
 				},
 			});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			assert.strictEqual(bindingsAtMeta, 1);
 		}),
 	);
@@ -940,11 +961,11 @@ describe("Bundler.build meta pass", () => {
 			const generateMeta = async () => ({ apiJsonPath: "x", apiJsonFilename: "x" });
 			const resolveNextVersions = async () => ({ versions: new Map<string, string>() });
 			const set = harness({ config: { meta: {} }, seams: { generateMeta, resolveNextVersions } });
-			yield* Bundler.build(set.options);
+			yield* buildIn(set.options);
 			assert.strictEqual(set.metas[0]?.generateMeta, generateMeta);
 			assert.strictEqual(set.metas[0]?.resolveNextVersions, resolveNextVersions);
 			const unset = harness({ config: { meta: {} } });
-			yield* Bundler.build(unset.options);
+			yield* buildIn(unset.options);
 			assert.isFalse("generateMeta" in (unset.metas[0] as object));
 			assert.isFalse("resolveNextVersions" in (unset.metas[0] as object));
 		}),
@@ -953,17 +974,17 @@ describe("Bundler.build meta pass", () => {
 	it.effect("skips it for meta false, for emitDts false, and for an exe-only package", () =>
 		Effect.gen(function* () {
 			const off = harness({ config: { meta: false } });
-			yield* Bundler.build(off.options);
+			yield* buildIn(off.options);
 			assert.strictEqual(off.metas.length, 0);
 			const noDts = harness({ config: { meta: {}, emitDts: false } });
-			yield* Bundler.build(noDts.options);
+			yield* buildIn(noDts.options);
 			assert.strictEqual(noDts.metas.length, 0);
 			const exeOnly = harness({
 				pkg: { name: "t", version: "1.0.0", exports: { ".": "./src/bin.ts" }, os: ["darwin"], cpu: ["arm64"] },
 				config: { meta: {}, exe: { fileName: "t" } },
 				options: { cwd: makeTmp(), noExe: true },
 			});
-			yield* Bundler.build(exeOnly.options);
+			yield* buildIn(exeOnly.options);
 			assert.strictEqual(exeOnly.metas.length, 0);
 		}),
 	);
@@ -978,7 +999,7 @@ describe("Bundler.build meta pass", () => {
 					},
 				},
 			});
-			const error = yield* Effect.flip(Bundler.build(h.options));
+			const error = yield* Effect.flip(buildIn(h.options));
 			assert.instanceOf(error, BundlerError);
 			assert.strictEqual(error.phase, "meta");
 			assert.strictEqual(h.issues[0]?.buildOk, false);
@@ -990,7 +1011,7 @@ describe("Bundler.build meta pass", () => {
 		Effect.gen(function* () {
 			const bundle = Schema.decodeUnknownSync(BundleConfig)({ tagline: "Every shape", registries: false });
 			const h = harness({ config: { meta: {} }, options: { bundle } });
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			assert.deepStrictEqual(h.metas[0]?.meta.bundle, { tagline: "Every shape", registries: false });
 		}),
 	);
@@ -1026,7 +1047,7 @@ describe("Bundler.build meta pass", () => {
 	it.effect("reaches the real pass by default, and calls generateMeta once for a config that never mentions meta", () =>
 		Effect.gen(function* () {
 			const run = overRealPass({ options: { config: decodeConfig({}) } });
-			yield* Bundler.build(run.options);
+			yield* buildIn(run.options);
 			assert.strictEqual(run.generated.length, 1);
 			assert.strictEqual(run.generated[0]?.dtsDir, "/abs/pkg/dist/prod/npm/pkg");
 			assert.strictEqual(run.generated[0]?.aeInputDir, "/abs/pkg/dist/prod/npm/declarations");
@@ -1036,7 +1057,7 @@ describe("Bundler.build meta pass", () => {
 	it.effect("runs generateMeta once per prod group", () =>
 		Effect.gen(function* () {
 			const run = overRealPass({ pkg: targeted({ npm: true, github: "@scope/base-gh" }), config: { meta: {} } });
-			yield* Bundler.build(run.options);
+			yield* buildIn(run.options);
 			assert.deepStrictEqual(run.generated.map((g) => g.outMetaDir).sort(), [
 				"/abs/pkg/dist/prod/github/meta",
 				"/abs/pkg/dist/prod/npm/meta",
@@ -1047,7 +1068,7 @@ describe("Bundler.build meta pass", () => {
 	it.effect("builds the meta of a group not named after the package", () =>
 		Effect.gen(function* () {
 			const run = overRealPass({ pkg: targeted({ github: "@scope/x" }), config: { meta: {} } });
-			yield* Bundler.build(run.options);
+			yield* buildIn(run.options);
 			assert.strictEqual(run.generated.length, 1);
 			assert.include(run.generated[0]?.dtsDir ?? "", "github");
 		}),
@@ -1056,7 +1077,7 @@ describe("Bundler.build meta pass", () => {
 	it.effect("rewrites versions when optimistic is on", () =>
 		Effect.gen(function* () {
 			const run = overRealPass({ config: { meta: { optimistic: true } }, options: { ci: true } });
-			yield* Bundler.build(run.options);
+			yield* buildIn(run.options);
 			assert.deepStrictEqual(run.nextVersionReads, ["/abs/pkg"]);
 			assert.strictEqual(run.generated[0]?.manifestTransform?.({ name: "base", version: "0.0.0" }).version, "1.0.0");
 		}),
@@ -1065,7 +1086,7 @@ describe("Bundler.build meta pass", () => {
 	it.effect("does not read next versions when optimistic is off", () =>
 		Effect.gen(function* () {
 			const run = overRealPass({ config: { meta: { optimistic: false } }, options: { ci: false } });
-			yield* Bundler.build(run.options);
+			yield* buildIn(run.options);
 			assert.deepStrictEqual(run.nextVersionReads, []);
 			assert.isUndefined(run.generated[0]?.manifestTransform);
 		}),
@@ -1082,12 +1103,12 @@ describe("Bundler.build meta pass", () => {
 					Effect.gen(function* () {
 						process.env.CI = "true";
 						const local = overRealPass({ config: { meta: {} }, options: { ci: false } });
-						yield* Bundler.build(local.options);
+						yield* buildIn(local.options);
 						assert.deepStrictEqual(local.nextVersionReads, ["/abs/pkg"]);
 						delete process.env.CI;
 						delete process.env.GITHUB_ACTIONS;
 						const ci = overRealPass({ config: { meta: {} }, options: { ci: true } });
-						yield* Bundler.build(ci.options);
+						yield* buildIn(ci.options);
 						assert.deepStrictEqual(ci.nextVersionReads, []);
 					}),
 				() =>
@@ -1104,7 +1125,7 @@ describe("Bundler.build meta pass", () => {
 	it.effect("forwards ci to the API Extractor run", () =>
 		Effect.gen(function* () {
 			const run = overRealPass({ config: { meta: {} }, options: { ci: true } });
-			yield* Bundler.build(run.options);
+			yield* buildIn(run.options);
 			assert.strictEqual(run.generated[0]?.ci, true);
 		}),
 	);
@@ -1113,7 +1134,7 @@ describe("Bundler.build meta pass", () => {
 		Effect.gen(function* () {
 			const bundle = Schema.decodeUnknownSync(BundleConfig)({ openGraph: { generate: "satori" } });
 			const h = harness({ config: { meta: {} }, options: { bundle }, seams: { importOgPeer: async () => ({}) } });
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			assert.isFunction(h.metas[0]?.meta.bundle?.openGraph?.generate);
 		}),
 	);
@@ -1132,7 +1153,7 @@ describe("Bundler.build meta pass", () => {
 					},
 				},
 			});
-			const error = yield* Effect.flip(Bundler.build(h.options));
+			const error = yield* Effect.flip(buildIn(h.options));
 			assert.instanceOf(error, BundlerError);
 			assert.strictEqual(error.phase, "meta");
 			assert.match(error.message, /satori and @resvg\/resvg-js/);
@@ -1155,31 +1176,29 @@ describe("Bundler.build meta pass", () => {
 					},
 				},
 			});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			assert.deepStrictEqual(imported, []);
 		}),
 	);
 
 	it.effect("strips declaration maps from the published dirs after the meta pass read them", () =>
 		Effect.gen(function* () {
-			const cwd = makeTmp();
-			const pkgDir = join(cwd, "dist", "prod", "npm", "pkg");
-			mkdirSync(pkgDir, { recursive: true });
-			const map = join(pkgDir, "index.d.ts.map");
-			writeFileSync(map, "{}");
+			const { handle, cwd } = volume();
+			const map = join(cwd, "dist", "prod", "npm", "pkg", "index.d.ts.map");
+			handle.write(map, "{}");
 			let presentDuringMeta = false;
 			const h = harness({
 				config: { meta: {} },
 				options: { cwd },
 				seams: {
 					runMetaPass: async () => {
-						presentDuringMeta = existsSync(map);
+						presentDuringMeta = handle.volume.has(map);
 					},
 				},
 			});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options, handle.layer);
 			assert.isTrue(presentDuringMeta);
-			assert.isFalse(existsSync(map));
+			assert.isFalse(handle.volume.has(map));
 		}),
 	);
 });
@@ -1195,20 +1214,20 @@ describe("Bundler.build exe", () => {
 		devDependencies: { typescript: "7.0.0" },
 		scripts: { build: "x" },
 	});
-	const readManifest = (cwd: string): Record<string, unknown> =>
-		JSON.parse(readFileSync(join(cwd, "dist", "prod", "npm", "pkg", "package.json"), "utf-8"));
+	const readManifest = (handle: MemoryFileSystemHandle, cwd: string): Record<string, unknown> =>
+		JSON.parse(handle.volume.text(join(cwd, "dist", "prod", "npm", "pkg", "package.json")) ?? "");
 
 	it.effect("programs the manifest of an exe-only package and compiles into pkg/bin", () =>
 		Effect.gen(function* () {
-			const cwd = makeTmp();
+			const { handle, cwd } = volume();
 			const h = harness({ pkg: exePkg(), config: { exe: { fileName: "p" } }, options: { cwd } });
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options, handle.layer);
 			assert.strictEqual(h.builds.length, 0);
 			assert.strictEqual(h.exes.length, 1);
 			assert.strictEqual(h.exes[0]?.outDir, join(cwd, "dist", "prod", "npm", "pkg", "bin"));
 			assert.strictEqual(h.exes[0]?.groupId, "npm");
 			assert.strictEqual(h.exes[0]?.specs[0]?.targets[0]?.platform, "darwin");
-			const manifest = readManifest(cwd);
+			const manifest = readManifest(handle, cwd);
 			assert.strictEqual((manifest.exports as Record<string, unknown>)["."], "./bin/p-darwin-arm64");
 			assert.deepStrictEqual(manifest.files, ["bin/p-darwin-arm64"]);
 		}),
@@ -1216,16 +1235,16 @@ describe("Bundler.build exe", () => {
 
 	it.effect("skips the compile with noExe but still programs the manifest", () =>
 		Effect.gen(function* () {
-			const cwd = makeTmp();
+			const { handle, cwd } = volume();
 			const h = harness({ pkg: exePkg(), config: { exe: { fileName: "p" } }, options: { cwd, noExe: true } });
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options, handle.layer);
 			assert.strictEqual(h.exes.length, 0);
 			// The binary the build skipped is not reported as an export target with nothing behind it.
 			assert.deepStrictEqual(
 				h.issues[0]?.reports[0]?.targetGroups.flatMap((group) => group.warnings.map((w) => w.code)),
 				[],
 			);
-			const manifest = readManifest(cwd);
+			const manifest = readManifest(handle, cwd);
 			assert.strictEqual((manifest.exports as Record<string, unknown>)["."], "./bin/p-darwin-arm64");
 			assert.deepStrictEqual(manifest.files, ["bin/p-darwin-arm64"]);
 		}),
@@ -1233,10 +1252,10 @@ describe("Bundler.build exe", () => {
 
 	it.effect("strips the standalone manifest as the JS pass would, always", () =>
 		Effect.gen(function* () {
-			const cwd = makeTmp();
+			const { handle, cwd } = volume();
 			const h = harness({ pkg: exePkg(), config: { exe: { fileName: "p" } }, options: { cwd, noExe: true } });
-			yield* Bundler.build(h.options);
-			const manifest = readManifest(cwd);
+			yield* buildIn(h.options, handle.layer);
+			const manifest = readManifest(handle, cwd);
 			assert.isFalse("devDependencies" in manifest);
 			assert.isFalse("scripts" in manifest);
 			assert.strictEqual(manifest.name, "p");
@@ -1250,7 +1269,7 @@ describe("Bundler.build exe", () => {
 				config: { exe: { fileName: "p" } },
 				options: { noExe: true },
 			});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			const build = firstBuild(h.builds);
 			assert.deepStrictEqual(build.entry, { index: "./src/index.ts" });
 			assert.deepStrictEqual(build.exeRewrite, { source: "./src/bin.ts", fileName: "p-darwin-arm64", dir: "bin" });
@@ -1293,7 +1312,7 @@ describe("Bundler.build resolves from options.cwd, never the process directory",
 			const { cwd, pkg } = makeWorkspace();
 			assert.notStrictEqual(process.cwd(), cwd);
 			const h = harness({ pkg, config: { exe: { fileName: "subject" } }, options: { cwd, noExe: true } });
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options, onDisk);
 			const manifest = JSON.parse(readFileSync(join(cwd, "dist", "prod", "npm", "pkg", "package.json"), "utf-8"));
 			assert.deepStrictEqual(manifest.dependencies, resolved);
 		}),
@@ -1324,7 +1343,7 @@ describe("Bundler.build resolves from options.cwd, never the process directory",
 						}),
 				},
 			});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options, onDisk);
 			assert.deepStrictEqual(emitted[0]?.dependencies, resolved);
 		}),
 	);
@@ -1342,7 +1361,7 @@ describe("Bundler.build manifest set and the built condition", () => {
 					publishConfig: { targets: { npm: true, mirror: { registry: "https://r", name: "@other/versioned" } } },
 				},
 			});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			const build = firstBuild(h.builds);
 			assert.deepStrictEqual(build.groups, [
 				{ id: "npm", name: "@modules/versioned" },
@@ -1362,7 +1381,7 @@ describe("Bundler.build manifest set and the built condition", () => {
 					resolveNextVersions: async () => ({ versions: new Map([["@modules/versioned-v1", "1.1.0"]]) }),
 				},
 			});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			const resolve = h.metas[0]?.resolveNextVersions;
 			if (resolve === undefined) return assert.fail("the meta pass got no next-version read");
 			const { versions } = yield* Effect.promise(() => resolve("/abs/pkg"));
@@ -1374,7 +1393,7 @@ describe("Bundler.build manifest set and the built condition", () => {
 	it.effect("passes no set when none is written, so the manifest takes the default path", () =>
 		Effect.gen(function* () {
 			const h = harness({});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			assert.isUndefined(firstBuild(h.builds).set);
 		}),
 	);
@@ -1382,7 +1401,7 @@ describe("Bundler.build manifest set and the built condition", () => {
 	it.effect("refuses set.version before any pass", () =>
 		Effect.gen(function* () {
 			const h = harness({ config: { manifest: { set: { version: "9.9.9" } } } });
-			const error = yield* Effect.flip(Bundler.build(h.options));
+			const error = yield* Effect.flip(buildIn(h.options));
 			assert.instanceOf(error, ConfigValidationError);
 			assert.strictEqual((error as ConfigValidationError).path, "manifest.set.version");
 			assert.strictEqual(h.builds.length, 0);
@@ -1398,7 +1417,7 @@ describe("Bundler.build manifest set and the built condition", () => {
 					exports: { ".": { "effected-built": "./dist/prod/npm/pkg/index.js", default: "./src/index.ts" } },
 				},
 			});
-			yield* Bundler.build(h.options);
+			yield* buildIn(h.options);
 			assert.deepStrictEqual(firstBuild(h.builds).entry, { index: "./src/index.ts" });
 
 			const misplaced = harness({
@@ -1408,7 +1427,7 @@ describe("Bundler.build manifest set and the built condition", () => {
 					exports: { ".": { default: "./src/index.ts", "effected-built": "./dist/prod/npm/pkg/index.js" } },
 				},
 			});
-			const error = yield* Effect.flip(Bundler.build(misplaced.options));
+			const error = yield* Effect.flip(buildIn(misplaced.options));
 			assert.instanceOf(error, ConfigValidationError);
 			assert.strictEqual((error as ConfigValidationError).path, 'exports.".".effected-built');
 			assert.strictEqual(misplaced.builds.length, 0);
@@ -1417,11 +1436,10 @@ describe("Bundler.build manifest set and the built condition", () => {
 
 	it.effect("warns when a built-condition target is not the file the build emitted for its export", () =>
 		Effect.gen(function* () {
-			const cwd = makeTmp();
+			const { handle, cwd } = volume();
 			const pkgDir = join(cwd, "dist", "prod", "npm", "pkg");
-			mkdirSync(pkgDir, { recursive: true });
-			writeFileSync(join(pkgDir, "index.js"), "");
-			writeFileSync(join(pkgDir, "package.json"), JSON.stringify({ exports: { ".": { import: "./index.js" } } }));
+			handle.write(join(pkgDir, "index.js"), "");
+			handle.write(join(pkgDir, "package.json"), JSON.stringify({ exports: { ".": { import: "./index.js" } } }));
 			const warningsOf = (h: ReturnType<typeof harness>) =>
 				h.issues[0]?.reports[0]?.targetGroups.flatMap((group) => group.warnings) ?? [];
 			const withTarget = (target: string) =>
@@ -1440,11 +1458,11 @@ describe("Bundler.build manifest set and the built condition", () => {
 				});
 
 			const matched = withTarget("./dist/prod/npm/pkg/index.js");
-			yield* Bundler.build(matched.options);
+			yield* buildIn(matched.options, handle.layer);
 			assert.deepStrictEqual(warningsOf(matched), []);
 
 			const stale = withTarget("./dist/prod/npm/pkg/lib.js");
-			yield* Bundler.build(stale.options);
+			yield* buildIn(stale.options, handle.layer);
 			const warning = warningsOf(stale)[0];
 			assert.strictEqual(warning?.code, "exports-built-condition-unmatched");
 			assert.include(warning?.text ?? "", 'Write "./dist/prod/npm/pkg/index.js"');

@@ -1,4 +1,6 @@
 // packages/bundler/src/manifest/emit-manifest.ts
+// `node:fs` rather than `FileSystem`: `emitManifest` reads inside rolldown's `generateBundle` hook, which runs
+// with no Effect runtime, and the source it reads is the one rolldown is bundling from the host disk.
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DependencySpecifier } from "@effected/npm";

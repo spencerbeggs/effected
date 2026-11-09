@@ -45,7 +45,7 @@
 * [lockfiles](lockfiles.md) - Pure lockfile parsing for bun, npm, pnpm and yarn Berry, normalized into one unified model, plus pure integrity checking and a pure before/after lockfile comparison.
 * [npm](npm.md) - The dependency-resolution contracts a manifest library defines but cannot implement, the npm vocabulary shared across the kit, and the registry/tarball/publish services that replace a shelled-out npm CLI.
 * [package-json](package-json.md) - package.json parsing, editing, validation and file IO as Effect schemas — the kit's boundary-tier manifest library and its reference for pure/IO separation.
-* [pnpm-plugin-effected](pnpm-plugin-effected.md) - The kit's companion pnpm config dependency: it serves consumers one catalog, effected, holding the Effect family on one minor and every @effected/\* package at its next release, and pins the Effect family graph-wide through derived overrides.
+* [pnpm-plugin-effected](pnpm-plugin-effected.md) - The kit's companion pnpm config dependency: it serves consumers two catalogs, effected (the Effect family on one minor and every @effected/\* package at its next release) and effected:build (the kit's build chain and toolchain), and pins the Effect family graph-wide through derived overrides.
 * [runtimes](runtimes.md) - Resolves semver-compatible Node.js, Bun and Deno versions from live release feeds, with a bundled offline snapshot as fallback.
 * [sbom](sbom.md) - The software-supply-chain artifact half of attestation — a CycloneDX 1.6 SBOM, the NTIA report, SLSA provenance and Sigstore DSSE signing.
 * [scratchpad](scratchpad.md) - A committed but never-published pnpm workspace member that lets agents write typed probes fast — the evidence ladder's rung 3 tooled instead of hand-rolled.
