@@ -2,7 +2,7 @@
 type: Decision
 title: The plugin declares a second consumer-visible catalog, effected:build, for the kit's build chain
 description: "lib/build/pnpm-config.plugin.ts declares effected:build beside effected: the build chain effected package build runs (tsdown, @tsdown/exe, rolldown, rolldown-plugin-dts, API Extractor and TSDoc) and the toolchain a package builds against (typescript, @types/node, tsx, React and its types, @rsbuild/core). A consumer sees it as catalog:effected:build; its peers twin is hidden, it derives no override, and the catalog sync never moves it. Amends one-declared-effected-catalog and consumer-catalog-fold, whose runtime-catalog rules stand."
-status: stable
+status: draft
 tags:
   - deps
   - release
