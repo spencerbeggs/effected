@@ -1,5 +1,52 @@
 # @effected/plugin
 
+## 0.4.0
+
+### Breaking Changes
+
+#### `[package.tsdoctor]` is `[package.bundle]`
+
+- `effected package build` and the `package_build` MCP tool read the documentation-manifest table of `effected.toml` as `[package.bundle]`. The old `[package.tsdoctor]` table fails the build, and the error says it was renamed.
+
+- The emitted sidecar and its source files are `bundle.json`, not `tsdoctor.json`
+
+- A source file still named `tsdoctor.json` is not read, and the build warns `bundle-manifest-retired-source`
+
+- Rename the table and `git mv` each `tsdoctor.json` to `bundle.json`
+
+### Features
+
+#### `@effected/plugin/env`
+
+- An ambient, types-only declaration of `process.env.__PACKAGE_VERSION__`, the define every build sets. It replaces `@savvy-web/bundler/env`:
+
+```ts
+/// <reference types="@effected/plugin/env" />
+```
+
+- A package that does not set `noPropertyAccessFromIndexSignature` needs no reference, since the index signature already types the read.
+
+#### `@effected/plugin/tsconfig/action.json`
+
+- A tsconfig preset for GitHub Actions, a drop-in for `@savvy-web/github-action-builder/tsconfig/action.json`: ESNext modules with bundler resolution, `noEmit`, and excludes that resolve against the extending project. `effected action init` now scaffolds onto it. [#1310][#1310]
+
+```json
+{ "extends": "@effected/plugin/tsconfig/action.json" }
+```
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli | dependency | updated | 0.28.0 | 0.29.0 |
+| @effected/mcp | dependency | updated | 0.15.0 | 0.16.0 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1310]: https://github.com/spencerbeggs/effected/pull/1310
+
 ## 0.3.0
 
 ### Breaking Changes

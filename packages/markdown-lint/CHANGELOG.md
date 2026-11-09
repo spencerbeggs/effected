@@ -1,5 +1,17 @@
 # @effected/markdown-lint
 
+## 0.1.1
+
+### Maintenance
+
+- Republish with no code changes, to confirm the package's npm trusted-publishing connection [#1310][#1310]
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1310]: https://github.com/spencerbeggs/effected/pull/1310
+
 ## 0.1.0
 
 ### Features

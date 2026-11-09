@@ -1,5 +1,34 @@
 # @effected/changesets
 
+## 0.2.0
+
+### Features
+
+#### A settled read of `.changeset/`
+
+- `PendingChangesets.readSettled(root)` and `readSettledSync(root)` read `.changeset/` as `read` and `readSync` do, but a file that does not read or parse is reported instead of failing the whole read.
+
+- They answer `{ changesets, failures }`, where each failure is `{ file, error }` and `error` is the typed `ChangesetParseError` or `PlatformError`
+
+- Only a directory that cannot be listed fails them. A missing directory answers empty
+
+- `read` and `readSync` are unchanged: keep them where versioning correctness depends on every file
+
+- New exported types: `PendingChangesetFailure` and `SettledChangesets` [#1310][#1310]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/markdown-lint | dependency | updated | 0.1.0 | 0.1.1 |
+| @effected/workspaces | dependency | updated | 0.44.0 | 0.44.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1310]: https://github.com/spencerbeggs/effected/pull/1310
+
 ## 0.1.0
 
 ### Breaking Changes
