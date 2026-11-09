@@ -26,7 +26,7 @@ catalogs:
     "@effect/sql-sqlite-node": ~4.1.2
     "@effect/sql-sqlite-react-native": ~4.1.2
     "@effect/sql-sqlite-wasm": ~4.1.2
-    "@effect/tsgo": ^0.63.0
+    "@effect/tsgo": ^0.67.4
     "@effect/vitest": ~4.1.2
     "@effected/app": ^0.31.2
     "@effected/bundler": ^0.2.0
@@ -141,7 +141,7 @@ catalogs:
     "@effect/sql-sqlite-node": ~4.1.0
     "@effect/sql-sqlite-react-native": ~4.1.0
     "@effect/sql-sqlite-wasm": ~4.1.0
-    "@effect/tsgo": ^0.63.0
+    "@effect/tsgo": ^0.67.4
     "@effect/vitest": ~4.1.0
     "@effected/app": ^0.31.0
     "@effected/bundler": ^0.2.0
