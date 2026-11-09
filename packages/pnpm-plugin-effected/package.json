@@ -33,7 +33,7 @@
 	},
 	"devDependencies": {
 		"@types/node": "catalog:effected:build",
-		"rolldown-pnpm-config": "^2.4.3",
+		"rolldown-pnpm-config": "^2.4.5",
 		"typescript": "catalog:effected:build"
 	},
 	"engines": {
