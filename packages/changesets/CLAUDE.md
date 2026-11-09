@@ -14,10 +14,14 @@ Load when changing the public API, the package's dependency edges, or who consum
 - `ChangesetFile.ts`: `parseSync` and `parse` for one file, to `ParsedChangeset`.
 - `PendingChangesets.ts`: `read` and `readSync` for `.changeset/`, then `.changeset/pre/` as `pre/<name>.md`, to `PendingChangeset`. They are strict: one bad file fails the read, and `ReleasePlan.read` depends on that. `readSettled` and `readSettledSync` list the same files the same way, but put each bad file in `failures` as `{ file, error }`, with `error` the typed parse or IO error. Only a directory that cannot be listed fails them. Both pairs share `listFiles` / `listFilesSync`, so they cannot disagree about which files count.
 - `PreState.ts`: `.changeset/pre.json` as `Option<PreState>`. Read-only: never migrate an older-layout file the way `@changesets/pre` does.
-- `ChangesetConfig.ts`: the decoded config and `read`. Keys it does not model are kept on `extra`. `read` also accepts the boolean form of `privatePackages`, which the class schema alone rejects.
+- `ChangesetConfig.ts`: the decoded config and `read`. `changelog` (`false | string | [string, unknown]`, kept as written) and `snapshot` (`{ useCalculatedVersion, prereleaseTemplate? }`) are modelled; keys it does not model are kept on `extra`. `read` also accepts the two shapes `@changesets/config` admits that the class schema alone rejects: the boolean `privatePackages` and an array `snapshot` (read as `{}`). `__test__/ChangesetConfig.test.ts` holds the two keys to tables copied from `@changesets/config` 4.0.1's `validateConfig`.
 - `ReleasePlan.ts`: `assemble` (pure, returns `Result`), `read` and `PlannedRelease`. The plan also carries the `changesets` it was made from (consumed ones left out in pre mode) and its `preState`, so a consumer never re-derives the consumed rule. Its class TSDoc lists the rules. `assemble` mirrors `@changesets/assemble-release-plan`'s fixpoint loop (ripple dependents, hold `fixed`, keep `linked`, repeat) over mutable drafts; a typed failure inside the loop throws a private `Halt` that `assemble` turns back into a `Result`.
-- `errors.ts`: `ChangesetParseError`, `ChangesetConfigError`, `UnknownPackageError`.
-- `ChangesetLint.ts` (behind `src/lint.ts`, the `./lint` entry): CSH001 to CSH005 as `LintRule`s, ported from savvy-web/systems into `src/internal/lint/`. Their message strings are systems' verbatim; never reword one, or agreement with the golden corpus breaks.
+- `ReleaseEdits.ts`: `ReleaseEdits`, `ManifestEdit`, `RangeEdit`, `ChangesetMove`, and the pure computation behind `ReleasePlan.edits`: what `changeset version` writes (manifest versions and ranges, changesets deleted or moved, the `pre.json` left), as data. CHANGELOG output is not part of it.
+- `internal/versions.ts`: the version, range and glob helpers `ReleasePlan` and `ReleaseEdits` share, each read as node-semver reads it.
+- `Changelog.ts`: `Changelog.entry` (an `Effect` of the block for one release, `Option.none()` for a `none` entry) and `Changelog.insert` (pure: puts the block in a `CHANGELOG.md`'s text), plus the `ChangelogFunctions` contract. Its data shapes (`VersionType`, `NewChangeset`, `NewChangesetWithCommit`, `ComprehensiveRelease`, `PackageJSON`, `ModCompWithPackage`) are `Schema.Struct`s exported with a same-name `typeof X.Type`, so a caller can decode what a module is handed; the function types are plain aliases over them. Every field is a `mutableKey` and every array `mutable`: a `ReadonlyArray` breaks assignability to `@changesets/types`' `string[]`, which the type test's readonly control pins. `PackageJSON` is open (a `Record(String, Unknown)` rest keeps unknown keys); `ModCompWithPackage` cannot be, since theirs are interfaces, but it models the `relativeDir` `apply-release-plan` passes undeclared. They are Structs rather than Classes because the contract is structural and modules receive plain objects. `__test__/Changelog.types.test.ts` checks mutual assignability with `@changesets/types` 7.0.0 and `Record<string, unknown>` assignability, with controls; `__test__/Changelog.schema.test.ts` round-trips values captured from a real run (`fixtures/changelog-contract.json`). The package takes a `ChangelogFunctions` value, never a module id: resolving and importing the module, finding each changeset's commit and formatting the result are the caller's jobs. `ChangelogError` lives here.
+- `internal/causeMessage.ts`: the kit's guarded cause-message read, copied verbatim from `@effected/store`.
+- `errors.ts`: `ChangesetParseError`, `ChangesetConfigError`, `UnknownPackageError`, `SnapshotPreModeError`, `SnapshotTemplateError`, `MissingPackageError`.
+- `ChangesetLint.ts` (behind `src/lint.ts`, the `./lint` entry): style-neutral front-matter rules as `LintRule`s, `CF001` to `CF004`, over `src/internal/frontMatter.ts`, which reads a front matter the way `@changesets/parse` does. `ChangesetLint.defaults` is `CF001`–`CF003`; `knownPackages(names)` builds `CF004`; `lint(source, { rules?, packages?, defaults?, ...parse })` runs the defaults, then `CF004` when `packages` is given, then the caller's rules.
 
 ## The oracle rule
 
@@ -36,6 +40,24 @@ The oracle's rules are not the obvious ones. These have each been written wrong 
 
 The test's expected `name -> type` table is what stops a fixture agreeing with the planner about nothing. A new fixture's table is copied from the oracle's answer, never written by hand. **Never run the oracle on `pre-legacy-layout` in place**: it moves the fixture's files. Every fixture's purpose is in `__test__/fixtures/README.md`. The oracle climbs past a root with no package patterns, so `single-package` is compared from a temporary copy outside this repository.
 
+### The edits oracle
+
+`@changesets/apply-release-plan` is the authority on `ReleasePlan.edits`. `__test__/ReleaseEdits.oracle.test.ts` copies each fixture to a temporary directory with `changelog: false`, computes our edits, runs the oracle's `changeset version` there (its reads, `assembleReleasePlan`, `applyReleasePlan`), and requires the tree it leaves to equal the original tree with our edits applied: every manifest, every changeset file and `pre.json`. Snapshot and pre-mode cases are included. `range-edits` and `range-edits-gated` pin the range-rewriting rules. Two things are easy to get wrong here:
+
+- `@effected/semver` normalises a range: it sorts comparators and keeps the `>=0.0.0` that `*` desugars to. node-semver keeps the written order and drops `>=0.0.0`, so `nodeSets` in `ReleaseEdits.ts` undoes both before applying the oracle's two-comparator and match-any rules.
+- Pre mode consumes a changeset by **moving** its file to `.changeset/pre/` (`moveChangesets`), the directory `PendingChangesets` reads back as `pre/<file>`. `pre.json` is left unchanged and lists no ids: never look for consumed ids there.
+- `workspace:^`, `workspace:~`, `workspace:*` and `workspace:` paths are never rewritten, and neither is a package outside the plan, even one whose range the release leaves.
+
+`__test__/Changelog.oracle.test.ts` holds `Changelog` to the `CHANGELOG.md` files the same oracle writes, with `@changesets/changelog-git` as the module, `format: false`, and each copy made a git repository with one commit per changeset, because the oracle asks git for the commit that added each one. Our side is given the same commits through `options.commits`. It covers existing files, a file with no version heading, an empty one, and a dependent bumped only through its dependency. `Changelog`'s two ruled differences: a module's `packageJson` is the fields a `WorkspacePackage` carries, not the whole manifest; and a changeset with no commit has no `commit` key, where the oracle sets it to `undefined`.
+
+Ruled differences:
+
+- An edit writing the value already there is left out, and so is a manifest with nothing to change. The oracle rewrites them; the files end the same.
+- Every consumed changeset is named, where the oracle deletes only files it finds.
+- `changeset version --snapshot ""` plans no snapshot but keeps an `exit`-mode `pre.json`, because `apply-release-plan` deletes it only when the snapshot is `null`; no plan here holds that state, so a caller reproducing it keeps the file.
+- A `ChangesetMove` needs `.changeset/pre/` to exist: the caller creates it, as the oracle's `mkdir -p` does.
+- `Changelog.entry` never reads `config.changelog`. A caller whose config says `changelog: false` writes no changelog and does not call it. An older-layout `pre.json`'s listed changeset is named as the plan names it, and that `pre.json` is not migrated.
+
 ## Documented divergences
 
 These are deliberate, and each is ruled or stated in TSDoc. Do not "fix" one without a new ruling.
@@ -43,6 +65,7 @@ These are deliberate, and each is ruled or stated in TSDoc. Do not "fix" one wit
 **Refused where the oracle plans:**
 
 - A root listed in `packages:` alongside other packages, for example `[".", "packages/*"]`: a changeset naming it gets `UnknownPackageError`.
+- An array `privatePackages`: `ChangesetConfigError`. The oracle admits it as `{}` only through valibot's `object` accepting arrays, and it means nothing.
 
 **Planned where the oracle refuses:**
 
@@ -60,15 +83,27 @@ These are deliberate, and each is ruled or stated in TSDoc. Do not "fix" one wit
 - An older-layout `pre.json` listing consumed ids: planned as the oracle's settled (second-run) answer, versions, types and changeset ids alike, so in exit mode a consumed one is named `pre/<file>` though nothing moved it. The oracle's first run counts them in pre mode, because it moves the files after reading them.
 - A version changesets cannot bump (`=1.2.0`: npm's loose parse reads it, strict `semver.inc` does not) fails `InvalidVersionError` wherever the planner reads it; the oracle crashes in pre mode or a group, and plans a bump of it with a `null` new version. A leading `v` is normalised exactly as node-semver does, never treated as a divergence.
 - A `pre.json` with no `tag` or an unknown `mode` fails `ChangesetConfigError`; the oracle plans `-undefined.0` suffixes and treats any non-`exit` mode as `pre`.
+- A Ruby-style `~>` range (`~>1.0.0`) is not a range here, because `@effected/semver` rejects it: it never ripples (the oracle bumps the dependent once it is left) and `edits` never rewrites it (the oracle writes it as `~`).
 - `ignore`, `fixed` and `linked` globs run on `@effected/glob`, not picomatch: `(a|b)`, `!(a)` and `x/**` matching `x` differ, nothing a package name needs.
 
-**Not planned:** snapshot versions. `getReleasePlan` takes no snapshot input, so there is no oracle for them, and a snapshot is a `changeset version` flag, not repository state.
+**Snapshots** (`ReleasePlan.assemble`'s and `read`'s `snapshot` input) have their own oracle, `@changesets/assemble-release-plan`'s fifth argument, which `getReleasePlan` never passes. `__test__/ReleasePlan.snapshot.test.ts` runs `getReleasePlan`'s reads from the copies it resolves, then `assembleReleasePlan` with the snapshot and the clock faked to the input `timestamp`. Ruled differences:
+
+- Pre mode fails `SnapshotPreModeError`. The oracle plans one; the refusal is `changeset version`'s.
+- An empty `tag` or `commit` is no value. `changeset version` never passes `""` (an empty `--snapshot` plans no snapshot), but the oracle called directly fills `{tag}` with nothing, refuses a template without `{tag}`, and plans plain versions when the whole suffix comes out empty. Here a template using the empty value fails `missingValue`, one without `{tag}` plans, and the suffix is never empty.
 
 ## Lint rules
 
-**systems' markdownlint engine is authoritative** — it is what markdownlint-cli2 and the pre-commit hook run, and the golden corpus came from it. The rules read the parsed tree the way that engine reads micromark tokens: top-level blocks only, heading and cell text as written (escapes resolved, formatting kept), fenced code only, an item empty unless it holds a paragraph, a short row's padding uncounted, a setext heading under a definition anchored on the definition's line, and details on one line. Where its verdict looks wrong (``## `Features` `` is an unknown section), match it and say so in TSDoc; never "fix" one toward systems' programmatic engine. The one remaining difference is markdownlint's parser (a bare `-` after indented code reads as a paragraph), pinned as R8.
+**This package ships no house style.** `CF001`–`CF004` hold only what the changesets tool itself refuses a file for, so they are right under any style: the front matter is present, is YAML, and is a mapping when not empty (`CF001`, `changeset-front-matter`); every key names a package (`CF002`, `changeset-package-name`); every value is a release type (`CF003`, `changeset-release-type`); and, only when the workspace's names are given, every key is one of them (`CF004`, `changeset-known-package`). `CF` is this package's own scheme, for changeset front matter.
 
-`__test__/ChangesetLint.test.ts` pins each class (R1–R10) through both hosts, and holds the rules to `packages/markdown-lint/__test__/fixtures/changesets/golden.json`, read in place: equal to systems' markdownlint engine on all 113 inputs, to its programmatic engine on the 102 where systems' two engines agree (the 11 others are CSH005, and the port follows markdownlint), and the same through `MarkdownlintAdapter` in the markdownlint `@effected/markdown-lint` pins (loaded by path from that package; this one takes no markdownlint dependency). The rules also live as test-only copies in `packages/markdown-lint/__test__/rules/`; that package cannot import them from here without a dependency cycle.
+**`@changesets/parse` is the oracle**, loaded in `__test__/ChangesetLint.test.ts` from beside `@changesets/read`, as `get-release-plan` resolves it. A file it parses must fail no default rule, and a file it refuses must fail one. The test checks both directions over its corpus and every golden-corpus input, through both hosts (markdownlint is loaded by path from `@effected/markdown-lint`; this package takes no markdownlint dependency). Its rules are looser than they look, and a "fix" toward a stricter reading breaks the oracle check:
+
+- The fence pattern is upstream's unanchored `mdRegex`: leading whitespace, and even text before the block, are accepted.
+- A falsy block value (`---\n---`, `false`, `null`, `0`) has no entries and is legal; an empty summary is legal. `changeset add --empty` writes both.
+- A key is a package name when it is not blank. An npm-name check would refuse files changesets accepts.
+
+`CF002`–`CF004` read only a front matter `CF001` accepts, so a broken block is reported once. `CF004` is the one default that can fail a file the oracle parses: it looks past the file, at the workspace.
+
+**savvy-web's CSH001–CSH005 are not here.** They are savvy-web's house style, and savvy-web owns them. `packages/markdown-lint` keeps its golden corpus and its test-only copies as an engine-fidelity corpus; no kit package provides those rules.
 
 ## Sync forms
 

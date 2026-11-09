@@ -1,18 +1,27 @@
 import { posix } from "node:path";
-import { GlobPattern } from "@effected/glob";
 import { InvalidVersionError, Range, SemVer } from "@effected/semver";
 import type { WorkspaceRootNotFoundError } from "@effected/workspaces";
 import { WorkspaceDiscovery, WorkspaceDiscoveryError, WorkspacePackage } from "@effected/workspaces";
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Option, Path, Result, Schema } from "effect";
-import type { BumpType, ReleaseType } from "./BumpType.js";
+import type { ReleaseType } from "./BumpType.js";
 import { ChangesetConfig } from "./ChangesetConfig.js";
-import { ChangesetConfigError, UnknownPackageError } from "./errors.js";
+import type { MissingPackageError } from "./errors.js";
+import { ChangesetConfigError, SnapshotPreModeError, SnapshotTemplateError, UnknownPackageError } from "./errors.js";
+import type { DependencyKind } from "./internal/versions.js";
+import {
+	DEPENDENCY_KINDS,
+	WORKSPACE,
+	cleanVersion,
+	increment,
+	matchNames,
+	parseRange,
+	satisfies,
+} from "./internal/versions.js";
 import { PendingChangeset, PendingChangesets } from "./PendingChangesets.js";
 import { PreState } from "./PreState.js";
-
-const DEPENDENCY_KINDS = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"] as const;
-type DependencyKind = (typeof DEPENDENCY_KINDS)[number];
+import type { ReleaseEdits } from "./ReleaseEdits.js";
+import { computeEdits } from "./ReleaseEdits.js";
 
 const RANK: Record<ReleaseType, number> = { none: 0, patch: 1, minor: 2, major: 3 };
 
@@ -30,32 +39,86 @@ interface Draft {
 
 /** Ends assembly with a typed failure from inside the fixpoint loop; never escapes `assemble`. */
 class Halt {
-	constructor(readonly failure: UnknownPackageError | ChangesetConfigError | InvalidVersionError) {}
+	constructor(readonly failure: AssembleError) {}
 }
 
+type AssembleError =
+	| UnknownPackageError
+	| ChangesetConfigError
+	| InvalidVersionError
+	| SnapshotPreModeError
+	| SnapshotTemplateError;
+
 /**
- * A package version as node-semver reads one without `loose`: surrounding
- * whitespace and a single leading `v` are dropped, so `v1.0.0` is `1.0.0`. Any
- * other prefix, `=1.2.0` among them, stays and fails to parse.
+ * The input for a snapshot plan, `changeset version --snapshot`'s parameters.
+ * {@link ReleasePlan.assemble} documents how each is read.
+ *
+ * @public
  */
-const cleanVersion = (version: string): string => {
-	const trimmed = version.trim();
-	return trimmed.startsWith("v") ? trimmed.slice(1) : trimmed;
+export interface ReleaseSnapshot {
+	/** The snapshot's name, `--snapshot <tag>`. An empty string is no tag. */
+	readonly tag?: string | undefined;
+	/** The commit `{commit}` and `{commit-short}` fill in. An empty string is no commit. */
+	readonly commit?: string | undefined;
+	/** The moment `{timestamp}` and `{datetime}` are taken from, so assembly reads no clock. */
+	readonly timestamp: Date;
+	/** Overrides the config's `snapshot.useCalculatedVersion` when set. */
+	readonly useCalculatedVersion?: boolean | undefined;
+	/** Overrides the config's `snapshot.prereleaseTemplate` when set; an empty string is the default suffix. */
+	readonly prereleaseTemplate?: string | undefined;
+}
+
+/** The placeholders in the order the oracle fills them, each pass over the previous one's output. */
+const PLACEHOLDERS = ["commit", "commit-short", "tag", "timestamp", "datetime"] as const;
+
+/**
+ * `@changesets/assemble-release-plan`'s `getSnapshotSuffix`, with the clock
+ * read replaced by `snapshot.timestamp`. `tag` and `commit` arrive with `""`
+ * already turned into `undefined`.
+ */
+const snapshotSuffix = (
+	template: string | undefined,
+	tag: string | undefined,
+	commit: string | undefined,
+	timestamp: Date,
+): string => {
+	const values: Record<(typeof PLACEHOLDERS)[number], string | undefined> = {
+		commit,
+		"commit-short": commit?.slice(0, 7),
+		tag,
+		timestamp: timestamp.getTime().toString(),
+		datetime: timestamp
+			.toISOString()
+			.replace(/\.\d{3}Z$/, "")
+			.replace(/[^\d]/g, ""),
+	};
+	if (template === undefined || template === "") return [values.tag, values.datetime].filter(Boolean).join("-");
+	if (!template.includes("{tag}") && tag !== undefined) {
+		throw new Halt(new SnapshotTemplateError({ template, placeholder: "tag", kind: "missingPlaceholder" }));
+	}
+	let filled = template;
+	for (const key of PLACEHOLDERS) {
+		filled = filled.replaceAll(`{${key}}`, () => {
+			const value = values[key];
+			if (value === undefined) {
+				throw new Halt(
+					new SnapshotTemplateError({
+						template,
+						placeholder: key as "commit" | "commit-short" | "tag",
+						kind: "missingValue",
+					}),
+				);
+			}
+			return value;
+		});
+	}
+	return filled;
 };
 
 const parseVersion = (version: string): SemVer => {
 	const parsed = SemVer.parseResult(cleanVersion(version));
 	if (Result.isFailure(parsed)) throw new Halt(parsed.failure);
 	return parsed.success;
-};
-const WORKSPACE = /^workspace:/;
-
-/** A range, also as node-semver reads a `v` before a version in one: `^v1.0.0` is `^1.0.0`. */
-const parseRange = (specifier: string): Range | undefined => {
-	if (specifier.includes(":")) return undefined;
-	const parsed = Range.parseResult(specifier);
-	if (Result.isSuccess(parsed)) return parsed.success;
-	return Result.getOrUndefined(Range.parseResult(specifier.replace(/(^|[\s^~<>=])v(?=\d)/g, "$1")));
 };
 
 const pointsAt = (specifier: string, dependency: WorkspacePackage): boolean =>
@@ -125,46 +188,6 @@ const declaredRanges = (
 		else if (pointsAt(bare, dependency)) ranges.push([kind, oldVersion]);
 	}
 	return ranges;
-};
-
-const satisfies = (version: string, specifier: string): boolean => {
-	const range = parseRange(specifier);
-	const parsed = Result.getOrUndefined(SemVer.parseResult(cleanVersion(version)));
-	return range !== undefined && parsed !== undefined && Range.satisfies(parsed, range);
-};
-
-/**
- * `semver.inc`'s rule, which `SemVerBump` deliberately does not follow: a bump
- * a prerelease is already heading for completes it rather than incrementing.
- */
-const increment = (version: SemVer, type: BumpType): SemVer => {
-	const completes =
-		version.prerelease.length > 0 &&
-		(type === "patch" || (version.patch === 0 && (type === "minor" || version.minor === 0)));
-	return completes ? SemVer.truncate(version, "prerelease") : version.bump[type]();
-};
-
-/** The workspace's names a list of globs selects, `!` negation applying in order, in workspace order. */
-const matchNames = (
-	packages: ReadonlyArray<WorkspacePackage>,
-	patterns: ReadonlyArray<string>,
-): ReadonlyArray<string> => {
-	const matchers = patterns.map((source) => {
-		const negated = source.startsWith("!");
-		const glob = negated ? source.slice(1) : source;
-		const compiled = Result.getOrUndefined(GlobPattern.compileResult(glob));
-		return { negated, matches: (name: string) => compiled?.matches(name) ?? name === glob };
-	});
-	const selected: Array<string> = [];
-	for (const { name } of packages) {
-		let passed = false;
-		for (const { negated, matches } of matchers) {
-			if (!passed && !negated && matches(name)) passed = true;
-			else if (passed && negated && matches(name)) passed = false;
-		}
-		if (passed) selected.push(name);
-	}
-	return selected;
 };
 
 /** The configuration errors `@changesets/config` rejects a fixed or linked group for. */
@@ -248,7 +271,44 @@ export class PlannedRelease extends Schema.Class<PlannedRelease>("PlannedRelease
 	oldVersion: Schema.String,
 	/** The version after the release; equal to `oldVersion` when `type` is `none`. */
 	newVersion: Schema.String,
-	/** The changeset files naming the package; empty for a package reached only as a dependent. */
+	/**
+	 * The changeset files in the plan that name the package, as the oracle
+	 * lists them.
+	 *
+	 * @remarks
+	 * An empty list always means the package's bump does not come from a
+	 * changeset of its own in this plan. It is reached as a dependent, pulled
+	 * into a `fixed` group, or completed from a prerelease on `exit`. The
+	 * converse does not hold: a non-empty list does not mean the package's own
+	 * changeset set its bump. Every path that builds a release:
+	 *
+	 * - A changeset naming the package, `none` included, lists that file. A
+	 *   package named only `none` keeps the file while it stays `none`.
+	 * - A ripple into a package not yet in the plan, or into a `none` entry,
+	 *   replaces it with a new release whose list is empty. So a package one
+	 *   changeset named `none` and a dependency then bumped has an empty list,
+	 *   as the oracle answers (`explicit-none-rippled`). A ripple never
+	 *   touches a package already releasing.
+	 * - A `fixed` group adds a missing member with an empty list, and raises
+	 *   an existing member's type, including a `none` entry's, keeping its
+	 *   list. A raised member can therefore list only a changeset that named
+	 *   it `none`, or a smaller bump than the type it ends with.
+	 * - A `linked` group raises only members already releasing and keeps
+	 *   their lists.
+	 * - On `exit`, a package still on a numbered prerelease that is not in
+	 *   the plan is added `patch` with an empty list. A `none` entry is raised
+	 *   to `patch` and keeps its list.
+	 * - In pre mode the changesets an earlier pre-release consumed are not in
+	 *   the plan. So the list names only this pre-release's new changesets,
+	 *   and a package whose own changesets were all consumed, and which a
+	 *   ripple brings back, has an empty list.
+	 * - A snapshot plan builds its releases exactly as a plain one does.
+	 *
+	 * To tell a group or exit bump from a ripple, read `fixed` and `linked`
+	 * and the plan's `preState`. To tell whether the package's own changeset
+	 * set its type, compare `type` with the highest bump its listed changesets
+	 * give it.
+	 */
 	changesets: Schema.Array(Schema.String),
 }) {}
 
@@ -318,6 +378,13 @@ export class PlannedRelease extends Schema.Class<PlannedRelease>("PlannedRelease
  *   again, no suffix is added, and every package whose version carries a
  *   numbered prerelease bumps at least `patch`; those added bumps reach no
  *   dependent.
+ * - A snapshot plan (`changeset version --snapshot`, whose oracle is
+ *   `@changesets/assemble-release-plan`'s snapshot argument) plans the same
+ *   releases and only rewrites each bumped `newVersion` to
+ *   `<base>-<suffix>`. `<base>` is `0.0.0`, or with `useCalculatedVersion` the
+ *   version the plan would otherwise give. A `none` entry keeps its version,
+ *   and dependents are still checked against the calculated version, not the
+ *   snapshot one. {@link ReleasePlan.assemble} has the suffix rules.
  *
  * Deliberate differences, each ruled:
  *
@@ -328,6 +395,10 @@ export class PlannedRelease extends Schema.Class<PlannedRelease>("PlannedRelease
  * - A prerelease number that is not a number, such as `1.0.0-next.x`, fails
  *   with `InvalidVersionError` in pre-release mode; the oracle throws an
  *   internal error.
+ * - A Ruby-style `~>` range (`~>1.0.0`), which node-semver reads as `~`,
+ *   is not a range here: `@effected/semver` rejects it. It draws no edge,
+ *   so it never ripples, where the oracle bumps the dependent once the
+ *   range is left, and {@link ReleasePlan.edits} never rewrites it.
  * - A version changesets cannot bump, such as `=1.2.0`, which npm's loose
  *   parse reads but strict `semver.inc` does not, fails with
  *   `InvalidVersionError` wherever it must be read. The oracle crashes on it
@@ -344,9 +415,8 @@ export class PlannedRelease extends Schema.Class<PlannedRelease>("PlannedRelease
  *   types and changeset ids here are its later plans', so in exit mode a
  *   consumed changeset is named `pre/<file>`, where the oracle moved it,
  *   though it was never moved.
- * - Snapshot versions are not planned. `@changesets/get-release-plan` takes no
- *   snapshot input, so it cannot be the oracle for one, and a snapshot is a
- *   flag on `changeset version`, not a state a repository is in.
+ * - An empty snapshot `tag` or `commit` is no value at all; see
+ *   {@link ReleasePlan.assemble}.
  *
  * @public
  */
@@ -361,6 +431,15 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	changesets: Schema.Array(PendingChangeset),
 	/** The pre-release state the plan was made in, when the repository has one. */
 	preState: Schema.optionalKey(PreState),
+	/**
+	 * Whether this is a snapshot release's plan, made with a `snapshot` input.
+	 * {@link ReleasePlan.edits} reads it: a snapshot pins dependents exactly
+	 * and leaves an `exit`-mode `pre.json` in place.
+	 */
+	snapshot: Schema.Boolean.pipe(
+		Schema.withDecodingDefaultKey(Effect.succeed(false)),
+		Schema.withConstructorDefault(Effect.succeed(false)),
+	),
 }) {
 	/**
 	 * Assemble the plan from packages, changesets and a config, with no IO.
@@ -373,27 +452,157 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 * fixed or linked member; and with
 	 * {@link ChangesetConfigError}
 	 * when a package is in two fixed groups, two linked groups, or a group of
-	 * each. What the oracle rejects outright and this does not check is planned,
+	 * each. A snapshot adds {@link SnapshotPreModeError} and
+	 * {@link SnapshotTemplateError}, described below. What the oracle rejects outright and this does not check is planned,
 	 * not refused: a changeset mixing skipped and released packages, a public
 	 * package depending on a skipped one, and `privatePackages` with `tag` on
 	 * and `version` off.
 	 *
+	 * With `snapshot`, the plan is a snapshot release's, matching
+	 * `@changesets/assemble-release-plan` given the same snapshot argument:
+	 *
+	 * - It fails {@link SnapshotPreModeError} when `pre` is in `pre` mode.
+	 *   The oracle itself plans one; the refusal is `changeset version`'s,
+	 *   which never reaches the oracle. In `exit` mode a snapshot is planned.
+	 * - `useCalculatedVersion` and `prereleaseTemplate` come from
+	 *   `config.snapshot` unless the snapshot overrides them. An empty
+	 *   `prereleaseTemplate` override is the default suffix, as an empty
+	 *   `--snapshot-prerelease-template` is.
+	 * - With no template the suffix is `<tag>-<datetime>`, or `<datetime>`
+	 *   with no tag. A template may use `{tag}`, `{commit}`,
+	 *   `{commit-short}` (its first seven characters), `{timestamp}` (epoch
+	 *   milliseconds) and `{datetime}` (`YYYYMMDDHHmmss`, UTC), all taken from
+	 *   `snapshot.timestamp`, never the clock. It fails
+	 *   {@link SnapshotTemplateError} when it uses `{tag}`, `{commit}` or
+	 *   `{commit-short}` with no value, or omits `{tag}` while a tag is given.
+	 *   Placeholders are filled in that order, each over the last one's
+	 *   output, as the oracle fills them.
+	 * - The suffix is not checked as semver, any more than the oracle checks
+	 *   it: `--snapshot pr#123` gives `0.0.0-pr#123-<datetime>`.
+	 * - An invalid `timestamp` Date throws `RangeError`, as
+	 *   `Date.prototype.toISOString` does: it is a programmer error, not a
+	 *   planning failure.
+	 *
+	 * An empty `tag` or `commit` is treated as absent.
+	 * `changeset version --snapshot` never passes `""` to the oracle: an empty `--snapshot` value
+	 * is falsy there, so it plans no snapshot at all, and a bare `--snapshot`
+	 * passes no tag. Called directly with `tag: ""`, the oracle fills `{tag}`
+	 * with nothing and refuses a template without `{tag}`, while
+	 * `@changesets/apply-release-plan` reads the same `""` as "not a snapshot"
+	 * and writes caret ranges. With no template the two readings give the same
+	 * version; with one, this follows the bare `--snapshot` reading, so a
+	 * template with `{tag}` fails `missingValue` and one without it succeeds.
+	 * Because every value that can fill a placeholder is then non-empty, the
+	 * suffix is never empty, so the oracle's quiet fallback to plain versions
+	 * on an empty suffix cannot happen here.
+	 *
 	 * @param input - The packages to plan, the pending changesets, the config
-	 * and, in pre-release mode, the {@link PreState}. {@link ReleasePlan.read}
-	 * decides whether the workspace root is one of the packages.
+	 * and, in pre-release mode, the {@link PreState}, and for a snapshot
+	 * release the {@link ReleaseSnapshot}. {@link ReleasePlan.read} decides
+	 * whether the workspace root is one of the packages.
 	 */
 	static assemble(input: {
 		readonly packages: ReadonlyArray<WorkspacePackage>;
 		readonly changesets: ReadonlyArray<PendingChangeset>;
 		readonly config: ChangesetConfig;
 		readonly pre?: PreState;
-	}): Result.Result<ReleasePlan, UnknownPackageError | ChangesetConfigError | InvalidVersionError> {
+		readonly snapshot?: ReleaseSnapshot;
+	}): Result.Result<
+		ReleasePlan,
+		UnknownPackageError | ChangesetConfigError | InvalidVersionError | SnapshotPreModeError | SnapshotTemplateError
+	> {
 		try {
 			return Result.succeed(assembleOrHalt(input));
 		} catch (error) {
 			if (error instanceof Halt) return Result.fail(error.failure);
 			throw error;
 		}
+	}
+
+	/**
+	 * What `changeset version` writes for `plan`, as data: each manifest's new
+	 * `version` and rewritten dependency ranges, the changeset files it
+	 * deletes or, in pre mode, moves under `.changeset/pre/`, and the
+	 * `pre.json` it leaves. CHANGELOG files are not covered. Nothing is
+	 * written; the caller applies the {@link ReleaseEdits}.
+	 *
+	 * `@changesets/apply-release-plan` is the oracle, and
+	 * `__test__/ReleaseEdits.oracle.test.ts` compares it on disk. Its rules:
+	 *
+	 * - Every planned package's manifest gets its new `version`, and so does
+	 *   nothing else. Only planned packages and the workspace root (marked
+	 *   `isRootWorkspace` among `packages`) have their ranges rewritten: a
+	 *   package outside the plan keeps a range on a released dependency, even
+	 *   one the new version leaves.
+	 * - A range on a released dependency (not a `none` entry) is rewritten in
+	 *   `dependencies`, `devDependencies`, `peerDependencies` and
+	 *   `optionalDependencies` alike when the new version leaves it, or, while
+	 *   it still holds, when the release's bump is at least
+	 *   `updateInternalDependencies`. A held `peerDependencies` range instead
+	 *   follows `onlyUpdatePeerDependentsWhenOutOfRange` (from the config's
+	 *   `extra`): rewritten unless it is on.
+	 * - `workspace:*`, `workspace:^`, `workspace:~` and a `workspace:` path are
+	 *   never rewritten: they follow the dependency on their own. A
+	 *   `workspace:<range>` is rewritten and keeps its `workspace:` prefix.
+	 *   `file:`, `link:`, `catalog:`, `npm:` and any non-range specifier are
+	 *   never rewritten, and under `bumpVersionsWithWorkspaceProtocolOnly`
+	 *   neither is a plain range.
+	 * - A range that matches every version (`*`, `x`, `>=0.0.0`, or a `||`
+	 *   with such a part) is rewritten only to a prerelease version.
+	 * - The new range is the old one's leading operator (`^`, `~`, `>=`, `<=`,
+	 *   `>`, or none) before the new version. A range of exactly two
+	 *   comparators written with both `>` and `<` becomes `>=<new>` with its
+	 *   upper bound kept while the new version satisfies it, else
+	 *   `<<new bumped again>>`, in the order it was written. In a snapshot
+	 *   plan every rewritten range is the exact new version.
+	 * - Each changeset in the plan is deleted, or in pre mode moved to
+	 *   `pre/<file>`, unless it names a skipped package (ignored, private
+	 *   while `privatePackages.version` is off, or version-less), which leaves
+	 *   it in place.
+	 * - `pre.json` is deleted in `exit` mode unless the plan is a snapshot,
+	 *   and otherwise left as it is.
+	 * - A pre-release consumes a changeset by moving its file to
+	 *   `.changeset/pre/`, never by listing its id in `pre.json`: the current
+	 *   layout has no such list, so in pre mode `preState` is the plan's own,
+	 *   unchanged, and the consumed files are `moveChangesets`. That is the
+	 *   directory {@link PendingChangesets.read} reads back as `pre/<file>`.
+	 *
+	 * Deliberate differences, each ruled:
+	 *
+	 * - An edit that would write the value already there is left out, and so
+	 *   is a manifest with nothing to change; the oracle rewrites the same
+	 *   value. The files end the same.
+	 * - The oracle only deletes a changeset file it finds on disk; the edits
+	 *   name every consumed changeset, since the plan was read from them. An
+	 *   older-layout `pre.json`'s listed changeset is named as the plan names
+	 *   it (`pre/<file>` in exit mode), where the oracle had moved it while
+	 *   reading; the file itself is still at `<file>`. Neither does this
+	 *   migrate that `pre.json`, which the oracle rewrites as it reads.
+	 * - A `~>` range is never rewritten, where the oracle rewrites it as `~`:
+	 *   `@effected/semver` rejects the Ruby-style operator, so it is not a
+	 *   range here. It never ripples in {@link ReleasePlan.assemble} either.
+	 * - `changeset version --snapshot ""` is a third state no plan here
+	 *   holds. The CLI plans no snapshot for an empty value, but hands the
+	 *   `""` to `apply-release-plan`, which then keeps an `exit`-mode
+	 *   `pre.json` (it deletes one only when the snapshot is `null`) while
+	 *   writing caret ranges. A plan without a snapshot deletes that
+	 *   `pre.json`; a caller reproducing the CLI keeps it.
+	 *
+	 * Fails with {@link MissingPackageError} when the plan releases a package
+	 * `packages` lacks, and with `InvalidVersionError` when a bounded range
+	 * must be bumped past a new version that is not a version, which a plan
+	 * {@link ReleasePlan.assemble} made never has.
+	 *
+	 * @param plan - The plan to apply.
+	 * @param input - Every package of the workspace, the root included, as
+	 * `WorkspaceDiscovery.listPackagesIn` lists them, and the config the plan
+	 * was made with.
+	 */
+	static edits(
+		plan: ReleasePlan,
+		input: { readonly packages: ReadonlyArray<WorkspacePackage>; readonly config: ChangesetConfig },
+	): Result.Result<ReleaseEdits, MissingPackageError | InvalidVersionError> {
+		return computeEdits(plan, input);
 	}
 
 	/**
@@ -412,8 +621,13 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 * any enclosing workspace.
 	 *
 	 * @param root - The repository root.
+	 * @param options - `snapshot` plans a snapshot release, as
+	 * {@link ReleasePlan.assemble} describes.
 	 */
-	static readonly read = Effect.fn("ReleasePlan.read")(function* (root: string) {
+	static readonly read = Effect.fn("ReleasePlan.read")(function* (
+		root: string,
+		options?: { readonly snapshot?: ReleaseSnapshot | undefined },
+	) {
 		const discovery = yield* WorkspaceDiscovery;
 		const discovered = yield* discovery
 			.listPackagesIn(root)
@@ -424,7 +638,13 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 		const members = discovered.filter((pkg) => !pkg.isRootWorkspace);
 		const packages = members.length > 0 ? members : discovered;
 		return yield* Effect.fromResult(
-			ReleasePlan.assemble({ packages, changesets, config, ...(Option.isSome(pre) ? { pre: pre.value } : {}) }),
+			ReleasePlan.assemble({
+				packages,
+				changesets,
+				config,
+				...(Option.isSome(pre) ? { pre: pre.value } : {}),
+				...(options?.snapshot === undefined ? {} : { snapshot: options.snapshot }),
+			}),
 		);
 	});
 }
@@ -443,8 +663,10 @@ const assembleOrHalt = (input: {
 	readonly changesets: ReadonlyArray<PendingChangeset>;
 	readonly config: ChangesetConfig;
 	readonly pre?: PreState;
+	readonly snapshot?: ReleaseSnapshot;
 }): ReleasePlan => {
-	const { packages, changesets, config, pre } = input;
+	const { packages, changesets, config, pre, snapshot } = input;
+	if (snapshot !== undefined && pre?.mode === "pre") throw new Halt(new SnapshotPreModeError({ preTag: pre.tag }));
 	const byName = new Map(packages.map((pkg) => [pkg.name, pkg]));
 	const ignored = new Set(matchNames(packages, config.ignore));
 	const isSkipped = (pkg: WorkspacePackage): boolean =>
@@ -627,9 +849,24 @@ const assembleOrHalt = (input: {
 		}
 	}
 
+	const suffix =
+		snapshot === undefined
+			? undefined
+			: snapshotSuffix(
+					snapshot.prereleaseTemplate ?? config.snapshot.prereleaseTemplate,
+					snapshot.tag === "" ? undefined : snapshot.tag,
+					snapshot.commit === "" ? undefined : snapshot.commit,
+					snapshot.timestamp,
+				);
+	const useCalculated = snapshot?.useCalculatedVersion ?? config.snapshot.useCalculatedVersion;
+	const finalVersion = (release: Draft): string | undefined => {
+		if (suffix === undefined || release.type === "none") return newVersion(release);
+		return `${useCalculated ? newVersion(release) : "0.0.0"}-${suffix}`;
+	};
+
 	const planned: Array<PlannedRelease> = [];
 	for (const release of releases.values()) {
-		const next = newVersion(release);
+		const next = finalVersion(release);
 		if (release.oldVersion === undefined || next === undefined) continue;
 		planned.push(
 			PlannedRelease.make({
@@ -642,5 +879,10 @@ const assembleOrHalt = (input: {
 		);
 	}
 	planned.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-	return ReleasePlan.make({ releases: planned, changesets: relevant, ...(pre === undefined ? {} : { preState: pre }) });
+	return ReleasePlan.make({
+		releases: planned,
+		changesets: relevant,
+		...(pre === undefined ? {} : { preState: pre }),
+		snapshot: snapshot !== undefined,
+	});
 };

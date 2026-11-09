@@ -1,0 +1,1 @@
+{ "name": "ws-star", "version": "1.0.0", "dependencies": { "a": "workspace:*" } }

@@ -19,6 +19,8 @@
 * Updated @effected/bundler
 * Updated ai-plugin
 * Updated @effected/github
+* Updated @effected/changesets
+* Updated @effected/markdown-lint
 
 ## 2026-11-08
 

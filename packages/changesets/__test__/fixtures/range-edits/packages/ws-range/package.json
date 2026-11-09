@@ -1,0 +1,1 @@
+{ "name": "ws-range", "version": "1.0.0", "dependencies": { "a": "workspace:^1.0.0" } }

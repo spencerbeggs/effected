@@ -12,14 +12,35 @@
  */
 
 export { BumpType, ReleaseType } from "./BumpType.js";
+export type {
+	ChangelogEntryOptions,
+	ChangelogFunctions,
+	GetDependencyReleaseLine,
+	GetReleaseLine,
+} from "./Changelog.js";
+export {
+	Changelog,
+	ChangelogError,
+	ComprehensiveRelease,
+	ModCompWithPackage,
+	NewChangeset,
+	NewChangesetWithCommit,
+	PackageJSON,
+	VersionType,
+} from "./Changelog.js";
 export { ChangesetConfig } from "./ChangesetConfig.js";
 export { ChangesetFile, ParsedChangeset } from "./ChangesetFile.js";
 export {
 	ChangesetConfigError,
 	ChangesetParseError,
+	MissingPackageError,
+	SnapshotPreModeError,
+	SnapshotTemplateError,
 	UnknownPackageError,
 } from "./errors.js";
 export type { PendingChangesetFailure, SettledChangesets } from "./PendingChangesets.js";
 export { PendingChangeset, PendingChangesets } from "./PendingChangesets.js";
 export { PreState } from "./PreState.js";
+export { ChangesetMove, ManifestEdit, RangeEdit, ReleaseEdits } from "./ReleaseEdits.js";
+export type { ReleaseSnapshot } from "./ReleasePlan.js";
 export { PlannedRelease, ReleasePlan } from "./ReleasePlan.js";

@@ -4,6 +4,7 @@ import { Result } from "effect";
 import { ChangesetConfig } from "../src/ChangesetConfig.js";
 import { PendingChangeset } from "../src/PendingChangesets.js";
 import { PreState } from "../src/PreState.js";
+import type { ReleaseSnapshot } from "../src/ReleasePlan.js";
 import { ReleasePlan } from "../src/ReleasePlan.js";
 
 type Dependencies = Pick<
@@ -448,5 +449,60 @@ describe("ReleasePlan.assemble", () => {
 		});
 		const error = failure(result);
 		assert.isTrue(error?._tag === "InvalidVersionError" && error.input === "1.0.0-beta.x");
+	});
+
+	it("draws no edge for a ~> range, which @effected/semver rejects, so a major does not ripple", () => {
+		// The oracle reads ~> as ~ and bumps b patch here (probed); a ruled divergence.
+		const result = plan(
+			[pkg("a", "1.0.0"), pkg("b", "1.0.0", { dependencies: { a: "~>1.0.0" } })],
+			[change("one.md", { a: "major" })],
+		);
+		assert.deepStrictEqual(projected(result), [["a", "major", "1.0.0", "2.0.0"]]);
+	});
+
+	describe("snapshot", () => {
+		const timestamp = new Date("2026-01-02T03:04:05.678Z");
+		const snap = (fields: Partial<ChangesetConfig>, snapshot: Omit<ReleaseSnapshot, "timestamp">) =>
+			ReleasePlan.assemble({
+				packages: [pkg("a", "1.0.0")],
+				changesets: [change("one.md", { a: "minor" })],
+				config: config(fields),
+				snapshot: { ...snapshot, timestamp },
+			});
+
+		it("takes the template and useCalculatedVersion from the config", () => {
+			const result = snap(
+				{ snapshot: { useCalculatedVersion: true, prereleaseTemplate: "{tag}.{datetime}" } },
+				{ tag: "c" },
+			);
+			assert.deepStrictEqual(projected(result), [["a", "minor", "1.0.0", "1.1.0-c.20260102030405"]]);
+		});
+
+		it("lets the snapshot override both", () => {
+			const result = snap(
+				{ snapshot: { useCalculatedVersion: true, prereleaseTemplate: "{tag}.{datetime}" } },
+				{ tag: "c", useCalculatedVersion: false, prereleaseTemplate: "{tag}-{timestamp}" },
+			);
+			assert.deepStrictEqual(projected(result), [["a", "minor", "1.0.0", "0.0.0-c-1767323045678"]]);
+		});
+
+		it("reads an empty template override as the default suffix, not the config's", () => {
+			const result = snap(
+				{ snapshot: { useCalculatedVersion: false, prereleaseTemplate: "{commit}" } },
+				{ tag: "c", prereleaseTemplate: "" },
+			);
+			assert.deepStrictEqual(projected(result), [["a", "minor", "1.0.0", "0.0.0-c-20260102030405"]]);
+		});
+
+		it("refuses pre mode before anything else", () => {
+			const result = ReleasePlan.assemble({
+				packages: [pkg("a", "1.0.0")],
+				changesets: [change("one.md", { ghost: "minor" })],
+				config: config(),
+				pre: PreState.make({ mode: "pre", tag: "beta" }),
+				snapshot: { timestamp },
+			});
+			assert.strictEqual(failure(result)?._tag, "SnapshotPreModeError");
+		});
 	});
 });

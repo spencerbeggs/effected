@@ -1,0 +1,10 @@
+{
+  "name": "range-edits-root",
+  "private": true,
+  "dependencies": {
+    "a": "^1.0.0"
+  },
+  "devDependencies": {
+    "a": "workspace:^1.0.0"
+  }
+}
