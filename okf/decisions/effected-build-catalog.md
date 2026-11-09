@@ -22,15 +22,15 @@ sources:
     title: "The effected:build describe and the two-catalog consumer view"
   - id: sync-script
     resource: ../../lib/scripts/catalog-sync.ts
-    title: "SYNC_CATALOG, UNMANAGED_CATALOGS, restoreUnmanaged and checkVerdict"
+    title: "SYNC_CATALOG and checkVerdict"
   - id: silk-build
     resource: "@savvy-web/pnpm-plugin-silk 0.52.0 pnpmfile.mjs, the build catalog and the tsdown>rolldown-plugin-dts override"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-09T00:05:23Z
+  at: 2026-11-09T23:27:41Z
 integrity:
   generated:
-    body: 7c2223ea46e0f7d0
+    body: b3e2b9b8646a41dc
 ---
 
 # The plugin declares a second consumer-visible catalog, effected:build, for the kit's build chain
@@ -54,7 +54,7 @@ Each range, peer and strategy was copied from silk's `build` catalog as installe
 
 **It carries one peer rule.** `peerDependencyRules.allowedVersions` admits a TypeScript 7.1 prerelease under `tsdown`, whose `typescript` peer (`^5.0.0 || ^6.0.0 || ^7.0.0`) admits none. The value is silk's for the same key, so a consumer running both plugins merges two equal rules.
 
-**The catalog sync never moves it.** The sync manages next-release versions of the kit; a build-chain move is a deliberate upgrade. `catalog-sync.ts` passes `--catalog effected`, but the upgrade CLI honours that flag on its interactive path only, so `--yes` and `--check` still walk every catalog. The script therefore restores each `UNMANAGED_CATALOGS` block after `--yes` writes, and `checkVerdict` scopes `--check`'s JSON drift to `effected` before deciding the exit code.[^sync-script] Build-chain entries move through the user-run `pnpm:up`.
+**The catalog sync never moves it.** The sync manages next-release versions of the kit; a build-chain move is a deliberate upgrade. `catalog-sync.ts` passes `--catalog effected`, to both `--yes` and `--check`, and the upgrade CLI scopes every mode to it from rolldown-pnpm-config 2.4.5, so neither writes nor reports an `effected:build` entry. An undeclared name exits 1 with an `error.kind` of `catalog`, which `checkVerdict` keeps red.[^sync-script] Build-chain entries move through the user-run `pnpm:up`.
 
 This repository consumes it the way it consumes `effected`: `pnpm:export` writes `effected:build` and `effected:build:peers` into the root `pnpm-workspace.yaml`, and the workspace manifests write `catalog:effected:build` and `catalog:effected:build:peers`. The silk `lint`, `test`, `silk` and `docs` catalogs, the silk presets and the silk configDependency stay where they are.
 
@@ -69,7 +69,7 @@ This repository consumes it the way it consumes `effected`: `pnpm:export` writes
 - **A consumer moving to `effected package build` rewrites `catalog:build` to `catalog:effected:build`** for these packages; the upgrade ledger carries the entry.
 - **Export before you repoint, or the export cannot run.** A manifest that names `catalog:effected:build` before `pnpm-workspace.yaml` declares it fails every install with `ERR_PNPM_CATALOG_ENTRY_NOT_FOUND_FOR_SPEC`. `pnpm pnpm:export` fails the same way, because pnpm's `verifyDepsBeforeRun` installs before the script runs ([the gotcha](../gotchas/verify-deps-before-run.md)). This repository's own migration hit it, and the way out was to run the bin directly, `cd packages/pnpm-plugin-effected/lib/build && ../../node_modules/.bin/rolldown-pnpm-config export`, then `pnpm install`. A consumer installing the plugin as a config dependency is in the same position: move the plugin release first, then rewrite the manifests.
 - **Silk's `tsdown>rolldown-plugin-dts` override still applies wherever silk is a configDependency, this repository included**, until silk drops it. The kit cannot remove another plugin's override.
-- **The `--catalog` workaround in the sync is temporary.** Once the upgrade CLI honours `--catalog` on `--yes` and `--check`, the restore and the drift filter become redundant, though harmless.
+- **The sync relies on the CLI's scoping.** An earlier script restored the `effected:build` block after `--yes` and filtered `--check`'s drift, because the CLI honoured `--catalog` only interactively; that workaround was removed once 2.4.5 scoped every mode. A downgrade below 2.4.5 would let the sync move the build chain again.
 
 Amends [the one declared effected catalog](one-declared-effected-catalog.md) and [consumers see one catalog](consumer-catalog-fold.md). The module: [pnpm-plugin-effected](../modules/pnpm-plugin-effected.md).
 

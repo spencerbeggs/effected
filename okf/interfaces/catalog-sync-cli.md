@@ -17,7 +17,7 @@ sources:
     resource: ../../packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-09T00:05:23Z
+  at: 2026-11-09T23:27:41Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:14.366Z
@@ -31,7 +31,7 @@ verified:
     at: 2026-11-08T18:25:54Z
 integrity:
   generated:
-    body: 2db4ed542f581ede
+    body: 2d77a48048326266
   verified:
     by: human:spencer
     at: 2026-11-08T18:25:54Z
@@ -61,12 +61,10 @@ integrity:
   patch and never a minor.
 - The same config also declares `effected:build`, the build chain, and
   the sync never moves it. Both commands pass `--catalog effected`
-  (`SYNC_CATALOG`), but the upstream CLI honours that flag on its
-  interactive path only: `--yes` and `--check` still walk every catalog.
-  So `catalog:sync` restores each `UNMANAGED_CATALOGS` block after the CLI
-  writes and drops its moves from the report, and `catalog:check` drops its
-  drift before deciding the exit code, printing a note that names the
-  ignored count. Build-chain entries move only through the user-run
+  (`SYNC_CATALOG`), and the upstream CLI scopes every mode to it from
+  rolldown-pnpm-config 2.4.5: `--yes` rewrites and `--check` reports only
+  `effected` entries. A name the config does not declare exits 1 with an
+  `error.kind` of `catalog`, and `catalog:check` stays red on it. Build-chain entries move only through the user-run
   `pnpm:up`; see [the effected build catalog](../decisions/effected-build-catalog.md).
 - `.github/workflows/catalog-sync.yml` is the CI job that runs this CLI
   against `main` on every pull request; see

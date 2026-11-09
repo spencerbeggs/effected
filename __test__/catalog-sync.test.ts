@@ -10,7 +10,6 @@ import {
 	PLUGIN,
 	PLUGIN_CONFIG,
 	SYNC_CATALOG,
-	UNMANAGED_CATALOGS,
 	catalogEntries,
 	check,
 	checkVerdict,
@@ -217,27 +216,36 @@ describe("catalog:check", () => {
 	});
 });
 
-describe("the build catalog is outside the sync", () => {
-	const buildRow = { catalog: "effected:build", pkg: "tsdown", from: "^0.23.4", to: "^0.23.7", source: "registry" };
+describe("the sync is scoped to the kit catalog by the CLI", () => {
 	const kitRow = { catalog: "effected", pkg: "@effected/git", from: "^0.1.0", to: "^0.2.0", source: "workspace" };
 	const doc = (drift: readonly object[]) => JSON.stringify({ command: "check", inSync: drift.length === 0, drift });
 
-	/** A config with the kit catalog and a build catalog beside it, shaped like the real one. */
-	const config = (kit: string, tsdown: string) =>
-		`PnpmConfigPlugin({\n\tcatalogs: {\n\t\teffected: {\n\t\t\tpackages: {\n\t\t\t\t"@effected/git": { range: "${kit}", peer: "${kit}", strategy: "lock-minor", source: "workspace" },\n\t\t\t},\n\t\t},\n\t\t"effected:build": {\n\t\t\tpackages: {\n\t\t\t\ttsdown: { range: "${tsdown}", peer: "^0.23.0", strategy: "lock-minor" },\n\t\t\t},\n\t\t},\n\t},\n});\n`;
+	it("both invocations pass --catalog effected", async () => {
+		const root = makeRoot(SYNCED);
+		const run = runner();
 
-	it("the gate passes when only a build-chain entry drifted, and says why", () => {
-		const verdict = checkVerdict(1, doc([buildRow]));
-		assert.strictEqual(verdict.code, 0);
-		assert.include(verdict.text, "Catalogs are in sync.");
-		assert.include(verdict.text, "pnpm pnpm:up");
+		await sync({ ...quiet, root, run });
+		await check({ ...quiet, root, run });
+
+		assert.strictEqual(SYNC_CATALOG, "effected");
+		assert.lengthOf(run.calls, 2);
+		for (const call of run.calls) {
+			const at = call.args.indexOf("--catalog");
+			assert.isAbove(at, -1);
+			assert.strictEqual(call.args[at + 1], "effected");
+		}
 	});
 
-	it("the gate still fails on kit drift, naming only the kit rows", () => {
-		const verdict = checkVerdict(1, doc([buildRow, kitRow]));
+	it("the gate reports every row the CLI returns and fails", () => {
+		const verdict = checkVerdict(1, doc([kitRow]));
 		assert.strictEqual(verdict.code, 1);
-		assert.include(verdict.text, "effected.@effected/git");
-		assert.notInclude(verdict.text, "effected:build.tsdown");
+		assert.include(verdict.text, "effected.@effected/git  ^0.1.0 -> ^0.2.0");
+	});
+
+	it("the gate passes an empty drift list", () => {
+		const verdict = checkVerdict(0, doc([]));
+		assert.strictEqual(verdict.code, 0);
+		assert.include(verdict.text, "Catalogs are in sync.");
 	});
 
 	it("the gate keeps a resolution failure red", () => {
@@ -247,37 +255,20 @@ describe("the build catalog is outside the sync", () => {
 		assert.include(verdict.text, "boom");
 	});
 
-	it("sync puts back a build-chain block the CLI moved and reports no move for it", async () => {
-		const root = makeRoot(config("^0.1.0", "^0.23.4"));
-		const out = JSON.stringify({ changed: [buildRow] });
-
-		const changed = await sync({ ...quiet, root, run: runner(config("^0.1.0", "^0.23.7"), out) });
-
-		assert.isFalse(changed, "a build-chain-only move is not a sync");
-		assert.include(readFileSync(join(root, CONFIG_PATH), "utf8"), 'range: "^0.23.4"');
-		assert.isFalse(existsSync(join(root, CHANGESET_PATH)));
+	it("the gate names an unknown-catalog failure and stays red even on exit 0", () => {
+		const failed = JSON.stringify({
+			error: { kind: "catalog", message: 'No catalog named "nope" in the config (declared: effected, effected:build)' },
+		});
+		const verdict = checkVerdict(0, failed);
+		assert.strictEqual(verdict.code, 1);
+		assert.include(verdict.text, "(catalog)");
+		assert.include(verdict.text, "No catalog named");
 	});
 
-	it("sync keeps the kit move and reverts the build-chain one in the same run", async () => {
-		const root = makeRoot(config("^0.1.0", "^0.23.4"));
-		const out = JSON.stringify({ changed: [buildRow, kitRow] });
-
-		const changed = await sync({ ...quiet, root, run: runner(config("^0.2.0", "^0.23.7"), out) });
-
-		assert.isTrue(changed);
-		const written = readFileSync(join(root, CONFIG_PATH), "utf8");
-		assert.include(written, 'range: "^0.2.0"');
-		assert.include(written, 'range: "^0.23.4"');
-		const changeset = readFileSync(join(root, CHANGESET_PATH), "utf8");
-		assert.include(changeset, "@effected/git");
-		assert.notInclude(changeset, "tsdown");
-	});
-
-	it("the real config declares every unmanaged catalog under the quoted key the restore looks for", () => {
-		// Positive control: an unmanaged catalog the restore cannot find is moved by the CLI unchecked.
+	it("the real config still declares the catalog the sync is scoped to", () => {
+		// Positive control: `--catalog` naming an undeclared catalog exits 1 in the CLI.
 		const real = readFileSync(fileURLToPath(new URL(`../${CONFIG_PATH}`, import.meta.url)), "utf8");
-		assert.isAbove(UNMANAGED_CATALOGS.length, 0);
-		for (const name of UNMANAGED_CATALOGS) assert.include(real, `"${name}": {`);
+		assert.include(real, `${SYNC_CATALOG}: {`);
 	});
 });
 
