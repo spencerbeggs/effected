@@ -28,7 +28,7 @@ sources:
     title: "The root workspace's effected and effected:peers catalogs"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-09T00:05:23Z
 verified:
   - by: human:spencer
     at: 2026-11-01T21:41:54Z
@@ -36,7 +36,7 @@ verified:
     at: 2026-11-08T18:25:54Z
 integrity:
   generated:
-    body: b4454cf7eea71732
+    body: eb38d94a96ebadbf
   verified:
     by: human:spencer
     at: 2026-11-08T18:25:54Z
@@ -44,6 +44,8 @@ integrity:
 ---
 
 # The plugin declares one catalog, effected, and pins only the Effect family by include pattern
+
+**Amended.** The plugin now also declares a second catalog, `effected:build`, for the kit's build chain, and it is visible to consumers: see [the effected build catalog](effected-build-catalog.md). Everything below still holds for `effected`. "One catalog" now reads "one runtime catalog": the Effect family and the kit are never split, and the build chain is never folded into them.
 
 ## Context
 
@@ -57,7 +59,7 @@ The derived family pins come from `overridesFromCatalogs: { catalog: "effected",
 
 The hook no longer folds. `src/pnpmfile.ts` runs the generated `updateConfig` and deletes only `effected:peers` from what pnpm sees, so a consumer still sees exactly one catalog, `effected`.[^pnpmfile]
 
-This repository uses the same names a consumer does. `pnpm pnpm:export` writes `effected` and `effected:peers` into the root `pnpm-workspace.yaml`,[^workspace-yaml] and every workspace manifest writes `catalog:effected` for a dev or runtime dependency and `catalog:effected:peers` for a peer. The kit's published `effect` peer stays floored to the minor.
+This repository uses the same names a consumer does. `pnpm pnpm:export` writes `effected` and `effected:peers` (and `effected:build` with its twin) into the root `pnpm-workspace.yaml`,[^workspace-yaml] and every workspace manifest writes `catalog:effected` for a dev or runtime dependency and `catalog:effected:peers` for a peer. The kit's published `effect` peer stays floored to the minor.
 
 ## The guarantee
 

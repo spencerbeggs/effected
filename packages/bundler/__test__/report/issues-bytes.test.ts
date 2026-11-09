@@ -1,8 +1,8 @@
-import { mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
-import { Schema } from "effect";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, Schema } from "effect";
 import { flattenIssues, serializeIssues, writeIssuesArtifact } from "../../src/report/issues-artifact.js";
 import { BuildReport } from "../../src/report/schema.js";
 
@@ -21,17 +21,20 @@ describe("issues.json byte stability", () => {
 		assert.strictEqual(serializeIssues(issues), fixture("issues.expected.json"));
 	});
 
-	it("writes the same bytes to dist/prod/issues.json for a pinned clock", () => {
-		const cwd = mkdtempSync(join(tmpdir(), "issues-bytes-"));
-		const path = writeIssuesArtifact({
-			cwd,
-			target: "prod",
-			reports: [report],
-			now: () => new Date("2026-06-21T00:00:00.000Z"),
-			buildOk: false,
-			failure,
-		});
-		assert.strictEqual(path, join(cwd, "dist", "prod", "issues.json"));
-		assert.strictEqual(readFileSync(path, "utf8"), fixture("issues.expected.json"));
-	});
+	it.effect("writes the same bytes to dist/prod/issues.json for a pinned clock", () =>
+		Effect.gen(function* () {
+			const handle = MemoryFileSystem.makeSync();
+			const cwd = "/ws/pkg";
+			const path = yield* writeIssuesArtifact({
+				cwd,
+				target: "prod",
+				reports: [report],
+				now: () => new Date("2026-06-21T00:00:00.000Z"),
+				buildOk: false,
+				failure,
+			}).pipe(Effect.provide(handle.layer));
+			assert.strictEqual(path, join(cwd, "dist", "prod", "issues.json"));
+			assert.strictEqual(handle.volume.text(path), fixture("issues.expected.json"));
+		}),
+	);
 });

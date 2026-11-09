@@ -267,7 +267,7 @@ export const program = Effect.logInfo("The action ran.");
 
 const tsconfigJson = `{
 	"$schema": "https://json.schemastore.org/tsconfig.json",
-	"extends": "@effected/plugin/tsconfig/ecma.json"
+	"extends": "@effected/plugin/tsconfig/action.json"
 }
 `;
 

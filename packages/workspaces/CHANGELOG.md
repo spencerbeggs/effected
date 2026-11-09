@@ -1,5 +1,25 @@
 # @effected/workspaces
 
+## 0.44.1
+
+### Bug Fixes
+
+- `PackedInstall` strips `NODE_OPTIONS` from the install, probe and bin environments, so a workspace `nodeOptions` such as `--import=tsx` no longer crashes a scratch consumer. A bin that needs it passes it in its own `env`, which still wins [#1310][#1310]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/lockfiles | dependency | updated | 0.23.0 | 0.23.1 |
+| @effected/npm | dependency | updated | 0.31.0 | 0.32.0 |
+| @effected/package-json | dependency | updated | 0.31.0 | 0.31.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1310]: https://github.com/spencerbeggs/effected/pull/1310
+
 ## 0.44.0
 
 ### Breaking Changes

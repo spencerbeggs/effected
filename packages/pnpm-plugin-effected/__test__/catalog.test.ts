@@ -37,7 +37,9 @@ function effectEntry(): string {
  */
 function readCatalogEntries(catalog: string): Map<string, string> {
 	const source = SOURCE();
-	const anchor = source.indexOf(`${catalog}: {`);
+	// A name with a colon is a quoted key; a bare identifier is not.
+	const quoted = source.indexOf(`"${catalog}": {`);
+	const anchor = quoted !== -1 ? quoted : source.indexOf(`\t${catalog}: {`);
 	assert.notStrictEqual(anchor, -1, `no \`${catalog}\` catalog declared in ${CONFIG}`);
 	const packagesAt = source.indexOf("packages: {", anchor);
 	assert.notStrictEqual(packagesAt, -1, `\`${catalog}\` catalog has no packages map`);
@@ -191,6 +193,80 @@ function bare(spec: string): string {
 	return (/\brange:\s*"[\^~]?([^"]+)"/.exec(spec)?.[1] ?? "").trim();
 }
 
+/**
+ * The build catalog's entries, keyed by name. Its bare keys (`react`, `tsdown`, ...)
+ * are invisible to `readCatalogEntries`, which reads quoted names only, so this reads
+ * both spellings out of the `effected:build` block.
+ */
+function buildEntries(): Map<string, string> {
+	const source = SOURCE();
+	const start = source.indexOf('"effected:build": {');
+	assert.notStrictEqual(start, -1, "no `effected:build` catalog declared");
+	const packagesAt = source.indexOf("packages: {", start);
+	let depth = 0;
+	let end = packagesAt;
+	for (let i = source.indexOf("{", packagesAt); i < source.length; i++) {
+		if (source[i] === "{") depth++;
+		else if (source[i] === "}" && --depth === 0) {
+			end = i;
+			break;
+		}
+	}
+	const body = source.slice(packagesAt, end);
+	const entries = new Map<string, string>();
+	for (const match of body.matchAll(/^\t+(?:"([^"]+)"|([A-Za-z][\w-]*)): (\{[^}]*\})/gm)) {
+		entries.set(match[1] ?? match[2] ?? "", match[3] ?? "");
+	}
+	return entries;
+}
+
+/** Every package the kit reads from the build catalog, and the chain the bundler runs. */
+const BUILD_CHAIN = [
+	"@microsoft/api-extractor",
+	"@microsoft/api-extractor-model",
+	"@microsoft/tsdoc",
+	"@microsoft/tsdoc-config",
+	"@rsbuild/core",
+	"@tsdown/exe",
+	"@types/node",
+	"@types/react",
+	"@types/react-dom",
+	"react",
+	"react-dom",
+	"rolldown",
+	"rolldown-plugin-dts",
+	"tsdown",
+	"tsx",
+	"typescript",
+].sort();
+
+describe("effected:build catalog: the build chain", () => {
+	it("declares exactly the build chain and the toolchain", () => {
+		assert.deepStrictEqual([...buildEntries().keys()].sort(), BUILD_CHAIN);
+	});
+
+	it("names no kit or Effect package, which belong to the effected catalog", () => {
+		for (const name of buildEntries().keys()) {
+			assert.isFalse(name.startsWith(KIT) || name.startsWith(FAMILY) || name === "effect", name);
+		}
+	});
+
+	it("gives every entry a range, a peer and a strategy, and resolves none from the workspace", () => {
+		for (const [name, spec] of buildEntries()) {
+			assert.match(spec, /\brange:\s*"[^"]+"/, `${name} must declare a range`);
+			assert.match(spec, /\bpeer:\s*"[^"]+"/, `${name} must declare a peer or no peers catalog is emitted`);
+			assert.match(spec, /\bstrategy:\s*"(lock|lock-minor)"/, `${name} must declare a strategy`);
+			assert.notMatch(spec, /\bsource:/, `${name} is a registry package`);
+		}
+	});
+
+	// tsdown itself asks for ^0.30.0; an older declaration pass is the split the build
+	// catalog exists to end (effected#1277), so the catalog never names one.
+	it("holds rolldown-plugin-dts at the line tsdown asks for", () => {
+		assert.match(buildEntries().get("rolldown-plugin-dts") ?? "", /range:\s*"\^0\.30\./);
+	});
+});
+
 describe("overrides", () => {
 	const RC117 = "@effect/platform-node@4.0.0-rc.117>@effect/platform-node-shared";
 	const RC118 = "@effect/platform-node@4.0.0-rc.118>@effect/platform-node-shared";
@@ -246,6 +322,13 @@ describe("overrides", () => {
 		// `include` patterns are what keep it out, so a widened filter fails here.
 		for (const selector of Object.keys(overrides as Record<string, string>)) {
 			assert.isFalse(selector.startsWith(KIT), `${selector} pins a kit package graph-wide`);
+			// The build catalog derives no pins: a build-chain range is a catalog range only.
+			const target =
+				selector
+					.split(">")
+					.at(-1)
+					?.replace(/(.)@.*$/, "$1") ?? "";
+			assert.notInclude(BUILD_CHAIN, target, `${selector} pins a build-chain package graph-wide`);
 		}
 	});
 
@@ -272,12 +355,38 @@ describe("the consumer's catalog", () => {
 		return out.catalogs as Record<string, Record<string, string>>;
 	}
 
-	// One catalog was the point of the rename: the effect / effected split, and the
-	// `:peers` twins, confused every consumer. `pnpm pack` runs no hook, so a peer
-	// a consumer writes as `catalog:effected` publishes the `effected` range.
-	it("exposes exactly one catalog, effected", async () => {
+	// One runtime catalog was the point of the rename: the effect / effected split, and
+	// the `:peers` twins, confused every consumer. `pnpm pack` runs no hook, so a peer
+	// a consumer writes as `catalog:effected` publishes the `effected` range. The build
+	// chain is a second catalog by design (okf/decisions/effected-build-catalog.md).
+	it("exposes exactly two catalogs, effected and effected:build, and hides both peers twins", async () => {
 		const catalogs = await catalogsFor({});
-		assert.deepStrictEqual(Object.keys(catalogs), ["effected"]);
+		assert.deepStrictEqual(Object.keys(catalogs).sort(), ["effected", "effected:build"]);
+		assert.notProperty(catalogs, "effected:peers");
+		assert.notProperty(catalogs, "effected:build:peers");
+	});
+
+	it("carries the build chain in effected:build", async () => {
+		const build = (await catalogsFor({}))["effected:build"];
+		assert.deepStrictEqual(Object.keys(build ?? {}).sort(), BUILD_CHAIN);
+		assert.match(build?.tsdown ?? "", /^\^0\.\d+\.\d+$/);
+		assert.isString(build?.typescript);
+	});
+
+	it("lets a consumer's own effected:build entry win", async () => {
+		const catalogs = await catalogsFor({ catalogs: { "effected:build": { typescript: "7.1.1" } } });
+		assert.strictEqual(catalogs["effected:build"]?.typescript, "7.1.1");
+		assert.isString(catalogs["effected:build"]?.tsdown, "the rest of the plugin's entries stay");
+	});
+
+	// tsdown's own typescript peer admits no 7.1 prerelease, which the build catalog holds.
+	it("allows a TypeScript 7.1 prerelease under tsdown", async () => {
+		const { hooks } = (await import(PNPMFILE)) as {
+			hooks: { updateConfig: (config: Record<string, unknown>) => Promise<Record<string, unknown>> };
+		};
+		const { peerDependencyRules } = await hooks.updateConfig({});
+		const allowed = (peerDependencyRules as { allowedVersions?: Record<string, string> }).allowedVersions;
+		assert.match(allowed?.["tsdown>typescript"] ?? "", /\^7\.1\.0-beta/);
 	});
 
 	it("carries the effect family and the kit in it", async () => {

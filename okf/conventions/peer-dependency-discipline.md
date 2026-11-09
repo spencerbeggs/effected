@@ -12,10 +12,10 @@ sources:
     resource: ../../pnpm-workspace.yaml
 generated:
   by: "claude-code/opus-5"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-09T00:05:23Z
 integrity:
   generated:
-    body: ad5f1440e5bbfcb9
+    body: 29be78ad7c7d4a7e
 ---
 
 # Peer-dependency discipline
@@ -67,7 +67,7 @@ with each catalog advance.
   `dedupePeerDependents` — pnpm's defaults apply — and there is no
   `.npmrc`.
 - Every package typechecks with `tsc --noEmit` against
-  `typescript: catalog:build`; `@effect/tsgo` is not a package
+  `typescript: catalog:effected:build`; `@effect/tsgo` is not a package
   dependency.
 - The root `package.json` carries the toolchain devDependencies: silk, the
   vitest-agent plugin, `tsx` and `@effected/plugin`. `@effected/plugin` carries

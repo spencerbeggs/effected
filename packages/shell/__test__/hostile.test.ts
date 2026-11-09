@@ -38,6 +38,12 @@ type Timing = ReturnType<typeof time>;
  * real work. A ratio of 10 or more is timed again, up to three
  * samples, keeping the fastest run of each size, so one pause in the full run
  * cannot fail a linear parse, while a quadratic one fails every sample.
+ *
+ * The ratio is the whole bound: no unit asserts an absolute time. A ceiling of 10 s of CPU on the full run measured the
+ * machine, not the parse. CPU time here is the process's, GC helper threads included (about 1.4x the wall time of a
+ * parse here), V8 coverage roughly doubles it again, and CI runners differ by about 1.7x for the same commit, so a
+ * megabyte of `a;` that takes 1.6 s of CPU locally took 14.7 s on a slow runner while its ratio stayed linear. The
+ * 60 s test timeout is the absolute backstop.
  */
 const measure = (
 	build: (length: number) => string,
@@ -193,28 +199,24 @@ describe("hostile input", () => {
 			);
 			assert.strictEqual(full.script.source.length, length);
 			assert.isBelow(ratio, 10, `${JSON.stringify(unit)}: ${quarter.ms.toFixed(1)}ms -> ${full.ms.toFixed(1)}ms`);
-			assert.isBelow(full.ms, 10_000);
 		});
 	}
 
 	it("one array holding a megabyte of blank-holding keys parses in linear time", { timeout: 60_000 }, () => {
 		const build = (length: number): string => `x=(${repeatTo("[ '$(a)' ]=1 ", length)})`;
-		const { full, ratio } = measure(build);
+		const { ratio } = measure(build);
 		assert.isBelow(ratio, 10);
-		assert.isBelow(full.ms, 10_000);
 	});
 
 	it("one array holding a megabyte of substitutions parses in linear time", { timeout: 60_000 }, () => {
 		const { full, ratio } = measure((length) => `x=(${repeatTo("$(a) ", length)})`);
 		assert.deepStrictEqual(full.script.diagnostics, []);
 		assert.isBelow(ratio, 10);
-		assert.isBelow(full.ms, 10_000);
 	});
 
 	it("a heredoc line joined from a megabyte of continuations parses in linear time", { timeout: 60_000 }, () => {
-		const { full, ratio } = measure((length) => `cat <<E\n${repeatTo("x\\\n", length)}`);
+		const { ratio } = measure((length) => `cat <<E\n${repeatTo("x\\\n", length)}`);
 		assert.isBelow(ratio, 10);
-		assert.isBelow(full.ms, 10_000);
 	});
 
 	it("one megabyte-long quoted run inside a braced expansion is checked for openers in linear time", {
@@ -228,7 +230,6 @@ describe("hostile input", () => {
 			["QuotedSubstitutionInExpansion"],
 		);
 		assert.isBelow(ratio, 10);
-		assert.isBelow(full.ms, 10_000);
 	});
 
 	it("one megabyte-long ANSI-C run of escaped openers inside a braced expansion is decoded in linear time", {
@@ -241,7 +242,6 @@ describe("hostile input", () => {
 			["QuotedSubstitutionInExpansion"],
 		);
 		assert.isBelow(ratio, 10);
-		assert.isBelow(full.ms, 10_000);
 	});
 
 	it("one megabyte-long double-quoted run of literal $ inside a braced expansion is checked in linear time", {
@@ -254,7 +254,6 @@ describe("hostile input", () => {
 			["QuotedSubstitutionInExpansion"],
 		);
 		assert.isBelow(ratio, 10);
-		assert.isBelow(full.ms, 10_000);
 	});
 
 	it("one megabyte-long quoted run of openers is read as POSIX mode would in linear time", {
@@ -268,7 +267,6 @@ describe("hostile input", () => {
 			["QuotedSubstitutionInExpansion", "QuotedCloserInExpansion"],
 		);
 		assert.isBelow(ratio, 10);
-		assert.isBelow(full.ms, 10_000);
 	});
 
 	it("a megabyte of $( is one opaque word with one diagnostic", () => {

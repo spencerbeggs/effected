@@ -1,14 +1,14 @@
 # @effected/bundler
 
-The kit's build pipeline as a library: `Bundler.build` takes a package directory and a decoded config and writes `dist/prod`: the JS and declaration passes over tsdown, the emitted manifest, `targets.json`, the API Extractor meta bundle with its `tsdoctor.json`, an optional SEA binary, and `issues.json`.
+The kit's build pipeline as a library: `Bundler.build` takes a package directory and a decoded config and writes `dist/prod`: the JS and declaration passes over tsdown, the emitted manifest, `targets.json`, the API Extractor meta bundle with its `bundle.json`, an optional SEA binary, and `issues.json`.
 
-**Tier: integrated.** It imports tsdown, rolldown, `rolldown-plugin-dts`, `@microsoft/api-extractor` and `@tsdown/exe` at runtime, and peers `typescript`, as the tool's `cli`, `mcp` and `plugin` do. It is the only kit package that imports it. `satori` and `@resvg/resvg-js` are optional peers. The internals are ported plain async code over `node:fs`; only the public boundary is Effect with typed failures, a recorded debt.
+**Tier: integrated.** It imports tsdown, rolldown, `rolldown-plugin-dts`, `@microsoft/api-extractor` and `@tsdown/exe` at runtime, and peers `typescript`, as the tool's `cli`, `mcp` and `plugin` do. It is the only kit package that imports it. `satori` and `@resvg/resvg-js` are optional peers. The orchestrator's and the action builder's own IO go through core `FileSystem` and `Path` in `R`, so a real build needs the host's layers (`NodeServices.layer`): tsdown, rolldown, API Extractor and the SEA compiler always use the host disk. The tsdown and meta passes are still ported async code over `node:fs`, a recorded debt (`okf/modules/bundler.md`).
 
 **For the full design:** → `@./okf/modules/bundler.md`
 
 Load when changing the public API, a load-bearing output, or the seams.
 
-`typescript` is peered as the literal `7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`, not `catalog:build:peers`, because that catalog value pins a prerelease exactly and a plain lower bound would admit `-dev` nightlies; the plugin's `entry.test.ts` holds the four manifests to the same string.
+`typescript` is peered as the literal `7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`, not `catalog:effected:build:peers`, because that catalog value pins a prerelease exactly and a plain lower bound would admit `-dev` nightlies; the plugin's `entry.test.ts` holds the four manifests to the same string.
 
 ## Module layout
 
@@ -17,7 +17,7 @@ Load when changing the public API, a load-bearing output, or the seams.
 - `entries/`: entry points and export paths from `package.json`. `manifest/`: the emitted `package.json`. `catalog/`: `catalog:` and `workspace:` resolution.
 - `targets/`: publish targets and `targets.json`.
 - `passes/`, `dts/`, `tsconfig/`, `jsx/`: the tsdown passes, and the tsconfigs they run on.
-- `meta/`: API Extractor, `generateMeta`, `runMetaPass`, the `BundleManifest` schema of `tsdoctor.json`, its source tiers, Open Graph images.
+- `meta/`: API Extractor, `generateMeta`, `runMetaPass`, composing and emitting `bundle.json` from its source tiers, Open Graph images. The `BundleManifest` schema itself lives in `@effected/manifest` (pure, `effect`-only), which `src/index.ts` re-exports name for name; never move it back, or a doc-site reader installs the toolchain (`@./okf/decisions/manifest-package.md`).
 - `changesets/`: optimistic next versions through `@effected/changesets`.
 - `exe/`: single-executable builds.
 - `report/`: the collector and `issues.json`.
@@ -37,15 +37,17 @@ Other tools read these, so a change to one moves with its readers. Paths are und
 | `dist/prod/issues.json` | every gate. Check `buildOk` first, never `errors.length`: a crash can leave every bucket empty |
 | `process.env.__PACKAGE_VERSION__` | the `define` that `packages/plugin` and `packages/cli` read |
 
-`tsdoctor.json` is a wire format with readers outside this repository. Its fields grow additively.
+`bundle.json` is a wire format with readers outside this repository. Its fields grow additively. A build deletes a leftover `tsdoctor.json`, the file's former name, from the meta dir and every `localPaths` copy, and never writes one.
 
 `[package.build.meta] localPaths` copies the canonical group's model into directories relative to the package, for a consumer's docs site. The kit's own packages do not set it. `[package.build] copy` hands non-module assets to tsdown on the base partition's JS pass, once per group, with each `to` anchored to that group's `pkg/`; `public/` is the zero-config way. A directory `from` keeps its own basename under `to`: `copy = ["../../schemas"]` ships `pkg/schemas/...`, while `{ from = "../../schemas", to = "schemas" }` nests it as `pkg/schemas/schemas/...`. A manifest `exports` pattern matching no emitted file is a `warn`, code `exports-pattern-unmatched`, and so is a literal `exports` or `bin` target that is not a file, except the SEA's path. A `./dist/foo.js` export or bin is built from `./src/foo.ts` and published at the emitted name, and for an exe build `./dist/bin.js` names the exe source as `./src/bin.ts` does. A `*` over build sources, a `*` key over a literal build source, or a condition object naming the exe source fails `ConfigValidationError` before any pass. An `exports` `*` spans `/` (Node semantics), so a file at a deeper path than intended still satisfies the pattern and the warning cannot catch a wrongly nested copy.
+
+`[package.build.manifest] set` writes top-level string keys over the emitted manifest; `set.name` is the base name of every group and of the API model, and `issues.json` keeps the source name. A source export's `effected-built` condition, a workspace-only route to `dist/prod/<group>/pkg` for plain-Node consumers, is validated and stripped in `runBuild` before any reader sees the exports, and again in `buildEmittedManifest`, which rereads `package.json` from disk. An `outSubdir` override is the per-file framework-runtime shape (`__test__/e2e/runtime-subdir.e2e.test.ts`).
 
 An exe package's SEA compiles on any host, for its declared target: `@tsdown/exe` cross-compiles, and `--no-exe` is the only skip. Its manifest's `exports["."]` points at the binary, and it has a `bin` only when the source manifest declares one.
 
 ## Seams
 
-`BundlerBuildOptions.seams` replaces any of `buildTargetGroups`, `runMetaPass`, `generateMeta`, `resolveNextVersions`, `importOgPeer`, `runExeBuild`, `writeIssues`, `readPackageJson`, `writeTsconfig`, `writeTargetsBinding` and `readTsconfigJsx`. Each defaults to the real one. A seam skips what it replaces, so the exe drift guard needs `vi.mock` rather than `runExeBuild`.
+`BundlerBuildOptions.seams` replaces any of `buildTargetGroups`, `runMetaPass`, `generateMeta`, `resolveNextVersions`, `importOgPeer`, `runExeBuild`, `writeIssues`, `readPackageJson`, `writeTsconfig`, `writeTargetsBinding` and `readTsconfigJsx`. Each defaults to the real one, but the seams keep their promise and sync types while several defaults now return an Effect (`writeIssues`, `readPackageJson`, `writeTargetsBinding`, `readTsconfigJsx`), so a test cannot pass the real function as a seam. A seam skips what it replaces, so the exe drift guard needs `vi.mock` rather than `runExeBuild`.
 
 `runMetaPass` and `runExeBuild` load on first use. `runMetaPass` and `generateMeta` stay off the root as values, because a re-export would load API Extractor and its TypeScript on every import; `__test__/entrypoints.test.ts` pins that.
 

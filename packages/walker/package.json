@@ -34,9 +34,9 @@
 		"@effect/vitest": "catalog:effected",
 		"@effected/glob": "workspace:*",
 		"@effected/memfs": "workspace:*",
-		"@types/node": "catalog:build",
+		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
-		"typescript": "catalog:build"
+		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
 		"@effected/glob": "workspace:^",

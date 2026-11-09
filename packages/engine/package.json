@@ -1,6 +1,6 @@
 {
 	"name": "@effected/engine",
-	"version": "0.14.0",
+	"version": "0.15.0",
 	"private": true,
 	"description": "The effected tool's shared logic, consumed by its CLI and MCP front ends",
 	"keywords": ["effect", "cli", "mcp", "engine", "effected"],
@@ -49,8 +49,8 @@
 		"@effect/platform-node": "catalog:effected",
 		"@effect/vitest": "catalog:effected",
 		"@effected/memfs": "workspace:*",
-		"@types/node": "catalog:build",
-		"typescript": "catalog:build"
+		"@types/node": "catalog:effected:build",
+		"typescript": "catalog:effected:build"
 	},
 	"engines": {
 		"node": ">=24.11.0"

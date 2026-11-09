@@ -1,5 +1,5 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import type { PlatformError } from "effect";
+import { Effect, FileSystem, Path } from "effect";
 import type { TargetResolution } from "./config.js";
 
 /**
@@ -7,10 +7,17 @@ import type { TargetResolution } from "./config.js";
  *
  * @public
  */
-export function writeTargetsBinding(cwd: string, resolution: TargetResolution): string {
-	const dir = join(cwd, "dist", "prod");
-	mkdirSync(dir, { recursive: true });
-	const path = join(dir, "targets.json");
-	writeFileSync(path, `${JSON.stringify(resolution, null, "\t")}\n`, "utf-8");
-	return path;
-}
+export const writeTargetsBinding: (
+	cwd: string,
+	resolution: TargetResolution,
+) => Effect.Effect<string, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path> = Effect.fnUntraced(
+	function* (cwd, resolution) {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const dir = path.join(cwd, "dist", "prod");
+		yield* fs.makeDirectory(dir, { recursive: true });
+		const file = path.join(dir, "targets.json");
+		yield* fs.writeFileString(file, `${JSON.stringify(resolution, null, "\t")}\n`);
+		return file;
+	},
+);

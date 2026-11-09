@@ -15,7 +15,7 @@ const program = Effect.gen(function* () {
   const result = yield* Bundler.build({
     cwd,
     config: config.package.build,
-    tsdoctor: config.package.tsdoctor,
+    bundle: config.package.bundle,
     noExe: false,
     verbose: false,
     plugins: [],

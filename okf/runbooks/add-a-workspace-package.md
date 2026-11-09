@@ -10,10 +10,10 @@ sources:
     resource: ../../pnpm-workspace.yaml
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-08T23:22:45Z
 integrity:
   generated:
-    body: 200972a3ea09886b
+    body: a5778b6d67aa0efc
 ---
 
 # Add a workspace package
@@ -47,6 +47,8 @@ A new `@effected/X` library is ready to be scaffolded, following
 
 `packages/X` builds cleanly through `pnpm build --filter @effected/X`,
 typechecks, passes its tests, and no other package's `pnpm run` was ever
-broken by its presence on disk. Adding it to the `effected` catalog
-literal and the package table in [the Project concept](../project.md) is
-the next step, covered by [add a kit package](add-a-kit-package.md).
+broken by its presence on disk. Placing it in a layer of
+`lib/configs/layers.json`, adding it to the `effected` catalog literal and
+adding its row to the package table in [the Project concept](../project.md)
+are the next steps, covered by [add a kit package](add-a-kit-package.md).
+Until it has a layer, the layering check fails on any edge into it.

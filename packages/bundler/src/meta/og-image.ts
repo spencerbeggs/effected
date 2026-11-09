@@ -5,10 +5,10 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import type { ImageFormat } from "@effected/images";
 import type { ImageBackendSetParams } from "@effected/images/cache";
 import { ImageBackend, ImageCache, ImageCacheKey } from "@effected/images/cache";
+import type { OpenGraphImage } from "@effected/manifest";
 import { Data, Effect, Layer, Option, Predicate, Result, Schema } from "effect";
 import { causeMessage } from "../internal/causeMessage.js";
-import type { OpenGraphImage } from "./BundleManifest.js";
-import type { OgImageGenerator, OgImageInfo } from "./tsdoctor-config.js";
+import type { OgImageGenerator, OgImageInfo } from "./bundle-config.js";
 
 /**
  * A configured `openGraph.generate` renderer threw, returned no bytes, or returned bytes that are
@@ -27,7 +27,7 @@ export class OgGenerateError extends Data.TaggedError("OgGenerateError")<{
 }
 
 /**
- * The renderer an `[package.tsdoctor.openGraph] generate` name selects.
+ * The renderer an `[package.bundle.openGraph] generate` name selects.
  *
  * @remarks
  * Nothing renders here, but a build asking for an image fails now rather than after its passes when a peer is absent.

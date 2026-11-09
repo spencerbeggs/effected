@@ -1,6 +1,6 @@
 {
 	"name": "@effected/npm",
-	"version": "0.31.0",
+	"version": "0.32.0",
 	"private": true,
 	"description": "Effect service contracts for resolving pnpm catalog: and workspace: dependency specifiers.",
 	"keywords": ["npm", "pnpm", "catalog", "workspace", "resolver", "effect", "schema", "effected"],
@@ -37,9 +37,9 @@
 		"@effect/vitest": "catalog:effected",
 		"@effected/memfs": "workspace:*",
 		"@effected/semver": "workspace:*",
-		"@types/node": "catalog:build",
+		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
-		"typescript": "catalog:build"
+		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
 		"@effected/semver": "workspace:^",

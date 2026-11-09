@@ -43,7 +43,7 @@ docs/                     # numbered user docs, incl. an optional-module chapter
 .github/actions/local/    # a committed local-build target for smoke-testing the bundle
 dist/                     # committed bundles; CI rebuilds and diffs them so a stale bundle cannot merge
 package.json              # a dependency enters when src imports it, closed over required peers
-tsconfig.json             # extends @effected/plugin/tsconfig/ecma.json and nothing else
+tsconfig.json             # extends @effected/plugin/tsconfig/action.json and nothing else
 CLAUDE.md                 # how to use this repo, plus the shim register
 ```
 

@@ -6,7 +6,7 @@
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-%3E%3D11-f69220.svg)](https://pnpm.io/)
 
-A pnpm [config dependency](https://pnpm.io/config-dependencies) that centralizes versioning for the Effect ecosystem and the `@effected/*` kit through one [pnpm catalog](https://pnpm.io/catalogs), `effected`. It covers `effect` and its `@effect/*` satellites on one [Effect v4](https://effect.website/) minor, `@effect/tsgo` at its own independent pin, and every published `@effected/*` package except this one. Install it once and `catalog:effected` is available to every package in your workspace, in dependencies and peer ranges alike.
+A pnpm [config dependency](https://pnpm.io/config-dependencies) that centralizes versioning for the Effect ecosystem and the `@effected/*` kit through one [pnpm catalog](https://pnpm.io/catalogs), `effected`, and pins the kit's build chain through a second, `effected:build`. It covers `effect` and its `@effect/*` satellites on one [Effect v4](https://effect.website/) minor, `@effect/tsgo` at its own independent pin, and every published `@effected/*` package except this one. Install it once and `catalog:effected` is available to every package in your workspace, in dependencies and peer ranges alike.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
 > Effect v4 (`effect` `~4.1.0`) and still in `0.x` development. Stable Effect
@@ -95,7 +95,32 @@ pnpm rewrites `catalog:` specifiers to concrete ranges when it packs, so what la
 | `@effect/tsgo` | its own `0.x` line | versions independently of `effect` |
 | every published `@effected/*` package | its current release, with a caret | on `0.x` a caret pins the minor |
 
-There is one catalog. `catalog:effect`, `catalog:effect:peers` and `catalog:effected:peers` do not exist for a consumer, and a manifest that still names one fails the install. A `catalog:effected` entry you declare yourself wins over the plugin's for the same package, and your other catalogs are kept.
+`catalog:effect`, `catalog:effect:peers`, `catalog:effected:peers` and `catalog:effected:build:peers` do not exist for a consumer, and a manifest that still names one fails the install. An entry you declare yourself in `effected` or `effected:build` wins over the plugin's for the same package, and your other catalogs are kept.
+
+### The build catalog
+
+A second catalog, `effected:build`, holds the build chain [`effected package build`](https://github.com/spencerbeggs/effected/tree/main/packages/plugin) runs and the toolchain a package builds against:
+
+| Entries | Role |
+| ------- | ---- |
+| `tsdown`, `@tsdown/exe`, `rolldown`, `rolldown-plugin-dts` | bundling and the declaration pass |
+| `@microsoft/api-extractor`, `@microsoft/api-extractor-model`, `@microsoft/tsdoc`, `@microsoft/tsdoc-config` | the API report and TSDoc |
+| `typescript`, `@types/node`, `tsx` | the compiler, Node types and the TypeScript runner |
+| `react`, `react-dom`, `@types/react`, `@types/react-dom`, `@rsbuild/core` | React and its types, and Rsbuild |
+
+A repository that builds with the kit writes `catalog:effected:build` for these, so its build chain is the one the kit's bundler was built and tested with:
+
+```json
+{
+  "devDependencies": {
+    "@effected/plugin": "catalog:effected",
+    "typescript": "catalog:effected:build",
+    "@types/node": "catalog:effected:build"
+  }
+}
+```
+
+No override is derived from this catalog: it sets the ranges your manifests name and nothing else. The pnpmfile also allows TypeScript 7.1 prereleases under `tsdown`, whose own `typescript` peer does not admit them.
 
 `@effected/pnpm-plugin-effected` itself is deliberately absent from the catalog — it is the package the catalog ships inside, and listing it would make every catalog rewrite bump the package that carries the catalog.
 

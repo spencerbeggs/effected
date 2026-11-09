@@ -157,6 +157,29 @@ const URL_USERINFO = /^([A-Za-z][A-Za-z0-9+.-]*:\/\/)[^/?#]*@/;
 const withoutUserinfo = (value: string): string | undefined =>
 	URL_USERINFO.test(value) ? value.replace(URL_USERINFO, "$1") : undefined;
 
+/** The proxy settings: their values are URLs that may be written without a scheme. */
+const PROXY_KEYS = new Set(["proxy", "https-proxy", "http-proxy"]);
+
+/**
+ * Userinfo in a proxy URL written without a scheme (`alice:pw@proxy:3128`,
+ * `//alice:pw@proxy:3128`), the form pnpm accepts by giving the request's
+ * scheme to it. Greedy to the last `@` before any `/`, `?` or `#`, so a
+ * password holding `@` is removed whole.
+ */
+const SCHEMELESS_USERINFO = /^(\/\/)?[^/?#]*@/;
+
+/**
+ * A setting's value with any userinfo removed, or `undefined` when it carries
+ * none: a URL's (`scheme://user:pass@host`) for every key, and a scheme-less
+ * authority's too for a proxy key. A non-proxy value is not read scheme-less,
+ * because `email=me@example.com` is not userinfo.
+ */
+const withoutCredentials = (key: string, value: string): string | undefined => {
+	const schemed = withoutUserinfo(value);
+	if (schemed !== undefined || !PROXY_KEYS.has(key)) return schemed;
+	return SCHEMELESS_USERINFO.test(value) ? value.replace(SCHEMELESS_USERINFO, "$1") : undefined;
+};
+
 /**
  * One npmrc's text as key/value pairs, with the credential rule on top:
  * a credential key or value naming an unset variable fails `"missing-env"`, since npm
@@ -200,6 +223,331 @@ const envLayer = (env: Readonly<Record<string, string | undefined>>): string => 
 		lines.push(`${key}=${JSON.stringify(value)}`);
 	}
 	return lines.join("\n");
+};
+
+/**
+ * Which package manager's rules {@link NpmConfig.proxyFor} and
+ * {@link NpmConfig.tlsFor} follow.
+ *
+ * @remarks
+ * npm and pnpm read the same npmrc keys but route a request, and match a
+ * registry's TLS keys, differently; see each method. Pick the manager whose
+ * behaviour the caller is replacing: a tool that used to shell out to
+ * `pnpm view` passes `"pnpm"`.
+ *
+ * @public
+ */
+export interface ProxyForOptions {
+	/** The rules to follow. Defaults to `"npm"`. */
+	readonly packageManager?: "npm" | "pnpm" | undefined;
+}
+
+/**
+ * npm's and pnpm's transport settings, as the configuration holds them:
+ * proxies, the proxy bypass lists, TLS trust, a client certificate and the
+ * local address.
+ *
+ * @remarks
+ * **Nothing in this package applies these.** `NpmRegistry` and
+ * `PackageTarball` send every request through the `HttpClient` the caller
+ * provides, and that client is where a proxy or a CA bundle takes effect. This
+ * record is what a caller reads to build one; see {@link NpmConfig.transport},
+ * {@link NpmConfig.proxyFor} and {@link NpmConfig.tlsFor}.
+ *
+ * Each field names who reads it. npm 11 and npm 12 read these settings
+ * identically; pnpm (11 and 12) reads the same keys plus three of its own
+ * (`http-proxy`, `no-proxy`, and `proxy=false` as "no proxy"), so the record
+ * is the superset and a pnpm-only field is marked as such.
+ *
+ * Values are the settings after npmrc precedence and `npm_config_*`
+ * substitution, as written. The proxy URLs, the inline `cert` and the inline
+ * `key` are `Redacted`, a proxy URL with its userinfo included, because a
+ * corporate proxy URL commonly carries a password
+ * (`http://user:pass@proxy:3128`, or `user:pass@proxy:3128` written without
+ * a scheme, as pnpm accepts). The plain `NpmConfig.settings` record holds
+ * every proxy URL with its userinfo removed, in either form. An empty, `false` or `null` proxy URL is
+ * absent, as both managers read it. `cafile` is a path as written: its file
+ * is not read and the path is not resolved (pnpm resolves a relative one
+ * against the npmrc's directory). Not held: the per-registry `//host/:…` TLS
+ * settings (see {@link NpmConfig.tlsFor}), and the `ca[]` and `noproxy[]`
+ * array forms. Only the scalar `ca` and the comma-separated `noproxy` /
+ * `no-proxy` strings are read. **An array form is dropped silently, not
+ * reported**: with `noproxy[]=registry.corp.test`, npm bypasses the proxy for
+ * that host and ignores `NO_PROXY`, while here `noproxy` is empty, so
+ * {@link NpmConfig.proxyFor} falls back to `NO_PROXY` and can answer a proxy
+ * npm would not use; with `ca[]=`, `ca` is absent and `isDefault` can read
+ * `true`. Write those settings in their scalar form (a comma-separated
+ * `noproxy`, a `cafile` bundle) for them to be seen.
+ *
+ * **Top-level `certfile` and `keyfile` are not settings either manager
+ * reads.** Both read a client certificate file only per registry
+ * (`//host/:certfile`, `//host/:keyfile`); npm 12 refuses to run with a
+ * top-level pair until `npm config fix` moves it under the default registry,
+ * and npm 11 and pnpm ignore one. Neither is held here.
+ *
+ * **These values are as trustworthy as the npmrc they came from.** The
+ * project npmrc ships with the repository a tool runs in, so a cloned
+ * repository can set `https-proxy` and `strict-ssl=false` and route
+ * token-bearing reads through a host it controls. npm and pnpm honour that
+ * too. A CI tool that should not trust the checked-out repository can load
+ * the configuration without the project layer (`NpmConfig.fromSourcesResult`
+ * over the user and global files) before applying these settings.
+ *
+ * @public
+ */
+export class NpmTransportSettings extends Schema.Class<NpmTransportSettings>("NpmTransportSettings")({
+	/** `https-proxy` (npm, pnpm): npm's proxy for every request; pnpm's for `https:` requests. */
+	httpsProxy: Schema.optionalKey(Schema.Redacted(Schema.String)),
+	/** `http-proxy` (pnpm only): pnpm's proxy for `http:` requests. npm has no such setting. */
+	httpProxy: Schema.optionalKey(Schema.Redacted(Schema.String)),
+	/** `proxy` (npm, pnpm): the fallback when `https-proxy` (and, for pnpm's `http:` requests, `http-proxy`) is not set. */
+	proxy: Schema.optionalKey(Schema.Redacted(Schema.String)),
+	/**
+	 * `proxy=false` (pnpm only): pnpm then uses no proxy at all, ignoring the
+	 * proxy environment variables. npm reads it as unset and still falls back
+	 * to the environment.
+	 */
+	proxyDisabled: Schema.Boolean,
+	/** `noproxy` (npm, pnpm), split on commas and trimmed: domain suffixes that bypass the proxy. Empty when unset. */
+	noproxy: Schema.Array(Schema.String),
+	/** `no-proxy` (pnpm only), split the same way. pnpm reads it before `noproxy`; npm ignores it. */
+	noProxy: Schema.Array(Schema.String),
+	/**
+	 * `strict-ssl` (npm, pnpm): whether TLS certificates are verified. `false`
+	 * only for the literal value `false`, which is how both managers read it;
+	 * `0`, `FALSE`, `null`, an empty value and anything else verify.
+	 */
+	strictSsl: Schema.Boolean,
+	/** `ca` (npm, pnpm): an inline PEM certificate authority, replacing the default trust store. Both use `cafile`'s certificates instead when both are set. */
+	ca: Schema.optionalKey(Schema.String),
+	/** `cafile` (npm, pnpm): a path to a PEM bundle of trusted certificate authorities, as written. */
+	cafile: Schema.optionalKey(Schema.String),
+	/**
+	 * `cert` (pnpm; npm deprecated): an inline PEM client certificate. pnpm
+	 * sends it unless the registry has its own; npm still passes it when no
+	 * per-registry `certfile`/`keyfile` pair matches, but marks it deprecated.
+	 */
+	cert: Schema.optionalKey(Schema.Redacted(Schema.String)),
+	/** `key` (pnpm; npm deprecated): the inline PEM client key paired with `cert`. */
+	key: Schema.optionalKey(Schema.Redacted(Schema.String)),
+	/** `local-address` (npm, pnpm): the local interface address to connect from. */
+	localAddress: Schema.optionalKey(Schema.String),
+}) {
+	/**
+	 * `true` when no transport setting is configured: no proxy setting, no
+	 * bypass list, `strict-ssl` on, and no CA, client-certificate or
+	 * local-address setting.
+	 *
+	 * @remarks
+	 * A caller whose client applies none of these settings can warn when this
+	 * is `false` rather than fail later with a transport error. The proxy
+	 * environment variables are not settings, so they do not count here; see
+	 * {@link NpmConfig.proxyFor}. Nor do per-registry TLS settings; see
+	 * {@link NpmConfig.tlsFor}.
+	 */
+	get isDefault(): boolean {
+		return (
+			this.httpsProxy === undefined &&
+			this.httpProxy === undefined &&
+			this.proxy === undefined &&
+			!this.proxyDisabled &&
+			this.noproxy.length === 0 &&
+			this.noProxy.length === 0 &&
+			this.strictSsl &&
+			this.ca === undefined &&
+			this.cafile === undefined &&
+			this.cert === undefined &&
+			this.key === undefined &&
+			this.localAddress === undefined
+		);
+	}
+}
+
+/**
+ * One registry's own TLS settings: the `//host/:…` keys of an npmrc.
+ *
+ * @remarks
+ * npm (11 and 12) reads only the `certfile` and `keyfile` pair, and only
+ * when both are set; a lone one is ignored. pnpm reads all six, and a
+ * registry's own `ca`, `cert` or `key` replaces the top-level setting for
+ * requests to it. The two also find a registry's keys differently (npm stops
+ * at the first key holding any auth, pnpm walks slash-terminated directory
+ * keys and then retries without the port); {@link NpmConfig.tlsFor} follows
+ * either. Paths are as written and their files are not read; the inline
+ * `cert` and `key` are `Redacted`.
+ *
+ * @public
+ */
+export class NpmRegistryTls extends Schema.Class<NpmRegistryTls>("NpmRegistryTls")({
+	/** `//host/:ca` (pnpm only): an inline PEM certificate authority trusted for this registry. */
+	ca: Schema.optionalKey(Schema.String),
+	/** `//host/:cafile` (pnpm only): a path to this registry's certificate authority file. */
+	cafile: Schema.optionalKey(Schema.String),
+	/** `//host/:cert` (pnpm only): an inline PEM client certificate for this registry. */
+	cert: Schema.optionalKey(Schema.Redacted(Schema.String)),
+	/** `//host/:certfile` (npm, pnpm): a path to this registry's client certificate. npm reads it only with `keyfile`. */
+	certfile: Schema.optionalKey(Schema.String),
+	/** `//host/:key` (pnpm only): an inline PEM client key for this registry. */
+	key: Schema.optionalKey(Schema.Redacted(Schema.String)),
+	/** `//host/:keyfile` (npm, pnpm): a path to this registry's client key. npm reads it only with `certfile`. */
+	keyfile: Schema.optionalKey(Schema.String),
+}) {}
+
+/** The six per-registry TLS fields, in {@link NpmRegistryTls} order. */
+const REGISTRY_TLS_FIELDS = ["ca", "cafile", "cert", "certfile", "key", "keyfile"] as const;
+
+/** The proxy environment variables npm reads, matched case-insensitively. */
+const PROXY_ENV_KEYS = new Set(["https_proxy", "http_proxy", "proxy", "no_proxy"]);
+
+/**
+ * The proxy environment, keyed in lower case, as `@npmcli/agent` builds it:
+ * every variable whose lower-cased name is a proxy key, the last one read
+ * winning when two spellings are set.
+ */
+const proxyEnv = (env: Readonly<Record<string, string | undefined>>): Map<string, string> => {
+	const found = new Map<string, string>();
+	for (const [name, value] of Object.entries(env)) {
+		const key = name.toLowerCase();
+		if (value !== undefined && PROXY_ENV_KEYS.has(key)) found.set(key, value);
+	}
+	return found;
+};
+
+/**
+ * A proxy variable as pnpm reads it (`getProcessEnv`): the lower-case name,
+ * else the upper-case one. A mixed-case spelling is not read.
+ */
+const pnpmEnv = (env: Readonly<Record<string, string | undefined>>, name: string): string | undefined =>
+	env[name] ?? env[name.toUpperCase()];
+
+/** A comma-separated bypass list, trimmed, with empty entries dropped. */
+const splitNoProxy = (value: string | undefined): ReadonlyArray<string> =>
+	value === undefined
+		? []
+		: value
+				.split(",")
+				.map((entry) => entry.trim())
+				.filter((entry) => entry.length > 0);
+
+/**
+ * Whether `hostname` matches a bypass entry: `@npmcli/agent`'s `isNoProxy`,
+ * which pnpm's `checkNoProxy` repeats, comparing dot-separated labels from the
+ * right, so `example.com` (or `.example.com`) matches `example.com` and
+ * `registry.example.com` but not `badexample.com`.
+ */
+const bypassesProxy = (hostname: string, noProxy: ReadonlyArray<string>, dropEmptyHostLabels = false): boolean => {
+	// pnpm's `toReversedLabels` drops empty labels from the host as well, so a
+	// trailing-dot FQDN (`example.com.`) still matches `example.com`; npm's
+	// `isNoProxy` keeps them, so it does not.
+	const labelsOfHost = hostname.split(".");
+	const host = (dropEmptyHostLabels ? labelsOfHost.filter((label) => label.length > 0) : labelsOfHost).reverse();
+	return noProxy.some((entry) => {
+		const labels = entry
+			.split(".")
+			.filter((label) => label.length > 0)
+			.reverse();
+		return labels.length > 0 && labels.every((label, index) => host[index] === label);
+	});
+};
+
+/**
+ * `strict-ssl`, as both managers' request paths read the setting: only the
+ * literal `false` (after trimming, case-sensitive) turns verification off.
+ *
+ * @remarks
+ * npm 11 and 12: `@npmcli/config`'s `parseField` turns `false` into `false`,
+ * `null` and `undefined` into nothing, and leaves every other string a
+ * string; then `make-fetch-happen` sets `rejectUnauthorized` to
+ * `strictSSL !== false`, or to `NODE_TLS_REJECT_UNAUTHORIZED !== "0"` when
+ * nothing was set. pnpm's ini reader JSON-parses only `true`, `false` and
+ * `null`, and its dispatcher passes `rejectUnauthorized: strictSsl ?? true`.
+ * So `0`, `FALSE`, `no` or an empty value verify under both. `null` defers
+ * to that variable in npm and reads as `true` here, the stricter answer: a
+ * caller that passes `rejectUnauthorized: true` verifies even where npm,
+ * under `NODE_TLS_REJECT_UNAUTHORIZED=0`, would not.
+ */
+const strictSslOf = (value: string): boolean => value.trim() !== "false";
+
+/** npm's proxy for a request (`npm-registry-fetch` + `@npmcli/agent` `getProxy`); see {@link NpmConfig.proxyFor}. */
+const npmProxy = (
+	parsed: URL,
+	transport: NpmTransportSettings,
+	env: Readonly<Record<string, string | undefined>>,
+): Option.Option<Redacted.Redacted<string>> => {
+	const fromEnv = proxyEnv(env);
+	const envProxy = (key: string): string | undefined => {
+		const value = fromEnv.get(key);
+		return value === undefined || value === "" ? undefined : value;
+	};
+	const fromVariables =
+		parsed.protocol === "https:"
+			? envProxy("https_proxy")
+			: (envProxy("https_proxy") ?? envProxy("http_proxy") ?? envProxy("proxy"));
+	const proxy =
+		transport.httpsProxy ?? transport.proxy ?? (fromVariables === undefined ? undefined : Redacted.make(fromVariables));
+	const noProxy = transport.noproxy.length > 0 ? transport.noproxy : splitNoProxy(envProxy("no_proxy"));
+	return proxy === undefined || bypassesProxy(parsed.hostname, noProxy) ? Option.none() : Option.some(proxy);
+};
+
+/**
+ * pnpm's proxy for a request (`resolveProxySettings`, `getProxyDispatcher`,
+ * `checkNoProxy`, `parseProxyUrl`); see {@link NpmConfig.proxyFor}.
+ */
+const pnpmProxy = (
+	parsed: URL,
+	transport: NpmTransportSettings,
+	env: Readonly<Record<string, string | undefined>>,
+): Option.Option<Redacted.Redacted<string>> => {
+	// pnpm chains variables with `??`, so a variable that is set but empty is
+	// a value: `https_proxy=""` means "no proxy" and stops the fallback to
+	// `HTTPS_PROXY` and, for `http:`, to `HTTP_PROXY`. `false` stands for it.
+	const variable = (...names: ReadonlyArray<string>): Redacted.Redacted<string> | false | undefined => {
+		for (const name of names) {
+			const value = pnpmEnv(env, name);
+			if (value !== undefined) return value === "" ? false : Redacted.make(value);
+		}
+		return undefined;
+	};
+	// `false` is pnpm's "no proxy": `proxy=false` stops the fallback to the
+	// environment.
+	const httpsProxy: Redacted.Redacted<string> | false | undefined =
+		transport.httpsProxy ?? (transport.proxyDisabled ? false : (transport.proxy ?? variable("https_proxy")));
+	const proxy =
+		parsed.protocol === "https:" ? httpsProxy : (transport.httpProxy ?? httpsProxy ?? variable("http_proxy", "proxy"));
+	if (proxy === undefined || proxy === false) return Option.none();
+	// A bare `true` bypasses every host only as a setting: pnpm's ini reader
+	// makes it a boolean, while a `NO_PROXY=true` variable stays the string
+	// `true`, a host name like any other.
+	const setting = transport.noProxy.length > 0 ? transport.noProxy : transport.noproxy;
+	if (setting.length === 1 && setting[0] === "true") return Option.none();
+	const noProxy = setting.length > 0 ? setting : splitNoProxy(pnpmEnv(env, "no_proxy"));
+	if (bypassesProxy(parsed.hostname, noProxy, true)) return Option.none();
+	// pnpm gives a scheme-less proxy the request's own scheme.
+	const written = Redacted.value(proxy);
+	return Option.some(written.includes("://") ? proxy : Redacted.make(`${parsed.protocol}//${written}`));
+};
+
+/** The most keys a pnpm TLS lookup walks per host spelling: a URL's depth is caller input. */
+const MAX_PNPM_TLS_KEYS = 64;
+
+/**
+ * The keys pnpm's `pickSettingByUrl` tries for a request URL, in order: the
+ * URL's directory as a nerf-dart (`//host[:port]/a/`), each parent directory
+ * down to `//host[:port]/`, then the same without the port. Every key ends in
+ * `/`, as pnpm only matches that form.
+ */
+const pnpmTlsKeys = (parsed: URL): ReadonlyArray<string> => {
+	const directory = parsed.pathname.slice(0, parsed.pathname.lastIndexOf("/") + 1);
+	const keysFor = (host: string): Array<string> => {
+		const parts = `//${host}${directory}`.split("/");
+		const keys: Array<string> = [];
+		for (let count = parts.length - 1; count >= 3 && keys.length < MAX_PNPM_TLS_KEYS; count--) {
+			keys.push(`${parts.slice(0, count).join("/")}/`);
+		}
+		return keys;
+	};
+	const keys = keysFor(parsed.host);
+	return parsed.port === "" ? keys : [...keys, ...keysFor(parsed.hostname)];
 };
 
 /**
@@ -256,6 +604,14 @@ const envLayer = (env: Readonly<Record<string, string | undefined>>): string => 
  * certificates (`certfile`/`keyfile`), `always-auth`, and the
  * deprecated unscoped credentials.
  *
+ * **Transport settings are read, never applied.** `proxy`, `https-proxy`,
+ * `noproxy`, `strict-ssl`, `ca`, `cafile`, `certfile` and `keyfile` decide how
+ * npm connects, and here the connection belongs to the `HttpClient` the caller
+ * provides to `NpmRegistry`: this package owns no transport. Read
+ * {@link NpmConfig.transport} and {@link NpmConfig.proxyFor} to configure that
+ * client, or a registry behind a proxy or an internal CA fails every read as
+ * `RegistryReadError` `"transport"` where `npm view` succeeds.
+ *
  * Credentials are held as `Redacted` values, so logging or serializing a
  * config prints `<redacted>` for them. So are an inline client `key` or
  * `cert` (PEM text written into the npmrc), and any userinfo in a URL-valued
@@ -266,14 +622,14 @@ const envLayer = (env: Readonly<Record<string, string | undefined>>): string => 
  * @example
  * ```ts
  * import { NpmConfig, NpmRegistry } from "@effected/npm";
- * import { Effect } from "effect";
+ * import { Effect, Option } from "effect";
  *
  * const latest = (name: string) =>
  *   Effect.gen(function* () {
  *     const config = yield* NpmConfig.load({ cwd: process.cwd(), env: process.env });
  *     const registry = yield* NpmRegistry;
  *     const tags = yield* registry.distTags(name, config.targetFor(name));
- *     return tags.latest;
+ *     return Option.flatMap(tags, (found) => Option.fromUndefinedOr(found.latest));
  *   });
  * ```
  *
@@ -360,6 +716,182 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 	}
 
 	/**
+	 * npm's and pnpm's transport settings from this configuration: proxies,
+	 * the bypass lists, `strict-ssl`, the CA, client-certificate and
+	 * local-address settings.
+	 *
+	 * @remarks
+	 * Read only; see {@link NpmTransportSettings}. Recomputed on each access.
+	 * A registry's own TLS settings are {@link NpmConfig.tlsFor}'s.
+	 */
+	get transport(): NpmTransportSettings {
+		const text = (key: string): string | undefined => {
+			const value = Object.hasOwn(this.settings, key) ? this.settings[key] : undefined;
+			return value === undefined || value === "" ? undefined : value;
+		};
+		// The proxy as written, userinfo included: `settings` holds it stripped
+		// and `secrets` holds the original under the same key.
+		const proxy = (key: string): Redacted.Redacted<string> | undefined => {
+			const stripped = text(key);
+			if (stripped === undefined || stripped === "false" || stripped === "null") return undefined;
+			return this.secret(key) ?? Redacted.make(stripped);
+		};
+		const optional = <K extends string, V>(key: K, value: V | undefined): { [P in K]?: V } =>
+			(value === undefined ? {} : { [key]: value }) as { [P in K]?: V };
+		const strictSsl = text("strict-ssl");
+		return NpmTransportSettings.make({
+			proxyDisabled: text("proxy")?.trim() === "false",
+			noproxy: splitNoProxy(text("noproxy")),
+			noProxy: splitNoProxy(text("no-proxy")),
+			strictSsl: strictSsl === undefined ? true : strictSslOf(strictSsl),
+			...optional("httpsProxy", proxy("https-proxy")),
+			...optional("httpProxy", proxy("http-proxy")),
+			...optional("proxy", proxy("proxy")),
+			...optional("ca", text("ca")),
+			...optional("cafile", text("cafile")),
+			...optional("cert", this.secret("cert")),
+			...optional("key", this.secret("key")),
+			...optional("localAddress", text("local-address")),
+		});
+	}
+
+	/**
+	 * The proxy a request to `url` would go through, or `None` for a direct
+	 * connection, by npm's rules or pnpm's.
+	 *
+	 * @remarks
+	 * **npm** (the default; npm 11 and 12 alike, `npm-registry-fetch` and
+	 * `@npmcli/agent`): the `https-proxy` setting, else `proxy`, for any
+	 * scheme; with neither set, the `HTTPS_PROXY` environment variable for an
+	 * `https:` URL, and `HTTPS_PROXY`, `HTTP_PROXY` or `PROXY` for any other,
+	 * each name matched in any case. The bypass list is the `noproxy` setting,
+	 * else `NO_PROXY`. `proxy=false` is unset, so the environment still
+	 * applies.
+	 *
+	 * **pnpm** (`packageManager: "pnpm"`): an `https:` URL uses `https-proxy`,
+	 * else `proxy`, else `HTTPS_PROXY`; any other URL uses `http-proxy`, else
+	 * that same `https:` answer, else `HTTP_PROXY`, else `PROXY`. `proxy=false`
+	 * turns proxying off entirely, the environment included. A variable is read
+	 * in lower case, else upper case, never mixed. The bypass list is
+	 * `no-proxy`, else `noproxy`, else `NO_PROXY`, and a bare `true` bypasses
+	 * every host. A proxy written without a scheme (`proxy.corp:3128`) takes the
+	 * request's.
+	 *
+	 * Under both, a host that matches a bypass entry label by label from the
+	 * right (`example.com` covers `registry.example.com`, never
+	 * `badexample.com`) connects directly, and an unparseable `url` is `None`.
+	 *
+	 * The answer is `Redacted` because a proxy URL can carry a password. Pass
+	 * the same environment record given to {@link NpmConfig.load}; nothing here
+	 * reads `process.env`.
+	 *
+	 * @param url - The request URL, such as a package's registry URL.
+	 * @param env - The environment, for the proxy variables.
+	 * @param options - Which package manager's rules to follow; see {@link ProxyForOptions}.
+	 */
+	proxyFor(
+		url: string,
+		env: Readonly<Record<string, string | undefined>>,
+		options: ProxyForOptions = {},
+	): Option.Option<Redacted.Redacted<string>> {
+		let parsed: URL;
+		try {
+			parsed = new URL(url);
+		} catch {
+			return Option.none();
+		}
+		const transport = this.transport;
+		return options.packageManager === "pnpm" ? pnpmProxy(parsed, transport, env) : npmProxy(parsed, transport, env);
+	}
+
+	/**
+	 * The registry's own TLS settings for a request to `url` (the npmrc's
+	 * `//host/:…` TLS keys), by npm's rules or pnpm's, or `None` when that
+	 * manager would use none for `url`.
+	 *
+	 * @remarks
+	 * Only an `https:` URL has TLS settings, and an unparseable `url` is
+	 * `None`. The two managers find a registry's keys differently:
+	 *
+	 * **npm** (the default; npm 11 and 12 alike, `npm-registry-fetch`'s
+	 * `regFromURI`/`hasAuth`): the walk {@link NpmConfig.credentialFor} uses,
+	 * deepest key first, each level with its trailing slash and then without
+	 * it, **stopping at the first key that holds any auth**: an `_authToken`,
+	 * an `_auth`, a `username` with a `_password`, or a `certfile` with a
+	 * `keyfile`. The answer is that key's `certfile`/`keyfile` pair, or `None`
+	 * when the stopping key holds a credential but no pair. A lone
+	 * `certfile`, or a pnpm-only `ca`, does not stop the walk, and npm reads
+	 * nothing else here.
+	 *
+	 * **pnpm** (`packageManager: "pnpm"`; `pickSettingByUrl`): only keys
+	 * ending in `/`, from the URL's directory (`https://host/a/b.tgz` tries
+	 * `//host/a/`) up to `//host[:port]/`, then the same again with the port
+	 * removed, so `//host/:cert` also applies to `https://host:8443/`. The
+	 * first key holding any of the six fields is the answer, all of its fields
+	 * together; a credential does not stop the walk. Keys written as a whole
+	 * URL (`https://host/:cafile`) are not matched.
+	 *
+	 * Neither rule reaches another host: a lookalike host, another host's path
+	 * or a different port (npm) never matches. See {@link NpmRegistryTls} for
+	 * which field each manager reads.
+	 *
+	 * @param url - The request URL, such as a package's registry URL.
+	 * @param options - Which package manager's rules to follow; see {@link ProxyForOptions}.
+	 */
+	tlsFor(url: string, options: ProxyForOptions = {}): Option.Option<NpmRegistryTls> {
+		let parsed: URL;
+		try {
+			parsed = new URL(url);
+		} catch {
+			return Option.none();
+		}
+		if (parsed.protocol !== "https:") return Option.none();
+		const present = (name: string): boolean => {
+			const value = Object.hasOwn(this.settings, name) ? this.settings[name] : undefined;
+			return value !== undefined && value !== "";
+		};
+		const presentSecret = (name: string): boolean => {
+			const value = this.secret(name);
+			return value !== undefined && Redacted.value(value) !== "";
+		};
+		if (options.packageManager === "pnpm") {
+			for (const key of pnpmTlsKeys(parsed)) {
+				const fields: Record<string, string | Redacted.Redacted<string>> = {};
+				for (const field of REGISTRY_TLS_FIELDS) {
+					const name = `${key}:${field}`;
+					if (field === "cert" || field === "key") {
+						const value = this.secret(name);
+						if (value !== undefined && presentSecret(name)) fields[field] = value;
+					} else if (present(name)) {
+						fields[field] = this.settings[name] as string;
+					}
+				}
+				if (Object.keys(fields).length > 0) return Option.some(NpmRegistryTls.make(fields));
+			}
+			return Option.none();
+		}
+		const keys = nerfDartKeys(url);
+		if (keys === undefined) return Option.none();
+		for (const key of keys) {
+			const pair = present(`${key}:certfile`) && present(`${key}:keyfile`);
+			const credential =
+				presentSecret(`${key}:_authToken`) ||
+				presentSecret(`${key}:_auth`) ||
+				(present(`${key}:username`) && presentSecret(`${key}:_password`));
+			if (pair) {
+				return Option.some(
+					NpmRegistryTls.make({
+						certfile: this.settings[`${key}:certfile`] as string,
+						keyfile: this.settings[`${key}:keyfile`] as string,
+					}),
+				);
+			}
+			if (credential) return Option.none();
+		}
+		return Option.none();
+	}
+
+	/**
 	 * Whether a credential may travel to `url` at all: `https:` always,
 	 * `http:` only to a host and port a configured registry names with an
 	 * `http:` URL, any other scheme never.
@@ -424,10 +956,11 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 					define(secrets, Redacted.make(value));
 					continue;
 				}
-				// URL userinfo (`https://user:pass@host/`) is a password in the
-				// clear: the setting keeps the URL without it, and the value as
-				// written is held redacted under the same key.
-				const stripped = withoutUserinfo(value);
+				// URL userinfo (`https://user:pass@host/`, or `user:pass@host`
+				// for a scheme-less proxy) is a password in the clear: the
+				// setting keeps the URL without it, and the value as written is
+				// held redacted under the same key.
+				const stripped = withoutCredentials(key, value);
 				if (stripped !== undefined) define(secrets, Redacted.make(value));
 				define(settings, stripped ?? value);
 			}

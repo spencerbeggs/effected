@@ -13,10 +13,10 @@ sources:
     resource: ../../scratchpad/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-09T00:05:23Z
 integrity:
   generated:
-    body: 9249ca4318732bd2
+    body: 0a6dd3f5f2f383db
 ---
 
 # scratchpad
@@ -45,7 +45,7 @@ Its manifest lists `effect: catalog:effected` and every published
 roster, so a package missing from it is simply unprobeable here, and a
 new kit package has to be added to it explicitly. Dev dependencies are
 `@effect/vitest` (`catalog:effected`), `tsx`, `typescript` and `@types/node`
-(`catalog:build`). It carries no `vitest` devDependency of its own — the
+(`catalog:effected:build`). It carries no `vitest` devDependency of its own — the
 project runs through the root vitest install, and adding one locally
 would only invite version skew.
 

@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-4caf50.svg)](https://opensource.org/licenses/MIT)
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 
-The build pipeline of the `@effected/*` kit as a library. Give it a package directory and a decoded `effected.toml`, and it writes what a release packs: per-module JS and rolled-up declarations through tsdown, the publishable `package.json`, an API Extractor model with its `tsdoctor.json` manifest, an optional single-executable binary, and a structured `issues.json`.
+The build pipeline of the `@effected/*` kit as a library. Give it a package directory and a decoded `effected.toml`, and it writes what a release packs: per-module JS and rolled-up declarations through tsdown, the publishable `package.json`, an API Extractor model with its `bundle.json` manifest, an optional single-executable binary, and a structured `issues.json`.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
 > Effect v4 and still in `0.x` development. Pin an exact version: even a package
@@ -40,7 +40,7 @@ const program = Effect.gen(function* () {
   const result = yield* Bundler.build({
     cwd,
     config: config.package.build,
-    tsdoctor: config.package.tsdoctor,
+    bundle: config.package.bundle,
     noExe: false,
     verbose: false,
     plugins: [],
@@ -59,7 +59,7 @@ All under the package:
 | Path | What it is |
 | --- | --- |
 | `dist/prod/<group>/pkg` | the directory to publish, one per publish target group |
-| `dist/prod/<group>/meta` | the `.api.json` model, `package.json`, a portable `tsconfig.json`, `tsdoctor.json` and any Open Graph image |
+| `dist/prod/<group>/meta` | the `.api.json` model, `package.json`, a portable `tsconfig.json`, `bundle.json` and any Open Graph image |
 | `dist/prod/targets.json` | which target publishes which group |
 | `dist/prod/issues.json` | every diagnostic, and whether the build finished |
 

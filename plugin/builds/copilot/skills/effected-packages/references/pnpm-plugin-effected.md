@@ -1,8 +1,8 @@
 # @effected/pnpm-plugin-effected
 
-The kit's one **companion** package (a category, not a tier): published and installable, but not a library — there is no *application-facing* API to import. It is a pnpm **config dependency** that serves one pnpm catalog, `effected`, holding the Effect family and the whole kit at the versions the kit is built and tested against.
+The kit's one **companion** package (a category, not a tier): published and installable, but not a library — there is no *application-facing* API to import. It is a pnpm **config dependency** that serves two pnpm catalogs: `effected`, holding the Effect family and the whole kit at the versions the kit is built and tested against, and `effected:build`, holding the build chain `effected package build` runs.
 
-Its source exports one value from the published entrypoint — `catalogs` from `@effected/pnpm-plugin-effected`, the consumer catalog, `effected`, as a `ReadonlyMap` — plus `hooks` from an internal `src/pnpmfile.ts` module that carries no package.json export path (pnpm's config-dependency loader finds the built `pnpmfile.mjs` by convention). Both exist for pnpm's own tooling; nothing in a normal application dependency graph imports either.
+Its source exports one value from the published entrypoint — `catalogs` from `@effected/pnpm-plugin-effected`, the consumer catalogs `effected` and `effected:build`, as a `ReadonlyMap` — plus `hooks` from an internal `src/pnpmfile.ts` module that carries no package.json export path (pnpm's config-dependency loader finds the built `pnpmfile.mjs` by convention). Both exist for pnpm's own tooling; nothing in a normal application dependency graph imports either.
 
 ## Install (pnpm 11+, config install — not a normal add)
 
@@ -16,13 +16,14 @@ The entry is a plain version (`"@effected/pnpm-plugin-effected": <version>`), th
 
 ## What it ships
 
-**One catalog, `effected`**, and a pnpmfile.
+**Two catalogs, `effected` and `effected:build`**, and a pnpmfile.
 
-- **`catalog:effected`** — `effect`, every `@effect/*` package, `@effect/tsgo` and every published `@effected/*` package except the plugin itself. It is the only catalog name a consumer writes: in `dependencies`, `devDependencies` and `peerDependencies` alike.
+- **`catalog:effected`** — `effect`, every `@effect/*` package, `@effect/tsgo` and every published `@effected/*` package except the plugin itself. It is the catalog name a consumer writes for anything its code runs on: in `dependencies`, `devDependencies` and `peerDependencies` alike.
   - **The Effect family is held to one minor with a tilde** (`~4.<minor>.<patch>`, so every later patch of that minor and never the next minor), not a caret. A new Effect minor reaches a consumer only through a new plugin release. `@effect/tsgo` stays on its own `0.x` line with its own range.
   - **Kit packages carry their current release** as a caret, which on `0.x` pins the minor.
   - The exact version a repo builds against is its **lockfile's resolution**, not the catalog literal; re-pin a vendored `.repos/effect` whenever that resolution moves.
-- **There is no `catalog:effect`, `catalog:effect:peers` or `catalog:effected:peers`.** The plugin declares one catalog, `effected`, and its `updateConfig` hook hides the internal `:peers` twin, so a manifest still naming one fails the install. A consumer's own `effected` entry wins over the plugin's for the same package; a consumer's other catalogs are kept.
+- **`catalog:effected:build`** — the build chain and toolchain: `tsdown`, `@tsdown/exe`, `rolldown`, `rolldown-plugin-dts`, `@microsoft/api-extractor`, `@microsoft/api-extractor-model`, `@microsoft/tsdoc`, `@microsoft/tsdoc-config`, `typescript`, `@types/node`, `tsx`, `react`, `react-dom`, `@types/react`, `@types/react-dom` and `@rsbuild/core`. A repository that builds with `effected package build` takes these from here, not from `@savvy-web/pnpm-plugin-silk`'s `catalog:build`. No override is derived from it, and the pnpmfile allows a TypeScript 7.1 prerelease under `tsdown`, whose own `typescript` peer admits none.
+- **There is no `catalog:effect`, `catalog:effect:peers`, `catalog:effected:peers` or `catalog:effected:build:peers`.** The `updateConfig` hook hides the internal `:peers` twins, so a manifest still naming one fails the install. A consumer's own entry in `effected` or `effected:build` wins over the plugin's for the same package; a consumer's other catalogs are kept.
 - **A published peer takes the install range.** `pnpm pack` runs no hook and resolves `catalog:effected` to the catalog's range, so a library's packed manifest advertises the catalog's `effect` tilde range and an `@effected/*` peer at its current patch. When a library needs a wider peer, write that range by hand in its own manifest.
 - **`@effected/pnpm-plugin-effected` is deliberately absent from its own catalog.** Catalogue it and every catalog rewrite bumps the plugin, which invalidates the catalog — a release loop with no termination condition.
 
@@ -56,6 +57,18 @@ Library — the same catalog on both sides:
 }
 ```
 
+A package built with the kit takes its toolchain from the build catalog:
+
+```json
+{
+ "devDependencies": {
+  "@effected/plugin": "catalog:effected",
+  "typescript": "catalog:effected:build",
+  "@types/node": "catalog:effected:build"
+ }
+}
+```
+
 Upgrading is `pnpm update --config @effected/pnpm-plugin-effected` (restore the hashes again), then a fresh resolve; every `catalog:effected` specifier moves at once.
 
 ## Testing machinery
@@ -65,7 +78,8 @@ One suite, `__test__/catalog.test.ts`:
 - **The `effected` declaration.** It reads the `PnpmConfigPlugin(...)` literal from its `effected.toml` plugin module (`lib/build/pnpm-config.plugin.ts`) the way the upgrade CLI does, without importing it, and asserts every publishable package except the plugin is a member.
 - **The `effect` declaration.** Every 4.x entry is held to one minor under `lock-minor` at `effect`'s own version.
 - **The overrides.** It imports the built `pnpmfile.mjs` and checks the family pins merge with a consumer's own `overrides`, with a consumer value for the same selector winning.
-- **The consumer's catalog.** The hook exposes exactly one catalog, `effected`, carrying the Effect family and the kit, and keeps a consumer's own catalogs.
+- **The `effected:build` declaration.** It holds exactly the build chain, names nothing from the kit or the Effect family, and no derived override targets one of its members.
+- **The consumer's catalogs.** The hook exposes exactly `effected` (the Effect family and the kit) and `effected:build`, hides both `:peers` twins, and keeps a consumer's own catalogs.
 
 ## Gotchas
 

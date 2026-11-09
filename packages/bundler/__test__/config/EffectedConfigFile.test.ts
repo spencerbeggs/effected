@@ -51,7 +51,7 @@ describe("EffectedConfigFile.load", () => {
 				meta.tsdoc.suppressWarnings.map((rule) => ({ messageId: rule.messageId, pattern: rule.pattern })),
 				[{ messageId: "ae-forgotten-export", pattern: "_base" }],
 			);
-			assert.isUndefined(resolved.config.package.tsdoctor);
+			assert.isUndefined(resolved.config.package.bundle);
 			assert.isUndefined(resolved.config.action);
 			assert.deepStrictEqual({ ...resolved.sources }, {});
 		}),
@@ -290,6 +290,26 @@ describe("EffectedConfigFile.load", () => {
 			assert.include(error.reason, "package.build.formats");
 			assert.include(error.message, `${PKG}/effected.toml`);
 			assert.include(error.message, "package.build.formats");
+		}),
+	);
+
+	it.effect("fails the retired [package.tsdoctor] table, naming [package.bundle] where its settings moved", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(load({ [`${PKG}/effected.toml`]: '[package.tsdoctor]\nname = "Kit"\n' }));
+			assert.instanceOf(error, EffectedConfigError);
+			assert.strictEqual(error.issuePath, "package.tsdoctor");
+			assert.include(error.reason, "package.tsdoctor");
+			assert.include(error.reason, "renamed to [package.bundle]");
+			// positive control: the same settings under the new table decode
+			const resolved = yield* load({ [`${PKG}/effected.toml`]: '[package.bundle]\nname = "Kit"\n' });
+			assert.strictEqual(resolved.config.package.bundle?.name, "Kit");
+		}),
+	);
+
+	it.effect("adds no rename hint to an ordinary unknown key", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(load({ [`${PKG}/effected.toml`]: "[package.build]\naaa = 1\n" }));
+			assert.notInclude(error.reason, "renamed to");
 		}),
 	);
 

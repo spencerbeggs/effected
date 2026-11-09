@@ -1,6 +1,6 @@
 {
 	"name": "@effected/markdown-lint",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"private": true,
 	"description": "A markdownlint-compatible lint rule shape over @effected/markdown trees: one rule definition, a programmatic linter and a markdownlint-cli2 adapter.",
 	"keywords": ["markdown", "markdownlint", "lint", "mdast", "effect", "effected"],
@@ -34,10 +34,10 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
-		"@types/node": "catalog:build",
+		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
 		"markdownlint": "0.42.0",
-		"typescript": "catalog:build"
+		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
 		"effect": "catalog:effected:peers"

@@ -68,6 +68,84 @@ const toPlatformError = (method: string, path: string, cause: unknown): Platform
 const isNotFound = (error: PlatformError.PlatformError): boolean => error.reason._tag === "NotFound";
 
 /**
+ * One changeset file {@link PendingChangesets.readSettled} could not read or
+ * parse.
+ *
+ * @public
+ */
+export interface PendingChangesetFailure {
+	/** The file name, relative to `.changeset/`, as a {@link PendingChangeset} names it. */
+	readonly file: string;
+	/** Why the file was skipped: it would not parse, or it would not read. */
+	readonly error: ChangesetParseError | PlatformError.PlatformError;
+}
+
+/**
+ * Every pending changeset that parsed, and every one that did not, from
+ * {@link PendingChangesets.readSettled}.
+ *
+ * @public
+ */
+export interface SettledChangesets {
+	/** The changesets that parsed, in the order {@link PendingChangesets.read} returns them. */
+	readonly changesets: ReadonlyArray<PendingChangeset>;
+	/** The files that did not, in the same order. */
+	readonly failures: ReadonlyArray<PendingChangesetFailure>;
+}
+
+/** The changeset files under `.changeset/`, then those under `.changeset/pre/` as `pre/<name>.md`. */
+const listFiles = Effect.fnUntraced(function* (dir: string) {
+	const fs = yield* FileSystem.FileSystem;
+	const path = yield* Path.Path;
+	const list = (directory: string) =>
+		fs
+			.readDirectory(directory)
+			.pipe(Effect.catch((error) => (isNotFound(error) ? Effect.succeed([] as Array<string>) : Effect.fail(error))));
+	const names = selectNames(yield* list(dir));
+	const consumed = selectNames(yield* list(path.join(dir, PRE)));
+	return [...names, ...consumed.map((name) => `${PRE}/${name}`)];
+});
+
+/** {@link listFiles} over `node:fs`; `dir` is the `.changeset` directory with no trailing separator. */
+const listFilesSync = (dir: string): Result.Result<ReadonlyArray<string>, PlatformError.PlatformError> => {
+	const list = (directory: string): Result.Result<ReadonlyArray<string>, PlatformError.PlatformError> => {
+		try {
+			return Result.succeed(selectNames(readdirSync(directory)));
+		} catch (cause) {
+			const error = toPlatformError("readDirectory", directory, cause);
+			return isNotFound(error) ? Result.succeed([]) : Result.fail(error);
+		}
+	};
+	const names = list(dir);
+	if (Result.isFailure(names)) return Result.fail(names.failure);
+	const consumed = list(`${dir}/${PRE}`);
+	if (Result.isFailure(consumed)) return Result.fail(consumed.failure);
+	return Result.succeed([...names.success, ...consumed.success.map((name) => `${PRE}/${name}`)]);
+};
+
+/** `<root>/.changeset`, trimming any run of trailing separators off `root`. */
+const changesetDirSync = (root: string): string => {
+	// A scan, not a `[\\/]+$` regex: the regex backtracks quadratically on a long separator run.
+	let end = root.length;
+	while (end > 0 && (root[end - 1] === "/" || root[end - 1] === "\\")) end--;
+	return `${root.slice(0, end)}/.changeset`;
+};
+
+/** Read and parse one changeset file over `node:fs`. */
+const readOneSync = (
+	dir: string,
+	file: string,
+): Result.Result<PendingChangeset, ChangesetParseError | PlatformError.PlatformError> => {
+	let text: string;
+	try {
+		text = readFileSync(`${dir}/${file}`, "utf8");
+	} catch (cause) {
+		return Result.fail(toPlatformError("readFile", `${dir}/${file}`, cause));
+	}
+	return toPending(file, text);
+};
+
+/**
  * Reading the pending changesets under a repository's `.changeset/`
  * directory.
  *
@@ -81,22 +159,51 @@ export class PendingChangesets {
 	 * `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, dotfiles and non-`.md` files are
 	 * skipped; a missing directory answers `[]`.
 	 *
+	 * The read is all or nothing: the first file that does not read or parse
+	 * fails it. {@link PendingChangesets.readSettled} reads the same files and
+	 * skips a bad one instead.
+	 *
 	 * @param root - The repository root.
 	 */
 	static readonly read = Effect.fn("PendingChangesets.read")(function* (root: string) {
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
 		const dir = path.join(root, ".changeset");
-		const list = (directory: string) =>
-			fs
-				.readDirectory(directory)
-				.pipe(Effect.catch((error) => (isNotFound(error) ? Effect.succeed([] as Array<string>) : Effect.fail(error))));
-		const names = selectNames(yield* list(dir));
-		const consumed = selectNames(yield* list(path.join(dir, PRE)));
-		const files = [...names, ...consumed.map((name) => `${PRE}/${name}`)];
+		const files = yield* listFiles(dir);
 		return yield* Effect.forEach(files, (file) =>
 			fs.readFileString(path.join(dir, file)).pipe(Effect.flatMap((text) => Effect.fromResult(toPending(file, text)))),
 		);
+	});
+
+	/**
+	 * Read the same files as {@link PendingChangesets.read}, in the same order,
+	 * but skip a file that does not read or parse and report it in `failures`
+	 * rather than failing the whole read. For a best-effort view of pending
+	 * bumps; a versioning tool wants the strict {@link PendingChangesets.read}.
+	 *
+	 * Listing `.changeset/` or `.changeset/pre/` still fails the effect with a
+	 * `PlatformError`, since then no file is known to be missing; a missing
+	 * directory answers no changesets and no failures.
+	 *
+	 * @param root - The repository root.
+	 */
+	static readonly readSettled = Effect.fn("PendingChangesets.readSettled")(function* (root: string) {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const dir = path.join(root, ".changeset");
+		const files = yield* listFiles(dir);
+		const changesets: Array<PendingChangeset> = [];
+		const failures: Array<PendingChangesetFailure> = [];
+		for (const file of files) {
+			const result = yield* fs.readFileString(path.join(dir, file)).pipe(
+				Effect.flatMap((text) => Effect.fromResult(toPending(file, text))),
+				Effect.result,
+			);
+			if (Result.isSuccess(result)) changesets.push(result.success);
+			else failures.push({ file, error: result.failure });
+		}
+		const settled: SettledChangesets = { changesets, failures };
+		return settled;
 	});
 
 	/**
@@ -108,34 +215,36 @@ export class PendingChangesets {
 	static readSync(
 		root: string,
 	): Result.Result<ReadonlyArray<PendingChangeset>, ChangesetParseError | PlatformError.PlatformError> {
-		// A scan, not a `[\\/]+$` regex: the regex backtracks quadratically on a long separator run.
-		let end = root.length;
-		while (end > 0 && (root[end - 1] === "/" || root[end - 1] === "\\")) end--;
-		const dir = `${root.slice(0, end)}/.changeset`;
-		const list = (directory: string): Result.Result<ReadonlyArray<string>, PlatformError.PlatformError> => {
-			try {
-				return Result.succeed(selectNames(readdirSync(directory)));
-			} catch (cause) {
-				const error = toPlatformError("readDirectory", directory, cause);
-				return isNotFound(error) ? Result.succeed([]) : Result.fail(error);
-			}
-		};
-		const names = list(dir);
-		if (Result.isFailure(names)) return Result.fail(names.failure);
-		const consumed = list(`${dir}/${PRE}`);
-		if (Result.isFailure(consumed)) return Result.fail(consumed.failure);
+		const dir = changesetDirSync(root);
+		const files = listFilesSync(dir);
+		if (Result.isFailure(files)) return Result.fail(files.failure);
 		const pending: Array<PendingChangeset> = [];
-		for (const file of [...names.success, ...consumed.success.map((name) => `${PRE}/${name}`)]) {
-			let text: string;
-			try {
-				text = readFileSync(`${dir}/${file}`, "utf8");
-			} catch (cause) {
-				return Result.fail(toPlatformError("readFile", `${dir}/${file}`, cause));
-			}
-			const parsed = toPending(file, text);
+		for (const file of files.success) {
+			const parsed = readOneSync(dir, file);
 			if (Result.isFailure(parsed)) return Result.fail(parsed.failure);
 			pending.push(parsed.success);
 		}
 		return Result.succeed(pending);
+	}
+
+	/**
+	 * Synchronous {@link PendingChangesets.readSettled} over `node:fs`, for
+	 * callers that run before any Effect runtime exists. Fails only when a
+	 * directory cannot be listed.
+	 *
+	 * @param root - The repository root.
+	 */
+	static readSettledSync(root: string): Result.Result<SettledChangesets, PlatformError.PlatformError> {
+		const dir = changesetDirSync(root);
+		const files = listFilesSync(dir);
+		if (Result.isFailure(files)) return Result.fail(files.failure);
+		const changesets: Array<PendingChangeset> = [];
+		const failures: Array<PendingChangesetFailure> = [];
+		for (const file of files.success) {
+			const parsed = readOneSync(dir, file);
+			if (Result.isSuccess(parsed)) changesets.push(parsed.success);
+			else failures.push({ file, error: parsed.failure });
+		}
+		return Result.succeed({ changesets, failures });
 	}
 }

@@ -12,7 +12,7 @@ Load when changing the public API, the package's dependency edges, or who consum
 
 - `BumpType.ts`: `BumpType` is `patch | minor | major`, and `ReleaseType` adds `none`, which a changeset may write: it names the package and moves no version.
 - `ChangesetFile.ts`: `parseSync` and `parse` for one file, to `ParsedChangeset`.
-- `PendingChangesets.ts`: `read` and `readSync` for `.changeset/`, then `.changeset/pre/` as `pre/<name>.md`, to `PendingChangeset`.
+- `PendingChangesets.ts`: `read` and `readSync` for `.changeset/`, then `.changeset/pre/` as `pre/<name>.md`, to `PendingChangeset`. They are strict: one bad file fails the read, and `ReleasePlan.read` depends on that. `readSettled` and `readSettledSync` list the same files the same way, but put each bad file in `failures` as `{ file, error }`, with `error` the typed parse or IO error. Only a directory that cannot be listed fails them. Both pairs share `listFiles` / `listFilesSync`, so they cannot disagree about which files count.
 - `PreState.ts`: `.changeset/pre.json` as `Option<PreState>`. Read-only: never migrate an older-layout file the way `@changesets/pre` does.
 - `ChangesetConfig.ts`: the decoded config and `read`. Keys it does not model are kept on `extra`. `read` also accepts the boolean form of `privatePackages`, which the class schema alone rejects.
 - `ReleasePlan.ts`: `assemble` (pure, returns `Result`), `read` and `PlannedRelease`. The plan also carries the `changesets` it was made from (consumed ones left out in pre mode) and its `preState`, so a consumer never re-derives the consumed rule. Its class TSDoc lists the rules. `assemble` mirrors `@changesets/assemble-release-plan`'s fixpoint loop (ripple dependents, hold `fixed`, keep `linked`, repeat) over mutable drafts; a typed failure inside the loop throws a private `Halt` that `assemble` turns back into a `Result`.
@@ -72,7 +72,7 @@ These are deliberate, and each is ruled or stated in TSDoc. Do not "fix" one wit
 
 ## Sync forms
 
-`ChangesetFile.parseSync`, `PendingChangesets.readSync`, `ReleasePlan.assemble` and `ChangesetLint.lint` run with no Effect runtime. `readSync` uses `node:fs`, and `assemble` imports `posix` from `node:path` to compare `workspace:` paths the way the oracle does, so the root entry is Node-only. There is no synchronous `ChangesetConfig.read`, `PreState.read` or `ReleasePlan.read`.
+`ChangesetFile.parseSync`, `PendingChangesets.readSync`, `PendingChangesets.readSettledSync`, `ReleasePlan.assemble` and `ChangesetLint.lint` run with no Effect runtime. `readSync` uses `node:fs`, and `assemble` imports `posix` from `node:path` to compare `workspace:` paths the way the oracle does, so the root entry is Node-only. There is no synchronous `ChangesetConfig.read`, `PreState.read` or `ReleasePlan.read`.
 
 ## Consumers
 

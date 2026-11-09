@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, assert, describe, it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
 import { vi } from "vitest";
@@ -34,7 +35,7 @@ const build = (emits: string | undefined) =>
 		return Bundler.build({
 			cwd,
 			config: Schema.decodeUnknownSync(PackageBuildConfig)({ meta: false, exe: { fileName: "tool" } }),
-			tsdoctor: undefined,
+			bundle: undefined,
 			noExe: false,
 			verbose: false,
 			plugins: [],
@@ -48,7 +49,11 @@ const build = (emits: string | undefined) =>
 					exports: { ".": "./src/bin.ts" },
 				}),
 			},
-		}).pipe(Effect.map(() => cwd));
+		}).pipe(
+			Effect.map(() => cwd),
+			// The host disk: the mocked compile writes the binary there, and the drift guard must see it.
+			Effect.provide(NodeServices.layer),
+		);
 	});
 
 describe("Bundler.build over the real exe module", () => {

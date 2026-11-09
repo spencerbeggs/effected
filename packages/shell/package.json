@@ -1,6 +1,6 @@
 {
 	"name": "@effected/shell",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"private": true,
 	"description": "A tolerant shell-syntax lexer and segmenter for guards and agent tooling: which simple commands a string would run, with which words, never evaluated.",
 	"keywords": ["shell", "bash", "lexer", "parser", "guard", "effect", "effected"],
@@ -31,9 +31,9 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
-		"@types/node": "catalog:build",
+		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
-		"typescript": "catalog:build"
+		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
 		"effect": "catalog:effected:peers"

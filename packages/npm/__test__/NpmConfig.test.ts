@@ -451,7 +451,10 @@ describe("NpmConfig through NpmRegistry: what goes on the wire", () => {
 			const tags = yield* Effect.flatMap(NpmRegistry, (r) =>
 				r.distTags("@acme/widget", both.targetFor("@acme/widget")),
 			).pipe(Effect.provide(NpmRegistry.layer.pipe(Layer.provide(Layer.succeed(HttpClient.HttpClient, client)))));
-			assert.strictEqual(tags.latest, "1.0.0");
+			assert.deepStrictEqual(
+				Option.map(tags, (found) => found.latest),
+				Option.some("1.0.0"),
+			);
 			assert.strictEqual(requests[0]?.url, "https://npm.acme.dev/%40acme%2Fwidget");
 			assert.isUndefined(requests[0]?.authorization);
 		}),

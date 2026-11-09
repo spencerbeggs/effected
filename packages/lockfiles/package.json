@@ -1,6 +1,6 @@
 {
 	"name": "@effected/lockfiles",
-	"version": "0.23.0",
+	"version": "0.23.1",
 	"private": true,
 	"description": "Pure lockfile parsing for bun, npm, pnpm and yarn Berry into one unified Effect schema model, with pure integrity checking against workspace manifests.",
 	"keywords": ["lockfile", "pnpm", "npm", "yarn", "bun", "workspaces", "effect", "schema", "effected"],
@@ -36,9 +36,9 @@
 		"@effected/npm": "workspace:*",
 		"@effected/semver": "workspace:*",
 		"@effected/yaml": "workspace:*",
-		"@types/node": "catalog:build",
+		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
-		"typescript": "catalog:build"
+		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
 		"@effected/glob": "workspace:^",

@@ -1,11 +1,10 @@
 // The two workspace journals every package build appends to. The per-package issues.json stays what a reader
 // trusts for one package; these are the view a watcher reads, at one guessable path under the workspace root.
 
-import { dirname, join } from "node:path";
 import type { AppendError, JournalWatcher } from "@effected/jsonl";
 import { Journal, JsonlEvent } from "@effected/jsonl";
 import type { PlatformError } from "effect";
-import { Effect, FileSystem, Layer, Schema } from "effect";
+import { Effect, FileSystem, Layer, Path, Schema } from "effect";
 import { BuildIssuesSchema, PlainDiagnosticSchema } from "../report/issues-artifact.js";
 
 /** Each journal's place under the workspace root. */
@@ -13,12 +12,19 @@ const BUILD_JOURNAL_PATH = ".cache/effected/build.jsonl";
 const ISSUE_JOURNAL_PATH = ".cache/effected/issues.jsonl";
 
 /**
- * A journal's directory, which appending never creates. The journal itself is created through its own `create`.
+ * The journal at `relative` under `root`, with its directory made first: appending never creates the directory, and
+ * the journal itself is created through its own `create`.
  */
-const ensureDirectoryOf = (path: string): Effect.Effect<void, PlatformError.PlatformError, FileSystem.FileSystem> =>
+const journalPathAt = (
+	root: string,
+	relative: string,
+): Effect.Effect<string, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path> =>
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
-		yield* fs.makeDirectory(dirname(path), { recursive: true });
+		const path = yield* Path.Path;
+		const file = path.join(root, relative);
+		yield* fs.makeDirectory(path.dirname(file), { recursive: true });
+		return file;
 	});
 
 /**
@@ -49,16 +55,14 @@ export class IssueJournal extends Journal.Service<IssueJournal>()("effected/Issu
 	 */
 	static readonly layerAt = (
 		root: string,
-	): Layer.Layer<IssueJournal, PlatformError.PlatformError, FileSystem.FileSystem | JournalWatcher> => {
-		const path = join(root, ISSUE_JOURNAL_PATH);
-		return Layer.effect(
+	): Layer.Layer<IssueJournal, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path | JournalWatcher> =>
+		Layer.effect(
 			IssueJournal,
-			ensureDirectoryOf(path).pipe(
-				Effect.andThen(IssueJournal.make({ path })),
+			journalPathAt(root, ISSUE_JOURNAL_PATH).pipe(
+				Effect.flatMap((path) => IssueJournal.make({ path })),
 				Effect.tap((journal) => journal.create),
 			),
 		);
-	};
 }
 
 /**
@@ -94,16 +98,14 @@ export class BuildJournal extends Journal.Service<BuildJournal>()("effected/Buil
 	 */
 	static readonly layerAt = (
 		root: string,
-	): Layer.Layer<BuildJournal, PlatformError.PlatformError, FileSystem.FileSystem | JournalWatcher> => {
-		const path = join(root, BUILD_JOURNAL_PATH);
-		return Layer.effect(
+	): Layer.Layer<BuildJournal, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path | JournalWatcher> =>
+		Layer.effect(
 			BuildJournal,
-			ensureDirectoryOf(path).pipe(
-				Effect.andThen(BuildJournal.make({ path })),
+			journalPathAt(root, BUILD_JOURNAL_PATH).pipe(
+				Effect.flatMap((path) => BuildJournal.make({ path })),
 				Effect.tap((journal) => journal.create),
 			),
 		);
-	};
 
 	/**
 	 * Appends one finished build: a line per error and warning, then the build's own line.
@@ -119,34 +121,34 @@ export class BuildJournal extends Journal.Service<BuildJournal>()("effected/Buil
 	static readonly record: (
 		issues: typeof BuildIssuesSchema.Type,
 		cwd: string,
-	) => Effect.Effect<void, AppendError, BuildJournal | IssueJournal> = Effect.fn("BuildJournal.record")(function* (
-		issues: typeof BuildIssuesSchema.Type,
-		cwd: string,
-	) {
-		const builds = yield* BuildJournal;
-		const journal = yield* IssueJournal;
-		const scope = { scope: issues.package };
-		for (const diagnostic of [...issues.errors, ...issues.warnings]) {
-			yield* journal.append(
-				"issue",
-				{ package: issues.package, generatedAt: issues.generatedAt, ...diagnostic },
+	) => Effect.Effect<void, AppendError, BuildJournal | IssueJournal | Path.Path> = Effect.fn("BuildJournal.record")(
+		function* (issues: typeof BuildIssuesSchema.Type, cwd: string) {
+			const path = yield* Path.Path;
+			const builds = yield* BuildJournal;
+			const journal = yield* IssueJournal;
+			const scope = { scope: issues.package };
+			for (const diagnostic of [...issues.errors, ...issues.warnings]) {
+				yield* journal.append(
+					"issue",
+					{ package: issues.package, generatedAt: issues.generatedAt, ...diagnostic },
+					scope,
+				);
+			}
+			yield* builds.append(
+				"build",
+				{
+					package: issues.package,
+					cwd,
+					generatedAt: issues.generatedAt,
+					buildOk: issues.buildOk,
+					...(issues.failure !== undefined ? { failure: issues.failure } : {}),
+					errors: issues.errors.length,
+					warnings: issues.warnings.length,
+					suppressed: issues.suppressed.length,
+					issuesPath: path.join(cwd, "dist", issues.target, "issues.json"),
+				},
 				scope,
 			);
-		}
-		yield* builds.append(
-			"build",
-			{
-				package: issues.package,
-				cwd,
-				generatedAt: issues.generatedAt,
-				buildOk: issues.buildOk,
-				...(issues.failure !== undefined ? { failure: issues.failure } : {}),
-				errors: issues.errors.length,
-				warnings: issues.warnings.length,
-				suppressed: issues.suppressed.length,
-				issuesPath: join(cwd, "dist", issues.target, "issues.json"),
-			},
-			scope,
-		);
-	});
+		},
+	);
 }

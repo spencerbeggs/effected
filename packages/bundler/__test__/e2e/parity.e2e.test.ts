@@ -36,7 +36,8 @@ const FILES: ReadonlyArray<readonly [emitted: string, expected: string]> = [
 	["npm/meta/jsonc.api.json", "meta/jsonc.api.json"],
 	["npm/meta/package.json", "meta/package.json"],
 	["npm/meta/tsconfig.json", "meta/tsconfig.json"],
-	["npm/meta/tsdoctor.json", "meta/tsdoctor.json"],
+	// The previous bundler named the sidecar tsdoctor.json; its bytes are the expected content of bundle.json.
+	["npm/meta/bundle.json", "meta/tsdoctor.json"],
 ];
 
 const platform = Layer.merge(NodeFileSystem.layer, NodePath.layer);
@@ -67,7 +68,7 @@ describe.skipIf(process.env.EFFECTED_PARITY !== "1")("parity with the previous b
 						const result = yield* Bundler.build({
 							cwd,
 							config: config.package.build,
-							tsdoctor: config.package.tsdoctor,
+							bundle: config.package.bundle,
 							noExe: true,
 							verbose: false,
 							plugins: [],

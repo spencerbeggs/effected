@@ -1,5 +1,36 @@
 # @effected/engine
 
+## 0.15.0
+
+### Breaking Changes
+
+#### `[package.tsdoctor]` is `[package.bundle]`
+
+- `effected package build` and the `package_build` MCP tool read the documentation-manifest table of `effected.toml` as `[package.bundle]`. The old `[package.tsdoctor]` table fails the build, and the error says it was renamed.
+
+- The emitted sidecar and its source files are `bundle.json`, not `tsdoctor.json`
+
+- A source file still named `tsdoctor.json` is not read, and the build warns `bundle-manifest-retired-source`
+
+- Rename the table and `git mv` each `tsdoctor.json` to `bundle.json`
+
+### Features
+
+- `effected action init` and the `action_init` MCP tool scaffold a `tsconfig.json` that extends `@effected/plugin/tsconfig/action.json` [#1310][#1310]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/bundler | dependency | updated | 0.1.0 | 0.2.0 |
+| @effected/workspaces | dependency | updated | 0.44.0 | 0.44.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1310]: https://github.com/spencerbeggs/effected/pull/1310
+
 ## 0.14.0
 
 ### Features

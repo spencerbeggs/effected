@@ -133,6 +133,8 @@ export interface BuildTargetGroupsOptions {
 	readonly minify?: boolean | undefined;
 	/** Top-level `package.json` keys deleted from every emitted manifest, after the standard stripping. */
 	readonly drop?: ReadonlyArray<string> | undefined;
+	/** Top-level string keys written over every emitted manifest after `drop`; `name` is carried by each group. */
+	readonly set?: Readonly<Record<string, string>> | undefined;
 	/**
 	 * Extra rolldown plugins, forwarded to BOTH the JS pass and the dts-only pass. A plugin
 	 * with JS-lifecycle side effects (asset emitters, banner injectors) runs in both passes;
@@ -394,6 +396,7 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 						targetGroup,
 						devManifest: options.devManifest,
 						drop: options.drop,
+						...(options.set !== undefined ? { set: options.set } : {}),
 						sourceDir: options.cwd,
 						dual: options.dualExports ?? js.format.includes("cjs"),
 						emitDts: options.emitDts !== false,

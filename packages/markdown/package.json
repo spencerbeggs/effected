@@ -38,10 +38,10 @@
 		"@effected/jsonc": "workspace:*",
 		"@effected/toml": "workspace:*",
 		"@effected/yaml": "workspace:*",
-		"@types/node": "catalog:build",
+		"@types/node": "catalog:effected:build",
 		"commonmark": "0.31.2",
 		"effect": "catalog:effected",
-		"typescript": "catalog:build"
+		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
 		"@effected/jsonc": "workspace:^",

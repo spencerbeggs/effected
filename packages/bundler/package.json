@@ -1,6 +1,6 @@
 {
 	"name": "@effected/bundler",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"private": true,
 	"description": "The kit's build pipeline: effected.toml config, tsdown JS and declaration passes, API Extractor meta, SEA, GitHub Action bundles and build journals.",
 	"keywords": ["bundler", "build", "tsdown", "rolldown", "api-extractor", "effect", "effected"],
@@ -39,6 +39,7 @@
 		"@effected/images": "workspace:^",
 		"@effected/jsonc": "workspace:^",
 		"@effected/jsonl": "workspace:^",
+		"@effected/manifest": "workspace:^",
 		"@effected/npm": "workspace:^",
 		"@effected/package-json": "workspace:^",
 		"@effected/semver": "workspace:^",
@@ -48,25 +49,25 @@
 		"@effected/workspaces": "workspace:^",
 		"@effected/yaml": "workspace:^",
 		"@jridgewell/sourcemap-codec": "^1.6.0",
-		"@microsoft/api-extractor": "catalog:build",
-		"@microsoft/tsdoc": "catalog:build",
-		"@microsoft/tsdoc-config": "catalog:build",
-		"@tsdown/exe": "catalog:build",
+		"@microsoft/api-extractor": "catalog:effected:build",
+		"@microsoft/tsdoc": "catalog:effected:build",
+		"@microsoft/tsdoc-config": "catalog:effected:build",
+		"@tsdown/exe": "catalog:effected:build",
 		"jiti": "~2.7.0",
-		"rolldown": "catalog:build",
-		"rolldown-plugin-dts": "^0.30.0",
-		"tsdown": "catalog:build"
+		"rolldown": "catalog:effected:build",
+		"rolldown-plugin-dts": "catalog:effected:build",
+		"tsdown": "catalog:effected:build"
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
 		"@effected/memfs": "workspace:*",
-		"@types/node": "catalog:build",
+		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
-		"typescript": "catalog:build"
+		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
 		"@resvg/resvg-js": "^2.6.2",
-		"@types/node": "catalog:build:peers",
+		"@types/node": "catalog:effected:build:peers",
 		"effect": "catalog:effected:peers",
 		"satori": "^0.63.2",
 		"typescript": "7.1.0-beta || 7.1.1-rc || >=7.1.0 <8"

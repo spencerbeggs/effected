@@ -69,7 +69,7 @@ const build = (cwd: string) =>
 		return yield* Bundler.build({
 			cwd,
 			config: config.package.build,
-			tsdoctor: config.package.tsdoctor,
+			bundle: config.package.bundle,
 			noExe: true,
 			verbose: false,
 			plugins: [],

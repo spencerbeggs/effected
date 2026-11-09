@@ -1,5 +1,23 @@
 # Log
 
+## 2026-11-09
+
+* Updated @effected/plugin
+* Updated After a workspace package is renamed, the next pnpm run installs before it runs the script
+* Updated Consumers see one catalog, effected, folded by the plugin's hook from split declarations
+* Updated Every package carries the same manifest shape and file set
+* Updated Only @effected/bundler imports typescript, and only it and the tool's packages peer it
+* Updated Peer-dependency discipline
+* Updated The catalog:sync / catalog:check CLI
+* Added The plugin declares a second consumer-visible catalog, effected:build, for the kit's build chain
+* Updated The plugin declares one catalog, effected, and pins only the Effect family by include pattern
+* Updated The typechecker: tsc, not tsgo
+* Updated catalog:build is missing from pnpm-workspace.yaml because it is injected
+* Updated pnpm-plugin-effected
+* Updated scratchpad
+* Updated workspace
+* Updated @effected/bundler
+
 ## 2026-11-08
 
 * Updated glob
@@ -47,6 +65,15 @@
 * Updated The ui declarations reference the root's types by the package's own name
 * Updated There is no Effect v3 catalog and no camelCase catalog alias
 * Updated effected.toml is the only build config, and code enters through two data keys
+* Updated @effected/workspaces/testing: the repo-shape checks
+* Updated @effected/plugin
+* Added @effected/manifest
+* Updated The build artifacts: dist/prod, targets.json, issues.json and the journals
+* Added The bundle manifest is its own pure package, @effected/manifest, emitted as a platform-neutral bundle.json
+* Updated spencerbeggs/tsdoctor
+* Added NpmRegistry applies none of the npmrc proxy or TLS settings
+* Updated Add a kit package
+* Updated Add a workspace package
 
 ## 2026-11-07
 

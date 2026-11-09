@@ -1,6 +1,6 @@
 // Ported from savvy-web/systems packages/tsdown-plugins/__test__/errors.test.ts on 2026-11-06
 import { assert, describe, it } from "@effect/vitest";
-import { ConfigValidationError, MetaGenerationError, TsdoctorEmitError } from "../src/errors.js";
+import { BundleManifestEmitError, ConfigValidationError, MetaGenerationError } from "../src/errors.js";
 
 describe("typed errors", () => {
 	it("MetaGenerationError carries the entry and reason", () => {
@@ -9,9 +9,13 @@ describe("typed errors", () => {
 		assert.include(e.message, "index");
 	});
 
-	it("TsdoctorEmitError names the package, path and cause", () => {
-		const e = new TsdoctorEmitError({ packageName: "@x/p", path: "meta/tsdoctor.json", cause: new Error("disk full") });
-		assert.strictEqual(e._tag, "TsdoctorEmitError");
+	it("BundleManifestEmitError names the package, path and cause", () => {
+		const e = new BundleManifestEmitError({
+			packageName: "@x/p",
+			path: "meta/bundle.json",
+			cause: new Error("disk full"),
+		});
+		assert.strictEqual(e._tag, "BundleManifestEmitError");
 		assert.include(e.message, "@x/p");
 		assert.include(e.message, "disk full");
 	});
