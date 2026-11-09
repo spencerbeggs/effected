@@ -504,11 +504,15 @@ describe("CliUi.live: a stream that dies, a fallback that throws, an agent audie
 			// Paced, so `tick 1` is the last good frame and `tick 2` is drawn (and throws) on its own.
 			const queue = yield* queueOf();
 			const options = optionsOf(Stream.fromQueue(queue), {
-				render: (state) => {
+				render: (state, frame) => {
 					if (state.last === "tick 2") throw new Error("render threw");
-					// The fallback draws the last good state again: this time it throws as well.
-					if (drawn.has(state.last)) throw new Error("fallback threw");
-					drawn.add(state.last);
+					// The fallback draws the last good state at the last good frame again: this time it throws as well. Keyed
+					// by the frame too, because the run's real-time tick redraws the same state at each new frame: keyed by
+					// the state alone, a tick landing before `tick 1` (any gap over `tickMillis` on a loaded runner) threw
+					// for `started`, degraded the run unpainted, and `until` timed out waiting for `tick 1`.
+					const key = `${state.last}@${frame}`;
+					if (drawn.has(key)) throw new Error("fallback threw");
+					drawn.add(key);
 					return frameOf(state);
 				},
 			});

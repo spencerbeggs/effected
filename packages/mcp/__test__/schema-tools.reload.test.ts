@@ -45,11 +45,15 @@ const shape = (field: string) => `import { Schema } from "effect";
 export const Shape = Schema.Struct({ ${field}: Schema.String });
 `;
 
-// Many schemas, each a document big enough that a write is not one syscall's worth of nothing.
-const MANY = 30;
+// Several slices and a merged catalog, so one build writes several files. The lane and the atomic replace are each
+// pinned deterministically in schema-tools.test.ts ("a check waits for a build holding a half-landed tree") and in the
+// engine's and schemastore's failed-rename tests; a real disk cannot be made to tear on cue, so this test proves the
+// real-disk, real-jiti path end to end and stays small. At 30 slices of 400 fields it neither caught a removed lane nor a
+// non-atomic write, and its eight builds ran past the 60 s timeout on a slow CI runner.
+const MANY = 6;
 const manyConfig = (field: string) => `import { defineConfig } from "@effected/schemastore";
 import { Schema } from "effect";
-const fields = Object.fromEntries(Array.from({ length: 400 }, (_, i) => ["${field}" + i, Schema.String]));
+const fields = Object.fromEntries(Array.from({ length: 20 }, (_, i) => ["${field}" + i, Schema.String]));
 const entries = Array.from({ length: ${MANY} }, (_, i) => [
 	"s" + i,
 	{ schema: Schema.Struct(fields), catalog: { description: "s" + i, fileMatch: ["s" + i + ".json"] } },
@@ -107,7 +111,7 @@ describe("schema tools over real jiti", () => {
 	);
 
 	it.live(
-		"concurrent builds over a real disk never read a half-written document",
+		"concurrent builds over a real disk each answer ok and land the edited config",
 		() =>
 			Effect.gen(function* () {
 				const { dir, write, read } = yield* project;
@@ -118,7 +122,7 @@ describe("schema tools over real jiti", () => {
 						Array.from({ length: 4 }, () => call(harness, "schema_build")),
 						{ concurrency: "unbounded" },
 					);
-					// A slice read between a truncate and its write is an invalid slice, which blocks the merged catalog.
+					// Every queued build reloads the edited config through real jiti and answers "ok" over the real disk.
 					for (const result of builds) {
 						assert.notStrictEqual(result.isError, true, JSON.stringify(result.content));
 						assert.strictEqual(result.structuredContent?.verdict, "ok", round);
