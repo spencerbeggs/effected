@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import type { OgImageGenerator, OgImageInfo } from "./tsdoctor-config.js";
+import type { OgImageGenerator, OgImageInfo } from "./bundle-config.js";
 
 /**
  * The bundled Inter SemiBold face (SIL OFL 1.1; see `assets/LICENSE-Inter.txt`). Resolved
@@ -113,7 +113,7 @@ function card(info: OgImageInfo, colors: Colors): OgNode {
 }
 
 /**
- * Build-time Open Graph image renderers for `[package.tsdoctor.openGraph] generate`.
+ * Build-time Open Graph image renderers for `[package.bundle.openGraph] generate`.
  *
  * @remarks
  * `satori()` returns the default card: project name, package name and version, tagline,

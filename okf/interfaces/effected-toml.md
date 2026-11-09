@@ -1,7 +1,7 @@
 ---
 type: Interface
 title: "effected.toml: the build config's tables, defaults and discovery"
-description: "The contract of effected.toml: every [package.build], [package.tsdoctor] and [action] key with its default, the two tiers it is discovered in and how they merge (objects per key, arrays and scalars replace), the strict single decode that fails an unknown key with its path, and the two keys through which code enters a build."
+description: "The contract of effected.toml: every [package.build], [package.bundle] and [action] key with its default, the two tiers it is discovered in and how they merge (objects per key, arrays and scalars replace), the strict single decode that fails an unknown key with its path, and the two keys through which code enters a build."
 status: draft
 kind: config
 resource: ../../packages/bundler/src/config/BuildConfig.ts
@@ -19,12 +19,18 @@ sources:
     resource: ../../packages/bundler/src/config/merge.ts
   - id: plugins
     resource: ../../packages/bundler/src/config/plugins.ts
+  - id: manifest-set
+    resource: ../../packages/bundler/src/manifest/manifest-set.ts
+  - id: built-condition
+    resource: ../../packages/bundler/src/manifest/built-condition.ts
+  - id: runtime-e2e
+    resource: ../../packages/bundler/__test__/e2e/runtime-subdir.e2e.test.ts
 generated:
-  by: "okfit/claude-code"
-  at: 2026-11-08T12:11:04Z
+  by: "claude-code/opus-5.5"
+  at: 2026-11-08T22:56:47Z
 integrity:
   generated:
-    body: 18f8acf86ee5f9d2
+    body: b146591d7493283f
 ---
 
 # effected.toml: the build config's tables, defaults and discovery
@@ -70,17 +76,91 @@ The merged document decodes once, strictly. An unknown key is a failure rather t
 | `looseFiles` | `{}` | Standalone files at literal output paths, outside the exports, declaration and meta graph: a source path or `{ source, format? }` |
 | `copy` | `[]` | [Non-module assets](#non-module-assets) copied into each group's `pkg/`: a path or glob, or `{ from, to?, flatten? }` |
 | `jsx` | inferred from the tsconfig | `{ runtime?, importSource? }`, with `runtime` `automatic` or `classic` |
-| `manifest` | `{ drop = [] }` | See [the two code keys](#the-two-code-keys) |
+| `manifest` | `{ drop = [], set = {} }` | Keys dropped from and [written over](#renaming-the-emitted-package) the emitted `package.json` |
 | `meta` | a table of defaults | The API model's settings, or `false` to opt out and still run the declaration pass |
 | `exe` | absent | One single-executable binary to compile |
 
 An override's `entries` is required and each must be a canonical export path, `"."` or `"./sub"`. It may set `format`, `bundle`, `externals`, `bundleNodeModules`, `bundledPackages`, `dtsExternals`, `platform` (`node` when absent, or `browser`, `neutral`), `css` and `outSubdir`. An unset key means the base build's value.[^build-config]
 
+### Shipping a directory one file per source
+
+An override with `outSubdir` builds its one export as a sub-package under `pkg/<outSubdir>/`, one compiled file per source, mirroring the tree under the export's source directory. It ships every `.ts`/`.tsx` file in that directory, including files the export never imports, and leaves out `*.test.*`, `*.spec.*` and `.d.ts` files. Each file keeps its own imports, so packages listed in `externals` (or declared as dependencies or peers) stay imports for whoever compiles the files next. That is the shape a framework runtime needs, where a site's own build compiles the runtime per site (the role `@savvy-web/rspress-builder`'s `runtime: true` played):[^runtime-e2e]
+
+```toml
+[package.build]
+externals = ["@rspress/core"]
+
+[[package.build.overrides]]
+entries = ["./runtime"]          # "./runtime": "./src/runtime/index.tsx" in package.json
+outSubdir = "runtime"            # pkg/runtime/components/<Name>/index.js, and so on
+platform = "browser"
+externals = ["react", "react/jsx-runtime", "react/jsx-dev-runtime", "@rspress/core", "@theme"]
+css = { modules = { localsConvention = "camelCaseOnly", namedExport = false }, inject = true }
+```
+
+- **`import.meta.env` is left alone.** The build defines only `process.env.__PACKAGE_VERSION__` and your `define` keys, so `import.meta.env.SSG_MD` reaches the shipped files unresolved and the site's build decides it. tsdown does define `import.meta.env.<KEY>` and `process.env.<KEY>` for every `TSDOWN_`-prefixed variable in the build's environment, so do not name a runtime variable `TSDOWN_*`.
+- **The export gets a barrel and its declarations,** `./runtime` pointing at `./runtime/index.{js,d.ts}` in the emitted manifest. A `css` setting needs `@tsdown/css` installed in the package.
+- **One export per `outSubdir` override,** and the directory shipped is the one holding the export's source.
+
+### Renaming the emitted package
+
+`[package.build.manifest] set` writes top-level string keys over the emitted `package.json`, after `drop`:
+
+```toml
+[package.build.manifest]
+drop = ["devDependencies"]
+set = { name = "@modules/versioned", description = "The v1 line" }
+```
+
+- **`set.name` renames everything the build names,** not only the manifest: every publish group without a `name` of its own in `publishConfig.targets`, `targets.json`, and the API model's `<unscoped>.api.json` and its import specifiers. So two workspace packages, which pnpm requires to have distinct names, can both emit as one published name. `issues.json` and the journals still name the workspace package that was built, and the meta pass's optimistic version is read under the source name.
+- **It refuses keys owned by something else,** failing `ConfigValidationError` at `manifest.set.<key>` before any pass: `version` (changesets bump it and the release tags it), `private` (derived from `publishConfig.access`), `type`, `exports`, `bin`, `files`, `main`, `module`, `types` and `typings` (the build writes or replaces them), the dependency maps, and the always-stripped build-only fields. A key also listed in `drop`, an empty key, and a `name` npm would not accept are refused too.
+- **It writes only keys package.json types as a string:** `name`, `description`, `homepage`, `license`, and the string forms of `author`, `bugs`, `funding`, `repository`, `browser` and `man`. Every other key, such as `sideEffects`, `keywords`, `os`, `cpu`, `engines` or `imports`, takes a boolean, an array or an object, and a string written over it would publish the wrong type, so it is refused. A non-string value fails the decode.[^manifest-set]
+- **A renamed package publishes under the emitted name, while the release keeps the source name.** Changesets, the CHANGELOG and the git tag name the workspace package, and the registry receives the emitted one. Two workspace packages that emit one name share one npm version line, so their own versions must never meet: a second publish of a version the first already took fails. `set.name` suits a docs-only pair, such as two fixture modules a site documents as v1 and v2, better than two published lines.
+- **`PackedInstall` cannot take a renamed package as an override.** It refuses a replacement whose packed manifest names a package other than the one it replaces.
+
+### Linking built output to a plain-Node consumer
+
+Workspace links resolve to `src/`, which tsx and vitest load and plain Node does not. A workspace consumer that loads a sibling in plain Node, such as a framework CLI (`rspress build`) importing a workspace plugin that imports workspace libraries, needs the sibling's built JS. Name it in the source `package.json` under the `effected-built` condition, first:
+
+```json
+"exports": {
+  ".": { "effected-built": "./dist/prod/npm/pkg/index.js", "default": "./src/index.ts" }
+}
+```
+
+and run the consumer with the condition, after the siblings have built:
+
+```json
+"build": "NODE_OPTIONS=--conditions=effected-built rspress build"
+```
+
+- **Nothing else changes.** Vitest, tsx and TypeScript do not match an unknown condition, so they fall through to the source, and the kit's rule that workspace links resolve to `src/` still holds for them.
+- **`--conditions` reaches Node's own resolver, and no bundler's.** A bundler resolves with its own condition list, which ignores Node's flags, so code it compiles needs `effected-built` in that list as well. For rspress, a probe of rspress 2.1.1 on Node 26 settled both halves:
+  - `rspress build` loads `rspress.config.ts` through `@rsbuild/core`'s `loadConfig`. That is a native `import()` whenever Node strips types, and jiti only if that throws. So the plugin it imports resolves to the built file under `NODE_OPTIONS=--conditions=effected-built`.
+  - The runtime pages import is bundled by rspack, which resolved to source with the flag alone and failed on its `./x.js` imports, because `--conditions` never reaches it. Prepending the condition to rspack's list made it resolve to the built runtime:
+
+    ```ts
+    builderConfig: {
+      tools: {
+        rspack: (config) => {
+          config.resolve ??= {};
+          config.resolve.conditionNames = ["effected-built", ...(config.resolve.conditionNames ?? ["..."])];
+          return config;
+        },
+      },
+    },
+    ```
+
+- **It never publishes.** The build strips the condition before it reads the exports, so the published manifest and the `pkg/` tree are the same as without it.
+- **The build checks the target.** It must be the first key of a subpath's condition object, because Node takes the first condition it matches and `import` and `default` match in plain Node too. It must be a literal path under `./dist/prod/`, followed by an `import` or `default` condition naming the source, and must not nest or sit in a root-level condition object. Each of those fails `ConfigValidationError`. A target that is not the file a group emitted for that export is a `warn` in `issues.json`, code `exports-built-condition-unmatched`, naming the path to write.
+- **Every package on the chain declares it,** since each built file imports its siblings by name, and the consumer's turbo task needs `dependsOn: ["^build"]` so they are built first. `NODE_OPTIONS=` replaces the root's `--import=tsx` for that script, which [rspress cannot run under](../decisions/bundler-bootstraps-from-source.md).[^built-condition]
+- **Publish from `dist/prod`, not from source.** A package published from its source directory ships the condition and a `dist/prod` path its tarball does not contain, as it would ship its `src` exports. The kit's sources are `"private": true`, and the release packs `pkg/`.
+
 `[package.build.meta]`:
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `localPaths` | `[]` | Directories, relative to the package, that the canonical group's API model is copied into: the `.api.json`, the meta `package.json` and `tsconfig.json`, and `tsdoctor.json` when one was emitted. For a docs site that reads the model from its own tree |
+| `localPaths` | `[]` | Directories, relative to the package, that the canonical group's API model is copied into: the `.api.json`, the meta `package.json` and `tsconfig.json`, and `bundle.json` when one was emitted. For a docs site that reads the model from its own tree |
 | `optimistic` | `"auto"` | Forward-looks the meta bundle's versions from pending changesets. `auto` is `false` under CI and `true` locally |
 | `tsdoc.suppressWarnings` | `[{ messageId = "ae-forgotten-export", pattern = "_base" }]` | API Extractor messages to suppress. A list **replaces** the default, so an empty one suppresses nothing |
 | `tsdoc.tagDefinitions` | `[]` | Custom TSDoc tags: `{ tagName, syntaxKind, allowMultiple? }` |
@@ -115,9 +195,9 @@ A sibling resolves to source, and the declaration pass cannot declare source out
 
 Where the publish groups come from is not here: `package.json`'s `publishConfig.targets` decides them.
 
-## `[package.tsdoctor]`
+## `[package.bundle]`
 
-The config tier of the emitted `tsdoctor.json`, ranked over the package's and the root's source files. Every key is optional: `name`, `tagline`, `description`, `openGraph` and `registries`. `registries = false` disables the default derived from `targets.json`. `openGraph` takes `images` (each with exactly one of `path` and `url`), `themeColor`, `generate` (`"satori"` is the only renderer) and `cacheSalt` (`false` always regenerates).[^build-config]
+The config tier of the emitted `bundle.json`, ranked over the package's and the root's source files (both named `bundle.json`; the bundler reads them with `loadBundleManifestSources` and fails `BundleManifestSourceError` on a present but invalid one; a source file still named `tsdoctor.json` is not read, and is reported as a `bundle-manifest-retired-source` warning). The old `[package.tsdoctor]` table fails the decode, and its error says it was renamed to `[package.bundle]`. Every key is optional: `name`, `tagline`, `description`, `openGraph` and `registries`. `registries = false` disables the default derived from `targets.json`. `openGraph` takes `images` (each with exactly one of `path` and `url`), `themeColor`, `generate` (`"satori"` is the only renderer) and `cacheSalt` (`false` always regenerates).[^build-config]
 
 ## `[action]`
 
@@ -155,10 +235,13 @@ drop = ["dependencies"]
 ```
 
 - **`plugins`** lists modules, each resolved against the package directory, so a bare `build/plugin.ts` is a file rather than a package name. They load through `jiti`, so a `.ts` module works. A module's default export is a rolldown plugin or a factory of one, called once. Loading runs the module's code and stops at the first that fails, as `PluginLoadError`.[^plugins]
-- **`manifest.drop`** lists top-level keys to drop from the emitted `package.json`, beyond the ones always stripped. It is what stands in for a free-form manifest transform.
+- **`manifest.drop` and `manifest.set`** drop top-level keys from the emitted `package.json`, beyond the ones always stripped, and write top-level string keys over it. Together they stand in for a free-form manifest transform, which has no counterpart.
 
 [^build-config]: `packages/bundler/src/config/BuildConfig.ts`: every `[package]` key and default.
 [^action-config]: `packages/bundler/src/config/ActionConfig.ts`: every `[action]` key and default.
 [^config-file]: `packages/bundler/src/config/EffectedConfigFile.ts`: the candidates, the tiers, the strict decode and the blame.
 [^merge]: `packages/bundler/src/config/merge.ts`: `ConfigMerge.deep` over the raw documents.
 [^plugins]: `packages/bundler/src/config/plugins.ts`: the module contract and `PluginLoadError`.
+[^manifest-set]: `packages/bundler/src/manifest/manifest-set.ts`: the protected keys and their reasons.
+[^built-condition]: `packages/bundler/src/manifest/built-condition.ts`: the condition's checks, the strip and the target check.
+[^runtime-e2e]: `packages/bundler/__test__/e2e/runtime-subdir.e2e.test.ts`: the runtime tree, the renamed manifest and plain-Node resolution through the condition, end to end.

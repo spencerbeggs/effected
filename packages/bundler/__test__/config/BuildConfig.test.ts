@@ -32,7 +32,7 @@ describe("EffectedConfig", () => {
 		Effect.gen(function* () {
 			const config = yield* decode({ package: {} });
 			assert.instanceOf(config.package, PackageConfig);
-			assert.isUndefined(config.package?.tsdoctor);
+			assert.isUndefined(config.package?.bundle);
 			const build = config.package?.build;
 			assert.instanceOf(build, PackageBuildConfig);
 			assert.deepStrictEqual(build?.format, ["esm"]);
@@ -98,11 +98,11 @@ describe("EffectedConfig", () => {
 				yield* failedPaths({ package: { build: { looseFiles: { "a.js": { source: "a.ts", fromat: "cjs" } } } } }),
 				[["package", "build", "looseFiles", "a.js", "fromat"]],
 			);
-			assert.deepStrictEqual(yield* failedPaths({ package: { tsdoctor: { title: "x" } } }), [
-				["package", "tsdoctor", "title"],
+			assert.deepStrictEqual(yield* failedPaths({ package: { bundle: { title: "x" } } }), [
+				["package", "bundle", "title"],
 			]);
-			assert.deepStrictEqual(yield* failedPaths({ package: { tsdoctor: { openGraph: { generator: "satori" } } } }), [
-				["package", "tsdoctor", "openGraph", "generator"],
+			assert.deepStrictEqual(yield* failedPaths({ package: { bundle: { openGraph: { generator: "satori" } } } }), [
+				["package", "bundle", "openGraph", "generator"],
 			]);
 		}),
 	);
@@ -115,8 +115,8 @@ describe("EffectedConfig", () => {
 			assert.deepStrictEqual(yield* failedPaths({ package: { build: { meta: true } } }), [
 				["package", "build", "meta"],
 			]);
-			assert.deepStrictEqual(yield* failedPaths({ package: { tsdoctor: { openGraph: { generate: "canvas" } } } }), [
-				["package", "tsdoctor", "openGraph", "generate"],
+			assert.deepStrictEqual(yield* failedPaths({ package: { bundle: { openGraph: { generate: "canvas" } } } }), [
+				["package", "bundle", "openGraph", "generate"],
 			]);
 		}),
 	);
@@ -214,12 +214,12 @@ describe("PackageBuildConfig", () => {
 	);
 });
 
-describe("TsdoctorConfig", () => {
+describe("BundleConfig", () => {
 	it.effect("takes the satori generator as a literal and false registries", () =>
 		Effect.gen(function* () {
 			const config = yield* decode({
 				package: {
-					tsdoctor: {
+					bundle: {
 						name: "Kit",
 						tagline: "t",
 						description: "d",
@@ -233,21 +233,21 @@ describe("TsdoctorConfig", () => {
 					},
 				},
 			});
-			const tsdoctor = config.package?.tsdoctor;
-			assert.strictEqual(tsdoctor?.name, "Kit");
-			assert.strictEqual(tsdoctor?.openGraph?.generate, "satori");
-			assert.strictEqual(tsdoctor?.openGraph?.cacheSalt, false);
-			assert.strictEqual(tsdoctor?.openGraph?.images?.[0]?.path, "og.png");
-			assert.strictEqual(tsdoctor?.registries, false);
+			const bundle = config.package?.bundle;
+			assert.strictEqual(bundle?.name, "Kit");
+			assert.strictEqual(bundle?.openGraph?.generate, "satori");
+			assert.strictEqual(bundle?.openGraph?.cacheSalt, false);
+			assert.strictEqual(bundle?.openGraph?.images?.[0]?.path, "og.png");
+			assert.strictEqual(bundle?.registries, false);
 		}),
 	);
 
 	it.effect("takes a registry list", () =>
 		Effect.gen(function* () {
 			const config = yield* decode({
-				package: { tsdoctor: { registries: [{ type: "npm", name: "npm", url: "https://npmjs.com/a" }] } },
+				package: { bundle: { registries: [{ type: "npm", name: "npm", url: "https://npmjs.com/a" }] } },
 			});
-			const registries = config.package?.tsdoctor?.registries;
+			const registries = config.package?.bundle?.registries;
 			assert.isTrue(Array.isArray(registries));
 		}),
 	);
@@ -255,8 +255,8 @@ describe("TsdoctorConfig", () => {
 	it.effect("holds an image to exactly one of path and url", () =>
 		Effect.gen(function* () {
 			for (const image of [{}, { path: "a.png", url: "https://a.b/a.png" }]) {
-				const paths = yield* failedPaths({ package: { tsdoctor: { openGraph: { images: [image] } } } });
-				assert.deepStrictEqual(paths, [["package", "tsdoctor", "openGraph", "images", 0]]);
+				const paths = yield* failedPaths({ package: { bundle: { openGraph: { images: [image] } } } });
+				assert.deepStrictEqual(paths, [["package", "bundle", "openGraph", "images", 0]]);
 			}
 		}),
 	);

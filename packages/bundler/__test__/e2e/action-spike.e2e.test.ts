@@ -54,6 +54,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer, Schema } from "effect";
 import type { Plugin } from "rolldown";
@@ -260,7 +261,9 @@ describe.skipIf(TARGET === undefined)("the action spike", () => {
 					},
 					build: { ignore: [...IGNORE] },
 				});
-				const built = await Effect.runPromise(ActionBundle.build(config, { cwd: farm, clean: true }));
+				const built = await Effect.runPromise(
+					ActionBundle.build(config, { cwd: farm, clean: true }).pipe(Effect.provide(NodeServices.layer)),
+				);
 				assert.isTrue(built.success, JSON.stringify(built));
 				assert.lengthOf(built.entries, 5);
 

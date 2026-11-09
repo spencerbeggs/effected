@@ -1,9 +1,6 @@
-import { existsSync } from "node:fs";
-import * as nodePath from "node:path";
 import type { CompilerOptions } from "@effected/tsconfig-json";
-import { JsxConfig as KitJsxConfig, TsconfigLoaderSync } from "@effected/tsconfig-json";
-import { Option } from "effect";
-import { tsconfigSyncOptions } from "../tsconfig/sync-options.js";
+import { JsxConfig as KitJsxConfig, TsconfigLoader } from "@effected/tsconfig-json";
+import { Effect, FileSystem, Option, Path } from "effect";
 
 /**
  * Resolved JSX transform settings. The shape mirrors the subset of rolldown's JsxOptions, but the
@@ -58,20 +55,23 @@ export function resolveJsxConfig(tsconfig: TsconfigJsx, override: JsxConfig | un
 
 /**
  * Read the jsx-relevant compilerOptions from a package's own tsconfig.json (best-effort;
- * returns empty on absence or parse error). Resolved through `@effected/tsconfig-json`'s
- * sync loader, so JSONC syntax and `extends` chains are honored.
+ * answers empty on absence or on a read or parse failure; a loader defect is not swallowed). Resolved through `@effected/tsconfig-json`'s
+ * loader, so JSONC syntax and `extends` chains are honored.
  * @public
  */
-export function readTsconfigJsx(cwd: string): TsconfigJsx {
-	const path = nodePath.join(cwd, "tsconfig.json");
-	if (!existsSync(path)) return {};
-	try {
-		const co = TsconfigLoaderSync.compilerOptions(path, tsconfigSyncOptions);
-		return {
-			...(co.jsx !== undefined ? { jsx: co.jsx } : {}),
-			...(co.jsxImportSource !== undefined ? { jsxImportSource: co.jsxImportSource } : {}),
-		};
-	} catch {
-		return {};
-	}
-}
+export const readTsconfigJsx: (cwd: string) => Effect.Effect<TsconfigJsx, never, FileSystem.FileSystem | Path.Path> =
+	Effect.fnUntraced(function* (cwd) {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const file = path.join(cwd, "tsconfig.json");
+		if (!(yield* fs.exists(file).pipe(Effect.orElseSucceed(() => false)))) return {};
+		return yield* TsconfigLoader.compilerOptions(file).pipe(
+			Effect.map(
+				(co): TsconfigJsx => ({
+					...(co.jsx !== undefined ? { jsx: co.jsx } : {}),
+					...(co.jsxImportSource !== undefined ? { jsxImportSource: co.jsxImportSource } : {}),
+				}),
+			),
+			Effect.orElseSucceed((): TsconfigJsx => ({})),
+		);
+	});

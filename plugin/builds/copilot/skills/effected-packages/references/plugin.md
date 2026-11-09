@@ -58,8 +58,10 @@ Consuming `@effected/plugin` from the registry runs a built bin and needs none o
   tool's name: the default export of `schemastore.config.ts`. A repository with
   only `@effected/mcp` installed imports `defineConfig` from
   `@effected/schemastore` instead.
-- **`@effected/plugin/tsconfig/ecma.json` and `root.json`** — the tsconfig presets
-  a package or the workspace root extends: `"extends": "@effected/plugin/tsconfig/ecma.json"`.
+- **`@effected/plugin/tsconfig/ecma.json`, `action.json` and `root.json`** — the tsconfig
+  presets a package, an action or the workspace root extends: `"extends": "@effected/plugin/tsconfig/ecma.json"`.
+  `action.json` is the one for a GitHub Action: `bundler` resolution and `noEmit`, no `incremental`
+  and no build-info file under `dist/` (the bundle is the shipped artifact).
 - **`PLUGIN_VERSION`** — the package's own version, replaced at build.
 
 Nothing else belongs here; shared logic lives in `@effected/engine`.

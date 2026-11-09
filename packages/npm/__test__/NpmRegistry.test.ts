@@ -366,7 +366,10 @@ describe("NpmRegistry.versions / distTags", () => {
 				Effect.flatMap(registry, (r) => r.versions("pkg")),
 				client,
 			);
-			assert.deepStrictEqual([...versions], ["1.0.0", "1.1.0", "2.0.0-beta.1"]);
+			assert.deepStrictEqual(
+				Option.map(versions, (list) => [...list]),
+				Option.some(["1.0.0", "1.1.0", "2.0.0-beta.1"]),
+			);
 		}),
 	);
 
@@ -377,18 +380,74 @@ describe("NpmRegistry.versions / distTags", () => {
 				Effect.flatMap(registry, (r) => r.distTags("pkg")),
 				client,
 			);
-			assert.deepStrictEqual(tags, { latest: "1.1.0", next: "2.0.0-beta.1" });
+			assert.deepStrictEqual(tags, Option.some({ latest: "1.1.0", next: "2.0.0-beta.1" }));
 		}),
 	);
 
-	it.effect("an unpublished package is Option.none for versions too", () =>
+	// #1305: a 404 packument (the package is not on that registry) and a
+	// packument listing no versions were both `[]`, so a caller could not tell
+	// a typo'd package from an unpublished one. Every packument read now answers
+	// `None` for the first and `Some(empty)` for the second.
+	const absent = { status: 404, body: { error: "Not found" } } as const;
+	const listsNothing = {
+		status: 200,
+		body: { name: "pkg", time: { unpublished: { time: "2024-01-01T00:00:00.000Z" } } },
+	};
+	const packumentReads: ReadonlyArray<
+		readonly [string, (r: NpmRegistryShape) => Effect.Effect<Option.Option<unknown>, RegistryReadError>, unknown]
+	> = [
+		[
+			"versions",
+			(r) =>
+				Effect.map(
+					r.versions("pkg"),
+					Option.map((list) => [...list]),
+				),
+			[],
+		],
+		["distTags", (r) => r.distTags("pkg"), {}],
+		[
+			"publishTimes",
+			(r) =>
+				Effect.map(
+					r.publishTimes("pkg"),
+					Option.map((list) => [...list]),
+				),
+			[],
+		],
+	];
+	for (const [member, call, empty] of packumentReads) {
+		it.effect(`${member} is Option.none when the registry answers 404 for the package`, () =>
+			Effect.gen(function* () {
+				const found = yield* run(
+					Effect.flatMap(registry, call),
+					stub(() => absent),
+				);
+				assert.isTrue(Option.isNone(found));
+			}),
+		);
+
+		it.effect(`${member} is Some(empty), not None, for a known package with nothing listed`, () =>
+			Effect.gen(function* () {
+				const found = yield* run(
+					Effect.flatMap(registry, call),
+					stub(() => listsNothing),
+				);
+				assert.deepStrictEqual(found, Option.some(empty));
+			}),
+		);
+	}
+
+	it.effect("a non-404 failure status is still a typed RegistryReadError, not None", () =>
 		Effect.gen(function* () {
-			const client = stub(() => ({ status: 404, body: {} }));
-			const versions = yield* run(
-				Effect.flatMap(registry, (r) => r.versions("nope")),
-				client,
+			const error = yield* Effect.flip(
+				run(
+					Effect.flatMap(registry, (r) => r.versions("pkg")),
+					stub(() => ({ status: 500 })),
+				),
 			);
-			assert.deepStrictEqual([...versions], []);
+			assert.strictEqual(error.kind, "status");
+			assert.strictEqual(error.status, 500);
 		}),
 	);
 });
@@ -404,11 +463,12 @@ describe("NpmRegistry.publishTimes", () => {
 				Effect.flatMap(registry, (r) => r.publishTimes("pkg")),
 				client,
 			);
+			if (Option.isNone(times)) assert.fail("expected the package to be found");
 			assert.deepStrictEqual(
-				times.map((t) => t.version),
+				times.value.map((t) => t.version),
 				["1.0.0", "1.1.0"],
 			);
-			const found = times.find((t) => t.version === "1.1.0");
+			const found = times.value.find((t) => t.version === "1.1.0");
 			assert.strictEqual(found === undefined ? "" : DateTime.formatIso(found.publishedAt), "2022-06-01T12:00:00.000Z");
 		}),
 	);
@@ -424,8 +484,8 @@ describe("NpmRegistry.publishTimes", () => {
 				client,
 			);
 			assert.deepStrictEqual(
-				times.map((t) => t.version),
-				["1.1.0"],
+				Option.map(times, (list) => list.map((t) => t.version)),
+				Option.some(["1.1.0"]),
 			);
 		}),
 	);
@@ -437,7 +497,7 @@ describe("NpmRegistry.publishTimes", () => {
 				Effect.flatMap(registry, (r) => r.publishTimes("pkg")),
 				client,
 			);
-			assert.lengthOf(times, 0);
+			assert.deepStrictEqual(times, Option.some([]));
 		}),
 	);
 });
@@ -447,8 +507,10 @@ describe("NpmRegistry test doubles", () => {
 		Effect.gen(function* () {
 			const r = yield* NpmRegistry;
 			const tags = yield* r.distTags("pkg");
-			assert.deepStrictEqual(tags, { latest: "9.9.9" });
-		}).pipe(Effect.provide(NpmRegistry.layerTest({ distTags: () => Effect.succeed({ latest: "9.9.9" }) }))),
+			assert.deepStrictEqual(tags, Option.some({ latest: "9.9.9" }));
+		}).pipe(
+			Effect.provide(NpmRegistry.layerTest({ distTags: () => Effect.succeed(Option.some({ latest: "9.9.9" })) })),
+		),
 	);
 
 	it.effect("an unstubbed member dies loudly rather than lying", () =>
@@ -494,12 +556,15 @@ describe("NpmRegistry test doubles", () => {
 	it.effect("layerSeeded derives versions, distTags and publishTimes from the same seed", () =>
 		Effect.gen(function* () {
 			const r = yield* NpmRegistry;
-			assert.deepStrictEqual([...(yield* r.versions("pkg"))], ["1.0.0", "1.1.0"]);
-			assert.deepStrictEqual(yield* r.distTags("pkg"), { latest: "1.1.0" });
+			assert.deepStrictEqual(
+				Option.map(yield* r.versions("pkg"), (list) => [...list]),
+				Option.some(["1.0.0", "1.1.0"]),
+			);
+			assert.deepStrictEqual(yield* r.distTags("pkg"), Option.some({ latest: "1.1.0" }));
 			const times = yield* r.publishTimes("pkg");
 			assert.deepStrictEqual(
-				times.map((t) => t.version),
-				["1.0.0"],
+				Option.map(times, (list) => list.map((t) => t.version)),
+				Option.some(["1.0.0"]),
 			);
 		}).pipe(
 			Effect.provide(
@@ -514,6 +579,26 @@ describe("NpmRegistry test doubles", () => {
 					},
 					distTags: { pkg: { latest: "1.1.0" } },
 				}),
+			),
+		),
+	);
+
+	it.effect("layerSeeded answers None for an unseeded package and Some for a seeded one (#1305)", () =>
+		Effect.gen(function* () {
+			const r = yield* NpmRegistry;
+			assert.isTrue(Option.isNone(yield* r.versions("absent")));
+			assert.isTrue(Option.isNone(yield* r.distTags("absent")));
+			assert.isTrue(Option.isNone(yield* r.publishTimes("absent")));
+			// Another registry: the package is seeded on npm only.
+			assert.isTrue(Option.isNone(yield* r.versions("pkg", { registry: "https://npm.pkg.github.com" })));
+			// A prototype key is not a seeded package.
+			assert.isTrue(Option.isNone(yield* r.versions("constructor")));
+			// Seeded with no tags: the package exists, its tag map is empty.
+			assert.deepStrictEqual(yield* r.distTags("pkg"), Option.some({}));
+			assert.deepStrictEqual(yield* r.publishTimes("pkg"), Option.some([]));
+		}).pipe(
+			Effect.provide(
+				NpmRegistry.layerSeeded({ registries: { "https://registry.npmjs.org": { pkg: { "1.0.0": {} } } } }),
 			),
 		),
 	);

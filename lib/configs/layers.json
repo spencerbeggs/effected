@@ -41,6 +41,7 @@
 			"@effected/jsonl",
 			"@effected/jwt",
 			"@effected/kit",
+			"@effected/manifest",
 			"@effected/memfs",
 			"@effected/schema-org",
 			"@effected/semver",

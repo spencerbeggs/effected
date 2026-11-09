@@ -1,10 +1,14 @@
 // packages/bundler/src/manifest/emit-manifest.ts
+// `node:fs` rather than `FileSystem`: `emitManifest` reads inside rolldown's `generateBundle` hook, which runs
+// with no Effect runtime, and the source it reads is the one rolldown is bundling from the host disk.
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DependencySpecifier } from "@effected/npm";
 import type { Plugin } from "rolldown";
 import type { ManifestLike } from "../catalog/resolve-catalogs.js";
 import { resolveManifest } from "../catalog/resolve-catalogs.js";
+import { stripBuiltCondition } from "./built-condition.js";
+import { applyManifestSet, validateManifestSet } from "./manifest-set.js";
 import type { DualExports, ExeRewrite, Json } from "./transform.js";
 import { defaultManifestTransform, transformManifest } from "./transform.js";
 
@@ -25,6 +29,8 @@ export interface BuildEmittedManifestOptions {
 	readonly devManifest: "preserve" | "resolve";
 	/** Top-level keys deleted from the emitted manifest, after the standard stripping. */
 	readonly drop?: ReadonlyArray<string> | undefined;
+	/** Top-level string keys written over the emitted manifest after `drop`; `name` is carried by `targetGroup`. */
+	readonly set?: Readonly<Record<string, string>> | undefined;
 	/** Which exports emit dual import/require conditions. boolean (uniform) or a Set of export keys (per-entry). */
 	readonly dual?: DualExports | undefined;
 	/** Export keys built into a `<key>/index.*` subdir (e.g. an RSPress `./runtime`). */
@@ -60,7 +66,11 @@ export function manifestNeedsCatalogResolution(pkg: Json): boolean {
  * @public
  */
 export async function buildEmittedManifest(options: BuildEmittedManifestOptions): Promise<Json> {
-	const { pkg, cwd, targetGroup, devManifest, drop } = options;
+	const { cwd, targetGroup, devManifest, drop, set } = options;
+	// The config path validates first; a direct caller gets the same refusal rather than a key the config refuses.
+	if (set !== undefined) validateManifestSet(set, drop ?? []);
+	// The built-output link condition is a workspace-only route and never publishes.
+	const pkg = stripBuiltCondition(options.pkg);
 	const shouldResolve = (targetGroup.isProd || devManifest === "resolve") && manifestNeedsCatalogResolution(pkg);
 	let base: Json = pkg;
 	if (shouldResolve) {
@@ -72,7 +82,11 @@ export async function buildEmittedManifest(options: BuildEmittedManifestOptions)
 	// Apply the declarative rename so the drop step and the emitted manifest both see it.
 	base = { ...base, name: targetGroup.name };
 	return transformManifest(base, {
-		transform: drop ? (p) => defaultManifestTransform({ pkg: p }, { drop }) : undefined,
+		// `set` applies whether or not a drop list was passed; the standard stripping still runs only with one.
+		transform:
+			drop !== undefined || set !== undefined
+				? (p) => applyManifestSet(drop !== undefined ? defaultManifestTransform({ pkg: p }, { drop }) : p, set)
+				: undefined,
 		dual: options.dual ?? false,
 		subdirExports: options.subdirExports,
 		exeRewrite: options.exeRewrite,
@@ -86,6 +100,8 @@ export interface EmitManifestOptions {
 	readonly devManifest?: "preserve" | "resolve" | undefined;
 	/** Top-level keys deleted from the emitted manifest, after the standard stripping. */
 	readonly drop?: ReadonlyArray<string> | undefined;
+	/** Top-level string keys written over the emitted manifest after `drop`; `name` is carried by `targetGroup`. */
+	readonly set?: Readonly<Record<string, string>> | undefined;
 	/** Source package dir to read package.json/LICENSE/README from. */
 	readonly sourceDir: string;
 	/** Which exports emit dual import/require conditions. boolean (uniform) or a Set of export keys (per-entry). */
@@ -115,6 +131,7 @@ export function emitManifest(options: EmitManifestOptions): Plugin {
 				targetGroup: options.targetGroup,
 				devManifest: options.devManifest ?? "preserve",
 				drop: options.drop,
+				set: options.set,
 				dual: options.dual,
 				subdirExports: options.subdirExports,
 				exeRewrite: options.exeRewrite,

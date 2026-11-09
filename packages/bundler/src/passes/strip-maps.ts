@@ -1,10 +1,9 @@
 // packages/bundler/src/passes/strip-maps.ts
-import { rmSync } from "node:fs";
-import { join, resolve } from "node:path";
 import { GlobPattern, GlobPatternOptions } from "@effected/glob";
-import { descendSync } from "@effected/walker";
-import { nodeWalkerSyncOps } from "@effected/walker/node-sync";
-import { Result } from "effect";
+import type { DescendError } from "@effected/walker";
+import { descend } from "@effected/walker";
+import type { PlatformError } from "effect";
+import { Effect, FileSystem, Path, Result } from "effect";
 
 /** `.d.ts.map` / `.d.cts.map` at any depth, dot-directories included. */
 const STRIPPABLE_MAPS = Result.getOrThrow(
@@ -26,20 +25,24 @@ const STRIPPABLE_MAPS = Result.getOrThrow(
  * vendored tree — only the package's own emitted declarations carry maps worth stripping.
  * @public
  */
-export function removeDeclarationMaps(pkgDir: string): string[] {
+export const removeDeclarationMaps: (
+	pkgDir: string,
+) => Effect.Effect<
+	ReadonlyArray<string>,
+	DescendError | PlatformError.PlatformError,
+	FileSystem.FileSystem | Path.Path
+> = Effect.fnUntraced(function* (pkgDir) {
+	const fs = yield* FileSystem.FileSystem;
+	const path = yield* Path.Path;
 	// An absent dir walks to no matches, and an unreadable one is skipped, as the old walk's readdir catch did.
 	// Symlinked directories are not entered (the old Dirent walk never did).
-	const maps = Result.getOrThrow(
-		descendSync(STRIPPABLE_MAPS, {
-			cwd: resolve(pkgDir),
-			prune: ["node_modules"],
-			onUnreadable: "skip",
-			...nodeWalkerSyncOps,
-		}),
-	);
-	return maps.map((rel) => {
-		const full = join(pkgDir, rel);
-		rmSync(full, { force: true });
-		return full;
-	});
-}
+	const root = path.resolve(pkgDir);
+	const maps = yield* descend(STRIPPABLE_MAPS, { cwd: root, prune: ["node_modules"], onUnreadable: "skip" });
+	const removed: Array<string> = [];
+	for (const rel of maps) {
+		// Removed through the resolved path, answered in the caller's spelling of the directory.
+		yield* fs.remove(path.join(root, rel), { force: true });
+		removed.push(path.join(pkgDir, rel));
+	}
+	return removed;
+});

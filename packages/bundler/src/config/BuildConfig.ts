@@ -118,6 +118,16 @@ export class JsxConfig extends Schema.Class<JsxConfig>("JsxConfig")({
 export class ManifestConfig extends Schema.Class<ManifestConfig>("ManifestConfig")({
 	/** Top-level manifest keys to drop from the emitted `package.json`, beyond the ones always stripped. */
 	drop: Schema.Array(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
+	/**
+	 * Top-level string keys written over the emitted `package.json`, after `drop`.
+	 *
+	 * @remarks
+	 * `name` renames the package everywhere the build names it: every publish group without its own name override,
+	 * `targets.json` and the API model, so two workspace packages can emit as one published name. Keys the build or the
+	 * release owns, such as `version`, `private`, `exports` and the dependency maps, fail validation, as does a key also
+	 * listed in `drop`.
+	 */
+	set: Schema.Record(Schema.String, Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
 }) {}
 
 /**
@@ -181,7 +191,7 @@ export class MetaConfig extends Schema.Class<MetaConfig>("MetaConfig")({
 	 *
 	 * @remarks
 	 * For a docs site reading the model from its own tree. Each one receives the `.api.json`, the meta `package.json`
-	 * and `tsconfig.json`, and `tsdoctor.json` when one was emitted.
+	 * and `tsconfig.json`, and `bundle.json` when one was emitted.
 	 */
 	localPaths: Schema.Array(Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed([]))),
 	/**
@@ -351,7 +361,7 @@ export class PackageBuildConfig extends Schema.Class<PackageBuildConfig>("Packag
  *
  * @public
  */
-export class TsdoctorOpenGraphImage extends Schema.Class<TsdoctorOpenGraphImage>("TsdoctorOpenGraphImage")(
+export class BundleOpenGraphImage extends Schema.Class<BundleOpenGraphImage>("BundleOpenGraphImage")(
 	Schema.Struct({
 		/** Bundle-relative asset path. Mutually exclusive with `url`. */
 		path: Schema.optionalKey(Schema.String),
@@ -381,7 +391,7 @@ export class TsdoctorOpenGraphImage extends Schema.Class<TsdoctorOpenGraphImage>
  *
  * @public
  */
-export class TsdoctorRegistryRef extends Schema.Class<TsdoctorRegistryRef>("TsdoctorRegistryRef")({
+export class BundleRegistryRef extends Schema.Class<BundleRegistryRef>("BundleRegistryRef")({
 	/** The protocol family, e.g. `"npm"` or `"jsr"`. Unknown values are accepted. */
 	type: Schema.String,
 	/** The human instance label, e.g. `"npm"`. */
@@ -395,9 +405,9 @@ export class TsdoctorRegistryRef extends Schema.Class<TsdoctorRegistryRef>("Tsdo
  *
  * @public
  */
-export class TsdoctorOpenGraphConfig extends Schema.Class<TsdoctorOpenGraphConfig>("TsdoctorOpenGraphConfig")({
+export class BundleOpenGraphConfig extends Schema.Class<BundleOpenGraphConfig>("BundleOpenGraphConfig")({
 	/** Static images, by path or url. Listed after a generated image. */
-	images: Schema.optionalKey(Schema.Array(TsdoctorOpenGraphImage)),
+	images: Schema.optionalKey(Schema.Array(BundleOpenGraphImage)),
 	/** Embed accent color, a CSS color string. */
 	themeColor: Schema.optionalKey(Schema.String),
 	/** Renders an image at build time, listed first. `"satori"` is the only renderer. */
@@ -413,11 +423,11 @@ export class TsdoctorOpenGraphConfig extends Schema.Class<TsdoctorOpenGraphConfi
 }) {}
 
 /**
- * The config tier of a package's emitted `tsdoctor.json`, the `[package.tsdoctor]` table.
+ * The config tier of a package's emitted `bundle.json`, the `[package.bundle]` table.
  *
  * @public
  */
-export class TsdoctorConfig extends Schema.Class<TsdoctorConfig>("TsdoctorConfig")({
+export class BundleConfig extends Schema.Class<BundleConfig>("BundleConfig")({
 	/** The display name. */
 	name: Schema.optionalKey(Schema.String),
 	/** A one-line tagline. */
@@ -425,9 +435,9 @@ export class TsdoctorConfig extends Schema.Class<TsdoctorConfig>("TsdoctorConfig
 	/** A description. */
 	description: Schema.optionalKey(Schema.String),
 	/** The Open Graph settings. */
-	openGraph: Schema.optionalKey(TsdoctorOpenGraphConfig),
+	openGraph: Schema.optionalKey(BundleOpenGraphConfig),
 	/** Registries; `false` disables the default derived from `targets.json`. */
-	registries: Schema.optionalKey(Schema.Union([Schema.Array(TsdoctorRegistryRef), Schema.Literal(false)])),
+	registries: Schema.optionalKey(Schema.Union([Schema.Array(BundleRegistryRef), Schema.Literal(false)])),
 }) {}
 
 /**
@@ -438,8 +448,8 @@ export class TsdoctorConfig extends Schema.Class<TsdoctorConfig>("TsdoctorConfig
 export class PackageConfig extends Schema.Class<PackageConfig>("PackageConfig")({
 	/** The build settings. */
 	build: PackageBuildConfig.pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
-	/** The `tsdoctor.json` config tier. */
-	tsdoctor: Schema.optionalKey(TsdoctorConfig),
+	/** The `bundle.json` config tier. */
+	bundle: Schema.optionalKey(BundleConfig),
 }) {}
 
 /**

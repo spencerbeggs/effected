@@ -1,3 +1,5 @@
+// `node:path` rather than `Path`: the resolved module goes straight to jiti (or the injected importer), which loads it
+// from the host disk, so the path must be the host's however the caller provides `FileSystem`.
 import { resolve } from "node:path";
 import { Effect, Predicate, Schema } from "effect";
 import { createJiti } from "jiti";

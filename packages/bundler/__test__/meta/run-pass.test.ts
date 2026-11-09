@@ -2,7 +2,12 @@
 import { join } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
 import { deriveExportPaths } from "../../src/entries/export-paths.js";
-import { BuildCollector, OgGenerateError, TsdoctorEmitError, TsdoctorSourceError } from "../../src/index.js";
+import {
+	BuildCollector,
+	BundleManifestEmitError,
+	BundleManifestSourceError,
+	OgGenerateError,
+} from "../../src/index.js";
 import type { GenerateMetaOptions } from "../../src/meta/generate.js";
 import { applySubdirMetaEntries, runMetaPass } from "../../src/meta/run-pass.js";
 
@@ -95,7 +100,7 @@ describe("runMetaPass", () => {
 				seen[opts.outMetaDir.split("/").at(-2) as string] = opts.localPaths;
 				return { apiJsonPath: "/x", apiJsonFilename: "pkg.api.json" };
 			},
-			loadTsdoctorSources: async () => ({ leaf: undefined, project: undefined, discoveryFailure: undefined }),
+			loadBundleManifestSources: async () => ({ leaf: undefined, project: undefined, discoveryFailure: undefined }),
 		});
 		return seen;
 	};
@@ -120,9 +125,9 @@ describe("runMetaPass", () => {
 		);
 	});
 
-	it("loads the tsdoctor sources once and hands each group its own targets", async () => {
+	it("loads the bundle sources once and hands each group its own targets", async () => {
 		const loads: string[] = [];
-		const seen: Array<{ group: string; tsdoctor: GenerateMetaOptions["tsdoctor"] }> = [];
+		const seen: Array<{ group: string; bundle: GenerateMetaOptions["bundle"] }> = [];
 		await runMetaPass({
 			cwd: "/pkg",
 			packageName: "@scope/pkg",
@@ -133,25 +138,25 @@ describe("runMetaPass", () => {
 			],
 			entries: { index: "./src/index.ts" },
 			exportsMap: { ".": "./src/index.ts" },
-			meta: { tsdoctor: { name: "Configured" } },
+			meta: { bundle: { name: "Configured" } },
 			collector: new BuildCollector(),
 			ci: false,
 			targets: [
 				{ group: "npm", id: "npm", registry: "https://registry.npmjs.org" },
 				{ group: "github", id: "github", registry: "https://npm.pkg.github.com" },
 			],
-			loadTsdoctorSources: async (cwd) => {
+			loadBundleManifestSources: async (cwd) => {
 				loads.push(cwd);
 				return { leaf: { tagline: "leaf" }, project: { name: "Proj" } };
 			},
 			generateMeta: async (opts) => {
-				seen.push({ group: opts.outMetaDir, tsdoctor: opts.tsdoctor });
+				seen.push({ group: opts.outMetaDir, bundle: opts.bundle });
 				return { apiJsonPath: "/x", apiJsonFilename: "pkg.api.json" };
 			},
 		});
 		assert.deepStrictEqual(loads, ["/pkg"]);
 		assert.deepStrictEqual(
-			seen.map((s) => s.tsdoctor),
+			seen.map((s) => s.bundle),
 			[
 				{
 					config: { name: "Configured" },
@@ -185,7 +190,7 @@ describe("runMetaPass", () => {
 			meta: {},
 			collector,
 			ci: false,
-			loadTsdoctorSources: async () => ({ leaf: undefined, project: undefined, discoveryFailure: "missingName" }),
+			loadBundleManifestSources: async () => ({ leaf: undefined, project: undefined, discoveryFailure: "missingName" }),
 			generateMeta: async (opts) => {
 				generated.push(opts.outMetaDir);
 				return { apiJsonPath: "/x", apiJsonFilename: "pkg.api.json" };
@@ -194,11 +199,53 @@ describe("runMetaPass", () => {
 		assert.strictEqual(generated.length, 2);
 		const warnings = collector.snapshot("@scope/pkg").flatMap((r) => r.targetGroups.flatMap((g) => g.warnings));
 		assert.strictEqual(warnings.length, 2);
-		assert.containSubset(warnings[0], { source: "meta", code: "tsdoctor-workspace-discovery-failed" });
+		assert.containSubset(warnings[0], { source: "meta", code: "bundle-manifest-workspace-discovery-failed" });
 		assert.include(warnings[0]?.text, "missingName");
 	});
 
-	it("records an invalid tsdoctor.json source in the collector and fails the pass", async () => {
+	it("warns once per group for each retired tsdoctor.json source, naming the file and the rename", async () => {
+		const collector = new BuildCollector();
+		const generated: string[] = [];
+		await runMetaPass({
+			cwd: "/pkg",
+			packageName: "@scope/pkg",
+			tsconfigPath: "/pkg/tsconfig.json",
+			groups: [
+				{ id: "npm", name: "@scope/pkg" },
+				{ id: "github", name: "@org/pkg" },
+			],
+			entries: { index: "./src/index.ts" },
+			exportsMap: { ".": "./src/index.ts" },
+			meta: {},
+			collector,
+			ci: false,
+			loadBundleManifestSources: async () => ({
+				leaf: undefined,
+				project: undefined,
+				retiredSources: ["/pkg/tsdoctor.json", "/repo/tsdoctor.json"],
+			}),
+			generateMeta: async (opts) => {
+				generated.push(opts.outMetaDir);
+				return { apiJsonPath: "/x", apiJsonFilename: "pkg.api.json" };
+			},
+		});
+		// a warning, not a failure: the meta pass still runs for every group
+		assert.strictEqual(generated.length, 2);
+		const warnings = collector.snapshot("@scope/pkg").flatMap((r) => r.targetGroups.flatMap((g) => g.warnings));
+		assert.strictEqual(warnings.length, 4);
+		assert.containSubset(warnings[0], {
+			source: "meta",
+			code: "bundle-manifest-retired-source",
+			file: "/pkg/tsdoctor.json",
+			text: "/pkg/tsdoctor.json is no longer read; rename it to bundle.json",
+		});
+		assert.sameMembers(
+			warnings.map((w) => w.file),
+			["/pkg/tsdoctor.json", "/pkg/tsdoctor.json", "/repo/tsdoctor.json", "/repo/tsdoctor.json"],
+		);
+	});
+
+	it("records an invalid bundle.json source in the collector and fails the pass", async () => {
 		const collector = new BuildCollector();
 		const generated: string[] = [];
 		assert.instanceOf(
@@ -212,8 +259,8 @@ describe("runMetaPass", () => {
 				meta: {},
 				collector,
 				ci: false,
-				loadTsdoctorSources: async () => {
-					throw new TsdoctorSourceError({ path: "/pkg/tsdoctor.json", cause: new Error("bad") });
+				loadBundleManifestSources: async () => {
+					throw new BundleManifestSourceError({ path: "/pkg/bundle.json", cause: new Error("bad") });
 				},
 				generateMeta: async (opts) => {
 					generated.push(opts.outMetaDir);
@@ -223,12 +270,16 @@ describe("runMetaPass", () => {
 				() => undefined,
 				(e: unknown) => e,
 			),
-			TsdoctorSourceError,
+			BundleManifestSourceError,
 		);
 		assert.deepStrictEqual(generated, []);
 		const errors = collector.snapshot("@scope/pkg").flatMap((r) => r.targetGroups.flatMap((g) => g.errors));
 		assert.strictEqual(errors.length, 1);
-		assert.containSubset(errors[0], { source: "meta", code: "tsdoctor-source-invalid", file: "/pkg/tsdoctor.json" });
+		assert.containSubset(errors[0], {
+			source: "meta",
+			code: "bundle-manifest-source-invalid",
+			file: "/pkg/bundle.json",
+		});
 	});
 
 	it("records a sidecar emit failure in the collector and fails the pass", async () => {
@@ -244,11 +295,11 @@ describe("runMetaPass", () => {
 				meta: {},
 				collector,
 				ci: false,
-				loadTsdoctorSources: async () => ({ leaf: undefined, project: undefined }),
+				loadBundleManifestSources: async () => ({ leaf: undefined, project: undefined }),
 				generateMeta: async () => {
-					throw new TsdoctorEmitError({
+					throw new BundleManifestEmitError({
 						packageName: "@scope/pkg",
-						path: "/pkg/dist/prod/npm/meta/tsdoctor.json",
+						path: "/pkg/dist/prod/npm/meta/bundle.json",
 						cause: Object.assign(new Error("read-only"), { code: "EACCES" }),
 					});
 				},
@@ -256,14 +307,14 @@ describe("runMetaPass", () => {
 				() => undefined,
 				(e: unknown) => e,
 			),
-			TsdoctorEmitError,
+			BundleManifestEmitError,
 		);
 		const errors = collector.snapshot("@scope/pkg").flatMap((r) => r.targetGroups.flatMap((g) => g.errors));
 		assert.strictEqual(errors.length, 1);
 		assert.containSubset(errors[0], {
 			source: "meta",
-			code: "tsdoctor-emit-failed",
-			file: "/pkg/dist/prod/npm/meta/tsdoctor.json",
+			code: "bundle-manifest-emit-failed",
+			file: "/pkg/dist/prod/npm/meta/bundle.json",
 		});
 		assert.include(errors[0]?.text, "read-only");
 	});
@@ -281,7 +332,7 @@ describe("runMetaPass", () => {
 				meta: {},
 				collector,
 				ci: false,
-				loadTsdoctorSources: async () => ({ leaf: undefined, project: undefined }),
+				loadBundleManifestSources: async () => ({ leaf: undefined, project: undefined }),
 				generateMeta: async () => {
 					throw new OgGenerateError({ packageName: "@scope/pkg", cause: new Error("renderer exploded") });
 				},

@@ -17,7 +17,7 @@ sources:
     resource: ../../packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-09T00:05:23Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:14.366Z
@@ -31,7 +31,7 @@ verified:
     at: 2026-11-08T18:25:54Z
 integrity:
   generated:
-    body: 46424b9e7a8017c0
+    body: 2db4ed542f581ede
   verified:
     by: human:spencer
     at: 2026-11-08T18:25:54Z
@@ -59,6 +59,15 @@ integrity:
   ([the catalog crossed an Effect minor](../incidents/catalog-crossed-effect-minor.md));
   under the tilde ranges those entries now use, it can move a
   patch and never a minor.
+- The same config also declares `effected:build`, the build chain, and
+  the sync never moves it. Both commands pass `--catalog effected`
+  (`SYNC_CATALOG`), but the upstream CLI honours that flag on its
+  interactive path only: `--yes` and `--check` still walk every catalog.
+  So `catalog:sync` restores each `UNMANAGED_CATALOGS` block after the CLI
+  writes and drops its moves from the report, and `catalog:check` drops its
+  drift before deciding the exit code, printing a note that names the
+  ignored count. Build-chain entries move only through the user-run
+  `pnpm:up`; see [the effected build catalog](../decisions/effected-build-catalog.md).
 - `.github/workflows/catalog-sync.yml` is the CI job that runs this CLI
   against `main` on every pull request; see
   [the catalog-sync-check-goes-red-when-it-repairs gotcha](../gotchas/catalog-sync-check-goes-red-when-it-repairs.md).
@@ -123,15 +132,17 @@ the file is the artifact that matters, and a diff of it cannot disagree
 with itself. A change in the upstream CLI's JSON shape can only degrade
 the log line, never the verdict.
 
-`catalog:check` deliberately stays on the upstream CLI's plain **text**
-output; nothing parses it. It is the gate, and its stdout is what a human
-reads in the run log behind a red check — the drift list, not a JSON
-blob. `.github/workflows/release.yml` wires `catalog:check` as the
+`catalog:check` runs the upstream CLI with `--format json` so it can scope
+the drift to `effected`, and then renders the remaining rows as plain
+**text** itself (`checkVerdict`). It is the gate, and its stdout is what a
+human reads in the run log behind a red check — the drift list, not a JSON
+blob. A stdout that is not a check document passes through verbatim with
+the CLI's own exit code, and a resolution error in the document stays red. `.github/workflows/release.yml` wires `catalog:check` as the
 release's own `on-build` gate, keyed on the exit code alone.
 
 ## Exit codes
 
-`catalog:check` exits non-zero on any of: version drift, a membership
+`catalog:check` exits non-zero on any of: version drift in `effected`, a membership
 gap, or ripple drift. It exits zero only when the catalog literal already
 matches every catalogued package's actual next-release version and every
 publishable package is named. `catalog:sync` exits non-zero only if a

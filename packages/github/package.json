@@ -45,11 +45,11 @@
 		"@effect/platform-node": "catalog:effected",
 		"@effect/vitest": "catalog:effected",
 		"@octokit/openapi-types": "^29.0.1",
-		"@types/node": "catalog:build",
+		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
 		"oxc-parser": "^0.157.0",
-		"tsx": "catalog:build",
-		"typescript": "catalog:build"
+		"tsx": "catalog:effected:build",
+		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
 		"effect": "catalog:effected:peers"

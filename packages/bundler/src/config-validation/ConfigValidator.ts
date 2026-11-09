@@ -1,5 +1,4 @@
-import { existsSync, statSync } from "node:fs";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, FileSystem, Layer } from "effect";
 import { ConfigValidationError } from "../errors.js";
 import type { ExeConfig } from "../exe/config.js";
 import { normalizeExeOptions } from "../exe/config.js";
@@ -28,7 +27,7 @@ export interface ValidationInput {
 
 const VALID_SYNTAX_KINDS = new Set(["block", "inline", "modifier"]);
 
-/** Synchronous rule set; throws ConfigValidationError on the first violation. */
+/** The synchronous rule set; throws ConfigValidationError on the first violation. */
 function check(input: ValidationInput): void {
 	// Targets — delegate to resolveTargets (single source of truth; it throws ConfigValidationError).
 	if (input.targets !== undefined && Object.keys(input.targets).length > 0) {
@@ -51,7 +50,8 @@ function check(input: ValidationInput): void {
 		}
 	}
 
-	// Meta — tagDefinitions syntaxKind valid; localPaths that exist must be directories.
+	// Meta — tagDefinitions syntaxKind valid. That localPaths which exist are directories is checked by the layer,
+	// through FileSystem, between these rules and the looseFiles ones.
 	if (input.meta !== undefined) {
 		// Prerequisite guard: a package with no exports cannot emit a model, so fail fast before validating the rest of the meta config.
 		if (!input.hasExports) {
@@ -68,13 +68,11 @@ function check(input: ValidationInput): void {
 				});
 			}
 		}
-		for (const p of input.meta.localPaths ?? []) {
-			if (existsSync(p) && !statSync(p).isDirectory()) {
-				throw new ConfigValidationError({ path: "meta.localPaths", reason: `"${p}" exists but is not a directory` });
-			}
-		}
 	}
+}
 
+/** The rules after `meta.localPaths`, which the layer checks against the filesystem between the two. */
+function checkLooseFiles(input: ValidationInput): void {
 	// looseFiles — structural validation only (extension/format). normalizeLooseFiles throws
 	// ConfigValidationError on any problem; the layer's validate method surfaces it as a typed failure.
 	if (input.looseFiles !== undefined) {
@@ -91,12 +89,40 @@ export class ConfigValidator extends Context.Service<
 	ConfigValidator,
 	{ readonly validate: (input: ValidationInput) => Effect.Effect<void, ConfigValidationError> }
 >()("@savvy-web/tsdown-plugins/ConfigValidator") {
-	static readonly layer: Layer.Layer<ConfigValidator> = Layer.succeed(this, {
-		validate: (input) =>
-			Effect.try({
-				try: () => check(input),
-				catch: (e) =>
-					e instanceof ConfigValidationError ? e : new ConfigValidationError({ path: "config", reason: String(e) }),
-			}),
-	});
+	static readonly layer: Layer.Layer<ConfigValidator, never, FileSystem.FileSystem> = Layer.effect(
+		this,
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			// A localPaths entry that exists must be a directory; one that does not (or cannot be stat'd) is created later.
+			const checkLocalPaths = (paths: ReadonlyArray<string>) =>
+				Effect.forEach(paths, (p) =>
+					fs.stat(p).pipe(
+						Effect.option,
+						Effect.flatMap((info) =>
+							info._tag === "Some" && info.value.type !== "Directory"
+								? Effect.fail(
+										new ConfigValidationError({
+											path: "meta.localPaths",
+											reason: `"${p}" exists but is not a directory`,
+										}),
+									)
+								: Effect.void,
+						),
+					),
+				);
+			const run = (rules: () => void) =>
+				Effect.try({
+					try: rules,
+					catch: (e) =>
+						e instanceof ConfigValidationError ? e : new ConfigValidationError({ path: "config", reason: String(e) }),
+				});
+			return {
+				validate: (input) =>
+					run(() => check(input)).pipe(
+						Effect.andThen(checkLocalPaths(input.meta?.localPaths ?? [])),
+						Effect.andThen(run(() => checkLooseFiles(input))),
+					),
+			};
+		}),
+	);
 }

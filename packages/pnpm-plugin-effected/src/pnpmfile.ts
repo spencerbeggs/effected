@@ -14,13 +14,14 @@ export interface PnpmConfig {
 }
 
 /**
- * `lib/build/pnpm-config.plugin.ts` declares one catalog, `effected`, and its `:peers` twin. The
- * twin serves this repo's own published peer floors, through the root
- * `pnpm-workspace.yaml` that `pnpm:export` writes; a consumer never needs it,
- * since its packed peer takes the `effected` range (`pnpm pack` runs no hook),
- * so the hook hides it and a consumer sees exactly one catalog.
+ * `lib/build/pnpm-config.plugin.ts` declares two catalogs, `effected` (the Effect family and
+ * the kit) and `effected:build` (the build chain), each with a `:peers` twin. The twins
+ * serve this repo's own published peer floors, through the root `pnpm-workspace.yaml`
+ * that `pnpm:export` writes; a consumer never needs them, since its packed peer takes
+ * the catalog's own range (`pnpm pack` runs no hook), so the hook hides both and a
+ * consumer sees exactly `effected` and `effected:build`.
  */
-const HIDDEN = ["effected:peers"] as const;
+const HIDDEN = ["effected:peers", "effected:build:peers"] as const;
 
 function hide(config: PnpmConfig): PnpmConfig {
 	const catalogs = config.catalogs;
@@ -31,7 +32,7 @@ function hide(config: PnpmConfig): PnpmConfig {
 }
 
 /**
- * The plugin's pnpm hooks: the generated `updateConfig`, then hiding the peers catalog.
+ * The plugin's pnpm hooks: the generated `updateConfig`, then hiding the peers catalogs.
  *
  * @public
  */

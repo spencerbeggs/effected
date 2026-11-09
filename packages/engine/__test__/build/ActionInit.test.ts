@@ -65,7 +65,7 @@ describe("ActionInit.plan", () => {
 		assert.sameMembers([...scaffold.dependencies], ["@effected/github-actions", "effect", "@effect/platform-node"]);
 		assert.sameMembers([...scaffold.devDependencies], ["@effected/plugin", "typescript", "@types/node"]);
 		const tsconfig = JSON.parse(scaffold.files.find((file) => file.path === "tsconfig.json")?.contents ?? "{}");
-		assert.strictEqual(tsconfig.extends, "@effected/plugin/tsconfig/ecma.json");
+		assert.strictEqual(tsconfig.extends, "@effected/plugin/tsconfig/action.json");
 		const main = scaffold.files.find((file) => file.path === "src/main.ts")?.contents ?? "";
 		assert.include(main, "if (process.env.GITHUB_ACTIONS)");
 	});

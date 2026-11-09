@@ -1,8 +1,9 @@
 // Ported from savvy-web/systems packages/tsdown-plugins/__test__/jsx/config.test.ts on 2026-11-06
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, assert, beforeEach, describe, it } from "@effect/vitest";
+
+import { assert, describe, it } from "@effect/vitest";
+import type { MemoryFileSystemSeed } from "@effected/memfs";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect } from "effect";
 import { readTsconfigJsx, resolveJsxConfig } from "../../src/jsx/config.js";
 
 describe("resolveJsxConfig", () => {
@@ -45,35 +46,39 @@ describe("resolveJsxConfig", () => {
 });
 
 describe("readTsconfigJsx", () => {
-	let dir: string;
+	const read = (seed: MemoryFileSystemSeed) =>
+		readTsconfigJsx("/ws/pkg").pipe(Effect.provide(MemoryFileSystem.makeSync(seed).layer));
 
-	beforeEach(() => {
-		dir = mkdtempSync(join(tmpdir(), "jsx-test-"));
-	});
+	it.effect("returns {} when tsconfig.json is absent", () =>
+		Effect.map(read({ "/ws/pkg/package.json": "{}" }), (jsx) => assert.deepStrictEqual(jsx, {})),
+	);
 
-	afterEach(() => {
-		rmSync(dir, { recursive: true, force: true });
-	});
+	it.effect("returns {} on a JSON parse error", () =>
+		Effect.map(read({ "/ws/pkg/tsconfig.json": "{ not json }" }), (jsx) => assert.deepStrictEqual(jsx, {})),
+	);
 
-	it("returns {} when tsconfig.json is absent", () => {
-		assert.deepStrictEqual(readTsconfigJsx(dir), {});
-	});
+	it.effect("extracts jsx and jsxImportSource from compilerOptions", () =>
+		Effect.map(
+			read({
+				"/ws/pkg/tsconfig.json": JSON.stringify({ compilerOptions: { jsx: "react-jsx", jsxImportSource: "preact" } }),
+			}),
+			(jsx) => assert.deepStrictEqual(jsx, { jsx: "react-jsx", jsxImportSource: "preact" }),
+		),
+	);
 
-	it("returns {} on a JSON parse error", () => {
-		writeFileSync(join(dir, "tsconfig.json"), "{ not json }");
-		assert.deepStrictEqual(readTsconfigJsx(dir), {});
-	});
+	it.effect("follows an extends chain and reads JSONC", () =>
+		Effect.map(
+			read({
+				"/ws/tsconfig.base.json": '{ // a comment\n "compilerOptions": { "jsx": "react", } }',
+				"/ws/pkg/tsconfig.json": JSON.stringify({ extends: "../tsconfig.base.json" }),
+			}),
+			(jsx) => assert.deepStrictEqual(jsx, { jsx: "react" }),
+		),
+	);
 
-	it("extracts jsx and jsxImportSource from compilerOptions", () => {
-		writeFileSync(
-			join(dir, "tsconfig.json"),
-			JSON.stringify({ compilerOptions: { jsx: "react-jsx", jsxImportSource: "preact" } }),
-		);
-		assert.deepStrictEqual(readTsconfigJsx(dir), { jsx: "react-jsx", jsxImportSource: "preact" });
-	});
-
-	it("omits keys absent from compilerOptions", () => {
-		writeFileSync(join(dir, "tsconfig.json"), JSON.stringify({ compilerOptions: {} }));
-		assert.deepStrictEqual(readTsconfigJsx(dir), {});
-	});
+	it.effect("omits keys absent from compilerOptions", () =>
+		Effect.map(read({ "/ws/pkg/tsconfig.json": JSON.stringify({ compilerOptions: {} }) }), (jsx) =>
+			assert.deepStrictEqual(jsx, {}),
+		),
+	);
 });

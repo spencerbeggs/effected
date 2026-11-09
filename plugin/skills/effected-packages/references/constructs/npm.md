@@ -44,6 +44,8 @@
 | `NpmExecutor` | Class | Which `npm` runs a publish command. | choose which npm binary runs a publish command, ambient vs pinned |
 | `NpmRegistry` | Class | Reads package metadata from an npm-protocol registry over core `HttpClient`: one version, one version's dependency fields, every version, dist-tags and per-version publish times. | read npm registry metadata over http: version, manifest fields, dist-tags, publish times |
 | `NpmRegistryShape` | Interface | The `NpmRegistry` service shape. | |
+| `NpmRegistryTls` | Class | One registry's own TLS settings: the `//host/:…` keys of an npmrc. | per-registry ca, cert and key settings for one registry url, client certificate |
+| `NpmTransportSettings` | Class | npm's and pnpm's transport settings, as the configuration holds them: proxies, the proxy bypass lists, TLS trust, a client certificate and the local address. | read npmrc proxy, noproxy, strict-ssl, ca and client cert settings, npm and pnpm superset |
 | `NpmrcEntry` | Class | One setting read from an `.npmrc` text: its key, its value after `${VAR}` expansion, and the variables the value named that the environment did not set. | one parsed .npmrc line, key, expanded value, unset env variables, array flag |
 | `PackOptions` | Interface | Options shared by the packing operations. | |
 | `PackageManagerCache` | Class | Where each package manager caches by default — a facts table, one documented authority per row. | look up a package manager's default cache directory for a platform |
@@ -56,6 +58,7 @@
 | `PackageTarballShape` | Interface | The `PackageTarball` service shape. | |
 | `PackedTarball` | Class | A packed tarball and the two digests that describe it. | the tarball path, digests and size npm pack produced |
 | `PartialReleaseAgeGate` | Variable + TypeAlias | One source's partial contribution to a release-age gate. All fields optional. | one config source's contribution to a pnpm minimumReleaseAge gate before merging |
+| `ProxyForOptions` | Interface | Which package manager's rules `NpmConfig.proxyFor` and `NpmConfig.tlsFor` follow. | |
 | `PublishAuthPath` | TypeAlias | Which credential a successful publish authenticated with. | |
 | `PublishCredential` | TypeAlias | Every credential `PackagePublish.setupAuth` can write into an npmrc. | |
 | `PublishError` | Class | A publish-workflow step failed. | handle an npm publish step failure: auth, pack, publish, output parse, digest |

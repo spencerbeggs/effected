@@ -1,3 +1,5 @@
+// `node:fs` rather than `FileSystem`: the scratch directory is the SEA compiler's working tree, which tsdown and
+// `@tsdown/exe` write and read on the host disk. It is their setup, not an output of this build.
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

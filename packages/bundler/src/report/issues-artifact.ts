@@ -1,6 +1,5 @@
-import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { Schema } from "effect";
+import type { PlatformError } from "effect";
+import { Clock, Effect, FileSystem, Path, Schema } from "effect";
 import type { BuildReport } from "./schema.js";
 import { DiagnosticEntry } from "./schema.js";
 
@@ -183,32 +182,33 @@ export function serializeIssues(issues: BuildIssues): string {
  *
  * @public
  */
-export function writeIssuesArtifact(opts: {
-	cwd: string;
-	target: "dev" | "prod";
-	reports: ReadonlyArray<BuildReport>;
-	now?: () => Date;
-	buildOk?: boolean | undefined;
-	failure?: { name?: string | undefined; message: string } | undefined;
-}): string {
-	const clock = opts.now ?? (() => new Date());
-	const issues = flattenIssues(opts.reports, {
-		target: opts.target,
-		generatedAt: clock().toISOString(),
-		buildOk: opts.buildOk,
-		failure: opts.failure,
-	});
-	const outPath = join(opts.cwd, "dist", opts.target, "issues.json");
-	mkdirSync(dirname(outPath), { recursive: true });
-	// Same-directory rename is atomic on every platform we build on; a temp name keyed by pid keeps
-	// two concurrent builds of the same package from clobbering each other's in-flight write.
-	const tmpPath = `${outPath}.${process.pid}.tmp`;
-	try {
-		writeFileSync(tmpPath, serializeIssues(issues), "utf8");
-		renameSync(tmpPath, outPath);
-	} catch (err) {
-		rmSync(tmpPath, { force: true });
-		throw err;
-	}
-	return outPath;
-}
+export const writeIssuesArtifact: (opts: {
+	readonly cwd: string;
+	readonly target: "dev" | "prod";
+	readonly reports: ReadonlyArray<BuildReport>;
+	readonly now?: () => Date;
+	readonly buildOk?: boolean | undefined;
+	readonly failure?: { readonly name?: string | undefined; readonly message: string } | undefined;
+}) => Effect.Effect<string, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path> = Effect.fnUntraced(
+	function* (opts) {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const generatedAt = opts.now !== undefined ? opts.now() : new Date(yield* Clock.currentTimeMillis);
+		const issues = flattenIssues(opts.reports, {
+			target: opts.target,
+			generatedAt: generatedAt.toISOString(),
+			buildOk: opts.buildOk,
+			failure: opts.failure,
+		});
+		const outPath = path.join(opts.cwd, "dist", opts.target, "issues.json");
+		yield* fs.makeDirectory(path.dirname(outPath), { recursive: true });
+		// Same-directory rename is atomic on every platform we build on; a temp name keyed by pid keeps
+		// two concurrent builds of the same package from clobbering each other's in-flight write.
+		const tmpPath = `${outPath}.${process.pid}.tmp`;
+		yield* fs.writeFileString(tmpPath, serializeIssues(issues)).pipe(
+			Effect.andThen(fs.rename(tmpPath, outPath)),
+			Effect.onError(() => fs.remove(tmpPath, { force: true }).pipe(Effect.ignore)),
+		);
+		return outPath;
+	},
+);

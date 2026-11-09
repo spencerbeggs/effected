@@ -29,12 +29,12 @@ export class MetaGenerationError extends Data.TaggedError("MetaGenerationError")
 }
 
 /**
- * Writing the `tsdoctor.json` sidecar failed: the composed manifest did not encode, or the file could not be
+ * Writing the `bundle.json` sidecar failed: the composed manifest did not encode, or the file could not be
  * written (a read-only or full disk). Recorded in `issues.json` as a `meta` error.
  *
  * @public
  */
-export class TsdoctorEmitError extends Data.TaggedError("TsdoctorEmitError")<{
+export class BundleManifestEmitError extends Data.TaggedError("BundleManifestEmitError")<{
 	readonly packageName: string;
 	readonly path: string;
 	readonly cause: unknown;

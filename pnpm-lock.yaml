@@ -171,40 +171,6 @@ settings:
   excludeLinksFromLockfile: false
 
 catalogs:
-  build:
-    '@microsoft/api-extractor':
-      specifier: ^7.60.1
-      version: 7.60.1
-    '@microsoft/tsdoc':
-      specifier: ~0.17.1
-      version: 0.17.1
-    '@microsoft/tsdoc-config':
-      specifier: ~0.18.3
-      version: 0.18.3
-    '@tsdown/exe':
-      specifier: ^0.23.4
-      version: 0.23.7
-    '@types/node':
-      specifier: ^26.6.6
-      version: 26.6.6
-    '@types/react':
-      specifier: ^19.3.0
-      version: 19.3.0
-    react:
-      specifier: ^19.3.1
-      version: 19.3.1
-    rolldown:
-      specifier: ^1.2.16
-      version: 1.3.0
-    tsdown:
-      specifier: ^0.23.4
-      version: 0.23.7
-    tsx:
-      specifier: ^4.23.15
-      version: 4.23.15
-    typescript:
-      specifier: 7.1.0-beta
-      version: 7.1.0-beta
   docs:
     '@rspress/core':
       specifier: ^2.0.23
@@ -243,6 +209,47 @@ catalogs:
     effect:
       specifier: ~4.1.2
       version: 4.1.2
+  effected:build:
+    '@microsoft/api-extractor':
+      specifier: ^7.60.1
+      version: 7.60.1
+    '@microsoft/tsdoc':
+      specifier: ~0.17.1
+      version: 0.17.1
+    '@microsoft/tsdoc-config':
+      specifier: ~0.18.3
+      version: 0.18.3
+    '@tsdown/exe':
+      specifier: ^0.23.4
+      version: 0.23.7
+    '@types/node':
+      specifier: ^26.6.6
+      version: 26.6.6
+    '@types/react':
+      specifier: ^19.3.0
+      version: 19.3.0
+    react:
+      specifier: ^19.3.1
+      version: 19.3.1
+    rolldown:
+      specifier: ^1.2.16
+      version: 1.3.0
+    rolldown-plugin-dts:
+      specifier: ^0.30.0
+      version: 0.30.0
+    tsdown:
+      specifier: ^0.23.4
+      version: 0.23.7
+    tsx:
+      specifier: ^4.23.15
+      version: 4.23.15
+    typescript:
+      specifier: 7.1.0-beta
+      version: 7.1.0-beta
+  effected:build:peers:
+    react:
+      specifier: ^19.3.0
+      version: 19.3.1
   silk:
     ink:
       specifier: ^8.0.0
@@ -251,9 +258,6 @@ catalogs:
     ink:
       specifier: ^8.0.0
       version: 8.0.0
-    react:
-      specifier: ^19.3.0
-      version: 19.3.1
 
 overrides:
   tsdown>rolldown-plugin-dts: ^0.29.0
@@ -358,13 +362,13 @@ importers:
         specifier: workspace:*
         version: link:../yaml
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/bundler:
@@ -396,6 +400,9 @@ importers:
       '@effected/jsonl':
         specifier: workspace:^
         version: link:../jsonl
+      '@effected/manifest':
+        specifier: workspace:^
+        version: link:../manifest
       '@effected/npm':
         specifier: workspace:^
         version: link:../npm
@@ -424,34 +431,34 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0
       '@microsoft/api-extractor':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.60.1(@types/node@26.6.6)
       '@microsoft/tsdoc':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 0.17.1
       '@microsoft/tsdoc-config':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 0.18.3
       '@resvg/resvg-js':
         specifier: ^2.6.2
         version: 2.6.2
       '@tsdown/exe':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 0.23.7(tsdown@0.23.7)
       jiti:
         specifier: ~2.7.0
         version: 2.7.0
       rolldown:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 1.3.0
       rolldown-plugin-dts:
-        specifier: ^0.30.0
+        specifier: catalog:effected:build
         version: 0.30.0(rolldown@1.3.0)(typescript@7.1.0-beta)
       satori:
         specifier: ^0.63.2
         version: 0.63.2
       tsdown:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 0.23.7(@tsdown/exe@0.23.7)(tsx@4.23.15)(typescript@7.1.0-beta)
     devDependencies:
       '@effect/vitest':
@@ -461,13 +468,13 @@ importers:
         specifier: workspace:*
         version: link:../memfs
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/changesets:
@@ -504,13 +511,13 @@ importers:
         specifier: workspace:*
         version: link:../memfs
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/cli:
@@ -543,7 +550,7 @@ importers:
         specifier: catalog:silk:peers
         version: 8.0.0(@types/react@19.3.0)(react@19.3.1)
       react:
-        specifier: catalog:silk:peers
+        specifier: catalog:effected:build:peers
         version: 19.3.1
     devDependencies:
       '@effect/vitest':
@@ -559,13 +566,13 @@ importers:
         specifier: workspace:*
         version: link:../schemastore
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       '@types/react':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 19.3.0
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/cli-kit:
@@ -620,10 +627,10 @@ importers:
         specifier: workspace:*
         version: link:../yaml
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       '@types/react':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 19.3.0
       effect:
         specifier: catalog:effected
@@ -632,13 +639,13 @@ importers:
         specifier: catalog:silk
         version: 8.0.0(@types/react@19.3.0)(react@19.3.1)
       react:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 19.3.1
       string-width:
         specifier: ^8.3.0
         version: 8.3.0
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/commands:
@@ -653,16 +660,16 @@ importers:
         specifier: workspace:*
         version: link:../memfs
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       tsx:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 4.23.15
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/config-file:
@@ -696,13 +703,13 @@ importers:
         specifier: workspace:*
         version: link:../yaml
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/crypto:
@@ -714,13 +721,13 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/engine:
@@ -772,10 +779,10 @@ importers:
         specifier: workspace:*
         version: link:../memfs
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/env:
@@ -790,13 +797,13 @@ importers:
         specifier: workspace:*
         version: link:../workspaces
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/files:
@@ -808,13 +815,13 @@ importers:
         specifier: workspace:*
         version: link:../memfs
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/git:
@@ -826,13 +833,13 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/github:
@@ -878,7 +885,7 @@ importers:
         specifier: ^29.0.1
         version: 29.0.1
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
@@ -887,10 +894,10 @@ importers:
         specifier: ^0.157.0
         version: 0.157.0
       tsx:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 4.23.15
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/github-actions:
@@ -948,13 +955,13 @@ importers:
         specifier: workspace:*
         version: link:../memfs
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/github-commands:
@@ -963,13 +970,13 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/github-references:
@@ -978,13 +985,13 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/glob:
@@ -993,7 +1000,7 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
@@ -1002,7 +1009,7 @@ importers:
         specifier: 11.0.5
         version: 11.0.5
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/images:
@@ -1020,13 +1027,13 @@ importers:
         specifier: workspace:*
         version: link:../store
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/jsonc:
@@ -1039,13 +1046,13 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/jsonl:
@@ -1060,13 +1067,13 @@ importers:
         specifier: workspace:*
         version: link:../memfs
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/jwt:
@@ -1082,13 +1089,13 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/kit:
@@ -1106,13 +1113,13 @@ importers:
         specifier: workspace:*
         version: link:../workspaces
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/lockfiles:
@@ -1136,13 +1143,13 @@ importers:
         specifier: workspace:*
         version: link:../yaml
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/lsp:
@@ -1157,13 +1164,28 @@ importers:
         specifier: workspace:*
         version: link:../workspaces
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
+        version: 7.1.0-beta
+
+  packages/manifest:
+    devDependencies:
+      '@effect/vitest':
+        specifier: catalog:effected
+        version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
+      '@types/node':
+        specifier: catalog:effected:build
+        version: 26.6.6
+      effect:
+        specifier: catalog:effected
+        version: 4.1.2
+      typescript:
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/markdown:
@@ -1185,7 +1207,7 @@ importers:
         specifier: workspace:*
         version: link:../yaml
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       commonmark:
         specifier: 0.31.2
@@ -1194,7 +1216,7 @@ importers:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/markdown-lint:
@@ -1207,7 +1229,7 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
@@ -1216,7 +1238,7 @@ importers:
         specifier: 0.42.0
         version: 0.42.0(supports-color@8.1.1)
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/mcp:
@@ -1259,10 +1281,10 @@ importers:
         specifier: workspace:*
         version: link:../workspaces
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/mcp-kit:
@@ -1280,13 +1302,13 @@ importers:
         specifier: workspace:*
         version: link:../workspaces
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/memfs:
@@ -1298,13 +1320,13 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/npm:
@@ -1326,13 +1348,13 @@ importers:
         specifier: workspace:*
         version: link:../semver
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/oidc:
@@ -1348,13 +1370,13 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/package-json:
@@ -1385,13 +1407,13 @@ importers:
         specifier: workspace:*
         version: link:../memfs
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/plugin:
@@ -1428,22 +1450,22 @@ importers:
         specifier: workspace:*
         version: link:../workspaces
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/pnpm-plugin-effected:
     devDependencies:
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       rolldown-pnpm-config:
         specifier: ^2.4.3
         version: 2.4.3(@effected/markdown-lint@0.1.0(@effected/jsonc@0.24.0(effect@4.1.2))(@effected/toml@0.19.1(effect@4.1.2))(@effected/yaml@0.29.0(effect@4.1.2))(effect@4.1.2))(@effected/markdown@0.28.0(@effected/jsonc@0.24.0(effect@4.1.2))(@effected/toml@0.19.1(effect@4.1.2))(@effected/yaml@0.29.0(effect@4.1.2))(effect@4.1.2))(@types/react@19.3.0)(redis@6.3.1)(rolldown@1.2.16)
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/runtimes:
@@ -1459,7 +1481,7 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
@@ -1468,7 +1490,7 @@ importers:
         specifier: ^0.157.0
         version: 0.157.0
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/s3:
@@ -1481,13 +1503,13 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/sbom:
@@ -1515,13 +1537,13 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/schema-org:
@@ -1530,7 +1552,7 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
@@ -1539,7 +1561,7 @@ importers:
         specifier: ^0.157.0
         version: 0.157.0
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/schemastore:
@@ -1561,13 +1583,13 @@ importers:
         specifier: workspace:*
         version: link:../memfs
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/semver:
@@ -1576,13 +1598,13 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/shell:
@@ -1591,13 +1613,13 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/source:
@@ -1606,13 +1628,13 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/spdx:
@@ -1621,7 +1643,7 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
@@ -1639,7 +1661,7 @@ importers:
         specifier: 3.0.24
         version: 3.0.24
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/store:
@@ -1655,13 +1677,13 @@ importers:
         specifier: workspace:*
         version: link:../memfs
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/templates:
@@ -1680,13 +1702,13 @@ importers:
         specifier: workspace:*
         version: link:../memfs
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/toml:
@@ -1699,7 +1721,7 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
@@ -1708,7 +1730,7 @@ importers:
         specifier: 1.9.1
         version: 1.9.1
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/tsconfig-json:
@@ -1729,13 +1751,13 @@ importers:
         specifier: workspace:*
         version: link:../walker
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/walker:
@@ -1750,13 +1772,13 @@ importers:
         specifier: workspace:*
         version: link:../memfs
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/webhooks:
@@ -1772,7 +1794,7 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
@@ -1784,7 +1806,7 @@ importers:
         specifier: ^2.9.1
         version: 2.9.1
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/workspaces:
@@ -1842,13 +1864,13 @@ importers:
         specifier: workspace:*
         version: link:../memfs
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/xdg:
@@ -1878,13 +1900,13 @@ importers:
         specifier: workspace:*
         version: link:../yaml
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   packages/yaml:
@@ -1897,13 +1919,13 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
         version: 4.1.2
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   plugin:
@@ -2030,7 +2052,7 @@ importers:
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(vitest@5.1.0)
       '@types/node':
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 26.6.6
       effect:
         specifier: catalog:effected
@@ -2039,7 +2061,7 @@ importers:
         specifier: ^4.23.12
         version: 4.23.15
       typescript:
-        specifier: catalog:build
+        specifier: catalog:effected:build
         version: 7.1.0-beta
 
   website:

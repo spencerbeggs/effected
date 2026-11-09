@@ -1,4 +1,4 @@
-import type { TsdoctorMetaOptions } from "./tsdoctor-config.js";
+import type { BundleMetaOptions } from "./bundle-config.js";
 
 /**
  * A single TSDoc tag definition (parity with api-extractor's TSDoc config).
@@ -47,13 +47,13 @@ export interface MetaOptions {
 	readonly optimistic?: "auto" | boolean | undefined;
 	readonly tsdoc?: TsdocOptions | undefined;
 	/**
-	 * The CONFIG tier of the emitted `tsdoctor.json` sidecar (ranked over the package's and the
-	 * workspace root's `tsdoctor.json` source files) and the optional build-time Open Graph image.
+	 * The CONFIG tier of the emitted `bundle.json` sidecar (ranked over the package's and the
+	 * workspace root's `bundle.json` source files) and the optional build-time Open Graph image.
 	 * The project tier is found through workspace discovery, which requires the workspace root's
 	 * `package.json` to declare a `version`; without one, discovery fails silently and no `project`
 	 * tier is emitted.
 	 */
-	readonly tsdoctor?: TsdoctorMetaOptions | undefined;
+	readonly bundle?: BundleMetaOptions | undefined;
 }
 
 /**
@@ -69,7 +69,7 @@ export interface NormalizedMeta {
 		readonly tagDefinitions: ReadonlyArray<TsdocTagDefinition>;
 	};
 	/** Passed through verbatim; `undefined` means no config tier (the source tiers still apply). */
-	readonly tsdoctor: TsdoctorMetaOptions | undefined;
+	readonly bundle: BundleMetaOptions | undefined;
 }
 
 /** Resolve `"auto"` against the environment; explicit booleans pass through. */
@@ -97,6 +97,6 @@ export function normalizeMetaOptions(
 			suppressWarnings: meta.tsdoc?.suppressWarnings ?? [],
 			tagDefinitions: meta.tsdoc?.tagDefinitions ?? [],
 		},
-		tsdoctor: meta.tsdoctor,
+		bundle: meta.bundle,
 	};
 }

@@ -27,10 +27,10 @@ sources:
     title: "The @effect/tsgo auto-patch, split out of 1146"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-09T00:05:23Z
 integrity:
   generated:
-    body: 94baa41a0a0f47f5
+    body: af017b35b0f57b16
   verified:
     by: human:spencer
     at: 2026-11-08T18:25:54Z
@@ -46,7 +46,9 @@ verified:
 
 # Consumers see one catalog, effected, folded by the plugin's hook from split declarations
 
-**Superseded in part.** The consumer-facing half stands: one catalog, `effected`, and the rename. The split declaration, the fold, and this repository's use of `catalog:effect` are superseded by [the one declared effected catalog](one-declared-effected-catalog.md), which `rolldown-pnpm-config` 2.3.0's `include` patterns made possible.
+**Amended.** A consumer now sees a second catalog, `effected:build`, holding the kit's build chain; see [the effected build catalog](effected-build-catalog.md). The rule below, one catalog for the Effect family and the kit, holds for everything a consumer's code runs on.
+
+**Superseded in part.** The consumer-facing half stands: one runtime catalog, `effected`, and the rename. The split declaration, the fold, and this repository's use of `catalog:effect` are superseded by [the one declared effected catalog](one-declared-effected-catalog.md), which `rolldown-pnpm-config` 2.3.0's `include` patterns made possible.
 
 ## Context
 

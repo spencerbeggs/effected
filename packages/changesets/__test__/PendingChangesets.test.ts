@@ -1,6 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, Result } from "effect";
+import { Effect, PlatformError, Result } from "effect";
 import { PendingChangesets } from "../src/PendingChangesets.js";
 
 const change = (pkg: string, bump: string, text: string): string => `---\n"${pkg}": ${bump}\n---\n\n${text}\n`;
@@ -175,4 +175,162 @@ it("readSync trims a long run of separators in linear time", () => {
 	// that the answer comes fast, and that it is an answer, not a throw.
 	assert.isTrue(Result.isFailure(result) || Result.isSuccess(result));
 	assert.isBelow(elapsed, 500, `readSync took ${elapsed.toFixed(0)}ms`);
+});
+
+const denied = (method: string, path: string): PlatformError.PlatformError =>
+	PlatformError.systemError({ _tag: "PermissionDenied", module: "FileSystem", method, pathOrDescriptor: path });
+
+const Mixed = MemoryFileSystem.layerWithPath(
+	{
+		"/repo/.changeset/zeta.md": change("@effected/z", "patch", "Zeta."),
+		"/repo/.changeset/bad.md": '---\n"@effected/b": huge\n---\n\nnot a bump type\n',
+		"/repo/.changeset/alpha.md": change("@effected/a", "minor", "Alpha."),
+		"/repo/.changeset/locked.md": change("@effected/l", "patch", "Locked."),
+		"/repo/.changeset/notes.txt": "not a changeset",
+		"/repo/.changeset/config.json": "{",
+		"/repo/.changeset/README.md": "no front matter",
+		"/repo/.changeset/pre/old.md": "no front matter either",
+		"/repo/.changeset/pre/kept.md": change("@effected/k", "major", "Kept."),
+	},
+	{
+		faults: {
+			readFileString: (path) =>
+				path === "/repo/.changeset/locked.md" ? Effect.fail(denied("readFileString", path)) : undefined,
+		},
+	},
+);
+
+const AllBad = MemoryFileSystem.layerWithPath({
+	"/repo/.changeset/one.md": "no front matter",
+	"/repo/.changeset/two.md": '---\n"@effected/a": huge\n---\n',
+});
+
+const EmptyDir = MemoryFileSystem.layerWithPath({
+	"/repo/.changeset/config.json": "{}",
+	"/repo/.changeset/notes.txt": "---\nnot: yaml: here\n",
+});
+
+const Unlistable = MemoryFileSystem.layerWithPath(
+	{ "/repo/.changeset/a.md": change("@effected/a", "minor", "A.") },
+	{
+		faults: {
+			readDirectory: (path) =>
+				path === "/repo/.changeset/pre" ? Effect.fail(denied("readDirectory", path)) : undefined,
+		},
+	},
+);
+
+it.effect("readSettled keeps the good changesets and reports each bad file with its typed error", () =>
+	Effect.gen(function* () {
+		const strict = yield* Effect.flip(PendingChangesets.read("/repo"));
+		assert.strictEqual(strict._tag, "ChangesetParseError");
+
+		const { changesets, failures } = yield* PendingChangesets.readSettled("/repo");
+		assert.deepStrictEqual(
+			changesets.map((p) => [p.file, [...p.releases.entries()]]),
+			[
+				["alpha.md", [["@effected/a", "minor"]]],
+				["zeta.md", [["@effected/z", "patch"]]],
+				["pre/kept.md", [["@effected/k", "major"]]],
+			],
+		);
+		assert.deepStrictEqual(
+			failures.map((f) => [f.file, f.error._tag]),
+			[
+				["bad.md", "ChangesetParseError"],
+				["locked.md", "PlatformError"],
+				["pre/old.md", "ChangesetParseError"],
+			],
+		);
+		const [bad, locked, old] = failures;
+		assert.isTrue(bad?.error._tag === "ChangesetParseError" && bad.error.file === "bad.md");
+		assert.isTrue(locked?.error._tag === "PlatformError" && locked.error.reason._tag === "PermissionDenied");
+		assert.isTrue(old?.error._tag === "ChangesetParseError" && old.error.file === "pre/old.md");
+	}).pipe(Effect.provide(Mixed)),
+);
+
+it.effect("readSettled reports every file when none parses", () =>
+	Effect.gen(function* () {
+		const { changesets, failures } = yield* PendingChangesets.readSettled("/repo");
+		assert.deepStrictEqual(changesets, []);
+		assert.deepStrictEqual(
+			failures.map((f) => [f.file, f.error._tag]),
+			[
+				["one.md", "ChangesetParseError"],
+				["two.md", "ChangesetParseError"],
+			],
+		);
+	}).pipe(Effect.provide(AllBad)),
+);
+
+it.effect("readSettled answers nothing for a directory holding no changesets, ignoring non-.md files", () =>
+	Effect.gen(function* () {
+		assert.deepStrictEqual(yield* PendingChangesets.read("/repo"), []);
+		assert.deepStrictEqual(yield* PendingChangesets.readSettled("/repo"), { changesets: [], failures: [] });
+	}).pipe(Effect.provide(EmptyDir)),
+);
+
+it.effect("readSettled answers nothing for a missing .changeset directory", () =>
+	Effect.gen(function* () {
+		assert.deepStrictEqual(yield* PendingChangesets.readSettled("/repo"), { changesets: [], failures: [] });
+	}).pipe(Effect.provide(Empty)),
+);
+
+it.effect("readSettled still fails the whole read when a directory cannot be listed", () =>
+	Effect.gen(function* () {
+		const error = yield* Effect.flip(PendingChangesets.readSettled("/repo"));
+		assert.strictEqual(error._tag, "PlatformError");
+		assert.strictEqual(error.reason._tag, "PermissionDenied");
+	}).pipe(Effect.provide(Unlistable)),
+);
+
+it.effect("readSettled orders its answer by file name regardless of the order the directory lists", () =>
+	Effect.gen(function* () {
+		const { changesets } = yield* PendingChangesets.readSettled("/repo");
+		assert.deepStrictEqual(
+			changesets.map((p) => p.file),
+			["alpha.md", "mid.md", "zeta.md"],
+		);
+	}).pipe(Effect.provide(Unsorted)),
+);
+
+it("readSettledSync skips a bad file on disk and reports it, where readSync fails", async () => {
+	const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+	const { tmpdir } = await import("node:os");
+	const { join } = await import("node:path");
+	const root = mkdtempSync(join(tmpdir(), "changesets-"));
+	try {
+		const missing = PendingChangesets.readSettledSync(root);
+		assert.isTrue(Result.isSuccess(missing));
+		if (Result.isSuccess(missing)) assert.deepStrictEqual(missing.success, { changesets: [], failures: [] });
+
+		mkdirSync(join(root, ".changeset", "pre"), { recursive: true });
+		writeFileSync(join(root, ".changeset", "good.md"), change("alpha", "minor", "ok"));
+		writeFileSync(join(root, ".changeset", "bad.md"), '---\n"beta": huge\n---\n\nnot a bump type\n');
+		writeFileSync(join(root, ".changeset", "notes.txt"), "ignored");
+		writeFileSync(join(root, ".changeset", "pre", "old.md"), change("gamma", "patch", "old"));
+		mkdirSync(join(root, ".changeset", "dir.md"));
+
+		assert.isTrue(Result.isFailure(PendingChangesets.readSync(root)));
+		const settled = PendingChangesets.readSettledSync(`${root}/`);
+		assert.isTrue(Result.isSuccess(settled));
+		if (Result.isSuccess(settled)) {
+			assert.deepStrictEqual(
+				settled.success.changesets.map((p) => [p.file, [...p.releases.entries()]]),
+				[
+					["good.md", [["alpha", "minor"]]],
+					["pre/old.md", [["gamma", "patch"]]],
+				],
+			);
+			assert.deepStrictEqual(
+				settled.success.failures.map((f) => [f.file, f.error._tag]),
+				[
+					["bad.md", "ChangesetParseError"],
+					["dir.md", "PlatformError"],
+				],
+			);
+		}
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
 });

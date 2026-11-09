@@ -27,11 +27,11 @@ sources:
   - id: build-run
     resource: ../../packages/engine/src/build/BuildRun.ts
 generated:
-  by: "okfit/claude-code"
-  at: 2026-11-06T23:49:47Z
+  by: "claude-code/opus-5.5"
+  at: 2026-11-08T22:56:47Z
 integrity:
   generated:
-    body: 0d25da58fa452278
+    body: e3191bc3bf751312
 ---
 
 # The build artifacts: dist/prod, targets.json, issues.json and the journals
@@ -41,7 +41,7 @@ An [`effected package build`](build-commands.md) leaves these on disk. Tools out
 ```text
 <package>/dist/prod/
   <group>/pkg/           what is packed and published
-  <group>/meta/          <unscoped>.api.json, package.json, tsconfig.json, and maybe tsdoctor.json and og/
+  <group>/meta/          <unscoped>.api.json, package.json, tsconfig.json, and maybe bundle.json and og/
   targets.json
   issues.json
 <root>/.cache/effected/
@@ -51,17 +51,17 @@ An [`effected package build`](build-commands.md) leaves these on disk. Tools out
 
 | Output | Read by |
 | --- | --- |
-| `<group>/pkg` | `silk-release-action`, which packs it; `PackedInstall` and the scratchpad's artifact mode |
-| `<group>/meta` | `silk-release-action`; [tsdoctor](../consumers/tsdoctor.md), for `tsdoctor.json` and the API model; `plugin/scripts/generate-constructs.mts`, for the API model |
+| `<group>/pkg` | `silk-release-action`, which packs it; `PackedInstall` and the scratchpad's artifact mode; a plain-Node workspace consumer through [the `effected-built` condition](effected-toml.md#linking-built-output-to-a-plain-node-consumer) |
+| `<group>/meta` | `silk-release-action`; [tsdoctor](../consumers/tsdoctor.md), for `bundle.json` and the API model; `plugin/scripts/generate-constructs.mts`, for the API model |
 | `targets.json` | `silk-release-action` |
 | `issues.json` | every gate, the silk `tsdoc-diagnostics` monitor and the `tsdoctor` agent |
 | the journals | agent watchers |
 
 ## `<group>/pkg` and `<group>/meta`
 
-A group is one distinct published name, from `publishConfig.targets`; with none declared there is one group, `npm`.[^bundler] `pkg` holds the JS, the declarations, the emitted `package.json` and, for an `exe` build, `bin/<binary>`, compiled whatever the host: `@tsdown/exe` cross-compiles. Its `exports["."]` points at the binary, and it has a `bin` only when the source manifest declares one. Declaration source maps are stripped from it. A `dist/prod/<group>/pkg` is also what a consumer's `bundledPackages` reads when it names this package as a sibling.
+A group is one distinct published name, from `publishConfig.targets`; with none declared there is one group, `npm`.[^bundler] `pkg` holds the JS, the declarations, the emitted `package.json` and, for an `exe` build, `bin/<binary>`, compiled whatever the host: `@tsdown/exe` cross-compiles. Its `exports["."]` points at the binary, and it has a `bin` only when the source manifest declares one. Declaration source maps are stripped from it. A `dist/prod/<group>/pkg` is also what a consumer's `bundledPackages` reads when it names this package as a sibling. A source export naming a file here under `effected-built` is a path into this tree, so moving an emitted file moves that consumer's target, and the build warns `exports-built-condition-unmatched` when the two disagree.
 
-`meta` holds three files every time it exists: `<unscoped>.api.json`, the final `package.json` and a portable `tsconfig.json`. **`tsdoctor.json` and `og/` are conditional, and a build removes a previous build's copies first,** so a package that stops producing them stops advertising them.[^generate] There is no `meta` at all under `meta = false`, under `emitDts = false`, or for an exe-only package. `tsdoctor.json` is decoded by readers outside this repository, and its fields grow additively.
+`meta` holds three files every time it exists: `<unscoped>.api.json`, the final `package.json` and a portable `tsconfig.json`. **`bundle.json` and `og/` are conditional, and a build removes a previous build's copies first,** so a package that stops producing them stops advertising them; it also deletes a leftover `tsdoctor.json`, the sidecar's former name, and never writes one.[^generate] There is no `meta` at all under `meta = false`, under `emitDts = false`, or for an exe-only package. `bundle.json` is decoded by readers outside this repository, and its fields grow additively.
 
 ## `targets.json`
 

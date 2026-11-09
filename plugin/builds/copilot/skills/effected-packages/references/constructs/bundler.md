@@ -41,9 +41,15 @@
 | `BuildReport` | Class | | per-package report of every target group, pass and emitted file |
 | `BuildResult` | Class | How a whole action bundle went. | whether an action bundle succeeded, per-entry outcomes and duration |
 | `BuildTargetGroupsOptions` | Interface | | |
+| `BundleConfig` | Class | The config tier of a package's emitted `bundle.json`, the `[package.bundle]` table. | author the emitted bundle.json config tier in effected.toml |
 | `BundleFailed` | Class | An entry could not go through the bundler, or could not be bundled at all. | an action entry is missing, unsafely named or could not bundle |
-| `BundleManifest` | Variable + TypeAlias | The decoded type of `(BundleManifest:variable)`. | tsdoctor.json schema, emitted metadata for a package's api docs bundle |
-| `BundleManifestError` | Class | Raised when a present `tsdoctor.json` cannot be parsed or does not satisfy the `(BundleManifest:variable)` schema. | unparseable or invalid tsdoctor.json sidecar failure |
+| `BundleManifestEmitError` | Class | Writing the `bundle.json` sidecar failed: the composed manifest did not encode, or the file could not be written (a read-only or full disk). Recorded in `issues.json` as a `meta` error. | docs sidecar could not encode or write, recorded as a meta error |
+| `BundleManifestSourceError` | Class | A present `bundle.json` source file that could not be parsed or decoded. Absence is never this error — a missing source tier is the normal case. | present bundle.json source file failed to parse or decode |
+| `BundleManifestSources` | Interface | The two source tiers a build reads: the package's own file and the workspace root's. | |
+| `BundleMetaOptions` | Interface | The `meta.bundle` block: the CONFIG tier of the emitted `bundle.json`, ranked over the package's `bundle.json` (leaf) and the workspace root's (project). | |
+| `BundleOpenGraphConfig` | Class | The Open Graph settings of a package's API docs. | open graph settings of a package's api docs, generate social cards |
+| `BundleOpenGraphImage` | Class | One Open Graph image a package's API docs declare. | declare one open graph image for a package's api docs |
+| `BundleRegistryRef` | Class | One registry a documented package is published to. | declare a registry a documented package publishes to |
 | `BundleResult` | Class | How one entry's bundling went. | one action entry's outcome, its error, stats and rolldown warnings |
 | `BundleStats` | Class | What one bundle came to. | one action bundle's size, build time and output path |
 | `Bundler` | Class | Builds one package: the JS and declaration passes for every publish group, the emitted manifest, `dist/prod/targets.json`, the API model, an optional SEA binary, and `dist/prod/issues.json`. | build one package to dist/prod, js and declarations, manifest, api model, single executable |
@@ -54,7 +60,7 @@
 | `BundlerPhase` | Variable + TypeAlias | The decoded type of `(BundlerPhase:variable)`. | which stage a build failed in, for reporting a failure |
 | `BundlerSeams` | Interface | The orchestrator's side effects, each replaceable so a test can run it without tsdown, API Extractor or a compiler. Every member defaults to the real implementation. | |
 | `CleanError` | Class | The output directory could not be cleaned. | removing an action build's dist directory failed |
-| `ComposeManifestInput` | Interface | Everything `composeTsdoctorManifest` needs: the three authoring tiers plus the build facts that derive the rest. | |
+| `ComposeManifestInput` | Interface | Everything `composeBundleManifest` needs: the three authoring tiers plus the build facts that derive the rest. | |
 | `ConfigValidationError` | Class | A build config is structurally invalid; raised before any build work. | structurally invalid build config, refused before any build work |
 | `ConfigValidator` | Class | Fast-fail config validator; runs first in the bundler over the resolved config. | fast-fail structural check of a resolved build config |
 | `CopyAmbientDtsOptions` | Interface | | |
@@ -64,7 +70,7 @@
 | `DeriveOptions` | Interface | | |
 | `DerivedDtsPassOptions` | Interface | The dts pass: bundled (rolled-up, self-contained) declarations only, no JS. | |
 | `DerivedTsdownOptions` | Interface | The JS pass: per-module JavaScript, no declarations. | |
-| `DiagnosticEntry` | Class | A captured warning or error, from tsdown's logger, rolldown's onLog, API Extractor, the meta pass's own sidecar work (`tsdoctor.json` sources, Open Graph generation), or an advisory finding about the build config itself (`config`, e.g. a `publishConfig.targets` set no final release reaches). | one captured warning or error, tsdown, rolldown, api extractor or config |
+| `DiagnosticEntry` | Class | A captured warning or error, from tsdown's logger, rolldown's onLog, API Extractor, the meta pass's own sidecar work (`bundle.json` sources, Open Graph generation), or an advisory finding about the build config itself (`config`, e.g. a `publishConfig.targets` set no final release reaches). | one captured warning or error, tsdown, rolldown, api extractor or config |
 | `DiagnosticInput` | Interface | | |
 | `DtsEmitTsconfigOptions` | Interface | What a dts-emit tsconfig adds for one partition. | |
 | `DtsExportClass` | TypeAlias | Classification of a single export value for ambient-.d.ts handling. | |
@@ -93,16 +99,12 @@
 | `IssueJournal` | Class | The per-diagnostic journal: one line per error and warning of a build, in that order, scoped by package name. Suppressed diagnostics stay in `issues.json` and are counted on the build's line. | append one jsonl line per error and warning, per-package diagnostic history |
 | `Json` | TypeAlias | | |
 | `JsxConfig` | Class | JSX transform settings. | jsx transform settings, automatic or classic runtime and import source |
-| `KNOWN_REGISTRY_TYPES` | Variable | The registry protocol families this reader knows how to do more than link to. `"npm"` means an npm-compatible registry — install commands and tarball fetching work against any instance of it — and `"jsr"` the jsr protocol. | registry protocol families supported beyond a link, npm and jsr |
-| `KnownRegistryType` | TypeAlias | A registry protocol family this reader recognizes. | |
 | `LooseFileOptions` | Interface | One standalone bundled output file, declared by its literal output filename. | |
 | `LooseFileSpec` | Class | One standalone output file's source and format. | standalone output file's source and format, self-contained extra file |
 | `LooseFiles` | TypeAlias | Map of literal output filename to its source (bare string) or a `{ source, format }` spec. | |
-| `MANIFEST_SPEC` | Variable | The manifest spec version this package reads and writes. | spec version of tsdoctor.json this package reads and writes |
 | `ManifestConfig` | Class | What the build changes in the emitted `package.json`. | change the emitted package.json, drop fields from a published manifest |
 | `ManifestLike` | Interface | Minimal shape of a `package.json` manifest needed to resolve catalog and workspace specifiers. | |
 | `ManifestRepository` | Interface | The `repository` field of the emitted `package.json`, as far as the manifest composer reads it. | |
-| `ManifestSource` | Variable + TypeAlias | The decoded type of `(ManifestSource:variable)`. | authoring tier of tsdoctor.json, package or project source file schema |
 | `ManifestTarget` | Interface | A `targets.json` target as the manifest composer sees it: the human label and the registry endpoint. | |
 | `MetaConfig` | Class | API model generation settings, the `[package.build.meta]` table. | api model generation settings, the build meta table |
 | `MetaGenerationError` | Class | API Extractor meta generation failed for an entry. | api extractor run failed for an entry |
@@ -119,8 +121,6 @@
 | `OgImageCacheOptions` | Interface | Where generated images persist across builds, and the salt naming the generator's identity. | |
 | `OgImageGenerator` | Interface | An `openGraph.generate` renderer. A renderer whose output is fully determined by its input can carry its own `cacheSalt`, naming everything else that shapes the bytes (its version, its options); that turns on the cross-build cache without any config. `ogImage.satori()` does. | |
 | `OgImageInfo` | Interface | What an Open Graph image generator receives: the merged identity of the package being built, after the config, leaf and project tiers resolved. | |
-| `OpenGraphConfig` | Variable + TypeAlias | The decoded type of `(OpenGraphConfig:variable)`. | social card settings in a docs manifest, schema |
-| `OpenGraphImage` | Variable + TypeAlias | The decoded type of `(OpenGraphImage:variable)`. | social card image entry, path, mime type and dimensions, schema |
 | `PackageBuildConfig` | Class | The build settings of one package, the `[package.build]` table. | build settings of one package, plugins, externals, loose files, executables |
 | `PackageConfig` | Class | The `[package]` table of `effected.toml`. | package table of effected.toml, build and tsdoctor settings |
 | `PackageJsonEntriesOptions` | Interface | | |
@@ -135,13 +135,11 @@
 | `PlainDiagnosticSchema` | Variable | The schema of a `PlainDiagnostic`, for reading one back from `issues.json` or a journal. | read one diagnostic back from issues.json or a journal line |
 | `PluginLoadError` | Class | A module named in `package.build.plugins` could not be loaded as a rolldown plugin. | named rolldown plugin module failed to load or has no plugin default export |
 | `PortableTsconfig` | Interface | Portable, JSON-serializable tsconfig.json (compilerOptions-only). | |
-| `ProjectIdentity` | Variable + TypeAlias | The decoded type of `(ProjectIdentity:variable)`. | project display name and tagline in a docs manifest, schema |
 | `PublishTargetObject` | Interface | A single object-form publish target. Uses `from` XOR `name` (never both). | |
 | `PublishTargetValue` | TypeAlias | A `publishConfig.targets` value: `true` (well-known registry, base name), a string (name override), or an object. | |
 | `PublishTargets` | TypeAlias | The `publishConfig.targets` map, keyed by target id (`npm`, `github`, or a custom key). | |
 | `RELEASE_CHANNELS` | Variable | Every `ReleaseChannel` value, in declaration order. | every release channel value, for iterating or validating channels |
 | `ReexportBarrelAnalysis` | Interface | The analysis of an entry source treated as a candidate re-export barrel. | |
-| `RegistryRef` | Variable + TypeAlias | The decoded type of `(RegistryRef:variable)`. | one registry a package publishes to, type, label and url, schema |
 | `ReleaseChannel` | TypeAlias | Which release versions a target receives: every version, only final versions, or only prereleases. | |
 | `ReportTimings` | Class | | start, end and duration of a build step |
 | `ResolvedCompilerOptions` | Interface | Compiler options with enum values converted to their string equivalents. | |
@@ -154,8 +152,6 @@
 | `ResolvedTsconfigOptions` | Interface | | |
 | `RunExeBuildOptions` | Interface | Options for compiling SEA binaries. | |
 | `RunMetaPassOptions` | Interface | Options for the meta-pass orchestrator. | |
-| `SbomRef` | Variable + TypeAlias | The decoded type of `(SbomRef:variable)`. | point a docs manifest at an sbom file, path and format, schema |
-| `TSDOCTOR_MANIFEST_FILENAME` | Variable | The sidecar manifest's file name inside a bundle folder. | file name of the docs sidecar inside a meta bundle |
 | `TargetGroupId` | TypeAlias | A build group id: "dev" or any prod byte-variant id (e.g. "npm", "github", a custom key). | |
 | `TargetGroupRef` | Interface | | |
 | `TargetGroupReport` | Class | | report of one publish group's passes and output |
@@ -166,14 +162,6 @@
 | `TsdocConfig` | Class | TSDoc and documentation-warning settings. | tsdoc settings, custom tags and warning suppressions for api extractor |
 | `TsdocOptions` | Interface | TSDoc / doc-warning configuration. suppressWarnings is doc functionality, so it lives here. | |
 | `TsdocTagDefinition` | Class | A single TSDoc tag definition, as API Extractor's TSDoc config takes it. | define a custom tsdoc tag, block, inline or modifier syntax |
-| `TsdoctorConfig` | Class | The config tier of a package's emitted `tsdoctor.json`, the `[package.tsdoctor]` table. | author the emitted docs manifest's config tier in effected.toml |
-| `TsdoctorEmitError` | Class | Writing the `tsdoctor.json` sidecar failed: the composed manifest did not encode, or the file could not be written (a read-only or full disk). Recorded in `issues.json` as a `meta` error. | docs sidecar could not encode or write, recorded as a meta error |
-| `TsdoctorMetaOptions` | Interface | The `meta.tsdoctor` block: the CONFIG tier of the emitted `tsdoctor.json`, ranked over the package's `tsdoctor.json` (leaf) and the workspace root's (project). | |
-| `TsdoctorOpenGraphConfig` | Class | The Open Graph settings of a package's API docs. | open graph settings of a package's api docs, generate social cards |
-| `TsdoctorOpenGraphImage` | Class | One Open Graph image a package's API docs declare. | declare one open graph image for a package's api docs |
-| `TsdoctorRegistryRef` | Class | One registry a documented package is published to. | declare a registry a documented package publishes to |
-| `TsdoctorSourceError` | Class | A present `tsdoctor.json` source file that could not be parsed or decoded. Absence is never this error — a missing source tier is the normal case. | present tsdoctor.json source file failed to parse or decode |
-| `TsdoctorSources` | Interface | The two source tiers a build reads: the package's own file and the workspace root's. | |
 | `TsdownBuild` | TypeAlias | Signature compatible with tsdown's `build(inlineConfig)`. | |
 | `TsdownLogger` | Interface | Structural match for tsdown's Logger interface (tsdown 0.22.x). | |
 | `ValidationFailed` | Class | Validation stopped an action build, before bundling or on a bundle's size afterwards. | action validation or a strict warning stopped the build |
@@ -193,7 +181,7 @@
 | `cjsDefaultInterop` | Function | Rolldown plugin: append the CJS default-interop footer to ENTRY chunks of the `cjs` format that export a default alongside named exports. | rolldown plugin, fix cjs default export alongside named exports with a footer |
 | `classifyDtsExport` | Function | Classify an export value: - `ambient` — a types-only declaration source (bare `.d.ts` string, or `{ types: "*.d.ts" }` with no runtime source). - `mixed` — a declaration `types` AND a compilable runtime source (`import`/`require`/`default` → `.ts`/`.tsx`). - `none` — anything else (normal runtime export, json, etc.). | tell ambient, mixed and runtime export values apart |
 | `collectExportNames` | Function | Collect every name a module exports (named re-exports, namespace re-exports, and local `export` declarations). Used to test whether a barrel's re-exports are a strict subset of a base entry, so a stub re-exporting from that base resolves every symbol. Pure parsing — no I/O. | list every name a module exports, test re-exports against a base entry |
-| `composeTsdoctorManifest` | Function | Flatten the three authoring tiers into the emitted manifest. Pure. | flatten authoring tiers into the emitted docs manifest |
+| `composeBundleManifest` | Function | Flatten the three authoring tiers into the emitted manifest. Pure. | flatten authoring tiers into the emitted docs manifest |
 | `computeExeFileName` | Function | The exact filename `@tsdown/exe` emits for a SEA target, mirroring tsdown's `resolveOutputFileName`: base fileName + `-<platform>-<arch>` + `.exe` on win. Single source of truth so the manifest value never drifts from the on-disk file. | exact binary file name for a platform and architecture target |
 | `copyAmbientDts` | Function | Copy each ambient `.d.ts` export's source verbatim into `outDir/<outName>`, byte-stable (an unchanged file keeps its timestamp). The copy is NOT compiled or bundled, so the build owns two fast-fail checks: the source must exist, and it must be self-contained — a relative import/export/reference would not resolve once the file is flattened to the package root. | copy types-only declaration exports verbatim into the output directory |
 | `copyPublicDir` | Function | Copy the CONTENTS of `sourceDir` into `outDir`, additively. | copy public directory contents into the built package, additive |
@@ -201,25 +189,21 @@
 | `createTsdownLogger` | Function | A tsdown `customLogger` that routes warnings/errors into the BuildCollector instead of the console. Paired with `logLevel: "silent"` in the same build config: silent suppresses tsdown's own console output while this logger still receives every message (verified against tsdown 0.22.3). info/success are dropped — file metrics come from the writeBundle plugin and timing from our timer. | route tsdown warnings and errors to the collector instead of console |
 | `declarationExt` | Function | The declaration-file extension of a path, or undefined when it is not a declaration file. | get a path's declaration extension, is this a declaration file |
 | `declarationsDirFor` | Function | Per-module declarations dir for a prod group: a sibling of `pkg/`, NOT published, used only as API Extractor's diagnostics-run input so locations resolve to per-file source. Kept (not stripped) as a cacheable, inspectable build artifact (issue #162). | unpublished per-module declarations directory for api extractor diagnostics |
-| `decodeBundleManifest` | Function | Decode an unknown value into a `(BundleManifest:type)`. | validate an unknown value as a docs manifest, parse tsdoctor.json |
-| `decodeManifestSource` | Function | Decode an unknown value into a `(ManifestSource:type)`. | validate an unknown value as a tsdoctor.json source tier |
 | `defaultManifestTransform` | Function | The default `transform` applied to every package's manifest when its build config does not provide one of its own. Strips the build/dev-only fields in `NON_PUBLISHED_FIELDS` from the emitted package.json. | strip build and dev-only fields from a published package.json |
 | `deriveDtsPassOptions` | Function | Derive the dts-pass tsdown options for one TargetGroup (bundled declarations only). | tsdown options for one publish group's bundled declarations |
 | `deriveExportPaths` | Function | Maps each build entry to its `package.json` export key: the key whose target is the entry's source, else `.` for `index` and `./<name>` for the rest. | map each build entry to its package.json export key |
 | `deriveTargetGroupOptions` | Function | Derive the JS-pass tsdown options for one TargetGroup (per-module JS, no dts). | tsdown options for one publish group's per-module js |
 | `dtsPassDtsOptions` | Function | Build the `DtsPassDtsOptions` for a resolved tsconfig path. | dts plugin options for a resolved tsconfig path |
 | `emitManifest` | Function | Rolldown plugin: emit the transformed package.json + LICENSE/README into the output pkg/ root. | rolldown plugin writing transformed package.json, license and readme to output |
-| `encodeBundleManifest` | Function | Encode a `(BundleManifest:type)` into the JSON-ready value a writer serializes as `tsdoctor.json`. | serialize a docs manifest to json-ready value, write tsdoctor.json |
 | `extractAmbientDts` | Function | Extract the types-only `.d.ts` exports from a package's `exports` map. Pure. Throws `ConfigValidationError` on a mixed export (Decision 2) or an ambient-vs-ambient output-name collision. | find types-only declaration exports in an exports map, reject mixed ones |
 | `extractEntries` | Function | | derive build entry points and bins from package.json |
 | `findRelativeSpecifiers` | Function | | list relative imports in a declaration file, is it self-contained |
 | `flattenIssues` | Function | Flatten a build snapshot into the aggregated, de-duplicated issues artifact. Pure. | aggregate and de-duplicate a build snapshot into the issues artifact |
 | `formatTime` | Function | | format milliseconds as human-readable duration |
 | `githubOwnerRepo` | Function | `owner/repo` from any of the GitHub URL spellings a `repository.url` carries (https, `git+https`, `git@`, `ssh://`, `git://`, the `github:` shorthand), or `undefined` for anything else. | parse owner/repo from any github repository url spelling |
-| `isKnownRegistryType` | Function | Whether a registry `type` value is a protocol family this reader recognizes. `false` means the registry entry should degrade to link-only rendering — it is never a validation failure. | check a registry type is recognized, otherwise degrade to link-only |
 | `isTargetObject` | Function | True when a target value is the object form (carries registry/name/from). | narrow a publish target value to its object form |
+| `loadBundleManifestSources` | Function | Read the leaf (`<cwd>/bundle.json`) and project (`<workspaceRoot>/bundle.json`) source tiers. Absence is normal; a present file that does not decode throws `BundleManifestSourceError`. A package that IS the workspace root reads its file once, as the leaf, and has no project tier. | read package and workspace bundle.json source tiers, report retired tsdoctor.json files |
 | `loadPlugins` | Function | Loads the rolldown plugins named in `package.build.plugins`, in order. | import rolldown plugin modules by path through jiti, typescript included |
-| `loadTsdoctorSources` | Function | Read the leaf (`<cwd>/tsdoctor.json`) and project (`<workspaceRoot>/tsdoctor.json`) source tiers. Absence is normal; a present file that does not decode throws `TsdoctorSourceError`. A package that IS the workspace root reads its file once, as the leaf, and has no project tier. | read package and workspace tsdoctor.json source tiers |
 | `manifestNeedsCatalogResolution` | Function | Whether any of `pkg`'s four dependency fields carries at least one `catalog:`/`workspace:` specifier. `resolveManifest` returns a manifest with none of these unchanged, so callers can skip the CatalogResolver + pnpm-workspace + lockfile assembly entirely when this is false. | check a manifest has catalog or workspace specifiers, skip resolving when none |
 | `merge` | Function | Merges a package's raw `effected.toml` document over the workspace root's. | overlay a package's raw effected.toml on the workspace root's |
 | `mixedDtsExportError` | Function | The shared mixed-export error (Decision 2), used by both the extractor and the manifest transform. The reason ends with the bare-string form to write instead, naming the export's runtime target when `value` holds one: a hand-written `{ "types": "./dist/foo.d.ts", "import": "./dist/foo.js" }` becomes `"./foo": "./dist/foo.js"`, which the bundler builds from `./src/foo.ts` and gives generated types. | error for an export mixing declaration types with a runtime source |
@@ -231,7 +215,7 @@
 | `ogImageInfoOf` | Function | What the generator sees. Built from the same tiers as the manifest. | what a social card renderer receives, package name and description |
 | `outDirFor` | Function | The output dir for a group: `dist/prod/\\<group\\>/pkg`, or `dist/dev/pkg` for the unused dev group. | output directory path for a publish group |
 | `packageJsonEntries` | Function | Derive a tsdown `entry` record (name to source path) from a package.json. | tsdown entry record, name to source path, from package.json |
-| `readTsconfigJsx` | Function | Read the jsx-relevant compilerOptions from a package's own tsconfig.json (best-effort; returns empty on absence or parse error). Resolved through `@effected/tsconfig-json`'s sync loader, so JSONC syntax and `extends` chains are honored. | read jsx compiler options from a package tsconfig, best effort |
+| `readTsconfigJsx` | Function | Read the jsx-relevant compilerOptions from a package's own tsconfig.json (best-effort; answers empty on absence or on a read or parse failure; a loader defect is not swallowed). Resolved through `@effected/tsconfig-json`'s loader, so JSONC syntax and `extends` chains are honored. | read jsx compiler options from a package tsconfig, best effort |
 | `registriesFromTargets` | Function | Derive the registries block from the build's targets. Only for a public package: a private one is published nowhere. | derive published registries from build targets, public packages only |
 | `releaseWarnings` | Function | Advisory warnings for a resolved target set that is valid but probably not what was meant. | advisory warnings for valid but suspicious publish targets |
 | `removeDeclarationMaps` | Function | Remove declaration source-map files (`.d.ts.map` / `.d.cts.map`) from a built `pkg` directory, returning the removed paths. | delete .d.ts.map files from a built package before publishing |
@@ -241,7 +225,7 @@
 | `resolveManifest` | Function | Resolve every `catalog:`/`workspace:` specifier in a manifest to a concrete spec, delegating to `@effected/workspaces`' one-shot `Workspaces.resolveManifest`. The resolver re-discovers the workspace root from `cwd` on every call, never from the process directory, and assembles catalogs durably (inline + config-dependency hook-replay + lockfile), so no transient `.pnpm-workspace-state-v1.json` is required. | replace catalog and workspace specifiers with concrete versions in a manifest |
 | `resolveNextVersions` | Function | Resolve the next release version of every workspace package from pending changesets. | optimistic next release version of every workspace package from pending changesets |
 | `resolveOgCacheSalt` | Function | The salt the cross-build cache runs under, or `undefined` to always regenerate: an explicit `cacheSalt` string wins, `false` disables, and otherwise the generator's own salt applies. | cache key salt for rendered social cards, disable with false |
-| `resolveOgGenerator` | Function | The renderer an `[package.tsdoctor.openGraph] generate` name selects. | pick a social card renderer by configured name |
+| `resolveOgGenerator` | Function | The renderer an `[package.bundle.openGraph] generate` name selects. | pick a social card renderer by configured name |
 | `resolvePortableTsconfig` | Function | Resolves the package's effective compiler options (following `extends`) into a portable, JSON-serializable tsconfig for the meta release bundle. | flatten extends into portable compiler options for the meta bundle |
 | `resolveTargets` | Function | Resolve a `publishConfig.targets` map into the distinct groups to build and every target bound to one. Pure; throws ConfigValidationError on structurally-invalid config. | turn publishConfig targets into distinct publish groups and bindings |
 | `rewriteMetaVersions` | Function | Rewrite a meta `package.json` so the package's own `version` and any workspace-sibling dependency version reflect their NEXT release version from `versions`. Pure: returns a new object, never mutates the input. External/catalog-resolved deps (names absent from `versions`) are left as-is. | set own and sibling versions to their next release in a meta manifest |

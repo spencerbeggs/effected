@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+// `node:fs` rather than `FileSystem`: the scratch directory is the HOME, TMPDIR and cwd of the child Node that
+// imports the bundle, so it must be a host directory whatever filesystem the caller provides.
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

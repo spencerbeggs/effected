@@ -19,6 +19,7 @@ export {
 	ChangesetParseError,
 	UnknownPackageError,
 } from "./errors.js";
+export type { PendingChangesetFailure, SettledChangesets } from "./PendingChangesets.js";
 export { PendingChangeset, PendingChangesets } from "./PendingChangesets.js";
 export { PreState } from "./PreState.js";
 export { PlannedRelease, ReleasePlan } from "./ReleasePlan.js";

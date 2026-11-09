@@ -4,6 +4,8 @@
 
 ## Maintenance
 
-### Updates 1 catalog:effected version
+### Updates 3 catalog:effected versions
 
-- `@effected/s3` ^0.1.0 -> ^0.2.0 (peer ^0.2.0)
+- `@effected/markdown-lint` ^0.1.0 -> ^0.1.1 (peer ^0.1.0)
+- `@effected/s3` ^0.1.0 -> ^0.1.1 (peer ^0.1.0)
+- `@effected/shell` ^0.1.0 -> ^0.1.1 (peer ^0.1.0)

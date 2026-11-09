@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/bundler"
-description: "The kit's build pipeline as an integrated library: package and GitHub Action builds, API Extractor and the tsdoctor.json schema, SEA executables, the issues.json report and the build journals, returned as typed results that the effected tool's engine wraps for its two front ends."
+description: "The kit's build pipeline as an integrated library: package and GitHub Action builds, API Extractor and the bundle.json schema, SEA executables, the issues.json report and the build journals, returned as typed results that the effected tool's engine wraps for its two front ends."
 status: draft
 kind: package
 resource: ../../packages/bundler
@@ -27,17 +27,17 @@ sources:
     title: "The source-sibling spike, run with EFFECTED_SPIKE=1"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-08T12:11:04Z
+  at: 2026-11-09T00:11:23Z
 integrity:
   generated:
-    body: fa1c0b627ecd432f
+    body: 02ebb5d7daea2ef6
 ---
 
 # @effected/bundler
 
 ## Purpose
 
-`@effected/bundler` builds a package, or a GitHub Action, from its source and its config. It ports `@savvy-web/tsdown-plugins` and the thin orchestration of `@savvy-web/bundler`,[^issue-1224] takes in the `BundleManifest` schema of `tsdoctor.json` from `@tsdoctor/manifest`,[^issue-1225] and rewrites `@savvy-web/github-action-builder` on rolldown.[^issue-1227]
+`@effected/bundler` builds a package, or a GitHub Action, from its source and its config. It ports `@savvy-web/tsdown-plugins` and the thin orchestration of `@savvy-web/bundler`,[^issue-1224] writes `bundle.json` against the `BundleManifest` schema that came from `@tsdoctor/manifest` and now lives in the pure [`@effected/manifest`](manifest.md), which this package depends on and re-exports from its root,[^issue-1225] and rewrites `@savvy-web/github-action-builder` on rolldown.[^issue-1227]
 
 It exists to end a loop. The kit built with a tool that depended on the kit, so an Effect minor advance had to pass through a kit release, two builder releases and a tsdoctor release before the kit could build on it.[^spec] `@savvy-web/rspress-builder` is not ported, because the [website](website.md) is frozen.
 
@@ -60,7 +60,7 @@ Module-per-concept under `src/` groups, with `Bundler.ts` the orchestrator over 
 | `manifest/` | the emitted `package.json` |
 | `targets/` | publish targets and `targets.json` |
 | `passes/`, `dts/`, `tsconfig/`, `jsx/` | the JS pass and the declaration pass, and the tsconfigs they run on |
-| `meta/` | API Extractor, the API models, the `BundleManifest` schema of `tsdoctor.json`, the Open Graph image |
+| `meta/` | API Extractor, the API models, composing and emitting `bundle.json` (its schema is [`@effected/manifest`](manifest.md), see [the manifest package](../decisions/manifest-package.md)), the Open Graph image |
 | `exe/` | single-executable (SEA) builds |
 | `report/` | the issue collector and `issues.json` |
 | `journal/` | the two `.cache/effected/*.jsonl` journals |
@@ -79,8 +79,8 @@ Other tools read these, so a change to one moves with its readers. The full cont
 
 | Output | Contract |
 | --- | --- |
-| `dist/prod/<group>/pkg` | the directory the release action packs; `PackedInstall` and the scratchpad's artifact mode read it too |
-| `dist/prod/<group>/meta` | the API model, `package.json`, `tsconfig.json`, `tsdoctor.json` and `og/` read by tsdoctor, the release action and the construct generator |
+| `dist/prod/<group>/pkg` | the directory the release action packs; `PackedInstall` and the scratchpad's artifact mode read it too, and so does a plain-Node workspace consumer through a source export's `effected-built` condition |
+| `dist/prod/<group>/meta` | the API model, `package.json`, `tsconfig.json`, `bundle.json` and `og/` read by tsdoctor, the release action and the construct generator |
 | `dist/prod/targets.json` | the publish targets the release action binds to |
 | `dist/prod/issues.json` | `buildOk` is the first thing a reader checks, never `errors.length`; the per-package artifact turbo caches |
 | `.cache/effected/build.jsonl`, `.cache/effected/issues.jsonl` | the root journals, keyed by package |
@@ -88,7 +88,9 @@ Other tools read these, so a change to one moves with its readers. The full cont
 
 An `exports` target written as the built path, `./dist/foo.js` bare or under `import`/`default`/`types`, is a build source: the entry pass builds it from `./src/foo.ts` and names the output after the export key, so the emitted manifest points it at that file, as for `./src/foo.ts`. A `bin` written that way is rewritten the same way. For an exe build, the entry source in either form (`./src/bin.ts` or `./dist/bin.js`) is left out of the JS pass, and a bare-string export or bin naming it points at the binary. A build source holding a `*` (`./dist/*.js`, `./src/*.ts`), and a `*` export key over a literal build source, fail `ConfigValidationError` before any pass, since the build emits one entry per key from one literal source and names it after the key; so does a condition object naming the exe source, which only a bare string can point at the binary. A literal `exports` or `bin` target that is not a file in the emitted package warns `exports-pattern-unmatched`, as a pattern matching nothing does; the SEA's path is exempt, since `--no-exe` writes no binary.
 
-The emitted `tsdoctor.json` is a wire format with readers outside this repository. Its fields grow additively, and moving the schema here does not change a byte of what is written.[^spec]
+The source manifest's `effected-built` condition (`manifest/built-condition.ts`) is checked and stripped before anything reads the exports, because its `./dist/prod/...` target would otherwise read as a build source; it never reaches the emitted manifest. `[package.build.manifest] set` (`manifest/manifest-set.ts`) writes string keys over the emitted manifest, and its `name` becomes the base name of the publish groups and the API model while `issues.json` keeps the source name. Both are specified in [`effected.toml`](../interfaces/effected-toml.md#renaming-the-emitted-package).
+
+The emitted `bundle.json` is a wire format with readers outside this repository, and its fields grow additively.[^spec] Its schema is [`@effected/manifest`](manifest.md). The file was once named `tsdoctor.json`. A build deletes a leftover file of that name from the meta dir and every `localPaths` copy, and never writes one, so a platform-neutral reader never sees a stale identity beside the current one. An authored `tsdoctor.json` at the package or workspace root, at a tier with no `bundle.json`, is never read: the meta pass records a `bundle-manifest-retired-source` warning naming it, so a missed rename is visible in `issues.json`.
 
 ## Source-sibling spike
 
@@ -154,7 +156,25 @@ Not measured: `build.externals`, `build.sourceMap`, Windows, and any path throug
 
 ## Accepted debt
 
-The ported internals keep their shape: mostly plain async code over `node:fs`, ported module for module because that code is tested and proven. Only the public boundary (`Bundler.build`, `ActionBuilder.build` and every error) is Effect with typed failures. That is a known departure from [requiring core in `R`](../conventions/require-in-r-default.md), accepted to keep the port honest. A follow-up issue is to be filed against that convention; it does not exist yet.
+The orchestrator's own IO now goes through core `FileSystem` and `Path` in `R`, under [requiring core in `R`](../conventions/require-in-r-default.md) (issue 1254). `Bundler.build` and `ActionBundle.build` require both: they read `package.json` and the package's tsconfig, write `targets.json` and `issues.json`, strip declaration maps, check the emitted manifest's export targets, validate `meta.localPaths`, clean `dist` and stat each action bundle that way. `ConfigValidator.layer` requires `FileSystem`, and the journals' `layerAt` and `record` require `Path`. The engine's `BuildRun` and `ActionRun` already carried both in `R`, so its provision did not change. tsdown, rolldown, API Extractor and the SEA compiler still read and write the host disk, so a real build needs the host's layers (`NodeServices.layer`), and a memory filesystem suits only a build whose passes are all seams.
+
+What remains on `node:fs` falls into two classes.
+
+**Kept by design, each with a comment at the import:**
+
+- `manifest/emit-manifest.ts`: `emitManifest` reads inside rolldown's `generateBundle` hook, which has no Effect runtime.
+- `exe/build.ts`: the scratch directory is the SEA compiler's own working tree.
+- `action/import-check.ts`: the scratch directory is the HOME, TMPDIR and cwd of the child Node.
+- `config/plugins.ts`: `node:path` only, because the resolved module goes straight to jiti.
+
+**Not yet converted (still issue 1254):**
+
+- The tsdown passes: `passes/build-target-groups.ts`, `passes/sync-public.ts`, and `dts/resolved-tsconfig.ts`'s temp tsconfigs. `BundlerSeams.buildTargetGroups` is promise-typed, and the passes call `TsconfigLoaderSync`.
+- `tsconfig/sync-options.ts`: the `node:fs` ops behind `TsconfigLoaderSync`. Its callers are `dts/resolved-tsconfig.ts` and the meta pass's `api-extractor.ts` and `tsconfig-resolver.ts`, so it retires with those two tiers.
+- The meta pass: `meta/run-pass.ts`, `generate.ts`, `api-extractor.ts`, `scrub-declaration-maps.ts`, `tsdoc-config.ts`, `tsconfig-resolver.ts` and `og-satori.ts`, all behind the promise-typed `runMetaPass` seam.
+- The modules that build their own Node platform layer and run it with `Effect.runPromise`: `catalog/resolve-catalogs.ts`, `changesets/next-versions.ts`, `dts/bundled-siblings.ts`, `meta/bundle-source.ts` and `meta/og-image.ts`. These own a backend, which is the second failure mode the convention names.
+- `entries/package-json-entries.ts`'s fallback read, which the orchestrator never reaches because it always passes `pkg`.
+- `BundlerSeams` keeps its promise and sync member types, so the converted defaults and their seams differ in shape. Making the seams Effect-returning moves the engine, cli and mcp test doubles with them.
 
 Live-view e2e coverage on a real pty is also a follow-up, because a captured run cannot see the [JSX-under-tsx class of failure](../decisions/bundler-bootstraps-from-source.md).
 

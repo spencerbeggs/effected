@@ -119,6 +119,25 @@ const blame = (
 
 const dotted = (segments: ReadonlyArray<PropertyKey>): string => segments.map(String).join(".");
 
+/**
+ * Tables that were renamed, by old dotted path. Never an alias: the old key still fails the decode, and the
+ * reason only names where its settings moved.
+ */
+const RENAMED_TABLES: Readonly<Record<string, string>> = { "package.tsdoctor": "[package.bundle]" };
+
+/** An issue's reason, with a rename hint when the key is a renamed table. */
+const reasonOf = ({
+	keys,
+	message,
+}: {
+	readonly keys: ReadonlyArray<PropertyKey>;
+	readonly message: string;
+}): string => {
+	const at = dotted(keys);
+	const renamed = RENAMED_TABLES[at];
+	return renamed !== undefined ? `${at}: ${message} (renamed to ${renamed})` : `${at}: ${message}`;
+};
+
 /** Every issue under a schema failure, as its property keys and message. */
 const issuesOf = (issue: SchemaIssue.Issue) =>
 	SchemaIssue.makeFormatterStandardSchemaV1()(issue).issues.map(({ message, path = [] }) => ({
@@ -182,7 +201,7 @@ export class EffectedConfigFile {
 				const first = issues[0]?.keys ?? [];
 				return new EffectedConfigError({
 					path: blame(first, root, pkg, cwd),
-					reason: issues.map(({ keys, message }) => `${dotted(keys)}: ${message}`).join("; "),
+					reason: issues.map(reasonOf).join("; "),
 					...(first.length > 0 ? { issuePath: dotted(first) } : {}),
 				});
 			}),

@@ -11,7 +11,14 @@ import type { WorkspacePackage } from "../WorkspacePackage.js";
 import { RUNTIME_DEPENDENCY_FIELDS } from "./dependencyFields.js";
 
 /** Variables that carry the PARENT run's context into a child package manager. */
-const TRAPS = new Set(["CI", "INIT_CWD", "NODE_V8_COVERAGE", "PNPM_SCRIPT_SRC_DIR", "PNPM_PACKAGE_NAME"]);
+const TRAPS = new Set([
+	"CI",
+	"INIT_CWD",
+	"NODE_OPTIONS",
+	"NODE_V8_COVERAGE",
+	"PNPM_SCRIPT_SRC_DIR",
+	"PNPM_PACKAGE_NAME",
+]);
 
 /** Prefixes of whole families of parent-run context: npm's, pnpm's config, and Yarn's. */
 const TRAP_PREFIXES = /^(npm_|pnpm_config_|yarn_)/i;
@@ -24,8 +31,15 @@ const TRAP_PREFIXES = /^(npm_|pnpm_config_|yarn_)/i;
  * among them), every `YARN_*` variable (Berry lets them override
  * `.yarnrc.yml`, so `YARN_NODE_LINKER=pnp` would defeat the consumer's
  * `nodeLinker`), `CI` (Yarn Berry turns on immutable installs), `INIT_CWD`,
- * and `NODE_V8_COVERAGE` (a spawned manager writes coverage files that race
- * vitest's V8 provider).
+ * `NODE_V8_COVERAGE` (a spawned manager writes coverage files that race
+ * vitest's V8 provider), and `NODE_OPTIONS` (a workspace's `nodeOptions`, such
+ * as `--import=tsx`, is injected into every script a manager runs; the scratch
+ * consumer has no such package, so every child would die on start). Node reads
+ * only the exact name `NODE_OPTIONS`; the `npm_config_node_options` and
+ * `pnpm_config_node_options` spellings are already stripped by prefix.
+ * `NODE_OPTIONS` cannot be told apart from an explicit one in a whole
+ * `process.env`, so it is dropped outright; a bin that needs it gets it
+ * through `RunBinOptions.env`, which is layered after this scrub.
  *
  * Stripping `CI` does not make the child believe it runs locally: ci-info
  * also reads provider variables such as `GITHUB_ACTIONS`, which stay. That is

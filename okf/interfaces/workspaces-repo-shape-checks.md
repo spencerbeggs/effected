@@ -48,10 +48,10 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T22:24:55Z
+  at: 2026-11-08T22:15:58Z
 integrity:
   generated:
-    body: dc81578842871eef
+    body: 35cd89f4ad126add
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -554,6 +554,7 @@ hand-rolling this check; the pure half lives in
 | --- | --- | --- |
 | The parent run's `npm_*`, `CI` and `INIT_CWD` leak into the child manager | `scrubEnv` strips them, plus `pnpm_config_*`, `PNPM_SCRIPT_SRC_DIR`, `PNPM_PACKAGE_NAME` and `YARN_*` | vitest-agent[^vitest-agent-packed-install] (lines 139-147) |
 | `NODE_V8_COVERAGE` makes a spawned manager race vitest's coverage files | `scrubEnv` strips it | systems[^systems-helpers] (lines 8-15) |
+| A workspace `nodeOptions` (`--import=tsx`) reaches every spawn as `NODE_OPTIONS` and the scratch consumer cannot resolve it | `scrubEnv` strips `NODE_OPTIONS` (the `npm_config_`/`pnpm_config_node_options` spellings fall to the prefix strip); `RunBinOptions.env` layers after the scrub for a bin that needs one | effected#1300 |
 | pnpm 10+ reads overrides only from `pnpm-workspace.yaml`, and pnpm 11 ignores `package.json#pnpm` | pnpm consumers get a settings-only `pnpm-workspace.yaml` | vitest-agent (lines 221-234), systems[^systems-packed-install] (lines 123-152) |
 | Yarn Berry defaults to Plug'n'Play and never writes `node_modules/.bin` | Berry consumers get a `.yarnrc.yml` with `nodeLinker: node-modules` and scripts off | vitest-agent (lines 237-256) |
 | macOS `/var` is a symlink to `/private/var`, so `file:` specs and the install cwd disagree | the scratch directory is realpath'd | systems (lines 70-73) |

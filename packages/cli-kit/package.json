@@ -52,22 +52,22 @@
 		"@effected/walker": "workspace:*",
 		"@effected/workspaces": "workspace:*",
 		"@effected/yaml": "workspace:*",
-		"@types/node": "catalog:build",
-		"@types/react": "catalog:build",
+		"@types/node": "catalog:effected:build",
+		"@types/react": "catalog:effected:build",
 		"effect": "catalog:effected",
 		"ink": "catalog:silk",
-		"react": "catalog:build",
+		"react": "catalog:effected:build",
 		"string-width": "^8.3.0",
-		"typescript": "catalog:build"
+		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
 		"@effected/env": "workspace:^",
 		"@effected/glob": "workspace:^",
 		"@effected/walker": "workspace:^",
-		"@types/react": "catalog:silk:peers",
+		"@types/react": "catalog:effected:build:peers",
 		"effect": "catalog:effected:peers",
 		"ink": "catalog:silk:peers",
-		"react": "catalog:silk:peers"
+		"react": "catalog:effected:build:peers"
 	},
 	"peerDependenciesMeta": {
 		"@types/react": {

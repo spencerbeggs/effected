@@ -8,7 +8,7 @@ export class ReportTimings extends Schema.Class<ReportTimings>("ReportTimings")(
 
 /**
  * A captured warning or error, from tsdown's logger, rolldown's onLog, API Extractor, the meta
- * pass's own sidecar work (`tsdoctor.json` sources, Open Graph generation), or an advisory finding
+ * pass's own sidecar work (`bundle.json` sources, Open Graph generation), or an advisory finding
  * about the build config itself (`config`, e.g. a `publishConfig.targets` set no final release reaches).
  *
  * @public
