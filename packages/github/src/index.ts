@@ -57,6 +57,13 @@ export {
 	DeliveryAttempt,
 } from "./AuthenticatedApp.js";
 export {
+	ChangelogInfo,
+	type ChangelogInfoShape,
+	CommitChangelogInfo,
+	InvalidChangelogRefError,
+	PullRequestChangelogInfo,
+} from "./ChangelogInfo.js";
+export {
 	Annotation,
 	AnnotationLevel,
 	CheckConclusion,

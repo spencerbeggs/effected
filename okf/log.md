@@ -18,6 +18,7 @@
 * Updated workspace
 * Updated @effected/bundler
 * Updated ai-plugin
+* Updated @effected/github
 
 ## 2026-11-08
 

@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-07T14:40:40Z
+  at: 2026-11-09T21:18:41Z
 integrity:
   generated:
-    body: d81488c7504017ea
+    body: 32856b3c5b0a3879
 ---
 
 # @effected/github
@@ -175,6 +175,22 @@ module path directly rather than through the entry point.
 `GitHubRepository.setTopics` returns the topic set GitHub stored rather than
 the names it was given, because GitHub lowercases every topic: a caller that
 records what it sent sees drift on the next read.
+
+`ChangelogInfo` replaces `@changesets/get-github-info` for changelog lines.
+`commit(sha)` and `pullRequest(n)` return `Option`s of the author login, the
+associated pull request or commit, and the formatted links. Their query text
+and link strings match `get-github-info` 1.0.1 exactly. Lookups made
+concurrently are batched into one aliased GraphQL query per repository, up to
+50 at a time, through a `RequestResolver`; calls made one after another are
+not batched, and nothing is cached. The token and host come from
+`GitHubClient` (on GitHub Enterprise Server, through its `baseUrl`) and the
+repository from `Repo`; it never reads `process.env`. It departs from upstream
+on purpose in three places:
+
+- a missing pull request answers `None`, and the batch is sent again without
+  it, where upstream fails the whole batch;
+- a sha naming a tree or a blob answers `None`;
+- a missing repository fails with kind `notFound`.
 
 `GitCommit.createCommit` and `commitFiles` return the sha. Their `WithUrl`
 counterparts return a `CreatedCommit` carrying the sha and the `htmlUrl` GitHub

@@ -13,6 +13,16 @@ export class GraphQLErrorEntry extends Schema.Class<GraphQLErrorEntry>("GraphQLE
 	message: Schema.String,
 	/** GitHub's own classification, e.g. `"NOT_FOUND"` or `"FORBIDDEN"`. */
 	type: Schema.optionalKey(Schema.String),
+	/**
+	 * Where in the response the entry applies: field names (aliases, when the
+	 * document aliases) and list indexes, outermost first.
+	 *
+	 * @remarks
+	 * This is what tells a batched document which aliased lookup GitHub could
+	 * not resolve: a missing pull request in a batch reports
+	 * `["repo__0", "pull__42"]`, a missing repository `["repo__0"]`.
+	 */
+	path: Schema.optionalKey(Schema.Array(Schema.Union([Schema.String, Schema.Number]))),
 }) {}
 
 /**
@@ -124,7 +134,16 @@ const readEntries = (value: unknown): ReadonlyArray<GraphQLErrorEntry> => {
 		if (record === undefined) continue;
 		const message = typeof record.message === "string" ? record.message : String(raw);
 		const type = typeof record.type === "string" ? record.type : undefined;
-		entries.push(GraphQLErrorEntry.make({ message, ...(type !== undefined ? { type } : {}) }));
+		const path = Array.isArray(record.path)
+			? record.path.filter((step): step is string | number => typeof step === "string" || typeof step === "number")
+			: undefined;
+		entries.push(
+			GraphQLErrorEntry.make({
+				message,
+				...(type !== undefined ? { type } : {}),
+				...(path !== undefined ? { path } : {}),
+			}),
+		);
 	}
 	return entries;
 };
