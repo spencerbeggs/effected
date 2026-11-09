@@ -1,6 +1,6 @@
 {
 	"name": "@effected/manifest",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "The platform-neutral bundle.json manifest of a documentation bundle as a pure schema: the spec-1 shape, its encode and decode boundaries and the authoring-file shape, shared by the bundler that writes it and the doc-site readers that consume it.",
 	"keywords": ["bundle", "manifest", "tsdoctor", "api-extractor", "documentation", "schema", "effect", "effected"],

@@ -1,5 +1,13 @@
 # @effected/lockfiles
 
+## 0.23.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/npm | dependency | updated | 0.31.0 | 0.32.0 |
+
 ## 0.23.0
 
 ### Breaking Changes
