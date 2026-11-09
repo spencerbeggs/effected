@@ -15,10 +15,10 @@ sources:
     title: "verifyDepsBeforeRun: true, false, install, warn, error or prompt"
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T18:50:20Z
+  at: 2026-11-09T00:05:23Z
 integrity:
   generated:
-    body: 6cb1131478085c41
+    body: 73eb4b81f03ee314
 ---
 
 # After a workspace package is renamed, the next pnpm run installs before it runs the script
@@ -34,6 +34,8 @@ That the script you ran wrote the lockfile, or that a plain `pnpm run` cannot mu
 ## What is true
 
 pnpm checks the workspace against the lockfile before it runs a script (`verifyDepsBeforeRun`). This repository sets no value for it, and on pnpm 12 the check found the renamed importer out of sync and ran an install before the script.[^pnpm-setting] The install is a real one: it re-resolves and rewrites the lockfile and `node_modules`.
+
+The same check blocks a catalog migration. Point a manifest at a catalog that `pnpm-workspace.yaml` does not declare yet, such as `catalog:effected:build` before the export, and every `pnpm run` installs first and fails with `ERR_PNPM_CATALOG_ENTRY_NOT_FOUND_FOR_SPEC`. That includes `pnpm pnpm:export`, the script that would declare the catalog. Run the export bin directly instead (`cd packages/pnpm-plugin-effected/lib/build && ../../node_modules/.bin/rolldown-pnpm-config export`), or export before rewriting the manifests. See [the effected build catalog](../decisions/effected-build-catalog.md).
 
 So after a rename, run `pnpm install` yourself, on purpose, and review the lockfile diff before running anything else. Check in particular that platform binaries survived: [a plain install can strip them](plain-install-strips-platform-binaries.md). Treat any later `pnpm run` that rewrites the lockfile as a sign the tree had drifted again.
 

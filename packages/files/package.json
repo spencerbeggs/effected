@@ -32,9 +32,9 @@
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
 		"@effected/memfs": "workspace:*",
-		"@types/node": "catalog:build",
+		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
-		"typescript": "catalog:build"
+		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
 		"effect": "catalog:effected:peers"

@@ -32,9 +32,9 @@
 		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {
-		"@types/node": "catalog:build",
+		"@types/node": "catalog:effected:build",
 		"rolldown-pnpm-config": "^2.4.3",
-		"typescript": "catalog:build"
+		"typescript": "catalog:effected:build"
 	},
 	"engines": {
 		"node": ">=24.11.0"

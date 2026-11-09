@@ -34,10 +34,10 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
-		"@types/node": "catalog:build",
+		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
 		"smol-toml": "1.9.1",
-		"typescript": "catalog:build"
+		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
 		"effect": "catalog:effected:peers"

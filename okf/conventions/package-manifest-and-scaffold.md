@@ -12,10 +12,10 @@ sources:
     resource: ../../packages/semver/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-09T00:05:23Z
 integrity:
   generated:
-    body: 2021ab03f5656753
+    body: 261ede98fab8c06f
 ---
 
 # Every package carries the same manifest shape and file set
@@ -49,7 +49,7 @@ fields:
 - `homepage` must be `https://github.com/spencerbeggs/effected/tree/main/packages/X#readme`. The `/tree/main/` segment is load-bearing: the shorter form without it 404s, because GitHub reads a bare `/packages/X` path as a repo route rather than a tree path.
 - `exports`: `{ ".": "./src/index.ts", "./package.json": "./package.json" }` for a single-entrypoint package — see [a second published entrypoint](../decisions/second-published-entrypoint.md) for the two packages that add a subpath.
 - `scripts`: `build` = `effected package build`, `types:check` = `tsc --noEmit`.[^semver-package-json]
-- `devDependencies`: `@effect/vitest` and `effect` at `catalog:effected`; `@types/node` and `typescript` at `catalog:build`. Do not add `@effect/tsgo` — see [the typechecker: tsc, not tsgo](../decisions/tsc-not-tsgo.md).
+- `devDependencies`: `@effect/vitest` and `effect` at `catalog:effected`; `@types/node` and `typescript` at `catalog:effected:build`. Do not add `@effect/tsgo` — see [the typechecker: tsc, not tsgo](../decisions/tsc-not-tsgo.md).
 - `peerDependencies`: `effect` at `catalog:effected:peers` — the peer declaration draws from the `effected:peers` catalog, whose floored range is distinct from the `catalog:effected` install range the `devDependencies` entry uses.
 - Sibling `@effected/*` edges use `workspace:^`, whether dependencies or peers. The one exception is a `devDependency` that satisfies an auto-installed peer, which stays `workspace:*` because it is never published.
 - `engines`: `node >=24.11.0`, matching every sibling and the root manifest.
@@ -64,7 +64,7 @@ There are none. A workspace `@effected/*` dependency links at the package root, 
 Wiring is mostly automatic once the files exist:
 
 - The `packages/*` glob in `pnpm-workspace.yaml` picks up the new package — no manual registration.
-- `catalog:effected` and `catalog:effected:peers` live in `pnpm-workspace.yaml`. `catalog:build`, which supplies `@types/node` and `typescript`, does not — it is injected by a config dependency, so its absence from `pnpm-workspace.yaml` is expected.
+- `catalog:effected`, `catalog:effected:peers`, `catalog:effected:build` and `catalog:effected:build:peers` live in `pnpm-workspace.yaml`; the build pair supplies `@types/node` and `typescript`.
 - **The `effected` catalog is not automatic.** A new publishable package must be added to the `effected` catalog literal in `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts` and to that package's `turbo.json` `build` `inputs` list. The plugin's catalog test asserts the catalog covers every package whose manifest has `publishConfig.access === "public"`, so skipping this turns a scaffold into a failing test suite.
 
 [^semver-package-json]: `packages/semver/package.json` — a complete pure-tier

@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "The typechecker: tsc, not tsgo"
-description: Every package's types:check runs tsc --noEmit against catalog:build; @effect/tsgo is never added to a package even though the catalog entry still exists.
+description: Every package's types:check runs tsc --noEmit against catalog:effected:build; @effect/tsgo is never added to a package even though the catalog entry still exists.
 status: stable
 tags:
   - dx
@@ -10,10 +10,10 @@ sources:
     resource: ../../pnpm-workspace.yaml
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-11-09T00:05:23Z
 integrity:
   generated:
-    body: cc228ae313d75923
+    body: cece39e0876cefd0
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -28,7 +28,7 @@ verified:
 ## Context
 
 Every package's `types:check` script is `tsc --noEmit`, backed by
-`typescript: catalog:build`. `@effect/tsgo` survives only as a
+`typescript: catalog:effected:build`. `@effect/tsgo` survives only as a
 `pnpm-workspace.yaml` catalog entry with no consumer — a leftover from an
 earlier direction rather than a live option.
 

@@ -31,9 +31,9 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
-		"@types/node": "catalog:build",
+		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
-		"typescript": "catalog:build"
+		"typescript": "catalog:effected:build"
 	},
 	"engines": {
 		"node": ">=24.11.0"

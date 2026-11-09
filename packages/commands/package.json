@@ -35,10 +35,10 @@
 		"@effect/platform-node": "catalog:effected",
 		"@effect/vitest": "catalog:effected",
 		"@effected/memfs": "workspace:*",
-		"@types/node": "catalog:build",
+		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
-		"tsx": "catalog:build",
-		"typescript": "catalog:build"
+		"tsx": "catalog:effected:build",
+		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
 		"effect": "catalog:effected:peers"

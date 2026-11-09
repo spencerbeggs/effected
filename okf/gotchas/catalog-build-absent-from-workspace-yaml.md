@@ -2,7 +2,7 @@
 type: Gotcha
 title: catalog:build is missing from pnpm-workspace.yaml because it is injected
 description: Grepping pnpm-workspace.yaml for catalog:build finds nothing, which reads as a broken or unconfigured catalog reference rather than the configDependency-injected catalog it actually is.
-status: stable
+status: deprecated
 resource: ../../pnpm-workspace.yaml
 stale_after: 2027-03-13T00:00:00Z
 tags:
@@ -10,13 +10,15 @@ tags:
   - compat
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-14T02:44:47Z
+  at: 2026-11-09T00:05:23Z
 integrity:
   generated:
-    body: 799fa69250a71cd8
+    body: f20bc938bd7310d9
 ---
 
 # catalog:build is missing from pnpm-workspace.yaml because it is injected
+
+**Deprecated.** The kit no longer reads silk's `catalog:build`: its manifests write `catalog:effected:build`, which `pnpm:export` writes into `pnpm-workspace.yaml` like `effected`, so a grep finds it. See [the effected build catalog](../decisions/effected-build-catalog.md). The trap below still applies to silk's other injected catalogs (`catalog:silk`, `catalog:docs`, `catalog:lint`, `catalog:test`).
 
 ## What a reader sees
 

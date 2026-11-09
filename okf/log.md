@@ -1,5 +1,22 @@
 # Log
 
+## 2026-11-09
+
+* Updated @effected/plugin
+* Updated After a workspace package is renamed, the next pnpm run installs before it runs the script
+* Updated Consumers see one catalog, effected, folded by the plugin's hook from split declarations
+* Updated Every package carries the same manifest shape and file set
+* Updated Only @effected/bundler imports typescript, and only it and the tool's packages peer it
+* Updated Peer-dependency discipline
+* Updated The catalog:sync / catalog:check CLI
+* Added The plugin declares a second consumer-visible catalog, effected:build, for the kit's build chain
+* Updated The plugin declares one catalog, effected, and pins only the Effect family by include pattern
+* Updated The typechecker: tsc, not tsgo
+* Updated catalog:build is missing from pnpm-workspace.yaml because it is injected
+* Updated pnpm-plugin-effected
+* Updated scratchpad
+* Updated workspace
+
 ## 2026-11-08
 
 * Updated glob

@@ -37,9 +37,9 @@
 		"@effect/vitest": "catalog:effected",
 		"@effected/kit": "workspace:*",
 		"@effected/workspaces": "workspace:*",
-		"@types/node": "catalog:build",
+		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
-		"typescript": "catalog:build"
+		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
 		"@effected/kit": "workspace:^",

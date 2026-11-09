@@ -35,9 +35,9 @@
 	"devDependencies": {
 		"@effect/platform-node": "catalog:effected",
 		"@effect/vitest": "catalog:effected",
-		"@types/node": "catalog:build",
+		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
-		"typescript": "catalog:build"
+		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
 		"effect": "catalog:effected:peers"

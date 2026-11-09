@@ -22,13 +22,13 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
-		"@types/node": "catalog:build",
+		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
 		"oxc-parser": "^0.157.0",
 		"spdx-exceptions": "2.5.0",
 		"spdx-expression-parse": "5.0.0",
 		"spdx-license-ids": "3.0.24",
-		"typescript": "catalog:build"
+		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
 		"effect": "catalog:effected:peers"
