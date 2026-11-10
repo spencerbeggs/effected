@@ -14,14 +14,10 @@ Things the upgrade process has hit in real repositories, each with what it looks
 | A missing native binary after install | `--ignore-scripts` skipped postinstall builds. `pnpm rebuild <name>`. |
 | A clean local build, then API Extractor errors in CI | Its findings are warnings locally and fatal in CI. Read `issues.json`, not the build log. |
 | `pnpm peers check` crashes with `ERR_PNPM_CATALOG_ENTRY_NOT_FOUND_FOR_SPEC` | A pnpm bug with config-dependency catalogs in peers. Report it and check packages one at a time with `--filter`. |
+| `Cannot find module 'effect/package.json'` from the root after a good install | `node -p` resolves from the current directory, and the root does not declare `effect`. Check with `pnpm why effect --depth 0` instead. |
+| Biome's `noUndeclaredDependencies` reports `@effected/plugin` in a workspace package | The package holds a `schemastore.config.*` that imports from `@effected/plugin`, which only the root declares. Declare it in that package too. |
+| `TS2883: The inferred type of '…' cannot be named without a reference to '…' from '../../<sibling>/node_modules/…'` after a kit bump, in a package that never imports the named package | A kit package's declarations stopped importing that package, so the dependent's program no longer resolves it from its own `node_modules`. Declaring it does not help. Re-export the types from the sibling that does import it, as in `export type { ConfigCodecError, ConfigReadError } from "@effected/config-file"`, and name them through that sibling. |
 
 ## Found this round
 
 <!-- effected-renovate: traps found since the last ledger reset go below this line -->
-
-| Looks like | Actually |
-| --- | --- |
-| `Cannot find module 'effect/package.json'` from the root after a good install | `node -p` resolves from the current directory, and the root does not declare `effect`. Check with `pnpm why effect --depth 0` instead. |
-| Biome's `noUndeclaredDependencies` reports `@effected/plugin` in a workspace package | The package holds a `schemastore.config.*` that imports from `@effected/plugin`, which only the root declares. Declare it in that package too. |
-| `pnpm why tsdown` shows a version below the range `@effected/bundler` declares, with a clean install and a green build | A `tsdown` or `@tsdown/exe` entry under `overrides:` left from the savvy bundler still pins it. Delete the override, drop the lockfile and reinstall. |
-| `TS2883: The inferred type of '…' cannot be named without a reference to '…' from '../../<sibling>/node_modules/…'` after a kit bump, in a package that never imports the named package | A kit package's declarations stopped importing that package, so the dependent's program no longer resolves it from its own `node_modules`. Declaring it does not help. Re-export the types from the sibling that does import it, as in `export type { ConfigCodecError, ConfigReadError } from "@effected/config-file"`, and name them through that sibling. |
