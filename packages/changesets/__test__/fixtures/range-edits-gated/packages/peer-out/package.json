@@ -1,0 +1,1 @@
+{ "name": "peer-out", "version": "1.0.0", "peerDependencies": { "a": "~1.1.0" } }

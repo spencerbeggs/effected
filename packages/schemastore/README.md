@@ -110,7 +110,7 @@ Objects are closed by default — a published document is a contract, and this p
 ```ts
 import { SchemaFile, SchemaPipeline, SchemaTarget } from "@effected/schemastore";
 import { AjvValidator } from "@effected/engine/schema";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer, Schema } from "effect";
 
 const targets = [

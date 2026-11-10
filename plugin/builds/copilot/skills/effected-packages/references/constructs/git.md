@@ -22,6 +22,7 @@
 | `GitConfigParseError` | Class | The document could not be parsed as git-config text. | git-config text failed to parse, malformed config, handle diagnostics |
 | `GitConfigScope` | TypeAlias | Which configuration file a read is scoped to. | |
 | `GitConfigSection` | Class | One section of a git-config document. | one [section] or [section "subsection"] block of a parsed git-config document |
+| `GitDeepenPolicy` | Interface | The opt-in policy that lets `Git.commitsThatAdd` deepen a shallow clone. | |
 | `GitDiffFileOptions` | Interface | Options for `Git.diffFile`. | |
 | `GitFile` | Class | A parsed gitfile: the `.git` file of a linked worktree or a submodule, pointing at the repository directory git uses for it. | parse a worktree or submodule .git pointer file, gitdir line, no spawn |
 | `GitFileParseError` | Class | A text that git would refuse as a gitfile. | text is not a gitfile, missing gitdir prefix or empty path |
@@ -47,6 +48,7 @@
 | `NonFastForwardError` | Class | A `git push` was rejected because the remote ref has moved: the classic non-fast-forward rejection (`fetch first` / `non-fast-forward`), or a `--force-with-lease` lease failure (`stale info`). | git push rejected because the remote ref moved, non-fast-forward or force-with-lease failure |
 | `NotARepositoryError` | Class | `cwd` is not inside a git work tree. | cwd is not inside a git working tree |
 | `RefEntry` | Class | One ref, from `git for-each-ref`. | one ref from git for-each-ref, refname sha and pointed-at object type |
+| `ShallowHistoryError` | Class | `Git.commitsThatAdd` hit a shallow clone's boundary for `paths` and was not allowed to deepen any further. | commit that added a file is behind a shallow clone boundary, deepen or unshallow to find it |
 | `StashEntry` | Class | One stash entry, from `git stash list`. | one stash entry from git stash list, reflog selector sha and subject |
 | `StatusEntry` | Class | One entry of a `git status --porcelain -z` listing. | one entry of git status --porcelain, index and working-tree status codes and path |
 | `StatusRenderOptions` | Interface | Options for `StatusEntry.toLine` / `StatusEntry.format`: how a rename/copy entry's path field renders. | |

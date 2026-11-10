@@ -6,6 +6,14 @@ for it. It exists to hold this package's ports of the five rules
 (`__test__/rules/`) to byte-identical output: one definition per rule, run by
 both hosts, against two engines systems maintains separately.
 
+The five rules, CSH001 to CSH005, are savvy-web's changeset house style, and
+savvy-web owns them; nothing in the kit provides them, and
+`@effected/changesets/lint` ships only style-neutral front-matter rules. They
+stay here, with their test-only copies, as an **engine-fidelity corpus**: real
+rules with two independent reference engines, which is what proves
+`MarkdownLint` and `MarkdownlintAdapter` give one definition byte-identical
+output. They are test fixtures, never API.
+
 ## Provenance
 
 - **Producing tool:** savvy-web/systems at commit

@@ -47,7 +47,8 @@ Ascend from a directory, then look for a file in each rung of the chain:
 
 ```ts
 import { Walker } from "@effected/walker";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { Effect, Layer, Option, Path } from "effect";
 
 const findConfig = Effect.gen(function* () {

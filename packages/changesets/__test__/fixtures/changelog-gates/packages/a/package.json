@@ -1,0 +1,7 @@
+{
+  "name": "a",
+  "version": "1.0.0",
+  "description": "Keys WorkspacePackage does not model reach a changelog module.",
+  "scripts": { "build": "tsc" },
+  "keywords": ["fixture"]
+}

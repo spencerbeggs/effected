@@ -1,7 +1,7 @@
 {
 	"name": "effected",
 	"version": "0.49.1",
-	"description": "Effect v4 development skills, a GitHub Actions and GitHub API suite, specialist subagents (developer, reviewer, action-engineer), and a session briefing, distilled from the @effected packages and the official Effect-TS v4 guides.",
+	"description": "Effect v4 development skills, a GitHub Actions and GitHub API suite, kit build and TSDoc guidance, specialist subagents (developer, reviewer, action-engineer, tsdoc-fixer), a build-diagnostics monitor on Claude Code, and a session briefing, distilled from the @effected packages and the official Effect-TS v4 guides.",
 	"author": {
 		"name": "C. Spencer Beggs",
 		"email": "spencer@beggs.codes",

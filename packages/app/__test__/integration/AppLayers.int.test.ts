@@ -2,7 +2,7 @@ import * as nodeFs from "node:fs/promises";
 import * as nodeOs from "node:os";
 import * as nodePath from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { NodeFileSystem } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { assert, describe, it } from "@effect/vitest";
 import type { CacheShape, StoreMigration, StoreShape } from "@effected/store";
 import { Cache, Store } from "@effected/store";

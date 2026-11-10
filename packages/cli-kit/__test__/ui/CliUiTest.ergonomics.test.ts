@@ -1,4 +1,4 @@
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { Cause, Config, ConfigProvider, Console, Effect, Exit, Fiber, MutableRef, Option } from "effect";
 import { Command } from "effect/cli";

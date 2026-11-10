@@ -477,6 +477,27 @@ describe("GitCommand", () => {
 			assertGitCommand(GitCommand.fetchUnshallow(), ["fetch", "--unshallow", "origin"]);
 			assertGitCommand(GitCommand.fetchUnshallow("upstream"), ["fetch", "--unshallow", "upstream"]);
 		});
+
+		it("fetchDeepen builds `git fetch --deepen=<n> <remote>` and masks a URL credential", () => {
+			assertGitCommand(GitCommand.fetchDeepen(50), ["fetch", "--deepen=50", "origin"]);
+			assertGitCommand(
+				GitCommand.fetchDeepen(5, "https://x-access-token:ghp_secret@github.com/a/r.git"),
+				["fetch", "--deepen=5", "https://x-access-token:ghp_secret@github.com/a/r.git"],
+				["fetch", "--deepen=5", "https://<redacted>@github.com/a/r.git"],
+			);
+		});
+
+		it("addingCommit puts the path after a literal -- so a dash-leading path is never an option", () => {
+			assertGitCommand(GitCommand.addingCommit("-x.md"), [
+				"log",
+				"--diff-filter=AC",
+				"--follow",
+				"--max-count=1",
+				"--format=%H%x00%P",
+				"--",
+				"-x.md",
+			]);
+		});
 	});
 
 	describe("submodule tier", () => {

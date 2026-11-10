@@ -12,7 +12,8 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { ReleasePlan as ChangesetsPlan } from "@effected/changesets";
 import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import { Effect, Layer } from "effect";
@@ -52,27 +53,16 @@ export const PLUGIN_CONFIG = "lib/build/pnpm-config.plugin.ts";
 export const CONFIG_PATH = `packages/pnpm-plugin-effected/${PLUGIN_CONFIG}`;
 
 /**
- * The one catalog the sync manages, passed to the upgrade CLI as `--catalog`.
+ * The one catalog the sync manages, passed to the upgrade CLI as `--catalog` in both modes.
  *
  * @remarks
- * The config also declares `effected:build`, the build chain. Without the filter,
- * `upgrade --yes` would walk that catalog too, so an unattended sync would move
- * TypeScript or tsdown whenever they published, and `--check` would go red on a
- * tsdown patch nobody asked for. Build-chain entries move only through the
- * user-run `pnpm:up`.
+ * The config also declares `effected:build`, the build chain. `--catalog` scopes the
+ * walk, so `--yes` rewrites and `--check` reports only this catalog (rolldown-pnpm-config
+ * 2.4.5 and later scope every mode; earlier versions applied it on the interactive path
+ * only). Build-chain entries move only through the user-run `pnpm:up`. An unknown name
+ * exits 1 with an `error.kind` of `catalog`.
  */
 export const SYNC_CATALOG = "effected";
-
-/**
- * Catalogs the config declares that the sync leaves exactly as it found them.
- *
- * @remarks
- * `--catalog` alone does not hold the line: the upgrade CLI applies it on its
- * interactive path only, and `--yes` and `--check` still walk every catalog. So
- * the sync puts each of these blocks back after the CLI writes, and the gate
- * drops their drift, and both keep passing `--catalog` for when the CLI honours it.
- */
-export const UNMANAGED_CATALOGS: readonly string[] = ["effected:build"];
 
 /** Fixed name: repeated runs overwrite one changeset rather than accumulating many. */
 export const CHANGESET_PATH = ".changeset/catalog-sync.md";
@@ -305,33 +295,6 @@ function matchingBrace(source: string, from: number): number {
 		}
 	}
 	return -1;
-}
-
-/** The span of a quoted catalog key's block, `"name": { ... }`, or undefined when absent. */
-function catalogBlock(source: string, catalog: string): { start: number; end: number } | undefined {
-	const start = source.indexOf(`"${catalog}": {`);
-	if (start === -1) return undefined;
-	const close = matchingBrace(source, start);
-	return close === -1 ? undefined : { start, end: close + 1 };
-}
-
-/**
- * Put every {@link UNMANAGED_CATALOGS} block back the way `before` had it.
- *
- * @remarks
- * Whole-block replacement rather than per-entry: the CLI may move any entry of
- * the block and its peer, and none of it is the sync's to change.
- */
-function restoreUnmanaged(root: string, before: string): void {
-	const now = readConfig(root);
-	let restored = now;
-	for (const catalog of UNMANAGED_CATALOGS) {
-		const was = catalogBlock(before, catalog);
-		const is = catalogBlock(restored, catalog);
-		if (was === undefined || is === undefined) continue;
-		restored = restored.slice(0, is.start) + before.slice(was.start, was.end) + restored.slice(is.end);
-	}
-	if (restored !== now) writeFileSync(configFile(root), restored);
 }
 
 export function catalogEntries(root: string, catalog: string = MEMBERSHIP_CATALOG): ReadonlyMap<string, string> {
@@ -583,9 +546,7 @@ export async function sync(options: SyncOptions = {}): Promise<boolean> {
 	);
 	if (code !== 0) throw new Error(`rolldown-pnpm-config upgrade --yes exited ${code}`);
 
-	// The CLI walked every catalog; only the managed one's moves are the sync's.
-	restoreUnmanaged(root, before);
-	const changed = parseChanged(stdout).filter((entry) => entry.catalog === SYNC_CATALOG);
+	const changed = parseChanged(stdout);
 	for (const entry of changed) {
 		write(`  ${entry.catalog}.${entry.pkg}  ${entry.from} -> ${entry.to}\n`);
 	}
@@ -620,16 +581,16 @@ interface DriftRow {
 }
 
 /**
- * The gate's verdict on the CLI's `--check --format json` run, scoped to {@link SYNC_CATALOG},
- * with the human text a red check shows.
+ * The gate's verdict on the CLI's `--check --format json` run, with the human text a red check shows.
  *
  * @remarks
- * The CLI's own exit counts drift in every catalog, so the code is recomputed from
- * the managed rows. A stdout that is not a check document (a crash, or a test
- * double) passes through with the CLI's own code, so no failure is swallowed.
+ * The run is scoped to {@link SYNC_CATALOG} by `--catalog`, so every drift row is the sync's.
+ * A stdout that is not a check document (a crash, or a test double) passes through with the
+ * CLI's own code, so no failure is swallowed. An `error` document (`resolution`, or `catalog`
+ * for a name the config does not declare) is always red.
  */
 export function checkVerdict(code: number, stdout: string): { code: number; text: string } {
-	let doc: { command?: string; drift?: DriftRow[]; error?: { message?: string } };
+	let doc: { command?: string; drift?: DriftRow[]; error?: { kind?: string; message?: string } };
 	try {
 		doc = JSON.parse(stdout) as typeof doc;
 	} catch {
@@ -637,20 +598,18 @@ export function checkVerdict(code: number, stdout: string): { code: number; text
 	}
 	if (doc.error !== undefined) {
 		const message = doc.error.message ?? "unknown error";
-		return { code: code === 0 ? 1 : code, text: `Catalog check failed before drift could be evaluated: ${message}\n` };
+		const kind = doc.error.kind === undefined ? "" : ` (${doc.error.kind})`;
+		return {
+			code: code === 0 ? 1 : code,
+			text: `Catalog check failed before drift could be evaluated${kind}: ${message}\n`,
+		};
 	}
 	if (doc.command !== "check" || !Array.isArray(doc.drift)) return { code, text: stdout };
-	const managed = doc.drift.filter((row) => row.catalog === SYNC_CATALOG);
-	const ignored = doc.drift.length - managed.length;
-	const note =
-		ignored === 0
-			? ""
-			: `(${ignored} ${UNMANAGED_CATALOGS.join(", ")} entr${ignored === 1 ? "y has" : "ies have"} newer versions; the sync leaves them to pnpm pnpm:up.)\n`;
-	if (managed.length === 0) return { code: 0, text: `Catalogs are in sync.\n${note}` };
-	const rows = managed.map((row) => `  ${row.catalog}.${row.pkg}  ${row.from} -> ${row.to ?? "?"}  (${row.source})`);
+	if (doc.drift.length === 0) return { code: 0, text: "Catalogs are in sync.\n" };
+	const rows = doc.drift.map((row) => `  ${row.catalog}.${row.pkg}  ${row.from} -> ${row.to ?? "?"}  (${row.source})`);
 	return {
 		code: 1,
-		text: `Catalog drift detected in ${managed.length} package(s):\n${rows.join("\n")}\nRun \`pnpm catalog:sync\` to apply.\n${note}`,
+		text: `Catalog drift detected in ${doc.drift.length} package(s):\n${rows.join("\n")}\nRun \`pnpm catalog:sync\` to apply.\n`,
 	};
 }
 
@@ -658,7 +617,7 @@ export function checkVerdict(code: number, stdout: string): { code: number; text
  * Gate mode: report drift and write nothing. Returns 0 in sync and non-zero on drift, for a
  * caller to propagate.
  *
- * The CLI runs with `--format json` so its drift can be scoped to {@link SYNC_CATALOG}, and the
+ * The CLI runs with `--format json` so its drift is structured, and the
  * gate renders the rows as text itself: this is what a release gate runs, and the failure message
  * a human reads on a red check should be the drift list, not a blob.
  */

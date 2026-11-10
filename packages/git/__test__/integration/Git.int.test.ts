@@ -27,7 +27,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { ConfigProvider, Effect, Layer, Option } from "effect";
 import type { ChildProcessSpawner } from "effect/process";

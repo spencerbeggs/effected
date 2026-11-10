@@ -1,12 +1,14 @@
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getReleasePlan } from "@changesets/get-release-plan";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, describe, it } from "@effect/vitest";
 import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import { Cause, Effect, Exit, Layer } from "effect";
+import { ChangesetConfig } from "../src/ChangesetConfig.js";
 import { ReleasePlan } from "../src/ReleasePlan.js";
 
 interface Projected {
@@ -19,9 +21,6 @@ interface Projected {
 
 const fixture = (name: string): string => fileURLToPath(new URL(`fixtures/${name}`, import.meta.url));
 
-/** A changeset id as the oracle writes one: the file name without `.md`. */
-const id = (file: string): string => file.replace(/\.md$/, "");
-
 const project = (releases: ReadonlyArray<Projected>): ReadonlyArray<Projected> =>
 	releases
 		.map(({ name, type, oldVersion, newVersion, changesets }) => ({
@@ -29,13 +28,12 @@ const project = (releases: ReadonlyArray<Projected>): ReadonlyArray<Projected> =
 			type,
 			oldVersion,
 			newVersion,
-			changesets: changesets.map(id).sort(),
+			changesets: [...changesets].sort(),
 		}))
 		.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 
-/** The plan's own changeset list, by id. */
-const planIds = (changesets: ReadonlyArray<{ readonly id: string } | { readonly file: string }>) =>
-	changesets.map((c) => ("id" in c ? c.id : id(c.file))).sort();
+/** The plan's own changeset list, by id: ours and the oracle's both carry one. */
+const planIds = (changesets: ReadonlyArray<{ readonly id: string }>) => changesets.map((c) => c.id).sort();
 
 // The oracle reports a range it draws no edge for through console.error.
 const oracle = (root: string) =>
@@ -350,5 +348,99 @@ describe("ReleasePlan against @changesets/get-release-plan", () => {
 			const mutated = theirs.map((r, index) => (index === 0 ? { ...r, newVersion: "9.9.9" } : r));
 			assert.throws(() => assert.deepStrictEqual(mine, mutated));
 		}),
+	);
+});
+
+describe("ReleasePlan.read from inside the workspace", () => {
+	// The oracle's `@manypkg/find-root` climbs from the directory it is given.
+	for (const [name, subdirectory] of [
+		["minor-ripple-0x", "packages/a"],
+		["pre-mode", "packages/b"],
+		["fixed-group", "packages"],
+	] as const) {
+		it.effect(`${name}: planned from ${subdirectory} as the oracle plans it, and as from the root`, () =>
+			Effect.gen(function* () {
+				const root = fixture(name);
+				const from = join(root, subdirectory);
+				const theirs = yield* oracle(from);
+				assert.isAbove(theirs.releases.length, 0, "the oracle should plan from the subdirectory");
+				const mine = yield* ReleasePlan.read(from).pipe(Effect.provide(discovery(from)));
+				assert.deepStrictEqual(project(mine.releases), project(theirs.releases));
+				assert.deepStrictEqual(planIds(mine.changesets), planIds(theirs.changesets));
+				assert.deepStrictEqual(project(mine.releases), project((yield* ours(root)).releases));
+			}),
+		);
+	}
+
+	it.effect("a repository with no workspace file is planned from a directory below its package.json", () =>
+		Effect.acquireUseRelease(
+			Effect.sync(() => {
+				const root = mkdtempSync(join(tmpdir(), "release-plan-"));
+				cpSync(fixture("single-package"), root, { recursive: true });
+				rmSync(join(root, "pnpm-workspace.yaml"));
+				mkdirSync(join(root, "src", "deep"), { recursive: true });
+				return root;
+			}),
+			(root) =>
+				Effect.gen(function* () {
+					const from = join(root, "src", "deep");
+					const theirs = project((yield* oracle(from)).releases);
+					assert.deepStrictEqual(
+						theirs.map((r) => [r.name, r.type]),
+						[["solo", "minor"]],
+					);
+					const context = yield* ReleasePlan.readWithContext(from).pipe(Effect.provide(discovery(from)));
+					assert.deepStrictEqual(project(context.plan.releases), theirs);
+					assert.strictEqual(context.root, root);
+				}),
+			(root) => Effect.sync(() => rmSync(root, { recursive: true, force: true })),
+		),
+	);
+});
+
+describe("ReleasePlan.readWithContext", () => {
+	it.effect("returns the plan read gives, with every package discovery lists and the config", () =>
+		Effect.gen(function* () {
+			const root = fixture("minor-ripple-0x");
+			const context = yield* ReleasePlan.readWithContext(join(root, "packages", "b")).pipe(
+				Effect.provide(discovery(root)),
+			);
+			assert.strictEqual(context.root, root);
+			assert.deepStrictEqual(context.plan, yield* ours(root));
+			const listed = yield* Effect.gen(function* () {
+				return yield* (yield* WorkspaceDiscovery).listPackagesIn(root);
+			}).pipe(Effect.provide(discovery(root)));
+			assert.deepStrictEqual(context.packages, listed);
+			assert.isTrue(context.packages.some((pkg) => pkg.isRootWorkspace));
+			assert.deepStrictEqual(context.config, yield* ChangesetConfig.read(root).pipe(Effect.provide(discovery(root))));
+		}),
+	);
+
+	it.effect("hands edits the root a lone package plans", () =>
+		Effect.acquireUseRelease(
+			Effect.sync(() => {
+				const root = mkdtempSync(join(tmpdir(), "release-plan-"));
+				cpSync(fixture("single-package"), root, { recursive: true });
+				rmSync(join(root, "pnpm-workspace.yaml"));
+				return root;
+			}),
+			(root) =>
+				Effect.gen(function* () {
+					const { plan, packages, config } = yield* ReleasePlan.readWithContext(root).pipe(
+						Effect.provide(discovery(root)),
+					);
+					assert.deepStrictEqual(
+						packages.map((pkg) => [pkg.name, pkg.relativePath]),
+						[["solo", "."]],
+					);
+					assert.strictEqual(packages[0]?.manifestRecord.name, "solo");
+					const edits = yield* Effect.fromResult(ReleasePlan.edits(plan, { packages, config }));
+					assert.deepStrictEqual(
+						edits.manifests.map((edit) => [edit.name, edit.version]),
+						[["solo", plan.releases[0]?.newVersion]],
+					);
+				}),
+			(root) => Effect.sync(() => rmSync(root, { recursive: true, force: true })),
+		),
 	);
 });

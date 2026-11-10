@@ -66,7 +66,8 @@ const facts = ImageFacts.fromBytes(bytes).pipe(
 
 ```ts
 import { ImageBackend, ImageCache, ImageCacheKey } from "@effected/images/cache";
-import { NodeCrypto, NodeServices } from "@effect/platform-node";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer, Schema } from "effect";
 
 const CardParams = Schema.Struct({ title: Schema.String, theme: Schema.String });

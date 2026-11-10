@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-10T00:30:06Z
 integrity:
   generated:
-    body: fb006141497814b6
+    body: 9a2a046d6f0609f4
 ---
 
 # semver
@@ -65,9 +65,11 @@ Domain errors carry structured `input`/`position` payloads (core's `SemVerError`
 
 ## Relation to core
 
-Core ships `effect/SemVer` and `effect/SemVerRange`, both `@stability unstable`. This package stays independent of them and uses them as a test oracle instead: `__test__/core-parity.test.ts` runs every version parse, ordering, range match (under both prerelease rules) and prerelease bump through both and fails on any disagreement outside four named divergences — padded version input (the kit trims), build metadata in a range or comparator (the kit drops it, core rejects it), equality with build metadata (the kit's `Equal` follows precedence; core deliberately keeps a structural `Equivalence` that includes build beside a precedence `Order` that ignores it, so never mix the two in a hash-keyed collection), and release bumps of a prerelease (`bump.major()` on `2.0.0-beta.1` increments to `3.0.0`; core finishes the release at `2.0.0`). Why, and when to reach for core instead: [stays independent of core SemVer](../decisions/semver-stays-independent-of-core-semver.md).
+Core ships `effect/SemVer` and `effect/SemVerRange`, both `@stability unstable`. This package stays independent of them and uses them as a test oracle instead: `__test__/core-parity.test.ts` runs every version parse, ordering, range match (under both prerelease rules) and prerelease bump through both and fails on any disagreement outside five named divergences — padded version input (the kit trims), build metadata in a range or comparator (the kit drops it, core rejects it), equality with build metadata (the kit's `Equal` follows precedence; core deliberately keeps a structural `Equivalence` that includes build beside a precedence `Order` that ignores it, so never mix the two in a hash-keyed collection), release bumps of a prerelease (`bump.major()` on `2.0.0-beta.1` increments to `3.0.0`; core finishes the release at `2.0.0`), and an empty part beside `||` (the kit matches every release, as node-semver does; core rejects it). Why, and when to reach for core instead: [stays independent of core SemVer](../decisions/semver-stays-independent-of-core-semver.md).
 
-The range grammar matches node-semver and core at the edges: any `\s` whitespace separates comparators and may follow an operator (`>= 18`); `^*`, `~*` and `^x` match every release while `>*` and `<*` desugar to the unsatisfiable `<0.0.0-0`, which the range algebra treats as empty; a `*` side of a hyphen range drops that side's comparator; and a concrete component may not follow a wildcard (`1.*.3`). `SemVerBump.prerelease` matches core `SemVer.bumpPrerelease` on every input: it reads an all-digit identifier as numeric, increments the **right-most numeric** identifier wherever it sits (`1.0.0-1.beta` → `1.0.0-2.beta`), appends `0` only when there is none, and throws on a malformed identifier. node-semver's `inc` differs from both on one quirk — an identifier equal to the first one resets to `[id, 0]` when the second identifier is not numeric — which the pinned fixtures leave out by name.
+A parsed `Range` is the algebra's form, not node-semver's: each set is sorted and keeps the `>=0.0.0` floor `*` desugars to. A tool that must reproduce node-semver (a release tool rewriting a range in the order it was written) reads `Range.writtenSetsResult`, node-semver's `Range#set` (written order, duplicates and the any-version floor dropped, a match-nothing set collapsed beside others, an any-version set empty), and `range.isAny()`, its `range === ""`. These are additions beside the normalized surface, never a change to it. Their oracle is node-semver itself, a devDependency that never reaches `dependencies`: `__test__/Range.written.test.ts` computes every expected value from it at test time. One comparator is allowlisted by name there (HYPHEN-UPPER): under `includePrerelease` a full hyphen upper bound such as `1.2.3 - 2.3.4` is `<=2.3.4`, as core expands it, where node-semver writes `<2.3.5-0`. No version lies between the two, so the textual difference changes no match.
+
+The range grammar matches node-semver and core at the edges: any `\s` whitespace separates comparators and may follow an operator (`>= 18`); `^*`, `~*` and `^x` match every release while `>*` and `<*` desugar to the unsatisfiable `<0.0.0-0`, which the range algebra treats as empty; a `*` side of a hyphen range drops that side's comparator; a concrete component may not follow a wildcard (`1.*.3`); and an empty part beside `||` (`||*`, `^1.0.0 ||`) matches every release, as node-semver reads it, where core rejects it. `SemVerBump.prerelease` matches core `SemVer.bumpPrerelease` on every input: it reads an all-digit identifier as numeric, increments the **right-most numeric** identifier wherever it sits (`1.0.0-1.beta` → `1.0.0-2.beta`), appends `0` only when there is none, and throws on a malformed identifier. node-semver's `inc` differs from both on one quirk — an identifier equal to the first one resets to `[id, 0]` when the second identifier is not numeric — which the pinned fixtures leave out by name.
 
 ## Observability
 

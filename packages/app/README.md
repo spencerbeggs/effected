@@ -63,7 +63,8 @@ A config file, a cache and a state database, over one platform import:
 import { App, AppConfig } from "@effected/app";
 import { ConfigFile, JsonCodec } from "@effected/config-file";
 import { Cache, Store } from "@effected/store";
-import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer, Schema } from "effect";
 
 class Settings extends Schema.Class<Settings>("Settings")({
@@ -219,7 +220,8 @@ Building `App.layer` **opens and migrates both databases**, eagerly — `store.d
 import { App, AppStore } from "@effected/app";
 import { CliRuntime } from "@effected/cli-kit";
 import { Store } from "@effected/store";
-import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer } from "effect";
 import { Command } from "effect/cli";
 

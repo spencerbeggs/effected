@@ -17,9 +17,18 @@ export class PendingChangeset extends Schema.Class<PendingChangeset>("PendingCha
 	file: Schema.String,
 	/** Package name to requested release type, in file order. */
 	releases: Schema.ReadonlyMap(Schema.String, ReleaseType),
-	/** The markdown after the front matter. */
+	/** The markdown after the front matter, trimmed as `@changesets/parse` trims it. */
 	summary: Schema.String,
-}) {}
+}) {
+	/**
+	 * The changeset's id, as `@changesets/read` gives it: `file` without
+	 * `.md`, so `pre/<name>` for one an earlier pre-release consumed. A
+	 * `PlannedRelease`'s `changesets` lists these.
+	 */
+	get id(): string {
+		return this.file.replace(/\.md$/, "");
+	}
+}
 
 /** The directory, under `.changeset/`, holding the changesets a pre-release consumed. */
 const PRE = "pre";

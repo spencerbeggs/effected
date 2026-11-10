@@ -6,7 +6,8 @@ Loaded from `effect-v4-mcp`. Covers the complete `main.ts`, why `Stdio` is provi
 
 ~~~ts
 import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp-kit"
-import { NodeRuntime, NodeStdio } from "@effect/platform-node"
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import * as NodeStdio from "@effect/platform-node/NodeStdio"
 import { Effect, Layer, Schema } from "effect"
 import { Tool, Toolkit } from "effect/ai"
 
@@ -206,7 +207,8 @@ writeFileSync(
   serverFile,
   `
 import { McpStdio, McpToolkit } from "@effected/mcp-kit"
-import { NodeRuntime, NodeStdio } from "@effect/platform-node"
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import * as NodeStdio from "@effect/platform-node/NodeStdio"
 import { Effect, Layer } from "effect"
 import { Tool, Toolkit } from "effect/ai"
 
@@ -360,7 +362,8 @@ process.on("unhandledRejection", (reason) => {
 // during evaluation of the server graph itself must still reach the guards
 // above, which only works if nothing here is imported before they run.
 const { McpStdio } = await import("@effected/mcp-kit")
-const { NodeRuntime, NodeStdio } = await import("@effect/platform-node")
+const NodeRuntime = await import("@effect/platform-node/NodeRuntime")
+const NodeStdio = await import("@effect/platform-node/NodeStdio")
 const { Layer } = await import("effect")
 
 const Main = McpStdio.layer({ name: "guarded-server", version: "1.0.0" }).pipe(Layer.provide(NodeStdio.layer))

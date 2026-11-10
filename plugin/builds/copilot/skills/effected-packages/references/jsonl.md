@@ -45,7 +45,7 @@ import { Envelope, Journal, JsonlEvent, Line } from "@effected/jsonl";
 ```ts
 import { Journal, JsonlEvent } from "@effected/jsonl";
 import { NodeJournalWatcher } from "@effected/jsonl/node";
-import { NodeFileSystem } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { Effect, Schema } from "effect";
 
 const MailReceived = JsonlEvent.make("mail-received", { data: Schema.Struct({ round: Schema.Number }) });

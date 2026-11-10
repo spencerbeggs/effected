@@ -42,7 +42,7 @@ pnpm-release.json
 # Claude AI files
 .claude/settings.local.json
 .claude/plans/
-.claude/cache/
+**/.claude/cache/
 docs/superpowers/
 .claude/plugins-debug.log
 .playwright-mcp

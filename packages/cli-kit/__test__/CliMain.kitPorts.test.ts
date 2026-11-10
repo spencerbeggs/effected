@@ -1,6 +1,6 @@
 // CliRuntime.main's exitCodes map, FailureDetails.exitCode/tag, the distribution option, and env.displayPath's
 // `relativeTo` reaching Doc.print.
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { CurrentDistribution } from "@effected/kit";
 import {

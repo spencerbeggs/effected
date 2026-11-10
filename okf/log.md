@@ -1,5 +1,25 @@
 # Log
 
+## 2026-11-10
+
+* Updated @effected/changesets
+* Updated git
+* Updated @effected/semver stays independent of core SemVer and SemVerRange
+* Updated semver
+* Updated Consumers see one catalog, effected, folded by the plugin's hook from split declarations
+* Updated The catalog:sync / catalog:check CLI
+* Updated The plugin declares one catalog, effected, and pins only the Effect family by include pattern
+* Updated The typechecker: tsc, not tsgo
+* Updated The plugin declares a second consumer-visible catalog, effected:build, for the kit's build chain
+* Updated pnpm-plugin-effected
+* Updated @effected/bundler
+* Updated @effected/engine
+* Updated @effected/plugin
+* Updated Only @effected/bundler imports typescript, and only it and the tool's packages peer it
+* Updated effected
+* Added @effect/platform-node declares redis as a required peer, so every kit package on it brings redis along
+* Updated @effected/workspaces/testing: the repo-shape checks
+
 ## 2026-11-09
 
 * Updated @effected/plugin
@@ -17,6 +37,10 @@
 * Updated scratchpad
 * Updated workspace
 * Updated @effected/bundler
+* Updated ai-plugin
+* Updated @effected/github
+* Updated @effected/changesets
+* Updated @effected/markdown-lint
 
 ## 2026-11-08
 

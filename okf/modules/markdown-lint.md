@@ -23,10 +23,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-08T12:10:44Z
+  at: 2026-11-09T23:28:01Z
 integrity:
   generated:
-    body: 79c907072a33cadc
+    body: 3d2ef706bb851438
 ---
 
 # `@effected/markdown-lint`
@@ -146,8 +146,10 @@ plain synchronous function; no logging, no metrics.
 
 ## Testing
 
-- **The golden corpus.** savvy-web/systems' five changeset rules are ported
-  as example rules under `__test__/rules/` (not public API), and
+- **The golden corpus.** savvy-web/systems' five changeset rules
+  (CSH001–CSH005, savvy-web's house style, which no kit package provides)
+  are kept as test-only copies under `__test__/rules/`, an engine-fidelity
+  corpus rather than API, and
   `__test__/fixtures/changesets/golden.json` holds all 113 markdown inputs
   systems' own rule tests lint, with both systems engines' diagnostics,
   captured by a committed harness that regenerates the file byte for

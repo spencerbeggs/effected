@@ -54,7 +54,7 @@ it.effect("reads only the changeset files, sorted by name", () =>
 			["alpha.md", "mid.md", "zeta.md"],
 		);
 		assert.strictEqual(pending[0]?.releases.get("@effected/a"), "minor");
-		assert.strictEqual(pending[0]?.summary, "Alpha.\n");
+		assert.strictEqual(pending[0]?.summary, "Alpha.");
 	}).pipe(Effect.provide(Populated)),
 );
 

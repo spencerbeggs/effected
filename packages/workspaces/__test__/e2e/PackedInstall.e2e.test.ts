@@ -22,7 +22,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, assert, describe, it, layer } from "@effect/vitest";
 import { Run } from "@effected/commands";
 import { Duration, Effect, Layer } from "effect";

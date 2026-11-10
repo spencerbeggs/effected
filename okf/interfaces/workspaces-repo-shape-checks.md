@@ -48,10 +48,10 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-08T22:15:58Z
+  at: 2026-11-10T01:56:33Z
 integrity:
   generated:
-    body: 35cd89f4ad126add
+    body: e0e11d328a79fce4
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -402,7 +402,7 @@ actually resolves at runtime.
 
 ```ts
 import { builtinModules } from "node:module";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Workspaces } from "@effected/workspaces";
 import { ImportGraph } from "@effected/workspaces/testing";
 import { Effect, Layer } from "effect";

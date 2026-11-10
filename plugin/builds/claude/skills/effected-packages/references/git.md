@@ -224,7 +224,7 @@ consumer branches on them, so publish-with-retry reads as a `catchTag`:
 
 ```ts
 import { Git } from "@effected/git";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect } from "effect";
 
 const publish = (cwd: string) =>

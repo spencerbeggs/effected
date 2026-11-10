@@ -1,7 +1,8 @@
 import { mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer, Result, Schema } from "effect";
 import { SchemaFile, SchemaFileNotFoundError, StoreDocument } from "../../src/index.js";

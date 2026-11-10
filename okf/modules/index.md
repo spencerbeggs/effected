@@ -1,7 +1,7 @@
 # Module
 
 * [@effected/bundler](bundler.md) - The kit's build pipeline as an integrated library: package and GitHub Action builds, API Extractor and the bundle.json schema, SEA executables, the issues.json report and the build journals, returned as typed results that the effected tool's engine wraps for its two front ends.
-* [@effected/changesets](changesets.md) - Boundary-tier reader for changeset files and .changeset/config.json, plus a release planner held to @changesets/get-release-plan as a test oracle, so the bundler and the kit's tooling stop carrying that package at runtime.
+* [@effected/changesets](changesets.md) - Boundary-tier reader for changeset files and .changeset/config.json, a release planner (snapshots included), release application and changelog assembly as data, each held to its @changesets/\* engine as a test oracle, so consumers stop carrying those packages at runtime.
 * [@effected/cli](cli.md) - The effected command: effected package build, effected action build, effected action init and effected schema build, check and validate over effect/cli and @effected/cli-kit, with --version and --help, run by a bin that a carrier shim can wrap with its own distribution identity.
 * [@effected/cli-kit](cli-kit.md) - The presentation boundary of an effect/cli program — audience, colour, theme, messages, logging, failure reporting and schema-issue renderers in a React-free root, with interactive Ink screens behind ./ui and their test harness behind ./ui/testing.
 * [@effected/commands](commands.md) - The kit's tool-and-output layer over core's subprocess contract — structured running, CLI tool discovery, run-once serialization across processes, prebuilt-binary resolution, launcher argv parsing, and (behind ./node-sync) anchored module resolution.
@@ -35,7 +35,7 @@
 * [@effected/webhooks](webhooks.md) - Inbound webhook signature verification as pure functions over a header lookup, the raw body and the receive time, with presets for Standard Webhooks, GitHub, Stripe, Sanity, a generic HMAC header and a shared secret.
 * [@effected/workspaces: monorepo tooling](workspaces.md) - The integrated-tier package that finds a workspace root, enumerates its packages, walks the dependency graph, detects the package manager, assembles pnpm catalogs, checks peer dependencies, and reads git-scoped snapshots.
 * [@effected/yaml](yaml.md) - Pure-tier YAML 1.2 parsing, editing, formatting and linting as Effect schemas, with a vendored engine and full per-node comment fidelity.
-* [ai-plugin](ai-plugin.md) - The "effected" agent plugin: one pluginfinity source under plugin/ — skills, three specialist agents and a SessionStart briefing — built into committed Claude Code and GitHub Copilot plugins.
+* [ai-plugin](ai-plugin.md) - The "effected" agent plugin: one pluginfinity source under plugin/ — skills, four specialist agents, a SessionStart briefing and a Claude-Code-only build-diagnostics monitor — built into committed Claude Code and GitHub Copilot plugins.
 * [app](app.md) - The thin composition layer wiring xdg, config-file and store into an application control plane -- owns no domain logic, defines no service or error of its own, and re-exports nothing from the packages beneath it.
 * [config-file](config-file.md) - Composable config-file loading built around a codec × resolver × strategy pipeline, carrying all four config codecs.
 * [git](git.md) - Typed git for the kit — a read tier over a repository's state and a clearly-marked mutating tier, plus a pure git-config document model.

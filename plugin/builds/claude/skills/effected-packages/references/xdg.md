@@ -23,7 +23,8 @@ Single entrypoint; no subpaths.
 
 ```ts
 import { AppDirs, Xdg } from "@effected/xdg";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { Effect, Layer } from "effect";
 
 const AppDirsLive = AppDirs.layer({ namespace: "myapp", native: true });

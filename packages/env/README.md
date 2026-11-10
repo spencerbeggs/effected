@@ -62,7 +62,7 @@ What the terminal can do comes from `TerminalEnv`, which reads core's `Stdio` an
 
 ```ts
 import { TerminalEnv } from "@effected/env";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect } from "effect";
 
 const describe = Effect.gen(function* () {

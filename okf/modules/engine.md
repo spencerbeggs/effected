@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-08T17:37:31Z
+  at: 2026-11-10T01:42:40Z
 integrity:
   generated:
-    body: 08ee7f961aa4a181
+    body: c37c110e1be3782f
 ---
 
 # @effected/engine
@@ -40,5 +40,6 @@ integrity:
 
 - `@effected/kit` is a regular dependency (it supplies `Distribution`); `effect` is a regular dependency, because a tool declares its full stack.
 - `@effected/schemastore` and [`@effected/bundler`](bundler.md) are `workspace:*` dependencies, published exact, and `ajv` and `ajv-formats` are exact versions, because each decides what the tool outputs ([the pin chain](../conventions/peer-dependency-discipline.md#cross-effected-dependencies)). `jiti` has a tilde range because the reload behaviour rests on its routing.
+- `typescript` and `@types/node` are peers, `typescript` at the literal range [the carrier](plugin.md#boundaries) records, nightlies excluded, because this package depends on [the bundler](bundler.md) directly and is published: installed alone it would otherwise leave the bundler's two required peers unmet ([the rule](../conventions/typescript-stays-in-the-bundler.md)). It imports nothing from either.
 - New logic both front ends need goes here, never in a front end. The carrier [plugin](plugin.md) holds nothing but bin shims and one re-export.
 - Package-local rules live in the package's `CLAUDE.md`.

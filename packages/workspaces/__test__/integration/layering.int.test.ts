@@ -1,7 +1,8 @@
 // The kit's own package graph, held to lib/configs/layers.json by the check it ships.
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, describe, layer } from "@effect/vitest";
 import type { DependencyField } from "@effected/npm";
 import { Effect, Layer } from "effect";

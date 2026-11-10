@@ -1,11 +1,11 @@
 # @effected/changesets
 
-Changeset files, `.changeset/config.json` and the release plan as Effect schemas and pure functions. Nothing here writes a changeset, versions a package or publishes one. Boundary tier: the parsers and the planner are pure, while reading a repository needs core's `FileSystem` and `Path` in `R`, plus `WorkspaceDiscovery` from `@effected/workspaces` for `ReleasePlan.read`. Its runtime dependencies are `@effected/yaml`, `@effected/semver`, `@effected/glob` and `@effected/workspaces`. The changeset lint rules ship from the `@effected/changesets/lint` subpath, whose `@effected/markdown` and `@effected/markdown-lint` are optional peers the root never imports.
+Changeset files, `.changeset/config.json` and the release plan as Effect schemas and pure functions. Nothing here writes a changeset, versions a package or publishes one: what `changeset version` would write comes back as data, and the caller does the IO. Boundary tier: the parsers and the planner are pure, while reading a repository needs core's `FileSystem` and `Path` in `R`, plus `WorkspaceDiscovery` from `@effected/workspaces` for `ReleasePlan.read`. Its runtime dependencies are `@effected/yaml`, `@effected/semver`, `@effected/glob` and `@effected/workspaces`. The changeset front-matter lint rules ship from the `@effected/changesets/lint` subpath, whose `@effected/markdown` and `@effected/markdown-lint` are optional peers the root never imports.
 
 ## Import
 
 ```ts
-import { ChangesetConfig, ChangesetFile, PendingChangesets, PreState, ReleasePlan } from "@effected/changesets";
+import { Changelog, ChangesetConfig, ChangesetFile, PendingChangesets, PreState, ReleasePlan } from "@effected/changesets";
 import { ChangesetLint } from "@effected/changesets/lint";
 ```
 
@@ -13,12 +13,15 @@ import { ChangesetLint } from "@effected/changesets/lint";
 
 - **`ChangesetFile.parse(text)` / `parseSync(text)`** — one changeset file to a `ParsedChangeset` (the packages and bump types from its front matter, plus the summary). `parseSync` returns a `Result` and needs no Effect runtime. Failure is `ChangesetParseError`.
 - **`PendingChangesets.read(root)` / `readSync(root)`** — every pending changeset under `.changeset/` as `PendingChangeset` values, then those a pre-release consumed under `.changeset/pre/`, with `file` `pre/<name>.md`. `readSync` uses `node:fs`.
-- **`ChangesetConfig.read(root)`** — the decoded config. Keys it does not model are kept on `extra`, and the boolean form of `privatePackages` is accepted. Failure is `ChangesetConfigError`.
+- **`ChangesetConfig.read(root)`** — the decoded config. `changelog` (`false`, a module id, or `[moduleId, options]`, kept as written, default `"@changesets/cli/changelog"`) and `snapshot` (`{ useCalculatedVersion, prereleaseTemplate? }`) are fields; keys it does not model are kept on `extra`. The boolean form of `privatePackages` is accepted. Failure is `ChangesetConfigError`.
 - **`PreState.read(root)`** — `.changeset/pre.json` as `Option<PreState>` (`mode: "pre" | "exit"`, `tag`); `Option.none()` outside pre-release mode. It never rewrites the file.
-- **`ReleasePlan.read(root)`** — discovers the workspace, reads config, changesets and `pre.json` and plans: a `ReleasePlan` whose `releases` are `PlannedRelease` values (`name`, `type`, `oldVersion`, `newVersion`, `changesets`). The plan also carries `changesets` (what it was made from, consumed ones left out in pre mode) and `preState`. **`ReleasePlan.assemble({ packages, changesets, config, pre? })`** is the pure core and returns a `Result`.
-- **`ChangesetLint`** (from `/lint`) — the style rules CSH001 to CSH005 as `@effected/markdown-lint` `LintRule`s: `ChangesetLint.rules` for `MarkdownLint.lint` or `MarkdownlintAdapter.rules` (markdownlint-cli2), each rule as a static, and `ChangesetLint.lint(text)`. Verdicts, messages and lines are savvy-web/systems' markdownlint rules': top-level blocks only, and heading and cell text compared as written, so ``## `Features` `` is an unknown section.
+- **`ReleasePlan.read(directory)`** — discovers the workspace, reads config, changesets and `pre.json` and plans: a `ReleasePlan` whose `releases` are `PlannedRelease` values (`name`, `type`, `oldVersion`, `newVersion`, `changesets`, the ids of the changesets naming the package). The plan also carries `changesets` (the `PendingChangeset`s it was made from, consumed ones left out in pre mode; each has `file` and `id`) and `preState`. `directory` may be any directory inside the workspace: the root is climbed to, as `@changesets/get-release-plan` climbs. **`ReleasePlan.readWithContext(directory)`** reads the same plan and returns a `ReleaseContext` of `{ root, plan, packages, config }`, the exact packages (root or lone package included) and config to hand `edits` and `Changelog.entry`. **`ReleasePlan.assemble({ packages, changesets, config, pre?, snapshot? })`** is the pure core and returns a `Result`.
+- **Snapshot plans** — pass `snapshot: { tag?, commit?, timestamp, useCalculatedVersion?, prereleaseTemplate? }` to `assemble` or `ReleasePlan.read(root, { snapshot })` for `changeset version --snapshot`'s versions. `timestamp` is an input, so assembly reads no clock. Pre mode fails `SnapshotPreModeError`; a template placeholder with no value, or a tag with no `{tag}`, fails `SnapshotTemplateError`. An empty `tag` or `commit` is absent. The plan records `snapshot: true`.
+- **`ReleasePlan.edits(plan, { packages, config })`** — what `changeset version` writes, as a `Result` of `ReleaseEdits`: `manifests` (each `ManifestEdit` with its new `version` and rewritten `RangeEdit`s), `deleteChangesets`, `moveChangesets` (pre mode) and the `preState` left (absent: delete `pre.json`). Pass every package including the root, as `WorkspaceDiscovery.listPackagesIn` lists them. Held to `@changesets/apply-release-plan` on disk.
+- **`Changelog.entry(plan, release, functions, { packages, config, commits?, changelogOptions? })`** — an `Effect` of the release's CHANGELOG block (`Option.none()` for a `none` entry), as `@changesets/apply-release-plan` renders it; **`Changelog.insert(existing, block, name)`** places it in the file's text (`""` for a new file). You load the changelog module and pass its `ChangelogFunctions`; the package never resolves a module id. `ChangelogFunctions`, `GetReleaseLine`, `GetDependencyReleaseLine`, `NewChangesetWithCommit`, `ModCompWithPackage` and `VersionType` are structurally identical to `@changesets/types`, so one module loads under `@changesets/cli` and here. The data shapes are also schemas under the same names (`Schema.decodeUnknownResult(ModCompWithPackage)(value)`); `PackageJSON` is open and keeps unknown keys.
+- **`ChangesetLint`** (from `/lint`) — style-neutral rules as `@effected/markdown-lint` `LintRule`s, checking only what the changesets tool refuses a file for: `CF001` front matter present, YAML, a mapping when not empty; `CF002` every key a package name; `CF003` every value `major | minor | patch | none`; `CF004` (`ChangesetLint.knownPackages(names)`) every key a workspace package. `ChangesetLint.defaults` is `CF001`–`CF003`; `ChangesetLint.lint(text, { packages?, rules?, defaults? })` runs them, `CF004` when `packages` is given, then your rules. No house style (section headings, summary layout) ships here: bring your own rules.
 - **`BumpType` and `ReleaseType`** — `patch | minor | major`, and `ReleaseType` adds `none`, which a changeset may write: it names the package and moves no version.
-- **Errors** — `ChangesetParseError`, `ChangesetConfigError` (also a bad `pre.json`, and a package in two fixed or linked groups) and `UnknownPackageError`.
+- **Errors** — `ChangesetParseError`, `ChangesetConfigError` (also a bad `pre.json`, and a package in two fixed or linked groups), `UnknownPackageError`, `SnapshotPreModeError`, `SnapshotTemplateError`, `MissingPackageError` (a plan naming a package the edits or changelog were not given) and `ChangelogError` (a changelog function threw or rejected).
 
 ```ts
 import { ReleasePlan } from "@effected/changesets";
@@ -34,8 +37,33 @@ const plan = ReleasePlan.read("/repo").pipe(
 // .markdownlint-cli2.mjs
 import { MarkdownlintAdapter } from "@effected/markdown-lint";
 import { ChangesetLint } from "@effected/changesets/lint";
+import { houseRules } from "./lint/house-rules.mjs"; // your style's own LintRules
 
-export default { customRules: MarkdownlintAdapter.rules(ChangesetLint.rules) };
+export default { customRules: MarkdownlintAdapter.rules([...ChangesetLint.defaults, ...houseRules]) };
+```
+
+```ts
+import { Changelog, ReleasePlan } from "@effected/changesets";
+import type { ChangelogFunctions } from "@effected/changesets";
+import { Effect, Option } from "effect";
+
+// The changelog module, imported by the caller from wherever config.changelog names it.
+declare const changelogFunctions: ChangelogFunctions;
+declare const readChangelog: (name: string) => string; // "" for a file that does not exist
+
+// Apply a plan: the caller writes what the edits and changelog texts describe.
+const program = Effect.gen(function* () {
+  const { plan, packages, config } = yield* ReleasePlan.readWithContext("/repo");
+  const edits = yield* Effect.fromResult(ReleasePlan.edits(plan, { packages, config }));
+  const texts = new Map<string, string>();
+  for (const release of plan.releases) {
+    const block = yield* Changelog.entry(plan, release, changelogFunctions, { packages, config });
+    if (Option.isSome(block)) {
+      texts.set(release.name, Changelog.insert(readChangelog(release.name), block.value, release.name));
+    }
+  }
+  return { edits, texts };
+});
 ```
 
 ## Rules the planner follows
@@ -54,7 +82,15 @@ export default { customRules: MarkdownlintAdapter.rules(ChangesetLint.rules) };
 
 ## Gotchas
 
-- Snapshot versions are not planned: `@changesets/get-release-plan` has no snapshot input to hold them to.
+- Snapshot plans are held to `@changesets/assemble-release-plan`'s snapshot argument, which `getReleasePlan` never passes. Unlike that engine, pre mode is refused (as `changeset version` refuses it), and an empty tag or commit is no value rather than an empty one.
+- Pre mode consumes a changeset by moving its file under `.changeset/pre/` (`moveChangesets`); `pre.json` is left unchanged and lists no ids.
+- `PlannedRelease.changesets` lists changeset **ids**, as the oracle does: the file name without `.md`, and `pre/<name>` for one under `.changeset/pre/`. Use `PendingChangeset.id` to match a plan's changeset to a release; never strip `.md` yourself. `PendingChangeset.summary` is trimmed, as `@changesets/parse` trims it.
+- `WorkspaceDiscovery` memoizes each root's packages for the layer's lifetime. A long-lived host (an MCP server) that plans again after applying a release calls `WorkspaceDiscovery`'s `refreshIn(root)` first, or it plans against the versions the release replaced.
+- A changelog module's `packageJson` is the dependency's whole manifest (`WorkspacePackage.manifestRecord`), as `@changesets/cli` passes it.
+- `workspace:*`, `workspace:^`, `workspace:~` and `workspace:` paths are never rewritten by `edits`, and a package outside the plan keeps its ranges even when the release leaves them.
+- An empty `PlannedRelease.changesets` always means the package's own changeset did not set its bump (a ripple, a fixed member, or an exit completion). A non-empty one does not prove it did: a group or an exit can raise a package a changeset named only `none`.
+- The lint defaults are held to `@changesets/parse`: a file it parses fails none of them. It accepts more than a strict linter would (an unanchored fence, an empty block or summary, any non-blank key), so never tighten a default rule.
+- `Changelog.entry` hands a module the `packageJson` fields a `WorkspacePackage` carries, not the whole manifest. Formatting the written CHANGELOG is yours.
 - A `pre.json` with no `tag` or an unknown `mode` fails `ChangesetConfigError`.
 - An older-layout `pre.json` listing consumed changeset ids leaves them out in pre mode, and names them `pre/<file>` in exit mode. The oracle's first run counts them because it moves the files as it reads; the plan matches its later runs and writes nothing.
 - A root listed in `packages:` beside other packages gets `UnknownPackageError` when a changeset names it.

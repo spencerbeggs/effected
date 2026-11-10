@@ -138,7 +138,7 @@ export interface BuildTargetGroupsOptions {
 	/**
 	 * Extra rolldown plugins, forwarded to BOTH the JS pass and the dts-only pass. A plugin
 	 * with JS-lifecycle side effects (asset emitters, banner injectors) runs in both passes;
-	 * the dts pass uses `emitDtsOnly`, so for esm-only builds it produces no JS chunks and most
+	 * the dts pass is declarations-only, so for esm-only builds it produces no JS chunks and most
 	 * rolldown hooks are no-ops there. For DUAL (esm+cjs) builds, however, tsdown's dts pass
 	 * still RE-EMITS the `.cjs` JS chunk and overwrites the JS pass's `.cjs` output — so a
 	 * `renderChunk`/`generateBundle` plugin that must persist onto the final `.cjs` (e.g. the
@@ -230,7 +230,7 @@ const copyEntriesFor = (entries: ReadonlyArray<string | CopyEntry>, outDir: stri
  * Each group runs TWO passes to the SAME outDir:
  *  1. JS pass — per-module JS (`unbundle: true`, `dts: false`), with the `emitManifest` plugin
  *     and the `public/` copy. Default `clean: true` gives it a fresh outDir.
- *  2. dts pass — bundled declarations only (`unbundle: false`, `dts: { emitDtsOnly: true }`,
+ *  2. dts pass — bundled declarations only (`unbundle: false`, `dts: { dtsOnly: true }` (`emitDtsOnly` below rolldown-plugin-dts 0.30),
  *     `clean: false`). No manifest plugin, no copy, no sourcemaps. `clean: false` is load-bearing:
  *     it must NOT wipe the JS the first pass just wrote.
  *
@@ -592,7 +592,7 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 						...timingChecks,
 						...instrument(group.id),
 						...dtsDeps,
-						// The dts pass runs with emitDtsOnly, but for dual format tsdown still RE-EMITS the
+						// The dts pass runs declarations-only, but for dual format tsdown still RE-EMITS the
 						// `.cjs` JS chunk in this pass, overwriting the JS pass's footer'd `.cjs` with a
 						// footer-less one (verified). Re-attach the interop plugins here so the footer lands on
 						// the FINAL `.cjs` (this is the chunk that inlines vendor deps like vfile). Fresh plugin

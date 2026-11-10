@@ -24,7 +24,8 @@ own version of this layout:
 
 ~~~ts
 import { CliAudience, CliRuntime } from "@effected/cli-kit"
-import { NodeRuntime, NodeServices } from "@effect/platform-node"
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Command } from "effect/cli"
 
 declare const demoCommand: Command.Command<"demo", Record<string, never>>
@@ -88,7 +89,8 @@ calls read the same value, and with a carrier `--version` ends with
 ~~~ts
 import { CliAudience, CliRuntime } from "@effected/cli-kit"
 import type { Distribution } from "@effected/kit"
-import { NodeRuntime, NodeServices } from "@effect/platform-node"
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Command } from "effect/cli"
 
 declare const root: Command.Command<"mytool", {}, {}, never, never>
@@ -252,7 +254,7 @@ directly. Pin the allowlist with `SourceBoundary.scan` from
 new scanner:
 
 ~~~ts
-import { NodeServices } from "@effect/platform-node"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { assert, describe, layer } from "@effect/vitest"
 import { SourceBoundary } from "@effected/workspaces/testing"
 import { Effect, FileSystem, Path } from "effect"

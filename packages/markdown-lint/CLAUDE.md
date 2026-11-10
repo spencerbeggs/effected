@@ -16,7 +16,7 @@ A markdownlint-compatible lint rule shape over `@effected/markdown` trees: a `Li
 
 ## Tests
 
-- `__test__/rules/` holds the five savvy-web/systems changeset rules ported as example rules — test-only, never public API.
+- `__test__/rules/` holds the five savvy-web/systems changeset rules (CSH001–CSH005, savvy-web's house style, which savvy-web owns) as test-only copies: an engine-fidelity corpus with two reference engines, never public API. No kit package provides them; `@effected/changesets/lint` ships only style-neutral front-matter rules.
 - `__test__/fixtures/changesets/golden.json` is CAPTURED, not hand-written: regenerate only with `capture/` per its `README.md`, and never edit a diagnostic by hand.
 - `__test__/markdownlint-host.test.ts` is the only file that imports markdownlint: the exact-pinned `markdownlint` devDependency (the same copy the workspace root's markdownlint-cli2 resolves), through a variable specifier so no `src/` type resolves against its declarations.
 

@@ -415,7 +415,7 @@ const checkExitCodes = (exitCodes: Readonly<Record<string, number>> | undefined)
  * @example
  * ```ts
  * import { CliRuntime } from "@effected/cli-kit"
- * import { NodeRuntime } from "@effect/platform-node"
+ * import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
  * import { Effect } from "effect"
  *
  * NodeRuntime.runMain(program.pipe(CliRuntime.reportFailures(), Effect.provide(MainLive)))
@@ -575,7 +575,8 @@ export class CliRuntime {
 	 * @example
 	 * ```ts
 	 * import { CliRuntime } from "@effected/cli-kit"
-	 * import { NodeRuntime, NodeServices } from "@effect/platform-node"
+	 * import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+	 * import * as NodeServices from "@effect/platform-node/NodeServices"
 	 * import { Command } from "effect/cli"
 	 *
 	 * NodeRuntime.runMain(

@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import type { IntegrityHashBrand } from "@effected/npm";
 import { CorepackIntegrityHash, IntegrityHash, PackageManagerPin } from "@effected/npm";

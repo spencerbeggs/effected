@@ -16,11 +16,13 @@ integrity:
     body: cece39e0876cefd0
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 21fbfcefbc8e706e
+    at: 2026-11-10T00:32:33Z
+    content: 0a54d7a44a8a52d9
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-10T00:32:33Z
 ---
 
 # The typechecker: tsc, not tsgo

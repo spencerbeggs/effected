@@ -11,7 +11,7 @@ import { ChangesetParseError } from "./errors.js";
 export class ParsedChangeset extends Schema.Class<ParsedChangeset>("ParsedChangeset")({
 	/** Package name to requested release type, in file order. */
 	releases: Schema.ReadonlyMap(Schema.String, ReleaseType),
-	/** The markdown after the front matter. */
+	/** The markdown after the front matter, trimmed as `@changesets/parse` trims it. */
 	summary: Schema.String,
 }) {}
 
@@ -30,7 +30,8 @@ const parseText = (text: string): Result.Result<ParsedChangeset, ChangesetParseE
 
 	const block = lines.slice(1, close).join("\n");
 	const rest = lines.slice(close + 1).join("\n");
-	const summary = rest.replace(/^\r?\n/, "");
+	// Trimmed, as `@changesets/parse` trims it.
+	const summary = rest.trim();
 
 	const value = block.trim() === "" ? Result.succeed({}) : Yaml.parseResult(block);
 	return Result.match(value, {

@@ -45,7 +45,7 @@ sequence:
 
 ```ts
 import { McpStdio } from "@effected/mcp-kit"
-import { NodeRuntime } from "@effect/platform-node"
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
 import type { Layer } from "effect"
 
 // A consumer's own fully-composed server layer.

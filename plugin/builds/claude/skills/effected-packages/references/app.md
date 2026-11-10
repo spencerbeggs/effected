@@ -31,7 +31,8 @@ The root has exactly four value exports (plus their option types and the `AppErr
 import { App, AppConfig } from "@effected/app";
 import { ConfigFile, JsonCodec } from "@effected/config-file";
 import { Store } from "@effected/store";
-import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer, Schema } from "effect";
 
 class Settings extends Schema.Class<Settings>("Settings")({ registry: Schema.String }) {}
@@ -58,7 +59,8 @@ Provide `App.layerDirs` once at `CliRuntime.main`, bind each database layer once
 import { App, AppStore } from "@effected/app";
 import { CliRuntime } from "@effected/cli-kit";
 import { Store } from "@effected/store";
-import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer } from "effect";
 import { Command } from "effect/cli";
 

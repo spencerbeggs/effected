@@ -109,7 +109,8 @@ Alongside `Package` the leaf concepts are usable on their own. `PackageName` cla
 
 ```ts
 import { Package, PackageJsonFile } from "@effected/package-json";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { Effect, Layer } from "effect";
 
 const bumpMinor = Effect.gen(function* () {

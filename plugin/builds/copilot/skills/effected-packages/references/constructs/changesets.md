@@ -6,18 +6,40 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `BumpType` | Variable + TypeAlias | The type of a `BumpType` value. | changeset bump values, patch, minor or major |
-| `ChangesetConfig` | Class | The decoded `.changeset/config.json`, with the defaults changesets documents. Keys the schema does not model (`changelog`, `$schema`, `format`, ...) are kept on the instance rather than rejected. | read and decode .changeset/config.json with documented defaults |
+| `Changelog` | Class | CHANGELOG assembly for a `ReleasePlan`, matching `@changesets/apply-release-plan`. | render changelog block for a release, insert into CHANGELOG.md, getReleaseLine |
+| `ChangelogEntryOptions` | Interface | The inputs `Changelog.entry` reads besides the plan and the release. | |
+| `ChangelogError` | Class | A changelog module's function threw or rejected while rendering a package's block. | changelog module function threw or rejected while rendering |
+| `ChangelogFunctions` | TypeAlias | A changelog module: `@changesets/types`' `ChangelogFunctions`, structurally identical, so one module loads under `@changesets/cli` and here alike. `__test__/Changelog.types.test.ts` holds the identity both ways. Functions are not schemas; their parameters are the schema types above. | |
+| `ChangesetConfig` | Class | The decoded `.changeset/config.json`, with the defaults changesets documents. Keys the schema does not model (`$schema`, `format`, `changedFilePatterns`, ...) are kept on `extra` rather than rejected. | read and decode .changeset/config.json, changelog and snapshot options, defaults |
 | `ChangesetConfigError` | Class | `.changeset/config.json` is missing, is not valid JSON, or does not match the documented shape. | changeset config missing, invalid json or wrong shape |
 | `ChangesetFile` | Class | Parsing a changeset markdown file: YAML front matter mapping package names to release types, then the summary. | parse a changeset markdown file, front matter and summary |
-| `ChangesetLint` | Class | The changeset style rules CSH001 to CSH005, each defined once as a `LintRule` over `@effected/markdown` trees, so one definition runs in `MarkdownLint` and, through `MarkdownlintAdapter`, in markdownlint and markdownlint-cli2. | from `@effected/changesets/lint` — lint changeset files, CSH001 to CSH005 rules for MarkdownLint and markdownlint-cli2 |
+| `ChangesetLint` | Class | Lint rules for changeset files that hold under any house style: only what the changesets tool itself refuses a file for, as `@changesets/parse` reads one, plus, when the workspace's names are given, that each named package exists. | from `@effected/changesets/lint` — lint changeset front matter, package names, release types, workspace packages, add house rules |
+| `ChangesetLintOptions` | Interface | Options for `ChangesetLint.lint`: `MarkdownLint`'s parse options, plus the rules to run. | from `@effected/changesets/lint` |
+| `ChangesetMove` | Class | A pending changeset a pre-release consumes: `changeset version` in pre mode moves it under `.changeset/pre/` rather than deleting it. | consumed changeset moved under .changeset/pre in pre mode |
 | `ChangesetParseError` | Class | A changeset file could not be parsed: no front matter, a malformed YAML block, or a bump outside `patch \| minor \| major`. | changeset without front matter, malformed yaml, or an invalid bump |
+| `ComprehensiveRelease` | Variable + TypeAlias | The decoded type of `(ComprehensiveRelease:variable)`. | decode a planned release as changelog modules get it, @changesets/types shape |
+| `GetDependencyReleaseLine` | TypeAlias | Renders the line for the dependencies a package's release updated: `@changesets/types`' `GetDependencyReleaseLine`. | |
+| `GetReleaseLine` | TypeAlias | Renders one changeset's line in a package's changelog block: `@changesets/types`' `GetReleaseLine`. | |
+| `ManifestEdit` | Class | What a release changes in one `package.json`. | new version and rewritten dependency ranges for one package.json |
+| `MissingPackageError` | Class | A release plan names a package the packages given to `ReleasePlan.edits` do not contain: the plan was made from a different workspace than the one being edited. | release plan names a package not among the given packages |
+| `ModCompWithPackage` | Variable + TypeAlias | The decoded type of `(ModCompWithPackage:variable)`. | decode an updated dependency with its manifest and dir, getDependencyReleaseLine input |
+| `NewChangeset` | Variable + TypeAlias | The decoded type of `(NewChangeset:variable)`. | decode a changeset as a changelog module gets it, id summary releases |
+| `NewChangesetWithCommit` | Variable + TypeAlias | The decoded type of `(NewChangesetWithCommit:variable)`. | decode a changeset with its adding commit, getReleaseLine input |
+| `PackageJSON` | Variable + TypeAlias | The decoded type of `(PackageJSON:variable)`. | decode a manifest as changelog modules get it, open, unknown keys kept |
 | `ParsedChangeset` | Class | One parsed changeset: the packages it releases and its summary text. | released packages and summary text of one changeset |
 | `PendingChangeset` | Class | One pending changeset read from `.changeset/`. | one unreleased changeset read from disk |
 | `PendingChangesetFailure` | Interface | One changeset file `PendingChangesets.readSettled` could not read or parse. | |
 | `PendingChangesets` | Class | Reading the pending changesets under a repository's `.changeset/` directory. | list and read unreleased changesets under .changeset |
 | `PlannedRelease` | Class | One package's place in a `ReleasePlan`. | one package's old version, new version and bump type in a plan |
 | `PreState` | Class | The decoded `.changeset/pre.json`: the repository is in pre-release mode (`changeset pre enter <tag>`), or leaving it (`changeset pre exit`). | read pre mode state from pre.json, tag, initial versions, consumed changesets |
-| `ReleasePlan` | Class | What a set of pending changesets releases: the packages they name and the packages reached as dependents, sorted by name. A package neither named nor reached is absent. | compute next versions from pending changesets, dependents and ripples included |
+| `RangeEdit` | Class | One dependency range a release rewrites in a manifest. | one rewritten dependency range, from and to specifier |
+| `ReleaseContext` | Class | A `ReleasePlan` with what `ReleasePlan.readWithContext` read it from. | release plan with the packages and config it was read from, hand to edits and changelog, read from a subdirectory |
+| `ReleaseEdits` | Class | Everything `changeset version` writes for a `ReleasePlan`, as data, CHANGELOG files aside. `ReleasePlan.edits` computes it; the caller does the IO. | changeset version as data, manifest edits, changesets to delete, next pre.json |
+| `ReleasePlan` | Class | What a set of pending changesets releases: the packages they name and the packages reached as dependents, sorted by name. A package neither named nor reached is absent. | compute next versions from pending changesets, dependents, snapshot versions, apply edits |
+| `ReleaseSnapshot` | Interface | The input for a snapshot plan, `changeset version --snapshot`'s parameters. `ReleasePlan.assemble` documents how each is read. | |
 | `ReleaseType` | Variable + TypeAlias | The type of a `ReleaseType` value. | package release outcomes, including none for an unreleased package |
 | `SettledChangesets` | Interface | Every pending changeset that parsed, and every one that did not, from `PendingChangesets.readSettled`. | |
+| `SnapshotPreModeError` | Class | A snapshot release was asked for while `.changeset/pre.json` has the repository in pre mode. `changeset version --snapshot` refuses the same way; leave pre mode (`changeset pre exit`) first. | snapshot release refused while in pre mode |
+| `SnapshotTemplateError` | Class | A snapshot prerelease template could not be filled, for one of the two reasons `@changesets/assemble-release-plan` refuses one: | snapshot prerelease template placeholder without a value, or missing tag |
 | `UnknownPackageError` | Class | A changeset names a package the workspace does not contain. | changeset names a package missing from the workspace |
+| `VersionType` | Variable + TypeAlias | The decoded type of `(VersionType:variable)`. | decode a bump, major minor patch or none, changelog contract |

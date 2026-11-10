@@ -104,7 +104,7 @@ const watch = (
  * ```ts
  * import { Journal, JsonlEvent } from "@effected/jsonl";
  * import { NodeJournalWatcher } from "@effected/jsonl/node";
- * import { NodeFileSystem } from "@effect/platform-node";
+ * import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
  * import { Effect, Schema } from "effect";
  *
  * const events = [JsonlEvent.make("mail", { data: Schema.Struct({ round: Schema.Number }) })] as const;

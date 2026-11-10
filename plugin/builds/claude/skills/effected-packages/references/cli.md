@@ -85,10 +85,11 @@ optional `effected.toml`; a package with neither needs no config. The
 `bundle.json`. `meta.tsdoc.suppressWarnings` defaults to
 `[{ messageId = "ae-forgotten-export", pattern = "_base" }]` and
 `meta.optimistic` previews the next versions from pending changesets. Config is
-found at `<root>/.config/effected.toml`, `<root>/effected.toml`,
-`<pkg>/.config/effected.toml`, `<pkg>/effected.toml` and
-`<pkg>/lib/configs/effected.toml`, later winning; root defaults merge under the
-package's (objects per key, arrays replace).
+found in two tiers, and within each the first file found is the only one read:
+the root tries `<root>/.config/effected.toml`, then `<root>/effected.toml`; the
+package tries `<pkg>/.config/effected.toml`, then `<pkg>/effected.toml`, then
+`<pkg>/lib/configs/effected.toml`. The package tier then merges over the root
+(tables per key; arrays and scalars replace).
 
 Artifacts land in `dist/prod/<group>/{pkg,meta}` with `dist/prod/targets.json`
 and `dist/prod/issues.json` beside them; each build also appends to

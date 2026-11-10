@@ -4,7 +4,7 @@
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, assert, layer } from "@effect/vitest";
 import { Config, Effect, Redacted, Stream } from "effect";
 import { InstalledConsumer } from "../../src/testing.js";

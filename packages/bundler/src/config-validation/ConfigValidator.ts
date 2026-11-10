@@ -52,6 +52,11 @@ function check(input: ValidationInput): void {
 
 	// Meta — tagDefinitions syntaxKind valid. That localPaths which exist are directories is checked by the layer,
 	// through FileSystem, between these rules and the looseFiles ones.
+	//
+	// The syntaxKind rule is unreachable from effected.toml: the PackageBuildConfig decode already refuses an invalid
+	// syntaxKind as EffectedConfigError. It stays for programmatic callers, which hand Bundler.build or
+	// ConfigValidator.validate a plain MetaOptions (a TypeScript interface, so a cast or untyped value passes) with no
+	// decode in front of it.
 	if (input.meta !== undefined) {
 		// Prerequisite guard: a package with no exports cannot emit a model, so fail fast before validating the rest of the meta config.
 		if (!input.hasExports) {

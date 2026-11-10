@@ -22,15 +22,15 @@ sources:
     title: "The effected:build describe and the two-catalog consumer view"
   - id: sync-script
     resource: ../../lib/scripts/catalog-sync.ts
-    title: "SYNC_CATALOG, UNMANAGED_CATALOGS, restoreUnmanaged and checkVerdict"
+    title: "SYNC_CATALOG and checkVerdict"
   - id: silk-build
     resource: "@savvy-web/pnpm-plugin-silk 0.52.0 pnpmfile.mjs, the build catalog and the tsdown>rolldown-plugin-dts override"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-09T00:05:23Z
+  at: 2026-11-10T01:36:15Z
 integrity:
   generated:
-    body: 7c2223ea46e0f7d0
+    body: 38e72827d27e0f23
 ---
 
 # The plugin declares a second consumer-visible catalog, effected:build, for the kit's build chain
@@ -54,7 +54,28 @@ Each range, peer and strategy was copied from silk's `build` catalog as installe
 
 **It carries one peer rule.** `peerDependencyRules.allowedVersions` admits a TypeScript 7.1 prerelease under `tsdown`, whose `typescript` peer (`^5.0.0 || ^6.0.0 || ^7.0.0`) admits none. The value is silk's for the same key, so a consumer running both plugins merges two equal rules.
 
-**The catalog sync never moves it.** The sync manages next-release versions of the kit; a build-chain move is a deliberate upgrade. `catalog-sync.ts` passes `--catalog effected`, but the upgrade CLI honours that flag on its interactive path only, so `--yes` and `--check` still walk every catalog. The script therefore restores each `UNMANAGED_CATALOGS` block after `--yes` writes, and `checkVerdict` scopes `--check`'s JSON drift to `effected` before deciding the exit code.[^sync-script] Build-chain entries move through the user-run `pnpm:up`.
+**The settings that came with the chain.** Silk's plugin also held the pnpm settings that let the chain install, and a repository building with the kit on a silk release that drops them, or on no silk, would lose them. So the plugin carries every setting whose reason is the chain or the kit, copied at silk's value for the same key.[^savvy-build] The test is the lockfile's transitive closure of the `effected:build` members, not the catalog's name list.
+
+- **`minimumReleaseAgeExclude`** gains:
+  - `@effected/*`, so a kit release installs the day it ships;
+  - three patterns for the chain's lockstep satellites: `@rolldown/*` (rolldown's platform bindings), `@oxc-project/*` (`@oxc-project/types`, which rolldown pins exactly) and `@typescript/*` (TypeScript 7's native platform packages);
+  - every package the `effected:build` catalog names (`tsdown`, `rolldown`, `rolldown-plugin-dts`, `@tsdown/*`, `@rsbuild/*`, `typescript`, `tsx`, `@types/node`, React and its types).
+
+  The catalog pins those and moves them only through a deliberate `pnpm:up`. A quarantine on that move only blocks the upgrade it was chosen for, as it held rolldown 1.3.1. That is the owner's ruling.
+- **`publicHoistPattern`** hoists `typescript`, `tsx`, `@types/node`, `@types/react` and `@types/react-dom` beside the carrier. A consumer then gets the toolchain installed and reachable from every workspace package through the plugin, as silk provided it, without declaring each one, and dropping silk loses none of them. The kit's own build doesn't need the hoist: the bundler resolves `typescript` from its peer link. The consumer-side reach is the reason, and it is the owner's ruling.
+- **`allowBuilds: { esbuild: true }`**, because tsx's esbuild runs a postinstall and `strictDepBuilds` fails an install on an unlisted one. It is the only install script in the closure. `core-js` is only an optional peer of `@rsbuild/core`, so it stays with silk.
+- **`peerDependencyRules.allowedVersions`** keeps only `tsdown>typescript`. The other seven silk rules admit the prerelease under twoslash, vue, commitlint and cosmiconfig, which are silk's docs and lint packages.
+
+Lists merge by union and maps let the child win, warning only when the values differ, so two plugins declaring the same entry produce one entry and no warning. The test pins that against a silk-shaped config, and pins a divergent value's warning as its control.[^catalog-test]
+
+Some settings stay with silk on purpose:
+
+- **The quarantine value and the security flags.** `minimumReleaseAge`, `strictDepBuilds` and `blockExoticSubdeps` are repository policy, not the chain.
+- **`confirmModulesPurge`, and every entry for lint, docs, test or silk's own packages.**
+- **`allowedDeprecatedVersions`.** No package it names is in the closure.
+- **`ignoreMissing`.** The kit's bundler and tool packages peer `typescript` and `@types/node` as required, so silencing a missing one would hide a build that cannot run.
+
+**The catalog sync never moves it.** The sync manages next-release versions of the kit; a build-chain move is a deliberate upgrade. `catalog-sync.ts` passes `--catalog effected`, to both `--yes` and `--check`, and the upgrade CLI scopes every mode to it from rolldown-pnpm-config 2.4.5, so neither writes nor reports an `effected:build` entry. An undeclared name exits 1 with an `error.kind` of `catalog`, which `checkVerdict` keeps red.[^sync-script] Build-chain entries move through the user-run `pnpm:up`.
 
 This repository consumes it the way it consumes `effected`: `pnpm:export` writes `effected:build` and `effected:build:peers` into the root `pnpm-workspace.yaml`, and the workspace manifests write `catalog:effected:build` and `catalog:effected:build:peers`. The silk `lint`, `test`, `silk` and `docs` catalogs, the silk presets and the silk configDependency stay where they are.
 
@@ -69,7 +90,7 @@ This repository consumes it the way it consumes `effected`: `pnpm:export` writes
 - **A consumer moving to `effected package build` rewrites `catalog:build` to `catalog:effected:build`** for these packages; the upgrade ledger carries the entry.
 - **Export before you repoint, or the export cannot run.** A manifest that names `catalog:effected:build` before `pnpm-workspace.yaml` declares it fails every install with `ERR_PNPM_CATALOG_ENTRY_NOT_FOUND_FOR_SPEC`. `pnpm pnpm:export` fails the same way, because pnpm's `verifyDepsBeforeRun` installs before the script runs ([the gotcha](../gotchas/verify-deps-before-run.md)). This repository's own migration hit it, and the way out was to run the bin directly, `cd packages/pnpm-plugin-effected/lib/build && ../../node_modules/.bin/rolldown-pnpm-config export`, then `pnpm install`. A consumer installing the plugin as a config dependency is in the same position: move the plugin release first, then rewrite the manifests.
 - **Silk's `tsdown>rolldown-plugin-dts` override still applies wherever silk is a configDependency, this repository included**, until silk drops it. The kit cannot remove another plugin's override.
-- **The `--catalog` workaround in the sync is temporary.** Once the upgrade CLI honours `--catalog` on `--yes` and `--check`, the restore and the drift filter become redundant, though harmless.
+- **The sync relies on the CLI's scoping.** An earlier script restored the `effected:build` block after `--yes` and filtered `--check`'s drift, because the CLI honoured `--catalog` only interactively; that workaround was removed once 2.4.5 scoped every mode. A downgrade below 2.4.5 would let the sync move the build chain again.
 
 Amends [the one declared effected catalog](one-declared-effected-catalog.md) and [consumers see one catalog](consumer-catalog-fold.md). The module: [pnpm-plugin-effected](../modules/pnpm-plugin-effected.md).
 

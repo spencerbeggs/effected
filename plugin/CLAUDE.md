@@ -36,8 +36,9 @@ construct-index bats suites.
   `pnpm plugin:check` gate both enforce it.
 - **`build` is uncached on purpose** (`turbo.json`): a turbo cache hit would
   replay outputs over every file in `builds/`.
-- **pluginfinity ships only `skills/`, `agents/` and `hooks/`, and ships all of
-  `hooks/`.** Put tooling in `scripts/` and test fixtures under
+- **pluginfinity ships `skills/`, `agents/` and all of `hooks/`, plus each
+  file a `monitors` entry's command names** (`monitors/build-diagnostics.mjs`,
+  Claude Code only). Put tooling in `scripts/` and test fixtures under
   `__test__/fixtures/`, never under `hooks/`.
 - **Express host differences in the source** with `targets.<host>` frontmatter,
   `<!-- pluginfinity:only <host> -->` blocks, or a per-target override in

@@ -12,7 +12,7 @@
  *
  * @example
  * ```ts
- * import { NodeServices } from "@effect/platform-node";
+ * import * as NodeServices from "@effect/platform-node/NodeServices";
  * import { WorkspaceDiscovery, Workspaces } from "@effected/workspaces";
  * import { Effect, Layer } from "effect";
  *

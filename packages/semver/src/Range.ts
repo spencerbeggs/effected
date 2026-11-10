@@ -2,6 +2,7 @@ import { Effect, Function as Fn, Option, Result, Schema, SchemaIssue, SchemaTran
 import { Comparator } from "./Comparator.js";
 import { formatRange, parseRange } from "./internal/grammar.js";
 import { normalizeSets } from "./internal/normalize.js";
+import { isAnySet, writtenSets } from "./internal/written.js";
 import { SemVer } from "./SemVer.js";
 
 /**
@@ -83,7 +84,9 @@ export interface RangeOptions {
  *   fail with a position;
  * - build metadata is accepted and dropped (SemVer §10), so `1.2.3+build`
  *   parses to the same range as `1.2.3` and prints without `+build`. Core
- *   rejects build metadata in a range; this package strips it, as npm does.
+ *   rejects build metadata in a range; this package strips it, as npm does;
+ * - an empty part beside `||` (`||*`, `^1.0.0 ||`, `1.0.0 || || 2.0.0`)
+ *   matches every release, as node-semver reads it; core rejects it.
  *
  * Prerelease matching follows node-semver's default rule — a prerelease
  * version only satisfies a comparator set that carries a prerelease on the
@@ -228,6 +231,93 @@ export class Range extends Schema.Class<Range>("Range")({
 	 */
 	static readonly parse = Effect.fn("Range.parse")((input: string, options?: RangeOptions) =>
 		Effect.fromResult(Range.parseResult(input, options)),
+	);
+
+	/**
+	 * Parse a range expression into its comparator sets as node-semver's
+	 * `Range#set` holds them, synchronously, returning a `Result`.
+	 *
+	 * @remarks
+	 * A {@link Range} is normalized for the range algebra: each set is sorted
+	 * and keeps the `>=0.0.0` floor that `*` desugars to. node-semver keeps
+	 * neither choice, and a tool reproducing it (rewriting a range the way a
+	 * release tool does) needs its view instead. This one desugars exactly as
+	 * {@link Range.parseResult} does, then:
+	 *
+	 * - keeps each set's comparators in the order they were written, a
+	 *   duplicate in its first position;
+	 * - drops the any-version floor, `>=0.0.0` (or `>=0.0.0-0` when the range
+	 *   includes prereleases), so a set of nothing but that floor is empty:
+	 *   the empty set is "any version";
+	 * - makes a set holding `<0.0.0-0`, which admits nothing, just that
+	 *   comparator;
+	 * - beside another set, drops a set that admits nothing (keeping the
+	 *   first when all do), and lets an any-version set stand for the whole
+	 *   range.
+	 *
+	 * {@link Range.isAny} is true exactly when one of these sets is empty.
+	 * {@link Range.writtenSets} is defined in terms of this function.
+	 *
+	 * One comparator is written differently from node-semver: under
+	 * `includePrerelease` a full hyphen upper bound, `1.2.3 - 2.3.4`, is
+	 * `<=2.3.4` here, as core `SemVerRange` expands it, where node-semver
+	 * writes `<2.3.5-0`. No version lies between the two, so both match the
+	 * same versions.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Range } from "@effected/semver";
+	 * import { Result } from "effect";
+	 *
+	 * const written = Range.writtenSetsResult("<2.0.0 >=0.0.0 || <4.0.0 >=3.0.0");
+	 * if (Result.isSuccess(written)) {
+	 *   console.log(written.success.map((set) => set.map(String).join(" ")));
+	 *   // => ["<2.0.0", "<4.0.0 >=3.0.0"]
+	 * }
+	 * ```
+	 *
+	 * @param input - the range expression to parse
+	 * @param options - how the range treats prereleases; see {@link RangeOptions}
+	 * @returns a `Result` succeeding with the comparator sets, or failing with
+	 * {@link InvalidRangeError}.
+	 */
+	static writtenSetsResult(
+		input: string,
+		options?: RangeOptions,
+	): Result.Result<ReadonlyArray<ComparatorSet>, InvalidRangeError> {
+		const includePrerelease = options?.includePrerelease === true;
+		const result = parseRange(input, { includePrerelease });
+		if (!result.ok) {
+			return Result.fail(new InvalidRangeError({ input: result.input, position: result.position }));
+		}
+		return Result.succeed(
+			writtenSets(result.value, includePrerelease).map((set) =>
+				set.map((c) => Comparator.make({ operator: c.operator, version: SemVer.make(c.version) })),
+			),
+		);
+	}
+
+	/**
+	 * Parse a range expression into its comparator sets as node-semver holds
+	 * them: written order, the any-version floor dropped. Defined in terms of
+	 * {@link Range.writtenSetsResult}, which states the rules.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Range } from "@effected/semver";
+	 * import { Effect } from "effect";
+	 *
+	 * const sets = Effect.runSync(Range.writtenSets("<2.0.0 >=1.0.0"));
+	 * console.log(sets[0]?.map(String));
+	 * // => ["<2.0.0", ">=1.0.0"]
+	 * ```
+	 *
+	 * @param input - the range expression to parse
+	 * @param options - how the range treats prereleases; see {@link RangeOptions}
+	 * @returns the comparator sets. Fails with {@link InvalidRangeError}.
+	 */
+	static readonly writtenSets = Effect.fn("Range.writtenSets")((input: string, options?: RangeOptions) =>
+		Effect.fromResult(Range.writtenSetsResult(input, options)),
 	);
 
 	// ── Matching statics (dual) ─────────────────────────────────────────
@@ -464,6 +554,38 @@ export class Range extends Schema.Class<Range>("Range")({
 	/** Filter versions that satisfy this range, preserving order. */
 	filter(versions: ReadonlyArray<SemVer>): ReadonlyArray<SemVer> {
 		return versions.filter((v) => this.test(v));
+	}
+
+	/**
+	 * Whether this range places no bound on a version: node-semver's
+	 * `new Range(input).range === ""`.
+	 *
+	 * @remarks
+	 * True when some set is empty or holds nothing but the any-version floor
+	 * `*` desugars to: `>=0.0.0`, or `>=0.0.0-0` for a range parsed with
+	 * {@link RangeOptions.includePrerelease}. So `*`, `x`, the empty string,
+	 * `>=0.0.0` and `^1.0.0 || *` are any-version ranges, and `* <2.0.0` is
+	 * not. It does not mean every version satisfies the range: under the
+	 * default prerelease rule `*` still rejects `1.0.0-beta`, as in
+	 * node-semver.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Range } from "@effected/semver";
+	 * import { Effect } from "effect";
+	 *
+	 * const program = Effect.gen(function* () {
+	 *   const any = yield* Range.parse("^1.0.0 || *");
+	 *   const bounded = yield* Range.parse("* <2.0.0");
+	 *   return [any.isAny(), bounded.isAny()] as const;
+	 * });
+	 *
+	 * console.log(Effect.runSync(program));
+	 * // => [true, false]
+	 * ```
+	 */
+	isAny(): boolean {
+		return this.sets.some((set) => isAnySet(set, this.includePrerelease));
 	}
 
 	/** The range expression string, `a b || c d`. */

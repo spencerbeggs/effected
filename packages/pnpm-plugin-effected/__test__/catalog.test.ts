@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { assert, describe, it } from "vitest";
+import { assert, describe, it, vi } from "vitest";
 
 const PACKAGE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const PACKAGES_DIR = fileURLToPath(new URL("../../", import.meta.url));
@@ -435,5 +435,118 @@ describe("the effected tool", () => {
 		const { publicHoistPattern } = await hooks.updateConfig({});
 		assert.isArray(publicHoistPattern, "the resolved config carries no publicHoistPattern");
 		assert.include(publicHoistPattern as ReadonlyArray<string>, "@effected/plugin");
+	});
+});
+
+/**
+ * The pnpm settings that came with the build chain from silk's plugin: the release-age
+ * exclusions for the kit and the whole build chain, the toolchain hoists, esbuild's build script and
+ * the tsdown TypeScript rule. Read off the built hook, where the merge with a consumer's
+ * own settings, and with silk's when both plugins run, can be observed.
+ */
+describe("settings that came with the build chain", () => {
+	const PNPMFILE = join(PACKAGE_ROOT, "dist/prod/npm/pkg/pnpmfile.mjs");
+	const EXCLUDED = [
+		"@effected/*",
+		"@oxc-project/*",
+		"@rolldown/*",
+		"@typescript/*",
+		"@rsbuild/*",
+		"@tsdown/*",
+		"@types/node",
+		"@types/react",
+		"@types/react-dom",
+		"react",
+		"react-dom",
+		"rolldown",
+		"rolldown-plugin-dts",
+		"tsdown",
+		"tsx",
+		"typescript",
+	];
+	// The value both plugins declare for `tsdown>typescript`; one changed alone makes them diverge.
+	const TSDOWN_TYPESCRIPT = "^5.5.0 || ^6.0.0 || ^7.0.0 || ^7.1.0-beta";
+	/** What silk's plugin hands on for the keys the two plugins share, as of the port. */
+	const SILK = {
+		minimumReleaseAgeExclude: ["@effected/*", "@oxc-project/*", "@rolldown/*", "@typescript/*", "@pnpm/*", "effect"],
+		allowBuilds: { esbuild: true, "better-sqlite3": true },
+		peerDependencyRules: { allowedVersions: { "tsdown>typescript": TSDOWN_TYPESCRIPT } },
+	};
+
+	async function updateConfig(config: Record<string, unknown>): Promise<Record<string, unknown>> {
+		assert.isTrue(existsSync(PNPMFILE), "build the plugin before testing its pnpmfile");
+		const { hooks } = (await import(PNPMFILE)) as {
+			hooks: { updateConfig: (config: Record<string, unknown>) => Promise<Record<string, unknown>> };
+		};
+		return hooks.updateConfig(config);
+	}
+
+	/** Run the hook and collect what it warns, which is how a divergence surfaces. */
+	async function withWarnings(config: Record<string, unknown>) {
+		const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const out = await updateConfig(config);
+			return { out, warnings: spy.mock.calls.map((call) => call.join(" ")) };
+		} finally {
+			spy.mockRestore();
+		}
+	}
+
+	it("excludes the kit and the chain's lockstep satellites from the release-age quarantine", async () => {
+		const { minimumReleaseAgeExclude } = await updateConfig({});
+		for (const pattern of [...EXCLUDED, "effect", "@effect/*"]) {
+			assert.include(minimumReleaseAgeExclude as string[], pattern);
+		}
+		// The quarantine itself is repository policy and stays with silk.
+		assert.notProperty(await updateConfig({}), "minimumReleaseAge");
+	});
+
+	it("unions a consumer's own exclusions with its own, deduplicated", async () => {
+		const { minimumReleaseAgeExclude } = await updateConfig({ minimumReleaseAgeExclude: ["foo", "@rolldown/*"] });
+		const list = minimumReleaseAgeExclude as string[];
+		assert.include(list, "foo");
+		assert.strictEqual(list.filter((p) => p === "@rolldown/*").length, 1);
+	});
+
+	it("allows esbuild's build script, and lets a consumer's own value win", async () => {
+		assert.deepStrictEqual((await updateConfig({})).allowBuilds, { esbuild: true });
+		assert.deepStrictEqual((await updateConfig({ allowBuilds: { esbuild: false } })).allowBuilds, { esbuild: false });
+	});
+
+	it("merges silk's settings for the same keys silently", async () => {
+		const { out, warnings } = await withWarnings(SILK);
+		assert.deepStrictEqual(warnings, [], "two plugins declaring the same value must not diverge");
+		assert.deepStrictEqual(out.allowBuilds, { esbuild: true, "better-sqlite3": true });
+		const rules = out.peerDependencyRules as { allowedVersions: Record<string, string> };
+		assert.strictEqual(rules.allowedVersions["tsdown>typescript"], TSDOWN_TYPESCRIPT);
+		const list = out.minimumReleaseAgeExclude as string[];
+		for (const pattern of [...EXCLUDED, "@pnpm/*"]) assert.strictEqual(list.filter((p) => p === pattern).length, 1);
+	});
+
+	// The control for the silent merge above: a divergent value for the same key does warn,
+	// so an empty warning list means the values agreed, not that nothing was checked.
+	it("warns when another plugin's tsdown rule diverges", async () => {
+		const { warnings } = await withWarnings({
+			peerDependencyRules: { allowedVersions: { "tsdown>typescript": "^5.0.0" } },
+		});
+		assert.isNotEmpty(warnings);
+		assert.match(warnings.join("\n"), /tsdown>typescript/);
+	});
+
+	// The carrier and the build catalog's toolchain are hoisted, as silk hoists them. Missing
+	// peers stay loud: the kit peers typescript and @types/node, so silencing a missing one
+	// would hide a build that cannot run.
+	it("hoists the carrier and the toolchain, and silences no missing peer", async () => {
+		const out = await updateConfig({});
+		assert.sameMembers(out.publicHoistPattern as string[], [
+			"@effected/plugin",
+			"typescript",
+			"@types/node",
+			"@types/react",
+			"@types/react-dom",
+			"tsx",
+		]);
+		const rules = out.peerDependencyRules as { ignoreMissing?: string[] };
+		assert.deepStrictEqual(rules.ignoreMissing ?? [], []);
 	});
 });

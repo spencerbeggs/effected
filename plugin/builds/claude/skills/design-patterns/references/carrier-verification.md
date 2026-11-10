@@ -88,7 +88,7 @@ the scanner itself can fail before trusting a clean result:
 
 ```ts
 import { resolve } from "node:path"
-import { NodeServices } from "@effect/platform-node"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { SourceBoundary } from "@effected/workspaces/testing"
 import { Cause, Effect, Exit } from "effect"
 
@@ -221,7 +221,7 @@ same scope** the install used, since the scratch directory is removed when
 the scope closes.
 
 ```ts
-import { NodeServices } from "@effect/platform-node"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { McpProbe } from "@effected/mcp-kit/testing"
 import { Workspaces } from "@effected/workspaces"
 import { PackedInstall } from "@effected/workspaces/testing"
@@ -386,7 +386,7 @@ assert that they are:
 ```ts
 // __test__/e2e/packed-install.e2e.test.ts, two levels below the workspace root
 import { resolve } from "node:path"
-import { NodeServices } from "@effect/platform-node"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { assert, describe, it, layer } from "@effect/vitest"
 import { McpProbe } from "@effected/mcp-kit/testing"
 import { Workspaces } from "@effected/workspaces"

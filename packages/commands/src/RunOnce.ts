@@ -151,7 +151,7 @@ export interface ProcessLivenessShape {
  *
  * @example
  * ```ts
- * import { NodeServices } from "@effect/platform-node";
+ * import * as NodeServices from "@effect/platform-node/NodeServices";
  * import { ProcessLiveness, RunOnce } from "@effected/commands";
  * import { nodeProcessLiveness } from "@effected/commands/node-sync";
  * import { Effect, Layer } from "effect";
@@ -645,7 +645,7 @@ export class RunOnce {
 	 *
 	 * @example
 	 * ```ts
-	 * import { NodeServices } from "@effect/platform-node";
+	 * import * as NodeServices from "@effect/platform-node/NodeServices";
 	 * import { ProcessLiveness, RunOnce } from "@effected/commands";
 	 * import { nodeProcessLiveness } from "@effected/commands/node-sync";
 	 * import { Effect, Layer } from "effect";

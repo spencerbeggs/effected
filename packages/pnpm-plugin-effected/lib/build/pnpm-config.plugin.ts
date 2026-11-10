@@ -164,8 +164,8 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					strategy: "lock-minor",
 				},
 				"@effect/tsgo": {
-					range: "^0.63.0",
-					peer: "^0.63.0",
+					range: "^0.67.5",
+					peer: "^0.67.0",
 					strategy: "lock-minor",
 				},
 				effect: {
@@ -523,12 +523,12 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					strategy: "lock",
 				},
 				"@rsbuild/core": {
-					range: "^2.3.0",
+					range: "^2.3.1",
 					peer: "^2.3.0",
 					strategy: "lock-minor",
 				},
 				"@tsdown/exe": {
-					range: "^0.23.4",
+					range: "^0.23.7",
 					peer: "^0.23.0",
 					strategy: "lock-minor",
 				},
@@ -558,8 +558,8 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					strategy: "lock-minor",
 				},
 				rolldown: {
-					range: "^1.2.16",
-					peer: "^1.2.0",
+					range: "^1.3.1",
+					peer: "^1.3.0",
 					strategy: "lock-minor",
 				},
 				// The declaration pass tsdown runs. tsdown asks for ^0.30.0 itself; the entry is here so a
@@ -571,7 +571,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					strategy: "lock-minor",
 				},
 				tsdown: {
-					range: "^0.23.4",
+					range: "^0.23.7",
 					peer: "^0.23.0",
 					strategy: "lock-minor",
 				},
@@ -596,8 +596,50 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 	},
 	// The carrier is a consumer's root devDependency; hoisting it publicly puts it, and so its
 	// `effected` and `effected-mcp` bins, at the workspace root for every package to reach.
-	publicHoistPattern: ["@effected/plugin"],
-	minimumReleaseAgeExclude: ["effect", "@effect/*", "@effect/tsgo-*"],
+	//
+	// The toolchain the effected:build catalog carries is hoisted to the consumer's root, as silk
+	// hoists it, so a repository that drops silk keeps `tsc`, `tsx` and the `@types` packages
+	// reachable from every workspace package, including one that declares none of them itself.
+	// The kit's own build does not need the hoist (the bundler resolves typescript from its peer
+	// link); the owner ruled the consumer-side reach worth carrying here.
+	publicHoistPattern: ["@effected/plugin", "typescript", "@types/node", "@types/react", "@types/react-dom", "tsx"],
+	// The kit's own releases and the build chain's lockstep satellites install the day they ship.
+	// The quarantine itself (`minimumReleaseAge`) is repository policy, and stays with silk.
+	// - `@effected/*`: a kit release; its changesets and the catalog sync assume it installs at once.
+	// - `@rolldown/*`: rolldown's platform bindings, published with rolldown and pinned exactly by it.
+	// - `@oxc-project/*`: `@oxc-project/types`, which rolldown pins exactly and which ships with it.
+	// - `@typescript/*`: TypeScript 7's native platform packages, published with `typescript`.
+	// - every package the effected:build catalog names (tsdown, rolldown, rolldown-plugin-dts,
+	//   `@tsdown/*`, `@rsbuild/*`, typescript, tsx, `@types/node`, React and its types): the
+	//   catalog pins them and moves them only through a deliberate `pnpm:up`, and a quarantine on
+	//   that move only blocks the upgrade it was chosen for (rolldown 1.3.1 was held exactly so).
+	// Lists union across plugins, so an entry silk also declares collapses to one.
+	minimumReleaseAgeExclude: [
+		"effect",
+		"@effect/*",
+		"@effect/tsgo-*",
+		"@effected/*",
+		"@oxc-project/*",
+		"@rolldown/*",
+		"@rsbuild/*",
+		"@tsdown/*",
+		"@types/node",
+		"@types/react",
+		"@types/react-dom",
+		"@typescript/*",
+		"react",
+		"react-dom",
+		"rolldown",
+		"rolldown-plugin-dts",
+		"tsdown",
+		"tsx",
+		"typescript",
+	],
+	// tsx depends on esbuild, whose postinstall (`node install.js`) checks its platform binary.
+	// Under `strictDepBuilds` an unlisted build script fails the install, so the chain's one
+	// build script is allowed here. It is the only install script in the effected:build closure.
+	// The value is silk's for the same key, so the two plugins never disagree on it.
+	allowBuilds: { esbuild: true },
 	// Every Effect-family member of the catalog is pinned to its exact catalog version across the
 	// whole consumer graph, scoped to the 4.x line: `"<name>@^4.0.0": "<version>"` for
 	// effect and each satellite, derived from the catalog literal above so the pins move

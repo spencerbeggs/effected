@@ -1,4 +1,7 @@
-// The golden corpus: savvy-web/systems' five changeset rules, each of which
+// The golden corpus, kept as an engine-fidelity corpus: savvy-web's changeset
+// house-style rules, which savvy-web owns and the kit does not ship, copied
+// under __test__/rules/ as test fixtures only. They are savvy-web/systems' five
+// changeset rules, each of which
 // systems implements twice (a kit-node rule for its programmatic linter, a
 // micromark-token rule for markdownlint-cli2), held to byte-identical output
 // by ONE definition per rule under both of this package's hosts.

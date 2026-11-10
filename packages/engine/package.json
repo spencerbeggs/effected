@@ -52,6 +52,10 @@
 		"@types/node": "catalog:effected:build",
 		"typescript": "catalog:effected:build"
 	},
+	"peerDependencies": {
+		"@types/node": "catalog:effected:build:peers",
+		"typescript": "7.1.0-beta || 7.1.1-rc || >=7.1.0 <8"
+	},
 	"engines": {
 		"node": ">=24.11.0"
 	},

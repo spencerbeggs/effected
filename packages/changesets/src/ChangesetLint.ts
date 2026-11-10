@@ -1,62 +1,136 @@
-import type { LintDiagnostic, LintRule, MarkdownLintOptions } from "@effected/markdown-lint";
-import { MarkdownLint } from "@effected/markdown-lint";
-import { ContentStructure } from "./internal/lint/content-structure.js";
-import { DependencyTableFormat } from "./internal/lint/dependency-table-format.js";
-import { HeadingHierarchy } from "./internal/lint/heading-hierarchy.js";
-import { RequiredSections } from "./internal/lint/required-sections.js";
-import { UncategorizedContent } from "./internal/lint/uncategorized-content.js";
+import type {
+	LintContext,
+	LintDiagnostic,
+	LintRule as LintRuleType,
+	MarkdownLintOptions,
+} from "@effected/markdown-lint";
+import { LintRule, MarkdownLint } from "@effected/markdown-lint";
+import { readFrontMatter } from "./internal/frontMatter.js";
+
+const RELEASE_TYPES: ReadonlySet<unknown> = new Set(["major", "minor", "patch", "none"]);
+
+const TAGS = ["changeset", "front-matter"] as const;
 
 /**
- * The changeset style rules CSH001 to CSH005, each defined once as a
- * `LintRule` over `@effected/markdown` trees, so one definition runs in
- * `MarkdownLint` and, through `MarkdownlintAdapter`, in markdownlint and
- * markdownlint-cli2.
+ * A front matter value as a diagnostic quotes it. Never throws: YAML decodes an integer past 2^53 as a bigint, which
+ * `JSON.stringify` refuses, at the top level or nested, so a rule reports the value instead of crashing on it.
+ */
+const showValue = (value: unknown): string => {
+	if (typeof value === "bigint") return String(value);
+	try {
+		return JSON.stringify(value, (_key, v: unknown) => (typeof v === "bigint" ? String(v) : v)) ?? String(value);
+	} catch {
+		return Object.prototype.toString.call(value);
+	}
+};
+
+/** The entries of a front matter `@changesets/parse` accepts; none when it refuses one, which `frontMatter` reports. */
+const entriesOf = (context: LintContext) => {
+	const read = readFrontMatter(context.source);
+	return read.ok ? read.entries : [];
+};
+
+const frontMatter = LintRule.make({
+	names: ["changeset-front-matter", "CF001"],
+	description: "A changeset starts with a front matter block of YAML mapping package names to release types",
+	tags: [...TAGS],
+	check: (context, report) => {
+		const read = readFrontMatter(context.source);
+		if (!read.ok) report(context.diagnostic({ at: read.at, detail: read.detail }));
+	},
+});
+
+const packageName = LintRule.make({
+	names: ["changeset-package-name", "CF002"],
+	description: "Every front matter key names a package",
+	tags: [...TAGS],
+	check: (context, report) => {
+		for (const entry of entriesOf(context)) {
+			if (entry.name.trim() !== "") continue;
+			report(
+				context.diagnostic({
+					at: entry.at,
+					detail: `${JSON.stringify(entry.name)} is not a package name: a key must name a package.`,
+				}),
+			);
+		}
+	},
+});
+
+const releaseType = LintRule.make({
+	names: ["changeset-release-type", "CF003"],
+	description: "Every front matter value is major, minor, patch or none",
+	tags: [...TAGS],
+	check: (context, report) => {
+		for (const entry of entriesOf(context)) {
+			if (RELEASE_TYPES.has(entry.type)) continue;
+			report(
+				context.diagnostic({
+					at: entry.at,
+					detail: `${entry.name}: ${showValue(entry.type)} is not a release type; use major, minor, patch or none.`,
+					context: entry.name,
+				}),
+			);
+		}
+	},
+});
+
+/**
+ * Options for {@link ChangesetLint.lint}: `MarkdownLint`'s parse options,
+ * plus the rules to run.
+ *
+ * @public
+ */
+export interface ChangesetLintOptions extends MarkdownLintOptions {
+	/**
+	 * The workspace's package names. When given, the
+	 * {@link ChangesetLint.knownPackages} rule runs over them; without them,
+	 * a name is never checked against the workspace.
+	 */
+	readonly packages?: Iterable<string> | undefined;
+	/** Rules run after the defaults: a house style's own, for example. */
+	readonly rules?: ReadonlyArray<LintRuleType> | undefined;
+	/**
+	 * The default set to run, replacing {@link ChangesetLint.defaults}; pass
+	 * `[]` to run only `rules`.
+	 */
+	readonly defaults?: ReadonlyArray<LintRuleType> | undefined;
+}
+
+/**
+ * Lint rules for changeset files that hold under any house style: only what
+ * the changesets tool itself refuses a file for, as `@changesets/parse`
+ * reads one, plus, when the workspace's names are given, that each named
+ * package exists.
  *
  * @remarks
- * The rules check a changeset's body, whatever its front matter says:
+ * Each rule is an `@effected/markdown-lint` `LintRule`, so one definition
+ * runs in `MarkdownLint` and, through `MarkdownlintAdapter`, in markdownlint
+ * and markdownlint-cli2. A house style (section headings, summary layout)
+ * is not here: pass its rules as `rules`, or beside these to
+ * `MarkdownlintAdapter.rules`.
  *
- * - `CSH001` `changeset-heading-hierarchy`: no `h1`, and no heading that
- *   skips a level.
- * - `CSH002` `changeset-required-sections`: every `h2` names one of the
- *   thirteen categories (`Breaking Changes`, `Features`, `Bug Fixes`,
- *   `Performance`, `Documentation`, `Refactoring`, `Tests`, `Build System`,
- *   `CI`, `Dependencies`, `Maintenance`, `Reverts`, `Other`), ignoring case.
- * - `CSH003` `changeset-content-structure`: no empty section, no code fence
- *   without a language, no empty list item.
- * - `CSH004` `changeset-uncategorized-content`: no content before the first
- *   `h2`.
- * - `CSH005` `changeset-dependency-table-format`: a `Dependencies` section
- *   holds a `Dependency | Type | Action | From | To` table whose cells are
- *   valid.
+ * The rules, named in their own scheme: `CF` for changeset front matter.
  *
- * Messages, lines and columns are savvy-web/systems' own, which wrote the
- * rules. systems implements each rule twice, and where its two engines
- * disagree these follow its markdownlint engine, the one markdownlint-cli2
- * and a pre-commit hook run. That engine reads micromark tokens, so:
+ * - `CF001` `changeset-front-matter`: the file is not empty, has a front
+ *   matter block between `---` lines, the block is YAML, and a non-empty
+ *   value is a mapping. The block is found with `@changesets/parse`'s own
+ *   pattern, which allows leading whitespace and does not require the block
+ *   at the start of the file.
+ * - `CF002` `changeset-package-name`: every key is a package name, which
+ *   `@changesets/parse` checks only as not blank, and neither does this: an
+ *   npm-name check would refuse files changesets accepts.
+ * - `CF003` `changeset-release-type`: every value is `major`, `minor`,
+ *   `patch` or `none`.
+ * - `CF004` `changeset-known-package`, from
+ *   {@link ChangesetLint.knownPackages}: every key names a package of the
+ *   workspace. It runs only when the names are given.
  *
- * - Only top-level blocks are sections: a heading, list or code block
- *   inside a list item or a block quote is not checked by CSH001, CSH002 or
- *   CSH003.
- * - A heading or table cell is compared as written, with backslash escapes
- *   resolved and inline formatting kept: a heading of `Features` in a code
- *   span and `## *Bug Fixes*` are unknown sections, and a `From` cell of
- *   `1.0.0` in a code span is not a version. That verdict looks stricter than an author
- *   expects, but it is what markdownlint enforces.
- * - CSH003 checks fenced code only, since an indented block has no fence to
- *   name a language on, and calls a list item empty unless it holds a
- *   paragraph: an item of only an HTML comment, a nested list or a heading is
- *   empty, and an item of only an image is not.
- * - A table row shorter than the header has too few columns. The parsed tree
- *   pads it with empty cells, which are not counted.
- * - A setext heading directly under a link reference definition is
- *   reported on the definition's line, where micromark starts its token.
- * - A heading over several lines is named on one line, as markdownlint
- *   writes every detail.
- *
- * One difference remains, and it is the parser's, not a rule's: after an
- * indented code block, markdownlint's micromark reads a bare `- ` line as a
- * paragraph, where CommonMark reads an empty list item, so CSH003 reports an
- * empty item there and markdownlint does not.
+ * An empty front matter and an empty summary are both legal: they are what
+ * `changeset add --empty` writes. `CF002` to `CF004` read only a front
+ * matter `CF001` accepts, so a broken block is reported once.
+ * `__test__/ChangesetLint.test.ts` holds the defaults to `@changesets/parse`:
+ * a file it parses fails none of them, and a file it refuses fails one.
  *
  * @example
  * ```ts
@@ -64,45 +138,69 @@ import { UncategorizedContent } from "./internal/lint/uncategorized-content.js";
  * import { ChangesetLint } from "@effected/changesets/lint";
  *
  * // .markdownlint-cli2.mjs
- * export default { customRules: MarkdownlintAdapter.rules(ChangesetLint.rules) };
+ * export default { customRules: MarkdownlintAdapter.rules(ChangesetLint.defaults) };
  * ```
  *
  * @public
  */
 export class ChangesetLint {
-	/** CSH001: headings start at `h2` and never skip a level. */
-	static readonly headingHierarchy: LintRule = HeadingHierarchy;
-	/** CSH002: every `h2` names a changeset category. */
-	static readonly requiredSections: LintRule = RequiredSections;
-	/** CSH003: sections have content, fences a language, list items text. */
-	static readonly contentStructure: LintRule = ContentStructure;
-	/** CSH004: nothing comes before the first category heading. */
-	static readonly uncategorizedContent: LintRule = UncategorizedContent;
-	/** CSH005: a `Dependencies` section holds a valid dependency table. */
-	static readonly dependencyTableFormat: LintRule = DependencyTableFormat;
+	/** `CF001`: a front matter block of YAML, a mapping when not empty. */
+	static readonly frontMatter: LintRuleType = frontMatter;
+	/** `CF002`: every key names a package. */
+	static readonly packageName: LintRuleType = packageName;
+	/** `CF003`: every value is a release type. */
+	static readonly releaseType: LintRuleType = releaseType;
+
+	/** The default rules, `CF001` to `CF003`, in that order. */
+	static readonly defaults: ReadonlyArray<LintRuleType> = [frontMatter, packageName, releaseType];
 
 	/**
-	 * The five rules in the order savvy-web/systems' linter runs them, CSH005
-	 * before CSH004, which is the order `MarkdownLint` reports their findings
-	 * in.
+	 * `CF004` `changeset-known-package`: every front matter key names one of
+	 * `packages`, the workspace's package names.
+	 *
+	 * @param packages - The workspace's package names.
 	 */
-	static readonly rules: ReadonlyArray<LintRule> = [
-		HeadingHierarchy,
-		RequiredSections,
-		ContentStructure,
-		DependencyTableFormat,
-		UncategorizedContent,
-	];
+	static knownPackages(packages: Iterable<string>): LintRuleType {
+		const known = new Set(packages);
+		return LintRule.make({
+			names: ["changeset-known-package", "CF004"],
+			description: "Every front matter key names a package of the workspace",
+			tags: [...TAGS],
+			check: (context, report) => {
+				for (const entry of entriesOf(context)) {
+					if (entry.name.trim() === "" || known.has(entry.name)) continue;
+					report(
+						context.diagnostic({
+							at: entry.at,
+							detail: `${entry.name} is not a package of this workspace.`,
+							context: entry.name,
+						}),
+					);
+				}
+			},
+		});
+	}
 
 	/**
-	 * Lint one changeset file's text with all five rules: `MarkdownLint.lint`
-	 * over {@link ChangesetLint.rules}. Line numbers count the whole file, front
-	 * matter included.
+	 * Lint one changeset file's text: `MarkdownLint.lint` over
+	 * {@link ChangesetLint.defaults} (or `options.defaults`), then
+	 * {@link ChangesetLint.knownPackages} when `options.packages` is given,
+	 * then `options.rules`. Line numbers count the whole file, front matter
+	 * included.
 	 *
 	 * @param source - The changeset file's text.
-	 * @param options - Parse options, passed to `MarkdownLint.lint`.
+	 * @param options - The rules and the parse options.
 	 */
-	static lint(source: string, options?: MarkdownLintOptions): ReadonlyArray<LintDiagnostic> {
-		return MarkdownLint.lint(source, ChangesetLint.rules, options);
+	static lint(source: string, options?: ChangesetLintOptions): ReadonlyArray<LintDiagnostic> {
+		const { packages, rules, defaults, ...parse } = options ?? {};
+		return MarkdownLint.lint(
+			source,
+			[
+				...(defaults ?? ChangesetLint.defaults),
+				...(packages === undefined ? [] : [ChangesetLint.knownPackages(packages)]),
+				...(rules ?? []),
+			],
+			parse,
+		);
 	}
 }

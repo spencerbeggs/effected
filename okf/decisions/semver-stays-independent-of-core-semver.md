@@ -8,7 +8,7 @@ tags:
   - dx
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-24T00:43:19Z
+  at: 2026-11-10T00:30:06Z
 sources:
   - id: issue-1040
     resource: https://github.com/spencerbeggs/effected/issues/1040
@@ -20,14 +20,16 @@ sources:
     resource: ../../packages/semver/__test__/core-parity.test.ts
 integrity:
   generated:
-    body: 442474263b7d63c2
+    body: d7abe2e95a3f8c0a
   verified:
     by: human:spencer
-    at: 2026-10-25T20:04:29Z
-    content: 7b74de953bc423dd
+    at: 2026-11-10T00:32:33Z
+    content: 926810b061ac6500
 verified:
   - by: human:spencer
     at: 2026-10-25T20:04:29Z
+  - by: human:spencer
+    at: 2026-11-10T00:32:33Z
 ---
 
 # @effected/semver stays independent of core SemVer and SemVerRange
@@ -73,7 +75,7 @@ disagreement outside a named allowlist[^core-parity-test].
 
 ## Deliberate divergences
 
-The differential test allowlists exactly four, by name:
+The differential test allowlists exactly five, by name:
 
 | Divergence | Kit | Core |
 | --- | --- | --- |
@@ -81,6 +83,7 @@ The differential test allowlists exactly four, by name:
 | Build metadata in a range or comparator (`1.2.3+build`) | accepts and drops it, as npm does | rejects |
 | Equality of `1.0.0+a` and `1.0.0+b` | equal (precedence) | not equivalent (structural) |
 | `bump.major()` / `.minor()` / `.patch()` of `2.0.0-beta.1` | increments: `3.0.0` / `2.1.0` / `2.0.1` | finishes the release: `2.0.0` |
+| An empty part beside `\|\|` (`\|\|*`, `^1.0.0 \|\|`) | matches every release, as node-semver reads it | rejects |
 
 Never mix kit and core values in one hash-keyed collection: the two
 equalities disagree on build metadata.

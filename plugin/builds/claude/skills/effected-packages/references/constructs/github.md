@@ -30,6 +30,8 @@
 | `BranchOutcome` | TypeAlias | What `GitBranchShape.upsert` did. | |
 | `CachedToken` | Interface | An installation token from `GitHubApp.cachedToken`, and where it came from. | |
 | `CachedTokenRequest` | Interface | What to fetch a cached installation token for. | |
+| `ChangelogInfo` | Class | The commit and pull request facts a changelog line credits, batched into one GraphQL query. | changelog line credit for a commit or pull request, batched graphql, replaces get-github-info |
+| `ChangelogInfoShape` | Interface | The commit and pull request facts a changelog line credits. | |
 | `CheckConclusion` | Variable | How a check run finished. | success failure neutral cancelled timed_out action_required skipped, how a check run finished |
 | `CheckRun` | Class | Create, update and conclude GitHub check runs, including the `CheckRunShape.withCheckRun` bracket that always reaches a terminal state. | report a job's verdict on a commit, create update complete a run, find a run by external id |
 | `CheckRunOutput` | Class | A check run's rendered output. | check run title summary and annotations, truncate to github's 65535 byte limit |
@@ -42,6 +44,7 @@
 | `CommentMarker` | Class | The hidden marker that makes a comment findable again. | hidden html marker that makes a sticky comment findable again, namespaced comment key |
 | `CommentOnceResult` | Class | What `GitHubIssueShape.commentOnce` found or wrote. | whether commentOnce posted a new comment or found the marker already there |
 | `CommentRecord` | Class | A comment this package wrote or found: its id, body and web URL. | id body and url of a comment this package wrote or found |
+| `CommitChangelogInfo` | Class | What a changelog line says about one commit. | commit author login, pull request number and markdown links for a changelog line |
 | `CommitComparison` | Class | The result of comparing two refs. | diff between two refs, ahead/behind counts, commits and changed files |
 | `CommitFile` | Class | One changed file. | one file's path status additions deletions from a commit or comparison |
 | `CommitRef` | Class | A commit, projected to the three fields callers actually use. | a commit's sha, tree sha, and parent shas for building a tree |
@@ -107,6 +110,7 @@
 | `InstallationToken` | Class | An installation access token and what GitHub said about it. | a minted app installation token, expiry and permissions, re-mint before it expires |
 | `InstallationTokenStore` | Class | Where `GitHubApp.cachedToken` keeps installation tokens between request scopes. | cache installation tokens across requests or worker isolates, kv-backed token store seam |
 | `InstallationTokenStoreShape` | Interface | The operations of an `InstallationTokenStore`. | |
+| `InvalidChangelogRefError` | Class | A changelog lookup was handed a commit sha or pull request number it cannot send. | changelog lookup refused a non-hex sha or non-positive pull request number |
 | `InvalidRepoRefError` | Class | A repository slug was not `owner/repo`. | a repository slug was not owner/repo, malformed repo ref parse failure |
 | `IssueInfo` | Class | An issue, projected to what callers read. | an issue's number title state labels and node id, projected for callers |
 | `LatestSemverOptions` | Interface | How to pick the newest version-shaped tag. | |
@@ -121,6 +125,7 @@
 | `PermissionResult` | Class | What comparing a token's permissions against a requirement found. | what comparing a token's permissions against a requirement found, missing and extra permissions |
 | `PollOptions` | Interface | How often to poll for a dispatched run, and how long to keep polling. | |
 | `PullRequest` | Class | Read, list, create, update, merge and label pull requests, and control auto-merge. | get list create update and merge a pull request, request reviewers |
+| `PullRequestChangelogInfo` | Class | What a changelog line says about one pull request. | pull request author, merge commit and markdown links for a changeset pr override |
 | `PullRequestComment` | Class | Post, update, find and delete comments on a pull request or issue, including a "sticky" comment kept current through a `CommentMarker`. | post or update a sticky marked comment on a pull request |
 | `PullRequestCommentShape` | Interface | Post, update, find and delete comments on a pull request or issue, including a "sticky" comment kept current through a marker. | |
 | `PullRequestInfo` | Class | A pull request, projected to what callers read. | a pull request's number head base sha state and merge status, projected for callers |

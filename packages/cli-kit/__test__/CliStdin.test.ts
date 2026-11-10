@@ -3,7 +3,7 @@
 // handler did anything before reading them. This spawns a real child with real piped stdin and the real terminal,
 // running the package sources under tsx (fixtures/register-ts.mjs).
 import { join } from "node:path";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";

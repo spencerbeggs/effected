@@ -63,3 +63,14 @@ disagrees, work out which of the two moved before changing either.
 | `pre-exit` | Exit mode counts consumed changesets again and completes every numbered prerelease. |
 | `pre-groups` | In pre mode a fixed or linked group shares its highest pre-release number. |
 | `pre-legacy-layout` | An older `pre.json` listing consumed ids. The oracle moves those files as it reads, so the test runs it twice on a temporary copy and compares with the second, settled plan. Never run the oracle on this fixture in place. |
+| `range-edits` | For `ReleaseEdits.oracle.test.ts`: every range form a minor rewrites (`^`, `~`, two-comparator bounds in both orders and past the upper bound, `1.x`, `*`, `||`, exact, hyphen, `>`, a `v` range, each `workspace:` form, peer, dev, optional, `catalog:`, several kinds in one manifest, the root's own ranges), `<=`, and a held package outside the plan that is not rewritten. |
+| `range-edits-gated` | `updateInternalDependencies: minor` holding a patch's in-range rewrites back, and `onlyUpdatePeerDependentsWhenOutOfRange` holding a peer range while one out of range is rewritten. |
+| `range-edits-peer` | `updateInternalDependencies: minor` holds a patch's in-range dependency, but an in-range peer is still rewritten while `onlyUpdatePeerDependentsWhenOutOfRange` is off. |
+| `range-edits-peer-held` | `onlyUpdatePeerDependentsWhenOutOfRange` on holds an in-range peer even when the bump meets the minimum, while a dependency is rewritten. |
+| `range-edits-protocol-only` | `bumpVersionsWithWorkspaceProtocolOnly` leaves a plain range alone and rewrites a `workspace:` range. |
+| `changelog-gates` | For `Changelog.oracle.test.ts`, under `updateInternalDependencies: minor`: a `workspace:*` dependent of a patch still gets the dependency line, and a dependent whose `dependencies` range holds while its `peerDependencies` range is missed is read by `dependencies`, so it gets none. `a` also carries `description`, `scripts` and `keywords`, keys `WorkspacePackage` does not type, so the echo run shows a module gets the whole manifest. |
+| `changelog-gates-pre` | The same minimum in pre mode: a `workspace:^` dependent is checked against the dependency's current version, which the prerelease leaves, so it gets the dependency line. |
+
+## Captured values
+
+`changelog-contract.json` is not hand-authored: it is the exact arguments `@changesets/apply-release-plan` 8.1.1 handed a capture changelog module while running `changeset version` over a git-repository copy of `minor-ripple-0x`, with only the copy's absolute directory replaced by `/repo`. Its `provenance` field says so. `Changelog.schema.test.ts` round-trips it through the contract's schemas.

@@ -6,7 +6,8 @@ Loaded from `effect-v4-cli`. Covers who a run's output is for and how it is draw
 
 ```ts
 import { CliAudience, CliRuntime } from "@effected/cli-kit"
-import { NodeRuntime, NodeServices } from "@effect/platform-node"
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { Command } from "effect/cli"
 
 declare const init: Command.Command<"init", {}, {}, never, never>

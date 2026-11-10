@@ -2,7 +2,7 @@
 // the root flags into a local context (Command.ts:922-925) and only wraps the subcommand HANDLER with what
 // `provideEffect` resolves (Command.ts:941), so the prompt in `sub.parse` (Param.ts:1478-1485) cannot see them.
 // `CliAudience.run` / `runWith` scan argv first and provide the answer around the whole run.
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { Audience, TerminalEnv } from "@effected/env";
 import { Cause, ConfigProvider, Console, Effect, Exit, Layer, Runtime } from "effect";

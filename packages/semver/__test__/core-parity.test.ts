@@ -24,6 +24,9 @@
 //   Core (and node-semver) read a prerelease as an in-progress release of the
 //   version it names and answer `2.0.0`. `bump.prerelease` is not in this
 //   allowlist: it agrees with core on every input.
+// - EMPTY-OR-PART: an empty part beside `||` (`||*`, `^1.0.0 ||`,
+//   `1.0.0 || || 2.0.0`) parses here as a match-all set, as node-semver
+//   reads it (it splits on `||`, and an empty part is `*`); core rejects it.
 
 import { assert, describe, it } from "@effect/vitest";
 import { SemVer as CoreSemVer, Effect, Equal, Result, SemVerRange } from "effect";
@@ -37,6 +40,10 @@ const isPadded = (input: string): boolean => input.trim() !== input;
 
 // BUILD-IN-RANGE: any `+` in a range means build metadata.
 const carriesBuild = (input: string): boolean => input.includes("+");
+
+// EMPTY-OR-PART: some part between `||` separators is blank.
+const hasEmptyOrPart = (input: string): boolean =>
+	input.includes("||") && input.split("||").some((part) => part.trim() === "");
 
 const versionCorpus: ReadonlyArray<string> = [
 	...validVersions,
@@ -149,6 +156,10 @@ const rangeCorpus: ReadonlyArray<string> = [
 	"~>1.0.0",
 	"v1.2.3",
 	"^1.0.0 ||",
+	"||*",
+	"|| 1.0.0",
+	"1.0.0 || || 2.0.0",
+	"||",
 	"1.2.3+build",
 	">=1.2.3+build <2.0.0",
 ];
@@ -224,6 +235,22 @@ describe("core parity: ranges", () => {
 				return;
 			}
 
+			if (hasEmptyOrPart(input)) {
+				// EMPTY-OR-PART: core rejects; the kit matches as `*` does, as node-semver does.
+				assert.isTrue(Result.isFailure(core), "core is expected to reject an empty || part");
+				const star = Result.getOrThrow(Range.parseResult("*"));
+				assert.isTrue(Result.getOrThrow(kit).isAny());
+				for (const v of probeVersions) {
+					const version = Result.getOrThrow(SemVer.parseResult(v));
+					assert.strictEqual(
+						Result.getOrThrow(kit).test(version),
+						star.test(version),
+						`${JSON.stringify(input)} against ${v}`,
+					);
+				}
+				return;
+			}
+
 			assert.strictEqual(Result.isSuccess(kit), Result.isSuccess(core), "parse acceptance differs");
 			if (Result.isFailure(kit) || Result.isFailure(core)) return;
 
@@ -239,6 +266,19 @@ describe("core parity: ranges", () => {
 			// range; the kit applies it at parse time and records it on the value.
 			// The answers must still agree version for version.
 			const kit = Range.parseResult(input, { includePrerelease: true });
+			if (hasEmptyOrPart(input)) {
+				// EMPTY-OR-PART: matches as `*` does under the same rule.
+				const star = Result.getOrThrow(Range.parseResult("*", { includePrerelease: true }));
+				for (const v of probeVersions) {
+					const version = Result.getOrThrow(SemVer.parseResult(v));
+					assert.strictEqual(
+						Result.getOrThrow(kit).test(version),
+						star.test(version),
+						`${JSON.stringify(input)} against ${v}`,
+					);
+				}
+				return;
+			}
 			const core = SemVerRange.parse(carriesBuild(input) ? input.replace(/\+[0-9A-Za-z.-]+/gu, "") : input);
 			assert.strictEqual(Result.isSuccess(kit), Result.isSuccess(core), "parse acceptance differs");
 			if (Result.isFailure(kit) || Result.isFailure(core)) return;
@@ -251,6 +291,13 @@ describe("core parity: ranges", () => {
 			}
 		});
 	}
+
+	it("the empty-part allowlist discriminates (control)", () => {
+		assert.isTrue(hasEmptyOrPart("^1.0.0 ||"));
+		assert.isFalse(hasEmptyOrPart("^1.0.0 || ^2.0.0"));
+		assert.isFalse(hasEmptyOrPart("^1.0.0"));
+		assert.isTrue(Result.isSuccess(SemVerRange.parse("^1.0.0 || ^2.0.0")));
+	});
 
 	it("includePrerelease changes an answer somewhere in the corpus (control)", () => {
 		const loose = Result.getOrThrow(Range.parseResult("^1.2", { includePrerelease: true }));

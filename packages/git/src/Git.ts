@@ -400,6 +400,51 @@ export class DirtyWorktreeError extends Schema.TaggedError<DirtyWorktreeError>()
 }
 
 /**
+ * `Git.commitsThatAdd` hit a shallow clone's boundary for `paths` and was not
+ * allowed to deepen any further.
+ *
+ * @remarks
+ * In a shallow clone git reports the boundary commit as adding every file it
+ * contains, so for these paths the commit that really added them is outside the
+ * fetched history. The lookup fails rather than crediting the boundary commit.
+ * To recover, pass `deepen` (or raise `deepen.maxRounds`), or run
+ * `Git.fetchUnshallow` first.
+ *
+ * @public
+ */
+export class ShallowHistoryError extends Schema.TaggedError<ShallowHistoryError>()("ShallowHistoryError", {
+	/** The working directory of the shallow clone. */
+	cwd: Schema.String,
+	/** The paths whose adding commit lies behind the shallow boundary. */
+	paths: Schema.Array(Schema.String),
+	/** How many `git fetch --deepen` rounds ran before giving up; `0` when deepening was not enabled. */
+	rounds: Schema.Number,
+}) {
+	/** Renders the unresolved paths and the rounds spent into a one-line message. */
+	override get message(): string {
+		const why =
+			this.rounds === 0
+				? "deepening is not enabled"
+				: `still shallow after ${this.rounds} deepen round${this.rounds === 1 ? "" : "s"}`;
+		return `the commit that added ${this.paths.join(", ")} is behind the shallow boundary of ${this.cwd} (${why})`;
+	}
+}
+
+/**
+ * The opt-in policy that lets `Git.commitsThatAdd` deepen a shallow clone.
+ *
+ * @public
+ */
+export interface GitDeepenPolicy {
+	/** Commits to add per round, as `git fetch --deepen=<by>`. A positive integer, default `50`. */
+	readonly by?: number;
+	/** The most deepen rounds to run before failing with `ShallowHistoryError`. A positive integer, default `20`. */
+	readonly maxRounds?: number;
+	/** The remote to deepen from: a name or a URL. Default `origin`. */
+	readonly remote?: string;
+}
+
+/**
  * One entry of a `git ls-tree` listing.
  *
  * @public
@@ -1606,6 +1651,23 @@ const rejectNonNaturalNumber = (
 				}),
 			);
 
+/** Refuse a caller-supplied count that must be at least one, for the same `NaN` reason as {@link rejectNonNaturalNumber}. */
+const rejectNonPositiveInteger = (cwd: string, label: string, value: number): Effect.Effect<void, GitCommandError> =>
+	Number.isInteger(value) && value >= 1
+		? Effect.void
+		: Effect.fail(
+				new GitCommandError({
+					kind: "refused",
+					args: [String(value)],
+					cwd,
+					stderr: "",
+					detail: `refused ${label}: expected a positive integer, received ${value}`,
+				}),
+			);
+
+/** How many `git log` lookups `Git.commitsThatAdd` runs at once. */
+const ADDING_COMMIT_CONCURRENCY = 8;
+
 /**
  * The ssh-related environment, read once at layer construction. None of these
  * can change under a running service, so none is re-read per call — unlike
@@ -2162,6 +2224,112 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 			default:
 				return yield* Effect.die(`Git.fetchUnshallow: unexpected classification "${classified._tag}"`);
 		}
+	});
+
+	/** One path's newest adding commit: `none` when git found none, else its sha and whether it has parents. */
+	const addingCommit = (cwd: string, path: string) =>
+		Effect.gen(function* () {
+			const invocation = GitCommand.addingCommit(path);
+			const classified = yield* runFor(invocation, cwd, "log");
+			switch (classified._tag) {
+				case "success": {
+					const output = classified.output.trim();
+					if (output === "") {
+						return Option.none<{ readonly sha: string; readonly rooted: boolean }>();
+					}
+					const separator = output.indexOf("\0");
+					if (separator <= 0) {
+						return yield* Effect.fail(unparseableOutput(invocation, cwd, "unparseable adding-commit output"));
+					}
+					return Option.some({
+						sha: output.slice(0, separator),
+						rooted: output.slice(separator + 1).trim() !== "",
+					});
+				}
+				case "absent":
+				case "unknownRef":
+					// An unborn HEAD has no history, so nothing added the path.
+					return Option.none<{ readonly sha: string; readonly rooted: boolean }>();
+				case "notARepository":
+					return yield* Effect.fail(new NotARepositoryError({ cwd }));
+				case "failure":
+					return yield* Effect.fail(classified.error);
+				default:
+					return yield* Effect.die(`Git.commitsThatAdd: unexpected classification "${classified._tag}"`);
+			}
+		});
+
+	const fetchDeepen = (cwd: string, by: number, remote: string) =>
+		Effect.gen(function* () {
+			const classified = yield* runForNetwork(GitCommand.fetchDeepen(by, remote), cwd, "generic");
+			switch (classified._tag) {
+				case "success":
+					return undefined;
+				case "notARepository":
+					return yield* Effect.fail(new NotARepositoryError({ cwd }));
+				case "unknownRef":
+					return yield* Effect.fail(new UnknownRefError({ ref: `--deepen=${by}`, cwd }));
+				case "failure":
+					return yield* Effect.fail(classified.error);
+				default:
+					return yield* Effect.die(`Git.commitsThatAdd: unexpected classification "${classified._tag}"`);
+			}
+		});
+
+	const commitsThatAdd = Effect.fn("Git.commitsThatAdd")(function* (
+		cwd: string,
+		paths: ReadonlyArray<string>,
+		options?: { readonly deepen?: GitDeepenPolicy },
+	) {
+		const deepen = options?.deepen;
+		const by = deepen?.by ?? 50;
+		const maxRounds = deepen?.maxRounds ?? 20;
+		const remote = deepen?.remote ?? "origin";
+		yield* Effect.annotateCurrentSpan({ cwd, paths: paths.length, deepen: deepen !== undefined });
+		if (deepen !== undefined) {
+			yield* rejectNonPositiveInteger(cwd, "a deepen step", by);
+			yield* rejectNonPositiveInteger(cwd, "a deepen round limit", maxRounds);
+			yield* rejectOptionLikeRefs(cwd, [remote]);
+		}
+
+		const resolved = new Map<string, Option.Option<string>>();
+		let pending: ReadonlyArray<string> = Array.from(new Set(paths));
+		let rounds = 0;
+		while (pending.length > 0) {
+			const found = yield* Effect.forEach(pending, (path) => addingCommit(cwd, path), {
+				concurrency: ADDING_COMMIT_CONCURRENCY,
+			});
+			const boundary: Array<{ readonly path: string; readonly sha: string }> = [];
+			pending.forEach((path, index) => {
+				const hit = found[index] as (typeof found)[number];
+				if (Option.isNone(hit)) {
+					resolved.set(path, Option.none());
+				} else if (hit.value.rooted) {
+					resolved.set(path, Option.some(hit.value.sha));
+				} else {
+					boundary.push({ path, sha: hit.value.sha });
+				}
+			});
+			if (boundary.length === 0) {
+				break;
+			}
+			// A commit with no parents is a real root commit in a complete
+			// repository, and a shallow clone's boundary commit otherwise.
+			if (!(yield* isShallow(cwd))) {
+				for (const { path, sha } of boundary) {
+					resolved.set(path, Option.some(sha));
+				}
+				break;
+			}
+			if (deepen === undefined || rounds >= maxRounds) {
+				return yield* Effect.fail(new ShallowHistoryError({ cwd, paths: boundary.map(({ path }) => path), rounds }));
+			}
+			yield* fetchDeepen(cwd, by, remote);
+			rounds += 1;
+			pending = boundary.map(({ path }) => path);
+		}
+		yield* Effect.annotateCurrentSpan({ deepenRounds: rounds });
+		return paths.map((path) => resolved.get(path) ?? Option.none<string>());
 	});
 
 	const fetch = Effect.fn("Git.fetch")(function* (
@@ -3420,6 +3588,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		fetchAny,
 		fetchUnshallow,
 		isShallow,
+		commitsThatAdd,
 		reset,
 		clean,
 		restore,
@@ -3678,6 +3847,51 @@ export interface GitShape {
 	 * `isShallow` → `fetchUnshallow`.
 	 */
 	readonly isShallow: (cwd: string) => Effect.Effect<boolean, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: only with deepen — fetches from the remote and deepens the clone; read-only otherwise.
+	 *
+	 * For each of `paths`, the commit that added it, found with one
+	 * `git log --diff-filter=AC --follow --max-count=1` per path (the full argv is
+	 * on `GitCommand.addingCommit`). This is the lookup
+	 * `@changesets/git`'s `getCommitsThatAddFiles` performs, used to credit a
+	 * changeset with the commit that introduced it.
+	 *
+	 * @remarks
+	 * The result is aligned with `paths`: entry `i` answers `paths[i]`.
+	 * `Option.none()` means no commit in the history reachable from `HEAD` added
+	 * the path, which includes an unborn `HEAD`. The search follows renames, so
+	 * a renamed file resolves to the commit that added it under its first name.
+	 * When a path was added more than once, the newest add wins. A repeated path
+	 * is looked up once. At most eight lookups run at a time.
+	 *
+	 * Unlike upstream, the path always goes after a literal `--`. A path that has
+	 * since left the working tree therefore still resolves, where upstream
+	 * returns `undefined` because git rejects the ambiguous argument.
+	 *
+	 * **Shallow clones.** Git reports a shallow clone's boundary commit as adding
+	 * every file it contains, and that commit has no parents in the clone. A hit
+	 * with no parents is accepted only when the repository is complete, where it
+	 * is a real root commit. In a shallow clone it is unresolved. By default the
+	 * lookup then fails with `ShallowHistoryError` rather than crediting the
+	 * boundary commit, which is what taking the oldest `log --follow` entry does.
+	 *
+	 * When `options.deepen` is set, the unresolved paths are retried
+	 * after `git fetch --deepen=<by> <remote>`, round after round, until every
+	 * path resolves, the clone becomes complete, or `maxRounds` rounds have run
+	 * (then `ShallowHistoryError`). Deepening fetches from the network and adds
+	 * history to the clone, so it is never the default. Upstream always deepens
+	 * by 50, with no limit; `{ by: 50 }` gives the same steps under a 20-round
+	 * cap. `by` and `maxRounds` must be positive integers, refused typed
+	 * otherwise. A failed fetch surfaces as `GitCommandError`.
+	 */
+	readonly commitsThatAdd: (
+		cwd: string,
+		paths: ReadonlyArray<string>,
+		options?: { readonly deepen?: GitDeepenPolicy },
+	) => Effect.Effect<
+		ReadonlyArray<Option.Option<string>>,
+		GitCommandError | NotARepositoryError | UnknownRefError | ShallowHistoryError
+	>;
 	/**
 	 * Mutating: `git reset --soft|--mixed|--hard [<ref>]` — moves `HEAD` (and,
 	 * per `options.mode`, the index and working tree) to `options.ref`
@@ -4587,7 +4801,7 @@ const notStubbed = (method: string) => () =>
  *
  * That ceiling is per run, not per member call. The network-touching members
  * (`lsRemote`, `fetch`, `fetchUnshallow`, `push`, `pull`, `submoduleAdd`,
- * `submoduleUpdate`) first resolve their ssh command with up to two concurrent
+ * `submoduleUpdate`, and `commitsThatAdd` for each deepen round) first resolve their ssh command with up to two concurrent
  * local `git config` reads, each bounded separately, so their worst case is
  * 60 s; `fetchAny`, which runs `fetch` twice, is 120 s. A consumer merely
  * duplicating a 30 s layer buys nothing but two ceilings racing each other;
@@ -4602,7 +4816,7 @@ const notStubbed = (method: string) => () =>
  * @example
  * ```ts
  * import { Git } from "@effected/git";
- * import { NodeServices } from "@effect/platform-node";
+ * import * as NodeServices from "@effect/platform-node/NodeServices";
  * import { Effect, Option } from "effect";
  *
  * const program = Effect.gen(function* () {
@@ -4703,6 +4917,7 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 		fetchAny: notStubbed("fetchAny"),
 		fetchUnshallow: notStubbed("fetchUnshallow"),
 		isShallow: notStubbed("isShallow"),
+		commitsThatAdd: notStubbed("commitsThatAdd"),
 		reset: notStubbed("reset"),
 		clean: notStubbed("clean"),
 		restore: notStubbed("restore"),

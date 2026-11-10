@@ -10,7 +10,8 @@
 import * as nodeFs from "node:fs/promises";
 import * as nodeOs from "node:os";
 import * as nodePath from "node:path";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, describe, it } from "@effect/vitest";
 import type { Scope } from "effect";
 import { Effect, FileSystem, Layer, Option } from "effect";

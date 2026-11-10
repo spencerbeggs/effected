@@ -422,6 +422,11 @@ const atRangeEnd = (s: ParserState): boolean => atEnd(s) || isOrSeparator(s);
 const parseRangeComparators = (s: ParserState, options: DesugarOptions): ReadonlyArray<ComparatorParts> => {
 	skipSpaces(s);
 
+	// An empty part (`||*`, `^1.0.0 ||`, `1 || || 2`) matches every version,
+	// as node-semver reads it: it splits on `||` and an empty part is `*`.
+	// Core `SemVerRange` rejects it; the parity test allowlists EMPTY-OR-PART.
+	if (atRangeEnd(s)) return closeSet([], options);
+
 	// Try hyphen range first, backtracking on failure
 	const savedPos = s.pos;
 	try {
@@ -469,7 +474,8 @@ const defaultDesugarOptions: DesugarOptions = { includePrerelease: false };
 
 /**
  * Parse a range expression into comparator sets (OR of ANDs). The empty
- * string parses as the match-all range. `options.includePrerelease` lowers
+ * string parses as the match-all range, and so does an empty part beside
+ * `||`. `options.includePrerelease` lowers
  * wildcard floors to `-0` (see `DesugarOptions`).
  */
 export const parseRange = (

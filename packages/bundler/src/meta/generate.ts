@@ -127,6 +127,8 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 	// Intermediate per-entry models are working files; they must not leak into the meta bundle (outMetaDir ships for the npm target).
 	const intermediateApiJsons: string[] = [];
 	let mainEntryDidTsdocMetadata = false;
+	// The first entry whose Run A failed (split mode only); raised after the loop (#1317).
+	let firstFailure: { readonly error: unknown } | undefined;
 	// Identity key for the rollup-only-fatal dedup: code + text. Keyed on both so a same-text but
 	// different-category message cannot collide, and only CI-fatal Run B entries are recorded (see below).
 	const diagnosticKey = (e: import("../report/collector.js").DiagnosticInput): string => `${e.code ?? ""}\0${e.text}`;
@@ -178,7 +180,15 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 		// never sees it. That makes a local build look clean while CI fails hard. Locally (ci !== true)
 		// capture Run A's CI-fatal messages and, after Run B, surface the ones Run B did not also report —
 		// location stripped, since the rollup line is wrong — so the local build nudges instead of passing.
-		const captureRollupOnlyFatal = splitDiagnostics && onMessage !== undefined && ci !== true;
+		//
+		// Under CI the same capture runs (#1317), keyed on level instead: the escalation makes the CI-fatal message an
+		// error, so Run A THROWS. The throw is held, not raised: Run B still runs and reports every warning and error
+		// with its source location (its CI-fatal entries promoted to error, the level CI gives them), the rollup-only
+		// errors are flushed after it, and only after the entry loop is Run A's failure re-raised. A CI build's issues.json therefore
+		// records what a local build of the same tree records, and the build still fails on the same error.
+		const captureRollupOnlyFatal = splitDiagnostics && onMessage !== undefined;
+		const isCapturedFatal = (entry: import("../report/collector.js").DiagnosticInput): boolean =>
+			ci === true ? entry.level === "error" : entry.ciFatal === true;
 		const rollupFatal: import("../report/collector.js").DiagnosticInput[] = [];
 		const runBReported = new Set<string>();
 		// The same blind spot exists for SUPPRESSED messages (#772): the suppressor absorbs a rollup-only
@@ -189,28 +199,21 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 		const captureRollupSuppressed = splitDiagnostics && onSuppressed !== undefined;
 		const rollupSuppressed: import("../report/collector.js").DiagnosticInput[] = [];
 		const runBSuppressed = new Set<string>();
-		// Run A's split-mode message sink. Three shapes:
-		//  - non-CI (captureRollupOnlyFatal): buffer ciFatal entries for the post-Run-B dedup + flush.
-		//  - CI (ci === true): a rollup-only CI-fatal escalates `ae-forgotten-export` to ERROR here, so Run A
-		//    THROWS and Run B never runs — the buffer/flush path cannot fire. Forward error-level diagnostics
-		//    straight to the collector (location stripped) BEFORE the throw, otherwise the no-op sink drops
-		//    them and the build fails with only an opaque "API Extractor reported N error(s)" and no symbol.
-		//  - otherwise: silence (a no-op also marks the message handled so API Extractor prints nothing).
+		// Run A's split-mode message sink: buffer the captured fatal entries (ciFatal locally, error-level under CI)
+		// for the post-Run-B dedup and flush, and silence the rest (a no-op also marks the message handled, so API
+		// Extractor prints nothing). Run B re-derives every other diagnostic with an accurate location.
+		//
+		// Under CI an error-level entry must reach the collector even though Run A throws: dropped, the build would
+		// fail with only an opaque "API Extractor reported N error(s)" and no symbol. It does, through the flush after
+		// Run B, which the held throw below always reaches.
 		const runAOnMessage: (entry: import("../report/collector.js").DiagnosticInput) => void = captureRollupOnlyFatal
 			? (entry): void => {
-					if (entry.ciFatal === true) rollupFatal.push(entry);
+					if (isCapturedFatal(entry)) rollupFatal.push(entry);
 				}
-			: ci === true && onMessage !== undefined
-				? (entry): void => {
-						if (entry.level === "error") onMessage(stripLocation(entry));
-					}
-				: (): void => {};
-		// A CI-fatal message makes Run A throw before Run B and the post-Run-B flush below, so flush the
-		// suppressed buffer on the way out: a failed build's issues.json still lists what the rules absorbed.
-		const flushRollupSuppressedOnThrow = (err: unknown): never => {
-			if (onSuppressed !== undefined) for (const entry of rollupSuppressed) onSuppressed(stripLocation(entry));
-			throw err;
-		};
+			: (): void => {};
+		// Run A's failure, held until Run B and the flushes below have recorded its evidence, and raised after the
+		// entry loop (#1317). Without a split there is no Run B, so the single run's failure is raised at once.
+		let runAFailure: { readonly error: unknown } | undefined;
 		try {
 			runApiExtractor({
 				cwd,
@@ -240,7 +243,8 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 						}),
 			});
 		} catch (err) {
-			flushRollupSuppressedOnThrow(err);
+			if (!splitDiagnostics) throw err;
+			runAFailure = { error: err };
 		}
 		// Run B — diagnostics only. Reads the per-module declarations so locations resolve to the true
 		// source declaration. No model emitted (emitDocModel:false). Not a CI gate (Run A is); wrapped so
@@ -248,13 +252,23 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 		if (splitDiagnostics) {
 			// When harvesting rollup-only fatals, observe which messages Run B reports so a fatal present in
 			// BOTH runs is reported once (with Run B's accurate location), not duplicated by the flush below.
+			//
+			// Run B never takes `ci` (it is not a gate, and an escalated Run B would throw into the harvest-failure
+			// path), so it tags a CI-fatal message `ciFatal` at warn level. Under CI that entry is promoted to the
+			// error level CI gives it and loses the local-only tag: a CI build records it as Run A's escalation does.
 			const runBOnMessage =
 				captureRollupOnlyFatal && onMessage !== undefined
 					? (entry: import("../report/collector.js").DiagnosticInput): void => {
 							// Record only CI-fatal Run B diagnostics for the dedup, so a non-fatal Run B message
 							// that happens to share a text cannot suppress a captured Run A CI-fatal.
-							if (entry.ciFatal === true) runBReported.add(diagnosticKey(entry));
-							onMessage(entry);
+							// Under CI Run A's captured errors are matched too, so one Run B also reports is not flushed twice.
+							if (isCapturedFatal(entry) || entry.ciFatal === true) runBReported.add(diagnosticKey(entry));
+							if (entry.ciFatal !== true || ci !== true) {
+								onMessage(entry);
+								return;
+							}
+							const { ciFatal: _ciFatal, ...escalated } = entry;
+							onMessage({ ...escalated, level: "error" });
 						}
 					: onMessage;
 			try {
@@ -289,7 +303,8 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 				}
 			}
 			// Surface CI-fatal messages that exist ONLY in the bundled rollup (Run B never saw them), so a
-			// local build nudges about an issue that would fail CI. Strip the unreliable rollup location.
+			// local build nudges about an issue that would fail CI, and a CI build names the symbol it failed on.
+			// Strip the unreliable rollup location.
 			if (captureRollupOnlyFatal && onMessage !== undefined) {
 				for (const entry of rollupFatal) {
 					if (runBReported.has(diagnosticKey(entry))) continue;
@@ -305,8 +320,20 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 				}
 			}
 		}
+		// A failed Run A wrote no model to read. Its failure is raised once every entry has recorded its
+		// diagnostics, so a CI build of a multi-entry package reports the entries after the failing one too.
+		if (runAFailure !== undefined) {
+			firstFailure ??= runAFailure;
+			continue;
+		}
 		if (isMain) mainEntryDidTsdocMetadata = true;
 		perEntryModels.set(entryName, JSON.parse(readFileSync(perEntryApiJson, "utf-8")) as Record<string, unknown>);
+	}
+
+	// The first failed Run A fails the build, unchanged; the intermediates are removed as a passing build removes them.
+	if (firstFailure !== undefined) {
+		for (const intermediate of intermediateApiJsons) rmSync(intermediate, { force: true });
+		throw firstFailure.error;
 	}
 
 	// Merge or take the single model.

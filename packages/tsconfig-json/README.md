@@ -47,7 +47,8 @@ Resolve a config and its full `extends` chain:
 
 ```ts
 import { TsconfigLoader } from "@effected/tsconfig-json";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { Effect, Layer } from "effect";
 
 const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);

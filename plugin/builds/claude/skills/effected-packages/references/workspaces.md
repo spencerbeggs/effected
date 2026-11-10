@@ -128,7 +128,7 @@ Composing `Workspaces.layerWithGit` for a downstream service that needs several 
 ```ts
 import type { WorkspaceSnapshotWorktreeFailure } from "@effected/workspaces";
 import { WorkspaceDiscovery, Workspaces, WorkspaceSnapshots } from "@effected/workspaces";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Context, Effect, Layer } from "effect";
 
 class Reporter extends Context.Service<
@@ -187,7 +187,7 @@ The predicate means "proven clean", and under pnpm it is reachable for a monorep
 // __test__/repo-shape.test.ts, one level below the workspace root
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, layer } from "@effect/vitest";
 import { Workspaces } from "@effected/workspaces";
 import { LayerPolicy, SourceBoundary, WorkspaceLayering } from "@effected/workspaces/testing";

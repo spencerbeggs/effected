@@ -463,7 +463,7 @@ export class Workspaces {
 	 *
 	 * @example
 	 * ```ts
-	 * import { NodeServices } from "@effect/platform-node";
+	 * import * as NodeServices from "@effect/platform-node/NodeServices";
 	 * import { ToolDiscovery } from "@effected/commands";
 	 * import { Workspaces } from "@effected/workspaces";
 	 * import { Layer } from "effect";

@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, describe, it } from "@effect/vitest";
 import { SchemaFile, SchemaPipeline, SchemaValidator, SchemastoreVersion } from "@effected/schemastore";
 import { Effect, FileSystem, Layer, Option, Path } from "effect";

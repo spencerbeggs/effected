@@ -1,6 +1,7 @@
 // Ported from @savvy-web/github-action-builder __test__/integration/cjs-node-interop.int.test.ts.
 import { join } from "node:path";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { ActionBuilder, ActionBundle } from "../../src/index.js";

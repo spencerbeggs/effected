@@ -97,7 +97,7 @@ export class App {
 	 * @example
 	 * ```ts
 	 * import { App } from "@effected/app";
-	 * import { NodeServices } from "@effect/platform-node";
+	 * import * as NodeServices from "@effect/platform-node/NodeServices";
 	 * import { Layer } from "effect";
 	 *
 	 * const migrations = [
@@ -117,7 +117,8 @@ export class App {
 	 * import { CliRuntime } from "@effected/cli-kit";
 	 * import type { StoreMigration } from "@effected/store";
 	 * import { Store } from "@effected/store";
-	 * import { NodeRuntime, NodeServices } from "@effect/platform-node";
+	 * import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+	 * import * as NodeServices from "@effect/platform-node/NodeServices";
 	 * import { Effect, Layer } from "effect";
 	 * import { Command } from "effect/cli";
 	 *
@@ -181,7 +182,7 @@ export class App {
 	 * @example
 	 * ```ts
 	 * import { App, AppStore } from "@effected/app";
-	 * import { NodeServices } from "@effect/platform-node";
+	 * import * as NodeServices from "@effect/platform-node/NodeServices";
 	 * import { AppDirs } from "@effected/xdg";
 	 * import { Effect, Layer } from "effect";
 	 *

@@ -47,7 +47,7 @@ Run a command and get back trimmed stdout, with a non-zero exit as a typed failu
 
 ```ts
 import { Run } from "@effected/commands";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect } from "effect";
 import { ChildProcess } from "effect/process";
 
@@ -61,7 +61,7 @@ Resolve a CLI tool before running it, globally or through a project's package ma
 
 ```ts
 import { Run, Tool, ToolDiscovery, LocalExec } from "@effected/commands";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer } from "effect";
 
 const program = Effect.gen(function* () {

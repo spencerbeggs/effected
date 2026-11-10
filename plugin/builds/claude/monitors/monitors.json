@@ -1,0 +1,7 @@
+[
+	{
+		"name": "build-diagnostics",
+		"command": "export PLUGINFINITY_MONITOR='build-diagnostics'; node \"${CLAUDE_PLUGIN_ROOT}/monitors/build-diagnostics.mjs\"",
+		"description": "Reports ae-*/tsdoc-* diagnostics from an effected package build's dist/prod/issues.json once a package's count settles"
+	}
+]

@@ -27,10 +27,10 @@ sources:
     title: "The source-sibling spike, run with EFFECTED_SPIKE=1"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-09T00:11:23Z
+  at: 2026-11-10T01:42:40Z
 integrity:
   generated:
-    body: 02ebb5d7daea2ef6
+    body: 333721f4f4760e16
 ---
 
 # @effected/bundler
@@ -47,7 +47,7 @@ It exists to end a loop. The kit built with a tool that depended on the kit, so 
 
 - [`@effected/changesets`](changesets.md) is a `workspace:*` dependency, published exact, and so is this package under [`@effected/engine`](engine.md), per [the pin chain](../conventions/peer-dependency-discipline.md#cross-effected-dependencies).
 - `effect` is a peerDependency from `catalog:effected:peers` with a devDependency from `catalog:effected`, like every kit package; the systems bundler's regular-dependency choice is not carried over, because [the one-resolved-effect-copy rule](../conventions/one-resolved-effect-copy.md) needs the consumer's copy.
-- `typescript` is a peerDependency at the literal `7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`, nightlies excluded, a range the tool's `cli`, `mcp` and `plugin` share ([the rule](../conventions/typescript-stays-in-the-bundler.md)). This is the only package that imports it. API Extractor keeps its own bundled TypeScript 6. The tsconfig presets ship from [the carrier](plugin.md), not from here.
+- `typescript` is a peerDependency at the literal `7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`, nightlies excluded, a range the tool's `engine`, `cli`, `mcp` and `plugin` share ([the rule](../conventions/typescript-stays-in-the-bundler.md)). This is the only package that imports it. API Extractor keeps its own bundled TypeScript 6. The tsconfig presets ship from [the carrier](plugin.md), not from here.
 
 ## Module layout
 

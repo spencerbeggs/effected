@@ -23,10 +23,10 @@ sources:
     title: "Membership, the minor-locked Effect-family entries, the derived pins and the one consumer catalog"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-09T00:05:23Z
+  at: 2026-11-10T01:36:15Z
 integrity:
   generated:
-    body: c92073fe143150d0
+    body: 037eb46f2fde4868
 ---
 
 # pnpm-plugin-effected
@@ -68,14 +68,22 @@ The catalog carries no entries for packages Effect v4 absorbed into core (`@effe
 `effected:build` follows the same entry shape (`range`, `peer`, `strategy`), with no `source`: every member resolves from the registry. Three rules hold it apart from `effected`:
 
 - **It derives no override.** `overridesFromCatalogs` names only `effected`. The test asserts no derived selector targets a build-chain package.[^catalog-test]
-- **The catalog sync never moves it.** `lib/scripts/catalog-sync.ts` passes `--catalog effected`, and because the upgrade CLI honours that flag only interactively, it also restores the `effected:build` block after `--yes` and scopes `--check`'s drift to `effected`. Build-chain entries move only through `pnpm:up`. See [the catalog:sync / catalog:check CLI](../interfaces/catalog-sync-cli.md).
+- **The catalog sync never moves it.** `lib/scripts/catalog-sync.ts` passes `--catalog effected`, and the upgrade CLI scopes `--yes` and `--check` to it from rolldown-pnpm-config 2.4.5. Build-chain entries move only through `pnpm:up`. See [the catalog:sync / catalog:check CLI](../interfaces/catalog-sync-cli.md).
 - **It names nothing from the kit or the Effect family**, which belong to `effected`.
 
 `rolldown-plugin-dts` sits at `^0.30.0`, the line tsdown asks for itself; the kit adds no `tsdown>rolldown-plugin-dts` override. The plugin also declares one hand-written `peerDependencyRules.allowedVersions` rule, `tsdown>typescript`, because tsdown's `typescript` peer admits no 7.1 prerelease and the catalog holds `typescript` at one. Its value is silk's for the same key, so the two plugins never disagree on it. Why: [the effected build catalog](../decisions/effected-build-catalog.md).
 
+The chain's install settings came with it from silk, each at silk's value for the same key:
+
+- **`minimumReleaseAgeExclude`** adds `@effected/*`, `@rolldown/*`, `@oxc-project/*`, `@typescript/*` and every package the `effected:build` catalog names, beside the Effect family's three patterns.
+- **`publicHoistPattern`** hoists `typescript`, `tsx`, `@types/node`, `@types/react` and `@types/react-dom` beside the carrier. The plugin installs them, and makes them reachable from every workspace package.
+- **`allowBuilds: { esbuild: true }`** covers tsx's esbuild postinstall, the closure's only install script.
+
+Both merge cleanly with silk's copy: lists union to one entry, and equal map values raise no divergence warning. The `settings that came with the build chain` describe in `__test__/catalog.test.ts` pins each entry, the merge with a consumer's own value and the merge with silk's, with a divergent value as its control.[^catalog-test] The quarantine value, `strictDepBuilds`, `blockExoticSubdeps`, and `ignoreMissing` stay with silk. The decision gives the reason for each.
+
 ## The carrier hoist
 
-The plugin sets `publicHoistPattern: ["@effected/plugin"]`, so the `effected` and `effected-mcp` bins of the [carrier](plugin.md) reach the workspace root. A packed-install e2e showed it matters only when a leaf workspace package declares the carrier; a root devDependency's bin already resolves. The catalog lists the tool's packages with the rest of the kit, and the recommended consumer install is `"@effected/plugin": "catalog:effected"` as a root devDependency.
+The plugin's `publicHoistPattern` includes `@effected/plugin`, so the `effected` and `effected-mcp` bins of the [carrier](plugin.md) reach the workspace root. A packed-install e2e showed it matters only when a leaf workspace package declares the carrier; a root devDependency's bin already resolves. The catalog lists the tool's packages with the rest of the kit, and the recommended consumer install is `"@effected/plugin": "catalog:effected"` as a root devDependency.
 
 ## How this repository consumes it
 

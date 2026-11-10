@@ -1,5 +1,10 @@
 // packages/bundler/src/passes/target-groups.ts
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { SemVer } from "@effected/semver";
+import { Result } from "effect";
 
 /**
  * A build group id: "dev" or any prod byte-variant id (e.g. "npm", "github", a custom key).
@@ -78,7 +83,7 @@ export interface DeriveOptions {
  *  - pass 1 (this) emits per-module JS (`unbundle: true`) with `dts: false` and the
  *    default `clean: true`, so it starts from a fresh outDir;
  *  - pass 2 (`DerivedDtsPassOptions`) emits ONLY bundled declarations (`unbundle: false`,
- *    `dts: { emitDtsOnly: true }`) with `clean: false`, so it must NOT wipe pass 1.
+ *    `dts: { dtsOnly: true }` (`emitDtsOnly` below rolldown-plugin-dts 0.30)) with `clean: false`, so it must NOT wipe pass 1.
  *
  * We cannot do this in a single pass: tsdown's `unbundle` maps to rolldown
  * `output.preserveModules` for the WHOLE build, and the dts plugin shares it — so one pass
@@ -162,7 +167,7 @@ export interface DerivedTsdownOptions {
  * the per-module JS the JS pass just wrote). `unbundle: false` makes rolldown roll the
  * declarations up per public entry, so a type re-exported through the root entry lands inline
  * in `index.d.ts` (fixing TS2883) instead of as a per-module sibling `.d.ts`.
- * `dts: { emitDtsOnly: true }` strips the JS chunks this pass would otherwise produce.
+ * `dts: { dtsOnly: true }` (`emitDtsOnly` below rolldown-plugin-dts 0.30) strips the JS chunks this pass would otherwise produce.
  *
  * Dual format: when `format` includes `cjs`, the dts pass still emits both `index.d.ts` (esm)
  * and `index.d.cts` (cjs) to the shared outDir.
@@ -199,7 +204,10 @@ export interface DerivedDtsPassOptions {
  */
 export interface DtsPassDtsOptions {
 	readonly tsconfig: string;
-	readonly emitDtsOnly: true;
+	/** Declarations only; read by rolldown-plugin-dts 0.30 and later. Exactly one of this and `emitDtsOnly` is set. */
+	readonly dtsOnly?: true;
+	/** The pre-0.30 spelling of `dtsOnly`; 0.30 still reads it but logs a deprecation warning. */
+	readonly emitDtsOnly?: true;
 	readonly generator: "tsgo";
 	readonly tsgo: { readonly moduleUrl: string };
 }
@@ -207,14 +215,69 @@ export interface DtsPassDtsOptions {
 /** The `file://` URL of the TypeScript module this package resolves (its own pinned dependency). */
 const typescriptModuleUrl = (): string => import.meta.resolve("typescript");
 
+/** The first rolldown-plugin-dts release that reads `dtsOnly`. */
+const DTS_ONLY_SINCE = "0.30.0";
+
 /**
- * Build the {@link DtsPassDtsOptions} for a resolved tsconfig path.
+ * Choose the declarations-only option key for a rolldown-plugin-dts version.
+ *
+ * 0.30 and later read `dtsOnly` and warn on `emitDtsOnly`; earlier releases read only
+ * `emitDtsOnly` and silently ignore `dtsOnly`, which would turn the declaration pass into a
+ * JS-emitting pass. An unknown or unparsable version gets `emitDtsOnly`, which both lines honour.
  *
  * @public
  */
-export const dtsPassDtsOptions = (tsconfig: string): DtsPassDtsOptions => ({
+export const dtsOnlyOption = (
+	pluginVersion: string | undefined,
+): { readonly dtsOnly: true } | { readonly emitDtsOnly: true } => {
+	if (pluginVersion !== undefined) {
+		const have = SemVer.parseResult(pluginVersion);
+		const want = SemVer.parseResult(DTS_ONLY_SINCE);
+		if (Result.isSuccess(have) && Result.isSuccess(want) && have.success.gte(want.success)) {
+			return { dtsOnly: true };
+		}
+	}
+	return { emitDtsOnly: true };
+};
+
+/**
+ * The version of the rolldown-plugin-dts copy tsdown will load, or `undefined` when it cannot
+ * be determined. It is resolved from tsdown's own location, not this package's, because a
+ * workspace override can point tsdown at a different copy than this package depends on.
+ */
+const resolveDtsPluginVersion = (): string | undefined => {
+	try {
+		const fromTsdown = createRequire(fileURLToPath(import.meta.resolve("tsdown")));
+		const manifest = JSON.parse(readFileSync(fromTsdown.resolve("rolldown-plugin-dts/package.json"), "utf8")) as {
+			readonly version?: unknown;
+		};
+		return typeof manifest.version === "string" ? manifest.version : undefined;
+	} catch {
+		return undefined;
+	}
+};
+
+/** Resolved once per process; a build is one process. */
+let dtsPluginVersion: { readonly value: string | undefined } | undefined;
+const installedDtsPluginVersion = (): string | undefined => {
+	dtsPluginVersion ??= { value: resolveDtsPluginVersion() };
+	return dtsPluginVersion.value;
+};
+
+/**
+ * Build the {@link DtsPassDtsOptions} for a resolved tsconfig path.
+ *
+ * @param tsconfig - The resolved tsconfig path.
+ * @param pluginVersion - The rolldown-plugin-dts version to target; defaults to the copy tsdown loads.
+ *
+ * @public
+ */
+export const dtsPassDtsOptions = (
+	tsconfig: string,
+	pluginVersion: string | undefined = installedDtsPluginVersion(),
+): DtsPassDtsOptions => ({
 	tsconfig,
-	emitDtsOnly: true,
+	...dtsOnlyOption(pluginVersion),
 	generator: "tsgo",
 	tsgo: { moduleUrl: typescriptModuleUrl() },
 });

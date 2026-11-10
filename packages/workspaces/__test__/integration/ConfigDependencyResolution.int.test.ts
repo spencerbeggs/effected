@@ -12,7 +12,9 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NodeChildProcessSpawner, NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeChildProcessSpawner from "@effect/platform-node/NodeChildProcessSpawner";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { CatalogAssemblyError } from "@effected/npm";
 import { ConfigProvider, Effect, Layer, Option } from "effect";

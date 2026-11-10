@@ -49,7 +49,8 @@ Build `AppDirs` for your namespace, provide it the `Xdg` environment and the pla
 
 ```ts
 import { AppDirs, Xdg } from "@effected/xdg";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { Effect, Layer } from "effect";
 
 const PlatformLive = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);

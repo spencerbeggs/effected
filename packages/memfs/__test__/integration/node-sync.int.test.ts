@@ -16,7 +16,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeFileSystem } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { Cause, Effect, Exit, FileSystem } from "effect";
 import { NodeSyncFileSystem } from "../../src/NodeSyncFileSystem.js";

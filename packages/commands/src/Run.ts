@@ -400,7 +400,7 @@ const annotate = (command: ChildProcess.Command): Effect.Effect<void> => {
  * @example
  * ```ts
  * import { Run } from "@effected/commands";
- * import { NodeServices } from "@effect/platform-node";
+ * import * as NodeServices from "@effect/platform-node/NodeServices";
  * import { Effect } from "effect";
  * import { ChildProcess } from "effect/process";
  *

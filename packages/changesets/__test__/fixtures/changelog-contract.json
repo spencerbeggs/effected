@@ -1,0 +1,55 @@
+{
+	"provenance": "Captured from @changesets/apply-release-plan 8.1.1 (with @changesets/assemble-release-plan 7.0.0 and get-release-plan 5.0.2's reads) running changeset version over a git-repository copy of the minor-ripple-0x fixture, config changelog [capture module, {\"repo\":\"owner/name\"}]: the exact arguments it handed the changelog module. The copy's absolute directory is replaced by /repo; nothing else is edited.",
+	"getReleaseLine": {
+		"changeset": {
+			"releases": [
+				{
+					"name": "a",
+					"type": "minor"
+				}
+			],
+			"summary": "A change.",
+			"id": "one",
+			"commit": "bd49d2038c565118cc7663dd39a59d051aa1301e"
+		},
+		"type": "minor",
+		"changelogOpts": {
+			"repo": "owner/name"
+		}
+	},
+	"getDependencyReleaseLine": {
+		"changesets": [
+			{
+				"releases": [
+					{
+						"name": "a",
+						"type": "minor"
+					}
+				],
+				"summary": "A change.",
+				"id": "one",
+				"commit": "bd49d2038c565118cc7663dd39a59d051aa1301e"
+			}
+		],
+		"dependenciesUpdated": [
+			{
+				"name": "a",
+				"type": "minor",
+				"oldVersion": "0.23.1",
+				"changesets": [
+					"one"
+				],
+				"newVersion": "0.24.0",
+				"dir": "/repo/packages/a",
+				"relativeDir": "packages/a",
+				"packageJson": {
+					"name": "a",
+					"version": "0.23.1"
+				}
+			}
+		],
+		"changelogOpts": {
+			"repo": "owner/name"
+		}
+	}
+}

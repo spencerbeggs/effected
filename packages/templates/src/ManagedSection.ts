@@ -260,7 +260,8 @@ const unstubbed = (member: string) => (): Effect.Effect<never> =>
  * @example
  * ```ts
  * import { CommentStyle, ManagedSection, SectionId } from "@effected/templates";
- * import { NodeFileSystem, NodePath } from "@effect/platform-node";
+ * import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+ * import * as NodePath from "@effect/platform-node/NodePath";
  * import { Effect, Layer } from "effect";
  *
  * const Base = SectionId.make({ key: "base", commentStyle: CommentStyle.hash });

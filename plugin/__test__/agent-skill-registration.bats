@@ -39,7 +39,7 @@ _tools_block() {
 }
 
 @test "every agent declares a non-empty skills block" {
-	for agent in effect-developer effect-reviewer action-engineer; do
+	for agent in effect-developer effect-reviewer action-engineer tsdoc-fixer; do
 		run _skills_block "$AGENTS/$agent.md"
 		[ "$status" -eq 0 ]
 		[ -n "$output" ] || {
@@ -118,10 +118,22 @@ _tools_block() {
 	done
 }
 
+@test "the build and TSDoc skills are registered under skills, in tsdoc-fixer" {
+	# The fixer's contract is "follow the skills exactly": the release-tag policy,
+	# the _base and {@link} rules, and the issues.json read order must all arrive
+	# preloaded, not one Skill call away.
+	for skill in authoring-tsdoc effect-api-extractor-bases building-a-package; do
+		_skills_block "$AGENTS/tsdoc-fixer.md" | grep -qx -- "$skill" || {
+			echo "agent tsdoc-fixer does not list $skill under skills:" >&2
+			return 1
+		}
+	done
+}
+
 @test "no skill name leaks into an agent's tools block" {
 	# A skill in tools: is the exact bug this file exists to catch — it would
 	# still satisfy any test that merely greps the file for the skill name.
-	for agent in effect-developer effect-reviewer action-engineer; do
+	for agent in effect-developer effect-reviewer action-engineer tsdoc-fixer; do
 		for skill in "$PLUGIN_ROOT"/skills/*/; do
 			name="$(basename "$skill")"
 			if _tools_block "$AGENTS/$agent.md" | grep -qx -- "$name"; then
@@ -133,7 +145,7 @@ _tools_block() {
 }
 
 @test "every skill an agent names actually exists on disk" {
-	for agent in effect-developer effect-reviewer action-engineer; do
+	for agent in effect-developer effect-reviewer action-engineer tsdoc-fixer; do
 		while IFS= read -r name; do
 			[ -f "$PLUGIN_ROOT/skills/$name/SKILL.md" ] || {
 				echo "agent $agent names skill '$name', which has no SKILL.md" >&2
@@ -143,14 +155,14 @@ _tools_block() {
 	done
 }
 
-@test "the agent roster is exactly the three specialists" {
+@test "the agent roster is exactly the four specialists" {
 	# The v3 migration framing is retired: effect-migrator was deleted along
 	# with the construct-map skill. A re-added migrator agent, or a silently
 	# dropped specialist, must fail here rather than reaching the marketplace.
 	local found
 	found="$(cd "$AGENTS" && ls -1 *.md | sed 's/\.md$//' | sort | tr '\n' ' ')"
-	[ "$found" = "action-engineer effect-developer effect-reviewer " ] || {
-		echo "agent roster is '$found', expected the three specialists" >&2
+	[ "$found" = "action-engineer effect-developer effect-reviewer tsdoc-fixer " ] || {
+		echo "agent roster is '$found', expected the four specialists" >&2
 		return 1
 	}
 }

@@ -4,7 +4,8 @@
 // other modules really do read process.
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer } from "effect";
 import { SourceBoundary } from "../../src/testing.js";

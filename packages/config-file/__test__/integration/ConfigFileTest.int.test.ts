@@ -1,6 +1,6 @@
 import * as nodeFs from "node:fs/promises";
 import * as nodePath from "node:path";
-import { NodeFileSystem } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer, Path, Schema } from "effect";
 import { ConfigFile } from "../../src/ConfigFile.js";

@@ -1,0 +1,1 @@
+{ "name": "both", "version": "1.0.0", "dependencies": { "a": "^1.0.0" }, "peerDependencies": { "a": "~0.9.0" } }

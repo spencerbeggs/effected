@@ -81,8 +81,8 @@ describe("@effected/plugin's root entry", () => {
 	});
 
 	// The beta the kit builds on, the RC, and every stable 7.x; a `-dev` nightly matches none of the three.
-	it("the four packages that peer typescript agree on one literal range", () => {
-		for (const pkg of ["bundler", "cli", "mcp", "plugin"]) {
+	it("the five packages that peer typescript agree on one literal range", () => {
+		for (const pkg of ["bundler", "engine", "cli", "mcp", "plugin"]) {
 			const { peerDependencies } = JSON.parse(readFileSync(resolve(PLUGIN, "..", pkg, "package.json"), "utf8")) as {
 				readonly peerDependencies: Readonly<Record<string, string>>;
 			};

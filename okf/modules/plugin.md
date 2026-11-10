@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-09T00:05:23Z
+  at: 2026-11-10T01:42:40Z
 integrity:
   generated:
-    body: da5f12dd3ee5e82f
+    body: 90aa841ace51c755
 ---
 
 # @effected/plugin
@@ -31,7 +31,7 @@ integrity:
 ## Boundaries
 
 - **The pin chain.** This package depends on `cli`, `mcp` and `schemastore`; `cli` and `mcp` on `engine`; `engine` on `schemastore` and `bundler`; `schemastore` on `semver`. Every link is `workspace:*`, publishing exact, so a patch of any of them reaches a consumer only with a new carrier version, and bumping `schemastore` ripples down the chain ([an enumerated `workspace:*` exception](../conventions/peer-dependency-discipline.md#cross-effected-dependencies), and [why the commands live here](../decisions/schema-commands-live-in-the-tool.md)). A test reads the manifests; never loosen a link to `workspace:^`.
-- **The `typescript` peer.** This package, [cli](cli.md), [mcp](mcp.md) and [bundler](bundler.md) peer `typescript` at the literal `7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`, not `catalog:effected:build:peers`, because that catalog value pins a prerelease exactly and a plain lower bound would admit `-dev` nightlies. `entry.test.ts` holds the four manifests to one string. The peer here and on the front ends also keeps npm's resolver from spinning forever on the bundler's peer ([the rule](../conventions/typescript-stays-in-the-bundler.md)).
+- **The `typescript` peer.** This package, [cli](cli.md), [mcp](mcp.md), [engine](engine.md) and [bundler](bundler.md) peer `typescript` at the literal `7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`, not `catalog:effected:build:peers`, because that catalog value pins a prerelease exactly and a plain lower bound would admit `-dev` nightlies. `entry.test.ts` holds the five manifests to one string. The peer here and on the front ends also keeps npm's resolver from spinning forever on the bundler's peer ([the rule](../conventions/typescript-stays-in-the-bundler.md)).
 - **Shared bins.** The front ends declare the same bin names so each installs alone and the agent plugin's one-off fallback can run `@effected/mcp`; the packed-install e2e sets `allowSharedBins` and proves the shims with `runCarrierBin` ([the pattern](../decisions/carrier-only-declares-bins.md)).
 - **Hoist.** [pnpm-plugin-effected](pnpm-plugin-effected.md) sets `publicHoistPattern: ["@effected/plugin"]`. The packed-install e2e showed it matters only when a leaf workspace package declares the carrier; a root devDependency's bin already resolves.
 - **Closure.** It is installed at the root, so its dependency closure must install with no peer warnings beside kit libraries ([peer discipline](../conventions/peer-dependency-discipline.md)).

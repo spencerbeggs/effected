@@ -4,7 +4,7 @@
 // done, so only a real process read to its end can see it. Runs the package sources through Node's type stripping
 // (fixtures/register-ts.mjs); see CliStdin.test.ts for the preconditions.
 import { join } from "node:path";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
