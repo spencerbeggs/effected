@@ -1,5 +1,34 @@
 # @effected/bundler
 
+## 0.2.1
+
+### Bug Fixes
+
+- A CI build that fails its API Extractor pass on a forgotten export now writes the same diagnostics to `dist/prod/issues.json` as a local build of the same tree. Before, the artifact kept only the error-level entries, with no `file` or `line`, and dropped every warning.
+  - The build still fails as before, with exit code 1, `buildOk: false` and `MetaGenerationError`.
+  - The CI-fatal entries are listed in `errors` at error level, with their source locations.
+  - In a package with several entry points, the entries after the failing one are reported too. [#1318][#1318]
+
+* The declaration pass now picks its declarations-only option from the rolldown-plugin-dts copy tsdown will load: `dtsOnly` on 0.30 and later, `emitDtsOnly` below that. Builds on 0.30 no longer record the warning "The `emitDtsOnly` option is deprecated. Use `dtsOnly` instead." in `dist/prod/issues.json`, and builds still on 0.29, such as a workspace carrying silk's `tsdown>rolldown-plugin-dts` override, keep their declarations-only pass. No consumer action is needed.
+* `DtsPassDtsOptions` now carries `dtsOnly` or `emitDtsOnly` as optional fields, exactly one of them set, instead of a fixed `emitDtsOnly`. `dtsPassDtsOptions()` takes an optional second argument naming the rolldown-plugin-dts version to target. [#1318][#1318]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/changesets | dependency | updated | 0.2.0 | 0.3.0 |
+| @effected/jsonl | dependency | updated | 0.18.0 | 0.18.1 |
+| @effected/npm | dependency | updated | 0.32.0 | 0.32.1 |
+| @effected/package-json | dependency | updated | 0.31.1 | 0.31.2 |
+| @effected/semver | dependency | updated | 0.22.0 | 0.23.0 |
+| @effected/workspaces | dependency | updated | 0.44.1 | 0.44.2 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1318]: https://github.com/spencerbeggs/effected/pull/1318
+
 ## 0.2.0
 
 ### Breaking Changes

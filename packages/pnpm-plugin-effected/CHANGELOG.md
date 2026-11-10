@@ -1,5 +1,61 @@
 # @effected/pnpm-plugin-effect
 
+## 0.25.0
+
+### Features
+
+- The plugin now carries the pnpm settings the `effected:build` chain needs. Until now they came only from `@savvy-web/pnpm-plugin-silk`, so a repository that builds with the kit keeps them even if it runs a silk release that drops them, or no silk at all.
+  - `minimumReleaseAgeExclude` adds `@effected/*`, so a kit release installs the day it ships. It also adds `@rolldown/*`, `@oxc-project/*` and `@typescript/*`, the platform bindings and type packages that rolldown and TypeScript publish alongside each release and pin exactly.
+  - `minimumReleaseAgeExclude` also covers every package the `effected:build` catalog names (`tsdown`, `rolldown`, `rolldown-plugin-dts`, `@tsdown/*`, `@rsbuild/*`, `typescript`, `tsx`, `@types/node`, React and its types). The catalog pins them and moves them only through a deliberate upgrade, so a quarantine there only blocks the upgrade it was chosen for.
+  - `publicHoistPattern` hoists `typescript`, `tsx`, `@types/node`, `@types/react` and `@types/react-dom` beside the carrier. The plugin installs the toolchain and keeps it reachable from every workspace package.
+  - `allowBuilds` allows `esbuild`, whose postinstall is the only install script in the build chain; tsx pulls it in. Without the entry, `strictDepBuilds` fails the install.
+- Each value is silk's for the same key. A repository running both plugins gets lists that union to one copy of each entry and maps that agree, so the merge warns about nothing. A repository's own value for a key still wins.
+- The release-age quarantine itself, `strictDepBuilds` and `blockExoticSubdeps` stay with silk. They are repository security policy, not part of the build chain. [#1318][#1318]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effect/tsgo | config | updated | ^0.63.0 | ^0.67.5 |
+| @rsbuild/core | config | updated | ^2.3.0 | ^2.3.1 |
+| @tsdown/exe | config | updated | ^0.23.4 | ^0.23.7 |
+| rolldown | config | updated | ^1.2.16 | ^1.3.1 |
+| tsdown | config | updated | ^0.23.4 | ^0.23.7 |
+
+### Maintenance
+
+#### Updates 23 catalog:effected versions
+
+- `@effected/app` ^0.31.2 -> ^0.31.3 (peer ^0.31.0)
+- `@effected/bundler` ^0.2.0 -> ^0.2.1 (peer ^0.2.0)
+- `@effected/changesets` ^0.2.0 -> ^0.3.0 (peer ^0.3.0)
+- `@effected/cli` ^0.29.0 -> ^0.29.1 (peer ^0.29.0)
+- `@effected/cli-kit` ^0.27.1 -> ^0.27.2 (peer ^0.27.0)
+- `@effected/commands` ^0.20.0 -> ^0.20.1 (peer ^0.20.0)
+- `@effected/engine` ^0.15.0 -> ^0.15.1 (peer ^0.15.0)
+- `@effected/git` ^0.30.0 -> ^0.31.0 (peer ^0.31.0)
+- `@effected/github` ^0.30.0 -> ^0.31.0 (peer ^0.31.0)
+- `@effected/github-actions` ^0.32.2 -> ^0.32.3 (peer ^0.32.0)
+- `@effected/jsonl` ^0.18.0 -> ^0.18.1 (peer ^0.18.0)
+- `@effected/lockfiles` ^0.23.1 -> ^0.23.2 (peer ^0.23.0)
+- `@effected/mcp` ^0.16.0 -> ^0.16.1 (peer ^0.16.0)
+- `@effected/mcp-kit` ^0.14.0 -> ^0.14.1 (peer ^0.14.0)
+- `@effected/npm` ^0.32.0 -> ^0.32.1 (peer ^0.32.0)
+- `@effected/package-json` ^0.31.1 -> ^0.31.2 (peer ^0.31.0)
+- `@effected/plugin` ^0.4.0 -> ^0.4.1 (peer ^0.4.0)
+- `@effected/runtimes` ^0.18.2 -> ^0.18.3 (peer ^0.18.0)
+- `@effected/schemastore` ^0.31.0 -> ^0.31.1 (peer ^0.31.0)
+- `@effected/semver` ^0.22.0 -> ^0.23.0 (peer ^0.23.0)
+- `@effected/store` ^0.24.0 -> ^0.24.1 (peer ^0.24.0)
+- `@effected/templates` ^0.19.0 -> ^0.19.1 (peer ^0.19.0)
+- `@effected/workspaces` ^0.44.1 -> ^0.44.2 (peer ^0.44.0)
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) and [@spencerbeggs\[bot\]](<[@spencerbeggs[bot]](https://github.com/spencerbeggs%5Bbot%5D)>) for their contributions!
+
+[#1318]: https://github.com/spencerbeggs/effected/pull/1318
+
 ## 0.24.0
 
 ### Features

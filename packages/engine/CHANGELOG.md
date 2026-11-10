@@ -1,5 +1,26 @@
 # @effected/engine
 
+## 0.15.1
+
+### Bug Fixes
+
+- `@effected/engine` now peers `typescript` (`7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`) and `@types/node` (`^26.6.0`). It depends on `@effected/bundler`, which requires both, but did not declare them itself, so installing the engine on its own left both of the bundler's required peers unmet. The engine imports nothing from either. Installs of `@effected/plugin`, `@effected/cli` or `@effected/mcp` are unchanged, because each already declared these peers. [#1318][#1318]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/bundler | dependency | updated | 0.2.0 | 0.2.1 |
+| @effected/jsonl | dependency | updated | 0.18.0 | 0.18.1 |
+| @effected/schemastore | dependency | updated | 0.31.0 | 0.31.1 |
+| @effected/workspaces | dependency | updated | 0.44.1 | 0.44.2 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1318]: https://github.com/spencerbeggs/effected/pull/1318
+
 ## 0.15.0
 
 ### Breaking Changes
