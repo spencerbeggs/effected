@@ -1,4 +1,4 @@
-import { Cause, Context, DateTime, Effect, Exit, Layer, Option, Ref, Schema } from "effect";
+import { Cause, Context, DateTime, Duration, Effect, Exit, Layer, Option, Ref, Schedule, Schema } from "effect";
 import { GitHubClient } from "./GitHubClient.js";
 import { GitHubError } from "./GitHubError.js";
 import { numericId } from "./internal/ids.js";
@@ -361,8 +361,11 @@ export interface CheckRunShape {
 	 *
 	 * `update(id)` with neither still sends **one** PATCH, carrying nothing but
 	 * the run's coordinates. GitHub accepts it and changes nothing; it is not
-	 * skipped, so every call is exactly one request and a caller's error
-	 * handling sees a missing run or a revoked token the same way either way.
+	 * skipped, so every call is one request and a caller's error handling sees
+	 * a missing run or a revoked token the same way either way.
+	 *
+	 * A 404 is retried three times over 1.75s, as for `complete`: GitHub can
+	 * answer 404 for a run created moments earlier.
 	 */
 	readonly update: (
 		id: number,
@@ -424,6 +427,11 @@ export interface CheckRunShape {
 	 * rendered output; a given output is cut to GitHub's byte limits first.
 	 * `options.detailsUrl` points the finished run somewhere, such as the
 	 * workflow run that produced it.
+	 *
+	 * A 404 is retried three times over 1.75s (on `Clock`) before it fails:
+	 * GitHub's checks API can answer 404 for a run created moments earlier.
+	 * Every other failure follows the client's retry policy. A retry resends
+	 * the first attempt's `completed_at`.
 	 */
 	readonly complete: (
 		id: number,
@@ -726,6 +734,25 @@ const refOf = (operation: string, raw: RawCheckRun): Effect.Effect<CheckRunRef, 
 		),
 	);
 
+/**
+ * Retry a check-run PATCH that GitHub answered 404, three times over 1.75s.
+ *
+ * @remarks
+ * GitHub's checks API reads after writes from a replica, so a PATCH sent
+ * within about a second of the POST that created the run can 404 on a run
+ * that exists. The client's `RetryPolicy` never retries a 404, rightly
+ * for every other route, so this one is scoped to the two check-run PATCH
+ * routes. The waits (250ms, 500ms, 1s) run on `Clock`, so `TestClock` drives
+ * them, and a genuinely wrong id still fails with its original 404, 1.75s
+ * later.
+ */
+const retryStaleNotFound = <A, R>(self: Effect.Effect<A, GitHubError, R>): Effect.Effect<A, GitHubError, R> =>
+	Effect.retry(self, {
+		schedule: Schedule.exponential(Duration.millis(250)),
+		times: 3,
+		while: (error) => error.kind === "notFound",
+	});
+
 /** The current time as GitHub's ISO 8601 timestamp, from `Clock` so `TestClock` drives it. */
 const isoNow = Effect.map(DateTime.now, DateTime.formatIso);
 
@@ -772,7 +799,8 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 		Effect.gen(function* () {
 			const { owner, repo } = yield* Repo;
 			yield* Effect.annotateCurrentSpan({ owner, repo, id, conclusion });
-			return yield* client.request("PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}", {
+			// Built once, so a retried PATCH keeps the first attempt's completed_at.
+			const body = {
 				owner,
 				repo,
 				check_run_id: id,
@@ -781,7 +809,8 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 				completed_at: yield* isoNow,
 				...(output !== undefined ? { output: wireOutput(output) } : {}),
 				...(options?.detailsUrl !== undefined ? { details_url: options.detailsUrl } : {}),
-			});
+			} as const;
+			return yield* retryStaleNotFound(client.request("PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}", body));
 		});
 
 	const complete = Effect.fn("CheckRun.complete")(function* (
@@ -807,7 +836,7 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 		Effect.gen(function* () {
 			const { owner, repo } = yield* Repo;
 			yield* Effect.annotateCurrentSpan({ owner, repo, id });
-			return yield* client.request("PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}", {
+			const body = {
 				owner,
 				repo,
 				check_run_id: id,
@@ -816,7 +845,8 @@ const make = (client: GitHubClient["Service"]): CheckRunShape => {
 				...(options?.status !== undefined ? { status: options.status } : {}),
 				...(options?.status === "in_progress" ? { started_at: yield* isoNow } : {}),
 				...(options?.detailsUrl !== undefined ? { details_url: options.detailsUrl } : {}),
-			});
+			};
+			return yield* retryStaleNotFound(client.request("PATCH /repos/{owner}/{repo}/check-runs/{check_run_id}", body));
 		});
 
 	return {

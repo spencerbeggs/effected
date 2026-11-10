@@ -10,7 +10,7 @@
 ## Documentation
 
 * The skills document the new action worker tables, the build lock and the workspaces sync throws, and the shell, walker, workspaces and npm changes
-* The `effected-renovate` upgrade ledger records this release's kit changes in nine entries: the shell README guard bypass, the throwing `getWorkspacePackagesSync`, the engine build lock, the bundler worker tables, the memfs and walker path fixes, the `@rspack/*` release-age exemption, and the per-worker import check and `NpmWorkspacePatterns` adoptions
+* The `effected-renovate` upgrade ledger records this release's kit changes in ten entries: the shell README guard bypass, the throwing `getWorkspacePackagesSync`, the engine build lock, the bundler worker tables, the memfs and walker path fixes, the `@rspack/*` release-age exemption, the per-worker import check and `NpmWorkspacePatterns` adoptions, and the check-run PATCH retrying a 404
 
 ## Maintenance
 
