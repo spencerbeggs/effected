@@ -8,6 +8,7 @@
 | `ShellAnsiCPart` | Class | An ANSI-C quoted string, `$'…'`. | decoded dollar-quoted string, ansi-c escapes in a shell word |
 | `ShellArithmeticPart` | Class | Arithmetic: the expansion `$((…))` or its legacy spelling `$[…]`, or the arithmetic command `((…))` (`command` `true`), which is a whole word of its segment. | arithmetic expansion or double-parenthesis command, shift is not a heredoc |
 | `ShellAssignment` | Class | A `NAME=value` or `NAME+=value` prefix of a simple command. | read a leading `FOO=1` environment prefix or variable assignment on a command |
+| `ShellAssignmentBuiltin` | Class | The options and operands of an assignment builtin, `declare`, `typeset`, `local`, `export` or `readonly`, as bash reads them; `ShellCommand`'s `assignmentBuiltin`. | declare typeset local export readonly options and operands as bash reads them, which array keys are strings |
 | `ShellBarePart` | Class | Unquoted text with no expansion in it. | unquoted literal text in a shell word, backslash escapes removed |
 | `ShellBracePart` | Class | A span brace expansion would rewrite, such as `{commit,}` or `{1..3}`. | brace expansion span the shell would rewrite, fail closed on `git {commit,}` |
 | `ShellCommand` | Class | The command a segment runs, resolved from its words. | resolve a segment's command name and args, unwrap sudo env exec nohup time |
