@@ -9,6 +9,9 @@ tags:
   - compat
   - release
 sources:
+  - id: pnpm-17922
+    resource: https://github.com/pnpm/pnpm/issues/17922
+    title: "A version-selector override is never applied to a catalog: specifier"
   - id: incident
     resource: ../incidents/catalog-crossed-effect-minor.md
     title: "The catalog sync moved the effect catalog onto Effect 4.1 under a kit built on 4.0"
@@ -23,10 +26,10 @@ sources:
     title: "The unattended upgrade --yes the sync runs"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-10T04:40:05Z
 integrity:
   generated:
-    body: 31c2bba4e1e992b7
+    body: bede640a4f40193c
   verified:
     by: human:spencer
     at: 2026-11-08T18:25:54Z
@@ -64,9 +67,11 @@ Every `effect` and `@effect/*` entry in the plugin's `effect` catalog is `range:
 
 - **An Effect minor is a deliberate advance.** A human edits the ranges through [advance the effect pin](../runbooks/advance-the-effect-pin.md), the kit is ported and released on the new minor, and the plugin carries it. The bot cannot do this step.
 - **Effect patches still flow.** The sync can move the family to a new patch within the minor on its own. Because the derived pins follow, each such move is still a graph-wide patch move for consumers, as before.
+- **The tilde is the authored range, not what a consumer resolves.** pnpm never applies the derived `effect@^4.0.0` pin to a `catalog:` specifier, so a served `~` range let a consumer resolve a newer patch beside the pinned one.[^pnpm-17922] The frozen catalog therefore serves each pinned family member at its exact override version, while the literal and the derived peers keep the tilde; [the derived-overrides decision](effect-overrides-derived-from-catalog.md) records the mechanism and the local-catalog trap.
 - **The kit's published peer admits one minor.** A kit built on one minor advertises `effect` `~4.<minor>.0`, so a consumer on the next minor gets a peer warning rather than a silent import crash. Every kit release built on an earlier minor stays stranded until it is republished, which the advance does anyway.
 
 [^incident]: [The catalog crossed an Effect minor](../incidents/catalog-crossed-effect-minor.md).
 [^sync-script]: `lib/scripts/catalog-sync.ts`
 [^savvy-build]: `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts`
 [^catalog-test]: `packages/pnpm-plugin-effected/__test__/catalog.test.ts`
+[^pnpm-17922]: <https://github.com/pnpm/pnpm/issues/17922>

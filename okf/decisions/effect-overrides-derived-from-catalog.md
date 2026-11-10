@@ -9,6 +9,9 @@ tags:
   - compat
   - release
 sources:
+  - id: pnpm-17922
+    resource: https://github.com/pnpm/pnpm/issues/17922
+    title: "A version-selector override is never applied to a catalog: specifier"
   - id: owner-ruling
     resource: conversation with the repository owner
     author: human:spencer
@@ -27,10 +30,10 @@ sources:
     title: "The effect catalog describe and the derived family pins in the overrides describe"
 generated:
   by: okfit/claude-code
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-10T04:40:05Z
 integrity:
   generated:
-    body: ad1efcbbb65ec985
+    body: f2b137039371a696
   verified:
     by: human:spencer
     at: 2026-11-08T18:25:54Z
@@ -60,6 +63,8 @@ The catalog's own range is a separate choice. This decision returned it to the s
 
 `__test__/catalog.test.ts` pins both halves: every 4.x entry names `effect`'s own version, and the built pnpmfile's `overrides` equal the pins derived from the catalog literal plus the two bridge entries.[^catalog-test]
 
+**The served catalog freezes each pinned family member at its override version.** pnpm applies a version-selector override such as `effect@^4.0.0` to an ordinary range, but never to a `catalog:` specifier.[^pnpm-17922] So a consumer whose manifests write `catalog:effected` resolved the catalog's `~` range directly, and the pin did not hold it: once Effect 4.1.3 published, a consumer on a catalog pinned to 4.1.2 resolved both 4.1.2 and 4.1.3. From `rolldown-pnpm-config` 2.4.6 the frozen catalog the pnpmfile serves names every entry the directive pins as that exact override version, `effect: 4.<minor>.<patch>` rather than a range, while the authored literal keeps its `~` range, so the upgrade CLI and the derived peers are unchanged and the hidden `effected:peers` twin keeps its floored `~4.<minor>.0`.[^savvy-build] `__test__/catalog.test.ts` asserts that each pinned member the consumer's catalog carries equals its override.
+
 ## Alternatives rejected
 
 - **Parent-scoped `satellite>effect` overrides.** Proposed as the form that would force each satellite onto its own `effect`. The probe showed it does not reach the peer resolution; the pairing survives.[^override-probe]
@@ -74,9 +79,11 @@ The catalog's own range is a separate choice. This decision returned it to the s
 - **A missing core now fails at install time.** When satellites publish before core, the pin asks for an `effect` version npm does not have and the resolve fails loudly, instead of a satellite pairing silently with the old core and dying at import.
 - **The bridge entries stay authored.** The release-candidate `platform-node-shared` entries are parent-scoped by design and sit outside the family pin; they are removed as their tool consumers rebuild.
 - **A consumer's own `overrides` still win** on the same selector, so a repository that genuinely needs a tool on its own `effect` can say so locally.
+- **A consumer's own `catalogs.effected` block still wins too, and keeps the hole open.** A local catalog entry overrides the plugin's, so a repository whose `pnpm-workspace.yaml` still carries the block an earlier `rolldown-pnpm-config export` wrote keeps the old `~` ranges and can still resolve two `effect` copies. It closes only when that repository re-exports the catalogs or deletes the block; the upgrade ledger tells consumers so.
 
 [^owner-ruling]: Conversation with the repository owner, 2026-10-11.
 [^override-probe]: Probe on pnpm 12.6.0, 2026-10-11.
 [^directive]: <https://github.com/spencerbeggs/rolldown-pnpm-config/pull/237>
 [^savvy-build]: `packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts`
 [^catalog-test]: `packages/pnpm-plugin-effected/__test__/catalog.test.ts`
+[^pnpm-17922]: <https://github.com/pnpm/pnpm/issues/17922>

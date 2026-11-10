@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: The plugin declares a second consumer-visible catalog, effected:build, for the kit's build chain
-description: "lib/build/pnpm-config.plugin.ts declares effected:build beside effected: the build chain effected package build runs (tsdown, @tsdown/exe, rolldown, rolldown-plugin-dts, API Extractor and TSDoc) and the toolchain a package builds against (typescript, @types/node, tsx, React and its types, @rsbuild/core). A consumer sees it as catalog:effected:build; its peers twin is hidden, it derives no override, and the catalog sync never moves it. Amends one-declared-effected-catalog and consumer-catalog-fold, whose runtime-catalog rules stand."
+description: "lib/build/pnpm-config.plugin.ts declares effected:build beside effected: the build chain effected package build runs (tsdown, @tsdown/exe, rolldown, rolldown-plugin-dts, API Extractor and TSDoc) and the toolchain a package builds against (typescript, @types/node, tsx, React and its types, @rsbuild/core). A consumer sees it as catalog:effected:build, with catalog:effected:build:peers for peers; it derives no override, and the catalog sync never moves it. Amends one-declared-effected-catalog and consumer-catalog-fold, whose runtime-catalog rules stand."
 status: draft
 tags:
   - deps
@@ -16,7 +16,7 @@ sources:
     title: "The effected:build catalog and the tsdown>typescript allowed-versions rule"
   - id: pnpmfile
     resource: ../../packages/pnpm-plugin-effected/src/pnpmfile.ts
-    title: "The updateConfig wrapper that hides effected:peers and effected:build:peers"
+    title: "The generated updateConfig, re-exported; it serves every catalog, the :peers twins included"
   - id: catalog-test
     resource: ../../packages/pnpm-plugin-effected/__test__/catalog.test.ts
     title: "The effected:build describe and the two-catalog consumer view"
@@ -27,10 +27,10 @@ sources:
     resource: "@savvy-web/pnpm-plugin-silk 0.52.0 pnpmfile.mjs, the build catalog and the tsdown>rolldown-plugin-dts override"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-10T01:36:15Z
+  at: 2026-11-10T04:40:05Z
 integrity:
   generated:
-    body: 38e72827d27e0f23
+    body: 131af9b8d963f5f1
 ---
 
 # The plugin declares a second consumer-visible catalog, effected:build, for the kit's build chain
@@ -48,7 +48,7 @@ Since #1249 the kit owns its build: `effected package build` runs tsdown, rolldo
 
 Each range, peer and strategy was copied from silk's `build` catalog as installed, and the lockfile's resolutions were the sanity check. `rolldown-plugin-dts` is new: it was not in silk's catalog, and it sits at `^0.30.0`, the line tsdown itself asks for. `@tsdown/css` and `@types/bun` stay with silk: the kit reads neither.
 
-**It is visible to consumers.** The hook hides only the peers twins, `effected:peers` and `effected:build:peers`, so a consumer sees `effected` and `effected:build`, and its own entries in either catalog win.[^pnpmfile] A repository that builds with the kit writes `catalog:effected:build` for those packages. `src/index.ts` exports both catalogs.
+**It is visible to consumers, with its peers twin.** The hook serves `effected:build` and `effected:build:peers` beside `effected` and `effected:peers`, and a consumer's own entries in any of them win.[^pnpmfile] A repository that builds with the kit writes `catalog:effected:build` for those packages in `devDependencies`, and `catalog:effected:build:peers` for a peer such as `typescript`. `src/index.ts` exports all four catalogs. The hook hid both twins until the Effect family was served exactly; [the module](../modules/pnpm-plugin-effected.md) records why that changed.
 
 **It derives no override.** `overridesFromCatalogs` still names only `effected`, with the family `include` patterns. A build-chain range is a catalog range, not a graph-wide pin, and the test asserts that no derived override targets a build-chain package.[^catalog-test] The kit adds no `tsdown>rolldown-plugin-dts` override of its own: tsdown's own range already holds the declaration pass on `^0.30.0`, and an override is what split it.
 

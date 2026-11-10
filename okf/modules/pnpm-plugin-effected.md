@@ -1,7 +1,7 @@
 ---
 type: Module
 title: pnpm-plugin-effected
-description: "The kit's companion pnpm config dependency: it serves consumers two catalogs, effected (the Effect family on one minor and every @effected/* package at its next release) and effected:build (the kit's build chain and toolchain), and pins the Effect family graph-wide through derived overrides."
+description: "The kit's companion pnpm config dependency: it serves consumers two catalogs, effected (the Effect family at its exact pins and every @effected/* package at its next release) and effected:build (the kit's build chain and toolchain), each with a :peers twin floored to the minor for peerDependencies, and pins the Effect family graph-wide through derived overrides."
 status: stable
 kind: package
 resource: ../../packages/pnpm-plugin-effected
@@ -14,7 +14,7 @@ sources:
     title: "The one declared effected catalog, overridesFromCatalogs and the authored overrides"
   - id: pnpmfile
     resource: ../../packages/pnpm-plugin-effected/src/pnpmfile.ts
-    title: "The updateConfig wrapper that hides effected:peers and effected:build:peers"
+    title: "The generated updateConfig, re-exported; it serves every catalog, the :peers twins included"
   - id: index
     resource: ../../packages/pnpm-plugin-effected/src/index.ts
     title: "The exported catalogs map: effected and effected:build"
@@ -23,10 +23,10 @@ sources:
     title: "Membership, the minor-locked Effect-family entries, the derived pins and the one consumer catalog"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-10T01:36:15Z
+  at: 2026-11-10T04:40:05Z
 integrity:
   generated:
-    body: 037eb46f2fde4868
+    body: 837c8784e8a95e3f
 ---
 
 # pnpm-plugin-effected
@@ -41,16 +41,18 @@ It replaces `@effected/pnpm-plugin-effect` and continues that package's version 
 
 ## What a consumer sees
 
-Two catalogs. The runtime one, `effected`, is used in `dependencies`, `devDependencies` and `peerDependencies` alike:
+Two catalogs, each with a `:peers` twin. The runtime one, `effected`, is used in `dependencies` and `devDependencies`; its twin `effected:peers`, with every range floored to its minor (`~4.<minor>.0`, `^0.<minor>.0`), is used in `peerDependencies`:
 
-- `effect` and every `@effect/*` satellite, held to one Effect minor with a tilde range (`~4.<minor>.<patch>`), and `@effect/tsgo` on its own 0.x line with a caret, which on 0.x already holds the minor. Why a tilde: [the effect catalog holds one minor](../decisions/effect-catalog-minor-lock.md).
+- `effect` and every `@effect/*` satellite at the exact version the derived override pins, and `@effect/tsgo` at its exact pin on its own 0.x line. The literal authors each as a tilde range (`~4.<minor>.<patch>`; tsgo a `^0.<minor>.0` caret) that holds the family to one minor; the frozen catalog serves the pin instead, because pnpm never applies a version-selector override to a `catalog:` specifier (pnpm/pnpm#17922), and a served range let a consumer resolve a second, newer `effect` beside the pinned one. Why a tilde: [the effect catalog holds one minor](../decisions/effect-catalog-minor-lock.md); why the freeze: [the derived-overrides decision](../decisions/effect-overrides-derived-from-catalog.md).
 - Every publishable `@effected/*` package but this one, each at the version it will next publish, with a caret.
 
 The second, `effected:build`, holds the build chain `effected package build` runs (`tsdown`, `@tsdown/exe`, `rolldown`, `rolldown-plugin-dts`, `@microsoft/api-extractor`, `@microsoft/api-extractor-model`, `@microsoft/tsdoc`, `@microsoft/tsdoc-config`) and the toolchain a package builds against (`typescript`, `@types/node`, `tsx`, `react`, `react-dom`, `@types/react`, `@types/react-dom`, `@rsbuild/core`), at the ranges silk's `build` catalog carried when the kit took it over. See [the build catalog](#the-build-catalog).
 
-A consumer peer written as `catalog:effected` publishes the catalog's install range, patch included (`~4.<minor>.<patch>`, `^0.<minor>.<patch>`), not a floored one, because `pnpm pack` runs no `readPackage` hook.
+`pnpm pack` writes a `catalog:` specifier as the served catalog's value. So a consumer peer written as `catalog:effected:peers` publishes the floored range, and one written as `catalog:effected` publishes the exact Effect-family pin, which would hold every consumer of that library to one patch. Probed 2026-11-10 against the built pnpmfile: a package with `effect` at `catalog:effected` in `dependencies` and `catalog:effected:peers` in `peerDependencies` packed `4.1.3` and `~4.1.0`; the same peer spelled `catalog:effected` packed `4.1.3`.
 
-`src/pnpmfile.ts` produces this view. It runs the generated `updateConfig`, whose merge lets a consumer's own `effected` entries win, then deletes `effected:peers` and `effected:build:peers` from what pnpm sees.[^pnpmfile] `src/index.ts` exports `effected` and `effected:build` as `catalogs`.[^index] `__test__/catalog.test.ts` asserts that the built hook exposes exactly those two catalogs, that `effected` carries both the Effect family and the kit, and that `effected:build` carries the build chain.[^catalog-test]
+**A consumer's own `catalogs.effected` block wins over the served one.** A repository whose `pnpm-workspace.yaml` still carries the block an earlier `rolldown-pnpm-config export` wrote keeps its old `~` ranges, so it can still resolve two `effect` copies, until it re-exports the catalogs or deletes the block. The upgrade ledger carries that instruction to consumers.
+
+`src/pnpmfile.ts` produces this view. It re-exports the generated `updateConfig` unchanged, whose merge lets a consumer's own entries win.[^pnpmfile] The hook once deleted both `:peers` twins, which left consumers spelling peers `catalog:effected`; that became a defect once the family was served exactly, and the twins are now served. `src/index.ts` exports all four catalogs as `catalogs`.[^index] `__test__/catalog.test.ts` asserts that the built hook serves those four catalogs, that `effected:peers` floors `effect` to the pinned version's minor, that `effected` carries both the Effect family and the kit, that `effected:build` carries the build chain, and that each pinned family member is served at its override version.[^catalog-test]
 
 ## What it declares
 
@@ -87,7 +89,7 @@ The plugin's `publicHoistPattern` includes `@effected/plugin`, so the `effected`
 
 ## How this repository consumes it
 
-This repository does not install the plugin as a config dependency. `pnpm pnpm:export` writes all four declared catalogs (`effected`, `effected:peers`, `effected:build`, `effected:build:peers`) into the root `pnpm-workspace.yaml` directly, so the hook never runs here and the `:peers` twins stay visible. The workspace's manifests write the same catalog names a consumer does: `catalog:effected` for a dev or runtime dependency and `catalog:effected:peers` for a peer, and `catalog:effected:build` / `catalog:effected:build:peers` for the build chain, so the kit's published `effect` peer is the floored `~4.<minor>.0`. Internal `@effected/*` edges stay `workspace:*` or `workspace:^`, never the catalog. The export never deletes a catalog the plugin stopped declaring: [the export keeps removed catalogs](../gotchas/export-keeps-removed-catalogs.md).
+This repository does not install the plugin as a config dependency. `pnpm pnpm:export` writes all four declared catalogs (`effected`, `effected:peers`, `effected:build`, `effected:build:peers`) into the root `pnpm-workspace.yaml` directly, so the hook never runs here. The exported `effected` block carries the frozen exact family versions, and `effected:peers` the floored tildes. The workspace's manifests write the same catalog names a consumer does: `catalog:effected` for a dev or runtime dependency and `catalog:effected:peers` for a peer, and `catalog:effected:build` / `catalog:effected:build:peers` for the build chain, so the kit's published `effect` peer is the floored `~4.<minor>.0`. Internal `@effected/*` edges stay `workspace:*` or `workspace:^`, never the catalog. The export never deletes a catalog the plugin stopped declaring: [the export keeps removed catalogs](../gotchas/export-keeps-removed-catalogs.md).
 
 ## The derived family pins and the scoped platform-node-shared overrides
 

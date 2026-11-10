@@ -19,6 +19,11 @@
 * Updated effected
 * Added @effect/platform-node declares redis as a required peer, so every kit package on it brings redis along
 * Updated @effected/workspaces/testing: the repo-shape checks
+* Updated @effected/mcp-kit
+* Updated The effect catalog holds the Effect family to one minor with tilde ranges
+* Updated The effect family is pinned graph-wide by overrides derived from the catalog
+* Updated The effected catalog literal
+* Updated workspace
 
 ## 2026-11-09
 
