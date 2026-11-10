@@ -23,10 +23,10 @@ sources:
     title: "Membership, the minor-locked Effect-family entries, the derived pins and the one consumer catalog"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-10T04:40:05Z
+  at: 2026-11-10T21:32:01Z
 integrity:
   generated:
-    body: 837c8784e8a95e3f
+    body: 432dfa9aded5bb09
 ---
 
 # pnpm-plugin-effected
@@ -77,7 +77,7 @@ The catalog carries no entries for packages Effect v4 absorbed into core (`@effe
 
 The chain's install settings came with it from silk, each at silk's value for the same key:
 
-- **`minimumReleaseAgeExclude`** adds `@effected/*`, `@rolldown/*`, `@oxc-project/*`, `@typescript/*` and every package the `effected:build` catalog names, beside the Effect family's three patterns.
+- **`minimumReleaseAgeExclude`** adds `@effected/*`, `@rolldown/*`, `@oxc-project/*`, `@typescript/*`, `@rspack/*` and every package the `effected:build` catalog names, beside the Effect family's three patterns.
 - **`publicHoistPattern`** hoists `typescript`, `tsx`, `@types/node`, `@types/react` and `@types/react-dom` beside the carrier. The plugin installs them, and makes them reachable from every workspace package.
 - **`allowBuilds: { esbuild: true }`** covers tsx's esbuild postinstall, the closure's only install script.
 

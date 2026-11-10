@@ -609,6 +609,8 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 	// - `@rolldown/*`: rolldown's platform bindings, published with rolldown and pinned exactly by it.
 	// - `@oxc-project/*`: `@oxc-project/types`, which rolldown pins exactly and which ships with it.
 	// - `@typescript/*`: TypeScript 7's native platform packages, published with `typescript`.
+	// - `@rspack/*`: `@rspack/core` and its native bindings, which `@rsbuild/core` depends on and
+	//   which publish in lockstep with it, so a fresh rsbuild never resolves onto quarantined rspack.
 	// - every package the effected:build catalog names (tsdown, rolldown, rolldown-plugin-dts,
 	//   `@tsdown/*`, `@rsbuild/*`, typescript, tsx, `@types/node`, React and its types): the
 	//   catalog pins them and moves them only through a deliberate `pnpm:up`, and a quarantine on
@@ -622,6 +624,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 		"@oxc-project/*",
 		"@rolldown/*",
 		"@rsbuild/*",
+		"@rspack/*",
 		"@tsdown/*",
 		"@types/node",
 		"@types/react",
