@@ -23,12 +23,6 @@
 			},
 			"notes": [
 				{
-					"id": "n-36d8",
-					"date": "2026-10-01",
-					"ref": "effect@4.0.0",
-					"note": "rc.118→4.0.0 GA advance (2026-10-01): zero kit source breaks; the catalog moves from lock (exact prerelease) to lock-minor (^4.0.0), so the installed effect is now the LOCKFILE's resolution, not the catalog literal — re-pin this tree when the lockfile's effect moves. Consumer-visible 4.0.0 changes: Array/Chunk/Effect/Record partition, their separate helpers and Option.partitionMap return [successes, failures] (was [failures, successes]; silent when both sides share a type); Schema.brand takes one identifier and is type-only (no AST annotation, not preserved by SchemaRepresentation); TestSchema.verifyLosslessTransformation is verifyRoundTrip and TestSchema is @stability unstable; Queue.State.takers holds Queue.Taker (entry.resume); Effect.race* interrupts losers still starting; RpcMessage.ExitEncoded interrupt fiberId admits null. Stability: APIs tagged @stability unstable may break in a minor; untagged APIs follow semver. src/unstable no longer exists — modules live at src/<area> (the keyPaths.unstable-modules entry is stale). Published kit stays on rc.118 via its own regular deps (two effect copies by intent); the pnpm-plugin-effect overrides pin platform-node-shared under the rc.117 and rc.118 platform-node parents."
-				},
-				{
 					"id": "n-c0ed",
 					"date": "2026-10-05",
 					"ref": "effect@4.0.1",
@@ -39,12 +33,6 @@
 					"date": "2026-10-07",
 					"ref": "effect@4.0.2",
 					"note": "4.0.1→4.0.2 advance (2026-10-07): zero kit source breaks. Every module and directly importable export now carries an explicit @stability tag (stable = strict semver, unstable = may break in a minor); newly unstable top-level modules include the platform contracts the kit requires in R — FileSystem, Path, PlatformError, Stdio, Terminal — plus Crypto, Graph, ByteSize, ErrorReporter, ExecutionPlan, LayerMap/LayerRef, Newtype, TxChunk, testing/TestConsole and the new Version module; encoding/Base64|Base64Url|Hex|EncodingError are stable. The added tag lines shifted most src line numbers (skill-anchors.json re-derived through the 460272d3..269a7c86 diff). Consumer-visible semantics: Effect.retry no longer retries a cause carrying a defect or interruption; Config.orElse recovers plain failures only and Config parsing preserves provider defects; Config.Record keeps separators inside values; Yaml.parse keep-chomping (|+ >+) and Toml.parse multiline-string CRLF trimming fixed (core parsers used by config-file, markdown frontmatter, lockfiles); Map/Set schema equivalence no longer equates proper subsets; Stream.peel/tapSink/zipLatest/groupBy/slidingSize fixes; Schema.toTaggedUnion/TaggedUnion expose .tag; interrupt-only spans are Unset with effect.fiber.interrupted; Cause.pretty drops the internal stack frame for non-object failures; AI tracing renamed to OTel GenAI (gen_ai.provider.name; WellKnownSystem/BaseAttributes/TokenAttributes removed); RPC span names default to the method; HTTP/SQL/OTLP tracing realigned to OTel conventions; McpServer.layerHttp gains allowSessionTermination."
-				},
-				{
-					"id": "n-504f",
-					"date": "2026-10-09",
-					"ref": "effect@4.0.2",
-					"note": "Supersedes n-36d8's stability line (\"untagged APIs follow semver\"): since 4.0.2 there are no untagged exports — every module and directly importable export carries an explicit @stability (stable = strict semver, unstable = may break in a minor; see n-5f95). Read the tag on the export itself, never infer stability from its absence. n-36d8's other facts (partition order, Schema.brand, lock-minor re-pin rule) still hold."
 				},
 				{
 					"id": "n-c0e4",
@@ -81,6 +69,12 @@
 					"date": "2026-11-02",
 					"ref": "effect@4.1.2",
 					"note": "4.1.1→4.1.2 advance (2026-11-02, PR #1229): patch, zero kit source breaks, no workaround dropped; build 0 API Extractor issues, tests 20598/20602 unchanged. UNANNOUNCED: 4.1.2 ships Effect-TS/effect#10247, reverting #9768, so Ref and MutableRef compare Equal by their current contents again (two refs holding equal values collapse in HashSet/HashMap; Equal.byReference restores identity); the changelog omits it. Not a bug: mcp-kit objectRooted is still needed, since core resolves a chained root $ref (#10278) but still dies on a union root. McpServer JSON-codec-encodes declared failures (#10243); an Error with a message (ToolRefusal) is unchanged. Core Jsonc.parse/Json5.parse (effect/encoding) reject trailing commas; @effected/jsonc stays the fidelity parser. Consumer changes are ledger entries 0050-0053."
+				},
+				{
+					"id": "n-8d3c",
+					"date": "2026-11-10",
+					"ref": "effect@4.1.3",
+					"note": "4.1.2→4.1.3 advance (2026-11-10, fix/effect-catalog-pin): patch, one kit break, tests only; no src workaround dropped. (1) TYPE, @effected/store tests: driver clients now extend SqlClient.Base, not SqlClient (#10387), so a SqliteMigrator.fromRecord entry that yields SqliteClient.SqliteClient no longer fits Migrator's SqlClient requirement; the four test migrations yield SqlClient.SqlClient instead (store src never used the driver tag as SqlClient). (2) RUNTIME, mcp-kit control test: a stdio server now exits 0 at stdin EOF under Runtime.defaultTeardown, because core interrupts with the new Runtime.InterruptExitCode 0 annotation (#10475); the 'EOF is 130' control flipped to 0. McpStdio.teardown is KEPT: runMain's SIGINT/SIGTERM interrupt carries no annotation and still exits 130 under the default; the test now pins both sides. (3) McpServer.layerStdio builds a fresh protocol per call (#8506), but McpServer.layer (the tool registry) is still a module constant, so Layer.fresh around each whole server bundle is still required. (4) The mimeType trap is gone: resolveResourceContent copies the registered mimeType onto a bare-string or bytes read (#10398); probed in the scratchpad. (5) TestClock is rewritten as a class (#10326); epoch start and nested liveClock semantics unchanged, three anchors rewritten. 4.1.3 breaks the kit does NOT hit: Command.withHandler keeps earlier error types (#10376), MessageStorage.deleteProcessed required (#10267), Tool.dynamic results must be JSON (#10362), isAnyOf checks tags (#10355), accessHandler middleware errors (#10418). Branch reason: pnpm never applies a version-selector override (effect@^4.0.0) to a catalog: specifier (pnpm/pnpm#17922), so rolldown-pnpm-config 2.4.6 freezes the served effected catalog's family entries at the exact override version; the authored ~ literal is unchanged. Removed n-36d8/n-504f (4.0.0-era) for room: the re-pin-on-lockfile rule lives in okf/runbooks/advance-the-effect-pin.md."
 				}
 			]
 		},
