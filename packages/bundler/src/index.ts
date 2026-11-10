@@ -55,6 +55,7 @@ export {
 	ActionEntries,
 	ActionPersistLocalOptions,
 	ActionValidationOptions,
+	ActionWorker,
 } from "./config/ActionConfig.js";
 export {
 	BuildFormat,

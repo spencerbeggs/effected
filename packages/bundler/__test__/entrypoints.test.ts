@@ -12,6 +12,7 @@ it("the root exports exactly the public surface", () => {
 		"ActionPersistLocalOptions",
 		"ActionValidation",
 		"ActionValidationOptions",
+		"ActionWorker",
 		"ActionYml",
 		"ActionYmlBranding",
 		"ActionYmlBrandingColor",

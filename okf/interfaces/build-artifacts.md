@@ -28,10 +28,10 @@ sources:
     resource: ../../packages/engine/src/build/BuildRun.ts
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-08T22:56:47Z
+  at: 2026-11-10T21:32:36Z
 integrity:
   generated:
-    body: e3191bc3bf751312
+    body: 33178887b7fbbf76
 ---
 
 # The build artifacts: dist/prod, targets.json, issues.json and the journals
@@ -97,6 +97,18 @@ A group is one distinct published name, from `publishConfig.targets`; with none 
 
 The engine records these after the bundler returns, not the bundler itself, and a journal that cannot be appended to fails the run.[^build-run]
 
+## The build lock
+
+**One build of a package runs at a time in a tree.** A build holds `<root>/.cache/effected/locks/<name>.lock` from before the bundler cleans `dist/prod` until the journals have its answer, so a second build of the same package waits rather than cleaning and writing the same `dist/prod` underneath the first. Without it, a test's setup build racing a turbo build can leave one build's crash in `issues.json` after the other has exited 0, and turbo caches that `dist` under the pass.[^build-lock]
+
+- `<name>` is the package name with every character outside `A-Z a-z 0-9 . _ @ -` written `+`, so `@effected/engine` locks `@effected+engine.lock`. `.cache` is gitignored.
+- The file is created exclusively (`wx`) and holds `{ pid, startedAt, cwd }`: the holding process, when it took the lock, and the package directory.
+- **A waiting build is told who it waits for once,** through the engine's `Waiting` progress event, and `effected package build` prints that line on stderr. It looks again every 200 ms for at most five minutes, then fails `BuildLockTimeoutError` naming the holder and the file: exit 3, or a refusal from `package_build`.
+- **A lock whose process no longer runs is taken over,** and so is one that still has no content five seconds after it was created. A pid reused by an unrelated process reads as alive, so that lock is waited out; the timeout message says to delete the file when no build is running.
+- **Release is a scope finalizer,** so a crash, a failure and an interruption all give the lock back, and the file is removed only while it still holds this build's content.
+- Two builds that find the same dead holder at once can still both proceed: each removes the file only if it still reads as the dead holder's, which narrows that window without closing it.
+- An action build takes no lock.
+
 ## `process.env.__PACKAGE_VERSION__`
 
 Every JS pass replaces this exact expression with the package's version through `define`, and a `define` key of the same name in the config wins. `packages/plugin/src/version.ts` and `packages/cli/src/version.ts` read it, falling back when the source runs unbuilt.
@@ -113,3 +125,4 @@ An [`effected action build`](build-commands.md#effected-action-build) writes a d
 [^generate]: `packages/bundler/src/meta/generate.ts`: the meta bundle and its conditional members.
 [^action-bundle]: `packages/bundler/src/action/ActionBundle.ts`: the entries and `dist/package.json`.
 [^build-run]: `packages/engine/src/build/BuildRun.ts`: the freshness rule and the journal record.
+[^build-lock]: `packages/engine/src/build/BuildLock.ts`: the lock file, the wait, the takeover and the release.

@@ -18,7 +18,7 @@ import { platformErrorHint } from "./package.js";
  */
 export const actionBuild = Tool.make("action_build", {
 	description:
-		'Builds one GitHub Action from the [action] table of its effected.toml into dist: validates the config and action.yml, bundles each entry into one file, and checks that each loads. It writes only dist unless persist is true, which also copies the build to .github/actions/local and generates .actrc and .github/workflows/act-test.yml. Validation stopping the build or an entry failing arrives as the result\'s verdict "failed", not as an error. Reloads the config on every call. The load check imports each bundle, which runs an action with no GITHUB_ACTIONS guard unless [action.build] importCheck is false.',
+		"Builds one GitHub Action from the [action] table of its effected.toml into dist: validates the config and action.yml, bundles each entry into one file, and checks that each loads. It writes only dist unless persist is true, which also copies the build to .github/actions/local and generates .actrc and .github/workflows/act-test.yml. Validation stopping the build or an entry failing arrives as the result's verdict \"failed\", not as an error. Reloads the config on every call. The load check imports each bundle, which runs an action with no GITHUB_ACTIONS guard unless [action.build] importCheck is false; a worker's own table can set importCheck = false to skip that worker alone.",
 	parameters: Schema.Struct({
 		cwd: Schema.optionalKey(
 			Schema.String.annotate({

@@ -88,6 +88,34 @@ describe("EffectedConfigFile.load", () => {
 		}),
 	);
 
+	it.effect("reads a worker's own importCheck from its TOML table, beside the top-level boolean (#1323)", () =>
+		Effect.gen(function* () {
+			const resolved = yield* load({
+				[`${PKG}/effected.toml`]: [
+					"[action.build]",
+					"importCheck = true",
+					"",
+					"[action.entries.workers]",
+					'plain = "src/plain.ts"',
+					"",
+					"[action.entries.workers.turbo-server]",
+					'source = "src/turbo-server.ts"',
+					"importCheck = false",
+					"",
+				].join("\n"),
+			});
+			const workers = resolved.config.action?.entries.workers ?? {};
+			assert.strictEqual(workers.plain, "src/plain.ts");
+			const exempt = workers["turbo-server"];
+			assert.isTrue(typeof exempt === "object" && exempt.source === "src/turbo-server.ts" && !exempt.importCheck);
+			assert.isTrue(resolved.config.action?.build.importCheck);
+			const wrong = yield* load({
+				[`${PKG}/effected.toml`]: '[action.entries.workers.silk]\nsource = "src/silk.ts"\nimportCheck = "no"\n',
+			}).pipe(Effect.flip);
+			assert.include(wrong.issuePath ?? "", "action.entries.workers.silk");
+		}),
+	);
+
 	it.effect("decodes a worker table whose keys carry dashes, and merges the action table across tiers", () =>
 		Effect.gen(function* () {
 			const resolved = yield* load({

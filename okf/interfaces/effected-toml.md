@@ -27,10 +27,10 @@ sources:
     resource: ../../packages/bundler/__test__/e2e/runtime-subdir.e2e.test.ts
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-08T22:56:47Z
+  at: 2026-11-10T21:32:36Z
 integrity:
   generated:
-    body: b146591d7493283f
+    body: 10cce91566a71047
 ---
 
 # effected.toml: the build config's tables, defaults and discovery
@@ -207,12 +207,12 @@ The config tier of the emitted `bundle.json`, ranked over the package's and the 
 | --- | --- | --- | --- |
 | `[action.entries]` | `main` | `src/main.ts` | The main entry's source |
 | | `pre`, `post` | absent | Named sources must exist; absent, the conventional `src/pre.ts` and `src/post.ts` build when they exist |
-| | `workers` | `{}` | A name to a source, each emitted as `dist/<name>.js` |
+| | `workers` | `{}` | A name to a source, or to a table of its own, each emitted as `dist/<name>.js` |
 | `[action.build]` | `minify` | `true` | Minifies the bundles |
 | | `sourceMap` | `false` | Generates source maps |
 | | `externals` | `[]` | Left out and imported at runtime, beside `node:` builtins |
 | | `ignore` | `[]` | Left out and replaced with a stub that throws if loaded |
-| | `importCheck` | `true` | Imports each bundle in a fresh Node to prove it loads; turn it off for an action with no `GITHUB_ACTIONS` guard |
+| | `importCheck` | `true` | Imports each bundle in a fresh Node to prove it loads; turn it off for an action with no `GITHUB_ACTIONS` guard. `false` here turns it off for every bundle, whatever a worker's table says |
 | `[action.validation]` | `requireActionYml` | `true` | `action.yml` must exist and be valid |
 | | `maxBundleSize` | absent | The size past which a bundle is reported, such as `"5mb"` |
 | | `strict` | absent | Whether a warning is an error; absent, it is under CI and is not locally |
@@ -221,6 +221,17 @@ The config tier of the emitted `bundle.json`, ranked over the package's and the 
 | | `actTemplate` | `true` | Generates `.actrc` and `act-test.yml` when they do not exist |
 
 There is no key for keeping a package's dynamic imports native, and writing one fails like any unknown key.
+
+**A worker that needs a setting is a table of its own.** `[action.entries.workers.<name>]` takes `source` (required) and `importCheck` (default `true`); a plain string is the same worker with every setting at its default, and the two forms mix in one action. A worker the action spawns with its configuration in the environment, and which refuses to start without it, sets `importCheck = false` in its own table: the load check then skips that bundle alone and still runs on `main`, `pre`, `post` and every other worker. `main`, `pre` and `post` have no table, because `action.yml` runs them and they are expected to sit behind a `GITHUB_ACTIONS` guard. An unknown key in a worker's table fails like any other.[^action-config]
+
+```toml
+[action.entries.workers]
+changelog = "src/changelog.ts"
+
+[action.entries.workers.turbo-server]
+source = "src/turbo-server.ts"
+importCheck = false   # exits at import without TURBOGHA_TOKEN, by design
+```
 
 ## The two code keys
 

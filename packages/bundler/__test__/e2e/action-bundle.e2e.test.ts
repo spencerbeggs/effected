@@ -185,6 +185,44 @@ describe("ActionBundle.build", () => {
 		),
 	);
 
+	it.live("a worker's own importCheck = false exempts that worker and keeps the check on the rest (#1323)", () =>
+		withFiles(
+			{
+				...MAIN,
+				"src/turbo-server.ts": 'throw new Error("TURBOGHA_TOKEN is not set");\n',
+				"src/broken.ts": 'throw new TypeError("not a function at load");\n',
+			},
+			(cwd) =>
+				Effect.gen(function* () {
+					const checked = yield* ActionBundle.build(
+						configOf({ entries: { workers: { "turbo-server": "src/turbo-server.ts" } } }),
+						{ cwd, clean: true },
+					);
+					assert.isFalse(checked.success, "the worker refuses to load, so the check fails it when left on");
+
+					const exempt = yield* ActionBundle.build(
+						configOf({
+							entries: {
+								workers: {
+									"turbo-server": { source: "src/turbo-server.ts", importCheck: false },
+									broken: "src/broken.ts",
+								},
+							},
+						}),
+						{ cwd, clean: true },
+					);
+					assert.isFalse(exempt.success);
+					assert.deepStrictEqual(
+						exempt.entries.map((entry) => entry.success),
+						[true, true, false],
+						JSON.stringify(exempt.entries),
+					);
+					assert.include(exempt.entries[2]?.error ?? "", "broken does not load");
+					assert.isTrue(existsSync(join(cwd, "dist", "turbo-server.js")));
+				}),
+		),
+	);
+
 	it.live("does not run the bundle at all when importCheck is false", () =>
 		withFiles({}, (cwd) => {
 			const marker = join(cwd, "ran.txt");

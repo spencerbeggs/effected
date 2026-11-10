@@ -4,7 +4,7 @@ import type { PlatformError } from "effect";
 import { Effect, FileSystem, Option, Path, Result, Schema } from "effect";
 import type { ActionConfig } from "../config/ActionConfig.js";
 import { ActionYml } from "./ActionYml.js";
-import { invalidWorkerName } from "./entries.js";
+import { invalidWorkerName, workerSource } from "./entries.js";
 
 /**
  * One problem a validation found.
@@ -197,7 +197,8 @@ const checkEntries = Effect.fnUntraced(function* (config: ActionConfig, cwd: str
 			);
 		}
 	}
-	for (const [name, source] of Object.entries(workers)) {
+	for (const [name, worker] of Object.entries(workers)) {
+		const source = workerSource(worker);
 		const reason = invalidWorkerName(name);
 		if (reason !== undefined) {
 			errors.push(issue("WORKER_ENTRY_INVALID_NAME", `Invalid worker name "${name}": ${reason}`));
