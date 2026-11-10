@@ -7,6 +7,7 @@
  */
 
 export { ShellAssignment } from "./ShellAssignment.js";
+export { ShellAssignmentBuiltin } from "./ShellAssignmentBuiltin.js";
 export { ShellCommand } from "./ShellCommand.js";
 export { ShellComment } from "./ShellComment.js";
 export { ShellDiagnostic, ShellDiagnosticCode } from "./ShellDiagnostic.js";

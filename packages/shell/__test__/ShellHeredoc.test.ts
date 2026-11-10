@@ -117,3 +117,52 @@ describe("heredocs", () => {
 		assert.strictEqual(substitution?.body, "cat <<'EOF'\nit's ) here\nEOF\n");
 	});
 });
+
+// Each expected value checked against GNU bash 5.3.20 (`cat <<E | od -c`):
+// an unquoted body joins a backslash-newline before `<<-` strips the leading
+// tabs of the joined line, and a quoted body keeps every backslash-newline.
+describe("ShellHeredoc.joined", () => {
+	const first = (input: string): ShellHeredoc => heredocs(input)[0] as ShellHeredoc;
+
+	it("removes backslash-newlines from an unquoted body, as bash reads it", () => {
+		const heredoc = first("cat <<E\na\\\nb $\\\n{x}\nE\n");
+		assert.strictEqual(heredoc.body, "a\\\nb $\\\n{x}\n");
+		assert.strictEqual(heredoc.joined, `ab \${x}\n`);
+	});
+
+	it("keeps them in a quoted body, where bash keeps them", () => {
+		for (const input of ["cat <<'E'\na\\\nb\nE\n", 'cat <<"E"\na\\\nb\nE\n', "cat <<\\E\na\\\nb\nE\n"]) {
+			assert.strictEqual(first(input).joined, "a\\\nb\n", input);
+		}
+	});
+
+	it("keeps a newline after an escaped backslash, and other escapes as written", () => {
+		// `\\⏎` is a backslash and then a line break; `\$` stays as written.
+		assert.strictEqual(first("cat <<E\nc\\\\\nd \\$x\nE\n").joined, "c\\\\\nd \\$x\n");
+		assert.strictEqual(first("cat <<E\nc\\\\\\\nd\nE\n").joined, "c\\\\d\n");
+	});
+
+	it("strips <<- tabs from each joined line of an unquoted body, keeping a continued line's tabs", () => {
+		const heredoc = first("cat <<-E\n\tA\\\n\tB\n\tC\nE\n");
+		assert.strictEqual(heredoc.joined, "A\tB\nC\n");
+		// `text` strips each physical line, as bash does for a quoted body.
+		assert.strictEqual(heredoc.text, "A\\\nB\nC\n");
+		assert.strictEqual(first("cat <<-'E'\n\tA\\\n\tB\nE\n").joined, "A\\\nB\n");
+	});
+
+	it("strips <<- tabs only after a line feed, never after a carriage return", () => {
+		// bash's line is LF-terminated; JavaScript's `^` in multiline mode also
+		// matches after `\r`.
+		const heredoc = first("cat <<-E\nx\r\ty\n\tz\nE\n");
+		assert.strictEqual(heredoc.text, "x\r\ty\nz\n");
+		assert.strictEqual(heredoc.joined, "x\r\ty\nz\n");
+	});
+
+	it("is the body unchanged with no continuation, and empty for an empty body", () => {
+		assert.strictEqual(first("cat <<E\nplain $x\nE\n").joined, "plain $x\n");
+		assert.strictEqual(first("cat <<E\nE\n").joined, "");
+		const unterminated = first("cat <<E\nrest\\");
+		assert.isFalse(unterminated.terminated);
+		assert.strictEqual(unterminated.joined, "rest\\");
+	});
+});

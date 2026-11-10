@@ -30,6 +30,7 @@
 * Updated @effected/workspaces discovery and detection
 * Updated @effected/workspaces: monorepo tooling
 * Updated WorkspacesSync is a `*Sync` escape hatch, not a `*Result` pure form
+* Updated @effected/shell
 
 ## 2026-11-09
 
