@@ -10,6 +10,8 @@
 * Updated The catalog:sync / catalog:check CLI
 * Updated The plugin declares one catalog, effected, and pins only the Effect family by include pattern
 * Updated The typechecker: tsc, not tsgo
+* Updated The plugin declares a second consumer-visible catalog, effected:build, for the kit's build chain
+* Updated pnpm-plugin-effected
 
 ## 2026-11-09
 

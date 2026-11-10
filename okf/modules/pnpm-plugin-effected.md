@@ -23,10 +23,10 @@ sources:
     title: "Membership, the minor-locked Effect-family entries, the derived pins and the one consumer catalog"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-09T23:27:41Z
+  at: 2026-11-10T01:20:54Z
 integrity:
   generated:
-    body: 7130671a02a624cb
+    body: cfc47c4a2a8d947f
 ---
 
 # pnpm-plugin-effected
@@ -72,6 +72,13 @@ The catalog carries no entries for packages Effect v4 absorbed into core (`@effe
 - **It names nothing from the kit or the Effect family**, which belong to `effected`.
 
 `rolldown-plugin-dts` sits at `^0.30.0`, the line tsdown asks for itself; the kit adds no `tsdown>rolldown-plugin-dts` override. The plugin also declares one hand-written `peerDependencyRules.allowedVersions` rule, `tsdown>typescript`, because tsdown's `typescript` peer admits no 7.1 prerelease and the catalog holds `typescript` at one. Its value is silk's for the same key, so the two plugins never disagree on it. Why: [the effected build catalog](../decisions/effected-build-catalog.md).
+
+The chain's install settings came with it from silk, each at silk's value for the same key:
+
+- **`minimumReleaseAgeExclude`** adds `@effected/*`, `@rolldown/*`, `@oxc-project/*` and `@typescript/*` beside the Effect family's three patterns.
+- **`allowBuilds: { esbuild: true }`** covers tsx's esbuild postinstall, the closure's only install script.
+
+Both merge cleanly with silk's copy: lists union to one entry, and equal map values raise no divergence warning. The `settings that came with the build chain` describe in `__test__/catalog.test.ts` pins each entry, the merge with a consumer's own value and the merge with silk's, with a divergent value as its control.[^catalog-test] The quarantine value, `strictDepBuilds`, `blockExoticSubdeps`, `ignoreMissing` and the hoists of `typescript`, `tsx` and `@types/node` stay with silk. The decision gives the reason for each.
 
 ## The carrier hoist
 

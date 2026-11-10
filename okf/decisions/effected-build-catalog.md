@@ -27,10 +27,10 @@ sources:
     resource: "@savvy-web/pnpm-plugin-silk 0.52.0 pnpmfile.mjs, the build catalog and the tsdown>rolldown-plugin-dts override"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-09T23:27:41Z
+  at: 2026-11-10T01:20:54Z
 integrity:
   generated:
-    body: b3e2b9b8646a41dc
+    body: 6c82b5083b9e10a6
 ---
 
 # The plugin declares a second consumer-visible catalog, effected:build, for the kit's build chain
@@ -53,6 +53,22 @@ Each range, peer and strategy was copied from silk's `build` catalog as installe
 **It derives no override.** `overridesFromCatalogs` still names only `effected`, with the family `include` patterns. A build-chain range is a catalog range, not a graph-wide pin, and the test asserts that no derived override targets a build-chain package.[^catalog-test] The kit adds no `tsdown>rolldown-plugin-dts` override of its own: tsdown's own range already holds the declaration pass on `^0.30.0`, and an override is what split it.
 
 **It carries one peer rule.** `peerDependencyRules.allowedVersions` admits a TypeScript 7.1 prerelease under `tsdown`, whose `typescript` peer (`^5.0.0 || ^6.0.0 || ^7.0.0`) admits none. The value is silk's for the same key, so a consumer running both plugins merges two equal rules.
+
+**The settings that came with the chain.** Silk's plugin also held the pnpm settings that let the chain install, and a repository building with the kit on a silk release that drops them, or on no silk, would lose them. So the plugin carries every setting whose reason is the chain or the kit, copied at silk's value for the same key.[^savvy-build] The test is the lockfile's transitive closure of the `effected:build` members, not the catalog's name list.
+
+- **`minimumReleaseAgeExclude`** gains `@effected/*` (a kit release installs the day it ships) and three patterns for the chain's lockstep satellites: `@rolldown/*` (rolldown's platform bindings), `@oxc-project/*` (`@oxc-project/types`, which rolldown pins exactly) and `@typescript/*` (TypeScript 7's native platform packages).
+- **`allowBuilds: { esbuild: true }`**, because tsx's esbuild runs a postinstall and `strictDepBuilds` fails an install on an unlisted one. It is the only install script in the closure. `core-js` is only an optional peer of `@rsbuild/core`, so it stays with silk.
+- **`peerDependencyRules.allowedVersions`** keeps only `tsdown>typescript`. The other seven silk rules admit the prerelease under twoslash, vue, commitlint and cosmiconfig, which are silk's docs and lint packages.
+
+Lists merge by union and maps let the child win, warning only when the values differ, so two plugins declaring the same entry produce one entry and no warning. The test pins that against a silk-shaped config, and pins a divergent value's warning as its control.[^catalog-test]
+
+Some settings stay with silk on purpose:
+
+- **The quarantine value and the security flags.** `minimumReleaseAge`, `strictDepBuilds` and `blockExoticSubdeps` are repository policy, not the chain.
+- **`confirmModulesPurge`, and every entry for lint, docs, test or silk's own packages.**
+- **`allowedDeprecatedVersions`.** No package it names is in the closure.
+- **`ignoreMissing`.** The kit's bundler and tool packages peer `typescript` and `@types/node` as required, so silencing a missing one would hide a build that cannot run.
+- **The `publicHoistPattern` entries for `typescript`, `tsx` and `@types/node`.** The bundler resolves `typescript` from its own peer link. A package's `tsc` and its `types: ["node"]` lookup find a root or package devDependency by walking up `node_modules`. The carrier loads tsx only when it runs from linked source, which happens in this repository alone. A public hoist matters only for a transitive copy, and the kit's build relies on none.
 
 **The catalog sync never moves it.** The sync manages next-release versions of the kit; a build-chain move is a deliberate upgrade. `catalog-sync.ts` passes `--catalog effected`, to both `--yes` and `--check`, and the upgrade CLI scopes every mode to it from rolldown-pnpm-config 2.4.5, so neither writes nor reports an `effected:build` entry. An undeclared name exits 1 with an `error.kind` of `catalog`, which `checkVerdict` keeps red.[^sync-script] Build-chain entries move through the user-run `pnpm:up`.
 
