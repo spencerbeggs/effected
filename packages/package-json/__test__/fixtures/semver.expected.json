@@ -42,9 +42,9 @@
 	"devDependencies": {
 		"@effect/vitest": "catalog:effect",
 		"@savvy-web/bundler": "^2.0.0",
-		"@types/node": "catalog:silk",
+		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effect",
-		"typescript": "catalog:silk"
+		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
 		"effect": "catalog:effect"
