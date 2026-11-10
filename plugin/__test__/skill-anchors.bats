@@ -138,12 +138,12 @@ _set_line() {
 @test "negative control: an anchor missing from the manifest fails" {
 	local mutated="$BATS_TEST_TMPDIR/manifest.json"
 	_edit_manifest "$MANIFEST" "$mutated" '
-		m.anchors = m.anchors.filter((a) => !(a.file === "effect-v4-cli/references/gotchas.md" && a.anchor === "cli/Command.ts:1613"));
+		m.anchors = m.anchors.filter((a) => !(a.file === "effect-v4-cli/references/gotchas.md" && a.anchor === "cli/Command.ts:1689"));
 	'
 	run node "$HELPER" --repo "$REPO_ROOT" --manifest "$mutated"
 	echo "$output"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"FAIL effect-v4-cli/references/gotchas.md: anchor cli/Command.ts:1613 is not in the manifest"* ]]
+	[[ "$output" == *"FAIL effect-v4-cli/references/gotchas.md: anchor cli/Command.ts:1689 is not in the manifest"* ]]
 }
 
 @test "negative control: a new citation in a skill the old scope never covered fails coverage" {
@@ -159,13 +159,13 @@ _set_line() {
 @test "negative control: a range whose end line has no symbol fails" {
 	local mutated="$BATS_TEST_TMPDIR/manifest.json"
 	_edit_manifest "$MANIFEST" "$mutated" '
-		const e = m.anchors.find((a) => a.anchor === "Runtime.ts:211-217");
-		delete e.symbols["217"];
+		const e = m.anchors.find((a) => a.anchor === "Runtime.ts:291-297");
+		delete e.symbols["297"];
 	'
 	run node "$HELPER" --repo "$REPO_ROOT" --manifest "$mutated"
 	echo "$output"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"FAIL effect-v4-mcp/references/server-wiring.md: Runtime.ts:211-217 -> range end 217 has no symbol in the manifest"* ]]
+	[[ "$output" == *"FAIL effect-v4-mcp/references/server-wiring.md: Runtime.ts:291-297 -> range end 297 has no symbol in the manifest"* ]]
 }
 
 @test "negative control: a symbol on a comment line fails unless the entry says comment" {
@@ -216,12 +216,12 @@ _set_line() {
 @test "negative control: a token whose path is not its entry's source fails" {
 	local mutated="$BATS_TEST_TMPDIR/manifest.json"
 	_edit_manifest "$MANIFEST" "$mutated" '
-		m.anchors.find((a) => a.anchor === "Runtime.ts:211-217").source = "effect:Layer.ts";
+		m.anchors.find((a) => a.anchor === "Runtime.ts:291-297").source = "effect:Layer.ts";
 	'
 	run node "$HELPER" --repo "$REPO_ROOT" --manifest "$mutated"
 	echo "$output"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"FAIL effect-v4-mcp/references/server-wiring.md: Runtime.ts:211-217 -> the token names Runtime.ts, but the entry checks effect:Layer.ts"* ]]
+	[[ "$output" == *"FAIL effect-v4-mcp/references/server-wiring.md: Runtime.ts:291-297 -> the token names Runtime.ts, but the entry checks effect:Layer.ts"* ]]
 }
 
 @test "a trailing comma does not make a second token: X.ts:163, and X.ts:163 share one entry" {

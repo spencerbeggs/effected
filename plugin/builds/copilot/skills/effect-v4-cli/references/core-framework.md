@@ -27,7 +27,7 @@ type).
 ## Constructors are PascalCase
 
 Every `Flag`, `Argument`, `Prompt` and `GlobalFlag` constructor is a
-PascalCase name (`cli/Flag.ts:60-450`, `Argument.ts:62-308`,
+PascalCase name (`cli/Flag.ts:62-452`, `Argument.ts:64-310`,
 `Prompt.ts:889-1443`, `GlobalFlag.ts:111,130`). The lowercase spellings are
 **`undefined`** on the namespace — a call type-errors, and a lookup probe
 that prints `typeof Flag.string` and concludes "no string flag" is the
@@ -54,11 +54,11 @@ not become integrated tier on the HTTP client's account.
 ## `Flag.Boolean` has no implicit `false` — omission is `MissingOption`
 
 A boolean flag is **not** "false unless `--x` is passed". `Flag.Boolean(name)`
-is `Param.Boolean(Param.flagKind, name)` with no fallback (`cli/Flag.ts:80`;
-its own docstring at `:72` says *"Omission fails unless the flag is made
+is `Param.Boolean(Param.flagKind, name)` with no fallback (`cli/Flag.ts:82`;
+its own docstring at `:74` says *"Omission fails unless the flag is made
 optional or given a fallback"*), and the shared flag parser fails with
 `CliError.MissingOption({ option: name })` the moment the flag is absent from
-the parsed args (`cli/Param.ts:2137`) — the primitive's type never
+the parsed args (`cli/Param.ts:2249`) — the primitive's type never
 enters into it. So a bare `Flag.Boolean("force")` turns every invocation that
 *omits* `--force` into a usage error, which is the opposite of what a
 boolean flag is for. Spell the default:
@@ -115,6 +115,14 @@ const download = Command.make("download", {
 )
 // ["--use-api", "--use-docker"] → fails ShowHelp: "--use-api and --use-docker are mutually exclusive"
 ~~~
+
+`Command.validate` may also fail with your own error, such as a
+`Schema.TaggedError` that sets `[CliError.userMessage]`. That failure is not
+a usage error: `Command.run` reports it like a handler failure, with no help,
+and the error stays in the command's error type. `Command.withHandler` keeps
+that type too, including the errors of a handler it replaces, so annotate a
+validated command with the whole union, or pass the final handler to
+`Command.make`.
 
 A check inside the handler runs after the command has started, and its failure
 is the handler's error, not a usage error.

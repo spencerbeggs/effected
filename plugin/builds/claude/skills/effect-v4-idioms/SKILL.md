@@ -234,7 +234,7 @@ Result.succeed(42)` dies
 `Effect.succeed` control that returned normally. Note the **success**
 cases die too: this is not "errors need a bridge", it is "these are not Effects
 at all". Their `[Symbol.iterator]` yields the value itself, and the fiber loop
-rejects anything carrying no `evaluate` (`internal/effect.ts:715`).
+rejects anything carrying no `evaluate` (`internal/effect.ts:725`).
 
 The bridge is a module function on `Effect`, one per type:
 
@@ -738,13 +738,13 @@ construction throw or a service that was never provided:
 
 | Write | Not | Source |
 | --- | --- | --- |
-| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9390` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
-| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:9312` — same shape, same optional-`options` trap, one page away in the same module. |
-| `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:556` — a *function* returning a Layer, unlike almost every other `layer` in core. |
-| `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:5040` — takes ONE array argument. |
+| `Schema.Defect()` | `Schema.Defect` | `Schema.ts:9433` — `function Defect(options?: ErrorOptions)`. The canonical case: `cause: Schema.Defect` on an error class throws at construction. |
+| `Schema.ErrorInstance()` | `Schema.ErrorInstance` | `Schema.ts:9355` — same shape, same optional-`options` trap, one page away in the same module. |
+| `TestClock.layer()` | `TestClock.layer` | `testing/TestClock.ts:571` — a *function* returning a Layer, unlike almost every other `layer` in core. |
+| `Schema.Literals(["a","b"])` | `Schema.Literals` | `Schema.ts:5080` — takes ONE array argument. |
 
 **The discriminator is the optional argument.** `Schema.Cause(e, d)`
-(`Schema.ts:11318`) and `Schema.Exit(...)` (`:15494`) are factories too, but their
+(`Schema.ts:11472`) and `Schema.Exit(...)` (`:15648`) are factories too, but their
 arguments are required, so forgetting to call them is an immediate type error.
 Only the zero-or-optional-arg factories type-check uncalled.
 

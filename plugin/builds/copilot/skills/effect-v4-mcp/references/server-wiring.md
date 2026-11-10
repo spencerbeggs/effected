@@ -85,7 +85,7 @@ details from `McpSchema.McpRequestContext` instead. Four consequences:
   which writes through `console.log` whatever `LogToStderr` says (`effect`'s
   `src/Logger.ts:273-279` is `withConsoleLog`; `consoleLogFmt` is `:942`,
   `consoleStructured` `:968` and `consoleJson` `:992`; the default logger reads
-  the reference at `src/internal/effect.ts:6974`). Never install them in an MCP server: every log
+  the reference at `src/internal/effect.ts:7001`). Never install them in an MCP server: every log
   line lands on stdout, the wire. For JSON logs on stderr, install
   `Logger.layer([Logger.withConsoleError(Logger.formatJson)])`.
 - A malformed `protocols` list — more than one stateless adapter — is the
@@ -96,18 +96,18 @@ details from `McpSchema.McpRequestContext` instead. Four consequences:
   runtime one.
 
 **Two stdio servers in one process: wrap each whole server bundle in
-`Layer.fresh`.** Core's `RpcServer.layerProtocolStdio` and the tool registry
-`McpServer.McpServer.layer` are both module constants, and layers memoize by
-reference. So two servers built through one memo map share one stdio
-protocol, built over whichever `Stdio` came first, and one tool registry. The
-second server never reads its own stdin, and the first lists both servers'
-tools. That happens when both are merged into one graph, and also when the
-second is built or provided anywhere under the first one's `Effect.provide`,
-since a nested `Layer.build` or `Effect.provide` forks the memo map already
-in the fiber's context. The stdin guard changes none of this.
+`Layer.fresh`.** `McpServer.layerStdio` builds a fresh stdio protocol on
+every call, so each server reads its own `Stdio`. The tool registry,
+`McpServer.McpServer.layer`, is still a module constant, and layers memoize
+by reference. So two servers built through one memo map share one tool
+registry: each lists both servers' tools. That happens when both are merged
+into one graph, and also when the second is built or provided anywhere under
+the first one's `Effect.provide`, since a nested `Layer.build` or
+`Effect.provide` forks the memo map already in the fiber's context. The stdin
+guard changes none of this.
 
 `Layer.fresh(layer)` builds `layer` and everything under it through a new
-memo map, so each bundle gets its own protocol and its own registry. Wrap
+memo map, so each bundle gets its own registry. Wrap
 the **whole** bundle — the server with its `registrations` (or the toolkit
 layers together with the server), and the `Stdio` too if it is per server:
 
@@ -248,7 +248,7 @@ A bare `NodeRuntime.runMain(Layer.launch(Main).pipe(Effect.provideService(Refere
 typechecks and serves — and still reports a launch failure on stdout. The
 reason is where `runMain`'s own report happens: `Effect.tapCause`, attached
 by `runMain` itself, **outside** anything the launched program provided
-(`Runtime.ts:211-217`). By the time that cause reaches the tap, the
+(`Runtime.ts:291-297`). By the time that cause reaches the tap, the
 `provideService` scope around the already-failed effect has closed and
 `LogToStderr` is back to its ambient default, so `runMain`'s own
 `Effect.logError` call writes through `console.log`.
@@ -266,15 +266,15 @@ A stdio server's session does not end by the program failing — it ends
 because **stdin reaching EOF externally interrupts the main fiber**. A
 `catchCause` wrapped around `Layer.launch` never sees this: an interrupt
 skips every `catchCause`, so the cause reaches the runtime's own teardown
-directly, and the *default* teardown reports `130` for any interrupt-only
-cause — the same code as a killed process, for what is actually a clean
-client disconnect. `McpStdio.teardown` maps a success or an interrupt-only
-exit to `0`; everything else still goes to `Runtime.defaultTeardown`.
+directly. Core annotates that EOF interrupt with `Runtime.InterruptExitCode`
+`0`, so even the *default* teardown exits `0` for a clean client disconnect.
 
-`SIGINT` and `SIGTERM` land the same way: `runMain` interrupts the main
-fiber on either signal too, so a killed server also produces an
-interrupt-only exit and reports `0` under `McpStdio.teardown`, not the
-signal's own exit code.
+`SIGINT` and `SIGTERM` are where the teardowns differ: `runMain` interrupts
+the main fiber on either signal with no annotation, and the default teardown
+reports `130` for an unannotated interrupt-only cause. `McpStdio.teardown`
+maps a success or any interrupt-only exit to `0`; everything else still goes
+to `Runtime.defaultTeardown`. So a killed server reports `0` under
+`McpStdio.teardown`, not the signal's own exit code.
 
 Evidence: the complete `main.ts` snippet above, run with stdin `/dev/null`,
 exits `0` with empty stdout — closing stdin immediately reproduces the EOF a
@@ -565,5 +565,5 @@ entry and finally to `cwd`, rather than resolving to the literal string
 
 ## Resources
 
-Resource registration, the `mimeType` trap, and the URI-template `/` limit
+Resource registration, the `mimeType` a read carries, and the URI-template `/` limit
 have their own reference: [resources.md](./resources.md).

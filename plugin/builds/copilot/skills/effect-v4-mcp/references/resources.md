@@ -1,8 +1,8 @@
-# Resources: registration, the mimeType trap, and URI templates
+# Resources: registration, the mimeType on a read, and URI templates
 
 Loaded from `effect-v4-mcp`. Covers `McpServer.resource`'s two forms (a
-single resource, a URI template), what a `content` Effect must return to
-keep its declared `mimeType`, dynamic resource sets, and the router limit on
+single resource, a URI template), how each `content` form
+carries its declared `mimeType` on a read, dynamic resource sets, and the router limit on
 a template variable.
 
 ## Registering a resource
@@ -28,17 +28,20 @@ const ServerLayer = Notes.pipe(Layer.provideMerge(McpStdio.layer({ name: "notes-
 
 A resource read failure is `new McpSchema.InternalError({ message })`.
 
-## The `mimeType` trap
+## The `mimeType` on a read
 
 `content` can return a bare `string`, a `Uint8Array`, or a whole
 `ReadResourceResult` (`{ contents: [{ uri, mimeType, text }] }`). Core's own
-`resolveResourceContent` (`ai/McpServer.ts:4021-4041`) wraps a bare
-string as `{ contents: [{ uri, text }] }` — **no `mimeType` field at
-all** — and passes a full `ReadResourceResult` through unchanged. The
-declared `mimeType` option still appears correctly in `resources/list`
-either way; only the actual `resources/read` response differs. Always
-return the full shape when the client needs the mime type on the read
-itself, not only in the listing.
+`resolveResourceContent` (`ai/McpServer.ts:4223-4238`) wraps a bare string
+as `{ contents: [{ uri, mimeType, text }] }` and bytes as
+`{ contents: [{ uri, mimeType, blob }] }`, copying the registered
+`mimeType` onto the read, and passes a full `ReadResourceResult` through
+unchanged. So every form carries the declared type on `resources/read` as
+well as in `resources/list`, and an MCP Apps host can render a UI resource
+served as `text/html;profile=mcp-app` from a bare string. Return the full
+shape only when one read needs several contents, or a per-content type that
+differs from the registered one: a full result is sent as written, so its
+own `mimeType` is the one the client sees.
 
 ~~~ts
 import { McpStdio } from "@effected/mcp-kit"
@@ -91,10 +94,10 @@ const program = Effect.scoped(
 await Effect.runPromise(program)
 ~~~
 
-Prints `string form has mimeType: false`, `full form has mimeType: true`,
-and `declared mimeType still in resources/list for string form: text/plain`
-— the declared value survives the listing either way, but only the
-full-shape read keeps it on the wire.
+Prints `string form has mimeType: true`, `full form has mimeType: true`,
+and `declared mimeType still in resources/list for string form: text/plain`:
+both read forms put the declared type on the wire, and the listing carries
+it too.
 
 ## URI templates
 
@@ -114,7 +117,7 @@ const Item = McpServer.resource`x://item/${id}`({
 
 ## A template variable cannot span a slash
 
-The router behind a template match is `FindMyWay` (`ai/McpServer.ts:25`,
+The router behind a template match is `FindMyWay` (`ai/McpServer.ts:26`,
 `makeUriMatcher`), and its route syntax (`:paramName`, built by
 `compileUriTemplate`) matches exactly one path segment — the same
 single-segment rule any `FindMyWay`-backed router applies. An id containing
