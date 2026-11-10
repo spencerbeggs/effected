@@ -55,9 +55,9 @@
 		"@effected/changesets": "workspace:*",
 		"@effected/plugin": "workspace:*",
 		"@effected/workspaces": "workspace:*",
-		"@okfit/plugin": "^0.5.31",
+		"@okfit/plugin": "^0.5.32",
 		"@savvy-web/silk": "^5.0.0",
-		"@vitest-agent/plugin": "^6.0.8",
+		"@vitest-agent/plugin": "^6.0.9",
 		"effect": "catalog:effected",
 		"tsx": "^4.23.12"
 	},
@@ -67,7 +67,7 @@
 	"devEngines": {
 		"packageManager": {
 			"name": "pnpm",
-			"version": "12.18.0",
+			"version": "12.19.0",
 			"onFail": "download"
 		},
 		"runtime": [
