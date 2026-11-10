@@ -36,13 +36,15 @@ verified:
     at: 2026-11-08T18:25:54Z
   - by: human:spencer
     at: 2026-11-10T00:32:33Z
+  - by: human:spencer
+    at: 2026-11-10T04:41:33Z
 integrity:
   generated:
     body: 6c30c1eac33a67c1
   verified:
     by: human:spencer
-    at: 2026-11-10T00:32:33Z
-    content: 4e63cac8cd25c5bb
+    at: 2026-11-10T04:41:33Z
+    content: 07c4118d9e92b833
 ---
 
 # The plugin declares one catalog, effected, and pins only the Effect family by include pattern

@@ -36,8 +36,8 @@ integrity:
     body: f2b137039371a696
   verified:
     by: human:spencer
-    at: 2026-11-08T18:25:54Z
-    content: e511eedd982c7ad8
+    at: 2026-11-10T04:41:33Z
+    content: dd1bb6bbeb13bc12
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -45,6 +45,8 @@ verified:
     at: 2026-10-31T19:39:48Z
   - by: human:spencer
     at: 2026-11-08T18:25:54Z
+  - by: human:spencer
+    at: 2026-11-10T04:41:33Z
 ---
 
 # The effect family is pinned graph-wide by overrides derived from the catalog

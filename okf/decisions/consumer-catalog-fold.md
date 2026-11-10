@@ -33,8 +33,8 @@ integrity:
     body: 43c980fa6979f585
   verified:
     by: human:spencer
-    at: 2026-11-10T00:32:33Z
-    content: ed96a8df8e241120
+    at: 2026-11-10T04:41:33Z
+    content: 1a3454a808cea91f
 verified:
   - by: human:spencer
     at: 2026-10-31T19:39:48Z
@@ -44,6 +44,8 @@ verified:
     at: 2026-11-08T18:25:54Z
   - by: human:spencer
     at: 2026-11-10T00:32:33Z
+  - by: human:spencer
+    at: 2026-11-10T04:41:33Z
 ---
 
 # Consumers see one catalog, effected, folded by the plugin's hook from split declarations
