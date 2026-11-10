@@ -151,6 +151,27 @@ _applicable() {
 	[[ "$output" == *"hits: none"* ]]
 }
 
+@test "detect: committed build output cannot overflow git's buffer or flood the hits" {
+	# A minified one-line bundle bigger than execFileSync's default 1 MiB maxBuffer,
+	# under dist/, a nested dist/ and a local action, each holding the detect term.
+	mkdir -p "$PROJECT/dist" "$PROJECT/pkg/dist" "$PROJECT/.github/actions/local/x" "$PROJECT/other"
+	node -e 'process.stdout.write("Crypto.hash;" + "a".repeat(3 * 1024 * 1024))' >"$PROJECT/dist/bundle.js"
+	cp "$PROJECT/dist/bundle.js" "$PROJECT/pkg/dist/bundle.js"
+	cp "$PROJECT/dist/bundle.js" "$PROJECT/.github/actions/local/x/index.js"
+	# A bundle in a path nothing excludes: its hit line must be capped, not flooded.
+	cp "$PROJECT/dist/bundle.js" "$PROJECT/other/min.js"
+	git -C "$PROJECT" add -A
+	git -C "$PROJECT" -c user.email=t@t -c user.name=t commit -qm bundles
+	_entry "$LEDGER_FIX" 0001 breaking typed effect 4.1.0 'Crypto\\.'
+	_applicable
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"src/hash.ts:2:const x = Crypto.hash"* ]]
+	[[ "$output" != *"dist/bundle.js"* ]]
+	[[ "$output" != *".github/actions/local"* ]]
+	[[ "$output" == *"other/min.js:1:Crypto.hash;"* ]]
+	[ "${#output}" -lt 5000 ]
+}
+
 @test "--check accepts a valid ledger" {
 	_entry "$LEDGER_FIX" 0001 breaking typed effect 4.1.0 'x'
 	run node "$SCRIPTS/applicable.mjs" --check --ledger "$LEDGER_FIX"

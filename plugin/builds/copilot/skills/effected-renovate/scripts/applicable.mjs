@@ -375,7 +375,12 @@ export function olderThanBaseline(baseline, before) {
 // ── git and gh ─────────────────────────────────────────────────────────────
 
 function git(root, args) {
-	return execFileSync("git", ["-C", root, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+	return execFileSync("git", ["-C", root, ...args], {
+		encoding: "utf8",
+		stdio: ["ignore", "pipe", "pipe"],
+		// execFileSync's default 1 MiB overflows on a large lockfile or a minified bundle line.
+		maxBuffer: 1 << 30,
+	});
 }
 
 function defaultBase(root) {
@@ -423,13 +428,23 @@ function fetchRound(baseline, tag) {
 	return dir;
 }
 
+const MAX_HIT_LINE = 240;
+
 function detectHits(root, patterns) {
 	if (!patterns?.length) return [];
 	const args = ["grep", "-nIE"];
 	for (const p of patterns) args.push("-e", p);
+	// Committed build output (bundles, minified one-line files) is never the user's source to migrate.
 	args.push("--", ".", ":(exclude)pnpm-lock.yaml", ":(exclude)**/CHANGELOG.md", ":(exclude).changeset/**");
+	// Only directories that never hold source: a `build/` or `out/` can be source (lib/build/ is, here).
+	for (const dir of ["dist", ".next", ".turbo", "coverage", "node_modules", ".github/actions/local"]) {
+		args.push(`:(exclude)${dir}/**`, `:(exclude)**/${dir}/**`);
+	}
 	try {
-		return git(root, args).split("\n").filter(Boolean);
+		return git(root, args)
+			.split("\n")
+			.filter(Boolean)
+			.map((line) => (line.length > MAX_HIT_LINE ? `${line.slice(0, MAX_HIT_LINE)}… [line truncated]` : line));
 	} catch (err) {
 		if (err.status === 1) return [];
 		throw err;

@@ -27,12 +27,14 @@ import { main } from "@effected/mcp/main";
   (`schema_validate` takes `payload` and `schema`).
 - **`package_build`** — `effected package build` as a tool (`cwd?`, `noExe?`). A
   build that crashes or records an error is the verdict `failed` with its
-  issues, not an error; an error means the config or a plugin would not load, or
-  the directory is not a package or lies outside the workspace root.
+  issues, not an error; an error means the config or a plugin would not load,
+  the directory is not a package or lies outside the workspace root, or another
+  build of the same package held its build lock for the whole wait.
 - **`action_build`** — `effected action build` as a tool (`cwd?`, `validate?`,
   `persist?`). `persist` defaults to false, so it writes only `dist`; `true` also
   writes `.github/actions/local`, `.actrc` and `.github/workflows/act-test.yml`.
-  The load check imports each bundle unless `[action.build] importCheck` is false.
+  The load check imports each bundle unless `[action.build] importCheck` is false;
+  a worker's own table can set `importCheck = false` to skip that worker alone.
 - **`action_init`** — `effected action init` as a tool (`cwd?`, `name?`,
   `description?`, `force?`), answering `ActionInitResult`. An existing file
   without `force`, a symbolic link or wrong-kind entry at any path it writes

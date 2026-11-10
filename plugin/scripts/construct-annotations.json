@@ -15,6 +15,7 @@
 		"ActionEntries": "declare lifecycle entry points and worker bundles for an action",
 		"ActionPersistLocalOptions": "copy an action build locally for nektos act testing",
 		"ActionValidation": "check action config, entry points, action.yml and bundle sizes before shipping",
+		"ActionWorker": "a worker bundle as its own table, source and a per-worker import check opt-out",
 		"ActionYml": "parse and decode action.yml metadata, github action manifest shape",
 		"ActionYmlBranding": "marketplace icon and color of an action",
 		"ActionYmlBrandingColor": "allowed marketplace branding colors for an action",
@@ -356,6 +357,8 @@
 	"engine": {
 		"Identity": "build the effected tool identity report, version distribution and resolved effect version for a front end",
 		"IdentityReport": "what the effected tool reports about itself, tool name, version, carrier distribution, effect version",
+		"BuildLockHolder": "who holds a package's build lock, pid, start time and package directory",
+		"BuildLockTimeoutError": "another build of the same package held its build lock for the whole wait, naming the holder",
 		"AjvInstanceValidator": "the shipped ajv strict-mode InstanceValidator engine layer, the one real implementation effected schema validate composes, provide it to validate payloads yourself",
 		"AjvValidator": "the shipped ajv strict-mode SchemaValidator engine layer, the one real implementation effected schema build composes, provide it to drive SchemaPipeline yourself",
 		"ConfigLoader": "find and load schemastore.config.ts, walk upward discovery, jiti import, explicit config path",

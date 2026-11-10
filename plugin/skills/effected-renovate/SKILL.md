@@ -38,8 +38,10 @@ It rewrites every `configDependencies` pin to the latest release as a plain vers
 ## Step 2: regenerate the lockfile and install
 
 ```bash
-pnpm clean --lockfile --yes && pnpm install --ignore-scripts
+NODE_OPTIONS= pnpm clean --lockfile --yes && NODE_OPTIONS= pnpm install --ignore-scripts
 ```
+
+The empty `NODE_OPTIONS` is load-bearing too. A session started through a `pnpm run` script (a repository's `claude` script, say) inherits the workspace's `nodeOptions` as `NODE_OPTIONS`. With `--import=tsx` in it, an install with no `node_modules` dies before tsx is installed.
 
 Dropping the lockfile is load-bearing. Its first document pins each config dependency independently of `pnpm-workspace.yaml`, and its body pins every resolved version, so a bumped pin plus a plain `pnpm install` reports the lockfile up to date and keeps the old versions. A `clean` script in the root `package.json` overrides the built-in `pnpm clean`: check `jq -r '.scripts.clean // empty' package.json` first, and if it does not remove `pnpm-lock.yaml` and every `node_modules`, delete them directly.
 

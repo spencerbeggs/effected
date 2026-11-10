@@ -17,6 +17,7 @@
 | `ActionValidation` | Class | Checks an action's config, entry points and `action.yml`, and the size of what it built. | check action config, entry points, action.yml and bundle sizes before shipping |
 | `ActionValidationOptions` | Class | What an action build checks before it builds, the `[action.validation]` table. | require action.yml, cap bundle size, treat warnings as errors |
 | `ActionValidationRunOptions` | Interface | How `ActionValidation.validate` decides strict mode. | |
+| `ActionWorker` | Class | A worker written as a table, `[action.entries.workers.<name>]`, for a worker that needs more than its source. | a worker bundle as its own table, source and a per-worker import check opt-out |
 | `ActionYml` | Class | A decoded `action.yml`, per GitHub's metadata syntax for actions. | parse and decode action.yml metadata, github action manifest shape |
 | `ActionYmlBranding` | Class | An action's Marketplace branding. | marketplace icon and color of an action |
 | `ActionYmlBrandingColor` | Variable + TypeAlias | The decoded type of `(ActionYmlBrandingColor:variable)`. | allowed marketplace branding colors for an action |

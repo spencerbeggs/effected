@@ -99,7 +99,14 @@ and `dist/prod/issues.json` beside them; each build also appends to
 
 Exit codes: `0` built; `1` the build failed or recorded an error; `2` the config
 or a plugin would not load, or the directory is not a package; `3` a file could
-not be read or written; `64` usage error.
+not be read or written, or another build of the same package held its lock for
+the whole wait; `64` usage error.
+
+Two builds of one package in one tree run one after the other: a build holds
+`<root>/.cache/effected/locks/<name>.lock` from before it cleans `dist/prod`
+until its journal line is written, and a second one prints who it is waiting
+for on stderr and waits up to five minutes. A lock whose process has died is
+taken over; delete the file only when no build is running.
 
 ## `effected action build`
 
@@ -116,7 +123,10 @@ true). Each entry becomes one self-contained ESM file at `dist/<entry>.js`; a
 computed `import()` stays native. `ignore` aliases a package to a throwing stub.
 Unless `importCheck = false`, each bundle is then imported in an isolated
 temporary directory with no `PATH`, which runs an action that has no
-`GITHUB_ACTIONS` guard. Exit `1` on validation errors or a failed entry; a missing
+`GITHUB_ACTIONS` guard. A worker may be a table of its own,
+`[action.entries.workers.<name>]` with `source` and `importCheck`, and
+`importCheck = false` there skips that worker alone: the shape for a worker
+that exits at import when the environment its action hands it is missing. Exit `1` on validation errors or a failed entry; a missing
 `[action]` table or an unloadable config is `2`.
 
 ## `effected action init`
