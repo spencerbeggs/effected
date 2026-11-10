@@ -1,3 +1,5 @@
+allowBuilds:
+  esbuild: true
 autoInstallPeers: true
 catalogs:
   effected:
@@ -204,7 +206,10 @@ minimumReleaseAgeExclude:
   - "@effect/tsgo-*"
   - "@savvy-web/pnpm-plugin-silk"
   - effect
-  - rolldown@1.3.1
+  - "@effected/*"
+  - "@oxc-project/*"
+  - "@rolldown/*"
+  - "@typescript/*"
 nodeOptions: --import=tsx
 overrides:
   "@effect/ai-anthropic@^4.0.0": 4.1.2
