@@ -143,9 +143,19 @@ describe("McpStdio.launch under runMain semantics", () => {
 		assert.strictEqual(await runMainFor(McpStdio.launch(server)), 0);
 	});
 
-	it("control: the default teardown turns that same EOF into 130", async () => {
+	// Core annotates the interrupt it raises at stdin EOF with `Runtime.InterruptExitCode` 0,
+	// so the default teardown exits 0 there too. The kit teardown still earns its place on a
+	// signal: runMain's own interrupt carries no annotation, which the default reports as 130.
+	it("core's default teardown also ends that same EOF with exit 0", async () => {
 		const server = McpStdio.layer({ name: "t", version: "0.0.0" }).pipe(Layer.provide(Stdio.layerTest({})));
-		assert.strictEqual(await runMainFor(McpStdio.launch(server), Runtime.defaultTeardown), 130);
+		assert.strictEqual(await runMainFor(McpStdio.launch(server), Runtime.defaultTeardown), 0);
+	});
+
+	it("control: the default teardown reports an unannotated interrupt, a signal's, as 130", () => {
+		const codes: Array<number> = [];
+		Runtime.defaultTeardown(Exit.interrupt(1), (code) => codes.push(code));
+		McpStdio.teardown(Exit.interrupt(1), (code) => codes.push(code));
+		assert.deepStrictEqual(codes, [130, 0]);
 	});
 
 	it("a layer-build failure is reported once, on stderr, with its own exit code — never on stdout", async () => {

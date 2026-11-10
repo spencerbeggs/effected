@@ -102,8 +102,8 @@ export interface McpLaunchOptions {
  * - {@link McpStdio.launch} reports a launch failure itself, on stderr, and
  *   hides it from `runMain`, whose own report is written outside anything
  *   the program can provide.
- * - {@link McpStdio.teardown} maps stdin EOF, the normal end of every
- *   session, to exit 0 instead of 130.
+ * - {@link McpStdio.teardown} maps an interrupt-only exit to 0, so SIGINT
+ *   and SIGTERM end a session with 0 instead of 130, like stdin EOF.
  *
  * Never `NodeRuntime.runMain(Layer.launch(Main).pipe(Effect.provideService(References.LogToStderr, true)))`:
  * it typechecks and serves, but a launch failure is still reported by
@@ -289,8 +289,9 @@ export class McpStdio {
 	 * @remarks
 	 * Stdin EOF, the normal end of every session, ends in an interrupt-only
 	 * exit, and so do SIGINT and SIGTERM: `runMain` interrupts the program on
-	 * either signal. All three exit 0 here, not the 130 a default teardown
-	 * reports for an interrupt.
+	 * either signal. Core annotates its EOF interrupt with exit code 0, which
+	 * the default teardown honours; a signal's interrupt carries no
+	 * annotation, so the default reports it as 130. All three exit 0 here.
 	 */
 	static readonly teardown: Runtime.Teardown = (exit, onExit) =>
 		Exit.isSuccess(exit) || Cause.hasInterruptsOnly(exit.cause) ? onExit(0) : Runtime.defaultTeardown(exit, onExit);

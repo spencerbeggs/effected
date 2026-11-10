@@ -31,7 +31,7 @@ const runOldVersion = (filename: string, keys: Record<string, string> = legacyRe
 					Object.entries(keys).map(([key, statement]) => [
 						key,
 						Effect.gen(function* () {
-							const sql = yield* SqliteClient.SqliteClient;
+							const sql = yield* SqlClient.SqlClient;
 							// One prepared statement each: a multi-statement string would run only its first.
 							for (const part of statement.split(";").map((piece) => piece.trim())) {
 								if (part.length > 0) yield* sql.unsafe(part);
