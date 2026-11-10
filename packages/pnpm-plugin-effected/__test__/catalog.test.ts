@@ -355,15 +355,29 @@ describe("the consumer's catalog", () => {
 		return out.catalogs as Record<string, Record<string, string>>;
 	}
 
-	// One runtime catalog was the point of the rename: the effect / effected split, and
-	// the `:peers` twins, confused every consumer. `pnpm pack` runs no hook, so a peer
-	// a consumer writes as `catalog:effected` publishes the `effected` range. The build
-	// chain is a second catalog by design (okf/decisions/effected-build-catalog.md).
-	it("exposes exactly two catalogs, effected and effected:build, and hides both peers twins", async () => {
+	// The hook serves all four declared catalogs. The `:peers` twins are the peer spelling:
+	// `pnpm pack` writes a `catalog:` peer as the catalog's value, and `effected` pins the
+	// Effect family exactly, so a peer spelled `catalog:effected` would publish `4.<minor>.<patch>`.
+	// The build chain is a second catalog by design (okf/decisions/effected-build-catalog.md).
+	it("exposes effected and effected:build, each with its :peers twin", async () => {
 		const catalogs = await catalogsFor({});
-		assert.deepStrictEqual(Object.keys(catalogs).sort(), ["effected", "effected:build"]);
-		assert.notProperty(catalogs, "effected:peers");
-		assert.notProperty(catalogs, "effected:build:peers");
+		assert.deepStrictEqual(Object.keys(catalogs).sort(), [
+			"effected",
+			"effected:build",
+			"effected:build:peers",
+			"effected:peers",
+		]);
+	});
+
+	it("serves effected:peers floored to the minor beside the pinned effected catalog", async () => {
+		const catalogs = await catalogsFor({});
+		const pinned = catalogs.effected?.effect ?? "";
+		assert.match(pinned, /^4\.\d+\.\d+$/);
+		const [, minor] = pinned.split(".");
+		assert.strictEqual(catalogs["effected:peers"]?.effect, `~4.${minor}.0`);
+		assert.match(catalogs["effected:peers"]?.["@effect/platform-node"] ?? "", /^~4\.\d+\.0$/);
+		assert.match(catalogs["effected:peers"]?.["@effected/cli-kit"] ?? "", /^\^0\.\d+\.0$/);
+		assert.isString(catalogs["effected:build:peers"]?.typescript);
 	});
 
 	it("carries the build chain in effected:build", async () => {
@@ -391,10 +405,31 @@ describe("the consumer's catalog", () => {
 
 	it("carries the effect family and the kit in it", async () => {
 		const { effected } = await catalogsFor({});
-		assert.match(effected?.effect ?? "", /^~4\.\d+\.\d+$/);
-		assert.match(effected?.["@effect/platform-node"] ?? "", /^~4\.\d+\.\d+$/);
+		assert.match(effected?.effect ?? "", /^4\.\d+\.\d+$/);
+		assert.match(effected?.["@effect/platform-node"] ?? "", /^4\.\d+\.\d+$/);
 		assert.match(effected?.["@effected/cli-kit"] ?? "", /^\^0\.\d+\.\d+$/);
 		assert.notProperty(effected, PLUGIN);
+	});
+
+	// pnpm never applies a version-selector override (`effect@^4.0.0`) to a `catalog:`
+	// specifier (pnpm/pnpm#17922), so a `~` family entry let a consumer that writes
+	// `catalog:effected` resolve a second, newer effect beside the pinned one. The
+	// served catalog therefore freezes each pinned family member at its override version.
+	it("freezes every pinned family member at its override version", async () => {
+		const { hooks } = (await import(PNPMFILE)) as {
+			hooks: { updateConfig: (config: Record<string, unknown>) => Promise<Record<string, unknown>> };
+		};
+		const out = await hooks.updateConfig({});
+		const effected = (out.catalogs as Record<string, Record<string, string>>).effected ?? {};
+		const overrides = out.overrides as Record<string, string>;
+		const pinned = Object.entries(overrides).filter(([selector]) => /^(effect|@effect\/[^@]+)@\^/.test(selector));
+		assert.isAbove(pinned.length, 1);
+		for (const [selector, version] of pinned) {
+			const name = selector.replace(/(.)@.*$/, "$1");
+			if (!(name in effected)) continue;
+			assert.strictEqual(effected[name], version, `${name} is served as its override version`);
+		}
+		assert.strictEqual(effected.effect, overrides["effect@^4.0.0"]);
 	});
 
 	it("keeps a consumer's own catalogs, and its effected entry wins", async () => {

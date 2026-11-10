@@ -70,7 +70,7 @@ An application:
 }
 ```
 
-A library uses the same catalog on both sides:
+A library takes its dev copy from `effected` and its peer from `effected:peers`:
 
 ```json
 {
@@ -79,23 +79,23 @@ A library uses the same catalog on both sides:
     "@effected/workspaces": "catalog:effected"
   },
   "peerDependencies": {
-    "effect": "catalog:effected",
-    "@effected/workspaces": "catalog:effected"
+    "effect": "catalog:effected:peers",
+    "@effected/workspaces": "catalog:effected:peers"
   }
 }
 ```
 
-pnpm rewrites `catalog:` specifiers to concrete ranges when it packs, so what lands on the registry is an ordinary manifest. Nothing downstream needs this plugin, or pnpm. A packed peer advertises the catalog's range — `effect: ~4.<minor>.<patch>` at the catalog's current Effect release, and each `@effected/*` package at its current release. If a library needs a wider peer, write that range by hand in its own manifest.
+pnpm rewrites `catalog:` specifiers to concrete ranges when it packs, so what lands on the registry is an ordinary manifest. Nothing downstream needs this plugin, or pnpm. A packed peer advertises the served catalog's value, so spell peers through the `:peers` catalogs: `catalog:effected:peers` packs `effect: ~4.<minor>.0` and each `@effected/*` package at `^0.<minor>.0`. A peer spelled `catalog:effected` would pack the exact Effect version the plugin pins and hold every consumer to that patch. If a library needs a wider peer, write that range by hand in its own manifest.
 
 ## What it ships
 
 | Entries | Range | Notes |
 | ------- | ----- | ----- |
-| `effect` and every `@effect/*` package | one Effect minor, with a tilde (`~4.<minor>.<patch>`) | a new Effect minor arrives with a new plugin release, never through a range |
-| `@effect/tsgo` | its own `0.x` line | versions independently of `effect` |
-| every published `@effected/*` package | its current release, with a caret | on `0.x` a caret pins the minor |
+| `effect` and every `@effect/*` package | the exact version the plugin pins graph-wide (`4.<minor>.<patch>`); `~4.<minor>.0` in `effected:peers` | a new Effect release arrives with a new plugin release, never through a range |
+| `@effect/tsgo` | its exact pin on its own `0.x` line | versions independently of `effect` |
+| every published `@effected/*` package | its current release, with a caret; floored to `^0.<minor>.0` in `effected:peers` | on `0.x` a caret pins the minor |
 
-`catalog:effect`, `catalog:effect:peers`, `catalog:effected:peers` and `catalog:effected:build:peers` do not exist for a consumer, and a manifest that still names one fails the install. An entry you declare yourself in `effected` or `effected:build` wins over the plugin's for the same package, and your other catalogs are kept.
+Each catalog has a `:peers` twin, `effected:peers` and `effected:build:peers`, with every range floored to its minor; use it in `peerDependencies`. `catalog:effect` and `catalog:effect:peers` do not exist, and a manifest that still names one fails the install. An entry you declare yourself in a catalog the plugin serves wins over the plugin's for the same package, so a `catalogs.effected` block an earlier export left in your `pnpm-workspace.yaml` keeps its old ranges until you re-export or delete it. Your other catalogs are kept.
 
 ### The build catalog
 
