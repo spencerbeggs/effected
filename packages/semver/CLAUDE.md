@@ -103,7 +103,21 @@ primitives). Outside `index.ts`, modules import explicitly — no barrels.
 - Range edges follow node-semver and core: any `\s` separates and may follow
   an operator, `>*`/`<*` desugar to the unsatisfiable `<0.0.0-0` (the
   algebra treats such a set as empty), a concrete component may not follow a
-  wildcard, and build metadata is dropped in ranges and comparators.
+  wildcard, build metadata is dropped in ranges and comparators, and an
+  empty part beside `||` (`||*`, `^1.0.0 ||`) matches every release as
+  node-semver reads it, where core rejects it (EMPTY-OR-PART in the parity
+  allowlist).
+- A `Range`'s `sets` are normalized (sorted, the `>=0.0.0` floor kept) and
+  are **not** node-semver's view. `Range.writtenSetsResult` / `writtenSets`
+  give node-semver's `Range#set` (written order, the any-version floor
+  dropped, an any-version set empty), and `range.isAny()` is its
+  `range === ""`. **node-semver is a devDependency and their oracle**:
+  `__test__/Range.written.test.ts` computes every expected value from it
+  at test time. It must never reach `dependencies` or `peerDependencies`.
+  One divergence is allowlisted there by name, HYPHEN-UPPER: under
+  `includePrerelease` a full hyphen upper bound is `<=2.3.4` (core's
+  expansion) where node-semver writes `<2.3.5-0`; both match the same
+  versions.
 - `Range.isSubset` (and thus `equivalent`, `simplify`) is a conservative
   approximation; false negatives are expected and safe. Read the in-source
   remark before "fixing" it.
@@ -114,7 +128,7 @@ primitives). Outside `index.ts`, modules import explicitly — no barrels.
 
 ## Test and build
 
-Tests live in `__test__/` (8 files), use `@effect/vitest`, and
+Tests live in `__test__/` (10 files), use `@effect/vitest`, and
 assert with `assert.*` — never `expect`. Default to `it.effect`; `VersionCache`
 suites use one top-level `layer(VersionCache.layer)(...)` group. Shared cases
 live in `__test__/fixtures/`.

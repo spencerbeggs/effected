@@ -4,6 +4,8 @@
 
 * Updated @effected/changesets
 * Updated git
+* Updated @effected/semver stays independent of core SemVer and SemVerRange
+* Updated semver
 
 ## 2026-11-09
 
