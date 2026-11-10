@@ -2,8 +2,10 @@ import { defineConfig } from "pluginfinity";
 
 export default defineConfig({
 	name: "effected",
+	// One description reaches every manifest: pluginfinity has no per-target plugin description, so the monitor,
+	// which Copilot does not ship, is named as Claude Code's.
 	description:
-		"Effect v4 development skills, a GitHub Actions and GitHub API suite, kit build and TSDoc guidance, specialist subagents (developer, reviewer, action-engineer, tsdoc-fixer), a build-diagnostics monitor, and a session briefing, distilled from the @effected packages and the official Effect-TS v4 guides.",
+		"Effect v4 development skills, a GitHub Actions and GitHub API suite, kit build and TSDoc guidance, specialist subagents (developer, reviewer, action-engineer, tsdoc-fixer), a build-diagnostics monitor on Claude Code, and a session briefing, distilled from the @effected packages and the official Effect-TS v4 guides.",
 	author: { name: "C. Spencer Beggs", email: "spencer@beggs.codes", url: "https://spencerbeg.gs" },
 	homepage: "https://github.com/spencerbeggs/effected",
 	repository: "https://github.com/spencerbeggs/effected.git",

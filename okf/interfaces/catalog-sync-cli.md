@@ -29,13 +29,15 @@ verified:
     at: 2026-11-01T21:41:54Z
   - by: human:spencer
     at: 2026-11-08T18:25:54Z
+  - by: human:spencer
+    at: 2026-11-10T00:32:33Z
 integrity:
   generated:
     body: 2d77a48048326266
   verified:
     by: human:spencer
-    at: 2026-11-08T18:25:54Z
-    content: 3374771ab53c130b
+    at: 2026-11-10T00:32:33Z
+    content: 28de1fcec0e41ebb
 ---
 
 # The catalog:sync / catalog:check CLI

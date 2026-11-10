@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
 import type { LintDiagnostic, MarkdownlintRule } from "@effected/markdown-lint";
 import { LintRule, MarkdownlintAdapter } from "@effected/markdown-lint";
+import { Option } from "effect";
 import { ChangesetLint } from "../src/ChangesetLint.js";
 import { loadParse } from "./support/oracle.js";
 
@@ -84,6 +85,8 @@ const corpus: ReadonlyArray<readonly [string, string]> = [
 	["a numeric release type", "---\na: 1\n---\n\nX.\n"],
 	["a null release type", "---\na:\n---\n\nX.\n"],
 	["a nested release type", "---\na:\n  type: patch\n---\n\nX.\n"],
+	["a release type past 2^53", '---\n"@a/b": 9007199254740993\n---\n\nX.\n'],
+	["a release type nesting a value past 2^53", "---\na: [9007199254740993]\n---\n\nX.\n"],
 	["one bad release among good ones", "---\na: patch\nb: huge\nc: minor\n---\n\nX.\n"],
 ];
 
@@ -154,6 +157,21 @@ describe("ChangesetLint", () => {
 	it("reports each bad entry on its own line, and a broken block once", () => {
 		assert.deepStrictEqual(ids(ChangesetLint.lint("---\na: patch\nb: huge\nc: minor\n---\n\nX.\n")), [["CF003", 3]]);
 		assert.deepStrictEqual(ids(ChangesetLint.lint("---\na: [patch\n---\n\nX.\n")), [["CF001", 1]]);
+	});
+
+	it("reports a release type YAML decodes as a bigint instead of throwing on it", () => {
+		const [top] = ChangesetLint.lint('---\n"@a/b": 9007199254740993\n---\n\nX.\n');
+		assert.deepStrictEqual(top?.ruleNames[1], "CF003");
+		assert.include(
+			Option.getOrElse(top?.detail ?? Option.none(), () => ""),
+			"@a/b: 9007199254740993 is not a release type",
+		);
+		const [nested] = ChangesetLint.lint("---\na: [9007199254740993]\n---\n\nX.\n");
+		assert.deepStrictEqual(nested?.ruleNames[1], "CF003");
+		assert.include(
+			Option.getOrElse(nested?.detail ?? Option.none(), () => ""),
+			'["9007199254740993"] is not a release type',
+		);
 	});
 
 	it("checks package existence only when the workspace's names are given", async () => {

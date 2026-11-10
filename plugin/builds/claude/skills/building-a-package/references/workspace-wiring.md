@@ -26,7 +26,7 @@ A workspace on the kit has no dev build. Workspace links resolve through `export
 
 - **One `build` script per package**, no target flag, no `prepare`.
 - **`types:check` depends on `^types:check`**, not on a build, because links resolve to source.
-- **Add `dependsOn: ["^build"]` only where a task needs a sibling's built output:** a package whose `bundledPackages` names a sibling (in that package's own `turbo.json`), a plain-Node consumer using `effected-built`, or a package that keeps its own differently named build task, such as an example standing in for another bundler, so an edit to the library it links invalidates its cache.
+- **Add `^build` to `dependsOn` only where a task needs a sibling's built output:** a package whose `bundledPackages` names a sibling (in that package's own `turbo.json`), a plain-Node consumer using `effected-built`, or a package that keeps its own differently named build task, such as an example standing in for another bundler, so an edit to the library it links invalidates its cache. In a package `turbo.json` that `extends: ["//"]`, an array replaces the root's, so a bare `["^build"]` drops the `types:check` gate; write `"dependsOn": ["$TURBO_EXTENDS$", "^build"]`, with the marker first, or list `"types:check"` beside it.
 - Add `.cache` to `.gitignore`: every build appends to `.cache/effected/*.jsonl` at the workspace root.
 
 ## Running the bins: `nodeOptions` and self-registering bins

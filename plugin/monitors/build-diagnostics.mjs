@@ -190,15 +190,28 @@ function makeIsDirty() {
 	};
 }
 
+// The mtime at which each unreadable artifact was last logged. read() runs every tick, so without this a file a crashed
+// build truncated would append a line (and spawn sh) every POLL_MS for as long as it stays malformed. One line per
+// state: a rewrite that is still unreadable logs again, and a successful read forgets the path.
+const loggedUnreadable = new Map();
+
 function read(path) {
 	let issues;
 	try {
 		issues = JSON.parse(readFileSync(path, "utf8"));
 	} catch (err) {
-		if (err?.code === "ENOENT") return undefined;
-		log(`could not read ${relative(ROOT, path) || path}: ${err?.message ?? err}`);
+		if (err?.code === "ENOENT") {
+			loggedUnreadable.delete(path);
+			return undefined;
+		}
+		const mtime = mtimeOf(path);
+		if (!loggedUnreadable.has(path) || loggedUnreadable.get(path) !== mtime) {
+			loggedUnreadable.set(path, mtime);
+			log(`could not read ${relative(ROOT, path) || path}: ${err?.message ?? err}`);
+		}
 		return undefined;
 	}
+	loggedUnreadable.delete(path);
 	// <pkg>/dist/prod/issues.json: up three to the package root.
 	const pkgDir = dirname(dirname(dirname(path)));
 	return {
@@ -301,15 +314,34 @@ function lockIsHeld(lockPath) {
 	return alive && age < STALE_LOCK_MS;
 }
 
-// Refresh our lock's mtime so rivals can tell a live holder from a recycled pid. Touches only a file naming us.
+// Refresh our lock's mtime so rivals can tell a live holder from a recycled pid, and answer whether we still hold it.
+// Touches only a file naming us. A lock naming anyone else (or no one: a rival mid-write) means a rival judged ours
+// abandoned and took it over, which happens when this process was suspended past STALE_LOCK_MS (a stopped session,
+// a stalled event loop): we lost it, and reporting on would duplicate every line the rival prints. A lock that
+// vanished (a tmp cleaner) is claimed again with the same exclusive create, so the project is not left unwatched;
+// only an EEXIST there, a rival that won the race, means we lost. Any other failure (an unwritable tmp) keeps us
+// running, as claimLock does.
 function heartbeat(lockPath) {
+	let holder;
 	try {
-		if (readFileSync(lockPath, "utf8").trim() !== String(process.pid)) return;
+		holder = readFileSync(lockPath, "utf8").trim();
+	} catch (err) {
+		if (err?.code !== "ENOENT") return true;
+		try {
+			writeFileSync(lockPath, String(process.pid), { flag: "wx" });
+			return true;
+		} catch (claimErr) {
+			return claimErr?.code !== "EEXIST";
+		}
+	}
+	if (holder !== String(process.pid)) return false;
+	try {
 		const now = new Date();
 		utimesSync(lockPath, now, now);
 	} catch {
-		/* lock gone or unwritable: the next claim settles it */
+		/* unwritable: the lock still names us */
 	}
+	return true;
 }
 
 function releaseFn(lockPath) {
@@ -357,7 +389,9 @@ async function main() {
 		// Counted first, so a poll that throws still counts toward PLUGINFINITY_MONITOR_MAX_TICKS.
 		ticks += 1;
 		try {
-			if (lockPath !== undefined) heartbeat(lockPath);
+			// Lost the lock to a rival: stop, as a starter that finds it held does. The exit handler's release only
+			// unlinks a file naming this pid, so it leaves the rival's lock alone.
+			if (lockPath !== undefined && !heartbeat(lockPath)) process.exit(0);
 			if ((ticks - 1) % DISCOVERY_TICKS === 0) known = discover();
 			const current = [];
 			for (const path of known) {

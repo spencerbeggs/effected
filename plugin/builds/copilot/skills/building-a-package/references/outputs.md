@@ -37,7 +37,7 @@ plugins = ["./lib/build/banner.ts"]
 - Each entry is a module path resolved against the package directory, so `build/x.ts` is a file, not a package name. Modules load through jiti, so a `.ts` file works.
 - The default export is a rolldown plugin (an object with a string `name`), or a factory of one, called once with no arguments.
 - Loading runs the module's code and stops at the first failure, `PluginLoadError`, which `effected package build` reports as exit 2.
-- **The plugin runs in the JS pass and again in the declaration pass.** In a dual-format build the declaration pass re-emits the `.cjs` chunk, so a `renderChunk` or `generateBundle` hook fires twice; guard a hook that must run once.
+- **The plugin runs in the JS pass and again in the declaration pass.** In a dual-format build the declaration pass re-emits the `.cjs` chunk, so a `renderChunk` or `generateBundle` hook fires twice, and the second emit is the file that ships. Apply a transformation on every call, or the re-emitted `.cjs` loses it; guard only a side effect that must happen once, such as writing a file outside the output or logging.
 
 An inline plugin value has no place in `effected.toml`: move it to its own file.
 

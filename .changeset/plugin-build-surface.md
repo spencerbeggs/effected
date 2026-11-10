@@ -17,6 +17,7 @@
 * A Claude Code background monitor, `build-diagnostics`, that reports `ae-*` and `tsdoc-*` diagnostics from `dist/prod/issues.json` once a package's count settles.
   * It stays quiet when the build failed, when the artifact is older than its sources or `effected.toml`, and when those inputs have uncommitted changes.
   * Set `EFFECTED_BUILD_MONITOR_STABLE_POLLS` to change how long a count must hold steady before it reports.
+  * One monitor reports per project. One that loses its lock to a rival, as after a long suspension, stops instead of reporting beside it, and an artifact it cannot read is logged once per state, not on every poll.
   * The Copilot build omits it.
 
 ## Bug Fixes

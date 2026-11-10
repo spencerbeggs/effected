@@ -225,10 +225,13 @@ EOF
 
 @test "skips artifacts under node_modules and .repos" {
 	local d
+	# Each decoy is a package the freshness gate would vouch for (a source, an artifact newer than it), so only the
+	# discovery exclusion keeps it quiet.
 	for d in node_modules/@x/dep .repos/upstream/packages/p; do
-		mkdir -p "$PROJECT/$d/dist/prod"
+		mkdir -p "$PROJECT/$d/dist/prod" "$PROJECT/$d/src"
+		printf 'export const a = 1;\n' >"$PROJECT/$d/src/index.ts"
 		_issues true
-		cp "$PKG/dist/prod/issues.json" "$PROJECT/$d/dist/prod/issues.json"
+		cp -p "$PKG/dist/prod/issues.json" "$PROJECT/$d/dist/prod/issues.json"
 	done
 	rm "$PKG/dist/prod/issues.json"
 	_watch_once
@@ -335,6 +338,75 @@ EOF
 	[[ "$output" == *"@x/thing has 1 ae-*/tsdoc-* diagnostic"* ]]
 }
 
+# _lock_path <lockdir> — the lock file a resident monitor on $PROJECT claims under <lockdir>.
+_lock_path() {
+	local key
+	key=$(node -e 'const {createHash}=require("node:crypto");const {realpathSync}=require("node:fs");console.log(createHash("sha256").update(realpathSync(process.argv[1])).digest("hex").slice(0,16))' "$PROJECT")
+	printf '%s/effected-build-monitor-%s.pid' "$1" "$key"
+}
+
+# _start_resident <lockdir> <out> — start a resident monitor in the background; sets RESIDENT_PID and waits for its
+# lock to appear.
+_start_resident() {
+	(cd "$PROJECT" && exec env -i PATH="$PATH" HOME="$HOME" XDG_STATE_HOME="$XDG_STATE_HOME" TMPDIR="$1/" \
+		EFFECTED_BUILD_MONITOR_STABLE_POLLS=0 node "$MONITOR" >"$2" 2>&1) &
+	RESIDENT_PID=$!
+	local i
+	for i in $(seq 1 30); do
+		[ -s "$(_lock_path "$1")" ] && return 0
+		sleep 0.2
+	done
+	return 1
+}
+
+@test "a resident monitor whose lock a rival reclaimed stops reporting and leaves the rival's lock" {
+	# The reclaim happens when the holder was suspended past STALE_LOCK_MS; rewriting the lock to name another live
+	# pid, with a fresh mtime, is what the holder finds on resuming.
+	_issues true
+	local lockdir="$BATS_TEST_TMPDIR/tmp" out="$BATS_TEST_TMPDIR/holder.out" lock
+	mkdir -p "$lockdir"
+	lock=$(_lock_path "$lockdir")
+	_start_resident "$lockdir" "$out"
+	local i
+	for i in $(seq 1 30); do
+		grep -q "has 1 ae-" "$out" && break
+		sleep 0.2
+	done
+	grep -q "@x/thing has 1 ae-\*/tsdoc-\* diagnostic" "$out"
+	printf '%s' "$$" >"$lock"
+	_issues true '[{"source":"api-extractor","level":"warn","code":"ae-missing-release-tag","text":"x"},{"source":"api-extractor","level":"warn","code":"tsdoc-code-span-empty","text":"y"}]'
+	local exited=0
+	for i in $(seq 1 40); do
+		kill -0 "$RESIDENT_PID" 2>/dev/null || { exited=1; break; }
+		sleep 0.2
+	done
+	kill "$RESIDENT_PID" 2>/dev/null || true
+	wait "$RESIDENT_PID" 2>/dev/null || true
+	[ "$exited" -eq 1 ]
+	! grep -q "has 2 ae-" "$out"
+	[ "$(cat "$lock")" = "$$" ]
+}
+
+@test "a resident monitor whose lock vanished claims it again and keeps watching" {
+	_issues true
+	local lockdir="$BATS_TEST_TMPDIR/tmp" out="$BATS_TEST_TMPDIR/holder.out" lock
+	mkdir -p "$lockdir"
+	lock=$(_lock_path "$lockdir")
+	_start_resident "$lockdir" "$out"
+	rm -f "$lock"
+	local i reclaimed=0
+	for i in $(seq 1 40); do
+		[ "$(cat "$lock" 2>/dev/null)" = "$RESIDENT_PID" ] && { reclaimed=1; break; }
+		sleep 0.2
+	done
+	local alive=0
+	kill -0 "$RESIDENT_PID" 2>/dev/null && alive=1
+	kill "$RESIDENT_PID" 2>/dev/null || true
+	wait "$RESIDENT_PID" 2>/dev/null || true
+	[ "$reclaimed" -eq 1 ]
+	[ "$alive" -eq 1 ]
+}
+
 @test "runs unlocked and still reports when tmpdir is unwritable" {
 	# The unlocked fallback is the path whose whole purpose is to keep the
 	# monitor alive; --once never reaches it. Skip as root, where chmod 500
@@ -359,6 +431,14 @@ EOF
 	[ "$status" -eq 0 ]
 	[ -z "$output" ]
 	grep -q "monitor/build-diagnostics.mjs: .*packages/thing/dist/prod/issues.json" "$XDG_STATE_HOME/pluginfinity/effected/error.log"
+}
+
+@test "logs an unreadable artifact once per state, not once per poll" {
+	printf '{not json' >"$PKG/dist/prod/issues.json"
+	local log="$XDG_STATE_HOME/pluginfinity/effected/error.log"
+	run_monitor claude build-diagnostics --cwd "$PROJECT" --ticks 3 --timeout 20 PLUGINFINITY_PLUGIN=effected PLUGINFINITY_HOST=claude
+	assert_hook_exit 0
+	[ "$(grep -c 'could not read packages/thing/dist/prod/issues.json' "$log")" -eq 1 ]
 }
 
 # --- registration ------------------------------------------------------------

@@ -10,7 +10,7 @@
 
 * Read `config.changelog`: `false`, a module id or a `[moduleId, options]` pair, as the file writes it. It defaults to `"@changesets/cli/changelog"`.
 * Read `config.snapshot`: `{ useCalculatedVersion, prereleaseTemplate? }`, where `useCalculatedVersion` defaults to `false`.
-* Decoding accepts every shape `@changesets/config` accepts for the two keys, and refuses what it refuses, such as `changelog: true` or an empty `prereleaseTemplate`, with `ChangesetConfigError`.
+* Decoding accepts every shape `@changesets/config` accepts for the two keys, and refuses `changelog: true` or an empty `prereleaseTemplate` with `ChangesetConfigError`, as it does. One difference is deliberate: the options element of a `changelog` pair is carried as `unknown`, so `["x", 5]` and `["x", "s"]` decode here though `@changesets/config` rejects them, and `["x", []]` stays as written where it gives `["x", {}]`. Validating the options is the generator's job.
 * `ChangesetConfig.make` fills both fields with their defaults, so existing calls compile unchanged.
 
 ### The lint subpath ships style-neutral rules

@@ -23,11 +23,13 @@ integrity:
     body: d7abe2e95a3f8c0a
   verified:
     by: human:spencer
-    at: 2026-10-25T20:04:29Z
-    content: 7b74de953bc423dd
+    at: 2026-11-10T00:32:33Z
+    content: 926810b061ac6500
 verified:
   - by: human:spencer
     at: 2026-10-25T20:04:29Z
+  - by: human:spencer
+    at: 2026-11-10T00:32:33Z
 ---
 
 # @effected/semver stays independent of core SemVer and SemVerRange

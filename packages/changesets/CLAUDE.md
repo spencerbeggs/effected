@@ -73,9 +73,11 @@ These are deliberate, and each is ruled or stated in TSDoc. Do not "fix" one wit
 - A public package depending on a skipped one.
 - `privatePackages` with `tag` on and `version` off.
 - `packages: []` and patterns matching nothing plan the root, because discovery cannot tell `packages: []` from an absent key.
+- A `changelog` pair whose options are not an object, such as `["x", 5]` or `["x", "s"]`: `ChangelogPair` is `[String, Unknown]`, so it decodes, where `@changesets/config` rejects it. Validating the options is the generator's concern.
 
 **Answered differently:**
 
+- A `changelog` pair of `["x", []]` decodes as written, `["x", []]`; the oracle gives `["x", {}]`.
 - A version-less package is left out of the plan. The oracle lists it with no versions, and `PlannedRelease` requires them.
 - A catalog-only root nested in another workspace answers for itself. The oracle climbs to the enclosing workspace.
 - A version-less member of a fixed or linked group is passed over for the group's highest version and pre-release number; the oracle crashes on it.

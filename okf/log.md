@@ -6,6 +6,10 @@
 * Updated git
 * Updated @effected/semver stays independent of core SemVer and SemVerRange
 * Updated semver
+* Updated Consumers see one catalog, effected, folded by the plugin's hook from split declarations
+* Updated The catalog:sync / catalog:check CLI
+* Updated The plugin declares one catalog, effected, and pins only the Effect family by include pattern
+* Updated The typechecker: tsc, not tsgo
 
 ## 2026-11-09
 

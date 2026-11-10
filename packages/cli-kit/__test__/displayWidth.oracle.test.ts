@@ -134,21 +134,20 @@ describe("displayWidth against string-width: escapes that are not CSI or OSC", (
 		});
 	}
 
-	// ansi-regex 6.5.0 ("never partially strip a sequence") narrowed its final-byte class, and the digits of
-	// DECSC/DECRC fell outside it, so the oracle counts `ESC 7` and `ESC 8` as visible "7" and "8". Both are
-	// cursor save and restore: they draw nothing, and 3 is the width a terminal shows.
-	it("pins the cursor save/restore divergence: ESC 7 and ESC 8 draw nothing, though the oracle counts them", () => {
+	// Two former divergences, now agreement: ansi-regex 6.5.0 counted DECSC/DECRC (`ESC 7`, `ESC 8`) and a DCS or APC
+	// payload as visible text, and 6.6.0 strips them as this does. Both draw nothing, and 3 is the width a terminal shows.
+	it("agrees: cursor save and restore (ESC 7, ESC 8)", () => {
 		const text = "\u001b7abc\u001b8";
+		assert.strictEqual(displayWidth(text), stringWidth(text));
 		assert.strictEqual(displayWidth(text), 3);
-		assert.isAbove(stringWidth(text), 3);
 	});
 
-	it("pins the string divergence: a DCS or APC payload draws nothing, though the oracle counts it", () => {
+	it("agrees: a DCS or APC string", () => {
 		const dcs = "\u001bPq#0\u001b\\abc";
 		const apc = "\u001b_Ga=T\u001b\\abc";
+		assert.strictEqual(displayWidth(dcs), stringWidth(dcs));
+		assert.strictEqual(displayWidth(apc), stringWidth(apc));
 		assert.strictEqual(displayWidth(dcs), 3);
 		assert.strictEqual(displayWidth(apc), 3);
-		assert.isAbove(stringWidth(dcs), 3);
-		assert.isAbove(stringWidth(apc), 3);
 	});
 });

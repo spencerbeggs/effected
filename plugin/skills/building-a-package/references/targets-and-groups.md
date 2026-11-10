@@ -50,6 +50,6 @@ dist/prod/
 ```
 
 - `pkg` drops declaration source maps. `meta` exists only when the model ran: not under `meta = false`, `emitDts = false`, or for an exe-only package.
-- `targets.json` is written after the JS and declaration passes, so a build failing earlier leaves none.
+- `targets.json` is written after the JS and declaration passes, and nothing removes it beforehand: a build failing earlier writes none, so the file left there is the previous build's, if there was one. Use it only after a build of the current tree ended `buildOk: true` with a fresh `generatedAt` ([reading-issues.md](reading-issues.md)).
 - `[package.build.manifest] set.name` renames every group that has no `name` of its own, plus `targets.json` and the API model; see [outputs.md](outputs.md).
 - A release packs `dist/prod/<group>/pkg`. Never publish a package from its source directory: the source manifest's `exports` name `src/` and, when present, `effected-built` paths the tarball does not contain.

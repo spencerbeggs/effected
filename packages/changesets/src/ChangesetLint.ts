@@ -11,6 +11,19 @@ const RELEASE_TYPES: ReadonlySet<unknown> = new Set(["major", "minor", "patch", 
 
 const TAGS = ["changeset", "front-matter"] as const;
 
+/**
+ * A front matter value as a diagnostic quotes it. Never throws: YAML decodes an integer past 2^53 as a bigint, which
+ * `JSON.stringify` refuses, at the top level or nested, so a rule reports the value instead of crashing on it.
+ */
+const showValue = (value: unknown): string => {
+	if (typeof value === "bigint") return String(value);
+	try {
+		return JSON.stringify(value, (_key, v: unknown) => (typeof v === "bigint" ? String(v) : v)) ?? String(value);
+	} catch {
+		return Object.prototype.toString.call(value);
+	}
+};
+
 /** The entries of a front matter `@changesets/parse` accepts; none when it refuses one, which `frontMatter` reports. */
 const entriesOf = (context: LintContext) => {
 	const read = readFrontMatter(context.source);
@@ -54,7 +67,7 @@ const releaseType = LintRule.make({
 			report(
 				context.diagnostic({
 					at: entry.at,
-					detail: `${entry.name}: ${JSON.stringify(entry.type) ?? String(entry.type)} is not a release type; use major, minor, patch or none.`,
+					detail: `${entry.name}: ${showValue(entry.type)} is not a release type; use major, minor, patch or none.`,
 					context: entry.name,
 				}),
 			);
