@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-10T22:27:38Z
 integrity:
   generated:
-    body: 83b322f9c993c5d9
+    body: 93a1529d470cc419
 ---
 
 # @effected/memfs
@@ -793,6 +793,33 @@ authoritative list.
     exposes `emit` and `watcherCount`, which the handle surfaces. Core's
     watch contract only promises a stream of events, so a volume that
     publishes none until told to is within it.
+17. **Paths that walk through a non-directory** (#1284) — fenced
+    `KIT EXTENSION (errno fidelity, #1284)` sites in `volume.ts` and
+    `ports.ts`, plus `internal/lexical.ts`. A `.` or `..` after a file (or
+    after a link to one) is a component under something that cannot hold
+    one, and fails ENOTDIR as the kernel does, never as the lexically
+    collapsed path. Three edits:
+    - `resolveParent` validates the leaf name only after the parent
+      resolves to a directory. So `remove`, `rename`, `symlink` and `link`
+      at `file/.` or `file/x/..` fail ENOTDIR, and at `missing/.` ENOENT,
+      where they answered `InvalidData` for the bad entry name.
+    - The ports' `walk` checks `.` as it checked `..`. `stat`, `lstat`,
+      `readFile` and `readdir` of `file.txt/.` (and `to-file/.`) fail
+      ENOTDIR, where they answered the file.
+    - `realPath`, on both the engine and the sync port, folds the path
+      lexically first (`lexicallyNormalized`). node's `fs.realpath` and the
+      JS `realpathSync` run `path.resolve` before resolving a link, so
+      `file/..` is the directory holding `file` and `missing/..` is never
+      visited. Both answered ENOTDIR/ENOENT before. The kernel's
+      `realpathSync.native` is not the reference: it resolves `..`
+      physically, so on macOS `file.txt/x/..` is ENOTDIR, `link/..` is the
+      link target's parent and `missing/..` is ENOENT.
+    `ErrnoParityContract.ts` carries the engine cases against both
+    implementations, and `integration/ports.int.test.ts` the port cases and
+    a `realPath` oracle against the JS `realpathSync`. A `.` or `..` leaf
+    on a real directory still answers `InvalidData` where node reports
+    `EINVAL`/`EEXIST`/`ERR_FS_EISDIR` per operation. That is a separate,
+    unaddressed divergence.
 
 ## Superseded: opt-in `Volume`, no type widening
 

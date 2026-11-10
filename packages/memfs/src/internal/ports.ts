@@ -17,6 +17,7 @@ import type {
 } from "../MemoryFileSystem.js";
 import { fallbackErrnoForTag, nodeErrno } from "./errno.js";
 import { assertKnownFaultKeys } from "./faults.js";
+import { lexicallyNormalized } from "./lexical.js";
 
 // The port is defined in `stat` terms, so it FOLLOWS symbolic links — unlike
 // the literal inspection view it is built on. `MAX_LINK_HOPS` mirrors the
@@ -36,9 +37,16 @@ const walk = (volume: MemoryFileSystemVolume, path: string, followFinal: boolean
 	// has to follow the link at `/links/pkg` before it can see `a.json`, exactly
 	// as a real filesystem walks a path.
 	let current = "";
-	const parts = path.split("/").filter((part) => part !== "" && part !== ".");
+	const parts = path.split("/").filter((part) => part !== "");
 	for (let i = 0; i < parts.length; i++) {
 		const part = parts[i];
+		if (part === ".") {
+			// `.` names the directory it is in, so under a non-directory it is
+			// ENOTDIR exactly as `..` is (#1284) — never the file itself.
+			const here = volume.lstat(current === "" ? "/" : current);
+			if (here !== undefined && here.kind !== "directory") return { code: "ENOTDIR" };
+			continue;
+		}
 		if (part === "..") {
 			// `..` under a non-directory is ENOTDIR, as the kernel reports it.
 			const here = volume.lstat(current === "" ? "/" : current);
@@ -269,7 +277,8 @@ export const makeSyncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSy
 		stat: (path) => statOf(volume, path, "stat", true),
 		lstat: (path) => statOf(volume, path, "lstat", false),
 		realPath: (path) => {
-			const r = resolvePath(volume, path);
+			// Folded lexically first, as `realpathSync` folds it (./lexical.js).
+			const r = resolvePath(volume, lexicallyNormalized(path));
 			if ("code" in r) throw nodeErrno(r.code, "realpath", path);
 			return r.path;
 		},

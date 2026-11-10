@@ -234,7 +234,10 @@ export interface MemoryFileSystemSyncFileSystem {
 	readonly lstat: (path: string) => MemoryFileSystemPortStats;
 	/**
 	 * `realpathSync`: the canonical path of `path`, every link in it resolved.
-	 * Throws `ENOENT`/`ENOTDIR`/`ELOOP` with `syscall: "realpath"`.
+	 * Like `realpathSync`, `.` and `..` are folded lexically first, so
+	 * `file.txt/..` is the directory holding `file.txt` even though `stat` of
+	 * the same path fails `ENOTDIR`. Throws `ENOENT`/`ENOTDIR`/`ELOOP` with
+	 * `syscall: "realpath"`.
 	 */
 	readonly realPath: (path: string) => string;
 }

@@ -84,7 +84,14 @@ hands in — never re-derived here.
   spelled is none. A `.`, `..` or empty segment the row keeps (level 0) is
   resolved physically by `resolvesPhysically`: it must follow an `lstat`
   Directory, never a file, a missing name or a link, because `join`
-  normalizes it lexically where the kernel fails ENOTDIR or ENOENT (#1283). Braces are magic here (glob's `hasMagic` ignores them). A magic
+  normalizes it lexically where the kernel fails ENOTDIR or ENOENT (#1283).
+  Without `followSymlinks` no directory such a path passes through may be a
+  link (`link/e/..` reaches `link` through it, #1290); under it a link may be
+  passed through, and a `.` or empty segment after one names its target
+  (`link/./*.js` answers `link/./d.js`), while a `..` after one is still
+  refused, since the kernel resolves it from the target. A magic root's
+  spellings pass the same check: a spelling that does not resolve
+  (`f.js/../` at level 0) answers nothing. Braces are magic here (glob's `hasMagic` ignores them). A magic
   pattern walks each of `enumerationRoots` — one per brace alternative, each
   with its own prefix and depth, so `packages/{a,b}/src/*.ts` reads only those
   two directories; a **negated**
@@ -151,8 +158,9 @@ hands in — never re-derived here.
   against a brute-force `matches` filter, plus every bounded one again under
   the tightest `maxDepth` its separators allow: zero differences. The
   literal fast-path classes (a literal running past a file through `.`/`..`,
-  an escaped literal) are compared too: the filter resolves a literal's
-  spellings physically against the tree, as the fast path does (#1283).
+  an escaped literal) are compared too: the filter resolves every spelling
+  physically against the tree, as the fast path and a magic root's
+  spellings do (#1283, #1290).
   Extend its alphabet, never patch one spelling at a time. They skip
   READS only, never a match, so the answer is unchanged. They are why a bounded
   pattern never trips `maxDepth` or an unreadable directory it has no reason

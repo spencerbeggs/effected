@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/walker/CLAUDE.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-08T17:45:32Z
+  at: 2026-11-10T22:27:38Z
 integrity:
   generated:
-    body: 2825b7ae3356101c
+    body: a56a6c988217cb2e
 ---
 
 # walker
@@ -256,7 +256,22 @@ pattern's metadata:
   already popped (`f.js/x/..` answers `f.js`, as minimatch documents). A `.`,
   `..` or empty segment the row keeps (level 0) must follow a real
   directory, checked by `lstat`, because a joined stat path normalizes it
-  lexically where the kernel fails ENOTDIR or ENOENT (#1283).
+  lexically where the kernel fails ENOTDIR or ENOENT (#1283). Without
+  `followSymlinks`, no directory such a path passes through may be a link
+  either: `link/e/..` folds to `link` but reaches it through the link, and a
+  walk that does not follow links answers nothing there (#1290). Under
+  `followSymlinks` a `.` or empty segment after a link names the link's
+  target and only needs it to be a directory (`link/./*.js` answers
+  `link/./d.js`). A `..` after a link is refused even then, because the
+  kernel resolves it from the target rather than lexically.
+- A magic pattern's root spellings obey the same rule (#1290). At level 0
+  `f.js/../*.js` keeps `f.js/../` as the spelling of the root `""`, and a
+  spelling that does not resolve physically, past a file or through an
+  unfollowed link, answers nothing. The walk used to answer
+  `f.js/../a.js` there, a path a real filesystem fails ENOTDIR.
+  `__test__/e2e/dot-segments.e2e.test.ts` holds both shapes against a
+  brute-force filter over a real `node:fs` tree and over memfs (which fails
+  these paths as node does since #1284).
 - A pattern that cannot match below one level never descends, reading a
   single level instead.
 - A pattern with no globstar reads no directory deeper than its segments
@@ -274,9 +289,9 @@ pattern's metadata:
   segments, and walks each one (braces, classes, extglobs and escapes
   included) under `matchBase`, `dot` and every optimization level against a
   brute-force `matches` filter of a memfs tree, plus every bounded one under
-  the tightest `maxDepth` its separators allow: zero differences, the
-  literal fast-path classes included, whose spellings the filter resolves
-  physically against the tree. Both bounds live in
+  the tightest `maxDepth` its separators allow: zero differences. The
+  filter resolves every spelling physically against the tree, the literal
+  fast-path classes' and a magic root's alike. Both bounds live in
   `internal/patternBounds.ts` and only ever skip reads, never a match. They
   are checked before `maxDepth`, which therefore governs only directories the
   walk reads: a bounded pattern does not trip a cap on a deep tree it has no

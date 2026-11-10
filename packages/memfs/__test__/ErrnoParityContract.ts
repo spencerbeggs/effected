@@ -647,6 +647,88 @@ const cases: ReadonlyArray<Case> = [
 		check: (_, fs, p) => Effect.map(fs.readFile(p("file")), (contents) => assert.strictEqual(contents.length, 0)),
 	},
 
+	// A path that walks THROUGH a non-directory (#1284). A `.` or `..` after a
+	// file is a component under something that cannot hold one: ENOTDIR, never
+	// the lexically collapsed path, and never a bad entry name either. A `.`
+	// leaf under a missing parent is ENOENT for the same reason.
+	{ name: "stat file/.", run: (fs, p) => fs.stat(p("file", ".")), expect: fail("BadResource", "stat", "ENOTDIR") },
+	{ name: "stat file/..", run: (fs, p) => fs.stat(p("file", "..")), expect: fail("BadResource", "stat", "ENOTDIR") },
+	{
+		name: "readDirectory file/x/..",
+		run: (fs, p) => fs.readDirectory(p("file", "x", "..")),
+		expect: fail("BadResource", "readDirectory", "ENOTDIR"),
+	},
+	{
+		name: "readFile file/../file",
+		run: (fs, p) => fs.readFile(p("file", "..", "file")),
+		expect: fail("BadResource", "readFile", "ENOTDIR"),
+	},
+	{
+		name: "stat filesym/. (a link to a file)",
+		run: (fs, p) => fs.stat(p("filesym", ".")),
+		expect: fail("BadResource", "stat", "ENOTDIR"),
+	},
+	{
+		name: "remove file/.",
+		run: (fs, p) => fs.remove(p("file", ".")),
+		expect: fail("BadResource", "remove", "ENOTDIR"),
+	},
+	{
+		name: "remove file/x/.. recursively",
+		run: (fs, p) => fs.remove(p("file", "x", ".."), { recursive: true }),
+		expect: fail("BadResource", "remove", "ENOTDIR"),
+	},
+	{
+		name: "rename file/.",
+		run: (fs, p) => fs.rename(p("file", "."), p("moved")),
+		expect: fail("BadResource", "rename", "ENOTDIR"),
+	},
+	{
+		name: "rename onto file/x/..",
+		run: (fs, p) => fs.rename(p("file2"), p("file", "x", "..")),
+		expect: fail("BadResource", "rename", "ENOTDIR"),
+	},
+	{
+		name: "symlink at file/.",
+		run: (fs, p) => fs.symlink("t", p("file", ".")),
+		expect: fail("BadResource", "symlink", "ENOTDIR"),
+	},
+	{
+		name: "link at filesym/..",
+		run: (fs, p) => fs.link(p("file2"), p("filesym", "..")),
+		expect: fail("BadResource", "link", "ENOTDIR"),
+	},
+	{
+		name: "remove missing/.",
+		run: (fs, p) => fs.remove(p("missing", ".")),
+		expect: fail("NotFound", "remove", "ENOENT"),
+	},
+	{
+		name: "symlink at missing/x/..",
+		run: (fs, p) => fs.symlink("t", p("missing", "x", "..")),
+		expect: fail("NotFound", "symlink", "ENOENT"),
+	},
+	// realPath is the exception, because node's `fs.realpath` normalizes the
+	// path lexically (`path.resolve`) before it resolves a single link: there,
+	// `file/..` is the directory holding `file`, and a missing parent of a `..`
+	// is never visited.
+	...(
+		[
+			[["file", ".."], []],
+			[["file", ".", ".."], []],
+			[["missing", ".."], []],
+			[["file", "."], ["file"]],
+			[["file", "x", ".."], ["file"]],
+		] as const
+	).map(
+		([segments, normalized]): Case => ({
+			name: `realPath ${segments.join("/")} normalizes lexically, as fs.realpath does`,
+			run: (fs, p) => fs.realPath(p(...segments)),
+			expect: "success",
+			check: (value, fs, p) => Effect.map(fs.realPath(p(...normalized)), (want) => assert.strictEqual(value, want)),
+		}),
+	),
+
 	// glob never fails on its root: missing, non-directory and unresolvable roots match nothing.
 	{
 		name: "glob from a missing root",

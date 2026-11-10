@@ -8,6 +8,7 @@ import {
 	mkdtempSync,
 	readFileSync,
 	readdirSync,
+	realpathSync,
 	rmSync,
 	statSync,
 	symlinkSync,
@@ -32,6 +33,7 @@ beforeAll(() => {
 	symlinkSync(join(host, "file.txt", "child"), join(host, "bad-link"));
 	symlinkSync(join(host, "nc-b", "x"), join(host, "nc-a"));
 	symlinkSync(join(host, "nc-a"), join(host, "nc-b"));
+	symlinkSync(join(host, "file.txt"), join(host, "to-file"));
 });
 afterAll(() => rmSync(host, { recursive: true, force: true }));
 
@@ -89,6 +91,17 @@ const cases = [
 	"file.txt/",
 	"dir/",
 	"to-dir/",
+	// A `.` or `..` after a non-directory walks THROUGH it (#1284): ENOTDIR on
+	// the host, never the lexically collapsed path. A link to a file is the
+	// same non-directory once followed.
+	"file.txt/.",
+	"file.txt/./",
+	"file.txt//.",
+	"file.txt/x/..",
+	"file.txt/../file.txt",
+	"to-file/.",
+	"to-file/..",
+	"dir/./inner.txt",
 ];
 
 const seed = {
@@ -101,6 +114,7 @@ const seed = {
 	"/r/bad-link": MemoryFileSystem.symlink("/r/file.txt/child"),
 	"/r/nc-a": MemoryFileSystem.symlink("/r/nc-b/x"),
 	"/r/nc-b": MemoryFileSystem.symlink("/r/nc-a"),
+	"/r/to-file": MemoryFileSystem.symlink("/r/file.txt"),
 };
 
 describe("sync port parity with node:fs", () => {
@@ -128,6 +142,36 @@ describe("sync port parity with node:fs", () => {
 					outcome(() => [...sync.readDirectory(`/r/${c}`)].sort()),
 					outcome(() => readdirSync(hostPath(c)).sort()),
 					`readDirectory ${c}`,
+				);
+			}
+		}),
+	);
+
+	it.effect("realPath agrees with realpathSync on every case, lexical folding included", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* MemoryFileSystem.makeHandle(seed);
+			const sync = MemoryFileSystem.syncFileSystem(volume);
+			// The JS `realpathSync` is the reference: it is what the kit's own Node
+			// binding (`@effected/walker/node-sync`) wires, and it folds `.`/`..`
+			// lexically before resolving. (`.native` is the kernel's and does not:
+			// on macOS `file.txt/x/..` is ENOTDIR there.) The `code` is compared;
+			// the syscall is not, because the port reports `realpath` as documented
+			// where the JS implementation names its internal `lstat`/`stat`.
+			const realHost = realpathSync(host);
+			const answer = (f: () => string) => {
+				try {
+					return { value: f() };
+				} catch (e) {
+					return { code: (e as { code: string }).code };
+				}
+			};
+			for (const c of cases) {
+				const real = answer(() => realpathSync(hostPath(c)));
+				const expected = "value" in real ? { value: real.value.split(realHost).join("/r") } : real;
+				assert.deepStrictEqual(
+					answer(() => sync.realPath(`/r/${c}`)),
+					expected,
+					`realPath ${c}`,
 				);
 			}
 		}),
