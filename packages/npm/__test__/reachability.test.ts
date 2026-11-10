@@ -33,6 +33,9 @@ const VOCABULARY = [
 	"WorkspaceResolver.ts",
 	"CatalogAssemblyError.ts",
 	"Manifest.ts",
+	"NpmWorkspacePatterns.ts",
+	"NpmWorkspacePatternsError.ts",
+	"internal/workspacePatterns.ts",
 ];
 
 /** Modules that reach IO, directly or transitively. */
@@ -98,7 +101,12 @@ describe("tier guardrail: the pure vocabulary does not reach IO", () => {
 	it("every vocabulary module in VOCABULARY actually exists", () => {
 		// Guards the list itself: a renamed module would silently drop out of the
 		// check above and the suite would still pass.
-		const present = new Set(readdirSync(SRC).filter((f) => f.endsWith(".ts")));
+		// Recursive, so an internal module listed by its `internal/` path is found too.
+		const present = new Set(
+			readdirSync(SRC, { recursive: true, encoding: "utf8" })
+				.map((f) => f.split("\\").join("/"))
+				.filter((f) => f.endsWith(".ts")),
+		);
 		for (const module of VOCABULARY) {
 			assert.isTrue(present.has(module), `${module} is listed but missing from src/`);
 		}

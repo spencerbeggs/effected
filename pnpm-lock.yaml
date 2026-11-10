@@ -1351,6 +1351,9 @@ importers:
       '@effected/crypto':
         specifier: workspace:^
         version: link:../crypto
+      '@effected/glob':
+        specifier: workspace:^
+        version: link:../glob
     devDependencies:
       '@effect/vitest':
         specifier: catalog:effected

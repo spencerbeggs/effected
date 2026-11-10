@@ -31,10 +31,10 @@ sources:
     resource: ../../packages/workspaces/src/PnpmSettings.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-10T21:32:53Z
+  at: 2026-11-10T22:32:17Z
 integrity:
   generated:
-    body: b991feb668b7b6e2
+    body: 9308aa5a44e040c0
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -413,6 +413,21 @@ continue phase 2's A1–A10:
 - **B11**: `packFrom` defaults to probe P3's outcome, `{ directory:
   "dist/prod/npm/pkg" }`
   ([the pack-source decision](../decisions/packed-install-pack-source.md)).
+
+## npm roots: GlobSet semantics, not npm's rules
+
+Discovery reads `package.json#workspaces` through `GlobSet` for every manager, npm, yarn and bun alike, in `WorkspaceDiscovery`, `WorkspacesSync` and `WorkspaceSnapshots`. It does not use npm's own `@npmcli/map-workspaces` rules, which `@effected/npm` ships as `NpmWorkspacePatterns` and `@effected/lockfiles` reads npm link rows with (#1286). On most fields the two agree. On these six, measured over the directories `packages/a`, `packages/b`, `packages/.hidden`, `apps/c` and `packages/deep/d`, an npm root enumerates members npm itself would not:
+
+| `workspaces` | npm (`NpmWorkspacePatterns`) | discovery (`GlobSet`) | why |
+| --- | --- | --- | --- |
+| `["packages/*", "!packages/a", "packages/a"]` | a, b | b | npm's negations are ordered: a later positive cancels one; `GlobSet` exclusions are order-independent |
+| `["apps/c", "!apps/*", "apps/c"]` | c | none | the same ordered cancellation |
+| `["packages/*/"]` | a, b | none | npm matches a positive against directories, so the slash is harmless; `GlobSet`'s directory-only form never matches the slash-free path discovery tests |
+| `["!!packages/a"]` | a | none | npm drops an even run of `!`; `GlobSet` reads the first `!` as an exclusion |
+| `["packages\\a"]` | a | none | npm turns a backslash in a positive into `/`; glob reads it as an escape |
+| `["packages/*", "!packages/a/"]` | b | a, b | npm's ignore matches a negation with or without the trailing slash |
+
+Ruling (#1286): discovery stays on `GlobSet` for now. Making it npm-aware for an npm root, by filtering its candidate directories through `NpmWorkspacePatterns`, is filed as its own change: it would move these six answers, and yarn and bun do not follow npm's rules. `__test__` in `@effected/lockfiles` (`importers.test.ts`) pins npm's six answers, and `@effected/npm`'s `NpmWorkspacePatterns.test.ts` the rules.
 
 ## WorkspacesSync — the escape hatch
 

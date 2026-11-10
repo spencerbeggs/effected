@@ -33,6 +33,8 @@
 * Updated @effected/shell
 * Updated @effected/memfs
 * Updated walker
+* Updated lockfiles
+* Updated npm
 
 ## 2026-11-09
 

@@ -5,9 +5,7 @@
 // the delegated typed failures actually surface through Lockfile.parse.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Exit, Option, Result } from "effect";
-import { Minimatch } from "../../glob/node_modules/minimatch/dist/esm/index.js";
-import { braceAlternativeCount, compileGlob, stripTrailingDot } from "../src/internal/npm.js";
+import { Effect, Exit, Option } from "effect";
 import { Lockfile, LockfileParseError } from "../src/Lockfile.js";
 import type { LockfileFormat } from "../src/LockfileFormat.js";
 
@@ -679,10 +677,8 @@ describe("npm workspace globs", () => {
 				// less than that.
 				const plain = lockfileWith(["p/**", ...range(31, (i) => `!p/${"*/".repeat(9)}{a,b,c,d,e,f,g,h}${i}`)], rows);
 				assert.isBelow(yield* cpuMs(ranges, 1, "fails"), yield* cpuMs(plain, 1, "parses"));
-				// A range of 100 values or more weighs its values, one of 99 is expanded and weighs its alternatives.
-				assert.strictEqual(braceAlternativeCount("q/{0..199}"), 200);
-				assert.strictEqual(braceAlternativeCount("q/{a,b}/{0..199}"), 400);
-				assert.strictEqual(braceAlternativeCount("q/{1..99}{a,b}"), 198);
+				// The weights themselves (a range of 100 values or more weighs its values) are pinned beside the matcher,
+				// in @effected/npm's NpmWorkspacePatterns tests.
 			}),
 		60_000,
 	);
@@ -692,25 +688,11 @@ describe("npm workspace globs", () => {
 		() =>
 			Effect.gen(function* () {
 				const nines = "9".repeat(400);
-				const eights = `${"9".repeat(399)}8`;
 				// An endpoint past a safe integer weighs past the budget: brace expansion
 				// reads it as a double, gets `Infinity`, and counts towards it until a
 				// guard stops it (100,000 alternatives for two equal 400-digit endpoints).
-				for (const shape of [
-					`q/{${nines}..${nines}}`,
-					`q/{${eights}..${nines}}`,
-					`q/{1..${nines}}`,
-					`q/{-${nines}..${nines}}`,
-					`q/{0..9007199254740992}`,
-				]) {
-					const weight = braceAlternativeCount(shape);
-					assert.isAbove(weight, 256, shape.slice(0, 12));
-					assert.isFalse(Number.isNaN(weight), shape.slice(0, 12));
-				}
-				// A safe range of 100 or more values is one portion to the engine, and weighs its value count.
-				assert.strictEqual(braceAlternativeCount(`q/{1..9007199254740991}`), 9_007_199_254_740_991);
-				// Many groups stop one past the budget, rather than expanding 2^200 alternatives.
-				assert.isAbove(braceAlternativeCount("{a,b}".repeat(200)), 256);
+				// Each such sequence weighs past the budget, never NaN: pinned beside the matcher, in @effected/npm's
+				// NpmWorkspacePatterns tests. Here, the parse it guards.
 				// The reviewer's repro (resized to the 32-wildcard ceiling): 30 negations of 8^4 alternatives beside 935
 				// literal positives, then a last positive whose sequence endpoints
 				// overflow a double. Before, the weight went NaN, `NaN > 256` was false,
@@ -730,73 +712,6 @@ describe("npm workspace globs", () => {
 				assert.include(String((unbounded.cause as Error).message), "unboundedly many brace alternatives");
 			}),
 	);
-
-	it("the brace weight is the count of alternatives the engine matches, never below it", () => {
-		// Checked against minimatch 11.0.5's own expansion, the one the glob
-		// engine follows (from @effected/glob's oracle devDependency): its
-		// `globSet`, the distinct alternatives after a range of 100 or more
-		// values is kept whole. Under-counting would let a pattern past the
-		// ceiling, so a weight is equal to it with no kept range, at or past it
-		// with one, and past the budget where the oracle's expansion runs to its
-		// own cap.
-		const oracle = (shape: string): number => new Minimatch(shape, { nocomment: true, nonegate: true }).globSet.length;
-		const shapes = [
-			"p/{a,b}",
-			"{a,b}/{c,d}",
-			"p/{a,{b,c}}",
-			"{a},b}",
-			"{a,b}}",
-			"{{a,b},{c,d}}",
-			"x{1..9}",
-			"x{1..9..2}",
-			"x{a..e}",
-			"x{-3..3}",
-			"x{01..10}",
-			"{1..3}{a,b}",
-			"\\{a,b}",
-			"{a\\,b,c}",
-			"{a,b\\}",
-			"{a,,b}",
-			"{1..99}{a,b}",
-			"{a,b}{c,d}{e,f}{g,h}{i,j}",
-			"p/{a,b,c,d,e,f,g,h}{a,b,c,d,e,f,g,h}",
-			"{a,{b,{c,{d,e}}}}",
-			"a{b,c{d,e}f}g{h,i}",
-			"{x,y}{1..3}{a..c}",
-			"}{a,b}{",
-			"{{a,b}",
-			"{a,b{c,d}",
-			"{a,b}{c,d{e,f}}{g,h}",
-			"#{a,b}",
-		];
-		for (const shape of shapes) assert.strictEqual(braceAlternativeCount(shape), oracle(shape), shape);
-		// A range of 100 values or more is one alternative to the engine, weighed by its values: never below it.
-		assert.strictEqual(oracle("{1..100}"), 1);
-		assert.strictEqual(braceAlternativeCount("{1..100}"), 100);
-		// The over-refusal the upper bound made is gone: these weighed 9,801 and 7,776.
-		assert.strictEqual(braceAlternativeCount("{1..99}{a,b}"), 198);
-		assert.strictEqual(braceAlternativeCount("{a,b}{c,d}{e,f}{g,h}{i,j}"), 32);
-		for (const shape of [`q/{${"9".repeat(400)}..${"9".repeat(400)}}`, `q/{${"9".repeat(399)}8..${"9".repeat(400)}}`])
-			assert.isAbove(braceAlternativeCount(shape), 256, shape.slice(0, 12));
-		// A deterministic sweep over a small brace alphabet: every string of up
-		// to six characters from `{ } , a \\ 1 .` (7^6 + … ≈ 137,000 strings).
-		const alphabet = ["{", "}", ",", "a", "\\", "1", "."];
-		let checked = 0;
-		const sweep = (prefix: string, depth: number): void => {
-			if (prefix !== "") {
-				checked += 1;
-				const real = oracle(prefix);
-				if (braceAlternativeCount(prefix) !== real)
-					assert.fail(
-						`${JSON.stringify(prefix)} weighs ${braceAlternativeCount(prefix)}, not its ${real} alternatives`,
-					);
-			}
-			if (depth === 0) return;
-			for (const character of alphabet) sweep(prefix + character, depth - 1);
-		};
-		sweep("", 6);
-		assert.isAbove(checked, 100_000);
-	});
 
 	// Brace expansion: the wildcard ceiling counts patterns, but the engine
 	// matches each brace alternative, so 32 negations of `p/{a,…,h}` three
@@ -832,48 +747,6 @@ describe("npm workspace globs", () => {
 			}),
 		120_000,
 	);
-
-	it("a pattern glob will not compile maps to a typed validation failure naming its index and glob's reason", () => {
-		// The ceilings now refuse every pattern glob is known to reject before it
-		// is compiled, so the compile failure is checked at the mapping itself.
-		const compiled = compileGlob(7, `${"a".repeat(65_537)}*`);
-		assert.isTrue(Result.isFailure(compiled));
-		if (!Result.isFailure(compiled)) return;
-		const failure = compiled.failure;
-		assert.strictEqual(failure.stage, "validation");
-		if (failure.stage !== "validation") return;
-		const cause = failure.cause as Error;
-		assert.include(cause.message, "pattern at index 7 will not compile: PatternTooLong");
-		assert.strictEqual((cause.cause as { readonly reason?: string }).reason, "PatternTooLong");
-		// Control: a pattern glob reads compiles.
-		assert.isTrue(Result.isSuccess(compileGlob(0, "packages/*")));
-	});
-
-	it("a trailing /. run is dropped exactly as the regex it replaced dropped it", () => {
-		// The regex read the run in quadratic time; the walk must give the same
-		// answer on every string, so it is checked against the regex on every
-		// string of up to nine characters over `/ . a` (29,523 strings), where
-		// the regex is still fast.
-		const byRegex = (pattern: string): string => {
-			const stripped = pattern.replace(/(?:\/\.)+\/?$/, "");
-			return stripped === "" ? pattern : stripped;
-		};
-		const alphabet = ["/", ".", "a"];
-		let checked = 0;
-		const sweep = (prefix: string, depth: number): void => {
-			checked += 1;
-			if (stripTrailingDot(prefix) !== byRegex(prefix)) {
-				assert.fail(`${JSON.stringify(prefix)}: ${stripTrailingDot(prefix)} vs ${byRegex(prefix)}`);
-			}
-			if (depth === 0) return;
-			for (const character of alphabet) sweep(prefix + character, depth - 1);
-		};
-		sweep("", 9);
-		assert.strictEqual(checked, 29_524);
-		assert.strictEqual(stripTrailingDot("packages/a/./."), "packages/a");
-		assert.strictEqual(stripTrailingDot("packages/*/./"), "packages/*");
-		assert.strictEqual(stripTrailingDot("packages/a/.."), "packages/a/..");
-	});
 
 	// A long run of `/.` segments in one positive pattern: the trailing-dot
 	// strip runs before any length guard can refuse the pattern, so it must be

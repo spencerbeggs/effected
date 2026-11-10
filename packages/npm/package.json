@@ -31,7 +31,8 @@
 	},
 	"dependencies": {
 		"@effected/commands": "workspace:^",
-		"@effected/crypto": "workspace:^"
+		"@effected/crypto": "workspace:^",
+		"@effected/glob": "workspace:^"
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
