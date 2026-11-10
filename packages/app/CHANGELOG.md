@@ -1,5 +1,23 @@
 # @effected/app
 
+## 0.31.3
+
+### Documentation
+
+- Examples import `@effect/platform-node` by subpath, such as `import * as NodeServices from "@effect/platform-node/NodeServices"`, instead of from the package root. The root re-exports `NodeRedis`, so copying a root import fails wherever the `redis` peer is not installed. [#1318][#1318]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/store | dependency | updated | 0.24.0 | 0.24.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1318]: https://github.com/spencerbeggs/effected/pull/1318
+
 ## 0.31.2
 
 ### Dependencies

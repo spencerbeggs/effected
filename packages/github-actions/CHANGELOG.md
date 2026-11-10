@@ -1,5 +1,26 @@
 # @effected/github-actions
 
+## 0.32.3
+
+### Bug Fixes
+
+- `@effected/github-actions` imports `@effect/platform-node` by subpath (`NodeCrypto`, `NodeServices`) instead of from its root. The root re-exports `NodeRedis`, so importing it failed with `ERR_MODULE_NOT_FOUND` wherever the optional-in-practice `redis` peer was not installed. A consumer without `redis` can now import the package. [#1318][#1318]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/github | dependency | updated | 0.30.0 | 0.31.0 |
+| @effected/npm | dependency | updated | 0.32.0 | 0.32.1 |
+| @effected/semver | dependency | updated | 0.22.0 | 0.23.0 |
+| @effected/templates | dependency | updated | 0.19.0 | 0.19.1 |
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1318]: https://github.com/spencerbeggs/effected/pull/1318
+
 ## 0.32.2
 
 ### Dependencies

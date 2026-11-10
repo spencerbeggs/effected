@@ -1,5 +1,14 @@
 # @effected/cli
 
+## 0.29.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli-kit | dependency | updated | 0.27.1 | 0.27.2 |
+| @effected/engine | dependency | updated | 0.15.0 | 0.15.1 |
+
 ## 0.29.0
 
 ### Breaking Changes
