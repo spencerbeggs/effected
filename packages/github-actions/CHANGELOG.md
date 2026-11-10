@@ -1,5 +1,33 @@
 # @effected/github-actions
 
+## 0.33.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/crypto | dependency | updated | 0.6.0 | 0.7.0 |
+| @effected/github | dependency | updated | 0.31.0 | 0.32.0 |
+| @effected/github-commands | dependency | updated | 0.9.0 | 0.10.0 |
+| @effected/glob | dependency | updated | 0.20.0 | 0.21.0 |
+| @effected/jwt | dependency | updated | 0.9.1 | 0.10.0 |
+| @effected/markdown | dependency | updated | 0.28.0 | 0.29.0 |
+| @effected/npm | dependency | updated | 0.32.1 | 0.33.0 |
+| @effected/oidc | dependency | updated | 0.4.0 | 0.5.0 |
+| @effected/sbom | dependency | updated | 0.20.2 | 0.21.0 |
+| @effected/semver | dependency | updated | 0.23.0 | 0.24.0 |
+| @effected/templates | dependency | updated | 0.19.1 | 0.20.0 |
+| @effected/walker | dependency | updated | 0.26.0 | 0.27.0 |
+| @effected/yaml | dependency | updated | 0.29.0 | 0.30.0 |
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.32.3
 
 ### Bug Fixes

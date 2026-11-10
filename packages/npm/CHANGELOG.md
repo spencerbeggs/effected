@@ -1,5 +1,23 @@
 # @effected/npm
 
+## 0.33.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/commands | dependency | updated | 0.20.1 | 0.21.0 |
+| @effected/crypto | dependency | updated | 0.6.0 | 0.7.0 |
+| @effected/semver | dependency | updated | 0.23.0 | 0.24.0 |
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.32.1
 
 ### Dependencies

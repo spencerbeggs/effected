@@ -1,5 +1,23 @@
 # @effected/plugin
 
+## 0.5.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli | dependency | updated | 0.29.1 | 0.30.0 |
+| @effected/mcp | dependency | updated | 0.16.1 | 0.17.0 |
+| @effected/schemastore | dependency | updated | 0.31.1 | 0.32.0 |
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.4.1
 
 ### Dependencies

@@ -1,5 +1,26 @@
 # @effected/changesets
 
+## 0.4.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/glob | dependency | updated | 0.20.0 | 0.21.0 |
+| @effected/markdown | dependency | updated | 0.28.0 | 0.29.0 |
+| @effected/markdown-lint | dependency | updated | 0.1.1 | 0.2.0 |
+| @effected/semver | dependency | updated | 0.23.0 | 0.24.0 |
+| @effected/workspaces | dependency | updated | 0.44.2 | 0.45.0 |
+| @effected/yaml | dependency | updated | 0.29.0 | 0.30.0 |
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.3.0
 
 ### Breaking Changes

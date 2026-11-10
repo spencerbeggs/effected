@@ -1,5 +1,15 @@
 # @effected/jsonl
 
+## 0.19.0
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.18.1
 
 ### Documentation

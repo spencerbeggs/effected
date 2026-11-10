@@ -1,5 +1,15 @@
 # @effected/files
 
+## 0.3.0
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.2.0
 
 ### Features

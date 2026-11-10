@@ -1,5 +1,15 @@
 # @effected/schema-org
 
+## 0.15.0
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.14.0
 
 ### Maintenance

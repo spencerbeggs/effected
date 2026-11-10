@@ -1,5 +1,21 @@
 # @effected/yaml
 
+## 0.30.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/source | dependency | updated | 0.4.0 | 0.5.0 |
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.29.0
 
 ### Breaking Changes

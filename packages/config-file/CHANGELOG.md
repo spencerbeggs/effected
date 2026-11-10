@@ -1,5 +1,26 @@
 # @effected/config-file
 
+## 0.27.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/files | dependency | updated | 0.2.0 | 0.3.0 |
+| @effected/glob | dependency | updated | 0.20.0 | 0.21.0 |
+| @effected/jsonc | dependency | updated | 0.24.0 | 0.25.0 |
+| @effected/toml | dependency | updated | 0.19.1 | 0.20.0 |
+| @effected/walker | dependency | updated | 0.26.0 | 0.27.0 |
+| @effected/yaml | dependency | updated | 0.29.0 | 0.30.0 |
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.26.0
 
 ### Features

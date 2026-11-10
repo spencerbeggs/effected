@@ -1,5 +1,21 @@
 # @effected/oidc
 
+## 0.5.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jwt | dependency | updated | 0.9.1 | 0.10.0 |
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.4.0
 
 ### Dependencies
