@@ -3,6 +3,16 @@ import { Schema } from "effect";
 import type { LineDiffHunk } from "../src/index.js";
 import { LineDiff } from "../src/index.js";
 
+/**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
 interface OracleLine {
 	readonly text: string;
 	readonly noNewline: boolean;
@@ -145,9 +155,9 @@ describe("LineDiff", () => {
 	});
 
 	it("a wholly replaced 100k-line document returns within 2s", () => {
-		const start = Date.now();
+		const start = cpuNow();
 		const hunks = LineDiff.compute(manyLines("a", 100_000), manyLines("b", 100_000));
-		assert.isBelow(Date.now() - start, 2_000);
+		assert.isBelow(cpuNow() - start, 2_000);
 		assert.strictEqual(hunks.length, 1);
 	});
 });

@@ -69,6 +69,16 @@ const held: ReadonlyArray<Row> = [
 	["a/**/b/c", "a/b/d/e", true, { partial: true }],
 ];
 
+/**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
 describe("more than one globstar", () => {
 	for (const [pattern, candidate, expected, options] of fixed) {
 		it(`${pattern} vs ${candidate} is ${expected}${options ? ` ${JSON.stringify(options)}` : ""}`, () => {
@@ -101,18 +111,18 @@ describe("hostility: globstar sections that all fail", () => {
 
 	it("does not take exponential time under partial", () => {
 		const m = new Minimatch(rep("**/a", 12), { partial: true });
-		const start = performance.now();
+		const start = cpuNow();
 		const hit = m.match(path);
-		const elapsed = performance.now() - start;
+		const elapsed = cpuNow() - start;
 		assert.isFalse(hit);
 		assert.isBelow(elapsed, budgetMs);
 	});
 
 	it("does not take exponential time without partial", () => {
 		const m = new Minimatch(`${rep("**/a", 12)}/**/z`);
-		const start = performance.now();
+		const start = cpuNow();
 		const hit = m.match(`${path}/z`);
-		const elapsed = performance.now() - start;
+		const elapsed = cpuNow() - start;
 		assert.isFalse(hit);
 		assert.isBelow(elapsed, budgetMs);
 	});

@@ -8,6 +8,16 @@ import { Effect, Result } from "effect";
 import type { ShellExportsErrorReason } from "../src/ShellExports.js";
 import { ShellExports, ShellExportsError } from "../src/ShellExports.js";
 
+/**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
 const ok = (text: string): Record<string, string> => {
 	const parsed = ShellExports.parseResult(text);
 	if (Result.isFailure(parsed)) assert.fail(`rejected ${JSON.stringify(text)}: ${parsed.failure.message}`);
@@ -395,9 +405,9 @@ describe("ShellExports performance", () => {
 		);
 	const median = (text: string) => {
 		const times = Array.from({ length: 5 }, () => {
-			const start = performance.now();
+			const start = cpuNow();
 			const parsed = ShellExports.parseResult(text);
-			const elapsed = performance.now() - start;
+			const elapsed = cpuNow() - start;
 			assert.isTrue(Result.isSuccess(parsed));
 			return elapsed;
 		}).sort((a, b) => a - b);

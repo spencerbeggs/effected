@@ -4,6 +4,16 @@ import { Effect, Exit, Schema } from "effect";
 import { HttpBody, HttpClient, HttpClientError, HttpClientRequest, HttpClientResponse, UrlParams } from "effect/http";
 import { HttpRedaction } from "../src/index.js";
 
+/**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
 const TOKEN = "SECRET_bearer_token_9d1c";
 const COOKIE = "SECRET_session_cookie_51ab";
 const API_KEY = "SECRET_api_key_c0de";
@@ -307,9 +317,9 @@ describe("HttpRedaction.text — URLs", () => {
 			"a:// ".repeat(1 << 18),
 		];
 		for (const input of inputs) {
-			const start = performance.now();
+			const start = cpuNow();
 			HttpRedaction.text(input);
-			const elapsed = performance.now() - start;
+			const elapsed = cpuNow() - start;
 			assert.isBelow(elapsed, 500, `${JSON.stringify(input.slice(0, 8))}… took ${elapsed.toFixed(0)} ms`);
 		}
 	});
@@ -348,9 +358,9 @@ describe("HttpRedaction.text — credentials", () => {
 
 	it("scans a 1 MB adversarial input in linear time", () => {
 		for (const input of [`token${" ".repeat(1 << 20)}`, "token ".repeat(1 << 18), `Bearer ${"a".repeat(1 << 20)}`]) {
-			const start = performance.now();
+			const start = cpuNow();
 			HttpRedaction.text(input);
-			assert.isBelow(performance.now() - start, 500);
+			assert.isBelow(cpuNow() - start, 500);
 		}
 	});
 });

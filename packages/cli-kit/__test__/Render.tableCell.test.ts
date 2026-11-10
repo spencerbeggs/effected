@@ -3,14 +3,24 @@ import { Effect } from "effect";
 import { Doc, Render } from "../src/index.js";
 import { contextOf } from "./helpers/renderContext.js";
 
+/**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
 describe("a table cell's trailing line breaks", () => {
 	it.effect("are trimmed in linear time: a long CRLF run before more text does not backtrack", () =>
 		Effect.gen(function* () {
 			const ctx = yield* contextOf({ color: "none" });
 			const cell = `a${"\r\n".repeat(26)}b`;
-			const started = performance.now();
+			const started = cpuNow();
 			const out = Render.plain([Doc.table([{ header: "h" }], [[cell]])], ctx);
-			const elapsed = performance.now() - started;
+			const elapsed = cpuNow() - started;
 			assert.strictEqual(out, `h\n${"-".repeat(2)}\na${ctx.glyphs.ellipsis}`);
 			assert.isBelow(elapsed, 500, `took ${elapsed} ms`);
 		}),
@@ -33,9 +43,9 @@ describe("a markdown table cell's edges", () => {
 		Effect.gen(function* () {
 			const ctx = yield* contextOf({ color: "none" });
 			for (const run of [" ".repeat(40_000), "\n".repeat(40_000)]) {
-				const started = performance.now();
+				const started = cpuNow();
 				const out = Render.markdown([Doc.table([{ header: "h" }], [[`x${run}y`]])], ctx);
-				const elapsed = performance.now() - started;
+				const elapsed = cpuNow() - started;
 				assert.isTrue(out.startsWith("| h |"), out.slice(0, 20));
 				assert.isBelow(elapsed, 500, `took ${elapsed} ms`);
 			}
