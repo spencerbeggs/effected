@@ -26,6 +26,8 @@ sources:
     resource: ../../packages/bundler/src/action/ActionBundle.ts
   - id: build-run
     resource: ../../packages/engine/src/build/BuildRun.ts
+  - id: build-lock
+    resource: ../../packages/engine/src/build/BuildLock.ts
 generated:
   by: "claude-code/opus-5.5"
   at: 2026-11-10T21:32:36Z
