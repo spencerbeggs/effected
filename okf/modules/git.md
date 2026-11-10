@@ -10,10 +10,10 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-29T15:42:47Z
+  at: 2026-11-10T00:29:56Z
 integrity:
   generated:
-    body: ff5f39f5a39c019c
+    body: 83e808e542fb1193
 ---
 
 # git
@@ -39,6 +39,10 @@ opens with the literal word `"Mutating:"`, and that is the only signal —
 nothing in this package serializes concurrent access, so a caller running
 a mutating call alongside anything else against the same `cwd` owns the
 race, per `cwd`.
+A method that mutates only under an option opens with the option-gated
+form instead, naming the option, what it changes and that it is read-only
+otherwise: `Mutating: only with deepen — fetches from the remote and
+deepens the clone; read-only otherwise.` (`commitsThatAdd`).
 
 ## Why it owns git interpretation
 
@@ -101,7 +105,8 @@ never `process.env`. Each pin exists for a named failure:
   wrapper that swallows the appended `BatchMode` option.
 - `GIT_SSH_COMMAND` — the one conditional pin, scoped to the seven
   network-touching members (`lsRemote`, `fetch`, `fetchUnshallow`,
-  `push`, `pull`, `submoduleAdd`, `submoduleUpdate`). `ssh` reads from
+  `push`, `pull`, `submoduleAdd`, `submoduleUpdate`), plus each deepen
+  round of `commitsThatAdd`, whose lookups stay local. `ssh` reads from
   `/dev/tty` directly, so `-o BatchMode=yes` is the only lever that makes
   it fail instead of hang; it is appended to what git would have used and
   declines rather than substitutes — see [the ssh pin
@@ -289,6 +294,23 @@ attempt, and when both attempts fail the plain fetch's error surfaces.
 `configSet` writes repository-local, always, and offers no scope; its
 guard on `key`, `value` and `file` is [a recorded
 limitation](../limitations/git-config-set-refuses-dash-leading-values.md).
+
+`commitsThatAdd(cwd, paths, options?)` is the option-gated member: a read
+by default, mutating only with `deepen`. It answers, per path and aligned
+with `paths`, `Option` of the sha of the commit that added it (`git log
+--diff-filter=AC --follow --max-count=1 -- <path>`, the lookup
+`@changesets/git`'s `getCommitsThatAddFiles` runs, which its integration
+suite uses as an oracle). A hit with no parents is a root commit only in a
+complete repository. In a shallow clone it is the boundary commit, which
+git reports as adding every file it holds, so it is never credited: the
+member fails `ShallowHistoryError` (`cwd`, the unresolved `paths`, the
+`rounds` spent) unless the caller passed a `GitDeepenPolicy` (`by`
+default 50, `maxRounds` default 20, `remote` default `origin`). Deepening
+is opt-in because it fetches and grows the clone; each round runs `git
+fetch --deepen=<by>` and retries only the unresolved paths. The literal
+`--` before the path is a deliberate divergence from upstream, which
+omits it and so answers `undefined` for a path no longer in the working
+tree.
 
 ### The parsed models
 

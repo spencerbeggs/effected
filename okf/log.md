@@ -3,6 +3,7 @@
 ## 2026-11-10
 
 * Updated @effected/changesets
+* Updated git
 
 ## 2026-11-09
 

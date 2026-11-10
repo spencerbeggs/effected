@@ -390,6 +390,40 @@ export class GitCommand {
 	static readonly isShallow = (): GitInvocation => git(["rev-parse", "--is-shallow-repository"]);
 
 	/**
+	 * Mutating: `git fetch --deepen=<by> <remote>` — extends a shallow clone's
+	 * history by `by` more commits behind its current boundary.
+	 *
+	 * @remarks
+	 * `--deepen` counts from the existing shallow boundary, not from the tip:
+	 * `--depth` would cut the history back to `by` commits, which is the opposite
+	 * of what a caller walking backwards past the boundary needs.
+	 *
+	 * `remote` may be a URL as well as a remote name; an embedded `userinfo@`
+	 * credential is masked in {@link GitInvocation.redactedArgs}.
+	 */
+	static readonly fetchDeepen = (by: number, remote = "origin"): GitInvocation =>
+		git(["fetch", `--deepen=${by}`, secretUrl(remote)]);
+
+	/**
+	 * `git log --diff-filter=AC --follow --max-count=1 --format=%H%x00%P -- <path>`
+	 * — the newest commit that added (or copied in) `path`, followed back across
+	 * renames, printed as `<sha>\0<parent shas>`.
+	 *
+	 * @remarks
+	 * The same argv as `@changesets/git`'s `getCommitsThatAddFiles`, except for
+	 * the literal `--` before the path. Without it, git treats a path absent from
+	 * the working tree as an ambiguous revision and fails, and a path beginning
+	 * with `-` is parsed as an option. `--follow` takes exactly one path, so this
+	 * runs once per path.
+	 *
+	 * The parent list is what tells a real add apart from a shallow clone's
+	 * boundary commit. Git reports the boundary commit as adding every file it
+	 * contains, and it prints no parents for it, because the clone has none.
+	 */
+	static readonly addingCommit = (path: string): GitInvocation =>
+		git(["log", "--diff-filter=AC", "--follow", "--max-count=1", "--format=%H%x00%P", "--", path]);
+
+	/**
 	 * Mutating: `git reset --soft|--mixed|--hard [<ref>]` — moves `HEAD` (and,
 	 * per mode, the index and working tree) to `ref`.
 	 *

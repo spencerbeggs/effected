@@ -30,6 +30,7 @@
 		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {
+		"@changesets/git": "4.0.1",
 		"@effect/platform-node": "catalog:effected",
 		"@effect/vitest": "catalog:effected",
 		"@types/node": "catalog:effected:build",

@@ -18,7 +18,7 @@ Durable knowledge lives in the OKF bundle at the repo root. Start at `okf/module
 
 ## Operating rules
 
-- Every mutating method's TSDoc opens with the literal word `"Mutating:"`; that is the only tier signal a caller gets, and nothing here serializes concurrent access.
+- Every mutating method's TSDoc opens with the literal word `"Mutating:"`; that is the only tier signal a caller gets, and nothing here serializes concurrent access. A method that mutates only under an option opens with the option-gated form, e.g. `Mutating: only with deepen — fetches from the remote and deepens the clone; read-only otherwise.`
 - Every `Git` method funnels through the private `classify` step in `Git.ts`; nothing else in the package may inspect `stderr`, `stdout` or `exitCode`. The stderr matching is unanchored by design — do not "fix" it without discussion.
 - A `GitCommand` constructor carries argv and a redaction mask only — no `cwd`, no `env`, no validation. Do not put a pin or a guard back onto one; `assertGitCommand` fails at once.
 - A new network-touching member routes through `runForNetwork`; a non-network member never does.

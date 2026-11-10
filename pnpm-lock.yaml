@@ -838,6 +838,9 @@ importers:
 
   packages/git:
     devDependencies:
+      '@changesets/git':
+        specifier: 4.0.1
+        version: 4.0.1
       '@effect/platform-node':
         specifier: catalog:effected
         version: 4.1.2(effect@4.1.2)(redis@6.3.1)
@@ -1615,6 +1618,9 @@ importers:
       effect:
         specifier: catalog:effected
         version: 4.1.2
+      semver:
+        specifier: 7.8.6
+        version: 7.8.6
       typescript:
         specifier: catalog:effected:build
         version: 7.1.0-beta
