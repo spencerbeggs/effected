@@ -16,6 +16,7 @@ import { afterEach, assert, describe, it, vi } from "@effect/vitest";
 import type { MemoryFileSystemHandle } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
 import { PackageJsonSyntaxError } from "@effected/package-json";
+import { YamlParseError } from "@effected/yaml";
 import { Effect, Layer } from "effect";
 import type { SyncFileSystem, WorkspacePackage, WorkspacesSyncOptions } from "../src/index.js";
 import {
@@ -744,6 +745,244 @@ describe("the sync hatch and the Effect enumerator agree about `version`", () =>
 			});
 			assert.instanceOf(failure, WorkspaceDiscoveryError);
 			assert.deepStrictEqual(skipped, [{ path: failure.path, kind: failure.kind }]);
+		}),
+	);
+});
+
+// ── a pattern set that compiles member by member but not as one set ─────────
+
+describe("getWorkspacePackagesSync — a pattern set that fails as a whole", () => {
+	// Every member has its own `[[:word:]]` portion, so each compiles alone, but
+	// a GlobSet's members share ONE compile budget: 1,287 such members fit and
+	// the 1,288th exhausts it (`CompileBudgetExceeded`), probed against
+	// `GlobSet.compileResult`. The member's index keeps every portion distinct.
+	const patternSet = (size: number): string =>
+		`packages:\n${Array.from({ length: size }, (_, i) => `  - 'packages/[[:word:]]*${i}'`).join("\n")}\n`;
+	const seed = (size: number): Readonly<Record<string, string>> => ({
+		"/repo/pnpm-workspace.yaml": patternSet(size),
+		"/repo/package.json": JSON.stringify({ name: "root", private: true }),
+		// `a0` matches the first member, whatever the set's size.
+		"/repo/packages/a0/package.json": JSON.stringify({ name: "@x/a0", version: "1.0.0" }),
+	});
+	// Compiling a near-budget set takes real CPU.
+	const slow = { timeout: 60_000 };
+
+	it("control: the largest set that still compiles enumerates its member", slow, () => {
+		const ops = memOps(seed(1287));
+		assert.deepStrictEqual(
+			getWorkspacePackagesSync("/repo", ops).map((pkg) => pkg.name),
+			["root", "@x/a0"],
+		);
+	});
+
+	it.effect(
+		"one member more throws the Effect surface's WorkspacePatternError instead of answering no packages",
+		() =>
+			Effect.gen(function* () {
+				const handle = yield* MemoryFileSystem.makeHandle(seed(1288));
+				const skipped: Array<unknown> = [];
+				let thrown: unknown;
+				try {
+					const packages = getWorkspacePackagesSync("/repo", {
+						fileSystem: handle.sync,
+						path: nodePath.posix,
+						onSkip: (skip) => skipped.push(skip),
+					});
+					assert.fail(`expected a throw, got ${JSON.stringify(packages.map((pkg) => pkg.name))}`);
+				} catch (cause) {
+					thrown = cause;
+				}
+				assert.instanceOf(thrown, WorkspacePatternError);
+				assert.strictEqual(thrown.root, "/repo");
+				assert.strictEqual(thrown.kind, "uncompilable");
+				assert.strictEqual(thrown.pattern, "packages/[[:word:]]*1287");
+				assert.include(thrown.detail, "CompileBudgetExceeded");
+				// The compile fails before any manifest is read, so nothing is a skip.
+				assert.deepStrictEqual(skipped, []);
+
+				// Parity: the Effect enumerator fails with the same error on the same tree.
+				const failure = yield* Effect.flip(listPackagesOver(handle));
+				assert.instanceOf(failure, WorkspacePatternError);
+				assert.deepStrictEqual(
+					{ root: failure.root, kind: failure.kind, pattern: failure.pattern, detail: failure.detail },
+					{ root: thrown.root, kind: thrown.kind, pattern: thrown.pattern, detail: thrown.detail },
+				);
+			}),
+		slow,
+	);
+});
+
+// ── a pnpm-workspace.yaml that exists but cannot be used ─────────────────────
+
+describe("getWorkspacePackagesSync — an unusable pnpm-workspace.yaml", () => {
+	// The root manifest ALSO declares `workspaces`, so a facade that falls back
+	// to it on a broken YAML answers a plausible member list from the wrong
+	// config — the fail-open this pins shut.
+	const seed = (yaml: string | undefined): Readonly<Record<string, string>> => ({
+		...(yaml === undefined ? {} : { "/repo/pnpm-workspace.yaml": yaml }),
+		"/repo/package.json": JSON.stringify({ name: "root", private: true, workspaces: ["packages/*"] }),
+		"/repo/packages/a/package.json": JSON.stringify({ name: "@x/a", version: "1.0.0" }),
+	});
+
+	/** The value `getWorkspacePackagesSync` threw, or a failure naming what it returned. */
+	const thrownBy = (run: () => ReadonlyArray<WorkspacePackage>): unknown => {
+		try {
+			const packages = run();
+			return assert.fail(`expected a throw, got ${JSON.stringify(packages.map((pkg) => pkg.name))}`);
+		} catch (cause) {
+			return cause;
+		}
+	};
+
+	it("control: a MISSING pnpm-workspace.yaml still falls back to package.json#workspaces", () => {
+		assert.deepStrictEqual(
+			getWorkspacePackagesSync("/repo", memOps(seed(undefined))).map((pkg) => pkg.name),
+			["root", "@x/a"],
+		);
+	});
+
+	it.effect("one that does not parse throws the Effect surface's invalidYaml error", () =>
+		Effect.gen(function* () {
+			const handle = yield* MemoryFileSystem.makeHandle(seed("packages: [\n"));
+			const skipped: Array<unknown> = [];
+			const thrown = thrownBy(() =>
+				getWorkspacePackagesSync("/repo", {
+					fileSystem: handle.sync,
+					path: nodePath.posix,
+					onSkip: (skip) => skipped.push(skip),
+				}),
+			);
+			assert.instanceOf(thrown, WorkspaceDiscoveryError);
+			assert.strictEqual(thrown.root, "/repo");
+			assert.strictEqual(thrown.path, "/repo/pnpm-workspace.yaml");
+			assert.strictEqual(thrown.kind, "invalidYaml");
+			assert.instanceOf(thrown.cause, YamlParseError);
+			assert.deepStrictEqual(skipped, []);
+
+			// Parity: the Effect enumerator fails with the same error on the same tree.
+			const failure = yield* Effect.flip(listPackagesOver(handle));
+			assert.instanceOf(failure, WorkspaceDiscoveryError);
+			assert.deepStrictEqual(
+				{ root: failure.root, path: failure.path, kind: failure.kind },
+				{ root: thrown.root, path: thrown.path, kind: thrown.kind },
+			);
+		}),
+	);
+
+	it.effect("one that exists but cannot be read throws a read error carrying the thrown cause", () =>
+		Effect.gen(function* () {
+			const handle = yield* MemoryFileSystem.makeHandle(seed("packages:\n  - 'packages/*'\n"));
+			const boom = MemoryFileSystem.errno("EACCES", "open", "/repo/pnpm-workspace.yaml");
+			const { sync: fileSystem } = handle.withFaults({
+				sync: {
+					readFile: (p) => {
+						if (p === "/repo/pnpm-workspace.yaml") throw boom;
+						return undefined; // every other path delegates to the volume
+					},
+				},
+			});
+			const thrown = thrownBy(() => getWorkspacePackagesSync("/repo", { fileSystem, path: nodePath.posix }));
+			assert.instanceOf(thrown, WorkspaceDiscoveryError);
+			assert.strictEqual(thrown.path, "/repo/pnpm-workspace.yaml");
+			assert.strictEqual(thrown.kind, "read");
+			assert.strictEqual(thrown.cause, boom);
+		}),
+	);
+});
+
+// ── a root package.json that is the pattern source but cannot be used ───────
+
+describe("getWorkspacePackagesSync — an unusable root package.json as the pattern source", () => {
+	// No `pnpm-workspace.yaml`, so the root manifest's `workspaces` field is the
+	// only pattern source. A member exists on disk, so an empty answer is wrong.
+	const seed = (manifest: string | undefined): Readonly<Record<string, string>> => ({
+		...(manifest === undefined ? {} : { "/repo/package.json": manifest }),
+		"/repo/packages/a/package.json": JSON.stringify({ name: "@x/a", version: "1.0.0" }),
+	});
+
+	/** The value `getWorkspacePackagesSync` threw, or a failure naming what it returned. */
+	const thrownBy = (run: () => ReadonlyArray<WorkspacePackage>): unknown => {
+		try {
+			const packages = run();
+			return assert.fail(`expected a throw, got ${JSON.stringify(packages.map((pkg) => pkg.name))}`);
+		} catch (cause) {
+			return cause;
+		}
+	};
+
+	it("control: a MISSING root package.json is a standalone directory, not a failure", () => {
+		assert.deepStrictEqual(getWorkspacePackagesSync("/repo", memOps(seed(undefined))), []);
+	});
+
+	it("control: valid JSON that is not an object declares no patterns, and the root is reported as a skip", () => {
+		const skipped: Array<string> = [];
+		const packages = getWorkspacePackagesSync("/repo", {
+			...memOps(seed("null")),
+			onSkip: (skip) => skipped.push(`${skip.kind}:${skip.path}`),
+		});
+		assert.deepStrictEqual(packages, []);
+		assert.deepStrictEqual(skipped, ["invalidShape:/repo/package.json"]);
+	});
+
+	it.effect("one that does not parse throws the Effect surface's invalidJson error", () =>
+		Effect.gen(function* () {
+			const handle = yield* MemoryFileSystem.makeHandle(seed(`{ "name": "root", "workspaces": ["packages/*"`));
+			const skipped: Array<unknown> = [];
+			const thrown = thrownBy(() =>
+				getWorkspacePackagesSync("/repo", {
+					fileSystem: handle.sync,
+					path: nodePath.posix,
+					onSkip: (skip) => skipped.push(skip),
+				}),
+			);
+			assert.instanceOf(thrown, WorkspaceDiscoveryError);
+			assert.strictEqual(thrown.root, "/repo");
+			assert.strictEqual(thrown.path, "/repo/package.json");
+			assert.strictEqual(thrown.kind, "invalidJson");
+			assert.instanceOf(thrown.cause, PackageJsonSyntaxError);
+			assert.deepStrictEqual(skipped, []);
+
+			// Parity. The Effect surface only reaches its pattern read here when a
+			// marker made `/repo` the root (an unparseable manifest is no marker), so
+			// the parity tree adds a `pnpm-workspace.yaml` with no `packages:` — the
+			// fallback the sync facade takes too. Both fail with the same error.
+			const marked = yield* MemoryFileSystem.makeHandle({
+				...seed(`{ "name": "root", "workspaces": ["packages/*"`),
+				"/repo/pnpm-workspace.yaml": "minimumReleaseAge: 100\n",
+			});
+			const syncThrown = thrownBy(() =>
+				getWorkspacePackagesSync("/repo", { fileSystem: marked.sync, path: nodePath.posix }),
+			);
+			const failure = yield* Effect.flip(listPackagesOver(marked));
+			assert.instanceOf(syncThrown, WorkspaceDiscoveryError);
+			assert.instanceOf(failure, WorkspaceDiscoveryError);
+			assert.deepStrictEqual(
+				{ root: failure.root, path: failure.path, kind: failure.kind },
+				{ root: syncThrown.root, path: syncThrown.path, kind: syncThrown.kind },
+			);
+			assert.strictEqual(failure.kind, "invalidJson");
+		}),
+	);
+
+	it.effect("one that exists but cannot be read throws a read error carrying the thrown cause", () =>
+		Effect.gen(function* () {
+			const handle = yield* MemoryFileSystem.makeHandle(
+				seed(JSON.stringify({ name: "root", private: true, workspaces: ["packages/*"] })),
+			);
+			const boom = MemoryFileSystem.errno("EACCES", "open", "/repo/package.json");
+			const { sync: fileSystem } = handle.withFaults({
+				sync: {
+					readFile: (p) => {
+						if (p === "/repo/package.json") throw boom;
+						return undefined; // every other path delegates to the volume
+					},
+				},
+			});
+			const thrown = thrownBy(() => getWorkspacePackagesSync("/repo", { fileSystem, path: nodePath.posix }));
+			assert.instanceOf(thrown, WorkspaceDiscoveryError);
+			assert.strictEqual(thrown.path, "/repo/package.json");
+			assert.strictEqual(thrown.kind, "read");
+			assert.strictEqual(thrown.cause, boom);
 		}),
 	);
 });

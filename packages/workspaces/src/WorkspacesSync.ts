@@ -25,7 +25,7 @@ import { manifestPatternsOf, pnpmPatternsOf } from "./internal/patterns.js";
 import { Traversal, badMaxDepthMessage, isPruned, isValidMaxDepth, joinRelative } from "./internal/traverse.js";
 import type { PackageManagerDetectionFailure } from "./PackageManagerName.js";
 import { DetectedPackageManager, PackageManagerDetectionError, PackageManagerEvidence } from "./PackageManagerName.js";
-import type { WorkspaceDiscoveryError } from "./WorkspaceDiscovery.js";
+import { WorkspaceDiscoveryError, WorkspacePatternError } from "./WorkspaceDiscovery.js";
 import type { WorkspaceMarker } from "./WorkspaceMarker.js";
 import { WorkspaceRootMatch, probedMarkers } from "./WorkspaceMarker.js";
 import { PublishConfig, WorkspaceManifestError, WorkspacePackage } from "./WorkspacePackage.js";
@@ -50,14 +50,19 @@ import { PublishConfig, WorkspaceManifestError, WorkspacePackage } from "./Works
  * permission error mid-read — and every throw is absorbed into the documented
  * degraded-skip semantics: a throwing `readFile` reads as an unusable
  * manifest, a throwing `readDirectory` as an unreadable directory, a throwing
- * `isDirectory` as "not a directory". Nothing propagates.
+ * `isDirectory` as "not a directory". The one exception is a `readFile` of
+ * the file `getWorkspacePackagesSync` takes its patterns from (an existing
+ * `pnpm-workspace.yaml`, or the root `package.json` in its absence): there is
+ * no partial answer without it, so the throw comes back as a
+ * `WorkspaceDiscoveryError` of kind `"read"` carrying it as `cause`. Nothing
+ * propagates raw.
  *
  * @public
  */
 export interface SyncFileSystem {
 	/** Whether a file or directory exists at `path`. Must not throw. */
 	readonly exists: (path: string) => boolean;
-	/** Read the file at `path` as text. May throw; a throw degrades to a skip. */
+	/** Read the file at `path` as text. May throw; a throw degrades to a skip (the pattern source excepted). */
 	readonly readFile: (path: string) => string;
 	/** The entry names inside the directory at `path`. May throw; a throw skips the directory. */
 	readonly readDirectory: (path: string) => ReadonlyArray<string>;
@@ -235,8 +240,8 @@ type ManifestRead =
  *
  * The three failures are kept apart — a throwing consumer `readFile`, a JSON
  * syntax error, and valid JSON that is not an object — because the skip report
- * carries the distinction; the two other callers of {@link readJson} do not
- * need it and keep the collapsed form.
+ * carries the distinction; the root ascent's {@link readJson} does not
+ * need it and keeps the collapsed form.
  */
 const readManifest = (fileSystem: SyncFileSystem, file: string): ManifestRead => {
 	let text: string;
@@ -488,27 +493,53 @@ export const locateWorkspaceRootSync = (
 	return null;
 };
 
-/** The workspace `packages:` patterns for `root`, matching `internal/patterns.ts`'s precedence. */
+/**
+ * The workspace `packages:` patterns for `root`, matching `internal/patterns.ts`'s
+ * precedence: `pnpm-workspace.yaml` first, then the root `package.json`
+ * `workspaces` field.
+ *
+ * A `pnpm-workspace.yaml` that EXISTS but cannot be read or parsed throws the
+ * `WorkspaceDiscoveryError` (`read` / `invalidYaml`) the Effect surface fails
+ * with. Falling back to `package.json#workspaces` there would answer from the
+ * wrong config, and an empty list would read as "no packages" — both decisions
+ * taken on a corrupt file. An ABSENT one is still the ordinary fallback.
+ *
+ * The root `package.json`, when it is the pattern source, follows the same
+ * rule: absent is no patterns, a throwing read is `read`, unparseable text is
+ * `invalidJson`, and valid JSON that is not an object declares no patterns.
+ */
 const readPatternsSync = (options: WorkspacesSyncOptions, root: string): ReadonlyArray<string> => {
 	const { fileSystem, path } = options;
 	const workspaceYaml = path.join(root, "pnpm-workspace.yaml");
 	if (fileSystem.exists(workspaceYaml)) {
-		let text = "";
+		let text: string;
 		try {
 			text = fileSystem.readFile(workspaceYaml);
-		} catch {
-			text = "";
+		} catch (cause) {
+			throw new WorkspaceDiscoveryError({ root, path: workspaceYaml, kind: "read", cause });
 		}
-		// `Yaml.parse` is an Effect and this function is not; the parse is pure and
-		// synchronous underneath, so running it to an Exit here is the one honest
-		// bridge. A parse failure is an empty pattern list, not a throw.
-		const exit = Effect.runSyncExit(Yaml.parse(text));
-		if (Exit.isSuccess(exit)) {
-			const patterns = pnpmPatternsOf(exit.value);
-			if (patterns.length > 0) return patterns;
+		const parsed = Yaml.parseResult(text);
+		if (Result.isFailure(parsed)) {
+			throw new WorkspaceDiscoveryError({ root, path: workspaceYaml, kind: "invalidYaml", cause: parsed.failure });
 		}
+		const patterns = pnpmPatternsOf(parsed.success);
+		if (patterns.length > 0) return patterns;
 	}
-	return manifestPatternsOf(readJson(fileSystem, path.join(root, "package.json")) ?? {});
+	const manifestPath = path.join(root, "package.json");
+	if (!fileSystem.exists(manifestPath)) return [];
+	let content: string;
+	try {
+		content = fileSystem.readFile(manifestPath);
+	} catch (cause) {
+		throw new WorkspaceDiscoveryError({ root, path: manifestPath, kind: "read", cause });
+	}
+	// Only unparseable text throws. Valid JSON that is not an object declares no
+	// patterns, exactly as on the Effect surface; the root read below reports it
+	// as an `invalidShape` skip.
+	const manifest = PackageJsonFormat.parseObjectResult(content);
+	if (Result.isSuccess(manifest)) return manifestPatternsOf(manifest.success);
+	if (manifest.failure.reason === "not-an-object") return [];
+	throw new WorkspaceDiscoveryError({ root, path: manifestPath, kind: "invalidJson", cause: manifest.failure });
 };
 
 /**
@@ -631,12 +662,32 @@ export interface GetWorkspacePackagesSyncOptions extends WorkspacesSyncOptions {
  * including at the depth boundary.
  *
  * The one deliberate difference is what happens at a bound: the Effect surface
- * fails typed (`depthExceeded` / `budgetExceeded`), while this one is **total**
- * and truncates. An unenumerable pattern or an unreadable manifest is skipped,
- * not raised — a function with no error channel should not pretend to have one,
- * and a Vitest config has nowhere to put a failure. Totality covers *data*, not
- * caller mistakes: a `maxDepth` that is not a positive integer throws, matching
- * the enumerator's defect.
+ * fails typed (`depthExceeded` / `budgetExceeded`), while this one truncates.
+ * An unenumerable pattern or an unreadable manifest is skipped, not raised —
+ * there the other patterns and members are still a real partial answer, and a
+ * Vitest config has nowhere to put a failure. A `maxDepth` that is not a
+ * positive integer throws a `RangeError`, matching the enumerator's defect.
+ *
+ * **A pattern set that does not compile throws.** The patterns compile as one
+ * `GlobSet`, and when that fails — one malformed member, or members that each
+ * compile alone but together exhaust the set's shared compile budget — there
+ * is no partial answer to degrade to: every pattern is lost at once. Returning
+ * the root alone would read as "no workspace packages", a decision taken on a
+ * corrupt config, so the facade throws the `WorkspacePatternError` (kind
+ * `"uncompilable"`, `pattern` the member the compile stopped at) that
+ * `WorkspaceDiscovery` fails with on the same root, before any manifest is
+ * read and before `onSkip` is called.
+ *
+ * **So does a `pnpm-workspace.yaml` that exists but cannot be used.** One
+ * whose `readFile` throws, or whose text does not parse as YAML, throws the
+ * `WorkspaceDiscoveryError` (kind `"read"` / `"invalidYaml"`, `path` the YAML
+ * file) the Effect surface fails with, rather than falling back to
+ * `package.json#workspaces`. A MISSING one is the ordinary fallback, as on
+ * the Effect surface. When that fallback is taken, the root `package.json`
+ * is held to the same rule: one whose `readFile` throws, or whose text is not
+ * JSON, throws kind `"read"` / `"invalidJson"`, while a missing one is a
+ * standalone directory (`[]`) and valid JSON that is not an object declares
+ * no patterns and is reported through `onSkip` as the root's `invalidShape`.
  *
  * **A skip is never silent.** Every manifest left out is reported through
  * `onSkip` with its path and the same `kind` the Effect surface would have
@@ -648,6 +699,13 @@ export interface GetWorkspacePackagesSyncOptions extends WorkspacesSyncOptions {
  * @param root - The workspace root, from {@link findWorkspaceRootSync}.
  * @param options - The consumer-supplied operations and traversal bounds; see
  *   {@link GetWorkspacePackagesSyncOptions}.
+ * @throws `WorkspaceDiscoveryError` (kind `"read"` or `"invalidYaml"`) when
+ *   `pnpm-workspace.yaml` exists but cannot be read or parsed, and (kind
+ *   `"read"` or `"invalidJson"`) when the root `package.json` is the pattern
+ *   source and exists but cannot be read or parsed;
+ *   `WorkspacePatternError` (kind `"uncompilable"`) when the workspace's
+ *   `packages:` patterns do not compile as one `GlobSet`; `RangeError` for a
+ *   `maxDepth` that is not a positive integer.
  *
  * @example
  * ```ts
@@ -685,11 +743,20 @@ export const getWorkspacePackagesSync = (
 
 	const patterns = readPatternsSync(options, root);
 
-	// The same GlobSet the async enumerator compiles. An uncompilable set yields
-	// no members rather than throwing — see the totality note above.
-	const compiled = Effect.runSyncExit(GlobSet.compile(patterns));
-	if (Exit.isFailure(compiled)) return [];
-	const globs = compiled.value;
+	// The same GlobSet the async enumerator compiles. An uncompilable set has no
+	// partial answer to degrade to: every pattern is lost, so truncating would
+	// return the root alone (or nothing) and read as "no workspace packages".
+	// It throws the Effect surface's own error instead — see the remarks.
+	const compiled = GlobSet.compileResult(patterns);
+	if (Result.isFailure(compiled)) {
+		throw new WorkspacePatternError({
+			root,
+			pattern: compiled.failure.pattern,
+			kind: "uncompilable",
+			detail: compiled.failure.message,
+		});
+	}
+	const globs = compiled.success;
 	const excludes = globs.excludes;
 	const isExcluded =
 		excludes.length === 0
