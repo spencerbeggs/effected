@@ -597,22 +597,23 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 	// The carrier is a consumer's root devDependency; hoisting it publicly puts it, and so its
 	// `effected` and `effected-mcp` bins, at the workspace root for every package to reach.
 	//
-	// typescript, tsx and @types/node are NOT hoisted here, although silk hoists all three. The
-	// kit's build reaches none of them through a public hoist: the bundler resolves typescript
-	// from its own peer link (`import.meta.resolve("typescript")`), a package's `tsc` and its
-	// `types: ["node"]` lookup find a root or package devDependency by walking up `node_modules`,
-	// and the carrier loads tsx only when it runs from linked source, which happens in this
-	// repository alone. A public hoist matters only for a transitive copy, and the kit's build
-	// relies on none.
-	publicHoistPattern: ["@effected/plugin"],
+	// The toolchain the effected:build catalog carries is hoisted to the consumer's root, as silk
+	// hoists it, so a repository that drops silk keeps `tsc`, `tsx` and the `@types` packages
+	// reachable from every workspace package, including one that declares none of them itself.
+	// The kit's own build does not need the hoist (the bundler resolves typescript from its peer
+	// link); the owner ruled the consumer-side reach worth carrying here.
+	publicHoistPattern: ["@effected/plugin", "typescript", "@types/node", "@types/react", "@types/react-dom", "tsx"],
 	// The kit's own releases and the build chain's lockstep satellites install the day they ship.
 	// The quarantine itself (`minimumReleaseAge`) is repository policy, and stays with silk.
 	// - `@effected/*`: a kit release; its changesets and the catalog sync assume it installs at once.
 	// - `@rolldown/*`: rolldown's platform bindings, published with rolldown and pinned exactly by it.
 	// - `@oxc-project/*`: `@oxc-project/types`, which rolldown pins exactly and which ships with it.
 	// - `@typescript/*`: TypeScript 7's native platform packages, published with `typescript`.
-	// Each one is silk's entry for the same pattern, so a consumer running both plugins unions
-	// two equal entries into one.
+	// - every package the effected:build catalog names (tsdown, rolldown, rolldown-plugin-dts,
+	//   `@tsdown/*`, `@rsbuild/*`, typescript, tsx, `@types/node`, React and its types): the
+	//   catalog pins them and moves them only through a deliberate `pnpm:up`, and a quarantine on
+	//   that move only blocks the upgrade it was chosen for (rolldown 1.3.1 was held exactly so).
+	// Lists union across plugins, so an entry silk also declares collapses to one.
 	minimumReleaseAgeExclude: [
 		"effect",
 		"@effect/*",
@@ -620,7 +621,19 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 		"@effected/*",
 		"@oxc-project/*",
 		"@rolldown/*",
+		"@rsbuild/*",
+		"@tsdown/*",
+		"@types/node",
+		"@types/react",
+		"@types/react-dom",
 		"@typescript/*",
+		"react",
+		"react-dom",
+		"rolldown",
+		"rolldown-plugin-dts",
+		"tsdown",
+		"tsx",
+		"typescript",
 	],
 	// tsx depends on esbuild, whose postinstall (`node install.js`) checks its platform binary.
 	// Under `strictDepBuilds` an unlisted build script fails the install, so the chain's one

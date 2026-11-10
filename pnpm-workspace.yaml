@@ -210,6 +210,18 @@ minimumReleaseAgeExclude:
   - "@oxc-project/*"
   - "@rolldown/*"
   - "@typescript/*"
+  - rolldown
+  - "@rsbuild/*"
+  - "@tsdown/*"
+  - "@types/node"
+  - "@types/react"
+  - "@types/react-dom"
+  - react
+  - react-dom
+  - rolldown-plugin-dts
+  - tsdown
+  - tsx
+  - typescript
 nodeOptions: --import=tsx
 overrides:
   "@effect/ai-anthropic@^4.0.0": 4.1.2
@@ -255,6 +267,11 @@ permissions:
     skills: true
 publicHoistPattern:
   - "@effected/plugin"
+  - "@types/node"
+  - "@types/react"
+  - "@types/react-dom"
+  - tsx
+  - typescript
 skills:
   dirs:
     - .agent/skills

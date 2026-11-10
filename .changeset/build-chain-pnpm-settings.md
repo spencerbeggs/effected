@@ -6,6 +6,8 @@
 
 * The plugin now carries the pnpm settings the `effected:build` chain needs. Until now they came only from `@savvy-web/pnpm-plugin-silk`, so a repository that builds with the kit keeps them even if it runs a silk release that drops them, or no silk at all.
   * `minimumReleaseAgeExclude` adds `@effected/*`, so a kit release installs the day it ships. It also adds `@rolldown/*`, `@oxc-project/*` and `@typescript/*`, the platform bindings and type packages that rolldown and TypeScript publish alongside each release and pin exactly.
+  * `minimumReleaseAgeExclude` also covers every package the `effected:build` catalog names (`tsdown`, `rolldown`, `rolldown-plugin-dts`, `@tsdown/*`, `@rsbuild/*`, `typescript`, `tsx`, `@types/node`, React and its types). The catalog pins them and moves them only through a deliberate upgrade, so a quarantine there only blocks the upgrade it was chosen for.
+  * `publicHoistPattern` hoists `typescript`, `tsx`, `@types/node`, `@types/react` and `@types/react-dom` beside the carrier. The plugin installs the toolchain and keeps it reachable from every workspace package.
   * `allowBuilds` allows `esbuild`, whose postinstall is the only install script in the build chain; tsx pulls it in. Without the entry, `strictDepBuilds` fails the install.
 * Each value is silk's for the same key. A repository running both plugins gets lists that union to one copy of each entry and maps that agree, so the merge warns about nothing. A repository's own value for a key still wins.
 * The release-age quarantine itself, `strictDepBuilds` and `blockExoticSubdeps` stay with silk. They are repository security policy, not part of the build chain.

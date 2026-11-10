@@ -27,10 +27,10 @@ sources:
     resource: "@savvy-web/pnpm-plugin-silk 0.52.0 pnpmfile.mjs, the build catalog and the tsdown>rolldown-plugin-dts override"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-10T01:20:54Z
+  at: 2026-11-10T01:36:15Z
 integrity:
   generated:
-    body: 6c82b5083b9e10a6
+    body: 38e72827d27e0f23
 ---
 
 # The plugin declares a second consumer-visible catalog, effected:build, for the kit's build chain
@@ -56,7 +56,13 @@ Each range, peer and strategy was copied from silk's `build` catalog as installe
 
 **The settings that came with the chain.** Silk's plugin also held the pnpm settings that let the chain install, and a repository building with the kit on a silk release that drops them, or on no silk, would lose them. So the plugin carries every setting whose reason is the chain or the kit, copied at silk's value for the same key.[^savvy-build] The test is the lockfile's transitive closure of the `effected:build` members, not the catalog's name list.
 
-- **`minimumReleaseAgeExclude`** gains `@effected/*` (a kit release installs the day it ships) and three patterns for the chain's lockstep satellites: `@rolldown/*` (rolldown's platform bindings), `@oxc-project/*` (`@oxc-project/types`, which rolldown pins exactly) and `@typescript/*` (TypeScript 7's native platform packages).
+- **`minimumReleaseAgeExclude`** gains:
+  - `@effected/*`, so a kit release installs the day it ships;
+  - three patterns for the chain's lockstep satellites: `@rolldown/*` (rolldown's platform bindings), `@oxc-project/*` (`@oxc-project/types`, which rolldown pins exactly) and `@typescript/*` (TypeScript 7's native platform packages);
+  - every package the `effected:build` catalog names (`tsdown`, `rolldown`, `rolldown-plugin-dts`, `@tsdown/*`, `@rsbuild/*`, `typescript`, `tsx`, `@types/node`, React and its types).
+
+  The catalog pins those and moves them only through a deliberate `pnpm:up`. A quarantine on that move only blocks the upgrade it was chosen for, as it held rolldown 1.3.1. That is the owner's ruling.
+- **`publicHoistPattern`** hoists `typescript`, `tsx`, `@types/node`, `@types/react` and `@types/react-dom` beside the carrier. A consumer then gets the toolchain installed and reachable from every workspace package through the plugin, as silk provided it, without declaring each one, and dropping silk loses none of them. The kit's own build doesn't need the hoist: the bundler resolves `typescript` from its peer link. The consumer-side reach is the reason, and it is the owner's ruling.
 - **`allowBuilds: { esbuild: true }`**, because tsx's esbuild runs a postinstall and `strictDepBuilds` fails an install on an unlisted one. It is the only install script in the closure. `core-js` is only an optional peer of `@rsbuild/core`, so it stays with silk.
 - **`peerDependencyRules.allowedVersions`** keeps only `tsdown>typescript`. The other seven silk rules admit the prerelease under twoslash, vue, commitlint and cosmiconfig, which are silk's docs and lint packages.
 
@@ -68,7 +74,6 @@ Some settings stay with silk on purpose:
 - **`confirmModulesPurge`, and every entry for lint, docs, test or silk's own packages.**
 - **`allowedDeprecatedVersions`.** No package it names is in the closure.
 - **`ignoreMissing`.** The kit's bundler and tool packages peer `typescript` and `@types/node` as required, so silencing a missing one would hide a build that cannot run.
-- **The `publicHoistPattern` entries for `typescript`, `tsx` and `@types/node`.** The bundler resolves `typescript` from its own peer link. A package's `tsc` and its `types: ["node"]` lookup find a root or package devDependency by walking up `node_modules`. The carrier loads tsx only when it runs from linked source, which happens in this repository alone. A public hoist matters only for a transitive copy, and the kit's build relies on none.
 
 **The catalog sync never moves it.** The sync manages next-release versions of the kit; a build-chain move is a deliberate upgrade. `catalog-sync.ts` passes `--catalog effected`, to both `--yes` and `--check`, and the upgrade CLI scopes every mode to it from rolldown-pnpm-config 2.4.5, so neither writes nor reports an `effected:build` entry. An undeclared name exits 1 with an `error.kind` of `catalog`, which `checkVerdict` keeps red.[^sync-script] Build-chain entries move through the user-run `pnpm:up`.
 

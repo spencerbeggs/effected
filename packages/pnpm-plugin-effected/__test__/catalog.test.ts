@@ -440,13 +440,30 @@ describe("the effected tool", () => {
 
 /**
  * The pnpm settings that came with the build chain from silk's plugin: the release-age
- * exclusions for the kit and the chain's lockstep satellites, esbuild's build script and
+ * exclusions for the kit and the whole build chain, the toolchain hoists, esbuild's build script and
  * the tsdown TypeScript rule. Read off the built hook, where the merge with a consumer's
  * own settings, and with silk's when both plugins run, can be observed.
  */
 describe("settings that came with the build chain", () => {
 	const PNPMFILE = join(PACKAGE_ROOT, "dist/prod/npm/pkg/pnpmfile.mjs");
-	const EXCLUDED = ["@effected/*", "@oxc-project/*", "@rolldown/*", "@typescript/*"];
+	const EXCLUDED = [
+		"@effected/*",
+		"@oxc-project/*",
+		"@rolldown/*",
+		"@typescript/*",
+		"@rsbuild/*",
+		"@tsdown/*",
+		"@types/node",
+		"@types/react",
+		"@types/react-dom",
+		"react",
+		"react-dom",
+		"rolldown",
+		"rolldown-plugin-dts",
+		"tsdown",
+		"tsx",
+		"typescript",
+	];
 	// The value both plugins declare for `tsdown>typescript`; one changed alone makes them diverge.
 	const TSDOWN_TYPESCRIPT = "^5.5.0 || ^6.0.0 || ^7.0.0 || ^7.1.0-beta";
 	/** What silk's plugin hands on for the keys the two plugins share, as of the port. */
@@ -516,12 +533,19 @@ describe("settings that came with the build chain", () => {
 		assert.match(warnings.join("\n"), /tsdown>typescript/);
 	});
 
-	// Kept with silk on purpose: the kit's build reaches typescript, tsx and @types/node as
-	// direct dependencies, and the kit peers typescript and @types/node, so silencing a
-	// missing one would hide a build that cannot run.
-	it("hoists only the carrier and silences no missing peer", async () => {
+	// The carrier and the build catalog's toolchain are hoisted, as silk hoists them. Missing
+	// peers stay loud: the kit peers typescript and @types/node, so silencing a missing one
+	// would hide a build that cannot run.
+	it("hoists the carrier and the toolchain, and silences no missing peer", async () => {
 		const out = await updateConfig({});
-		assert.deepStrictEqual(out.publicHoistPattern, ["@effected/plugin"]);
+		assert.sameMembers(out.publicHoistPattern as string[], [
+			"@effected/plugin",
+			"typescript",
+			"@types/node",
+			"@types/react",
+			"@types/react-dom",
+			"tsx",
+		]);
 		const rules = out.peerDependencyRules as { ignoreMissing?: string[] };
 		assert.deepStrictEqual(rules.ignoreMissing ?? [], []);
 	});

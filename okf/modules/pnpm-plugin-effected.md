@@ -23,10 +23,10 @@ sources:
     title: "Membership, the minor-locked Effect-family entries, the derived pins and the one consumer catalog"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-10T01:20:54Z
+  at: 2026-11-10T01:36:15Z
 integrity:
   generated:
-    body: cfc47c4a2a8d947f
+    body: 037eb46f2fde4868
 ---
 
 # pnpm-plugin-effected
@@ -75,14 +75,15 @@ The catalog carries no entries for packages Effect v4 absorbed into core (`@effe
 
 The chain's install settings came with it from silk, each at silk's value for the same key:
 
-- **`minimumReleaseAgeExclude`** adds `@effected/*`, `@rolldown/*`, `@oxc-project/*` and `@typescript/*` beside the Effect family's three patterns.
+- **`minimumReleaseAgeExclude`** adds `@effected/*`, `@rolldown/*`, `@oxc-project/*`, `@typescript/*` and every package the `effected:build` catalog names, beside the Effect family's three patterns.
+- **`publicHoistPattern`** hoists `typescript`, `tsx`, `@types/node`, `@types/react` and `@types/react-dom` beside the carrier. The plugin installs them, and makes them reachable from every workspace package.
 - **`allowBuilds: { esbuild: true }`** covers tsx's esbuild postinstall, the closure's only install script.
 
-Both merge cleanly with silk's copy: lists union to one entry, and equal map values raise no divergence warning. The `settings that came with the build chain` describe in `__test__/catalog.test.ts` pins each entry, the merge with a consumer's own value and the merge with silk's, with a divergent value as its control.[^catalog-test] The quarantine value, `strictDepBuilds`, `blockExoticSubdeps`, `ignoreMissing` and the hoists of `typescript`, `tsx` and `@types/node` stay with silk. The decision gives the reason for each.
+Both merge cleanly with silk's copy: lists union to one entry, and equal map values raise no divergence warning. The `settings that came with the build chain` describe in `__test__/catalog.test.ts` pins each entry, the merge with a consumer's own value and the merge with silk's, with a divergent value as its control.[^catalog-test] The quarantine value, `strictDepBuilds`, `blockExoticSubdeps`, and `ignoreMissing` stay with silk. The decision gives the reason for each.
 
 ## The carrier hoist
 
-The plugin sets `publicHoistPattern: ["@effected/plugin"]`, so the `effected` and `effected-mcp` bins of the [carrier](plugin.md) reach the workspace root. A packed-install e2e showed it matters only when a leaf workspace package declares the carrier; a root devDependency's bin already resolves. The catalog lists the tool's packages with the rest of the kit, and the recommended consumer install is `"@effected/plugin": "catalog:effected"` as a root devDependency.
+The plugin's `publicHoistPattern` includes `@effected/plugin`, so the `effected` and `effected-mcp` bins of the [carrier](plugin.md) reach the workspace root. A packed-install e2e showed it matters only when a leaf workspace package declares the carrier; a root devDependency's bin already resolves. The catalog lists the tool's packages with the rest of the kit, and the recommended consumer install is `"@effected/plugin": "catalog:effected"` as a root devDependency.
 
 ## How this repository consumes it
 
