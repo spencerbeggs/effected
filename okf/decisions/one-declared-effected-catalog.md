@@ -13,7 +13,7 @@ sources:
     title: "The one effected catalog and the overridesFromCatalogs include patterns"
   - id: pnpmfile
     resource: ../../packages/pnpm-plugin-effected/src/pnpmfile.ts
-    title: "The updateConfig wrapper that hides effected:peers"
+    title: "The generated updateConfig, re-exported; it serves every catalog, the :peers twins included"
   - id: catalog-test
     resource: ../../packages/pnpm-plugin-effected/__test__/catalog.test.ts
     title: "The kit and Effect-family describes, and the no-kit-pin assertion in the overrides describe"
@@ -28,7 +28,7 @@ sources:
     title: "The root workspace's effected and effected:peers catalogs"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-09T00:05:23Z
+  at: 2026-11-10T04:40:05Z
 verified:
   - by: human:spencer
     at: 2026-11-01T21:41:54Z
@@ -36,13 +36,15 @@ verified:
     at: 2026-11-08T18:25:54Z
   - by: human:spencer
     at: 2026-11-10T00:32:33Z
+  - by: human:spencer
+    at: 2026-11-10T04:41:33Z
 integrity:
   generated:
-    body: eb38d94a96ebadbf
+    body: 6c30c1eac33a67c1
   verified:
     by: human:spencer
-    at: 2026-11-10T00:32:33Z
-    content: 4e63cac8cd25c5bb
+    at: 2026-11-10T04:41:33Z
+    content: 07c4118d9e92b833
 ---
 
 # The plugin declares one catalog, effected, and pins only the Effect family by include pattern
@@ -59,9 +61,9 @@ integrity:
 
 The derived family pins come from `overridesFromCatalogs: { catalog: "effected", include: ["effect", "@effect/*"] }`. The patterns use core `effect/Glob` semantics, so `*` does not cross the scope `/` and no `@effected/*` name matches either one. A member matched by both `include` and `exclude` is excluded, and an `include` entry that matches no member throws at build time rather than silently pinning nothing.[^upstream-include] `peerDependencyRules.allowedVersionsFromCatalogs.catalog` names `effected` too.
 
-The hook no longer folds. `src/pnpmfile.ts` runs the generated `updateConfig` and deletes only `effected:peers` from what pnpm sees, so a consumer still sees exactly one catalog, `effected`.[^pnpmfile]
+The hook no longer folds. `src/pnpmfile.ts` first deleted only `effected:peers` from what pnpm saw, so a consumer saw one runtime catalog, `effected`. It now re-exports the generated `updateConfig` unchanged and serves `effected:peers` too: once the served catalog pinned the Effect family exactly ([the derived-overrides decision](effect-overrides-derived-from-catalog.md)), a consumer peer spelled `catalog:effected` packed an exact version, so consumers spell peers `catalog:effected:peers`, as this repository does.[^pnpmfile]
 
-This repository uses the same names a consumer does. `pnpm pnpm:export` writes `effected` and `effected:peers` (and `effected:build` with its twin) into the root `pnpm-workspace.yaml`,[^workspace-yaml] and every workspace manifest writes `catalog:effected` for a dev or runtime dependency and `catalog:effected:peers` for a peer. The kit's published `effect` peer stays floored to the minor.
+This repository uses the same names a consumer does, in the same fields. `pnpm pnpm:export` writes `effected` and `effected:peers` (and `effected:build` with its twin) into the root `pnpm-workspace.yaml`,[^workspace-yaml] and every workspace manifest writes `catalog:effected` for a dev or runtime dependency and `catalog:effected:peers` for a peer. The kit's published `effect` peer stays floored to the minor.
 
 ## The guarantee
 

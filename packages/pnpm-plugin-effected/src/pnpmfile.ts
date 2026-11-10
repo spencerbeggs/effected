@@ -14,31 +14,20 @@ export interface PnpmConfig {
 }
 
 /**
- * `lib/build/pnpm-config.plugin.ts` declares two catalogs, `effected` (the Effect family and
- * the kit) and `effected:build` (the build chain), each with a `:peers` twin. The twins
- * serve this repo's own published peer floors, through the root `pnpm-workspace.yaml`
- * that `pnpm:export` writes; a consumer never needs them, since its packed peer takes
- * the catalog's own range (`pnpm pack` runs no hook), so the hook hides both and a
- * consumer sees exactly `effected` and `effected:build`.
- */
-const HIDDEN = ["effected:peers", "effected:build:peers"] as const;
-
-function hide(config: PnpmConfig): PnpmConfig {
-	const catalogs = config.catalogs;
-	if (catalogs === undefined) return config;
-	const out: CatalogMap = { ...catalogs };
-	for (const name of HIDDEN) delete out[name];
-	return { ...config, catalogs: out };
-}
-
-/**
- * The plugin's pnpm hooks: the generated `updateConfig`, then hiding the peers catalogs.
+ * The plugin's pnpm hooks: the generated `updateConfig`, unchanged.
+ *
+ * @remarks
+ * It serves all four declared catalogs. `effected` and `effected:build` pin each
+ * Effect-family member at its exact override version and are for dependencies;
+ * `effected:peers` and `effected:build:peers` floor each range to its minor
+ * (`~4.<minor>.0`) and are for peers. `pnpm pack` writes a `catalog:` peer as the
+ * catalog's value, so a peer spelled `catalog:effected` would publish an exact
+ * version.
  *
  * @public
  */
 export const hooks = {
 	updateConfig(config: PnpmConfig): PnpmConfig | Promise<PnpmConfig> {
-		const result = generated.updateConfig(config as never) as unknown as PnpmConfig | Promise<PnpmConfig>;
-		return result instanceof Promise ? result.then(hide) : hide(result);
+		return generated.updateConfig(config as never) as unknown as PnpmConfig | Promise<PnpmConfig>;
 	},
 };

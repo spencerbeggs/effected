@@ -5,4 +5,4 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
-| `catalogs` | Variable | The catalogs a consumer installs, exactly as the plugin's `updateConfig` hook presents them to pnpm: `effected` (the Effect family and the kit) and `effected:build` (the build chain `effected package build` runs, and the toolchain a package builds against). | read the effected catalog, effect family and kit versions as a map |
+| `catalogs` | Variable | The catalogs a consumer installs, as the plugin's `updateConfig` hook presents them to pnpm: `effected` (the Effect family and the kit) and `effected:build` (the build chain `effected package build` runs, and the toolchain a package builds against), each with a `:peers` twin whose ranges are floored to their minor for use in `peerDependencies`. | read the effected catalog, effect family and kit versions as a map |

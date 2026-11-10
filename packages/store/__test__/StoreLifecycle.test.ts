@@ -60,7 +60,7 @@ describe("StoreError.message carries the cause", () => {
 			yield* SqliteMigrator.run({
 				loader: SqliteMigrator.fromRecord({
 					"0001_initial": Effect.gen(function* () {
-						const sql = yield* SqliteClient.SqliteClient;
+						const sql = yield* SqlClient.SqlClient;
 						yield* sql`CREATE TABLE notes (id INTEGER PRIMARY KEY)`;
 					}),
 				}),
@@ -199,7 +199,7 @@ describe("migration log records (effect/sql's shape)", () => {
 			yield* SqliteMigrator.run({
 				loader: SqliteMigrator.fromRecord({
 					"0001_initial": Effect.gen(function* () {
-						const sql = yield* SqliteClient.SqliteClient;
+						const sql = yield* SqlClient.SqlClient;
 						yield* sql`CREATE TABLE notes (id INTEGER PRIMARY KEY)`;
 					}),
 				}),

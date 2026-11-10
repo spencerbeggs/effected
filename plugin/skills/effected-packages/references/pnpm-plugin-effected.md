@@ -16,15 +16,15 @@ The entry is a plain version (`"@effected/pnpm-plugin-effected": <version>`), th
 
 ## What it ships
 
-**Two catalogs, `effected` and `effected:build`**, and a pnpmfile.
+**Two catalogs, `effected` and `effected:build`, each with a `:peers` twin**, and a pnpmfile. Write the plain catalog in `dependencies` and `devDependencies`, and the `:peers` twin in `peerDependencies`.
 
-- **`catalog:effected`** — `effect`, every `@effect/*` package, `@effect/tsgo` and every published `@effected/*` package except the plugin itself. It is the catalog name a consumer writes for anything its code runs on: in `dependencies`, `devDependencies` and `peerDependencies` alike.
-  - **The Effect family is held to one minor with a tilde** (`~4.<minor>.<patch>`, so every later patch of that minor and never the next minor), not a caret. A new Effect minor reaches a consumer only through a new plugin release. `@effect/tsgo` stays on its own `0.x` line with its own range.
+- **`catalog:effected`** — `effect`, every `@effect/*` package, `@effect/tsgo` and every published `@effected/*` package except the plugin itself. It is the catalog name a consumer writes for anything its code runs on, in `dependencies` and `devDependencies`.
+  - **The Effect family is served at the exact version the plugin pins graph-wide** (`4.<minor>.<patch>`), not a range. pnpm never applies a version-selector override to a `catalog:` specifier, so a range here would let a newer patch resolve beside the pinned one. A new Effect patch or minor reaches a consumer through a new plugin release. `@effect/tsgo` is pinned the same way on its own `0.x` line.
   - **Kit packages carry their current release** as a caret, which on `0.x` pins the minor.
   - The exact version a repo builds against is its **lockfile's resolution**, not the catalog literal; re-pin a vendored `.repos/effect` whenever that resolution moves.
 - **`catalog:effected:build`** — the build chain and toolchain: `tsdown`, `@tsdown/exe`, `rolldown`, `rolldown-plugin-dts`, `@microsoft/api-extractor`, `@microsoft/api-extractor-model`, `@microsoft/tsdoc`, `@microsoft/tsdoc-config`, `typescript`, `@types/node`, `tsx`, `react`, `react-dom`, `@types/react`, `@types/react-dom` and `@rsbuild/core`. A repository that builds with `effected package build` takes these from here, not from `@savvy-web/pnpm-plugin-silk`'s `catalog:build`. No override is derived from it, and the pnpmfile allows a TypeScript 7.1 prerelease under `tsdown`, whose own `typescript` peer admits none.
-- **There is no `catalog:effect`, `catalog:effect:peers`, `catalog:effected:peers` or `catalog:effected:build:peers`.** The `updateConfig` hook hides the internal `:peers` twins, so a manifest still naming one fails the install. A consumer's own entry in `effected` or `effected:build` wins over the plugin's for the same package; a consumer's other catalogs are kept.
-- **A published peer takes the install range.** `pnpm pack` runs no hook and resolves `catalog:effected` to the catalog's range, so a library's packed manifest advertises the catalog's `effect` tilde range and an `@effected/*` peer at its current patch. When a library needs a wider peer, write that range by hand in its own manifest.
+- **`catalog:effected:peers` and `catalog:effected:build:peers`** — the same members with each range floored to its minor: `~4.<minor>.0` for the Effect family, `^0.<minor>.0` for a kit package. `pnpm pack` writes a `catalog:` specifier as the served catalog's value, so a peer spelled `catalog:effected` publishes an exact Effect version and pins every consumer to that patch. Spell every peer `catalog:effected:peers` (or `catalog:effected:build:peers`). When a library needs a wider peer than the floor, write that range by hand.
+- **There is no `catalog:effect` or `catalog:effect:peers`**, so a manifest still naming one fails the install. A consumer's own entry in a catalog the plugin serves wins over the plugin's for the same package, and a local `catalogs.effected` block left by an earlier export keeps its old ranges until it is re-exported or deleted; a consumer's other catalogs are kept.
 - **`@effected/pnpm-plugin-effected` is deliberately absent from its own catalog.** Catalogue it and every catalog rewrite bumps the plugin, which invalidates the catalog — a release loop with no termination condition.
 
 The pnpmfile also applies, to every consumer:
@@ -48,12 +48,12 @@ Application:
 }
 ```
 
-Library — the same catalog on both sides:
+Library — the plain catalog for the dev copy, the `:peers` twin for the peer:
 
 ```json
 {
  "devDependencies": { "effect": "catalog:effected", "@effected/workspaces": "catalog:effected" },
- "peerDependencies": { "effect": "catalog:effected", "@effected/workspaces": "catalog:effected" }
+ "peerDependencies": { "effect": "catalog:effected:peers", "@effected/workspaces": "catalog:effected:peers" }
 }
 ```
 
@@ -79,7 +79,7 @@ One suite, `__test__/catalog.test.ts`:
 - **The `effect` declaration.** Every 4.x entry is held to one minor under `lock-minor` at `effect`'s own version.
 - **The overrides.** It imports the built `pnpmfile.mjs` and checks the family pins merge with a consumer's own `overrides`, with a consumer value for the same selector winning.
 - **The `effected:build` declaration.** It holds exactly the build chain, names nothing from the kit or the Effect family, and no derived override targets one of its members.
-- **The consumer's catalogs.** The hook exposes exactly `effected` (the Effect family and the kit) and `effected:build`, hides both `:peers` twins, and keeps a consumer's own catalogs.
+- **The consumer's catalogs.** The hook serves `effected` (the Effect family pinned exactly, and the kit) and `effected:build`, each with its floored `:peers` twin, and keeps a consumer's own catalogs.
 
 ## Gotchas
 

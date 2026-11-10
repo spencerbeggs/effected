@@ -31,7 +31,7 @@ const runEffectMigrator = (
 			Object.entries(keys).map(([key, statement]) => [
 				key,
 				Effect.gen(function* () {
-					const sql = yield* SqliteClient.SqliteClient;
+					const sql = yield* SqlClient.SqlClient;
 					yield* sql.unsafe(statement);
 				}),
 			]),

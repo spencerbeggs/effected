@@ -9,10 +9,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-10T04:40:05Z
 integrity:
   generated:
-    body: 62daa2f489d8a8ac
+    body: 308540c247c89bfa
 ---
 
 # The effected catalog literal
@@ -66,10 +66,11 @@ entries (`pnpm pnpm:up`, or the sync's `upgrade --yes`), it moves each entry
 to its newest release inside the range, keeping the operator, so a tilde
 entry takes a new patch and never a new minor. It never rewrites
 `overrides`. The published package's `catalogs` export and `hooks` are
-built from this same literal, but a consumer never sees the `:peers`
-twin: the plugin's `updateConfig` hides it, leaving one catalog,
-`effected`, and `catalogs` exports that same catalog; see
-[consumers see one catalog](../decisions/consumer-catalog-fold.md).
+built from this same literal, and a consumer sees the `:peers` twin
+too: the plugin's `updateConfig` serves `effected` (the Effect family
+at its exact pins) and `effected:peers` (the floored ranges the `peer`
+fields produce), and `catalogs` exports both; see
+[one declared effected catalog](../decisions/one-declared-effected-catalog.md).
 
 ## What breaks if an entry is wrong
 

@@ -27,14 +27,14 @@ sources:
     title: "The @effect/tsgo auto-patch, split out of 1146"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-09T00:05:23Z
+  at: 2026-11-10T04:40:05Z
 integrity:
   generated:
-    body: af017b35b0f57b16
+    body: 43c980fa6979f585
   verified:
     by: human:spencer
-    at: 2026-11-10T00:32:33Z
-    content: ed96a8df8e241120
+    at: 2026-11-10T04:41:33Z
+    content: 1a3454a808cea91f
 verified:
   - by: human:spencer
     at: 2026-10-31T19:39:48Z
@@ -44,6 +44,8 @@ verified:
     at: 2026-11-08T18:25:54Z
   - by: human:spencer
     at: 2026-11-10T00:32:33Z
+  - by: human:spencer
+    at: 2026-11-10T04:41:33Z
 ---
 
 # Consumers see one catalog, effected, folded by the plugin's hook from split declarations
@@ -68,7 +70,7 @@ This repository does not run the hook on itself. `pnpm pnpm:export` writes the d
 
 ## Alternatives rejected
 
-- **Rewrite peer ranges in `readPackage`** so a consumer's `catalog:effected` peer would publish floored. `pnpm pack` runs no `readPackage` hook, so the rewrite would never reach a packed manifest.[^pack-probe] A consumer peer written as `catalog:effected` publishes the install range, patch included. A consumer that needs a floored peer writes that range by hand.
+- **Rewrite peer ranges in `readPackage`** so a consumer's `catalog:effected` peer would publish floored. `pnpm pack` runs no `readPackage` hook, so the rewrite would never reach a packed manifest.[^pack-probe] A consumer peer written as `catalog:effected` publishes the served value. The floored peer is now served as `catalog:effected:peers`; a consumer that needs a wider peer writes that range by hand.
 - **Merge the declarations into one catalog.** The derived family pins would then need every kit package named in `exclude`, and the `upgrade` CLI would treat both halves as one catalog.
 - **Keep four catalogs and document them better.** The confusion was the cost being removed.
 
@@ -76,7 +78,7 @@ The `@effect/tsgo` auto-patch item of the same issue was split to its own issue,
 
 ## Consequences
 
-- **A consumer's install fails loudly on a stale reference.** `catalog:effect`, `catalog:effect:peers` and `catalog:effected:peers` no longer exist for a consumer, so a manifest still naming one fails to resolve.
+- **A consumer's install fails loudly on a stale reference.** `catalog:effect` and `catalog:effect:peers` no longer exist for a consumer, so a manifest still naming one fails to resolve. `catalog:effected:peers` was hidden here too, but it is served again: once the family was pinned exactly, it became the consumer's peer spelling ([one declared effected catalog](one-declared-effected-catalog.md)).
 - **The new package needs its own npm trusted publisher** before its first release; the old package's configuration does not carry over.
 - **The old package is deprecated on npm by the owner.**
 - **Names elsewhere followed:** the sync script's `PLUGIN`, `CONFIG_PATH` and commit headline scope, the catalog-sync workflow, the root `pnpm:*` scripts, `design/packages.json` and `lib/configs/layers.json`.

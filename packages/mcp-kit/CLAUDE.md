@@ -148,19 +148,19 @@ carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `lis
   Toolkit handlers still see the ambient `Stdio`: the guard is
   `Layer.provide`d to `layerStdio` alone.
 - **One `McpStdio.layer` server per layer memo map.** Core's
-  `RpcServer.layerProtocolStdio` is a module constant, so two stdio servers
-  whose builds share a memo map share one protocol, built over whichever
-  `Stdio` came first; the second server never reads its stdin. Merging
-  both into one graph shares the map, and so does building or providing
-  the second anywhere under the first's `Effect.provide`: nested
-  `Layer.build` and `Effect.provide` fork the ambient memo map
-  (`CurrentMemoMap.forkOrCreate`). The tool registry is shared the same
-  way: core's `McpServer.layer` is a module constant too, and
-  `McpServer.toolkit` / `McpToolkit.layer` register into whichever copy
-  their memo map holds. Isolate a server by wrapping its **whole bundle**
+  `McpServer.layerStdio` builds a fresh stdio protocol per call
+  (Effect-TS/effect PR #8506), so each server reads its own `Stdio`, but the
+  tool registry is still shared: core's `McpServer.layer` is a module
+  constant, and `McpServer.toolkit` / `McpToolkit.layer` register into
+  whichever copy their memo map holds. Two servers whose builds share a
+  memo map each list both servers' tools. Merging both into one graph
+  shares the map, and so does building or providing the second anywhere
+  under the first's `Effect.provide`: nested `Layer.build` and
+  `Effect.provide` fork the ambient memo map
+  (`CurrentMemoMap.forkOrCreate`). Isolate a server by wrapping its **whole bundle**
   (its toolkit layers together with `McpStdio.layer`, plus its `Stdio` if
   that is per server) in `Layer.fresh`: probed, each server then gets its
-  own protocol and its own registry, tools included. The trap is a
+  own registry, tools included. The trap is a
   `Layer.fresh` boundary **between** a toolkit and `McpStdio.layer`: fresh
   around `McpStdio.layer` alone, with the toolkit outside it, builds a
   second, empty registry, so the server serves no tools even when it is

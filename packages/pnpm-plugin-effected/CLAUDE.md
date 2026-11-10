@@ -15,14 +15,16 @@ Load when changing catalog strategy, advancing the Effect pin, or debugging work
 
 A pnpm **config dependency**, built with `rolldown-pnpm-config`. All catalog configuration lives in `lib/build/pnpm-config.plugin.ts`, where `PnpmConfigPlugin` declares each catalogued package with a `range`, a `peer` and a `strategy`. Source is two small files over the virtual modules:
 
-- `src/pnpmfile.ts` wraps the generated `updateConfig` and **hides** the `effected:peers` twin.
+- `src/pnpmfile.ts` re-exports the generated `updateConfig` unchanged; it serves every declared catalog, the `:peers` twins included.
 - `src/index.ts` exports the declared `effected` catalog as `catalogs`.
 
-## What consumers see: one catalog
+## What consumers see: two catalogs and their peers twins
 
-A consumer sees exactly one catalog, **`effected`**: the Effect family plus every publishable `@effected/*` package but this one. The generated merge lets a consumer's own `effected` entries win, and the hook deletes `effected:peers`. `__test__/catalog.test.ts` pins this against the built `dist/prod/npm/pkg/pnpmfile.mjs`. Why → `@./okf/decisions/consumer-catalog-fold.md`, `@./okf/decisions/one-declared-effected-catalog.md`.
+A consumer sees **`effected`** (the Effect family plus every publishable `@effected/*` package but this one) and `effected:build`, each with its `:peers` twin. Dependencies write `catalog:effected`; peers write `catalog:effected:peers`, the same split this repo's manifests use. The generated merge lets a consumer's own entries win. The twins were once hidden; that made consumers spell peers `catalog:effected`, which packs an exact version once the family is frozen. `__test__/catalog.test.ts` pins this against the built `dist/prod/npm/pkg/pnpmfile.mjs`. Why → `@./okf/decisions/consumer-catalog-fold.md`, `@./okf/decisions/one-declared-effected-catalog.md`.
 
-**`pnpm pack` runs no `readPackage` hook**, so a consumer peer written as `catalog:effected` publishes the install range (patch included), not a floored one. Do not try to fix that in a hook; a consumer that wants a floored peer writes it by hand.
+**The served `effected` catalog names each pinned Effect-family member at its exact override version** (`effect: 4.<minor>.<patch>`), while the literal keeps the `~` range. pnpm never applies a version-selector override such as `effect@^4.0.0` to a `catalog:` specifier (pnpm/pnpm#17922), so a served tilde let a consumer resolve a second, newer `effect`. `rolldown-pnpm-config` does the freeze; the upgrade CLI and peer derivation still read the literal. A consumer's own local `catalogs.effected` block still wins, and stays exposed until it re-exports or drops the block. Why → `@./okf/decisions/effect-overrides-derived-from-catalog.md`.
+
+**`pnpm pack` writes a `catalog:` specifier as the served catalog's value**, so a consumer peer written as `catalog:effected` publishes the exact Effect-family pin and a peer written as `catalog:effected:peers` publishes the floored `~4.<minor>.0`. Do not try to rewrite peers in a hook; the peers twin is the answer.
 
 ## What it declares: one catalog, two halves
 
