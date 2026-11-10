@@ -27,7 +27,7 @@
 import { mkdir, mkdtemp, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { Cause, DateTime, Effect, Exit, Layer, Option, Result } from "effect";
 import type { ChildProcessSpawner } from "effect/process";

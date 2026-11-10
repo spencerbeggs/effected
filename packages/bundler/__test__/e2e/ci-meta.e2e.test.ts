@@ -6,7 +6,8 @@
 import { cpSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { afterAll, assert, describe, it } from "@effect/vitest";
 import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import { Effect, Layer } from "effect";

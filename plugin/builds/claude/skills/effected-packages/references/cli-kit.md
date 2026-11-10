@@ -91,7 +91,7 @@ The presentation layer and `./ui` are taught in depth in `effect-v4-cli` (`prese
 
 ```ts
 import { CliLogger, CliRuntime, SchemaIssueRenderer } from "@effected/cli-kit";
-import { NodeRuntime } from "@effect/platform-node";
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import { Effect, Layer } from "effect";
 
 declare const AppLive: Layer.Layer<never>;

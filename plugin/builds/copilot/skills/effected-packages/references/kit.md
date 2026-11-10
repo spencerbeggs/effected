@@ -222,7 +222,8 @@ Where the positionals exist decides where `projectDir` is called:
 ```ts
 import { CliRuntime } from "@effected/cli-kit";
 import { LaunchContext } from "@effected/kit";
-import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Console, Effect, Option } from "effect";
 import { Argument, Command } from "effect/cli";
 

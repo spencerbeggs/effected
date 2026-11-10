@@ -50,7 +50,7 @@ Declare the events a journal may contain, mint a service class for that registry
 ```ts
 import { Journal, JsonlEvent } from "@effected/jsonl";
 import { NodeJournalWatcher } from "@effected/jsonl/node";
-import { NodeFileSystem } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { Effect, Option, Schema, Stream, SubscriptionRef } from "effect";
 
 const Snapshot = JsonlEvent.make("snapshot", {

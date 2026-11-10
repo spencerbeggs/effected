@@ -301,7 +301,8 @@ const actionsDecision =
  * @example
  * ```ts
  * import { CliRuntime } from "@effected/cli-kit"
- * import { NodeRuntime, NodeServices } from "@effect/platform-node"
+ * import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+ * import * as NodeServices from "@effect/platform-node/NodeServices"
  *
  * // `env.log` makes `main` install `CliLog.layer`: set MYTOOL_LOG_LEVEL=debug to get diagnostics on stderr.
  * NodeRuntime.runMain(

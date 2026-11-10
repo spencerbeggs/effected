@@ -1,7 +1,7 @@
 import * as nodeFs from "node:fs/promises";
 import * as nodeOs from "node:os";
 import * as nodePath from "node:path";
-import { NodeFileSystem } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { assert, describe, it } from "@effect/vitest";
 import { ConfigFile, JsonCodec } from "@effected/config-file";
 import type { StoreMigration } from "@effected/store";

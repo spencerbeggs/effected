@@ -1,4 +1,5 @@
-import { NodeCrypto, NodeServices } from "@effect/platform-node";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { WorkflowCommand } from "@effected/github-commands";
 import { Cause, Effect, Exit, Layer, LogLevel, Option, References, Result } from "effect";
 import type { Digest, Mac, SecureRandom, Signature } from "effect/crypto";

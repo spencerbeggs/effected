@@ -118,7 +118,8 @@ A stdio server's `main.ts` is one line, plus the layer that wires it:
 
 ```ts
 import { McpStdio, McpToolkit, ToolFailure } from "@effected/mcp-kit";
-import { NodeRuntime, NodeStdio } from "@effect/platform-node";
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+import * as NodeStdio from "@effect/platform-node/NodeStdio";
 import { Effect, Layer, Schema } from "effect";
 import { Tool, Toolkit } from "effect/ai";
 
@@ -523,7 +524,7 @@ how a test proves the stdin guard against a spawned server:
 ```ts
 import { unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { McpProcess } from "@effected/mcp-kit/testing";
 import { Effect } from "effect";
 import { ChildProcess } from "effect/process";
@@ -534,7 +535,8 @@ writeFileSync(
   serverFile,
   `
 import { McpStdio, McpToolkit } from "@effected/mcp-kit";
-import { NodeRuntime, NodeStdio } from "@effect/platform-node";
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+import * as NodeStdio from "@effect/platform-node/NodeStdio";
 import { Effect, Layer } from "effect";
 import { Tool, Toolkit } from "effect/ai";
 

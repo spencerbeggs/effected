@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, describe, it } from "@effect/vitest";
 import { McpHarness } from "@effected/mcp-kit/testing";
 import { Effect, FileSystem, Layer, Path } from "effect";

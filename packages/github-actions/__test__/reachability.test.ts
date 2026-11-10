@@ -197,7 +197,8 @@ describe("bundle reachability", () => {
 		// would put a blob-storage client in the bundle of every action that
 		// merely sets an output.
 		assert.deepStrictEqual([...reachableBareImports("Action.ts")].sort(), [
-			"@effect/platform-node",
+			"@effect/platform-node/NodeCrypto",
+			"@effect/platform-node/NodeServices",
 			"@effected/github-commands",
 			"effect",
 			"effect/http",

@@ -216,7 +216,8 @@ export interface PackageJsonFileShape {
  * @example
  * ```ts
  * import { PackageJsonFile } from "@effected/package-json";
- * import { NodeFileSystem, NodePath } from "@effect/platform-node";
+ * import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+ * import * as NodePath from "@effect/platform-node/NodePath";
  * import { Effect } from "effect";
  *
  * const program = Effect.gen(function* () {
@@ -396,7 +397,8 @@ export class PackageJsonFile extends Context.Service<PackageJsonFile, PackageJso
 	 *
 	 * @example
 	 * ```ts
-	 * import { NodeFileSystem, NodePath } from "@effect/platform-node";
+	 * import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+	 * import * as NodePath from "@effect/platform-node/NodePath";
 	 * import { PackageJsonFile } from "@effected/package-json";
 	 * import { Effect, Layer } from "effect";
 	 *

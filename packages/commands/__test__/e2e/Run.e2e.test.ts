@@ -5,7 +5,7 @@
 // interaction that `Run.detach` rests on. Nothing here re-tests classification
 // logic — that lives in the unit suite over a scripted spawner.
 
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";

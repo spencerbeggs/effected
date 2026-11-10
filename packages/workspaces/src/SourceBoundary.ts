@@ -1050,7 +1050,7 @@ export class SourceBoundary {
 	 *
 	 * @example
 	 * ```ts
-	 * import { NodeServices } from "@effect/platform-node";
+	 * import * as NodeServices from "@effect/platform-node/NodeServices";
 	 * import { SourceBoundary } from "@effected/workspaces/testing";
 	 * import { Effect } from "effect";
 	 *

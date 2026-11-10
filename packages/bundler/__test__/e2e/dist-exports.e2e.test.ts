@@ -7,7 +7,8 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, wri
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { afterAll, assert, describe, it } from "@effect/vitest";
 import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import { Effect, Layer } from "effect";

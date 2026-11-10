@@ -1,7 +1,8 @@
 // A real CLI, run by CliStdin.test.ts in a child process with real piped stdin and the real NodeTerminal: a flag
 // that falls back to a prompt, and a handler that waits before it reads stdin. The wait is the point: a prompt
 // runner that attached to stdin in the meantime would have eaten the piped bytes.
-import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Console, Effect, Stdio, Stream } from "effect";
 import { Command, Flag, Prompt } from "effect/cli";
 import { CliPrompt, CliRuntime } from "../../src/index.js";

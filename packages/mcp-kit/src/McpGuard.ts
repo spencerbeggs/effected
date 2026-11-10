@@ -166,7 +166,7 @@ export interface InjectCrash {
  *   host: process,
  *   policy: { onUncaught: "exitBeforeConnect", onRejection: "log" },
  *   load: async () => {
- *     const { NodeRuntime } = await import("@effect/platform-node");
+ *     const NodeRuntime = await import("@effect/platform-node/NodeRuntime");
  *     const { Main } = await import("./server.js");
  *     return { layer: Main, runMain: NodeRuntime.runMain };
  *   },

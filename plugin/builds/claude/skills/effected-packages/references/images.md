@@ -24,7 +24,8 @@ import { ImageBackend, ImageCache, ImageCacheKey } from "@effected/images/cache"
 ```ts
 import { ImageFacts } from "@effected/images";
 import { ImageBackend, ImageCache, ImageCacheKey } from "@effected/images/cache";
-import { NodeCrypto, NodeServices } from "@effect/platform-node";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer, Schema } from "effect";
 
 // Sync, no runtime: dimensions of a file already in memory.

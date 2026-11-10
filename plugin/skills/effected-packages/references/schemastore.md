@@ -80,7 +80,7 @@ import { SchemaPipeline, SchemaTarget, SchemaFile, SchemaValidator, StoreDocumen
 ```ts
 import { SchemaFile, SchemaPipeline, SchemaTarget } from "@effected/schemastore";
 import { AjvValidator } from "@effected/engine/schema";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer, Schema } from "effect";
 
 const targets = [

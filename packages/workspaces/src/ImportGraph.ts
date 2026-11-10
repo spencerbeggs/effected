@@ -396,7 +396,7 @@ const includePrefixes = (patterns: ReadonlyArray<string>): ReadonlyArray<string>
  *
  * @example
  * ```ts
- * import { NodeServices } from "@effect/platform-node";
+ * import * as NodeServices from "@effect/platform-node/NodeServices";
  * import { ImportGraph } from "@effected/workspaces/testing";
  * import { Effect } from "effect";
  *

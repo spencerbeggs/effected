@@ -394,7 +394,7 @@ writes `initialize` to:
 // __test__/e2e/packed-install.e2e.test.ts, two levels below the workspace root
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { NodeServices } from "@effect/platform-node"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { assert, describe, layer } from "@effect/vitest"
 import { McpProbe } from "@effected/mcp-kit/testing"
 import { Workspaces } from "@effected/workspaces"

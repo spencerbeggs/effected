@@ -22,4 +22,5 @@
 
 ## Bug Fixes
 
+* Every platform example in the skills and agents imports `@effect/platform-node` by subpath. `effect-v4-idioms` states the rule: import `@effect/platform-node` and `@effect/platform-bun` by subpath, never from the root, which re-exports `NodeRedis` and so needs its required `redis` peer installed.
 * The bundler reference in `effected-packages` described `effected.toml` discovery as "later wins". It now gives the rule the config loader follows: the first file found in each tier is the only one read, then the package tier merges over the root.

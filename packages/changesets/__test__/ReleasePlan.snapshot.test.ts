@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { assembleReleasePlan } from "@changesets/assemble-release-plan";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, describe, it, vi } from "@effect/vitest";
 import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import { Effect, Layer } from "effect";

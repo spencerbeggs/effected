@@ -1,7 +1,7 @@
 // What a command with a live view loads, run by run: React and Ink load only when something is drawn with Ink. No
 // static ink or react import here, and none of the view's module: the mocks below record each package's first load,
 // and the fixture counts its own.
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { Console, Effect, Layer, Stream } from "effect";
 import { Command } from "effect/cli";

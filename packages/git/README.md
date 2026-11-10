@@ -53,7 +53,7 @@ Read a file at a ref, list what changed, and probe a branch — all without touc
 
 ```ts
 import { Git } from "@effected/git";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, Layer, Option } from "effect";
 
 const program = Effect.gen(function* () {

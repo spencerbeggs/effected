@@ -2,7 +2,7 @@
 // scope interrupts it and the process exits at once. A tick left on a ref'd timer would keep the child alive.
 // Runs the package sources under tsx (fixtures/register-ts.mjs).
 import { join } from "node:path";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Stream } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";

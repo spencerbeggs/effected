@@ -26,7 +26,8 @@ Single entrypoint; no subpaths.
 
 ```ts
 import { TsconfigLoader } from "@effected/tsconfig-json";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { Effect, Layer } from "effect";
 
 const options = TsconfigLoader.resolve("./tsconfig.json").pipe(

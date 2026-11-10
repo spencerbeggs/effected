@@ -1,7 +1,7 @@
 // scanAudience reads argv by hand, mirroring core's lexer. This differential test is what pins that mirror: it runs
 // core's REAL parser over a set of edge argvs, reads the parsed audience flags back out, and requires the scan to
 // agree. A change in core's lexer or boolean spellings fails here instead of silently drifting.
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { Console, Effect } from "effect";
 import { Argument, Command } from "effect/cli";

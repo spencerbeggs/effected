@@ -1,4 +1,4 @@
-import { NodeCrypto } from "@effect/platform-node";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, describe, it, layer } from "@effect/vitest";
 import { Effect, Exit, Layer, Redacted, Schema } from "effect";
 import { Mac, SecureRandom, WebCrypto } from "effect/crypto";

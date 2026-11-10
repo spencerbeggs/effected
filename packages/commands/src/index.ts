@@ -13,7 +13,7 @@
  * @example
  * ```ts
  * import { LocalExec, Run, Tool, ToolDiscovery } from "@effected/commands";
- * import { NodeServices } from "@effect/platform-node";
+ * import * as NodeServices from "@effect/platform-node/NodeServices";
  * import { Effect, Layer } from "effect";
  *
  * const program = Effect.gen(function* () {

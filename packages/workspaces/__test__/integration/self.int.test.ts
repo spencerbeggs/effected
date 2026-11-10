@@ -13,7 +13,8 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import nodePath, { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, describe, layer } from "@effect/vitest";
 import { Effect, Layer, Option } from "effect";
 import type { WorkspacesSyncOptions } from "../../src/index.js";

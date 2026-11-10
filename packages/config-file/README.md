@@ -53,7 +53,8 @@ Declare a schema, mint a service class for it with `ConfigFile.Service`, and bui
 
 ```ts
 import { ConfigFile, ConfigResolver, JsonCodec, MergeStrategy } from "@effected/config-file";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { Effect, Layer, Schema } from "effect";
 
 class AppShape extends Schema.Class<AppShape>("AppShape")({
@@ -111,7 +112,7 @@ Not every caller has a config file — some just have one path a caller already 
 
 ```ts
 import { ConfigFile, JsonCodec } from "@effected/config-file";
-import { NodeFileSystem } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { Effect, Schema } from "effect";
 
 class MyConfig extends Schema.Class<MyConfig>("MyConfig")({ port: Schema.Number }) {}

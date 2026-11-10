@@ -10,7 +10,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getCommitsThatAddFiles } from "@changesets/git";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { Effect, Layer, Option } from "effect";
 import { Git, GitCommandError, NotARepositoryError, ShallowHistoryError } from "../../src/Git.js";

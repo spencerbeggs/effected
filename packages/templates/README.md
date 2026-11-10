@@ -47,7 +47,8 @@ Declare two sections and sync them into a file in one call. Declared order becom
 
 ```ts
 import { CommentStyle, ManagedSection, SectionId } from "@effected/templates";
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { Effect, Layer } from "effect";
 
 const Base = SectionId.make({ key: "base", commentStyle: CommentStyle.hash });

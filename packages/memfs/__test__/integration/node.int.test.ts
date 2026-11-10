@@ -7,7 +7,7 @@
 // If the memory run and this run ever disagree, the engine is wrong, never the
 // expectation — the platform layer is the reference implementation.
 
-import { NodeFileSystem } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import { errnoSuite } from "../ErrnoParityContract.js";
 import { suite } from "../FileSystemContract.js";
 

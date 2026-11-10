@@ -46,7 +46,8 @@ pnpm's catalog semantics come from pnpm's own `@pnpm/catalogs.*` packages, which
 ## Quick start
 
 ```ts
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { DependencyGraph, WorkspaceDiscovery, Workspaces } from "@effected/workspaces";
 import { Effect, Layer } from "effect";
 
@@ -103,7 +104,7 @@ console.log(graph.toMermaid());
 `ChangeDetector` offers three depths of analysis on one service — `changedFiles` (raw paths from a git range), `changedPackages` (the packages owning them) and `affectedPackages` (the transitive blast radius through the dependency graph).
 
 ```ts
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { ChangeDetectionOptions, ChangeDetector, Workspaces } from "@effected/workspaces";
 import { Effect, Layer } from "effect";
 
@@ -171,7 +172,7 @@ A higher source replaces a lower one's value whole, so a workspace `minimumRelea
 `cwd` belongs to the workspace, as pnpm decides it, when it is the root, when it holds no project manifest (`package.json`, `package.json5` or `package.yaml`), or when it matches the manifest's `packages:` patterns. A manifest with no `packages:` key has the root as its only member, so an example app or fixture with its own `package.json` inside a single-package repo reads no workspace settings, exactly as pnpm skips them. A misnamed manifest (`pnpm-workspace.yml`, `.pnpm-workspace.yaml`) is not a workspace file, and the ascent passes it, as pnpm 12 does.
 
 ```ts
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { PnpmSettings } from "@effected/workspaces";
 import { Effect, Option } from "effect";
 
@@ -327,7 +328,7 @@ Every check refuses to pass vacuously, so every example below pairs "nothing wro
 // __test__/layering.test.ts, one level below the workspace root
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, layer } from "@effect/vitest";
 import { Workspaces } from "@effected/workspaces";
 import { LayerPolicy, WorkspaceLayering } from "@effected/workspaces/testing";
@@ -360,7 +361,7 @@ An edge is drawn wherever a dependency's name is a workspace package, whatever i
 // __test__/boundary.test.ts, one level below the package root
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, layer } from "@effect/vitest";
 import { SourceBoundary } from "@effected/workspaces/testing";
 import { Effect } from "effect";
@@ -450,7 +451,7 @@ Two guards are properties of the import graph rather than of one file, so no per
 import { builtinModules } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, layer } from "@effect/vitest";
 import { Workspaces } from "@effected/workspaces";
 import { ImportGraph } from "@effected/workspaces/testing";
@@ -503,7 +504,7 @@ It does not run the bins; the test does, inside the same scope, because the scra
 // __test__/e2e/packed-install.e2e.test.ts, two levels below the workspace root
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, layer } from "@effect/vitest";
 import { McpProbe } from "@effected/mcp-kit/testing";
 import { Workspaces } from "@effected/workspaces";

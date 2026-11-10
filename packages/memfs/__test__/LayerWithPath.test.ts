@@ -3,7 +3,7 @@
 // `Path.layer` in rather than leaving every call site to spell the merge.
 
 import * as NodePathModule from "node:path";
-import { NodePath } from "@effect/platform-node";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, FileSystem, Path } from "effect";
 import { MemoryFileSystem } from "../src/index.js";

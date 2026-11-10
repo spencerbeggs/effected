@@ -925,7 +925,7 @@ const planClosure = (carrier: string, options: PackedInstallClosureOptions) =>
  *
  * @example
  * ```ts
- * import { NodeServices } from "@effect/platform-node";
+ * import * as NodeServices from "@effect/platform-node/NodeServices";
  * import { Workspaces } from "@effected/workspaces";
  * import { PackedInstall } from "@effected/workspaces/testing";
  * import { Effect, Layer } from "effect";
@@ -1031,7 +1031,7 @@ export class PackedInstall {
 	 *
 	 * @example
 	 * ```ts
-	 * import { NodeServices } from "@effect/platform-node";
+	 * import * as NodeServices from "@effect/platform-node/NodeServices";
 	 * import { Workspaces } from "@effected/workspaces";
 	 * import { PackedInstall } from "@effected/workspaces/testing";
 	 * import { Effect, Layer } from "effect";
@@ -1065,7 +1065,7 @@ export class PackedInstall {
 	 *
 	 * @example
 	 * ```ts
-	 * import { NodeServices } from "@effect/platform-node";
+	 * import * as NodeServices from "@effect/platform-node/NodeServices";
 	 * import { Workspaces } from "@effected/workspaces";
 	 * import type { PackedInstallOptions } from "@effected/workspaces/testing";
 	 * import { PackedInstall } from "@effected/workspaces/testing";
@@ -1123,7 +1123,7 @@ export class PackedInstall {
 	 *
 	 * @example
 	 * ```ts
-	 * import { NodeServices } from "@effect/platform-node";
+	 * import * as NodeServices from "@effect/platform-node/NodeServices";
 	 * import { Workspaces } from "@effected/workspaces";
 	 * import { PackedInstall } from "@effected/workspaces/testing";
 	 * import { Effect, Layer } from "effect";

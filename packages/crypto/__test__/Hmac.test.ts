@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { NodeCrypto } from "@effect/platform-node";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, layer } from "@effect/vitest";
 import { Effect, Exit, Layer, Redacted } from "effect";
 import { Mac, SecureRandom, WebCrypto } from "effect/crypto";

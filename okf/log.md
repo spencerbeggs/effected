@@ -17,6 +17,8 @@
 * Updated @effected/plugin
 * Updated Only @effected/bundler imports typescript, and only it and the tool's packages peer it
 * Updated effected
+* Added @effect/platform-node declares redis as a required peer, so every kit package on it brings redis along
+* Updated @effected/workspaces/testing: the repo-shape checks
 
 ## 2026-11-09
 

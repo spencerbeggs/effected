@@ -1,4 +1,4 @@
-import { NodeCrypto } from "@effect/platform-node";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, describe, it } from "@effect/vitest";
 import { SigV4, SigV4EncodingError, SigV4PathError } from "@effected/crypto";
 import { DateTime, Effect, Layer, Option, Redacted, Schema } from "effect";

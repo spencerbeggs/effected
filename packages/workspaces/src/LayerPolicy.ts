@@ -68,7 +68,7 @@ export class LayerPolicyError extends Schema.TaggedError<LayerPolicyError>()("La
  *
  * @example
  * ```ts
- * import { NodeServices } from "@effect/platform-node";
+ * import * as NodeServices from "@effect/platform-node/NodeServices";
  * import { LayerPolicy } from "@effected/workspaces/testing";
  * import { Effect } from "effect";
  *

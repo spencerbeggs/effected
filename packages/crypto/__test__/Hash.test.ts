@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { NodeCrypto } from "@effect/platform-node";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, describe, layer } from "@effect/vitest";
 import { Cause, Effect, Exit, Layer } from "effect";
 import { Digest, WebCrypto } from "effect/crypto";

@@ -52,7 +52,8 @@ All `@effected/*` packages are ESM-only: the exports maps publish only `import` 
 `ReleasePlan.read` discovers the workspace's packages, reads the config and the pending changesets, and plans the release. It requires `FileSystem`, `Path` and `WorkspaceDiscovery`, which you provide at the edge of your program:
 
 ```ts
-import { NodeFileSystem, NodePath } from "@effect/platform-node";
+import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
+import * as NodePath from "@effect/platform-node/NodePath";
 import { ReleasePlan } from "@effected/changesets";
 import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import { Effect, Layer } from "effect";

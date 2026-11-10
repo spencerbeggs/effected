@@ -174,7 +174,7 @@ Snapshot `rawFrame` (or `frame`, already decoded); the serializer claims a strin
 `render` drives one screen. A handler that asks several questions in sequence is tested with `session`: provide its `layer` around the program, run the program **forked**, take each screen with `next` as it mounts, drive it, and join the fiber for the result. `next({ contains })` waits (at most 2 s) for the next screen to mount and show that text, so a test reads in the order the user sees it.
 
 ~~~ts
-import { NodeServices } from "@effect/platform-node"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import { assert, it } from "@effect/vitest"
 import { CliUi, Select, TextInput } from "@effected/cli-kit/ui"
 import { CliUiTest } from "@effected/cli-kit/ui/testing"

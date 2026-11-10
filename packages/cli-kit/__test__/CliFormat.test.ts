@@ -1,5 +1,5 @@
 // CliFormat: a --format flag with the kit's default, and the one print that honours it.
-import { NodeServices } from "@effect/platform-node";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import type { AudienceKind } from "@effected/env";
 import { Audience, CurrentRuntimeEnv, TerminalEnv } from "@effected/env";
