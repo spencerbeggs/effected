@@ -1,6 +1,4 @@
-import { readFileSync, realpathSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { assembleReleasePlan } from "@changesets/assemble-release-plan";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
 import { assert, describe, it, vi } from "@effect/vitest";
@@ -8,6 +6,8 @@ import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import { Effect, Layer } from "effect";
 import type { ReleaseSnapshot } from "../src/ReleasePlan.js";
 import { ReleasePlan } from "../src/ReleasePlan.js";
+import type { Any } from "./support/oracle.js";
+import { sibling } from "./support/oracle.js";
 
 /**
  * The snapshot oracle is `@changesets/assemble-release-plan`'s fifth argument,
@@ -17,20 +17,6 @@ import { ReleasePlan } from "../src/ReleasePlan.js";
  * as `changeset version --snapshot` does.
  */
 const fixture = (name: string): string => fileURLToPath(new URL(`fixtures/${name}`, import.meta.url));
-
-const getReleasePlanDir = realpathSync(
-	fileURLToPath(new URL("../node_modules/@changesets/get-release-plan", import.meta.url)),
-);
-
-/** A dependency of `@changesets/get-release-plan`, loaded from beside it as it loads one. */
-const sibling = async <A>(name: string): Promise<A> => {
-	const dir = join(getReleasePlanDir, "..", "..", name);
-	const manifest = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as { exports: { ".": string } };
-	return (await import(pathToFileURL(join(dir, manifest.exports["."])).href)) as A;
-};
-
-// biome-ignore lint/suspicious/noExplicitAny: the oracle's own shapes come from untyped dynamic imports
-type Any = any;
 
 const loadOracle = Effect.promise(async () => ({
 	readConfig: (await sibling<Any>("@changesets/config")).readConfig,

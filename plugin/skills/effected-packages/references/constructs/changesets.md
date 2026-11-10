@@ -33,6 +33,7 @@
 | `PlannedRelease` | Class | One package's place in a `ReleasePlan`. | one package's old version, new version and bump type in a plan |
 | `PreState` | Class | The decoded `.changeset/pre.json`: the repository is in pre-release mode (`changeset pre enter <tag>`), or leaving it (`changeset pre exit`). | read pre mode state from pre.json, tag, initial versions, consumed changesets |
 | `RangeEdit` | Class | One dependency range a release rewrites in a manifest. | one rewritten dependency range, from and to specifier |
+| `ReleaseContext` | Class | A `ReleasePlan` with what `ReleasePlan.readWithContext` read it from. | release plan with the packages and config it was read from, hand to edits and changelog, read from a subdirectory |
 | `ReleaseEdits` | Class | Everything `changeset version` writes for a `ReleasePlan`, as data, CHANGELOG files aside. `ReleasePlan.edits` computes it; the caller does the IO. | changeset version as data, manifest edits, changesets to delete, next pre.json |
 | `ReleasePlan` | Class | What a set of pending changesets releases: the packages they name and the packages reached as dependents, sorted by name. A package neither named nor reached is absent. | compute next versions from pending changesets, dependents, snapshot versions, apply edits |
 | `ReleaseSnapshot` | Interface | The input for a snapshot plan, `changeset version --snapshot`'s parameters. `ReleasePlan.assemble` documents how each is read. | |

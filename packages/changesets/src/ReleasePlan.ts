@@ -232,10 +232,20 @@ const LoneManifest = Schema.Struct({
 	private: Schema.optionalKey(Schema.Boolean),
 });
 
-/** The package of a repository with no workspace file, which discovery has no root for. */
-const readLonePackage = Effect.fnUntraced(function* (root: string, notFound: WorkspaceRootNotFoundError) {
+/**
+ * The package of a repository with no workspace file, which discovery has no
+ * root for: the nearest `package.json` at or above `directory`, where the
+ * oracle's `@manypkg/find-root` falls back to when it finds no monorepo.
+ */
+const readLonePackage = Effect.fnUntraced(function* (directory: string, notFound: WorkspaceRootNotFoundError) {
 	const fs = yield* FileSystem.FileSystem;
 	const path = yield* Path.Path;
+	let root = path.resolve(directory);
+	while (!(yield* fs.exists(path.join(root, "package.json")))) {
+		const parent = path.dirname(root);
+		if (parent === root) return yield* Effect.fail(notFound);
+		root = parent;
+	}
 	const packageJsonPath = path.join(root, "package.json");
 	const text = yield* fs
 		.readFileString(packageJsonPath)
@@ -250,7 +260,14 @@ const readLonePackage = Effect.fnUntraced(function* (root: string, notFound: Wor
 	const json = yield* Effect.try({ try: () => JSON.parse(text) as unknown, catch: invalid("invalidJson") });
 	const manifest = yield* Schema.decodeUnknownEffect(LoneManifest)(json).pipe(Effect.mapError(invalid("invalidShape")));
 	return [
-		WorkspacePackage.make({ ...manifest, path: root, packageJsonPath, relativePath: ".", workspaceRoot: root }),
+		WorkspacePackage.make({
+			...manifest,
+			path: root,
+			packageJsonPath,
+			relativePath: ".",
+			workspaceRoot: root,
+			manifestRecord: json as Record<string, unknown>,
+		}),
 	] as ReadonlyArray<WorkspacePackage>;
 });
 
@@ -272,8 +289,10 @@ export class PlannedRelease extends Schema.Class<PlannedRelease>("PlannedRelease
 	/** The version after the release; equal to `oldVersion` when `type` is `none`. */
 	newVersion: Schema.String,
 	/**
-	 * The changeset files in the plan that name the package, as the oracle
-	 * lists them.
+	 * The ids of the changesets in the plan that name the package, as the
+	 * oracle lists them: each {@link PendingChangeset.id}, the file name
+	 * without `.md` (`pre/<name>` for one an earlier pre-release consumed).
+	 * The plan's own `changesets` holds the changesets themselves.
 	 *
 	 * @remarks
 	 * An empty list always means the package's bump does not come from a
@@ -282,8 +301,8 @@ export class PlannedRelease extends Schema.Class<PlannedRelease>("PlannedRelease
 	 * converse does not hold: a non-empty list does not mean the package's own
 	 * changeset set its bump. Every path that builds a release:
 	 *
-	 * - A changeset naming the package, `none` included, lists that file. A
-	 *   package named only `none` keeps the file while it stays `none`.
+	 * - A changeset naming the package, `none` included, lists its id. A
+	 *   package named only `none` keeps the id while it stays `none`.
 	 * - A ripple into a package not yet in the plan, or into a `none` entry,
 	 *   replaces it with a new release whose list is empty. So a package one
 	 *   changeset named `none` and a dependency then bumped has an empty list,
@@ -608,46 +627,115 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	/**
 	 * Discover the workspace's packages, read its config, pending changesets and
 	 * `.changeset/pre.json`, and {@link ReleasePlan.assemble | assemble} the
-	 * plan.
+	 * plan. {@link ReleasePlan.readWithContext} reads the same plan and also
+	 * returns the packages and config it was made from.
 	 *
-	 * `root` decides all three, whatever directory the `WorkspaceDiscovery` layer
-	 * was built from. The workspace root package is left out while other packages
-	 * exist. When there are none it is the package and is planned, including when
-	 * `root` has only a `package.json` and no workspace file. The oracle refuses
-	 * `packages: []` and patterns that match nothing; here they plan the root too,
-	 * because discovery reports them the same way. A root listed in `packages:`
+	 * `directory` may be the workspace root or any directory inside it: the
+	 * root is found by climbing, as `@changesets/get-release-plan` climbs, to
+	 * the nearest workspace root, or with none to the nearest `package.json`.
+	 * That root decides the config, the changesets and `pre.json`, whatever
+	 * directory the `WorkspaceDiscovery` layer was built from. The workspace
+	 * root package is left out while other packages exist. When there are
+	 * none it is the package and is planned, including when the root has only
+	 * a `package.json` and no workspace file. The oracle refuses `packages: []`
+	 * and patterns that match nothing; here they plan the root too, because
+	 * discovery reports them the same way. A root listed in `packages:`
 	 * alongside others stays out, where the oracle plans it. A root with a
-	 * catalog-only workspace file answers for itself, where the oracle climbs to
-	 * any enclosing workspace.
+	 * catalog-only workspace file answers for itself, where the oracle climbs
+	 * to any enclosing workspace.
 	 *
-	 * @param root - The repository root.
+	 * `WorkspaceDiscovery` memoizes each root's packages for the layer's
+	 * lifetime. A long-lived host that plans again after applying a release
+	 * calls `WorkspaceDiscovery`'s `refreshIn(root)` first, or the new plan
+	 * reads the versions the release replaced.
+	 *
+	 * @param directory - The workspace root, or a directory inside it.
 	 * @param options - `snapshot` plans a snapshot release, as
 	 * {@link ReleasePlan.assemble} describes.
 	 */
 	static readonly read = Effect.fn("ReleasePlan.read")(function* (
-		root: string,
+		directory: string,
 		options?: { readonly snapshot?: ReleaseSnapshot | undefined },
 	) {
-		const discovery = yield* WorkspaceDiscovery;
-		const discovered = yield* discovery
-			.listPackagesIn(root)
-			.pipe(Effect.catchTag("WorkspaceRootNotFoundError", (error) => readLonePackage(root, error)));
-		const config = yield* ChangesetConfig.read(root);
-		const changesets = yield* PendingChangesets.read(root);
-		const pre = yield* PreState.read(root);
-		const members = discovered.filter((pkg) => !pkg.isRootWorkspace);
-		const packages = members.length > 0 ? members : discovered;
-		return yield* Effect.fromResult(
-			ReleasePlan.assemble({
-				packages,
-				changesets,
-				config,
-				...(Option.isSome(pre) ? { pre: pre.value } : {}),
-				...(options?.snapshot === undefined ? {} : { snapshot: options.snapshot }),
-			}),
-		);
+		return (yield* readContext(directory, options)).plan;
+	});
+
+	/**
+	 * {@link ReleasePlan.read}, returning the plan with everything it was read
+	 * from, so a caller hands {@link ReleasePlan.edits} and `Changelog.entry`
+	 * exactly the packages and config the plan was made with instead of
+	 * discovering them again.
+	 *
+	 * @param directory - The workspace root, or a directory inside it.
+	 * @param options - `snapshot` plans a snapshot release, as
+	 * {@link ReleasePlan.assemble} describes.
+	 * @returns a {@link ReleaseContext}. It fails as {@link ReleasePlan.read} does.
+	 */
+	static readonly readWithContext = Effect.fn("ReleasePlan.readWithContext")(function* (
+		directory: string,
+		options?: { readonly snapshot?: ReleaseSnapshot | undefined },
+	) {
+		return yield* readContext(directory, options);
 	});
 }
+
+/**
+ * A {@link ReleasePlan} with what {@link ReleasePlan.readWithContext} read it
+ * from.
+ *
+ * @example
+ * ```ts
+ * import { ReleasePlan } from "@effected/changesets";
+ * import { Effect } from "effect";
+ *
+ * const program = Effect.gen(function* () {
+ *   const { plan, packages, config } = yield* ReleasePlan.readWithContext("/repo/packages/a");
+ *   return yield* Effect.fromResult(ReleasePlan.edits(plan, { packages, config }));
+ * });
+ * ```
+ *
+ * @public
+ */
+export class ReleaseContext extends Schema.Class<ReleaseContext>("ReleaseContext")({
+	/** The workspace root the plan was read from: the directory climbed to, not the one given. */
+	root: Schema.String,
+	/** The plan. */
+	plan: ReleasePlan,
+	/**
+	 * Every package of the workspace, the root included, as
+	 * {@link ReleasePlan.edits} and `Changelog.entry` take them. For a
+	 * repository with no workspace file it is the one root package.
+	 */
+	packages: Schema.Array(WorkspacePackage),
+	/** The config the plan was made with. */
+	config: ChangesetConfig,
+}) {}
+
+const readContext = Effect.fnUntraced(function* (
+	directory: string,
+	options: { readonly snapshot?: ReleaseSnapshot | undefined } | undefined,
+) {
+	const discovery = yield* WorkspaceDiscovery;
+	const discovered = yield* discovery
+		.listPackagesIn(directory)
+		.pipe(Effect.catchTag("WorkspaceRootNotFoundError", (error) => readLonePackage(directory, error)));
+	// Discovery always lists the root package, which carries the root it climbed to.
+	const root = discovered[0]?.workspaceRoot ?? directory;
+	const config = yield* ChangesetConfig.read(root);
+	const changesets = yield* PendingChangesets.read(root);
+	const pre = yield* PreState.read(root);
+	const members = discovered.filter((pkg) => !pkg.isRootWorkspace);
+	const plan = yield* Effect.fromResult(
+		ReleasePlan.assemble({
+			packages: members.length > 0 ? members : discovered,
+			changesets,
+			config,
+			...(Option.isSome(pre) ? { pre: pre.value } : {}),
+			...(options?.snapshot === undefined ? {} : { snapshot: options.snapshot }),
+		}),
+	);
+	return ReleaseContext.make({ root, plan, packages: discovered, config });
+});
 
 /** The highest of `types`, none of which is `none`. */
 const highestType = (types: ReadonlyArray<ReleaseType>): ReleaseType =>
@@ -722,11 +810,11 @@ const assembleOrHalt = (input: {
 			if (isSkipped(pkg)) continue;
 			const release = releases.get(name);
 			if (release === undefined) {
-				releases.set(name, { name, type, oldVersion: pkg.version, changesets: [changeset.file] });
+				releases.set(name, { name, type, oldVersion: pkg.version, changesets: [changeset.id] });
 				continue;
 			}
 			if (RANK[type] > RANK[release.type]) release.type = type;
-			(release.changesets as Array<string>).push(changeset.file);
+			(release.changesets as Array<string>).push(changeset.id);
 		}
 	}
 

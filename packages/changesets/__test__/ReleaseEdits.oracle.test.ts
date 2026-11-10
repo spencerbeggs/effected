@@ -1,7 +1,7 @@
-import { cpSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { applyReleasePlan } from "@changesets/apply-release-plan";
 import { assembleReleasePlan } from "@changesets/assemble-release-plan";
 import { NodeFileSystem, NodePath } from "@effect/platform-node";
@@ -13,6 +13,8 @@ import { PreState } from "../src/PreState.js";
 import type { ReleaseEdits } from "../src/ReleaseEdits.js";
 import type { ReleaseSnapshot } from "../src/ReleasePlan.js";
 import { PlannedRelease, ReleasePlan } from "../src/ReleasePlan.js";
+import type { Any } from "./support/oracle.js";
+import { sibling } from "./support/oracle.js";
 
 /**
  * `@changesets/apply-release-plan` run for real on a temporary copy of each
@@ -23,19 +25,6 @@ import { PlannedRelease, ReleasePlan } from "../src/ReleasePlan.js";
  * compared here.
  */
 const fixture = (name: string): string => fileURLToPath(new URL(`fixtures/${name}`, import.meta.url));
-
-const getReleasePlanDir = realpathSync(
-	fileURLToPath(new URL("../node_modules/@changesets/get-release-plan", import.meta.url)),
-);
-
-const sibling = async <A>(name: string): Promise<A> => {
-	const dir = join(getReleasePlanDir, "..", "..", name);
-	const manifest = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as { exports: { ".": string } };
-	return (await import(pathToFileURL(join(dir, manifest.exports["."])).href)) as A;
-};
-
-// biome-ignore lint/suspicious/noExplicitAny: the oracle's own shapes come from untyped dynamic imports
-type Any = any;
 
 const NOW = new Date("2026-11-09T12:34:56.789Z");
 

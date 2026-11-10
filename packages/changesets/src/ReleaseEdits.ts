@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import type { Range } from "@effected/semver";
+import type { ComparatorSet } from "@effected/semver";
 import { InvalidVersionError, SemVer } from "@effected/semver";
 import type { WorkspacePackage } from "@effected/workspaces";
 import { Result, Schema } from "effect";
@@ -15,6 +15,7 @@ import {
 	parseRange,
 	satisfies,
 	shouldUpdate,
+	writtenSets,
 } from "./internal/versions.js";
 import type { PendingChangeset } from "./PendingChangesets.js";
 import { PreState } from "./PreState.js";
@@ -123,23 +124,6 @@ const unsafeOption = (config: ChangesetConfig, key: string): unknown => {
 	return typeof options === "object" && options !== null ? (options as Record<string, unknown>)[key] : undefined;
 };
 
-/** node-semver's `>=0.0.0`, the comparator `*` desugars to, which it drops from a set or reads as any. */
-const isAnyComparator = (operator: string, version: SemVer): boolean =>
-	operator === ">=" && version.toString() === "0.0.0";
-
-/**
- * A range's comparator sets as node-semver keeps them: a `>=0.0.0` beside
- * another comparator is dropped, and a set of nothing but `>=0.0.0` is any.
- */
-const nodeSets = (range: Range): ReadonlyArray<ReadonlyArray<string>> =>
-	range.sets.map((set) => {
-		const kept = set.filter((c) => !isAnyComparator(c.operator, c.version));
-		return kept.length === 0 ? [] : kept.map((c) => `${c.operator === "=" ? "" : c.operator}${c.version.toString()}`);
-	});
-
-/** `new Range(range).range === ""` in node-semver: some set matches any version. */
-const matchesAny = (range: Range): boolean => nodeSets(range).some((set) => set.length === 0);
-
 const isPrerelease = (version: string): boolean => {
 	const parsed = Result.getOrUndefined(SemVer.parseResult(cleanVersion(version)));
 	return parsed !== undefined && parsed.prerelease.length > 0;
@@ -167,22 +151,24 @@ const rangePrefix = (range: string): string =>
  * the order the range was written. Anything else is the range's leading
  * operator before the new version.
  */
-const newRange = (written: string, range: Range, newVersion: string, type: ReleaseType): string => {
-	const sets = nodeSets(range);
-	const comparators = sets.length === 1 ? (sets[0] as ReadonlyArray<string>) : [];
+const newRange = (
+	written: string,
+	sets: ReadonlyArray<ComparatorSet>,
+	newVersion: string,
+	type: ReleaseType,
+): string => {
+	const comparators = sets.length === 1 ? (sets[0] as ComparatorSet) : [];
 	if (comparators.length === 2 && written.includes(">") && written.includes("<")) {
-		const lower = comparators.find((c) => c.startsWith(">"));
-		const upper = comparators.find((c) => c.startsWith("<"));
+		const lower = comparators.find((c) => c.operator.startsWith(">"));
+		const upper = comparators.find((c) => c.operator.startsWith("<"));
 		if (lower !== undefined && upper !== undefined) {
-			let bound = upper;
-			if (!satisfies(newVersion, upper)) {
+			let bound = upper.toString();
+			if (!satisfies(newVersion, bound)) {
 				const parsed = Result.getOrUndefined(SemVer.parseResult(cleanVersion(newVersion)));
 				if (parsed === undefined || type === "none") throw new Halt(new InvalidVersionError({ input: newVersion }));
 				bound = `<${increment(parsed, type).toString()}`;
 			}
-			// node-semver keeps the written order, which `@effected/semver` normalises away.
-			const lowerFirst = written.indexOf(">") < written.indexOf("<");
-			return lowerFirst ? `>=${newVersion} ${bound}` : `${bound} >=${newVersion}`;
+			return comparators[0] === lower ? `>=${newVersion} ${bound}` : `${bound} >=${newVersion}`;
 		}
 	}
 	return `${rangePrefix(written)}${newVersion}`;
@@ -213,9 +199,10 @@ const rangeEdits = (
 			const bare = from.replace(WORKSPACE, "");
 			if (isWorkspace && (bare === "*" || bare === "^" || bare === "~")) continue;
 			const range = parseRange(bare);
-			if (range === undefined) continue;
-			if (matchesAny(range) && !isPrerelease(release.newVersion)) continue;
-			const next = options.snapshot ? release.newVersion : newRange(bare, range, release.newVersion, release.type);
+			const sets = writtenSets(bare);
+			if (range === undefined || sets === undefined) continue;
+			if (range.isAny() && !isPrerelease(release.newVersion)) continue;
+			const next = options.snapshot ? release.newVersion : newRange(bare, sets, release.newVersion, release.type);
 			const to = isWorkspace ? `workspace:${next}` : next;
 			if (to !== from) edits.push(RangeEdit.make({ kind, dependency: release.name, from, to }));
 		}

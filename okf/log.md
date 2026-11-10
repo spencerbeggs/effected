@@ -1,5 +1,9 @@
 # Log
 
+## 2026-11-10
+
+* Updated @effected/changesets
+
 ## 2026-11-09
 
 * Updated @effected/plugin

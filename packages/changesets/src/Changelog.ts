@@ -279,10 +279,8 @@ export interface ChangelogEntryOptions {
 	readonly changelogOptions?: null | Record<string, unknown> | undefined;
 }
 
-const id = (file: string): string => file.replace(/\.md$/, "");
-
 const toNewChangeset = (changeset: PendingChangeset, commit: string | undefined): NewChangesetWithCommit => ({
-	id: id(changeset.file),
+	id: changeset.id,
 	summary: changeset.summary.trim(),
 	releases: [...changeset.releases].map(([name, type]) => ({ name, type })),
 	...(commit === undefined ? {} : { commit }),
@@ -291,8 +289,14 @@ const toNewChangeset = (changeset: PendingChangeset, commit: string | undefined)
 const nonEmpty = (map: Readonly<Record<string, string>>): { [key: string]: string } | undefined =>
 	Object.keys(map).length > 0 ? { ...map } : undefined;
 
-/** The manifest a module sees: the fields a {@link WorkspacePackage} carries. */
+/**
+ * The manifest a module is handed: discovery's `manifestRecord`, the whole
+ * `package.json` as read, copied so a module that writes to it cannot reach
+ * the `WorkspacePackage`. A package built without a record (by hand, not by
+ * discovery) has nothing more than its typed fields, so it gets those.
+ */
 const toPackageJson = (pkg: WorkspacePackage): PackageJSON => {
+	if (Object.keys(pkg.manifestRecord).length > 0) return structuredClone(pkg.manifestRecord) as PackageJSON;
 	const fields: PackageJSON = { name: pkg.name, version: pkg.version ?? "" };
 	for (const kind of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"] as const) {
 		const map = nonEmpty(pkg[kind]);
@@ -308,7 +312,7 @@ const toComprehensive = (release: PlannedRelease): ComprehensiveRelease =>
 	({
 		name: release.name,
 		type: release.type,
-		changesets: release.changesets.map(id),
+		changesets: [...release.changesets],
 		oldVersion: release.oldVersion,
 		newVersion: release.newVersion,
 	}) as ComprehensiveRelease;
@@ -391,11 +395,12 @@ export class Changelog {
 	 * - Every function is called before any is awaited, as the oracle calls
 	 *   them.
 	 *
-	 * Differences, each ruled: a module's `packageJson` is the fields a
-	 * `WorkspacePackage` carries (name, version, the four dependency maps
-	 * when non-empty, `private`, `publishConfig`), not the whole manifest;
-	 * and a changeset with no commit in `options.commits` has no `commit`
-	 * key, where the oracle sets it to `undefined`.
+	 * A module's `packageJson` is the dependency's whole manifest as
+	 * discovery read it (`WorkspacePackage.manifestRecord`), before this
+	 * release's version, as the oracle passes it.
+	 *
+	 * Difference, ruled: a changeset with no commit in `options.commits` has
+	 * no `commit` key, where the oracle sets it to `undefined`.
 	 *
 	 * Fails with {@link ChangelogError} when a function throws or rejects,
 	 * with {@link MissingPackageError} when a release names a package

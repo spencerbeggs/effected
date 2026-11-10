@@ -25,6 +25,18 @@
 * `ChangesetLint.lint(text, { rules, packages, defaults })` runs the defaults first, then `CF004` when `packages` is given, then your own rules. `defaults` replaces the default set.
 * Migrate by passing your house rules through `rules`, or to `MarkdownlintAdapter.rules` beside `ChangesetLint.defaults`.
 
+### `PlannedRelease.changesets` lists changeset ids
+
+A release's `changesets` now holds each changeset's **id**, as `@changesets/get-release-plan` lists it: the file name without `.md`, and `pre/<name>` for a changeset under `.changeset/pre/`. It held file names with `.md` before. The type is still `ReadonlyArray<string>`, so the compiler flags nothing.
+
+* Code that stripped `.md` from these entries can drop the strip; code that compared them with file names compares with `PendingChangeset.id` instead.
+* `PendingChangeset` gains an `id` getter, the same id, so a plan's changesets match its releases without string handling.
+* `ReleasePlan.changesets` still holds the `PendingChangeset`s, whose `file` is unchanged.
+
+### `PendingChangeset.summary` is trimmed
+
+`ChangesetFile.parse`, `parseSync` and `PendingChangesets.read` trim the summary, as `@changesets/parse` does. Leading blank lines and trailing newlines are gone; a caller that compared or printed the raw text sees the trimmed form.
+
 ## Features
 
 ### Snapshot plans
@@ -35,6 +47,12 @@
 * A snapshot in pre mode fails `SnapshotPreModeError`, as `changeset version` refuses one. A template placeholder with no value, or a tag with no `{tag}` to hold it, fails `SnapshotTemplateError`.
 * An empty `tag` or `commit` is treated as absent.
 * The plan records `snapshot: true`.
+
+### Planning from anywhere in the workspace
+
+* `ReleasePlan.read(directory)` accepts any directory inside the workspace and climbs to the root, as `@changesets/get-release-plan` does: to the nearest workspace root, or for a repository with no workspace file to the nearest `package.json`. Before, a package subdirectory failed.
+* `ReleasePlan.readWithContext(directory)` reads the same plan and returns a `ReleaseContext` of `{ root, plan, packages, config }`. `packages` is every package discovery lists, the root or lone package included, so `ReleasePlan.edits(plan, { packages, config })` and `Changelog.entry` take it directly.
+* `WorkspaceDiscovery` memoizes each root's packages. A long-lived host that plans again after applying a release calls its `refreshIn(root)` first.
 
 ### Release application as data
 
@@ -50,6 +68,7 @@
 * `ChangelogFunctions`, `GetReleaseLine`, `GetDependencyReleaseLine` and the types they take are structurally identical to `@changesets/types`, so one changelog module loads under `@changesets/cli` and here.
 * The data shapes those functions take are Effect schemas under the same names: `NewChangeset`, `NewChangesetWithCommit`, `ComprehensiveRelease`, `ModCompWithPackage`, `PackageJSON` and `VersionType`. A module can decode what it is handed, and `PackageJSON` keeps a manifest's unknown keys.
 * `Changelog.entry` renders one release's block. It groups lines by bump type and adds the dependency-update lines, as `@changesets/apply-release-plan` does, and fails `ChangelogError` when the module's functions throw. You load the module and pass its functions.
+* Each updated dependency's `packageJson` is its whole manifest as discovery read it (`WorkspacePackage.manifestRecord`), as `@changesets/cli` passes it, so a module can read any key.
 * `Changelog.insert` places a block in a `CHANGELOG.md`'s text.
 
 ## Documentation

@@ -23,6 +23,8 @@ import type { ChangelogFunctions } from "../src/Changelog.js";
 import { Changelog } from "../src/Changelog.js";
 import { ChangesetConfig } from "../src/ChangesetConfig.js";
 import { ReleasePlan } from "../src/ReleasePlan.js";
+import type { Any } from "./support/oracle.js";
+import { sibling } from "./support/oracle.js";
 
 /**
  * `@changesets/apply-release-plan`'s written `CHANGELOG.md` files, with
@@ -33,24 +35,12 @@ import { ReleasePlan } from "../src/ReleasePlan.js";
  */
 const fixture = (name: string): string => fileURLToPath(new URL(`fixtures/${name}`, import.meta.url));
 
-const getReleasePlanDir = realpathSync(
-	fileURLToPath(new URL("../node_modules/@changesets/get-release-plan", import.meta.url)),
-);
 const changelogGitUrl = pathToFileURL(
 	join(
 		realpathSync(fileURLToPath(new URL("../node_modules/@changesets/changelog-git", import.meta.url))),
 		"dist/index.mjs",
 	),
 ).href;
-
-const sibling = async <A>(name: string): Promise<A> => {
-	const dir = join(getReleasePlanDir, "..", "..", name);
-	const manifest = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as { exports: { ".": string } };
-	return (await import(pathToFileURL(join(dir, manifest.exports["."])).href)) as A;
-};
-
-// biome-ignore lint/suspicious/noExplicitAny: the oracle's own shapes come from untyped dynamic imports
-type Any = any;
 
 const NOW = new Date("2026-11-09T12:34:56.789Z");
 
@@ -97,14 +87,14 @@ const changelogs = (root: string): Record<string, string> => {
 
 /**
  * A changelog module that writes into each line what it was given: the
- * options, and each updated dependency's `dir`. It is written into the copy
- * and loaded by both sides, so `changelogOpts` and `dir` are compared too,
+ * options, and each updated dependency's `dir` and `packageJson`. It is written into the copy
+ * and loaded by both sides, so `changelogOpts`, `dir` and the manifest are compared too,
  * which `@changesets/changelog-git` never prints.
  */
 const ECHO_MODULE = `export default {
 	getReleaseLine: (changeset, type, opts) => "- " + type + " " + changeset.id + " opts=" + JSON.stringify(opts),
 	getDependencyReleaseLine: (changesets, deps, opts) =>
-		deps.map((d) => "- dep " + d.name + "@" + d.newVersion + " dir=" + d.dir + " relativeDir=" + d.relativeDir + " opts=" + JSON.stringify(opts)).join("\\n"),
+		deps.map((d) => "- dep " + d.name + "@" + d.newVersion + " dir=" + d.dir + " relativeDir=" + d.relativeDir + " opts=" + JSON.stringify(opts) + " packageJson=" + JSON.stringify(d.packageJson)).join("\\n"),
 };
 `;
 
@@ -319,6 +309,20 @@ describe("Changelog against @changesets/apply-release-plan with @changesets/chan
 				`- dep a@0.24.0 dir=${join(root, "packages/a")} relativeDir=packages/a opts=null`,
 			);
 		}),
+	);
+
+	it.effect(
+		"a module's packageJson is the dependency's whole manifest, keys WorkspacePackage does not model included",
+		() =>
+			Effect.gen(function* () {
+				const { mine, theirs } = yield* compare("changelog-gates", {}, "echo");
+				assert.deepStrictEqual(mine, theirs);
+				// Copied from the oracle's run with the echo module.
+				assert.include(
+					theirs["packages/star/CHANGELOG.md"] ?? "",
+					'packageJson={"name":"a","version":"1.0.0","description":"Keys WorkspacePackage does not model reach a changelog module.","scripts":{"build":"tsc"},"keywords":["fixture"]}',
+				);
+			}),
 	);
 
 	it.effect("the first version heading may be any level from # to ######", () =>

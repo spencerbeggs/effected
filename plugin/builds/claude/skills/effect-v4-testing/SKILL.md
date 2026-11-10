@@ -285,7 +285,12 @@ layer(Volume)("seeded filesystem", (it) => {
 absorb. **None of this is a reason to stub `layerNoop` better — it is the
 argument for `@effected/memfs`.** This repo's rule: a `FileSystem` double is
 `@effected/memfs`, never a `layerNoop` stub and never a hand-rolled `node:fs`
-port stub. **Every `Effect.provide` of a memfs layer re-seeds a fresh
+port stub. The one exception is an **oracle test that runs a third-party
+engine** (the tool your code mirrors, such as `@changesets/apply-release-plan`
+or a package manager) on the same input as your code: the engine reads
+`node:fs` and real git itself, where no volume can reach it. Copy the fixture
+into a temporary directory, run both sides there over `@effect/platform-node`,
+and keep every other test on memfs. **Every `Effect.provide` of a memfs layer re-seeds a fresh
 volume**, so assert inside the one provide or provide a pinned
 `handle.layer`. The table, the BOM trap, the seed forms and the
 one-`layer(...)`-block-per-fixture shape →

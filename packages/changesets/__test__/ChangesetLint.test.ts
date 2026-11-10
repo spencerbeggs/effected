@@ -4,28 +4,13 @@
 // resolves it. Each input also runs through markdownlint, which
 // @effected/markdown-lint pins, so the two hosts agree.
 
-import { readFileSync, realpathSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
 import type { LintDiagnostic, MarkdownlintRule } from "@effected/markdown-lint";
 import { LintRule, MarkdownlintAdapter } from "@effected/markdown-lint";
 import { ChangesetLint } from "../src/ChangesetLint.js";
-
-const getReleasePlanDir = realpathSync(
-	fileURLToPath(new URL("../node_modules/@changesets/get-release-plan", import.meta.url)),
-);
-
-/** `@changesets/parse`, found the way `@changesets/read` (a dependency of get-release-plan) finds it. */
-const loadParse = async (): Promise<(contents: string) => unknown> => {
-	const readDir = realpathSync(join(getReleasePlanDir, "..", "read"));
-	const dir = join(readDir, "..", "parse");
-	const manifest = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as { exports: { ".": string } };
-	const module = (await import(pathToFileURL(join(dir, manifest.exports["."])).href)) as {
-		parseChangesetFile: (contents: string) => unknown;
-	};
-	return module.parseChangesetFile;
-};
+import { loadParse } from "./support/oracle.js";
 
 // The markdownlint @effected/markdown-lint pins for its own host test: this
 // package takes no dependency on it.

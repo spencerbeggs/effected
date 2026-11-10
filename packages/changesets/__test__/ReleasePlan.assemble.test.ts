@@ -271,16 +271,17 @@ describe("ReleasePlan.assemble", () => {
 		assert.deepStrictEqual(projected(result), [["a", "patch", "1.0.0", "1.0.1"]]);
 	});
 
-	it("takes the highest bump and lists every contributing file", () => {
+	it("takes the highest bump and lists every contributing changeset by id", () => {
 		const result = plan(
 			[pkg("a", "1.0.0")],
 			[change("one.md", { a: "patch" }), change("two.md", { a: "minor" }), change("three.md", { a: "patch" })],
 		);
 		assert.deepStrictEqual(projected(result), [["a", "minor", "1.0.0", "1.1.0"]]);
+		// Ids, as the oracle lists them: the file name without `.md`.
 		assert.deepStrictEqual(Result.isSuccess(result) ? result.success.releases[0]?.changesets : [], [
-			"one.md",
-			"two.md",
-			"three.md",
+			"one",
+			"two",
+			"three",
 		]);
 	});
 
@@ -421,7 +422,11 @@ describe("ReleasePlan.assemble", () => {
 				exit.success.changesets.map((c) => c.file),
 				["pre/listed.md", "pre/old.md"],
 			);
-			assert.deepStrictEqual(exit.success.releases[0]?.changesets, ["pre/listed.md", "pre/old.md"]);
+			assert.deepStrictEqual(exit.success.releases[0]?.changesets, ["pre/listed", "pre/old"]);
+			assert.deepStrictEqual(
+				exit.success.changesets.map((c) => c.id),
+				["pre/listed", "pre/old"],
+			);
 		}
 		const plain = plan([pkg("a", "1.0.0")], [change("one.md", { a: "patch" })]);
 		assert.isTrue(Result.isSuccess(plain) && plain.success.preState === undefined);

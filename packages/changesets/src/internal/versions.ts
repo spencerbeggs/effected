@@ -1,5 +1,6 @@
 import { posix } from "node:path";
 import { GlobPattern } from "@effected/glob";
+import type { ComparatorSet } from "@effected/semver";
 import { Range, SemVer } from "@effected/semver";
 import type { WorkspacePackage } from "@effected/workspaces";
 import { Result } from "effect";
@@ -32,12 +33,23 @@ export const cleanVersion = (version: string): string => {
 
 export const WORKSPACE = /^workspace:/;
 
-/** A range, also as node-semver reads a `v` before a version in one: `^v1.0.0` is `^1.0.0`. */
+/** node-semver reads a `v` before a version in a range: `^v1.0.0` is `^1.0.0`. */
+const withoutV = (specifier: string): string => specifier.replace(/(^|[\s^~<>=])v(?=\d)/g, "$1");
+
+/** A range, also as node-semver reads a `v` before a version in one. */
 export const parseRange = (specifier: string): Range | undefined => {
 	if (specifier.includes(":")) return undefined;
 	const parsed = Range.parseResult(specifier);
 	if (Result.isSuccess(parsed)) return parsed.success;
-	return Result.getOrUndefined(Range.parseResult(specifier.replace(/(^|[\s^~<>=])v(?=\d)/g, "$1")));
+	return Result.getOrUndefined(Range.parseResult(withoutV(specifier)));
+};
+
+/** A range's comparator sets as node-semver's `Range#set` holds them, the same `v` read as {@link parseRange}. */
+export const writtenSets = (specifier: string): ReadonlyArray<ComparatorSet> | undefined => {
+	if (specifier.includes(":")) return undefined;
+	const parsed = Range.writtenSetsResult(specifier);
+	if (Result.isSuccess(parsed)) return parsed.success;
+	return Result.getOrUndefined(Range.writtenSetsResult(withoutV(specifier)));
 };
 
 export const satisfies = (version: string, specifier: string): boolean => {

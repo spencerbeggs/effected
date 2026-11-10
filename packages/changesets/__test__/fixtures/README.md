@@ -68,7 +68,7 @@ disagrees, work out which of the two moved before changing either.
 | `range-edits-peer` | `updateInternalDependencies: minor` holds a patch's in-range dependency, but an in-range peer is still rewritten while `onlyUpdatePeerDependentsWhenOutOfRange` is off. |
 | `range-edits-peer-held` | `onlyUpdatePeerDependentsWhenOutOfRange` on holds an in-range peer even when the bump meets the minimum, while a dependency is rewritten. |
 | `range-edits-protocol-only` | `bumpVersionsWithWorkspaceProtocolOnly` leaves a plain range alone and rewrites a `workspace:` range. |
-| `changelog-gates` | For `Changelog.oracle.test.ts`, under `updateInternalDependencies: minor`: a `workspace:*` dependent of a patch still gets the dependency line, and a dependent whose `dependencies` range holds while its `peerDependencies` range is missed is read by `dependencies`, so it gets none. |
+| `changelog-gates` | For `Changelog.oracle.test.ts`, under `updateInternalDependencies: minor`: a `workspace:*` dependent of a patch still gets the dependency line, and a dependent whose `dependencies` range holds while its `peerDependencies` range is missed is read by `dependencies`, so it gets none. `a` also carries `description`, `scripts` and `keywords`, keys `WorkspacePackage` does not type, so the echo run shows a module gets the whole manifest. |
 | `changelog-gates-pre` | The same minimum in pre mode: a `workspace:^` dependent is checked against the dependency's current version, which the prerelease leaves, so it gets the dependency line. |
 
 ## Captured values
