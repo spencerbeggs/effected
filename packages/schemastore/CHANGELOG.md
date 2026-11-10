@@ -1,5 +1,22 @@
 # @effected/schemastore
 
+## 0.32.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/files | dependency | updated | 0.2.0 | 0.3.0 |
+| @effected/semver | dependency | updated | 0.23.0 | 0.24.0 |
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.31.1
 
 ### Documentation

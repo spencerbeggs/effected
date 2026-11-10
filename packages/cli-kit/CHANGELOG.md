@@ -1,5 +1,27 @@
 # @effected/cli
 
+## 0.28.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/commands | dependency | updated | 0.20.1 | 0.21.0 |
+| @effected/env | dependency | updated | 0.11.0 | 0.12.0 |
+| @effected/github-commands | dependency | updated | 0.9.0 | 0.10.0 |
+| @effected/glob | dependency | updated | 0.20.0 | 0.21.0 |
+| @effected/kit | dependency | updated | 0.13.0 | 0.14.0 |
+| @effected/source | dependency | updated | 0.4.0 | 0.5.0 |
+| @effected/walker | dependency | updated | 0.26.0 | 0.27.0 |
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.27.2
 
 ### Documentation

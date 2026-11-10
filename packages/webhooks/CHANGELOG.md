@@ -1,5 +1,21 @@
 # @effected/webhooks
 
+## 0.6.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/crypto | dependency | updated | 0.6.0 | 0.7.0 |
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.5.0
 
 ### Features

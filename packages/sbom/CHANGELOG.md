@@ -1,5 +1,23 @@
 # @effected/sbom
 
+## 0.21.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/oidc | dependency | updated | 0.4.0 | 0.5.0 |
+| @effected/package-json | dependency | updated | 0.31.2 | 0.32.0 |
+| @effected/spdx | dependency | updated | 0.19.0 | 0.20.0 |
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.20.2
 
 ### Dependencies

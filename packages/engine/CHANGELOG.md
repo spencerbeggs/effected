@@ -1,5 +1,28 @@
 # @effected/engine
 
+## 0.16.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/bundler | dependency | updated | 0.2.1 | 0.3.0 |
+| @effected/files | dependency | updated | 0.2.0 | 0.3.0 |
+| @effected/jsonc | dependency | updated | 0.24.0 | 0.25.0 |
+| @effected/jsonl | dependency | updated | 0.18.1 | 0.19.0 |
+| @effected/kit | dependency | updated | 0.13.0 | 0.14.0 |
+| @effected/schemastore | dependency | updated | 0.31.1 | 0.32.0 |
+| @effected/source | dependency | updated | 0.4.0 | 0.5.0 |
+| @effected/workspaces | dependency | updated | 0.44.2 | 0.45.0 |
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.15.1
 
 ### Bug Fixes

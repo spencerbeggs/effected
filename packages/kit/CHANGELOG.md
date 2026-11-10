@@ -1,5 +1,15 @@
 # @effected/engine
 
+## 0.14.0
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.13.0
 
 ### Features

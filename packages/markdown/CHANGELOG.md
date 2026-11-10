@@ -1,5 +1,24 @@
 # @effected/markdown
 
+## 0.29.0
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jsonc | dependency | updated | 0.24.0 | 0.25.0 |
+| @effected/source | dependency | updated | 0.4.0 | 0.5.0 |
+| @effected/toml | dependency | updated | 0.19.1 | 0.20.0 |
+| @effected/yaml | dependency | updated | 0.29.0 | 0.30.0 |
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
 ## 0.28.0
 
 ### Breaking Changes

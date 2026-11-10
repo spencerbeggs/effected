@@ -1,6 +1,6 @@
 {
 	"name": "@effected/markdown-lint",
-	"version": "0.1.1",
+	"version": "0.2.0",
 	"private": true,
 	"description": "A markdownlint-compatible lint rule shape over @effected/markdown trees: one rule definition, a programmatic linter and a markdownlint-cli2 adapter.",
 	"keywords": ["markdown", "markdownlint", "lint", "mdast", "effect", "effected"],

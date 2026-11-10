@@ -1,5 +1,27 @@
 # @effected/mcp
 
+## 0.15.0
+
+### Documentation
+
+- `McpStdio.teardown`'s documentation now says why it is still needed: core ends a stdio server at stdin EOF with exit code 0 itself, and the teardown maps the unannotated interrupt that SIGINT and SIGTERM raise to 0 instead of the 130 the default teardown reports. [#1320][#1320]
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/kit | dependency | updated | 0.13.0 | 0.14.0 |
+
+### Maintenance
+
+- Force release all packages to pin new effect versions.
+
+### Thanks
+
+Thanks to [@spencerbeggs](https://github.com/spencerbeggs) for their contributions!
+
+[#1320]: https://github.com/spencerbeggs/effected/pull/1320
+
 ## 0.14.1
 
 ### Documentation
