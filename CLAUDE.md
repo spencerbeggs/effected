@@ -78,7 +78,7 @@ Mechanics → `okf/modules/workspace.md`, `okf/conventions/build-through-turbo-o
 
 **`@effected/plugin` is a root devDependency and must never be a package's dependency.** `tsx` is the workspace root's alone too.
 
-**`typescript` is peered only by `@effected/bundler` and the tool packages `@effected/cli`, `@effected/mcp` and `@effected/plugin`**, at `7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`.
+**`typescript` is peered only by `@effected/bundler` and the tool packages `@effected/engine`, `@effected/cli`, `@effected/mcp` and `@effected/plugin`**, at `7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`.
 
 **A clean build log does not prove a build ran** — a turbo cache hit replays the previous run's output verbatim. The tell is `dist/prod/issues.json`'s `generatedAt`, which must postdate your last source edit; a hit also adds no line to `.cache/effected/build.jsonl`.
 

@@ -1,7 +1,7 @@
 ---
 type: Convention
 title: Only @effected/bundler imports typescript, and only it and the tool's packages peer it
-description: "Only @effected/bundler imports the typescript package. It and the tool's cli, mcp and plugin peer it at one literal range that excludes nightlies: rolldown-plugin-dts' tsgo generator resolves it by import.meta.resolve, and npm's resolver needs the peer at the installed package. Every other package keeps typescript-shaped knowledge as data, and API Extractor keeps its own TypeScript 6."
+description: "Only @effected/bundler imports the typescript package. It and the tool's engine, cli, mcp and plugin peer it at one literal range that excludes nightlies: rolldown-plugin-dts' tsgo generator resolves it by import.meta.resolve, and npm's resolver needs the peer at the installed package. Every other package keeps typescript-shaped knowledge as data, and API Extractor keeps its own TypeScript 6."
 status: draft
 stale_after: "2027-05-06T00:00:00Z"
 supersedes: ../conventions/no-typescript-imports.md
@@ -20,21 +20,21 @@ sources:
     resource: ../../packages/tsconfig-json/src/TsEnumCodec.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-09T00:05:23Z
+  at: 2026-11-10T01:42:40Z
 integrity:
   generated:
-    body: 3a9de05702f9cfc8
+    body: cdf9bd417c4f2067
 ---
 
 # Only @effected/bundler imports typescript, and only it and the tool's packages peer it
 
-Outside `@effected/bundler`, never import `typescript` from `packages/*/src`, at runtime or as `import type`. Never add it as a `dependency` of any `@effected/*` package, or as a `peerDependency` of one other than the bundler and the tool's `cli`, `mcp` and `plugin`, which peer it for the bundler's sake and import nothing from it.
+Outside `@effected/bundler`, never import `typescript` from `packages/*/src`, at runtime or as `import type`. Never add it as a `dependency` of any `@effected/*` package, or as a `peerDependency` of one other than the bundler and the tool's `engine`, `cli`, `mcp` and `plugin`, which peer it for the bundler's sake and import nothing from it.
 
 ## The exception
 
 [`@effected/bundler`](../modules/bundler.md) peers `typescript` because `rolldown-plugin-dts`' tsgo generator resolves it by `import.meta.resolve("typescript")`, so the compiler has to be reachable from the bundler's own position in the graph.[^plan] It also reads the compiler API from TypeScript 7.1's `typescript/sync` and `typescript/ast` subpaths. The root `typescript` export carries only version strings.[^spec]
 
-The range is the literal `7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`, not `catalog:effected:build:peers`, because that catalog value pins a prerelease exactly and a plain lower bound would admit `-dev` nightlies. [`@effected/plugin`](../modules/plugin.md), [`@effected/cli`](../modules/cli.md) and [`@effected/mcp`](../modules/mcp.md) declare the same literal, so a consumer's install surfaces the peer: with none at the installed package, npm's resolver never finishes on the prerelease that `tsdown`'s optional range does not admit. The plugin's `entry.test.ts` holds the four manifests to one string.
+The range is the literal `7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`, not `catalog:effected:build:peers`, because that catalog value pins a prerelease exactly and a plain lower bound would admit `-dev` nightlies. [`@effected/plugin`](../modules/plugin.md), [`@effected/cli`](../modules/cli.md), [`@effected/mcp`](../modules/mcp.md) and [`@effected/engine`](../modules/engine.md) declare the same literal, so a consumer's install surfaces the peer: with none at the installed package, npm's resolver never finishes on the prerelease that `tsdown`'s optional range does not admit. The engine joined because it is published and depends on the bundler directly, so installed alone it would otherwise leave the bundler's `typescript` and `@types/node` peers unmet. The plugin's `entry.test.ts` holds the five manifests to one string.
 
 Do not widen the exception. A package that wants compiler behaviour takes it through the bundler or states the need as a new Decision.
 

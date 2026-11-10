@@ -12,6 +12,11 @@
 * Updated The typechecker: tsc, not tsgo
 * Updated The plugin declares a second consumer-visible catalog, effected:build, for the kit's build chain
 * Updated pnpm-plugin-effected
+* Updated @effected/bundler
+* Updated @effected/engine
+* Updated @effected/plugin
+* Updated Only @effected/bundler imports typescript, and only it and the tool's packages peer it
+* Updated effected
 
 ## 2026-11-09
 
