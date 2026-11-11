@@ -17,6 +17,8 @@ import * as NodePath from "@effect/platform-node/NodePath";
 import { ReleasePlan as ChangesetsPlan } from "@effected/changesets";
 import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import { Effect, Layer } from "effect";
+import type { RaisedRelease } from "./breaking-floors.js";
+import { applyFloorEdits, describeFloorEdits, floorEdits, planFloors } from "./breaking-floors.js";
 
 /** One upgrade CLI invocation: its exit code and whatever it wrote to stdout. */
 export interface UpgradeResult {
@@ -35,6 +37,8 @@ export interface SyncOptions {
 	readonly run?: UpgradeRunner;
 	/** Override the release-plan read. Defaults to `@effected/changesets`. */
 	readonly status?: StatusRunner;
+	/** Override the breaking-floor plan. Defaults to `planFloors` over the real workspace. */
+	readonly floors?: (root: string) => Promise<readonly RaisedRelease[]>;
 	/** Where progress and gate output goes. Defaults to stdout; tests pass a sink. */
 	readonly write?: (text: string) => void;
 }
@@ -535,6 +539,13 @@ export async function sync(options: SyncOptions = {}): Promise<boolean> {
 	const missing = missingFromCatalog(root);
 	if (missing.length > 0) throw new Error(membershipFailure(missing));
 
+	// Raise breaking floors before the plan is read: a raised package releases at a
+	// new minor, and the catalog must name that version, not the patch it replaced.
+	const raised = await (options.floors ?? planFloors)(root);
+	const edits = floorEdits(root, raised);
+	applyFloorEdits(root, edits);
+	if (edits.length > 0) write(describeFloorEdits(raised, edits));
+
 	// Read first: the CLI writes the config, and a plan that cannot be read must
 	// fail the run before anything has changed.
 	const plan = await releasePlan(root, options.status);
@@ -639,6 +650,18 @@ export async function check(options: SyncOptions = {}): Promise<number> {
 	const missing = missingFromCatalog(root);
 	if (missing.length > 0) {
 		write(`${membershipFailure(missing)}\n`);
+		return code === 0 ? 1 : code;
+	}
+
+	// A release whose published floor crosses a dependency's breaking line has to
+	// leave its own line too (effected#1333); the floor changesets say so, and they
+	// are derived, so any difference from what is on disk is drift.
+	const raised = await (options.floors ?? planFloors)(root);
+	const edits = floorEdits(root, raised);
+	if (edits.length > 0) {
+		write(
+			`Breaking floors are out of date in ${edits.length} changeset(s):\n${describeFloorEdits(raised, edits)}\nRun \`pnpm changeset:floors\` (or \`pnpm catalog:sync\`).\n`,
+		);
 		return code === 0 ? 1 : code;
 	}
 
