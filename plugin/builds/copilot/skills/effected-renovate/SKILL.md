@@ -57,6 +57,25 @@ grep -nE "^  effect@[0-9]" pnpm-lock.yaml
 
 Exactly one `effect` version must resolve. Two copies make every `Context.Service` tag two distinct tags, and the failure reads like an API change rather than a duplicate. A second copy usually comes from a build tool (a bundler, a test plugin, a linter) still published on an older Effect minor. Find which package pulls it with `pnpm why effect`, and check the ledger's tooling entries before you bridge anything by hand.
 
+**Two versions of a kit package can be correct.** A tool installed here (a test plugin, a linter, a bundler) that was released on the previous kit release keeps its own copies of the kit packages it pinned. That is the tool owning its closure, and it is harmless: the tool shares no service, schema or brand with this repository. Do not override it onto the new versions.
+
+It breaks only when a kit package resolved inside the tool takes a **peer** from the other release line. The tell is `does not provide an export named …` when the tool loads (a test run that cannot start, a CLI that dies at import). That happens when the tool publishes caret ranges on the kit, so a newer patch of one kit library lands beside an older peer. Bridge it at the stale parent edge only, never with a global pin:
+
+1. List the split packages, the edges that pull each stale copy, and the override lines:
+
+   ```bash
+   node "<skill base directory>/scripts/stale-edges.mjs"          # --json for the same report as data
+   ```
+
+   It reads `pnpm-lock.yaml` (or a path you pass) and exits 0 when no kit package resolves at two versions, 2 when one does. The newest copy of each package is the target; every lower one is stale.
+2. Read the edges. A **tool** parent gets an override line. A parent that is itself an `@effected/*` package gets none: it shows the stale version only because its peers resolved inside the tool, and the tool's line fixes it. An importer edge is this repository's own range on the old release; raise the range instead of overriding it.
+3. Paste the override lines the tool edges need into `pnpm-workspace.yaml`'s `overrides`, leaving out any tool whose second copy is harmless.
+4. Drop the lockfile and reinstall, as in step 2. Changing `overrides` in place can report the lockfile up to date.
+5. Check that no kit package now resolves at two versions where it broke, and run each bridged tool once (its CLI, its test run). Forcing a newer kit release onto a tool can hit that release's breaking changes.
+6. Comment the block as temporary, naming the tools, and delete each tool's lines once it releases on the new kit.
+
+A tool that pins the kit exactly never needs this; when the tool is one this repository publishes, step 7 offers that fix.
+
 ## Step 4: find what the release changed for you
 
 ```bash
@@ -99,7 +118,9 @@ node "<skill base directory>/scripts/outdated-direct.mjs"
 
 It lists outdated dependencies pinned directly in a manifest, not through `catalog:` or `workspace:` (those already moved with step 1). Upgrade routine ones by editing the range and keeping its operator, then install once. Leave a deliberately held pin alone: check the repository's instructions and the line's history before bumping across a major, and ask when unsure.
 
-Then the ledger's `adopt` entries: each names a hand-rolled pattern the kit or Effect now covers. Offer them; do not apply them unasked. When the repository uses `@savvy-web/silk`, run `pnpm savvy init --yes` after the last install and keep what it rewrites.
+Then the ledger's `adopt` entries: each names a hand-rolled pattern the kit or Effect now covers. Offer them; do not apply them unasked.
+
+When this repository publishes a tool built on the kit (a package with a `bin`, a CLI or MCP server, a bundler or test plugin), check how its packages take the kit. A tool package that writes `catalog:effected` or a caret on an `@effected/*` dependency floats kit patches under its own version, and is the cause of the step-3 bridge in every repository that installs it. Offer to pin those dependencies exactly; the `design-patterns` skill's carrier-closure reference has the rule, what it seals and the test that holds it. Libraries keep their carets and peers. When the repository uses `@savvy-web/silk`, run `pnpm savvy init --yes` after the last install and keep what it rewrites.
 
 ## Step 8: changesets
 

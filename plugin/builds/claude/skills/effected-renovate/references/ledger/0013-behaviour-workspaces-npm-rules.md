@@ -1,0 +1,22 @@
+---
+id: "0013"
+title: "@effected/workspaces: an npm root's workspaces field is read by npm's own rules, not as a GlobSet"
+kind: behaviour
+shows: behavioural
+applies:
+  "@effected/workspaces": ">=0.47.0"
+detect: ["(getWorkspacePackagesSync|WorkspaceDiscovery|WorkspaceSnapshots)[^A-Za-z]"]
+changesets: ["workspaces-npm-rules"]
+closes: ["spencerbeggs/effected#1329"]
+---
+
+On a root that package-manager detection calls npm, workspace discovery, the sync facade and `WorkspaceSnapshots` now read `package.json#workspaces` the way npm does. They no longer read it as a `GlobSet`. pnpm, yarn and bun roots are unchanged. The member list only changes when the field uses one of these four shapes:
+
+- **An ordered negation.** A later positive cancels an earlier `!` pattern, so `["packages/*", "!packages/a", "packages/a"]` keeps `packages/a`. It used to be dropped.
+- **A trailing `/`.** `packages/*/` now declares the directories under `packages`, where it used to declare none. `!packages/a/` now excludes `packages/a`, where it used to exclude nothing.
+- **An even run of `!`.** `!!packages/a` is now a positive.
+- **A backslash.** `packages\a` now declares `packages/a`.
+
+A field past npm's matcher ceilings now fails, where it used to be read. The ceilings are 1,000 patterns, 32 wildcard patterns, 256 brace alternatives and 256 characters for a matched pattern. The failure is the same typed error an uncompilable pattern set already gave: `WorkspacePatternError` with kind `uncompilable`, or `CatalogAssemblyError` from `WorkspaceSnapshots.at`. Its new optional `cause` carries `NpmWorkspacePatternsError`.
+
+Where the search matched a call into discovery, find the repositories it runs against. In this one, and in any test fixture it uses, check whether the root is npm's: it has a `workspaces` field and no `pnpm-workspace.yaml`, and no `bun.lock` or `yarn.lock` that the manifest's `packageManager` names. Then check the field for the four shapes above. If none of them appears, nothing changes. If one does, compare the member list before and after the upgrade. npm's answer is the one npm installs, so update a test that pinned the old answer. Read the installed `.d.ts` for `WorkspacePatternError`.
