@@ -6,9 +6,10 @@
 // there is no cap to get wrong. It is bounded by depth, by a visited-directory
 // budget, and by an unconditional node_modules / .git prune.
 
-import type { GlobPattern, GlobSet } from "@effected/glob";
+import type { GlobPattern } from "@effected/glob";
 import { Effect, FileSystem, Path } from "effect";
 import { MAX_ENUMERATION_DEPTH } from "./limits.js";
+import type { Membership } from "./membership.js";
 import { Traversal, badMaxDepthMessage, isPruned, isValidMaxDepth, joinRelative } from "./traverse.js";
 
 /** A directory the enumerator accepted: its root-relative POSIX path and its absolute path. */
@@ -37,15 +38,16 @@ export interface EnumerateOptions {
 const baseOf = (pattern: GlobPattern): string => pattern.enumerationPrefix.replace(/\/$/, "");
 
 /**
- * Enumerate the workspace directories a compiled `packages:` set selects.
+ * Enumerate the workspace directories a membership selects.
  *
- * Every returned directory holds a `package.json`, matches at least one include
- * (literal or wildcard), and is rejected by no exclude. Results are sorted by
- * relative path.
+ * The walk is bounded by `membership.candidates` — its literals are looked up,
+ * its wildcards drive the descent — and every returned directory holds a
+ * `package.json`, is a candidate, and is a member by `membership.matches`.
+ * Results are sorted by relative path.
  */
 export const enumerate = (
 	root: string,
-	globs: GlobSet,
+	membership: Membership,
 	options?: EnumerateOptions,
 ): Effect.Effect<ReadonlyArray<EnumeratedDirectory>, EnumerationFailure, FileSystem.FileSystem | Path.Path> =>
 	Effect.gen(function* () {
@@ -69,11 +71,8 @@ export const enumerate = (
 				Effect.orElseSucceed(() => false),
 			);
 
-		const excludes = globs.excludes;
-		const isExcluded =
-			excludes.length === 0
-				? (_: string): boolean => false
-				: (relative: string): boolean => excludes.some((exclude) => exclude.matches(relative));
+		const globs = membership.candidates;
+		const isMember = membership.matches;
 
 		const included = new Map<string, string>();
 
@@ -89,7 +88,7 @@ export const enumerate = (
 			globs.literals,
 			(literal) =>
 				Effect.gen(function* () {
-					if (isExcluded(literal)) return undefined;
+					if (!isMember(literal)) return undefined;
 					const absolute = path.join(root, literal);
 					return (yield* isPackage(absolute)) ? ([literal, absolute] as const) : undefined;
 				}),
@@ -162,7 +161,7 @@ export const enumerate = (
 						return yield* Effect.fail(failureOf(traversal.depthStop(), wildcard.source));
 					}
 
-					if (wildcard.matches(relative) && !isExcluded(relative) && (yield* isPackage(absolute))) {
+					if (wildcard.matches(relative) && isMember(relative) && (yield* isPackage(absolute))) {
 						included.set(relative, absolute);
 					}
 

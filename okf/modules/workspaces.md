@@ -19,6 +19,8 @@ sources:
     resource: ../../packages/workspaces/src/node-sync.ts
   - id: workspaces-sync-ts
     resource: ../../packages/workspaces/src/WorkspacesSync.ts
+  - id: membership-ts
+    resource: ../../packages/workspaces/src/internal/membership.ts
   - id: package-manager-decision-ts
     resource: ../../packages/workspaces/src/internal/packageManagerDecision.ts
   - id: savvy-build-ts
@@ -31,10 +33,10 @@ sources:
     resource: ../../packages/workspaces/src/PnpmSettings.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-10T22:32:17Z
+  at: 2026-11-11T20:31:08Z
 integrity:
   generated:
-    body: 9308aa5a44e040c0
+    body: e7545e7626f71554
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -414,11 +416,13 @@ continue phase 2's A1–A10:
   "dist/prod/npm/pkg" }`
   ([the pack-source decision](../decisions/packed-install-pack-source.md)).
 
-## npm roots: GlobSet semantics, not npm's rules
+## npm roots: npm's rules, not GlobSet semantics
 
-Discovery reads `package.json#workspaces` through `GlobSet` for every manager, npm, yarn and bun alike, in `WorkspaceDiscovery`, `WorkspacesSync` and `WorkspaceSnapshots`. It does not use npm's own `@npmcli/map-workspaces` rules, which `@effected/npm` ships as `NpmWorkspacePatterns` and `@effected/lockfiles` reads npm link rows with (#1286). On most fields the two agree. On these six, measured over the directories `packages/a`, `packages/b`, `packages/.hidden`, `apps/c` and `packages/deep/d`, an npm root enumerates members npm itself would not:
+On an npm root, discovery reads `package.json#workspaces` through npm's own `@npmcli/map-workspaces` rules, which `@effected/npm` ships as `NpmWorkspacePatterns` and `@effected/lockfiles` reads npm link rows with (#1286, #1329). pnpm, yarn and bun roots read their patterns as one `GlobSet`. A root is npm's when the shared package-manager decision (`internal/packageManagerDecision.ts`, the one `PackageManagerDetector` runs) says so over the root manifest and the root-level marker files. It is consulted only when the manifest is the pattern source, since a `pnpm-workspace.yaml` already makes the root pnpm's.
 
-| `workspaces` | npm (`NpmWorkspacePatterns`) | discovery (`GlobSet`) | why |
+`WorkspaceDiscovery`, `WorkspacesSync` and `WorkspaceSnapshots` take the decision from ONE module, `src/internal/membership.ts`, so the three cannot disagree about a root.[^membership-ts] A membership is a `candidates` set and a `matches` predicate. Both enumerators walk `candidates` and keep the directories `matches` accepts; `WorkspaceSnapshots.at` applies `matches` to the `ls-tree` listing. On an npm root, `candidates` is the field's positive patterns normalized the way npm reads them (an even `!` run dropped, a leading `./` or `/` stripped, a backslash turned to `/`, a trailing `/.` or `/` dropped) with no exclusions, which makes it a superset of the members. `matches` is npm's predicate. The two readings disagree on these six fields, measured over the directories `packages/a`, `packages/b` and `apps/c`:
+
+| `workspaces` | npm (`NpmWorkspacePatterns`) | `GlobSet` (yarn, bun) | why |
 | --- | --- | --- | --- |
 | `["packages/*", "!packages/a", "packages/a"]` | a, b | b | npm's negations are ordered: a later positive cancels one; `GlobSet` exclusions are order-independent |
 | `["apps/c", "!apps/*", "apps/c"]` | c | none | the same ordered cancellation |
@@ -427,7 +431,7 @@ Discovery reads `package.json#workspaces` through `GlobSet` for every manager, n
 | `["packages\\a"]` | a | none | npm turns a backslash in a positive into `/`; glob reads it as an escape |
 | `["packages/*", "!packages/a/"]` | b | a, b | npm's ignore matches a negation with or without the trailing slash |
 
-Ruling (#1286): discovery stays on `GlobSet` for now. Making it npm-aware for an npm root, by filtering its candidate directories through `NpmWorkspacePatterns`, is filed as its own change: it would move these six answers, and yarn and bun do not follow npm's rules. `__test__` in `@effected/lockfiles` (`importers.test.ts`) pins npm's six answers, and `@effected/npm`'s `NpmWorkspacePatterns.test.ts` the rules.
+`__test__/WorkspacesNpmRules.test.ts` pins every row on all three readers, for an npm root and for a yarn and a bun root on the same field. A field past one of `NpmWorkspacePatterns`' ceilings has no fallback reading. It fails as an uncompilable pattern set does: `WorkspacePatternError` with kind `uncompilable` from discovery and the sync facade, whose optional `cause` carries the `NpmWorkspacePatternsError`, and `CatalogAssemblyError` from `WorkspaceSnapshots.at`. Its `pattern` is the offending entry, or `package.json#workspaces` for a ceiling over the whole field. The public error unions did not grow. Yarn and bun stay on `GlobSet` until their own rules are shown to differ.
 
 ## WorkspacesSync — the escape hatch
 
@@ -454,7 +458,8 @@ one unusable manifest enumerated as a plausible empty array, indistinguishable
 from "no workspaces configured" — the failure mode issue #605 named.
 
 Degraded-skip holds only where a partial answer exists. The `packages:`
-patterns compile as ONE `GlobSet`, and a set can fail even when every member
+patterns compile as ONE `GlobSet` (on an npm root, a field past an
+`NpmWorkspacePatterns` ceiling fails the same way), and a set can fail even when every member
 compiles alone: the members share one compile budget, so 1,288 patterns
 that each carry their own `[[:word:]]` portion exhaust it. That failure loses
 every pattern at once, so the facade **throws** — the same
@@ -686,6 +691,9 @@ suppressed.
     `@packageDocumentation` block stating why the subpath exists.
 [^workspaces-sync-ts]: `packages/workspaces/src/WorkspacesSync.ts` —
     `SyncFileSystem`, `SyncDirectoryEntry`, and the sync facade functions.
+[^membership-ts]: `packages/workspaces/src/internal/membership.ts` — the
+  one membership decision: `rulesFor` picks npm's rules or `GlobSet`'s, and
+  `membershipOf` builds the candidate set and the predicate.
 [^package-manager-decision-ts]: `packages/workspaces/src/internal/packageManagerDecision.ts`
     — `decidePackageManager`; the parity table is
     `__test__/PackageManagerDetectorSync.test.ts`.

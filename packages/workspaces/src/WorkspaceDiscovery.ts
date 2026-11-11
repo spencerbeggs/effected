@@ -7,7 +7,6 @@
 // It is also where `@effected/npm`'s `WorkspaceResolver` contract is
 // implemented: `versionOf` is a lookup over the discovered package list.
 
-import { GlobSet } from "@effected/glob";
 import { DependencyResolutionError, WorkspaceResolver } from "@effected/npm";
 import { PackageJsonFormat } from "@effected/package-json";
 import { Context, Duration, Effect, Exit, FileSystem, Layer, Option, Path, Schema } from "effect";
@@ -15,7 +14,10 @@ import type { EnumerationFailureKind } from "./internal/enumerate.js";
 import { enumerate } from "./internal/enumerate.js";
 import { isStringRecord } from "./internal/guards.js";
 import { findLayerRoot } from "./internal/layerRoot.js";
-import { readPatterns } from "./internal/patterns.js";
+import { membershipOf, rulesFor } from "./internal/membership.js";
+import type { MarkerFile } from "./internal/packageManagerDecision.js";
+import { MARKER_FILES } from "./internal/packageManagerDecision.js";
+import { readPatternSource } from "./internal/patterns.js";
 import type { WorkspaceMarker } from "./WorkspaceMarker.js";
 import { WorkspacePackage } from "./WorkspacePackage.js";
 import type { WorkspaceRootNotFoundError } from "./WorkspaceRoot.js";
@@ -71,6 +73,12 @@ export class WorkspacePatternError extends Schema.TaggedError<WorkspacePatternEr
 	kind: Schema.Literals(["missingBaseDir", "uncompilable", "depthExceeded", "budgetExceeded", "unreadableDirectory"]),
 	/** A short, structured detail — the missing directory, or the bound exceeded. */
 	detail: Schema.String,
+	/**
+	 * For `uncompilable`: the typed error that stopped the patterns being read —
+	 * glob's `GlobPatternError`, or `@effected/npm`'s `NpmWorkspacePatternsError`
+	 * when an npm root's `workspaces` field passes one of npm's pattern ceilings.
+	 */
+	cause: Schema.optionalKey(Schema.Defect()),
 }) {
 	/** Renders the pattern and failure kind into a one-line message. */
 	override get message(): string {
@@ -458,7 +466,7 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 				WorkspaceDiscoveryFailure
 			> =>
 				Effect.gen(function* () {
-					const patterns = yield* readPatterns(root).pipe(
+					const source = yield* readPatternSource(root).pipe(
 						Effect.mapError(
 							(failure) =>
 								new WorkspaceDiscoveryError({
@@ -469,20 +477,37 @@ export class WorkspaceDiscovery extends Context.Service<WorkspaceDiscovery, Work
 								}),
 						),
 					);
+					const { patterns } = source;
 
-					const globs = yield* GlobSet.compile(patterns).pipe(
+					// npm's rules on an npm root, GlobSet's elsewhere — the decision
+					// `WorkspacesSync` and `WorkspaceSnapshots` share. The markers are
+					// probed only when the manifest is the pattern source.
+					const present = Option.isNone(source.manifest)
+						? new Set<MarkerFile>()
+						: new Set(
+								yield* Effect.filter(MARKER_FILES, (file) =>
+									fs.exists(path.join(root, file)).pipe(Effect.orElseSucceed(() => false)),
+								),
+							);
+					const membership = yield* Effect.fromResult(
+						membershipOf(
+							patterns,
+							rulesFor(source.manifest, (file) => present.has(file)),
+						),
+					).pipe(
 						Effect.mapError(
-							(error) =>
+							(failure) =>
 								new WorkspacePatternError({
 									root,
-									pattern: error.pattern,
+									pattern: failure.pattern,
 									kind: "uncompilable",
-									detail: error.message,
+									detail: failure.detail,
+									cause: failure.cause,
 								}),
 						),
 					);
 
-					const directories = yield* enumerate(root, globs, { maxDepth: options?.maxDepth ?? 32 }).pipe(
+					const directories = yield* enumerate(root, membership, { maxDepth: options?.maxDepth ?? 32 }).pipe(
 						Effect.mapError(
 							(failure) =>
 								new WorkspacePatternError({

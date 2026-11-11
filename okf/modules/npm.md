@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-10T22:32:17Z
+  at: 2026-11-11T20:31:08Z
 integrity:
   generated:
-    body: 1dd0933d21f9a7b3
+    body: 6b2b70b9826875aa
 ---
 
 # npm
@@ -107,7 +107,7 @@ Both services follow the kit's service conventions: all-effectful shapes, `stati
 
 `NpmWorkspacePatterns.matcherResult(field)` is the kit's one reading of an npm `workspaces` field, as `@npmcli/map-workspaces` 5 reads it with the glob 13 `Ignore` it hands negations to (#1286). It returns a predicate over normalized relative directories, or an `NpmWorkspacePatternsError` naming the ceiling the field passed (`tooManyPatterns`, `tooManyWildcards`, `patternTooLong`, `tooManyAlternatives` with an `exact`/`stopped`/`inexact`/`unbounded` `count`, or `uncompilable` carrying glob's error). The rules, each pinned against `npm query .workspace` on npm 11.20.0 by `@effected/lockfiles`' fixtures, and the measured ceilings are recorded in [the lockfiles module](lockfiles.md), where they were ruled (#1267). The matcher moved here so that no second copy can drift from it.
 
-It is pure vocabulary, listed in `__test__/reachability.test.ts`, and lives here rather than in `@effected/workspaces` despite the registry's "workspace semantics → workspaces" assignment. `@effected/lockfiles`, the first consumer, is pure and already depends on this package, while `@effected/workspaces` is integrated: housing it there would pull lockfiles up a tier. The rules are npm's, not `GlobSet`'s set semantics. `@effected/workspaces` enumerates `package.json#workspaces` through `GlobSet` for every manager, and the two readings disagree on ordered negation, a trailing `/` on a positive or a negation, an even run of `!`, and a backslash in a positive.
+It is pure vocabulary, listed in `__test__/reachability.test.ts`, and lives here rather than in `@effected/workspaces` despite the registry's "workspace semantics → workspaces" assignment. `@effected/lockfiles`, the first consumer, is pure and already depends on this package, while `@effected/workspaces` is integrated: housing it there would pull lockfiles up a tier. The rules are npm's, not `GlobSet`'s set semantics: the two readings disagree on ordered negation, a trailing `/` on a positive or a negation, an even run of `!`, and a backslash in a positive. `@effected/workspaces`, the second consumer, reads an npm root's `package.json#workspaces` through it and a yarn or bun root's through `GlobSet` (#1329).
 
 ## Vocabulary registry
 

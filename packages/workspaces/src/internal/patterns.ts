@@ -6,7 +6,7 @@
 
 import { PackageJsonFormat } from "@effected/package-json";
 import { Yaml } from "@effected/yaml";
-import { Effect, FileSystem, Path, Result } from "effect";
+import { Effect, FileSystem, Option, Path, Result } from "effect";
 
 /** The reason a pattern read failed, with the file it failed on. */
 export interface PatternReadFailure {
@@ -38,6 +38,17 @@ export const manifestPatternsOf = (manifest: unknown): ReadonlyArray<string> => 
 };
 
 /**
+ * The patterns a root declares, and the root manifest when it is their source
+ * — none when `pnpm-workspace.yaml` supplied them or no manifest exists. The
+ * manifest is what decides whether npm's own pattern rules apply
+ * (`internal/membership.ts`).
+ */
+export interface PatternSource {
+	readonly patterns: ReadonlyArray<string>;
+	readonly manifest: Option.Option<Record<string, unknown>>;
+}
+
+/**
  * The workspace `packages:` patterns for `root`: `pnpm-workspace.yaml` first,
  * then the root package.json `workspaces` field. An absent config is a
  * standalone package, not an error — it yields an empty list.
@@ -45,6 +56,12 @@ export const manifestPatternsOf = (manifest: unknown): ReadonlyArray<string> => 
 export const readPatterns = (
 	root: string,
 ): Effect.Effect<ReadonlyArray<string>, PatternReadFailure, FileSystem.FileSystem | Path.Path> =>
+	Effect.map(readPatternSource(root), (source) => source.patterns);
+
+/** {@link readPatterns}, with the root manifest when it is the pattern source. */
+export const readPatternSource = (
+	root: string,
+): Effect.Effect<PatternSource, PatternReadFailure, FileSystem.FileSystem | Path.Path> =>
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
@@ -65,12 +82,12 @@ export const readPatterns = (
 				Effect.mapError((cause): PatternReadFailure => ({ path: pnpmWorkspacePath, kind: "invalidYaml", cause })),
 			);
 			const patterns = pnpmPatternsOf(document);
-			if (patterns.length > 0) return patterns;
+			if (patterns.length > 0) return { patterns, manifest: Option.none() };
 		}
 
 		const manifestPath = path.join(root, "package.json");
 		const hasManifest = yield* fs.exists(manifestPath).pipe(Effect.orElseSucceed(() => false));
-		if (!hasManifest) return [];
+		if (!hasManifest) return { patterns: [], manifest: Option.none() };
 
 		const content = yield* fs
 			.readFileString(manifestPath)
@@ -79,7 +96,9 @@ export const readPatterns = (
 		// an array, a scalar) declares no patterns — the same empty list
 		// `manifestPatternsOf` gives any non-object — so it is not an error here.
 		const manifest = PackageJsonFormat.parseObjectResult(content);
-		if (Result.isSuccess(manifest)) return manifestPatternsOf(manifest.success);
-		if (manifest.failure.reason === "not-an-object") return [];
+		if (Result.isSuccess(manifest)) {
+			return { patterns: manifestPatternsOf(manifest.success), manifest: Option.some(manifest.success) };
+		}
+		if (manifest.failure.reason === "not-an-object") return { patterns: [], manifest: Option.none() };
 		return yield* Effect.fail<PatternReadFailure>({ path: manifestPath, kind: "invalidJson", cause: manifest.failure });
 	});

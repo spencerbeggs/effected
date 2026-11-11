@@ -4,8 +4,8 @@
 // `at(ref)` runs entirely through `@effected/git`'s `Git` service — no
 // filesystem enumeration, only the live root walk (the one place it touches the
 // working tree, because you need a repository to run git against). Package
-// discovery reuses the compiled `@effected/glob` set, matched against
-// `Git.lsTree` output rather than a directory descent. Catalogs assemble from the inline
+// discovery reuses discovery's membership (`internal/membership.ts`), matched
+// against `Git.lsTree` output rather than a directory descent. Catalogs assemble from the inline
 // config source at the ref plus the detected manager's own lockfile at the ref,
 // and BOTH pnpm and bun carry catalogs, so the lockfile read is PM-aware.
 //
@@ -14,7 +14,6 @@
 
 import type { GitCommandError, NotARepositoryError, UnknownRefError } from "@effected/git";
 import { Git } from "@effected/git";
-import { GlobSet } from "@effected/glob";
 import { Lockfile as LockfileModel, filenameFor } from "@effected/lockfiles";
 import { CatalogAssemblyError } from "@effected/npm";
 import { PackageJsonFormat } from "@effected/package-json";
@@ -25,6 +24,7 @@ import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
 import { isStringRecord } from "./internal/guards.js";
 import { importerVersionsOf } from "./internal/importerVersions.js";
 import { findLayerRoot } from "./internal/layerRoot.js";
+import { membershipOf, rulesFor } from "./internal/membership.js";
 import { manifestPatternsOf, pnpmPatternsOf } from "./internal/patterns.js";
 import type { ImporterVersions } from "./WorkspaceCatalogs.js";
 import { CatalogSet, WorkspaceCatalogs, injectFromDocument } from "./WorkspaceCatalogs.js";
@@ -366,6 +366,9 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 					});
 
 					let patterns: ReadonlyArray<string>;
+					// The root manifest when it is the pattern source, which is what
+					// decides whether npm's own pattern rules apply.
+					let patternManifest = Option.none<Record<string, unknown>>();
 					let inline: CatalogSet;
 					let injected: CatalogSet;
 					let recorded: LockfileRecord;
@@ -383,6 +386,7 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 						// A `pnpm-workspace.yaml` with no `packages:` falls back to
 						// the root manifest's `workspaces` field, matching live `readPatterns`.
 						patterns = pnpmPatterns.length > 0 ? pnpmPatterns : manifestPatternsOf(rootManifest);
+						if (pnpmPatterns.length === 0) patternManifest = Option.some(rootManifest);
 						inline = yield* CatalogSet.fromWorkspaceYaml(pnpmWorkspaceText.value);
 						// Replay the ref's config-dependency hooks at the versions the ref's
 						// OWN `configDependencies` declare, seeded by the ref's inline
@@ -409,6 +413,7 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 						// and a consumer diffing two snapshots sees every declared dependency
 						// as newly added.
 						patterns = manifestPatternsOf(rootManifest);
+						patternManifest = Option.some(rootManifest);
 						// Inline catalogs come from the root manifest UNCONDITIONALLY: a bun
 						// workspace declaring `workspaces.catalog`/`.catalogs` with no committed
 						// `bun.lock` at the ref still has catalogs, and gating them on the
@@ -427,16 +432,29 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 					// carries the inline seed).
 					const catalogs = CatalogSet.merge(recorded.catalogs, inline, injected);
 
-					const globs = yield* GlobSet.compile(patterns).pipe(
-						Effect.mapError(
-							(error) => new CatalogAssemblyError({ source: "manifest", path: error.pattern, cause: error }),
-						),
-					);
-
 					// Package directories come from the tree listing at the ref, matched
-					// against the compiled glob set — no directory descent, because
-					// `ls-tree -r` already enumerates every path (globstar included).
+					// by the membership discovery uses — npm's rules on an npm root,
+					// GlobSet's elsewhere — with no directory descent, because
+					// `ls-tree -r` already enumerates every path (globstar included). The
+					// manager is decided over the ref's own root-level files.
 					const entries = yield* git.lsTree(root, ref);
+					const rootFiles = new Set<string>();
+					for (const entry of entries) {
+						if (entry.type === "blob" && !entry.path.includes("/")) rootFiles.add(entry.path);
+					}
+					const membership = membershipOf(
+						patterns,
+						rulesFor(patternManifest, (file) => rootFiles.has(file)),
+					);
+					if (Result.isFailure(membership)) {
+						return yield* new CatalogAssemblyError({
+							source: "manifest",
+							path: membership.failure.pattern,
+							cause: membership.failure.cause,
+						});
+					}
+					const isMember = membership.success.matches;
+
 					const memberDirs: Array<string> = [];
 					let hasRootManifest = false;
 					for (const entry of entries) {
@@ -447,7 +465,7 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 						}
 						if (!entry.path.endsWith("/package.json")) continue;
 						const dir = entry.path.slice(0, entry.path.length - "/package.json".length);
-						if (globs.matches(dir)) memberDirs.push(dir);
+						if (isMember(dir)) memberDirs.push(dir);
 					}
 					memberDirs.sort();
 
