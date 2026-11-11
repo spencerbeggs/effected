@@ -157,10 +157,6 @@ const alternatives = (source: string): Array<string> =>
  * the source globstar, `.`, star (a comment cannot spell it), a spelling no walk forms, so the walk is held
  * between the two answers.
  */
-/** The walker's literal fast path: a pattern with no magic, no brace, no negation, not matched by basename. */
-const literalFastPath = (pattern: GlobPattern): boolean =>
-	!pattern.hasMagic && !pattern.negated && !/[{}]/.test(pattern.source) && !pattern.matchesByBasename;
-
 /** Every directory of the tree, slash-free at both ends. */
 const DIRECTORIES = new Set(
 	FILES.flatMap((file) =>
@@ -211,8 +207,9 @@ const bruteForce = (pattern: GlobPattern, source: string, dotLed: boolean): Arra
 			({ spelling, prefix }) =>
 				file.startsWith(prefix) &&
 				pattern.matches(spelling + file.slice(prefix.length)) &&
-				// A literal is stat-ed, so the kernel's resolution applies to its spelling (#1283).
-				(!literalFastPath(pattern) || resolvesPhysically(spelling + file.slice(prefix.length))),
+				// A real filesystem resolves a spelling physically, whether the walk stats it (a literal, #1283) or
+				// walks a root spelled through it (`f.js/../*.js` at level 0 reaches nothing, #1290).
+				resolvesPhysically(spelling + file.slice(prefix.length)),
 		),
 	).sort();
 };

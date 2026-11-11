@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-08T23:08:02Z
+  at: 2026-11-10T22:32:17Z
 integrity:
   generated:
-    body: 3c247e84cdf4d998
+    body: 1dd0933d21f9a7b3
 ---
 
 # npm
@@ -24,7 +24,7 @@ integrity:
 
 ## Tier and dependency posture
 
-Boundary tier — not because of an [R2](../conventions/dependency-policy.md) edge (the `@effected/commands` dependency is itself boundary, with zero runtime dependencies, and boundary does not propagate), but because the package performs IO itself through core-declared contracts (`HttpClient`, `ChildProcessSpawner`, `FileSystem`, `Path`, and `Digest` from `effect/crypto`) required in `R` — the same shape `walker`, `xdg` and `git` share. `peerDependencies` is `effect` plus one pure-to-pure `@effected/semver` edge, used only so the range case validates through `Range.FromString`. `dependencies` is `@effected/commands` and `@effected/crypto` (pure `HttpRedaction`, which scrubs the credential out of a kept HTTP cause) and nothing else — zero external runtime dependencies. `@effected/package-json`, `@effected/lockfiles` and `@effected/workspaces` all depend on this package; the dependency arrows point at it, never away from it.
+Boundary tier — not because of an [R2](../conventions/dependency-policy.md) edge (the `@effected/commands` dependency is itself boundary, with zero runtime dependencies, and boundary does not propagate), but because the package performs IO itself through core-declared contracts (`HttpClient`, `ChildProcessSpawner`, `FileSystem`, `Path`, and `Digest` from `effect/crypto`) required in `R` — the same shape `walker`, `xdg` and `git` share. `peerDependencies` is `effect` plus one pure-to-pure `@effected/semver` edge, used only so the range case validates through `Range.FromString`. `dependencies` is `@effected/commands`, `@effected/crypto` (pure `HttpRedaction`, which scrubs the credential out of a kept HTTP cause) and `@effected/glob` (pure, zero-dependency, for `NpmWorkspacePatterns`; a regular dependency because no glob value crosses this package's surface) and nothing else — zero external runtime dependencies. `@effected/package-json`, `@effected/lockfiles` and `@effected/workspaces` all depend on this package; the dependency arrows point at it, never away from it.
 
 This package was pure until 2026-07-25, when the registry/tarball/publish services landed; a guardrail keeps it from drifting further to integrated — see [the tier guardrail](../decisions/npm-tier-guardrail.md).
 
@@ -35,6 +35,7 @@ Module-per-concept in `src/`, no barrels below `index.ts`. The placements that a
 - `WorkspaceResolver.ts` owns `DependencyResolutionError` (both resolvers raise it); `CatalogResolver.ts` type-imports it, a one-way edge that keeps `noImportCycles` satisfied.
 - `CatalogAssemblyError.ts` and `PublishError.ts` are leaf modules, not residents of the module that raises them, because two modules must reference each without an import cycle. `PublishError.kind` is `auth | pack | publish | output | digest | executor`; `digest` exists because npm succeeding while the tarball cannot be read back is not "npm pack failed".
 - `index.ts` owns the composite `Default` layer (both no-op resolver layers merged), the cycle-free home for the merge.
+- `NpmWorkspacePatterns.ts` is the public face of npm's `workspaces` pattern rules; the engine, with its hostile-input ceilings, is `internal/workspacePatterns.ts`, and its failure is the leaf `NpmWorkspacePatternsError.ts`. See [the section below](#npm-workspace-patterns).
 - `internal/npmLog.ts` holds the two pure readers of npm's `--loglevel=silly` stderr — the `PublishOutcome.auth` classifier and the `PublishError.output` filter — so both are table-tested without a spawner.
 
 Every Effect class factory is written inline, with the synthesized `_base` heritage symbols suppressed narrowly in the bundler's default config per the kit's API Extractor policy.
@@ -101,6 +102,12 @@ Three services replace a shelled-out `npm` CLI wherever the work can be done str
 Two deliberate departures from npm. A credential value naming an unset `${VAR}` fails `"missing-env"` naming the variable, key and file: npm leaves the literal `${VAR}` in place and sends it as the token, which turns a missing CI secret into a confusing 401; an ordinary setting keeps npm's literal behaviour. And credentials are stored as `Redacted` in a separate `secrets` map, so printing or serializing a config shows `<redacted>`, and the error message never carries a value, only names. Unsupported, and documented as such on the class: command-line flags, the builtin npmrc, client certificates and `always-auth`. Workspace-root discovery is opt-in rather than the default, because the default must stay npm's own lookup; it exists because a pnpm workspace run from a member package otherwise misses the root `.npmrc` pnpm honours there (effected#1170). Its ascent is done on core `FileSystem` and `Path` rather than `@effected/walker`, which this package does not depend on, and a `workspaces` field counts as a marker without matching its globs against `cwd` (npm checks membership; matching would need a glob dependency for a case the nearest-marker rule already gets right in practice). A `package.json` that cannot be read or parsed, or whose `workspaces` is not an array or object, is not a marker. Keys go through `Object.defineProperty`, so a `__proto__` line stays an own property.
 
 Both services follow the kit's service conventions: all-effectful shapes, `static readonly layer` using `this`, named spans on public boundaries carrying package name, registry host and version — never a token, never argv. Service `R` is discharged at construction, so every method's own `R` is `never`.
+
+## npm workspace patterns
+
+`NpmWorkspacePatterns.matcherResult(field)` is the kit's one reading of an npm `workspaces` field, as `@npmcli/map-workspaces` 5 reads it with the glob 13 `Ignore` it hands negations to (#1286). It returns a predicate over normalized relative directories, or an `NpmWorkspacePatternsError` naming the ceiling the field passed (`tooManyPatterns`, `tooManyWildcards`, `patternTooLong`, `tooManyAlternatives` with an `exact`/`stopped`/`inexact`/`unbounded` `count`, or `uncompilable` carrying glob's error). The rules, each pinned against `npm query .workspace` on npm 11.20.0 by `@effected/lockfiles`' fixtures, and the measured ceilings are recorded in [the lockfiles module](lockfiles.md), where they were ruled (#1267). The matcher moved here so that no second copy can drift from it.
+
+It is pure vocabulary, listed in `__test__/reachability.test.ts`, and lives here rather than in `@effected/workspaces` despite the registry's "workspace semantics → workspaces" assignment. `@effected/lockfiles`, the first consumer, is pure and already depends on this package, while `@effected/workspaces` is integrated: housing it there would pull lockfiles up a tier. The rules are npm's, not `GlobSet`'s set semantics. `@effected/workspaces` enumerates `package.json#workspaces` through `GlobSet` for every manager, and the two readings disagree on ordered negation, a trailing `/` on a positive or a negation, an even run of `!`, and a backslash in a positive.
 
 ## Vocabulary registry
 

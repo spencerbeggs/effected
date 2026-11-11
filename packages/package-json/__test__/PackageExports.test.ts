@@ -10,6 +10,16 @@ import type { PackageExportsManifest, PackageExportsOptions, PackageTypesOptions
 import { PackageExports } from "../src/index.js";
 import { toFilePath } from "../src/internal/exports.js";
 
+/**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
 /** The resolved path, or the failure reason prefixed with `!`. */
 const path = (manifest: PackageExportsManifest, subpath: string, options?: PackageExportsOptions): string => {
 	const result = PackageExports.resolveResult(manifest, subpath, options);
@@ -186,9 +196,9 @@ describe("PACKAGE_IMPORTS_EXPORTS_RESOLVE — patterns", () => {
 		const exports: Record<string, string> = {};
 		for (let index = 0; index < 20000; index++) exports[`./p${index}/*${"a".repeat(30)}`] = `./d${index}/*.js`;
 		exports["./*"] = "./fallback/*.js";
-		const started = performance.now();
+		const started = cpuNow();
 		assert.strictEqual(path({ exports }, `./${"a".repeat(5000)}`), `./fallback/${"a".repeat(5000)}.js`);
-		assert.isBelow(performance.now() - started, 2000);
+		assert.isBelow(cpuNow() - started, 2000);
 	});
 });
 

@@ -368,3 +368,56 @@ describe("npm link rows", () => {
 		}),
 	);
 });
+
+describe("npm link rows on the six inputs GlobSet reads differently (#1286)", () => {
+	// The npm parser reads `workspaces` through `@effected/npm`'s
+	// `NpmWorkspacePatterns`, npm's own map-workspaces rules. These six fields
+	// are where those rules and `GlobSet`'s set semantics (which
+	// `@effected/workspaces` enumerates with) disagree. Each answer is npm's,
+	// and it is what this parser decided before the rules moved to
+	// `@effected/npm`: the move changed none of them.
+	const directories = ["packages/a", "packages/b", "packages/.hidden", "apps/c", "packages/deep/d"] as const;
+	const lockfileWith = (workspaces: ReadonlyArray<string>): string => {
+		const packages: Record<string, unknown> = { "": { name: "root", workspaces } };
+		for (const [index, directory] of directories.entries()) {
+			packages[`node_modules/l${index}`] = { resolved: directory, link: true };
+			packages[directory] = { name: `l${index}`, version: "1.0.0" };
+		}
+		return JSON.stringify({ name: "root", lockfileVersion: 3, requires: true, packages });
+	};
+	const rows: ReadonlyArray<readonly [ReadonlyArray<string>, ReadonlyArray<string>]> = [
+		// A later positive the negation matches cancels it (GlobSet: b alone).
+		[
+			["packages/*", "!packages/a", "packages/a"],
+			["packages/a", "packages/b"],
+		],
+		[["apps/c", "!apps/*", "apps/c"], ["apps/c"]],
+		// A trailing slash on a positive is the same pattern (GlobSet: nothing).
+		[["packages/*/"], ["packages/a", "packages/b"]],
+		// An even run of bangs is dropped (GlobSet: nothing).
+		[["!!packages/a"], ["packages/a"]],
+		// A backslash in a positive is a separator (GlobSet: an escape, nothing).
+		[["packages\\a"], ["packages/a"]],
+		// A negation ignores with or without a trailing slash (GlobSet: a and b).
+		[["packages/*", "!packages/a/"], ["packages/b"]],
+	];
+
+	it.effect("decides each as npm does", () =>
+		Effect.gen(function* () {
+			const decided: Array<readonly [ReadonlyArray<string>, ReadonlyArray<string>]> = [];
+			for (const [workspaces] of rows) {
+				const lockfile = yield* Lockfile.parse(lockfileWith(workspaces), { format: "npm" });
+				decided.push([
+					workspaces,
+					lockfile.packages
+						.flatMap((pkg) => (pkg.isWorkspace && pkg.relativePath !== undefined ? [pkg.relativePath] : []))
+						.sort(),
+				]);
+			}
+			assert.deepStrictEqual(
+				decided,
+				rows.map(([workspaces, expected]) => [workspaces, [...expected]]),
+			);
+		}),
+	);
+});

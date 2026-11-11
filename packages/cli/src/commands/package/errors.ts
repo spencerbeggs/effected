@@ -37,7 +37,8 @@ export class PackageConfigError extends Schema.TaggedError<PackageConfigError>()
 }) {}
 
 /**
- * A file the build needs could not be read or written. Exit `3`, the infrastructure tier.
+ * A file the build needs could not be read or written, or another build of the same package held its lock for the
+ * whole wait. Exit `3`, the infrastructure tier.
  *
  * @public
  */

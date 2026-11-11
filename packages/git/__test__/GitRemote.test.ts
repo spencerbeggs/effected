@@ -6,6 +6,16 @@ import { GitRemote, GitRemotePath, GitRemoteScp, GitRemoteTransport, GitRemoteUr
 
 const parsed = (raw: string): GitRemoteForm => Option.getOrThrow(GitRemote.parse(raw));
 
+/**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
 describe("GitRemote.parse — forms and verbatim parts", () => {
 	const cases: ReadonlyArray<readonly [string, GitRemoteForm]> = [
 		["https://github.com/o/n.git", GitRemoteUrl.make({ scheme: "https", host: "github.com", path: "/o/n.git" })],
@@ -278,25 +288,40 @@ describe("GitRemote hardening — hostile input stays total and linear", () => {
 	];
 	for (const [label, raw] of hostile) {
 		it(`${label}: returns without throwing, quickly`, () => {
-			const started = performance.now();
+			const started = cpuNow();
 			const result = GitRemote.parse(raw);
-			const elapsed = performance.now() - started;
+			const elapsed = cpuNow() - started;
 			if (Option.isSome(result) && !raw.includes("://")) assert.strictEqual(GitRemote.format(result.value), raw);
 			assert.isBelow(elapsed, 500, `${label} took ${elapsed}ms`);
 		});
 	}
 
-	/** Linear is ~4x from n to 4n; quadratic would be ~16x. A ratio, so hardware cancels. */
+	/**
+	 * Linear is ~4x from n to 4n; quadratic would be ~16x. A ratio of CPU time per parse, so hardware cancels and a
+	 * loaded machine can not stretch a sample. Each size repeats the parse until a sample holds 5 ms of real work (a
+	 * parse of a 100k run can take microseconds, whose ratio is timer noise), and keeps the fastest of three samples.
+	 */
 	const assertLinear = (make: (n: number) => string): void => {
-		const time = (n: number): number => {
-			const raw = make(n);
-			const started = performance.now();
-			for (let i = 0; i < 5; i++) GitRemote.parse(raw);
-			return performance.now() - started;
+		const perParse = (raw: string): number => {
+			let best = Number.POSITIVE_INFINITY;
+			for (let sample = 0; sample < 3; sample++) {
+				let reps = 0;
+				const started = cpuNow();
+				let elapsed = 0;
+				while (elapsed < 5) {
+					GitRemote.parse(raw);
+					reps++;
+					elapsed = cpuNow() - started;
+				}
+				best = Math.min(best, elapsed / reps);
+			}
+			return best;
 		};
-		time(50_000); // warm up
-		const small = Math.max(time(100_000), 0.5);
-		const large = time(400_000);
+		const smallRaw = make(100_000);
+		const largeRaw = make(400_000);
+		GitRemote.parse(make(50_000)); // warm up
+		const small = perParse(smallRaw);
+		const large = perParse(largeRaw);
 		assert.isBelow(large / small, 10, `100k=${small}ms 400k=${large}ms`);
 	};
 

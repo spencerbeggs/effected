@@ -27,10 +27,10 @@ sources:
     title: "GNU Bash Reference Manual: shell syntax, quoting, expansions, redirections"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-08T15:15:23Z
+  at: 2026-11-10T21:52:07Z
 integrity:
   generated:
-    body: 32d811864d42ba2b
+    body: 6b63ddf7415a08e0
 ---
 
 # @effected/shell
@@ -90,10 +90,11 @@ this package takes no edge for it.
 | `ShellWordPart` | twelve part classes, `ShellWordPart`, `ShellExpansionPart`, `ShellSubstitutionPart` | Quoting provenance on a domain `kind` discriminant: `bare`, `singleQuoted`, `doubleQuoted` (with its `expansions`), `ansiC`, `variable`, `commandSubstitution`, `arithmetic` (the `$((…))` expansion, or with `command` `true` the `((…))` command), `processSubstitution`, `glob`, `brace`, `tilde`, `opaque`. `variable`, `arithmetic`, `brace` and `opaque` carry the `substitutions` inside them. |
 | `ShellAssignment` | `ShellAssignment` | `name`, `append` (`+=`), `value: ShellWord`, `subscript`, `start`, `end`, `raw`, and the derived `joined`. |
 | `ShellRedirection` | `ShellRedirection`, `ShellRedirectionOperator` | `fd: Option<number>`, `operator`, `target: ShellWord \| ShellHeredoc`, `start`, `end`. |
-| `ShellHeredoc` | `ShellHeredoc` | `delimiter`, `quoted`, `stripTabs` (`<<-`), `body` with `start`/`end` offsets, `terminated`, and `expansions` for an unquoted body; a `text` getter strips `<<-` tabs. |
+| `ShellHeredoc` | `ShellHeredoc` | `delimiter`, `quoted`, `stripTabs` (`<<-`), `body` with `start`/`end` offsets, `terminated`, and `expansions` for an unquoted body; a `text` getter strips `<<-` tabs, and `joined` is the body as bash reads it (backslash-newlines removed from an unquoted body before `<<-` strips each joined line's tabs, kept in a quoted one). |
+| `ShellAssignmentBuiltin` | `ShellAssignmentBuiltin` | `ShellCommand.assignmentBuiltin` for `declare`, `typeset`, `local`, `export`, `readonly`: `builtin`, `options` and `operands` as `internal_getopt` splits them (`+` options for the first three only, `--` in neither list), `resolved` (`false` from a word in option position with no literal), and `associativeFrom: Option<number>`, the first operand whose array keys bash reads as strings, from `fix_assignment_words`' scan of the words as written. |
 | `ShellComment` | `ShellComment` | A `#` comment's `text`, `start`, `end`. |
 | `ShellDiagnostic` | `ShellDiagnostic`, `ShellDiagnosticCode` | `code`, `offset`, `length`, a derived `message`; the `offset`/`length` pair satisfies `@effected/source`'s `SourceRange`. |
-| `ShellCommand` | `ShellCommand` | `segment`, `name: Option<string>`, `args`, `wrappers`, `evaluated` (the words of every `[[ … ]]` and `((…))` the segment evaluates, skipped or named); `ShellCommand.fromSegment(segment)` unwraps `sudo`, `env`, `command`, `exec`, `nohup` and `time` (matched by last path segment), and skips the words that name no command: reserved words (`!`, `{`, `}`, `if`, `then`, `elif`, `else`, `fi`, `do`, `done`, `while`, `until`, `esac`, `coproc`), `[[ … ]]`, `((…))`, `for`/`select NAME` before `do` or `{`, `function NAME`, and assignments. |
+| `ShellCommand` | `ShellCommand` | `segment`, `name: Option<string>`, `args`, `wrappers`, `evaluated` (the words of every `[[ … ]]` and `((…))` the segment evaluates, skipped or named), `assignmentBuiltin`; `ShellCommand.fromSegment(segment)` unwraps `sudo`, `env`, `command`, `exec`, `nohup` and `time` (matched by last path segment), and skips the words that name no command: reserved words (`!`, `{`, `}`, `if`, `then`, `elif`, `else`, `fi`, `do`, `done`, `while`, `until`, `esac`, `coproc`), `[[ … ]]`, `((…))`, `for`/`select NAME` before `do` or `{`, `function NAME`, and assignments. |
 
 ### Operators and segments
 
@@ -347,6 +348,30 @@ marked as round 2):
 - Constructing a `ShellNestedScript` does not re-validate the script it
   holds: 1,000 makes take 2.3 ms over a one-segment script and 1.5 ms over a
   100,000-segment one.
+
+### Laziness and the size gate: ruled out of the package
+
+Decisions (#1288, 2026-11-10, measured on Apple silicon, Node 26,
+`process.cpuUsage`, best of three, 1 MB inputs, walk timed apart from the parse):
+
+- **No lazy `allCommands`.** The parse dominates the walk in six of eight
+  hostile shapes (`$()` fan: parse 719 ms, walk 31 ms; `$(a)` fan (each followed by a space): 684 / 59;
+  backtick fan: 809 / 54; 16-deep chains: 116 / 73; `$($()$()$()$())`:
+  175 / 144; plain words: 530 / 5), so a guard stopping at its first refusal
+  saves at most the walk. The walk dominates only where it parses a dense body
+  under a chain (11 / 958) or the overlapping gadget (22 / 203), and there an
+  adversary moves the first refusal to the deepest script: in
+  `echo $(` × 16 around a dense body, every level is `echo` and a lazy guard
+  first refuses at script 16 of 17, paying the full 1,036 ms. Laziness lowers
+  the cost of inputs that are refused early, not the worst case, so it buys a
+  guard nothing it can rely on, and the eager walk stays the only form.
+- **No size gate in the package.** `parse` is total and never refuses, and
+  the affordable size is the consumer's: it depends on its hook's timeout and
+  its agent's commands (the longest of 56,176 recorded Bash calls is 48.7 KB).
+  At 256 KB the costliest shapes parse and walk in about 250 ms (backtick fan
+  265 ms, the dense echo chain 238 ms), linear in the input. The README guard
+  gates at 256 KB before `parse`, and the plugin's shell reference tells
+  guards to.
 
 `__test__/ShellScript.test.ts` holds the walk to a growth ratio below 8 over
 a deep chain (at cap 16 and 64), a wide fan-out and fan-out at every depth;

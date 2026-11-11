@@ -1,3 +1,15 @@
+import type { ActionEntries } from "../config/ActionConfig.js";
+
+/** A worker as `[action.entries.workers]` holds it: its source, or its table. */
+type WorkerValue = ActionEntries["workers"][string];
+
+/** A worker's source, whether it was written as a string or as a table. */
+export const workerSource = (worker: WorkerValue): string => (typeof worker === "string" ? worker : worker.source);
+
+/** Whether a worker's own table leaves its load check on, which a plain-string worker always does. */
+export const workerImportCheck = (worker: WorkerValue): boolean =>
+	typeof worker === "string" ? true : worker.importCheck;
+
 /** The bundle names the action lifecycle owns, which a worker must not take. */
 const RESERVED_ENTRY_NAMES: ReadonlySet<string> = new Set(["main", "pre", "post"]);
 

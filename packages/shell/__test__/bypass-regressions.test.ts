@@ -1417,6 +1417,13 @@ describe("an assignment builtin's NAME=( … ) argument is one word with an arra
 			// An `-A` after the value does not make it associative.
 			`k='a[$(git commit)]'; declare x=([k]=1) -A`,
 			`k='a[$(git commit)]'; declare +A x=([k]=1)`,
+			// bash reads the `-A` as written: quoted, escaped or expanded, it
+			// leaves the keys arithmetic (each ran the commit under bash 5.3.20).
+			`k='a[$(git commit)]'; declare "-A" x=([k]=1)`,
+			`k='a[$(git commit)]'; declare \\-A x=([k]=1)`,
+			`k='a[$(git commit)]'; typeset '-A' x=([k]=1)`,
+			`k='a[$(git commit)]'; o=-A; declare $o x=([k]=1)`,
+			`k='a[$(git commit)]'; declare y=([k]=1) -A z=([k]=1)`,
 			"declare x=(a)#; git commit",
 			"x=(a)#; git commit",
 			"declare -A x=([a )]=1); git commit",
@@ -1432,6 +1439,11 @@ describe("an assignment builtin's NAME=( … ) argument is one word with an arra
 			`k='a[$(git commit)]'; declare -A x=([k]=1)`,
 			`k='a[$(git commit)]'; readonly -A x=([k]=1)`,
 			`k='a[$(git commit)]'; declare -gA x=([k]=1)`,
+			// Read as written, these mark the keys as strings, though getopt
+			// reads no `-A` option in the last two (none ran the commit).
+			`k='a[$(git commit)]'; declare -x"A" x=([k]=1)`,
+			`k='a[$(git commit)]'; declare -- -A x=([k]=1)`,
+			`k='a[$(git commit)]'; declare y=1 -A x=([k]=1)`,
 			"declare -a x=(a b c)",
 			"declare -a x=([0]=a [1]=b)",
 			"export x=(a b)",
@@ -2332,7 +2344,7 @@ const evaluatesText = (command: ShellCommand): boolean => {
 		...segment.words.map((word) => word.joined),
 		...segment.assignments.map((assignment) => assignment.joined),
 		...segment.redirections.map(({ target }) =>
-			target.kind === "heredoc" ? (target.quoted ? "" : target.body.replaceAll("\\\n", "")) : target.joined,
+			target.kind === "heredoc" ? (target.quoted ? "" : target.joined) : target.joined,
 		),
 	];
 	if (texts.some((text) => EVALUATES_A_NAME.test(text) || expandsASubscriptOverAName(text))) return true;
@@ -2345,10 +2357,17 @@ const evaluatesText = (command: ShellCommand): boolean => {
 	const base = name === undefined ? undefined : baseName(name);
 	if (base !== undefined && REFUSED_COMMANDS.has(base)) return true;
 	const args = command.args.map((word) => Option.getOrNull(word.literal));
-	const indexedKeyOverAName = command.args.some((word, i) => {
+	// An indexed array evaluates each key as arithmetic. Keys are strings only
+	// from the operand `associativeFrom` names: bash reads a `-…A…` word as
+	// written, so a quoted or expanded `-A` (`"-A"`, `\-A`, `$o`) leaves them
+	// arithmetic.
+	const builtin = Option.getOrUndefined(command.assignmentBuiltin);
+	const stringKeysFrom = builtin === undefined ? undefined : Option.getOrUndefined(builtin.associativeFrom);
+	const indexedKeyOverAName = command.args.some((word) => {
 		const value = arrayValue(word);
 		if (value === undefined || !subscriptOverAName(value)) return false;
-		return !args.slice(0, i).some((arg) => arg !== null && /^-[A-Za-z]*A/.test(arg));
+		const at = builtin?.operands.findIndex((operand) => operand.start === word.start) ?? -1;
+		return stringKeysFrom === undefined || at === -1 || at < stringKeysFrom;
 	});
 	// `-i` evaluates every value as arithmetic, and `-n` makes a nameref, in
 	// any spelling: bundled (`-ix`), after `--`, or as `+i`.

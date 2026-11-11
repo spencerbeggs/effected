@@ -9,6 +9,16 @@ import {
 	resolveAddress,
 } from "../src/internal/address.js";
 
+/**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
 describe("resolveAddress", () => {
 	it("path style for a custom endpoint, keeping its port and path", () => {
 		const address = resolveAddress({ bucket: "b", region: "auto", endpoint: "http://localhost:9000/base//" });
@@ -57,14 +67,14 @@ describe("resolveAddress", () => {
 	});
 
 	it("a long run of trailing slashes is stripped in linear time", () => {
-		const started = performance.now();
+		const started = cpuNow();
 		const address = resolveAddress({
 			bucket: "b",
 			region: "auto",
 			endpoint: `https://x.example/p${"/".repeat(50_000)}`,
 		});
 		assert.strictEqual(address.basePath, "/p");
-		assert.isBelow(performance.now() - started, 1000);
+		assert.isBelow(cpuNow() - started, 1000);
 	});
 
 	for (const [name, input] of [

@@ -84,6 +84,16 @@ const GUARD_REFUSED: ReadonlySet<string> = new Set([
 // slow hardware scale the calibration and the case together.
 
 /**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
+/**
  * A small input through the gfm table path — the heaviest machinery now that
  * the destination scan is capped: the suite's dominant cost is node
  * materialization, and this input is the "tables" case at 1/30th scale, so
@@ -101,9 +111,9 @@ const speedFactor = ((): number => {
 	// One warm-up pass so the measurement is not dominated by first-call
 	// compilation of the parse path.
 	parseBlocks(CALIBRATION_INPUT, "gfm");
-	const started = performance.now();
+	const started = cpuNow();
 	parseBlocks(CALIBRATION_INPUT, "gfm");
-	const elapsed = performance.now() - started;
+	const elapsed = cpuNow() - started;
 	return Math.min(Math.max(elapsed / CALIBRATION_BASELINE_MS, 1), 40);
 })();
 
@@ -118,7 +128,7 @@ describe("pathological inputs", () => {
 		it(
 			testCase.name,
 			() => {
-				const started = performance.now();
+				const started = cpuNow();
 				let caught: unknown;
 				let html = "";
 				try {
@@ -131,7 +141,7 @@ describe("pathological inputs", () => {
 				} catch (error) {
 					caught = error;
 				}
-				const elapsed = performance.now() - started;
+				const elapsed = cpuNow() - started;
 
 				// Termination first: a hang is the failure this suite exists to
 				// catch, and it is a failure whichever branch the case takes.
@@ -190,9 +200,9 @@ describe("pathological inputs", () => {
 				// of a quadratic parse is slow).
 				let best = Number.POSITIVE_INFINITY;
 				for (let pass = 0; pass < 5; pass += 1) {
-					const started = performance.now();
+					const started = cpuNow();
 					parseBlocks(input);
-					best = Math.min(best, performance.now() - started);
+					best = Math.min(best, cpuNow() - started);
 				}
 				return best;
 			};

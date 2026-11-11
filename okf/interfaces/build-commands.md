@@ -30,10 +30,10 @@ sources:
     resource: ../../packages/bundler/src/action/ActionBuilder.ts
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-08T23:02:51Z
+  at: 2026-11-10T21:32:36Z
 integrity:
   generated:
-    body: a3578ad2efc1ecb1
+    body: dfd0a2e5ee5e214b
 ---
 
 # The effected build commands: package build, action build and action init
@@ -70,7 +70,9 @@ Neither takes a path. The working directory is the package; in this repository r
 
 - **Exit 1** is `BuildFailedError`: the build crashed, or it finished having recorded an error.
 - **Exit 2** is `PackageConfigError`, carrying the engine's message, which names the file and key at fault: an `effected.toml` that will not load or decode, a plugin module that will not load, a directory with no readable `package.json`, or a config the bundler refuses before any work (`ConfigValidationError`).
-- **Exit 3** is `PackageRunError` for a file that could not be read or written. A journal that cannot be appended to also lands on exit 3, through the runtime's fallback.[^build-run]
+- **Exit 3** is `PackageRunError` for a file that could not be read or written, or for another build of the same package that held [the build lock](build-artifacts.md#the-build-lock) for the whole five-minute wait, named in the message. A journal that cannot be appended to also lands on exit 3, through the runtime's fallback.[^build-run]
+
+**Two builds of one package run one after the other.** While another build holds the lock, the command prints `waiting for another build of this package: process <pid>, building <cwd> since <time> (<lock file>)` on stderr and waits.
 
 Under `--format=json`, stdout holds exactly one `BuildRunResult` (`package`, `verdict`, `issues`, `report`, `config.sources`) and the human lines go to the log. For the CI audience the build's diagnostics are also printed as workflow annotations, on stderr under `--format=json` so that stdout stays one document. When `GITHUB_STEP_SUMMARY` is set, the summary is appended; that belongs to the CLI, so a `package_build` over MCP inside an Actions step does not write it.[^package-execute]
 
@@ -92,7 +94,7 @@ Under `--format=json`, stdout holds one `ActionRunResult` (`verdict`, `result`),
 
 **The command persists by default.** Unless `--no-persist` or `[action.persistLocal] enabled = false` says otherwise, a successful build also writes `.github/actions/local`, and `.actrc` and `.github/workflows/act-test.yml` when those two do not exist. A failed build or size check persists nothing, and an invalid action leaves `dist` as it was.[^action-builder]
 
-**The load check runs what it built.** Unless `[action.build] importCheck = false`, each bundle is imported in a fresh Node to prove it loads, which runs an action with no `GITHUB_ACTIONS` guard around its program for real.
+**The load check runs what it built.** Unless `[action.build] importCheck = false`, each bundle is imported in a fresh Node to prove it loads, which runs an action with no `GITHUB_ACTIONS` guard around its program for real. A worker that refuses to start at import by design sets `importCheck = false` in its own `[action.entries.workers.<name>]` table, which skips that bundle alone.
 
 An action build appends to no journal; the journals record package builds only.
 
@@ -133,7 +135,7 @@ The tools resolve `cwd` against the workspace root, refuse a `cwd` outside it on
 
 - **`action_build` never persists unless asked,** the opposite of the command's default. Only `persist: true` writes `.github/actions/local`, `.actrc` and `.github/workflows/act-test.yml`; otherwise it writes only `dist`.[^action-tool]
 - **`action_init` has no verdict.** It answers what it wrote. Everything exit 2 or 3 covers above is a refusal: an existing file without `force`, a conflict (a symbolic link, the wrong kind of entry), no `package.json`, or a missing or invalid name or description. The containment check covers `cwd`; within it, the command's own rule keeps every write inside `cwd`, so a committed link cannot carry a write past the workspace root. It takes no lane, because it writes sources and never `dist`.[^action-tool]
-- **Builds are serialized.** Both build tools take one shared lane with a 10-minute timeout. The timeout cannot stop a build, because the bundler's passes are promises nothing can abort: a timed-out build runs on while the next call holds the lane, and the refusal says to wait.[^package-tool]
+- **Builds are serialized.** Both build tools take one shared lane with a 10-minute timeout. The timeout cannot stop a build, because the bundler's passes are promises nothing can abort: a timed-out build runs on while the next call holds the lane, and the refusal says to wait.[^package-tool] Across processes, `package_build` also waits on [the build lock](build-artifacts.md#the-build-lock), so a call racing a terminal's build of the same package waits for it, and a wait that runs out is a refusal naming the lock file.
 - **A plugin cannot write the wire.** A plugin and the build tools run in the server's process, so a call runs with its stdout off the JSON-RPC stream.
 
 [^package-execute]: `packages/cli/src/commands/package/execute.ts`: the report, the annotations, the step summary and every exit code.

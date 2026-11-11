@@ -32,7 +32,7 @@ sources:
     resource: ../../packages/workspaces/src/internal/packageManagerDecision.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T01:55:28Z
+  at: 2026-11-10T21:32:53Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:49.503Z
@@ -42,13 +42,15 @@ verified:
     at: 2026-10-29T00:43:21Z
   - by: human:spencer
     at: 2026-11-06T01:54:11Z
+  - by: human:spencer
+    at: 2026-11-10T23:42:17Z
 integrity:
   generated:
-    body: 52c050b4a15a1bf2
+    body: 978d562091bd495c
   verified:
     by: human:spencer
-    at: 2026-11-06T01:54:11Z
-    content: 8d1725604ef104f2
+    at: 2026-11-10T23:42:17Z
+    content: 62ff422630a335cf
 ---
 
 # @effected/workspaces discovery and detection
@@ -143,7 +145,13 @@ because re-running discovery is cheap.[^workspace-package-ts]
 totality pairs with an `onSkip` diagnostic (`WorkspaceDiscoverySkip`, whose
 `kind` is the `WorkspaceDiscoveryError` vocabulary minus `invalidYaml`,
 which describes the `pnpm-workspace.yaml` read rather than a manifest) so a
-skip is never silent.
+skip is never silent. Two inputs throw instead, because each loses every pattern at once and an
+empty or fallback answer would read as "no packages": a pattern source that
+exists but cannot be read or parsed (`pnpm-workspace.yaml`, or the root
+`package.json` in its absence) throws the `WorkspaceDiscoveryError` (kind
+`read`, `invalidYaml` or `invalidJson`), and a `packages:` set that does not compile as
+one `GlobSet` throws the `WorkspacePatternError` (kind `uncompilable`) —
+each the error `WorkspaceDiscovery` fails with on that root (#1292).
 
 ## Root finding and discovery
 

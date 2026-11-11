@@ -22,6 +22,16 @@ import { MemoryFileSystem } from "../../src/index.js";
 import { readSeedDirectory, readSeedFile } from "../../src/NodeDirectorySeed.js";
 import { NodeDirectorySeed } from "../../src/NodeSyncFileSystem.js";
 
+/**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
 let base: string;
 const fresh = (name: string): string => {
 	const dir = join(base, name);
@@ -106,9 +116,9 @@ describe("NodeDirectorySeed.read — what is copied", () => {
 		// A run of slashes that is not trailing: an end-anchored `/\/+$/` rescans
 		// the run from every start position.
 		const mountAt = `/${"/".repeat(1 << 16)}m`;
-		const start = performance.now();
+		const start = cpuNow();
 		const seed = NodeDirectorySeed.read(join(tree, "empty"), { mountAt });
-		assert.isBelow(performance.now() - start, 500);
+		assert.isBelow(cpuNow() - start, 500);
 		assert.deepStrictEqual(Object.keys(seed), [mountAt]);
 	});
 

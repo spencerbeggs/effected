@@ -111,8 +111,8 @@ export class ActionBuilder {
 	 * It writes nothing to stdout; rendering belongs to the caller. A step that fails stops the ones after it, so an
 	 * invalid action leaves `dist` as it was, and a failed build or size check persists nothing. In strict mode, set
 	 * by `validation.strict` or else by running under CI, a warning fails like an error. With `validate` false, neither
-	 * validation nor the size check runs. `build.importCheck` alone decides whether each bundle is imported to prove it
-	 * loads, per {@link ActionBundle.build}.
+	 * validation nor the size check runs. `build.importCheck` and a worker's own `importCheck` alone decide whether each
+	 * bundle is imported to prove it loads, per {@link ActionBundle.build}.
 	 *
 	 * Validation and persisting go through the provided `FileSystem`, while bundling always works on the real disk,
 	 * because rolldown does. A memory filesystem therefore suits {@link ActionValidation} and {@link PersistLocal} tests,

@@ -37,6 +37,8 @@ import {
 	Predicate,
 	Schema,
 } from "effect";
+import type { BuildLockHolder, BuildLockOptions, BuildLockTimeoutError } from "./BuildLock.js";
+import { acquireBuildLock, buildLockPath } from "./BuildLock.js";
 import { BuildRunResult } from "./BuildRunResult.js";
 
 /**
@@ -72,12 +74,19 @@ export interface BuildRunInput {
  *
  * @remarks
  * `PassDone` is read from the report once the bundler returns, so a front end gets them together rather than as
- * each pass ends. A crashed build reports the passes it recorded before the crash.
+ * each pass ends. A crashed build reports the passes it recorded before the crash. `Waiting` comes at most once, before
+ * the build starts, when another build of the same package holds its lock; `holder` is absent when the lock file
+ * could not be read.
  *
  * @public
  */
 export type BuildProgress =
 	| { readonly _tag: "Started"; readonly package: string; readonly config: ResolvedEffectedConfig }
+	| {
+			readonly _tag: "Waiting";
+			readonly lockPath: string;
+			readonly holder: Option.Option<BuildLockHolder>;
+	  }
 	| { readonly _tag: "PassDone"; readonly pass: PassReport["id"]; readonly group: string }
 	| { readonly _tag: "Done"; readonly issues: BuildIssues };
 
@@ -97,8 +106,10 @@ export interface BuildRunDeps {
 	readonly seams?: Partial<BundlerSeams>;
 	/** The journals' watcher; omitted, `NodeJournalWatcher.layer`. */
 	readonly journalWatcher?: Layer.Layer<JournalWatcher>;
-	/** Told when the build starts, of each pass and when it is done. */
+	/** Told when the build starts, of each pass and when it is done, and when it waits for another build. */
 	readonly onProgress?: (event: BuildProgress) => Effect.Effect<void>;
+	/** How the build waits for another build of the same package; omitted, five minutes and the host's process. */
+	readonly lock?: BuildLockOptions;
 }
 
 /** The name in the directory's `package.json`, or why it is not a package. */
@@ -187,7 +198,12 @@ const readIssues = Effect.fnUntraced(function* (outcome: BuildOutcome, packageNa
  * A build that crashes or records an error is a `failed` verdict rather than a failure, so a front end can always
  * show the report and the journals always get an envelope. The error channel holds a run that could not start or
  * record: no `package.json`, a config or plugin that will not load, a config the bundler rejects before any build
- * work, and a journal that cannot be written.
+ * work, a journal that cannot be written, and another build of the same package that held its lock for the whole
+ * wait ({@link BuildLockTimeoutError}).
+ *
+ * From before the bundler cleans `dist` until the journals have the answer, the build holds the package's lock,
+ * `<root>/.cache/effected/locks/<name>.lock`, so two builds of one package in one tree run one after the other rather
+ * than writing the same `dist/prod`.
  *
  * @public
  */
@@ -204,6 +220,7 @@ export class BuildRun {
 		| NotAPackageError
 		| ConfigValidationError
 		| AppendError
+		| BuildLockTimeoutError
 		| PlatformError.PlatformError,
 		FileSystem.FileSystem | Path.Path
 	> = Effect.fn("BuildRun.run")(function* (input: BuildRunInput, deps: BuildRunDeps) {
@@ -221,49 +238,57 @@ export class BuildRun {
 			modules: build.plugins,
 			...(deps.importModule !== undefined ? { importModule: deps.importModule } : {}),
 		});
-		yield* onProgress?.({ _tag: "Started", package: packageName, config: resolved }) ?? Effect.void;
+		const lockPath = buildLockPath(pathService, root, packageName);
+		const { outcome, issues } = yield* Effect.scoped(
+			Effect.gen(function* () {
+				yield* acquireBuildLock(lockPath, cwd, deps.lock, (holder) =>
+					onProgress !== undefined ? onProgress({ _tag: "Waiting", lockPath, holder }) : Effect.void,
+				);
+				yield* onProgress?.({ _tag: "Started", package: packageName, config: resolved }) ?? Effect.void;
+				const startedAt = DateTime.toEpochMillis(yield* DateTime.now);
+				const outcome: BuildOutcome = yield* Bundler.build({
+					cwd,
+					config: build,
+					bundle,
+					noExe: input.noExe,
+					verbose: input.verbose,
+					plugins,
+					ci: deps.ci,
+					...(deps.seams !== undefined ? { seams: deps.seams } : {}),
+				}).pipe(
+					Effect.map(
+						(result): BuildOutcome => ({
+							report: result.report,
+							issuesPath: result.issuesPath,
+							crash: Option.none(),
+						}),
+					),
+					Effect.catchTag("BundlerError", (error) =>
+						Effect.succeed<BuildOutcome>({
+							report: error.report,
+							issuesPath: pathService.join(cwd, "dist", "prod", "issues.json"),
+							crash: Option.some({ name: error.name, message: error.message }),
+						}),
+					),
+				);
 
-		const startedAt = DateTime.toEpochMillis(yield* DateTime.now);
-		const outcome: BuildOutcome = yield* Bundler.build({
-			cwd,
-			config: build,
-			bundle,
-			noExe: input.noExe,
-			verbose: input.verbose,
-			plugins,
-			ci: deps.ci,
-			...(deps.seams !== undefined ? { seams: deps.seams } : {}),
-		}).pipe(
-			Effect.map(
-				(result): BuildOutcome => ({
-					report: result.report,
-					issuesPath: result.issuesPath,
-					crash: Option.none(),
-				}),
-			),
-			Effect.catchTag("BundlerError", (error) =>
-				Effect.succeed<BuildOutcome>({
-					report: error.report,
-					issuesPath: pathService.join(cwd, "dist", "prod", "issues.json"),
-					crash: Option.some({ name: error.name, message: error.message }),
-				}),
-			),
-		);
-
-		if (onProgress !== undefined) {
-			for (const group of outcome.report.targetGroups) {
-				for (const pass of group.passes) {
-					yield* onProgress({ _tag: "PassDone", pass: pass.id, group: group.id });
+				if (onProgress !== undefined) {
+					for (const group of outcome.report.targetGroups) {
+						for (const pass of group.passes) {
+							yield* onProgress({ _tag: "PassDone", pass: pass.id, group: group.id });
+						}
+					}
 				}
-			}
-		}
 
-		const issues = yield* readIssues(outcome, packageName, startedAt);
-		const journals = Layer.mergeAll(BuildJournal.layerAt(root), IssueJournal.layerAt(root)).pipe(
-			Layer.provide(deps.journalWatcher ?? NodeJournalWatcher.layer),
+				const issues = yield* readIssues(outcome, packageName, startedAt);
+				const journals = Layer.mergeAll(BuildJournal.layerAt(root), IssueJournal.layerAt(root)).pipe(
+					Layer.provide(deps.journalWatcher ?? NodeJournalWatcher.layer),
+				);
+				yield* BuildJournal.record(issues, cwd).pipe(Effect.provide(journals));
+				yield* onProgress?.({ _tag: "Done", issues }) ?? Effect.void;
+				return { outcome, issues };
+			}),
 		);
-		yield* BuildJournal.record(issues, cwd).pipe(Effect.provide(journals));
-		yield* onProgress?.({ _tag: "Done", issues }) ?? Effect.void;
 
 		return BuildRunResult.make({
 			package: packageName,

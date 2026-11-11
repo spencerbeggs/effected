@@ -144,6 +144,39 @@ describe("package_build", () => {
 		}).pipe(Effect.scoped),
 	);
 
+	it.effect("an ENOENT on a meta file is the verdict failed, though no error was recorded (#1291)", () =>
+		Effect.gen(function* () {
+			const { harness } = yield* serve({
+				seams: {
+					runMetaPass: async () => {
+						throw Object.assign(new Error("ENOENT: no such file or directory, open 'meta/a.api.json'"), {
+							code: "ENOENT",
+						});
+					},
+				},
+			});
+			const result = resultOf(yield* harness.callTool("package_build", {}));
+			assert.strictEqual(result.isError ?? false, false, textOf(result));
+			assert.strictEqual(result.structuredContent?.verdict, "failed");
+			assert.strictEqual(result.structuredContent?.issues?.buildOk, false);
+			assert.include(result.structuredContent?.issues?.failure?.message ?? "", "ENOENT");
+		}).pipe(Effect.scoped),
+	);
+
+	it.effect("another build holding the lock for the whole wait is a refusal naming the lock file", () =>
+		Effect.gen(function* () {
+			const lock = JSON.stringify({ pid: 300, startedAt: "2026-11-10T12:00:00.000Z", cwd: CWD });
+			const { harness } = yield* serve({
+				seed: { ...workspace, [`${ROOT}/.cache/effected/locks/@scope+a.lock`]: lock },
+				tool: { lock: { pid: 100, isAlive: () => true, timeout: 0 } },
+			});
+			const result = resultOf(yield* harness.callTool("package_build", {}));
+			assert.isTrue(result.isError, textOf(result));
+			assert.include(textOf(result), "process 300");
+			assert.include(textOf(result), "locks/@scope+a.lock");
+		}).pipe(Effect.scoped),
+	);
+
 	it.effect("a cwd outside the workspace root is refused before anything runs", () =>
 		Effect.gen(function* () {
 			let builds = 0;

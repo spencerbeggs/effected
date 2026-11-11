@@ -189,6 +189,12 @@ describe("ActionValidation.validate", () => {
 				{ entries: { workers: { silk: "src/silk.ts" } } },
 			);
 			assert.deepStrictEqual(present.errors, []);
+
+			const table = yield* validate(good, {
+				entries: { workers: { silk: { source: "src/silk.ts", importCheck: false } } },
+			});
+			assert.deepStrictEqual(codes(table.errors), ["WORKER_ENTRY_MISSING"]);
+			assert.strictEqual(table.errors[0]?.file, "src/silk.ts");
 		}),
 	);
 

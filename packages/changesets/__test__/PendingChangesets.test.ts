@@ -3,6 +3,16 @@ import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, PlatformError, Result } from "effect";
 import { PendingChangesets } from "../src/PendingChangesets.js";
 
+/**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
 const change = (pkg: string, bump: string, text: string): string => `---\n"${pkg}": ${bump}\n---\n\n${text}\n`;
 
 const Populated = MemoryFileSystem.layerWithPath({
@@ -167,9 +177,9 @@ it("readSync reads the same directory whatever trailing separators the root carr
 it("readSync trims a long run of separators in linear time", () => {
 	// A run that does not end the string is the backtracking case for a `[\\/]+$` trim.
 	const root = `/r${"/".repeat(100_000)}x`;
-	const started = performance.now();
+	const started = cpuNow();
 	const result = PendingChangesets.readSync(root);
-	const elapsed = performance.now() - started;
+	const elapsed = cpuNow() - started;
 	// On this host the path is past the OS limit, so the read fails; a host or a trim that
 	// collapsed the run would answer an empty list instead. Either is fine: what matters is
 	// that the answer comes fast, and that it is an answer, not a throw.

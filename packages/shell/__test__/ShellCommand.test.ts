@@ -191,3 +191,117 @@ describe("ShellScript.commands", () => {
 		);
 	});
 });
+
+// Option reading is `internal_getopt`'s, and `associativeFrom` is
+// `fix_assignment_words`', each checked against GNU bash 5.3.20.
+describe("ShellCommand.assignmentBuiltin", () => {
+	const view = (input: string) => {
+		// The first segment that is an assignment builtin: `if declare …; then :; fi` ends in `fi`.
+		const found = Option.firstSomeOf(
+			ShellSyntax.parse(input).segments.map((segment) => ShellCommand.fromSegment(segment).assignmentBuiltin),
+		);
+		return Option.map(found, (b) => ({
+			builtin: b.builtin,
+			options: b.options.map((w) => w.raw),
+			operands: b.operands.map((w) => w.raw),
+			resolved: b.resolved,
+			associativeFrom: Option.getOrNull(b.associativeFrom),
+		}));
+	};
+	const some = (input: string) => Option.getOrThrow(view(input));
+
+	it("is None for any other command, a non-literal name, or a path", () => {
+		for (const input of ["git commit", "echo declare -i x", "$d -i x=1", "/bin/export x=1", "declare=1", "FOO=1"]) {
+			assert.isTrue(Option.isNone(view(input)), input);
+		}
+	});
+
+	it("splits options from operands where getopt stops, for each of the five builtins", () => {
+		for (const builtin of ["declare", "typeset", "local", "export", "readonly"] as const) {
+			assert.deepStrictEqual(
+				some(`${builtin} -a -x y=1 z`),
+				{ builtin, options: ["-a", "-x"], operands: ["y=1", "z"], resolved: true, associativeFrom: null },
+				builtin,
+			);
+		}
+		// Bundled options are one word; `--` ends the options and is in neither list.
+		assert.deepStrictEqual(some("declare -ix -- -a y=1"), {
+			builtin: "declare",
+			options: ["-ix"],
+			operands: ["-a", "y=1"],
+			resolved: true,
+			associativeFrom: null,
+		});
+		// The first operand ends them: `declare y=1 -i` assigns y and rejects `-i` as a name.
+		assert.deepStrictEqual(some("declare y=1 -i").operands, ["y=1", "-i"]);
+		// A lone `-` is an operand, and so is everything after it.
+		assert.deepStrictEqual(some("declare - -i y").options, []);
+	});
+
+	it("reads an option after quote removal, as getopt sees it", () => {
+		assert.deepStrictEqual(some(`declare "-i" '-x' \\-a y`).options, [`"-i"`, `'-x'`, "\\-a"]);
+	});
+
+	it("reads +options for declare, typeset and local, but not export or readonly", () => {
+		assert.deepStrictEqual(some("declare +i -a y").options, ["+i", "-a"]);
+		assert.deepStrictEqual(some("local +x y").options, ["+x"]);
+		// `export +x y=1` reports `+x` as not a valid identifier.
+		assert.deepStrictEqual(some("export +x -a y").options, []);
+		assert.deepStrictEqual(some("readonly +x y").operands, ["+x", "y"]);
+	});
+
+	it("is unresolved from the first word in option position that may expand to an option", () => {
+		// `o=-i; declare $o y=2+3` makes y an integer; an empty `$o` vanishes.
+		assert.deepStrictEqual(some(`declare -x "$o" -i y`), {
+			builtin: "declare",
+			options: ["-x"],
+			operands: [`"$o"`, "-i", "y"],
+			resolved: false,
+			associativeFrom: null,
+		});
+		assert.isFalse(some("declare -[i] y").resolved);
+		assert.isFalse(some("declare -{i,x} y").resolved);
+		// Past the options, an expansion is an operand like any other.
+		assert.isTrue(some("declare y=1 $o").resolved);
+	});
+
+	it("is read through the wrappers that run a builtin", () => {
+		assert.deepStrictEqual(some("command declare -i y=1").options, ["-i"]);
+	});
+
+	it("marks string keys from the operand after a word whose text starts - and holds an A", () => {
+		// bash reads the word as written, before quote removal, whatever getopt makes of it.
+		for (const [input, from] of [
+			["declare -A y=([k]=1)", 0],
+			["declare -xA y=([k]=1)", 0],
+			['declare -x"A" y=([k]=1)', 0],
+			// `-x$A` may expand, so it is unresolved and the first operand.
+			["declare -x$A y=([k]=1)", 1],
+			["declare -\\\nA y=([k]=1)", 0],
+			["declare -- -A y=([k]=1)", 1],
+			["declare x=1 -A y=([k]=1)", 2],
+			["declare y=([k]=1) -A z=([k]=1)", 2],
+			["declare -Ax y=([k]=1) -a z=([k]=1)", 0],
+			["FOO=1 declare -A y=([k]=1)", 0],
+			["if declare -A y=([k]=1); then :; fi", 0],
+		] as const) {
+			assert.strictEqual(some(input).associativeFrom, from, input);
+		}
+	});
+
+	it("marks no string keys for a quoted, escaped or expanded -A, a +A, or a trailing one", () => {
+		// Each of these ran the key's `$(cmd)` under bash 5.3.
+		for (const input of [
+			'declare "-A" y=([k]=1)',
+			"declare \\-A y=([k]=1)",
+			"declare $o y=([k]=1)",
+			"declare +A y=([k]=1)",
+			"declare y=([k]=1) -A",
+			"declare -a y=([k]=1)",
+			"command declare -A y",
+			"\\declare -A y",
+		]) {
+			assert.isNull(some(input).associativeFrom, input);
+		}
+	});
+});

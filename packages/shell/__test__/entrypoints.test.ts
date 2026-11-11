@@ -57,6 +57,7 @@ describe("@effected/shell tier", () => {
 			"ShellAnsiCPart",
 			"ShellArithmeticPart",
 			"ShellAssignment",
+			"ShellAssignmentBuiltin",
 			"ShellBarePart",
 			"ShellBracePart",
 			"ShellCommand",

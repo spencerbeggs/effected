@@ -13,19 +13,21 @@ sources:
     resource: ../../packages/workspaces/src/node-sync.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-25T19:59:29Z
+  at: 2026-11-10T21:32:53Z
 integrity:
   generated:
-    body: e963599e3c4930f5
+    body: ceb04821476e2594
   verified:
     by: human:spencer
-    at: 2026-10-25T20:04:29Z
-    content: ce61c43451635c4f
+    at: 2026-11-10T23:42:08Z
+    content: 0c577b7029b89e16
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
   - by: human:spencer
     at: 2026-10-25T20:04:29Z
+  - by: human:spencer
+    at: 2026-11-10T23:42:08Z
 ---
 
 # WorkspacesSync is a `*Sync` escape hatch, not a `*Result` pure form
@@ -60,10 +62,15 @@ The `*Result`/`Effect` pairing elsewhere in the kit names two forms of the
 *same pure computation* — a synchronous `Result`-returning function and an
 `Effect`-wrapped async twin over the identical logic, with the sync form
 holding no privileged claim to a platform. `WorkspacesSync` is a different
-shape entirely: it is total (`getWorkspacePackagesSync` has no error
-channel at all, reporting failure only through an optional `onSkip`
-callback, while the members with no partial answer to degrade to return a
-`Result` carrying the Effect surface's own errors), it takes its platform
+shape entirely: it is total over data with a partial answer
+(`getWorkspacePackagesSync` has no error channel, reporting a skipped
+manifest through an optional `onSkip` callback and throwing the Effect
+surface's own error only when its pattern list is lost — a pattern source
+(`pnpm-workspace.yaml`, or the root `package.json` in its absence) that
+exists but cannot be read or parsed, or a pattern set that does not
+compile — which leaves no partial answer; the members with no partial answer
+to degrade to return a `Result` carrying the Effect surface's own errors),
+it takes its platform
 from the caller rather than being
 platform-free, and it exists specifically *because* the async Effect form
 cannot run in the calling context — not as an interchangeable alternative

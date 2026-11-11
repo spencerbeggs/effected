@@ -27,10 +27,10 @@ sources:
     resource: "@savvy-web/pnpm-plugin-silk 0.52.0 pnpmfile.mjs, the build catalog and the tsdown>rolldown-plugin-dts override"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-10T04:40:05Z
+  at: 2026-11-10T21:32:01Z
 integrity:
   generated:
-    body: 131af9b8d963f5f1
+    body: d4ffe27d2ede6283
 ---
 
 # The plugin declares a second consumer-visible catalog, effected:build, for the kit's build chain
@@ -58,7 +58,7 @@ Each range, peer and strategy was copied from silk's `build` catalog as installe
 
 - **`minimumReleaseAgeExclude`** gains:
   - `@effected/*`, so a kit release installs the day it ships;
-  - three patterns for the chain's lockstep satellites: `@rolldown/*` (rolldown's platform bindings), `@oxc-project/*` (`@oxc-project/types`, which rolldown pins exactly) and `@typescript/*` (TypeScript 7's native platform packages);
+  - four patterns for the chain's lockstep satellites: `@rolldown/*` (rolldown's platform bindings), `@oxc-project/*` (`@oxc-project/types`, which rolldown pins exactly), `@typescript/*` (TypeScript 7's native platform packages) and `@rspack/*` (`@rspack/core` and its native bindings, which `@rsbuild/core` depends on and publishes in lockstep with);
   - every package the `effected:build` catalog names (`tsdown`, `rolldown`, `rolldown-plugin-dts`, `@tsdown/*`, `@rsbuild/*`, `typescript`, `tsx`, `@types/node`, React and its types).
 
   The catalog pins those and moves them only through a deliberate `pnpm:up`. A quarantine on that move only blocks the upgrade it was chosen for, as it held rolldown 1.3.1. That is the owner's ruling.

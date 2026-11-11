@@ -39,6 +39,16 @@ const roundTrip = (markdown: string, dialect: Dialect): { before: string; after:
 	};
 };
 
+/**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
 const runCorpus = (
 	name: string,
 	examples: ReadonlyArray<SpecExample>,
@@ -86,13 +96,13 @@ describe("stringify cost", () => {
 		const warm = parseBlocks(input, "gfm").root;
 		stringifyTree(warm);
 
-		const parseStart = performance.now();
+		const parseStart = cpuNow();
 		const tree = parseBlocks(input, "gfm").root;
-		const parseMs = performance.now() - parseStart;
+		const parseMs = cpuNow() - parseStart;
 
-		const stringifyStart = performance.now();
+		const stringifyStart = cpuNow();
 		const emitted = stringifyTree(tree);
-		const stringifyMs = performance.now() - stringifyStart;
+		const stringifyMs = cpuNow() - stringifyStart;
 
 		assert.isAbove(emitted.length, input.length / 2);
 		// The flag would bind if serialization cost rivaled parse cost (which

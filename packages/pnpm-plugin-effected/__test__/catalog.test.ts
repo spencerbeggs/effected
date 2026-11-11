@@ -487,6 +487,7 @@ describe("settings that came with the build chain", () => {
 		"@rolldown/*",
 		"@typescript/*",
 		"@rsbuild/*",
+		"@rspack/*",
 		"@tsdown/*",
 		"@types/node",
 		"@types/react",

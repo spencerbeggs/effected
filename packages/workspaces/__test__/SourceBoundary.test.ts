@@ -7,6 +7,16 @@ import { assert, describe, it } from "@effect/vitest";
 import type { BoundaryRule, OffenceRule } from "../src/testing.js";
 import { SourceBoundary } from "../src/testing.js";
 
+/**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
 const lines = (text: string, rule: BoundaryRule): ReadonlyArray<number> =>
 	SourceBoundary.check("fixture.ts", text, [rule]).map((offence) => offence.line);
 
@@ -215,10 +225,10 @@ describe("SourceBoundary.check", () => {
 
 		it("stays linear on a long run of whitespace after a binding's =", () => {
 			const text = `const lane =${"\t".repeat(200_000)}x;`;
-			const started = performance.now();
+			const started = cpuNow();
 			assert.deepStrictEqual(details(text), []);
 			// The quadratic form took about 19 seconds here, so this bound leaves room for a slow runner.
-			assert.isBelow(performance.now() - started, 2_000);
+			assert.isBelow(cpuNow() - started, 2_000);
 		});
 
 		it("still finds a lane bound across lines, with or without yield* or await", () => {

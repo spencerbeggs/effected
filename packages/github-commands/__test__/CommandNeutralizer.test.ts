@@ -2,6 +2,16 @@ import { assert, describe, it } from "@effect/vitest";
 import { CommandNeutralizer } from "../src/index.js";
 import { LINE_BREAK, commandLines, isCommand } from "./helpers/runnerCommands.js";
 
+/**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
 const ZWSP = String.fromCodePoint(0x200b);
 /** The marker: U+2800 BRAILLE PATTERN BLANK. */
 const MARK = String.fromCodePoint(0x2800);
@@ -153,9 +163,9 @@ describe("CommandNeutralizer: matching is linear, so a hostile line cannot stall
 	const BUDGET_MS = 1000;
 
 	const timed = (text: string): { readonly out: string; readonly ms: number } => {
-		const start = performance.now();
+		const start = cpuNow();
 		const out = CommandNeutralizer.text(text);
-		return { out, ms: performance.now() - start };
+		return { out, ms: cpuNow() - start };
 	};
 
 	it("a long run of BOMs (both whitespace and a format character) with no command is returned unchanged, fast", () => {

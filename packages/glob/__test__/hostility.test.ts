@@ -34,6 +34,16 @@ const reasonOf = (fn: () => unknown): string => {
 	throw new Error("expected a GuardExceeded throw");
 };
 
+/**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
 describe("hostility: pattern length", () => {
 	it("rejects a pattern past 64KB typed, with limit and actual populated", () => {
 		try {
@@ -109,9 +119,9 @@ describe("hostility: brace expansion", () => {
 		const rewrites = (n: number): string => `{a}${"}".repeat(n)},z}`;
 		assert.deepStrictEqual(expand(rewrites(999)), [`a${"}".repeat(1000)}`, "z"]);
 		assert.deepStrictEqual(expand(rewrites(1000)), [rewrites(1000)]);
-		const t = performance.now();
+		const t = cpuNow();
 		assert.deepStrictEqual(expand(rewrites(65_000)), [rewrites(65_000)]);
-		assert.isBelow(performance.now() - t, 1000);
+		assert.isBelow(cpuNow() - t, 1000);
 	});
 
 	it("shares one {a},b} rewrite count across a chain of groups, as upstream", () => {
@@ -136,9 +146,9 @@ describe("hostility: brace expansion", () => {
 		// 63,744 bytes: upstream stops rewriting after the second group and keeps
 		// the rest literal, so this compiles quickly instead of failing typed.
 		const long = S(990).repeat(64);
-		const t = performance.now();
+		const t = cpuNow();
 		assert.deepStrictEqual(expand(long), oracle.braceExpand(long));
-		assert.isBelow(performance.now() - t, 500);
+		assert.isBelow(cpuNow() - t, 500);
 	});
 
 	it("shortcuts the CVE-2022-3517 non-closing brace prefix fast", () => {
@@ -204,9 +214,9 @@ describe("hostility: optimizationLevel 2 **/.. splitting (GHSA-g3hv-75wg-m249)",
 	const compileMs = (pattern: string): number => {
 		let best = Number.POSITIVE_INFINITY;
 		for (let i = 0; i < 3; i++) {
-			const t = performance.now();
+			const t = cpuNow();
 			new Minimatch(pattern, level2);
-			best = Math.min(best, performance.now() - t);
+			best = Math.min(best, cpuNow() - t);
 		}
 		return best;
 	};
@@ -245,12 +255,12 @@ describe("hostility: optimizationLevel 2 **/.. splitting (GHSA-g3hv-75wg-m249)",
 
 	it("fails typed fast on 2^17 rows at default options, never hanging", () => {
 		// Unbounded, this took hours. Whichever bound trips first, it fails typed.
-		const t = performance.now();
+		const t = cpuNow();
 		assert.strictEqual(
 			reasonOf(() => new Minimatch(splits(17), level2)),
 			"ExpansionBudgetExceeded",
 		);
-		assert.isBelow(performance.now() - t, 1000);
+		assert.isBelow(cpuNow() - t, 1000);
 	});
 
 	it("grows compile time about linearly in the rows the split makes", () => {
@@ -283,12 +293,12 @@ describe("hostility: internal cap wiring", () => {
 const growth = (make: (n: number) => () => unknown, from: number, to: number, bound: number): number => {
 	const sample = (run: () => unknown): number => {
 		let reps = 0;
-		const t = performance.now();
+		const t = cpuNow();
 		let elapsed = 0;
 		while (elapsed < 5) {
 			run();
 			reps++;
-			elapsed = performance.now() - t;
+			elapsed = cpuNow() - t;
 		}
 		return elapsed / reps;
 	};
@@ -312,9 +322,9 @@ const growth = (make: (n: number) => () => unknown, from: number, to: number, bo
 const fastest = (run: () => unknown, bound: number): number => {
 	let best = Number.POSITIVE_INFINITY;
 	for (let i = 0; i < 3 && best >= bound; i++) {
-		const t = performance.now();
+		const t = cpuNow();
 		run();
-		best = Math.min(best, performance.now() - t);
+		best = Math.min(best, cpuNow() - t);
 	}
 	return best;
 };

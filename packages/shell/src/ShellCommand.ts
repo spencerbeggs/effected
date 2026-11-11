@@ -5,6 +5,8 @@
 
 import { Option, Schema } from "effect";
 import { SHELL_RESERVED_WORDS, removeContinuations } from "./internal/raw.js";
+import type { ShellAssignmentBuiltin } from "./ShellAssignmentBuiltin.js";
+import { readAssignmentBuiltin } from "./ShellAssignmentBuiltin.js";
 import { ShellSegment } from "./ShellSegment.js";
 import { ShellWord } from "./ShellWord.js";
 
@@ -577,6 +579,39 @@ export class ShellCommand extends Schema.Class<ShellCommand>("ShellCommand")({
 	 * are reported as `for` and `case`.
 	 */
 	static readonly reservedWords: ReadonlyArray<string> = SHELL_RESERVED_WORDS;
+
+	/**
+	 * The command as an assignment builtin, `declare`, `typeset`, `local`,
+	 * `export` or `readonly`: its `args` split into options and operands as
+	 * bash reads them, and where its array values' keys become strings.
+	 *
+	 * @remarks
+	 * `Some` when `name` is exactly one of the five, wrapped or not (a path
+	 * such as `/bin/export` names no builtin), and `None` otherwise. Read the
+	 * options from it rather than from `args`: `declare y=1 -i` has no `-i`
+	 * option, and a word that may expand to one leaves `resolved` `false`.
+	 * Read the keys from `associativeFrom`, never from the options: bash
+	 * marks them from the words as written, so `declare -- -A x=([k]=1)`
+	 * keeps `k` a string while `declare "-A" x=([k]=1)` evaluates it as
+	 * arithmetic. See {@link ShellAssignmentBuiltin}.
+	 *
+	 * @example
+	 * ```ts
+	 * import { ShellCommand, ShellSyntax } from "@effected/shell";
+	 * import { Option } from "effect";
+	 *
+	 * const [segment] = ShellSyntax.parse("declare -ix -- -A y=1").segments;
+	 * const view = Option.getOrThrow(ShellCommand.fromSegment(segment!).assignmentBuiltin);
+	 * console.log(view.options.map((w) => w.raw), view.operands.map((w) => w.raw), view.associativeFrom);
+	 * // => [ '-ix' ] [ '-A', 'y=1' ] { _id: 'Option', _tag: 'Some', value: 1 }
+	 * ```
+	 */
+	get assignmentBuiltin(): Option.Option<ShellAssignmentBuiltin> {
+		if (Option.isNone(this.name)) return Option.none();
+		const words = this.segment.words;
+		const word = words[words.length - this.args.length - 1];
+		return readAssignmentBuiltin(this.name.value, word, this.args, this.wrappers.length > 0);
+	}
 
 	/**
 	 * Resolve the command a segment runs.

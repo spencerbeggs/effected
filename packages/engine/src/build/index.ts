@@ -29,6 +29,7 @@ export {
 } from "./ActionInit.js";
 export { ActionRun, type ActionRunDeps, type ActionRunInput, NotAnActionError } from "./ActionRun.js";
 export { ActionRunResult } from "./ActionRunResult.js";
+export { BuildLockHolder, type BuildLockOptions, BuildLockTimeoutError } from "./BuildLock.js";
 export {
 	type BuildProgress,
 	BuildRun,

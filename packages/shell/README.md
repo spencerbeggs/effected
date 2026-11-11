@@ -166,7 +166,7 @@ const evaluatesText = (command: ShellCommand): boolean => {
     ...segment.words.map((word) => word.joined),
     ...segment.assignments.map((assignment) => assignment.joined),
     ...segment.redirections.map(({ target }) =>
-      target.kind === "heredoc" ? (target.quoted ? "" : target.body.replaceAll("\\\n", "")) : target.joined,
+      target.kind === "heredoc" ? (target.quoted ? "" : target.joined) : target.joined,
     ),
   ];
   if (texts.some((text) => EVALUATES_A_NAME.test(text) || expandsASubscriptOverAName(text))) return true;
@@ -180,11 +180,16 @@ const evaluatesText = (command: ShellCommand): boolean => {
   if (base !== undefined && REFUSED_COMMANDS.has(base)) return true;
   const args = command.args.map((word) => Option.getOrNull(word.literal));
   // An indexed array evaluates each key as arithmetic, so `declare -a x=([k]=1)`
-  // runs what `k` holds; an `-A` before the value makes the keys strings.
-  const indexedKeyOverAName = command.args.some((word, i) => {
+  // runs what `k` holds. Keys are strings only from the operand
+  // `associativeFrom` names: bash reads the `-A` as written, so a quoted or
+  // expanded one (`"-A"`, `\-A`, `$o`) leaves them arithmetic.
+  const builtin = Option.getOrUndefined(command.assignmentBuiltin);
+  const stringKeysFrom = builtin === undefined ? undefined : Option.getOrUndefined(builtin.associativeFrom);
+  const indexedKeyOverAName = command.args.some((word) => {
     const value = arrayValue(word);
     if (value === undefined || !subscriptOverAName(value)) return false;
-    return !args.slice(0, i).some((arg) => arg !== null && /^-[A-Za-z]*A/.test(arg));
+    const at = builtin?.operands.findIndex((operand) => operand.start === word.start) ?? -1;
+    return stringKeysFrom === undefined || at === -1 || at < stringKeysFrom;
   });
   // `-i` evaluates every value as arithmetic, and `-n` makes a nameref, in
   // any spelling: bundled (`-ix`), after `--`, or as `+i`.
@@ -259,11 +264,19 @@ const refuses = (script: ShellScript): boolean => {
   });
 };
 
-console.log(refuses(ShellSyntax.parse('git add -A && git commit -m "feat: x"')));
+// Refuse input past a size the hook can afford to parse before its timeout.
+// Agent Bash commands top out near 50 KB; a megabyte of densely packed
+// substitutions costs about a second to parse and walk.
+const MAX_INPUT = 256 * 1024;
+const guard = (input: string): boolean => input.length > MAX_INPUT || refuses(ShellSyntax.parse(input));
+
+console.log(guard('git add -A && git commit -m "feat: x"'));
 // => true
-console.log(refuses(ShellSyntax.parse("if git diff --quiet; then git status; fi")));
+console.log(guard("if git diff --quiet; then git status; fi"));
 // => false
 ```
+
+The size gate is the guard's, not the package's. `parse` and `allCommands` are linear and never refuse, so their cost is bounded only by the input. How much a guard can spend is set by its hook's timeout, and how long real commands run is set by its agent. Measured on Apple silicon (CPU time, `process.cpuUsage`), the costliest shapes take about 250 ms at 256 KB and about 1 s at 1 MB, while the longest of 56,176 recorded agent Bash commands is 48.7 KB. A guard whose hook falls open on a timeout needs the gate most, since a slow refusal there becomes a pass.
 
 `allCommands()` is the guard's view of the whole string: the script and the body of every command and process substitution in it, parsed and walked to `maxDepth` (16 unless given), each nested script with its own `commands()` and `diagnostics`. A substitution whose body sits deeper than the cap is not parsed but recorded in `truncations` with the reason `"depth"`, never dropped, so the guard refuses when `truncated` is `true`. Each distinct substitution is parsed once, at the shallowest depth it is reached, and the walk enforces a budget: the bodies it lexes total at most `maxDepth` times the input (and at most `ShellScript.walkCharacterLimit`, 64 MiB), in at most `ShellScript.walkRecordLimit` (10,000) records, scripts and truncations together. The substitution that would pass it is recorded as a truncation with the reason `"budget"` and the walk stops, so the guard refuses that too. The walk is breadth first, holds its work on a queue rather than the call stack, and never throws. A `maxDepth` that is not a non-negative number reads as 0.
 
@@ -322,11 +335,12 @@ console.log(JSON.stringify(nested.segments[0]?.heredocs[0]?.body));
 | `ShellWord` | `start`, `end`, `raw`, `parts`; `joined` (`raw` without its backslash-newlines) and `literal: Option<string>`. |
 | `ShellWordPart` and its twelve classes | `bare`, `singleQuoted`, `doubleQuoted` (with `expansions`), `ansiC`, `variable`, `commandSubstitution`, `arithmetic` (`$(( … ))` and `$[ … ]`; `command` is `true` for a `(( … ))` command), `processSubstitution`, `glob`, `brace`, `tilde`, `opaque`, discriminated on `kind`. `variable`, `arithmetic`, `brace` and `opaque` carry the `substitutions` inside them. `ShellExpansionPart` is the variable / substitution / arithmetic union; `ShellSubstitutionPart` the command / process substitution union. A backtick substitution's `body` is the text after bash's escape removal, which is what bash runs. |
 | `ShellAssignment` | `name`, `append`, `value: ShellWord`, `subscript`, `start`, `end`, `raw`; `joined`. |
+| `ShellAssignmentBuiltin` | `ShellCommand.assignmentBuiltin` for `declare`, `typeset`, `local`, `export` and `readonly`: `builtin`, `options` and `operands` split as the builtin's getopt splits them, `resolved` (`false` when a word in option position may expand to an option), and `associativeFrom: Option<number>`, the first operand whose array keys bash reads as strings. |
 | `ShellRedirection`, `ShellRedirectionOperator` | `fd: Option<number>`, `operator`, `target: ShellWord \| ShellHeredoc`, `start`, `end`. `2>&1` is `fd` 2, operator `>&`, target `1`. |
-| `ShellHeredoc` | `delimiter`, `quoted`, `stripTabs`, `body`, `start`, `end`, `terminated`, `expansions`; `text` strips `<<-` tabs. |
+| `ShellHeredoc` | `delimiter`, `quoted`, `stripTabs`, `body`, `start`, `end`, `terminated`, `expansions`; `text` strips `<<-` tabs, and `joined` is the body as bash reads it, backslash-newlines removed from an unquoted one. |
 | `ShellComment` | `text`, `start`, `end`. |
 | `ShellDiagnostic`, `ShellDiagnosticCode` | `code`, `offset`, `length`, and a derived `message`. |
-| `ShellCommand` | `segment`, `name`, `args`, `wrappers`, `evaluated` (the words of every `[[ … ]]` and `(( … ))` the segment evaluates); `ShellCommand.fromSegment(segment)`, `wrapperNames`, `reservedWords`. |
+| `ShellCommand` | `segment`, `name`, `args`, `wrappers`, `evaluated` (the words of every `[[ … ]]` and `(( … ))` the segment evaluates); `assignmentBuiltin: Option<ShellAssignmentBuiltin>`; `ShellCommand.fromSegment(segment)`, `wrapperNames`, `reservedWords`. |
 
 Every offset is a UTF-16 index into `ShellScript.source`. To turn one into a line and character, use `@effected/source`'s `LineIndex`.
 
@@ -349,7 +363,7 @@ This was checked against GNU bash 5.3 only, with the reviewed shapes, every posi
 
 So refuse `shopt`, `alias`, `set -o posix` and any write to `POSIXLY_CORRECT`, and control the environment, which an inherited `POSIXLY_CORRECT` or `BASHOPTS` belongs to. Not every write is an assignment token: `: ${POSIXLY_CORRECT:=1}`, `for POSIXLY_CORRECT in 1`, `select POSIXLY_CORRECT in 1` and a brace word such as `declare {POSIXLY_CORRECT,y}=1` (or `{POSIX''LY_CORRECT,y}`) each turned POSIX mode on under bash 5.3, so the guard above refuses any word that mentions the name once its quotes and backslashes are removed. A name can also be made to run something else: `hash -p /path/to/cmd ls` makes `ls` run `cmd`, `enable -n printf` makes `printf` run the first `printf` on `PATH`, and a write to `BASH_CMDS` (the table `hash -p` writes) or `BASH_ALIASES` (the alias table) does the same with any key, one with no letter included: `BASH_CMDS[1]=/path/to/cmd; 1` runs `cmd`, and so do `BASH_CMDS+=([1]=…)` and `BASH_CMDS=([1]=…)`. These are reported as `hash`, `enable` or an assignment, then the rebound name, so refuse them beside `alias`: the guard above refuses any mention of `BASH_CMDS` or `BASH_ALIASES`.
 
-A guard that matches text must match `joined`, never `raw`. bash removes each backslash-newline before it reads a token, and the parse joins them too (`[\⏎[` resolves to `[[`), but `raw` keeps them, so `[\⏎[ x -eq 0 ]]`, `(\⏎( x ))`, `$\⏎{!x}` and `"${y@\⏎P}"` slip past a pattern that reads `raw` as written. `ShellWord.joined` and `ShellAssignment.joined` remove them where bash does, keeping one inside a top-level single-quoted or ANSI-C part; inside a substitution, expansion, brace span or array value they remove every one, which only joins quoted text bash would keep split there. A heredoc's `body` has no `joined`: the guard above removes them from an unquoted one itself.
+A guard that matches text must match `joined`, never `raw`. bash removes each backslash-newline before it reads a token, and the parse joins them too (`[\⏎[` resolves to `[[`), but `raw` keeps them, so `[\⏎[ x -eq 0 ]]`, `(\⏎( x ))`, `$\⏎{!x}` and `"${y@\⏎P}"` slip past a pattern that reads `raw` as written. `ShellWord.joined` and `ShellAssignment.joined` remove them where bash does, keeping one inside a top-level single-quoted or ANSI-C part; inside a substitution, expansion, brace span or array value they remove every one, which only joins quoted text bash would keep split there. `ShellHeredoc.joined` removes them from an unquoted body and keeps them in a quoted one, as bash does, and for `<<-` strips the tabs from each joined line, so a continued line keeps its own.
 
 Text handed to another parser is not read: `eval`, `bash -c`, `source`, `xargs`, `find -exec` and `ssh` are reported as their own name. Nor is text bash evaluates as arithmetic, a name or a prompt, where a quoted `'a[$(cmd)]'`, or a variable holding one, runs `cmd`. Each of these ran `cmd` under bash 5.3, and a guard must refuse them, as the one above does:
 
@@ -362,7 +376,7 @@ Text handed to another parser is not read: `eval`, `bash -c`, `source`, `xargs`,
 - A variable as a subscript, an array literal's key, a substring offset or length, or an indirection: `${a[x]}`, `a[x]=2`, `a=([x]=1)`, `a+=([$x]=1)`, `${a:x}`, `${@:x}`, `${a[@]:x}`, `${s: -x}`, `${s:0:-x}`, `${!x}`, and a special parameter's substring (`${-:x}`, `${?:x}`, `${$:x}`, `${#:x}`).
 - Prompt expansion. One form is `x='$(cmd)'`, then `"${x@P}"`. Another is `PS4`, which bash expands before every command that xtrace traces: `PS4='$(cmd)'; set -x; :`, likewise `set -o xtrace`, `shopt -so xtrace` and `bash -x`, or an inherited `PS4` or `SHELLOPTS`. The guard above refuses both halves, turning xtrace on and any mention of `PS4`.
 - A quoted, escaped or expanded value an assignment builtin re-reads as an array. With an array target (an `a` or `A` option; for `declare` and `typeset`, a variable that already is an array; for `local`, a name already a local array in the same function, such as `f(){ local -a x; local x='($(cmd))'; }`) the builtin reads a value that looks like `( … )` as a compound assignment and expands its elements and keys again, so a single-quoted `$( … )` runs: `declare -a 'x=($(cmd))'`, `declare -A 'h=([k]=$(cmd))'`, `declare -a x=\(\$\(cmd\)\)`, `v='($(cmd))'; declare -a x="$v"`, and `x=(); declare x='($(cmd))'` with no option. The parse cannot see this, since the text is quoted, so the guard above refuses, for `declare`, `typeset` and `local`, every assignment whose value is not literal or holds `=(` after quote removal, since it cannot see what the variable or the enclosing function already declared, and for `export` and `readonly` the same only when an option word holds `a` or `A` or an expansion may supply one (bash re-read nothing for them otherwise). That over-refuses `declare x="$1"` and `local p="$PATH:…"`, which run nothing for a scalar; `export PATH="$PATH:…"` stays allowed.
-- An indexed array's key over a name in an assignment builtin's array value: `declare -a x=([k]=1)`, `declare x=([k]=1)`, `export x=([k]=1)` and `local`, `typeset` and `readonly` likewise, with `k='a[$(cmd)]'`. An `-A` before the value makes the keys strings, which bash does not evaluate (the unquoted literal `declare -A h=([k]=1)` runs nothing; a quoted or expanded one is the re-read case above), but an `-A` after it (`declare x=([k]=1) -A`) or `+A` does not. A quoted substitution in an indexed key (`declare -a x=(['$(cmd)']=1)`) records `QuotedSubstitutionInExpansion`, and an unquoted one is a substitution like any other.
+- An indexed array's key over a name in an assignment builtin's array value: `declare -a x=([k]=1)`, `declare x=([k]=1)`, `export x=([k]=1)` and `local`, `typeset` and `readonly` likewise, with `k='a[$(cmd)]'`. bash makes the keys strings, which it does not evaluate, for every value after a word written with a leading `-` and an `A` (`declare -A h=([k]=1)`, `-xA`, `-x"A"`, and even `declare -- -A h=…`, where getopt reads no `-A`). It reads the word as written, before quote removal, so `declare "-A" x=([k]=1)` and `declare \-A x=([k]=1)` evaluate `k`, and so do an `-A` after the value (`declare x=([k]=1) -A`) and `+A`. `ShellCommand.assignmentBuiltin`'s `associativeFrom` names the first operand bash marks. A quoted substitution in an indexed key (`declare -a x=(['$(cmd)']=1)`) records `QuotedSubstitutionInExpansion`, and an unquoted one is a substitution like any other.
 
 `[[ … ]]` and `(( … ))` resolve to the names `[[` and `((` when they are the whole command, so a refusal list can match them. Run straight into `then` or `do` in one segment, they resolve to the command after them (`if [[ x -eq 0 ]] then git commit; fi` names `git`). Either way their words are in `ShellCommand.evaluated`, so read that list for them, as the guard above does; for a `[[` the segmenter split, follow it into the segments after it. An option or operator a variable supplies (`[ "$op" x ]`, `declare "$o" v=…`) is read only when bash runs the command, so a guard that matches the literal forms must also refuse those. A script with any diagnostic may hide a command (`x=$(echo a[ )` swallows the lines after it as one unterminated substitution), so treat every diagnostic as a refusal, as the guard above does, in every script `allCommands()` walks.
 

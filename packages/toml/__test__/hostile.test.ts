@@ -27,6 +27,16 @@ import { TomlDocument } from "../src/TomlDocument.js";
 import { TomlFormat, TomlModificationError } from "../src/TomlFormat.js";
 
 /**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
+/**
  * Elapsed-time ceiling for the scale and path-depth rows. The bound is a
  * hang/quadratic-blowup guard, not a performance target: linear behavior was
  * verified out of band (12.5k->126ms through 100k->762ms key-values locally),
@@ -242,9 +252,9 @@ describe("hostile input", () => {
 			() =>
 				Effect.gen(function* () {
 					const path = Array.from({ length: 100_000 }, (_, i) => `k${i}`);
-					const started = performance.now();
+					const started = cpuNow();
 					const error = yield* Effect.flip(TomlFormat.modify("a = 1\n", path, 2));
-					const elapsed = performance.now() - started;
+					const elapsed = cpuNow() - started;
 					assert.instanceOf(error, TomlModificationError);
 					assert.strictEqual((error as TomlModificationError).diagnostic.code, "NestingDepthExceeded");
 					assert.isBelow(elapsed, ELAPSED_BOUND_MS);
@@ -268,9 +278,9 @@ describe("hostile input", () => {
 					);
 					const doc = `${lines.join("\n")}\n`;
 					assert.isAtLeast(doc.length, 2_000_000);
-					const started = performance.now();
+					const started = cpuNow();
 					const value = (yield* Toml.parse(doc)) as Record<string, unknown>;
-					const elapsed = performance.now() - started;
+					const elapsed = cpuNow() - started;
 					assert.strictEqual(Object.keys(value).length, 50_000);
 					assert.strictEqual(value.k49999, "x".repeat(28));
 					assert.isBelow(elapsed, ELAPSED_BOUND_MS);
@@ -283,9 +293,9 @@ describe("hostile input", () => {
 			() =>
 				Effect.gen(function* () {
 					const payload = "x".repeat(1_048_576);
-					const started = performance.now();
+					const started = cpuNow();
 					const value = (yield* Toml.parse(`s = "${payload}"\n`)) as Record<string, unknown>;
-					const elapsed = performance.now() - started;
+					const elapsed = cpuNow() - started;
 					assert.strictEqual(value.s, payload);
 					assert.isBelow(elapsed, ELAPSED_BOUND_MS);
 				}),
@@ -296,9 +306,9 @@ describe("hostile input", () => {
 			"a 1MB unterminated string fails typed promptly — no quadratic scan",
 			() =>
 				Effect.gen(function* () {
-					const started = performance.now();
+					const started = cpuNow();
 					const error = yield* parseError(`s = "${"x".repeat(1_048_576)}`);
-					const elapsed = performance.now() - started;
+					const elapsed = cpuNow() - started;
 					assert.strictEqual(codeOf(error), "UnterminatedString");
 					assert.isBelow(elapsed, ELAPSED_BOUND_MS);
 				}),

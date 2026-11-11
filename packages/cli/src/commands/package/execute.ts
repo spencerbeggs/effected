@@ -3,11 +3,10 @@
 // through `PackageCommandDeps`, so nothing here reads them.
 
 import { CliRuntime, Doc } from "@effected/cli-kit";
-import type { BuildRunDeps } from "@effected/engine/build";
+import type { BuildProgress, BuildRunDeps } from "@effected/engine/build";
 import { StepSummary } from "@effected/engine/schema";
 import { Audience } from "@effected/env";
-import type { Option } from "effect";
-import { Console, Effect, Schema } from "effect";
+import { Console, Effect, Option, Schema } from "effect";
 import { IssuesDoc } from "../../render/IssuesDoc.js";
 import { resolveFormat } from "../schema/execute.js";
 import { BuildFailedError, PackageConfigError, PackageRunError } from "./errors.js";
@@ -47,13 +46,27 @@ export const execute = Effect.fn("effected.package.execute")(function* (input: E
 
 	const refused = (error: { readonly message: string }) =>
 		Effect.fail(CliRuntime.reported(new PackageConfigError({ message: error.message }), 2));
-	const result = yield* BuildRun.run({ noExe: input.noExe, verbose: input.verbose }, deps).pipe(
+	const infrastructure = (error: { readonly message: string }) =>
+		Effect.fail(CliRuntime.reported(new PackageRunError({ message: error.message }), 3));
+	// On stderr, so that stdout stays one document under --format json.
+	const onProgress = (event: BuildProgress): Effect.Effect<void> =>
+		event._tag === "Waiting"
+			? Console.error(
+					Option.match(event.holder, {
+						onNone: () => `waiting for another build of this package (${event.lockPath})`,
+						onSome: (holder) =>
+							`waiting for another build of this package: process ${holder.pid}, building ${holder.cwd} since ${holder.startedAt} (${event.lockPath})`,
+					}),
+				)
+			: Effect.void;
+	const result = yield* BuildRun.run({ noExe: input.noExe, verbose: input.verbose }, { ...deps, onProgress }).pipe(
 		Effect.catchTags({
 			EffectedConfigError: refused,
 			PluginLoadError: refused,
 			NotAPackageError: refused,
 			ConfigValidationError: refused,
-			PlatformError: (error) => Effect.fail(CliRuntime.reported(new PackageRunError({ message: error.message }), 3)),
+			BuildLockTimeoutError: infrastructure,
+			PlatformError: infrastructure,
 		}),
 	);
 	const { issues } = result;

@@ -3,6 +3,16 @@ import { Effect, Schema } from "effect";
 import { ConfigMerge } from "../src/ConfigMerge.js";
 import { MergeStrategy } from "../src/MergeStrategy.js";
 
+/**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
 type Rec = Record<string, unknown>;
 
 describe("ConfigMerge.deep", () => {
@@ -115,9 +125,9 @@ describe("ConfigMerge.deep", () => {
 		const node: Rec = {};
 		node.x = node;
 		node.y = node;
-		const start = performance.now();
+		const start = cpuNow();
 		const merged = ConfigMerge.deep<Rec>(node, node);
-		assert.isBelow(performance.now() - start, 1000);
+		assert.isBelow(cpuNow() - start, 1000);
 		// The revisited pair reuses the result in progress, so the cycle survives.
 		assert.strictEqual(merged.x, merged);
 		assert.strictEqual(merged.y, merged);

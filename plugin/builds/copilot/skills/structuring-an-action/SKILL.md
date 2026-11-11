@@ -11,7 +11,7 @@ The canonical shape of a GitHub Action repository built on `@effected`: what fil
 
 ```text
 action.yml              # single source of every input/output name AND default; code mirrors it, never re-declares it
-effected.toml            # [action] tables: entries, build (minify, externals, ignore, importCheck), validation, persistLocal; escape hatches added per need with a forensic comment
+effected.toml            # [action] tables: entries, build (minify, externals, ignore, importCheck), a worker's own table (source, importCheck), validation, persistLocal; escape hatches added per need with a forensic comment
 lib/scripts/             # non-compilable scripts (a cache-invalidating location) + bundle-truth guards; schemastore.config.ts lives here when schemas/ exists, named explicitly by the schema:* scripts
 schemas/                  # versioned output-contract documents, <version>/<name>-<version>.json; only when a JSON contract crosses the boundary
 <action>.input.schema.json  # unversioned input schema at the root, only when a JSON input crosses the boundary

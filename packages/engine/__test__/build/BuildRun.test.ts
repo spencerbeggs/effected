@@ -152,6 +152,59 @@ describe("BuildRun.run", () => {
 		}),
 	);
 
+	it.effect("an internal error in a late pass, an ENOENT on a meta file, is a failed verdict too (#1291)", () =>
+		Effect.gen(function* () {
+			const handle = yield* volume();
+			const result = yield* run(handle, {
+				seams: seamsFor(handle, {
+					runMetaPass: async () => {
+						throw Object.assign(
+							new Error("ENOENT: no such file or directory, open '/repo/packages/a/dist/prod/npm/meta/a.api.json'"),
+							{
+								code: "ENOENT",
+							},
+						);
+					},
+				}),
+			});
+
+			assert.strictEqual(result.verdict, "failed");
+			assert.strictEqual(result.issues.buildOk, false);
+			assert.strictEqual(result.issues.errors.length, 0);
+			assert.include(result.issues.failure?.message ?? "", "ENOENT");
+			assert.strictEqual(linesOf(handle, BUILD_JOURNAL)[0].data.buildOk, false);
+		}),
+	);
+
+	it.effect("an artifact saying buildOk false with no error and no crash is still failed (#1291)", () =>
+		Effect.gen(function* () {
+			const handle = yield* volume();
+			const result = yield* run(handle, {
+				seams: seamsFor(handle, {
+					writeIssues: ({ cwd, reports }) => {
+						const path = `${cwd}/dist/prod/issues.json`;
+						handle.write(
+							path,
+							serializeIssues(
+								flattenIssues(reports, {
+									target: "prod",
+									generatedAt: "2026-11-06T12:00:00.000Z",
+									buildOk: false,
+									failure: { name: "Error", message: "ENOENT: a meta file" },
+								}),
+							),
+						);
+						return path;
+					},
+				}),
+			});
+
+			assert.strictEqual(result.verdict, "failed");
+			assert.strictEqual(result.issues.errors.length, 0);
+			assert.strictEqual(result.issues.failure?.message, "ENOENT: a meta file");
+		}),
+	);
+
 	it.effect("a crash whose artifact never landed still answers failed, not a stale artifact's pass", () =>
 		Effect.gen(function* () {
 			const stale = serializeIssues(flattenIssues([], { target: "prod", generatedAt: "earlier", buildOk: true }));
@@ -213,6 +266,77 @@ describe("BuildRun.run", () => {
 			assert.strictEqual(result.issues.buildOk, false);
 			assert.include(result.issues.failure?.message ?? "", "older than this build");
 			assert.strictEqual(linesOf(handle, BUILD_JOURNAL)[0].data.buildOk, false);
+		}),
+	);
+
+	it.live("two builds of one package run one after the other, and both leave a clean dist (#1291)", () =>
+		Effect.gen(function* () {
+			const handle = yield* volume();
+			let active = 0;
+			let peak = 0;
+			const seams = seamsFor(handle, {
+				buildTargetGroups: async ({ cwd }) => {
+					active += 1;
+					peak = Math.max(peak, active);
+					// What a second build would clobber: the first's half-written dist.
+					handle.write(`${cwd}/dist/prod/npm/pkg/index.js`, "half");
+					await new Promise((resolve) => setTimeout(resolve, 30));
+					handle.write(`${cwd}/dist/prod/npm/pkg/index.js`, "whole");
+					active -= 1;
+				},
+				// Stamped now: on the live clock a fixed stamp would read as an earlier build's artifact.
+				writeIssues: ({ cwd, reports, buildOk, failure }) => {
+					const path = `${cwd}/dist/prod/issues.json`;
+					const generatedAt = new Date().toISOString();
+					handle.write(
+						path,
+						serializeIssues(flattenIssues(reports, { target: "prod", generatedAt, buildOk, failure })),
+					);
+					return path;
+				},
+			});
+			const events: Array<BuildProgress["_tag"]> = [];
+			const build = run(handle, {
+				seams,
+				lock: { pid: 100, isAlive: () => true, pollInterval: "2 millis" },
+				onProgress: (event) => Effect.sync(() => events.push(event._tag)),
+			});
+			const [a, b] = yield* Effect.all([build, build], { concurrency: "unbounded" });
+
+			assert.strictEqual(peak, 1, "the bundler never ran for both at once");
+			assert.strictEqual(a.verdict, "ok");
+			assert.strictEqual(b.verdict, "ok");
+			assert.strictEqual(handle.volume.text(`${CWD}/dist/prod/npm/pkg/index.js`), "whole");
+			assert.isTrue(
+				Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Struct({ buildOk: Schema.Boolean })))(
+					handle.volume.text(ISSUES_PATH) ?? "",
+				).buildOk,
+			);
+			assert.strictEqual(events.filter((tag) => tag === "Waiting").length, 1);
+			assert.strictEqual(events.indexOf("Waiting") < events.lastIndexOf("Started"), true, events.join(","));
+			assert.isUndefined(handle.volume.text(`${ROOT}/.cache/effected/locks/@scope+a.lock`));
+			assert.strictEqual(linesOf(handle, BUILD_JOURNAL).length, 2);
+		}),
+	);
+
+	it.effect("a lock held for the whole wait fails BuildLockTimeoutError, and nothing is built or journalled", () =>
+		Effect.gen(function* () {
+			const lock = JSON.stringify({ pid: 300, startedAt: "2026-11-10T12:00:00.000Z", cwd: CWD });
+			const handle = yield* volume({ ...workspace, [`${ROOT}/.cache/effected/locks/@scope+a.lock`]: lock });
+			let built = false;
+			const error = yield* run(handle, {
+				seams: seamsFor(handle, {
+					buildTargetGroups: async () => {
+						built = true;
+					},
+				}),
+				lock: { pid: 100, isAlive: () => true, timeout: 0 },
+			}).pipe(Effect.flip);
+
+			assert.strictEqual(error._tag, "BuildLockTimeoutError");
+			assert.include(error.message, "process 300");
+			assert.isFalse(built);
+			assert.isUndefined(handle.volume.text(BUILD_JOURNAL));
 		}),
 	);
 

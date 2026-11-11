@@ -2,6 +2,16 @@ import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
 import { NpmrcEntry, npmrcValue, npmrcValues, parseNpmrc } from "../src/Npmrc.js";
 
+/**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
 /** An npmrc env expression, `${name}`, spelled so no plain string literal carries a placeholder. */
 const ref = (name: string, optional = ""): string => `$\{${name}${optional}}`;
 
@@ -144,11 +154,11 @@ describe("parseNpmrc array settings", () => {
 describe("parseNpmrc on long input", () => {
 	it("stays linear on many lines and on hostile runs", () => {
 		const lines = Array.from({ length: 20_000 }, (_, i) => `k${i}=${ref("V")}`).join("\n");
-		const start = performance.now();
+		const start = cpuNow();
 		assert.strictEqual(parseNpmrc(lines, { V: "x" }).length, 20_000);
 		parseNpmrc(`x=${"\\".repeat(20_000)}${ref("V")}`, {});
 		parseNpmrc(`x=${"${".repeat(20_000)}`, {});
-		assert.isBelow(performance.now() - start, 2_000);
+		assert.isBelow(cpuNow() - start, 2_000);
 	});
 });
 

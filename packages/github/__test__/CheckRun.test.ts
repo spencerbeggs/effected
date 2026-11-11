@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Duration, Effect, Fiber, Layer } from "effect";
+import { TestClock } from "effect/testing";
 import { CheckRun, CheckRunOutput, CheckRunRef, ReportedCheckRunOutput } from "../src/CheckRun.js";
 import type { Repo } from "../src/Repo.js";
 import { PageOptions } from "../src/Rest.js";
@@ -219,6 +220,76 @@ describe("CheckRun.updateRef / completeRef", () => {
 			yield* drive([odd], (check) => check.complete(4, "success"));
 			const control = yield* drive([odd], (check) => Effect.flip(check.updateRef(4)));
 			assert.deepStrictEqual([control.value.kind, control.value.operation], ["decode", "CheckRun.updateRef"]);
+		}),
+	);
+});
+
+// GitHub's checks API can 404 a PATCH sent right after the POST that created
+// the run (#1330), so both PATCH routes retry a 404, and only a 404.
+describe("CheckRun PATCH after a fresh create", () => {
+	const notFound: Reply = { status: 404, body: { message: "Not Found" } };
+
+	/** Runs `use` on a fork and walks `TestClock` past the whole retry budget. */
+	const driveTimed = <A, E>(
+		replies: ReadonlyArray<Reply>,
+		use: (check: CheckRun["Service"]) => Effect.Effect<A, E, Repo>,
+	) =>
+		Effect.gen(function* () {
+			const fiber = yield* Effect.forkChild(Effect.exit(drive(replies, use)));
+			yield* TestClock.adjust(Duration.seconds(2));
+			return yield* Fiber.join(fiber);
+		});
+
+	it.effect("complete succeeds once the run becomes visible, resending one completed_at", () =>
+		Effect.gen(function* () {
+			const exit = yield* driveTimed([notFound, notFound, { status: 200, body: wireRun() }], (check) =>
+				check.complete(4, "success"),
+			);
+			assert.strictEqual(exit._tag, "Success");
+			if (exit._tag !== "Success") return;
+			const calls = exit.value.script.calls;
+			assert.lengthOf(calls, 3);
+			const stamps = calls.map((call) => JSON.parse(call.body ?? "{}").completed_at);
+			assert.strictEqual(new Set(stamps).size, 1);
+		}),
+	);
+
+	it.effect("update fails with the original 404 after three retries", () =>
+		Effect.gen(function* () {
+			const exit = yield* driveTimed([notFound], (check) => Effect.flip(check.update(4)));
+			assert.strictEqual(exit._tag, "Success");
+			if (exit._tag !== "Success") return;
+			assert.deepStrictEqual([exit.value.value.kind, exit.value.value.status], ["notFound", 404]);
+			assert.lengthOf(exit.value.script.calls, 4);
+		}),
+	);
+
+	it.effect("waits on Clock: no retry is sent before the first 250ms", () =>
+		Effect.gen(function* () {
+			const { script, base } = harness([notFound, { status: 200, body: wireRun() }]);
+			const fiber = yield* Effect.forkChild(
+				Effect.provide(
+					Effect.flatMap(CheckRun, (check) => check.updateRef(4)),
+					CheckRun.layer.pipe(Layer.provideMerge(base)),
+				),
+			);
+			yield* TestClock.adjust(Duration.millis(249));
+			assert.strictEqual(script.count(), 1);
+			yield* TestClock.adjust(Duration.millis(1));
+			const ref = yield* Fiber.join(fiber);
+			assert.strictEqual(ref.id, 4);
+			assert.strictEqual(script.count(), 2);
+		}),
+	);
+
+	it.effect("does not retry a status other than 404", () =>
+		Effect.gen(function* () {
+			const exit = yield* driveTimed([{ status: 422, body: { message: "Invalid" } }], (check) =>
+				Effect.flip(check.completeRef(4, "success")),
+			);
+			assert.strictEqual(exit._tag, "Success");
+			if (exit._tag !== "Success") return;
+			assert.lengthOf(exit.value.script.calls, 1);
 		}),
 	);
 });

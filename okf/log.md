@@ -24,6 +24,17 @@
 * Updated The effect family is pinned graph-wide by overrides derived from the catalog
 * Updated The effected catalog literal
 * Updated workspace
+* Updated The build artifacts: dist/prod, targets.json, issues.json and the journals
+* Updated The effected build commands: package build, action build and action init
+* Updated effected.toml: the build config's tables, defaults and discovery
+* Updated @effected/workspaces discovery and detection
+* Updated @effected/workspaces: monorepo tooling
+* Updated WorkspacesSync is a `*Sync` escape hatch, not a `*Result` pure form
+* Updated @effected/shell
+* Updated @effected/memfs
+* Updated walker
+* Updated lockfiles
+* Updated npm
 
 ## 2026-11-09
 

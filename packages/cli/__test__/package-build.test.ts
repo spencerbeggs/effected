@@ -70,7 +70,7 @@ const cli = (
 		readonly seed?: MemoryFileSystemSeed;
 		readonly env?: Record<string, string>;
 		readonly diagnose?: Diagnostics;
-		readonly seams?: Seams;
+		readonly seams?: Seams | ((handle: MemoryFileSystemHandle) => Seams);
 		readonly deps?: Partial<PackageCommandDeps>;
 	} = {},
 ) =>
@@ -83,7 +83,11 @@ const cli = (
 					cwd: CWD,
 					ci: false,
 					journalWatcher: idleWatcher,
-					seams: seamsFor(handle, options.diagnose, options.seams),
+					seams: seamsFor(
+						handle,
+						options.diagnose,
+						typeof options.seams === "function" ? options.seams(handle) : options.seams,
+					),
 					...options.deps,
 				},
 				environment(["package", "build", ...args], handle.layer),
@@ -145,6 +149,56 @@ describe("effected package build", () => {
 			});
 			assert.strictEqual(code, 1);
 			assert.include(errText, "tsdown exploded");
+		}),
+	);
+
+	it.effect("an ENOENT on a meta file is exit 1, not a pass, though no error was recorded (#1291)", () =>
+		Effect.gen(function* () {
+			const { code, outText, errText, volume } = yield* cli([], {
+				seams: {
+					runMetaPass: async () => {
+						throw Object.assign(
+							new Error("ENOENT: no such file or directory, open '/repo/packages/a/dist/prod/npm/meta/a.api.json'"),
+							{
+								code: "ENOENT",
+							},
+						);
+					},
+				},
+			});
+			assert.strictEqual(code, 1, outText);
+			assert.include(errText, "ENOENT");
+			assert.include(volume.text(`${CWD}/dist/prod/issues.json`) ?? "", '"buildOk":false');
+		}),
+	);
+
+	it.effect("an issues.json saying buildOk false is exit 1 even when the build returned (#1291)", () =>
+		Effect.gen(function* () {
+			const { code, errText } = yield* cli([], {
+				seams: (handle) => ({
+					writeIssues: ({ cwd, reports }) => {
+						const path = `${cwd}/dist/prod/issues.json`;
+						handle.write(path, issuesOf(reports, false, { name: "Error", message: "ENOENT: a meta file" }));
+						return path;
+					},
+				}),
+			});
+			assert.strictEqual(code, 1);
+			assert.include(errText, "ENOENT: a meta file");
+		}),
+	);
+
+	it.effect("another build holding the lock for the whole wait is exit 3, with the wait announced on stderr", () =>
+		Effect.gen(function* () {
+			const lock = JSON.stringify({ pid: 300, startedAt: "2026-11-10T12:00:00.000Z", cwd: CWD });
+			const { code, out, errText } = yield* cli(["--format", "json"], {
+				seed: { ...workspace, "/repo/.cache/effected/locks/@scope+a.lock": lock },
+				deps: { lock: { pid: 100, isAlive: () => true, timeout: 0 } },
+			});
+			assert.strictEqual(code, 3);
+			assert.include(errText, "waiting for another build of this package: process 300");
+			assert.include(errText, "/repo/.cache/effected/locks/@scope+a.lock");
+			assert.deepStrictEqual(out, [], "stdout stays empty: the build never ran");
 		}),
 	);
 

@@ -7,6 +7,7 @@ import {
 	ActionEntries,
 	ActionPersistLocalOptions,
 	ActionValidationOptions,
+	ActionWorker,
 	EffectedConfig,
 } from "../../src/index.js";
 
@@ -53,6 +54,42 @@ describe("ActionEntries", () => {
 			assert.strictEqual(decoded.pre, "src/pre.ts");
 			assert.strictEqual(decoded.post, "src/post.ts");
 			assert.deepStrictEqual(decoded.workers, { "changelog-silk": "src/changelog/silk.ts" });
+		}),
+	);
+
+	it.effect("takes a worker as a table, with its load check on unless the table turns it off (#1323)", () =>
+		Effect.gen(function* () {
+			const decoded = yield* entries({
+				workers: {
+					plain: "src/plain.ts",
+					checked: { source: "src/checked.ts" },
+					"turbo-server": { source: "src/turbo-server.ts", importCheck: false },
+				},
+			});
+			assert.strictEqual(decoded.workers.plain, "src/plain.ts");
+			const checked = decoded.workers.checked;
+			assert.instanceOf(checked, ActionWorker);
+			assert.isTrue(checked instanceof ActionWorker && checked.importCheck);
+			const exempt = decoded.workers["turbo-server"];
+			assert.instanceOf(exempt, ActionWorker);
+			assert.isTrue(exempt instanceof ActionWorker && !exempt.importCheck && exempt.source === "src/turbo-server.ts");
+		}),
+	);
+
+	it.effect("rejects a worker table with no source, or with a key it does not know", () =>
+		Effect.gen(function* () {
+			const noSource = yield* failedPaths({ entries: { workers: { silk: { importCheck: false } } } });
+			assert.isNotEmpty(noSource);
+			assert.isTrue(
+				noSource.every((path) => (path ?? []).slice(0, 3).join(".") === "entries.workers.silk"),
+				String(noSource),
+			);
+			const unknown = yield* failedPaths({ entries: { workers: { silk: { source: "src/silk.ts", minify: false } } } });
+			assert.isNotEmpty(unknown);
+			assert.isTrue(
+				unknown.every((path) => (path ?? []).slice(0, 3).join(".") === "entries.workers.silk"),
+				String(unknown),
+			);
 		}),
 	);
 

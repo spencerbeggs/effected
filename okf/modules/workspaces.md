@@ -31,10 +31,10 @@ sources:
     resource: ../../packages/workspaces/src/PnpmSettings.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-07T01:50:39Z
+  at: 2026-11-10T22:32:17Z
 integrity:
   generated:
-    body: e0d4b11034f03127
+    body: 9308aa5a44e040c0
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -414,6 +414,21 @@ continue phase 2's A1–A10:
   "dist/prod/npm/pkg" }`
   ([the pack-source decision](../decisions/packed-install-pack-source.md)).
 
+## npm roots: GlobSet semantics, not npm's rules
+
+Discovery reads `package.json#workspaces` through `GlobSet` for every manager, npm, yarn and bun alike, in `WorkspaceDiscovery`, `WorkspacesSync` and `WorkspaceSnapshots`. It does not use npm's own `@npmcli/map-workspaces` rules, which `@effected/npm` ships as `NpmWorkspacePatterns` and `@effected/lockfiles` reads npm link rows with (#1286). On most fields the two agree. On these six, measured over the directories `packages/a`, `packages/b`, `packages/.hidden`, `apps/c` and `packages/deep/d`, an npm root enumerates members npm itself would not:
+
+| `workspaces` | npm (`NpmWorkspacePatterns`) | discovery (`GlobSet`) | why |
+| --- | --- | --- | --- |
+| `["packages/*", "!packages/a", "packages/a"]` | a, b | b | npm's negations are ordered: a later positive cancels one; `GlobSet` exclusions are order-independent |
+| `["apps/c", "!apps/*", "apps/c"]` | c | none | the same ordered cancellation |
+| `["packages/*/"]` | a, b | none | npm matches a positive against directories, so the slash is harmless; `GlobSet`'s directory-only form never matches the slash-free path discovery tests |
+| `["!!packages/a"]` | a | none | npm drops an even run of `!`; `GlobSet` reads the first `!` as an exclusion |
+| `["packages\\a"]` | a | none | npm turns a backslash in a positive into `/`; glob reads it as an escape |
+| `["packages/*", "!packages/a/"]` | b | a, b | npm's ignore matches a negation with or without the trailing slash |
+
+Ruling (#1286): discovery stays on `GlobSet` for now. Making it npm-aware for an npm root, by filtering its candidate directories through `NpmWorkspacePatterns`, is filed as its own change: it would move these six answers, and yarn and bun do not follow npm's rules. `__test__` in `@effected/lockfiles` (`importers.test.ts`) pins npm's six answers, and `@effected/npm`'s `NpmWorkspacePatterns.test.ts` the rules.
+
 ## WorkspacesSync — the escape hatch
 
 Five synchronous functions in `src/WorkspacesSync.ts`
@@ -437,6 +452,40 @@ caller that omits `onSkip` gets the old behavior back exactly: the skip is
 dropped, nothing is logged in its place. Before this existed, a fixture with
 one unusable manifest enumerated as a plausible empty array, indistinguishable
 from "no workspaces configured" — the failure mode issue #605 named.
+
+Degraded-skip holds only where a partial answer exists. The `packages:`
+patterns compile as ONE `GlobSet`, and a set can fail even when every member
+compiles alone: the members share one compile budget, so 1,288 patterns
+that each carry their own `[[:word:]]` portion exhaust it. That failure loses
+every pattern at once, so the facade **throws** — the same
+`WorkspacePatternError` (kind `uncompilable`, `pattern` the member the
+compile stopped at) that `WorkspaceDiscovery` fails with on that root,
+before any manifest is read and before `onSkip` is called (#1292). Returning
+the root alone, as it did before, read as "no workspace packages", a
+decision a caller took on a corrupt config. The ruling follows the module's
+own rule for `detectPackageManagerSync` (no partial answer to degrade to, so
+the Effect surface's error comes back) and `TsconfigLoaderSync`'s (the async
+pipeline's typed error, thrown); the function's return type could not take
+a `Result` without breaking every caller, and an `onSkip` report would stay
+silent for a caller that omits it. `PnpmSettings.load` fails `membership` on
+the same set (#1285).
+
+The same rule reaches one step earlier, to the pattern read. A
+`pnpm-workspace.yaml` that exists but whose `readFile` throws, or whose text
+does not parse, throws the `WorkspaceDiscoveryError` the Effect surface's
+`readPatterns` fails with (kind `read` or `invalidYaml`, `path` the YAML
+file, `cause` the thrown value or the `YamlParseError`). It used to be read
+as empty and fall back to `package.json#workspaces`, which answered a
+plausible member list from the wrong config. A missing file is still the
+ordinary fallback, on both surfaces. When the fallback is taken, the root
+`package.json` is held to the same rule: a throwing read is `read`,
+unparseable text is `invalidJson` (cause the `PackageJsonSyntaxError`), a
+missing one is no patterns, and valid JSON that is not an object declares no
+patterns and is reported through `onSkip` as the root's `invalidShape` skip.
+On the Effect surface an unparseable manifest is no root marker, so its
+`invalidJson` from `readPatterns` is reachable only where a
+`pnpm-workspace.yaml` with no `packages:` made the directory the root; the
+sync facade, which takes `root` as given, throws it on either tree.
 
 `detectPackageManagerSync(root, ops)` returns `Result<DetectedPackageManager,
 PackageManagerDetectionFailure>` and is not degraded-skip: there is no

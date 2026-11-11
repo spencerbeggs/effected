@@ -1,6 +1,28 @@
 import { Effect, Schema } from "effect";
 
 /**
+ * A worker written as a table, `[action.entries.workers.<name>]`, for a worker that needs more than its source.
+ *
+ * @remarks
+ * A worker given as a plain string is its source, with every setting at its default.
+ *
+ * @public
+ */
+export class ActionWorker extends Schema.Class<ActionWorker>("ActionWorker")({
+	/** The worker's source, relative to the package. */
+	source: Schema.String,
+	/**
+	 * Whether this worker's bundle is imported after the build to prove it loads.
+	 *
+	 * @remarks
+	 * For a worker that refuses to start at import by design, such as one that exits when the configuration its
+	 * action passes through the environment is missing. `[action.build] importCheck = false` still turns the check off
+	 * for every bundle, this one included.
+	 */
+	importCheck: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+}) {}
+
+/**
  * The bundles a GitHub Action ships, the `[action.entries]` table.
  *
  * @remarks
@@ -16,8 +38,13 @@ export class ActionEntries extends Schema.Class<ActionEntries>("ActionEntries")(
 	pre: Schema.optionalKey(Schema.String),
 	/** The source of the entry that runs after `main`, for cleanup. */
 	post: Schema.optionalKey(Schema.String),
-	/** Extra bundles outside the lifecycle: a name to its source, each emitted as `dist/<name>.js`. */
-	workers: Schema.Record(Schema.String, Schema.String).pipe(Schema.withDecodingDefaultKey(Effect.succeed({}))),
+	/**
+	 * Extra bundles outside the lifecycle, each emitted as `dist/<name>.js`: a name to its source, or to an
+	 * {@link ActionWorker} table.
+	 */
+	workers: Schema.Record(Schema.String, Schema.Union([Schema.String, ActionWorker])).pipe(
+		Schema.withDecodingDefaultKey(Effect.succeed({})),
+	),
 }) {}
 
 /**
@@ -49,7 +76,8 @@ export class ActionBuildOptions extends Schema.Class<ActionBuildOptions>("Action
 	 *
 	 * @remarks
 	 * A bundle can build cleanly and not load, and this is the only check that finds out. Turn it off for an action
-	 * with no `GITHUB_ACTIONS` guard around its program, because the import runs that program for real.
+	 * with no `GITHUB_ACTIONS` guard around its program, because the import runs that program for real. To exempt one
+	 * worker and keep the check on the rest, set `importCheck = false` in that worker's own table instead.
 	 */
 	importCheck: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
 }) {}

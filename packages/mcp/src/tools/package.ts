@@ -56,6 +56,8 @@ export interface PackageToolOptions {
 	readonly seams?: BuildRunDeps["seams"];
 	/** The journals' watcher; omitted, the engine's default. */
 	readonly journalWatcher?: BuildRunDeps["journalWatcher"];
+	/** How a build waits for another build of the same package; omitted, the engine's default. */
+	readonly lock?: BuildRunDeps["lock"];
 	/** Runs a call with its stdout off the wire, because a plugin and the build tools run in this process. */
 	readonly confineStdout?: <A, E, R>(self: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
 }
@@ -89,6 +91,10 @@ const refusalOf = (error: BuildFailure, root: string): ToolRefusal => {
 			return refuse(`Pass cwd: a package directory under the workspace root ${root}.`);
 		case "ExclusiveTimeout":
 			return refuse("The build may still be writing dist/prod; wait before calling the tool again.");
+		case "BuildLockTimeoutError":
+			return refuse(
+				`Another build of this package is running; wait for it and call the tool again, or delete ${error.lockPath} if no build is.`,
+			);
 		case "PlatformError":
 			return refuse(platformErrorHint(error));
 		default:
@@ -126,6 +132,7 @@ export const makePackageHandlers = (options: PackageToolOptions, lane: Exclusive
 								...(options.importModule !== undefined ? { importModule: options.importModule } : {}),
 								...(options.seams !== undefined ? { seams: options.seams } : {}),
 								...(options.journalWatcher !== undefined ? { journalWatcher: options.journalWatcher } : {}),
+								...(options.lock !== undefined ? { lock: options.lock } : {}),
 							},
 						),
 						{ timeout: BUILD_TIMEOUT },

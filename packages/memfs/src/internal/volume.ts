@@ -67,6 +67,7 @@ import {
 
 import type { ErrnoCode } from "./errno.js";
 import { ErrnoException, errnoError } from "./errno.js";
+import { lexicallyNormalized } from "./lexical.js";
 
 const { badArgument, systemError } = PlatformErrorNs;
 type PlatformError = PlatformErrorNs.PlatformError;
@@ -790,7 +791,6 @@ const resolveParent = Effect.fnUntraced(function* (
 	if (name === undefined) {
 		return yield* badResource(method, errorPath, "EISDIR");
 	}
-	yield* validateEntryName(method, name, errorPath);
 	const parentPath = components.length === 0 ? "/" : `${path.startsWith("/") ? "/" : ""}${components.join("/")}`;
 	const parent = yield* resolve(state, parentPath, { method }).pipe(
 		Effect.mapError((error) => withSystemErrorPath(error, method, errorPath)),
@@ -798,6 +798,11 @@ const resolveParent = Effect.fnUntraced(function* (
 	if (parent.entry._tag !== "Directory") {
 		return yield* badResource(method, errorPath, "ENOTDIR");
 	}
+	// KIT EXTENSION (errno fidelity, #1284): the name is validated only once the
+	// parent is known to be a directory. A `.` or `..` leaf under a file walks
+	// THROUGH a non-directory, which the kernel reports as ENOTDIR (and a
+	// missing parent as ENOENT) before it ever judges the leaf.
+	yield* validateEntryName(method, name, errorPath);
 	return { inode: parent.inode, entry: parent.entry, name, path: parent.path };
 });
 
@@ -1039,9 +1044,13 @@ const readLink = (volume: Volume) =>
 		);
 	});
 
+// KIT EXTENSION (errno fidelity, #1284): node's `fs.realpath`, which the
+// platform adapter wraps, folds the path lexically first (./lexical.js).
 const realPath = (volume: Volume) =>
 	Effect.fnUntraced(function* (path: string) {
-		return yield* volume.withState((state) => Effect.map(resolve(state, path, { method: "realPath" }), (_) => _.path));
+		return yield* volume.withState((state) =>
+			Effect.map(resolve(state, lexicallyNormalized(path), { method: "realPath" }), (_) => _.path),
+		);
 	});
 
 const remove = (volume: Volume) =>

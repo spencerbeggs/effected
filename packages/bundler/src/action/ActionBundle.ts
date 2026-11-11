@@ -4,7 +4,7 @@ import { rolldown } from "rolldown";
 import type { ActionConfig } from "../config/ActionConfig.js";
 import { causeMessage } from "../internal/causeMessage.js";
 import { BundleFailed, CleanError, WriteError } from "./ActionErrors.js";
-import { DEFAULT_LIFECYCLE_ENTRIES, invalidWorkerName } from "./entries.js";
+import { DEFAULT_LIFECYCLE_ENTRIES, invalidWorkerName, workerImportCheck, workerSource } from "./entries.js";
 import { ignoreStubPlugin } from "./ignore-stub-plugin.js";
 import { checkImport } from "./import-check.js";
 
@@ -59,6 +59,8 @@ export class BuildResult extends Schema.Class<BuildResult>("BuildResult")({
 interface EntryToBuild {
 	readonly name: string;
 	readonly source: string;
+	/** Whether the entry's own setting leaves its load check on; `build.importCheck` can still turn it off. */
+	readonly importCheck: boolean;
 }
 
 /**
@@ -78,25 +80,26 @@ const entriesToBuild = Effect.fnUntraced(function* (
 	if (!(yield* exists(mainSource))) {
 		return yield* new BundleFailed({ entry: main, cause: new Error("Main entry point not found") });
 	}
-	const entries: Array<EntryToBuild> = [{ name: "main", source: mainSource }];
+	const entries: Array<EntryToBuild> = [{ name: "main", source: mainSource, importCheck: true }];
 	for (const [name, explicit, fallback] of [
 		["pre", pre, DEFAULT_LIFECYCLE_ENTRIES.pre],
 		["post", post, DEFAULT_LIFECYCLE_ENTRIES.post],
 	] as const) {
 		const source = path.resolve(cwd, explicit ?? fallback);
-		if (yield* exists(source)) entries.push({ name, source });
+		if (yield* exists(source)) entries.push({ name, source, importCheck: true });
 		else if (explicit !== undefined) {
 			return yield* new BundleFailed({ entry: name, cause: new Error(`Entry point not found: ${explicit}`) });
 		}
 	}
-	for (const [name, source] of Object.entries(workers)) {
+	for (const [name, worker] of Object.entries(workers)) {
+		const source = workerSource(worker);
 		const reason = invalidWorkerName(name);
 		if (reason !== undefined) return yield* new BundleFailed({ entry: name, cause: new Error(reason) });
-		const workerSource = path.resolve(cwd, source);
-		if (!(yield* exists(workerSource))) {
+		const resolved = path.resolve(cwd, source);
+		if (!(yield* exists(resolved))) {
 			return yield* new BundleFailed({ entry: name, cause: new Error(`Worker entry point not found: ${source}`) });
 		}
-		entries.push({ name, source: workerSource });
+		entries.push({ name, source: resolved, importCheck: workerImportCheck(worker) });
 	}
 	return entries;
 });
@@ -161,7 +164,7 @@ const bundleEntry = async (
 		}
 
 		const { file } = out;
-		if (importCheck) {
+		if (importCheck && entry.importCheck) {
 			const verdict = await checkImport(file, { externals, signal });
 			if (verdict.kind === "failed") {
 				return {
@@ -209,7 +212,8 @@ export class ActionBundle {
 	 * on when or where it is built.
 	 *
 	 * Each bundle is then imported in a fresh Node, because a bundle can build cleanly and not load. Set
-	 * `build.importCheck = false` to skip that. The child has no `GITHUB_*` variable, token or `PATH`, and runs in a
+	 * `build.importCheck = false` to skip that for every bundle, or `importCheck = false` in a worker's own table to
+	 * skip it for that worker alone. The child has no `GITHUB_*` variable, token or `PATH`, and runs in a
 	 * temporary directory, for at most a minute. An action's `GITHUB_ACTIONS` guard stays closed, but an action with no
 	 * guard runs for real there. A failure asking for an input passes. A package listed in `build.externals` that is not
 	 * installed passes with a warning on the entry, and the check learns nothing about the bundle past that import.

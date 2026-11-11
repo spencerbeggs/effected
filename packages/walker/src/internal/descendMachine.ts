@@ -95,6 +95,9 @@ export const DEFAULT_PRUNE: ReadonlyArray<string> = ["node_modules", ".git"];
 /** A glob pattern's one separator: its backslash is an escape, never a separator. */
 const isSlash = (character: string): boolean => character === "/";
 
+/** A segment a stat resolves physically and a join folds lexically: empty, `.` or `..`. */
+const isDotSegment = (segment: string): boolean => segment === "" || segment === "." || segment === "..";
+
 /** The number of segments in a canonical, cwd-relative POSIX path. */
 const segmentCount = (relative: string): number => {
 	let count = 1;
@@ -205,20 +208,36 @@ export function* descendMachine<S, C>(
 	}
 
 	/**
-	 * Whether a literal's `.`, `..` and empty segments resolve as a real stat resolves them: the stat joins its path,
-	 * and joining normalizes them lexically, so `f.js/x/..` would reach `f.js` where the kernel fails it ENOTDIR (and
-	 * `x/../f.js` would reach `f.js` with no `x`). Each such segment must follow a real directory — not a link, whose
-	 * `..` the kernel resolves from its target. The segments before a plain one need no request: the final stat
-	 * crosses them itself. A leading empty segment is a root and a leading `.` is `cwd`, a directory already.
+	 * Whether a spelling's `.`, `..` and empty segments resolve as a real stat resolves them: the stat joins its
+	 * path, and joining normalizes them lexically, so `f.js/x/..` would reach `f.js` where the kernel fails it
+	 * ENOTDIR (and `x/../f.js` would reach `f.js` with no `x`). Each such segment must follow a directory. A `..`
+	 * must follow a real one, never a link, because the kernel resolves that `..` from the link's target, not
+	 * lexically. A `.` or empty segment after a link under `followSymlinks` names the link's target itself, so
+	 * that directory need only `stat` as one (`link/./*.js` reads `link`'s target). Without `followSymlinks`, no
+	 * directory the spelling passes through may be a link at all: `link/e/..` folds to `link`, but reaches it
+	 * THROUGH the link (#1290), which `blocked` cannot see from the folded segments. A spelling with no such segment folds to itself, so it
+	 * needs no request here (the stat, and `blocked` on the folded segments, cover it). A leading empty segment is
+	 * a root and a leading `.` is `cwd`, a directory already. Each directory is asked about once.
 	 */
 	function* resolvesPhysically(raw: ReadonlyArray<string>): Walk<boolean> {
-		for (let index = 1; index < raw.length; index += 1) {
-			const segment = raw[index];
-			if (segment !== "" && segment !== "." && segment !== "..") continue;
-			const before = resolveSegments(raw.slice(0, index));
+		if (!raw.slice(1).some(isDotSegment)) return true;
+		const asked = new Set<string>();
+		for (let index = 0; index < raw.length - 1; index += 1) {
+			const before = resolveSegments(raw.slice(0, index + 1));
 			if (before === undefined) return false;
 			if (before.length === 0) continue;
-			const answer = yield* ask({ _tag: "Lstat", path: join(options.cwd, before.join("/")) });
+			const next = raw[index + 1] ?? "";
+			// Under followSymlinks a link may be passed through: a plain segment needs no request (the final stat
+			// crosses it), and a `.` or empty segment needs only a directory, link or not. Only a `..` needs a real
+			// one. Without followSymlinks every directory passed through must be a real one.
+			if (followSymlinks && !isDotSegment(next)) continue;
+			const real = !followSymlinks || next === "..";
+			const directory = before.join("/");
+			const key = `${real ? "lstat" : "stat"}:${directory}`;
+			if (asked.has(key)) continue;
+			asked.add(key);
+			// `lstat` sees a link as no directory; `stat` follows it. A file or a missing name is neither.
+			const answer = yield* ask({ _tag: real ? "Lstat" : "Stat", path: join(options.cwd, directory) });
 			if (answer?.kind !== "Directory") return false;
 		}
 		return true;
@@ -290,10 +309,15 @@ export function* descendMachine<S, C>(
 	): Walk<DescendMachineResult<S, C> | undefined> {
 		// Each spelling paired with the canonical prefix it stands for; a spelling
 		// that is already canonical is the path itself.
-		const spelled = spellings.map((spelling) => {
+		// A spelling that does not resolve physically (`f.js/../` past a file, `link/e/../` through a link the walk
+		// does not follow) names nothing a real filesystem reaches, so nothing is answered through it (#1290).
+		const spelled: Array<{ readonly spelling: string; readonly canonical: string }> = [];
+		for (const spelling of spellings) {
+			if (!(yield* resolvesPhysically(trimTrailing(spelling, isSlash).split("/")))) continue;
 			const canonical = resolveSegments(spelling.split("/"))?.join("/") ?? "";
-			return { spelling, canonical: canonical === "" ? "" : `${canonical}/` };
-		});
+			spelled.push({ spelling, canonical: canonical === "" ? "" : `${canonical}/` });
+		}
+		if (spelled.length === 0) return undefined;
 		/** The entry at canonical `relative`, in the first spelling the pattern matches it under, or `undefined`. */
 		const matchedAs = (relative: string): string | undefined => {
 			for (const { spelling, canonical } of spelled) {

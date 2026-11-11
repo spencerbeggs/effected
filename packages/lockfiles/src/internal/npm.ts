@@ -1,4 +1,5 @@
-import { GlobPattern, GlobPatternOptions } from "@effected/glob";
+import type { NpmWorkspacePatternsError } from "@effected/npm";
+import { NpmWorkspacePatterns } from "@effected/npm";
 import { Effect, Result, Schema } from "effect";
 import { LockfileImporter } from "../LockfileImporter.js";
 import { ResolvedPackage } from "../ResolvedPackage.js";
@@ -136,457 +137,64 @@ const resolveNpmEdges = (
 };
 
 /**
- * The most patterns the root entry's `workspaces` field may declare. Real
- * repositories declare tens; the ceiling sits far above that and bounds the
- * cancellation, which is quadratic in the pattern count (every negation is
- * matched against every later positive, as `map-workspaces` does). The
- * per-row cost is bounded by {@link MAX_WILDCARD_WORKSPACE_PATTERNS} and
- * {@link MAX_WILDCARD_ALTERNATIVES}.
- *
- * Measured at both ceilings on darwin-arm64, node 26.13.0, CPU time, the
- * best of three. With 64 wildcards (the ceiling before it was lowered to
- * 32), `p/**`, 63 wildcard `/**` negations and 936 literal ones over about
- * 1 MB of link rows took 256 ms at path depth 2 (10,599 rows), 336 ms at
- * depth 12, 457 ms at depth 42, 495 ms at depth 120; at 32 wildcards
- * (31 negations, 968 literal), depth 120 takes 291 ms. The cancellation's
- * worst split inside the ceilings (500 literal negations then 500 literal
- * positives) takes 24 ms. Before the ceilings, the memo and the literal
- * lookups, 999 wildcard negations over 1 MB took 2.4–6.1 s, and the 592 KB
- * case a reviewer measured took 88 s.
- *
- * A lockfile over the ceiling fails typed at validation rather than being
- * read some other way: a fallback reading would silently misclassify the
- * links the globs exist to tell apart.
- *
- * @internal
+ * The root entry's `workspaces` failure in this parser's words: the ceiling
+ * `@effected/npm`'s matcher refused the field at, as the validation failure
+ * names it. `uncompilable` carries glob's own error as its cause.
  */
-const MAX_WORKSPACE_PATTERNS = 1000;
-
-/**
- * The most wildcard patterns — any that are not plain paths — the field may
- * declare. Each costs a match per link-row directory, so this, not the total,
- * bounds the per-row work; literal paths are set lookups. Real repositories
- * declare a handful. It is 32, not 64: the per-row cost is linear in
- * wildcards × file size, and at 64 a near-miss shape over 1 MB of link rows
- * took 1.4 s (see {@link MAX_WILDCARD_PATTERN_LENGTH}).
- *
- * @internal
- */
-const MAX_WILDCARD_WORKSPACE_PATTERNS = 32;
-
-/**
- * The longest a matched pattern may be, in characters: every negation, and
- * every positive that is not a plain path once its trailing `/.` run is
- * dropped. Plain-path positives are set lookups and stay uncapped. glob's
- * matcher is polynomial, not linear: a run of `x!(a)` matched against a
- * candidate of similar length is about cubic (1,000 characters cost 26 ms
- * per match, 63 such negations over 971 KB of rows 27.6 s). Real workspace
- * globs are tens of characters.
- *
- * Measured at all four ceilings together (1000 patterns, 32 wildcards, 256
- * alternatives, 256 characters) over about 1 MB of link rows, darwin-arm64,
- * node 26.13.0, CPU time, best of three after a warm-up, load average about
- * 20: `p/**`, 31 negations `!p/*` + `/x!(a)` × 50 (254 characters) and 968
- * literal ones, against rows `p/qN/` + `xb` × 50, takes 76–79 ms when the
- * rows match (the first matching negation ends the test). Against near-miss
- * rows (`…xb xa`), where every negation runs to the end and fails, it takes
- * 454–688 ms, and 32 such positives take 364–503 ms. That cost scales with
- * wildcard count × file size, not with pattern length, which is why the
- * wildcard ceiling is 32: at 64 the same near-miss shape took 1.4 s.
- * Without this length ceiling, 63 negations of 1,000 characters over
- * 971 KB took 27.6 s.
- *
- * @internal
- */
-const MAX_WILDCARD_PATTERN_LENGTH = 256;
-
-/**
- * The most brace alternatives the wildcard patterns may expand to, summed
- * over every wildcard pattern, positive and negated. The glob engine expands
- * a pattern's braces and matches each alternative, so one pattern
- * (`p/{a,b,c,d,e,f,g,h}` four times over is 4,096 alternatives) can cost what
- * thousands do; the wildcard-pattern ceiling alone does not bound it. Each
- * pattern is weighed by {@link braceWeight}: the exact number of
- * alternatives the engine matches for it, each numeric range of 100 or more
- * values (which the engine keeps whole) counted by its values. `{1..99}{a,b}`
- * weighs 198 and `{a,b}{c,d}{e,f}{g,h}{i,j}` weighs 32, so a field holding
- * either is read, while `{1..99}{a,b,c}` (297) and `{0..999}` (1,000) are
- * refused. Real `workspaces` fields hold
- * nothing of the kind; a field that needs more can list its alternatives as
- * separate patterns.
- *
- * Measured at the budget over about 1 MB of link rows (darwin-arm64, node
- * 26.13.0, CPU time, best of three), `p/**` plus 31 negations of eight
- * alternatives each: 432 ms at path depth 12, 366 ms at 42, 333 ms at 120;
- * with an extglob prefix on each, 507 / 419 / 353 ms; one negation of 255
- * alternatives, 294 / 167 / 94 ms. Without the budget, 64 negations of
- * 8^4 alternatives beside 936 literal positives — 14 KB, no link rows —
- * took 8.0 s, and 63 negations of 8^2 over 954 KB took 3.4 s.
- *
- * @internal
- */
-const MAX_WILDCARD_ALTERNATIVES = 256;
-
-/**
- * The options a pattern's alternatives are counted under: a negation is also
- * compiled with `nocomment`, so a leading `#` is counted as text, never as a
- * comment's zero, and the expansion stops one past the budget.
- */
-const COUNT_OPTIONS = GlobPatternOptions.make({
-	nocomment: true,
-	nonegate: true,
-	braceExpandMax: MAX_WILDCARD_ALTERNATIVES + 1,
-});
-
-/**
- * A numeric range the glob engine keeps whole, as it finds one: unescaped, not
- * after `$`, both ends safe integers, 100 or more values.
- */
-const KEPT_RANGE = /(?<![\\$])\{(-?\d+)\.\.(-?\d+)\}/g;
-const KEPT_RANGE_MIN = 100;
-
-/** How a pattern is weighed against the brace budget, and whether that weight is the whole of it. */
-export interface BraceWeight {
-	/** The weight: the alternatives the engine matches, each kept-whole range counted by its values. */
-	readonly weight: number;
-	/** Whether counting stopped one past the budget, so the weight is a lower bound, not the size. */
-	readonly stopped: boolean;
-	/** Whether the weight is the exact alternative count: counting did not stop and no kept range was weighed. */
-	readonly exact: boolean;
-}
-
-/**
- * Weigh a pattern's brace alternatives against {@link MAX_WILDCARD_ALTERNATIVES}.
- *
- * The count is `GlobPattern.alternativeCount`, which runs the compile's own
- * expansion and builds nothing. It stops one past the budget, so a hostile
- * pattern costs no more than that many results to weigh; there, the weight is
- * where counting stopped and `stopped` is true. Any other failure of the
- * expansion (its 4,000,000-character guard, which a sequence whose endpoints
- * overflow a double reaches, since it counts towards `Infinity`) weighs as
- * unbounded.
- *
- * A numeric range of 100 or more values is one alternative to the engine,
- * which matches it as one portion, but that portion's matcher graph costs as
- * much to match against as the values would (up to 684 items, for every row
- * it meets): 31 negations of nine `{0..9007199254740991}` segments and eight
- * comma parts each, against 1.2 MB of rows, took 1.1 s as 248 alternatives.
- * So each such range multiplies the weight by its value count, as an upper
- * bound would, and a field holding one wide range fails typed. Where the
- * engine expands a range after all (a `[` before it in its portion), the
- * count holds its values already, and the product over-weighs it: closed.
- * Either way the field fails closed.
- *
- * @internal
- */
-export const braceWeight = (pattern: string): BraceWeight => {
-	const counted = GlobPattern.alternativeCount(pattern, COUNT_OPTIONS);
-	let weight: number;
-	let stopped = false;
-	let ranged = false;
-	if (Result.isSuccess(counted)) weight = counted.success;
-	else {
-		const { reason, limit, actual } = counted.failure;
-		stopped = reason === "ExpansionBudgetExceeded" && limit === MAX_WILDCARD_ALTERNATIVES + 1;
-		weight = stopped ? Math.max(actual, limit) : Number.POSITIVE_INFINITY;
-	}
-	for (const [, lo, hi] of pattern.matchAll(KEPT_RANGE)) {
-		const a = Number(lo);
-		const b = Number(hi);
-		if (!Number.isSafeInteger(a) || !Number.isSafeInteger(b)) continue;
-		const values = Math.abs(a - b) + 1;
-		// The engine kept it whole only at 100 values or more; a smaller range is expanded, and counted.
-		if (values >= KEPT_RANGE_MIN) {
-			weight *= values;
-			ranged = true;
+const rootEntryMessage = (error: NpmWorkspacePatternsError): Error => {
+	const { actual, limit } = error;
+	switch (error.reason) {
+		case "tooManyPatterns":
+			return new Error(
+				`the root entry's workspaces field declares ${actual} patterns, more than the ${limit} this parser reads`,
+			);
+		case "tooManyWildcards":
+			return new Error(
+				`the root entry's workspaces field declares ${actual} wildcard patterns, more than the ${limit} this parser reads`,
+			);
+		case "patternTooLong":
+			return new Error(
+				`the root entry's workspaces pattern at index ${error.index} is ${actual} characters long, ` +
+					`more than the ${limit} this parser reads for a pattern it matches`,
+			);
+		case "tooManyAlternatives":
+			// Only an exact sum is a size: a stopped count is a lower bound, a kept range's weight an upper one.
+			return new Error(
+				error.count === "unbounded"
+					? `the root entry's workspaces field's wildcard patterns may expand to unboundedly many brace alternatives, more than the ${limit} this parser reads`
+					: error.count === "exact"
+						? `the root entry's workspaces field's wildcard patterns may expand to ${actual} brace alternatives, more than the ${limit} this parser reads`
+						: `the root entry's workspaces field's wildcard patterns may expand to more than the ${limit} brace alternatives this parser reads${error.count === "stopped" ? ` (counting stopped at ${actual})` : ""}`,
+			);
+		case "uncompilable": {
+			const reason = (error.cause as { readonly reason?: string } | undefined)?.reason;
+			return new Error(
+				`the root entry's workspaces pattern at index ${error.index} will not compile: ` +
+					`${reason} (limit ${limit}, actual ${actual})`,
+				{ cause: error.cause },
+			);
 		}
 	}
-	return { weight, stopped, exact: !stopped && !ranged && Number.isFinite(weight) };
 };
-
-/**
- * {@link braceWeight}'s weight alone.
- *
- * @internal
- */
-export const braceAlternativeCount = (pattern: string): number => braceWeight(pattern).weight;
-
-/** Characters that make a pattern more than a plain path, conservatively. */
-const GLOB_SYNTAX = /[*?[\]{}()!+@#\\,]/;
-
-/**
- * The directory a literal pattern names, or `undefined` for a pattern that
- * takes a glob match: any glob syntax, an empty pattern, a doubled slash, or
- * a `.`/`..` segment. One trailing `/` is dropped, which is how a literal
- * pattern matches as both include (`dir/`) and ignore (`dir` or `dir/`).
- *
- * @internal
- */
-const literalKey = (pattern: string): string | undefined => {
-	if (pattern === "" || GLOB_SYNTAX.test(pattern) || pattern.includes("//")) return undefined;
-	const key = pattern.endsWith("/") ? pattern.slice(0, -1) : pattern;
-	if (key === "" || key.split("/").some((segment) => segment === "." || segment === "..")) return undefined;
-	return key;
-};
-
-/**
- * A positive pattern with any trailing run of `/.` segments, and one `/` after
- * the run, dropped: `packages/a/.`, `packages/a/./` and `packages/a/./.` all
- * become `packages/a`. A pattern with no such run, or one that would become
- * empty, is kept as written.
- *
- * An index walk from the end, linear in the run it drops. The pattern is
- * untrusted, and the regex this replaced (`/(?:\/\.)+\/?$/`) retried its run
- * from every start position, so a long `/./.…x` cost quadratic time (32 s for
- * a 488 KB pattern) before any length guard could refuse it.
- */
-export const stripTrailingDot = (pattern: string): string => {
-	const end = pattern.endsWith("/") ? pattern.length - 1 : pattern.length;
-	let stop = end;
-	while (stop >= 2 && pattern.charCodeAt(stop - 1) === 46 && pattern.charCodeAt(stop - 2) === 47) stop -= 2;
-	return stop === end || stop === 0 ? pattern : pattern.slice(0, stop);
-};
-
-/**
- * Compile the workspace pattern at `index` of the declaration, or the typed
- * validation failure naming that index and the guard glob tripped
- * (`PatternTooLong`, `CompileBudgetExceeded`, …). There is no fallback
- * reading: a pattern the parser cannot read would leave every link row
- * misclassified one way or the other.
- */
-export const compileGlob = (
-	index: number,
-	source: string,
-	options?: GlobPatternOptions,
-): Result.Result<GlobPattern, ParseFailure> =>
-	Result.mapError(GlobPattern.compileResult(source, options), (error) =>
-		validationFailure(
-			new Error(
-				`the root entry's workspaces pattern at index ${index} will not compile: ` +
-					`${error.reason} (limit ${error.limit}, actual ${error.actual})`,
-				{ cause: error },
-			),
-		),
-	);
-
-/**
- * glob's ignore options, which npm's negated workspace patterns are matched
- * under: always `dot`, never comment or negation.
- */
-const IGNORE_OPTIONS = GlobPatternOptions.make({ dot: true, nocomment: true, nonegate: true });
-
-/**
- * One negated workspace pattern, compiled once when it is read: `plain` under
- * minimatch's defaults, which is how `map-workspaces` tests a later pattern
- * against it, and `ignore` under {@link IGNORE_OPTIONS}, which is how glob
- * tests a directory against it.
- */
-interface Negation {
-	readonly pattern: string;
-	readonly plain: GlobPattern;
-	readonly ignore: GlobPattern;
-}
 
 /**
  * Whether a link row's target directory is a workspace, read from the root
  * entry's `workspaces` globs the way npm's own `@npmcli/map-workspaces` reads
- * them.
+ * them — through `@effected/npm`'s `NpmWorkspacePatterns`, the kit's one home
+ * of those rules.
  *
  * npm writes every symlinked dependency the same way — `{ resolved, link:
  * true }` — whether its target is a workspace or a `file:` directory that is
- * not one, so the globs are the only record that tells them apart. The
- * reading follows `map-workspaces` 5 and the glob 13 `Ignore` it hands
- * negations to:
- *
- * - the declaration is the array itself, or the array under `packages`; any
- *   other shape, or no field at all, declares no workspaces;
- * - a run of leading `!` negates when it is odd and is dropped when even, and
- *   one leading `./` or `/` (with any extra slashes) is stripped;
- * - a later positive pattern that a negation matches, read as a path, cancels
- *   that negation, and a positive pattern a surviving negation matches is
- *   dropped;
- * - a positive pattern matches directories, so it is matched with a trailing
- *   `/` against the directory with one, under glob's defaults (no `dot`);
- * - a negation is an ignore, matched with `dot`: it ignores a directory it
- *   matches with or without a trailing `/` (which, ending in `/**`, already
- *   covers every directory beneath one it matches); anything under
- *   `node_modules` is always ignored.
- *
- * A field declaring more than {@link MAX_WORKSPACE_PATTERNS} patterns fails
- * typed at validation, as does one whose patterns exceed
- * {@link MAX_WILDCARD_WORKSPACE_PATTERNS} wildcards or
- * {@link MAX_WILDCARD_ALTERNATIVES} brace alternatives, one holding a matched
- * pattern longer than {@link MAX_WILDCARD_PATTERN_LENGTH} characters, and one
- * holding a pattern glob will not compile (its cause names the pattern's index and
- * glob's reason). There is no fallback reading.
- *
- * The decision is made once per directory: one compile per pattern, then
- * (negations × positives) matches for the cancellation and two matches per
- * negation, plus one per positive, for each distinct link target.
- *
- * @internal
+ * not one, so the globs are the only record that tells them apart. A field
+ * past one of the matcher's ceilings fails typed at validation; there is no
+ * fallback reading.
  */
 const workspaceMatcher = (
 	root: NpmPackageEntryType | undefined,
-): Result.Result<(path: string) => boolean, ParseFailure> => {
-	const raw = root?.workspaces;
-	const packagesField =
-		typeof raw === "object" && raw !== null && !Array.isArray(raw) && Object.hasOwn(raw, "packages")
-			? (raw as { readonly packages: unknown }).packages
-			: undefined;
-	const declared = Array.isArray(packagesField) ? packagesField : raw;
-	if (!Array.isArray(declared)) return Result.succeed(() => false);
-	if (declared.length > MAX_WORKSPACE_PATTERNS) {
-		return Result.fail(
-			validationFailure(
-				new Error(
-					`the root entry's workspaces field declares ${declared.length} patterns, ` +
-						`more than the ${MAX_WORKSPACE_PATTERNS} this parser reads`,
-				),
-			),
-		);
-	}
-	// Read every pattern, and weigh the wildcard ones, before compiling any:
-	// a compile expands braces, so an over-budget pattern must be refused
-	// before it is built.
-	const read: Array<{ readonly index: number; readonly negated: boolean; readonly pattern: string }> = [];
-	let wildcards = 0;
-	let alternatives = 0;
-	// Whether some pattern's count stopped at the budget (the sum is then where counting stopped), and whether some
-	// weight is not an exact count (a stopped one, or a kept range weighed by its values): the sum is then no size.
-	let stopped = false;
-	let inexact = false;
-	for (const [index, entry] of declared.entries()) {
-		if (typeof entry !== "string") continue;
-		const bangs = /^!+/.exec(entry)?.[0].length ?? 0;
-		const pattern = entry.slice(bangs).replace(/^\.?\/+/, "");
-		const negated = bangs % 2 === 1;
-		read.push({ index, negated, pattern });
-		// Every negation is compiled, and so is every positive that is not a
-		// plain path once its trailing `/.` run is dropped; each is matched,
-		// and a match can cost far more than linear time, so each is capped.
-		const compiledAs = negated ? pattern : stripTrailingDot(pattern.replace(/\\/g, "/"));
-		if ((negated || literalKey(compiledAs) === undefined) && compiledAs.length > MAX_WILDCARD_PATTERN_LENGTH) {
-			return Result.fail(
-				validationFailure(
-					new Error(
-						`the root entry's workspaces pattern at index ${index} is ${compiledAs.length} characters long, ` +
-							`more than the ${MAX_WILDCARD_PATTERN_LENGTH} this parser reads for a pattern it matches`,
-					),
-				),
-			);
-		}
-		if (literalKey(pattern) !== undefined) continue;
-		wildcards += 1;
-		// A positive is compiled with backslashes turned to `/`, so it is
-		// weighed as compiled; a negation is compiled as written.
-		const weighed = braceWeight(negated ? pattern : pattern.replace(/\\/g, "/"));
-		alternatives += weighed.weight;
-		stopped ||= weighed.stopped;
-		inexact ||= !weighed.exact;
-	}
-	if (wildcards > MAX_WILDCARD_WORKSPACE_PATTERNS) {
-		return Result.fail(
-			validationFailure(
-				new Error(
-					`the root entry's workspaces field declares ${wildcards} wildcard patterns, ` +
-						`more than the ${MAX_WILDCARD_WORKSPACE_PATTERNS} this parser reads`,
-				),
-			),
-		);
-	}
-	// Fail closed: anything not provably within the budget is over it.
-	if (!(alternatives <= MAX_WILDCARD_ALTERNATIVES)) {
-		return Result.fail(
-			validationFailure(
-				new Error(
-					// Only an exact sum is a size: a stopped count is a lower bound, a kept range's weight an upper one.
-					!Number.isFinite(alternatives)
-						? `the root entry's workspaces field's wildcard patterns may expand to unboundedly many brace alternatives, more than the ${MAX_WILDCARD_ALTERNATIVES} this parser reads`
-						: inexact
-							? `the root entry's workspaces field's wildcard patterns may expand to more than the ${MAX_WILDCARD_ALTERNATIVES} brace alternatives this parser reads${stopped ? ` (counting stopped at ${alternatives})` : ""}`
-							: `the root entry's workspaces field's wildcard patterns may expand to ${alternatives} brace alternatives, more than the ${MAX_WILDCARD_ALTERNATIVES} this parser reads`,
-				),
-			),
-		);
-	}
-
-	// Every pattern is compiled exactly once; what follows is only matching.
-	// The cancellation and eager-removal steps match each negation against
-	// each positive pattern, as `map-workspaces` does, so the cost is one
-	// compile per pattern plus (negations × positives) matches.
-	const positives: Array<{ readonly index: number; readonly pattern: string }> = [];
-	let negations: Array<Negation> = [];
-	for (const { index, negated, pattern } of read) {
-		if (negated) {
-			const plain = compileGlob(index, pattern);
-			if (Result.isFailure(plain)) return Result.fail(plain.failure);
-			const ignore = compileGlob(index, pattern, IGNORE_OPTIONS);
-			if (Result.isFailure(ignore)) return Result.fail(ignore.failure);
-			negations.push({ pattern, plain: plain.success, ignore: ignore.success });
-			continue;
-		}
-		negations = negations.filter((negation) => !negation.plain.matches(pattern));
-		positives.push({ index, pattern });
-	}
-
-	// A literal pattern is decided by a set lookup, a wildcard one by a match:
-	// per directory, the cost is one lookup per set plus one match per
-	// wildcard pattern, whatever the literal count.
-	const surviving = positives.filter(({ pattern }) => !negations.some((negation) => negation.plain.matches(pattern)));
-	const literalIncludes = new Set<string>();
-	const includes: Array<GlobPattern> = [];
-	for (const { index, pattern } of surviving) {
-		// A positive pattern ending in `/.` (or `/./`) names the directory
-		// itself to npm — glob's walk resolves the trailing `.` — so the
-		// trailing segment is dropped before matching. Negations keep it:
-		// `!packages/b/.` ignores nothing, in npm and here (fixture
-		// `npm/workspacedotend`).
-		const slashed = stripTrailingDot(pattern.replace(/\\/g, "/"));
-		const key = literalKey(slashed);
-		if (key !== undefined) {
-			literalIncludes.add(key);
-			continue;
-		}
-		const glob = compileGlob(index, slashed.endsWith("/") ? slashed : `${slashed}/`);
-		if (Result.isFailure(glob)) return Result.fail(glob.failure);
-		includes.push(glob.success);
-	}
-	if (includes.length === 0 && literalIncludes.size === 0) return Result.succeed(() => false);
-	const literalIgnores = new Set<string>();
-	const ignores: Array<GlobPattern> = [];
-	for (const negation of negations) {
-		const key = literalKey(negation.pattern);
-		if (key !== undefined) literalIgnores.add(key);
-		else ignores.push(negation.ignore);
-	}
-
-	// glob also ignores everything beneath a directory a negation ending in
-	// `/**` matches (its `childrenIgnored`), but that adds nothing here. If
-	// `P/**` matches an ancestor `A/`, `P` matched a prefix of `A`, and in a
-	// normalized `resolved` path everything past `A` is a child name, which
-	// `**` takes under `dot`, so `P/**` matches the directory itself — the
-	// direct test above. A leading run of `..` is no exception: those
-	// segments are parents, never children, and glob does not apply the rule
-	// to them (`!../**` does not ignore `../../x`; real npm agrees, fixture
-	// `npm/workspaceclimb`). So a directory costs two matches per negation,
-	// never one per ancestor.
-	const ignored = (dir: string): boolean =>
-		dir.split("/").includes("node_modules") ||
-		literalIgnores.has(dir) ||
-		ignores.some((ignore) => ignore.matches(dir) || ignore.matches(`${dir}/`));
-	// Decided once per directory: both parser passes ask, and npm writes one
-	// link row per name a workspace is reached by.
-	const decided = new Map<string, boolean>();
-	return Result.succeed((dir) => {
-		if (dir === "") return false;
-		const known = decided.get(dir);
-		if (known !== undefined) return known;
-		const answer = (literalIncludes.has(dir) || includes.some((glob) => glob.matches(`${dir}/`))) && !ignored(dir);
-		decided.set(dir, answer);
-		return answer;
-	});
-};
+): Result.Result<(path: string) => boolean, ParseFailure> =>
+	Result.mapError(NpmWorkspacePatterns.matcherResult(root?.workspaces), (error) =>
+		validationFailure(rootEntryMessage(error)),
+	);
 
 /**
  * A link row's `resolved` as the workspace decision reads it: `.` segments

@@ -3,6 +3,16 @@ import { ErrorText } from "@effected/kit";
 import { Duration } from "effect";
 import { Doc, Fmt, Render } from "../src/index.js";
 
+/**
+ * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
+ * time the process was descheduled, so a loaded machine can not stretch a sample. vitest runs each file in its own
+ * fork, so no other test's CPU lands here. It under-measures async I/O, which the units here do not use.
+ */
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
 describe("Fmt.duration", () => {
 	const cases: ReadonlyArray<readonly [number, string]> = [
 		[0, "0ms"],
@@ -257,11 +267,11 @@ describe("Fmt.stripAnsi", () => {
 			`\u001b[${"1;".repeat(500_000)}`,
 			"\u001b ".repeat(500_000),
 		]) {
-			const started = performance.now();
+			const started = cpuNow();
 			Fmt.stripAnsi(input);
 			// Linear inputs strip in a few milliseconds; a quadratic regex would take minutes. The bound leaves room for a
 			// loaded machine.
-			assert.isBelow(performance.now() - started, 500);
+			assert.isBelow(cpuNow() - started, 500);
 		}
 	});
 
@@ -468,10 +478,10 @@ describe("Fmt.suggest", () => {
 	});
 
 	it("a long typed value against short names stays fast", () => {
-		const started = performance.now();
+		const started = cpuNow();
 		const long = "x".repeat(200_000);
 		assert.deepStrictEqual(Fmt.suggest(long, ["build", "test"]), []);
 		assert.deepStrictEqual(Fmt.suggest(long, [`${long}yyy`, long.slice(1)]), [long.slice(1)]);
-		assert.isBelow(performance.now() - started, 2000);
+		assert.isBelow(cpuNow() - started, 2000);
 	});
 });
