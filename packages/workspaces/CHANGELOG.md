@@ -1,5 +1,36 @@
 # @effected/workspaces
 
+## 0.46.0
+
+### Breaking Changes
+
+#### `getWorkspacePackagesSync` throws instead of answering no packages
+
+- The sync facade used to return an empty or fallback list when discovery failed. It now throws the Effect surface's typed errors, so a broken workspace no longer reads as a workspace with no packages:
+
+- `WorkspaceDiscoveryError` with reason `read`, when `pnpm-workspace.yaml` exists but cannot be read, or the root `package.json` pattern source cannot be read
+
+- `WorkspaceDiscoveryError` with reason `invalidYaml` or `invalidJson`, when either fails to parse
+
+- `WorkspacePatternError` with reason `uncompilable`, when the patterns do not compile as one `GlobSet`
+
+```ts
+try {
+  const packages = getWorkspacePackagesSync(root);
+} catch (error) {
+  // WorkspaceDiscoveryError | WorkspacePatternError
+}
+```
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/lockfiles | dependency | updated | 0.24.0 | 0.24.1 |
+| @effected/npm | dependency | updated | 0.33.0 | 0.34.0 |
+| @effected/package-json | dependency | updated | 0.32.0 | 0.32.1 |
+| @effected/walker | dependency | updated | 0.27.0 | 0.28.0 |
+
 ## 0.45.0
 
 ### Dependencies

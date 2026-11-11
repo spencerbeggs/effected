@@ -1,5 +1,17 @@
 # @effected/lockfiles
 
+## 0.24.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/npm | dependency | updated | 0.33.0 | 0.34.0 |
+
+### Maintenance
+
+- Reads npm's workspace-pattern rules from `@effected/npm` instead of carrying its own copy. Decisions and messages are unchanged.
+
 ## 0.24.0
 
 ### Dependencies

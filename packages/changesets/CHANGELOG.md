@@ -1,5 +1,13 @@
 # @effected/changesets
 
+## 0.4.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/workspaces | dependency | updated | 0.45.0 | 0.46.0 |
+
 ## 0.4.0
 
 ### Dependencies

@@ -1,5 +1,19 @@
 # @effected/npm
 
+## 0.34.0
+
+### Features
+
+#### npm's workspace-pattern rules
+
+- `NpmWorkspacePatterns.matcherResult` compiles a root's `workspaces` patterns by npm's own rules and fails with a typed `NpmWorkspacePatternsError`. The rules had lived in `@effected/lockfiles`; they now live here once.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/glob | dependency | added | — | 0.21.0 |
+
 ## 0.33.0
 
 ### Dependencies
