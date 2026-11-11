@@ -42,7 +42,7 @@
 		"@effected/kit": "workspace:*",
 		"@effected/walker": "workspace:*",
 		"effect": "catalog:effected",
-		"ink": "catalog:silk:peers",
+		"ink": "catalog:effected:build:peers",
 		"react": "catalog:effected:build:peers"
 	},
 	"devDependencies": {

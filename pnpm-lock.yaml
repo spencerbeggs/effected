@@ -225,6 +225,9 @@ catalogs:
     '@types/react-dom':
       specifier: ^19.3.0
       version: 19.3.0
+    ink:
+      specifier: ^8.0.0
+      version: 8.0.0
     react:
       specifier: ^19.3.1
       version: 19.3.1
@@ -247,17 +250,12 @@ catalogs:
       specifier: 7.1.0-beta
       version: 7.1.0-beta
   effected:build:peers:
+    ink:
+      specifier: ^8.0.0
+      version: 8.0.0
     react:
       specifier: ^19.3.0
       version: 19.3.1
-  silk:
-    ink:
-      specifier: ^8.0.0
-      version: 8.0.0
-  silk:peers:
-    ink:
-      specifier: ^8.0.0
-      version: 8.0.0
 
 overrides:
   '@effect/ai-anthropic@^4.0.0': 4.1.3
@@ -289,7 +287,7 @@ overrides:
   '@effect/sql-sqlite-wasm@^4.0.0': 4.1.3
   '@effect/vitest@^4.0.0': 4.1.3
   effect@^4.0.0: 4.1.3
-  '@effect/tsgo@^0.67.0': 0.67.5
+  '@effect/tsgo@^0.67.0': 0.67.7
 
 pnpmfileChecksum: sha256-5nlj5kZVyZEdgrNJJWHl5JW+cgzIPTbpjlRHjtaIbms=
 
@@ -379,52 +377,52 @@ importers:
         specifier: workspace:*
         version: link:../changesets
       '@effected/config-file':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../config-file
       '@effected/env':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../env
       '@effected/files':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../files
       '@effected/glob':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../glob
       '@effected/images':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../images
       '@effected/jsonc':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../jsonc
       '@effected/jsonl':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../jsonl
       '@effected/manifest':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../manifest
       '@effected/npm':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../npm
       '@effected/package-json':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../package-json
       '@effected/semver':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../semver
       '@effected/toml':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../toml
       '@effected/tsconfig-json':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../tsconfig-json
       '@effected/walker':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../walker
       '@effected/workspaces':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../workspaces
       '@effected/yaml':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../yaml
       '@jridgewell/sourcemap-codec':
         specifier: ^1.6.0
@@ -537,28 +535,28 @@ importers:
         specifier: catalog:effected
         version: 4.1.3(effect@4.1.3)(redis@6.3.1)
       '@effected/cli-kit':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../cli-kit
       '@effected/engine':
         specifier: workspace:*
         version: link:../engine
       '@effected/env':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../env
       '@effected/glob':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../glob
       '@effected/kit':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../kit
       '@effected/walker':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../walker
       effect:
         specifier: catalog:effected
         version: 4.1.3
       ink:
-        specifier: catalog:silk:peers
+        specifier: catalog:effected:build:peers
         version: 8.0.0(@types/react@19.3.0)(react@19.3.1)
       react:
         specifier: catalog:effected:build:peers
@@ -647,7 +645,7 @@ importers:
         specifier: catalog:effected
         version: 4.1.3
       ink:
-        specifier: catalog:silk
+        specifier: catalog:effected:build
         version: 8.0.0(@types/react@19.3.0)(react@19.3.1)
       react:
         specifier: catalog:effected:build
@@ -747,25 +745,25 @@ importers:
         specifier: workspace:*
         version: link:../bundler
       '@effected/files':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../files
       '@effected/jsonc':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../jsonc
       '@effected/jsonl':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../jsonl
       '@effected/kit':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../kit
       '@effected/schemastore':
         specifier: workspace:*
         version: link:../schemastore
       '@effected/source':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../source
       '@effected/workspaces':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../workspaces
       ajv:
         specifier: 8.20.0
@@ -1264,16 +1262,16 @@ importers:
         specifier: workspace:*
         version: link:../engine
       '@effected/glob':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../glob
       '@effected/kit':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../kit
       '@effected/mcp-kit':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../mcp-kit
       '@effected/walker':
-        specifier: workspace:^
+        specifier: workspace:*
         version: link:../walker
       effect:
         specifier: catalog:effected
@@ -1479,8 +1477,8 @@ importers:
         specifier: catalog:effected:build
         version: 26.6.6
       rolldown-pnpm-config:
-        specifier: ^2.4.8
-        version: 2.4.8(@effected/markdown-lint@0.2.0(@effected/jsonc@0.25.0(effect@4.1.3))(@effected/toml@0.20.0(effect@4.1.3))(@effected/yaml@0.30.0(effect@4.1.3))(effect@4.1.3))(@effected/markdown@0.29.0(@effected/jsonc@0.25.0(effect@4.1.3))(@effected/toml@0.20.0(effect@4.1.3))(@effected/yaml@0.30.0(effect@4.1.3))(effect@4.1.3))(@types/react@19.3.0)(redis@6.3.1)(rolldown@1.3.2)
+        specifier: ^2.5.0
+        version: 2.5.0(@effected/markdown-lint@0.2.0(@effected/jsonc@0.25.0(effect@4.1.3))(@effected/toml@0.20.0(effect@4.1.3))(@effected/yaml@0.30.0(effect@4.1.3))(effect@4.1.3))(@effected/markdown@0.29.0(@effected/jsonc@0.25.0(effect@4.1.3))(@effected/toml@0.20.0(effect@4.1.3))(@effected/yaml@0.30.0(effect@4.1.3))(effect@4.1.3))(@types/react@19.3.0)(redis@6.3.1)(rolldown@1.3.2)
       typescript:
         specifier: catalog:effected:build
         version: 7.1.0-beta
@@ -6339,8 +6337,8 @@ packages:
       vue-tsc:
         optional: true
 
-  rolldown-pnpm-config@2.4.8:
-    resolution: {integrity: sha512-+unxyEbAoMqQxxefqDmBf/qA/2h5bi7uwIo1i+mnW1ed0pkiIZ6+Avx7aS3vVEomBbIoYqIWwwbGZNUwdeYlPA==}
+  rolldown-pnpm-config@2.5.0:
+    resolution: {integrity: sha512-+IPWpD23A0QzU7nAOTMFwbsX4OOzO5QE+exerXJXlL99I1K4lywv+x+BYx52KJ5mnj3uxy8hNXuLs+GrHHEU3Q==}
     engines: {node: '>=24.11.0'}
     hasBin: true
     peerDependencies:
@@ -11816,7 +11814,7 @@ snapshots:
       - '@yuku-toolchain/wasm'
       - oxc-resolver
 
-  rolldown-pnpm-config@2.4.8(@effected/markdown-lint@0.2.0(@effected/jsonc@0.25.0(effect@4.1.3))(@effected/toml@0.20.0(effect@4.1.3))(@effected/yaml@0.30.0(effect@4.1.3))(effect@4.1.3))(@effected/markdown@0.29.0(@effected/jsonc@0.25.0(effect@4.1.3))(@effected/toml@0.20.0(effect@4.1.3))(@effected/yaml@0.30.0(effect@4.1.3))(effect@4.1.3))(@types/react@19.3.0)(redis@6.3.1)(rolldown@1.3.2):
+  rolldown-pnpm-config@2.5.0(@effected/markdown-lint@0.2.0(@effected/jsonc@0.25.0(effect@4.1.3))(@effected/toml@0.20.0(effect@4.1.3))(@effected/yaml@0.30.0(effect@4.1.3))(effect@4.1.3))(@effected/markdown@0.29.0(@effected/jsonc@0.25.0(effect@4.1.3))(@effected/toml@0.20.0(effect@4.1.3))(@effected/yaml@0.30.0(effect@4.1.3))(effect@4.1.3))(@types/react@19.3.0)(redis@6.3.1)(rolldown@1.3.2):
     dependencies:
       '@effect/platform-node': 4.1.3(effect@4.1.3)(redis@6.3.1)
       '@effected/changesets': 0.4.1(@effected/markdown-lint@0.2.0(@effected/jsonc@0.25.0(effect@4.1.3))(@effected/toml@0.20.0(effect@4.1.3))(@effected/yaml@0.30.0(effect@4.1.3))(effect@4.1.3))(@effected/markdown@0.29.0(@effected/jsonc@0.25.0(effect@4.1.3))(@effected/toml@0.20.0(effect@4.1.3))(@effected/yaml@0.30.0(effect@4.1.3))(effect@4.1.3))(effect@4.1.3)

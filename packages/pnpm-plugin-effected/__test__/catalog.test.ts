@@ -231,6 +231,7 @@ const BUILD_CHAIN = [
 	"@types/node",
 	"@types/react",
 	"@types/react-dom",
+	"ink",
 	"react",
 	"react-dom",
 	"rolldown",
@@ -311,6 +312,22 @@ describe("overrides", () => {
 		return hooks.updateConfig(config);
 	}
 
+	// A tool package pins the kit exactly through `catalog:effected:exact` (the carrier closure):
+	// every entry of the served `effected` catalog with its operator stripped. The family already
+	// serves its frozen exact version, so the two agree there by construction.
+	it("serves effected:exact as the effected catalog with every operator stripped", async () => {
+		const { catalogs } = (await updateConfig({})) as { catalogs: Record<string, Record<string, string>> };
+		const served = catalogs.effected ?? {};
+		const exact = catalogs["effected:exact"] ?? {};
+		assert.isAtLeast(Object.keys(exact).length, 40, "the exact catalog names the family and the kit");
+		assert.sameMembers(Object.keys(exact), Object.keys(served));
+		for (const [name, range] of Object.entries(served)) {
+			assert.strictEqual(exact[name], range.replace(/^[\^~]/, ""), name);
+			assert.match(exact[name] ?? "", /^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/, `${name} is a plain version`);
+		}
+		assert.notProperty(catalogs, "effected:build:exact", "only the runtime catalog opts in");
+	});
+
 	it("pins the effect family to the catalog version and each prerelease parent's shared package to its own", async () => {
 		const { overrides } = await updateConfig({});
 		assert.deepStrictEqual(overrides, PINS);
@@ -359,12 +376,13 @@ describe("the consumer's catalog", () => {
 	// `pnpm pack` writes a `catalog:` peer as the catalog's value, and `effected` pins the
 	// Effect family exactly, so a peer spelled `catalog:effected` would publish `4.<minor>.<patch>`.
 	// The build chain is a second catalog by design (okf/decisions/effected-build-catalog.md).
-	it("exposes effected and effected:build, each with its :peers twin", async () => {
+	it("exposes effected and effected:build, each with its :peers twin, and effected:exact", async () => {
 		const catalogs = await catalogsFor({});
 		assert.deepStrictEqual(Object.keys(catalogs).sort(), [
 			"effected",
 			"effected:build",
 			"effected:build:peers",
+			"effected:exact",
 			"effected:peers",
 		]);
 	});
@@ -492,6 +510,7 @@ describe("settings that came with the build chain", () => {
 		"@types/node",
 		"@types/react",
 		"@types/react-dom",
+		"ink",
 		"react",
 		"react-dom",
 		"rolldown",
