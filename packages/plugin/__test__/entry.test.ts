@@ -106,4 +106,17 @@ describe("@effected/plugin's root entry", () => {
 			assert.strictEqual(dependencies(from)[to], "workspace:*", `${from} -> ${to}`);
 		}
 	});
+
+	// The tool owns its closure: a kit patch floating in under a carrier version changes what the
+	// tool does with no release of the tool to show for it (effected#1333). Pinning every kit edge
+	// of the tool's own packages also pins each library's kit peers, which resolve from here.
+	it("every kit dependency of the tool's packages is workspace:*", () => {
+		for (const pkg of ["plugin", "cli", "mcp", "engine", "bundler"]) {
+			const kit = Object.entries(dependencies(pkg)).filter(([name]) => name.startsWith("@effected/"));
+			assert.isNotEmpty(kit, `${pkg} has kit dependencies, so the check is not vacuous`);
+			for (const [name, specifier] of kit) {
+				assert.strictEqual(specifier, "workspace:*", `${pkg} -> ${name}`);
+			}
+		}
+	});
 });

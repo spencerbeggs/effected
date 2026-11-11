@@ -35,12 +35,12 @@
 	},
 	"dependencies": {
 		"@effect/platform-node": "catalog:effected",
-		"@effected/cli-kit": "workspace:^",
+		"@effected/cli-kit": "workspace:*",
 		"@effected/engine": "workspace:*",
-		"@effected/env": "workspace:^",
-		"@effected/glob": "workspace:^",
-		"@effected/kit": "workspace:^",
-		"@effected/walker": "workspace:^",
+		"@effected/env": "workspace:*",
+		"@effected/glob": "workspace:*",
+		"@effected/kit": "workspace:*",
+		"@effected/walker": "workspace:*",
 		"effect": "catalog:effected",
 		"ink": "catalog:silk:peers",
 		"react": "catalog:effected:build:peers"

@@ -1,5 +1,9 @@
 # Log
 
+## 2026-11-11
+
+* Updated Peer-dependency discipline
+
 ## 2026-11-10
 
 * Updated @effected/changesets
