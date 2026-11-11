@@ -1,5 +1,21 @@
 # @effected/cli
 
+## 0.31.0
+
+### Features
+
+#### `effected package build` waits for a concurrent build
+
+- When another build of the same package holds its lock, the command prints one line on stderr naming the holder and the lock path, so `--format json` keeps a single document on stdout. If the lock is held for the whole wait, the command exits `3`, the infrastructure tier, instead of racing the other build.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli-kit | dependency | updated | 0.28.0 | 0.28.1 |
+| @effected/engine | dependency | updated | 0.16.0 | 0.17.0 |
+| @effected/walker | dependency | updated | 0.27.0 | 0.28.0 |
+
 ## 0.30.0
 
 ### Dependencies
