@@ -756,12 +756,19 @@ const symbolicLinkTargetPath = (linkPath: string, target: string): string => {
 // missing entry it is ENOENT, except where Linux reports otherwise for the
 // calling operation (EISDIR when creating a file, ENOTDIR when renaming a
 // non-directory onto it) — the caller passes that code.
+//
+// KIT EXTENSION (errno fidelity, #1327): a `.` or `..` leaf under a directory
+// names that directory (or its parent), never a new entry, so each operation
+// refuses it with its own errno — the caller passes it as `dotLeaf`, or
+// `"defer"` to receive the leaf and decide later (rename, which must resolve
+// its other path first). Without `dotLeaf` the leaf is an invalid entry name.
 const resolveParent = Effect.fnUntraced(function* (
 	state: State,
 	path: string,
 	method: string,
 	errorPath: string = path,
 	missingWithTrailingSlash: ErrnoCode = "ENOENT",
+	dotLeaf?: ErrnoCode | "defer",
 ) {
 	if (path.includes("\0")) {
 		return yield* nullBytePath(method);
@@ -802,12 +809,20 @@ const resolveParent = Effect.fnUntraced(function* (
 	// parent is known to be a directory. A `.` or `..` leaf under a file walks
 	// THROUGH a non-directory, which the kernel reports as ENOTDIR (and a
 	// missing parent as ENOENT) before it ever judges the leaf.
-	yield* validateEntryName(method, name, errorPath);
+	if (dotLeaf !== undefined && isDotLeaf(name)) {
+		if (dotLeaf !== "defer") {
+			return yield* errnoError(method, errorPath, dotLeaf);
+		}
+	} else {
+		yield* validateEntryName(method, name, errorPath);
+	}
 	return { inode: parent.inode, entry: parent.entry, name, path: parent.path };
 });
 
-const resolveEntry = Effect.fnUntraced(function* (state: State, path: string, method: string) {
-	const parent = yield* resolveParent(state, path, method);
+const isDotLeaf = (name: string | undefined): boolean => name === "." || name === "..";
+
+const resolveEntry = Effect.fnUntraced(function* (state: State, path: string, method: string, dotLeaf?: ErrnoCode) {
+	const parent = yield* resolveParent(state, path, method, path, "ENOENT", dotLeaf);
 	// KIT EXTENSION (case folding): the entry is
 	// addressed by its STORED key, so `detachEntry` and `rename` mutate the real
 	// map entry rather than a folded spelling of it; `requestedName` keeps the
@@ -994,7 +1009,8 @@ const link = (volume: Volume) =>
 				const source = yield* resolve(state, fromPath, { method }).pipe(
 					Effect.mapError((error) => withSystemErrorPath(error, method, fromPath)),
 				);
-				const destination = yield* resolveParent(state, toPath, method);
+				// A `.` or `..` leaf names an existing directory: EEXIST (#1327).
+				const destination = yield* resolveParent(state, toPath, method, toPath, "ENOENT", "EEXIST");
 				const nextState = yield* linkInode(state, destination.inode, destination.name, source.inode, method).pipe(
 					Effect.mapError((error) => withSystemErrorPath(error, method, toPath)),
 				);
@@ -1013,7 +1029,8 @@ const symlink = (volume: Volume) =>
 		const method = "symlink";
 		return yield* volume.mutate((state) =>
 			Effect.gen(function* () {
-				const parent = yield* resolveParent(state, path, method);
+				// A `.` or `..` leaf names an existing directory: EEXIST (#1327).
+				const parent = yield* resolveParent(state, path, method, path, "ENOENT", "EEXIST");
 				if (target.includes("\0")) {
 					return yield* argumentError(method, "target must not contain a null byte");
 				}
@@ -1061,7 +1078,14 @@ const remove = (volume: Volume) =>
 		const method = "remove";
 		return yield* volume.mutate((state) =>
 			Effect.gen(function* () {
-				const target = yield* Effect.result(resolveEntry(state, path, method));
+				// KIT EXTENSION (errno fidelity, #1327): a `.` or `..` leaf names a
+				// directory. `fs.rm` refuses it as any directory without `recursive`
+				// (ERR_FS_EISDIR); with it, the `rmdir` of a dot path is EINVAL —
+				// before anything is removed on macOS, and for `.` on Linux. (Linux
+				// `rm -r dir/..` first empties `dir`'s parent, then answers success
+				// once its own path stops resolving; memfs keeps macOS's refusal.)
+				const recursive = options?.recursive === true;
+				const target = yield* Effect.result(resolveEntry(state, path, method, recursive ? "EINVAL" : "ERR_FS_EISDIR"));
 				if (target._tag === "Failure") {
 					if (options?.force && target.failure.reason._tag === "NotFound") {
 						return transitionResult(state, undefined);
@@ -1071,11 +1095,11 @@ const remove = (volume: Volume) =>
 				// KIT EXTENSION (errno fidelity): node's `fs.rm` refuses ANY directory
 				// without `recursive` — empty or not, `force` or not — with
 				// ERR_FS_EISDIR before it touches the entry.
-				if (target.success.entry._tag === "Directory" && options?.recursive !== true) {
+				if (target.success.entry._tag === "Directory" && !recursive) {
 					return yield* errnoError(method, path, "ERR_FS_EISDIR", "Path is a directory");
 				}
 				const now = yield* DateTime.now;
-				const nextState = yield* detachEntry(state, target.success, now, options?.recursive === true, method, path);
+				const nextState = yield* detachEntry(state, target.success, now, recursive, method, path);
 				return transitionResult(nextState, undefined, [{ _tag: "Remove", path: target.success.path }]);
 			}),
 		);
@@ -1105,6 +1129,20 @@ const rename = (volume: Volume) =>
 		const method = "rename";
 		return yield* volume.mutate((state) =>
 			Effect.gen(function* () {
+				// KIT EXTENSION (errno fidelity, #1327): Linux `renameat2` resolves
+				// BOTH parents, then refuses a `.` or `..` leaf on either side with
+				// EBUSY before it looks the source up — so a missing source is EBUSY
+				// too. (macOS answers EINVAL, or ENOENT for a missing source.)
+				const sourceLeaf = yield* resolveParent(state, oldPath, method, oldPath, "ENOENT", "defer");
+				const newLeaf = newPath
+					.split("/")
+					.filter((segment) => segment.length > 0)
+					.pop();
+				if (isDotLeaf(sourceLeaf.name) || isDotLeaf(newLeaf)) {
+					const trimmed = newPath.replace(/\/+$/, "");
+					yield* resolveParent(state, trimmed.length === 0 ? newPath : trimmed, method, newPath, "ENOENT", "defer");
+					return yield* errnoError(method, isDotLeaf(sourceLeaf.name) ? oldPath : newPath, "EBUSY");
+				}
 				const source = yield* resolveEntry(state, oldPath, method);
 				// A directory may be renamed onto a trailing-slash path that does not
 				// exist yet; a non-directory cannot (ENOTDIR on Linux).
