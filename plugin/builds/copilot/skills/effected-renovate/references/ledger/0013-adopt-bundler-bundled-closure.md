@@ -14,9 +14,9 @@ Offer this to the user; never apply it unasked. It applies only to a published t
 
 The bundler now supports it end to end:
 
-- **`bundleNodeModules = true` with a `bundle` list** inlines those packages; a bare name such as `effect` covers its subpaths too.
+- **`bundleNodeModules = true` with a `bundle` list** inlines those packages; a bare name such as `effect`, or a glob such as `@effected/*`, covers its subpaths too, so a pruned package never leaves a subpath import external.
 - **A package inlined in every partition is dropped** from the emitted manifest's `dependencies` and `optionalDependencies`. Peers stay.
-- **Each inlined package keeps its own version** where it reads `process.env.__PACKAGE_VERSION__`, so an inlined library reports its version, not the tool's.
-- **`THIRD_PARTY_LICENSES.txt`** is written beside the bundle whenever another package's code was inlined.
+- **Each inlined package keeps its own version** where it reads `process.env.__PACKAGE_VERSION__`, so an inlined library reports its version, not the tool's. The owner is the nearest `package.json` with a name, so a nested `{"type":"module"}` marker does not hide it.
+- **`THIRD_PARTY_LICENSES.txt`** is written beside the bundle whenever another package's code was inlined, and at the group root too, covering every partition including an `outSubdir` one. Loose-file passes get the same stamping, licences and subpath coverage.
 
 Where the search matched `catalog:effected:exact` in a tool's manifest, read `@effected/plugin`'s `effected.toml` as the model. Keep external anything with native bindings, anything loaded by name or by path relative to its own install, and the build toolchain, and declare each of those on the tool's manifest; anything undeclared is inlined. Keep a cheap entry that config files import as its own bundle, apart from the bins. If the tool's public types mention `effect`, keep `effect` as an optional peer, so a consumer's types resolve against their own copy. Verify by packing the tool alone (`pnpm pack`), installing it in an empty directory, and running each bin; the manifest must list only the externals.

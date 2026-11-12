@@ -17,6 +17,7 @@ Migration: replace `await helper(...)` with `Effect.runPromise(helper(...).pipe(
 ### Bundling a sibling package into a published package
 
 * The emitted manifest drops any package inlined into every partition of the build
-* A bare `bundle` name now covers that package's subpaths too
-* Each inlined package gets its own `__PACKAGE_VERSION__` stamp
-* A `THIRD_PARTY_LICENSES.txt` carries the licence of every inlined package
+* A `bundle` entry now covers its subpaths too: a bare name, and a glob such as `@effected/*`, whose matches would otherwise have been pruned from the manifest while their subpath imports stayed external
+* Each inlined package gets its own `__PACKAGE_VERSION__` stamp, from the nearest `package.json` that carries a name; a nested `{"type":"module"}` marker no longer hides its owner
+* A `THIRD_PARTY_LICENSES.txt` carries the licence of every inlined package, at the group root as well, so it also names what an `outSubdir` partition inlined
+* Loose-file passes get the same subpath coverage, version stamping and licence collection as the entry passes

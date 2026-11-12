@@ -64,9 +64,10 @@ Consuming `@effected/plugin` from the registry runs a built bin and needs none o
   name, the default export of `schemastore.config.ts`), `HostedSchema`,
   `SchemaTarget`, `SchemaVersion`, `SchemaVersioning`, `DriftPolicy`,
   `KeywordFamilies`, `CatalogEntry`, `SchemastoreVersion` and their types. A
-  config built from here always carries the tool's version stamp, so the
-  version check passes; a value from a separately installed
-  `@effected/schemastore` passes only at the same version. A repository with only
+  value built from here carries the tool's version stamp, so it passes the
+  version check; the check reads each schema's `hosted` value apart from the
+  config, so one from a separately installed `@effected/schemastore` passes
+  only at the same version, even inside a config built here. A repository with only
   `@effected/mcp` installed imports `defineConfig` from `@effected/schemastore`
   instead.
 - **`@effected/plugin/tsconfig/ecma.json`, `action.json` and `root.json`** — the tsconfig
