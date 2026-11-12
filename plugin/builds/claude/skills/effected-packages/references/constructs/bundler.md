@@ -66,6 +66,7 @@
 | `ConfigValidator` | Class | Fast-fail config validator; runs first in the bundler over the resolved config. | fast-fail structural check of a resolved build config |
 | `CopyAmbientDtsOptions` | Interface | | |
 | `CopyEntry` | Class | One non-module asset to copy into each publish group's `pkg/` directory, in the shape of tsdown's `copy` option. | copy non-module assets into the published package, ship json schemas or data files beside the build |
+| `CopyPublicDirError` | TypeAlias | The failures of `copyPublicDir`: a collision, a walk failure, or an IO failure the guard does not own. | |
 | `CssOptions` | Interface | CSS handling for a partition's JS pass, forwarded VERBATIM to tsdown's `css` option (consumed by `@tsdown/css`). Structurally typed so tsdown-plugins takes no dependency on `@tsdown/css`. The package whose runtime is built must install `@tsdown/css`; tsdown loads it lazily. | |
 | `DEFAULT_EXE_NODE_VERSION` | Variable | Default Node runtime embedded in the SEA (parity with the vitest-agent reference). | node runtime version embedded in a single-executable binary by default |
 | `DeriveOptions` | Interface | | |
@@ -143,6 +144,7 @@
 | `ReexportBarrelAnalysis` | Interface | The analysis of an entry source treated as a candidate re-export barrel. | |
 | `ReleaseChannel` | TypeAlias | Which release versions a target receives: every version, only final versions, or only prereleases. | |
 | `ReportTimings` | Class | | start, end and duration of a build step |
+| `ResolveManifestError` | TypeAlias | The failures of `resolveManifest`. | |
 | `ResolvedCompilerOptions` | Interface | Compiler options with enum values converted to their string equivalents. | |
 | `ResolvedConfig` | Class | The effective config `EffectedConfigFile.load` answers: an `EffectedConfig` whose `package` table is always present, with every default when no file wrote one, so a consumer never branches on its absence. | effective config with every default filled, package table always present |
 | `ResolvedEffectedConfig` | Class | A package's effective `effected.toml` config and the files it came from. | effective effected.toml plus the files it was merged from |
@@ -203,7 +205,7 @@
 | `formatTime` | Function | | format milliseconds as human-readable duration |
 | `githubOwnerRepo` | Function | `owner/repo` from any of the GitHub URL spellings a `repository.url` carries (https, `git+https`, `git@`, `ssh://`, `git://`, the `github:` shorthand), or `undefined` for anything else. | parse owner/repo from any github repository url spelling |
 | `isTargetObject` | Function | True when a target value is the object form (carries registry/name/from). | narrow a publish target value to its object form |
-| `loadBundleManifestSources` | Function | Read the leaf (`<cwd>/bundle.json`) and project (`<workspaceRoot>/bundle.json`) source tiers. Absence is normal; a present file that does not decode throws `BundleManifestSourceError`. A package that IS the workspace root reads its file once, as the leaf, and has no project tier. | read package and workspace bundle.json source tiers, report retired tsdoctor.json files |
+| `loadBundleManifestSources` | Function | Read the leaf (`<cwd>/bundle.json`) and project (`<workspaceRoot>/bundle.json`) source tiers. Absence is normal; a present file that does not decode fails `BundleManifestSourceError`. A package that IS the workspace root reads its file once, as the leaf, and has no project tier. | read package and workspace bundle.json source tiers, report retired tsdoctor.json files |
 | `loadPlugins` | Function | Loads the rolldown plugins named in `package.build.plugins`, in order. | import rolldown plugin modules by path through jiti, typescript included |
 | `manifestNeedsCatalogResolution` | Function | Whether any of `pkg`'s four dependency fields carries at least one `catalog:`/`workspace:` specifier. `resolveManifest` returns a manifest with none of these unchanged, so callers can skip the CatalogResolver + pnpm-workspace + lockfile assembly entirely when this is false. | check a manifest has catalog or workspace specifiers, skip resolving when none |
 | `merge` | Function | Merges a package's raw `effected.toml` document over the workspace root's. | overlay a package's raw effected.toml on the workspace root's |
