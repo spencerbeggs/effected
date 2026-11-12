@@ -2,8 +2,15 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
+import type { GenerateMetaOptions } from "../../src/meta/generate.js";
 import { generateMeta } from "../../src/meta/generate.js";
+
+/** generateMeta runs API Extractor over the scaffold on the host disk. */
+const runGenerateMeta = (options: GenerateMetaOptions) =>
+	Effect.runPromise(generateMeta(options).pipe(Effect.provide(NodeServices.layer)));
 
 function scaffold(): { cwd: string; dtsDir: string; localPath: string } {
 	const cwd = mkdtempSync(join(tmpdir(), "meta-"));
@@ -45,7 +52,7 @@ describe("generateMeta", () => {
 			JSON.stringify({ name: "@scope/fixture", version: "0.0.0", dependencies: { "@scope/sdk": "0.0.0" } }),
 		);
 		const outMetaDir = join(cwd, "dist", "prod", "npm", "meta");
-		await generateMeta({
+		await runGenerateMeta({
 			cwd,
 			packageName: "@scope/fixture",
 			tsconfigPath: join(cwd, "tsconfig.json"),
@@ -69,7 +76,7 @@ describe("generateMeta", () => {
 	it("writes the virtual-TS-env trio to outMetaDir and copies it to localPaths", async () => {
 		const { cwd, dtsDir, localPath } = scaffold();
 		const outMetaDir = join(cwd, "dist", "prod", "npm", "meta");
-		await generateMeta({
+		await runGenerateMeta({
 			cwd,
 			packageName: "@scope/fixture",
 			tsconfigPath: join(cwd, "tsconfig.json"),
@@ -128,7 +135,7 @@ describe("generateMeta", () => {
 		);
 		const outMetaDir = join(cwd, "dist", "prod", "npm", "meta");
 		const suppressed: string[] = [];
-		await generateMeta({
+		await runGenerateMeta({
 			cwd,
 			packageName: "@scope/fixture",
 			tsconfigPath: join(cwd, "tsconfig.json"),

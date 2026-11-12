@@ -749,11 +749,11 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/resources.md",
-			"anchor": "ai/McpServer.ts:4223-4238",
+			"anchor": "ai/McpServer.ts:4221-4236",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"4223": "const resolveResourceContent = (",
-				"4238": "^}$"
+				"4221": "const resolveResourceContent = (",
+				"4236": "^}$"
 			}
 		},
 		{

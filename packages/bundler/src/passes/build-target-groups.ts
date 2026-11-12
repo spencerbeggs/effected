@@ -1,6 +1,7 @@
 // packages/bundler/src/passes/build-target-groups.ts
-import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join } from "node:path";
+import type { DescendError } from "@effected/walker";
+import type { PlatformError } from "effect";
+import { Effect, FileSystem, Path } from "effect";
 import type { Plugin } from "rolldown";
 import type { CopyEntry } from "../config/BuildConfig.js";
 import { packageNameOf, resolveBundledSiblings, siblingPaths } from "../dts/bundled-siblings.js";
@@ -8,6 +9,7 @@ import { analyzeReexportBarrel, collectExportNames, renderReexportStub } from ".
 import { writeDtsEmitTsconfig } from "../dts/resolved-tsconfig.js";
 import { extractAmbientDts } from "../entries/ambient-dts.js";
 import type { PackageJsonLike } from "../entries/extract.js";
+import type { ConfigValidationError } from "../errors.js";
 import type { TargetGroupRef } from "../manifest/emit-manifest.js";
 import { emitManifest } from "../manifest/emit-manifest.js";
 import type { DualExports, ExeRewrite } from "../manifest/transform.js";
@@ -15,9 +17,11 @@ import type { BuildCollector, PassKind } from "../report/collector.js";
 import { buildMetricsPlugin } from "../report/metrics-plugin.js";
 import { createTimer } from "../report/timer.js";
 import { createTsdownLogger } from "../report/tsdown-logger.js";
+import { bundlePatterns, bundledEverywhere } from "./bundled-deps.js";
 import { cjsDefaultInterop } from "./cjs-default-interop.js";
 import type { NormalizedLooseFile } from "./loose-files.js";
 import { nodeBuiltinDefaultInterop } from "./node-builtin-default-interop.js";
+import { stampVersions } from "./stamp-versions.js";
 import { copyAmbientDts, copyPublicDir } from "./sync-public.js";
 import type { BuildFormat, BuildGroupSpec, BuildPlatform } from "./target-groups.js";
 import {
@@ -26,6 +30,8 @@ import {
 	deriveTargetGroupOptions,
 	outDirFor,
 } from "./target-groups.js";
+import type { InlinedPackage } from "./third-party-licenses.js";
+import { THIRD_PARTY_LICENSES, renderThirdPartyLicenses, thirdPartyLicenses } from "./third-party-licenses.js";
 
 /**
  * Signature compatible with tsdown's `build(inlineConfig)`.
@@ -214,7 +220,11 @@ export interface BuildTargetGroupsOptions {
 const STUB_BASE_ENTRY = "index";
 
 /** The configured copy entries as tsdown takes them for one group, with each `to` anchored to that group's outDir. */
-const copyEntriesFor = (entries: ReadonlyArray<string | CopyEntry>, outDir: string): ReadonlyArray<unknown> =>
+const copyEntriesFor = (
+	entries: ReadonlyArray<string | CopyEntry>,
+	outDir: string,
+	join: Path.Path["join"],
+): ReadonlyArray<unknown> =>
 	entries.map((entry) => {
 		if (typeof entry === "string") return entry;
 		return {
@@ -245,10 +255,23 @@ const copyEntriesFor = (entries: ReadonlyArray<string | CopyEntry>, outDir: stri
  * node_modules dependency to its own sibling file (mirroring its `node_modules/...` path),
  * which `npm pack` then strips, breaking the "self-contained" promise `bundleNodeModules`
  * already makes. Scoped to that flag alone; every other build's JS pass is unaffected.
+ *
+ * The bundler's own reads and writes (the manifest, the tsconfigs, the stubs, `public/`) go through `FileSystem` and
+ * `Path`; tsdown always works on the host disk. A tsdown rejection is a defect, carrying the thrown value.
  * @public
  */
-export async function buildTargetGroups(options: BuildTargetGroupsOptions): Promise<void> {
-	const build: TsdownBuild = options.build ?? ((await import("tsdown")).build as unknown as TsdownBuild);
+export const buildTargetGroups: (
+	options: BuildTargetGroupsOptions,
+) => Effect.Effect<
+	void,
+	ConfigValidationError | PlatformError.PlatformError | DescendError,
+	FileSystem.FileSystem | Path.Path
+> = Effect.fnUntraced(function* (options: BuildTargetGroupsOptions) {
+	const fs = yield* FileSystem.FileSystem;
+	const path = yield* Path.Path;
+	const { dirname, isAbsolute, join } = path;
+	const build: TsdownBuild =
+		options.build ?? ((yield* Effect.promise(() => import("tsdown"))).build as unknown as TsdownBuild);
 	const publicDir = join(options.cwd, "public");
 
 	// Zero-config ambient .d.ts exports (types-only hand-authored declarations): extracted from the
@@ -257,12 +280,11 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 	// means every build path, including the self-hosting escape hatches that call this function
 	// directly and never reach runBuild, gets its ambient exports copied. A synthetic/test cwd with
 	// no real package.json (or one with no ambient exports) yields an empty array and no-ops below.
-	let pkgForAmbient: PackageJsonLike = {};
-	try {
-		pkgForAmbient = JSON.parse(readFileSync(join(options.cwd, "package.json"), "utf-8")) as PackageJsonLike;
-	} catch {
+	const pkgForAmbient: PackageJsonLike = yield* fs.readFileString(join(options.cwd, "package.json")).pipe(
+		Effect.flatMap((text) => Effect.try(() => JSON.parse(text) as PackageJsonLike)),
 		// synthetic cwd (tests) or unreadable manifest — no ambient exports to copy
-	}
+		Effect.orElseSucceed((): PackageJsonLike => ({})),
+	);
 	const ambient = extractAmbientDts(pkgForAmbient, {});
 
 	// The dts/declarations EMIT passes run on this package's TypeScript (7.1+, the tsgo API) and use a
@@ -271,7 +293,7 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 	// (`options.tsconfigPath`, consumed by the later runMetaPass): api-extractor compiles with its OWN
 	// bundled TypeScript 6, which predates the flag and would hard-error on the unknown compiler option.
 	// Derived once; falls back to the original path when it cannot be read (synthetic test paths).
-	const dtsEmitTsconfigPath = writeDtsEmitTsconfig(options.tsconfigPath);
+	const dtsEmitTsconfigPath = yield* writeDtsEmitTsconfig(options.tsconfigPath);
 
 	// A bundled workspace sibling resolves to source, which tsgo cannot declare, so a partition inlining one gets a
 	// tsconfig mapping it to the sibling's built declarations. Resolved before any pass runs, so a sibling that has not
@@ -280,16 +302,18 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 	const bundledSiblings =
 		options.emitDts === false
 			? []
-			: await resolveBundledSiblings(options.cwd, [
+			: yield* resolveBundledSiblings(options.cwd, [
 					...(options.bundledPackages ?? []),
 					...(options.overrides ?? []).flatMap((override) => override.bundledPackages ?? []),
 				]);
-	const emitTsconfigFor = (bundled: ReadonlyArray<string> | undefined): string => {
+	const emitTsconfigFor = (
+		bundled: ReadonlyArray<string> | undefined,
+	): Effect.Effect<string, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path> => {
 		const packages = new Set(bundled?.map(packageNameOf));
 		const siblings = bundledSiblings.filter((sibling) => packages.has(sibling.name));
 		return siblings.length > 0
-			? writeDtsEmitTsconfig(options.tsconfigPath, { paths: siblingPaths(siblings) })
-			: dtsEmitTsconfigPath;
+			? writeDtsEmitTsconfig(options.tsconfigPath, { paths: siblingPaths(siblings, path) })
+			: Effect.succeed(dtsEmitTsconfigPath);
 	};
 
 	const collector = options.collector;
@@ -309,17 +333,30 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 	const timingChecks = { checks: { pluginTimings: verbose } };
 
 	// Run a build pass under a timer, recording elapsed into the collector.
-	const timed = async (groupId: string, pass: PassKind, run: () => Promise<unknown>): Promise<void> => {
-		options.onPass?.(pass);
-		const timer = createTimer();
-		try {
-			await run();
-		} finally {
-			if (collector !== undefined) collector.recordPassTiming(groupId, pass, timer.elapsed());
-		}
-	};
+	const timed = <E, R>(groupId: string, pass: PassKind, run: Effect.Effect<unknown, E, R>): Effect.Effect<void, E, R> =>
+		Effect.suspend(() => {
+			options.onPass?.(pass);
+			const timer = createTimer();
+			return run.pipe(
+				Effect.asVoid,
+				Effect.ensuring(
+					Effect.sync(() => {
+						if (collector !== undefined) collector.recordPassTiming(groupId, pass, timer.elapsed());
+					}),
+				),
+			);
+		});
+	// tsdown is promise-returning: a rejection is a defect carrying the thrown value, as an awaited throw was.
+	const tsdown = (config: Record<string, unknown>): Effect.Effect<unknown> => Effect.promise(() => build(config));
+
+	// An inlined module of another package keeps that package's version, which `define` would overwrite with this one's.
+	const stampPlugin = yield* stampVersions({ cwd: options.cwd });
+	// A package inlined only by `bundle` everywhere leaves the emitted manifest; the JS pass holds its code.
+	const bundled = bundledEverywhere(options.bundle, options.overrides ?? []);
 
 	for (const group of options.groups) {
+		// One set per group: every partition writes into the group's pkg/, and the last pass writes the whole set.
+		const licensesFound = new Map<string, InlinedPackage>();
 		if (collector !== undefined) collector.registerGroup(group.id, Object.keys(options.entry));
 
 		// Partition 0 is the base (options-level config); the rest come from options.overrides.
@@ -351,7 +388,7 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 				cwd: options.cwd,
 				version: options.version,
 				entry: part.entry,
-				tsconfigPath: emitTsconfigFor(partBundledPackages),
+				tsconfigPath: yield* emitTsconfigFor(partBundledPackages),
 				devManifest: options.devManifest,
 				...(partExternals !== undefined ? { externals: partExternals } : {}),
 				...(partBundleNodeModules !== undefined ? { bundleNodeModules: partBundleNodeModules } : {}),
@@ -392,7 +429,7 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 			// Manifest is emitted ONCE per group, by the base partition's JS pass, covering the
 			// whole package's exports with per-entry dual conditions.
 			const manifestPlugin = isBase
-				? emitManifest({
+				? yield* emitManifest({
 						targetGroup,
 						devManifest: options.devManifest,
 						drop: options.drop,
@@ -400,14 +437,23 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 						sourceDir: options.cwd,
 						dual: options.dualExports ?? js.format.includes("cjs"),
 						emitDts: options.emitDts !== false,
+						bundled,
 						...(options.subdirExports !== undefined ? { subdirExports: options.subdirExports } : {}),
 						...(options.exeRewrite !== undefined ? { exeRewrite: options.exeRewrite } : {}),
 					})
 				: undefined;
 
+			const licensesPlugin = yield* thirdPartyLicenses({
+				cwd: options.cwd,
+				packageName: group.name,
+				found: licensesFound,
+			});
+
 			// Pass 1: per-module JS. clean only on the very first partition (it owns the outDir).
-			await timed(group.id, "js", () =>
-				build({
+			yield* timed(
+				group.id,
+				"js",
+				tsdown({
 					config: false,
 					cwd: options.cwd,
 					entry: jsEntry,
@@ -424,14 +470,14 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 					...timingChecks,
 					...instrument(group.id),
 					...(part.css !== undefined ? { css: part.css } : {}),
-					...(isBase && options.copy?.length ? { copy: copyEntriesFor(options.copy, partOutDir) } : {}),
+					...(isBase && options.copy?.length ? { copy: copyEntriesFor(options.copy, partOutDir, join) } : {}),
 					...(partExternals?.length || partBundle?.length
 						? {
 								deps: {
 									...(partExternals?.length ? { neverBundle: partExternals } : {}),
 									// alwaysBundle force-inlines these packages (inverse of neverBundle), even
 									// declared deps tsdown would auto-externalize.
-									...(partBundle?.length ? { alwaysBundle: partBundle } : {}),
+									...(partBundle?.length ? { alwaysBundle: bundlePatterns(partBundle) } : {}),
 								},
 							}
 						: {}),
@@ -442,6 +488,8 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 					// promotes a default+named CJS entry chunk to module.exports = <default> (rslib
 					// cjsInterop parity). Both are cjs-only and no-ops for esm.
 					plugins: [
+						stampPlugin,
+						licensesPlugin,
 						...(manifestPlugin ? [manifestPlugin] : []),
 						...(js.format.includes("cjs") ? [nodeBuiltinDefaultInterop(), cjsDefaultInterop()] : []),
 						...(options.extraPlugins ?? []),
@@ -508,7 +556,7 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 								// so it must carry the SAME `alwaysBundle` as the JS pass — otherwise a
 								// force-bundled declared dependency is re-externalized in that re-emitted
 								// `.cjs`. Forwarded exactly as the JS pass does.
-								...(partBundle?.length ? { alwaysBundle: partBundle } : {}),
+								...(partBundle?.length ? { alwaysBundle: bundlePatterns(partBundle) } : {}),
 								...(dts.bundledPackages
 									? partBundleNodeModules
 										? { dts: { alwaysBundle: dts.bundledPackages } }
@@ -529,21 +577,16 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 			// (distinct surface, local declarations, star re-export, or a name not in index) falls
 			// through to a self-contained per-entry rollup.
 			const stubEntries = new Map<string, { valueNames: ReadonlyArray<string>; typeNames: ReadonlyArray<string> }>();
-			const readSource = (src: string): string | undefined => {
-				try {
-					return readFileSync(isAbsolute(src) ? src : join(options.cwd, src), "utf-8");
-				} catch {
-					return undefined;
-				}
-			};
+			const readSource = (src: string): Effect.Effect<string | undefined> =>
+				fs.readFileString(isAbsolute(src) ? src : join(options.cwd, src)).pipe(Effect.orElseSucceed(() => undefined));
 			const baseSrc = dts.entry[STUB_BASE_ENTRY];
 			if (baseSrc !== undefined && Object.keys(dts.entry).length > 1) {
-				const baseSource = readSource(baseSrc);
+				const baseSource = yield* readSource(baseSrc);
 				const base = baseSource !== undefined ? collectExportNames(baseSource) : undefined;
 				if (base?.complete === true) {
 					for (const [entryName, entrySource] of Object.entries(dts.entry)) {
 						if (entryName === STUB_BASE_ENTRY || entryName.includes("/")) continue;
-						const source = readSource(entrySource);
+						const source = yield* readSource(entrySource);
 						if (source === undefined) continue;
 						const analysis = analyzeReexportBarrel(source);
 						if (!analysis.isPureNamedReexportBarrel) continue;
@@ -554,57 +597,61 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 				}
 			}
 
-			await timed(group.id, "dts", async () => {
-				for (const [entryName, entrySource] of Object.entries(dts.entry)) {
-					const stub = stubEntries.get(entryName);
-					if (stub !== undefined) {
-						// Thin re-export stub instead of a self-contained rollup. The ESM `.d.ts` points at the
-						// base's published `./index.js`; for dual format the CJS `.d.cts` points at `./index.cjs`.
-						// Each appends to the shared outDir like the per-entry builds do.
-						const variants = [{ file: `${entryName}.d.ts`, spec: `./${STUB_BASE_ENTRY}.js` }];
-						if (dts.format.includes("cjs")) {
-							variants.push({ file: `${entryName}.d.cts`, spec: `./${STUB_BASE_ENTRY}.cjs` });
+			yield* timed(
+				group.id,
+				"dts",
+				Effect.gen(function* () {
+					for (const [entryName, entrySource] of Object.entries(dts.entry)) {
+						const stub = stubEntries.get(entryName);
+						if (stub !== undefined) {
+							// Thin re-export stub instead of a self-contained rollup. The ESM `.d.ts` points at the
+							// base's published `./index.js`; for dual format the CJS `.d.cts` points at `./index.cjs`.
+							// Each appends to the shared outDir like the per-entry builds do.
+							const variants = [{ file: `${entryName}.d.ts`, spec: `./${STUB_BASE_ENTRY}.js` }];
+							if (dts.format.includes("cjs")) {
+								variants.push({ file: `${entryName}.d.cts`, spec: `./${STUB_BASE_ENTRY}.cjs` });
+							}
+							for (const variant of variants) {
+								const content = renderReexportStub({
+									valueNames: stub.valueNames,
+									typeNames: stub.typeNames,
+									baseSpecifier: variant.spec,
+								});
+								yield* fs.writeFileString(join(partOutDir, variant.file), content);
+								collector?.recordEmitted(group.id, "dts", { path: variant.file, bytes: Buffer.byteLength(content) });
+							}
+							continue;
 						}
-						for (const variant of variants) {
-							const content = renderReexportStub({
-								valueNames: stub.valueNames,
-								typeNames: stub.typeNames,
-								baseSpecifier: variant.spec,
-							});
-							writeFileSync(join(partOutDir, variant.file), content, "utf-8");
-							collector?.recordEmitted(group.id, "dts", { path: variant.file, bytes: Buffer.byteLength(content) });
-						}
-						continue;
+						yield* tsdown({
+							config: false,
+							cwd: options.cwd,
+							entry: { [entryName]: entrySource },
+							outDir: partOutDir,
+							format: dts.format,
+							platform: dts.platform,
+							sourcemap: dts.sourcemap,
+							unbundle: dts.unbundle,
+							clean: false,
+							fixedExtension: dts.fixedExtension,
+							dts: dts.dts,
+							define: dts.define,
+							...timingChecks,
+							...instrument(group.id),
+							...dtsDeps,
+							// The dts pass runs declarations-only, but for dual format tsdown still RE-EMITS the
+							// `.cjs` JS chunk in this pass, overwriting the JS pass's footer'd `.cjs` with a
+							// footer-less one (verified). Re-attach the interop plugins here so the footer lands on
+							// the FINAL `.cjs` (this is the chunk that inlines vendor deps like vfile). Fresh plugin
+							// instances per entry-build — rolldown plugin factories are not safe to reuse across builds.
+							plugins: [
+								...(dts.format.includes("cjs") ? [nodeBuiltinDefaultInterop(), cjsDefaultInterop()] : []),
+								...(options.extraPlugins ?? []),
+								...metricsPlugins(group.id, "dts", dts.format.includes("cjs")),
+							],
+						});
 					}
-					await build({
-						config: false,
-						cwd: options.cwd,
-						entry: { [entryName]: entrySource },
-						outDir: partOutDir,
-						format: dts.format,
-						platform: dts.platform,
-						sourcemap: dts.sourcemap,
-						unbundle: dts.unbundle,
-						clean: false,
-						fixedExtension: dts.fixedExtension,
-						dts: dts.dts,
-						define: dts.define,
-						...timingChecks,
-						...instrument(group.id),
-						...dtsDeps,
-						// The dts pass runs declarations-only, but for dual format tsdown still RE-EMITS the
-						// `.cjs` JS chunk in this pass, overwriting the JS pass's footer'd `.cjs` with a
-						// footer-less one (verified). Re-attach the interop plugins here so the footer lands on
-						// the FINAL `.cjs` (this is the chunk that inlines vendor deps like vfile). Fresh plugin
-						// instances per entry-build — rolldown plugin factories are not safe to reuse across builds.
-						plugins: [
-							...(dts.format.includes("cjs") ? [nodeBuiltinDefaultInterop(), cjsDefaultInterop()] : []),
-							...(options.extraPlugins ?? []),
-							...metricsPlugins(group.id, "dts", dts.format.includes("cjs")),
-						],
-					});
-				}
-			});
+				}),
+			);
 
 			// Pass 3 (prod-only, opt-in): per-module declarations for API Extractor's diagnostics run.
 			// unbundle:true gives 1:1 source positions. Into the declarations/ sibling of pkg/ (never
@@ -621,48 +668,50 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 			// caller that sets the flag alongside a dev group cannot emit a dev `declarations/` tree.
 			if (js.isProd && options.emitDeclarations === true && Object.keys(decl.entry).length > 0) {
 				const partDeclDir = part.outSubdir !== undefined ? join(decl.outDir, part.outSubdir) : decl.outDir;
-				try {
-					await build({
-						config: false,
-						cwd: options.cwd,
-						entry: decl.entry,
-						outDir: partDeclDir,
-						format: decl.format,
-						platform: decl.platform,
-						sourcemap: decl.sourcemap,
-						unbundle: decl.unbundle,
-						clean: isBase,
-						fixedExtension: decl.fixedExtension,
-						dts: decl.dts,
-						define: decl.define,
-						...timingChecks,
-						logLevel: "silent",
-						...(dtsNeverBundle.length > 0 || decl.bundledPackages || partBundle?.length
-							? {
-									deps: {
-										...(dtsNeverBundle.length > 0 ? { neverBundle: dtsNeverBundle } : {}),
-										// Mirrors the dts pass's deps posture (see there): forward the partition's
-										// `bundle` so this pass's declarations stay consistent with the JS pass too.
-										...(partBundle?.length ? { alwaysBundle: partBundle } : {}),
-										...(decl.bundledPackages
-											? partBundleNodeModules
-												? { dts: { alwaysBundle: decl.bundledPackages } }
-												: { neverBundle: true as const, dts: { alwaysBundle: decl.bundledPackages } }
-											: {}),
-									},
-								}
-							: {}),
-						// Forward the user's plugins for type-resolution parity with the JS and dts passes,
-						// so the per-module declarations resolve the same types API Extractor reads.
-						...(options.extraPlugins !== undefined ? { plugins: [...options.extraPlugins] } : {}),
-					});
-				} catch (err) {
-					collector?.recordWarning(group.id, {
-						source: "tsdown",
-						level: "warn",
-						text: `Could not emit per-module declarations for API Extractor diagnostics: ${String(err)}`,
-					});
-				}
+				yield* Effect.promise(async () => {
+					try {
+						await build({
+							config: false,
+							cwd: options.cwd,
+							entry: decl.entry,
+							outDir: partDeclDir,
+							format: decl.format,
+							platform: decl.platform,
+							sourcemap: decl.sourcemap,
+							unbundle: decl.unbundle,
+							clean: isBase,
+							fixedExtension: decl.fixedExtension,
+							dts: decl.dts,
+							define: decl.define,
+							...timingChecks,
+							logLevel: "silent",
+							...(dtsNeverBundle.length > 0 || decl.bundledPackages || partBundle?.length
+								? {
+										deps: {
+											...(dtsNeverBundle.length > 0 ? { neverBundle: dtsNeverBundle } : {}),
+											// Mirrors the dts pass's deps posture (see there): forward the partition's
+											// `bundle` so this pass's declarations stay consistent with the JS pass too.
+											...(partBundle?.length ? { alwaysBundle: bundlePatterns(partBundle) } : {}),
+											...(decl.bundledPackages
+												? partBundleNodeModules
+													? { dts: { alwaysBundle: decl.bundledPackages } }
+													: { neverBundle: true as const, dts: { alwaysBundle: decl.bundledPackages } }
+												: {}),
+										},
+									}
+								: {}),
+							// Forward the user's plugins for type-resolution parity with the JS and dts passes,
+							// so the per-module declarations resolve the same types API Extractor reads.
+							...(options.extraPlugins !== undefined ? { plugins: [...options.extraPlugins] } : {}),
+						});
+					} catch (err) {
+						collector?.recordWarning(group.id, {
+							source: "tsdown",
+							level: "warn",
+							text: `Could not emit per-module declarations for API Extractor diagnostics: ${String(err)}`,
+						});
+					}
+				});
 			}
 		}
 
@@ -673,12 +722,21 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 		const isProdGroup = group.id !== "dev";
 		const looseDeps = {
 			...(options.externals?.length ? { neverBundle: options.externals } : {}),
-			...(options.bundle?.length ? { alwaysBundle: options.bundle } : {}),
+			// Widened as every other pass's are: a package bundled everywhere has left the manifest, so a loose file's
+			// subpath import of it must inline too.
+			...(options.bundle?.length ? { alwaysBundle: bundlePatterns(options.bundle) } : {}),
 		};
 		for (const lf of options.looseFiles ?? []) {
 			const hasCjs = lf.format === "cjs";
-			await timed(group.id, "loose", () =>
-				build({
+			const looseLicenses = yield* thirdPartyLicenses({
+				cwd: options.cwd,
+				packageName: group.name,
+				found: licensesFound,
+			});
+			yield* timed(
+				group.id,
+				"loose",
+				tsdown({
 					config: false,
 					cwd: options.cwd,
 					entry: { [lf.entryName]: lf.source },
@@ -701,6 +759,8 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 					...(Object.keys(looseDeps).length > 0 ? { deps: looseDeps } : {}),
 					...(hasCjs ? { cjsDefault: true } : {}),
 					plugins: [
+						stampPlugin,
+						looseLicenses,
 						...(hasCjs ? [nodeBuiltinDefaultInterop(), cjsDefaultInterop()] : []),
 						...(options.extraPlugins ?? []),
 						...metricsPlugins(group.id, "loose", hasCjs),
@@ -709,14 +769,24 @@ export async function buildTargetGroups(options: BuildTargetGroupsOptions): Prom
 			);
 		}
 
+		const groupOutDir = outDirFor(options.cwd, group.id);
+		// The notice beside the group's manifest names every package any pass inlined. A pass emits the set it has seen
+		// into its own outDir, so an outSubdir partition's packages would otherwise reach only its subdirectory's copy.
+		if (licensesFound.size > 0) {
+			yield* fs.makeDirectory(groupOutDir, { recursive: true });
+			yield* fs.writeFileString(
+				join(groupOutDir, THIRD_PARTY_LICENSES),
+				renderThirdPartyLicenses(group.name, [...licensesFound.values()]),
+			);
+		}
+
 		// Flatten public/ into the group's package root, after every pass (JS, dts, declarations,
 		// looseFiles) has written its outputs. Additive with a byte-collision guard — see copyPublicDir.
-		const groupOutDir = outDirFor(options.cwd, group.id);
-		copyPublicDir(publicDir, groupOutDir);
+		yield* copyPublicDir(publicDir, groupOutDir);
 
 		// Copy ambient .d.ts exports into this group's pkg dir. The manifest already points at
 		// "./<outName>" (transformExports) — this is what makes that path resolve on disk. Runs for
 		// every group, every build path (dev/prod, front door AND self-hosting escape hatches).
-		if (ambient.length > 0) copyAmbientDts({ ambient, srcCwd: options.cwd, outDir: groupOutDir });
+		if (ambient.length > 0) yield* copyAmbientDts({ ambient, srcCwd: options.cwd, outDir: groupOutDir });
 	}
-}
+});

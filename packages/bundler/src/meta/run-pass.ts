@@ -1,4 +1,5 @@
-import { join } from "node:path";
+import type { FileSystem } from "effect";
+import { Cause, Effect, Path } from "effect";
 import { resolveNextVersions as realResolveNextVersions } from "../changesets/next-versions.js";
 import { deriveExportPaths } from "../entries/export-paths.js";
 import { createEntryName } from "../entries/extract.js";
@@ -49,82 +50,100 @@ export interface RunMetaPassOptions {
 /**
  * Meta-pass orchestrator: derives export paths, filters bin/ entries, resolves optimistic
  * next-versions, and calls generateMeta once per publish group.
+ *
+ * The injected `generateMeta`, `resolveNextVersions` and `loadBundleManifestSources` stay promise-returning, and a
+ * rejection of one is a failure carrying the rejected value; the real ones are effects over `FileSystem` and `Path`.
  * @public
  */
-export async function runMetaPass(o: RunMetaPassOptions): Promise<void> {
-	const gen = o.generateMeta ?? realGenerateMeta;
-	const norm = normalizeMetaOptions(o.meta);
-	const canonical = o.groups.find((g) => g.name === o.packageName) ?? o.groups[0];
-	const canonicalId = canonical?.id ?? "npm";
-	const dtsBasenames: Record<string, string> = {};
-	const nonBinEntries: Record<string, string> = {};
-	for (const [name, src] of Object.entries(o.entries)) {
-		if (!name.startsWith("bin/")) {
-			dtsBasenames[name] = name;
-			nonBinEntries[name] = src;
+export const runMetaPass: (o: RunMetaPassOptions) => Effect.Effect<void, unknown, FileSystem.FileSystem | Path.Path> =
+	Effect.fnUntraced(function* (o: RunMetaPassOptions) {
+		const { join } = yield* Path.Path;
+		// Each injectable is either the real effect or a test's promise; a rejection fails with the rejected value.
+		const fromPromise = <A>(run: () => Promise<A>): Effect.Effect<A, unknown> =>
+			Effect.tryPromise({ try: run, catch: (e) => e });
+		const gen = (
+			options: GenerateMetaOptions,
+		): Effect.Effect<MetaResult, unknown, FileSystem.FileSystem | Path.Path> =>
+			o.generateMeta !== undefined
+				? fromPromise(() => o.generateMeta?.(options) as Promise<MetaResult>)
+				: realGenerateMeta(options);
+		const norm = normalizeMetaOptions(o.meta);
+		const canonical = o.groups.find((g) => g.name === o.packageName) ?? o.groups[0];
+		const canonicalId = canonical?.id ?? "npm";
+		const dtsBasenames: Record<string, string> = {};
+		const nonBinEntries: Record<string, string> = {};
+		for (const [name, src] of Object.entries(o.entries)) {
+			if (!name.startsWith("bin/")) {
+				dtsBasenames[name] = name;
+				nonBinEntries[name] = src;
+			}
 		}
-	}
-	const exportPaths = deriveExportPaths(nonBinEntries, o.exportsMap);
-	applySubdirMetaEntries(o.overrides, dtsBasenames, exportPaths);
+		const exportPaths = deriveExportPaths(nonBinEntries, o.exportsMap);
+		applySubdirMetaEntries(o.overrides, dtsBasenames, exportPaths);
 
-	const resolveNext = o.resolveNextVersions ?? realResolveNextVersions;
-	const nextVersions = norm.optimistic ? await resolveNext(o.cwd) : undefined;
-	const manifestTransform = nextVersions
-		? (m: Record<string, unknown>) => rewriteMetaVersions(m, nextVersions.versions, o.packageName)
-		: undefined;
+		const resolveNext = o.resolveNextVersions;
+		const nextVersions = norm.optimistic
+			? resolveNext !== undefined
+				? yield* fromPromise(() => resolveNext(o.cwd))
+				: yield* realResolveNextVersions(o.cwd)
+			: undefined;
+		const manifestTransform = nextVersions
+			? (m: Record<string, unknown>) => rewriteMetaVersions(m, nextVersions.versions, o.packageName)
+			: undefined;
 
-	// The bundle.json source tiers are per package, not per group: load them once. A present but
-	// invalid file fails the build here, before any group's meta bundle is written.
-	const loadSources = o.loadBundleManifestSources ?? realLoadBundleManifestSources;
-	let sources: BundleManifestSources;
-	try {
-		sources = await loadSources(o.cwd);
-	} catch (err) {
-		if (err instanceof BundleManifestSourceError) {
+		// The bundle.json source tiers are per package, not per group: load them once. A present but
+		// invalid file fails the build here, before any group's meta bundle is written.
+		const loadSources = o.loadBundleManifestSources;
+		const load: Effect.Effect<BundleManifestSources, unknown, FileSystem.FileSystem | Path.Path> =
+			loadSources !== undefined ? fromPromise(() => loadSources(o.cwd)) : realLoadBundleManifestSources(o.cwd);
+		const sources = yield* load.pipe(
+			Effect.tapCause((cause) =>
+				Effect.sync(() => {
+					const err = Cause.squash(cause);
+					if (!(err instanceof BundleManifestSourceError)) return;
+					for (const g of o.groups) {
+						o.collector.recordError(g.id, {
+							source: "meta",
+							level: "error",
+							code: "bundle-manifest-source-invalid",
+							text: err.message,
+							file: err.path,
+						});
+					}
+				}),
+			),
+		);
+
+		if (sources.discoveryFailure !== undefined) {
 			for (const g of o.groups) {
-				o.collector.recordError(g.id, {
+				o.collector.recordWarning(g.id, {
 					source: "meta",
-					level: "error",
-					code: "bundle-manifest-source-invalid",
-					text: err.message,
-					file: err.path,
+					level: "warn",
+					code: "bundle-manifest-workspace-discovery-failed",
+					text: `Workspace discovery failed, so bundle.json has no project tier: ${sources.discoveryFailure}`,
 				});
 			}
 		}
-		throw err;
-	}
 
-	if (sources.discoveryFailure !== undefined) {
-		for (const g of o.groups) {
-			o.collector.recordWarning(g.id, {
-				source: "meta",
-				level: "warn",
-				code: "bundle-manifest-workspace-discovery-failed",
-				text: `Workspace discovery failed, so bundle.json has no project tier: ${sources.discoveryFailure}`,
-			});
+		for (const path of sources.retiredSources ?? []) {
+			for (const g of o.groups) {
+				o.collector.recordWarning(g.id, {
+					source: "meta",
+					level: "warn",
+					code: "bundle-manifest-retired-source",
+					text: `${path} is no longer read; rename it to bundle.json`,
+					file: path,
+				});
+			}
 		}
-	}
 
-	for (const path of sources.retiredSources ?? []) {
 		for (const g of o.groups) {
-			o.collector.recordWarning(g.id, {
-				source: "meta",
-				level: "warn",
-				code: "bundle-manifest-retired-source",
-				text: `${path} is no longer read; rename it to bundle.json`,
-				file: path,
-			});
-		}
-	}
-
-	for (const g of o.groups) {
-		// The target's `id` (the publishConfig.targets key, e.g. "npm"/"github") is the human registry label;
-		// its `name` is the resolved package name for that group, which the manifest already knows.
-		const targets = (o.targets ?? [])
-			.filter((t) => t.group === g.id)
-			.map((t) => ({ name: t.id, registry: t.registry }));
-		try {
-			await gen({
+			// The target's `id` (the publishConfig.targets key, e.g. "npm"/"github") is the human registry label;
+			// its `name` is the resolved package name for that group, which the manifest already knows.
+			const targets = (o.targets ?? [])
+				.filter((t) => t.group === g.id)
+				.map((t) => ({ name: t.id, registry: t.registry }));
+			yield* gen({
 				cwd: o.cwd,
 				packageName: o.packageName,
 				tsconfigPath: o.tsconfigPath,
@@ -140,29 +159,32 @@ export async function runMetaPass(o: RunMetaPassOptions): Promise<void> {
 				bundle: { config: norm.bundle, leaf: sources.leaf, project: sources.project, targets },
 				onMessage: (e) => (e.level === "error" ? o.collector.recordError(g.id, e) : o.collector.recordWarning(g.id, e)),
 				onSuppressed: (e) => o.collector.recordSuppressed(g.id, e),
-			} satisfies GenerateMetaOptions);
-		} catch (err) {
-			// Route the sidecar failures into issues.json so the build report names the cause, then fail.
-			if (err instanceof OgGenerateError) {
-				o.collector.recordError(g.id, {
-					source: "meta",
-					level: "error",
-					code: "og-generate-failed",
-					text: err.message,
-				});
-			} else if (err instanceof BundleManifestEmitError) {
-				o.collector.recordError(g.id, {
-					source: "meta",
-					level: "error",
-					code: "bundle-manifest-emit-failed",
-					text: err.message,
-					file: err.path,
-				});
-			}
-			throw err;
+			} satisfies GenerateMetaOptions).pipe(
+				// Route the sidecar failures into issues.json so the build report names the cause, then fail.
+				Effect.tapCause((cause) =>
+					Effect.sync(() => {
+						const err = Cause.squash(cause);
+						if (err instanceof OgGenerateError) {
+							o.collector.recordError(g.id, {
+								source: "meta",
+								level: "error",
+								code: "og-generate-failed",
+								text: err.message,
+							});
+						} else if (err instanceof BundleManifestEmitError) {
+							o.collector.recordError(g.id, {
+								source: "meta",
+								level: "error",
+								code: "bundle-manifest-emit-failed",
+								text: err.message,
+								file: err.path,
+							});
+						}
+					}),
+				),
+			);
 		}
-	}
-}
+	});
 
 /**
  * For each `outSubdir` override, point its meta entry at the isolated sub-package barrel.

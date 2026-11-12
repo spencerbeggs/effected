@@ -145,7 +145,7 @@ const IMPORT_HINTS: ReadonlyArray<readonly [pattern: RegExp, hint: string]> = [
 	],
 	[
 		/Expected a HostedSchema/,
-		"The config's @effected/schemastore may be older than the tool's. Align @effected/schemastore and @effected/plugin on one version, as catalog:effected does",
+		"The config's @effected/schemastore may be older than the tool's. Import defineSchemastore and HostedSchema from @effected/plugin, which is the tool's own copy, or align @effected/schemastore with the version @effected/plugin carries, as catalog:effected does",
 	],
 ];
 

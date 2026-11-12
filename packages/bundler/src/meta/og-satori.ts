@@ -1,3 +1,6 @@
+// `node:fs` rather than `FileSystem`: the reads are the bundled font and the renderer peers' manifests, located
+// through module-relative paths in the bundler's own install, and they run inside the promise-returning generator a
+// config hands to the cache, with no Effect runtime.
 import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -6,12 +9,15 @@ import type { OgImageGenerator, OgImageInfo } from "./bundle-config.js";
 
 /**
  * The bundled Inter SemiBold face (SIL OFL 1.1; see `assets/LICENSE-Inter.txt`). Resolved
- * relative to THIS module: the built `meta/og-satori.js` reaches `assets/` at the package root, while
- * the source `src/meta/og-satori.ts` reaches it through `public/`, so both candidates are tried.
+ * relative to THIS module: the built `meta/og-satori.js` reaches `assets/` at the package root, the
+ * source `src/meta/og-satori.ts` reaches it through `public/`, and a package that inlines the bundler
+ * into a file at its own root, as `@effected/plugin` does, ships `assets/` beside that file, so all
+ * three candidates are tried.
  */
 const FONT_CANDIDATES = [
 	new URL("../assets/Inter-SemiBold.ttf", import.meta.url),
 	new URL("../../public/assets/Inter-SemiBold.ttf", import.meta.url),
+	new URL("./assets/Inter-SemiBold.ttf", import.meta.url),
 ];
 
 function fontPath(): string {

@@ -95,7 +95,9 @@ exit codes stay as they were:
   (`catalog:effected`).
 - Rewrite each script and workflow step: `schemastore build` becomes
   `effected schema build`, and likewise `check` and `validate`.
-- Optionally switch the config's import to `defineSchemastore` from
-  `@effected/plugin`; `defineConfig` from `@effected/schemastore` still works.
+- Switch the config's imports to `@effected/plugin`: `defineSchemastore`
+  for `defineConfig`, and `HostedSchema`, `SchemaTarget` and the rest by
+  their own names. `defineConfig` from `@effected/schemastore` still works
+  while that copy is at the version the tool carries.
 - A program that imported `AjvValidator` or `AjvInstanceValidator` from the old
   package imports them from `@effected/engine/schema`.

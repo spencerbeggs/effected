@@ -27,6 +27,7 @@
 	},
 	"scripts": {
 		"build": "effected package build",
+		"differential": "node __test__/differential/run.ts",
 		"types:check": "tsc --noEmit"
 	},
 	"devDependencies": {

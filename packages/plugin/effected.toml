@@ -1,0 +1,10 @@
+# The published carrier holds the tool's whole closure: the kit, effect and the pure JS beneath them are inlined, so a
+# consumer's install resolves none of it and its catalog round, the derived effect override included, cannot reach in.
+# Only the packages this manifest still declares stay imports: the build toolchain, jiti, Ink and React, and the peers.
+[package.build]
+bundleNodeModules = true
+bundle = ["@effected/cli", "@effected/mcp", "@effected/schemastore", "effect"]
+# The root's declarations inline schemastore's, from its build; they import effect, which the consumer's config holds.
+bundledPackages = ["@effected/schemastore"]
+# The Open Graph card's font, which the inlined bundler finds beside the file it runs from.
+copy = ["../bundler/public/assets"]

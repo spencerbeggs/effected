@@ -1,7 +1,7 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { StandardTags } from "@microsoft/tsdoc";
+import type { PlatformError } from "effect";
+import { Effect, FileSystem, Path } from "effect";
 import type { TsdocOptions } from "./config.js";
 
 const TSDOC_SCHEMA = "https://developer.microsoft.com/json-schemas/tsdoc/v0/tsdoc.schema.json";
@@ -43,20 +43,23 @@ export function buildTsdocConfig(tsdoc: {
 }
 
 /** Write tsdoc.json to `cwd`. Deterministic and idempotent: skips the write when the existing file is byte-equal to the computed config. Returns the path. */
-export function writeTsdocConfig(cwd: string, tsdoc: TsdocOptions): string {
-	const path = join(cwd, "tsdoc.json");
-	const config = buildTsdocConfig({
-		suppressWarnings: tsdoc.suppressWarnings ?? [],
-		tagDefinitions: tsdoc.tagDefinitions ?? [],
-	});
-	if (existsSync(path)) {
-		try {
-			const existing = JSON.parse(readFileSync(path, "utf-8")) as unknown;
-			if (isDeepStrictEqual(existing, config)) return path;
-		} catch {
-			// fall through to rewrite
-		}
-	}
-	writeFileSync(path, `${JSON.stringify(config, null, "\t")}\n`, "utf-8");
-	return path;
-}
+export const writeTsdocConfig: (
+	cwd: string,
+	tsdoc: TsdocOptions,
+) => Effect.Effect<string, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path> = Effect.fnUntraced(
+	function* (cwd: string, tsdoc: TsdocOptions) {
+		const fs = yield* FileSystem.FileSystem;
+		const path = (yield* Path.Path).join(cwd, "tsdoc.json");
+		const config = buildTsdocConfig({
+			suppressWarnings: tsdoc.suppressWarnings ?? [],
+			tagDefinitions: tsdoc.tagDefinitions ?? [],
+		});
+		// An absent, unreadable or malformed file falls through to the rewrite.
+		const unchanged = yield* fs.readFileString(path).pipe(
+			Effect.flatMap((text) => Effect.try(() => isDeepStrictEqual(JSON.parse(text) as unknown, config))),
+			Effect.orElseSucceed(() => false),
+		);
+		if (!unchanged) yield* fs.writeFileString(path, `${JSON.stringify(config, null, "\t")}\n`);
+		return path;
+	},
+);

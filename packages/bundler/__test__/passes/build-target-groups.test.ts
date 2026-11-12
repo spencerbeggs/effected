@@ -4,10 +4,18 @@ import { existsSync, realpathSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
+import type { Plugin } from "rolldown";
 import { vi } from "vitest";
+import type { BuildTargetGroupsOptions } from "../../src/passes/build-target-groups.js";
 import { buildTargetGroups } from "../../src/passes/build-target-groups.js";
 import { BuildCollector } from "../../src/report/collector.js";
+
+/** The pass copies `public/`, writes temp tsconfigs and reads real tsconfig files, so it runs on the host disk. */
+const runBuildTargetGroups = (options: BuildTargetGroupsOptions): Promise<void> =>
+	Effect.runPromise(buildTargetGroups(options).pipe(Effect.provide(NodeServices.layer)));
 
 // #430: `writeDtsEmitTsconfig` (src/dts/resolved-tsconfig.ts) only derives a temp dts-emit
 // tsconfig when its base path resolves via `existsSync` — a synthetic path that happens not to
@@ -87,7 +95,7 @@ describe("buildTargetGroups", () => {
 					return [];
 				},
 			);
-			await buildTargetGroups({
+			await runBuildTargetGroups({
 				cwd: "/abs/pkg",
 				version: "1.0.0",
 				entry: { index: "./src/index.ts" },
@@ -146,7 +154,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { dts: unknown; entry: Record<string, string> }) => {
 			passes.push({ kind: cfg.dts === false ? "js" : "dts", entry: cfg.entry });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "./src/index.ts", testing: "./src/testing.ts" },
@@ -187,7 +195,7 @@ describe("buildTargetGroups", () => {
 			// The real JS pass creates/owns the outDir; mirror that so the stub writeFileSync has a dir.
 			await mkdir(cfg.outDir, { recursive: true });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: dir,
 			version: "1.0.0",
 			entry: { index: "./src/index.ts", testing: "./src/testing.ts" },
@@ -215,7 +223,7 @@ describe("buildTargetGroups", () => {
 			if (cfg.dts !== false) dtsEntries.push(cfg.entry);
 			await mkdir(cfg.outDir, { recursive: true });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: dir,
 			version: "1.0.0",
 			entry: { index: "./src/index.ts", testing: "./src/testing.ts" },
@@ -256,7 +264,7 @@ describe("buildTargetGroups", () => {
 		}) as never;
 
 		const emitted: Array<Record<string, unknown>> = [];
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: dir,
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -289,7 +297,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { inputOptions?: unknown }) => {
 			captured.push({ inputOptions: cfg.inputOptions });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -319,7 +327,7 @@ describe("buildTargetGroups", () => {
 		}) as never;
 
 		// esm-only (default): interop plugin absent from BOTH passes.
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -335,7 +343,7 @@ describe("buildTargetGroups", () => {
 
 		// dual esm+cjs: interop plugin present on BOTH the JS pass and the dts pass.
 		passes.length = 0;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -370,7 +378,7 @@ describe("buildTargetGroups", () => {
 			}) as never;
 
 		const dual: Array<Record<string, unknown>> = [];
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: dir,
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -388,7 +396,7 @@ describe("buildTargetGroups", () => {
 		});
 
 		const esm: Array<Record<string, unknown>> = [];
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: dir,
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -409,7 +417,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: Record<string, unknown>) => {
 			captured.push(cfg);
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -427,7 +435,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: Record<string, unknown>) => {
 			captured.push(cfg);
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -444,7 +452,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { format?: unknown }) => {
 			captured.push({ format: cfg.format });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -462,7 +470,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -476,7 +484,9 @@ describe("buildTargetGroups", () => {
 		// [0] = JS pass: alwaysBundle present (force-inline), coexisting with neverBundle.
 		assert.deepStrictEqual((captured[0]?.deps as { alwaysBundle?: unknown })?.alwaysBundle, [
 			"semver-effect",
+			"semver-effect/**",
 			"@savvy-web/silk-effects",
+			"@savvy-web/silk-effects/**",
 		]);
 		assert.deepStrictEqual((captured[0]?.deps as { neverBundle?: unknown })?.neverBundle, ["effect"]);
 		// The dts pass RE-EMITS the dual-format `.cjs` chunk (see build-target-groups.ts), so it
@@ -484,7 +494,9 @@ describe("buildTargetGroups", () => {
 		// gets re-externalized in that re-emitted `.cjs` (the silk workaround this closed).
 		assert.deepStrictEqual((captured[1]?.deps as { alwaysBundle?: unknown } | undefined)?.alwaysBundle, [
 			"semver-effect",
+			"semver-effect/**",
 			"@savvy-web/silk-effects",
+			"@savvy-web/silk-effects/**",
 		]);
 	});
 
@@ -497,7 +509,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -508,7 +520,9 @@ describe("buildTargetGroups", () => {
 			build,
 		});
 		// [0] = JS pass, [1] = dts pass.
-		assert.deepStrictEqual(captured[1]?.deps, { alwaysBundle: ["@savvy-web/silk-effects"] });
+		assert.deepStrictEqual(captured[1]?.deps, {
+			alwaysBundle: ["@savvy-web/silk-effects", "@savvy-web/silk-effects/**"],
+		});
 	});
 
 	it("creates a `deps` object off `bundle` alone on the declarations pass (Pass 3), with no stray neverBundle", async () => {
@@ -516,7 +530,7 @@ describe("buildTargetGroups", () => {
 		const build = async (cfg: Record<string, unknown>) => {
 			calls.push(cfg);
 		};
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/repo/pkg",
 			version: "1.0.0",
 			entry: { index: "/repo/pkg/src/index.ts" },
@@ -529,7 +543,7 @@ describe("buildTargetGroups", () => {
 		});
 		const decl = calls.find((c) => c.unbundle === true && String(c.outDir).endsWith("/dist/prod/npm/declarations"));
 		assert.isDefined(decl);
-		assert.deepStrictEqual(decl?.deps, { alwaysBundle: ["@savvy-web/silk-effects"] });
+		assert.deepStrictEqual(decl?.deps, { alwaysBundle: ["@savvy-web/silk-effects", "@savvy-web/silk-effects/**"] });
 	});
 
 	it("omits alwaysBundle when `bundle` is not set", async () => {
@@ -537,7 +551,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -555,7 +569,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -588,7 +602,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -613,7 +627,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -641,7 +655,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -671,7 +685,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -691,7 +705,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -717,7 +731,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { unbundle?: unknown; dts?: unknown }) => {
 			captured.push({ unbundle: cfg.unbundle, dts: cfg.dts });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -740,7 +754,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { unbundle?: unknown; dts?: unknown }) => {
 			captured.push({ unbundle: cfg.unbundle, dts: cfg.dts });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -758,7 +772,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -778,7 +792,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -796,7 +810,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -817,7 +831,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -854,7 +868,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -877,7 +891,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -916,7 +930,7 @@ describe("buildTargetGroups", () => {
 				hasManifest: (cfg.plugins ?? []).some((p) => p.name === "savvy:emit-manifest"),
 			});
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { commitlint: "src/commitlint/index.ts" }, // BASE entries only (overrides removed upstream)
@@ -950,7 +964,10 @@ describe("buildTargetGroups", () => {
 				(c.format as string[]).includes("cjs"),
 		);
 		assert.isDefined(overrideJs);
-		assert.deepStrictEqual((overrideJs?.deps as { alwaysBundle?: unknown })?.alwaysBundle, ["@savvy-web/silk-effects"]);
+		assert.deepStrictEqual((overrideJs?.deps as { alwaysBundle?: unknown })?.alwaysBundle, [
+			"@savvy-web/silk-effects",
+			"@savvy-web/silk-effects/**",
+		]);
 		// manifest is emitted exactly once (base partition's JS pass only)
 		assert.strictEqual(calls.filter((c) => c.hasManifest).length, 1);
 		assert.strictEqual(calls[0]?.hasManifest, true);
@@ -962,7 +979,7 @@ describe("buildTargetGroups", () => {
 			if (cfg.define) defines.push(cfg.define);
 			return [];
 		});
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "2.0.0",
 			entry: { index: "./src/index.ts" },
@@ -985,7 +1002,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -1037,7 +1054,7 @@ describe("buildTargetGroups", () => {
 				deps: cfg.deps,
 			});
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -1101,7 +1118,7 @@ describe("buildTargetGroups", () => {
 				passes.push({ format: cfg.format[0] as string, plugins: (cfg.plugins ?? []).map((p) => p.name ?? "") });
 			}
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -1145,7 +1162,7 @@ describe("buildTargetGroups", () => {
 				return [];
 			},
 		);
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "./src/index.ts" }, // base (plugin) entry
@@ -1192,7 +1209,7 @@ describe("buildTargetGroups", () => {
 				calls.push({ outDir: cfg.outDir, dts: cfg.dts });
 				return [];
 			});
-			await buildTargetGroups({
+			await runBuildTargetGroups({
 				cwd: "/abs/pkg",
 				version: "1.0.0",
 				entry: { index: "./src/index.ts" },
@@ -1237,7 +1254,7 @@ describe("buildTargetGroups", () => {
 			calls.push({ dts: cfg.dts });
 			return [];
 		});
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { "bin/cli": "./src/bin/cli.ts" },
@@ -1256,7 +1273,7 @@ describe("buildTargetGroups", () => {
 		const build = async (cfg: Record<string, unknown>) => {
 			calls.push(cfg);
 		};
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/repo/pkg",
 			version: "1.0.0",
 			entry: { index: "/repo/pkg/src/index.ts" },
@@ -1284,7 +1301,7 @@ describe("buildTargetGroups", () => {
 		const build = async (cfg: Record<string, unknown>) => {
 			calls.push(cfg);
 		};
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/repo/pkg",
 			version: "1.0.0",
 			entry: { index: "/repo/pkg/src/index.ts" },
@@ -1300,6 +1317,7 @@ describe("buildTargetGroups", () => {
 		assert.isDefined(decl);
 		assert.deepStrictEqual((decl?.deps as { alwaysBundle?: unknown } | undefined)?.alwaysBundle, [
 			"@savvy-web/silk-effects",
+			"@savvy-web/silk-effects/**",
 		]);
 		assert.deepStrictEqual((decl?.deps as { neverBundle?: unknown } | undefined)?.neverBundle, ["effect"]);
 	});
@@ -1311,7 +1329,7 @@ describe("buildTargetGroups", () => {
 			if (String(cfg.outDir).endsWith("/declarations")) throw new Error("decl boom");
 		};
 		assert.isUndefined(
-			await buildTargetGroups({
+			await runBuildTargetGroups({
 				cwd: "/repo/pkg",
 				version: "1.0.0",
 				entry: { index: "/repo/pkg/src/index.ts" },
@@ -1332,7 +1350,7 @@ describe("buildTargetGroups", () => {
 		const build = async (cfg: Record<string, unknown>) => {
 			calls.push(cfg);
 		};
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/repo/pkg",
 			version: "1.0.0",
 			entry: { index: "/repo/pkg/src/index.ts" },
@@ -1352,7 +1370,7 @@ describe("buildTargetGroups", () => {
 		const build = async (cfg: Record<string, unknown>) => {
 			calls.push(cfg);
 		};
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/repo/pkg",
 			version: "1.0.0",
 			entry: { index: "/repo/pkg/src/index.ts" },
@@ -1387,7 +1405,7 @@ describe("buildTargetGroups", () => {
 			}) as never;
 
 		const manifests: Array<Record<string, unknown>> = [];
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: dir,
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -1412,7 +1430,7 @@ describe("buildTargetGroups", () => {
 			});
 			return [];
 		});
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "./src/index.ts" },
@@ -1433,7 +1451,7 @@ describe("buildTargetGroups", () => {
 			calls.push({ entry: cfg.entry, dts: cfg.dts });
 			return [];
 		});
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "./src/index.ts" },
@@ -1495,7 +1513,7 @@ describe("buildTargetGroups", () => {
 		it("a prod build copies each ambient entry into every resolved group's own pkg dir", async () => {
 			const dir = await ambientFixture();
 			const build = (async () => {}) as never;
-			await buildTargetGroups({
+			await runBuildTargetGroups({
 				cwd: dir,
 				version: "1.0.0",
 				entry: { index: "./src/index.ts" },
@@ -1517,7 +1535,7 @@ describe("buildTargetGroups", () => {
 		it("a dev build copies ambient entries into dist/dev/pkg", async () => {
 			const dir = await ambientFixture();
 			const build = (async () => {}) as never;
-			await buildTargetGroups({
+			await runBuildTargetGroups({
 				cwd: dir,
 				version: "1.0.0",
 				entry: { index: "./src/index.ts" },
@@ -1540,7 +1558,7 @@ describe("buildTargetGroups", () => {
 			);
 			await writeFile(join(dir, "src/index.ts"), "export const A = 1;\n");
 			const build = (async () => {}) as never;
-			await buildTargetGroups({
+			await runBuildTargetGroups({
 				cwd: dir,
 				version: "1.0.0",
 				entry: { index: "./src/index.ts" },
@@ -1552,4 +1570,95 @@ describe("buildTargetGroups", () => {
 			assert.strictEqual(existsSync(join(dir, "dist/dev/pkg")), false);
 		}, 30_000);
 	});
+});
+
+describe("buildTargetGroups loose files and notices", () => {
+	const looseFile = {
+		outFile: "pnpmfile.mjs",
+		entryName: "pnpmfile",
+		source: "./src/pnpmfile.ts",
+		format: "esm",
+		fixedExtension: true,
+	} as const;
+
+	it("gives a loose-file pass the widened bundle patterns and the stamping and notice plugins", async () => {
+		const loose: Array<{ deps: unknown; plugins: ReadonlyArray<string> }> = [];
+		const build = (async (cfg: {
+			unbundle: unknown;
+			dts: unknown;
+			deps?: unknown;
+			plugins?: Array<{ name?: string }>;
+		}) => {
+			if (cfg.unbundle === false && cfg.dts === false) {
+				loose.push({ deps: cfg.deps, plugins: (cfg.plugins ?? []).map((p) => p.name ?? "") });
+			}
+		}) as never;
+		await runBuildTargetGroups({
+			cwd: "/abs/pkg",
+			version: "1.0.0",
+			entry: { index: "src/index.ts" },
+			tsconfigPath: "/abs/pkg/tsconfig.json",
+			groups: [{ id: "dev", name: "base" }],
+			devManifest: "preserve",
+			emitDts: false,
+			bundle: ["dep"],
+			looseFiles: [looseFile],
+			build,
+		});
+		assert.strictEqual(loose.length, 1);
+		// `dep` leaves the manifest when every partition bundles it, so `import "dep/deep"` must inline too.
+		assert.deepStrictEqual(loose[0]?.deps, { alwaysBundle: ["dep", "dep/**"] });
+		assert.include(loose[0]?.plugins ?? [], "effected:stamp-versions");
+		assert.include(loose[0]?.plugins ?? [], "effected:third-party-licenses");
+	});
+
+	it("writes the notice beside the group manifest naming what an outSubdir partition inlined", async () => {
+		const dir = realpathSync(await mkdtemp(join(tmpdir(), "btg-notices-")));
+		try {
+			const cwd = join(dir, "pkg");
+			await mkdir(join(cwd, "src"), { recursive: true });
+			await writeFile(join(cwd, "package.json"), JSON.stringify({ name: "pkg", version: "1.0.0" }));
+			await mkdir(join(dir, "dep"), { recursive: true });
+			await writeFile(
+				join(dir, "dep", "package.json"),
+				JSON.stringify({ name: "dep", version: "2.0.0", license: "MIT" }),
+			);
+			await writeFile(join(dir, "dep", "index.js"), "export const a = 1;\n");
+			const emitted: Array<{ outDir: string; fileName: string }> = [];
+			const build = (async (cfg: { outDir: string; plugins?: Array<Plugin> }) => {
+				const plugin = (cfg.plugins ?? []).find((p) => p.name === "effected:third-party-licenses");
+				const hook = plugin?.generateBundle as
+					| ((this: unknown, output: unknown, bundle: Record<string, unknown>) => Promise<void>)
+					| undefined;
+				// Only the runtime partition inlines `dep`; the base pass holds the package's own code.
+				const moduleIds = cfg.outDir.endsWith("runtime")
+					? [join(dir, "dep", "index.js")]
+					: [join(cwd, "src", "index.ts")];
+				await hook?.call(
+					{ emitFile: (file: { fileName: string }) => emitted.push({ outDir: cfg.outDir, fileName: file.fileName }) },
+					{},
+					{ "index.js": { type: "chunk", moduleIds } },
+				);
+			}) as never;
+			await runBuildTargetGroups({
+				cwd,
+				version: "1.0.0",
+				entry: { index: "./src/index.ts" },
+				tsconfigPath: join(cwd, "tsconfig.json"),
+				groups: [{ id: "dev", name: "pkg" }],
+				devManifest: "preserve",
+				emitDts: false,
+				overrides: [{ entry: { index: "./src/runtime/index.ts" }, outSubdir: "runtime" }],
+				build,
+			});
+			// The base pass inlined nothing, so only the runtime pass emitted a notice, under runtime/.
+			assert.deepStrictEqual(emitted, [
+				{ outDir: join(cwd, "dist/dev/pkg/runtime"), fileName: "THIRD_PARTY_LICENSES.txt" },
+			]);
+			const root = await readFile(join(cwd, "dist/dev/pkg/THIRD_PARTY_LICENSES.txt"), "utf-8");
+			assert.include(root, "dep@2.0.0\nLicense: MIT");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	}, 30_000);
 });

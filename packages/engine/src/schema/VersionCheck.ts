@@ -85,7 +85,7 @@ export class VersionCheck {
 			VersionMismatch.make({
 				tool,
 				found,
-				message: `The tool uses @effected/schemastore ${tool}, but the config's values come from another version (${lines}). Align @effected/schemastore and @effected/plugin on one version, as catalog:effected does.`,
+				message: `The tool uses @effected/schemastore ${tool}, but the config's values come from another version (${lines}). Build the config's values with the authoring surface @effected/plugin exports (defineSchemastore, HostedSchema, SchemaTarget and the rest), which is the tool's own copy, or align @effected/schemastore with the version @effected/plugin carries, as catalog:effected does.`,
 			}),
 		);
 	}

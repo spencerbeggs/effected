@@ -1,14 +1,19 @@
 import { createHash } from "node:crypto";
-import { existsSync, realpathSync, writeFileSync } from "node:fs";
+// `realpathSync` rather than `FileSystem`: `canonicalPath` runs inside API Extractor's synchronous `messageCallback`,
+// which must decide a message's suppression before it returns, and core `FileSystem` has no synchronous `realPath`.
+import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
+// `node:path` alongside it, for the same synchronous classification helpers.
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { TsconfigLoaderSync } from "@effected/tsconfig-json";
+import { TsconfigLoader } from "@effected/tsconfig-json";
 import type { ExtractorMessage } from "@microsoft/api-extractor";
 import { Extractor, ExtractorConfig, ExtractorLogLevel } from "@microsoft/api-extractor";
 import { TSDocConfigFile } from "@microsoft/tsdoc-config";
+import type { PlatformError } from "effect";
+import { Effect, FileSystem, Path } from "effect";
 import { MetaGenerationError } from "../errors.js";
+import { existsLikeNode } from "../internal/exists.js";
 import type { DiagnosticInput } from "../report/collector.js";
-import { tsconfigSyncOptions } from "../tsconfig/sync-options.js";
 import type { WarningSuppressionRule } from "./config.js";
 import { createMessageSuppressor } from "./message-suppressor.js";
 
@@ -86,30 +91,38 @@ export interface WriteApiExtractorTsconfigOptions {
  * calls within a process overwrite the same file; cross-process temp files are left for the OS to
  * reap, consistent with the other tmpdir tsconfig writers.
  */
-export function writeApiExtractorTsconfig(options: WriteApiExtractorTsconfigOptions): string {
-	const absBase = isAbsolute(options.tsconfigPath) ? options.tsconfigPath : resolve(options.tsconfigPath);
-	if (!existsSync(absBase)) return options.tsconfigPath;
-	const entryDts = isAbsolute(options.entryDtsPath) ? options.entryDtsPath : resolve(options.cwd, options.entryDtsPath);
-	// `files` wins regardless of the inherited `exclude` (exclude never filters `files`), and the
-	// explicit empty-`include` override would be implied — but the legacy-typings glob keeps
-	// hand-authored ambient declarations under types/ analyzable, exactly as the base include did.
-	const ownPaths = options.paths ?? {};
-	const hasPaths = Object.keys(ownPaths).length > 0;
-	// A `compilerOptions.paths` here replaces the inherited one, so re-emit the base's (best-effort).
-	const cfg = {
-		extends: absBase,
-		files: [entryDts],
-		include: [join(options.cwd, "types/*.d.ts")],
-		...(hasPaths ? { compilerOptions: { paths: { ...readBasePaths(absBase), ...ownPaths } } } : {}),
-	};
-	const hash = createHash("sha256")
-		.update(`${absBase}\0${entryDts}${hasPaths ? `\0${JSON.stringify(ownPaths)}` : ""}`)
-		.digest("hex")
-		.slice(0, 16);
-	const path = join(tmpdir(), `tsconfig-api-extractor-${process.pid}-${hash}.json`);
-	writeFileSync(path, `${JSON.stringify(cfg, null, "\t")}\n`, "utf-8");
-	return path;
-}
+export const writeApiExtractorTsconfig: (
+	options: WriteApiExtractorTsconfigOptions,
+) => Effect.Effect<string, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path> = Effect.fnUntraced(
+	function* (options: WriteApiExtractorTsconfigOptions) {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const absBase = path.isAbsolute(options.tsconfigPath) ? options.tsconfigPath : path.resolve(options.tsconfigPath);
+		if (!(yield* existsLikeNode(absBase))) return options.tsconfigPath;
+		const entryDts = path.isAbsolute(options.entryDtsPath)
+			? options.entryDtsPath
+			: path.resolve(options.cwd, options.entryDtsPath);
+		// `files` wins regardless of the inherited `exclude` (exclude never filters `files`), and the
+		// explicit empty-`include` override would be implied — but the legacy-typings glob keeps
+		// hand-authored ambient declarations under types/ analyzable, exactly as the base include did.
+		const ownPaths = options.paths ?? {};
+		const hasPaths = Object.keys(ownPaths).length > 0;
+		// A `compilerOptions.paths` here replaces the inherited one, so re-emit the base's (best-effort).
+		const cfg = {
+			extends: absBase,
+			files: [entryDts],
+			include: [path.join(options.cwd, "types/*.d.ts")],
+			...(hasPaths ? { compilerOptions: { paths: { ...(yield* readBasePaths(absBase)), ...ownPaths } } } : {}),
+		};
+		const hash = createHash("sha256")
+			.update(`${absBase}\0${entryDts}${hasPaths ? `\0${JSON.stringify(ownPaths)}` : ""}`)
+			.digest("hex")
+			.slice(0, 16);
+		const out = path.join(tmpdir(), `tsconfig-api-extractor-${process.pid}-${hash}.json`);
+		yield* fs.writeFileString(out, `${JSON.stringify(cfg, null, "\t")}\n`);
+		return out;
+	},
+);
 
 /**
  * The base tsconfig's effective `compilerOptions.paths`, with every relative target made absolute.
@@ -123,23 +136,23 @@ export function writeApiExtractorTsconfig(options: WriteApiExtractorTsconfigOpti
  * so `paths` inherited from further up the chain are kept too. Best-effort: a base that cannot be
  * resolved contributes no paths.
  */
-function readBasePaths(absBase: string): Record<string, ReadonlyArray<string>> {
-	let resolved: ReturnType<typeof TsconfigLoaderSync.resolve>;
-	try {
-		resolved = TsconfigLoaderSync.resolve(absBase, tsconfigSyncOptions);
-	} catch {
-		return {};
-	}
-	const paths = resolved.compilerOptions.paths;
-	if (paths === undefined) return {};
-	const anchor = resolved.compilerOptions.baseUrl ?? resolved.pathsBase ?? dirname(absBase);
-	return Object.fromEntries(
-		Object.entries(paths).map(([key, targets]) => [
-			key,
-			targets.map((target) => (isAbsolute(target) ? target : resolve(anchor, target))),
-		]),
-	);
-}
+const readBasePaths = (
+	absBase: string,
+): Effect.Effect<Record<string, ReadonlyArray<string>>, never, FileSystem.FileSystem | Path.Path> =>
+	Effect.gen(function* () {
+		const path = yield* Path.Path;
+		const resolved = yield* TsconfigLoader.resolve(absBase).pipe(Effect.option);
+		if (resolved._tag === "None") return {};
+		const paths = resolved.value.compilerOptions.paths;
+		if (paths === undefined) return {};
+		const anchor = resolved.value.compilerOptions.baseUrl ?? resolved.value.pathsBase ?? path.dirname(absBase);
+		return Object.fromEntries(
+			Object.entries(paths).map(([key, targets]) => [
+				key,
+				targets.map((target) => (path.isAbsolute(target) ? target : path.resolve(anchor, target))),
+			]),
+		);
+	});
 
 /**
  * Map an API Extractor message to a collector DiagnosticInput, or undefined if not warn/error.
@@ -226,8 +239,27 @@ export function ownSourceInputFiles(program: ProgramFiles, cwd: string): Readonl
 		.filter((path) => isTsSource(path) && isOwnPath(path, cwd));
 }
 
-/** Run API Extractor over a single entry's .d.ts, writing the .api.json (and optionally tsdoc-metadata.json). Throws on failure. */
-export function runApiExtractor(options: RunApiExtractorOptions): void {
+/**
+ * Run API Extractor over a single entry's .d.ts, writing the .api.json (and optionally tsdoc-metadata.json).
+ *
+ * @remarks
+ * The derived tsconfig is written through `FileSystem`; API Extractor itself is synchronous and reads the host disk.
+ * Anything it throws, and the {@link MetaGenerationError} of a failed run, fails the effect with the thrown value.
+ */
+export const runApiExtractor = (
+	options: RunApiExtractorOptions,
+): Effect.Effect<void, unknown, FileSystem.FileSystem | Path.Path> =>
+	Effect.flatMap(
+		writeApiExtractorTsconfig({
+			cwd: options.cwd,
+			tsconfigPath: options.tsconfigPath,
+			entryDtsPath: options.entryDtsPath,
+			paths: options.selfReferencePaths,
+		}),
+		(tsconfigFilePath) => Effect.try({ try: () => invokeApiExtractor(options, tsconfigFilePath), catch: (e) => e }),
+	);
+
+function invokeApiExtractor(options: RunApiExtractorOptions, tsconfigFilePath: string): void {
 	const suppressor = createMessageSuppressor(options.suppressWarnings);
 	// api-extractor compiles with its OWN bundled TypeScript (the TS 5/6 JavaScript compiler API it is
 	// written against; see rushstack#6033 for the TypeScript 7 port). This package's `typescript` is
@@ -245,14 +277,7 @@ export function runApiExtractor(options: RunApiExtractorOptions): void {
 			enumMemberOrder: "preserve",
 			// The extractor gets its own files-scoped tsconfig, never the compile config verbatim — the
 			// compile include's src/ globs poison the analysis Program (#354, see writeApiExtractorTsconfig).
-			compiler: {
-				tsconfigFilePath: writeApiExtractorTsconfig({
-					cwd: options.cwd,
-					tsconfigPath: options.tsconfigPath,
-					entryDtsPath: options.entryDtsPath,
-					paths: options.selfReferencePaths,
-				}),
-			},
+			compiler: { tsconfigFilePath },
 			// includeForgottenExports keeps "forgotten" declarations (referenced but not exported) IN the
 			// doc model instead of dropping them (api-extractor's default). Without it the synthetic base
 			// class TypeScript hoists for Effect class mixins (Schema.Class/Data.TaggedError/Context.Tag/

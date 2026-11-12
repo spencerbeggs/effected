@@ -1,8 +1,6 @@
-import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
 import type { ManifestSource, OpenGraphImage } from "@effected/manifest";
 import { BUNDLE_MANIFEST_FILENAME, encodeBundleManifest } from "@effected/manifest";
-import { Effect } from "effect";
+import { Cause, Effect, Exit, FileSystem, Path } from "effect";
 import { BundleManifestEmitError } from "../errors.js";
 import { runApiExtractor } from "./api-extractor.js";
 import type { BundleMetaOptions } from "./bundle-config.js";
@@ -93,9 +91,32 @@ export interface MetaResult {
  * outMetaDir (`<unscoped>.api.json` + the final `package.json` + a portable `tsconfig.json`),
  * copying that trio into each localPaths dir. The api-extractor `tsdoc-metadata.json` is a
  * published-package artifact and is written into `dtsDir` (the built pkg/), not the meta bundle.
+ *
+ * Its own reads and writes go through `FileSystem` and `Path`; API Extractor reads the host disk. It fails with
+ * whatever failed: an API Extractor throw, a {@link BundleManifestEmitError}, an {@link OgGenerateError} or a
+ * `PlatformError`.
  * @public
  */
-export async function generateMeta(options: GenerateMetaOptions): Promise<MetaResult> {
+export const generateMeta: (
+	options: GenerateMetaOptions,
+) => Effect.Effect<MetaResult, unknown, FileSystem.FileSystem | Path.Path> = Effect.fnUntraced(function* (
+	options: GenerateMetaOptions,
+) {
+	const fs = yield* FileSystem.FileSystem;
+	const { join, resolve } = yield* Path.Path;
+	/** `rmSync(path, { force: true })`: a missing path is not a failure. */
+	const removeForce = (path: string, recursive = false) =>
+		fs.remove(path, { recursive, force: true }).pipe(
+			Effect.catchIf(
+				(e) => e.reason._tag === "NotFound",
+				() => Effect.void,
+			),
+		);
+	/** The failure an effect ended with, as a thrown value: a typed failure or a defect alike. */
+	const attempt = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+		Effect.map(Effect.exit(effect), (exit) =>
+			Exit.isSuccess(exit) ? undefined : { error: Cause.squash(exit.cause) as unknown },
+		);
 	const {
 		cwd,
 		packageName,
@@ -113,10 +134,10 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 	} = options;
 	const aeInputDir = options.aeInputDir ?? dtsDir;
 	const splitDiagnostics = aeInputDir !== dtsDir;
-	const tsdocConfigPath = writeTsdocConfig(cwd, tsdoc);
+	const tsdocConfigPath = yield* writeTsdocConfig(cwd, tsdoc);
 	const packageJsonPath = join(cwd, "package.json");
 
-	mkdirSync(outMetaDir, { recursive: true });
+	yield* fs.makeDirectory(outMetaDir, { recursive: true });
 	const apiJsonFilename = `${unscopedName(packageName)}.api.json`;
 	// tsdoc-metadata.json is a published-package artifact (TSDoc tooling reads it from the package
 	// root), so emit it into the built pkg dir rather than the shiki/Twoslash meta bundle.
@@ -159,8 +180,8 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 	// API Extractor reads the `.d.ts.map` beside every input it analyzes and crashes (EISDIR) on a
 	// source-less mapping segment (#817). Scrub both inputs once, before any run: the bundled dts
 	// Run A models and the per-module declarations Run B reads.
-	scrubDeclarationMapsUnder(dtsDir);
-	if (splitDiagnostics) scrubDeclarationMapsUnder(aeInputDir);
+	yield* scrubDeclarationMapsUnder(dtsDir);
+	if (splitDiagnostics) yield* scrubDeclarationMapsUnder(aeInputDir);
 	for (const entryName of entryNames) {
 		const modelEntryDts = join(dtsDir, `${entries[entryName]}.d.ts`);
 		// Entry names can contain path separators (e.g. "foo/index", "bin/cli"); flatten so the
@@ -213,8 +234,7 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 			: (): void => {};
 		// Run A's failure, held until Run B and the flushes below have recorded its evidence, and raised after the
 		// entry loop (#1317). Without a split there is no Run B, so the single run's failure is raised at once.
-		let runAFailure: { readonly error: unknown } | undefined;
-		try {
+		const runAFailure: { readonly error: unknown } | undefined = yield* attempt(
 			runApiExtractor({
 				cwd,
 				packageJsonPath,
@@ -241,11 +261,9 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 							...(onMessage !== undefined ? { onMessage } : {}),
 							...(onSuppressed !== undefined ? { onSuppressed } : {}),
 						}),
-			});
-		} catch (err) {
-			if (!splitDiagnostics) throw err;
-			runAFailure = { error: err };
-		}
+			}),
+		);
+		if (runAFailure !== undefined && !splitDiagnostics) return yield* Effect.fail(runAFailure.error);
 		// Run B — diagnostics only. Reads the per-module declarations so locations resolve to the true
 		// source declaration. No model emitted (emitDocModel:false). Not a CI gate (Run A is); wrapped so
 		// a diagnostics-run failure never breaks a build whose model already succeeded.
@@ -271,7 +289,7 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 							onMessage({ ...escalated, level: "error" });
 						}
 					: onMessage;
-			try {
+			const runBFailure = yield* attempt(
 				runApiExtractor({
 					cwd,
 					packageJsonPath,
@@ -291,16 +309,15 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 								},
 							}
 						: {}),
+				}),
+			);
+			if (runBFailure !== undefined && onMessage !== undefined) {
+				onMessage({
+					source: "api-extractor",
+					level: "warn",
+					code: "diagnostics-harvest-failed",
+					text: `Could not harvest per-module source locations for "${entryName}": ${String(runBFailure.error)}`,
 				});
-			} catch (err) {
-				if (onMessage !== undefined) {
-					onMessage({
-						source: "api-extractor",
-						level: "warn",
-						code: "diagnostics-harvest-failed",
-						text: `Could not harvest per-module source locations for "${entryName}": ${String(err)}`,
-					});
-				}
 			}
 			// Surface CI-fatal messages that exist ONLY in the bundled rollup (Run B never saw them), so a
 			// local build nudges about an issue that would fail CI, and a CI build names the symbol it failed on.
@@ -327,13 +344,13 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 			continue;
 		}
 		if (isMain) mainEntryDidTsdocMetadata = true;
-		perEntryModels.set(entryName, JSON.parse(readFileSync(perEntryApiJson, "utf-8")) as Record<string, unknown>);
+		perEntryModels.set(entryName, JSON.parse(yield* fs.readFileString(perEntryApiJson)) as Record<string, unknown>);
 	}
 
 	// The first failed Run A fails the build, unchanged; the intermediates are removed as a passing build removes them.
 	if (firstFailure !== undefined) {
-		for (const intermediate of intermediateApiJsons) rmSync(intermediate, { force: true });
-		throw firstFailure.error;
+		for (const intermediate of intermediateApiJsons) yield* removeForce(intermediate);
+		return yield* Effect.fail(firstFailure.error);
 	}
 
 	// Merge or take the single model.
@@ -343,10 +360,10 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 			: mergeApiModels({ perEntryModels, packageName, exportPaths });
 
 	const apiJsonPath = join(outMetaDir, apiJsonFilename);
-	writeFileSync(apiJsonPath, `${JSON.stringify(finalModel, null, 2)}\n`, "utf-8");
+	yield* fs.writeFileString(apiJsonPath, `${JSON.stringify(finalModel, null, 2)}\n`);
 
 	// Remove the per-entry working files now that the final merged model is written.
-	for (const intermediate of intermediateApiJsons) rmSync(intermediate, { force: true });
+	for (const intermediate of intermediateApiJsons) yield* removeForce(intermediate);
 
 	// The meta bundle is a self-contained virtual TS env for shiki/Twoslash. It carries a portable,
 	// derived tsconfig (compilerOptions-only, no absolute paths or emit settings). The portable config
@@ -356,13 +373,13 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 	// source manifest). When a manifestTransform is supplied (optimistic next-version rewrite), apply
 	// it here so both the bundle and the localPaths copies below see the rewritten manifest.
 	const bundlePackageJson = join(outMetaDir, "package.json");
-	const builtPkg = JSON.parse(readFileSync(join(dtsDir, "package.json"), "utf-8")) as Record<string, unknown>;
+	const builtPkg = JSON.parse(yield* fs.readFileString(join(dtsDir, "package.json"))) as Record<string, unknown>;
 	const finalPkg = manifestTransform ? manifestTransform(builtPkg) : builtPkg;
-	writeFileSync(bundlePackageJson, `${JSON.stringify(finalPkg, null, 2)}\n`, "utf-8");
+	yield* fs.writeFileString(bundlePackageJson, `${JSON.stringify(finalPkg, null, 2)}\n`);
 
 	const bundleTsconfig = join(outMetaDir, "tsconfig.json");
-	const portableTsconfig = resolvePortableTsconfig(cwd, tsconfigPath);
-	writeFileSync(bundleTsconfig, `${JSON.stringify(portableTsconfig, null, 2)}\n`, "utf-8");
+	const portableTsconfig = yield* resolvePortableTsconfig(cwd, tsconfigPath);
+	yield* fs.writeFileString(bundleTsconfig, `${JSON.stringify(portableTsconfig, null, 2)}\n`);
 
 	// Layer 3: the bundle.json sidecar. Written only when there is something to say, through the
 	// manifest package's encoder so the file is by construction what a reader decodes. The generated
@@ -370,9 +387,9 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 	// The sidecar and its image are the bundle's only CONDITIONAL members, so a previous build's copies
 	// are removed first: a package that drops its bundle.json or its generator must stop advertising
 	// the identity and og:image it no longer produces, in the meta dir and in every localPaths copy.
-	rmSync(join(outMetaDir, BUNDLE_MANIFEST_FILENAME), { force: true });
-	rmSync(join(outMetaDir, RETIRED_MANIFEST_FILENAME), { force: true });
-	rmSync(join(outMetaDir, "og"), { recursive: true, force: true });
+	yield* removeForce(join(outMetaDir, BUNDLE_MANIFEST_FILENAME));
+	yield* removeForce(join(outMetaDir, RETIRED_MANIFEST_FILENAME));
+	yield* removeForce(join(outMetaDir, "og"), true);
 	let manifestPath: string | undefined;
 	let generatedImageRelative: string | undefined;
 	if (options.bundle !== undefined) {
@@ -390,7 +407,7 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 		if (generate !== undefined) {
 			// The cache lives outside the meta dir, so the rmSync above clears only the output copy.
 			const cacheSalt = resolveOgCacheSalt(generate, options.bundle.config?.openGraph?.cacheSalt);
-			const generated = await writeGeneratedOgImage({
+			const generated = yield* writeGeneratedOgImage({
 				generate,
 				info: ogImageInfoOf({ ...composeInput, version: String(finalPkg.version ?? "0.0.0") }),
 				outMetaDir,
@@ -405,13 +422,11 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 		const manifest = composeBundleManifest(composeInput);
 		if (manifest !== undefined) {
 			const path = join(outMetaDir, BUNDLE_MANIFEST_FILENAME);
-			try {
-				const encoded = await Effect.runPromise(encodeBundleManifest(manifest));
-				writeFileSync(path, `${JSON.stringify(encoded, null, 2)}\n`, "utf-8");
-			} catch (cause) {
+			yield* encodeBundleManifest(manifest).pipe(
+				Effect.flatMap((encoded) => fs.writeFileString(path, `${JSON.stringify(encoded, null, 2)}\n`)),
 				// Same contract as the image: an encode or disk failure is named in issues.json, not raw.
-				throw new BundleManifestEmitError({ packageName, path, cause });
-			}
+				Effect.mapError((cause) => new BundleManifestEmitError({ packageName, path, cause })),
+			);
 			manifestPath = path;
 		}
 	}
@@ -420,19 +435,19 @@ export async function generateMeta(options: GenerateMetaOptions): Promise<MetaRe
 	// sidecar and its generated image when they exist.
 	for (const localPath of localPaths) {
 		const dest = resolve(cwd, localPath);
-		mkdirSync(dest, { recursive: true });
-		copyFileSync(apiJsonPath, join(dest, apiJsonFilename));
-		copyFileSync(bundlePackageJson, join(dest, "package.json"));
-		copyFileSync(bundleTsconfig, join(dest, "tsconfig.json"));
-		if (manifestPath !== undefined) copyFileSync(manifestPath, join(dest, BUNDLE_MANIFEST_FILENAME));
-		else rmSync(join(dest, BUNDLE_MANIFEST_FILENAME), { force: true });
-		rmSync(join(dest, RETIRED_MANIFEST_FILENAME), { force: true });
-		rmSync(join(dest, "og"), { recursive: true, force: true });
+		yield* fs.makeDirectory(dest, { recursive: true });
+		yield* fs.copyFile(apiJsonPath, join(dest, apiJsonFilename));
+		yield* fs.copyFile(bundlePackageJson, join(dest, "package.json"));
+		yield* fs.copyFile(bundleTsconfig, join(dest, "tsconfig.json"));
+		if (manifestPath !== undefined) yield* fs.copyFile(manifestPath, join(dest, BUNDLE_MANIFEST_FILENAME));
+		else yield* removeForce(join(dest, BUNDLE_MANIFEST_FILENAME));
+		yield* removeForce(join(dest, RETIRED_MANIFEST_FILENAME));
+		yield* removeForce(join(dest, "og"), true);
 		if (generatedImageRelative !== undefined) {
-			mkdirSync(join(dest, "og"), { recursive: true });
-			copyFileSync(join(outMetaDir, generatedImageRelative), join(dest, generatedImageRelative));
+			yield* fs.makeDirectory(join(dest, "og"), { recursive: true });
+			yield* fs.copyFile(join(outMetaDir, generatedImageRelative), join(dest, generatedImageRelative));
 		}
 	}
 
-	return { apiJsonPath, apiJsonFilename };
-}
+	return { apiJsonPath, apiJsonFilename } satisfies MetaResult;
+});

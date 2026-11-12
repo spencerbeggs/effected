@@ -7,9 +7,16 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterEach, assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
+import type { GenerateMetaOptions } from "../../src/meta/generate.js";
 import { generateMeta } from "../../src/meta/generate.js";
 import type { DiagnosticInput } from "../../src/report/collector.js";
+
+/** generateMeta runs API Extractor over the scaffold on the host disk. */
+const runGenerateMeta = (options: GenerateMetaOptions) =>
+	Effect.runPromise(generateMeta(options).pipe(Effect.provide(NodeServices.layer)));
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -71,7 +78,7 @@ describe("generateMeta Run B — self-referencing sub-entry (#771)", () => {
 		);
 
 		const messages: DiagnosticInput[] = [];
-		await generateMeta({
+		await runGenerateMeta({
 			cwd,
 			packageName: "@scope/selfref",
 			tsconfigPath: join(cwd, "tsconfig.json"),

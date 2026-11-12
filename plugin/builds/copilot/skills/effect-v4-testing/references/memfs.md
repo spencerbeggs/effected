@@ -89,8 +89,10 @@ const walker = {
 const entries = await walker.readDirectory("/ws/repo/src"); // hand `walker` to the code under test
 ```
 
-The sync port answers `realPath` (as `realpathSync` does: every link
-resolved, `ENOENT`/`ENOTDIR`/`ELOOP` with `syscall: "realpath"`), so code that
+The sync port answers `realPath` (as the JS `realpathSync` does: every link
+resolved, its target joined lexically, so `a -> sub/../b` is the `b` beside `a`
+even when `sub` is a link; a failure is `ENOENT`/`ENOTDIR`/`ELOOP` from the
+`lstat` or `stat` it failed in, naming that prefix rather than your path), so code that
 canonicalizes through an injected sync port runs on the volume unchanged.
 
 Port members are standalone functions, not methods: pass `handle.sync.readFile`

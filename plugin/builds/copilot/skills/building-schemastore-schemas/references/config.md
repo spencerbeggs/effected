@@ -9,25 +9,27 @@ positional argument — the form repositories with a `lib/scripts/` convention
 use.
 
 The module is loaded through `jiti` created against the config file's own
-path, so its relative specifiers and its `effect` / `@effected/schemastore`
-imports resolve from the consumer's tree, never from the tool's. That is what
-keeps the config and the pipeline on one `effect` and one
-`@effected/schemastore` instance: the `SchemaTarget` you construct must be the
-class the pipeline matches, and the annotation symbols on your schema must be
-the ones core's `Schema.toJsonSchemaDocument` reads. Install `@effected/plugin`
-(root devDependency, `catalog:effected`) and `@effected/schemastore` so the
-catalog resolves one version of the library; when the config's copy differs
-from the tool's, the command fails with exit `2` naming both versions (see
-`ci-gate.md`).
+path, so its relative specifiers and its imports resolve from the consumer's
+tree. Your schemas are built with the repository's own `effect`; the tool
+runs on the copy built into `@effected/plugin`. The two meet safely, because
+Effect recognises a schema, a class and its annotations by string keys, not
+by which copy built them, and every value of `@effected/schemastore` is
+recognised by a `Symbol.for` brand. What the tool does check is the version
+each config value is stamped with: build the config's values from
+`@effected/plugin`, whose root exports the authoring surface from the tool's
+own copy, and the stamp always matches. A value from the repository's own
+`@effected/schemastore` matches while that copy is at the version the tool
+carries, which `catalog:effected` keeps true; at another version the command
+fails with exit `2` naming both versions (see `ci-gate.md`).
 
 ## `defineConfig`
 
 The default export is a `defineConfig(...)` value: a required config
 `name`, and the schemas keyed by schema name.
 Write it as `defineSchemastore` from `@effected/plugin`, which is
-`defineConfig` from `@effected/schemastore` under the tool's name. A repository
-with only `@effected/mcp` installed imports `defineConfig` from
-`@effected/schemastore` instead; the value is identical.
+`defineConfig` from the tool's own `@effected/schemastore` under the tool's
+name. A repository with only `@effected/mcp` installed imports `defineConfig`
+from `@effected/schemastore` instead; the value is identical.
 `defineConfig` is pure — no IO, no Effect — and validates the whole input,
 derives every `$id`/`path`/catalog URL from ONE layout, fills drift
 defaults, assembles every catalog entry, and brands the result so the
@@ -66,7 +68,10 @@ SchemaStore file.
 
 When the application also writes `$schema` into its own output, do not
 re-derive that URL in `src/`. Build the identity once with `HostedSchema`
-and hand the same value to both sides:
+and hand the same value to both sides. Runtime code imports it from
+`@effected/schemastore`, its own dependency, which stays on
+`catalog:effected` so the stamp matches the tool's. A `HostedSchema` only the
+config uses imports from `@effected/plugin` instead:
 
 ```ts
 // src/schema/output.ts

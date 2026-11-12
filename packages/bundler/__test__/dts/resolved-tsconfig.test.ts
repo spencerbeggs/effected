@@ -5,8 +5,19 @@ import { realpathSync } from "node:fs";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import type { FileSystem, Path } from "effect";
+import { Effect } from "effect";
 import { buildResolvedTsconfig, writeDtsEmitTsconfig, writeResolvedTsconfig } from "../../src/dts/resolved-tsconfig.js";
+
+// The resolver follows real `extends` chains and the writers land in the host tmpdir (spelled by realpath),
+// so every call runs on the host disk.
+const node = <A, E>(effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>): Promise<A> =>
+	Effect.runPromise(effect.pipe(Effect.provide(NodeServices.layer)));
+const build = (options: Parameters<typeof buildResolvedTsconfig>[0]) => node(buildResolvedTsconfig(options));
+const writeResolved = (options: Parameters<typeof writeResolvedTsconfig>[0]) => node(writeResolvedTsconfig(options));
+const writeEmit = (...args: Parameters<typeof writeDtsEmitTsconfig>) => node(writeDtsEmitTsconfig(...args));
 
 describe("buildResolvedTsconfig", () => {
 	it("inherits the package's own compilerOptions", async () => {
@@ -23,7 +34,7 @@ describe("buildResolvedTsconfig", () => {
 				},
 			}),
 		);
-		const cfg = buildResolvedTsconfig({ cwd: dir });
+		const cfg = await build({ cwd: dir });
 		assert.strictEqual(cfg.compilerOptions.target, "es2022");
 		assert.strictEqual(cfg.compilerOptions.module, "nodenext");
 		assert.strictEqual(cfg.compilerOptions.strict, true);
@@ -45,7 +56,7 @@ describe("buildResolvedTsconfig", () => {
 				},
 			}),
 		);
-		const cfg = buildResolvedTsconfig({ cwd: dir });
+		const cfg = await build({ cwd: dir });
 		// Never skip emit on stale build info.
 		assert.strictEqual(cfg.compilerOptions.composite, false);
 		assert.strictEqual(cfg.compilerOptions.incremental, false);
@@ -69,15 +80,15 @@ describe("buildResolvedTsconfig", () => {
 				},
 			}),
 		);
-		const cfg = buildResolvedTsconfig({ cwd: dir });
+		const cfg = await build({ cwd: dir });
 		assert.strictEqual(cfg.compilerOptions.rootDir, dir);
 		assert.strictEqual(cfg.compilerOptions.outDir, join(dir, "dist"));
 		assert.strictEqual((cfg.compilerOptions.typeRoots as string[]).every(isAbsolute), true);
 	});
 
-	it("falls back to synthesized defaults when the package has no tsconfig.json", () => {
-		// The e2e leaf fixtures build without one; absence must not throw.
-		const cfg = buildResolvedTsconfig({ cwd: "/abs/pkg" });
+	it("falls back to synthesized defaults when the package has no tsconfig.json", async () => {
+		// The e2e leaf fixtures build without one; absence must not fail.
+		const cfg = await build({ cwd: "/abs/pkg" });
 		assert.strictEqual(cfg.compilerOptions.rootDir, "/abs/pkg");
 		assert.deepStrictEqual(cfg.compilerOptions.types, ["node"]);
 		assert.strictEqual(cfg.compilerOptions.declaration, true);
@@ -85,23 +96,27 @@ describe("buildResolvedTsconfig", () => {
 		assert.strictEqual((cfg.compilerOptions.typeRoots as string[]).every(isAbsolute), true);
 	});
 
-	it("throws when a tsconfig exists but cannot be resolved", async () => {
+	it("fails when a tsconfig exists but cannot be resolved", async () => {
 		// Absence is a supported case; a PRESENT but broken config is not. Falling back here would
 		// emit declarations under the wrong options and still report a green build, because the
 		// emitted temp tsconfig never references the broken source.
 		const dir = await mkdtemp(join(tmpdir(), "rtc-broken-"));
 		await writeFile(join(dir, "tsconfig.json"), "{ this is not valid json");
-		assert.throws(() => buildResolvedTsconfig({ cwd: dir }), /Cannot resolve tsconfig at/);
+		const err = await build({ cwd: dir }).catch((e: unknown) => e);
+		assert.instanceOf(err, Error);
+		assert.match((err as Error).message, /Cannot resolve tsconfig at/);
 	});
 
-	it("throws when a tsconfig extends a target that cannot be located", async () => {
+	it("fails when a tsconfig extends a target that cannot be located", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "rtc-badextends-"));
 		await writeFile(join(dir, "tsconfig.json"), JSON.stringify({ extends: "./nope-does-not-exist.json" }));
-		assert.throws(() => buildResolvedTsconfig({ cwd: dir }), /Cannot resolve tsconfig at/);
+		const err = await build({ cwd: dir }).catch((e: unknown) => e);
+		assert.instanceOf(err, Error);
+		assert.match((err as Error).message, /Cannot resolve tsconfig at/);
 	});
 
-	it("emits absolute include/exclude entries and globs types as declarations", () => {
-		const cfg = buildResolvedTsconfig({ cwd: "/abs/pkg" });
+	it("emits absolute include/exclude entries and globs types as declarations", async () => {
+		const cfg = await build({ cwd: "/abs/pkg" });
 		assert.strictEqual((cfg.include as string[]).every(isAbsolute), true);
 		assert.strictEqual((cfg.exclude as string[]).every(isAbsolute), true);
 		assert.include(cfg.include, "/abs/pkg/types/*.d.ts");
@@ -127,7 +142,7 @@ describe("buildResolvedTsconfig", () => {
 				},
 			}),
 		);
-		const cfg = buildResolvedTsconfig({ cwd: dir });
+		const cfg = await build({ cwd: dir });
 		assert.strictEqual(cfg.compilerOptions.declaration, true);
 		assert.strictEqual(cfg.compilerOptions.emitDeclarationOnly, false);
 	});
@@ -135,7 +150,7 @@ describe("buildResolvedTsconfig", () => {
 	it("lets an explicit jsx override win over the resolved config", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "rtc-jsx-"));
 		await writeFile(join(dir, "tsconfig.json"), JSON.stringify({ compilerOptions: { jsx: "preserve" } }));
-		const cfg = buildResolvedTsconfig({ cwd: dir, jsx: "react-jsx", jsxImportSource: "react" });
+		const cfg = await build({ cwd: dir, jsx: "react-jsx", jsxImportSource: "react" });
 		assert.strictEqual(cfg.compilerOptions.jsx, "react-jsx");
 		assert.strictEqual(cfg.compilerOptions.jsxImportSource, "react");
 	});
@@ -143,7 +158,7 @@ describe("buildResolvedTsconfig", () => {
 	it("keeps the resolved jsx when no override is passed", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "rtc-jsx-none-"));
 		await writeFile(join(dir, "tsconfig.json"), JSON.stringify({ compilerOptions: { jsx: "preserve" } }));
-		const cfg = buildResolvedTsconfig({ cwd: dir });
+		const cfg = await build({ cwd: dir });
 		assert.strictEqual(cfg.compilerOptions.jsx, "preserve");
 	});
 });
@@ -153,8 +168,8 @@ describe("temp tsconfig names", () => {
 	const deep = (leaf: string) => join(tmpdir(), "a".repeat(120), leaf);
 
 	it("writes both files for a checkout path too long to sanitize into a filename", async () => {
-		const bundle = writeResolvedTsconfig({ cwd: deep("one") });
-		const emit = writeDtsEmitTsconfig(bundle);
+		const bundle = await writeResolved({ cwd: deep("one") });
+		const emit = await writeEmit(bundle);
 		assert.notStrictEqual(emit, bundle);
 		assert.strictEqual(
 			(JSON.parse(await readFile(emit, "utf-8")) as { extends: string }).extends,
@@ -162,10 +177,10 @@ describe("temp tsconfig names", () => {
 		);
 	});
 
-	it("keeps two long paths apart", () => {
+	it("keeps two long paths apart", async () => {
 		assert.notStrictEqual(
-			writeResolvedTsconfig({ cwd: deep("one".repeat(60)) }),
-			writeResolvedTsconfig({ cwd: deep("two".repeat(60)) }),
+			await writeResolved({ cwd: deep("one".repeat(60)) }),
+			await writeResolved({ cwd: deep("two".repeat(60)) }),
 		);
 	});
 });
@@ -174,10 +189,10 @@ describe("writeDtsEmitTsconfig", () => {
 	it("writes a temp-dir wrapper that extends the base by absolute path and adds stableTypeOrdering", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "dtscfg-"));
 		const base = join(dir, "tsconfig-bundle.json");
-		const baseCfg = buildResolvedTsconfig({ cwd: dir });
+		const baseCfg = await build({ cwd: dir });
 		await writeFile(base, JSON.stringify(baseCfg, null, "\t"));
 
-		const out = writeDtsEmitTsconfig(base);
+		const out = await writeEmit(base);
 		// A distinct file (the api-extractor tsconfig keeps its own path) written under the OS temp dir,
 		// NOT next to the base — so an in-tree base tsconfig is never polluted with a sibling.
 		assert.notStrictEqual(out, base);
@@ -218,7 +233,7 @@ describe("writeDtsEmitTsconfig", () => {
 		const broken = join(dir, "broken.json");
 		await writeFile(broken, "{ not json");
 		for (const base of [declared, plain, broken]) {
-			const emitted = JSON.parse(await readFile(writeDtsEmitTsconfig(base), "utf-8")) as {
+			const emitted = JSON.parse(await readFile(await writeEmit(base), "utf-8")) as {
 				compilerOptions: Record<string, unknown>;
 			};
 			assert.deepStrictEqual(emitted.compilerOptions, {
@@ -235,15 +250,15 @@ describe("writeDtsEmitTsconfig", () => {
 		const dir = await mkdtemp(join(tmpdir(), "dtscfg-noinclude-"));
 		const base = join(dir, "tsconfig.json");
 		await writeFile(base, JSON.stringify({ compilerOptions: { strict: true } }));
-		const emitted = JSON.parse(await readFile(writeDtsEmitTsconfig(base), "utf-8")) as { include?: string[] };
+		const emitted = JSON.parse(await readFile(await writeEmit(base), "utf-8")) as { include?: string[] };
 		assert.deepStrictEqual(emitted.include, [join(realpathSync.native(dir), "**/*")]);
 	});
 
-	it("falls back to the original path when the base tsconfig does not exist", () => {
+	it("falls back to the original path when the base tsconfig does not exist", async () => {
 		// A synthetic path that was never written (the shape unit tests pass). Best-effort: return the
 		// input unchanged rather than writing a stray file, so the dts pass keeps TS's default ordering.
 		const missing = join(tmpdir(), "definitely-not-written-xyz.json");
-		assert.strictEqual(writeDtsEmitTsconfig(missing), missing);
+		assert.strictEqual(await writeEmit(missing), missing);
 	});
 });
 
@@ -253,13 +268,13 @@ describe("writeDtsEmitTsconfig with a sibling's paths", () => {
 		const base = join(dir, "tsconfig.json");
 		await writeFile(base, JSON.stringify({ compilerOptions: { paths: { typecheck: ["./src/x.ts"] } } }));
 		const paths = { "@fixture/a": ["/sib/index.d.ts"], "@fixture/a/*": ["/sib/*.d.ts"] };
-		const mapped = writeDtsEmitTsconfig(base, { paths });
-		const plain = writeDtsEmitTsconfig(base);
+		const mapped = await writeEmit(base, { paths });
+		const plain = await writeEmit(base);
 		assert.notStrictEqual(mapped, plain);
 		const read = async (path: string) =>
 			(JSON.parse(await readFile(path, "utf-8")) as { compilerOptions: { paths: unknown } }).compilerOptions.paths;
 		assert.deepStrictEqual(await read(mapped), paths);
 		assert.isNull(await read(plain));
-		assert.isNull(await read(writeDtsEmitTsconfig(base, { paths: {} })));
+		assert.isNull(await read(await writeEmit(base, { paths: {} })));
 	});
 });

@@ -1044,7 +1044,20 @@
 		"Oidc": "verify an openid connect id token against its issuer's discovered jwks, decode a trusted token's claims unverified"
 	},
 	"plugin": {
-		"PLUGIN_VERSION": "the effected carrier package version, replaced at build, passed as distribution version by both bin shims"
+		"CatalogEntry": "build a schemastore catalog.json entry, assemble unversioned or versioned schema urls",
+		"CatalogLintFinding": "catalog fileMatch hygiene warning, generic pattern or complex glob rejection",
+		"DriftPolicy": "classify a published target's change as write or drift against its configured tolerance",
+		"HostedSchema": "build a config's hosted schema identity stamped with the tool's version, $id and $schema url from one value",
+		"InvalidSchemaVersionError": "handle a version label outside 1-3 numeric parts, optional prerelease, no build metadata",
+		"KeywordFamilies": "recognize non-standard vscode taplo tombi intellij x-ai json schema keyword families, machine annotation hint",
+		"PLUGIN_VERSION": "the effected carrier package version, replaced at build, passed as distribution version by both bin shims",
+		"SCHEMASTORE_CATALOG_BASE": "the www host constant a schemastore catalog.json entry url points at",
+		"SCHEMASTORE_ID_BASE": "the json host constant a schemastore-hosted document declares in $id",
+		"SchemaTarget": "declare one schema publication target with its $id, path and optional version",
+		"SchemaVersion": "branded schema version label, one to three components with optional prerelease for catalog file naming",
+		"SchemaVersioning": "compute versioned or unversioned catalog urls, order schema version labels, derive schema file names",
+		"SchemastoreVersion": "read the tool's schemastore version, diagnose a config value from a mismatched copy",
+		"defineSchemastore": "default export of schemastore.config.ts, validate and assemble the config with the tool's own schemastore"
 	},
 	"pnpm-plugin-effected": {
 		"catalogs": "read the effected catalog, effect family and kit versions as a map"
@@ -1231,7 +1244,7 @@
 		"InstanceFinding": "one engine-reported problem in a payload instance, a json pointer value never an error",
 		"InstanceValidator": "validate a json payload against a published schema document with a real engine, the contract the schemastore validate command composes",
 		"InstanceValidatorError": "handle the instance validation engine failing as a mechanism rather than a rejection",
-		"InvalidSchemaVersionError": "handle a version label that is not full major.minor.patch semver",
+		"InvalidSchemaVersionError": "handle a version label outside 1-3 numeric parts, optional prerelease, no build metadata",
 		"JsonDepthExceededError": "handle json value nesting past the hardening cap during canonical serialize",
 		"KeywordFamilies": "recognize non-standard vscode taplo tombi intellij x-ai json schema keyword families, machine annotation hint",
 		"NonJsonValueError": "handle a non-json value (undefined, bigint, function, NaN) during canonical serialize",

@@ -343,6 +343,8 @@ and `additionalProperties`, because matching keys cannot be determined without e
 - keeps recursive references separate so callers can emit `Schema.suspend`
 - sanitizes reference names into valid JavaScript identifiers
 - collects symbol, enum, and import artifacts
+- omits an annotation whose value is, or contains, an object it cannot write as a literal (a `Map`, `Set`, `Date`,
+  typed array or class instance), and writes null-prototype and other-realm plain objects as ordinary literals
 
 Opaque declarations and checks provide code through their `toCode` callbacks. `toCodeDocument` does not accept a
 reviver option. To generate code from persisted JSON, first reconstruct the schemas with `fromRepresentation` or

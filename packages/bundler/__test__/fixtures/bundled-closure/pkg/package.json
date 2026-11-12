@@ -1,0 +1,19 @@
+{
+	"name": "@fixture/bundled-closure",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"dep-external": "1.0.0",
+		"dep-inlined": "1.0.0"
+	},
+	"peerDependencies": {
+		"dep-inlined": "*"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

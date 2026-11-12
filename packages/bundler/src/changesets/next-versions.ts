@@ -1,8 +1,7 @@
-import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
-import * as NodePath from "@effect/platform-node/NodePath";
 import { ReleasePlan } from "@effected/changesets";
 import { WorkspaceDiscovery, Workspaces } from "@effected/workspaces";
-import { Effect, Layer } from "effect";
+import type { FileSystem, Path } from "effect";
+import { Effect } from "effect";
 
 /**
  * Result of resolving next release versions for a workspace.
@@ -16,30 +15,26 @@ export interface NextVersions {
 	readonly versions: ReadonlyMap<string, string>;
 }
 
-/** Bound once: the platform layer is stateless and layers memoize by reference. */
-const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
-
 /**
  * Resolve the next release version of every workspace package from pending changesets.
  *
  * Walks up from `cwd` to the monorepo root via `@effected/workspaces`' `WorkspaceDiscovery`,
  * seeds the map with each package's CURRENT version, then overlays `newVersion` for
  * changeset-affected packages via `ReleasePlan.read`, including pre-release versions in pre
- * mode and fixed or linked groups. Never rejects: any failure (not a workspace, missing
+ * mode and fixed or linked groups. Never fails: any failure (not a workspace, missing
  * `.changeset/config.json`, an invalid config or `pre.json`, parse error) degrades to current
  * versions (or an empty map).
  * @public
  */
-export async function resolveNextVersions(cwd: string): Promise<NextVersions> {
-	try {
-		// A fresh composite layer per call: `cwd` differs per invocation and layers
-		// memoize by reference, so root discovery must not be shared across calls.
-		const workspace = Workspaces.layer({ cwd }).pipe(Layer.provideMerge(platform));
-		const packages = await Effect.runPromise(
-			Effect.gen(function* () {
-				const discovery = yield* WorkspaceDiscovery;
-				return yield* discovery.listPackages();
-			}).pipe(Effect.provide(workspace)),
+export const resolveNextVersions = (
+	cwd: string,
+): Effect.Effect<NextVersions, never, FileSystem.FileSystem | Path.Path> => {
+	// A fresh composite layer per call: `cwd` differs per invocation and layers
+	// memoize by reference, so root discovery must not be shared across calls.
+	const workspace = Workspaces.layer({ cwd });
+	return Effect.gen(function* () {
+		const packages = yield* Effect.flatMap(WorkspaceDiscovery, (discovery) => discovery.listPackages()).pipe(
+			Effect.provide(workspace),
 		);
 		// listPackages is root-first; the root package's path is the monorepo root.
 		const rootDir = packages[0]?.isRootWorkspace ? packages[0].path : cwd;
@@ -55,17 +50,23 @@ export async function resolveNextVersions(cwd: string): Promise<NextVersions> {
 			if (p.version === undefined) continue;
 			versions.set(p.name, p.version);
 		}
-		try {
-			const plan = await Effect.runPromise(ReleasePlan.read(rootDir).pipe(Effect.provide(workspace)));
+		yield* ReleasePlan.read(rootDir).pipe(
+			Effect.provide(workspace),
 			// plan.releases includes type:"none" entries (unbumped dependents) whose newVersion equals
 			// the current version, so overlaying every release is safe.
-			for (const r of plan.releases) versions.set(r.name, r.newVersion);
-		} catch {
+			Effect.tap((plan) =>
+				Effect.sync(() => {
+					for (const r of plan.releases) versions.set(r.name, r.newVersion);
+				}),
+			),
 			// No `.changeset/config.json`, an invalid config or pre.json, or unreadable: keep current versions.
-		}
-		return { root: rootDir, versions };
-	} catch {
+			Effect.orElseSucceed(() => undefined),
+			Effect.catchDefect(() => Effect.void),
+		);
+		return { root: rootDir, versions } satisfies NextVersions;
+	}).pipe(
 		// Not a workspace / cannot enumerate packages: optimistic becomes a full no-op.
-		return { root: cwd, versions: new Map() };
-	}
-}
+		Effect.orElseSucceed((): NextVersions => ({ root: cwd, versions: new Map() })),
+		Effect.catchDefect(() => Effect.succeed<NextVersions>({ root: cwd, versions: new Map() })),
+	);
+};

@@ -1,5 +1,14 @@
 # Log
 
+## 2026-11-12
+
+* Updated glob
+* Updated @effected/memfs
+* Updated @effected/bundler
+* Updated @effected/plugin
+* Updated Peer-dependency discipline
+* Updated effected.toml: the build config's tables, defaults and discovery
+
 ## 2026-11-11
 
 * Updated Peer-dependency discipline

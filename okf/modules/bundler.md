@@ -27,10 +27,10 @@ sources:
     title: "The source-sibling spike, run with EFFECTED_SPIKE=1"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-10T21:32:36Z
+  at: 2026-11-12T03:49:06Z
 integrity:
   generated:
-    body: 887d692bf84eecb5
+    body: 2e9248099ca9a210
 ---
 
 # @effected/bundler
@@ -154,27 +154,26 @@ Three rspack workarounds have no counterpart. A CJS `require` of a builtin goes 
 
 Not measured: `build.externals`, `build.sourceMap`, Windows, and any path through `main` past its inputs.
 
-## Accepted debt
+## IO through `R`
 
-The orchestrator's own IO now goes through core `FileSystem` and `Path` in `R`, under [requiring core in `R`](../conventions/require-in-r-default.md) (issue 1254). `Bundler.build` and `ActionBundle.build` require both: they read `package.json` and the package's tsconfig, write `targets.json` and `issues.json`, strip declaration maps, check the emitted manifest's export targets, validate `meta.localPaths`, clean `dist` and stat each action bundle that way. `ConfigValidator.layer` requires `FileSystem`, and the journals' `layerAt` and `record` require `Path`. The engine's `BuildRun` and `ActionRun` already carried both in `R`, so its provision did not change. tsdown, rolldown, API Extractor and the SEA compiler still read and write the host disk, so a real build needs the host's layers (`NodeServices.layer`), and a memory filesystem suits only a build whose passes are all seams.
+Issue 1254 is closed: every read and write the bundler makes itself goes through core `FileSystem` and `Path` in `R`, under [requiring core in `R`](../conventions/require-in-r-default.md). That covers the orchestrator, the action builder, the tsdown passes (`passes/build-target-groups.ts`, `passes/sync-public.ts`, the temporary tsconfigs in `dts/resolved-tsconfig.ts`, the sibling lookup in `dts/bundled-siblings.ts`), the meta pass (`meta/run-pass.ts`, `generate.ts`, `api-extractor.ts`'s derived tsconfig, `scrub-declaration-maps.ts`, `tsdoc-config.ts`, `tsconfig-resolver.ts`, `bundle-source.ts`, `og-image.ts`), catalog resolution and the optimistic next-version read. No module builds its own Node platform layer any more, and `tsconfig/sync-options.ts`, the `node:fs` backing of `TsconfigLoaderSync`, is gone: the passes resolve tsconfigs with the effectful `TsconfigLoader`. `Bundler.build` and `ActionBundle.build` still require exactly `FileSystem | Path`, so the engine's provision did not change. tsdown, rolldown, API Extractor and the SEA compiler read and write the host disk, so a real build needs the host's layers (`NodeServices.layer`), and a memory filesystem suits only a build whose passes are all seams.
 
-What remains on `node:fs` falls into two classes.
+Two boundaries are crossed rather than converted:
 
-**Kept by design, each with a comment at the import:**
+- **A rolldown hook is a plain async callback.** `emitManifest` returns `Effect<Plugin, never, FileSystem | Path>`: it captures its services with `Effect.context` and runs the `generateBundle` reads through `Effect.runPromiseWith`.
+- **`BundlerSeams` keeps its promise and sync member types**, and so do the injectables on `RunMetaPassOptions`. The real defaults are effects, so the orchestrator runs a default with `yield*` and a supplied seam through `Effect.promise`; a test cannot pass the real function as a seam. A rejected seam promise is a defect, as before. A failing real pass now fails with its typed error, usually a `PlatformError`, which `Bundler.build` folds into `BundlerError` as before, but with the `PlatformError`'s text where a Node errno message used to be.
 
-- `manifest/emit-manifest.ts`: `emitManifest` reads inside rolldown's `generateBundle` hook, which has no Effect runtime.
+What still imports `node:fs` or `node:path`, each with a comment at the import:
+
+- `meta/api-extractor.ts`: `canonicalPath` (`realpathSync.native`) runs inside API Extractor's synchronous `messageCallback`, which has to decide a message's suppression before it returns, and core `FileSystem` has no synchronous `realPath`.
+- `passes/target-groups.ts`: the installed `rolldown-plugin-dts` version, read from the bundler's own toolchain through `import.meta.resolve`, and pure `join`s in its synchronous, exported derivers.
+- `meta/og-satori.ts`: the bundled font and the renderer peers' versions, both read from the bundler's own install through module-relative paths.
+- `passes/loose-files.ts`: `basename` and `extname`, pure string operations in a synchronous, exported normalizer.
 - `exe/build.ts`: the scratch directory is the SEA compiler's own working tree.
 - `action/import-check.ts`: the scratch directory is the HOME, TMPDIR and cwd of the child Node.
 - `config/plugins.ts`: `node:path` only, because the resolved module goes straight to jiti.
 
-**Not yet converted (still issue 1254):**
-
-- The tsdown passes: `passes/build-target-groups.ts`, `passes/sync-public.ts`, and `dts/resolved-tsconfig.ts`'s temp tsconfigs. `BundlerSeams.buildTargetGroups` is promise-typed, and the passes call `TsconfigLoaderSync`.
-- `tsconfig/sync-options.ts`: the `node:fs` ops behind `TsconfigLoaderSync`. Its callers are `dts/resolved-tsconfig.ts` and the meta pass's `api-extractor.ts` and `tsconfig-resolver.ts`, so it retires with those two tiers.
-- The meta pass: `meta/run-pass.ts`, `generate.ts`, `api-extractor.ts`, `scrub-declaration-maps.ts`, `tsdoc-config.ts`, `tsconfig-resolver.ts` and `og-satori.ts`, all behind the promise-typed `runMetaPass` seam.
-- The modules that build their own Node platform layer and run it with `Effect.runPromise`: `catalog/resolve-catalogs.ts`, `changesets/next-versions.ts`, `dts/bundled-siblings.ts`, `meta/bundle-source.ts` and `meta/og-image.ts`. These own a backend, which is the second failure mode the convention names.
-- `entries/package-json-entries.ts`'s fallback read, which the orchestrator never reaches because it always passes `pkg`.
-- `BundlerSeams` keeps its promise and sync member types, so the converted defaults and their seams differ in shape. Making the seams Effect-returning moves the engine, cli and mcp test doubles with them.
+`meta/og-image.ts` still provides `NodeCrypto.layerDigest` itself: the cache key needs `Digest`, and requiring it in `R` would widen `Bundler.build`'s requirements past `FileSystem | Path`.
 
 Live-view e2e coverage on a real pty is also a follow-up, because a captured run cannot see the [JSX-under-tsx class of failure](../decisions/bundler-bootstraps-from-source.md).
 

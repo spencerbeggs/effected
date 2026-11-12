@@ -5,16 +5,26 @@
 // invokes the CatalogResolver, distinct from asserting on its (structurally
 // pass-through) return value.
 import { assert, describe, it } from "@effect/vitest";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect } from "effect";
 import { vi } from "vitest";
 
 // Must be called before importing the module under test. vi.mock is hoisted to the top.
-vi.mock("../../src/catalog/resolve-catalogs.js", () => ({
-	resolveManifest: vi.fn(async (pkg: unknown) => pkg),
-}));
+// resolveManifest is an Effect, so the spy returns one; `Effect` is imported inside the factory because
+// vi.mock is hoisted above the file's own imports.
+vi.mock("../../src/catalog/resolve-catalogs.js", async () => {
+	const effect = await import("effect");
+	return { resolveManifest: vi.fn((pkg: unknown) => effect.Effect.succeed(pkg)) };
+});
 
 import { resolveManifest } from "../../src/catalog/resolve-catalogs.js";
 // Import AFTER the mock is set up.
+import type { BuildEmittedManifestOptions } from "../../src/manifest/emit-manifest.js";
 import { buildEmittedManifest } from "../../src/manifest/emit-manifest.js";
+
+/** resolveManifest is mocked, so the emit touches no disk: an empty volume stands in for it. */
+const runEmit = (options: BuildEmittedManifestOptions) =>
+	Effect.runPromise(buildEmittedManifest(options).pipe(Effect.provide(MemoryFileSystem.makeSync({}).layer)));
 
 const mockResolveManifest = resolveManifest as ReturnType<typeof vi.fn>;
 
@@ -27,7 +37,7 @@ describe("buildEmittedManifest resolveManifest guard", () => {
 			exports: { ".": "./src/index.ts" },
 			dependencies: { effect: "^3.0.0" },
 		};
-		const out = await buildEmittedManifest({
+		const out = await runEmit({
 			cwd: "/abs/pkg",
 			pkg,
 			targetGroup: { id: "npm", name: "@x/p", isProd: true },
@@ -45,7 +55,7 @@ describe("buildEmittedManifest resolveManifest guard", () => {
 			exports: { ".": "./src/index.ts" },
 			dependencies: { effect: "catalog:silk" },
 		};
-		await buildEmittedManifest({
+		await runEmit({
 			cwd: "/abs/pkg",
 			pkg,
 			targetGroup: { id: "npm", name: "@x/p", isProd: true },

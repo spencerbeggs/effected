@@ -1,8 +1,13 @@
-import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
-import * as NodePath from "@effect/platform-node/NodePath";
+import type {
+	CatalogAssemblyError,
+	DependencyResolutionError,
+	ManifestDecodeError,
+	UnresolvedDependencyError,
+} from "@effected/npm";
 import { Manifest } from "@effected/npm";
 import { Workspaces } from "@effected/workspaces";
-import { Effect, Layer } from "effect";
+import type { FileSystem, Path } from "effect";
+import { Effect } from "effect";
 
 /**
  * Minimal shape of a `package.json` manifest needed to resolve catalog and
@@ -20,8 +25,16 @@ export interface ManifestLike {
 	[k: string]: unknown;
 }
 
-/** Bound once: the platform layer is stateless and layers memoize by reference. */
-const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
+/**
+ * The failures of {@link resolveManifest}.
+ *
+ * @public
+ */
+export type ResolveManifestError =
+	| ManifestDecodeError
+	| CatalogAssemblyError
+	| DependencyResolutionError
+	| UnresolvedDependencyError;
 
 /**
  * Resolve every `catalog:`/`workspace:` specifier in a manifest to a concrete spec,
@@ -31,17 +44,18 @@ const platform = Layer.mergeAll(NodeFileSystem.layer, NodePath.layer);
  * config-dependency hook-replay + lockfile), so no transient
  * `.pnpm-workspace-state-v1.json` is required.
  *
- * Rejects with `ManifestDecodeError` when a dependency field is not a string-to-string
+ * Fails with `ManifestDecodeError` when a dependency field is not a string-to-string
  * record, `UnresolvedDependencyError` on a specifier the workspace cannot answer, or
  * `CatalogAssemblyError`/`DependencyResolutionError` when catalog assembly or the
  * resolution mechanism itself fails.
  * @public
  */
-export function resolveManifest(pkg: ManifestLike, cwd: string): Promise<ManifestLike> {
-	const program = Effect.gen(function* () {
+export const resolveManifest = (
+	pkg: ManifestLike,
+	cwd: string,
+): Effect.Effect<ManifestLike, ResolveManifestError, FileSystem.FileSystem | Path.Path> =>
+	Effect.gen(function* () {
 		const manifest = yield* Manifest.decode(pkg);
 		const resolved = manifest.needsResolution ? yield* Workspaces.resolveManifest(manifest, { cwd }) : manifest;
 		return resolved.toRecord() as ManifestLike;
 	});
-	return Effect.runPromise(program.pipe(Effect.provide(platform)));
-}

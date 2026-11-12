@@ -1,12 +1,12 @@
 // packages/bundler/src/dts/resolved-tsconfig.ts
 import { createHash } from "node:crypto";
-import { existsSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
 import { GlobPattern, GlobPatternOptions } from "@effected/glob";
-import { TsconfigLoaderSync } from "@effected/tsconfig-json";
-import { Result } from "effect";
-import { tsconfigSyncOptions } from "../tsconfig/sync-options.js";
+import { TsconfigLoader } from "@effected/tsconfig-json";
+import type { PlatformError } from "effect";
+import { Effect, FileSystem, Path, Result } from "effect";
+import { existsLikeNode } from "../internal/exists.js";
+import { nativeRealPath } from "../internal/native-realpath.js";
 
 /** @public */
 export interface ResolvedTsconfigOptions {
@@ -53,7 +53,7 @@ const DTS_OVERLAY: Record<string, unknown> = {
  *
  * @internal
  */
-function fallbackCompilerOptions(cwd: string): Record<string, unknown> {
+function fallbackCompilerOptions(cwd: string, join: Path.Path["join"]): Record<string, unknown> {
 	return {
 		declaration: true,
 		emitDeclarationOnly: false,
@@ -70,7 +70,7 @@ function fallbackCompilerOptions(cwd: string): Record<string, unknown> {
  *
  * @remarks
  * Resolves the package's own `<cwd>/tsconfig.json` (which extends the shared
- * `ecma.json` base) through `@effected/tsconfig-json`'s `TsconfigLoaderSync`, so the
+ * `ecma.json` base) through `@effected/tsconfig-json`'s `TsconfigLoader`, so the
  * result carries the package's real effective options — target, module, lib, strict,
  * jsx — with `${configDir}` already substituted to absolute paths. Only the dts-pass
  * overlay (composite/incremental/tsBuildInfoFile forced off, declarationMap forced on)
@@ -82,27 +82,38 @@ function fallbackCompilerOptions(cwd: string): Record<string, unknown> {
  *
  * @public
  */
-export function buildResolvedTsconfig(options: ResolvedTsconfigOptions): ResolvedTsconfig {
+export const buildResolvedTsconfig: (
+	options: ResolvedTsconfigOptions,
+) => Effect.Effect<ResolvedTsconfig, Error, FileSystem.FileSystem | Path.Path> = Effect.fnUntraced(function* (
+	options: ResolvedTsconfigOptions,
+) {
+	const { join } = yield* Path.Path;
 	const cwd = options.cwd;
 	const ownConfig = join(cwd, "tsconfig.json");
 	let base: Record<string, unknown>;
-	if (existsSync(ownConfig)) {
-		try {
-			base = { ...TsconfigLoaderSync.resolve(ownConfig, tsconfigSyncOptions).compilerOptions };
-		} catch (error) {
-			// A config that EXISTS but will not resolve — malformed JSON, or an `extends` that cannot be
-			// located — is a defect, not a fallback case, so fail loudly. Synthesizing defaults here
-			// would emit declarations compiled under the WRONG options while still reporting a green
-			// build: the tsconfig this function returns is written to a temp file that extends the base
-			// by absolute path and never references the broken source, so the dts pass itself sees
-			// nothing wrong. A consumer running only `build:*` would never learn about it.
-			// `resolvePortableTsconfig` below throws on the same failure; these two must not diverge.
-			// Genuine ABSENCE stays a supported case and is handled by the `else` branch.
-			const message = error instanceof Error ? error.message : String(error);
-			throw new Error(`Cannot resolve tsconfig at ${ownConfig}: ${message}`, { cause: error });
-		}
+	if (yield* existsLikeNode(ownConfig)) {
+		// A config that EXISTS but will not resolve — malformed JSON, or an `extends` that cannot be
+		// located — is a failure, not a fallback case, so fail loudly. Synthesizing defaults here
+		// would emit declarations compiled under the WRONG options while still reporting a green
+		// build: the tsconfig this function returns is written to a temp file that extends the base
+		// by absolute path and never references the broken source, so the dts pass itself sees
+		// nothing wrong. A consumer running only `build:*` would never learn about it.
+		// `resolvePortableTsconfig` fails on the same input; these two must not diverge.
+		// Genuine ABSENCE stays a supported case and is handled by the `else` branch.
+		const resolved = yield* TsconfigLoader.resolve(ownConfig).pipe(
+			Effect.mapError(
+				(error) =>
+					new Error(
+						`Cannot resolve tsconfig at ${ownConfig}: ${error instanceof Error ? error.message : String(error)}`,
+						{
+							cause: error,
+						},
+					),
+			),
+		);
+		base = { ...resolved.compilerOptions };
 	} else {
-		base = fallbackCompilerOptions(cwd);
+		base = fallbackCompilerOptions(cwd, join);
 	}
 	return {
 		compilerOptions: {
@@ -120,7 +131,7 @@ export function buildResolvedTsconfig(options: ResolvedTsconfigOptions): Resolve
 		],
 		exclude: [join(cwd, "node_modules"), join(cwd, "dist/**/*")],
 	};
-}
+});
 
 /**
  * The base's `files`/`include`/`exclude` (through its whole `extends` chain) as absolute CANONICAL
@@ -130,26 +141,30 @@ export function buildResolvedTsconfig(options: ResolvedTsconfigOptions): Resolve
  * symlinked cwd cannot smuggle a non-canonical name past the canonical `extends`. A base the loader
  * cannot resolve contributes nothing (the wrapper then inherits whatever the base declares, as before).
  */
-function absoluteFileSet(
+const absoluteFileSet = Effect.fnUntraced(function* (
 	configPath: string,
 	baseDir: string,
-): { files?: string[]; include?: string[]; exclude?: string[] } {
-	let resolved: { files?: ReadonlyArray<string>; include?: ReadonlyArray<string>; exclude?: ReadonlyArray<string> };
-	try {
-		resolved = TsconfigLoaderSync.resolve(configPath, tsconfigSyncOptions);
-	} catch {
-		return {};
-	}
-	const abs = (p: string): string => canonicalGlob(isAbsolute(p) ? p : join(baseDir, p));
-	const files = resolved.files?.map(abs);
-	const include = resolved.include?.map(abs) ?? (files === undefined ? [join(baseDir, "**/*")] : undefined);
-	const exclude = resolved.exclude?.map(abs);
+): Effect.fn.Return<
+	{ files?: string[]; include?: string[]; exclude?: string[] },
+	never,
+	FileSystem.FileSystem | Path.Path
+> {
+	const path = yield* Path.Path;
+	const resolved = yield* TsconfigLoader.resolve(configPath).pipe(Effect.option);
+	if (resolved._tag === "None") return {};
+	const abs = (p: string) => canonicalGlob(path.isAbsolute(p) ? p : path.join(baseDir, p));
+	const absAll = (paths: ReadonlyArray<string> | undefined) =>
+		paths === undefined ? Effect.succeed(undefined) : Effect.forEach(paths, abs);
+	const files = yield* absAll(resolved.value.files);
+	const include =
+		(yield* absAll(resolved.value.include)) ?? (files === undefined ? [path.join(baseDir, "**/*")] : undefined);
+	const exclude = yield* absAll(resolved.value.exclude);
 	return {
 		...(files !== undefined ? { files } : {}),
 		...(include !== undefined ? { include } : {}),
 		...(exclude !== undefined ? { exclude } : {}),
 	};
-}
+});
 
 /**
  * Compiler options the dts program must never inherit, each written as `null`: `customConditions` and `paths`
@@ -170,20 +185,18 @@ const TSCONFIG_GLOB = GlobPatternOptions.make({ noext: true, nocomment: true, no
  * first segment carrying a glob character), leaving the pattern tail untouched. A pattern the kit rejects,
  * a prefix that does not exist, or one whose spelling the kit changed (an undone escape) is returned unchanged.
  */
-function canonicalGlob(absPath: string): string {
+const canonicalGlob = Effect.fnUntraced(function* (
+	absPath: string,
+): Effect.fn.Return<string, never, FileSystem.FileSystem | Path.Path> {
 	const compiled = GlobPattern.compileResult(absPath, TSCONFIG_GLOB);
 	if (Result.isFailure(compiled)) return absPath;
 	const prefix = compiled.success.literalPrefix;
 	if (!absPath.startsWith(prefix)) return absPath;
 	const tail = absPath.slice(prefix.length);
-	let canonicalPrefix: string;
-	try {
-		canonicalPrefix = realpathSync.native(prefix);
-	} catch {
-		return absPath;
-	}
-	return /^\/*$/.test(tail) ? canonicalPrefix : join(canonicalPrefix, tail);
-}
+	const canonicalPrefix = yield* nativeRealPath(prefix).pipe(Effect.option);
+	if (canonicalPrefix._tag === "None") return absPath;
+	return /^\/*$/.test(tail) ? canonicalPrefix.value : (yield* Path.Path).join(canonicalPrefix.value, tail);
+});
 
 /** The longest filename the platforms we build on accept. */
 const MAX_FILE_NAME = 255;
@@ -204,12 +217,16 @@ function tempTsconfigName(prefix: string, key: string): string {
  *
  * @public
  */
-export function writeResolvedTsconfig(options: ResolvedTsconfigOptions): string {
-	const cfg = buildResolvedTsconfig(options);
-	const path = join(tmpdir(), tempTsconfigName("tsconfig-bundle", options.cwd));
-	writeFileSync(path, `${JSON.stringify(cfg, null, "\t")}\n`, "utf-8");
-	return path;
-}
+export const writeResolvedTsconfig: (
+	options: ResolvedTsconfigOptions,
+) => Effect.Effect<string, Error | PlatformError.PlatformError, FileSystem.FileSystem | Path.Path> = Effect.fnUntraced(
+	function* (options: ResolvedTsconfigOptions) {
+		const cfg = yield* buildResolvedTsconfig(options);
+		const path = (yield* Path.Path).join(tmpdir(), tempTsconfigName("tsconfig-bundle", options.cwd));
+		yield* (yield* FileSystem.FileSystem).writeFileString(path, `${JSON.stringify(cfg, null, "\t")}\n`);
+		return path;
+	},
+);
 
 /**
  * What a dts-emit tsconfig adds for one partition.
@@ -249,7 +266,7 @@ export interface DtsEmitTsconfigOptions {
  * manifest says, never through a typecheck-only condition or path alias that would pull source files into the
  * emitted declarations. The one exception is `options.paths`, the bundled workspace siblings resolved to their built
  * declarations, which is the only `paths` map this file ever carries. The only reader of this file is the tsgo
- * declaration generator; nothing in the bundler reads it back through the kit's `TsconfigLoaderSync`, which rejects
+ * declaration generator; nothing in the bundler reads it back through the kit's `TsconfigLoader`, which rejects
  * `null` compiler options.
  *
  * Best-effort: if the base tsconfig cannot be read or parsed (e.g. a synthetic test path that was
@@ -258,29 +275,37 @@ export interface DtsEmitTsconfigOptions {
  *
  * @public
  */
-export function writeDtsEmitTsconfig(resolvedTsconfigPath: string, options: DtsEmitTsconfigOptions = {}): string {
-	const absBase = isAbsolute(resolvedTsconfigPath) ? resolvedTsconfigPath : resolve(resolvedTsconfigPath);
-	// Best-effort: a base that does not exist (e.g. a synthetic test path) gets no variant — return it
-	// unchanged so the emit keeps TS's default ordering rather than aborting at this layer.
-	if (!existsSync(absBase)) return resolvedTsconfigPath;
-	const canonicalBase = realpathSync.native(absBase);
-	const baseDir = dirname(canonicalBase);
-	// A thin wrapper that `extends` the base by ABSOLUTE (canonical) path and adds only
-	// `stableTypeOrdering` plus the absolutized file set. Written to the OS temp dir (NOT next to the
-	// base) so it never pollutes the source tree when the base is an in-tree `tsconfig.json`, and the
-	// absolute `extends` keeps the base's own relative `extends`/paths resolving from the base's
-	// location. The filename is deterministic per (pid, base), so repeated calls within a process
-	// overwrite the same file rather than accumulating; cross-process temp files are left for the OS
-	// to reap, intentionally consistent with `writeResolvedTsconfig`'s pid-scoped temp pattern.
-	const paths = options.paths !== undefined && Object.keys(options.paths).length > 0 ? options.paths : undefined;
-	const cfg = {
-		extends: canonicalBase,
-		compilerOptions: { stableTypeOrdering: true, ...DTS_RESET_OPTIONS, ...(paths !== undefined ? { paths } : {}) },
-		...absoluteFileSet(canonicalBase, baseDir),
-	};
-	// A partition that inlines siblings gets its own file: a partition that does not must keep `paths` cleared.
-	const key = paths !== undefined ? `${absBase}:${Object.keys(paths).join(",")}` : absBase;
-	const path = join(tmpdir(), tempTsconfigName("tsconfig-dts-emit", key));
-	writeFileSync(path, `${JSON.stringify(cfg, null, "\t")}\n`, "utf-8");
-	return path;
-}
+export const writeDtsEmitTsconfig: (
+	resolvedTsconfigPath: string,
+	options?: DtsEmitTsconfigOptions,
+) => Effect.Effect<string, PlatformError.PlatformError, FileSystem.FileSystem | Path.Path> = Effect.fnUntraced(
+	function* (resolvedTsconfigPath: string, options: DtsEmitTsconfigOptions = {}) {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const absBase = path.isAbsolute(resolvedTsconfigPath) ? resolvedTsconfigPath : path.resolve(resolvedTsconfigPath);
+		// Best-effort: a base that does not exist (e.g. a synthetic test path) gets no variant — return it
+		// unchanged so the emit keeps TS's default ordering rather than aborting at this layer.
+		if (!(yield* existsLikeNode(absBase))) return resolvedTsconfigPath;
+		// A failure is a defect, as the thrown `realpathSync.native` was.
+		const canonicalBase = yield* nativeRealPath(absBase).pipe(Effect.orDie);
+		const baseDir = path.dirname(canonicalBase);
+		// A thin wrapper that `extends` the base by ABSOLUTE (canonical) path and adds only
+		// `stableTypeOrdering` plus the absolutized file set. Written to the OS temp dir (NOT next to the
+		// base) so it never pollutes the source tree when the base is an in-tree `tsconfig.json`, and the
+		// absolute `extends` keeps the base's own relative `extends`/paths resolving from the base's
+		// location. The filename is deterministic per (pid, base), so repeated calls within a process
+		// overwrite the same file rather than accumulating; cross-process temp files are left for the OS
+		// to reap, intentionally consistent with `writeResolvedTsconfig`'s pid-scoped temp pattern.
+		const paths = options.paths !== undefined && Object.keys(options.paths).length > 0 ? options.paths : undefined;
+		const cfg = {
+			extends: canonicalBase,
+			compilerOptions: { stableTypeOrdering: true, ...DTS_RESET_OPTIONS, ...(paths !== undefined ? { paths } : {}) },
+			...(yield* absoluteFileSet(canonicalBase, baseDir)),
+		};
+		// A partition that inlines siblings gets its own file: a partition that does not must keep `paths` cleared.
+		const key = paths !== undefined ? `${absBase}:${Object.keys(paths).join(",")}` : absBase;
+		const out = path.join(tmpdir(), tempTsconfigName("tsconfig-dts-emit", key));
+		yield* fs.writeFileString(out, `${JSON.stringify(cfg, null, "\t")}\n`);
+		return out;
+	},
+);

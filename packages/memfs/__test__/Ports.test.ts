@@ -167,6 +167,30 @@ describe("sync port stat/lstat", () => {
 		}),
 	);
 
+	it.effect("an empty link target is absent, never the link's parent (macOS stat and realpathSync)", () =>
+		Effect.gen(function* () {
+			const handle = yield* MemoryFileSystem.makeHandle({ "/e/f": "x" });
+			yield* handle.fileSystem.symlink("", "/e/l");
+			const sync = MemoryFileSystem.syncFileSystem(handle.volume);
+			assert.deepInclude(
+				thrown(() => sync.stat("/e/l")),
+				{ code: "ENOENT", syscall: "stat" },
+			);
+			assert.deepInclude(
+				thrown(() => sync.realPath("/e/l")),
+				{ code: "ENOENT", syscall: "stat", path: "/e/l" },
+			);
+			assert.deepInclude(
+				thrown(() => sync.readDirectory("/e/l")),
+				{ code: "ENOENT", syscall: "scandir" },
+			);
+			assert.isFalse(sync.exists("/e/l"));
+			const failure = yield* Effect.flip(handle.fileSystem.realPath("/e/l"));
+			assert.strictEqual(failure.reason._tag, "NotFound");
+			assert.strictEqual(yield* handle.fileSystem.readLink("/e/l"), "");
+		}),
+	);
+
 	it.effect("readFile and readDirectory throw node's syscalls (open, read, scandir)", () =>
 		Effect.gen(function* () {
 			const { volume } = yield* tree;
@@ -719,6 +743,32 @@ describe('port pathStyle: "win32"', () => {
 			assert.strictEqual(sync.realPath("\\"), "\\");
 			const error = thrown(() => sync.realPath("C:\\repo\\absent")) as Record<string, unknown>;
 			assert.deepInclude(error, { code: "ENOENT", syscall: "lstat", path: "C:\\repo\\absent" });
+		}),
+	);
+
+	// node's win32 `realpathSync` walks `path.resolve(p)` exactly as on POSIX, so
+	// a failing `lstat`/`stat` names the backslashed prefix it built — read from
+	// node 26's own `fs.realpathSync` source; no Windows host has run this.
+	it.effect("a realPath error names the failing prefix in win32 spelling, not the caller's path", () =>
+		Effect.gen(function* () {
+			const { volume } = yield* win;
+			const sync = MemoryFileSystem.syncFileSystem(volume, { pathStyle: "win32" });
+			const deeper = thrown(() => sync.realPath("C:/repo/absent/deeper")) as { message?: string } & Record<
+				string,
+				unknown
+			>;
+			assert.deepInclude(deeper, { code: "ENOENT", syscall: "lstat", path: "C:\\repo\\absent" });
+			assert.strictEqual(deeper.message, "ENOENT: no such file or directory, lstat 'C:\\repo\\absent'");
+			// Through a link the prefix is the TARGET's: `link` -> `/C:/repo/packages`.
+			const linked = thrown(() => sync.realPath("C:\\repo\\link\\missing\\x")) as Record<string, unknown>;
+			assert.deepInclude(linked, { code: "ENOENT", syscall: "lstat", path: "C:\\repo\\packages\\missing" });
+			// A missing drive fails node's root `lstat` of the drive root itself.
+			const drive = thrown(() => sync.realPath("D:\\repo")) as Record<string, unknown>;
+			assert.deepInclude(drive, { code: "ENOENT", syscall: "lstat", path: "D:\\" });
+			// Every other member still names the caller's own path.
+			assert.deepInclude(thrown(() => sync.stat("C:/repo/absent/deeper")) as Record<string, unknown>, {
+				path: "C:/repo/absent/deeper",
+			});
 		}),
 	);
 

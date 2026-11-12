@@ -619,6 +619,7 @@ describe("ConfigLoader.load", () => {
 			const [first, ...rest] = error.reason.split("\n");
 			assert.include(first ?? "", 'Expected a HostedSchema at ["hosted"]');
 			assert.include(first ?? "", "@effected/schemastore may be older than the tool's");
+			assert.include(first ?? "", "from @effected/plugin, which is the tool's own copy");
 			assert.include(first ?? "", "catalog:effected");
 			assert.deepStrictEqual(rest, ["    at /repo/schemastore.config.ts:1:1"]);
 		}).pipe(Effect.provide(platform({ "/repo/schemastore.config.ts": "" }))),

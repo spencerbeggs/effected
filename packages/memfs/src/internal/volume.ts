@@ -67,7 +67,7 @@ import {
 
 import type { ErrnoCode } from "./errno.js";
 import { ErrnoException, errnoError } from "./errno.js";
-import { lexicallyNormalized } from "./lexical.js";
+import { realPathOf } from "./resolve.js";
 
 const { badArgument, systemError } = PlatformErrorNs;
 type PlatformError = PlatformErrorNs.PlatformError;
@@ -821,6 +821,8 @@ const resolveParent = Effect.fnUntraced(function* (
 
 const isDotLeaf = (name: string | undefined): boolean => name === "." || name === "..";
 
+const isRootPath = (path: string): boolean => path.length > 0 && /^\/+$/.test(path);
+
 const resolveEntry = Effect.fnUntraced(function* (state: State, path: string, method: string, dotLeaf?: ErrnoCode) {
 	const parent = yield* resolveParent(state, path, method, path, "ENOENT", dotLeaf);
 	// KIT EXTENSION (case folding): the entry is
@@ -1061,13 +1063,35 @@ const readLink = (volume: Volume) =>
 		);
 	});
 
-// KIT EXTENSION (errno fidelity, #1284): node's `fs.realpath`, which the
-// platform adapter wraps, folds the path lexically first (./lexical.js).
+// KIT EXTENSION (errno fidelity, #1284, #1339): node's `fs.realpath`, which the
+// platform adapter wraps, folds the path lexically first (./lexical.js), and
+// folds every link TARGET lexically too, after a physical `stat` of the link:
+// the ports' walk (./resolve.js), run here over this state, so the engine and
+// the ports cannot disagree. A path the walk cannot take (empty, or holding a
+// NUL byte) fails in `resolve` as every other method's does.
 const realPath = (volume: Volume) =>
 	Effect.fnUntraced(function* (path: string) {
-		return yield* volume.withState((state) =>
-			Effect.map(resolve(state, lexicallyNormalized(path), { method: "realPath" }), (_) => _.path),
-		);
+		return yield* volume.withState((state) => {
+			if (path.length === 0 || path.includes("\0")) {
+				return Effect.map(resolve(state, path, { method: "realPath" }), (_) => _.path);
+			}
+			const literal = (at: string) => lookupLiteral(state, splitComponents(at));
+			const r = realPathOf(
+				{
+					lstat: (at) => {
+						const entry = literal(at);
+						if (entry === undefined) return undefined;
+						return { kind: entry._tag === "File" ? "file" : entry._tag === "Directory" ? "directory" : "symlink" };
+					},
+					readLink: (at) => {
+						const entry = literal(at);
+						return entry?._tag === "SymbolicLink" ? entry.target : undefined;
+					},
+				},
+				path,
+			);
+			return "code" in r ? Effect.fail(errnoError("realPath", path, r.code)) : Effect.succeed(r.path);
+		});
 	});
 
 const remove = (volume: Volume) =>
@@ -1133,15 +1157,24 @@ const rename = (volume: Volume) =>
 				// BOTH parents, then refuses a `.` or `..` leaf on either side with
 				// EBUSY before it looks the source up — so a missing source is EBUSY
 				// too. (macOS answers EINVAL, or ENOENT for a missing source.)
-				const sourceLeaf = yield* resolveParent(state, oldPath, method, oldPath, "ENOENT", "defer");
+				// The root has no leaf at all and is refused the same way (#1339) — EBUSY
+				// on Linux, EISDIR on macOS. Linux checks EXDEV first, so the host only
+				// says EBUSY when both paths share a mount; the volume is one mount.
+				const sourceIsRoot = isRootPath(oldPath);
+				const sourceLeaf = sourceIsRoot
+					? undefined
+					: yield* resolveParent(state, oldPath, method, oldPath, "ENOENT", "defer");
 				const newLeaf = newPath
 					.split("/")
 					.filter((segment) => segment.length > 0)
 					.pop();
-				if (isDotLeaf(sourceLeaf.name) || isDotLeaf(newLeaf)) {
-					const trimmed = newPath.replace(/\/+$/, "");
-					yield* resolveParent(state, trimmed.length === 0 ? newPath : trimmed, method, newPath, "ENOENT", "defer");
-					return yield* errnoError(method, isDotLeaf(sourceLeaf.name) ? oldPath : newPath, "EBUSY");
+				const refuseSource = sourceLeaf === undefined || isDotLeaf(sourceLeaf.name);
+				if (refuseSource || isRootPath(newPath) || isDotLeaf(newLeaf)) {
+					if (!isRootPath(newPath)) {
+						const trimmed = newPath.replace(/\/+$/, "");
+						yield* resolveParent(state, trimmed, method, newPath, "ENOENT", "defer");
+					}
+					return yield* errnoError(method, refuseSource ? oldPath : newPath, "EBUSY");
 				}
 				const source = yield* resolveEntry(state, oldPath, method);
 				// A directory may be renamed onto a trailing-slash path that does not
@@ -1515,7 +1548,13 @@ const copyEntryUnlocked = Effect.fnUntraced(function* (
 		followFinalSymbolicLink: false,
 		method,
 	}).pipe(Effect.mapError((error) => withSystemErrorPath(error, method, fromPath)));
-	const destination = yield* resolveParent(state, toPath, method);
+	// KIT EXTENSION (errno fidelity, #1339): a `.` or `..` leaf names an
+	// existing directory — `fs.cp` stats the destination, so `dir/.` IS `dir`
+	// and `dir/..` the directory holding it — never a new entry. The ancestor
+	// check below still runs against the directory HOLDING the leaf, because
+	// node walks the destination's lexical `dirname` for the source, and the
+	// dirname of `dir/..` is `dir` (host-probed on macOS and Linux).
+	const destination = yield* resolveParent(state, toPath, method, toPath, "ENOENT", "defer");
 	if (source.entry._tag === "Directory" && containsDirectory(state, source.inode, destination.inode)) {
 		return yield* errnoError(method, toPath, "ERR_FS_CP_EINVAL", "Cannot copy a directory into itself");
 	}
@@ -1524,7 +1563,14 @@ const copyEntryUnlocked = Effect.fnUntraced(function* (
 	// folded-equal destination is detached by its STORED key and the copy linked
 	// under the REQUESTED spelling — node's async `fs.cp` unlinks then recreates
 	// (host-proven: `a.txt` copied onto `B.TXT` over `b.txt` lists as `B.TXT`).
-	const found = lookupEntry(state, destination.entry, destination.name);
+	const found: readonly [string, Inode] | undefined = isDotLeaf(destination.name)
+		? [
+				destination.name,
+				(yield* resolve(state, toPath, { method }).pipe(
+					Effect.mapError((error) => withSystemErrorPath(error, method, toPath)),
+				)).inode,
+			]
+		: lookupEntry(state, destination.entry, destination.name);
 	const destinationName = found?.[0] ?? destination.name;
 	const existingInode = found?.[1];
 	let existing: InodeEntry | undefined;

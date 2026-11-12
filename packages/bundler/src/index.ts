@@ -45,7 +45,7 @@ export type {
 } from "./Bundler.js";
 export { Bundler, BundlerBuildResult } from "./Bundler.js";
 export { BundlerError, BundlerPhase } from "./BundlerError.js";
-export type { ManifestLike } from "./catalog/resolve-catalogs.js";
+export type { ManifestLike, ResolveManifestError } from "./catalog/resolve-catalogs.js";
 export { resolveManifest } from "./catalog/resolve-catalogs.js";
 export type { NextVersions } from "./changesets/next-versions.js";
 export { resolveNextVersions } from "./changesets/next-versions.js";
@@ -172,7 +172,7 @@ export type { LooseFileSpec as LooseFileOptions, LooseFiles, NormalizedLooseFile
 export { normalizeLooseFiles } from "./passes/loose-files.js";
 export { nodeBuiltinDefaultInterop } from "./passes/node-builtin-default-interop.js";
 export { removeDeclarationMaps } from "./passes/strip-maps.js";
-export type { CopyAmbientDtsOptions } from "./passes/sync-public.js";
+export type { CopyAmbientDtsOptions, CopyPublicDirError } from "./passes/sync-public.js";
 export { copyAmbientDts, copyPublicDir } from "./passes/sync-public.js";
 export type {
 	BuildFormat as BuildFormatOption,
