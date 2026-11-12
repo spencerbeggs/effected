@@ -8,7 +8,9 @@ import type { RawNodeRelease, RawSchedule } from "../types.js";
  * @internal
  */
 export const nodeDefaults: ReadonlyArray<RawNodeRelease> = [
+	{ version: "27.0.0-alpha.0.1.0", npm: "12.2.2", date: "2026-11-12" },
 	{ version: "27.0.0-alpha.0.0.0", npm: "12.1.0", date: "2026-10-29" },
+	{ version: "26.13.1", npm: "11.20.0", date: "2026-11-10" },
 	{ version: "26.13.0", npm: "11.20.0", date: "2026-10-28" },
 	{ version: "26.12.1", npm: "11.20.0", date: "2026-10-21" },
 	{ version: "26.12.0", npm: "11.20.0", date: "2026-10-14" },
@@ -43,6 +45,7 @@ export const nodeDefaults: ReadonlyArray<RawNodeRelease> = [
 	{ version: "25.2.0", npm: "11.6.2", date: "2025-11-11" },
 	{ version: "25.1.0", npm: "11.6.2", date: "2025-10-28" },
 	{ version: "25.0.0", npm: "11.6.2", date: "2025-10-15" },
+	{ version: "24.22.3", npm: "11.19.1", date: "2026-11-10" },
 	{ version: "24.22.2", npm: "11.19.1", date: "2026-10-27" },
 	{ version: "24.22.1", npm: "11.19.1", date: "2026-10-20" },
 	{ version: "24.22.0", npm: "11.19.1", date: "2026-10-14" },
@@ -89,6 +92,7 @@ export const nodeDefaults: ReadonlyArray<RawNodeRelease> = [
 	{ version: "23.2.0", npm: "10.9.0", date: "2024-11-11" },
 	{ version: "23.1.0", npm: "10.9.0", date: "2024-10-24" },
 	{ version: "23.0.0", npm: "10.9.0", date: "2024-10-16" },
+	{ version: "22.23.5", npm: "10.9.9", date: "2026-11-11" },
 	{ version: "22.23.4", npm: "10.9.9", date: "2026-10-20" },
 	{ version: "22.23.3", npm: "10.9.9", date: "2026-09-23" },
 	{ version: "22.23.2", npm: "10.9.8", date: "2026-07-28" },
