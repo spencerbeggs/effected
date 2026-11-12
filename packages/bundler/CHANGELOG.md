@@ -1,5 +1,25 @@
 # @effected/bundler
 
+## 0.6.0
+
+### Features
+
+- `EffectedConfigSchema` is new. It holds the published `effected.toml` JSON Schema's identity: `host` (the `HostedSchema.github` input), `url` (the document's `$id`) and `directive` (the `#:schema` line a TOML file opens with).
+- The `effected.toml` config schemas now carry editor annotations: a title or description on every key, defaults, examples, and enum documentation. An Open Graph image's exactly-one-of `path` and `url` rule is expressed in JSON Schema too. Decoding and its error messages are unchanged.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/changesets | dependency | updated | 0.5.0 | 0.5.1 |
+| @effected/config-file | dependency | updated | 0.27.1 | 0.28.0 |
+| @effected/env | dependency | updated | 0.12.0 | 0.12.0 |
+| @effected/glob | dependency | updated | 0.21.0 | 0.22.0 |
+| @effected/npm | dependency | updated | 0.34.0 | 0.34.1 |
+| @effected/tsconfig-json | dependency | updated | 0.21.1 | 0.22.0 |
+| @effected/walker | dependency | updated | 0.28.0 | 0.29.0 |
+| @effected/workspaces | dependency | updated | 0.47.0 | 0.47.1 |
+
 ## 0.5.0
 
 ### Breaking Changes

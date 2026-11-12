@@ -1,5 +1,21 @@
 # @effected/mcp
 
+## 0.18.3
+
+### Bug Fixes
+
+- Fixed the `schema_build` and `schema_check` tools splitting a reused `identifier` into `X`, `X_1` and `X_2` `$defs` when served by the `effected-mcp` bin of `@effected/plugin`. They now lower a config's schemas with the `effect` beside the config, as `effected schema build` does, so the two front ends agree.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/engine | dependency | updated | 0.17.2 | 0.18.0 |
+| @effected/glob | dependency | updated | 0.21.0 | 0.22.0 |
+| @effected/kit | dependency | updated | 0.14.0 | 0.14.0 |
+| @effected/mcp-kit | dependency | updated | 0.15.0 | 0.15.0 |
+| @effected/walker | dependency | updated | 0.28.0 | 0.29.0 |
+
 ## 0.18.2
 
 ### Dependencies

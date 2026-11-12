@@ -1,5 +1,13 @@
 # @effected/npm
 
+## 0.34.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/glob | dependency | updated | 0.21.0 | 0.22.0 |
+
 ## 0.34.0
 
 ### Features

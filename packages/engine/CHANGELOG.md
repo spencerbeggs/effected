@@ -1,5 +1,23 @@
 # @effected/engine
 
+## 0.18.0
+
+### Features
+
+- `ConfigLoader.load` resolves `effect/Schema` beside the config, through the same jiti that loaded it, and returns its generator as the new `LoadedConfig.toJsonSchemaDocument`.
+- `RunOptions.toJsonSchemaDocument` is new, and `SchemaRun` lowers schemas with it, falling back to the tool's own `effect` copy when none resolves beside the config.
+- `SchemaRunDeps.toJsonSchemaDocument` is new. A caller that loads the config itself and passes it in through `importModule` uses it to hand over the generator that load resolved.
+- `effected action init` now opens the `effected.toml` it scaffolds with a `#:schema` directive naming the published `effected.toml` JSON Schema, so tombi, taplo and other TOML editors complete and validate it.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/bundler | dependency | updated | 0.5.0 | 0.6.0 |
+| @effected/kit | dependency | updated | 0.14.0 | 0.14.0 |
+| @effected/schemastore | dependency | updated | 0.32.0 | 0.33.0 |
+| @effected/workspaces | dependency | updated | 0.47.0 | 0.47.1 |
+
 ## 0.17.2
 
 ### Bug Fixes
