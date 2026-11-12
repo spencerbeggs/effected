@@ -39,6 +39,7 @@ import {
 import { LineDiff } from "@effected/source";
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Option, Order, Path, Predicate, Result, Schema } from "effect";
+import type { LoadedConfig } from "./ConfigLoader.js";
 import { ConfigLoader } from "./ConfigLoader.js";
 import { decodeJson, flattenSchemaError } from "./internal/decode.js";
 import type { CatalogConflict, InvalidSlice, SchemaOutcome } from "./RunReport.js";
@@ -196,11 +197,16 @@ export interface RunOptions {
 	readonly policy?: DriftTolerance;
 	/** Told as each schema's check finishes, before the next one starts. */
 	readonly onChecked?: (checked: SchemaChecked) => Effect.Effect<void>;
+	/**
+	 * The generator of the `effect` copy that built the config's schemas
+	 * ({@link LoadedConfig.toJsonSchemaDocument}); omitted, the tool's own.
+	 */
+	readonly toJsonSchemaDocument?: LoadedConfig["toJsonSchemaDocument"];
 }
 
 // The tool owns the drift policy: the library's version guard is off so the
 // two never disagree about the same target.
-const pipelineOptions = { contractChanges: "allow" } as const;
+const basePipelineOptions = { contractChanges: "allow" } as const;
 
 // Text on disk that does not parse is not a catalog array, so there is
 // nothing it can be content-equal to: it differs, and a build repairs it.
@@ -624,6 +630,10 @@ export class Runner {
 		| PlatformError.PlatformError,
 		SchemaFile | SchemaValidator | FileSystem.FileSystem | Path.Path
 	> = Effect.fn("Runner.run")(function* (config: SchemastoreConfig, options: RunOptions) {
+		const pipelineOptions =
+			options.toJsonSchemaDocument !== undefined
+				? { ...basePipelineOptions, toJsonSchemaDocument: options.toJsonSchemaDocument }
+				: basePipelineOptions;
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
 

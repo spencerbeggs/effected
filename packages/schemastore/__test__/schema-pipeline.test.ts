@@ -644,6 +644,23 @@ describe("SchemaPipeline", () => {
 				}),
 			);
 
+			it.effect("check and run lower every target with a supplied toJsonSchemaDocument", () =>
+				Effect.gen(function* () {
+					const lowered: Array<unknown> = [];
+					const toJsonSchemaDocument: typeof Schema.toJsonSchemaDocument = (source, options) => {
+						lowered.push(source);
+						return Schema.toJsonSchemaDocument(source, options);
+					};
+					const layers = memLayers({ [PINNED_PATH]: emitted(Wider, PINNED_ID) });
+					yield* Effect.provide(SchemaPipeline.check([pinnedTarget], { toJsonSchemaDocument }), layers);
+					yield* Effect.provide(
+						SchemaPipeline.run([pinnedTarget], { contractChanges: "allow", toJsonSchemaDocument }),
+						layers,
+					);
+					assert.deepStrictEqual(lowered, [pinnedTarget.schema, pinnedTarget.schema]);
+				}),
+			);
+
 			it.effect("checkOne carries contractBlocked", () =>
 				Effect.gen(function* () {
 					const layers = memLayers({ [PINNED_PATH]: emitted(Wider, PINNED_ID) });

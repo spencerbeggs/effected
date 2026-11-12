@@ -73,6 +73,20 @@ describe("StoreDocument", () => {
 			}),
 		);
 
+		it.effect("lowers with a supplied toJsonSchemaDocument, passing the source and the closed-object default", () =>
+			Effect.gen(function* () {
+				const calls: Array<{ readonly source: unknown; readonly onExcessProperty: unknown }> = [];
+				const toJsonSchemaDocument: typeof Schema.toJsonSchemaDocument = (source, options) => {
+					calls.push({ source, onExcessProperty: options?.onExcessProperty });
+					return Schema.toJsonSchemaDocument(source, options);
+				};
+				const supplied = yield* StoreDocument.fromSchema(Team, { $id, toJsonSchemaDocument });
+				const own = yield* StoreDocument.fromSchema(Team, { $id });
+				assert.deepStrictEqual(calls, [{ source: Team, onExcessProperty: "error" }]);
+				assert.deepStrictEqual(supplied.toJson(), own.toJson());
+			}),
+		);
+
 		it.effect("generates closed objects by default and lets jsonSchema reopen them", () =>
 			Effect.gen(function* () {
 				// additionalProperties survives the Draft-07 lowering, so it is

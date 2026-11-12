@@ -4,7 +4,7 @@ import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, describe, it } from "@effect/vitest";
 import { SchemaFile, SchemaPipeline, SchemaValidator, SchemastoreVersion } from "@effected/schemastore";
-import { Effect, FileSystem, Layer, Option, Path } from "effect";
+import { Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
 import { ConfigLoadError, ConfigLoader } from "../../src/schema/ConfigLoader.js";
 
 // The bug this file exists for: a long-lived process (the MCP server) keeps
@@ -350,6 +350,82 @@ describe("ConfigLoader.load reloads", () => {
 				const [first] = error.reason.split("\n");
 				assert.include(first ?? "", "@effected/plugin");
 				assert.include(first ?? "", "pnpm add -D @effected/plugin");
+			}).pipe(Effect.provide(Platform)),
+		TIMEOUT,
+	);
+});
+
+// effected#1348: a carrier that inlines its own effect must lower a config's
+// schemas with the copy that built them. The loader resolves that copy beside
+// the config; the carrier e2e's schema-consumer fixture proves the output.
+describe("ConfigLoader.load resolves the config's own generator", () => {
+	it.effect(
+		"answers toJsonSchemaDocument from the effect beside the config, the instance its imports reached",
+		() =>
+			Effect.gen(function* () {
+				const { dir, write } = yield* project;
+				yield* write("schemastore.config.ts", config("c"));
+				const loaded = yield* ConfigLoader.load({ cwd: dir });
+				assert.strictEqual(loaded.toJsonSchemaDocument, Schema.toJsonSchemaDocument);
+			}).pipe(Effect.provide(Platform)),
+		TIMEOUT,
+	);
+
+	it.effect(
+		"leaves it absent when no effect resolves from the config's directory",
+		() =>
+			Effect.gen(function* () {
+				const fs = yield* FileSystem.FileSystem;
+				const path = yield* Path.Path;
+				const dir = yield* Effect.acquireRelease(fs.makeTempDirectory({ prefix: "engine-no-effect-" }), (made) =>
+					fs.remove(made, { recursive: true }).pipe(Effect.ignore),
+				);
+				// The config's directory resolves only @effected; the schema module
+				// below it resolves effect from its own node_modules.
+				yield* fs.makeDirectory(path.join(dir, "node_modules"));
+				yield* fs.symlink(path.join(ENGINE_MODULES, "@effected"), path.join(dir, "node_modules", "@effected"));
+				yield* fs.makeDirectory(path.join(dir, "lib", "node_modules"), { recursive: true });
+				yield* fs.symlink(path.join(ENGINE_MODULES, "effect"), path.join(dir, "lib", "node_modules", "effect"));
+				yield* fs.writeFileString(
+					path.join(dir, "lib", "shape.ts"),
+					'import { Schema } from "effect";\nexport const Shape = Schema.Struct({ n: Schema.String });\n',
+				);
+				yield* fs.writeFileString(
+					path.join(dir, "schemastore.config.ts"),
+					`import { defineConfig } from "@effected/schemastore";
+import { Shape } from "./lib/shape.ts";
+export default defineConfig({
+	name: "c",
+	outputDir: "schemas",
+	baseUrl: "https://example.com/s",
+	schemas: { a: { schema: Shape } },
+});
+`,
+				);
+				const loaded = yield* ConfigLoader.load({ cwd: dir });
+				assert.strictEqual(loaded.config.name, "c");
+				assert.isUndefined(loaded.toJsonSchemaDocument);
+			}).pipe(Effect.provide(Platform)),
+		TIMEOUT,
+	);
+
+	it.effect(
+		"leaves it absent when an injected importer loaded the config",
+		() =>
+			Effect.gen(function* () {
+				const { dir, write } = yield* project;
+				yield* write("schemastore.config.ts", "");
+				const { defineConfig } = yield* Effect.promise(() => import("@effected/schemastore"));
+				const module = {
+					default: defineConfig({
+						name: "c",
+						outputDir: "schemas",
+						baseUrl: "https://example.com/s",
+						schemas: { a: { schema: Schema.Struct({ n: Schema.String }) } },
+					}),
+				};
+				const loaded = yield* ConfigLoader.load({ cwd: dir, importModule: () => Promise.resolve(module) });
+				assert.isUndefined(loaded.toJsonSchemaDocument);
 			}).pipe(Effect.provide(Platform)),
 		TIMEOUT,
 	);

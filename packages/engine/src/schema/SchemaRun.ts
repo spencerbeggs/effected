@@ -208,6 +208,7 @@ export class SchemaRun {
 			configPath: loaded.path,
 			onDrift: input.onDrift ?? loaded.config.onDrift,
 			...(policy !== undefined ? { policy } : {}),
+			...(loaded.toJsonSchemaDocument !== undefined ? { toJsonSchemaDocument: loaded.toJsonSchemaDocument } : {}),
 			...(onProgress !== undefined
 				? { onChecked: (checked: SchemaChecked) => onProgress({ _tag: "SchemaChecked", ...checked }) }
 				: {}),

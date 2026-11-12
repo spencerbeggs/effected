@@ -108,6 +108,19 @@ export interface StoreDocumentOptions {
 	 */
 	readonly jsonSchema?: Schema.ToJsonSchemaOptions;
 	/**
+	 * The generator that lowers the schema, defaulting to this package's own
+	 * `Schema.toJsonSchemaDocument`.
+	 *
+	 * Pass the `Schema.toJsonSchemaDocument` of the `effect` copy that built
+	 * the schema when that is not the copy this package imports. Core tells a
+	 * reused schema's annotated copies apart from new definitions through
+	 * state local to the copy that made them, so another copy's generator
+	 * splits one `identifier` into `X`, `X_1`, `X_2` definitions. A tool that
+	 * carries its own `effect` and lowers a consumer's schema needs this; a
+	 * caller sharing one `effect` with its schemas never does.
+	 */
+	readonly toJsonSchemaDocument?: typeof Schema.toJsonSchemaDocument;
+	/**
 	 * Annotations merged onto the emitted document's root after assembly —
 	 * the escape hatch for a generator-side annotation loss the source
 	 * schema cannot express (a filtered field, or a root whose annotations
@@ -492,7 +505,8 @@ export class StoreDocument extends Schema.Class<StoreDocument>("StoreDocument")(
 			// A published document is a contract, so objects are closed unless a
 			// caller reopens them: core's own default is "ignore" (open), and this
 			// package does not follow it.
-			const document = Schema.toJsonSchemaDocument(source, {
+			const lower = options.toJsonSchemaDocument ?? Schema.toJsonSchemaDocument;
+			const document = lower(source, {
 				onExcessProperty: "error",
 				...options.jsonSchema,
 				includeAnnotationKey: (key) => {
