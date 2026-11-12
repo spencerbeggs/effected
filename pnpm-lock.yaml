@@ -451,6 +451,9 @@ importers:
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs
+      '@effected/schemastore':
+        specifier: workspace:*
+        version: link:../schemastore
       '@types/node':
         specifier: catalog:effected:build
         version: 26.6.6

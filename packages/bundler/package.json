@@ -63,6 +63,7 @@
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
 		"@effected/memfs": "workspace:*",
+		"@effected/schemastore": "workspace:*",
 		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
 		"typescript": "catalog:effected:build"

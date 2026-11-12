@@ -1,21 +1,23 @@
 /**
- * The JSON Schema for `effected.toml`: `EffectedConfig`, the schema the build
- * decodes the file with, becomes the published `config` document under the
- * repository's `schemas/`. Run via `pnpm schema:build` / `pnpm schema:check`
+ * The JSON Schema for `effected.toml`: `EffectedConfigDocument`, the fields of
+ * `EffectedConfig` (the schema the build decodes the file with) under the
+ * document root's annotations, becomes the published `config` document under
+ * the repository's `schemas/`. Run via `pnpm schema:build` / `pnpm schema:check`
  * in this package; `build` regenerates it first.
  *
  * `published: false` until the kit's 1.0: the document regenerates in place
  * and a contract change is never drift. Flip it once a version is released.
  */
 import { HostedSchema, defineSchemastore } from "@effected/plugin";
-import { EffectedConfig } from "../../src/config/BuildConfig.js";
+import { EffectedConfigDocument, effectedConfigJsonSchemaOptions } from "../../src/config/EffectedConfigDocument.js";
 
 export default defineSchemastore({
 	outputDir: "../../../../schemas",
 	name: "effected",
 	schemas: {
 		config: {
-			schema: EffectedConfig,
+			schema: EffectedConfigDocument,
+			jsonSchema: effectedConfigJsonSchemaOptions,
 			hosted: HostedSchema.github({
 				repo: "spencerbeggs/effected",
 				path: "schemas",
