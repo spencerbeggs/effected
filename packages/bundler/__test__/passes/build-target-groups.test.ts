@@ -483,7 +483,9 @@ describe("buildTargetGroups", () => {
 		// [0] = JS pass: alwaysBundle present (force-inline), coexisting with neverBundle.
 		assert.deepStrictEqual((captured[0]?.deps as { alwaysBundle?: unknown })?.alwaysBundle, [
 			"semver-effect",
+			"semver-effect/**",
 			"@savvy-web/silk-effects",
+			"@savvy-web/silk-effects/**",
 		]);
 		assert.deepStrictEqual((captured[0]?.deps as { neverBundle?: unknown })?.neverBundle, ["effect"]);
 		// The dts pass RE-EMITS the dual-format `.cjs` chunk (see build-target-groups.ts), so it
@@ -491,7 +493,9 @@ describe("buildTargetGroups", () => {
 		// gets re-externalized in that re-emitted `.cjs` (the silk workaround this closed).
 		assert.deepStrictEqual((captured[1]?.deps as { alwaysBundle?: unknown } | undefined)?.alwaysBundle, [
 			"semver-effect",
+			"semver-effect/**",
 			"@savvy-web/silk-effects",
+			"@savvy-web/silk-effects/**",
 		]);
 	});
 
@@ -515,7 +519,9 @@ describe("buildTargetGroups", () => {
 			build,
 		});
 		// [0] = JS pass, [1] = dts pass.
-		assert.deepStrictEqual(captured[1]?.deps, { alwaysBundle: ["@savvy-web/silk-effects"] });
+		assert.deepStrictEqual(captured[1]?.deps, {
+			alwaysBundle: ["@savvy-web/silk-effects", "@savvy-web/silk-effects/**"],
+		});
 	});
 
 	it("creates a `deps` object off `bundle` alone on the declarations pass (Pass 3), with no stray neverBundle", async () => {
@@ -536,7 +542,7 @@ describe("buildTargetGroups", () => {
 		});
 		const decl = calls.find((c) => c.unbundle === true && String(c.outDir).endsWith("/dist/prod/npm/declarations"));
 		assert.isDefined(decl);
-		assert.deepStrictEqual(decl?.deps, { alwaysBundle: ["@savvy-web/silk-effects"] });
+		assert.deepStrictEqual(decl?.deps, { alwaysBundle: ["@savvy-web/silk-effects", "@savvy-web/silk-effects/**"] });
 	});
 
 	it("omits alwaysBundle when `bundle` is not set", async () => {
@@ -957,7 +963,10 @@ describe("buildTargetGroups", () => {
 				(c.format as string[]).includes("cjs"),
 		);
 		assert.isDefined(overrideJs);
-		assert.deepStrictEqual((overrideJs?.deps as { alwaysBundle?: unknown })?.alwaysBundle, ["@savvy-web/silk-effects"]);
+		assert.deepStrictEqual((overrideJs?.deps as { alwaysBundle?: unknown })?.alwaysBundle, [
+			"@savvy-web/silk-effects",
+			"@savvy-web/silk-effects/**",
+		]);
 		// manifest is emitted exactly once (base partition's JS pass only)
 		assert.strictEqual(calls.filter((c) => c.hasManifest).length, 1);
 		assert.strictEqual(calls[0]?.hasManifest, true);
@@ -1307,6 +1316,7 @@ describe("buildTargetGroups", () => {
 		assert.isDefined(decl);
 		assert.deepStrictEqual((decl?.deps as { alwaysBundle?: unknown } | undefined)?.alwaysBundle, [
 			"@savvy-web/silk-effects",
+			"@savvy-web/silk-effects/**",
 		]);
 		assert.deepStrictEqual((decl?.deps as { neverBundle?: unknown } | undefined)?.neverBundle, ["effect"]);
 	});

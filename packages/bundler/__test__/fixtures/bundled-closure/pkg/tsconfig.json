@@ -1,0 +1,11 @@
+{
+	"compilerOptions": {
+		"module": "nodenext",
+		"moduleResolution": "nodenext",
+		"target": "es2023",
+		"strict": true,
+		"skipLibCheck": true,
+		"types": []
+	},
+	"include": ["src", "types"]
+}

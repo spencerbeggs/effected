@@ -1,0 +1,6 @@
+# A package carrying one dependency inside its build and importing another. `dep-inlined` is also a peer, which the
+# manifest keeps: a peer is the host's to provide, whatever the build inlined.
+[package.build]
+bundleNodeModules = true
+bundle = ["dep-inlined"]
+emitDts = false

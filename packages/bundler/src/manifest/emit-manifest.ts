@@ -6,6 +6,7 @@ import type { Plugin } from "rolldown";
 import type { ManifestLike, ResolveManifestError } from "../catalog/resolve-catalogs.js";
 import { resolveManifest } from "../catalog/resolve-catalogs.js";
 import type { ConfigValidationError } from "../errors.js";
+import { pruneBundled } from "../passes/bundled-deps.js";
 import { stripBuiltCondition } from "./built-condition.js";
 import { applyManifestSet, validateManifestSet } from "./manifest-set.js";
 import type { DualExports, ExeRewrite, Json } from "./transform.js";
@@ -38,6 +39,11 @@ export interface BuildEmittedManifestOptions {
 	readonly exeRewrite?: ExeRewrite | undefined;
 	/** Whether the dts pass ran; `false` omits `types` conditions from the emitted manifest (issue #198). Defaults to `true`. */
 	readonly emitDts?: boolean | undefined;
+	/**
+	 * Whether the JS pass inlined a package by `bundle` in every partition. Such a package is removed from the emitted
+	 * `dependencies` and `optionalDependencies`, since the published files already hold its code.
+	 */
+	readonly bundled?: ((name: string) => boolean) | undefined;
 }
 
 const DEPENDENCY_FIELDS = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"] as const;
@@ -87,6 +93,8 @@ export const buildEmittedManifest: (
 			// ManifestLike and Json are structurally compatible records, so the casts are safe at this boundary.
 			base = (yield* resolveManifest(pkg as unknown as ManifestLike, cwd)) as unknown as Json;
 		}
+		// A package the build inlined is not installed: the published files hold its code.
+		if (options.bundled !== undefined) base = pruneBundled(base, options.bundled);
 		// Apply the declarative rename so the drop step and the emitted manifest both see it.
 		base = { ...base, name: targetGroup.name };
 		return transformManifest(base, {
@@ -120,6 +128,11 @@ export interface EmitManifestOptions {
 	readonly exeRewrite?: ExeRewrite | undefined;
 	/** Whether the dts pass ran; `false` omits `types` conditions from the emitted manifest (issue #198). Defaults to `true`. */
 	readonly emitDts?: boolean | undefined;
+	/**
+	 * Whether the JS pass inlined a package by `bundle` in every partition. Such a package is removed from the emitted
+	 * `dependencies` and `optionalDependencies`, since the published files already hold its code.
+	 */
+	readonly bundled?: ((name: string) => boolean) | undefined;
 }
 
 /**
@@ -162,6 +175,7 @@ const emitManifestWith = (
 						subdirExports: options.subdirExports,
 						exeRewrite: options.exeRewrite,
 						emitDts: options.emitDts,
+						bundled: options.bundled,
 					});
 					const extras: Array<{ readonly name: string; readonly content: string }> = [];
 					for (const name of ["LICENSE", "README.md"]) {

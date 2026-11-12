@@ -17,9 +17,11 @@ import type { BuildCollector, PassKind } from "../report/collector.js";
 import { buildMetricsPlugin } from "../report/metrics-plugin.js";
 import { createTimer } from "../report/timer.js";
 import { createTsdownLogger } from "../report/tsdown-logger.js";
+import { bundlePatterns, bundledEverywhere } from "./bundled-deps.js";
 import { cjsDefaultInterop } from "./cjs-default-interop.js";
 import type { NormalizedLooseFile } from "./loose-files.js";
 import { nodeBuiltinDefaultInterop } from "./node-builtin-default-interop.js";
+import { stampVersions } from "./stamp-versions.js";
 import { copyAmbientDts, copyPublicDir } from "./sync-public.js";
 import type { BuildFormat, BuildGroupSpec, BuildPlatform } from "./target-groups.js";
 import {
@@ -28,6 +30,8 @@ import {
 	deriveTargetGroupOptions,
 	outDirFor,
 } from "./target-groups.js";
+import type { InlinedPackage } from "./third-party-licenses.js";
+import { thirdPartyLicenses } from "./third-party-licenses.js";
 
 /**
  * Signature compatible with tsdown's `build(inlineConfig)`.
@@ -345,7 +349,14 @@ export const buildTargetGroups: (
 	// tsdown is promise-returning: a rejection is a defect carrying the thrown value, as an awaited throw was.
 	const tsdown = (config: Record<string, unknown>): Effect.Effect<unknown> => Effect.promise(() => build(config));
 
+	// An inlined module of another package keeps that package's version, which `define` would overwrite with this one's.
+	const stampPlugin = yield* stampVersions({ cwd: options.cwd });
+	// A package inlined only by `bundle` everywhere leaves the emitted manifest; the JS pass holds its code.
+	const bundled = bundledEverywhere(options.bundle, options.overrides ?? []);
+
 	for (const group of options.groups) {
+		// One set per group: every partition writes into the group's pkg/, and the last pass writes the whole set.
+		const licensesFound = new Map<string, InlinedPackage>();
 		if (collector !== undefined) collector.registerGroup(group.id, Object.keys(options.entry));
 
 		// Partition 0 is the base (options-level config); the rest come from options.overrides.
@@ -426,10 +437,17 @@ export const buildTargetGroups: (
 						sourceDir: options.cwd,
 						dual: options.dualExports ?? js.format.includes("cjs"),
 						emitDts: options.emitDts !== false,
+						bundled,
 						...(options.subdirExports !== undefined ? { subdirExports: options.subdirExports } : {}),
 						...(options.exeRewrite !== undefined ? { exeRewrite: options.exeRewrite } : {}),
 					})
 				: undefined;
+
+			const licensesPlugin = yield* thirdPartyLicenses({
+				cwd: options.cwd,
+				packageName: group.name,
+				found: licensesFound,
+			});
 
 			// Pass 1: per-module JS. clean only on the very first partition (it owns the outDir).
 			yield* timed(
@@ -459,7 +477,7 @@ export const buildTargetGroups: (
 									...(partExternals?.length ? { neverBundle: partExternals } : {}),
 									// alwaysBundle force-inlines these packages (inverse of neverBundle), even
 									// declared deps tsdown would auto-externalize.
-									...(partBundle?.length ? { alwaysBundle: partBundle } : {}),
+									...(partBundle?.length ? { alwaysBundle: bundlePatterns(partBundle) } : {}),
 								},
 							}
 						: {}),
@@ -470,6 +488,8 @@ export const buildTargetGroups: (
 					// promotes a default+named CJS entry chunk to module.exports = <default> (rslib
 					// cjsInterop parity). Both are cjs-only and no-ops for esm.
 					plugins: [
+						stampPlugin,
+						licensesPlugin,
 						...(manifestPlugin ? [manifestPlugin] : []),
 						...(js.format.includes("cjs") ? [nodeBuiltinDefaultInterop(), cjsDefaultInterop()] : []),
 						...(options.extraPlugins ?? []),
@@ -536,7 +556,7 @@ export const buildTargetGroups: (
 								// so it must carry the SAME `alwaysBundle` as the JS pass — otherwise a
 								// force-bundled declared dependency is re-externalized in that re-emitted
 								// `.cjs`. Forwarded exactly as the JS pass does.
-								...(partBundle?.length ? { alwaysBundle: partBundle } : {}),
+								...(partBundle?.length ? { alwaysBundle: bundlePatterns(partBundle) } : {}),
 								...(dts.bundledPackages
 									? partBundleNodeModules
 										? { dts: { alwaysBundle: dts.bundledPackages } }
@@ -671,7 +691,7 @@ export const buildTargetGroups: (
 											...(dtsNeverBundle.length > 0 ? { neverBundle: dtsNeverBundle } : {}),
 											// Mirrors the dts pass's deps posture (see there): forward the partition's
 											// `bundle` so this pass's declarations stay consistent with the JS pass too.
-											...(partBundle?.length ? { alwaysBundle: partBundle } : {}),
+											...(partBundle?.length ? { alwaysBundle: bundlePatterns(partBundle) } : {}),
 											...(decl.bundledPackages
 												? partBundleNodeModules
 													? { dts: { alwaysBundle: decl.bundledPackages } }
