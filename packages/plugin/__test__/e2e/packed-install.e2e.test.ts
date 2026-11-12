@@ -21,13 +21,15 @@ const Live = Workspaces.layer({ cwd: ROOT }).pipe(Layer.provideMerge(NodeService
 
 /**
  * ONE options object: `closure` plans with it, `run` installs with it. The
- * front ends declare the carrier's bin names too, on purpose (each is also
- * installed and run alone), so `allowSharedBins` is set and the carrier's own
- * shims are proven with `runCarrierBin` / `carrierCommand`.
+ * carrier holds the tool's whole closure inside its own files, so it packs
+ * alone: nothing below it is installed. The front ends declare the carrier's
+ * bin names too, on purpose (each is also installed and run alone), so
+ * `allowSharedBins` is set and the carrier's own shims are proven with
+ * `runCarrierBin` / `carrierCommand`.
  */
 const RUN: PackedInstallOptions = {
 	carrier: CARRIER,
-	closure: "auto",
+	closure: [],
 	// While a dogfood loop links an unreleased sibling build, the consumers get it too; otherwise inert.
 	workspaceOverrides: true,
 	// CI provisions only node (which ships npm) and pnpm, from the root devEngines, so those two are required there;
@@ -83,22 +85,42 @@ const BUDGET = PackedInstall.timeoutBudget({
 });
 
 /**
+ * The `effect` a schema consumer installs: a patch behind the copy inside the carrier when there is one, so the
+ * consumer's schemas are built by a copy apart from the tool's in place and in version.
+ */
+const [MAJOR, MINOR, PATCH] = effectPackage.version.split(".").map(Number) as [number, number, number];
+const CONSUMER_EFFECT = PATCH > 0 ? `${MAJOR}.${MINOR}.${PATCH - 1}` : effectPackage.version;
+
+/** `@effected/schemastore` and what it installs, packed from the workspace for the consumer's own code. */
+const SCHEMASTORE_CLOSURE = await Effect.runPromise(
+	PackedInstall.closure("@effected/schemastore", { closure: "auto" }).pipe(Effect.provide(Live)),
+);
+
+/**
  * The schema cases, one install shared across them and each case a subdirectory of it. npm and pnpm only: they are the
  * two layouts that decide how the config's import resolves, and the two CI requires. The consumer's own code imports
- * these two, and pnpm links only what a consumer declares.
+ * these two, and pnpm links only what a consumer declares. Its `@effected/schemastore` is its own, at the version the
+ * carrier holds, and its `effect` another copy at another patch.
  */
 const SCHEMA_RUN: PackedInstallOptions = {
 	...RUN,
+	closure: SCHEMASTORE_CLOSURE,
 	managers: ["npm", "pnpm"],
-	consumerDependencies: { "@effected/schemastore": "*", effect: effectPackage.version },
+	consumerDependencies: { "@effected/schemastore": "*", effect: CONSUMER_EFFECT },
 };
 /** The MCP server installed alone, with no carrier, so a config cannot reach `@effected/plugin`. */
-const MCP_RUN: PackedInstallOptions = { ...SCHEMA_RUN, carrier: "@effected/mcp", bins: ["effected-mcp"] };
+const MCP_RUN: PackedInstallOptions = {
+	...SCHEMA_RUN,
+	carrier: "@effected/mcp",
+	closure: "auto",
+	consumerDependencies: { "@effected/schemastore": "*", effect: effectPackage.version },
+	bins: ["effected-mcp"],
+};
 const SCHEMA_BUDGET = PackedInstall.timeoutBudget({
 	managers: SCHEMA_RUN.managers,
 	installTimeout: SCHEMA_RUN.installTimeout,
 	packTimeout: SCHEMA_RUN.packTimeout,
-	packages: PACKED,
+	packages: SCHEMASTORE_CLOSURE,
 });
 const SCHEMA_CASE: Duration.Input = "3 minutes";
 // Two more installs than the shared one, which `SCHEMA_CASE` does not allow for.
@@ -317,24 +339,22 @@ const staleSchemastore = (result: PackedInstallResult) =>
 	});
 
 /**
- * A consumer whose direct `@effected/schemastore` is the stale tarball while the carrier and the engine keep the real
- * one, so the override for the package is scoped to those two. npm and pnpm both spell that, and the case runs under each.
+ * A consumer whose own `@effected/schemastore` is the stale tarball, beside the carrier. The carrier installs no
+ * schemastore of its own, so nothing needs steering: the stale copy is the only one on disk, and its closure is the
+ * rest of the schema run's tarballs.
  */
 const mismatchedConsumer = (result: PackedInstallResult, consumer: InstalledConsumer, stale: string) =>
 	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
 		const directory = `${result.scratch}/mismatched-${consumer.manager}`;
 		const file = (pkg: string) => `file:${result.tarballs[pkg]}`;
-		const rest = Object.keys(result.tarballs).filter(
-			(pkg) => pkg !== CARRIER && pkg !== "@effected/schemastore" && pkg !== "@effected/engine",
-		);
+		const rest = Object.keys(result.tarballs).filter((pkg) => pkg !== CARRIER && pkg !== "@effected/schemastore");
 		const flat = Object.fromEntries(rest.map((pkg) => [pkg, file(pkg)]));
-		const real = file("@effected/schemastore");
 		const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 		const dependencies = {
 			[CARRIER]: file(CARRIER),
 			"@effected/schemastore": `file:${stale}`,
-			effect: effectPackage.version,
+			effect: CONSUMER_EFFECT,
 		};
 		yield* fs.makeDirectory(directory, { recursive: true });
 		if (consumer.manager === "pnpm") {
@@ -349,18 +369,7 @@ const mismatchedConsumer = (result: PackedInstallResult, consumer: InstalledCons
 				}),
 			);
 			// JSON is valid YAML.
-			yield* fs.writeFileString(
-				`${directory}/pnpm-workspace.yaml`,
-				json({
-					minimumReleaseAge: 0,
-					overrides: {
-						...flat,
-						"@effected/engine": file("@effected/engine"),
-						[`${CARRIER}>@effected/schemastore`]: real,
-						"@effected/engine>@effected/schemastore": real,
-					},
-				}),
-			);
+			yield* fs.writeFileString(`${directory}/pnpm-workspace.yaml`, json({ minimumReleaseAge: 0, overrides: flat }));
 		} else {
 			yield* fs.writeFileString(
 				`${directory}/package.json`,
@@ -370,11 +379,7 @@ const mismatchedConsumer = (result: PackedInstallResult, consumer: InstalledCons
 					private: true,
 					packageManager: `npm@${consumer.managerVersion}`,
 					dependencies,
-					overrides: {
-						...flat,
-						"@effected/engine": { ".": file("@effected/engine"), "@effected/schemastore": real },
-						[CARRIER]: { "@effected/schemastore": real },
-					},
+					overrides: flat,
 				}),
 			);
 		}
@@ -407,8 +412,8 @@ describe.skipIf(!RUNNABLE)("packed install (@effected/plugin)", () => {
 					const manifest = JSON.parse(yield* fs.readFileString(`${ROOT}/packages/plugin/package.json`)) as {
 						readonly version: string;
 					};
-					// The tool's own build chain ships in the closure a consumer installs.
-					assert.includeMembers([...PACKED], ["@effected/bundler", "@effected/changesets", "@effected/engine"]);
+					// The carrier holds the tool's closure inside its own files, so it packs alone.
+					assert.deepStrictEqual([...PACKED], [CARRIER]);
 					const result = yield* PackedInstall.run(RUN);
 					assert.deepStrictEqual(Object.keys(result.tarballs), [...PACKED]);
 					assert.isAbove(result.consumers.length, 0);
@@ -416,6 +421,11 @@ describe.skipIf(!RUNNABLE)("packed install (@effected/plugin)", () => {
 					const env = { XDG_DATA_HOME: `${result.scratch}/xdg`, XDG_STATE_HOME: `${result.scratch}/xdg-state` };
 					for (const consumer of result.consumers) {
 						const label = consumer.manager;
+						// Nothing of the kit or effect is installed: the carrier's files hold it. effect is an optional peer, for the
+						// root's types, so a consumer that declares none gets none.
+						for (const absent of ["@effected/cli", "@effected/engine", "@effected/schemastore", "effect"]) {
+							assert.isFalse(yield* fs.exists(`${consumer.directory}/node_modules/${absent}`), `${label}: ${absent}`);
+						}
 						// What a user typing the bin name gets: SOME package's bin runs.
 						const typed = yield* consumer.runBin("effected", ["--version"], { env });
 						assert.strictEqual(typed.exitCode, 0, `${label}: ${typed.stderr}`);
@@ -520,6 +530,13 @@ describe.skipIf(!RUNNABLE)("packed install (@effected/plugin)", () => {
 					for (const consumer of result.consumers) {
 						const label = consumer.manager;
 						const cwd = yield* project(consumer, "hosted");
+						// The config's schemas and HostedSchema come from the consumer's own copies, apart from the carrier's.
+						const own = JSON.parse(
+							yield* fs.readFileString(`${consumer.directory}/node_modules/effect/package.json`),
+						) as {
+							readonly version: string;
+						};
+						assert.strictEqual(own.version, CONSUMER_EFFECT, label);
 						const options = { env: toolEnv(result), cwd };
 						const built = yield* consumer.runCarrierBin("effected", ["schema", "build"], options);
 						assert.strictEqual(built.exitCode, 0, `${label}: ${built.stdout}\n${built.stderr}`);
@@ -592,6 +609,7 @@ describe.skipIf(!RUNNABLE)("packed install (@effected/plugin)", () => {
 						assert.strictEqual(refused.exitCode, 2, `${label}: ${refusal}`);
 						assert.include(refusal, tool, label);
 						assert.include(refusal, STALE_VERSION, label);
+						assert.include(refusal, "authoring surface @effected/plugin exports", label);
 						assert.isFalse(yield* fs.exists(`${cwd}/expected`), `${label}: a refused run writes nothing`);
 
 						const warned = yield* consumer.runCarrierBin(
