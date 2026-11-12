@@ -33,8 +33,8 @@ const RUN: PackedInstallOptions = {
 	// While a dogfood loop links an unreleased sibling build, the consumers get it too; otherwise inert.
 	workspaceOverrides: true,
 	// CI provisions only node (which ships npm) and pnpm, from the root devEngines, so those two are required there;
-	// bun and yarn run wherever a developer has them installed.
-	managers: process.env.CI ? ["npm", "pnpm"] : ["npm", "pnpm", "bun", "yarn"],
+	// bun runs wherever a developer has it installed.
+	managers: process.env.CI ? ["npm", "pnpm"] : ["npm", "pnpm", "bun"],
 	bins: ["effected", "effected-mcp"],
 	allowSharedBins: true,
 	// A runner exporting FORCE_COLOR would colour the output asserted below.

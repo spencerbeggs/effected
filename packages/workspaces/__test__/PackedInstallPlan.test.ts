@@ -64,8 +64,6 @@ describe("scrubEnv", () => {
 				pnpm_config_verify_deps_before_run: "false",
 				PNPM_SCRIPT_SRC_DIR: "/repo/packages/x",
 				PNPM_PACKAGE_NAME: "@x/carrier",
-				YARN_NODE_LINKER: "pnp",
-				yarn_enable_immutable_installs: "true",
 				PNPM_HOME: "/home/u/.pnpm",
 				EMPTY: undefined,
 			}),
@@ -141,42 +139,11 @@ describe("consumerFiles", () => {
 		assert.strictEqual(empty["pnpm-workspace.yaml"], "minimumReleaseAge: 0\noverrides: {}\n");
 	});
 
-	it("yarn: resolutions, plus the node-modules linker for Berry only", () => {
-		const berry = fileMap(consumerFiles({ ...INPUT, manager: "yarn", version: "4.5.0" }));
-		assert.deepStrictEqual((JSON.parse(berry["package.json"] ?? "{}") as Record<string, unknown>).resolutions, {
-			"@x/lib": "file:/t/lib.tgz",
-		});
-		assert.strictEqual(
-			berry[".yarnrc.yml"],
-			"nodeLinker: node-modules\nenableImmutableInstalls: false\nenableScripts: false\nenableTelemetry: false\n",
-		);
-		assert.isUndefined(fileMap(consumerFiles({ ...INPUT, manager: "yarn", version: "1.22.22" }))[".yarnrc.yml"]);
-	});
-
-	it("yarn: Berry 4.10+ turns the release-age gate off, older Berry never sees the key it would reject", () => {
-		const gated = "npmMinimalAgeGate: 0\n";
-		for (const version of ["4.10.0", "4.18.1", "5.0.0"]) {
-			assert.isTrue(
-				fileMap(consumerFiles({ ...INPUT, manager: "yarn", version }))[".yarnrc.yml"]?.endsWith(gated),
-				version,
-			);
-		}
-		// Berry fails every command on a setting it does not know, and 4.9 predates this one.
-		for (const version of ["4.9.4", "3.8.7", "2.4.3"]) {
-			assert.notInclude(
-				fileMap(consumerFiles({ ...INPUT, manager: "yarn", version }))[".yarnrc.yml"] ?? "",
-				"npmMinimalAgeGate",
-				version,
-			);
-		}
-	});
-
 	it("a consumer dependency naming a packed package is written as that package's tarball, for every manager", () => {
 		// npm refuses an override that differs from a direct spec (EOVERRIDE); the same file: spec in both is accepted.
 		for (const [manager, version] of [
 			["npm", "11.19.1"],
 			["pnpm", "12.5.1"],
-			["yarn", "4.5.0"],
 			["bun", "1.4.2"],
 		] as const) {
 			const files = fileMap(
@@ -206,11 +173,9 @@ describe("consumerFiles", () => {
 
 describe("installArgs", () => {
 	it("skips lifecycle scripts the way each manager spells it", () => {
-		assert.deepStrictEqual(installArgs("npm", "11.19.1"), ["install", "--ignore-scripts", "--no-audit", "--no-fund"]);
-		assert.deepStrictEqual(installArgs("pnpm", "12.5.1"), ["install", "--config.ignore-scripts=true"]);
-		assert.deepStrictEqual(installArgs("yarn", "4.5.0"), ["install"]);
-		assert.deepStrictEqual(installArgs("yarn", "1.22.22"), ["install", "--ignore-scripts", "--non-interactive"]);
-		assert.deepStrictEqual(installArgs("bun", "1.4.2"), ["install", "--ignore-scripts"]);
+		assert.deepStrictEqual(installArgs("npm"), ["install", "--ignore-scripts", "--no-audit", "--no-fund"]);
+		assert.deepStrictEqual(installArgs("pnpm"), ["install", "--config.ignore-scripts=true"]);
+		assert.deepStrictEqual(installArgs("bun"), ["install", "--ignore-scripts"]);
 	});
 });
 

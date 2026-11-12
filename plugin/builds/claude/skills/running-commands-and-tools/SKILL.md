@@ -19,7 +19,7 @@ zero `@effected/*` edges, zero `node:` imports.
 | `Run.collect`, `.collectTee`, `.text`, `.lines`, `.json`, `.exitCode`, `.succeeds`, `.stream`, `.detach` | `import { Run } from "@effected/commands"` | Running a core `ChildProcess.Command` and capturing typed output |
 | `Run.jsonLine` | `@effected/commands` | Framing ONE schema-decoded JSON payload line out of a child's otherwise noisy stdout (a subprocess protocol envelope) |
 | `ToolDiscovery`, `Tool.named` | `@effected/commands` | Checking whether a CLI tool is installed, and which copy (local vs global) to run |
-| `LocalExec`, `ExecContext` | `@effected/commands` | Prefixing a command through the project's local launcher (`npx`/`pnpm exec`/`yarn exec`/`bun x`) |
+| `LocalExec`, `ExecContext` | `@effected/commands` | Prefixing a command through the project's local launcher (`npx`/`pnpm exec`/`bun x`) |
 | `Redaction` | `@effected/commands` | Scrubbing a secret from argv or captured stdout/stderr |
 | `Retry` | `@effected/commands` | Classifying a `CommandFailedError` as transient and retrying it |
 | `ScriptedSpawner` | `@effected/commands` | A shipped scripted `ChildProcessSpawner` double for tests |

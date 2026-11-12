@@ -8,13 +8,13 @@ import { ChildProcess } from "effect/process";
  * @remarks
  * Structurally identical to `@effected/workspaces`' `PackageManagerName` and
  * assigns freely to and from it — deliberately **not** an import, because this
- * package takes no `@effected` edges. The names are a four-value literal; the
+ * package takes no `@effected` edges. The names are a three-value literal; the
  * *detection* of which one owns a directory is what
  * `@effected/workspaces` contributes, through {@link LocalExec}.
  *
  * @public
  */
-export const Launcher = Schema.Literals(["npm", "pnpm", "yarn", "bun"]);
+export const Launcher = Schema.Literals(["npm", "pnpm", "bun"]);
 
 /**
  * The decoded type of {@link (Launcher:variable)}.
@@ -47,11 +47,10 @@ const PREFIXES: Readonly<Record<Launcher, LauncherPrefixes>> = {
 	// from claiming the tool's own flags. `npm run` needs its own `--` for the
 	// same reason: npm silently CLAIMS flag arguments after the script name
 	// (probed live at npm 11: `npm run args --flag` delivers nothing to the
-	// script; `npm run -- args --flag` delivers `--flag`). The other three
+	// script; `npm run -- args --flag` delivers `--flag`). The other two
 	// managers forward post-script arguments without it.
 	npm: { prefix: ["npx", "--no", "--"], dlxPrefix: ["npx"], scriptPrefix: ["npm", "run", "--"] },
 	pnpm: { prefix: ["pnpm", "exec"], dlxPrefix: ["pnpm", "dlx"], scriptPrefix: ["pnpm", "run"] },
-	yarn: { prefix: ["yarn", "exec"], dlxPrefix: ["yarn", "dlx"], scriptPrefix: ["yarn", "run"] },
 	// `--no-install` is bun's equivalent of npm's `--no`.
 	bun: { prefix: ["bun", "x", "--no-install"], dlxPrefix: ["bun", "x"], scriptPrefix: ["bun", "run"] },
 };
@@ -267,10 +266,10 @@ export class LocalExec extends Context.Service<LocalExec, LocalExecShape>()("@ef
 	 * @remarks
 	 * A projection of {@link LocalExec.prefixes} for the caller that only runs
 	 * scripts. Every launcher uses the explicit `run` form —
-	 * `["npm", "run", "--"]`, `["pnpm", "run"]`, `["yarn", "run"]` and
+	 * `["npm", "run", "--"]`, `["pnpm", "run"]` and
 	 * `["bun", "run"]` — and npm's carries a trailing `--` because bare
 	 * `npm run <script> --flag` silently claims `--flag` for npm itself; the
-	 * other three forward post-script arguments without it.
+	 * other two forward post-script arguments without it.
 	 */
 	static readonly scriptPrefix = (launcher: Launcher): ReadonlyArray<string> => PREFIXES[launcher].scriptPrefix;
 
@@ -337,7 +336,7 @@ export class LocalExec extends Context.Service<LocalExec, LocalExecShape>()("@ef
 	 *
 	 * The binary must be non-empty and must not begin with `-` — the rule
 	 * `ToolRefusedError` applies — so a prefix followed by a flag is not
-	 * an invocation. Implicit forms (`pnpm vitest`, `yarn vitest`) are
+	 * an invocation. Implicit forms (`pnpm vitest`, `bun vitest`) are
 	 * `Option.none()`: without the manifest they cannot be told apart from a
 	 * script. A shell command line must be split into argv by the caller; no
 	 * prefix contains quoting, so a whitespace split suffices for the prefix

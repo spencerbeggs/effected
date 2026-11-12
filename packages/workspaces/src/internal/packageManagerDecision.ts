@@ -8,6 +8,11 @@
 //
 // Returns plain data rather than `DetectedPackageManager` so this module
 // imports nothing from `PackageManagerName.ts`, which imports it.
+//
+// yarn is the one manager the decision recognizes and refuses: a repository
+// yarn runs gets an `UnsupportedPackageManagerDecision`, never an npm answer
+// read off the `workspaces` field yarn shares with npm. Membership does not
+// depend on this — it reads `package.json#workspaces` for any root.
 
 import { PackageManager } from "@effected/package-json";
 import { Option, Predicate, Schema } from "effect";
@@ -25,20 +30,35 @@ export const MARKER_FILES = [
 /** One of {@link MARKER_FILES}. */
 export type MarkerFile = (typeof MARKER_FILES)[number];
 
-/** The four manager names, spelled locally to keep this module import-free of its caller. */
-type ManagerName = "npm" | "pnpm" | "yarn" | "bun";
+/** The supported manager names, spelled locally to keep this module import-free of its caller. */
+type ManagerName = "npm" | "pnpm" | "bun";
 
 /** What a successful decision carries; the caller wraps it in `DetectedPackageManager`. */
 export interface PackageManagerDecision {
+	readonly _tag: "Supported";
 	readonly name: ManagerName;
 	readonly version: Option.Option<string>;
 	readonly runtime: "node" | "bun";
 	readonly evidence:
-		| MarkerFile
+		| Exclude<MarkerFile, "yarn.lock">
 		| "package.json#workspaces"
 		| "package.json#devEngines.packageManager"
 		| "package.json#packageManager";
 }
+
+/**
+ * What the decision carries when the root belongs to a manager the kit does
+ * not act on: the manager, and the signal that identified it. The caller
+ * turns it into `UnsupportedPackageManagerError`.
+ */
+export interface UnsupportedPackageManagerDecision {
+	readonly _tag: "Unsupported";
+	readonly manager: "yarn";
+	readonly evidence: "yarn.lock" | "package.json#devEngines.packageManager" | "package.json#packageManager";
+}
+
+/** Every answer the decision gives once evidence matched. */
+export type PackageManagerVerdict = PackageManagerDecision | UnsupportedPackageManagerDecision;
 
 /**
  * A manager named by one of the two manifest fields: the name, plus the exact
@@ -116,7 +136,7 @@ const declaredName = (hints: Hints): Option.Option<string> =>
 	);
 
 /** Whether the manifest declares `name` as its manager. */
-const namesManager = (hints: Hints, name: ManagerName): boolean => Option.contains(declaredName(hints), name);
+const namesManager = (hints: Hints, name: string): boolean => Option.contains(declaredName(hints), name);
 
 /**
  * The version to report for the manager that was detected — none unless a
@@ -148,12 +168,13 @@ const versionFor = (hints: Hints, name: ManagerName): Option.Option<string> => {
 export const decidePackageManager = (
 	manifest: Option.Option<Record<string, unknown>>,
 	has: (file: MarkerFile) => boolean,
-): PackageManagerDecision | undefined => {
+): PackageManagerVerdict | undefined => {
 	const hints: Hints = {
 		devEngines: Option.flatMap(manifest, devEnginesHint),
 		corepack: Option.flatMap(manifest, corepackHint),
 	};
 	const make = (name: ManagerName, evidence: PackageManagerDecision["evidence"]): PackageManagerDecision => ({
+		_tag: "Supported",
 		name,
 		version: versionFor(hints, name),
 		runtime: name === "bun" ? "bun" : "node",
@@ -172,7 +193,25 @@ export const decidePackageManager = (
 			: undefined;
 	if (bunLock !== undefined && namesManager(hints, "bun")) return make("bun", bunLock);
 
-	if (has("yarn.lock") && namesManager(hints, "yarn")) return make("yarn", "yarn.lock");
+	// yarn: refused, never guessed as npm. The manifest naming yarn decides it
+	// (with the lockfile as the recorded signal when present). With no
+	// declaration, a yarn.lock decides it only when it is the root's sole
+	// lockfile and no other manager is named — a stray yarn.lock beside
+	// another manager's lockfile stays the classic false signal.
+	const declaresYarn = namesManager(hints, "yarn");
+	const otherLockfile = bunLock !== undefined || has("pnpm-lock.yaml") || has("package-lock.json");
+	if (has("yarn.lock") && (declaresYarn || (Option.isNone(declaredName(hints)) && !otherLockfile))) {
+		return { _tag: "Unsupported", manager: "yarn", evidence: "yarn.lock" };
+	}
+	if (declaresYarn) {
+		return {
+			_tag: "Unsupported",
+			manager: "yarn",
+			evidence: Option.isSome(hints.devEngines)
+				? "package.json#devEngines.packageManager"
+				: "package.json#packageManager",
+		};
+	}
 
 	const workspaces = Option.map(manifest, (fields) => fields.workspaces);
 	if (Option.isSome(workspaces) && workspaces.value !== undefined && workspaces.value !== null) {
@@ -191,14 +230,12 @@ export const decidePackageManager = (
 	//
 	// The conjunctions mirror the workspace tier exactly rather than
 	// inventing a looser second rule: a pnpm or npm lockfile is written by
-	// exactly one manager and stands alone, while a yarn or bun lockfile still
-	// needs the manifest to name its manager, because a stray yarn.lock is as
-	// common here as in a workspace. (The bun and yarn conjunctions repeat the
-	// workspace tier's and so cannot newly match; they are kept so the tier
-	// reads as the rule it states.)
+	// exactly one manager and stands alone, while a bun lockfile still needs
+	// the manifest to name its manager. (The bun conjunction repeats the
+	// workspace tier's and so cannot newly match; it is kept so the tier reads
+	// as the rule it states.)
 	if (has("pnpm-lock.yaml")) return make("pnpm", "pnpm-lock.yaml");
 	if (bunLock !== undefined && namesManager(hints, "bun")) return make("bun", bunLock);
-	if (has("yarn.lock") && namesManager(hints, "yarn")) return make("yarn", "yarn.lock");
 	if (has("package-lock.json")) return make("npm", "package-lock.json");
 
 	// ── the declaration tier ───────────────────────────────────────────
@@ -210,7 +247,7 @@ export const decidePackageManager = (
 	const declared = declaredName(hints);
 	if (Option.isSome(declared)) {
 		const name = declared.value;
-		if (name === "pnpm" || name === "npm" || name === "yarn" || name === "bun") {
+		if (name === "pnpm" || name === "npm" || name === "bun") {
 			// The field that supplied the name — `declaredName` believes
 			// devEngines first, so the evidence mirrors that precedence.
 			return make(

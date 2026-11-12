@@ -20,17 +20,15 @@ const TRAPS = new Set([
 	"PNPM_PACKAGE_NAME",
 ]);
 
-/** Prefixes of whole families of parent-run context: npm's, pnpm's config, and Yarn's. */
-const TRAP_PREFIXES = /^(npm_|pnpm_config_|yarn_)/i;
+/** Prefixes of whole families of parent-run context: npm's and pnpm's config. */
+const TRAP_PREFIXES = /^(npm_|pnpm_config_)/i;
 
 /**
  * `env` without undefined values and without the parent's context: every
  * `npm_*` variable (a pnpm-run vitest leaks `npm_config_user_agent`), every
  * `pnpm_config_*` variable plus `PNPM_SCRIPT_SRC_DIR` and `PNPM_PACKAGE_NAME`
  * (a `pnpm exec` child carries all three, `pnpm_config_verify_deps_before_run`
- * among them), every `YARN_*` variable (Berry lets them override
- * `.yarnrc.yml`, so `YARN_NODE_LINKER=pnp` would defeat the consumer's
- * `nodeLinker`), `CI` (Yarn Berry turns on immutable installs), `INIT_CWD`,
+ * among them), `CI` (pnpm turns on a frozen lockfile), `INIT_CWD`,
  * `NODE_V8_COVERAGE` (a spawned manager writes coverage files that race
  * vitest's V8 provider), and `NODE_OPTIONS` (a workspace's `nodeOptions`, such
  * as `--import=tsx`, is injected into every script a manager runs; the scratch
@@ -44,12 +42,11 @@ const TRAP_PREFIXES = /^(npm_|pnpm_config_|yarn_)/i;
  * Stripping `CI` does not make the child believe it runs locally: ci-info
  * also reads provider variables such as `GITHUB_ACTIONS`, which stay. That is
  * harmless today, because the only CI-conditional behaviour a consumer
- * install trips on (Berry's immutable installs, pnpm's frozen lockfile) keys
- * on a lockfile the fresh consumer does not have, or is switched off in the
- * files `consumerFiles` writes.
+ * install trips on (pnpm's frozen lockfile) keys on a lockfile the fresh
+ * consumer does not have.
  *
  * User-level configuration is inherited by design: `HOME` stays, so each
- * manager still reads the user's `~/.npmrc`, `~/.yarnrc.yml` and friends, and
+ * manager still reads the user's `~/.npmrc` and friends, and
  * with them the registry, auth and proxy a real install on this machine
  * would use.
  */
@@ -114,23 +111,6 @@ export interface ConsumerInput {
 	readonly dependencies: Readonly<Record<string, string>>;
 }
 
-const major = (version: string): number => Number.parseInt(version.split(".")[0] ?? "", 10);
-
-const minor = (version: string): number => Number.parseInt(version.split(".")[1] ?? "", 10);
-
-const YARNRC =
-	"nodeLinker: node-modules\nenableImmutableInstalls: false\nenableScripts: false\nenableTelemetry: false\n";
-
-/**
- * Berry's release-age gate, off: the consumer installs packages its caller
- * has just released, so the gate only ever quarantines them. 4.10 introduced
- * the setting, and Berry fails every command on a setting it does not know.
- */
-const YARNRC_AGE_GATE = "npmMinimalAgeGate: 0\n";
-
-const yarnrc = (version: string): string =>
-	major(version) > 4 || (major(version) === 4 && minor(version) >= 10) ? `${YARNRC}${YARNRC_AGE_GATE}` : YARNRC;
-
 /**
  * JSON strings are valid YAML double-quoted scalars. `minimumReleaseAge: 0`
  * switches off pnpm's release-age gate, on by default in pnpm 11 and 12 and
@@ -148,7 +128,7 @@ const pnpmWorkspaceYaml = (specs: Readonly<Record<string, string>>): string => {
  * The files of one scratch consumer. The carrier and the caller's extra
  * dependencies are its only direct dependencies; every other packed package
  * is steered to its tarball through the field this manager reads:
- * `overrides` (npm, bun), `resolutions` (yarn), or a settings-only
+ * `overrides` (npm, bun) or a settings-only
  * `pnpm-workspace.yaml` (pnpm 10+ reads overrides there, and pnpm 11+ no
  * longer reads `package.json#pnpm`).
  *
@@ -176,33 +156,27 @@ export const consumerFiles = (
 		// pnpm resolves a `packageManager` pin from the registry even when it names the
 		// running version, which fails an offline install; devEngines with onFail
 		// "ignore" pins the same version without a fetch. Every other manager keeps
-		// `packageManager`, which is what corepack and yarn read.
+		// `packageManager`, which is what corepack reads.
 		...(input.manager === "pnpm"
 			? { devEngines: { packageManager: { name: "pnpm", version: input.version, onFail: "ignore" } } }
 			: { packageManager: `${input.manager}@${input.version}` }),
 		// dependencies, never devDependencies: a host NODE_ENV=production or omit=dev would skip a dev one.
 		dependencies: { [input.carrier.name]: carrierSpec, ...extra },
 		...(input.manager === "npm" || input.manager === "bun" ? { overrides: specs } : {}),
-		...(input.manager === "yarn" ? { resolutions: specs } : {}),
 	};
 	const files = [{ file: "package.json", content: `${JSON.stringify(manifest, null, 2)}\n` }];
 	if (input.manager === "pnpm") files.push({ file: "pnpm-workspace.yaml", content: pnpmWorkspaceYaml(specs) });
-	if (input.manager === "yarn" && major(input.version) >= 2)
-		files.push({ file: ".yarnrc.yml", content: yarnrc(input.version) });
 	return files;
 };
 
 /** The install argv, lifecycle scripts skipped the way this manager spells it. */
-export const installArgs = (manager: PackageManagerName, version: string): ReadonlyArray<string> => {
+export const installArgs = (manager: PackageManagerName): ReadonlyArray<string> => {
 	switch (manager) {
 		case "npm":
 			return ["install", "--ignore-scripts", "--no-audit", "--no-fund"];
 		case "pnpm":
 			// pnpm 12 fails an install that IGNORED a dependency build script; skipping them outright is the stable spelling.
 			return ["install", "--config.ignore-scripts=true"];
-		case "yarn":
-			// Berry has no --ignore-scripts; enableScripts: false in .yarnrc.yml is the equivalent.
-			return major(version) >= 2 ? ["install"] : ["install", "--ignore-scripts", "--non-interactive"];
 		case "bun":
 			return ["install", "--ignore-scripts"];
 	}
@@ -279,7 +253,7 @@ export const unresolvedSpecifiers = (
 
 /**
  * The first bin the carrier declares that another packed package declares
- * too. Under a flat layout (npm, bun, Yarn's `node-modules` linker) either
+ * too. Under a flat layout (npm, bun) either
  * package can take `node_modules/.bin/<bin>`, so a bin check or a bin run
  * could pass on the wrong package. `PackedInstall.run` refuses it unless the
  * caller shares bin names deliberately (`allowSharedBins`).

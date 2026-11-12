@@ -78,7 +78,7 @@ describe("internal/pnpmExe", () => {
 			assert.isTrue(isNodeScript("bin/pnpm.mjs"));
 			assert.isTrue(isNodeScript("bin/tool.cjs"));
 			assert.isTrue(isNodeScript("bin/npm-cli.js"));
-			assert.isTrue(isNodeScript("bin/yarn.JS"));
+			assert.isTrue(isNodeScript("bin/npm-cli.JS"));
 			assert.isFalse(isNodeScript("pnpm"));
 			assert.isFalse(isNodeScript("pnpm.exe"));
 			assert.isFalse(isNodeScript("bin/pnpm.mjs.bak"));

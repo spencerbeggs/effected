@@ -83,6 +83,6 @@ One suite, `__test__/catalog.test.ts`:
 
 ## Gotchas
 
-- pnpm-only: config dependencies and catalogs have no npm/yarn equivalent.
+- pnpm-only: config dependencies and catalogs have no npm or bun equivalent.
 - It is a real public package, released with the kit. Its source manifest says `"private": true` like every package here; the bundler's `publishConfig` transform produces the publishable manifest.
 - The catalog is a convenience rather than a necessity — optional, but shipped and supported.

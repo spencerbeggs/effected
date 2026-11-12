@@ -164,7 +164,6 @@ const probe = (pm: string): string | undefined => {
 const VERSIONS: Readonly<Record<PackageManagerName, string | undefined>> = {
 	npm: probe("npm"),
 	pnpm: probe("pnpm"),
-	yarn: probe("yarn"),
 	bun: probe("bun"),
 };
 /**
@@ -186,7 +185,6 @@ const atLeast = (version: string, min: readonly [number, number, number]): boole
 };
 const HAS_NPM = VERSIONS.npm !== undefined;
 const HAS_PNPM = VERSIONS.pnpm !== undefined;
-const HAS_YARN = VERSIONS.yarn !== undefined;
 
 const ROOT = writeFixture();
 // P3 C8: pnpm packs a `workspace:` specifier only in an INSTALLED workspace.
@@ -454,51 +452,6 @@ describe("PackedInstall against a real fixture workspace", () => {
 			180_000,
 		);
 
-		// The development machine has no yarn, so this skips there. It was run
-		// once (2026-09-23) with scratch installs of yarn 1.22.22 and 4.18.0
-		// prepended to PATH, and passed under both; a machine with yarn on PATH
-		// (a GitHub-hosted runner ships yarn 1) runs it every time.
-		it.effect.skipIf(!HAS_YARN)(
-			"yarn installs the packed carrier (skipped where yarn is not on PATH)",
-			() =>
-				Effect.gen(function* () {
-					const result = yield* PackedInstall.run({
-						carrier: CARRIER,
-						closure: "auto",
-						managers: ["yarn"],
-						require: "all",
-						bins: [BIN_NAME],
-						env: OFFLINE,
-						installTimeout: "90 seconds",
-					});
-					const [yarn] = result.consumers;
-					assert.strictEqual(yarn?.manager, "yarn");
-					if (yarn !== undefined) yield* assertConsumer(yarn, result.tarballs);
-				}).pipe(Effect.timeout("100 seconds"), Effect.scoped),
-			120_000,
-		);
-
-		it.effect.skipIf(!HAS_NPM || HAS_YARN)(
-			"a requested manager that is not installed lands in unavailable (yarn, on a machine without it)",
-			() =>
-				Effect.gen(function* () {
-					const result = yield* PackedInstall.run({
-						carrier: CARRIER,
-						closure: "auto",
-						managers: ["npm", "yarn"],
-						bins: [BIN_NAME],
-						env: OFFLINE,
-						installTimeout: "90 seconds",
-					});
-					assert.deepStrictEqual(result.unavailable, ["yarn"]);
-					assert.deepStrictEqual(
-						result.consumers.map((consumer) => consumer.manager),
-						["npm"],
-					);
-				}).pipe(Effect.timeout("100 seconds"), Effect.scoped),
-			120_000,
-		);
-
 		/** Import the plugin AND its peer from the consumer ROOT, as the consumer's own code would. */
 		const importFromRoot = (consumer: InstalledConsumer) =>
 			spawn(
@@ -579,7 +532,7 @@ describe("PackedInstall against a real fixture workspace", () => {
 
 		// A front end sharing the carrier's bin name: BinConflict by default; with allowSharedBins
 		// a flat layout can hand the .bin slot to the front end, and runCarrierBin still reaches the carrier.
-		const sharedManagers = (["npm", "pnpm", "yarn", "bun"] as const).filter((pm) => VERSIONS[pm] !== undefined);
+		const sharedManagers = (["npm", "pnpm", "bun"] as const).filter((pm) => VERSIONS[pm] !== undefined);
 		const SHARED_GUARDS = guards(
 			// The refused run probes and packs, then stops before any install.
 			{ managers: sharedManagers, installTimeout: "0 seconds", packages: 2, perConsumer: "0 seconds" },
@@ -625,18 +578,16 @@ describe("PackedInstall against a real fixture workspace", () => {
 					}
 					// npm 11.19 links the package whose name sorts first, so shared-cli (the front end) beats
 					// shared-plugin (the carrier), as @vitest-agent/cli beats @vitest-agent/plugin; named the
-					// other way round, the carrier won. Yarn 1.22 and 4.18 (node-modules linker) gave the slot
-					// to the carrier, the consumer's direct dependency. pnpm links only the direct dependency.
+					// other way round, the carrier won. pnpm links only the direct dependency.
 					// bun is version-dependent: it used to link the alphabetically first package like npm, and
 					// from 1.4.4 a direct dependency of the consumer wins the slot with alphabetical order only
 					// breaking ties. The consumer here depends on the carrier alone, so a bun at or past 1.4.4
 					// gives the carrier the slot (probed on 1.4.4: the carrier wins, and a direct front end
-					// would beat it alphabetically). Every manager on PATH is asserted, yarn included.
+					// would beat it alphabetically). Every manager on PATH is asserted.
 					const bunPrefersDirect = VERSIONS.bun !== undefined && atLeast(VERSIONS.bun, [1, 4, 4]);
 					const winner: Record<PackageManagerName, string> = {
 						npm: "front",
 						bun: bunPrefersDirect ? "carrier" : "front",
-						yarn: "carrier",
 						pnpm: "carrier",
 					};
 					assert.deepStrictEqual(seen, Object.fromEntries(sharedManagers.map((pm) => [pm, winner[pm]])));
@@ -686,8 +637,8 @@ describe("PackedInstall against a real fixture workspace", () => {
 });
 
 describe("PackedInstall overrides: a dependency no registry has, supplied from outside the workspace", () => {
-	/** Every manager on this machine: yarn joins wherever it is on PATH. */
-	const linkedManagers = (["npm", "pnpm", "yarn", "bun"] as const).filter((pm) => VERSIONS[pm] !== undefined);
+	/** Every manager on this machine. */
+	const linkedManagers = (["npm", "pnpm", "bun"] as const).filter((pm) => VERSIONS[pm] !== undefined);
 
 	/** The bin reaches external through bridge, by runBin and by the command runBin builds, under every consumer. */
 	const assertLinked = (consumers: ReadonlyArray<InstalledConsumer>) =>

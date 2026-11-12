@@ -1,6 +1,6 @@
 # @effected/lockfiles
 
-Pure lockfile parsing for the four package-manager formats — bun (`bun.lock` JSONC), npm (`package-lock.json`), pnpm (`pnpm-lock.yaml`) and yarn Berry (`yarn.lock`) — normalized into one unified `Lockfile` model, plus pure integrity checking of that model against workspace manifests and a pure before/after lockfile comparison (`LockfileDiff`). The `LockfileReader` service (root find, PM detect, file IO, dispatch) lives in the consumer, `@effected/workspaces`, never here.
+Pure lockfile parsing for three package-manager formats — bun (`bun.lock` JSONC), npm (`package-lock.json`) and pnpm (`pnpm-lock.yaml`) — normalized into one unified `Lockfile` model, plus pure integrity checking of that model against workspace manifests and a pure before/after lockfile comparison (`LockfileDiff`). The `LockfileReader` service (root find, PM detect, file IO, dispatch) lives in the consumer, `@effected/workspaces`, never here.
 
 ## Knowledge bundle
 

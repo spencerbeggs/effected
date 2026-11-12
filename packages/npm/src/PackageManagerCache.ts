@@ -10,7 +10,7 @@
 //
 // Every row is verified against the manager's own authority (cited on the
 // member), not lifted from folklore (pnpm's macOS store is NOT the Linux XDG
-// path, and yarn Classic's cache is not `~/.yarn/cache`).
+// path).
 
 import { Schema } from "effect";
 
@@ -18,16 +18,13 @@ import { Schema } from "effect";
  * The package managers the default-cache table has a row for.
  *
  * @remarks
- * yarn is **two** rows — `yarn-classic` (v1) and `yarn-berry` (v2+) — because
- * the two lines document different cache locations and nothing about a bare
- * manager name says which major is in play. This is deliberately not
- * `PackageManagerPinName`'s four-literal provisioning vocabulary: a corepack
- * pin spells `yarn` and resolves the major from the version; a cache lookup
- * has no version to ask.
+ * The same three managers as `PackageManagerPinName`, kept as its own literal
+ * because a cache lookup is a different question from a pin: one row per
+ * documented cache location, with no version to ask.
  *
  * @public
  */
-export const CachingPackageManager = Schema.Literals(["npm", "pnpm", "yarn-classic", "yarn-berry", "bun"]);
+export const CachingPackageManager = Schema.Literals(["npm", "pnpm", "bun"]);
 
 /**
  * The union of managers the default-cache table covers.
@@ -63,8 +60,7 @@ const under = (home: string, windows: boolean, ...parts: ReadonlyArray<string>):
  *
  * @remarks
  * **Defaults only, deliberately.** Each manager also honours overrides this
- * table does not model — pnpm's `$PNPM_HOME`/`$XDG_DATA_HOME`, yarn Berry's
- * `globalFolder`, bun's `$BUN_INSTALL_CACHE_DIR`, npm's `--cache`, and
+ * table does not model — pnpm's `$PNPM_HOME`/`$XDG_DATA_HOME`, bun's `$BUN_INSTALL_CACHE_DIR`, npm's `--cache`, and
  * XDG variables generally. A consumer that must respect a customized machine
  * asks the manager itself; this table answers for the fresh-install case a CI
  * runner is.
@@ -100,16 +96,6 @@ export class PackageManagerCache {
 	 *   Windows, `~/Library/pnpm/store` on macOS, `~/.local/share/pnpm/store`
 	 *   on Linux. pnpm reports a **versioned subdirectory** of this (`…/v10`)
 	 *   from `pnpm store path`.
-	 * - **yarn-classic** — v1's `getCacheDir` (`src/util/user-dirs.js`):
-	 *   `%LocalAppData%\Yarn\Cache` on Windows, `~/Library/Caches/Yarn` on
-	 *   macOS, `~/.cache/yarn` on Linux (sans `$XDG_CACHE_HOME`). Classic
-	 *   writes into a versioned subdirectory (`…/v6`).
-	 * - **yarn-berry** — `getDefaultGlobalFolder` (`@yarnpkg/core`
-	 *   `folderUtils.ts`) plus the `cacheFolder` default `<globalFolder>/cache`:
-	 *   `%LocalAppData%\Yarn\Berry\cache` on Windows, `~/.yarn/berry/cache`
-	 *   elsewhere (sans `$XDG_DATA_HOME`). The **global** cache is the default
-	 *   since Berry v4 (`enableGlobalCache: true`); a v3 project defaulted to
-	 *   its per-project `.yarn/cache` instead.
 	 * - **bun** — the global install cache (bun.com/docs, `install.cache`):
 	 *   `~/.bun/install/cache` on **every** platform — bun documents no Windows
 	 *   divergence, so the Windows answer is under the user profile, not
@@ -129,16 +115,6 @@ export class PackageManagerCache {
 					: darwin
 						? under(options.home, windows, "Library", "pnpm", "store")
 						: under(options.home, windows, ".local", "share", "pnpm", "store");
-			case "yarn-classic":
-				return windows
-					? under(options.home, windows, "AppData", "Local", "Yarn", "Cache")
-					: darwin
-						? under(options.home, windows, "Library", "Caches", "Yarn")
-						: under(options.home, windows, ".cache", "yarn");
-			case "yarn-berry":
-				return windows
-					? under(options.home, windows, "AppData", "Local", "Yarn", "Berry", "cache")
-					: under(options.home, windows, ".yarn", "berry", "cache");
 			case "bun":
 				return under(options.home, windows, ".bun", "install", "cache");
 		}

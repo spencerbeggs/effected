@@ -220,7 +220,7 @@ export class UnsatisfiedPeer extends Schema.Class<UnsatisfiedPeer>("UnsatisfiedP
 /**
  * The formats whose lockfiles record peer resolution.
  *
- * An allowlist rather than a `!== "yarn"` denylist, so a format added to
+ * An allowlist rather than a denylist, so a format added to
  * `Lockfile["format"]` is unsupported until someone says otherwise. A denylist
  * would report the new format `supported: true` with an empty `unsatisfied`
  * before any parser records peer resolution for it — a clean bill of health
@@ -664,11 +664,10 @@ export class PeerCheck extends Schema.Class<PeerCheck>("PeerCheck")({
 	/**
 	 * Whether the lockfile's format records peer resolution at all.
 	 *
-	 * `false` for yarn: yarn resolves peers **virtually**, giving a
-	 * peer-bearing package one `@virtual:` locator per consumer, and the
-	 * lockfile does not record which virtual instance satisfied which peer.
-	 * The answer is not recoverable, so it is not fabricated — `unsatisfied`
-	 * is empty and this flag says why.
+	 * `false` for a format whose lockfile does not record which instance
+	 * satisfied which peer. The answer is not recoverable there, so it is not
+	 * fabricated — `unsatisfied` is empty and this flag says why. Every format
+	 * `Lockfile.parse` reads today records it.
 	 */
 	supported: Schema.Boolean,
 	/** Every unsatisfied peer found, optional ones included. */
@@ -742,7 +741,7 @@ export class PeerCheck extends Schema.Class<PeerCheck>("PeerCheck")({
 	 * - **A workspace-linked provider counts.** Resolution is followed through
 	 *   whatever the edge names, including a workspace row.
 	 *
-	 * Known limits it does not paper over: yarn (see `supported`), the npm and
+	 * Known limits it does not paper over: the npm and
 	 * bun root importer (see `unresolvedImporters`), and pnpm recording no peer
 	 * declarations for workspace projects themselves — under pnpm a workspace
 	 * package's *own* unsatisfied peers are not in the lockfile at all, and

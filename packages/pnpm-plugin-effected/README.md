@@ -36,7 +36,7 @@ Add it as a **config dependency** — not a regular dependency. Config dependenc
 pnpm add --config @effected/pnpm-plugin-effected
 ```
 
-Requires pnpm 11 or newer, and Node.js >=24.11.0. There is no npm or yarn equivalent: config dependencies and catalogs are pnpm features.
+Requires pnpm 11 or newer, and Node.js >=24.11.0. There is no npm or bun equivalent: config dependencies and catalogs are pnpm features.
 
 The command writes the package into your `pnpm-workspace.yaml` at a plain version:
 

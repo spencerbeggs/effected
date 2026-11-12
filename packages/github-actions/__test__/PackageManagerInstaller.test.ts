@@ -94,8 +94,8 @@ const withRoot = <A, E>(
 
 /**
  * A registry-shaped tarball: `package/package.json` with a `bin` map plus the
- * bin files themselves, gzipped — the layout npm, pnpm, yarn 1.x and
- * `@yarnpkg/cli-dist` all publish (probed against the real tarballs).
+ * bin files themselves, gzipped — the layout npm and pnpm publish (probed
+ * against the real tarballs).
  */
 const makeManagerTarball = (
 	directory: string,
@@ -1046,59 +1046,13 @@ describe("PackageManagerInstaller", () => {
 		);
 	});
 
-	describe("the yarn version split", () => {
-		it.live("yarn 1.x downloads the yarn registry tarball", () =>
+	describe("yarn", () => {
+		it.effect("is refused at the pin, before anything is provisioned", () =>
 			Effect.gen(function* () {
-				const root = scratch();
-				const archive = makeManagerTarball(root, {
-					name: "yarn",
-					version: "1.22.10",
-					// yarn 1.x publishes its bin with a `./` prefix (probed) — the
-					// resolved path must normalize it away.
-					bin: { yarn: "./bin/yarn.js", yarnpkg: "./bin/yarn.js" },
-					binFiles: ["bin/yarn.js"],
-				});
-				const script = scriptedFetch({ "https://registry.npmjs.org/yarn/-/yarn-1.22.10.tgz": tgzResponse(archive) });
-				const installed = cachedOf(
-					yield* install("yarn@1.22.10").pipe(
-						Effect.provide(live(root, script.fetch)),
-						Effect.ensuring(Effect.sync(() => rmSync(root, { recursive: true, force: true }))),
-					),
-				);
-				assert.deepStrictEqual(script.calls, ["https://registry.npmjs.org/yarn/-/yarn-1.22.10.tgz"]);
-				assert.strictEqual(installed.bins.yarn, join(installed.directory, "bin", "yarn.js"));
-				assert.strictEqual(installed.bins.yarnpkg, join(installed.directory, "bin", "yarn.js"));
-			}),
-		);
-
-		it.live("yarn 2+ downloads @yarnpkg/cli-dist, and verifies integrity against bin/yarn.js", () =>
-			Effect.gen(function* () {
-				const root = scratch();
-				const archive = makeManagerTarball(root, {
-					name: "@yarnpkg/cli-dist",
-					version: "4.1.0",
-					bin: { yarn: "bin/yarn.js", yarnpkg: "bin/yarn.js" },
-					binFiles: ["bin/yarn.js"],
-				});
-				// What corepack hashes for a Berry pin is the standalone yarn.js —
-				// byte-identical to the tarball's bin/yarn.js (probed) — NOT the
-				// tarball. So the js-file hash must pass…
-				const staged = join(root, "staging-@yarnpkg-cli-dist-4.1.0", "package", "bin", "yarn.js");
-				const cliHash = createHash("sha512").update(readFileSync(staged)).digest("hex");
-				const url = "https://registry.npmjs.org/@yarnpkg/cli-dist/-/cli-dist-4.1.0.tgz";
-				const script = scriptedFetch({ [url]: tgzResponse(archive) });
-				const installed = yield* install(`yarn@4.1.0+sha512.${cliHash}`).pipe(Effect.provide(live(root, script.fetch)));
-				assert.deepStrictEqual(script.calls, [url]);
-				assert.strictEqual(installed.source, "tool-cache");
-
-				// …and the TARBALL hash — the right answer for every other manager —
-				// must fail: this pair is what discriminates the Berry rule.
-				rmSync(cachedOf(installed).directory, { recursive: true, force: true });
-				const error = yield* Effect.flip(
-					install(`yarn@4.1.0+sha512.${sha512Hex(archive)}`).pipe(Effect.provide(live(root, script.fetch))),
-				);
-				assert.strictEqual(error.reason, "integrityMismatch");
-				rmSync(root, { recursive: true, force: true });
+				// The installer takes a PackageManagerPin, and a yarn pin fails to parse
+				// typed, so no request for yarn ever reaches a download.
+				const error = yield* Effect.flip(PackageManagerPin.parse("yarn@4.1.0"));
+				assert.strictEqual(error.reason, "name");
 			}),
 		);
 	});

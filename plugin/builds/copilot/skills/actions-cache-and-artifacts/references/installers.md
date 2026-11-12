@@ -46,7 +46,7 @@ already been renamed away, so nothing is left to clean up.
 exported, and tested on its own, because a tool cached at any other path
 is invisible to every other step in the workflow.
 
-## `PackageManagerInstaller`: exact-version npm/pnpm/yarn/bun over `ToolInstaller`
+## `PackageManagerInstaller`: exact-version npm/pnpm/bun over `ToolInstaller`
 
 `PackageManagerInstaller.install(pin, options?)` answers an
 `InstalledPackageManager` — a `Schema.Union` discriminated on `source`:
@@ -84,7 +84,7 @@ tarball-only mirror works. A map with no entry for the host's package fails
 `integrityMissing` with `subject` naming that package — a lockfile records
 every platform, so a gap means the map is wrong, never "skip the check".
 An entry with no usable SRI, or a tarball that hashes to anything else,
-fails `integrityMismatch`. Pins with no native overlay (npm, yarn, bun) ignore the option. A pnpm
+fails `integrityMismatch`. Pins with no native overlay (npm, bun) ignore the option. A pnpm
 artifact whose wrapper declares no `@pnpm/exe.*` optional dependency fails
 `layoutUnexpected`. The wrapper tarball itself is
 verified against the pin's `integrity` or the `integrity` option, never
@@ -101,7 +101,7 @@ as `ActionCache`.
 
 `ToolInstaller` answers "is this tool cached, and can I install it" for an
 arbitrary toolchain; `PackageManagerInstaller` answers the narrower,
-sharper question "give me an exact npm/pnpm/yarn/bun" and is what you
+sharper question "give me an exact npm/pnpm/bun" and is what you
 reach for when a workflow needs a specific package-manager version rather
 than a generic download.
 

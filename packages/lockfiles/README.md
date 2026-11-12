@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Lockfile parsing for [Effect](https://effect.website) v4: bun (`bun.lock`), npm (`package-lock.json`), pnpm (`pnpm-lock.yaml`) and yarn Berry (`yarn.lock`) all normalized into one `Lockfile` schema model, plus pure integrity checking of that model against workspace manifests and a pure before/after comparison of two lockfiles. Four formats, one model, no IO and no external runtime dependencies.
+Lockfile parsing for [Effect](https://effect.website) v4: bun (`bun.lock`), npm (`package-lock.json`), and pnpm (`pnpm-lock.yaml`) all normalized into one `Lockfile` schema model, plus pure integrity checking of that model against workspace manifests and a pure before/after comparison of two lockfiles. Three formats, one model, no IO and no external runtime dependencies.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
 > Effect v4 (`effect` `~4.1.0`) and still in `0.x` development. Stable Effect
@@ -21,9 +21,9 @@ Lockfile parsing for [Effect](https://effect.website) v4: bun (`bun.lock`), npm 
 
 ## Why @effected/lockfiles
 
-Every package manager writes its lockfile in a different dialect — JSONC for bun, JSON for npm, YAML for pnpm and yarn — and each encodes packages, workspace edges and integrity data differently. Tooling that wants to answer "which version of `typescript` is resolved here" ends up with four code paths and four sets of bugs. This package normalizes all four into one model, so the question is asked once regardless of which package manager produced the file.
+Every package manager writes its lockfile in a different dialect — JSONC for bun, JSON for npm, YAML for pnpm — and each encodes packages, workspace edges and integrity data differently. Tooling that wants to answer "which version of `typescript` is resolved here" ends up with three code paths and three sets of bugs. This package normalizes all three into one model, so the question is asked once regardless of which package manager produced the file.
 
-Every entrypoint takes content as a **string**. The package performs no IO at all: reading files, finding workspace roots and detecting which package manager a repo uses belong to its consumers, and keeping them out means the parser is a pure function you can drive from a fixture, a network response or a git blob. Malformed input always exits through a typed error channel, never as a defect, and the two ways a lockfile can be unusable are distinct tags rather than one blurry `reason` string. Yarn support is Berry only, and that is enforced: classic v1 content fails typed instead of being mis-normalized into something that looks plausible.
+Every entrypoint takes content as a **string**. The package performs no IO at all: reading files, finding workspace roots and detecting which package manager a repo uses belong to its consumers, and keeping them out means the parser is a pure function you can drive from a fixture, a network response or a git blob. Malformed input always exits through a typed error channel, never as a defect, and the two ways a lockfile can be unusable are distinct tags rather than one blurry `reason` string.
 
 ## Install
 
@@ -79,7 +79,6 @@ Effect.runPromise(program).then(console.log);
 | `"bun"` | `bun.lock` | JSONC | Trusted dependencies preserved on `BunExtension` |
 | `"npm"` | `package-lock.json` | JSON | `lockfileVersion` 3+ — v2 and older fail typed |
 | `"pnpm"` | `pnpm-lock.yaml` | YAML | `lockfileVersion` 9+ — older fails typed. Catalogs preserved on `PnpmExtension`; see below |
-| `"yarn"` | `yarn.lock` | YAML | Berry only — classic v1 fails typed |
 
 ### Supported lockfile versions
 
@@ -89,7 +88,7 @@ The gate is on the **lockfile format version**, which is the only version a lock
 | ------ | ------- | ----------- |
 | pnpm | `lockfileVersion` 9 | `LockfileParseError`, `stage: "validation"` |
 | npm | `lockfileVersion` 3 | `LockfileParseError`, `stage: "validation"` |
-| bun, yarn | not gated | — |
+| bun | not gated | — |
 
 The `cause` is a structured `{ _tag: "UnsupportedLockfileVersion", format, lockfileVersion, minimumSupported, message }`, so a consumer can distinguish "your lockfile is too old" from "your lockfile is malformed" without parsing prose. `isUnsupportedLockfileVersion` is the exported predicate that narrows to it — discriminate on the tag, never on `message`, which is a summary rather than contract:
 
@@ -113,7 +112,7 @@ const program = Lockfile.parse(content, { format: "pnpm" }).pipe(
 
 Older formats are rejected rather than parsed because they cannot answer the questions the model now asks: pre-v9 pnpm has no `snapshots:` section, and npm v1/v2 trees record no per-instance nesting, so both would decode into rows with no resolution data.
 
-**Tested against** pnpm 11.22.0, npm 11.19.0, bun 1.3.14 and yarn 4.9.1 — a separate claim from the gate, and deliberately so. A lockfile does not record which package manager wrote it, and the mapping is many-to-one (pnpm 9, 10 and 11 all write format `9.0`), so no manager-version requirement could be enforced here even in principle.
+**Tested against** pnpm 11.22.0, npm 11.19.0 and bun 1.3.14 — a separate claim from the gate, and deliberately so. A lockfile does not record which package manager wrote it, and the mapping is many-to-one (pnpm 9, 10 and 11 all write format `9.0`), so no manager-version requirement could be enforced here even in principle.
 
 ## Errors
 
@@ -125,8 +124,6 @@ Older formats are rejected rather than parsed because they cannot answer the que
 | `LockfileFramingError` | The text parsed, but no single lockfile document could be located in it. | `format`, `documents`, `reason` (`"noLockfileDocument"`, `"noImporters"`, `"unexpectedDocuments"`) |
 
 The framing error exists because `pnpm-lock.yaml` is a YAML **stream**, not a YAML document. pnpm 11 writes a config-dependencies preamble ahead of the lockfile whenever a workspace uses `configDependencies`, so the file carries two documents — and the preamble declares `lockfileVersion`, `importers` and `packages` too, so a parser that reads only the first document gets a lockfile that *validates* and describes an empty workspace. That is a wrong answer shaped exactly like a right one. The rule here is positional and deterministic rather than a heuristic: pnpm composes the preamble as a prefix, so the lockfile is the **last** document. A stream carrying no lockfile document fails typed. It never degrades into an empty `Lockfile`.
-
-yarn defines no document framing at all, so multi-document `yarn.lock` content fails with `"unexpectedDocuments"` rather than being silently truncated to its first document. Where a format states no rule, this package refuses to guess.
 
 ## Instances and resolution
 
@@ -190,7 +187,6 @@ Where a resolved version lives differs by format, and the comparison normalizes 
 | pnpm | recorded on the entry | recorded on the importer dependency (a workspace link reads `link:<path>`) |
 | bun | the one version the entry's consumers resolved to (consumers that disagree give no version); with no consumer, the package's version when the lockfile holds exactly one | read through the importer's resolved edge to its package entry |
 | npm | — (npm has no catalogs) | read through the importer's resolved edge to its package entry |
-| yarn | — | — (yarn records no importers, so two yarn lockfiles compare empty) |
 
 A catalog bump shows in `catalogs`, and also in `importers` for each consumer whose resolved version moved; filter on `specifier.after?._tag !== "catalog"` to keep the two apart, as above.
 

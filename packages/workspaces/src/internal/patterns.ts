@@ -1,8 +1,8 @@
 // Reading the workspace `packages:` pattern list.
 //
-// pnpm records it in `pnpm-workspace.yaml`; npm, yarn and bun record it in the
-// root package.json `workspaces` field (array form, or the legacy
-// `{ packages: [...] }` object form). The YAML is parsed with `@effected/yaml`.
+// pnpm records it in `pnpm-workspace.yaml`; every other repository, whatever
+// manager it uses, records it in the root package.json `workspaces` field
+// (array form, or the legacy `{ packages: [...] }` object form). The YAML is parsed with `@effected/yaml`.
 
 import { PackageJsonFormat } from "@effected/package-json";
 import { Yaml } from "@effected/yaml";

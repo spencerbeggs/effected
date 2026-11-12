@@ -22,8 +22,7 @@ export const DEP_TYPES = ["dependencies", "devDependencies", "peerDependencies",
 
 /**
  * Coerce a raw lockfile integrity string to the `@effected/npm` `IntegrityHash`
- * brand, which recognizes the SRI (`<algo>-<base64>`), corepack (`<algo>.<hex>`)
- * and yarn (`<cachekey>/<hex>`) textual forms.
+ * brand.
  *
  * Absence and corruption are treated differently, and the distinction is the
  * point. An *absent* integrity (input `undefined`) succeeds with `undefined`,
@@ -32,8 +31,8 @@ export const DEP_TYPES = ["dependencies", "devDependencies", "peerDependencies",
  * validation channel the shape checks use ({@link validationFailure}), so
  * `Lockfile.parse` surfaces it as a `LockfileParseError` with
  * `stage: "validation"` rather than silently dropping a corrupt value. Never a
- * defect. yarn's `10c0/<hex>` cache checksums are a recognized form, so real
- * yarn/npm/pnpm/bun integrity all still parses; only genuine corruption fails.
+ * defect. Real npm/pnpm/bun integrity all parses; only genuine corruption
+ * fails.
  *
  * @internal
  */
@@ -191,8 +190,7 @@ const EMPTY_PEERS: PeerDeclarations = { peerDependencies: {}, peerDependenciesMe
  * Normalize one format's peer declarations into the unified pair.
  *
  * Every format records the ranges the same way (a name→range map), but the
- * optional flag has two spellings: a `peerDependenciesMeta` object (pnpm, npm,
- * yarn Berry) and bun's `optionalPeers` array of names. Both are accepted and
+ * optional flag has two spellings: a `peerDependenciesMeta` object (pnpm, npm) and bun's `optionalPeers` array of names. Both are accepted and
  * collapse to `{ optional: boolean }` per peer, so a consumer reads one shape
  * regardless of which manager wrote the lockfile.
  *

@@ -76,8 +76,8 @@ hand-rolling the recipe again.
   version once code moves to a shared engine — `CurrentDistribution` fixes
   the identity-threading half of this, not the build-time-literal half —
   see [carrier-version-threading.md](./references/carrier-version-threading.md).
-- A plugin loader that dispatches through `pnpm exec` / `yarn exec` /
-  `bunx` resolves bins differently per package manager — see
+- A plugin loader that dispatches through `pnpm exec` / `bunx` /
+  `npm exec` resolves bins differently per package manager — see
   [carrier-plugin-loader.md](./references/carrier-plugin-loader.md).
 - A manifest DAG test with no positive-control fixture can pass while
   checking nothing — `WorkspaceLayering`'s own `edgeCount` guard is that

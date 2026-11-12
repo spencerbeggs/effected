@@ -4,6 +4,7 @@ import {
 	PackageManagerDetectionError,
 	PackageManagerDetector,
 	PackageManagerEvidence,
+	UnsupportedPackageManagerError,
 	WorkspaceManifestError,
 } from "../src/index.js";
 import type { Tree } from "./fixtures.js";
@@ -112,13 +113,54 @@ describe("PackageManagerDetector — a bun lockfile WITHOUT the corepack field",
 
 describe("PackageManagerDetector — yarn", () => {
 	layer(detectorOver({ "/repo/yarn.lock": "", "/repo/package.json": corepack("yarn@4.5.0") }))((it) => {
-		it.effect("a yarn lockfile plus a yarn corepack field means yarn", () =>
+		it.effect("a yarn lockfile plus a yarn corepack field is unsupported yarn", () =>
+			Effect.gen(function* () {
+				const detector = yield* PackageManagerDetector;
+				const error = yield* Effect.flip(detector.detect("/repo"));
+				assert.instanceOf(error, UnsupportedPackageManagerError);
+				if (!(error instanceof UnsupportedPackageManagerError)) return;
+				assert.strictEqual(error.manager, "yarn");
+				// The lockfile, not the corepack field, is the recorded signal.
+				assert.strictEqual(error.evidence, "yarn.lock");
+			}),
+		);
+	});
+});
+
+describe("PackageManagerDetector — a yarn declaration with no lockfile yet", () => {
+	layer(
+		detectorOver({
+			"/repo/package.json": manifestWith({
+				workspaces: ["packages/*"],
+				devEngines: { packageManager: { name: "yarn", version: "4.5.0" } },
+			}),
+		}),
+	)((it) => {
+		it.effect("is unsupported yarn, never the npm fallback the workspaces field would give", () =>
+			Effect.gen(function* () {
+				const detector = yield* PackageManagerDetector;
+				const error = yield* Effect.flip(detector.detect("/repo"));
+				assert.instanceOf(error, UnsupportedPackageManagerError);
+				if (!(error instanceof UnsupportedPackageManagerError)) return;
+				assert.strictEqual(error.evidence, "package.json#devEngines.packageManager");
+			}),
+		);
+	});
+});
+
+describe("PackageManagerDetector — a stray yarn.lock beside npm's lockfile", () => {
+	layer(
+		detectorOver({
+			"/repo/yarn.lock": "",
+			"/repo/package-lock.json": "",
+			"/repo/package.json": manifestWith({ workspaces: ["packages/*"] }),
+		}),
+	)((it) => {
+		it.effect("stays npm: another manager's lockfile outweighs an undeclared yarn.lock", () =>
 			Effect.gen(function* () {
 				const detector = yield* PackageManagerDetector;
 				const detected = yield* detector.detect("/repo");
-				assert.strictEqual(detected.name, "yarn");
-				assert.deepStrictEqual(detected.version, Option.some("4.5.0"));
-				assert.strictEqual(detected.evidence, "yarn.lock");
+				assert.strictEqual(detected.name, "npm");
 			}),
 		);
 	});
@@ -159,7 +201,6 @@ describe("PackageManagerDetector — NO EVIDENCE AT ALL", () => {
 				assert.instanceOf(error, PackageManagerDetectionError);
 				assert.strictEqual(error.root, "/repo");
 				assert.include(error.checked, "pnpm-workspace.yaml");
-				assert.include(error.checked, "yarn.lock");
 				// The standalone probes are part of the contract too, so they belong
 				// on the error that reports having tried them.
 				assert.include(error.checked, "pnpm-lock.yaml");
@@ -171,8 +212,8 @@ describe("PackageManagerDetector — NO EVIDENCE AT ALL", () => {
 				// The declaration tier's order is DECISION precedence, positionally:
 				// devEngines is authoritative for the name, so it precedes the
 				// top-level field (set equality would not catch a swap).
-				assert.strictEqual(error.checked[7], "package.json#devEngines.packageManager");
-				assert.strictEqual(error.checked[8], "package.json#packageManager");
+				assert.strictEqual(error.checked[6], "package.json#devEngines.packageManager");
+				assert.strictEqual(error.checked[7], "package.json#packageManager");
 			}),
 		);
 	});
@@ -245,21 +286,6 @@ describe("PackageManagerDetector — standalone npm repo", () => {
 	});
 });
 
-describe("PackageManagerDetector — standalone yarn repo", () => {
-	layer(detectorOver({ "/repo/yarn.lock": "", "/repo/package.json": corepack("yarn@4.5.0") }))((it) => {
-		it.effect("a yarn lockfile plus a yarn declaration is yarn, workspace or not", () =>
-			Effect.gen(function* () {
-				const detector = yield* PackageManagerDetector;
-				const detected = yield* detector.detect("/repo");
-				assert.strictEqual(detected.name, "yarn");
-				assert.deepStrictEqual(detected.version, Option.some("4.5.0"));
-				// The lockfile, not the corepack field, is the recorded signal.
-				assert.strictEqual(detected.evidence, "yarn.lock");
-			}),
-		);
-	});
-});
-
 describe("PackageManagerDetector — standalone bun repo", () => {
 	layer(detectorOver({ "/repo/bun.lockb": "", "/repo/package.json": corepack("bun@1.2.0") }))((it) => {
 		it.effect("a bun lockfile plus a bun declaration is bun, on the bun runtime", () =>
@@ -276,22 +302,20 @@ describe("PackageManagerDetector — standalone bun repo", () => {
 	});
 });
 
-describe("PackageManagerDetector — a STRAY yarn.lock in a standalone repo", () => {
+describe("PackageManagerDetector — a sole yarn.lock in a standalone repo", () => {
 	layer(
 		detectorOver({
 			"/repo/yarn.lock": "",
 			"/repo/package.json": JSON.stringify({ name: "solo", version: "1.0.0" }),
 		}),
 	)((it) => {
-		it.effect("the manifest conjunction holds in the standalone tier too", () =>
+		it.effect("is unsupported yarn, workspace or not", () =>
 			Effect.gen(function* () {
 				const detector = yield* PackageManagerDetector;
-				// A stray yarn.lock is the classic false signal, and it is exactly as
-				// common in a single-package repo as in a workspace. The standalone tier
-				// mirrors the workspace tier's conjunction rather than inventing a
-				// second, looser rule inside one service.
+				// The only lockfile, and no manager named: nothing points anywhere but
+				// yarn, so it is reported rather than refused as evidence-free.
 				const error = yield* Effect.flip(detector.detect("/repo"));
-				assert.instanceOf(error, PackageManagerDetectionError);
+				assert.instanceOf(error, UnsupportedPackageManagerError);
 			}),
 		);
 	});

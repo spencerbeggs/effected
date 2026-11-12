@@ -128,7 +128,7 @@ export interface LockfileReaderOptions {
 	 * @remarks
 	 * Pass `["pnpm-workspace.yaml"]` for a pnpm-only tool: pnpm ignores
 	 * `package.json#workspaces`, so a member package that kept the field
-	 * (common after a yarn migration) must not read as the root. An empty
+	 * (common after a migration to pnpm) must not read as the root. An empty
 	 * list is a **defect** at first use, as it is for `find`.
 	 *
 	 * Give it the same value as {@link WorkspaceDiscoveryOptions.markers}

@@ -10,9 +10,9 @@
 | `ConfigDependencyLock` | Class | One config dependency a `pnpm-lock.yaml` records, with the integrity pnpm recorded for it — read from the lockfile's env preamble by `PnpmEnvLockfile.configDependencies`. | config dependency integrity from lockfile, verify config dependency fetch |
 | `ImporterChange` | Class | One importer dependency that moved between two lockfiles, as reported by `LockfileDiff.compare`. | importer dependency added, removed or changed between two lockfiles, specifier and version |
 | `ImporterDependency` | Class | One declared dependency of one workspace importer, as the lockfile records it. | one workspace importer's declared dependency as the lockfile records it |
-| `Lockfile` | Class | The unified lockfile model all four formats normalize into. | parse a pnpm npm yarn or bun lockfile into one unified lockfile model |
+| `Lockfile` | Class | The unified lockfile model all three formats normalize into. | parse a pnpm npm or bun lockfile into one unified lockfile model |
 | `LockfileDiff` | Class | What moved between two lockfiles: catalog entries and importer dependencies whose specifier or resolved version changed, or that were added or removed. | compare two lockfiles, what moved after an install or update, catalog and importer changes |
-| `LockfileFormat` | Variable + TypeAlias | The union of supported lockfile format names. | the lockfile format literal: bun, npm, pnpm or yarn |
+| `LockfileFormat` | Variable + TypeAlias | The union of supported lockfile format names. | the lockfile format literal: bun, npm or pnpm |
 | `LockfileFramingError` | Class | Failure of `Lockfile.parse`: the content parsed as text, but no single lockfile document could be located in it. | handle a lockfile whose yaml stream carries no lockfile document, e.g. a config-dependencies-only pnpm-lock.yaml |
 | `LockfileImporter` | Class | One workspace importer's declared dependencies, as the lockfile records them. | one workspace importer's declared dependencies, keyed by importer path |
 | `LockfileIntegrity` | Class | Result of checking a parsed lockfile against the workspace's declared manifests. | verify lockfile integrity against workspace manifests, unsatisfied constraint and missing workspace check |
@@ -26,7 +26,7 @@
 | `UnsupportedLockfileVersion` | Interface | The cause a `LockfileParseError` carries when a lockfile predates the supported format version. | |
 | `WorkspaceDependency` | Class | A directed dependency edge between two workspace packages as recorded in the lockfile. | a directed dependency edge between two workspace packages as the lockfile records it |
 | `WorkspaceManifest` | Class | The minimal manifest shape `LockfileIntegrity.compare` checks a lockfile against: a package name plus the four optional dependency maps. | the minimal package.json shape lockfile integrity checking compares against |
-| `filenameFor` | Function | The conventional lockfile filename for a format: `"bun.lock"`, `"package-lock.json"`, `"pnpm-lock.yaml"` or `"yarn.lock"`. | the conventional lockfile filename for a format, e.g. pnpm-lock.yaml |
+| `filenameFor` | Function | The conventional lockfile filename for a format: `"bun.lock"`, `"package-lock.json"` or `"pnpm-lock.yaml"`. | the conventional lockfile filename for a format, e.g. pnpm-lock.yaml |
 | `filenamesFor` | Function | Every filename a format is genuinely written under, primary first. | every filename a lockfile format is genuinely written under, including alternates |
 | `fromFilename` | Function | The format a lockfile filename identifies, if any. | detect which lockfile format a conventional filename identifies |
 | `isUnsupportedLockfileVersion` | Function | Whether a `LockfileParseError.cause` is an `UnsupportedLockfileVersion`. | check if a lockfile parse error means the version is too old |

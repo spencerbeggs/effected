@@ -2,7 +2,7 @@
 
 ## The problem it solves
 
-npm, pnpm, yarn and bun all create `node_modules/.bin/*` entries only for a
+npm, pnpm and bun all create `node_modules/.bin/*` entries only for a
 package's **direct** dependencies. A transitive dependency, or a peer an
 installer auto-resolves, is *reachable* by `require`/`import` but never
 *runnable* — its bin never lands in `.bin`. Hoisting settings

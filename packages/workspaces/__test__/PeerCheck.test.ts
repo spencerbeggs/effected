@@ -389,21 +389,6 @@ describe("PeerCheck.run", () => {
 			assert.isUndefined(met.required.find((r) => r.dependency === "node-ish"));
 		}),
 	);
-
-	it.effect("cannot answer for yarn, and says so rather than returning an empty pass", () =>
-		Effect.gen(function* () {
-			// yarn resolves peers virtually and records no peer edges, so a bare
-			// empty array would be indistinguishable from a clean workspace.
-			const lockfile = yield* Lockfile.parse(["__metadata:", "  version: 8", "  cacheKey: 10c0"].join("\n"), {
-				format: "yarn",
-			});
-			const report = PeerCheck.run(lockfile);
-
-			assert.isFalse(report.supported);
-			assert.deepStrictEqual(report.unsatisfied, []);
-			assert.deepStrictEqual(report.required, []);
-		}),
-	);
 });
 
 // pnpm's suppression policy, and the fail-closed states. pnpm computes the same

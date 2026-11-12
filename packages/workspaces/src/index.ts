@@ -70,6 +70,7 @@ export {
 	type PackageManagerDetectorShape,
 	PackageManagerEvidence,
 	PackageManagerName,
+	UnsupportedPackageManagerError,
 } from "./PackageManagerName.js";
 export {
 	PeerCheck,

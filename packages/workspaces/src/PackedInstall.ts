@@ -78,7 +78,7 @@ export interface PackedInstallClosureOptions {
 	 * manifest must be named as its key, carry no specifier only a workspace
 	 * could resolve, and it joins `PackedInstallResult.tarballs`. Each
 	 * consumer steers the package to that tarball through the same override
-	 * field as the closure (npm's and bun's `overrides`, Yarn's `resolutions`,
+	 * field as the closure (npm's and bun's `overrides`,
 	 * pnpm's `overrides` in `pnpm-workspace.yaml`), so the carrier's
 	 * transitive references resolve to it too, whatever range they ask for.
 	 *
@@ -130,8 +130,8 @@ export interface PackedInstallOptions extends PackedInstallClosureOptions {
 	 * By default only the carrier may declare them. Whatever this lists, a
 	 * packed package other than the carrier that declares one of the
 	 * carrier's own bin names fails `BinConflict` before any install, unless
-	 * `allowSharedBins` is set: under a flat layout (npm, bun,
-	 * Yarn's `node-modules` linker) either package can take the `.bin` slot,
+	 * `allowSharedBins` is set: under a flat layout (npm, bun)
+	 * either package can take the `.bin` slot,
 	 * so the bin check and every bin run could pass on the wrong package.
 	 *
 	 * The check compares packed packages only (the carrier, the closure and
@@ -147,11 +147,10 @@ export interface PackedInstallOptions extends PackedInstallClosureOptions {
 	 * @remarks
 	 * A supported, permanent choice for a carrier whose front ends are also
 	 * installed and run on their own, and a stopgap for one migrating to
-	 * carrier-only bins. Its cost is provenance: under npm, bun and Yarn's
-	 * `node-modules` linker, either package can take the `.bin` slot (npm was
+	 * carrier-only bins. Its cost is provenance: under npm and bun, either
+	 * package can take the `.bin` slot (npm was
 	 * observed to link the package whose name sorts first, which for a `cli`
-	 * front end and a `plugin` carrier is the front end; Yarn 1 and 4 were
-	 * observed to keep the carrier's, the consumer's direct dependency; recent bun
+	 * front end and a `plugin` carrier is the front end; recent bun
 	 * gives the slot to a direct dependency of the consumer, while older
 	 * releases took the alphabetically first package, so a carrier that is the
 	 * consumer's one direct dependency keeps it only on recent bun),
@@ -169,7 +168,7 @@ export interface PackedInstallOptions extends PackedInstallClosureOptions {
 	/**
 	 * The environment for every spawn: pass `process.env` from the test file, the edge that supplies the host
 	 * environment. It is taken whole because the parent manager's context is stripped by prefix (`npm_*`,
-	 * `pnpm_config_*`, `yarn_*`), which `Config`, reading keys by name, cannot enumerate; read single keys such as
+	 * `pnpm_config_*`), which `Config`, reading keys by name, cannot enumerate; read single keys such as
 	 * `CI` through `Config`.
 	 */
 	readonly env: Readonly<Record<string, string | undefined>>;
@@ -349,8 +348,7 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 	 * Which installed package the `node_modules/.bin` entry `name` resolves into.
 	 *
 	 * @remarks
-	 * Under a flat layout (npm, bun, and Yarn with the `node-modules` linker
-	 * this run configures), a hoisted bin of the same name from another package
+	 * Under a flat layout (npm, bun), a hoisted bin of the same name from another package
 	 * can shadow the carrier's, and running it cannot tell you which one ran.
 	 * Those managers write each `.bin` entry as a symlink, so this reads the
 	 * link, realpaths its target, and walks up to the nearest `package.json`
@@ -506,8 +504,7 @@ export class InstalledConsumer extends Schema.Class<InstalledConsumer>("Installe
 	 * won the `node_modules/.bin` slot.
 	 *
 	 * @remarks
-	 * With `allowSharedBins`, a flat layout (npm, bun, Yarn's `node-modules`
-	 * linker) can link a front end's same-named bin into `.bin`, so
+	 * With `allowSharedBins`, a flat layout (npm, bun) can link a front end's same-named bin into `.bin`, so
 	 * {@link InstalledConsumer.runBin} proves only that SOME package's bin runs.
 	 * This reads the carrier's installed `node_modules/<carrier>/package.json`,
 	 * takes `name` from its `bin` map (a `bin` string answers to the unscoped
@@ -754,7 +751,7 @@ const MESSAGE_TAIL_LINES = 8;
 const MESSAGE_TAIL_CHARS = 600;
 /**
  * `message` followed by the end of `output`. The manager's own install and
- * pack logs are what `output` holds: npm, pnpm, yarn and bun print registry
+ * pack logs are what `output` holds: npm, pnpm and bun print registry
  * URLs and resolution failures, never the auth values they read from the
  * user's rc files or from `NODE_AUTH_TOKEN` (npm redacts tokens in its own
  * log lines), and the install env is already scrubbed of the parent
@@ -983,14 +980,14 @@ export class PackedInstall {
 	 * import { Duration } from "effect";
 	 *
 	 * const budget = PackedInstall.timeoutBudget({
-	 *   managers: ["npm", "pnpm", "yarn", "bun"],
+	 *   managers: ["npm", "pnpm", "bun"],
 	 *   installTimeout: "3 minutes",
 	 *   packTimeout: "30 seconds",
 	 *   packages: ["my-tool", "my-tool-cli", "my-tool-core"],
 	 *   perConsumer: "2 minutes",
 	 * });
 	 * console.log(Duration.format(budget));
-	 * // => 26m 30s
+	 * // => 21m
 	 * ```
 	 */
 	static readonly timeoutBudget = (budget: PackedInstallBudget): Duration.Duration => {
@@ -1386,7 +1383,7 @@ export class PackedInstall {
 		if (conflict !== undefined) {
 			return yield* failure(
 				"BinConflict",
-				`${conflict.package} declares the bin ${conflict.bin}, which the carrier ${carrier.name} declares; under a flat layout (npm, bun, Yarn's node-modules linker) either can take node_modules/.bin/${conflict.bin} and the carrier's provenance is lost there; drop the bin from ${conflict.package}, or pass allowSharedBins: true to share it deliberately`,
+				`${conflict.package} declares the bin ${conflict.bin}, which the carrier ${carrier.name} declares; under a flat layout (npm, bun) either can take node_modules/.bin/${conflict.bin} and the carrier's provenance is lost there; drop the bin from ${conflict.package}, or pass allowSharedBins: true to share it deliberately`,
 				{ package: conflict.package },
 			);
 		}
@@ -1410,7 +1407,7 @@ export class PackedInstall {
 						.pipe(Effect.mapError(io(`could not write ${file}`)));
 				}
 				const installTimeout = options.installTimeout ?? DEFAULT_INSTALL_TIMEOUT;
-				const output = yield* Run.collect(command(manager, installArgs(manager, version), directory), {
+				const output = yield* Run.collect(command(manager, installArgs(manager), directory), {
 					timeout: installTimeout,
 				}).pipe(
 					Effect.mapError((cause) =>

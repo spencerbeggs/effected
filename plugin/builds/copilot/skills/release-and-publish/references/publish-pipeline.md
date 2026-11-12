@@ -228,8 +228,8 @@ means the package packs, **not** that a registry would accept it. The error
 channel is reserved for a structural failure — npm could not be spawned, or
 its output was unreadable.
 
-`NpmExecutor` replaces repeated `packageManager?: "npm" | "pnpm" | "yarn" |
-"bun"` options with one value: `NpmExecutor.ambient` (the runner's own npm
+`NpmExecutor` replaces repeated `packageManager?: "npm" | "pnpm" | "bun"`
+options with one value: `NpmExecutor.ambient` (the runner's own npm
 on `PATH`) or `NpmExecutor.dlx("npm@11")` (fetched fresh through the
 project launcher). `dlx` runs the fetch through `LocalExec.applyDlx`,
 because OIDC trusted publishing needs a newer npm than GitHub-hosted

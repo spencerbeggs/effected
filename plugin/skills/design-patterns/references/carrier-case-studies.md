@@ -78,8 +78,8 @@ What it does best:
   `LAYER_RANKS` as an explicit lookup table, asserted against the live
   workspace graph directly in TypeScript rather than a separate config
   file (<https://github.com/spencerbeggs/vitest-agent/blob/main/packages/plugin/__test__/workspace-layering.test.ts>).
-- **The only one of the three with the packed-install e2e run across all
-  four package managers** (npm, pnpm, yarn, bun), including the JSON-RPC
+- **The only one of the three with the packed-install e2e run across
+  every package manager the kit supports** (npm, pnpm, bun), including the JSON-RPC
   `initialize` / empty-stderr assertion that proves the MCP crash-guard
   contract end to end
   (<https://github.com/spencerbeggs/vitest-agent/blob/main/packages/plugin/__test__/bins-packed-install.e2e.test.ts>).
@@ -184,7 +184,7 @@ Gaps and deviations:
 - **Hooks contradict the loader's own discipline.** The MCP/LSP loader
   scripts never dispatch through a package manager, but the hook library
   (`hooks/lib/run-cli.sh`) detects the package manager and returns a
-  dispatch prefix (`pnpm exec` / `yarn exec` / `bunx` / `npx --no --`) for
+  dispatch prefix (`pnpm exec` / `bunx` / `npx --no --`) for
   every hook call site to prepend — exactly the anti-pattern the loader
   itself avoids. Name this explicitly when reviewing systems' hooks: it is
   not a stylistic difference from the loader, it is the pattern's own

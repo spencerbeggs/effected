@@ -167,7 +167,7 @@ export class CatalogSet extends Schema.Class<CatalogSet>("CatalogSet")({
 	 * the default catalog declared twice — once as `workspaces.catalog` and again
 	 * as `workspaces.catalogs.default` — fails with `CatalogAssemblyError`
 	 * naming what was wrong. An absent `workspaces` field, one explicitly `null`,
-	 * or the plain array form (npm/yarn patterns, which carry no catalogs) yields
+	 * or the plain array form (npm patterns, which carry no catalogs) yields
 	 * the empty set. Presence is checked structurally, so an explicitly-declared
 	 * empty `catalog: {}` still counts as a declaration.
 	 *
@@ -358,7 +358,7 @@ const manifestCatalogBlocks = (
 	{ readonly catalog?: Record<string, string>; readonly catalogs?: Record<string, Record<string, string>> },
 	CatalogAssemblyError
 > => {
-	// Absent, explicitly null, or the npm/yarn array form: nothing to misread.
+	// Absent, explicitly null, or the npm array form: nothing to misread.
 	if (workspaces === undefined || workspaces === null || Array.isArray(workspaces)) return Effect.succeed({});
 	if (!Predicate.isObject(workspaces)) {
 		return Effect.fail(
@@ -576,7 +576,7 @@ export interface WorkspaceCatalogsOptions {
 	 * @remarks
 	 * Pass `["pnpm-workspace.yaml"]` for a pnpm-only tool: pnpm ignores
 	 * `package.json#workspaces`, so a member package that kept the field
-	 * (common after a yarn migration) must not read as the root. An empty
+	 * (common after a migration to pnpm) must not read as the root. An empty
 	 * list is a **defect** at first use, as it is for `find`.
 	 *
 	 * Give it the same value as {@link WorkspaceDiscoveryOptions.markers}

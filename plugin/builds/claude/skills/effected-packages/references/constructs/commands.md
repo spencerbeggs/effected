@@ -11,7 +11,7 @@
 | `DEFAULT_MAX_OUTPUT_BYTES` | Variable | Default ceiling on captured bytes per stream (16 MiB). | the default 16 MiB per-stream captured output ceiling |
 | `ExecContext` | Class | How to run a project-local binary here. | how to run a project-local binary: launcher argv prefix, dlx prefix, script prefix, directory |
 | `ExecKind` | Variable + TypeAlias | The decoded type of `(ExecKind:variable)`. | classify a launcher argv as npx, pnpm dlx, bunx or a local exec |
-| `Launcher` | Variable + TypeAlias | The decoded type of `(Launcher:variable)`. | four package managers' local exec argv: npm, pnpm, yarn, bun |
+| `Launcher` | Variable + TypeAlias | The decoded type of `(Launcher:variable)`. | package managers with a local exec argv: npm, pnpm, bun |
 | `LauncherPrefixes` | Interface | The per-launcher argv prefix record: exec, dlx and script-runner. | |
 | `LocalExec` | Class | Contract: how to run a project-local binary in this project. | contract for the project-local way to run a binary here — implemented by `Workspaces` in `@effected/workspaces` |
 | `LocalExecError` | Class | The project-local execution context could not be determined. | handle failure determining the project-local execution context |

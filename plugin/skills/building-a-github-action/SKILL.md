@@ -60,7 +60,7 @@ This table routes a capability to the package and skill that own it; it does not
 | upload or download a workflow artifact | `Artifact` | `actions-cache-and-artifacts` |
 | store a blob (Actions cache or S3-compatible) | `BlobStore`, `GitHubCacheBlobStore`, `BlobEnvelope` | `actions-cache-and-artifacts` |
 | install a toolchain on the runner | `ToolInstaller` | `actions-cache-and-artifacts` |
-| pin and install an exact npm/pnpm/yarn/bun | `PackageManagerInstaller` | `actions-cache-and-artifacts` |
+| pin and install an exact npm/pnpm/bun | `PackageManagerInstaller` | `actions-cache-and-artifacts` |
 | compute a cache key from file contents | `CacheKey` | `actions-cache-and-artifacts` |
 | run a subprocess and get a typed result | `Run.collect` / `text` / `lines` / `json` | `running-commands-and-tools` |
 | ask whether a CLI tool is installed | `ToolDiscovery` | `running-commands-and-tools` |

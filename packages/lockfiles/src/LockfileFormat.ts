@@ -2,14 +2,14 @@ import { Option, Schema } from "effect";
 
 /**
  * The lockfile formats this package parses: bun's `bun.lock` (JSONC), npm's
- * `package-lock.json` (JSON), pnpm's `pnpm-lock.yaml` and yarn Berry's
- * `yarn.lock` (both YAML).
+ * `package-lock.json` (JSON) and pnpm's `pnpm-lock.yaml` (YAML).
  *
  * @remarks
  * The literal names the *lockfile format*, not the package manager that
- * happens to write it — this package models lockfiles. Yarn support is
- * Berry only; classic (v1) `yarn.lock` is not YAML and fails
- * `Lockfile.parse` with a typed `LockfileParseError`.
+ * happens to write it — this package models lockfiles. Any other lockfile is
+ * not a format here: {@link fromFilename} does not identify its name, and its
+ * content parsed as one of these three fails `Lockfile.parse` with a typed
+ * `LockfileParseError`.
  *
  * The format literal says nothing about which *versions* of that format are
  * supported: pnpm `lockfileVersion` 9+ and npm `lockfileVersion` 3+ parse,
@@ -17,7 +17,7 @@ import { Option, Schema } from "effect";
  *
  * @public
  */
-export const LockfileFormat = Schema.Literals(["bun", "npm", "pnpm", "yarn"]);
+export const LockfileFormat = Schema.Literals(["bun", "npm", "pnpm"]);
 
 /**
  * The union of supported lockfile format names.
@@ -32,12 +32,11 @@ const FILENAMES: Readonly<Record<LockfileFormat, readonly [string, ...ReadonlyAr
 	bun: ["bun.lock", "bun.lockb"],
 	npm: ["package-lock.json", "npm-shrinkwrap.json"],
 	pnpm: ["pnpm-lock.yaml"],
-	yarn: ["yarn.lock"],
 };
 
 /**
  * The conventional lockfile filename for a format: `"bun.lock"`,
- * `"package-lock.json"`, `"pnpm-lock.yaml"` or `"yarn.lock"`.
+ * `"package-lock.json"` or `"pnpm-lock.yaml"`.
  *
  * @remarks
  * The primary name only — the first element of {@link filenamesFor}, which is
@@ -55,11 +54,10 @@ export const filenameFor = (format: LockfileFormat): string => FILENAMES[format]
  * `npm-shrinkwrap.json` (and prefers it over `package-lock.json` when both
  * exist — the ordering here is conventional-name-first, not npm's own
  * precedence), and bun has shipped two formats, the current text `bun.lock`
- * and the older **binary** `bun.lockb`. pnpm and yarn each have exactly one.
+ * and the older **binary** `bun.lockb`. pnpm has exactly one.
  *
  * Only genuine *lockfile* spellings appear here. Files that merely influence
- * what an install resolves to — `pnpm-workspace.yaml`, `.pnpmfile.cjs`, yarn's
- * PnP artifacts — are a consumer's cache policy, not alternates of the
+ * what an install resolves to — `pnpm-workspace.yaml`, `.pnpmfile.cjs` — are a consumer's cache policy, not alternates of the
  * lockfile.
  *
  * Two deliberate asymmetries with the rest of this module: `bun.lockb` is a
@@ -76,8 +74,9 @@ export const filenamesFor = (format: LockfileFormat): readonly [string, ...Reado
  *
  * @remarks
  * Matches exact conventional filenames only (`"bun.lock"`,
- * `"package-lock.json"`, `"pnpm-lock.yaml"`, `"yarn.lock"`) — paths, other
- * spellings and the {@link filenamesFor} alternates return `Option.none()`.
+ * `"package-lock.json"`, `"pnpm-lock.yaml"`) — paths, other spellings, the
+ * {@link filenamesFor} alternates and the lockfile names of unsupported
+ * managers return `Option.none()`.
  *
  * @public
  */

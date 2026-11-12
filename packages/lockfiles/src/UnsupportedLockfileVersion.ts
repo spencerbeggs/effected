@@ -20,8 +20,8 @@
  * `_tag` — through {@link isUnsupportedLockfileVersion}, which is why that
  * predicate exists.
  *
- * bun and yarn are ungated (neither records a comparable format-version line),
- * so `format` is narrowed to the two that are.
+ * bun is ungated (it records no comparable format-version line), so `format`
+ * is narrowed to the two formats that are.
  *
  * @public
  */

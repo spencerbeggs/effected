@@ -106,7 +106,7 @@ export interface WorkspaceSnapshotsOptions {
 	 * @remarks
 	 * Pass `["pnpm-workspace.yaml"]` for a pnpm-only tool: pnpm ignores
 	 * `package.json#workspaces`, so a member package that kept the field
-	 * (common after a yarn migration) must not read as the root. An empty
+	 * (common after a migration to pnpm) must not read as the root. An empty
 	 * list is a **defect** at first use, as it is for `find`.
 	 *
 	 * Give it the same value as {@link WorkspaceDiscoveryOptions.markers}
@@ -419,7 +419,7 @@ export class WorkspaceSnapshots extends Context.Service<WorkspaceSnapshots, Work
 						// `bun.lock` at the ref still has catalogs, and gating them on the
 						// lockfile would make `at(ref)` and `worktree()` (which reads inline
 						// via `fromManifestWorkspaces` regardless of any lockfile) disagree. `bunInlineCatalogs` is
-						// tolerant: an npm/yarn array-form `workspaces` yields empty. The
+						// tolerant: an npm array-form `workspaces` yields empty. The
 						// lockfile half degrades the absent `bun.lock` to empty on `Option.none`.
 						inline = bunInlineCatalogs(rootManifest);
 						// Config dependencies are a pnpm feature; there are none on this path.

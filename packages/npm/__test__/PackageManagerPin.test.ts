@@ -41,7 +41,7 @@ describe("PackageManagerPin.parse", () => {
 
 	it.effect("accepts every supported manager name", () =>
 		Effect.gen(function* () {
-			for (const name of ["npm", "pnpm", "yarn", "bun"] as const) {
+			for (const name of ["npm", "pnpm", "bun"] as const) {
 				const pin = yield* PackageManagerPin.parse(`${name}@1.2.3`);
 				assert.strictEqual(pin.name, name);
 			}
@@ -50,15 +50,15 @@ describe("PackageManagerPin.parse", () => {
 
 	it.effect("accepts prerelease versions — corepack pins can carry them", () =>
 		Effect.gen(function* () {
-			const bare = yield* PackageManagerPin.parse("yarn@4.0.0-rc.1");
+			const bare = yield* PackageManagerPin.parse("pnpm@4.0.0-rc.1");
 			assert.strictEqual(bare.version.toString(), "4.0.0-rc.1");
 			assert.deepStrictEqual(bare.version.prerelease, ["rc", 1]);
 
 			const withIntegrity = yield* PackageManagerPin.parse("pnpm@10.0.0-beta.2+sha512.abc123");
-			// corepack's own transparent default pin for yarn Berry hashes with
-			// sha224 — the exact shape that once failed with reason "integrity".
+			// corepack's own transparent default pins hash with sha224 — the exact
+			// shape that once failed with reason "integrity".
 			const sha224 = yield* PackageManagerPin.parse(
-				"yarn@4.12.0+sha224.877304e3c9e5b53431969ee2ca17ee44f366533b0da5a4ba9c2bd447",
+				"pnpm@12.0.0+sha224.877304e3c9e5b53431969ee2ca17ee44f366533b0da5a4ba9c2bd447",
 			);
 			assert.strictEqual(sha224.integrity, "sha224.877304e3c9e5b53431969ee2ca17ee44f366533b0da5a4ba9c2bd447");
 			assert.strictEqual(withIntegrity.version.toString(), "10.0.0-beta.2");
@@ -125,7 +125,7 @@ describe("PackageManagerPin rejection matrix", () => {
 	rejects("pnpm@9", "version");
 	rejects("pnpm@9.1", "version");
 	// Dist-tags are not versions.
-	rejects("yarn@berry", "version");
+	rejects("pnpm@next", "version");
 	rejects("pnpm@latest", "version");
 	// v-prefixed and empty versions.
 	rejects("pnpm@v1.2.3", "version");
@@ -137,7 +137,10 @@ describe("PackageManagerPin rejection matrix", () => {
 	rejects("pnpm@ 11.17.0", "version");
 	rejects("pnpm@11.17.0 ", "version");
 	rejects("pnpm@ 11.17.0 +sha512.deadbeef", "version");
-	// Unknown or empty manager names.
+	// Unknown, unsupported or empty manager names: yarn is a real manager the kit
+	// does not provision, so its pin fails typed rather than parsing.
+	rejects("yarn@4.5.0", "name");
+	rejects("yarn@4.12.0+sha224.877304e3c9e5b53431969ee2ca17ee44f366533b0da5a4ba9c2bd447", "name");
 	rejects("cargo@1.0.0", "name");
 	rejects("PNPM@1.0.0", "name");
 	rejects("@1.0.0", "name");
@@ -154,7 +157,7 @@ describe("PackageManagerPin rejection matrix", () => {
 describe("PackageManagerPin.FromString", () => {
 	it.effect("round-trips both forms byte-for-byte", () =>
 		Effect.gen(function* () {
-			for (const input of ["pnpm@11.17.0", "npm@10.9.2+sha512.abcdef0123", "yarn@4.0.0-rc.1+sha512.0badf00d"]) {
+			for (const input of ["pnpm@11.17.0", "npm@10.9.2+sha512.abcdef0123", "bun@1.2.0-rc.1+sha512.0badf00d"]) {
 				const pin = yield* decode(input);
 				assert.instanceOf(pin, PackageManagerPin);
 				assert.strictEqual(yield* encode(pin), input);

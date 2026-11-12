@@ -1,7 +1,6 @@
 /**
- * Pure lockfile parsing for all four package-manager formats — bun
- * (`bun.lock`), npm (`package-lock.json`), pnpm (`pnpm-lock.yaml`)
- * and yarn Berry (`yarn.lock`) — normalized into one unified `Lockfile`
+ * Pure lockfile parsing for the bun (`bun.lock`), npm (`package-lock.json`)
+ * and pnpm (`pnpm-lock.yaml`) lockfile formats — normalized into one unified `Lockfile`
  * model, plus pure integrity checking of that model against workspace
  * manifests.
  *

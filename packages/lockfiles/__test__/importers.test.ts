@@ -2,8 +2,7 @@
 // `lockfile.importer(path)` keyed lookup. pnpm records `{ specifier, version }`
 // per importer dependency — the parser splits pnpm's peer-disambiguation
 // suffix off the version into `peerSuffix`; bun and npm record a specifier
-// only (the resolved version lives on package entries); yarn records no
-// importers at all.
+// only (the resolved version lives on package entries).
 
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Option } from "effect";
@@ -151,16 +150,6 @@ describe("Lockfile.importers", () => {
 				assert.isTrue(core.dependencies.every((d) => d.version === undefined));
 				assert.strictEqual(core.dependencies.find((d) => d.name === "react")?.depType, "peerDependencies");
 				assert.strictEqual(core.dependencies.find((d) => d.name === "fsevents")?.depType, "optionalDependencies");
-			}),
-		);
-	});
-
-	describe("yarn", () => {
-		it.effect("v1: records no importers", () =>
-			Effect.gen(function* () {
-				const lockfile = yield* parseFixture("yarn/v1/yarn.lock", "yarn");
-				assert.strictEqual(lockfile.importers.length, 0);
-				assert.isTrue(Option.isNone(lockfile.importer(".")));
 			}),
 		);
 	});

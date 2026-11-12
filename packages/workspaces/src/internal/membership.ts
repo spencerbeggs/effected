@@ -2,7 +2,8 @@
 // `WorkspaceDiscovery`, `WorkspacesSync` and `WorkspaceSnapshots` share, so the
 // three cannot disagree about a root (#1329).
 //
-// pnpm, yarn and bun roots read their patterns with `GlobSet` set semantics.
+// pnpm and bun roots — and any root no supported manager owns — read their
+// patterns with `GlobSet` set semantics.
 // An npm root reads its `package.json#workspaces` the way npm itself does,
 // through `@effected/npm`'s `NpmWorkspacePatterns` (`@npmcli/map-workspaces`'
 // rules): ordered negation, a trailing `/`, an even run of `!`, a backslash as
@@ -62,7 +63,9 @@ export const rulesFor = (
 ): MembershipRules => {
 	if (Option.isNone(manifest)) return GLOB_RULES;
 	const decision = decidePackageManager(manifest, has);
-	return decision?.name === "npm" ? { _tag: "npm", field: manifest.value.workspaces } : GLOB_RULES;
+	return decision?._tag === "Supported" && decision.name === "npm"
+		? { _tag: "npm", field: manifest.value.workspaces }
+		: GLOB_RULES;
 };
 
 /**

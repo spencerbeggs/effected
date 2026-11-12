@@ -218,7 +218,7 @@ const make = Effect.fnUntraced(function* () {
 				Option.fromUndefinedOr(digestAlgorithmOf(found)),
 			);
 			if (!IntegrityHash.isSri(expected) || Option.isNone(algorithm)) {
-				// Not a form this can check (the yarn form names no algorithm).
+				// Not a form this can check (a corepack hash, or an SRI algorithm core cannot digest).
 				// Saying so is the point: a silent skip here is indistinguishable
 				// from a passed verification.
 				yield* Effect.logWarning(

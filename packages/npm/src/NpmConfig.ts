@@ -86,8 +86,8 @@ export interface NpmConfigLoadOptions {
 	/**
 	 * Read the project npmrc at the workspace root rather than the nearest
 	 * package, as pnpm does: the nearest directory at or above `cwd` holding a
-	 * `pnpm-workspace.yaml`, or a `package.json` with a `workspaces` field (npm,
-	 * yarn and bun workspaces). With no such directory the default lookup
+	 * `pnpm-workspace.yaml`, or a `package.json` with a `workspaces` field (any
+	 * workspace that declares its members there). With no such directory the default lookup
 	 * applies. Defaults to `false`.
 	 *
 	 * @remarks
@@ -122,7 +122,7 @@ export interface NpmConfigLoadOptions {
 
 /**
  * Whether a `package.json` text declares workspaces: a non-null `workspaces`
- * array or object (yarn's `{ packages: [...] }` form). Malformed JSON, or a
+ * array or object (the `{ packages: [...] }` form). Malformed JSON, or a
  * document that is not an object, declares none.
  */
 const declaresWorkspaces = (text: string): boolean => {

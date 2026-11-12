@@ -52,7 +52,7 @@ export interface FindWorkspaceRootOptions {
 	 * @remarks
 	 * Pass `["pnpm-workspace.yaml"]` for a pnpm-only tool: pnpm ignores
 	 * `package.json#workspaces`, so a member package that kept the field (common
-	 * after a yarn migration) must not read as the root. An empty list is a
+	 * after a migration to pnpm) must not read as the root. An empty list is a
 	 * **defect**, like a bad `maxDepth`.
 	 *
 	 * @defaultValue every marker, `WORKSPACE_MARKERS`

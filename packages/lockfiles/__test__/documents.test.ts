@@ -278,15 +278,6 @@ describe("document framing", () => {
 					assert.deepStrictEqual(flagged, plain);
 				}),
 			);
-
-			it.effect("ignored for a non-pnpm format: an empty yarn.lock still fails 'noLockfileDocument'", () =>
-				Effect.gen(function* () {
-					const error = yield* Effect.flip(Lockfile.parse("", { format: "yarn", configOnly: true }));
-
-					assert.instanceOf(error, LockfileFramingError);
-					assert.strictEqual(error.reason, "noLockfileDocument");
-				}),
-			);
 		});
 	});
 
@@ -352,28 +343,6 @@ describe("document framing", () => {
 				assert.instanceOf(error, LockfileFramingError);
 				assert.isFalse(error instanceof LockfileParseError);
 				assert.strictEqual(error._tag, "LockfileFramingError");
-			}),
-		);
-	});
-
-	describe("yarn: no document framing means multi-document input is refused, not truncated", () => {
-		const berry = ["__metadata:\n  version: 8\n", '"a@npm:^1.0.0":\n  version: 1.0.0\n  linkType: hard\n'].join("");
-
-		it.effect("a multi-document yarn.lock fails 'unexpectedDocuments'", () =>
-			Effect.gen(function* () {
-				const error = yield* framingError(`${berry}---\n${berry}`, "yarn");
-
-				assert.strictEqual(error.reason, "unexpectedDocuments");
-				assert.strictEqual(error.documents, 2);
-			}),
-		);
-
-		it.effect("a single-document yarn.lock still parses", () =>
-			Effect.gen(function* () {
-				const lockfile = yield* Lockfile.parse(berry, { format: "yarn" });
-
-				assert.strictEqual(lockfile.format, "yarn");
-				assert.strictEqual(lockfile.lockfileVersion, "8");
 			}),
 		);
 	});

@@ -33,7 +33,7 @@ export class InvalidPackageManagerPinError extends Schema.TaggedError<InvalidPac
 		input: Schema.String,
 		/**
 		 * Which component of the pin failed: `format` (no `@` separator at all),
-		 * `name` (not one of the four supported package managers), `version` (not
+		 * `name` (not one of the three supported package managers), `version` (not
 		 * an exact SemVer 2.0.0 version — ranges, partial versions and dist-tags
 		 * all land here), or `integrity` (the tail after `+` is not a corepack
 		 * `<algo>.<hex>` hash).
@@ -45,7 +45,7 @@ export class InvalidPackageManagerPinError extends Schema.TaggedError<InvalidPac
 		return this.reason === "format"
 			? `Invalid package-manager pin "${this.input}": expected <name>@<version>[+<integrity>]`
 			: this.reason === "name"
-				? `Invalid package-manager pin "${this.input}": name must be one of npm, pnpm, yarn, bun`
+				? `Invalid package-manager pin "${this.input}": name must be one of npm, pnpm, bun`
 				: this.reason === "version"
 					? `Invalid package-manager pin "${this.input}": version must be an exact SemVer version (ranges, partial versions and dist-tags are not pinnable)`
 					: `Invalid package-manager pin "${this.input}": integrity must be a corepack <algo>.<hex> hash`;
@@ -53,7 +53,7 @@ export class InvalidPackageManagerPinError extends Schema.TaggedError<InvalidPac
 }
 
 /**
- * The four package managers a corepack pin can name.
+ * The three package managers a pin can name: npm, pnpm and bun.
  *
  * @remarks
  * Structurally identical to `@effected/workspaces`' `PackageManagerName` and
@@ -61,7 +61,7 @@ export class InvalidPackageManagerPinError extends Schema.TaggedError<InvalidPac
  * deliberately a mirror, not an import: either edge would point from this
  * package at a downstream consumer and invert the dependency direction.
  *
- * **This four-literal set is narrower than the `packageManager` manifest field,
+ * **This three-literal set is narrower than the `packageManager` manifest field,
  * and the difference is deliberate.** `@effected/package-json`'s
  * `PackageManager` parses the identical `<name>@<version>[+<integrity>]`
  * grammar with the same strict version and the same shared corepack integrity,
@@ -72,27 +72,27 @@ export class InvalidPackageManagerPinError extends Schema.TaggedError<InvalidPac
  * name grammars are the one place the schemas diverge; see the field model's
  * remarks for the evidence behind the latitude.
  *
- * Worth knowing while reading corepack's own source: corepack (0.34.0,
- * `specUtils.ts`) supports **three** managers, `npm | pnpm | yarn`, and
- * `parseSpec` throws `Unsupported package manager specification` for anything
- * else. `bun` is in this set anyway — the kit provisions bun directly, not
+ * Worth knowing while reading corepack's own source: corepack's `parseSpec`
+ * (`specUtils.ts`) throws `Unsupported package manager specification` for
+ * `bun`. `bun` is in this set anyway — the kit provisions bun directly, not
  * through corepack — which is exactly why the set is stated in kit terms and
- * not copied from corepack.
+ * not copied from corepack; a manager corepack runs that the kit does not
+ * support fails here with `reason: "name"`.
  *
  * @public
  */
-export const PackageManagerPinName = Schema.Literals(["npm", "pnpm", "yarn", "bun"]);
+export const PackageManagerPinName = Schema.Literals(["npm", "pnpm", "bun"]);
 
 /**
  * The decoded type of {@link (PackageManagerPinName:variable)}:
- * `"npm" | "pnpm" | "yarn" | "bun"`.
+ * `"npm" | "pnpm" | "bun"`.
  *
  * @public
  */
 export type PackageManagerPinName = typeof PackageManagerPinName.Type;
 
 const isPinName = (value: string): value is PackageManagerPinName =>
-	value === "npm" || value === "pnpm" || value === "yarn" || value === "bun";
+	value === "npm" || value === "pnpm" || value === "bun";
 
 // A pin's version is an exact SemVer version with NO build metadata: the pin
 // grammar cannot express it (the first `+` always begins the integrity), so a
@@ -142,7 +142,7 @@ const pinVersion = SemVer.pipe(
  * @public
  */
 export class PackageManagerPin extends Schema.Class<PackageManagerPin>("PackageManagerPin")({
-	/** The package-manager name (`npm`, `pnpm`, `yarn` or `bun`). */
+	/** The package-manager name (`npm`, `pnpm` or `bun`). */
 	name: PackageManagerPinName,
 	/**
 	 * The exact pinned version. Never carries build metadata — the pin grammar

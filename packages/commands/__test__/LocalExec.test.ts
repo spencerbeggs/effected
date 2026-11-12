@@ -27,11 +27,6 @@ describe("LocalExec.prefixes", () => {
 			// live at npm 11); `npm run -- <script> --flag` forwards it.
 			scriptPrefix: ["npm", "run", "--"],
 		});
-		assert.deepStrictEqual(LocalExec.prefixes("yarn"), {
-			prefix: ["yarn", "exec"],
-			dlxPrefix: ["yarn", "dlx"],
-			scriptPrefix: ["yarn", "run"],
-		});
 		assert.deepStrictEqual(LocalExec.prefixes("bun"), {
 			prefix: ["bun", "x", "--no-install"],
 			dlxPrefix: ["bun", "x"],
@@ -40,7 +35,7 @@ describe("LocalExec.prefixes", () => {
 	});
 
 	it("scriptPrefix is a projection of the same table, never a second opinion", () => {
-		for (const launcher of ["npm", "pnpm", "yarn", "bun"] as const) {
+		for (const launcher of ["npm", "pnpm", "bun"] as const) {
 			assert.deepStrictEqual(LocalExec.scriptPrefix(launcher), LocalExec.prefixes(launcher).scriptPrefix);
 		}
 	});
@@ -49,7 +44,7 @@ describe("LocalExec.prefixes", () => {
 		// The uniformity is the point of the member: the consumer this replaces
 		// kept a hand-rolled argv table that disagreed with itself about whether
 		// `run` was needed per manager.
-		for (const launcher of ["npm", "pnpm", "yarn", "bun"] as const) {
+		for (const launcher of ["npm", "pnpm", "bun"] as const) {
 			assert.include(LocalExec.scriptPrefix(launcher), "run", `${launcher} script prefix`);
 		}
 	});
@@ -69,8 +64,8 @@ describe("LocalExec.command", () => {
 	});
 
 	it("picks the dlx or script prefix by kind, and sets a cwd only when given", () => {
-		const dlx = LocalExec.command("yarn", "cowsay", ["hi"], { kind: "dlx" });
-		assert.deepStrictEqual(argv(dlx), ["yarn", "dlx", "cowsay", "hi"]);
+		const dlx = LocalExec.command("pnpm", "cowsay", ["hi"], { kind: "dlx" });
+		assert.deepStrictEqual(argv(dlx), ["pnpm", "dlx", "cowsay", "hi"]);
 		assert.isUndefined(dlx.options.cwd);
 		const script = LocalExec.command("npm", "build", ["--watch"], { kind: "script", cwd: "/repo" });
 		assert.deepStrictEqual(argv(script), ["npm", "run", "--", "build", "--watch"]);
@@ -78,7 +73,7 @@ describe("LocalExec.command", () => {
 	});
 
 	it("round-trips through parse for every launcher and kind, with no alias emitted", () => {
-		for (const launcher of ["npm", "pnpm", "yarn", "bun"] as const) {
+		for (const launcher of ["npm", "pnpm", "bun"] as const) {
 			for (const kind of ["exec", "dlx", "script"] as const) {
 				const built = argv(LocalExec.command(launcher, "tool", ["--flag", "x"], { kind }));
 				const field = kind === "exec" ? "prefix" : kind === "dlx" ? "dlxPrefix" : "scriptPrefix";

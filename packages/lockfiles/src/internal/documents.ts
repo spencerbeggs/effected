@@ -4,17 +4,6 @@ import type { ParseFailure } from "./shared.js";
 import { framingFailure, syntaxFailure } from "./shared.js";
 
 /**
- * A document selected out of a YAML stream, with the stream's document count
- * carried alongside so a framing failure can report it.
- *
- * @internal
- */
-export interface SelectedDocument {
-	readonly document: unknown;
-	readonly documents: number;
-}
-
-/**
  * An empty YAML document composes to `null` (`Yaml.parseAll("")` is `[null]`,
  * and the trailing document of an env-only `pnpm-lock.yaml` is `null` too).
  * A *present* scalar — `42` — is not empty; it is a shape error, and must
@@ -91,31 +80,4 @@ export const splitPnpmStream = (content: string): Effect.Effect<PnpmStream, Pars
 		return documents.length === MAX_PNPM_DOCUMENTS
 			? { preamble: present(documents[0]), main: present(documents[1]), documents: documents.length }
 			: { preamble: undefined, main: present(documents[0]), documents: documents.length };
-	});
-
-/**
- * Select the sole document of a YAML lockfile format that defines **no**
- * document framing — yarn Berry's `yarn.lock`.
- *
- * @remarks
- * yarn never writes a multi-document `yarn.lock`, so there is no writer
- * contract to read a "main" document out of one. Rather than silently taking
- * the first document (which is what a single-document parse does, and how the
- * pnpm bug stayed invisible), a stream carrying more than one document fails
- * through the typed framing channel: we refuse to guess where the format
- * defines no rule.
- *
- * @internal
- */
-export const selectSoleDocument = (content: string): Effect.Effect<SelectedDocument, ParseFailure> =>
-	Effect.gen(function* () {
-		const documents = yield* Yaml.parseAll(content).pipe(Effect.mapError(syntaxFailure));
-		if (documents.length > 1) {
-			return yield* Effect.fail(framingFailure("unexpectedDocuments", documents.length));
-		}
-		const document = documents.at(0);
-		if (documents.length === 0 || isEmptyDocument(document)) {
-			return yield* Effect.fail(framingFailure("noLockfileDocument", documents.length));
-		}
-		return { document, documents: documents.length };
 	});

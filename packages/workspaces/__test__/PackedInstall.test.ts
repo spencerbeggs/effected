@@ -36,10 +36,10 @@ const ENV = {
 	npm_config_user_agent: "pnpm/12",
 	pnpm_config_verify_deps_before_run: "false",
 	PNPM_SCRIPT_SRC_DIR: "/repo/packages/carrier",
-	YARN_NODE_LINKER: "pnp",
 };
 const SCRUBBED = { PATH: "/usr/bin", HOME: "/home/u" };
-const versions: Readonly<Record<string, string>> = { npm: "11.19.1\n", pnpm: "12.5.1\n", bun: "1.4.2\n" };
+// bun is the manager this harness has not installed: its probe answers ENOENT.
+const versions: Readonly<Record<string, string>> = { npm: "11.19.1\n", pnpm: "12.5.1\n" };
 
 /** Answers `--version` from `versions` (absent = not installed); everything else from `rest`. */
 const script =
@@ -64,7 +64,7 @@ describe("PackedInstall.run", () => {
 					PackedInstall.run({
 						carrier: "@x/carrier",
 						closure: "auto",
-						managers: ["npm", "pnpm", "yarn", "bun"],
+						managers: ["npm", "pnpm", "bun"],
 						packFrom: { directory: "dist/pkg" },
 						bins: ["x"],
 						env: ENV,
@@ -72,13 +72,12 @@ describe("PackedInstall.run", () => {
 				);
 				assert.strictEqual(error.reason, "PackSourceMissing");
 				assert.strictEqual(error.package, "@x/carrier");
-				const probes = probing.spawns.slice(0, 4);
+				const probes = probing.spawns.slice(0, 3);
 				assert.deepStrictEqual(
 					probes.map((spawn) => [spawn.command, ...spawn.args]),
 					[
 						["npm", "--version"],
 						["pnpm", "--version"],
-						["yarn", "--version"],
 						["bun", "--version"],
 					],
 				);
@@ -89,7 +88,7 @@ describe("PackedInstall.run", () => {
 					assert.strictEqual(spawn.extendEnv, false);
 					assert.strictEqual(spawn.options.stdin, "ignore");
 				}
-				assert.strictEqual(probing.spawns.length, 4, "nothing packed from a missing directory");
+				assert.strictEqual(probing.spawns.length, 3, "nothing packed from a missing directory");
 			}),
 		);
 	});
@@ -98,7 +97,7 @@ describe("PackedInstall.run", () => {
 		it.effect("fails NoManagerAvailable rather than succeeding with nothing installed", () =>
 			Effect.gen(function* () {
 				const error = yield* Effect.flip(
-					PackedInstall.run({ carrier: "@x/carrier", closure: "auto", managers: ["yarn"], bins: [], env: ENV }),
+					PackedInstall.run({ carrier: "@x/carrier", closure: "auto", managers: ["bun"], bins: [], env: ENV }),
 				);
 				assert.strictEqual(error.reason, "NoManagerAvailable");
 			}),
@@ -120,13 +119,13 @@ describe("PackedInstall.run", () => {
 					PackedInstall.run({
 						carrier: "@x/carrier",
 						closure: "auto",
-						managers: ["npm", "yarn"],
+						managers: ["npm", "bun"],
 						require: "all",
 						bins: [],
 						env: ENV,
 					}),
 				);
-				assert.deepStrictEqual([error.reason, error.manager], ["ManagerUnavailable", "yarn"]);
+				assert.deepStrictEqual([error.reason, error.manager], ["ManagerUnavailable", "bun"]);
 			}),
 		);
 
@@ -329,7 +328,7 @@ describe("PackedInstall.run past the pack", () => {
 				const result = yield* PackedInstall.run({
 					carrier: "@x/carrier",
 					closure: "auto",
-					managers: ["npm", "yarn", "pnpm"],
+					managers: ["npm", "bun", "pnpm"],
 					bins: ["x"],
 					env: ENV,
 				});
@@ -341,7 +340,7 @@ describe("PackedInstall.run past the pack", () => {
 					],
 				);
 				assert.strictEqual(result.consumers[0]?.binPath("x"), "/scratch/consumer-npm/node_modules/.bin/x");
-				assert.deepStrictEqual(result.unavailable, ["yarn"], "require defaults to any");
+				assert.deepStrictEqual(result.unavailable, ["bun"], "require defaults to any");
 				assert.deepStrictEqual(result.tarballs, { "@x/carrier": CARRIER_TGZ, "@x/lib": LIB_TGZ });
 				assert.strictEqual(result.scratch, SCRATCH, "the scratch root is exposed");
 				assert.strictEqual(result.consumers[0]?.carrier, "@x/carrier", "each consumer records its carrier");
@@ -1118,14 +1117,14 @@ describe("PackedInstall.timeoutBudget", () => {
 
 	it("sums every manager's probe, install and perConsumer, every package's pack and manifest read, the slack and cleanup", () => {
 		const budget = PackedInstall.timeoutBudget({
-			managers: ["npm", "pnpm", "yarn", "bun"],
+			managers: ["npm", "pnpm", "bun"],
 			installTimeout: "3 minutes",
 			packages: 3,
 			perConsumer: "2 minutes",
 		});
-		// 4 x (0.5 + 3 + 2) + 3 x (2 + 0.5) + 0.5 untimed + 1 cleanup
-		assert.strictEqual(minutes(budget), 31);
-		assert.strictEqual(Duration.format(budget), "31m");
+		// 3 x (0.5 + 3 + 2) + 3 x (2 + 0.5) + 0.5 untimed + 1 cleanup
+		assert.strictEqual(minutes(budget), 25.5);
+		assert.strictEqual(Duration.format(budget), "25m 30s");
 	});
 
 	it("defaults installTimeout to the run's four minutes and perConsumer to one runBin's minute, and counts a repeated manager once", () => {
@@ -1141,14 +1140,14 @@ describe("PackedInstall.timeoutBudget", () => {
 
 	it("takes the run's packTimeout per package, and the names closure returns as the package count", () => {
 		const budget = PackedInstall.timeoutBudget({
-			managers: ["npm", "pnpm", "yarn", "bun"],
+			managers: ["npm", "pnpm", "bun"],
 			installTimeout: "3 minutes",
 			packTimeout: "30 seconds",
 			packages: ["my-tool", "my-tool-cli", "my-tool-core"],
 			perConsumer: "2 minutes",
 		});
-		// 4 x (0.5 + 3 + 2) + 3 x (0.5 + 0.5) + 0.5 untimed + 1 cleanup
-		assert.strictEqual(Duration.format(budget), "26m 30s");
+		// 3 x (0.5 + 3 + 2) + 3 x (0.5 + 0.5) + 0.5 untimed + 1 cleanup
+		assert.strictEqual(Duration.format(budget), "21m");
 		assert.strictEqual(
 			minutes(PackedInstall.timeoutBudget({ managers: ["npm"], packages: ["a", "b"] })),
 			minutes(PackedInstall.timeoutBudget({ managers: ["npm"], packages: 2 })),

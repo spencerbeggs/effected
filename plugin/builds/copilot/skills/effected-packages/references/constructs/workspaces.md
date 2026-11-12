@@ -59,15 +59,15 @@
 | `OffenceRule` | TypeAlias | The rule an `Offence` names: every string `BoundaryRule`, plus `"forbidImports"` for any `{ forbidImports }` rule, `"forbidTokens"` for any `{ forbidTokens }` rule and `"forbidImportedNames"` for any `{ forbidImportedNames }` rule and `"promiseInExclusive"` for any `{ promiseInExclusive }` rule. These are the keys of `ScanOptions.allowRules`. | from `@effected/workspaces/testing` |
 | `PackSource` | TypeAlias | Where each closure package is packed from. | from `@effected/workspaces/testing` |
 | `PackageManagerDetectionError` | Class | Raised when a directory carries no lockfile and no workspace configuration, so no package manager can be attributed to it. | handle no package manager could be detected at a workspace root |
-| `PackageManagerDetectionFailure` | TypeAlias | Every failure `PackageManagerDetector` can surface: no manager could be attributed to the root, or the root's `package.json` exists but cannot be read or parsed. | |
-| `PackageManagerDetector` | Class | Detects which package manager owns a workspace root. | detect which package manager npm pnpm yarn bun runs a workspace |
+| `PackageManagerDetectionFailure` | TypeAlias | Every failure `PackageManagerDetector` can surface: no manager could be attributed to the root, the root belongs to an unsupported manager, or the root's `package.json` exists but cannot be read or parsed. | |
+| `PackageManagerDetector` | Class | Detects which package manager owns a workspace root. | detect which package manager npm pnpm or bun runs a workspace |
 | `PackageManagerDetectorShape` | Interface | The `PackageManagerDetector` service shape. | |
 | `PackageManagerEvidence` | Variable + TypeAlias | The decoded type of `(PackageManagerEvidence:variable)`: the marker that decided a detection. | which marker file or manifest field decided a package-manager detection |
-| `PackageManagerName` | Variable + TypeAlias | The decoded type of `(PackageManagerName:variable)`: `"npm" \| "pnpm" \| "yarn" \| "bun"`. | the four supported package managers, npm pnpm yarn bun |
+| `PackageManagerName` | Variable + TypeAlias | The decoded type of `(PackageManagerName:variable)`: `"npm" \| "pnpm" \| "bun"`. | the supported package managers, npm pnpm bun |
 | `PackageNotFoundError` | Class | Raised when a workspace package is requested by a name no member carries. | handle an unknown workspace package name requested by name |
 | `PackageRelease` | Interface | One entry in a release batch: which package went out, at which version. | |
 | `PackageStateSnapshot` | Class | One workspace member as captured in a `WorkspaceStateSnapshot` — the serializable slice a snapshot diff reads: identity, version, location, and the four dependency records. | one package's captured state at a point in time: name, version, dependencies |
-| `PackedInstall` | Class | Prove a carrier's bins reach a consumer that is not part of the workspace, once per available package manager. | from `@effected/workspaces/testing` — pack carrier, install outside workspace under npm pnpm yarn bun, closure before run, override unreleased dependency |
+| `PackedInstall` | Class | Prove a carrier's bins reach a consumer that is not part of the workspace, once per available package manager. | from `@effected/workspaces/testing` — pack carrier, install outside workspace under npm pnpm bun, closure before run, override unreleased dependency |
 | `PackedInstallBudget` | Interface | What `PackedInstall.timeoutBudget` adds up. | from `@effected/workspaces/testing` |
 | `PackedInstallClosureOptions` | Interface | What decides the set of packages a packed install packs: the options `PackedInstall.closure` and `PackedInstall.run` share. | from `@effected/workspaces/testing` |
 | `PackedInstallError` | Class | Why a packed install could not be proven. | from `@effected/workspaces/testing` — packed install failure, manager unavailable, unresolved workspace protocol, missing bin, invalid override, bin conflict |
@@ -113,6 +113,7 @@
 | `UndeclaredScan` | Class | What an undeclared-import check read and found. | from `@effected/workspaces/testing` — undeclared import check result, violation labels, packages and files checked |
 | `UnresolvedImport` | Class | One relative import no file candidate resolved: a link of the graph the walk could not follow, so whatever it would have reached is unproven. | from `@effected/workspaces/testing` — relative or followed import no candidate file resolves |
 | `UnsatisfiedPeer` | Class | One peer dependency that is declared but not satisfied. | one declared but unmet peer dependency row, missing or wrong version resolved |
+| `UnsupportedPackageManagerError` | Class | Raised when a root belongs to a package manager this package does not act on, so detection names it instead of guessing a supported one. | detect a yarn repository, refuse an unsupported package manager instead of guessing npm |
 | `UnverifiedReason` | TypeAlias | Why a report is not a complete answer. | |
 | `VersioningDetectOptions` | Interface | Arguments to `VersioningStrategy.detect`. | |
 | `VersioningStrategy` | Class | How a workspace versions, and the tagging that follows from it. | how a workspace assigns versions: single fixed-group or independent, derive release tags |
@@ -151,7 +152,7 @@
 | `WorkspacesServices` | TypeAlias | Every service the git-free composite layer provides. | |
 | `WorkspacesSyncOptions` | Interface | The consumer-supplied operations backing one sync call: the file operations and the path implementation. Both are required — this package never imports `node:*` and never assumes posix, so the platform binding is entirely the caller's. | |
 | `classifyTag` | Function | Decide whether a tag string is a release tag, a tracking alias, or neither. | classify a git tag string as a release tag or a tracking alias |
-| `detectPackageManagerSync` | Function | Which package manager owns `root`, synchronously — the same answer `PackageManagerDetector.detect` gives, as a `Result`. | synchronously detect pnpm, npm, yarn or bun at a root, no Effect runtime |
+| `detectPackageManagerSync` | Function | Which package manager owns `root`, synchronously — the same answer `PackageManagerDetector.detect` gives, as a `Result`. | synchronously detect pnpm, npm or bun at a root, no Effect runtime |
 | `findWorkspaceRootSync` | Function | The nearest workspace root at or above `cwd`, or `null`. | synchronously find the workspace root, non-Effect entry point for config files like vitest.config |
 | `getWorkspacePackagesSync` | Function | Every workspace package under `root`, root package first. | synchronously enumerate workspace packages, non-Effect entry point for config files |
 | `localExecContextSync` | Function | The project-local execution context for `cwd`, synchronously — what `Workspaces.localExecLayer` answers through `LocalExec.context`. | synchronously get the pnpm exec or npx prefix for this workspace |
