@@ -22,7 +22,7 @@ release pipeline.
 | `PackagePublish` | `@effected/npm` | Setting up auth, packing a tarball, or publishing it |
 | `NpmExecutor` | `@effected/npm` | Choosing between the ambient npm and a pinned `dlx`-fetched one |
 | `classifyRegistry` | `@effected/npm` | Deciding whether a registry is public npm, GitHub Packages, JSR or custom |
-| `ReleaseAgeGate` | `@effected/npm` | Holding a version back until it has aged past a minimum |
+| `ReleaseAgeGate` | `@effected/pnpm` | Holding a version back until it has aged past a minimum |
 | `VersioningStrategy`, `ReleaseTag` | `import { VersioningStrategy } from "@effected/workspaces"` | Classifying a workspace's release shape and formatting its tags |
 | `TrackingTag` | `@effected/workspaces` | Deriving the floating `v1`/`v1.2` GitHub Actions distribution aliases |
 | `PublishabilityDetector` | `@effected/workspaces` | Wiring or overriding which packages publish, and to where |

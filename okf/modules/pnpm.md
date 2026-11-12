@@ -1,21 +1,29 @@
 ---
 type: Module
 title: pnpm
-description: Everything pnpm owns alone — its settings catalog, versioning block, overrides grammar, workspace file editor, release-age gate, catalogs and lockfile document — over the npm vocabulary it shares.
+description: Everything pnpm owns alone — its effective settings (PnpmSettings), release-age gate (ReleaseAgeGate), package-name pattern lists (PnpmMatcher) and, still to move in, its settings catalog, versioning block, overrides grammar, workspace file editor and lockfile document — over the npm vocabulary it shares.
 status: draft
 kind: package
 resource: ../../packages/pnpm
 tags:
   - architecture
 generated:
-  by: "claude-code/sonnet-5.5"
-  at: 2026-11-12T23:05:46Z
+  by: "okfit/claude-code"
+  at: 2026-11-12T23:38:43Z
 sources:
   - id: package-manager-model-design
     resource: ../../docs/superpowers/specs/2026-11-12-package-manager-model-design.md
+  - id: protocol-owner
+    resource: ../decisions/catalog-and-workspace-protocol-owner.md
+  - id: pnpm-settings-ts
+    resource: ../../packages/pnpm/src/PnpmSettings.ts
+  - id: release-age-gate-ts
+    resource: ../../packages/pnpm/src/ReleaseAgeGate.ts
+  - id: pnpm-matcher-ts
+    resource: ../../packages/pnpm/src/PnpmMatcher.ts
 integrity:
   generated:
-    body: 8602a9e49f76de99
+    body: e9a95ebf2b9a5c26
 ---
 
 # pnpm
@@ -26,19 +34,113 @@ integrity:
 
 ## Tier and dependency posture
 
-Pure tier at the root: `effect` is the only peer, `@effected/npm` the only dependency, no IO. The dependency direction is `npm <- pnpm` and `npm <- bun`, then both `<- lockfiles <- workspaces`, with `pnpm <- workspaces` as well. No manager package depends on `lockfiles` or `workspaces`; `lockfiles` imports each manager's native document schema and owns the normalisation into its common model. The package sits one layer above `npm` and below `lockfiles` in `lib/configs/layers.json`.
+Boundary tier at the root: `effect` and `@effected/semver` are the peers, `@effected/npm`, `@effected/glob`, `@effected/walker` and `@effected/yaml` the dependencies, and the only IO is `PnpmSettings.load`, through core `FileSystem` and `Path` in `R`. No module imports `node:*`. The dependency direction is `npm <- pnpm` and `npm <- bun`, then both `<- lockfiles <- workspaces`, with `pnpm <- workspaces` as well. No manager package depends on `lockfiles` or `workspaces`; `lockfiles` imports each manager's native document schema and owns the normalisation into its common model. The package sits one layer above `npm` and below `lockfiles` in `lib/configs/layers.json`. The `@effected/semver` peer is not used here; it closes the peer that `@effected/npm` declares.
+
+## Contents
+
+- **`PnpmSettings`** and **`PnpmSettingsError`**: the settings `pnpm config get` reports, merged from `pnpm_config_*`/`PNPM_CONFIG_*` variables, the workspace root's `pnpm-workspace.yaml` and pnpm's global `config.yaml`, highest first. `fromSourcesResult` is the pure merge; `load` is the IO shell.[^pnpm-settings-ts] The precedence and membership detail is under [pnpm settings](#pnpm-settings) below.
+- **`ReleaseAgeGate`** and **`PartialReleaseAgeGate`**: pnpm's `minimumReleaseAge` (minutes) and `minimumReleaseAgeExclude` as pure vocabulary. `combine` is the single clamping authority (strictest age wins, excludes union); `matchesExclude` is pnpm's flat `*`-crosses-`/` matcher, deliberately not `@effected/glob`'s dialect; `filterVersions` drops too-young versions against a caller's clock.[^release-age-gate-ts] npm's own `min-release-age` (days, minimatch excludes) is a different definition and is `@effected/npm`'s `NpmReleaseAge`.
+- **`PnpmMatcher`**: `compile(patterns)` turns a `peerDependencyRules.ignoreMissing` or `allowAny` list into a predicate with `@pnpm/matcher`'s composition rules (negation, ordered resets). Its single-pattern step is `ReleaseAgeGate.matchesExclude`, so a change to one moves the other. `@effected/workspaces`' `PeerCheck` is its consumer.[^pnpm-matcher-ts]
+
+The `catalog:` and `workspace:` protocols are not here: bun reads them the way pnpm 12 does, so `CatalogResolver`, `WorkspaceResolver` and the specifier grammar stay in `@effected/npm`, and `CatalogSet` stays in `@effected/workspaces`, which assembles it from lockfiles.[^protocol-owner]
 
 ## Planned contents
 
-- The settings catalog: every pnpm 12 setting as an Effect schema with its kind, description, the places it may be set and a docs anchor.
+- The settings catalog: every pnpm 12 setting as an Effect schema with its kind, description, the places it may be set and a docs anchor, with typed reads through it from `PnpmSettings`.
 - The `versioning` block schema (`fixed`, `ignore`, `maxBump`, `lanes`, `epics`, `changelog`).
 - The `overrides` key grammar and the `peerDependencyRules` shapes.
-- `PnpmSettings`, the merged read of env, `pnpm-workspace.yaml` and global `config.yaml` in pnpm's precedence order, with typed reads through the catalog.
 - The `pnpm-workspace.yaml` editor, which keeps formatting and writes keys in a canonical order.
-- `ReleaseAgeGate`, `CatalogSet` with the `catalog:` protocol and `CatalogResolver`, and `WorkspaceResolver`, unless bun's definition proves identical, in which case the shared part stays in `npm`.
 - The `pnpm-lock.yaml` document grammar, `PnpmExtension` and `PnpmEnvLockfile`.
 
 Policy over the catalog (merge strategy, enforcement, the catalog-to-overrides directive) stays outside this package.
+
+## pnpm settings
+
+`PnpmSettings` answers what `pnpm config get <key>` answers for a pnpm
+setting, without spawning pnpm. Its first consumer is
+rolldown-pnpm-config's `upgrade`, which applies pnpm's release-age gate
+itself and needs `minimumReleaseAge` and `minimumReleaseAgeExclude`.
+It is a `Schema.Class` value, not a service: the merge and the typed reads
+are pure (`PnpmSettings.fromSourcesResult` over text), and
+`PnpmSettings.load` is a thin shell that locates the two files and reads
+them through core `FileSystem`.[^pnpm-settings-ts]
+
+Precedence, highest first: a `pnpm_config_<snake>` or
+`PNPM_CONFIG_<SNAKE>` variable, the workspace root's
+`pnpm-workspace.yaml`, then pnpm's global `config.yaml`. A higher source
+replaces a lower one's value whole; lists are not merged. This order was
+read off pnpm itself with `pnpm config get` over hermetic `HOME` and
+`XDG_CONFIG_HOME` trees, for both in-window majors: the pnpm 12 native
+binary and the pnpm 11 JS build, whose `getConfigDir` and env reader were
+also read in source. The probes settled what the reader leaves out, too.
+pnpm 11 and 12 take no pnpm setting from `.npmrc` (only registry and auth
+keys), from `npm_config_*` variables or from the old global `rc` file. A
+registry or a credential is `@effected/npm`'s `NpmConfig`, which reads
+exactly those files. The global directory is `$XDG_CONFIG_HOME/pnpm`,
+else `~/Library/Preferences/pnpm` on darwin, `%LOCALAPPDATA%\pnpm\config`
+on win32, and `~/.config/pnpm` elsewhere. `platform` and `env` are required
+options, because the package reads no ambient `process`.
+
+The workspace file is found the way pnpm's `findWorkspaceDir` finds it,
+read in the pnpm 11 source and probed against both majors:
+
+- A `PNPM_CONFIG_WORKSPACE_DIR` / `NPM_CONFIG_WORKSPACE_DIR` variable (either
+  case) names the directory, unconditionally.
+- Otherwise the ascent starts from the real path of `cwd`
+  (`FileSystem.realPath`, the lexical path when that fails), through
+  `Walker.ascend` and `Walker.findUpward`, to the nearest
+  `pnpm-workspace.yaml`. A misnamed manifest (`pnpm-workspace.yml`,
+  `.pnpm-workspace.yaml` and five more spellings) is passed over, as pnpm 12
+  passes it. pnpm 11 fails below one with
+  `ERR_PNPM_BAD_WORKSPACE_MANIFEST_NAME`.
+- The found manifest applies only when `cwd` belongs to it: `cwd` is the
+  root, `cwd` holds no `package.json`/`package.json5`/`package.yaml`, or
+  `cwd` matches the `packages:` patterns. Membership matches
+  `<dir>/package.json` against `<pattern>/package.json` through a
+  `GlobSet`, so `examples/**` excludes `examples` itself; a `!` pattern
+  excludes, a `/`-leading one is skipped, and an absent list is `["."]`, the
+  root alone. A single-package repo with no `packages:` key therefore gives
+  a nested project (an example app, a fixture) no workspace settings, as
+  pnpm does. A directory under `node_modules` or `bower_components` is never
+  a member. pnpm 12 diverges there: it counts a top-level `node_modules`
+  matched by `*`.
+
+The typed reads follow pnpm 12 where the majors differ:
+
+- An environment value is parsed as the type the accessor asks for, and one
+  that does not parse falls through to the next source. pnpm 11 instead keeps
+  an unparseable list value as a string.
+  - An integer setting (`minimumReleaseAge`) takes canonical digits only, once
+    trimmed: pnpm 12 skips `05`, `00`, `+5`, `-0`, `5.0`, `0x10`, `0b11`, `1e2`
+    and `1_000`, all of which pnpm 11 coerces through `Number`. The value must
+    be a safe integer, where pnpm 12 reads an unsigned 64-bit one.
+  - `getNumber` takes a canonical decimal (optional `-`, an optional
+    fraction, no leading zero).
+  - A boolean is exactly `true` or `false`, trimmed and lowercase.
+  - A list is a JSON array of strings.
+- An empty variable is unset. pnpm 11 reads an empty
+  `PNPM_CONFIG_MINIMUM_RELEASE_AGE` as `0`.
+- When both spellings are set, the uppercase one wins. pnpm 11's answer
+  depends on the order the variables appear in the environment.
+- In a file, pnpm 12 coerces before it type-checks, and so does the reader:
+  a boolean setting reads `true`/`yes`/`y`/`on` and `false`/`no`/`n`/`off`,
+  quoted or not, trimmed and in any case. An integer setting reads a quoted
+  canonical digit string. pnpm 11 returns such strings as written.
+- A file value that still has the wrong type answers `None` rather than
+  falling through, because pnpm 12 refuses to load the file (`invalid u64`,
+  `invalid boolean`). A YAML number is read as decoded, so an unquoted `5.0`
+  or `1e2` reads as 5 or 100 where pnpm 12 refuses the file.
+- A `null` is unset, so the global file answers. pnpm 11 instead reports
+  the `null`, shadowing the global value. An empty list shadows in both.
+
+The reader does not model three things. Built-in defaults stay out, because
+`pnpm config get` shows `minimumReleaseAge` as unset too. Command-line flags
+stay out. So do the per-setting source restrictions pnpm applies to a few
+machine-level settings.
+
+`@effected/workspaces`' `WorkspaceCatalogs.releaseAgeGate()` answers a
+different question: the gate declared by the workspace file plus replayed
+config-dependency hooks, with no environment or global layer.
 
 ## The `/settings` subpath
 
@@ -46,6 +148,10 @@ The settings catalog is one large object a bundler cannot tree-shake, so it ship
 
 ## Current state
 
-The package is scaffolded: the root entry is empty and the modules above move in from `npm`, `workspaces` and `lockfiles`.
+The root entry exports `PnpmSettings`, `PnpmSettingsError`, `ReleaseAgeGate`, `PartialReleaseAgeGate` and `PnpmMatcher`, pinned by `__test__/entrypoints.test.ts`. The planned contents move in from rolldown-pnpm-config and `lockfiles`.
 
 [^package-manager-model-design]: `docs/superpowers/specs/2026-11-12-package-manager-model-design.md`
+[^protocol-owner]: [catalog-and-workspace-protocol-owner](../decisions/catalog-and-workspace-protocol-owner.md)
+[^pnpm-settings-ts]: `packages/pnpm/src/PnpmSettings.ts`; the tests are `__test__/PnpmSettings.test.ts` and `__test__/PnpmSettingsLoad.test.ts`.
+[^release-age-gate-ts]: `packages/pnpm/src/ReleaseAgeGate.ts`
+[^pnpm-matcher-ts]: `packages/pnpm/src/PnpmMatcher.ts`

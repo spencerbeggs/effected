@@ -15,6 +15,12 @@
 * Added bun
 * Updated effected
 * Added pnpm
+* Updated @effected/workspaces catalogs and the config-dependency seam
+* Updated @effected/workspaces peer-dependency checking
+* Updated @effected/workspaces: monorepo tooling
+* Updated Library tier (pure / boundary / integrated)
+* Added The catalog: and workspace: protocols are shared, so their contracts stay in @effected/npm
+* Updated npm
 
 ## 2026-11-11
 

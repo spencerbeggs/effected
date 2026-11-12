@@ -79,14 +79,6 @@ export {
 	UnsatisfiedPeer,
 	type UnverifiedReason,
 } from "./PeerCheck.js";
-export {
-	type PnpmSettingOrigin,
-	PnpmSettings,
-	PnpmSettingsError,
-	type PnpmSettingsLoadOptions,
-	type PnpmSettingsSource,
-	type PnpmSettingsSources,
-} from "./PnpmSettings.js";
 export { PublishTarget, PublishabilityDetector, type PublishabilityDetectorShape } from "./Publishability.js";
 export {
 	ReleaseTag,

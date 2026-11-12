@@ -25,10 +25,10 @@ sources:
     resource: ../../packages/workspaces/src/internal/configDependencySpecGrammar.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T21:12:01Z
+  at: 2026-11-12T23:38:43Z
 integrity:
   generated:
-    body: f2533ac83aa9718f
+    body: 9fe075043815a8bb
 ---
 
 # @effected/workspaces catalogs and the config-dependency seam
@@ -90,8 +90,9 @@ discard-by-projection defect the seam itself once had. Every
 `layerWithHooks(hooks, options)`, which is also how a test reaches
 `layerFrom` through the real graph.
 
-`src/internal/catalogs.ts` is the only module in the package that imports
-`@pnpm/catalogs.*`.[^internal-catalogs-ts]
+`src/internal/catalogs.ts` is the one catalog engine, a restatement of
+pnpm 12's catalog crates; see
+[the protocol-owner decision](../decisions/catalog-and-workspace-protocol-owner.md).[^internal-catalogs-ts]
 
 ## ConfigDependencySpec — one configDependencies value
 
@@ -319,5 +320,5 @@ assembly errors.
 [^config-dependency-spec-grammar-ts]: `packages/workspaces/src/internal/configDependencySpecGrammar.ts` —
     `splitConfigDependencySpec` and the header comment on the two policies
     over it.
-[^internal-catalogs-ts]: `packages/workspaces/src/internal/catalogs.ts:1-12` —
-    the header comment and the four `@pnpm/catalogs.*` imports.
+[^internal-catalogs-ts]: `packages/workspaces/src/internal/catalogs.ts` — the
+    header comment naming the pnpm 12 crate each function restates.

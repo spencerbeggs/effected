@@ -8,7 +8,7 @@
 
 import { assert, describe, it, layer } from "@effect/vitest";
 import { Lockfile, ResolvedPackage } from "@effected/lockfiles";
-import { ReleaseAgeGate } from "@effected/npm";
+import { ReleaseAgeGate } from "@effected/pnpm";
 import { Cause, Effect, Exit, Option } from "effect";
 import {
 	CatalogSet,

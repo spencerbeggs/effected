@@ -740,11 +740,11 @@
 		},
 		{
 			"file": "effect-v4-testing/references/structural-checks.md",
-			"anchor": "packages/npm/__test__/reachability.test.ts:131-147",
+			"anchor": "packages/npm/__test__/reachability.test.ts:130-146",
 			"source": "repo:packages/npm/__test__/reachability.test.ts",
 			"symbols": {
-				"131": "it(\"index.ts exports the services by name\"",
-				"147": "^\t});$"
+				"130": "it(\"index.ts exports the services by name\"",
+				"146": "^\t});$"
 			}
 		},
 		{

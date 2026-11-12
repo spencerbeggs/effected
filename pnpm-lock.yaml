@@ -364,6 +364,9 @@ importers:
       '@effect/vitest':
         specifier: 4.1.4
         version: 4.1.4(effect@4.1.4)(vitest@5.1.0)
+      '@effected/semver':
+        specifier: workspace:*
+        version: link:../semver
       '@types/node':
         specifier: catalog:effected:build
         version: 26.6.6
@@ -1521,13 +1524,28 @@ importers:
 
   packages/pnpm:
     dependencies:
+      '@effected/glob':
+        specifier: workspace:^
+        version: link:../glob
       '@effected/npm':
         specifier: workspace:^
         version: link:../npm
+      '@effected/walker':
+        specifier: workspace:^
+        version: link:../walker
+      '@effected/yaml':
+        specifier: workspace:^
+        version: link:../yaml
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.4
         version: 4.1.4(effect@4.1.4)(vitest@5.1.0)
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs
+      '@effected/semver':
+        specifier: workspace:*
+        version: link:../semver
       '@types/node':
         specifier: catalog:effected:build
         version: 26.6.6
@@ -1917,6 +1935,9 @@ importers:
       '@effected/package-json':
         specifier: workspace:^
         version: link:../package-json
+      '@effected/pnpm':
+        specifier: workspace:^
+        version: link:../pnpm
       '@effected/semver':
         specifier: workspace:^
         version: link:../semver
@@ -1926,18 +1947,6 @@ importers:
       '@effected/yaml':
         specifier: workspace:^
         version: link:../yaml
-      '@pnpm/catalogs.config':
-        specifier: ^1100.0.5
-        version: 1100.0.10
-      '@pnpm/catalogs.protocol-parser':
-        specifier: ^1100.0.0
-        version: 1100.0.1
-      '@pnpm/catalogs.resolver':
-        specifier: ^1100.0.0
-        version: 1100.1.2
-      '@pnpm/catalogs.types':
-        specifier: ^1100.0.0
-        version: 1100.0.1
     devDependencies:
       '@effect/platform-node':
         specifier: 4.1.4

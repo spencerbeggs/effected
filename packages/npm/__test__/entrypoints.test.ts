@@ -66,4 +66,13 @@ describe("entrypoints", () => {
 		files["/pkg/b.ts"] = "export const B = 1;";
 		assert.deepStrictEqual(packagesReachedFrom("/pkg/index.ts", read), []);
 	});
+
+	it("the pnpm-only release-age gate moved to @effected/pnpm", async () => {
+		const root = await import("../src/index.js");
+		assert.notProperty(root, "ReleaseAgeGate");
+		assert.notProperty(root, "PartialReleaseAgeGate");
+		// The control: the shared resolver contracts stay here.
+		assert.property(root, "CatalogResolver");
+		assert.property(root, "WorkspaceResolver");
+	});
 });

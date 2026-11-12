@@ -10,7 +10,10 @@ import { Walker } from "@effected/walker";
 import { Yaml } from "@effected/yaml";
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Option, Path, Result, Schema } from "effect";
-import { stringsOf } from "./internal/patterns.js";
+
+/** The string entries of an array, or `undefined` for a non-array. Total. */
+const stringsOf = (value: unknown): ReadonlyArray<string> | undefined =>
+	Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : undefined;
 
 /**
  * A pnpm settings file could not be used.
@@ -372,7 +375,7 @@ const firstEnv = (
  *
  * @example
  * ```ts
- * import { PnpmSettings } from "@effected/workspaces";
+ * import { PnpmSettings } from "@effected/pnpm";
  * import { Effect, Option } from "effect";
  *
  * const cutoffMinutes = Effect.gen(function* () {

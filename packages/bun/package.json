@@ -34,11 +34,13 @@
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
+		"@effected/semver": "workspace:*",
 		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
 		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
+		"@effected/semver": "workspace:^",
 		"effect": "catalog:effected:peers"
 	},
 	"engines": {

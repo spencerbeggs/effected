@@ -1007,7 +1007,6 @@
 		"PackageTarball": "download, verify and extract a published tarball by integrity, private registry auth",
 		"PackageTarballExtractOptions": "authenticate a private registry tarball download by its url",
 		"PackedTarball": "the tarball path, digests and size npm pack produced",
-		"PartialReleaseAgeGate": "one config source's contribution to a pnpm minimumReleaseAge gate before merging",
 		"PublishError": "handle an npm publish step failure: auth, pack, publish, output parse, digest",
 		"PublishTime": "when one package version was published, from the registry time map",
 		"PublishedVersion": "one package version's registry metadata: name, version, integrity, tarball url",
@@ -1016,7 +1015,6 @@
 		"RegistryCredentialLookup": "credential per request url, keep a token off cdn hosts",
 		"RegistryKind": "classify a registry url as npm, github-packages, jsr, or custom",
 		"RegistryReadError": "handle failed registry http read: transport error, bad status, undecodable body, refused workload credential",
-		"ReleaseAgeGate": "enforce pnpm minimumReleaseAge, filter candidate versions younger than the cutoff, match exclude patterns",
 		"SriIntegrityHash": "restrict integrity hash to sri algo-base64 form, reject corepack hashes",
 		"TarballError": "handle a tarball that could not be fetched, verified or extracted, integrity mismatch",
 		"UnresolvedDependencyError": "handle a catalog or workspace specifier that resolves to no entry",
@@ -1062,6 +1060,14 @@
 		"SchemaVersioning": "compute versioned or unversioned catalog urls, order schema version labels, derive schema file names",
 		"SchemastoreVersion": "read the tool's schemastore version, diagnose a config value from a mismatched copy",
 		"defineSchemastore": "default export of schemastore.config.ts, validate and assemble the config with the tool's own schemastore"
+	},
+	"pnpm": {
+		"PartialReleaseAgeGate": "one config source's contribution to a pnpm minimumReleaseAge gate before merging",
+		"PnpmMatcher": "match peerDependencyRules ignoreMissing or allowAny lists, compile pnpm name patterns with negation",
+		"PnpmSettings": "read pnpm effective settings, pnpm config get precedence, minimumReleaseAge, which source set a value",
+		"PnpmSettingsError": "unreadable, non-yaml or non-mapping pnpm settings file",
+		"PnpmSettingsLoadOptions": "where to read pnpm settings from: cwd, environment, platform, home, global config dir",
+		"ReleaseAgeGate": "enforce pnpm minimumReleaseAge, filter candidate versions younger than the cutoff, match exclude patterns"
 	},
 	"pnpm-plugin-effected": {
 		"catalogs": "read the effected catalog, effect family and kit versions as a map"
@@ -1551,9 +1557,6 @@
 		"EntryNotFoundError": "reachability entry that resolves to no file",
 		"detectPackageManagerSync": "synchronously detect pnpm, npm or bun at a root, no Effect runtime",
 		"localExecContextSync": "synchronously get the pnpm exec or npx prefix for this workspace",
-		"PnpmSettings": "read pnpm effective settings, pnpm config get precedence, minimumReleaseAge, which source set a value",
-		"PnpmSettingsError": "unreadable, non-yaml or non-mapping pnpm settings file",
-		"PnpmSettingsLoadOptions": "where to read pnpm settings from: cwd, environment, platform, home, global config dir",
 		"UnsupportedPackageManagerError": "detect a yarn repository, refuse an unsupported package manager instead of guessing npm"
 	},
 	"xdg": {

@@ -63,7 +63,6 @@
 | `PackageTarballExtractOptions` | Interface | Options for `PackageTarballShape.extract`. | authenticate a private registry tarball download by its url |
 | `PackageTarballShape` | Interface | The `PackageTarball` service shape. | |
 | `PackedTarball` | Class | A packed tarball and the two digests that describe it. | the tarball path, digests and size npm pack produced |
-| `PartialReleaseAgeGate` | Variable + TypeAlias | One source's partial contribution to a release-age gate. All fields optional. | one config source's contribution to a pnpm minimumReleaseAge gate before merging |
 | `ProxyForOptions` | Interface | Which package manager's rules `NpmConfig.proxyFor` and `NpmConfig.tlsFor` follow. | |
 | `PublishAuthPath` | TypeAlias | Which credential a successful publish authenticated with. | |
 | `PublishCredential` | TypeAlias | Every credential `PackagePublish.setupAuth` can write into an npmrc. | |
@@ -82,7 +81,6 @@
 | `RegistryReadError` | Class | A registry read failed. | handle failed registry http read: transport error, bad status, undecodable body, refused workload credential |
 | `RegistrySeed` | Interface | A whole fake registry world, keyed the way real reads are. | |
 | `RegistryTarget` | Interface | Which registry to read from, and how to authenticate. | |
-| `ReleaseAgeGate` | Class | pnpm's publish-time release-age gate: the number of minutes a published version must age before it is eligible, and the set of package-name patterns exempt from the gate. Mirrors pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude` config so a resolver can drop too-young candidate versions before picking, avoiding `ERR_PNPM_NO_MATURE_MATCHING_VERSION`. | enforce pnpm minimumReleaseAge, filter candidate versions younger than the cutoff, match exclude patterns |
 | `SeededVersion` | Interface | One seeded version's registry-visible facts. | |
 | `SriIntegrityHash` | Variable | A subresource-integrity hash in the SRI `<algo>-<base64>` form only — `sha512-<base64>` as pnpm and npm lockfiles record it, and as pnpm's inline `configDependencies` integrity carries it. A corepack (`sha512.<hex>`) hash, a valid `(IntegrityHash:variable)` value, fails this schema. | restrict integrity hash to sri algo-base64 form, reject corepack hashes |
 | `TarballError` | Class | Raised when a published tarball cannot be fetched, verified or extracted. | handle a tarball that could not be fetched, verified or extracted, integrity mismatch |

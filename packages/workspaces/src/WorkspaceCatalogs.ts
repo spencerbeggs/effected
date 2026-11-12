@@ -7,14 +7,9 @@
 
 import type { Lockfile } from "@effected/lockfiles";
 import { filenameFor } from "@effected/lockfiles";
-import {
-	CatalogAssemblyError,
-	CatalogResolver,
-	DependencyResolutionError,
-	PartialReleaseAgeGate,
-	ReleaseAgeGate,
-} from "@effected/npm";
+import { CatalogAssemblyError, CatalogResolver, DependencyResolutionError } from "@effected/npm";
 import { PackageJsonFormat } from "@effected/package-json";
+import { PartialReleaseAgeGate, ReleaseAgeGate } from "@effected/pnpm";
 import { Yaml } from "@effected/yaml";
 import {
 	Context,
@@ -242,7 +237,7 @@ const catalogBlocksOf = (
  * The inline release-age gate contribution of a parsed `pnpm-workspace.yaml`
  * document — pnpm's top-level `minimumReleaseAge` (minutes) and
  * `minimumReleaseAgeExclude` (name patterns) keys, mapped onto
- * `@effected/npm`'s `PartialReleaseAgeGate` field names
+ * `@effected/pnpm`'s `PartialReleaseAgeGate` field names
  * (`ageMinutes` / `exclude`).
  *
  * @remarks

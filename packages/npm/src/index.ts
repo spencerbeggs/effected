@@ -133,7 +133,6 @@ export {
 	registryHost,
 	registryShortLabel,
 } from "./RegistryKind.js";
-export { PartialReleaseAgeGate, ReleaseAgeGate } from "./ReleaseAgeGate.js";
 export { DependencyResolutionError, WorkspaceResolver } from "./WorkspaceResolver.js";
 
 /**

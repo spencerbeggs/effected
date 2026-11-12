@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/workspaces/__test__/fixtures/peers/README.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T01:55:28Z
+  at: 2026-11-12T23:38:43Z
 integrity:
   generated:
-    body: cfce5a9b1ddfd84c
+    body: bf97dd30fe48a187
 ---
 
 # @effected/workspaces peer-dependency checking
@@ -182,11 +182,10 @@ key grammar: an entry is a pattern over the **peer name**, with no parent
 in it at all. `react-dom>react` is a literal name nothing declares, so it
 matches nothing on either axis, versioned or not — the parent-version quirk
 above has nothing to attach to. The patterns are `@pnpm/matcher`'s
-(restated in `src/internal/peerPatterns.ts` so the `@pnpm/*` edge stays
-confined to the catalogs module, with `@effected/npm`'s
-`ReleaseAgeGate.matchesExclude` — the same `@pnpm/matcher` grammar, already
-owned there for `minimumReleaseAgeExclude` — as the single-pattern
-primitive): a lone `*` matches everything; otherwise
+(restated as `@effected/pnpm`'s `PnpmMatcher.compile`, with
+`ReleaseAgeGate.matchesExclude` in the same package — the same
+`@pnpm/matcher` grammar, owned there for `minimumReleaseAgeExclude` — as the
+single-pattern primitive): a lone `*` matches everything; otherwise
 `*` is a wildcard within the name and a pattern without one is plain
 equality; a leading `!` negates. Composition over a list is order-sensitive
 when includes and negations mix — `["*", "!redux"]` is everything but

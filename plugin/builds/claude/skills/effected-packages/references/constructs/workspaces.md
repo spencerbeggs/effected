@@ -80,12 +80,6 @@
 | `PeerCheckOptions` | Interface | Options for `PeerCheck.run`. | |
 | `PeerDependencyRules` | Interface | pnpm's `peerDependencyRules` block — the suppression policy pnpm applies **after** computing peer violations, in pnpm's own shape. | |
 | `PeerParent` | Class | One link in the chain from an importer to the package that declared an unsatisfied peer. | one link from an importer to a package declaring an unmet peer |
-| `PnpmSettingOrigin` | TypeAlias | Where a setting's value came from, highest precedence first: a `pnpm_config_*` / `PNPM_CONFIG_*` environment variable, the workspace's `pnpm-workspace.yaml`, or pnpm's global `config.yaml`. | |
-| `PnpmSettings` | Class | pnpm's effective settings: the values `pnpm config get <key>` reports for a pnpm setting, merged from the sources pnpm reads with pnpm's precedence. | read pnpm effective settings, pnpm config get precedence, minimumReleaseAge, which source set a value |
-| `PnpmSettingsError` | Class | A pnpm settings file could not be used. | unreadable, non-yaml or non-mapping pnpm settings file |
-| `PnpmSettingsLoadOptions` | Interface | Options for `PnpmSettings.load`. | where to read pnpm settings from: cwd, environment, platform, home, global config dir |
-| `PnpmSettingsSource` | Interface | One YAML settings file for `PnpmSettings.fromSourcesResult`: its text and, for errors and `PnpmSettings.files`, where it came from. | |
-| `PnpmSettingsSources` | Interface | The inputs `PnpmSettings.fromSourcesResult` merges. | |
 | `PromiseInExclusiveOptions` | Interface | The options of a `{ promiseInExclusive }` rule. | from `@effected/workspaces/testing` |
 | `PublishConfig` | Class | The `publishConfig` fields workspace tooling reads. | typed publishConfig fields, registry access directory and dist-tag for publishing |
 | `PublishTarget` | Class | A resolved publish destination for a workspace package. | a resolved publish destination for a package, registry access directory and provenance |

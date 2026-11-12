@@ -30,15 +30,21 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@effected/npm": "workspace:^"
+		"@effected/glob": "workspace:^",
+		"@effected/npm": "workspace:^",
+		"@effected/walker": "workspace:^",
+		"@effected/yaml": "workspace:^"
 	},
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
+		"@effected/memfs": "workspace:*",
+		"@effected/semver": "workspace:*",
 		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
 		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
+		"@effected/semver": "workspace:^",
 		"effect": "catalog:effected:peers"
 	},
 	"engines": {

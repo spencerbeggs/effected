@@ -14,11 +14,10 @@
 // or "(" would re-introduce the format knowledge this module exists without.
 
 import type { Lockfile, ResolvedPackage } from "@effected/lockfiles";
+import { PnpmMatcher } from "@effected/pnpm";
 import { Range, SemVer } from "@effected/semver";
 import { Option, Result, Schema } from "effect";
 import type { PeerDependencyRules } from "./ConfigDependencyHooks.js";
-import type { PeerNameMatcher } from "./internal/peerPatterns.js";
-import { peerNameMatcher } from "./internal/peerPatterns.js";
 import type { ImporterRoots } from "./internal/roots.js";
 import { indexInstances, rootInstances } from "./internal/roots.js";
 import type { CatalogSet } from "./WorkspaceCatalogs.js";
@@ -627,8 +626,8 @@ const judgeJoined = (
 /** The effective suppression policy, with both list axes compiled to predicates. */
 interface Policy {
 	readonly allowed: Readonly<Record<string, string>>;
-	readonly ignoreMissing: PeerNameMatcher;
-	readonly allowAny: PeerNameMatcher;
+	readonly ignoreMissing: (name: string) => boolean;
+	readonly allowAny: (name: string) => boolean;
 }
 
 /**
@@ -801,8 +800,8 @@ export class PeerCheck extends Schema.Class<PeerCheck>("PeerCheck")({
 		// row; both are `() => false` when the axis is empty.
 		const policy: Policy = {
 			allowed: rules?.allowedVersions ?? {},
-			ignoreMissing: peerNameMatcher(rules?.ignoreMissing ?? []),
-			allowAny: peerNameMatcher(rules?.allowAny ?? []),
+			ignoreMissing: PnpmMatcher.compile(rules?.ignoreMissing ?? []),
+			allowAny: PnpmMatcher.compile(rules?.allowAny ?? []),
 		};
 		const unverified: Array<UnverifiedReason> = keySupplied ? [] : ["peerRulesNotApplied"];
 

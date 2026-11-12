@@ -1,5 +1,6 @@
-// The `ReleaseAgeGate` concept: pnpm's publish-time release-age gate as shared
-// npm dependency vocabulary. A gate says how long (in minutes) a published
+// The `ReleaseAgeGate` concept: pnpm's publish-time release-age gate, as pure
+// vocabulary. npm's own `min-release-age` is a different definition (days, not
+// minutes; minimatch excludes) and is `@effected/npm`'s `NpmReleaseAge`. A gate says how long (in minutes) a published
 // version must age before it is eligible, and which package names are exempt.
 //
 // pnpm reads two config keys — `minimumReleaseAge` (minutes) and
@@ -110,7 +111,7 @@ const matchesExclude = (name: string, patterns: readonly string[]): boolean =>
  *
  * @example
  * ```ts
- * import { ReleaseAgeGate } from "@effected/npm";
+ * import { ReleaseAgeGate } from "@effected/pnpm";
  *
  * const gate = ReleaseAgeGate.combine(
  *   { ageMinutes: 1440 },

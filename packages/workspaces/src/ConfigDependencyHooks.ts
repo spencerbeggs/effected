@@ -23,14 +23,14 @@
 // for the version this checkout never installed — the base side of a diff
 // across a config-dependency bump.
 //
-// `internal/catalogs.ts` stays the only `@pnpm/catalogs.*` importer: the shape
-// hooks operate on is the plain `catalog name → dependency → range` record, and
-// the only normalization borrowed here is the prototype-safe `normalize`.
+// `internal/catalogs.ts` stays the one catalog engine: the shape hooks operate
+// on is the plain `catalog name → dependency → range` record, and the only
+// normalization borrowed here is the prototype-safe `normalize`.
 
 import { pathToFileURL } from "node:url";
 import { Run } from "@effected/commands";
-import type { PartialReleaseAgeGate } from "@effected/npm";
 import { CatalogAssemblyError } from "@effected/npm";
+import type { PartialReleaseAgeGate } from "@effected/pnpm";
 import { Context, Duration, Effect, Layer, Predicate, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { CatalogEntries } from "./internal/catalogs.js";
@@ -820,7 +820,7 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 	 * `layerLive` — which captures nothing — would succeed).
 	 *
 	 * Catalog folding and normalization stay in the **parent** (the same
-	 * `@pnpm/catalogs`-derived path `layerLive` uses); the child returns only the
+	 * catalog engine path `layerLive` uses); the child returns only the
 	 * raw threaded config slice, since the script cannot import kit code.
 	 *
 	 * Requires core's `ChildProcessSpawner`, resolved when the layer is built —

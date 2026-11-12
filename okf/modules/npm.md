@@ -10,17 +10,17 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-11T20:31:08Z
+  at: 2026-11-12T23:38:43Z
 integrity:
   generated:
-    body: 6b2b70b9826875aa
+    body: ebd83d4b22986496
 ---
 
 # npm
 
 ## Purpose
 
-`@effected/npm` is an internal package with no source repository predecessor. It owns four things: the dependency-resolution contracts (`CatalogResolver`, `WorkspaceResolver`) that `@effected/package-json` defines a need for but cannot implement, since resolving a `catalog:`/`workspace:` specifier needs workspace and catalog context a document library never has; the cross-cutting npm vocabulary shared by three or more packages (`DependencySpecifier`, `DependencySection`, `IntegrityHash`, `PackageManagerPin`, `PackageManagerCache`, `ReleaseAgeGate`); the tolerant `Manifest` domain model built on the per-specifier contracts; and the registry, tarball and publish services (`NpmRegistry`, `PackageTarball`, `PackagePublish`) that do their own IO through core contracts in `R`. See [contract inversion is the default](../decisions/contract-inversion-default.md) for why the contracts live here rather than beside their implementer.
+`@effected/npm` is an internal package with no source repository predecessor. It owns four things: the dependency-resolution contracts (`CatalogResolver`, `WorkspaceResolver`) that `@effected/package-json` defines a need for but cannot implement, since resolving a `catalog:`/`workspace:` specifier needs workspace and catalog context a document library never has; the cross-cutting npm vocabulary shared by three or more packages (`DependencySpecifier`, `DependencySection`, `IntegrityHash`, `PackageManagerPin`, `PackageManagerCache`); the tolerant `Manifest` domain model built on the per-specifier contracts; and the registry, tarball and publish services (`NpmRegistry`, `PackageTarball`, `PackagePublish`) that do their own IO through core contracts in `R`. See [contract inversion is the default](../decisions/contract-inversion-default.md) for why the contracts live here rather than beside their implementer.
 
 ## Tier and dependency posture
 
@@ -67,9 +67,11 @@ Other vocabulary modules:
 
 npm's SRI form (`sha512-<base64>`) and corepack's pin form (`sha512.<hex>`) encode the same digest, and converting between them is a real consumer need — writing a `packageManager` pin from a registry read means converting a value the registry hands over in SRI form. The conversion is a `Schema` transformation, `CorepackIntegrityHash.FromSri`, plus an `Effect` convenience `fromSri` failing with a typed `InvalidSriIntegrityHashError`. Non-sha512 input and the wrong digest length both fail typed decode rather than producing garbage a corepack install would reject at the worst possible time. The base64 reader is strict and hand-rolled rather than `Buffer` (Node-only and lenient) or core's `Base64.decode` from `effect/encoding/Base64` (probed: it accepts non-zero trailing bits and embedded CRLF, so three spellings decode to one digest, yet rejects the unpadded form — a drop-in in neither); `Buffer`-style lenience would mint pins corepack rejects at install, and only padding is optional. That verdict is **decode-only**: `PackageTarball` verifies through core's *encoder*, `Base64.encode`, and the codec's encode direction is the exact inverse of its decoder, not a second acceptance rule. The conversion is one-way from SRI: an already-corepack-form input does not pass through decode, so a caller cannot feed pins back in and mask a wiring bug.
 
-## ReleaseAgeGate
+## Release-age gates
 
-pnpm's publish-time release-age gate — refusing to install a version younger than a configured cutoff — is shared npm vocabulary, resident here because a resolver with no publish-time awareness would otherwise pick a version pnpm then rejects. `combine` is variadic and total: it assembles the effective gate from partial contributions across sources, where the strictest age wins, exclude sets union into a deduplicated sorted wire form, and zero contributions yield the inert zero gate — the single clamping authority. Exclude matching is flat-string with `@pnpm/matcher` parity, where `*` crosses `/`, deliberately not `@effected/glob`'s minimatch dialect, because pnpm treats the package name as a flat string — and a second consumer rides on `matchesExclude`: `@effected/workspaces`' `PeerCheck` resolves `peerDependencyRules.ignoreMissing` / `allowAny` patterns through it (via its `internal/peerPatterns.ts`), so a change tracking a `minimumReleaseAgeExclude` tweak moves peer verdicts too. Never clamp a `PartialReleaseAgeGate` (the permissive `Schema.Struct` inbound form for hook and manifest contributions) in isolation; `combine` is the one authority. Version filtering is pure with a caller-supplied clock and drops versions younger than the cutoff or with a missing/unparseable timestamp. Consumer-side config readers stay out of this package: `@effected/workspaces` owns reading the gate from workspace config keys, and this pure module is the vocabulary those readers combine.
+pnpm's `minimumReleaseAge` gate, `ReleaseAgeGate`, is pnpm's alone and lives in [`@effected/pnpm`](pnpm.md). npm's own `min-release-age` (days, minimatch excludes, off by default) is a different definition and stays here as `NpmReleaseAge`.
+
+The `catalog:` and `workspace:` resolver contracts stay here because bun reads both protocols the way pnpm 12 does; see [the protocol-owner decision](../decisions/catalog-and-workspace-protocol-owner.md).
 
 ## The service half: registry reads, tarballs and publishing
 

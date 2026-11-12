@@ -1,17 +1,26 @@
-// The ONLY module that imports `@pnpm/catalogs.*`.
+// The catalog engine: pnpm 12's catalog semantics, restated.
 //
-// Those four packages are what make this package integrated tier: they are
-// pnpm's catalog semantics, versioned to pnpm majors, and reimplementing them
-// would mean owning a moving spec with no oracle. Containing them behind one
-// module keeps the tier-3 blast radius to one file — if the quartet ever has to
-// be replaced or vendored, this is what changes.
+// Each function below re-implements one pnpm 12.20.0 crate, read rather than
+// recalled (okf/decisions/catalog-and-workspace-protocol-owner.md):
+//
+// - `inlineCatalogs` is `pnpm_catalogs_config::get_catalogs_from_workspace_manifest`
+//   (vendored at `.repos/pnpm/pnpm/crates/catalogs-config`);
+// - `catalogNameOf` is `pnpm_catalogs_protocol_parser::parse_catalog_protocol`;
+// - `rangeOf` is `pnpm_catalogs_resolver::resolve_from_catalog` with the
+//   `AsWritten` anchor: an entry resolves to its specifier exactly as written,
+//   a `link:` or `file:` entry included, because the kit compares and reports
+//   ranges and never installs from them.
+//
+// The pnpm 11 JavaScript packages (`@pnpm/catalogs.*`) this replaced reject a
+// `link:` / `file:` entry, which pnpm 12 resolves.
 
-import { getCatalogsFromWorkspaceManifest, mergeCatalogs } from "@pnpm/catalogs.config";
-import { parseCatalogProtocol } from "@pnpm/catalogs.protocol-parser";
-import { matchCatalogResolveResult, resolveFromCatalog } from "@pnpm/catalogs.resolver";
-import type { Catalogs } from "@pnpm/catalogs.types";
+/** A catalog map: catalog name → dependency → specifier. */
+export type Catalogs = Record<string, Record<string, string>>;
 
-export type { Catalogs };
+/** The name pnpm gives the unnamed top-level catalog. */
+const DEFAULT_CATALOG_NAME = "default";
+
+const CATALOG_PROTOCOL = "catalog:";
 
 /** The normalized entries shape: catalog name → dependency → range. */
 export type CatalogEntries = Record<string, Record<string, string>>;
@@ -22,27 +31,59 @@ export interface CatalogMisconfiguration {
 	readonly detail: string;
 }
 
-/** Project a pnpm-workspace manifest's `catalog` / `catalogs` fields into a `Catalogs` map. */
+/**
+ * Project a pnpm-workspace manifest's `catalog` / `catalogs` fields into one
+ * `Catalogs` map, the top-level `catalog` under `"default"`.
+ *
+ * pnpm refuses a manifest that defines the default catalog twice (a top-level
+ * `catalog` and a `catalogs.default`). That is a malformed workspace file, a
+ * data condition, so it yields the empty map rather than a defect.
+ */
 export const inlineCatalogs = (manifest: {
 	readonly catalog?: Record<string, string> | undefined;
 	readonly catalogs?: Record<string, Record<string, string>> | undefined;
 }): Catalogs => {
-	if (manifest.catalog === undefined && manifest.catalogs === undefined) return {};
-	// pnpm throws when the default catalog is defined twice (a top-level
-	// `catalog:` *and* a `catalogs.default`). That is a malformed workspace file,
-	// which is a data condition, so it must not escape as a defect.
-	try {
-		return getCatalogsFromWorkspaceManifest({ catalog: manifest.catalog, catalogs: manifest.catalogs });
-	} catch {
+	const { catalog, catalogs: named } = manifest;
+	if (
+		catalog != null &&
+		named != null &&
+		Object.hasOwn(named, DEFAULT_CATALOG_NAME) &&
+		named[DEFAULT_CATALOG_NAME] != null
+	) {
 		return {};
 	}
+	const catalogs: Catalogs = {};
+	if (catalog != null) define(catalogs, DEFAULT_CATALOG_NAME, catalog);
+	if (named != null) {
+		for (const [name, entries] of Object.entries(named)) define(catalogs, name, entries);
+	}
+	return catalogs;
 };
 
-/** Merge catalog sources; later sources win per dependency within a catalog. */
-export const merge = (...sources: ReadonlyArray<Catalogs | undefined>): Catalogs => mergeCatalogs(...sources);
+/**
+ * Merge catalog sources; later sources win per dependency within a catalog.
+ * Keys are copied as own data properties, so a `__proto__` name is inert.
+ */
+export const merge = (...sources: ReadonlyArray<Catalogs | undefined>): Catalogs => {
+	const result: Catalogs = {};
+	for (const source of sources) {
+		if (source == null) continue;
+		for (const [name, catalog] of Object.entries(source)) {
+			if (catalog == null) continue;
+			const target: Record<string, string> = Object.hasOwn(result, name) ? (result[name] ?? {}) : {};
+			for (const [dependency, specifier] of Object.entries(catalog)) define(target, dependency, specifier);
+			define(result, name, target);
+		}
+	}
+	return result;
+};
 
 /** Whether `specifier` is a `catalog:` protocol reference, and which catalog it names. */
-export const catalogNameOf = (specifier: string): string | null => parseCatalogProtocol(specifier);
+export const catalogNameOf = (specifier: string): string | null => {
+	if (!specifier.startsWith(CATALOG_PROTOCOL)) return null;
+	const name = specifier.slice(CATALOG_PROTOCOL.length).trim();
+	return name === "" ? DEFAULT_CATALOG_NAME : name;
+};
 
 /** Normalize the arbitrary shape of a catalog map into `CatalogEntries`, dropping anything unusable. */
 export const normalize = (raw: unknown): CatalogEntries => {
@@ -79,20 +120,28 @@ const define = (target: Record<string, unknown>, key: string, value: unknown): v
 /**
  * Resolve one `catalog:` specifier against an assembled catalog set.
  *
- * Returns the range on a hit, `undefined` on a miss (the specifier names no
- * catalog entry — an ordinary `Option.none()` to the caller), and a
- * `CatalogMisconfiguration` when pnpm reports the catalog itself is malformed.
+ * Returns the entry as written on a hit, `undefined` for a specifier that is
+ * not a `catalog:` reference, and a `CatalogMisconfiguration` when pnpm would
+ * report the reference misconfigured: no entry for the dependency in the named
+ * catalog, or an entry that is itself a `catalog:` reference.
  */
 export const rangeOf = (
 	catalogs: Catalogs,
 	dependency: string,
 	specifier: string,
 ): string | undefined | CatalogMisconfiguration => {
-	if (catalogNameOf(specifier) === null) return undefined;
-	const result = resolveFromCatalog(catalogs, { alias: dependency, bareSpecifier: specifier });
-	return matchCatalogResolveResult<string | undefined | CatalogMisconfiguration>(result, {
-		found: (hit) => hit.resolution.specifier,
-		misconfiguration: (bad) => ({ catalogName: bad.catalogName, detail: bad.error.message }),
-		unused: () => undefined,
-	});
+	const catalogName = catalogNameOf(specifier);
+	if (catalogName === null) return undefined;
+	const catalog = Object.hasOwn(catalogs, catalogName) ? catalogs[catalogName] : undefined;
+	const entry = catalog !== undefined && Object.hasOwn(catalog, dependency) ? catalog[dependency] : undefined;
+	if (entry === undefined) {
+		return { catalogName, detail: `No catalog entry '${dependency}' was found for catalog '${catalogName}'.` };
+	}
+	if (catalogNameOf(entry) !== null) {
+		return {
+			catalogName,
+			detail: `Found invalid catalog entry using the catalog protocol recursively. The entry for '${dependency}' in catalog '${catalogName}' is invalid.`,
+		};
+	}
+	return entry;
 };

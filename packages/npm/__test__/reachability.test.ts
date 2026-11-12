@@ -28,7 +28,6 @@ const VOCABULARY = [
 	"PackageManagerPin.ts",
 	"PackageManagerCache.ts",
 	"DependencySection.ts",
-	"ReleaseAgeGate.ts",
 	"CatalogResolver.ts",
 	"WorkspaceResolver.ts",
 	"CatalogAssemblyError.ts",

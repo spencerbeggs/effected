@@ -1,7 +1,7 @@
 # @effected/npm
 
-Effect contracts for resolving pnpm `catalog:` and `workspace:` specifiers, the
-kit's shared dependency vocabulary, and the registry, tarball and publish
+Effect contracts for resolving the `catalog:` and `workspace:` specifiers pnpm
+and bun share, the kit's shared dependency vocabulary, and the registry, tarball and publish
 services over them. **Boundary tier**, deliberately — never let "pure" creep
 back in, and never accept an integrated npm.
 

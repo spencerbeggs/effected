@@ -50,13 +50,10 @@
 		"@effected/lockfiles": "workspace:^",
 		"@effected/npm": "workspace:^",
 		"@effected/package-json": "workspace:^",
+		"@effected/pnpm": "workspace:^",
 		"@effected/semver": "workspace:^",
 		"@effected/walker": "workspace:^",
-		"@effected/yaml": "workspace:^",
-		"@pnpm/catalogs.config": "^1100.0.5",
-		"@pnpm/catalogs.protocol-parser": "^1100.0.0",
-		"@pnpm/catalogs.resolver": "^1100.0.0",
-		"@pnpm/catalogs.types": "^1100.0.0"
+		"@effected/yaml": "workspace:^"
 	},
 	"devDependencies": {
 		"@effect/platform-node": "catalog:effected",

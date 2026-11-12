@@ -2,8 +2,8 @@
 // `peerDependencyRules.allowAny` — a re-statement of `@pnpm/matcher@1000.1.0`'s
 // `createMatcher`. A kit reimplementation rather than a dependency because the
 // grammar is tiny and measured (`*` and a leading `!`, nothing else), and a
-// pnpm-major-pinned `@pnpm/*` dependency for forty lines would widen the
-// tier-3 blast radius that is deliberately confined to `internal/catalogs.ts`.
+// pnpm-major-pinned `@pnpm/*` dependency for forty lines is not worth its
+// weight. The public face is `PnpmMatcher.compile`.
 //
 // An entry on either axis is a pattern over the PEER NAME. There is no parent
 // in the grammar: `react-dom>react` is a literal name nothing declares, so it
@@ -17,7 +17,7 @@
 // - A lone `*` matches everything. Otherwise `*` is a wildcard within the
 //   name spanning any run of characters, `/` included, and a pattern without
 //   `*` is plain equality. That single-pattern grammar is exactly the one
-//   `@effected/npm`'s `ReleaseAgeGate.matchesExclude` implements for pnpm's
+//   `ReleaseAgeGate.matchesExclude` (this package) implements for pnpm's
 //   `minimumReleaseAgeExclude` (same `@pnpm/matcher` source), as a
 //   backtracking-safe linear scan — a RegExp built from a config-supplied
 //   pattern is the hazard — so the per-pattern primitive delegates there.
@@ -31,7 +31,7 @@
 //   everything — order matters).
 // - An empty list matches nothing.
 
-import { ReleaseAgeGate } from "@effected/npm";
+import { ReleaseAgeGate } from "../ReleaseAgeGate.js";
 
 /** A predicate over a peer name. */
 export type PeerNameMatcher = (name: string) => boolean;

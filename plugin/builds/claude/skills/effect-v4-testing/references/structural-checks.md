@@ -47,7 +47,7 @@ the substrate must be narrowed first.
 "`index.ts` exports `NpmRegistry`" as a naive `source.includes("NpmRegistry")`
 survives deleting the export three independent ways. Each was found by a
 mutant that survived the *previous* fix
-(`packages/npm/__test__/reachability.test.ts:131-147`):
+(`packages/npm/__test__/reachability.test.ts:130-146`):
 
 1. **A comment naming it** — the doc block above the deleted export still says
    `NpmRegistry`. Closed by stripping comments.

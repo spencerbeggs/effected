@@ -41,7 +41,7 @@ Requires Node.js >=24.11.0. `effect` v4 is a peer dependency. You provide a `Fil
 
 All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
 
-pnpm's catalog semantics come from pnpm's own `@pnpm/catalogs.*` packages, which install as regular dependencies. Reimplementing them would mean owning a moving spec with no oracle, so they are used directly and confined to a single internal module.
+pnpm's catalog semantics are restated from pnpm 12's own catalog crates in a single internal module; no `@pnpm/*` package is installed.
 
 ## Quick start
 
@@ -161,36 +161,7 @@ A specifier the workspace cannot answer fails typed as `UnresolvedDependencyErro
 
 ## pnpm settings
 
-`PnpmSettings.load({ cwd, env, platform })` reads pnpm's effective settings, the values `pnpm config get <key>` reports, from the sources pnpm 11 and 12 read for a pnpm setting:
-
-1. a `pnpm_config_<name>` or `PNPM_CONFIG_<NAME>` environment variable (highest);
-2. the workspace root's `pnpm-workspace.yaml`: the one in the directory `PNPM_CONFIG_WORKSPACE_DIR` / `NPM_CONFIG_WORKSPACE_DIR` names, or else the nearest one at or above the real path of `cwd`, when `cwd` belongs to that workspace;
-3. pnpm's global `config.yaml`, in `$XDG_CONFIG_HOME/pnpm`, else `~/Library/Preferences/pnpm` on macOS, `%LOCALAPPDATA%\pnpm\config` on Windows and `~/.config/pnpm` elsewhere (lowest).
-
-A higher source replaces a lower one's value whole, so a workspace `minimumReleaseAgeExclude` list replaces the global one rather than adding to it.
-
-`cwd` belongs to the workspace, as pnpm decides it, when it is the root, when it holds no project manifest (`package.json`, `package.json5` or `package.yaml`), or when it matches the manifest's `packages:` patterns. A manifest with no `packages:` key has the root as its only member, so an example app or fixture with its own `package.json` inside a single-package repo reads no workspace settings, exactly as pnpm skips them. A misnamed manifest (`pnpm-workspace.yml`, `.pnpm-workspace.yaml`) is not a workspace file, and the ascent passes it, as pnpm 12 does.
-
-```ts
-import * as NodeServices from "@effect/platform-node/NodeServices";
-import { PnpmSettings } from "@effected/workspaces";
-import { Effect, Option } from "effect";
-
-const program = Effect.gen(function* () {
-  const settings = yield* PnpmSettings.load({ cwd: process.cwd(), env: process.env, platform: process.platform });
-  return {
-    cutoffMinutes: Option.getOrUndefined(settings.minimumReleaseAge), // number | undefined
-    exclude: settings.minimumReleaseAgeExclude, // ReadonlyArray<string>, [] when unset
-    strict: settings.getBoolean("minimumReleaseAgeStrict"), // Option<boolean>
-  };
-}).pipe(Effect.provide(NodeServices.layer));
-```
-
-`get(key)` returns a setting's raw value and `origin(key)` says which source it came from; `getString`, `getNumber`, `getBoolean` and `getStringArray` read it as a type. A key is the camelCase name pnpm writes in YAML or the kebab-case one an npmrc uses, and both name the same setting. An environment value is text, read as the type the accessor asks for: canonical digits for `minimumReleaseAge` (`05`, `+5`, `0x10` and `1e2` do not count), a canonical decimal for `getNumber`, exactly `true` or `false` for a boolean, or a JSON array of strings for a list. One that does not read as that type is skipped, so the next source answers, as pnpm 12 skips it. A comma-separated list is not a list. In a file, a boolean setting also reads the words pnpm 12 coerces (`yes`, `y`, `on`, `no`, `n`, `off`, quoted or not, in any case), and an integer setting a quoted digit string. A file value that still has the wrong type answers `None`, because pnpm 12 refuses to load such a file. A `null` in a file is unset.
-
-pnpm 11 and 12 read no pnpm setting from `.npmrc` (only registry and auth keys), from `npm_config_*` variables or from the old global `rc` file, so neither does `PnpmSettings`. For registries and credentials, use `@effected/npm`'s `NpmConfig`. pnpm's built-in defaults are not applied: an unset `minimumReleaseAge` is `None`, which is also what `pnpm config get` reports. Command-line `--config.*` flags are not modelled either. `WorkspaceCatalogs.releaseAgeGate()` is a different question: the gate the workspace file and replayed config-dependency hooks declare, with no environment or global layer.
-
-`PnpmSettings.fromSourcesResult({ workspace, global, env })` does the same merge over text you already hold, with no IO. A file that exists but cannot be read, is not YAML, or whose document is not a mapping fails `PnpmSettingsError` (`reason` `"read"`, `"parse"` or `"shape"`). A missing file is skipped.
+`PnpmSettings`, pnpm's effective settings as `pnpm config get` reports them, is in `@effected/pnpm`. `WorkspaceCatalogs.releaseAgeGate()` here answers a different question: the gate the workspace file and replayed config-dependency hooks declare, with no environment or global layer.
 
 ## Peer dependency checking
 
@@ -601,7 +572,7 @@ const program = Effect.gen(function* () {
 );
 ```
 
-`WorkspaceRootNotFoundError`, `WorkspaceDiscoveryError`, `WorkspacePatternError`, `PackageNotFoundError`, `WorkspaceManifestError`, `PackageManagerDetectionError`, `CatalogAssemblyError`, `LockfileReadError`, `CyclicDependencyError`, `ChangeDetectionError` and `PnpmSettingsError` each name one thing that can actually go wrong, and each method's error channel is narrowed to the ones it can produce. `CatalogAssemblyError` is defined in `@effected/npm`, beside the resolver contract that names it in its channel — import it from there. Change detection additionally surfaces `@effected/git`'s typed git errors, such as `NotARepositoryError`.
+`WorkspaceRootNotFoundError`, `WorkspaceDiscoveryError`, `WorkspacePatternError`, `PackageNotFoundError`, `WorkspaceManifestError`, `PackageManagerDetectionError`, `CatalogAssemblyError`, `LockfileReadError`, `CyclicDependencyError` and `ChangeDetectionError` each name one thing that can actually go wrong, and each method's error channel is narrowed to the ones it can produce. `CatalogAssemblyError` is defined in `@effected/npm`, beside the resolver contract that names it in its channel — import it from there. Change detection additionally surfaces `@effected/git`'s typed git errors, such as `NotARepositoryError`.
 
 ## Testing
 
@@ -640,8 +611,7 @@ A name miss in the derived `getPackage` fails with the service's own typed `Pack
 - `WorkspacePackage` — a deliberately tolerant manifest model, so one member with an odd version cannot fail discovery for the whole repo. `version` is optional and carried exactly as the manifest has it — absent for the ordinary version-less private root or member, never a `"0.0.0"` placeholder; a `version` that is present but not a string is `invalidShape`. `manifestRecord` keeps the as-read `package.json` for tolerant access to fields outside the typed slice without a second read; `WorkspacePackage.manifest(pkg)` re-reads and is the opt-in bridge to `@effected/package-json`'s strict `Package`.
 - `DependencyGraph` — a value class over discovered packages: `levels()` for parallel build tiers, the flattened topological order, `toMermaid()` for a deterministic Mermaid `flowchart TD` of the whole graph, and `CyclicDependencyError` — naming the cycle's actual members — when there is no order.
 - `PackageManagerDetector` — npm, pnpm or bun from lockfiles and the `packageManager` field; a yarn repository fails `UnsupportedPackageManagerError`.
-- `WorkspaceCatalogs` — pnpm catalog assembly and `catalog:` resolution, on pnpm's own catalog packages; `releaseAgeGate()` assembles the effective `@effected/npm` `ReleaseAgeGate` from inline `pnpm-workspace.yaml` release-age keys and replayed hook contributions, strictest-wins, in the same pass as the catalogs.
-- `PnpmSettings` — pnpm's effective settings as `pnpm config get` resolves them (`PNPM_CONFIG_*` variables, then `pnpm-workspace.yaml`, then the global `config.yaml`), with typed accessors and the `minimumReleaseAge` / `minimumReleaseAgeExclude` pair.
+- `WorkspaceCatalogs` — catalog assembly (pnpm's `pnpm-workspace.yaml`, bun's `package.json`, and both managers' lockfiles) and `catalog:` resolution as pnpm 12 resolves it; `releaseAgeGate()` assembles the effective `@effected/pnpm` `ReleaseAgeGate` from inline `pnpm-workspace.yaml` release-age keys and replayed hook contributions, strictest-wins, in the same pass as the catalogs.
 - `LockfileReader` — locate and parse the workspace's lockfile through `@effected/lockfiles`.
 - `PeerCheck` — unsatisfied peer-dependency detection as a pure, total value over a parsed lockfile, with `UnsatisfiedPeer` and `PeerParent` as the report's rows. Read `supported`, `unresolvedImporters` and `unverified` alongside `unsatisfied`: an empty finding list is a clean bill of health only when those three say so.
 - `NoPeerDependencyRules` / `PeerDependencyRules` — the effective pnpm suppression policy `WorkspaceCatalogs.peerDependencyRules()` assembles, and the "I assert none apply" value for callers that have checked.
