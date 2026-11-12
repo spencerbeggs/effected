@@ -5,7 +5,7 @@
 // `workspaces` field beside a `yarn.lock`.
 
 import nodePath from "node:path";
-import { assert, describe, layer } from "@effect/vitest";
+import { assert, describe, it, layer } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, Layer, Result } from "effect";
 import {
@@ -14,6 +14,8 @@ import {
 	WorkspaceDiscovery,
 	WorkspaceRoot,
 	detectPackageManagerSync,
+	findWorkspaceRootSync,
+	getWorkspacePackagesSync,
 } from "../src/index.js";
 import type { Tree } from "./fixtures.js";
 import { manifest, platform, rootManifest } from "./fixtures.js";
@@ -75,4 +77,37 @@ describe("a yarn workspace", () => {
 			);
 		});
 	});
+});
+
+// The sync facades are what vitest-agent calls for its yarn users, with
+// exactly these shapes: `findWorkspaceRootSync(cwd, ops)` then
+// `getWorkspacePackagesSync(root, ops)`. Both yarn trees reach the Unsupported
+// verdict (a sole yarn.lock, and a packageManager field naming yarn), so a
+// membership that failed or truncated there would turn these red.
+describe("the sync discovery facades on a yarn workspace", () => {
+	const DECLARED: Tree = {
+		...YARN_WORKSPACE,
+		"/repo/package.json": rootManifest(["packages/*"], { packageManager: "yarn@4.5.0" }),
+	};
+
+	for (const [label, tree] of [
+		["a sole yarn.lock", YARN_WORKSPACE],
+		["a yarn packageManager field", DECLARED],
+	] as const) {
+		const ops = () => ({ fileSystem: MemoryFileSystem.makeSync(tree).sync, path: nodePath.posix });
+
+		it(`${label}: findWorkspaceRootSync from a member dir returns the root`, () => {
+			assert.strictEqual(findWorkspaceRootSync("/repo/packages/a", ops()), "/repo");
+		});
+
+		it(`${label}: getWorkspacePackagesSync returns the root and both members`, () => {
+			const names = getWorkspacePackagesSync("/repo", ops()).map((pkg) => pkg.name);
+			assert.deepStrictEqual([...names].sort(), ["a", "b", "root"]);
+		});
+
+		it(`${label}: the tree really is an unsupported yarn root`, () => {
+			const detected = detectPackageManagerSync("/repo", ops());
+			assert.isTrue(Result.isFailure(detected) && detected.failure instanceof UnsupportedPackageManagerError);
+		});
+	}
 });
