@@ -1,5 +1,44 @@
 # @effected/bundler
 
+## 0.5.0
+
+### Breaking Changes
+
+- The bundler's helpers now run on Effect's `FileSystem` and `Path` services and fail with typed errors instead of using `node:fs` and returning Promises or plain values. Provide `FileSystem` and `Path` (for example `NodeServices.layer`) where you call them.
+
+- `buildTargetGroups`, `buildEmittedManifest`, `emitManifest`, `resolveManifest`, `resolveNextVersions`, `loadBundleManifestSources`, `writeGeneratedOgImage`, `resolvePortableTsconfig`, `buildResolvedTsconfig`, `writeResolvedTsconfig`, `writeDtsEmitTsconfig`, `copyPublicDir` and `copyAmbientDts` now return Effects requiring `FileSystem | Path`
+
+- `PackageJsonEntriesOptions.pkg` is now required and `cwd` is removed
+
+- New exported error types `ResolveManifestError` and `CopyPublicDirError` describe the typed failures
+
+- Migration: replace `await helper(...)` with `Effect.runPromise(helper(...).pipe(Effect.provide(NodeServices.layer)))`, or yield it inside your own Effect program, and pass `pkg` to `PackageJsonEntriesOptions` instead of `cwd`.
+
+### Features
+
+#### Bundling a sibling package into a published package
+
+- The emitted manifest drops any package inlined into every partition of the build
+- A `bundle` entry now covers its subpaths too: a bare name, and a glob such as `@effected/*`, whose matches would otherwise have been pruned from the manifest while their subpath imports stayed external
+- Each inlined package gets its own `__PACKAGE_VERSION__` stamp, from the nearest `package.json` that carries a name; a nested `{"type":"module"}` marker no longer hides its owner
+- A `THIRD_PARTY_LICENSES.txt` carries the licence of every inlined package, at the group root as well, so it also names what an `outSubdir` partition inlined
+- Loose-file passes get the same subpath coverage, version stamping and licence collection as the entry passes
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/changesets | dependency | updated | 0.5.0 | 0.5.0 |
+| @effected/config-file | dependency | updated | 0.27.1 | 0.27.1 |
+| @effected/files | dependency | updated | 0.3.0 | 0.3.0 |
+| @effected/images | dependency | updated | 0.10.0 | 0.10.0 |
+| @effected/jsonl | dependency | updated | 0.19.0 | 0.19.0 |
+| @effected/npm | dependency | updated | 0.34.0 | 0.34.0 |
+| @effected/package-json | dependency | updated | 0.32.1 | 0.32.1 |
+| @effected/tsconfig-json | dependency | updated | 0.21.1 | 0.21.1 |
+| @effected/walker | dependency | updated | 0.28.0 | 0.28.0 |
+| @effected/workspaces | dependency | updated | 0.47.0 | 0.47.0 |
+
 ## 0.4.1
 
 ### Dependencies
