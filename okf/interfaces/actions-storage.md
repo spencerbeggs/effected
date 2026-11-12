@@ -10,7 +10,7 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-28T19:30:14Z
+  at: 2026-11-12T22:21:14Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:32.522Z
@@ -22,7 +22,7 @@ verified:
     at: 2026-10-29T00:43:21Z
 integrity:
   generated:
-    body: 0c82c664e8f79b05
+    body: bf5918c899df52ce
   verified:
     by: human:spencer
     at: 2026-10-29T00:43:21Z
@@ -281,7 +281,9 @@ lifecycle scripts — is not trusted: it is reinstalled over through the
 same remove-then-rename swap, because a stale `exec node` shim beside it
 would otherwise survive. The error union is unchanged at seven reasons;
 `unsupportedPlatform` now also names a host pnpm publishes no `@pnpm/exe.*`
-build for. Corepack's `bin/pnpm.mjs` route is deliberately not used: it
+build for. A pnpm artifact whose manifest declares no `@pnpm/exe.*`
+optional dependency is refused as `layoutUnexpected`; it is never shimmed as a
+Node entry point. Corepack's `bin/pnpm.mjs` route is deliberately not used: it
 downloads the binary on first invocation, mutating the cached entry after
 the swap. See
 [the placeholder gotcha](../gotchas/pnpm-12-placeholder-bin-runs-under-node.md)

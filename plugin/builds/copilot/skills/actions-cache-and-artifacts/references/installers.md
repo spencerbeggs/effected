@@ -73,7 +73,7 @@ and the two differ, the install fails `integrityMismatch` before any cache
 lookup or download — neither side is picked silently. Convert an SRI string
 with `CorepackIntegrityHash.fromSri`.
 
-pnpm 12 and later ship the real `pnpm` as a second artifact — the host's
+pnpm provisioning supports pnpm 12 only: the real `pnpm` ships as a second artifact — the host's
 `@pnpm/exe.<target>` native-binary package — which the installer overlays
 and verifies fail-closed. By default the registry packument's
 `dist.integrity` vouches for it. **Pass `options.nativeIntegrity` to make
@@ -84,8 +84,9 @@ tarball-only mirror works. A map with no entry for the host's package fails
 `integrityMissing` with `subject` naming that package — a lockfile records
 every platform, so a gap means the map is wrong, never "skip the check".
 An entry with no usable SRI, or a tarball that hashes to anything else,
-fails `integrityMismatch`. Pins with no native overlay (pnpm 11 and
-earlier, npm, yarn, bun) ignore the option. The wrapper tarball itself is
+fails `integrityMismatch`. Pins with no native overlay (npm, yarn, bun) ignore the option. A pnpm
+artifact whose wrapper declares no `@pnpm/exe.*` optional dependency fails
+`layoutUnexpected`. The wrapper tarball itself is
 verified against the pin's `integrity` or the `integrity` option, never
 against `nativeIntegrity`; convert a lockfile SRI with
 `CorepackIntegrityHash.fromSri`.

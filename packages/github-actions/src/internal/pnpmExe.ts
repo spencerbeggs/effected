@@ -1,4 +1,4 @@
-// The pnpm native-binary layout: from pnpm 12 the `pnpm` registry package is a
+// The pnpm native-binary layout: the `pnpm` registry package is a
 // thin wrapper whose `pnpm` bin is a shebang-less placeholder that the
 // package's own install script overwrites with the host's native executable,
 // fetched as an optional dependency named `@pnpm/exe.<os>-<arch>[-musl]`.
@@ -7,8 +7,8 @@
 // a tarball.
 //
 // Detection is by LAYOUT (the manifest's `optionalDependencies` naming an
-// `@pnpm/exe.*` package), never by major version — pnpm 11 and earlier ship
-// no such dependency and keep their Node entry points.
+// `@pnpm/exe.*` package), never by major version. A pnpm artifact
+// declaring none is not provisionable.
 
 import { Option, Result } from "effect";
 import * as Base64 from "effect/encoding/Base64";

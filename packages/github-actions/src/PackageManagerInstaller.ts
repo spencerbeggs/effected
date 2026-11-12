@@ -161,7 +161,7 @@ export interface PackageManagerInstallOptions {
 	 * The npm registry host the npm, pnpm and yarn tarballs download from.
 	 * Defaults to `https://registry.npmjs.org`. A corporate mirror qualifies
 	 * when it serves the standard `/<name>/-/<basename>-<version>.tgz` tarball
-	 * route and — for pnpm 12 and later, whose native binary is a second
+	 * route and — for pnpm, whose native binary is a second
 	 * artifact verified against the registry's own integrity — the
 	 * `/<name>/<version>` packument route as JSON carrying `dist.integrity`.
 	 * A tarball-only proxy fails a pnpm 12 pin with `downloadFailed` naming
@@ -177,8 +177,7 @@ export interface PackageManagerInstallOptions {
 	 * entry.
 	 *
 	 * @remarks
-	 * Consulted only for a pin whose wrapper overlays a native binary (pnpm 12
-	 * and later); every other pin ignores it. When supplied, the installer
+	 * Consulted only for a pin whose wrapper overlays a native binary (pnpm); every other pin ignores it. When supplied, the installer
 	 * verifies the host's `@pnpm/exe.<target>` tarball against this map's entry
 	 * (its strongest listed algorithm) INSTEAD of the registry's packument, so
 	 * the packument route is never requested and a tarball-only mirror
@@ -244,8 +243,8 @@ export class AmbientPackageManager extends Schema.Class<AmbientPackageManager>("
  * bare name); for bun it is the entry directory itself, because the cached
  * `bun` binary is directly executable and a shim would add nothing but a
  * fork. `bins` still maps each published bin name to the underlying entry —
- * a Node script to run with `node` for npm, yarn and pnpm 11 and earlier; an
- * executable to run directly for bun and for pnpm 12+, whose `pnpm` is the
+ * a Node script to run with `node` for npm and yarn; an
+ * executable to run directly for bun and for pnpm, whose `pnpm` is the
  * host's native binary (overlaid onto the cached wrapper the way pnpm's own
  * install script does) and whose `pn`/`pnpx`/`pnx` are shell aliases of it.
  * Each shim already applies that distinction. Calling `addPath` remains
@@ -517,13 +516,11 @@ const make = Effect.gen(function* () {
 	/**
 	 * What a package directory's own manifest says about its entry points: the
 	 * `bin` map, plus the `@pnpm/exe.*` optional dependencies that mark the
-	 * pnpm 12 native-binary layout (empty for every other manager and version).
+	 * pnpm native-binary layout (empty for every other manager). A pnpm
+	 * artifact without one is refused as `layoutUnexpected`.
 	 *
-	 * Read from the artifact rather than hardcoded per manager, because the
-	 * layouts genuinely move — corepack's own table has pnpm's entry at
-	 * `bin/pnpm.cjs` through v10 and `bin/pnpm.mjs` from v11, and from v12 the
-	 * `pnpm` bin is a placeholder for a native binary shipped as a separate
-	 * package. Both maps are attacker-supplied bytes and are normalized to
+	 * Read from the artifact rather than hardcoded per manager: the `pnpm` bin
+	 * is a placeholder for a native binary shipped as a separate package. Both maps are attacker-supplied bytes and are normalized to
 	 * string → string before anything downstream reads them.
 	 */
 	const readPackageManifest = (
@@ -567,7 +564,19 @@ const make = Effect.gen(function* () {
 				}
 				yield* assertFile(pin, target, `bin ${name} (${relative}) is missing`);
 			}
-			return { bins, nativePackages: nativePackagesOf(manifest.optionalDependencies) };
+			const nativePackages = nativePackagesOf(manifest.optionalDependencies);
+			// pnpm 12 is the only provisionable pnpm: its layout is the one whose
+			// wrapper declares a native binary. Anything else is refused, never
+			// shimmed as a Node entry point.
+			if (pin.name === "pnpm" && Object.keys(nativePackages).length === 0) {
+				return yield* Effect.fail(
+					errorFor(pin)({
+						reason: "layoutUnexpected",
+						subject: `package.json declares no ${PNPM_EXE_PREFIX}* optionalDependency`,
+					}),
+				);
+			}
+			return { bins, nativePackages };
 		});
 
 	/**

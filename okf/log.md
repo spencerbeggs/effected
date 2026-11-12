@@ -11,6 +11,7 @@
 * Updated The effected build commands: package build, action build and action init
 * Updated Package-manager support window
 * Updated workspace
+* Updated actions-storage
 
 ## 2026-11-11
 
