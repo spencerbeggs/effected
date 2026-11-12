@@ -208,6 +208,25 @@ export interface CustomHostedSchemaInput extends HostedSchemaVersionsInput {
 	readonly layout?: SchemaLayout;
 }
 
+// Module functions, not `private` members: a private member makes the class
+// nominal, and `@effected/plugin` inlines a second declaration copy of it, so a
+// HostedSchema from an installed schemastore would never type-check against the
+// plugin's config surface. The class must stay structural; the runtime brand
+// below is what tells copies apart.
+const resolvedOf = (fields: Fields): Resolved =>
+	// Admitted by the class check, so the walk cannot fail here.
+	Result.getOrThrow(resolve(fields));
+
+const parseLabel = (name: string, version: string | undefined): SchemaVersion | undefined => {
+	if (version === undefined) {
+		return undefined;
+	}
+	return Result.getOrThrowWith(
+		SchemaVersioning.parseResult(version),
+		(error) => new Error(`HostedSchema "${name}": invalid version label "${version}": ${error.message}`),
+	);
+};
+
 /**
  * Where a JSON Schema document is hosted and which version of it is current
  * — the one value an application derives its `$schema` URL from and hands
@@ -270,34 +289,29 @@ export class HostedSchema extends Schema.Class<HostedSchema>("HostedSchema")(Hos
 		return construct({ ...rest, baseUrl: trimSlashes(typeof baseUrl === "string" ? baseUrl : baseUrl.href) });
 	}
 
-	private get resolved(): Resolved {
-		// Admitted by the class check, so the walk cannot fail here.
-		return Result.getOrThrow(resolve(this));
-	}
-
 	/** The base `$id` is derived from: {@link SCHEMASTORE_ID_BASE} under SchemaStore, else `baseUrl`. */
 	get idBase(): string {
-		return this.resolved.hosting.idBase;
+		return resolvedOf(this).hosting.idBase;
 	}
 
 	/** The base the catalog URL is derived from: {@link SCHEMASTORE_CATALOG_BASE} under SchemaStore, else `baseUrl`. */
 	get catalogBase(): string {
-		return this.resolved.hosting.catalogBase;
+		return resolvedOf(this).hosting.catalogBase;
 	}
 
 	/** The effective layout: `"flat"` under SchemaStore, else `layout` defaulting to `"versioned"`. */
 	get resolvedLayout(): SchemaLayout {
-		return this.resolved.hosting.layout;
+		return resolvedOf(this).hosting.layout;
 	}
 
 	/** Whether versioned file names carry the `-<version>` suffix: `appendVersion` defaulting to `true`. */
 	get resolvedAppendVersion(): boolean {
-		return this.resolved.hosting.appendVersion;
+		return resolvedOf(this).hosting.appendVersion;
 	}
 
 	/** Every advertised version, parsed; empty for an unversioned schema. */
 	get resolvedVersions(): ReadonlyArray<SchemaVersion> {
-		return this.resolved.versions.versions;
+		return resolvedOf(this).versions.versions;
 	}
 
 	/**
@@ -313,22 +327,22 @@ export class HostedSchema extends Schema.Class<HostedSchema>("HostedSchema")(Hos
 	 * feeds them directly.
 	 */
 	get resolvedCurrent(): Option.Option<SchemaVersion> {
-		return Option.fromUndefinedOr(this.resolved.versions.current);
+		return Option.fromUndefinedOr(resolvedOf(this).versions.current);
 	}
 
 	/** The `$id` of the current document — what an application writes as `$schema`. */
 	get $id(): string {
-		return this.idFor(this.resolved.versions.current);
+		return this.idFor(resolvedOf(this).versions.current);
 	}
 
 	/** The catalog URL of the current document; equals {@link HostedSchema.$id} except under SchemaStore. */
 	get url(): string {
-		return this.urlFor(this.resolved.versions.current);
+		return this.urlFor(resolvedOf(this).versions.current);
 	}
 
 	/** The current document's file name relative to the output directory. */
 	get fileName(): string {
-		return this.fileNameFor(this.resolved.versions.current);
+		return this.fileNameFor(resolvedOf(this).versions.current);
 	}
 
 	/** The `$id` of the document at `version` (or the unversioned document). */
@@ -336,7 +350,7 @@ export class HostedSchema extends Schema.Class<HostedSchema>("HostedSchema")(Hos
 		return SchemaVersioning.schemaUrl(
 			this.idBase,
 			this.name,
-			this.parseLabel(version),
+			parseLabel(this.name, version),
 			this.resolvedLayout,
 			this.resolvedAppendVersion,
 		);
@@ -347,7 +361,7 @@ export class HostedSchema extends Schema.Class<HostedSchema>("HostedSchema")(Hos
 		return SchemaVersioning.schemaUrl(
 			this.catalogBase,
 			this.name,
-			this.parseLabel(version),
+			parseLabel(this.name, version),
 			this.resolvedLayout,
 			this.resolvedAppendVersion,
 		);
@@ -357,19 +371,9 @@ export class HostedSchema extends Schema.Class<HostedSchema>("HostedSchema")(Hos
 	fileNameFor(version?: string): string {
 		return SchemaVersioning.fileName(
 			this.name,
-			this.parseLabel(version),
+			parseLabel(this.name, version),
 			this.resolvedLayout,
 			this.resolvedAppendVersion,
-		);
-	}
-
-	private parseLabel(version: string | undefined): SchemaVersion | undefined {
-		if (version === undefined) {
-			return undefined;
-		}
-		return Result.getOrThrowWith(
-			SchemaVersioning.parseResult(version),
-			(error) => new Error(`HostedSchema "${this.name}": invalid version label "${version}": ${error.message}`),
 		);
 	}
 }

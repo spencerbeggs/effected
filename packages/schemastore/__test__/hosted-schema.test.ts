@@ -186,4 +186,18 @@ describe("HostedSchema", () => {
 		assert.isTrue(Equal.equals(decoded, HostedSchema.custom({ baseUrl: RAW, name: "cfg", versions: ["1"] })));
 		assert.isFalse(Equal.equals(decoded, HostedSchema.custom({ baseUrl: RAW, name: "cfg", versions: ["2"] })));
 	});
+
+	// `@effected/plugin` inlines this class's declaration, so a config holds two
+	// declaration copies of it: the plugin's and an installed schemastore's. A
+	// private (or #private) member makes a class nominal, and then a value from
+	// one copy is never assignable to the other, even at the same version. The
+	// mapped type below keeps only what `keyof` sees, so it is assignable back to
+	// the class only while the class declares nothing private: tsc fails here
+	// before any consumer does. The runtime brand still guards version skew.
+	it("declares no private members, so a second declaration copy stays assignable", () => {
+		type ForeignCopy = { [K in keyof HostedSchema]: HostedSchema[K] };
+		const acceptForeign = (value: ForeignCopy): HostedSchema => value;
+		const hosted = HostedSchema.custom({ baseUrl: RAW, name: "cfg", versions: ["1"] });
+		assert.strictEqual(acceptForeign(hosted), hosted);
+	});
 });

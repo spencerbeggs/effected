@@ -22,3 +22,7 @@ Things the upgrade process has hit in real repositories, each with what it looks
 ## Found this round
 
 <!-- effected-renovate: traps found since the last ledger reset go below this line -->
+
+| Looks like | Actually |
+| --- | --- |
+| `Types have separate declarations of a private property 'resolved'` on `hosted:` in a `schemastore.config.*`, while `effected schema check` passes | `@effected/plugin` 0.6.0 and 0.6.1 inline a copy of `HostedSchema` whose private members make it nominal, so a `HostedSchema` from `@effected/schemastore` never type-checks against `defineSchemastore`, even at the same version. Raise to `@effected/plugin` 0.6.2 and `@effected/schemastore` 0.33.1. Do not rebuild the identity in the config from the plugin's copy (ledger 0012, item 2). |
