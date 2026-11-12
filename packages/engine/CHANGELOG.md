@@ -1,5 +1,22 @@
 # @effected/engine
 
+## 0.17.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/bundler | dependency | updated | 0.4.0 | 0.4.1 |
+| @effected/files | dependency | updated | 0.3.0 | 0.3.0 |
+| @effected/jsonl | dependency | updated | 0.19.0 | 0.19.0 |
+| @effected/kit | dependency | updated | 0.14.0 | 0.14.0 |
+| @effected/schemastore | dependency | updated | 0.32.0 | 0.32.0 |
+| @effected/workspaces | dependency | updated | 0.46.0 | 0.47.0 |
+
+### Maintenance
+
+- Pins every `@effected/*` dependency to the exact version the tool was built and tested with, so a newer kit patch never reaches an installed tool without a release of the tool. Each library's kit peers resolve from these pins, so a consumer's other kit versions no longer split the tool's graph.
+
 ## 0.17.0
 
 ### Breaking Changes
