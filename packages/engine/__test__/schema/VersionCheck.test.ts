@@ -98,11 +98,13 @@ describe("VersionCheck.inspect", () => {
 		assert.isTrue(Option.isNone(VersionCheck.inspect(config)));
 	});
 
-	it("the mismatch message names both versions and how to align", () => {
+	it("the mismatch message names both versions and both remedies", () => {
 		const mismatch = Option.getOrThrow(VersionCheck.inspect(withForeign("9.9.9"), "1.2.3"));
 		assert.include(mismatch.message, "1.2.3");
 		assert.include(mismatch.message, "9.9.9");
 		assert.include(mismatch.message, "@effected/schemastore");
+		// The carrier holds the tool's own copy, so a config built from it always matches.
+		assert.include(mismatch.message, "authoring surface @effected/plugin exports");
 		assert.include(mismatch.message, "catalog:effected");
 	});
 });
