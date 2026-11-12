@@ -1,0 +1,16 @@
+#:schema https://raw.githubusercontent.com/spencerbeggs/effected/main/schemas/1.0/config.json
+
+# The ./node entry names `NpmConfig` through the package's own name; keep that import external in the declarations so
+# the subpath refers to the root's type instead of carrying a copy of NpmConfig and everything it reaches.
+[package.build]
+dtsExternals = ["@effected/npm"]
+
+[package.build.meta.tsdoc]
+suppressWarnings = [
+  { messageId = "ae-forgotten-export", pattern = "_base" },
+  # The second API Extractor pass resolves the ./node entry's self-referencing "@effected/npm" import to the built root
+  # declarations, but still reports the root types it reaches as forgotten (the @effected/config-file codec-subpath
+  # precedent). Scoped to the node entry only. What it would hide, a declaration local to the node entry left
+  # unexported, is pinned by __test__/node-declarations.test.ts over the built node.d.ts.
+  { messageId = "ae-forgotten-export", pattern = 'entry point node\.d\.ts$' },
+]

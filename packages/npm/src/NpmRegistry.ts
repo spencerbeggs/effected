@@ -321,6 +321,11 @@ export interface NpmRegistryShape {
 	 * the packument again after a 405 from any other registry. A malformed
 	 * dependency record fails with kind `"decode"`; an `engines` value that is
 	 * not a string record is omitted (see {@link VersionManifest}).
+	 *
+	 * For parity with `pnpm view` behind a proxy or a private CA, run this
+	 * service over `NpmHttpClient.layer` from `@effected/npm/node`, with
+	 * `packageManager: "pnpm"` in its options; over a plain fetch client the
+	 * npmrc's transport settings are not applied.
 	 */
 	readonly manifest: (
 		name: string,
@@ -678,22 +683,15 @@ export interface RegistrySeed {
  * applies no npmrc transport setting (the proxies, the bypass lists,
  * `strict-ssl`, the CA and client-certificate settings, top-level or per
  * registry), because it owns no connection: every request goes through the
- * `HttpClient` the caller provides. With core's `FetchHttpClient.layer` on
- * Node, a registry reachable only through a proxy, or signed by an internal
- * CA, fails every read as kind `"transport"`, where `npm view` or
- * `pnpm view` succeeds. To honour the user's npmrc, read
- * `NpmConfig.transport`, `NpmConfig.tlsFor(url, { packageManager })` and
- * `NpmConfig.proxyFor(url, env, { packageManager })` (npm's or pnpm's
- * routing, which differ) and configure the client from them. Either launch
- * Node with `NODE_USE_ENV_PROXY=1` and `NODE_EXTRA_CA_CERTS`, or provide
- * `FetchHttpClient.RequestInit` with a `dispatcher` (undici's `ProxyAgent`,
- * its `requestTls` carrying the CA and client certificate and
- * `rejectUnauthorized: strictSsl`) beside `FetchHttpClient.layer`. The
- * dispatcher is the application's dependency, not this package's. The two
- * routes read `NO_PROXY` differently: `proxyFor` matches it the way npm and pnpm do
- * (dot-separated labels, no `*` wildcard, no ports), while Node's
- * `NODE_USE_ENV_PROXY` follows the curl convention, where `*` bypasses every
- * host and an entry with a port matches that port only.
+ * `HttpClient` the caller provides. With core's `FetchHttpClient.layer`, a
+ * registry reachable only through a proxy, or signed by an internal CA,
+ * fails every read as kind `"transport"`, where `npm view` or `pnpm view`
+ * succeeds. On Node, provide `NpmHttpClient.layer` from `@effected/npm/node`
+ * instead, with the config and the environment: it applies the npmrc's
+ * proxy, bypass, CA, `strict-ssl` and client-certificate settings by npm's
+ * rules or, with `packageManager: "pnpm"`, by pnpm's, which differ. A
+ * runtime without `@effect/platform-node` (Cloudflare Workers) keeps a fetch
+ * client and has no proxy or custom CA support.
  *
  * @example
  * ```ts

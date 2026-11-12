@@ -248,11 +248,13 @@ export interface ProxyForOptions {
  * local address.
  *
  * @remarks
- * **Nothing in this package applies these.** `NpmRegistry` and
+ * **The root entry applies none of these.** `NpmRegistry` and
  * `PackageTarball` send every request through the `HttpClient` the caller
- * provides, and that client is where a proxy or a CA bundle takes effect. This
- * record is what a caller reads to build one; see {@link NpmConfig.transport},
- * {@link NpmConfig.proxyFor} and {@link NpmConfig.tlsFor}.
+ * provides, and that client is where a proxy or a CA bundle takes effect.
+ * On Node, `NpmHttpClient.layer` from `@effected/npm/node` builds that client
+ * from this configuration; another client reads this record to build its
+ * own. See {@link NpmConfig.transport}, {@link NpmConfig.proxyFor} and
+ * {@link NpmConfig.tlsFor}.
  *
  * Each field names who reads it. npm 11 and npm 12 read these settings
  * identically; pnpm (11 and 12) reads the same keys plus three of its own
@@ -600,17 +602,17 @@ const pnpmTlsKeys = (parsed: URL): ReadonlyArray<string> => {
  * nearest `package.json` or `node_modules` directory unless
  * {@link NpmConfigLoadOptions.projectDir} names it or
  * {@link NpmConfigLoadOptions.workspaceRoot} asks for the workspace root.
- * **Not supported**: command-line flags, npm's builtin npmrc, client
- * certificates (`certfile`/`keyfile`), `always-auth`, and the
- * deprecated unscoped credentials.
+ * **Not supported**: command-line flags, npm's builtin npmrc, `always-auth`,
+ * and the deprecated unscoped credentials.
  *
- * **Transport settings are read, never applied.** `proxy`, `https-proxy`,
- * `noproxy`, `strict-ssl`, `ca`, `cafile`, `certfile` and `keyfile` decide how
- * npm connects, and here the connection belongs to the `HttpClient` the caller
- * provides to `NpmRegistry`: this package owns no transport. Read
- * {@link NpmConfig.transport} and {@link NpmConfig.proxyFor} to configure that
- * client, or a registry behind a proxy or an internal CA fails every read as
- * `RegistryReadError` `"transport"` where `npm view` succeeds.
+ * **Transport settings are read here and applied by the client.** `proxy`,
+ * `https-proxy`, `noproxy`, `strict-ssl`, `ca`, `cafile` and each registry's
+ * `certfile` and `keyfile` decide how npm connects, and the connection belongs
+ * to the `HttpClient` the caller provides to `NpmRegistry`. On Node, provide
+ * `NpmHttpClient.layer(config)` from `@effected/npm/node`, which applies them
+ * through {@link NpmConfig.proxyFor} and {@link NpmConfig.tlsFor}. With any
+ * other client, a registry behind a proxy or an internal CA fails every read
+ * as `RegistryReadError` `"transport"` where `npm view` succeeds.
  *
  * Credentials are held as `Redacted` values, so logging or serializing a
  * config prints `<redacted>` for them. So are an inline client `key` or
