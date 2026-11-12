@@ -649,7 +649,32 @@
 			},
 			"additionalProperties": false,
 			"title": "Open Graph image",
-			"description": "One Open Graph image the API docs declare. Exactly one of path and url must be present."
+			"description": "One Open Graph image the API docs declare. Exactly one of path and url must be present.",
+			"allOf": [
+				{
+					"oneOf": [
+						{
+							"title": "By path",
+							"properties": {
+								"path": {
+									"description": "The image is a bundle-relative asset."
+								}
+							},
+							"required": ["path"]
+						},
+						{
+							"title": "By url",
+							"properties": {
+								"url": {
+									"description": "The image is an absolute external URL."
+								}
+							},
+							"required": ["url"]
+						}
+					],
+					"title": "openGraph image source"
+				}
+			]
 		},
 		"BundleOpenGraphConfig": {
 			"type": "object",

@@ -517,6 +517,16 @@ describe.skipIf(!RUNNABLE)("packed install (@effected/plugin)", () => {
 						});
 						assert.strictEqual(built.exitCode, 0, `${built.stdout}\n${built.stderr}`);
 						yield* assertExpected(cwd, manager);
+						// The carrier's MCP server lowers the same schemas: it agrees with what the CLI wrote, so a reused
+						// identifier reaches neither front end as X, X_1 (effected#1348).
+						const session = yield* schemaCheck(consumer, cwd, toolEnv(result));
+						assert.notStrictEqual(session.result?.isError, true, `${manager}: ${JSON.stringify(session.result)}`);
+						assert.strictEqual(
+							session.result?.structuredContent?.verdict,
+							"ok",
+							`${manager}: ${JSON.stringify(session.result?.structuredContent)}`,
+						);
+						assert.strictEqual(session.exitCode, 0, `${manager}: ${session.stderr}`);
 					}).pipe(Effect.timeout(SCHEMA_CASE)),
 				vitestGuard(SCHEMA_CASE),
 			);

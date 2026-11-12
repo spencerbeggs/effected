@@ -693,7 +693,26 @@ export class BundleOpenGraphImage extends Schema.Class<BundleOpenGraphImage>("Bu
 					(image.path === undefined) !== (image.url === undefined)
 						? undefined
 						: 'exactly one of "path" or "url" must be present',
-				{ title: "openGraph image source" },
+				{
+					title: "openGraph image source",
+					// Exact, not approximate: an image naming both keys matches both branches and one naming neither
+					// matches none, so an editor rejects what the decode rejects. Each branch declares its key beside
+					// required, as ajv's strictRequired asks.
+					toJsonSchema: () => ({
+						oneOf: [
+							{
+								title: "By path",
+								properties: { path: { description: "The image is a bundle-relative asset." } },
+								required: ["path"],
+							},
+							{
+								title: "By url",
+								properties: { url: { description: "The image is an absolute external URL." } },
+								required: ["url"],
+							},
+						],
+					}),
+				},
 			),
 		),
 ) {}

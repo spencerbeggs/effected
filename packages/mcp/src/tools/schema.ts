@@ -242,7 +242,16 @@ export const makeSchemaHandlers = (options: SchemaToolOptions = {}) =>
 								force: params.force ?? false,
 								versionMismatch: "warn",
 							},
-							{ cwd: root, discoveryCeiling: root, importModule: () => Promise.resolve(loaded.config), onProgress },
+							{
+								cwd: root,
+								discoveryCeiling: root,
+								importModule: () => Promise.resolve(loaded.config),
+								onProgress,
+								// The injected importer resolves no generator, so the one this load found travels beside it.
+								...(loaded.toJsonSchemaDocument !== undefined
+									? { toJsonSchemaDocument: loaded.toJsonSchemaDocument }
+									: {}),
+							},
 						),
 						{ timeout: WALK_TIMEOUT },
 					);

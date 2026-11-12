@@ -7,12 +7,7 @@
 		},
 		"schema:build": {
 			"dependsOn": ["$TURBO_EXTENDS$"],
-			"outputLogs": "errors-only",
-			"outputs": [
-				"$TURBO_ROOT$/schemas/*/config.json",
-				"$TURBO_ROOT$/schemas/catalog.json",
-				"$TURBO_ROOT$/schemas/catalogs/effected.json"
-			]
+			"outputLogs": "errors-only"
 		}
 	}
 }

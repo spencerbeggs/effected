@@ -33,22 +33,8 @@
 			"outputs": ["dist/**"]
 		},
 		"schema:build": {
-			"cache": true,
+			"cache": false,
 			"dependsOn": [],
-			"inputs": [
-				"$TURBO_DEFAULT$",
-				"$TURBO_ROOT$/package.json",
-				"$TURBO_ROOT$/pnpm-workspace.yaml",
-				"$TURBO_ROOT$/pnpm-lock.yaml",
-				"$TURBO_ROOT$/tsconfig.json",
-				"package.json",
-				"tsconfig.json",
-				"lib/**/*",
-				"src/**/*",
-				"!__test__/**/*",
-				"!CHANGELOG.md",
-				"!CLAUDE.md"
-			],
 			"outputLogs": "errors-only"
 		},
 		"schema:check": {
