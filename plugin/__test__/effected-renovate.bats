@@ -348,3 +348,85 @@ EOF
 		console.log(JSON.stringify(f.data));'
 	[ "$output" = '{"title":"Fix #12","detect":["Crypto\\."],"closes":["a","b"]}' ]
 }
+
+# ── stale-edges.mjs ──────────────────────────────────────────────────────────
+
+STALE_FIXTURES="$PLUGIN_ROOT/__test__/fixtures/stale-edges"
+
+@test "stale-edges: no split exits 0 and still counts the kit packages it read" {
+	run node "$SCRIPTS/stale-edges.mjs" "$STALE_FIXTURES/no-split.yaml"
+	[ "$status" -eq 0 ]
+	# Positive control: both documents were parsed, so a parser that read nothing cannot pass.
+	[ "$output" = "stale-edges: 2 kit packages, none at more than one version" ]
+}
+
+@test "stale-edges: a tool on a stale kit release gets one override line per tool edge" {
+	run node "$SCRIPTS/stale-edges.mjs" "$STALE_FIXTURES/split.yaml"
+	[ "$status" -eq 2 ]
+	[[ "$output" == *"stale-edges: 2 of 4 kit packages resolve at more than one version"* ]]
+	[[ "$output" == *"@effected/npm 0.34.0 (stale: 0.33.0)"* ]]
+	[[ "$output" == *"@vitest-agent/plugin@6.0.10 -> @effected/npm@0.33.0"* ]]
+	# optionalDependencies count as edges too.
+	[[ "$output" == *"rolldown-pnpm-config@2.4.5 -> @effected/walker@0.27.0"* ]]
+	local overrides
+	overrides="$(sed -n '/^overrides:$/,$p' <<<"$output")"
+	[ "$overrides" = "$(printf 'overrides:\n  "@vitest-agent/plugin>@effected/npm": "0.34.0"\n  "rolldown-pnpm-config>@effected/walker": "0.28.0"')" ]
+}
+
+@test "stale-edges: a kit parent and an importer are reported but never overridden" {
+	run node "$SCRIPTS/stale-edges.mjs" "$STALE_FIXTURES/split.yaml"
+	[ "$status" -eq 2 ]
+	[[ "$output" == *"@effected/lockfiles@0.24.1 -> @effected/npm@0.33.0  (kit parent: a tool override covers it only through a peer; inspect it)"* ]]
+	[[ "$output" == *". (importer) -> @effected/walker@0.27.0  (raise this repository's range)"* ]]
+	[[ "$output" != *'"@effected/lockfiles>'* ]]
+	[[ "$output" != *'".>'* ]]
+}
+
+@test "stale-edges: a named-registry qualifier is read off the version" {
+	run node --input-type=module -e '
+		import { parseKey } from "'"$SCRIPTS"'/stale-edges.mjs";
+		console.log(JSON.stringify(parseKey("@effected/npm@work:0.34.0")));'
+	[ "$status" -eq 0 ]
+	[ "$output" = '{"name":"@effected/npm","version":"0.34.0"}' ]
+}
+
+@test "stale-edges: peer suffixes are stripped from snapshot keys and dependency versions" {
+	run node --input-type=module -e '
+		import { parseKey } from "'"$SCRIPTS"'/stale-edges.mjs";
+		const k = parseKey("'"'"'@vitest-agent/plugin@6.0.10(@effected/npm@0.33.0(effect@4.1.3))(effect@4.1.3)'"'"'");
+		console.log(JSON.stringify([k, parseKey("effect@4.1.3"), parseKey("link:../x")]));'
+	[ "$status" -eq 0 ]
+	[ "$output" = '[{"name":"@vitest-agent/plugin","version":"6.0.10"},{"name":"effect","version":"4.1.3"},null]' ]
+	# Two snapshots of one tool, differing only by peer suffix, collapse to one edge.
+	run node "$SCRIPTS/stale-edges.mjs" "$STALE_FIXTURES/split.yaml"
+	[ "$(grep -c '@vitest-agent/plugin@6.0.10 -> ' <<<"$output")" -eq 1 ]
+}
+
+@test "stale-edges: --json carries the split, the edge kinds and the overrides" {
+	run node "$SCRIPTS/stale-edges.mjs" --json "$STALE_FIXTURES/split.yaml"
+	[ "$status" -eq 2 ]
+	run node -e '
+		const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
+		console.log(d.kit, d.split.map(s => s.name).join(","), d.edges.map(e => e.kind).sort().join(","), JSON.stringify(d.overrides));' <<<"$output"
+	[ "$output" = '4 @effected/npm,@effected/walker importer,kit,tool,tool {"@vitest-agent/plugin>@effected/npm":"0.34.0","rolldown-pnpm-config>@effected/walker":"0.28.0"}' ]
+}
+
+@test "stale-edges: reads ./pnpm-lock.yaml by default, 1 when unreadable, 64 on a bad argument" {
+	cp "$STALE_FIXTURES/no-split.yaml" "$PROJECT/pnpm-lock.yaml"
+	# pnpm run exports NODE_OPTIONS=--import=tsx, which cannot resolve from a temp project.
+	run env -u NODE_OPTIONS bash -c "cd '$PROJECT' && node '$SCRIPTS/stale-edges.mjs'"
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"2 kit packages"* ]]
+	run node "$SCRIPTS/stale-edges.mjs" "$BATS_TEST_TMPDIR/missing.yaml"
+	[ "$status" -eq 1 ]
+	run node "$SCRIPTS/stale-edges.mjs" --nope
+	[ "$status" -eq 64 ]
+}
+
+@test "built: stale-edges.mjs runs from both builds with only a skill script's environment" {
+	for host in claude copilot; do
+		run_script "$host" skills/effected-renovate/scripts/stale-edges.mjs "$STALE_FIXTURES/split.yaml"
+		[ "$status" -eq 2 ] || { echo "$host: $status $output $stderr" >&2; return 1; }
+		[[ "$output" == *'"@vitest-agent/plugin>@effected/npm": "0.34.0"'* ]]
+	done
+}

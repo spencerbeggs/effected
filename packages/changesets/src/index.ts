@@ -11,6 +11,7 @@
  * @packageDocumentation
  */
 
+export { BreakingFloor, FloorCause } from "./BreakingFloors.js";
 export { BumpType, ReleaseType } from "./BumpType.js";
 export type {
 	ChangelogEntryOptions,

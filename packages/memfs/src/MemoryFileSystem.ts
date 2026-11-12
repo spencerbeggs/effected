@@ -236,8 +236,11 @@ export interface MemoryFileSystemSyncFileSystem {
 	 * `realpathSync`: the canonical path of `path`, every link in it resolved.
 	 * Like `realpathSync`, `.` and `..` are folded lexically first, so
 	 * `file.txt/..` is the directory holding `file.txt` even though `stat` of
-	 * the same path fails `ENOTDIR`. Throws `ENOENT`/`ENOTDIR`/`ELOOP` with
-	 * `syscall: "realpath"`.
+	 * the same path fails `ENOTDIR`. Throws `ENOENT`/`ENOTDIR`/`ELOOP` from the
+	 * step that failed, as the JS `realpathSync` does: `syscall: "lstat"` for a
+	 * component that is missing or under a non-directory, `syscall: "stat"` for
+	 * a symbolic link that does not resolve, and `path` the prefix being
+	 * examined — links before it already resolved, so not always the caller's.
 	 */
 	readonly realPath: (path: string) => string;
 }

@@ -1,0 +1,57 @@
+---
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    configDependencies:
+      '@effected/pnpm-plugin-effected':
+        specifier: 0.26.1
+        version: 0.26.1
+
+packages:
+
+  '@effected/pnpm-plugin-effected@0.26.1':
+    resolution: {integrity: sha512-x}
+
+snapshots:
+
+  '@effected/pnpm-plugin-effected@0.26.1': {}
+
+---
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    devDependencies:
+      '@effected/npm':
+        specifier: catalog:effected
+        version: 0.34.0(effect@4.1.3)
+      some-tool:
+        specifier: ^1.0.0
+        version: 1.0.0(effect@4.1.3)
+
+packages:
+
+  '@effected/npm@0.34.0':
+    resolution: {integrity: sha512-x}
+
+  effect@4.1.3:
+    resolution: {integrity: sha512-x}
+
+  some-tool@1.0.0:
+    resolution: {integrity: sha512-x}
+
+snapshots:
+
+  '@effected/npm@0.34.0(effect@4.1.3)':
+    dependencies:
+      effect: 4.1.3
+
+  effect@4.1.3: {}
+
+  some-tool@1.0.0(effect@4.1.3):
+    dependencies:
+      '@effected/npm': 0.34.0(effect@4.1.3)
+      effect: 4.1.3

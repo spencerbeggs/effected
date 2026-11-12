@@ -147,30 +147,38 @@ describe("sync port parity with node:fs", () => {
 		}),
 	);
 
-	it.effect("realPath agrees with realpathSync on every case, lexical folding included", () =>
+	it.effect("realPath agrees with realpathSync on every case: value, code, syscall, path and message", () =>
 		Effect.gen(function* () {
 			const { volume } = yield* MemoryFileSystem.makeHandle(seed);
 			const sync = MemoryFileSystem.syncFileSystem(volume);
 			// The JS `realpathSync` is the reference: it is what the kit's own Node
 			// binding (`@effected/walker/node-sync`) wires, and it folds `.`/`..`
 			// lexically before resolving. (`.native` is the kernel's and does not:
-			// on macOS `file.txt/x/..` is ENOTDIR there.) The `code` is compared;
-			// the syscall is not, because the port reports `realpath` as documented
-			// where the JS implementation names its internal `lstat`/`stat`.
+			// on macOS `file.txt/x/..` is ENOTDIR there.) It fails in the `lstat` or
+			// `stat` of the prefix it was examining (#1328), so the syscall and the
+			// path are compared too — with the host's REAL prefix (macOS's tmpdir is
+			// itself behind a link) mapped onto "/r".
 			const realHost = realpathSync(host);
 			const answer = (f: () => string) => {
 				try {
-					return { value: f() };
+					return { value: f().split(realHost).join("/r") };
 				} catch (e) {
-					return { code: (e as { code: string }).code };
+					const error = e as { code: string; syscall: string; message: string; path?: string };
+					return {
+						code: error.code,
+						syscall: error.syscall,
+						message: error.message.split(realHost).join("/r"),
+						path: error.path?.split(realHost).join("/r"),
+					};
 				}
 			};
-			for (const c of cases) {
-				const real = answer(() => realpathSync(hostPath(c)));
-				const expected = "value" in real ? { value: real.value.split(realHost).join("/r") } : real;
+			// Deeper failures, where the failing prefix is not the caller's path:
+			// past a missing or dangling component, and after a link resolved.
+			const deeper = ["nope/x", "dangling/x", "loop-a/x", "bad-link/x", "to-file/x", "to-dir/nope", "to-dir/nope/y"];
+			for (const c of [...cases, ...deeper]) {
 				assert.deepStrictEqual(
 					answer(() => sync.realPath(`/r/${c}`)),
-					expected,
+					answer(() => realpathSync(hostPath(c))),
 					`realPath ${c}`,
 				);
 			}

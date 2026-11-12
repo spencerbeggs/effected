@@ -1,5 +1,13 @@
 # Log
 
+## 2026-11-11
+
+* Updated Peer-dependency discipline
+* Updated @effected/workspaces discovery and detection
+* Updated @effected/workspaces snapshots
+* Updated @effected/workspaces: monorepo tooling
+* Updated npm
+
 ## 2026-11-10
 
 * Updated @effected/changesets

@@ -39,7 +39,10 @@ describe("enumerate — literal pattern probes", () => {
 
 		return Effect.gen(function* () {
 			const globs = yield* GlobSet.compile(literals);
-			const directories = yield* enumerate("/repo", globs);
+			const directories = yield* enumerate("/repo", {
+				candidates: globs,
+				matches: (relative) => globs.matches(relative),
+			});
 
 			assert.deepStrictEqual(
 				directories.map((directory) => directory.relativePath),

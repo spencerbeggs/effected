@@ -93,6 +93,57 @@ export const resolvePath = (volume: MemoryFileSystemVolume, path: string, follow
 	return r;
 };
 
+// KIT EXTENSION (errno fidelity, #1328). node's JS `fs.realpathSync` (the one
+// the port mirrors, never `.native`) folds the path lexically, then walks it a
+// component at a time: an `lstat` of the prefix built so far (links before it
+// already resolved), and for a link a `stat` of that same prefix before
+// `readlink`, the target joined LEXICALLY with the rest and the walk restarted
+// from the root. A failure is the `lstat` or `stat` it happened in, naming that
+// prefix — `realpath` never appears, and the path is not the caller's when a
+// link or a deeper component failed. Host-probed identical on macOS and Linux.
+type RealPath = { readonly path: string } | { readonly code: string; readonly syscall: string; readonly path: string };
+
+const realPathOf = (volume: MemoryFileSystemVolume, path: string): RealPath => {
+	let remaining = lexicallyNormalized(path)
+		.split("/")
+		.filter((part) => part !== "");
+	let resolved = "";
+	const hard = new Set<string>();
+	let restarts = 0;
+	while (remaining.length > 0) {
+		const base = `${resolved}/${remaining[0]}`;
+		remaining = remaining.slice(1);
+		if (hard.has(base)) {
+			resolved = base;
+			continue;
+		}
+		const entry = volume.lstat(base);
+		if (entry === undefined) {
+			// The prefix is link-free, so its literal kind is its real one.
+			const parent = volume.lstat(resolved === "" ? "/" : resolved);
+			const code = parent === undefined || parent.kind === "directory" ? "ENOENT" : "ENOTDIR";
+			return { code, syscall: "lstat", path: base };
+		}
+		if (entry.kind !== "symlink") {
+			hard.add(base);
+			resolved = base;
+			continue;
+		}
+		const followed = resolvePath(volume, base);
+		restarts += 1;
+		if ("code" in followed || restarts > MAX_LINK_HOPS) {
+			return { code: "code" in followed ? followed.code : "ELOOP", syscall: "stat", path: base };
+		}
+		const target = volume.readLink(base) ?? "";
+		const joined = target.startsWith("/") ? target : `${resolved}/${target}`;
+		remaining = lexicallyNormalized(`${joined}/${remaining.join("/")}`)
+			.split("/")
+			.filter((part) => part !== "");
+		resolved = "";
+	}
+	return { path: resolved === "" ? "/" : resolved };
+};
+
 const portStats = (s: MemoryFileSystemVolumeStat): MemoryFileSystemPortStats => ({
 	isFile: () => s.kind === "file",
 	isDirectory: () => s.kind === "directory",
@@ -236,7 +287,8 @@ const readBytes = (volume: MemoryFileSystemVolume, path: string): Uint8Array => 
 
 // The `syscall` on each thrown error is the one node reports for the same call:
 // `open` for readFile (`read` when the target is a directory), `scandir` for
-// readDirectory, `stat`/`lstat` for the stat pair.
+// readDirectory, `stat`/`lstat` for the stat pair, and for realPath the
+// `lstat` or `stat` the JS `realpathSync` failed in.
 export const makeSyncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSystemSyncFileSystem => {
 	// `readdirSync`: the directory is reached through links; with
 	// `withFileTypes` its entries are reported literally — a link is a link,
@@ -277,9 +329,8 @@ export const makeSyncFileSystem = (volume: MemoryFileSystemVolume): MemoryFileSy
 		stat: (path) => statOf(volume, path, "stat", true),
 		lstat: (path) => statOf(volume, path, "lstat", false),
 		realPath: (path) => {
-			// Folded lexically first, as `realpathSync` folds it (./lexical.js).
-			const r = resolvePath(volume, lexicallyNormalized(path));
-			if ("code" in r) throw nodeErrno(r.code, "realpath", path);
+			const r = realPathOf(volume, path);
+			if ("code" in r) throw nodeErrno(r.code, r.syscall, r.path);
 			return r.path;
 		},
 	};

@@ -12,7 +12,7 @@
 //   the Linux errno, and the node run asserts whichever platform it is on;
 // - `{ memory, node }`: a KNOWN divergence memfs deliberately keeps. Both sides
 //   are still asserted, so a change on either side fails here and forces the
-//   decision to be revisited.
+//   decision to be revisited. The node side may itself be `{ linux, darwin }`.
 //
 // It also pins the BEHAVIOUR of `FileSystem` options the pinned upstream engine
 // predates (`open` noFollow, positional `read`/`readAlloc`): a success case
@@ -39,10 +39,12 @@ interface Failure {
 
 type Outcome = "success" | Failure;
 
-type Expectation =
-	| Outcome
-	| { readonly linux: Outcome; readonly darwin: Outcome }
-	| { readonly memory: Outcome; readonly node: Outcome };
+interface PerPlatform {
+	readonly linux: Outcome;
+	readonly darwin: Outcome;
+}
+
+type Expectation = Outcome | PerPlatform | { readonly memory: Outcome; readonly node: Outcome | PerPlatform };
 
 interface Case {
 	readonly name: string;
@@ -57,6 +59,11 @@ interface Case {
 		fs: FileSystem.FileSystem,
 		path: (...segments: ReadonlyArray<string>) => string,
 	) => Effect.Effect<void, PlatformError.PlatformError>;
+	/** An assertion on the tree after `run`, whichever way it exited: a failure that changed nothing. */
+	readonly afterward?: (
+		fs: FileSystem.FileSystem,
+		path: (...segments: ReadonlyArray<string>) => string,
+	) => Effect.Effect<void, PlatformError.PlatformError>;
 }
 
 const fail = (tag: Failure["tag"], method: string, code?: string): Failure =>
@@ -64,7 +71,9 @@ const fail = (tag: Failure["tag"], method: string, code?: string): Failure =>
 
 const resolveExpectation = (expectation: Expectation, implementation: Implementation): Outcome => {
 	if (expectation === "success" || "tag" in expectation) return expectation;
-	if ("memory" in expectation) return expectation[implementation];
+	if ("memory" in expectation) {
+		return implementation === "memory" ? expectation.memory : resolveExpectation(expectation.node, "node");
+	}
 	// memfs models Linux; the node run asserts the platform it runs on.
 	if (implementation === "memory" || process.platform === "linux") return expectation.linux;
 	if (process.platform === "darwin") return expectation.darwin;
@@ -708,6 +717,137 @@ const cases: ReadonlyArray<Case> = [
 		run: (fs, p) => fs.symlink("t", p("missing", "x", "..")),
 		expect: fail("NotFound", "symlink", "ENOENT"),
 	},
+	// A `.` or `..` leaf on a real DIRECTORY (#1327) names that directory or its
+	// parent, never a new entry: each operation refuses it with its own errno.
+	{
+		name: "remove dir/.",
+		run: (fs, p) => fs.remove(p("dir", ".")),
+		expect: fail("Unknown", "remove", "ERR_FS_EISDIR"),
+	},
+	{
+		name: "remove dir/..",
+		run: (fs, p) => fs.remove(p("dir", "..")),
+		expect: fail("Unknown", "remove", "ERR_FS_EISDIR"),
+	},
+	{
+		name: "remove dir/. with force",
+		run: (fs, p) => fs.remove(p("dir", "."), { force: true }),
+		expect: fail("Unknown", "remove", "ERR_FS_EISDIR"),
+	},
+	{
+		name: "remove full/. recursively",
+		run: (fs, p) => fs.remove(p("full", "."), { recursive: true }),
+		expect: fail("Unknown", "remove", "EINVAL"),
+		afterward: (fs, p) => Effect.map(fs.exists(p("full", "a")), (exists) => assert.isTrue(exists)),
+	},
+	{
+		name: "remove empty/. recursively with force",
+		run: (fs, p) => fs.remove(p("empty", "."), { recursive: true, force: true }),
+		expect: fail("Unknown", "remove", "EINVAL"),
+	},
+	// Known divergence: Linux `rm -r dir/..` empties the directory holding `dir`
+	// until its own path stops resolving, then answers success; memfs keeps
+	// macOS's refusal, which removes nothing.
+	{
+		name: "remove dir/.. recursively",
+		run: (fs, p) => fs.remove(p("dir", ".."), { recursive: true }),
+		expect: {
+			memory: fail("Unknown", "remove", "EINVAL"),
+			node: { linux: "success", darwin: fail("Unknown", "remove", "EINVAL") },
+		},
+	},
+	{
+		name: "remove dir/missing/..",
+		run: (fs, p) => fs.remove(p("dir", "missing", "..")),
+		expect: fail("NotFound", "remove", "ENOENT"),
+	},
+	{
+		name: "rename dir/.",
+		run: (fs, p) => fs.rename(p("dir", "."), p("moved")),
+		expect: { linux: fail("Busy", "rename", "EBUSY"), darwin: fail("Unknown", "rename", "EINVAL") },
+	},
+	{
+		name: "rename full/..",
+		run: (fs, p) => fs.rename(p("full", ".."), p("moved")),
+		expect: { linux: fail("Busy", "rename", "EBUSY"), darwin: fail("Unknown", "rename", "EINVAL") },
+	},
+	{
+		name: "rename a file onto dir/.",
+		run: (fs, p) => fs.rename(p("file"), p("dir", ".")),
+		expect: { linux: fail("Busy", "rename", "EBUSY"), darwin: fail("Unknown", "rename", "EINVAL") },
+	},
+	{
+		name: "rename a directory onto full/..",
+		run: (fs, p) => fs.rename(p("empty"), p("full", "..")),
+		expect: { linux: fail("Busy", "rename", "EBUSY"), darwin: fail("Unknown", "rename", "EINVAL") },
+	},
+	{
+		name: "rename a missing entry onto dir/.",
+		run: (fs, p) => fs.rename(p("missing"), p("dir", ".")),
+		expect: { linux: fail("Busy", "rename", "EBUSY"), darwin: fail("NotFound", "rename", "ENOENT") },
+	},
+	{
+		name: "rename dir/. beneath a file",
+		run: (fs, p) => fs.rename(p("dir", "."), p("file", "x")),
+		expect: fail("BadResource", "rename", "ENOTDIR"),
+	},
+	{
+		name: "rename dir/. beneath a missing directory",
+		run: (fs, p) => fs.rename(p("dir", "."), p("missing", "x")),
+		expect: fail("NotFound", "rename", "ENOENT"),
+	},
+	{
+		name: "symlink at dir/.",
+		run: (fs, p) => fs.symlink("t", p("dir", ".")),
+		expect: fail("AlreadyExists", "symlink", "EEXIST"),
+	},
+	{
+		name: "symlink at dir/..",
+		run: (fs, p) => fs.symlink("t", p("dir", "..")),
+		expect: fail("AlreadyExists", "symlink", "EEXIST"),
+	},
+	{
+		name: "link at dir/.",
+		run: (fs, p) => fs.link(p("file"), p("dir", ".")),
+		expect: fail("AlreadyExists", "link", "EEXIST"),
+	},
+	{
+		name: "link at dir/..",
+		run: (fs, p) => fs.link(p("file"), p("dir", "..")),
+		expect: fail("AlreadyExists", "link", "EEXIST"),
+	},
+	{
+		name: "link from dir/.",
+		run: (fs, p) => fs.link(p("dir", "."), p("dirlink")),
+		expect: fail("PermissionDenied", "link", "EPERM"),
+	},
+	{
+		name: "makeDirectory dir/.",
+		run: (fs, p) => fs.makeDirectory(p("dir", ".")),
+		expect: fail("AlreadyExists", "makeDirectory", "EEXIST"),
+	},
+	{
+		name: "makeDirectory dir/..",
+		run: (fs, p) => fs.makeDirectory(p("dir", "..")),
+		expect: fail("AlreadyExists", "makeDirectory", "EEXIST"),
+	},
+	{
+		name: "makeDirectory dir/. recursively",
+		run: (fs, p) => fs.makeDirectory(p("dir", "."), { recursive: true }),
+		expect: "success",
+	},
+	{
+		name: "makeDirectory new/.. recursively creates new",
+		run: (fs, p) => fs.makeDirectory(p("new", ".."), { recursive: true }),
+		expect: "success",
+		check: (_, fs, p) => Effect.map(fs.exists(p("new")), (exists) => assert.isTrue(exists)),
+	},
+	{
+		name: "makeDirectory dir/new/..",
+		run: (fs, p) => fs.makeDirectory(p("dir", "new", "..")),
+		expect: fail("NotFound", "makeDirectory", "ENOENT"),
+	},
+
 	// realPath is the exception, because node's `fs.realpath` normalizes the
 	// path lexically (`path.resolve`) before it resolves a single link: there,
 	// `file/..` is the directory holding `file`, and a missing parent of a `..`
@@ -809,6 +949,7 @@ export const errnoSuite = (implementation: Implementation, fsLayer: Layer.Layer<
 							if (testCase.check !== undefined && Exit.isSuccess(exit)) {
 								yield* testCase.check(exit.value, fs, p);
 							}
+							if (testCase.afterward !== undefined) yield* testCase.afterward(fs, p);
 						}),
 					),
 				);

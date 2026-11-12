@@ -93,20 +93,38 @@ describe("sync port stat/lstat", () => {
 		}),
 	);
 
-	it.effect("realPath resolves links and throws realpath-syscall errnos", () =>
+	it.effect("realPath resolves links and throws from the lstat or stat realpathSync failed in", () =>
 		Effect.gen(function* () {
 			const { volume } = yield* tree;
 			const sync = MemoryFileSystem.syncFileSystem(volume);
 			assert.strictEqual(sync.realPath("/r/to-dir"), "/r/dir");
 			assert.strictEqual(sync.realPath("/r/to-dir/inner.txt"), "/r/dir/inner.txt");
 			assert.strictEqual(sync.realPath("/r/file.txt"), "/r/file.txt");
+			// A link that does not resolve fails its `stat`; a missing component its
+			// `lstat`, naming the prefix examined — links before it resolved (#1328).
 			assert.deepInclude(
 				thrown(() => sync.realPath("/r/dangling")),
-				{ code: "ENOENT", syscall: "realpath", path: "/r/dangling" },
+				{ code: "ENOENT", syscall: "stat", path: "/r/dangling" },
+			);
+			assert.strictEqual(
+				(thrown(() => sync.realPath("/r/dangling")) as { message?: string }).message,
+				"ENOENT: no such file or directory, stat '/r/dangling'",
 			);
 			assert.deepInclude(
-				thrown(() => sync.realPath("/r/loop-a")),
-				{ code: "ELOOP", syscall: "realpath" },
+				thrown(() => sync.realPath("/r/loop-a/x")),
+				{ code: "ELOOP", syscall: "stat", path: "/r/loop-a" },
+			);
+			assert.deepInclude(
+				thrown(() => sync.realPath("/r/nope/x")),
+				{ code: "ENOENT", syscall: "lstat", path: "/r/nope" },
+			);
+			assert.deepInclude(
+				thrown(() => sync.realPath("/r/to-dir/nope/y")),
+				{ code: "ENOENT", syscall: "lstat", path: "/r/dir/nope" },
+			);
+			assert.deepInclude(
+				thrown(() => sync.realPath("/r/file.txt/x")),
+				{ code: "ENOTDIR", syscall: "lstat", path: "/r/file.txt/x" },
 			);
 		}),
 	);
@@ -700,7 +718,7 @@ describe('port pathStyle: "win32"', () => {
 			// A drive-less absolute path stays drive-less: the port models no current drive.
 			assert.strictEqual(sync.realPath("\\"), "\\");
 			const error = thrown(() => sync.realPath("C:\\repo\\absent")) as Record<string, unknown>;
-			assert.deepInclude(error, { code: "ENOENT", syscall: "realpath", path: "C:\\repo\\absent" });
+			assert.deepInclude(error, { code: "ENOENT", syscall: "lstat", path: "C:\\repo\\absent" });
 		}),
 	);
 

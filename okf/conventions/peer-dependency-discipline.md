@@ -12,10 +12,10 @@ sources:
     resource: ../../pnpm-workspace.yaml
 generated:
   by: "claude-code/opus-5"
-  at: 2026-11-09T00:05:23Z
+  at: 2026-11-11T20:30:33Z
 integrity:
   generated:
-    body: 29be78ad7c7d4a7e
+    body: 0248410446fce45c
 ---
 
 # Peer-dependency discipline
@@ -82,7 +82,7 @@ pnpm >= 11.12.0.
 ## Cross-@effected dependencies
 
 Every internal `@effected/*` edge — peer and regular dependency alike —
-uses `workspace:^`. Two enumerated exceptions stay `workspace:*`:
+uses `workspace:^`. Three enumerated exceptions stay `workspace:*`:
 
 - the paired `devDependency` that satisfies an auto-installed peer, which
   is never published;
@@ -98,13 +98,22 @@ uses `workspace:^`. Two enumerated exceptions stay `workspace:*`:
   and brand. A patch floating in anywhere below the carrier would change
   what the tool writes with no carrier version to show for it, and a
   bump of `schemastore` instead ripples down the chain, which is the
-  point. The exception covers exactly those five edges and is a property
-  of a tool whose output is the product. The engine's edges to
-  `@effected/source` and `@effected/jsonc` stay `workspace:^`: they shape
-  diff hunks and finding locations, not the schema documents the pin
-  protects; a library edge never earns it,
-  and a test in `@effected/plugin` reads the manifests to keep it exact
+  point. It is a property of a tool whose output is the product
   ([why the commands live in the tool](../decisions/schema-commands-live-in-the-tool.md)).
+- **every other `@effected/*` dependency of the tool's packages**
+  (`@effected/plugin`, `cli`, `mcp`, `engine` and `bundler`). The pin
+  chain's reasoning holds for the whole closure: a kit patch floating in
+  under a carrier version changes what the tool does with no tool release
+  to show for it, and on a consumer's fresh install it can split the
+  graph (effected#1333). The tool shares no values with its host beyond
+  the schemastore surface the chain already pins, so the dedupe argument
+  for floating does not apply. Pinning the tool's edges also pins each
+  library's kit peers, which resolve from the tool. It is not a full
+  seal: a library's own regular kit dependencies still float within their
+  carets, and the derived `effect` overrides still reach in; bundling the
+  closure into the tool's dist is the full seal. A library edge never
+  earns it. `entry.test.ts` in `@effected/plugin` holds the chain and all
+  five manifests exact.
 
 Patch-floating is the point everywhere else: a sibling patch flows into an
 existing release without forcing a coordinated re-release, while a minor

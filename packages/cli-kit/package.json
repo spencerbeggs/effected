@@ -55,7 +55,7 @@
 		"@types/node": "catalog:effected:build",
 		"@types/react": "catalog:effected:build",
 		"effect": "catalog:effected",
-		"ink": "catalog:silk",
+		"ink": "catalog:effected:build",
 		"react": "catalog:effected:build",
 		"string-width": "^8.3.0",
 		"typescript": "catalog:effected:build"
@@ -66,7 +66,7 @@
 		"@effected/walker": "workspace:^",
 		"@types/react": "catalog:effected:build:peers",
 		"effect": "catalog:effected:peers",
-		"ink": "catalog:silk:peers",
+		"ink": "catalog:effected:build:peers",
 		"react": "catalog:effected:build:peers"
 	},
 	"peerDependenciesMeta": {

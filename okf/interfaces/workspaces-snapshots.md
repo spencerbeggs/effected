@@ -16,7 +16,7 @@ sources:
     resource: ../../packages/workspaces/src/ChangeDetector.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T21:58:29Z
+  at: 2026-11-11T20:31:08Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:06.249Z
@@ -24,7 +24,7 @@ verified:
     at: 2026-10-13T21:42:59Z
 integrity:
   generated:
-    body: a7e78afb2c024f71
+    body: 54ff4efc1040e118
   verified:
     by: human:spencer
     at: 2026-10-13T21:42:59Z
@@ -55,9 +55,10 @@ Reading at a ref requires no checkout, and four properties are
 load-bearing: workspace globs fall back to the root manifest's field when
 the pnpm workspace file is absent at that ref, because without it a bun or
 npm workspace collapses to the root package alone and a diff reads every
-dependency as newly added with no error; package directories come from the
-compiled glob set matched against tree entries, never a live directory
-descent; a path absent at the ref is skipped, never an error; and the root
+dependency as newly added with no error; package directories come from
+discovery's own membership (npm's rules on an npm root, decided over the
+ref's root-level files; a `GlobSet` elsewhere) matched against tree
+entries, never a live directory descent; a path absent at the ref is skipped, never an error; and the root
 manifest's inline bun catalogs are read unconditionally, not gated on a bun
 lockfile's presence, since gating them would reintroduce the same
 "everything looks added" bug for a bun repository with inline catalogs but

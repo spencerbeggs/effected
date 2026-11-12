@@ -101,7 +101,8 @@ library instinct:
   its **full runtime closure** as regular
   `dependencies`: its own imports, plus **every peer of every library it
   depends on**. The peer chain has to terminate somewhere, and an installed
-  package is where it terminates.
+  package is where it terminates. It pins each of them **exactly**, so the
+  tool owns its closure — see [carrier-closure.md](./carrier-closure.md).
 
 One consequence worth documenting explicitly wherever it shows up: a front
 end's `dependencies` will list packages that **no file under its `src/`

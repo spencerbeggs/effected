@@ -109,7 +109,9 @@ jobs:
         # while doing nothing, which is the failure class this whole design exists
         # to eliminate.
         run: |
-          if [ -z "$(git status --porcelain -- packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts .changeset/catalog-sync.md)" ]; then
+          # The quoted glob is git's pathspec, not the shell's, so a floor file the
+          # sync deleted still counts as a change.
+          if [ -z "$(git status --porcelain -- packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts .changeset/catalog-sync.md '.changeset/breaking-floor-*.md')" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -155,9 +157,13 @@ jobs:
           # the bot's commits land verified. Locally made ones are unsigned (#159).
 
           # Stage exactly the paths this job owns, then read the staged status back:
-          # that picks up the untracked changeset file alongside the rewritten
-          # catalog, and normalizes both into a path list.
-          git add -- packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts .changeset/catalog-sync.md
+          # that picks up the untracked changeset files alongside the rewritten
+          # catalog, and normalizes them into a path list. `.changeset/` is staged
+          # whole because the breaking-floor changesets have per-package names and a
+          # pathspec that matches nothing fails `git add`; the checkout is fresh, so
+          # every change under it is one `catalog:sync` wrote (the commit-message
+          # file is gitignored). `-A` stages a floor file the sync deleted.
+          git add -A -- packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts .changeset
 
           additions='[]'
           while IFS= read -r -d '' path; do

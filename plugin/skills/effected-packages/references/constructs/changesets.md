@@ -5,6 +5,7 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `BreakingFloor` | Class | A release that stays on its own breaking line while a range it publishes crosses a dependency's breaking line: a consumer on the old line of both would resolve this release and miss what it now requires. | release must bump breaking, peer floor crosses dependency minor, patch ripple fix |
 | `BumpType` | Variable + TypeAlias | The type of a `BumpType` value. | changeset bump values, patch, minor or major |
 | `Changelog` | Class | CHANGELOG assembly for a `ReleasePlan`, matching `@changesets/apply-release-plan`. | render changelog block for a release, insert into CHANGELOG.md, getReleaseLine |
 | `ChangelogEntryOptions` | Interface | The inputs `Changelog.entry` reads besides the plan and the release. | |
@@ -18,6 +19,7 @@
 | `ChangesetMove` | Class | A pending changeset a pre-release consumes: `changeset version` in pre mode moves it under `.changeset/pre/` rather than deleting it. | consumed changeset moved under .changeset/pre in pre mode |
 | `ChangesetParseError` | Class | A changeset file could not be parsed: no front matter, a malformed YAML block, or a bump outside `patch \| minor \| major`. | changeset without front matter, malformed yaml, or an invalid bump |
 | `ComprehensiveRelease` | Variable + TypeAlias | The decoded type of `(ComprehensiveRelease:variable)`. | decode a planned release as changelog modules get it, @changesets/types shape |
+| `FloorCause` | Class | One dependency whose breaking release moves a dependent's published floor. | dependency whose breaking release moves a dependent peer floor, stranded consumer |
 | `GetDependencyReleaseLine` | TypeAlias | Renders the line for the dependencies a package's release updated: `@changesets/types`' `GetDependencyReleaseLine`. | |
 | `GetReleaseLine` | TypeAlias | Renders one changeset's line in a package's changelog block: `@changesets/types`' `GetReleaseLine`. | |
 | `ManifestEdit` | Class | What a release changes in one `package.json`. | new version and rewritten dependency ranges for one package.json |

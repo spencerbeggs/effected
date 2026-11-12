@@ -32,7 +32,7 @@ sources:
     resource: ../../packages/workspaces/src/internal/packageManagerDecision.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-10T21:32:53Z
+  at: 2026-11-11T20:31:08Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:49.503Z
@@ -46,7 +46,7 @@ verified:
     at: 2026-11-10T23:42:17Z
 integrity:
   generated:
-    body: 978d562091bd495c
+    body: 132bd5b8005a7893
   verified:
     by: human:spencer
     at: 2026-11-10T23:42:17Z
@@ -70,8 +70,13 @@ entries fast-path to an exact manifest existence check. Wildcards read from
 the compiled enumeration prefix: a single-level read when the pattern cannot
 cross segments, and a bounded iterative descent from that prefix when it
 can, testing each visited directory's root-relative POSIX path against the
-pattern. Excludes drop candidates after positive matching, and a directory
-counts as a workspace package only if it holds a manifest.
+pattern. The set it walks and the test each candidate must pass come from
+one membership (`internal/membership.ts`): on an npm root, npm's own
+`NpmWorkspacePatterns` predicate over the field's normalized positives;
+elsewhere, one `GlobSet`, whose excludes drop candidates after positive
+matching. A directory counts as a workspace package only if it holds a
+manifest. The npm rules and their six measured differences are in
+[the module](../modules/workspaces.md#npm-roots-npms-rules-not-globset-semantics).
 
 The descent is a worklist, not a recursion, so it cannot overflow the stack.
 It is bounded three ways: an integer-guarded depth cap (so `NaN` and
@@ -150,7 +155,8 @@ empty or fallback answer would read as "no packages": a pattern source that
 exists but cannot be read or parsed (`pnpm-workspace.yaml`, or the root
 `package.json` in its absence) throws the `WorkspaceDiscoveryError` (kind
 `read`, `invalidYaml` or `invalidJson`), and a `packages:` set that does not compile as
-one `GlobSet` throws the `WorkspacePatternError` (kind `uncompilable`) —
+one `GlobSet`, or an npm root's field past an `NpmWorkspacePatterns` ceiling,
+throws the `WorkspacePatternError` (kind `uncompilable`) —
 each the error `WorkspaceDiscovery` fails with on that root (#1292).
 
 ## Root finding and discovery

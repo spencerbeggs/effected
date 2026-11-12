@@ -1,0 +1,106 @@
+---
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    configDependencies:
+      '@effected/pnpm-plugin-effected':
+        specifier: 0.26.1
+        version: 0.26.1
+
+packages:
+
+  '@effected/pnpm-plugin-effected@0.26.1':
+    resolution: {integrity: sha512-x}
+
+snapshots:
+
+  '@effected/pnpm-plugin-effected@0.26.1': {}
+
+---
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    devDependencies:
+      '@effected/npm':
+        specifier: catalog:effected
+        version: 0.34.0(effect@4.1.3)
+      '@effected/walker':
+        specifier: ^0.27.0
+        version: 0.27.0(effect@4.1.3)
+      '@vitest-agent/plugin':
+        specifier: ^6.0.0
+        version: 6.0.10(@effected/npm@0.33.0(effect@4.1.3))(effect@4.1.3)
+
+packages:
+
+  '@effected/lockfiles@0.24.1':
+    resolution: {integrity: sha512-x}
+
+  '@effected/npm@0.33.0':
+    resolution: {integrity: sha512-x}
+
+  '@effected/npm@0.34.0':
+    resolution: {integrity: sha512-x}
+
+  '@effected/walker@0.27.0':
+    resolution: {integrity: sha512-x}
+
+  '@effected/walker@0.28.0':
+    resolution: {integrity: sha512-x}
+
+  '@vitest-agent/plugin@6.0.10':
+    resolution: {integrity: sha512-x}
+
+  effect@4.1.3:
+    resolution: {integrity: sha512-x}
+
+  rolldown-pnpm-config@2.4.5:
+    resolution: {integrity: sha512-x}
+
+snapshots:
+
+  '@effected/lockfiles@0.24.1(@effected/npm@0.33.0(effect@4.1.3))(effect@4.1.3)':
+    dependencies:
+      '@effected/npm': 0.33.0(effect@4.1.3)
+      effect: 4.1.3
+
+  '@effected/npm@0.33.0(effect@4.1.3)':
+    dependencies:
+      effect: 4.1.3
+
+  '@effected/npm@0.34.0(effect@4.1.3)':
+    dependencies:
+      effect: 4.1.3
+
+  '@effected/walker@0.27.0(effect@4.1.3)':
+    dependencies:
+      effect: 4.1.3
+
+  '@effected/walker@0.28.0(effect@4.1.3)':
+    dependencies:
+      effect: 4.1.3
+
+  '@vitest-agent/plugin@6.0.10(@effected/npm@0.33.0(effect@4.1.3))(effect@4.1.3)':
+    dependencies:
+      '@effected/lockfiles': 0.24.1(@effected/npm@0.33.0(effect@4.1.3))(effect@4.1.3)
+      '@effected/npm': 0.33.0(effect@4.1.3)
+      effect: 4.1.3
+    transitivePeerDependencies:
+      - '@effected/walker'
+
+  '@vitest-agent/plugin@6.0.10(@effected/npm@0.34.0(effect@4.1.3))(effect@4.1.3)':
+    dependencies:
+      '@effected/npm': 0.33.0(effect@4.1.3)
+      effect: 4.1.3
+
+  effect@4.1.3: {}
+
+  rolldown-pnpm-config@2.4.5:
+    dependencies:
+      '@effected/npm': 0.34.0(effect@4.1.3)
+    optionalDependencies:
+      '@effected/walker': 0.27.0(effect@4.1.3)

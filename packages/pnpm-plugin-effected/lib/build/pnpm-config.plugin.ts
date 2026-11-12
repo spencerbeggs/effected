@@ -32,6 +32,10 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 		 * oversight.
 		 */
 		effected: {
+			// Also serve `effected:exact`: every range with its operator stripped, so a tool package
+			// can pin the kit exactly through the catalog and still move with it (the carrier
+			// closure). Libraries keep `catalog:effected` and `catalog:effected:peers`.
+			exact: true,
 			packages: {
 				"@effect/ai-anthropic": {
 					range: "~4.1.3",
@@ -547,6 +551,14 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					peer: "^19.3.0",
 					strategy: "lock-minor",
 				},
+				// The React renderer the CLI layer's UI runs on: `@effected/cli-kit` peers it and every
+				// front end built on cli-kit installs it, so it versions with React here, beside the
+				// build chain, rather than in silk's catalog.
+				ink: {
+					range: "^8.0.0",
+					peer: "^8.0.0",
+					strategy: "lock-minor",
+				},
 				react: {
 					range: "^19.3.1",
 					peer: "^19.3.0",
@@ -612,7 +624,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 	// - `@rspack/*`: `@rspack/core` and its native bindings, which `@rsbuild/core` depends on and
 	//   which publish in lockstep with it, so a fresh rsbuild never resolves onto quarantined rspack.
 	// - every package the effected:build catalog names (tsdown, rolldown, rolldown-plugin-dts,
-	//   `@tsdown/*`, `@rsbuild/*`, typescript, tsx, `@types/node`, React and its types): the
+	//   `@tsdown/*`, `@rsbuild/*`, typescript, tsx, `@types/node`, React, its types and ink): the
 	//   catalog pins them and moves them only through a deliberate `pnpm:up`, and a quarantine on
 	//   that move only blocks the upgrade it was chosen for (rolldown 1.3.1 was held exactly so).
 	// Lists union across plugins, so an entry silk also declares collapses to one.
@@ -630,6 +642,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 		"@types/react",
 		"@types/react-dom",
 		"@typescript/*",
+		"ink",
 		"react",
 		"react-dom",
 		"rolldown",

@@ -53,7 +53,7 @@ const emptyPlan: StatusRunner = async (outputPath) => {
 	return { code: 0, stdout: "" };
 };
 
-const quiet = { write: () => {}, status: emptyPlan } as const;
+const quiet = { write: () => {}, status: emptyPlan, floors: async () => [] } as const;
 
 const fixtureWorkspace = (name: string): string =>
 	fileURLToPath(new URL(`../packages/changesets/__test__/fixtures/${name}`, import.meta.url));
@@ -441,6 +441,58 @@ describe("dependency-ripple bumps", () => {
 	it("ignores a package the plan does not release", () => {
 		const root = makeRoot(catalogConfig(["@effected/sbom"]));
 		assert.deepStrictEqual([...rippleMismatches(root, new Map())], []);
+	});
+
+	it("check fails on breaking-floor drift even when the CLI and the ripples are green", async () => {
+		const root = makeRoot(catalogConfig(["@effected/sbom"]));
+		addPublishable(root, "@effected/sbom");
+		const output: string[] = [];
+
+		const code = await check({
+			...quiet,
+			root,
+			write: (text) => output.push(text),
+			run: async () => ({ code: 0, stdout: "" }),
+			floors: async () => [
+				{
+					name: "@effected/sbom",
+					required: "minor",
+					causes: [
+						{
+							kind: "peerDependencies",
+							dependency: "@effected/npm",
+							oldVersion: "0.33.0",
+							newVersion: "0.34.0",
+							range: "^0.34.0",
+						},
+					] as never,
+				},
+			],
+		});
+
+		assert.notStrictEqual(code, 0);
+		assert.include(output.join(""), "@effected/sbom  -> minor  (crosses @effected/npm 0.33.0 -> 0.34.0)");
+		assert.isFalse(existsSync(join(root, ".changeset/breaking-floor-effected-sbom.md")), "check writes nothing");
+	});
+
+	it("sync writes the breaking-floor changesets before it reads the plan", async () => {
+		const root = makeRoot(catalogConfig(["@effected/sbom"]));
+		addPublishable(root, "@effected/sbom");
+		let seen = false;
+
+		await sync({
+			...quiet,
+			root,
+			run: runner(),
+			floors: async () => [{ name: "@effected/sbom", required: "minor", causes: [] }],
+			status: async (outputPath) => {
+				seen = existsSync(join(root, ".changeset/breaking-floor-effected-sbom.md"));
+				writeFileSync(outputPath, JSON.stringify({ releases: [] }));
+				return { code: 0, stdout: "" };
+			},
+		});
+
+		assert.isTrue(seen, "the plan the catalog follows must include the raise");
 	});
 
 	it("check fails on ripple drift even when the upgrade CLI is green", async () => {

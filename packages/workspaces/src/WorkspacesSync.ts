@@ -8,19 +8,21 @@
 // the consumer passing a win32-appropriate `path` (`node:path` on Windows, or
 // `node:path/win32` explicitly) — the `TsconfigLoaderSync` convention.
 //
-// It does not keep a second pattern semantic: it compiles through the same
-// `GlobSet` and walks the same worklist as the Effect enumerator, so
-// `packages/**` means the same thing in both worlds.
+// It does not keep a second pattern semantic: it reads patterns through the
+// same membership (`internal/membership.ts` — npm's rules on an npm root,
+// `GlobSet` elsewhere) and walks the same worklist as the Effect enumerator,
+// so `packages/**` means the same thing in both worlds.
 
 import type { ExecContext } from "@effected/commands";
 import { LocalExec, LocalExecError } from "@effected/commands";
-import { GlobSet } from "@effected/glob";
 import { PackageJsonFormat } from "@effected/package-json";
 import { Yaml } from "@effected/yaml";
 import { Effect, Exit, Option, Result, Schema } from "effect";
 import { isStringRecord } from "./internal/guards.js";
 import { MAX_ENUMERATION_DEPTH } from "./internal/limits.js";
+import { membershipOf, rulesFor } from "./internal/membership.js";
 import { decidePackageManager } from "./internal/packageManagerDecision.js";
+import type { PatternSource } from "./internal/patterns.js";
 import { manifestPatternsOf, pnpmPatternsOf } from "./internal/patterns.js";
 import { Traversal, badMaxDepthMessage, isPruned, isValidMaxDepth, joinRelative } from "./internal/traverse.js";
 import type { PackageManagerDetectionFailure } from "./PackageManagerName.js";
@@ -508,7 +510,7 @@ export const locateWorkspaceRootSync = (
  * rule: absent is no patterns, a throwing read is `read`, unparseable text is
  * `invalidJson`, and valid JSON that is not an object declares no patterns.
  */
-const readPatternsSync = (options: WorkspacesSyncOptions, root: string): ReadonlyArray<string> => {
+const readPatternsSync = (options: WorkspacesSyncOptions, root: string): PatternSource => {
 	const { fileSystem, path } = options;
 	const workspaceYaml = path.join(root, "pnpm-workspace.yaml");
 	if (fileSystem.exists(workspaceYaml)) {
@@ -523,10 +525,10 @@ const readPatternsSync = (options: WorkspacesSyncOptions, root: string): Readonl
 			throw new WorkspaceDiscoveryError({ root, path: workspaceYaml, kind: "invalidYaml", cause: parsed.failure });
 		}
 		const patterns = pnpmPatternsOf(parsed.success);
-		if (patterns.length > 0) return patterns;
+		if (patterns.length > 0) return { patterns, manifest: Option.none() };
 	}
 	const manifestPath = path.join(root, "package.json");
-	if (!fileSystem.exists(manifestPath)) return [];
+	if (!fileSystem.exists(manifestPath)) return { patterns: [], manifest: Option.none() };
 	let content: string;
 	try {
 		content = fileSystem.readFile(manifestPath);
@@ -537,8 +539,10 @@ const readPatternsSync = (options: WorkspacesSyncOptions, root: string): Readonl
 	// patterns, exactly as on the Effect surface; the root read below reports it
 	// as an `invalidShape` skip.
 	const manifest = PackageJsonFormat.parseObjectResult(content);
-	if (Result.isSuccess(manifest)) return manifestPatternsOf(manifest.success);
-	if (manifest.failure.reason === "not-an-object") return [];
+	if (Result.isSuccess(manifest)) {
+		return { patterns: manifestPatternsOf(manifest.success), manifest: Option.some(manifest.success) };
+	}
+	if (manifest.failure.reason === "not-an-object") return { patterns: [], manifest: Option.none() };
 	throw new WorkspaceDiscoveryError({ root, path: manifestPath, kind: "invalidJson", cause: manifest.failure });
 };
 
@@ -659,7 +663,12 @@ export interface GetWorkspacePackagesSyncOptions extends WorkspacesSyncOptions {
  * drive the **same traversal state machine** (`internal/traverse.ts`), so the
  * dequeue order, the depth rule, the visit budget and the prune list cannot
  * drift apart. A `packages/**` finds exactly the same packages here as there,
- * including at the depth boundary.
+ * including at the depth boundary. Which directories the patterns declare is
+ * one decision too: on an npm root (as `detectPackageManagerSync` would
+ * report it) `package.json#workspaces` is read the way npm reads it, through
+ * `@effected/npm`'s `NpmWorkspacePatterns` — ordered negation, a trailing
+ * `/`, an even `!` run, a backslash as a separator — and on a pnpm, yarn or
+ * bun root as one `GlobSet`.
  *
  * The one deliberate difference is what happens at a bound: the Effect surface
  * fails typed (`depthExceeded` / `budgetExceeded`), while this one truncates.
@@ -670,8 +679,9 @@ export interface GetWorkspacePackagesSyncOptions extends WorkspacesSyncOptions {
  *
  * **A pattern set that does not compile throws.** The patterns compile as one
  * `GlobSet`, and when that fails — one malformed member, or members that each
- * compile alone but together exhaust the set's shared compile budget — there
- * is no partial answer to degrade to: every pattern is lost at once. Returning
+ * compile alone but together exhaust the set's shared compile budget, or an
+ * npm root's `workspaces` field past one of `NpmWorkspacePatterns`' ceilings —
+ * there is no partial answer to degrade to: every pattern is lost at once. Returning
  * the root alone would read as "no workspace packages", a decision taken on a
  * corrupt config, so the facade throws the `WorkspacePatternError` (kind
  * `"uncompilable"`, `pattern` the member the compile stopped at) that
@@ -703,8 +713,9 @@ export interface GetWorkspacePackagesSyncOptions extends WorkspacesSyncOptions {
  *   `pnpm-workspace.yaml` exists but cannot be read or parsed, and (kind
  *   `"read"` or `"invalidJson"`) when the root `package.json` is the pattern
  *   source and exists but cannot be read or parsed;
- *   `WorkspacePatternError` (kind `"uncompilable"`) when the workspace's
- *   `packages:` patterns do not compile as one `GlobSet`; `RangeError` for a
+ *   `WorkspacePatternError` (kind `"uncompilable"`, `cause` the typed error)
+ *   when the workspace's `packages:` patterns do not compile as one `GlobSet`
+ *   or, on an npm root, pass an `NpmWorkspacePatterns` ceiling; `RangeError` for a
  *   `maxDepth` that is not a positive integer.
  *
  * @example
@@ -741,32 +752,33 @@ export const getWorkspacePackagesSync = (
 		throw new RangeError(`getWorkspacePackagesSync: ${badMaxDepthMessage(maxDepth)}`);
 	}
 
-	const patterns = readPatternsSync(options, root);
+	const { patterns, manifest } = readPatternsSync(options, root);
 
-	// The same GlobSet the async enumerator compiles. An uncompilable set has no
-	// partial answer to degrade to: every pattern is lost, so truncating would
-	// return the root alone (or nothing) and read as "no workspace packages".
-	// It throws the Effect surface's own error instead — see the remarks.
-	const compiled = GlobSet.compileResult(patterns);
-	if (Result.isFailure(compiled)) {
+	// The same membership the async enumerator builds: npm's rules on an npm
+	// root, GlobSet's elsewhere. One that cannot be read has no partial answer
+	// to degrade to: every pattern is lost, so truncating would return the root
+	// alone (or nothing) and read as "no workspace packages". It throws the
+	// Effect surface's own error instead — see the remarks.
+	const read = membershipOf(
+		patterns,
+		rulesFor(manifest, (file) => fileSystem.exists(path.join(root, file))),
+	);
+	if (Result.isFailure(read)) {
 		throw new WorkspacePatternError({
 			root,
-			pattern: compiled.failure.pattern,
+			pattern: read.failure.pattern,
 			kind: "uncompilable",
-			detail: compiled.failure.message,
+			detail: read.failure.detail,
+			cause: read.failure.cause,
 		});
 	}
-	const globs = compiled.success;
-	const excludes = globs.excludes;
-	const isExcluded =
-		excludes.length === 0
-			? (_: string): boolean => false
-			: (relative: string): boolean => excludes.some((exclude) => exclude.matches(relative));
+	const globs = read.success.candidates;
+	const isMember = read.success.matches;
 
 	const included = new Map<string, string>();
 
 	for (const literal of globs.literals) {
-		if (isExcluded(literal)) continue;
+		if (!isMember(literal)) continue;
 		const absolute = path.join(root, literal);
 		if (isPackage(options, absolute)) included.set(literal, absolute);
 	}
@@ -805,7 +817,7 @@ export const getWorkspacePackagesSync = (
 					break;
 				}
 
-				if (wildcard.matches(relative) && !isExcluded(relative) && isPackage(options, absolute)) {
+				if (wildcard.matches(relative) && isMember(relative) && isPackage(options, absolute)) {
 					included.set(relative, absolute);
 				}
 				if (!wildcard.crossesSegments) continue;

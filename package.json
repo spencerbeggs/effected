@@ -22,6 +22,8 @@
 		"build": "turbo run build --filter=!docs --log-order=grouped --log-prefix=none",
 		"catalog:check": "tsx lib/scripts/catalog-sync.ts --check",
 		"catalog:sync": "tsx lib/scripts/catalog-sync.ts",
+		"changeset:floors": "tsx lib/scripts/breaking-floors.ts",
+		"changeset:floors:check": "tsx lib/scripts/breaking-floors.ts --check",
 		"ci:build": "CI=\"true\" turbo run build --filter=!docs --log-order=grouped --output-logs=full --log-prefix=none",
 		"ci:test": "CI=\"true\" turbo run build --filter='@effected/plugin...' --filter=@effected/pnpm-plugin-effected --filter=@effected/cli-kit --filter=@effected/config-file --filter=@effected/kit --filter=@effected/commands --output-logs=errors-only --log-prefix=none && CI=\"true\" vitest run --passWithNoTests",
 		"claude": "claude --plugin-dir plugin/builds/claude",

@@ -1,6 +1,6 @@
 ---
 name: design-patterns
-description: "Use when choosing or applying a proven architecture pattern for a project built on Effect v4 / the @effected kit — splitting a tool into cli + mcp + lsp packages, deciding how a monorepo ships its bins, making \"install one package\" true for a consumer, a Claude Code or Copilot plugin launching a project's own bins, or threading one version identity through several front ends. This skill indexes patterns as loadable references; consult it before inventing an architecture the kit's own consumers have already worked out. Also use when: carrier package, meta-package, one package to install, bins missing from node_modules/.bin, cli + mcp + lsp split, front end vs engine, keeping the package graph acyclic, plugin loader script, version threading, distribution, engine_version, manifest DAG test, packed-install e2e"
+description: "Use when choosing or applying a proven architecture pattern for a project built on Effect v4 / the @effected kit — splitting a tool into cli + mcp + lsp packages, deciding how a monorepo ships its bins, making \"install one package\" true for a consumer, a Claude Code or Copilot plugin launching a project's own bins, or threading one version identity through several front ends. This skill indexes patterns as loadable references; consult it before inventing an architecture the kit's own consumers have already worked out. Also use when: carrier package, meta-package, one package to install, bins missing from node_modules/.bin, cli + mcp + lsp split, front end vs engine, keeping the package graph acyclic, plugin loader script, version threading, distribution, engine_version, manifest DAG test, packed-install e2e, tool closure, pin kit dependencies exactly, workspace:* vs workspace:^ for a tool, tool on an older kit release, two copies of a kit package, does not provide an export named, breaking peer floor"
 ---
 
 # Design patterns
@@ -13,7 +13,7 @@ references. This skill routes; depth lives in `references/`.
 
 | Pattern | Reach for it when | Reference |
 | --- | --- | --- |
-| Carrier package — core/engine/front ends → carrier | a tool ships more than one bin (CLI, MCP server, LSP server, …) and you want "install one package" to be true, or you're debugging why a consumer's `node_modules/.bin` is missing a bin that resolves fine as a dependency | [carrier-package.md](./references/carrier-package.md), [carrier-entry-contract.md](./references/carrier-entry-contract.md), [carrier-version-threading.md](./references/carrier-version-threading.md), [carrier-plugin-loader.md](./references/carrier-plugin-loader.md), [carrier-verification.md](./references/carrier-verification.md), [carrier-app-and-schemas.md](./references/carrier-app-and-schemas.md) (optional), [carrier-case-studies.md](./references/carrier-case-studies.md) |
+| Carrier package — core/engine/front ends → carrier | a tool ships more than one bin (CLI, MCP server, LSP server, …) and you want "install one package" to be true, or you're debugging why a consumer's `node_modules/.bin` is missing a bin that resolves fine as a dependency | [carrier-package.md](./references/carrier-package.md), [carrier-entry-contract.md](./references/carrier-entry-contract.md), [carrier-version-threading.md](./references/carrier-version-threading.md), [carrier-plugin-loader.md](./references/carrier-plugin-loader.md), [carrier-verification.md](./references/carrier-verification.md), [carrier-closure.md](./references/carrier-closure.md), [carrier-app-and-schemas.md](./references/carrier-app-and-schemas.md) (optional), [carrier-case-studies.md](./references/carrier-case-studies.md) |
 
 More rows land here as more patterns are distilled. A pattern earns a row
 once it has shipped in more than one real tool and the trade-offs are
@@ -62,6 +62,10 @@ hand-rolling the recipe again.
 - A carrier's front ends belong in `dependencies`, never
   `peerDependencies` — see
   [carrier-package.md](./references/carrier-package.md).
+- A tool package that takes the kit at caret ranges changes under its own
+  version and can bind a kit peer across its closure; pin every kit
+  dependency of a tool package exactly — see
+  [carrier-closure.md](./references/carrier-closure.md).
 - An MCP `main.ts` that imports its server graph statically runs that graph
   before its crash guards exist: Node prints the throw and exits `1` on its
   own, but the server's own handler never runs — `McpStdio.launch` does not
@@ -111,6 +115,13 @@ hand-rolling the recipe again.
   packed-install e2e across package managers. Load when: adding the
   repo-shape checks to a multi-package tool — uses the kit's checks, not
   copied tests.
+- [references/carrier-closure.md](./references/carrier-closure.md) — a
+  tool owns its dependency closure: exact kit pins on every tool package,
+  why a library keeps carets and peers instead, what pinning does not seal,
+  and the breaking-floor rule for a library's own releases. Load when:
+  choosing `workspace:*` or `workspace:^` (or exact or caret) for a tool
+  package, a tool breaks beside a repository on a newer kit release, or a
+  library release moves a peer floor.
 - [references/carrier-app-and-schemas.md](./references/carrier-app-and-schemas.md)
   — the OPTIONAL extension: where the app layer (platform + config
   discovery) and a published config-file JSON Schema belong — core owns

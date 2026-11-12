@@ -4,6 +4,8 @@ import type { WorkspaceRootNotFoundError } from "@effected/workspaces";
 import { WorkspaceDiscovery, WorkspaceDiscoveryError, WorkspacePackage } from "@effected/workspaces";
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Option, Path, Result, Schema } from "effect";
+import type { BreakingFloor } from "./BreakingFloors.js";
+import { computeBreakingFloors } from "./BreakingFloors.js";
 import type { ReleaseType } from "./BumpType.js";
 import { ChangesetConfig } from "./ChangesetConfig.js";
 import type { MissingPackageError } from "./errors.js";
@@ -622,6 +624,63 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 		input: { readonly packages: ReadonlyArray<WorkspacePackage>; readonly config: ChangesetConfig },
 	): Result.Result<ReleaseEdits, MissingPackageError | InvalidVersionError> {
 		return computeEdits(plan, input);
+	}
+
+	/**
+	 * The releases in `plan` that stay on their own breaking line while a range
+	 * they publish crosses a dependency's breaking line. Nothing is written; a
+	 * caller raises each to its `required` bump, then plans again, because the
+	 * raised release can itself cross a dependent's floor.
+	 *
+	 * A breaking line is a caret line: `1.x` for a `1.4.2`, `0.4.x` for a
+	 * `0.4.2`, the single version for a `0.0.4`. A release is breaking when its
+	 * new version is on another line than the package's version now; for a
+	 * member of a fixed or linked group that is the package's own version, not
+	 * the group's `oldVersion`, because consumers hold the package's own.
+	 *
+	 * The rule, for every release R that is not `none` and not already breaking:
+	 *
+	 * - For each `peerDependencies` entry naming a package D that the plan
+	 *   releases as breaking, find the
+	 *   range R publishes on D. `workspace:^` and `workspace:~` publish the
+	 *   operator before D's new version, `workspace:*` and a `workspace:` path
+	 *   publish D's new version exactly, and `workspace:<range>` or a literal
+	 *   range publishes as {@link ReleasePlan.edits} leaves it. That rewrites
+	 *   the range when D's new version leaves it, and also a held peer range
+	 *   unless `onlyUpdatePeerDependentsWhenOutOfRange` is on, keeping only
+	 *   the leading operator: `^0.3.0 || ^0.4.0` publishes as `^0.4.0`.
+	 * - When that range does not admit D's version now, R crosses D's floor: a
+	 *   consumer holding R's old line and D's old line resolves R's release
+	 *   and gets a D it cannot satisfy. R must leave its own line too, so R is
+	 *   reported with the smallest bump that does (`major` from `1.x`, `minor`
+	 *   from `0.x` with a non-zero minor, `patch` from `0.0.x`).
+	 *
+	 * Only peers are read. A regular or optional dependency is installed for R
+	 * alone, so a newer D nests beside the consumer's and strands nothing; a
+	 * peer binds to the consumer's D, which may be on the old line. A
+	 * published range that still admits D's old version crosses nothing, so
+	 * a widened range such as `^0.3.0 || ^0.4.0` avoids a raise only where
+	 * `onlyUpdatePeerDependentsWhenOutOfRange` keeps it as written. A version
+	 * that is not one is passed over.
+	 *
+	 * `@changesets/assemble-release-plan` has no such rule: it bumps a
+	 * dependent `patch` however far the dependency moves, so a dependency's
+	 * breaking release ripples as a patch of everything that peers on it.
+	 *
+	 * Fails as {@link ReleasePlan.edits} fails, which a plan
+	 * {@link ReleasePlan.assemble} made from the same packages never does.
+	 *
+	 * @param plan - The plan to check.
+	 * @param input - The workspace's packages and the config the plan was
+	 * made with, as {@link ReleasePlan.edits} takes them.
+	 * @returns every crossing, sorted by package name, each with its causes
+	 * sorted by dependency name; empty when the plan crosses no floor.
+	 */
+	static breakingFloors(
+		plan: ReleasePlan,
+		input: { readonly packages: ReadonlyArray<WorkspacePackage>; readonly config: ChangesetConfig },
+	): Result.Result<ReadonlyArray<BreakingFloor>, MissingPackageError | InvalidVersionError> {
+		return computeBreakingFloors(plan, input.packages, input.config);
 	}
 
 	/**
