@@ -1,5 +1,20 @@
 # @effected/mcp
 
+## 0.18.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/engine | dependency | updated | 0.17.0 | 0.17.1 |
+| @effected/kit | dependency | updated | 0.14.0 | 0.14.0 |
+| @effected/mcp-kit | dependency | updated | 0.15.0 | 0.15.0 |
+| @effected/walker | dependency | updated | 0.28.0 | 0.28.0 |
+
+### Maintenance
+
+- Pins every `@effected/*` dependency to the exact version the tool was built and tested with, so a newer kit patch never reaches an installed tool without a release of the tool. Each library's kit peers resolve from these pins, so a consumer's other kit versions no longer split the tool's graph.
+
 ## 0.18.0
 
 ### Features

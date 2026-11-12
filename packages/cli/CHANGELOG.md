@@ -1,5 +1,23 @@
 # @effected/cli
 
+## 0.31.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli-kit | dependency | updated | 0.28.1 | 0.28.2 |
+| @effected/engine | dependency | updated | 0.17.0 | 0.17.1 |
+| @effected/env | dependency | updated | 0.12.0 | 0.12.0 |
+| @effected/kit | dependency | updated | 0.14.0 | 0.14.0 |
+| @effected/walker | dependency | updated | 0.28.0 | 0.28.0 |
+
+### Maintenance
+
+- Takes `ink` from the `effected:build` catalog instead of silk's. The published range is unchanged.
+
+* Pins every `@effected/*` dependency to the exact version the tool was built and tested with, so a newer kit patch never reaches an installed tool without a release of the tool. Each library's kit peers resolve from these pins, so a consumer's other kit versions no longer split the tool's graph.
+
 ## 0.31.0
 
 ### Features

@@ -1,5 +1,27 @@
 # @effected/bundler
 
+## 0.4.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/changesets | dependency | updated | 0.4.1 | 0.5.0 |
+| @effected/config-file | dependency | updated | 0.27.1 | 0.27.1 |
+| @effected/env | dependency | updated | 0.12.0 | 0.12.0 |
+| @effected/files | dependency | updated | 0.3.0 | 0.3.0 |
+| @effected/images | dependency | updated | 0.10.0 | 0.10.0 |
+| @effected/jsonl | dependency | updated | 0.19.0 | 0.19.0 |
+| @effected/npm | dependency | updated | 0.34.0 | 0.34.0 |
+| @effected/package-json | dependency | updated | 0.32.1 | 0.32.1 |
+| @effected/tsconfig-json | dependency | updated | 0.21.1 | 0.21.1 |
+| @effected/walker | dependency | updated | 0.28.0 | 0.28.0 |
+| @effected/workspaces | dependency | updated | 0.46.0 | 0.47.0 |
+
+### Maintenance
+
+- Pins every `@effected/*` dependency to the exact version the tool was built and tested with, so a newer kit patch never reaches an installed tool without a release of the tool. Each library's kit peers resolve from these pins, so a consumer's other kit versions no longer split the tool's graph.
+
 ## 0.4.0
 
 ### Breaking Changes

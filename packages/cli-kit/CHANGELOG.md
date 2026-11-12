@@ -1,5 +1,18 @@
 # @effected/cli
 
+## 0.28.2
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/env | dependency | updated | 0.12.0 | 0.12.0 |
+| @effected/walker | dependency | updated | 0.28.0 | 0.28.0 |
+
+### Maintenance
+
+- Takes `ink` from the `effected:build` catalog instead of silk's. The published range is unchanged.
+
 ## 0.28.1
 
 ### Dependencies
