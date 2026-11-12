@@ -17,7 +17,7 @@ import { dirname, join, resolve } from "node:path";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, describe, it } from "@effect/vitest";
-import { ActionConfig, ActionValidation } from "@effected/bundler";
+import { ActionConfig, ActionValidation, EffectedConfigSchema } from "@effected/bundler";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, Layer, Path, PlatformError, Schema } from "effect";
 import {
@@ -69,6 +69,16 @@ describe("ActionInit.plan", () => {
 		assert.strictEqual(tsconfig.extends, "@effected/plugin/tsconfig/action.json");
 		const main = scaffold.files.find((file) => file.path === "src/main.ts")?.contents ?? "";
 		assert.include(main, "if (process.env.GITHUB_ACTIONS)");
+	});
+
+	it("opens effected.toml with the schema directive and the blank line tombi wants", () => {
+		const toml = ActionInit.plan({ name: "greet", description: "Greets" }).files.find(
+			(file) => file.path === "effected.toml",
+		)?.contents;
+		assert.isDefined(toml);
+		const [directive, blank] = (toml ?? "").split("\n");
+		assert.strictEqual(directive, EffectedConfigSchema.directive);
+		assert.strictEqual(blank, "");
 	});
 
 	it("quotes the name and description, so text YAML would read as structure stays one string", () => {

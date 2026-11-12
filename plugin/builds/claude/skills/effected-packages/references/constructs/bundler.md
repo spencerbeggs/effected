@@ -81,6 +81,7 @@
 | `EffectedConfig` | Class | A decoded `effected.toml`. | decoded effected.toml document, typed build config |
 | `EffectedConfigError` | Class | An `effected.toml` could not be read, parsed or decoded, or the workspace around it could not be discovered. | effected.toml unreadable, unparseable, undecodable, or its workspace undiscoverable |
 | `EffectedConfigFile` | Class | Finds, merges and decodes `effected.toml`. | discover, merge by precedence and decode effected.toml for a package |
+| `EffectedConfigSchema` | Variable | Where the `effected.toml` JSON Schema is published, as data. | effected.toml json schema url, `#:schema` directive for tombi taplo, hosted schema identity |
 | `EmitManifestOptions` | Interface | | |
 | `EmittedFile` | Class | One emitted output file with its in-memory byte size (gzip only when --verbose). | one output file and its byte size, optional gzip size |
 | `EntryOverride` | Class | Format and bundling settings pinned to some of a package's export paths, layered onto the base build. | pin format and bundling to some export paths, per-entry build settings |

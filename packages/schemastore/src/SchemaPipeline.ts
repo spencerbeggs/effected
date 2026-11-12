@@ -22,7 +22,7 @@ import type { SchemaTarget } from "./SchemaTarget.js";
 import type { SchemaValidatorError, SchemaValidatorOptions } from "./SchemaValidator.js";
 import { SchemaValidator } from "./SchemaValidator.js";
 import { SchemaVersion, SchemaVersioning } from "./SchemaVersioning.js";
-import type { SchemaConversionError, UndeclaredAnnotationKeyError } from "./StoreDocument.js";
+import type { SchemaConversionError, StoreDocumentOptions, UndeclaredAnnotationKeyError } from "./StoreDocument.js";
 import { StoreDocument } from "./StoreDocument.js";
 
 /**
@@ -244,6 +244,12 @@ export interface SchemaPipelineOptions {
 	 * a published file whose on-disk text no longer parses.
 	 */
 	readonly contractChanges?: ContractChangePolicy;
+	/**
+	 * Passed through to `StoreDocument.fromSchema` for every target: the
+	 * generator of the `effect` copy that built the targets' schemas, when it
+	 * is not this package's own. See `StoreDocumentOptions.toJsonSchemaDocument`.
+	 */
+	readonly toJsonSchemaDocument?: StoreDocumentOptions["toJsonSchemaDocument"];
 	/** Passed through to `SchemaValidator.validate`. */
 	readonly validator?: SchemaValidatorOptions;
 	/** Passed through to `SchemaFile.write` / `SchemaFile.check`. */
@@ -414,6 +420,9 @@ export class SchemaPipeline {
 					$id: target.$id,
 					...(target.jsonSchema !== undefined ? { jsonSchema: target.jsonSchema } : {}),
 					...(target.rootAnnotations !== undefined ? { rootAnnotations: target.rootAnnotations } : {}),
+					...(options?.toJsonSchemaDocument !== undefined
+						? { toJsonSchemaDocument: options.toJsonSchemaDocument }
+						: {}),
 				});
 				const findings = yield* gather(document, options);
 				yield* gate(target, findings, options);
@@ -493,6 +502,9 @@ export class SchemaPipeline {
 					$id: target.$id,
 					...(target.jsonSchema !== undefined ? { jsonSchema: target.jsonSchema } : {}),
 					...(target.rootAnnotations !== undefined ? { rootAnnotations: target.rootAnnotations } : {}),
+					...(options?.toJsonSchemaDocument !== undefined
+						? { toJsonSchemaDocument: options.toJsonSchemaDocument }
+						: {}),
 				});
 				const findings = yield* gather(document, options);
 				const { wouldWrite, change, generated, existing } = yield* files.check(target.path, document, options?.write);

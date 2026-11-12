@@ -62,6 +62,13 @@ export interface LoadedConfig {
 	readonly directory: string;
 	/** The config, with its paths resolved. */
 	readonly config: SchemastoreConfig;
+	/**
+	 * `Schema.toJsonSchemaDocument` from the `effect` beside the config, the
+	 * copy its schemas were built with. Absent when none resolves there, or
+	 * when an injected `importModule` loaded the config; the tool's own copy
+	 * lowers the schemas then.
+	 */
+	readonly toJsonSchemaDocument?: typeof Schema.toJsonSchemaDocument;
 }
 
 /**
@@ -109,19 +116,41 @@ export interface ConfigLoadOptions {
 // its range is a tilde.
 const IN_NODE_MODULES = /[\\/]node_modules[\\/]/;
 
-const jitiImport = async (path: string, source: string): Promise<unknown> => {
+//
+// The same importer then resolves `effect/Schema` from the config's location.
+// A carrier that inlines its own `effect` must lower the consumer's schemas with
+// the consumer's copy: core recognises a reused schema's annotated copies
+// through state local to the copy that made them, and another copy's generator
+// splits one `identifier` into `X`, `X_1`, `X_2` definitions (effected#1348).
+// `effect` is a `type: module` package, so this is the one instance the
+// config's own imports reached. A config whose `effect` does not resolve from
+// its directory falls back to the tool's copy, as before.
+const jitiImport = async (path: string, source: string): Promise<JitiLoaded> => {
 	const { cache } = createRequire(path);
 	for (const key of Object.keys(cache)) {
 		if (key.endsWith(".json") && !IN_NODE_MODULES.test(key)) {
 			Reflect.deleteProperty(cache, key);
 		}
 	}
-	return createJiti(path, { interopDefault: true, moduleCache: false, fsCache: false }).evalModule(source, {
+	const jiti = createJiti(path, { interopDefault: true, moduleCache: false, fsCache: false });
+	const module = await jiti.evalModule(source, {
 		filename: path,
 		async: true,
 		forceTranspile: true,
 	});
+	const lower = await jiti.import<{ toJsonSchemaDocument?: unknown }>("effect/Schema").then(
+		(schema) => schema.toJsonSchemaDocument,
+		() => undefined,
+	);
+	return typeof lower === "function"
+		? { module, toJsonSchemaDocument: lower as typeof Schema.toJsonSchemaDocument }
+		: { module };
 };
+
+interface JitiLoaded {
+	readonly module: unknown;
+	readonly toJsonSchemaDocument?: typeof Schema.toJsonSchemaDocument;
+}
 
 // An import failure's stack names the module and the line that threw, which
 // the message alone does not, so a non-empty `stack` is preferred; otherwise
@@ -381,9 +410,9 @@ export class ConfigLoader {
 			configPath = yield* ConfigLoader.discover(options.cwd, options.ceiling);
 		}
 		const failed = (cause: unknown) => new ConfigLoadError({ path: configPath, reason: describeImportFailure(cause) });
-		const module =
+		const { module, toJsonSchemaDocument }: JitiLoaded =
 			importModule !== undefined
-				? yield* Effect.tryPromise({ try: () => importModule(configPath), catch: failed })
+				? { module: yield* Effect.tryPromise({ try: () => importModule(configPath), catch: failed }) }
 				: yield* fs.readFileString(configPath).pipe(
 						Effect.mapError(failed),
 						Effect.flatMap((source) => Effect.tryPromise({ try: () => jitiImport(configPath, source), catch: failed })),
@@ -408,7 +437,12 @@ export class ConfigLoader {
 		if (duplicate !== undefined) {
 			return yield* Effect.fail(new ConfigLoadError({ path: configPath, reason: duplicate }));
 		}
-		const loaded: LoadedConfig = { path: configPath, directory, config };
+		const loaded: LoadedConfig = {
+			path: configPath,
+			directory,
+			config,
+			...(toJsonSchemaDocument !== undefined ? { toJsonSchemaDocument } : {}),
+		};
 		return loaded;
 	});
 }

@@ -32,6 +32,14 @@
 			"outputLogs": "full",
 			"outputs": ["dist/**"]
 		},
+		"schema:build": {
+			"cache": false,
+			"dependsOn": [],
+			"outputLogs": "errors-only"
+		},
+		"schema:check": {
+			"cache": false
+		},
 		"types:check": {
 			"cache": true,
 			"dependsOn": ["^types:check"],

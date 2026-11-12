@@ -13,7 +13,7 @@ Load when changing the public API, a load-bearing output, or the seams.
 ## Module layout
 
 - `Bundler.ts`: the orchestrator, `BundlerSeams`, `BundlerBuildResult`. `BundlerError.ts`: the failure, naming a `BundlerPhase` and carrying the collector's report.
-- `config/`: the `effected.toml` schema, `EffectedConfigFile.load`, merge, plugin loading. `config-validation/`: the fast-fail `ConfigValidator`.
+- `config/`: the `effected.toml` schema, `EffectedConfigFile.load`, merge, plugin loading. `lib/configs/schemastore.config.ts` publishes `EffectedConfig` as the repo-root `schemas/1.0/config.json` (`schema:build`, which `build` runs first; `published: false` until 1.0). `config-validation/`: the fast-fail `ConfigValidator`.
 - `entries/`: entry points and export paths from `package.json`. `manifest/`: the emitted `package.json`. `catalog/`: `catalog:` and `workspace:` resolution.
 - `targets/`: publish targets and `targets.json`.
 - `passes/`, `dts/`, `tsconfig/`, `jsx/`: the tsdown passes, and the tsconfigs they run on.

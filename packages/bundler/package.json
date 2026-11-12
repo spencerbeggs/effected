@@ -27,6 +27,8 @@
 	},
 	"scripts": {
 		"build": "effected package build",
+		"schema:build": "effected schema build lib/configs/schemastore.config.ts",
+		"schema:check": "effected schema check lib/configs/schemastore.config.ts",
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
@@ -61,6 +63,7 @@
 	"devDependencies": {
 		"@effect/vitest": "catalog:effected",
 		"@effected/memfs": "workspace:*",
+		"@effected/schemastore": "workspace:*",
 		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
 		"typescript": "catalog:effected:build"

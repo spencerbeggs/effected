@@ -42,6 +42,8 @@
 		"pnpm:up": "pnpm --filter '@effected/pnpm-plugin-effected' run pnpm:up",
 		"prepare": "husky",
 		"preview": "turbo run preview --filter=docs",
+		"schema:build": "turbo run schema:build --filter=@effected/bundler --output-logs=full",
+		"schema:check": "turbo run schema:check --filter=@effected/bundler",
 		"scratchpad:check": "pnpm --filter scratchpad check",
 		"scratchpad:probe": "pnpm --filter scratchpad probe",
 		"scratchpad:reset": "pnpm --filter scratchpad reset",

@@ -1,3 +1,5 @@
+#:schema https://raw.githubusercontent.com/spencerbeggs/effected/main/schemas/1.0/config.json
+
 # ./node names the root's types through the package's own name; keep that import external in the declarations so
 # node.d.ts refers to the root's JournalWatcher instead of carrying a copy.
 [package.build]

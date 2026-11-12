@@ -27,6 +27,12 @@
 					]
 				}
 			]
+		},
+		"cleanup": {
+			"$ref": "#/$defs/Cleanup"
+		},
+		"logs": {
+			"$ref": "#/$defs/Scope"
 		}
 	},
 	"required": [
@@ -34,5 +40,41 @@
 		"name"
 	],
 	"additionalProperties": false,
-	"description": "One output file of the schema-consumer fixture"
+	"description": "One output file of the schema-consumer fixture",
+	"$defs": {
+		"Scope": {
+			"anyOf": [
+				{
+					"type": "boolean"
+				},
+				{
+					"type": "object",
+					"properties": {
+						"preserve": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						}
+					},
+					"required": [
+						"preserve"
+					],
+					"additionalProperties": false
+				}
+			]
+		},
+		"Cleanup": {
+			"type": "object",
+			"properties": {
+				"secrets": {
+					"$ref": "#/$defs/Scope"
+				},
+				"variables": {
+					"$ref": "#/$defs/Scope"
+				}
+			},
+			"additionalProperties": false
+		}
+	}
 }

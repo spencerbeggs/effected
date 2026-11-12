@@ -1,0 +1,11 @@
+[
+	{
+		"name": "config",
+		"description": "effected build config: the [package] and [action] tables of effected.toml",
+		"fileMatch": ["effected.toml", "**/.config/effected.toml", "**/lib/configs/effected.toml"],
+		"url": "https://raw.githubusercontent.com/spencerbeggs/effected/main/schemas/1.0/config.json",
+		"versions": {
+			"1.0": "https://raw.githubusercontent.com/spencerbeggs/effected/main/schemas/1.0/config.json"
+		}
+	}
+]

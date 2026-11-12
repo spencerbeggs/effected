@@ -20,7 +20,7 @@ import { SchemaFile } from "@effected/schemastore";
 import type { FileSystem, Layer, Path, PlatformError } from "effect";
 import { Effect, Option, Schema } from "effect";
 import { AjvValidator } from "./AjvValidator.js";
-import type { ConfigLoadError, ConfigNotFoundError } from "./ConfigLoader.js";
+import type { ConfigLoadError, ConfigNotFoundError, LoadedConfig } from "./ConfigLoader.js";
 import { ConfigLoader } from "./ConfigLoader.js";
 import type {
 	CatalogDirError,
@@ -107,6 +107,11 @@ export interface SchemaRunDeps {
 	readonly instanceValidator?: Layer.Layer<InstanceValidator>;
 	/** Told when the walk starts and of each schema's report. */
 	readonly onProgress?: (event: SchemaProgress) => Effect.Effect<void>;
+	/**
+	 * The generator of the `effect` copy beside the config, for a caller that loaded the config itself and hands it in
+	 * through `importModule`, which resolves none. Omitted, the loader's own resolution, then the tool's copy.
+	 */
+	readonly toJsonSchemaDocument?: LoadedConfig["toJsonSchemaDocument"];
 }
 
 /**
@@ -203,11 +208,13 @@ export class SchemaRun {
 			...(Option.isSome(mismatch) ? { versionMismatch: mismatch.value } : {}),
 		}) ?? Effect.void;
 		const policy = input.force ? "allow" : input.drift;
+		const lower = loaded.toJsonSchemaDocument ?? deps.toJsonSchemaDocument;
 		const report = yield* Runner.run(loaded.config, {
 			mode: input.mode,
 			configPath: loaded.path,
 			onDrift: input.onDrift ?? loaded.config.onDrift,
 			...(policy !== undefined ? { policy } : {}),
+			...(lower !== undefined ? { toJsonSchemaDocument: lower } : {}),
 			...(onProgress !== undefined
 				? { onChecked: (checked: SchemaChecked) => onProgress({ _tag: "SchemaChecked", ...checked }) }
 				: {}),

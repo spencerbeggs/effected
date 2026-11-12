@@ -1,3 +1,5 @@
+#:schema https://raw.githubusercontent.com/spencerbeggs/effected/main/schemas/1.0/config.json
+
 # ./ui and ./ui/testing name the root's (and ./ui's) types through the package's own name; keep those imports
 # external in the declarations so each entry refers to the other's types instead of carrying copies. The match is
 # exact, so each subpath is listed.
