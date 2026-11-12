@@ -1,5 +1,9 @@
 # Log
 
+## 2026-11-12
+
+* Updated glob
+
 ## 2026-11-11
 
 * Updated Peer-dependency discipline

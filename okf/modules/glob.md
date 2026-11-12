@@ -9,10 +9,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-08T17:45:32Z
+  at: 2026-11-12T03:10:40Z
 integrity:
   generated:
-    body: 77dda71870f05b9b
+    body: 5fdf14556f6fc0f2
 ---
 
 # glob
@@ -88,6 +88,8 @@ Named `Effect.fn` spans on the public fallible boundaries only — the two `comp
 ## Testing
 
 `@effect/vitest`, `it.effect`, `assert.*` — never `expect`; tests in `__test__/`. No platform packages, no mock layers (no `R`), no `TestClock`. The engine is tested below the facade as well as through the public surface, in three families: a compliance fixture table asserting expected result *and* oracle agreement on every row; oracle property tests generating over the full dialect against the real `minimatch` package, asserting the vendored engine agrees modulo the documented deviations (if the engine disagrees with the oracle, fix the engine, never the expectation); and a hostility suite — oversized patterns, expansion bombs, deep brace nesting, extglob adoption chains, long globstar chains, deep comma-part chains — each failing through the typed error with the right reason, never a stack overflow, OOM or hang, plus the NaN and non-integer cap defect guards. Beside them, `match-limits.test.ts` pins the `maxGlobstarRecursion` ceiling, a stack sweep proving `matches` answers rather than throws when the engine overflows, and a lowered `braceExpandMax` failing the hostile brace case at compile; `Wildcard.test.ts` covers the wildcard matcher, with a mutation control on whitespace stopping `*`.
+
+A randomized differential runner, `packages/glob/__test__/differential/` (`pnpm --filter @effected/glob differential`), holds the engine against the oracle with seeded posix and win32 triples, worker processes and a per-triple watchdog; it shares the oracle exception predicates with `compliance.test.ts` through `__test__/support/oracle.ts`, is not collected by vitest, and is the first step of any engine change.
 
 The oracle is minimatch 11.0.5. Beside typed failures (where the kit rejects a pattern 11 accepts, never a different answer), it has one standing exception, an 11.0.5 defect: 11 joins a pattern's brace alternatives with `|` into one matcher, so a `[` in one alternative and a `]` in another become a class (`b**{Z..a}` does not match its own text), and the engine answers the union of the alternatives; `compliance.test.ts` names it `bracketsAcrossAlternatives`. A numeric range of 100 or more values is no longer an exception: the engine keeps it one portion as 11 does, and `compliance.test.ts` pins it against the oracle. `GlobSet` classifies with `braceAlternatives`, which writes each alternative back as text: a kept range as `{lo..hi}`, and every brace that expansion unescaped escaped again, so `\{a,b}` stays the literal `{a,b}` and is never expanded twice. An include whose range follows a `$` or a literal backslash, or whose alternative does not compile alone, stays one wildcard, the whole pattern; `GlobSet.compileResult` and the schema check classify eagerly, so no guard trips in `matches`. One more typed refusal is the kit's: a compile's work is budgeted (`MAX_REGEXP_WORK`, 8,000,000 units, a regexp's length plus 2,048 per Unicode property escape in a matcher's kept class regexp and 1,536 in a portion's validation regexp, which is built, run and dropped, and charged once per distinct source in one compile, plus 4 per matcher graph item, so a kept range copied into every brace alternative is charged per copy; one validation regexp may also hold at most 256 property escapes, since V8 holds about 400 KB an escape while it builds one; a `GlobSet` is one compile, its members sharing one budget and handing their engines to their patterns: members sharing one POSIX-class portion compile at 20,000, a set in which every member has its own `[[:alpha:]]` portion tops out at about 2,550 members, failing typed past it, and an include that stays whole after its alternatives were built is charged only for the whole (#1287)), so `[[:alpha:]]{0..99}{0..99}{0..9}`, which ran the process out of memory, fails typed as `CompileBudgetExceeded`, where minimatch 11, building its matchers lazily, compiles it in 275 ms. `__test__/globstar.test.ts` keeps the multi-`**` and `partial` rows that minimatch 10.x answered wrongly as regressions, checked against the oracle and a reference matcher.
 

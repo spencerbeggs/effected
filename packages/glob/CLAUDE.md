@@ -368,6 +368,21 @@ and never by a blanket skip. Oracle calls map `platform: "posix"` →
 `"linux"` (upstream's Platform type has no posix member; linux is behaviorally
 identical and immune to ambient drift).
 
+**Run the differential runner first, before any engine change.** It is the
+randomized gate the property tests only sample: `pnpm --filter @effected/glob
+differential -- --seed 1 --count 20000` (flags: `--platform`, `--workers`,
+`--timeout`, `--weights class=n,...`, `--alphabet file.json`, `--out`; `--help`
+lists the classes). It lives in `__test__/differential/` (not `scratchpad/`, which
+is invisible to CI and holds no engine knowledge), is named `run.ts`/`worker.ts`
+so vitest never collects it, and runs triples in worker processes under a
+per-triple watchdog, because a stalled single process hides every later triple.
+It compares match, `hasMagic` and throw/typed failure against the oracle, applies
+the shared exceptions in `__test__/support/oracle.ts` (`bracketsAcrossAlternatives`,
+`hasLargeNumericRange`, `pastCapExtglob`), reports `InvalidRegExp`-on-accepted
+(#1279) as its own bucket, and writes a divergence table to
+`.cache/differential/seed-N.md`. Exit 1 means divergences or watchdog kills.
+Get a clean baseline before editing the engine and a clean run after it.
+
 ```bash
 pnpm vitest run --project @effected/glob   # this package's tests, from the repo root
 pnpm build --filter @effected/glob   # from the repo root
