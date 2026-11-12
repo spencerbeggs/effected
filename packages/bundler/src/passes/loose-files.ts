@@ -1,4 +1,6 @@
 // packages/bundler/src/passes/loose-files.ts
+// `node:path` rather than `Path`: `basename` and `extname` are pure string operations in a synchronous, exported
+// normalizer, which reads nothing.
 import { basename, extname } from "node:path";
 import { ConfigValidationError } from "../errors.js";
 import type { BuildFormat } from "./target-groups.js";

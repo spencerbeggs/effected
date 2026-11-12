@@ -21,24 +21,34 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, beforeEach, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
 import { vi } from "vitest";
 
-// Must be called before importing the module under test. vi.mock is hoisted to the top.
-vi.mock("../../src/meta/api-extractor.js", () => ({
-	runApiExtractor: vi.fn((options: { apiJsonPath: string }) => {
+// The stub's body. runApiExtractor is an Effect, so the mocked module wraps this plain function and a
+// throw becomes the failure value, as the real one turns any API Extractor throw into its failure.
+const { mockRunApiExtractor } = vi.hoisted(() => ({
+	mockRunApiExtractor: vi.fn((options: { apiJsonPath: string }) => {
 		// Write a minimal JSON file so generate.ts can JSON.parse(readFileSync(perEntryApiJson))
 		// after each run without throwing ENOENT.
 		writeFileSync(options.apiJsonPath, "{}", "utf-8");
-	}),
+	}) as ReturnType<typeof vi.fn>,
 }));
 
-import { runApiExtractor } from "../../src/meta/api-extractor.js";
+// Must be called before importing the module under test. vi.mock is hoisted to the top.
+vi.mock("../../src/meta/api-extractor.js", () => ({
+	runApiExtractor: (options: { apiJsonPath: string }) =>
+		Effect.try({ try: () => (mockRunApiExtractor as (o: unknown) => void)(options), catch: (error) => error }),
+}));
+
 // Import AFTER the mock is set up.
+import type { GenerateMetaOptions } from "../../src/meta/generate.js";
 import { generateMeta } from "../../src/meta/generate.js";
 
-// Cast to a vi.Mock for type-safe call inspection.
-const mockRunApiExtractor = runApiExtractor as ReturnType<typeof vi.fn>;
+/** generateMeta reads and writes the scaffold on the host disk. */
+const runGenerateMeta = (options: GenerateMetaOptions) =>
+	Effect.runPromise(generateMeta(options).pipe(Effect.provide(NodeServices.layer)));
 
 function scaffold(): { cwd: string; dtsDir: string; aeInputDir: string } {
 	const cwd = mkdtempSync(join(tmpdir(), "meta-split-"));
@@ -84,7 +94,7 @@ describe("generateMeta — two-input split wiring", () => {
 		const outMetaDir = join(cwd, "dist", "prod", "npm", "meta");
 		const callerOnMessage = vi.fn();
 
-		await generateMeta({
+		await runGenerateMeta({
 			cwd,
 			packageName: "@scope/fixture",
 			tsconfigPath: join(cwd, "tsconfig.json"),
@@ -141,7 +151,7 @@ describe("generateMeta — two-input split wiring", () => {
 		const outMetaDir = join(cwd, "dist", "prod", "npm", "meta");
 		const callerOnMessage = vi.fn();
 
-		await generateMeta({
+		await runGenerateMeta({
 			cwd,
 			packageName: "@scope/fixture",
 			tsconfigPath: join(cwd, "tsconfig.json"),
@@ -199,7 +209,7 @@ describe("generateMeta — two-input split wiring", () => {
 		// Run A (rollup) reports a forgotten export with a wrong rollup location; Run B reports nothing.
 		emitFromRuns(dtsDir, [forgotten("RollupOnly", { file: "index.d.ts", line: 4210, column: 1 })], []);
 
-		await generateMeta({
+		await runGenerateMeta({
 			cwd,
 			packageName: "@scope/fixture",
 			tsconfigPath: join(cwd, "tsconfig.json"),
@@ -238,7 +248,7 @@ describe("generateMeta — two-input split wiring", () => {
 			[forgotten("Shared", { file: "src/shared.ts", line: 10, column: 3 })],
 		);
 
-		await generateMeta({
+		await runGenerateMeta({
 			cwd,
 			packageName: "@scope/fixture",
 			tsconfigPath: join(cwd, "tsconfig.json"),
@@ -288,7 +298,7 @@ describe("generateMeta — two-input split wiring", () => {
 			[],
 		);
 
-		await generateMeta({
+		await runGenerateMeta({
 			cwd,
 			packageName: "@scope/fixture",
 			tsconfigPath: join(cwd, "tsconfig.json"),
@@ -320,7 +330,7 @@ describe("generateMeta — two-input split wiring", () => {
 		const { cwd, dtsDir } = scaffold();
 		const outMetaDir = join(cwd, "dist", "prod", "npm", "meta");
 
-		await generateMeta({
+		await runGenerateMeta({
 			cwd,
 			packageName: "@scope/fixture",
 			tsconfigPath: join(cwd, "tsconfig.json"),
@@ -376,7 +386,7 @@ describe("generateMeta — two-input split wiring", () => {
 			const { cwd, dtsDir, aeInputDir } = scaffold();
 			const onSuppressed = vi.fn();
 			suppressedFromRuns(dtsDir, runA, runB);
-			await generateMeta({
+			await runGenerateMeta({
 				cwd,
 				packageName: "@scope/fixture",
 				tsconfigPath: join(cwd, "tsconfig.json"),
@@ -434,7 +444,7 @@ describe("generateMeta — two-input split wiring", () => {
 			);
 			assert.include(
 				String(
-					await generateMeta({
+					await runGenerateMeta({
 						cwd,
 						packageName: "@scope/fixture",
 						tsconfigPath: join(cwd, "tsconfig.json"),
@@ -484,7 +494,7 @@ describe("generateMeta — two-input split wiring", () => {
 					});
 			},
 		);
-		const raised = await generateMeta({
+		const raised = await runGenerateMeta({
 			cwd,
 			packageName: "@scope/fixture",
 			tsconfigPath: join(cwd, "tsconfig.json"),
@@ -534,7 +544,7 @@ describe("generateMeta — two-input split wiring", () => {
 			writeFileSync(join(dtsDir, "sub.d.ts"), "export interface S { s: 1 }\n");
 			mkdirSync(join(dtsDir, "deep"), { recursive: true });
 			writeFileSync(join(dtsDir, "deep", "thing.d.ts"), "export interface T { t: 1 }\n");
-			await generateMeta(base(cwd, dtsDir, aeInputDir));
+			await runGenerateMeta(base(cwd, dtsDir, aeInputDir));
 
 			const calls = mockRunApiExtractor.mock.calls.map((c) => c[0] as Record<string, unknown>);
 			assert.strictEqual(calls.length, 6);
@@ -555,7 +565,7 @@ describe("generateMeta — two-input split wiring", () => {
 			writeFileSync(join(dtsDir, "sub.d.ts"), "export interface S { s: 1 }\n");
 			mkdirSync(join(dtsDir, "deep"), { recursive: true });
 			writeFileSync(join(dtsDir, "deep", "thing.d.ts"), "export interface T { t: 1 }\n");
-			await generateMeta(base(cwd, dtsDir));
+			await runGenerateMeta(base(cwd, dtsDir));
 			for (const c of mockRunApiExtractor.mock.calls)
 				assert.strictEqual("selfReferencePaths" in (c[0] as object), false);
 		});
@@ -567,7 +577,7 @@ describe("generateMeta — two-input split wiring", () => {
 				writeFileSync(options.apiJsonPath, "{}", "utf-8");
 			});
 			const opts = { ...base(cwd, dtsDir, aeInputDir), entries: { index: "index" }, exportPaths: { index: "." } };
-			await generateMeta(opts);
+			await runGenerateMeta(opts);
 			const warn = opts.onMessage.mock.calls
 				.map((c) => c[0] as Record<string, unknown>)
 				.find((m) => m.level === "warn");

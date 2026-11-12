@@ -1,11 +1,10 @@
 // packages/tsdown-plugins/src/meta/scrub-declaration-maps.ts
-import { readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
 import { GlobPattern, GlobPatternOptions } from "@effected/glob";
-import { descendSync } from "@effected/walker";
-import { nodeWalkerSyncOps } from "@effected/walker/node-sync";
+import type { DescendError } from "@effected/walker";
+import { descend } from "@effected/walker";
 import { decode, encode } from "@jridgewell/sourcemap-codec";
-import { Result } from "effect";
+import type { PlatformError } from "effect";
+import { Effect, FileSystem, Path, Result } from "effect";
 
 /** Every declaration map, at any depth, dot-directories included. */
 const DECLARATION_MAPS = Result.getOrThrow(
@@ -27,8 +26,14 @@ const DECLARATION_MAPS = Result.getOrThrow(
  *
  * @internal
  */
-export function scrubSourcelessMappings(mapPath: string): number {
-	const raw = JSON.parse(readFileSync(mapPath, "utf8")) as { mappings: string };
+export const scrubSourcelessMappings: (
+	mapPath: string,
+) => Effect.Effect<number, PlatformError.PlatformError, FileSystem.FileSystem> = Effect.fnUntraced(function* (
+	mapPath: string,
+) {
+	const fs = yield* FileSystem.FileSystem;
+	// A malformed map throws, a defect, as the synchronous `JSON.parse` did.
+	const raw = JSON.parse(yield* fs.readFileString(mapPath)) as { mappings: string };
 	const lines = decode(raw.mappings);
 	let removed = 0;
 	const scrubbed = lines.map((segments) =>
@@ -40,9 +45,9 @@ export function scrubSourcelessMappings(mapPath: string): number {
 			return true;
 		}),
 	);
-	if (removed > 0) writeFileSync(mapPath, `${JSON.stringify({ ...raw, mappings: encode(scrubbed) })}\n`, "utf8");
+	if (removed > 0) yield* fs.writeFileString(mapPath, `${JSON.stringify({ ...raw, mappings: encode(scrubbed) })}\n`);
 	return removed;
-}
+});
 
 /**
  * Scrub every `.d.ts.map`/`.d.cts.map`/`.d.mts.map` under `dir` (recursively). Returns the total
@@ -50,19 +55,20 @@ export function scrubSourcelessMappings(mapPath: string): number {
  *
  * @internal
  */
-export function scrubDeclarationMapsUnder(dir: string): number {
-	// prune: [], followSymlinks: true and onUnreadable: "skip" keep the hand-rolled walk's reach: it stat-followed links,
-	// pruned nothing, and skipped a directory it could not read.
-	const maps = Result.getOrThrow(
-		descendSync(DECLARATION_MAPS, {
-			cwd: resolve(dir),
+export const scrubDeclarationMapsUnder: (
+	dir: string,
+) => Effect.Effect<number, DescendError | PlatformError.PlatformError, FileSystem.FileSystem | Path.Path> =
+	Effect.fnUntraced(function* (dir: string) {
+		const path = yield* Path.Path;
+		// prune: [], followSymlinks: true and onUnreadable: "skip" keep the hand-rolled walk's reach: it stat-followed links,
+		// pruned nothing, and skipped a directory it could not read.
+		const maps = yield* descend(DECLARATION_MAPS, {
+			cwd: path.resolve(dir),
 			prune: [],
 			followSymlinks: true,
 			onUnreadable: "skip",
-			...nodeWalkerSyncOps,
-		}),
-	);
-	let removed = 0;
-	for (const rel of maps) removed += scrubSourcelessMappings(join(dir, rel));
-	return removed;
-}
+		});
+		let removed = 0;
+		for (const rel of maps) removed += yield* scrubSourcelessMappings(path.join(dir, rel));
+		return removed;
+	});

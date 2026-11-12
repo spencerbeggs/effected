@@ -1,7 +1,14 @@
 // Ported from savvy-web/systems packages/tsdown-plugins/__test__/manifest/emit-manifest.test.ts on 2026-11-06
 // packages/bundler/__test__/manifest/emit-manifest.test.ts
 import { assert, describe, it } from "@effect/vitest";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect } from "effect";
+import type { BuildEmittedManifestOptions } from "../../src/manifest/emit-manifest.js";
 import { buildEmittedManifest, manifestNeedsCatalogResolution } from "../../src/manifest/emit-manifest.js";
+
+/** No group here resolves a catalog, so the emit touches no disk: an empty volume stands in for it. */
+const runEmit = (options: BuildEmittedManifestOptions) =>
+	Effect.runPromise(buildEmittedManifest(options).pipe(Effect.provide(MemoryFileSystem.makeSync({}).layer)));
 
 describe("manifestNeedsCatalogResolution", () => {
 	// Behavior 2: pure helper detects catalog:/workspace: specifiers across all four dependency fields.
@@ -31,7 +38,7 @@ describe("manifestNeedsCatalogResolution", () => {
 
 describe("buildEmittedManifest", () => {
 	it("dev group with devManifest=preserve keeps catalog: specifiers and stays private", async () => {
-		const out = await buildEmittedManifest({
+		const out = await runEmit({
 			cwd: "/abs/pkg",
 			pkg: {
 				name: "@x/p",
@@ -50,7 +57,7 @@ describe("buildEmittedManifest", () => {
 	});
 
 	it("applies the targetGroup name to package.json.name", async () => {
-		const out = await buildEmittedManifest({
+		const out = await runEmit({
 			cwd: "/abs/pkg",
 			pkg: { name: "base", version: "1.0.0" } as never,
 			targetGroup: { id: "github", name: "@scope/base", isProd: false },
@@ -60,7 +67,7 @@ describe("buildEmittedManifest", () => {
 	});
 
 	it("drops the named top-level keys from the emitted manifest", async () => {
-		const out = await buildEmittedManifest({
+		const out = await runEmit({
 			cwd: "/abs/pkg",
 			pkg: { name: "base", version: "1.0.0", dependencies: { effect: "^3" }, keywords: ["a"] } as never,
 			targetGroup: { id: "npm", name: "base", isProd: true },

@@ -1,8 +1,24 @@
 // Ported from savvy-web/systems packages/tsdown-plugins/__test__/build/build-target-groups.collector.test.ts on 2026-11-06
 // packages/bundler/__test__/build/build-target-groups.collector.test.ts
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
+import type { BuildTargetGroupsOptions } from "../../src/passes/build-target-groups.js";
 import { buildTargetGroups } from "../../src/passes/build-target-groups.js";
 import { BuildCollector } from "../../src/report/collector.js";
+
+/**
+ * A package directory that does not exist, under a fresh temp dir. A fixed path such as `/tmp/x` reads whatever the
+ * host left there: a stray FILE at it makes the `public/` probe fail instead of finding nothing.
+ */
+const absentCwd = join(mkdtempSync(join(tmpdir(), "btg-collector-")), "pkg");
+
+/** The pass copies `public/`, writes temp tsconfigs and reads real tsconfig files, so it runs on the host disk. */
+const runBuildTargetGroups = (options: BuildTargetGroupsOptions): Promise<void> =>
+	Effect.runPromise(buildTargetGroups(options).pipe(Effect.provide(NodeServices.layer)));
 
 describe("buildTargetGroups collector wiring", () => {
 	it("muzzles tsdown and records per-pass timing when a collector is provided", async () => {
@@ -12,8 +28,8 @@ describe("buildTargetGroups collector wiring", () => {
 			configs.push(config);
 			return undefined;
 		};
-		await buildTargetGroups({
-			cwd: "/tmp/x",
+		await runBuildTargetGroups({
+			cwd: absentCwd,
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
 			tsconfigPath: "tsconfig.json",
@@ -41,8 +57,8 @@ describe("buildTargetGroups collector wiring", () => {
 			configs.push(config);
 			return undefined;
 		};
-		await buildTargetGroups({
-			cwd: "/tmp/x",
+		await runBuildTargetGroups({
+			cwd: absentCwd,
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
 			tsconfigPath: "tsconfig.json",

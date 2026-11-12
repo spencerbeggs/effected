@@ -137,8 +137,13 @@ export class BundlerBuildResult extends Schema.Class<BundlerBuildResult>("Bundle
 }) {}
 
 // Loaded on first use: the meta pass reaches API Extractor and its own TypeScript, which nothing else here needs.
-const defaultRunMetaPass: BundlerSeams["runMetaPass"] = (options) =>
-	import("./meta/run-pass.js").then((module) => module.runMetaPass(options));
+const defaultRunMetaPass = (
+	options: RunMetaPassOptions,
+): Effect.Effect<void, unknown, FileSystem.FileSystem | Path.Path> =>
+	Effect.flatMap(
+		Effect.promise(() => import("./meta/run-pass.js")),
+		(module) => module.runMetaPass(options),
+	);
 
 // Loaded on first use, for the one kind of package that compiles a binary.
 const defaultRunExeBuild: BundlerSeams["runExeBuild"] = (options) =>
@@ -175,13 +180,15 @@ const readPackageJson = (
 	Effect.map(readJsonOrUndefined(path.join(cwd, "package.json")), (pkg) => (pkg ?? {}) as BundlerPackageJson);
 
 /** Write the resolved tsconfig with the resolved JSX settings in `compilerOptions`. */
-function writeTsconfig(cwd: string, jsx: ResolvedJsxConfig | undefined): string {
-	return writeResolvedTsconfig({
+const writeTsconfig = (
+	cwd: string,
+	jsx: ResolvedJsxConfig | undefined,
+): Effect.Effect<string, unknown, FileSystem.FileSystem | Path.Path> =>
+	writeResolvedTsconfig({
 		cwd,
 		...(jsx?.runtime === "automatic" ? { jsx: "react-jsx", jsxImportSource: jsx.importSource } : {}),
 		...(jsx?.runtime === "classic" ? { jsx: "react" } : {}),
 	});
-}
 
 /** The publish targets declared in `publishConfig.targets`; only the map form drives multi-target. */
 function readPublishTargets(pkg: BundlerPackageJson): PublishTargets | undefined {
@@ -317,9 +324,11 @@ function aliasNextVersions(
 	seam: BundlerSeams["resolveNextVersions"] | undefined,
 	sourceName: string,
 	emittedName: string,
+	run: <A, E>(effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>) => Promise<A>,
 ): BundlerSeams["resolveNextVersions"] {
+	// The meta pass takes this promise-shaped, so the real read runs on the build's own services.
 	const read: BundlerSeams["resolveNextVersions"] =
-		seam ?? ((cwd) => import("./changesets/next-versions.js").then((module) => module.resolveNextVersions(cwd)));
+		seam ?? ((cwd) => import("./changesets/next-versions.js").then((module) => run(module.resolveNextVersions(cwd))));
 	return async (cwd) => {
 		const { versions } = await read(cwd);
 		const own = versions.get(sourceName);
@@ -372,10 +381,10 @@ interface BuildProgress {
 }
 
 /**
- * The orchestration. Its own reads and writes go through `FileSystem` and `Path`; the passes it hands to tsdown,
- * API Extractor and the SEA compiler stay promise-returning and are awaited through `Effect.promise`, so a rejection
- * reaches {@link Bundler.build} as the thrown value itself. A ported module's synchronous throw is a defect for the
- * same reason. The issues artifact is written on the way out of either terminal path.
+ * The orchestration. Its own reads and writes, and those of the JS, declaration and meta passes, go through
+ * `FileSystem` and `Path`. tsdown, API Extractor and the SEA compiler stay promise-returning or synchronous and work
+ * on the host disk; a rejection from one reaches {@link Bundler.build} as the thrown value itself, and so does a
+ * promise-typed seam's. The issues artifact is written on the way out of either terminal path.
  */
 const runBuild = Effect.fnUntraced(function* (
 	options: BundlerBuildOptions,
@@ -389,6 +398,7 @@ const runBuild = Effect.fnUntraced(function* (
 	const { cwd, config, noExe, verbose, seams = {} } = options;
 	const fs = yield* Fs.FileSystem;
 	const path = yield* PathService.Path;
+	const services = yield* Effect.context<FileSystem.FileSystem | Path.Path>();
 	const { join, resolve } = path;
 	let issuesPath = join(cwd, "dist", "prod", "issues.json");
 
@@ -438,7 +448,8 @@ const runBuild = Effect.fnUntraced(function* (
 			const tsconfigJsx =
 				seams.readTsconfigJsx !== undefined ? seams.readTsconfigJsx(cwd) : yield* readTsconfigJsx(cwd);
 			const jsx = resolveJsxConfig(tsconfigJsx, config.jsx);
-			const tsconfigPath = (seams.writeTsconfig ?? writeTsconfig)(cwd, jsx);
+			const tsconfigPath =
+				seams.writeTsconfig !== undefined ? seams.writeTsconfig(cwd, jsx) : yield* writeTsconfig(cwd, jsx);
 			const exportsMap = pkg.exports as Record<string, string> | undefined;
 			const publishTargets = readPublishTargets(pkg);
 			const osCpu = { os: (pkg.os as string[] | undefined) ?? [], cpu: (pkg.cpu as string[] | undefined) ?? [] };
@@ -534,42 +545,42 @@ const runBuild = Effect.fnUntraced(function* (
 			// emitted standalone in the exe step below.
 			if (hasJsEntries || config.exe === undefined) {
 				progress.phase = "js";
-				const buildGroups = seams.buildTargetGroups ?? realBuildTargetGroups;
-				yield* Effect.promise(() =>
-					buildGroups({
-						cwd,
-						version,
-						entry: baseEntries,
-						tsconfigPath,
-						groups,
-						devManifest: "preserve",
-						externals: config.externals,
-						// Always passed, the empty list included: the manifest's standard stripping runs only when it is set.
-						drop: config.manifest.drop,
-						...(Object.keys(config.manifest.set).length > 0 ? { set: config.manifest.set } : {}),
-						format: config.format,
-						emitDts: config.emitDts,
-						emitDeclarations: true,
-						collector,
-						verbose,
-						onPass: (pass) => {
-							progress.phase = pass === "dts" ? "dts" : "js";
-						},
-						...(config.bundledPackages.length > 0 ? { bundledPackages: config.bundledPackages } : {}),
-						...(config.dtsExternals.length > 0 ? { dtsExternals: config.dtsExternals } : {}),
-						...(config.bundleNodeModules ? { bundleNodeModules: true } : {}),
-						...(config.bundle.length > 0 ? { bundle: config.bundle } : {}),
-						...(config.minify ? { minify: true } : {}),
-						...(Object.keys(config.define).length > 0 ? { define: config.define } : {}),
-						...(partitions.length > 0 ? { overrides: partitions } : {}),
-						...(dualExports !== undefined ? { dualExports } : {}),
-						...(subdirExports.size > 0 ? { subdirExports } : {}),
-						...(looseFiles !== undefined ? { looseFiles } : {}),
-						...(config.copy.length > 0 ? { copy: config.copy } : {}),
-						...(options.plugins.length > 0 ? { extraPlugins: options.plugins } : {}),
-						...(exeRewrite !== undefined ? { exeRewrite } : {}),
-					}),
-				);
+				const buildOptions: BuildTargetGroupsOptions = {
+					cwd,
+					version,
+					entry: baseEntries,
+					tsconfigPath,
+					groups,
+					devManifest: "preserve",
+					externals: config.externals,
+					// Always passed, the empty list included: the manifest's standard stripping runs only when it is set.
+					drop: config.manifest.drop,
+					...(Object.keys(config.manifest.set).length > 0 ? { set: config.manifest.set } : {}),
+					format: config.format,
+					emitDts: config.emitDts,
+					emitDeclarations: true,
+					collector,
+					verbose,
+					onPass: (pass) => {
+						progress.phase = pass === "dts" ? "dts" : "js";
+					},
+					...(config.bundledPackages.length > 0 ? { bundledPackages: config.bundledPackages } : {}),
+					...(config.dtsExternals.length > 0 ? { dtsExternals: config.dtsExternals } : {}),
+					...(config.bundleNodeModules ? { bundleNodeModules: true } : {}),
+					...(config.bundle.length > 0 ? { bundle: config.bundle } : {}),
+					...(config.minify ? { minify: true } : {}),
+					...(Object.keys(config.define).length > 0 ? { define: config.define } : {}),
+					...(partitions.length > 0 ? { overrides: partitions } : {}),
+					...(dualExports !== undefined ? { dualExports } : {}),
+					...(subdirExports.size > 0 ? { subdirExports } : {}),
+					...(looseFiles !== undefined ? { looseFiles } : {}),
+					...(config.copy.length > 0 ? { copy: config.copy } : {}),
+					...(options.plugins.length > 0 ? { extraPlugins: options.plugins } : {}),
+					...(exeRewrite !== undefined ? { exeRewrite } : {}),
+				};
+				const buildGroups = seams.buildTargetGroups;
+				if (buildGroups !== undefined) yield* Effect.promise(() => buildGroups(buildOptions));
+				else yield* realBuildTargetGroups(buildOptions);
 			}
 
 			// The target-to-group binding the release action reads.
@@ -585,28 +596,35 @@ const runBuild = Effect.fnUntraced(function* (
 				progress.phase = "meta";
 				const generate = yield* resolveConfiguredGenerator(options, packageName, groups, collector, seams);
 				const bundleMeta = options.bundle !== undefined ? bundleMetaOptionsOf(options.bundle, generate) : undefined;
-				const runMetaPass = seams.runMetaPass ?? defaultRunMetaPass;
-				yield* Effect.promise(() =>
-					runMetaPass({
-						cwd,
-						packageName,
-						tsconfigPath,
-						groups,
-						entries,
-						exportsMap,
-						overrides: config.overrides,
-						meta: { ...meta, ...(bundleMeta !== undefined ? { bundle: bundleMeta } : {}) },
-						collector,
-						ci: options.ci,
-						targets: resolution.targets,
-						...(seams.generateMeta !== undefined ? { generateMeta: seams.generateMeta } : {}),
-						...(packageName !== sourceName
-							? { resolveNextVersions: aliasNextVersions(seams.resolveNextVersions, sourceName, packageName) }
-							: seams.resolveNextVersions !== undefined
-								? { resolveNextVersions: seams.resolveNextVersions }
-								: {}),
-					}),
-				);
+				const metaPassOptions: RunMetaPassOptions = {
+					cwd,
+					packageName,
+					tsconfigPath,
+					groups,
+					entries,
+					exportsMap,
+					overrides: config.overrides,
+					meta: { ...meta, ...(bundleMeta !== undefined ? { bundle: bundleMeta } : {}) },
+					collector,
+					ci: options.ci,
+					targets: resolution.targets,
+					...(seams.generateMeta !== undefined ? { generateMeta: seams.generateMeta } : {}),
+					...(packageName !== sourceName
+						? {
+								resolveNextVersions: aliasNextVersions(
+									seams.resolveNextVersions,
+									sourceName,
+									packageName,
+									Effect.runPromiseWith(services),
+								),
+							}
+						: seams.resolveNextVersions !== undefined
+							? { resolveNextVersions: seams.resolveNextVersions }
+							: {}),
+				};
+				const runMetaPass = seams.runMetaPass;
+				if (runMetaPass !== undefined) yield* Effect.promise(() => runMetaPass(metaPassOptions));
+				else yield* defaultRunMetaPass(metaPassOptions);
 			}
 
 			// Strip declaration source maps from the published dirs. The meta pass reads them for original-source
@@ -621,17 +639,15 @@ const runBuild = Effect.fnUntraced(function* (
 					const outDir = join(cwd, "dist", "prod", g.id, "pkg");
 					if (!hasJsEntries) {
 						progress.phase = "manifest";
-						const manifest = yield* Effect.promise(() =>
-							buildEmittedManifest({
-								pkg,
-								cwd,
-								targetGroup: { id: g.id, name: g.name, isProd: true },
-								devManifest: "preserve",
-								drop: config.manifest.drop,
-								set: config.manifest.set,
-								exeRewrite,
-							}),
-						);
+						const manifest = yield* buildEmittedManifest({
+							pkg,
+							cwd,
+							targetGroup: { id: g.id, name: g.name, isProd: true },
+							devManifest: "preserve",
+							drop: config.manifest.drop,
+							set: config.manifest.set,
+							exeRewrite,
+						});
 						yield* fs.makeDirectory(outDir, { recursive: true });
 						yield* fs.writeFileString(join(outDir, "package.json"), `${JSON.stringify(manifest, null, "\t")}\n`);
 						for (const file of ["LICENSE", "README.md"]) {

@@ -37,6 +37,13 @@ const buildIn = (
  */
 const onDisk = NodeServices.layer;
 
+/**
+ * The real `buildTargetGroups` as a seam. The seam stays promise-typed while the pass is an Effect over `FileSystem`
+ * and `Path`, so it runs on the host disk, as the orchestrator's own reads in these cases do.
+ */
+const realBuildTargetGroups = (options: BuildTargetGroupsOptions): Promise<void> =>
+	Effect.runPromise(buildTargetGroups(options).pipe(Effect.provide(onDisk)));
+
 /** A volume and the package directory a case seeds in it. */
 const volume = (): { readonly handle: MemoryFileSystemHandle; readonly cwd: string } => ({
 	handle: MemoryFileSystem.makeSync(),
@@ -161,6 +168,7 @@ describe("Bundler.build orchestration", () => {
 		// Leaves the default tsconfig writer in place by dropping the harness's fake below.
 		return { readTsconfigJsx: () => jsx as never };
 	};
+	// The real writer goes through FileSystem into the host tmpdir, which these cases then read: run them on disk.
 	const realTsconfig = (h: ReturnType<typeof harness>): BundlerBuildOptions => {
 		const { writeTsconfig: _dropped, ...seams } = h.options.seams ?? {};
 		return { ...h.options, cwd: makeTmp(), seams };
@@ -169,7 +177,7 @@ describe("Bundler.build orchestration", () => {
 	it.effect("infers automatic jsx from tsconfig and writes it into the generated tsconfig", () =>
 		Effect.gen(function* () {
 			const h = harness({ seams: jsxSeams({ jsx: "react-jsx", jsxImportSource: "preact" }) });
-			yield* buildIn(realTsconfig(h));
+			yield* buildIn(realTsconfig(h), onDisk);
 			const co = writtenCompilerOptions(firstBuild(h.builds));
 			assert.strictEqual(co.jsx, "react-jsx");
 			assert.strictEqual(co.jsxImportSource, "preact");
@@ -182,7 +190,7 @@ describe("Bundler.build orchestration", () => {
 				config: { jsx: { runtime: "classic" } },
 				seams: jsxSeams({ jsx: "react-jsx", jsxImportSource: "react" }),
 			});
-			yield* buildIn(realTsconfig(h));
+			yield* buildIn(realTsconfig(h), onDisk);
 			const co = writtenCompilerOptions(firstBuild(h.builds));
 			assert.strictEqual(co.jsx, "react");
 			assert.isUndefined(co.jsxImportSource);
@@ -192,7 +200,7 @@ describe("Bundler.build orchestration", () => {
 	it.effect("writes no jsx into the tsconfig when neither tsconfig nor config request it", () =>
 		Effect.gen(function* () {
 			const h = harness({ seams: jsxSeams({}) });
-			yield* buildIn(realTsconfig(h));
+			yield* buildIn(realTsconfig(h), onDisk);
 			assert.isUndefined(writtenCompilerOptions(firstBuild(h.builds)).jsx);
 		}),
 	);
@@ -856,7 +864,7 @@ describe("Bundler.build failure phases", () => {
 	// Runs the real pass sequencing over a fake tsdown, so the phase comes from the real onPass wiring.
 	const failingPass = (fails: (config: Record<string, unknown>) => boolean): Partial<BundlerSeams> => ({
 		buildTargetGroups: (o) =>
-			buildTargetGroups({
+			realBuildTargetGroups({
 				...o,
 				build: async (config) => {
 					if (fails(config)) throw new Error("tsdown failed");
@@ -1328,7 +1336,7 @@ describe("Bundler.build resolves from options.cwd, never the process directory",
 				options: { cwd },
 				seams: {
 					buildTargetGroups: (o) =>
-						buildTargetGroups({
+						realBuildTargetGroups({
 							...o,
 							build: async (config) => {
 								const plugins = config.plugins as ReadonlyArray<{ name: string; generateBundle?: () => Promise<void> }>;

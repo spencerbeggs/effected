@@ -1,10 +1,16 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, assert, describe, it } from "@effect/vitest";
+import { Effect, Path } from "effect";
 import { packageNameOf, resolveBundledSiblings, siblingPaths } from "../../src/dts/bundled-siblings.js";
 import { ConfigValidationError } from "../../src/errors.js";
 import { buildTargetGroups } from "../../src/passes/build-target-groups.js";
+
+// The resolver follows real node_modules links by realpath, so it runs on the host disk.
+const resolve = (cwd: string, names: ReadonlyArray<string>) =>
+	Effect.runPromise(resolveBundledSiblings(cwd, names).pipe(Effect.provide(NodeServices.layer)));
 
 const roots: string[] = [];
 afterAll(() => {
@@ -56,7 +62,7 @@ describe("resolveBundledSiblings", () => {
 	it("finds only the sibling: a store package and a link out of the workspace are not", async () => {
 		const { cwd, sibling } = workspace();
 		const pkgDir = built(sibling);
-		const siblings = await resolveBundledSiblings(cwd, ["@x/a", "reg", "linked", "not-installed"]);
+		const siblings = await resolve(cwd, ["@x/a", "reg", "linked", "not-installed"]);
 		assert.deepStrictEqual(siblings, [{ name: "@x/a", pkgDir, nestedExports: {} }]);
 	});
 
@@ -72,7 +78,7 @@ describe("resolveBundledSiblings", () => {
 				],
 			}),
 		);
-		const [found] = await resolveBundledSiblings(cwd, ["@x/a"]);
+		const [found] = await resolve(cwd, ["@x/a"]);
 		assert.strictEqual(found?.pkgDir, pkgDir);
 	});
 
@@ -90,14 +96,14 @@ describe("resolveBundledSiblings", () => {
 				},
 			}),
 		);
-		const [found] = await resolveBundledSiblings(cwd, ["@x/a"]);
+		const [found] = await resolve(cwd, ["@x/a"]);
 		assert.deepStrictEqual(found?.nestedExports, { "@x/a/deep/thing": join(pkgDir, "deep-thing.d.ts") });
 	});
 
 	it("fails naming the sibling and the turbo fix when it has not been built, for a subpath entry too", async () => {
 		const { cwd } = workspace();
 		for (const entry of ["@x/a", "@x/a/deep/thing"]) {
-			const failure = await resolveBundledSiblings(cwd, [entry]).catch((cause: unknown) => cause);
+			const failure = await resolve(cwd, [entry]).catch((cause: unknown) => cause);
 			assert.instanceOf(failure, ConfigValidationError);
 			assert.strictEqual(failure.path, "bundledPackages");
 			assert.include(failure.message, "Build @x/a first");
@@ -106,17 +112,19 @@ describe("resolveBundledSiblings", () => {
 	});
 
 	it("reads nothing for an empty list, and finds nothing outside a workspace", async () => {
-		assert.deepStrictEqual(await resolveBundledSiblings("/does/not/exist", []), []);
-		assert.deepStrictEqual(await resolveBundledSiblings("/does/not/exist", ["@x/a"]), []);
+		assert.deepStrictEqual(await resolve("/does/not/exist", []), []);
+		assert.deepStrictEqual(await resolve("/does/not/exist", ["@x/a"]), []);
 	});
 });
 
 describe("siblingPaths", () => {
 	it("maps the root, the wildcard and each nested subpath, and nothing else", () => {
+		const path = Effect.runSync(Path.Path.pipe(Effect.provide(Path.layer)));
 		assert.deepStrictEqual(
-			siblingPaths([
-				{ name: "@x/a", pkgDir: "/s/pkg", nestedExports: { "@x/a/deep/thing": "/s/pkg/deep-thing.d.ts" } },
-			]),
+			siblingPaths(
+				[{ name: "@x/a", pkgDir: "/s/pkg", nestedExports: { "@x/a/deep/thing": "/s/pkg/deep-thing.d.ts" } }],
+				path,
+			),
 			{
 				"@x/a": ["/s/pkg/index.d.ts"],
 				"@x/a/*": ["/s/pkg/*.d.ts"],
@@ -129,19 +137,21 @@ describe("siblingPaths", () => {
 describe("buildTargetGroups resolving a bundled sibling", () => {
 	const run = (cwd: string, emitDts: boolean) => {
 		let builds = 0;
-		return buildTargetGroups({
-			cwd,
-			version: "1.0.0",
-			entry: { index: "./src/index.ts" },
-			tsconfigPath: join(cwd, "no-such-tsconfig.json"),
-			groups: [{ id: "npm", name: "b" }],
-			devManifest: "preserve",
-			bundledPackages: ["@x/a"],
-			emitDts,
-			build: async () => {
-				builds += 1;
-			},
-		}).then(
+		return Effect.runPromise(
+			buildTargetGroups({
+				cwd,
+				version: "1.0.0",
+				entry: { index: "./src/index.ts" },
+				tsconfigPath: join(cwd, "no-such-tsconfig.json"),
+				groups: [{ id: "npm", name: "b" }],
+				devManifest: "preserve",
+				bundledPackages: ["@x/a"],
+				emitDts,
+				build: async () => {
+					builds += 1;
+				},
+			}).pipe(Effect.provide(NodeServices.layer)),
+		).then(
 			() => ({ builds, failure: undefined }),
 			(failure: unknown) => ({ builds, failure }),
 		);

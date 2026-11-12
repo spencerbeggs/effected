@@ -1,12 +1,11 @@
 // packages/bundler/src/manifest/emit-manifest.ts
-// `node:fs` rather than `FileSystem`: `emitManifest` reads inside rolldown's `generateBundle` hook, which runs
-// with no Effect runtime, and the source it reads is the one rolldown is bundling from the host disk.
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { DependencySpecifier } from "@effected/npm";
+import type { Context } from "effect";
+import { Effect, FileSystem, Path } from "effect";
 import type { Plugin } from "rolldown";
-import type { ManifestLike } from "../catalog/resolve-catalogs.js";
+import type { ManifestLike, ResolveManifestError } from "../catalog/resolve-catalogs.js";
 import { resolveManifest } from "../catalog/resolve-catalogs.js";
+import type { ConfigValidationError } from "../errors.js";
 import { stripBuiltCondition } from "./built-condition.js";
 import { applyManifestSet, validateManifestSet } from "./manifest-set.js";
 import type { DualExports, ExeRewrite, Json } from "./transform.js";
@@ -65,34 +64,43 @@ export function manifestNeedsCatalogResolution(pkg: Json): boolean {
  *
  * @public
  */
-export async function buildEmittedManifest(options: BuildEmittedManifestOptions): Promise<Json> {
-	const { cwd, targetGroup, devManifest, drop, set } = options;
-	// The config path validates first; a direct caller gets the same refusal rather than a key the config refuses.
-	if (set !== undefined) validateManifestSet(set, drop ?? []);
-	// The built-output link condition is a workspace-only route and never publishes.
-	const pkg = stripBuiltCondition(options.pkg);
-	const shouldResolve = (targetGroup.isProd || devManifest === "resolve") && manifestNeedsCatalogResolution(pkg);
-	let base: Json = pkg;
-	if (shouldResolve) {
-		// resolveManifest delegates to @effected/workspaces' resolvers (returns a Promise)
-		// and discovers the workspace from cwd. ManifestLike and Json are
-		// structurally compatible records, so the casts are safe at this boundary.
-		base = (await resolveManifest(pkg as unknown as ManifestLike, cwd)) as unknown as Json;
-	}
-	// Apply the declarative rename so the drop step and the emitted manifest both see it.
-	base = { ...base, name: targetGroup.name };
-	return transformManifest(base, {
-		// `set` applies whether or not a drop list was passed; the standard stripping still runs only with one.
-		transform:
-			drop !== undefined || set !== undefined
-				? (p) => applyManifestSet(drop !== undefined ? defaultManifestTransform({ pkg: p }, { drop }) : p, set)
-				: undefined,
-		dual: options.dual ?? false,
-		subdirExports: options.subdirExports,
-		exeRewrite: options.exeRewrite,
-		emitDts: options.emitDts ?? true,
+export const buildEmittedManifest: (
+	options: BuildEmittedManifestOptions,
+) => Effect.Effect<Json, ConfigValidationError | ResolveManifestError, FileSystem.FileSystem | Path.Path> =
+	Effect.fnUntraced(function* (options: BuildEmittedManifestOptions) {
+		const { cwd, targetGroup, devManifest, drop, set } = options;
+		// The config path validates first; a direct caller gets the same refusal rather than a key the config refuses.
+		// A refusal is a typed failure here, where the synchronous validator throws it.
+		if (set !== undefined) {
+			yield* Effect.try({
+				try: () => validateManifestSet(set, drop ?? []),
+				// `validateManifestSet` throws nothing else.
+				catch: (error) => error as ConfigValidationError,
+			});
+		}
+		// The built-output link condition is a workspace-only route and never publishes.
+		const pkg = stripBuiltCondition(options.pkg);
+		const shouldResolve = (targetGroup.isProd || devManifest === "resolve") && manifestNeedsCatalogResolution(pkg);
+		let base: Json = pkg;
+		if (shouldResolve) {
+			// resolveManifest delegates to @effected/workspaces' resolvers and discovers the workspace from cwd.
+			// ManifestLike and Json are structurally compatible records, so the casts are safe at this boundary.
+			base = (yield* resolveManifest(pkg as unknown as ManifestLike, cwd)) as unknown as Json;
+		}
+		// Apply the declarative rename so the drop step and the emitted manifest both see it.
+		base = { ...base, name: targetGroup.name };
+		return transformManifest(base, {
+			// `set` applies whether or not a drop list was passed; the standard stripping still runs only with one.
+			transform:
+				drop !== undefined || set !== undefined
+					? (p) => applyManifestSet(drop !== undefined ? defaultManifestTransform({ pkg: p }, { drop }) : p, set)
+					: undefined,
+			dual: options.dual ?? false,
+			subdirExports: options.subdirExports,
+			exeRewrite: options.exeRewrite,
+			emitDts: options.emitDts ?? true,
+		});
 	});
-}
 
 /** @public */
 export interface EmitManifestOptions {
@@ -117,39 +125,59 @@ export interface EmitManifestOptions {
 /**
  * Rolldown plugin: emit the transformed package.json + LICENSE/README into the output pkg/ root.
  *
+ * @remarks
+ * rolldown calls `generateBundle` as a plain async hook, so the plugin captures the `FileSystem` and `Path` it is
+ * built under and runs its reads with them.
+ *
  * @public
  */
-export function emitManifest(options: EmitManifestOptions): Plugin {
+export const emitManifest = (
+	options: EmitManifestOptions,
+): Effect.Effect<Plugin, never, FileSystem.FileSystem | Path.Path> =>
+	Effect.map(Effect.context<FileSystem.FileSystem | Path.Path>(), (services) => emitManifestWith(options, services));
+
+const emitManifestWith = (
+	options: EmitManifestOptions,
+	services: Context.Context<FileSystem.FileSystem | Path.Path>,
+): Plugin => {
+	const run = Effect.runPromiseWith(services);
 	const sourceDir = options.sourceDir;
 	return {
 		name: "savvy:emit-manifest",
 		async generateBundle() {
-			const pkg = JSON.parse(await readFile(join(sourceDir, "package.json"), "utf-8")) as Json;
-			const manifest = await buildEmittedManifest({
-				pkg,
-				cwd: sourceDir,
-				targetGroup: options.targetGroup,
-				devManifest: options.devManifest ?? "preserve",
-				drop: options.drop,
-				set: options.set,
-				dual: options.dual,
-				subdirExports: options.subdirExports,
-				exeRewrite: options.exeRewrite,
-				emitDts: options.emitDts,
-			});
+			const { manifest, extras } = await run(
+				Effect.gen(function* () {
+					const fs = yield* FileSystem.FileSystem;
+					const { join } = yield* Path.Path;
+					// A malformed source manifest throws, as the plain `JSON.parse` did.
+					const pkg = JSON.parse(yield* fs.readFileString(join(sourceDir, "package.json"))) as Json;
+					const manifest = yield* buildEmittedManifest({
+						pkg,
+						cwd: sourceDir,
+						targetGroup: options.targetGroup,
+						devManifest: options.devManifest ?? "preserve",
+						drop: options.drop,
+						set: options.set,
+						dual: options.dual,
+						subdirExports: options.subdirExports,
+						exeRewrite: options.exeRewrite,
+						emitDts: options.emitDts,
+					});
+					const extras: Array<{ readonly name: string; readonly content: string }> = [];
+					for (const name of ["LICENSE", "README.md"]) {
+						// optional file absent — skip
+						const content = yield* fs.readFileString(join(sourceDir, name)).pipe(Effect.option);
+						if (content._tag === "Some") extras.push({ name, content: content.value });
+					}
+					return { manifest, extras };
+				}),
+			);
 			this.emitFile({
 				type: "asset",
 				fileName: "package.json",
 				source: `${JSON.stringify(manifest, null, "\t")}\n`,
 			});
-			for (const name of ["LICENSE", "README.md"]) {
-				try {
-					const content = await readFile(join(sourceDir, name), "utf-8");
-					this.emitFile({ type: "asset", fileName: name, source: content });
-				} catch {
-					// optional file absent — skip
-				}
-			}
+			for (const { name, content } of extras) this.emitFile({ type: "asset", fileName: name, source: content });
 		},
 	};
-}
+};

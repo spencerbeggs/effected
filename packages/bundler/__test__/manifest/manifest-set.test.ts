@@ -1,7 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
-import { Schema } from "effect";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, Schema } from "effect";
 import { PackageBuildConfig } from "../../src/config/BuildConfig.js";
 import { ConfigValidationError } from "../../src/errors.js";
+import type { BuildEmittedManifestOptions } from "../../src/manifest/emit-manifest.js";
 import { buildEmittedManifest } from "../../src/manifest/emit-manifest.js";
 import {
 	PROTECTED_KEYS,
@@ -10,6 +12,10 @@ import {
 	emittedPackageName,
 	validateManifestSet,
 } from "../../src/manifest/manifest-set.js";
+
+/** No group here resolves a catalog, so the emit touches no disk: an empty volume stands in for it. */
+const runEmit = (options: BuildEmittedManifestOptions) =>
+	Effect.runPromise(buildEmittedManifest(options).pipe(Effect.provide(MemoryFileSystem.makeSync({}).layer)));
 
 const refusal = (run: () => void): ConfigValidationError => {
 	try {
@@ -101,7 +107,7 @@ describe("[package.build.manifest] set", () => {
 	});
 
 	it("reaches the emitted manifest after the drop", async () => {
-		const out = await buildEmittedManifest({
+		const out = await runEmit({
 			cwd: "/abs/pkg",
 			pkg: {
 				name: "@modules/versioned-v1",
@@ -121,7 +127,7 @@ describe("[package.build.manifest] set", () => {
 
 	it("refuses through the public function what the config path refuses", async () => {
 		const emit = (set: Record<string, string>) =>
-			buildEmittedManifest({
+			runEmit({
 				cwd: "/abs/pkg",
 				pkg: { name: "@x/p", version: "1.0.0", exports: { ".": "./src/index.ts" } },
 				targetGroup: { id: "npm", name: "@x/p", isProd: true },
@@ -142,7 +148,7 @@ describe("[package.build.manifest] set", () => {
 	});
 
 	it("reaches the emitted manifest when no drop list is passed", async () => {
-		const out = await buildEmittedManifest({
+		const out = await runEmit({
 			cwd: "/abs/pkg",
 			pkg: { name: "@x/p", version: "1.0.0", exports: { ".": "./src/index.ts" } },
 			targetGroup: { id: "npm", name: "@x/p", isProd: true },

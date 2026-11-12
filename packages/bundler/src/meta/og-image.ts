@@ -1,12 +1,11 @@
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+// `NodeCrypto.layerDigest` is the one backend this module still provides itself: the cache key needs `Digest`, and
+// requiring it in `R` would widen `Bundler.build`'s requirements past `FileSystem | Path`. Files go through `R`.
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import type { ImageFormat } from "@effected/images";
 import type { ImageBackendSetParams } from "@effected/images/cache";
 import { ImageBackend, ImageCache, ImageCacheKey } from "@effected/images/cache";
 import type { OpenGraphImage } from "@effected/manifest";
-import { Data, Effect, Layer, Option, Predicate, Result, Schema } from "effect";
+import { Data, Effect, FileSystem, Layer, Option, Path, Predicate, Schema } from "effect";
 import { causeMessage } from "../internal/causeMessage.js";
 import type { OgImageGenerator, OgImageInfo } from "./bundle-config.js";
 
@@ -158,41 +157,35 @@ export interface WriteGeneratedOgImageOptions {
  *
  * @public
  */
-export async function writeGeneratedOgImage(options: WriteGeneratedOgImageOptions): Promise<OpenGraphImage> {
+export const writeGeneratedOgImage = (
+	options: WriteGeneratedOgImageOptions,
+): Effect.Effect<OpenGraphImage, OgGenerateError, FileSystem.FileSystem | Path.Path> => {
 	const { packageName } = options.info;
 	const backend = options.cache === undefined ? ImageBackend.layerNone : tolerantDirectory(options.cache.directory);
-	const result = await Effect.gen(function* () {
-		const key = yield* ImageCacheKey.fromParams(OgImageInfoKey, options.info, {
-			salt: options.cache?.salt ?? "",
-			namespace: "og",
-		});
-		const cache = yield* ImageCache;
-		return yield* cache.getOrGenerate(
-			key,
-			() => Effect.tryPromise({ try: () => options.generate(options.info), catch: (cause) => cause }),
-			{ accept: ACCEPT },
+	return Effect.gen(function* () {
+		const { bytes, facts } = yield* Effect.gen(function* () {
+			const key = yield* ImageCacheKey.fromParams(OgImageInfoKey, options.info, {
+				salt: options.cache?.salt ?? "",
+				namespace: "og",
+			});
+			const cache = yield* ImageCache;
+			return yield* cache.getOrGenerate(
+				key,
+				() => Effect.tryPromise({ try: () => options.generate(options.info), catch: (cause) => cause }),
+				{ accept: ACCEPT },
+			);
+		}).pipe(
+			Effect.provide(ImageCache.layer.pipe(Layer.provide(backend), Layer.provideMerge(NodeCrypto.layerDigest))),
+			Effect.mapError((cause) => new OgGenerateError({ packageName, cause })),
 		);
-	}).pipe(
-		Effect.provide(
-			ImageCache.layer.pipe(
-				Layer.provide(backend),
-				Layer.provideMerge(Layer.merge(NodeServices.layer, NodeCrypto.layerDigest)),
-			),
-		),
-		Effect.result,
-		Effect.runPromise,
-	);
-	if (Result.isFailure(result)) {
-		throw new OgGenerateError({ packageName, cause: result.failure });
-	}
-	const { bytes, facts } = result.success;
-	const relative = `og/${options.unscopedName}.${facts.extension}`;
-	try {
-		mkdirSync(join(options.outMetaDir, "og"), { recursive: true });
-		writeFileSync(join(options.outMetaDir, relative), bytes);
-	} catch (cause) {
-		// A read-only or full disk is still an OG failure as far as issues.json is concerned.
-		throw new OgGenerateError({ packageName, cause });
-	}
-	return { path: relative, type: facts.mimeType, width: facts.width, height: facts.height };
-}
+		const fs = yield* FileSystem.FileSystem;
+		const { join } = yield* Path.Path;
+		const relative = `og/${options.unscopedName}.${facts.extension}`;
+		yield* fs.makeDirectory(join(options.outMetaDir, "og"), { recursive: true }).pipe(
+			Effect.andThen(fs.writeFile(join(options.outMetaDir, relative), bytes)),
+			// A read-only or full disk is still an OG failure as far as issues.json is concerned.
+			Effect.mapError((cause) => new OgGenerateError({ packageName, cause })),
+		);
+		return { path: relative, type: facts.mimeType, width: facts.width, height: facts.height };
+	});
+};

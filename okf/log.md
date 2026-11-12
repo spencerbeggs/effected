@@ -4,6 +4,7 @@
 
 * Updated glob
 * Updated @effected/memfs
+* Updated @effected/bundler
 
 ## 2026-11-11
 

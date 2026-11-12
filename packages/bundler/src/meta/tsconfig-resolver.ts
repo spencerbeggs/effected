@@ -1,8 +1,8 @@
 // packages/tsdown-plugins/src/meta/tsconfig-resolver.ts
-import { existsSync } from "node:fs";
-import * as nodePath from "node:path";
-import { PortableTsconfig as PortableTsconfigFilter, TsconfigLoaderSync } from "@effected/tsconfig-json";
-import { tsconfigSyncOptions } from "../tsconfig/sync-options.js";
+import { PortableTsconfig as PortableTsconfigFilter, TsconfigLoader } from "@effected/tsconfig-json";
+import type { FileSystem } from "effect";
+import { Effect, Path } from "effect";
+import { existsLikeNode } from "../internal/exists.js";
 
 /**
  * JSON schema URL for tsconfig.json files.
@@ -46,7 +46,7 @@ export interface PortableTsconfig {
  * @remarks
  * Resolves the package's own `<cwd>/tsconfig.json` (which extends the shared
  * `@effected/plugin/tsconfig/ecma.json` base) via `@effected/tsconfig-json`'s
- * synchronous `TsconfigLoaderSync` (tsc-parity `extends` resolution) so the
+ * `TsconfigLoader` (tsc-parity `extends` resolution) so the
  * result carries the full effective options (target/module/strict/jsx/lib),
  * then projects them through the kit's `PortableTsconfig.make` allow-list
  * filter to a portable, compilerOptions-only shape with no absolute paths or
@@ -63,26 +63,36 @@ export interface PortableTsconfig {
  *
  * @public
  */
-export function resolvePortableTsconfig(cwd: string, fallbackConfigPath?: string): PortableTsconfig {
-	const ownConfig = nodePath.join(cwd, "tsconfig.json");
-	const configPath = existsSync(ownConfig)
+export const resolvePortableTsconfig: (
+	cwd: string,
+	fallbackConfigPath?: string,
+) => Effect.Effect<PortableTsconfig, Error, FileSystem.FileSystem | Path.Path> = Effect.fnUntraced(function* (
+	cwd: string,
+	fallbackConfigPath?: string,
+) {
+	const path = yield* Path.Path;
+	const ownConfig = path.join(cwd, "tsconfig.json");
+	const configPath = (yield* existsLikeNode(ownConfig))
 		? ownConfig
-		: fallbackConfigPath !== undefined && existsSync(fallbackConfigPath)
+		: fallbackConfigPath !== undefined && (yield* existsLikeNode(fallbackConfigPath))
 			? fallbackConfigPath
 			: undefined;
 	if (configPath === undefined) {
 		// No tsconfig to resolve from — emit a minimal portable config with just the virtual-env flags.
 		return { $schema: TSCONFIG_SCHEMA_URL, compilerOptions: { composite: false, noEmit: true } };
 	}
-	try {
-		const resolved = TsconfigLoaderSync.resolve(configPath, tsconfigSyncOptions);
+	return yield* TsconfigLoader.resolve(configPath).pipe(
 		// `includeTypes: true` keeps `types` on the portable shape: it names `@types/*` packages
 		// a downstream virtual TypeScript environment (shiki/Twoslash, API Extractor) must load,
 		// not a filesystem path. `typeRoots` stays dropped because its entries are machine-specific
 		// or relative to the config they came from, so they do not survive relocation.
-		return PortableTsconfigFilter.make(resolved, { includeTypes: true });
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		throw new Error(`Cannot resolve portable tsconfig at ${configPath}: ${message}`, { cause: error });
-	}
-}
+		Effect.map((resolved): PortableTsconfig => PortableTsconfigFilter.make(resolved, { includeTypes: true })),
+		Effect.mapError(
+			(error) =>
+				new Error(
+					`Cannot resolve portable tsconfig at ${configPath}: ${error instanceof Error ? error.message : String(error)}`,
+					{ cause: error },
+				),
+		),
+	);
+});

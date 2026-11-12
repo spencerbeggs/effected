@@ -1,4 +1,7 @@
 // packages/bundler/src/passes/target-groups.ts
+// `node:fs` rather than `FileSystem`: the one read is the installed `rolldown-plugin-dts` manifest, found from tsdown's
+// own location in the bundler's toolchain, not a file of the package being built. `node:path`'s `join` is a pure string
+// operation in the synchronous, exported derivers below.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";

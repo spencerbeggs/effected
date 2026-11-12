@@ -2,12 +2,17 @@
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { decodeBundleManifest } from "@effected/manifest";
-import { Effect } from "effect";
+import { Effect, PlatformError } from "effect";
 import { BundleManifestEmitError } from "../../src/errors.js";
 import type { GenerateMetaOptions } from "../../src/meta/generate.js";
 import { generateMeta } from "../../src/meta/generate.js";
+
+/** generateMeta runs API Extractor over the scaffold on the host disk. */
+const runGenerateMeta = (options: GenerateMetaOptions) =>
+	Effect.runPromise(generateMeta(options).pipe(Effect.provide(NodeServices.layer)));
 
 /** A valid 1×1 opaque PNG. */
 const PNG_1X1 = Uint8Array.from(
@@ -67,7 +72,7 @@ async function decodeAt(path: string): Promise<unknown> {
 describe("generateMeta bundle sidecar", { timeout: 60_000 }, () => {
 	it("writes bundle.json for a private package from config and project tiers and copies it to localPaths", async () => {
 		const s = scaffold({ private: true });
-		await generateMeta({
+		await runGenerateMeta({
 			...baseOptions(s),
 			bundle: { config: { name: "Fixture" }, leaf: undefined, project: { name: "Proj" }, targets: [] },
 		});
@@ -80,7 +85,7 @@ describe("generateMeta bundle sidecar", { timeout: 60_000 }, () => {
 
 	it("derives registries from the group's targets and the emitted repository for a public package", async () => {
 		const s = scaffold({ private: false, repository: { type: "git", url: "git+https://github.com/o/r.git" } });
-		await generateMeta({
+		await runGenerateMeta({
 			...baseOptions(s),
 			bundle: {
 				config: undefined,
@@ -104,7 +109,7 @@ describe("generateMeta bundle sidecar", { timeout: 60_000 }, () => {
 	it("renders the generated image first, writes it beside the manifest, and copies it to localPaths", async () => {
 		const s = scaffold({ private: true });
 		const seen: Array<{ name: string; version: string }> = [];
-		await generateMeta({
+		await runGenerateMeta({
 			...baseOptions(s),
 			manifestTransform: (p) => ({ ...p, version: "2.0.0" }),
 			bundle: {
@@ -141,7 +146,7 @@ describe("generateMeta bundle sidecar", { timeout: 60_000 }, () => {
 
 	it("writes no sidecar and no og/ when bundle is undefined", async () => {
 		const s = scaffold({ private: true });
-		await generateMeta(baseOptions(s));
+		await runGenerateMeta(baseOptions(s));
 		assert.strictEqual(existsSync(join(s.outMetaDir, "bundle.json")), false);
 		assert.strictEqual(existsSync(join(s.outMetaDir, "og")), false);
 		assert.strictEqual(existsSync(join(s.cwd, "models-a", "bundle.json")), false);
@@ -155,19 +160,19 @@ describe("generateMeta bundle sidecar", { timeout: 60_000 }, () => {
 			project: undefined,
 			targets: [],
 		};
-		await generateMeta({ ...baseOptions(s), bundle: withImage });
+		await runGenerateMeta({ ...baseOptions(s), bundle: withImage });
 		for (const dir of [s.outMetaDir, join(s.cwd, "models-a"), join(s.cwd, "models-b")]) {
 			assert.strictEqual(existsSync(join(dir, "bundle.json")), true, dir);
 			assert.strictEqual(existsSync(join(dir, "og", "fixture.png")), true, dir);
 		}
 		// Same package, generator dropped: the image must disappear everywhere while the manifest stays.
-		await generateMeta({ ...baseOptions(s), bundle: { ...withImage, config: { name: "Fixture" } } });
+		await runGenerateMeta({ ...baseOptions(s), bundle: { ...withImage, config: { name: "Fixture" } } });
 		for (const dir of [s.outMetaDir, join(s.cwd, "models-a"), join(s.cwd, "models-b")]) {
 			assert.deepStrictEqual(await decodeAt(join(dir, "bundle.json")), { spec: 1, name: "Fixture" });
 			assert.strictEqual(existsSync(join(dir, "og")), false, dir);
 		}
 		// Identity dropped too: nothing to say, so the stale sidecar goes as well.
-		await generateMeta(baseOptions(s));
+		await runGenerateMeta(baseOptions(s));
 		for (const dir of [s.outMetaDir, join(s.cwd, "models-a"), join(s.cwd, "models-b")]) {
 			assert.strictEqual(existsSync(join(dir, "bundle.json")), false, dir);
 			assert.strictEqual(existsSync(join(dir, "fixture.api.json")), true, dir);
@@ -181,7 +186,7 @@ describe("generateMeta bundle sidecar", { timeout: 60_000 }, () => {
 			mkdirSync(dir, { recursive: true });
 			writeFileSync(join(dir, "tsdoctor.json"), JSON.stringify({ spec: 1, name: "Stale" }));
 		}
-		await generateMeta({
+		await runGenerateMeta({
 			...baseOptions(s),
 			bundle: { config: { name: "Fixture" }, leaf: undefined, project: undefined, targets: [] },
 		});
@@ -196,7 +201,7 @@ describe("generateMeta bundle sidecar", { timeout: 60_000 }, () => {
 		const s = scaffold({ private: true });
 		// A leaf image with neither path nor url violates the schema's XOR; the composer passes it
 		// through untouched, so encodeBundleManifest is what rejects it — inside generateMeta's wrapper.
-		const err = await generateMeta({
+		const err = await runGenerateMeta({
 			...baseOptions(s),
 			bundle: {
 				config: undefined,
@@ -217,7 +222,7 @@ describe("generateMeta bundle sidecar", { timeout: 60_000 }, () => {
 		// the one seam where the meta dir can be made read-only without failing an earlier write. The
 		// og/ dir is created first (writable itself) so the image write still succeeds.
 		try {
-			const err = await generateMeta({
+			const err = await runGenerateMeta({
 				...baseOptions(s),
 				bundle: {
 					config: {
@@ -237,7 +242,10 @@ describe("generateMeta bundle sidecar", { timeout: 60_000 }, () => {
 			}).catch((e: unknown) => e);
 			assert.instanceOf(err, BundleManifestEmitError);
 			assert.strictEqual((err as BundleManifestEmitError).path, join(s.outMetaDir, "bundle.json"));
-			assert.strictEqual(((err as BundleManifestEmitError).cause as NodeJS.ErrnoException).code, "EACCES");
+			// The write goes through the FileSystem service: its PlatformError wraps the host errno as its own cause.
+			const cause = (err as BundleManifestEmitError).cause;
+			assert.instanceOf(cause, PlatformError.PlatformError);
+			assert.strictEqual(((cause as PlatformError.PlatformError).cause as NodeJS.ErrnoException).code, "EACCES");
 		} finally {
 			chmodSync(s.outMetaDir, 0o755);
 		}
@@ -245,7 +253,7 @@ describe("generateMeta bundle sidecar", { timeout: 60_000 }, () => {
 
 	it("writes no sidecar when the tiers are empty and the package is private", async () => {
 		const s = scaffold({ private: true });
-		await generateMeta({
+		await runGenerateMeta({
 			...baseOptions(s),
 			bundle: { config: undefined, leaf: undefined, project: undefined, targets: [] },
 		});
@@ -257,7 +265,7 @@ describe("generateMeta Open Graph cache", () => {
 	it("persists a salted render under node_modules/.cache/effected/og", async () => {
 		const s = scaffold({ name: "@scope/fixture", version: "1.0.0" });
 		const generate = Object.assign(async () => PNG_1X1, { cacheSalt: "salt" });
-		await generateMeta({
+		await runGenerateMeta({
 			...baseOptions(s),
 			bundle: { config: { openGraph: { generate } }, leaf: undefined, project: undefined, targets: [] },
 		});

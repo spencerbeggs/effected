@@ -1,4 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect } from "effect";
 import { ConfigValidationError } from "../../src/errors.js";
 import {
 	BUILT_CONDITION,
@@ -6,7 +8,12 @@ import {
 	mismatchedBuiltTargets,
 	stripBuiltCondition,
 } from "../../src/manifest/built-condition.js";
+import type { BuildEmittedManifestOptions } from "../../src/manifest/emit-manifest.js";
 import { buildEmittedManifest } from "../../src/manifest/emit-manifest.js";
+
+/** No group here resolves a catalog, so the emit touches no disk: an empty volume stands in for it. */
+const runEmit = (options: BuildEmittedManifestOptions) =>
+	Effect.runPromise(buildEmittedManifest(options).pipe(Effect.provide(MemoryFileSystem.makeSync({}).layer)));
 
 const refusal = (exports: unknown): ConfigValidationError => {
 	try {
@@ -88,7 +95,7 @@ describe("the effected-built export condition", () => {
 	});
 
 	it("never publishes: the emitted manifest carries no trace of it", async () => {
-		const out = await buildEmittedManifest({
+		const out = await runEmit({
 			cwd: "/abs/pkg",
 			pkg: { name: "@x/p", version: "1.0.0", exports: linked },
 			targetGroup: { id: "npm", name: "@x/p", isProd: true },

@@ -4,10 +4,17 @@ import { existsSync, realpathSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
 import { vi } from "vitest";
+import type { BuildTargetGroupsOptions } from "../../src/passes/build-target-groups.js";
 import { buildTargetGroups } from "../../src/passes/build-target-groups.js";
 import { BuildCollector } from "../../src/report/collector.js";
+
+/** The pass copies `public/`, writes temp tsconfigs and reads real tsconfig files, so it runs on the host disk. */
+const runBuildTargetGroups = (options: BuildTargetGroupsOptions): Promise<void> =>
+	Effect.runPromise(buildTargetGroups(options).pipe(Effect.provide(NodeServices.layer)));
 
 // #430: `writeDtsEmitTsconfig` (src/dts/resolved-tsconfig.ts) only derives a temp dts-emit
 // tsconfig when its base path resolves via `existsSync` — a synthetic path that happens not to
@@ -87,7 +94,7 @@ describe("buildTargetGroups", () => {
 					return [];
 				},
 			);
-			await buildTargetGroups({
+			await runBuildTargetGroups({
 				cwd: "/abs/pkg",
 				version: "1.0.0",
 				entry: { index: "./src/index.ts" },
@@ -146,7 +153,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { dts: unknown; entry: Record<string, string> }) => {
 			passes.push({ kind: cfg.dts === false ? "js" : "dts", entry: cfg.entry });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "./src/index.ts", testing: "./src/testing.ts" },
@@ -187,7 +194,7 @@ describe("buildTargetGroups", () => {
 			// The real JS pass creates/owns the outDir; mirror that so the stub writeFileSync has a dir.
 			await mkdir(cfg.outDir, { recursive: true });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: dir,
 			version: "1.0.0",
 			entry: { index: "./src/index.ts", testing: "./src/testing.ts" },
@@ -215,7 +222,7 @@ describe("buildTargetGroups", () => {
 			if (cfg.dts !== false) dtsEntries.push(cfg.entry);
 			await mkdir(cfg.outDir, { recursive: true });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: dir,
 			version: "1.0.0",
 			entry: { index: "./src/index.ts", testing: "./src/testing.ts" },
@@ -256,7 +263,7 @@ describe("buildTargetGroups", () => {
 		}) as never;
 
 		const emitted: Array<Record<string, unknown>> = [];
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: dir,
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -289,7 +296,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { inputOptions?: unknown }) => {
 			captured.push({ inputOptions: cfg.inputOptions });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -319,7 +326,7 @@ describe("buildTargetGroups", () => {
 		}) as never;
 
 		// esm-only (default): interop plugin absent from BOTH passes.
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -335,7 +342,7 @@ describe("buildTargetGroups", () => {
 
 		// dual esm+cjs: interop plugin present on BOTH the JS pass and the dts pass.
 		passes.length = 0;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -370,7 +377,7 @@ describe("buildTargetGroups", () => {
 			}) as never;
 
 		const dual: Array<Record<string, unknown>> = [];
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: dir,
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -388,7 +395,7 @@ describe("buildTargetGroups", () => {
 		});
 
 		const esm: Array<Record<string, unknown>> = [];
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: dir,
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -409,7 +416,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: Record<string, unknown>) => {
 			captured.push(cfg);
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -427,7 +434,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: Record<string, unknown>) => {
 			captured.push(cfg);
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -444,7 +451,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { format?: unknown }) => {
 			captured.push({ format: cfg.format });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -462,7 +469,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -497,7 +504,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -516,7 +523,7 @@ describe("buildTargetGroups", () => {
 		const build = async (cfg: Record<string, unknown>) => {
 			calls.push(cfg);
 		};
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/repo/pkg",
 			version: "1.0.0",
 			entry: { index: "/repo/pkg/src/index.ts" },
@@ -537,7 +544,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -555,7 +562,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -588,7 +595,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -613,7 +620,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -641,7 +648,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -671,7 +678,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -691,7 +698,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -717,7 +724,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { unbundle?: unknown; dts?: unknown }) => {
 			captured.push({ unbundle: cfg.unbundle, dts: cfg.dts });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -740,7 +747,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { unbundle?: unknown; dts?: unknown }) => {
 			captured.push({ unbundle: cfg.unbundle, dts: cfg.dts });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -758,7 +765,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -778,7 +785,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -796,7 +803,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -817,7 +824,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -854,7 +861,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -877,7 +884,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -916,7 +923,7 @@ describe("buildTargetGroups", () => {
 				hasManifest: (cfg.plugins ?? []).some((p) => p.name === "savvy:emit-manifest"),
 			});
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { commitlint: "src/commitlint/index.ts" }, // BASE entries only (overrides removed upstream)
@@ -962,7 +969,7 @@ describe("buildTargetGroups", () => {
 			if (cfg.define) defines.push(cfg.define);
 			return [];
 		});
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "2.0.0",
 			entry: { index: "./src/index.ts" },
@@ -985,7 +992,7 @@ describe("buildTargetGroups", () => {
 		const build = (async (cfg: { deps?: unknown }) => {
 			captured.push({ deps: cfg.deps });
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -1037,7 +1044,7 @@ describe("buildTargetGroups", () => {
 				deps: cfg.deps,
 			});
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -1101,7 +1108,7 @@ describe("buildTargetGroups", () => {
 				passes.push({ format: cfg.format[0] as string, plugins: (cfg.plugins ?? []).map((p) => p.name ?? "") });
 			}
 		}) as never;
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -1145,7 +1152,7 @@ describe("buildTargetGroups", () => {
 				return [];
 			},
 		);
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "./src/index.ts" }, // base (plugin) entry
@@ -1192,7 +1199,7 @@ describe("buildTargetGroups", () => {
 				calls.push({ outDir: cfg.outDir, dts: cfg.dts });
 				return [];
 			});
-			await buildTargetGroups({
+			await runBuildTargetGroups({
 				cwd: "/abs/pkg",
 				version: "1.0.0",
 				entry: { index: "./src/index.ts" },
@@ -1237,7 +1244,7 @@ describe("buildTargetGroups", () => {
 			calls.push({ dts: cfg.dts });
 			return [];
 		});
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { "bin/cli": "./src/bin/cli.ts" },
@@ -1256,7 +1263,7 @@ describe("buildTargetGroups", () => {
 		const build = async (cfg: Record<string, unknown>) => {
 			calls.push(cfg);
 		};
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/repo/pkg",
 			version: "1.0.0",
 			entry: { index: "/repo/pkg/src/index.ts" },
@@ -1284,7 +1291,7 @@ describe("buildTargetGroups", () => {
 		const build = async (cfg: Record<string, unknown>) => {
 			calls.push(cfg);
 		};
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/repo/pkg",
 			version: "1.0.0",
 			entry: { index: "/repo/pkg/src/index.ts" },
@@ -1311,7 +1318,7 @@ describe("buildTargetGroups", () => {
 			if (String(cfg.outDir).endsWith("/declarations")) throw new Error("decl boom");
 		};
 		assert.isUndefined(
-			await buildTargetGroups({
+			await runBuildTargetGroups({
 				cwd: "/repo/pkg",
 				version: "1.0.0",
 				entry: { index: "/repo/pkg/src/index.ts" },
@@ -1332,7 +1339,7 @@ describe("buildTargetGroups", () => {
 		const build = async (cfg: Record<string, unknown>) => {
 			calls.push(cfg);
 		};
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/repo/pkg",
 			version: "1.0.0",
 			entry: { index: "/repo/pkg/src/index.ts" },
@@ -1352,7 +1359,7 @@ describe("buildTargetGroups", () => {
 		const build = async (cfg: Record<string, unknown>) => {
 			calls.push(cfg);
 		};
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/repo/pkg",
 			version: "1.0.0",
 			entry: { index: "/repo/pkg/src/index.ts" },
@@ -1387,7 +1394,7 @@ describe("buildTargetGroups", () => {
 			}) as never;
 
 		const manifests: Array<Record<string, unknown>> = [];
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: dir,
 			version: "1.0.0",
 			entry: { index: "src/index.ts" },
@@ -1412,7 +1419,7 @@ describe("buildTargetGroups", () => {
 			});
 			return [];
 		});
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "./src/index.ts" },
@@ -1433,7 +1440,7 @@ describe("buildTargetGroups", () => {
 			calls.push({ entry: cfg.entry, dts: cfg.dts });
 			return [];
 		});
-		await buildTargetGroups({
+		await runBuildTargetGroups({
 			cwd: "/abs/pkg",
 			version: "1.0.0",
 			entry: { index: "./src/index.ts" },
@@ -1495,7 +1502,7 @@ describe("buildTargetGroups", () => {
 		it("a prod build copies each ambient entry into every resolved group's own pkg dir", async () => {
 			const dir = await ambientFixture();
 			const build = (async () => {}) as never;
-			await buildTargetGroups({
+			await runBuildTargetGroups({
 				cwd: dir,
 				version: "1.0.0",
 				entry: { index: "./src/index.ts" },
@@ -1517,7 +1524,7 @@ describe("buildTargetGroups", () => {
 		it("a dev build copies ambient entries into dist/dev/pkg", async () => {
 			const dir = await ambientFixture();
 			const build = (async () => {}) as never;
-			await buildTargetGroups({
+			await runBuildTargetGroups({
 				cwd: dir,
 				version: "1.0.0",
 				entry: { index: "./src/index.ts" },
@@ -1540,7 +1547,7 @@ describe("buildTargetGroups", () => {
 			);
 			await writeFile(join(dir, "src/index.ts"), "export const A = 1;\n");
 			const build = (async () => {}) as never;
-			await buildTargetGroups({
+			await runBuildTargetGroups({
 				cwd: dir,
 				version: "1.0.0",
 				entry: { index: "./src/index.ts" },

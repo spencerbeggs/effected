@@ -1,3 +1,6 @@
+// `node:fs` rather than `FileSystem`: the reads are the bundled font and the renderer peers' manifests, located
+// through module-relative paths in the bundler's own install, and they run inside the promise-returning generator a
+// config hands to the cache, with no Effect runtime.
 import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
