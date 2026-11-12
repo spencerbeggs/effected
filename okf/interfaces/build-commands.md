@@ -30,10 +30,10 @@ sources:
     resource: ../../packages/bundler/src/action/ActionBuilder.ts
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-10T21:32:36Z
+  at: 2026-11-12T17:12:57Z
 integrity:
   generated:
-    body: dfd0a2e5ee5e214b
+    body: a03ae7cdc21c61b8
 ---
 
 # The effected build commands: package build, action build and action init
@@ -100,7 +100,7 @@ An action build appends to no journal; the journals record package builds only.
 
 ## `effected action init`
 
-It writes a new action to [the canonical shape](../conventions/github-action-canon.md), ready for `effected action build`: `effected.toml` with `[action.entries] main` and `[action.persistLocal]` enabled, `action.yml` (`node24`, `runs.main` at `dist/main.js`, branding), `src/main.ts` (the program import and the `GITHUB_ACTIONS` guard), `src/program.ts`, and a `tsconfig.json` that extends `@effected/plugin/tsconfig/action.json`. It has a `main` phase only and needs no token; `pre`, `post` and App authentication are added when the action needs them.[^action-init]
+It writes a new action to [the canonical shape](../conventions/github-action-canon.md), ready for `effected action build`: `effected.toml` opening with the `#:schema` directive that points TOML editors at [its JSON Schema](effected-toml.md#json-schema), then `[action.entries] main` and `[action.persistLocal]` enabled, `action.yml` (`node24`, `runs.main` at `dist/main.js`, branding), `src/main.ts` (the program import and the `GITHUB_ACTIONS` guard), `src/program.ts`, and a `tsconfig.json` that extends `@effected/plugin/tsconfig/action.json`. It has a `main` phase only and needs no token; `pre`, `post` and App authentication are added when the action needs them.[^action-init]
 
 | Flag | Effect |
 | --- | --- |

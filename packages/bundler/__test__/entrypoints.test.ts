@@ -55,6 +55,7 @@ it("the root exports exactly the public surface", () => {
 		"EffectedConfig",
 		"EffectedConfigError",
 		"EffectedConfigFile",
+		"EffectedConfigSchema",
 		"EmittedFile",
 		"EntryOverride",
 		"ExeConfig",

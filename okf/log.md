@@ -8,6 +8,7 @@
 * Updated @effected/plugin
 * Updated Peer-dependency discipline
 * Updated effected.toml: the build config's tables, defaults and discovery
+* Updated The effected build commands: package build, action build and action init
 
 ## 2026-11-11
 

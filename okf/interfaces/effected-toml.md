@@ -31,10 +31,10 @@ sources:
     resource: ../../packages/bundler/lib/configs/schemastore.config.ts
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-12T16:31:55Z
+  at: 2026-11-12T17:12:57Z
 integrity:
   generated:
-    body: 8e136a97bbfa8d94
+    body: e6910c86bc1476e4
 ---
 
 # effected.toml: the build config's tables, defaults and discovery
@@ -44,6 +44,8 @@ integrity:
 ## JSON Schema
 
 `EffectedConfig`, the schema the strict decode uses, is published as a Draft-07 document for editors at `schemas/1.0/config.json`, with its SchemaStore catalog in `schemas/catalog.json`. Its `fileMatch` covers `effected.toml`, `**/.config/effected.toml` and `**/lib/configs/effected.toml`. `@effected/bundler` builds it from `lib/configs/schemastore.config.ts`: `pnpm schema:build` / `pnpm schema:check` at the root, and the package's `build` regenerates it first. Until the kit's 1.0 the target is `published: false`, so a contract change rewrites the document in place and is never drift; flip it to `true` at the first release that freezes the shape.[^schema-config]
+
+The identity lives in one place, `@effected/bundler`'s exported `EffectedConfigSchema`: `host` is the `HostedSchema.github` input the schemastore config publishes with, `url` is the document's `$id`, and `directive` is the `#:schema <url>` line. A test holds `url` to what `HostedSchema` derives from `host`. Every `effected.toml` in the repository opens with that directive and the blank line tombi wants after it, and `effected action init` writes it into the file it scaffolds. Editors resolve the URL from `main`.
 
 ## Discovery and merge
 

@@ -86,6 +86,7 @@ export {
 	ResolvedConfig,
 	ResolvedEffectedConfig,
 } from "./config/EffectedConfigFile.js";
+export { EffectedConfigSchema } from "./config/EffectedConfigSchema.js";
 export { merge } from "./config/merge.js";
 export { PluginLoadError, loadPlugins } from "./config/plugins.js";
 export type { ValidationInput } from "./config-validation/ConfigValidator.js";

@@ -1,6 +1,7 @@
 // The shared body of `effected action init` and the MCP's `action_init`: plan a new GitHub Action's files as data, then
 // write them, refusing to overwrite. Exit codes and rendering stay with the front ends.
 
+import { EffectedConfigSchema } from "@effected/bundler";
 import { AtomicFile } from "@effected/files";
 import { ErrorText, PathContainment } from "@effected/kit";
 import type { PlatformError } from "effect";
@@ -224,7 +225,10 @@ const codePoint = (character: string): string =>
 const yamlString = (value: string): string =>
 	JSON.stringify(value).replace(/[\u007F-\u009F\u2028\u2029]/g, (character) => `\\u${codePoint(character).slice(2)}`);
 
-const effectedToml = `# \`effected action build\` reads the [action] tables. A key left out takes its default.
+// The directive points tombi, taplo and other TOML editors at the published schema; tombi wants the blank line after it.
+const effectedToml = `${EffectedConfigSchema.directive}
+
+# \`effected action build\` reads the [action] tables. A key left out takes its default.
 
 [action.entries]
 main = "src/main.ts"

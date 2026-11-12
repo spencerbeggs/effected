@@ -10,6 +10,7 @@
  */
 import { HostedSchema, defineSchemastore } from "@effected/plugin";
 import { EffectedConfigDocument, effectedConfigJsonSchemaOptions } from "../../src/config/EffectedConfigDocument.js";
+import { EffectedConfigSchema } from "../../src/config/EffectedConfigSchema.js";
 
 export default defineSchemastore({
 	outputDir: "../../../../schemas",
@@ -18,13 +19,7 @@ export default defineSchemastore({
 		config: {
 			schema: EffectedConfigDocument,
 			jsonSchema: effectedConfigJsonSchemaOptions,
-			hosted: HostedSchema.github({
-				repo: "spencerbeggs/effected",
-				path: "schemas",
-				name: "config",
-				versions: ["1.0"],
-				appendVersion: false,
-			}),
+			hosted: HostedSchema.github(EffectedConfigSchema.host),
 			published: false,
 			catalog: {
 				description: "effected build config: the [package] and [action] tables of effected.toml",

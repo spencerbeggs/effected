@@ -50,6 +50,7 @@
 		"EffectedConfig": "decoded effected.toml document, typed build config",
 		"EffectedConfigError": "effected.toml unreadable, unparseable, undecodable, or its workspace undiscoverable",
 		"EffectedConfigFile": "discover, merge by precedence and decode effected.toml for a package",
+		"EffectedConfigSchema": "effected.toml json schema url, `#:schema` directive for tombi taplo, hosted schema identity",
 		"EmittedFile": "one output file and its byte size, optional gzip size",
 		"EntryOverride": "pin format and bundling to some export paths, per-entry build settings",
 		"ExeConfig": "configure a node single-executable sea binary to compile",
