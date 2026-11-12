@@ -1442,9 +1442,45 @@ importers:
       '@effected/schemastore':
         specifier: workspace:*
         version: link:../schemastore
+      '@microsoft/api-extractor':
+        specifier: catalog:effected:build
+        version: 7.60.1(@types/node@26.6.6)
+      '@microsoft/tsdoc':
+        specifier: catalog:effected:build
+        version: 0.17.1
+      '@microsoft/tsdoc-config':
+        specifier: catalog:effected:build
+        version: 0.18.3
+      '@resvg/resvg-js':
+        specifier: ^2.6.2
+        version: 2.6.2
+      '@tsdown/exe':
+        specifier: catalog:effected:build
+        version: 0.23.7(tsdown@0.23.7)
       effect:
         specifier: catalog:effected
         version: 4.1.4
+      ink:
+        specifier: catalog:effected:build:peers
+        version: 8.0.0(@types/react@19.3.0)(react@19.3.1)
+      jiti:
+        specifier: ~2.7.0
+        version: 2.7.0
+      react:
+        specifier: catalog:effected:build:peers
+        version: 19.3.1
+      rolldown:
+        specifier: catalog:effected:build
+        version: 1.3.2
+      rolldown-plugin-dts:
+        specifier: catalog:effected:build
+        version: 0.30.1(rolldown@1.3.2)(typescript@7.1.0-beta)
+      satori:
+        specifier: ^0.63.2
+        version: 0.63.2
+      tsdown:
+        specifier: catalog:effected:build
+        version: 0.23.7(@tsdown/exe@0.23.7)(tsx@4.23.15)(typescript@7.1.0-beta)
     devDependencies:
       '@effect/platform-node':
         specifier: catalog:effected

@@ -2,7 +2,7 @@
 	"name": "@effected/plugin",
 	"version": "0.5.2",
 	"private": true,
-	"description": "Install this one package to get the effected command and the effected-mcp server. Depends on @effected/cli and @effected/mcp, and exports defineSchemastore for a schemastore.config.ts.",
+	"description": "Install this one package to get the effected command and the effected-mcp server, built with the kit and effect inside it, and the authoring surface of a schemastore.config.ts.",
 	"keywords": ["effect", "effected", "cli", "mcp", "agent"],
 	"homepage": "https://github.com/spencerbeggs/effected/tree/main/packages/plugin#readme",
 	"bugs": {
@@ -38,7 +38,17 @@
 		"@effected/cli": "workspace:*",
 		"@effected/mcp": "workspace:*",
 		"@effected/schemastore": "workspace:*",
-		"effect": "catalog:effected"
+		"@microsoft/api-extractor": "catalog:effected:build",
+		"@microsoft/tsdoc": "catalog:effected:build",
+		"@microsoft/tsdoc-config": "catalog:effected:build",
+		"@tsdown/exe": "catalog:effected:build",
+		"effect": "catalog:effected",
+		"ink": "catalog:effected:build:peers",
+		"jiti": "~2.7.0",
+		"react": "catalog:effected:build:peers",
+		"rolldown": "catalog:effected:build",
+		"rolldown-plugin-dts": "catalog:effected:build",
+		"tsdown": "catalog:effected:build"
 	},
 	"devDependencies": {
 		"@effect/platform-node": "catalog:effected",
@@ -51,8 +61,22 @@
 		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
+		"@resvg/resvg-js": "^2.6.2",
 		"@types/node": "catalog:effected:build:peers",
+		"effect": "catalog:effected:peers",
+		"satori": "^0.63.2",
 		"typescript": "7.1.0-beta || 7.1.1-rc || >=7.1.0 <8"
+	},
+	"peerDependenciesMeta": {
+		"@resvg/resvg-js": {
+			"optional": true
+		},
+		"effect": {
+			"optional": true
+		},
+		"satori": {
+			"optional": true
+		}
 	},
 	"engines": {
 		"node": ">=24.11.0"

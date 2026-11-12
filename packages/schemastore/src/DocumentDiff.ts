@@ -18,7 +18,7 @@ import { KeywordFamilies } from "./KeywordFamilies.js";
  * - `"none"` — the documents are equal in content (key ORDER is not a
  *   difference; array order is).
  * - `"annotations"` — only documentation keywords differ (see
- *   {@link DocumentDiff.isAnnotationKeyword}). The validation contract is
+ *   {@link @effected/schemastore#DocumentDiff.isAnnotationKeyword | DocumentDiff.isAnnotationKeyword}). The validation contract is
  *   identical, so the new document replaces the old transparently for
  *   every consumer — republish without cutting a version.
  * - `"contract"` — at least one assertion keyword differs, so a document

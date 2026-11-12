@@ -13,7 +13,7 @@ const ConfigBrand: unique symbol = Symbol.for("@effected/schemastore/Schemastore
 /**
  * The SchemaStore `catalog.json` fields a schema entry declares, minus
  * `url`/`versions` — those are derived from the entry's `baseUrl`, `layout`
- * and `versions`/`current` by {@link defineConfig}, so they cannot disagree
+ * and `versions`/`current` by {@link @effected/schemastore#defineConfig | defineConfig}, so they cannot disagree
  * with the schema's own identity.
  *
  * @public
@@ -112,7 +112,7 @@ export interface SchemaEntryInput {
 }
 
 /**
- * What a `schemastore.config.ts` hands to {@link defineConfig}: a directory
+ * What a `schemastore.config.ts` hands to {@link @effected/schemastore#defineConfig | defineConfig}: a directory
  * every derived path is written under, top-level defaults for `baseUrl` and
  * `drift`, and the keyed set of schemas to derive.
  *
@@ -204,8 +204,8 @@ export interface ResolvedSchema {
 }
 
 /**
- * The validated, defaults-filled config {@link defineConfig} answers and the
- * CLI consumes. Recognisable via {@link isSchemastoreConfig}.
+ * The validated, defaults-filled config {@link @effected/schemastore#defineConfig | defineConfig} answers and the
+ * CLI consumes. Recognisable via {@link @effected/schemastore#isSchemastoreConfig | isSchemastoreConfig}.
  *
  * @public
  */
@@ -543,7 +543,7 @@ const assertUniquePaths = (paths: ReadonlyArray<string>): void => {
  * `catalog.json` in `catalogDir`'s parent) declared twice is rejected after
  * a lexical normalisation (`./`, `..`, trailing `/`) — the CLI's loader
  * re-checks on the resolved absolute paths. Branding the result lets a loader recognise a config
- * module's default export via {@link isSchemastoreConfig}.
+ * module's default export via {@link @effected/schemastore#isSchemastoreConfig | isSchemastoreConfig}.
  *
  * @example
  * ```ts
@@ -597,7 +597,7 @@ export const defineConfig = (input: SchemastoreConfigInput): SchemastoreConfig =
 };
 
 /**
- * Whether a value is a config produced by {@link defineConfig} — the check a
+ * Whether a value is a config produced by {@link @effected/schemastore#defineConfig | defineConfig} — the check a
  * loader runs on a config module's default export.
  *
  * @public

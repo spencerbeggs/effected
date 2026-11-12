@@ -55,21 +55,21 @@ export interface SchemaTarget {
 	 */
 	readonly published: boolean;
 	/**
-	 * Options passed through to {@link StoreDocument.fromSchema} (and, from
+	 * Options passed through to {@link @effected/schemastore#StoreDocument.fromSchema | StoreDocument.fromSchema} (and, from
 	 * there, core's `Schema.toJsonSchemaDocument`).
 	 *
 	 * A target-level field rather than a pipeline-wide default keeps each
 	 * document's generation contract self-describing, so
-	 * {@link SchemaPipeline} reproduces a document deterministically
+	 * {@link @effected/schemastore#SchemaPipeline | SchemaPipeline} reproduces a document deterministically
 	 * regardless of core's own default — for example, an `onExcessProperty`
 	 * setting of `"ignore"` reopens a document's objects, which
-	 * {@link StoreDocument.fromSchema} closes by default. See
-	 * {@link StoreDocumentOptions.jsonSchema} for that default and the
+	 * {@link @effected/schemastore#StoreDocument.fromSchema | StoreDocument.fromSchema} closes by default. See
+	 * {@link @effected/schemastore#StoreDocumentOptions.jsonSchema | StoreDocumentOptions.jsonSchema} for that default and the
 	 * `includeAnnotationKey` gate this option is also subject to.
 	 */
 	readonly jsonSchema?: Schema.ToJsonSchemaOptions;
 	/**
-	 * Forwarded to {@link StoreDocumentOptions.rootAnnotations}; a
+	 * Forwarded to {@link @effected/schemastore#StoreDocumentOptions.rootAnnotations | StoreDocumentOptions.rootAnnotations}; a
 	 * target-level field for the same self-describing reason as
 	 * `jsonSchema`.
 	 */
