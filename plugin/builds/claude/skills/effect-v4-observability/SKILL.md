@@ -257,6 +257,11 @@ const AppLayer = Layer.mergeAll(DomainLayer, HttpLayer).pipe(Layer.provide(Telem
   query value is exported as written. `url.path` is never redacted, so a secret
   in the path goes out as written too. Extend the list by providing
   `UrlParams.CurrentRedactedNames`; a custom list replaces the defaults.
+  For names secret only in one `HttpApi`, annotate the API, group or endpoint
+  with `HttpApi.RedactedNames` instead: `HttpApiBuilder` and `HttpApiClient`
+  add those query and header names to the global lists in their spans. A scoped
+  `CurrentRedactedNames` set inside a handler never reaches the server span,
+  which is recorded after the handler's context is restored.
   The exporter's own posts are not traced.
 - The layers own export batching and shutdown (`shutdownTimeout`) — **never
   flush or shut an exporter down from business code.**
