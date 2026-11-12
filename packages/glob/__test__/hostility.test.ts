@@ -143,8 +143,9 @@ describe("hostility: brace expansion", () => {
 		for (const shape of ["{Z..a}{,}", "{Z..a}{a,}"]) {
 			assert.deepStrictEqual(expand(shape), oracle.braceExpand(shape), shape);
 		}
-		// 63,744 bytes: upstream stops rewriting after the second group and keeps
-		// the rest literal, so this compiles quickly instead of failing typed.
+		// 63,744 bytes: the rewrites re-read the rest of the string on each pass,
+		// so upstream runs out of its step budget and keeps the whole pattern
+		// literal, which compiles quickly instead of failing typed.
 		const long = S(990).repeat(64);
 		const t = cpuNow();
 		assert.deepStrictEqual(expand(long), oracle.braceExpand(long));
@@ -156,6 +157,83 @@ describe("hostility: brace expansion", () => {
 		// in linear time and treat the pattern as literal.
 		const p = `${"{".repeat(20_000)}a`;
 		assert.deepStrictEqual(braceExpand(p), [p]);
+	});
+});
+
+describe("hostility: the brace-expansion work budget (5.0.13)", () => {
+	// Each shape here answers as the oracle does and finishes in a CPU bound;
+	// the shapes 5.0.13's own comments name pass `max` results, so they are
+	// held to the typed failure instead (the last test).
+	const parity = (shape: string, boundMs: number): Array<string> => {
+		const t = cpuNow();
+		const got = expand(shape);
+		assert.isBelow(cpuNow() - t, boundMs, shape.slice(0, 40));
+		assert.deepStrictEqual(got, oracle.braceExpand(shape), shape.slice(0, 40));
+		return got;
+	};
+
+	it("keeps nesting that rescans past the step budget literal, as upstream", () => {
+		// Each level rescans the padding, twice: 250 levels of 63,000 characters
+		// are about 32M steps, past the 20M budget; 30,000 characters fit.
+		const nest = (depth: number, pad: number): string => "{a,".repeat(depth) + "x".repeat(pad) + "}".repeat(depth);
+		const over = nest(250, 63_000);
+		assert.deepStrictEqual(parity(over, 500), [over]);
+		assert.strictEqual(parity(nest(250, 30_000), 500).length, 251);
+	});
+
+	it("masks unmatched `{` so a scan stops at its group's `}`, as upstream", () => {
+		// An unmatched `{` heads every group: unmasked, each scan reads to the end
+		// of the string, which spends the budget partway through and leaves the
+		// rest literal.
+		const shape = "{a,{1..1}".repeat(7_000);
+		assert.deepStrictEqual(parity(shape, 500), ["{a,1".repeat(7_000)]);
+	});
+
+	it("asks whether a comma set follows in one pass, not by backtracking", () => {
+		// `/,(?!,).*\}/` tries every comma and reads its line from each: about
+		// 800ms here.
+		parity(`{a}${",a".repeat(30_000)}\n}`, 100);
+		// The line-terminator rule the regex's `.` held, in one pass.
+		for (const shape of ["{a},b}", "{a},b\n}", "{a},b\r}", "{a},b\u2028}", "{a},b\u2029}", "{a},,}", "{a},,b}"]) {
+			parity(shape, 50);
+		}
+	});
+
+	it("skips a set's empty values for an empty prefix without visiting them", () => {
+		// 30,000 empty prefixes against 30,001 empty values: visiting each pair is
+		// 900M iterations that keep nothing.
+		const k = 30_000;
+		assert.strictEqual(parity(`{,a${",".repeat(k)}}{${",".repeat(k)}}`, 500).length, k + 1);
+		parity("{,a,,}{,,}", 50);
+	});
+
+	it("answers padded sequences as upstream", () => {
+		// The per-character charge is not observable under `max`: a 64KB pattern
+		// holds too few padded values to spend the budget, and enough of them to
+		// spend it pass `max` or the length bound first, which fail typed.
+		for (const shape of ["{0001..0100}", "{-05..05}", `{${"0".repeat(100)}..99}`]) {
+			parity(shape, 200);
+		}
+	});
+
+	it("fails typed fast on the shapes 5.0.13 names, where the oracle truncates at max", () => {
+		const shapes = [
+			`{{${",".repeat(316)}}{${",".repeat(316)}}}`.repeat(102),
+			"{a,{b,c}".repeat(8_000),
+			`{${"0".repeat(100)}..99999}`.repeat(600),
+		];
+		for (const shape of shapes) {
+			assert.isAtMost(shape.length, 65_536);
+			const t = cpuNow();
+			assert.strictEqual(
+				reasonOf(() => expand(shape)),
+				"ExpansionBudgetExceeded",
+				shape.slice(0, 40),
+			);
+			assert.isBelow(cpuNow() - t, 200, shape.slice(0, 40));
+			// The oracle keeps a truncated list, not the pattern literal.
+			assert.notDeepEqual(oracle.braceExpand(shape), [shape]);
+		}
 	});
 });
 

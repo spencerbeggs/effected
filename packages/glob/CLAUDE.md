@@ -16,11 +16,11 @@ changing the public API, the dialect, the error set, or the hardening story.
 ## Engine/facade split
 
 `src/internal/` is a **vendored engine** ported with attribution: minimatch
-(BlueOak-1.0.0, Isaac Z. Schlueter), brace-expansion 5.0.12 and balanced-match
+(BlueOak-1.0.0, Isaac Z. Schlueter), brace-expansion 5.0.13 and balanced-match
 4.0.4 (MIT, Julian Gruber). The minimatch files keep 10.2.5's regexp-and-`AST`
 shape and take minimatch 11.0.5's behaviour (listed below), so their headers
 still say 10.2.5 and their port notes name each change taken; brace-expansion's
-`expand_` follows 5.0.12's iterative scan (one loop over a string's groups,
+`expand_` follows 5.0.13's iterative scan (one loop over a string's groups,
 which also decides once whether empty results drop), and `parseCommaParts`
 keeps 5.0.7's recursive shape behind guard 2. Every ported file carries
 its license header — **never edit the notice text**; the two MIT files carry
@@ -90,15 +90,25 @@ Matching is synchronous and blocks the thread, so never recommend
 Upstream guards **preserved**: the 64KB `MAX_PATTERN_LENGTH`; brace-expansion's
 `EXPANSION_MAX` budget, the `{a},b}` for-loop rewrite and lazy `post`
 evaluation (both load-bearing DoS fixes); the CVE-2022-3517 ReDoS-safe brace
-pre-check regex; brace-expansion 5.0.12's `EXPANSION_MAX_LENGTH` (4,000,000
+pre-check regex; brace-expansion 5.0.13's `EXPANSION_MAX_LENGTH` (4,000,000
 characters of results, or of a comma set's alternatives together, against
 CVE-2026-14257; it **fails typed**, where upstream truncates) and
 `EXPANSION_MAX_REWRITES` (1,000 restarts of the quadratic `{a},b}` rewrite,
 past which the rest **stays literal**, exactly as upstream: a parse rule, not a
 truncated result, so it is not a failure; the count is **shared** by every
-group of one left-to-right scan, as 5.0.12's single scan loop holds it, so a
+group of one left-to-right scan, as 5.0.13's single scan loop holds it, so a
 chain of groups draws on one 1,000, while a comma part or `{{...}}` body is a
-fresh scan with its own); minimatch 11.0.5's
+fresh scan with its own) and `EXPANSION_MAX_STEPS` (20,000,000 steps of work
+per `expand`, shared by every level: each character scanned, result built or
+sequence value made is a step, a padded value one per character, and each
+`expand_` call 16 more; past it the set being expanded and the rest of its
+string **stay literal**, exactly as upstream, because it bounds work, not
+results, and a literal set matches only itself; a results bound is checked
+where upstream truncates and throws first, the step budget is charged after,
+as upstream orders them), with 5.0.13's linear rewrites of three quadratic
+scans: `maskUnmatchedOpens` (an unmatched `{` heading every group),
+`commaSetFollows` (in place of the backtracking `/,(?!,).*\}/`) and
+`combine` skipping empty values for an empty prefix; minimatch 11.0.5's
 `optimizationLevel` 2 bound on the `**/..` split (GHSA-g3hv-75wg-m249:
 `braceExpandMax` rows or `MAX_SPLIT_CELLS = 1_000_000` added path portions,
 **failing typed** as `ExpansionBudgetExceeded` where upstream throws a
@@ -297,7 +307,7 @@ never a blanket skip: the oracle's brace merge (below). Beside it, a pattern
 can fail typed where 11 matches: an over-budget expansion (11 truncates; a
 range of 100 or more values is not expanded, so this is a comma set, a
 smaller range, or every range of a portion where a `[` precedes one); nesting
-past `MAX_NESTING_DEPTH` (256, where brace-expansion 5.0.12 turns literal at
+past `MAX_NESTING_DEPTH` (256, where brace-expansion 5.0.13 turns literal at
 1,000); `InvalidRegExp` (11 has no regexp to reject), whose one known
 cause is a portion's regexp too large for the runtime (about 32,000 literal
 characters and a wildcard in one portion; `hostility.test.ts` still reaches

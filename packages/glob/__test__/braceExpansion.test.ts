@@ -1,6 +1,8 @@
 // Task 2 unit + hardening tests for the balanced-match and brace-expansion
 // ports. The engine is pure sync — no Effect in this file.
 
+import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { assert, describe, it } from "@effect/vitest";
 import { balanced } from "../src/internal/balancedMatch.js";
 import { expand } from "../src/internal/braceExpansion.js";
@@ -235,5 +237,26 @@ describe("braceExpansion hardening", () => {
 		// 2^16 = 65_536 <= 100_000: expands fully, no throw
 		const r = expand("{a,b}".repeat(16));
 		assert.lengthOf(r, 65_536);
+	});
+});
+
+describe("the oracle's brace-expansion", () => {
+	it("is the version the engine is ported from", () => {
+		// The engine's header names the brace-expansion release it follows; the
+		// oracle is minimatch's own brace-expansion, resolved from minimatch's
+		// location (the workspace root may resolve another copy, or none).
+		const header = readFileSync(new URL("../src/internal/braceExpansion.ts", import.meta.url), "utf8");
+		const ported = /^\/\/ Ported from brace-expansion@(\S+) /.exec(header)?.[1];
+		const fromHere = createRequire(import.meta.url);
+		const fromMinimatch = createRequire(fromHere.resolve("minimatch/package.json"));
+		const resolved = (fromMinimatch("brace-expansion/package.json") as { readonly version: string }).version;
+		assert.strictEqual(
+			resolved,
+			ported,
+			`minimatch now resolves brace-expansion ${resolved}, but src/internal/braceExpansion.ts is ported from ${ported}. ` +
+				`The lockfile moved the oracle. Diff the two brace-expansion releases, port the change into braceExpansion.ts ` +
+				`(its port notes say how the deliberate departures sit beside upstream), update the header's version, and update ` +
+				`packages/glob/CLAUDE.md and okf/modules/glob.md. Do not change test expectations to match the new oracle.`,
+		);
 	});
 });

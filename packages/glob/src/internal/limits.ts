@@ -30,6 +30,17 @@ export const EXPANSION_MAX_LENGTH = 4_000_000;
  */
 export const EXPANSION_MAX_REWRITES = 1_000;
 
+/**
+ * Bound on the work one brace expansion does, in steps: each character a scan
+ * walks, each result built and each sequence value generated is one, and each
+ * level of the expansion sixteen more. `max`, the length bound and the rewrite
+ * bound each cap one thing, and none caps nesting rescanned at every level or
+ * chained groups each rebuilding up to `max` results. Upstream brace-expansion's
+ * EXPANSION_MAX_STEPS: past it the set being expanded and the rest of its
+ * string stay literal, as upstream leaves them.
+ */
+export const EXPANSION_MAX_STEPS = 20_000_000;
+
 /** Default bound on non-adjacent globstar backtracking. Upstream minimatch. */
 export const MAX_GLOBSTAR_RECURSION = 200;
 
