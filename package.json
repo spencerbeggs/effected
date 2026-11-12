@@ -59,9 +59,9 @@
 		"@effected/changesets": "workspace:*",
 		"@effected/plugin": "workspace:*",
 		"@effected/workspaces": "workspace:*",
-		"@okfit/plugin": "^0.5.34",
-		"@savvy-web/silk": "^5.1.2",
-		"@vitest-agent/plugin": "^6.0.12",
+		"@okfit/plugin": "^0.5.35",
+		"@savvy-web/silk": "^5.1.3",
+		"@vitest-agent/plugin": "^6.0.13",
 		"effect": "catalog:effected",
 		"tsx": "^4.23.12"
 	},
