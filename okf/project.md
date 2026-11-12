@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-12T23:05:46Z
+  at: 2026-11-12T23:07:30Z
 integrity:
   generated:
-    body: 53bbb01850ca6d38
+    body: 3df69cebcf145882
 ---
 
 # effected
@@ -85,7 +85,7 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `mcp` | tool — no tier | invention; the `effected-mcp` stdio server with the `identity` tool and the `package_build`, `action_build`, `action_init`, `schema_build`, `schema_check` and `schema_validate` tools over `effect/ai`, `mcp-kit` and `engine` |
 | `engine` | tool — no tier | invention; the tool's shared logic that both front ends report through: `Identity.report`, and the `./schema` subpath (config loader, runner, report classes, version check, the two shipped ajv engines), and the `./build` subpath (`BuildRun`, `ActionRun` and their result classes), built on `kit`, `schemastore` and `bundler` |
 
-The roster is **55 packages**: 50 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`plugin`, `cli`, `mcp`, `engine`), which are an application and carry no library tier. `cli-kit`, `mcp-kit`, `kit`, `plugin`, `changesets`, `bundler`, `manifest`, `shell`, `s3` and `markdown-lint`, `pnpm` and `bun` are new npm names, not yet published. `cli`, `mcp` and `engine` published before as the old kit libraries, and their next release is the tool package under the same name. `pnpm-plugin-effected` is already published.
+The roster is **55 packages**: 50 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`plugin`, `cli`, `mcp`, `engine`), which are an application and carry no library tier. `cli-kit`, `mcp-kit`, `kit`, `plugin`, `changesets`, `bundler`, `manifest`, `shell`, `s3`, `markdown-lint`, `pnpm` and `bun` are new npm names, not yet published. `cli`, `mcp` and `engine` published before as the old kit libraries, and their next release is the tool package under the same name. `pnpm-plugin-effected` is already published.
 
 ### Consumers
 

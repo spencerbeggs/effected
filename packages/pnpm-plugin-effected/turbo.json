@@ -7,6 +7,7 @@
 				"$TURBO_EXTENDS$",
 				"$TURBO_ROOT$/.changeset/**",
 				"../app/package.json",
+				"../bun/package.json",
 				"../manifest/package.json",
 				"../cli/package.json",
 				"../commands/package.json",
