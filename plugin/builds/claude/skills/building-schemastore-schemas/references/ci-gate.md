@@ -120,10 +120,15 @@ that does not conform exits `1`.
 
 ## When the tool and the library disagree
 
-The config's values come from the `@effected/schemastore` the repository
-installs; the tool carries its own. When the two versions differ, the CLI
-fails with exit `2` naming both. Align them through the catalog
-(`catalog:effected`) so one version resolves. `--ignore-version-mismatch`
+The tool carries its own `@effected/schemastore`, built into
+`@effected/plugin`, and stamps a version on every value the config builds.
+A value built from `@effected/plugin`'s exports always carries the tool's
+version. A value from the repository's own `@effected/schemastore`, such as a
+`HostedSchema` the application also reads at runtime, carries that copy's
+version, and when it differs the CLI fails with exit `2` naming both
+versions and `@effected/plugin` as the remedy. Import the config's values
+from `@effected/plugin`, or keep the repository's copy on `catalog:effected`
+so it is the version the tool carries. `--ignore-version-mismatch`
 runs on anyway with a warning, for a deliberate one-off. The MCP tools never
 refuse for it: they run and put a `versionMismatch` warning in the result.
 

@@ -1,7 +1,7 @@
 # @effected/plugin
 
 The carrier of the `effected` tool: installed so its two bins arrive, and exporting
-`defineSchemastore` for a `schemastore.config.ts`. It is an application package rather than a library, so no
+the authoring surface of a `schemastore.config.ts`. It is an application package rather than a library, so no
 library tier applies (the tool packages carry none, like the companions).
 
 ## Install
@@ -18,8 +18,13 @@ The one tool package a consumer installs, as a root devDependency:
 
 `catalog:effected` comes from `@effected/pnpm-plugin-effected`, which also hoists
 this package publicly so its bins resolve from any workspace package, not only
-the root. `typescript` is a peer (`7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`), which the
-build needs. Do not install `@effected/cli`, `@effected/mcp` or `@effected/engine`
+the root. The tool is built into the package: the kit packages, `effect` and the
+pure JS beneath them are inlined, so an install fetches none of them and no
+catalog round or `effect` override reaches the tool. What it still installs is the
+build toolchain (`tsdown`, `rolldown`, API Extractor and their kin), `jiti`, Ink and
+React. `typescript` is a peer (`7.1.0-beta || 7.1.1-rc || >=7.1.0 <8`), which the
+build needs, and `effect` an optional one, for the types of the config surface.
+Do not install `@effected/cli`, `@effected/mcp` or `@effected/engine`
 directly. `@effected/mcp` alone also works when only the MCP tools are wanted.
 
 ## What it provides
@@ -54,10 +59,16 @@ Consuming `@effected/plugin` from the registry runs a built bin and needs none o
 
 ## Exports
 
-- **`defineSchemastore`** — `defineConfig` from `@effected/schemastore` under the
-  tool's name: the default export of `schemastore.config.ts`. A repository with
-  only `@effected/mcp` installed imports `defineConfig` from
-  `@effected/schemastore` instead.
+- **The config authoring surface**, from the tool's own copy of
+  `@effected/schemastore`: `defineSchemastore` (`defineConfig` under the tool's
+  name, the default export of `schemastore.config.ts`), `HostedSchema`,
+  `SchemaTarget`, `SchemaVersion`, `SchemaVersioning`, `DriftPolicy`,
+  `KeywordFamilies`, `CatalogEntry`, `SchemastoreVersion` and their types. A
+  config built from here always carries the tool's version stamp, so the
+  version check passes; a value from a separately installed
+  `@effected/schemastore` passes only at the same version. A repository with only
+  `@effected/mcp` installed imports `defineConfig` from `@effected/schemastore`
+  instead.
 - **`@effected/plugin/tsconfig/ecma.json`, `action.json` and `root.json`** — the tsconfig
   presets a package, an action or the workspace root extends: `"extends": "@effected/plugin/tsconfig/ecma.json"`.
   `action.json` is the one for a GitHub Action: `bundler` resolution and `noEmit`, no `incremental`
@@ -65,3 +76,5 @@ Consuming `@effected/plugin` from the registry runs a built bin and needs none o
 - **`PLUGIN_VERSION`** — the package's own version, replaced at build.
 
 Nothing else belongs here; shared logic lives in `@effected/engine`.
+
+The package ships `THIRD_PARTY_LICENSES.txt`, the notices of everything built into it.

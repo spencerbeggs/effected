@@ -11,11 +11,11 @@ sources:
   - id: pnpm-workspace
     resource: ../../pnpm-workspace.yaml
 generated:
-  by: "claude-code/opus-5"
-  at: 2026-11-11T20:30:33Z
+  by: "claude-code/opus-5.5"
+  at: 2026-11-12T04:28:39Z
 integrity:
   generated:
-    body: 0248410446fce45c
+    body: 5fcf0f93106b6b57
 ---
 
 # Peer-dependency discipline
@@ -86,34 +86,45 @@ uses `workspace:^`. Three enumerated exceptions stay `workspace:*`:
 
 - the paired `devDependency` that satisfies an auto-installed peer, which
   is never published;
-- the **`effected` tool's pin chain**, where `workspace:*` publishes as an
-  exact version. `@effected/plugin` depends on `@effected/cli`,
-  `@effected/mcp` and `@effected/schemastore`; `cli` and `mcp` on
-  `@effected/engine`; `engine` on `@effected/schemastore`; and
+- the **`effected` tool's pin chain**. `@effected/plugin` depends on
+  `@effected/cli`, `@effected/mcp` and `@effected/schemastore`; `cli` and
+  `mcp` on `@effected/engine`; `engine` on `@effected/schemastore`; and
   `schemastore` on `@effected/semver`. These are regular dependencies, not
   peers, because the tool owns the versions it ships: the engine runs the
   pipeline of the exact `@effected/schemastore` it was built against, and a
   consumer's `schemastore.config.ts` constructs `SchemaTarget`s and
-  `HostedSchema`s that the pipeline pattern-matches by annotation symbol
-  and brand. A patch floating in anywhere below the carrier would change
-  what the tool writes with no carrier version to show for it, and a
-  bump of `schemastore` instead ripples down the chain, which is the
+  `HostedSchema`s that the pipeline recognises by brand and checks by
+  version stamp. A patch floating in anywhere below the carrier would
+  change what the tool writes with no carrier version to show for it, and
+  a bump of `schemastore` instead ripples down the chain, which is the
   point. It is a property of a tool whose output is the product
   ([why the commands live in the tool](../decisions/schema-commands-live-in-the-tool.md)).
 - **every other `@effected/*` dependency of the tool's packages**
   (`@effected/plugin`, `cli`, `mcp`, `engine` and `bundler`). The pin
   chain's reasoning holds for the whole closure: a kit patch floating in
-  under a carrier version changes what the tool does with no tool release
-  to show for it, and on a consumer's fresh install it can split the
-  graph (effected#1333). The tool shares no values with its host beyond
-  the schemastore surface the chain already pins, so the dedupe argument
-  for floating does not apply. Pinning the tool's edges also pins each
-  library's kit peers, which resolve from the tool. It is not a full
-  seal: a library's own regular kit dependencies still float within their
-  carets, and the derived `effect` overrides still reach in; bundling the
-  closure into the tool's dist is the full seal. A library edge never
-  earns it. `entry.test.ts` in `@effected/plugin` holds the chain and all
-  five manifests exact.
+  under a tool version changes what the tool does with no tool release to
+  show for it, and on a consumer's fresh install it can split the graph
+  (effected#1333). The tool shares no values with its host beyond the
+  schemastore surface, which the version stamp guards, so the dedupe
+  argument for floating does not apply. A library edge never earns it.
+  `entry.test.ts` in `@effected/plugin` holds the chain and all five
+  manifests exact.
+
+On `@effected/plugin` the `workspace:*` pins are **build-time inputs, not
+install-time ranges**. The carrier's published `dist` inlines its whole
+closure, every kit package, `effect`, `@effect/*` and the pure JS beneath
+them, and its emitted manifest drops what it inlined, so a consumer's
+install resolves none of it: no library's own caret, no catalog round and
+no derived `effect` override reaches the tool. That is the full seal. What
+the carrier still declares is what stays an import: the build toolchain,
+`jiti`, Ink and React as dependencies, and `typescript`, `@types/node` and
+the optional `effect`, `satori` and `@resvg/resvg-js` as peers. The
+optional `effect` peer is the one place the tool meets the host's `effect`,
+and only for types: the root's declarations import it, so a config's
+schemas type-check against the consumer's own copy, while the code that
+runs is the carrier's. On `cli`, `mcp` and `engine`, which still publish
+for a front end installed alone, the pins publish as exact versions, and
+there a library's own kit dependencies still float within their carets.
 
 Patch-floating is the point everywhere else: a sibling patch flows into an
 existing release without forcing a coordinated re-release, while a minor

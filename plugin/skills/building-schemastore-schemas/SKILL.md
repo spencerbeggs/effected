@@ -35,20 +35,27 @@ it; it covers the config, the document, the versioning and the gate.
 | Construct | Import | Reach for it when |
 | --- | --- | --- |
 | `defineSchemastore` | `@effected/plugin` | the default export of `schemastore.config.ts` — a record keyed by schema name; validates, derives every `$id`/`path`/catalog URL, fills drift defaults. It is `defineConfig` from `@effected/schemastore` under the tool's name; a repository with only `@effected/mcp` imports `defineConfig` instead |
-| `SchemaTarget.make` | `@effected/schemastore` | the library-level primitive `defineConfig` lowers each entry onto; reach for it directly only when driving `SchemaPipeline` outside the CLI |
-| `DriftPolicy` | `@effected/schemastore` | reading the `strict` / `semantic` / `allow` table in code, or a test that classifies a change the way the CLI will |
-| `SchemaVersioning` | `@effected/schemastore` | parsing a label, ordering versions, `next(version, "contract")`, `fileName`/`schemaUrl` for a test asserting the derived layout |
-| `CatalogEntry.lintFileMatch` | `@effected/schemastore` | checking `fileMatch` patterns against SchemaStore's hygiene rules before a reviewer does |
+| `HostedSchema` | `@effected/plugin` in a config; `@effected/schemastore` in runtime code | a schema's identity (`$id`, `url`, `fileName`), built once and handed to the config's `hosted` and to the application that writes `$schema` |
+| `SchemaTarget.make` | `@effected/plugin` or `@effected/schemastore` | the library-level primitive `defineConfig` lowers each entry onto; reach for it directly only when driving `SchemaPipeline` outside the CLI |
+| `DriftPolicy` | `@effected/plugin` or `@effected/schemastore` | reading the `strict` / `semantic` / `allow` table in code, or a test that classifies a change the way the CLI will |
+| `SchemaVersioning` | `@effected/plugin` or `@effected/schemastore` | parsing a label, ordering versions, `next(version, "contract")`, `fileName`/`schemaUrl` for a test asserting the derived layout |
+| `CatalogEntry.lintFileMatch` | `@effected/plugin` or `@effected/schemastore` | checking `fileMatch` patterns against SchemaStore's hygiene rules before a reviewer does |
 | `effected schema build` / `check` / `validate` | `@effected/plugin` (bin) | the `schema:build` and `schema:check` scripts; `check` is the CI gate; `validate` checks a payload against a published document |
 | `schema_check` / `schema_validate` / `schema_build` | `@effected/plugin` or `@effected/mcp` (MCP tools) | an agent checking drift or validating a payload in place (read-only), or writing the documents (`schema_build`) |
 | `AjvValidator`, `AjvInstanceValidator` | `@effected/engine/schema` | a program driving `SchemaPipeline` itself needs the shipped ajv engines |
-| `KeywordFamilies.isDeclared` | `@effected/schemastore` | asking whether a non-standard keyword will survive the gate before annotating with it |
+| `KeywordFamilies.isDeclared` | `@effected/plugin` or `@effected/schemastore` | asking whether a non-standard keyword will survive the gate before annotating with it |
 
 Install `@effected/plugin` as a root devDependency through `catalog:effected`;
 it brings the `effected` command and the `effected-mcp` server (`@effected/mcp`
-alone also works for the MCP tools). Every other type a config needs comes
-from `@effected/schemastore`, which the application keeps as a dependency
-when it reads its `HostedSchema` at runtime.
+alone also works for the MCP tools). The tool and its own copy of
+`@effected/schemastore` are built into the package, and its root exports the
+whole config authoring surface from that copy: `defineSchemastore`,
+`HostedSchema`, `SchemaTarget`, `SchemaVersion`, `SchemaVersioning`,
+`DriftPolicy`, `KeywordFamilies`, `CatalogEntry`, `SchemastoreVersion` and
+their types. Import a config's values from there, and they always match the
+tool. Application code that reads a `HostedSchema` at runtime imports it from
+`@effected/schemastore`, a regular dependency, kept on `catalog:effected` so it
+is the version the tool carries.
 
 ## Standards
 
@@ -112,9 +119,11 @@ when it reads its `HostedSchema` at runtime.
   writes. Drift and staleness arrive as ordinary results with the verdict;
   only a config that fails to load or a broken engine is a tool error. See
   [references/ci-gate.md](references/ci-gate.md).
-- **Align the tool and the library through the catalog, not the flag.** When
-  the config's `@effected/schemastore` differs from the tool's, the CLI fails
-  with exit `2` naming both versions; `--ignore-version-mismatch` runs on with
+- **Build the config from `@effected/plugin`, and align the library through
+  the catalog, not the flag.** When a value the config holds comes from an
+  `@effected/schemastore` at another version than the one the tool carries,
+  the CLI fails with exit `2` naming both versions and `@effected/plugin` as
+  the remedy; `--ignore-version-mismatch` runs on with
   a warning, and the MCP tools run and carry a `versionMismatch` warning in
   the result. See [references/ci-gate.md](references/ci-gate.md).
 - **Retire the generator script when the config lands** — the script, its

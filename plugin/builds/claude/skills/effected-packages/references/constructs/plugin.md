@@ -5,4 +5,34 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `CatalogEntry` | Class | A SchemaStore `catalog.json` entry: the class is the schema, so decoding an existing entry and encoding one for submission are the same artifact. `versions` is present only for versioned catalogs (`SchemaVersioning.catalogUrls` assembles both modes). | build a schemastore catalog.json entry, assemble unversioned or versioned schema urls |
+| `CatalogInput` | Interface | The SchemaStore `catalog.json` fields a schema entry declares, minus `url`/`versions` — those are derived from the entry's `baseUrl`, `layout` and `versions`/`current` by `defineConfig`, so they cannot disagree with the schema's own identity. | |
+| `CatalogLintFinding` | Class | A fileMatch hygiene finding: a value in a lint report, not an error — SchemaStore reviewers reject entries over these, so surfacing them locally is the point, but a warned entry is still a valid entry. | catalog fileMatch hygiene warning, generic pattern or complex glob rejection |
+| `CatalogUrls` | Interface | The `url`/`versions` half of a catalog entry, as assembled by `SchemaVersioning.catalogUrls`. | |
+| `CustomHostedSchemaInput` | Interface | Input to `HostedSchema.custom`. | |
+| `DriftOptions` | Interface | The drift settings a config declares and a CLI flag may override. | |
+| `DriftPolicy` | Class | Classifies one target's change against a drift tolerance. | classify a published target's change as write or drift against its configured tolerance |
+| `DriftTolerance` | TypeAlias | How much change a PUBLISHED schema document may absorb before a build is refused. | |
+| `DriftVerdict` | TypeAlias | The verdict for one target: write it, or hold it as drift. | |
+| `FrozenVersion` | Interface | One version of a schema that is advertised (via `versions`) but not the one currently generated — a file the CLI verifies before any write (it exists, and its own `$id` is the derived one — the rest of its content is never compared), never regenerates. | |
+| `GitHubHostedSchemaInput` | Interface | Input to `HostedSchema.github`. | |
+| `HostedSchema` | Class | Where a JSON Schema document is hosted and which version of it is current — the one value an application derives its `$schema` URL from and hands to `defineConfig`, so the URL the code emits and the `$id` the CLI writes cannot disagree. | build a config's hosted schema identity stamped with the tool's version, $id and $schema url from one value |
+| `HostedSchemaVersionsInput` | Interface | The identity every hosted document derives from: `versions` and `current` as `defineConfig` accepts them, minus the host, which each constructor supplies. | |
+| `InvalidSchemaVersionError` | Class | Indicates that a string is not a valid SchemaStore version label. | handle a version label that is not full major.minor.patch semver |
+| `KeywordFamilies` | Class | The declared non-standard keyword families as one predicate: the vscode-json-languageservice set by exact name, plus the `x-taplo`, `x-tombi-`, `x-intellij-` and `x-ai-` prefixes. | recognize non-standard vscode taplo tombi intellij x-ai json schema keyword families, machine annotation hint |
+| `OnDrift` | TypeAlias | What a build does when it finds drift: refuse to write anything, or write and warn. | |
 | `PLUGIN_VERSION` | Variable | This package's own version, which each bin shim passes to its front end as `distribution.version` beside `distribution.name: "@effected/plugin"`. The bundler replaces the exact expression `process.env.__PACKAGE_VERSION__` with the package version at build time, so it must stay spelled this way; `"0.0.0"` is the unbuilt-source fallback. | the effected carrier package version, replaced at build, passed as distribution version by both bin shims |
+| `ResolvedSchema` | Interface | One `defineConfig` schema entry, resolved: the `(SchemaTarget:interface)` to generate, its frozen predecessor versions, its effective drift tolerance, and its assembled catalog entry, if any. | |
+| `SCHEMASTORE_CATALOG_BASE` | Variable | The host SchemaStore's `catalog.json` points `url` at. | the www host constant a schemastore catalog.json entry url points at |
+| `SCHEMASTORE_ID_BASE` | Variable | The host SchemaStore-hosted documents declare in `$id`. | the json host constant a schemastore-hosted document declares in $id |
+| `SchemaChange` | TypeAlias | What differs between two schema documents: | |
+| `SchemaEntryInput` | Interface | One schema a `schemastore.config.ts` declares, keyed by its own file base name in `SchemastoreConfigInput.schemas`. `$id`, the write `path` and every catalog URL are derived from `outputDir`, `baseUrl` (this entry's, or the config's default) and `layout` — never spelled out by hand. | |
+| `SchemaLayout` | TypeAlias | Where a versioned document sits relative to its base: `flat` is `<name>-<version>.json` (the only shape SchemaStore serves), `versioned` nests it as `<version>/<name>-<version>.json` — or, with `appendVersion` off, `<version>/<name>.json`, the directory alone carrying the label. An unversioned document is `<name>.json` under either. | |
+| `SchemaTarget` | Class + Interface | Constructors for `SchemaTarget` values. | declare one schema publication target with its $id, path and optional version |
+| `SchemaVersion` | Variable + TypeAlias | The type of a validated SchemaStore version label. | branded schema version label, one to three components with optional prerelease for catalog file naming |
+| `SchemaVersioning` | Class | Both SchemaStore catalog modes as pure derivations: unversioned (a plain `name.json` file, `url` only) and versioned (`name-<version>.json` files — SchemaStore's own suffix convention — a `versions` map, and `url` pointing at the latest version). | compute versioned or unversioned catalog urls, order schema version labels, derive schema file names |
+| `SchemastoreConfig` | Interface | The validated, defaults-filled config `defineConfig` answers and the CLI consumes. Recognisable via `isSchemastoreConfig`. | |
+| `SchemastoreConfigInput` | Interface | What a `schemastore.config.ts` hands to `defineConfig`: a directory every derived path is written under, top-level defaults for `baseUrl` and `drift`, and the keyed set of schemas to derive. | |
+| `SchemastoreVersion` | Class | Which copy of `@effected/schemastore` produced a value. | read the tool's schemastore version, diagnose a config value from a mismatched copy |
+| `WriteChange` | TypeAlias | How the document being written relates to what was already on disk: `SchemaChange` plus `"created"` for a file that did not exist, so there was nothing to compare against. | |
+| `defineSchemastore` | Function | Validate and assemble a `schemastore.config.ts` value. | default export of schemastore.config.ts, validate and assemble the config with the tool's own schemastore |
