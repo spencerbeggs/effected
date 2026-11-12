@@ -17,6 +17,10 @@ import { CatalogSet } from "./WorkspaceCatalogs.js";
 // A frozen, prototype-free empty map shared as the default for every absent
 // dependency record — the `WorkspacePackage` precedent, so an omitted record
 // round-trips as `{}` rather than `undefined`.
+/** `record[key]` when `key` is the record's own property; never an inherited member. */
+const ownValue = <V>(record: Readonly<Record<string, V>> | undefined, key: string): V | undefined =>
+	record !== undefined && Object.hasOwn(record, key) ? record[key] : undefined;
+
 const EMPTY: Record<string, string> = Object.freeze(Object.create(null) as Record<string, string>);
 
 const DependencyMap = Schema.Record(Schema.String, Schema.String).pipe(
@@ -301,7 +305,7 @@ export class WorkspaceStateSnapshot extends Schema.Class<WorkspaceStateSnapshot>
 	 */
 	resolveIn(importerPath: string, dependency: string, specifier: string): Option.Option<string> {
 		return this.#resolveWith(dependency, specifier, () =>
-			Option.fromUndefinedOr(this.importerVersions?.[importerPath]?.[dependency]),
+			Option.fromUndefinedOr(ownValue(ownValue(this.importerVersions, importerPath), dependency)),
 		);
 	}
 

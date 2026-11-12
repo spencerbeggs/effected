@@ -214,7 +214,12 @@ export class CatalogSet extends Schema.Class<CatalogSet>("CatalogSet")({
 	 */
 	rangeOf(dependency: string, catalog: Option.Option<string>): Option.Option<string> {
 		const name = Option.getOrElse(catalog, () => "default");
-		return Option.fromUndefinedOr(this.entries[name]?.[dependency]);
+		// Both keys are caller input: an inherited name (`constructor`,
+		// `toString`) must not resolve off `Object.prototype`.
+		const entries = Object.hasOwn(this.entries, name) ? this.entries[name] : undefined;
+		return entries !== undefined && Object.hasOwn(entries, dependency)
+			? Option.fromUndefinedOr(entries[dependency])
+			: Option.none();
 	}
 }
 

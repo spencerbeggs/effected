@@ -102,6 +102,10 @@ describe("unanimousVersionOf", () => {
 	it("answers nothing when no importer records it", () => {
 		assert.isUndefined(unanimousVersionOf({ ".": { other: "1.0.0" } }, "effect"));
 	});
+
+	it("an inherited name is not a recorded dependency", () => {
+		assert.isUndefined(unanimousVersionOf({ ".": { effect: "1.0.0" } }, "constructor"));
+	});
 });
 
 // ── The snapshot resolution surface ─────────────────────────────────────────
@@ -160,6 +164,12 @@ describe("WorkspaceStateSnapshot.resolveIn", () => {
 	it("answers nothing for an unknown importer", () => {
 		const state = snapshot({ ".": { effect: "1.0.0" } });
 		assert.isTrue(Option.isNone(state.resolveIn("packages/nope", "effect", "catalog:effect:peers")));
+	});
+
+	it("an inherited importer path or dependency name answers nothing", () => {
+		const state = snapshot({ ".": { effect: "1.0.0" } });
+		assert.isTrue(Option.isNone(state.resolveIn("constructor", "name", "catalog:")));
+		assert.isTrue(Option.isNone(state.resolveIn(".", "toString", "catalog:")));
 	});
 });
 

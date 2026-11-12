@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-12T23:07:30Z
+  at: 2026-11-12T23:51:04Z
 integrity:
   generated:
-    body: 3df69cebcf145882
+    body: 471d5bcfd82175ca
 ---
 
 # effected
@@ -34,7 +34,7 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `yaml` | pure | port of `yaml-effect`; the largest package in the repo |
 | `package-json` | boundary | port of `package-json-effect`; SPDX validity delegated to `spdx` |
 | `npm` | boundary (was pure) | extraction from `package-json`; resolver contracts plus registry/publish services |
-| `pnpm` | pure | extraction; everything pnpm owns alone (settings, versioning block, overrides grammar, workspace file editor, lockfile document) |
+| `pnpm` | boundary | extraction; everything pnpm owns alone (`PnpmSettings`, `ReleaseAgeGate`, `PnpmMatcher` today; then the settings catalog, versioning block, overrides grammar, workspace file editor, lockfile document); `PnpmSettings.load` reads through `FileSystem`/`Path` in `R` |
 | `bun` | pure | extraction; bun's lockfile document and `BunExtension` |
 | `config-file` | boundary | port of `config-file-effect`; the four config codecs as free-standing named exports |
 | `walker` | boundary | extraction from `config-file`; upward path traversal |
@@ -44,7 +44,7 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `store` | integrated | extraction from `xdg`; migrated SQLite `Store` and TTL `Cache` |
 | `xdg` | boundary | port of `xdg-effect`; does not depend on `store` |
 | `files` | boundary | invention; `AtomicFile.write`, the atomic single-file write adopted across the kit, and `AtomicDirectory.write`, whole-directory replacement, over core `FileSystem` and `Path` in `R` |
-| `workspaces` | integrated | port of `workspaces-effect`; discovery, dependency graph, catalogs, change detection |
+| `workspaces` | boundary (was integrated) | port of `workspaces-effect`; discovery, dependency graph, catalogs, change detection; pnpm 12's catalog semantics restated in-package, no `@pnpm/*` dependency |
 | `runtimes` | boundary | port of `runtime-resolver`'s library half |
 | `tsconfig-json` | boundary | invention; zero `typescript` imports |
 | `git` | boundary | invention; typed git introspection over core's `ChildProcessSpawner` |

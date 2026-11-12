@@ -111,7 +111,7 @@ export const importerVersionsOf = (lockfile: Lockfile): VersionIndex => {
 export const unanimousVersionOf = (index: VersionIndex, dependency: string): string | undefined => {
 	let agreed: string | undefined;
 	for (const versions of Object.values(index)) {
-		const version = versions[dependency];
+		const version = Object.hasOwn(versions, dependency) ? versions[dependency] : undefined;
 		if (version === undefined) continue;
 		if (agreed === undefined) {
 			agreed = version;

@@ -19,13 +19,13 @@ sources:
     resource: ../../.repos/pnpm/pnpm/crates/catalogs-config/src/lib.rs
     title: "pnpm 12.20.0 catalogs-config: get_catalogs_from_workspace_manifest"
   - id: pnpm-catalogs-protocol-parser
-    resource: https://github.com/pnpm/pnpm/blob/v12.20.0/pnpm/crates/catalogs-protocol-parser/src/lib.rs
+    resource: ../../.repos/pnpm/pnpm/crates/catalogs-protocol-parser/src/lib.rs
     title: "pnpm 12.20.0 catalogs-protocol-parser: parse_catalog_protocol"
   - id: pnpm-catalogs-resolver
-    resource: https://github.com/pnpm/pnpm/blob/v12.20.0/pnpm/crates/catalogs-resolver/src/lib.rs
+    resource: ../../.repos/pnpm/pnpm/crates/catalogs-resolver/src/lib.rs
     title: "pnpm 12.20.0 catalogs-resolver: resolve_from_catalog"
   - id: pnpm-workspace-spec
-    resource: https://github.com/pnpm/pnpm/blob/v12.20.0/pnpm/crates/workspace-spec/src/lib.rs
+    resource: ../../.repos/pnpm/pnpm/crates/workspace-spec/src/lib.rs
     title: "pnpm 12.20.0 workspace-spec: the workspace: grammar"
   - id: pnpm-implied-version
     resource: ../../.repos/pnpm/pnpm/crates/lockfile/src/implied_version.rs
@@ -35,10 +35,10 @@ sources:
     title: "The kit's catalog engine"
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-12T23:38:43Z
+  at: 2026-11-12T23:51:04Z
 integrity:
   generated:
-    body: 30112c36a21288a4
+    body: 7b5c1f115d1a4986
 ---
 
 # The catalog: and workspace: protocols are shared, so their contracts stay in @effected/npm
@@ -61,7 +61,7 @@ The evidence for `workspace:`: bun accepts `workspace:*`, `workspace:^`, `worksp
 
 `CatalogSet` and `internal/catalogs.ts` stay in `@effected/workspaces`. `CatalogSet.fromLockfile` takes a `Lockfile` from `@effected/lockfiles`, which no manager package may depend on, and the set already assembles from both pnpm's and bun's sources, so it is manager-neutral workspace assembly rather than pnpm's alone.
 
-`@effected/workspaces` no longer depends on `@pnpm/catalogs.config`, `.protocol-parser`, `.resolver` or `.types`. Those are pnpm 11's JavaScript packages. Checked against pnpm 12's crates, the doubled-default check and the protocol parse match, but `resolveFromCatalog` rejects a `link:` or `file:` catalog entry, which pnpm 12's `resolve_from_catalog` resolves.[^pnpm-catalogs-resolver] The kit is pnpm 12 only, so `internal/catalogs.ts` re-implements the four functions it used against the Rust crates: an entry resolves to its specifier as written (pnpm 12's `AsWritten` anchor), a missing entry or a recursive `catalog:` entry is a misconfiguration, and a merge copies keys with `Object.defineProperty`.[^catalogs-module]
+`@effected/workspaces` no longer depends on `@pnpm/catalogs.config`, `.protocol-parser`, `.resolver` or `.types`. Those are pnpm 11's JavaScript packages. Checked against pnpm 12.20.0's crates (vendored at `.repos/pnpm`), the protocol parse matches, but two behaviours differ: the doubled-default check tests `catalogs.default`'s value where pnpm 12 tests the key (`contains_key`), so a null `catalogs.default` beside a top-level `catalog` passed[^pnpm-catalogs-config], and `resolveFromCatalog` rejects a `link:` or `file:` catalog entry, which pnpm 12's `resolve_from_catalog` resolves.[^pnpm-catalogs-resolver] The kit is pnpm 12 only, so `internal/catalogs.ts` re-implements the four functions it used against the Rust crates: the default catalog defined twice is decided by the key, an entry resolves to its specifier as written (pnpm 12's `AsWritten` anchor), a missing entry or a recursive `catalog:` entry is a misconfiguration, and a merge copies keys with `Object.defineProperty`.[^catalogs-module]
 
 ## Consequences
 
@@ -78,8 +78,8 @@ The evidence for `workspace:`: bun accepts `workspace:*`, `workspace:^`, `worksp
 [^bun-catalogs]: <https://bun.com/docs/install/catalogs>
 [^bun-workspaces]: <https://bun.com/docs/install/workspaces>
 [^pnpm-catalogs-config]: `.repos/pnpm/pnpm/crates/catalogs-config/src/lib.rs`
-[^pnpm-catalogs-protocol-parser]: <https://github.com/pnpm/pnpm/blob/v12.20.0/pnpm/crates/catalogs-protocol-parser/src/lib.rs>
-[^pnpm-catalogs-resolver]: <https://github.com/pnpm/pnpm/blob/v12.20.0/pnpm/crates/catalogs-resolver/src/lib.rs>
-[^pnpm-workspace-spec]: <https://github.com/pnpm/pnpm/blob/v12.20.0/pnpm/crates/workspace-spec/src/lib.rs>
+[^pnpm-catalogs-protocol-parser]: `.repos/pnpm/pnpm/crates/catalogs-protocol-parser/src/lib.rs`
+[^pnpm-catalogs-resolver]: `.repos/pnpm/pnpm/crates/catalogs-resolver/src/lib.rs`
+[^pnpm-workspace-spec]: `.repos/pnpm/pnpm/crates/workspace-spec/src/lib.rs`
 [^pnpm-implied-version]: `.repos/pnpm/pnpm/crates/lockfile/src/implied_version.rs`
 [^catalogs-module]: `packages/workspaces/src/internal/catalogs.ts`

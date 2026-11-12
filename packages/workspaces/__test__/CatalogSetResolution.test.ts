@@ -43,6 +43,24 @@ describe("CatalogSet.resolveSpecifier — pnpm 12 catalog resolution", () => {
 	});
 });
 
+describe("CatalogSet.rangeOf — the CatalogResolver shape", () => {
+	const set = CatalogSet.fromCatalogs({ default: { effect: "^4.0.0" }, build: { typescript: "7.1.0" } });
+
+	it("the control: a declared entry resolves, in the default and a named catalog", () => {
+		assert.deepStrictEqual(set.rangeOf("effect", Option.none()), Option.some("^4.0.0"));
+		assert.deepStrictEqual(set.rangeOf("typescript", Option.some("build")), Option.some("7.1.0"));
+	});
+
+	it("an inherited catalog name is not a catalog", () => {
+		assert.isTrue(Option.isNone(set.rangeOf("name", Option.some("constructor"))));
+	});
+
+	it("an inherited dependency name is not an entry", () => {
+		assert.isTrue(Option.isNone(set.rangeOf("toString", Option.none())));
+		assert.isTrue(Option.isNone(set.rangeOf("constructor", Option.some("build"))));
+	});
+});
+
 describe("CatalogSet.fromWorkspaceYaml — the default catalog's two spellings", () => {
 	it.effect("a top-level `catalog` lands under `default` beside the named catalogs", () =>
 		Effect.gen(function* () {
@@ -55,6 +73,15 @@ describe("CatalogSet.fromWorkspaceYaml — the default catalog's two spellings",
 		Effect.gen(function* () {
 			const set = yield* CatalogSet.fromWorkspaceYaml(
 				"catalog:\n  a: ^1.0.0\ncatalogs:\n  default:\n    a: ^2.0.0\n  b:\n    c: ^2.0.0\n",
+			);
+			assert.isTrue(set.isEmpty);
+		}),
+	);
+
+	it.effect("a null `catalogs.default` beside a top-level `catalog` is still a second definition", () =>
+		Effect.gen(function* () {
+			const set = yield* CatalogSet.fromWorkspaceYaml(
+				"catalog:\n  a: ^1.0.0\ncatalogs:\n  default: ~\n  b:\n    c: ^2.0.0\n",
 			);
 			assert.isTrue(set.isEmpty);
 		}),

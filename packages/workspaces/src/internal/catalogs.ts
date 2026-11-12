@@ -44,14 +44,9 @@ export const inlineCatalogs = (manifest: {
 	readonly catalogs?: Record<string, Record<string, string>> | undefined;
 }): Catalogs => {
 	const { catalog, catalogs: named } = manifest;
-	if (
-		catalog != null &&
-		named != null &&
-		Object.hasOwn(named, DEFAULT_CATALOG_NAME) &&
-		named[DEFAULT_CATALOG_NAME] != null
-	) {
-		return {};
-	}
+	// pnpm 12 tests the key (`contains_key`), not its value, so a
+	// `catalogs: { default: ~ }` beside a top-level `catalog` is refused too.
+	if (catalog != null && named != null && Object.hasOwn(named, DEFAULT_CATALOG_NAME)) return {};
 	const catalogs: Catalogs = {};
 	if (catalog != null) define(catalogs, DEFAULT_CATALOG_NAME, catalog);
 	if (named != null) {
