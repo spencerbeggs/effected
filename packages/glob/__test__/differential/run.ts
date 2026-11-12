@@ -15,6 +15,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { EXCEPTION_KINDS } from "../support/oracle.js";
 import type { Alphabet } from "./generate.js";
 import { DEFAULT_ALPHABET, generate } from "./generate.js";
 import type { Outcome, Result, ToParent, ToWorker } from "./worker.js";
@@ -57,8 +58,13 @@ const count = Number(flags.count);
 const timeoutMs = Number(flags.timeout);
 const workerCount = Math.max(1, Number(flags.workers));
 const platforms = flags.platform === "both" ? (["posix", "win32"] as const) : ([flags.platform] as ["posix" | "win32"]);
-if (![seed, count, timeoutMs].every(Number.isFinite) || platforms.some((p) => p !== "posix" && p !== "win32")) {
-	process.stderr.write("invalid --seed/--count/--timeout/--platform\n");
+if (
+	![seed, count, timeoutMs, workerCount].every(Number.isFinite) ||
+	!Number.isInteger(count) ||
+	count < 0 ||
+	platforms.some((p) => p !== "posix" && p !== "win32")
+) {
+	process.stderr.write("invalid --seed/--count/--timeout/--workers/--platform\n");
 	process.exit(2);
 }
 
@@ -211,8 +217,10 @@ for (const r of results.sort((a, b) => a.index - b.index)) {
 	}
 	const t = generate(cfg, r.index);
 	// InvalidRegExp-on-accepted is its own report (#1279), never an exception
-	if (r.exceptions.length > 0 && kind !== "InvalidRegExp-on-accepted") {
-		for (const name of r.exceptions) excepted.set(`${name} / ${kind}`, (excepted.get(`${name} / ${kind}`) ?? 0) + 1);
+	// each named exception excuses only the divergence kinds it documents; any other kind is reported
+	const excusing = r.exceptions.filter((name) => EXCEPTION_KINDS[name]?.includes(kind));
+	if (excusing.length > 0) {
+		for (const name of excusing) excepted.set(`${name} / ${kind}`, (excepted.get(`${name} / ${kind}`) ?? 0) + 1);
 		continue;
 	}
 	rows.push({
@@ -229,9 +237,12 @@ for (const r of results.sort((a, b) => a.index - b.index)) {
 
 const cell = (s: string): string => {
 	const short = s.length > 120 ? `${s.slice(0, 120)}… (${s.length} chars)` : s;
-	// Escape backslashes before pipes, so a win32 path's `\|` cannot become `\\|`, which GFM reads as an escaped
-	// backslash followed by a live cell separator.
-	return `\`${short.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/`/g, "'")}\``;
+	// Each cell is a JSON string literal, because no spelling of a literal `\|` survives a GFM table cell. A code span
+	// never unescapes `\\`, and the cell scanner (cmark-gfm `table_cell`) reads `\\` as one escaped character, so an odd
+	// backslash run before an escaped pipe opens a live separator. JSON escapes every backslash, so a run before a pipe
+	// is always even, and the reader decodes the cell exactly. A backtick becomes its JSON escape, so the span can't close.
+	const json = JSON.stringify(short).replace(/`/g, "\\u0060");
+	return `\`${json.replace(/\|/g, "\\|")}\``;
 };
 const byKind = new Map<string, Array<Row>>();
 for (const row of rows) byKind.set(row.kind, [...(byKind.get(row.kind) ?? []), row]);
@@ -241,7 +252,9 @@ const out: Array<string> = [
 	"# glob differential run",
 	"",
 	`seed ${seed}, ${count} triples (${platforms.join("+")}), ${workerCount} workers, ${timeoutMs} ms watchdog, ${elapsed} ms`,
-	`rerun: pnpm --filter @effected/glob differential -- --seed ${seed} --count ${count} --platform ${flags.platform}${flags.weights ? ` --weights ${flags.weights}` : ""}`,
+	"",
+	"Each table cell is a JSON string literal: decode it with `JSON.parse` to get the exact pattern, path or value.",
+	`rerun: pnpm --filter @effected/glob differential -- --seed ${seed} --count ${count} --platform ${flags.platform}${flags.weights ? ` --weights ${flags.weights}` : ""}${flags.alphabet ? ` --alphabet ${flags.alphabet}` : ""} --min-tokens ${flags["min-tokens"]} --max-tokens ${flags["max-tokens"]}`,
 	"",
 	"## Summary",
 	"",

@@ -7,13 +7,7 @@
 import { Minimatch as OracleMinimatch } from "minimatch";
 import { isGuardExceeded } from "../../src/internal/limits.js";
 import { Minimatch } from "../../src/internal/minimatch.js";
-import {
-	bracketsAcrossAlternatives,
-	hasLargeNumericRange,
-	oracleAnswer,
-	oracleOpts,
-	pastCapExtglob,
-} from "../support/oracle.js";
+import { bracketsAcrossAlternatives, oracleAnswer, oracleOpts, oracleRowMergeTooLong } from "../support/oracle.js";
 import type { Triple } from "./generate.js";
 
 export type Side = "oracle" | "engine";
@@ -65,8 +59,7 @@ const runEngine = (tr: Triple): Outcome => {
 
 const exceptionsFor = (tr: Triple): ReadonlyArray<string> => {
 	const out: Array<string> = [];
-	if (hasLargeNumericRange(tr.pattern)) out.push("hasLargeNumericRange");
-	if (pastCapExtglob(tr.pattern, tr.options.maxExtglobRecursion)) out.push("pastCapExtglob");
+	if (oracleRowMergeTooLong(tr.pattern, tr.options)) out.push("oracleRowMergeTooLong");
 	try {
 		if (bracketsAcrossAlternatives(new OracleMinimatch(tr.pattern, oracleOpts(tr.options)))) {
 			out.push("bracketsAcrossAlternatives");

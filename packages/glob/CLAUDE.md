@@ -377,8 +377,9 @@ is invisible to CI and holds no engine knowledge), is named `run.ts`/`worker.ts`
 so vitest never collects it, and runs triples in worker processes under a
 per-triple watchdog, because a stalled single process hides every later triple.
 It compares match, `hasMagic` and throw/typed failure against the oracle, applies
-the shared exceptions in `__test__/support/oracle.ts` (`bracketsAcrossAlternatives`,
-`hasLargeNumericRange`, `pastCapExtglob`), reports `InvalidRegExp`-on-accepted
+the shared exceptions in `__test__/support/oracle.ts` (`bracketsAcrossAlternatives` for match
+divergences, `oracleRowMergeTooLong` for the oracle's row-merge `pattern is too long`
+where the engine accepts; each excuses only its own kind), reports `InvalidRegExp`-on-accepted
 (#1279) as its own bucket, and writes a divergence table to
 `.cache/differential/seed-N.md`. Exit 1 means divergences or watchdog kills.
 Get a clean baseline before editing the engine and a clean run after it.

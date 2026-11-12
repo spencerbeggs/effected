@@ -82,42 +82,26 @@ export const oracleAnswer = (candidate: string, pattern: string, opts: Minimatch
 };
 
 /**
- * A `{a..b}` numeric range of 100 or more values. The oracle keeps it as one
- * magic portion rather than expanding it, and past the engine's expansion
- * budget the engine fails typed instead of matching, so a comparison on such a
- * pattern is a named exception, not a divergence.
+ * minimatch 11.0.5's row merge throws `TypeError: pattern is too long` from its
+ * constructor on some short brace patterns (`{x,{0..120}}[a-c]{0..199}.hidden\a`
+ * is one), which the kit compiles. A pattern the oracle refuses that way, and
+ * for no reason of its own, is a named exception on the one divergence kind
+ * where the engine accepts it, never a skip of anything else.
  */
-export const hasLargeNumericRange = (pattern: string): boolean => {
-	for (const m of pattern.matchAll(/\{(-?\d+)\.\.(-?\d+)(?:\.\.-?\d+)?\}/g)) {
-		const a = Number(m[1]);
-		const b = Number(m[2]);
-		if (Math.abs(b - a) + 1 >= 100) return true;
+export const oracleRowMergeTooLong = (pattern: string, opts: EngineOptions): boolean => {
+	try {
+		new OracleMinimatch(pattern, oracleOpts(opts));
+		return false;
+	} catch (e) {
+		return e instanceof TypeError && e.message === "pattern is too long";
 	}
-	return false;
 };
 
 /**
- * The deepest nesting of extglob openers (`@(`, `!(` `*(` `+(` `?(`) in a
- * pattern. Past `maxExtglobRecursion` (default 2) the engine degrades the
- * inner opener to literal text, which the oracle does not do.
+ * The divergence kinds each named exception may excuse. A kind outside its
+ * list is reported, whatever exception the triple carries.
  */
-export const extglobDepth = (pattern: string): number => {
-	let depth = 0;
-	let max = 0;
-	const stack: Array<boolean> = [];
-	for (let i = 0; i < pattern.length; i++) {
-		const c = pattern.charAt(i);
-		if (c === "\\") {
-			i++;
-		} else if (c === "(") {
-			const ext = i > 0 && "@!*+?".includes(pattern.charAt(i - 1));
-			stack.push(ext);
-			if (ext) max = Math.max(max, ++depth);
-		} else if (c === ")") {
-			if (stack.pop() === true) depth--;
-		}
-	}
-	return max;
+export const EXCEPTION_KINDS: Readonly<Record<string, ReadonlyArray<string>>> = {
+	bracketsAcrossAlternatives: ["match"],
+	oracleRowMergeTooLong: ["oracle-throws-engine-accepts"],
 };
-
-export const pastCapExtglob = (pattern: string, cap = 2): boolean => extglobDepth(pattern) > cap;
