@@ -82,6 +82,7 @@ export {
 	type SeededVersion,
 	VersionManifest,
 } from "./NpmRegistry.js";
+export { NpmReleaseAge } from "./NpmReleaseAge.js";
 export { NpmrcEntry, npmrcValue, npmrcValues, parseNpmrc } from "./Npmrc.js";
 export { NpmWorkspacePatterns } from "./NpmWorkspacePatterns.js";
 export { NpmWorkspacePatternsError } from "./NpmWorkspacePatternsError.js";
