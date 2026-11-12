@@ -1,6 +1,6 @@
 {
 	"name": "@effected/plugin",
-	"version": "0.5.2",
+	"version": "0.6.0",
 	"private": true,
 	"description": "Install this one package to get the effected command and the effected-mcp server, built with the kit and effect inside it, and the authoring surface of a schemastore.config.ts.",
 	"keywords": ["effect", "effected", "cli", "mcp", "agent"],

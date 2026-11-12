@@ -1,5 +1,13 @@
 # @effected/pnpm-plugin-effect
 
+## 0.26.3
+
+### Maintenance
+
+#### Updates 1 catalog:effected version
+
+- `@effected/runtimes` ^0.19.0 -> ^0.19.1 (peer ^0.19.0)
+
 ## 0.26.2
 
 ### Features

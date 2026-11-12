@@ -1,5 +1,23 @@
 # @effected/engine
 
+## 0.17.2
+
+### Bug Fixes
+
+- The schemastore version-mismatch remedy now names the `@effected/plugin` authoring surface as the way to build a config the tool's version check accepts
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/bundler | dependency | updated | 0.4.1 | 0.5.0 |
+| @effected/files | dependency | updated | 0.3.0 | 0.3.0 |
+| @effected/jsonl | dependency | updated | 0.19.0 | 0.19.0 |
+| @effected/kit | dependency | updated | 0.14.0 | 0.14.0 |
+| @effected/schemastore | dependency | updated | 0.32.0 | 0.32.0 |
+| @effected/workspaces | dependency | updated | 0.47.0 | 0.47.0 |
+| effect | dependency | updated | 4.1.3 | 4.1.4 |
+
 ## 0.17.1
 
 ### Dependencies

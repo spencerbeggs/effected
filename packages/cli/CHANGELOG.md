@@ -1,5 +1,17 @@
 # @effected/cli
 
+## 0.31.2
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli-kit | dependency | updated | 0.28.2 | 0.28.2 |
+| @effected/engine | dependency | updated | 0.17.1 | 0.17.2 |
+| @effected/kit | dependency | updated | 0.14.0 | 0.14.0 |
+| @effected/walker | dependency | updated | 0.28.0 | 0.28.0 |
+| effect | dependency | updated | 4.1.3 | 4.1.4 |
+
 ## 0.31.1
 
 ### Dependencies
