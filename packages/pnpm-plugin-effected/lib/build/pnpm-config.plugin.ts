@@ -190,8 +190,8 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/bundler": {
-					range: "^0.4.1",
-					peer: "^0.4.0",
+					range: "^0.5.0",
+					peer: "^0.5.0",
 					strategy: "lock-minor",
 					source: "workspace",
 				},
@@ -364,7 +364,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/memfs": {
-					range: "^0.26.1",
+					range: "^0.26.2",
 					peer: "^0.26.0",
 					strategy: "lock-minor",
 					source: "workspace",
@@ -388,8 +388,8 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/plugin": {
-					range: "^0.5.3",
-					peer: "^0.5.0",
+					range: "^0.6.0",
+					peer: "^0.6.0",
 					strategy: "lock-minor",
 					source: "workspace",
 				},
