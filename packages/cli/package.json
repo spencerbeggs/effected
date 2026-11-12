@@ -1,6 +1,6 @@
 {
 	"name": "@effected/cli",
-	"version": "0.31.2",
+	"version": "0.31.3",
 	"private": true,
 	"description": "The effected command: the tool's command tree on the kit's front-end runtime",
 	"keywords": ["effect", "cli", "effected"],
