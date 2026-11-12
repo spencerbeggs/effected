@@ -5,6 +5,7 @@ kind: breaking
 shows: typed
 applies:
   effect: ">=4.1.4"
+  "@effect/ai-openrouter": ">=4.1.4"
 detect: ["@effect/ai-openrouter"]
 ---
 
