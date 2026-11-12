@@ -114,7 +114,7 @@ These are deliberate, and each is ruled or stated in TSDoc. Do not "fix" one wit
 
 ## Consumers
 
-`lib/scripts/breaking-floors.ts` calls `ReleasePlan.readWithContext`, `assemble` and `breakingFloors`, behind `pnpm changeset:floors` and inside `catalog:sync` / `catalog:check`. `lib/scripts/catalog-sync.ts` calls `ReleasePlan.read` as the default behind its `StatusRunner` seam, so a change to `read` reaches `catalog:check` and `catalog:sync`. `@effected/bundler` is the first package consumer.
+`lib/scripts/breaking-floors.ts` reads `WorkspaceDiscovery.listPackagesIn`, `ChangesetConfig.read`, `PendingChangesets.read` and `PreState.read` itself, so its own floor files leave before any plan is made, then calls `assemble` and `breakingFloors`, behind `pnpm changeset:floors` and inside `catalog:sync` / `catalog:check`. `lib/scripts/catalog-sync.ts` calls `ReleasePlan.read` as the default behind its `StatusRunner` seam, so a change to `read` reaches `catalog:check` and `catalog:sync`. `@effected/bundler` is the first package consumer.
 
 ## Working here
 
