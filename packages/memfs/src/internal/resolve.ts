@@ -63,6 +63,10 @@ const walk = (tree: LiteralTree, path: string, followFinal: boolean, budget: Hop
 			for (;;) {
 				const target = tree.readLink(candidate);
 				if (target === undefined) break;
+				// An empty target names nothing: macOS stores the link and answers
+				// ENOENT through it (Linux refuses to create it), so it must not
+				// join as `${current}/` and land on the link's own parent.
+				if (target === "") return { code: "ENOENT" };
 				budget.hops += 1;
 				if (budget.hops > MAX_LINK_HOPS) return { code: "ELOOP" };
 				const resolved = walk(tree, target.startsWith("/") ? target : `${current}/${target}`, true, budget);

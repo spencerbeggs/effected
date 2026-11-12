@@ -167,6 +167,30 @@ describe("sync port stat/lstat", () => {
 		}),
 	);
 
+	it.effect("an empty link target is absent, never the link's parent (macOS stat and realpathSync)", () =>
+		Effect.gen(function* () {
+			const handle = yield* MemoryFileSystem.makeHandle({ "/e/f": "x" });
+			yield* handle.fileSystem.symlink("", "/e/l");
+			const sync = MemoryFileSystem.syncFileSystem(handle.volume);
+			assert.deepInclude(
+				thrown(() => sync.stat("/e/l")),
+				{ code: "ENOENT", syscall: "stat" },
+			);
+			assert.deepInclude(
+				thrown(() => sync.realPath("/e/l")),
+				{ code: "ENOENT", syscall: "stat", path: "/e/l" },
+			);
+			assert.deepInclude(
+				thrown(() => sync.readDirectory("/e/l")),
+				{ code: "ENOENT", syscall: "scandir" },
+			);
+			assert.isFalse(sync.exists("/e/l"));
+			const failure = yield* Effect.flip(handle.fileSystem.realPath("/e/l"));
+			assert.strictEqual(failure.reason._tag, "NotFound");
+			assert.strictEqual(yield* handle.fileSystem.readLink("/e/l"), "");
+		}),
+	);
+
 	it.effect("readFile and readDirectory throw node's syscalls (open, read, scandir)", () =>
 		Effect.gen(function* () {
 			const { volume } = yield* tree;
