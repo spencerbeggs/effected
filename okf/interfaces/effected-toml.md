@@ -29,10 +29,10 @@ sources:
     resource: ../../packages/bundler/__test__/e2e/bundled-closure.e2e.test.ts
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-12T04:28:39Z
+  at: 2026-11-12T05:36:53Z
 integrity:
   generated:
-    body: 739cb59bfa21fc60
+    body: 3163ff65975c8aba
 ---
 
 # effected.toml: the build config's tables, defaults and discovery
@@ -66,7 +66,7 @@ The merged document decodes once, strictly. An unknown key is a failure rather t
 | --- | --- | --- |
 | `format` | `["esm"]` | Output module formats, `esm` and `cjs` |
 | `externals` | `[]` | Packages kept external |
-| `bundle` | `[]` | Packages force-bundled into the JS output; a bare name covers the package and every subpath, a glob or a subpath is matched as written. [An inlined package leaves the manifest](#carrying-a-dependency-inside-the-build). Declarations are not inlined by this |
+| `bundle` | `[]` | Packages force-bundled into the JS output; a bare name covers the package and every subpath, a glob covers what it matches and every subpath under that, a subpath is matched as written. [An inlined package leaves the manifest](#carrying-a-dependency-inside-the-build). Declarations are not inlined by this |
 | `bundledPackages` | `[]` | External packages whose declarations are inlined into the bundled `.d.ts`. [A workspace sibling inlines from its build](#inlining-a-workspace-sibling) |
 | `dtsExternals` | `[]` | Packages externalized in the declaration pass only; declare them as dependencies so consumers can resolve the emitted imports |
 | `bundleNodeModules` | `false` | Bundles non-external `node_modules` and workspace dependencies into the JS and the declarations |
@@ -89,8 +89,8 @@ An override's `entries` is required and each must be a canonical export path, `"
 `bundle` with `bundleNodeModules = true` publishes a package that holds its dependencies' code, as `@effected/plugin` does. tsdown keeps external whatever the source manifest declares and inlines the rest, so `bundle` names the declared packages to inline and everything a package declares and does not list there stays an import.
 
 - **A package every partition inlines by `bundle` leaves the emitted `dependencies` and `optionalDependencies`.** A peer is kept, as the host's to provide, so a package whose code is inlined but whose types the declarations still import is declared as a peer too. An override with no `bundle` of its own keeps the package a dependency.
-- **Each inlined module keeps its own package's version.** `process.env.__PACKAGE_VERSION__` in a module of another package becomes that package's `version`, from the nearest `package.json` above the module, before `define` writes the built package's version into the rest. Only that exact expression is replaced: a string or comment that spells it, `globalThis.process.env.__PACKAGE_VERSION__` and a computed access are left alone.
-- **The licences travel with the code.** A JS pass that inlined another package's modules writes `THIRD_PARTY_LICENSES.txt` into the group's `pkg/`, with each package's name, version, declared licence and the text of every `LICENSE`, `LICENCE`, `COPYING` or `NOTICE` file it ships. A build that inlines nothing writes none.
+- **Each inlined module keeps its own package's version.** `process.env.__PACKAGE_VERSION__` in a module of another package becomes that package's `version`, from the nearest `package.json` above the module that names a package (a nested `{"type":"module"}` marker is walked past), before `define` writes the built package's version into the rest. Only that exact expression is replaced: a string or comment that spells it, `globalThis.process.env.__PACKAGE_VERSION__` and a computed access are left alone.
+- **The licences travel with the code.** A JS or loose-file pass that inlined another package's modules writes `THIRD_PARTY_LICENSES.txt` into the group's `pkg/`, naming what every pass inlined, an `outSubdir` partition's included, with each package's name, version, declared licence and the text of every `LICENSE`, `LICENCE`, `COPYING` or `NOTICE` file it ships. A build that inlines nothing writes none.
 - **Location-dependent code moves with the bundle.** An inlined module's `import.meta.url` is the file it was bundled into, so an asset it finds beside itself has to be copied (`copy`), and a package it resolves by name must be one the built package declares.[^bundled-e2e]
 
 ### Shipping a directory one file per source

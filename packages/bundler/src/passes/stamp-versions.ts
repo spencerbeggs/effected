@@ -80,7 +80,7 @@ export const stampSource = (
 	return out;
 };
 
-/** The package that owns a module: the nearest directory above it holding a `package.json` with a name and a version. */
+/** The package that owns a module: the nearest directory above it holding a `package.json` with a name. */
 interface Owner {
 	readonly directory: string;
 	readonly version: string | undefined;
@@ -128,13 +128,14 @@ const stampVersionsWith = (
 				const fs = yield* FileSystem.FileSystem;
 				const text = yield* fs.readFileString(path.join(directory, "package.json")).pipe(Effect.option);
 				if (Option.isSome(text)) {
-					const manifest = yield* Effect.try(() => JSON.parse(text.value) as { readonly version?: unknown }).pipe(
-						Effect.option,
-					);
-					const version = Option.flatMap(manifest, (m) =>
-						typeof m.version === "string" ? Option.some(m.version) : Option.none(),
-					);
-					return Option.some<Owner>({ directory, version: Option.getOrUndefined(version) });
+					const manifest = yield* Effect.try(
+						() => JSON.parse(text.value) as { readonly name?: unknown; readonly version?: unknown },
+					).pipe(Effect.option);
+					// A manifest naming no package, such as a nested `{"type":"module"}` marker, owns nothing: walk past it.
+					if (Option.isSome(manifest) && typeof manifest.value.name === "string") {
+						const version = manifest.value.version;
+						return Option.some<Owner>({ directory, version: typeof version === "string" ? version : undefined });
+					}
 				}
 				const parent = path.dirname(directory);
 				return parent === directory ? Option.none<Owner>() : yield* Effect.promise(() => ownerOf(parent));

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect } from "effect";
+import type { Plugin } from "rolldown";
 import { vi } from "vitest";
 import type { BuildTargetGroupsOptions } from "../../src/passes/build-target-groups.js";
 import { buildTargetGroups } from "../../src/passes/build-target-groups.js";
@@ -1569,4 +1570,95 @@ describe("buildTargetGroups", () => {
 			assert.strictEqual(existsSync(join(dir, "dist/dev/pkg")), false);
 		}, 30_000);
 	});
+});
+
+describe("buildTargetGroups loose files and notices", () => {
+	const looseFile = {
+		outFile: "pnpmfile.mjs",
+		entryName: "pnpmfile",
+		source: "./src/pnpmfile.ts",
+		format: "esm",
+		fixedExtension: true,
+	} as const;
+
+	it("gives a loose-file pass the widened bundle patterns and the stamping and notice plugins", async () => {
+		const loose: Array<{ deps: unknown; plugins: ReadonlyArray<string> }> = [];
+		const build = (async (cfg: {
+			unbundle: unknown;
+			dts: unknown;
+			deps?: unknown;
+			plugins?: Array<{ name?: string }>;
+		}) => {
+			if (cfg.unbundle === false && cfg.dts === false) {
+				loose.push({ deps: cfg.deps, plugins: (cfg.plugins ?? []).map((p) => p.name ?? "") });
+			}
+		}) as never;
+		await runBuildTargetGroups({
+			cwd: "/abs/pkg",
+			version: "1.0.0",
+			entry: { index: "src/index.ts" },
+			tsconfigPath: "/abs/pkg/tsconfig.json",
+			groups: [{ id: "dev", name: "base" }],
+			devManifest: "preserve",
+			emitDts: false,
+			bundle: ["dep"],
+			looseFiles: [looseFile],
+			build,
+		});
+		assert.strictEqual(loose.length, 1);
+		// `dep` leaves the manifest when every partition bundles it, so `import "dep/deep"` must inline too.
+		assert.deepStrictEqual(loose[0]?.deps, { alwaysBundle: ["dep", "dep/**"] });
+		assert.include(loose[0]?.plugins ?? [], "effected:stamp-versions");
+		assert.include(loose[0]?.plugins ?? [], "effected:third-party-licenses");
+	});
+
+	it("writes the notice beside the group manifest naming what an outSubdir partition inlined", async () => {
+		const dir = realpathSync(await mkdtemp(join(tmpdir(), "btg-notices-")));
+		try {
+			const cwd = join(dir, "pkg");
+			await mkdir(join(cwd, "src"), { recursive: true });
+			await writeFile(join(cwd, "package.json"), JSON.stringify({ name: "pkg", version: "1.0.0" }));
+			await mkdir(join(dir, "dep"), { recursive: true });
+			await writeFile(
+				join(dir, "dep", "package.json"),
+				JSON.stringify({ name: "dep", version: "2.0.0", license: "MIT" }),
+			);
+			await writeFile(join(dir, "dep", "index.js"), "export const a = 1;\n");
+			const emitted: Array<{ outDir: string; fileName: string }> = [];
+			const build = (async (cfg: { outDir: string; plugins?: Array<Plugin> }) => {
+				const plugin = (cfg.plugins ?? []).find((p) => p.name === "effected:third-party-licenses");
+				const hook = plugin?.generateBundle as
+					| ((this: unknown, output: unknown, bundle: Record<string, unknown>) => Promise<void>)
+					| undefined;
+				// Only the runtime partition inlines `dep`; the base pass holds the package's own code.
+				const moduleIds = cfg.outDir.endsWith("runtime")
+					? [join(dir, "dep", "index.js")]
+					: [join(cwd, "src", "index.ts")];
+				await hook?.call(
+					{ emitFile: (file: { fileName: string }) => emitted.push({ outDir: cfg.outDir, fileName: file.fileName }) },
+					{},
+					{ "index.js": { type: "chunk", moduleIds } },
+				);
+			}) as never;
+			await runBuildTargetGroups({
+				cwd,
+				version: "1.0.0",
+				entry: { index: "./src/index.ts" },
+				tsconfigPath: join(cwd, "tsconfig.json"),
+				groups: [{ id: "dev", name: "pkg" }],
+				devManifest: "preserve",
+				emitDts: false,
+				overrides: [{ entry: { index: "./src/runtime/index.ts" }, outSubdir: "runtime" }],
+				build,
+			});
+			// The base pass inlined nothing, so only the runtime pass emitted a notice, under runtime/.
+			assert.deepStrictEqual(emitted, [
+				{ outDir: join(cwd, "dist/dev/pkg/runtime"), fileName: "THIRD_PARTY_LICENSES.txt" },
+			]);
+			const root = await readFile(join(cwd, "dist/dev/pkg/THIRD_PARTY_LICENSES.txt"), "utf-8");
+			assert.include(root, "dep@2.0.0\nLicense: MIT");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	}, 30_000);
 });

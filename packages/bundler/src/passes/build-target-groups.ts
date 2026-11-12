@@ -31,7 +31,7 @@ import {
 	outDirFor,
 } from "./target-groups.js";
 import type { InlinedPackage } from "./third-party-licenses.js";
-import { thirdPartyLicenses } from "./third-party-licenses.js";
+import { THIRD_PARTY_LICENSES, renderThirdPartyLicenses, thirdPartyLicenses } from "./third-party-licenses.js";
 
 /**
  * Signature compatible with tsdown's `build(inlineConfig)`.
@@ -722,10 +722,17 @@ export const buildTargetGroups: (
 		const isProdGroup = group.id !== "dev";
 		const looseDeps = {
 			...(options.externals?.length ? { neverBundle: options.externals } : {}),
-			...(options.bundle?.length ? { alwaysBundle: options.bundle } : {}),
+			// Widened as every other pass's are: a package bundled everywhere has left the manifest, so a loose file's
+			// subpath import of it must inline too.
+			...(options.bundle?.length ? { alwaysBundle: bundlePatterns(options.bundle) } : {}),
 		};
 		for (const lf of options.looseFiles ?? []) {
 			const hasCjs = lf.format === "cjs";
+			const looseLicenses = yield* thirdPartyLicenses({
+				cwd: options.cwd,
+				packageName: group.name,
+				found: licensesFound,
+			});
 			yield* timed(
 				group.id,
 				"loose",
@@ -752,6 +759,8 @@ export const buildTargetGroups: (
 					...(Object.keys(looseDeps).length > 0 ? { deps: looseDeps } : {}),
 					...(hasCjs ? { cjsDefault: true } : {}),
 					plugins: [
+						stampPlugin,
+						looseLicenses,
 						...(hasCjs ? [nodeBuiltinDefaultInterop(), cjsDefaultInterop()] : []),
 						...(options.extraPlugins ?? []),
 						...metricsPlugins(group.id, "loose", hasCjs),
@@ -760,9 +769,19 @@ export const buildTargetGroups: (
 			);
 		}
 
+		const groupOutDir = outDirFor(options.cwd, group.id);
+		// The notice beside the group's manifest names every package any pass inlined. A pass emits the set it has seen
+		// into its own outDir, so an outSubdir partition's packages would otherwise reach only its subdirectory's copy.
+		if (licensesFound.size > 0) {
+			yield* fs.makeDirectory(groupOutDir, { recursive: true });
+			yield* fs.writeFileString(
+				join(groupOutDir, THIRD_PARTY_LICENSES),
+				renderThirdPartyLicenses(group.name, [...licensesFound.values()]),
+			);
+		}
+
 		// Flatten public/ into the group's package root, after every pass (JS, dts, declarations,
 		// looseFiles) has written its outputs. Additive with a byte-collision guard — see copyPublicDir.
-		const groupOutDir = outDirFor(options.cwd, group.id);
 		yield* copyPublicDir(publicDir, groupOutDir);
 
 		// Copy ambient .d.ts exports into this group's pkg dir. The manifest already points at

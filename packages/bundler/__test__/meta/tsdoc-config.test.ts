@@ -1,5 +1,6 @@
 // Ported from savvy-web/systems packages/tsdown-plugins/__test__/meta/tsdoc-config.test.ts on 2026-11-06
-import { join } from "node:path";
+// memfs is POSIX on every host, so the paths it hands back are joined the POSIX way.
+import { join } from "node:path/posix";
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Effect } from "effect";
@@ -32,11 +33,14 @@ describe("writeTsdocConfig", () => {
 			assert.strictEqual(path, join(dir, "tsdoc.json"));
 			const first = handle.volume.text(path);
 			assert.isDefined(first);
-			const firstMtime = handle.volume.mtime(path);
-			// re-run with the same config; content must be byte-identical and the file never rewritten
-			yield* writeTsdocConfig(dir, { suppressWarnings: [], tagDefinitions: [] });
-			assert.strictEqual(handle.volume.text(path), first);
-			assert.strictEqual(handle.volume.mtime(path), firstMtime);
+			// Re-run over a volume holding that file whose writes die: an unchanged config must not write at all, which an
+			// mtime comparison cannot prove when both writes land in the same millisecond.
+			const unchanged = MemoryFileSystem.makeSync(
+				{ [path]: first ?? "" },
+				{ faults: { writeFileString: MemoryFileSystem.die(new Error("an unchanged tsdoc.json was rewritten")) } },
+			);
+			yield* writeTsdocConfig(dir, { suppressWarnings: [], tagDefinitions: [] }).pipe(Effect.provide(unchanged.layer));
+			assert.strictEqual(unchanged.volume.text(path), first);
 		}).pipe(Effect.provide(handle.layer));
 	});
 

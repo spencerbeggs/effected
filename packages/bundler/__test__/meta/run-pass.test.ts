@@ -1,5 +1,6 @@
 // Ported from savvy-web/systems packages/tsdown-plugins/__test__/meta/run-pass.test.ts on 2026-11-06
-import { join } from "node:path";
+// memfs is POSIX on every host, so the paths the pass derives through its `Path` are joined the POSIX way.
+import { join } from "node:path/posix";
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Effect } from "effect";

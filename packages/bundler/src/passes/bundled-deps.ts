@@ -4,18 +4,27 @@ import { Result } from "effect";
 /** A bare package name, `name` or `@scope/name`, with no subpath and no glob syntax. */
 const PACKAGE_NAME = /^(?:@[^/*?{}[\]!]+\/)?[^/@*?{}[\]!][^/*?{}[\]!]*$/;
 
+/** Any character that makes an entry a glob rather than a literal specifier. */
+const GLOB_SYNTAX = /[*?{}[\]!]/;
+
 /**
  * The patterns tsdown's `deps.alwaysBundle` is given for a `bundle` list.
  *
  * @remarks
  * tsdown matches an import specifier against each entry exactly or as a glob, so `effect` alone would inline
  * `import "effect"` and leave `import "effect/Schema"` external. A bare package name here means the package: it is
- * widened to the name and every subpath under it. A glob or a subpath entry is passed as written.
+ * widened to the name and every subpath under it. A glob is widened the same way, since its `*` stops at `/` and
+ * `@effected/*` would otherwise leave `import "@effected/cli/main"` external while {@link bundlesPackage} prunes
+ * `@effected/cli`; one already ending `/**`, or a negation, is passed as written. A subpath entry is passed as written.
  *
  * @internal
  */
 export const bundlePatterns = (entries: ReadonlyArray<string>): ReadonlyArray<string> =>
-	entries.flatMap((entry) => (PACKAGE_NAME.test(entry) ? [entry, `${entry}/**`] : [entry]));
+	entries.flatMap((entry) =>
+		PACKAGE_NAME.test(entry) || (GLOB_SYNTAX.test(entry) && !entry.startsWith("!") && !entry.endsWith("/**"))
+			? [entry, `${entry}/**`]
+			: [entry],
+	);
 
 /**
  * Whether a `bundle` list inlines the package `name` as a whole: an entry naming it, or a glob matching it.
