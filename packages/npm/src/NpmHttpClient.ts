@@ -54,9 +54,10 @@ export interface NpmHttpClientOptions {
  * built, and one that cannot be read fails the layer with
  * {@link NpmTransportError}, as does a proxy URL that does not parse. Paths
  * are used as written: a relative `cafile` resolves against the working
- * directory, where pnpm resolves it against the npmrc's directory. npm's
- * array settings (`ca[]`, `noproxy[]`) are not held by `NpmConfig`, so they
- * are not applied either.
+ * directory, where pnpm resolves it against the npmrc's directory. The array
+ * settings `ca[]` and `noproxy[]` are applied: every `ca[]` line is trusted
+ * (npm reads `ca` as a string or a list; pnpm collects successive `ca` lines
+ * ahead of `cafile`'s certificates).
  *
  * Node only: it needs `@effect/platform-node`, an optional peer of this
  * package. A runtime without it (Cloudflare Workers) keeps a plain fetch

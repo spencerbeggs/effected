@@ -327,6 +327,16 @@ layer(Tls.layer)("NpmHttpClient", (it) => {
 		}),
 	);
 
+	it.effect("trusts a registry through ca[] lines", () =>
+		Effect.gen(function* () {
+			const tls = yield* Tls;
+			const registry = yield* httpsRegistry();
+			const inline = tls.caPem.trim().split("\n").join("\\n");
+			const found = yield* versions(configOf(`registry=${registry.url}`, `ca[]="${inline}"`), "pkg");
+			assert.deepStrictEqual(Option.getOrUndefined(found), ["1.0.0"]);
+		}),
+	);
+
 	it.effect("strict-ssl=false accepts an untrusted certificate", () =>
 		Effect.gen(function* () {
 			const registry = yield* httpsRegistry();

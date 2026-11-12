@@ -25,8 +25,10 @@ const parseDays = (raw: string | undefined): Option.Option<number> => {
  * Not pnpm's `minimumReleaseAge`: npm counts days where pnpm counts minutes,
  * and npm's exclude list is matched with minimatch (`*` does not cross `/`)
  * where pnpm's `*` matches any run of characters. The clock is the caller's.
- * `fromConfig` reads the scalar `min-release-age-exclude=` line; array-form
- * settings (`min-release-age-exclude[]=`) are not surfaced by `NpmConfig`.
+ * `fromConfig` reads `min-release-age-exclude` in its array form
+ * (`min-release-age-exclude[]=`) or scalar form, splits every value on commas,
+ * trims, drops empties and removes duplicates, as npm does. A pattern that is
+ * not a valid glob exempts nothing, so its package stays held back.
  *
  * @public
  */
@@ -43,9 +45,15 @@ export class NpmReleaseAge extends Schema.Class<NpmReleaseAge>("NpmReleaseAge")(
 	 * @param config - The resolved npm configuration.
 	 */
 	static fromConfig(config: NpmConfig): NpmReleaseAge {
-		const exclude = Object.hasOwn(config.settings, "min-release-age-exclude")
-			? [config.settings["min-release-age-exclude"] as string]
-			: [];
+		const exclude = [
+			...new Set(
+				config
+					.list("min-release-age-exclude")
+					.flatMap((value) => value.split(","))
+					.map((value) => value.trim())
+					.filter((value) => value !== ""),
+			),
+		];
 		return NpmReleaseAge.make({
 			days: parseDays(
 				Object.hasOwn(config.settings, "min-release-age") ? config.settings["min-release-age"] : undefined,

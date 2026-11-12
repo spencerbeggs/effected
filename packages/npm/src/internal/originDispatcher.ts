@@ -180,7 +180,8 @@ const caOf = (
 	context: ConnectionContext,
 ): ReadonlyArray<string> | undefined => {
 	const transport = context.config.transport;
-	const inline = transport.ca === undefined ? undefined : expandPem(transport.ca);
+	// `ca[]=` lines and the scalar `ca` alike: npm reads `ca` as one value or a list.
+	const inline = transport.caList.length === 0 ? undefined : transport.caList.map(expandPem);
 	const file = fileOf(context.files, transport.cafile);
 	if (context.packageManager === "pnpm") {
 		const own = Option.getOrUndefined(registry);
@@ -190,10 +191,10 @@ const caOf = (
 			);
 			return list.length === 0 ? undefined : list;
 		}
-		const list = [inline, file].filter((entry): entry is string => entry !== undefined);
+		const list = [...(inline ?? []), file].filter((entry): entry is string => entry !== undefined);
 		return list.length === 0 ? undefined : list;
 	}
-	return file !== undefined ? [file] : inline !== undefined ? [inline] : undefined;
+	return file !== undefined ? [file] : inline;
 };
 
 /** How a request to `url` connects, under {@link ConnectionContext}'s rules. Pure. */

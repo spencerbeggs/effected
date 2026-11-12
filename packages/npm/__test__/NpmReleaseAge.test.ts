@@ -42,6 +42,39 @@ describe("NpmReleaseAge", () => {
 		assert.deepStrictEqual(age.exclude, ["@scope/*"]);
 	});
 
+	it("reads the array form npm documents", () => {
+		const age = NpmReleaseAge.fromConfig(
+			config("min-release-age=7", "min-release-age-exclude[]=@myorg/*", "min-release-age-exclude[]=my-internal-pkg"),
+		);
+		assert.deepStrictEqual(age.exclude, ["@myorg/*", "my-internal-pkg"]);
+	});
+
+	it("splits comma-packed values, trims, drops empties and dedupes", () => {
+		assert.deepStrictEqual(NpmReleaseAge.fromConfig(config("min-release-age-exclude=a, b,,a")).exclude, ["a", "b"]);
+		assert.deepStrictEqual(
+			NpmReleaseAge.fromConfig(config("min-release-age-exclude[]=a,b", "min-release-age-exclude[]= b ")).exclude,
+			["a", "b"],
+		);
+	});
+
+	it("a higher source shadows the whole key of a lower one", () => {
+		const sources = [{ text: "min-release-age-exclude[]=low" }, { text: "min-release-age-exclude[]=high" }];
+		const r = NpmConfig.fromSourcesResult(sources, {});
+		if (Result.isFailure(r)) throw new Error("config failed");
+		assert.deepStrictEqual(NpmReleaseAge.fromConfig(r.success).exclude, ["high"]);
+		const scalarOver = NpmConfig.fromSourcesResult(
+			[{ text: "min-release-age-exclude[]=low" }, { text: "min-release-age-exclude=top" }],
+			{},
+		);
+		if (Result.isFailure(scalarOver)) throw new Error("config failed");
+		assert.deepStrictEqual(NpmReleaseAge.fromConfig(scalarOver.success).exclude, ["top"]);
+	});
+
+	it("an invalid glob in exclude fails closed", () => {
+		const age = NpmReleaseAge.make({ days: Option.some(3), exclude: ["[z-a]"] });
+		assert.isFalse(age.admits("pkg", daysAgo(1), now));
+	});
+
 	it("admits a version older than the cutoff", () => {
 		const age = NpmReleaseAge.fromConfig(config("min-release-age=3"));
 		assert.isTrue(age.admits("left-pad", daysAgo(4), now));
