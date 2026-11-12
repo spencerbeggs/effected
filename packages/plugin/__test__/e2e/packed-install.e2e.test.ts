@@ -412,8 +412,10 @@ describe.skipIf(!RUNNABLE)("packed install (@effected/plugin)", () => {
 					const manifest = JSON.parse(yield* fs.readFileString(`${ROOT}/packages/plugin/package.json`)) as {
 						readonly version: string;
 					};
-					// The carrier holds the tool's closure inside its own files, so it packs alone.
-					assert.deepStrictEqual([...PACKED], [CARRIER]);
+					// The carrier holds the tool's closure inside its own files, so it packs alone. Planned without the workspace's
+					// links: under a dogfood loop PACKED also names each linked sibling the consumers are steered to.
+					const carrierOnly = yield* PackedInstall.closure(CARRIER, { ...RUN, workspaceOverrides: false });
+					assert.deepStrictEqual(carrierOnly, [CARRIER]);
 					const result = yield* PackedInstall.run(RUN);
 					assert.deepStrictEqual(Object.keys(result.tarballs), [...PACKED]);
 					assert.isAbove(result.consumers.length, 0);
