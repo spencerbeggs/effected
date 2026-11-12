@@ -1,3 +1,5 @@
+#:schema https://raw.githubusercontent.com/spencerbeggs/effected/main/schemas/1.0/config.json
+
 [package.build]
 bundleNodeModules = true
 # Holds the catalog literal at its PnpmConfigPlugin(...) call, which the upgrade CLI walks statically.
