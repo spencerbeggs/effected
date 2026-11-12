@@ -20,10 +20,10 @@ sources:
     resource: ../../packages/memfs/src/MemoryFileSystem.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-10T22:27:38Z
+  at: 2026-11-12T03:18:35Z
 integrity:
   generated:
-    body: 93a1529d470cc419
+    body: 972bd8ec62be7587
 ---
 
 # @effected/memfs
@@ -311,8 +311,9 @@ or `Effect`; both take `(volume, { faults?, pathStyle? })`.
 - `syncFileSystem(volume)` — `exists`, `readFile`, `readDirectory` (with
   `withFileTypes`, the same literal dirents as the promises `readdir`),
   `isDirectory`, `stat`, `lstat`, `realPath`. `realPath` is
-  `realpathSync`: the canonical path with every link resolved, throwing
-  `ENOENT`, `ENOTDIR` or `ELOOP` with `syscall: "realpath"`. With it the
+  the JS `realpathSync`: the canonical path, link targets joined
+  lexically, throwing `ENOENT`, `ENOTDIR` or `ELOOP` from the `lstat` or
+  `stat` it failed in, naming that prefix ([ledger entry 18](#adaptation-ledger)). With it the
   sync port satisfies [walker](walker.md)'s `WalkerSyncFileSystem`
   structurally, so `descendSync` runs on a memfs handle directly.
 - `promisesFileSystem(volume)` — `readdir` (with `withFileTypes`), `stat`,
@@ -343,7 +344,9 @@ Shared contract:
 - **`pathStyle: "win32"` is a spelling adapter only**, in front of the
   port and behind its faults: backslashes become slashes and a drive root
   `C:` maps onto the top-level `/C:` directory. Errors and fault handlers
-  keep the caller's spelling. The one answer that is a path, the sync
+  keep the caller's spelling, except a `realPath` error, which names the
+  failing prefix respelled (`C:\repo\absent`), as node's win32
+  `realpathSync` does. The one answer that is a path, the sync
   port's `realPath`, is respelled back (`/C:/repo` → `C:\repo`, the drive
   root → `C:\`), the drive letter cased as the caller gave it unless an
   absolute link target replaced the prefix, as node's win32 `realpath`
@@ -817,9 +820,39 @@ authoritative list.
     `ErrnoParityContract.ts` carries the engine cases against both
     implementations, and `integration/ports.int.test.ts` the port cases and
     a `realPath` oracle against the JS `realpathSync`. A `.` or `..` leaf
-    on a real directory still answers `InvalidData` where node reports
-    `EINVAL`/`EEXIST`/`ERR_FS_EISDIR` per operation. That is a separate,
-    unaddressed divergence.
+    on a real directory is [ledger entry 18](#adaptation-ledger).
+18. **Leaves that name no new entry, and `realpath`'s walk** (#1327,
+    #1328, #1339) — fenced `KIT EXTENSION (errno fidelity, …)` sites in
+    `volume.ts` and `ports.ts`, plus `internal/resolve.ts`. Every rule was
+    probed on node 26, macOS and Linux:
+    - A `.` or `..` leaf on a real directory names that directory or its
+      parent: `remove`, `rename`, `symlink`, `link` and `makeDirectory`
+      each refuse it with node's own errno (`rename` Linux `EBUSY`, macOS
+      `EINVAL`). `copy` onto one stats it, as `fs.cp` does: a file source
+      is `ERR_FS_CP_NON_DIR_TO_DIR` whatever `overwrite` says, a directory
+      source merges (with `overwrite`; without it the kept `EEXIST`
+      divergence), and a directory copied onto its own `dir/..` is
+      `ERR_FS_CP_EINVAL`, because `fs.cp` walks the destination's lexical
+      `dirname`. Onto `missing/.`, memfs answers `ENOENT`, where `fs.cp`
+      makes `missing` and then fails `EISDIR` (file) or `EEXIST`
+      (directory): a kept divergence.
+    - `rename` with the root on either side is `EBUSY` once both parents
+      resolve (macOS: `EISDIR`, or `EINVAL` for a directory onto `/`).
+      Linux checks `EXDEV` first, so a host whose temp directory is its
+      own mount answers `EXDEV`; the differential suite runs only the
+      mount-independent shapes and `RenameRoot.test.ts` the rest.
+    - `realPath`, engine and sync port alike, is node's JS `realpath` walk
+      (`internal/resolve.ts`, one implementation over any literal tree):
+      `lstat` per prefix, a PHYSICAL `stat` of each link, its target
+      joined LEXICALLY and the walk restarted. So `a -> sub/../b`, `sub` a
+      link elsewhere, answers the `b` beside `a`, and fails `ENOENT` unless
+      both that `b` and the physical target exist. A port failure names the
+      failing prefix and syscall, never the caller's path, and under
+      `pathStyle: "win32"` that prefix is respelled. The win32 half is read
+      from node 26's own `fs.realpathSync` source; no Windows host has run
+      it.
+    - Kept divergence: Linux `rm -r dir/..` empties the directory holding
+      `dir` and answers success; memfs keeps macOS's `EINVAL`.
 
 ## Superseded: opt-in `Volume`, no type widening
 

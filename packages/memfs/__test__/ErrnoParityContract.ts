@@ -397,6 +397,81 @@ const cases: ReadonlyArray<Case> = [
 		run: (fs, p) => fs.copy(p("file"), p("missing", "out")),
 		expect: { memory: fail("NotFound", "copy", "ENOENT"), node: "success" },
 	},
+	// copy onto a `.` or `..` leaf (#1339). fs.cp stats the destination, so
+	// `dir/.` IS `dir` and `dir/..` the directory holding it: a file source is a
+	// kind mismatch whatever `overwrite` says, and a directory source merges.
+	{
+		name: "copy a file onto dir/.",
+		run: (fs, p) => fs.copy(p("file"), p("dir", ".")),
+		expect: fail("Unknown", "copy", "ERR_FS_CP_NON_DIR_TO_DIR"),
+	},
+	{
+		name: "copy a file onto dir/. with overwrite",
+		run: (fs, p) => fs.copy(p("file"), p("dir", "."), { overwrite: true }),
+		expect: fail("Unknown", "copy", "ERR_FS_CP_NON_DIR_TO_DIR"),
+	},
+	{
+		name: "copy a file onto dir/..",
+		run: (fs, p) => fs.copy(p("file"), p("dir", ".."), { overwrite: true }),
+		expect: fail("Unknown", "copy", "ERR_FS_CP_NON_DIR_TO_DIR"),
+	},
+	{
+		name: "copy a directory onto dir/. with overwrite merges into dir",
+		run: (fs, p) => fs.copy(p("full"), p("dir", "."), { overwrite: true }),
+		expect: "success",
+		check: (_, fs, p) => Effect.map(fs.readFileString(p("dir", "a")), (text) => assert.strictEqual(text, "a")),
+	},
+	{
+		name: "copy a directory onto dirsym/. with overwrite merges into the link's target",
+		run: (fs, p) => fs.copy(p("full"), p("dirsym", "."), { overwrite: true }),
+		expect: "success",
+		check: (_, fs, p) => Effect.map(fs.readFileString(p("dir", "a")), (text) => assert.strictEqual(text, "a")),
+	},
+	{
+		name: "copy a directory onto dir/.. with overwrite merges into the directory holding dir",
+		run: (fs, p) => fs.copy(p("full"), p("dir", ".."), { overwrite: true }),
+		expect: "success",
+		check: (_, fs, p) => Effect.map(fs.readFileString(p("a")), (text) => assert.strictEqual(text, "a")),
+	},
+	// Known divergence, as for any existing directory: without `overwrite`,
+	// fs.cp merges into `dir/.`; memfs fails EEXIST.
+	{
+		name: "copy a directory onto dir/. without overwrite",
+		run: (fs, p) => fs.copy(p("full"), p("dir", ".")),
+		expect: { memory: fail("AlreadyExists", "copy", "EEXIST"), node: "success" },
+	},
+	{
+		name: "copy a directory onto its own full/.",
+		run: (fs, p) => fs.copy(p("full"), p("full", "."), { overwrite: true }),
+		expect: fail("Unknown", "copy", "ERR_FS_CP_EINVAL"),
+	},
+	// fs.cp walks the destination's LEXICAL parents for the source (`dirname`
+	// of `dir/..` is `dir`), so copying a directory onto its own `..` is a
+	// copy into itself even though the destination is its parent.
+	{
+		name: "copy a directory onto its own dir/..",
+		run: (fs, p) => fs.copy(p("dir"), p("dir", ".."), { overwrite: true }),
+		expect: fail("Unknown", "copy", "ERR_FS_CP_EINVAL"),
+	},
+	{
+		name: "copy a file onto file/.",
+		run: (fs, p) => fs.copy(p("file2"), p("file", ".")),
+		expect: fail("BadResource", "copy", "ENOTDIR"),
+	},
+	// Known divergence: fs.cp creates the missing `missing` (its mkdir of the
+	// destination's dirname), then fails on the leaf with EISDIR for a file and
+	// EEXIST for a directory, leaving `missing` behind; memfs creates no parent
+	// (as for any missing parent above) and fails ENOENT.
+	{
+		name: "copy a file onto missing/.",
+		run: (fs, p) => fs.copy(p("file"), p("missing", ".")),
+		expect: { memory: fail("NotFound", "copy", "ENOENT"), node: fail("BadResource", "copy", "EISDIR") },
+	},
+	{
+		name: "copy a directory onto missing/.",
+		run: (fs, p) => fs.copy(p("full"), p("missing", ".")),
+		expect: { memory: fail("NotFound", "copy", "ENOENT"), node: fail("AlreadyExists", "copy", "EEXIST") },
+	},
 
 	// open, and the file handles it returns
 	{
@@ -796,6 +871,26 @@ const cases: ReadonlyArray<Case> = [
 		run: (fs, p) => fs.rename(p("dir", "."), p("missing", "x")),
 		expect: fail("NotFound", "rename", "ENOENT"),
 	},
+	// The root has no leaf at all (#1339): Linux refuses it as it refuses a `.`
+	// leaf, EBUSY once both parents resolve; macOS says EISDIR. Only cases whose
+	// answer cannot depend on mounts run here — Linux checks EXDEV BEFORE EBUSY,
+	// so `rename("/", tmp/x)` is EXDEV when the temp directory is its own mount.
+	// The mount-dependent shapes are pinned on memfs alone, in RenameRoot.test.ts.
+	{
+		name: "rename the root onto itself",
+		run: (fs) => fs.rename("/", "/"),
+		expect: { linux: fail("Busy", "rename", "EBUSY"), darwin: fail("BadResource", "rename", "EISDIR") },
+	},
+	{
+		name: "rename the root beneath a missing directory",
+		run: (fs, p) => fs.rename("/", p("missing", "x")),
+		expect: { linux: fail("NotFound", "rename", "ENOENT"), darwin: fail("BadResource", "rename", "EISDIR") },
+	},
+	{
+		name: "rename the root beneath a file",
+		run: (fs, p) => fs.rename("/", p("file", "x")),
+		expect: { linux: fail("BadResource", "rename", "ENOTDIR"), darwin: fail("BadResource", "rename", "EISDIR") },
+	},
 	{
 		name: "symlink at dir/.",
 		run: (fs, p) => fs.symlink("t", p("dir", ".")),
@@ -866,6 +961,33 @@ const cases: ReadonlyArray<Case> = [
 			run: (fs, p) => fs.realPath(p(...segments)),
 			expect: "success",
 			check: (value, fs, p) => Effect.map(fs.realPath(p(...normalized)), (want) => assert.strictEqual(value, want)),
+		}),
+	),
+
+	// A link TARGET is folded lexically too (#1339): fs.realpath joins
+	// `sub/../b` onto the link's directory with `path.resolve`, so `..` undoes
+	// `sub` even though `sub` is itself a link to `deep/inner` — the kernel,
+	// which `readFile` uses, lands on `deep/b`. Before the join it `stat`s the
+	// link, which IS physical: the result needs both to exist.
+	...(
+		[
+			["both b files", ["b", "deep/b"], "success"],
+			["only the physical deep/b", ["deep/b"], fail("NotFound", "realPath", "ENOENT")],
+			["only the lexical b", ["b"], fail("NotFound", "realPath", "ENOENT")],
+		] as const
+	).map(
+		([label, files, outcome]): Case => ({
+			name: `realPath a -> sub/../b, sub a link, with ${label}, folds the target lexically`,
+			run: (fs, p) =>
+				Effect.gen(function* () {
+					yield* fs.makeDirectory(p("deep", "inner"), { recursive: true });
+					yield* fs.symlink("deep/inner", p("sub"));
+					yield* fs.symlink("sub/../b", p("a"));
+					for (const file of files) yield* fs.writeFileString(p(...file.split("/")), file);
+					return yield* fs.realPath(p("a"));
+				}),
+			expect: outcome,
+			check: (value, fs, p) => Effect.map(fs.realPath(p("b")), (want) => assert.strictEqual(value, want)),
 		}),
 	),
 

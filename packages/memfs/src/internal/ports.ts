@@ -1,6 +1,6 @@
 // KIT EXTENSION (ports). The read-only `node:fs` sync port and `node:fs/promises`
-// port over the literal inspection view, the path resolver they share, the
-// fault wrapper, and the synchronous-run helpers behind `makeSync`. Failure is
+// port over the literal inspection view (resolving paths through
+// `./resolve.js`), the fault wrapper, and the synchronous-run helpers behind `makeSync`. Failure is
 // a node-shaped error built by `nodeErrno` — the only channel a synchronous
 // signature has.
 
@@ -17,132 +17,7 @@ import type {
 } from "../MemoryFileSystem.js";
 import { fallbackErrnoForTag, nodeErrno } from "./errno.js";
 import { assertKnownFaultKeys } from "./faults.js";
-import { lexicallyNormalized } from "./lexical.js";
-
-// The port is defined in `stat` terms, so it FOLLOWS symbolic links — unlike
-// the literal inspection view it is built on. `MAX_LINK_HOPS` mirrors the
-// ELOOP guard a real filesystem applies; the budget is ONE counter shared by
-// the whole resolution (recursive target walks included), so a cycle spread
-// across nested link targets terminates as ELOOP.
-const MAX_LINK_HOPS = 40;
-
-type Resolved = { readonly path: string } | { readonly code: "ENOENT" | "ENOTDIR" | "ELOOP" };
-
-interface HopBudget {
-	hops: number;
-}
-
-const walk = (volume: MemoryFileSystemVolume, path: string, followFinal: boolean, budget: HopBudget): Resolved => {
-	// Resolution is per COMPONENT, not just the final one: `/links/pkg/a.json`
-	// has to follow the link at `/links/pkg` before it can see `a.json`, exactly
-	// as a real filesystem walks a path.
-	let current = "";
-	const parts = path.split("/").filter((part) => part !== "");
-	for (let i = 0; i < parts.length; i++) {
-		const part = parts[i];
-		if (part === ".") {
-			// `.` names the directory it is in, so under a non-directory it is
-			// ENOTDIR exactly as `..` is (#1284) — never the file itself.
-			const here = volume.lstat(current === "" ? "/" : current);
-			if (here !== undefined && here.kind !== "directory") return { code: "ENOTDIR" };
-			continue;
-		}
-		if (part === "..") {
-			// `..` under a non-directory is ENOTDIR, as the kernel reports it.
-			const here = volume.lstat(current === "" ? "/" : current);
-			if (here !== undefined && here.kind !== "directory") return { code: "ENOTDIR" };
-			// Applied to the RESOLVED location, so ".." after a link ascends from
-			// the target rather than from the link's own parent.
-			current = current.slice(0, Math.max(0, current.lastIndexOf("/")));
-			continue;
-		}
-		// A component under something that is not a directory is ENOTDIR, not absence.
-		const parent = volume.lstat(current === "" ? "/" : current);
-		if (parent !== undefined && parent.kind !== "directory") return { code: "ENOTDIR" };
-		let candidate = `${current}/${part}`;
-		if (i < parts.length - 1 || followFinal) {
-			for (;;) {
-				const target = volume.readLink(candidate);
-				if (target === undefined) break;
-				budget.hops += 1;
-				if (budget.hops > MAX_LINK_HOPS) return { code: "ELOOP" };
-				const resolved = walk(volume, target.startsWith("/") ? target : `${current}/${target}`, true, budget);
-				if ("code" in resolved) return resolved;
-				candidate = resolved.path;
-			}
-		}
-		if (volume.lstat(candidate) === undefined) return { code: "ENOENT" };
-		current = candidate;
-	}
-	return { path: current === "" ? "/" : current };
-};
-
-/**
- * Resolves `path` the way `stat` (or, with `followFinal: false`, `lstat`) does,
- * reporting WHY it is absent: `ENOENT`, `ENOTDIR` (a component under a
- * non-directory) or `ELOOP` (too many links).
- */
-export const resolvePath = (volume: MemoryFileSystemVolume, path: string, followFinal = true): Resolved => {
-	// A trailing slash asserts "this is a directory", as on node: the final
-	// link is followed even for `lstat`, and a resolved non-directory is
-	// ENOTDIR — never the file itself (which `walk`, dropping the empty
-	// segment, would otherwise answer).
-	const trailingSlash = path.length > 1 && path.endsWith("/");
-	const r = walk(volume, path, followFinal || trailingSlash, { hops: 0 });
-	if (trailingSlash && !("code" in r) && volume.lstat(r.path)?.kind !== "directory") return { code: "ENOTDIR" };
-	return r;
-};
-
-// KIT EXTENSION (errno fidelity, #1328). node's JS `fs.realpathSync` (the one
-// the port mirrors, never `.native`) folds the path lexically, then walks it a
-// component at a time: an `lstat` of the prefix built so far (links before it
-// already resolved), and for a link a `stat` of that same prefix before
-// `readlink`, the target joined LEXICALLY with the rest and the walk restarted
-// from the root. A failure is the `lstat` or `stat` it happened in, naming that
-// prefix — `realpath` never appears, and the path is not the caller's when a
-// link or a deeper component failed. Host-probed identical on macOS and Linux.
-type RealPath = { readonly path: string } | { readonly code: string; readonly syscall: string; readonly path: string };
-
-const realPathOf = (volume: MemoryFileSystemVolume, path: string): RealPath => {
-	let remaining = lexicallyNormalized(path)
-		.split("/")
-		.filter((part) => part !== "");
-	let resolved = "";
-	const hard = new Set<string>();
-	let restarts = 0;
-	while (remaining.length > 0) {
-		const base = `${resolved}/${remaining[0]}`;
-		remaining = remaining.slice(1);
-		if (hard.has(base)) {
-			resolved = base;
-			continue;
-		}
-		const entry = volume.lstat(base);
-		if (entry === undefined) {
-			// The prefix is link-free, so its literal kind is its real one.
-			const parent = volume.lstat(resolved === "" ? "/" : resolved);
-			const code = parent === undefined || parent.kind === "directory" ? "ENOENT" : "ENOTDIR";
-			return { code, syscall: "lstat", path: base };
-		}
-		if (entry.kind !== "symlink") {
-			hard.add(base);
-			resolved = base;
-			continue;
-		}
-		const followed = resolvePath(volume, base);
-		restarts += 1;
-		if ("code" in followed || restarts > MAX_LINK_HOPS) {
-			return { code: "code" in followed ? followed.code : "ELOOP", syscall: "stat", path: base };
-		}
-		const target = volume.readLink(base) ?? "";
-		const joined = target.startsWith("/") ? target : `${resolved}/${target}`;
-		remaining = lexicallyNormalized(`${joined}/${remaining.join("/")}`)
-			.split("/")
-			.filter((part) => part !== "");
-		resolved = "";
-	}
-	return { path: resolved === "" ? "/" : resolved };
-};
+import { realPathOf, resolvePath } from "./resolve.js";
 
 const portStats = (s: MemoryFileSystemVolumeStat): MemoryFileSystemPortStats => ({
 	isFile: () => s.kind === "file",
@@ -232,10 +107,18 @@ export const volumeToWin32 = (path: string): string => {
 // of which carries a path.
 const pathAnswers: ReadonlySet<string> = new Set(["realPath"]);
 
-const respell = (error: unknown, path: string): unknown => {
+// Every other member's error names the caller's path, in the caller's spelling.
+// A path-ANSWERING member's error names the path it failed at instead: node's
+// win32 `realpathSync` (read from node 26's own `fs.realpathSync` source) runs
+// the same walk as on POSIX over `path.resolve(p)`, so a failing `lstat` or
+// `stat` reports the backslashed PREFIX it built, a link's target included —
+// never the caller's path (#1339; #1328 is the POSIX half). The prefix is
+// respelled back like an answer.
+const respell = (error: unknown, path: string, failedAt?: (volumePath: string) => string): unknown => {
 	const e = error as { code?: unknown; syscall?: unknown; path?: unknown } | null;
 	if (e === null || typeof e !== "object" || typeof e.code !== "string" || typeof e.syscall !== "string") return error;
-	return typeof e.path === "string" ? nodeErrno(e.code, e.syscall, path) : error;
+	if (typeof e.path !== "string") return error;
+	return nodeErrno(e.code, e.syscall, failedAt === undefined ? path : failedAt(e.path));
 };
 
 export const withPathStyle = <Port extends object>(
@@ -247,20 +130,20 @@ export const withPathStyle = <Port extends object>(
 	const out: Record<string, unknown> = {};
 	for (const [name, member] of Object.entries(port)) {
 		const original = member as (path: string, ...rest: ReadonlyArray<unknown>) => unknown;
-		const answer = pathAnswers.has(name)
-			? (value: unknown) => volumeToWin32(value as string)
-			: (value: unknown) => value;
+		const answersPath = pathAnswers.has(name);
+		const answer = answersPath ? (value: unknown) => volumeToWin32(value as string) : (value: unknown) => value;
+		const failedAt = answersPath ? volumeToWin32 : undefined;
 		out[name] = async
 			? (path: string, ...rest: ReadonlyArray<unknown>) =>
 					(original(win32ToVolume(path), ...rest) as Promise<unknown>).then(answer, (error: unknown) => {
-						throw respell(error, path);
+						throw respell(error, path, failedAt);
 					})
 			: (path: string, ...rest: ReadonlyArray<unknown>) => {
 					let value: unknown;
 					try {
 						value = original(win32ToVolume(path), ...rest);
 					} catch (error) {
-						throw respell(error, path);
+						throw respell(error, path, failedAt);
 					}
 					return answer(value);
 				};

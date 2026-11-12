@@ -3,6 +3,7 @@
 ## 2026-11-12
 
 * Updated glob
+* Updated @effected/memfs
 
 ## 2026-11-11
 

@@ -11,13 +11,13 @@ import { wrapFaulty, wrapFile } from "./internal/faults.js";
 import {
 	makePromisesFileSystem,
 	makeSyncFileSystem,
-	resolvePath,
 	runMutation,
 	runNode,
 	syscallForMethod,
 	withFaults,
 	withPathStyle,
 } from "./internal/ports.js";
+import { resolvePath } from "./internal/resolve.js";
 import { applyRoot, normalizeAbsolute, seedWith } from "./internal/seed.js";
 import { makeVolumeService } from "./internal/view.js";
 import * as internal from "./internal/volume.js";
