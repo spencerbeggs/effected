@@ -17,7 +17,7 @@
 		"@types/react-dom": "catalog:effected:build",
 		"react": "catalog:effected:build",
 		"react-dom": "catalog:effected:build",
-		"rspress-plugin-api-extractor": "^0.20.3",
+		"rspress-plugin-api-extractor": "^0.20.4",
 		"rspress-plugin-mermaid": "catalog:docs"
 	}
 }
