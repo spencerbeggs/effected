@@ -59,6 +59,11 @@ interface Case {
 		fs: FileSystem.FileSystem,
 		path: (...segments: ReadonlyArray<string>) => string,
 	) => Effect.Effect<void, PlatformError.PlatformError>;
+	/** An assertion on the tree after `run`, whichever way it exited: a failure that changed nothing. */
+	readonly afterward?: (
+		fs: FileSystem.FileSystem,
+		path: (...segments: ReadonlyArray<string>) => string,
+	) => Effect.Effect<void, PlatformError.PlatformError>;
 }
 
 const fail = (tag: Failure["tag"], method: string, code?: string): Failure =>
@@ -733,7 +738,7 @@ const cases: ReadonlyArray<Case> = [
 		name: "remove full/. recursively",
 		run: (fs, p) => fs.remove(p("full", "."), { recursive: true }),
 		expect: fail("Unknown", "remove", "EINVAL"),
-		check: (_, fs, p) => Effect.map(fs.exists(p("full", "a")), (exists) => assert.isTrue(exists)),
+		afterward: (fs, p) => Effect.map(fs.exists(p("full", "a")), (exists) => assert.isTrue(exists)),
 	},
 	{
 		name: "remove empty/. recursively with force",
@@ -944,6 +949,7 @@ export const errnoSuite = (implementation: Implementation, fsLayer: Layer.Layer<
 							if (testCase.check !== undefined && Exit.isSuccess(exit)) {
 								yield* testCase.check(exit.value, fs, p);
 							}
+							if (testCase.afterward !== undefined) yield* testCase.afterward(fs, p);
 						}),
 					),
 				);

@@ -68,7 +68,7 @@ It breaks only when a kit package resolved inside the tool takes a **peer** from
    ```
 
    It reads `pnpm-lock.yaml` (or a path you pass) and exits 0 when no kit package resolves at two versions, 2 when one does. The newest copy of each package is the target; every lower one is stale.
-2. Read the edges. A **tool** parent gets an override line. A parent that is itself an `@effected/*` package gets none: it shows the stale version only because its peers resolved inside the tool, and the tool's line fixes it. An importer edge is this repository's own range on the old release; raise the range instead of overriding it.
+2. Read the edges. A **tool** parent gets an override line. A parent that is itself an `@effected/*` package gets none. When the stale child is its peer, it resolved inside the tool and the tool's line covers it. When it is a regular dependency, no printed line does: read the parent's manifest, and add a `"<parent>><child>"` override yourself if the split breaks it. An importer edge is this repository's own range on the old release; raise the range instead of overriding it.
 3. Paste the override lines the tool edges need into `pnpm-workspace.yaml`'s `overrides`, leaving out any tool whose second copy is harmless.
 4. Drop the lockfile and reinstall, as in step 2. Changing `overrides` in place can report the lockfile up to date.
 5. Check that no kit package now resolves at two versions where it broke, and run each bridged tool once (its CLI, its test run). Forcing a newer kit release onto a tool can hit that release's breaking changes.

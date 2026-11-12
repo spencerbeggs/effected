@@ -11,9 +11,10 @@
 // `parent@version -> child@version`. Only an edge whose parent is a tool (not
 // an `@effected/*` package, not an importer of this repository) becomes an
 // override line, `"<parent>><child>": "<newest>"`, ready for the `overrides`
-// block of pnpm-workspace.yaml. A kit parent shows the stale version only
-// because its peers resolved inside the tool's subtree, and the tool's line
-// fixes it. An importer edge is this repository's own range: raise it instead.
+// block of pnpm-workspace.yaml. A kit parent gets no line: when the stale
+// child is its peer, it resolved inside the tool's subtree and the tool's
+// line covers it; when it is a regular dependency, nothing printed does, so
+// inspect it. An importer edge is this repository's own range: raise it instead.
 // Each of the lockfile's documents is its own graph and is read separately.
 //
 // Exit codes: 0 nothing split, 1 the lockfile could not be read, 2 a split was
@@ -34,9 +35,12 @@ export function parseKey(key) {
 	const bare = unquote(key).replace(/\(.*$/, "");
 	const at = bare.lastIndexOf("@");
 	if (at <= 0) return null;
-	const version = bare.slice(at + 1);
+	const version = bareVersion(bare.slice(at + 1));
 	return parseVersion(version) ? { name: bare.slice(0, at), version } : null;
 }
+
+/** A resolved version without a named-registry qualifier: `work:0.34.0` is `0.34.0`. */
+const bareVersion = (version) => version.replace(/^[A-Za-z][\w-]*:(?=\d)/, "");
 
 /**
  * One document's resolution graph: every package version in `packages:`, and
@@ -50,7 +54,7 @@ function readDocument(lines) {
 	let field = null;
 	let dep = null;
 	const addEdge = (child, raw, kind) => {
-		const version = unquote(raw).replace(/\(.*$/, "");
+		const version = bareVersion(unquote(raw).replace(/\(.*$/, ""));
 		if (parent && parseVersion(version)) edges.push({ ...parent, kind, child, version });
 	};
 	for (const line of lines) {
@@ -158,7 +162,7 @@ function render(report) {
 		const from = e.kind === "importer" ? `${e.parent} (importer)` : `${e.parent}@${e.parentVersion}`;
 		const note =
 			e.kind === "kit"
-				? "  (kit parent: the tool's line fixes it)"
+				? "  (kit parent: a tool override covers it only through a peer; inspect it)"
 				: e.kind === "importer"
 					? "  (raise this repository's range)"
 					: "";

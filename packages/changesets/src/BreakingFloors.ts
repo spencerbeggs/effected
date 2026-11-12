@@ -1,8 +1,13 @@
+import type { InvalidVersionError } from "@effected/semver";
 import { SemVer } from "@effected/semver";
 import type { WorkspacePackage } from "@effected/workspaces";
 import { Result, Schema } from "effect";
 import type { BumpType } from "./BumpType.js";
+import type { ChangesetConfig } from "./ChangesetConfig.js";
+import type { MissingPackageError } from "./errors.js";
 import { WORKSPACE, cleanVersion, parseRange, satisfies } from "./internal/versions.js";
+import type { EditsPlan } from "./ReleaseEdits.js";
+import { computeEdits } from "./ReleaseEdits.js";
 
 /**
  * The one manifest field whose floor can strand a consumer. A regular or optional dependency is
@@ -65,9 +70,11 @@ const line = (version: SemVer): string =>
 const leaveLine = (version: SemVer): BumpType => (version.major > 0 ? "major" : version.minor > 0 ? "minor" : "patch");
 
 /**
- * The range `pnpm publish` writes for a declared specifier once the
- * dependency is at `newVersion`, or `undefined` when changesets rewrites it
- * (a literal range the new version leaves) or it is not a range at all.
+ * The range `pnpm publish` writes for a specifier as `changeset version`
+ * leaves it, once the dependency is at `newVersion`; `undefined` when it is
+ * not a range at all. `workspace:*` and a `workspace:` path publish the exact
+ * version, `workspace:^` and `workspace:~` the operator before it, and a
+ * `workspace:<range>` or a literal range publishes as written.
  */
 const publishedRange = (specifier: string, newVersion: string): string | undefined => {
 	if (WORKSPACE.test(specifier)) {
@@ -75,25 +82,28 @@ const publishedRange = (specifier: string, newVersion: string): string | undefin
 		if (bare === "*") return newVersion;
 		if (bare === "^" || bare === "~") return `${bare}${newVersion}`;
 		if (parseRange(bare) !== undefined) return bare;
-		// A `workspace:` path publishes the exact version, as `*` does.
 		return newVersion;
 	}
-	if (parseRange(specifier) === undefined) return undefined;
-	return satisfies(newVersion, specifier) ? specifier : `^${newVersion}`;
+	return parseRange(specifier) === undefined ? undefined : specifier;
 };
-
-/** What the computation reads of a planned release. */
-interface Release {
-	readonly name: string;
-	readonly type: "patch" | "minor" | "major" | "none";
-	readonly newVersion: string;
-}
 
 /** @internal */
 export const computeBreakingFloors = (
-	releases: ReadonlyArray<Release>,
+	plan: EditsPlan,
 	packages: ReadonlyArray<WorkspacePackage>,
-): ReadonlyArray<BreakingFloor> => {
+	config: ChangesetConfig,
+): Result.Result<ReadonlyArray<BreakingFloor>, MissingPackageError | InvalidVersionError> => {
+	// Every range as `changeset version` writes it: a range the new version
+	// leaves is rewritten, and so is a held one unless the config holds peers.
+	const edits = computeEdits(plan, { packages, config });
+	if (Result.isFailure(edits)) return Result.fail(edits.failure);
+	const written = new Map<string, string>();
+	for (const manifest of edits.success.manifests) {
+		for (const edit of manifest.ranges) {
+			if (edit.kind === "peerDependencies") written.set(`${manifest.name}\0${edit.dependency}`, edit.to);
+		}
+	}
+	const { releases } = plan;
 	const byName = new Map(packages.map((pkg) => [pkg.name, pkg]));
 	// A breaking release, keyed by name, read from each package's own version:
 	// a linked member's `oldVersion` is its group's, not what consumers hold.
@@ -117,7 +127,7 @@ export const computeBreakingFloors = (
 			for (const [dependency, specifier] of Object.entries(pkg[kind])) {
 				const moved = breaking.get(dependency);
 				if (moved === undefined) continue;
-				const range = publishedRange(specifier, moved.newVersion);
+				const range = publishedRange(written.get(`${release.name}\0${dependency}`) ?? specifier, moved.newVersion);
 				if (range === undefined || satisfies(moved.oldVersion, range)) continue;
 				causes.push(FloorCause.make({ kind, dependency, ...moved, range }));
 			}
@@ -135,5 +145,5 @@ export const computeBreakingFloors = (
 			}),
 		);
 	}
-	return floors;
+	return Result.succeed(floors);
 };

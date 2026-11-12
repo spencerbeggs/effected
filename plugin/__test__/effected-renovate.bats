@@ -376,10 +376,18 @@ STALE_FIXTURES="$PLUGIN_ROOT/__test__/fixtures/stale-edges"
 @test "stale-edges: a kit parent and an importer are reported but never overridden" {
 	run node "$SCRIPTS/stale-edges.mjs" "$STALE_FIXTURES/split.yaml"
 	[ "$status" -eq 2 ]
-	[[ "$output" == *"@effected/lockfiles@0.24.1 -> @effected/npm@0.33.0  (kit parent: the tool's line fixes it)"* ]]
+	[[ "$output" == *"@effected/lockfiles@0.24.1 -> @effected/npm@0.33.0  (kit parent: a tool override covers it only through a peer; inspect it)"* ]]
 	[[ "$output" == *". (importer) -> @effected/walker@0.27.0  (raise this repository's range)"* ]]
 	[[ "$output" != *'"@effected/lockfiles>'* ]]
 	[[ "$output" != *'".>'* ]]
+}
+
+@test "stale-edges: a named-registry qualifier is read off the version" {
+	run node --input-type=module -e '
+		import { parseKey } from "'"$SCRIPTS"'/stale-edges.mjs";
+		console.log(JSON.stringify(parseKey("@effected/npm@work:0.34.0")));'
+	[ "$status" -eq 0 ]
+	[ "$output" = '{"name":"@effected/npm","version":"0.34.0"}' ]
 }
 
 @test "stale-edges: peer suffixes are stripped from snapshot keys and dependency versions" {

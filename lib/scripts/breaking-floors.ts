@@ -18,9 +18,9 @@ import { fileURLToPath } from "node:url";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as NodePath from "@effect/platform-node/NodePath";
 import type { BreakingFloor } from "@effected/changesets";
-import { PendingChangeset, ReleasePlan } from "@effected/changesets";
+import { ChangesetConfig, PendingChangeset, PendingChangesets, PreState, ReleasePlan } from "@effected/changesets";
 import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
-import { Effect, Layer, Result } from "effect";
+import { Effect, Layer, Option, Result } from "effect";
 
 /** Every file this script owns starts with this, under `.changeset/`. */
 export const FLOOR_PREFIX = "breaking-floor-";
@@ -43,7 +43,8 @@ export function renderFloorChangeset(raised: RaisedRelease): string {
 		(cause) =>
 			`- Requires \`${cause.dependency}\` ${cause.newVersion} (\`${cause.kind}\`: \`${cause.range}\`), a breaking release from ${cause.oldVersion}. A consumer still on ${cause.oldVersion} cannot install this version beside it, so this release leaves its own version line too.`,
 	);
-	return `---\n"${raised.name}": ${raised.required}\n---\n\n## Breaking Changes\n\n${lines.join("\n")}\n`;
+	const upgrade = raised.causes.map((cause) => `\`${cause.dependency}\` to ${cause.newVersion}`).join(", ");
+	return `---\n"${raised.name}": ${raised.required}\n---\n\n## Breaking Changes\n\n${lines.join("\n")}\n\nTo upgrade, move ${upgrade} in the same install as this release.\n`;
 }
 
 const isFloorFile = (file: string): boolean => file.startsWith(FLOOR_PREFIX) && file.endsWith(".md");
@@ -54,11 +55,16 @@ const isFloorFile = (file: string): boolean => file.startsWith(FLOOR_PREFIX) && 
  */
 export const planFloors = (root: string): Promise<readonly RaisedRelease[]> =>
 	Effect.gen(function* () {
-		const context = yield* ReleasePlan.readWithContext(root);
+		// Read the parts `ReleasePlan.readWithContext` assembles, so our own files leave before any
+		// plan is made: an obsolete one naming a removed package would fail the plan, not be deleted.
 		// The base is every changeset but ours, so a raise is never its own evidence.
-		const base = context.plan.changesets.filter((changeset) => !isFloorFile(changeset.file));
-		const members = context.packages.filter((pkg) => !pkg.isRootWorkspace);
-		const packages = members.length > 0 ? members : context.packages;
+		const discovered = yield* (yield* WorkspaceDiscovery).listPackagesIn(root);
+		const config = yield* ChangesetConfig.read(root);
+		const pending = yield* PendingChangesets.read(root);
+		const pre = yield* PreState.read(root);
+		const base = pending.filter((changeset) => !isFloorFile(changeset.file));
+		const members = discovered.filter((pkg) => !pkg.isRootWorkspace);
+		const packages = members.length > 0 ? members : discovered;
 		const raised = new Map<string, RaisedRelease>();
 		// Each pass raises at least one more package or ends, so the package count bounds it.
 		for (let pass = 0; pass <= packages.length; pass++) {
@@ -73,11 +79,11 @@ export const planFloors = (root: string): Promise<readonly RaisedRelease[]> =>
 				ReleasePlan.assemble({
 					packages,
 					changesets: [...base, ...synthetic],
-					config: context.config,
-					...(context.plan.preState === undefined ? {} : { pre: context.plan.preState }),
+					config,
+					...(Option.isSome(pre) ? { pre: pre.value } : {}),
 				}),
 			);
-			const floors = ReleasePlan.breakingFloors(plan, { packages: context.packages });
+			const floors = yield* Effect.fromResult(ReleasePlan.breakingFloors(plan, { packages: discovered, config }));
 			if (floors.length === 0) {
 				return [...raised.values()].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 			}

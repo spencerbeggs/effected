@@ -121,6 +121,18 @@ describe("breaking floors", () => {
 		assert.deepStrictEqual(floorFiles(root), []);
 	});
 
+	it("deletes a floor file naming a package the branch removed", async () => {
+		const root = workspace({ a: { version: "0.1.0" } }, { "a.md": { a: "patch" } });
+		// Left behind by a raise of a package that no longer exists: planning it would fail.
+		writeFileSync(
+			join(root, ".changeset/breaking-floor-gone.md"),
+			'---\n"gone": minor\n---\n\n## Breaking Changes\n\n- Old.\n',
+		);
+
+		assert.strictEqual(await syncFloors(root), 1);
+		assert.deepStrictEqual(floorFiles(root), []);
+	});
+
 	it("rewrites a hand-edited floor file back to its derived content", async () => {
 		const root = workspace(
 			{ a: { version: "0.1.0" }, b: { version: "0.5.0", peerDependencies: { a: "workspace:^" } } },
@@ -169,5 +181,6 @@ describe("breaking floors", () => {
 			] as never,
 		});
 		assert.strictEqual(text.split("\n").filter((line) => line.startsWith("- ")).length, 2);
+		assert.include(text, "To upgrade, move `a` to 0.2.0, `b` to 0.4.0 in the same install as this release.");
 	});
 });

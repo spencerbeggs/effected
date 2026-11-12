@@ -44,10 +44,14 @@ const floors = (
 	changesets: ReadonlyArray<PendingChangeset>,
 	fields: Partial<ChangesetConfig> = {},
 ) => {
-	const result = ReleasePlan.assemble({ packages, changesets, config: config(fields) });
+	const made = config(fields);
+	const result = ReleasePlan.assemble({ packages, changesets, config: made });
 	assert.isTrue(Result.isSuccess(result), "the plan should assemble");
 	if (Result.isFailure(result)) return [];
-	return ReleasePlan.breakingFloors(result.success, { packages }).map((floor) => [
+	const crossings = ReleasePlan.breakingFloors(result.success, { packages, config: made });
+	assert.isTrue(Result.isSuccess(crossings), "the floors should compute");
+	if (Result.isFailure(crossings)) return [];
+	return crossings.success.map((floor) => [
 		floor.name,
 		floor.type,
 		floor.required,
@@ -110,13 +114,47 @@ describe("ReleasePlan.breakingFloors", () => {
 		]);
 	});
 
-	it("passes a range that still admits the old line", () => {
-		const packages = [
-			pkg("a", "0.3.0"),
-			pkg("b", "0.1.0", { peerDependencies: { a: "workspace:^0.3.0 || ^0.4.0" } }),
-			pkg("c", "0.1.0", { peerDependencies: { a: "^0.3.0 || ^0.4.0" } }),
-		];
-		assert.deepStrictEqual(floors(packages, [change("one.md", { a: "minor", b: "patch", c: "patch" })]), []);
+	const widened = () => [
+		pkg("a", "0.3.0"),
+		pkg("b", "0.1.0", { peerDependencies: { a: "workspace:^0.3.0 || ^0.4.0" } }),
+		pkg("c", "0.1.0", { peerDependencies: { a: "^0.3.0 || ^0.4.0" } }),
+	];
+
+	it("passes a widened range that onlyUpdatePeerDependentsWhenOutOfRange keeps as written", () => {
+		const extra = {
+			___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH: { onlyUpdatePeerDependentsWhenOutOfRange: true },
+		};
+		assert.deepStrictEqual(
+			floors(widened(), [change("one.md", { a: "minor", b: "patch", c: "patch" })], { extra }),
+			[],
+		);
+	});
+
+	it("reports a widened range that changeset version rewrites to the new version's caret", () => {
+		// A held peer range is rewritten unless the option is on, keeping only its leading operator.
+		assert.deepStrictEqual(floors(widened(), [change("one.md", { a: "minor", b: "patch", c: "patch" })]), [
+			["b", "patch", "minor", "peerDependencies:a@^0.4.0"],
+			["c", "patch", "minor", "peerDependencies:a@^0.4.0"],
+		]);
+	});
+
+	it("reports a workspace range the release leaves, read as rewritten", () => {
+		const packages = [pkg("a", "0.3.0"), pkg("b", "0.1.0", { peerDependencies: { a: "workspace:^0.3.0" } })];
+		assert.deepStrictEqual(floors(packages, [change("one.md", { a: "minor" })]), [
+			["b", "patch", "minor", "peerDependencies:a@^0.4.0"],
+		]);
+	});
+
+	it("reports a held lower bound that changeset version moves up to the new version", () => {
+		const packages = [pkg("a", "1.2.0"), pkg("b", "0.1.0", { peerDependencies: { a: ">=1.2.0" } })];
+		assert.deepStrictEqual(floors(packages, [change("one.md", { a: "major", b: "patch" })]), [
+			["b", "patch", "minor", "peerDependencies:a@>=2.0.0"],
+		]);
+	});
+
+	it("keeps a rewritten range's operator, so a moved upper bound still admits the old line", () => {
+		const packages = [pkg("a", "0.3.0"), pkg("b", "0.1.0", { peerDependencies: { a: "<=0.3.0" } })];
+		assert.deepStrictEqual(floors(packages, [change("one.md", { a: "minor" })]), []);
 	});
 
 	it("reports a literal range the release leaves, which changeset version rewrites", () => {

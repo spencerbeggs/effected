@@ -644,9 +644,11 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 *   releases as breaking, find the
 	 *   range R publishes on D. `workspace:^` and `workspace:~` publish the
 	 *   operator before D's new version, `workspace:*` and a `workspace:` path
-	 *   publish D's new version exactly, `workspace:<range>` publishes the
-	 *   range, and a literal range publishes as written while D's new version
-	 *   satisfies it, or `^<new version>` once `changeset version` rewrites it.
+	 *   publish D's new version exactly, and `workspace:<range>` or a literal
+	 *   range publishes as {@link ReleasePlan.edits} leaves it. That rewrites
+	 *   the range when D's new version leaves it, and also a held peer range
+	 *   unless `onlyUpdatePeerDependentsWhenOutOfRange` is on, keeping only
+	 *   the leading operator: `^0.3.0 || ^0.4.0` publishes as `^0.4.0`.
 	 * - When that range does not admit D's version now, R crosses D's floor: a
 	 *   consumer holding R's old line and D's old line resolves R's release
 	 *   and gets a D it cannot satisfy. R must leave its own line too, so R is
@@ -656,24 +658,29 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 * Only peers are read. A regular or optional dependency is installed for R
 	 * alone, so a newer D nests beside the consumer's and strands nothing; a
 	 * peer binds to the consumer's D, which may be on the old line. A
-	 * range that still admits D's old version, such as `^0.3.0 || ^0.4.0`,
-	 * crosses nothing. A version that is not one is passed over.
+	 * published range that still admits D's old version crosses nothing, so
+	 * a widened range such as `^0.3.0 || ^0.4.0` avoids a raise only where
+	 * `onlyUpdatePeerDependentsWhenOutOfRange` keeps it as written. A version
+	 * that is not one is passed over.
 	 *
 	 * `@changesets/assemble-release-plan` has no such rule: it bumps a
 	 * dependent `patch` however far the dependency moves, so a dependency's
 	 * breaking release ripples as a patch of everything that peers on it.
 	 *
+	 * Fails as {@link ReleasePlan.edits} fails, which a plan
+	 * {@link ReleasePlan.assemble} made from the same packages never does.
+	 *
 	 * @param plan - The plan to check.
-	 * @param input - The workspace's packages, as {@link ReleasePlan.edits}
-	 * takes them.
+	 * @param input - The workspace's packages and the config the plan was
+	 * made with, as {@link ReleasePlan.edits} takes them.
 	 * @returns every crossing, sorted by package name, each with its causes
 	 * sorted by dependency name; empty when the plan crosses no floor.
 	 */
 	static breakingFloors(
 		plan: ReleasePlan,
-		input: { readonly packages: ReadonlyArray<WorkspacePackage> },
-	): ReadonlyArray<BreakingFloor> {
-		return computeBreakingFloors(plan.releases, input.packages);
+		input: { readonly packages: ReadonlyArray<WorkspacePackage>; readonly config: ChangesetConfig },
+	): Result.Result<ReadonlyArray<BreakingFloor>, MissingPackageError | InvalidVersionError> {
+		return computeBreakingFloors(plan, input.packages, input.config);
 	}
 
 	/**
