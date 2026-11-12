@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-10T01:42:40Z
+  at: 2026-11-12T23:05:46Z
 integrity:
   generated:
-    body: ef835deef1fa8009
+    body: 53bbb01850ca6d38
 ---
 
 # effected
@@ -34,6 +34,8 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `yaml` | pure | port of `yaml-effect`; the largest package in the repo |
 | `package-json` | boundary | port of `package-json-effect`; SPDX validity delegated to `spdx` |
 | `npm` | boundary (was pure) | extraction from `package-json`; resolver contracts plus registry/publish services |
+| `pnpm` | pure | extraction; everything pnpm owns alone (settings, versioning block, overrides grammar, workspace file editor, lockfile document) |
+| `bun` | pure | extraction; bun's lockfile document and `BunExtension` |
 | `config-file` | boundary | port of `config-file-effect`; the four config codecs as free-standing named exports |
 | `walker` | boundary | extraction from `config-file`; upward path traversal |
 | `glob` | pure | invention; a vendored minimatch dialect as pure string→predicate schemas |
@@ -83,7 +85,7 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `mcp` | tool — no tier | invention; the `effected-mcp` stdio server with the `identity` tool and the `package_build`, `action_build`, `action_init`, `schema_build`, `schema_check` and `schema_validate` tools over `effect/ai`, `mcp-kit` and `engine` |
 | `engine` | tool — no tier | invention; the tool's shared logic that both front ends report through: `Identity.report`, and the `./schema` subpath (config loader, runner, report classes, version check, the two shipped ajv engines), and the `./build` subpath (`BuildRun`, `ActionRun` and their result classes), built on `kit`, `schemastore` and `bundler` |
 
-The roster is **53 packages**: 48 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`plugin`, `cli`, `mcp`, `engine`), which are an application and carry no library tier. `cli-kit`, `mcp-kit`, `kit`, `plugin`, `changesets`, `bundler`, `manifest`, `shell`, `s3` and `markdown-lint` are new npm names, not yet published. `cli`, `mcp` and `engine` published before as the old kit libraries, and their next release is the tool package under the same name. `pnpm-plugin-effected` is already published.
+The roster is **55 packages**: 50 libraries, one companion (`pnpm-plugin-effected`) and the four packages of the `effected` tool (`plugin`, `cli`, `mcp`, `engine`), which are an application and carry no library tier. `cli-kit`, `mcp-kit`, `kit`, `plugin`, `changesets`, `bundler`, `manifest`, `shell`, `s3` and `markdown-lint`, `pnpm` and `bun` are new npm names, not yet published. `cli`, `mcp` and `engine` published before as the old kit libraries, and their next release is the tool package under the same name. `pnpm-plugin-effected` is already published.
 
 ### Consumers
 

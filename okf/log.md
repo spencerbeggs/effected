@@ -12,6 +12,9 @@
 * Updated Package-manager support window
 * Updated workspace
 * Updated actions-storage
+* Added bun
+* Updated effected
+* Added pnpm
 
 ## 2026-11-11
 

@@ -37,6 +37,7 @@
 * [@effected/yaml](yaml.md) - Pure-tier YAML 1.2 parsing, editing, formatting and linting as Effect schemas, with a vendored engine and full per-node comment fidelity.
 * [ai-plugin](ai-plugin.md) - The "effected" agent plugin: one pluginfinity source under plugin/ — skills, four specialist agents, a SessionStart briefing and a Claude-Code-only build-diagnostics monitor — built into committed Claude Code and GitHub Copilot plugins.
 * [app](app.md) - The thin composition layer wiring xdg, config-file and store into an application control plane -- owns no domain logic, defines no service or error of its own, and re-exports nothing from the packages beneath it.
+* [bun](bun.md) - Everything bun owns alone — its lockfile document grammar and BunExtension — over the npm vocabulary it shares.
 * [config-file](config-file.md) - Composable config-file loading built around a codec × resolver × strategy pipeline, carrying all four config codecs.
 * [git](git.md) - Typed git for the kit — a read tier over a repository's state and a clearly-marked mutating tier, plus a pure git-config document model.
 * [github-actions](github-actions.md) - The GitHub Actions runner runtime — environment, inputs/outputs/state, workflow commands, storage, reporting and the sbom attestation seam.
@@ -45,6 +46,7 @@
 * [lockfiles](lockfiles.md) - Pure lockfile parsing for bun, npm, pnpm and yarn Berry, normalized into one unified model, plus pure integrity checking and a pure before/after lockfile comparison.
 * [npm](npm.md) - The dependency-resolution contracts a manifest library defines but cannot implement, the npm vocabulary shared across the kit, and the registry/tarball/publish services that replace a shelled-out npm CLI.
 * [package-json](package-json.md) - package.json parsing, editing, validation and file IO as Effect schemas — the kit's boundary-tier manifest library and its reference for pure/IO separation.
+* [pnpm](pnpm.md) - Everything pnpm owns alone — its settings catalog, versioning block, overrides grammar, workspace file editor, release-age gate, catalogs and lockfile document — over the npm vocabulary it shares.
 * [pnpm-plugin-effected](pnpm-plugin-effected.md) - The kit's companion pnpm config dependency: it serves consumers two catalogs, effected (the Effect family at its exact pins and every @effected/\* package at its next release) and effected:build (the kit's build chain and toolchain), each with a :peers twin floored to the minor for peerDependencies, and pins the Effect family graph-wide through derived overrides.
 * [runtimes](runtimes.md) - Resolves semver-compatible Node.js, Bun and Deno versions from live release feeds, with a bundled offline snapshot as fallback.
 * [sbom](sbom.md) - The software-supply-chain artifact half of attestation — a CycloneDX 1.6 SBOM, the NTIA report, SLSA provenance and Sigstore DSSE signing.

@@ -355,6 +355,25 @@ importers:
         specifier: catalog:effected:build
         version: 7.1.0-beta
 
+  packages/bun:
+    dependencies:
+      '@effected/npm':
+        specifier: workspace:^
+        version: link:../npm
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.4
+        version: 4.1.4(effect@4.1.4)(vitest@5.1.0)
+      '@types/node':
+        specifier: catalog:effected:build
+        version: 26.6.6
+      effect:
+        specifier: 4.1.4
+        version: 4.1.4
+      typescript:
+        specifier: catalog:effected:build
+        version: 7.1.0-beta
+
   packages/bundler:
     dependencies:
       '@effect/platform-node':
@@ -1496,6 +1515,25 @@ importers:
       '@types/node':
         specifier: catalog:effected:build
         version: 26.6.6
+      typescript:
+        specifier: catalog:effected:build
+        version: 7.1.0-beta
+
+  packages/pnpm:
+    dependencies:
+      '@effected/npm':
+        specifier: workspace:^
+        version: link:../npm
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.4
+        version: 4.1.4(effect@4.1.4)(vitest@5.1.0)
+      '@types/node':
+        specifier: catalog:effected:build
+        version: 26.6.6
+      effect:
+        specifier: 4.1.4
+        version: 4.1.4
       typescript:
         specifier: catalog:effected:build
         version: 7.1.0-beta

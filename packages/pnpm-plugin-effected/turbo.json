@@ -26,6 +26,7 @@
 				"../memfs/package.json",
 				"../npm/package.json",
 				"../package-json/package.json",
+				"../pnpm/package.json",
 				"../runtimes/package.json",
 				"../s3/package.json",
 				"../sbom/package.json",

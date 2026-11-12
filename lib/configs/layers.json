@@ -20,6 +20,7 @@
 			"@effected/package-json",
 			"@effected/tsconfig-json"
 		],
+		["@effected/bun", "@effected/pnpm"],
 		[
 			"@effected/github",
 			"@effected/markdown",
