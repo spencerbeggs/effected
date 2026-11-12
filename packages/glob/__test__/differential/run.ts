@@ -229,7 +229,9 @@ for (const r of results.sort((a, b) => a.index - b.index)) {
 
 const cell = (s: string): string => {
 	const short = s.length > 120 ? `${s.slice(0, 120)}… (${s.length} chars)` : s;
-	return `\`${short.replace(/\|/g, "\\|").replace(/`/g, "'")}\``;
+	// Escape backslashes before pipes, so a win32 path's `\|` cannot become `\\|`, which GFM reads as an escaped
+	// backslash followed by a live cell separator.
+	return `\`${short.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/`/g, "'")}\``;
 };
 const byKind = new Map<string, Array<Row>>();
 for (const row of rows) byKind.set(row.kind, [...(byKind.get(row.kind) ?? []), row]);
