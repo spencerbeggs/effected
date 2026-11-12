@@ -27,17 +27,23 @@ sources:
     resource: ../../packages/bundler/__test__/e2e/runtime-subdir.e2e.test.ts
   - id: bundled-e2e
     resource: ../../packages/bundler/__test__/e2e/bundled-closure.e2e.test.ts
+  - id: schema-config
+    resource: ../../packages/bundler/lib/configs/schemastore.config.ts
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-12T05:36:53Z
+  at: 2026-11-12T16:31:55Z
 integrity:
   generated:
-    body: 3163ff65975c8aba
+    body: 8e136a97bbfa8d94
 ---
 
 # effected.toml: the build config's tables, defaults and discovery
 
 `effected.toml` is what [`effected package build` and `effected action build`](build-commands.md) read. [Why it is the only build config](../decisions/effected-toml-is-the-build-config.md) is a Decision; this is what a config author can rely on. Every key has a default or may be absent, so no file at all is a complete config, and most packages need none.
+
+## JSON Schema
+
+`EffectedConfig`, the schema the strict decode uses, is published as a Draft-07 document for editors at `schemas/1.0/config.json`, with its SchemaStore catalog in `schemas/catalog.json`. Its `fileMatch` covers `effected.toml`, `**/.config/effected.toml` and `**/lib/configs/effected.toml`. `@effected/bundler` builds it from `lib/configs/schemastore.config.ts`: `pnpm schema:build` / `pnpm schema:check` at the root, and the package's `build` regenerates it first. Until the kit's 1.0 the target is `published: false`, so a contract change rewrites the document in place and is never drift; flip it to `true` at the first release that freezes the shape.[^schema-config]
 
 ## Discovery and merge
 
@@ -268,3 +274,4 @@ drop = ["dependencies"]
 [^built-condition]: `packages/bundler/src/manifest/built-condition.ts`: the condition's checks, the strip and the target check.
 [^runtime-e2e]: `packages/bundler/__test__/e2e/runtime-subdir.e2e.test.ts`: the runtime tree, the renamed manifest and plain-Node resolution through the condition, end to end.
 [^bundled-e2e]: `packages/bundler/__test__/e2e/bundled-closure.e2e.test.ts`: the per-package stamp, the pruned manifest and the licence file, end to end.
+[^schema-config]: `packages/bundler/lib/configs/schemastore.config.ts`: the hosted identity, the catalog entry and the `published: false` hold.

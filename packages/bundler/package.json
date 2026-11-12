@@ -27,6 +27,8 @@
 	},
 	"scripts": {
 		"build": "effected package build",
+		"schema:build": "effected schema build lib/configs/schemastore.config.ts",
+		"schema:check": "effected schema check lib/configs/schemastore.config.ts",
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {

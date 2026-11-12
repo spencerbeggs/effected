@@ -1,0 +1,634 @@
+{
+	"$schema": "http://json-schema.org/draft-07/schema#",
+	"$id": "https://raw.githubusercontent.com/spencerbeggs/effected/main/schemas/1.0/config.json",
+	"$ref": "#/$defs/EffectedConfigEncoded",
+	"$defs": {
+		"PackageBuildConfigEncoded": {
+			"type": "object",
+			"properties": {
+				"format": {
+					"type": "array",
+					"items": {
+						"type": "string",
+						"enum": ["esm", "cjs"]
+					}
+				},
+				"externals": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"bundle": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"bundledPackages": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"dtsExternals": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"bundleNodeModules": {
+					"type": "boolean"
+				},
+				"minify": {
+					"type": "boolean"
+				},
+				"emitDts": {
+					"type": "boolean"
+				},
+				"define": {
+					"type": "object",
+					"additionalProperties": {
+						"type": "string"
+					}
+				},
+				"plugins": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"overrides": {
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {
+							"entries": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								}
+							},
+							"format": {
+								"type": "array",
+								"items": {
+									"type": "string",
+									"enum": ["esm", "cjs"]
+								}
+							},
+							"bundle": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								}
+							},
+							"externals": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								}
+							},
+							"bundleNodeModules": {
+								"type": "boolean"
+							},
+							"bundledPackages": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								}
+							},
+							"dtsExternals": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								}
+							},
+							"platform": {
+								"type": "string",
+								"enum": ["node", "browser", "neutral"]
+							},
+							"css": {},
+							"outSubdir": {
+								"type": "string"
+							}
+						},
+						"required": ["entries"],
+						"additionalProperties": false
+					}
+				},
+				"looseFiles": {
+					"type": "object",
+					"additionalProperties": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "object",
+								"properties": {
+									"source": {
+										"type": "string"
+									},
+									"format": {
+										"type": "string",
+										"enum": ["esm", "cjs"]
+									}
+								},
+								"required": ["source"],
+								"additionalProperties": false
+							}
+						]
+					}
+				},
+				"copy": {
+					"type": "array",
+					"items": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "object",
+								"properties": {
+									"from": {
+										"anyOf": [
+											{
+												"type": "string"
+											},
+											{
+												"type": "array",
+												"items": {
+													"type": "string"
+												}
+											}
+										]
+									},
+									"to": {
+										"type": "string"
+									},
+									"flatten": {
+										"type": "boolean"
+									}
+								},
+								"required": ["from"],
+								"additionalProperties": false
+							}
+						]
+					}
+				},
+				"jsx": {
+					"type": "object",
+					"properties": {
+						"runtime": {
+							"type": "string",
+							"enum": ["automatic", "classic"]
+						},
+						"importSource": {
+							"type": "string"
+						}
+					},
+					"additionalProperties": false
+				},
+				"manifest": {
+					"type": "object",
+					"properties": {
+						"drop": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							}
+						},
+						"set": {
+							"type": "object",
+							"additionalProperties": {
+								"type": "string"
+							}
+						}
+					},
+					"additionalProperties": false
+				},
+				"meta": {
+					"anyOf": [
+						{
+							"type": "boolean",
+							"enum": [false]
+						},
+						{
+							"type": "object",
+							"properties": {
+								"localPaths": {
+									"type": "array",
+									"items": {
+										"type": "string"
+									}
+								},
+								"optimistic": {
+									"anyOf": [
+										{
+											"type": "string",
+											"enum": ["auto"]
+										},
+										{
+											"type": "boolean"
+										}
+									]
+								},
+								"tsdoc": {
+									"type": "object",
+									"properties": {
+										"suppressWarnings": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"messageId": {
+														"type": "string"
+													},
+													"pattern": {
+														"type": "string"
+													}
+												},
+												"additionalProperties": false
+											}
+										},
+										"tagDefinitions": {
+											"type": "array",
+											"items": {
+												"type": "object",
+												"properties": {
+													"tagName": {
+														"type": "string"
+													},
+													"syntaxKind": {
+														"type": "string",
+														"enum": ["block", "inline", "modifier"]
+													},
+													"allowMultiple": {
+														"type": "boolean"
+													}
+												},
+												"required": ["tagName", "syntaxKind"],
+												"additionalProperties": false
+											}
+										}
+									},
+									"additionalProperties": false
+								}
+							},
+							"additionalProperties": false
+						}
+					]
+				},
+				"exe": {
+					"anyOf": [
+						{
+							"type": "object",
+							"properties": {
+								"fileName": {
+									"type": "string"
+								},
+								"entry": {
+									"type": "string"
+								},
+								"nodeVersion": {
+									"type": "string"
+								},
+								"seaConfig": {
+									"type": "object",
+									"properties": {
+										"disableExperimentalSEAWarning": {
+											"type": "boolean"
+										},
+										"useCodeCache": {
+											"type": "boolean"
+										},
+										"useSnapshot": {
+											"type": "boolean"
+										}
+									},
+									"additionalProperties": false
+								},
+								"targets": {
+									"type": "array",
+									"items": {
+										"type": "object",
+										"properties": {
+											"platform": {
+												"type": "string",
+												"enum": ["darwin", "linux", "win"]
+											},
+											"arch": {
+												"type": "string",
+												"enum": ["arm64", "x64"]
+											}
+										},
+										"required": ["platform", "arch"],
+										"additionalProperties": false
+									}
+								}
+							},
+							"required": ["fileName"],
+							"additionalProperties": false
+						},
+						{
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"fileName": {
+										"type": "string"
+									},
+									"entry": {
+										"type": "string"
+									},
+									"nodeVersion": {
+										"type": "string"
+									},
+									"seaConfig": {
+										"type": "object",
+										"properties": {
+											"disableExperimentalSEAWarning": {
+												"type": "boolean"
+											},
+											"useCodeCache": {
+												"type": "boolean"
+											},
+											"useSnapshot": {
+												"type": "boolean"
+											}
+										},
+										"additionalProperties": false
+									},
+									"targets": {
+										"type": "array",
+										"items": {
+											"type": "object",
+											"properties": {
+												"platform": {
+													"type": "string",
+													"enum": ["darwin", "linux", "win"]
+												},
+												"arch": {
+													"type": "string",
+													"enum": ["arm64", "x64"]
+												}
+											},
+											"required": ["platform", "arch"],
+											"additionalProperties": false
+										}
+									}
+								},
+								"required": ["fileName"],
+								"additionalProperties": false
+							}
+						}
+					]
+				}
+			},
+			"additionalProperties": false
+		},
+		"BundleOpenGraphImageEncoded": {
+			"type": "object",
+			"properties": {
+				"path": {
+					"type": "string"
+				},
+				"url": {
+					"type": "string"
+				},
+				"type": {
+					"type": "string"
+				},
+				"width": {
+					"type": "integer",
+					"minimum": -9007199254740991,
+					"maximum": 9007199254740991
+				},
+				"height": {
+					"type": "integer",
+					"minimum": -9007199254740991,
+					"maximum": 9007199254740991
+				},
+				"alt": {
+					"type": "string"
+				}
+			},
+			"additionalProperties": false
+		},
+		"BundleOpenGraphConfigEncoded": {
+			"type": "object",
+			"properties": {
+				"images": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/BundleOpenGraphImageEncoded"
+					}
+				},
+				"themeColor": {
+					"type": "string"
+				},
+				"generate": {
+					"type": "string",
+					"enum": ["satori"]
+				},
+				"cacheSalt": {
+					"anyOf": [
+						{
+							"type": "string"
+						},
+						{
+							"type": "boolean",
+							"enum": [false]
+						}
+					]
+				}
+			},
+			"additionalProperties": false
+		},
+		"BundleRegistryRefEncoded": {
+			"type": "object",
+			"properties": {
+				"type": {
+					"type": "string"
+				},
+				"name": {
+					"type": "string"
+				},
+				"url": {
+					"type": "string"
+				}
+			},
+			"required": ["type", "name", "url"],
+			"additionalProperties": false
+		},
+		"BundleConfigEncoded": {
+			"type": "object",
+			"properties": {
+				"name": {
+					"type": "string"
+				},
+				"tagline": {
+					"type": "string"
+				},
+				"description": {
+					"type": "string"
+				},
+				"openGraph": {
+					"$ref": "#/$defs/BundleOpenGraphConfigEncoded"
+				},
+				"registries": {
+					"anyOf": [
+						{
+							"type": "array",
+							"items": {
+								"$ref": "#/$defs/BundleRegistryRefEncoded"
+							}
+						},
+						{
+							"type": "boolean",
+							"enum": [false]
+						}
+					]
+				}
+			},
+			"additionalProperties": false
+		},
+		"PackageConfigEncoded": {
+			"type": "object",
+			"properties": {
+				"build": {
+					"$ref": "#/$defs/PackageBuildConfigEncoded"
+				},
+				"bundle": {
+					"$ref": "#/$defs/BundleConfigEncoded"
+				}
+			},
+			"additionalProperties": false
+		},
+		"ActionEntriesEncoded": {
+			"type": "object",
+			"properties": {
+				"main": {
+					"type": "string"
+				},
+				"pre": {
+					"type": "string"
+				},
+				"post": {
+					"type": "string"
+				},
+				"workers": {
+					"type": "object",
+					"additionalProperties": {
+						"anyOf": [
+							{
+								"type": "string"
+							},
+							{
+								"type": "object",
+								"properties": {
+									"source": {
+										"type": "string"
+									},
+									"importCheck": {
+										"type": "boolean"
+									}
+								},
+								"required": ["source"],
+								"additionalProperties": false
+							}
+						]
+					}
+				}
+			},
+			"additionalProperties": false
+		},
+		"ActionBuildOptionsEncoded": {
+			"type": "object",
+			"properties": {
+				"minify": {
+					"type": "boolean"
+				},
+				"sourceMap": {
+					"type": "boolean"
+				},
+				"externals": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"ignore": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"importCheck": {
+					"type": "boolean"
+				}
+			},
+			"additionalProperties": false
+		},
+		"ActionValidationOptionsEncoded": {
+			"type": "object",
+			"properties": {
+				"requireActionYml": {
+					"type": "boolean"
+				},
+				"maxBundleSize": {
+					"type": "string"
+				},
+				"strict": {
+					"type": "boolean"
+				}
+			},
+			"additionalProperties": false
+		},
+		"ActionPersistLocalOptionsEncoded": {
+			"type": "object",
+			"properties": {
+				"enabled": {
+					"type": "boolean"
+				},
+				"path": {
+					"type": "string"
+				},
+				"actTemplate": {
+					"type": "boolean"
+				}
+			},
+			"additionalProperties": false
+		},
+		"ActionConfigEncoded": {
+			"type": "object",
+			"properties": {
+				"entries": {
+					"$ref": "#/$defs/ActionEntriesEncoded"
+				},
+				"build": {
+					"$ref": "#/$defs/ActionBuildOptionsEncoded"
+				},
+				"validation": {
+					"$ref": "#/$defs/ActionValidationOptionsEncoded"
+				},
+				"persistLocal": {
+					"$ref": "#/$defs/ActionPersistLocalOptionsEncoded"
+				}
+			},
+			"additionalProperties": false
+		},
+		"EffectedConfigEncoded": {
+			"type": "object",
+			"properties": {
+				"package": {
+					"$ref": "#/$defs/PackageConfigEncoded"
+				},
+				"action": {
+					"$ref": "#/$defs/ActionConfigEncoded"
+				}
+			},
+			"additionalProperties": false
+		}
+	}
+}
