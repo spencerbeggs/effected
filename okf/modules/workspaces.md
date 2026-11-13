@@ -31,10 +31,10 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-12T23:38:43Z
+  at: 2026-11-13T06:47:43Z
 integrity:
   generated:
-    body: c571441948487737
+    body: fc5b8620a60ba02f
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -597,7 +597,7 @@ suppressed.
 - [The runtime-edge layering decision](../decisions/kit-layering-checks-runtime-edges.md)
 - [Gotcha: ReleaseTag's strict-SemVer default](../gotchas/releasetag-strict-semver-default.md)
 - [Gotcha: the publishability detector diagnoses late](../gotchas/publishability-detector-diagnoses-late.md)
-- [Limitation: PeerCheck cannot answer yarn](../limitations/workspaces-peer-check-yarn-and-suppression-axes.md)
+- [Limitation: PeerCheck cannot answer yarn (deprecated: yarn is unsupported)](../limitations/workspaces-peer-check-yarn-and-suppression-axes.md)
 - [Limitation: under the no-op hooks layer, a hook-injected catalog bump between refs is invisible to a snapshot diff](../limitations/workspaces-snapshot-hook-catalog-bump-between-refs.md)
 
 [^package-json]: `packages/workspaces/package.json` — the `dependencies`,

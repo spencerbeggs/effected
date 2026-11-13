@@ -1,7 +1,7 @@
 ---
 type: Limitation
 title: NpmRegistry applies none of the npmrc proxy or TLS settings
-description: NpmRegistry and PackageTarball send every request through the caller's HttpClient and apply no npmrc transport setting (proxy, https-proxy, http-proxy, noproxy, no-proxy, strict-ssl, ca, cafile, cert, key, local-address, and the per-registry //host/:ca, :cafile, :cert, :certfile, :key, :keyfile); NpmConfig reads them, as npm 11 and 12 and pnpm do, through NpmConfig.transport, NpmConfig.proxyFor and NpmConfig.tlsFor so the caller can build a client that honours them, and the kit ships no proxy-aware client layer.
+description: NpmRegistry and PackageTarball send every request through the caller's HttpClient and apply no npmrc transport setting (proxy, https-proxy, http-proxy, noproxy, no-proxy, strict-ssl, ca, cafile, cert, key, local-address, and the per-registry //host/:ca, :cafile, :cert, :certfile, :key, :keyfile); NpmConfig reads them, as npm 11 and 12 and pnpm do, through NpmConfig.transport, NpmConfig.proxyFor and NpmConfig.tlsFor; on Node the @effected/npm/node subpath ships NpmHttpClient.layer, the client that applies them, and the runtime-neutral root stays free of any proxy agent.
 status: draft
 bounds: ../modules/npm.md
 tags:
@@ -21,10 +21,10 @@ sources:
     resource: https://pnpm.io/npmrc and https://pnpm.io/settings/network
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-13T05:55:29Z
+  at: 2026-11-13T06:47:43Z
 integrity:
   generated:
-    body: dcf7a66617ae1bbf
+    body: 9291b7452a93f5f6
 ---
 
 # NpmRegistry applies none of the npmrc proxy or TLS settings
@@ -36,7 +36,7 @@ integrity:
 transport setting.[^npm-registry-source] The connection belongs to the
 client, and the kit
 [requires its services in `R` and owns no backend](../conventions/require-in-r-default.md),
-so no proxy agent or CA bundle loader lives in this boundary package.
+so no proxy agent or CA bundle loader lives in the root entry. On Node, the `./node` subpath supplies one; see [the Node remedy](#the-node-remedy).
 
 ## The observable symptom
 
@@ -46,6 +46,21 @@ configured an npmrc to get through their network: a registry reachable
 only through a proxy, or signed by an internal CA, fails every read as
 `RegistryReadError` kind `"transport"`, where `npm view` succeeded. Nothing
 reports that the settings were present and unused.[^issue-1307]
+
+## The Node remedy
+
+`@effected/npm/node` ships `NpmHttpClient.layer(config, { env, packageManager })`,
+the Node `HttpClient` that applies a resolved `NpmConfig`'s transport
+settings, built on `NpmConfig.proxyFor` and `NpmConfig.tlsFor`. Provide it
+beneath `NpmRegistry` and `PackageTarball` and the reads connect the way npm
+does. A tool replacing `pnpm view` builds its config with `PnpmNpmConfig`
+and passes `packageManager: "pnpm"`. A setting it cannot apply (an
+unreadable `cafile`, `certfile` or `keyfile`, or a proxy that is not an
+`http`, `https` or `socks5` URL) fails the layer with `NpmTransportError`
+when it is built. The limitation stands for the root entry and for any
+runtime without the `./node` subpath, such as Workers, where a plain
+`HttpClient` still applies no npmrc setting. See [npm](../modules/npm.md)
+and [pnpm](../modules/pnpm.md).
 
 ## What the package does instead
 
@@ -146,9 +161,9 @@ takes network settings from `pnpm-workspace.yaml`, and declines to expand
 also the user npmrc.[^pnpm-source] A pnpm-written configuration that relies
 on any of those reads differently here.
 
-## The recipe
+## The recipe without the Node subpath
 
-The wiring belongs in the application:
+Outside Node, or where the subpath is unwanted, the wiring belongs in the application:
 
 - launch Node with `NODE_USE_ENV_PROXY=1` and `NODE_EXTRA_CA_CERTS`, and
   Node then honours the environment rather than the npmrc; or
@@ -174,23 +189,17 @@ configuration from the user and global files alone.
 
 ## What is not read
 
-The `ca[]` and `noproxy[]` array forms, which `NpmConfig` skips. A
-skipped form is dropped silently, not reported: with
-`noproxy[]=registry.corp.test`, npm bypasses the proxy for that host and
-ignores `NO_PROXY`, while `proxyFor` sees no `noproxy` setting, falls back
-to `NO_PROXY` and can answer a proxy npm would not use. Carrying the
-arrays through the existing `npmrcValues` (joined, as npm's `flatten`
-joins `noproxy`) is cheap, and is the follow-up. Also not read: the
-contents of any file named by a path setting. Paths are held as written,
-not resolved.
+The contents of any file named by a path setting are not read by
+`NpmConfig`: paths are held as written, not resolved. `NpmHttpClient.layer`
+reads them when it is built. The array forms `ca[]` and `noproxy[]` are
+read through `NpmConfig.list`.
 
 ## What the fix would take
 
-A kit-owned client layer that applied the settings would need a proxy
-dispatcher dependency, such as undici or an agent library. That
-dependency is Node-only, so it cannot live in this boundary package. It
-would be its own platform-specific package, built when a second consumer
-needs the same wiring and not before.
+A client for a runtime other than Node would need that runtime's proxy
+mechanism. The Node client lives on the `./node` subpath because its
+dispatcher is Node-only, and a Workers or browser equivalent would be its
+own entry, built when a consumer needs it.
 
 [^npm-registry-source]: `packages/npm/src/NpmRegistry.ts` — the class
     remarks name the gap and the recipe.

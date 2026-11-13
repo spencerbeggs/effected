@@ -18,6 +18,7 @@
 * Updated Yarn carries no resolved peer edges
 * Updated effected
 * Updated npm and bun rows never populate unresolvedEdges
+* Updated @effected/workspaces: monorepo tooling
 
 ## 2026-11-12
 
