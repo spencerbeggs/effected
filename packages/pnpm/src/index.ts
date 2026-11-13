@@ -5,7 +5,8 @@
  * `pnpm config get` reports, merged in pnpm's precedence) and
  * {@link PnpmMatcher} (the package-name pattern lists pnpm reads through
  * `@pnpm/matcher`), {@link OverrideKey} (the `overrides` selector grammar),
- * {@link PeerDependencyRules} (the `peerDependencyRules` block), and the native `pnpm-lock.yaml` documents:
+ * {@link PeerDependencyRules} (the `peerDependencyRules` block),
+ * {@link PnpmWorkspaceFile} (the `pnpm-workspace.yaml` editor), and the native `pnpm-lock.yaml` documents:
  * {@link PnpmLockDocument} (the lockfile document), {@link PnpmEnvDocument}
  * (the env preamble ahead of it) and {@link PnpmExtension} (the lockfile
  * header pnpm alone records).
@@ -27,5 +28,6 @@ export {
 	type PnpmSettingsSource,
 	type PnpmSettingsSources,
 } from "./PnpmSettings.js";
+export { PnpmWorkspaceFile, PnpmWorkspaceFileError } from "./PnpmWorkspaceFile.js";
 export { PartialReleaseAgeGate, ReleaseAgeGate } from "./ReleaseAgeGate.js";
 export { Epic, VersioningConfig } from "./VersioningConfig.js";

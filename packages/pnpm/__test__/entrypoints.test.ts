@@ -76,6 +76,8 @@ describe("@effected/pnpm root entry", () => {
 			"PnpmMatcher",
 			"PnpmSettings",
 			"PnpmSettingsError",
+			"PnpmWorkspaceFile",
+			"PnpmWorkspaceFileError",
 			"ReleaseAgeGate",
 			"VersioningConfig",
 		]);

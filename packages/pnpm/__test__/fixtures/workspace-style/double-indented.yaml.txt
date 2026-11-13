@@ -1,0 +1,11 @@
+# Repo workspace — hand-maintained.
+packages:
+  - "package"
+  - "examples/*"
+catalogs:
+  effected:
+    "@effect/ai-anthropic": ~4.1.0 # pinned with the kit
+    "effect": ~4.1.0
+minimumReleaseAgeExclude:
+  - "@effect/*"
+  - "@effect/tsgo-*"

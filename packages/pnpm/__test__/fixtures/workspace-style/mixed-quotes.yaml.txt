@@ -1,0 +1,7 @@
+packages:
+  - "package"
+  - "examples/*"
+  - 'docs'
+catalogs:
+  effected:
+    "effect": ~4.1.0

@@ -1,7 +1,7 @@
 ---
 type: Module
 title: pnpm
-description: Everything pnpm owns alone — its effective settings (PnpmSettings), the pnpm 12 settings catalog on the ./settings subpath (PnpmSettingsCatalog with entries and read), release-age gate (ReleaseAgeGate), package-name pattern lists (PnpmMatcher), versioning block, overrides grammar, pnpm-lock.yaml documents (PnpmLockDocument, PnpmEnvDocument, PnpmExtension) and, still to move in, its workspace file editor — over the npm vocabulary it shares.
+description: Everything pnpm owns alone — its effective settings (PnpmSettings), the pnpm 12 settings catalog on the ./settings subpath (PnpmSettingsCatalog with entries and read), release-age gate (ReleaseAgeGate), package-name pattern lists (PnpmMatcher), versioning block, overrides grammar, pnpm-lock.yaml documents (PnpmLockDocument, PnpmEnvDocument, PnpmExtension) and its pnpm-workspace.yaml editor (PnpmWorkspaceFile) — over the npm vocabulary it shares.
 status: draft
 kind: package
 resource: ../../packages/pnpm
@@ -9,7 +9,7 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-13T01:42:44Z
+  at: 2026-11-13T01:49:38Z
 sources:
   - id: package-manager-model-design
     resource: ../../docs/superpowers/specs/2026-11-12-package-manager-model-design.md
@@ -29,7 +29,7 @@ sources:
     resource: ../../packages/pnpm/__test__/fixtures/pnpm-12.20.0-settings.README.md
 integrity:
   generated:
-    body: de26a073e1410739
+    body: 5732fec2f702335d
 ---
 
 # pnpm
@@ -150,6 +150,8 @@ config-dependency hooks, with no environment or global layer.
 
 ## The `/settings` subpath
 
+**`PnpmWorkspaceFile`** is the `pnpm-workspace.yaml` editor, ported from rolldown-pnpm-config on `@effected/yaml`. It is a `Schema.Class` of `source` (the text) and `value` (the mapping; empty for empty text or a non-mapping document). `parseResult` is the sync primitive and `parse` the spanned Effect form; malformed YAML fails `PnpmWorkspaceFileError` (reason `invalid-yaml`, the YAML error in `cause`). `write(next)` re-edits the text as path-targeted edits: a changed scalar is spliced keeping its quotes and trailing comment, a primitive list gains or loses only changed items, new keys append, inserted content takes the style `inferStyle` reads off the file (indent, indented sequences, quote character, quoting by choice), CRLF is kept, and an edit that does not parse back to exactly `next` (anchors, merge keys, colliding keys), a non-mapping source or a multi-document one is re-rendered whole in the inferred style. Canonical order is alphabetical by code unit with primitive lists sorted, derived in the module and applying only to written-from-scratch content and inserted lists; an author's key order stands. `findWorkspaceFile` is not ported: discovery is `workspaces`' job. It is on the root entry and never imports the settings catalog.
+
 The settings catalog is one large object a bundler cannot tree-shake, so it ships from the `@effected/pnpm/settings` subpath and the root entry never reaches it. `__test__/entrypoints.test.ts` pins that over the source import graph and the built `index.js` graph, treating any `@effected/pnpm/<subpath>` self-import as reaching the catalog, with positive controls from the settings entry and a mutation control. A consumer that wants only the overrides grammar or the lockfile document does not pay for the catalog; `lockfiles` and `changesets` must not reach the subpath unless they use it. The subpath may import the root, and does, through the package's own name, so its declarations name `PnpmSettings`, `PeerDependencyRules` and `VersioningConfig` from `@effected/pnpm` instead of carrying copies: `effected.toml` keeps `@effected/pnpm` external in the declarations and suppresses `ae-forgotten-export` for `entry point settings.d.ts` only, and `__test__/settings/declarations.test.ts` pins the built `settings.d.ts` to the exported surface so the suppression cannot hide a leaked local.
 
 What it exports:[^settings-catalog-ts]
@@ -166,7 +168,7 @@ The corrections over rolldown-pnpm-config's former descriptors, each pinned by `
 
 ## Current state
 
-The root entry exports `PnpmSettings`, `PnpmSettingsError`, `ReleaseAgeGate`, `PartialReleaseAgeGate`, `PnpmMatcher`, `OverrideKey`, `OverrideKeyError`, `PeerDependencyRules`, `VersioningConfig`, `Epic`, `PnpmLockDocument`, `PnpmEnvDocument` and `PnpmExtension`, pinned by `__test__/entrypoints.test.ts`; the `./settings` subpath exports the catalog above. The workspace file editor still moves in from rolldown-pnpm-config.
+The root entry exports `PnpmSettings`, `PnpmSettingsError`, `ReleaseAgeGate`, `PartialReleaseAgeGate`, `PnpmMatcher`, `OverrideKey`, `OverrideKeyError`, `PeerDependencyRules`, `VersioningConfig`, `Epic`, `PnpmWorkspaceFile`, `PnpmWorkspaceFileError`, `PnpmLockDocument`, `PnpmEnvDocument` and `PnpmExtension`, pinned by `__test__/entrypoints.test.ts`; the `./settings` subpath exports the catalog above.
 
 The `PnpmEnvLockfile` readers, `ConfigDependencyLock` and `PackageManagerLock` did not move here, though the design spec lists `PnpmEnvLockfile` among the manager-owned types. This is a ruled deviation: the readers fail with `lockfiles`' own `LockfileParseError | LockfileFramingError`, which makes them part of the reading layer, so they stay in [lockfiles](lockfiles.md) over the `PnpmEnvDocument` schema this package owns.
 
