@@ -1,0 +1,6 @@
+Pending change intents:
+  .changeset/calm-cats.md
+
+Release plan:
+  @p/a: 1.0.0 → 1.1.0-alpha.0 (minor, via intent)
+  @p/b: 0.1.0 → 0.1.1 (patch, via intent)

@@ -1,0 +1,10 @@
+{
+	"pnpmVersion": "12.20.0",
+	"case": "lane-graduation-no-intent",
+	"outcome": "applied",
+	"releases": [],
+	"ledgerFile": null,
+	"statusFile": "status.txt",
+	"statusUnparsed": [],
+	"errors": []
+}

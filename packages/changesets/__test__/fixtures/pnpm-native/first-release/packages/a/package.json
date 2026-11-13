@@ -1,0 +1,8 @@
+{
+	"name": "@p/a",
+	"version": "1.0.0",
+	"private": false,
+	"publishConfig": {
+		"access": "public"
+	}
+}

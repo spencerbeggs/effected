@@ -1,0 +1,6 @@
+Pending change intents:
+  .changeset/fix.md
+
+Release plan:
+  @p/a: 1.0.0 → 2.0.0 (major, via intent)
+  @p/b: 1.0.0 → 1.0.1 (patch, via dependencies)

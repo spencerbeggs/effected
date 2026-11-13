@@ -1,0 +1,4 @@
+"@p/a@1.3.0":
+  dir: packages/a
+  intents:
+    - lockstep

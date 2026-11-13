@@ -1,0 +1,6 @@
+Pending change intents:
+  .changeset/lead-major.md
+
+Release plan:
+  @p/app: 1.0.0 → 2.0.0 (major, via intent)
+  @p/lib: 150.2.0 → 200.0.0 (major, via epic)

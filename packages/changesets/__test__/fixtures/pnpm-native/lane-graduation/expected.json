@@ -1,0 +1,20 @@
+{
+	"pnpmVersion": "12.20.0",
+	"case": "lane-graduation",
+	"outcome": "applied",
+	"releases": [
+		{
+			"name": "@p/a",
+			"currentVersion": "3.0.0-alpha.0",
+			"newVersion": "3.0.0",
+			"bump": "major",
+			"causes": [
+				"intent"
+			]
+		}
+	],
+	"ledgerFile": "ledger.after.yaml",
+	"statusFile": "status.txt",
+	"statusUnparsed": [],
+	"errors": []
+}

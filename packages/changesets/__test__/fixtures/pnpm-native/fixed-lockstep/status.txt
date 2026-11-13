@@ -1,0 +1,6 @@
+Pending change intents:
+  .changeset/lockstep.md
+
+Release plan:
+  @p/a: 1.2.0 → 1.3.0 (minor, via fixed+intent)
+  @p/b: 1.0.0 → 1.3.0 (minor, via fixed)

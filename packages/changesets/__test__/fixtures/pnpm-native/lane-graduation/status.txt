@@ -1,0 +1,5 @@
+Pending change intents:
+  .changeset/big-bang.md
+
+Release plan:
+  @p/a: 3.0.0-alpha.0 → 3.0.0 (major, via intent)

@@ -1,0 +1,4 @@
+"@p/a@2.0.0":
+  dir: packages/a
+  intents:
+    - fix
