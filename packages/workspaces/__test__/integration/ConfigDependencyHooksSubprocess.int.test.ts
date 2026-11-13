@@ -20,6 +20,7 @@ import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as NodePath from "@effect/platform-node/NodePath";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { CatalogAssemblyError } from "@effected/npm";
+import { PeerDependencyRules } from "@effected/pnpm";
 import { Effect, Layer } from "effect";
 import { ConfigDependencyHooks, WorkspaceCatalogs, Workspaces } from "../../src/index.js";
 import type { Tree } from "../fixtures.js";
@@ -199,7 +200,7 @@ describe("ConfigDependencyHooks.layerSubprocess — a malformed peer-rules axis"
 				root,
 				{ [PEER_RULES_GARBAGE_DEP_NAME]: "1.0.0", [PEER_RULES_DEP_NAME]: "1.0.0" },
 				SEED,
-				{ allowedVersions: { "seeded>peer": "1.0.0" }, ignoreMissing: [], allowAny: [] },
+				PeerDependencyRules.make({ allowedVersions: { "seeded>peer": "1.0.0" }, ignoreMissing: [], allowAny: [] }),
 			);
 			assert.deepStrictEqual(result.peerDependencyRules.allowedVersions, {
 				"seeded>peer": "1.0.0",
@@ -235,7 +236,7 @@ describe("ConfigDependencyHooks.layerSubprocess — pnpm 11 loader order and ski
 			assert.deepStrictEqual(result, {
 				catalogs: SEED,
 				releaseAge: {},
-				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+				peerDependencyRules: PeerDependencyRules.make({ allowedVersions: {}, ignoreMissing: [], allowAny: [] }),
 				// Resolved in the parent (so recorded) even though nothing was spawned.
 				replays: { [NEITHER_DEP_NAME]: { version: "1.0.0", source: "installed" } },
 			});

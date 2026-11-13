@@ -6,6 +6,7 @@ import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { ScriptedSpawner } from "@effected/commands";
 import { Git } from "@effected/git";
 import { CatalogAssemblyError } from "@effected/npm";
+import { PeerDependencyRules } from "@effected/pnpm";
 import { Effect, Layer, Option } from "effect";
 import {
 	CatalogSet,
@@ -174,7 +175,7 @@ describe("ConfigDependencyHooks.layerLive — pnpm 11 .mjs pnpmfile and load dis
 			assert.deepStrictEqual(result, {
 				catalogs: SEED,
 				releaseAge: {},
-				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+				peerDependencyRules: PeerDependencyRules.make({ allowedVersions: {}, ignoreMissing: [], allowAny: [] }),
 				// Resolved (so recorded), contributed nothing.
 				replays: { [NEITHER_DEP_NAME]: { version: "1.0.0", source: "installed" } },
 			});
@@ -220,7 +221,7 @@ describe("ConfigDependencyHooks.layerLive — rejects a traversal name before im
 			assert.deepStrictEqual(result, {
 				catalogs: SEED,
 				releaseAge: {},
-				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+				peerDependencyRules: PeerDependencyRules.make({ allowedVersions: {}, ignoreMissing: [], allowAny: [] }),
 				replays: { "@scope/pkg": { version: "1.0.0", source: "installed" } },
 			});
 		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),
@@ -375,7 +376,7 @@ describe("ConfigDependencyHooks.layerNoop — provably never loads the pnpmfile"
 			assert.deepStrictEqual(result, {
 				catalogs: SEED,
 				releaseAge: {},
-				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+				peerDependencyRules: PeerDependencyRules.make({ allowedVersions: {}, ignoreMissing: [], allowAny: [] }),
 				replays: {},
 			});
 			assert.isFalse(existsSync(markerPath));
@@ -519,12 +520,12 @@ describe("WorkspaceCatalogs.peerDependencyRules — the injected rules reach the
 
 			// The hook's contribution — the assertion that fails if the call site
 			// stops reading `injection.peerDependencyRules`, and only then.
-			assert.strictEqual(rules.allowedVersions["hooked-parent>hooked-peer"], "^9.0.0");
+			assert.strictEqual(rules.allowedVersions?.["hooked-parent>hooked-peer"], "^9.0.0");
 			// And the seeded half survives the replay, which is why seeding works.
-			assert.strictEqual(rules.allowedVersions["inline-parent@1.2.3>inline-peer"], "^1.0.0");
+			assert.strictEqual(rules.allowedVersions?.["inline-parent@1.2.3>inline-peer"], "^1.0.0");
 			// Both key spellings coexist, unversioned from the plugin and versioned
 			// from the file.
-			assert.strictEqual(Object.keys(rules.allowedVersions).length, 2);
+			assert.strictEqual(Object.keys(rules.allowedVersions ?? {}).length, 2);
 		}).pipe(Effect.provide(appLayer));
 	});
 

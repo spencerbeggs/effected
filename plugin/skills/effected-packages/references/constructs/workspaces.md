@@ -54,7 +54,6 @@
 | `LockfileReaderOptions` | Interface | Options for the `LockfileReader` layer. | |
 | `LockfileReaderShape` | Interface | The `LockfileReader` service shape. | |
 | `NoEntriesError` | Class | The entries list named no file to start from, so a walk would prove nothing. | from `@effected/workspaces/testing` — reachability called with an empty entry list |
-| `NoPeerDependencyRules` | Variable | The empty `PeerDependencyRules`: every axis present and empty. | empty peer-dependency suppression rules, assert a workspace declares no peerDependencyRules |
 | `Offence` | Class | One place a source file breaks a `BoundaryRule`. | from `@effected/workspaces/testing` — one boundary violation with file line column and rule |
 | `OffenceRule` | TypeAlias | The rule an `Offence` names: every string `BoundaryRule`, plus `"forbidImports"` for any `{ forbidImports }` rule, `"forbidTokens"` for any `{ forbidTokens }` rule and `"forbidImportedNames"` for any `{ forbidImportedNames }` rule and `"promiseInExclusive"` for any `{ promiseInExclusive }` rule. These are the keys of `ScanOptions.allowRules`. | from `@effected/workspaces/testing` |
 | `PackSource` | TypeAlias | Where each closure package is packed from. | from `@effected/workspaces/testing` |
@@ -78,7 +77,6 @@
 | `PackedInstallResult` | Class | What a packed install produced. | from `@effected/workspaces/testing` — installed consumers, unavailable managers, packed tarball paths |
 | `PeerCheck` | Class | The result of checking a lockfile for unsatisfied peer dependencies. | find unsatisfied peer dependencies in a lockfile, replicate pnpm peers check, peer dependency audit |
 | `PeerCheckOptions` | Interface | Options for `PeerCheck.run`. | |
-| `PeerDependencyRules` | Interface | pnpm's `peerDependencyRules` block — the suppression policy pnpm applies **after** computing peer violations, in pnpm's own shape. | |
 | `PeerParent` | Class | One link in the chain from an importer to the package that declared an unsatisfied peer. | one link from an importer to a package declaring an unmet peer |
 | `PromiseInExclusiveOptions` | Interface | The options of a `{ promiseInExclusive }` rule. | from `@effected/workspaces/testing` |
 | `PublishConfig` | Class | The `publishConfig` fields workspace tooling reads. | typed publishConfig fields, registry access directory and dist-tag for publishing |

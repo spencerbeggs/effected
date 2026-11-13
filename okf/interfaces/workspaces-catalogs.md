@@ -25,10 +25,10 @@ sources:
     resource: ../../packages/workspaces/src/internal/configDependencySpecGrammar.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-12T23:38:43Z
+  at: 2026-11-13T00:43:17Z
 integrity:
   generated:
-    body: 9fe075043815a8bb
+    body: 286fbd4bbdc921d4
 ---
 
 # @effected/workspaces catalogs and the config-dependency seam
@@ -80,7 +80,7 @@ the hook replay — which is the input
 [`PeerCheck`](workspaces-peer-check.md) needs to reproduce pnpm's
 suppression. It is a sibling method rather than a second assembly pass,
 which is what keeps config-dependency code running exactly once; an absent
-block yields `NoPeerDependencyRules`, an assertion rather than a gap. That
+block yields `PeerDependencyRules.empty` (`@effected/pnpm`), an assertion rather than a gap. That
 call-site read is pinned by an integration test rather than a seam unit
 test, because computing the rules inside the replay and then dropping them
 at the call site would compile, pass every seam test, and return an empty
@@ -307,8 +307,7 @@ assembly errors.
     `CatalogSet`, `WorkspaceCatalogs`, `ImporterVersions`,
     `CatalogAssemblyFailure`.
 [^config-dependency-hooks-ts]: `packages/workspaces/src/ConfigDependencyHooks.ts` —
-    the contract, `HookInjection`, `PeerDependencyRules` /
-    `NoPeerDependencyRules`, `layerNoop` / `layerLive` / `layerSubprocess` /
+    the contract, `HookInjection`, `layerNoop` / `layerLive` / `layerSubprocess` /
     `layerFrom`.
 [^config-dependency-resolution-ts]: `packages/workspaces/src/internal/configDependencyResolution.ts` —
     `resolvePnpmfiles`, `lookupPnpmfiles`, the store-discovery rungs and

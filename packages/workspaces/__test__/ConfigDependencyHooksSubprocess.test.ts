@@ -21,6 +21,7 @@ import { pathToFileURL } from "node:url";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { ScriptedSpawner } from "@effected/commands";
 import { CatalogAssemblyError } from "@effected/npm";
+import { PeerDependencyRules } from "@effected/pnpm";
 import { Effect, Fiber, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import { ConfigDependencyHooks } from "../src/index.js";
@@ -70,7 +71,7 @@ describe("ConfigDependencyHooks.layerSubprocess — no-spawn fast paths", () => 
 			assert.deepStrictEqual(result, {
 				catalogs: SEED,
 				releaseAge: {},
-				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+				peerDependencyRules: PeerDependencyRules.make({ allowedVersions: {}, ignoreMissing: [], allowAny: [] }),
 				replays: {},
 			});
 			// The discriminating half: nothing was spawned to produce that answer.
@@ -155,14 +156,22 @@ describe("ConfigDependencyHooks.layerSubprocess — the argv contract", () => {
 		const { spawner, layer } = harness(() => ({ stdout: emitted({ ok: true, config: {} }) }));
 		return Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
-			const rules = { allowedVersions: { "a>b": "1.2.3" }, ignoreMissing: ["c"], allowAny: [] };
+			const rules = PeerDependencyRules.make({
+				allowedVersions: { "a>b": "1.2.3" },
+				ignoreMissing: ["c"],
+				allowAny: [],
+			});
 			yield* hooks.inject(ROOT, { "dep-a": "1.0.0" }, SEED, rules);
 			const spawn = spawner.spawns[0];
 			assert.isDefined(spawn);
 			// Seeded, not merged by us: the workspace file's rules go INTO the
 			// threaded config so the hooks merge onto them, exactly as pnpm seeds
 			// its own config.
-			assert.deepStrictEqual(JSON.parse(strArgs(spawn)[4] ?? ""), rules);
+			assert.deepStrictEqual(JSON.parse(strArgs(spawn)[4] ?? ""), {
+				allowedVersions: { "a>b": "1.2.3" },
+				ignoreMissing: ["c"],
+				allowAny: [],
+			});
 			assert.isFalse(strArgs(spawn)[2]?.includes("1.2.3"));
 		}).pipe(Effect.provide(layer));
 	});
@@ -296,26 +305,34 @@ describe("ConfigDependencyHooks.layerSubprocess — result folding in the parent
 			stdout: emitted({
 				ok: true,
 				config: {
-					peerDependencyRules: {
+					peerDependencyRules: PeerDependencyRules.make({
 						allowedVersions: { "seeded>peer": "1.0.0", "hooked>peer": "2.0.0" },
 						ignoreMissing: ["from-hook"],
 						allowAny: [],
-					},
+					}),
 				},
 			}),
 		}));
 		return Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
-			const result = yield* hooks.inject(ROOT, { dep: "1.0.0" }, SEED, {
-				allowedVersions: { "seeded>peer": "1.0.0" },
-				ignoreMissing: [],
-				allowAny: [],
-			});
-			assert.deepStrictEqual(result.peerDependencyRules, {
-				allowedVersions: { "seeded>peer": "1.0.0", "hooked>peer": "2.0.0" },
-				ignoreMissing: ["from-hook"],
-				allowAny: [],
-			});
+			const result = yield* hooks.inject(
+				ROOT,
+				{ dep: "1.0.0" },
+				SEED,
+				PeerDependencyRules.make({
+					allowedVersions: { "seeded>peer": "1.0.0" },
+					ignoreMissing: [],
+					allowAny: [],
+				}),
+			);
+			assert.deepStrictEqual(
+				result.peerDependencyRules,
+				PeerDependencyRules.make({
+					allowedVersions: { "seeded>peer": "1.0.0", "hooked>peer": "2.0.0" },
+					ignoreMissing: ["from-hook"],
+					allowAny: [],
+				}),
+			);
 		}).pipe(Effect.provide(layer));
 	});
 
@@ -330,11 +347,16 @@ describe("ConfigDependencyHooks.layerSubprocess — result folding in the parent
 		}));
 		return Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
-			const result = yield* hooks.inject(ROOT, { dep: "1.0.0" }, SEED, {
-				allowedVersions: { "seeded>peer": "1.0.0" },
-				ignoreMissing: [],
-				allowAny: [],
-			});
+			const result = yield* hooks.inject(
+				ROOT,
+				{ dep: "1.0.0" },
+				SEED,
+				PeerDependencyRules.make({
+					allowedVersions: { "seeded>peer": "1.0.0" },
+					ignoreMissing: [],
+					allowAny: [],
+				}),
+			);
 			assert.deepStrictEqual(result.peerDependencyRules.allowedVersions, { "only>hook": "3.0.0" });
 		}).pipe(Effect.provide(layer));
 	});
@@ -350,11 +372,16 @@ describe("ConfigDependencyHooks.layerSubprocess — result folding in the parent
 		}));
 		return Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
-			const result = yield* hooks.inject(ROOT, { dep: "1.0.0" }, SEED, {
-				allowedVersions: {},
-				ignoreMissing: ["seeded-ignore"],
-				allowAny: [],
-			});
+			const result = yield* hooks.inject(
+				ROOT,
+				{ dep: "1.0.0" },
+				SEED,
+				PeerDependencyRules.make({
+					allowedVersions: {},
+					ignoreMissing: ["seeded-ignore"],
+					allowAny: [],
+				}),
+			);
 			assert.deepStrictEqual(result.peerDependencyRules.allowedVersions, { "a>b": "1.0.0" });
 			assert.deepStrictEqual(result.peerDependencyRules.ignoreMissing, ["seeded-ignore"]);
 		}).pipe(Effect.provide(layer));
@@ -374,11 +401,16 @@ describe("ConfigDependencyHooks.layerSubprocess — result folding in the parent
 		}));
 		return Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
-			const result = yield* hooks.inject(ROOT, { dep: "1.0.0" }, SEED, {
-				allowedVersions: { "seeded>peer": "1.0.0" },
-				ignoreMissing: [],
-				allowAny: [],
-			});
+			const result = yield* hooks.inject(
+				ROOT,
+				{ dep: "1.0.0" },
+				SEED,
+				PeerDependencyRules.make({
+					allowedVersions: { "seeded>peer": "1.0.0" },
+					ignoreMissing: [],
+					allowAny: [],
+				}),
+			);
 			assert.deepStrictEqual(result.peerDependencyRules.allowedVersions, { "seeded>peer": "1.0.0" });
 			// And it does not blank its siblings, exactly as the array axes do not.
 			assert.deepStrictEqual(result.peerDependencyRules.ignoreMissing, ["from-hook"]);
@@ -397,11 +429,16 @@ describe("ConfigDependencyHooks.layerSubprocess — result folding in the parent
 		}));
 		return Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
-			const result = yield* hooks.inject(ROOT, { dep: "1.0.0" }, SEED, {
-				allowedVersions: { "seeded>peer": "1.0.0" },
-				ignoreMissing: [],
-				allowAny: [],
-			});
+			const result = yield* hooks.inject(
+				ROOT,
+				{ dep: "1.0.0" },
+				SEED,
+				PeerDependencyRules.make({
+					allowedVersions: { "seeded>peer": "1.0.0" },
+					ignoreMissing: [],
+					allowAny: [],
+				}),
+			);
 			assert.deepStrictEqual(result.peerDependencyRules.allowedVersions, { "a>b": "1" });
 		}).pipe(Effect.provide(layer));
 	});
@@ -410,7 +447,7 @@ describe("ConfigDependencyHooks.layerSubprocess — result folding in the parent
 		const { layer } = harness(() => ({ stdout: emitted({ ok: true, config: { catalog: {} } }) }));
 		return Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
-			const seeded = { allowedVersions: { "a>b": "1.0.0" }, ignoreMissing: [], allowAny: [] };
+			const seeded = PeerDependencyRules.make({ allowedVersions: { "a>b": "1.0.0" }, ignoreMissing: [], allowAny: [] });
 			const result = yield* hooks.inject(ROOT, { dep: "1.0.0" }, SEED, seeded);
 			assert.deepStrictEqual(result.peerDependencyRules, seeded);
 		}).pipe(Effect.provide(layer));

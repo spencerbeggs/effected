@@ -17,6 +17,7 @@ import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as NodePath from "@effect/platform-node/NodePath";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { CatalogAssemblyError } from "@effected/npm";
+import { PeerDependencyRules } from "@effected/pnpm";
 import { ConfigProvider, Effect, Layer, Option } from "effect";
 import { ConfigDependencyHooks, WorkspaceCatalogs, Workspaces } from "../../src/index.js";
 import type { Tree } from "../fixtures.js";
@@ -326,7 +327,7 @@ const ladderCases = (label: string, hooksLayer: Layer.Layer<ConfigDependencyHook
 				assert.deepStrictEqual(result, {
 					catalogs: SEED,
 					releaseAge: {},
-					peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+					peerDependencyRules: PeerDependencyRules.make({ allowedVersions: {}, ignoreMissing: [], allowAny: [] }),
 					// Still RECORDED: it was resolved, it just contributed nothing.
 					replays: { [NO_HOOK]: { version: "2.0.0", source: "installed" } },
 				});
@@ -501,7 +502,7 @@ describe("ConfigDependencyHooks.layerFrom — replays caller-supplied files, res
 	it.effect("empty configDependencies returns the seed untouched", () =>
 		Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
-			const rules = { allowedVersions: { "a>b": "1.0.0" }, ignoreMissing: [], allowAny: [] };
+			const rules = PeerDependencyRules.make({ allowedVersions: { "a>b": "1.0.0" }, ignoreMissing: [], allowAny: [] });
 			const result = yield* hooks.inject("/nowhere", {}, SEED, rules);
 			assert.deepStrictEqual(result, { catalogs: SEED, releaseAge: {}, peerDependencyRules: rules, replays: {} });
 		}).pipe(Effect.provide(ConfigDependencyHooks.layerFrom({}))),

@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/workspaces/__test__/fixtures/peers/README.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-12T23:38:43Z
+  at: 2026-11-13T00:43:17Z
 integrity:
   generated:
-    body: bf97dd30fe48a187
+    body: 9009ae8f6112d71f
 ---
 
 # @effected/workspaces peer-dependency checking
@@ -222,7 +222,7 @@ omitting an option key says nobody looked, and the report says so.
 - **`peerRulesNotApplied`** — no suppression policy was supplied, so
   pnpm's suppression could not be replicated and some rows may be ones
   pnpm hides. Presence of the option key is the assertion, not its
-  contents: supplying `NoPeerDependencyRules` asserts the workspace has
+  contents: supplying `PeerDependencyRules.empty` (from `@effected/pnpm`) asserts the workspace has
   none, while omitting the key says nobody looked. Collapsing those two
   would tell a gate that an unchecked workspace is clean. Supplied rules
   never produce it, whatever their contents — all three axes are applied.

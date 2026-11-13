@@ -6,7 +6,10 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `Epic` | Class | An epic: a lead package whose major version defines a band, and the member packages whose majors live inside it. | pnpm versioning epic, lead package and member selectors banding member majors to the lead's major |
+| `OverrideKey` | Class | An `overrides` key, or a `peerDependencyRules.allowedVersions` key: an optional parent package and the target package, each a name with an optional version range. | parse pnpm overrides key, parent>child selector, allowedVersions key, name@range, dependency type suffix |
+| `OverrideKeyError` | Class | Why an `OverrideKey` could not be parsed. | unparseable pnpm overrides or allowedVersions selector, empty segment, invalid package name |
 | `PartialReleaseAgeGate` | Variable + TypeAlias | One source's partial contribution to a release-age gate. All fields optional. | one config source's contribution to a pnpm minimumReleaseAge gate before merging |
+| `PeerDependencyRules` | Class | pnpm's `peerDependencyRules` block: the suppression policy pnpm applies after computing peer violations. | pnpm peerDependencyRules block, ignoreMissing allowAny allowedVersions, match peer name against suppression lists |
 | `PnpmCatalogs` | TypeAlias | The pnpm `catalogs:` record shape as it appears in `pnpm-lock.yaml`: catalog name → package name → pinned version string or `{ specifier, version }` pair. | |
 | `PnpmEnvDocument` | Class | The env ("preamble") document of a `pnpm-lock.yaml`, as pnpm writes it on disk ahead of the lockfile document when a workspace declares `devEngines.packageManager` or `configDependencies`. | read the env preamble document of a pnpm-lock.yaml, configDependencies and packageManagerDependencies as written |
 | `PnpmExtension` | Class | Extension data specific to pnpm lockfiles, attached to `Lockfile.extension` when the format is `"pnpm"`. | pnpm lockfile extension data, catalogs, overrides and settings from the lockfile header |

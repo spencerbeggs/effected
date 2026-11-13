@@ -9,7 +9,7 @@ import type { Lockfile } from "@effected/lockfiles";
 import { filenameFor } from "@effected/lockfiles";
 import { CatalogAssemblyError, CatalogResolver, DependencyResolutionError } from "@effected/npm";
 import { PackageJsonFormat } from "@effected/package-json";
-import { PartialReleaseAgeGate, ReleaseAgeGate } from "@effected/pnpm";
+import { PartialReleaseAgeGate, PeerDependencyRules, ReleaseAgeGate } from "@effected/pnpm";
 import { Yaml } from "@effected/yaml";
 import {
 	Context,
@@ -30,9 +30,8 @@ import type {
 	HookInjection,
 	HookReplay,
 	HookReplayContext,
-	PeerDependencyRules,
 } from "./ConfigDependencyHooks.js";
-import { ConfigDependencyHooks, NoPeerDependencyRules } from "./ConfigDependencyHooks.js";
+import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
 import type { Catalogs } from "./internal/catalogs.js";
 import { inlineCatalogs, merge, normalize, rangeOf } from "./internal/catalogs.js";
 import { isStringRecord } from "./internal/guards.js";
@@ -697,7 +696,7 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 				// threaded config, with every replayed hook's contribution merged onto
 				// it. Read back off the injection rather than recomputed here — the
 				// point of seeding is that one object carries the answer.
-				let peerDependencyRules: PeerDependencyRules = NoPeerDependencyRules;
+				let peerDependencyRules: PeerDependencyRules = PeerDependencyRules.empty;
 				// Which version each config dependency replayed from; empty where
 				// config dependencies do not exist.
 				let hookReplays: Readonly<Record<string, HookReplay>> = {};
@@ -757,7 +756,7 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 							catalogs: fromLockfile,
 							releaseAgeGate: ReleaseAgeGate.combine(),
 							importerVersions,
-							peerDependencyRules: NoPeerDependencyRules,
+							peerDependencyRules: PeerDependencyRules.empty,
 							hookReplays: {},
 						};
 					const text = yield* fs

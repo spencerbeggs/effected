@@ -9,7 +9,7 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-13T00:15:32Z
+  at: 2026-11-13T00:43:17Z
 sources:
   - id: package-manager-model-design
     resource: ../../docs/superpowers/specs/2026-11-12-package-manager-model-design.md
@@ -25,7 +25,7 @@ sources:
     resource: ../../packages/pnpm/src/PnpmLockDocument.ts
 integrity:
   generated:
-    body: c4393a07a4fd18bb
+    body: 027232996b5b5b8b
 ---
 
 # pnpm
@@ -44,6 +44,9 @@ Boundary tier at the root: `effect` and `@effected/semver` are the peers, `@effe
 - **`ReleaseAgeGate`** and **`PartialReleaseAgeGate`**: pnpm's `minimumReleaseAge` (minutes) and `minimumReleaseAgeExclude` as pure vocabulary. `combine` is the single clamping authority (strictest age wins, excludes union); `matchesExclude` is pnpm's flat `*`-crosses-`/` matcher, deliberately not `@effected/glob`'s dialect; `filterVersions` drops too-young versions against a caller's clock.[^release-age-gate-ts] npm's own `min-release-age` (days, minimatch excludes) is a different definition and is `@effected/npm`'s `NpmReleaseAge`.
 - **`PnpmLockDocument`**, **`PnpmEnvDocument`** and **`PnpmExtension`** (with the `PnpmCatalogs` type): the native documents of a `pnpm-lock.yaml`. That file is a YAML stream of up to two documents, an env preamble then the lockfile document, and an internal splitter (`internal/stream.ts`) is the one place the framing is decided, so the two parsers cannot disagree about which document is which. `PnpmLockDocument.parse` reads the last document and fails `@effected/npm`'s `LockfileDocumentError` on, in order: syntax (with the YAML engine's first diagnostic line), framing (`unexpectedDocuments` past two documents, `noLockfileDocument` for an empty lockfile position, both with the document count), version (`lockfileVersion` below 9, gated before the shape decode in `internal/version.ts`), shape, then framing `noImporters`. `PnpmEnvDocument.parse` reads the first of two documents as an `Option`, gated and decoded the same way. `PnpmExtension` is the lockfile header (`catalogs`, `overrides`, `settings`) carried on `lockfiles`' `Lockfile.extension`. `PnpmLockDocument` reuses its field schemas, so the two cannot drift.[^pnpm-lock-document-ts]
 - **`PnpmMatcher`**: `compile(patterns)` turns a `peerDependencyRules.ignoreMissing` or `allowAny` list into a predicate with `@pnpm/matcher`'s composition rules (negation, ordered resets). Its single-pattern step is `ReleaseAgeGate.matchesExclude`, so a change to one moves the other. `@effected/workspaces`' `PeerCheck` is its consumer.[^pnpm-matcher-ts]
+
+- **`OverrideKey`** and **`OverrideKeyError`**: the selector grammar of an `overrides` key and of a `peerDependencyRules.allowedVersions` key, restated from pnpm's `parse_pkg_and_parent_selector` and `parse_wanted_dependency` (pnpm v12.20.0). `OverrideKey.parse(key)` returns a `Result`; `path` is the parent segment then the target, each a name plus an `Option` range and an optional `:prod`/`:optional`/`:peer` suffix on the target; `format()` round-trips. The parent delimiter is the first `>` not preceded by space, `|` or `@`, so a path holds one segment or two. Failures are `invalid-selector` or `empty-range-with-parent`.
+- **`PeerDependencyRules`**: the `peerDependencyRules` block as a class with every axis `optionalKey`; `empty` is the shared all-axes-present value, and `matchesIgnoreMissing`/`matchesAllowAny` delegate to `PnpmMatcher.compile`. It replaces the `PeerDependencyRules` type and `NoPeerDependencyRules` constant `@effected/workspaces` used to export.
 
 The `catalog:` and `workspace:` protocols are not here: bun reads them the way pnpm 12 does, so `CatalogResolver`, `WorkspaceResolver` and the specifier grammar stay in `@effected/npm`, and `CatalogSet` stays in `@effected/workspaces`, which assembles it from lockfiles.[^protocol-owner]
 
@@ -150,7 +153,7 @@ The settings catalog is one large object a bundler cannot tree-shake, so it ship
 
 ## Current state
 
-The root entry exports `PnpmSettings`, `PnpmSettingsError`, `ReleaseAgeGate`, `PartialReleaseAgeGate`, `PnpmMatcher`, `PnpmLockDocument`, `PnpmEnvDocument` and `PnpmExtension`, pinned by `__test__/entrypoints.test.ts`. The remaining planned contents move in from rolldown-pnpm-config.
+The root entry exports `PnpmSettings`, `PnpmSettingsError`, `ReleaseAgeGate`, `PartialReleaseAgeGate`, `PnpmMatcher`, `OverrideKey`, `OverrideKeyError`, `PeerDependencyRules`, `PnpmLockDocument`, `PnpmEnvDocument` and `PnpmExtension`, pinned by `__test__/entrypoints.test.ts`. The remaining planned contents move in from rolldown-pnpm-config.
 
 The `PnpmEnvLockfile` readers, `ConfigDependencyLock` and `PackageManagerLock` did not move here, though the design spec lists `PnpmEnvLockfile` among the manager-owned types. This is a ruled deviation: the readers fail with `lockfiles`' own `LockfileParseError | LockfileFramingError`, which makes them part of the reading layer, so they stay in [lockfiles](lockfiles.md) over the `PnpmEnvDocument` schema this package owns.
 

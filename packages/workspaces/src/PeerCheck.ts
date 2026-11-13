@@ -14,10 +14,10 @@
 // or "(" would re-introduce the format knowledge this module exists without.
 
 import type { Lockfile, ResolvedPackage } from "@effected/lockfiles";
+import type { PeerDependencyRules } from "@effected/pnpm";
 import { PnpmMatcher } from "@effected/pnpm";
 import { Range, SemVer } from "@effected/semver";
 import { Option, Result, Schema } from "effect";
-import type { PeerDependencyRules } from "./ConfigDependencyHooks.js";
 import type { ImporterRoots } from "./internal/roots.js";
 import { indexInstances, rootInstances } from "./internal/roots.js";
 import type { CatalogSet } from "./WorkspaceCatalogs.js";
@@ -91,7 +91,7 @@ export type UnverifiedReason =
  *
  * @remarks
  * **Presence of `peerDependencyRules` is the assertion; its contents are the
- * value.** Supplying `NoPeerDependencyRules` asserts the workspace has none and
+ * value.** Supplying `PeerDependencyRules.empty` asserts the workspace has none and
  * yields a verified report; omitting the key entirely says nothing was looked
  * up and always yields `"peerRulesNotApplied"`. The two are deliberately
  * different results, because a gate must be able to tell "clean" from
@@ -790,7 +790,7 @@ export class PeerCheck extends Schema.Class<PeerCheck>("PeerCheck")({
 	 */
 	static run(lockfile: Lockfile, options?: PeerCheckOptions): PeerCheck {
 		// PRESENCE of the key is the assertion, not its contents: supplying
-		// `NoPeerDependencyRules` asserts the workspace has none, while omitting
+		// `PeerDependencyRules.empty` asserts the workspace has none, while omitting
 		// the option says nothing was looked up. Collapsing the two would tell a
 		// gate that an unchecked workspace is clean.
 		const keySupplied = options !== undefined && "peerDependencyRules" in options;

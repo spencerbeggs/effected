@@ -7,6 +7,8 @@
 * Updated lockfiles
 * Updated npm
 * Updated pnpm
+* Updated @effected/workspaces catalogs and the config-dependency seam
+* Updated @effected/workspaces peer-dependency checking
 
 ## 2026-11-12
 

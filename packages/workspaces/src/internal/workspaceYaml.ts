@@ -4,9 +4,8 @@
 // map and the inline `peerDependencyRules` seed. One implementation, so the
 // two sides of a diff cannot disagree about what a ref declared.
 
+import { PeerDependencyRules } from "@effected/pnpm";
 import { Predicate } from "effect";
-import type { PeerDependencyRules } from "../ConfigDependencyHooks.js";
-import { NoPeerDependencyRules } from "../ConfigDependencyHooks.js";
 import { stringsOf } from "./patterns.js";
 
 /** The `configDependencies` map (name → version+integrity) of a parsed pnpm-workspace document. */
@@ -36,7 +35,8 @@ export const configDependenciesOf = (document: unknown): Record<string, string> 
  * discard a well-formed `allowedVersions`.
  */
 export const inlinePeerDependencyRules = (document: unknown): PeerDependencyRules => {
-	if (!Predicate.isObject(document) || !Predicate.isObject(document.peerDependencyRules)) return NoPeerDependencyRules;
+	if (!Predicate.isObject(document) || !Predicate.isObject(document.peerDependencyRules))
+		return PeerDependencyRules.empty;
 	const block = document.peerDependencyRules;
 	const allowedVersions: Record<string, string> = {};
 	if (Predicate.isObject(block.allowedVersions)) {
@@ -44,9 +44,9 @@ export const inlinePeerDependencyRules = (document: unknown): PeerDependencyRule
 			if (typeof value === "string") allowedVersions[key] = value;
 		}
 	}
-	return {
+	return PeerDependencyRules.make({
 		allowedVersions,
 		ignoreMissing: stringsOf(block.ignoreMissing) ?? [],
 		allowAny: stringsOf(block.allowAny) ?? [],
-	};
+	});
 };

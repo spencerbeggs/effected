@@ -42,8 +42,6 @@ export {
 	type HookReplay,
 	type HookReplayContext,
 	type HookReplaySource,
-	NoPeerDependencyRules,
-	type PeerDependencyRules,
 } from "./ConfigDependencyHooks.js";
 export { ConfigDependencySpec, InvalidConfigDependencySpecError } from "./ConfigDependencySpec.js";
 export { CyclicDependencyError, DependencyGraph } from "./DependencyGraph.js";

@@ -1067,7 +1067,10 @@
 	},
 	"pnpm": {
 		"Epic": "pnpm versioning epic, lead package and member selectors banding member majors to the lead's major",
+		"OverrideKey": "parse pnpm overrides key, parent>child selector, allowedVersions key, name@range, dependency type suffix",
+		"OverrideKeyError": "unparseable pnpm overrides or allowedVersions selector, empty segment, invalid package name",
 		"PartialReleaseAgeGate": "one config source's contribution to a pnpm minimumReleaseAge gate before merging",
+		"PeerDependencyRules": "pnpm peerDependencyRules block, ignoreMissing allowAny allowedVersions, match peer name against suppression lists",
 		"PnpmEnvDocument": "read the env preamble document of a pnpm-lock.yaml, configDependencies and packageManagerDependencies as written",
 		"PnpmExtension": "pnpm lockfile extension data, catalogs, overrides and settings from the lockfile header",
 		"PnpmLockDocument": "read a pnpm-lock.yaml as written, decode pnpm's native lockfile document, importers, snapshots",
@@ -1493,7 +1496,6 @@
 		"DuplicatedVersion": "one version of a duplicated package with its resolved instances",
 		"LockfileReadError": "handle the workspace lockfile file cannot be read off disk",
 		"LockfileReader": "read and parse the workspace lockfile, look up a resolved package version",
-		"NoPeerDependencyRules": "empty peer-dependency suppression rules, assert a workspace declares no peerDependencyRules",
 		"PackageManagerDetectionError": "handle no package manager could be detected at a workspace root",
 		"PackageManagerDetector": "detect which package manager npm pnpm or bun runs a workspace",
 		"PackageManagerEvidence": "which marker file or manifest field decided a package-manager detection",

@@ -4,7 +4,8 @@
  * `minimumReleaseAgeExclude`), {@link PnpmSettings} (the settings
  * `pnpm config get` reports, merged in pnpm's precedence) and
  * {@link PnpmMatcher} (the package-name pattern lists pnpm reads through
- * `@pnpm/matcher`), and the native `pnpm-lock.yaml` documents:
+ * `@pnpm/matcher`), {@link OverrideKey} (the `overrides` selector grammar),
+ * {@link PeerDependencyRules} (the `peerDependencyRules` block), and the native `pnpm-lock.yaml` documents:
  * {@link PnpmLockDocument} (the lockfile document), {@link PnpmEnvDocument}
  * (the env preamble ahead of it) and {@link PnpmExtension} (the lockfile
  * header pnpm alone records).
@@ -12,6 +13,8 @@
  * @packageDocumentation
  */
 
+export { OverrideKey, OverrideKeyError } from "./OverrideKey.js";
+export { PeerDependencyRules } from "./PeerDependencyRules.js";
 export { PnpmEnvDocument } from "./PnpmEnvDocument.js";
 export { type PnpmCatalogs, PnpmExtension } from "./PnpmExtension.js";
 export { PnpmLockDocument } from "./PnpmLockDocument.js";
