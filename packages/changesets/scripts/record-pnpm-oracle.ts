@@ -26,6 +26,7 @@ import {
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PLAN_LINE, containedPath } from "./oracleSupport.ts";
 
 const PACKAGE = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const FIXTURES = join(PACKAGE, "__test__/fixtures/pnpm-native");
@@ -114,8 +115,6 @@ const errorOf = (stage: string, result: Run, workspace: string) => ({
 	message: normalise(result.output, workspace),
 });
 
-const PLAN_LINE = /^\s+(\S+): (\S+) → (\S+) \(([^,)]+), via ([^)]+)\)\s*$/;
-
 const parseStatus = (text: string) => {
 	const releases: Array<{
 		name: string;
@@ -165,9 +164,9 @@ const recordCase = (name: string, pnpmVersion: string): void => {
 					const result = run(work, home, step.run);
 					if (result.exitCode !== 0) throw new Error(`prelude step ${step.run.join(" ")} failed: ${result.output}`);
 				} else if ("write" in step) {
-					writeFileSync(join(work, step.write.path), step.write.content);
+					writeFileSync(containedPath(work, step.write.path), step.write.content);
 				} else {
-					rmSync(join(work, step.remove), { force: true });
+					rmSync(containedPath(work, step.remove), { force: true });
 				}
 			}
 		}

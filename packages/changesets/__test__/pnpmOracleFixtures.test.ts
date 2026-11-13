@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { assert, it } from "@effect/vitest";
+import { PLAN_LINE, containedPath } from "../scripts/oracleSupport.js";
 
 const ROOT = new URL("./fixtures/pnpm-native/", import.meta.url).pathname;
 
@@ -53,5 +54,29 @@ it("an applied case with a ledger records releases, and one without a plan recor
 		if (expected.outcome !== "applied") continue;
 		const hasPlan = (expected.releases?.length ?? 0) > 0;
 		assert.strictEqual(typeof expected.ledgerFile === "string", hasPlan, name);
+	}
+});
+
+it("the status text and the recorded releases agree on whether anything is planned", () => {
+	for (const name of cases) {
+		const expected = JSON.parse(readFileSync(join(ROOT, name, "expected.json"), "utf8")) as Expected;
+		if (expected.outcome !== "applied") continue;
+		const status = readFileSync(join(ROOT, name, "status.txt"), "utf8");
+		const planned = status.split("\n").filter((line) => PLAN_LINE.test(line)).length;
+		assert.strictEqual(planned > 0, (expected.releases?.length ?? 0) > 0, name);
+	}
+});
+
+it("lane-graduation depends on a prerelease ledger entry for its intent, left by pnpm", () => {
+	const ledger = readFileSync(join(ROOT, "lane-graduation", "ledger.after.yaml"), "utf8");
+	assert.isTrue(ledger.includes('"@p/a@3.0.0-alpha.0":'));
+	assert.isTrue(ledger.includes('"@p/a@3.0.0":'));
+});
+
+it("a prelude path that leaves the scratch copy is refused", () => {
+	const work = "/scratch/workspace";
+	assert.strictEqual(containedPath(work, ".changeset/x.md"), "/scratch/workspace/.changeset/x.md");
+	for (const bad of ["../x", "a/../../x", "/etc/passwd", "..", "a\\..\\x", "."]) {
+		assert.throws(() => containedPath(work, bad), /prelude path/);
 	}
 });
