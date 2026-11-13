@@ -41,8 +41,9 @@ export {
 	SnapshotTemplateError,
 	UnknownPackageError,
 } from "./errors.js";
+export type { Consumption } from "./Ledger.js";
 export { Ledger, LedgerEntry } from "./Ledger.js";
-export type { PendingChangesetFailure, SettledChangesets } from "./PendingChangesets.js";
+export type { PendingChangesetFailure, ProjectRef, SettledChangesets } from "./PendingChangesets.js";
 export { PendingChangeset, PendingChangesets } from "./PendingChangesets.js";
 export { PreState } from "./PreState.js";
 export { ChangesetMove, ManifestEdit, RangeEdit, ReleaseEdits } from "./ReleaseEdits.js";

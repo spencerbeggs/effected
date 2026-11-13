@@ -20,6 +20,7 @@
 | `ChangesetMove` | Class | A pending changeset a pre-release consumes: `changeset version` in pre mode moves it under `.changeset/pre/` rather than deleting it. | consumed changeset moved under .changeset/pre in pre mode |
 | `ChangesetParseError` | Class | A changeset file could not be parsed: no front matter, a malformed YAML block, or a bump outside `patch \| minor \| major`. | changeset without front matter, malformed yaml, or an invalid bump |
 | `ComprehensiveRelease` | Variable + TypeAlias | The decoded type of `(ComprehensiveRelease:variable)`. | decode a planned release as changelog modules get it, @changesets/types shape |
+| `Consumption` | TypeAlias | How the ledger records an intent against one project: not at all, only at prerelease versions, or at a stable version. See `Ledger.consumption`. | |
 | `FloorCause` | Class | One dependency whose breaking release moves a dependent's published floor. | dependency whose breaking release moves a dependent peer floor, stranded consumer |
 | `GetDependencyReleaseLine` | TypeAlias | Renders the line for the dependencies a package's release updated: `@changesets/types`' `GetDependencyReleaseLine`. | |
 | `GetReleaseLine` | TypeAlias | Renders one changeset's line in a package's changelog block: `@changesets/types`' `GetReleaseLine`. | |
@@ -38,6 +39,7 @@
 | `PendingChangesets` | Class | Reading the pending changesets under a repository's `.changeset/` directory. | list and read unreleased changesets under .changeset |
 | `PlannedRelease` | Class | One package's place in a `ReleasePlan`. | one package's old version, new version and bump type in a plan |
 | `PreState` | Class | The decoded `.changeset/pre.json`: the repository is in pre-release mode (`changeset pre enter <tag>`), or leaving it (`changeset pre exit`). | read pre mode state from pre.json, tag, initial versions, consumed changesets |
+| `ProjectRef` | Interface | A workspace project as `PendingChangesets.unconsumed` resolves a release key against it: a `WorkspacePackage` satisfies it. | |
 | `RangeEdit` | Class | One dependency range a release rewrites in a manifest. | one rewritten dependency range, from and to specifier |
 | `ReleaseContext` | Class | A `ReleasePlan` with what `ReleasePlan.readWithContext` read it from. | release plan with the packages and config it was read from, hand to edits and changelog, read from a subdirectory |
 | `ReleaseEdits` | Class | Everything `changeset version` writes for a `ReleasePlan`, as data, CHANGELOG files aside. `ReleasePlan.edits` computes it; the caller does the IO. | changeset version as data, manifest edits, changesets to delete, next pre.json |

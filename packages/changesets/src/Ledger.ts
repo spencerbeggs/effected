@@ -4,13 +4,24 @@ import { Effect, FileSystem, Option, Path, Result, Schema } from "effect";
 import { LedgerError } from "./errors.js";
 
 /** `./`-less, `/`-separated, no trailing `/`: pnpm's `normalize_project_dir`. */
-const normalizeDir = (dir: string): string => {
+export const normalizeProjectDir = (dir: string): string => {
 	let normalized = dir.replaceAll("\\", "/");
 	while (normalized.startsWith("./")) normalized = normalized.slice(2);
 	let end = normalized.length;
 	while (end > 0 && normalized[end - 1] === "/") end--;
 	return normalized.slice(0, end);
 };
+
+/** Build metadata (after `+`) may contain hyphens and never makes a version a prerelease. */
+const isPrerelease = (version: string): boolean => (version.split("+")[0] ?? "").includes("-");
+
+/**
+ * How the ledger records an intent against one project: not at all, only at
+ * prerelease versions, or at a stable version. See {@link Ledger.consumption}.
+ *
+ * @public
+ */
+export type Consumption = "none" | "prerelease-only" | "stable";
 
 /**
  * One consumed release in the ledger: the package, the version it released,
@@ -88,8 +99,9 @@ const toEntry = (
  * still pending is a per-project question: an intent is pending for a project
  * exactly when no ledger entry for that project lists its id. Entries are
  * matched to a project by `dir` (the engine's unit of identity, since package
- * names may collide across projects), and an entry written as a bare id list
- * carries no `dir` and is matched by name. The file maps
+ * names may collide across projects, and a package may be renamed), never by
+ * the name in the key; only an entry written as a bare id list carries no
+ * `dir` and is matched by name. The file maps
  * `<name>@<version>` to `{ dir, intents }` or to a bare list of ids; a key
  * with no `@` after its first character is skipped, as pnpm skips it.
  *
@@ -164,29 +176,57 @@ export class Ledger extends Schema.Class<Ledger>("Ledger")({
 	});
 
 	/**
-	 * Whether a release of the package called `name` consumed the intent with
-	 * id `intent`. Matches by name alone, so for two projects that share a name
-	 * it answers for either; {@link Ledger.consumedDir} tells them apart.
+	 * Whether a BARE-LIST entry for the package called `name` consumed the
+	 * intent. As pnpm does, an entry that records a `dir` is never matched by
+	 * the name in its key (a renamed or reused name would answer for the wrong
+	 * project): use {@link Ledger.consumedDir} or {@link Ledger.consumption}
+	 * for those. Only an entry written as a bare id list is matched by name.
 	 *
 	 * @param intent - The intent id: the file name without `.md`.
 	 * @param name - The package name.
 	 */
 	consumed(intent: string, name: string): boolean {
-		return this.entries.some((entry) => entry.name === name && entry.intents.includes(intent));
+		return this.entries.some(
+			(entry) => entry.dir === undefined && entry.name === name && entry.intents.includes(intent),
+		);
 	}
 
 	/**
-	 * Whether a release of the project in `dir` consumed the intent. `dir` is
-	 * normalised as pnpm normalises it (backslashes to `/`, leading `./` and
-	 * trailing `/` removed). An entry with no recorded `dir` never matches.
+	 * Whether an ATTRIBUTED entry (one that records a `dir`) for the project in
+	 * `dir` consumed the intent, at any version. `dir` is normalised as pnpm
+	 * normalises it (backslashes to `/`, leading `./` and trailing `/` removed).
 	 *
 	 * @param intent - The intent id: the file name without `.md`.
 	 * @param dir - The project's workspace-relative directory.
 	 */
 	consumedDir(intent: string, dir: string): boolean {
-		const wanted = normalizeDir(dir);
+		const wanted = normalizeProjectDir(dir);
 		return this.entries.some(
-			(entry) => entry.dir !== undefined && normalizeDir(entry.dir) === wanted && entry.intents.includes(intent),
+			(entry) => entry.dir !== undefined && normalizeProjectDir(entry.dir) === wanted && entry.intents.includes(intent),
 		);
+	}
+
+	/**
+	 * How the ledger records the intent against one project, as pnpm's
+	 * `build_consumption_index` indexes it: an attributed entry counts for the
+	 * project in its `dir`, a bare-list entry for the project its name resolves
+	 * to (here, `project.name`). A version whose part before `+` contains `-` is
+	 * a prerelease. `"stable"` when any matching entry is a stable version;
+	 * otherwise `"prerelease-only"` when only prerelease entries list it;
+	 * otherwise `"none"`.
+	 *
+	 * @param intent - The intent id: the file name without `.md`.
+	 * @param project - The project's package name and workspace-relative directory.
+	 */
+	consumption(intent: string, project: { readonly name: string; readonly dir: string }): Consumption {
+		const wanted = normalizeProjectDir(project.dir);
+		let state: Consumption = "none";
+		for (const entry of this.entries) {
+			const matches = entry.dir === undefined ? entry.name === project.name : normalizeProjectDir(entry.dir) === wanted;
+			if (!matches || !entry.intents.includes(intent)) continue;
+			if (!isPrerelease(entry.version)) return "stable";
+			state = "prerelease-only";
+		}
+		return state;
 	}
 }

@@ -348,47 +348,105 @@ it("readSettledSync skips a bad file on disk and reports it, where readSync fail
 
 // pnpm leaves an intent file in place until every project it names has an entry in the ledger
 // (pnpm `crates/versioning/src/ledger.rs`, the `Ledger` doc comment), so "pending" is per (intent, project).
+const packages = [
+	{ name: "@example/core", relativePath: "packages/core" },
+	{ name: "@example/other", relativePath: "packages/other" },
+];
+const entry = (name: string, version: string, dir: string, intents: ReadonlyArray<string>) =>
+	LedgerEntry.make({ name, version, dir, intents });
+const cs = (file: string, keys: ReadonlyArray<string>) =>
+	PendingChangeset.make({ file, releases: new Map(keys.map((key) => [key, "patch"] as const)), summary: "s" });
+const keysOf = (list: ReadonlyArray<PendingChangeset>) => list.map((changeset) => [...changeset.releases.keys()]);
+
 it.effect("unconsumed drops only the packages the ledger records for that intent", () =>
 	Effect.gen(function* () {
 		const fs = MemoryFileSystem.layerWithPath({
 			"/repo/.changeset/ledger.yaml":
 				'"@example/core@1.0.0":\n  dir: packages/core\n  intents:\n    - calm-cats-resolve\n',
 			"/repo/.changeset/calm-cats-resolve.md": '---\n"@example/core": minor\n"@example/other": patch\n---\n\nBoth.\n',
-			"/repo/.changeset/done-deal-now.md": '---\n"@example/core": patch\n---\n\nAll consumed elsewhere.\n',
-			"/repo/.changeset/fresh-one-here.md": '---\n"@example/core": patch\n---\n\nStill pending for core.\n',
+			"/repo/.changeset/done-deal-now.md": '---\n"@example/core": patch\n---\n\nNot in the ledger.\n',
+			"/repo/.changeset/fresh-one-here.md": '---\n"@example/other": patch\n---\n\nStill pending.\n',
 		});
 		const { ledger, pending } = yield* Effect.gen(function* () {
 			const ledger = Option.getOrThrow(yield* Ledger.read("/repo"));
 			const pending = yield* PendingChangesets.read("/repo");
 			return { ledger, pending };
 		}).pipe(Effect.provide(fs));
-		const left = PendingChangesets.unconsumed(pending, ledger);
+		const left = PendingChangesets.unconsumed(pending, ledger, packages);
 		assert.deepStrictEqual(
 			left.map((changeset) => changeset.id),
 			["calm-cats-resolve", "done-deal-now", "fresh-one-here"],
 		);
-		const first = left[0];
-		assert.deepStrictEqual([...(first?.releases.keys() ?? [])], ["@example/other"]);
-		assert.deepStrictEqual([...(left[1]?.releases.keys() ?? [])], ["@example/core"]);
+		assert.deepStrictEqual(keysOf(left), [["@example/other"], ["@example/core"], ["@example/other"]]);
 	}),
 );
 
 it.effect("unconsumed reads a ./dir key against the ledger's dir", () =>
 	Effect.sync(() => {
-		const ledger = Ledger.make({
-			entries: [LedgerEntry.make({ name: "a", version: "1.0.0", dir: "packages/a", intents: ["x"] })],
-		});
-		const changesets = [
-			PendingChangeset.make({
-				file: "x.md",
-				releases: new Map([
-					["./packages/a/", "patch"],
-					["./packages/b", "patch"],
-				] as const),
-				summary: "s",
-			}),
+		const ledger = Ledger.make({ entries: [entry("a", "1.0.0", "packages/a", ["x"])] });
+		const left = PendingChangesets.unconsumed([cs("x.md", ["./packages/a/", "./packages/b"])], ledger, [
+			{ name: "a", relativePath: "packages/a" },
+			{ name: "b", relativePath: "packages/b" },
+		]);
+		assert.deepStrictEqual(keysOf(left), [["./packages/b"]]);
+	}),
+);
+
+it.effect("rename: a renamed project's intent is consumed by its dir (pnpm matches attributed entries by dir)", () =>
+	Effect.sync(() => {
+		const ledger = Ledger.make({ entries: [entry("old", "1.0.0", "packages/a", ["x"])] });
+		const left = PendingChangesets.unconsumed([cs("x.md", ["new"])], ledger, [
+			{ name: "new", relativePath: "packages/a" },
+		]);
+		assert.deepStrictEqual(left, []);
+	}),
+);
+
+it.effect("name reuse: a new project reusing a name does not inherit the old project's consumption", () =>
+	Effect.sync(() => {
+		const ledger = Ledger.make({ entries: [entry("a", "1.0.0", "packages/one", ["x"])] });
+		const left = PendingChangesets.unconsumed([cs("x.md", ["a"])], ledger, [
+			{ name: "a", relativePath: "packages/two" },
+		]);
+		assert.deepStrictEqual(keysOf(left), [["a"]]);
+	}),
+);
+
+it.effect("a key that resolves to no project, or to several, stays pending (is_release_consumed)", () =>
+	Effect.sync(() => {
+		const ledger = Ledger.make({ entries: [entry("a", "1.0.0", "packages/one", ["x"])] });
+		const twins = [
+			{ name: "a", relativePath: "packages/one" },
+			{ name: "a", relativePath: "packages/two" },
 		];
-		const left = PendingChangesets.unconsumed(changesets, ledger);
-		assert.deepStrictEqual([...(left[0]?.releases.keys() ?? [])], ["./packages/b"]);
+		assert.deepStrictEqual(keysOf(PendingChangesets.unconsumed([cs("x.md", ["a", "ghost"])], ledger, twins)), [
+			["a", "ghost"],
+		]);
+	}),
+);
+
+// propagation.rs:327 (`collect_pending_intents` excludes every id in `all_ids`) and :349-358
+// (`collect_lane_consumed_intents` takes `prerelease_only_ids`).
+it.effect("prerelease-only consumption is not pending but is lane-consumed; stable consumption is neither", () =>
+	Effect.sync(() => {
+		const ledger = Ledger.make({
+			entries: [
+				entry("a", "2.1.0-alpha.0", "packages/a", ["alpha"]),
+				entry("a", "2.1.0", "packages/a", ["alpha2", "done"]),
+			],
+		});
+		const project = [{ name: "a", relativePath: "packages/a" }];
+		const changesets = [cs("alpha.md", ["a"]), cs("done.md", ["a"]), cs("fresh.md", ["a"])];
+		assert.deepStrictEqual(
+			PendingChangesets.unconsumed(changesets, ledger, project).map((changeset) => changeset.id),
+			["fresh"],
+		);
+		assert.deepStrictEqual(
+			PendingChangesets.laneConsumed(changesets, ledger, project).map((changeset) => changeset.id),
+			["alpha"],
+		);
+		// the same intent at 2.1.0 (stable) is consumed, not lane-consumed
+		const graduated = Ledger.make({ entries: [entry("a", "2.1.0", "packages/a", ["alpha"])] });
+		assert.deepStrictEqual(PendingChangesets.laneConsumed([cs("alpha.md", ["a"])], graduated, project), []);
 	}),
 );

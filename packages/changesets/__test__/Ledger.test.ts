@@ -63,16 +63,47 @@ it.effect("answers none for a missing file and an empty ledger for a blank one",
 	}),
 );
 
-it.effect("consumed is per package: the ticket's example", () =>
+it.effect("consumption is per project: the ticket's example (attributed entry, matched by dir)", () =>
 	Effect.gen(function* () {
 		const ledger = yield* read(TICKET);
-		assert.isTrue(ledger.consumed("calm-cats-resolve", "@example/core"));
-		assert.isFalse(ledger.consumed("calm-cats-resolve", "@example/other"));
-		assert.isFalse(ledger.consumed("unknown-id", "@example/core"));
+		const core = { name: "@example/core", dir: "packages/core" };
+		assert.strictEqual(ledger.consumption("calm-cats-resolve", core), "stable");
+		assert.strictEqual(
+			ledger.consumption("calm-cats-resolve", { name: "@example/other", dir: "packages/other" }),
+			"none",
+		);
+		assert.strictEqual(ledger.consumption("unknown-id", core), "none");
+		assert.isTrue(ledger.consumedDir("calm-cats-resolve", "./packages/core/"));
 	}),
 );
 
-it.effect("consumedDir matches by normalised project directory, not name (same-named projects)", () =>
+it.effect(
+	"a bare-list entry is matched by name; consumed ignores attributed entries (ledger.rs entry_project_dir)",
+	() =>
+		Effect.gen(function* () {
+			const ledger = yield* read("bare@1.0.0:\n  - x\nattr@1.0.0:\n  dir: packages/attr\n  intents: [x]\n");
+			assert.isTrue(ledger.consumed("x", "bare"));
+			assert.isFalse(ledger.consumed("x", "attr"));
+			assert.strictEqual(ledger.consumption("x", { name: "bare", dir: "anywhere" }), "stable");
+		}),
+);
+
+it.effect("rename: an attributed entry matches the project's dir, not the old name in its key", () =>
+	Effect.gen(function* () {
+		const ledger = yield* read("old@1.0.0:\n  dir: packages/a\n  intents: [x]\n");
+		assert.strictEqual(ledger.consumption("x", { name: "new", dir: "packages/a" }), "stable");
+	}),
+);
+
+it.effect("name reuse: the same name at another dir is not consumed", () =>
+	Effect.gen(function* () {
+		const ledger = yield* read("a@1.0.0:\n  dir: packages/one\n  intents: [x]\n");
+		assert.strictEqual(ledger.consumption("x", { name: "a", dir: "packages/two" }), "none");
+		assert.isFalse(ledger.consumed("x", "a"));
+	}),
+);
+
+it.effect("same-named projects are told apart by dir, with a normalised dir", () =>
 	Effect.gen(function* () {
 		const ledger = yield* read(
 			[
@@ -88,8 +119,33 @@ it.effect("consumedDir matches by normalised project directory, not name (same-n
 		assert.isTrue(ledger.consumedDir("x", "packages/one"));
 		assert.isFalse(ledger.consumedDir("x", "tools/two"));
 		assert.isTrue(ledger.consumedDir("y", "tools/two"));
-		// A bare name read cannot tell the twins apart: it matches either.
-		assert.isTrue(ledger.consumed("x", "a"));
+	}),
+);
+
+// pnpm splits ids into stable and prerelease-only (`ledger.rs` `build_consumption_index`, `package_consumption`);
+// a version whose part before `+` contains `-` is a prerelease (`is_prerelease_version`).
+it.effect("consumption is three-state: none, prerelease-only, stable", () =>
+	Effect.gen(function* () {
+		const ledger = yield* read(
+			[
+				"p@2.1.0-alpha.0:",
+				"  dir: packages/p",
+				"  intents: [pre, both]",
+				"p@2.1.0:",
+				"  dir: packages/p",
+				"  intents: [both, stable]",
+				"p@3.0.0+build-1:",
+				"  dir: packages/p",
+				"  intents: [meta]",
+				"",
+			].join("\n"),
+		);
+		const p = { name: "p", dir: "packages/p" };
+		assert.strictEqual(ledger.consumption("pre", p), "prerelease-only");
+		assert.strictEqual(ledger.consumption("both", p), "stable");
+		assert.strictEqual(ledger.consumption("stable", p), "stable");
+		assert.strictEqual(ledger.consumption("meta", p), "stable");
+		assert.strictEqual(ledger.consumption("none", p), "none");
 	}),
 );
 
@@ -102,10 +158,13 @@ it.effect("fails with a typed LedgerError on malformed input", () =>
 			["pkg@1.0.0:\n  intents: [a]\n", "invalid-entry"],
 			["pkg@1.0.0:\n  dir: x\n  intents: [1]\n", "invalid-entry"],
 			["pkg@1.0.0: [{a: 1}]\n", "invalid-entry"],
+			["pkg@1.0.0: [a]\npkg@1.0.0: [b]\n", "invalid-yaml"],
+			[`${"[".repeat(20000)}${"]".repeat(20000)}\n`, "invalid-yaml"],
 		];
 		for (const [text, code] of cases) {
 			const error = yield* Effect.flip(Ledger.read("/repo").pipe(Effect.provide(withLedger(text))));
-			assert.isTrue(error._tag === "LedgerError" && error.code === code, `${text} -> ${error._tag}`);
+			assert.strictEqual(error._tag, "LedgerError", text);
+			assert.strictEqual(error._tag === "LedgerError" ? error.code : undefined, code, text);
 		}
 	}),
 );
@@ -113,8 +172,8 @@ it.effect("fails with a typed LedgerError on malformed input", () =>
 it.effect("treats __proto__ and inherited names as plain data, never polluting", () =>
 	Effect.gen(function* () {
 		const ledger = yield* read('"__proto__@1.0.0":\n  dir: p\n  intents: [a]\nconstructor@1.0.0: [b]\n');
-		assert.isTrue(ledger.consumed("a", "__proto__"));
-		assert.isFalse(ledger.consumed("a", "constructor"));
+		assert.strictEqual(ledger.consumption("a", { name: "__proto__", dir: "p" }), "stable");
+		assert.strictEqual(ledger.consumption("a", { name: "constructor", dir: "q" }), "none");
 		assert.isTrue(ledger.consumed("b", "constructor"));
 		assert.strictEqual(({} as Record<string, unknown>).dir, undefined);
 	}),

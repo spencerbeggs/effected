@@ -3,7 +3,8 @@ import { Effect, FileSystem, Path, PlatformError, Result, Schema } from "effect"
 import { ReleaseType } from "./BumpType.js";
 import { ChangesetFile } from "./ChangesetFile.js";
 import { ChangesetParseError } from "./errors.js";
-import type { Ledger } from "./Ledger.js";
+import type { Consumption, Ledger } from "./Ledger.js";
+import { normalizeProjectDir } from "./Ledger.js";
 
 /**
  * One pending changeset read from `.changeset/`.
@@ -30,6 +31,55 @@ export class PendingChangeset extends Schema.Class<PendingChangeset>("PendingCha
 		return this.file.replace(/\.md$/, "");
 	}
 }
+
+/**
+ * A workspace project as {@link PendingChangesets.unconsumed} resolves a
+ * release key against it: a `WorkspacePackage` satisfies it.
+ *
+ * @public
+ */
+export interface ProjectRef {
+	/** The package name. */
+	readonly name: string;
+	/** The workspace-relative directory. */
+	readonly relativePath: string;
+}
+
+/** The project a release key names, or `undefined` when it names none or several. */
+const resolveProject = (key: string, packages: ReadonlyArray<ProjectRef>): ProjectRef | undefined => {
+	const found = key.startsWith("./")
+		? packages.filter((pkg) => normalizeProjectDir(pkg.relativePath) === normalizeProjectDir(key))
+		: packages.filter((pkg) => pkg.name === key);
+	return found.length === 1 ? found[0] : undefined;
+};
+
+const filterByConsumption = (
+	changesets: ReadonlyArray<PendingChangeset>,
+	ledger: Ledger,
+	packages: ReadonlyArray<ProjectRef>,
+	keep: (state: Consumption) => boolean,
+): ReadonlyArray<PendingChangeset> => {
+	const out: Array<PendingChangeset> = [];
+	for (const changeset of changesets) {
+		const id = changeset.id;
+		const releases = new Map(
+			[...changeset.releases].filter(([key]) => {
+				const project = resolveProject(key, packages);
+				// An unresolvable key is never consumed: it stays pending, and absent from the lane set.
+				const state: Consumption =
+					project === undefined ? "none" : ledger.consumption(id, { name: project.name, dir: project.relativePath });
+				return keep(state);
+			}),
+		);
+		if (releases.size === 0) continue;
+		out.push(
+			releases.size === changeset.releases.size
+				? changeset
+				: PendingChangeset.make({ file: changeset.file, releases, summary: changeset.summary }),
+		);
+	}
+	return out;
+};
 
 /** The directory, under `.changeset/`, holding the changesets a pre-release consumed. */
 const PRE = "pre";
@@ -190,31 +240,51 @@ export class PendingChangesets {
 	 * {@link Ledger}: pnpm leaves an intent file in place until every project
 	 * it names has released, so each release key is dropped when the ledger
 	 * records its project as having consumed this intent, and a changeset with
-	 * no key left is dropped. A key starting `./` names a project by directory
-	 * and is read with `Ledger.consumedDir`; any other is a package name. The
-	 * order and the surviving keys are kept. Pure; the Changesets CLI has no
-	 * ledger and does not use it.
+	 * no key left is dropped. The project is resolved as pnpm resolves it: a
+	 * key starting `./` names a directory (normalised), any other key a package
+	 * name that must resolve to exactly one of `packages`; a key that resolves
+	 * to none, or to several, is kept, as pnpm's `is_release_consumed` keeps it,
+	 * for the planner to refuse. Consumption is read through
+	 * {@link Ledger.consumption}, matching an attributed entry by `dir` and a
+	 * bare-list entry by name.
+	 *
+	 * A prerelease-only consumption (the intent listed only against a version
+	 * such as `2.1.0-alpha.0`) also drops the key, since pnpm's
+	 * `collect_pending_intents` (`plan/propagation.rs`) excludes every id in
+	 * `all_ids`. pnpm still counts such an intent toward the project's stable
+	 * bump and changelog at graduation (`collect_lane_consumed_intents`, same
+	 * file); {@link PendingChangesets.laneConsumed} returns that set.
 	 *
 	 * @param changesets - The changesets {@link PendingChangesets.read} returned.
 	 * @param ledger - The ledger to read consumption from.
+	 * @param packages - The workspace packages, to resolve a key to a project.
 	 */
-	static unconsumed(changesets: ReadonlyArray<PendingChangeset>, ledger: Ledger): ReadonlyArray<PendingChangeset> {
-		const pending: Array<PendingChangeset> = [];
-		for (const changeset of changesets) {
-			const id = changeset.id;
-			const releases = new Map(
-				[...changeset.releases].filter(
-					([key]) => !(key.startsWith("./") ? ledger.consumedDir(id, key) : ledger.consumed(id, key)),
-				),
-			);
-			if (releases.size === 0) continue;
-			pending.push(
-				releases.size === changeset.releases.size
-					? changeset
-					: PendingChangeset.make({ file: changeset.file, releases, summary: changeset.summary }),
-			);
-		}
-		return pending;
+	static unconsumed(
+		changesets: ReadonlyArray<PendingChangeset>,
+		ledger: Ledger,
+		packages: ReadonlyArray<ProjectRef>,
+	): ReadonlyArray<PendingChangeset> {
+		return filterByConsumption(changesets, ledger, packages, (state) => state === "none");
+	}
+
+	/**
+	 * The changesets, narrowed to the release keys whose project has consumed
+	 * the intent ONLY at prerelease versions: pnpm's
+	 * `collect_lane_consumed_intents` (`plan/propagation.rs`). They are not
+	 * pending, but still count toward the project's cumulative bump and the
+	 * stable changelog when it graduates. Keys are resolved as in
+	 * {@link PendingChangesets.unconsumed}.
+	 *
+	 * @param changesets - The changesets {@link PendingChangesets.read} returned.
+	 * @param ledger - The ledger to read consumption from.
+	 * @param packages - The workspace packages, to resolve a key to a project.
+	 */
+	static laneConsumed(
+		changesets: ReadonlyArray<PendingChangeset>,
+		ledger: Ledger,
+		packages: ReadonlyArray<ProjectRef>,
+	): ReadonlyArray<PendingChangeset> {
+		return filterByConsumption(changesets, ledger, packages, (state) => state === "prerelease-only");
 	}
 
 	/**
