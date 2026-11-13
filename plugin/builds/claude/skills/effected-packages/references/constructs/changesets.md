@@ -20,7 +20,7 @@
 | `ChangesetMove` | Class | A pending changeset a pre-release consumes: `changeset version` in pre mode moves it under `.changeset/pre/` rather than deleting it. | consumed changeset moved under .changeset/pre in pre mode |
 | `ChangesetParseError` | Class | A changeset file could not be parsed: no front matter, a malformed YAML block, or a bump outside `patch \| minor \| major`. | changeset without front matter, malformed yaml, or an invalid bump |
 | `ComprehensiveRelease` | Variable + TypeAlias | The decoded type of `(ComprehensiveRelease:variable)`. | decode a planned release as changelog modules get it, @changesets/types shape |
-| `Consumption` | TypeAlias | How the ledger records an intent against one project: not at all, only at prerelease versions, or at a stable version. See `Ledger.consumption`. | |
+| `Consumption` | TypeAlias | How the ledger records an intent against one project: not at all, only at prerelease versions, or at a stable version. See `Ledger.consumption`. | has the ledger consumed this intent, prerelease-only or stable, graduation check |
 | `EpicOutOfBand` | Class | An epic member whose committed major is outside the band of its lead. | epic member major outside its lead's band, committed version check violation |
 | `FixedOutOfStep` | Class | A fixed group whose members do not share one version. | fixed group members on different versions, lockstep check violation |
 | `FloorCause` | Class | One dependency whose breaking release moves a dependent's published floor. | dependency whose breaking release moves a dependent peer floor, stranded consumer |
@@ -41,7 +41,7 @@
 | `PendingChangesets` | Class | Reading the pending changesets under a repository's `.changeset/` directory. | list and read unreleased changesets under .changeset |
 | `PlannedRelease` | Class | One package's place in a `ReleasePlan`. | one package's old version, new version and bump type in a plan |
 | `PreState` | Class | The decoded `.changeset/pre.json`: the repository is in pre-release mode (`changeset pre enter <tag>`), or leaving it (`changeset pre exit`). | read pre mode state from pre.json, tag, initial versions, consumed changesets |
-| `ProjectRef` | Interface | A workspace project as `PendingChangesets.unconsumed` resolves a release key against it: a `WorkspacePackage` satisfies it. | |
+| `ProjectRef` | Interface | A workspace project as `PendingChangesets.unconsumed` resolves a release key against it: a `WorkspacePackage` satisfies it. | resolve a changeset release key to a workspace project, name and directory |
 | `RangeEdit` | Class | One dependency range a release rewrites in a manifest. | one rewritten dependency range, from and to specifier |
 | `RegistryVersions` | Class | The registry seam of first releases: is a project's manifest version already published? | is this version already published, registry probe for first releases |
 | `RegistryVersionsShape` | Interface | The `RegistryVersions` service shape. | |

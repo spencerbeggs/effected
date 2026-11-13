@@ -180,10 +180,6 @@
 		"isKnownRegistryType": "check a registry type is recognized, otherwise degrade to link-only"
 	},
 	"changesets": {
-		"EpicOutOfBand": "epic member major outside its lead's band, committed version check violation",
-		"FixedOutOfStep": "fixed group members on different versions, lockstep check violation",
-		"RegistryVersions": "is this version already published, registry probe for first releases",
-		"VersioningCheck": "pnpm change check, committed versions against epic bands and fixed groups",
 		"AmbiguousPackageError": "changeset names a package by a name two workspace projects publish, directory key needed",
 		"BreakingFloor": "release must bump breaking, peer floor crosses dependency minor, patch ripple fix",
 		"BumpType": "changeset bump values, patch, minor or major",
@@ -196,6 +192,9 @@
 		"ChangesetMove": "consumed changeset moved under .changeset/pre in pre mode",
 		"ChangesetParseError": "changeset without front matter, malformed yaml, or an invalid bump",
 		"ComprehensiveRelease": "decode a planned release as changelog modules get it, @changesets/types shape",
+		"Consumption": "has the ledger consumed this intent, prerelease-only or stable, graduation check",
+		"EpicOutOfBand": "epic member major outside its lead's band, committed version check violation",
+		"FixedOutOfStep": "fixed group members on different versions, lockstep check violation",
 		"FloorCause": "dependency whose breaking release moves a dependent peer floor, stranded consumer",
 		"Ledger": "read pnpm .changeset/ledger.yaml, which intents a release consumed, pending per project",
 		"LedgerEntry": "one released name@version in pnpm ledger, project dir, consumed intent ids",
@@ -211,7 +210,9 @@
 		"PendingChangesets": "list and read unreleased changesets under .changeset",
 		"PlannedRelease": "one package's old version, new version and bump type in a plan",
 		"PreState": "read pre mode state from pre.json, tag, initial versions, consumed changesets",
+		"ProjectRef": "resolve a changeset release key to a workspace project, name and directory",
 		"RangeEdit": "one rewritten dependency range, from and to specifier",
+		"RegistryVersions": "is this version already published, registry probe for first releases",
 		"ReleaseCause": "why a package releases, intent, dependency ripple, fixed group, epic re-base",
 		"ReleaseContext": "release plan with the packages and config it was read from, hand to edits and changelog, read from a subdirectory",
 		"ReleaseEdits": "changeset version as data, manifest edits, changesets to delete, next pre.json",
@@ -222,6 +223,7 @@
 		"SnapshotTemplateError": "snapshot prerelease template placeholder without a value, or missing tag",
 		"UnknownPackageError": "changeset names a package missing from the workspace",
 		"VersionType": "decode a bump, major minor patch or none, changelog contract",
+		"VersioningCheck": "pnpm change check, committed versions against epic bands and fixed groups",
 		"VersioningError": "pnpm refuses a release plan, maxBump exceeded, epic band, ignored package, pnpm error code"
 	},
 	"cli": {

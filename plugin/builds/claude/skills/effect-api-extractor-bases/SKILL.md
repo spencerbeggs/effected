@@ -501,6 +501,31 @@ report: the link has nothing to resolve against there. Spell those references
 in backticks instead of `{@link}`. `packages/commands/CLAUDE.md` and
 `packages/memfs` both do this.
 
+### A subpath that names the root's types: the self-import pattern
+
+A second entrypoint whose signatures name types the root already exports —
+`@effected/npm/node` names `NpmConfig`, `@effected/pnpm/settings` names
+`PnpmSettings`, `PeerDependencyRules` and `VersioningConfig` — should import
+them from the package's own name rather than carry a copy. Three parts, all
+required:
+
+1. **Keep the self-import external in the declarations**, in the package's
+   `effected.toml`: `[package.build] dtsExternals = ["@effected/npm"]`. The
+   subpath's `.d.ts` then refers to the root's type instead of inlining it.
+2. **Scope a suppression to that entry point only.** The second API Extractor
+   pass resolves the self-import to the built root declarations but still
+   reports the root types it reaches as forgotten, so add
+   `{ messageId = "ae-forgotten-export", pattern = 'entry point node\.d\.ts$' }`
+   (the subpath's own file name) to `[package.build.meta.tsdoc]
+   suppressWarnings`. A bare pattern would hide a real leak in the root.
+3. **Pin what the suppression could hide with a built-declaration test.** The
+   suppression is never unpinned: a declaration local to the subpath and left
+   unexported would be silenced, so a test reads the built `<entry>.d.ts` and
+   asserts that every top-level declaration is exported and the import
+   specifiers are the expected ones (`__test__/node-declarations.test.ts` in
+   `@effected/npm`, `__test__/settings/declarations.test.ts` in
+   `@effected/pnpm`). Build before the test reads it.
+
 ## Reading the gate without fooling yourself
 
 `issues.json` is a **false-green oracle**. Four rules, each learned by being burned:

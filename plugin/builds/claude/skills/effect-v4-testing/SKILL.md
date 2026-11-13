@@ -463,6 +463,23 @@ so pin that to `1` in the setup or a run inside the window reads the
 previous build. The `ERR_LOAD_URL` setup-file case and the rest →
 **[references/running-the-suite.md](./references/running-the-suite.md)**.
 
+## Test the sync facade over the same fixture as the Effect form
+
+When an external consumer calls a synchronous facade (a `*Sync` function, or a
+`parseResult`/`Result` form beside an `Effect` one), the facade is a separate
+code path and a green Effect-form suite proves nothing about it. Run the facade
+over the **same fixture** the Effect form reads and assert the same answer. The
+facade can fail where the service passes: a layout only the Effect suite had a
+fixture for (a yarn repository's `package.json#workspaces`, say) discovers
+members through the service while the sync facade the consuming tool calls
+returns none.
+
+**Piping vitest into `tail` (or `head`, `grep`) hides its exit code.** The pipe
+reports the last command's status, so a failing run looks green. Under zsh or
+bash use `set -o pipefail` before the pipeline (or read `${PIPESTATUS[0]}` /
+`$pipestatus[1]`), or redirect to a file and read the code of the vitest
+command itself.
+
 ## House conventions
 
 - Tests live in each package's `__test__/` directory (`*.test.ts`), never

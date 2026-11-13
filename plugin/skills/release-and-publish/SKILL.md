@@ -84,6 +84,7 @@ release pipeline.
 - `ReleaseAgeGate`'s glob dialect is pnpm's `*`-crosses-`/` matcher, **not**
   `@effected/glob`'s minimatch dialect — routing exclude patterns through
   the wrong engine silently changes which packages a gate exempts.
+- **A lane prerelease publishes under `latest` unless `--tag` is passed.** Under pnpm-native release planning a lane builds `X.Y.Z-<lane>.N`, but a prerelease segment does not choose a dist-tag. Pass the tag at the publish call (the lane's name is the natural one) or every consumer on `latest` receives it; the planner (`@effected/changesets`) plans versions and never picks a tag.
 - `NpmRegistry.layerTest()` with no overrides dies loudly by design on the
   first read — reach for `NpmRegistry.layerSeeded({ registries: {} })` when
   a test wants a real, working empty registry instead. Every read of it
