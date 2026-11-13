@@ -43,6 +43,7 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@effected/bun": "workspace:^",
 		"@effected/commands": "workspace:^",
 		"@effected/git": "workspace:^",
 		"@effected/glob": "workspace:^",

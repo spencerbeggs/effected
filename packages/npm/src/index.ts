@@ -50,6 +50,7 @@ export {
 	SriIntegrityHash,
 	isValidIntegrityHash,
 } from "./IntegrityHash.js";
+export { LockfileDocumentError } from "./LockfileDocumentError.js";
 export {
 	Manifest,
 	ManifestDecodeError,
@@ -86,6 +87,7 @@ export { NpmReleaseAge } from "./NpmReleaseAge.js";
 export { NpmrcEntry, npmrcValue, npmrcValues, parseNpmrc } from "./Npmrc.js";
 export { NpmWorkspacePatterns } from "./NpmWorkspacePatterns.js";
 export { NpmWorkspacePatternsError } from "./NpmWorkspacePatternsError.js";
+export { PackageLockDocument } from "./PackageLockDocument.js";
 export {
 	CachingPackageManager,
 	type DefaultCacheDirectoryOptions,

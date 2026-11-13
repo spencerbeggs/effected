@@ -6,6 +6,10 @@
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
 | `PartialReleaseAgeGate` | Variable + TypeAlias | One source's partial contribution to a release-age gate. All fields optional. | one config source's contribution to a pnpm minimumReleaseAge gate before merging |
+| `PnpmCatalogs` | TypeAlias | The pnpm `catalogs:` record shape as it appears in `pnpm-lock.yaml`: catalog name → package name → pinned version string or `{ specifier, version }` pair. | |
+| `PnpmEnvDocument` | Class | The env ("preamble") document of a `pnpm-lock.yaml`, as pnpm writes it on disk ahead of the lockfile document when a workspace declares `devEngines.packageManager` or `configDependencies`. | read the env preamble document of a pnpm-lock.yaml, configDependencies and packageManagerDependencies as written |
+| `PnpmExtension` | Class | Extension data specific to pnpm lockfiles, attached to `Lockfile.extension` when the format is `"pnpm"`. | pnpm lockfile extension data, catalogs, overrides and settings from the lockfile header |
+| `PnpmLockDocument` | Class | The lockfile document of a `pnpm-lock.yaml`, as pnpm writes it on disk, `lockfileVersion` 9 and newer: the header (`settings`, `overrides`, `catalogs`), `importers`, the per-version `packages:` section and the per-instance `snapshots:` section. | read a pnpm-lock.yaml as written, decode pnpm's native lockfile document, importers, snapshots |
 | `PnpmMatcher` | Class | pnpm's package-name pattern lists, compiled to predicates. | match peerDependencyRules ignoreMissing or allowAny lists, compile pnpm name patterns with negation |
 | `PnpmSettingOrigin` | TypeAlias | Where a setting's value came from, highest precedence first: a `pnpm_config_*` / `PNPM_CONFIG_*` environment variable, the workspace's `pnpm-workspace.yaml`, or pnpm's global `config.yaml`. | |
 | `PnpmSettings` | Class | pnpm's effective settings: the values `pnpm config get <key>` reports for a pnpm setting, merged from the sources pnpm reads with pnpm's precedence. | read pnpm effective settings, pnpm config get precedence, minimumReleaseAge, which source set a value |

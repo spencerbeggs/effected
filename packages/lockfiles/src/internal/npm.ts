@@ -1,6 +1,6 @@
-import type { NpmWorkspacePatternsError } from "@effected/npm";
+import type { NpmWorkspacePatternsError, PackageLockDocument } from "@effected/npm";
 import { NpmWorkspacePatterns } from "@effected/npm";
-import { Effect, Result, Schema } from "effect";
+import { Effect, Result } from "effect";
 import { LockfileImporter } from "../LockfileImporter.js";
 import { ResolvedPackage } from "../ResolvedPackage.js";
 import type { LockfileFields, ParseFailure, WorkspaceEntry } from "./shared.js";
@@ -8,63 +8,11 @@ import {
 	extractWorkspaceDeps,
 	importerDependencies,
 	peerDeclarations,
-	requireLockfileVersion,
-	syntaxFailure,
 	toIntegrityHash,
 	validationFailure,
 } from "./shared.js";
 
-// ── Raw schema (permissive validation scaffolding, not API) ────────────────
-
-const DepRecord = Schema.optionalKey(Schema.Record(Schema.String, Schema.String));
-
-const PeerMetaRecord = Schema.optionalKey(
-	Schema.Record(Schema.String, Schema.Struct({ optional: Schema.optionalKey(Schema.Boolean) })),
-);
-
-const NpmPackageEntry = Schema.Struct({
-	name: Schema.optionalKey(Schema.String),
-	version: Schema.optionalKey(Schema.String),
-	resolved: Schema.optionalKey(Schema.String),
-	integrity: Schema.optionalKey(Schema.String),
-	link: Schema.optionalKey(Schema.Boolean),
-	dev: Schema.optionalKey(Schema.Boolean),
-	dependencies: DepRecord,
-	devDependencies: DepRecord,
-	peerDependencies: DepRecord,
-	peerDependenciesMeta: PeerMetaRecord,
-	optionalDependencies: DepRecord,
-	// The root entry's workspace globs, read defensively by `workspaceMatcher`:
-	// npm writes an array, a hand-edited file may hold anything.
-	workspaces: Schema.optionalKey(Schema.Unknown),
-});
-
-/**
- * The version gate's own input: `lockfileVersion` and nothing else.
- *
- * The gate has to read the version *before* the shape decode, because the
- * shape it would decode against is the shape of a supported version. `packages`
- * is a required key here and a v1 tree does not have one, so a shape-first
- * order reports npm v1 as **malformed** rather than as **too old** — losing
- * exactly the distinction the `UnsupportedLockfileVersion` cause exists to
- * carry.
- *
- * @internal
- */
-const NpmVersionProbe = Schema.Struct({
-	lockfileVersion: Schema.Union([Schema.Number, Schema.String]),
-});
-
-const NpmLockfileRaw = Schema.Struct({
-	name: Schema.optionalKey(Schema.String),
-	version: Schema.optionalKey(Schema.String),
-	lockfileVersion: Schema.Union([Schema.Number, Schema.String]),
-	requires: Schema.optionalKey(Schema.Boolean),
-	packages: Schema.Record(Schema.String, NpmPackageEntry),
-});
-
-type NpmLockfileRawType = typeof NpmLockfileRaw.Type;
-type NpmPackageEntryType = typeof NpmPackageEntry.Type;
+type NpmPackageEntryType = PackageLockDocument["packages"][string];
 
 const NODE_MODULES_PREFIX = "node_modules/";
 const NESTED_NODE_MODULES = "/node_modules/";
@@ -224,36 +172,17 @@ const entrySections = (entry: NpmPackageEntryType | undefined) =>
 	[entry?.dependencies, entry?.devDependencies, entry?.optionalDependencies, entry?.peerDependencies] as const;
 
 /**
- * Parse npm `package-lock.json` content into the unified field bundle —
- * `lockfileVersion` 3 and newer; v2 and older fail typed at validation.
- * Native `JSON.parse` inside `Effect.try` — its throw on hostile input
- * (including V8's `RangeError` on pathological depth) lands typed as
- * `stage: "syntax"`.
+ * Normalise a decoded npm `package-lock.json` document into the unified field
+ * bundle. The document's own parse (`PackageLockDocument.parse`) owns the
+ * syntax, version gate and shape; this owns the reading of what it holds.
  *
  * @internal
  */
-export const parseNpm = (content: string): Effect.Effect<LockfileFields, ParseFailure> =>
-	Effect.gen(function* () {
-		const raw = yield* Effect.try({
-			try: () => JSON.parse(content) as unknown,
-			catch: syntaxFailure,
-		});
-		// Format-version gate: npm lockfileVersion 3 and newer. v1/v2 trees record
-		// resolution in a different shape this parser does not model.
-		//
-		// It runs BEFORE the shape decode, and must: a v1 tree carries no
-		// `packages` object at all, so decoding first would report the oldest
-		// format we reject as merely malformed. "Too old" is the more specific
-		// true statement, and the only one a consumer can act on.
-		const probe = yield* Schema.decodeUnknownEffect(NpmVersionProbe)(raw).pipe(Effect.mapError(validationFailure));
-		yield* requireLockfileVersion("npm", probe.lockfileVersion);
-		const validated = yield* Schema.decodeUnknownEffect(NpmLockfileRaw)(raw).pipe(Effect.mapError(validationFailure));
-		return yield* toFields(validated);
-	});
+export const normalizeNpm = (raw: PackageLockDocument): Effect.Effect<LockfileFields, ParseFailure> => toFields(raw);
 
 // ── Transform ──────────────────────────────────────────────────────────────
 
-const toFields = (raw: NpmLockfileRawType): Effect.Effect<LockfileFields, ParseFailure> =>
+const toFields = (raw: PackageLockDocument): Effect.Effect<LockfileFields, ParseFailure> =>
 	Effect.gen(function* () {
 		const packages: Array<ResolvedPackage> = [];
 		const workspaceNames = new Set<string>();

@@ -1,12 +1,14 @@
+import { BunExtension, BunLockDocument } from "@effected/bun";
+import { PackageLockDocument } from "@effected/npm";
+import { PnpmExtension } from "@effected/pnpm";
 import { Effect, Option, Schema } from "effect";
-import { BunExtension } from "./BunExtension.js";
-import { parseBun } from "./internal/bun.js";
-import { parseNpm } from "./internal/npm.js";
-import { parsePnpm } from "./internal/pnpm.js";
+import { normalizeBun } from "./internal/bun.js";
+import { normalizeNpm } from "./internal/npm.js";
+import { readPnpm } from "./internal/pnpm.js";
 import type { LockfileFields, ParseFailure } from "./internal/shared.js";
+import { fromDocumentError } from "./internal/shared.js";
 import { LockfileFormat } from "./LockfileFormat.js";
 import { LockfileImporter } from "./LockfileImporter.js";
-import { PnpmExtension } from "./PnpmExtension.js";
 import { ResolvedPackage } from "./ResolvedPackage.js";
 import { WorkspaceDependency } from "./WorkspaceDependency.js";
 
@@ -120,6 +122,11 @@ export const materializeFailure = (
 		? new LockfileFramingError({ format, reason: failure.reason, documents: failure.documents })
 		: new LockfileParseError({ format, stage: failure.stage, cause: failure.cause });
 
+/**
+ * Read each format's native document through its manager package, then
+ * normalise it. The manager packages own the documents; this package owns the
+ * reading.
+ */
 const dispatch = (
 	format: LockfileFormat,
 	content: string,
@@ -127,11 +134,11 @@ const dispatch = (
 ): Effect.Effect<LockfileFields, ParseFailure> => {
 	switch (format) {
 		case "bun":
-			return parseBun(content);
+			return BunLockDocument.parse(content).pipe(Effect.mapError(fromDocumentError), Effect.flatMap(normalizeBun));
 		case "npm":
-			return parseNpm(content);
+			return PackageLockDocument.parse(content).pipe(Effect.mapError(fromDocumentError), Effect.flatMap(normalizeNpm));
 		case "pnpm":
-			return parsePnpm(content, configOnly);
+			return readPnpm(content, configOnly);
 	}
 };
 

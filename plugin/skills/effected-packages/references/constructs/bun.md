@@ -5,3 +5,5 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `BunExtension` | Class | Extension data specific to bun lockfiles, attached to `Lockfile.extension` when the format is `"bun"`. | bun lockfile extension data, catalog, catalogs, overrides and trustedDependencies |
+| `BunLockDocument` | Class | bun's text lockfile, `bun.lock`, as bun writes it on disk: JSONC with `lockfileVersion`, the `workspaces` map keyed by workspace path, the `packages` map of tuples keyed by install position, and the header fields (`catalog`, `catalogs`, `overrides`, `trustedDependencies`). | read a bun.lock as written, decode bun's native lockfile document, workspaces and package tuples |

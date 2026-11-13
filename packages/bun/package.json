@@ -30,6 +30,7 @@
 		"types:check": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@effected/jsonc": "workspace:^",
 		"@effected/npm": "workspace:^"
 	},
 	"devDependencies": {

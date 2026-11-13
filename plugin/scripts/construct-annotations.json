@@ -6,6 +6,10 @@
 		"AppStore": "the app's migrated sqlite state database in the xdg state directory, multiple stores each under your own service key",
 		"AppTest": "hermetic app layer for tests over an in-memory filesystem, from the testing entrypoint"
 	},
+	"bun": {
+		"BunExtension": "bun lockfile extension data, catalog, catalogs, overrides and trustedDependencies",
+		"BunLockDocument": "read a bun.lock as written, decode bun's native lockfile document, workspaces and package tuples"
+	},
 	"bundler": {
 		"ActionBuildOptions": "minify, source maps, externals, stub out ignored packages in action bundles",
 		"ActionBuildResult": "what validating, bundling and persisting an action produced",
@@ -787,7 +791,6 @@
 		"VerificationKey": "an imported public key with its algorithm, for verifying"
 	},
 	"lockfiles": {
-		"BunExtension": "bun lockfile extension data, catalog, catalogs, overrides and trustedDependencies",
 		"CatalogChange": "catalog entry added, removed or changed between lockfiles, version before and after, consumers",
 		"ConfigDependencyLock": "config dependency integrity from lockfile, verify config dependency fetch",
 		"ImporterChange": "importer dependency added, removed or changed between two lockfiles, specifier and version",
@@ -801,7 +804,6 @@
 		"LockfileParseError": "handle malformed or wrong-shape lockfile content, syntax vs validation failure",
 		"PackageManagerLock": "read pinned pnpm version, specifier and sri integrity, per-platform native binary integrity",
 		"PnpmEnvLockfile": "read pnpm version and config dependency integrity from a pnpm-lock.yaml env preamble",
-		"PnpmExtension": "pnpm lockfile extension data, catalogs, overrides and settings from the lockfile header",
 		"ResolvedPackage": "one package resolved from a lockfile, its dependency and peer edges",
 		"WorkspaceDependency": "a directed dependency edge between two workspace packages as the lockfile records it",
 		"WorkspaceManifest": "the minimal package.json shape lockfile integrity checking compares against",
@@ -1037,7 +1039,9 @@
 		"NpmRegistryTls": "per-registry ca, cert and key settings for one registry url, client certificate",
 		"NpmHttpClient": "node http client honouring npmrc proxy, cafile, client certificates, strict-ssl",
 		"NpmReleaseAge": "read npm min-release-age and its exclude list, hold back fresh versions",
-		"NpmTransportError": "handle unreadable npmrc cafile, certfile or keyfile, unparseable proxy url"
+		"NpmTransportError": "handle unreadable npmrc cafile, certfile or keyfile, unparseable proxy url",
+		"LockfileDocumentError": "handle an unreadable lockfile document: syntax, framing, shape or too-old lockfileVersion",
+		"PackageLockDocument": "read a package-lock.json as written, decode npm's native lockfile document, lockfileVersion 3 gate"
 	},
 	"oidc": {
 		"IdTokenClaims": "standard openid connect id token claims, azp nonce `auth_time` acr amr over the jwt registered claims",
@@ -1063,6 +1067,9 @@
 	},
 	"pnpm": {
 		"PartialReleaseAgeGate": "one config source's contribution to a pnpm minimumReleaseAge gate before merging",
+		"PnpmEnvDocument": "read the env preamble document of a pnpm-lock.yaml, configDependencies and packageManagerDependencies as written",
+		"PnpmExtension": "pnpm lockfile extension data, catalogs, overrides and settings from the lockfile header",
+		"PnpmLockDocument": "read a pnpm-lock.yaml as written, decode pnpm's native lockfile document, importers, snapshots",
 		"PnpmMatcher": "match peerDependencyRules ignoreMissing or allowAny lists, compile pnpm name patterns with negation",
 		"PnpmSettings": "read pnpm effective settings, pnpm config get precedence, minimumReleaseAge, which source set a value",
 		"PnpmSettingsError": "unreadable, non-yaml or non-mapping pnpm settings file",

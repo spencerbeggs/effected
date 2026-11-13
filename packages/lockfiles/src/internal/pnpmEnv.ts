@@ -1,46 +1,10 @@
 import { IntegrityHash } from "@effected/npm";
-import { Effect, Schema } from "effect";
+import { PnpmEnvDocument } from "@effected/pnpm";
+import { Effect, Option } from "effect";
 import { ConfigDependencyLock } from "../ConfigDependencyLock.js";
 import { PackageManagerLock } from "../PackageManagerLock.js";
-import { splitPnpmStream } from "./documents.js";
 import type { ParseFailure } from "./shared.js";
-import { gatePnpmVersion, validationFailure } from "./shared.js";
-
-// ── Raw schema (permissive validation scaffolding, not API) ────────────────
-
-const PnpmEnvImporterDeps = Schema.optionalKey(
-	Schema.Record(Schema.String, Schema.Struct({ specifier: Schema.String, version: Schema.String })),
-);
-
-const PnpmEnvRaw = Schema.Struct({
-	importers: Schema.optionalKey(
-		Schema.Record(
-			Schema.String,
-			Schema.Struct({
-				packageManagerDependencies: PnpmEnvImporterDeps,
-				configDependencies: PnpmEnvImporterDeps,
-			}),
-		),
-	),
-	packages: Schema.optionalKey(
-		Schema.Record(
-			Schema.String,
-			Schema.Struct({
-				resolution: Schema.optionalKey(Schema.Struct({ integrity: Schema.optionalKey(Schema.String) })),
-			}),
-		),
-	),
-	snapshots: Schema.optionalKey(
-		Schema.Record(
-			Schema.String,
-			Schema.Struct({
-				optionalDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-			}),
-		),
-	),
-});
-
-type PnpmEnvRawType = typeof PnpmEnvRaw.Type;
+import { fromDocumentError, validationFailure } from "./shared.js";
 
 /** The package-manager package this reader resolves. */
 const PNPM = "pnpm";
@@ -69,7 +33,7 @@ const unaccounted = (message: string): ParseFailure =>
  * integrity, or the SRI form of that integrity is missing. Never `undefined`:
  * the caller only asks for keys the lockfile's own graph names.
  */
-const integrityOf = (raw: PnpmEnvRawType, key: string): Effect.Effect<string, ParseFailure> => {
+const integrityOf = (raw: PnpmEnvDocument, key: string): Effect.Effect<string, ParseFailure> => {
 	const integrity = own(raw.packages, key)?.resolution?.integrity;
 	if (integrity === undefined) {
 		return Effect.fail(unaccounted(`packages[${JSON.stringify(key)}] records no resolution.integrity`));
@@ -89,7 +53,7 @@ const integrityOf = (raw: PnpmEnvRawType, key: string): Effect.Effect<string, Pa
  * `subject` is the entry as the empty-version message names it.
  */
 const recordedIntegrity = (
-	raw: PnpmEnvRawType,
+	raw: PnpmEnvDocument,
 	subject: string,
 	name: string,
 	version: string,
@@ -101,16 +65,13 @@ const recordedIntegrity = (
 /**
  * Locate and decode the env preamble of a `pnpm-lock.yaml`: `undefined` when
  * the stream carries none, typed when it is malformed or below the supported
- * lockfile version. The one decode every preamble reader shares, so they
- * cannot disagree about which document is the preamble or what shape it has.
+ * lockfile version. `PnpmEnvDocument.parse` is the one decode every preamble
+ * reader shares, and it splits the stream with the same splitter as the
+ * lockfile document's parse, so the readers cannot disagree about which
+ * document is the preamble or what shape it has.
  */
-const decodePreamble = (content: string): Effect.Effect<PnpmEnvRawType | undefined, ParseFailure> =>
-	Effect.gen(function* () {
-		const { preamble } = yield* splitPnpmStream(content);
-		if (preamble === undefined) return undefined;
-		yield* gatePnpmVersion(preamble);
-		return yield* Schema.decodeUnknownEffect(PnpmEnvRaw)(preamble).pipe(Effect.mapError(validationFailure));
-	});
+const decodePreamble = (content: string): Effect.Effect<PnpmEnvDocument | undefined, ParseFailure> =>
+	PnpmEnvDocument.parse(content).pipe(Effect.mapError(fromDocumentError), Effect.map(Option.getOrUndefined));
 
 /**
  * Read the package manager pinned by a `pnpm-lock.yaml`'s env preamble.

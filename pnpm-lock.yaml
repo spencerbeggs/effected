@@ -357,6 +357,9 @@ importers:
 
   packages/bun:
     dependencies:
+      '@effected/jsonc':
+        specifier: workspace:^
+        version: link:../jsonc
       '@effected/npm':
         specifier: workspace:^
         version: link:../npm
@@ -1151,6 +1154,9 @@ importers:
       '@effect/vitest':
         specifier: 4.1.4
         version: 4.1.4(effect@4.1.4)(vitest@5.1.0)
+      '@effected/bun':
+        specifier: workspace:*
+        version: link:../bun
       '@effected/glob':
         specifier: workspace:*
         version: link:../glob
@@ -1160,6 +1166,9 @@ importers:
       '@effected/npm':
         specifier: workspace:*
         version: link:../npm
+      '@effected/pnpm':
+        specifier: workspace:*
+        version: link:../pnpm
       '@effected/semver':
         specifier: workspace:*
         version: link:../semver
@@ -1914,6 +1923,9 @@ importers:
 
   packages/workspaces:
     dependencies:
+      '@effected/bun':
+        specifier: workspace:^
+        version: link:../bun
       '@effected/commands':
         specifier: workspace:^
         version: link:../commands
@@ -2033,6 +2045,9 @@ importers:
       '@effected/app':
         specifier: workspace:*
         version: link:../packages/app
+      '@effected/bun':
+        specifier: workspace:*
+        version: link:../packages/bun
       '@effected/cli-kit':
         specifier: workspace:*
         version: link:../packages/cli-kit
@@ -2093,6 +2108,9 @@ importers:
       '@effected/package-json':
         specifier: workspace:*
         version: link:../packages/package-json
+      '@effected/pnpm':
+        specifier: workspace:*
+        version: link:../packages/pnpm
       '@effected/pnpm-plugin-effected':
         specifier: workspace:*
         version: link:../packages/pnpm-plugin-effected

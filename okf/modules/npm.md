@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-12T23:38:43Z
+  at: 2026-11-13T00:15:32Z
 integrity:
   generated:
-    body: ebd83d4b22986496
+    body: a3292e0ecf1f83a6
 ---
 
 # npm
@@ -105,6 +105,12 @@ Two deliberate departures from npm. A credential value naming an unset `${VAR}` 
 
 Both services follow the kit's service conventions: all-effectful shapes, `static readonly layer` using `this`, named spans on public boundaries carrying package name, registry host and version — never a token, never argv. Service `R` is discharged at construction, so every method's own `R` is `never`.
 
+## The package-lock.json document
+
+`PackageLockDocument` is `package-lock.json` as npm writes it, `lockfileVersion` 3 and newer: `name`, `version`, `lockfileVersion`, `requires` and the `packages` map keyed by install position. `PackageLockDocument.parse` reads text through native `JSON.parse` inside the typed channel. It gates `lockfileVersion` before the shape decode, so a v1 tree with no `packages` object fails as too old rather than as malformed. The document is pure and reachable from the root.[^package-lock-document-ts] Normalising it into a manager-neutral model is `lockfiles`' job.
+
+`LockfileDocumentError` is the one failure of every manager package's document parser: this one, `pnpm`'s `PnpmLockDocument` and `PnpmEnvDocument`, and `bun`'s `BunLockDocument`. It lives here because all three depend on this package. Its `reason` is `syntax | framing | shape | version`, and each reason carries its own fields: `line` and `cause`, `framing` and `documents`, or `lockfileVersion` and `minimumSupported`. Those fields are what lets `lockfiles` map it into its public `LockfileParseError` / `LockfileFramingError` without losing anything.
+
 ## npm workspace patterns
 
 `NpmWorkspacePatterns.matcherResult(field)` is the kit's one reading of an npm `workspaces` field, as `@npmcli/map-workspaces` 5 reads it with the glob 13 `Ignore` it hands negations to (#1286). It returns a predicate over normalized relative directories, or an `NpmWorkspacePatternsError` naming the ceiling the field passed (`tooManyPatterns`, `tooManyWildcards`, `patternTooLong`, `tooManyAlternatives` with an `exact`/`stopped`/`inexact`/`unbounded` `count`, or `uncompilable` carrying glob's error). The rules, each pinned against `npm query .workspace` on npm 11.20.0 by `@effected/lockfiles`' fixtures, and the measured ceilings are recorded in [the lockfiles module](lockfiles.md), where they were ruled (#1267). The matcher moved here so that no second copy can drift from it.
@@ -126,3 +132,5 @@ Suites in `__test__/` per concept. Shared layers are provided through a top-leve
 ## Build
 
 Every Effect class factory is inline with no exported `*_base` const; the bundler's default config suppresses `ae-forgotten-export` for the `_base` pattern, so a clean `dist/prod/issues.json` carries empty `warnings`/`errors` and one `suppressed` entry per such class. An empty `suppressed` means the meta pass did not run. `pnpm build --filter @effected/npm` runs the build [through turbo](../conventions/build-through-turbo-only.md).
+
+[^package-lock-document-ts]: `packages/npm/src/PackageLockDocument.ts` and `LockfileDocumentError.ts`; the tests are `__test__/PackageLockDocument.test.ts`, over copies of `lockfiles`' fixtures with a provenance README.

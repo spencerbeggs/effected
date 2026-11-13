@@ -1,5 +1,13 @@
 # Log
 
+## 2026-11-13
+
+* Updated A lockfile is a YAML stream, not always one document
+* Updated bun
+* Updated lockfiles
+* Updated npm
+* Updated pnpm
+
 ## 2026-11-12
 
 * Updated glob

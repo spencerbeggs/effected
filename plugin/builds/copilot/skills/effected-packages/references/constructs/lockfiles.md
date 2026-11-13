@@ -5,7 +5,6 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
-| `BunExtension` | Class | Extension data specific to bun lockfiles, attached to `Lockfile.extension` when the format is `"bun"`. | bun lockfile extension data, catalog, catalogs, overrides and trustedDependencies |
 | `CatalogChange` | Class | One catalog entry that moved between two lockfiles, as reported by `LockfileDiff.compare`. | catalog entry added, removed or changed between lockfiles, version before and after, consumers |
 | `ConfigDependencyLock` | Class | One config dependency a `pnpm-lock.yaml` records, with the integrity pnpm recorded for it — read from the lockfile's env preamble by `PnpmEnvLockfile.configDependencies`. | config dependency integrity from lockfile, verify config dependency fetch |
 | `ImporterChange` | Class | One importer dependency that moved between two lockfiles, as reported by `LockfileDiff.compare`. | importer dependency added, removed or changed between two lockfiles, specifier and version |
@@ -18,10 +17,8 @@
 | `LockfileIntegrity` | Class | Result of checking a parsed lockfile against the workspace's declared manifests. | verify lockfile integrity against workspace manifests, unsatisfied constraint and missing workspace check |
 | `LockfileParseError` | Class | Failure of `Lockfile.parse`: the given content is not a valid lockfile of the requested format. | handle malformed or wrong-shape lockfile content, syntax vs validation failure |
 | `PackageManagerLock` | Class | The package manager a `pnpm-lock.yaml` pins, with the integrity pnpm recorded for it — read from the lockfile's env preamble by `PnpmEnvLockfile.packageManager`. | read pinned pnpm version, specifier and sri integrity, per-platform native binary integrity |
-| `PnpmCatalogs` | TypeAlias | The pnpm `catalogs:` record shape as it appears in `pnpm-lock.yaml`: catalog name → package name → pinned version string or `{ specifier, version }` pair. | |
 | `PnpmEnvLockfile` | Variable | Readers over the env ("preamble") document of a `pnpm-lock.yaml` — see `PnpmEnvLockfileReaders`. | read pnpm version and config dependency integrity from a pnpm-lock.yaml env preamble |
 | `PnpmEnvLockfileReaders` | Interface | Readers over the env ("preamble") document of a `pnpm-lock.yaml`. | |
-| `PnpmExtension` | Class | Extension data specific to pnpm lockfiles, attached to `Lockfile.extension` when the format is `"pnpm"`. | pnpm lockfile extension data, catalogs, overrides and settings from the lockfile header |
 | `ResolvedPackage` | Class | A package resolved from a lockfile. | one package resolved from a lockfile, its dependency and peer edges |
 | `UnsupportedLockfileVersion` | Interface | The cause a `LockfileParseError` carries when a lockfile predates the supported format version. | |
 | `WorkspaceDependency` | Class | A directed dependency edge between two workspace packages as recorded in the lockfile. | a directed dependency edge between two workspace packages as the lockfile records it |

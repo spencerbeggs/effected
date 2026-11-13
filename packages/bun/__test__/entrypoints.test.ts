@@ -1,7 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 
 describe("@effected/bun root entry", () => {
-	it("exports nothing until its modules move in", async () => {
-		assert.deepStrictEqual(Object.keys(await import("../src/index.js")), []);
+	it("exports the bun-only lockfile document and extension", async () => {
+		assert.deepStrictEqual(Object.keys(await import("../src/index.js")).sort(), ["BunExtension", "BunLockDocument"]);
 	});
 });

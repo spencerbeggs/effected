@@ -1,7 +1,33 @@
+import { LockfileDocumentError } from "@effected/npm";
+import type { YamlParseError } from "@effected/yaml";
 import { Yaml } from "@effected/yaml";
 import { Effect } from "effect";
-import type { ParseFailure } from "./shared.js";
-import { framingFailure, syntaxFailure } from "./shared.js";
+
+/**
+ * A YAML engine failure as the document error's `syntax` reason, with the
+ * zero-based line of the engine's first diagnostic.
+ *
+ * @internal
+ */
+const syntaxFailure = (cause: YamlParseError): LockfileDocumentError => {
+	const line = cause.diagnostics[0]?.line;
+	return LockfileDocumentError.make({
+		format: "pnpm",
+		reason: "syntax",
+		cause,
+		...(line !== undefined ? { line } : {}),
+	});
+};
+
+/**
+ * A framing failure of a pnpm YAML stream.
+ *
+ * @internal
+ */
+export const framingFailure = (
+	framing: "noLockfileDocument" | "noImporters" | "unexpectedDocuments",
+	documents: number,
+): LockfileDocumentError => LockfileDocumentError.make({ format: "pnpm", reason: "framing", framing, documents });
 
 /**
  * An empty YAML document composes to `null` (`Yaml.parseAll("")` is `[null]`,
@@ -37,9 +63,9 @@ export interface PnpmStream {
 /**
  * Split a `pnpm-lock.yaml` YAML stream into its env preamble and its main
  * lockfile document. This is the one place pnpm's document framing is
- * decided: `Lockfile.parse` projects the main document out of it and
- * `PnpmEnvLockfile` the preamble, so the two readers cannot disagree about
- * which document is which or how many a stream may carry.
+ * decided: `PnpmLockDocument.parse` projects the main document out of it and
+ * `PnpmEnvDocument.parse` the preamble, so the two readers cannot disagree
+ * about which document is which or how many a stream may carry.
  *
  * @remarks
  * pnpm 11 and 12 write `pnpm-lock.yaml` as **up to two YAML documents** when
@@ -70,7 +96,7 @@ export interface PnpmStream {
  *
  * @internal
  */
-export const splitPnpmStream = (content: string): Effect.Effect<PnpmStream, ParseFailure> =>
+export const splitPnpmStream = (content: string): Effect.Effect<PnpmStream, LockfileDocumentError> =>
 	Effect.gen(function* () {
 		const documents = yield* Yaml.parseAll(content).pipe(Effect.mapError(syntaxFailure));
 		if (documents.length > MAX_PNPM_DOCUMENTS) {

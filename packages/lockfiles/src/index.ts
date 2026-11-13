@@ -36,7 +36,6 @@
  * @packageDocumentation
  */
 
-export { BunExtension } from "./BunExtension.js";
 export { ConfigDependencyLock } from "./ConfigDependencyLock.js";
 export { ImporterDependency } from "./ImporterDependency.js";
 export { Lockfile, LockfileFramingError, LockfileParseError } from "./Lockfile.js";
@@ -46,7 +45,6 @@ export { LockfileImporter } from "./LockfileImporter.js";
 export { LockfileIntegrity, WorkspaceManifest } from "./LockfileIntegrity.js";
 export { PackageManagerLock } from "./PackageManagerLock.js";
 export { PnpmEnvLockfile, type PnpmEnvLockfileReaders } from "./PnpmEnvLockfile.js";
-export { type PnpmCatalogs, PnpmExtension } from "./PnpmExtension.js";
 export { ResolvedPackage } from "./ResolvedPackage.js";
 export { type UnsupportedLockfileVersion, isUnsupportedLockfileVersion } from "./UnsupportedLockfileVersion.js";
 export { WorkspaceDependency } from "./WorkspaceDependency.js";

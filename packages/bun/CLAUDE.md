@@ -2,7 +2,7 @@
 
 Everything bun owns alone: its lockfile document and `BunExtension`, over the npm vocabulary it shares.
 
-**Pure tier at the root:** peer-depends on `effect`, depends on `@effected/npm`, no IO, `"sideEffects": false`.
+**Pure tier at the root:** peer-depends on `effect` and `@effected/semver`, depends on `@effected/npm` and `@effected/jsonc`, no IO, `"sideEffects": false`.
 Owner's rule: a concept that is one manager's alone lives in that manager's
 package; a concept shared by several lives in `@effected/npm`. Dependency
 direction: npm <- pnpm/bun <- lockfiles <- workspaces; this package never
@@ -13,5 +13,5 @@ moving a module in.
 
 ## Public surface
 
-`src/index.ts` is the only re-exporting module and exports nothing yet.
+`src/index.ts` is the only re-exporting module. It exports `BunLockDocument` (`bun.lock` as written; `parse` fails `@effected/npm`'s `LockfileDocumentError`) and `BunExtension`, pinned by `__test__/entrypoints.test.ts`. Normalising the document into `Lockfile` is `@effected/lockfiles`' job. `__test__/fixtures/lockfiles/` holds copies of lockfiles' fixtures with a provenance README.
 Outside `index.ts`, modules import explicitly — no barrels.
