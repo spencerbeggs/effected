@@ -568,14 +568,21 @@ describe("ReleasePlan.assemble", () => {
 			);
 		});
 
-		it("fails AmbiguousPackageError for a ./dir key naming one of two same-named packages", () => {
+		it("plans a ./dir key naming one of two same-named packages, keyed by its directory", () => {
+			// pnpm keys a plan by directory (`PlannedRelease.dir`, crates/versioning/src/plan.rs:79-80), so
+			// a `./dir` key releases exactly the project it names and never its twin.
 			const twins = [at("util", "a/util", "1.0.0"), at("util", "b/util", "2.0.0")];
-			const error = failure(pnpmPlan(twins, { "./a/util": "patch" }));
-			assert.isTrue(
-				error?._tag === "AmbiguousPackageError" &&
-					error.packageName === "util" &&
-					error.directories.join(",") === "a/util,b/util",
-			);
+			const result = pnpmPlan(twins, { "./a/util": "patch", "./b/util": "minor" });
+			assert.isTrue(Result.isSuccess(result));
+			if (Result.isSuccess(result)) {
+				assert.deepStrictEqual(
+					result.success.releases.map((r) => [r.name, r.dir, r.oldVersion, r.newVersion]),
+					[
+						["util", "a/util", "1.0.0", "1.0.1"],
+						["util", "b/util", "2.0.0", "2.1.0"],
+					],
+				);
+			}
 		});
 
 		it("fails UnknownPackageError for ./ itself, ./../outside and a key with a backslash", () => {
@@ -585,7 +592,7 @@ describe("ReleasePlan.assemble", () => {
 			}
 		});
 
-		it("resolves a ./dir key in an exit-mode plan after the changeset is renamed pre/", () => {
+		it("ignores pre.json, which pnpm never reads", () => {
 			const result = ReleasePlan.assemble({
 				packages: members,
 				changesets: [change("old.md", { "./packages/b": "patch" })],
@@ -597,12 +604,13 @@ describe("ReleasePlan.assemble", () => {
 			if (Result.isSuccess(result)) {
 				assert.deepStrictEqual(
 					result.success.changesets.map((c) => c.file),
-					["pre/old.md"],
+					["old.md"],
 				);
 				assert.deepStrictEqual(
-					result.success.releases.map((r) => [r.name, r.type]),
-					[["@p/b", "patch"]],
+					result.success.releases.map((r) => [r.name, r.type, r.newVersion]),
+					[["@p/b", "patch", "1.0.1"]],
 				);
+				assert.isUndefined(result.success.preState);
 			}
 		});
 

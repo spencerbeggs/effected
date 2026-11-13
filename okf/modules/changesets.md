@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/changesets"
-description: "Boundary-tier reader for changeset files and .changeset/config.json, a release planner (snapshots included), release application and changelog assembly as data, each held to its @changesets/* engine as a test oracle, so consumers stop carrying those packages at runtime."
+description: "Boundary-tier reader for changeset files and .changeset/config.json, a release planner (snapshots included, and pnpm-native versioning held to pnpm), release application and changelog assembly as data, each held to its @changesets/* engine as a test oracle, so consumers stop carrying those packages at runtime."
 status: draft
 kind: package
 resource: ../../packages/changesets
@@ -24,15 +24,18 @@ sources:
   - id: systems-request
     resource: ../../.claude/dogfood/savvy-web-systems/2026-11-09-request-adoption-changesets.md
     title: "savvy-web/systems adoption round 1, part 2: items 5 to 9 (snapshot, edits, changelog, config keys)"
+  - id: issue-1316
+    resource: https://github.com/spencerbeggs/effected/issues/1316
+    title: "changesets: pnpm-native release planning"
   - id: spec
     resource: ../../docs/superpowers/specs/2026-11-06-bundler-research.md
     title: "The bundler research report and the owner's rulings"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-13T02:34:15Z
+  at: 2026-11-13T03:33:37Z
 integrity:
   generated:
-    body: f5dbc22865278edd
+    body: f57ec2bfacb74c77
 ---
 
 # @effected/changesets
@@ -64,9 +67,19 @@ The changeset front-matter lint rules ship from a separate `./lint` entry point,
 
 ## Release modes
 
-The planner mirrors `@changesets/assemble-release-plan`'s loop: ripple to dependents, hold `fixed` groups together, keep `linked` groups in step, and repeat until none changes anything.[^issue-1255] A grouped member's `oldVersion` is the group's highest current version. `ReleaseManager.detect` answers `pnpm` when `pnpm-workspace.yaml` has a `versioning` block (read through `PnpmSettings`, never re-parsed) or `.changeset/ledger.yaml` exists, and `changesets` otherwise; pnpm ignores `pre.json` and `config.json`, so they decide nothing. `ReleasePlan.read` passes that answer to `assemble` as `manager`; under `pnpm` a changeset key starting `./` names a project by workspace-relative directory (normalised as pnpm's `normalize_project_dir` does, matched to each package's `relativePath`) and a name two packages publish, bare or through its `./dir` key, fails `AmbiguousPackageError` with both directories (the plan is name-keyed, so same-named projects are not yet plannable), while the default `changesets` reads a `./` key as an `UnknownPackageError`, as the Changesets CLI does. `Ledger.read` reads pnpm's `.changeset/ledger.yaml` (`name@version` to `{dir, intents}` or a bare id list; `Option`, `LedgerError` on malformed input): pnpm keeps an intent file until every project it names has released, so `PendingChangesets.unconsumed` drops a release key when its project has consumed the intent. An attributed entry matches by normalised `dir` only (never the key's name: renames and reused names), a bare-list entry by name; `Ledger.consumption` answers `none | prerelease-only | stable`. A prerelease-only intent is not pending (`collect_pending_intents`) but `PendingChangesets.laneConsumed` returns it for the stable bump at graduation (`collect_lane_consumed_intents`). `PreState` reads `.changeset/pre.json`. In pre mode each bumped version gains `-<tag>.<n>`, and the changesets an earlier pre-release consumed (under `.changeset/pre/`) are left out. In exit mode those changesets count again and every numbered prerelease completes. Each mode is held by an oracle fixture whose expected plan is the oracle's own answer.
+The planner mirrors `@changesets/assemble-release-plan`'s loop: ripple to dependents, hold `fixed` groups together, keep `linked` groups in step, and repeat until none changes anything.[^issue-1255] A grouped member's `oldVersion` is the group's highest current version. `ReleaseManager.detect` answers `pnpm` when `pnpm-workspace.yaml` has a `versioning` block (read through `PnpmSettings`, never re-parsed) or `.changeset/ledger.yaml` exists, and `changesets` otherwise; pnpm ignores `pre.json` and `config.json`, so they decide nothing. `ReleasePlan.read` passes that answer to `assemble` as `manager`; the default `changesets` reads a `./` key as an `UnknownPackageError`, as the Changesets CLI does. `Ledger.read` reads pnpm's `.changeset/ledger.yaml` (`name@version` to `{dir, intents}` or a bare id list; `Option`, `LedgerError` on malformed input): pnpm keeps an intent file until every project it names has released, so `PendingChangesets.unconsumed` drops a release key when its project has consumed the intent. An attributed entry matches by normalised `dir` only (never the key's name: renames and reused names), a bare-list entry by name; `Ledger.consumption` answers `none | prerelease-only | stable`. A prerelease-only intent is not pending (`collect_pending_intents`) but `PendingChangesets.laneConsumed` returns it for the stable bump at graduation (`collect_lane_consumed_intents`). `PreState` reads `.changeset/pre.json`. In pre mode each bumped version gains `-<tag>.<n>`, and the changesets an earlier pre-release consumed (under `.changeset/pre/`) are left out. In exit mode those changesets count again and every numbered prerelease completes. Each mode is held by an oracle fixture whose expected plan is the oracle's own answer.
 
 A snapshot plan (`changeset version --snapshot`) takes a `snapshot` input with the time as a `Date`, so assembly stays pure. Its oracle is `@changesets/assemble-release-plan`'s snapshot argument, which `getReleasePlan` never passes. Two rulings follow `changeset version` rather than the bare engine: pre mode is refused with `SnapshotPreModeError`, and an empty tag or commit is no value. The engine fills an empty `{tag}` with nothing, while `apply-release-plan` reads `""` as "not a snapshot", and the CLI never passes `""` to either. The remaining deliberate differences are ruled in `ReleasePlan`'s TSDoc and listed in the package's `CLAUDE.md`. The main one: an older-layout `pre.json` is planned the way the oracle settles on after it has moved the consumed files, changeset ids included, and nothing is written. A version is read as node-semver reads one, so a leading `v` is normalised, and one changesets cannot bump (`=1.2.0`, which only npm's loose parse reads), or a `pre.json` with no tag or an unknown mode, fails typed where the oracle crashes or plans nonsense. The plan carries the changesets it was made from and its pre state, so a changelog writer never re-derives which changesets a pre-release consumed. `ReleasePlan.read` may be given any directory inside the workspace and climbs to the root as the oracle does; `ReleasePlan.readWithContext` returns the plan with the root, the packages and the config it read, which are what `edits` and `Changelog.entry` take, so a caller never re-discovers them or re-derives the lone-package fallback. A release's `changesets` are changeset ids (`pre/<name>` for a consumed one), as the oracle lists them, and a changeset's summary is trimmed as `@changesets/parse` trims it.
+
+## The pnpm-native planner
+
+Under `manager: "pnpm"`, `assemble` is a port of pnpm 12.20.0's own planner, `assemble_release_plan` in `crates/versioning`, held to pnpm's recorded answers.[^issue-1316] The plan is keyed by project directory, not name: each `PlannedRelease` carries the `dir` pnpm spells (`""` for the root), so two same-named projects each release, a `./dir` changeset key names one of them, and a bare name two projects publish still fails `AmbiguousPackageError`. Each release also carries its `causes` (`dependencies`, `epic`, `fixed`, `intent`, in pnpm's order), which a Changesets plan fills from its own paths. pnpm's other refusals are one `VersioningError` whose `reason` names the rule and whose `code` is pnpm's `ERR_PNPM_*`, so a caller compares it with `pnpm change status`.
+
+The rules are pnpm's, not the Changesets CLI's, and several surprise. Lanes build `X.Y.Z-<lane>.N`, the counter resetting when the stable target changes. Graduation needs the intent that built the prerelease to still be on disk, recorded only under a prerelease ledger key; with nothing lane-consumed, returning to `main` plans nothing. Only `workspace:` specs constrain a dependent, so a 1.x minor stays inside `workspace:^` and a plain range never ripples, and devDependencies never do. Epic members live in their lead's band, `M*100` to `M*100+99`; a lead's new stable major re-bases them to the next floor, and a member past the ceiling is refused. `maxBump` is checked on the final plan against the real version distance, `ignore` refuses a real bump, and a fixed group shares its highest version, bumped. `private` does not exclude a project; it only skips the registry probe. A first release keeps its manifest version: `assemble` takes `currentVersions`, a directory-to-version map from the registry, and a public release whose manifest version it does not confirm debuts, the plan made twice as `pnpm version -r` makes it. `config.json` and `pre.json` are never read.
+
+`ReleasePlan.read` in a pnpm repository plans every discovered project, the root included, reads the `versioning` block through `PnpmSettings` and the ledger through `Ledger.read`, and plans without a `config.json`. The registry is not consulted yet, so nothing debuts through `read`.
+
+The oracle is pnpm's applied runs on throwaway copies of `__test__/fixtures/pnpm-native/`, because pnpm prints no JSON plan. A case's prelude, which builds a lane's pre-state with pnpm, is replayed against the planner itself, so the lane cases also check the intermediate plans against the ledger pnpm wrote. pnpm's own engine tests are ported beside it.
 
 ## Release application and changelogs
 
@@ -98,6 +111,7 @@ savvy-web's changeset rules, CSH001 to CSH005, are savvy-web's house style, and 
 [^issue-1255]: Issue 1255, `changesets: lint rules, pre and snapshot modes, fixed and linked groups`.
 [^issue-1148]: Issue 1148, `changesets: an @effected/changesets package`.
 [^issue-1306]: Issue 1306, `changesets: a tolerant PendingChangesets read that skips a malformed changeset instead of failing the whole directory`.
+[^issue-1316]: Issue 1316, `changesets: pnpm-native release planning`, specified in `docs/superpowers/specs/2026-11-12-package-manager-model-design.md`.
 [^issue-1131]: Issue 1131, `workspaces: a reader for pending changeset bumps`.
 [^spec]: `docs/superpowers/specs/2026-11-06-bundler-research.md`, sections 8 and 12.
 [^systems-request]: savvy-web/systems' adoption request, items 5 to 9: snapshot planning, release application as data, changelog assembly with a `ChangelogFunctions` contract, and `changelog` and `snapshot` on `ChangesetConfig`.

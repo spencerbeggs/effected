@@ -31,6 +31,7 @@ it("the root exports exactly the public surface", () => {
 		"PlannedRelease",
 		"PreState",
 		"RangeEdit",
+		"ReleaseCause",
 		"ReleaseContext",
 		"ReleaseEdits",
 		"ReleaseManager",
@@ -40,6 +41,7 @@ it("the root exports exactly the public surface", () => {
 		"SnapshotTemplateError",
 		"UnknownPackageError",
 		"VersionType",
+		"VersioningError",
 	]);
 });
 

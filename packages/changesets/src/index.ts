@@ -31,6 +31,7 @@ export {
 } from "./Changelog.js";
 export { ChangesetConfig } from "./ChangesetConfig.js";
 export { ChangesetFile, ParsedChangeset } from "./ChangesetFile.js";
+export type { VersioningErrorCode } from "./errors.js";
 export {
 	AmbiguousPackageError,
 	ChangesetConfigError,
@@ -40,6 +41,7 @@ export {
 	SnapshotPreModeError,
 	SnapshotTemplateError,
 	UnknownPackageError,
+	VersioningError,
 } from "./errors.js";
 export type { Consumption } from "./Ledger.js";
 export { Ledger, LedgerEntry } from "./Ledger.js";
@@ -50,4 +52,4 @@ export { ChangesetMove, ManifestEdit, RangeEdit, ReleaseEdits } from "./ReleaseE
 export type { ReleaseManagerDetectOptions } from "./ReleaseManager.js";
 export { ReleaseManager } from "./ReleaseManager.js";
 export type { ReleaseSnapshot } from "./ReleasePlan.js";
-export { PlannedRelease, ReleaseContext, ReleasePlan } from "./ReleasePlan.js";
+export { PlannedRelease, ReleaseCause, ReleaseContext, ReleasePlan } from "./ReleasePlan.js";

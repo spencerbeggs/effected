@@ -41,6 +41,7 @@
 | `PreState` | Class | The decoded `.changeset/pre.json`: the repository is in pre-release mode (`changeset pre enter <tag>`), or leaving it (`changeset pre exit`). | read pre mode state from pre.json, tag, initial versions, consumed changesets |
 | `ProjectRef` | Interface | A workspace project as `PendingChangesets.unconsumed` resolves a release key against it: a `WorkspacePackage` satisfies it. | |
 | `RangeEdit` | Class | One dependency range a release rewrites in a manifest. | one rewritten dependency range, from and to specifier |
+| `ReleaseCause` | Variable + TypeAlias | The type of a `ReleaseCause` value. | why a package releases, intent, dependency ripple, fixed group, epic re-base |
 | `ReleaseContext` | Class | A `ReleasePlan` with what `ReleasePlan.readWithContext` read it from. | release plan with the packages and config it was read from, hand to edits and changelog, read from a subdirectory |
 | `ReleaseEdits` | Class | Everything `changeset version` writes for a `ReleasePlan`, as data, CHANGELOG files aside. `ReleasePlan.edits` computes it; the caller does the IO. | changeset version as data, manifest edits, changesets to delete, next pre.json |
 | `ReleaseManager` | Variable + TypeAlias | The tool that plans a repository's releases. | detect whether releases are planned by pnpm versioning or the changesets cli, ledger.yaml, versioning key |
@@ -53,3 +54,5 @@
 | `SnapshotTemplateError` | Class | A snapshot prerelease template could not be filled, for one of the two reasons `@changesets/assemble-release-plan` refuses one: | snapshot prerelease template placeholder without a value, or missing tag |
 | `UnknownPackageError` | Class | A changeset names a package the workspace does not contain. | changeset names a package missing from the workspace |
 | `VersionType` | Variable + TypeAlias | The decoded type of `(VersionType:variable)`. | decode a bump, major minor patch or none, changelog contract |
+| `VersioningError` | Class | pnpm's native versioning refuses the plan: a `versioning` rule in `pnpm-workspace.yaml` is broken by the plan, the configuration cannot be attributed to one project, or an intent asks for a release pnpm cannot make. Only `ReleasePlan.assemble` under `manager: "pnpm"` fails with it. | pnpm refuses a release plan, maxBump exceeded, epic band, ignored package, pnpm error code |
+| `VersioningErrorCode` | TypeAlias | The `ERR_PNPM_*` code pnpm reports for each `VersioningError` reason, as its `VersioningError` enum declares them (`crates/versioning/src/error.rs`). | |

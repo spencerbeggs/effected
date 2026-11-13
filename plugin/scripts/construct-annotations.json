@@ -208,15 +208,17 @@
 		"PlannedRelease": "one package's old version, new version and bump type in a plan",
 		"PreState": "read pre mode state from pre.json, tag, initial versions, consumed changesets",
 		"RangeEdit": "one rewritten dependency range, from and to specifier",
+		"ReleaseCause": "why a package releases, intent, dependency ripple, fixed group, epic re-base",
 		"ReleaseContext": "release plan with the packages and config it was read from, hand to edits and changelog, read from a subdirectory",
-		"ReleaseManager": "detect whether releases are planned by pnpm versioning or the changesets cli, ledger.yaml, versioning key",
 		"ReleaseEdits": "changeset version as data, manifest edits, changesets to delete, next pre.json",
+		"ReleaseManager": "detect whether releases are planned by pnpm versioning or the changesets cli, ledger.yaml, versioning key",
 		"ReleasePlan": "compute next versions from pending changesets, dependents, snapshot versions, apply edits",
 		"ReleaseType": "package release outcomes, including none for an unreleased package",
 		"SnapshotPreModeError": "snapshot release refused while in pre mode",
 		"SnapshotTemplateError": "snapshot prerelease template placeholder without a value, or missing tag",
 		"UnknownPackageError": "changeset names a package missing from the workspace",
-		"VersionType": "decode a bump, major minor patch or none, changelog contract"
+		"VersionType": "decode a bump, major minor patch or none, changelog contract",
+		"VersioningError": "pnpm refuses a release plan, maxBump exceeded, epic band, ignored package, pnpm error code"
 	},
 	"cli": {
 		"CLI_VERSION": "the effected command's own version, replaced at build, what effected --version prints",
