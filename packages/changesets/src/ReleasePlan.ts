@@ -12,7 +12,7 @@ import type { ReleaseType } from "./BumpType.js";
 import { ChangesetConfig } from "./ChangesetConfig.js";
 import type { AmbiguousPackageError, MissingPackageError, VersioningError } from "./errors.js";
 import { ChangesetConfigError, SnapshotPreModeError, SnapshotTemplateError, UnknownPackageError } from "./errors.js";
-import { planPnpm } from "./internal/pnpmPlan.js";
+import { planPnpm, projectDir } from "./internal/pnpmPlan.js";
 import { twinReleases } from "./internal/twins.js";
 import type { DependencyKind } from "./internal/versions.js";
 import {
@@ -27,6 +27,7 @@ import {
 import { Ledger } from "./Ledger.js";
 import { PendingChangeset, PendingChangesets } from "./PendingChangesets.js";
 import { PreState } from "./PreState.js";
+import { RegistryVersions } from "./RegistryVersions.js";
 import { ReleaseCause, sortCauses } from "./ReleaseCause.js";
 import type { ReleaseEdits } from "./ReleaseEdits.js";
 import { computeEdits } from "./ReleaseEdits.js";
@@ -849,9 +850,14 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 * (see {@link ReleasePlan.assemble}): every discovered project is planned,
 	 * the root included; the `versioning` block is read through `PnpmSettings`
 	 * and the ledger through {@link Ledger.read}; a missing `config.json` is the
-	 * defaults; `pre.json` is not read. No registry is asked, so nothing is
-	 * planned as a first release. It also fails with `PnpmSettingsError` and
-	 * {@link LedgerError}.
+	 * defaults; `pre.json` is not read. With a {@link RegistryVersions} provided,
+	 * the registry is asked whether each public release's manifest version is
+	 * published, and the ones it lacks are planned as first releases
+	 * ({@link ReleasePlan.assemble}'s `published`); a registry failure is
+	 * `RegistryReadError`, never read as unpublished. Without one nothing is asked
+	 * and nothing is a first release; the service is optional in `R`, so an
+	 * existing caller is unchanged. A snapshot never asks. It also fails with
+	 * `PnpmSettingsError` and {@link LedgerError}.
 	 *
 	 * @param directory - The workspace root, or a directory inside it.
 	 * @param options - `snapshot` plans a snapshot release, as
@@ -938,17 +944,36 @@ const readContext = Effect.fnUntraced(function* (
 		const settings = yield* PnpmSettings.load({ cwd: root, env: {}, platform: "linux" });
 		const versioning = yield* Effect.fromResult(settings.versioning());
 		const ledger = yield* Ledger.read(root);
-		const plan = yield* Effect.fromResult(
-			ReleasePlan.assemble({
-				packages: discovered,
-				changesets,
-				config,
-				manager,
-				...(Option.isSome(versioning) ? { versioning: versioning.value } : {}),
-				...(Option.isSome(ledger) ? { ledger: ledger.value } : {}),
-				...(options?.snapshot === undefined ? {} : { snapshot: options.snapshot }),
-			}),
-		);
+		const input = {
+			packages: discovered,
+			changesets,
+			config,
+			manager,
+			...(Option.isSome(versioning) ? { versioning: versioning.value } : {}),
+			...(Option.isSome(ledger) ? { ledger: ledger.value } : {}),
+			...(options?.snapshot === undefined ? {} : { snapshot: options.snapshot }),
+		};
+		let plan = yield* Effect.fromResult(ReleasePlan.assemble(input));
+		// The registry seam, as `pnpm version -r` runs it: plan once, ask the registry about the public
+		// releases of that plan, then plan again with the ones it lacks as first releases. A snapshot
+		// publishes `0.0.0-<suffix>` whatever the registry holds, so it asks nothing.
+		const registry = yield* Effect.serviceOption(RegistryVersions);
+		if (Option.isSome(registry) && options?.snapshot === undefined) {
+			const isPrivate = new Map(discovered.map((pkg) => [projectDir(pkg.relativePath), pkg.private]));
+			const candidates = plan.releases.filter((release) => isPrivate.get(release.dir ?? "") !== true);
+			const probed = yield* Effect.forEach(
+				candidates,
+				(release) =>
+					registry.value
+						.published(release.name, release.oldVersion)
+						.pipe(Effect.map((found) => [release.dir ?? "", found] as const)),
+				{ concurrency: 8 },
+			);
+			if (probed.some(([, found]) => !found)) {
+				const published = new Set(probed.filter(([, found]) => found).map(([dir]) => dir));
+				plan = yield* Effect.fromResult(ReleasePlan.assemble({ ...input, published }));
+			}
+		}
 		return ReleaseContext.make({ root, plan, packages: discovered, config });
 	}
 	const config = yield* ChangesetConfig.read(root);

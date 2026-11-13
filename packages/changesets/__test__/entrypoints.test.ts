@@ -15,6 +15,8 @@ it("the root exports exactly the public surface", () => {
 		"ChangesetMove",
 		"ChangesetParseError",
 		"ComprehensiveRelease",
+		"EpicOutOfBand",
+		"FixedOutOfStep",
 		"FloorCause",
 		"Ledger",
 		"LedgerEntry",
@@ -31,6 +33,7 @@ it("the root exports exactly the public surface", () => {
 		"PlannedRelease",
 		"PreState",
 		"RangeEdit",
+		"RegistryVersions",
 		"ReleaseCause",
 		"ReleaseContext",
 		"ReleaseEdits",
@@ -41,6 +44,7 @@ it("the root exports exactly the public surface", () => {
 		"SnapshotTemplateError",
 		"UnknownPackageError",
 		"VersionType",
+		"VersioningCheck",
 		"VersioningError",
 	]);
 });

@@ -61,7 +61,7 @@
 | `PackageManagerPinName` | Variable + TypeAlias | The decoded type of `(PackageManagerPinName:variable)`: `"npm" \| "pnpm" \| "bun"`. | the package managers a pin can name: npm, pnpm, bun |
 | `PackagePublish` | Class | Packs, dry-runs and publishes npm tarballs, and writes registry auth into an npmrc, by running `npm` through `@effected/commands`. | pack tarball, publish to registry, write npmrc auth token, recording test double |
 | `PackagePublishShape` | Interface | The `PackagePublish` service shape. | |
-| `PackageTarball` | Class | Fetch, verify and extract a published tarball. | download, verify and extract a published tarball by integrity, private registry auth |
+| `PackageTarball` | Class | Fetch, verify and extract a published tarball. | download, verify and extract a published tarball by integrity, private registry auth, read a published version's CHANGELOG.md |
 | `PackageTarballExtractOptions` | Interface | Options for `PackageTarballShape.extract`. | authenticate a private registry tarball download by its url |
 | `PackageTarballShape` | Interface | The `PackageTarball` service shape. | |
 | `PackedTarball` | Class | A packed tarball and the two digests that describe it. | the tarball path, digests and size npm pack produced |

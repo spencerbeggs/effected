@@ -494,6 +494,9 @@ importers:
       '@effected/glob':
         specifier: workspace:^
         version: link:../glob
+      '@effected/npm':
+        specifier: workspace:^
+        version: link:../npm
       '@effected/pnpm':
         specifier: workspace:^
         version: link:../pnpm

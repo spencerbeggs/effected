@@ -1,13 +1,15 @@
 import { Run } from "@effected/commands";
 import { HttpRedaction } from "@effected/crypto";
 import type { Scope } from "effect";
-import { Context, Effect, FileSystem, Layer, Option, Redacted, Schema } from "effect";
+import { Context, Effect, FileSystem, Layer, Option, Redacted, Result, Schema, Stream } from "effect";
 import { Digest } from "effect/crypto";
 import * as Base64 from "effect/encoding/Base64";
 import { HttpClient } from "effect/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { IntegrityHash } from "./IntegrityHash.js";
-import type { PublishedVersion } from "./NpmRegistry.js";
+import { MAX_ARCHIVE_BYTES, gunzip, tarEntryText } from "./internal/tarEntry.js";
+import type { PublishedVersion, RegistryTarget } from "./NpmRegistry.js";
+import { DEFAULT_REGISTRY, NpmRegistry, RegistryReadError } from "./NpmRegistry.js";
 import type { RegistryCredential, RegistryCredentialLookup } from "./RegistryCredential.js";
 
 /**
@@ -320,4 +322,80 @@ export class PackageTarball extends Context.Service<PackageTarball, PackageTarba
 		never,
 		FileSystem.FileSystem | Digest.Digest | HttpClient.HttpClient | ChildProcessSpawner.ChildProcessSpawner
 	> = Layer.effect(PackageTarball)(make());
+
+	/**
+	 * The `CHANGELOG.md` a published version shipped, or `None`.
+	 *
+	 * @remarks
+	 * Reads the version through {@link NpmRegistry}, downloads its tarball and
+	 * reads `package/CHANGELOG.md` out of it in memory: no file system, no
+	 * `tar`, only `HttpClient`. The path is matched exactly and case-sensitively,
+	 * as pnpm's `extract_entry` matches it, so `package/changelog.md` is not a
+	 * changelog. `None` also answers an unpublished version, a version whose
+	 * document names no tarball, a tarball that answers 404 and an archive
+	 * without the file.
+	 *
+	 * The archive is untrusted: the download and the inflated bytes are each
+	 * capped at 256 MiB (pnpm's `MAX_TARBALL_BYTES`), and a corrupt or oversize
+	 * archive fails `RegistryReadError` with kind `"decode"`, never a defect.
+	 * A transport failure or a non-2xx answer is `"transport"` or `"status"`,
+	 * not `None`, so a flaky registry is not read as a changelog-less release.
+	 *
+	 * `target.credential` goes to the tarball only when its origin is the
+	 * registry's own; a tarball on a CDN host is fetched unauthenticated.
+	 * Integrity is not verified here: only the text of one file is read, and
+	 * nothing is written or executed.
+	 *
+	 * @param target - The registry and credential, as {@link NpmRegistry} takes them.
+	 * @param name - The package.
+	 * @param version - The exact version.
+	 */
+	static readonly changelog = Effect.fn("PackageTarball.changelog")(function* (
+		target: RegistryTarget,
+		name: string,
+		version: string,
+	) {
+		const registry = HttpRedaction.url(target.registry ?? DEFAULT_REGISTRY);
+		const fail = (kind: "transport" | "status" | "decode", extra: { status?: number; cause?: unknown } = {}) =>
+			new RegistryReadError({ kind, package: name, registry, ...extra });
+		const found = yield* NpmRegistry.use((service) => service.version(name, version, target)).pipe(
+			Effect.provide(NpmRegistry.layer),
+		);
+		const url = Option.flatMapNullishOr(found, (published) => published.tarball);
+		if (Option.isNone(url)) return Option.none<string>();
+		const sameOrigin = (() => {
+			try {
+				return new URL(url.value).origin === new URL(target.registry ?? DEFAULT_REGISTRY).origin;
+			} catch {
+				return false;
+			}
+		})();
+		const http = HttpClient.followRedirects(yield* HttpClient.HttpClient);
+		const response = yield* http
+			.get(url.value, { headers: sameOrigin ? authorizationHeader(target.credential) : {} })
+			.pipe(Effect.mapError((cause) => fail("transport", { cause: HttpRedaction.cause(cause) })));
+		if (response.status === 404) return Option.none<string>();
+		if (Math.floor(response.status / 100) !== 2) return yield* Effect.fail(fail("status", { status: response.status }));
+		const chunks: Array<Uint8Array> = [];
+		let total = 0;
+		yield* Stream.runForEach(response.stream, (chunk) => {
+			total += chunk.length;
+			if (total > MAX_ARCHIVE_BYTES) return Effect.fail(fail("decode"));
+			chunks.push(chunk);
+			return Effect.void;
+		}).pipe(
+			Effect.mapError((error) =>
+				error instanceof RegistryReadError ? error : fail("transport", { cause: HttpRedaction.cause(error) }),
+			),
+		);
+		const body = new Uint8Array(total);
+		let at = 0;
+		for (const chunk of chunks) {
+			body.set(chunk, at);
+			at += chunk.length;
+		}
+		const inflated = yield* Effect.promise((signal) => gunzip(body, MAX_ARCHIVE_BYTES, signal));
+		const entry = Result.flatMap(inflated, (tar) => tarEntryText(tar, "package/CHANGELOG.md"));
+		return Result.isSuccess(entry) ? entry.success : yield* Effect.fail(fail("decode"));
+	});
 }

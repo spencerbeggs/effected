@@ -180,6 +180,10 @@
 		"isKnownRegistryType": "check a registry type is recognized, otherwise degrade to link-only"
 	},
 	"changesets": {
+		"EpicOutOfBand": "epic member major outside its lead's band, committed version check violation",
+		"FixedOutOfStep": "fixed group members on different versions, lockstep check violation",
+		"RegistryVersions": "is this version already published, registry probe for first releases",
+		"VersioningCheck": "pnpm change check, committed versions against epic bands and fixed groups",
 		"AmbiguousPackageError": "changeset names a package by a name two workspace projects publish, directory key needed",
 		"BreakingFloor": "release must bump breaking, peer floor crosses dependency minor, patch ripple fix",
 		"BumpType": "changeset bump values, patch, minor or major",
@@ -1013,7 +1017,7 @@
 		"PackageManagerPin": "parse and print a corepack packageManager pin string, name@version+integrity",
 		"PackageManagerPinName": "the package managers a pin can name: npm, pnpm, bun",
 		"PackagePublish": "pack tarball, publish to registry, write npmrc auth token, recording test double",
-		"PackageTarball": "download, verify and extract a published tarball by integrity, private registry auth",
+		"PackageTarball": "download, verify and extract a published tarball by integrity, private registry auth, read a published version's CHANGELOG.md",
 		"PackageTarballExtractOptions": "authenticate a private registry tarball download by its url",
 		"PackedTarball": "the tarball path, digests and size npm pack produced",
 		"PublishError": "handle an npm publish step failure: auth, pack, publish, output parse, digest",

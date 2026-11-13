@@ -142,7 +142,8 @@ const maxBump = (a: BumpType | undefined, b: BumpType): BumpType =>
 	a === undefined || BUMP_ORDER[b] > BUMP_ORDER[a] ? b : a;
 
 /** pnpm's spelling of a project directory; the root package (`"."`) is `""`. */
-const projectDir = (relativePath: string): string => normalizeProjectDir(relativePath === "." ? "" : relativePath);
+export const projectDir = (relativePath: string): string =>
+	normalizeProjectDir(relativePath === "." ? "" : relativePath);
 
 const byKey = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -572,11 +573,7 @@ const assembleOnce = (ctx: Assembly, unpublished: ReadonlySet<string>): Readonly
 		const lead = next.get(epic.leadDir);
 		const leadVersion = lead === undefined ? undefined : parse(lead);
 		if (leadVersion === undefined || isPrerelease(leadVersion)) return undefined;
-		const current = mustParse(participant(epic.leadDir).current);
-		const currentMajor =
-			isPrerelease(current) && current.minor === 0 && current.patch === 0
-				? Math.max(0, current.major - 1)
-				: current.major;
+		const currentMajor = leadBandMajor(mustParse(participant(epic.leadDir).current));
 		return leadVersion.major > currentMajor ? leadVersion.major * 100 : undefined;
 	};
 
@@ -703,7 +700,21 @@ const assembleOnce = (ctx: Assembly, unpublished: ReadonlySet<string>): Readonly
 	return releases;
 };
 
-/** `enforce_epic_bands`, plan/versions.rs:316, with `epic_band` (plan/versions.rs:295). */
+/** `epic_lead_band_major`, plan/versions.rs:237: a lead on `N.0.0-<lane>.x` is still in the band of `N-1`. */
+const leadBandMajor = (lead: SemVer): number =>
+	isPrerelease(lead) && lead.minor === 0 && lead.patch === 0 ? Math.max(0, lead.major - 1) : lead.major;
+
+/**
+ * The major an epic's band derives from, `epic_band` (plan/versions.rs:295): the
+ * re-base floor's when the lead crosses to a new stable major, else the lead's
+ * current. Planning and {@link checkPnpm} both read it here.
+ */
+const epicBandMajor = (workspace: Workspace, epic: Epic, floor: number | undefined): number =>
+	floor !== undefined
+		? floor / 100
+		: leadBandMajor(mustParse((workspace.participants.get(epic.leadDir) as Participant).current));
+
+/** `enforce_epic_bands`, plan/versions.rs:316. */
 const enforceEpicBands = (
 	workspace: Workspace,
 	next: ReadonlyMap<string, string>,
@@ -711,13 +722,7 @@ const enforceEpicBands = (
 ): void => {
 	for (const epic of workspace.epics) {
 		const floor = rebaseFloor(epic, next);
-		const lead = mustParse((workspace.participants.get(epic.leadDir) as Participant).current);
-		const bandMajor =
-			floor !== undefined
-				? floor / 100
-				: isPrerelease(lead) && lead.minor === 0 && lead.patch === 0
-					? Math.max(0, lead.major - 1)
-					: lead.major;
+		const bandMajor = epicBandMajor(workspace, epic, floor);
 		for (const member of epic.members) {
 			const version = next.get(member);
 			if (version === undefined) continue;
@@ -777,6 +782,15 @@ const enforceMaxBump = (releases: ReadonlyArray<PnpmRelease>, ctx: Assembly): vo
 	}
 };
 
+/** A workspace package as the planner reads a project. */
+const toProject = (pkg: WorkspacePackage): Project => ({
+	dir: projectDir(pkg.relativePath),
+	name: pkg.name,
+	version: pkg.version,
+	private: pkg.private,
+	prod: PROD_FIELDS.flatMap((field) => Object.entries(pkg[field]).map(([alias, spec]) => ({ field, alias, spec }))),
+});
+
 /**
  * Plan a pnpm-native release. With `published` the plan is made twice, as
  * `pnpm version -r` makes it (crates/cli/src/cli_args/version/release.rs:86-115):
@@ -789,13 +803,7 @@ const enforceMaxBump = (releases: ReadonlyArray<PnpmRelease>, ctx: Assembly): vo
  */
 export const planPnpm = (input: PnpmPlanInput): Result.Result<PnpmPlan, PnpmError> => {
 	try {
-		const projects: ReadonlyArray<Project> = input.packages.map((pkg) => ({
-			dir: projectDir(pkg.relativePath),
-			name: pkg.name,
-			version: pkg.version,
-			private: pkg.private,
-			prod: PROD_FIELDS.flatMap((field) => Object.entries(pkg[field]).map(([alias, spec]) => ({ field, alias, spec }))),
-		}));
+		const projects: ReadonlyArray<Project> = input.packages.map(toProject);
 		const workspace = resolveWorkspace(projects, input.versioning);
 		// pnpm reads only `.changeset/*.md`; `.changeset/pre/` is the Changesets CLI's.
 		const changesets = input.changesets.filter((changeset) => !changeset.file.startsWith("pre/"));
@@ -836,6 +844,71 @@ export const planPnpm = (input: PnpmPlanInput): Result.Result<PnpmPlan, PnpmErro
 		return Result.succeed({ releases, consumed: changesets.filter((changeset) => consumedIds.has(changeset.id)) });
 	} catch (error) {
 		if (error instanceof Halt) return Result.fail(error.failure);
+		throw error;
+	}
+};
+
+/** One committed-version invariant the workspace breaks, before any plan. */
+export type PnpmViolation =
+	| {
+			readonly _tag: "EpicOutOfBand";
+			readonly epic: string;
+			readonly package: string;
+			readonly version: string;
+			readonly bandMajor: number;
+	  }
+	| {
+			readonly _tag: "FixedOutOfStep";
+			readonly group: ReadonlyArray<string>;
+			readonly versions: ReadonlyArray<{ readonly package: string; readonly version: string }>;
+	  };
+
+/**
+ * `check_versioning_invariants` (plan.rs:217): the committed versions against the
+ * epic bands and fixed groups `versioning` declares. A configuration pnpm
+ * refuses fails first, as `resolve_workspace` fails it; otherwise every
+ * violation is returned, epic members first in directory order, then fixed
+ * groups in declaration order. With no plan the band comes from the lead's
+ * current major (`push_epic_band_violations`, plan.rs:249).
+ */
+export const checkPnpm = (input: {
+	readonly packages: ReadonlyArray<WorkspacePackage>;
+	readonly versioning?: VersioningConfig | undefined;
+}): Result.Result<ReadonlyArray<PnpmViolation>, VersioningError> => {
+	try {
+		const projects: ReadonlyArray<Project> = input.packages.map(toProject);
+		const workspace = resolveWorkspace(projects, input.versioning);
+		const violations: Array<PnpmViolation> = [];
+		for (const epic of workspace.epics) {
+			const bandMajor = epicBandMajor(workspace, epic, undefined);
+			for (const dir of [...epic.members].sort(byKey)) {
+				const member = workspace.participants.get(dir) as Participant;
+				const major = mustParse(member.current).major;
+				if (major < bandMajor * 100 || major > bandMajor * 100 + 99) {
+					violations.push({
+						_tag: "EpicOutOfBand",
+						epic: epic.lead,
+						package: member.name,
+						version: member.current,
+						bandMajor,
+					});
+				}
+			}
+		}
+		(input.versioning?.fixed ?? []).forEach((declared, index) => {
+			const members = (workspace.fixed[index] ?? []).map((dir) => workspace.participants.get(dir) as Participant);
+			if (new Set(members.map((member) => member.current)).size > 1) {
+				violations.push({
+					_tag: "FixedOutOfStep",
+					group: [...declared],
+					versions: members.map((member) => ({ package: member.name, version: member.current })),
+				});
+			}
+		});
+		return Result.succeed(violations);
+	} catch (error) {
+		// `resolveWorkspace` raises only VersioningError; anything else is a defect to surface.
+		if (error instanceof Halt && error.failure instanceof VersioningError) return Result.fail(error.failure);
 		throw error;
 	}
 };
