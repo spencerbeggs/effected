@@ -5,8 +5,6 @@
 ## Breaking Changes
 
 * `ReleasePlan.read` detects the release manager first. A malformed `versioning` block now fails a changesets-only workspace with `PnpmSettingsError`.
-* `AmbiguousPackageError` is keyed by `packageName`, and `changeset` is optional on it.
-* `EpicOutOfBand` has a required `major` field.
 * Edits and floors refuse a plan that releases two same-named projects.
 * `ReleasePlan.read`'s error channel widens to `VersioningError`, `AmbiguousPackageError`, `PnpmSettingsError`, `LedgerError` and `RegistryReadError`.
 * `@effected/npm` is now a required peer dependency rather than a regular dependency, because `NpmConfig` crosses into `RegistryVersions.layerFrom` and must be the same copy the caller holds. Install it beside this package.
