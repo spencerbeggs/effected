@@ -263,6 +263,61 @@ const make = Effect.fnUntraced(function* () {
 });
 
 /**
+ * {@link PackageTarball.changelog} with the byte cap as a parameter, so a test can
+ * exercise the cap without a quarter-gigabyte body. Not exported from the entry point.
+ *
+ * @internal
+ */
+export const changelogWithin = Effect.fn("PackageTarball.changelog")(function* (
+	max: number,
+	target: RegistryTarget,
+	name: string,
+	version: string,
+) {
+	const registry = HttpRedaction.url(target.registry ?? DEFAULT_REGISTRY);
+	const fail = (kind: "transport" | "status" | "decode", extra: { status?: number; cause?: unknown } = {}) =>
+		new RegistryReadError({ kind, package: name, registry, ...extra });
+	const service = yield* NpmRegistry;
+	const found = yield* service.version(name, version, target);
+	const url = Option.flatMapNullishOr(found, (published) => published.tarball);
+	if (Option.isNone(url)) return Option.none<string>();
+	const sameOrigin = (() => {
+		try {
+			return new URL(url.value).origin === new URL(target.registry ?? DEFAULT_REGISTRY).origin;
+		} catch {
+			return false;
+		}
+	})();
+	const http = HttpClient.followRedirects(yield* HttpClient.HttpClient);
+	const response = yield* http
+		.get(url.value, { headers: sameOrigin ? authorizationHeader(target.credential) : {} })
+		.pipe(Effect.mapError((cause) => fail("transport", { cause: HttpRedaction.cause(cause) })));
+	if (response.status === 404) return Option.none<string>();
+	if (Math.floor(response.status / 100) !== 2) return yield* Effect.fail(fail("status", { status: response.status }));
+	const chunks: Array<Uint8Array> = [];
+	let total = 0;
+	yield* Stream.runForEach(response.stream, (chunk) => {
+		total += chunk.length;
+		if (total > max) return Effect.fail(fail("decode"));
+		chunks.push(chunk);
+		return Effect.void;
+	}).pipe(
+		Effect.mapError((error) =>
+			error instanceof RegistryReadError ? error : fail("transport", { cause: HttpRedaction.cause(error) }),
+		),
+	);
+	const body = new Uint8Array(total);
+	let at = 0;
+	for (const chunk of chunks) {
+		body.set(chunk, at);
+		at += chunk.length;
+	}
+	const inflated = yield* Effect.promise((signal) => gunzip(body, max, signal));
+	const entry = Result.flatMap(inflated, (tar) => tarEntryText(tar, "package/CHANGELOG.md"));
+	return Result.isSuccess(entry) ? entry.success : yield* Effect.fail(fail("decode"));
+});
+
+/**
  * Fetch, verify and extract a published tarball.
  *
  * @remarks
@@ -327,9 +382,10 @@ export class PackageTarball extends Context.Service<PackageTarball, PackageTarba
 	 * The `CHANGELOG.md` a published version shipped, or `None`.
 	 *
 	 * @remarks
-	 * Reads the version through {@link NpmRegistry}, downloads its tarball and
-	 * reads `package/CHANGELOG.md` out of it in memory: no file system, no
-	 * `tar`, only `HttpClient`. The path is matched exactly and case-sensitively,
+	 * Reads the version through the {@link NpmRegistry} in `R` (so a caller's
+	 * configured or seeded registry is the one used), downloads its tarball and
+	 * reads `package/CHANGELOG.md` out of it in memory: no file system and no
+	 * `tar`; the requirements are `NpmRegistry` and `HttpClient`. The path is matched exactly and case-sensitively,
 	 * as pnpm's `extract_entry` matches it, so `package/changelog.md` is not a
 	 * changelog. `None` also answers an unpublished version, a version whose
 	 * document names no tarball, a tarball that answers 404 and an archive
@@ -350,52 +406,10 @@ export class PackageTarball extends Context.Service<PackageTarball, PackageTarba
 	 * @param name - The package.
 	 * @param version - The exact version.
 	 */
-	static readonly changelog = Effect.fn("PackageTarball.changelog")(function* (
+	static readonly changelog = (
 		target: RegistryTarget,
 		name: string,
 		version: string,
-	) {
-		const registry = HttpRedaction.url(target.registry ?? DEFAULT_REGISTRY);
-		const fail = (kind: "transport" | "status" | "decode", extra: { status?: number; cause?: unknown } = {}) =>
-			new RegistryReadError({ kind, package: name, registry, ...extra });
-		const found = yield* NpmRegistry.use((service) => service.version(name, version, target)).pipe(
-			Effect.provide(NpmRegistry.layer),
-		);
-		const url = Option.flatMapNullishOr(found, (published) => published.tarball);
-		if (Option.isNone(url)) return Option.none<string>();
-		const sameOrigin = (() => {
-			try {
-				return new URL(url.value).origin === new URL(target.registry ?? DEFAULT_REGISTRY).origin;
-			} catch {
-				return false;
-			}
-		})();
-		const http = HttpClient.followRedirects(yield* HttpClient.HttpClient);
-		const response = yield* http
-			.get(url.value, { headers: sameOrigin ? authorizationHeader(target.credential) : {} })
-			.pipe(Effect.mapError((cause) => fail("transport", { cause: HttpRedaction.cause(cause) })));
-		if (response.status === 404) return Option.none<string>();
-		if (Math.floor(response.status / 100) !== 2) return yield* Effect.fail(fail("status", { status: response.status }));
-		const chunks: Array<Uint8Array> = [];
-		let total = 0;
-		yield* Stream.runForEach(response.stream, (chunk) => {
-			total += chunk.length;
-			if (total > MAX_ARCHIVE_BYTES) return Effect.fail(fail("decode"));
-			chunks.push(chunk);
-			return Effect.void;
-		}).pipe(
-			Effect.mapError((error) =>
-				error instanceof RegistryReadError ? error : fail("transport", { cause: HttpRedaction.cause(error) }),
-			),
-		);
-		const body = new Uint8Array(total);
-		let at = 0;
-		for (const chunk of chunks) {
-			body.set(chunk, at);
-			at += chunk.length;
-		}
-		const inflated = yield* Effect.promise((signal) => gunzip(body, MAX_ARCHIVE_BYTES, signal));
-		const entry = Result.flatMap(inflated, (tar) => tarEntryText(tar, "package/CHANGELOG.md"));
-		return Result.isSuccess(entry) ? entry.success : yield* Effect.fail(fail("decode"));
-	});
+	): Effect.Effect<Option.Option<string>, RegistryReadError, HttpClient.HttpClient | NpmRegistry> =>
+		changelogWithin(MAX_ARCHIVE_BYTES, target, name, version);
 }

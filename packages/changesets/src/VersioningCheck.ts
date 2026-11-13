@@ -16,13 +16,15 @@ export class EpicOutOfBand extends Schema.TaggedClass<EpicOutOfBand>()("EpicOutO
 	package: Schema.String,
 	/** The member's committed version. */
 	version: Schema.String,
+	/** The member's committed major, the one outside the band. */
+	major: Schema.Number,
 	/** The lead's major the band derives from: members live in `bandMajor*100` to `bandMajor*100+99`. */
 	bandMajor: Schema.Number,
 }) {
 	/** One line, as `pnpm change check` words it. */
 	get message(): string {
 		const low = this.bandMajor * 100;
-		return `${this.package} is at ${this.version}, whose major is outside the band ${low}-${low + 99} of the epic led by "${this.epic}" (major ${this.bandMajor}).`;
+		return `${this.package} is at ${this.version}, whose major ${this.major} is outside the band ${low}-${low + 99} of the epic led by "${this.epic}" (major ${this.bandMajor}).`;
 	}
 }
 
@@ -104,6 +106,7 @@ export class VersioningCheck {
 							package: violation.package,
 							version: violation.version,
 							bandMajor: violation.bandMajor,
+							major: violation.major,
 						})
 					: FixedOutOfStep.make({
 							group: [...violation.group],

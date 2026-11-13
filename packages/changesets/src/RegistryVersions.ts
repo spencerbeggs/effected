@@ -1,4 +1,4 @@
-import type { RegistryReadError } from "@effected/npm";
+import type { NpmConfig, RegistryReadError } from "@effected/npm";
 import { NpmRegistry } from "@effected/npm";
 import { Context, Effect, Layer, Option } from "effect";
 
@@ -32,9 +32,8 @@ export interface RegistryVersionsShape {
  * this service for each public release when it is provided, and plans without
  * it, treating nothing as a first release, when it is not.
  *
- * Reads the package's default registry (`NpmRegistry.versions` with no
- * target); a repository that publishes through a scoped registry provides its
- * own service answering for it.
+ * A project that renames itself with `publishConfig.name` is probed under
+ * that name, as pnpm does, so `ReleasePlan.read` passes the published name.
  *
  * @public
  */
@@ -42,21 +41,34 @@ export class RegistryVersions extends Context.Service<RegistryVersions, Registry
 	"@effected/changesets/RegistryVersions",
 ) {
 	/**
-	 * The service over `NpmRegistry`.
+	 * The service over `NpmRegistry`, each package read from the registry and
+	 * with the credential `config` routes it to.
 	 *
-	 * Parameterless, so one reference: provide it where it is wanted without
-	 * binding it again.
+	 * @remarks
+	 * `NpmConfig.targetFor(name)` picks the package's own registry (`@scope:registry`)
+	 * and the credential npm would send for it, as pnpm's `registry_for` and
+	 * `auth_header_for_package` do (`changelog.rs:298-308`). Reading the default
+	 * registry anonymously instead would answer 404 for a scoped package on a
+	 * private registry, which reads as unpublished and debuts a version that
+	 * exists.
+	 *
+	 * A parameterized layer factory mints a fresh reference per call and layers
+	 * memoize by reference: bind the result to a `const` once, or the layer
+	 * builds twice.
+	 *
+	 * @param config - The resolved npm configuration, usually `NpmConfig.load`'s.
 	 */
-	static readonly layer: Layer.Layer<RegistryVersions, never, NpmRegistry> = Layer.effect(
-		RegistryVersions,
-		Effect.gen(function* () {
-			const registry = yield* NpmRegistry;
-			return {
-				published: Effect.fn("RegistryVersions.published")(function* (name: string, version: string) {
-					const versions = yield* registry.versions(name);
-					return Option.isSome(versions) && versions.value.includes(version);
-				}),
-			};
-		}),
-	);
+	static readonly layerFrom = (config: NpmConfig): Layer.Layer<RegistryVersions, never, NpmRegistry> =>
+		Layer.effect(
+			RegistryVersions,
+			Effect.gen(function* () {
+				const registry = yield* NpmRegistry;
+				return {
+					published: Effect.fn("RegistryVersions.published")(function* (name: string, version: string) {
+						const versions = yield* registry.versions(name, config.targetFor(name));
+						return Option.isSome(versions) && versions.value.includes(version);
+					}),
+				};
+			}),
+		);
 }

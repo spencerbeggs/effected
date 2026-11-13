@@ -52,6 +52,11 @@ describe("VersioningCheck.check", () => {
 			{ package: "y", version: "1.1.0" },
 		]);
 		assert.match(fixed?.message ?? "", /not in lockstep: x@1.0.0, y@1.1.0/);
+		// plan.rs:257 prints the member's major and the band, low-high.
+		assert.strictEqual(
+			epic?.message,
+			'below is at 299.0.0, whose major 299 is outside the band 300-399 of the epic led by "lead" (major 3).',
+		);
 	});
 
 	it("is empty when every invariant holds", () => {

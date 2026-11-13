@@ -126,6 +126,12 @@ export interface PnpmPlanInput {
 	readonly ledger?: Ledger | undefined;
 	/** The directories whose manifest version the registry already has; absent means no registry was asked. */
 	readonly published?: ReadonlySet<string> | undefined;
+	/**
+	 * The directories to plan as first releases, outright. Wins over `published`:
+	 * the caller has already asked the registry, so the planner makes no first
+	 * pass of its own.
+	 */
+	readonly unpublished?: ReadonlySet<string> | undefined;
 	readonly enforceWorkspaceProtocol?: boolean | undefined;
 	/** Every release becomes `0.0.0-<suffix>`, and bands and `maxBump` go unchecked. */
 	readonly snapshotSuffix?: string | undefined;
@@ -829,8 +835,9 @@ export const planPnpm = (input: PnpmPlanInput): Result.Result<PnpmPlan, PnpmErro
 			versioning: input.versioning,
 			snapshotSuffix: input.snapshotSuffix,
 		};
-		let releases = assembleOnce(ctx, new Set());
-		const published = input.published;
+		const unpublishedGiven = input.unpublished;
+		let releases = assembleOnce(ctx, unpublishedGiven ?? new Set());
+		const published = unpublishedGiven === undefined ? input.published : undefined;
 		if (published !== undefined) {
 			const unpublished = new Set(
 				releases
@@ -855,6 +862,7 @@ export type PnpmViolation =
 			readonly epic: string;
 			readonly package: string;
 			readonly version: string;
+			readonly major: number;
 			readonly bandMajor: number;
 	  }
 	| {
@@ -890,6 +898,7 @@ export const checkPnpm = (input: {
 						epic: epic.lead,
 						package: member.name,
 						version: member.current,
+						major,
 						bandMajor,
 					});
 				}

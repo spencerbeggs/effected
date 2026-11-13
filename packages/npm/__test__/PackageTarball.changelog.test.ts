@@ -1,8 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer, Option, Redacted, Result } from "effect";
 import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
-import { PackageTarball } from "../src/index.js";
+import { NpmRegistry, PackageTarball } from "../src/index.js";
 import { MAX_ARCHIVE_BYTES, gunzip, tarEntryText } from "../src/internal/tarEntry.js";
+import { changelogWithin } from "../src/PackageTarball.js";
 
 const encoder = new TextEncoder();
 
@@ -91,8 +92,11 @@ const registry = (options: {
 	return { layer, seen };
 };
 
-const run = <A, E>(effect: Effect.Effect<A, E, HttpClient.HttpClient>, layer: Layer.Layer<HttpClient.HttpClient>) =>
-	effect.pipe(Effect.provide(layer));
+/** The live registry and the scripted client, both provided: `changelog` requires `NpmRegistry` in `R`. */
+const run = <A, E>(
+	effect: Effect.Effect<A, E, HttpClient.HttpClient | NpmRegistry>,
+	layer: Layer.Layer<HttpClient.HttpClient>,
+) => effect.pipe(Effect.provide(Layer.merge(layer, NpmRegistry.layer.pipe(Layer.provide(layer)))));
 
 const changelog = PackageTarball.changelog({ registry: REGISTRY }, "pkg", "1.0.0");
 
@@ -155,6 +159,50 @@ describe("PackageTarball.changelog", () => {
 			yield* run(PackageTarball.changelog({ registry: REGISTRY, credential }, "pkg", "1.0.0"), other.layer);
 			assert.strictEqual(other.seen[1]?.url, "https://cdn.test/pkg.tgz");
 			assert.strictEqual(other.seen[1]?.authorization, undefined);
+		}),
+	);
+});
+
+describe("PackageTarball.changelog requirements and caps", () => {
+	it.effect("uses the NpmRegistry the caller provides, not a private one", () =>
+		Effect.gen(function* () {
+			// The seeded registry names no tarball for the version: None, whatever the client would serve.
+			const never = registry({ tarball: 500 });
+			const seeded = NpmRegistry.layerSeeded({ registries: { [REGISTRY]: { pkg: { "1.0.0": {} } } } });
+			const found = yield* changelog.pipe(Effect.provide(Layer.merge(never.layer, seeded)));
+			assert.isTrue(Option.isNone(found));
+			assert.deepStrictEqual(never.seen, []);
+		}),
+	);
+
+	it.effect("answers None for a version document with no dist.tarball", () =>
+		Effect.gen(function* () {
+			const served = registry({ tarball: 500 });
+			const noDist = Layer.succeed(
+				HttpClient.HttpClient,
+				HttpClient.make((request) =>
+					Effect.succeed(
+						HttpClientResponse.fromWeb(request, new Response(JSON.stringify({ name: "pkg", version: "1.0.0" }))),
+					),
+				),
+			);
+			const found = yield* run(changelog, noDist);
+			assert.isTrue(Option.isNone(found));
+			assert.deepStrictEqual(served.seen, []);
+		}),
+	);
+
+	it.effect("refuses a download past the cap as decode, stopping before it inflates", () =>
+		Effect.gen(function* () {
+			// A plain tar (a tar registry serves one), so the cap is the only thing between it and a read.
+			const bytes = tar(entry("package/CHANGELOG.md", "x"));
+			const served = registry({ tarball: bytes });
+			const capped = changelogWithin(bytes.length - 1, { registry: REGISTRY }, "pkg", "1.0.0");
+			const error = yield* Effect.flip(run(capped, served.layer));
+			assert.strictEqual(error.kind, "decode");
+			// The same bytes under a cap that admits them read fine, so the cap is what refused.
+			const admitted = changelogWithin(bytes.length, { registry: REGISTRY }, "pkg", "1.0.0");
+			assert.deepStrictEqual(yield* run(admitted, registry({ tarball: bytes }).layer), Option.some("x"));
 		}),
 	);
 });

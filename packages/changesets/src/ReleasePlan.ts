@@ -589,6 +589,9 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 *   lane, `<stable>-<lane>.0`) while still reporting its intent's bump and
 	 *   consuming its intents, and the plan is made again, as `pnpm version -r`
 	 *   makes it. A private project is never probed, so never debuts.
+	 * - `unpublished`: the same answer from the other side, for a caller that has
+	 *   already asked the registry: the directories to plan as first releases
+	 *   outright, in one pass. It wins over `published`.
 	 * - `enforceWorkspaceProtocol`: refuse an internal production dependency
 	 *   that is not a `workspace:` range, as `pnpm version -r` does. Off is
 	 *   `pnpm change status`'s reading.
@@ -631,6 +634,7 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 		readonly versioning?: VersioningConfig;
 		readonly ledger?: Ledger;
 		readonly published?: ReadonlySet<string>;
+		readonly unpublished?: ReadonlySet<string>;
 		readonly enforceWorkspaceProtocol?: boolean;
 	}): Result.Result<
 		ReleasePlan,
@@ -955,24 +959,27 @@ const readContext = Effect.fnUntraced(function* (
 		};
 		let plan = yield* Effect.fromResult(ReleasePlan.assemble(input));
 		// The registry seam, as `pnpm version -r` runs it: plan once, ask the registry about the public
-		// releases of that plan, then plan again with the ones it lacks as first releases. A snapshot
-		// publishes `0.0.0-<suffix>` whatever the registry holds, so it asks nothing.
+		// releases of that plan (by the name each publishes under), then plan again with the ones it
+		// lacks as first releases. A snapshot publishes `0.0.0-<suffix>` whatever the registry holds,
+		// so it asks nothing.
 		const registry = yield* Effect.serviceOption(RegistryVersions);
 		if (Option.isSome(registry) && options?.snapshot === undefined) {
-			const isPrivate = new Map(discovered.map((pkg) => [projectDir(pkg.relativePath), pkg.private]));
-			const candidates = plan.releases.filter((release) => isPrivate.get(release.dir ?? "") !== true);
+			const byDir = new Map(discovered.map((pkg) => [projectDir(pkg.relativePath), pkg]));
 			const probed = yield* Effect.forEach(
-				candidates,
-				(release) =>
-					registry.value
-						.published(release.name, release.oldVersion)
-						.pipe(Effect.map((found) => [release.dir ?? "", found] as const)),
+				plan.releases.filter((release) => byDir.get(pnpmDir(release))?.private !== true),
+				(release) => {
+					const publishedName = byDir.get(pnpmDir(release))?.publishConfig?.name;
+					return registry.value
+						.published(
+							publishedName === undefined || publishedName === "" ? release.name : publishedName,
+							release.oldVersion,
+						)
+						.pipe(Effect.map((found) => [pnpmDir(release), found] as const));
+				},
 				{ concurrency: 8 },
 			);
-			if (probed.some(([, found]) => !found)) {
-				const published = new Set(probed.filter(([, found]) => found).map(([dir]) => dir));
-				plan = yield* Effect.fromResult(ReleasePlan.assemble({ ...input, published }));
-			}
+			const unpublished = new Set(probed.filter(([, found]) => !found).map(([dir]) => dir));
+			if (unpublished.size > 0) plan = yield* Effect.fromResult(ReleasePlan.assemble({ ...input, unpublished }));
 		}
 		return ReleaseContext.make({ root, plan, packages: discovered, config });
 	}
@@ -991,6 +998,12 @@ const readContext = Effect.fnUntraced(function* (
 	);
 	return ReleaseContext.make({ root, plan, packages: discovered, config });
 });
+
+/** A pnpm-mode release's directory: `PlannedRelease.dir` is always set there, so its absence is a planner defect. */
+const pnpmDir = (release: PlannedRelease): string => {
+	if (release.dir === undefined) throw new Error(`pnpm plan: release ${release.name} has no dir`);
+	return release.dir;
+};
 
 /** The config a pnpm repository without `.changeset/config.json` is read with: every default. */
 const DEFAULT_CONFIG = Schema.decodeUnknownSync(ChangesetConfig)({});
@@ -1017,6 +1030,7 @@ const assemblePnpm = (input: Parameters<typeof ReleasePlan.assemble>[0]): Releas
 		versioning: input.versioning,
 		ledger: input.ledger,
 		published: input.published,
+		unpublished: input.unpublished,
 		enforceWorkspaceProtocol: input.enforceWorkspaceProtocol,
 		snapshotSuffix: suffix,
 	});
@@ -1049,6 +1063,7 @@ const assembleOrHalt = (input: {
 	readonly versioning?: VersioningConfig;
 	readonly ledger?: Ledger;
 	readonly published?: ReadonlySet<string>;
+	readonly unpublished?: ReadonlySet<string>;
 	readonly enforceWorkspaceProtocol?: boolean;
 }): ReleasePlan => {
 	const { packages, changesets, config, pre, snapshot } = input;

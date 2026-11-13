@@ -48,6 +48,12 @@ export class PublishConfig extends Schema.Class<PublishConfig>("PublishConfig")(
 	linkDirectory: Schema.optionalKey(Schema.Boolean),
 	/** The dist-tag to publish under. */
 	tag: Schema.optionalKey(Schema.String),
+	/**
+	 * The name the package publishes under when it differs from its manifest
+	 * `name`. An empty string is no rename, as pnpm's `published_name` reads it,
+	 * so a reader of the registry name takes `name` only when it is non-empty.
+	 */
+	name: Schema.optionalKey(Schema.String),
 }) {}
 
 const DependencyMap = Schema.Record(Schema.String, Schema.String).pipe(
