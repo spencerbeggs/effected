@@ -61,6 +61,7 @@ export {
 	NpmConfigError,
 	type NpmConfigLoadOptions,
 	type NpmConfigSource,
+	type NpmConfigSourcesOptions,
 	NpmRegistryTls,
 	NpmTransportSettings,
 	type ProxyForOptions,

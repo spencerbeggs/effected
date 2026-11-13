@@ -59,6 +59,27 @@ export interface NpmConfigSource {
 }
 
 /**
+ * Options for {@link NpmConfig.fromSourcesResult}.
+ *
+ * @public
+ */
+export interface NpmConfigSourcesOptions {
+	/**
+	 * Whether the environment's `npm_config_*` variables apply on top of the
+	 * sources, as npm reads them. Defaults to `true`. With `false`, `env` still
+	 * serves `${VAR}` substitution, and no variable becomes a setting.
+	 *
+	 * @remarks
+	 * For a package manager that does not read those variables: pnpm 12 takes
+	 * none of them as settings (only `npm_config_//host/:_authToken`-style
+	 * credentials, and `npm_config_userconfig` as a file location), so
+	 * `@effected/pnpm`'s `PnpmNpmConfig` builds its configuration this way and
+	 * supplies pnpm's own layers as sources.
+	 */
+	readonly npmEnvironment?: boolean | undefined;
+}
+
+/**
  * Options for {@link NpmConfig.load}.
  *
  * @public
@@ -961,21 +982,25 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 	 *
 	 * @remarks
 	 * `sources` are lowest precedence first (global, user, project); the
-	 * environment's `npm_config_*` settings apply on top of all of them. Fails
-	 * `"missing-env"` when a credential names an unset variable.
+	 * environment's `npm_config_*` settings apply on top of all of them, unless
+	 * `options.npmEnvironment` is `false`. Fails `"missing-env"` when a
+	 * credential names an unset variable.
 	 *
 	 * @param sources - npmrc layers, lowest precedence first.
 	 * @param env - The environment, for `npm_config_*` and `${VAR}`.
+	 * @param options - See {@link NpmConfigSourcesOptions}.
 	 */
 	static fromSourcesResult(
 		sources: ReadonlyArray<NpmConfigSource>,
 		env: Readonly<Record<string, string | undefined>>,
+		options: NpmConfigSourcesOptions = {},
 	): Result.Result<NpmConfig, NpmConfigError> {
 		const settings: Record<string, string> = {};
 		const secrets: Record<string, Redacted.Redacted<string>> = {};
 		const files: Array<string> = [];
 		const lists: Record<string, Array<string>> = {};
-		for (const source of [...sources, { text: envLayer(env) }]) {
+		const layers = options.npmEnvironment === false ? sources : [...sources, { text: envLayer(env) }];
+		for (const source of layers) {
 			const parsed = parseSource(source, env);
 			if (Result.isFailure(parsed)) return Result.fail(parsed.failure);
 			if (source.path !== undefined) files.push(source.path);

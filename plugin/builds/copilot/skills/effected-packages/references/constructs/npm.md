@@ -42,6 +42,7 @@
 | `NpmConfigError` | Class | An npm configuration could not be loaded. | handle npmrc load failure: unset env var in a token, unreadable npmrc file |
 | `NpmConfigLoadOptions` | Interface | Options for `NpmConfig.load`. | |
 | `NpmConfigSource` | Interface | One npmrc layer for `NpmConfig.fromSourcesResult`: the file's text and, for error messages, where it came from. | |
+| `NpmConfigSourcesOptions` | Interface | Options for `NpmConfig.fromSourcesResult`. | |
 | `NpmExecutor` | Class | Which `npm` runs a publish command. | choose which npm binary runs a publish command, ambient vs pinned |
 | `NpmHttpClient` | Class | The Node HTTP client that honours an npm configuration's transport settings: `proxy`, `https-proxy` (and pnpm's `http-proxy`), `noproxy`, `ca`, `cafile`, `strict-ssl`, `cert`/`key`, `local-address`, and each registry's `//host/:certfile` and `:keyfile` (and, under pnpm's rules, `:ca`, `:cafile`, `:cert` and `:key`). | from `@effected/npm/node` — node http client honouring npmrc proxy, cafile, client certificates, strict-ssl |
 | `NpmHttpClientOptions` | Interface | Options for `NpmHttpClient.layer`. | from `@effected/npm/node` |

@@ -11,7 +11,7 @@ export const workspace = {
 	}),
 	catalogs: entry("catalogs", {
 		schema: Schema.Record(Schema.String, StringRecord),
-		kind: "unknownRecord",
+		kind: "stringRecordRecord",
 		description: "The named catalogs: each maps dependency names to the version ranges `catalog:<name>` resolves to.",
 		locations: ["workspace"],
 	}),

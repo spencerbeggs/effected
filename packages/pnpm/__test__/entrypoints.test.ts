@@ -74,6 +74,7 @@ describe("@effected/pnpm root entry", () => {
 			"PnpmExtension",
 			"PnpmLockDocument",
 			"PnpmMatcher",
+			"PnpmNpmConfig",
 			"PnpmSettings",
 			"PnpmSettingsError",
 			"PnpmWorkspaceFile",

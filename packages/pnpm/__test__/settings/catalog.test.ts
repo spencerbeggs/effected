@@ -157,9 +157,18 @@ describe("the pnpm 12 shapes", () => {
 			"booleanRecord",
 			"unknownRecord",
 			"stringArrayRecord",
+			"stringRecordRecord",
 			"object",
 		]);
 		for (const setting of Object.values(PnpmSettingsCatalog.entries))
 			assert.isTrue(kinds.has(setting.kind), `${setting.name}: ${setting.kind}`);
+	});
+
+	it("catalogs is a record of string records, and says so in its kind", () => {
+		const { kind, schema } = PnpmSettingsCatalog.entries.catalogs;
+		assert.strictEqual(kind, "stringRecordRecord");
+		assert.isTrue(accepts(schema, { react17: { react: "^17.0.2" }, next: {} }));
+		for (const value of [{ react17: { react: 17 } }, { react17: "^17.0.2" }, ["react"]])
+			assert.isFalse(accepts(schema, value), JSON.stringify(value));
 	});
 });

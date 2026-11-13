@@ -17,12 +17,15 @@ export type PnpmSettingLocation = "workspace" | "npmrc" | "global" | "env";
 
 /**
  * The broad shape of a setting's value, for rendering documentation and
- * synthesizing samples: one of the descriptor kinds `rolldown-pnpm-config`
- * already uses, so its descriptors can be laid over the catalog unchanged.
+ * synthesizing samples: the descriptor kinds `rolldown-pnpm-config` uses,
+ * plus `"stringRecordRecord"` for the one shape they had no kind for.
  *
  * @remarks
  * `"enum"` is a closed set of strings; `"union"` mixes value types (a boolean
  * or a word, a word or an object); `"object"` is a mapping with named keys.
+ * `"stringRecordRecord"` is a mapping of mappings from strings to strings, the
+ * shape of `catalogs` (catalog name, then dependency name, then range); a
+ * consumer that only knows the older kinds can read it as `"unknownRecord"`.
  *
  * @public
  */
@@ -37,6 +40,7 @@ export type PnpmSettingKind =
 	| "booleanRecord"
 	| "unknownRecord"
 	| "stringArrayRecord"
+	| "stringRecordRecord"
 	| "object";
 
 /**

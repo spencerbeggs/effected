@@ -28,7 +28,12 @@ const stringsOf = (value: unknown): ReadonlyArray<string> | undefined =>
  * `"membership"` — the workspace's `packages:` patterns each compile alone but
  * fail as a set (they share one compile budget; the `GlobError` is the
  * `cause`), so whether the directory is a member cannot be decided and the
- * load fails rather than reading the workspace file as not applying. A
+ * load fails rather than reading the workspace file as not applying;
+ * `"untrusted-env"` — a registry URL in a file the repository ships (the
+ * project `.npmrc` or `pnpm-workspace.yaml`, `setting` naming it) holds a
+ * `${VAR}` placeholder, which pnpm 12 does not expand there and refuses to
+ * load past, since dropping it would send the packages it serves to another
+ * registry (raised by `PnpmNpmConfig`, never by {@link PnpmSettings.load}). A
  * file that does not exist is not an error: pnpm skips it, and so does
  * {@link PnpmSettings.load}. An empty file is an empty mapping.
  *
@@ -36,7 +41,7 @@ const stringsOf = (value: unknown): ReadonlyArray<string> | undefined =>
  */
 export class PnpmSettingsError extends Schema.TaggedError<PnpmSettingsError>()("PnpmSettingsError", {
 	/** Why the file could not be used. */
-	reason: Schema.Literals(["read", "parse", "shape", "membership"]),
+	reason: Schema.Literals(["read", "parse", "shape", "membership", "untrusted-env"]),
 	/** The file involved, when the source named one. */
 	path: Schema.optionalKey(Schema.String),
 	/** The setting whose value failed, for a `"shape"` failure of one setting. */
@@ -48,13 +53,15 @@ export class PnpmSettingsError extends Schema.TaggedError<PnpmSettingsError>()("
 		const where = this.path === undefined ? "pnpm settings file" : `pnpm settings file ${this.path}`;
 		return this.reason === "read"
 			? `Could not read ${where}`
-			: this.reason === "membership"
-				? `The \`packages:\` patterns in ${where} compile one by one but not as a set, so workspace membership cannot be decided`
-				: this.reason === "parse"
-					? `Could not parse ${where} as YAML`
-					: this.setting !== undefined
-						? `The \`${this.setting}\` setting does not have the shape pnpm 12 reads`
-						: `The document in ${where} is not a mapping of settings`;
+			: this.reason === "untrusted-env"
+				? `The \`${this.setting ?? "registry"}\` setting in ${this.path ?? "a repository file"} names an environment variable, which pnpm 12 does not expand in a registry URL a repository file sets`
+				: this.reason === "membership"
+					? `The \`packages:\` patterns in ${where} compile one by one but not as a set, so workspace membership cannot be decided`
+					: this.reason === "parse"
+						? `Could not parse ${where} as YAML`
+						: this.setting !== undefined
+							? `The \`${this.setting}\` setting does not have the shape pnpm 12 reads`
+							: `The document in ${where} is not a mapping of settings`;
 	}
 }
 
@@ -598,6 +605,33 @@ export class PnpmSettings extends Schema.Class<PnpmSettings>("PnpmSettings")({
 	 * @param options - See {@link PnpmSettingsLoadOptions}.
 	 */
 	static readonly load = Effect.fn("PnpmSettings.load")(function* (options: PnpmSettingsLoadOptions) {
+		return (yield* locatePnpmSettings(options)).settings;
+	});
+}
+
+/**
+ * What {@link PnpmSettings.load} found: the settings, the workspace root
+ * whose `pnpm-workspace.yaml` applied, and pnpm's global config directory.
+ *
+ * @internal
+ */
+export interface LocatedPnpmSettings {
+	readonly settings: PnpmSettings;
+	readonly workspaceDir?: string;
+	readonly configDir?: string;
+}
+
+/**
+ * The search behind {@link PnpmSettings.load}, shared with `PnpmNpmConfig.load`,
+ * which reads the project `.npmrc` at the same workspace root and `auth.ini`
+ * in the same config directory. Unspanned: each caller opens its own span.
+ *
+ * @internal
+ */
+export const locatePnpmSettings = (
+	options: PnpmSettingsLoadOptions,
+): Effect.Effect<LocatedPnpmSettings, PnpmSettingsError, FileSystem.FileSystem | Path.Path> =>
+	Effect.gen(function* () {
 		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
 		const env = options.env;
@@ -670,6 +704,10 @@ export class PnpmSettings extends Schema.Class<PnpmSettings>("PnpmSettings")({
 		const globalFile = configDir === undefined ? undefined : path.join(configDir, "config.yaml");
 
 		const global = globalFile === undefined || globalFile === workspace?.path ? undefined : yield* read(globalFile);
-		return yield* Effect.fromResult(PnpmSettings.fromSourcesResult({ workspace, global, env }));
+		const settings = yield* Effect.fromResult(PnpmSettings.fromSourcesResult({ workspace, global, env }));
+		return {
+			settings,
+			...(workspace?.path === undefined ? {} : { workspaceDir: path.dirname(workspace.path) }),
+			...(configDir === undefined ? {} : { configDir }),
+		} satisfies LocatedPnpmSettings;
 	});
-}

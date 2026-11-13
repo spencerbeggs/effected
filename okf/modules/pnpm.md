@@ -1,7 +1,7 @@
 ---
 type: Module
 title: pnpm
-description: Everything pnpm owns alone — its effective settings (PnpmSettings), the pnpm 12 settings catalog on the ./settings subpath (PnpmSettingsCatalog with entries and read), release-age gate (ReleaseAgeGate), package-name pattern lists (PnpmMatcher), versioning block, overrides grammar, pnpm-lock.yaml documents (PnpmLockDocument, PnpmEnvDocument, PnpmExtension) and its pnpm-workspace.yaml editor (PnpmWorkspaceFile) — over the npm vocabulary it shares.
+description: Everything pnpm owns alone — its effective settings (PnpmSettings), its registry, proxy and TLS view as an npm NpmConfig (PnpmNpmConfig), the pnpm 12 settings catalog on the ./settings subpath (PnpmSettingsCatalog with entries and read), release-age gate (ReleaseAgeGate), package-name pattern lists (PnpmMatcher), versioning block, overrides grammar, pnpm-lock.yaml documents (PnpmLockDocument, PnpmEnvDocument, PnpmExtension) and its pnpm-workspace.yaml editor (PnpmWorkspaceFile) — over the npm vocabulary it shares.
 status: draft
 kind: package
 resource: ../../packages/pnpm
@@ -9,7 +9,7 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-13T03:52:04Z
+  at: 2026-11-13T05:37:51Z
 sources:
   - id: package-manager-model-design
     resource: ../../docs/superpowers/specs/2026-11-12-package-manager-model-design.md
@@ -17,6 +17,8 @@ sources:
     resource: ../decisions/catalog-and-workspace-protocol-owner.md
   - id: pnpm-settings-ts
     resource: ../../packages/pnpm/src/PnpmSettings.ts
+  - id: pnpm-npm-config-ts
+    resource: ../../packages/pnpm/src/PnpmNpmConfig.ts
   - id: release-age-gate-ts
     resource: ../../packages/pnpm/src/ReleaseAgeGate.ts
   - id: pnpm-matcher-ts
@@ -29,7 +31,7 @@ sources:
     resource: ../../packages/pnpm/__test__/fixtures/pnpm-12.20.0-settings.README.md
 integrity:
   generated:
-    body: 69879317b5de8792
+    body: 6f7c2e08f450edfa
 ---
 
 # pnpm
@@ -40,11 +42,12 @@ integrity:
 
 ## Tier and dependency posture
 
-Boundary tier at the root: `effect` and `@effected/semver` are the peers, `@effected/npm`, `@effected/glob`, `@effected/walker` and `@effected/yaml` the dependencies, and the only IO is `PnpmSettings.load`, through core `FileSystem` and `Path` in `R`. No module imports `node:*`. The dependency direction is `npm <- pnpm` and `npm <- bun`, then both `<- lockfiles <- workspaces`, with `pnpm <- workspaces` as well. No manager package depends on `lockfiles` or `workspaces`; `lockfiles` imports each manager's native document schema and owns the normalisation into its common model. The package sits one layer above `npm` and below `lockfiles` in `lib/configs/layers.json`. The `@effected/semver` peer is not used here; it closes the peer that `@effected/npm` declares.
+Boundary tier at the root: `effect` and `@effected/semver` are the peers, `@effected/npm`, `@effected/glob`, `@effected/walker` and `@effected/yaml` the dependencies, and the only IO is `PnpmSettings.load` and `PnpmNpmConfig.load`, through core `FileSystem` and `Path` in `R`. No module imports `node:*`. The dependency direction is `npm <- pnpm` and `npm <- bun`, then both `<- lockfiles <- workspaces`, with `pnpm <- workspaces` as well. No manager package depends on `lockfiles` or `workspaces`; `lockfiles` imports each manager's native document schema and owns the normalisation into its common model. The package sits one layer above `npm` and below `lockfiles` in `lib/configs/layers.json`. The `@effected/semver` peer is not used here; it closes the peer that `@effected/npm` declares.
 
 ## Contents
 
 - **`PnpmSettings`** and **`PnpmSettingsError`**: the settings `pnpm config get` reports, merged from `pnpm_config_*`/`PNPM_CONFIG_*` variables, the workspace root's `pnpm-workspace.yaml` and pnpm's global `config.yaml`, highest first. `fromSourcesResult` is the pure merge; `load` is the IO shell.[^pnpm-settings-ts] The precedence and membership detail is under [pnpm settings](#pnpm-settings) below.
+- **`PnpmNpmConfig`**: pnpm 12's registry, proxy and TLS view as a real `@effected/npm` `NpmConfig`, so `targetFor`, `proxyFor`, `tlsFor` and `NpmHttpClient.layer(config, { packageManager: "pnpm" })` answer what `pnpm view` connects with. `fromSourcesResult` is the pure merge; `load` is the IO shell, sharing `PnpmSettings.load`'s search.[^pnpm-npm-config-ts] The precedence is under [pnpm's npm configuration](#pnpms-npm-configuration) below.
 - **`ReleaseAgeGate`** and **`PartialReleaseAgeGate`**: pnpm's `minimumReleaseAge` (minutes) and `minimumReleaseAgeExclude` as pure vocabulary. `combine` is the single clamping authority (strictest age wins, excludes union); `matchesExclude` is pnpm's flat `*`-crosses-`/` matcher, deliberately not `@effected/glob`'s dialect; `filterVersions` drops too-young versions against a caller's clock.[^release-age-gate-ts] npm's own `min-release-age` (days, minimatch excludes) is a different definition and is `@effected/npm`'s `NpmReleaseAge`.
 - **`PnpmLockDocument`**, **`PnpmEnvDocument`** and **`PnpmExtension`** (with the `PnpmCatalogs` type): the native documents of a `pnpm-lock.yaml`. That file is a YAML stream of up to two documents, an env preamble then the lockfile document, and an internal splitter (`internal/stream.ts`) is the one place the framing is decided, so the two parsers cannot disagree about which document is which. `PnpmLockDocument.parse` reads the last document and fails `@effected/npm`'s `LockfileDocumentError` on, in order: syntax (with the YAML engine's first diagnostic line), framing (`unexpectedDocuments` past two documents, `noLockfileDocument` for an empty lockfile position, both with the document count), version (`lockfileVersion` below 9, gated before the shape decode in `internal/version.ts`), shape, then framing `noImporters`. `PnpmEnvDocument.parse` reads the first of two documents as an `Option`, gated and decoded the same way. `PnpmExtension` is the lockfile header (`catalogs`, `overrides`, `settings`) carried on `lockfiles`' `Lockfile.extension`. `PnpmLockDocument` reuses its field schemas, so the two cannot drift.[^pnpm-lock-document-ts]
 - **`PnpmMatcher`**: `compile(patterns)` turns a `peerDependencyRules.ignoreMissing` or `allowAny` list into a predicate with `@pnpm/matcher`'s composition rules (negation, ordered resets). Its single-pattern step is `ReleaseAgeGate.matchesExclude`, so a change to one moves the other. `@effected/workspaces`' `PeerCheck` is its consumer.[^pnpm-matcher-ts]
@@ -148,6 +151,48 @@ machine-level settings.
 different question: the gate declared by the workspace file plus replayed
 config-dependency hooks, with no environment or global layer.
 
+## pnpm's npm configuration
+
+`NpmConfig.load` reads what npm reads, and a repository with `registry:` or
+`httpsProxy:` in its `pnpm-workspace.yaml` was answered by `pnpm view` and
+missed by `NpmRegistry` over it (a rolldown-pnpm-config finding).
+`PnpmNpmConfig` builds the `NpmConfig` pnpm 12 would, from its config crate
+(`.repos/pnpm/pnpm/crates/config/src`):
+
+| Rank (highest first) | Source | Carries | Citation |
+| --- | --- | --- | --- |
+| 1 | `npm_config_//…` / `pnpm_config_//…` variables (`pnpm_config_` wins) | the four credential fields only | `npmrc_auth.rs` `from_url_scoped_env`; `auth_sources.rs` `collect_auth_sources` |
+| 2 | `PNPM_CONFIG_*` / `pnpm_config_*` (upper case first) | `registry`, the three proxies, `noProxy`, `noproxy`, `strictSsl` (JSON), `localAddress` | `loading.rs` `apply_env_settings`; `env_overlay.rs` `read_registry_env`, `read_network_env` |
+| 3 | `pnpm-workspace.yaml` (untrusted) | as 2, plus `registries` | `loading.rs` `load_sources`; `workspace_yaml/settings.rs`; `workspace_yaml/apply.rs` |
+| 4 | global `config.yaml` | as 3 | `loading.rs` `apply_global_settings` order |
+| 5 | project `.npmrc` at the workspace root (untrusted) | registry, proxy, TLS and credential keys | `auth_sources.rs` `project_auth_source` |
+| 6 | `auth.ini` in the global config directory | as 5 | `auth_sources.rs` `auth_ini_source` |
+| 7 | user npmrc (`npmrcAuthFile` chain, else `~/.npmrc`) | as 5 | `auth_sources.rs` `user_npmrc_path` |
+
+Within a settings file, `registries` applies before `registry`. A CA, a
+client certificate and a credential come from the npmrc files and rank 1
+alone. pnpm 12 reads no `<prefix>/etc/npmrc` and no other `npm_config_*`
+variable, so `NpmConfig.fromSourcesResult` gained one option,
+`npmEnvironment: false`, which drops its `npm_config_*` layer while `env`
+still serves `${VAR}` substitution. That option is the whole seam in
+`@effected/npm`. The settings and pnpm's npmrc readings are rendered as npmrc
+lines (`internal/pnpmNpmrc.ts`) whose values are already resolved and
+escaped, so `NpmConfig` reads them back as written.
+
+pnpm's own readings, each kept: in the project `.npmrc` it expands no
+`${VAR}` in a registry, proxy or credential (the line is dropped, and a
+registry URL with one fails `PnpmSettingsError` `"untrusted-env"`); in
+`pnpm-workspace.yaml` a placeholder proxy is dropped and a placeholder
+registry fails the same way; an unscoped credential, `cert` or `key` is
+pinned to its file's own registry (`npmrc_auth/credentials.rs`
+`rescope_unscoped`); `no-proxy` and `noproxy` are one npmrc slot; repeated
+`ca=` lines accumulate and `ca[]` is unknown; `${VAR:-default}` is pnpm's
+dialect and an unset variable reads as empty. Not modelled: CLI flags, the
+structured `_auth` credentials, `tokenHelper`, and resolving a relative
+`cafile` against its npmrc's directory. An unreadable npmrc fails
+`NpmConfigError` `"read"` where pnpm warns. The tests carry the naive
+control: `NpmConfig` over the same npmrc text answering differently.
+
 ## The `/settings` subpath
 
 **`PnpmWorkspaceFile`** is the `pnpm-workspace.yaml` editor, ported from rolldown-pnpm-config on `@effected/yaml`. It is a `Schema.Class` whose only field is `source` (the text); `value` is a memoised getter deriving the mapping (empty for empty text or a non-mapping document), so the two cannot disagree. `parseResult` is the sync primitive and `parse` the spanned Effect form; malformed YAML fails `PnpmWorkspaceFileError` (reason `invalid-yaml`, the YAML error in `cause`). `writeResult(next)` (with `write` as its `Result.getOrThrow`) re-edits the text as path-targeted edits: a changed scalar is spliced keeping its quotes and trailing comment, a primitive list gains or loses only changed items, new keys append, inserted content takes the style `inferStyle` reads off the file (indent, indented sequences, quote character, quoting by choice), CRLF is kept, and an edit that does not parse back to exactly `next` (anchors, merge keys, colliding keys), a non-mapping source or a multi-document one is re-rendered whole in the inferred style. Canonical order is alphabetical by code unit with primitive lists sorted, derived in the module and applying only to written-from-scratch content and inserted lists; an author's key order stands. `findWorkspaceFile` is not ported: discovery is `workspaces`' job. A value with no YAML form (cyclic, nested past @effected/yaml's 256-level cap, a function or symbol, or past a node budget) fails `PnpmWorkspaceFileError` reason `unrepresentable` from `writeResult`/`renderResult`; a bigint, NaN or infinity is representable. Equality inside the editor is structural and bigint-safe, never JSON text. It is on the root entry and never imports the settings catalog.
@@ -157,7 +202,7 @@ The settings catalog is one large object a bundler cannot tree-shake, so it ship
 What it exports:[^settings-catalog-ts]
 
 - **`PnpmSettingsCatalog`**, a static-namespace class:
-  - **`PnpmSettingsCatalog.entries`** is a frozen object keyed by camelCase setting name, one **`PnpmSetting<A>`** per setting: `name`, `schema` (a `Schema.Codec<A, unknown>`), `kind` (**`PnpmSettingKind`**, the descriptor kind vocabulary rolldown-pnpm-config uses), `description`, `locations` (**`PnpmSettingLocation`**: `workspace`, `npmrc`, `global`, `env`), `envFormat` (**`PnpmSettingEnvFormat`**: how pnpm parses the `PNPM_CONFIG_*` variable, `json`, `text`, `jsonOrText`, `flag` or `subkeys`), `default` (an `Option`, `None` when pnpm computes it) and `anchor` (`settings/<page>#<id>` in pnpm's docs, empty when undocumented). It carries facts about pnpm only; strictness, merge strategy and enforcement are a consumer's policy laid over it. **`PnpmSettingName`** and **`PnpmSettingType<K>`** derive from it. The area files under `src/settings/internal/` mirror the docs' pages (`cli`, `network`, `dependency-resolution`, `peer-dependencies`, `node-modules`, `store`, `build`, `other`, `versioning`) plus `workspace`, `publish` and `tasks` for settings the settings docs do not cover.
+  - **`PnpmSettingsCatalog.entries`** is a frozen object keyed by camelCase setting name, one **`PnpmSetting<A>`** per setting: `name`, `schema` (a `Schema.Codec<A, unknown>`), `kind` (**`PnpmSettingKind`**, the descriptor kind vocabulary rolldown-pnpm-config uses, plus `stringRecordRecord` for `catalogs`, a record of string records it had no kind for), `description`, `locations` (**`PnpmSettingLocation`**: `workspace`, `npmrc`, `global`, `env`), `envFormat` (**`PnpmSettingEnvFormat`**: how pnpm parses the `PNPM_CONFIG_*` variable, `json`, `text`, `jsonOrText`, `flag` or `subkeys`), `default` (an `Option`, `None` when pnpm computes it) and `anchor` (`settings/<page>#<id>` in pnpm's docs, empty when undocumented). It carries facts about pnpm only; strictness, merge strategy and enforcement are a consumer's policy laid over it. **`PnpmSettingName`** and **`PnpmSettingType<K>`** derive from it. The area files under `src/settings/internal/` mirror the docs' pages (`cli`, `network`, `dependency-resolution`, `peer-dependencies`, `node-modules`, `store`, `build`, `other`, `versioning`) plus `workspace`, `publish` and `tasks` for settings the settings docs do not cover.
   - **`PnpmSettingsCatalog.read(settings, key)`** reads one setting from a `PnpmSettings` through its entry, over only the sources in `locations`: environment, then workspace file, then global file; `npmrc` is never read here (that is `@effected/npm`'s `NpmConfig`). An environment value is parsed by `envFormat` as pnpm 12 parses it (a `json` boolean is `true`/`false` exactly, a `json` number a JSON number), and skipped when pnpm would ignore it. A file value that does not decode fails `PnpmSettingsError` `"shape"` with the `setting` field naming it. A file `null` is the value of a setting that accepts `null` and unset otherwise.
 
 The scalar coercions (file booleans from `yes`/`on`, canonical digit strings, `-0` refused for an unsigned setting and read as `0` for a signed one, each probed against the pnpm 12 binary) live once in `src/internal/coerce.ts`, used by both the root's typed accessors and the catalog's codecs.
@@ -168,7 +213,7 @@ The corrections over rolldown-pnpm-config's former descriptors, each pinned by `
 
 ## Current state
 
-The root entry exports `PnpmSettings`, `PnpmSettingsError`, `ReleaseAgeGate`, `PartialReleaseAgeGate`, `PnpmMatcher`, `OverrideKey`, `OverrideKeyError`, `PeerDependencyRules`, `VersioningConfig`, `Epic`, `PnpmWorkspaceFile`, `PnpmWorkspaceFileError`, `PnpmLockDocument`, `PnpmEnvDocument` and `PnpmExtension`, pinned by `__test__/entrypoints.test.ts`; the `./settings` subpath exports the catalog above.
+The root entry exports `PnpmSettings`, `PnpmSettingsError`, `PnpmNpmConfig`, `ReleaseAgeGate`, `PartialReleaseAgeGate`, `PnpmMatcher`, `OverrideKey`, `OverrideKeyError`, `PeerDependencyRules`, `VersioningConfig`, `Epic`, `PnpmWorkspaceFile`, `PnpmWorkspaceFileError`, `PnpmLockDocument`, `PnpmEnvDocument` and `PnpmExtension`, pinned by `__test__/entrypoints.test.ts`; the `./settings` subpath exports the catalog above.
 
 `VersioningConfig` reads `pnpm-workspace.yaml`'s `versioning` block the way pnpm's release planner reads it, not the way `pnpm lane` writes it. A lane named `main` in any letter case is refused, as `resolve_lanes` refuses it (`crates/versioning/src/plan/configuration.rs:18`). The stricter syntax, alphanumerics and hyphens and not purely numeric, belongs to `pnpm lane`'s `check_lane_name` (`crates/cli/src/cli_args/lane.rs:203`) when it assigns a new lane. No kit package assigns lanes, so the schema does not carry that check, and a file pnpm plans from decodes here.
 
@@ -177,6 +222,7 @@ The `PnpmEnvLockfile` readers, `ConfigDependencyLock` and `PackageManagerLock` d
 [^package-manager-model-design]: `docs/superpowers/specs/2026-11-12-package-manager-model-design.md`
 [^protocol-owner]: [catalog-and-workspace-protocol-owner](../decisions/catalog-and-workspace-protocol-owner.md)
 [^pnpm-settings-ts]: `packages/pnpm/src/PnpmSettings.ts`; the tests are `__test__/PnpmSettings.test.ts` and `__test__/PnpmSettingsLoad.test.ts`.
+[^pnpm-npm-config-ts]: `packages/pnpm/src/PnpmNpmConfig.ts` and `src/internal/pnpmNpmrc.ts`; the tests are `__test__/PnpmNpmConfig.test.ts`.
 [^release-age-gate-ts]: `packages/pnpm/src/ReleaseAgeGate.ts`
 [^pnpm-matcher-ts]: `packages/pnpm/src/PnpmMatcher.ts`
 [^pnpm-lock-document-ts]: `packages/pnpm/src/PnpmLockDocument.ts` and `PnpmEnvDocument.ts`; the tests are `__test__/PnpmLockDocument.test.ts`, over copies of `lockfiles`' fixtures with a provenance README.
