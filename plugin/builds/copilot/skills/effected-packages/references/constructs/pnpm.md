@@ -5,6 +5,7 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `Epic` | Class | An epic: a lead package whose major version defines a band, and the member packages whose majors live inside it. | pnpm versioning epic, lead package and member selectors banding member majors to the lead's major |
 | `PartialReleaseAgeGate` | Variable + TypeAlias | One source's partial contribution to a release-age gate. All fields optional. | one config source's contribution to a pnpm minimumReleaseAge gate before merging |
 | `PnpmCatalogs` | TypeAlias | The pnpm `catalogs:` record shape as it appears in `pnpm-lock.yaml`: catalog name → package name → pinned version string or `{ specifier, version }` pair. | |
 | `PnpmEnvDocument` | Class | The env ("preamble") document of a `pnpm-lock.yaml`, as pnpm writes it on disk ahead of the lockfile document when a workspace declares `devEngines.packageManager` or `configDependencies`. | read the env preamble document of a pnpm-lock.yaml, configDependencies and packageManagerDependencies as written |
@@ -18,3 +19,4 @@
 | `PnpmSettingsSource` | Interface | One YAML settings file for `PnpmSettings.fromSourcesResult`: its text and, for errors and `PnpmSettings.files`, where it came from. | |
 | `PnpmSettingsSources` | Interface | The inputs `PnpmSettings.fromSourcesResult` merges. | |
 | `ReleaseAgeGate` | Class | pnpm's publish-time release-age gate: the number of minutes a published version must age before it is eligible, and the set of package-name patterns exempt from the gate. Mirrors pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude` config so a resolver can drop too-young candidate versions before picking, avoiding `ERR_PNPM_NO_MATURE_MATCHING_VERSION`. | enforce pnpm minimumReleaseAge, filter candidate versions younger than the cutoff, match exclude patterns |
+| `VersioningConfig` | Class | The `versioning` block of `pnpm-workspace.yaml`: pnpm's native workspace release management. | decode pnpm-workspace.yaml versioning block, release lanes, fixed groups, ignore, maxBump, changelog storage, epics |

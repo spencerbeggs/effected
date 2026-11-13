@@ -1,0 +1,85 @@
+// The `versioning` block of pnpm-workspace.yaml: pnpm's native release
+// management settings. Pure schemas; `PnpmSettings.versioning` reads it.
+
+import { Schema } from "effect";
+
+/** A release lane name: ASCII alphanumerics and hyphens, not purely numeric, and not the reserved `main`. */
+const LaneName = Schema.String.check(
+	Schema.makeFilter((name: string) =>
+		name.toLowerCase() === "main"
+			? "`main` is the reserved default lane and cannot be assigned"
+			: !/^[A-Za-z0-9-]+$/.test(name)
+				? "a lane name may contain only alphanumerics and hyphens"
+				: /^[0-9]+$/.test(name)
+					? "a lane name cannot be purely numeric"
+					: undefined,
+	),
+);
+
+/**
+ * An epic: a lead package whose major version defines a band, and the member
+ * packages whose majors live inside it.
+ *
+ * @remarks
+ * While the lead is on major `M`, members live in `M×100` to `M×100+99`.
+ * `lead` is a package name or a `./`-prefixed workspace directory; `packages`
+ * are selectors: name globs, `./` directory globs and `!` negations, where the
+ * last match decides.
+ *
+ * @public
+ */
+export class Epic extends Schema.Class<Epic>("Epic")({
+	/** The package whose major defines the band. */
+	lead: Schema.String,
+	/** Selectors matching the member packages. */
+	packages: Schema.Array(Schema.String),
+}) {}
+
+/**
+ * The `versioning` block of `pnpm-workspace.yaml`: pnpm's native workspace
+ * release management.
+ *
+ * @remarks
+ * Every key is optional and an absent key means the default (no groups, no
+ * cap, every package on the `main` lane, `registry` changelog storage). A
+ * package is named by its name or by a `./`-prefixed workspace directory, in
+ * `fixed`, `ignore`, the keys of `lanes`, and an epic's selectors. A lane name
+ * may contain only alphanumerics and hyphens, cannot be purely numeric, and
+ * cannot be `main`, which is reserved for the default lane. `maxBump` is one of
+ * `patch`, `minor` or `major`; there is no `none`. pnpm reads this block from
+ * the workspace file only, never from the global config.
+ *
+ * @example
+ * ```ts
+ * import { VersioningConfig } from "@effected/pnpm";
+ * import { Schema } from "effect";
+ *
+ * const config = Schema.decodeUnknownSync(VersioningConfig)({
+ *   maxBump: "minor",
+ *   lanes: { "@example/cli": "alpha" },
+ * });
+ * console.log(config.maxBump);
+ * // => "minor"
+ * ```
+ *
+ * @public
+ */
+export class VersioningConfig extends Schema.Class<VersioningConfig>("VersioningConfig")({
+	/** Groups of packages that always release together at one shared version. */
+	fixed: Schema.optionalKey(Schema.Array(Schema.Array(Schema.String))),
+	/** Packages permanently excluded from versioning and dependent propagation. */
+	ignore: Schema.optionalKey(Schema.Array(Schema.String)),
+	/** The largest bump a release from this checkout may apply. */
+	maxBump: Schema.optionalKey(Schema.Literals(["patch", "minor", "major"])),
+	/** Per-package release lanes: package to lane name. */
+	lanes: Schema.optionalKey(Schema.Record(Schema.String, LaneName)),
+	/** Epics banding member majors to a lead package's major. */
+	epics: Schema.optionalKey(Schema.Array(Epic)),
+	/** Where changelogs live and how they are formatted. */
+	changelog: Schema.optionalKey(
+		Schema.Struct({
+			format: Schema.optionalKey(Schema.String),
+			storage: Schema.optionalKey(Schema.Literals(["registry", "repository"])),
+		}),
+	),
+}) {}

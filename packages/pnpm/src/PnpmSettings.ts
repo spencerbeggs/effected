@@ -10,6 +10,7 @@ import { Walker } from "@effected/walker";
 import { Yaml } from "@effected/yaml";
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Option, Path, Result, Schema } from "effect";
+import { VersioningConfig } from "./VersioningConfig.js";
 
 /** The string entries of an array, or `undefined` for a non-array. Total. */
 const stringsOf = (value: unknown): ReadonlyArray<string> | undefined =>
@@ -525,6 +526,25 @@ export class PnpmSettings extends Schema.Class<PnpmSettings>("PnpmSettings")({
 	 */
 	get minimumReleaseAgeExclude(): ReadonlyArray<string> {
 		return Option.getOrElse(this.getStringArray("minimumReleaseAgeExclude"), () => []);
+	}
+
+	/**
+	 * The `versioning` block of the workspace's `pnpm-workspace.yaml`, decoded,
+	 * or `None` when the workspace file has none.
+	 *
+	 * @remarks
+	 * pnpm reads `versioning` from the workspace file only, so the global
+	 * `config.yaml` and the environment are not consulted. A block that does
+	 * not decode (a lane named `main`, `maxBump: none`, a non-mapping value)
+	 * fails `"shape"` with the schema issue as the `cause`.
+	 */
+	versioning(): Result.Result<Option.Option<VersioningConfig>, PnpmSettingsError> {
+		const value = Object.hasOwn(this.workspace, "versioning") ? this.workspace.versioning : undefined;
+		if (value === undefined || value === null) return Result.succeed(Option.none());
+		const decoded = Schema.decodeUnknownResult(VersioningConfig)(value);
+		return Result.isSuccess(decoded)
+			? Result.succeed(Option.some(decoded.success))
+			: Result.fail(new PnpmSettingsError({ reason: "shape", cause: decoded.failure }));
 	}
 
 	/**

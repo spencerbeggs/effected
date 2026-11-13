@@ -25,3 +25,4 @@ export {
 	type PnpmSettingsSources,
 } from "./PnpmSettings.js";
 export { PartialReleaseAgeGate, ReleaseAgeGate } from "./ReleaseAgeGate.js";
+export { Epic, VersioningConfig } from "./VersioningConfig.js";
