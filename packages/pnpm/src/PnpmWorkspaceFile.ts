@@ -27,23 +27,70 @@ const STYLE_BASE = YamlLintConfig.make({
 const allPrimitive = (arr: readonly unknown[]): boolean =>
 	arr.every((v) => v === null || (typeof v !== "object" && typeof v !== "function"));
 
-const canonicalize = (value: unknown): unknown => {
+/**
+ * The deepest container nesting the editor reads or writes: @effected/yaml's
+ * own cap, past which it parses to a diagnostic and stringifies to a failure.
+ */
+const MAX_DEPTH = 256;
+
+/** The most values a written mapping may hold: bounds a shared-reference DAG that is finite yet exponential to walk. */
+const MAX_NODES = 1_000_000;
+
+const canonicalizeAt = (value: unknown, depth: number): unknown => {
+	// Past the cap the value is returned as is: no recursion, so a cycle cannot overflow the stack.
+	if (depth > MAX_DEPTH) return value;
 	if (Array.isArray(value)) {
-		const mapped = value.map(canonicalize);
+		const mapped = value.map((v) => canonicalizeAt(v, depth + 1));
 		return allPrimitive(mapped) ? [...mapped].sort((a, b) => Order.String(String(a), String(b))) : mapped;
 	}
 	if (Predicate.isObject(value)) {
 		return Object.fromEntries(
 			Object.entries(value as Record<string, unknown>)
 				.sort(([a], [b]) => Order.String(a, b))
-				.map(([k, v]) => [k, canonicalize(v)]),
+				.map(([k, v]) => [k, canonicalizeAt(v, depth + 1)]),
 		);
 	}
 	return value;
 };
 
+const canonicalize = (value: unknown): unknown => canonicalizeAt(value, 0);
+
+/** Whether `value` is finite, within the depth cap, and holds no function or symbol. */
+const representable = (value: unknown): boolean => {
+	let nodes = 0;
+	const walk = (v: unknown, depth: number): boolean => {
+		if (typeof v === "function" || typeof v === "symbol") return false;
+		if (typeof v !== "object" || v === null) return true;
+		if (depth > MAX_DEPTH || ++nodes > MAX_NODES) return false;
+		return Array.isArray(v)
+			? v.every((item) => walk(item, depth + 1))
+			: Object.values(v).every((item) => walk(item, depth + 1));
+	};
+	return walk(value, 1);
+};
+
+const unrepresentable = (cause: unknown): PnpmWorkspaceFileError =>
+	new PnpmWorkspaceFileError({ reason: "unrepresentable", cause });
+
+/** Run `body`, folding anything it throws over caller-supplied data into the typed failure. */
+const guarded = (value: unknown, body: () => string): Result.Result<string, PnpmWorkspaceFileError> => {
+	if (!representable(value)) {
+		return Result.fail(
+			unrepresentable(new Error("value is cyclic, nested past the depth cap, or holds a function or symbol")),
+		);
+	}
+	try {
+		return Result.succeed(body());
+	} catch (cause) {
+		return Result.fail(cause instanceof PnpmWorkspaceFileError ? cause : unrepresentable(cause));
+	}
+};
+
+const renderResult = (obj: Record<string, unknown>, options: YamlStringifyOptions = STRINGIFY_OPTIONS) =>
+	Result.mapError(Yaml.stringifyResult(canonicalize(obj), options), unrepresentable);
+
 const renderWorkspace = (obj: Record<string, unknown>, options: YamlStringifyOptions = STRINGIFY_OPTIONS): string =>
-	Result.getOrThrow(Yaml.stringifyResult(canonicalize(obj), options));
+	Result.getOrThrow(renderResult(obj, options));
 
 const inferStyle = (source: string): YamlStringifyOptions => {
 	const { rules } = YamlLint.resolveLenient(YamlLint.observe(source, YamlLint.builtins), STYLE_BASE);
@@ -59,7 +106,18 @@ const inferStyle = (source: string): YamlStringifyOptions => {
 
 /** Order-insensitive structural equality over canonical forms. */
 function sameValue(a: unknown, b: unknown): boolean {
-	return JSON.stringify(canonicalize(a)) === JSON.stringify(canonicalize(b));
+	return structEqual(canonicalize(a), canonicalize(b));
+}
+
+/** Structural equality: NaN equals NaN, a bigint equals only itself, null equals only null, key order is ignored. */
+function structEqual(a: unknown, b: unknown): boolean {
+	if (a === b || (Number.isNaN(a) && Number.isNaN(b))) return true;
+	if (Array.isArray(a)) return Array.isArray(b) && a.length === b.length && a.every((v, i) => structEqual(v, b[i]));
+	if (isMapping(a) && isMapping(b)) {
+		const keys = Object.keys(a);
+		return keys.length === Object.keys(b).length && keys.every((k) => Object.hasOwn(b, k) && structEqual(a[k], b[k]));
+	}
+	return false;
 }
 
 /** A mapping (not a sequence, not null) — the only node the diff descends into. */
@@ -82,7 +140,8 @@ interface Change {
  * line is untouched. Matching is by multiset, so a reorder is not a change.
  */
 function sequenceChanges(path: YamlPath, prev: readonly unknown[], next: readonly unknown[]): Change[] {
-	const key = (v: unknown) => JSON.stringify(v);
+	// Items here are primitives (the caller checked): the type tag keeps 1, "1", 1n and null apart.
+	const key = (v: unknown) => `${v === null ? "null" : typeof v}:${String(v)}`;
 	const pending = new Map<string, number>();
 	for (const v of next) pending.set(key(v), (pending.get(key(v)) ?? 0) + 1);
 	const removed: number[] = [];
@@ -252,7 +311,10 @@ function hasCollidingKeys(node: YamlNode | null): boolean {
 	if (node._tag === "YamlMap") {
 		const seen = new Set<string>();
 		for (const { key, value } of node.items) {
-			const k = key._tag === "YamlScalar" ? String(key.value) : JSON.stringify(key);
+			const k =
+				key._tag === "YamlScalar"
+					? String(key.value)
+					: JSON.stringify(key, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
 			if (seen.has(k)) return true;
 			seen.add(k);
 			if (hasCollidingKeys(value)) return true;
@@ -307,18 +369,37 @@ function applyChanges(source: string, changes: readonly Change[], style: YamlStr
 	return Option.some(text);
 }
 
-/** Re-edit `source` into `next`; the whole of {@link PnpmWorkspaceFile}'s `write`. */
-const writeWorkspace = (source: string, next: Record<string, unknown>): string => {
-	if (source.trim() === "") return renderWorkspace(next);
-	const style = inferStyle(source);
-	const crlf = source.includes("\r\n");
-	const parsed = Yaml.parseResult(source);
-	const edited =
-		Result.isSuccess(parsed) && isMapping(parsed.success)
-			? applyChanges(source, workspaceChanges(parsed.success, next), style)
-			: Option.none<string>();
-	const text = Option.isSome(edited) && faithful(edited.value, next) ? edited.value : renderWorkspace(next, style);
-	return crlf ? text.replace(/\r?\n/g, "\r\n") : text;
+/** Re-edit `source` into `next`; the whole of {@link PnpmWorkspaceFile}'s `writeResult`. */
+const writeWorkspace = (
+	source: string,
+	parsed: Option.Option<unknown>,
+	next: Record<string, unknown>,
+): Result.Result<string, PnpmWorkspaceFileError> =>
+	guarded(next, () => {
+		if (source.trim() === "") return renderWorkspace(next);
+		const style = inferStyle(source);
+		const crlf = source.includes("\r\n");
+		const base = Option.getOrUndefined(parsed);
+		const edited = isMapping(base) ? applyChanges(source, workspaceChanges(base, next), style) : Option.none<string>();
+		const text = Option.isSome(edited) && faithful(edited.value, next) ? edited.value : renderWorkspace(next, style);
+		return crlf ? text.replace(/\r?\n/g, "\r\n") : text;
+	});
+
+/** What a file's text parsed to: `None` when it is not well-formed YAML. */
+const memo = new WeakMap<
+	object,
+	{ readonly parsed: Option.Option<unknown>; readonly value: Record<string, unknown> }
+>();
+
+const readMemo = (file: PnpmWorkspaceFile) => {
+	const hit = memo.get(file);
+	if (hit !== undefined) return hit;
+	const parsed = Yaml.parseResult(file.source);
+	const entry = Result.isSuccess(parsed)
+		? { parsed: Option.some(parsed.success), value: isMapping(parsed.success) ? parsed.success : {} }
+		: { parsed: Option.none<unknown>(), value: {} };
+	memo.set(file, entry);
+	return entry;
 };
 
 /**
@@ -326,7 +407,10 @@ const writeWorkspace = (source: string, next: Record<string, unknown>): string =
  *
  * @remarks
  * `"invalid-yaml"` — the text is not well-formed YAML; `cause` carries the
- * YAML engine's own error with its positioned diagnostics. A document that is
+ * YAML engine's own error with its positioned diagnostics.
+ * `"unrepresentable"` — a value handed to `write` or `render` has no YAML
+ * form: it is cyclic, nested deeper than the YAML engine's cap, holds a
+ * function or symbol, or the engine refused it; `cause` says which. A document that is
  * well-formed but not a mapping (a top-level sequence or scalar) is not a
  * failure: pnpm reads it as an empty workspace and so does
  * {@link PnpmWorkspaceFile}.
@@ -334,13 +418,16 @@ const writeWorkspace = (source: string, next: Record<string, unknown>): string =
  * @public
  */
 export class PnpmWorkspaceFileError extends Schema.TaggedError<PnpmWorkspaceFileError>()("PnpmWorkspaceFileError", {
-	/** What was wrong with the text. */
-	reason: Schema.Literals(["invalid-yaml"]),
-	/** The YAML engine's error. */
+	/** What was wrong. */
+	reason: Schema.Literals(["invalid-yaml", "unrepresentable"]),
+	/** The underlying error. */
 	cause: Schema.Defect(),
 }) {
 	override get message(): string {
-		return `Cannot read pnpm-workspace.yaml: ${this.cause instanceof Error ? this.cause.message : "invalid YAML"}`;
+		const detail = this.cause instanceof Error ? this.cause.message : "no detail";
+		return this.reason === "invalid-yaml"
+			? `Cannot read pnpm-workspace.yaml: ${detail}`
+			: `Cannot write pnpm-workspace.yaml: the value has no YAML form (${detail})`;
 	}
 }
 
@@ -380,9 +467,17 @@ export class PnpmWorkspaceFileError extends Schema.TaggedError<PnpmWorkspaceFile
 export class PnpmWorkspaceFile extends Schema.Class<PnpmWorkspaceFile>("PnpmWorkspaceFile")({
 	/** The text as read; `write` edits over it. */
 	source: Schema.String,
-	/** The mapping the text holds: empty for empty text or a document that is not a mapping. */
-	value: Schema.Record(Schema.String, Schema.Unknown),
 }) {
+	/**
+	 * The mapping the text holds, derived from `source` once: empty for empty
+	 * text, a document that is not a mapping, or text that is not well-formed
+	 * YAML (only a file built with `make` can hold such text;
+	 * {@link PnpmWorkspaceFile.parseResult} rejects it).
+	 */
+	get value(): Readonly<Record<string, unknown>> {
+		return readMemo(this).value;
+	}
+
 	/**
 	 * Read `pnpm-workspace.yaml` text, synchronously and without an Effect
 	 * runtime.
@@ -398,8 +493,12 @@ export class PnpmWorkspaceFile extends Schema.Class<PnpmWorkspaceFile>("PnpmWork
 		if (Result.isFailure(parsed)) {
 			return Result.fail(new PnpmWorkspaceFileError({ reason: "invalid-yaml", cause: parsed.failure }));
 		}
-		const value = isMapping(parsed.success) ? parsed.success : {};
-		return Result.succeed(PnpmWorkspaceFile.make({ source: text, value }));
+		const file = PnpmWorkspaceFile.make({ source: text });
+		memo.set(file, {
+			parsed: Option.some(parsed.success),
+			value: isMapping(parsed.success) ? parsed.success : {},
+		});
+		return Result.succeed(file);
 	}
 
 	/** {@link PnpmWorkspaceFile.parseResult} as an Effect, behind a `PnpmWorkspaceFile.parse` span. */
@@ -421,11 +520,24 @@ export class PnpmWorkspaceFile extends Schema.Class<PnpmWorkspaceFile>("PnpmWork
 	 * sequences, single quotes, no line wrapping.
 	 *
 	 * @remarks
-	 * Throws when `value` holds something YAML cannot represent (a function, a
-	 * cycle): that is a caller bug, not a data condition.
+	 * A value with no YAML form (cyclic, nested past 256 levels, holding a
+	 * function or symbol) fails {@link PnpmWorkspaceFileError} with reason
+	 * `"unrepresentable"`; a bigint, NaN or infinity is representable and
+	 * renders. Nothing throws.
+	 */
+	static renderResult(value: Readonly<Record<string, unknown>>): Result.Result<string, PnpmWorkspaceFileError> {
+		return guarded(value, () => renderWorkspace({ ...value }));
+	}
+
+	/**
+	 * {@link PnpmWorkspaceFile.renderResult} as a plain string.
+	 *
+	 * @remarks
+	 * Throws {@link PnpmWorkspaceFileError} (and nothing else) when the value
+	 * has no YAML form.
 	 */
 	static render(value: Readonly<Record<string, unknown>>): string {
-		return renderWorkspace({ ...value });
+		return Result.getOrThrow(PnpmWorkspaceFile.renderResult(value));
 	}
 
 	/**
@@ -446,10 +558,23 @@ export class PnpmWorkspaceFile extends Schema.Class<PnpmWorkspaceFile>("PnpmWork
 	 *
 	 * @remarks
 	 * Text with nothing in it renders from scratch exactly as
-	 * {@link PnpmWorkspaceFile.render} does. Throws only when `next` holds
-	 * something YAML cannot represent.
+	 * {@link PnpmWorkspaceFile.renderResult} does. A `next` with no YAML form
+	 * (cyclic, nested past 256 levels, holding a function or symbol) fails
+	 * {@link PnpmWorkspaceFileError} with reason `"unrepresentable"`; a bigint,
+	 * NaN or infinity is representable and is written. Nothing throws.
+	 */
+	writeResult(next: Readonly<Record<string, unknown>>): Result.Result<string, PnpmWorkspaceFileError> {
+		return writeWorkspace(this.source, readMemo(this).parsed, { ...next });
+	}
+
+	/**
+	 * {@link PnpmWorkspaceFile.writeResult} as a plain string.
+	 *
+	 * @remarks
+	 * Throws {@link PnpmWorkspaceFileError} (and nothing else) when `next` has
+	 * no YAML form.
 	 */
 	write(next: Readonly<Record<string, unknown>>): string {
-		return writeWorkspace(this.source, { ...next });
+		return Result.getOrThrow(this.writeResult(next));
 	}
 }

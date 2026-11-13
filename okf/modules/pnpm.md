@@ -9,7 +9,7 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-13T01:49:38Z
+  at: 2026-11-13T01:55:22Z
 sources:
   - id: package-manager-model-design
     resource: ../../docs/superpowers/specs/2026-11-12-package-manager-model-design.md
@@ -29,7 +29,7 @@ sources:
     resource: ../../packages/pnpm/__test__/fixtures/pnpm-12.20.0-settings.README.md
 integrity:
   generated:
-    body: 5732fec2f702335d
+    body: 7e294a2098ec2a3c
 ---
 
 # pnpm
@@ -150,7 +150,7 @@ config-dependency hooks, with no environment or global layer.
 
 ## The `/settings` subpath
 
-**`PnpmWorkspaceFile`** is the `pnpm-workspace.yaml` editor, ported from rolldown-pnpm-config on `@effected/yaml`. It is a `Schema.Class` of `source` (the text) and `value` (the mapping; empty for empty text or a non-mapping document). `parseResult` is the sync primitive and `parse` the spanned Effect form; malformed YAML fails `PnpmWorkspaceFileError` (reason `invalid-yaml`, the YAML error in `cause`). `write(next)` re-edits the text as path-targeted edits: a changed scalar is spliced keeping its quotes and trailing comment, a primitive list gains or loses only changed items, new keys append, inserted content takes the style `inferStyle` reads off the file (indent, indented sequences, quote character, quoting by choice), CRLF is kept, and an edit that does not parse back to exactly `next` (anchors, merge keys, colliding keys), a non-mapping source or a multi-document one is re-rendered whole in the inferred style. Canonical order is alphabetical by code unit with primitive lists sorted, derived in the module and applying only to written-from-scratch content and inserted lists; an author's key order stands. `findWorkspaceFile` is not ported: discovery is `workspaces`' job. It is on the root entry and never imports the settings catalog.
+**`PnpmWorkspaceFile`** is the `pnpm-workspace.yaml` editor, ported from rolldown-pnpm-config on `@effected/yaml`. It is a `Schema.Class` whose only field is `source` (the text); `value` is a memoised getter deriving the mapping (empty for empty text or a non-mapping document), so the two cannot disagree. `parseResult` is the sync primitive and `parse` the spanned Effect form; malformed YAML fails `PnpmWorkspaceFileError` (reason `invalid-yaml`, the YAML error in `cause`). `writeResult(next)` (with `write` as its `Result.getOrThrow`) re-edits the text as path-targeted edits: a changed scalar is spliced keeping its quotes and trailing comment, a primitive list gains or loses only changed items, new keys append, inserted content takes the style `inferStyle` reads off the file (indent, indented sequences, quote character, quoting by choice), CRLF is kept, and an edit that does not parse back to exactly `next` (anchors, merge keys, colliding keys), a non-mapping source or a multi-document one is re-rendered whole in the inferred style. Canonical order is alphabetical by code unit with primitive lists sorted, derived in the module and applying only to written-from-scratch content and inserted lists; an author's key order stands. `findWorkspaceFile` is not ported: discovery is `workspaces`' job. A value with no YAML form (cyclic, nested past @effected/yaml's 256-level cap, a function or symbol, or past a node budget) fails `PnpmWorkspaceFileError` reason `unrepresentable` from `writeResult`/`renderResult`; a bigint, NaN or infinity is representable. Equality inside the editor is structural and bigint-safe, never JSON text. It is on the root entry and never imports the settings catalog.
 
 The settings catalog is one large object a bundler cannot tree-shake, so it ships from the `@effected/pnpm/settings` subpath and the root entry never reaches it. `__test__/entrypoints.test.ts` pins that over the source import graph and the built `index.js` graph, treating any `@effected/pnpm/<subpath>` self-import as reaching the catalog, with positive controls from the settings entry and a mutation control. A consumer that wants only the overrides grammar or the lockfile document does not pay for the catalog; `lockfiles` and `changesets` must not reach the subpath unless they use it. The subpath may import the root, and does, through the package's own name, so its declarations name `PnpmSettings`, `PeerDependencyRules` and `VersioningConfig` from `@effected/pnpm` instead of carrying copies: `effected.toml` keeps `@effected/pnpm` external in the declarations and suppresses `ae-forgotten-export` for `entry point settings.d.ts` only, and `__test__/settings/declarations.test.ts` pins the built `settings.d.ts` to the exported surface so the suppression cannot hide a leaked local.
 

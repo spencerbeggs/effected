@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Result } from "effect";
+import { Effect, Equal, Result } from "effect";
 import { PnpmWorkspaceFile, PnpmWorkspaceFileError } from "../src/PnpmWorkspaceFile.js";
 
 // Stored as `.yaml.txt` so the pre-commit YAML formatter cannot normalize away
@@ -264,7 +264,9 @@ describe("PnpmWorkspaceFile.parse failures and hostile input", () => {
 
 	it("never defects on deeply nested input", () => {
 		const text = `a: ${"[".repeat(20000)}${"]".repeat(20000)}\n`;
-		assert.doesNotThrow(() => PnpmWorkspaceFile.parseResult(text));
+		const result = PnpmWorkspaceFile.parseResult(text);
+		assert.isTrue(Result.isFailure(result));
+		if (Result.isFailure(result)) assert.strictEqual(result.failure.reason, "invalid-yaml");
 	});
 
 	it("a __proto__ key is an own data property and pollutes nothing", () => {
@@ -286,5 +288,93 @@ describe("PnpmWorkspaceFile.parse failures and hostile input", () => {
 		const next = { packages: ["a"] };
 		const out = write("packages:\n  - a\n---\npackages:\n  - b\n", next);
 		assert.isString(out);
+	});
+
+	it("value is derived from source: the only field", () => {
+		const file = PnpmWorkspaceFile.make({ source: "a: 1\n" });
+		assert.deepStrictEqual(file.value, { a: 1 });
+		assert.deepStrictEqual(Object.keys(PnpmWorkspaceFile.fields), ["source"]);
+		assert.isTrue(Equal.equals(file, PnpmWorkspaceFile.make({ source: "a: 1\n" })));
+		assert.strictEqual(file.value, file.value, "memoised");
+		assert.deepStrictEqual(PnpmWorkspaceFile.make({ source: "a: [unclosed\n" }).value, {});
+	});
+});
+
+describe("PnpmWorkspaceFile write/render: values with no YAML form fail typed", () => {
+	const deep = (n: number): Record<string, unknown> => {
+		const root: Record<string, unknown> = {};
+		let at = root;
+		for (let i = 0; i < n; i++) {
+			const child: Record<string, unknown> = {};
+			at.x = child;
+			at = child;
+		}
+		return root;
+	};
+	const cyclic = (): Record<string, unknown> => {
+		const a: Record<string, unknown> = {};
+		a.self = a;
+		return a;
+	};
+	const hostile: ReadonlyArray<readonly [string, () => Record<string, unknown>]> = [
+		["a 20k-deep value", () => deep(20000)],
+		["a cycle", cyclic],
+		["a function", () => ({ a: () => 1 })],
+		["a symbol", () => ({ a: Symbol("s") })],
+	];
+	const sources = ["", "a: 1\n", "- x\n"];
+
+	for (const [name, make] of hostile) {
+		it(`${name}: render and write return Failure(unrepresentable), never throw`, () => {
+			const rendered = PnpmWorkspaceFile.renderResult(make());
+			assert.isTrue(Result.isFailure(rendered));
+			if (Result.isFailure(rendered)) assert.strictEqual(rendered.failure.reason, "unrepresentable");
+			for (const source of sources) {
+				const written = read(source).writeResult(make());
+				assert.isTrue(Result.isFailure(written), source);
+				if (Result.isFailure(written)) assert.strictEqual(written.failure.reason, "unrepresentable");
+			}
+		});
+
+		it(`${name}: the throwing forms throw only PnpmWorkspaceFileError`, () => {
+			for (const run of [() => PnpmWorkspaceFile.render(make()), () => read("a: 1\n").write(make())]) {
+				try {
+					run();
+					assert.fail("expected a throw");
+				} catch (error) {
+					assert.instanceOf(error, PnpmWorkspaceFileError);
+				}
+			}
+		});
+	}
+
+	it("a deep value at the cap writes; one past it fails (control for the boundary)", () => {
+		assert.isTrue(Result.isSuccess(PnpmWorkspaceFile.renderResult(deep(200))));
+		assert.isTrue(Result.isFailure(PnpmWorkspaceFile.renderResult(deep(300))));
+	});
+
+	it("a bigint is representable: it renders and writes", () => {
+		const rendered = PnpmWorkspaceFile.renderResult({ n: 12345678901234567890n });
+		assert.isTrue(Result.isSuccess(rendered));
+		if (Result.isSuccess(rendered)) assert.include(rendered.success, "12345678901234567890");
+		const written = read("a: 1\nn: 1\n").writeResult({ a: 1, n: 12345678901234567890n });
+		assert.isTrue(Result.isSuccess(written));
+		if (Result.isSuccess(written)) assert.strictEqual(written.success, "a: 1\nn: 12345678901234567890\n");
+		const inList = PnpmWorkspaceFile.renderResult({ l: [1n, 2n] });
+		assert.isTrue(Result.isSuccess(inList));
+	});
+
+	it("NaN, Infinity and null are distinct values, not conflated", () => {
+		const source = "a: .nan\nb: .inf\nc: null\n";
+		// unchanged: a no-op
+		assert.strictEqual(read(source).write({ a: Number.NaN, b: Number.POSITIVE_INFINITY, c: null }), source);
+		// swapped: each change is made
+		const out = read(source).write({ a: null, b: Number.NaN, c: Number.POSITIVE_INFINITY });
+		assert.deepStrictEqual(valueOfText(out), { a: null, b: Number.NaN, c: Number.POSITIVE_INFINITY });
+	});
+
+	it("a primitive list of 1, '1' and 1n keeps them apart", () => {
+		const out = read("l:\n  - 1\n").write({ l: [1, "1"] });
+		assert.deepStrictEqual(valueOfText(out), { l: [1, "1"] });
 	});
 });
