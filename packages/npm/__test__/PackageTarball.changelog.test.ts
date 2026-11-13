@@ -177,32 +177,65 @@ describe("PackageTarball.changelog requirements and caps", () => {
 
 	it.effect("answers None for a version document with no dist.tarball", () =>
 		Effect.gen(function* () {
-			const served = registry({ tarball: 500 });
+			const requested: Array<string> = [];
 			const noDist = Layer.succeed(
 				HttpClient.HttpClient,
-				HttpClient.make((request) =>
-					Effect.succeed(
+				HttpClient.make((request) => {
+					requested.push(request.url);
+					return Effect.succeed(
 						HttpClientResponse.fromWeb(request, new Response(JSON.stringify({ name: "pkg", version: "1.0.0" }))),
-					),
-				),
+					);
+				}),
 			);
 			const found = yield* run(changelog, noDist);
 			assert.isTrue(Option.isNone(found));
-			assert.deepStrictEqual(served.seen, []);
+			// Only the version document was fetched: no tarball request was made.
+			assert.deepStrictEqual(requested, [`${REGISTRY}/pkg/1.0.0`]);
 		}),
 	);
 
-	it.effect("refuses a download past the cap as decode, stopping before it inflates", () =>
+	it.effect("the download cap refuses a body whose compressed size is past it, though it would inflate within it", () =>
 		Effect.gen(function* () {
-			// A plain tar (a tar registry serves one), so the cap is the only thing between it and a read.
-			const bytes = tar(entry("package/CHANGELOG.md", "x"));
-			const served = registry({ tarball: bytes });
-			const capped = changelogWithin(bytes.length - 1, { registry: REGISTRY }, "pkg", "1.0.0");
-			const error = yield* Effect.flip(run(capped, served.layer));
-			assert.strictEqual(error.kind, "decode");
-			// The same bytes under a cap that admits them read fine, so the cap is what refused.
-			const admitted = changelogWithin(bytes.length, { registry: REGISTRY }, "pkg", "1.0.0");
-			assert.deepStrictEqual(yield* run(admitted, registry({ tarball: bytes }).layer), Option.some("x"));
+			// A valid gzip whose header carries a long comment: big on the wire, small inflated, so only
+			// the download cap can refuse it.
+			const plain = yield* Effect.promise(() => gzip(tar(entry("package/CHANGELOG.md", "x"))));
+			const comment = new Uint8Array(8000).fill(0x61);
+			const padded = concat([
+				plain.subarray(0, 3),
+				Uint8Array.of(plain[3] | 0x10),
+				plain.subarray(4, 10),
+				comment,
+				Uint8Array.of(0),
+				plain.subarray(10),
+			]);
+			assert.isAbove(padded.length, 6000);
+			const refused = yield* Effect.flip(
+				run(changelogWithin(6000, { registry: REGISTRY }, "pkg", "1.0.0"), registry({ tarball: padded }).layer),
+			);
+			assert.strictEqual(refused.kind, "decode");
+			// Control: the same body under a cap that admits it reads, so the download cap alone refused it.
+			const read = yield* run(
+				changelogWithin(20000, { registry: REGISTRY }, "pkg", "1.0.0"),
+				registry({ tarball: padded }).layer,
+			);
+			assert.deepStrictEqual(read, Option.some("x"));
+		}),
+	);
+
+	it.effect("the inflate cap refuses a small gzip that inflates past it", () =>
+		Effect.gen(function* () {
+			const bomb = yield* Effect.promise(() => gzip(new Uint8Array(1024 * 1024)));
+			assert.isBelow(bomb.length, 6000);
+			const refused = yield* Effect.flip(
+				run(changelogWithin(6000, { registry: REGISTRY }, "pkg", "1.0.0"), registry({ tarball: bomb }).layer),
+			);
+			assert.strictEqual(refused.kind, "decode");
+			// Control: with room to inflate, the zero blocks read as an empty archive: None, not an error.
+			const read = yield* run(
+				changelogWithin(2 * 1024 * 1024, { registry: REGISTRY }, "pkg", "1.0.0"),
+				registry({ tarball: bomb }).layer,
+			);
+			assert.isTrue(Option.isNone(read));
 		}),
 	);
 });

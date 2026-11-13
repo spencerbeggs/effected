@@ -2,8 +2,8 @@ import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import { NpmConfig, NpmRegistry, RegistryReadError } from "@effected/npm";
 import { WorkspaceDiscovery, WorkspacePackage, WorkspaceRoot } from "@effected/workspaces";
-import { Effect, Layer, Option, Result, Schema } from "effect";
-import { ChangesetConfig } from "../src/ChangesetConfig.js";
+import { Effect, Layer, Option, Result } from "effect";
+import { planPnpm } from "../src/internal/pnpmPlan.js";
 import { PendingChangeset } from "../src/PendingChangesets.js";
 import { RegistryVersions } from "../src/RegistryVersions.js";
 import { ReleasePlan } from "../src/ReleasePlan.js";
@@ -185,7 +185,7 @@ describe("ReleasePlan.read with a RegistryVersions", () => {
 	);
 });
 
-describe("ReleasePlan.assemble with unpublished", () => {
+describe("planPnpm with unpublished (the seam read uses)", () => {
 	it("plans the given directories as first releases in one pass, ahead of published", () => {
 		const a = WorkspacePackage.make({
 			name: "@p/a",
@@ -195,11 +195,9 @@ describe("ReleasePlan.assemble with unpublished", () => {
 			relativePath: "a",
 			workspaceRoot: "/ws",
 		});
-		const result = ReleasePlan.assemble({
+		const result = planPnpm({
 			packages: [a],
 			changesets: [PendingChangeset.make({ file: "x.md", releases: new Map([["@p/a", "minor"]]), summary: "S." })],
-			config: Schema.decodeUnknownSync(ChangesetConfig)({}),
-			manager: "pnpm",
 			unpublished: new Set(["a"]),
 			published: new Set(["a"]),
 		});

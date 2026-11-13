@@ -589,9 +589,6 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 *   lane, `<stable>-<lane>.0`) while still reporting its intent's bump and
 	 *   consuming its intents, and the plan is made again, as `pnpm version -r`
 	 *   makes it. A private project is never probed, so never debuts.
-	 * - `unpublished`: the same answer from the other side, for a caller that has
-	 *   already asked the registry: the directories to plan as first releases
-	 *   outright, in one pass. It wins over `published`.
 	 * - `enforceWorkspaceProtocol`: refuse an internal production dependency
 	 *   that is not a `workspace:` range, as `pnpm version -r` does. Off is
 	 *   `pnpm change status`'s reading.
@@ -634,7 +631,6 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 		readonly versioning?: VersioningConfig;
 		readonly ledger?: Ledger;
 		readonly published?: ReadonlySet<string>;
-		readonly unpublished?: ReadonlySet<string>;
 		readonly enforceWorkspaceProtocol?: boolean;
 	}): Result.Result<
 		ReleasePlan,
@@ -646,12 +642,7 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 		| SnapshotTemplateError
 		| VersioningError
 	> {
-		try {
-			return Result.succeed(assembleOrHalt(input));
-		} catch (error) {
-			if (error instanceof Halt) return Result.fail(error.failure);
-			throw error;
-		}
+		return assembleResult(input);
 	}
 
 	/**
@@ -979,7 +970,7 @@ const readContext = Effect.fnUntraced(function* (
 				{ concurrency: 8 },
 			);
 			const unpublished = new Set(probed.filter(([, found]) => !found).map(([dir]) => dir));
-			if (unpublished.size > 0) plan = yield* Effect.fromResult(ReleasePlan.assemble({ ...input, unpublished }));
+			if (unpublished.size > 0) plan = yield* Effect.fromResult(assembleResult({ ...input, unpublished }));
 		}
 		return ReleaseContext.make({ root, plan, packages: discovered, config });
 	}
@@ -1005,6 +996,21 @@ const pnpmDir = (release: PlannedRelease): string => {
 	return release.dir;
 };
 
+/**
+ * {@link ReleasePlan.assemble}'s body, with the one input it does not publish:
+ * `unpublished`, the directories to plan as first releases outright, for
+ * `read`, which has already asked the registry. `published` stays the only
+ * public way to say which directories debut.
+ */
+const assembleResult = (input: Parameters<typeof assembleOrHalt>[0]): ReturnType<typeof ReleasePlan.assemble> => {
+	try {
+		return Result.succeed(assembleOrHalt(input));
+	} catch (error) {
+		if (error instanceof Halt) return Result.fail(error.failure);
+		throw error;
+	}
+};
+
 /** The config a pnpm repository without `.changeset/config.json` is read with: every default. */
 const DEFAULT_CONFIG = Schema.decodeUnknownSync(ChangesetConfig)({});
 
@@ -1013,7 +1019,7 @@ const DEFAULT_CONFIG = Schema.decodeUnknownSync(ChangesetConfig)({});
  * `versioning` block and the ledger, its releases made {@link PlannedRelease}s.
  * `config` and `pre` are not read, as pnpm reads neither file.
  */
-const assemblePnpm = (input: Parameters<typeof ReleasePlan.assemble>[0]): ReleasePlan => {
+const assemblePnpm = (input: Parameters<typeof assembleOrHalt>[0]): ReleasePlan => {
 	const { snapshot } = input;
 	const suffix =
 		snapshot === undefined
