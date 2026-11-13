@@ -11,6 +11,13 @@
 * Updated @effected/workspaces peer-dependency checking
 * Updated @effected/changesets
 * Updated NpmRegistry applies none of the npmrc proxy or TLS settings
+* Updated @effected/workspaces discovery and detection
+* Updated A yarn Berry lockfile has no devDependencies section
+* Updated Add a kit package
+* Updated PeerCheck cannot answer yarn
+* Updated Yarn carries no resolved peer edges
+* Updated effected
+* Updated npm and bun rows never populate unresolvedEdges
 
 ## 2026-11-12
 

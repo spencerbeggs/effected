@@ -8,10 +8,10 @@ tags:
   - architecture
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-08T23:22:45Z
+  at: 2026-11-13T06:27:13Z
 integrity:
   generated:
-    body: ed8e0454ad5baad5
+    body: f41ad9a4ad5a57ea
 ---
 
 # Add a kit package
@@ -44,6 +44,13 @@ that does not yet exist.
    [the ai-plugin Module](../modules/ai-plugin.md).
 7. **Advance** — add the package's row to the package table in the
    [Project concept](../project.md).
+   Add its router row and reference file to the `effected-packages` skill
+   in the same step — `plugin/skills/effected-packages/SKILL.md` and
+   `references/<pkg>.md` — and raise the package count that skill states
+   (in the body and in the frontmatter description). `plugin/__test__/effected-packages-index.bats`
+   fails on a publishable package with no row, a row with no reference file
+   and a count that disagrees with the packages on disk, so it goes red at
+   scaffold time if this is left for later.
 8. **Wire it into the workspace checks.**
    - Place the package in a layer of `lib/configs/layers.json`, below
      every package it depends on and above every package that depends on
@@ -74,6 +81,6 @@ for what that file must state.
 The package has a Module concept in `okf/modules/`, a working
 `packages/X` directory that builds and tests cleanly, a wired
 api-extractor model, any durable design lessons distilled into plugin
-skills, a row in the Project concept's package table, a place in
+skills, a row in the Project concept's package table, a router row in the `effected-packages` skill, a place in
 `lib/configs/layers.json`, and an `effected` catalog entry that
 `pnpm catalog:check` reports in sync.

@@ -9,7 +9,7 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-13T05:55:29Z
+  at: 2026-11-13T06:27:13Z
 sources:
   - id: package-manager-model-design
     resource: ../../docs/superpowers/specs/2026-11-12-package-manager-model-design.md
@@ -31,7 +31,7 @@ sources:
     resource: ../../packages/pnpm/__test__/fixtures/pnpm-12.20.0-settings.README.md
 integrity:
   generated:
-    body: 662dc866d9b367ad
+    body: f0cf098de0ed3dfd
 ---
 
 # pnpm
@@ -57,11 +57,9 @@ Boundary tier at the root: `effect` and `@effected/semver` are the peers, `@effe
 
 The `catalog:` and `workspace:` protocols are not here: bun reads them the way pnpm 12 does, so `CatalogResolver`, `WorkspaceResolver` and the specifier grammar stay in `@effected/npm`, and `CatalogSet` stays in `@effected/workspaces`, which assembles it from lockfiles.[^protocol-owner]
 
-## Planned contents
+## What stays outside
 
-- The `pnpm-workspace.yaml` editor, which keeps formatting and writes keys in a canonical order.
-
-Policy over the catalog (merge strategy, enforcement, the catalog-to-overrides directive) stays outside this package.
+The `pnpm-workspace.yaml` editor (`PnpmWorkspaceFile`) is here. Policy over the catalog (merge strategy, enforcement, the catalog-to-overrides directive) stays outside this package.
 
 ## pnpm settings
 

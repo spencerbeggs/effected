@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-12T23:51:04Z
+  at: 2026-11-13T06:27:13Z
 integrity:
   generated:
-    body: 471d5bcfd82175ca
+    body: 990519423e2f5cc8
 ---
 
 # effected
@@ -40,7 +40,7 @@ The repository holds **libraries, their companions, and one tool**. Standalone t
 | `walker` | boundary | extraction from `config-file`; upward path traversal |
 | `glob` | pure | invention; a vendored minimatch dialect as pure string→predicate schemas |
 | `toml` | pure | invention; a from-scratch, full-parity TOML engine |
-| `lockfiles` | pure | extraction from `workspaces`; bun/npm/pnpm/yarn parsers |
+| `lockfiles` | pure | extraction from `workspaces`; bun/npm/pnpm normalizers over the manager packages' document parsers |
 | `store` | integrated | extraction from `xdg`; migrated SQLite `Store` and TTL `Cache` |
 | `xdg` | boundary | port of `xdg-effect`; does not depend on `store` |
 | `files` | boundary | invention; `AtomicFile.write`, the atomic single-file write adopted across the kit, and `AtomicDirectory.write`, whole-directory replacement, over core `FileSystem` and `Path` in `R` |

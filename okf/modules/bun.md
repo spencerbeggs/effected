@@ -9,7 +9,7 @@ tags:
   - architecture
 generated:
   by: "claude-code/sonnet-5.5"
-  at: 2026-11-13T00:15:32Z
+  at: 2026-11-13T06:27:13Z
 sources:
   - id: package-manager-model-design
     resource: ../../docs/superpowers/specs/2026-11-12-package-manager-model-design.md
@@ -17,7 +17,7 @@ sources:
     resource: ../../packages/bun/src/BunLockDocument.ts
 integrity:
   generated:
-    body: a18aeeb5e855bc3b
+    body: c65080b276f5bc8c
 ---
 
 # bun
@@ -33,7 +33,7 @@ Pure tier at the root: `effect` and `@effected/semver` (closing `@effected/npm`'
 ## Contents
 
 - **`BunLockDocument`**: `bun.lock` as bun writes it, JSONC: `lockfileVersion`, `workspaces` keyed by workspace path, `packages` as tuples of unknown values (their shape is under-documented upstream, so `lockfiles` reads each tuple's info object out of band), and the header `catalog`, `catalogs`, `overrides` and `trustedDependencies`. `BunLockDocument.parse` fails `@effected/npm`'s `LockfileDocumentError` with `reason: "syntax"` (with the JSONC engine's first diagnostic line) or `"shape"`; no `lockfileVersion` is rejected.[^bun-lock-document-ts]
-- **`BunExtension`**: the header fields bun alone records, carried on `lockfiles`' `Lockfile.extension`. `BunLockDocument` reuses its field schemas, so the two cannot drift. It moved here from `lockfiles` with no re-export there.
+- **`BunExtension`**: the header fields bun alone records, carried on `lockfiles`' `Lockfile.extension`. `BunLockDocument` reuses its field schemas, so the two cannot drift.
 
 The binary `bun.lockb` is not read. There is no `bunfig.toml` settings catalog yet; that is later work in this package.
 

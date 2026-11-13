@@ -62,7 +62,7 @@ describe("PackageManager.FromString", () => {
 	);
 
 	// The `packageManager` field only ever carries corepack's `<algo>.<hex>`
-	// integrity. A valid SRI or yarn `10c0/` form — accepted by the wider
+	// integrity. A valid SRI form — accepted by the wider
 	// `IntegrityHash` brand — is too loose here and must fail typed, never
 	// construct the field and escape as a defect.
 	it.effect("rejects an SRI integrity (not the corepack form)", () =>

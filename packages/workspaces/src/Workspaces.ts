@@ -422,7 +422,7 @@ export class Workspaces {
 	 * package ships the layer.
 	 *
 	 * **The argv knowledge is not duplicated.** `LocalExec.prefixes(name)` is
-	 * the one home of the four managers' `exec`/`dlx`/script-runner prefixes;
+	 * the one home of the three managers' `exec`/`dlx`/script-runner prefixes;
 	 * this layer
 	 * detects *which* manager owns the directory and asks `commands` what that
 	 * manager's argv looks like. Neither package reimplements the other's

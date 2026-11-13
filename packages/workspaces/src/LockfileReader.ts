@@ -189,7 +189,7 @@ export class LockfileReader extends Context.Service<LockfileReader, LockfileRead
 			const init: Effect.Effect<Lockfile, LockfileReadFailure> = Effect.gen(function* () {
 				const root = yield* findLayerRoot(roots, options);
 				const detected = yield* detector.detect(root);
-				// `PackageManagerName` and `LockfileFormat` are the same four literals;
+				// `PackageManagerName` and `LockfileFormat` are the same three literals;
 				// the assignment is what makes the two concepts interoperate for free.
 				const format: LockfileFormat = detected.name;
 				const lockfilePath = path.join(root, filenameFor(format));

@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/workspaces/__test__/fixtures/peers/README.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-13T00:43:17Z
+  at: 2026-11-13T06:27:13Z
 integrity:
   generated:
-    body: 9009ae8f6112d71f
+    body: 83240b7f783c22fa
 ---
 
 # @effected/workspaces peer-dependency checking
@@ -75,10 +75,11 @@ An empty result is the most dangerous success shape in this domain — it is
 indistinguishable from "this could not be checked" — so the return is a
 report, not an array:
 
-- **yarn cannot be answered.** It resolves peers virtually, giving a
-  peer-bearing package one `@virtual:` locator per consumer, and the
-  lockfile does not record which instance satisfied which peer.
-  `supported: false` says so.
+- **A format that records no peer resolution cannot be answered.** Only
+  `npm`, `pnpm` and `bun` are on the allowlist; any other `Lockfile` format
+  reports `supported: false`, so a format added later is unsupported until a
+  parser records its peer resolution. Yarn, which resolves peers virtually,
+  is not a supported manager and never reaches this check.
 - **The npm and bun root importer cannot be joined to instances.** Neither
   records a resolved version per importer dependency, and neither emits a
   package row for the root. Those importers are named in
@@ -330,8 +331,8 @@ check stays a pure value over its inputs:
 
 ## The differential oracle
 
-See [the yarn limitation](../limitations/workspaces-peer-check-yarn-and-suppression-axes.md)
-for the gap this report surfaces rather than swallows.
+See [the deprecated yarn limitation](../limitations/workspaces-peer-check-yarn-and-suppression-axes.md)
+for the first gap this report surfaced rather than swallowed.
 
 `pnpm peers check --json` is the reference for peer semantics, and the test
 suite checks agreement with it, but the oracle is committed, not executed:
