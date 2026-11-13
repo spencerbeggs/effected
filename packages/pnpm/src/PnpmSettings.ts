@@ -602,6 +602,14 @@ export class PnpmSettings extends Schema.Class<PnpmSettings>("PnpmSettings")({
 	 * manifest probe that fails other than not-found), and one that does not
 	 * parse fails as {@link PnpmSettings.fromSourcesResult} does.
 	 *
+	 * **A divergence from pnpm 12:** a registry URL in `pnpm-workspace.yaml`
+	 * holding a `${VAR}` placeholder (`registry`, a `registries` entry, a
+	 * `namedRegistries` URL) makes pnpm 12 refuse to load the configuration
+	 * at all, so `pnpm config get` fails too, for any key. This load reads the
+	 * values regardless: it answers settings, not routes. The refusal lives in
+	 * `PnpmNpmConfig`, which fails `"untrusted-env"` where pnpm would refuse
+	 * to reach a registry.
+	 *
 	 * @param options - See {@link PnpmSettingsLoadOptions}.
 	 */
 	static readonly load = Effect.fn("PnpmSettings.load")(function* (options: PnpmSettingsLoadOptions) {

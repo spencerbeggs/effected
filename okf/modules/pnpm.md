@@ -9,7 +9,7 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-13T05:37:51Z
+  at: 2026-11-13T05:55:29Z
 sources:
   - id: package-manager-model-design
     resource: ../../docs/superpowers/specs/2026-11-12-package-manager-model-design.md
@@ -31,7 +31,7 @@ sources:
     resource: ../../packages/pnpm/__test__/fixtures/pnpm-12.20.0-settings.README.md
 integrity:
   generated:
-    body: 6f7c2e08f450edfa
+    body: 662dc866d9b367ad
 ---
 
 # pnpm
@@ -183,7 +183,9 @@ pnpm's own readings, each kept: in the project `.npmrc` it expands no
 `${VAR}` in a registry, proxy or credential (the line is dropped, and a
 registry URL with one fails `PnpmSettingsError` `"untrusted-env"`); in
 `pnpm-workspace.yaml` a placeholder proxy is dropped and a placeholder
-registry fails the same way; an unscoped credential, `cert` or `key` is
+`registry`, `registries` entry (routed or not, by its URL) or
+`namedRegistries` URL fails the same way, in pnpm's order
+(`workspace_yaml/env.rs` `refuse_unexpanded_registries`); an unscoped credential, `cert` or `key` is
 pinned to its file's own registry (`npmrc_auth/credentials.rs`
 `rescope_unscoped`); `no-proxy` and `noproxy` are one npmrc slot; repeated
 `ca=` lines accumulate and `ca[]` is unknown; `${VAR:-default}` is pnpm's
@@ -191,7 +193,15 @@ dialect and an unset variable reads as empty. Not modelled: CLI flags, the
 structured `_auth` credentials, `tokenHelper`, and resolving a relative
 `cafile` against its npmrc's directory. An unreadable npmrc fails
 `NpmConfigError` `"read"` where pnpm warns. The tests carry the naive
-control: `NpmConfig` over the same npmrc text answering differently.
+control: `NpmConfig` over the same npmrc text answering differently, and a
+hostile-value suite (a newline, `\r\n`, `;`, `#` or `=` followed by a
+credential line) pinning that a settings value never becomes an npmrc line.
+`PnpmSettings.load` reads placeholder registries as values where pnpm 12
+refuses the whole load; the refusal lives in `PnpmNpmConfig`. The config is
+an instance of this package's `@effected/npm` copy, so a caller passes it to
+`NpmHttpClient.layer` from that same copy. `NpmConfig.proxyFor`'s pnpm rules
+read a proxy variable upper case first, as pnpm 12's
+`apply_proxy_cascade` does.
 
 ## The `/settings` subpath
 

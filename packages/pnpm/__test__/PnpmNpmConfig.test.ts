@@ -230,7 +230,29 @@ describe("PnpmNpmConfig npmrc readings", () => {
 			{
 				workspace: `registries:\n  '@acme': https://${ref("HOST")}/\n`,
 				path: "/r/pnpm-workspace.yaml",
-				setting: "registries",
+				setting: "registries['@acme']",
+			},
+			// A declaration is refused by its key, whether or not it routes a scope.
+			{
+				workspace: `registries:\n  https://${ref("HOST")}/:\n    serverType: verdaccio\n`,
+				path: "/r/pnpm-workspace.yaml",
+				setting: `registries['https://${ref("HOST")}/']`,
+			},
+			{
+				workspace: `registries:\n  https://${ref("HOST")}/:\n    scopes: ['@acme']\n`,
+				path: "/r/pnpm-workspace.yaml",
+				setting: `registries['https://${ref("HOST")}/']`,
+			},
+			{
+				workspace: `namedRegistries:\n  work: https://${ref("HOST")}/\n`,
+				path: "/r/pnpm-workspace.yaml",
+				setting: "namedRegistries['work']",
+			},
+			// pnpm checks registry first, then namedRegistries, then registries.
+			{
+				workspace: `registries:\n  '@acme': https://${ref("HOST")}/\nnamedRegistries:\n  work: https://${ref("HOST")}/\nregistry: https://${ref("HOST")}/\n`,
+				path: "/r/pnpm-workspace.yaml",
+				setting: "registry",
 			},
 		]) {
 			const result = PnpmNpmConfig.fromSourcesResult(sourcesOf({ ...fixture, env: { HOST: "evil.example" } }));
@@ -244,6 +266,18 @@ describe("PnpmNpmConfig npmrc readings", () => {
 			assert.strictEqual(error.path, fixture.path);
 			assert.strictEqual(error.setting, fixture.setting);
 		}
+		// A route-less declaration with a literal key is read, and the global file is trusted.
+		assert.strictEqual(
+			pnpmConfig({ workspace: "registries:\n  https://npm.acme.dev/:\n    serverType: verdaccio\n" }).registry,
+			DEFAULT_REGISTRY,
+		);
+		assert.strictEqual(
+			pnpmConfig({
+				global: `registries:\n  https://${ref("HOST")}/:\n    scopes: ['@acme']\n`,
+				env: { HOST: "ok.example" },
+			}).registryFor("@acme/x"),
+			"https://ok.example/",
+		);
 		// The user npmrc and the global file are trusted.
 		assert.strictEqual(
 			pnpmConfig({ user: `registry=https://${ref("HOST")}/`, env: { HOST: "ok.example" } }).registry,
@@ -332,6 +366,52 @@ describe("PnpmNpmConfig npmrc readings", () => {
 	it("keeps only the keys pnpm reads from an npmrc", () => {
 		const config = pnpmConfig({ user: "min-release-age=5\nregistry=https://r.example/\ntokenHelper=/bin/x" });
 		assert.deepStrictEqual(Object.keys(config.settings), ["registry"]);
+	});
+});
+
+describe("PnpmNpmConfig never lets a settings value write an npmrc line", () => {
+	// Each payload would, if a rendered line were not quoted, end the value and
+	// start a credential line for another host, or cut the value at a comment.
+	const payloads = [
+		"\n//evil.example/:_authToken=stolen",
+		"\r\n//evil.example/:_authToken=stolen",
+		";//evil.example/:_authToken=stolen",
+		"#//evil.example/:_authToken=stolen",
+		"=//evil.example/:_authToken=stolen",
+	];
+	/** A YAML double-quoted scalar holding exactly `value`. */
+	const yamlString = (value: string): string => JSON.stringify(value);
+
+	const assertInert = (config: NpmConfig, key: string, value: string, label: string): void => {
+		assert.isTrue(Option.isNone(config.credentialFor("https://evil.example/pkg")), `${label}: no credential`);
+		assert.deepStrictEqual(Object.keys(config.secrets), [], `${label}: no secret`);
+		assert.deepStrictEqual(Object.keys(config.settings), [key], `${label}: no extra key`);
+		assert.strictEqual(config.settings[key], value, `${label}: the whole value`);
+	};
+
+	it("keeps a hostile registry, httpsProxy or noProxy from pnpm-workspace.yaml whole", () => {
+		for (const payload of payloads) {
+			for (const [setting, key, prefix] of [
+				["registry", "registry", "https://ok.example/"],
+				["httpsProxy", "https-proxy", "http://proxy.corp:3128/"],
+				["noProxy", "no-proxy", "internal.example"],
+			] as const) {
+				const value = `${prefix}${payload}`;
+				assertInert(
+					pnpmConfig({ workspace: `${setting}: ${yamlString(value)}\n` }),
+					key,
+					value,
+					`${setting} ${JSON.stringify(payload)}`,
+				);
+			}
+		}
+	});
+
+	it("keeps a hostile PNPM_CONFIG_REGISTRY whole", () => {
+		for (const payload of payloads) {
+			const value = `https://ok.example/${payload}`;
+			assertInert(pnpmConfig({ env: { PNPM_CONFIG_REGISTRY: value } }), "registry", value, JSON.stringify(payload));
+		}
 	});
 });
 

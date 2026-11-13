@@ -86,7 +86,9 @@ const firstEnv = (
  * such a line is dropped (`//registry.npmjs.org/:_authToken=${NPM_TOKEN}` in
  * the project file sends no token under pnpm 12); in `pnpm-workspace.yaml`,
  * a proxy with a placeholder is dropped. A registry URL with one in either
- * file fails `PnpmSettingsError` `"untrusted-env"`, as pnpm refuses to load.
+ * file (in the workspace file: `registry`, any `registries` entry, routes or
+ * not, and any `namedRegistries` URL) fails `PnpmSettingsError`
+ * `"untrusted-env"`, as pnpm refuses to load.
  *
  * **pnpm's own readings.** An unscoped `_authToken`, `_auth`,
  * `username`/`_password`, `cert` or `key` applies only to the registry its
@@ -95,6 +97,14 @@ const firstEnv = (
  * follows pnpm's dialect (`${VAR:-default}`, an unset variable reads as
  * empty, never a failure). `no-proxy` and `noproxy` in an npmrc are one
  * setting. The `NpmConfig` holds only the keys pnpm reads.
+ *
+ * **One copy of `@effected/npm`.** The config returned here is an instance
+ * of the `NpmConfig` class from the `@effected/npm` this package resolves.
+ * Pass it to `NpmHttpClient.layer` and `NpmRegistry` from that same copy:
+ * the class is nominal, so when a dependency graph resolves two copies (a
+ * range that admits two 0.x minors), the other copy's `NpmConfig` is a
+ * different type and the call need not type-check. Align the caller's
+ * `@effected/npm` with the one `@effected/pnpm` depends on.
  *
  * **Not modelled:** command-line flags, the structured `_auth` credentials of
  * the global `config.yaml` and `pnpm_config__auth`, `tokenHelper`, the

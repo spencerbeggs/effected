@@ -10,6 +10,7 @@
 * Updated @effected/workspaces catalogs and the config-dependency seam
 * Updated @effected/workspaces peer-dependency checking
 * Updated @effected/changesets
+* Updated NpmRegistry applies none of the npmrc proxy or TLS settings
 
 ## 2026-11-12
 

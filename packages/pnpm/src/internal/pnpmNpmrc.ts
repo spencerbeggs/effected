@@ -336,6 +336,33 @@ const registryRoutes = (value: unknown): ReadonlyArray<readonly [string, string]
 	return routes;
 };
 
+/** A registry URL with its userinfo removed, for naming it in an error (`redact_registry_url`). */
+const redactUrl = (url: string): string => url.replace(/^([A-Za-z][A-Za-z0-9+.-]*:\/\/)[^/?#]*@/, "$1");
+
+/**
+ * The first registry setting of a repository file whose URL holds a
+ * placeholder, in the order pnpm checks them (`workspace_yaml/env.rs`
+ * `refuse_unexpanded_registries`): `registry`, every `namedRegistries` URL,
+ * then every `registries` entry's destination, a scope route's value or a
+ * declaration's key, whether or not it routes anything
+ * (`registries/env_placeholders.rs` `refuse_env_placeholder_entries`).
+ */
+const refusedRegistry = (settings: Readonly<Record<string, unknown>>): UntrustedRegistry | undefined => {
+	const own = (name: string): unknown => (Object.hasOwn(settings, name) ? settings[name] : undefined);
+	const registry = own("registry");
+	if (typeof registry === "string" && hasPlaceholder(registry)) return { setting: "registry" };
+	const mapping = (value: unknown): ReadonlyArray<readonly [string, unknown]> =>
+		value !== null && typeof value === "object" && !Array.isArray(value) ? Object.entries(value) : [];
+	for (const [name, url] of mapping(own("namedRegistries"))) {
+		if (typeof url === "string" && hasPlaceholder(url)) return { setting: `namedRegistries['${redactUrl(name)}']` };
+	}
+	for (const [key, entry] of mapping(own("registries"))) {
+		const destination = typeof entry === "string" ? entry : key;
+		if (hasPlaceholder(destination)) return { setting: `registries['${redactUrl(key)}']` };
+	}
+	return undefined;
+};
+
 /**
  * One pnpm settings layer's registry, proxy and TLS settings, as npmrc lines.
  *
@@ -367,23 +394,16 @@ export const overlayLines = (layer: OverlayLayer, env: Env): LinesResult => {
 		return typeof value === "string" ? value : undefined;
 	};
 	const out: Array<string | undefined> = [];
-	const registryLine = (setting: string, key: string, url: string): UntrustedRegistry | undefined => {
-		if (!trusted && hasPlaceholder(url)) return { setting };
-		out.push(npmrcLine(key, expandPlaceholders(url, env)));
-		return undefined;
-	};
-	if (layer._tag === "file") {
-		const routes = registryRoutes(own("registries"));
-		for (const [key, url] of routes ?? []) {
-			const refused = registryLine("registries", key, url);
-			if (refused !== undefined) return { _tag: "untrusted", failure: refused };
-		}
-	}
-	const registry = text("registry");
-	if (registry !== undefined) {
-		const refused = registryLine("registry", "registry", registry);
+	if (!trusted) {
+		const refused = refusedRegistry(settings);
 		if (refused !== undefined) return { _tag: "untrusted", failure: refused };
 	}
+	if (layer._tag === "file") {
+		for (const [key, url] of registryRoutes(own("registries")) ?? [])
+			out.push(npmrcLine(key, expandPlaceholders(url, env)));
+	}
+	const registry = text("registry");
+	if (registry !== undefined) out.push(npmrcLine("registry", expandPlaceholders(registry, env)));
 	for (const [name, key] of STRING_SETTINGS) {
 		const value = text(name);
 		if (value === undefined) continue;

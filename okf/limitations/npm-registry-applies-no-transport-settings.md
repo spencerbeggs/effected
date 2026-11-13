@@ -21,10 +21,10 @@ sources:
     resource: https://pnpm.io/npmrc and https://pnpm.io/settings/network
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-08T23:08:02Z
+  at: 2026-11-13T05:55:29Z
 integrity:
   generated:
-    body: 46cfa4264759d326
+    body: dcf7a66617ae1bbf
 ---
 
 # NpmRegistry applies none of the npmrc proxy or TLS settings
@@ -118,10 +118,12 @@ under `packageManager: "pnpm"`:[^pnpm-source][^pnpm-docs]
   bare `true` **setting** bypasses every host, because pnpm's ini reader
   makes it a boolean. A `NO_PROXY=true` variable stays the string `true`, a
   host name like any other. npm reads only `noproxy`.
-- A variable is read in lower case, else upper case, and a set-but-empty
-  one counts as a value: `https_proxy=""` means no proxy and stops the
-  fallback to `HTTPS_PROXY` and, for `http:`, to `HTTP_PROXY`. npm reads any
-  case and skips an empty value.
+- A variable is read in upper case, else lower case, as pnpm 12's
+  `apply_proxy_cascade` reads it (pnpm 11 read lower case first), and a
+  set-but-empty one counts as a value: `HTTPS_PROXY=""` means no proxy and
+  stops the fallback to `https_proxy` and, for `http:`, to `HTTP_PROXY`. npm
+  reads any case, the last spelling in the environment's order winning, and
+  skips an empty value.
 - A proxy written without a scheme takes the request's.
 
 The matching itself is the same: dot-separated labels compared from the

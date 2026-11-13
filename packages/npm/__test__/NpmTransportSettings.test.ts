@@ -230,17 +230,43 @@ describe("NpmConfig.proxyFor with packageManager: pnpm (#1307)", () => {
 		);
 	});
 
-	it("reads a variable in lower case, else upper case, never mixed", () => {
+	it("reads a variable in upper case, else lower case, never mixed, as pnpm 12 does", () => {
 		const c = config([]);
-		assert.strictEqual(
-			pnpmProxyOf(c, "https://r.example/x", { https_proxy: "http://lo:1", HTTPS_PROXY: "http://up:2" }),
-			"http://lo:1",
+		for (const [upper, lower, url] of [
+			["HTTPS_PROXY", "https_proxy", "https://r.example/x"],
+			["HTTP_PROXY", "http_proxy", "http://r.example/x"],
+			["PROXY", "proxy", "http://r.example/x"],
+		] as const) {
+			assert.strictEqual(pnpmProxyOf(c, url, { [lower]: "http://lo:1", [upper]: "http://up:2" }), "http://up:2", upper);
+			assert.strictEqual(pnpmProxyOf(c, url, { [upper]: "http://up:2", [lower]: "http://lo:1" }), "http://up:2", upper);
+			assert.strictEqual(pnpmProxyOf(c, url, { [lower]: "http://lo:1" }), "http://lo:1", lower);
+		}
+		const proxied = config(["https-proxy=http://p:1"]);
+		// NO_PROXY wins over no_proxy too: the upper-case list bypasses, the lower-case one would not.
+		assert.isUndefined(
+			pnpmProxyOf(proxied, "https://up.example/x", { no_proxy: "lo.example", NO_PROXY: "up.example" }),
 		);
-		assert.strictEqual(pnpmProxyOf(c, "https://r.example/x", { HTTPS_PROXY: "http://up:2" }), "http://up:2");
+		assert.strictEqual(
+			pnpmProxyOf(proxied, "https://lo.example/x", { no_proxy: "lo.example", NO_PROXY: "up.example" }),
+			"http://p:1",
+		);
 		assert.isUndefined(pnpmProxyOf(c, "https://r.example/x", { Https_Proxy: "http://mixed:3" }));
 		// npm reads the mixed spelling.
 		assert.strictEqual(proxyOf(c, "https://r.example/x", { Https_Proxy: "http://mixed:3" }), "http://mixed:3");
 		assert.strictEqual(pnpmProxyOf(c, "http://r.example/x", { PROXY: "http://legacy:4" }), "http://legacy:4");
+	});
+
+	it("npm reads a variable in any case, the last spelling in the environment's order winning", () => {
+		// `@npmcli/agent`'s PROXY_ENV folds `process.env` by lower-cased name, so a later entry replaces an earlier one.
+		const c = config([]);
+		assert.strictEqual(
+			proxyOf(c, "https://r.example/x", { https_proxy: "http://lo:1", HTTPS_PROXY: "http://up:2" }),
+			"http://up:2",
+		);
+		assert.strictEqual(
+			proxyOf(c, "https://r.example/x", { HTTPS_PROXY: "http://up:2", https_proxy: "http://lo:1" }),
+			"http://lo:1",
+		);
 	});
 
 	it("bypasses by no-proxy, else noproxy, else NO_PROXY; a bare true bypasses every host", () => {
@@ -428,11 +454,11 @@ describe("pnpm env edge cases (#1307 review N1, N2)", () => {
 		assert.isUndefined(pnpmProxyOf(config([base, "no-proxy=true"]), "https://r.example/x"));
 	});
 
-	it("a set-but-empty lower-case variable means no proxy and stops the fallback", () => {
-		assert.isUndefined(pnpmProxyOf(config([]), "https://r.example/x", { https_proxy: "", HTTPS_PROXY: "http://up:1" }));
-		assert.isUndefined(pnpmProxyOf(config([]), "http://r.example/x", { https_proxy: "", HTTP_PROXY: "http://p:2" }));
-		// Control: unset, the upper-case variable is read.
-		assert.strictEqual(pnpmProxyOf(config([]), "https://r.example/x", { HTTPS_PROXY: "http://up:1" }), "http://up:1");
+	it("a set-but-empty upper-case variable means no proxy and stops the fallback", () => {
+		assert.isUndefined(pnpmProxyOf(config([]), "https://r.example/x", { HTTPS_PROXY: "", https_proxy: "http://lo:1" }));
+		assert.isUndefined(pnpmProxyOf(config([]), "http://r.example/x", { HTTPS_PROXY: "", HTTP_PROXY: "http://p:2" }));
+		// Control: unset, the lower-case variable is read.
+		assert.strictEqual(pnpmProxyOf(config([]), "https://r.example/x", { https_proxy: "http://lo:1" }), "http://lo:1");
 	});
 
 	it("a trailing-dot host is bypassed by its domain under pnpm, not under npm", () => {

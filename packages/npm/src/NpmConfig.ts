@@ -437,11 +437,15 @@ const proxyEnv = (env: Readonly<Record<string, string | undefined>>): Map<string
 };
 
 /**
- * A proxy variable as pnpm reads it (`getProcessEnv`): the lower-case name,
- * else the upper-case one. A mixed-case spelling is not read.
+ * A proxy variable as pnpm 12 reads it (`npmrc_auth.rs` `apply_proxy_cascade`,
+ * `env_pair`): the upper-case name, else the lower-case one. A mixed-case
+ * spelling is not read. (pnpm 11's `getProcessEnv` read lower case first.)
  */
-const pnpmEnv = (env: Readonly<Record<string, string | undefined>>, name: string): string | undefined =>
-	env[name] ?? env[name.toUpperCase()];
+const pnpmEnv = (env: Readonly<Record<string, string | undefined>>, name: string): string | undefined => {
+	const upper = name.toUpperCase();
+	if (Object.hasOwn(env, upper) && env[upper] !== undefined) return env[upper];
+	return Object.hasOwn(env, name) ? env[name] : undefined;
+};
 
 /** A comma-separated bypass list, trimmed, with empty entries dropped. */
 const splitNoProxy = (value: string | undefined): ReadonlyArray<string> =>
@@ -521,9 +525,10 @@ const pnpmProxy = (
 	transport: NpmTransportSettings,
 	env: Readonly<Record<string, string | undefined>>,
 ): Option.Option<Redacted.Redacted<string>> => {
-	// pnpm chains variables with `??`, so a variable that is set but empty is
-	// a value: `https_proxy=""` means "no proxy" and stops the fallback to
-	// `HTTPS_PROXY` and, for `http:`, to `HTTP_PROXY`. `false` stands for it.
+	// pnpm chains variables with `or_else`, so a variable that is set but
+	// empty is a value: `HTTPS_PROXY=""` means "no proxy" and stops the
+	// fallback to `https_proxy` and, for `http:`, to `HTTP_PROXY`. `false`
+	// stands for it.
 	const variable = (...names: ReadonlyArray<string>): Redacted.Redacted<string> | false | undefined => {
 		for (const name of names) {
 			const value = pnpmEnv(env, name);
@@ -828,7 +833,7 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 	 * else `proxy`, else `HTTPS_PROXY`; any other URL uses `http-proxy`, else
 	 * that same `https:` answer, else `HTTP_PROXY`, else `PROXY`. `proxy=false`
 	 * turns proxying off entirely, the environment included. A variable is read
-	 * in lower case, else upper case, never mixed. The bypass list is
+	 * in upper case, else lower case, never mixed, as pnpm 12 reads it. The bypass list is
 	 * `no-proxy`, else `noproxy`, else `NO_PROXY`, and a bare `true` bypasses
 	 * every host. A proxy written without a scheme (`proxy.corp:3128`) takes the
 	 * request's.
