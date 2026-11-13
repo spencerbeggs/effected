@@ -1076,12 +1076,11 @@
 		"PnpmLockDocument": "read a pnpm-lock.yaml as written, decode pnpm's native lockfile document, importers, snapshots",
 		"PnpmMatcher": "match peerDependencyRules ignoreMissing or allowAny lists, compile pnpm name patterns with negation",
 		"PnpmSettings": "read pnpm effective settings, pnpm config get precedence, minimumReleaseAge, which source set a value",
-		"PnpmSettingsCatalog": "every pnpm 12 setting, schema per setting, where a setting may be set, docs anchor, defaults",
+		"PnpmSettingsCatalog": "every pnpm 12 setting, per-setting schema, where it may be set, typed read",
 		"PnpmSettingsError": "unreadable, non-yaml or non-mapping pnpm settings file",
 		"PnpmSettingsLoadOptions": "where to read pnpm settings from: cwd, environment, platform, home, global config dir",
 		"ReleaseAgeGate": "enforce pnpm minimumReleaseAge, filter candidate versions younger than the cutoff, match exclude patterns",
-		"VersioningConfig": "decode pnpm-workspace.yaml versioning block, release lanes, fixed groups, ignore, maxBump, changelog storage, epics",
-		"readSetting": "read one pnpm setting typed, decode nodeLinker, validate a pnpm-workspace.yaml value"
+		"VersioningConfig": "decode pnpm-workspace.yaml versioning block, release lanes, fixed groups, ignore, maxBump, changelog storage, epics"
 	},
 	"pnpm-plugin-effected": {
 		"catalogs": "read the effected catalog, effect family and kit versions as a map"

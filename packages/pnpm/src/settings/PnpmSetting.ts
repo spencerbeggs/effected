@@ -5,6 +5,12 @@ import type { Option, Schema } from "effect";
  * (`"workspace"`), an `.npmrc` file (`"npmrc"`), pnpm's global `config.yaml`
  * (`"global"`), or a `PNPM_CONFIG_*` environment variable (`"env"`).
  *
+ * @remarks
+ * `"npmrc"` records where pnpm reads a setting, not a source this package
+ * reads: `PnpmSettings` and `PnpmSettingsCatalog.read` take nothing from an
+ * `.npmrc` file. Read the npmrc half of a registry, proxy or TLS setting with
+ * `@effected/npm`'s `NpmConfig`.
+ *
  * @public
  */
 export type PnpmSettingLocation = "workspace" | "npmrc" | "global" | "env";
@@ -34,6 +40,24 @@ export type PnpmSettingKind =
 	| "object";
 
 /**
+ * How pnpm 12 reads a setting's `PNPM_CONFIG_*` variable.
+ *
+ * @remarks
+ * - `"json"`: a JSON document, typed strictly (`true`, never `yes` or
+ *   `"true"`); a value that does not parse is ignored.
+ * - `"text"`: the value as written.
+ * - `"jsonOrText"`: a JSON document, else the value as a JSON string; an
+ *   enumerated setting reads `hoisted` and `"hoisted"` alike.
+ * - `"flag"`: as `"jsonOrText"`, except that a value that matches nothing reads
+ *   as `true` (`verifyDepsBeforeRun`).
+ * - `"subkeys"`: the section is read from one variable per key
+ *   (`PNPM_CONFIG_NODE_PACKAGE_MAP_MODE`), never under the setting's own name.
+ *
+ * @public
+ */
+export type PnpmSettingEnvFormat = "json" | "text" | "jsonOrText" | "flag" | "subkeys";
+
+/**
  * One pnpm 12 setting: what it accepts and where pnpm reads it, as plain data.
  *
  * @remarks
@@ -59,6 +83,8 @@ export interface PnpmSetting<A> {
 	readonly description: string;
 	/** The sources pnpm 12 reads the setting from; empty when it reads it from none. */
 	readonly locations: ReadonlyArray<PnpmSettingLocation>;
+	/** How pnpm parses the setting's environment variable; absent when pnpm reads none. */
+	readonly envFormat?: PnpmSettingEnvFormat;
 	/** pnpm's default, when it is one fixed value; `None` when it is computed or absent. */
 	readonly default: Option.Option<unknown>;
 	/**

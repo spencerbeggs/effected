@@ -11,6 +11,7 @@ export const nodeModules = {
 		description:
 			"The time in minutes after which dlx cache expires. After executing a dlx command, pnpm keeps a cache that omits the installation step for subsequent calls to the same dlx command.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: 1440,
 		anchor: "settings/node-modules#dlxcachemaxage",
 	}),
@@ -20,6 +21,7 @@ export const nodeModules = {
 		description:
 			"The boolean spelling of `virtualStoreType`: `true` is `virtualStoreType: global`. `virtualStoreType` wins when a project sets both.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/node-modules#enableglobalvirtualstore",
 	}),
@@ -28,6 +30,7 @@ export const nodeModules = {
 		kind: "boolean",
 		description: "When `false`, pnpm will not write any files to the modules directory (`node_modules`).",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: true,
 		anchor: "settings/node-modules#enablemodulesdir",
 	}),
@@ -36,6 +39,7 @@ export const nodeModules = {
 		kind: "stringArray",
 		description: "Names of dependencies that another tool links into the root `node_modules`.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		anchor: "settings/node-modules#externaldependencies",
 	}),
 	globalVirtualStoreDir: entry("globalVirtualStoreDir", {
@@ -43,6 +47,7 @@ export const nodeModules = {
 		kind: "string",
 		description: "The location of the global virtual store. It takes precedence over `virtualStoreDir`.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "text",
 		anchor: "settings/node-modules#globalvirtualstoredir",
 	}),
 	hoist: entry("hoist", {
@@ -50,6 +55,7 @@ export const nodeModules = {
 		kind: "boolean",
 		description: "When `true`, all dependencies are hoisted to `node_modules/.pnpm/node_modules`.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: true,
 		anchor: "settings/node-modules#hoist",
 	}),
@@ -58,6 +64,7 @@ export const nodeModules = {
 		kind: "enum",
 		description: "Controls how far dependencies are hoisted when using `nodeLinker: hoisted`.",
 		locations: ["workspace", "env"],
+		envFormat: "jsonOrText",
 		default: "none",
 		anchor: "settings/node-modules#hoistinglimits",
 	}),
@@ -66,6 +73,7 @@ export const nodeModules = {
 		kind: "stringArray",
 		description: "Tells pnpm which packages should be hoisted to `node_modules/.pnpm/node_modules`.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		anchor: "settings/node-modules#hoistpattern",
 	}),
 	hoistWorkspacePackages: entry("hoistWorkspacePackages", {
@@ -74,6 +82,7 @@ export const nodeModules = {
 		description:
 			"When `true`, the projects of the workspace are hoisting candidates too, not only the packages that come from a registry.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: true,
 		anchor: "settings/node-modules#hoistworkspacepackages",
 	}),
@@ -82,6 +91,7 @@ export const nodeModules = {
 		kind: "number",
 		description: "The time in minutes after which orphan packages from the modules directory should be removed.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: 10080,
 		anchor: "settings/node-modules#modulescachemaxage",
 	}),
@@ -90,6 +100,7 @@ export const nodeModules = {
 		kind: "string",
 		description: "The directory in which dependencies will be installed (instead of `node_modules`).",
 		locations: ["workspace", "env"],
+		envFormat: "text",
 		anchor: "settings/node-modules#modulesdir",
 	}),
 	nodeExperimentalPackageMap: entry("nodeExperimentalPackageMap", {
@@ -98,6 +109,7 @@ export const nodeModules = {
 		description:
 			"Deprecated: use `nodePackageMap.mode`. `true` is `mode: load` and `false` is `mode: off`; `nodePackageMap` wins when both are set in one place.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		anchor: "settings/node-modules#nodeexperimentalpackagemap",
 	}),
 	nodeLinker: entry("nodeLinker", {
@@ -109,6 +121,7 @@ export const nodeModules = {
 		description:
 			"Defines what linker installs Node packages: `isolated`, `hoisted`, `pnp`, `loaded`, or the loaded-linker object `{ type: loaded, excluded }`.",
 		locations: ["workspace", "env"],
+		envFormat: "jsonOrText",
 		default: "isolated",
 		anchor: "settings/node-modules#nodelinker",
 	}),
@@ -120,6 +133,7 @@ export const nodeModules = {
 		kind: "object",
 		description: "Controls `node_modules/.package-map.json`, which pnpm writes during isolated and hoisted installs.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "subkeys",
 		anchor: "settings/node-modules#nodepackagemapmode",
 	}),
 	nodePackageMapType: entry("nodePackageMapType", {
@@ -127,6 +141,7 @@ export const nodeModules = {
 		kind: "enum",
 		description: "Deprecated: use `nodePackageMap.type`. `nodePackageMap` wins when both are set in one place.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "jsonOrText",
 		anchor: "settings/node-modules#nodepackagemaptype-1",
 	}),
 	packageImportMethod: entry("packageImportMethod", {
@@ -135,6 +150,7 @@ export const nodeModules = {
 		description:
 			"Controls the way packages are imported from the store (if you want to disable symlinks inside `node_modules`, then you need to change the [nodeLinker] setting, not this one).",
 		locations: ["workspace", "global", "env"],
+		envFormat: "jsonOrText",
 		default: "auto",
 		anchor: "settings/node-modules#packageimportmethod",
 	}),
@@ -144,6 +160,7 @@ export const nodeModules = {
 		description:
 			"Unlike `hoistPattern`, which hoists dependencies to a hidden modules directory inside the virtual store, `publicHoistPattern` hoists dependencies matching the pattern to the root modules directory.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		anchor: "settings/node-modules#publichoistpattern",
 	}),
 	shamefullyHoist: entry("shamefullyHoist", {
@@ -152,6 +169,7 @@ export const nodeModules = {
 		description:
 			"By default, pnpm creates a semistrict `node_modules`, meaning dependencies have access to undeclared dependencies but modules outside of `node_modules` do not.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/node-modules#shamefullyhoist",
 	}),
@@ -160,6 +178,7 @@ export const nodeModules = {
 		kind: "boolean",
 		description: "When `symlink` is set to `false`, pnpm creates a virtual store directory without any symlinks.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: true,
 		anchor: "settings/node-modules#symlink",
 	}),
@@ -169,6 +188,7 @@ export const nodeModules = {
 		description:
 			"The directory with links to the store. All direct and indirect dependencies of the project are linked into this directory.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "text",
 		anchor: "settings/node-modules#virtualstoredir",
 	}),
 	virtualStoreDirMaxLength: entry("virtualStoreDirMaxLength", {
@@ -177,6 +197,7 @@ export const nodeModules = {
 		description:
 			"Sets the maximum allowed length of directory names inside the virtual store directory (`node_modules/.pnpm`).",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		anchor: "settings/node-modules#virtualstoredirmaxlength",
 	}),
 	virtualStoreOnly: entry("virtualStoreOnly", {
@@ -185,6 +206,7 @@ export const nodeModules = {
 		description:
 			"When set to `true`, pnpm populates the virtual store without creating importer symlinks, hoisting, bin links, or running lifecycle scripts.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/node-modules#virtualstoreonly",
 	}),
@@ -193,6 +215,7 @@ export const nodeModules = {
 		kind: "enum",
 		description: "Names where the virtual store lives: one store per project, or one store per machine.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "jsonOrText",
 		default: "project",
 		anchor: "settings/node-modules#virtualstoretype",
 	}),

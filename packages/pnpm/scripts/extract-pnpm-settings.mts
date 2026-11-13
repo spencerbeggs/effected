@@ -105,16 +105,44 @@ const refusedRs = read(join(CONFIG, "refused_keys.rs"));
 const projectRefused = new Set(stringList(refusedRs, "PROJECT_MANIFEST_SKIPPED_KEYS"));
 
 const envSources = [read(join(CONFIG, "env_overlay.rs")), read(join(CONFIG, "env_overlay/resolution.rs"))].join("\n");
-const envFields = new Set<string>();
-for (const match of envSources.matchAll(/\w+_field(?:_allow_empty)?!\(\s*settings,\s*reader,\s*(\w+),\s*"\w+"/g))
-	envFields.add(camel(match[1] ?? ""));
+/**
+ * How pnpm 12 parses each setting's `PNPM_CONFIG_*` value, keyed by setting:
+ * `json` (`json_field!`, `tri_array_field!`: a JSON document, ignored when it
+ * does not parse), `text` (`string_field!`, `tri_string_field!` and the direct
+ * string assignments: the value as written), `jsonOrText` (`enum_field!`: JSON,
+ * else the value as a JSON string), `flag` (`verifyDepsBeforeRun`: presence
+ * sets it, an unrecognized value reads as `true`), `subkeys` (a section read
+ * from one variable per key, `NODE_PACKAGE_MAP_MODE`, `MACOS_BACKUP_*`).
+ */
+type EnvFormat = "json" | "text" | "jsonOrText" | "flag" | "subkeys";
+const MACRO_FORMATS: Readonly<Record<string, EnvFormat>> = {
+	json_field: "json",
+	tri_array_field: "json",
+	string_field: "text",
+	string_field_allow_empty: "text",
+	tri_string_field: "text",
+	enum_field: "jsonOrText",
+};
+const envFormats = new Map<string, EnvFormat>();
+const setFormat = (field: string, format: EnvFormat): void => {
+	const name = camel(field);
+	const known = envFormats.get(name);
+	if (known !== undefined && known !== format) throw new Error(`${name}: env format ${known} and ${format}`);
+	envFormats.set(name, format);
+};
+for (const match of envSources.matchAll(/(\w+)!\(\s*settings,\s*reader,\s*(\w+),\s*"\w+"/g)) {
+	const format = MACRO_FORMATS[match[1] ?? ""];
+	if (format === undefined) throw new Error(`unknown env macro ${match[1]}`);
+	setFormat(match[2] ?? "", format);
+}
 // The fields read outside the macros, by direct assignment from a `reader.value*` call.
-for (const match of envSources.matchAll(/settings\.(\w+)\s*=\s*(?:Some\()?(?:reader|if s|serde_json|Some)/g))
-	envFields.add(camel(match[1] ?? ""));
-for (const match of envSources.matchAll(/settings\.(\w+)\.get_or_insert_default\(\)/g))
-	envFields.add(camel(match[1] ?? ""));
-for (const match of envSources.matchAll(/self\.(\w+)\.get_or_insert_default\(\)/g))
-	envFields.add(camel(match[1] ?? ""));
+for (const match of envSources.matchAll(/settings\.(\w+)\s*=\s*([^;]+);/g)) {
+	const [, field = "", expression = ""] = match;
+	if (!/reader\.value|serde_json::Value::String|Some\(save_prefix\)|if s\.is_empty/.test(expression)) continue;
+	setFormat(field, expression.includes("VerifyDepsBeforeRun") ? "flag" : "text");
+}
+for (const match of envSources.matchAll(/(?:settings|self)\.(\w+)\.get_or_insert_default\(\)/g))
+	setFormat(match[1] ?? "", "subkeys");
 
 const iniRs = read(join(CONFIG, "npmrc_auth/ini.rs"));
 const networkKeys = iniRs.slice(iniRs.indexOf("fn apply_network_key"), iniRs.indexOf("fn apply_ssl_key"));
@@ -209,6 +237,7 @@ interface Setting {
 	rustType?: string;
 	triState?: boolean;
 	locations: Array<"workspace" | "npmrc" | "global" | "env">;
+	envFormat?: EnvFormat;
 	documented: boolean;
 	anchor: string;
 	docsDefault?: string;
@@ -228,6 +257,7 @@ const add = (field: Field, source: Setting["source"], locations: Setting["locati
 		rustType: field.rustType,
 		...(field.triState ? { triState: true } : {}),
 		locations,
+		...(envFormats.has(field.name) ? { envFormat: envFormats.get(field.name) } : {}),
 		documented: false,
 		anchor: "",
 	});
@@ -237,12 +267,12 @@ for (const field of workspaceFields) {
 	if (!projectRefused.has(field.name) && !GLOBAL_ONLY_WORKSPACE_FIELDS.has(field.name)) locations.push("workspace");
 	if (npmrcFields.has(field.name)) locations.push("npmrc");
 	if (!globalCleared.has(field.name)) locations.push("global");
-	if (envFields.has(field.name)) locations.push("env");
+	if (envFormats.has(field.name)) locations.push("env");
 	add(field, "WorkspaceSettings", locations);
 }
 for (const field of machineFields) {
 	const locations: Setting["locations"] = ["global"];
-	if (envFields.has(field.name)) locations.push("env");
+	if (envFormats.has(field.name)) locations.push("env");
 	add(field, "MachineSettings", locations);
 }
 for (const [name, entry] of docs) {

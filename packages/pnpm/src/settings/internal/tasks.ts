@@ -26,6 +26,7 @@ export const tasks = {
 		description:
 			"How many tasks of each named concurrency group may run at once on this machine, counted across every pnpm process.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 	}),
 	pipelineBase: entry("pipelineBase", {
 		schema: Str,

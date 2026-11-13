@@ -10,6 +10,7 @@ import { Walker } from "@effected/walker";
 import { Yaml } from "@effected/yaml";
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Option, Path, Result, Schema } from "effect";
+import { booleanFromText, booleanFromValue, unsignedFromText, unsignedFromValue } from "./internal/coerce.js";
 import { VersioningConfig } from "./VersioningConfig.js";
 
 /** The string entries of an array, or `undefined` for a non-array. Total. */
@@ -40,7 +41,7 @@ export class PnpmSettingsError extends Schema.TaggedError<PnpmSettingsError>()("
 	path: Schema.optionalKey(Schema.String),
 	/** The setting whose value failed, for a `"shape"` failure of one setting. */
 	setting: Schema.optionalKey(Schema.String),
-	/** The underlying failure, for `"read"`, `"parse"` and `"membership"`. */
+	/** The underlying failure: the IO or YAML error, the membership error, or for `"shape"` the schema issue when one setting failed to decode. */
 	cause: Schema.optionalKey(Schema.Defect()),
 }) {
 	override get message(): string {
@@ -197,9 +198,6 @@ const mappingOf = (
 /** A canonical decimal: optional `-`, no leading zero, no `+`, hex, exponent or digit separator. */
 const DECIMAL = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
 
-/** A canonical unsigned integer, the only form pnpm 12 reads for an integer setting. */
-const UNSIGNED = /^(?:0|[1-9][0-9]*)$/;
-
 /** A trimmed canonical decimal string as a finite number, or `undefined`. */
 const numberFromText = (text: string): number | undefined => {
 	const trimmed = text.trim();
@@ -207,24 +205,6 @@ const numberFromText = (text: string): number | undefined => {
 	const value = Number(trimmed);
 	return Number.isFinite(value) ? value : undefined;
 };
-
-/** A trimmed canonical unsigned integer string, within the safe-integer range, or `undefined`. */
-const unsignedFromText = (text: string): number | undefined => {
-	const trimmed = text.trim();
-	if (!UNSIGNED.test(trimmed)) return undefined;
-	const value = Number(trimmed);
-	return Number.isSafeInteger(value) ? value : undefined;
-};
-
-/** A file value as a non-negative safe integer: a number (never `-0`) or a canonical unsigned string. */
-const unsignedFromValue = (value: unknown): number | undefined =>
-	typeof value === "number"
-		? Number.isSafeInteger(value) && value >= 0 && !Object.is(value, -0)
-			? value
-			: undefined
-		: typeof value === "string"
-			? unsignedFromText(value)
-			: undefined;
 
 const numberFromValue = (value: unknown): number | undefined =>
 	typeof value === "number"
@@ -247,24 +227,6 @@ const stringsFromText = (text: string): ReadonlyArray<string> | undefined => {
 		return undefined;
 	}
 	return stringsFromValue(parsed);
-};
-
-/** An environment value as a boolean: exactly `true` or `false` once trimmed, as pnpm 12 reads it. */
-const booleanFromText = (text: string): boolean | undefined => {
-	const trimmed = text.trim();
-	return trimmed === "true" ? true : trimmed === "false" ? false : undefined;
-};
-
-/** The strings pnpm 12 coerces to a boolean in a settings file, compared trimmed and case-insensitively. */
-const TRUTHY: ReadonlySet<string> = new Set(["true", "yes", "y", "on"]);
-const FALSY: ReadonlySet<string> = new Set(["false", "no", "n", "off"]);
-
-/** A file value as a boolean: a YAML boolean, or one of the strings pnpm 12 coerces. */
-const booleanFromValue = (value: unknown): boolean | undefined => {
-	if (typeof value === "boolean") return value;
-	if (typeof value !== "string") return undefined;
-	const word = value.trim().toLowerCase();
-	return TRUTHY.has(word) ? true : FALSY.has(word) ? false : undefined;
 };
 
 /** The one name pnpm accepts for a workspace manifest. */

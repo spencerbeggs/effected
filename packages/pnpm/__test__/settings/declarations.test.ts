@@ -42,12 +42,12 @@ describe("the built ./settings declarations", () => {
 	it("declare only the exported settings surface", () => {
 		assert.deepStrictEqual(declarationsOf(dts), [
 			["PnpmSetting", true],
+			["PnpmSettingEnvFormat", true],
 			["PnpmSettingKind", true],
 			["PnpmSettingLocation", true],
 			["PnpmSettingName", true],
 			["PnpmSettingsCatalog", true],
 			["PnpmSettingType", true],
-			["readSetting", true],
 		]);
 	});
 

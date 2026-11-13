@@ -3,63 +3,52 @@
 // public surface, these are how the areas spell it.
 
 import { Effect, Option, Schema, SchemaIssue, SchemaTransformation } from "effect";
-import type { PnpmSetting, PnpmSettingKind, PnpmSettingLocation } from "../PnpmSetting.js";
-
-const TRUTHY: ReadonlySet<string> = new Set(["true", "yes", "y", "on"]);
-const FALSY: ReadonlySet<string> = new Set(["false", "no", "n", "off"]);
+import { booleanFromValue, integerFromValue, unsignedFromValue } from "../../internal/coerce.js";
+import type { PnpmSetting, PnpmSettingEnvFormat, PnpmSettingKind, PnpmSettingLocation } from "../PnpmSetting.js";
 
 /**
- * A boolean, or a word pnpm 12 coerces to one: `true`/`yes`/`y`/`on` and
- * `false`/`no`/`n`/`off`, trimmed, in any case.
+ * A boolean, or a word pnpm 12 coerces to one in a settings file:
+ * `true`/`yes`/`y`/`on` and `false`/`no`/`n`/`off`, trimmed, in any case.
  */
 export const Bool = Schema.Union([Schema.Boolean, Schema.String]).pipe(
 	Schema.decodeTo(
 		Schema.Boolean,
 		SchemaTransformation.transformEffect<boolean, boolean | string>({
 			decode: (value) => {
-				if (typeof value === "boolean") return Effect.succeed(value);
-				const word = value.trim().toLowerCase();
-				return TRUTHY.has(word)
-					? Effect.succeed(true)
-					: FALSY.has(word)
-						? Effect.succeed(false)
-						: Effect.fail(new SchemaIssue.InvalidValue({ message: "Expected a boolean" }, value));
+				const decoded = booleanFromValue(value);
+				return decoded === undefined
+					? Effect.fail(new SchemaIssue.InvalidValue({ message: "Expected a boolean" }, value))
+					: Effect.succeed(decoded);
 			},
 			encode: (value) => Effect.succeed(value),
 		}),
 	),
 );
 
-const UNSIGNED = /^(?:0|[1-9][0-9]*)$/;
-const SIGNED = /^-?(?:0|[1-9][0-9]*)$/;
-
-const integer = (pattern: RegExp, minimum: number | undefined, message: string) => {
-	const target =
-		minimum === undefined
-			? Schema.Number.check(Schema.isInt())
-			: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(minimum));
-	return Schema.Union([Schema.Number, Schema.String]).pipe(
+const integer = (read: (value: unknown) => number | undefined, message: string) =>
+	Schema.Union([Schema.Number, Schema.String]).pipe(
 		Schema.decodeTo(
-			target,
+			Schema.Number.check(Schema.isInt()),
 			SchemaTransformation.transformEffect<number, number | string>({
 				decode: (value) => {
-					if (typeof value === "number") return Effect.succeed(value);
-					const text = value.trim();
-					return pattern.test(text) && Number.isSafeInteger(Number(text))
-						? Effect.succeed(Number(text))
-						: Effect.fail(new SchemaIssue.InvalidValue({ message }, value));
+					const decoded = read(value);
+					return decoded === undefined
+						? Effect.fail(new SchemaIssue.InvalidValue({ message }, value))
+						: Effect.succeed(decoded);
 				},
 				encode: (value) => Effect.succeed(value),
 			}),
 		),
 	);
-};
 
-/** A non-negative integer (pnpm's `u32`/`u64`/`usize`), or its canonical digits. */
-export const Unsigned = integer(UNSIGNED, 0, "Expected a non-negative integer");
+/**
+ * A non-negative integer (pnpm's `u32`/`u64`/`usize`), or its canonical digits.
+ * `-0` is refused, as pnpm 12 refuses it.
+ */
+export const Unsigned = integer(unsignedFromValue, "Expected a non-negative integer");
 
-/** A signed integer (pnpm's `i32`), or its canonical digits. */
-export const Integer = integer(SIGNED, undefined, "Expected an integer");
+/** A signed integer (pnpm's `i32`), or its canonical digits; `-0` reads as `0`. */
+export const Integer = integer(integerFromValue, "Expected an integer");
 
 /** A string. */
 export const Str = Schema.String;
@@ -93,6 +82,7 @@ interface EntryInput<A> {
 	readonly kind: PnpmSettingKind;
 	readonly description: string;
 	readonly locations: ReadonlyArray<PnpmSettingLocation>;
+	readonly envFormat?: PnpmSettingEnvFormat;
 	readonly default?: unknown;
 	readonly anchor?: string;
 }
@@ -104,6 +94,7 @@ export const entry = <A>(name: string, input: EntryInput<A>): PnpmSetting<A> => 
 	kind: input.kind,
 	description: input.description,
 	locations: input.locations,
+	...(input.envFormat === undefined ? {} : { envFormat: input.envFormat }),
 	default: Object.hasOwn(input, "default") ? Option.some(input.default) : Option.none(),
 	anchor: input.anchor ?? "",
 });

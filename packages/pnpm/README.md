@@ -69,16 +69,16 @@ pnpm 11 and 12 read no pnpm setting from `.npmrc` (only registry and auth keys),
 
 ## The settings catalog
 
-`@effected/pnpm/settings` exports `PnpmSettingsCatalog`: every setting pnpm 12 reads, keyed by name, each with an Effect schema, a kind, a description, the sources pnpm reads it from (`workspace`, `npmrc`, `global`, `env`), its default and its docs anchor. `readSetting` reads one setting from `PnpmSettings`, typed through its entry. The catalog ships from its own subpath so a consumer of the root never bundles it.
+`@effected/pnpm/settings` exports `PnpmSettingsCatalog`. `PnpmSettingsCatalog.entries` holds every setting pnpm 12 reads, keyed by name, each with an Effect schema, a kind, a description, the sources pnpm reads it from (`workspace`, `npmrc`, `global`, `env`), how pnpm parses its environment variable, its default and its docs anchor. `PnpmSettingsCatalog.read` reads one setting from `PnpmSettings`, typed through its entry; it reads no `.npmrc` (for those settings use `@effected/npm`'s `NpmConfig`). The catalog ships from its own subpath so a consumer of the root never bundles it.
 
 ```ts
 import { PnpmSettings } from "@effected/pnpm";
-import { readSetting } from "@effected/pnpm/settings";
+import { PnpmSettingsCatalog } from "@effected/pnpm/settings";
 import { Effect, Option, Result } from "effect";
 
 const linker = Effect.gen(function* () {
   const settings = yield* PnpmSettings.load({ cwd: process.cwd(), env: process.env, platform: process.platform });
-  const read = readSetting(settings, "nodeLinker"); // Result<Option<"isolated" | "hoisted" | ... | { type: "loaded" ... }>, PnpmSettingsError>
+  const read = PnpmSettingsCatalog.read(settings, "nodeLinker");
   return Result.isSuccess(read) ? Option.getOrElse(read.success, () => "isolated" as const) : "isolated";
 });
 ```

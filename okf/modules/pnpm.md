@@ -1,7 +1,7 @@
 ---
 type: Module
 title: pnpm
-description: Everything pnpm owns alone — its effective settings (PnpmSettings), the pnpm 12 settings catalog on the ./settings subpath (PnpmSettingsCatalog, readSetting), release-age gate (ReleaseAgeGate), package-name pattern lists (PnpmMatcher), versioning block, overrides grammar, pnpm-lock.yaml documents (PnpmLockDocument, PnpmEnvDocument, PnpmExtension) and, still to move in, its workspace file editor — over the npm vocabulary it shares.
+description: Everything pnpm owns alone — its effective settings (PnpmSettings), the pnpm 12 settings catalog on the ./settings subpath (PnpmSettingsCatalog with entries and read), release-age gate (ReleaseAgeGate), package-name pattern lists (PnpmMatcher), versioning block, overrides grammar, pnpm-lock.yaml documents (PnpmLockDocument, PnpmEnvDocument, PnpmExtension) and, still to move in, its workspace file editor — over the npm vocabulary it shares.
 status: draft
 kind: package
 resource: ../../packages/pnpm
@@ -9,7 +9,7 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-13T01:23:05Z
+  at: 2026-11-13T01:42:44Z
 sources:
   - id: package-manager-model-design
     resource: ../../docs/superpowers/specs/2026-11-12-package-manager-model-design.md
@@ -29,7 +29,7 @@ sources:
     resource: ../../packages/pnpm/__test__/fixtures/pnpm-12.20.0-settings.README.md
 integrity:
   generated:
-    body: 7ce087f0f63e74c2
+    body: de26a073e1410739
 ---
 
 # pnpm
@@ -150,16 +150,19 @@ config-dependency hooks, with no environment or global layer.
 
 ## The `/settings` subpath
 
-The settings catalog is one large object a bundler cannot tree-shake, so it ships from the `@effected/pnpm/settings` subpath and the root entry never reaches it. `__test__/entrypoints.test.ts` pins that over the source import graph, with a positive control from `settings.ts` and a mutation control. A consumer that wants only the overrides grammar or the lockfile document does not pay for the catalog; `lockfiles` and `changesets` must not reach the subpath unless they use it. The subpath may import the root, and does, through the package's own name, so its declarations name `PnpmSettings`, `PeerDependencyRules` and `VersioningConfig` from `@effected/pnpm` instead of carrying copies: `effected.toml` keeps `@effected/pnpm` external in the declarations and suppresses `ae-forgotten-export` for `entry point settings.d.ts` only, and `__test__/settings/declarations.test.ts` pins the built `settings.d.ts` to the exported surface so the suppression cannot hide a leaked local.
+The settings catalog is one large object a bundler cannot tree-shake, so it ships from the `@effected/pnpm/settings` subpath and the root entry never reaches it. `__test__/entrypoints.test.ts` pins that over the source import graph and the built `index.js` graph, treating any `@effected/pnpm/<subpath>` self-import as reaching the catalog, with positive controls from the settings entry and a mutation control. A consumer that wants only the overrides grammar or the lockfile document does not pay for the catalog; `lockfiles` and `changesets` must not reach the subpath unless they use it. The subpath may import the root, and does, through the package's own name, so its declarations name `PnpmSettings`, `PeerDependencyRules` and `VersioningConfig` from `@effected/pnpm` instead of carrying copies: `effected.toml` keeps `@effected/pnpm` external in the declarations and suppresses `ae-forgotten-export` for `entry point settings.d.ts` only, and `__test__/settings/declarations.test.ts` pins the built `settings.d.ts` to the exported surface so the suppression cannot hide a leaked local.
 
 What it exports:[^settings-catalog-ts]
 
-- **`PnpmSettingsCatalog`**: a frozen object keyed by camelCase setting name, one **`PnpmSetting<A>`** per setting: `name`, `schema` (a `Schema.Codec<A, unknown>`), `kind` (**`PnpmSettingKind`**, the descriptor kind vocabulary rolldown-pnpm-config uses), `description`, `locations` (**`PnpmSettingLocation`**: `workspace`, `npmrc`, `global`, `env`), `default` (an `Option`, `None` when pnpm computes it) and `anchor` (`settings/<page>#<id>` in pnpm's docs, empty when undocumented). It carries facts about pnpm only; merge strategy and enforcement are a consumer's policy laid over it. **`PnpmSettingName`** and **`PnpmSettingType<K>`** are its key and value types. The area files under `src/settings/catalog/` mirror the docs' pages (`cli`, `network`, `dependency-resolution`, `peer-dependencies`, `node-modules`, `store`, `build`, `other`, `versioning`) plus `workspace`, `publish` and `tasks` for settings the settings docs do not cover.
-- **`readSetting(settings, key)`**: one setting read from a `PnpmSettings` through its entry, over only the sources in `locations`, environment then workspace file then global file. An environment value decodes as text then as JSON and is skipped when neither decodes, as pnpm 12 skips it; a file value that does not decode fails `PnpmSettingsError` `"shape"` with the new `setting` field naming it; a file `null` is the value of a setting that accepts `null` and unset otherwise.
+- **`PnpmSettingsCatalog`**, a static-namespace class:
+  - **`PnpmSettingsCatalog.entries`** is a frozen object keyed by camelCase setting name, one **`PnpmSetting<A>`** per setting: `name`, `schema` (a `Schema.Codec<A, unknown>`), `kind` (**`PnpmSettingKind`**, the descriptor kind vocabulary rolldown-pnpm-config uses), `description`, `locations` (**`PnpmSettingLocation`**: `workspace`, `npmrc`, `global`, `env`), `envFormat` (**`PnpmSettingEnvFormat`**: how pnpm parses the `PNPM_CONFIG_*` variable, `json`, `text`, `jsonOrText`, `flag` or `subkeys`), `default` (an `Option`, `None` when pnpm computes it) and `anchor` (`settings/<page>#<id>` in pnpm's docs, empty when undocumented). It carries facts about pnpm only; strictness, merge strategy and enforcement are a consumer's policy laid over it. **`PnpmSettingName`** and **`PnpmSettingType<K>`** derive from it. The area files under `src/settings/internal/` mirror the docs' pages (`cli`, `network`, `dependency-resolution`, `peer-dependencies`, `node-modules`, `store`, `build`, `other`, `versioning`) plus `workspace`, `publish` and `tasks` for settings the settings docs do not cover.
+  - **`PnpmSettingsCatalog.read(settings, key)`** reads one setting from a `PnpmSettings` through its entry, over only the sources in `locations`: environment, then workspace file, then global file; `npmrc` is never read here (that is `@effected/npm`'s `NpmConfig`). An environment value is parsed by `envFormat` as pnpm 12 parses it (a `json` boolean is `true`/`false` exactly, a `json` number a JSON number), and skipped when pnpm would ignore it. A file value that does not decode fails `PnpmSettingsError` `"shape"` with the `setting` field naming it. A file `null` is the value of a setting that accepts `null` and unset otherwise.
 
-The catalog's contents are held to an inventory extracted from the pnpm 12.20.0 source vendored at `.repos/pnpm` by `packages/pnpm/scripts/extract-pnpm-settings.mts` (never shipped; `--check` reports a stale fixture), whose method is in the fixture's README.[^settings-inventory] The inventory is every `WorkspaceSettings` and `MachineSettings` field of pnpm's config crate plus every setting the settings docs document; locations come from the code paths that read each source, not from docs. Coverage tests assert set equality with it both ways and per-entry locations and anchors.
+The scalar coercions (file booleans from `yes`/`on`, canonical digit strings, `-0` refused for an unsigned setting and read as `0` for a signed one, each probed against the pnpm 12 binary) live once in `src/internal/coerce.ts`, used by both the root's typed accessors and the catalog's codecs.
 
-The corrections over rolldown-pnpm-config's former descriptors, each pinned by `__test__/settings/catalog.test.ts`: `nodeLinker` accepts `loaded` and the loaded-linker object; `lockfile` and `sideEffectsCache` accept their object forms; `auditConfig` is `{ ignoreGhsas }` and refuses other keys (stricter than pnpm's serde, which ignores them); `updateConfig` carries `changeset`, `githubActions` and `githubActionsServer`; the four tri-state settings (`hoistPattern`, `publicHoistPattern`, `scriptShell`, `nodeOptions`) accept `null`; the seven phantom settings are absent; the five build settings pnpm 12 never applies are absent. `versioning` and `peerDependencyRules` decode to this package's `VersioningConfig` and `PeerDependencyRules`, and `overrides` keys must parse as `OverrideKey`. A section whose shape pnpm validates with `deny_unknown_fields` is closed the same way. Several deep sections (`registries` entries, `tasks`, `packageConfigs`, `configDependencies`, `_auth`) are modelled only to their outer shape; their descriptions say what the catalog does not check.
+The catalog's contents are held to an inventory extracted from the pnpm 12.20.0 source vendored at `.repos/pnpm` by `packages/pnpm/scripts/extract-pnpm-settings.mts` (never shipped; `--check` reports a stale fixture), whose method is in the fixture's README.[^settings-inventory] The inventory, with each setting's env parse format, is every `WorkspaceSettings` and `MachineSettings` field of pnpm's config crate plus every setting the settings docs document; locations come from the code paths that read each source, not from docs. Coverage tests assert set equality with it both ways and per-entry locations, anchors and env formats, and, when `.repos/pnpm` is checked out, that the fixture matches a fresh extraction.
+
+The corrections over rolldown-pnpm-config's former descriptors, each pinned by `__test__/settings/catalog.test.ts`: `nodeLinker` accepts `loaded` and the loaded-linker object; `lockfile` and `sideEffectsCache` accept their object forms; `auditConfig` is `{ ignoreGhsas }`, open to other keys as pnpm's struct is; `updateConfig` carries `changeset`, `githubActions` and `githubActionsServer`; the four tri-state settings (`hoistPattern`, `publicHoistPattern`, `scriptShell`, `nodeOptions`) accept `null`; the seven phantom settings are absent; the five build settings pnpm 12 never applies are absent. `versioning` and `peerDependencyRules` decode to this package's `VersioningConfig` and `PeerDependencyRules`, and `overrides` keys must parse as `OverrideKey`. A section whose shape pnpm validates with `deny_unknown_fields` is closed the same way. Several deep sections (`registries` entries, `tasks`, `packageConfigs`, `configDependencies`, `_auth`) are modelled only to their outer shape; their descriptions say what the catalog does not check.
 
 ## Current state
 
@@ -173,5 +176,5 @@ The `PnpmEnvLockfile` readers, `ConfigDependencyLock` and `PackageManagerLock` d
 [^release-age-gate-ts]: `packages/pnpm/src/ReleaseAgeGate.ts`
 [^pnpm-matcher-ts]: `packages/pnpm/src/PnpmMatcher.ts`
 [^pnpm-lock-document-ts]: `packages/pnpm/src/PnpmLockDocument.ts` and `PnpmEnvDocument.ts`; the tests are `__test__/PnpmLockDocument.test.ts`, over copies of `lockfiles`' fixtures with a provenance README.
-[^settings-catalog-ts]: `packages/pnpm/src/settings.ts` and `src/settings/`; the tests are under `__test__/settings/`.
+[^settings-catalog-ts]: `packages/pnpm/src/settings.ts`, `src/settings/` and `src/internal/coerce.ts`; the tests are under `__test__/settings/`.
 [^settings-inventory]: `packages/pnpm/__test__/fixtures/pnpm-12.20.0-settings.README.md`

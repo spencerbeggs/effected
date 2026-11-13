@@ -21,9 +21,9 @@ Tests run on core's `Path.layer` + `@effected/memfs`; `__test__/fixtures.ts` bui
 Outside `index.ts`, modules import explicitly — no barrels.
 
 The settings catalog ships from the `@effected/pnpm/settings` subpath
-(`src/settings.ts`: `PnpmSettingsCatalog`, `PnpmSetting`, `readSetting`) and
+(`src/settings.ts`: the `PnpmSettingsCatalog` facade with `entries` and `read`, `PnpmSetting`; the per-area entries live in `src/settings/internal/`) and
 the root must never reach it — `entrypoints.test.ts` walks the source graph to
-pin that. The subpath imports root types through `@effected/pnpm` itself;
+pin that, over source and the built `index.js`, counting any `@effected/pnpm/*` self-import. The subpath imports root types through `@effected/pnpm` itself;
 `effected.toml` keeps that import external in the declarations with an
 `ae-forgotten-export` suppression scoped to `settings.d.ts`, made safe by
 `__test__/settings/declarations.test.ts` over the built declarations.
@@ -33,5 +33,6 @@ The catalog is held to `__test__/fixtures/pnpm-12.20.0-settings.json`, which
 fixture README; `node scripts/extract-pnpm-settings.mts --check` from this
 directory reports staleness). After re-pinning `.repos/pnpm`, regenerate it and
 reconcile `src/settings/catalog/*.ts` with what the coverage tests report. A
-catalog entry carries facts about pnpm only — never merge strategy or
-enforcement.
+catalog entry carries facts about pnpm only — never strictness, merge strategy
+or enforcement. Scalar coercions live once in `src/internal/coerce.ts`, shared
+by `PnpmSettings` and the catalog codecs.

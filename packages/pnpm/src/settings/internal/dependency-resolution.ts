@@ -1,6 +1,6 @@
 import { OverrideKey } from "@effected/pnpm";
 import { Result, Schema } from "effect";
-import { Bool, Str, StringArray, StringRecord, UnknownRecord, Unsigned, closed, entry } from "./schemas.js";
+import { Bool, Str, StringArray, StringRecord, UnknownRecord, Unsigned, entry } from "./schemas.js";
 
 const AuditLevel = Schema.Literals(["info", "low", "moderate", "high", "critical"]);
 
@@ -35,6 +35,7 @@ export const dependencyResolution = {
 		kind: "stringRecord",
 		description: "This setting allows muting deprecation warnings of specific packages.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		anchor: "settings/dependency-resolution#alloweddeprecatedversions",
 	}),
 	audit: entry("audit", {
@@ -49,17 +50,19 @@ export const dependencyResolution = {
 		locations: ["workspace", "global"],
 	}),
 	auditConfig: entry("auditConfig", {
-		schema: closed({ ignoreGhsas: Schema.optionalKey(StringArray) }),
+		schema: Schema.Struct({ ignoreGhsas: Schema.optionalKey(StringArray) }),
 		kind: "object",
 		description:
 			"The deprecated spelling of `audit.ignore`: the GitHub advisory IDs (`ignoreGhsas`) `pnpm audit` ignores.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 	}),
 	auditLevel: entry("auditLevel", {
 		schema: AuditLevel,
 		kind: "enum",
 		description: "The deprecated spelling of `audit.level`: the lowest advisory severity `pnpm audit` reports.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "jsonOrText",
 	}),
 	autoDedupe: entry("autoDedupe", {
 		schema: Bool,
@@ -67,6 +70,7 @@ export const dependencyResolution = {
 		description:
 			"When set to `true`, `pnpm install` and `pnpm add` deduplicate compatible dependency versions during installation.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/dependency-resolution#autodedupe",
 	}),
@@ -76,6 +80,7 @@ export const dependencyResolution = {
 		description:
 			"When set to `true`, only direct dependencies (those listed in your root `package.json`) may use exotic sources (like git repositories or direct tarball URLs).",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: true,
 		anchor: "settings/dependency-resolution#blockexoticsubdeps",
 	}),
@@ -85,6 +90,7 @@ export const dependencyResolution = {
 		description:
 			"When `true`, `pnpm install --force` also installs optional dependencies whose `os`, `cpu`, or `libc` do not match the host.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/dependency-resolution#forceignoresplatform",
 	}),
@@ -94,6 +100,7 @@ export const dependencyResolution = {
 		description:
 			'Deprecated: use `overrides` with `:optional` and `"-"` instead (for example, `"fsevents:optional": "-"` and `"@esbuild/*:optional": "-"`).',
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		anchor: "settings/dependency-resolution#ignoredoptionaldependencies",
 	}),
 	minimumReleaseAge: entry("minimumReleaseAge", {
@@ -102,6 +109,7 @@ export const dependencyResolution = {
 		description:
 			"To reduce the risk of installing compromised or defective packages, you can delay the installation of newly published versions.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: 1440,
 		anchor: "settings/dependency-resolution#minimumreleaseage",
 	}),
@@ -111,6 +119,7 @@ export const dependencyResolution = {
 		description:
 			"If you set `minimumReleaseAge` but need certain dependencies to always install the newest version immediately, you can list them under `minimumReleaseAgeExclude`.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		anchor: "settings/dependency-resolution#minimumreleaseageexclude",
 	}),
 	minimumReleaseAgeExcludePrune: entry("minimumReleaseAgeExcludePrune", {
@@ -128,6 +137,7 @@ export const dependencyResolution = {
 		description:
 			"When `true`, pnpm skips the `minimumReleaseAge` check for a package whose registry metadata does not include the `time` field (some private registries and mirrors omit it).",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: true,
 		anchor: "settings/dependency-resolution#minimumreleaseageignoremissingtime",
 	}),
@@ -137,6 +147,7 @@ export const dependencyResolution = {
 		description:
 			"Controls how pnpm behaves when no version of a dependency satisfies the `minimumReleaseAge` constraint within the requested range.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: true,
 		anchor: "settings/dependency-resolution#minimumreleaseagestrict",
 	}),
@@ -153,6 +164,7 @@ export const dependencyResolution = {
 		description:
 			"Refuse network requests during install. The `offline` flag gates the metadata-fetch path with `ERR_PNPM_NO_OFFLINE_META` when no cached metadata exists for a spec.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 	}),
 	optional: entry("optional", {
 		schema: Bool,
@@ -160,6 +172,7 @@ export const dependencyResolution = {
 		description:
 			"Set to `false` to skip optional dependencies during installation, including transitive optional dependencies.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: true,
 		anchor: "settings/dependency-resolution#optional",
 	}),
@@ -169,6 +182,7 @@ export const dependencyResolution = {
 		description:
 			"This field allows you to instruct pnpm to override any dependency in the dependency graph, including peer dependencies.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		anchor: "settings/dependency-resolution#overrides",
 	}),
 	packageExtensions: entry("packageExtensions", {
@@ -177,6 +191,7 @@ export const dependencyResolution = {
 		description:
 			"The `packageExtensions` fields offer a way to extend the existing package definitions with additional information.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		anchor: "settings/dependency-resolution#packageextensions",
 	}),
 	pnprServer: entry("pnprServer", {
@@ -184,6 +199,7 @@ export const dependencyResolution = {
 		kind: "string",
 		description: "The URL of a pnpr server to accelerate installs through.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "text",
 		anchor: "settings/dependency-resolution#pnprserver",
 	}),
 	preferOffline: entry("preferOffline", {
@@ -191,6 +207,7 @@ export const dependencyResolution = {
 		kind: "boolean",
 		description: "Prefer the local store on read, fall back to the network on a cache miss.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 	}),
 	registries: entry("registries", {
 		schema: Schema.Record(Schema.String, Schema.Union([Str, UnknownRecord])),
@@ -210,6 +227,7 @@ export const dependencyResolution = {
 		description:
 			"You can specify architectures for which you'd like to install optional dependencies, even if they don't match the architecture of the system running the install.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		anchor: "settings/dependency-resolution#supportedarchitectures",
 	}),
 	trustLockfile: entry("trustLockfile", {
@@ -218,6 +236,7 @@ export const dependencyResolution = {
 		description:
 			"When `true`, `pnpm install` skips the supply-chain verification pass that re-applies `minimumReleaseAge` and `trustPolicy` to every entry in the loaded lockfile.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/dependency-resolution#trustlockfile",
 	}),
@@ -227,6 +246,7 @@ export const dependencyResolution = {
 		description:
 			"When set to `no-downgrade`, pnpm will fail if a package's trust level has decreased compared to previous releases.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "jsonOrText",
 		default: "off",
 		anchor: "settings/dependency-resolution#trustpolicy",
 	}),
@@ -235,6 +255,7 @@ export const dependencyResolution = {
 		kind: "stringArray",
 		description: "A list of package selectors that should be excluded from the trust policy check.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		anchor: "settings/dependency-resolution#trustpolicyexclude",
 	}),
 	trustPolicyExcludePrune: entry("trustPolicyExcludePrune", {
@@ -252,6 +273,7 @@ export const dependencyResolution = {
 		description:
 			"Allows ignoring the trust policy check for packages published more than the specified number of minutes ago.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		anchor: "settings/dependency-resolution#trustpolicyignoreafter",
 	}),
 	update: entry("update", {
@@ -277,5 +299,6 @@ export const dependencyResolution = {
 		description:
 			"The deprecated spelling of `update`: the dependency patterns `pnpm update` skips (`ignoreDependencies`), whether it writes a change intent, and whether it updates GitHub Actions.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 	}),
 } as const;

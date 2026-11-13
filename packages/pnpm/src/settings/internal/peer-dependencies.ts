@@ -9,6 +9,7 @@ export const peerDependencies = {
 		description:
 			"When `true`, every peer dependency of a dependency also makes the matching `@types` package an optional peer of it.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/peer-dependencies#addmissingpeertypes",
 	}),
@@ -17,6 +18,7 @@ export const peerDependencies = {
 		kind: "boolean",
 		description: "When `true`, any missing non-optional peer dependencies are automatically installed.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: true,
 		anchor: "settings/peer-dependencies#autoinstallpeers",
 	}),
@@ -26,6 +28,7 @@ export const peerDependencies = {
 		description:
 			"When set to `true`, pnpm joins conflicting peer dependency ranges with `||` and installs the highest version that satisfies any of them.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/peer-dependencies#autoinstallpeersfromhighestmatch",
 	}),
@@ -35,6 +38,7 @@ export const peerDependencies = {
 		description:
 			"When this setting is set to `true`, packages with peer dependencies will be deduplicated after peers resolution.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: true,
 		anchor: "settings/peer-dependencies#dedupepeerdependents",
 	}),
@@ -44,6 +48,7 @@ export const peerDependencies = {
 		description:
 			"When enabled, peer dependency suffixes use version-only identifiers (`name@version`) instead of full dep paths, eliminating nested suffixes like `(foo@1.0.0(bar@2.0.0))`.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/peer-dependencies#dedupepeers",
 	}),
@@ -53,6 +58,7 @@ export const peerDependencies = {
 		description:
 			"Deprecated: `peerDependencyRules` only suppresses peer dependency warnings after resolution without changing `peerDependencies`.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		anchor: "settings/peer-dependencies#peerdependencyrules",
 	}),
 	projectScopedOptionalPeers: entry("projectScopedOptionalPeers", {
@@ -61,6 +67,7 @@ export const peerDependencies = {
 		description:
 			"When `true`, a project gets a missing optional peer dependency only if the project's own dependencies already install a version of it.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/peer-dependencies#projectscopedoptionalpeers",
 	}),
@@ -70,6 +77,7 @@ export const peerDependencies = {
 		description:
 			"When enabled, dependencies of the root workspace project are used to resolve peer dependencies of any projects in the workspace.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: true,
 		anchor: "settings/peer-dependencies#resolvepeersfromworkspaceroot",
 	}),
@@ -78,6 +86,7 @@ export const peerDependencies = {
 		kind: "boolean",
 		description: "If this is enabled, commands will fail if there is a missing or invalid peer dependency in the tree.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/peer-dependencies#strictpeerdependencies",
 	}),

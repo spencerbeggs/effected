@@ -68,6 +68,20 @@ Each setting's `locations` are derived per source, not copied from docs:
 `npmPath` is documented (`docs/settings/cli.md`) but is no field of either
 struct and no part of the config crate reads it, so its `locations` are empty.
 
+## Env formats
+
+`envFormat` records how `env_overlay.rs` parses a setting's variable, from the
+macro or assignment that reads it: `json` (`json_field!`, `tri_array_field!`:
+`serde_json`, a value that does not parse is ignored), `text`
+(`string_field!`, `string_field_allow_empty!`, `tri_string_field!` and the
+direct string assignments), `jsonOrText` (`enum_field!`:
+`parse_json_or_string`), `flag` (`verifyDepsBeforeRun`, whose unrecognized
+value reads as `true`) and `subkeys` (`nodePackageMap`, `macosBackup`, read
+through `get_or_insert_default` from one variable per key). The extractor fails
+on an unknown macro or a setting read two ways. The `json` boolean reading was
+confirmed against the pnpm 12 binary: `PNPM_CONFIG_ENABLE_GLOBAL_VIRTUAL_STORE`
+set to `yes`, `TRUE` or `"true"` reads as unset, `true` as `true`.
+
 ## Anchors
 
 `anchor` is `settings/<page id>#<heading id>`, the page id from the docs page's

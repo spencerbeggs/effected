@@ -20,6 +20,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/peer-dependencies#addmissingpeertypes",
 			"docsDefault": "**false**",
@@ -34,6 +35,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -45,6 +47,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/build#allowbuilds"
 		},
@@ -57,6 +60,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#alloweddeprecatedversions"
 		},
@@ -68,6 +72,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -91,6 +96,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -103,6 +109,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": false,
 			"anchor": ""
 		},
@@ -114,6 +121,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#autodedupe",
 			"docsDefault": "**false**",
@@ -127,6 +135,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/peer-dependencies#autoinstallpeers",
 			"docsDefault": "**true**",
@@ -140,6 +149,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/peer-dependencies#autoinstallpeersfromhighestmatch",
 			"docsDefault": "**false**",
@@ -154,6 +164,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -165,6 +176,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#blockexoticsubdeps",
 			"docsDefault": "**true**",
@@ -189,6 +201,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/other#cachedir",
 			"docsType": "**path**"
@@ -222,6 +235,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": true,
 			"anchor": "settings/other#catalogmode",
 			"docsDefault": "**manual**",
@@ -258,6 +272,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -270,6 +285,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/build#childconcurrency",
 			"docsDefault": "**5**",
@@ -283,6 +299,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/other#ci",
 			"docsDefault": "**true** (when the environment is detected as CI)",
@@ -308,6 +325,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": true,
 			"anchor": "settings/cli#no-color",
 			"docsDefault": "**auto**",
@@ -322,6 +340,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -344,6 +363,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/build#dangerouslyallowallbuilds",
 			"docsDefault": "**false**",
@@ -357,6 +377,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/other#dedupedirectdeps",
 			"docsDefault": "**false**",
@@ -370,6 +391,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -381,6 +403,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/peer-dependencies#dedupepeerdependents",
 			"docsDefault": "**true**",
@@ -394,6 +417,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/peer-dependencies#dedupepeers",
 			"docsDefault": "**false**",
@@ -407,6 +431,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/other#deployallfiles",
 			"docsDefault": "**false**",
@@ -421,6 +446,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -433,6 +459,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/node-modules#dlxcachemaxage",
 			"docsDefault": "**1440** (1 day in minutes)",
@@ -446,6 +473,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/other#embedreadme",
 			"docsDefault": "**false**",
@@ -460,6 +488,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/node-modules#enableglobalvirtualstore",
 			"docsDefault": "**false**",
@@ -474,6 +503,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/node-modules#enablemodulesdir",
 			"docsDefault": "**true**",
@@ -488,6 +518,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/other#enableprepostscripts",
 			"docsDefault": "**true**",
@@ -502,6 +533,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/cli#enginestrict",
 			"docsDefault": "**false**",
@@ -515,6 +547,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/store#excludelinksfromlockfile",
 			"docsDefault": "**false**",
@@ -529,6 +562,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/other#extendnodepath",
 			"docsDefault": "**true**",
@@ -542,6 +576,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/node-modules#externaldependencies",
 			"docsDefault": "**[]**",
@@ -556,6 +591,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -568,6 +604,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/network#fetchminspeedkibps",
 			"docsDefault": "**50 KiB/s**",
@@ -582,6 +619,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/network#fetchretries",
 			"docsDefault": "**2**",
@@ -596,6 +634,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/network#fetchretryfactor",
 			"docsDefault": "**10**",
@@ -610,6 +649,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/network#fetchretrymaxtimeout",
 			"docsDefault": "**60000 (1 minute)**",
@@ -624,6 +664,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/network#fetchretrymintimeout",
 			"docsDefault": "**10000 (10 seconds)**",
@@ -638,6 +679,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/network#fetchtimeout",
 			"docsDefault": "**60000 (1 minute)**",
@@ -652,6 +694,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/network#fetchwarntimeoutms",
 			"docsDefault": "**10000 ms (10 seconds)**",
@@ -666,6 +709,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#forceignoresplatform",
 			"docsDefault": "**false**",
@@ -679,6 +723,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -690,6 +735,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/store#frozenlockfile",
 			"docsType": "**Boolean**"
@@ -703,6 +749,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/store#frozenstore",
 			"docsDefault": "**false**",
@@ -716,6 +763,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/store#gitbranchlockfile",
 			"docsDefault": "**false**",
@@ -730,6 +778,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -742,6 +791,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/network#gitshallowhosts",
 			"docsDefault": "**['github.com', 'gist.github.com', 'gitlab.com', 'bitbucket.com', 'bitbucket.org']**",
@@ -756,6 +806,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -767,6 +818,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/other#globalbindir",
 			"docsType": "**path**"
@@ -779,6 +831,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/other#globaldir",
 			"docsType": "**path**"
@@ -792,6 +845,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": false,
 			"anchor": ""
 		},
@@ -803,6 +857,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/other#globalshims",
 			"docsDefault": "**\\{ node: auto, deno: auto, bun: auto \\}**",
@@ -817,6 +872,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/node-modules#globalvirtualstoredir",
 			"docsDefault": "`<store-path>/links`",
@@ -830,6 +886,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/node-modules#hoist",
 			"docsDefault": "**true**",
@@ -843,6 +900,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": true,
 			"anchor": "settings/node-modules#hoistinglimits",
 			"docsDefault": "**none**",
@@ -857,6 +915,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/node-modules#hoistpattern",
 			"docsDefault": "**['\\*']**",
@@ -870,6 +929,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/node-modules#hoistworkspacepackages",
 			"docsDefault": "**true**",
@@ -885,6 +945,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/network#httpproxy",
 			"docsDefault": "**null**",
@@ -900,6 +961,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/network#httpsproxy",
 			"docsDefault": "**null**",
@@ -913,6 +975,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/other#ignorecompatibilitydb",
 			"docsDefault": "**false**",
@@ -926,6 +989,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#ignoredoptionaldependencies"
 		},
@@ -937,6 +1001,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -949,6 +1014,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/build#ignorescripts",
 			"docsDefault": "**false**",
@@ -963,6 +1029,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -975,6 +1042,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -986,6 +1054,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -998,6 +1067,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1010,6 +1080,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1022,6 +1093,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1034,6 +1106,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1046,6 +1119,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1058,6 +1132,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1070,6 +1145,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1082,6 +1158,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1093,6 +1170,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1104,6 +1182,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1115,6 +1194,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1128,6 +1208,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/network#localaddress",
 			"docsDefault": "**undefined**",
@@ -1141,6 +1222,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/store#lockfile",
 			"docsDefault": "**true**",
@@ -1155,6 +1237,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/store#lockfiledir",
 			"docsDefault": "the workspace root with a [shared lockfile](../workspaces.md#sharedworkspacelockfile), otherwise the project directory",
@@ -1168,6 +1251,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/store#lockfileincludetarballurl",
 			"docsDefault": "**false**",
@@ -1182,6 +1266,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": true,
 			"anchor": "settings/cli#loglevel",
 			"docsDefault": "**info**",
@@ -1195,6 +1280,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "subkeys",
 			"documented": true,
 			"anchor": "settings/other#macosbackupexcludemodulesdir"
 		},
@@ -1207,6 +1293,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/network#maxsockets",
 			"docsDefault": "**unset**",
@@ -1221,6 +1308,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1233,6 +1321,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/network#maxtarballunpackedsize",
 			"docsDefault": "**4294967296 (4 GiB)**",
@@ -1246,6 +1335,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1257,6 +1347,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/store#mergegitbranchlockfilesbranchpattern",
 			"docsDefault": "**null**",
@@ -1271,6 +1362,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#minimumreleaseage",
 			"docsDefault": "**1440**",
@@ -1285,6 +1377,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#minimumreleaseageexclude",
 			"docsDefault": "**undefined**",
@@ -1312,6 +1405,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#minimumreleaseageignoremissingtime",
 			"docsDefault": "**true**",
@@ -1326,6 +1420,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#minimumreleaseagestrict",
 			"docsDefault": "**true** if [`minimumReleaseAge`](#minimumreleaseage) is explicitly configured, **false** otherwise",
@@ -1340,6 +1435,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/node-modules#modulescachemaxage",
 			"docsDefault": "**10080** (7 days in minutes)",
@@ -1353,6 +1449,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/node-modules#modulesdir",
 			"docsDefault": "**node_modules**",
@@ -1380,6 +1477,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/network#networkconcurrency",
 			"docsDefault": "**auto (workers × 3 clamped to 64-96)**",
@@ -1394,6 +1492,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/cli#nodedownloadmirrors",
 			"docsDefault": "**undefined**",
@@ -1408,6 +1507,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/node-modules#nodeexperimentalpackagemap"
 		},
@@ -1419,6 +1519,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": true,
 			"anchor": "settings/node-modules#nodelinker",
 			"docsDefault": "**isolated**",
@@ -1434,6 +1535,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/build#nodeoptions",
 			"docsDefault": "**NULL**",
@@ -1448,6 +1550,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "subkeys",
 			"documented": true,
 			"anchor": "settings/node-modules#nodepackagemapmode"
 		},
@@ -1460,6 +1563,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": true,
 			"anchor": "settings/node-modules#nodepackagemaptype-1"
 		},
@@ -1472,6 +1576,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/cli#nodeversion",
 			"docsDefault": "the value returned by **node -v**, without the v prefix",
@@ -1487,6 +1592,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1500,6 +1606,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/network#noproxy",
 			"docsDefault": "**null**",
@@ -1533,6 +1640,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1545,6 +1653,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/other#optimisticrepeatinstall",
 			"docsDefault": "**true**",
@@ -1559,6 +1668,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#optional",
 			"docsDefault": "**true**",
@@ -1572,6 +1682,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#overrides"
 		},
@@ -1593,6 +1704,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#packageextensions"
 		},
@@ -1605,6 +1717,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": true,
 			"anchor": "settings/node-modules#packageimportmethod",
 			"docsDefault": "**auto**",
@@ -1619,6 +1732,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1640,6 +1754,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1652,6 +1767,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1664,6 +1780,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/peer-dependencies#peerdependencyrules"
 		},
@@ -1676,6 +1793,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/store#peerssuffixmaxlength",
 			"docsDefault": "**1000**",
@@ -1689,6 +1807,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1732,6 +1851,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": true,
 			"anchor": "settings/cli#pmonfail",
 			"docsDefault": "**download**",
@@ -1745,6 +1865,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1757,6 +1878,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#pnprserver",
 			"docsDefault": "**null**",
@@ -1771,6 +1893,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/store#preferfrozenlockfile",
 			"docsDefault": "**true**",
@@ -1785,6 +1908,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1797,6 +1921,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/other#prefersymlinkedexecutables",
 			"docsDefault": "**true**, when **node-linker** is set to **hoisted** and the system is POSIX",
@@ -1810,6 +1935,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1822,6 +1948,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/cli#progress",
 			"docsDefault": "**true**",
@@ -1835,6 +1962,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/peer-dependencies#projectscopedoptionalpeers",
 			"docsDefault": "**false**",
@@ -1849,6 +1977,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1862,6 +1991,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1874,6 +2004,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/node-modules#publichoistpattern",
 			"docsDefault": "**[]**",
@@ -1887,6 +2018,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1899,6 +2031,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1920,6 +2053,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/cli#recursiveinstall",
 			"docsDefault": "**true**",
@@ -1948,6 +2082,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": false,
 			"anchor": ""
 		},
@@ -1960,6 +2095,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/other#registrysupportstimefield",
 			"docsDefault": "**false**",
@@ -1998,6 +2134,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": true,
 			"anchor": "settings/cli#reporter"
 		},
@@ -2010,6 +2147,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -2032,6 +2170,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": true,
 			"anchor": "settings/other#resolutionmode",
 			"docsDefault": "**highest**",
@@ -2045,6 +2184,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/peer-dependencies#resolvepeersfromworkspaceroot",
 			"docsDefault": "**true**",
@@ -2058,6 +2198,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -2069,6 +2210,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/cli#runtime",
 			"docsDefault": "**true**",
@@ -2083,6 +2225,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": true,
 			"anchor": "settings/cli#runtimeonfail",
 			"docsDefault": "**undefined**",
@@ -2096,6 +2239,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": false,
 			"anchor": ""
 		},
@@ -2108,6 +2252,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/other#saveexact",
 			"docsDefault": "**false**",
@@ -2121,6 +2266,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -2133,6 +2279,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/other#saveprefix",
 			"docsDefault": "**'^'**",
@@ -2147,6 +2294,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/other#savetypes",
 			"docsDefault": "**false**",
@@ -2160,6 +2308,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": false,
 			"anchor": ""
 		},
@@ -2171,6 +2320,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": false,
 			"anchor": ""
 		},
@@ -2184,6 +2334,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/other#scriptshell",
 			"docsDefault": "**null**",
@@ -2197,6 +2348,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/node-modules#shamefullyhoist",
 			"docsDefault": "**false**",
@@ -2210,6 +2362,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -2222,6 +2375,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/other#shellemulator",
 			"docsDefault": "**false**",
@@ -2236,6 +2390,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/build#sideeffectscache",
 			"docsDefault": "**true**",
@@ -2250,6 +2405,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/build#sideeffectscachereadonly",
 			"docsDefault": "**false**",
@@ -2274,6 +2430,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -2285,6 +2442,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -2296,6 +2454,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/other#statedir",
 			"docsType": "**path**"
@@ -2309,6 +2468,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/store#storedir",
 			"docsType": "**path**"
@@ -2322,6 +2482,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": true,
 			"anchor": "settings/store#storeindexformat",
 			"docsDefault": "**sqlite**",
@@ -2336,6 +2497,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -2348,6 +2510,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/build#strictdepbuilds",
 			"docsDefault": "**true**",
@@ -2361,6 +2524,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/peer-dependencies#strictpeerdependencies",
 			"docsDefault": "**false**",
@@ -2376,6 +2540,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/network#strictssl",
 			"docsDefault": "**true**",
@@ -2390,6 +2555,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/store#strictstorepkgcontentcheck",
 			"docsDefault": "**true**",
@@ -2403,6 +2569,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#supportedarchitectures"
 		},
@@ -2414,6 +2581,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/node-modules#symlink",
 			"docsDefault": "**true**",
@@ -2427,6 +2595,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/store#symlinkedlockfiletargetdirs",
 			"docsDefault": "**[]**",
@@ -2440,6 +2609,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -2452,6 +2622,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/other#tag",
 			"docsDefault": "**latest**",
@@ -2466,6 +2637,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": false,
 			"anchor": ""
 		},
@@ -2487,6 +2659,7 @@
 				"workspace",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -2498,6 +2671,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/cli#tools",
 			"docsDefault": "**undefined**",
@@ -2512,6 +2686,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#trustlockfile",
 			"docsDefault": "**false**",
@@ -2526,6 +2701,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#trustpolicy",
 			"docsDefault": "**off**",
@@ -2540,6 +2716,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#trustpolicyexclude",
 			"docsDefault": "**[]**",
@@ -2567,6 +2744,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/dependency-resolution#trustpolicyignoreafter",
 			"docsDefault": "**undefined**",
@@ -2581,6 +2759,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/build#unsafeperm",
 			"docsDefault": "**false** IF running as root, ELSE **true**",
@@ -2606,6 +2785,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		},
@@ -2618,6 +2798,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/other#updatenotifier",
 			"docsDefault": "**true**",
@@ -2632,6 +2813,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/cli#usebetacli",
 			"docsDefault": "**false**",
@@ -2646,6 +2828,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/network#useragent",
 			"docsDefault": "`pnpm/<version> npm/? node/? <platform> <arch>`",
@@ -2660,6 +2843,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/other#usestderr",
 			"docsDefault": "**false**",
@@ -2674,6 +2858,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "flag",
 			"documented": true,
 			"anchor": "settings/build#verifydepsbeforerun",
 			"docsDefault": "**install**",
@@ -2688,6 +2873,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/store#verifystoreintegrity",
 			"docsDefault": "**true**",
@@ -2712,6 +2898,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "text",
 			"documented": true,
 			"anchor": "settings/node-modules#virtualstoredir",
 			"docsDefault": "**node_modules/.pnpm**"
@@ -2725,6 +2912,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/node-modules#virtualstoredirmaxlength"
 		},
@@ -2737,6 +2925,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": true,
 			"anchor": "settings/node-modules#virtualstoreonly",
 			"docsDefault": "**false**",
@@ -2751,6 +2940,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "jsonOrText",
 			"documented": true,
 			"anchor": "settings/node-modules#virtualstoretype",
 			"docsDefault": "**project**",
@@ -2765,6 +2955,7 @@
 				"global",
 				"env"
 			],
+			"envFormat": "json",
 			"documented": false,
 			"anchor": ""
 		}

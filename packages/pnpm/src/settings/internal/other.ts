@@ -18,6 +18,7 @@ export const other = {
 		kind: "string",
 		description: "The location of the cache (package metadata, dlx cache, and some install verification results).",
 		locations: ["workspace", "global", "env"],
+		envFormat: "text",
 		anchor: "settings/other#cachedir",
 	}),
 	cargo: entry("cargo", {
@@ -31,6 +32,7 @@ export const other = {
 		kind: "enum",
 		description: "Controls if and how dependencies are added to the default catalog, when running `pnpm add`.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "jsonOrText",
 		default: "manual",
 		anchor: "settings/other#catalogmode",
 	}),
@@ -48,6 +50,7 @@ export const other = {
 		description:
 			"This setting explicitly tells pnpm whether the current environment is a CI (Continuous Integration) environment.",
 		locations: ["global", "env"],
+		envFormat: "json",
 		default: true,
 		anchor: "settings/other#ci",
 	}),
@@ -57,6 +60,7 @@ export const other = {
 		description:
 			"When set to `true`, dependencies that are already symlinked to the root `node_modules` directory of the workspace will not be symlinked to subproject `node_modules` directories.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/other#dedupedirectdeps",
 	}),
@@ -65,6 +69,7 @@ export const other = {
 		kind: "boolean",
 		description: "When deploying a package or installing a local package, all files of the package are copied.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/other#deployallfiles",
 	}),
@@ -74,6 +79,7 @@ export const other = {
 		description:
 			"When set to `true`, `pnpm pack` and `pnpm publish` add the content of the package's README file to the `readme` field of the packed `package.json`, unless that field is already set.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/other#embedreadme",
 	}),
@@ -82,6 +88,7 @@ export const other = {
 		kind: "boolean",
 		description: "When `true`, pnpm will run any pre/post scripts automatically.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: true,
 		anchor: "settings/other#enableprepostscripts",
 	}),
@@ -91,6 +98,7 @@ export const other = {
 		description:
 			"When `true`, pnpm sets the `NODE_PATH` environment variable in command shims (the wrapper scripts created in `node_modules/.bin`).",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: true,
 		anchor: "settings/other#extendnodepath",
 	}),
@@ -99,6 +107,7 @@ export const other = {
 		kind: "string",
 		description: "Allows to set the target directory for the bin files of globally installed packages.",
 		locations: ["global", "env"],
+		envFormat: "text",
 		anchor: "settings/other#globalbindir",
 	}),
 	globalDir: entry("globalDir", {
@@ -107,6 +116,7 @@ export const other = {
 		description:
 			"Specify a custom directory to store global packages. pnpm stores the packages in a `v11` subdirectory of this directory.",
 		locations: ["global", "env"],
+		envFormat: "text",
 		anchor: "settings/other#globaldir",
 	}),
 	globalShims: entry("globalShims", {
@@ -118,6 +128,7 @@ export const other = {
 		description:
 			"Which globally installed packages get project-aware shims: `true`/`false` for all, or a map of package names to `auto`, `prompt`, `always` or `false`.",
 		locations: ["global", "env"],
+		envFormat: "json",
 		anchor: "settings/other#globalshims",
 	}),
 	ignoreCompatibilityDb: entry("ignoreCompatibilityDb", {
@@ -125,6 +136,7 @@ export const other = {
 		kind: "boolean",
 		description: "During installation the dependencies of some packages are automatically patched.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/other#ignorecompatibilitydb",
 	}),
@@ -133,24 +145,28 @@ export const other = {
 		kind: "string",
 		description: "The email part of the author `pnpm init` writes.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "text",
 	}),
 	initAuthorName: entry("initAuthorName", {
 		schema: Str,
 		kind: "string",
 		description: "The name part of the `name <email> (url)` author `pnpm init` writes.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "text",
 	}),
 	initAuthorUrl: entry("initAuthorUrl", {
 		schema: Str,
 		kind: "string",
 		description: "The URL part of the author `pnpm init` writes.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "text",
 	}),
 	initLicense: entry("initLicense", {
 		schema: Str,
 		kind: "string",
 		description: "The `license` field `pnpm init` writes, in place of `ISC`.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "text",
 	}),
 	initPackageManager: entry("initPackageManager", {
 		schema: Bool,
@@ -158,6 +174,7 @@ export const other = {
 		description:
 			"Whether `pnpm init` pins a pnpm version in the manifest it scaffolds, through `devEngines.packageManager` and the `packageManager` field.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: true,
 	}),
 	initType: entry("initType", {
@@ -165,12 +182,14 @@ export const other = {
 		kind: "enum",
 		description: "The module system (`module` or `commonjs`) `pnpm init` records for the package it scaffolds.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "jsonOrText",
 	}),
 	initVersion: entry("initVersion", {
 		schema: Str,
 		kind: "string",
 		description: "The `version` field `pnpm init` writes, in place of `1.0.0`.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "text",
 	}),
 	macosBackup: entry("macosBackup", {
 		schema: Schema.Struct({
@@ -181,6 +200,7 @@ export const other = {
 		description:
 			"When set to `true` on macOS, pnpm marks newly created `node_modules`, virtual-store, and similar directories with the `com.apple.metadata:com_apple_backup_excludeItem` extended attribute, so Time Machine skips them.",
 		locations: ["global", "env"],
+		envFormat: "subkeys",
 		anchor: "settings/other#macosbackupexcludemodulesdir",
 	}),
 	npmrcAuthFile: entry("npmrcAuthFile", {
@@ -195,6 +215,7 @@ export const other = {
 		kind: "boolean",
 		description: "When enabled, a fast check will be performed before proceeding to installation.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: true,
 		anchor: "settings/other#optimisticrepeatinstall",
 	}),
@@ -203,6 +224,7 @@ export const other = {
 		kind: "boolean",
 		description: "npm's alias for `lockfile`, read when `lockfile` is not set.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: true,
 	}),
 	pending: entry("pending", {
@@ -210,12 +232,14 @@ export const other = {
 		kind: "boolean",
 		description: "Rebuild only dependencies and projects whose builds are pending.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 	}),
 	preferSymlinkedExecutables: entry("preferSymlinkedExecutables", {
 		schema: Bool,
 		kind: "boolean",
 		description: "Create symlinks to executables in `node_modules/.bin` instead of command shims.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: true,
 		anchor: "settings/other#prefersymlinkedexecutables",
 	}),
@@ -232,6 +256,7 @@ export const other = {
 		description:
 			'Set this to `true` if the registry that you are using returns the "time" field in the abbreviated metadata.',
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/other#registrysupportstimefield",
 	}),
@@ -247,6 +272,7 @@ export const other = {
 		kind: "enum",
 		description: "When `resolutionMode` is set to `time-based`, dependencies will be resolved the following way.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "jsonOrText",
 		default: "highest",
 		anchor: "settings/other#resolutionmode",
 	}),
@@ -256,6 +282,7 @@ export const other = {
 		description:
 			"When set to `true`, `pnpm add` saves the resolved version without a range operator, as the `--save-exact` CLI option does.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/other#saveexact",
 	}),
@@ -265,12 +292,14 @@ export const other = {
 		description:
 			"Whether `pnpm add` also records the new dependency in `peerDependencies` (and saves it as a dev dependency).",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 	}),
 	savePrefix: entry("savePrefix", {
 		schema: Str,
 		kind: "string",
 		description: "Configure how versions of packages installed to a `package.json` file get prefixed.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "text",
 		anchor: "settings/other#saveprefix",
 	}),
 	saveTypes: entry("saveTypes", {
@@ -279,6 +308,7 @@ export const other = {
 		description:
 			"When set to `true`, `pnpm add` saves available `@types/*` packages in `devDependencies` alongside registry dependencies.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/other#savetypes",
 	}),
@@ -288,12 +318,14 @@ export const other = {
 		description:
 			"The default package scope for `pnpm login` and `pnpm adduser`: the granted token is associated with this scope and the scope-to-registry mapping is recorded.",
 		locations: ["global", "env"],
+		envFormat: "text",
 	}),
 	scriptShell: entry("scriptShell", {
 		schema: Schema.NullOr(Str),
 		kind: "string",
 		description: "The shell to use for scripts run with the `pnpm run` command.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "text",
 		anchor: "settings/other#scriptshell",
 	}),
 	shellEmulator: entry("shellEmulator", {
@@ -301,6 +333,7 @@ export const other = {
 		kind: "boolean",
 		description: "When `true`, pnpm will use its built-in cross-platform, bash-like shell to execute scripts.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/other#shellemulator",
 	}),
@@ -309,6 +342,7 @@ export const other = {
 		kind: "boolean",
 		description: "Keep the publish-only manifest fields in packed manifests.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 	}),
 	stateDir: entry("stateDir", {
 		schema: Str,
@@ -316,6 +350,7 @@ export const other = {
 		description:
 			"The directory where pnpm stores machine-level state, including the update checker's `pnpm-state.json` file.",
 		locations: ["global", "env"],
+		envFormat: "text",
 		anchor: "settings/other#statedir",
 	}),
 	tag: entry("tag", {
@@ -324,6 +359,7 @@ export const other = {
 		description:
 			"If you `pnpm add` a package and you don't provide a specific version, pnpm saves the first of these that exists.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "text",
 		anchor: "settings/other#tag",
 	}),
 	updateNotifier: entry("updateNotifier", {
@@ -332,6 +368,7 @@ export const other = {
 		description:
 			"Set to `false` to suppress the update notification when using an older version of pnpm than the latest.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: true,
 		anchor: "settings/other#updatenotifier",
 	}),
@@ -340,6 +377,7 @@ export const other = {
 		kind: "boolean",
 		description: "When `true`, all the output is written to stderr.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 		default: false,
 		anchor: "settings/other#usestderr",
 	}),

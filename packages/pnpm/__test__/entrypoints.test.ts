@@ -17,23 +17,50 @@ const specifiersOf = (text: string): ReadonlyArray<string> =>
 		(match) => match[2] ?? "",
 	);
 
-/** Every source module reachable from `entry` through relative specifiers, `.js` mapped to `.ts`. */
-const modulesReachedFrom = (entry: string, read: Read = readDisk): ReadonlySet<string> => {
-	const seen = new Set<string>();
+interface Reach {
+	/** Every module reached through relative specifiers. */
+	readonly modules: ReadonlySet<string>;
+	/** Every package specifier those modules load. */
+	readonly packages: ReadonlySet<string>;
+}
+
+/**
+ * Every module reachable from `entry` through relative specifiers, and the
+ * package specifiers they load. Over source, a `.js` specifier maps to its
+ * `.ts` file; over a build, it is the file.
+ */
+const reachedFrom = (entry: string, read: Read = readDisk, source = true): Reach => {
+	const modules = new Set<string>();
+	const packages = new Set<string>();
 	const queue = [entry];
 	while (queue.length > 0) {
 		const file = queue.pop();
-		if (file === undefined || seen.has(file)) continue;
-		seen.add(file);
-		for (const specifier of specifiersOf(read(file)))
-			if (specifier.startsWith(".")) queue.push(resolve(dirname(file), specifier).replace(/\.js$/, ".ts"));
+		if (file === undefined || modules.has(file)) continue;
+		modules.add(file);
+		for (const specifier of specifiersOf(read(file))) {
+			if (!specifier.startsWith(".")) packages.add(specifier);
+			else {
+				const target = resolve(dirname(file), specifier);
+				queue.push(source ? target.replace(/\.js$/, ".ts") : target);
+			}
+		}
 	}
-	return seen;
+	return { modules, packages };
 };
 
-const SETTINGS = join(SRC, "settings");
-const reachesCatalog = (modules: ReadonlySet<string>): boolean =>
-	[...modules].some((file) => file === join(SRC, "settings.ts") || file.startsWith(`${SETTINGS}/`));
+/**
+ * Whether a walk reaches the catalog: a module of the settings entry, or any
+ * `@effected/pnpm/<subpath>` self-import, which resolves outside the walk.
+ */
+const reachesCatalog = ({ modules, packages }: Reach, root: string): boolean =>
+	[...modules].some(
+		(file) =>
+			file === join(root, "settings.ts") ||
+			file === join(root, "settings.js") ||
+			file.startsWith(`${join(root, "settings")}/`),
+	) || [...packages].some((name) => name.startsWith("@effected/pnpm/"));
+
+const BUILT = fileURLToPath(new URL("../dist/prod/npm/pkg/", import.meta.url));
 
 describe("@effected/pnpm root entry", () => {
 	it("exports the pnpm-only modules moved in from npm, workspaces and lockfiles", async () => {
@@ -55,25 +82,34 @@ describe("@effected/pnpm root entry", () => {
 	});
 
 	it("the root entry never reaches the settings catalog", () => {
-		const reached = modulesReachedFrom(join(SRC, "index.ts"));
-		assert.isTrue(reached.has(join(SRC, "PnpmSettings.ts")), "the control: the root graph was walked");
-		assert.isFalse(reachesCatalog(reached), [...reached].join(", "));
+		const reached = reachedFrom(join(SRC, "index.ts"));
+		assert.isTrue(reached.modules.has(join(SRC, "PnpmSettings.ts")), "the control: the root graph was walked");
+		assert.isFalse(reachesCatalog(reached, SRC), [...reached.modules, ...reached.packages].join(", "));
 	});
 
-	it("the ./settings entry reaches the catalog", () => {
-		// The positive control: the same walk finds the catalog where it ships.
-		assert.isTrue(reachesCatalog(modulesReachedFrom(join(SRC, "settings.ts"))));
+	it("the built root entry never reaches the settings catalog", () => {
+		const reached = reachedFrom(join(BUILT, "index.js"), readDisk, false);
+		assert.isTrue(reached.modules.has(join(BUILT, "PnpmSettings.js")), "the control: the built graph was walked");
+		assert.isFalse(reachesCatalog(reached, BUILT), [...reached.modules, ...reached.packages].join(", "));
 	});
 
-	it("mutation control: a transitive import is found, one in a comment is not", () => {
+	it("the ./settings entry reaches the catalog, in source and built", () => {
+		// The positive controls: the same walks find the catalog where it ships.
+		assert.isTrue(reachesCatalog(reachedFrom(join(SRC, "settings.ts")), SRC));
+		assert.isTrue(reachesCatalog(reachedFrom(join(BUILT, "settings.js"), readDisk, false), BUILT));
+	});
+
+	it("mutation control: a transitive import or a self-import is found, one in a comment is not", () => {
 		const files: Record<string, string> = {
 			"/pkg/src/index.ts": '// import "./settings/PnpmSettingsCatalog.js"\nexport { A } from "./a.js";',
 			"/pkg/src/a.ts": 'export { B } from "./settings/PnpmSettingsCatalog.js";',
 			"/pkg/src/settings/PnpmSettingsCatalog.ts": "export const B = 1;",
 		};
 		const read: Read = (file) => files[file] ?? "";
-		assert.isTrue(modulesReachedFrom("/pkg/src/index.ts", read).has("/pkg/src/settings/PnpmSettingsCatalog.ts"));
-		files["/pkg/src/a.ts"] = "export const B = 1;";
-		assert.isFalse(modulesReachedFrom("/pkg/src/index.ts", read).has("/pkg/src/settings/PnpmSettingsCatalog.ts"));
+		assert.isTrue(reachesCatalog(reachedFrom("/pkg/src/index.ts", read), "/pkg/src"));
+		files["/pkg/src/a.ts"] = 'export { B } from "@effected/pnpm/settings";';
+		assert.isTrue(reachesCatalog(reachedFrom("/pkg/src/index.ts", read), "/pkg/src"));
+		files["/pkg/src/a.ts"] = 'export { B } from "@effected/pnpm";';
+		assert.isFalse(reachesCatalog(reachedFrom("/pkg/src/index.ts", read), "/pkg/src"));
 	});
 });

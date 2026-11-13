@@ -20,6 +20,7 @@ export const workspace = {
 		kind: "stringArray",
 		description: "Glob patterns of changed files the `--filter` change detection ignores.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 	}),
 	cleanupUnusedCatalogs: entry("cleanupUnusedCatalogs", {
 		schema: Bool,
@@ -40,6 +41,7 @@ export const workspace = {
 		description:
 			"When `true`, injected workspace dependencies whose materialised children turn out to be a subset of the target workspace project's own direct dependencies get rewritten back to symlinks.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: true,
 	}),
 	disallowWorkspaceCycles: entry("disallowWorkspaceCycles", {
@@ -48,6 +50,7 @@ export const workspace = {
 		description:
 			"Make a cycle among the selected workspace projects an error (`ERR_PNPM_DISALLOW_WORKSPACE_CYCLES`) rather than a warning.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 	}),
 	failIfNoMatch: entry("failIfNoMatch", {
 		schema: Bool,
@@ -55,6 +58,7 @@ export const workspace = {
 		description:
 			"Exit with code 1 when the `--filter` / `--filter-prod` selectors select no workspace project, instead of letting the command run over an empty selection.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 	}),
 	ignoreWorkspace: entry("ignoreWorkspace", {
 		schema: Bool,
@@ -62,6 +66,7 @@ export const workspace = {
 		description:
 			"Treat the project as standalone: no workspace root is discovered, so `pnpm-workspace.yaml` contributes neither settings nor sibling projects.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 	}),
 	ignoreWorkspaceCycles: entry("ignoreWorkspaceCycles", {
 		schema: Bool,
@@ -69,18 +74,21 @@ export const workspace = {
 		description:
 			"Suppress the report a recursive install makes when the selected workspace projects depend on each other in a cycle.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 	}),
 	ignoreWorkspaceRootCheck: entry("ignoreWorkspaceRootCheck", {
 		schema: Bool,
 		kind: "boolean",
 		description: "Let `pnpm add` modify a multi-package workspace root without `-w`.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 	}),
 	includeWorkspaceRoot: entry("includeWorkspaceRoot", {
 		schema: Bool,
 		kind: "boolean",
 		description: "Whether a recursive command also runs on the workspace root project.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 	}),
 	injectWorkspacePackages: entry("injectWorkspacePackages", {
 		schema: Bool,
@@ -88,12 +96,14 @@ export const workspace = {
 		description:
 			"When `true`, workspace-package resolutions materialize as `file:` (hard-linked copies into the virtual store) instead of `link:` symlinks back to the source.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 	}),
 	legacyDirFiltering: entry("legacyDirFiltering", {
 		schema: Bool,
 		kind: "boolean",
 		description: "Match a `{<dir>}` filter selector by directory subtree instead of by glob.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 	}),
 	linkWorkspacePackages: entry("linkWorkspacePackages", {
 		schema: Schema.Union([Bool, Schema.Literal("deep")]),
@@ -101,6 +111,7 @@ export const workspace = {
 		description:
 			"Whether a bare version range resolves to a matching workspace package: `true`, `false`, or `deep` to link in dependencies of dependencies too.",
 		locations: ["workspace", "env"],
+		envFormat: "jsonOrText",
 	}),
 	packageConfigs: entry("packageConfigs", {
 		schema: Schema.Union([UnknownRecord, Schema.Array(UnknownRecord)]),
@@ -121,6 +132,7 @@ export const workspace = {
 		description:
 			"When `true`, prefer a workspace package over a registry pick even when the registry version is newer than the workspace one.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 	}),
 	saveCatalogName: entry("saveCatalogName", {
 		schema: Str,
@@ -128,6 +140,7 @@ export const workspace = {
 		description:
 			"Name of the catalog `pnpm add` saves a new dependency into, set by `--save-catalog-name=<name>` (with `--save-catalog` a shorthand for `default`).",
 		locations: ["workspace", "env"],
+		envFormat: "text",
 	}),
 	saveWorkspaceProtocol: entry("saveWorkspaceProtocol", {
 		schema: Schema.Union([Bool, Schema.Literal("rolling")]),
@@ -135,6 +148,7 @@ export const workspace = {
 		description:
 			"How `pnpm add` and `pnpm update` write a dependency linked to a workspace package: `true` saves `workspace:` with the range, `false` saves the range alone, `rolling` saves `workspace:^`/`workspace:~`.",
 		locations: ["workspace", "env"],
+		envFormat: "jsonOrText",
 	}),
 	sharedWorkspaceLockfile: entry("sharedWorkspaceLockfile", {
 		schema: Bool,
@@ -142,6 +156,7 @@ export const workspace = {
 		description:
 			"Whether the workspace uses a single root `pnpm-lock.yaml`. The `sharedWorkspaceLockfile` setting; default `true`.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 		default: true,
 	}),
 	syncInjectedDepsAfterScripts: entry("syncInjectedDepsAfterScripts", {
@@ -150,6 +165,7 @@ export const workspace = {
 		description:
 			"The scripts after which pnpm re-syncs injected workspace dependencies into the projects that inject them.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 	}),
 	testPattern: entry("testPattern", {
 		schema: StringArray,
@@ -157,6 +173,7 @@ export const workspace = {
 		description:
 			"Glob patterns of test files: a project whose only changes match them is selected by `--filter` with `...` but not rebuilt.",
 		locations: ["workspace", "env"],
+		envFormat: "json",
 	}),
 	workspaceConcurrency: entry("workspaceConcurrency", {
 		schema: Integer,
@@ -164,5 +181,6 @@ export const workspace = {
 		description:
 			"How many projects a recursive command processes at once; a zero or negative value is subtracted from the available parallelism.",
 		locations: ["workspace", "global", "env"],
+		envFormat: "json",
 	}),
 } as const;
