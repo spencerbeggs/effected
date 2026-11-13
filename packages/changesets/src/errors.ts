@@ -134,3 +134,20 @@ export class MissingPackageError extends Schema.TaggedError<MissingPackageError>
 		return `The release plan releases ${this.packageName}, which is not among the packages given`;
 	}
 }
+
+/**
+ * `.changeset/ledger.yaml` is not YAML, is not a mapping of releases, or has
+ * an entry that is neither a list of intent ids nor a `dir`/`intents` mapping.
+ *
+ * @public
+ */
+export class LedgerError extends Schema.TaggedError<LedgerError>()("LedgerError", {
+	/** Which way the ledger was malformed. */
+	code: Schema.Literals(["invalid-yaml", "not-a-mapping", "invalid-entry"]),
+	/** What was wrong, naming the ledger key when one is at fault. */
+	detail: Schema.String,
+}) {
+	override get message(): string {
+		return `Invalid release ledger: ${this.detail}`;
+	}
+}

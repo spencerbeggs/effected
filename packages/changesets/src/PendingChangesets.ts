@@ -3,6 +3,7 @@ import { Effect, FileSystem, Path, PlatformError, Result, Schema } from "effect"
 import { ReleaseType } from "./BumpType.js";
 import { ChangesetFile } from "./ChangesetFile.js";
 import { ChangesetParseError } from "./errors.js";
+import type { Ledger } from "./Ledger.js";
 
 /**
  * One pending changeset read from `.changeset/`.
@@ -183,6 +184,38 @@ export class PendingChangesets {
 			fs.readFileString(path.join(dir, file)).pipe(Effect.flatMap((text) => Effect.fromResult(toPending(file, text)))),
 		);
 	});
+
+	/**
+	 * The changesets still pending under pnpm's versioning, given its
+	 * {@link Ledger}: pnpm leaves an intent file in place until every project
+	 * it names has released, so each release key is dropped when the ledger
+	 * records its project as having consumed this intent, and a changeset with
+	 * no key left is dropped. A key starting `./` names a project by directory
+	 * and is read with `Ledger.consumedDir`; any other is a package name. The
+	 * order and the surviving keys are kept. Pure; the Changesets CLI has no
+	 * ledger and does not use it.
+	 *
+	 * @param changesets - The changesets {@link PendingChangesets.read} returned.
+	 * @param ledger - The ledger to read consumption from.
+	 */
+	static unconsumed(changesets: ReadonlyArray<PendingChangeset>, ledger: Ledger): ReadonlyArray<PendingChangeset> {
+		const pending: Array<PendingChangeset> = [];
+		for (const changeset of changesets) {
+			const id = changeset.id;
+			const releases = new Map(
+				[...changeset.releases].filter(
+					([key]) => !(key.startsWith("./") ? ledger.consumedDir(id, key) : ledger.consumed(id, key)),
+				),
+			);
+			if (releases.size === 0) continue;
+			pending.push(
+				releases.size === changeset.releases.size
+					? changeset
+					: PendingChangeset.make({ file: changeset.file, releases, summary: changeset.summary }),
+			);
+		}
+		return pending;
+	}
 
 	/**
 	 * Read the same files as {@link PendingChangesets.read}, in the same order,

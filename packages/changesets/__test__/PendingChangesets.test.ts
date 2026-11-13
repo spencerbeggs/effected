@@ -1,7 +1,8 @@
 import { assert, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, PlatformError, Result } from "effect";
-import { PendingChangesets } from "../src/PendingChangesets.js";
+import { Effect, Option, PlatformError, Result } from "effect";
+import { Ledger, LedgerEntry } from "../src/Ledger.js";
+import { PendingChangeset, PendingChangesets } from "../src/PendingChangesets.js";
 
 /**
  * Milliseconds of CPU time this process has spent (`process.cpuUsage`, user plus system): time the work spent, not
@@ -344,3 +345,50 @@ it("readSettledSync skips a bad file on disk and reports it, where readSync fail
 		rmSync(root, { recursive: true, force: true });
 	}
 });
+
+// pnpm leaves an intent file in place until every project it names has an entry in the ledger
+// (pnpm `crates/versioning/src/ledger.rs`, the `Ledger` doc comment), so "pending" is per (intent, project).
+it.effect("unconsumed drops only the packages the ledger records for that intent", () =>
+	Effect.gen(function* () {
+		const fs = MemoryFileSystem.layerWithPath({
+			"/repo/.changeset/ledger.yaml":
+				'"@example/core@1.0.0":\n  dir: packages/core\n  intents:\n    - calm-cats-resolve\n',
+			"/repo/.changeset/calm-cats-resolve.md": '---\n"@example/core": minor\n"@example/other": patch\n---\n\nBoth.\n',
+			"/repo/.changeset/done-deal-now.md": '---\n"@example/core": patch\n---\n\nAll consumed elsewhere.\n',
+			"/repo/.changeset/fresh-one-here.md": '---\n"@example/core": patch\n---\n\nStill pending for core.\n',
+		});
+		const { ledger, pending } = yield* Effect.gen(function* () {
+			const ledger = Option.getOrThrow(yield* Ledger.read("/repo"));
+			const pending = yield* PendingChangesets.read("/repo");
+			return { ledger, pending };
+		}).pipe(Effect.provide(fs));
+		const left = PendingChangesets.unconsumed(pending, ledger);
+		assert.deepStrictEqual(
+			left.map((changeset) => changeset.id),
+			["calm-cats-resolve", "done-deal-now", "fresh-one-here"],
+		);
+		const first = left[0];
+		assert.deepStrictEqual([...(first?.releases.keys() ?? [])], ["@example/other"]);
+		assert.deepStrictEqual([...(left[1]?.releases.keys() ?? [])], ["@example/core"]);
+	}),
+);
+
+it.effect("unconsumed reads a ./dir key against the ledger's dir", () =>
+	Effect.sync(() => {
+		const ledger = Ledger.make({
+			entries: [LedgerEntry.make({ name: "a", version: "1.0.0", dir: "packages/a", intents: ["x"] })],
+		});
+		const changesets = [
+			PendingChangeset.make({
+				file: "x.md",
+				releases: new Map([
+					["./packages/a/", "patch"],
+					["./packages/b", "patch"],
+				] as const),
+				summary: "s",
+			}),
+		];
+		const left = PendingChangesets.unconsumed(changesets, ledger);
+		assert.deepStrictEqual([...(left[0]?.releases.keys() ?? [])], ["./packages/b"]);
+	}),
+);

@@ -35,11 +35,13 @@ export {
 	AmbiguousPackageError,
 	ChangesetConfigError,
 	ChangesetParseError,
+	LedgerError,
 	MissingPackageError,
 	SnapshotPreModeError,
 	SnapshotTemplateError,
 	UnknownPackageError,
 } from "./errors.js";
+export { Ledger, LedgerEntry } from "./Ledger.js";
 export type { PendingChangesetFailure, SettledChangesets } from "./PendingChangesets.js";
 export { PendingChangeset, PendingChangesets } from "./PendingChangesets.js";
 export { PreState } from "./PreState.js";

@@ -23,6 +23,9 @@
 | `FloorCause` | Class | One dependency whose breaking release moves a dependent's published floor. | dependency whose breaking release moves a dependent peer floor, stranded consumer |
 | `GetDependencyReleaseLine` | TypeAlias | Renders the line for the dependencies a package's release updated: `@changesets/types`' `GetDependencyReleaseLine`. | |
 | `GetReleaseLine` | TypeAlias | Renders one changeset's line in a package's changelog block: `@changesets/types`' `GetReleaseLine`. | |
+| `Ledger` | Class | The decoded `.changeset/ledger.yaml`: pnpm's committed, append-only record of which intent files each release consumed. | read pnpm .changeset/ledger.yaml, which intents a release consumed, pending per project |
+| `LedgerEntry` | Class | One consumed release in the ledger: the package, the version it released, the project directory, and the ids of the intent files that release consumed. | one released name@version in pnpm ledger, project dir, consumed intent ids |
+| `LedgerError` | Class | `.changeset/ledger.yaml` is not YAML, is not a mapping of releases, or has an entry that is neither a list of intent ids nor a `dir`/`intents` mapping. | pnpm release ledger malformed, invalid yaml, bad entry |
 | `ManifestEdit` | Class | What a release changes in one `package.json`. | new version and rewritten dependency ranges for one package.json |
 | `MissingPackageError` | Class | A release plan names a package the packages given to `ReleasePlan.edits` do not contain: the plan was made from a different workspace than the one being edited. | release plan names a package not among the given packages |
 | `ModCompWithPackage` | Variable + TypeAlias | The decoded type of `(ModCompWithPackage:variable)`. | decode an updated dependency with its manifest and dir, getDependencyReleaseLine input |
