@@ -515,10 +515,10 @@ describe("ReleasePlan.assemble", () => {
 		// pnpm's `is_dir_ref` (crates/versioning/src/plan/project_refs.rs) takes a key starting `./` as a
 		// workspace-relative directory; `normalize_project_dir` (ledger.rs) turns backslashes to `/`, strips
 		// every leading `./` and trailing `/`. A bare name matching two projects is `AmbiguousPackage`.
-		const at = (name: string, dir: string): WorkspacePackage =>
+		const at = (name: string, dir: string, version = "1.0.0"): WorkspacePackage =>
 			WorkspacePackage.make({
 				name,
-				version: "1.0.0",
+				version,
 				path: `/repo/${dir}`,
 				packageJsonPath: `/repo/${dir}/package.json`,
 				relativePath: dir,
@@ -563,14 +563,47 @@ describe("ReleasePlan.assemble", () => {
 			const error = failure(pnpmPlan(twins, { util: "patch" }));
 			assert.isTrue(
 				error?._tag === "AmbiguousPackageError" &&
-					error.name === "util" &&
+					error.packageName === "util" &&
 					error.directories.join(",") === "a/util,b/util",
 			);
 		});
 
-		it("lets a ./dir key name one of two same-named packages", () => {
-			const twins = [at("util", "a/util"), at("util", "b/util")];
-			assert.isTrue(Result.isSuccess(pnpmPlan(twins, { "./a/util": "patch" })));
+		it("fails AmbiguousPackageError for a ./dir key naming one of two same-named packages", () => {
+			const twins = [at("util", "a/util", "1.0.0"), at("util", "b/util", "2.0.0")];
+			const error = failure(pnpmPlan(twins, { "./a/util": "patch" }));
+			assert.isTrue(
+				error?._tag === "AmbiguousPackageError" &&
+					error.packageName === "util" &&
+					error.directories.join(",") === "a/util,b/util",
+			);
+		});
+
+		it("fails UnknownPackageError for ./ itself, ./../outside and a key with a backslash", () => {
+			for (const key of ["./", "./../outside", "pkg\\b", ".\\packages\\b"]) {
+				const error = failure(pnpmPlan(members, { [key]: "patch" }));
+				assert.isTrue(error?._tag === "UnknownPackageError" && error.packageName === key, key);
+			}
+		});
+
+		it("resolves a ./dir key in an exit-mode plan after the changeset is renamed pre/", () => {
+			const result = ReleasePlan.assemble({
+				packages: members,
+				changesets: [change("old.md", { "./packages/b": "patch" })],
+				config: config(),
+				manager: "pnpm",
+				pre: PreState.make({ mode: "exit", tag: "beta", changesets: ["old"] }),
+			});
+			assert.isTrue(Result.isSuccess(result));
+			if (Result.isSuccess(result)) {
+				assert.deepStrictEqual(
+					result.success.changesets.map((c) => c.file),
+					["pre/old.md"],
+				);
+				assert.deepStrictEqual(
+					result.success.releases.map((r) => [r.name, r.type]),
+					[["@p/b", "patch"]],
+				);
+			}
 		});
 
 		it("rejects a ./dir key in changesets mode, as the Changesets CLI does", () => {

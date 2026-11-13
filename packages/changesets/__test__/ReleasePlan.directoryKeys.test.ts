@@ -27,7 +27,7 @@ it.effect("read resolves a ./dir key under pnpm and fails a shared bare name typ
 		const error = yield* Effect.flip(ReleasePlan.read("/repo"));
 		assert.isTrue(
 			error._tag === "AmbiguousPackageError" &&
-				error.name === "@p/a" &&
+				error.packageName === "@p/a" &&
 				error.directories.join(",") === "packages/a,packages/c",
 		);
 	}).pipe(Effect.provide(repo(true))),

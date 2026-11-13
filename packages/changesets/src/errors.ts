@@ -56,18 +56,24 @@ export class UnknownPackageError extends Schema.TaggedError<UnknownPackageError>
  * publishes, so the name identifies none of them. Name the project by its
  * `./`-prefixed workspace-relative directory instead.
  *
+ * @remarks
+ * Same-named projects are not yet plannable: the release plan is keyed by
+ * package name, so a `./` directory key naming one of several same-named
+ * projects fails this error too, listing every directory, rather than plan
+ * against a twin the changeset did not name.
+ *
  * @public
  */
 export class AmbiguousPackageError extends Schema.TaggedError<AmbiguousPackageError>()("AmbiguousPackageError", {
 	/** The package name the changeset gave. */
-	name: Schema.String,
+	packageName: Schema.String,
 	/** The workspace-relative directories of the projects that publish it, in discovery order. */
 	directories: Schema.Array(Schema.String),
 	/** The changeset file that named it. */
 	changeset: Schema.String,
 }) {
 	override get message(): string {
-		return `Changeset ${this.changeset} names ${this.name}, which ${this.directories.length} projects publish (${this.directories.map((dir) => `./${dir}`).join(", ")}); name one by its ./ directory`;
+		return `Changeset ${this.changeset} names ${this.packageName}, which ${this.directories.length} projects publish (${this.directories.map((dir) => `./${dir}`).join(", ")}); name one by its ./ directory`;
 	}
 }
 

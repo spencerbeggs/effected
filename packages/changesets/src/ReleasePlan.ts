@@ -533,7 +533,9 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 * `./` and the trailing `/` removed) and matched against each package's
 	 * `relativePath`; it fails {@link UnknownPackageError} naming the key when no
 	 * package is there. A bare name that more than one package publishes fails
-	 * {@link AmbiguousPackageError} with every directory, never a silent pick.
+	 * {@link AmbiguousPackageError} with every directory, never a silent pick; so
+	 * does a `./dir` key whose package shares its name with another, because the
+	 * plan is keyed by name and cannot yet plan same-named projects apart.
 	 * The default, `"changesets"`, is the Changesets CLI's reading: a `./` key is
 	 * an unknown package, as it is there.
 	 *
@@ -870,24 +872,26 @@ const assembleOrHalt = (input: {
 			if (!byName.has(key)) throw new Halt(new UnknownPackageError({ packageName: key, changeset }));
 			return key;
 		}
+		let name = key;
 		if (key.startsWith("./")) {
 			const dir = normalizeProjectDir(key);
 			const found = packages.find((pkg) => normalizeProjectDir(pkg.relativePath) === dir);
 			if (found === undefined) throw new Halt(new UnknownPackageError({ packageName: key, changeset }));
-			return found.name;
+			name = found.name;
 		}
-		const same = packages.filter((pkg) => pkg.name === key);
+		const same = packages.filter((pkg) => pkg.name === name);
 		if (same.length === 0) throw new Halt(new UnknownPackageError({ packageName: key, changeset }));
+		// The plan is name-keyed, so a name two projects share cannot be planned for either: refuse, never pick a twin.
 		if (same.length > 1) {
 			throw new Halt(
 				new AmbiguousPackageError({
-					name: key,
+					packageName: name,
 					directories: same.map((pkg) => normalizeProjectDir(pkg.relativePath)),
 					changeset,
 				}),
 			);
 		}
-		return key;
+		return name;
 	};
 	for (const changeset of changesets) {
 		for (const key of changeset.releases.keys())
