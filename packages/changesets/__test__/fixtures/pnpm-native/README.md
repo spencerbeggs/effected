@@ -19,6 +19,17 @@ throwaway copy:
 3. run `pnpm version -r --json` on the same copy (the versions, the ledger);
 4. write `expected.json`, `status.txt` and `ledger.after.yaml` beside the input.
 
+A case may carry a `prelude.json` of steps (`run` a pnpm command, `write` or
+`remove` a file) that the recorder applies in the copy before step 2, so a
+pre-state a real workflow produces is produced by pnpm and not typed by hand.
+`lane-counter-reset-major` starts at `2.0.0` on lane `alpha`, cuts
+`2.1.0-alpha.0` (minor intent) and `2.1.0-alpha.1` (patch intent) with
+`pnpm version -r`, then adds the major intent. `lane-graduation` starts at
+`2.0.0` on lane `alpha`, cuts `3.0.0-alpha.0` from a major intent with
+`pnpm version -r`, then runs `pnpm lane main --filter @p/a` (which removes the
+lane); the ledger entry and the intent file left on disk are pnpm's own. The
+recorded `status` and `version` then run on that state.
+
 The registry is `http://127.0.0.1:9/` throughout, so no case can reach a real
 one. Re-record with `node scripts/record-pnpm-oracle.ts [case ...]` from the
 package directory. The recorder resolves the repository's pinned pnpm by path
@@ -36,7 +47,7 @@ Recorded 2026-11-12 with pnpm 12.20.0, matching the vendored source at
 | `case` | The directory name. |
 | `outcome` | `applied` when `pnpm version -r --json` succeeded (possibly with no releases), `rejected` when it failed. |
 | `releases` | The applied run's JSON in pnpm's order, each `{name, currentVersion, newVersion, bump, causes}`. `bump` and `causes` come from `pnpm change status` (`bump` is the intent-derived bump, which can be `major` while the version moves to a prerelease or does not move at all); `causes` is a subset of `intent`, `dependencies`, `fixed`, `epic`, in pnpm's order. Empty when rejected. |
-| `ledgerFile` | `ledger.after.yaml`, pnpm's `.changeset/ledger.yaml` after the run, or `null` when rejected. A case's own input ledger, if any, is `.changeset/ledger.yaml` in the input. |
+| `ledgerFile` | `ledger.after.yaml`, pnpm's `.changeset/ledger.yaml` after the run, or `null` when rejected. The prelude's own ledger is never committed; only the final one. |
 | `statusFile` | `status.txt`, the raw `pnpm change status` text (or its error). |
 | `statusUnparsed` | Release-plan lines the recorder could not parse; empty in every case. |
 | `errors` | One `{stage, exitCode, code, message}` per failing command (`stage` is `status` or `version`); `code` is the `ERR_PNPM_*` code. Empty when applied. |
@@ -46,8 +57,8 @@ Recorded 2026-11-12 with pnpm 12.20.0, matching the vendored source at
 | Case | pnpm's answer |
 | --- | --- |
 | `ticket-probe` | `@p/a` on lane `alpha` with a `./packages/b` directory key in the same intent: `1.0.0` + minor -> `1.1.0-alpha.0`; `b` `0.1.0` -> `0.1.1`. |
-| `lane-counter-reset-major` | `2.1.0-alpha.1` + major -> `3.0.0-alpha.0`: the counter resets when the stable target changes. |
-| `lane-graduation` | `3.0.0-alpha.0` back on `main` -> `3.0.0` (cause `intent`), driven by the half-consumed intent: its id is in the input `ledger.yaml` under the prerelease key and its file is still present. |
+| `lane-counter-reset-major` | `2.1.0-alpha.1` (built by the prelude) + major -> `3.0.0-alpha.0`: the counter resets when the stable target changes. |
+| `lane-graduation` | `3.0.0-alpha.0` back on `main` -> `3.0.0` (cause `intent`), driven by the half-consumed intent that the prelude leaves behind: its id is in the ledger under the prerelease key and its file is still present. |
 | `lane-graduation-no-intent` | The same package with neither intent nor ledger: pnpm plans nothing (`[]`, "No pending changes."). |
 | `epic-band-ceiling` | Member at `199.4.0` + major is rejected: `ERR_PNPM_VERSIONING_EPIC_OUT_OF_BAND`. |
 | `epic-rebase` | Lead `1.0.0` + major -> `2.0.0`; member `150.2.0` -> `200.0.0`, cause `epic`, bump `major`. |

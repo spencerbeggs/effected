@@ -1,0 +1,8 @@
+{
+	"steps": [
+		{ "run": ["version", "-r"] },
+		{ "write": { "path": ".changeset/second-patch.md", "content": "---\n\"@p/a\": patch\n---\n\nSecond alpha: the counter advances.\n" } },
+		{ "run": ["version", "-r"] },
+		{ "write": { "path": ".changeset/big-bang.md", "content": "---\n\"@p/a\": major\n---\n\nA major while the lane was building a minor.\n" } }
+	]
+}

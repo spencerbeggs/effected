@@ -24,22 +24,37 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PACKAGE = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const FIXTURES = join(PACKAGE, "__test__/fixtures/pnpm-native");
-const RECORDED = new Set(["expected.json", "status.txt", "ledger.after.yaml"]);
+const RECORDED = new Set(["expected.json", "status.txt", "ledger.after.yaml", "prelude.json"]);
+
+/**
+ * A case may carry `prelude.json`, `{ "steps": [...] }`, that pnpm-built state is
+ * made of: each step is `{ "run": [pnpm args] }`, `{ "write": { "path", "content" } }`
+ * or `{ "remove": "path" }`. The prelude runs in the scratch copy before the recorded
+ * `status` and `version`, so a pre-state that a real workflow produces is produced by
+ * pnpm, not typed by hand.
+ */
+type Step =
+	| { readonly run: ReadonlyArray<string> }
+	| { readonly write: { readonly path: string; readonly content: string } }
+	| { readonly remove: string };
 
 interface Run {
 	readonly exitCode: number;
 	readonly output: string;
 }
 
+const EXPECTED_PNPM = "12.20.0";
+
 /**
- * The pnpm this repository pins. A bare `pnpm` run outside the repository is the
- * global one, which may be another version, so the pinned binary is asked for by
- * path from inside the package and used directly.
+ * The pnpm this repository pins, by absolute path. A bare `pnpm` run outside the
+ * repository is the global one, which may be another version, so the pinned binary
+ * is asked for by path from inside the package. Anything but an existing absolute
+ * path to the expected version fails, naming what was found.
  */
 const pinnedPnpm = (): string => {
 	const result = spawnSync("pnpm", ["exec", "node", "-p", "process.env.npm_execpath"], {
@@ -47,11 +62,19 @@ const pinnedPnpm = (): string => {
 		encoding: "utf8",
 	});
 	const path = result.stdout.trim();
-	if (result.status !== 0 || path === "") throw new Error(`cannot resolve the pinned pnpm: ${result.stderr}`);
+	if (result.status !== 0 || !isAbsolute(path) || !existsSync(path)) {
+		throw new Error(
+			`cannot resolve the pinned pnpm: npm_execpath was ${JSON.stringify(path)} (exit ${result.status}) ${result.stderr}`,
+		);
+	}
+	const version = spawnSync(path, ["--version"], { cwd: tmpdir(), encoding: "utf8" }).stdout.trim();
+	if (version !== EXPECTED_PNPM) {
+		throw new Error(`the pinned pnpm at ${path} is ${JSON.stringify(version)}, expected ${EXPECTED_PNPM}`);
+	}
 	return path;
 };
 
-const PNPM = pinnedPnpm();
+let PNPM = "";
 
 const run = (cwd: string, home: string, args: ReadonlyArray<string>): Run => {
 	const env: NodeJS.ProcessEnv = {};
@@ -134,6 +157,21 @@ const recordCase = (name: string, pnpmVersion: string): void => {
 		mkdirSync(home);
 		cpSync(source, work, { recursive: true, filter: (path) => !RECORDED.has(path.slice(source.length + 1)) });
 
+		const preludePath = join(source, "prelude.json");
+		if (existsSync(preludePath)) {
+			const { steps } = JSON.parse(readFileSync(preludePath, "utf8")) as { steps: ReadonlyArray<Step> };
+			for (const step of steps) {
+				if ("run" in step) {
+					const result = run(work, home, step.run);
+					if (result.exitCode !== 0) throw new Error(`prelude step ${step.run.join(" ")} failed: ${result.output}`);
+				} else if ("write" in step) {
+					writeFileSync(join(work, step.write.path), step.write.content);
+				} else {
+					rmSync(join(work, step.remove), { force: true });
+				}
+			}
+		}
+
 		const status = run(work, home, ["change", "status"]);
 		const version = run(work, home, ["version", "-r", "--json"]);
 
@@ -177,11 +215,25 @@ const recordCase = (name: string, pnpmVersion: string): void => {
 	}
 };
 
-const pnpmVersion = spawnSync(PNPM, ["--version"], { cwd: tmpdir(), encoding: "utf8" }).stdout.trim();
-const requested = process.argv.slice(2);
-const cases = readdirSync(FIXTURES, { withFileTypes: true })
-	.filter((entry) => entry.isDirectory())
-	.map((entry) => entry.name)
-	.filter((name) => requested.length === 0 || requested.includes(name))
-	.sort();
-for (const name of cases) recordCase(name, pnpmVersion);
+const main = (): number => {
+	PNPM = pinnedPnpm();
+	const pnpmVersion = EXPECTED_PNPM;
+	const requested = process.argv.slice(2);
+	const cases = readdirSync(FIXTURES, { withFileTypes: true })
+		.filter((entry) => entry.isDirectory())
+		.map((entry) => entry.name)
+		.filter((name) => requested.length === 0 || requested.includes(name))
+		.sort();
+	let failures = 0;
+	for (const name of cases) {
+		try {
+			recordCase(name, pnpmVersion);
+		} catch (error) {
+			failures += 1;
+			console.error(`${name}: FAILED ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+	return failures;
+};
+
+process.exitCode = main() === 0 ? 0 : 1;

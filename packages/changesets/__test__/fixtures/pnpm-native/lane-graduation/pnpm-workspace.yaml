@@ -2,4 +2,5 @@ packages:
   - packages/*
 
 versioning:
-  fixed: []
+  lanes:
+    '@p/a': alpha
