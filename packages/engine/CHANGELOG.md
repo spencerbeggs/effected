@@ -1,5 +1,16 @@
 # @effected/engine
 
+## 0.18.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/bundler | dependency | updated | 0.6.0 | 0.6.1 |
+| @effected/kit | dependency | updated | 0.14.0 | 0.14.0 |
+| @effected/schemastore | dependency | updated | 0.33.0 | 0.33.1 |
+| @effected/workspaces | dependency | updated | 0.47.1 | 0.48.0 |
+
 ## 0.18.0
 
 ### Features

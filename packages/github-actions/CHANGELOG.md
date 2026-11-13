@@ -1,5 +1,18 @@
 # @effected/github-actions
 
+## 0.34.0
+
+### Breaking Changes
+
+- Package-manager provisioning supports pnpm 12 only. A pnpm 11 install layout is refused as `layoutUnexpected`.
+- Yarn provisioning is removed.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/npm | dependency | updated | 0.34.1 | 0.35.0 |
+
 ## 0.33.2
 
 ### Dependencies

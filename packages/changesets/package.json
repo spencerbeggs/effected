@@ -1,6 +1,6 @@
 {
 	"name": "@effected/changesets",
-	"version": "0.5.1",
+	"version": "0.6.0",
 	"private": true,
 	"description": "Changeset files, `.changeset/config.json` and the release plan as Effect schemas and pure functions.",
 	"keywords": ["changesets", "release", "semver", "effect", "schema", "effected"],

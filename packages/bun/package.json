@@ -1,6 +1,6 @@
 {
 	"name": "@effected/bun",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "Everything bun owns alone: its lockfile document and BunExtension.",
 	"keywords": ["bun", "package-manager", "effect", "schema", "effected"],

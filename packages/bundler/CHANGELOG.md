@@ -1,5 +1,21 @@
 # @effected/bundler
 
+## 0.6.1
+
+### Bug Fixes
+
+- `resolveNextVersions` keeps the current versions when a pnpm-native plan releases two same-named projects, instead of letting one project's version stand for both, and logs the refusal at debug level naming the package and its directories.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/changesets | dependency | updated | 0.5.1 | 0.6.0 |
+| @effected/env | dependency | updated | 0.12.0 | 0.12.0 |
+| @effected/npm | dependency | updated | 0.34.1 | 0.35.0 |
+| @effected/package-json | dependency | updated | 0.32.1 | 0.32.2 |
+| @effected/workspaces | dependency | updated | 0.47.1 | 0.48.0 |
+
 ## 0.6.0
 
 ### Features
