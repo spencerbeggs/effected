@@ -3,7 +3,7 @@
 // pnpm accepts AND one it refuses, so a schema that accepted everything fails.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Option, Schema } from "effect";
+import { Equal, Option, Schema } from "effect";
 import { PeerDependencyRules, VersioningConfig } from "../../src/index.js";
 import type { PnpmSettingName } from "../../src/settings.js";
 import { PnpmSettingsCatalog } from "../../src/settings.js";
@@ -131,17 +131,19 @@ describe("the pnpm 12 shapes", () => {
 	});
 
 	it("documented scalar defaults agree with pnpm's docs", () => {
-		// A docs default of exactly **true**, **false** or a bare number is a fact the catalog must repeat.
+		// A docs default of exactly **true**, **false** or a bare number (optionally with a parenthetical gloss) is a fact the catalog must repeat.
 		let checked = 0;
+		const mismatches: string[] = [];
 		for (const entry of inventory.settings) {
-			const match = entry.docsDefault?.match(/^\*\*(true|false|\d+)\*\*$/);
+			const match = entry.docsDefault?.match(/^\*\*(true|false|\d+)(?: \(.*\))?\*\*$/);
 			if (match?.[1] === undefined) continue;
 			const setting = PnpmSettingsCatalog.entries[entry.name as PnpmSettingName];
 			const expected = match[1] === "true" ? true : match[1] === "false" ? false : Number(match[1]);
 			if (entry.name === "update") continue; // documents `update.changeset`'s default under the section heading
-			assert.deepStrictEqual(setting.default, Option.some(expected), entry.name);
+			if (!Equal.equals(setting.default, Option.some(expected))) mismatches.push(`${entry.name}: ${entry.docsDefault}`);
 			checked++;
 		}
+		assert.deepStrictEqual(mismatches, []);
 		assert.isAbove(checked, 60);
 	});
 

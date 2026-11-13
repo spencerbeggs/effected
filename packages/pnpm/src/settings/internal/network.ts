@@ -43,6 +43,7 @@ export const network = {
 		description: "The upper bound (in milliseconds) of the retry exponential backoff.",
 		locations: ["workspace", "global", "env"],
 		envFormat: "json",
+		default: 60000,
 		anchor: "settings/network#fetchretrymaxtimeout",
 	}),
 	fetchRetryMintimeout: entry("fetchRetryMintimeout", {
@@ -51,6 +52,7 @@ export const network = {
 		description: "The lower bound (in milliseconds) of the retry exponential backoff.",
 		locations: ["workspace", "global", "env"],
 		envFormat: "json",
+		default: 10000,
 		anchor: "settings/network#fetchretrymintimeout",
 	}),
 	fetchTimeout: entry("fetchTimeout", {
@@ -130,6 +132,7 @@ export const network = {
 			"The most bytes the files of one package may unpack to. A package whose files total more fails to install.",
 		locations: ["workspace", "global", "env"],
 		envFormat: "json",
+		default: 4294967296,
 		anchor: "settings/network#maxtarballunpackedsize",
 	}),
 	networkConcurrency: entry("networkConcurrency", {
