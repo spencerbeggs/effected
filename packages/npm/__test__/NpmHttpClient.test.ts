@@ -177,7 +177,8 @@ const httpsRegistry = (options: { readonly requestCert?: boolean; readonly host?
 			{
 				cert: tls.serverPem,
 				key: tls.serverKey,
-				...(options.requestCert === true ? { requestCert: true, rejectUnauthorized: false } : {}),
+				// Verified against the generated CA: a client certificate it did not sign, or none, is refused at the handshake.
+				...(options.requestCert === true ? { requestCert: true, rejectUnauthorized: true, ca: tls.caPem } : {}),
 			},
 			handler,
 		);
@@ -358,9 +359,11 @@ layer(Tls.layer)("NpmHttpClient", (it) => {
 				`//127.0.0.1:${withCert.port}/:keyfile=${tls.clientKey}`,
 			);
 			yield* versions(config, "pkg");
-			yield* versions(config, "@other/pkg");
+			const refused = yield* Effect.flip(versions(config, "@other/pkg"));
+			if (refused._tag !== "RegistryReadError") return assert.fail(`expected RegistryReadError, got ${refused._tag}`);
+			assert.strictEqual(refused.kind, "transport");
 			assert.deepStrictEqual(withCert.peers, ["effected npm test client"]);
-			assert.deepStrictEqual(without.peers, [undefined]);
+			assert.deepStrictEqual(without.peers, [], "no certificate was shown, so the handshake was refused");
 		}),
 	);
 

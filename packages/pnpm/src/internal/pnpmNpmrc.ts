@@ -26,8 +26,23 @@ const TLS_FIELDS: ReadonlySet<string> = new Set(["ca", "cafile", "cert", "certfi
  * Whether `text` holds a `${…}` placeholder as pnpm tests for one
  * (`workspace_yaml/environment_values.rs` `has_env_placeholder`): a `${`
  * followed, later, by a `}` with at least one character between.
+ *
+ * @remarks
+ * One left-to-right scan, linear in `text`: a `${` whose first `}` is
+ * missing ends the scan (no later `${` can close either), and one whose
+ * first `}` is immediate (`${}`) costs a constant step.
  */
-export const hasPlaceholder = (text: string): boolean => /\$\{[^}]+\}/.test(text);
+export const hasPlaceholder = (text: string): boolean => {
+	let from = 0;
+	for (;;) {
+		const open = text.indexOf("${", from);
+		if (open === -1) return false;
+		const close = text.indexOf("}", open + 2);
+		if (close === -1) return false;
+		if (close > open + 2) return true;
+		from = open + 1;
+	}
+};
 
 /**
  * `text` with its `${…}` placeholders resolved as pnpm resolves them:
@@ -35,24 +50,64 @@ export const hasPlaceholder = (text: string): boolean => /\$\{[^}]+\}/.test(text
  * `${NAME:-fallback}` to the fallback when the variable is unset or empty;
  * `${NAME-fallback}` to the fallback only when it is unset; and `\${…}` to the
  * literal `${…}` (`npmrc_auth/tests/json_env_expansion.rs`).
+ *
+ * @remarks
+ * A placeholder is a backslash run, then `${`, then one or more characters
+ * that are not `}`, then `}`; an even run halves and expands, an odd run
+ * halves and leaves the placeholder as written, and an unclosed or empty
+ * `${` is left as written. A single left-to-right scan, linear in `text`: a
+ * backslash run is counted once, an unclosed `${` ends the scan, and a match
+ * is consumed whole. (A regular expression for the same shape backtracks
+ * quadratically on a long backslash or `${{` run.)
  */
-export const expandPlaceholders = (text: string, env: Env): string =>
-	text.replace(/(\\*)\$\{([^}]+)\}/g, (_match, escapes: string, body: string) => {
-		const kept = "\\".repeat(Math.floor(escapes.length / 2));
-		if (escapes.length % 2 === 1) return `${kept}\${${body}}`;
-		const variable = (name: string): string | undefined => (Object.hasOwn(env, name) ? env[name] : undefined);
+export const expandPlaceholders = (text: string, env: Env): string => {
+	const variable = (name: string): string | undefined => (Object.hasOwn(env, name) ? env[name] : undefined);
+	const resolve = (body: string): string => {
 		const colon = body.indexOf(":-");
 		const dash = body.indexOf("-");
 		if (colon !== -1 && (dash === -1 || colon < dash)) {
 			const value = variable(body.slice(0, colon));
-			return kept + (value === undefined || value === "" ? body.slice(colon + 2) : value);
+			return value === undefined || value === "" ? body.slice(colon + 2) : value;
 		}
 		if (dash !== -1) {
 			const value = variable(body.slice(0, dash));
-			return kept + (value === undefined ? body.slice(dash + 1) : value);
+			return value === undefined ? body.slice(dash + 1) : value;
 		}
-		return kept + (variable(body) ?? "");
-	});
+		return variable(body) ?? "";
+	};
+	let out = "";
+	let index = 0;
+	while (index < text.length) {
+		const char = text.charCodeAt(index);
+		let runEnd = index;
+		if (char === 0x5c) {
+			while (runEnd < text.length && text.charCodeAt(runEnd) === 0x5c) runEnd++;
+		}
+		if (text.startsWith("${", runEnd)) {
+			const close = text.indexOf("}", runEnd + 2);
+			// No `}` after this `${`: none can follow a later one either.
+			if (close === -1) return out + text.slice(index);
+			if (close > runEnd + 2) {
+				const escapes = runEnd - index;
+				const kept = "\\".repeat(Math.floor(escapes / 2));
+				const body = text.slice(runEnd + 2, close);
+				out += escapes % 2 === 1 ? `${kept}\${${body}}` : kept + resolve(body);
+				index = close + 1;
+				continue;
+			}
+		}
+		if (runEnd > index) {
+			// A backslash run that escapes nothing: kept whole, and the `${` after it
+			// (if any, and empty) is tried next without escapes, as the pattern would.
+			out += text.slice(index, runEnd);
+			index = runEnd;
+			if (!text.startsWith("${", index)) continue;
+		}
+		out += text[index];
+		index++;
+	}
+	return out;
+};
 
 /**
  * `NpmConfig`'s `${VAR}` expression (`@effected/npm`'s `Npmrc.ts`), matched so
