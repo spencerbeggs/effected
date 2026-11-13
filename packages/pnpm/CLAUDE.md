@@ -20,5 +20,18 @@ Tests run on core's `Path.layer` + `@effected/memfs`; `__test__/fixtures.ts` bui
 `src/index.ts` is the only re-exporting module. It exports `PnpmSettings`/`PnpmSettingsError` (the `pnpm config get` view), `ReleaseAgeGate`/`PartialReleaseAgeGate` (`minimumReleaseAge`), `PnpmMatcher` (the `@pnpm/matcher` list grammar), `OverrideKey`/`OverrideKeyError` (the `overrides` selector grammar), `PeerDependencyRules` (the `peerDependencyRules` block; replaces workspaces' former type and `NoPeerDependencyRules`), and the native `pnpm-lock.yaml` documents: `PnpmLockDocument`, `PnpmEnvDocument` and `PnpmExtension`. They are pinned by `__test__/entrypoints.test.ts`. The document parsers fail `@effected/npm`'s `LockfileDocumentError`. `src/internal/stream.ts` is the one place a pnpm YAML stream is split into preamble and lockfile, and `src/internal/version.ts` holds the `lockfileVersion` 9 gate. The `PnpmEnvLockfile` readers stay in `@effected/lockfiles` (ruled: their errors are lockfiles' contract). `__test__/fixtures/lockfiles/` holds copies of lockfiles' fixtures with a provenance README. The `catalog:`/`workspace:` contracts are not here: they stay in `@effected/npm` as shared (`okf/decisions/catalog-and-workspace-protocol-owner.md`).
 Outside `index.ts`, modules import explicitly — no barrels.
 
-The settings catalog ships from the `@effected/pnpm/settings` subpath and the
-root must never reach it.
+The settings catalog ships from the `@effected/pnpm/settings` subpath
+(`src/settings.ts`: `PnpmSettingsCatalog`, `PnpmSetting`, `readSetting`) and
+the root must never reach it — `entrypoints.test.ts` walks the source graph to
+pin that. The subpath imports root types through `@effected/pnpm` itself;
+`effected.toml` keeps that import external in the declarations with an
+`ae-forgotten-export` suppression scoped to `settings.d.ts`, made safe by
+`__test__/settings/declarations.test.ts` over the built declarations.
+
+The catalog is held to `__test__/fixtures/pnpm-12.20.0-settings.json`, which
+`scripts/extract-pnpm-settings.mts` extracts from `.repos/pnpm` (method in the
+fixture README; `node scripts/extract-pnpm-settings.mts --check` from this
+directory reports staleness). After re-pinning `.repos/pnpm`, regenerate it and
+reconcile `src/settings/catalog/*.ts` with what the coverage tests report. A
+catalog entry carries facts about pnpm only — never merge strategy or
+enforcement.

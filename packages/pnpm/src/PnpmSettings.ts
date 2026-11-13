@@ -38,6 +38,8 @@ export class PnpmSettingsError extends Schema.TaggedError<PnpmSettingsError>()("
 	reason: Schema.Literals(["read", "parse", "shape", "membership"]),
 	/** The file involved, when the source named one. */
 	path: Schema.optionalKey(Schema.String),
+	/** The setting whose value failed, for a `"shape"` failure of one setting. */
+	setting: Schema.optionalKey(Schema.String),
 	/** The underlying failure, for `"read"`, `"parse"` and `"membership"`. */
 	cause: Schema.optionalKey(Schema.Defect()),
 }) {
@@ -49,7 +51,9 @@ export class PnpmSettingsError extends Schema.TaggedError<PnpmSettingsError>()("
 				? `The \`packages:\` patterns in ${where} compile one by one but not as a set, so workspace membership cannot be decided`
 				: this.reason === "parse"
 					? `Could not parse ${where} as YAML`
-					: `The document in ${where} is not a mapping of settings`;
+					: this.setting !== undefined
+						? `The \`${this.setting}\` setting does not have the shape pnpm 12 reads`
+						: `The document in ${where} is not a mapping of settings`;
 	}
 }
 

@@ -66,3 +66,19 @@ const program = Effect.gen(function* () {
 pnpm 11 and 12 read no pnpm setting from `.npmrc` (only registry and auth keys), from `npm_config_*` variables or from the old global `rc` file, so neither does `PnpmSettings`. For registries and credentials, use `@effected/npm`'s `NpmConfig`. pnpm's built-in defaults are not applied: an unset `minimumReleaseAge` is `None`, which is also what `pnpm config get` reports. Command-line `--config.*` flags are not modelled either. `@effected/workspaces`' `WorkspaceCatalogs.releaseAgeGate()` is a different question: the gate the workspace file and replayed config-dependency hooks declare, with no environment or global layer.
 
 `PnpmSettings.fromSourcesResult({ workspace, global, env })` does the same merge over text you already hold, with no IO. A file that exists but cannot be read, is not YAML, or whose document is not a mapping fails `PnpmSettingsError` (`reason` `"read"`, `"parse"` or `"shape"`). A missing file is skipped.
+
+## The settings catalog
+
+`@effected/pnpm/settings` exports `PnpmSettingsCatalog`: every setting pnpm 12 reads, keyed by name, each with an Effect schema, a kind, a description, the sources pnpm reads it from (`workspace`, `npmrc`, `global`, `env`), its default and its docs anchor. `readSetting` reads one setting from `PnpmSettings`, typed through its entry. The catalog ships from its own subpath so a consumer of the root never bundles it.
+
+```ts
+import { PnpmSettings } from "@effected/pnpm";
+import { readSetting } from "@effected/pnpm/settings";
+import { Effect, Option, Result } from "effect";
+
+const linker = Effect.gen(function* () {
+  const settings = yield* PnpmSettings.load({ cwd: process.cwd(), env: process.env, platform: process.platform });
+  const read = readSetting(settings, "nodeLinker"); // Result<Option<"isolated" | "hoisted" | ... | { type: "loaded" ... }>, PnpmSettingsError>
+  return Result.isSuccess(read) ? Option.getOrElse(read.success, () => "isolated" as const) : "isolated";
+});
+```

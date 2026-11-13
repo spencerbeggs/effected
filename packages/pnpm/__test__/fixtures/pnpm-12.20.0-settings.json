@@ -1,0 +1,2785 @@
+{
+	"pnpm": "12.20.0",
+	"tag": "v12.20.0",
+	"settings": [
+		{
+			"name": "_auth",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<serde_json::Value>",
+			"locations": [
+				"global"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "addMissingPeerTypes",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/peer-dependencies#addmissingpeertypes",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "aggregateOutput",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "allowBuilds",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<HashMap<String, AllowBuild>>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/build#allowbuilds"
+		},
+		{
+			"name": "allowedDeprecatedVersions",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<BTreeMap<String, String>>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#alloweddeprecatedversions"
+		},
+		{
+			"name": "allowUnusedPatches",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "audit",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<AuditSettings>",
+			"locations": [
+				"workspace",
+				"global"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "auditConfig",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<AuditConfig>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "auditLevel",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<AuditLevel>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "autoDedupe",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#autodedupe",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "autoInstallPeers",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/peer-dependencies#autoinstallpeers",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "autoInstallPeersFromHighestMatch",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/peer-dependencies#autoinstallpeersfromhighestmatch",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "bail",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "blockExoticSubdeps",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#blockexoticsubdeps",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "bootConfig",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<crate::BootConfig>",
+			"locations": [
+				"workspace"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "cacheDir",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#cachedir",
+			"docsType": "**path**"
+		},
+		{
+			"name": "cargo",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<CargoSettings>",
+			"locations": [
+				"workspace"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "catalog",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<IndexMap<String, String>>",
+			"locations": [
+				"workspace"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "catalogMode",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<CatalogMode>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#catalogmode",
+			"docsDefault": "**manual**",
+			"docsType": "**manual**, **strict**, **prefer**"
+		},
+		{
+			"name": "catalogPrune",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global"
+			],
+			"documented": true,
+			"anchor": "settings/other#catalogprune",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "catalogs",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<IndexMap<String, IndexMap<String, String>>>",
+			"locations": [
+				"workspace"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "changedFilesIgnorePattern",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<Vec<String>>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "childConcurrency",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<i32>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/build#childconcurrency",
+			"docsDefault": "**5**",
+			"docsType": "**Number**"
+		},
+		{
+			"name": "ci",
+			"source": "MachineSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#ci",
+			"docsDefault": "**true** (when the environment is detected as CI)",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "cleanupUnusedCatalogs",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "color",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<crate::ColorMode>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/cli#no-color",
+			"docsDefault": "**auto**",
+			"docsType": "**auto**, **always**, **never**"
+		},
+		{
+			"name": "concurrencyGroups",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<IndexMap<String, u32>>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "configDependencies",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<BTreeMap<String, ConfigDependency>>",
+			"locations": [
+				"workspace"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "dangerouslyAllowAllBuilds",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/build#dangerouslyallowallbuilds",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "dedupeDirectDeps",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#dedupedirectdeps",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "dedupeInjectedDeps",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "dedupePeerDependents",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/peer-dependencies#dedupepeerdependents",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "dedupePeers",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/peer-dependencies#dedupepeers",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "deployAllFiles",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#deployallfiles",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "disallowWorkspaceCycles",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "dlxCacheMaxAge",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<u64>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#dlxcachemaxage",
+			"docsDefault": "**1440** (1 day in minutes)",
+			"docsType": "**number**"
+		},
+		{
+			"name": "embedReadme",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#embedreadme",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "enableGlobalVirtualStore",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#enableglobalvirtualstore",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "enableModulesDir",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#enablemodulesdir",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "enablePrePostScripts",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#enableprepostscripts",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "engineStrict",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/cli#enginestrict",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "excludeLinksFromLockfile",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/store#excludelinksfromlockfile",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "extendNodePath",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#extendnodepath",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "externalDependencies",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<BTreeSet<String>>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#externaldependencies",
+			"docsDefault": "**[]**",
+			"docsType": "**string[]**"
+		},
+		{
+			"name": "failIfNoMatch",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "fetchMinSpeedKiBps",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<u64>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/network#fetchminspeedkibps",
+			"docsDefault": "**50 KiB/s**",
+			"docsType": "**Number**"
+		},
+		{
+			"name": "fetchRetries",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<u32>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/network#fetchretries",
+			"docsDefault": "**2**",
+			"docsType": "**Number**"
+		},
+		{
+			"name": "fetchRetryFactor",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<u32>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/network#fetchretryfactor",
+			"docsDefault": "**10**",
+			"docsType": "**Number**"
+		},
+		{
+			"name": "fetchRetryMaxtimeout",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<u64>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/network#fetchretrymaxtimeout",
+			"docsDefault": "**60000 (1 minute)**",
+			"docsType": "**Number**"
+		},
+		{
+			"name": "fetchRetryMintimeout",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<u64>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/network#fetchretrymintimeout",
+			"docsDefault": "**10000 (10 seconds)**",
+			"docsType": "**Number**"
+		},
+		{
+			"name": "fetchTimeout",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<u64>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/network#fetchtimeout",
+			"docsDefault": "**60000 (1 minute)**",
+			"docsType": "**Number**"
+		},
+		{
+			"name": "fetchWarnTimeoutMs",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<u64>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/network#fetchwarntimeoutms",
+			"docsDefault": "**10000 ms (10 seconds)**",
+			"docsType": "**Number**"
+		},
+		{
+			"name": "forceIgnoresPlatform",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#forceignoresplatform",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "forceLegacyDeploy",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "frozenLockfile",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/store#frozenlockfile",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "frozenStore",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/store#frozenstore",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "gitBranchLockfile",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/store#gitbranchlockfile",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "gitChecks",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "gitShallowHosts",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<Vec<String>>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/network#gitshallowhosts",
+			"docsDefault": "**['github.com', 'gist.github.com', 'gitlab.com', 'bitbucket.com', 'bitbucket.org']**",
+			"docsType": "**string[]**"
+		},
+		{
+			"name": "gitTagVersion",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "globalBinDir",
+			"source": "MachineSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#globalbindir",
+			"docsType": "**path**"
+		},
+		{
+			"name": "globalDir",
+			"source": "MachineSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#globaldir",
+			"docsType": "**path**"
+		},
+		{
+			"name": "globalPnpmfile",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "globalShims",
+			"source": "MachineSettings",
+			"rustType": "Option<GlobalShimsSetting>",
+			"locations": [
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#globalshims",
+			"docsDefault": "**\\{ node: auto, deno: auto, bun: auto \\}**",
+			"docsType": "**Boolean**, **Object**"
+		},
+		{
+			"name": "globalVirtualStoreDir",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#globalvirtualstoredir",
+			"docsDefault": "`<store-path>/links`",
+			"docsType": "**path**"
+		},
+		{
+			"name": "hoist",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#hoist",
+			"docsDefault": "**true**",
+			"docsType": "**boolean**"
+		},
+		{
+			"name": "hoistingLimits",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<HoistingLimits>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#hoistinglimits",
+			"docsDefault": "**none**",
+			"docsType": "**none**, **workspaces**, **dependencies**"
+		},
+		{
+			"name": "hoistPattern",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<Option<Vec<String>>>",
+			"triState": true,
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#hoistpattern",
+			"docsDefault": "**['\\*']**",
+			"docsType": "**string[]**"
+		},
+		{
+			"name": "hoistWorkspacePackages",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#hoistworkspacepackages",
+			"docsDefault": "**true**",
+			"docsType": "**boolean**"
+		},
+		{
+			"name": "httpProxy",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"npmrc",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/network#httpproxy",
+			"docsDefault": "**null**",
+			"docsType": "**url**"
+		},
+		{
+			"name": "httpsProxy",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"npmrc",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/network#httpsproxy",
+			"docsDefault": "**null**",
+			"docsType": "**url**"
+		},
+		{
+			"name": "ignoreCompatibilityDb",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#ignorecompatibilitydb",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "ignoredOptionalDependencies",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<Vec<String>>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#ignoredoptionaldependencies"
+		},
+		{
+			"name": "ignorePnpmfile",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "ignoreScripts",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/build#ignorescripts",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "ignoreWorkspace",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "ignoreWorkspaceCycles",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "ignoreWorkspaceRootCheck",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "includeWorkspaceRoot",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "initAuthorEmail",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "initAuthorName",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "initAuthorUrl",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "initLicense",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "initPackageManager",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "initType",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<InitType>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "initVersion",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "injectWorkspacePackages",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "legacyDirFiltering",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "linkWorkspacePackages",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<LinkWorkspacePackages>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "localAddress",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"npmrc",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/network#localaddress",
+			"docsDefault": "**undefined**",
+			"docsType": "**IP Address**"
+		},
+		{
+			"name": "lockfile",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<LockfileSetting>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/store#lockfile",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "lockfileDir",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/store#lockfiledir",
+			"docsDefault": "the workspace root with a [shared lockfile](../workspaces.md#sharedworkspacelockfile), otherwise the project directory",
+			"docsType": "**path**"
+		},
+		{
+			"name": "lockfileIncludeTarballUrl",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/store#lockfileincludetarballurl",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "loglevel",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<crate::LogLevel>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/cli#loglevel",
+			"docsDefault": "**info**",
+			"docsType": "**debug**, **info**, **warn**, **error**, **silent**"
+		},
+		{
+			"name": "macosBackup",
+			"source": "MachineSettings",
+			"rustType": "Option<MacosBackupSettings>",
+			"locations": [
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#macosbackupexcludemodulesdir"
+		},
+		{
+			"name": "maxsockets",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<usize>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/network#maxsockets",
+			"docsDefault": "**unset**",
+			"docsType": "**Number**"
+		},
+		{
+			"name": "maxSockets",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<usize>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "maxTarballUnpackedSize",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<u64>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/network#maxtarballunpackedsize",
+			"docsDefault": "**4294967296 (4 GiB)**",
+			"docsType": "**Number**"
+		},
+		{
+			"name": "mergeGitBranchLockfiles",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "mergeGitBranchLockfilesBranchPattern",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<Vec<String>>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/store#mergegitbranchlockfilesbranchpattern",
+			"docsDefault": "**null**",
+			"docsType": "**Array or null**"
+		},
+		{
+			"name": "minimumReleaseAge",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<u64>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#minimumreleaseage",
+			"docsDefault": "**1440**",
+			"docsType": "**number (minutes)**"
+		},
+		{
+			"name": "minimumReleaseAgeExclude",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<Vec<String>>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#minimumreleaseageexclude",
+			"docsDefault": "**undefined**",
+			"docsType": "**string[]**"
+		},
+		{
+			"name": "minimumReleaseAgeExcludePrune",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#minimumreleaseageexcludeprune",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "minimumReleaseAgeIgnoreMissingTime",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#minimumreleaseageignoremissingtime",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "minimumReleaseAgeStrict",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#minimumreleaseagestrict",
+			"docsDefault": "**true** if [`minimumReleaseAge`](#minimumreleaseage) is explicitly configured, **false** otherwise",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "modulesCacheMaxAge",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<u64>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#modulescachemaxage",
+			"docsDefault": "**10080** (7 days in minutes)",
+			"docsType": "**number**"
+		},
+		{
+			"name": "modulesDir",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#modulesdir",
+			"docsDefault": "**node_modules**",
+			"docsType": "**path**"
+		},
+		{
+			"name": "namedRegistries",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<BTreeMap<String, String>>",
+			"locations": [
+				"workspace",
+				"global"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#namedregistries",
+			"docsDefault": "**undefined**",
+			"docsType": "**Record&lt;string, string&gt;**"
+		},
+		{
+			"name": "networkConcurrency",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<usize>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/network#networkconcurrency",
+			"docsDefault": "**auto (workers × 3 clamped to 64-96)**",
+			"docsType": "**Number**"
+		},
+		{
+			"name": "nodeDownloadMirrors",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<HashMap<String, String>>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/cli#nodedownloadmirrors",
+			"docsDefault": "**undefined**",
+			"docsType": "**Record&lt;string, string&gt;**"
+		},
+		{
+			"name": "nodeExperimentalPackageMap",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#nodeexperimentalpackagemap"
+		},
+		{
+			"name": "nodeLinker",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<NodeLinkerSetting>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#nodelinker",
+			"docsDefault": "**isolated**",
+			"docsType": "**isolated**, **hoisted**, **pnp**, **loaded**, or a loaded-linker object"
+		},
+		{
+			"name": "nodeOptions",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<Option<String>>",
+			"triState": true,
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/build#nodeoptions",
+			"docsDefault": "**NULL**",
+			"docsType": "**String**"
+		},
+		{
+			"name": "nodePackageMap",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<NodePackageMapSettings>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#nodepackagemapmode"
+		},
+		{
+			"name": "nodePackageMapType",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<NodePackageMapType>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#nodepackagemaptype-1"
+		},
+		{
+			"name": "nodeVersion",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/cli#nodeversion",
+			"docsDefault": "the value returned by **node -v**, without the v prefix",
+			"docsType": "**exact semver version (not a range)**"
+		},
+		{
+			"name": "noproxy",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<serde_json::Value>",
+			"locations": [
+				"workspace",
+				"npmrc",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "noProxy",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<serde_json::Value>",
+			"locations": [
+				"workspace",
+				"npmrc",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/network#noproxy",
+			"docsDefault": "**null**",
+			"docsType": "**String**"
+		},
+		{
+			"name": "npmPath",
+			"source": "docs",
+			"locations": [],
+			"documented": true,
+			"anchor": "settings/cli#npmpath",
+			"docsType": "**path**"
+		},
+		{
+			"name": "npmrcAuthFile",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"global"
+			],
+			"documented": true,
+			"anchor": "settings/other#npmrcauthfile",
+			"docsDefault": "**~/.npmrc**",
+			"docsType": "**path**"
+		},
+		{
+			"name": "offline",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "optimisticRepeatInstall",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#optimisticrepeatinstall",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "optional",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#optional",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "overrides",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<IndexMap<String, String>>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#overrides"
+		},
+		{
+			"name": "packageConfigs",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<PackageConfigsSetting>",
+			"locations": [
+				"workspace"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "packageExtensions",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<IndexMap<String, PackageExtension>>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#packageextensions"
+		},
+		{
+			"name": "packageImportMethod",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<PackageImportMethod>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#packageimportmethod",
+			"docsDefault": "**auto**",
+			"docsType": "**auto**, **hardlink**, **copy**, **clone**, **clone-or-copy**"
+		},
+		{
+			"name": "packageLock",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "packages",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<Vec<String>>",
+			"locations": [
+				"workspace"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "patchedDependencies",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<IndexMap<String, String>>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "patchesDir",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "peerDependencyRules",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<PeerDependencyRules>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/peer-dependencies#peerdependencyrules"
+		},
+		{
+			"name": "peersSuffixMaxLength",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<u64>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/store#peerssuffixmaxlength",
+			"docsDefault": "**1000**",
+			"docsType": "**number**"
+		},
+		{
+			"name": "pending",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "permissions",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<IndexMap<String, PackagePermissions>>",
+			"locations": [
+				"workspace"
+			],
+			"documented": true,
+			"anchor": "settings/build#permissions",
+			"docsType": "**Object**"
+		},
+		{
+			"name": "pipelineBase",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "pipelines",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<IndexMap<String, Vec<String>>>",
+			"locations": [
+				"workspace"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "pmOnFail",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<PmOnFail>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/cli#pmonfail",
+			"docsDefault": "**download**",
+			"docsType": "**download**, **error**, **warn**, **ignore**"
+		},
+		{
+			"name": "pnpmfile",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<PnpmfileSetting>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "pnprServer",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#pnprserver",
+			"docsDefault": "**null**",
+			"docsType": "**String**"
+		},
+		{
+			"name": "preferFrozenLockfile",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/store#preferfrozenlockfile",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "preferOffline",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "preferSymlinkedExecutables",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#prefersymlinkedexecutables",
+			"docsDefault": "**true**, when **node-linker** is set to **hoisted** and the system is POSIX",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "preferWorkspacePackages",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "progress",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/cli#progress",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "projectScopedOptionalPeers",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/peer-dependencies#projectscopedoptionalpeers",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "provenance",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "proxy",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"npmrc",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "publicHoistPattern",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<Option<Vec<String>>>",
+			"triState": true,
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#publichoistpattern",
+			"docsDefault": "**[]**",
+			"docsType": "**string[]**"
+		},
+		{
+			"name": "publishBranch",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "publishWaitTimeout",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<u64>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "python",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<PythonSettings>",
+			"locations": [
+				"workspace"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "recursiveInstall",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/cli#recursiveinstall",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "registries",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<IndexMap<String, RegistryEntry>>",
+			"locations": [
+				"workspace",
+				"global"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#registries",
+			"docsDefault": "**undefined**",
+			"docsType": "**Record&lt;string, RegistryDeclaration&gt;** or **Record&lt;string, string&gt;**"
+		},
+		{
+			"name": "registry",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"npmrc",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "registrySupportsTimeField",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#registrysupportstimefield",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "remoteCache",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<RemoteCacheSettings>",
+			"locations": [
+				"workspace",
+				"global"
+			],
+			"documented": true,
+			"anchor": "settings/build#remotecache",
+			"docsDefault": "**undefined**",
+			"docsType": "**Object**"
+		},
+		{
+			"name": "remoteSideEffectsCache",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<RemoteSideEffectsCacheSettings>",
+			"locations": [
+				"workspace",
+				"global"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "reporter",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<crate::ReporterType>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/cli#reporter"
+		},
+		{
+			"name": "reporterHidePrefix",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "requiredScripts",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<Vec<String>>",
+			"locations": [
+				"workspace"
+			],
+			"documented": true,
+			"anchor": "settings/other#requiredscripts"
+		},
+		{
+			"name": "resolutionMode",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<ResolutionMode>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#resolutionmode",
+			"docsDefault": "**highest**",
+			"docsType": "**highest**, **time-based**, **lowest-direct**"
+		},
+		{
+			"name": "resolvePeersFromWorkspaceRoot",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/peer-dependencies#resolvepeersfromworkspaceroot",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "reverse",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "runtime",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/cli#runtime",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "runtimeOnFail",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<RuntimeOnFail>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/cli#runtimeonfail",
+			"docsDefault": "**undefined**",
+			"docsType": "**download**, **error**, **warn**, **ignore**"
+		},
+		{
+			"name": "saveCatalogName",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "saveExact",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#saveexact",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "savePeer",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "savePrefix",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#saveprefix",
+			"docsDefault": "**'^'**",
+			"docsType": "**'^'**, **'~'**, **''**, **'='**"
+		},
+		{
+			"name": "saveTypes",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#savetypes",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "saveWorkspaceProtocol",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<SaveWorkspaceProtocol>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "scope",
+			"source": "MachineSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "scriptShell",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<Option<String>>",
+			"triState": true,
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#scriptshell",
+			"docsDefault": "**null**",
+			"docsType": "**path**"
+		},
+		{
+			"name": "shamefullyHoist",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#shamefullyhoist",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "sharedWorkspaceLockfile",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "shellEmulator",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#shellemulator",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "sideEffectsCache",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<SideEffectsCacheSetting>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/build#sideeffectscache",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean or Object**"
+		},
+		{
+			"name": "sideEffectsCacheReadonly",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/build#sideeffectscachereadonly",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "skills",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<SkillsSettings>",
+			"locations": [
+				"workspace",
+				"global"
+			],
+			"documented": true,
+			"anchor": "settings/build#skillsdirs"
+		},
+		{
+			"name": "skipManifestObfuscation",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "sort",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "stateDir",
+			"source": "MachineSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#statedir",
+			"docsType": "**path**"
+		},
+		{
+			"name": "storeDir",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/store#storedir",
+			"docsType": "**path**"
+		},
+		{
+			"name": "storeIndexFormat",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<StoreIndexFormat>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/store#storeindexformat",
+			"docsDefault": "**sqlite**",
+			"docsType": "**sqlite**, **files**"
+		},
+		{
+			"name": "stream",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "strictDepBuilds",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/build#strictdepbuilds",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "strictPeerDependencies",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/peer-dependencies#strictpeerdependencies",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "strictSsl",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"npmrc",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/network#strictssl",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "strictStorePkgContentCheck",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/store#strictstorepkgcontentcheck",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "supportedArchitectures",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<SupportedArchitectures>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#supportedarchitectures"
+		},
+		{
+			"name": "symlink",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#symlink",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "symlinkedLockfileTargetDirs",
+			"source": "MachineSettings",
+			"rustType": "Option<Vec<String>>",
+			"locations": [
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/store#symlinkedlockfiletargetdirs",
+			"docsDefault": "**[]**",
+			"docsType": "**string[]**"
+		},
+		{
+			"name": "syncInjectedDepsAfterScripts",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<Vec<String>>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "tag",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#tag",
+			"docsDefault": "**latest**",
+			"docsType": "**String**"
+		},
+		{
+			"name": "tagVersionPrefix",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "tasks",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<IndexMap<String, TaskSettings>>",
+			"locations": [
+				"workspace"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "testPattern",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<Vec<String>>",
+			"locations": [
+				"workspace",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "tools",
+			"source": "MachineSettings",
+			"rustType": "Option<BTreeMap<Tool, ToolSettings>>",
+			"locations": [
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/cli#tools",
+			"docsDefault": "**undefined**",
+			"docsType": "**Object**"
+		},
+		{
+			"name": "trustLockfile",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#trustlockfile",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "trustPolicy",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<TrustPolicy>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#trustpolicy",
+			"docsDefault": "**off**",
+			"docsType": "**no-downgrade** | **off**"
+		},
+		{
+			"name": "trustPolicyExclude",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<Vec<String>>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#trustpolicyexclude",
+			"docsDefault": "**[]**",
+			"docsType": "**string[]**"
+		},
+		{
+			"name": "trustPolicyExcludePrune",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#trustpolicyexcludeprune",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "trustPolicyIgnoreAfter",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<u64>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#trustpolicyignoreafter",
+			"docsDefault": "**undefined**",
+			"docsType": "**number (minutes)**"
+		},
+		{
+			"name": "unsafePerm",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/build#unsafeperm",
+			"docsDefault": "**false** IF running as root, ELSE **true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "update",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<UpdateSettings>",
+			"locations": [
+				"workspace",
+				"global"
+			],
+			"documented": true,
+			"anchor": "settings/dependency-resolution#update"
+		},
+		{
+			"name": "updateConfig",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<UpdateConfig>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		},
+		{
+			"name": "updateNotifier",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#updatenotifier",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "useBetaCli",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/cli#usebetacli",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "userAgent",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/network#useragent",
+			"docsDefault": "`pnpm/<version> npm/? node/? <platform> <arch>`",
+			"docsType": "**String**"
+		},
+		{
+			"name": "useStderr",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/other#usestderr",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "verifyDepsBeforeRun",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<VerifyDepsBeforeRun>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/build#verifydepsbeforerun",
+			"docsDefault": "**install**",
+			"docsType": "**install**, **warn**, **error**, **prompt**, **false**"
+		},
+		{
+			"name": "verifyStoreIntegrity",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/store#verifystoreintegrity",
+			"docsDefault": "**true**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "versioning",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<pnpm_versioning::VersioningSettings>",
+			"locations": [
+				"workspace"
+			],
+			"documented": true,
+			"anchor": "settings/versioning#versioningfixed"
+		},
+		{
+			"name": "virtualStoreDir",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<String>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#virtualstoredir",
+			"docsDefault": "**node_modules/.pnpm**"
+		},
+		{
+			"name": "virtualStoreDirMaxLength",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<u64>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#virtualstoredirmaxlength"
+		},
+		{
+			"name": "virtualStoreOnly",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<bool>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#virtualstoreonly",
+			"docsDefault": "**false**",
+			"docsType": "**Boolean**"
+		},
+		{
+			"name": "virtualStoreType",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<VirtualStoreType>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": true,
+			"anchor": "settings/node-modules#virtualstoretype",
+			"docsDefault": "**project**",
+			"docsType": "**project**, **global**"
+		},
+		{
+			"name": "workspaceConcurrency",
+			"source": "WorkspaceSettings",
+			"rustType": "Option<i32>",
+			"locations": [
+				"workspace",
+				"global",
+				"env"
+			],
+			"documented": false,
+			"anchor": ""
+		}
+	],
+	"inert": [
+		"executionEnv",
+		"ignoredBuiltDependencies",
+		"neverBuiltDependencies",
+		"onlyBuiltDependencies",
+		"onlyBuiltDependenciesFile"
+	],
+	"otherVersions": [
+		{
+			"name": "confirmModulesPurge",
+			"version": "pnpm v11"
+		}
+	]
+}
