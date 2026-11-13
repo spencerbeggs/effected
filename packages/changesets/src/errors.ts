@@ -39,6 +39,13 @@ export class ChangesetConfigError extends Schema.TaggedError<ChangesetConfigErro
 /**
  * A changeset names a package the workspace does not contain.
  *
+ * @remarks
+ * `code` is present only when a `manager: "pnpm"` plan raised it, and is
+ * then pnpm's `ERR_PNPM_VERSIONING_UNKNOWN_PACKAGE` (`UnknownPackage`,
+ * `crates/versioning/src/error.rs`). A Changesets plan leaves it out: the
+ * Changesets CLI has no error codes. It is a stored field rather than a getter
+ * because the mode that raised the error is not otherwise on the error.
+ *
  * @public
  */
 export class UnknownPackageError extends Schema.TaggedError<UnknownPackageError>()("UnknownPackageError", {
@@ -46,6 +53,8 @@ export class UnknownPackageError extends Schema.TaggedError<UnknownPackageError>
 	packageName: Schema.String,
 	/** The changeset file that named it. */
 	changeset: Schema.String,
+	/** pnpm's code, when a pnpm plan raised the error. */
+	code: Schema.optionalKey(Schema.Literal("ERR_PNPM_VERSIONING_UNKNOWN_PACKAGE")),
 }) {
 	override get message(): string {
 		return `Changeset ${this.changeset} names ${this.packageName}, which is not in the workspace`;
@@ -58,24 +67,38 @@ export class UnknownPackageError extends Schema.TaggedError<UnknownPackageError>
  * `./`-prefixed workspace-relative directory instead.
  *
  * @remarks
- * Only a BARE name is ambiguous. Under `manager: "pnpm"` the plan is keyed by
- * directory, so a `./` key naming one of several same-named projects plans
- * that project alone; this error is pnpm's `AmbiguousPackage` for an intent
- * (`ERR_PNPM_VERSIONING_AMBIGUOUS_PACKAGE`). A Changesets plan never raises
- * it.
+ * It arises two ways, and `changeset` tells them apart:
+ *
+ * - A pnpm plan's intent names a BARE name that several projects publish:
+ *   pnpm's `AmbiguousPackage` for an intent. `changeset` names the file, and
+ *   `code` is `ERR_PNPM_VERSIONING_AMBIGUOUS_PACKAGE`. Under
+ *   `manager: "pnpm"` the plan is keyed by directory, so a `./` key naming
+ *   one of several same-named projects plans that project alone.
+ * - A name-keyed consumer of a plan ({@link ReleasePlan.edits},
+ *   {@link ReleasePlan.breakingFloors}, {@link ReleasePlan.releasesByName})
+ *   is handed a pnpm plan holding two releases with one name, which it cannot
+ *   tell apart. `changeset` and `code` are absent: the refusal is the kit's,
+ *   not pnpm's.
+ *
+ * A Changesets plan never raises it, so `code` is pnpm's whenever present.
  *
  * @public
  */
 export class AmbiguousPackageError extends Schema.TaggedError<AmbiguousPackageError>()("AmbiguousPackageError", {
-	/** The package name the changeset gave. */
+	/** The package name at fault. */
 	packageName: Schema.String,
 	/** The workspace-relative directories of the projects that publish it, in discovery order. */
 	directories: Schema.Array(Schema.String),
-	/** The changeset file that named it. */
-	changeset: Schema.String,
+	/** The changeset file that named it; absent when a plan's twin releases were refused. */
+	changeset: Schema.optionalKey(Schema.String),
+	/** pnpm's code, when a pnpm plan raised the error for an intent. */
+	code: Schema.optionalKey(Schema.Literal("ERR_PNPM_VERSIONING_AMBIGUOUS_PACKAGE")),
 }) {
 	override get message(): string {
-		return `Changeset ${this.changeset} names ${this.packageName}, which ${this.directories.length} projects publish (${this.directories.map((dir) => `./${dir}`).join(", ")}); name one by its ./ directory`;
+		const dirs = this.directories.map((dir) => `./${dir}`).join(", ");
+		return this.changeset === undefined
+			? `The release plan releases ${this.packageName} from ${this.directories.length} projects (${dirs}), which a name-keyed consumer cannot tell apart`
+			: `Changeset ${this.changeset} names ${this.packageName}, which ${this.directories.length} projects publish (${dirs}); name one by its ./ directory`;
 	}
 }
 
@@ -173,6 +196,22 @@ export type VersioningErrorCode =
 	| "ERR_PNPM_INVALID_VERSIONING_LEDGER"
 	| "ERR_PNPM_VERSIONING_INTERNAL_RANGE";
 
+/** The reasons, in one list: `VersioningError`'s `reason` schema and the code table both read it. */
+const VERSIONING_REASONS = [
+	"maxBumpExceeded",
+	"unreleasablePackage",
+	"epicOutOfBand",
+	"epicUnknownLead",
+	"epicOverlap",
+	"epicFixedGroupConflict",
+	"conflictingConfig",
+	"duplicateRelease",
+	"ambiguousPackage",
+	"ambiguousLedgerEntry",
+	"internalRange",
+] as const;
+
+/** Exactly one code per reason: `satisfies` refuses a missing or an extra key. */
 const VERSIONING_CODES = {
 	maxBumpExceeded: "ERR_PNPM_VERSIONING_MAX_BUMP_EXCEEDED",
 	unreleasablePackage: "ERR_PNPM_VERSIONING_UNRELEASABLE_PACKAGE",
@@ -185,7 +224,7 @@ const VERSIONING_CODES = {
 	ambiguousPackage: "ERR_PNPM_VERSIONING_AMBIGUOUS_PACKAGE",
 	ambiguousLedgerEntry: "ERR_PNPM_INVALID_VERSIONING_LEDGER",
 	internalRange: "ERR_PNPM_VERSIONING_INTERNAL_RANGE",
-} as const satisfies Record<string, VersioningErrorCode>;
+} as const satisfies Record<(typeof VERSIONING_REASONS)[number], VersioningErrorCode>;
 
 /**
  * pnpm's native versioning refuses the plan: a `versioning` rule in
@@ -233,19 +272,7 @@ const VERSIONING_CODES = {
  */
 export class VersioningError extends Schema.TaggedError<VersioningError>()("VersioningError", {
 	/** Which of pnpm's refusals this is. */
-	reason: Schema.Literals([
-		"maxBumpExceeded",
-		"unreleasablePackage",
-		"epicOutOfBand",
-		"epicUnknownLead",
-		"epicOverlap",
-		"epicFixedGroupConflict",
-		"conflictingConfig",
-		"duplicateRelease",
-		"ambiguousPackage",
-		"ambiguousLedgerEntry",
-		"internalRange",
-	]),
+	reason: Schema.Literals(VERSIONING_REASONS),
 	/** The package at fault, by name, or the reference as written for `ambiguousPackage`. */
 	package: Schema.optionalKey(Schema.String),
 	/** The version the plan would release (`epicOutOfBand`, `duplicateRelease`). */

@@ -60,14 +60,12 @@ const assemble = (
 		manager: "pnpm",
 		...(options.ledger === undefined ? {} : { ledger: options.ledger }),
 		...(options.versioning === undefined ? {} : { versioning: options.versioning }),
-		// `assemble_with_unpublished`: the registry confirms every current version but the unpublished ones.
+		// `assemble_with_unpublished`: the registry has every manifest version but the unpublished ones.
 		...(options.unpublished === undefined
 			? {}
 			: {
-					currentVersions: new Map(
-						packages
-							.filter((pkg) => !options.unpublished?.includes(pkg.relativePath))
-							.map((pkg) => [pkg.relativePath, pkg.version ?? ""] as const),
+					published: new Set(
+						packages.map((pkg) => pkg.relativePath).filter((dir) => !options.unpublished?.includes(dir)),
 					),
 				}),
 	});

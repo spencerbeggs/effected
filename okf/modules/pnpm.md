@@ -9,7 +9,7 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-13T01:55:22Z
+  at: 2026-11-13T03:52:04Z
 sources:
   - id: package-manager-model-design
     resource: ../../docs/superpowers/specs/2026-11-12-package-manager-model-design.md
@@ -29,7 +29,7 @@ sources:
     resource: ../../packages/pnpm/__test__/fixtures/pnpm-12.20.0-settings.README.md
 integrity:
   generated:
-    body: 7e294a2098ec2a3c
+    body: 69879317b5de8792
 ---
 
 # pnpm
@@ -169,6 +169,8 @@ The corrections over rolldown-pnpm-config's former descriptors, each pinned by `
 ## Current state
 
 The root entry exports `PnpmSettings`, `PnpmSettingsError`, `ReleaseAgeGate`, `PartialReleaseAgeGate`, `PnpmMatcher`, `OverrideKey`, `OverrideKeyError`, `PeerDependencyRules`, `VersioningConfig`, `Epic`, `PnpmWorkspaceFile`, `PnpmWorkspaceFileError`, `PnpmLockDocument`, `PnpmEnvDocument` and `PnpmExtension`, pinned by `__test__/entrypoints.test.ts`; the `./settings` subpath exports the catalog above.
+
+`VersioningConfig` reads `pnpm-workspace.yaml`'s `versioning` block the way pnpm's release planner reads it, not the way `pnpm lane` writes it. A lane named `main` in any letter case is refused, as `resolve_lanes` refuses it (`crates/versioning/src/plan/configuration.rs:18`). The stricter syntax, alphanumerics and hyphens and not purely numeric, belongs to `pnpm lane`'s `check_lane_name` (`crates/cli/src/cli_args/lane.rs:203`) when it assigns a new lane. No kit package assigns lanes, so the schema does not carry that check, and a file pnpm plans from decodes here.
 
 The `PnpmEnvLockfile` readers, `ConfigDependencyLock` and `PackageManagerLock` did not move here, though the design spec lists `PnpmEnvLockfile` among the manager-owned types. This is a ruled deviation: the readers fail with `lockfiles`' own `LockfileParseError | LockfileFramingError`, which makes them part of the reading layer, so they stay in [lockfiles](lockfiles.md) over the `PnpmEnvDocument` schema this package owns.
 

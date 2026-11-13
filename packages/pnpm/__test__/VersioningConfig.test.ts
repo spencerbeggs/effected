@@ -49,20 +49,18 @@ describe("VersioningConfig", () => {
 		if (Result.isSuccess(result)) assert.strictEqual(result.success.lanes, undefined);
 	});
 
-	it("rejects a lane named main, in any case", () => {
+	it("rejects a lane named main, in any case, as the planner's reader does (configuration.rs:18)", () => {
 		assert.isTrue(Result.isFailure(decode({ lanes: { "@a/b": "main" } })));
 		assert.isTrue(Result.isFailure(decode({ lanes: { "@a/b": "Main" } })));
+		assert.isTrue(Result.isFailure(decode({ lanes: { "@a/b": "MAIN" } })));
 	});
 
-	it("rejects a purely numeric lane", () => {
-		assert.isTrue(Result.isFailure(decode({ lanes: { "@a/b": "123" } })));
-		assert.isTrue(Result.isSuccess(decode({ lanes: { "@a/b": "1-rc" } })));
-	});
-
-	it("rejects a lane with a character other than alphanumerics and hyphens", () => {
-		assert.isTrue(Result.isFailure(decode({ lanes: { "@a/b": "al.pha" } })));
-		assert.isTrue(Result.isFailure(decode({ lanes: { "@a/b": "" } })));
-		assert.isTrue(Result.isSuccess(decode({ lanes: { "@a/b": "next-2" } })));
+	it("reads any other lane name, as pnpm reads one: the name syntax is the pnpm lane command's, not the reader's", () => {
+		// `check_lane_name` (crates/cli/src/cli_args/lane.rs:203-215) refuses these when `pnpm lane` assigns
+		// a lane; `resolve_lanes` reads an existing file without that check.
+		for (const lane of ["123", "al.pha", "next-2", "1-rc", "mainline"]) {
+			assert.isTrue(Result.isSuccess(decode({ lanes: { "@a/b": lane } })), lane);
+		}
 	});
 
 	it("rejects maxBump: none", () => {

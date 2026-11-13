@@ -22,13 +22,14 @@ import {
 // (`ReleaseCause`'s derived Ord, crates/versioning/src/plan.rs:56-68). A
 // rejected case must fail VersioningError carrying the same ERR_PNPM_* code.
 //
-// Every case is planned with an empty `currentVersions`: the recorder pointed
-// pnpm at an unreachable registry, which its probe reads as "not published"
-// (crates/cli/src/cli_args/changelog.rs:251-289). Private projects are never
-// probed, so only `first-release` (the one public case) debuts.
+// Every case is planned with an empty `published`: the recorder pointed pnpm at
+// an unreachable registry, and the pnpm that ran treated that as "not
+// published" (see the fixtures README). Private projects are never probed
+// (crates/cli/src/cli_args/changelog.rs:261-264), so only `first-release`, the
+// one public case, debuts.
 
 const config = Schema.decodeUnknownSync(ChangesetConfig)({});
-const registry: ReadonlyMap<string, string> = new Map();
+const published: ReadonlySet<string> = new Set();
 
 const assemble = (workspace: OracleWorkspace) =>
 	ReleasePlan.assemble({
@@ -38,7 +39,7 @@ const assemble = (workspace: OracleWorkspace) =>
 		manager: "pnpm",
 		...(workspace.versioning === undefined ? {} : { versioning: workspace.versioning }),
 		ledger: Ledger.make({ entries: workspace.ledger }),
-		currentVersions: registry,
+		published,
 	});
 
 const applied = (plan: ReleasePlan): ReadonlyArray<AppliedRelease> =>
@@ -58,8 +59,8 @@ const planOrThrow = (workspace: OracleWorkspace): ReadonlyArray<AppliedRelease> 
 const cases = caseNames();
 
 it("finds every recorded pnpm-native case", () => {
-	// Eleven are recorded today; a silently empty walk would pass every loop below.
-	assert.strictEqual(cases.length, 11);
+	// Twelve are recorded today; a silently empty walk would pass every loop below.
+	assert.strictEqual(cases.length, 12);
 });
 
 describe("ReleasePlan.assemble under pnpm, against pnpm 12.20.0", () => {

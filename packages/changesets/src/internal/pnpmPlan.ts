@@ -95,9 +95,11 @@ import { AmbiguousPackageError, UnknownPackageError, VersioningError } from "../
 import type { Ledger } from "../Ledger.js";
 import { normalizeProjectDir } from "../Ledger.js";
 import type { PendingChangeset } from "../PendingChangesets.js";
+import type { ReleaseCause } from "../ReleaseCause.js";
+import { sortCauses } from "../ReleaseCause.js";
 import { parseRange } from "./versions.js";
 
-type Cause = "dependencies" | "epic" | "fixed" | "intent";
+type Cause = ReleaseCause;
 type PnpmError = UnknownPackageError | AmbiguousPackageError | VersioningError;
 
 /** Ends planning with a typed failure; never escapes {@link planPnpm}. */
@@ -122,8 +124,8 @@ export interface PnpmPlanInput {
 	readonly changesets: ReadonlyArray<PendingChangeset>;
 	readonly versioning?: VersioningConfig | undefined;
 	readonly ledger?: Ledger | undefined;
-	/** Directory to the version the registry confirms; absent means no registry was asked. */
-	readonly currentVersions?: ReadonlyMap<string, string> | undefined;
+	/** The directories whose manifest version the registry already has; absent means no registry was asked. */
+	readonly published?: ReadonlySet<string> | undefined;
 	readonly enforceWorkspaceProtocol?: boolean | undefined;
 	/** Every release becomes `0.0.0-<suffix>`, and bands and `maxBump` go unchecked. */
 	readonly snapshotSuffix?: string | undefined;
@@ -433,11 +435,22 @@ const resolveIntents = (changesets: ReadonlyArray<PendingChangeset>, workspace: 
 		for (const [reference, bump] of changeset.releases) {
 			const dirs = workspace.refs.refToDirs(reference);
 			if (dirs.length === 0) {
-				throw new Halt(new UnknownPackageError({ packageName: reference, changeset: changeset.file }));
+				throw new Halt(
+					new UnknownPackageError({
+						packageName: reference,
+						changeset: changeset.file,
+						code: "ERR_PNPM_VERSIONING_UNKNOWN_PACKAGE",
+					}),
+				);
 			}
 			if (dirs.length > 1) {
 				throw new Halt(
-					new AmbiguousPackageError({ packageName: reference, directories: [...dirs], changeset: changeset.file }),
+					new AmbiguousPackageError({
+						packageName: reference,
+						directories: [...dirs],
+						changeset: changeset.file,
+						code: "ERR_PNPM_VERSIONING_AMBIGUOUS_PACKAGE",
+					}),
 				);
 			}
 			const dir = dirs[0] as string;
@@ -660,7 +673,7 @@ const assembleOnce = (ctx: Assembly, unpublished: ReadonlySet<string>): Readonly
 			oldVersion: participant(dir).current,
 			newVersion: ctx.snapshotSuffix === undefined ? (next.get(dir) as string) : `0.0.0-${ctx.snapshotSuffix}`,
 			changesets: own.map((intent) => intent.changeset.id),
-			causes: (["dependencies", "epic", "fixed", "intent"] as const).filter((cause) => entry.causes.has(cause)),
+			causes: sortCauses(entry.causes),
 		};
 	});
 	releases.sort((a, b) => byKey(a.name, b.name) || byKey(a.dir, b.dir));
@@ -765,11 +778,14 @@ const enforceMaxBump = (releases: ReadonlyArray<PnpmRelease>, ctx: Assembly): vo
 };
 
 /**
- * Plan a pnpm-native release. With `currentVersions` the plan is made twice,
- * as `pnpm version -r` makes it (crates/cli/src/cli_args/version/release.rs:86-115):
+ * Plan a pnpm-native release. With `published` the plan is made twice, as
+ * `pnpm version -r` makes it (crates/cli/src/cli_args/version/release.rs:86-115):
  * once with nothing unpublished, then again with every public release of that
- * first plan whose current version the registry does not confirm treated as a
- * first release (`unpublished_release_dirs`, crates/cli/src/cli_args/changelog.rs:251).
+ * first plan whose directory `published` lacks treated as a first release
+ * (`unpublished_release_dirs`, crates/cli/src/cli_args/changelog.rs:251). pnpm's
+ * probe asks whether the registry has exactly the manifest version
+ * (`package.versions.contains_key(version)`, changelog.rs:322), which is what
+ * a directory's membership means.
  */
 export const planPnpm = (input: PnpmPlanInput): Result.Result<PnpmPlan, PnpmError> => {
 	try {
@@ -806,12 +822,12 @@ export const planPnpm = (input: PnpmPlanInput): Result.Result<PnpmPlan, PnpmErro
 			snapshotSuffix: input.snapshotSuffix,
 		};
 		let releases = assembleOnce(ctx, new Set());
-		const registry = input.currentVersions;
-		if (registry !== undefined) {
+		const published = input.published;
+		if (published !== undefined) {
 			const unpublished = new Set(
 				releases
 					.filter((release) => !(workspace.participants.get(release.dir) as Participant).private)
-					.filter((release) => registry.get(release.dir) !== release.oldVersion)
+					.filter((release) => !published.has(release.dir))
 					.map((release) => release.dir),
 			);
 			if (unpublished.size > 0) releases = assembleOnce(ctx, unpublished);

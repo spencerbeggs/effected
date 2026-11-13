@@ -66,7 +66,8 @@ Recorded 2026-11-12 with pnpm 12.20.0, matching the vendored source at
 | `ignore-real-bump` | An ignored package with a patch intent: `ERR_PNPM_VERSIONING_UNRELEASABLE_PACKAGE`. |
 | `fixed-lockstep` | `1.2.0` + minor in a group with a `1.0.0` member: both -> `1.3.0`; causes `fixed,intent` and `fixed`. |
 | `dependents-ripple` | A major on `@p/a` takes a private dependent through `workspace:^`: `@p/b` `1.0.0` -> `1.0.1`, cause `dependencies`. |
-| `first-release` | A public package with no registry version (the registry is unreachable, which pnpm treats as "not published"): it debuts at its manifest version, `1.0.0` -> `1.0.0`, though status still says `minor`. The ledger records the intent as consumed against `@p/a@1.0.0`. |
+| `first-release` | A public package and no reachable registry: it debuts at its manifest version, `1.0.0` -> `1.0.0`, though status still says `minor`. The ledger records the intent as consumed against `@p/a@1.0.0`. |
+| `lane-prerelease-caret-dependent` | A minor on a lane package with a `workspace:^` dependent: `@p/a` `1.0.0` -> `1.1.0-alpha.0`, and the dependent ripples, `@p/b` `1.0.0` -> `1.0.1`, cause `dependencies`. A prerelease does not satisfy the materialised `^1.0.0`. |
 
 ## Where pnpm differs from what the plan expected
 
@@ -82,3 +83,16 @@ Recorded 2026-11-12 with pnpm 12.20.0, matching the vendored source at
 - **Private packages skip the registry check; public ones do not.** A public
   package is the only way to reach first-release semantics, so `first-release`
   is the one public case.
+- **What `first-release` proves, and what it does not.** In the pnpm 12.20.0
+  CLI that recorded it, a registry that could not be reached left the package
+  unpublished, so it debuted. The vendored source does not read that way: the
+  probe propagates a send error (`.send().await.into_diagnostic()?`,
+  `crates/cli/src/cli_args/changelog.rs:308-310`), and only a 404 is "not
+  published". So the case pins "no reachable registry, so it debuts" for the
+  binary that ran. The exact-version rule (a package counts as published when
+  the registry has its manifest version, `package.versions.contains_key`,
+  changelog.rs:322) rests on the source alone; no case reaches a registry.
+- **A lane prerelease leaves `workspace:^`.** `1.1.0-alpha.0` does not satisfy
+  `^1.0.0`, the range `workspace:^` materialises to, so the dependent ripples
+  (`lane-prerelease-caret-dependent`). That settles the prerelease rule from
+  pnpm itself, not from npm's range semantics.

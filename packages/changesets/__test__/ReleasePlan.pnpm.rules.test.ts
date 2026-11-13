@@ -49,7 +49,7 @@ const assemble = (
 	options: {
 		readonly versioning?: Partial<VersioningConfig>;
 		readonly ledger?: ReadonlyArray<LedgerEntry>;
-		readonly currentVersions?: ReadonlyMap<string, string>;
+		readonly published?: ReadonlySet<string>;
 		readonly enforceWorkspaceProtocol?: boolean;
 	} = {},
 ) =>
@@ -60,7 +60,7 @@ const assemble = (
 		manager: "pnpm",
 		...(options.versioning === undefined ? {} : { versioning: VersioningConfig.make(options.versioning) }),
 		...(options.ledger === undefined ? {} : { ledger: Ledger.make({ entries: [...options.ledger] }) }),
-		...(options.currentVersions === undefined ? {} : { currentVersions: options.currentVersions }),
+		...(options.published === undefined ? {} : { published: options.published }),
 		...(options.enforceWorkspaceProtocol === undefined
 			? {}
 			: { enforceWorkspaceProtocol: options.enforceWorkspaceProtocol }),
@@ -265,41 +265,36 @@ describe("pnpm propagation", () => {
 });
 
 describe("pnpm first releases", () => {
-	it("a private project is never probed, so a missing registry version does not make it debut (changelog.rs:261-264)", () => {
+	// `published` holds the directories whose MANIFEST version the registry has: pnpm's probe asks for
+	// exactly that version (`package.versions.contains_key(version)`, cli_args/changelog.rs:322).
+	it("a private project is never probed, so it never debuts (changelog.rs:261-264)", () => {
 		assert.deepStrictEqual(
 			releases(
-				assemble([at("lib", "lib", { private: true })], [intent("one.md", { lib: "minor" })], {
-					currentVersions: new Map(),
-				}),
+				assemble([at("lib", "lib", { private: true })], [intent("one.md", { lib: "minor" })], { published: new Set() }),
 			),
 			[["lib", "lib", "1.1.0", "intent"]],
 		);
 	});
 
-	it("a public project the registry has at another version debuts: pnpm probes its manifest version", () => {
+	it("a public project whose manifest version is not published debuts at it", () => {
 		assert.deepStrictEqual(
-			releases(
-				assemble([at("lib", "lib")], [intent("one.md", { lib: "minor" })], {
-					currentVersions: new Map([["lib", "0.9.0"]]),
-				}),
-			),
+			releases(assemble([at("lib", "lib")], [intent("one.md", { lib: "minor" })], { published: new Set() })),
 			[["lib", "lib", "1.0.0", "intent"]],
 		);
 	});
 
-	it("without currentVersions nothing debuts", () => {
+	it("a published manifest version bumps normally, even when the registry's latest is newer", () => {
+		// The registry's latest (say 2.0.0) plays no part: only the 1.0.0 membership the probe found does.
+		assert.deepStrictEqual(
+			releases(assemble([at("lib", "lib")], [intent("one.md", { lib: "minor" })], { published: new Set(["lib"]) })),
+			[["lib", "lib", "1.1.0", "intent"]],
+		);
+	});
+
+	it("without published the first-release rule is off and nothing debuts", () => {
 		assert.deepStrictEqual(releases(assemble([at("lib", "lib")], [intent("one.md", { lib: "minor" })])), [
 			["lib", "lib", "1.1.0", "intent"],
 		]);
-	});
-
-	it("only the first plan's releases are probed: a dependent reached on the second pass is not", () => {
-		// The second pass is planned with lib unpublished; app joins no plan here, since lib's debut moves nothing.
-		const app = at("app", "app", { dependencies: { lib: "workspace:*" } });
-		assert.deepStrictEqual(
-			releases(assemble([at("lib", "lib"), app], [intent("one.md", { lib: "patch" })], { currentVersions: new Map() })),
-			[["lib", "lib", "1.0.0", "intent"]],
-		);
 	});
 });
 
@@ -333,5 +328,84 @@ describe("causes in a Changesets plan", () => {
 				],
 			);
 		}
+	});
+});
+
+describe("name-keyed readers of a pnpm plan with twin releases", () => {
+	// The twin plan of ReleasePlan.assemble.test.ts' "plans a ./dir key naming one of two same-named
+	// packages": two releases named util. Edits keyed by name would land both on one manifest.
+	const twinPlan = (): ReleasePlan => {
+		const result = assemble(twins, [intent("one.md", { "./a/util": "patch", "./b/util": "minor" })]);
+		if (Result.isFailure(result)) throw new Error(result.failure.message);
+		return result.success;
+	};
+	const isTwinRefusal = (failure: { readonly _tag: string } | undefined): boolean =>
+		failure?._tag === "AmbiguousPackageError" &&
+		"directories" in failure &&
+		(failure.directories as ReadonlyArray<string>).join() === "a/util,b/util" &&
+		!("changeset" in failure) &&
+		!("code" in failure);
+
+	it("ReleasePlan.edits refuses it typed", () => {
+		const result = ReleasePlan.edits(twinPlan(), { packages: twins, config });
+		assert.isTrue(Result.isFailure(result) && isTwinRefusal(result.failure));
+	});
+
+	it("ReleasePlan.breakingFloors refuses it typed", () => {
+		const result = ReleasePlan.breakingFloors(twinPlan(), { packages: twins, config });
+		assert.isTrue(Result.isFailure(result) && isTwinRefusal(result.failure));
+	});
+
+	it("ReleasePlan.releasesByName refuses it, and keys a plan with one release per name", () => {
+		const refused = ReleasePlan.releasesByName(twinPlan());
+		assert.isTrue(Result.isFailure(refused) && isTwinRefusal(refused.failure));
+		const result = assemble([at("lib", "lib")], [intent("one.md", { lib: "patch" })]);
+		assert.isTrue(Result.isSuccess(result));
+		if (Result.isSuccess(result)) {
+			const keyed = ReleasePlan.releasesByName(result.success);
+			assert.isTrue(Result.isSuccess(keyed) && keyed.success.get("lib")?.newVersion === "1.0.1");
+		}
+	});
+
+	it("ReleasePlan.edits still reads a pnpm plan without twins", () => {
+		const lone = [at("lib", "lib")];
+		const result = assemble(lone, [intent("one.md", { lib: "patch" })]);
+		assert.isTrue(Result.isSuccess(result));
+		if (Result.isSuccess(result)) {
+			const edits = ReleasePlan.edits(result.success, { packages: lone, config });
+			assert.isTrue(Result.isSuccess(edits) && edits.success.manifests.map((m) => m.version).join() === "1.0.1");
+		}
+	});
+});
+
+describe("pnpm codes on the intent-key errors (error.rs:37-42)", () => {
+	it("a pnpm plan's unknown key carries ERR_PNPM_VERSIONING_UNKNOWN_PACKAGE", () => {
+		const result = assemble([at("lib", "lib")], [intent("one.md", { ghost: "patch" })]);
+		assert.isTrue(
+			Result.isFailure(result) &&
+				result.failure._tag === "UnknownPackageError" &&
+				result.failure.code === "ERR_PNPM_VERSIONING_UNKNOWN_PACKAGE",
+		);
+	});
+
+	it("a pnpm plan's ambiguous bare key carries ERR_PNPM_VERSIONING_AMBIGUOUS_PACKAGE", () => {
+		const result = assemble(twins, [intent("one.md", { util: "patch" })]);
+		assert.isTrue(
+			Result.isFailure(result) &&
+				result.failure._tag === "AmbiguousPackageError" &&
+				result.failure.code === "ERR_PNPM_VERSIONING_AMBIGUOUS_PACKAGE" &&
+				result.failure.changeset === "one.md",
+		);
+	});
+
+	it("a Changesets plan's unknown key carries no code: the Changesets CLI has none", () => {
+		const result = ReleasePlan.assemble({
+			packages: [at("lib", "lib")],
+			changesets: [intent("one.md", { ghost: "patch" })],
+			config,
+		});
+		assert.isTrue(
+			Result.isFailure(result) && result.failure._tag === "UnknownPackageError" && !("code" in result.failure),
+		);
 	});
 });

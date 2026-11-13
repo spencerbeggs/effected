@@ -13,6 +13,7 @@ import { ChangesetConfig } from "./ChangesetConfig.js";
 import type { AmbiguousPackageError, MissingPackageError, VersioningError } from "./errors.js";
 import { ChangesetConfigError, SnapshotPreModeError, SnapshotTemplateError, UnknownPackageError } from "./errors.js";
 import { planPnpm } from "./internal/pnpmPlan.js";
+import { twinReleases } from "./internal/twins.js";
 import type { DependencyKind } from "./internal/versions.js";
 import {
 	DEPENDENCY_KINDS,
@@ -26,6 +27,7 @@ import {
 import { Ledger } from "./Ledger.js";
 import { PendingChangeset, PendingChangesets } from "./PendingChangesets.js";
 import { PreState } from "./PreState.js";
+import { ReleaseCause, sortCauses } from "./ReleaseCause.js";
 import type { ReleaseEdits } from "./ReleaseEdits.js";
 import { computeEdits } from "./ReleaseEdits.js";
 import type { ReleaseManager } from "./ReleaseManager.js";
@@ -282,32 +284,6 @@ const readLonePackage = Effect.fnUntraced(function* (directory: string, notFound
 		}),
 	] as ReadonlyArray<WorkspacePackage>;
 });
-
-/**
- * Why a {@link PlannedRelease} is in the plan, pnpm's `ReleaseCause`
- * (`crates/versioning/src/plan.rs:56-68`): `intent`, a changeset naming it;
- * `dependencies`, a dependency it ripples from; `fixed`, a fixed group it
- * belongs to; `epic`, its epic lead crossing a major.
- *
- * @public
- */
-export const ReleaseCause = Schema.Literals(["dependencies", "epic", "fixed", "intent"]);
-
-/**
- * The type of a `ReleaseCause` value.
- *
- * @public
- */
-export type ReleaseCause = typeof ReleaseCause.Type;
-
-/** pnpm's report order, the derived `Ord` of `ReleaseCause`: alphabetical. */
-const CAUSE_ORDER: ReadonlyArray<ReleaseCause> = ["dependencies", "epic", "fixed", "intent"];
-
-/** Causes in pnpm's order, each once. */
-const sortCauses = (causes: Iterable<ReleaseCause>): Array<ReleaseCause> => {
-	const present = new Set(causes);
-	return CAUSE_ORDER.filter((cause) => present.has(cause));
-};
 
 /**
  * One package's place in a {@link ReleasePlan}.
@@ -604,13 +580,14 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 *   of planning. `maxBump` caps the final plan's real version distance.
 	 * - `ledger`: which intents each project already consumed, matched by `dir`,
 	 *   or by name for a bare-list entry.
-	 * - `currentVersions`: the registry seam, project directory to the version
-	 *   the registry confirms for it. Absent, nothing is probed. Given, a public
-	 *   release whose manifest version the map does not confirm is a first
-	 *   release: it keeps its manifest version (on a lane,
-	 *   `<stable>-<lane>.0`) while still reporting its intent's bump and
+	 * - `published`: the registry seam, the project directories whose MANIFEST
+	 *   version the registry already has (pnpm probes exactly that version, so
+	 *   a newer published `latest` does not count). Absent, the first-release
+	 *   rule is off and nothing debuts. Given, a public release whose directory
+	 *   the set lacks is a first release: it keeps its manifest version (on a
+	 *   lane, `<stable>-<lane>.0`) while still reporting its intent's bump and
 	 *   consuming its intents, and the plan is made again, as `pnpm version -r`
-	 *   makes it. A private project is never probed.
+	 *   makes it. A private project is never probed, so never debuts.
 	 * - `enforceWorkspaceProtocol`: refuse an internal production dependency
 	 *   that is not a `workspace:` range, as `pnpm version -r` does. Off is
 	 *   `pnpm change status`'s reading.
@@ -639,7 +616,7 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 * @param input - The packages to plan, the pending changesets, the config
 	 * and, in pre-release mode, the {@link PreState}, and for a snapshot
 	 * release the {@link ReleaseSnapshot}; for a pnpm plan, its `versioning`,
-	 * `ledger`, `currentVersions` and `enforceWorkspaceProtocol`.
+	 * `ledger`, `published` and `enforceWorkspaceProtocol`.
 	 * {@link ReleasePlan.read} decides whether the workspace root is one of the
 	 * packages.
 	 */
@@ -652,7 +629,7 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 		readonly manager?: ReleaseManager;
 		readonly versioning?: VersioningConfig;
 		readonly ledger?: Ledger;
-		readonly currentVersions?: ReadonlyMap<string, string>;
+		readonly published?: ReadonlySet<string>;
 		readonly enforceWorkspaceProtocol?: boolean;
 	}): Result.Result<
 		ReleasePlan,
@@ -741,6 +718,14 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 *   writing caret ranges. A plan without a snapshot deletes that
 	 *   `pre.json`; a caller reproducing the CLI keeps it.
 	 *
+	 * These are Changesets semantics, keyed by package name. pnpm applies its own
+	 * plans, writing `workspace:` ranges it never rewrites and the dependency
+	 * updates its plan carries, which a {@link PlannedRelease} does not; so a
+	 * `manager: "pnpm"` plan is read here as Changesets would apply it. A pnpm
+	 * plan holding two releases with one name (same-named projects) fails
+	 * {@link AmbiguousPackageError} listing their directories, since an edit
+	 * keyed by name would land both on one manifest.
+	 *
 	 * Fails with {@link MissingPackageError} when the plan releases a package
 	 * `packages` lacks, and with `InvalidVersionError` when a bounded range
 	 * must be bumped past a new version that is not a version, which a plan
@@ -754,7 +739,7 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	static edits(
 		plan: ReleasePlan,
 		input: { readonly packages: ReadonlyArray<WorkspacePackage>; readonly config: ChangesetConfig },
-	): Result.Result<ReleaseEdits, MissingPackageError | InvalidVersionError> {
+	): Result.Result<ReleaseEdits, MissingPackageError | InvalidVersionError | AmbiguousPackageError> {
 		return computeEdits(plan, input);
 	}
 
@@ -799,6 +784,9 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 * dependent `patch` however far the dependency moves, so a dependency's
 	 * breaking release ripples as a patch of everything that peers on it.
 	 *
+	 * Keyed by package name, as {@link ReleasePlan.edits} is: a pnpm plan
+	 * holding two releases with one name fails {@link AmbiguousPackageError}.
+	 *
 	 * Fails as {@link ReleasePlan.edits} fails, which a plan
 	 * {@link ReleasePlan.assemble} made from the same packages never does.
 	 *
@@ -811,8 +799,25 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	static breakingFloors(
 		plan: ReleasePlan,
 		input: { readonly packages: ReadonlyArray<WorkspacePackage>; readonly config: ChangesetConfig },
-	): Result.Result<ReadonlyArray<BreakingFloor>, MissingPackageError | InvalidVersionError> {
+	): Result.Result<ReadonlyArray<BreakingFloor>, MissingPackageError | InvalidVersionError | AmbiguousPackageError> {
 		return computeBreakingFloors(plan, input.packages, input.config);
+	}
+
+	/**
+	 * The plan's releases keyed by package name, for a consumer that reads a
+	 * plan by name. A Changesets plan always has one release per name. A
+	 * `manager: "pnpm"` plan is keyed by directory and may release two
+	 * same-named projects; then this fails {@link AmbiguousPackageError} naming
+	 * the first such name and every directory releasing it, rather than letting
+	 * one release silently stand for both.
+	 *
+	 * @param plan - The plan to key.
+	 */
+	static releasesByName(plan: ReleasePlan): Result.Result<ReadonlyMap<string, PlannedRelease>, AmbiguousPackageError> {
+		const twins = twinReleases(plan.releases);
+		return twins === undefined
+			? Result.succeed(new Map(plan.releases.map((release) => [release.name, release])))
+			: Result.fail(twins);
 	}
 
 	/**
@@ -986,7 +991,7 @@ const assemblePnpm = (input: Parameters<typeof ReleasePlan.assemble>[0]): Releas
 		changesets: input.changesets,
 		versioning: input.versioning,
 		ledger: input.ledger,
-		currentVersions: input.currentVersions,
+		published: input.published,
 		enforceWorkspaceProtocol: input.enforceWorkspaceProtocol,
 		snapshotSuffix: suffix,
 	});
@@ -1018,7 +1023,7 @@ const assembleOrHalt = (input: {
 	readonly manager?: ReleaseManager;
 	readonly versioning?: VersioningConfig;
 	readonly ledger?: Ledger;
-	readonly currentVersions?: ReadonlyMap<string, string>;
+	readonly published?: ReadonlySet<string>;
 	readonly enforceWorkspaceProtocol?: boolean;
 }): ReleasePlan => {
 	const { packages, changesets, config, pre, snapshot } = input;

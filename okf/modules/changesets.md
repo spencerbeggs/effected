@@ -32,10 +32,10 @@ sources:
     title: "The bundler research report and the owner's rulings"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-13T03:33:37Z
+  at: 2026-11-13T03:52:04Z
 integrity:
   generated:
-    body: f57ec2bfacb74c77
+    body: a52aec61f14e4885
 ---
 
 # @effected/changesets
@@ -75,9 +75,9 @@ A snapshot plan (`changeset version --snapshot`) takes a `snapshot` input with t
 
 Under `manager: "pnpm"`, `assemble` is a port of pnpm 12.20.0's own planner, `assemble_release_plan` in `crates/versioning`, held to pnpm's recorded answers.[^issue-1316] The plan is keyed by project directory, not name: each `PlannedRelease` carries the `dir` pnpm spells (`""` for the root), so two same-named projects each release, a `./dir` changeset key names one of them, and a bare name two projects publish still fails `AmbiguousPackageError`. Each release also carries its `causes` (`dependencies`, `epic`, `fixed`, `intent`, in pnpm's order), which a Changesets plan fills from its own paths. pnpm's other refusals are one `VersioningError` whose `reason` names the rule and whose `code` is pnpm's `ERR_PNPM_*`, so a caller compares it with `pnpm change status`.
 
-The rules are pnpm's, not the Changesets CLI's, and several surprise. Lanes build `X.Y.Z-<lane>.N`, the counter resetting when the stable target changes. Graduation needs the intent that built the prerelease to still be on disk, recorded only under a prerelease ledger key; with nothing lane-consumed, returning to `main` plans nothing. Only `workspace:` specs constrain a dependent, so a 1.x minor stays inside `workspace:^` and a plain range never ripples, and devDependencies never do. Epic members live in their lead's band, `M*100` to `M*100+99`; a lead's new stable major re-bases them to the next floor, and a member past the ceiling is refused. `maxBump` is checked on the final plan against the real version distance, `ignore` refuses a real bump, and a fixed group shares its highest version, bumped. `private` does not exclude a project; it only skips the registry probe. A first release keeps its manifest version: `assemble` takes `currentVersions`, a directory-to-version map from the registry, and a public release whose manifest version it does not confirm debuts, the plan made twice as `pnpm version -r` makes it. `config.json` and `pre.json` are never read.
+The rules are pnpm's, not the Changesets CLI's, and several surprise. Lanes build `X.Y.Z-<lane>.N`, the counter resetting when the stable target changes. Graduation needs the intent that built the prerelease to still be on disk, recorded only under a prerelease ledger key; with nothing lane-consumed, returning to `main` plans nothing. Only `workspace:` specs constrain a dependent, so a 1.x minor stays inside `workspace:^` and a plain range never ripples, and devDependencies never do. Epic members live in their lead's band, `M*100` to `M*100+99`; a lead's new stable major re-bases them to the next floor, and a member past the ceiling is refused. `maxBump` is checked on the final plan against the real version distance, `ignore` refuses a real bump, and a fixed group shares its highest version, bumped. `private` does not exclude a project; it only skips the registry probe. A first release keeps its manifest version: `assemble` takes `published`, the set of directories whose manifest version the registry already has (pnpm probes exactly that version, so a newer `latest` does not count), and a public release outside it debuts, the plan made twice as `pnpm version -r` makes it; with no set the rule is off. `config.json` and `pre.json` are never read.
 
-`ReleasePlan.read` in a pnpm repository plans every discovered project, the root included, reads the `versioning` block through `PnpmSettings` and the ledger through `Ledger.read`, and plans without a `config.json`. The registry is not consulted yet, so nothing debuts through `read`.
+Readers keyed by name, `ReleasePlan.edits`, `breakingFloors` and `releasesByName`, refuse a pnpm plan that releases two same-named projects with `AmbiguousPackageError` rather than let one release stand for both; `edits` applies Changesets semantics, since pnpm applies its own plans. `ReleasePlan.read` in a pnpm repository plans every discovered project, the root included, reads the `versioning` block through `PnpmSettings` and the ledger through `Ledger.read`, and plans without a `config.json`. The registry is not consulted yet, so nothing debuts through `read`.
 
 The oracle is pnpm's applied runs on throwaway copies of `__test__/fixtures/pnpm-native/`, because pnpm prints no JSON plan. A case's prelude, which builds a lane's pre-state with pnpm, is replayed against the planner itself, so the lane cases also check the intermediate plans against the ledger pnpm wrote. pnpm's own engine tests are ported beside it.
 

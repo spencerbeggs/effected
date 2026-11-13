@@ -23,7 +23,8 @@ export interface NextVersions {
  * changeset-affected packages via `ReleasePlan.read`, including pre-release versions in pre
  * mode and fixed or linked groups. Never fails: any failure (not a workspace, missing
  * `.changeset/config.json`, an invalid config or `pre.json`, parse error) degrades to current
- * versions (or an empty map).
+ * versions (or an empty map). So does a pnpm-native plan that releases two same-named projects,
+ * which a name-keyed map cannot hold: `ReleasePlan.releasesByName` refuses it.
  * @public
  */
 export const resolveNextVersions = (
@@ -52,11 +53,15 @@ export const resolveNextVersions = (
 		}
 		yield* ReleasePlan.read(rootDir).pipe(
 			Effect.provide(workspace),
-			// plan.releases includes type:"none" entries (unbumped dependents) whose newVersion equals
-			// the current version, so overlaying every release is safe.
-			Effect.tap((plan) =>
+			// The map is keyed by name, so a pnpm plan releasing two same-named projects is refused
+			// (AmbiguousPackageError) rather than letting one twin's version stand for both; like every
+			// other failure here, the refusal leaves the current versions.
+			Effect.flatMap((plan) => Effect.fromResult(ReleasePlan.releasesByName(plan))),
+			// The plan includes type:"none" entries (unbumped dependents) whose newVersion equals the
+			// current version, so overlaying every release is safe.
+			Effect.tap((byName) =>
 				Effect.sync(() => {
-					for (const r of plan.releases) versions.set(r.name, r.newVersion);
+					for (const [name, r] of byName) versions.set(name, r.newVersion);
 				}),
 			),
 			// No `.changeset/config.json`, an invalid config or pre.json, or unreadable: keep current versions.

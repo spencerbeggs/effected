@@ -42,6 +42,34 @@ function addChangeset(id: string, body: string): void {
 }
 
 describe("resolveNextVersions", () => {
+	describe("in a pnpm-native workspace", () => {
+		const pnpmWorkspace = (twins: boolean): void => {
+			writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - 'packages/*'\nversioning:\n  lanes: {}\n");
+			mkdirSync(join(root, ".changeset"), { recursive: true });
+			const keys = twins
+				? '"@scope/a": minor\n"./packages/u1": patch\n"./packages/u2": minor\n'
+				: '"@scope/a": minor\n';
+			writeFileSync(join(root, ".changeset", "bump.md"), `---\n${keys}---\n\nbump`);
+			if (twins) {
+				pkg(join(root, "packages", "u1"), "@scope/u", "1.0.0");
+				pkg(join(root, "packages", "u2"), "@scope/u", "2.0.0");
+			}
+		};
+
+		it("plans the next versions (the control for the twin refusal below)", async () => {
+			pnpmWorkspace(false);
+			const result = await next(join(root, "packages", "a"));
+			assert.strictEqual(result.versions.get("@scope/a"), "1.1.0");
+		});
+
+		it("keeps current versions when the plan releases two same-named projects, which a name-keyed map cannot hold", async () => {
+			pnpmWorkspace(true);
+			const result = await next(join(root, "packages", "a"));
+			assert.strictEqual(result.versions.get("@scope/a"), "1.0.0");
+			assert.notStrictEqual(result.versions.get("@scope/u"), "2.1.0");
+		});
+	});
+
 	it("keeps a real bump beside a changeset naming another package none", async () => {
 		addChangeset("bump", '---\n"@scope/a": minor\n---\n\nminor');
 		addChangeset("quiet", '---\n"@scope/b": none\n---\n\nno release');

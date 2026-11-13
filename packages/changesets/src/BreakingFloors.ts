@@ -4,7 +4,7 @@ import type { WorkspacePackage } from "@effected/workspaces";
 import { Result, Schema } from "effect";
 import type { BumpType } from "./BumpType.js";
 import type { ChangesetConfig } from "./ChangesetConfig.js";
-import type { MissingPackageError } from "./errors.js";
+import type { AmbiguousPackageError, MissingPackageError } from "./errors.js";
 import { WORKSPACE, cleanVersion, parseRange, satisfies } from "./internal/versions.js";
 import type { EditsPlan } from "./ReleaseEdits.js";
 import { computeEdits } from "./ReleaseEdits.js";
@@ -92,7 +92,7 @@ export const computeBreakingFloors = (
 	plan: EditsPlan,
 	packages: ReadonlyArray<WorkspacePackage>,
 	config: ChangesetConfig,
-): Result.Result<ReadonlyArray<BreakingFloor>, MissingPackageError | InvalidVersionError> => {
+): Result.Result<ReadonlyArray<BreakingFloor>, MissingPackageError | InvalidVersionError | AmbiguousPackageError> => {
 	// Every range as `changeset version` writes it: a range the new version
 	// leaves is rewritten, and so is a held one unless the config holds peers.
 	const edits = computeEdits(plan, { packages, config });

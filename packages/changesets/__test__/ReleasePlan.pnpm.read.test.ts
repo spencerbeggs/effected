@@ -12,7 +12,7 @@ import { ROOT, caseNames, loadExpected, loadPrelude } from "./support/pnpmOracle
 // `versioning` key, the block read through PnpmSettings, the ledger through
 // Ledger.read. No case has a `.changeset/config.json`, which pnpm never reads,
 // so this also pins that a pnpm repository plans without one. The registry is
-// not consulted (`read` takes no `currentVersions` yet), so the one public
+// not consulted (`read` passes no `published` set yet), so the one public
 // case, `first-release`, plans a normal bump here; its debut is pinned by the
 // pure oracle suite.
 
@@ -42,7 +42,7 @@ const layerFor = (name: string) =>
 const cases = caseNames().filter((name) => loadPrelude(name).length === 0 && name !== "first-release");
 
 it("reads every prelude-free case but the one that needs a registry", () => {
-	assert.strictEqual(cases.length, 8);
+	assert.strictEqual(cases.length, 9);
 });
 
 describe("ReleasePlan.read on a pnpm-native repository", () => {

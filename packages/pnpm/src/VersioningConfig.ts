@@ -3,16 +3,16 @@
 
 import { Schema } from "effect";
 
-/** A release lane name: ASCII alphanumerics and hyphens, not purely numeric, and not the reserved `main`. */
+/**
+ * A release lane name as pnpm's planner reads one: anything but the reserved
+ * `main`, in any letter case (`resolve_lanes`, crates/versioning/src/plan/configuration.rs:18).
+ * The alphanumerics-and-hyphens, not-purely-numeric syntax is checked only by
+ * the `pnpm lane` command when it assigns a lane (`check_lane_name`,
+ * crates/cli/src/cli_args/lane.rs:203), so an existing file is not held to it.
+ */
 const LaneName = Schema.String.check(
 	Schema.makeFilter((name: string) =>
-		name.toLowerCase() === "main"
-			? "`main` is the reserved default lane and cannot be assigned"
-			: !/^[A-Za-z0-9-]+$/.test(name)
-				? "a lane name may contain only alphanumerics and hyphens"
-				: /^[0-9]+$/.test(name)
-					? "a lane name cannot be purely numeric"
-					: undefined,
+		name.toLowerCase() === "main" ? "`main` is the reserved default lane and cannot be assigned" : undefined,
 	),
 );
 
@@ -44,8 +44,10 @@ export class Epic extends Schema.Class<Epic>("Epic")({
  * cap, every package on the `main` lane, `registry` changelog storage). A
  * package is named by its name or by a `./`-prefixed workspace directory, in
  * `fixed`, `ignore`, the keys of `lanes`, and an epic's selectors. A lane name
- * may contain only alphanumerics and hyphens, cannot be purely numeric, and
- * cannot be `main`, which is reserved for the default lane. `maxBump` is one of
+ * may be anything but `main` (in any letter case), the reserved default lane,
+ * as pnpm's planner reads the block; the stricter syntax `pnpm lane` applies
+ * when it assigns a lane (alphanumerics and hyphens, not purely numeric) is
+ * not a reading rule. `maxBump` is one of
  * `patch`, `minor` or `major`; there is no `none`. pnpm reads this block from
  * the workspace file only, never from the global config.
  *

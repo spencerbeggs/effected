@@ -69,8 +69,9 @@ const WorkspaceFile = Schema.Struct({
 	versioning: Schema.optionalKey(Schema.NullOr(VersioningConfig)),
 });
 
-const decodeJson = <S extends Schema.ConstraintDecoder<unknown>>(schema: S, path: string): S["Type"] =>
-	Schema.decodeUnknownSync(schema)(JSON.parse(readFileSync(path, "utf8")));
+/** Read a JSON file through its schema: one codec parses the text and decodes it. */
+const decodeJson = <S extends Schema.Top & { readonly DecodingServices: never }>(schema: S, path: string): S["Type"] =>
+	Schema.decodeUnknownSync(Schema.fromJsonString(schema))(readFileSync(path, "utf8"));
 
 /** Every recorded case, by directory name. */
 export const caseNames = (): ReadonlyArray<string> =>
