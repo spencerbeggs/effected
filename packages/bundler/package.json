@@ -1,6 +1,6 @@
 {
 	"name": "@effected/bundler",
-	"version": "0.6.0",
+	"version": "0.6.1",
 	"private": true,
 	"description": "The kit's build pipeline: effected.toml config, tsdown JS and declaration passes, API Extractor meta, SEA, GitHub Action bundles and build journals.",
 	"keywords": ["bundler", "build", "tsdown", "rolldown", "api-extractor", "effect", "effected"],

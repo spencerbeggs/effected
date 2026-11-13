@@ -1,5 +1,15 @@
 # @effected/ai-plugins
 
+## 0.52.0
+
+### Documentation
+
+- The skills teach the new `@effected/pnpm` and `@effected/bun` manager packages, `@effected/npm`'s Node transport, and pnpm-native release planning in `@effected/changesets`.
+- They warn about the lanes dist-tag trap, add testing riders, and describe an API Extractor second entrypoint.
+- The upgrade ledger gains entries for the npm, pnpm, bun, lockfiles, workspaces, changesets, commands and github-actions changes: where each import moved, yarn removal, the new required peers and the pnpm-native release planner.
+
+* The `effected-renovate` skill's ledger entry 0012 now states that passing a runtime `HostedSchema` from `@effected/schemastore` as a config's `hosted` needs `@effected/plugin` 0.6.2 and `@effected/schemastore` 0.33.1 to type-check, and that a config which rebuilt the identity from the plugin's copy should return to the runtime value. A new trap names the `separate declarations of a private property 'resolved'` error those versions fix.
+
 ## 0.51.3
 
 ### Documentation

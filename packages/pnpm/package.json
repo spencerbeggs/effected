@@ -1,6 +1,6 @@
 {
 	"name": "@effected/pnpm",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "Everything pnpm owns alone: its settings, versioning block, overrides grammar, workspace file editor and lockfile document.",
 	"keywords": ["pnpm", "package-manager", "effect", "schema", "effected"],

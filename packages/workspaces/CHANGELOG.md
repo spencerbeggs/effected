@@ -1,5 +1,36 @@
 # @effected/workspaces
 
+## 0.48.0
+
+### Breaking Changes
+
+- `PnpmSettings` moved to `@effected/pnpm`.
+- The `PeerDependencyRules` type and `NoPeerDependencyRules` are removed. Use `PeerDependencyRules` from `@effected/pnpm`, which has a `.empty` value and optional axes. An object literal no longer satisfies `PeerCheckOptions.peerDependencyRules`; pass a `PeerDependencyRules`.
+- `"yarn"` is no longer a `PackageManagerName`.
+- A yarn root is refused when the package acts on it. `UnsupportedPackageManagerError` reports it, and `LocalExec` and `localExecContextSync` fail with it. Discovery still works on yarn repos through `package.json#workspaces`.
+- A root whose only package-manager evidence is an undeclared `yarn.lock` now reports unsupported. It used to fall back to npm.
+- The package is now a boundary-tier library.
+- Catalog resolution follows pnpm 12: a `link:` or `file:` catalog entry resolves as written. The `@pnpm/catalogs.*` dependencies are dropped.
+
+### Features
+
+- The `PublishConfig` projection gains `name`.
+
+### Bug Fixes
+
+- Catalog and importer lookups no longer match inherited object keys.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/bun | dependency | updated | 0.0.0 | 0.1.0 |
+| @effected/commands | dependency | updated | 0.21.0 | 0.22.0 |
+| @effected/lockfiles | dependency | updated | 0.25.0 | 0.26.0 |
+| @effected/npm | dependency | updated | 0.34.1 | 0.35.0 |
+| @effected/package-json | dependency | updated | 0.32.1 | 0.32.2 |
+| @effected/pnpm | dependency | updated | 0.0.0 | 0.1.0 |
+
 ## 0.47.1
 
 ### Dependencies

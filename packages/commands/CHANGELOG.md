@@ -1,5 +1,11 @@
 # @effected/commands
 
+## 0.22.0
+
+### Breaking Changes
+
+- The yarn case is removed from `LocalExec`: `Launcher` is `npm`, `pnpm` or `bun`, and `LocalExec`'s prefixes no longer cover yarn.
+
 ## 0.21.0
 
 ### Maintenance
