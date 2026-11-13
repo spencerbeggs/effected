@@ -2,7 +2,7 @@
 
 Everything pnpm owns alone: its settings catalog, versioning block, overrides grammar, workspace file editor and lockfile document, over the npm vocabulary it shares.
 
-**Boundary tier at the root:** peer-depends on `effect` and `@effected/semver` (closing `@effected/npm`'s peer), depends on `@effected/npm`, `@effected/glob`, `@effected/walker` and `@effected/yaml`; the only IO is `PnpmSettings.load` and `PnpmNpmConfig.load`, through core `FileSystem`/`Path` in `R`, no `node:` import; `"sideEffects": false`.
+**Boundary tier at the root:** peer-depends on `effect`, `@effected/npm` (`NpmConfig` is a nominal class that crosses into the caller's `NpmHttpClient` and `NpmRegistry`, so caller and package must share one copy) and `@effected/semver` (closing `@effected/npm`'s peer), depends on `@effected/glob`, `@effected/walker` and `@effected/yaml`; the only IO is `PnpmSettings.load` and `PnpmNpmConfig.load`, through core `FileSystem`/`Path` in `R`, no `node:` import; `"sideEffects": false`.
 Owner's rule: a concept that is one manager's alone lives in that manager's
 package; a concept shared by several lives in `@effected/npm`. Dependency
 direction: npm <- pnpm/bun <- lockfiles <- workspaces; this package never

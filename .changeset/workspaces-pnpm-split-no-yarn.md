@@ -10,10 +10,10 @@
 * A yarn root is refused when the package acts on it. `UnsupportedPackageManagerError` reports it, and `LocalExec` and `localExecContextSync` fail with it. Discovery still works on yarn repos through `package.json#workspaces`.
 * A root whose only package-manager evidence is an undeclared `yarn.lock` now reports unsupported. It used to fall back to npm.
 * The package is now a boundary-tier library.
+* Catalog resolution follows pnpm 12: a `link:` or `file:` catalog entry resolves as written. The `@pnpm/catalogs.*` dependencies are dropped.
 
 ## Features
 
-* Catalog resolution is implemented against pnpm 12: `link:` and `file:` catalog entries resolve as written. The `@pnpm/catalogs.*` dependencies are dropped.
 * The `PublishConfig` projection gains `name`.
 
 ## Bug Fixes

@@ -236,7 +236,10 @@ Three standing directives for a downstream repo rebuilding against this kit:
   `McpProbe` and friends), `@effected/lsp/testing` (`LspProbe`, `LspProcess`), the two
   import-free crash-guard entrypoints `@effected/kit/guard`
   (`ProcessGuard`, any transport) and `@effected/mcp-kit/guard` (`McpGuard`, its
-  MCP launcher), and `@effected/schema-org/validate` (offline
+  MCP launcher), `@effected/npm/node` (`NpmHttpClient` and
+  `NpmTransportError`, behind the optional `@effect/platform-node` peer),
+  `@effected/pnpm/settings` (`PnpmSettingsCatalog`, which the root entry
+  never reaches), and `@effected/schema-org/validate` (offline
   conformance validation). Everywhere else, no code subpath imports (each
   package also exports its own `./package.json` for tooling; that is
   metadata, not API).

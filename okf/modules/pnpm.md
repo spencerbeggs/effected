@@ -9,7 +9,7 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-13T06:27:13Z
+  at: 2026-11-13T09:10:21Z
 sources:
   - id: package-manager-model-design
     resource: ../../docs/superpowers/specs/2026-11-12-package-manager-model-design.md
@@ -31,7 +31,7 @@ sources:
     resource: ../../packages/pnpm/__test__/fixtures/pnpm-12.20.0-settings.README.md
 integrity:
   generated:
-    body: f0cf098de0ed3dfd
+    body: e7e775396227129b
 ---
 
 # pnpm
@@ -42,7 +42,7 @@ integrity:
 
 ## Tier and dependency posture
 
-Boundary tier at the root: `effect` and `@effected/semver` are the peers, `@effected/npm`, `@effected/glob`, `@effected/walker` and `@effected/yaml` the dependencies, and the only IO is `PnpmSettings.load` and `PnpmNpmConfig.load`, through core `FileSystem` and `Path` in `R`. No module imports `node:*`. The dependency direction is `npm <- pnpm` and `npm <- bun`, then both `<- lockfiles <- workspaces`, with `pnpm <- workspaces` as well. No manager package depends on `lockfiles` or `workspaces`; `lockfiles` imports each manager's native document schema and owns the normalisation into its common model. The package sits one layer above `npm` and below `lockfiles` in `lib/configs/layers.json`. The `@effected/semver` peer is not used here; it closes the peer that `@effected/npm` declares.
+Boundary tier at the root: `effect`, `@effected/npm` and `@effected/semver` are the peers, `@effected/glob`, `@effected/walker` and `@effected/yaml` the dependencies, and the only IO is `PnpmSettings.load` and `PnpmNpmConfig.load`, through core `FileSystem` and `Path` in `R`. No module imports `node:*`. The dependency direction is `npm <- pnpm` and `npm <- bun`, then both `<- lockfiles <- workspaces`, with `pnpm <- workspaces` as well. No manager package depends on `lockfiles` or `workspaces`; `lockfiles` imports each manager's native document schema and owns the normalisation into its common model. The package sits one layer above `npm` and below `lockfiles` in `lib/configs/layers.json`. The `@effected/semver` peer is not used here; it closes the peer that `@effected/npm` declares.
 
 ## Contents
 
@@ -121,12 +121,18 @@ The typed reads follow pnpm 12 where the majors differ:
     trimmed: pnpm 12 skips `05`, `00`, `+5`, `-0`, `5.0`, `0x10`, `0b11`, `1e2`
     and `1_000`, all of which pnpm 11 coerces through `Number`. The value must
     be a safe integer, where pnpm 12 reads an unsigned 64-bit one.
-  - `getNumber` takes a canonical decimal (optional `-`, an optional
-    fraction, no leading zero).
+  - `getNumber` takes a canonical signed integer (optional `-`, no leading
+    zero, no fraction), the read the settings catalog's integer codecs share
+    through `internal/coerce.ts`, since every numeric pnpm 12 setting is an
+    integer. The catalog's environment read gates on the same text, so `1e2`
+    and `1.0`, which `JSON.parse` reads as whole numbers and serde_json refuses
+    for an integer, are skipped by both.
   - A boolean is exactly `true` or `false`, trimmed and lowercase.
   - A list is a JSON array of strings.
 - An empty variable is unset. pnpm 11 reads an empty
-  `PNPM_CONFIG_MINIMUM_RELEASE_AGE` as `0`.
+  `PNPM_CONFIG_MINIMUM_RELEASE_AGE` as `0`, and pnpm 12 keeps an empty value
+  for a string setting (`savePrefix`, `nodeOptions`, `scope`,
+  `tagVersionPrefix`): a known divergence, documented on `PnpmSettings`.
 - When both spellings are set, the uppercase one wins. pnpm 11's answer
   depends on the order the variables appear in the environment.
 - In a file, pnpm 12 coerces before it type-checks, and so does the reader:
@@ -196,8 +202,9 @@ hostile-value suite (a newline, `\r\n`, `;`, `#` or `=` followed by a
 credential line) pinning that a settings value never becomes an npmrc line.
 `PnpmSettings.load` reads placeholder registries as values where pnpm 12
 refuses the whole load; the refusal lives in `PnpmNpmConfig`. The config is
-an instance of this package's `@effected/npm` copy, so a caller passes it to
-`NpmHttpClient.layer` from that same copy. `NpmConfig.proxyFor`'s pnpm rules
+an instance of the `@effected/npm` copy the caller shares, because
+`@effected/npm` is a peer: `NpmConfig` is a nominal class, and an instance
+from a second copy would not be the one `NpmHttpClient.layer` takes. `NpmConfig.proxyFor`'s pnpm rules
 read a proxy variable upper case first, as pnpm 12's
 `apply_proxy_cascade` does.
 

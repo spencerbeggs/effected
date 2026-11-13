@@ -4,6 +4,8 @@
 
 ## Features
 
+### Initial release
+
 `@effected/pnpm` is the kit's pnpm package: everything that is specifically pnpm's lives here, so the packages that only need npm or workspace facts no longer carry it.
 
 ### Settings and release-age gate
@@ -20,7 +22,7 @@
 
 ### Registry and network view
 
-`PnpmNpmConfig` reads pnpm 12's registry, proxy and TLS settings as an `NpmConfig`. Values that come from the environment and that pnpm 12 refuses are refused here too, as `untrusted-env`.
+`PnpmNpmConfig` reads pnpm 12's registry, proxy and TLS settings as an `NpmConfig`. `@effected/npm` is a required peer dependency, so the `NpmConfig` it returns is the copy the caller's `NpmHttpClient` and `NpmRegistry` take. Values that come from the environment and that pnpm 12 refuses are refused here too, as `untrusted-env`.
 
 ### Settings catalog
 
