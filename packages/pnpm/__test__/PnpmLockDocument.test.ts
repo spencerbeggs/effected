@@ -51,6 +51,16 @@ describe("PnpmLockDocument.parse", () => {
 		}),
 	);
 
+	it.effect("a pre-v9 single-project lockfile with no importers fails 'version', not 'shape'", () =>
+		Effect.gen(function* () {
+			// No importers map, so a shape-first order would report this too-old
+			// lockfile as malformed: the gate must run before the shape decode.
+			const error = yield* Effect.flip(PnpmLockDocument.parse(fixture("unsupported-v6-single")));
+			assert.strictEqual(error.reason, "version");
+			assert.strictEqual(error.lockfileVersion, "6.0");
+		}),
+	);
+
 	it.effect("malformed YAML fails 'syntax' with the first diagnostic's line", () =>
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(

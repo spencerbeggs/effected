@@ -9,6 +9,7 @@ reformat or hand-edit them.
 | --- | --- | --- | --- |
 | `v2/pnpm-lock.yaml.fixture` | `pnpm/v2` | Real pnpm output, `lockfileVersion: '9.0'`, from the original fixture set (#38, 2026-07-10). The producing pnpm version and command were never recorded. | A single-document workspace lockfile decodes with its `settings`, `catalogs` and `overrides` header, `importers`, `packages` and `snapshots`, and has no env preamble. |
 | `unsupported-v6/pnpm-lock.yaml.fixture` | `pnpm/unsupported-v6` | Real pnpm 8 output (`lockfileVersion: '6.0'`), workspace-shaped; the exact pnpm 8 patch is not recorded (#432). | A pre-v9 lockfile fails `reason: "version"`. |
+| `unsupported-v6-single/pnpm-lock.yaml.fixture` | `pnpm/unsupported-v6-single` | Real pnpm 8.15.9 output for a non-workspace project, which has no `importers` map (#432). | The version gate runs before the shape decode: this file fails `reason: "version"`, where a shape-first order would report `"shape"`. |
 | `env-configdeps-pnpm12/pnpm-lock.yaml.fixture` | `pnpm/env-configdeps-pnpm12` | Real pnpm 12.6.0 output, captured 2026-09-27 on darwin-arm64 with `npx pnpm@12.6.0 install --dir <d> --store-dir <tmp>` over a `package.json` depending on `is-number@7.0.0` and a `pnpm-workspace.yaml` declaring one bare `configDependencies` entry. | The two-document stream: `PnpmLockDocument.parse` reads the last document, `PnpmEnvDocument.parse` the first. |
 
 The malformed cases (broken YAML, three documents, an empty stream, an empty
