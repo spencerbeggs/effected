@@ -1,0 +1,20 @@
+{
+	"pnpmVersion": "12.20.0",
+	"case": "first-release",
+	"outcome": "applied",
+	"releases": [
+		{
+			"name": "@p/a",
+			"currentVersion": "1.0.0",
+			"newVersion": "1.0.0",
+			"bump": "minor",
+			"causes": [
+				"intent"
+			]
+		}
+	],
+	"ledgerFile": "ledger.after.yaml",
+	"statusFile": "status.txt",
+	"statusUnparsed": [],
+	"errors": []
+}

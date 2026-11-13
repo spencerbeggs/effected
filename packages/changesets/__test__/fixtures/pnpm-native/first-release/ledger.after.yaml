@@ -1,0 +1,4 @@
+"@p/a@1.0.0":
+  dir: packages/a
+  intents:
+    - first

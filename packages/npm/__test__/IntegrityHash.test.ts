@@ -13,22 +13,28 @@ import {
 describe("IntegrityHash schema", () => {
 	const sri = "sha512-tsPuRLBpQ2xk6+8HB4vP0Wq1v0EYlv6q6qz1oqTgU5U+lgY7Zp3Xf5sT2xM2mQ==";
 	const corepack = "sha512.5be7cee7ff4d9c25bda31e3b5f6f3f9f2a";
-	const yarn = "10c0/99a4b0f0e7991796b1e7e3f52dceb9137cae2a9dfc8fc0784a550dc4c558e15a";
-
-	it.effect("accepts all three textual forms", () =>
+	it.effect("accepts both textual forms", () =>
 		Effect.gen(function* () {
 			assert.strictEqual(yield* Schema.decodeUnknownEffect(IntegrityHash)(sri), sri);
 			assert.strictEqual(yield* Schema.decodeUnknownEffect(IntegrityHash)(corepack), corepack);
-			assert.strictEqual(yield* Schema.decodeUnknownEffect(IntegrityHash)(yarn), yarn);
 			assert.strictEqual(yield* Schema.decodeUnknownEffect(IntegrityHash)("sha1-abcd"), "sha1-abcd");
 			assert.strictEqual(yield* Schema.decodeUnknownEffect(IntegrityHash)("sha256.deadbeef"), "sha256.deadbeef");
-			assert.strictEqual(yield* Schema.decodeUnknownEffect(IntegrityHash)("9c0/deadbeef"), "9c0/deadbeef");
 		}),
 	);
 
 	it.effect("rejects malformed hashes", () =>
 		Effect.gen(function* () {
-			for (const bad of ["", "md5-abcd", "sha512-", "sha512.NOTHEX", "sha512.", "abc", "sha999.deadbeef"]) {
+			// A yarn cache checksum (`10c0/<hex>`) is no supported form.
+			for (const bad of [
+				"",
+				"md5-abcd",
+				"sha512-",
+				"sha512.NOTHEX",
+				"sha512.",
+				"abc",
+				"sha999.deadbeef",
+				"10c0/deadbeef",
+			]) {
 				const error = yield* Effect.flip(Schema.decodeUnknownEffect(IntegrityHash)(bad));
 				assert.strictEqual(error._tag, "SchemaError", bad);
 			}
@@ -37,31 +43,27 @@ describe("IntegrityHash schema", () => {
 });
 
 describe("IntegrityHash statics", () => {
-	it("classifies SRI vs corepack vs yarn", () => {
+	it("classifies SRI vs corepack", () => {
 		assert.isTrue(IntegrityHash.isSri("sha512-abc/def+=="));
 		assert.isTrue(IntegrityHash.isSri("sha512-YWJj"));
 		assert.isFalse(IntegrityHash.isCorepack("sha512-YWJj"));
 		assert.isTrue(IntegrityHash.isCorepack("sha512.abc"));
 		assert.isFalse(IntegrityHash.isSri("sha512.abc"));
-		// sha224 is corepack-only: corepack's transparent default yarn pin emits
-		// it, and the SRI spec does not include it.
+		// sha224 is corepack-only: corepack's transparent default pins emit it,
+		// and the SRI spec does not include it.
 		assert.isTrue(IntegrityHash.isCorepack("sha224.877304e3c9e5b53431969ee2ca17ee44f366533b0da5a4ba9c2bd447"));
 		assert.isFalse(IntegrityHash.isSri("sha224-YWJj"));
-		assert.isTrue(IntegrityHash.isYarnChecksum("10c0/deadbeef"));
-		assert.isTrue(IntegrityHash.isYarnChecksum("9c0/abc123"));
-		assert.isFalse(IntegrityHash.isYarnChecksum("sha512-YWJj"));
 		assert.isFalse(IntegrityHash.isSri("10c0/deadbeef"));
 		assert.isFalse(IntegrityHash.isCorepack("10c0/deadbeef"));
-		assert.isTrue(IntegrityHash.isValid("10c0/deadbeef"));
+		assert.isFalse(IntegrityHash.isValid("10c0/deadbeef"));
+		assert.isTrue(IntegrityHash.isValid("sha512-YWJj"));
 		assert.isFalse(IntegrityHash.isValid("nope"));
 	});
 
-	it("extracts the algorithm from the SRI and corepack forms, none from yarn", () => {
+	it("extracts the algorithm from the SRI and corepack forms", () => {
 		assert.deepStrictEqual(IntegrityHash.algorithmOf("sha512-YWJj"), Option.some("sha512"));
 		assert.deepStrictEqual(IntegrityHash.algorithmOf("sha1.abcd"), Option.some("sha1"));
 		assert.deepStrictEqual(IntegrityHash.algorithmOf("sha256.deadbeef"), Option.some("sha256"));
-		// The yarn form is a valid integrity hash but names no algorithm.
-		assert.isTrue(Option.isNone(IntegrityHash.algorithmOf("10c0/deadbeef")));
 		assert.isTrue(Option.isNone(IntegrityHash.algorithmOf("not-a-hash")));
 	});
 
@@ -80,7 +82,7 @@ describe("IntegrityHash statics", () => {
 // and TWO schemas model it — `PackageManagerPin.integrity` here and
 // `@effected/package-json`'s `PackageManager.integrity`. Both consume this
 // export. The forms the wider brand accepts and this one must not are the
-// point of the suite: an SRI or yarn hash in a pin tail is not a near-miss, it
+// point of the suite: an SRI hash in a pin tail is not a near-miss, it
 // is a value that field can never legitimately hold.
 describe("CorepackIntegrityHash", () => {
 	const decode = Schema.decodeUnknownEffect(CorepackIntegrityHash);
@@ -91,7 +93,7 @@ describe("CorepackIntegrityHash", () => {
 				"sha512.deadbeef01",
 				"sha256.0badf00d",
 				"sha1.ac34549e6aa8e7ead463a7407e1c7390f61a6610",
-				// corepack 0.34.0's own package.json pins yarn with a sha224 tail.
+				// corepack's own default pins carry a sha224 tail.
 				"sha224.877304e3c9e5b53431969ee2ca17ee44f366533b0da5a4ba9c2bd447",
 			]) {
 				assert.strictEqual(yield* decode(good), good, good);
@@ -99,9 +101,9 @@ describe("CorepackIntegrityHash", () => {
 		}),
 	);
 
-	it.effect("rejects the two other forms the IntegrityHash brand accepts", () =>
+	it.effect("rejects the other form the IntegrityHash brand accepts", () =>
 		Effect.gen(function* () {
-			for (const wrongForm of ["sha512-tsPuRLBpQ2xk6+8HB4vP0Wq1v0EYlv6q6qz1oqTgU5U=", "10c0/deadbeef0123"]) {
+			for (const wrongForm of ["sha512-tsPuRLBpQ2xk6+8HB4vP0Wq1v0EYlv6q6qz1oqTgU5U="]) {
 				// The control: the unrestricted brand DOES accept it, so the failure
 				// below is the restriction firing and not a malformed fixture.
 				assert.strictEqual(yield* Schema.decodeUnknownEffect(IntegrityHash)(wrongForm), wrongForm, wrongForm);
@@ -174,9 +176,9 @@ describe("SriIntegrityHash", () => {
 		}),
 	);
 
-	it.effect("rejects the two other forms the IntegrityHash brand accepts", () =>
+	it.effect("rejects the other form the IntegrityHash brand accepts", () =>
 		Effect.gen(function* () {
-			for (const wrongForm of ["sha512.deadbeef01", "10c0/deadbeef0123"]) {
+			for (const wrongForm of ["sha512.deadbeef01"]) {
 				// The control: the unrestricted brand DOES accept it, so the failure
 				// below is the restriction firing and not a malformed fixture.
 				assert.strictEqual(yield* Schema.decodeUnknownEffect(IntegrityHash)(wrongForm), wrongForm, wrongForm);

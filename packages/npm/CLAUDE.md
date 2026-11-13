@@ -1,7 +1,7 @@
 # @effected/npm
 
-Effect contracts for resolving pnpm `catalog:` and `workspace:` specifiers, the
-kit's shared dependency vocabulary, and the registry, tarball and publish
+Effect contracts for resolving the `catalog:` and `workspace:` specifiers pnpm
+and bun share, the kit's shared dependency vocabulary, and the registry, tarball and publish
 services over them. **Boundary tier**, deliberately — never let "pure" creep
 back in, and never accept an integrated npm.
 
@@ -15,7 +15,7 @@ Everything durable about this package lives in `okf/`, not here. Start at
   `okf/modules/npm.md` — Load when: changing a contract shape, `Manifest`, a
   vocabulary module, or any of `NpmRegistry`, `PackageTarball`,
   `RegistryCredential`, `PackagePublish`, `NpmExecutor`, `RegistryKind`, or
-  `NpmConfig` (npmrc resolution; a credential never goes to another host).
+  `NpmConfig` (npmrc resolution; a credential never goes to another host; `fromSourcesResult`'s `npmEnvironment: false` is the seam `@effected/pnpm`'s `PnpmNpmConfig` builds on).
 - The tier guardrail (pure vocabulary never reaches IO; `index.ts` exports
   individually; the escalation answer is a split, never a retier) →
   `okf/decisions/npm-tier-guardrail.md`,
@@ -42,6 +42,20 @@ Everything durable about this package lives in `okf/`, not here. Start at
   runs at `--loglevel=silly` and `PublishOutcome.auth` is read from stderr)
   — Load when: a publish or pack fails on a runner, or a caller loses auth.
 - Known edge → `okf/limitations/npm-no-packument-caching.md`.
+- The `./node` entry (`src/node.ts`) is the only module graph that reaches
+  `@effect/platform-node`, an optional peer: `NpmHttpClient.layer` applies
+  `NpmConfig`'s proxy and TLS settings through a per-origin undici dispatcher
+  (`src/internal/originDispatcher.ts`, undici from
+  `@effect/platform-node/Undici`, never a direct `undici` edge). The root
+  stays runtime-neutral, pinned by `__test__/entrypoints.test.ts` — do not
+  import either module from anything `index.ts` reaches. Its tests run real
+  `node:https` servers over certificates the `openssl` CLI generates into a
+  temporary directory at test time (never commit PEM or key fixtures: they
+  trip secret scanning), so they read files through the real
+  `NodeFileSystem`; tests with no handshake use `@effected/memfs`. The
+  `effected.toml` suppression for `node.d.ts` is pinned by
+  `__test__/node-declarations.test.ts`, which reads the built declarations
+  (the root `vitest.setup.ts` builds this package first).
 - Package-manager support window (which npm majors `PackagePublish` must
   decode) → `okf/conventions/package-manager-support-policy.md`.
 - Kit-wide standards this package is bound by →

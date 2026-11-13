@@ -1,0 +1,3 @@
+Error: ERR_PNPM_VERSIONING_UNRELEASABLE_PACKAGE
+
+  × Change intent file <workspace>/.changeset/ignored.md requests a patch release of @p/b, which cannot release (it is listed in versioning.ignore, has no version field, or has a non-semver version). Remove the entry or change it to "none".

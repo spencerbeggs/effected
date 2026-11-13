@@ -1,112 +1,39 @@
-import { Effect, Schema } from "effect";
+import { PnpmEnvDocument, PnpmExtension, PnpmLockDocument } from "@effected/pnpm";
+import { Effect, Option, Result } from "effect";
 import { LockfileImporter } from "../LockfileImporter.js";
-import { PnpmExtension } from "../PnpmExtension.js";
 import { ResolvedPackage } from "../ResolvedPackage.js";
-import { splitPnpmStream } from "./documents.js";
 import type { LockfileFields, ParseFailure, WorkspaceEntry } from "./shared.js";
 import {
 	extractWorkspaceDeps,
-	framingFailure,
-	gatePnpmVersion,
+	fromDocumentError,
 	importerDependencies,
 	peerDeclarations,
 	splitNameVersion,
 	splitPeerSuffix,
 	toIntegrityHash,
-	validationFailure,
 } from "./shared.js";
 
-// ── Raw schema (permissive validation scaffolding, not API) ────────────────
-
-const PnpmImporterDeps = Schema.optionalKey(
-	Schema.Record(Schema.String, Schema.Struct({ specifier: Schema.String, version: Schema.String })),
-);
-
-const PnpmImporter = Schema.Struct({
-	dependencies: PnpmImporterDeps,
-	devDependencies: PnpmImporterDeps,
-	peerDependencies: PnpmImporterDeps,
-	optionalDependencies: PnpmImporterDeps,
-	// `publishConfig.directory` surfaces here: pnpm records the directory a
-	// workspace package's links actually point AT, importer-relative. It is the
-	// exact evidence that lets a `link:<importer>/<publishDirectory>` edge name
-	// its importer.
-	publishDirectory: Schema.optionalKey(Schema.String),
-});
-
-const PnpmLockfileRaw = Schema.Struct({
-	lockfileVersion: Schema.Union([Schema.String, Schema.Number]),
-	settings: Schema.optionalKey(
-		Schema.Struct({
-			autoInstallPeers: Schema.optionalKey(Schema.Boolean),
-			excludeLinksFromLockfile: Schema.optionalKey(Schema.Boolean),
-		}),
-	),
-	overrides: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-	catalogs: Schema.optionalKey(
-		Schema.Record(
-			Schema.String,
-			Schema.Record(
-				Schema.String,
-				Schema.Union([Schema.String, Schema.Struct({ specifier: Schema.String, version: Schema.String })]),
-			),
-		),
-	),
-	importers: Schema.Record(Schema.String, PnpmImporter),
-	packages: Schema.optionalKey(
-		Schema.Record(
-			Schema.String,
-			Schema.Struct({
-				resolution: Schema.optionalKey(Schema.Struct({ integrity: Schema.optionalKey(Schema.String) })),
-				peerDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-				peerDependenciesMeta: Schema.optionalKey(
-					Schema.Record(Schema.String, Schema.Struct({ optional: Schema.optionalKey(Schema.Boolean) })),
-				),
-				// Pre-v9 lockfiles carry resolution inline here, since they have no
-				// `snapshots:` section to carry it.
-				dependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-				optionalDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-			}),
-		),
-	),
-	// Lockfile v9 split per-*instance* resolution out of `packages:` into its
-	// own section; earlier versions carry both in `packages:`.
-	snapshots: Schema.optionalKey(
-		Schema.Record(
-			Schema.String,
-			Schema.Struct({
-				dependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-				optionalDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-			}),
-		),
-	),
-});
-
-type PnpmLockfileRawType = typeof PnpmLockfileRaw.Type;
-type PnpmImporterType = typeof PnpmImporter.Type;
-type PnpmPackageEntry = NonNullable<PnpmLockfileRawType["packages"]>[string];
+type PnpmImporterType = PnpmLockDocument["importers"][string];
+type PnpmPackageEntry = NonNullable<PnpmLockDocument["packages"]>[string];
 
 /**
- * Parse pnpm `pnpm-lock.yaml` content into the unified field bundle.
- *
- * `pnpm-lock.yaml` is a YAML *stream*, not a single document: a workspace
- * using `configDependencies` gets a config-dependencies preamble document
- * ahead of the lockfile. {@link splitPnpmStream} locates the lockfile
- * deterministically (it is the last document); the preamble is never read as
- * the lockfile.
+ * Read `pnpm-lock.yaml` content into the unified field bundle: the lockfile
+ * document through `PnpmLockDocument.parse`, normalised by
+ * {@link normalizePnpm}.
  *
  * An empty main document after a preamble is **ambiguous**: pnpm 11 and 12
  * write exactly those bytes both for a config-dependency-only workspace with
  * no root `package.json` and for a workspace whose first install failed after
  * its config dependencies were installed. The bytes cannot tell the two apart,
- * so the parser does not decide: only when the caller asserts `configOnly`
- * (it knows the root has no `package.json`) does the stream read as an empty
- * lockfile — no packages, importers or workspace edges, versioned by the
- * preamble's `lockfileVersion` after the preamble passes the same version
- * gate. The preamble's own packages are config dependencies, not the
- * workspace's, so none of them is reported. Without the assertion, and always
- * when there is no preamble to vouch for the stream, an empty main document
- * fails `noLockfileDocument`. The flag loosens nothing else.
+ * so the document parse does not decide: only when the caller asserts
+ * `configOnly` (it knows the root has no `package.json`) does the stream read
+ * as an empty lockfile — no packages, importers or workspace edges, versioned
+ * by the preamble's `lockfileVersion` after the preamble passes the same
+ * version gate (`PnpmEnvDocument.parse`). The preamble's own packages are
+ * config dependencies, not the workspace's, so none of them is reported.
+ * Without the assertion, and always when there is no preamble to vouch for
+ * the stream, an empty main document fails `noLockfileDocument`. The flag
+ * loosens nothing else.
  *
  * Workspace packages are keyed by importer *path* with version `"0.0.0"`;
  * `Lockfile#withImporterNames` is the explicit second stage that rewrites
@@ -114,46 +41,32 @@ type PnpmPackageEntry = NonNullable<PnpmLockfileRawType["packages"]>[string];
  *
  * @internal
  */
-export const parsePnpm = (content: string, configOnly: boolean): Effect.Effect<LockfileFields, ParseFailure> =>
+export const readPnpm = (content: string, configOnly: boolean): Effect.Effect<LockfileFields, ParseFailure> =>
 	Effect.gen(function* () {
-		const { preamble, main: document, documents } = yield* splitPnpmStream(content);
-		if (document === undefined) {
-			if (preamble === undefined || !configOnly) {
-				return yield* Effect.fail(framingFailure("noLockfileDocument", documents));
+		const parsed = yield* Effect.result(PnpmLockDocument.parse(content));
+		if (Result.isSuccess(parsed)) return yield* normalizePnpm(parsed.success);
+		const error = parsed.failure;
+		if (configOnly && error.reason === "framing" && error.framing === "noLockfileDocument") {
+			const preamble = yield* PnpmEnvDocument.parse(content).pipe(Effect.mapError(fromDocumentError));
+			if (Option.isSome(preamble)) {
+				return {
+					lockfileVersion: String(preamble.value.lockfileVersion),
+					packages: [],
+					workspaceDependencies: [],
+					importers: [],
+					extension: PnpmExtension.make({}),
+				};
 			}
-			const lockfileVersion = yield* gatePnpmVersion(preamble);
-			return {
-				lockfileVersion,
-				packages: [],
-				workspaceDependencies: [],
-				importers: [],
-				extension: PnpmExtension.make({}),
-			};
 		}
-		// Format-version gate. Deliberately NOT a check for `snapshots:` being
-		// present or populated: a dependency-free v9 workspace legitimately has
-		// zero snapshot entries, so an emptiness guard would reject a valid
-		// lockfile. Version is the format's own identity; emptiness is a
-		// coincidence of content.
-		//
-		// It runs BEFORE the shape decode, and must: a pre-v9 single-project
-		// lockfile carries no `importers` map, so decoding first would report a
-		// too-old lockfile as malformed — losing the distinction the
-		// `UnsupportedLockfileVersion` cause exists to carry.
-		yield* gatePnpmVersion(document);
-		const validated = yield* Schema.decodeUnknownEffect(PnpmLockfileRaw)(document).pipe(
-			Effect.mapError(validationFailure),
-		);
-		// pnpm always records at least the root importer ".", so a lockfile
-		// document declaring no importers at all describes no workspace. Fail
-		// typed rather than hand back an empty Lockfile — an empty result is
-		// indistinguishable from "this workspace has no packages", which is the
-		// shape that kept the multi-document bug invisible.
-		if (Object.keys(validated.importers).length === 0) {
-			return yield* Effect.fail(framingFailure("noImporters", documents));
-		}
-		return yield* toFields(validated);
+		return yield* Effect.fail(fromDocumentError(error));
 	});
+
+/**
+ * Normalise a decoded pnpm lockfile document into the unified field bundle.
+ *
+ * @internal
+ */
+export const normalizePnpm = (raw: PnpmLockDocument): Effect.Effect<LockfileFields, ParseFailure> => toFields(raw);
 
 // ── Transform ──────────────────────────────────────────────────────────────
 
@@ -388,7 +301,7 @@ const toVersionMap = (
 const importerDepGroups = (importer: PnpmImporterType) =>
 	[importer.dependencies, importer.devDependencies, importer.peerDependencies, importer.optionalDependencies] as const;
 
-const toFields = (raw: PnpmLockfileRawType): Effect.Effect<LockfileFields, ParseFailure> =>
+const toFields = (raw: PnpmLockDocument): Effect.Effect<LockfileFields, ParseFailure> =>
 	Effect.gen(function* () {
 		const workspaceEntries = new Map<string, WorkspaceEntry>();
 		const workspaceNames = new Set<string>();

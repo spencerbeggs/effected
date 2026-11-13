@@ -34,3 +34,7 @@
 	path = .repos/mdast-util-mdxjs-esm
 	url = https://github.com/syntax-tree/mdast-util-mdxjs-esm.git
 	shallow = true
+[submodule ".repos/pnpm"]
+	path = .repos/pnpm
+	url = https://github.com/pnpm/pnpm.git
+	shallow = true

@@ -5,6 +5,7 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `AmbiguousPackageError` | Class | A changeset names a package by a name that more than one workspace project publishes, so the name identifies none of them. Name the project by its `./`-prefixed workspace-relative directory instead. | changeset names a package by a name two workspace projects publish, directory key needed |
 | `BreakingFloor` | Class | A release that stays on its own breaking line while a range it publishes crosses a dependency's breaking line: a consumer on the old line of both would resolve this release and miss what it now requires. | release must bump breaking, peer floor crosses dependency minor, patch ripple fix |
 | `BumpType` | Variable + TypeAlias | The type of a `BumpType` value. | changeset bump values, patch, minor or major |
 | `Changelog` | Class | CHANGELOG assembly for a `ReleasePlan`, matching `@changesets/apply-release-plan`. | render changelog block for a release, insert into CHANGELOG.md, getReleaseLine |
@@ -19,9 +20,15 @@
 | `ChangesetMove` | Class | A pending changeset a pre-release consumes: `changeset version` in pre mode moves it under `.changeset/pre/` rather than deleting it. | consumed changeset moved under .changeset/pre in pre mode |
 | `ChangesetParseError` | Class | A changeset file could not be parsed: no front matter, a malformed YAML block, or a bump outside `patch \| minor \| major`. | changeset without front matter, malformed yaml, or an invalid bump |
 | `ComprehensiveRelease` | Variable + TypeAlias | The decoded type of `(ComprehensiveRelease:variable)`. | decode a planned release as changelog modules get it, @changesets/types shape |
+| `Consumption` | TypeAlias | How the ledger records an intent against one project: not at all, only at prerelease versions, or at a stable version. See `Ledger.consumption`. | has the ledger consumed this intent, prerelease-only or stable, graduation check |
+| `EpicOutOfBand` | Class | An epic member whose committed major is outside the band of its lead. | epic member major outside its lead's band, committed version check violation |
+| `FixedOutOfStep` | Class | A fixed group whose members do not share one version. | fixed group members on different versions, lockstep check violation |
 | `FloorCause` | Class | One dependency whose breaking release moves a dependent's published floor. | dependency whose breaking release moves a dependent peer floor, stranded consumer |
 | `GetDependencyReleaseLine` | TypeAlias | Renders the line for the dependencies a package's release updated: `@changesets/types`' `GetDependencyReleaseLine`. | |
 | `GetReleaseLine` | TypeAlias | Renders one changeset's line in a package's changelog block: `@changesets/types`' `GetReleaseLine`. | |
+| `Ledger` | Class | The decoded `.changeset/ledger.yaml`: pnpm's committed, append-only record of which intent files each release consumed. | read pnpm .changeset/ledger.yaml, which intents a release consumed, pending per project |
+| `LedgerEntry` | Class | One consumed release in the ledger: the package, the version it released, the project directory, and the ids of the intent files that release consumed. | one released name@version in pnpm ledger, project dir, consumed intent ids |
+| `LedgerError` | Class | `.changeset/ledger.yaml` is not YAML, is not a mapping of releases, or has an entry that is neither a list of intent ids nor a `dir`/`intents` mapping. | pnpm release ledger malformed, invalid yaml, bad entry |
 | `ManifestEdit` | Class | What a release changes in one `package.json`. | new version and rewritten dependency ranges for one package.json |
 | `MissingPackageError` | Class | A release plan names a package the packages given to `ReleasePlan.edits` do not contain: the plan was made from a different workspace than the one being edited. | release plan names a package not among the given packages |
 | `ModCompWithPackage` | Variable + TypeAlias | The decoded type of `(ModCompWithPackage:variable)`. | decode an updated dependency with its manifest and dir, getDependencyReleaseLine input |
@@ -34,9 +41,15 @@
 | `PendingChangesets` | Class | Reading the pending changesets under a repository's `.changeset/` directory. | list and read unreleased changesets under .changeset |
 | `PlannedRelease` | Class | One package's place in a `ReleasePlan`. | one package's old version, new version and bump type in a plan |
 | `PreState` | Class | The decoded `.changeset/pre.json`: the repository is in pre-release mode (`changeset pre enter <tag>`), or leaving it (`changeset pre exit`). | read pre mode state from pre.json, tag, initial versions, consumed changesets |
+| `ProjectRef` | Interface | A workspace project as `PendingChangesets.unconsumed` resolves a release key against it: a `WorkspacePackage` satisfies it. | resolve a changeset release key to a workspace project, name and directory |
 | `RangeEdit` | Class | One dependency range a release rewrites in a manifest. | one rewritten dependency range, from and to specifier |
+| `RegistryVersions` | Class | The registry seam of first releases: is a project's manifest version already published? | is this version already published, registry probe for first releases |
+| `RegistryVersionsShape` | Interface | The `RegistryVersions` service shape. | |
+| `ReleaseCause` | Variable + TypeAlias | The type of a `ReleaseCause` value. | why a package releases, intent, dependency ripple, fixed group, epic re-base |
 | `ReleaseContext` | Class | A `ReleasePlan` with what `ReleasePlan.readWithContext` read it from. | release plan with the packages and config it was read from, hand to edits and changelog, read from a subdirectory |
 | `ReleaseEdits` | Class | Everything `changeset version` writes for a `ReleasePlan`, as data, CHANGELOG files aside. `ReleasePlan.edits` computes it; the caller does the IO. | changeset version as data, manifest edits, changesets to delete, next pre.json |
+| `ReleaseManager` | Variable + TypeAlias | The tool that plans a repository's releases. | detect whether releases are planned by pnpm versioning or the changesets cli, ledger.yaml, versioning key |
+| `ReleaseManagerDetectOptions` | Interface | Where `(ReleaseManager:variable).detect` reads the environment from. | |
 | `ReleasePlan` | Class | What a set of pending changesets releases: the packages they name and the packages reached as dependents, sorted by name. A package neither named nor reached is absent. | compute next versions from pending changesets, dependents, snapshot versions, apply edits |
 | `ReleaseSnapshot` | Interface | The input for a snapshot plan, `changeset version --snapshot`'s parameters. `ReleasePlan.assemble` documents how each is read. | |
 | `ReleaseType` | Variable + TypeAlias | The type of a `ReleaseType` value. | package release outcomes, including none for an unreleased package |
@@ -45,3 +58,7 @@
 | `SnapshotTemplateError` | Class | A snapshot prerelease template could not be filled, for one of the two reasons `@changesets/assemble-release-plan` refuses one: | snapshot prerelease template placeholder without a value, or missing tag |
 | `UnknownPackageError` | Class | A changeset names a package the workspace does not contain. | changeset names a package missing from the workspace |
 | `VersionType` | Variable + TypeAlias | The decoded type of `(VersionType:variable)`. | decode a bump, major minor patch or none, changelog contract |
+| `VersioningCheck` | Class | The check behind `pnpm change check`: are the committed versions where the `versioning` block says they must be? | pnpm change check, committed versions against epic bands and fixed groups |
+| `VersioningError` | Class | pnpm's native versioning refuses the plan: a `versioning` rule in `pnpm-workspace.yaml` is broken by the plan, the configuration cannot be attributed to one project, or an intent asks for a release pnpm cannot make. Only `ReleasePlan.assemble` under `manager: "pnpm"` fails with it. | pnpm refuses a release plan, maxBump exceeded, epic band, ignored package, pnpm error code |
+| `VersioningErrorCode` | TypeAlias | The `ERR_PNPM_*` code pnpm reports for each `VersioningError` reason, as its `VersioningError` enum declares them (`crates/versioning/src/error.rs`). | |
+| `VersioningViolation` | TypeAlias | A committed-version invariant the `versioning` block declares and the workspace currently breaks. | |

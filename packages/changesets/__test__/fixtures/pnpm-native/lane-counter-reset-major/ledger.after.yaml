@@ -1,0 +1,12 @@
+"@p/a@2.1.0-alpha.0":
+  dir: packages/a
+  intents:
+    - first-minor
+"@p/a@2.1.0-alpha.1":
+  dir: packages/a
+  intents:
+    - second-patch
+"@p/a@3.0.0-alpha.0":
+  dir: packages/a
+  intents:
+    - big-bang

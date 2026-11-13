@@ -20,6 +20,7 @@
 			"@effected/package-json",
 			"@effected/tsconfig-json"
 		],
+		["@effected/bun", "@effected/pnpm"],
 		[
 			"@effected/github",
 			"@effected/markdown",
@@ -59,6 +60,8 @@
 	"unconstrained": ["effected", "docs", "scratchpad", "@effected/ai-plugins"],
 	"fields": ["dependencies", "peerDependencies", "optionalDependencies"],
 	"requiredEdges": [
+		"@effected/lockfiles -> @effected/bun",
+		"@effected/lockfiles -> @effected/pnpm",
 		"@effected/mcp-kit -> @effected/kit",
 		"@effected/workspaces -> @effected/npm",
 		"@effected/app -> @effected/xdg"

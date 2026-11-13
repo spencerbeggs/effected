@@ -422,7 +422,7 @@ export class Workspaces {
 	 * package ships the layer.
 	 *
 	 * **The argv knowledge is not duplicated.** `LocalExec.prefixes(name)` is
-	 * the one home of the four managers' `exec`/`dlx`/script-runner prefixes;
+	 * the one home of the three managers' `exec`/`dlx`/script-runner prefixes;
 	 * this layer
 	 * detects *which* manager owns the directory and asks `commands` what that
 	 * manager's argv looks like. Neither package reimplements the other's
@@ -436,7 +436,10 @@ export class Workspaces {
 	 * `LocalExecError` is reserved for **mechanism** failure — a manifest that
 	 * exists but cannot be read or parsed, which means something is broken
 	 * rather than absent. That is npm's resolver convention, adopted
-	 * verbatim.
+	 * verbatim. A root run by a manager this package does not launch (an
+	 * `UnsupportedPackageManagerError`) fails the same way: the manager is
+	 * known, and answering `None` would let a caller run a global tool in its
+	 * place.
 	 *
 	 * `directory` is the resolved **workspace root**, not the caller's cwd: a
 	 * project-local launcher has to run where the workspace is. `stopAt` caps
@@ -515,7 +518,8 @@ export class Workspaces {
 						Effect.catchTag("PackageManagerDetectionError", () =>
 							Effect.succeed(Option.none<DetectedPackageManager>()),
 						),
-						// Everything left is a broken manifest. Wrap it in the contract's
+						// Everything left — a broken manifest, or a root run by a
+						// manager the kit does not launch — fails typed. Wrap it in the contract's
 						// error, preserving the original structurally rather than
 						// flattening it to a message.
 						Effect.mapError((cause) => new LocalExecError({ directory: root.value, cause })),

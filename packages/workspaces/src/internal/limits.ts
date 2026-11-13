@@ -21,7 +21,7 @@ export const MAX_ENUMERATION_DEPTH = 32;
 export const MAX_ENUMERATION_ENTRIES = 100_000;
 
 /**
- * Directory names never descended into. pnpm, npm, yarn and bun all ignore
+ * Directory names never descended into. Every package manager ignores
  * `node_modules` when expanding workspace globs; without the prune a
  * `packages/**` in an installed repo would walk the entire store.
  *

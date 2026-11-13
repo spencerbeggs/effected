@@ -355,6 +355,31 @@ importers:
         specifier: catalog:effected:build
         version: 7.1.0-beta
 
+  packages/bun:
+    dependencies:
+      '@effected/jsonc':
+        specifier: workspace:^
+        version: link:../jsonc
+      '@effected/npm':
+        specifier: workspace:^
+        version: link:../npm
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.4
+        version: 4.1.4(effect@4.1.4)(vitest@5.1.0)
+      '@effected/semver':
+        specifier: workspace:*
+        version: link:../semver
+      '@types/node':
+        specifier: catalog:effected:build
+        version: 26.6.6
+      effect:
+        specifier: 4.1.4
+        version: 4.1.4
+      typescript:
+        specifier: catalog:effected:build
+        version: 7.1.0-beta
+
   packages/bundler:
     dependencies:
       '@effect/platform-node':
@@ -469,6 +494,9 @@ importers:
       '@effected/glob':
         specifier: workspace:^
         version: link:../glob
+      '@effected/pnpm':
+        specifier: workspace:^
+        version: link:../pnpm
       '@effected/semver':
         specifier: workspace:^
         version: link:../semver
@@ -509,6 +537,9 @@ importers:
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs
+      '@effected/npm':
+        specifier: workspace:*
+        version: link:../npm
       '@types/node':
         specifier: catalog:effected:build
         version: 26.6.6
@@ -1129,6 +1160,9 @@ importers:
       '@effect/vitest':
         specifier: 4.1.4
         version: 4.1.4(effect@4.1.4)(vitest@5.1.0)
+      '@effected/bun':
+        specifier: workspace:*
+        version: link:../bun
       '@effected/glob':
         specifier: workspace:*
         version: link:../glob
@@ -1138,6 +1172,9 @@ importers:
       '@effected/npm':
         specifier: workspace:*
         version: link:../npm
+      '@effected/pnpm':
+        specifier: workspace:*
+        version: link:../pnpm
       '@effected/semver':
         specifier: workspace:*
         version: link:../semver
@@ -1343,6 +1380,9 @@ importers:
         specifier: workspace:^
         version: link:../glob
     devDependencies:
+      '@effect/platform-node':
+        specifier: 4.1.4
+        version: 4.1.4(effect@4.1.4)(redis@6.3.1)
       '@effect/vitest':
         specifier: 4.1.4
         version: 4.1.4(effect@4.1.4)(vitest@5.1.0)
@@ -1493,6 +1533,40 @@ importers:
       '@types/node':
         specifier: catalog:effected:build
         version: 26.6.6
+      typescript:
+        specifier: catalog:effected:build
+        version: 7.1.0-beta
+
+  packages/pnpm:
+    dependencies:
+      '@effected/glob':
+        specifier: workspace:^
+        version: link:../glob
+      '@effected/walker':
+        specifier: workspace:^
+        version: link:../walker
+      '@effected/yaml':
+        specifier: workspace:^
+        version: link:../yaml
+    devDependencies:
+      '@effect/vitest':
+        specifier: 4.1.4
+        version: 4.1.4(effect@4.1.4)(vitest@5.1.0)
+      '@effected/memfs':
+        specifier: workspace:*
+        version: link:../memfs
+      '@effected/npm':
+        specifier: workspace:*
+        version: link:../npm
+      '@effected/semver':
+        specifier: workspace:*
+        version: link:../semver
+      '@types/node':
+        specifier: catalog:effected:build
+        version: 26.6.6
+      effect:
+        specifier: 4.1.4
+        version: 4.1.4
       typescript:
         specifier: catalog:effected:build
         version: 7.1.0-beta
@@ -1855,6 +1929,9 @@ importers:
 
   packages/workspaces:
     dependencies:
+      '@effected/bun':
+        specifier: workspace:^
+        version: link:../bun
       '@effected/commands':
         specifier: workspace:^
         version: link:../commands
@@ -1876,6 +1953,9 @@ importers:
       '@effected/package-json':
         specifier: workspace:^
         version: link:../package-json
+      '@effected/pnpm':
+        specifier: workspace:^
+        version: link:../pnpm
       '@effected/semver':
         specifier: workspace:^
         version: link:../semver
@@ -1885,18 +1965,6 @@ importers:
       '@effected/yaml':
         specifier: workspace:^
         version: link:../yaml
-      '@pnpm/catalogs.config':
-        specifier: ^1100.0.5
-        version: 1100.0.10
-      '@pnpm/catalogs.protocol-parser':
-        specifier: ^1100.0.0
-        version: 1100.0.1
-      '@pnpm/catalogs.resolver':
-        specifier: ^1100.0.0
-        version: 1100.1.2
-      '@pnpm/catalogs.types':
-        specifier: ^1100.0.0
-        version: 1100.0.1
     devDependencies:
       '@effect/platform-node':
         specifier: 4.1.4
@@ -1983,6 +2051,9 @@ importers:
       '@effected/app':
         specifier: workspace:*
         version: link:../packages/app
+      '@effected/bun':
+        specifier: workspace:*
+        version: link:../packages/bun
       '@effected/cli-kit':
         specifier: workspace:*
         version: link:../packages/cli-kit
@@ -2043,6 +2114,9 @@ importers:
       '@effected/package-json':
         specifier: workspace:*
         version: link:../packages/package-json
+      '@effected/pnpm':
+        specifier: workspace:*
+        version: link:../packages/pnpm
       '@effected/pnpm-plugin-effected':
         specifier: workspace:*
         version: link:../packages/pnpm-plugin-effected

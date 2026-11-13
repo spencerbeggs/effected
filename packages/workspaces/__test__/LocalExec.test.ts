@@ -88,7 +88,7 @@ describe("Workspaces.localExecLayer — a detected workspace", () => {
 
 	it.effect("covers every manager the detector can report", () =>
 		Effect.gen(function* () {
-			for (const name of ["npm", "pnpm", "yarn", "bun"] as const) {
+			for (const name of ["npm", "pnpm", "bun"] as const) {
 				const context = yield* contextOf(workspaceAt("/repo", detects(name, name === "bun" ? "bun" : "node")));
 				if (Option.isNone(context)) {
 					assert.fail(`expected a context for ${name}`);

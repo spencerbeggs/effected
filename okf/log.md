@@ -1,5 +1,25 @@
 # Log
 
+## 2026-11-13
+
+* Updated A lockfile is a YAML stream, not always one document
+* Updated bun
+* Updated lockfiles
+* Updated npm
+* Updated pnpm
+* Updated @effected/workspaces catalogs and the config-dependency seam
+* Updated @effected/workspaces peer-dependency checking
+* Updated @effected/changesets
+* Updated NpmRegistry applies none of the npmrc proxy or TLS settings
+* Updated @effected/workspaces discovery and detection
+* Updated A yarn Berry lockfile has no devDependencies section
+* Updated Add a kit package
+* Updated PeerCheck cannot answer yarn
+* Updated Yarn carries no resolved peer edges
+* Updated effected
+* Updated npm and bun rows never populate unresolvedEdges
+* Updated @effected/workspaces: monorepo tooling
+
 ## 2026-11-12
 
 * Updated glob
@@ -9,6 +29,18 @@
 * Updated Peer-dependency discipline
 * Updated effected.toml: the build config's tables, defaults and discovery
 * Updated The effected build commands: package build, action build and action init
+* Updated Package-manager support window
+* Updated workspace
+* Updated actions-storage
+* Added bun
+* Updated effected
+* Added pnpm
+* Updated @effected/workspaces catalogs and the config-dependency seam
+* Updated @effected/workspaces peer-dependency checking
+* Updated @effected/workspaces: monorepo tooling
+* Updated Library tier (pure / boundary / integrated)
+* Added The catalog: and workspace: protocols are shared, so their contracts stay in @effected/npm
+* Updated npm
 
 ## 2026-11-11
 

@@ -1,13 +1,14 @@
+import { BunExtension, BunLockDocument } from "@effected/bun";
+import { PackageLockDocument } from "@effected/npm";
+import { PnpmExtension } from "@effected/pnpm";
 import { Effect, Option, Schema } from "effect";
-import { BunExtension } from "./BunExtension.js";
-import { parseBun } from "./internal/bun.js";
-import { parseNpm } from "./internal/npm.js";
-import { parsePnpm } from "./internal/pnpm.js";
+import { normalizeBun } from "./internal/bun.js";
+import { normalizeNpm } from "./internal/npm.js";
+import { readPnpm } from "./internal/pnpm.js";
 import type { LockfileFields, ParseFailure } from "./internal/shared.js";
-import { parseYarn } from "./internal/yarn.js";
+import { fromDocumentError } from "./internal/shared.js";
 import { LockfileFormat } from "./LockfileFormat.js";
 import { LockfileImporter } from "./LockfileImporter.js";
-import { PnpmExtension } from "./PnpmExtension.js";
 import { ResolvedPackage } from "./ResolvedPackage.js";
 import { WorkspaceDependency } from "./WorkspaceDependency.js";
 
@@ -75,9 +76,8 @@ export class LockfileParseError extends Schema.TaggedError<LockfileParseError>()
  *   - `"noImporters"` — the located document declares no importers, so it
  *     describes no workspace. pnpm always records at least the root importer.
  *   - `"unexpectedDocuments"` — the stream carries more documents than the
- *     format's framing defines: several in a format that defines none
- *     (yarn), or more than the env preamble and the lockfile in a pnpm
- *     stream. Rather than silently picking one, parsing refuses to guess.
+ *     format's framing defines: more than the env preamble and the lockfile
+ *     in a pnpm stream. Rather than silently picking one, parsing refuses to guess.
  *     `Lockfile.parse` and `PnpmEnvLockfile` share one pnpm splitter, so
  *     both enforce the same at-most-two limit.
  *
@@ -100,9 +100,7 @@ export class LockfileFramingError extends Schema.TaggedError<LockfileFramingErro
 			this.reason === "noImporters"
 				? "the lockfile document declares no importers, so it describes no workspace"
 				: this.reason === "unexpectedDocuments"
-					? this.format === "pnpm"
-						? `expected at most two YAML documents (an env preamble and the lockfile) but the content carries ${this.documents}`
-						: `expected a single YAML document but the content carries ${this.documents}`
+					? `expected at most two YAML documents (an env preamble and the lockfile) but the content carries ${this.documents}`
 					: `the content carries no lockfile document (${this.documents} YAML document(s) found)`;
 		return `Failed to parse ${this.format} lockfile: ${detail}`;
 	}
@@ -124,6 +122,11 @@ export const materializeFailure = (
 		? new LockfileFramingError({ format, reason: failure.reason, documents: failure.documents })
 		: new LockfileParseError({ format, stage: failure.stage, cause: failure.cause });
 
+/**
+ * Read each format's native document through its manager package, then
+ * normalise it. The manager packages own the documents; this package owns the
+ * reading.
+ */
 const dispatch = (
 	format: LockfileFormat,
 	content: string,
@@ -131,18 +134,16 @@ const dispatch = (
 ): Effect.Effect<LockfileFields, ParseFailure> => {
 	switch (format) {
 		case "bun":
-			return parseBun(content);
+			return BunLockDocument.parse(content).pipe(Effect.mapError(fromDocumentError), Effect.flatMap(normalizeBun));
 		case "npm":
-			return parseNpm(content);
+			return PackageLockDocument.parse(content).pipe(Effect.mapError(fromDocumentError), Effect.flatMap(normalizeNpm));
 		case "pnpm":
-			return parsePnpm(content, configOnly);
-		case "yarn":
-			return parseYarn(content);
+			return readPnpm(content, configOnly);
 	}
 };
 
 /**
- * The unified lockfile model all four formats normalize into.
+ * The unified lockfile model all three formats normalize into.
  *
  * @remarks
  * - `format` — which lockfile format produced the data.
@@ -150,8 +151,8 @@ const dispatch = (
  * - `packages` — every resolved package.
  * - `workspaceDependencies` — inter-workspace dependency edges.
  * - `importers` — each workspace importer's declared dependencies
- *   ({@link LockfileImporter}), keyed by importer path. Populated by the pnpm,
- *   bun and npm parsers; always empty for yarn, which records no importers.
+ *   ({@link LockfileImporter}), keyed by importer path, populated by every
+ *   parser.
  * - `extension` — format-specific residue (`PnpmExtension` or
  *   `BunExtension`) when the format records any.
  *
@@ -159,7 +160,7 @@ const dispatch = (
  * (workspace packages named by importer path, version `"0.0.0"`);
  * {@link Lockfile.withImporterNames} is the explicit, pure second stage
  * that rewrites those names once the caller has read the workspace
- * manifests. npm, yarn and bun lockfiles carry real names and need no
+ * manifests. npm and bun lockfiles carry real names and need no
  * second stage.
  *
  * @public

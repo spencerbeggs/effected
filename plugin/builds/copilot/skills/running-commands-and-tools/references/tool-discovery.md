@@ -1,7 +1,7 @@
 # `ToolDiscovery` and `LocalExec`
 
 Load when: resolving whether a CLI tool is installed and which copy to run,
-wiring a project-local launcher for `npx`/`pnpm exec`/`yarn exec`/`bun x`,
+wiring a project-local launcher for `npx`/`pnpm exec`/`bun x`,
 or debugging a stale/missing tool-presence answer.
 
 ## `ToolDiscovery` — absence is a spawn failure, never an exit code
@@ -92,7 +92,7 @@ name** and its `args` are the script's arguments.
 
 `LocalExec.prefixes(launcher)` returns a `LauncherPrefixes` record and is
 the one place the four package managers'
-argv lives: `npx --no --` / `pnpm exec` / `yarn exec` / `bun x
+argv lives: `npx --no --` / `pnpm exec` / `bun x
 --no-install`, plus each `dlxPrefix`, plus each `run` form as
 `scriptPrefix` — npm's `--no` and bun's `--no-install` both refuse to
 silently install a missing binary. **npm's `scriptPrefix` is `["npm",

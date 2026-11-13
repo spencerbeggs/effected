@@ -222,6 +222,42 @@
 				},
 				"startHere": "lib/index.js is the whole reference (node assembly + toMarkdown handler for mdxjsEsm); complex-types.d.ts states the node type shape; test/ has round-trip fixtures."
 			}
+		},
+		"pnpm": {
+			"url": "https://github.com/pnpm/pnpm.git",
+			"ref": "v12.20.0",
+			"purpose": "Read-only pnpm 12 source pinned to the repo's devEngines pnpm: the authority for @effected/pnpm's settings catalog, versioning schema and lockfile grammar.",
+			"sparse": [
+				"pnpm/crates/config/src",
+				"pnpm/crates/versioning/src",
+				"pnpm/crates/workspace/src",
+				"pnpm/crates/catalogs-config",
+				"pnpm/crates/catalogs-protocol-parser/src",
+				"pnpm/crates/catalogs-resolver/src",
+				"pnpm/crates/workspace-spec/src",
+				"pnpm/crates/cli/src/cli_args/change*",
+				"pnpm/crates/cli/src/cli_args/version*",
+				"pnpm/crates/cli/src/cli_args/lane.rs",
+				"pnpm/crates/cli/src/cli_args/legacy_pnpm_field.rs",
+				"pnpm/docs/settings/",
+				"pnpm/docs/settings.md",
+				"pnpm/docs/versioning.md",
+				"pnpm/docs/configuring.md",
+				"pnpm/docs/npmrc.md",
+				"pnpm/docs/config-includes.md",
+				"pnpm/docs/cli/change.md",
+				"pnpm/docs/cli/version.md",
+				"pnpm/docs/cli/lane.md",
+				"pnpm/docs/cli/config.md",
+				"pnpm/crates/lockfile-import",
+				"pnpm/crates/lockfile-preferred-versions",
+				"pnpm/crates/lockfile-verification",
+				"pnpm/crates/lockfile",
+				"pnpm/crates/config-parse-overrides/src",
+				"pnpm/crates/package-name/src",
+				"pnpm/crates/deps-inspection-peers/src",
+				"pnpm/crates/resolving-parse-wanted-dependency/src"
+			]
 		}
 	}
 }

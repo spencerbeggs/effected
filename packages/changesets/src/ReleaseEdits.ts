@@ -5,7 +5,9 @@ import type { WorkspacePackage } from "@effected/workspaces";
 import { Result, Schema } from "effect";
 import type { ReleaseType } from "./BumpType.js";
 import type { ChangesetConfig } from "./ChangesetConfig.js";
+import type { AmbiguousPackageError } from "./errors.js";
 import { MissingPackageError } from "./errors.js";
+import { twinReleases } from "./internal/twins.js";
 import {
 	DEPENDENCY_KINDS,
 	WORKSPACE,
@@ -102,6 +104,8 @@ export class ReleaseEdits extends Schema.Class<ReleaseEdits>("ReleaseEdits")({
 /** The parts of a planned release the edits read. */
 export interface Release {
 	readonly name: string;
+	/** A pnpm plan's project directory, read only to name twins in a refusal. */
+	readonly dir?: string;
 	readonly type: ReleaseType;
 	readonly oldVersion: string;
 	readonly newVersion: string;
@@ -218,7 +222,9 @@ const rangeEdits = (
 export const computeEdits = (
 	plan: EditsPlan,
 	input: { readonly packages: ReadonlyArray<WorkspacePackage>; readonly config: ChangesetConfig },
-): Result.Result<ReleaseEdits, MissingPackageError | InvalidVersionError> => {
+): Result.Result<ReleaseEdits, MissingPackageError | InvalidVersionError | AmbiguousPackageError> => {
+	const twins = twinReleases(plan.releases);
+	if (twins !== undefined) return Result.fail(twins);
 	try {
 		return Result.succeed(editsOrHalt(plan, input));
 	} catch (error) {

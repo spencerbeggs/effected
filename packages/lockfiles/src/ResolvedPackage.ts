@@ -15,8 +15,8 @@ const EMPTY_EDGE_NAMES: ReadonlyArray<string> = [];
  *
  * - `instanceId` — the lockfile-native identity of this *instance*, verbatim:
  *   pnpm's snapshot key (`react-dom@18.3.1(react@17.0.2)`), npm's full entry
- *   key (`node_modules/express/node_modules/debug`), bun's `packages` key
- *   (`@acme/lib/react-dom`) or yarn's locator (`react-dom@npm:18.3.1`). It is
+ *   key (`node_modules/express/node_modules/debug`), or bun's `packages` key
+ *   (`@acme/lib/react-dom`). It is
  *   **opaque** — no scheme is synthesized and none should be parsed by a
  *   consumer; it exists so `resolved` can name an instance, and so two
  *   peer-resolved variants of one `name@version` stay distinguishable.
@@ -25,9 +25,8 @@ const EMPTY_EDGE_NAMES: ReadonlyArray<string> = [];
  *   `Lockfile#withImporterNames` rewrites it.
  * - `version` — the resolved version string (pnpm workspace packages carry
  *   `"0.0.0"`; the lockfile does not record their real versions).
- * - `integrity` — optional `@effected/npm` `IntegrityHash`, covering npm/pnpm
- *   `sha512-...` SRI and yarn Berry's `10c0/...` cache checksums (the yarn
- *   textual form). An *absent* integrity is omitted, so a `ResolvedPackage` may
+ * - `integrity` — optional `@effected/npm` `IntegrityHash`, covering the
+ *   `sha512-...` SRI form npm, pnpm and bun record. An *absent* integrity is omitted, so a `ResolvedPackage` may
  *   carry none; a *present but unparseable* integrity fails the parse typed at
  *   validation rather than being silently dropped.
  * - `isWorkspace` — `true` for workspace-local packages.
@@ -37,8 +36,8 @@ const EMPTY_EDGE_NAMES: ReadonlyArray<string> = [];
  *   both at construction and when decoding serialized data.
  * - `peerDependencies` — the package's *declared* peer ranges, keyed by peer
  *   name. Every format records them (pnpm and npm as their own section, bun
- *   inline in the package tuple's info object, yarn Berry as an entry
- *   section), so this is populated across all four. Declarations only: what
+ *   inline in the package tuple's info object), so this is populated across
+ *   all three. Declarations only: what
  *   the package *asks for*, never what actually resolved.
  * - `peerDependenciesMeta` — the per-peer flags, normalized to
  *   `{ optional: boolean }`. bun spells optional peers as an `optionalPeers`
@@ -55,8 +54,6 @@ const EMPTY_EDGE_NAMES: ReadonlyArray<string> = [];
  *   walked-up identity matches a real instance in the same lockfile. An edge
  *   that cannot be resolved honestly is *omitted*, never guessed — a wrong
  *   resolved edge is a silent wrong answer, an absent one is a visible gap.
- *   yarn records peer resolution virtually and is therefore dependency-edges
- *   only.
  *
  * - `unresolvedEdges` — dependency names whose edge the lockfile **records**
  *   but this model could not name: a `link:` target that is not a workspace

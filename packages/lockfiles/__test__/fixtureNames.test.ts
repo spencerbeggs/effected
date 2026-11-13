@@ -5,10 +5,10 @@ import type { LockfileFormat } from "../src/LockfileFormat.js";
 import { filenamesFor } from "../src/LockfileFormat.js";
 import { FIXTURES_DIR, FIXTURE_SUFFIX } from "./helpers/fixtures.js";
 
-const FORMATS: ReadonlyArray<LockfileFormat> = ["bun", "npm", "pnpm", "yarn"];
+const FORMATS: ReadonlyArray<LockfileFormat> = ["bun", "npm", "pnpm"];
 
-/** Every filename GitHub's dependency graph reads as an npm-ecosystem manifest: each format's lockfiles, and `package.json`. */
-const MANIFEST_NAMES = new Set([...FORMATS.flatMap(filenamesFor), "package.json"]);
+/** Every filename GitHub's dependency graph reads as an npm-ecosystem manifest: each format's lockfiles, `yarn.lock`, and `package.json`. */
+const MANIFEST_NAMES = new Set([...FORMATS.flatMap(filenamesFor), "yarn.lock", "package.json"]);
 
 /** Every file under the fixtures directory, as a path relative to it. */
 const filesUnder = (dir: string, prefix = ""): ReadonlyArray<string> =>

@@ -14,8 +14,7 @@ import { ImporterDependency } from "./ImporterDependency.js";
  *   them.
  * - `dependencies` — each declared dependency as an {@link ImporterDependency}.
  *
- * Populated by the pnpm, bun and npm parsers. yarn does not record importers,
- * so a yarn lockfile always yields an empty `importers` array.
+ * Populated by every parser: pnpm, bun and npm.
  *
  * @public
  */

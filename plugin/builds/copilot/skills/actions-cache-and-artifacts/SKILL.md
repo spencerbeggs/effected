@@ -19,7 +19,7 @@ For the general Effect v4 service/layer rules this package follows — `Context.
 | Same, in S3 / R2 / MinIO / Spaces | `BlobStore` over `BlobStore.layerS3(config)` | `BlobStore.layerS3(config)` | `HttpClient \| ActionOutputs \| Digest.Digest \| Mac.Mac` | same |
 | A cache key, its restore-key ladder, and `hashFiles` | `CacheKey` | none — a pure `Schema.Class` with `Effect.fn` statics | `FileSystem` (`hashFiles`), `+ Path` (`matchingFiles`) | `CacheKeyError` |
 | Download, extract and cache a toolchain | `ToolInstaller` | `ToolInstaller.layer` | `ActionEnvironment \| FileSystem \| Path \| HttpClient \| ChildProcessSpawner` | `ToolInstallerError` |
-| Pin and install an exact npm/pnpm/yarn/bun on the runner | `PackageManagerInstaller` | `PackageManagerInstaller.layer` | `ActionEnvironment \| FileSystem \| Path \| ChildProcessSpawner \| ToolInstaller` | `PackageManagerInstallerError` |
+| Pin and install an exact npm/pnpm/bun on the runner | `PackageManagerInstaller` | `PackageManagerInstaller.layer` | `ActionEnvironment \| FileSystem \| Path \| ChildProcessSpawner \| ToolInstaller` | `PackageManagerInstallerError` |
 
 `ActionRuntime.layer` provides none of the six services above by default — see `actions-runtime` for why, and for the one-line cost of taking one (`Action.run(program, { layer: ActionCache.layer })`).
 

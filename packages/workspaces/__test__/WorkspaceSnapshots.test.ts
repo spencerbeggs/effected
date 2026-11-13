@@ -1,6 +1,7 @@
 import { assert, describe, it, layer } from "@effect/vitest";
 import { Git, GitCommandError, LsTreeEntry } from "@effected/git";
 import { CatalogAssemblyError, CatalogResolver, WorkspaceResolver } from "@effected/npm";
+import { PeerDependencyRules } from "@effected/pnpm";
 import { Effect, Equal, Layer, Option, Schema } from "effect";
 import type { HookInjection, HookReplay } from "../src/index.js";
 import {
@@ -616,7 +617,8 @@ const recordingHooks = (answers: Readonly<Record<string, Readonly<Record<string,
 				return {
 					catalogs: { ...seed, default: { ...(seed.default ?? {}), ...injected } },
 					releaseAge: {},
-					peerDependencyRules: rules ?? { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+					peerDependencyRules:
+						rules ?? PeerDependencyRules.make({ allowedVersions: {}, ignoreMissing: [], allowAny: [] }),
 					replays,
 				};
 			}),
@@ -672,7 +674,10 @@ describe("WorkspaceSnapshots.at — replays the ref's configDependencies at the 
 				assert.strictEqual(call?.root, "/repo");
 				// The seed is the ref's inline catalogs, the rules the ref's (none).
 				assert.deepStrictEqual(call?.seed, { default: { effect: "^4.0.0" } });
-				assert.deepStrictEqual(call?.rules, { allowedVersions: {}, ignoreMissing: [], allowAny: [] });
+				assert.deepStrictEqual(
+					call?.rules,
+					PeerDependencyRules.make({ allowedVersions: {}, ignoreMissing: [], allowAny: [] }),
+				);
 			}),
 		);
 

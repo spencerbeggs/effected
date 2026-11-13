@@ -227,7 +227,7 @@ import { Workspaces } from "@effected/workspaces"
 import { PackedInstall } from "@effected/workspaces/testing"
 import { Config, Duration, Effect, Layer } from "effect"
 
-const MANAGERS = ["npm", "pnpm", "yarn", "bun"] as const
+const MANAGERS = ["npm", "pnpm", "bun"] as const
 const INSTALL_TIMEOUT = "2 minutes"
 const PACK_TIMEOUT = "1 minute"
 const BIN_TIMEOUT = "30 seconds"
@@ -328,7 +328,7 @@ other rule here still applies to a real suite built on it:
   directory, with stdin left open.
 - **Who declares the bin decides what the run can prove** (see
   [carrier-entry-contract.md](./carrier-entry-contract.md#who-declares-a-bin)).
-  Under npm, Yarn and bun the layout is flat, and any other installed
+  Under npm and bun the layout is flat, and any other installed
   package that declares a bin of the same name can take the carrier's
   `.bin` slot, so the carrier identity (its `--version` suffix) is lost
   there. `PackedInstall.run` refuses that by default: a packed package other
@@ -353,7 +353,7 @@ other rule here still applies to a real suite built on it:
 - The test file is the edge that supplies the host environment: pass
   `process.env` as `env`. `PackedInstall` needs the WHOLE environment, which
   `Config` cannot enumerate, to strip the package-manager trap variables
-  (`npm_*`, `pnpm_config_*`, `yarn_*`) before every install; read single
+  (`npm_*`, `pnpm_config_*`) before every install; read single
   keys such as `CI` through `Config` instead. Nothing under `./testing`
   reads `process` itself. `PackedInstall.scrubEnv(...)` returns the same scrubbed
   environment for any spawn that goes through neither `runBin` nor
@@ -407,7 +407,7 @@ const RUN: PackedInstallOptions = {
   carrier: "@scope/plugin",
   closure: "auto",
   workspaceOverrides: true, // linked sibling builds reach the scratch consumers too
-  managers: ["npm", "pnpm", "yarn", "bun"],
+  managers: ["npm", "pnpm", "bun"],
   bins: ["tool", "tool-mcp"],
   env: process.env, // the whole host environment, which PackedInstall scrubs
   require: UNDER_CI ? "all" : "any",

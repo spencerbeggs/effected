@@ -1,0 +1,23 @@
+{
+	"pnpmVersion": "12.20.0",
+	"case": "ignore-real-bump",
+	"outcome": "rejected",
+	"releases": [],
+	"ledgerFile": null,
+	"statusFile": "status.txt",
+	"statusUnparsed": [],
+	"errors": [
+		{
+			"stage": "status",
+			"exitCode": 1,
+			"code": "ERR_PNPM_VERSIONING_UNRELEASABLE_PACKAGE",
+			"message": "Error: ERR_PNPM_VERSIONING_UNRELEASABLE_PACKAGE\n\n  × Change intent file <workspace>/.changeset/ignored.md requests a patch release of @p/b, which cannot release (it is listed in versioning.ignore, has no version field, or has a non-semver version). Remove the entry or change it to \"none\"."
+		},
+		{
+			"stage": "version",
+			"exitCode": 1,
+			"code": "ERR_PNPM_VERSIONING_UNRELEASABLE_PACKAGE",
+			"message": "Error: ERR_PNPM_VERSIONING_UNRELEASABLE_PACKAGE\n\n  × Change intent file <workspace>/.changeset/ignored.md requests a patch release of @p/b, which cannot release (it is listed in versioning.ignore, has no version field, or has a non-semver version). Remove the entry or change it to \"none\"."
+		}
+	]
+}

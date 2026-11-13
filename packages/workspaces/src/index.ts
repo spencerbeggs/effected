@@ -42,8 +42,6 @@ export {
 	type HookReplay,
 	type HookReplayContext,
 	type HookReplaySource,
-	NoPeerDependencyRules,
-	type PeerDependencyRules,
 } from "./ConfigDependencyHooks.js";
 export { ConfigDependencySpec, InvalidConfigDependencySpecError } from "./ConfigDependencySpec.js";
 export { CyclicDependencyError, DependencyGraph } from "./DependencyGraph.js";
@@ -70,6 +68,7 @@ export {
 	type PackageManagerDetectorShape,
 	PackageManagerEvidence,
 	PackageManagerName,
+	UnsupportedPackageManagerError,
 } from "./PackageManagerName.js";
 export {
 	PeerCheck,
@@ -78,14 +77,6 @@ export {
 	UnsatisfiedPeer,
 	type UnverifiedReason,
 } from "./PeerCheck.js";
-export {
-	type PnpmSettingOrigin,
-	PnpmSettings,
-	PnpmSettingsError,
-	type PnpmSettingsLoadOptions,
-	type PnpmSettingsSource,
-	type PnpmSettingsSources,
-} from "./PnpmSettings.js";
 export { PublishTarget, PublishabilityDetector, type PublishabilityDetectorShape } from "./Publishability.js";
 export {
 	ReleaseTag,

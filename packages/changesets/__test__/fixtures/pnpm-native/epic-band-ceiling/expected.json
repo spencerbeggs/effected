@@ -1,0 +1,23 @@
+{
+	"pnpmVersion": "12.20.0",
+	"case": "epic-band-ceiling",
+	"outcome": "rejected",
+	"releases": [],
+	"ledgerFile": null,
+	"statusFile": "status.txt",
+	"statusUnparsed": [],
+	"errors": [
+		{
+			"stage": "status",
+			"exitCode": 1,
+			"code": "ERR_PNPM_VERSIONING_EPIC_OUT_OF_BAND",
+			"message": "Error: ERR_PNPM_VERSIONING_EPIC_OUT_OF_BAND\n\n  × The release plan takes @p/lib to 200.0.0, whose major 200 is outside the band 100-199 of the epic led by \"@p/app\" (major 1). The band is exhausted - the lead must advance to a new major to open the next band."
+		},
+		{
+			"stage": "version",
+			"exitCode": 1,
+			"code": "ERR_PNPM_VERSIONING_EPIC_OUT_OF_BAND",
+			"message": "Error: ERR_PNPM_VERSIONING_EPIC_OUT_OF_BAND\n\n  × The release plan takes @p/lib to 200.0.0, whose major 200 is outside the band 100-199 of the epic led by \"@p/app\" (major 1). The band is exhausted - the lead must advance to a new major to open the next band."
+		}
+	]
+}

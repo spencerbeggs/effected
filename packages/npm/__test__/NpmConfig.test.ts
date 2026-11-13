@@ -103,6 +103,20 @@ describe("NpmConfig env substitution", () => {
 	});
 });
 
+describe("NpmConfig without the npm_config_* layer", () => {
+	const env = { npm_config_registry: "https://env.example/", HOST: "file.example" };
+
+	it("reads npm_config_* by default, and skips it with npmEnvironment: false", () => {
+		const sources = [{ text: `registry=https://${ref("HOST")}/` }];
+		const npm = NpmConfig.fromSourcesResult(sources, env);
+		const pnpm = NpmConfig.fromSourcesResult(sources, env, { npmEnvironment: false });
+		assert.isTrue(Result.isSuccess(npm) && Result.isSuccess(pnpm));
+		assert.strictEqual((npm as Result.Success<NpmConfig, NpmConfigError>).success.registry, "https://env.example/");
+		// The variable layer is gone, while `env` still serves `${VAR}` substitution.
+		assert.strictEqual((pnpm as Result.Success<NpmConfig, NpmConfigError>).success.registry, "https://file.example/");
+	});
+});
+
 describe("NpmConfig array settings and key-side env holes", () => {
 	it("ignores key[]= array settings, as before", () => {
 		assert.strictEqual(config(["ca[]=x\nregistry=https://mirror.example/"]).registry, "https://mirror.example/");

@@ -1,10 +1,10 @@
-import type { DependencyField, IntegrityHashBrand } from "@effected/npm";
+import type { BunExtension } from "@effected/bun";
+import type { DependencyField, IntegrityHashBrand, LockfileDocumentError } from "@effected/npm";
 import { DependencySpecifier, IntegrityHash } from "@effected/npm";
+import type { PnpmExtension } from "@effected/pnpm";
 import { Effect, Exit, Schema } from "effect";
-import type { BunExtension } from "../BunExtension.js";
 import { ImporterDependency } from "../ImporterDependency.js";
 import type { LockfileImporter } from "../LockfileImporter.js";
-import type { PnpmExtension } from "../PnpmExtension.js";
 import type { ResolvedPackage } from "../ResolvedPackage.js";
 import type { UnsupportedLockfileVersion } from "../UnsupportedLockfileVersion.js";
 import { WorkspaceDependency } from "../WorkspaceDependency.js";
@@ -22,8 +22,7 @@ export const DEP_TYPES = ["dependencies", "devDependencies", "peerDependencies",
 
 /**
  * Coerce a raw lockfile integrity string to the `@effected/npm` `IntegrityHash`
- * brand, which recognizes the SRI (`<algo>-<base64>`), corepack (`<algo>.<hex>`)
- * and yarn (`<cachekey>/<hex>`) textual forms.
+ * brand.
  *
  * Absence and corruption are treated differently, and the distinction is the
  * point. An *absent* integrity (input `undefined`) succeeds with `undefined`,
@@ -32,8 +31,8 @@ export const DEP_TYPES = ["dependencies", "devDependencies", "peerDependencies",
  * validation channel the shape checks use ({@link validationFailure}), so
  * `Lockfile.parse` surfaces it as a `LockfileParseError` with
  * `stage: "validation"` rather than silently dropping a corrupt value. Never a
- * defect. yarn's `10c0/<hex>` cache checksums are a recognized form, so real
- * yarn/npm/pnpm/bun integrity all still parses; only genuine corruption fails.
+ * defect. Real npm/pnpm/bun integrity all parses; only genuine corruption
+ * fails.
  *
  * @internal
  */
@@ -191,8 +190,7 @@ const EMPTY_PEERS: PeerDeclarations = { peerDependencies: {}, peerDependenciesMe
  * Normalize one format's peer declarations into the unified pair.
  *
  * Every format records the ranges the same way (a name→range map), but the
- * optional flag has two spellings: a `peerDependenciesMeta` object (pnpm, npm,
- * yarn Berry) and bun's `optionalPeers` array of names. Both are accepted and
+ * optional flag has two spellings: a `peerDependenciesMeta` object (pnpm, npm) and bun's `optionalPeers` array of names. Both are accepted and
  * collapse to `{ optional: boolean }` per peer, so a consumer reads one shape
  * regardless of which manager wrote the lockfile.
  *
@@ -225,86 +223,43 @@ export const peerDeclarations = (
 };
 
 /**
- * The minimum lockfile-format version each gated format is parsed at.
+ * Materialize a manager package's `LockfileDocumentError` into the internal
+ * {@link ParseFailure} record, losing nothing `Lockfile.parse`'s errors carry.
  *
- * This is a deliberate narrowing of the supported input domain, not an
- * implementation detail: an older lockfile fails typed rather than parsing
- * into a model that cannot answer resolution questions. Note the gate is on
- * the **lockfile format version**, which is the only version a lockfile
- * records — the writing package manager's version is not recoverable from the
- * file, so no manager-version claim could be enforced here.
- *
- * @internal
- */
-export const MINIMUM_LOCKFILE_VERSION = { pnpm: 9, npm: 3 } as const;
-
-/**
- * Fail typed when a lockfile predates the supported format version.
- *
- * Routed through {@link validationFailure} rather than {@link framingFailure}:
- * the document was located perfectly well, so this is a shape judgement about
- * a located document, not a framing problem. The cause is a structured record
- * rather than an engine error, so a consumer can tell "your lockfile is too
- * old" from "your lockfile is malformed" without parsing a message.
- *
- * A version that is not a number at all (`lockfileVersion: "next"`) is not a
- * supported version either, and fails the same way.
+ * - `syntax` and `shape` keep the engine or schema failure as the cause, at
+ *   `stage: "syntax"` and `stage: "validation"`.
+ * - `framing` keeps its framing reason and document count.
+ * - `version` fails at `stage: "validation"` with an
+ *   {@link UnsupportedLockfileVersion} cause built from the error's
+ *   `lockfileVersion` and `minimumSupported`, so a consumer can tell "your
+ *   lockfile is too old" from "your lockfile is malformed" without parsing a
+ *   message. The gate itself, and the minimum each format is read at, belong
+ *   to the manager package that reads the document.
  *
  * @internal
  */
-export const requireLockfileVersion = (
-	format: keyof typeof MINIMUM_LOCKFILE_VERSION,
-	raw: string | number,
-): Effect.Effect<void, ParseFailure> => {
-	const minimum = MINIMUM_LOCKFILE_VERSION[format];
-	const parsed = typeof raw === "number" ? raw : Number.parseFloat(raw);
-	if (Number.isFinite(parsed) && parsed >= minimum) return Effect.void;
+export const fromDocumentError = (error: LockfileDocumentError): ParseFailure => {
+	if (error.reason === "syntax") return syntaxFailure(error.cause);
+	if (error.reason === "shape") return validationFailure(error.cause);
+	if (error.reason === "framing") {
+		return framingFailure(error.framing ?? "noLockfileDocument", error.documents ?? 0);
+	}
+	const format = error.format;
+	if (format === "bun") return validationFailure(error);
+	const lockfileVersion = error.lockfileVersion ?? "";
+	const minimumSupported = error.minimumSupported ?? 0;
 	// Typed as the exported public shape, so the record a consumer narrows to
 	// with `isUnsupportedLockfileVersion` and the record built here cannot
 	// drift apart silently.
 	const cause: UnsupportedLockfileVersion = {
 		_tag: "UnsupportedLockfileVersion",
 		format,
-		lockfileVersion: raw,
-		minimumSupported: minimum,
-		message: `${format} lockfileVersion ${JSON.stringify(raw)} is not supported: @effected/lockfiles parses ${format} lockfileVersion ${minimum} and newer`,
+		lockfileVersion,
+		minimumSupported,
+		message: `${format} lockfileVersion ${JSON.stringify(lockfileVersion)} is not supported: @effected/lockfiles parses ${format} lockfileVersion ${minimumSupported} and newer`,
 	};
-	return Effect.fail(validationFailure(cause));
+	return validationFailure(cause);
 };
-
-/**
- * The pnpm version gate's own input: `lockfileVersion` and nothing else.
- *
- * The gate has to read the version *before* the shape decode, because the
- * shape it decodes against is the shape of a supported version. `importers` is
- * a required key in the lockfile shape and a pre-v9 single-project lockfile has
- * none — it records its dependencies at the top level — so a shape-first order
- * reports a lockfile we reject for being too old as merely malformed instead.
- *
- * @internal
- */
-const PnpmVersionProbe = Schema.Struct({
-	lockfileVersion: Schema.Union([Schema.String, Schema.Number]),
-});
-
-/**
- * Gate a located pnpm document (lockfile or env preamble) on its format
- * version: decode {@link PnpmVersionProbe}, then {@link requireLockfileVersion}.
- * Call it BEFORE the shape decode, for the reason the probe documents.
- *
- * Succeeds with the gated version as the model spells it (`String` of the
- * recorded value), for a caller that reports a version without decoding the
- * rest of the document.
- *
- * @internal
- */
-export const gatePnpmVersion = (document: unknown): Effect.Effect<string, ParseFailure> =>
-	Schema.decodeUnknownEffect(PnpmVersionProbe)(document).pipe(
-		Effect.mapError(validationFailure),
-		Effect.flatMap((probe) =>
-			requireLockfileVersion("pnpm", probe.lockfileVersion).pipe(Effect.as(String(probe.lockfileVersion))),
-		),
-	);
 
 /**
  * Why the lockfile document could not be located in a YAML stream.

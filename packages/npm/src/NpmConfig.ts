@@ -59,6 +59,27 @@ export interface NpmConfigSource {
 }
 
 /**
+ * Options for {@link NpmConfig.fromSourcesResult}.
+ *
+ * @public
+ */
+export interface NpmConfigSourcesOptions {
+	/**
+	 * Whether the environment's `npm_config_*` variables apply on top of the
+	 * sources, as npm reads them. Defaults to `true`. With `false`, `env` still
+	 * serves `${VAR}` substitution, and no variable becomes a setting.
+	 *
+	 * @remarks
+	 * For a package manager that does not read those variables: pnpm 12 takes
+	 * none of them as settings (only `npm_config_//host/:_authToken`-style
+	 * credentials, and `npm_config_userconfig` as a file location), so
+	 * `@effected/pnpm`'s `PnpmNpmConfig` builds its configuration this way and
+	 * supplies pnpm's own layers as sources.
+	 */
+	readonly npmEnvironment?: boolean | undefined;
+}
+
+/**
  * Options for {@link NpmConfig.load}.
  *
  * @public
@@ -86,8 +107,8 @@ export interface NpmConfigLoadOptions {
 	/**
 	 * Read the project npmrc at the workspace root rather than the nearest
 	 * package, as pnpm does: the nearest directory at or above `cwd` holding a
-	 * `pnpm-workspace.yaml`, or a `package.json` with a `workspaces` field (npm,
-	 * yarn and bun workspaces). With no such directory the default lookup
+	 * `pnpm-workspace.yaml`, or a `package.json` with a `workspaces` field (any
+	 * workspace that declares its members there). With no such directory the default lookup
 	 * applies. Defaults to `false`.
 	 *
 	 * @remarks
@@ -122,7 +143,7 @@ export interface NpmConfigLoadOptions {
 
 /**
  * Whether a `package.json` text declares workspaces: a non-null `workspaces`
- * array or object (yarn's `{ packages: [...] }` form). Malformed JSON, or a
+ * array or object (the `{ packages: [...] }` form). Malformed JSON, or a
  * document that is not an object, declares none.
  */
 const declaresWorkspaces = (text: string): boolean => {
@@ -188,11 +209,14 @@ const withoutCredentials = (key: string, value: string): string | undefined => {
 const parseSource = (
 	source: NpmConfigSource,
 	env: Readonly<Record<string, string | undefined>>,
-): Result.Result<ReadonlyArray<readonly [string, string]>, NpmConfigError> => {
-	const pairs: Array<readonly [string, string]> = [];
+): Result.Result<ReadonlyArray<readonly [string, string, boolean]>, NpmConfigError> => {
+	const pairs: Array<readonly [string, string, boolean]> = [];
 	for (const entry of parseNpmrc(source.text, env)) {
-		// Array settings (`ca[]=`) are not settings this module reads.
-		if (entry.array) continue;
+		// An array line (`ca[]=`) is a list value, never a credential or a scalar setting.
+		if (entry.array) {
+			pairs.push([entry.key, entry.value, true]);
+			continue;
+		}
 		if (isSecretKey(entry.key) && entry.unset.length > 0) {
 			return Result.fail(
 				new NpmConfigError({
@@ -203,7 +227,7 @@ const parseSource = (
 				}),
 			);
 		}
-		pairs.push([entry.key, entry.value]);
+		pairs.push([entry.key, entry.value, false]);
 	}
 	return Result.succeed(pairs);
 };
@@ -248,11 +272,13 @@ export interface ProxyForOptions {
  * local address.
  *
  * @remarks
- * **Nothing in this package applies these.** `NpmRegistry` and
+ * **The root entry applies none of these.** `NpmRegistry` and
  * `PackageTarball` send every request through the `HttpClient` the caller
- * provides, and that client is where a proxy or a CA bundle takes effect. This
- * record is what a caller reads to build one; see {@link NpmConfig.transport},
- * {@link NpmConfig.proxyFor} and {@link NpmConfig.tlsFor}.
+ * provides, and that client is where a proxy or a CA bundle takes effect.
+ * On Node, `NpmHttpClient.layer` from `@effected/npm/node` builds that client
+ * from this configuration; another client reads this record to build its
+ * own. See {@link NpmConfig.transport}, {@link NpmConfig.proxyFor} and
+ * {@link NpmConfig.tlsFor}.
  *
  * Each field names who reads it. npm 11 and npm 12 read these settings
  * identically; pnpm (11 and 12) reads the same keys plus three of its own
@@ -269,15 +295,9 @@ export interface ProxyForOptions {
  * absent, as both managers read it. `cafile` is a path as written: its file
  * is not read and the path is not resolved (pnpm resolves a relative one
  * against the npmrc's directory). Not held: the per-registry `//host/:…` TLS
- * settings (see {@link NpmConfig.tlsFor}), and the `ca[]` and `noproxy[]`
- * array forms. Only the scalar `ca` and the comma-separated `noproxy` /
- * `no-proxy` strings are read. **An array form is dropped silently, not
- * reported**: with `noproxy[]=registry.corp.test`, npm bypasses the proxy for
- * that host and ignores `NO_PROXY`, while here `noproxy` is empty, so
- * {@link NpmConfig.proxyFor} falls back to `NO_PROXY` and can answer a proxy
- * npm would not use; with `ca[]=`, `ca` is absent and `isDefault` can read
- * `true`. Write those settings in their scalar form (a comma-separated
- * `noproxy`, a `cafile` bundle) for them to be seen.
+ * settings (see {@link NpmConfig.tlsFor}). The `ca[]` and `noproxy[]` array
+ * forms are read as lists: `caList` holds every inline `ca` value, and the
+ * `noproxy` bypass list is the `noproxy[]` lines joined, then split on commas.
  *
  * **Top-level `certfile` and `keyfile` are not settings either manager
  * reads.** Both read a client certificate file only per registry
@@ -320,6 +340,8 @@ export class NpmTransportSettings extends Schema.Class<NpmTransportSettings>("Np
 	strictSsl: Schema.Boolean,
 	/** `ca` (npm, pnpm): an inline PEM certificate authority, replacing the default trust store. Both use `cafile`'s certificates instead when both are set. */
 	ca: Schema.optionalKey(Schema.String),
+	/** Every inline `ca` value: the `ca[]=` lines, or the scalar `ca` as one entry. Empty when neither is set. */
+	caList: Schema.Array(Schema.String).pipe(Schema.withConstructorDefault(Effect.succeed([]))),
 	/** `cafile` (npm, pnpm): a path to a PEM bundle of trusted certificate authorities, as written. */
 	cafile: Schema.optionalKey(Schema.String),
 	/**
@@ -355,6 +377,7 @@ export class NpmTransportSettings extends Schema.Class<NpmTransportSettings>("Np
 			this.noProxy.length === 0 &&
 			this.strictSsl &&
 			this.ca === undefined &&
+			this.caList.length === 0 &&
 			this.cafile === undefined &&
 			this.cert === undefined &&
 			this.key === undefined &&
@@ -414,11 +437,15 @@ const proxyEnv = (env: Readonly<Record<string, string | undefined>>): Map<string
 };
 
 /**
- * A proxy variable as pnpm reads it (`getProcessEnv`): the lower-case name,
- * else the upper-case one. A mixed-case spelling is not read.
+ * A proxy variable as pnpm 12 reads it (`npmrc_auth.rs` `apply_proxy_cascade`,
+ * `env_pair`): the upper-case name, else the lower-case one. A mixed-case
+ * spelling is not read. (pnpm 11's `getProcessEnv` read lower case first.)
  */
-const pnpmEnv = (env: Readonly<Record<string, string | undefined>>, name: string): string | undefined =>
-	env[name] ?? env[name.toUpperCase()];
+const pnpmEnv = (env: Readonly<Record<string, string | undefined>>, name: string): string | undefined => {
+	const upper = name.toUpperCase();
+	if (Object.hasOwn(env, upper) && env[upper] !== undefined) return env[upper];
+	return Object.hasOwn(env, name) ? env[name] : undefined;
+};
 
 /** A comma-separated bypass list, trimmed, with empty entries dropped. */
 const splitNoProxy = (value: string | undefined): ReadonlyArray<string> =>
@@ -498,9 +525,10 @@ const pnpmProxy = (
 	transport: NpmTransportSettings,
 	env: Readonly<Record<string, string | undefined>>,
 ): Option.Option<Redacted.Redacted<string>> => {
-	// pnpm chains variables with `??`, so a variable that is set but empty is
-	// a value: `https_proxy=""` means "no proxy" and stops the fallback to
-	// `HTTPS_PROXY` and, for `http:`, to `HTTP_PROXY`. `false` stands for it.
+	// pnpm chains variables with `or_else`, so a variable that is set but
+	// empty is a value: `HTTPS_PROXY=""` means "no proxy" and stops the
+	// fallback to `https_proxy` and, for `http:`, to `HTTP_PROXY`. `false`
+	// stands for it.
 	const variable = (...names: ReadonlyArray<string>): Redacted.Redacted<string> | false | undefined => {
 		for (const name of names) {
 			const value = pnpmEnv(env, name);
@@ -600,17 +628,17 @@ const pnpmTlsKeys = (parsed: URL): ReadonlyArray<string> => {
  * nearest `package.json` or `node_modules` directory unless
  * {@link NpmConfigLoadOptions.projectDir} names it or
  * {@link NpmConfigLoadOptions.workspaceRoot} asks for the workspace root.
- * **Not supported**: command-line flags, npm's builtin npmrc, client
- * certificates (`certfile`/`keyfile`), `always-auth`, and the
- * deprecated unscoped credentials.
+ * **Not supported**: command-line flags, npm's builtin npmrc, `always-auth`,
+ * and the deprecated unscoped credentials.
  *
- * **Transport settings are read, never applied.** `proxy`, `https-proxy`,
- * `noproxy`, `strict-ssl`, `ca`, `cafile`, `certfile` and `keyfile` decide how
- * npm connects, and here the connection belongs to the `HttpClient` the caller
- * provides to `NpmRegistry`: this package owns no transport. Read
- * {@link NpmConfig.transport} and {@link NpmConfig.proxyFor} to configure that
- * client, or a registry behind a proxy or an internal CA fails every read as
- * `RegistryReadError` `"transport"` where `npm view` succeeds.
+ * **Transport settings are read here and applied by the client.** `proxy`,
+ * `https-proxy`, `noproxy`, `strict-ssl`, `ca`, `cafile` and each registry's
+ * `certfile` and `keyfile` decide how npm connects, and the connection belongs
+ * to the `HttpClient` the caller provides to `NpmRegistry`. On Node, provide
+ * `NpmHttpClient.layer(config)` from `@effected/npm/node`, which applies them
+ * through {@link NpmConfig.proxyFor} and {@link NpmConfig.tlsFor}. With any
+ * other client, a registry behind a proxy or an internal CA fails every read
+ * as `RegistryReadError` `"transport"` where `npm view` succeeds.
  *
  * Credentials are held as `Redacted` values, so logging or serializing a
  * config prints `<redacted>` for them. So are an inline client `key` or
@@ -646,7 +674,35 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 	secrets: Schema.Record(Schema.String, Schema.Redacted(Schema.String)),
 	/** The npmrc files that were read, lowest precedence first. */
 	files: Schema.Array(Schema.String),
+	/**
+	 * The list settings: every `key[]=v` line, and the scalar line of a key
+	 * that also has `[]` lines, in file order. Read them with
+	 * {@link NpmConfig.list}.
+	 */
+	lists: Schema.Record(Schema.String, Schema.Array(Schema.String)).pipe(
+		Schema.withConstructorDefault(Effect.succeed({})),
+	),
 }) {
+	/**
+	 * The values of a list setting such as `min-release-age-exclude` or `ca`:
+	 * the `key[]=v` lines of the highest-precedence source that defines the
+	 * key, else the key's scalar value as a one-element list, else an empty
+	 * list. Values are as written (a comma-packed value is not split).
+	 *
+	 * @remarks
+	 * Matches npm's own layering: each source shadows the key of the sources
+	 * below it as a whole (`@npmcli/config`'s `ConfigData` prototype chain), so
+	 * a higher source's scalar replaces a lower source's array and the
+	 * reverse. Within one source, a scalar line and `[]` lines for the same key
+	 * are all kept, in file order.
+	 *
+	 * @param key - The setting name, without `[]`.
+	 */
+	list(key: string): ReadonlyArray<string> {
+		if (Object.hasOwn(this.lists, key)) return this.lists[key] as ReadonlyArray<string>;
+		return Object.hasOwn(this.settings, key) ? [this.settings[key] as string] : [];
+	}
+
 	/** The default registry: the `registry` setting, else the public registry. */
 	get registry(): string {
 		return Object.hasOwn(this.settings, "registry") ? (this.settings.registry as string) : DEFAULT_REGISTRY;
@@ -738,11 +794,16 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 		};
 		const optional = <K extends string, V>(key: K, value: V | undefined): { [P in K]?: V } =>
 			(value === undefined ? {} : { [key]: value }) as { [P in K]?: V };
+		const listText = (key: string): string | undefined => {
+			const values = this.list(key);
+			return values.length === 0 ? undefined : values.join(",");
+		};
 		const strictSsl = text("strict-ssl");
 		return NpmTransportSettings.make({
 			proxyDisabled: text("proxy")?.trim() === "false",
-			noproxy: splitNoProxy(text("noproxy")),
-			noProxy: splitNoProxy(text("no-proxy")),
+			noproxy: splitNoProxy(listText("noproxy")),
+			noProxy: splitNoProxy(listText("no-proxy")),
+			caList: this.list("ca"),
 			strictSsl: strictSsl === undefined ? true : strictSslOf(strictSsl),
 			...optional("httpsProxy", proxy("https-proxy")),
 			...optional("httpProxy", proxy("http-proxy")),
@@ -772,7 +833,7 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 	 * else `proxy`, else `HTTPS_PROXY`; any other URL uses `http-proxy`, else
 	 * that same `https:` answer, else `HTTP_PROXY`, else `PROXY`. `proxy=false`
 	 * turns proxying off entirely, the environment included. A variable is read
-	 * in lower case, else upper case, never mixed. The bypass list is
+	 * in upper case, else lower case, never mixed, as pnpm 12 reads it. The bypass list is
 	 * `no-proxy`, else `noproxy`, else `NO_PROXY`, and a bare `true` bypasses
 	 * every host. A proxy written without a scheme (`proxy.corp:3128`) takes the
 	 * request's.
@@ -926,24 +987,42 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 	 *
 	 * @remarks
 	 * `sources` are lowest precedence first (global, user, project); the
-	 * environment's `npm_config_*` settings apply on top of all of them. Fails
-	 * `"missing-env"` when a credential names an unset variable.
+	 * environment's `npm_config_*` settings apply on top of all of them, unless
+	 * `options.npmEnvironment` is `false`. Fails `"missing-env"` when a
+	 * credential names an unset variable.
 	 *
 	 * @param sources - npmrc layers, lowest precedence first.
 	 * @param env - The environment, for `npm_config_*` and `${VAR}`.
+	 * @param options - See {@link NpmConfigSourcesOptions}.
 	 */
 	static fromSourcesResult(
 		sources: ReadonlyArray<NpmConfigSource>,
 		env: Readonly<Record<string, string | undefined>>,
+		options: NpmConfigSourcesOptions = {},
 	): Result.Result<NpmConfig, NpmConfigError> {
 		const settings: Record<string, string> = {};
 		const secrets: Record<string, Redacted.Redacted<string>> = {};
 		const files: Array<string> = [];
-		for (const source of [...sources, { text: envLayer(env) }]) {
+		const lists: Record<string, Array<string>> = {};
+		const layers = options.npmEnvironment === false ? sources : [...sources, { text: envLayer(env) }];
+		for (const source of layers) {
 			const parsed = parseSource(source, env);
 			if (Result.isFailure(parsed)) return Result.fail(parsed.failure);
 			if (source.path !== undefined) files.push(source.path);
-			for (const [key, value] of parsed.success) {
+			// A source shadows a key of the sources below it as a whole.
+			const arrayKeys = new Set(parsed.success.filter(([, , array]) => array).map(([key]) => key));
+			const own: Record<string, Array<string>> = {};
+			for (const key of new Set(parsed.success.map(([key]) => key))) delete lists[key];
+			for (const [key, value, array] of parsed.success) {
+				if (arrayKeys.has(key)) {
+					Object.defineProperty(own, key, {
+						value: [...(Object.hasOwn(own, key) ? (own[key] as Array<string>) : []), value],
+						writable: true,
+						enumerable: true,
+						configurable: true,
+					});
+				}
+				if (array) continue;
 				// Own data properties only: a `__proto__` key in an npmrc must not
 				// reach the prototype of either map.
 				const define = (target: Record<string, unknown>, stored: unknown) =>
@@ -964,8 +1043,11 @@ export class NpmConfig extends Schema.Class<NpmConfig>("NpmConfig")({
 				if (stripped !== undefined) define(secrets, Redacted.make(value));
 				define(settings, stripped ?? value);
 			}
+			for (const key of Object.keys(own)) {
+				Object.defineProperty(lists, key, { value: own[key], writable: true, enumerable: true, configurable: true });
+			}
 		}
-		return Result.succeed(NpmConfig.make({ settings, secrets, files }));
+		return Result.succeed(NpmConfig.make({ settings, secrets, files, lists }));
 	}
 
 	/**

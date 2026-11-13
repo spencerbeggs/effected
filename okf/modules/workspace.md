@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-10T04:40:05Z
+  at: 2026-11-12T21:41:04Z
 integrity:
   generated:
-    body: 817699d42f71eb55
+    body: 9dc13feea9100a46
 ---
 
 # workspace
@@ -50,7 +50,7 @@ Biome, commitlint, lint-staged and markdownlint all take their presets from `@sa
 
 ## Vendored source
 
-`.repos/` holds read-only vendored sources as sparse git submodules, declared in `.gitmodules` and described by the `.repos/config.json` manifest (url, ref, purpose, sparse paths, orientation notes) — see [the vendored-repos manifest interface](../interfaces/vendored-repos-manifest.md). `.repos/effect` is the load-bearing entry, pinned to the release tag matching the lockfile's resolved `effect` rather than tracking `main` — see [vendored Effect is pinned to the catalog tag](../decisions/vendored-effect-pinned-to-catalog-tag.md). The rest are port bases and oracles for the `markdown` package.
+`.repos/` holds read-only vendored sources as sparse git submodules, declared in `.gitmodules` and described by the `.repos/config.json` manifest (url, ref, purpose, sparse paths, orientation notes) — see [the vendored-repos manifest interface](../interfaces/vendored-repos-manifest.md). `.repos/effect` is the load-bearing entry, pinned to the release tag matching the lockfile's resolved `effect` rather than tracking `main` — see [vendored Effect is pinned to the catalog tag](../decisions/vendored-effect-pinned-to-catalog-tag.md). `.repos/pnpm` is the read-only pnpm 12 source pinned to the repo's `devEngines` pnpm (`v12.20.0`), sparse to the config, versioning, workspace and lockfile crates plus the settings docs: the authority for `@effected/pnpm`'s settings catalog, versioning schema and lockfile grammar. The rest are port bases and oracles for the `markdown` package.
 
 The checkout is **sparse**: for `.repos/effect`, only `packages/effect` (the v4 export authority), `packages/vitest` (the `@effect/vitest` reference implementation) and `migration`, `ai-docs`, `LLMS.md`, `MIGRATION.md` (the rename evidence for the plugin's evidence ladder) are materialized.
 

@@ -255,7 +255,7 @@ Extraction shells out to `tar` through core's `ChildProcessSpawner` rather than 
 
 ## Integrity hashes
 
-`IntegrityHash` is a brand over the three textual integrity forms a dependency graph carries — npm's SRI `sha512-<base64>`, corepack's `sha512.<hex>` and yarn's — with `algorithmOf` reading the algorithm out of any of them. `CorepackIntegrityHash` narrows the brand to the corepack spelling, which is what a `packageManager` pin has to be written in, and carries the bridge from the form npm actually hands you:
+`IntegrityHash` is a brand over the two textual integrity forms a dependency graph carries — npm's SRI `sha512-<base64>` and corepack's `sha512.<hex>` — with `algorithmOf` reading the algorithm out of either. `CorepackIntegrityHash` narrows the brand to the corepack spelling, which is what a `packageManager` pin has to be written in, and carries the bridge from the form npm actually hands you:
 
 ```ts
 import { CorepackIntegrityHash } from "@effected/npm";
@@ -283,9 +283,8 @@ Effect.runPromise(CorepackIntegrityHash.fromSri(npmIntegrity)).then(console.log)
 - `Manifest` — the tolerant manifest model: `Manifest.decode`, the pure `needsResolution` fast path, `resolve()` over the contracts and `toRecord()` back to the wire shape, with `ManifestDecodeError` and `UnresolvedDependencyError` as its typed failures.
 - `DependencySpecifier` — the specifier taxonomy: an eleven-protocol classifier, a codec decoding any specifier into a matchable tagged union that encodes back byte-for-byte, and the resolution statics (`catalogNameOf`, `resolveWorkspace`, `workspaceTargetOf`) implementing pnpm's publish-time projection.
 - `DependencySection` — the kit-wide dependency vocabulary: `DependencyKind`, `DependencyField` and the mapping between them.
-- `IntegrityHash` — a brand over the three textual integrity forms (SRI, corepack, yarn), with `algorithmOf`.
+- `IntegrityHash` — a brand over the two textual integrity forms (SRI, corepack), with `algorithmOf`.
 - `CorepackIntegrityHash` — the corepack-form narrowing a `packageManager` pin needs, plus the one-way SRI bridge: the `FromSri` codec, the `fromSri` effect over it, and `InvalidSriIntegrityHashError` carrying the input that would not convert.
-- `ReleaseAgeGate` / `PartialReleaseAgeGate` — pnpm's `minimumReleaseAge` / `minimumReleaseAgeExclude` gate as pure vocabulary: `combine` merges contributions from multiple config sources strictest-age-wins, and `filterVersions` / `isExcluded` drop candidate versions younger than the cutoff against a caller-supplied clock, so a resolver never picks a version pnpm would reject. `matchesExclude` is pnpm's flat-`*` matcher, deliberately not `@effected/glob`'s dialect. `PartialReleaseAgeGate` is the permissive inbound form each source contributes.
 - `NpmRegistry` — registry reads over `HttpClient`: `version`, `manifest`, `versions`, `distTags` and `publishTimes`, each taking a per-call `RegistryTarget` carrying the registry and an optional `credential`, with `version` and `manifest` reading a GitHub Packages target through the packument; `layerTest` and the fully-working `layerSeeded` are the test doubles.
 - `VersionManifest` — one version's `dependencies`, `peerDependencies`, `optionalDependencies`, `peerDependenciesMeta` and `engines`, as `NpmRegistry.manifest` answers them; the class is also the decoder for a version document.
 - `NpmConfig` — npmrc and `npm_config_*` resolution for registry reads: `load` (with `projectDir` and `workspaceRoot` to choose the project npmrc), the pure `fromSourcesResult`, and `registryFor` / `credentialFor` / `targetFor`, which only ever pair a credential with the host it was configured for; `NpmConfigError` is its typed failure.

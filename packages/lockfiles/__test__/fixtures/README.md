@@ -150,14 +150,13 @@ cite that record.
 
 | Fixture | Provenance | Pins |
 | --- | --- | --- |
-| `pnpm/peers`, `npm/peers`, `bun/peers`, `yarn/peers` | Real output of pnpm 11.22.0, npm 11.19.0, bun 1.3.14 and yarn 4.9.1, one per manager, over one workspace. An app pins `react@17.0.2` against `react-dom@18.3.1` (an unmet required peer) and `react-redux@9.2.0` (two optional peers). A workspace library declares one required peer and two optional ones. Added in #432. | Peer declarations and `peerDependenciesMeta`, recorded the same way in all four formats. |
+| `pnpm/peers`, `npm/peers`, `bun/peers` | Real output of pnpm 11.22.0, npm 11.19.0 and bun 1.3.14, one per manager, over one workspace. An app pins `react@17.0.2` against `react-dom@18.3.1` (an unmet required peer) and `react-redux@9.2.0` (two optional peers). A workspace library declares one required peer and two optional ones. Added in #432. | Peer declarations and `peerDependenciesMeta`, recorded the same way in all three formats. |
 | `pnpm/variants`, `npm/nested`, `bun/nested` | Real manager output over trees built to duplicate a package. `pnpm/variants` installs `react-dom` against two different `react` versions. The shared `nested` workspace shadows `react@18.3.1` under a workspace directory against a hoisted `17.0.2`, and `ms@2.0.0` under `debug` against a hoisted `2.1.3`. The test does not record each manager's version. Added in #432. | Package *instance* identity and resolved edges, as distinct from name@version. |
 | `pnpm/linkedpeer` | Real pnpm 11.22.0 output, from a workspace overriding `react` to `link:packages/fakereact`. Added in #432. | A registry package's peer satisfied by a linked workspace directory, which pnpm spells two different ways. |
 | `pnpm/unnameablelink` | Real pnpm 11.22.0 output, from an override pointing a registry name at `link:vendor/react-stub`, a directory that is not a workspace importer. Added in #432. | An edge that resolves, one that is recorded but cannot be named (`unresolvedEdges`), and one that is absent, all in one snapshot. |
 | `pnpm/filepeer` | Real pnpm 12.6.0 output, byte-identical under pnpm 11.28.0, over one workspace: `packages/host` depends on a `file:` directory `lib` that peers on `react` and `react-dom`, a `file:` tarball `tarlib`, a `file:` directory at `vendor/paren(lib)`, and a `link:` to `vendor/linklib` outside the globs, each declaring peers. | pnpm suffixes `file:` directories and tarballs like registry versions (nested chains included) and never suffixes `link:`; a path ending in a group is keyed the way pnpm keys its own `packages:` entry. |
 | `pnpm/alias` | Real pnpm 11.22.0 output. `glob@10.4.5` pulls in `@isaacs/cliui`, which records aliased edges such as `string-width-cjs: string-width@4.2.3`. The root importer declares `semver-classic: npm:semver@7.6.3`. Added in #453. | npm-alias edges resolve, and the whole lockfile has no `unresolvedEdges`. |
 | `pnpm/publishdir` | Real pnpm 11.22.0 output. `packages/react` declares `publishConfig.directory: dist/pkg` and `linkDirectory`. Added in #453. | A `link:` edge into a declared publish directory resolves to its importer. |
-| `yarn/devdeps` | Real yarn 4.9.1 output. `typescript` is declared only in `devDependencies`, and `chalk` only in `dependencies`. Added in #432. | A Berry lockfile writes dev edges under `dependencies:`, and both edges resolve. |
 | `pnpm/unsupported-v6` | Real pnpm 8 output (`lockfileVersion: '6.0'`), workspace-shaped. The exact pnpm 8 patch is not recorded. Added in #432. | A pre-v9 pnpm lockfile fails typed at `stage: "validation"`. |
 | `pnpm/unsupported-v6-single` | Real pnpm 8.15.9 output for a non-workspace project, which has no `importers` map. Added in #432. | The version gate runs before the shape decode, so this file fails as too old rather than as malformed. |
 | `npm/unsupported-v1` | Real npm 11.19.0 output from `npm install --lockfile-version=1`. Added in #432. | A `lockfileVersion: 1` tree, which has no `packages` object, fails as too old rather than as malformed. |
@@ -179,10 +178,9 @@ manager: the property each one pins is one no install produces.
 
 The original fixture sets arrived with the package in #38 (2026-07-10):
 `pnpm/v1`, `pnpm/v2`, `pnpm/v3`, `npm/v1`, `npm/v2`, `bun/v1`, `bun/v2`,
-`bun/v3`, `yarn/v1` and `yarn/v2`. Neither that commit nor the tests that read
+and `bun/v3`. Neither that commit nor the tests that read
 these files record the producing tool version or command. `okf/modules/lockfiles.md`
-counts them as real manager output. The files agree with that: the yarn ones
-carry yarn's generated-file header, and the formats are pnpm `lockfileVersion
-'9.0'`, npm `3`, bun `1` and yarn Berry `__metadata.version: 8`. The exact
+counts them as real manager output. The files agree with that: the formats are pnpm
+`lockfileVersion '9.0'`, npm `3` and bun `1`. The exact
 versions and commands are unknown, so re-baselining one of these means
 recording its provenance here at the same time.

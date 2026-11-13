@@ -8,19 +8,25 @@
 // `PackageManager` class for the corepack `pnpm@10.33.0` field.
 
 import { PackageJsonFormat } from "@effected/package-json";
-import { Context, Effect, FileSystem, Layer, Option, Path, Predicate, Schema } from "effect";
+import { Context, Effect, FileSystem, Layer, Option, Path, Predicate, Result, Schema } from "effect";
+import type { PackageManagerVerdict } from "./internal/packageManagerDecision.js";
 import { MARKER_FILES, decidePackageManager } from "./internal/packageManagerDecision.js";
 import { WorkspaceManifestError } from "./WorkspacePackage.js";
 
 /**
- * The four package managers this package understands.
+ * The package managers this package acts on: npm, pnpm and bun.
+ *
+ * @remarks
+ * A repository run by any other manager still discovers — its members come
+ * from `package.json#workspaces` — but detection reports it as an
+ * `UnsupportedPackageManagerError` rather than naming one of these.
  *
  * @public
  */
-export const PackageManagerName = Schema.Literals(["npm", "pnpm", "yarn", "bun"]);
+export const PackageManagerName = Schema.Literals(["npm", "pnpm", "bun"]);
 
 /**
- * The decoded type of {@link (PackageManagerName:variable)}: `"npm" | "pnpm" | "yarn" | "bun"`.
+ * The decoded type of {@link (PackageManagerName:variable)}: `"npm" | "pnpm" | "bun"`.
  *
  * @public
  */
@@ -49,7 +55,6 @@ export const PackageManagerEvidence = Schema.Literals([
 	"pnpm-workspace.yaml",
 	"bun.lock",
 	"bun.lockb",
-	"yarn.lock",
 	"package.json#workspaces",
 	// The standalone tier: which manager runs this single-package repo.
 	"pnpm-lock.yaml",
@@ -75,16 +80,16 @@ export type PackageManagerEvidence = typeof PackageManagerEvidence.Type;
  *
  * @remarks
  * `version` is `Option.none()` unless a manifest field naming the *same* manager
- * that was detected also carries a version — a `packageManager: "yarn@4"` in a
- * pnpm workspace tells us nothing about pnpm's version, so it is not reported as
- * one. The two fields consulted are the corepack top-level `packageManager` and
+ * that was detected also carries a version — a `packageManager: "bun@1.2.0"` in
+ * a pnpm workspace tells us nothing about pnpm's version, so it is not reported
+ * as one. The two fields consulted are the corepack top-level `packageManager` and
  * `devEngines.packageManager`; see {@link PackageManagerDetector} for the
  * precedence between them.
  *
  * `evidence` is the rung of the priority order that decided the **name** — the
  * verdict's provenance, in the same vocabulary the failure path reports as
- * `PackageManagerDetectionError.checked`. For the bun and yarn rungs the
- * lockfile is the recorded signal even though the rung is a conjunction (the
+ * `PackageManagerDetectionError.checked`. For the bun rung the lockfile is the
+ * recorded signal even though the rung is a conjunction (the
  * lockfile *plus* a manifest field naming the manager): the manifest field alone
  * would have resolved in the declaration tier, so the lockfile is what this rung
  * added. The version's provenance is deliberately not carried — it follows the
@@ -125,6 +130,39 @@ export class PackageManagerDetectionError extends Schema.TaggedError<PackageMana
 }
 
 /**
+ * Raised when a root belongs to a package manager this package does not act
+ * on, so detection names it instead of guessing a supported one.
+ *
+ * @remarks
+ * yarn is that manager. A yarn repository declares its members in
+ * `package.json#workspaces` exactly as npm does, so discovery, the root ascent
+ * and the dependency graph work on it unchanged; what fails is everything that
+ * runs or provisions a manager, parses its lockfile or launches its tools.
+ * Reporting npm there would run the wrong manager against a yarn tree.
+ *
+ * `evidence` is the signal that identified the manager: its lockfile, or the
+ * manifest field that names it.
+ *
+ * @public
+ */
+export class UnsupportedPackageManagerError extends Schema.TaggedError<UnsupportedPackageManagerError>()(
+	"UnsupportedPackageManagerError",
+	{
+		/** The workspace root that was probed. */
+		root: Schema.String,
+		/** The unsupported manager the root belongs to. */
+		manager: Schema.Literal("yarn"),
+		/** The signal that identified it. */
+		evidence: Schema.Literals(["yarn.lock", "package.json#devEngines.packageManager", "package.json#packageManager"]),
+	},
+) {
+	/** Renders the root, manager and evidence into a one-line message. */
+	override get message(): string {
+		return `${this.root} is a ${this.manager} repository (${this.evidence}), and ${this.manager} is not a supported package manager: use npm, pnpm or bun`;
+	}
+}
+
+/**
  * The markers probed, in priority order. Derived from the evidence vocabulary so
  * the failure path's `checked` and the success path's `evidence` cannot drift.
  */
@@ -132,12 +170,36 @@ const CHECKED = PackageManagerEvidence.literals;
 
 /**
  * Every failure {@link PackageManagerDetector} can surface: no manager could be
- * attributed to the root, or the root's `package.json` exists but cannot be read
- * or parsed.
+ * attributed to the root, the root belongs to an unsupported manager, or the
+ * root's `package.json` exists but cannot be read or parsed.
  *
  * @public
  */
-export type PackageManagerDetectionFailure = PackageManagerDetectionError | WorkspaceManifestError;
+export type PackageManagerDetectionFailure =
+	| PackageManagerDetectionError
+	| UnsupportedPackageManagerError
+	| WorkspaceManifestError;
+
+/**
+ * The detection result for a decided verdict: the detected manager, or the
+ * unsupported-manager failure. Shared by the Effect and sync surfaces.
+ *
+ * @internal
+ */
+export const verdictResult = (
+	root: string,
+	verdict: PackageManagerVerdict,
+): Result.Result<DetectedPackageManager, UnsupportedPackageManagerError> =>
+	verdict._tag === "Unsupported"
+		? Result.fail(new UnsupportedPackageManagerError({ root, manager: verdict.manager, evidence: verdict.evidence }))
+		: Result.succeed(
+				DetectedPackageManager.make({
+					name: verdict.name,
+					version: verdict.version,
+					runtime: verdict.runtime,
+					evidence: verdict.evidence,
+				}),
+			);
 
 /**
  * The {@link PackageManagerDetector} service shape.
@@ -160,12 +222,16 @@ export interface PackageManagerDetectorShape {
  * @remarks
  * **Lockfile evidence is the primary signal** — it is what says which manager
  * actually ran. Priority, first match wins: a `pnpm-workspace.yaml` means pnpm;
- * a bun lockfile *plus* a manifest field naming bun means bun; a `yarn.lock`
- * *plus* a manifest field naming yarn means yarn; a root `package.json` with a
- * `workspaces` field falls back to npm.
+ * a bun lockfile *plus* a manifest field naming bun means bun; a root
+ * `package.json` with a `workspaces` field falls back to npm.
  *
- * The manifest conjunction is deliberate: a stray `yarn.lock` in an npm repo is
- * common, and only a declared manager name disambiguates it.
+ * The manifest conjunction is deliberate: a stray bun lockfile in an npm repo
+ * is common, and only a declared manager name disambiguates it.
+ *
+ * A yarn repository fails with {@link UnsupportedPackageManagerError} instead
+ * of falling back to npm: a manifest field naming yarn decides it, and so does
+ * a `yarn.lock` that is the root's only lockfile when the manifest names no
+ * manager.
  *
  * **Two manifest fields declare a manager, and they are not interchangeable.**
  * Corepack reads both, and this is the rule that falls out of how it treats
@@ -182,8 +248,8 @@ export interface PackageManagerDetectorShape {
  *   supplies the version instead.
  *
  * A version is reported **only when the field it came from names the manager
- * that was actually detected**. A `packageManager: "yarn@4"` in a pnpm workspace
- * says nothing about pnpm's version, so no version is reported — and the same
+ * that was actually detected**. A `packageManager: "bun@1.2.0"` in a pnpm
+ * workspace says nothing about pnpm's version, so no version is reported — and the same
  * discipline applies to `devEngines`.
  *
  * Malformed manifest *hints* are ignored rather than fatal, matching corepack: a
@@ -213,7 +279,7 @@ export class PackageManagerDetector extends Context.Service<PackageManagerDetect
 		/**
 		 * The root manifest, read and parsed **once** per detection.
 		 *
-		 * An absent manifest is `Option.none()` — a bun or yarn repo with no root
+		 * An absent manifest is `Option.none()` — a bun repo with no root
 		 * `package.json` is unusual but not an error. A manifest that is present but
 		 * unreadable, unparseable, or not a JSON object fails typed: those are
 		 * corrupt-manifest conditions, and swallowing them would report "no manager
@@ -253,7 +319,7 @@ export class PackageManagerDetector extends Context.Service<PackageManagerDetect
 			if (decision === undefined) {
 				return yield* Effect.fail(new PackageManagerDetectionError({ root, checked: CHECKED }));
 			}
-			return DetectedPackageManager.make(decision);
+			return yield* Effect.fromResult(verdictResult(root, decision));
 		});
 
 		return {

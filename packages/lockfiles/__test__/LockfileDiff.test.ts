@@ -51,7 +51,7 @@ describe("LockfileDiff.compare", () => {
 	describe("no change gives empty arrays", () => {
 		// Every fixture the parser accepts, compared with itself. The walk is
 		// asserted non-empty first, so a broken enumeration cannot pass vacuously.
-		const formats: ReadonlyArray<LockfileFormat> = ["bun", "npm", "pnpm", "yarn"];
+		const formats: ReadonlyArray<LockfileFormat> = ["bun", "npm", "pnpm"];
 		const cases = formats.flatMap((format) =>
 			readdirSync(join(FIXTURES_DIR, format))
 				.filter((dir) => !dir.startsWith("unsupported-"))
@@ -496,22 +496,6 @@ describe("LockfileDiff.compare", () => {
 						format,
 					);
 				}
-			}),
-		);
-	});
-
-	describe("yarn", () => {
-		it.effect("records no importers and no catalogs, so two yarn lockfiles compare empty", () =>
-			Effect.gen(function* () {
-				const before = yield* parseFixture("yarn/v1/yarn.lock", "yarn");
-				const after = yield* parseFixture("yarn/v2/yarn.lock", "yarn");
-				// The packages did move; the diff has nothing it can compare.
-				assert.notDeepEqual(
-					before.packages.map((p) => p.instanceId),
-					after.packages.map((p) => p.instanceId),
-				);
-				const diff = LockfileDiff.compare(before, after);
-				assert.isFalse(diff.hasChanges);
 			}),
 		);
 	});

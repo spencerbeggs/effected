@@ -7,10 +7,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-27T22:15:57Z
+  at: 2026-11-13T00:15:32Z
 integrity:
   generated:
-    body: 79dc6db6e2824ae1
+    body: 4e8dad13e21d6fcc
   verified:
     by: human:spencer
     at: 2026-10-23T01:00:25Z
@@ -28,7 +28,7 @@ pnpm 11 and 12 write `pnpm-lock.yaml` as **two YAML documents** in one file when
 
 ## Decision
 
-`@effected/lockfiles` treats a pnpm lockfile as a **YAML stream** and selects the correct document by **position**: the lockfile is always the **last** document in the stream, because pnpm's own writer composes the file as env-prefix followed by the main document (`writeEnvLockfile` emits `${env}---${main}`, and `extractMainDocument` reads back everything after the first separator) — so the preamble is always a prefix, never a suffix. pnpm writes at most two documents, so the stream holds one or two; a stream of more than two is not one pnpm wrote and fails typed rather than being read by guess. `src/internal/documents.ts` owns this selection through one splitter that both `Lockfile.parse` and `PnpmEnvLockfile` project from, so the two readers cannot drift apart on the document-count rule.
+`@effected/lockfiles` treats a pnpm lockfile as a **YAML stream** and selects the correct document by **position**: the lockfile is always the **last** document in the stream, because pnpm's own writer composes the file as env-prefix followed by the main document (`writeEnvLockfile` emits `${env}---${main}`, and `extractMainDocument` reads back everything after the first separator) — so the preamble is always a prefix, never a suffix. pnpm writes at most two documents, so the stream holds one or two; a stream of more than two is not one pnpm wrote and fails typed rather than being read by guess. `@effected/pnpm`'s `src/internal/stream.ts` owns this selection through one splitter that both `PnpmLockDocument.parse` and `PnpmEnvDocument.parse` (and so `Lockfile.parse` and `PnpmEnvLockfile`) project from, so the two readers cannot drift apart on the document-count rule.
 
 ## Alternatives rejected
 

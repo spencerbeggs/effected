@@ -1,8 +1,8 @@
 ---
 type: Limitation
 title: PeerCheck cannot answer yarn
-description: PeerCheck reports supported false for yarn's virtual-locator peers, because the yarn lockfile records no join between a peer declaration and the instance that satisfied it.
-status: stable
+description: "Deprecated: yarn is an unsupported manager, so PeerCheck never reads a yarn lockfile; the supported false report remains for any lockfile format outside its allowlist."
+status: deprecated
 bounds: ../interfaces/workspaces-peer-check.md
 tags:
   - architecture
@@ -12,54 +12,29 @@ sources:
     resource: ../../packages/workspaces/src/PeerCheck.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-20T05:03:32Z
+  at: 2026-11-13T06:27:13Z
 integrity:
   generated:
-    body: 4ca5bf92c71eccf0
+    body: ff8e1532b960439d
 ---
 
 # PeerCheck cannot answer yarn
 
 ## Condition
 
-`PeerCheck.run` reads a parsed `@effected/lockfiles` `Lockfile` and reports
-unsatisfied peer dependencies through `instanceId`, `resolved`, and
-`peerDependencies` alone, with no per-format branch.[^peer-check-ts] One
-fact about the lockfile it reads limits what the report can say: yarn
-resolves peers virtually, giving a peer-bearing package one `@virtual:`
-locator per consumer with no record of which instance satisfied which
-peer.
+`PeerCheck.run` reads a parsed `@effected/lockfiles` `Lockfile`, and a
+format outside its allowlist of peer-resolving formats (`npm`, `pnpm`,
+`bun`) reports `supported: false` rather than an empty, falsely clean
+`unsatisfied` list. That limit was first met for yarn, whose lockfile records
+no join between a peer declaration and the instance that satisfied it.
 
-## Symptom
+## Current state
 
-A caller running `PeerCheck.run` against a yarn lockfile gets back
-`supported: false` rather than a populated `unsatisfied` list — there is no
-row-level detail to inspect, because the lockfile carries no join key
-between a peer declaration and the instance that satisfied it.
-
-## Why this is acceptable
-
-Yarn's plug-and-play resolution genuinely does not record what a checker
-would need: the lockfile-only design this checker commits to (reading the
-resolved graph rather than shelling out to a package manager's own peer
-command, which does not exist for bun and hard-fails before inspection for
-npm) cannot manufacture a join yarn itself does not persist. `supported:
-false` states that limit rather than returning an empty, falsely-clean
-result — a bare array would make "yarn cannot be checked" indistinguishable
-from "yarn has no violations", which is the more dangerous failure.
-
-The suppression policy is no longer part of this limitation: all three
-`peerDependencyRules` axes (`allowedVersions`, `ignoreMissing`, `allowAny`)
-are applied, each established by measurement against `pnpm peers check`
-with a firing control — see [the peer-check
-interface](../interfaces/workspaces-peer-check.md) for the matching rules
-and the fixtures that pin them.
-
-## What the fix would take
-
-Yarn support has no fix within this checker's architecture: it would
-require a different, format-specific data source than the lockfile, which
-is exactly the per-format branch this module's design forbids.
-
-[^peer-check-ts]: `packages/workspaces/src/PeerCheck.ts` — `PeerCheck.run`,
-    `UnverifiedReason`.
+Yarn is not a supported manager and `@effected/lockfiles` no longer parses
+its lockfile, so a yarn repository never reaches `PeerCheck`: detection
+refuses it first
+([support policy](../conventions/package-manager-support-policy.md)). The
+`supported: false` report and its allowlist remain, so a lockfile format
+added later is unsupported until a parser records its peer resolution. The
+matching rules and the suppression axes are in
+[the peer-check interface](../interfaces/workspaces-peer-check.md).

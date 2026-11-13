@@ -31,17 +31,30 @@ export {
 } from "./Changelog.js";
 export { ChangesetConfig } from "./ChangesetConfig.js";
 export { ChangesetFile, ParsedChangeset } from "./ChangesetFile.js";
+export type { VersioningErrorCode } from "./errors.js";
 export {
+	AmbiguousPackageError,
 	ChangesetConfigError,
 	ChangesetParseError,
+	LedgerError,
 	MissingPackageError,
 	SnapshotPreModeError,
 	SnapshotTemplateError,
 	UnknownPackageError,
+	VersioningError,
 } from "./errors.js";
-export type { PendingChangesetFailure, SettledChangesets } from "./PendingChangesets.js";
+export type { Consumption } from "./Ledger.js";
+export { Ledger, LedgerEntry } from "./Ledger.js";
+export type { PendingChangesetFailure, ProjectRef, SettledChangesets } from "./PendingChangesets.js";
 export { PendingChangeset, PendingChangesets } from "./PendingChangesets.js";
 export { PreState } from "./PreState.js";
+export type { RegistryVersionsShape } from "./RegistryVersions.js";
+export { RegistryVersions } from "./RegistryVersions.js";
+export { ReleaseCause } from "./ReleaseCause.js";
 export { ChangesetMove, ManifestEdit, RangeEdit, ReleaseEdits } from "./ReleaseEdits.js";
+export type { ReleaseManagerDetectOptions } from "./ReleaseManager.js";
+export { ReleaseManager } from "./ReleaseManager.js";
 export type { ReleaseSnapshot } from "./ReleasePlan.js";
 export { PlannedRelease, ReleaseContext, ReleasePlan } from "./ReleasePlan.js";
+export type { VersioningViolation } from "./VersioningCheck.js";
+export { EpicOutOfBand, FixedOutOfStep, VersioningCheck } from "./VersioningCheck.js";

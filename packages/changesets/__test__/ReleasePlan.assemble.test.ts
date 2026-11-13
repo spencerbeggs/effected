@@ -510,4 +510,113 @@ describe("ReleasePlan.assemble", () => {
 			assert.strictEqual(failure(result)?._tag, "SnapshotPreModeError");
 		});
 	});
+
+	describe("pnpm directory keys", () => {
+		// pnpm's `is_dir_ref` (crates/versioning/src/plan/project_refs.rs) takes a key starting `./` as a
+		// workspace-relative directory; `normalize_project_dir` (ledger.rs) turns backslashes to `/`, strips
+		// every leading `./` and trailing `/`. A bare name matching two projects is `AmbiguousPackage`.
+		const at = (name: string, dir: string, version = "1.0.0"): WorkspacePackage =>
+			WorkspacePackage.make({
+				name,
+				version,
+				path: `/repo/${dir}`,
+				packageJsonPath: `/repo/${dir}/package.json`,
+				relativePath: dir,
+				workspaceRoot: "/repo",
+			});
+		const members = [at("@p/a", "packages/a"), at("@p/b", "packages/b")];
+		const pnpmPlan = (
+			packages: ReadonlyArray<WorkspacePackage>,
+			releases: Record<string, "patch" | "minor" | "major">,
+		) =>
+			ReleasePlan.assemble({ packages, changesets: [change("one.md", releases)], config: config(), manager: "pnpm" });
+
+		it("resolves a ./dir key to the package in that directory", () => {
+			assert.deepStrictEqual(projected(pnpmPlan(members, { "./packages/b": "patch" })), [
+				["@p/b", "patch", "1.0.0", "1.0.1"],
+			]);
+		});
+
+		it("normalises the spelling the way pnpm does", () => {
+			for (const key of ["./packages/b/", "././packages/b"]) {
+				assert.deepStrictEqual(projected(pnpmPlan(members, { [key]: "minor" })), [["@p/b", "minor", "1.0.0", "1.1.0"]]);
+			}
+		});
+
+		it("still accepts a bare name", () => {
+			assert.deepStrictEqual(projected(pnpmPlan(members, { "@p/a": "patch" })), [["@p/a", "patch", "1.0.0", "1.0.1"]]);
+		});
+
+		it("fails UnknownPackageError naming the key for a directory with no package", () => {
+			const error = failure(pnpmPlan(members, { "./packages/zzz": "patch" }));
+			assert.isTrue(
+				error?._tag === "UnknownPackageError" && error.packageName === "./packages/zzz" && error.changeset === "one.md",
+			);
+		});
+
+		it("never resolves ../ as a directory key", () => {
+			assert.strictEqual(failure(pnpmPlan(members, { "../repo/packages/b": "patch" }))?._tag, "UnknownPackageError");
+		});
+
+		it("fails AmbiguousPackageError listing both directories for a shared bare name", () => {
+			const twins = [at("util", "a/util"), at("util", "b/util")];
+			const error = failure(pnpmPlan(twins, { util: "patch" }));
+			assert.isTrue(
+				error?._tag === "AmbiguousPackageError" &&
+					error.packageName === "util" &&
+					error.directories.join(",") === "a/util,b/util",
+			);
+		});
+
+		it("plans a ./dir key naming one of two same-named packages, keyed by its directory", () => {
+			// pnpm keys a plan by directory (`PlannedRelease.dir`, crates/versioning/src/plan.rs:79-80), so
+			// a `./dir` key releases exactly the project it names and never its twin.
+			const twins = [at("util", "a/util", "1.0.0"), at("util", "b/util", "2.0.0")];
+			const result = pnpmPlan(twins, { "./a/util": "patch", "./b/util": "minor" });
+			assert.isTrue(Result.isSuccess(result));
+			if (Result.isSuccess(result)) {
+				assert.deepStrictEqual(
+					result.success.releases.map((r) => [r.name, r.dir, r.oldVersion, r.newVersion]),
+					[
+						["util", "a/util", "1.0.0", "1.0.1"],
+						["util", "b/util", "2.0.0", "2.1.0"],
+					],
+				);
+			}
+		});
+
+		it("fails UnknownPackageError for ./ itself, ./../outside and a key with a backslash", () => {
+			for (const key of ["./", "./../outside", "pkg\\b", ".\\packages\\b"]) {
+				const error = failure(pnpmPlan(members, { [key]: "patch" }));
+				assert.isTrue(error?._tag === "UnknownPackageError" && error.packageName === key, key);
+			}
+		});
+
+		it("ignores pre.json, which pnpm never reads", () => {
+			const result = ReleasePlan.assemble({
+				packages: members,
+				changesets: [change("old.md", { "./packages/b": "patch" })],
+				config: config(),
+				manager: "pnpm",
+				pre: PreState.make({ mode: "exit", tag: "beta", changesets: ["old"] }),
+			});
+			assert.isTrue(Result.isSuccess(result));
+			if (Result.isSuccess(result)) {
+				assert.deepStrictEqual(
+					result.success.changesets.map((c) => c.file),
+					["old.md"],
+				);
+				assert.deepStrictEqual(
+					result.success.releases.map((r) => [r.name, r.type, r.newVersion]),
+					[["@p/b", "patch", "1.0.1"]],
+				);
+				assert.isUndefined(result.success.preState);
+			}
+		});
+
+		it("rejects a ./dir key in changesets mode, as the Changesets CLI does", () => {
+			const error = failure(plan(members, [change("one.md", { "./packages/b": "patch" })]));
+			assert.isTrue(error?._tag === "UnknownPackageError" && error.packageName === "./packages/b");
+		});
+	});
 });

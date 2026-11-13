@@ -5,7 +5,7 @@
 [![Node.js %3E%3D24.11.0](https://img.shields.io/badge/Node.js-%3E%3D24.11.0-5fa04e.svg)](https://nodejs.org/)
 [![TypeScript 7.0](https://img.shields.io/badge/TypeScript-7.0-3178c6.svg)](https://www.typescriptlang.org/)
 
-Monorepo workspace tooling for [Effect](https://effect.website) v4: find the workspace root, enumerate its packages, walk the dependency graph, detect the package manager, resolve pnpm catalogs, read the lockfile, check it for unsatisfied peer dependencies and work out which packages a git range touches. Every capability is a service you provide at the edge and swap in tests. Works with npm, pnpm, yarn Berry and bun.
+Monorepo workspace tooling for [Effect](https://effect.website) v4: find the workspace root, enumerate its packages, walk the dependency graph, detect the package manager, resolve pnpm catalogs, read the lockfile, check it for unsatisfied peer dependencies and work out which packages a git range touches. Every capability is a service you provide at the edge and swap in tests. Works with npm, pnpm and bun. A repository on any other manager still discovers, since its members come from `package.json#workspaces`, but detection reports it as `UnsupportedPackageManagerError` rather than guessing a supported one.
 
 > **Pre-`1.0.0`.** This package is part of the `@effected/*` kit, built on stable
 > Effect v4 (`effect` `~4.1.0`) and still in `0.x` development. Stable Effect
@@ -41,7 +41,7 @@ Requires Node.js >=24.11.0. `effect` v4 is a peer dependency. You provide a `Fil
 
 All `@effected/*` packages are ESM-only: the exports maps publish only `import` conditions, so `require()` — including tools that resolve in CJS mode — fails with Node's `ERR_PACKAGE_PATH_NOT_EXPORTED` rather than loading a CJS build that does not exist. Import from an ES module.
 
-pnpm's catalog semantics come from pnpm's own `@pnpm/catalogs.*` packages, which install as regular dependencies. Reimplementing them would mean owning a moving spec with no oracle, so they are used directly and confined to a single internal module.
+pnpm's catalog semantics are restated from pnpm 12's own catalog crates in a single internal module; no `@pnpm/*` package is installed.
 
 ## Quick start
 
@@ -161,36 +161,7 @@ A specifier the workspace cannot answer fails typed as `UnresolvedDependencyErro
 
 ## pnpm settings
 
-`PnpmSettings.load({ cwd, env, platform })` reads pnpm's effective settings, the values `pnpm config get <key>` reports, from the sources pnpm 11 and 12 read for a pnpm setting:
-
-1. a `pnpm_config_<name>` or `PNPM_CONFIG_<NAME>` environment variable (highest);
-2. the workspace root's `pnpm-workspace.yaml`: the one in the directory `PNPM_CONFIG_WORKSPACE_DIR` / `NPM_CONFIG_WORKSPACE_DIR` names, or else the nearest one at or above the real path of `cwd`, when `cwd` belongs to that workspace;
-3. pnpm's global `config.yaml`, in `$XDG_CONFIG_HOME/pnpm`, else `~/Library/Preferences/pnpm` on macOS, `%LOCALAPPDATA%\pnpm\config` on Windows and `~/.config/pnpm` elsewhere (lowest).
-
-A higher source replaces a lower one's value whole, so a workspace `minimumReleaseAgeExclude` list replaces the global one rather than adding to it.
-
-`cwd` belongs to the workspace, as pnpm decides it, when it is the root, when it holds no project manifest (`package.json`, `package.json5` or `package.yaml`), or when it matches the manifest's `packages:` patterns. A manifest with no `packages:` key has the root as its only member, so an example app or fixture with its own `package.json` inside a single-package repo reads no workspace settings, exactly as pnpm skips them. A misnamed manifest (`pnpm-workspace.yml`, `.pnpm-workspace.yaml`) is not a workspace file, and the ascent passes it, as pnpm 12 does.
-
-```ts
-import * as NodeServices from "@effect/platform-node/NodeServices";
-import { PnpmSettings } from "@effected/workspaces";
-import { Effect, Option } from "effect";
-
-const program = Effect.gen(function* () {
-  const settings = yield* PnpmSettings.load({ cwd: process.cwd(), env: process.env, platform: process.platform });
-  return {
-    cutoffMinutes: Option.getOrUndefined(settings.minimumReleaseAge), // number | undefined
-    exclude: settings.minimumReleaseAgeExclude, // ReadonlyArray<string>, [] when unset
-    strict: settings.getBoolean("minimumReleaseAgeStrict"), // Option<boolean>
-  };
-}).pipe(Effect.provide(NodeServices.layer));
-```
-
-`get(key)` returns a setting's raw value and `origin(key)` says which source it came from; `getString`, `getNumber`, `getBoolean` and `getStringArray` read it as a type. A key is the camelCase name pnpm writes in YAML or the kebab-case one an npmrc uses, and both name the same setting. An environment value is text, read as the type the accessor asks for: canonical digits for `minimumReleaseAge` (`05`, `+5`, `0x10` and `1e2` do not count), a canonical decimal for `getNumber`, exactly `true` or `false` for a boolean, or a JSON array of strings for a list. One that does not read as that type is skipped, so the next source answers, as pnpm 12 skips it. A comma-separated list is not a list. In a file, a boolean setting also reads the words pnpm 12 coerces (`yes`, `y`, `on`, `no`, `n`, `off`, quoted or not, in any case), and an integer setting a quoted digit string. A file value that still has the wrong type answers `None`, because pnpm 12 refuses to load such a file. A `null` in a file is unset.
-
-pnpm 11 and 12 read no pnpm setting from `.npmrc` (only registry and auth keys), from `npm_config_*` variables or from the old global `rc` file, so neither does `PnpmSettings`. For registries and credentials, use `@effected/npm`'s `NpmConfig`. pnpm's built-in defaults are not applied: an unset `minimumReleaseAge` is `None`, which is also what `pnpm config get` reports. Command-line `--config.*` flags are not modelled either. `WorkspaceCatalogs.releaseAgeGate()` is a different question: the gate the workspace file and replayed config-dependency hooks declare, with no environment or global layer.
-
-`PnpmSettings.fromSourcesResult({ workspace, global, env })` does the same merge over text you already hold, with no IO. A file that exists but cannot be read, is not YAML, or whose document is not a mapping fails `PnpmSettingsError` (`reason` `"read"`, `"parse"` or `"shape"`). A missing file is skipped.
+`PnpmSettings`, pnpm's effective settings as `pnpm config get` reports them, is in `@effected/pnpm`. `WorkspaceCatalogs.releaseAgeGate()` here answers a different question: the gate the workspace file and replayed config-dependency hooks declare, with no environment or global layer.
 
 ## Peer dependency checking
 
@@ -227,7 +198,7 @@ const program = Effect.gen(function* () {
 
 **An empty `unsatisfied` is not the same as clean**, and reading it that way is the mistake this report's shape exists to prevent. Three other fields carry the difference between "nothing is wrong" and "nothing was checked", and a gate must read all four:
 
-- `supported` is `false` for yarn, which resolves peers virtually and does not record which virtual instance satisfied which peer. The answer is unrecoverable, so it is not fabricated.
+- `supported` is `false` for a lockfile format that does not record which instance satisfied which peer. The answer is unrecoverable there, so it is not fabricated. Every format `Lockfile.parse` reads records it.
 - `unresolvedImporters` names importers that could not be joined to package instances — in practice the root importer under npm and bun, neither of which records a resolved version per importer dependency.
 - `unverified` says why the report is not a complete answer, and every reason means fail closed:
   - `"peerRulesNotApplied"` — the `peerDependencyRules` key was omitted, so pnpm's suppression policy was not applied.
@@ -236,7 +207,7 @@ const program = Effect.gen(function* () {
   - `"peerVersionUnresolved"` — a peer resolved to a non-workspace provider whose version is a protocol specifier rather than a version: a `file:` directory or tarball, directly or through a `file:` override, which the lockfile records as `file:vendor/x` with no version for a directory, and a git or remote-tarball provider, which pnpm keys by its URL (`https://codeload.github.com/…`). The comparison never runs, so the peer is neither reported nor passed as satisfied; for a `file:` directory `pnpm peers check` reports it as a `bad` row even when the directory's manifest satisfies the range. It applies to peers declared by lockfile rows and by joined manifests alike.
 - `required` is the getter for the rows a gate should act on — the non-optional ones. An unsatisfied *optional* peer is normal, so `optional` travels with the row rather than being filtered out at the source.
 
-`WorkspaceCatalogs.peerDependencyRules()` returns the workspace's effective merged pnpm suppression rules, which the lockfile records nowhere; without them a checker reports findings pnpm itself calls clean. **Presence of the `peerDependencyRules` option key is the assertion, not its contents.** Passing `NoPeerDependencyRules` asserts the workspace has none, so the report carries no `"peerRulesNotApplied"` — though it can still be unverified for another reason, or unsupported; omitting the key says nobody looked, and always yields `"peerRulesNotApplied"`. **All three axes of the supplied rules are applied**, with pnpm's measured semantics. `allowedVersions` hides a row whose resolved version a matching key's range permits, in all three key spellings pnpm accepts: `parent@version>peer` (what `pnpm:export` writes; the parent version is ignored, as pnpm ignores it), `parent>peer` (what a config-dependency plugin injects) and a bare `peer`, which pnpm applies to every parent that declares it. `ignoreMissing` hides a required peer nothing resolved for, and `allowAny` hides a peer that resolved outside its range; both are `@pnpm/matcher` patterns over the PEER name (`*` wildcard, leading `!` negates), never `parent>peer` keys, and the two never cross.
+`WorkspaceCatalogs.peerDependencyRules()` returns the workspace's effective merged pnpm suppression rules, which the lockfile records nowhere; without them a checker reports findings pnpm itself calls clean. **Presence of the `peerDependencyRules` option key is the assertion, not its contents.** Passing `PeerDependencyRules.empty` (from `@effected/pnpm`) asserts the workspace has none, so the report carries no `"peerRulesNotApplied"` — though it can still be unverified for another reason, or unsupported; omitting the key says nobody looked, and always yields `"peerRulesNotApplied"`. **All three axes of the supplied rules are applied**, with pnpm's measured semantics. `allowedVersions` hides a row whose resolved version a matching key's range permits, in all three key spellings pnpm accepts: `parent@version>peer` (what `pnpm:export` writes; the parent version is ignored, as pnpm ignores it), `parent>peer` (what a config-dependency plugin injects) and a bare `peer`, which pnpm applies to every parent that declares it. `ignoreMissing` hides a required peer nothing resolved for, and `allowAny` hides a peer that resolved outside its range; both are `@pnpm/matcher` patterns over the PEER name (`*` wildcard, leading `!` negates), never `parent>peer` keys, and the two never cross.
 
 The `workspacePackages` option takes the packages `WorkspaceDiscovery` already returned, and supplying it is what turns a `link:`-resolved parent from a refusal into an answer: the matched manifest's declared peers join the walk, named from the manifest (`probe-a@1.0.0`, not the row's `packages/a@0.0.0`) and judged against the **importer's own** dependency set, which is where pnpm resolves them from. Measured one variable at a time on the probe workspace, against pnpm 12.5.1 and 12.6.0: a consumer's own `react@18.3.1` satisfies the linked parent's `^18.0.0` peer, the same version installed only by a sibling importer does not, and a consumer's own `react@17.0.2` is a `bad` row carrying `foundVersion`. A target the set does not cover — every target, when the key is omitted — keeps `"unresolvedEdge"`, so the option answers only for what it covers and says so about the rest. A covered target the walk cannot reach — one the lockfile records no workspace row for — keeps the marker too; the root importer's linked targets are walked and judged against the root's own dependencies, as pnpm does.
 
@@ -496,7 +467,7 @@ Both checks are static analysis of literal specifiers — there is no dynamic-im
 
 ### Packed install
 
-`PackedInstall.run` packs a carrier and every workspace package it needs, then installs the carrier into a fresh project outside the workspace under each package manager that answers `--version`, and checks every expected bin is linked and executable. It carries the traps each manager sets: the parent run's `npm_*` and `pnpm_config_*` context is scrubbed, pnpm's overrides go in `pnpm-workspace.yaml`, Yarn Berry gets the `node-modules` linker, `packageManager` is pinned to the probed version, and lifecycle scripts are skipped. By default it packs each package's built `dist/prod/npm/pkg`, the artifact a release publishes; build first.
+`PackedInstall.run` packs a carrier and every workspace package it needs, then installs the carrier into a fresh project outside the workspace under each package manager that answers `--version`, and checks every expected bin is linked and executable. It carries the traps each manager sets: the parent run's `npm_*` and `pnpm_config_*` context is scrubbed, pnpm's overrides go in `pnpm-workspace.yaml`, `packageManager` is pinned to the probed version, and lifecycle scripts are skipped. By default it packs each package's built `dist/prod/npm/pkg`, the artifact a release publishes; build first.
 
 It does not run the bins; the test does, inside the same scope, because the scratch directory (`result.scratch`) is removed when the scope closes. `consumer.runBin(name, args, options?)` runs one to completion and returns `{ stdout, stderr, exitCode }`, with no direct `@effected/commands` dependency. `consumer.command(name, args?, options?)` returns the `ChildProcess` command `runBin` builds, same environment and working directory, with stdin left open, so a probe that writes to the bin can spawn it. `consumer.binProvenance(name)` names the package a `.bin` symlink resolves into. `PackedInstall.closure(carrier, options?)` names every package the run will pack before it runs, and `PackedInstall.timeoutBudget` sizes the outer timeout from those names and the run's own ceilings. For an MCP server bin, `McpProbe` from `@effected/mcp-kit/testing` is the proof:
 
@@ -514,7 +485,7 @@ import { Duration, Effect, Layer } from "effect";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const Live = Workspaces.layer({ cwd: ROOT }).pipe(Layer.provideMerge(NodeServices.layer));
 
-const MANAGERS = ["npm", "pnpm", "yarn", "bun"] as const;
+const MANAGERS = ["npm", "pnpm", "bun"] as const;
 const INSTALL_TIMEOUT = "2 minutes";
 const PACK_TIMEOUT = "1 minute";
 const BIN_TIMEOUT = "30 seconds";
@@ -572,7 +543,7 @@ describe("packed install", () => {
 
 Pass `process.env` in: nothing in the subpath reads `process` itself. `runBin` and `command` run under the environment the install ran under, with `options.env` layered over it after the parent manager's context is stripped, so an explicit entry such as `CI: "true"` wins and a key set to `undefined` removes a variable; a non-zero exit is a result, and a bin that cannot spawn or outlives its ceiling (one minute by default) fails `BinFailed`. `PackedInstall.scrubEnv(...)` returns the same scrubbed environment for any other spawn. A requested manager that is not installed lands in `result.unavailable`; pass `require: "all"` to make that a failure instead. Declare in `consumerDependencies` every package the consumer's own code imports besides the carrier: pnpm links only declared dependencies at a project's top level. An entry that names a packed package is written as its `file:` tarball whatever spec you pass, so any range will do; npm fails `EOVERRIDE` when a direct spec differs from its override.
 
-By default only the carrier may declare its bins. If any other packed package declares one of the carrier's bin names, the run fails `BinConflict` before installing: under npm, bun and Yarn's flat layouts either package can take the `.bin` slot (npm and bun were observed to link the package whose name sorts first; Yarn 1 and 4 kept the carrier's, the consumer's direct dependency), so the bin that runs may carry no carrier identity, and the bin check and every bin run could pass on the wrong package. The check reads the `bin` field of the packed packages only (the carrier, the closure and `overrides`): it does not read `directories.bin`, and a registry dependency declaring the same name goes undetected.
+By default only the carrier may declare its bins. If any other packed package declares one of the carrier's bin names, the run fails `BinConflict` before installing: under npm's and bun's flat layouts either package can take the `.bin` slot (npm and bun were observed to link the package whose name sorts first), so the bin that runs may carry no carrier identity, and the bin check and every bin run could pass on the wrong package. The check reads the `bin` field of the packed packages only (the carrier, the closure and `overrides`): it does not read `directories.bin`, and a registry dependency declaring the same name goes undetected.
 
 Sharing bin names is a supported choice for a carrier whose front ends are also installed on their own: pass `allowSharedBins: true`. The expected bins are still verified present, but `runBin` may then run a front end's bin. `consumer.runCarrierBin(name, args?, options?)` runs the carrier's own bin whichever package took the slot: it resolves `name` through the carrier's installed `package.json` `bin` map and runs that file with `node`, under the same environment as `runBin`. Running through `node` assumes a Node script, drops any shebang flags, and bypasses the executable bit, so it proves the carrier's shim runs, not that it is executable. `consumer.carrierCommand(name, args?, options?)` returns that command, stdin open, for `McpProbe`.
 
@@ -580,7 +551,7 @@ When a closure member needs a dependency the registry does not have yet, for exa
 
 The installs run one after another. `timeoutBudget` adds each manager's `--version` probe (30 seconds), install (`installTimeout`, four minutes by default) and `perConsumer` (one minute by default, one `runBin` at its default ceiling; add a minute per further bin run, or pass `"0 seconds"` for a test that only installs), each package's pack (`packTimeout`, two minutes by default) and manifest read (30 seconds), 30 seconds for the untimed steps, and one minute for cleanup (removing the scratch root when the scope closes, and killing a child after its ceiling interrupts it); a tighter outer guard fires first, as a `TimeoutError` that names no manager. `packages` is a count or the names `PackedInstall.closure` returns for the run's options: pass the run's own options object as the second argument when it sets `closure`, `overrides` or `workspaceOverrides`, and the names equal `Object.keys(result.tarballs)` in order. `PackedInstall.timeoutBudgetFor(runOptions, { perConsumer? })` does both in one Effect, reading `managers`, `installTimeout` and `packTimeout` from the same object. A vitest test's timeout is fixed when it is declared, so await either at module evaluation, as the example above does.
 
-`binProvenance` reads the `.bin` entry as a symlink, which npm, bun and Yarn (under the `node-modules` linker the run configures) write, realpaths it, and walks up to the nearest `package.json` with a string `name`, inside the (realpath'd) consumer directory. `undefined` means only that the entry exists and is not a symlink, which is a pnpm shim. An entry that does not exist, or a link to nothing, fails `MissingBin`; a link into no named package inside the consumer fails `UnownedBin`; any other read failure fails `Io`. `PackedInstall` is POSIX-only and fails `UnsupportedPlatform` elsewhere.
+`binProvenance` reads the `.bin` entry as a symlink, which npm and bun write, realpaths it, and walks up to the nearest `package.json` with a string `name`, inside the (realpath'd) consumer directory. `undefined` means only that the entry exists and is not a symlink, which is a pnpm shim. An entry that does not exist, or a link to nothing, fails `MissingBin`; a link into no named package inside the consumer fails `UnownedBin`; any other read failure fails `Io`. `PackedInstall` is POSIX-only and fails `UnsupportedPlatform` elsewhere.
 
 ## Error handling
 
@@ -601,7 +572,7 @@ const program = Effect.gen(function* () {
 );
 ```
 
-`WorkspaceRootNotFoundError`, `WorkspaceDiscoveryError`, `WorkspacePatternError`, `PackageNotFoundError`, `WorkspaceManifestError`, `PackageManagerDetectionError`, `CatalogAssemblyError`, `LockfileReadError`, `CyclicDependencyError`, `ChangeDetectionError` and `PnpmSettingsError` each name one thing that can actually go wrong, and each method's error channel is narrowed to the ones it can produce. `CatalogAssemblyError` is defined in `@effected/npm`, beside the resolver contract that names it in its channel — import it from there. Change detection additionally surfaces `@effected/git`'s typed git errors, such as `NotARepositoryError`.
+`WorkspaceRootNotFoundError`, `WorkspaceDiscoveryError`, `WorkspacePatternError`, `PackageNotFoundError`, `WorkspaceManifestError`, `PackageManagerDetectionError`, `CatalogAssemblyError`, `LockfileReadError`, `CyclicDependencyError` and `ChangeDetectionError` each name one thing that can actually go wrong, and each method's error channel is narrowed to the ones it can produce. `CatalogAssemblyError` is defined in `@effected/npm`, beside the resolver contract that names it in its channel — import it from there. Change detection additionally surfaces `@effected/git`'s typed git errors, such as `NotARepositoryError`.
 
 ## Testing
 
@@ -639,12 +610,11 @@ A name miss in the derived `getPackage` fails with the service's own typed `Pack
 - `WorkspaceDiscovery` — package enumeration with a bounded descent for segment-crossing `packages/**` patterns, per-package lookup and the `makeTest` / `layerTest` in-memory test doubles.
 - `WorkspacePackage` — a deliberately tolerant manifest model, so one member with an odd version cannot fail discovery for the whole repo. `version` is optional and carried exactly as the manifest has it — absent for the ordinary version-less private root or member, never a `"0.0.0"` placeholder; a `version` that is present but not a string is `invalidShape`. `manifestRecord` keeps the as-read `package.json` for tolerant access to fields outside the typed slice without a second read; `WorkspacePackage.manifest(pkg)` re-reads and is the opt-in bridge to `@effected/package-json`'s strict `Package`.
 - `DependencyGraph` — a value class over discovered packages: `levels()` for parallel build tiers, the flattened topological order, `toMermaid()` for a deterministic Mermaid `flowchart TD` of the whole graph, and `CyclicDependencyError` — naming the cycle's actual members — when there is no order.
-- `PackageManagerDetector` — npm, pnpm, yarn or bun from lockfiles and the `packageManager` field.
-- `WorkspaceCatalogs` — pnpm catalog assembly and `catalog:` resolution, on pnpm's own catalog packages; `releaseAgeGate()` assembles the effective `@effected/npm` `ReleaseAgeGate` from inline `pnpm-workspace.yaml` release-age keys and replayed hook contributions, strictest-wins, in the same pass as the catalogs.
-- `PnpmSettings` — pnpm's effective settings as `pnpm config get` resolves them (`PNPM_CONFIG_*` variables, then `pnpm-workspace.yaml`, then the global `config.yaml`), with typed accessors and the `minimumReleaseAge` / `minimumReleaseAgeExclude` pair.
+- `PackageManagerDetector` — npm, pnpm or bun from lockfiles and the `packageManager` field; a yarn repository fails `UnsupportedPackageManagerError`.
+- `WorkspaceCatalogs` — catalog assembly (pnpm's `pnpm-workspace.yaml`, bun's `package.json`, and both managers' lockfiles) and `catalog:` resolution as pnpm 12 resolves it; `releaseAgeGate()` assembles the effective `@effected/pnpm` `ReleaseAgeGate` from inline `pnpm-workspace.yaml` release-age keys and replayed hook contributions, strictest-wins, in the same pass as the catalogs.
 - `LockfileReader` — locate and parse the workspace's lockfile through `@effected/lockfiles`.
 - `PeerCheck` — unsatisfied peer-dependency detection as a pure, total value over a parsed lockfile, with `UnsatisfiedPeer` and `PeerParent` as the report's rows. Read `supported`, `unresolvedImporters` and `unverified` alongside `unsatisfied`: an empty finding list is a clean bill of health only when those three say so.
-- `NoPeerDependencyRules` / `PeerDependencyRules` — the effective pnpm suppression policy `WorkspaceCatalogs.peerDependencyRules()` assembles, and the "I assert none apply" value for callers that have checked.
+- `PeerDependencyRules` (from `@effected/pnpm`) — the effective pnpm suppression policy `WorkspaceCatalogs.peerDependencyRules()` assembles; `PeerDependencyRules.empty` is the "I assert none apply" value for callers that have checked.
 - `ChangeDetector` — git-range change detection over `@effected/git`'s `Git` service; swap the layer to mock it with no repository.
 - `PublishabilityDetector` — whether a package publishes and to where, as a `PublishTarget` (registry, directory, access, provenance). No composite provides one: pick `PublishabilityDetector.layerNpm` (standard npm semantics) or `.layerNone` (nothing publishes) and provide it explicitly.
 - `ReleaseTag` / `TrackingTag` — release-tag formatting (`ReleaseTag.single` / `.scoped`, strict SemVer by default with no `v` prefix) and the floating major/minor alias derivation GitHub Actions-style consumers expect (`v1`, `v1.2`), plus `classifyTag` to tell a release tag from a tracking alias.

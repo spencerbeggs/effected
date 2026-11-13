@@ -1,0 +1,4 @@
+"@p/a@1.1.0-alpha.0":
+  dir: packages/a
+  intents:
+    - lane-minor

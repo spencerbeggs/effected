@@ -25,8 +25,8 @@ import { decidePackageManager } from "./internal/packageManagerDecision.js";
 import type { PatternSource } from "./internal/patterns.js";
 import { manifestPatternsOf, pnpmPatternsOf } from "./internal/patterns.js";
 import { Traversal, badMaxDepthMessage, isPruned, isValidMaxDepth, joinRelative } from "./internal/traverse.js";
-import type { PackageManagerDetectionFailure } from "./PackageManagerName.js";
-import { DetectedPackageManager, PackageManagerDetectionError, PackageManagerEvidence } from "./PackageManagerName.js";
+import type { DetectedPackageManager, PackageManagerDetectionFailure } from "./PackageManagerName.js";
+import { PackageManagerDetectionError, PackageManagerEvidence, verdictResult } from "./PackageManagerName.js";
 import { WorkspaceDiscoveryError, WorkspacePatternError } from "./WorkspaceDiscovery.js";
 import type { WorkspaceMarker } from "./WorkspaceMarker.js";
 import { WorkspaceRootMatch, probedMarkers } from "./WorkspaceMarker.js";
@@ -667,8 +667,8 @@ export interface GetWorkspacePackagesSyncOptions extends WorkspacesSyncOptions {
  * one decision too: on an npm root (as `detectPackageManagerSync` would
  * report it) `package.json#workspaces` is read the way npm reads it, through
  * `@effected/npm`'s `NpmWorkspacePatterns` — ordered negation, a trailing
- * `/`, an even `!` run, a backslash as a separator — and on a pnpm, yarn or
- * bun root as one `GlobSet`.
+ * `/`, an even `!` run, a backslash as a separator — and on every other root
+ * as one `GlobSet`.
  *
  * The one deliberate difference is what happens at a bound: the Effect surface
  * fails typed (`depthExceeded` / `budgetExceeded`), while this one truncates.
@@ -890,7 +890,7 @@ export const detectPackageManagerSync = (
 	const { fileSystem, path } = options;
 	const packageJsonPath = path.join(root, "package.json");
 
-	// The root manifest, read once. Absent is `none` — a bun or yarn repo with
+	// The root manifest, read once. Absent is `none` — a bun repo with
 	// no root manifest is unusual but not an error; present-but-broken is a
 	// typed failure, exactly as on the Effect surface.
 	let manifest = Option.none<Record<string, unknown>>();
@@ -911,7 +911,7 @@ export const detectPackageManagerSync = (
 	const decision = decidePackageManager(manifest, (file) => fileSystem.exists(path.join(root, file)));
 	return decision === undefined
 		? Result.fail(new PackageManagerDetectionError({ root, checked: PackageManagerEvidence.literals }))
-		: Result.succeed(DetectedPackageManager.make(decision));
+		: verdictResult(root, decision);
 };
 
 /**
@@ -929,7 +929,9 @@ export const detectPackageManagerSync = (
  * - a detection refusal (`PackageManagerDetectionError`) is also
  *   `Option.none()`: no identifiable launcher is not a failure;
  * - a root manifest that cannot be read or parsed is a mechanism failure, the
- *   `Result`'s `LocalExecError` with the `WorkspaceManifestError` as its cause.
+ *   `Result`'s `LocalExecError` with the `WorkspaceManifestError` as its cause;
+ * - a root run by a manager the kit does not launch fails the same way, with
+ *   the `UnsupportedPackageManagerError` as the cause.
  *
  * The argv prefixes come from `LocalExec.prefixes` — the one home of that
  * knowledge — so nothing here re-derives `pnpm exec` or `npx --no --`.

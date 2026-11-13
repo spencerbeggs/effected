@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { BumpType } from "./BumpType.js";
 
 /**
  * A changeset file could not be parsed: no front matter, a malformed YAML
@@ -38,6 +39,13 @@ export class ChangesetConfigError extends Schema.TaggedError<ChangesetConfigErro
 /**
  * A changeset names a package the workspace does not contain.
  *
+ * @remarks
+ * `code` is present only when a `manager: "pnpm"` plan raised it, and is
+ * then pnpm's `ERR_PNPM_VERSIONING_UNKNOWN_PACKAGE` (`UnknownPackage`,
+ * `crates/versioning/src/error.rs`). A Changesets plan leaves it out: the
+ * Changesets CLI has no error codes. It is a stored field rather than a getter
+ * because the mode that raised the error is not otherwise on the error.
+ *
  * @public
  */
 export class UnknownPackageError extends Schema.TaggedError<UnknownPackageError>()("UnknownPackageError", {
@@ -45,9 +53,52 @@ export class UnknownPackageError extends Schema.TaggedError<UnknownPackageError>
 	packageName: Schema.String,
 	/** The changeset file that named it. */
 	changeset: Schema.String,
+	/** pnpm's code, when a pnpm plan raised the error. */
+	code: Schema.optionalKey(Schema.Literal("ERR_PNPM_VERSIONING_UNKNOWN_PACKAGE")),
 }) {
 	override get message(): string {
 		return `Changeset ${this.changeset} names ${this.packageName}, which is not in the workspace`;
+	}
+}
+
+/**
+ * A changeset names a package by a name that more than one workspace project
+ * publishes, so the name identifies none of them. Name the project by its
+ * `./`-prefixed workspace-relative directory instead.
+ *
+ * @remarks
+ * It arises two ways, and `changeset` tells them apart:
+ *
+ * - A pnpm plan's intent names a BARE name that several projects publish:
+ *   pnpm's `AmbiguousPackage` for an intent. `changeset` names the file, and
+ *   `code` is `ERR_PNPM_VERSIONING_AMBIGUOUS_PACKAGE`. Under
+ *   `manager: "pnpm"` the plan is keyed by directory, so a `./` key naming
+ *   one of several same-named projects plans that project alone.
+ * - A name-keyed consumer of a plan ({@link ReleasePlan.edits},
+ *   {@link ReleasePlan.breakingFloors}, {@link ReleasePlan.releasesByName})
+ *   is handed a pnpm plan holding two releases with one name, which it cannot
+ *   tell apart. `changeset` and `code` are absent: the refusal is the kit's,
+ *   not pnpm's.
+ *
+ * A Changesets plan never raises it, so `code` is pnpm's whenever present.
+ *
+ * @public
+ */
+export class AmbiguousPackageError extends Schema.TaggedError<AmbiguousPackageError>()("AmbiguousPackageError", {
+	/** The package name at fault. */
+	packageName: Schema.String,
+	/** The workspace-relative directories of the projects that publish it, in discovery order. */
+	directories: Schema.Array(Schema.String),
+	/** The changeset file that named it; absent when a plan's twin releases were refused. */
+	changeset: Schema.optionalKey(Schema.String),
+	/** pnpm's code, when a pnpm plan raised the error for an intent. */
+	code: Schema.optionalKey(Schema.Literal("ERR_PNPM_VERSIONING_AMBIGUOUS_PACKAGE")),
+}) {
+	override get message(): string {
+		const dirs = this.directories.map((dir) => `./${dir}`).join(", ");
+		return this.changeset === undefined
+			? `The release plan releases ${this.packageName} from ${this.directories.length} projects (${dirs}), which a name-keyed consumer cannot tell apart`
+			: `Changeset ${this.changeset} names ${this.packageName}, which ${this.directories.length} projects publish (${dirs}); name one by its ./ directory`;
 	}
 }
 
@@ -106,5 +157,181 @@ export class MissingPackageError extends Schema.TaggedError<MissingPackageError>
 }) {
 	override get message(): string {
 		return `The release plan releases ${this.packageName}, which is not among the packages given`;
+	}
+}
+
+/**
+ * `.changeset/ledger.yaml` is not YAML, is not a mapping of releases, or has
+ * an entry that is neither a list of intent ids nor a `dir`/`intents` mapping.
+ *
+ * @public
+ */
+export class LedgerError extends Schema.TaggedError<LedgerError>()("LedgerError", {
+	/** Which way the ledger was malformed. */
+	code: Schema.Literals(["invalid-yaml", "not-a-mapping", "invalid-entry"]),
+	/** What was wrong, naming the ledger key when one is at fault. */
+	detail: Schema.String,
+}) {
+	override get message(): string {
+		return `Invalid release ledger: ${this.detail}`;
+	}
+}
+
+/**
+ * The `ERR_PNPM_*` code pnpm reports for each {@link VersioningError} reason,
+ * as its `VersioningError` enum declares them (`crates/versioning/src/error.rs`).
+ *
+ * @public
+ */
+export type VersioningErrorCode =
+	| "ERR_PNPM_VERSIONING_MAX_BUMP_EXCEEDED"
+	| "ERR_PNPM_VERSIONING_UNRELEASABLE_PACKAGE"
+	| "ERR_PNPM_VERSIONING_EPIC_OUT_OF_BAND"
+	| "ERR_PNPM_VERSIONING_EPIC_UNKNOWN_LEAD"
+	| "ERR_PNPM_VERSIONING_EPIC_OVERLAP"
+	| "ERR_PNPM_VERSIONING_EPIC_FIXED_GROUP_CONFLICT"
+	| "ERR_PNPM_VERSIONING_CONFLICTING_CONFIG"
+	| "ERR_PNPM_VERSIONING_DUPLICATE_RELEASE"
+	| "ERR_PNPM_VERSIONING_AMBIGUOUS_PACKAGE"
+	| "ERR_PNPM_INVALID_VERSIONING_LEDGER"
+	| "ERR_PNPM_VERSIONING_INTERNAL_RANGE";
+
+/** The reasons, in one list: `VersioningError`'s `reason` schema and the code table both read it. */
+const VERSIONING_REASONS = [
+	"maxBumpExceeded",
+	"unreleasablePackage",
+	"epicOutOfBand",
+	"epicUnknownLead",
+	"epicOverlap",
+	"epicFixedGroupConflict",
+	"conflictingConfig",
+	"duplicateRelease",
+	"ambiguousPackage",
+	"ambiguousLedgerEntry",
+	"internalRange",
+] as const;
+
+/** Exactly one code per reason: `satisfies` refuses a missing or an extra key. */
+const VERSIONING_CODES = {
+	maxBumpExceeded: "ERR_PNPM_VERSIONING_MAX_BUMP_EXCEEDED",
+	unreleasablePackage: "ERR_PNPM_VERSIONING_UNRELEASABLE_PACKAGE",
+	epicOutOfBand: "ERR_PNPM_VERSIONING_EPIC_OUT_OF_BAND",
+	epicUnknownLead: "ERR_PNPM_VERSIONING_EPIC_UNKNOWN_LEAD",
+	epicOverlap: "ERR_PNPM_VERSIONING_EPIC_OVERLAP",
+	epicFixedGroupConflict: "ERR_PNPM_VERSIONING_EPIC_FIXED_GROUP_CONFLICT",
+	conflictingConfig: "ERR_PNPM_VERSIONING_CONFLICTING_CONFIG",
+	duplicateRelease: "ERR_PNPM_VERSIONING_DUPLICATE_RELEASE",
+	ambiguousPackage: "ERR_PNPM_VERSIONING_AMBIGUOUS_PACKAGE",
+	ambiguousLedgerEntry: "ERR_PNPM_INVALID_VERSIONING_LEDGER",
+	internalRange: "ERR_PNPM_VERSIONING_INTERNAL_RANGE",
+} as const satisfies Record<(typeof VERSIONING_REASONS)[number], VersioningErrorCode>;
+
+/**
+ * pnpm's native versioning refuses the plan: a `versioning` rule in
+ * `pnpm-workspace.yaml` is broken by the plan, the configuration cannot be
+ * attributed to one project, or an intent asks for a release pnpm cannot make.
+ * Only {@link ReleasePlan.assemble} under `manager: "pnpm"` fails with it.
+ *
+ * @remarks
+ * Each `reason` is one of pnpm's own refusals, and `code` is the
+ * `ERR_PNPM_*` code pnpm prints for it, so a caller comparing with
+ * `pnpm change status` compares codes:
+ *
+ * - `maxBumpExceeded`: a release moves further than `versioning.maxBump`
+ *   allows, measured on the final plan (`package`, `bump`, `maxBump`,
+ *   `raisedBy`: the intent files that ask for that bump, or the causes when
+ *   none does).
+ * - `unreleasablePackage`: an intent asks for a real bump of a project that
+ *   cannot release, because it is in `versioning.ignore`, has no version or
+ *   has a non-semver one (`package`, `bump`, `changeset`). Name it `none`
+ *   instead.
+ * - `epicOutOfBand`: an epic member's new major leaves the band of its lead
+ *   (`package`, `version`, `lead`, `bandMajor`).
+ * - `epicUnknownLead`: an epic's `lead` names no releasable project (`lead`).
+ * - `epicOverlap`: a project is matched by two epics (`directories`, `lead`
+ *   and `secondLead`).
+ * - `epicFixedGroupConflict`: a fixed group mixes epic members with projects
+ *   outside the epic (`lead`, `directories`: the outsiders).
+ * - `conflictingConfig`: a fixed group's members are on different lanes
+ *   (`group`, as written).
+ * - `duplicateRelease`: two same-named projects would release the same
+ *   version (`package`, `version`, `directories`).
+ * - `ambiguousPackage`: a `versioning` setting, or a dependency, names a
+ *   package more than one project publishes (`package`, `context`,
+ *   `directories`). An intent naming one is {@link AmbiguousPackageError}.
+ * - `ambiguousLedgerEntry`: a bare-list ledger entry names a package more
+ *   than one project publishes, so it cannot be attributed (`ledgerKey`,
+ *   `package`, `directories`). Write it with a `dir`.
+ * - `internalRange`: with `enforceWorkspaceProtocol`, an internal production
+ *   dependency is not a `workspace:` range (`package`, `dependency`).
+ *
+ * A lane named `main` is refused earlier, by `VersioningConfig`'s schema,
+ * and an unknown intent key is {@link UnknownPackageError}.
+ *
+ * @public
+ */
+export class VersioningError extends Schema.TaggedError<VersioningError>()("VersioningError", {
+	/** Which of pnpm's refusals this is. */
+	reason: Schema.Literals(VERSIONING_REASONS),
+	/** The package at fault, by name, or the reference as written for `ambiguousPackage`. */
+	package: Schema.optionalKey(Schema.String),
+	/** The version the plan would release (`epicOutOfBand`, `duplicateRelease`). */
+	version: Schema.optionalKey(Schema.String),
+	/** The bump at fault: the release's effective bump, or the bump an intent asks for. */
+	bump: Schema.optionalKey(BumpType),
+	/** The configured `versioning.maxBump`. */
+	maxBump: Schema.optionalKey(BumpType),
+	/** What raised a release past `maxBump`: intent files, or its causes when no intent asks for the bump. */
+	raisedBy: Schema.optionalKey(Schema.Array(Schema.String)),
+	/** The epic's lead, as configured. */
+	lead: Schema.optionalKey(Schema.String),
+	/** The second epic's lead, for `epicOverlap`. */
+	secondLead: Schema.optionalKey(Schema.String),
+	/** The lead's major the band derives from: members live in `bandMajor*100` to `bandMajor*100+99`. */
+	bandMajor: Schema.optionalKey(Schema.Number),
+	/** The workspace-relative directories involved. */
+	directories: Schema.optionalKey(Schema.Array(Schema.String)),
+	/** The changeset (intent) file at fault, relative to `.changeset/`. */
+	changeset: Schema.optionalKey(Schema.String),
+	/** Where an ambiguous reference was written: a setting such as `versioning.fixed`, or the dependent package. */
+	context: Schema.optionalKey(Schema.String),
+	/** A fixed group, as configured. */
+	group: Schema.optionalKey(Schema.Array(Schema.String)),
+	/** The ledger key at fault, `name@version`. */
+	ledgerKey: Schema.optionalKey(Schema.String),
+	/** The internal dependency at fault, for `internalRange`. */
+	dependency: Schema.optionalKey(
+		Schema.Struct({ alias: Schema.String, field: Schema.String, specifier: Schema.String }),
+	),
+}) {
+	/** The `ERR_PNPM_*` code pnpm reports for this refusal. */
+	get code(): VersioningErrorCode {
+		return VERSIONING_CODES[this.reason];
+	}
+
+	override get message(): string {
+		const dirs = (this.directories ?? []).map((dir) => `./${dir}`).join(", ");
+		const band = this.bandMajor === undefined ? "" : `${this.bandMajor * 100}-${this.bandMajor * 100 + 99}`;
+		return this.reason === "maxBumpExceeded"
+			? `The release plan bumps ${this.package} by ${this.bump}, but versioning.maxBump caps releases at ${this.maxBump}; raised by ${(this.raisedBy ?? []).join(", ")}`
+			: this.reason === "unreleasablePackage"
+				? `Changeset ${this.changeset} requests a ${this.bump} release of ${this.package}, which cannot release (ignored, version-less or not semver); remove the entry or change it to "none"`
+				: this.reason === "epicOutOfBand"
+					? `The release plan takes ${this.package} to ${this.version}, outside the band ${band} of the epic led by "${this.lead}"`
+					: this.reason === "epicUnknownLead"
+						? `versioning.epics lead "${this.lead}" is not a releasable workspace project`
+						: this.reason === "epicOverlap"
+							? `${dirs} is matched by two epics (leads "${this.lead}" and "${this.secondLead}")`
+							: this.reason === "epicFixedGroupConflict"
+								? `A fixed group straddles the epic led by "${this.lead}": it also holds ${dirs}`
+								: this.reason === "conflictingConfig"
+									? `The fixed group [${(this.group ?? []).join(", ")}] mixes packages on different lanes`
+									: this.reason === "duplicateRelease"
+										? `Two projects both release ${this.package}@${this.version}: ${dirs}`
+										: this.reason === "ambiguousPackage"
+											? `${this.context} names ${this.package}, which matches several projects: ${dirs}; reference the project by directory`
+											: this.reason === "ambiguousLedgerEntry"
+												? `The ledger entry ${this.ledgerKey} names ${this.package}, which matches several projects (${dirs}); give it a "dir"`
+												: `Package ${this.package} declares ${this.dependency?.alias} in ${this.dependency?.field} as "${this.dependency?.specifier}"; internal dependencies must use the workspace: protocol`;
 	}
 }

@@ -404,7 +404,7 @@ import { Duration, Effect, Layer } from "effect"
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..")
 const Live = Workspaces.layer({ cwd: ROOT }).pipe(Layer.provideMerge(NodeServices.layer))
 
-const MANAGERS = ["npm", "pnpm", "yarn", "bun"] as const
+const MANAGERS = ["npm", "pnpm", "bun"] as const
 const INSTALL_TIMEOUT = "2 minutes"
 // The installs run one after another. timeoutBudget sums the run's own ceilings
 // (every manager's probe and install, every package's pack) plus the probe per

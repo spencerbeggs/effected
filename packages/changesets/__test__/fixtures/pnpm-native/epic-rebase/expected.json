@@ -1,0 +1,29 @@
+{
+	"pnpmVersion": "12.20.0",
+	"case": "epic-rebase",
+	"outcome": "applied",
+	"releases": [
+		{
+			"name": "@p/app",
+			"currentVersion": "1.0.0",
+			"newVersion": "2.0.0",
+			"bump": "major",
+			"causes": [
+				"intent"
+			]
+		},
+		{
+			"name": "@p/lib",
+			"currentVersion": "150.2.0",
+			"newVersion": "200.0.0",
+			"bump": "major",
+			"causes": [
+				"epic"
+			]
+		}
+	],
+	"ledgerFile": "ledger.after.yaml",
+	"statusFile": "status.txt",
+	"statusUnparsed": [],
+	"errors": []
+}

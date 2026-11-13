@@ -81,7 +81,7 @@ vitest-agent's loader is the model for the rest of the script
 It keeps shared bins, so its fallback names the front end,
 `@vitest-agent/mcp@<MAJOR>`, a legitimate choice for that shape.
 
-**Never dispatch through `pnpm exec` / `yarn exec` / `bunx` / `npm exec`.**
+**Never dispatch through `pnpm exec` / `bunx` / `npm exec`.**
 Each resolves bins under a different mechanism (workspace-aware exec vs.
 plain PATH lookup vs. a temp-install cache), so the loader's behavior would
 depend on which package manager happened to be installed on the machine
@@ -164,7 +164,7 @@ Never `npx`, and never a package-manager dispatch, at any step.
 
 `systems`' hooks contradict its own loader here: its `hooks/lib/run-cli.sh`
 detects the package manager and returns a dispatch prefix —
-`pnpm exec` / `yarn exec` / `bunx` / `npx --no --` — for every hook call
+`pnpm exec` / `bunx` / `npx --no --` — for every hook call
 site to prepend, which is exactly the anti-pattern its own `start-mcp.sh`
 loader avoids for the server case. Name this explicitly as the anti-pattern
 when reviewing a hook resolution path, not as a stylistic difference from

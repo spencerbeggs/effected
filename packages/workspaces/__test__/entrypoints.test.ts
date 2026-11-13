@@ -64,4 +64,12 @@ describe("entrypoint boundary", () => {
 			[...reachableFrom(resolve(SRC, "index.ts"))].some((file) => /src\/WorkspaceDiscovery\.ts$/.test(file)),
 		);
 	});
+
+	it("the pnpm-only settings moved to @effected/pnpm", async () => {
+		const root = await import("../src/index.js");
+		assert.notProperty(root, "PnpmSettings");
+		assert.notProperty(root, "PnpmSettingsError");
+		// The control: manager-neutral catalog assembly stays here.
+		assert.property(root, "CatalogSet");
+	});
 });

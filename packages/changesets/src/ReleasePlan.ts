@@ -1,4 +1,6 @@
 import { posix } from "node:path";
+import type { VersioningConfig } from "@effected/pnpm";
+import { PnpmSettings } from "@effected/pnpm";
 import { InvalidVersionError, Range, SemVer } from "@effected/semver";
 import type { WorkspaceRootNotFoundError } from "@effected/workspaces";
 import { WorkspaceDiscovery, WorkspaceDiscoveryError, WorkspacePackage } from "@effected/workspaces";
@@ -8,8 +10,10 @@ import type { BreakingFloor } from "./BreakingFloors.js";
 import { computeBreakingFloors } from "./BreakingFloors.js";
 import type { ReleaseType } from "./BumpType.js";
 import { ChangesetConfig } from "./ChangesetConfig.js";
-import type { MissingPackageError } from "./errors.js";
+import type { AmbiguousPackageError, MissingPackageError, VersioningError } from "./errors.js";
 import { ChangesetConfigError, SnapshotPreModeError, SnapshotTemplateError, UnknownPackageError } from "./errors.js";
+import { planPnpm, projectDir } from "./internal/pnpmPlan.js";
+import { twinReleases } from "./internal/twins.js";
 import type { DependencyKind } from "./internal/versions.js";
 import {
 	DEPENDENCY_KINDS,
@@ -20,10 +24,15 @@ import {
 	parseRange,
 	satisfies,
 } from "./internal/versions.js";
+import { Ledger } from "./Ledger.js";
 import { PendingChangeset, PendingChangesets } from "./PendingChangesets.js";
 import { PreState } from "./PreState.js";
+import { RegistryVersions } from "./RegistryVersions.js";
+import { ReleaseCause, sortCauses } from "./ReleaseCause.js";
 import type { ReleaseEdits } from "./ReleaseEdits.js";
 import { computeEdits } from "./ReleaseEdits.js";
+import type { ReleaseManager } from "./ReleaseManager.js";
+import { ReleaseManager as ReleaseManagerSchema } from "./ReleaseManager.js";
 
 const RANK: Record<ReleaseType, number> = { none: 0, patch: 1, minor: 2, major: 3 };
 
@@ -37,6 +46,8 @@ interface Draft {
 	type: ReleaseType;
 	oldVersion: string | undefined;
 	readonly changesets: ReadonlyArray<string>;
+	/** Why it is in the plan; a ripple replacing the entry replaces these. */
+	readonly causes: Set<ReleaseCause>;
 }
 
 /** Ends assembly with a typed failure from inside the fixpoint loop; never escapes `assemble`. */
@@ -46,10 +57,12 @@ class Halt {
 
 type AssembleError =
 	| UnknownPackageError
+	| AmbiguousPackageError
 	| ChangesetConfigError
 	| InvalidVersionError
 	| SnapshotPreModeError
-	| SnapshotTemplateError;
+	| SnapshotTemplateError
+	| VersioningError;
 
 /**
  * The input for a snapshot plan, `changeset version --snapshot`'s parameters.
@@ -281,6 +294,14 @@ const readLonePackage = Effect.fnUntraced(function* (directory: string, notFound
 export class PlannedRelease extends Schema.Class<PlannedRelease>("PlannedRelease")({
 	/** The package name. */
 	name: Schema.String,
+	/**
+	 * The project's workspace-relative directory as pnpm spells it (no
+	 * leading `./`, no trailing `/`, `""` for the workspace root). Present
+	 * only in a `manager: "pnpm"` plan, which is keyed by directory, so two
+	 * same-named projects can each have a release; a Changesets plan is keyed
+	 * by name and leaves it out.
+	 */
+	dir: Schema.optionalKey(Schema.String),
 	/** The bump, or `none` for a listed package whose version does not move. */
 	type: Schema.Literals(["patch", "minor", "major", "none"]),
 	/**
@@ -288,7 +309,11 @@ export class PlannedRelease extends Schema.Class<PlannedRelease>("PlannedRelease
 	 * member of a fixed or linked group, the group's highest.
 	 */
 	oldVersion: Schema.String,
-	/** The version after the release; equal to `oldVersion` when `type` is `none`. */
+	/**
+	 * The version after the release; equal to `oldVersion` when `type` is
+	 * `none`, and in a pnpm plan for a first release, which publishes its
+	 * manifest version as it is.
+	 */
 	newVersion: Schema.String,
 	/**
 	 * The ids of the changesets in the plan that name the package, as the
@@ -325,12 +350,33 @@ export class PlannedRelease extends Schema.Class<PlannedRelease>("PlannedRelease
 	 *   ripple brings back, has an empty list.
 	 * - A snapshot plan builds its releases exactly as a plain one does.
 	 *
+	 * In a pnpm plan the list is the intents the release consumes, the ids pnpm
+	 * records in its ledger: those still pending, and, when it graduates off a
+	 * lane, those its prereleases consumed.
+	 *
 	 * To tell a group or exit bump from a ripple, read `fixed` and `linked`
 	 * and the plan's `preState`. To tell whether the package's own changeset
 	 * set its type, compare `type` with the highest bump its listed changesets
 	 * give it.
 	 */
 	changesets: Schema.Array(Schema.String),
+	/**
+	 * Why the package is in the plan, each cause once, in pnpm's order
+	 * (`dependencies`, `epic`, `fixed`, `intent`).
+	 *
+	 * @remarks
+	 * A pnpm plan reports the causes pnpm reports. A Changesets plan fills
+	 * them from the paths its oracle has: `intent` for a release a changeset
+	 * made (and for a prerelease completed on `exit`), `dependencies` for one
+	 * a ripple made, which replaces the entry and its causes as the ripple
+	 * replaces the release, and `fixed` for a member a fixed group added or
+	 * moved. A `linked` group adds no cause. Decoding a value without the
+	 * field gives `[]`.
+	 */
+	causes: Schema.Array(ReleaseCause).pipe(
+		Schema.withDecodingDefaultKey(Effect.succeed([])),
+		Schema.withConstructorDefault(Effect.succeed([])),
+	),
 }) {}
 
 /**
@@ -517,10 +563,63 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 * suffix is never empty, so the oracle's quiet fallback to plain versions
 	 * on an empty suffix cannot happen here.
 	 *
+	 * With `manager: "pnpm"` the plan is pnpm's own, `assemble_release_plan`
+	 * from pnpm 12.20.0's `crates/versioning`, held to pnpm's recorded answers
+	 * (`__test__/fixtures/pnpm-native/`). `config` and `pre` are not read, since
+	 * pnpm reads neither file, and a changeset under `.changeset/pre/` is not an
+	 * intent. What it reads instead:
+	 *
+	 * - `versioning`: `pnpm-workspace.yaml`'s block. Lanes build `X.Y.Z-<lane>.N`,
+	 *   the counter continuing while the stable target holds and resetting when
+	 *   a bigger bump moves it (`2.1.0-alpha.1` plus a major is `3.0.0-alpha.0`);
+	 *   a package off its lane graduates to the stable version its lane built,
+	 *   but only when the intents that built it are still pending files the
+	 *   ledger records under prerelease versions alone. `fixed` groups share
+	 *   their highest version, bumped. Epic members keep their majors in the
+	 *   lead's band, `M*100` to `M*100+99`, and re-base to the next band's floor
+	 *   when the lead releases a new stable major. `ignore` takes a project out
+	 *   of planning. `maxBump` caps the final plan's real version distance.
+	 * - `ledger`: which intents each project already consumed, matched by `dir`,
+	 *   or by name for a bare-list entry.
+	 * - `published`: the registry seam, the project directories whose MANIFEST
+	 *   version the registry already has (pnpm probes exactly that version, so
+	 *   a newer published `latest` does not count). Absent, the first-release
+	 *   rule is off and nothing debuts. Given, a public release whose directory
+	 *   the set lacks is a first release: it keeps its manifest version (on a
+	 *   lane, `<stable>-<lane>.0`) while still reporting its intent's bump and
+	 *   consuming its intents, and the plan is made again, as `pnpm version -r`
+	 *   makes it. A private project is never probed, so never debuts.
+	 * - `enforceWorkspaceProtocol`: refuse an internal production dependency
+	 *   that is not a `workspace:` range, as `pnpm version -r` does. Off is
+	 *   `pnpm change status`'s reading.
+	 *
+	 * The plan is keyed by project directory: each release has its `dir`, so two
+	 * same-named projects each release. A changeset may name a project by its
+	 * `./`-prefixed workspace-relative directory (`"./packages/b": patch`),
+	 * normalised as pnpm normalises one (backslashes to `/`, every leading `./`
+	 * and the trailing `/` removed, `./` alone being the root). A key that names
+	 * nothing fails {@link UnknownPackageError}, and a bare name that more than
+	 * one project publishes {@link AmbiguousPackageError}, both even for an
+	 * intent already consumed. A dependent ripples `patch` only through a
+	 * `workspace:` range the dependency's new version leaves, so a 1.x minor
+	 * stays inside `workspace:^` and a plain range never ripples;
+	 * devDependencies never do. Every other refusal is {@link VersioningError},
+	 * whose `code` is pnpm's.
+	 *
+	 * The default, `"changesets"`, is the Changesets CLI's reading: a `./` key is
+	 * an unknown package, as it is there.
+	 *
+	 * A snapshot under `manager: "pnpm"` is the engine's: every release becomes
+	 * `0.0.0-<suffix>`, with the suffix built from the snapshot alone as above
+	 * (`useCalculatedVersion` is not read), and bands and `maxBump` go
+	 * unchecked.
+	 *
 	 * @param input - The packages to plan, the pending changesets, the config
 	 * and, in pre-release mode, the {@link PreState}, and for a snapshot
-	 * release the {@link ReleaseSnapshot}. {@link ReleasePlan.read} decides
-	 * whether the workspace root is one of the packages.
+	 * release the {@link ReleaseSnapshot}; for a pnpm plan, its `versioning`,
+	 * `ledger`, `published` and `enforceWorkspaceProtocol`.
+	 * {@link ReleasePlan.read} decides whether the workspace root is one of the
+	 * packages.
 	 */
 	static assemble(input: {
 		readonly packages: ReadonlyArray<WorkspacePackage>;
@@ -528,16 +627,22 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 		readonly config: ChangesetConfig;
 		readonly pre?: PreState;
 		readonly snapshot?: ReleaseSnapshot;
+		readonly manager?: ReleaseManager;
+		readonly versioning?: VersioningConfig;
+		readonly ledger?: Ledger;
+		readonly published?: ReadonlySet<string>;
+		readonly enforceWorkspaceProtocol?: boolean;
 	}): Result.Result<
 		ReleasePlan,
-		UnknownPackageError | ChangesetConfigError | InvalidVersionError | SnapshotPreModeError | SnapshotTemplateError
+		| UnknownPackageError
+		| AmbiguousPackageError
+		| ChangesetConfigError
+		| InvalidVersionError
+		| SnapshotPreModeError
+		| SnapshotTemplateError
+		| VersioningError
 	> {
-		try {
-			return Result.succeed(assembleOrHalt(input));
-		} catch (error) {
-			if (error instanceof Halt) return Result.fail(error.failure);
-			throw error;
-		}
+		return assembleResult(input);
 	}
 
 	/**
@@ -609,6 +714,14 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 *   writing caret ranges. A plan without a snapshot deletes that
 	 *   `pre.json`; a caller reproducing the CLI keeps it.
 	 *
+	 * These are Changesets semantics, keyed by package name. pnpm applies its own
+	 * plans, writing `workspace:` ranges it never rewrites and the dependency
+	 * updates its plan carries, which a {@link PlannedRelease} does not; so a
+	 * `manager: "pnpm"` plan is read here as Changesets would apply it. A pnpm
+	 * plan holding two releases with one name (same-named projects) fails
+	 * {@link AmbiguousPackageError} listing their directories, since an edit
+	 * keyed by name would land both on one manifest.
+	 *
 	 * Fails with {@link MissingPackageError} when the plan releases a package
 	 * `packages` lacks, and with `InvalidVersionError` when a bounded range
 	 * must be bumped past a new version that is not a version, which a plan
@@ -622,7 +735,7 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	static edits(
 		plan: ReleasePlan,
 		input: { readonly packages: ReadonlyArray<WorkspacePackage>; readonly config: ChangesetConfig },
-	): Result.Result<ReleaseEdits, MissingPackageError | InvalidVersionError> {
+	): Result.Result<ReleaseEdits, MissingPackageError | InvalidVersionError | AmbiguousPackageError> {
 		return computeEdits(plan, input);
 	}
 
@@ -667,6 +780,9 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 * dependent `patch` however far the dependency moves, so a dependency's
 	 * breaking release ripples as a patch of everything that peers on it.
 	 *
+	 * Keyed by package name, as {@link ReleasePlan.edits} is: a pnpm plan
+	 * holding two releases with one name fails {@link AmbiguousPackageError}.
+	 *
 	 * Fails as {@link ReleasePlan.edits} fails, which a plan
 	 * {@link ReleasePlan.assemble} made from the same packages never does.
 	 *
@@ -679,8 +795,25 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	static breakingFloors(
 		plan: ReleasePlan,
 		input: { readonly packages: ReadonlyArray<WorkspacePackage>; readonly config: ChangesetConfig },
-	): Result.Result<ReadonlyArray<BreakingFloor>, MissingPackageError | InvalidVersionError> {
+	): Result.Result<ReadonlyArray<BreakingFloor>, MissingPackageError | InvalidVersionError | AmbiguousPackageError> {
 		return computeBreakingFloors(plan, input.packages, input.config);
+	}
+
+	/**
+	 * The plan's releases keyed by package name, for a consumer that reads a
+	 * plan by name. A Changesets plan always has one release per name. A
+	 * `manager: "pnpm"` plan is keyed by directory and may release two
+	 * same-named projects; then this fails {@link AmbiguousPackageError} naming
+	 * the first such name and every directory releasing it, rather than letting
+	 * one release silently stand for both.
+	 *
+	 * @param plan - The plan to key.
+	 */
+	static releasesByName(plan: ReleasePlan): Result.Result<ReadonlyMap<string, PlannedRelease>, AmbiguousPackageError> {
+		const twins = twinReleases(plan.releases);
+		return twins === undefined
+			? Result.succeed(new Map(plan.releases.map((release) => [release.name, release])))
+			: Result.fail(twins);
 	}
 
 	/**
@@ -707,6 +840,30 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 * lifetime. A long-lived host that plans again after applying a release
 	 * calls `WorkspaceDiscovery`'s `refreshIn(root)` first, or the new plan
 	 * reads the versions the release replaced.
+	 *
+	 * In a repository `ReleaseManager.detect` calls pnpm's, the plan is pnpm's
+	 * (see {@link ReleasePlan.assemble}): every discovered project is planned,
+	 * the root included; the `versioning` block is read through `PnpmSettings`
+	 * and the ledger through {@link Ledger.read}; a `config.json` that is missing,
+	 * is not JSON or has a malformed value is the defaults, because pnpm plans
+	 * without the file (it feeds only {@link ReleasePlan.edits} and the
+	 * changelog); `pre.json` is not read. With a {@link RegistryVersions} provided,
+	 * the registry is asked whether each public release's manifest version is
+	 * published, and the ones it lacks are planned as first releases
+	 * ({@link ReleasePlan.assemble}'s `published`); a registry failure is
+	 * `RegistryReadError`, never read as unpublished. A snapshot never asks. It
+	 * also fails with `PnpmSettingsError` and {@link LedgerError}.
+	 *
+	 * The registry service is read with `Effect.serviceOption`, so it never
+	 * appears in `R` and nothing fails to compile when it is missing. Never
+	 * provide only the `WorkspaceDiscovery` and platform layers to a pnpm-native
+	 * repository and expect first releases: without
+	 * `RegistryVersions.layerFrom(config)` nothing is asked, no release debuts,
+	 * and a project that was never published plans a bump from its manifest
+	 * version (`1.0.0` to `1.1.0`) where `pnpm version -r` would publish
+	 * `1.0.0` itself; the plan reports success either way. Provide
+	 * `RegistryVersions.layerFrom(config)` (it requires `NpmRegistry`) whenever
+	 * the plan feeds a publish.
 	 *
 	 * @param directory - The workspace root, or a directory inside it.
 	 * @param options - `snapshot` plans a snapshot release, as
@@ -780,8 +937,55 @@ const readContext = Effect.fnUntraced(function* (
 		.pipe(Effect.catchTag("WorkspaceRootNotFoundError", (error) => readLonePackage(directory, error)));
 	// Discovery always lists the root package, which carries the root it climbed to.
 	const root = discovered[0]?.workspaceRoot ?? directory;
-	const config = yield* ChangesetConfig.read(root);
+	const manager = yield* ReleaseManagerSchema.detect(root);
 	const changesets = yield* PendingChangesets.read(root);
+	if (manager === "pnpm") {
+		// pnpm reads neither config.json nor pre.json: a config that is missing, is not JSON or
+		// has a malformed value is the defaults, since pnpm plans without it (the file feeds
+		// only `edits` and the changelog), and every project, the root included, is planned,
+		// as pnpm discovers them.
+		const config = yield* ChangesetConfig.read(root).pipe(
+			Effect.catchTag("ChangesetConfigError", () => Effect.succeed(DEFAULT_CONFIG)),
+		);
+		const settings = yield* PnpmSettings.load({ cwd: root, env: {}, platform: "linux" });
+		const versioning = yield* Effect.fromResult(settings.versioning());
+		const ledger = yield* Ledger.read(root);
+		const input = {
+			packages: discovered,
+			changesets,
+			config,
+			manager,
+			...(Option.isSome(versioning) ? { versioning: versioning.value } : {}),
+			...(Option.isSome(ledger) ? { ledger: ledger.value } : {}),
+			...(options?.snapshot === undefined ? {} : { snapshot: options.snapshot }),
+		};
+		let plan = yield* Effect.fromResult(ReleasePlan.assemble(input));
+		// The registry seam, as `pnpm version -r` runs it: plan once, ask the registry about the public
+		// releases of that plan (by the name each publishes under), then plan again with the ones it
+		// lacks as first releases. A snapshot publishes `0.0.0-<suffix>` whatever the registry holds,
+		// so it asks nothing.
+		const registry = yield* Effect.serviceOption(RegistryVersions);
+		if (Option.isSome(registry) && options?.snapshot === undefined) {
+			const byDir = new Map(discovered.map((pkg) => [projectDir(pkg.relativePath), pkg]));
+			const probed = yield* Effect.forEach(
+				plan.releases.filter((release) => byDir.get(pnpmDir(release))?.private !== true),
+				(release) => {
+					const publishedName = byDir.get(pnpmDir(release))?.publishConfig?.name;
+					return registry.value
+						.published(
+							publishedName === undefined || publishedName === "" ? release.name : publishedName,
+							release.oldVersion,
+						)
+						.pipe(Effect.map((found) => [pnpmDir(release), found] as const));
+				},
+				{ concurrency: 8 },
+			);
+			const unpublished = new Set(probed.filter(([, found]) => !found).map(([dir]) => dir));
+			if (unpublished.size > 0) plan = yield* Effect.fromResult(assembleResult({ ...input, unpublished }));
+		}
+		return ReleaseContext.make({ root, plan, packages: discovered, config });
+	}
+	const config = yield* ChangesetConfig.read(root);
 	const pre = yield* PreState.read(root);
 	const members = discovered.filter((pkg) => !pkg.isRootWorkspace);
 	const plan = yield* Effect.fromResult(
@@ -789,12 +993,73 @@ const readContext = Effect.fnUntraced(function* (
 			packages: members.length > 0 ? members : discovered,
 			changesets,
 			config,
+			manager,
 			...(Option.isSome(pre) ? { pre: pre.value } : {}),
 			...(options?.snapshot === undefined ? {} : { snapshot: options.snapshot }),
 		}),
 	);
 	return ReleaseContext.make({ root, plan, packages: discovered, config });
 });
+
+/** A pnpm-mode release's directory: `PlannedRelease.dir` is always set there, so its absence is a planner defect. */
+const pnpmDir = (release: PlannedRelease): string => {
+	if (release.dir === undefined) throw new Error(`pnpm plan: release ${release.name} has no dir`);
+	return release.dir;
+};
+
+/**
+ * {@link ReleasePlan.assemble}'s body, with the one input it does not publish:
+ * `unpublished`, the directories to plan as first releases outright, for
+ * `read`, which has already asked the registry. `published` stays the only
+ * public way to say which directories debut.
+ */
+const assembleResult = (input: Parameters<typeof assembleOrHalt>[0]): ReturnType<typeof ReleasePlan.assemble> => {
+	try {
+		return Result.succeed(assembleOrHalt(input));
+	} catch (error) {
+		if (error instanceof Halt) return Result.fail(error.failure);
+		throw error;
+	}
+};
+
+/** The config a pnpm repository without `.changeset/config.json` is read with: every default. */
+const DEFAULT_CONFIG = Schema.decodeUnknownSync(ChangesetConfig)({});
+
+/**
+ * pnpm-native planning: {@link planPnpm} over the packages, intents, the
+ * `versioning` block and the ledger, its releases made {@link PlannedRelease}s.
+ * `config` and `pre` are not read, as pnpm reads neither file.
+ */
+const assemblePnpm = (input: Parameters<typeof assembleOrHalt>[0]): ReleasePlan => {
+	const { snapshot } = input;
+	const suffix =
+		snapshot === undefined
+			? undefined
+			: snapshotSuffix(
+					snapshot.prereleaseTemplate,
+					snapshot.tag === "" ? undefined : snapshot.tag,
+					snapshot.commit === "" ? undefined : snapshot.commit,
+					snapshot.timestamp,
+				);
+	const planned = planPnpm({
+		packages: input.packages,
+		changesets: input.changesets,
+		versioning: input.versioning,
+		ledger: input.ledger,
+		published: input.published,
+		unpublished: input.unpublished,
+		enforceWorkspaceProtocol: input.enforceWorkspaceProtocol,
+		snapshotSuffix: suffix,
+	});
+	if (Result.isFailure(planned)) throw new Halt(planned.failure);
+	return ReleasePlan.make({
+		releases: planned.success.releases.map((release) =>
+			PlannedRelease.make({ ...release, changesets: [...release.changesets], causes: [...release.causes] }),
+		),
+		changesets: [...planned.success.consumed],
+		snapshot: snapshot !== undefined,
+	});
+};
 
 /** The highest of `types`, none of which is `none`. */
 const highestType = (types: ReadonlyArray<ReleaseType>): ReleaseType =>
@@ -811,8 +1076,15 @@ const assembleOrHalt = (input: {
 	readonly config: ChangesetConfig;
 	readonly pre?: PreState;
 	readonly snapshot?: ReleaseSnapshot;
+	readonly manager?: ReleaseManager;
+	readonly versioning?: VersioningConfig;
+	readonly ledger?: Ledger;
+	readonly published?: ReadonlySet<string>;
+	readonly unpublished?: ReadonlySet<string>;
+	readonly enforceWorkspaceProtocol?: boolean;
 }): ReleasePlan => {
 	const { packages, changesets, config, pre, snapshot } = input;
+	if (input.manager === "pnpm") return assemblePnpm(input);
 	if (snapshot !== undefined && pre?.mode === "pre") throw new Halt(new SnapshotPreModeError({ preTag: pre.tag }));
 	const byName = new Map(packages.map((pkg) => [pkg.name, pkg]));
 	const ignored = new Set(matchNames(packages, config.ignore));
@@ -823,11 +1095,15 @@ const assembleOrHalt = (input: {
 	const invalid = groupError(fixed, linked);
 	if (invalid !== undefined) throw new Halt(invalid);
 
+	// Changesets mode reads a key as a package name only: a `./dir` key is an unknown package, as there.
 	for (const changeset of changesets) {
-		for (const name of changeset.releases.keys()) {
-			if (!byName.has(name)) throw new Halt(new UnknownPackageError({ packageName: name, changeset: changeset.file }));
+		for (const key of changeset.releases.keys()) {
+			if (!byName.has(key)) throw new Halt(new UnknownPackageError({ packageName: key, changeset: changeset.file }));
 		}
 	}
+	const releasesOf = (changeset: PendingChangeset): ReadonlyArray<readonly [string, ReleaseType]> => [
+		...changeset.releases,
+	];
 	// A changeset an older-layout pre.json lists by id is consumed, as if it sat
 	// under .changeset/pre/, where the oracle moves it: in exit mode it is named
 	// there, as the oracle's later plans name it.
@@ -864,12 +1140,18 @@ const assembleOrHalt = (input: {
 
 	const releases = new Map<string, Draft>();
 	for (const changeset of relevant) {
-		for (const [name, type] of changeset.releases) {
+		for (const [name, type] of releasesOf(changeset)) {
 			const pkg = byName.get(name) as WorkspacePackage;
 			if (isSkipped(pkg)) continue;
 			const release = releases.get(name);
 			if (release === undefined) {
-				releases.set(name, { name, type, oldVersion: pkg.version, changesets: [changeset.id] });
+				releases.set(name, {
+					name,
+					type,
+					oldVersion: pkg.version,
+					changesets: [changeset.id],
+					causes: new Set(["intent"]),
+				});
 				continue;
 			}
 			if (RANK[type] > RANK[release.type]) release.type = type;
@@ -905,7 +1187,13 @@ const assembleOrHalt = (input: {
 			}
 			for (const [dependent, type] of found) {
 				updated = true;
-				const release: Draft = { name: dependent.name, type, oldVersion: dependent.version, changesets: [] };
+				const release: Draft = {
+					name: dependent.name,
+					type,
+					oldVersion: dependent.version,
+					changesets: [],
+					causes: new Set(["dependencies"]),
+				};
 				releases.set(dependent.name, release);
 				search.push(release);
 			}
@@ -943,16 +1231,18 @@ const assembleOrHalt = (input: {
 				const release = releases.get(name);
 				if (release === undefined) {
 					updated = true;
-					releases.set(name, { name, type, oldVersion, changesets: [] });
+					releases.set(name, { name, type, oldVersion, changesets: [], causes: new Set(["fixed"]) });
 					continue;
 				}
 				if (release.type !== type) {
 					updated = true;
 					release.type = type;
+					release.causes.add("fixed");
 				}
 				if (release.oldVersion !== oldVersion) {
 					updated = true;
 					release.oldVersion = oldVersion;
+					release.causes.add("fixed");
 				}
 			}
 		}
@@ -991,8 +1281,17 @@ const assembleOrHalt = (input: {
 			if (isSkipped(pkg) || (preNumbers.get(pkg.name) ?? 0) === 0) continue;
 			const release = releases.get(pkg.name);
 			if (release === undefined) {
-				releases.set(pkg.name, { name: pkg.name, type: "patch", oldVersion: pkg.version, changesets: [] });
-			} else if (release.type === "none") release.type = "patch";
+				releases.set(pkg.name, {
+					name: pkg.name,
+					type: "patch",
+					oldVersion: pkg.version,
+					changesets: [],
+					causes: new Set(["intent"]),
+				});
+			} else if (release.type === "none") {
+				release.type = "patch";
+				release.causes.add("intent");
+			}
 		}
 	}
 
@@ -1022,6 +1321,7 @@ const assembleOrHalt = (input: {
 				oldVersion: release.oldVersion,
 				newVersion: next,
 				changesets: [...release.changesets],
+				causes: sortCauses(release.causes),
 			}),
 		);
 	}

@@ -10,11 +10,11 @@ sources:
   - id: project
     resource: ../project.md
 generated:
-  by: "claude-code/opus-5"
-  at: 2026-11-06T20:09:15Z
+  by: "okfit/claude-code"
+  at: 2026-11-12T23:38:43Z
 integrity:
   generated:
-    body: 9c2f1d354c3089c0
+    body: acb0fe53d529af81
 ---
 
 # Library tier (pure / boundary / integrated)
@@ -38,8 +38,8 @@ irrelevant to the classification.
 - **Integrated** — imports at least one runtime package outside `effect`
   core. Effect-org packages (`@effect/sql-sqlite-node`,
   `@effect/platform-node`) count exactly the same as third-party ones
-  (`ajv`, `@pnpm/catalogs.*`): the line is `effect` core versus
-  everything else. Example: `store`, `workspaces`, `github`.
+  (`ajv`, `@octokit/core`): the line is `effect` core versus
+  everything else. Example: `store`, `github`.
 
 This repository does not mean "tier" in the sense of a general
 architecture-diagram layer (frontend/backend/data) or a service-mesh

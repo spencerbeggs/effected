@@ -32,7 +32,7 @@ sources:
     resource: ../../packages/workspaces/src/internal/packageManagerDecision.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-11T20:31:08Z
+  at: 2026-11-13T06:27:13Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:49.503Z
@@ -46,7 +46,7 @@ verified:
     at: 2026-11-10T23:42:17Z
 integrity:
   generated:
-    body: 132bd5b8005a7893
+    body: 8370245e358fbaa1
   verified:
     by: human:spencer
     at: 2026-11-10T23:42:17Z
@@ -271,17 +271,20 @@ no service method reaches for the ambient cwd on its own.
 
 Lockfile evidence is the primary signal, because it is what says which
 manager actually ran. The workspace tier checks the pnpm workspace file,
-then a bun lockfile plus a manifest field naming bun, then a yarn lockfile
-plus a manifest field naming yarn, then a `workspaces` field for npm — the
-manifest conjunction on bun and yarn disambiguates a stray lockfile in an
-npm repo.[^package-manager-name-ts]
+then a bun lockfile plus a manifest field naming bun, then a `workspaces`
+field for npm — the manifest conjunction on bun disambiguates a stray
+lockfile in an npm repo. Yarn is recognized and refused: a `yarn.lock` that
+is the root's only lockfile, or a manifest field naming yarn, reports an
+`UnsupportedPackageManagerError` rather than an npm answer read off the
+`workspaces` field yarn shares with npm. Discovery itself stays neutral and
+reads a yarn repository's members from `package.json#workspaces`.[^package-manager-name-ts]
 
 Two further tiers close the single-package case, running only after every
 workspace marker has missed, which makes the widening strictly additive: a
 standalone tier, where a pnpm or npm lockfile stands alone because each is
-written by exactly one manager (bun and yarn keep the manifest conjunction,
+written by exactly one manager (bun keeps the manifest conjunction,
 mirroring the workspace tier exactly), and a declaration tier, where no
-lockfile exists at all but a manifest field names one of the four managers
+lockfile exists at all but a manifest field names one of the three supported managers
 — weaker evidence, consulted last, for a fresh clone before its first
 install.
 

@@ -1,0 +1,29 @@
+{
+	"pnpmVersion": "12.20.0",
+	"case": "lane-prerelease-caret-dependent",
+	"outcome": "applied",
+	"releases": [
+		{
+			"name": "@p/a",
+			"currentVersion": "1.0.0",
+			"newVersion": "1.1.0-alpha.0",
+			"bump": "minor",
+			"causes": [
+				"intent"
+			]
+		},
+		{
+			"name": "@p/b",
+			"currentVersion": "1.0.0",
+			"newVersion": "1.0.1",
+			"bump": "patch",
+			"causes": [
+				"dependencies"
+			]
+		}
+	],
+	"ledgerFile": "ledger.after.yaml",
+	"statusFile": "status.txt",
+	"statusUnparsed": [],
+	"errors": []
+}

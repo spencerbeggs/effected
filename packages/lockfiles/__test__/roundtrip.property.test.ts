@@ -8,7 +8,7 @@
 //     a `makeFilter` predicate over three grammars. The filter carries no
 //     `arbitraryConstraint` pattern, so the native compiler cannot generate it
 //     constructively and falls back to rejecting random printable-ASCII strings
-//     — none of which is ever an SRI/corepack/yarn hash. That no longer hangs
+//     — none of which is ever an SRI/corepack hash. That no longer hangs
 //     (discards are budgeted): `Arbitrary.sampleEffect(Arbitrary.schema(
 //     IntegrityHash))` fails with `SampleError { generated: 0, discards: 2001 }`
 //     in ~4ms, and inside `ResolvedPackage` the optional key is simply never
@@ -77,7 +77,6 @@ const Integrity = Schema.Literals([
 	"sha1-Zm9vYmFy",
 	"sha256-YWJjZGVmZ2g=",
 	"sha512.deadbeefcafe",
-	"10c0/99a4b0f0e7991796b1e7e3f52dceb9137cae2a9dfc8fc0784a550dc4c558e15a",
 ]);
 
 const specifierArb = Arbitrary.schema(
@@ -159,7 +158,7 @@ const resolvedPackageArb: Arbitrary.Arbitrary<ResolvedPackage> = Arbitrary.all({
 );
 
 const lockfileArb: Arbitrary.Arbitrary<Lockfile> = Arbitrary.all({
-	format: Arbitrary.schema(Schema.Literals(["bun", "npm", "pnpm", "yarn"])),
+	format: Arbitrary.schema(Schema.Literals(["bun", "npm", "pnpm"])),
 	lockfileVersion: Arbitrary.schema(Schema.Literals(["9.0", "6.0", "3"])),
 	packages: arrayOf(resolvedPackageArb, 4),
 	workspaceDependencies: Arbitrary.schema(Schema.Array(WorkspaceDependency).check(Schema.isMaxLength(3))),

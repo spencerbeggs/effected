@@ -115,7 +115,7 @@
 | `OidcTokenIssuerShape` | Interface | The members of the `OidcTokenIssuer` service: request an ID `token` and read its decoded `claims`, both failing with `OidcTokenError`. | |
 | `OutputEncodeError` | Class | Raised when a value did not satisfy its schema. | handle a value that did not satisfy its schema while publishing a JSON output |
 | `PackageManagerInstallOptions` | Interface | How `PackageManagerInstallerShape.install` should behave. | |
-| `PackageManagerInstaller` | Class | First-class exact-version package-manager provisioning on a GitHub runner. | provision an exact npm/pnpm/yarn/bun version from a corepack pin onto the runner |
+| `PackageManagerInstaller` | Class | First-class exact-version package-manager provisioning on a GitHub runner. | provision an exact npm/pnpm/bun version from a corepack pin onto the runner |
 | `PackageManagerInstallerError` | Class | Raised when a package manager cannot be provisioned on the runner. | handle a package manager provisioning failure: integrity mismatch, unsupported platform |
 | `PackageManagerInstallerShape` | Interface | The members of the `PackageManagerInstaller` service: `install` the exact package-manager version a pin names. | |
 | `PairsOptions` | Interface | Options for `ActionInput.pairs`. | |

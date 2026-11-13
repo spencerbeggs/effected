@@ -11,7 +11,7 @@ exempt), so a resolver can drop too-young candidates before pnpm's own
 install rejects them with a mature-matching-version error.
 
 ```ts
-import { ReleaseAgeGate } from "@effected/npm";
+import { ReleaseAgeGate } from "@effected/pnpm";
 
 const gate = ReleaseAgeGate.combine({ ageMinutes: 1440 }, { exclude: ["@my-scope/*"] });
 const eligible = gate.filterVersions(

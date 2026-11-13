@@ -1,0 +1,6 @@
+{
+	"steps": [
+		{ "run": ["version", "-r"] },
+		{ "run": ["lane", "main", "--filter", "@p/a"] }
+	]
+}

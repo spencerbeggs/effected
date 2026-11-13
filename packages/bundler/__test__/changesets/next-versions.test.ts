@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterEach, assert, beforeEach, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Logger, References } from "effect";
 import { resolveNextVersions } from "../../src/changesets/next-versions.js";
 
 // Workspace discovery and the changeset planner read the real temp workspace.
@@ -42,6 +42,54 @@ function addChangeset(id: string, body: string): void {
 }
 
 describe("resolveNextVersions", () => {
+	describe("in a pnpm-native workspace", () => {
+		const pnpmWorkspace = (twins: boolean): void => {
+			writeFileSync(join(root, "pnpm-workspace.yaml"), "packages:\n  - 'packages/*'\nversioning:\n  lanes: {}\n");
+			mkdirSync(join(root, ".changeset"), { recursive: true });
+			const keys = twins
+				? '"@scope/a": minor\n"./packages/u1": patch\n"./packages/u2": minor\n'
+				: '"@scope/a": minor\n';
+			writeFileSync(join(root, ".changeset", "bump.md"), `---\n${keys}---\n\nbump`);
+			if (twins) {
+				pkg(join(root, "packages", "u1"), "@scope/u", "1.0.0");
+				pkg(join(root, "packages", "u2"), "@scope/u", "2.0.0");
+			}
+		};
+
+		it("plans the next versions (the control for the twin refusal below)", async () => {
+			pnpmWorkspace(false);
+			const result = await next(join(root, "packages", "a"));
+			assert.strictEqual(result.versions.get("@scope/a"), "1.1.0");
+		});
+
+		it("keeps current versions when the plan releases two same-named projects, which a name-keyed map cannot hold", async () => {
+			pnpmWorkspace(true);
+			const result = await next(join(root, "packages", "a"));
+			assert.strictEqual(result.versions.get("@scope/a"), "1.0.0");
+			assert.notStrictEqual(result.versions.get("@scope/u"), "2.1.0");
+		});
+
+		it("logs the twin refusal at debug level, naming the package and its directories", async () => {
+			pnpmWorkspace(true);
+			const lines: Array<{ readonly level: string; readonly message: unknown }> = [];
+			const capture = Logger.make((options) => {
+				lines.push({ level: options.logLevel, message: options.message });
+			});
+			await Effect.runPromise(
+				resolveNextVersions(join(root, "packages", "a")).pipe(
+					Effect.provide(NodeServices.layer),
+					Effect.provide(Logger.layer([capture])),
+					Effect.provideService(References.MinimumLogLevel, "Debug"),
+				),
+			);
+			const twin = lines.find((line) => JSON.stringify(line.message).includes("same-named"));
+			assert.isDefined(twin);
+			assert.strictEqual(twin?.level, "Debug");
+			assert.include(JSON.stringify(twin?.message), "@scope/u");
+			assert.include(JSON.stringify(twin?.message), "packages/u1");
+		});
+	});
+
 	it("keeps a real bump beside a changeset naming another package none", async () => {
 		addChangeset("bump", '---\n"@scope/a": minor\n---\n\nminor');
 		addChangeset("quiet", '---\n"@scope/b": none\n---\n\nno release');

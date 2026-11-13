@@ -1,0 +1,8 @@
+packages:
+  - packages/*
+
+versioning:
+  epics:
+    - lead: '@p/app'
+      packages:
+        - '@p/lib'

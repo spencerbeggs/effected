@@ -1,0 +1,23 @@
+{
+	"pnpmVersion": "12.20.0",
+	"case": "max-bump-exceeded",
+	"outcome": "rejected",
+	"releases": [],
+	"ledgerFile": null,
+	"statusFile": "status.txt",
+	"statusUnparsed": [],
+	"errors": [
+		{
+			"stage": "status",
+			"exitCode": 1,
+			"code": "ERR_PNPM_VERSIONING_MAX_BUMP_EXCEEDED",
+			"message": "Error: ERR_PNPM_VERSIONING_MAX_BUMP_EXCEEDED\n\n  × The release plan bumps @p/a by major, but versioning.maxBump caps releases from this branch at minor. Raised by intent file(s) <workspace>/.changeset/too-big.md."
+		},
+		{
+			"stage": "version",
+			"exitCode": 1,
+			"code": "ERR_PNPM_VERSIONING_MAX_BUMP_EXCEEDED",
+			"message": "Error: ERR_PNPM_VERSIONING_MAX_BUMP_EXCEEDED\n\n  × The release plan bumps @p/a by major, but versioning.maxBump caps releases from this branch at minor. Raised by intent file(s) <workspace>/.changeset/too-big.md."
+		}
+	]
+}

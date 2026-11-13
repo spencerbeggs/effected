@@ -14,11 +14,10 @@
 // or "(" would re-introduce the format knowledge this module exists without.
 
 import type { Lockfile, ResolvedPackage } from "@effected/lockfiles";
+import type { PeerDependencyRules } from "@effected/pnpm";
+import { PnpmMatcher } from "@effected/pnpm";
 import { Range, SemVer } from "@effected/semver";
 import { Option, Result, Schema } from "effect";
-import type { PeerDependencyRules } from "./ConfigDependencyHooks.js";
-import type { PeerNameMatcher } from "./internal/peerPatterns.js";
-import { peerNameMatcher } from "./internal/peerPatterns.js";
 import type { ImporterRoots } from "./internal/roots.js";
 import { indexInstances, rootInstances } from "./internal/roots.js";
 import type { CatalogSet } from "./WorkspaceCatalogs.js";
@@ -92,7 +91,7 @@ export type UnverifiedReason =
  *
  * @remarks
  * **Presence of `peerDependencyRules` is the assertion; its contents are the
- * value.** Supplying `NoPeerDependencyRules` asserts the workspace has none and
+ * value.** Supplying `PeerDependencyRules.empty` asserts the workspace has none and
  * yields a verified report; omitting the key entirely says nothing was looked
  * up and always yields `"peerRulesNotApplied"`. The two are deliberately
  * different results, because a gate must be able to tell "clean" from
@@ -220,7 +219,7 @@ export class UnsatisfiedPeer extends Schema.Class<UnsatisfiedPeer>("UnsatisfiedP
 /**
  * The formats whose lockfiles record peer resolution.
  *
- * An allowlist rather than a `!== "yarn"` denylist, so a format added to
+ * An allowlist rather than a denylist, so a format added to
  * `Lockfile["format"]` is unsupported until someone says otherwise. A denylist
  * would report the new format `supported: true` with an empty `unsatisfied`
  * before any parser records peer resolution for it — a clean bill of health
@@ -627,8 +626,8 @@ const judgeJoined = (
 /** The effective suppression policy, with both list axes compiled to predicates. */
 interface Policy {
 	readonly allowed: Readonly<Record<string, string>>;
-	readonly ignoreMissing: PeerNameMatcher;
-	readonly allowAny: PeerNameMatcher;
+	readonly ignoreMissing: (name: string) => boolean;
+	readonly allowAny: (name: string) => boolean;
 }
 
 /**
@@ -664,11 +663,10 @@ export class PeerCheck extends Schema.Class<PeerCheck>("PeerCheck")({
 	/**
 	 * Whether the lockfile's format records peer resolution at all.
 	 *
-	 * `false` for yarn: yarn resolves peers **virtually**, giving a
-	 * peer-bearing package one `@virtual:` locator per consumer, and the
-	 * lockfile does not record which virtual instance satisfied which peer.
-	 * The answer is not recoverable, so it is not fabricated — `unsatisfied`
-	 * is empty and this flag says why.
+	 * `false` for a format whose lockfile does not record which instance
+	 * satisfied which peer. The answer is not recoverable there, so it is not
+	 * fabricated — `unsatisfied` is empty and this flag says why. Every format
+	 * `Lockfile.parse` reads today records it.
 	 */
 	supported: Schema.Boolean,
 	/** Every unsatisfied peer found, optional ones included. */
@@ -742,7 +740,7 @@ export class PeerCheck extends Schema.Class<PeerCheck>("PeerCheck")({
 	 * - **A workspace-linked provider counts.** Resolution is followed through
 	 *   whatever the edge names, including a workspace row.
 	 *
-	 * Known limits it does not paper over: yarn (see `supported`), the npm and
+	 * Known limits it does not paper over: the npm and
 	 * bun root importer (see `unresolvedImporters`), and pnpm recording no peer
 	 * declarations for workspace projects themselves — under pnpm a workspace
 	 * package's *own* unsatisfied peers are not in the lockfile at all, and
@@ -792,7 +790,7 @@ export class PeerCheck extends Schema.Class<PeerCheck>("PeerCheck")({
 	 */
 	static run(lockfile: Lockfile, options?: PeerCheckOptions): PeerCheck {
 		// PRESENCE of the key is the assertion, not its contents: supplying
-		// `NoPeerDependencyRules` asserts the workspace has none, while omitting
+		// `PeerDependencyRules.empty` asserts the workspace has none, while omitting
 		// the option says nothing was looked up. Collapsing the two would tell a
 		// gate that an unchecked workspace is clean.
 		const keySupplied = options !== undefined && "peerDependencyRules" in options;
@@ -802,8 +800,8 @@ export class PeerCheck extends Schema.Class<PeerCheck>("PeerCheck")({
 		// row; both are `() => false` when the axis is empty.
 		const policy: Policy = {
 			allowed: rules?.allowedVersions ?? {},
-			ignoreMissing: peerNameMatcher(rules?.ignoreMissing ?? []),
-			allowAny: peerNameMatcher(rules?.allowAny ?? []),
+			ignoreMissing: PnpmMatcher.compile(rules?.ignoreMissing ?? []),
+			allowAny: PnpmMatcher.compile(rules?.allowAny ?? []),
 		};
 		const unverified: Array<UnverifiedReason> = keySupplied ? [] : ["peerRulesNotApplied"];
 

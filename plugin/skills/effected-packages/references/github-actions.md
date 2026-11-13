@@ -29,7 +29,7 @@ Single entrypoint; no subpaths, and no `./testing` subpath — the doubles are s
 | `ActionCache` + `CacheKey` | the runner's cache, and building a key with a correct restore ladder |
 | `Artifact` | uploading/downloading/listing workflow artifacts |
 | `BlobStore` / `GitHubCacheBlobStore` | key→value blob storage on S3 or on the Actions cache backend |
-| `ToolInstaller` / `PackageManagerInstaller` | downloading, extracting and tool-caching a binary or an exact npm/pnpm/yarn/bun |
+| `ToolInstaller` / `PackageManagerInstaller` | downloading, extracting and tool-caching a binary or an exact npm/pnpm/bun |
 | `GitHubToken` | minting, reading and disposing an App installation token across action phases |
 | `OidcTokenIssuer` / `ActionsIdentityToken` / `ActionsProvenance` / `ActionsRegistryCredential` | the runner's OIDC token, the `sbom` seam, and npm's workload credential |
 | `GitHubMarkdown` / `ManagedDocument` / `CheckDocument` / `CheckState` | rendering a report onto a GitHub surface and keeping it current |

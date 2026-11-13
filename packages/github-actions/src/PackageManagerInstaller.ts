@@ -140,15 +140,14 @@ export interface PackageManagerInstallOptions {
 	 * Corepack form only (`<algo>.<hex>`), the same brand the pin's own
 	 * `integrity` carries; convert a registry or lockfile SRI string with
 	 * `CorepackIntegrityHash.fromSri` from `@effected/npm`. It verifies
-	 * exactly what a pin integrity verifies — the registry tarball for npm,
-	 * pnpm and yarn 1.x, the standalone `yarn.js` for yarn 2+, the platform zip
-	 * for bun — and stands in for the pin's in every rule: it silences the
+	 * exactly what a pin integrity verifies — the registry tarball for npm
+	 * and pnpm, the platform zip for bun — and stands in for the pin's in every rule: it silences the
 	 * "carries no integrity hash" warning, satisfies `requireIntegrity`, and a
 	 * tool-cache hit is answered without re-verifying, exactly as it is for an
 	 * integrity-carrying pin.
 	 *
 	 * Fail-closed, before any cache lookup or download: a value not in corepack
-	 * form (an SRI or yarn hash) fails with `integrityMismatch` on its
+	 * form (an SRI hash) fails with `integrityMismatch` on its
 	 * could-not-verify arm (no `expected`, no `actual`, `subject` naming the
 	 * option); and when the pin also carries an integrity and the two differ,
 	 * the install fails with `integrityMismatch` (`expected` is this option,
@@ -158,10 +157,10 @@ export interface PackageManagerInstallOptions {
 	 */
 	readonly integrity?: IntegrityHashBrand | undefined;
 	/**
-	 * The npm registry host the npm, pnpm and yarn tarballs download from.
+	 * The npm registry host the npm and pnpm tarballs download from.
 	 * Defaults to `https://registry.npmjs.org`. A corporate mirror qualifies
 	 * when it serves the standard `/<name>/-/<basename>-<version>.tgz` tarball
-	 * route and — for pnpm 12 and later, whose native binary is a second
+	 * route and — for pnpm, whose native binary is a second
 	 * artifact verified against the registry's own integrity — the
 	 * `/<name>/<version>` packument route as JSON carrying `dist.integrity`.
 	 * A tarball-only proxy fails a pnpm 12 pin with `downloadFailed` naming
@@ -177,8 +176,7 @@ export interface PackageManagerInstallOptions {
 	 * entry.
 	 *
 	 * @remarks
-	 * Consulted only for a pin whose wrapper overlays a native binary (pnpm 12
-	 * and later); every other pin ignores it. When supplied, the installer
+	 * Consulted only for a pin whose wrapper overlays a native binary (pnpm); every other pin ignores it. When supplied, the installer
 	 * verifies the host's `@pnpm/exe.<target>` tarball against this map's entry
 	 * (its strongest listed algorithm) INSTEAD of the registry's packument, so
 	 * the packument route is never requested and a tarball-only mirror
@@ -222,7 +220,7 @@ export interface PackageManagerInstallOptions {
 export class AmbientPackageManager extends Schema.Class<AmbientPackageManager>("AmbientPackageManager")({
 	/** The discriminant: the runner's own toolchain answered. */
 	source: Schema.tag("ambient"),
-	/** The package-manager name (`npm`, `pnpm`, `yarn` or `bun`). */
+	/** The package-manager name (`npm`, `pnpm` or `bun`). */
 	name: PackageManagerPinName,
 	/** The exact installed version, in string form. */
 	version: Schema.String,
@@ -244,8 +242,8 @@ export class AmbientPackageManager extends Schema.Class<AmbientPackageManager>("
  * bare name); for bun it is the entry directory itself, because the cached
  * `bun` binary is directly executable and a shim would add nothing but a
  * fork. `bins` still maps each published bin name to the underlying entry —
- * a Node script to run with `node` for npm, yarn and pnpm 11 and earlier; an
- * executable to run directly for bun and for pnpm 12+, whose `pnpm` is the
+ * a Node script to run with `node` for npm; an
+ * executable to run directly for bun and for pnpm, whose `pnpm` is the
  * host's native binary (overlaid onto the cached wrapper the way pnpm's own
  * install script does) and whose `pn`/`pnpx`/`pnx` are shell aliases of it.
  * Each shim already applies that distinction. Calling `addPath` remains
@@ -258,7 +256,7 @@ export class AmbientPackageManager extends Schema.Class<AmbientPackageManager>("
 export class CachedPackageManager extends Schema.Class<CachedPackageManager>("CachedPackageManager")({
 	/** The discriminant: the manager lives in the tool cache. */
 	source: Schema.tag("tool-cache"),
-	/** The package-manager name (`npm`, `pnpm`, `yarn` or `bun`). */
+	/** The package-manager name (`npm`, `pnpm` or `bun`). */
 	name: PackageManagerPinName,
 	/** The exact installed version, in string form. */
 	version: Schema.String,
@@ -358,17 +356,9 @@ const bunTarget = (runnerOs: string, arch: string): Option.Option<string> => {
 	return os === undefined || cpu === undefined ? Option.none() : Option.some(`bun-${os}-${cpu}`);
 };
 
-/**
- * The registry tarball url for an npm-registry-distributed manager.
- *
- * The yarn split is corepack's own: `<2.0.0` is the `yarn` package, `>=2.0.0`
- * (Berry) ships as `@yarnpkg/cli-dist` — a scoped package, whose tarball
- * basename drops the scope (`/@yarnpkg/cli-dist/-/cli-dist-<v>.tgz`).
- */
-const registryTarballUrl = (name: string, version: string, major: number, registry: string): string =>
-	name === "yarn" && major >= 2
-		? `${registry}/@yarnpkg/cli-dist/-/cli-dist-${version}.tgz`
-		: `${registry}/${name}/-/${name}-${version}.tgz`;
+/** The registry tarball url for an npm-registry-distributed manager. */
+const registryTarballUrl = (name: string, version: string, registry: string): string =>
+	`${registry}/${name}/-/${name}-${version}.tgz`;
 
 /** Normalize a package.json `bin` value into name → relative path entries. */
 const normalizeBins = (bin: unknown, fallbackName: string): Option.Option<Record<string, string>> => {
@@ -517,13 +507,11 @@ const make = Effect.gen(function* () {
 	/**
 	 * What a package directory's own manifest says about its entry points: the
 	 * `bin` map, plus the `@pnpm/exe.*` optional dependencies that mark the
-	 * pnpm 12 native-binary layout (empty for every other manager and version).
+	 * pnpm native-binary layout (empty for every other manager). A pnpm
+	 * artifact without one is refused as `layoutUnexpected`.
 	 *
-	 * Read from the artifact rather than hardcoded per manager, because the
-	 * layouts genuinely move — corepack's own table has pnpm's entry at
-	 * `bin/pnpm.cjs` through v10 and `bin/pnpm.mjs` from v11, and from v12 the
-	 * `pnpm` bin is a placeholder for a native binary shipped as a separate
-	 * package. Both maps are attacker-supplied bytes and are normalized to
+	 * Read from the artifact rather than hardcoded per manager: the `pnpm` bin
+	 * is a placeholder for a native binary shipped as a separate package. Both maps are attacker-supplied bytes and are normalized to
 	 * string → string before anything downstream reads them.
 	 */
 	const readPackageManifest = (
@@ -567,7 +555,19 @@ const make = Effect.gen(function* () {
 				}
 				yield* assertFile(pin, target, `bin ${name} (${relative}) is missing`);
 			}
-			return { bins, nativePackages: nativePackagesOf(manifest.optionalDependencies) };
+			const nativePackages = nativePackagesOf(manifest.optionalDependencies);
+			// pnpm 12 is the only provisionable pnpm: its layout is the one whose
+			// wrapper declares a native binary. Anything else is refused, never
+			// shimmed as a Node entry point.
+			if (pin.name === "pnpm" && Object.keys(nativePackages).length === 0) {
+				return yield* Effect.fail(
+					errorFor(pin)({
+						reason: "layoutUnexpected",
+						subject: `package.json declares no ${PNPM_EXE_PREFIX}* optionalDependency`,
+					}),
+				);
+			}
+			return { bins, nativePackages };
 		});
 
 	/**
@@ -941,17 +941,10 @@ const make = Effect.gen(function* () {
 		Effect.gen(function* () {
 			const { name } = pin;
 			const version = pin.version.toString();
-			const url = registryTarballUrl(name, version, pin.version.major, source.registry);
+			const url = registryTarballUrl(name, version, source.registry);
 			const archive = yield* installer.download(url).pipe(Effect.mapError(fromInstaller(pin)));
-			// What a corepack pin's integrity hashes depends on the manager:
-			// npm, pnpm and yarn 1.x pins hash the registry tarball's bytes; a
-			// yarn>=2 pin hashes the standalone `yarn.js` corepack downloads from
-			// repo.yarnpkg.com — byte-identical to `bin/yarn.js` inside the
-			// @yarnpkg/cli-dist tarball, which is where it is verified below.
-			const berry = name === "yarn" && pin.version.major >= 2;
-			if (!berry) {
-				yield* verifyIntegrity(pin, archive);
-			}
+			// npm and pnpm pins hash the registry tarball's bytes.
+			yield* verifyIntegrity(pin, archive);
 			const extracted = yield* installer.extractTar(archive).pipe(Effect.mapError(fromInstaller(pin)));
 			const packageDir = path.join(extracted, "package");
 			if ((yield* typeAt(fs, packageDir)) !== "Directory") {
@@ -967,11 +960,6 @@ const make = Effect.gen(function* () {
 				Object.keys(manifest.nativePackages).length > 0
 					? yield* overlayNativeBinary(pin, packageDir, manifest, source)
 					: manifest.bins;
-			if (berry) {
-				const cli = path.join(packageDir, "bin/yarn.js");
-				yield* assertFile(pin, cli, "bin/yarn.js is missing from the cli-dist tarball");
-				yield* verifyIntegrity(pin, cli);
-			}
 			// Shims are written into the STAGED tree, so they are part of what
 			// ToolInstaller renames into place — never a post-swap mutation — and
 			// their contents name the FINAL cache path, asked of the installer
@@ -1100,8 +1088,8 @@ const dies = unstubbed("PackageManagerInstaller.makeTest");
  * Takes a corepack pin (`@effected/npm`'s `PackageManagerPin`) and answers
  * with an installed manager: tool-cache `find` first, then — for npm — an
  * ambient `npm --version` probe (every Node toolchain ships npm), and only
- * then the manager's own dist: npm, pnpm and yarn 1.x from their registry
- * tarballs, yarn 2+ (Berry) from `@yarnpkg/cli-dist`, bun from its
+ * then the manager's own dist: npm and pnpm from their registry tarballs,
+ * bun from its
  * per-platform GitHub-release zip. An install with an expected integrity —
  * the pin's `+<integrity>` tail or the `integrity` option — is verified
  * fail-closed against what corepack itself hashes; one without proceeds with

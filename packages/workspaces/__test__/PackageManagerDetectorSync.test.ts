@@ -14,7 +14,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { LocalExec, LocalExecError } from "@effected/commands";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, Layer, Option, Result } from "effect";
-import type { DetectedPackageManager, WorkspacesSyncOptions } from "../src/index.js";
+import type { DetectedPackageManager, PackageManagerDetectionFailure, WorkspacesSyncOptions } from "../src/index.js";
 import {
 	PackageManagerDetectionError,
 	PackageManagerDetector,
@@ -34,9 +34,7 @@ const memOps = (tree: Tree): WorkspacesSyncOptions => ({
 const manifestWith = (fields: Record<string, unknown>) => JSON.stringify({ name: "root", version: "0.0.0", ...fields });
 
 /** What parity compares: the verdict's fields, or the failure's tag and kind. */
-const observe = (
-	result: Result.Result<DetectedPackageManager, PackageManagerDetectionError | WorkspaceManifestError>,
-) =>
+const observe = (result: Result.Result<DetectedPackageManager, PackageManagerDetectionFailure>) =>
 	Result.isSuccess(result)
 		? {
 				name: result.success.name,
@@ -46,7 +44,9 @@ const observe = (
 			}
 		: result.failure._tag === "WorkspaceManifestError"
 			? { failure: result.failure._tag, kind: result.failure.kind, path: result.failure.packageJsonPath }
-			: { failure: result.failure._tag, checked: result.failure.checked };
+			: result.failure._tag === "UnsupportedPackageManagerError"
+				? { failure: result.failure._tag, manager: result.failure.manager, evidence: result.failure.evidence }
+				: { failure: result.failure._tag, checked: result.failure.checked };
 
 const TABLE: ReadonlyArray<readonly [string, Tree]> = [
 	[
@@ -82,7 +82,7 @@ const TABLE: ReadonlyArray<readonly [string, Tree]> = [
 		{ "/repo/yarn.lock": "", "/repo/package.json": manifestWith({ packageManager: "yarn@4.5.0" }) },
 	],
 	[
-		"a stray yarn.lock in an npm workspace",
+		"a sole yarn.lock in a workspace is unsupported yarn, not npm",
 		{
 			"/repo/yarn.lock": "",
 			"/repo/package.json": manifestWith({ workspaces: ["packages/*"] }),
@@ -103,7 +103,19 @@ const TABLE: ReadonlyArray<readonly [string, Tree]> = [
 			}),
 		},
 	],
-	["packageManager alone", { "/repo/package.json": manifestWith({ packageManager: "yarn@4.5.0" }) }],
+	["packageManager alone", { "/repo/package.json": manifestWith({ packageManager: "bun@1.2.0" }) }],
+	[
+		"a yarn packageManager alone is unsupported",
+		{ "/repo/package.json": manifestWith({ packageManager: "yarn@4.5.0" }) },
+	],
+	[
+		"a stray yarn.lock beside a package-lock.json is npm",
+		{
+			"/repo/yarn.lock": "",
+			"/repo/package-lock.json": "",
+			"/repo/package.json": manifestWith({ workspaces: ["packages/*"] }),
+		},
+	],
 	[
 		"devEngines beats a disagreeing packageManager for the name",
 		{

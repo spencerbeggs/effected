@@ -15,10 +15,10 @@ sources:
     resource: ../../packages/workspaces/__test__/fixtures/peers/README.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T01:55:28Z
+  at: 2026-11-13T06:27:13Z
 integrity:
   generated:
-    body: cfce5a9b1ddfd84c
+    body: 83240b7f783c22fa
 ---
 
 # @effected/workspaces peer-dependency checking
@@ -75,10 +75,11 @@ An empty result is the most dangerous success shape in this domain — it is
 indistinguishable from "this could not be checked" — so the return is a
 report, not an array:
 
-- **yarn cannot be answered.** It resolves peers virtually, giving a
-  peer-bearing package one `@virtual:` locator per consumer, and the
-  lockfile does not record which instance satisfied which peer.
-  `supported: false` says so.
+- **A format that records no peer resolution cannot be answered.** Only
+  `npm`, `pnpm` and `bun` are on the allowlist; any other `Lockfile` format
+  reports `supported: false`, so a format added later is unsupported until a
+  parser records its peer resolution. Yarn, which resolves peers virtually,
+  is not a supported manager and never reaches this check.
 - **The npm and bun root importer cannot be joined to instances.** Neither
   records a resolved version per importer dependency, and neither emits a
   package row for the root. Those importers are named in
@@ -182,11 +183,10 @@ key grammar: an entry is a pattern over the **peer name**, with no parent
 in it at all. `react-dom>react` is a literal name nothing declares, so it
 matches nothing on either axis, versioned or not — the parent-version quirk
 above has nothing to attach to. The patterns are `@pnpm/matcher`'s
-(restated in `src/internal/peerPatterns.ts` so the `@pnpm/*` edge stays
-confined to the catalogs module, with `@effected/npm`'s
-`ReleaseAgeGate.matchesExclude` — the same `@pnpm/matcher` grammar, already
-owned there for `minimumReleaseAgeExclude` — as the single-pattern
-primitive): a lone `*` matches everything; otherwise
+(restated as `@effected/pnpm`'s `PnpmMatcher.compile`, with
+`ReleaseAgeGate.matchesExclude` in the same package — the same
+`@pnpm/matcher` grammar, owned there for `minimumReleaseAgeExclude` — as the
+single-pattern primitive): a lone `*` matches everything; otherwise
 `*` is a wildcard within the name and a pattern without one is plain
 equality; a leading `!` negates. Composition over a list is order-sensitive
 when includes and negations mix — `["*", "!redux"]` is everything but
@@ -223,7 +223,7 @@ omitting an option key says nobody looked, and the report says so.
 - **`peerRulesNotApplied`** — no suppression policy was supplied, so
   pnpm's suppression could not be replicated and some rows may be ones
   pnpm hides. Presence of the option key is the assertion, not its
-  contents: supplying `NoPeerDependencyRules` asserts the workspace has
+  contents: supplying `PeerDependencyRules.empty` (from `@effected/pnpm`) asserts the workspace has
   none, while omitting the key says nobody looked. Collapsing those two
   would tell a gate that an unchecked workspace is clean. Supplied rules
   never produce it, whatever their contents — all three axes are applied.
@@ -331,8 +331,8 @@ check stays a pure value over its inputs:
 
 ## The differential oracle
 
-See [the yarn limitation](../limitations/workspaces-peer-check-yarn-and-suppression-axes.md)
-for the gap this report surfaces rather than swallows.
+See [the deprecated yarn limitation](../limitations/workspaces-peer-check-yarn-and-suppression-axes.md)
+for the first gap this report surfaced rather than swallowed.
 
 `pnpm peers check --json` is the reference for peer semantics, and the test
 suite checks agreement with it, but the oracle is committed, not executed:

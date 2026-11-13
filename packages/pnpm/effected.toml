@@ -1,0 +1,17 @@
+#:schema https://raw.githubusercontent.com/spencerbeggs/effected/main/schemas/1.0/config.json
+
+# The ./settings entry names root types (PnpmSettings, PeerDependencyRules, VersioningConfig) through the package's own
+# name; keep that import external in the declarations so the subpath refers to the root's types instead of carrying a
+# copy of them and everything they reach.
+[package.build]
+dtsExternals = ["@effected/pnpm"]
+
+[package.build.meta.tsdoc]
+suppressWarnings = [
+  { messageId = "ae-forgotten-export", pattern = "_base" },
+  # The second API Extractor pass resolves the ./settings entry's self-referencing "@effected/pnpm" import to the built
+  # root declarations, but still reports the root types it reaches as forgotten (the @effected/npm ./node precedent).
+  # Scoped to the settings entry only. What it would hide, a declaration local to the settings entry left unexported,
+  # is pinned by __test__/settings/declarations.test.ts over the built settings.d.ts.
+  { messageId = "ae-forgotten-export", pattern = 'entry point settings\.d\.ts$' },
+]

@@ -102,6 +102,9 @@ describe("LocalExec.parse", () => {
 			["pnpm", "exec", ""],
 			["pnpm", "vitest"],
 			["yarn", "vitest"],
+			// yarn is no launcher: its explicit forms are not recognized either.
+			["yarn", "exec", "vitest"],
+			["yarn", "dlx", "cowsay"],
 			["bun", "vitest"],
 			["pnpm", "x", "vitest"],
 		]) {

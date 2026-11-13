@@ -1,0 +1,4 @@
+"@p/app@2.0.0":
+  dir: packages/app
+  intents:
+    - lead-major

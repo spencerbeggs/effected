@@ -41,6 +41,19 @@ Three facts are load-bearing:
   bare string — comparing it against `PackagePublish.pack`'s
   `PackedTarball.integrity` is a typed comparison, not a string-equals-and-hope.
 
+**Behind a proxy or an internal CA, provide the transport.** `NpmRegistry`
+and `PackageTarball` send through whatever `HttpClient` is in `R`, and a plain
+one ignores the npmrc: every read fails `RegistryReadError` `"transport"`.
+`@effected/npm/node` ships `NpmHttpClient.layer(config, { env, packageManager })`,
+the Node client that applies a resolved `NpmConfig`'s proxy, bypass, `ca`,
+`strict-ssl`, client-certificate and per-registry TLS settings. Build the
+config with `NpmConfig.load`, or with `PnpmNpmConfig.load` (from
+`@effected/pnpm`, with `packageManager: "pnpm"`) when the tool replaces
+`pnpm view`, and provide the layer beneath `NpmRegistry`'s. A setting it
+cannot apply (an unreadable `cafile`, a proxy that is not an `http`, `https`
+or `socks5` URL) fails the layer with `NpmTransportError` at build, not per
+request.
+
 A `github-packages` target reads `version` through the whole packument —
 GitHub Packages answers the per-version endpoint with 405 regardless of
 credentials, so that classification routes straight to the packument read
@@ -228,8 +241,8 @@ means the package packs, **not** that a registry would accept it. The error
 channel is reserved for a structural failure — npm could not be spawned, or
 its output was unreadable.
 
-`NpmExecutor` replaces repeated `packageManager?: "npm" | "pnpm" | "yarn" |
-"bun"` options with one value: `NpmExecutor.ambient` (the runner's own npm
+`NpmExecutor` replaces repeated `packageManager?: "npm" | "pnpm" | "bun"`
+options with one value: `NpmExecutor.ambient` (the runner's own npm
 on `PATH`) or `NpmExecutor.dlx("npm@11")` (fetched fresh through the
 project launcher). `dlx` runs the fetch through `LocalExec.applyDlx`,
 because OIDC trusted publishing needs a newer npm than GitHub-hosted

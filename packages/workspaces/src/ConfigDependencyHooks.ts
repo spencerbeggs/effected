@@ -23,14 +23,15 @@
 // for the version this checkout never installed — the base side of a diff
 // across a config-dependency bump.
 //
-// `internal/catalogs.ts` stays the only `@pnpm/catalogs.*` importer: the shape
-// hooks operate on is the plain `catalog name → dependency → range` record, and
-// the only normalization borrowed here is the prototype-safe `normalize`.
+// `internal/catalogs.ts` stays the one catalog engine: the shape hooks operate
+// on is the plain `catalog name → dependency → range` record, and the only
+// normalization borrowed here is the prototype-safe `normalize`.
 
 import { pathToFileURL } from "node:url";
 import { Run } from "@effected/commands";
-import type { PartialReleaseAgeGate } from "@effected/npm";
 import { CatalogAssemblyError } from "@effected/npm";
+import type { PartialReleaseAgeGate } from "@effected/pnpm";
+import { PeerDependencyRules } from "@effected/pnpm";
 import { Context, Duration, Effect, Layer, Predicate, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { CatalogEntries } from "./internal/catalogs.js";
@@ -54,60 +55,8 @@ interface HookConfig {
 	peerDependencyRules: PeerDependencyRules | undefined;
 }
 
-/**
- * pnpm's `peerDependencyRules` block — the suppression policy pnpm applies
- * **after** computing peer violations, in pnpm's own shape.
- *
- * @remarks
- * The shape is pnpm's own, because that is what comes back off the threaded
- * config: a replayed hook returns `{ allowedVersions, ignoreMissing, allowAny }`
- * intact, needing no reshaping.
- *
- * All three axes are consumed by `PeerCheck`, matching `pnpm peers check`.
- * `ignoreMissing` and `allowAny` are lists of **peer-name patterns** in pnpm's `@pnpm/matcher`
- * grammar (`*` wildcard, leading `!` negation) — not `parent>peer` keys, which
- * match nothing on those two axes. `ignoreMissing` hides only a required peer
- * that resolved to nothing; `allowAny` hides only a peer that resolved outside
- * its wanted range; the two never cross.
- *
- * `allowedVersions` keys come in two spellings in the wild, and both must be
- * handled: parent-versioned (`"@effect/ai-anthropic@4.0.0>effect"`, as
- * `pnpm:export` materializes them into `pnpm-workspace.yaml`) and unversioned
- * (`"@effect/vitest>vitest"`, as a config-dependency plugin injects them).
- *
- * @public
- */
-export interface PeerDependencyRules {
-	/** `parent>peer` → the peer version or range the rule permits. */
-	readonly allowedVersions: Readonly<Record<string, string>>;
-	/** Peer-name patterns whose absence pnpm does not report (a required peer that resolved to nothing). */
-	readonly ignoreMissing: ReadonlyArray<string>;
-	/** Peer-name patterns for which any resolved version is accepted. */
-	readonly allowAny: ReadonlyArray<string>;
-}
-
-/**
- * The empty {@link PeerDependencyRules}: every axis present and empty.
- *
- * @remarks
- * Exported so that "I assert this workspace's rules are empty" is **one token**
- * rather than three hand-written empty axes. That matters where the distinction
- * is load-bearing — supplying rules asserts they were looked up, while omitting
- * them asserts nothing — and a caller spelling the object out by hand will
- * eventually fill two of the three axes and mean the third.
- *
- * Frozen, since it is shared.
- *
- * @public
- */
-export const NoPeerDependencyRules: PeerDependencyRules = Object.freeze({
-	allowedVersions: Object.freeze({}),
-	ignoreMissing: Object.freeze([]),
-	allowAny: Object.freeze([]),
-});
-
 /** Internal alias, kept short at the many call sites in this module. */
-const NO_PEER_RULES: PeerDependencyRules = NoPeerDependencyRules;
+const NO_PEER_RULES: PeerDependencyRules = PeerDependencyRules.empty;
 
 /**
  * Where a replayed config dependency's declared version was found: the
@@ -281,7 +230,14 @@ const seedToConfig = (
 	let catalog: Record<string, string> = {};
 	for (const [name, entries] of Object.entries(seed)) {
 		if (name === "default") catalog = { ...entries };
-		else catalogs[name] = { ...entries };
+		// An own data property: a catalog named `__proto__` must not become the record's prototype.
+		else
+			Object.defineProperty(catalogs, name, {
+				value: { ...entries },
+				writable: true,
+				enumerable: true,
+				configurable: true,
+			});
 	}
 	// The seed carries no release-age keys — only a replayed hook sets them. It
 	// DOES carry the peer-dependency rules, because those have a workspace-file
@@ -354,11 +310,11 @@ const peerRulesOr = (value: unknown, fallback: PeerDependencyRules | undefined):
 	const ignoreMissing = stringArrayOr(value.ignoreMissing, fallback?.ignoreMissing);
 	const allowAny = stringArrayOr(value.allowAny, fallback?.allowAny);
 	if (allowed === undefined && ignoreMissing === undefined && allowAny === undefined) return fallback;
-	return {
+	return PeerDependencyRules.make({
 		allowedVersions: allowed ?? {},
 		ignoreMissing: ignoreMissing ?? [],
 		allowAny: allowAny ?? [],
-	};
+	});
 };
 
 /** Project the threaded config's rules into the slice, defaulting every axis to empty. */
@@ -540,7 +496,8 @@ const replay = async () => {
 	const catalogs = {};
 	for (const [name, entries] of Object.entries(JSON.parse(seedJson))) {
 		if (name === "default") catalog = { ...entries };
-		else catalogs[name] = { ...entries };
+		// An own data property: a catalog named __proto__ must not become the record's prototype.
+		else Object.defineProperty(catalogs, name, { value: { ...entries }, writable: true, enumerable: true, configurable: true });
 	}
 	let config = {
 		catalog,
@@ -820,7 +777,7 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 	 * `layerLive` — which captures nothing — would succeed).
 	 *
 	 * Catalog folding and normalization stay in the **parent** (the same
-	 * `@pnpm/catalogs`-derived path `layerLive` uses); the child returns only the
+	 * catalog engine path `layerLive` uses); the child returns only the
 	 * raw threaded config slice, since the script cannot import kit code.
 	 *
 	 * Requires core's `ChildProcessSpawner`, resolved when the layer is built —

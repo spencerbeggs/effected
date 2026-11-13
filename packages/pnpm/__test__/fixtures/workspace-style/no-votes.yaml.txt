@@ -1,0 +1,4 @@
+# No quoted scalars and no sequences: nothing to vote on.
+catalogs:
+  effected:
+    effect: ~4.1.0

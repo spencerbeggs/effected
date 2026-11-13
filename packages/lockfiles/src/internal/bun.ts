@@ -1,6 +1,6 @@
-import { Jsonc } from "@effected/jsonc";
+import type { BunLockDocument } from "@effected/bun";
+import { BunExtension } from "@effected/bun";
 import { Effect, Exit, Schema } from "effect";
-import { BunExtension } from "../BunExtension.js";
 import { LockfileImporter } from "../LockfileImporter.js";
 import { ResolvedPackage } from "../ResolvedPackage.js";
 import type { LockfileFields, ParseFailure, WorkspaceEntry } from "./shared.js";
@@ -9,28 +9,14 @@ import {
 	importerDependencies,
 	peerDeclarations,
 	splitNameVersion,
-	syntaxFailure,
 	toIntegrityHash,
-	validationFailure,
 } from "./shared.js";
 
-// ── Raw schema (permissive validation scaffolding, not API) ────────────────
+// ── Tuple info (read out of band, not part of the document's shape) ──────
 
 const DepRecord = Schema.optionalKey(Schema.Record(Schema.String, Schema.String));
 
 const OptionalPeers = Schema.optionalKey(Schema.Array(Schema.String));
-
-const BunWorkspaceEntry = Schema.Struct({
-	name: Schema.optionalKey(Schema.String),
-	version: Schema.optionalKey(Schema.String),
-	dependencies: DepRecord,
-	devDependencies: DepRecord,
-	peerDependencies: DepRecord,
-	optionalDependencies: DepRecord,
-	// bun spells optional peers as an array of names rather than a meta object,
-	// on workspace entries and package tuples alike.
-	optionalPeers: OptionalPeers,
-});
 
 /**
  * The info object at package-tuple index 2. bun's tuple shape is
@@ -55,34 +41,15 @@ const readBunPackageInfo = (value: unknown): typeof BunPackageInfo.Type | undefi
 	return Exit.isSuccess(exit) ? exit.value : undefined;
 };
 
-const BunLockfileRaw = Schema.Struct({
-	lockfileVersion: Schema.Number,
-	workspaces: Schema.optionalKey(Schema.Record(Schema.String, BunWorkspaceEntry)),
-	packages: Schema.optionalKey(Schema.Record(Schema.String, Schema.Array(Schema.Unknown))),
-	catalog: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
-	catalogs: Schema.optionalKey(Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.Unknown))),
-	overrides: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-	trustedDependencies: Schema.optionalKey(Schema.Array(Schema.String)),
-});
-
-type BunLockfileRawType = typeof BunLockfileRaw.Type;
-
 /**
- * Parse bun `bun.lock` (JSONC) content into the unified field bundle.
- * Resolved packages are tuples whose first element is `"name@version"`;
- * the integrity hash is assumed at tuple index 3 (a permissive
- * reading of an under-documented upstream shape).
+ * Normalise a decoded `bun.lock` document into the unified field bundle. The
+ * document's own parse (`BunLockDocument.parse`) owns the syntax and shape;
+ * this owns the reading of what it holds, including the package tuples' info
+ * objects, which it decodes out of band.
  *
  * @internal
  */
-export const parseBun = (content: string): Effect.Effect<LockfileFields, ParseFailure> =>
-	Effect.gen(function* () {
-		const parsed = yield* Jsonc.parse(content).pipe(Effect.mapError(syntaxFailure));
-		const validated = yield* Schema.decodeUnknownEffect(BunLockfileRaw)(parsed).pipe(
-			Effect.mapError(validationFailure),
-		);
-		return yield* toFields(validated);
-	});
+export const normalizeBun = (raw: BunLockDocument): Effect.Effect<LockfileFields, ParseFailure> => toFields(raw);
 
 // ── Transform ──────────────────────────────────────────────────────────────
 
@@ -140,10 +107,10 @@ const resolveBunEdges = (
 const infoSections = (info: typeof BunPackageInfo.Type | undefined) =>
 	[info?.dependencies, info?.devDependencies, info?.optionalDependencies, info?.peerDependencies] as const;
 
-const workspaceSections = (entry: typeof BunWorkspaceEntry.Type) =>
+const workspaceSections = (entry: NonNullable<BunLockDocument["workspaces"]>[string]) =>
 	[entry.dependencies, entry.devDependencies, entry.optionalDependencies, entry.peerDependencies] as const;
 
-const toFields = (raw: BunLockfileRawType): Effect.Effect<LockfileFields, ParseFailure> =>
+const toFields = (raw: BunLockDocument): Effect.Effect<LockfileFields, ParseFailure> =>
 	Effect.gen(function* () {
 		const packages: Array<ResolvedPackage> = [];
 		// bun's own instance identities: the `packages` keys.

@@ -20,6 +20,7 @@ import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as NodePath from "@effect/platform-node/NodePath";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { CatalogAssemblyError } from "@effected/npm";
+import { PeerDependencyRules } from "@effected/pnpm";
 import { Effect, Layer } from "effect";
 import { ConfigDependencyHooks, WorkspaceCatalogs, Workspaces } from "../../src/index.js";
 import type { Tree } from "../fixtures.js";
@@ -199,7 +200,7 @@ describe("ConfigDependencyHooks.layerSubprocess — a malformed peer-rules axis"
 				root,
 				{ [PEER_RULES_GARBAGE_DEP_NAME]: "1.0.0", [PEER_RULES_DEP_NAME]: "1.0.0" },
 				SEED,
-				{ allowedVersions: { "seeded>peer": "1.0.0" }, ignoreMissing: [], allowAny: [] },
+				PeerDependencyRules.make({ allowedVersions: { "seeded>peer": "1.0.0" }, ignoreMissing: [], allowAny: [] }),
 			);
 			assert.deepStrictEqual(result.peerDependencyRules.allowedVersions, {
 				"seeded>peer": "1.0.0",
@@ -235,7 +236,7 @@ describe("ConfigDependencyHooks.layerSubprocess — pnpm 11 loader order and ski
 			assert.deepStrictEqual(result, {
 				catalogs: SEED,
 				releaseAge: {},
-				peerDependencyRules: { allowedVersions: {}, ignoreMissing: [], allowAny: [] },
+				peerDependencyRules: PeerDependencyRules.make({ allowedVersions: {}, ignoreMissing: [], allowAny: [] }),
 				// Resolved in the parent (so recorded) even though nothing was spawned.
 				replays: { [NEITHER_DEP_NAME]: { version: "1.0.0", source: "installed" } },
 			});
@@ -365,4 +366,26 @@ describe("Workspaces.layerWithConfigDependenciesSubprocess — releaseAgeGate re
 			assert.strictEqual(set.entries.default?.effect, "^4.0.0");
 		}).pipe(Effect.provide(appLayer));
 	});
+});
+
+describe("ConfigDependencyHooks.layerSubprocess — a catalog named __proto__", () => {
+	// JSON.parse makes `__proto__` an own key, as a seed read from a workspace file carries it. A bare
+	// `catalogs[name] = ...` write would set the record's prototype instead, and the catalog would vanish.
+	const hostile = JSON.parse('{"default":{"effect":"^4.0.0"},"__proto__":{"evil":"^1.0.0"}}') as Record<
+		string,
+		Record<string, string>
+	>;
+	it.effect("survives the replay as an own catalog, never a prototype", () =>
+		Effect.gen(function* () {
+			assert.isTrue(Object.hasOwn(hostile, "__proto__")); // the payload really is hostile
+			const hooks = yield* ConfigDependencyHooks;
+			const result = yield* hooks.inject(root, { [DEP_NAME]: "1.0.0" }, hostile);
+			assert.isTrue(Object.hasOwn(result.catalogs, "__proto__"));
+			assert.deepStrictEqual(Object.getOwnPropertyDescriptor(result.catalogs, "__proto__")?.value, {
+				evil: "^1.0.0",
+			});
+			assert.strictEqual(Object.getPrototypeOf(result.catalogs), Object.prototype);
+			assert.strictEqual(result.catalogs.extra?.["extra-dep"], "^1.2.3");
+		}).pipe(Effect.provide(HooksSubprocess)),
+	);
 });

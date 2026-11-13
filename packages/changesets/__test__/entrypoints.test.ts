@@ -4,6 +4,7 @@ import * as Changesets from "../src/index.js";
 
 it("the root exports exactly the public surface", () => {
 	assert.deepStrictEqual(Object.keys(Changesets).sort(), [
+		"AmbiguousPackageError",
 		"BreakingFloor",
 		"BumpType",
 		"Changelog",
@@ -14,7 +15,12 @@ it("the root exports exactly the public surface", () => {
 		"ChangesetMove",
 		"ChangesetParseError",
 		"ComprehensiveRelease",
+		"EpicOutOfBand",
+		"FixedOutOfStep",
 		"FloorCause",
+		"Ledger",
+		"LedgerEntry",
+		"LedgerError",
 		"ManifestEdit",
 		"MissingPackageError",
 		"ModCompWithPackage",
@@ -27,14 +33,19 @@ it("the root exports exactly the public surface", () => {
 		"PlannedRelease",
 		"PreState",
 		"RangeEdit",
+		"RegistryVersions",
+		"ReleaseCause",
 		"ReleaseContext",
 		"ReleaseEdits",
+		"ReleaseManager",
 		"ReleasePlan",
 		"ReleaseType",
 		"SnapshotPreModeError",
 		"SnapshotTemplateError",
 		"UnknownPackageError",
 		"VersionType",
+		"VersioningCheck",
+		"VersioningError",
 	]);
 });
 

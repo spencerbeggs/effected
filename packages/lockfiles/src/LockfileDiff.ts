@@ -131,7 +131,7 @@ export class CatalogChange extends Schema.Class<CatalogChange>("CatalogChange")(
  *   reads `link:<path>`, relative to the importer, never the workspace's own
  *   version, and a `file:` edge to a local directory or tarball that is not a
  *   workspace reads `file:<path>`, relative to the workspace root, never the
- *   version inside it. yarn records no importers at all.
+ *   version inside it.
  * - `kind` — `"added"`, `"removed"` or `"changed"`, under the same rule as
  *   `CatalogChange`: a `changed` record has a specifier on both sides, and
  *   either the specifier differs or both resolved versions are known and
@@ -268,13 +268,10 @@ const importerTarget = (resolver: Resolver, importer: string, dep: ImporterDepen
  *   workspace root, never the version inside it: pnpm records a local target
  *   by where it is, so a version bump inside it is no change to the edge;
  * - any other edge reads the package entry's version.
- *
- * yarn records no importers.
  */
 const importerVersion = (resolver: Resolver, importer: string, dep: ImporterDependency): string | undefined => {
 	const { lockfile } = resolver;
 	if (lockfile.format === "pnpm") return dep.version;
-	if (lockfile.format !== "npm" && lockfile.format !== "bun") return undefined;
 	const pkg = importerTarget(resolver, importer, dep);
 	if (pkg === undefined) return undefined;
 	if (pkg.isWorkspace) {
@@ -301,7 +298,7 @@ interface Consumer {
  * The raw catalog sections of a lockfile, default catalog under `"default"`.
  * pnpm keys the default catalog `"default"` already; bun splits it into its
  * own unnamed `catalog` section, folded back in here (a named `default` in
- * `catalogs` replaces it). npm and yarn record no catalogs.
+ * `catalogs` replaces it). npm records no catalogs.
  */
 const rawCatalogs = (lockfile: Lockfile): ReadonlyArray<readonly [string, Readonly<Record<string, unknown>>]> => {
 	const ext = lockfile.extension;
@@ -580,7 +577,7 @@ export class LockfileDiff extends Schema.Class<LockfileDiff>("LockfileDiff")({
 	 *
 	 * @remarks
 	 * The comparison reads the same model for every format, so one answer
-	 * holds for pnpm, bun, npm and yarn. What differs between formats is where
+	 * holds for pnpm, bun and npm. What differs between formats is where
 	 * a resolved version is recorded, and that is normalized here:
 	 *
 	 * - **pnpm** records `{ specifier, version }` on each catalog entry and on
@@ -599,8 +596,6 @@ export class LockfileDiff extends Schema.Class<LockfileDiff>("LockfileDiff")({
 	 *   with no consumer it is the package's version when the lockfile holds
 	 *   exactly one, and absent when consumers disagree or the name resolves
 	 *   to several versions. npm has no catalogs.
-	 * - **yarn** records no importers and no catalogs, so two yarn lockfiles
-	 *   always compare empty.
 	 *
 	 * An entry or dependency present on one side only is `added` or
 	 * `removed`, including every dependency of an importer that appears or

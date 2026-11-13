@@ -7,14 +7,9 @@
 
 import type { Lockfile } from "@effected/lockfiles";
 import { filenameFor } from "@effected/lockfiles";
-import {
-	CatalogAssemblyError,
-	CatalogResolver,
-	DependencyResolutionError,
-	PartialReleaseAgeGate,
-	ReleaseAgeGate,
-} from "@effected/npm";
+import { CatalogAssemblyError, CatalogResolver, DependencyResolutionError } from "@effected/npm";
 import { PackageJsonFormat } from "@effected/package-json";
+import { PartialReleaseAgeGate, PeerDependencyRules, ReleaseAgeGate } from "@effected/pnpm";
 import { Yaml } from "@effected/yaml";
 import {
 	Context,
@@ -35,9 +30,8 @@ import type {
 	HookInjection,
 	HookReplay,
 	HookReplayContext,
-	PeerDependencyRules,
 } from "./ConfigDependencyHooks.js";
-import { ConfigDependencyHooks, NoPeerDependencyRules } from "./ConfigDependencyHooks.js";
+import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
 import type { Catalogs } from "./internal/catalogs.js";
 import { inlineCatalogs, merge, normalize, rangeOf } from "./internal/catalogs.js";
 import { isStringRecord } from "./internal/guards.js";
@@ -167,7 +161,7 @@ export class CatalogSet extends Schema.Class<CatalogSet>("CatalogSet")({
 	 * the default catalog declared twice — once as `workspaces.catalog` and again
 	 * as `workspaces.catalogs.default` — fails with `CatalogAssemblyError`
 	 * naming what was wrong. An absent `workspaces` field, one explicitly `null`,
-	 * or the plain array form (npm/yarn patterns, which carry no catalogs) yields
+	 * or the plain array form (npm patterns, which carry no catalogs) yields
 	 * the empty set. Presence is checked structurally, so an explicitly-declared
 	 * empty `catalog: {}` still counts as a declaration.
 	 *
@@ -219,7 +213,12 @@ export class CatalogSet extends Schema.Class<CatalogSet>("CatalogSet")({
 	 */
 	rangeOf(dependency: string, catalog: Option.Option<string>): Option.Option<string> {
 		const name = Option.getOrElse(catalog, () => "default");
-		return Option.fromUndefinedOr(this.entries[name]?.[dependency]);
+		// Both keys are caller input: an inherited name (`constructor`,
+		// `toString`) must not resolve off `Object.prototype`.
+		const entries = Object.hasOwn(this.entries, name) ? this.entries[name] : undefined;
+		return entries !== undefined && Object.hasOwn(entries, dependency)
+			? Option.fromUndefinedOr(entries[dependency])
+			: Option.none();
 	}
 }
 
@@ -242,7 +241,7 @@ const catalogBlocksOf = (
  * The inline release-age gate contribution of a parsed `pnpm-workspace.yaml`
  * document — pnpm's top-level `minimumReleaseAge` (minutes) and
  * `minimumReleaseAgeExclude` (name patterns) keys, mapped onto
- * `@effected/npm`'s `PartialReleaseAgeGate` field names
+ * `@effected/pnpm`'s `PartialReleaseAgeGate` field names
  * (`ageMinutes` / `exclude`).
  *
  * @remarks
@@ -358,7 +357,7 @@ const manifestCatalogBlocks = (
 	{ readonly catalog?: Record<string, string>; readonly catalogs?: Record<string, Record<string, string>> },
 	CatalogAssemblyError
 > => {
-	// Absent, explicitly null, or the npm/yarn array form: nothing to misread.
+	// Absent, explicitly null, or the npm array form: nothing to misread.
 	if (workspaces === undefined || workspaces === null || Array.isArray(workspaces)) return Effect.succeed({});
 	if (!Predicate.isObject(workspaces)) {
 		return Effect.fail(
@@ -576,7 +575,7 @@ export interface WorkspaceCatalogsOptions {
 	 * @remarks
 	 * Pass `["pnpm-workspace.yaml"]` for a pnpm-only tool: pnpm ignores
 	 * `package.json#workspaces`, so a member package that kept the field
-	 * (common after a yarn migration) must not read as the root. An empty
+	 * (common after a migration to pnpm) must not read as the root. An empty
 	 * list is a **defect** at first use, as it is for `find`.
 	 *
 	 * Give it the same value as {@link WorkspaceDiscoveryOptions.markers}
@@ -697,7 +696,7 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 				// threaded config, with every replayed hook's contribution merged onto
 				// it. Read back off the injection rather than recomputed here — the
 				// point of seeding is that one object carries the answer.
-				let peerDependencyRules: PeerDependencyRules = NoPeerDependencyRules;
+				let peerDependencyRules: PeerDependencyRules = PeerDependencyRules.empty;
 				// Which version each config dependency replayed from; empty where
 				// config dependencies do not exist.
 				let hookReplays: Readonly<Record<string, HookReplay>> = {};
@@ -757,7 +756,7 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 							catalogs: fromLockfile,
 							releaseAgeGate: ReleaseAgeGate.combine(),
 							importerVersions,
-							peerDependencyRules: NoPeerDependencyRules,
+							peerDependencyRules: PeerDependencyRules.empty,
 							hookReplays: {},
 						};
 					const text = yield* fs

@@ -23,7 +23,7 @@ release pipeline.
 | `PackagePublish` | `@effected/npm` | Setting up auth, packing a tarball, or publishing it |
 | `NpmExecutor` | `@effected/npm` | Choosing between the ambient npm and a pinned `dlx`-fetched one |
 | `classifyRegistry` | `@effected/npm` | Deciding whether a registry is public npm, GitHub Packages, JSR or custom |
-| `ReleaseAgeGate` | `@effected/npm` | Holding a version back until it has aged past a minimum |
+| `ReleaseAgeGate` | `@effected/pnpm` | Holding a version back until it has aged past a minimum |
 | `VersioningStrategy`, `ReleaseTag` | `import { VersioningStrategy } from "@effected/workspaces"` | Classifying a workspace's release shape and formatting its tags |
 | `TrackingTag` | `@effected/workspaces` | Deriving the floating `v1`/`v1.2` GitHub Actions distribution aliases |
 | `PublishabilityDetector` | `@effected/workspaces` | Wiring or overriding which packages publish, and to where |
@@ -84,6 +84,7 @@ release pipeline.
 - `ReleaseAgeGate`'s glob dialect is pnpm's `*`-crosses-`/` matcher, **not**
   `@effected/glob`'s minimatch dialect — routing exclude patterns through
   the wrong engine silently changes which packages a gate exempts.
+- **A lane prerelease publishes under `latest` unless `--tag` is passed.** Under pnpm-native release planning a lane builds `X.Y.Z-<lane>.N`, but a prerelease segment does not choose a dist-tag. Pass the tag at the publish call (the lane's name is the natural one) or every consumer on `latest` receives it; the planner (`@effected/changesets`) plans versions and never picks a tag.
 - `NpmRegistry.layerTest()` with no overrides dies loudly by design on the
   first read — reach for `NpmRegistry.layerSeeded({ registries: {} })` when
   a test wants a real, working empty registry instead. Every read of it

@@ -12,6 +12,6 @@ export function setup() {
 	// filter is named rather than the whole workspace because `@effected/ai-plugins`'s build rewrites the committed
 	// plugin/builds trees, and a test run must not rewrite committed files (effected#1084).
 	AgentPlugin.runScript(
-		"pnpm exec turbo run build --filter '@effected/plugin...' --filter @effected/pnpm-plugin-effected --filter @effected/cli-kit --filter @effected/config-file --filter @effected/kit --filter @effected/commands --output-logs=errors-only",
+		"pnpm exec turbo run build --filter '@effected/plugin...' --filter @effected/pnpm-plugin-effected --filter @effected/cli-kit --filter @effected/config-file --filter @effected/kit --filter @effected/commands --filter @effected/npm --output-logs=errors-only",
 	);
 }
