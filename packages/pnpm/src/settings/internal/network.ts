@@ -60,6 +60,7 @@ export const network = {
 			"How long an HTTP request may go without making progress. The clock is reset on every chunk pnpm receives, so a large tarball on a slow connection is not cut off while data is still arriving; a stalled request is.",
 		locations: ["workspace", "global", "env"],
 		envFormat: "json",
+		default: 60000,
 		anchor: "settings/network#fetchtimeout",
 	}),
 	fetchWarnTimeoutMs: entry("fetchWarnTimeoutMs", {
