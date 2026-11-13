@@ -5,6 +5,7 @@
 
 | Construct | Kind | Purpose | Reach for it when |
 | --- | --- | --- | --- |
+| `AmbiguousPackageError` | Class | A changeset names a package by a name that more than one workspace project publishes, so the name identifies none of them. Name the project by its `./`-prefixed workspace-relative directory instead. | changeset names a package by a name two workspace projects publish, directory key needed |
 | `BreakingFloor` | Class | A release that stays on its own breaking line while a range it publishes crosses a dependency's breaking line: a consumer on the old line of both would resolve this release and miss what it now requires. | release must bump breaking, peer floor crosses dependency minor, patch ripple fix |
 | `BumpType` | Variable + TypeAlias | The type of a `BumpType` value. | changeset bump values, patch, minor or major |
 | `Changelog` | Class | CHANGELOG assembly for a `ReleasePlan`, matching `@changesets/apply-release-plan`. | render changelog block for a release, insert into CHANGELOG.md, getReleaseLine |

@@ -180,6 +180,7 @@
 		"isKnownRegistryType": "check a registry type is recognized, otherwise degrade to link-only"
 	},
 	"changesets": {
+		"AmbiguousPackageError": "changeset names a package by a name two workspace projects publish, directory key needed",
 		"BreakingFloor": "release must bump breaking, peer floor crosses dependency minor, patch ripple fix",
 		"BumpType": "changeset bump values, patch, minor or major",
 		"Changelog": "render changelog block for a release, insert into CHANGELOG.md, getReleaseLine",

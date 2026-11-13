@@ -52,6 +52,26 @@ export class UnknownPackageError extends Schema.TaggedError<UnknownPackageError>
 }
 
 /**
+ * A changeset names a package by a name that more than one workspace project
+ * publishes, so the name identifies none of them. Name the project by its
+ * `./`-prefixed workspace-relative directory instead.
+ *
+ * @public
+ */
+export class AmbiguousPackageError extends Schema.TaggedError<AmbiguousPackageError>()("AmbiguousPackageError", {
+	/** The package name the changeset gave. */
+	name: Schema.String,
+	/** The workspace-relative directories of the projects that publish it, in discovery order. */
+	directories: Schema.Array(Schema.String),
+	/** The changeset file that named it. */
+	changeset: Schema.String,
+}) {
+	override get message(): string {
+		return `Changeset ${this.changeset} names ${this.name}, which ${this.directories.length} projects publish (${this.directories.map((dir) => `./${dir}`).join(", ")}); name one by its ./ directory`;
+	}
+}
+
+/**
  * A snapshot release was asked for while `.changeset/pre.json` has the
  * repository in pre mode. `changeset version --snapshot` refuses the same
  * way; leave pre mode (`changeset pre exit`) first.

@@ -102,3 +102,16 @@ describe("the summary against @changesets/parse", async () => {
 		});
 	}
 });
+
+it.effect("keeps a pnpm directory key verbatim", () =>
+	Effect.gen(function* () {
+		const parsed = yield* ChangesetFile.parse('---\n"./packages/b": patch\n"@p/a": minor\n---\n\nText.\n');
+		assert.deepStrictEqual(
+			[...parsed.releases],
+			[
+				["./packages/b", "patch"],
+				["@p/a", "minor"],
+			],
+		);
+	}),
+);

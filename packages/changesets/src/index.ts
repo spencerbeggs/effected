@@ -32,6 +32,7 @@ export {
 export { ChangesetConfig } from "./ChangesetConfig.js";
 export { ChangesetFile, ParsedChangeset } from "./ChangesetFile.js";
 export {
+	AmbiguousPackageError,
 	ChangesetConfigError,
 	ChangesetParseError,
 	MissingPackageError,

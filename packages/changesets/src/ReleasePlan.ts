@@ -9,7 +9,13 @@ import { computeBreakingFloors } from "./BreakingFloors.js";
 import type { ReleaseType } from "./BumpType.js";
 import { ChangesetConfig } from "./ChangesetConfig.js";
 import type { MissingPackageError } from "./errors.js";
-import { ChangesetConfigError, SnapshotPreModeError, SnapshotTemplateError, UnknownPackageError } from "./errors.js";
+import {
+	AmbiguousPackageError,
+	ChangesetConfigError,
+	SnapshotPreModeError,
+	SnapshotTemplateError,
+	UnknownPackageError,
+} from "./errors.js";
 import type { DependencyKind } from "./internal/versions.js";
 import {
 	DEPENDENCY_KINDS,
@@ -24,6 +30,8 @@ import { PendingChangeset, PendingChangesets } from "./PendingChangesets.js";
 import { PreState } from "./PreState.js";
 import type { ReleaseEdits } from "./ReleaseEdits.js";
 import { computeEdits } from "./ReleaseEdits.js";
+import type { ReleaseManager } from "./ReleaseManager.js";
+import { ReleaseManager as ReleaseManagerSchema } from "./ReleaseManager.js";
 
 const RANK: Record<ReleaseType, number> = { none: 0, patch: 1, minor: 2, major: 3 };
 
@@ -46,6 +54,7 @@ class Halt {
 
 type AssembleError =
 	| UnknownPackageError
+	| AmbiguousPackageError
 	| ChangesetConfigError
 	| InvalidVersionError
 	| SnapshotPreModeError
@@ -517,6 +526,17 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 * suffix is never empty, so the oracle's quiet fallback to plain versions
 	 * on an empty suffix cannot happen here.
 	 *
+	 * With `manager: "pnpm"`, a changeset may also name a project by a
+	 * `./`-prefixed workspace-relative directory (`"./packages/b": patch`), the
+	 * one extension pnpm makes to the changesets format. The key is normalised as
+	 * pnpm normalises a project directory (backslashes to `/`, every leading
+	 * `./` and the trailing `/` removed) and matched against each package's
+	 * `relativePath`; it fails {@link UnknownPackageError} naming the key when no
+	 * package is there. A bare name that more than one package publishes fails
+	 * {@link AmbiguousPackageError} with every directory, never a silent pick.
+	 * The default, `"changesets"`, is the Changesets CLI's reading: a `./` key is
+	 * an unknown package, as it is there.
+	 *
 	 * @param input - The packages to plan, the pending changesets, the config
 	 * and, in pre-release mode, the {@link PreState}, and for a snapshot
 	 * release the {@link ReleaseSnapshot}. {@link ReleasePlan.read} decides
@@ -528,9 +548,15 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 		readonly config: ChangesetConfig;
 		readonly pre?: PreState;
 		readonly snapshot?: ReleaseSnapshot;
+		readonly manager?: ReleaseManager;
 	}): Result.Result<
 		ReleasePlan,
-		UnknownPackageError | ChangesetConfigError | InvalidVersionError | SnapshotPreModeError | SnapshotTemplateError
+		| UnknownPackageError
+		| AmbiguousPackageError
+		| ChangesetConfigError
+		| InvalidVersionError
+		| SnapshotPreModeError
+		| SnapshotTemplateError
 	> {
 		try {
 			return Result.succeed(assembleOrHalt(input));
@@ -783,18 +809,30 @@ const readContext = Effect.fnUntraced(function* (
 	const config = yield* ChangesetConfig.read(root);
 	const changesets = yield* PendingChangesets.read(root);
 	const pre = yield* PreState.read(root);
+	const manager = yield* ReleaseManagerSchema.detect(root);
 	const members = discovered.filter((pkg) => !pkg.isRootWorkspace);
 	const plan = yield* Effect.fromResult(
 		ReleasePlan.assemble({
 			packages: members.length > 0 ? members : discovered,
 			changesets,
 			config,
+			manager,
 			...(Option.isSome(pre) ? { pre: pre.value } : {}),
 			...(options?.snapshot === undefined ? {} : { snapshot: options.snapshot }),
 		}),
 	);
 	return ReleaseContext.make({ root, plan, packages: discovered, config });
 });
+
+/**
+ * The canonical spelling of a workspace-relative project directory, as pnpm
+ * writes it: forward slashes, no leading `./`, no trailing slash.
+ */
+const normalizeProjectDir = (dir: string): string => {
+	let normalized = dir.replaceAll("\\", "/");
+	while (normalized.startsWith("./")) normalized = normalized.slice(2);
+	return normalized.replace(/\/+$/, "");
+};
 
 /** The highest of `types`, none of which is `none`. */
 const highestType = (types: ReadonlyArray<ReleaseType>): ReleaseType =>
@@ -811,8 +849,10 @@ const assembleOrHalt = (input: {
 	readonly config: ChangesetConfig;
 	readonly pre?: PreState;
 	readonly snapshot?: ReleaseSnapshot;
+	readonly manager?: ReleaseManager;
 }): ReleasePlan => {
 	const { packages, changesets, config, pre, snapshot } = input;
+	const pnpm = input.manager === "pnpm";
 	if (snapshot !== undefined && pre?.mode === "pre") throw new Halt(new SnapshotPreModeError({ preTag: pre.tag }));
 	const byName = new Map(packages.map((pkg) => [pkg.name, pkg]));
 	const ignored = new Set(matchNames(packages, config.ignore));
@@ -823,11 +863,44 @@ const assembleOrHalt = (input: {
 	const invalid = groupError(fixed, linked);
 	if (invalid !== undefined) throw new Halt(invalid);
 
-	for (const changeset of changesets) {
-		for (const name of changeset.releases.keys()) {
-			if (!byName.has(name)) throw new Halt(new UnknownPackageError({ packageName: name, changeset: changeset.file }));
+	// Each changeset's release keys as package names. Changesets mode reads a key as a name only.
+	const resolvedKey = new Map<string, string>();
+	const resolve = (key: string, changeset: string): string => {
+		if (!pnpm) {
+			if (!byName.has(key)) throw new Halt(new UnknownPackageError({ packageName: key, changeset }));
+			return key;
 		}
+		if (key.startsWith("./")) {
+			const dir = normalizeProjectDir(key);
+			const found = packages.find((pkg) => normalizeProjectDir(pkg.relativePath) === dir);
+			if (found === undefined) throw new Halt(new UnknownPackageError({ packageName: key, changeset }));
+			return found.name;
+		}
+		const same = packages.filter((pkg) => pkg.name === key);
+		if (same.length === 0) throw new Halt(new UnknownPackageError({ packageName: key, changeset }));
+		if (same.length > 1) {
+			throw new Halt(
+				new AmbiguousPackageError({
+					name: key,
+					directories: same.map((pkg) => normalizeProjectDir(pkg.relativePath)),
+					changeset,
+				}),
+			);
+		}
+		return key;
+	};
+	for (const changeset of changesets) {
+		for (const key of changeset.releases.keys())
+			resolvedKey.set(`${changeset.file}\0${key}`, resolve(key, changeset.file));
 	}
+	// An exit-mode plan renames a consumed changeset `pre/<file>` after the keys were resolved.
+	const releasesOf = (changeset: PendingChangeset): ReadonlyArray<readonly [string, ReleaseType]> =>
+		[...changeset.releases].map(([key, type]) => {
+			const name =
+				resolvedKey.get(`${changeset.file}\0${key}`) ??
+				resolvedKey.get(`${changeset.file.replace(/^pre\//, "")}\0${key}`);
+			return [name as string, type] as const;
+		});
 	// A changeset an older-layout pre.json lists by id is consumed, as if it sat
 	// under .changeset/pre/, where the oracle moves it: in exit mode it is named
 	// there, as the oracle's later plans name it.
@@ -864,7 +937,7 @@ const assembleOrHalt = (input: {
 
 	const releases = new Map<string, Draft>();
 	for (const changeset of relevant) {
-		for (const [name, type] of changeset.releases) {
+		for (const [name, type] of releasesOf(changeset)) {
 			const pkg = byName.get(name) as WorkspacePackage;
 			if (isSkipped(pkg)) continue;
 			const release = releases.get(name);

@@ -4,6 +4,7 @@ import * as Changesets from "../src/index.js";
 
 it("the root exports exactly the public surface", () => {
 	assert.deepStrictEqual(Object.keys(Changesets).sort(), [
+		"AmbiguousPackageError",
 		"BreakingFloor",
 		"BumpType",
 		"Changelog",
