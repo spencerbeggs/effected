@@ -494,9 +494,6 @@ importers:
       '@effected/glob':
         specifier: workspace:^
         version: link:../glob
-      '@effected/npm':
-        specifier: workspace:^
-        version: link:../npm
       '@effected/pnpm':
         specifier: workspace:^
         version: link:../pnpm
@@ -540,6 +537,9 @@ importers:
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs
+      '@effected/npm':
+        specifier: workspace:*
+        version: link:../npm
       '@types/node':
         specifier: catalog:effected:build
         version: 26.6.6
@@ -1542,9 +1542,6 @@ importers:
       '@effected/glob':
         specifier: workspace:^
         version: link:../glob
-      '@effected/npm':
-        specifier: workspace:^
-        version: link:../npm
       '@effected/walker':
         specifier: workspace:^
         version: link:../walker
@@ -1558,6 +1555,9 @@ importers:
       '@effected/memfs':
         specifier: workspace:*
         version: link:../memfs
+      '@effected/npm':
+        specifier: workspace:*
+        version: link:../npm
       '@effected/semver':
         specifier: workspace:*
         version: link:../semver

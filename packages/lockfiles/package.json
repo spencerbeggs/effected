@@ -45,11 +45,9 @@
 	"peerDependencies": {
 		"@effected/bun": "workspace:^",
 		"@effected/glob": "workspace:^",
-		"@effected/jsonc": "workspace:^",
 		"@effected/npm": "workspace:^",
 		"@effected/pnpm": "workspace:^",
 		"@effected/semver": "workspace:^",
-		"@effected/yaml": "workspace:^",
 		"effect": "catalog:effected:peers"
 	},
 	"engines": {

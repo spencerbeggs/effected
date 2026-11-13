@@ -99,12 +99,11 @@ const firstEnv = (
  * setting. The `NpmConfig` holds only the keys pnpm reads.
  *
  * **One copy of `@effected/npm`.** The config returned here is an instance
- * of the `NpmConfig` class from the `@effected/npm` this package resolves.
- * Pass it to `NpmHttpClient.layer` and `NpmRegistry` from that same copy:
- * the class is nominal, so when a dependency graph resolves two copies (a
- * range that admits two 0.x minors), the other copy's `NpmConfig` is a
- * different type and the call need not type-check. Align the caller's
- * `@effected/npm` with the one `@effected/pnpm` depends on.
+ * of the `NpmConfig` class from the `@effected/npm` this package resolves,
+ * which is a peer dependency so that it is the caller's own copy. Pass it to
+ * `NpmHttpClient.layer` and `NpmRegistry` from that copy: the class is
+ * nominal, so if a dependency graph still resolves two copies, the other
+ * copy's `NpmConfig` is a different type and the call need not type-check.
  *
  * **Not modelled:** command-line flags, the structured `_auth` credentials of
  * the global `config.yaml` and `pnpm_config__auth`, `tokenHelper`, the
