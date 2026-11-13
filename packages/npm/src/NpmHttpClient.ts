@@ -49,6 +49,11 @@ export interface NpmHttpClientOptions {
  * methods document. Connections are pooled per distinct proxy and TLS
  * answer and closed with the layer's scope.
  *
+ * The environment proxies (`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` and their
+ * lower-case spellings) apply only when the caller passes `env`: the layer
+ * never reads `process.env`, so a layer built without `env` connects directly
+ * however the shell is configured.
+ *
  * Every file a setting names (`cafile`, and each registry's files that the
  * chosen manager reads) is read through `FileSystem` when the layer is
  * built, and one that cannot be read fails the layer with

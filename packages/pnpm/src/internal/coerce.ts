@@ -35,18 +35,28 @@ export const unsignedFromValue = (value: unknown): number | undefined =>
 			? unsignedFromText(value)
 			: undefined;
 
-/**
- * A file value as a safe integer: a number or a canonical signed string. `-0`
- * reads as `0`, as pnpm 12 reads it for a signed setting.
- */
-export const integerFromValue = (value: unknown): number | undefined => {
-	if (typeof value === "number") return Number.isSafeInteger(value) ? value + 0 : undefined;
-	if (typeof value !== "string") return undefined;
-	const trimmed = value.trim();
+/** A trimmed canonical signed integer string, within the safe-integer range, or `undefined`. `-0` reads as `0`. */
+export const integerFromText = (text: string): number | undefined => {
+	const trimmed = text.trim();
 	if (!SIGNED.test(trimmed)) return undefined;
 	const parsed = Number(trimmed);
 	return Number.isSafeInteger(parsed) ? parsed + 0 : undefined;
 };
+
+/**
+ * A file value as a safe integer: a number or a canonical signed string. `-0`
+ * reads as `0`, as pnpm 12 reads it for a signed setting. Every numeric pnpm 12
+ * setting is an integer, so this is the one numeric read `PnpmSettings` and the
+ * catalog share; an unsigned setting narrows it with {@link unsignedFromValue}.
+ */
+export const integerFromValue = (value: unknown): number | undefined =>
+	typeof value === "number"
+		? Number.isSafeInteger(value)
+			? value + 0
+			: undefined
+		: typeof value === "string"
+			? integerFromText(value)
+			: undefined;
 
 /** An environment value as a boolean: exactly `true` or `false` once trimmed, as pnpm 12 reads it. */
 export const booleanFromText = (text: string): boolean | undefined => {
@@ -61,3 +71,32 @@ export const booleanFromValue = (value: unknown): boolean | undefined => {
 	const word = value.trim().toLowerCase();
 	return TRUTHY.has(word) ? true : FALSY.has(word) ? false : undefined;
 };
+
+/** A file value as a list: an array whose every entry is a string, or `undefined`, as the catalog's string-array schema reads it. */
+export const stringsFromValue = (value: unknown): ReadonlyArray<string> | undefined =>
+	Array.isArray(value) && value.every((item): item is string => typeof item === "string") ? value : undefined;
+
+/** An environment value as a list: a JSON array of strings, the one form pnpm 11 and 12 both read as a list. */
+export const stringsFromText = (text: string): ReadonlyArray<string> | undefined => {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(text);
+	} catch {
+		return undefined;
+	}
+	return stringsFromValue(parsed);
+};
+
+/**
+ * The string entries of an array, or `undefined` for a non-array. Total, and
+ * lenient where {@link stringsFromValue} is strict: it reads a pattern list
+ * (`packages:`) the way pnpm skips a non-string entry.
+ *
+ * @remarks
+ * `@effected/workspaces` keeps its own one-line copy (`internal/patterns.ts`):
+ * exporting this from `@effected/pnpm`'s public entry would make a total array
+ * filter part of the package's API for one caller, which costs more than the
+ * line it saves.
+ */
+export const stringsOf = (value: unknown): ReadonlyArray<string> | undefined =>
+	Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : undefined;

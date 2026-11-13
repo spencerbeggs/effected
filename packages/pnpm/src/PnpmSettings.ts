@@ -10,12 +10,18 @@ import { Walker } from "@effected/walker";
 import { Yaml } from "@effected/yaml";
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Option, Path, Result, Schema } from "effect";
-import { booleanFromText, booleanFromValue, unsignedFromText, unsignedFromValue } from "./internal/coerce.js";
+import {
+	booleanFromText,
+	booleanFromValue,
+	integerFromText,
+	integerFromValue,
+	stringsFromText,
+	stringsFromValue,
+	stringsOf,
+	unsignedFromText,
+	unsignedFromValue,
+} from "./internal/coerce.js";
 import { VersioningConfig } from "./VersioningConfig.js";
-
-/** The string entries of an array, or `undefined` for a non-array. Total. */
-const stringsOf = (value: unknown): ReadonlyArray<string> | undefined =>
-	Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : undefined;
 
 /**
  * A pnpm settings file could not be used.
@@ -163,8 +169,9 @@ const define = (target: Record<string, unknown>, key: string, value: unknown): v
 
 /**
  * The environment's pnpm settings, keyed by camelCase setting name. An empty
- * value is unset, and the uppercase spelling wins over the lowercase one when
- * both are present, as pnpm 12 resolves them.
+ * value is unset, where pnpm 12 keeps it for a string setting (the class
+ * TSDoc names the divergence), and the uppercase spelling wins over the
+ * lowercase one when both are present, as pnpm 12 resolves them.
  */
 const environmentSettings = (env: Readonly<Record<string, string | undefined>>): Record<string, string> => {
 	const lower: Record<string, string> = {};
@@ -200,40 +207,6 @@ const mappingOf = (
 	const mapping: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(document)) define(mapping, key, value);
 	return Result.succeed(mapping);
-};
-
-/** A canonical decimal: optional `-`, no leading zero, no `+`, hex, exponent or digit separator. */
-const DECIMAL = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/;
-
-/** A trimmed canonical decimal string as a finite number, or `undefined`. */
-const numberFromText = (text: string): number | undefined => {
-	const trimmed = text.trim();
-	if (!DECIMAL.test(trimmed)) return undefined;
-	const value = Number(trimmed);
-	return Number.isFinite(value) ? value : undefined;
-};
-
-const numberFromValue = (value: unknown): number | undefined =>
-	typeof value === "number"
-		? Number.isFinite(value)
-			? value
-			: undefined
-		: typeof value === "string"
-			? numberFromText(value)
-			: undefined;
-
-const stringsFromValue = (value: unknown): ReadonlyArray<string> | undefined =>
-	Array.isArray(value) && value.every((item): item is string => typeof item === "string") ? value : undefined;
-
-/** An environment value as a list: a JSON array of strings, the one form pnpm 11 and 12 both read as a list. */
-const stringsFromText = (text: string): ReadonlyArray<string> | undefined => {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(text);
-	} catch {
-		return undefined;
-	}
-	return stringsFromValue(parsed);
 };
 
 /** The one name pnpm accepts for a workspace manifest. */
@@ -337,8 +310,16 @@ const firstEnv = (
  * spelling is not a pnpm setting and is ignored, and an empty value is unset.
  * When both spellings are set, the uppercase one wins, as in pnpm 12.
  *
+ * **Empty environment values diverge from pnpm.** An environment variable set
+ * to the empty string is dropped here, so the next source answers. pnpm 12
+ * keeps it for a string setting: `PNPM_CONFIG_SAVE_PREFIX=` makes `savePrefix`
+ * the empty string (exact versions), and an empty `nodeOptions`, `scope` or
+ * `tagVersionPrefix` clears the setting rather than deferring to the
+ * workspace file. Where an empty value matters, read the variable yourself
+ * before asking this.
+ *
  * **Typed reads.** An environment value is text, read as the type the
- * accessor asks for: a number as a canonical decimal, a boolean as `true` or
+ * accessor asks for: a number as a canonical signed integer, a boolean as `true` or
  * `false`, a list as a JSON array of strings. An environment value that does
  * not read as that type is skipped, and the next source answers, as pnpm 12
  * skips it. In a file, pnpm 12 coerces boolean words (`yes`, `on`, `"true"`)
@@ -423,20 +404,23 @@ export class PnpmSettings extends Schema.Class<PnpmSettings>("PnpmSettings")({
 	}
 
 	/**
-	 * A numeric setting: a finite number, or a canonical decimal string, in any
-	 * source.
+	 * A numeric setting: a safe integer, or a canonical signed integer string,
+	 * in any source.
 	 *
 	 * @remarks
-	 * A canonical decimal is an optional `-`, digits with no leading zero, and
-	 * an optional fraction: `05`, `+5`, `0x10`, `1e2` and `1_000` are not
-	 * numbers here, as pnpm 12 does not read them from the environment. An
-	 * integer setting such as {@link PnpmSettings.minimumReleaseAge} is
-	 * stricter still.
+	 * Every numeric pnpm 12 setting is an integer, so this reads exactly what
+	 * the `./settings` catalog's integer schema reads: an optional `-`, digits
+	 * with no leading zero, trimmed. `05`, `+5`, `0x10`, `1e2`, `1_000` and a
+	 * fraction such as `1.5` are not numbers here; an environment value of that
+	 * form is skipped to the next source, and a file value answers `None`. `-0`
+	 * reads as `0`. A negative value is read whatever the setting: for an
+	 * unsigned setting such as {@link PnpmSettings.minimumReleaseAge}, which pnpm
+	 * refuses below zero, use its own accessor or the catalog's schema.
 	 *
 	 * @param key - The setting, camelCase or kebab-case.
 	 */
 	getNumber(key: string): Option.Option<number> {
-		return this.read(key, numberFromText, numberFromValue);
+		return this.read(key, integerFromText, integerFromValue);
 	}
 
 	/**

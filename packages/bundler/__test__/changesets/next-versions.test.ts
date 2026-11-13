@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterEach, assert, beforeEach, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
+import { Effect, Logger, References } from "effect";
 import { resolveNextVersions } from "../../src/changesets/next-versions.js";
 
 // Workspace discovery and the changeset planner read the real temp workspace.
@@ -67,6 +67,26 @@ describe("resolveNextVersions", () => {
 			const result = await next(join(root, "packages", "a"));
 			assert.strictEqual(result.versions.get("@scope/a"), "1.0.0");
 			assert.notStrictEqual(result.versions.get("@scope/u"), "2.1.0");
+		});
+
+		it("logs the twin refusal at debug level, naming the package and its directories", async () => {
+			pnpmWorkspace(true);
+			const lines: Array<{ readonly level: string; readonly message: unknown }> = [];
+			const capture = Logger.make((options) => {
+				lines.push({ level: options.logLevel, message: options.message });
+			});
+			await Effect.runPromise(
+				resolveNextVersions(join(root, "packages", "a")).pipe(
+					Effect.provide(NodeServices.layer),
+					Effect.provide(Logger.layer([capture])),
+					Effect.provideService(References.MinimumLogLevel, "Debug"),
+				),
+			);
+			const twin = lines.find((line) => JSON.stringify(line.message).includes("same-named"));
+			assert.isDefined(twin);
+			assert.strictEqual(twin?.level, "Debug");
+			assert.include(JSON.stringify(twin?.message), "@scope/u");
+			assert.include(JSON.stringify(twin?.message), "packages/u1");
 		});
 	});
 

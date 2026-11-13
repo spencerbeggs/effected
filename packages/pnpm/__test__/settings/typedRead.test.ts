@@ -169,3 +169,48 @@ describe("PnpmSettingsCatalog.read", () => {
 		assert.deepStrictEqual(root.minimumReleaseAge, Option.none());
 	});
 });
+
+// `PnpmSettings.getNumber` and the catalog's integer codecs read through the one coercion module, so they must agree:
+// for a signed setting exactly, and for an unsigned one every value the catalog accepts reads the same through
+// `getNumber`, which only adds the negatives pnpm refuses there.
+describe("PnpmSettings.getNumber agrees with the catalog", () => {
+	const catalogValue = (settings: PnpmSettings, name: PnpmSettingName): Option.Option<unknown> => {
+		const result = PnpmSettingsCatalog.read(settings, name);
+		return Result.isSuccess(result) ? result.success : Option.none();
+	};
+	const envTexts = ["7", " 7 ", "-3", "0", "-0", "1.5", "1e2", "1.0", "05", "+5", "abc", '"9"', ""];
+	const fileYaml = ["7", '"7"', '" 7 "', "-3", '"-3"', "1.5", '"1.5"', '"1e2"', '"05"', "-0", "abc", "true"];
+	const cases = [
+		...envTexts.map((text) => ({
+			label: `env ${JSON.stringify(text)}`,
+			sources: (env: string): PnpmSettingsSources => ({ env: { [env]: text } }),
+		})),
+		...fileYaml.map((yaml) => ({
+			label: `file ${yaml}`,
+			sources: (_env: string, key: string): PnpmSettingsSources => ({ workspace: workspace(`${key}: ${yaml}\n`) }),
+		})),
+	];
+
+	it("for a signed setting, exactly", () => {
+		let some = 0;
+		for (const { label, sources } of cases) {
+			const settings = settingsOf(sources("PNPM_CONFIG_CHILD_CONCURRENCY", "childConcurrency"));
+			const viaGetter = settings.getNumber("childConcurrency");
+			assert.deepStrictEqual(viaGetter, catalogValue(settings, "childConcurrency"), label);
+			if (Option.isSome(viaGetter)) some++;
+		}
+		assert.isAtLeast(some, 8); // the set must hold readable values, or agreement on None proves nothing
+	});
+
+	it("for an unsigned setting, every value the catalog reads", () => {
+		let some = 0;
+		for (const { label, sources } of cases) {
+			const settings = settingsOf(sources("PNPM_CONFIG_FETCH_RETRIES", "fetchRetries"));
+			const viaCatalog = catalogValue(settings, "fetchRetries");
+			if (Option.isNone(viaCatalog)) continue;
+			some++;
+			assert.deepStrictEqual<unknown>(settings.getNumber("fetchRetries"), viaCatalog, label);
+		}
+		assert.isAtLeast(some, 5);
+	});
+});

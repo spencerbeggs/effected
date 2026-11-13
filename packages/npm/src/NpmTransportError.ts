@@ -21,7 +21,8 @@ import { Schema } from "effect";
  * `//host/:certfile` or `:keyfile` (or, under pnpm rules, `:cafile`) for
  * a registry the program never contacts still fails the whole layer.
  *
- * A missing `cafile` fails here, where both managers carry on without it:
+ * A missing `cafile` fails typed when the layer is built, where pnpm skips
+ * it and npm carries on without it too:
  * npm 12 reads it with a `maybeReadFile` that returns nothing on `ENOENT`
  * (`workspaces/config/lib/definitions/definitions.js`), and pnpm treats a
  * `cafile` it cannot find as unset. Either way the default trust store is

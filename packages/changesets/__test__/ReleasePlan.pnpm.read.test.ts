@@ -4,6 +4,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import { Effect, Layer } from "effect";
+import { ChangesetConfig } from "../src/ChangesetConfig.js";
 import { ReleasePlan } from "../src/ReleasePlan.js";
 import { ROOT, caseNames, loadExpected, loadPrelude } from "./support/pnpmOracle.js";
 
@@ -81,3 +82,40 @@ it.effect("read plans first-release as a normal bump without a registry", () =>
 		);
 	}).pipe(Effect.provide(layerFor("first-release"))),
 );
+
+// pnpm never reads `.changeset/config.json`, so in a pnpm-native repository a broken one is the defaults rather than a
+// failure. The control: the same files planned in changesets mode would refuse each broken config.
+describe("ReleasePlan.read in pnpm mode with a broken config.json", () => {
+	const broken = {
+		"not JSON": "{ not json",
+		"a malformed value": JSON.stringify({ access: 5, baseBranch: ["main"] }),
+	};
+	for (const [label, text] of Object.entries(broken)) {
+		const layer = WorkspaceDiscovery.layer().pipe(
+			Layer.provide(WorkspaceRoot.layer),
+			Layer.provideMerge(
+				MemoryFileSystem.layerWithPath({ ...seedOf("first-release"), "/repo/.changeset/config.json": text }),
+			),
+		);
+		it.effect(`plans as without one when it is ${label}`, () =>
+			Effect.gen(function* () {
+				const plan = yield* ReleasePlan.read("/repo");
+				assert.deepStrictEqual(
+					plan.releases.map((r) => [r.name, r.oldVersion, r.newVersion]),
+					[["@p/a", "1.0.0", "1.1.0"]],
+				);
+			}).pipe(Effect.provide(layer)),
+		);
+	}
+
+	it.effect("the same broken config fails ChangesetConfig.read (control)", () =>
+		Effect.gen(function* () {
+			const error = yield* Effect.flip(ChangesetConfig.read("/repo"));
+			assert.strictEqual(error._tag, "ChangesetConfigError");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath({ ...seedOf("first-release"), "/repo/.changeset/config.json": "{ not json" }),
+			),
+		),
+	);
+});

@@ -230,7 +230,14 @@ const seedToConfig = (
 	let catalog: Record<string, string> = {};
 	for (const [name, entries] of Object.entries(seed)) {
 		if (name === "default") catalog = { ...entries };
-		else catalogs[name] = { ...entries };
+		// An own data property: a catalog named `__proto__` must not become the record's prototype.
+		else
+			Object.defineProperty(catalogs, name, {
+				value: { ...entries },
+				writable: true,
+				enumerable: true,
+				configurable: true,
+			});
 	}
 	// The seed carries no release-age keys — only a replayed hook sets them. It
 	// DOES carry the peer-dependency rules, because those have a workspace-file
@@ -489,7 +496,8 @@ const replay = async () => {
 	const catalogs = {};
 	for (const [name, entries] of Object.entries(JSON.parse(seedJson))) {
 		if (name === "default") catalog = { ...entries };
-		else catalogs[name] = { ...entries };
+		// An own data property: a catalog named __proto__ must not become the record's prototype.
+		else Object.defineProperty(catalogs, name, { value: { ...entries }, writable: true, enumerable: true, configurable: true });
 	}
 	let config = {
 		catalog,

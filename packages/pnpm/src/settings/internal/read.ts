@@ -5,6 +5,7 @@
 import type { PnpmSettings } from "@effected/pnpm";
 import { PnpmSettingsError } from "@effected/pnpm";
 import { Option, Result, Schema } from "effect";
+import { integerFromText } from "../../internal/coerce.js";
 import type { PnpmSetting, PnpmSettingLocation } from "../PnpmSetting.js";
 
 /** `JSON.parse`, as an `Option`: a value that is not JSON is `None`. */
@@ -33,6 +34,10 @@ const decodeJson = (setting: PnpmSetting<unknown>, value: unknown): Option.Optio
 const fromEnvironment = (setting: PnpmSetting<unknown>, text: string): Option.Option<unknown> => {
 	switch (setting.envFormat) {
 		case "json":
+			// serde_json reads an integer setting only from an integer literal: `1e2` and `1.0` are
+			// floats it refuses, though `JSON.parse` reads them as whole numbers. The text gate is
+			// the one `PnpmSettings.getNumber` uses, so the two reads cannot disagree.
+			if (setting.kind === "number" && integerFromText(text) === undefined) return Option.none();
 			return Option.flatMap(parseJson(text), (value) => decodeJson(setting, value));
 		case "text":
 			return decode(setting, text);

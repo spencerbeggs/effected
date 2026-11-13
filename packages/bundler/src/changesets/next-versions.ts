@@ -24,7 +24,8 @@ export interface NextVersions {
  * mode and fixed or linked groups. Never fails: any failure (not a workspace, missing
  * `.changeset/config.json`, an invalid config or `pre.json`, parse error) degrades to current
  * versions (or an empty map). So does a pnpm-native plan that releases two same-named projects,
- * which a name-keyed map cannot hold: `ReleasePlan.releasesByName` refuses it.
+ * which a name-keyed map cannot hold: `ReleasePlan.releasesByName` refuses it, and that
+ * refusal is logged with `Effect.logDebug`, naming the package and its directories.
  * @public
  */
 export const resolveNextVersions = (
@@ -57,6 +58,16 @@ export const resolveNextVersions = (
 			// (AmbiguousPackageError) rather than letting one twin's version stand for both; like every
 			// other failure here, the refusal leaves the current versions.
 			Effect.flatMap((plan) => Effect.fromResult(ReleasePlan.releasesByName(plan))),
+			// The one degrade a caller cannot infer from its own repository: logged at debug so a build
+			// stamped with current versions can be traced to the twins that caused it.
+			Effect.tapError((error) =>
+				error._tag === "AmbiguousPackageError"
+					? Effect.logDebug("next versions degraded to current versions: the plan releases same-named projects", {
+							packageName: error.packageName,
+							directories: error.directories,
+						})
+					: Effect.void,
+			),
 			// The plan includes type:"none" entries (unbumped dependents) whose newVersion equals the
 			// current version, so overlaying every release is safe.
 			Effect.tap((byName) =>

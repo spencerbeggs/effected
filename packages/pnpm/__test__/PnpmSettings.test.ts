@@ -197,10 +197,13 @@ describe("PnpmSettings typed reads", () => {
 			age({ workspace: workspace("minimumReleaseAge: 9\n"), env: { PNPM_CONFIG_MINIMUM_RELEASE_AGE: "1.5" } }),
 			Option.some(9),
 		);
-		// getNumber is the general read and keeps the fraction.
+		// getNumber is the general signed-integer read: it refuses the fraction too, and reads a negative.
+		assert.isTrue(
+			Option.isNone(settingsOf({ env: { PNPM_CONFIG_MINIMUM_RELEASE_AGE: "1.5" } }).getNumber("minimumReleaseAge")),
+		);
 		assert.deepStrictEqual(
-			settingsOf({ env: { PNPM_CONFIG_MINIMUM_RELEASE_AGE: "1.5" } }).getNumber("minimumReleaseAge"),
-			Option.some(1.5),
+			settingsOf({ env: { PNPM_CONFIG_MINIMUM_RELEASE_AGE: "-3" } }).getNumber("minimumReleaseAge"),
+			Option.some(-3),
 		);
 	});
 });
@@ -273,12 +276,13 @@ describe("PnpmSettings value grammar, as pnpm 12 reads it", () => {
 		}
 	});
 
-	it("getNumber reads a canonical decimal from the environment, nothing looser", () => {
+	it("getNumber reads a canonical signed integer from the environment, nothing looser", () => {
 		const number = (text: string) =>
 			settingsOf({ workspace: workspace("n: 1\n"), env: { PNPM_CONFIG_N: text } }).getNumber("n");
-		assert.deepStrictEqual(number("-2.5"), Option.some(-2.5));
-		assert.deepStrictEqual(number("0.5"), Option.some(0.5));
-		for (const text of ["05", "+5", "0x10", "1e2", ".5", "5."]) {
+		assert.deepStrictEqual(number("-2"), Option.some(-2));
+		assert.deepStrictEqual(number(" 7 "), Option.some(7));
+		assert.deepStrictEqual(number("-0"), Option.some(0));
+		for (const text of ["05", "+5", "0x10", "1e2", ".5", "5.", "-2.5", "0.5", "1.0"]) {
 			assert.deepStrictEqual(number(text), Option.some(1), text);
 		}
 	});

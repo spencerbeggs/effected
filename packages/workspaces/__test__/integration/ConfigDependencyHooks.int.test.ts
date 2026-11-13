@@ -538,3 +538,25 @@ describe("WorkspaceCatalogs.peerDependencyRules — the injected rules reach the
 		}).pipe(Effect.provide(appLayer));
 	});
 });
+
+describe("ConfigDependencyHooks.layerLive — a catalog named __proto__", () => {
+	// JSON.parse makes `__proto__` an own key, as a seed read from a workspace file carries it. A bare
+	// `catalogs[name] = ...` write would set the record's prototype instead, and the catalog would vanish.
+	const hostile = JSON.parse('{"default":{"effect":"^4.0.0"},"__proto__":{"evil":"^1.0.0"}}') as Record<
+		string,
+		Record<string, string>
+	>;
+	it.effect("survives the replay as an own catalog, never a prototype", () =>
+		Effect.gen(function* () {
+			assert.isTrue(Object.hasOwn(hostile, "__proto__")); // the payload really is hostile
+			const hooks = yield* ConfigDependencyHooks;
+			const result = yield* hooks.inject(root, { [DEP_NAME]: "1.0.0" }, hostile);
+			assert.isTrue(Object.hasOwn(result.catalogs, "__proto__"));
+			assert.deepStrictEqual(Object.getOwnPropertyDescriptor(result.catalogs, "__proto__")?.value, {
+				evil: "^1.0.0",
+			});
+			assert.strictEqual(Object.getPrototypeOf(result.catalogs), Object.prototype);
+			assert.strictEqual(result.catalogs.extra?.["extra-dep"], "^1.2.3");
+		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive)),
+	);
+});

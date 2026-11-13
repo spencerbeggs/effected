@@ -844,15 +844,26 @@ export class ReleasePlan extends Schema.Class<ReleasePlan>("ReleasePlan")({
 	 * In a repository `ReleaseManager.detect` calls pnpm's, the plan is pnpm's
 	 * (see {@link ReleasePlan.assemble}): every discovered project is planned,
 	 * the root included; the `versioning` block is read through `PnpmSettings`
-	 * and the ledger through {@link Ledger.read}; a missing `config.json` is the
-	 * defaults; `pre.json` is not read. With a {@link RegistryVersions} provided,
+	 * and the ledger through {@link Ledger.read}; a `config.json` that is missing,
+	 * is not JSON or has a malformed value is the defaults, because pnpm plans
+	 * without the file (it feeds only {@link ReleasePlan.edits} and the
+	 * changelog); `pre.json` is not read. With a {@link RegistryVersions} provided,
 	 * the registry is asked whether each public release's manifest version is
 	 * published, and the ones it lacks are planned as first releases
 	 * ({@link ReleasePlan.assemble}'s `published`); a registry failure is
-	 * `RegistryReadError`, never read as unpublished. Without one nothing is asked
-	 * and nothing is a first release; the service is optional in `R`, so an
-	 * existing caller is unchanged. A snapshot never asks. It also fails with
-	 * `PnpmSettingsError` and {@link LedgerError}.
+	 * `RegistryReadError`, never read as unpublished. A snapshot never asks. It
+	 * also fails with `PnpmSettingsError` and {@link LedgerError}.
+	 *
+	 * The registry service is read with `Effect.serviceOption`, so it never
+	 * appears in `R` and nothing fails to compile when it is missing. Never
+	 * provide only the `WorkspaceDiscovery` and platform layers to a pnpm-native
+	 * repository and expect first releases: without
+	 * `RegistryVersions.layerFrom(config)` nothing is asked, no release debuts,
+	 * and a project that was never published plans a bump from its manifest
+	 * version (`1.0.0` to `1.1.0`) where `pnpm version -r` would publish
+	 * `1.0.0` itself; the plan reports success either way. Provide
+	 * `RegistryVersions.layerFrom(config)` (it requires `NpmRegistry`) whenever
+	 * the plan feeds a publish.
 	 *
 	 * @param directory - The workspace root, or a directory inside it.
 	 * @param options - `snapshot` plans a snapshot release, as
@@ -929,12 +940,12 @@ const readContext = Effect.fnUntraced(function* (
 	const manager = yield* ReleaseManagerSchema.detect(root);
 	const changesets = yield* PendingChangesets.read(root);
 	if (manager === "pnpm") {
-		// pnpm reads neither config.json nor pre.json: a missing config is the defaults, and
-		// every project, the root included, is planned, as pnpm discovers them.
+		// pnpm reads neither config.json nor pre.json: a config that is missing, is not JSON or
+		// has a malformed value is the defaults, since pnpm plans without it (the file feeds
+		// only `edits` and the changelog), and every project, the root included, is planned,
+		// as pnpm discovers them.
 		const config = yield* ChangesetConfig.read(root).pipe(
-			Effect.catchTag("ChangesetConfigError", (error) =>
-				error.reason === "missing" ? Effect.succeed(DEFAULT_CONFIG) : Effect.fail(error),
-			),
+			Effect.catchTag("ChangesetConfigError", () => Effect.succeed(DEFAULT_CONFIG)),
 		);
 		const settings = yield* PnpmSettings.load({ cwd: root, env: {}, platform: "linux" });
 		const versioning = yield* Effect.fromResult(settings.versioning());
