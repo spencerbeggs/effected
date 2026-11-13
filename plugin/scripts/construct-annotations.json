@@ -1067,8 +1067,8 @@
 	},
 	"pnpm": {
 		"Epic": "pnpm versioning epic, lead package and member selectors banding member majors to the lead's major",
-		"OverrideKey": "parse pnpm overrides key, parent>child selector, allowedVersions key, name@range, dependency type suffix",
-		"OverrideKeyError": "unparseable pnpm overrides or allowedVersions selector, empty segment, invalid package name",
+		"OverrideKey": "parse pnpm overrides key, parent>child selector, name@range, dependency type suffix",
+		"OverrideKeyError": "unparseable pnpm overrides selector, empty segment, invalid package name",
 		"PartialReleaseAgeGate": "one config source's contribution to a pnpm minimumReleaseAge gate before merging",
 		"PeerDependencyRules": "pnpm peerDependencyRules block, ignoreMissing allowAny allowedVersions, match peer name against suppression lists",
 		"PnpmEnvDocument": "read the env preamble document of a pnpm-lock.yaml, configDependencies and packageManagerDependencies as written",

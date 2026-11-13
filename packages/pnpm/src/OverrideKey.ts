@@ -1,10 +1,10 @@
-// The selector grammar of pnpm's `overrides` keys and of
-// `peerDependencyRules.allowedVersions` keys. A restatement of
+// The selector grammar of pnpm's `overrides` keys. A restatement of
 // `pnpm_config_parse_overrides::parse_pkg_and_parent_selector` and
-// `parse_wanted_dependency` (pnpm/pnpm, `pnpm/crates/config-parse-overrides`
-// and `pnpm/crates/resolving-parse-wanted-dependency`).
+// `parse_wanted_dependency` (vendored at `.repos/pnpm/pnpm/crates/
+// config-parse-overrides/src/lib.rs` and `resolving-parse-wanted-dependency/
+// src/lib.rs`), with the name rule from `package-name/src/lib.rs`.
 
-import { Option, Result, Schema } from "effect";
+import { Effect, Option, Result, Schema } from "effect";
 
 /**
  * Why an {@link OverrideKey} could not be parsed.
@@ -33,18 +33,29 @@ export class OverrideKeyError extends Schema.TaggedError<OverrideKeyError>()("Ov
 
 const DEP_TYPES = ["prod", "optional", "peer"] as const;
 
-/** `validate-npm-package-name`'s old-package rule: the name must survive URI encoding unchanged. */
+/** pnpm's `is_url_friendly`: the characters `encodeURIComponent` leaves unescaped. */
+const URL_FRIENDLY = /^[A-Za-z0-9\-_.!~*'()]+$/;
+
+/**
+ * pnpm's `is_valid_old_npm_package_name` (`pnpm/crates/package-name/src/lib.rs`):
+ * no leading `.`, `-` or `_`, no surrounding whitespace, not `node_modules` or
+ * `favicon.ico` in any case, and URL-friendly, or a scoped `@scope/pkg` whose
+ * package part does not start with `.`.
+ */
 const isValidOldName = (name: string): boolean => {
-	if (name.length === 0 || name.trim() !== name) return false;
-	if (name.startsWith(".") || name.startsWith("_")) return false;
-	if (name === "node_modules" || name === "favicon.ico") return false;
-	const safe = (part: string): boolean => part.length > 0 && encodeURIComponent(part) === part;
-	if (name.startsWith("@")) {
-		const slash = name.indexOf("/");
-		if (slash === -1) return false;
-		return safe(name.slice(1, slash)) && safe(name.slice(slash + 1));
-	}
-	return safe(name);
+	if (name.length === 0) return false;
+	if (name.startsWith(".") || name.startsWith("-") || name.startsWith("_")) return false;
+	if (name.trim() !== name) return false;
+	const lower = name.toLowerCase();
+	if (lower === "node_modules" || lower === "favicon.ico") return false;
+	if (URL_FRIENDLY.test(name)) return true;
+	if (!name.startsWith("@")) return false;
+	const slash = name.indexOf("/");
+	if (slash === -1) return false;
+	const scope = name.slice(1, slash);
+	const pkg = name.slice(slash + 1);
+	if (scope.length === 0 || pkg.length === 0 || pkg.includes("/") || pkg.startsWith(".")) return false;
+	return URL_FRIENDLY.test(scope) && URL_FRIENDLY.test(pkg);
 };
 
 /** The `>` that separates parent from child: not preceded by a space, `|` or `@`. */
@@ -90,9 +101,8 @@ const parseSegment = (raw: string): Segment | undefined => {
 };
 
 /**
- * An `overrides` key, or a `peerDependencyRules.allowedVersions` key: an
- * optional parent package and the target package, each a name with an optional
- * version range.
+ * An `overrides` key: an optional parent package and the target package, each a
+ * name with an optional version range.
  *
  * @remarks
  * The grammar is pnpm's: `name`, `name@range`, `parent>name`,
@@ -103,17 +113,24 @@ const parseSegment = (raw: string): Segment | undefined => {
  * a glob over one; a range is carried as written. An empty range (`pkg@`) is
  * pnpm's convergence selector and is kept as `Option.some("")`.
  *
- * pnpm splits at the first delimiter only, so a path holds one segment or two;
- * `a>b>c` does not parse. `path` is parent first, target last. For
- * `allowedVersions`, the key `react` names the peer alone and `parent>peer`
- * names a declaring package; this class reads both shapes.
+ * pnpm splits at the first delimiter only, so a path holds one segment or two
+ * (the schema enforces it); `a>b>c` does not parse. `path` is parent first,
+ * target last.
+ *
+ * This is the `overrides` grammar and no other. `peerDependencyRules.allowedVersions`
+ * keys are NOT read by it: pnpm splits those on a plain first `>` byte, never
+ * fails (a part that is not a valid name falls back to its raw text), and has
+ * no dependency-type suffix and no convergence check, so `bar@>=1>foo`, `a>b@`
+ * and `a:peer>b` all mean something else there. A consumer of `allowedVersions`
+ * keys, such as `@effected/workspaces`' `PeerCheck`, must keep its own split and
+ * not use this class.
  *
  * @example
  * ```ts
  * import { OverrideKey } from "@effected/pnpm";
  * import { Result } from "effect";
  *
- * const key = OverrideKey.parse("@s/a@1>@s/b");
+ * const key = OverrideKey.parseResult("@s/a@1>@s/b");
  * console.log(Result.isSuccess(key) && key.success.format());
  * // => @s/a@1>@s/b
  * ```
@@ -128,15 +145,15 @@ export class OverrideKey extends Schema.Class<OverrideKey>("OverrideKey")({
 			range: Schema.Option(Schema.String),
 			depType: Schema.optionalKey(Schema.Literals(DEP_TYPES)),
 		}),
-	),
+	).check(Schema.isMinLength(1), Schema.isMaxLength(2)),
 }) {
 	/**
-	 * Parse one key.
+	 * Parse one key, synchronously and totally.
 	 *
 	 * @param key - The key as written in the settings.
 	 * @returns The structured key, or an `OverrideKeyError` naming the reason.
 	 */
-	static parse(key: string): Result.Result<OverrideKey, OverrideKeyError> {
+	static parseResult(key: string): Result.Result<OverrideKey, OverrideKeyError> {
 		const trimmed = key.trim();
 		const fail = (reason: OverrideKeyError["reason"]) => Result.fail(new OverrideKeyError({ key, reason }));
 		const delimiter = findParentDelimiter(trimmed);
@@ -158,6 +175,15 @@ export class OverrideKey extends Schema.Class<OverrideKey>("OverrideKey")({
 		}
 		return Result.succeed(OverrideKey.make({ path: segments }));
 	}
+
+	/**
+	 * Parse one key as an `Effect` behind a named span, failing `OverrideKeyError`.
+	 *
+	 * @param key - The key as written in the settings.
+	 */
+	static readonly parse = Effect.fn("OverrideKey.parse")((key: string) =>
+		Effect.fromResult(OverrideKey.parseResult(key)),
+	);
 
 	/** The dependency the key targets: the last segment. */
 	get target(): this["path"][number] {

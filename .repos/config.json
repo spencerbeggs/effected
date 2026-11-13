@@ -252,7 +252,11 @@
 				"pnpm/crates/lockfile-import",
 				"pnpm/crates/lockfile-preferred-versions",
 				"pnpm/crates/lockfile-verification",
-				"pnpm/crates/lockfile"
+				"pnpm/crates/lockfile",
+				"pnpm/crates/config-parse-overrides/src",
+				"pnpm/crates/package-name/src",
+				"pnpm/crates/deps-inspection-peers/src",
+				"pnpm/crates/resolving-parse-wanted-dependency/src"
 			]
 		}
 	}

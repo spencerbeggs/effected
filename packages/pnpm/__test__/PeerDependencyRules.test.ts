@@ -60,6 +60,13 @@ describe("PeerDependencyRules", () => {
 		assert.isFalse(PeerDependencyRules.empty.matchesAllowAny("react"));
 	});
 
+	it("empty is frozen on every axis", () => {
+		assert.isTrue(Object.isFrozen(PeerDependencyRules.empty));
+		assert.isTrue(Object.isFrozen(PeerDependencyRules.empty.ignoreMissing));
+		assert.isTrue(Object.isFrozen(PeerDependencyRules.empty.allowAny));
+		assert.isTrue(Object.isFrozen(PeerDependencyRules.empty.allowedVersions));
+	});
+
 	it("rejects an explicit undefined axis", () => {
 		assert.throws(() => PeerDependencyRules.make({ ignoreMissing: undefined } as never));
 	});

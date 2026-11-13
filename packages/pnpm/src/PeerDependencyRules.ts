@@ -13,9 +13,10 @@ import { PnpmMatcher } from "./PnpmMatcher.js";
  * `@pnpm/matcher`'s grammar (see {@link PnpmMatcher}), not `parent>peer` keys,
  * which match nothing on those two axes. `ignoreMissing` hides only a required
  * peer that resolved to nothing; `allowAny` hides only a peer that resolved
- * outside its wanted range; the two never cross. `allowedVersions` maps an
- * `OverrideKey`-shaped key (`peer`, `parent>peer` or `parent@version>peer`) to
- * the version or range the rule permits. Every axis is optional, and an absent
+ * outside its wanted range; the two never cross. `allowedVersions` maps a key
+ * (`peer`, `parent>peer` or `parent@version>peer`) to the version or range the
+ * rule permits. pnpm splits those keys on a plain first `>` and never fails on
+ * one, so they are not `OverrideKey` selectors and must not be parsed with it. Every axis is optional, and an absent
  * axis means none. Build one with `PeerDependencyRules.make`, and never pass an
  * explicit `undefined` for an axis.
  *
@@ -38,10 +39,15 @@ export class PeerDependencyRules extends Schema.Class<PeerDependencyRules>("Peer
 	/** A key to the peer version or range the rule permits. */
 	allowedVersions: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 }) {
-	/** Every axis present and empty; frozen, since it is shared. */
-	static readonly empty: PeerDependencyRules = Object.freeze(
-		PeerDependencyRules.make({ allowedVersions: {}, ignoreMissing: [], allowAny: [] }),
-	);
+	/** Every axis present and empty; the instance and each axis are frozen, since it is shared. */
+	static readonly empty: PeerDependencyRules = (() => {
+		// `make` copies each axis, so the frozen axes are the instance's own.
+		const rules = this.make({ allowedVersions: {}, ignoreMissing: [], allowAny: [] });
+		Object.freeze(rules.allowedVersions);
+		Object.freeze(rules.ignoreMissing);
+		Object.freeze(rules.allowAny);
+		return Object.freeze(rules);
+	})();
 
 	/**
 	 * Whether `ignoreMissing` matches the peer name.
