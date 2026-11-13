@@ -7,7 +7,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { assert, describe, it } from "@effect/vitest";
+import { YamlLint } from "@effected/yaml";
 import { Effect, Equal, Result } from "effect";
+import { vi } from "vitest";
 import { PnpmWorkspaceFile, PnpmWorkspaceFileError } from "../src/PnpmWorkspaceFile.js";
 
 // Stored as `.yaml.txt` so the pre-commit YAML formatter cannot normalize away
@@ -321,6 +323,28 @@ describe("PnpmWorkspaceFile write/render: values with no YAML form fail typed", 
 		["a cycle", cyclic],
 		["a function", () => ({ a: () => 1 })],
 		["a symbol", () => ({ a: Symbol("s") })],
+		[
+			"a throwing getter",
+			() =>
+				Object.defineProperty({}, "a", {
+					enumerable: true,
+					get: () => {
+						throw new Error("getter");
+					},
+				}),
+		],
+		[
+			"a throwing proxy",
+			() =>
+				new Proxy(
+					{},
+					{
+						ownKeys: () => {
+							throw new Error("proxy");
+						},
+					},
+				) as Record<string, unknown>,
+		],
 	];
 	const sources = ["", "a: 1\n", "- x\n"];
 
@@ -376,5 +400,31 @@ describe("PnpmWorkspaceFile write/render: values with no YAML form fail typed", 
 	it("a primitive list of 1, '1' and 1n keeps them apart", () => {
 		const out = read("l:\n  - 1\n").write({ l: [1, "1"] });
 		assert.deepStrictEqual(valueOfText(out), { l: [1, "1"] });
+	});
+
+	it("an editor bug dies as a defect rather than failing typed", () => {
+		// Control: the same call succeeds without the injected fault.
+		assert.isTrue(Result.isSuccess(read("a: 1\n").writeResult({ a: 2 })));
+		const spy = vi.spyOn(YamlLint, "observe").mockImplementation(() => {
+			throw new TypeError("injected editor bug");
+		});
+		try {
+			assert.throws(() => read("a: 1\n").writeResult({ a: 2 }), TypeError, "injected editor bug");
+			assert.throws(() => read("a: 1\n").write({ a: 2 }), TypeError, "injected editor bug");
+		} finally {
+			spy.mockRestore();
+		}
+		assert.isTrue(Result.isSuccess(read("a: 1\n").writeResult({ a: 2 })));
+	});
+
+	it("mutating file.value does not change what write produces", () => {
+		const file = read("a: 1\nl:\n  - x\n");
+		const before = file.write({ a: 1, l: ["x"] });
+		const value = file.value as Record<string, unknown>;
+		value.a = 99;
+		(value.l as string[]).push("y");
+		delete value.l;
+		assert.strictEqual(file.write({ a: 1, l: ["x"] }), before);
+		assert.strictEqual(before, "a: 1\nl:\n  - x\n");
 	});
 });

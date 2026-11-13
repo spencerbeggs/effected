@@ -55,34 +55,47 @@ const canonicalizeAt = (value: unknown, depth: number): unknown => {
 
 const canonicalize = (value: unknown): unknown => canonicalizeAt(value, 0);
 
-/** Whether `value` is finite, within the depth cap, and holds no function or symbol. */
-const representable = (value: unknown): boolean => {
-	let nodes = 0;
-	const walk = (v: unknown, depth: number): boolean => {
-		if (typeof v === "function" || typeof v === "symbol") return false;
-		if (typeof v !== "object" || v === null) return true;
-		if (depth > MAX_DEPTH || ++nodes > MAX_NODES) return false;
-		return Array.isArray(v)
-			? v.every((item) => walk(item, depth + 1))
-			: Object.values(v).every((item) => walk(item, depth + 1));
-	};
-	return walk(value, 1);
-};
-
 const unrepresentable = (cause: unknown): PnpmWorkspaceFileError =>
 	new PnpmWorkspaceFileError({ reason: "unrepresentable", cause });
 
-/** Run `body`, folding anything it throws over caller-supplied data into the typed failure. */
-const guarded = (value: unknown, body: () => string): Result.Result<string, PnpmWorkspaceFileError> => {
-	if (!representable(value)) {
-		return Result.fail(
-			unrepresentable(new Error("value is cyclic, nested past the depth cap, or holds a function or symbol")),
-		);
-	}
+/**
+ * Copy caller data into plain objects, failing typed when it has no YAML form:
+ * cyclic or nested past the depth cap, too many values, or holding a function
+ * or symbol. Every read of caller data (spread, `Object.values`, getters,
+ * proxies) happens here, so a throw from one is the caller's input failing,
+ * and nothing past this point can reach a caller-controlled accessor.
+ */
+const snapshot = (value: unknown): Result.Result<unknown, PnpmWorkspaceFileError> => {
+	let nodes = 0;
+	const copy = (v: unknown, depth: number): unknown => {
+		if (typeof v === "function" || typeof v === "symbol") throw new TypeError(`a ${typeof v} has no YAML form`);
+		if (typeof v !== "object" || v === null) return v;
+		if (depth > MAX_DEPTH || ++nodes > MAX_NODES) {
+			throw new RangeError("value is cyclic, nested past the depth cap, or too large");
+		}
+		return Array.isArray(v)
+			? v.map((item) => copy(item, depth + 1))
+			: Object.fromEntries(Object.entries(v).map(([k, item]) => [k, copy(item, depth + 1)]));
+	};
 	try {
-		return Result.succeed(body());
+		return Result.succeed(copy(value, 1));
 	} catch (cause) {
-		return Result.fail(cause instanceof PnpmWorkspaceFileError ? cause : unrepresentable(cause));
+		return Result.fail(unrepresentable(cause));
+	}
+};
+
+/** Snapshot a caller's mapping, then run `body` over the copy; only a `PnpmWorkspaceFileError` is folded, every other throw is an editor defect. */
+const guarded = (
+	value: Readonly<Record<string, unknown>>,
+	body: (copy: Record<string, unknown>) => string,
+): Result.Result<string, PnpmWorkspaceFileError> => {
+	const copied = snapshot(value);
+	if (Result.isFailure(copied)) return Result.fail(copied.failure);
+	try {
+		return Result.succeed(body(copied.success as Record<string, unknown>));
+	} catch (cause) {
+		if (cause instanceof PnpmWorkspaceFileError) return Result.fail(cause);
+		throw cause;
 	}
 };
 
@@ -373,9 +386,9 @@ function applyChanges(source: string, changes: readonly Change[], style: YamlStr
 const writeWorkspace = (
 	source: string,
 	parsed: Option.Option<unknown>,
-	next: Record<string, unknown>,
+	given: Readonly<Record<string, unknown>>,
 ): Result.Result<string, PnpmWorkspaceFileError> =>
-	guarded(next, () => {
+	guarded(given, (next) => {
 		if (source.trim() === "") return renderWorkspace(next);
 		const style = inferStyle(source);
 		const crlf = source.includes("\r\n");
@@ -391,12 +404,15 @@ const memo = new WeakMap<
 	{ readonly parsed: Option.Option<unknown>; readonly value: Record<string, unknown> }
 >();
 
+/** The mapping a parse holds, as a copy: `value` never aliases the tree writes are diffed against. */
+const mappingCopy = (parsed: unknown): Record<string, unknown> => (isMapping(parsed) ? structuredClone(parsed) : {});
+
 const readMemo = (file: PnpmWorkspaceFile) => {
 	const hit = memo.get(file);
 	if (hit !== undefined) return hit;
 	const parsed = Yaml.parseResult(file.source);
 	const entry = Result.isSuccess(parsed)
-		? { parsed: Option.some(parsed.success), value: isMapping(parsed.success) ? parsed.success : {} }
+		? { parsed: Option.some(parsed.success), value: mappingCopy(parsed.success) }
 		: { parsed: Option.none<unknown>(), value: {} };
 	memo.set(file, entry);
 	return entry;
@@ -494,10 +510,7 @@ export class PnpmWorkspaceFile extends Schema.Class<PnpmWorkspaceFile>("PnpmWork
 			return Result.fail(new PnpmWorkspaceFileError({ reason: "invalid-yaml", cause: parsed.failure }));
 		}
 		const file = PnpmWorkspaceFile.make({ source: text });
-		memo.set(file, {
-			parsed: Option.some(parsed.success),
-			value: isMapping(parsed.success) ? parsed.success : {},
-		});
+		memo.set(file, { parsed: Option.some(parsed.success), value: mappingCopy(parsed.success) });
 		return Result.succeed(file);
 	}
 
@@ -526,7 +539,7 @@ export class PnpmWorkspaceFile extends Schema.Class<PnpmWorkspaceFile>("PnpmWork
 	 * renders. Nothing throws.
 	 */
 	static renderResult(value: Readonly<Record<string, unknown>>): Result.Result<string, PnpmWorkspaceFileError> {
-		return guarded(value, () => renderWorkspace({ ...value }));
+		return guarded(value, (copy) => renderWorkspace(copy));
 	}
 
 	/**
@@ -564,7 +577,7 @@ export class PnpmWorkspaceFile extends Schema.Class<PnpmWorkspaceFile>("PnpmWork
 	 * NaN or infinity is representable and is written. Nothing throws.
 	 */
 	writeResult(next: Readonly<Record<string, unknown>>): Result.Result<string, PnpmWorkspaceFileError> {
-		return writeWorkspace(this.source, readMemo(this).parsed, { ...next });
+		return writeWorkspace(this.source, readMemo(this).parsed, next);
 	}
 
 	/**
