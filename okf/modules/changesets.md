@@ -29,10 +29,10 @@ sources:
     title: "The bundler research report and the owner's rulings"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-10T00:29:34Z
+  at: 2026-11-13T02:10:59Z
 integrity:
   generated:
-    body: 2b1ec2ad7f8d94ed
+    body: 0b4d952c4a336d1d
 ---
 
 # @effected/changesets
@@ -49,7 +49,7 @@ It exists because `@savvy-web/tsdown-plugins` carries `@changesets/get-release-p
 
 ## Tier and dependency posture
 
-[Boundary tier](../glossary/library-tier.md): the file parsers are pure, and reading a workspace's changesets requires core's `FileSystem` and `Path` in `R`, with the platform layer supplied at the edge. Its runtime dependencies are [`yaml`](yaml.md) for frontmatter, [`semver`](semver.md) for ranges and bumps, [`glob`](glob.md) for `ignore` patterns, and [`workspaces`](workspaces.md) for the packages and dependency edges a plan walks. Each edge follows the [peer discipline](../conventions/peer-dependency-discipline.md).
+[Boundary tier](../glossary/library-tier.md): the file parsers are pure, and reading a workspace's changesets requires core's `FileSystem` and `Path` in `R`, with the platform layer supplied at the edge. Its runtime dependencies are [`yaml`](yaml.md) for frontmatter, [`semver`](semver.md) for ranges and bumps, [`glob`](glob.md) for `ignore` patterns, [`pnpm`](pnpm.md) for `PnpmSettings` (release-manager detection), and [`workspaces`](workspaces.md) for the packages and dependency edges a plan walks. Each edge follows the [peer discipline](../conventions/peer-dependency-discipline.md).
 
 The changeset front-matter lint rules ship from a separate `./lint` entry point, whose [`markdown`](markdown.md) and [`markdown-lint`](markdown-lint.md) edges are **optional peers**. They are peers because a consumer passes the package's `LintRule` instances to its own `MarkdownLint` or `MarkdownlintAdapter`, which is a shared-instance contract. They are optional because a consumer of the planner alone never installs them, and the root entry never imports either, the same layout [`config-file`](config-file.md) uses to keep its codec engines off its root.
 
@@ -64,7 +64,7 @@ The changeset front-matter lint rules ship from a separate `./lint` entry point,
 
 ## Release modes
 
-The planner mirrors `@changesets/assemble-release-plan`'s loop: ripple to dependents, hold `fixed` groups together, keep `linked` groups in step, and repeat until none changes anything.[^issue-1255] A grouped member's `oldVersion` is the group's highest current version. `PreState` reads `.changeset/pre.json`. In pre mode each bumped version gains `-<tag>.<n>`, and the changesets an earlier pre-release consumed (under `.changeset/pre/`) are left out. In exit mode those changesets count again and every numbered prerelease completes. Each mode is held by an oracle fixture whose expected plan is the oracle's own answer.
+The planner mirrors `@changesets/assemble-release-plan`'s loop: ripple to dependents, hold `fixed` groups together, keep `linked` groups in step, and repeat until none changes anything.[^issue-1255] A grouped member's `oldVersion` is the group's highest current version. `ReleaseManager.detect` answers `pnpm` when `pnpm-workspace.yaml` has a `versioning` block (read through `PnpmSettings`, never re-parsed) or `.changeset/ledger.yaml` exists, and `changesets` otherwise; pnpm ignores `pre.json` and `config.json`, so they decide nothing. `PreState` reads `.changeset/pre.json`. In pre mode each bumped version gains `-<tag>.<n>`, and the changesets an earlier pre-release consumed (under `.changeset/pre/`) are left out. In exit mode those changesets count again and every numbered prerelease completes. Each mode is held by an oracle fixture whose expected plan is the oracle's own answer.
 
 A snapshot plan (`changeset version --snapshot`) takes a `snapshot` input with the time as a `Date`, so assembly stays pure. Its oracle is `@changesets/assemble-release-plan`'s snapshot argument, which `getReleasePlan` never passes. Two rulings follow `changeset version` rather than the bare engine: pre mode is refused with `SnapshotPreModeError`, and an empty tag or commit is no value. The engine fills an empty `{tag}` with nothing, while `apply-release-plan` reads `""` as "not a snapshot", and the CLI never passes `""` to either. The remaining deliberate differences are ruled in `ReleasePlan`'s TSDoc and listed in the package's `CLAUDE.md`. The main one: an older-layout `pre.json` is planned the way the oracle settles on after it has moved the consumed files, changeset ids included, and nothing is written. A version is read as node-semver reads one, so a leading `v` is normalised, and one changesets cannot bump (`=1.2.0`, which only npm's loose parse reads), or a `pre.json` with no tag or an unknown mode, fails typed where the oracle crashes or plans nonsense. The plan carries the changesets it was made from and its pre state, so a changelog writer never re-derives which changesets a pre-release consumed. `ReleasePlan.read` may be given any directory inside the workspace and climbs to the root as the oracle does; `ReleasePlan.readWithContext` returns the plan with the root, the packages and the config it read, which are what `edits` and `Changelog.entry` take, so a caller never re-discovers them or re-derives the lone-package fallback. A release's `changesets` are changeset ids (`pre/<name>` for a consumed one), as the oracle lists them, and a changeset's summary is trimmed as `@changesets/parse` trims it.
 

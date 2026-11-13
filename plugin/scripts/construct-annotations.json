@@ -205,6 +205,7 @@
 		"PreState": "read pre mode state from pre.json, tag, initial versions, consumed changesets",
 		"RangeEdit": "one rewritten dependency range, from and to specifier",
 		"ReleaseContext": "release plan with the packages and config it was read from, hand to edits and changelog, read from a subdirectory",
+		"ReleaseManager": "detect whether releases are planned by pnpm versioning or the changesets cli, ledger.yaml, versioning key",
 		"ReleaseEdits": "changeset version as data, manifest edits, changesets to delete, next pre.json",
 		"ReleasePlan": "compute next versions from pending changesets, dependents, snapshot versions, apply edits",
 		"ReleaseType": "package release outcomes, including none for an unreleased package",

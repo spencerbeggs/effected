@@ -494,6 +494,9 @@ importers:
       '@effected/glob':
         specifier: workspace:^
         version: link:../glob
+      '@effected/pnpm':
+        specifier: workspace:^
+        version: link:../pnpm
       '@effected/semver':
         specifier: workspace:^
         version: link:../semver

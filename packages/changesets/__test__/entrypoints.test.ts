@@ -29,6 +29,7 @@ it("the root exports exactly the public surface", () => {
 		"RangeEdit",
 		"ReleaseContext",
 		"ReleaseEdits",
+		"ReleaseManager",
 		"ReleasePlan",
 		"ReleaseType",
 		"SnapshotPreModeError",

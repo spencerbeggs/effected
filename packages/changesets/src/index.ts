@@ -43,5 +43,7 @@ export type { PendingChangesetFailure, SettledChangesets } from "./PendingChange
 export { PendingChangeset, PendingChangesets } from "./PendingChangesets.js";
 export { PreState } from "./PreState.js";
 export { ChangesetMove, ManifestEdit, RangeEdit, ReleaseEdits } from "./ReleaseEdits.js";
+export type { ReleaseManagerDetectOptions } from "./ReleaseManager.js";
+export { ReleaseManager } from "./ReleaseManager.js";
 export type { ReleaseSnapshot } from "./ReleasePlan.js";
 export { PlannedRelease, ReleaseContext, ReleasePlan } from "./ReleasePlan.js";

@@ -32,6 +32,7 @@
 	},
 	"dependencies": {
 		"@effected/glob": "workspace:^",
+		"@effected/pnpm": "workspace:^",
 		"@effected/semver": "workspace:^",
 		"@effected/workspaces": "workspace:^",
 		"@effected/yaml": "workspace:^"

@@ -9,6 +9,7 @@
 * Updated pnpm
 * Updated @effected/workspaces catalogs and the config-dependency seam
 * Updated @effected/workspaces peer-dependency checking
+* Updated @effected/changesets
 
 ## 2026-11-12
 

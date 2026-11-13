@@ -37,6 +37,8 @@
 | `RangeEdit` | Class | One dependency range a release rewrites in a manifest. | one rewritten dependency range, from and to specifier |
 | `ReleaseContext` | Class | A `ReleasePlan` with what `ReleasePlan.readWithContext` read it from. | release plan with the packages and config it was read from, hand to edits and changelog, read from a subdirectory |
 | `ReleaseEdits` | Class | Everything `changeset version` writes for a `ReleasePlan`, as data, CHANGELOG files aside. `ReleasePlan.edits` computes it; the caller does the IO. | changeset version as data, manifest edits, changesets to delete, next pre.json |
+| `ReleaseManager` | Variable + TypeAlias | The tool that plans a repository's releases. | detect whether releases are planned by pnpm versioning or the changesets cli, ledger.yaml, versioning key |
+| `ReleaseManagerDetectOptions` | Interface | Where `(ReleaseManager:variable).detect` reads the environment from. | |
 | `ReleasePlan` | Class | What a set of pending changesets releases: the packages they name and the packages reached as dependents, sorted by name. A package neither named nor reached is absent. | compute next versions from pending changesets, dependents, snapshot versions, apply edits |
 | `ReleaseSnapshot` | Interface | The input for a snapshot plan, `changeset version --snapshot`'s parameters. `ReleasePlan.assemble` documents how each is read. | |
 | `ReleaseType` | Variable + TypeAlias | The type of a `ReleaseType` value. | package release outcomes, including none for an unreleased package |
