@@ -61,7 +61,9 @@ const unrepresentable = (cause: unknown): PnpmWorkspaceFileError =>
 /**
  * Copy caller data into plain objects, failing typed when it has no YAML form:
  * cyclic or nested past the depth cap, too many values, or holding a function
- * or symbol. Every read of caller data (spread, `Object.values`, getters,
+ * or symbol. An `undefined`-valued object key is dropped (JSON's rule), so it
+ * reads as removed; an `undefined` array element has no such reading and is
+ * kept, written as `null` as JSON does. Every read of caller data (spread, `Object.values`, getters,
  * proxies) happens here, so a throw from one is the caller's input failing,
  * and nothing past this point can reach a caller-controlled accessor.
  */
@@ -75,7 +77,12 @@ const snapshot = (value: unknown): Result.Result<unknown, PnpmWorkspaceFileError
 		}
 		return Array.isArray(v)
 			? v.map((item) => copy(item, depth + 1))
-			: Object.fromEntries(Object.entries(v).map(([k, item]) => [k, copy(item, depth + 1)]));
+			: Object.fromEntries(
+					Object.entries(v)
+						// JSON's rule: an `undefined`-valued key is absent, so a write removes it in place.
+						.filter(([, item]) => item !== undefined)
+						.map(([k, item]) => [k, copy(item, depth + 1)]),
+				);
 	};
 	try {
 		return Result.succeed(copy(value, 1));

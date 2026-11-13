@@ -162,6 +162,22 @@ describe("PnpmWorkspaceFile#write (workspace-style.test.ts)", () => {
 		assert.strictEqual(write(source, next), source.slice(0, source.indexOf("minimumReleaseAgeExclude:")));
 	});
 
+	it("removes a key set to undefined in place, keeping comments", () => {
+		const source = "# keep\npackages:\n  - a\nfoo: 1 # x\n";
+		assert.strictEqual(write(source, { ...valueOfText(source), foo: undefined }), "# keep\npackages:\n  - a\n");
+	});
+
+	it("removes a nested key set to undefined in place", () => {
+		const source = "# keep\ncatalog:\n  a: 1.0.0 # a\n  b: 2.0.0\n";
+		const next = { catalog: { a: "1.0.0", b: undefined } };
+		assert.strictEqual(write(source, next), "# keep\ncatalog:\n  a: 1.0.0 # a\n");
+	});
+
+	it("keeps an undefined array element, written as null as JSON does", () => {
+		const out = write("packages:\n  - a\n", { packages: ["a", undefined] });
+		assert.deepStrictEqual(valueOfText(out), { packages: ["a", null] });
+	});
+
 	it("is a no-op when nothing changed, including a reordered sequence", () => {
 		const source = fixture("double-indented.yaml");
 		const next = valueOfText(source) as { packages: string[] };

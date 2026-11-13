@@ -248,6 +248,20 @@ const childFor = (connection: Connection): Dispatcher =>
 			});
 
 /**
+ * The URL a dispatched request connects to: the request's origin with its path
+ * appended verbatim.
+ *
+ * @remarks
+ * Never `new URL(path, origin)`: a path beginning `//` (an Artifactory or
+ * Nexus tarball URL such as `https://host//repo/-/pkg.tgz`) resolves as
+ * scheme-relative, so the routing would pick the proxy, CA and client
+ * certificate of the host named in the path while the connection still goes to
+ * `origin`. undici always passes an absolute path (query included).
+ */
+export const requestUrl = (origin: string | URL | undefined, path: string): string =>
+	`${origin === undefined ? "" : new URL(String(origin)).origin}${path}`;
+
+/**
  * An undici dispatcher that routes each request by its URL: it asks
  * {@link connectionFor} which proxy and TLS options the request needs, and
  * delegates to a child `Agent` or `ProxyAgent` created lazily for each
@@ -270,9 +284,7 @@ export class OriginDispatcher extends Dispatcher {
 
 	override dispatch(options: Dispatcher.DispatchOptions, handler: Dispatcher.DispatchHandler): boolean {
 		if (this.#closed) throw new Error("The npm transport dispatcher is closed");
-		const origin = options.origin === undefined ? "" : String(options.origin);
-		const url = new URL(options.path, origin).href;
-		const connection = connectionFor(url, this.#context);
+		const connection = connectionFor(requestUrl(options.origin, options.path), this.#context);
 		let child = this.#children.get(connection.key);
 		if (child === undefined) {
 			child = childFor(connection);

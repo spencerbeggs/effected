@@ -24,6 +24,7 @@ import { assert, layer } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import { NpmHttpClient } from "@effected/npm/node";
 import { Context, Effect, Layer, Option, Result } from "effect";
+import { HttpClient } from "effect/http";
 import { NpmConfig } from "../src/NpmConfig.js";
 import { NpmRegistry } from "../src/NpmRegistry.js";
 
@@ -364,6 +365,50 @@ layer(Tls.layer)("NpmHttpClient", (it) => {
 			assert.strictEqual(refused.kind, "transport");
 			assert.deepStrictEqual(withCert.peers, ["effected npm test client"]);
 			assert.deepStrictEqual(without.peers, [], "no certificate was shown, so the handshake was refused");
+		}),
+	);
+
+	// A path beginning `//` (an Artifactory or Nexus tarball URL) must route by the request's origin, not by the
+	// host a scheme-relative reading of the path would name.
+	it.effect("routes a `//` path by the request origin, presenting the origin registry's client certificate", () =>
+		Effect.gen(function* () {
+			const tls = yield* Tls;
+			const origin = yield* httpsRegistry({ requestCert: true });
+			const config = configOf(
+				`registry=${origin.url}`,
+				`cafile=${tls.ca}`,
+				`//127.0.0.1:${origin.port}/:certfile=${tls.clientCert}`,
+				`//127.0.0.1:${origin.port}/:keyfile=${tls.clientKey}`,
+			);
+			const response = yield* Effect.gen(function* () {
+				const client = yield* HttpClient.HttpClient;
+				return yield* client.get(`https://127.0.0.1:${origin.port}//pkg.internal/-/pkg-1.0.0.tgz`);
+			}).pipe(Effect.provide(NpmHttpClient.layer(config)), Effect.provide(NodeFileSystem.layer));
+			assert.strictEqual(response.status, 200);
+			assert.deepStrictEqual(origin.peers, ["effected npm test client"]);
+		}),
+	);
+
+	it.effect("a `//` path never borrows another registry's client certificate", () =>
+		Effect.gen(function* () {
+			const tls = yield* Tls;
+			const withCert = yield* httpsRegistry({ requestCert: true });
+			const without = yield* httpsRegistry({ requestCert: true });
+			const config = configOf(
+				`registry=${withCert.url}`,
+				`@other:registry=${without.url}`,
+				`cafile=${tls.ca}`,
+				`//127.0.0.1:${withCert.port}/:certfile=${tls.clientCert}`,
+				`//127.0.0.1:${withCert.port}/:keyfile=${tls.clientKey}`,
+			);
+			// The request goes to `without`, whose path names the certified registry's host.
+			const refused = yield* Effect.gen(function* () {
+				const client = yield* HttpClient.HttpClient;
+				return yield* client.get(`https://127.0.0.1:${without.port}//127.0.0.1:${withCert.port}/x`);
+			}).pipe(Effect.provide(NpmHttpClient.layer(config)), Effect.provide(NodeFileSystem.layer), Effect.flip);
+			assert.strictEqual(refused._tag, "HttpClientError");
+			assert.deepStrictEqual(without.peers, [], "no certificate was shown to the origin registry");
+			assert.deepStrictEqual(withCert.peers, []);
 		}),
 	);
 
