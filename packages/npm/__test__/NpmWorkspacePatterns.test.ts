@@ -137,7 +137,7 @@ describe("NpmWorkspacePatterns.matcherResult", () => {
 	});
 
 	it("the brace weight is the count of alternatives the engine matches, never below it", () => {
-		// Checked against minimatch 11.0.5's own expansion, the one the glob
+		// Checked against minimatch 11.0.8's own expansion, the one the glob
 		// engine follows (from @effected/glob's oracle devDependency): its
 		// `globSet`, the distinct alternatives after a range of 100 or more
 		// values is kept whole. Under-counting would let a pattern past the

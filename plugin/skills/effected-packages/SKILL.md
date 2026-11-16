@@ -149,8 +149,9 @@ Facts about the kit that change how you depend on it:
 - **`@effected/github-actions` is the ONE package in the kit with a required
   `@effect/platform-node` peer.** An action always compiles into Node on a
   GitHub runner, so there is no second platform to abstract over. Its
-  `@azure/storage-blob` dependency is confined to three modules and asserted by
-  a reachability test — import `ActionOutputs` and you cannot link Azure.
+  blob transport (plain `HttpClient`, no Azure SDK) is confined to three modules
+  and asserted by a reachability test — import `ActionOutputs` and you cannot
+  link it.
 - **`@effected/sbom`'s entrypoint re-exports `Package`, `Person` and
   `Repository` from `@effected/package-json`** — a consumer constructing
   `SbomMetadataSource` inputs imports them from `@effected/sbom` directly

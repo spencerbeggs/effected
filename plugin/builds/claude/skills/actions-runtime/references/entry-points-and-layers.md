@@ -209,8 +209,8 @@ reading it does not require going through `clientLayer` at all.
 ## `ActionCache`, `Artifact` and `BlobStore`: one line, not a default
 
 `ActionRuntime.layer` deliberately excludes `ActionCache`, `Artifact` and
-`GitHubCacheBlobStore` — the only three modules that import
-`@azure/storage-blob`. Folding them in would put a blob-storage client in the
+`GitHubCacheBlobStore` — the only three modules that reach the blob
+transport. Folding them in would put the Twirp protocols and the transport in the
 bundle of every action that merely sets an output. Their requirements are
 already satisfied by the runtime — `ActionCache.layer`'s `R` is
 `ActionEnvironment | HttpClient | FileSystem | Path | ChildProcessSpawner`,
@@ -222,8 +222,7 @@ await Action.run(program, { layer: ActionCache.layer });
 ```
 
 For the protocol these three modules speak, the transport seam, and the
-Azure-confinement rule that keeps a shared internal helper from leaking the
-dependency, see `actions-cache-and-artifacts` — this reference stops at
+transport-confinement rule that keeps light modules from reaching it, see `actions-cache-and-artifacts` — this reference stops at
 "it's one line," that skill covers the rest.
 
 ## The `pre` / `main` / `post` entry shapes

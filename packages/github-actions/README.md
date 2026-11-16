@@ -123,7 +123,7 @@ const program = Effect.gen(function* () {
 
 ## The runner's cache, artifacts and OIDC
 
-`ActionCache` and `Artifact` speak the Actions Twirp v2 protocol directly — no `@actions/cache` or `@actions/artifact` dependency, and both are excluded from `ActionRuntime.layer` on purpose, so a consumer that only sets an output never links `@azure/storage-blob`:
+`ActionCache` and `Artifact` speak the Actions Twirp v2 protocol directly — no `@actions/cache` or `@actions/artifact` dependency, and both are excluded from `ActionRuntime.layer` on purpose, so a consumer that only sets an output never links the blob transport:
 
 ```ts
 import { ActionCache, CacheKey } from "@effected/github-actions";
@@ -301,7 +301,7 @@ const TestOutputs = ActionOutputs.layerTest({
 - `DryRun` — the rehearsal guard every mutation goes through, driven by the `dry-run` input by default.
 - `Secret` — the one declassification seam between a `Redacted` value and a plain string, masking before it returns plaintext.
 - `GitHubToken` — the App-token lifecycle shaped like the `pre`/`main`/`post` workflow: mint, verify scopes, persist, read, revoke.
-- `ActionCache` / `Artifact` — the runner's cache and artifact protocols over Twirp v2, excluded from the default runtime so a consumer that skips them never links Azure.
+- `ActionCache` / `Artifact` — the runner's cache and artifact protocols over Twirp v2, excluded from the default runtime so a consumer that skips them never links the blob transport.
 - `CacheKey` — cache keys and their restore-key ladder, `withNamespace(segment)` for a bust token or a shared-runner prefix, plus `hashFiles`/`matchingFiles`/`hashMatching` byte-compatible with `@actions/glob`.
 - `OidcTokenIssuer` — the runner's OIDC token service, with unverified claim decoding for provenance predicates, and a `recording(claims)` double that journals the audiences asked for.
 - `ActionsRegistryCredential` — `workload({ audience, prefix })` mints an identity token for a registry, masks the bare and the prefixed value, and returns `@effected/npm`'s publish-only `WorkloadCredential` for `PackagePublish.setupAuth`.

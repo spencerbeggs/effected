@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-05T19:36:13Z
+  at: 2026-11-16T17:04:15Z
 integrity:
   generated:
-    body: c3acc97a5b9a8fc1
+    body: 04c7f5420ea82d6c
 ---
 
 # github-actions
@@ -71,21 +71,23 @@ drags a dependency tree larger than this package; globbing is
 
 Kit edges: [`github`](github.md), [`glob`](glob.md), [`markdown`](markdown.md),
 [`npm`](npm.md), [`sbom`](sbom.md), [`templates`](templates.md),
-[`walker`](walker.md) and [`yaml`](yaml.md), plus one
-heavy external dependency, the Azure blob client
-(`@azure/storage-blob`).
+[`walker`](walker.md) and [`yaml`](yaml.md). The blob transfer against a
+signed url is the package's own `internal/blobTransport.ts` over `HttpClient`
+and `FileSystem`; no Azure SDK is a dependency. `ActionCache.layer`,
+`Artifact.layer` and `GitHubCacheBlobStore.layer` require `HttpClient` in `R`
+(the package provides no platform client of its own).
 
 ## Bundle reachability
 
 A consumer that imports only an outputs accessor must be unable to link the
-Azure client. Three rules hold the confinement and one measures it:
+blob transport. Three rules hold the confinement and one measures it:
 
-- The Azure client is imported by exactly three modules —
-  `ActionCache.ts`, `Artifact.ts` and `BlobStore.githubCache.ts` (three,
-  not the two an outside reading suggests, because the Actions cache's own
-  protocol hands back an Azure blob URL for the payload) — and nowhere
-  else. No shared helper under `internal/` may import it. See
-  [Azure is confined to three modules](../decisions/azure-blob-confined-to-three-modules.md).
+- The blob transport (`internal/blobTransport.ts`) is reached by exactly
+  three modules — `ActionCache.ts`, `Artifact.ts` and
+  `BlobStore.githubCache.ts` (three, not the two an outside reading
+  suggests, because the Actions cache's own protocol hands back a blob URL
+  for the payload) — and no module reaches any `@azure/*` package. See
+  [the blob transport decision](../decisions/blob-transport-is-internal-httpclient.md).
 - The three are separate named exports in `index.ts`, never gathered into
   a namespace object — see
   [no barrel re-exports](../conventions/no-barrel-re-exports.md).
@@ -102,13 +104,13 @@ Azure client. Three rules hold the confinement and one measures it:
   at `packages/github-actions/__test__/reachability.test.ts`.
 
 What that test does **not** prove: it constrains the runtime *import*
-graph of `src`, not the *resolver* graph. Every heavy edge here — Azure,
+graph of `src`, not the *resolver* graph. Every heavy edge here —
 `markdown`, `npm`, and through `sbom` the Sigstore stack — is a declared
 dependency of this package, so it is installed for every consumer and a
 bundler's resolver still walks it; only a consumer that actually bundles
 and tree-shakes sees the benefit. The composed runtime layer
 (`Action.run`) deliberately excludes the cache, artifact and blob
-services for the same reason: folding them in would put the Azure client
+services for the same reason: folding them in would put the blob transport
 in the bundle of every action that merely sets an output. It does carry
 the `effect/crypto` services: `ActionServices` includes `Digest.Digest`,
 `Mac.Mac`, `SecureRandom.SecureRandom` and `Signature.Signature`, and

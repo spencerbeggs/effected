@@ -9,7 +9,7 @@ Durable knowledge lives in the bundle, not here. Start at
 
 - `okf/modules/github.md` — Load when: starting any work here. Tier and
   dependency table, why `@octokit/rest` / `@octokit/auth-app` are absent and
-  the crypto pair is confined, the measured bundle-reachability invariant,
+  the sealed-box primitives are confined, the measured bundle-reachability invariant,
   module topology, the per-call `Repo` coordinate, Actions decoupling, the
   test harnesses and the fixture client's contract.
 - `okf/interfaces/github-rest-client.md` — Load when: adding or changing a
@@ -48,9 +48,12 @@ Durable knowledge lives in the bundle, not here. Start at
 - Read `__test__/reachability.test.ts` before adding any import between
   `src/` modules or any dependency: it pins the import graph the bundle's
   reachability table describes, that every `src/` module is re-exported from
-  `src/index.ts`, and that `RepositorySecret` alone reaches the crypto pair.
-- Import `blakejs` as a default import only, and keep `internal/crypto.ts`
-  imported by `RepositorySecret` and nothing else.
+  `src/index.ts`, and that `RepositorySecret` alone reaches the sealed-box primitives.
+- Keep `internal/crypto.ts` and the copied primitives beside it
+  (`blake2b.ts`, `x25519.ts`, `xsalsa20poly1305.ts`, each with a provenance
+  header) imported by `RepositorySecret` and nothing else; `tweetnacl`,
+  `blakejs` and `libsodium-wrappers` are test oracles in `devDependencies`, never
+  runtime imports; `crypto.libsodium.test.ts` is the authoritative cross-check.
 - Wrap a `static readonly layer` factory in an arrow; classify status codes
   only through `GitHubError`'s shared `classify` (`fromOctokit` /
   `fromResponse`) — the one exception is `GitHubUserAuth`, whose OAuth

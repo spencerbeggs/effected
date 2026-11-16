@@ -2,7 +2,7 @@
 // cache, artifact and blob-store protocols all speak through.
 //
 // Shared by `ActionCache`, `Artifact` and `BlobStore.githubCache`, and
-// deliberately free of `@azure/storage-blob`: an internal helper is exactly how
+// deliberately free of the blob transport: an internal helper is exactly how
 // a heavy import leaks into a light module's graph, so the one piece those
 // three modules share is the piece with no dependencies.
 

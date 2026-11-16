@@ -155,7 +155,8 @@ const dies = unstubbed("RepositorySecret.makeTest");
  * Seal a value, turning a malformed public key into a typed failure.
  *
  * @remarks
- * `encryptSecret` returns a `Result` because a base64 decode can fail. A public
+ * `encryptSecret` returns a `Result` because the key can fail to decode, be the
+ * wrong length, or be a low-order X25519 point. A public
  * key GitHub cannot have produced is still *input*, and input failures are
  * typed rather than thrown — so this maps it onto the same `GitHubError` a
  * caller already handles, naming the route it came from.
@@ -163,7 +164,13 @@ const dies = unstubbed("RepositorySecret.makeTest");
 const seal = (route: string, publicKey: string, value: Redacted.Redacted<string>): Effect.Effect<string, GitHubError> =>
 	Result.match(encryptSecret(publicKey, Redacted.value(value)), {
 		onSuccess: (sealed) => Effect.succeed(sealed),
-		onFailure: () => Effect.fail(GitHubError.decode(route, "the secrets public key was not valid base64")),
+		onFailure: () =>
+			Effect.fail(
+				GitHubError.decode(
+					route,
+					"the secrets public key was not a valid base64 X25519 public key (32 bytes, not low-order)",
+				),
+			),
 	});
 
 const make = (client: GitHubClient["Service"]): RepositorySecretShape => {

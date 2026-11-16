@@ -1,5 +1,25 @@
 # @effected/cli
 
+## 0.30.0
+
+### Breaking Changes
+
+- Requires `@effected/glob` 0.23.0 (`peerDependencies`: `^0.23.0`), a breaking release from 0.22.0. A consumer still on 0.22.0 cannot install this version beside it, so this release leaves its own version line too.
+
+- To upgrade, move `@effected/glob` to 0.23.0 in the same install as this release.
+
+### Bug Fixes
+
+- Display width counts a spacing prepended concatenation mark, such as ARABIC NUMBER SIGN (U+0600), as one visible column instead of zero, unless the grapheme after it is wide and takes the mark into its own cell. Columns, truncation and padding that contain these marks now line up with what a terminal draws, and agree with `string-width` 9 across every assigned code point.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/env | dependency | updated | 0.12.0 | 0.12.0 |
+| @effected/glob | dependency | updated | 0.22.0 | 0.23.0 |
+| @effected/walker | dependency | updated | 0.29.0 | 0.30.0 |
+
 ## 0.29.1
 
 ### Dependencies

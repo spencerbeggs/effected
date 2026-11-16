@@ -1,4 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
+// `blakejs` and `tweetnacl` are test oracles only: the runtime copies of the
+// primitives live in `src/internal`, and the reachability test pins that no
+// module imports either library at runtime.
 import blakejs from "blakejs";
 import { Result } from "effect";
 import * as Base64 from "effect/encoding/Base64";
@@ -14,9 +17,6 @@ const sealBytes = (publicKey: string, value: string): Uint8Array => {
 };
 
 const b64 = (bytes: Uint8Array): string => Base64.encode(bytes);
-
-const named = (namespace: Record<string, unknown>): ReadonlyArray<string> =>
-	Object.keys(namespace).filter((key) => key !== "default" && key !== "module.exports");
 
 describe("encryptSecret", () => {
 	it("produces a sealed box the recipient can open", () => {
@@ -82,6 +82,34 @@ describe("encryptSecret", () => {
 		assert.strictEqual(Result.isFailure(sealed), true);
 	});
 
+	it("fails as a typed Result on a public key that is not 32 bytes", () => {
+		for (const length of [0, 31, 33]) {
+			const sealed = encryptSecret(b64(new Uint8Array(length).fill(7)), "hunter2");
+			assert.strictEqual(Result.isFailure(sealed), true, `${length} bytes`);
+		}
+	});
+
+	it("fails as a typed Result on a low-order public key", () => {
+		const zero = encryptSecret(b64(new Uint8Array(32)), "hunter2");
+		assert.strictEqual(Result.isFailure(zero), true);
+	});
+
+	it("opens for many random recipients and plaintext lengths", () => {
+		for (let length = 0; length < 200; length += 7) {
+			const recipient = nacl.box.keyPair();
+			const value = "x".repeat(length);
+			const sealed = sealBytes(b64(recipient.publicKey), value);
+			const ephemeralPublicKey = sealed.subarray(0, PUBLIC_KEY_BYTES);
+			const nonceInput = new Uint8Array(PUBLIC_KEY_BYTES * 2);
+			nonceInput.set(ephemeralPublicKey);
+			nonceInput.set(recipient.publicKey, PUBLIC_KEY_BYTES);
+			const nonce = blakejs.blake2b(nonceInput, undefined, 24);
+			const opened = nacl.box.open(sealed.subarray(PUBLIC_KEY_BYTES), nonce, ephemeralPublicKey, recipient.secretKey);
+			assert.isNotNull(opened, `length ${length}`);
+			assert.strictEqual(new TextDecoder().decode(opened as Uint8Array), value);
+		}
+	});
+
 	it("never returns the plaintext", () => {
 		const recipient = nacl.box.keyPair();
 		const publicKey = b64(recipient.publicKey);
@@ -90,38 +118,5 @@ describe("encryptSecret", () => {
 
 		assert.notInclude(text, "hunter2");
 		assert.notInclude(new TextDecoder().decode(sealBytes(publicKey, "hunter2")), "hunter2");
-	});
-});
-
-describe("the blakejs interop surface", () => {
-	/**
-	 * `blakejs` is CommonJS, and Node's cjs-module-lexer detects only **part** of
-	 * its export surface. This pins exactly which part, so that adding a call to
-	 * one of the undetected functions fails here with an explanation rather than
-	 * at runtime with "does not provide an export named".
-	 *
-	 * The claim "blakejs has no named ESM exports" is **false** and was believed
-	 * in two codebases: `blake2b` resolves as a named import perfectly well. It is
-	 * the other nine that do not, which is far easier to trip over precisely
-	 * because the first one you try works.
-	 */
-	it("detects blake2b as a named export and nothing else", async () => {
-		const namespace = await import("blakejs");
-		assert.deepStrictEqual(named(namespace), ["blake2b"]);
-	});
-
-	it("reaches every other function only through the default import", async () => {
-		const namespace = await import("blakejs");
-		const onDefault = Object.keys(namespace.default);
-
-		// The one this package would reach for next, and the one that bit the
-		// consumer this crypto was ported from.
-		assert.include(onDefault, "blake2bHex");
-		assert.notInclude(Object.keys(namespace), "blake2bHex");
-
-		// Everything the module actually offers is on the default, which is why
-		// the default import is the interop-safe form regardless of which
-		// function you want.
-		assert.isAbove(onDefault.length, named(namespace).length);
 	});
 });

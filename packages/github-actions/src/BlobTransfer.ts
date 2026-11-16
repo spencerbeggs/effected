@@ -29,8 +29,8 @@ export class BlobTransferError extends Schema.TaggedError<BlobTransferError>()("
  * pre-signed Azure url, and everything interesting — the RPC sequence, the
  * conflict handling, the retry policy, the version hash — happens on this side
  * of it. Taking the transport as an argument means all of that is exercised by
- * a test rather than described by one, and the Azure client stays confined to
- * the three modules permitted to import it.
+ * a test rather than described by one. The default transport is the package's
+ * own `HttpClient` implementation of the Azure Blob REST calls.
  *
  * A url is a plain string on purpose: it is a **credential** (the signature is
  * in the query), and it is never logged, annotated on a span, or carried on an

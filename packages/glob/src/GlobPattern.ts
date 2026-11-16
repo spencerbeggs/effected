@@ -773,7 +773,12 @@ export class GlobPattern extends Schema.Class<GlobPattern>("GlobPattern")(
 		});
 	}
 
-	/** Escape every magic character in `literal` so it matches only itself. */
+	/**
+	 * Escape every magic character in `literal` so it matches only itself. A
+	 * leading `#` or `!` is escaped too, so the result is never a comment or a
+	 * negated pattern; under `windowsPathsNoEscape` a leading `!` is written
+	 * `@(!)`, which matches only `!` (and nothing under `noext`).
+	 */
 	static escape(literal: string, options?: GlobPatternOptions): string {
 		return engineEscape(literal, toEngineOptions(options));
 	}

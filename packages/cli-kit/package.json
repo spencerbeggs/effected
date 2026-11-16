@@ -1,6 +1,6 @@
 {
 	"name": "@effected/cli-kit",
-	"version": "0.29.1",
+	"version": "0.30.0",
 	"private": true,
 	"description": "The presentation boundary of an effect/cli program: audience-aware output, a document IR and renderers, editor links, failure reports and logging, plus opt-in Ink screens, widgets and a live view",
 	"keywords": ["effect", "cli", "logger", "terminal", "ink", "tui"],
@@ -57,7 +57,7 @@
 		"effect": "catalog:effected",
 		"ink": "catalog:effected:build",
 		"react": "catalog:effected:build",
-		"string-width": "^8.3.0",
+		"string-width": "^9.0.0",
 		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {

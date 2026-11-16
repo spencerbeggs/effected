@@ -12,10 +12,10 @@ sources:
     resource: ../../packages/commands/package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-11-16T17:04:15Z
 integrity:
   generated:
-    body: 72a725d0fc21d10c
+    body: dad822ef380789b0
 ---
 
 # The github-split (program name)
@@ -38,8 +38,8 @@ packages' own decisions:
 - **`github-actions` is the one package with a required
   `@effect/platform-node` peer**, and the only one licensed to import
   `node:` directly — see [the platform-node peer decision](../decisions/platform-node-peer-in-one-package.md).
-  `@azure/storage-blob` is confined to three of its modules, so a
-  consumer importing `ActionOutputs` alone cannot link it.
+  The blob transport (plain `HttpClient`, no Azure SDK) is confined to three
+  of its modules, so a consumer importing `ActionOutputs` alone cannot link it.
 - **`commands` stays boundary tier only because the workspaces edge
   inverts** — a direct `commands` → `workspaces` dependency edge would
   have made four packages integrated, a pure one (`lockfiles`) among
@@ -66,7 +66,7 @@ dependency edges onto `@effected/github-actions`: `@effected/templates`,
 three changes `github-actions`' own tier — it was already integrated and
 nothing depends on it — and each edge stays confined to the modules that
 actually need it, pinned by the same bundle-reachability test suite that
-confines `@azure/storage-blob`. One of the three closes the inverted
+confines the blob transport. One of the three closes the inverted
 contract described above: `sbom` declares the `IdentityToken` contract
 and `github-actions` ships the layer implementing it. Read this as the
 general shape consumer dogfood takes against an already-shipped

@@ -2,7 +2,7 @@
 //
 // minimatch 10.2.3 through 10.2.6 answered these wrongly, and the engine took
 // minimatch 11.0.4's fixes before the oracle moved to 11. The answers below are
-// hard-coded, as regressions, and checked against the oracle (11.0.5) and the
+// hard-coded, as regressions, and checked against the oracle (11.0.8) and the
 // reference matcher at the end of this file.
 
 import { assert, describe, it } from "@effect/vitest";

@@ -1,7 +1,7 @@
 // Task 4, the engine compliance gate (part 1): a deterministic behavioral
 // fixture table across every dialect feature category, where EVERY row asserts
 // both the expected boolean AND agreement with the real upstream minimatch
-// 11.0.5 (the exact-pinned oracle devDependency); plus oracle property tests
+// 11.0.8 (the exact-pinned oracle devDependency); plus oracle property tests
 // sampling the full dialect and option surface.
 //
 // Rule of the gate: if the vendored engine disagrees with the oracle, fix the
@@ -14,8 +14,8 @@ import { Arbitrary, Effect, Schema } from "effect";
 import { Minimatch as OracleMinimatch, minimatch as oracle } from "minimatch";
 import { GuardExceeded } from "../src/internal/limits.js";
 import type { EngineOptions } from "../src/internal/minimatch.js";
-import { Minimatch, escape as escapePattern } from "../src/internal/minimatch.js";
-import { bracketsAcrossAlternatives, oracleAnswer, oracleOpts } from "./support/oracle.js";
+import { Minimatch, escape as escapePattern, unescape as unescapePattern } from "../src/internal/minimatch.js";
+import { bracketsAcrossAlternatives, oracleAnswer, oracleOpts, oracleTooManyExtglobs } from "./support/oracle.js";
 
 type Row = readonly [pattern: string, candidate: string, expected: boolean, options?: EngineOptions];
 
@@ -275,8 +275,10 @@ describe("engine compliance: behavioral table", () => {
 			["{0..199..2}", "5", false],
 			["{x,{0..199}}", "x", true],
 			["{$,a}{0..199}", "$5", true],
-			// a \ just before a range is taken with it
-			["{a\\\\,b}{0..199}", "a5", true],
+			// an escaped backslash before a range stays a literal backslash
+			// (11.0.5 dropped it, and matched `a5`)
+			["{a\\\\,b}{0..199}", "a\\5", true],
+			["{a\\\\,b}{0..199}", "a5", false],
 			// a [ before the range in its portion expands it instead
 			["[x]{0..199}", "x150", true],
 			["{0..199}[x]", "150x", true],
@@ -457,6 +459,113 @@ const ruleCandidateArb = Arbitrary.schema(
 	]),
 );
 
+describe("engine compliance: minimatch 11.0.8", () => {
+	const posix: EngineOptions = { platform: "posix" };
+	const agree = (pattern: string, candidate: string, expected: boolean, options: EngineOptions = {}) => {
+		const opts: EngineOptions = { ...posix, ...options };
+		const label = `${pattern} vs ${candidate} ${JSON.stringify(options)}`;
+		assert.strictEqual(new Minimatch(pattern, opts).match(candidate), expected, label);
+		assert.strictEqual(oracle(candidate, pattern, oracleOpts(opts)), expected, `oracle: ${label}`);
+	};
+
+	it("keeps an escaped backslash escaped through brace expansion", () => {
+		// 11.0.5 turned `\\` into one `\`, which then escaped the next character
+		for (const [pattern, candidate, expected] of [
+			["a\\\\{b,c}", "a\\b", true],
+			["a\\\\{b,c}", "ab", false],
+			["x\\\\\\*.{js,ts}", "x\\*.js", true],
+			["x\\\\\\*.{js,ts}", "x\\anything.js", false],
+			["x\\\\*{,}", "x\\anything", true],
+			["{a\\\\,b}c", "a\\c", true],
+			["{a\\\\,b}c", "ac", false],
+			// an odd run still escapes the brace
+			["a\\{b,c}", "a{b,c}", true],
+			["a\\{b,c}", "ab", false],
+		] as const) {
+			agree(pattern, candidate, expected);
+		}
+		for (const pattern of ["a\\\\{b,c}", "a\\{b,c}", "{a\\\\,b}{0..9}", "x\\\\\\*.{js,ts}"]) {
+			assert.deepStrictEqual(
+				new Minimatch(pattern, posix).braceExpand(),
+				new OracleMinimatch(pattern, oracleOpts(posix)).braceExpand(),
+				pattern,
+			);
+		}
+	});
+
+	it("keeps a [{] or [}] class literal under windowsPathsNoEscape", () => {
+		const wb: EngineOptions = { windowsPathsNoEscape: true, magicalBraces: true };
+		const p = escapePattern("x{a,b}", wb);
+		assert.strictEqual(p, "x[{]a,b[}]");
+		agree(p, "x{a,b}", true, wb);
+		agree(p, "xa", false, wb);
+		agree(`${p}.{js,ts}`, "x{a,b}.ts", true, wb);
+		agree(`${p}.{js,ts}`, "xa.js", false, wb);
+	});
+
+	it("escapes a leading # or ! so the result is never a comment or a negation", () => {
+		for (const options of [
+			{},
+			{ magicalBraces: true },
+			{ windowsPathsNoEscape: true },
+			{ windowsPathsNoEscape: true, magicalBraces: true },
+		] as ReadonlyArray<EngineOptions>) {
+			for (const literal of ["!secret.txt", "#notes.md", "!", "#", "!(x)"]) {
+				const p = escapePattern(literal, options);
+				assert.strictEqual(p, oracle.escape(literal, options), `escape ${literal}`);
+				agree(p, literal, true, options);
+				agree(p, "x", false, options);
+				agree(p, literal.slice(1) || "y", false, options);
+			}
+		}
+		assert.strictEqual(escapePattern("!a"), "\\!a");
+		assert.strictEqual(escapePattern("#a"), "\\#a");
+		assert.strictEqual(escapePattern("!a", { windowsPathsNoEscape: true }), "@(!)a");
+		assert.strictEqual(escapePattern("#a", { windowsPathsNoEscape: true }), "[#]a");
+		// a run of leading `@(!)` unescapes as the oracle does, and a long run does not overflow the stack it recurses on
+		for (const run of ["@(!)@(!)[*]", "@(!)@(!)@(!)a\\b"]) {
+			const options = { windowsPathsNoEscape: true };
+			assert.strictEqual(unescapePattern(run, options), oracle.unescape(run, options), run);
+		}
+		assert.strictEqual(
+			unescapePattern(`${"@(!)".repeat(200_000)}x`, { windowsPathsNoEscape: true }),
+			`${"!".repeat(200_000)}x`,
+		);
+		// with extglobs off, the windows `@(!)` matches nothing rather than everything
+		agree(escapePattern("!a", { windowsPathsNoEscape: true }), "b", false, { windowsPathsNoEscape: true, noext: true });
+		agree(escapePattern("!a", { windowsPathsNoEscape: true }), "a", false, { windowsPathsNoEscape: true, noext: true });
+	});
+
+	it("refuses more than 256 extglobs in a portion only where the oracle's recursive matcher would", () => {
+		const nested = (type: string, n: number) => `${`${type}(`.repeat(n)}a${")".repeat(n)}`;
+		const inRow = (type: string, n: number) => `${type}(a)`.repeat(n);
+		// within the oracle's limit both answer alike
+		for (const type of ["*", "?", "+", "@"]) {
+			agree(nested(type, 256), "a", true);
+			agree(nested(type, 256), "b", false);
+		}
+		agree(inRow("+", 256), "a".repeat(256), true);
+		agree(inRow("@", 256), "a", false);
+		// past it, nesting fails typed in the engine, as the oracle throws
+		for (const type of ["*", "?", "+", "@"]) {
+			assert.throws(() => new Minimatch(nested(type, 257), posix), GuardExceeded);
+			assert.throws(() => oracle("a", nested(type, 257), oracleOpts(posix)), /too many extglobs/);
+		}
+		// in a row, the engine's worklist matcher answers where the oracle throws
+		// (a named exception, `oracleTooManyExtglobs`)
+		const row = inRow("?", 300);
+		assert.isTrue(new Minimatch(row, posix).match("a"));
+		assert.isTrue(oracleTooManyExtglobs(row, posix));
+		assert.throws(() => oracle("a", row, oracleOpts(posix)), /too many extglobs/);
+		// noext and escaped openers are not counted
+		agree(inRow("*", 300), inRow("*", 300), true, { noext: true });
+		agree("\\*(a)".repeat(300), "*(a)".repeat(300), true);
+		assert.isFalse(oracleTooManyExtglobs(inRow("*", 300), { ...posix, noext: true }));
+		// the limit is per path portion
+		agree(Array(10).fill(inRow("?", 200)).join("/"), Array(10).fill("a").join("/"), true);
+	});
+});
+
 describe("engine compliance: oracle properties", () => {
 	it.effect.prop(
 		"matches exactly as upstream under default options",
@@ -508,12 +617,11 @@ describe("engine compliance: oracle properties", () => {
 		[printableNoSlashArb],
 		([s]) =>
 			Effect.sync(() => {
-				// nocomment/nonegate: escape() escapes glob magic, but a leading #
-				// or ! is comment/negation syntax that escape deliberately does not
-				// touch. magicalBraces: brace EXPANSION is magic regardless, but
-				// escape() only escapes braces under this flag. Both are
-				// oracle-confirmed upstream semantics.
-				const opts: EngineOptions = { platform: "posix", nocomment: true, nonegate: true };
+				// default options: escape() escapes a leading # or ! too (11.0.8), so
+				// the result is never a comment or a negation. magicalBraces: brace
+				// EXPANSION is magic regardless, but escape() only escapes braces
+				// under this flag (oracle-confirmed upstream semantics).
+				const opts: EngineOptions = { platform: "posix" };
 				const m = new Minimatch(escapePattern(s, { magicalBraces: true }), opts);
 				assert.isTrue(m.match(s), `escape(${JSON.stringify(s)}) must match its own literal`);
 				assert.strictEqual(m.match(s), oracle(s, oracle.escape(s, { magicalBraces: true }), oracleOpts(opts)));

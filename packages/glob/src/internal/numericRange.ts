@@ -1,7 +1,7 @@
 // Ported from @isaacs/nonrecursive-glob-match@1.1.0 (https://github.com/isaacs/nonrecursive-glob-match)
 // Copyright: Isaac Z. Schlueter and Contributors
 // License: BlueOak-1.0.0 (https://blueoakcouncil.org/license/1.0.0)
-// Port notes: src/numeric-range.ts, the range items minimatch 11.0.5's matcher
+// Port notes: src/numeric-range.ts, the range items minimatch 11.0.8's matcher
 // tests a numeric brace range of 100 or more values with. One change: the
 // items are built by the caller (`lit` and `digits`), so the matcher builds
 // each digit class through its own `compile` (compileOrFail, at construction)

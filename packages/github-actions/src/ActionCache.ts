@@ -1,14 +1,12 @@
-import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
 import { GlobPattern, GlobSet } from "@effected/glob";
 import { Context, Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
 import { HttpClient } from "effect/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { ActionEnvironment } from "./ActionEnvironment.js";
-import type { FileBlobTransfer } from "./BlobTransfer.js";
-import { BlobTransferError } from "./BlobTransfer.js";
+import type { BlobTransferError, FileBlobTransfer } from "./BlobTransfer.js";
 import type { CacheKey } from "./CacheKey.js";
 import { misconfiguredDetail, resultsBackend } from "./internal/actionsResults.js";
-import { blobCause } from "./internal/blobCause.js";
+import { httpFileTransfer } from "./internal/blobTransport.js";
 import type { CacheServiceClient } from "./internal/cacheService.js";
 import { CACHE_SERVICE, finalizeUpload, lookupDownload, reserveUpload } from "./internal/cacheService.js";
 import { sha256Hex } from "./internal/digest.js";
@@ -139,37 +137,6 @@ export interface ActionCacheShape {
  */
 const versionOf = (paths: ReadonlyArray<string>): string => sha256Hex([...paths, "gzip", "1.0"].join("|"));
 
-/**
- * The Azure half, duplicated on purpose.
- *
- * @remarks
- * `@azure/storage-blob` may be imported here, by `Artifact` and by
- * `BlobStore.githubCache`, and nowhere else — hoisting these two calls into a
- * shared `internal/` helper is exactly how a heavy import leaks into the graph
- * of a module that only sets an output. `__test__/reachability.test.ts`
- * measures that these are the only three.
- */
-const azure: FileBlobTransfer = {
-	uploadFile: (url, file) =>
-		Effect.tryPromise({
-			try: () =>
-				new BlockBlobClient(url).uploadFile(file, {
-					// The block size and concurrency `actions/cache` itself uses: a
-					// multi-gigabyte toolchain cache is the normal case, not the
-					// exceptional one.
-					blockSize: 64 * 1024 * 1024,
-					concurrency: 8,
-					maxSingleShotSize: 128 * 1024 * 1024,
-				}),
-			catch: (cause) => new BlobTransferError({ reason: "uploadFailed", cause: blobCause(cause) }),
-		}).pipe(Effect.asVoid),
-	downloadToFile: (url, file) =>
-		Effect.tryPromise({
-			try: () => new BlobClient(url).downloadToFile(file),
-			catch: (cause) => new BlobTransferError({ reason: "downloadFailed", cause: blobCause(cause) }),
-		}).pipe(Effect.asVoid),
-};
-
 /** The primary key and the ladder to fall back through. */
 const ladder = (key: string | CacheKey, restoreKeys: ReadonlyArray<string> | undefined) =>
 	typeof key === "string"
@@ -177,7 +144,7 @@ const ladder = (key: string | CacheKey, restoreKeys: ReadonlyArray<string> | und
 		: { primary: key.key, fallbacks: restoreKeys ?? key.restoreKeys };
 
 const make = (
-	transfer: FileBlobTransfer,
+	custom?: FileBlobTransfer,
 ): Effect.Effect<
 	ActionCacheShape,
 	never,
@@ -190,6 +157,8 @@ const make = (
 	Effect.gen(function* () {
 		const http = yield* HttpClient.HttpClient;
 		const fs = yield* FileSystem.FileSystem;
+		// The signed-url transport, unless a test supplied its own.
+		const transfer = custom ?? httpFileTransfer(http, fs);
 		const path = yield* Path.Path;
 		const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 		// Resolved once, at construction, so every member's `R` is `never`.
@@ -516,7 +485,15 @@ const dies = unstubbed("ActionCache.makeTest");
 export class ActionCache extends Context.Service<ActionCache, ActionCacheShape>()(
 	"@effected/github-actions/ActionCache",
 ) {
-	/** The cache, over the real Azure client and the real `tar`. */
+	/**
+	 * The cache, over the `HttpClient` blob transport and the real `tar`.
+	 *
+	 * @remarks
+	 * Requires `HttpClient` in `R`: the signed-url upload and download go through
+	 * the caller's client, not a bundled SDK or a platform client of this
+	 * package's own. Also requires `FileSystem`, `Path`, `ChildProcessSpawner`
+	 * and `ActionEnvironment`.
+	 */
 	static readonly layer: Layer.Layer<
 		ActionCache,
 		never,
@@ -525,7 +502,7 @@ export class ActionCache extends Context.Service<ActionCache, ActionCacheShape>(
 		| FileSystem.FileSystem
 		| Path.Path
 		| ChildProcessSpawner.ChildProcessSpawner
-	> = Layer.effect(this, make(azure));
+	> = Layer.effect(this, make());
 
 	/**
 	 * The cache, over a supplied transport.
