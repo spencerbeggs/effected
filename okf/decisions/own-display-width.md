@@ -16,13 +16,15 @@ integrity:
     body: 17feb768af61283c
   verified:
     by: human:spencer
-    at: 2026-11-02T17:04:46Z
-    content: 5bf04182f902e454
+    at: 2026-11-16T18:54:03Z
+    content: cf505e3ba6a7eeab
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
   - by: human:spencer
     at: 2026-11-02T17:04:46Z
+  - by: human:spencer
+    at: 2026-11-16T18:54:03Z
 ---
 
 # The cli package owns its display-width function

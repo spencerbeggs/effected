@@ -17,11 +17,13 @@ integrity:
     body: afa03a5aaea3e118
   verified:
     by: human:spencer
-    at: 2026-11-08T18:25:54Z
-    content: 230c6375ede67379
+    at: 2026-11-16T18:54:03Z
+    content: efebb7ca292bb87b
 verified:
   - by: human:spencer
     at: 2026-11-08T18:25:54Z
+  - by: human:spencer
+    at: 2026-11-16T18:54:03Z
 ---
 
 # glob does not bound total matching work on hostile patterns
