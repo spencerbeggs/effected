@@ -20,7 +20,7 @@
 // redacted. The request itself — `sig` included — is never kept.
 
 import type { Effect, FileSystem } from "effect";
-import { Effect as E, Schedule, Stream } from "effect";
+import { Effect as E, PlatformError, Schedule, Stream } from "effect";
 import type { HttpClient, HttpClientResponse } from "effect/http";
 import { HttpBody, HttpClientRequest } from "effect/http";
 import type { DataBlobTransfer, FileBlobTransfer } from "../BlobTransfer.js";
@@ -230,15 +230,43 @@ const upload = <E>(
 	);
 };
 
-const concat = (chunks: ReadonlyArray<Uint8Array>, length: number): Uint8Array => {
-	const out = new Uint8Array(length);
-	let at = 0;
-	for (const chunk of chunks) {
-		out.set(chunk, at);
-		at += chunk.byteLength;
-	}
-	return out;
-};
+/**
+ * Read `length` bytes of `file` from `offset` into one buffer, written as each chunk arrives: the chunks are never
+ * held beside the joined copy, so a block costs its own size once. A file that ends early fails, rather than send
+ * zero bytes the signature would accept.
+ */
+const readSpan = (
+	fs: FileSystem.FileSystem,
+	file: string,
+	offset: number,
+	length: number,
+): Effect.Effect<Uint8Array, PlatformError.PlatformError> =>
+	E.suspend(() => {
+		const out = new Uint8Array(length);
+		let at = 0;
+		return fs.stream(file, { offset, bytesToRead: length }).pipe(
+			Stream.runForEach((chunk) =>
+				E.sync(() => {
+					const take = Math.min(chunk.byteLength, length - at);
+					out.set(take === chunk.byteLength ? chunk : chunk.subarray(0, take), at);
+					at += take;
+				}),
+			),
+			E.flatMap(() =>
+				at === length
+					? E.succeed(out)
+					: E.fail(
+							PlatformError.systemError({
+								_tag: "UnexpectedEof",
+								module: "FileSystem",
+								method: "stream",
+								description: `expected ${length} bytes at offset ${offset}, read ${at}`,
+								pathOrDescriptor: file,
+							}),
+						),
+			),
+		);
+	});
 
 const uploadFailed = (cause: unknown): BlobTransferError => new BlobTransferError({ reason: "uploadFailed", cause });
 const downloadFailed = (cause: unknown): BlobTransferError =>
@@ -290,12 +318,7 @@ export const httpFileTransfer = (
 ): FileBlobTransfer => ({
 	uploadFile: (url, file) =>
 		E.flatMap(fs.stat(file), (info) =>
-			upload(http, options, url, Number(info.size), (offset, length) =>
-				fs.stream(file, { offset, bytesToRead: length }).pipe(
-					Stream.runCollect,
-					E.map((chunks) => concat(chunks, length)),
-				),
-			),
+			upload(http, options, url, Number(info.size), (offset, length) => readSpan(fs, file, offset, length)),
 		).pipe(E.mapError(uploadFailed)),
 	downloadToFile: (url, file) =>
 		withRetry(

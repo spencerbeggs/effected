@@ -1,6 +1,6 @@
 ---
 name: actions-cache-and-artifacts
-description: "Use when caching a dependency directory in a GitHub Action, uploading or downloading a workflow artifact, installing a toolchain or an exact package-manager version into the runner's tool cache, or storing a keyed blob against the Actions cache or an S3-compatible bucket. Also use when: ACTIONS_RESULTS_URL, ACTIONS_RUNTIME_TOKEN, tool cache, blob store, ActionCache, Artifact, GitHubCacheBlobStore, BlobStore, S3Config, ToolInstaller, PackageManagerInstaller, CacheKey, hashFiles, restore keys, withNamespace, cache bust, stage-then-swap, Twirp retry, @azure/storage-blob confinement"
+description: "Use when caching a dependency directory in a GitHub Action, uploading or downloading a workflow artifact, installing a toolchain or an exact package-manager version into the runner's tool cache, or storing a keyed blob against the Actions cache or an S3-compatible bucket. Also use when: ACTIONS_RESULTS_URL, ACTIONS_RUNTIME_TOKEN, tool cache, blob store, ActionCache, Artifact, GitHubCacheBlobStore, BlobStore, S3Config, ToolInstaller, PackageManagerInstaller, CacheKey, hashFiles, restore keys, withNamespace, cache bust, stage-then-swap, Twirp retry, blob transport confinement, @azure/storage-blob"
 ---
 
 # Actions cache and artifacts

@@ -14,7 +14,7 @@ import { Arbitrary, Effect, Schema } from "effect";
 import { Minimatch as OracleMinimatch, minimatch as oracle } from "minimatch";
 import { GuardExceeded } from "../src/internal/limits.js";
 import type { EngineOptions } from "../src/internal/minimatch.js";
-import { Minimatch, escape as escapePattern } from "../src/internal/minimatch.js";
+import { Minimatch, escape as escapePattern, unescape as unescapePattern } from "../src/internal/minimatch.js";
 import { bracketsAcrossAlternatives, oracleAnswer, oracleOpts, oracleTooManyExtglobs } from "./support/oracle.js";
 
 type Row = readonly [pattern: string, candidate: string, expected: boolean, options?: EngineOptions];
@@ -522,6 +522,15 @@ describe("engine compliance: minimatch 11.0.8", () => {
 		assert.strictEqual(escapePattern("#a"), "\\#a");
 		assert.strictEqual(escapePattern("!a", { windowsPathsNoEscape: true }), "@(!)a");
 		assert.strictEqual(escapePattern("#a", { windowsPathsNoEscape: true }), "[#]a");
+		// a run of leading `@(!)` unescapes as the oracle does, and a long run does not overflow the stack it recurses on
+		for (const run of ["@(!)@(!)[*]", "@(!)@(!)@(!)a\\b"]) {
+			const options = { windowsPathsNoEscape: true };
+			assert.strictEqual(unescapePattern(run, options), oracle.unescape(run, options), run);
+		}
+		assert.strictEqual(
+			unescapePattern(`${"@(!)".repeat(200_000)}x`, { windowsPathsNoEscape: true }),
+			`${"!".repeat(200_000)}x`,
+		);
 		// with extglobs off, the windows `@(!)` matches nothing rather than everything
 		agree(escapePattern("!a", { windowsPathsNoEscape: true }), "b", false, { windowsPathsNoEscape: true, noext: true });
 		agree(escapePattern("!a", { windowsPathsNoEscape: true }), "a", false, { windowsPathsNoEscape: true, noext: true });

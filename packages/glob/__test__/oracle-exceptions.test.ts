@@ -19,7 +19,10 @@ describe("oracleRowMergeTooLong", () => {
 		}
 	});
 
-	it("does not fire where 11.0.8 skips the merge, and there the engine agrees with the oracle", () => {
+	// the oracle takes about 6 s on a CI runner to answer these, past the 5 s default
+	it("does not fire where 11.0.8 skips the merge, and there the engine agrees with the oracle", {
+		timeout: 30_000,
+	}, () => {
 		// 11.0.5 refused this one; 11.0.8 skips a merge of more than 256 extglobs
 		const pattern = "[!a]{x,{0..120}}?(a|b){0..199}//";
 		assert.isFalse(oracleRowMergeTooLong(pattern, opts));
