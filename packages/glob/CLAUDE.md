@@ -6,7 +6,7 @@ Seventh migration. 14 `src/` files (11 engine + 3 facade), 9 test files.
 
 **Tier: pure.** Peer-depends on `effect` only. Zero runtime deps, no IO, no
 services. The `minimatch` devDependency is the **test oracle only** — pinned
-exactly to 11.0.5, the version whose behaviour the engine follows, and imported
+exactly to 11.0.8, the version whose behaviour the engine follows, and imported
 only under `__test__/`. Never add it to `dependencies`; never move it without
 reconciling the engine against the new version first.
 
@@ -18,7 +18,7 @@ changing the public API, the dialect, the error set, or the hardening story.
 `src/internal/` is a **vendored engine** ported with attribution: minimatch
 (BlueOak-1.0.0, Isaac Z. Schlueter), brace-expansion 5.0.13 and balanced-match
 4.0.4 (MIT, Julian Gruber). The minimatch files keep 10.2.5's regexp-and-`AST`
-shape and take minimatch 11.0.5's behaviour (listed below), so their headers
+shape and take minimatch 11.0.8's behaviour (listed below), so their headers
 still say 10.2.5 and their port notes name each change taken; brace-expansion's
 `expand_` follows 5.0.13's iterative scan (one loop over a string's groups,
 which also decides once whether empty results drop), and `parseCommaParts`
@@ -38,7 +38,7 @@ materialize them into the typed `GlobPatternError`. Upstream let `ast.ts` and
 Malformed or hostile input fails through the typed `E` channel — never a
 defect, never `RangeError: Maximum call stack size exceeded`. Matching time is
 polynomial, bounded by the recursion cap; a hostile pattern can still be slow.
-Every magic portion is matched by minimatch 11.0.5's own one-portion
+Every magic portion is matched by minimatch 11.0.8's own one-portion
 matcher, vendored as `internal/matcher.ts` and `internal/matcherClass.ts`
 (`@isaacs/nonrecursive-glob-match` 1.1.0, BlueOak-1.0.0). The portion's regexp
 is compile-time validation only (`compileOrFail`, `InvalidRegExp`): matching through it backtracked O(n^k) on k stars
@@ -50,7 +50,7 @@ simulates it with state sets, caching each state's next state per character
 (its `Dfa`, cleared past `DFA_BUDGET`). It replaced a position walk that was
 polynomial at best (37 s and 2.2 GB for `*(a)` sixteen thousand times
 against 200 characters) and exponential in nesting at worst. Its `Sim#add`
-is a worklist, not 11's recursion: 11.0.5 itself overflows its stack on
+is a worklist, not 11's recursion: 11.0.5 overflows its stack on
 `*(a)` × 16,000. **Never route a magic portion back to a regexp or a walk.**
 
 Matching is polynomial and bounded by the input, not close to linear
@@ -108,7 +108,7 @@ where upstream truncates and throws first, the step budget is charged after,
 as upstream orders them), with 5.0.13's linear rewrites of three quadratic
 scans: `maskUnmatchedOpens` (an unmatched `{` heading every group),
 `commaSetFollows` (in place of the backtracking `/,(?!,).*\}/`) and
-`combine` skipping empty values for an empty prefix; minimatch 11.0.5's
+`combine` skipping empty values for an empty prefix; minimatch 11's
 `optimizationLevel` 2 bound on the `**/..` split (GHSA-g3hv-75wg-m249:
 `braceExpandMax` rows or `MAX_SPLIT_CELLS = 1_000_000` added path portions,
 **failing typed** as `ExpansionBudgetExceeded` where upstream throws a
@@ -168,9 +168,9 @@ that opens an extglob, as picomatch does. It is parity at that one point only.
 Plus the workspaces-inherited mandate: **`**` is real** — `packages/**`
 matches `packages/a/b` (glob-core's issue-#62 rewrite is not carried forward).
 
-## What the engine takes from minimatch 11.0.5
+## What the engine takes from minimatch 11.0.8
 
-The engine answers as the 11.0.5 oracle does, except the divergences below:
+The engine answers as the 11.0.8 oracle does, except the divergences below:
 
 - **`**` matching** (`#matchGlobstar`, `#matchGlobStarBodySections`): a
   section's last start comes from the portions it and the later sections need;
@@ -219,8 +219,7 @@ The engine answers as the 11.0.5 oracle does, except the divergences below:
   `internal/numericRange.ts`). So `hasMagic` is true, `enumerationRoots` and
   `enumerationPrefix` stop at it, and no budget applies to it. `GlobSet`
   classifies with `braceAlternatives` (no 11 counterpart): each alternative is
-  written back as text, a kept range as `{lo..hi}` (an unescaped `\` just
-  before it dropped, as 11's matcher takes it with the range), and every brace
+  written back as text, a kept range as `{lo..hi}`, and every brace
   the expansion unescaped escaped again, so `\{a,b}` is the literal `{a,b}`
   and is never expanded twice. After a `$` or a literal (escaped) backslash a
   range would not read alone as one, so that include, like one whose
@@ -294,9 +293,28 @@ The engine answers as the 11.0.5 oracle does, except the divergences below:
   which let `C:/a/../../x` match `x`.)
 - **`optimizationLevel` 2**: the `**/..` split bound and the keyed dedupe
   (above), which also fixes `{**/x,x/y}`.
+- **Backslashes through brace expansion** (11.0.8, `braceExpand`): each
+  escaped `\\` pair is doubled before brace-expansion, which halves it, so an
+  escaped backslash stays escaped and the parity of every run holds:
+  `{a\\,b}{0..199}` matches `a\5`, not `a5`, and `x\\\*.{js,ts}` matches
+  only `x\*.js`. So no alternative ends in an odd run before a kept range
+  (`braceAlternatives` no longer drops one). Under `windowsPathsNoEscape` a
+  `[{]` or `[}]` class is escaped for the expansion, so it stays literal.
+- **`escape`/`unescape`** (11.0.8): a leading `#` or `!` is escaped (`\#`,
+  `\!`; under `windowsPathsNoEscape` `[#]` and `@(!)`, which matches only `!`
+  and nothing under `noext`), so `GlobPattern.escape` never yields a comment
+  or a negation; `unescape` reads a leading `@(!)` back as `!` under
+  `windowsPathsNoEscape`.
 
-Not taken from 11: the `normalize` option and
-the `minimatch()` cache. The kit
+Not taken from 11: the `normalize` option;
+the `minimatch()`/`filter()` cache and its 11.0.6 inherited-options copy (no
+such surface; options are schema-decoded); the row merge and 11.0.8's linear
+merge keys (the engine answers the union of the alternatives); and 11.0.8's
+`MAX_EXTGLOBS` (256 extglob openers in one portion, `pattern has too many
+extglobs`, GHSA-2349-h8hg-73g9), which guards 11's recursive matcher: this
+one's `Sim#add` is a worklist, and nesting past 256 already fails typed at
+`MAX_NESTING_DEPTH`, so the engine answers 257 or more extglobs in a row where
+11.0.8 throws (`oracleTooManyExtglobs`, below). The kit
 still accepts `maxExtglobRecursion`, which 11 removed, but it limits nothing
 now (above).
 
@@ -319,7 +337,7 @@ range copied into thousands of alternatives, which 11 refuses as too long;
 or a `GlobSet` whose members together pass it, where each alone compiles. Those are
 typed failures, never wrong answers.
 
-- **The oracle's brace merge** (an 11.0.5 defect). minimatch 11 joins a
+- **The oracle's brace merge** (an 11 defect, still in 11.0.8). minimatch 11 joins a
   pattern's brace alternatives into one Matcher with `|`, so a `[` in one
   alternative and a `]` in a later one become a class, and the alternatives
   between them are lost: `b**{Z..a}` (alternatives `b**[`, `b**`, `b**]`, …)
@@ -328,9 +346,13 @@ typed failures, never wrong answers.
   `b[a-#{Z..a}[.]` expands to alternatives that each match `ba` in 11, yet
   11's merged matcher does not. `compliance.test.ts` names it
   `bracketsAcrossAlternatives` (any alternative with a `[` or `]`) and judges
-  only those patterns by the union of 11's own per-alternative answers. 11.0.5
+  only those patterns by the union of 11's own per-alternative answers. 11
   also throws `TypeError: pattern is too long` from its row merge on some
-  short brace patterns (one is 92 bytes), which the kit compiles.
+  short brace patterns (one is 92 bytes), which the kit compiles
+  (`oracleRowMergeTooLong`; 11.0.8 skips a merge past 256 extglobs, so fewer
+  trip it), and 11.0.8 throws `pattern has too many extglobs` on a portion
+  with more than 256 extglob openers, which the kit answers
+  (`oracleTooManyExtglobs`).
 
 ## Public surface
 
@@ -389,7 +411,8 @@ per-triple watchdog, because a stalled single process hides every later triple.
 It compares match, `hasMagic` and throw/typed failure against the oracle, applies
 the shared exceptions in `__test__/support/oracle.ts` (`bracketsAcrossAlternatives` for match
 divergences, `oracleRowMergeTooLong` for the oracle's row-merge `pattern is too long`
-where the engine accepts; each excuses only its own kind), reports `InvalidRegExp`-on-accepted
+and `oracleTooManyExtglobs` for its extglob limit, where the engine accepts; each
+excuses only its own kind), reports `InvalidRegExp`-on-accepted
 (#1279) as its own bucket, and writes a divergence table to
 `.cache/differential/seed-N.md`. Exit 1 means divergences or watchdog kills.
 Get a clean baseline before editing the engine and a clean run after it.

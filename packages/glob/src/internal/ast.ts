@@ -235,7 +235,7 @@ const isExactEmptyExt = (glob: string): boolean => /^[?*+@]\(\)$/.test(glob);
 
 /**
  * What the matcher needs of one compiled magic portion, built when the
- * pattern compiles: minimatch 11.0.5's own portion matcher (port note 9),
+ * pattern compiles: minimatch 11.0.8's own portion matcher (port note 9),
  * every regexp in it already built. It answers every match of the portion.
  */
 export interface PortionPlan {

@@ -7,7 +7,7 @@
 //   the __MINIMATCH_TESTING_PLATFORM__ env read) is deleted; platform is an
 //   explicit option defaulting to "posix". All win32 handling (UNC, drive
 //   letters, backslash splitting, windowsNoMagicRoot) is kept behind it, and
-//   takes minimatch 11.0.5's root rules: a .. can not remove a drive letter or
+//   takes minimatch 11.0.8's root rules: a .. can not remove a drive letter or
 //   a UNC host and share (#rootIndex, in levelOneOptimize,
 //   levelTwoFileOptimize and firstPhasePreProcess); a UNC host and share
 //   compare without case; //?/UNC/host/share matches //host/share and back;
@@ -18,7 +18,7 @@
 //   the debug option and its console.error wiring (the no-op debug() method
 //   and its call sites are kept so the bodies diff cleanly against
 //   upstream), the deprecated allowWindowsEscape, and makeRe() with its
-//   regexp field (11.0.5 removed it too; a portion with a !(...) has no
+//   regexp field (11 removed it too; a portion with a !(...) has no
 //   regexp of its own, so a whole-pattern regexp could not be built).
 // - maxGlobstarRecursion is validated by assertCap (a NaN or non-integer cap
 //   is a wiring bug and dies as a TypeError defect). The
@@ -39,18 +39,28 @@
 //   braceExpansion.ts).
 // - The fs-walk optimizer passes (adjascentGlobstarOptimize, spelled as
 //   upstream spells it, levelOneOptimize, levelTwoFileOptimize) are kept
-//   behind optimizationLevel, with 11.0.5's win32 root guard. firstPhasePreProcess and
-//   secondPhasePreProcess take minimatch 11.0.5's fix for GHSA-g3hv-75wg-m249:
+//   behind optimizationLevel, with 11.0.8's win32 root guard. firstPhasePreProcess and
+//   secondPhasePreProcess take minimatch 11.0.8's fix for GHSA-g3hv-75wg-m249:
 //   the **/.. split stops at braceExpandMax rows or MAX_SPLIT_CELLS added path
 //   portions, and fails with the typed ExpansionBudgetExceeded signal where
 //   upstream throws a RangeError (a partial split would match some paths and
 //   not others); the dedupe is a keyed lookup in place of a pairwise compare,
 //   and partsMatch, which only that compare used, is gone.
-// - Brace expansion takes minimatch 11.0.5's #expandBraces (expandMarked): a
+// - Brace expansion takes minimatch 11.0.8's #expandBraces (expandMarked): a
 //   numeric range of 100 or more values is not expanded but marked, and its
 //   portion is answered by 11's matcher (rangePortion), so it is magic and no
 //   budget applies to it. braceAlternatives, for GlobSet, writes each
 //   alternative back as pattern text (no 11 counterpart).
+// - braceExpand takes minimatch 11.0.8's escape fixes: every escaped backslash
+//   pair is doubled before expansion, so `\\` comes back out still escaped
+//   (11.0.5 dropped one, so `{a\\,b}{0..199}` matched `a5`, not `a\5`), and
+//   under windowsPathsNoEscape a `[{]` or `[}]` class keeps its brace literal.
+//   11.0.8's other changes do not apply: its extglob count limit
+//   (assertValidExtglobs, 256 openers in a portion) guards a recursive
+//   matcher, and this one's Sim#add is a worklist with nesting bounded by
+//   MAX_NESTING_DEPTH; its linear row-merge keys and its minimatch()/filter()
+//   cache rewrite belong to surface this port does not have (no row merge,
+//   no cache).
 // - One compile shares its regexp work (CompileBudget, MAX_REGEXP_WORK): an
 //   identical portion in many rows is compiled once (#portions, as 11 shares
 //   a Matcher), identical matcher regexps are built once, and past the budget
@@ -115,12 +125,25 @@ export const braceExpand = (pattern: string, options: EngineOptions = {}): Array
 		return [pattern];
 	}
 
+	// minimatch 11.0.8: brace-expansion turns each escaped backslash `\\` into
+	// a single `\`, which then escapes the next character instead, and can turn
+	// an escaped magic character (`\\\*`) into a live one. Double every pair,
+	// so an escaped backslash comes back out still escaped. The parity of each
+	// run of backslashes is unchanged.
+	let p = pattern.replace(/\\\\/g, "\\\\\\\\");
+	// brace-expansion does not know about [...] classes. In
+	// windowsPathsNoEscape mode, escape() writes a literal brace as `[{]` or
+	// `[}]`. Escape the brace for brace-expansion, which removes that backslash
+	// again, leaving `[{]` or `[}]`.
+	if (options.windowsPathsNoEscape) {
+		p = p.replace(/\[([{}])\]/g, "[\\$1]");
+	}
 	const opts = options.braceExpandMax === undefined ? {} : { max: options.braceExpandMax };
-	return expand(pattern, opts);
+	return expand(p, opts);
 };
 
 // A numeric range with at least this many values is matched as one pattern
-// portion, rather than expanded, as minimatch 11.0.5 does. For a glob walk,
+// portion, rather than expanded, as minimatch 11.0.8 does. For a glob walk,
 // that is one directory read, in place of a stat for each value.
 const RANGE_MIN = 100;
 // a {lo..hi} range that is not escaped, and not a ${...} variable
@@ -134,7 +157,7 @@ interface MarkedExpansion {
 	readonly mark: string | undefined;
 }
 
-// minimatch 11.0.5's #expandBraces: expand braces, except numeric ranges such
+// minimatch 11.0.8's #expandBraces: expand braces, except numeric ranges such
 // as {0..999} with at least RANGE_MIN values. Each of those stays in its
 // pattern as `<mark>0..999<mark>`, for the Matcher to test. If a range might
 // be inside a [...] class, expand all of them instead.
@@ -174,10 +197,9 @@ const expandMarked = (pattern: string, options: EngineOptions): MarkedExpansion 
  * the caller keeps the pattern whole. Expansion unescapes braces (`\{a,b}`
  * makes `{a,b}`), and an alternative is not expanded again in the whole, so
  * each brace it still has is escaped. A numeric range of 100 or more values
- * stays one `{lo..hi}` portion, as minimatch 11.0.5 keeps it, and an
- * unescaped `\` just before it is dropped (11's matcher takes it with the
- * range). After a `$` or a literal (escaped) backslash, `{lo..hi}` would not
- * read as a range, so the answer is undefined.
+ * stays one `{lo..hi}` portion, as minimatch 11.0.8 keeps it. After a `$` or
+ * a literal (escaped) backslash, `{lo..hi}` would not read as a range, so the
+ * answer is undefined.
  *
  * An alternative is compiled alone, so one that is exactly `!` (a negation
  * alone), `#` (a comment) or `/` does not mean alone what it means in the
@@ -195,8 +217,10 @@ export const braceAlternatives = (pattern: string, options: EngineOptions = {}):
 			const end = c === mark ? alt.indexOf(mark, i + 1) : -1;
 			if (end !== -1) {
 				const [lo = "", hi = ""] = alt.slice(i + 1, end).split("..");
-				// the matcher takes an unescaped `\` just before a range with it
-				if (slashes(out) % 2 === 1) out = out.slice(0, -1);
+				// braceExpand keeps every run of `\` at its parity (11.0.8), and an
+				// odd run escapes the `{` (never marked), so a `\` here is a literal
+				// backslash: after it, or after a `$`, `{lo..hi}` would not read alone
+				// as a range
 				if (out.endsWith("\\") || out.endsWith("$")) return undefined;
 				out += `{${lo}..${hi}}`;
 				i = end;
@@ -214,7 +238,7 @@ export const braceAlternatives = (pattern: string, options: EngineOptions = {}):
 /**
  * How many alternatives a compile of `pattern` matches: the distinct results
  * of its brace expansion, after a leading negation is read, with a numeric
- * range of 100 or more values kept whole as one (as minimatch 11.0.5 keeps
+ * range of 100 or more values kept whole as one (as minimatch 11.0.8 keeps
  * it). Zero for a comment or an empty pattern, which expand to nothing. It is
  * the compile's own first two steps, so a count it returns is exact, and it
  * builds no portion: the work is the expansion's, bounded by its own guards,
@@ -1001,7 +1025,7 @@ export class Minimatch {
 		return partial || null;
 	}
 
-	// One path portion against one magic pattern portion: minimatch 11.0.5's
+	// One path portion against one magic pattern portion: minimatch 11.0.8's
 	// own matcher answers it, built when the pattern compiled, so nothing
 	// here builds a regexp or can throw. The portion's regexp is compile-time
 	// validation only (InvalidRegExp): 10's regexp backtracks O(n^k) on k stars
@@ -1102,7 +1126,7 @@ export class Minimatch {
 		return braceExpand(this.pattern, this.options);
 	}
 
-	// minimatch 11.0.5: braces expand, except a numeric range of 100 or more
+	// minimatch 11.0.8: braces expand, except a numeric range of 100 or more
 	// values, which stays marked in its portion for the Matcher (expandMarked).
 	#expandBraces(): Array<string> {
 		const { set, mark } = expandMarked(this.pattern, this.options);

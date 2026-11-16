@@ -380,7 +380,7 @@ describe("GlobPattern metadata", () => {
 });
 
 describe("GlobPattern.alternativeCount", () => {
-	it("counts the alternatives a compile matches, without compiling, as minimatch 11.0.5 expands them", () => {
+	it("counts the alternatives a compile matches, without compiling, as minimatch 11.0.8 expands them", () => {
 		const count = (source: string, options?: GlobPatternOptions): number =>
 			Result.getOrThrow(GlobPattern.alternativeCount(source, options));
 		assert.strictEqual(count("packages/{a,b}/{src,lib}/*.ts"), 4);

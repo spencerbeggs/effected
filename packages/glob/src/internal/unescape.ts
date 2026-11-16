@@ -2,7 +2,7 @@
 // Copyright: Isaac Z. Schlueter and Contributors
 // License: BlueOak-1.0.0 (https://blueoakcouncil.org/license/1.0.0)
 // Port notes: verbatim except the options type now comes from the extracted
-// types leaf.
+// types leaf. Takes minimatch 11.0.8's leading `@(!)` rule.
 
 import type { EngineOptions } from "./types.js";
 
@@ -30,6 +30,10 @@ const unescapePattern = (
 		magicalBraces = true,
 	}: Pick<EngineOptions, "windowsPathsNoEscape" | "magicalBraces"> = {},
 ): string => {
+	// escape() writes a leading '!' as '@(!)' in windowsPathsNoEscape mode
+	if (windowsPathsNoEscape && s.startsWith("@(!)")) {
+		return `!${unescapePattern(s.slice(4), { windowsPathsNoEscape, magicalBraces })}`;
+	}
 	if (magicalBraces) {
 		return windowsPathsNoEscape
 			? s.replace(/\[([^/\\])\]/g, "$1")

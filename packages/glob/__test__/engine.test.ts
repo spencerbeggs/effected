@@ -181,7 +181,7 @@ describe("extglob depth behavior", () => {
 describe("optimizationLevel 2 dedupe", () => {
 	const level2 = { optimizationLevel: 2 } as const;
 
-	it("keeps a row a ** row does not cover (minimatch 11.0.5)", () => {
+	it("keeps a row a ** row does not cover (minimatch 11.0.8)", () => {
 		// The pairwise compare merged {**/x,x/y} into **/x, so x/y stopped matching.
 		const m = new Minimatch("{**/x,x/y}", level2);
 		assert.isTrue(m.match("x/y"));
@@ -210,7 +210,7 @@ describe("portion rules from minimatch 11", () => {
 		}
 	};
 
-	// The same rows, also asserted against the 11.0.5 oracle.
+	// The same rows, also asserted against the 11.0.8 oracle.
 	const checkBoth = (cases: ReadonlyArray<Case>) => {
 		check(cases);
 		for (const [pattern, path, expected, options] of cases) {
@@ -461,7 +461,7 @@ describe("win32 roots from minimatch 11", () => {
 		assert.isFalse(new Minimatch("//b", { platform: "win32", nocase: true }).hasMagic());
 	});
 
-	// The answers are minimatch 11.0.5's. A `..` can not remove a drive letter or
+	// The answers are minimatch 11.0.8's. A `..` can not remove a drive letter or
 	// a UNC host and share; a UNC host and share compare without case; and the
 	// long form //?/UNC/host/share matches //host/share and back.
 	type WinRow = readonly [
@@ -514,7 +514,7 @@ describe("win32 roots from minimatch 11", () => {
 		["//?/UNC/host/share", "//host/share", true],
 	];
 
-	it("answers every row as minimatch 11.0.5 does", () => {
+	it("answers every row as minimatch 11.0.8 does", () => {
 		for (const [pattern, path, expected, options] of rows) {
 			assert.strictEqual(
 				new Minimatch(pattern, { platform: "win32", ...options }).match(path),
