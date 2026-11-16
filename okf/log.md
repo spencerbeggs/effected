@@ -17,6 +17,7 @@
 * Added The sealed box's primitives are copied from noble into @effected/github, with no third-party crypto dependency
 * Updated actions-storage
 * Updated github-actions
+* Updated The cli package owns its display-width function
 
 ## 2026-11-13
 

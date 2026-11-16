@@ -10,10 +10,10 @@ sources:
     title: string-width, the ecosystem oracle the differential test compares against
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-02T15:49:39Z
+  at: 2026-11-16T17:12:16Z
 integrity:
   generated:
-    body: bd301c39e8e8c06b
+    body: 17feb768af61283c
   verified:
     by: human:spencer
     at: 2026-11-02T17:04:46Z
@@ -88,12 +88,17 @@ this counts 2.
 
 ### Known divergences
 
-Both are documented and pinned in the differential test:
+None. `string-width` 9.0.0 closed both that 8.3.0 left: it counts a lone
+regional indicator, and a bare combining mark after an emoji or flag grapheme,
+as two columns, as this always has. The differential test pins both as
+agreements, and the code-point sweep runs with no exception.
 
-- a lone regional indicator, which the oracle counts as one column and this
-  counts as two;
-- a bare combining mark after an emoji or flag grapheme, counted 1 by the
-  oracle and 2 here.
+9.0.0 also counts a spacing prepended concatenation mark (U+0600 to U+0605,
+U+06DD, U+0890, U+0891, U+08E2, U+110BD, U+110CD) as one visible column,
+unless the grapheme after it is wide and takes the mark into its own cell.
+This now does the same. JavaScript has no
+`\p{Prepended_Concatenation_Mark}`, so the marks are a listed range, and
+U+070F SYRIAC ABBREVIATION MARK, the one zero-width member, is left out.
 
 Ambiguous-width characters count one, as in the oracle, and a tab counts zero.
 

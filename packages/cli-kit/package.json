@@ -57,7 +57,7 @@
 		"effect": "catalog:effected",
 		"ink": "catalog:effected:build",
 		"react": "catalog:effected:build",
-		"string-width": "^8.3.0",
+		"string-width": "^9.0.0",
 		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {
