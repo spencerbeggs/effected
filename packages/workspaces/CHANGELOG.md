@@ -1,5 +1,17 @@
 # @effected/workspaces
 
+## 0.48.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/glob | dependency | updated | 0.22.0 | 0.23.0 |
+| @effected/lockfiles | dependency | updated | 0.26.0 | 0.27.0 |
+| @effected/npm | dependency | updated | 0.35.0 | 0.35.1 |
+| @effected/pnpm | dependency | updated | 0.1.0 | 0.1.1 |
+| @effected/walker | dependency | updated | 0.29.0 | 0.30.0 |
+
 ## 0.48.0
 
 ### Breaking Changes

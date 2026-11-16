@@ -1,5 +1,16 @@
 # @effected/changesets
 
+## 0.6.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/glob | dependency | updated | 0.22.0 | 0.23.0 |
+| @effected/npm | dependency | updated | 0.35.0 | 0.35.1 |
+| @effected/pnpm | dependency | updated | 0.1.0 | 0.1.1 |
+| @effected/workspaces | dependency | updated | 0.48.0 | 0.48.1 |
+
 ## 0.6.0
 
 ### Breaking Changes
