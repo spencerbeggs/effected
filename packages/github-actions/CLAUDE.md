@@ -37,9 +37,9 @@ what matches what you touch:
 - OIDC and provenance adapters → `okf/interfaces/actions-attestation.md` —
   Load when: touching `OidcTokenIssuer`, `ActionsIdentityToken` or
   `ActionsProvenance`.
-- Why `@azure/storage-blob` may be imported by exactly three modules, and why
-  `@effect/platform-node` is a peer here alone →
-  `okf/decisions/azure-blob-confined-to-three-modules.md`,
+- Why the blob transport is internal and `HttpClient`-based (no Azure SDK),
+  and why `@effect/platform-node` is a peer here alone →
+  `okf/decisions/blob-transport-is-internal-httpclient.md`,
   `okf/decisions/platform-node-peer-in-one-package.md`,
   `okf/conventions/bundle-reachability-suite.md` — Load when: a reachability
   test fails or you are tempted to hoist a heavy import into `internal/`.

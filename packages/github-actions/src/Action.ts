@@ -42,9 +42,9 @@ export type ActionServices =
  * a GitHub Action is a Node process on a GitHub-provided runner.
  *
  * **The cache, artifact and blob services are deliberately NOT in here.** They
- * are the only modules that import `@azure/storage-blob`, and folding them into
- * the default runtime would put a blob-storage client in the bundle of every
- * action that merely sets an output. Their requirements are all satisfied by
+ * carry the Twirp results protocols and the blob transport, and folding them
+ * into the default runtime would put both in the bundle of every action that
+ * merely sets an output. Their requirements are all satisfied by
  * this layer, so taking one costs a caller exactly one line:
  * `Action.run(program, { layer: ActionCache.layer })`.
  *

@@ -8,10 +8,10 @@ resource: ../../packages/github
 tags: [bundle, architecture]
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-09T21:18:41Z
+  at: 2026-11-16T17:04:15Z
 integrity:
   generated:
-    body: 32856b3c5b0a3879
+    body: 297374c232527845
 ---
 
 # @effected/github
@@ -31,7 +31,7 @@ Three properties define the package:
    [the REST client interface](../interfaces/github-rest-client.md).
 2. **A light consumer cannot reach a heavy engine.** The client, the repo
    coordinate and most resource services import only octokit core and its
-   paginator; the JWT signer and the sealed-box crypto pair are each confined
+   paginator; the JWT signer and the sealed-box primitives are each confined
    to one module. See [Bundle reachability](#bundle-reachability).
 3. **Errors are sized to what consumers read**: a reason string, a status, an
    operation name and a structural `kind` — see
@@ -75,25 +75,22 @@ package named for it.
 | `@octokit/plugin-paginate-rest` | the composable paginator over a bare core instance, plus the type that statically rejects paginating a non-paginating route |
 | `@octokit/types` | the generated endpoint map; ships no JavaScript — types only |
 | `@effected/jwt` (`workspace:^`) | signs the App JWT on core `effect/jose` (the `Signature` service, required in `R` by the App layers); kept as the edge because it accepts PKCS#1 and escaped-newline PEMs, which core's `Jwk.importPkcs8` does not — see [`jwt`](jwt.md) |
-| `tweetnacl` + `blakejs` | the libsodium sealed box GitHub's secrets API requires, reachable only from `RepositorySecret` |
 | `@effected/semver` (`workspace:^`) | semver-aware tag selection; pure tier, so the edge is free |
 | `@effected/github-references` (`workspace:^`) | the compat re-export of six issue-reference names — see [`github-references`](github-references.md) |
 | `@effected/crypto` (`workspace:^`) | `HttpRedaction`, which the kept-cause scrubber (`internal/scrub.ts`) builds on: `GitHubError.fromOctokit` and `GitHubGraphQLError.fromThrowable` keep a credential-free copy of octokit's throwable — see [`crypto`](crypto.md); pure, with an `effect` peer only. It pulls core's `effect/http` modules onto the error path |
 
-**The crypto pair is not a free-hand choice, and `node:crypto` is not an
+**The sealed box has no third-party dependency, and `node:crypto` is not an
 alternative.** A sealed box is `crypto_box` under an ephemeral keypair with a
 nonce derived as `blake2b(ephemeral_pk ‖ recipient_pk, 24)`
 (`packages/github/src/internal/crypto.ts`); Node ships neither X25519
-`crypto_box` nor blake2b, so the choice was these two leaves or a full
-libsodium build. Treat a third non-octokit dependency added here as a fresh
-decision, not a free ride on this one. Whether the pair should instead live in
-[`crypto`](crypto.md) is settled: [the sealed box stays here](../decisions/sealed-box-home.md)
-until a second consumer seals or opens a box outside this package, and a move
-then lands in a new integrated package, never in `crypto`. `blakejs`'s `blake2b` must be imported
-as a default import: Node's `cjs-module-lexer` detects `blake2b` as a named
-export and not its nine siblings, so a named import works for one function
-and throws for its neighbour at runtime after a clean build
-(`packages/github/src/internal/crypto.ts:5-13`).
+`crypto_box` nor blake2b. The primitives are in-house copies of audited `@noble`
+code (`xsalsa20poly1305.ts`, `blake2b.ts`, `x25519.ts` beside `crypto.ts`), each
+with a provenance header, confined to `RepositorySecret`; `tweetnacl`,
+`blakejs` and `libsodium-wrappers` are `devDependencies` used as test oracles only, libsodium the authority. The ephemeral secret
+comes from `globalThis.crypto.getRandomValues`. See [the primitives are
+copied](../decisions/sealed-box-primitives-copied.md); a second consumer outside
+this package is its revisit trigger. Treat a third-party crypto dependency added
+here as a fresh decision.
 
 `@octokit/rest` and `@octokit/auth-app` are deliberately absent and must not
 be reintroduced. `@octokit/rest` bundles a request-log plugin this package
@@ -111,12 +108,12 @@ The tree-shakability invariant is measured:
 
 | A consumer that imports… | links | does **not** link |
 | --- | --- | --- |
-| the client, the repo coordinate, the route vocabulary, any resource service but `RepositorySecret` | octokit core and the paginator | the JWT signer, the crypto pair |
-| the App service or any of its client layers | the above plus the JWT signer | the crypto pair |
-| the Actions OIDC verifier (`ActionsOidc`) | `@effected/oidc` and `@effected/jwt`, nothing else | all octokit, the crypto pair |
+| the client, the repo coordinate, the route vocabulary, any resource service but `RepositorySecret` | octokit core and the paginator | the JWT signer, the sealed-box primitives |
+| the App service or any of its client layers | the above plus the JWT signer | the sealed-box primitives |
+| the Actions OIDC verifier (`ActionsOidc`) | `@effected/oidc` and `@effected/jwt`, nothing else | all octokit, the sealed-box primitives |
 | the installation token store seam (`InstallationTokenStore`) | nothing but `effect` | the JWT signer, all octokit |
-| the OAuth user flow (`GitHubUserAuth`) | `effect` and `@effected/crypto` (for `HttpRedaction`) | all octokit, the JWT signer, the crypto pair |
-| `RepositorySecret` | the above plus `tweetnacl` and `blakejs` | the JWT signer |
+| the OAuth user flow (`GitHubUserAuth`) | `effect` and `@effected/crypto` (for `HttpRedaction`) | all octokit, the JWT signer, the sealed-box primitives |
+| `RepositorySecret` | the above plus the in-house sealed-box primitives (no package) | the JWT signer |
 | the pure classes | nothing but `effect` (the GraphQL and REST error classes also reach `@effected/crypto`) | all octokit |
 
 Three mechanisms carry it:
@@ -147,7 +144,7 @@ App module does, that `GitHubUserAuth` reaches exactly `effect` and
 `@effected/crypto`, that `ActionsOidc` reaches `@effected/oidc` and
 `@effected/jwt` but not octokit, that `InstallationTokenStore` reaches nothing but `effect` (neither
 the signer nor the App module), and that `RepositorySecret` reaches the
-crypto pair while no other resource service does. Each "does not reach"
+sealed-box primitives while no other resource service does. Each "does not reach"
 assertion has a positive control beside it. It constrains the import graph, not the
 resolver graph: the claim is "no edge exists, so a tree-shaking bundler can
 drop it," not "it is absent from any particular consumer's bundle."
@@ -486,7 +483,7 @@ error at import time while typechecking clean
 - [`github-references`](github-references.md) — the extracted issue-reference
   grammar and the compat re-export back into this package.
 - [why `github` owns the octokit runtime](../decisions/github-owns-octokit-runtime.md)
-- [the sealed box stays in `github`](../decisions/sealed-box-home.md)
+- [the sealed-box primitives are copied into `github`](../decisions/sealed-box-primitives-copied.md)
 - [the GraphQL schema is not owned here](../limitations/github-graphql-schema-not-owned.md)
 - [branch reset closes an open pull request](../gotchas/branch-reset-closes-pull-request.md)
 - [repaired fixtures go green on an impossible state](../gotchas/repaired-fixtures-go-green-on-impossible-state.md)

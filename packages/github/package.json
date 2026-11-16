@@ -37,18 +37,19 @@
 		"@effected/semver": "workspace:^",
 		"@octokit/core": "^7.0.6",
 		"@octokit/plugin-paginate-rest": "^16.0.0",
-		"@octokit/types": "^18.0.0",
-		"blakejs": "1.2.1",
-		"tweetnacl": "1.0.3"
+		"@octokit/types": "^18.0.0"
 	},
 	"devDependencies": {
 		"@effect/platform-node": "catalog:effected",
 		"@effect/vitest": "catalog:effected",
 		"@octokit/openapi-types": "^29.0.1",
 		"@types/node": "catalog:effected:build",
+		"blakejs": "1.2.1",
 		"effect": "catalog:effected",
+		"libsodium-wrappers": "0.8.4",
 		"oxc-parser": "^0.157.0",
 		"tsx": "catalog:effected:build",
+		"tweetnacl": "1.0.3",
 		"typescript": "catalog:effected:build"
 	},
 	"peerDependencies": {

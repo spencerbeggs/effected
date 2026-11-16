@@ -286,14 +286,14 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/github": {
-					range: "^0.32.1",
-					peer: "^0.32.0",
+					range: "^0.33.0",
+					peer: "^0.33.0",
 					strategy: "lock-minor",
 					source: "workspace",
 				},
 				"@effected/github-actions": {
-					range: "^0.34.0",
-					peer: "^0.34.0",
+					range: "^0.35.0",
+					peer: "^0.35.0",
 					strategy: "lock-minor",
 					source: "workspace",
 				},

@@ -1,5 +1,23 @@
 # Log
 
+## 2026-11-16
+
+* Updated @effected/crypto
+* Updated @effected/github
+* Updated @effected/github owns the octokit runtime
+* Updated @effected/workspaces discovery and detection
+* Updated @effected/workspaces snapshots
+* Updated A lockfile is a YAML stream, not always one document
+* Updated Azure is confined to three modules, not two
+* Updated Peer-dependency discipline
+* Updated Pin heavy-dependency confinement with a reachability suite that has a positive control
+* Added The blob transport is internal and HttpClient-based
+* Updated The github-split (program name)
+* Updated The libsodium sealed box stays in @effected/github until a second consumer appears
+* Added The sealed box's primitives are copied from noble into @effected/github, with no third-party crypto dependency
+* Updated actions-storage
+* Updated github-actions
+
 ## 2026-11-13
 
 * Updated A lockfile is a YAML stream, not always one document

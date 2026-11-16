@@ -1,26 +1,18 @@
-import blakejs from "blakejs";
 import { Result } from "effect";
 import * as Base64 from "effect/encoding/Base64";
-import type * as EncodingError from "effect/encoding/EncodingError";
-import nacl from "tweetnacl";
-
-// `blakejs` is CommonJS, and Node's cjs-module-lexer detects only PART of its
-// export surface: `blake2b` resolves as a named import, and the other nine —
-// `blake2bHex` included — do not, throwing "does not provide an export named"
-// at runtime after a clean build.
-//
-// That asymmetry is worse than no named exports at all, because the first
-// function you reach for works and the second does not. The default import is
-// interop-safe for all ten, so it is what this uses regardless of which one is
-// wanted. `crypto.test.ts` pins the detected set, so adding a call to one of the
-// undetected functions fails there with an explanation instead of at runtime.
-const { blake2b } = blakejs;
+import * as EncodingError from "effect/encoding/EncodingError";
+import { blake2b } from "./blake2b.js";
+import { x25519, x25519PublicKey } from "./x25519.js";
+import { hsalsaKey, secretbox } from "./xsalsa20poly1305.js";
 
 /** A sealed box opens with the recipient's key; the nonce is derived, not sent. */
 const NONCE_BYTES = 24;
 const PUBLIC_KEY_BYTES = 32;
 
 const utf8 = new TextEncoder();
+
+const invalidKey = (publicKey: string, message: string): EncodingError.EncodingError =>
+	new EncodingError.EncodingError({ kind: "Decode", module: "SealedBox", input: publicKey, message });
 
 /**
  * Encrypt a secret with libsodium's sealed-box algorithm, the format GitHub's
@@ -42,16 +34,17 @@ const utf8 = new TextEncoder();
  * corrupt secret rather than as an error here.
  *
  * ## Nothing here is Node-specific
- *
- * Base64 goes through core's `Base64` and text through `TextEncoder`, so this
- * module imports **no builtin**. That is deliberate: an earlier draft used
- * `node:buffer` and was the only thing in this package's reachable graph tying
- * it to a runtime — neither `blakejs` (pure JS; its `util` is a *relative*
- * file) nor `tweetnacl` (which feature-detects `getRandomValues` and falls back
- * to Node's `crypto` only when there is no WebCrypto) locks it.
- *
- * A malformed `publicKey` fails as a typed `Result` rather than throwing:
- * garbage from the API is input, and input failures are typed.
+
+Base64 goes through core's `Base64`, text through `TextEncoder`, and the
+ephemeral secret key through `globalThis.crypto.getRandomValues`, so this
+module's graph imports **no builtin** and runs on workerd. The primitives
+(X25519, HSalsa20, XSalsa20-Poly1305 and BLAKE2b) are in-house copies of audited
+`@noble` code, each carrying its provenance header; they are one-shot functions
+with no dependency of their own.
+
+A malformed `publicKey` (not base64, not 32 bytes, or a low-order point) fails as
+ * a typed `Result` rather than throwing: garbage from the API is input, and
+ * input failures are typed.
  *
  * @param publicKey - The repository, environment or organization public key,
  * base64, as returned by GitHub's `.../secrets/public-key` endpoints.
@@ -64,19 +57,35 @@ export const encryptSecret = (
 	publicKey: string,
 	secretValue: string,
 ): Result.Result<string, EncodingError.EncodingError> =>
-	Result.map(Base64.decode(publicKey), (publicKeyBytes) => {
-		const ephemeralKeyPair = nacl.box.keyPair();
+	Result.flatMap(Base64.decode(publicKey), (publicKeyBytes) => {
+		if (publicKeyBytes.length !== PUBLIC_KEY_BYTES) {
+			return Result.fail(
+				invalidKey(publicKey, `a sealed-box public key is ${PUBLIC_KEY_BYTES} bytes, got ${publicKeyBytes.length}`),
+			);
+		}
+		const ephemeralSecretKey = globalThis.crypto.getRandomValues(new Uint8Array(PUBLIC_KEY_BYTES));
+		try {
+			const ephemeralPublicKey = x25519PublicKey(ephemeralSecretKey);
 
-		const nonceInput = new Uint8Array(PUBLIC_KEY_BYTES * 2);
-		nonceInput.set(ephemeralKeyPair.publicKey);
-		nonceInput.set(publicKeyBytes, PUBLIC_KEY_BYTES);
-		const nonce = blake2b(nonceInput, undefined, NONCE_BYTES);
+			const nonceInput = new Uint8Array(PUBLIC_KEY_BYTES * 2);
+			nonceInput.set(ephemeralPublicKey);
+			nonceInput.set(publicKeyBytes, PUBLIC_KEY_BYTES);
+			const nonce = blake2b(nonceInput, NONCE_BYTES);
 
-		const ciphertext = nacl.box(utf8.encode(secretValue), nonce, publicKeyBytes, ephemeralKeyPair.secretKey);
+			// crypto_box: the X25519 shared secret, hashed through HSalsa20, keys the secretbox.
+			const sharedKey = hsalsaKey(x25519(ephemeralSecretKey, publicKeyBytes));
+			const ciphertext = secretbox(utf8.encode(secretValue), nonce, sharedKey);
 
-		const sealed = new Uint8Array(ephemeralKeyPair.publicKey.length + ciphertext.length);
-		sealed.set(ephemeralKeyPair.publicKey);
-		sealed.set(ciphertext, ephemeralKeyPair.publicKey.length);
+			const sealed = new Uint8Array(ephemeralPublicKey.length + ciphertext.length);
+			sealed.set(ephemeralPublicKey);
+			sealed.set(ciphertext, ephemeralPublicKey.length);
 
-		return Base64.encode(sealed);
+			return Result.succeed(Base64.encode(sealed));
+		} catch {
+			// The only throw reachable with well-sized inputs is x25519 refusing a
+			// low-order recipient point, which no honest key is.
+			return Result.fail(invalidKey(publicKey, "the public key is a low-order curve point"));
+		} finally {
+			ephemeralSecretKey.fill(0);
+		}
 	});

@@ -9,10 +9,10 @@ tags:
   - testing
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-13T05:33:04Z
+  at: 2026-11-16T17:04:15Z
 integrity:
   generated:
-    body: 70812bcecfba9d7e
+    body: ebb1de7f559b7711
 ---
 
 # Pin heavy-dependency confinement with a reachability suite that has a positive control
@@ -26,9 +26,9 @@ heavy dependency, **and** that the permitted modules do import it. A test
 that only asserts the first half can pass for the wrong reason — a walker
 bug that under-reports imports produces a suite that is always green,
 which is a confinement test that can never fail. This pattern is used by
-[`github-actions`](../modules/github-actions.md) (Azure, `markdown`,
-`npm` — see
-[Azure is confined to three modules](../decisions/azure-blob-confined-to-three-modules.md)),
+[`github-actions`](../modules/github-actions.md) (the blob transport,
+`markdown`, `npm` — see
+[the blob transport decision](../decisions/blob-transport-is-internal-httpclient.md)),
 `github`, [`sbom`](../modules/sbom.md) (`@sigstore/*`) and `schema-org`.
 
 Get the comment-stripping order right before trusting the walker at all.

@@ -58,7 +58,7 @@ Three uses in this kit, each with the confinement it buys:
 | --- | --- | --- |
 | `GitHubApp.clientLayer` | `@effected/github`'s `GitHubApp.ts` | the JWT signer. A third static on `GitHubClient` would make every token-only consumer link it. |
 | `Workspaces.localExecLayer` | `@effected/workspaces` | builds `@effected/commands`' `LocalExec` service, so `commands` keeps zero `@effected/*` edges. |
-| `GitHubCacheBlobStore.layer` | `@effected/github-actions`'s `BlobStore.githubCache.ts` | `@azure/storage-blob`. `BlobStore.layerGitHubCache` would make it reachable from every module that reads a blob. |
+| `GitHubCacheBlobStore.layer` | `@effected/github-actions`'s `BlobStore.githubCache.ts` | The Twirp cache protocol and blob transport. `BlobStore.layerGitHubCache` would make them reachable from every module that reads a blob. |
 
 The naming follows the same logic: the static is named for the **variant** it
 builds (`clientLayer`, `localExecLayer`), because it is no longer *the* layer of
