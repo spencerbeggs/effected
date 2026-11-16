@@ -47,7 +47,7 @@
 		"@octokit/openapi-types": "^29.0.1",
 		"@types/node": "catalog:effected:build",
 		"effect": "catalog:effected",
-		"oxc-parser": "^0.157.0",
+		"oxc-parser": "^0.158.0",
 		"tsx": "catalog:effected:build",
 		"typescript": "catalog:effected:build"
 	},
