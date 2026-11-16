@@ -60,21 +60,18 @@ leaves only through `HttpClientRequest.bearerToken`, which accepts a
 package outside `Secret.ts` — see `actions-state-and-secrets` for the
 declassification seam in full.
 
-## Azure is confined to exactly three modules
+## The blob transport is confined to exactly three modules
 
-`@azure/storage-blob` is the only heavy dependency here, and the
-confinement is structural, not a style preference: a consumer that
-imports only a light service like `ActionOutputs` must be unable to link
-Azure into its bundle. **Three** modules may import it — the ones backing
-`ActionCache`, `Artifact` and `GitHubCacheBlobStore` — not the two a
-casual read of the cache/blob split suggests, because the Actions-cache
-Twirp protocol itself hands back an Azure blob URL for the payload.
-
-**No shared helper may import it.** An internal helper is exactly how a
-heavy import leaks into a light module's graph, so each of the three
-modules carries its **own** small Azure adapter instead of sharing one —
-the duplication *is* the invariant; every shared internal module the three
-have in common reaches only `effect` and its HTTP layer, never Azure.
+The package ships no Azure SDK: bytes move against the signed url through
+`internal/blobTransport.ts`, plain `HttpClient` and `FileSystem` calls (a
+single `PUT`, or blocks plus a block list above the single-shot threshold,
+and a streamed `GET`). The confinement is structural, not a style
+preference: a consumer that imports only a light service like
+`ActionOutputs` must be unable to link the transport. **Three** modules
+reach it — the ones backing `ActionCache`, `Artifact` and
+`GitHubCacheBlobStore` — not the two a casual read of the cache/blob split
+suggests, because the Actions-cache Twirp protocol itself hands back a
+blob URL for the payload. No module reaches any `@azure/*` package.
 
 The three are **separate named re-exports**, never gathered into a
 namespace object — bundling them under one exported object would make
@@ -83,16 +80,16 @@ zero-dependency codec packages elsewhere in the kit guard against.
 
 A reachability test measures this rather than asserting it:
 
-- a **control** proves the three permitted modules *do* reach Azure —
+- a **control** proves the three transfer modules *do* reach the transport —
   without it, every other assertion could pass because the walker itself
   is blind, not because the edge is absent;
 - exact edge-set assertions for the light modules — a plain output service
   reaches only `effect`; the pure cache-key module reaches only a glob
   package, `effect`, and `node:crypto`; the entry-point module reaches the
-  platform-node package, `effect`, and the HTTP layer — never Azure;
+  platform-node package, `effect`, and the HTTP layer — never the transport;
 - its own discriminating test for the comment stripper, because the
   stripper must run **line comments before block comments** — prose
-  containing an Azure-package-shaped token in a comment opens what looks
+  containing a scoped-package-shaped token (like `@azure/*`) in a comment opens what looks
   like a block comment to the regex, and stripping blocks first eats the
   real imports that follow, silently, in the safe direction for a
   `notInclude` check and the dangerous one for the reachability walk.
@@ -152,7 +149,7 @@ between, never the transport.
 ## The transport seam
 
 `ActionCache`, `Artifact` and `GitHubCacheBlobStore` each take their
-transport as an argument rather than hard-wiring the Azure client:
+transport as an argument rather than hard-wiring the HTTP transport:
 
 ```ts
 export interface FileBlobTransfer {
@@ -172,8 +169,8 @@ blob store never touches a filesystem path). Split rather than merged,
 because a single four-member interface would force every implementation to
 stub two members it can never be asked for.
 
-Each of the three services ships both a bound `layer` (the real Azure
-client) and a `layerWith(transfer)` beside it. What this package owns and
+Each of the three services ships both a bound `layer` (the real
+`HttpClient` transport) and a `layerWith(transfer)` beside it. What this package owns and
 tests is the **protocol** — the RPC sequence, conflict handling, version
 derivation, retry policy, framing; the pre-signed `PUT` itself is not.
 Supplying the transport is what lets a test exercise the protocol (real

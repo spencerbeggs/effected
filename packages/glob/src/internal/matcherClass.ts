@@ -2,7 +2,7 @@
 // Copyright: Isaac Z. Schlueter and Contributors
 // License: BlueOak-1.0.0 (https://blueoakcouncil.org/license/1.0.0)
 // Port notes: src/parse-class.ts, the class parser of the matcher minimatch
-// 11.0.5 runs. Changes from upstream:
+// 11.0.8 runs. Changes from upstream:
 // 1. No `form` (Unicode normalization) parameter: the kit has no `normalize`
 //    option.
 // 2. A memo the caller passes, one per glob, makes a run of unclosed `[`

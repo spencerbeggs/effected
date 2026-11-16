@@ -240,108 +240,85 @@ describe("ToolInstaller.download keeps no url credential on a failure", () => {
 	}
 });
 
-describe("the Azure blob transfer keeps no SAS signature or cookie on a failure", () => {
+describe("the blob transfer keeps no SAS signature or cookie on a failure", () => {
 	const SIG = "SECRET_sas_sig_9b9b";
 	const SKOID = "SECRET_sas_skoid_5c5c";
 	const COOKIE = "SECRET_blob_cookie_3a3a";
+	const BLOB_URL = `https://blob.example/account/cache/blob?sv=2023-01-03&sr=b&se=2030-01-01T00%3A00%3A00Z&sp=rw&skoid=${SKOID}&sig=${SIG}`;
 
 	/** A blob endpoint that refuses every request the way Azure does, with a cookie. */
-	const refusingBlobServer = Effect.acquireRelease(
-		Effect.promise(
-			() =>
-				new Promise<Server>((resolve) => {
-					const server = createServer((_request, response) => {
-						response.writeHead(403, {
-							"content-type": "application/xml",
-							"set-cookie": `session=${COOKIE}`,
-							"x-ms-request-id": "request-1",
-						});
-						response.end(
-							'<?xml version="1.0" encoding="utf-8"?><Error><Code>AuthenticationFailed</Code><Message>Server failed to authenticate the request.</Message></Error>',
-						);
-					});
-					server.listen(0, "127.0.0.1", () => resolve(server));
-				}),
-		),
-		(server) => Effect.promise(() => new Promise<void>((resolve) => server.close(() => resolve()))),
-	);
+	const refuseBlob =
+		(blobRequests: Array<string>): typeof globalThis.fetch =>
+		async (input) => {
+			blobRequests.push(String(input));
+			return new Response(
+				'<?xml version="1.0" encoding="utf-8"?><Error><Code>AuthenticationFailed</Code><Message>Server failed to authenticate the request.</Message></Error>',
+				{
+					status: 403,
+					headers: {
+						"content-type": "application/xml",
+						"set-cookie": `session=${COOKIE}`,
+						"x-ms-request-id": "request-1",
+					},
+				},
+			);
+		};
 
-	const sasUrl = (server: Server): string =>
-		`http://127.0.0.1:${(server.address() as AddressInfo).port}/account/cache/blob?sv=2023-01-03&sr=b&se=2030-01-01T00%3A00%3A00Z&sp=rw&skoid=${SKOID}&sig=${SIG}`;
-
-	/** The scrubbed `RestError` a kept `BlobTransferError` holds. */
-	const restCauseOf = (error: unknown): Record<string, unknown> => {
+	/** The `BlobRequestError` a kept `BlobTransferError` holds. */
+	const requestCauseOf = (error: unknown): Record<string, unknown> => {
 		let current: unknown = error;
 		for (let depth = 0; depth < 6; depth++) {
-			if ((current as { name?: unknown } | undefined)?.name === "RestError") return current as Record<string, unknown>;
+			if ((current as { name?: unknown } | undefined)?.name === "BlobRequestError")
+				return current as Record<string, unknown>;
 			current = (current as { cause?: unknown } | undefined)?.cause;
 		}
-		return assert.fail("expected a RestError somewhere in the cause chain");
+		return assert.fail("expected a BlobRequestError somewhere in the cause chain");
 	};
-
-	it.live("positive control: the raw RestError holds the signature and the cookie", () =>
-		Effect.scoped(
-			Effect.gen(function* () {
-				const server = yield* refusingBlobServer;
-				const { BlobClient } = yield* Effect.promise(() => import("@azure/storage-blob"));
-				const raw = yield* Effect.promise(() =>
-					new BlobClient(sasUrl(server)).downloadToBuffer().then(
-						() => undefined,
-						(error: unknown) => error,
-					),
-				);
-				const strings = reachableStrings(raw);
-				assert.isTrue(
-					strings.some((s) => s.includes(SIG)),
-					"the raw request.url keeps sig",
-				);
-				assert.isTrue(
-					strings.some((s) => s.includes(COOKIE)),
-					"the raw details keep set-cookie",
-				);
-			}),
-		),
-	);
 
 	class Meta extends Schema.Class<Meta>("Meta")({ tag: Schema.String }) {}
 
 	for (const direction of ["put", "get"] as const) {
 		it.live(`a ${direction}: the cause keeps the status, request id and redacted url, and no credential`, () =>
-			Effect.scoped(
-				Effect.gen(function* () {
-					const server = yield* refusingBlobServer;
-					const url = sasUrl(server);
-					const { fetch } = twirpFetch({
-						CreateCacheEntry: () => json({ ok: true, signedUploadUrl: url }),
-						FinalizeCacheEntryUpload: () => json({ ok: true }),
-						GetCacheEntryDownloadURL: () => json({ ok: true, signedDownloadUrl: url }),
-					});
-					const layer = GitHubCacheBlobStore.layer.pipe(Layer.provide(Layer.mergeAll(resultsEnv(), fetchLayer(fetch))));
-					const exit = yield* Effect.exit(
-						Effect.flatMap(BlobStore, (blobs) =>
-							direction === "put"
-								? blobs.put("k", { metadata: Meta.make({ tag: "t" }), body: new Uint8Array([1]) }, Meta)
-								: blobs.get("k", Meta),
-						).pipe(Effect.provide(layer)),
-					);
-					const error = failureOf(exit);
-					assert.instanceOf((error as { cause?: unknown }).cause, BlobTransferError);
-					const cause = restCauseOf(error);
-					assert.instanceOf(cause, Error, "the copy is still an Error");
-					assert.strictEqual(cause.statusCode, 403);
-					if (direction === "put") assert.strictEqual(cause.code, "AuthenticationFailed");
-					const request = cause.request as { readonly url?: string; readonly method?: string };
-					const redacted = request.url ?? "";
-					assert.include(redacted, "127.0.0.1");
-					assert.include(redacted, "sv=2023-01-03");
-					for (const name of ["sig", "skoid", "se", "sp"]) assert.include(redacted, `${name}=REDACTED`);
-					assert.strictEqual(request.method, direction === "put" ? "PUT" : "HEAD");
-					const details = cause.details as Record<string, unknown>;
-					assert.strictEqual(details["x-ms-request-id"], "request-1");
-					assert.isFalse("set-cookie" in details);
-					assertNoSecret(error, [SIG, SKOID, COOKIE]);
-				}),
-			),
+			Effect.gen(function* () {
+				const blobRequests: Array<string> = [];
+				const { fetch: route } = twirpFetch({
+					CreateCacheEntry: () => json({ ok: true, signedUploadUrl: BLOB_URL }),
+					FinalizeCacheEntryUpload: () => json({ ok: true }),
+					GetCacheEntryDownloadURL: () => json({ ok: true, signedDownloadUrl: BLOB_URL }),
+				});
+				const fetch = refuseBlob(blobRequests);
+				const layer = GitHubCacheBlobStore.layer.pipe(
+					Layer.provide(
+						Layer.mergeAll(
+							resultsEnv(),
+							fetchLayer((input, init) =>
+								String(input).startsWith("https://blob.example/") ? fetch(input, init) : route(input, init),
+							),
+						),
+					),
+				);
+				const exit = yield* Effect.exit(
+					Effect.flatMap(BlobStore, (blobs) =>
+						direction === "put"
+							? blobs.put("k", { metadata: Meta.make({ tag: "t" }), body: new Uint8Array([1]) }, Meta)
+							: blobs.get("k", Meta),
+					).pipe(Effect.provide(layer)),
+				);
+				const error = failureOf(exit);
+				assert.instanceOf((error as { cause?: unknown }).cause, BlobTransferError);
+				assert.strictEqual(blobRequests.length, 1, "a 403 is not retried");
+				const cause = requestCauseOf(error);
+				assert.instanceOf(cause, Error, "the cause is still an Error");
+				assert.strictEqual(cause.statusCode, 403);
+				assert.strictEqual(cause.code, "AuthenticationFailed");
+				assert.strictEqual(cause.requestId, "request-1");
+				assert.strictEqual(cause.method, direction === "put" ? "PUT" : "GET");
+				const redacted = String(cause.url);
+				assert.include(redacted, "blob.example");
+				assert.include(redacted, "sv=2023-01-03");
+				for (const name of ["sig", "skoid", "se", "sp"]) assert.include(redacted, `${name}=REDACTED`);
+				assertNoSecret(error, [SIG, SKOID, COOKIE]);
+			}),
 		);
 	}
 });

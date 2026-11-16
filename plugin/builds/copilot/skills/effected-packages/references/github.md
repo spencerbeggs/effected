@@ -8,9 +8,9 @@ twenty-odd resource services on top — branches, tags, commits, contents,
 issues, pull requests, comments, checks, releases, workflow dispatch,
 attestations, and the configuration-write six (secrets, variables, rulesets,
 deployment environments, security toggles, code scanning). It also owns GitHub
-App authentication and the libsodium sealed-box crypto pair GitHub's secrets
-API demands. **Integrated tier** — it holds `@octokit/core`,
-`@octokit/plugin-paginate-rest`, `tweetnacl` and `blakejs` so nothing
+App authentication and the libsodium sealed box GitHub's secrets
+API demands (in-house copies of audited `@noble` code, no third-party crypto dependency). **Integrated tier** — it holds `@octokit/core`,
+`@octokit/plugin-paginate-rest` so nothing
 downstream has to, and signs the App JWT with `@effected/jwt` over core
 `effect/jose` (so App auth runs on Workers too, and its layers require core's
 `Signature` service); `@octokit/rest` and `@octokit/auth-app`
@@ -407,15 +407,12 @@ serializing it.
   reachability suite asserts `GitHubClient` does not reach
   `@effected/jwt` while `GitHubApp` does; statics on one class share
   a module, which is why `clientLayer` lives where it does. The same suite pins
-  the crypto pair to `RepositorySecret` alone, and asserts every module in
+  the sealed-box primitives to `RepositorySecret` alone, and asserts every module in
   `src/` is re-exported from `src/index.ts`.
 - **Layer statics wrap the factory in an arrow** — `Layer.effect(this,
   Effect.map(GitHubClient, (client) => make(client)))`. Passing `make` directly
   throws `Cannot access 'make' before initialization` at import time while
   typechecking clean.
-- **Import `blakejs` as a default import.** Node's `cjs-module-lexer` detects
-  `blake2b` and not its nine siblings, so a named import works for one function
-  and throws at runtime for its neighbour after a clean build.
 - **There is no repository-settings service.** The endpoint belongs to
   `GitHubRepository`; a ported settings module was folded in the same day. Its
   name had collided with the `RepositorySettings` type alias and nothing said

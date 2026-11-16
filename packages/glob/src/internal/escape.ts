@@ -2,7 +2,7 @@
 // Copyright: Isaac Z. Schlueter and Contributors
 // License: BlueOak-1.0.0 (https://blueoakcouncil.org/license/1.0.0)
 // Port notes: verbatim except the options type now comes from the extracted
-// types leaf.
+// types leaf. Takes minimatch 11.0.8's leading `#` and `!` rule.
 
 import type { EngineOptions } from "./types.js";
 
@@ -17,6 +17,10 @@ import type { EngineOptions } from "./types.js";
  *
  * If the `magicalBraces` option is used, then braces (`{` and `}`) will be
  * escaped.
+ *
+ * A leading `#` or `!` is escaped as well, so that the result is never a
+ * comment or a negated pattern. In `windowsPathsNoEscape` mode, a leading
+ * `!` is written as `@(!)`, because `[!` starts a negated class.
  */
 const escapePattern = (
 	s: string,
@@ -28,10 +32,27 @@ const escapePattern = (
 	// don't need to escape +@! because we escape the parens
 	// that make those magic, and escaping ! as [!] isn't valid,
 	// because [!]] is a valid glob class meaning not ']'.
-	if (magicalBraces) {
-		return windowsPathsNoEscape ? s.replace(/[?*()[\]{}]/g, "[$&]") : s.replace(/[?*()[\]\\{}]/g, "\\$&");
+	// However, at the start of the pattern, '!' negates the pattern and
+	// '#' makes it a comment, so the first character is handled below.
+	const e = magicalBraces
+		? windowsPathsNoEscape
+			? s.replace(/[?*()[\]{}]/g, "[$&]")
+			: s.replace(/[?*()[\]\\{}]/g, "\\$&")
+		: windowsPathsNoEscape
+			? s.replace(/[?*()[\]]/g, "[$&]")
+			: s.replace(/[?*()[\]\\]/g, "\\$&");
+	const c = e.charAt(0);
+	if (c === "#") {
+		return (windowsPathsNoEscape ? "[#]" : "\\#") + e.slice(1);
 	}
-	return windowsPathsNoEscape ? s.replace(/[?*()[\]]/g, "[$&]") : s.replace(/[?*()[\]\\]/g, "\\$&");
+	if (c === "!") {
+		// '[!]' can not be used, because '[!' starts a negated class, and
+		// '\' is a path separator in windowsPathsNoEscape mode. '@(!)'
+		// matches only '!'. If extglobs are disabled with `noext`, it
+		// matches nothing, rather than everything.
+		return (windowsPathsNoEscape ? "@(!)" : "\\!") + e.slice(1);
+	}
+	return e;
 };
 
 // Exported under the upstream name; the internal binding avoids shadowing the

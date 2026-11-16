@@ -94,7 +94,7 @@ against `nativeIntegrity`; convert a lockfile SRI with
 `install`'s `pin` argument is `@effected/npm`'s package-manager-pin type —
 a plain `Schema.Class`, not a service, so it costs nothing in `R`. The
 dependency this module takes on that package is confined to importing that
-one type, on the same confinement terms as the Azure adapters — not
+one type, on the same confinement terms as the blob transport — not
 reachable from `ActionRuntime.layer` or any light module — so taking
 `PackageManagerInstaller` costs a consumer one explicit layer line, same
 as `ActionCache`.

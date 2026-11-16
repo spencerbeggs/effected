@@ -82,7 +82,12 @@ const reachableBareImports = (entry: string): ReadonlySet<string> => {
 };
 
 const SIGNER = "@effected/jwt";
-const SEALED_BOX = ["tweetnacl", "blakejs"] as const;
+// The in-house sealed-box primitives (copied `@noble` code) and the module that composes them.
+const SEALED_BOX = ["crypto", "blake2b", "x25519", "xsalsa20poly1305"].map((name) => join("internal", `${name}.ts`));
+const reachesSealedBox = (entry: string): ReadonlyArray<string> => {
+	const files = [...walk(entry)].map((file) => file.slice(SRC.length + 1));
+	return SEALED_BOX.filter((module) => files.includes(module));
+};
 
 describe("bundle reachability", () => {
 	it("the walker does not lose imports after a /*-bearing token in prose", () => {
@@ -111,21 +116,18 @@ describe("bundle reachability", () => {
 		assert.isTrue(reachableBareImports("GitHubApp.ts").has(SIGNER));
 	});
 
-	it("the secret writer DOES reach the sealed-box pair", () => {
+	it("the secret writer DOES reach the sealed-box primitives", () => {
 		// The control for the confinement below: without it that assertion could
 		// pass because the walker is broken rather than because the edge is absent.
-		const reachable = reachableBareImports("RepositorySecret.ts");
-		for (const dep of SEALED_BOX) assert.isTrue(reachable.has(dep), `RepositorySecret should reach ${dep}`);
+		assert.deepStrictEqual(reachesSealedBox("RepositorySecret.ts"), SEALED_BOX);
 	});
 
-	it("nothing but the secret writer reaches the sealed-box pair", () => {
-		// `tweetnacl` and `blakejs` are this package's only non-octokit runtime
-		// dependencies and they exist for one member: encrypting a secret before
-		// PUT. Every other resource service must stay clear of them, or a consumer
-		// who never writes a secret still pays for the crypto in their graph.
+	it("nothing but the secret writer reaches the sealed-box primitives", () => {
+		// The X25519, HSalsa20/XSalsa20-Poly1305 and BLAKE2b copies exist for one
+		// member: encrypting a secret before PUT. Every other resource service must
+		// stay clear of them, or a consumer who never writes a secret still pays for
+		// the crypto in their graph.
 		//
-		// This was documented as a property and asserted nowhere until now, which
-		// is the shape of claim this suite exists to stop.
 		// Derived from the directory rather than hardcoded: a NEW module that
 		// imports the crypto would otherwise pass this test until someone
 		// remembered to add it to a list, which is the failure mode a
@@ -134,13 +136,37 @@ describe("bundle reachability", () => {
 			.filter((name) => name.endsWith(".ts") && name !== "index.ts" && name !== "RepositorySecret.ts")
 			.sort();
 		for (const entry of others) {
-			const reachable = reachableBareImports(entry);
-			for (const dep of SEALED_BOX) {
-				assert.isFalse(
-					reachable.has(dep),
-					`${entry} reaches ${dep} — the sealed box has leaked out of RepositorySecret`,
-				);
-			}
+			assert.deepStrictEqual(
+				reachesSealedBox(entry),
+				[],
+				`${entry} reaches the sealed box — it has leaked out of RepositorySecret`,
+			);
+		}
+	});
+
+	it("the sealed box reaches no third-party package and no builtin", () => {
+		// The primitives are in-house copies; `tweetnacl` and `blakejs` are test
+		// oracles. A runtime import of either, or of any `node:` module, would
+		// undo the point of copying and tie the module to a runtime.
+		const sealedBoxFiles = SEALED_BOX.map((module) => resolve(SRC, module));
+		for (const file of sealedBoxFiles) {
+			const bare = runtimeSpecifiers(readFileSync(file, "utf8")).filter((specifier) => !specifier.startsWith("."));
+			assert.isFalse(
+				bare.some((specifier) => /^(tweetnacl|blakejs)$/.test(specifier) || specifier.startsWith("node:")),
+				`${file} imports ${bare.join(", ")}`,
+			);
+		}
+		assert.deepStrictEqual(
+			[...reachableBareImports("RepositorySecret.ts")].filter((specifier) => /tweetnacl|blakejs/.test(specifier)),
+			[],
+		);
+		const manifest = JSON.parse(readFileSync(resolve(SRC, "..", "package.json"), "utf8")) as {
+			dependencies?: Record<string, string>;
+			devDependencies?: Record<string, string>;
+		};
+		for (const oracle of ["tweetnacl", "blakejs"]) {
+			assert.isUndefined(manifest.dependencies?.[oracle], `${oracle} must not be a runtime dependency`);
+			assert.isDefined(manifest.devDependencies?.[oracle], `${oracle} is the test oracle`);
 		}
 	});
 

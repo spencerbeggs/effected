@@ -1,15 +1,13 @@
-import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
 import { Context, DateTime, Duration, Effect, FileSystem, Layer, Option, Path, Result, Schema } from "effect";
 import { HttpClient } from "effect/http";
 import type { ChildProcess } from "effect/process";
 import { ChildProcessSpawner } from "effect/process";
 import { ActionEnvironment } from "./ActionEnvironment.js";
-import type { FileBlobTransfer } from "./BlobTransfer.js";
-import { BlobTransferError } from "./BlobTransfer.js";
+import type { BlobTransferError, FileBlobTransfer } from "./BlobTransfer.js";
 import type { BackendIds } from "./internal/actionsResults.js";
 import { misconfiguredDetail, resultsBackend } from "./internal/actionsResults.js";
 import { unzipCommand, zipCommand, zipManifest } from "./internal/archiveCommands.js";
-import { blobCause } from "./internal/blobCause.js";
+import { httpFileTransfer } from "./internal/blobTransport.js";
 import { digestFileHex } from "./internal/digest.js";
 import { isWindowsRunner } from "./internal/runner.js";
 import { spawnOnce } from "./internal/spawn.js";
@@ -205,34 +203,6 @@ const SERVICE = "github.actions.results.api.v1.ArtifactService";
  */
 const ARTIFACT_VERSION = 7;
 
-/**
- * The Azure half, duplicated on purpose.
- *
- * @remarks
- * `@azure/storage-blob` may be imported here, by `ActionCache` and by
- * `BlobStore.githubCache`, and nowhere else. Hoisting these two calls into a
- * shared `internal/` helper is exactly how a heavy import leaks into the graph
- * of a module that only sets an output; `__test__/reachability.test.ts`
- * measures that these are the only three.
- */
-const azure: FileBlobTransfer = {
-	uploadFile: (url, file) =>
-		Effect.tryPromise({
-			try: () =>
-				new BlockBlobClient(url).uploadFile(file, {
-					blockSize: 64 * 1024 * 1024,
-					concurrency: 8,
-					maxSingleShotSize: 128 * 1024 * 1024,
-				}),
-			catch: (cause) => new BlobTransferError({ reason: "uploadFailed", cause: blobCause(cause) }),
-		}).pipe(Effect.asVoid),
-	downloadToFile: (url, file) =>
-		Effect.tryPromise({
-			try: () => new BlobClient(url).downloadToFile(file),
-			catch: (cause) => new BlobTransferError({ reason: "downloadFailed", cause: blobCause(cause) }),
-		}).pipe(Effect.asVoid),
-};
-
 /** One row of a `ListArtifacts` answer, read under either field spelling. */
 const toItem = (row: unknown): ArtifactItem => {
 	const createdAt = stringField(row, "createdAt");
@@ -245,7 +215,7 @@ const toItem = (row: unknown): ArtifactItem => {
 };
 
 const make = (
-	transfer: FileBlobTransfer,
+	custom?: FileBlobTransfer,
 ): Effect.Effect<
 	ArtifactShape,
 	never,
@@ -258,6 +228,8 @@ const make = (
 	Effect.gen(function* () {
 		const http = yield* HttpClient.HttpClient;
 		const fs = yield* FileSystem.FileSystem;
+		// The signed-url transport, unless a test supplied its own.
+		const transfer = custom ?? httpFileTransfer(http, fs);
 		const path = yield* Path.Path;
 		const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 		// Resolved once, at construction, so every member's `R` is `never`.
@@ -593,7 +565,15 @@ const dies = unstubbed("Artifact.makeTest");
  * @public
  */
 export class Artifact extends Context.Service<Artifact, ArtifactShape>()("@effected/github-actions/Artifact") {
-	/** The service, over the real Azure client and the real `zip`. */
+	/**
+	 * The service, over the `HttpClient` blob transport and the real `zip`.
+	 *
+	 * @remarks
+	 * Requires `HttpClient` in `R`: the signed-url upload and download go through
+	 * the caller's client, not a bundled SDK or a platform client of this
+	 * package's own. Also requires `FileSystem`, `Path`, `ChildProcessSpawner`
+	 * and `ActionEnvironment`.
+	 */
 	static readonly layer: Layer.Layer<
 		Artifact,
 		never,
@@ -602,7 +582,7 @@ export class Artifact extends Context.Service<Artifact, ArtifactShape>()("@effec
 		| FileSystem.FileSystem
 		| Path.Path
 		| ChildProcessSpawner.ChildProcessSpawner
-	> = Layer.effect(this, make(azure));
+	> = Layer.effect(this, make());
 
 	/**
 	 * The service, over a supplied transport.

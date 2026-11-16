@@ -1,11 +1,12 @@
-// The Azure confinement invariant, as a test rather than a promise.
+// The blob-transport invariant, as a test rather than a promise.
 //
-// `@azure/storage-blob` is the only heavy dependency this package has, and the
-// requirement is structural: a consumer that imports only `ActionOutputs` — a
-// module that writes `::set-output::` to a file — must be unable to link a blob
-// storage client. Three modules may import it (`ActionCache`, `Artifact` and
-// `BlobStore.githubCache`, because the Actions-cache Twirp protocol hands back
-// an Azure url), and nothing else may.
+// The package ships no Azure SDK: the blob transfer is `internal/blobTransport.ts`
+// over `HttpClient` and `FileSystem`. Two claims are checked. No module reaches
+// any `@azure/*` package — the SDK's install closure is what the transport
+// replaced, and it must not come back. And a consumer that imports only
+// `ActionOutputs` — a module that writes `::set-output::` to a file — must be
+// unable to link the transport: only the three modules that move bytes against a
+// signed url (`ActionCache`, `Artifact` and `BlobStore.githubCache`) reach it.
 //
 // So the claim is checked by walking the RUNTIME import graph of `src`. `import
 // type` is skipped because it is erased. What this does not prove is that a
@@ -47,7 +48,12 @@ const runtimeSpecifiers = (source: string): ReadonlyArray<string> => {
 };
 
 /** Every bare (non-relative) specifier reachable at runtime from `entry`. */
-const reachableBareImports = (entry: string): ReadonlySet<string> => {
+const reachableBareImports = (entry: string): ReadonlySet<string> => walk(entry).bare;
+
+/** Whether the module at `target` is on the runtime import graph of `entry`. */
+const reachesFile = (entry: string, target: string): boolean => walk(entry).files.has(resolve(SRC, target));
+
+const walk = (entry: string): { readonly files: ReadonlySet<string>; readonly bare: ReadonlySet<string> } => {
 	const seen = new Set<string>();
 	const bare = new Set<string>();
 	const queue = [resolve(SRC, entry)];
@@ -63,14 +69,14 @@ const reachableBareImports = (entry: string): ReadonlySet<string> => {
 			}
 		}
 	}
-	return bare;
+	return { files: seen, bare };
 };
 
 const reachesAzure = (entry: string): boolean =>
 	[...reachableBareImports(entry)].some((specifier) => specifier.startsWith("@azure/"));
 
-/** The three modules the confinement rule permits, and only these three. */
-const AZURE_MODULES = ["ActionCache.ts", "Artifact.ts", "BlobStore.githubCache.ts"];
+/** The three modules that move bytes against a signed url, and only these three. */
+const TRANSPORT_MODULES = ["ActionCache.ts", "Artifact.ts", "BlobStore.githubCache.ts"];
 
 /** Everything else a consumer can name. */
 const LIGHT_MODULES = [
@@ -101,6 +107,7 @@ const LIGHT_MODULES = [
 	"ToolInstaller.ts",
 	"internal/actionsResults.ts",
 	"internal/archiveCommands.ts",
+	"internal/blobTransport.ts",
 	"internal/blobCause.ts",
 	"internal/cacheService.ts",
 	"internal/digest.ts",
@@ -113,18 +120,30 @@ const LIGHT_MODULES = [
 ];
 
 describe("bundle reachability", () => {
-	it("the three permitted modules DO reach @azure/storage-blob", () => {
-		// The control. Without it every assertion below could pass because the
+	it("the three transfer modules DO reach the blob transport", () => {
+		// The control. Without it the assertions below could pass because the
 		// walker is broken rather than because the edge is absent — the classic
 		// test that cannot fail.
-		for (const entry of AZURE_MODULES) {
-			assert.isTrue(reachesAzure(entry), `${entry} does not reach Azure — the walker is blind`);
+		for (const entry of TRANSPORT_MODULES) {
+			assert.isTrue(
+				reachesFile(entry, "internal/blobTransport.ts"),
+				`${entry} does not reach the transport — the walker is blind`,
+			);
 		}
 	});
 
-	it("no other module reaches @azure/storage-blob", () => {
-		for (const entry of LIGHT_MODULES) {
-			assert.isFalse(reachesAzure(entry), `${entry} reaches @azure/storage-blob — the confinement has leaked`);
+	it("no module reaches @azure/*", () => {
+		for (const entry of [...TRANSPORT_MODULES, ...LIGHT_MODULES]) {
+			assert.isFalse(reachesAzure(entry), `${entry} reaches an @azure/* package`);
+		}
+	});
+
+	it("no other module reaches the blob transport", () => {
+		for (const entry of LIGHT_MODULES.filter((module) => module !== "internal/blobTransport.ts")) {
+			assert.isFalse(
+				reachesFile(entry, "internal/blobTransport.ts"),
+				`${entry} reaches the blob transport — the confinement has leaked`,
+			);
 		}
 	});
 
@@ -192,10 +211,10 @@ describe("bundle reachability", () => {
 		// Same posture for the child-env helper: a pure value builder for core's
 		// CommandOptions contract, importing nothing — not even `effect`.
 		assert.deepStrictEqual([...reachableBareImports("ChildEnv.ts")], []);
-		// The default runtime does NOT reach Azure, and that is the reason the
-		// cache, artifact and blob services are left out of it: folding them in
-		// would put a blob-storage client in the bundle of every action that
-		// merely sets an output.
+		// The default runtime does NOT reach the blob transport, and that is part of
+		// the reason the cache, artifact and blob services are left out of it: folding
+		// them in would put the Twirp protocols and the transport in the bundle of
+		// every action that merely sets an output.
 		assert.deepStrictEqual([...reachableBareImports("Action.ts")].sort(), [
 			"@effect/platform-node/NodeCrypto",
 			"@effect/platform-node/NodeServices",
@@ -205,7 +224,7 @@ describe("bundle reachability", () => {
 		]);
 	});
 
-	it("the markdown engine is confined to the writer, on Azure's terms", () => {
+	it("the markdown engine is confined to the writer", () => {
 		// `@effected/markdown` is the second-heaviest engine this package can
 		// reach, and only the fluent writer earns it. The control comes first:
 		// a blinded walker must fail here, not pass everything below.
@@ -242,7 +261,7 @@ describe("bundle reachability", () => {
 		}
 	});
 
-	it("the @effected/npm edge is confined to the installer, on Azure's terms", () => {
+	it("the @effected/npm edge is confined to the installer", () => {
 		// `PackageManagerInstaller` consumes `@effected/npm`'s pin vocabulary and
 		// is the ONLY module allowed to: the edge exists for one service a
 		// consumer takes with one explicit layer line, and it must not ride into
@@ -263,7 +282,7 @@ describe("bundle reachability", () => {
 		// particular the DEFAULT RUNTIME stays clear: `Action.ts`'s exact edge set
 		// above is what pins `ActionRuntime.layer` never linking this module.
 		assert.deepStrictEqual([...reachableBareImports("PackageManagerInstaller.ts")].sort(), [
-			// `@effected/crypto` for `HttpRedaction`: pure, effect-only, no Azure.
+			// `@effected/crypto` for `HttpRedaction`: pure, effect-only, no Azure SDK.
 			"@effected/crypto",
 			"@effected/npm",
 			"effect",
@@ -275,11 +294,11 @@ describe("bundle reachability", () => {
 		]);
 	});
 
-	it("no shared internal helper reaches Azure", () => {
+	it("no shared internal helper grows a heavy edge", () => {
 		// This is the specific mechanism the rule exists to prevent: the three
 		// heavy modules share a Twirp client and a results-backend reader, and
-		// hoisting their fifteen lines of Azure into either one would put the
-		// client on the graph of everything that speaks the protocol.
+		// hoisting the blob transport into either one would put it on the graph
+		// of everything that speaks the protocol.
 		assert.deepStrictEqual([...reachableBareImports("internal/actionsResults.ts")].sort(), ["@effected/jwt", "effect"]);
 		assert.deepStrictEqual(
 			[...reachableBareImports("internal/twirp.ts")].sort(),
@@ -288,7 +307,7 @@ describe("bundle reachability", () => {
 			"the Twirp client speaks HTTP and nothing heavier",
 		);
 		// The cache-entry choreography shared by `ActionCache` and
-		// `BlobStore.githubCache` owns the three RPCs and NOT the Azure transfer
+		// `BlobStore.githubCache` owns the three RPCs and NOT the blob transfer
 		// between them — that is the whole point of it being an internal.
 		assert.deepStrictEqual([...reachableBareImports("internal/cacheService.ts")].sort(), [
 			"@effected/crypto",
@@ -297,16 +316,20 @@ describe("bundle reachability", () => {
 		]);
 		// `effect/process` is a type-only import there: the spawner
 		// arrives as a value from the caller.
-		// The cause scrubber the three Azure modules share reads a `RestError`
-		// structurally, so it never names `@azure/*` itself.
+		// The url redactor the blob transport keeps on a failure.
 		assert.deepStrictEqual([...reachableBareImports("internal/blobCause.ts")].sort(), [
+			"@effected/crypto",
+			"effect/http",
+		]);
+		// The blob transport is `effect` and its own url redactor, nothing heavier.
+		assert.deepStrictEqual([...reachableBareImports("internal/blobTransport.ts")].sort(), [
 			"@effected/crypto",
 			"effect",
 			"effect/http",
 		]);
 		assert.deepStrictEqual([...reachableBareImports("internal/spawn.ts")].sort(), ["effect"]);
 		// The command-line half of every archiver call: `ChildProcess.make` is a
-		// VALUE import there, and it is shared by `Artifact` (Azure) and
+		// VALUE import there, and it is shared by `Artifact` and
 		// `ToolInstaller` (light) — exactly the kind of helper that must never
 		// grow a heavier edge.
 		assert.deepStrictEqual([...reachableBareImports("internal/archiveCommands.ts")].sort(), ["effect/process"]);
@@ -365,18 +388,19 @@ describe("bundle reachability", () => {
 		assert.deepStrictEqual(importers, ["internal/digest.ts"]);
 	});
 
-	it("the entry point reaches Azure, and that is correct", () => {
-		// `src/index.ts` re-exports all three heavy modules, so of course it
-		// reaches Azure. Asserting otherwise would be asserting the package does
-		// not ship a cache. The property that matters is the one above: every light
-		// module is reachable WITHOUT it.
-		assert.isTrue(reachesAzure("index.ts"));
+	it("the entry point reaches the blob transport, and that is correct", () => {
+		// `src/index.ts` re-exports all three transfer modules, so of course it
+		// reaches the transport. Asserting otherwise would be asserting the package
+		// does not ship a cache. The property that matters is the one above: every
+		// light module is reachable WITHOUT it, and none reaches Azure.
+		assert.isTrue(reachesFile("index.ts", "internal/blobTransport.ts"));
+		assert.isFalse(reachesAzure("index.ts"));
 	});
 
 	it("no module gathers the heavy three into a namespace object", () => {
 		// The single easiest way to destroy this property: one
 		// `export const Stores = { cache, artifact, blob }` makes every consumer of
-		// any of them reachable to Azure, silently. The entry point re-exports
+		// any of them reachable to the transport, silently. The entry point re-exports
 		// free-standing names, and no light module may import a heavy one.
 		// Deliberately RAW source, not the stripped `code` the walker uses, and
 		// that is safe in the direction that matters: this is a `notInclude`, so
@@ -386,7 +410,7 @@ describe("bundle reachability", () => {
 		//
 		// It sees only DIRECT imports, so a two-hop leak (light → mid → heavy)
 		// would slip past it. That case is covered by the transitive
-		// `assert.isFalse(reachesAzure(entry))` over the same LIGHT_MODULES
+		// `reachesFile` assertion over the same LIGHT_MODULES
 		// above — do not delete that test on the assumption this one subsumes it.
 		for (const entry of LIGHT_MODULES) {
 			const source = readFileSync(resolve(SRC, entry), "utf8");

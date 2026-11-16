@@ -13,11 +13,13 @@ integrity:
     body: 4e8dad13e21d6fcc
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 61bfb0e11cb8dd56
+    at: 2026-11-16T16:59:20Z
+    content: 08abbbf2942be849
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-16T16:59:20Z
 ---
 
 # A lockfile is a YAML stream, not always one document

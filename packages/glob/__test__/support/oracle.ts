@@ -82,11 +82,13 @@ export const oracleAnswer = (candidate: string, pattern: string, opts: Minimatch
 };
 
 /**
- * minimatch 11.0.5's row merge throws `TypeError: pattern is too long` from its
+ * minimatch 11's row merge throws `TypeError: pattern is too long` from its
  * constructor on some short brace patterns (`{x,{0..120}}[a-c]{0..199}.hidden\a`
- * is one), which the kit compiles. A pattern the oracle refuses that way, and
- * for no reason of its own, is a named exception on the one divergence kind
- * where the engine accepts it, never a skip of anything else.
+ * is one; 11.0.8 no longer throws on some that 11.0.5 did, because it skips a
+ * merge that would hold more than 256 extglobs), which the kit compiles. A
+ * pattern the oracle refuses that way, and for no reason of its own, is a named
+ * exception on the one divergence kind where the engine accepts it, never a
+ * skip of anything else.
  */
 export const oracleRowMergeTooLong = (pattern: string, opts: EngineOptions): boolean => {
 	try {
@@ -97,6 +99,48 @@ export const oracleRowMergeTooLong = (pattern: string, opts: EngineOptions): boo
 	}
 };
 
+// minimatch 11.0.8's `MAX_EXTGLOBS`.
+const MAX_EXTGLOBS = 256;
+
+// minimatch 11.0.8's `extglobCount`: the extglob openers, such as `*(`, in one
+// path portion pattern, counting those in a class too.
+const extglobCount = (portion: string): number => {
+	let n = 0;
+	for (let i = 0; i < portion.length - 1; i++) {
+		const c = portion.charAt(i);
+		if (c === "\\") {
+			i++;
+		} else if ("+@!?*".includes(c) && portion.charAt(i + 1) === "(") {
+			n++;
+			i++;
+		}
+	}
+	return n;
+};
+
+/**
+ * minimatch 11.0.8 throws `TypeError: pattern has too many extglobs` when it
+ * builds the matcher for a path portion with more than 256 extglob openers
+ * (GHSA-2349-h8hg-73g9: its matcher compiles and walks extglobs recursively).
+ * The kit's matcher is not recursive (`Sim#add` is a worklist), so it answers
+ * a portion like `?(a)` 300 times in a row, and its nesting guard
+ * (`MAX_NESTING_DEPTH`, 256) refuses deeper nesting typed. A pattern with such
+ * a portion is a named exception on the one divergence kind where the engine
+ * accepts what the oracle refuses. The oracle throws from its constructor for
+ * most rows, but builds the matchers of rows its merge left pending later, so
+ * this also reads the portions it kept.
+ */
+export const oracleTooManyExtglobs = (pattern: string, opts: EngineOptions): boolean => {
+	if (opts.noext) return false;
+	try {
+		return new OracleMinimatch(pattern, oracleOpts(opts)).globParts.some((row) =>
+			row.some((portion) => extglobCount(portion) > MAX_EXTGLOBS),
+		);
+	} catch (e) {
+		return e instanceof TypeError && e.message === "pattern has too many extglobs";
+	}
+};
+
 /**
  * The divergence kinds each named exception may excuse. A kind outside its
  * list is reported, whatever exception the triple carries.
@@ -104,4 +148,5 @@ export const oracleRowMergeTooLong = (pattern: string, opts: EngineOptions): boo
 export const EXCEPTION_KINDS: Readonly<Record<string, ReadonlyArray<string>>> = {
 	bracketsAcrossAlternatives: ["match"],
 	oracleRowMergeTooLong: ["oracle-throws-engine-accepts"],
+	oracleTooManyExtglobs: ["oracle-throws-engine-accepts"],
 };

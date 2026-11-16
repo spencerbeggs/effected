@@ -1,4 +1,3 @@
-import { BlobClient, BlockBlobClient } from "@azure/storage-blob";
 import type { Schema } from "effect";
 import { Effect, Layer, Option } from "effect";
 import { HttpClient } from "effect/http";
@@ -6,10 +5,9 @@ import { ActionEnvironment } from "./ActionEnvironment.js";
 import { BlobEnvelope } from "./BlobEnvelope.js";
 import type { BlobStoreShape, StoredBlob } from "./BlobStore.js";
 import { BlobStore, BlobStoreError } from "./BlobStore.js";
-import type { DataBlobTransfer } from "./BlobTransfer.js";
-import { BlobTransferError } from "./BlobTransfer.js";
+import type { BlobTransferError, DataBlobTransfer } from "./BlobTransfer.js";
 import { misconfiguredDetail, resultsBackend } from "./internal/actionsResults.js";
-import { blobCause } from "./internal/blobCause.js";
+import { httpDataTransfer } from "./internal/blobTransport.js";
 import type { CacheServiceClient } from "./internal/cacheService.js";
 import { CACHE_SERVICE, finalizeUpload, lookupDownload, reserveUpload } from "./internal/cacheService.js";
 import { sha256Hex } from "./internal/digest.js";
@@ -30,34 +28,13 @@ import { twirpCall, twirpFailureFields } from "./internal/twirp.js";
  */
 const VERSION = sha256Hex("blobstore|1.0");
 
-/**
- * The Azure half, ~15 lines and duplicated on purpose.
- *
- * @remarks
- * `@azure/storage-blob` may be imported by this module, `ActionCache` and
- * `Artifact` and by nothing else. Hoisting these two calls into a shared
- * `internal/` helper is exactly how the import would leak into the graph of a
- * module that only sets an output — so the three modules each carry their own,
- * and `__test__/reachability.test.ts` measures that they are the only three.
- */
-const azure: DataBlobTransfer = {
-	uploadData: (url, data) =>
-		Effect.tryPromise({
-			try: () => new BlockBlobClient(url).uploadData(data),
-			catch: (cause) => new BlobTransferError({ reason: "uploadFailed", cause: blobCause(cause) }),
-		}).pipe(Effect.asVoid),
-	downloadToBuffer: (url) =>
-		Effect.tryPromise({
-			try: () => new BlobClient(url).downloadToBuffer(),
-			catch: (cause) => new BlobTransferError({ reason: "downloadFailed", cause: blobCause(cause) }),
-		}).pipe(Effect.map((buffer) => new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength))),
-};
-
 const make = (
-	transfer: DataBlobTransfer,
+	custom?: DataBlobTransfer,
 ): Effect.Effect<BlobStoreShape, never, HttpClient.HttpClient | ActionEnvironment> =>
 	Effect.gen(function* () {
 		const http = yield* HttpClient.HttpClient;
+		// The signed-url transport, unless a test supplied its own.
+		const transfer = custom ?? httpDataTransfer(http);
 		// Resolved once, at construction, so every member's `R` is `never`.
 		const env = yield* ActionEnvironment;
 
@@ -128,9 +105,8 @@ const make = (
  * The Actions cache is reachable over a Twirp v2 protocol at
  * `ACTIONS_RESULTS_URL`, which answers a `CreateCacheEntry` /
  * `GetCacheEntryDownloadURL` RPC with a **pre-signed Azure blob url** — which is
- * why this backend lives in its own module rather than beside the S3 one: it,
- * `ActionCache` and `Artifact` are the only three modules that import the
- * Azure client.
+ * why this backend lives in its own module rather than beside the S3 one. The
+ * bytes move over the package's own `HttpClient` blob transport.
  *
  * **Only reachable from a `uses:` step.** The runner injects
  * `ACTIONS_RESULTS_URL` and `ACTIONS_RUNTIME_TOKEN` into action execution
@@ -140,9 +116,9 @@ const make = (
  * for exactly that reason.
  *
  * The layer statics live here rather than on {@link BlobStore} because a static
- * belongs to the module that owns the dependency it needs: putting
- * `BlobStore.layerGitHubCache` on the service class would make `@azure/storage-blob`
- * reachable from every module that reads a blob.
+ * belongs to the module that owns the protocol it needs: putting
+ * `BlobStore.layerGitHubCache` on the service class would make the Twirp cache
+ * protocol reachable from every module that reads a blob.
  *
  * @example
  * ```ts
@@ -157,16 +133,18 @@ export class GitHubCacheBlobStore {
 	private constructor() {}
 
 	/**
-	 * The backend, over the real Azure client.
+	 * The backend, over the `HttpClient` blob transport.
 	 *
 	 * @remarks
-	 * Requires `ActionEnvironment` for `ACTIONS_RESULTS_URL` and
+	 * Requires `HttpClient` in `R`: the signed-url upload and download go through
+	 * the caller's client, not a bundled SDK or a platform client of this
+	 * package's own. Requires `ActionEnvironment` for `ACTIONS_RESULTS_URL` and
 	 * `ACTIONS_RUNTIME_TOKEN`; fails with `BlobStoreError` (`misconfigured`) when
 	 * either is absent.
 	 */
 	static readonly layer: Layer.Layer<BlobStore, never, HttpClient.HttpClient | ActionEnvironment> = Layer.effect(
 		BlobStore,
-		make(azure),
+		make(),
 	);
 
 	/**
@@ -175,7 +153,7 @@ export class GitHubCacheBlobStore {
 	 * @remarks
 	 * The Twirp protocol — the RPC sequence, the conflict handling, the retry
 	 * policy, the framing — is what this package owns and what a test needs to
-	 * exercise; the Azure client is a pre-signed `PUT` that owns none of it. This
+	 * exercise; the blob transfer is a pre-signed `PUT` that owns none of it. This
 	 * is also the seam an integration test uses to point the same protocol at a
 	 * local blob endpoint.
 	 *

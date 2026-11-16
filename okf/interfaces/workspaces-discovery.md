@@ -44,13 +44,15 @@ verified:
     at: 2026-11-06T01:54:11Z
   - by: human:spencer
     at: 2026-11-10T23:42:17Z
+  - by: human:spencer
+    at: 2026-11-16T16:59:20Z
 integrity:
   generated:
     body: 8370245e358fbaa1
   verified:
     by: human:spencer
-    at: 2026-11-10T23:42:17Z
-    content: 62ff422630a335cf
+    at: 2026-11-16T16:59:20Z
+    content: 5ea9a24d749828b0
 ---
 
 # @effected/workspaces discovery and detection

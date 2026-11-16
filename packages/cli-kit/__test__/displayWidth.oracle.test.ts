@@ -61,7 +61,7 @@ describe("displayWidth against string-width", () => {
 		});
 	}
 
-	it("a code-point sweep of every assigned code point agrees, except the lone regional indicators", () => {
+	it("a code-point sweep of every assigned code point agrees", () => {
 		// U+0000 to U+10FFFF at stride 1, so no block edge or astral zero-width range (tag characters, the variation
 		// selectors supplement) escapes it. Surrogates and ESC (which starts an escape sequence) are skipped.
 		const assigned = /^\p{Assigned}$/u;
@@ -69,8 +69,6 @@ describe("displayWidth against string-width", () => {
 		let checked = 0;
 		for (let cp = 0; cp <= 0x10ffff; cp++) {
 			if ((cp >= 0xd800 && cp <= 0xdfff) || cp === 0x1b) continue;
-			// Documented divergence: a lone regional indicator is 1 for the oracle and 2 here.
-			if (cp >= 0x1f1e6 && cp <= 0x1f1ff) continue;
 			const ch = String.fromCodePoint(cp);
 			if (!assigned.test(ch)) continue;
 			checked++;
@@ -85,19 +83,37 @@ describe("displayWidth against string-width", () => {
 		// About a second alone; the bound leaves room for a loaded machine running other suites in parallel.
 	}, 30_000);
 
-	it("pins the two documented divergences", () => {
-		// A lone regional indicator: the oracle counts one column, this counts two.
-		assert.strictEqual(stringWidth("\u{1F1FA}"), 1);
-		assert.strictEqual(displayWidth("\u{1F1FA}"), 2);
-		// A bare combining mark glued after a flag grapheme: the oracle folds the whole grapheme to one column,
-		// this counts two.
-		assert.strictEqual(stringWidth("🇺🇸ั"), 1);
-		assert.strictEqual(displayWidth("🇺🇸ั"), 2);
+	// Two former divergences, now agreement: string-width 8.3.0 counted a lone regional indicator, and a bare combining
+	// mark glued after a flag grapheme, as one column; 9.0.0 counts both as two, as this always has.
+	it("agrees: a lone regional indicator and a flag with a trailing mark", () => {
+		for (const text of ["\u{1F1FA}", "🇺🇸ั"]) {
+			assert.strictEqual(displayWidth(text), stringWidth(text), text);
+			assert.strictEqual(displayWidth(text), 2, text);
+		}
+	});
+
+	// string-width 9.0.0 counts a spacing prepended concatenation mark (ARABIC NUMBER SIGN and kin) as a visible column,
+	// unless the grapheme after it is wide and takes it into its own cell.
+	it("agrees: prepended concatenation marks", () => {
+		const cases: ReadonlyArray<readonly [text: string, width: number]> = [
+			["\u0600", 1],
+			["\u0600\u0661\u0662", 3],
+			["\u0600\u0601\u0661", 3],
+			["\u{110BD}\u{11066}", 2],
+			["\u0600日", 2],
+			["\u0600👍", 2],
+			["a\u06DD\u0661b", 4],
+			["\u070F", 0],
+		];
+		for (const [text, width] of cases) {
+			const label = Array.from(text, (ch) => `U+${(ch.codePointAt(0) ?? 0).toString(16).toUpperCase()}`).join(" ");
+			assert.strictEqual(displayWidth(text), stringWidth(text), label);
+			assert.strictEqual(displayWidth(text), width, label);
+		}
 	});
 
 	it("a seeded fuzz of 5,000 compositions agrees", () => {
-		// Every curated string is an atom but the empty one. A free-standing combining mark glued after an emoji or
-		// flag is the documented divergence, and none of these atoms is one.
+		// Every curated string is an atom but the empty one.
 		const atoms = CURATED.map(([, text]) => text).filter((text) => text !== "");
 		// mulberry32, fixed seed: the run never varies.
 		let state = 0x5eed1234;

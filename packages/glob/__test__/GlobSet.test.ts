@@ -158,12 +158,12 @@ describe("GlobSet: classification per expanded alternative (pinned decision)", (
 			assert.deepStrictEqual(escaped.literals, ["{a,b}", "{0..9007199254740992}"]);
 			assert.isTrue(escaped.matches("{a,b}"));
 			assert.isFalse(escaped.matches("a"));
-			// an unescaped `\` just before a range is taken with it, so each
-			// alternative is its own wildcard; after a `$` a range alone would not
+			// after a `$` or a literal (escaped) backslash a range alone would not
 			// read as one, so the include stays one wildcard, the whole pattern
 			for (const [pattern, yes, no, sources] of [
 				["{$,a}{0..199}", ["$5", "a199"], [`$${"{0..199}"}`, "$200"], ["{$,a}{0..199}"]],
-				["{a\\\\,b}{0..199}", ["a5", "b42"], ["a\\5", "a200"], ["a{0..199}", "b{0..199}"]],
+				["{a\\\\,b}{0..199}", ["a\\5", "b42"], ["a5", "a\\200"], ["{a\\\\,b}{0..199}"]],
+				["{a,b}{0..199}", ["a5", "b42"], ["a\\5", "a200"], ["a{0..199}", "b{0..199}"]],
 				["{$,a}{0..199}-{0..199}", ["$5-7", "a1-199"], ["$5-200"], ["{$,a}{0..199}-{0..199}"]],
 			] as const) {
 				const set = yield* GlobSet.compile([pattern]);
@@ -318,6 +318,21 @@ describe("GlobSet: literals key on the effective unescaped path", () => {
 			const set = yield* GlobSet.compile(["#note", "real/path"]);
 			assert.isFalse(set.matches("#note"));
 			assert.deepStrictEqual(set.literals, ["real/path"]);
+		}),
+	);
+
+	it.effect("an escaped leading ! or # is an include of that literal, not an exclusion or a comment", () =>
+		Effect.gen(function* () {
+			const bang = GlobPattern.escape("!name");
+			const hash = GlobPattern.escape("#note");
+			assert.strictEqual(bang, "\\!name");
+			assert.strictEqual(hash, "\\#note");
+			const set = yield* GlobSet.compile([bang, hash]);
+			assert.deepStrictEqual(set.literals, ["!name", "#note"]);
+			assert.isTrue(set.matches("!name"));
+			assert.isTrue(set.matches("#note"));
+			assert.isFalse(set.matches("name"));
+			assert.isFalse(set.matches("other"));
 		}),
 	);
 

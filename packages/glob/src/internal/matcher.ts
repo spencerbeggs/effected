@@ -1,7 +1,7 @@
 // Ported from @isaacs/nonrecursive-glob-match@1.1.0 (https://github.com/isaacs/nonrecursive-glob-match)
 // Copyright: Isaac Z. Schlueter and Contributors
 // License: BlueOak-1.0.0 (https://blueoakcouncil.org/license/1.0.0)
-// Port notes: src/index.ts, the one-portion matcher minimatch 11.0.5 runs. The
+// Port notes: src/index.ts, the one-portion matcher minimatch 11.0.8 runs. The
 // kit answers every extglob portion, and every `.`, `..` or dotfile path
 // portion, with it, so those answers are 11's own. Changes from upstream:
 // 1. No `normalize` option (the kit has none), and no `show`/`toString` debug
@@ -9,7 +9,7 @@
 //    (its digit classes built through `compile`). Three more
 //    changes, none behavioural: only `testUnchecked` is ported (upstream's
 //    `test` adds a `/` check and a surrogate pre-scan; every caller passes
-//    one portion, as 11.0.5's own `portionMatch` does); `itemLengths` loops
+//    one portion, as 11.0.8's own `portionMatch` does); `itemLengths` loops
 //    where upstream spreads `Math.min(...alts)`, which would throw a
 //    `RangeError` on a very wide alternation; and the fold regexps are cached
 //    per matcher, not in upstream's global 1,000-entry cache.
@@ -703,7 +703,7 @@ const surrogate = /[\ud800-\udfff]/;
 // pairs
 const codePoints = (s: string): ArrayLike<string> => (surrogate.test(s) ? [...s] : s);
 
-/** One path portion pattern, matched as minimatch 11.0.5 matches it. */
+/** One path portion pattern, matched as minimatch 11.0.8 matches it. */
 export class Matcher {
 	readonly pattern: string;
 	readonly options: MatcherOptions;

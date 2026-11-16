@@ -10,7 +10,7 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-12T22:21:14Z
+  at: 2026-11-16T17:04:15Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:32.522Z
@@ -20,13 +20,15 @@ verified:
     at: 2026-10-23T04:08:52Z
   - by: human:spencer
     at: 2026-10-29T00:43:21Z
+  - by: human:spencer
+    at: 2026-11-16T16:59:20Z
 integrity:
   generated:
-    body: bf5918c899df52ce
+    body: dc5e07b159b44e41
   verified:
     by: human:spencer
-    at: 2026-10-29T00:43:21Z
-    content: 7de54559d7c17698
+    at: 2026-11-16T16:59:20Z
+    content: 16c3cb4fb190f30e
 ---
 
 # actions-storage
@@ -39,9 +41,9 @@ envelope framing all sit on this side of a pre-signed URL, and the upload
 itself is taken as an argument. None of it is in the layer `Action.run`
 composes (see [actions-runtime](actions-runtime.md)) — a consumer that
 wants a cache passes it in and writes one explicit layer line. This is
-also where the package's heavy edges concentrate: everything Azure-touching
-lives in three modules (`ActionCache.ts`, `Artifact.ts`,
-`BlobStore.githubCache.ts`), and `@effected/npm` is reachable only from
+also where the package's heavy edges concentrate: the three modules that move
+bytes against a signed url (`ActionCache.ts`, `Artifact.ts`,
+`BlobStore.githubCache.ts`) are the only ones reaching the blob transport, and `@effected/npm` is reachable only from
 `PackageManagerInstaller.ts` — see
 [bundle reachability](../modules/github-actions.md#bundle-reachability).
 
@@ -75,19 +77,22 @@ The S3 backend sends the target exactly as `SigV4.sign` returned it, and a
 key with a `.` or `..` path segment fails as `BlobStoreError` `invalidKey`
 with nothing sent, since no URL can carry it as signed. The
 GitHub-cache backend's layer static lives on its own module's class, never
-on the shared service class, so the Azure client stays unreachable from
-every other module that reads a blob.
+on the shared service class, so the Twirp cache protocol and the blob
+transport stay unreachable from every other module that reads a blob.
 
 ### The transport seam
 
-The three Azure-touching modules take their transport as an argument (a
+The three transfer modules take their transport as an argument (a
 file transport for the cache and artifacts, a buffer transport for the
 blob store), with a parameterized layer beside each real one — which is
 what lets the cache suite archive real files, delete them and restore
-them as a claim about the filesystem no in-memory double could make. Each
-of the three carries its own small Azure adapter deliberately: hoisting
-them into a shared internal helper is exactly the move the confinement
-rule forbids.
+them as a claim about the filesystem no in-memory double could make. The
+default transport is `internal/blobTransport.ts`, the package's own Azure
+Blob REST client over `HttpClient` and `FileSystem` (no Azure SDK): one
+`PUT` up to 128 MiB (256 MiB for buffers), then 64 MiB blocks at
+concurrency 8 and a block list, a streamed `GET` for downloads, and a
+bounded retry of transport faults, `408`, `429` and `5xx` — see
+[the blob transport decision](../decisions/blob-transport-is-internal-httpclient.md).
 
 ### Protocol details
 
@@ -183,17 +188,13 @@ carries its credential and core's `HttpClientError` keeps the live request
 as a readable field. The same scrub applies to every HTTP cause the
 package keeps: `OidcTokenIssuer`, the Twirp results client behind
 `ActionCache`, `Artifact` and `GitHubCacheBlobStore`, and the S3
-`BlobStore`. The Azure transfer in those three modules keeps its failure as
-`BlobTransferError.cause` only through `internal/blobCause.ts`: an
-`@azure/core-rest-pipeline` `RestError` sanitizes itself only when rendered,
-so its non-enumerable `request.url` still holds the signed URL and its
-`details` and `response.headers` hold `set-cookie`. The kept copy stays on
-the `RestError` prototype with `name`, `message`, `code`, `statusCode`, the
-method, the URL with userinfo and the SAS `sig`, `se`, `st`, `sp`, `sip`,
-`skoid`, `sktid`, `skt`, `ske`, `saoid`, `suoid` and `scid` values
-`REDACTED`, and the headers minus `set-cookie`; it drops the bodies and the
-pipeline options. The helper reads the error structurally, so it never names
-`@azure/*`. Downloads go through core's HTTP client and stream to disk; extraction requires core's
+`BlobStore`. The blob transport keeps its failure as
+`BlobTransferError.cause` in the shape of a `BlobRequestError`: `name`,
+`message`, `statusCode`, the service's `code` and `requestId`, the method and
+the URL with userinfo and the SAS `sig`, `se`, `st`, `sp`, `sip`, `skoid`,
+`sktid`, `skt`, `ske`, `saoid`, `suoid` and `scid` values `REDACTED` (through
+`internal/blobCause.ts`). The request, its headers and `set-cookie` are never
+kept. Downloads go through core's HTTP client and stream to disk; extraction requires core's
 subprocess contract in `R`. Installs stage then swap: extract into a temp
 directory under the cache root and rename into place, so a failed install
 leaves nothing at the cache path (a lookup reports an empty directory as a

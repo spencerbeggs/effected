@@ -12,10 +12,10 @@ sources:
     resource: ../../pnpm-workspace.yaml
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-12T04:28:39Z
+  at: 2026-11-16T17:04:15Z
 integrity:
   generated:
-    body: 5fcf0f93106b6b57
+    body: 8c17709dc4c17e97
 ---
 
 # Peer-dependency discipline
@@ -171,15 +171,5 @@ The consumer-side half of why internal edges float on `workspace:^` — the
 requirement that the same one-copy property this kit maintains for
 itself also holds in a consumer's own tree — is covered in
 [one resolved effect copy](one-resolved-effect-copy.md).
-
-## A CommonJS dependency's named exports are detected per-symbol, not all-or-nothing
-
-A dependency vendored or consumed as CommonJS does not uniformly support
-or reject named imports — Node's `cjs-module-lexer` detects some of its
-named exports and misses others in the same module, so one named import
-can work while its neighbour throws only at runtime. See [Node detects
-only some of a CommonJS dependency's named
-exports](../gotchas/cjs-named-import-detection-is-partial.md) for the
-measured example and the testing rule it implies.
 
 [^pnpm-workspace]: `pnpm-workspace.yaml:6` — `autoInstallPeers: true`.

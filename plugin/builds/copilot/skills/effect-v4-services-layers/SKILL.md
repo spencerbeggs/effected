@@ -292,7 +292,7 @@ not reach moves out:
 Three uses in the kit: `GitHubApp.clientLayer` (confines the JWT signer),
 `Workspaces.localExecLayer` (builds `@effected/commands`' service, so `commands`
 keeps zero `@effected/*` edges), `GitHubCacheBlobStore.layer` (confines
-`@azure/storage-blob`). Such a static is named for its **variant**, not `layer`.
+the Twirp cache protocol and blob transport). Such a static is named for its **variant**, not `layer`.
 Test: *would putting this static on the service class make a dependency reachable
 from a consumer that does not use it?*
 

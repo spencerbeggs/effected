@@ -35,10 +35,10 @@ sources:
     title: "Intake's HMAC helpers and its hashed secretsEqual"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-08T12:10:34Z
+  at: 2026-11-16T17:04:15Z
 integrity:
   generated:
-    body: 9661c8152f35c170
+    body: 6f15e753c612b40a
 ---
 
 # `@effected/crypto`
@@ -47,7 +47,7 @@ integrity:
 
 ## Tier and dependencies
 
-Boundary tier, with no `node:` import under `src/`, so it runs on Node, browsers and Cloudflare workerd, matching [`jwt`](jwt.md). There are no runtime dependencies; `peerDependencies` is `effect` alone. That keeps it at the bottom of the layer graph (its own layer in `lib/configs/layers.json`, below every package that depends on it, `jwt` included). The backend split is its own decision: [keyed operations come from core `Mac`, digests from core `Digest`, both in `R`](../decisions/crypto-backends.md). The libsodium sealed box that GitHub's secrets API needs is not here and does not come here: `tweetnacl` and `blakejs` would retier this package and `webhooks` to integrated, so [the sealed box stays in `github`](../decisions/sealed-box-home.md) until a second consumer appears, and then moves to a new package rather than a subpath of this one.
+Boundary tier, with no `node:` import under `src/`, so it runs on Node, browsers and Cloudflare workerd, matching [`jwt`](jwt.md). There are no runtime dependencies; `peerDependencies` is `effect` alone. That keeps it at the bottom of the layer graph (its own layer in `lib/configs/layers.json`, below every package that depends on it, `jwt` included). The backend split is its own decision: [keyed operations come from core `Mac`, digests from core `Digest`, both in `R`](../decisions/crypto-backends.md). The libsodium sealed box that GitHub's secrets API needs is not here and does not come here: [`github` carries it as copied `@noble` primitives](../decisions/sealed-box-primitives-copied.md), and a second consumer would get a new package rather than a subpath of this one.
 
 ## Core-owned list
 

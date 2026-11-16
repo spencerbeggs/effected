@@ -11,17 +11,19 @@ sources:
     resource: ../modules/glob.md
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-08T12:06:40Z
+  at: 2026-11-16T17:46:03Z
 integrity:
   generated:
-    body: 8ed17dc485aa1ecb
+    body: afa03a5aaea3e118
   verified:
     by: human:spencer
-    at: 2026-11-08T18:25:54Z
-    content: 230c6375ede67379
+    at: 2026-11-16T18:54:03Z
+    content: efebb7ca292bb87b
 verified:
   - by: human:spencer
     at: 2026-11-08T18:25:54Z
+  - by: human:spencer
+    at: 2026-11-16T18:54:03Z
 ---
 
 # glob does not bound total matching work on hostile patterns
@@ -32,7 +34,7 @@ verified:
 
 Every engine the review compared behaves the same, minimatch 11 included, so the cost is inherited from the dialect rather than introduced by the port. That premise was measured on `**` only.
 
-Extglobs were a second route, and there the cost was the port's, not the dialect's: a position walk over the pattern's parse that was polynomial (up to 144 s for a 43-byte pattern against 800 characters, and 37 s for a 64 KB chain against 200) where minimatch 11 took milliseconds. The engine now matches every magic portion with minimatch 11.0.5's own matcher, vendored, so that route is closed and the premise holds again: what is slow now is slow in 11 too. Besides the `**` cases above, that includes a chain of negations separated by literals, which 11's matcher keeps a run per negation for: `x!(a)` repeated against `xb` repeated is about cubic, 22 ms at a 400-character path and 1.6 s at 2,000 (11.0.5: slower still). The decision below covers it unchanged: bound the input.
+Extglobs were a second route, and there the cost was the port's, not the dialect's: a position walk over the pattern's parse that was polynomial (up to 144 s for a 43-byte pattern against 800 characters, and 37 s for a 64 KB chain against 200) where minimatch 11 took milliseconds. The engine now matches every magic portion with minimatch 11's own matcher, vendored, so that route is closed and the premise holds again: what is slow now is slow in 11 too. Besides the `**` cases above, that includes a chain of negations separated by literals, which 11's matcher keeps a run per negation for: `x!(a)` repeated against `xb` repeated is about cubic, 22 ms at a 400-character path and 1.6 s at 2,000 (11.0.5: slower still). The decision below covers it unchanged: bound the input.
 
 ## Decision
 

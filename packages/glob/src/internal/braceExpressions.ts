@@ -8,7 +8,7 @@
 // one-character range such as `[a-a]` stays magic. A scan that reaches a
 // neutral state an earlier unclosed scan of the same glob reached stops as
 // unclosed, and the posix table's entries are built once (a run of unclosed
-// `[` was quadratic). The posix table takes minimatch 11.0.5's `[:punct:]`
+// `[` was quadratic). The posix table takes minimatch 11.0.8's `[:punct:]`
 // (`\p{P}\p{S}`, symbols included) and `[:print:]` (negated `\p{C}`, so
 // every char but controls); 10 left out symbols and matched only controls.
 // A one-character class is escaped only if it is regexp syntax (11's reEscape
