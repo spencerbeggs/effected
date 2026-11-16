@@ -191,8 +191,9 @@ const blocklistXml = (count: number): string =>
  * Upload `size` bytes, whole or as blocks, reading each span with `read`.
  *
  * @remarks
- * `read` runs inside the retried attempt, so a block that fails is read again
- * rather than replayed from a consumed stream.
+ * `read` runs once per block, outside the retry: a retried `PUT` sends the
+ * same bytes again, which a `Uint8Array` body can do and a consumed stream
+ * could not.
  */
 const upload = <E>(
 	http: HttpClient.HttpClient,
