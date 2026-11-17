@@ -406,7 +406,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/runtimes": {
-					range: "^0.19.1",
+					range: "^0.19.2",
 					peer: "^0.19.0",
 					strategy: "lock-minor",
 					source: "workspace",
