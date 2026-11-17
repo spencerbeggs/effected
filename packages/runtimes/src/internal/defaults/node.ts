@@ -8,6 +8,7 @@ import type { RawNodeRelease, RawSchedule } from "../types.js";
  * @internal
  */
 export const nodeDefaults: ReadonlyArray<RawNodeRelease> = [
+	{ version: "27.0.0-alpha.0.1.1", npm: "12.2.2", date: "2026-11-16" },
 	{ version: "27.0.0-alpha.0.1.0", npm: "12.2.2", date: "2026-11-12" },
 	{ version: "27.0.0-alpha.0.0.0", npm: "12.1.0", date: "2026-10-29" },
 	{ version: "26.13.1", npm: "11.20.0", date: "2026-11-10" },
