@@ -34,10 +34,10 @@ sources:
     resource: ../../packages/cli/src/commands/watch.ts
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-18T18:40:04Z
+  at: 2026-11-18T18:40:36Z
 integrity:
   generated:
-    body: a2d85a45eabc1985
+    body: 2bcbf05f48213fc5
 ---
 
 # The effected build commands: package build, action build and action init
@@ -106,7 +106,7 @@ An action build appends to no journal; the journals record package builds only.
 
 ## Watching
 
-`--watch` behaves the same on both build commands. It builds once, then again after each settled batch of changes, until it is interrupted. Every run is a full build, not an incremental one, so `dist/prod/issues.json` and the journals stay current exactly as one-shot runs keep them.[^build-watch]
+`--watch` behaves the same on both build commands. It builds once, then again after each settled batch of changes, until it is interrupted. Every run is a full build, not an incremental one. For a package build that keeps `dist/prod/issues.json` and the root journals current exactly as one-shot runs keep them; an action build writes neither, as above.[^build-watch]
 
 - **What is watched.** The package directory's top level, and each top-level directory no exclusion covers, recursively. An excluded `node_modules`, `.git` or `dist` is never walked, so a single-package repository with a populated `node_modules` starts at once and does not spend the host's watch limit. A directory that is only where an exclusion lives, such as `.github`, is watched, and the filter below drops the build's own events in it. A new top-level directory is watched from its first event, and its creation is itself a change; a removed one's watch is dropped, which is not the watcher stopping. When the package is not the workspace root, the root tier is watched too: `<root>` and `<root>/.config`, each non-recursively and filtered to `effected.toml`. Watching the directory rather than the file catches a file that does not exist yet and an editor's save-by-rename. A root-tier directory that does not exist when the watch starts is skipped, and creating it later is not noticed. Some inputs outside the package are never watched: [editing them does not rebuild](../limitations/watch-ignores-inputs-outside-the-package.md).
 - **What is excluded.** These paths are package-relative and matched on `/` boundaries: `dist`, `node_modules`, `.turbo`, `.git`, `.cache`, `tsdoc.json`, `.actrc`, `.github/workflows/act-test.yml` and `.github/actions/local`. An exclusion covers the path, everything under it, and the directories it lives in.
@@ -115,10 +115,10 @@ An action build appends to no journal; the journals record package builds only.
   - An action watch also excludes its `persistLocal.path`, re-read from `effected.toml` before each batch. An edit that moves the path or turns persist off is honoured. The default `.github/actions/local` is always excluded, so a config that will not load cannot start a loop.
 - **Debounce and queueing.** Events collect until the tree has been quiet for 100 ms, then run as one batch, so a branch switch or a format-on-save is one rebuild. Changes made during a build are kept, not dropped, and become exactly one follow-up run. Builds never overlap.
 - **Before each rebuild** the command prints `rebuilding: <path>, <path>, <path>` on stderr, followed by `+N more` when there are more than three paths. The paths are relative to the package, and a root-tier config reads as `../…`.
-- **A broken edit does not end the watch.** A failed verdict, a config or plugin that will not load, or a run that could not finish is reported the way a one-shot run reports it, and the watch waits for the next change. The report of a run that built goes to stdout; a refusal or a run failure is rendered on stderr and puts nothing on stdout. A failure that arrives alongside an interrupt from inside a build is reported, and the watch goes on.[^cli-watch]
-- **Exit 2 before any watch exists** when the directory itself is wrong: no `package.json`, no `[action]` table, or a workspace root that cannot be discovered. A config that will not load, or cannot be read, is an edit the watch must survive, so the watch starts.
+- **A broken edit does not end the watch.** A failed verdict, a config or plugin that will not load, or a run that could not finish is reported the way a one-shot run reports it, and the watch waits for the next change. A plugin written as native `.mjs`, or `.js` under `type: module`, is cached by Node's ESM loader, so a fixed one is not seen until the watch restarts. The report of a run that built goes to stdout; a refusal or a run failure is rendered on stderr and puts nothing on stdout. A failure that arrives alongside an interrupt from inside a build is reported, and the watch goes on.[^cli-watch]
+- **Exit 2 before any watch exists** when the directory itself is wrong: no `package.json`, no `[action]` table, or workspace discovery that fails (a workspace file that will not read or parse; no workspace above the package is not a failure, and makes the package its own root). A config that will not load, or cannot be read, is an edit the watch must survive, so the watch starts.
 - **Exit 3** when the package directory's own watch or a root-tier watch fails or stops, or a top-level directory's watch fails while the directory is still there, rendered as `PackageRunError` or `ActionRunError`. A watch never sits idle looking healthy.
-- **Exit 130** on Ctrl-C. The build in flight is interrupted and [the build lock](build-artifacts.md#the-build-lock) is released.
+- **Exit 130** on Ctrl-C. The build in flight is interrupted, and a package build releases [the build lock](build-artifacts.md#the-build-lock); an action build takes no lock.
 - **Exit 64 under CI.** `--watch` is a usage error for the CI audience, because a watching job never ends.
 - **Under `--format=json`, stdout is JSON Lines:** one `BuildRunResult` or `ActionRunResult` per run.
 - **No step summary and no workflow annotations** are written while watching.
