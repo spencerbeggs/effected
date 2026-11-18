@@ -4,9 +4,10 @@ import { assert, describe, it } from "@effect/vitest";
 import { JournalWatcher } from "@effected/jsonl";
 import type { MemoryFileSystemHandle, MemoryFileSystemSeed } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Cause, ConfigProvider, Effect, Exit, Layer, Runtime, Stream } from "effect";
-import { TestConsole } from "effect/testing";
+import { Cause, ConfigProvider, Effect, Exit, Fiber, Layer, Runtime, Stream } from "effect";
+import { TestClock, TestConsole } from "effect/testing";
 import type { PackageCommandDeps } from "../src/commands/package/execute.js";
+import { triggerLine } from "../src/commands/watch.js";
 import { run } from "../src/main.js";
 import { environment } from "./schema/harness.js";
 
@@ -415,6 +416,204 @@ describe("effected package build", () => {
 			});
 			assert.notInclude(outText, "\u001b[2J");
 			assert.include(outText, "built @scope/a");
+		}),
+	);
+});
+
+const SUMMARY_LINE = "built @scope/a: 0 errors, 0 warnings, 0 suppressed";
+const LOCKS = "/repo/.cache/effected/locks";
+
+/** Polls `done` across scheduler turns, which also lets a seam's promise settle; fails if it never holds. */
+const until = (done: () => boolean, what: string) =>
+	Effect.gen(function* () {
+		for (let turn = 0; turn < 5_000 && !done(); turn++) yield* Effect.yieldNow;
+		assert.isTrue(done(), `timed out waiting for ${what}`);
+	});
+
+/** `package build --watch` forked over a manual-events volume, with its output read on demand. */
+const watching = (
+	args: ReadonlyArray<string>,
+	options: {
+		readonly seed?: MemoryFileSystemSeed;
+		readonly env?: Record<string, string>;
+		readonly diagnose?: Diagnostics;
+		readonly seams?: (handle: MemoryFileSystemHandle) => Seams;
+	} = {},
+) =>
+	Effect.gen(function* () {
+		const handle = yield* MemoryFileSystem.makeHandle(options.seed ?? workspace, { watchEvents: "manual" });
+		const fiber = yield* run(
+			{},
+			{
+				cwd: CWD,
+				ci: false,
+				journalWatcher: idleWatcher,
+				seams: seamsFor(handle, options.diagnose, options.seams?.(handle)),
+			},
+			environment(["package", "build", "--watch", ...args], handle.layer),
+		).pipe(
+			Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: options.env ?? {} }))),
+			Effect.forkChild({ startImmediately: true }),
+		);
+		const lines = (read: Effect.Effect<ReadonlyArray<unknown>>) =>
+			Effect.map(read, (all) =>
+				all
+					.map(String)
+					.join("\n")
+					.split("\n")
+					.filter((line) => line !== ""),
+			);
+		const out = lines(TestConsole.logLines);
+		const err = lines(TestConsole.errorLines);
+		let outCount = 0;
+		const countOut = Effect.map(out, (all) => {
+			outCount = all.filter((line) => line.startsWith("built @scope/a:")).length;
+			return outCount;
+		});
+		/** Waits until stdout carries `n` build summaries. */
+		const builds = (n: number) =>
+			Effect.gen(function* () {
+				for (let turn = 0; turn < 5_000 && (yield* countOut) < n; turn++) yield* Effect.yieldNow;
+				assert.strictEqual(outCount, n, (yield* err).join("\n"));
+			});
+		/** Emits a change to `path` inside the package and lets the debounce elapse. */
+		const change = (path: string) =>
+			Effect.gen(function* () {
+				handle.emit(`${CWD}/${path}`, "Update");
+				for (let turn = 0; turn < 50; turn++) yield* Effect.yieldNow;
+				yield* TestClock.adjust("100 millis");
+			});
+		yield* until(() => handle.watcherCount() === 2, "the watchers");
+		return { handle, fiber, out, err, builds, change };
+	});
+
+describe("effected package build --watch", () => {
+	it.effect("--watch builds once, then again on a source change", () =>
+		Effect.gen(function* () {
+			const { fiber, out, err, builds, change } = yield* watching([]);
+			yield* builds(1);
+			yield* change("src/index.ts");
+			yield* builds(2);
+			assert.deepStrictEqual(
+				(yield* out).filter((line) => line.startsWith("built ")),
+				[SUMMARY_LINE, SUMMARY_LINE],
+			);
+			assert.include(yield* err, "rebuilding: src/index.ts");
+			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
+	it.effect("--watch keeps going after a failed build", () =>
+		Effect.gen(function* () {
+			let runs = 0;
+			const { fiber, out, err, builds, change } = yield* watching([], {
+				diagnose: (collector) => {
+					runs++;
+					if (runs === 1) failing(collector);
+				},
+			});
+			yield* builds(1);
+			assert.include((yield* err).join("\n"), "1 error");
+			yield* change("src/index.ts");
+			yield* builds(2);
+			const summaries = (yield* out).filter((line) => line.startsWith("built "));
+			assert.deepStrictEqual(summaries, ["built @scope/a: 1 errors, 1 warnings, 1 suppressed", SUMMARY_LINE]);
+			assert.isUndefined(fiber.pollUnsafe(), "the watch is still running");
+			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
+	it.effect("--watch keeps going after a broken effected.toml", () =>
+		Effect.gen(function* () {
+			const { handle, fiber, out, err, builds, change } = yield* watching([], {
+				seed: { ...workspace, [CONFIG]: "[package.build\n" },
+			});
+			for (let turn = 0; turn < 5_000; turn++) {
+				if ((yield* err).some((line) => line.includes(CONFIG))) break;
+				yield* Effect.yieldNow;
+			}
+			assert.isTrue(
+				(yield* err).some((line) => line.includes(CONFIG)),
+				"the refusal names the config",
+			);
+			assert.deepStrictEqual(yield* out, [], "a refused run prints nothing on stdout");
+			handle.write(CONFIG, "[package.build]\n");
+			yield* change("effected.toml");
+			yield* builds(1);
+			assert.isUndefined(fiber.pollUnsafe(), "the watch is still running");
+			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
+	it.effect("--watch --format json emits one parseable document per run", () =>
+		Effect.gen(function* () {
+			const { fiber, out, change } = yield* watching(["--format", "json"]);
+			const documents = Effect.map(out, (lines) => lines.filter((line) => line.startsWith("{")));
+			for (let turn = 0; turn < 5_000 && (yield* documents).length < 1; turn++) yield* Effect.yieldNow;
+			yield* change("src/index.ts");
+			for (let turn = 0; turn < 5_000 && (yield* documents).length < 2; turn++) yield* Effect.yieldNow;
+			const lines = yield* out;
+			assert.strictEqual(lines.length, 2, lines.join("\n"));
+			for (const line of lines) assert.property(JSON.parse(line), "verdict");
+			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
+	it.effect("--watch exits 2 outside a package", () =>
+		Effect.gen(function* () {
+			const { [`${CWD}/package.json`]: _manifest, ...seed } = workspace;
+			const { code, errText } = yield* cli(["--watch"], { seed });
+			assert.strictEqual(code, 2);
+			assert.include(errText, CWD);
+		}),
+	);
+
+	it.effect("--watch is refused under CI", () =>
+		Effect.gen(function* () {
+			const { code, errText } = yield* cli(["--watch"], { env: { CI: "true" } });
+			assert.strictEqual(code, 64);
+			assert.include(errText, "refused under CI");
+		}),
+	);
+
+	it.effect("--watch writes no step summary", () =>
+		Effect.gen(function* () {
+			const { handle, fiber, builds, change } = yield* watching([], { env: { GITHUB_STEP_SUMMARY: SUMMARY } });
+			yield* builds(1);
+			yield* change("src/index.ts");
+			yield* builds(2);
+			assert.isUndefined(handle.volume.text(SUMMARY));
+			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
+	it.effect("interrupting mid-build releases the build lock", () =>
+		Effect.gen(function* () {
+			let entered = false;
+			const { handle, fiber } = yield* watching([], {
+				seams: () => ({
+					buildTargetGroups: () => {
+						entered = true;
+						return new Promise<void>(() => {});
+					},
+				}),
+			});
+			yield* until(() => entered, "the build to start");
+			const locks = () => (handle.volume.readDirectory(LOCKS) ?? []).filter((name) => name.endsWith(".lock"));
+			assert.lengthOf(locks(), 1, "the build holds its lock");
+			yield* Fiber.interrupt(fiber);
+			assert.deepStrictEqual(locks(), []);
+		}),
+	);
+
+	it.effect("triggerLine lists three paths then +N more", () =>
+		Effect.sync(() => {
+			assert.strictEqual(
+				triggerLine({ _tag: "Changed", paths: ["a", "b", "c", "d", "e"] }),
+				"rebuilding: a, b, c +2 more",
+			);
+			assert.strictEqual(triggerLine({ _tag: "Changed", paths: ["a", "b"] }), "rebuilding: a, b");
+			assert.isUndefined(triggerLine({ _tag: "Initial" }));
 		}),
 	);
 });

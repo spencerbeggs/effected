@@ -15,4 +15,8 @@ export const buildFlags = {
 		Flag.withDefault(false),
 		Flag.withDescription("Measure gzip sizes for the report"),
 	),
+	watch: Flag.Boolean("watch").pipe(
+		Flag.withDefault(false),
+		Flag.withDescription("Rebuild whenever a source file or effected.toml changes, until interrupted"),
+	),
 };
