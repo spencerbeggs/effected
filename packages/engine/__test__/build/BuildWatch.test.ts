@@ -287,4 +287,46 @@ describe("BuildWatch.run", () => {
 			assert.strictEqual(error, failure);
 		}),
 	);
+
+	/** Runs `run` over a volume whose `watch` ends at once for every directory `ends` accepts, and returns its error. */
+	const runWithEndingWatch = (ends: (dir: string) => boolean) =>
+		Effect.gen(function* () {
+			const handle = yield* MemoryFileSystem.makeHandle(SEED, {
+				watchEvents: "manual",
+				faults: (base) => ({
+					watch: (path, watchOptions) => (ends(path) ? Stream.empty : base.watch(path, watchOptions)),
+				}),
+			});
+			return yield* BuildWatch.run({
+				cwd: CWD,
+				root: ROOT,
+				exclude: Effect.succeed(DEFAULT_EXCLUDES),
+				build: () => Effect.void,
+			}).pipe(Effect.provide(handle.layer), Effect.flip);
+		});
+
+	/** The stopped-watcher error's `SystemError`, failing the test when the reason is anything else. */
+	const stoppedReason = (error: PlatformError.PlatformError) => {
+		const reason = error.reason;
+		assert.instanceOf(reason, PlatformError.SystemError);
+		if (!(reason instanceof PlatformError.SystemError)) throw new Error("unreachable");
+		assert.strictEqual(reason._tag, "Unknown");
+		assert.strictEqual(reason.method, "watch");
+		assert.strictEqual(reason.description, "The watcher stopped.");
+		return reason;
+	};
+
+	it.effect("fails when every watcher stops", () =>
+		Effect.gen(function* () {
+			const reason = stoppedReason(yield* runWithEndingWatch(() => true));
+			assert.include([CWD, ROOT, `${ROOT}/.config`], reason.pathOrDescriptor);
+		}),
+	);
+
+	it.effect("fails when the package watcher stops while the root tier stays live", () =>
+		Effect.gen(function* () {
+			const reason = stoppedReason(yield* runWithEndingWatch((dir) => dir === CWD));
+			assert.strictEqual(reason.pathOrDescriptor, CWD);
+		}),
+	);
 });

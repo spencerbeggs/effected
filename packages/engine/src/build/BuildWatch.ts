@@ -116,6 +116,16 @@ export class BuildWatch {
 
 			const pending = yield* Queue.unbounded<string>();
 			const ready = targets.map(() => Deferred.makeUnsafe<void>());
+			// A watch stream that ends has lost its watcher (node ends one on `close`). Any one ending fails the run: a
+			// stopped package watch beside live root-tier watches would otherwise idle while looking healthy.
+			const stopped = (dir: string) =>
+				PlatformError.systemError({
+					_tag: "Unknown",
+					module: "FileSystem",
+					method: "watch",
+					pathOrDescriptor: dir,
+					description: "The watcher stopped.",
+				});
 			const watching = Stream.mergeAll(
 				targets.map((target, index) =>
 					fs
@@ -125,23 +135,17 @@ export class BuildWatch {
 								Deferred.doneUnsafe(ready[index] as Deferred.Deferred<void>, Effect.void);
 							},
 						})
-						// A node watcher reports paths relative to the watched directory; memfs reports them absolute.
-						.pipe(Stream.map((event) => target.accept(path.resolve(target.dir, event.path)))),
+						.pipe(
+							// A node watcher reports paths relative to the watched directory; memfs reports them absolute.
+							Stream.map((event) => target.accept(path.resolve(target.dir, event.path))),
+							Stream.concat(Stream.fail(stopped(target.dir))),
+						),
 				),
 				{ concurrency: "unbounded" },
 			).pipe(
 				Stream.runForEach((entry) => (entry === undefined ? Effect.void : Queue.offer(pending, entry))),
-				Effect.andThen(
-					Effect.fail(
-						PlatformError.systemError({
-							_tag: "Unknown",
-							module: "FileSystem",
-							method: "watch",
-							pathOrDescriptor: cwd,
-							description: "The watcher stopped.",
-						}),
-					),
-				),
+				// Unreachable: every stream above ends by failing.
+				Effect.andThen(Effect.never),
 			);
 
 			// Wait for changes, then until none has arrived for `debounce`; changes made during a build wait in `pending`.
