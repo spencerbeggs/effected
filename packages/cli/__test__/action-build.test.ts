@@ -290,6 +290,65 @@ const eventually = (
 		assert.fail(`timed out waiting for ${what}\n${yield* context}`);
 	});
 
+/** Waits until `progress` has not changed for `quiet` ms of real time, failing with `context` past `bound`. */
+const quiet = (progress: Effect.Effect<string>, context: Effect.Effect<string>, ms = 1_000, bound = 10_000) =>
+	Effect.gen(function* () {
+		let last = yield* progress;
+		let still = 0;
+		for (let waited = 0; waited < bound; waited += 50) {
+			yield* Effect.sleep("50 millis");
+			const now = yield* progress;
+			still = now === last ? still + 50 : 0;
+			last = now;
+			if (still >= ms) return;
+		}
+		assert.fail(`never went quiet\n${yield* context}`);
+	});
+
+/**
+ * `action build --watch` over a real temporary action with `--format json`: the first run, quiet, one rewrite of
+ * `src/main.ts`, and its run. Answers what stdout and stderr held, with the fiber still running.
+ */
+const watchedTwice = (env: Readonly<Record<string, string>>) =>
+	Effect.gen(function* () {
+		const cwd = yield* tempAction(GOOD);
+		const fiber = yield* run(
+			{},
+			{ cwd, ci: false },
+			environment(["action", "build", "--watch", "--format", "json"], Live),
+		).pipe(
+			Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: { ...env } }))),
+			Effect.forkChild({ startImmediately: true }),
+		);
+		const out = lines(TestConsole.logLines);
+		const err = lines(TestConsole.errorLines);
+		const transcript = Effect.map(
+			Effect.all([out, err]),
+			([o, e]) => `stdout:\n${o.join("\n")}\nstderr:\n${e.join("\n")}`,
+		);
+		const runs = Effect.map(out, (all) => all.length);
+		yield* eventually(
+			Effect.map(runs, (n) => n >= 1),
+			"the first run",
+			20,
+			transcript,
+		);
+		yield* quiet(
+			Effect.map(Effect.all([out, err]), ([o, e]) => `${o.length}/${e.length}`),
+			transcript,
+		);
+		const before = yield* runs;
+		writeFileSync(join(cwd, "src/main.ts"), 'console.log("changed");\n');
+		yield* eventually(
+			Effect.map(runs, (n) => n === before + 1),
+			"the run after the rewrite",
+			10,
+			transcript,
+		);
+		assert.isUndefined(fiber.pollUnsafe(), yield* transcript);
+		return { fiber, out: yield* out, transcript: yield* transcript };
+	});
+
 describe("effected action build --watch", () => {
 	it.effect("--watch exits 2 without an [action] table", () =>
 		Effect.gen(function* () {
@@ -383,6 +442,42 @@ describe("effected action build --watch", () => {
 					assert.strictEqual((yield* rebuilds).length, early.length + 1, yield* transcript);
 					assert.isUndefined(fiber.pollUnsafe(), yield* transcript);
 					assert.include(readFileSync(join(cwd, "dist/main.js"), "utf8"), "changed");
+					yield* Fiber.interrupt(fiber);
+				}).pipe(Effect.provide(TestConsole.layer)),
+			),
+		60_000,
+	);
+	it.live(
+		"--watch --format json writes one parseable ActionRunResult per run on stdout",
+		() =>
+			Effect.scoped(
+				Effect.gen(function* () {
+					const { fiber, out, transcript } = yield* watchedTwice({});
+					assert.isAtLeast(out.length, 2, transcript);
+					for (const line of out) {
+						const document = JSON.parse(line) as { readonly verdict?: string; readonly result?: unknown };
+						assert.strictEqual(document.verdict, "ok", transcript);
+						assert.isDefined(document.result, transcript);
+					}
+					yield* Fiber.interrupt(fiber);
+				}).pipe(Effect.provide(TestConsole.layer)),
+			),
+		60_000,
+	);
+
+	it.live(
+		"--watch writes no step summary",
+		() =>
+			Effect.scoped(
+				Effect.gen(function* () {
+					const summaryDir = yield* Effect.acquireRelease(
+						Effect.sync(() => mkdtempSync(join(tmpdir(), "effected-action-watch-summary-"))),
+						(dir) => Effect.sync(() => rmSync(dir, { recursive: true, force: true })),
+					);
+					const summary = join(summaryDir, "summary.md");
+					writeFileSync(summary, "");
+					const { fiber, transcript } = yield* watchedTwice({ GITHUB_STEP_SUMMARY: summary });
+					assert.strictEqual(readFileSync(summary, "utf8"), "", transcript);
 					yield* Fiber.interrupt(fiber);
 				}).pipe(Effect.provide(TestConsole.layer)),
 			),
