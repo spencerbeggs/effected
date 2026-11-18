@@ -35,7 +35,9 @@ export const triggerLine = (trigger: WatchTrigger): string | undefined => {
  * Render a run's failure to stderr as CliRuntime would, without ending the program.
  *
  * @remarks
- * A cause holding an interrupt passes through untouched, so Ctrl-C still ends the watch with `130`.
+ * An interrupt-only cause passes through untouched, so Ctrl-C still ends the watch with `130`. A failure that arrived
+ * beside an interrupt, such as a race whose losing branch was interrupted, is a failure: it is rendered and the watch
+ * goes on. If the watch itself was interrupted, it stops at its next step all the same.
  */
 export const reportAndContinue = <A, E, R>(
 	run: Effect.Effect<A, E, R>,
@@ -43,7 +45,7 @@ export const reportAndContinue = <A, E, R>(
 	run.pipe(
 		Effect.asVoid,
 		Effect.catchCause((cause) =>
-			Cause.hasInterrupts(cause)
+			Cause.hasInterruptsOnly(cause)
 				? Effect.failCause(cause as Cause.Cause<never>)
 				: Doc.print(CliFailure.toDoc(cause), { stream: "stderr" }),
 		),

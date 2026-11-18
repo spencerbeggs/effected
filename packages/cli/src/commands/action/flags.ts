@@ -15,6 +15,10 @@ export const buildFlags = {
 		Flag.withDefault(false),
 		Flag.withDescription("Skip copying the build to the local action directory"),
 	),
+	watch: Flag.Boolean("watch").pipe(
+		Flag.withDefault(false),
+		Flag.withDescription("Rebuild whenever a source file or effected.toml changes, until interrupted"),
+	),
 };
 
 /** What `action init` takes. A name or description left out is read from `package.json`. */

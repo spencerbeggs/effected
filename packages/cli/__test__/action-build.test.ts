@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, ConfigProvider, Effect, Exit, Layer, Runtime } from "effect";
+import { Cause, ConfigProvider, Effect, Exit, Fiber, Layer, Runtime } from "effect";
 import { TestConsole } from "effect/testing";
 import { run } from "../src/main.js";
 import { environment } from "./schema/harness.js";
@@ -249,5 +249,113 @@ describe("effected action build", () => {
 			assert.include(text, "### effected action build");
 			assert.include(text, "dist/main.js");
 		}),
+	);
+});
+
+/** Writes `files` into a fresh temporary directory, removed when the scope closes. */
+const tempAction = (files: Readonly<Record<string, string>>) =>
+	Effect.acquireRelease(
+		Effect.sync(() => {
+			const cwd = mkdtempSync(join(tmpdir(), "effected-action-watch-"));
+			for (const [name, source] of Object.entries(files)) {
+				mkdirSync(dirname(join(cwd, name)), { recursive: true });
+				writeFileSync(join(cwd, name), source);
+			}
+			return cwd;
+		}),
+		(cwd) => Effect.sync(() => rmSync(cwd, { recursive: true, force: true })),
+	);
+
+const lines = (read: Effect.Effect<ReadonlyArray<unknown>>) =>
+	Effect.map(read, (all) =>
+		all
+			.map(String)
+			.join("\n")
+			.split("\n")
+			.filter((line) => line !== ""),
+	);
+
+/** Polls `check` every 50 ms of real time until it holds, for at most `seconds`. */
+const eventually = (
+	check: Effect.Effect<boolean>,
+	what: string,
+	seconds = 30,
+	context: Effect.Effect<string> = Effect.succeed(""),
+) =>
+	Effect.gen(function* () {
+		for (let waited = 0; waited < seconds * 20; waited++) {
+			if (yield* check) return;
+			yield* Effect.sleep("50 millis");
+		}
+		assert.fail(`timed out waiting for ${what}\n${yield* context}`);
+	});
+
+describe("effected action build --watch", () => {
+	it.effect("--watch exits 2 without an [action] table", () =>
+		Effect.gen(function* () {
+			const { code, errText } = yield* cli(["--watch"], { ...GOOD, "effected.toml": "" });
+			assert.strictEqual(code, 2);
+			assert.include(errText, "[action]");
+		}),
+	);
+
+	it.effect("--watch is refused under CI", () =>
+		Effect.gen(function* () {
+			const { code, errText } = yield* cli(["--watch"], GOOD, { CI: "true" }, true);
+			assert.strictEqual(code, 64);
+			assert.include(errText, "refused under CI");
+		}),
+	);
+
+	it.live(
+		"--watch rebuilds after src/main.ts changes",
+		() =>
+			Effect.scoped(
+				Effect.gen(function* () {
+					const cwd = yield* tempAction(GOOD);
+					const fiber = yield* run(
+						{},
+						{ cwd, ci: false },
+						environment(["action", "build", "--watch", "--human"], Live),
+					).pipe(
+						Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} }))),
+						Effect.forkChild({ startImmediately: true }),
+					);
+					const out = lines(TestConsole.logLines);
+					const err = lines(TestConsole.errorLines);
+					const reports = Effect.map(
+						out,
+						(all) => all.filter((line) => /^built 1 entries in \d+ms$/.test(line)).length,
+					);
+					yield* eventually(
+						Effect.map(reports, (n) => n >= 1),
+						"the first report",
+					);
+					// FSEvents can hand a fresh watcher the fixture's own creation events late, as one more batch that a first
+					// rewrite merges into, listed past the first three paths. Each attempt waits for its own report, so a second
+					// rewrite is a batch of its own.
+					const named = Effect.map(err, (all) =>
+						all.some((line) => line.startsWith("rebuilding:") && line.includes("src/main.ts")),
+					);
+					for (let attempt = 1; attempt <= 3 && !(yield* named); attempt++) {
+						const before = yield* reports;
+						writeFileSync(join(cwd, "src/main.ts"), `console.log("changed ${attempt}");\n`);
+						yield* eventually(
+							Effect.map(reports, (n) => n > before),
+							"a report after the rewrite",
+							30,
+							Effect.map(Effect.all([out, err]), ([o, e]) => `stdout:\n${o.join("\n")}\nstderr:\n${e.join("\n")}`),
+						);
+					}
+					assert.isTrue(yield* named, (yield* err).join("\n"));
+					assert.isUndefined(fiber.pollUnsafe(), (yield* err).join("\n"));
+					yield* eventually(
+						Effect.sync(() => readFileSync(join(cwd, "dist/main.js"), "utf8").includes("changed")),
+						"the rebuilt bundle",
+					);
+					yield* Fiber.interrupt(fiber);
+				}).pipe(Effect.provide(TestConsole.layer)),
+			),
+		60_000,
 	);
 });
