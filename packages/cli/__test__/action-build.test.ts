@@ -327,32 +327,62 @@ describe("effected action build --watch", () => {
 						out,
 						(all) => all.filter((line) => /^built 1 entries in \d+ms$/.test(line)).length,
 					);
+					const rebuilds = Effect.map(err, (all) => all.filter((line) => line.startsWith("rebuilding:")));
+					const transcript = Effect.map(
+						Effect.all([out, err]),
+						([o, e]) => `stdout:\n${o.join("\n")}\nstderr:\n${e.join("\n")}`,
+					);
+					/** Polls until neither a report nor a rebuilding line has appeared for `quiet` ms of real time. */
+					const quiescence = (quiet: number, bound: number) =>
+						Effect.gen(function* () {
+							let last = `${yield* reports}/${(yield* rebuilds).length}`;
+							let still = 0;
+							for (let waited = 0; waited < bound; waited += 50) {
+								yield* Effect.sleep("50 millis");
+								const now = `${yield* reports}/${(yield* rebuilds).length}`;
+								still = now === last ? still + 50 : 0;
+								last = now;
+								if (still >= quiet) return;
+							}
+							assert.fail(`never went quiet\n${yield* transcript}`);
+						});
+
 					yield* eventually(
 						Effect.map(reports, (n) => n >= 1),
 						"the first report",
+						20,
+						transcript,
 					);
-					// FSEvents can hand a fresh watcher the fixture's own creation events late, as one more batch that a first
-					// rewrite merges into, listed past the first three paths. Each attempt waits for its own report, so a second
-					// rewrite is a batch of its own.
-					const named = Effect.map(err, (all) =>
-						all.some((line) => line.startsWith("rebuilding:") && line.includes("src/main.ts")),
-					);
-					for (let attempt = 1; attempt <= 3 && !(yield* named); attempt++) {
-						const before = yield* reports;
-						writeFileSync(join(cwd, "src/main.ts"), `console.log("changed ${attempt}");\n`);
-						yield* eventually(
-							Effect.map(reports, (n) => n > before),
-							"a report after the rewrite",
-							30,
-							Effect.map(Effect.all([out, err]), ([o, e]) => `stdout:\n${o.join("\n")}\nstderr:\n${e.join("\n")}`),
+					// Any late batch from the fixture's own creation lands here, before the rewrite, so it cannot hide in the
+					// batch under test. It may name the fixture files; it must never be the build's own `.github` writes.
+					yield* quiescence(1_000, 10_000);
+					const before = yield* reports;
+					const early = yield* rebuilds;
+					for (const line of early) {
+						const paths = line
+							.slice("rebuilding: ".length)
+							.replace(/ \+\d+ more$/, "")
+							.split(", ");
+						assert.isFalse(
+							paths.every((path) => path === ".github" || path.startsWith(".github/")),
+							`the build triggered itself: ${line}\n${yield* transcript}`,
 						);
 					}
-					assert.isTrue(yield* named, (yield* err).join("\n"));
-					assert.isUndefined(fiber.pollUnsafe(), (yield* err).join("\n"));
+
+					writeFileSync(join(cwd, "src/main.ts"), 'console.log("changed");\n');
 					yield* eventually(
-						Effect.sync(() => readFileSync(join(cwd, "dist/main.js"), "utf8").includes("changed")),
-						"the rebuilt bundle",
+						Effect.map(reports, (n) => n === before + 1),
+						"the report after the rewrite",
+						10,
+						transcript,
 					);
+					assert.strictEqual((yield* rebuilds).at(-1), "rebuilding: src/main.ts", yield* transcript);
+					// A settle window well above the debounce: the rebuild's own writes must queue nothing.
+					yield* Effect.sleep("1500 millis");
+					assert.strictEqual(yield* reports, before + 1, `a surplus rebuild\n${yield* transcript}`);
+					assert.strictEqual((yield* rebuilds).length, early.length + 1, yield* transcript);
+					assert.isUndefined(fiber.pollUnsafe(), yield* transcript);
+					assert.include(readFileSync(join(cwd, "dist/main.js"), "utf8"), "changed");
 					yield* Fiber.interrupt(fiber);
 				}).pipe(Effect.provide(TestConsole.layer)),
 			),
