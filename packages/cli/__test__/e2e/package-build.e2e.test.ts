@@ -141,7 +141,7 @@ describe("the built effected bin", () => {
 		);
 	});
 
-	it("package build --watch does not rebuild from its own writes", { timeout: 240_000 }, async () => {
+	it("package build --watch does not rebuild from its own writes", { timeout: 300_000 }, async () => {
 		const run = watch(["package", "build", "--watch", "--format", "json", "--no-exe"], cwd);
 		const context = () => `stdout:\n${run.stdoutLines().join("\n")}\nstderr:\n${run.stderr()}`;
 		await until(() => run.stdoutLines().length >= 1, 180_000, context);
@@ -153,6 +153,19 @@ describe("the built effected bin", () => {
 			context(),
 		);
 		assert.notInclude(run.stderr(), "rebuilding:", context());
+
+		// The positive control: the same watch does see an edit, so the silence above is not a watcher that saw nothing.
+		const source = join(cwd, "src/index.ts");
+		writeFileSync(source, `${readFileSync(source, "utf8")}\n`);
+		await until(() => run.stdoutLines().length >= 2, 60_000, context);
+		await new Promise((wake) => setTimeout(wake, SETTLE_MS));
+		assert.strictEqual(run.stdoutLines().length, 2, context());
+		const rebuilds = run
+			.stderr()
+			.split("\n")
+			.filter((line) => line.startsWith("rebuilding:"));
+		assert.deepStrictEqual(rebuilds, ["rebuilding: src/index.ts"], context());
+
 		run.kill("SIGINT");
 		assert.strictEqual(await run.exited, 130, context());
 	});
