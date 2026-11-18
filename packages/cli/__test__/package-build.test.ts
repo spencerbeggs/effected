@@ -430,6 +430,9 @@ const until = (done: () => boolean, what: string) =>
 		assert.isTrue(done(), `timed out waiting for ${what}`);
 	});
 
+/** The workspace with a source file, so the package has a `src` directory to watch. */
+const watchedPackage: MemoryFileSystemSeed = { ...workspace, [`${CWD}/src/index.ts`]: "export {};\n" };
+
 /** `package build --watch` forked over a manual-events volume, with its output read on demand. */
 const watching = (
 	args: ReadonlyArray<string>,
@@ -438,10 +441,12 @@ const watching = (
 		readonly env?: Record<string, string>;
 		readonly diagnose?: Diagnostics;
 		readonly seams?: (handle: MemoryFileSystemHandle) => Seams;
+		/** How many watches to wait for: the package, `/repo`, and one per top-level directory of the package. */
+		readonly watchers?: number;
 	} = {},
 ) =>
 	Effect.gen(function* () {
-		const handle = yield* MemoryFileSystem.makeHandle(options.seed ?? workspace, { watchEvents: "manual" });
+		const handle = yield* MemoryFileSystem.makeHandle(options.seed ?? watchedPackage, { watchEvents: "manual" });
 		const fiber = yield* run(
 			{},
 			{
@@ -483,7 +488,7 @@ const watching = (
 				for (let turn = 0; turn < 50; turn++) yield* Effect.yieldNow;
 				yield* TestClock.adjust("100 millis");
 			});
-		yield* until(() => handle.watcherCount() === 2, "the watchers");
+		yield* until(() => handle.watcherCount() === (options.watchers ?? 3), "the watchers");
 		return { handle, fiber, out, err, builds, change };
 	});
 
@@ -527,6 +532,7 @@ describe("effected package build --watch", () => {
 		Effect.gen(function* () {
 			const { handle, fiber, out, err, builds, change } = yield* watching([], {
 				seed: { ...workspace, [CONFIG]: "[package.build\n" },
+				watchers: 2,
 			});
 			for (let turn = 0; turn < 5_000; turn++) {
 				if ((yield* err).some((line) => line.includes(CONFIG))) break;

@@ -19,6 +19,9 @@ const SEED: MemoryFileSystemSeed = {
 	[`${CWD}/src/index.ts`]: "",
 };
 
+/** The package directory, `/repo`, `/repo/.config`, and the one top-level directory SEED gives the package: `src`. */
+const WATCHERS = 4;
+
 /** Lets every forked fiber run until it blocks. */
 const settle = Effect.forEach(Array.from({ length: 50 }), () => Effect.yieldNow, { discard: true });
 
@@ -43,9 +46,13 @@ const start = (options: {
 	readonly cwd?: string;
 	readonly watchers?: number;
 	readonly exclude?: Effect.Effect<ReadonlyArray<string>>;
+	readonly handle?: MemoryFileSystemOptions;
 }) =>
 	Effect.gen(function* () {
-		const handle = yield* MemoryFileSystem.makeHandle(options.seed ?? SEED, { watchEvents: "manual" });
+		const handle = yield* MemoryFileSystem.makeHandle(options.seed ?? SEED, {
+			...options.handle,
+			watchEvents: "manual",
+		});
 		const log = yield* Ref.make<ReadonlyArray<WatchTrigger>>([]);
 		const fiber = yield* BuildWatch.run({
 			cwd: options.cwd ?? CWD,
@@ -53,7 +60,7 @@ const start = (options: {
 			exclude: options.exclude ?? Effect.succeed(DEFAULT_EXCLUDES),
 			build: (trigger) => Ref.update(log, (all) => [...all, trigger]),
 		}).pipe(Effect.provide(handle.layer), Effect.forkChild({ startImmediately: true }));
-		yield* waitForWatchers(handle, options.watchers ?? 3);
+		yield* waitForWatchers(handle, options.watchers ?? WATCHERS);
 		const harness: Harness = { handle, triggers: Ref.get(log), fiber };
 		return harness;
 	});
@@ -81,9 +88,9 @@ describe("BuildWatch.run", () => {
 				exclude: Effect.succeed(DEFAULT_EXCLUDES),
 				build: (trigger) => Ref.update(seen, (all) => [...all, [trigger, handle.watcherCount()] as const]),
 			}).pipe(Effect.provide(handle.layer), Effect.forkChild({ startImmediately: true }));
-			yield* waitForWatchers(handle, 3);
+			yield* waitForWatchers(handle, WATCHERS);
 			// Every watcher was installed when Initial ran, so no edit made after it can be lost.
-			assert.deepStrictEqual(yield* Ref.get(seen), [[{ _tag: "Initial" }, 3]]);
+			assert.deepStrictEqual(yield* Ref.get(seen), [[{ _tag: "Initial" }, WATCHERS]]);
 			yield* Fiber.interrupt(fiber);
 		}),
 	);
@@ -139,7 +146,14 @@ describe("BuildWatch.run", () => {
 
 	it.effect("does not exclude a path that merely shares a prefix", () =>
 		Effect.gen(function* () {
-			const { handle, triggers, fiber } = yield* start({});
+			const { handle, triggers, fiber } = yield* start({
+				seed: {
+					...SEED,
+					[`${CWD}/distribution/x.ts`]: "",
+					[`${CWD}/.github/actions/local-notes.md`]: "",
+				},
+				watchers: WATCHERS + 2,
+			});
 			yield* burst(handle, [
 				[`${CWD}/distribution/x.ts`, "Update"],
 				[`${CWD}/.github/actions/local-notes.md`, "Update"],
@@ -154,7 +168,10 @@ describe("BuildWatch.run", () => {
 
 	it.effect("ignores the directories an exclusion lives in, not the files beside it", () =>
 		Effect.gen(function* () {
-			const { handle, triggers, fiber } = yield* start({});
+			const { handle, triggers, fiber } = yield* start({
+				seed: { ...SEED, [`${CWD}/.github/workflows/ci.yml`]: "" },
+				watchers: WATCHERS + 1,
+			});
 			// What a first action build's persist step creates on its way to `.github/actions/local` and `act-test.yml`.
 			yield* burst(handle, [
 				[`${CWD}/.github`, "Create"],
@@ -168,20 +185,115 @@ describe("BuildWatch.run", () => {
 		}),
 	);
 
-	it.effect("re-reads exclude before each batch", () =>
+	it.effect("watches the package top level, and recursively only its directories that no exclusion covers", () =>
+		Effect.gen(function* () {
+			const watched: Array<readonly [string, boolean]> = [];
+			const seed: MemoryFileSystemSeed = {
+				...SEED,
+				[`${CWD}/node_modules/dep/index.js`]: "",
+				[`${CWD}/dist/index.js`]: "",
+				[`${CWD}/.git/HEAD`]: "",
+				[`${CWD}/.turbo/log`]: "",
+				[`${CWD}/.github/workflows/ci.yml`]: "",
+			};
+			const { handle, triggers, fiber } = yield* start({
+				seed,
+				watchers: WATCHERS + 1,
+				handle: { spies: { watch: (path, options) => watched.push([path, options?.recursive === true]) } },
+			});
+			assert.deepStrictEqual(
+				[...watched].sort(([a], [b]) => a.localeCompare(b)),
+				[
+					[ROOT, false],
+					[`${ROOT}/.config`, false],
+					[CWD, false],
+					// Only an ancestor of `.github/actions/local`, so it is watched and its events are filtered.
+					[`${CWD}/.github`, true],
+					[`${CWD}/src`, true],
+				],
+			);
+			yield* burst(handle, [[`${CWD}/.github/workflows/ci.yml`, "Update"]]);
+			assert.deepStrictEqual(yield* triggers, [{ _tag: "Initial" }, changed(".github/workflows/ci.yml")]);
+			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
+	it.effect("watches a new top-level directory, and an edit inside it triggers", () =>
+		Effect.gen(function* () {
+			const { handle, triggers, fiber } = yield* start({});
+			handle.mkdir(`${CWD}/lib`);
+			handle.emit(`${CWD}/lib`, "Create");
+			yield* settle;
+			// Armed on the top-level event itself, before the batch is cut, so an edit inside it straight away is seen.
+			assert.strictEqual(handle.watcherCount(), WATCHERS + 1, "the new directory is watched before the debounce");
+			yield* TestClock.adjust("100 millis");
+			yield* settle;
+			yield* burst(handle, [[`${CWD}/lib/x.ts`, "Update"]]);
+			assert.deepStrictEqual(yield* triggers, [{ _tag: "Initial" }, changed("lib"), changed("lib/x.ts")]);
+			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
+	it.effect("removing a top-level directory rebuilds and does not fail the run", () =>
+		Effect.gen(function* () {
+			const { handle, triggers, fiber } = yield* start({});
+			handle.remove(`${CWD}/src`);
+			yield* burst(handle, [[`${CWD}/src`, "Remove"]]);
+			assert.strictEqual(handle.watcherCount(), WATCHERS - 1, "its watch is gone");
+			assert.isUndefined(fiber.pollUnsafe(), "run is still watching");
+			assert.deepStrictEqual(yield* triggers, [{ _tag: "Initial" }, changed("src")]);
+			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
+	it.effect("a top-level directory's watch ending does not fail the run", () =>
+		Effect.gen(function* () {
+			const { handle, triggers, fiber } = yield* start({
+				watchers: WATCHERS - 1,
+				handle: {
+					faults: (base) => ({
+						watch: (path, options) => (path === `${CWD}/src` ? Stream.empty : base.watch(path, options)),
+					}),
+				},
+			});
+			assert.isUndefined(fiber.pollUnsafe(), "run is still watching");
+			yield* burst(handle, [[`${CWD}/README.md`, "Update"]]);
+			assert.deepStrictEqual(yield* triggers, [{ _tag: "Initial" }, changed("README.md")]);
+			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
+	it.effect("re-reads exclude before each batch, and re-arms the watched directories to match", () =>
 		Effect.gen(function* () {
 			const excludes = yield* Ref.make<ReadonlyArray<string>>(["generated"]);
-			const { handle, triggers, fiber } = yield* start({ exclude: Ref.get(excludes) });
+			const watched: Array<string> = [];
+			// `generated` is excluded, so it gets no watch: the package, the root tier, `src` and `out`.
+			const { handle, triggers, fiber } = yield* start({
+				seed: { ...SEED, [`${CWD}/generated/a.ts`]: "", [`${CWD}/out/a.ts`]: "" },
+				watchers: WATCHERS + 1,
+				exclude: Ref.get(excludes),
+				handle: { spies: { watch: (path) => watched.push(path) } },
+			});
+			assert.notInclude(watched, `${CWD}/generated`);
 			yield* burst(handle, [
 				[`${CWD}/generated/a.ts`, "Update"],
 				[`${CWD}/out/a.ts`, "Update"],
 			]);
+			// The exclusions change with the config, and the config edit is itself a batch: after it, the armed set follows.
 			yield* Ref.set(excludes, ["out"]);
+			yield* burst(handle, [[`${CWD}/package.json`, "Update"]]);
+			assert.include(watched, `${CWD}/generated`, "the directory no longer excluded is watched");
+			assert.strictEqual(handle.watcherCount(), WATCHERS + 1, "and the one now excluded is not");
 			yield* burst(handle, [
 				[`${CWD}/generated/b.ts`, "Update"],
 				[`${CWD}/out/b.ts`, "Update"],
 			]);
-			assert.deepStrictEqual(yield* triggers, [{ _tag: "Initial" }, changed("out/a.ts"), changed("generated/b.ts")]);
+			assert.deepStrictEqual(yield* triggers, [
+				{ _tag: "Initial" },
+				changed("out/a.ts"),
+				changed("package.json"),
+				changed("generated/b.ts"),
+			]);
 			yield* Fiber.interrupt(fiber);
 		}),
 	);
@@ -217,12 +329,13 @@ describe("BuildWatch.run", () => {
 
 	it.effect("does not watch the root tier when root is cwd", () =>
 		Effect.gen(function* () {
-			const { handle, triggers, fiber } = yield* start({ cwd: ROOT, watchers: 1 });
+			// `/repo` itself, then its top-level directories `.config` and `packages`; no root-tier watch on top.
+			const { handle, triggers, fiber } = yield* start({ cwd: ROOT, watchers: 3 });
 			yield* burst(handle, [
 				[`${ROOT}/.cache/effected/build.jsonl`, "Update"],
 				[`${ROOT}/.cache/effected/locks/a.lock`, "Create"],
 			]);
-			assert.strictEqual(handle.watcherCount(), 1);
+			assert.strictEqual(handle.watcherCount(), 3);
 			assert.deepStrictEqual(yield* triggers, [{ _tag: "Initial" }]);
 			yield* Fiber.interrupt(fiber);
 		}),
@@ -254,7 +367,7 @@ describe("BuildWatch.run", () => {
 				exclude: Effect.succeed(DEFAULT_EXCLUDES),
 				build,
 			}).pipe(Effect.provide(handle.layer), Effect.forkChild({ startImmediately: true }));
-			yield* waitForWatchers(handle, 3);
+			yield* waitForWatchers(handle, WATCHERS);
 			yield* burst(handle, [[`${CWD}/src/first.ts`, "Update"]]);
 			yield* Deferred.await(entered);
 			for (const name of ["c", "a", "b"]) {
