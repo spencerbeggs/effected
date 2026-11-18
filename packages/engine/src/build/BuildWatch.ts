@@ -79,10 +79,14 @@ const CONFIG_NAME = "effected.toml";
 /** Discovery from `cwd`, as `BuildRun` and `ActionRun` provide it to the root search and the config load. */
 const discoveryFrom = (cwd: string) => WorkspaceDiscovery.layer({ cwd }).pipe(Layer.provide(WorkspaceRoot.layer));
 
-/** Whether `path` is `prefix` or lies under it, on `/` boundaries. */
+/**
+ * Whether an exclusion covers `path`, on `/` boundaries: `path` is the excluded path, lies under it, or is a directory
+ * it lives in. A build creating `.github/actions/local` also creates `.github` and `.github/actions`, and those
+ * directory events are the build's own; a file under them that no exclusion names still triggers.
+ */
 const isUnder = (path: string, prefix: string): boolean => {
 	const trimmed = prefix.replace(/^\.\//, "").replace(/\/+$/, "");
-	return trimmed !== "" && (path === trimmed || path.startsWith(`${trimmed}/`));
+	return trimmed !== "" && (path === trimmed || path.startsWith(`${trimmed}/`) || trimmed.startsWith(`${path}/`));
 };
 
 /**

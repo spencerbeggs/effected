@@ -152,6 +152,22 @@ describe("BuildWatch.run", () => {
 		}),
 	);
 
+	it.effect("ignores the directories an exclusion lives in, not the files beside it", () =>
+		Effect.gen(function* () {
+			const { handle, triggers, fiber } = yield* start({});
+			// What a first action build's persist step creates on its way to `.github/actions/local` and `act-test.yml`.
+			yield* burst(handle, [
+				[`${CWD}/.github`, "Create"],
+				[`${CWD}/.github/actions`, "Create"],
+				[`${CWD}/.github/workflows`, "Create"],
+			]);
+			assert.deepStrictEqual(yield* triggers, [{ _tag: "Initial" }], "the build's own directories trigger nothing");
+			yield* burst(handle, [[`${CWD}/.github/workflows/ci.yml`, "Update"]]);
+			assert.deepStrictEqual(yield* triggers, [{ _tag: "Initial" }, changed(".github/workflows/ci.yml")]);
+			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
 	it.effect("re-reads exclude before each batch", () =>
 		Effect.gen(function* () {
 			const excludes = yield* Ref.make<ReadonlyArray<string>>(["generated"]);
