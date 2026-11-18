@@ -1,5 +1,11 @@
 # Log
 
+## 2026-11-18
+
+* Updated @effected/engine
+* Added A watched build does not rebuild for inputs outside the package
+* Updated The effected build commands: package build, action build and action init
+
 ## 2026-11-16
 
 * Updated @effected/crypto

@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-10T01:42:40Z
+  at: 2026-11-18T18:13:08Z
 integrity:
   generated:
-    body: c37c110e1be3782f
+    body: 03a797420e056602
 ---
 
 # @effected/engine
@@ -33,6 +33,7 @@ integrity:
 - **`./build`.** The machinery behind [`effected package build` and `effected action build`](../interfaces/build-commands.md) and the `package_build` and `action_build` MCP tools:
   - `BuildRun.run` checks for a `package.json`, finds the workspace root, loads the config and plugins, runs `Bundler.build`, reads `dist/prod/issues.json` back, appends to the [root journals](../decisions/build-logs-are-journals.md), and answers a `BuildRunResult`. A build that crashes or records an error is the verdict `failed` rather than a failure; the error channel holds a run that could not start or record.
   - `ActionRun.run` is the same for a GitHub Action: it fails `NotAnActionError` when there is no `[action]` table, runs `ActionBuilder.build`, and answers an `ActionRunResult`. It appends to no journal.
+  - `BuildWatch` is the loop behind `--watch` on both build commands; the CLI drives it and keeps the rendering and the exit codes. `run` watches the package directory recursively and, when the package is not the workspace root, `<root>` and `<root>/.config` filtered to `effected.toml`. It builds once with `Initial` after every watcher is installed, then once per batch that has been quiet for the debounce (100 ms by default), with paths filtered against an `exclude` effect re-read before each batch. An exclusion covers its path, what lies under it, and the directories it lives in. One sequential consumer means changes made during a build become exactly one follow-up. Any one watch stream failing or ending fails `run` with a `PlatformError`, and `build`'s own errors propagate. `target` resolves `{ cwd, root }` and refuses a directory with no `package.json`, an undiscoverable root, or (for an action) a config that loads with no `[action]` table; a config that will not load is not refused. `actionExcludes` is `DEFAULT_EXCLUDES` plus an enabled `persistLocal.path` inside the package, and never fails. The behaviour the commands promise is in [Watching](../interfaces/build-commands.md#watching).
   - `ActionInit` is the scaffold behind [`effected action init`](../interfaces/build-commands.md#effected-action-init) and `action_init`. `plan` is pure and answers an `ActionScaffold`: the files as data, and the packages their source imports. `write` inspects every target and every parent with `lstat` before writing anything: a symbolic link, the wrong kind of entry, an uninspectable entry or an unwritable file is a `ScaffoldConflictError` that `force` never overrides, and an existing regular file is `ScaffoldExistsError` unless `force`. It then creates the directories, confirms each target resolves inside the directory, and writes each through `AtomicFile` with `links: "replace"`; a failure past the checks is `ScaffoldWriteError`, naming the files already written. `run` reads the name and description it was not given from `package.json` and answers an `ActionInitResult`. It edits no `package.json`.
   - The classes a front end needs are re-exported here, so the CLI keeps no bundler dependency.
 

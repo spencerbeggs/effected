@@ -28,7 +28,12 @@ export type WatchTrigger =
 	  };
 
 /**
- * What every watched build ignores: package-relative paths a build writes, matched as a prefix on `/` boundaries.
+ * What every watched build ignores: package-relative paths a build writes, matched on `/` boundaries.
+ *
+ * @remarks
+ * An entry covers the path itself, everything under it, and the directories it lives in, so a build creating
+ * `.github/actions/local` triggers nothing with its `.github` and `.github/actions` directory events. A path that only
+ * shares a prefix (`distribution`), or a file beside an entry (`.github/workflows/ci.yml`), still triggers.
  *
  * @public
  */
@@ -54,7 +59,10 @@ export interface BuildWatchOptions<E, R> {
 	readonly cwd: string;
 	/** The workspace root, absolute. */
 	readonly root: string;
-	/** Re-evaluated before each batch is filtered; package-relative prefixes. */
+	/**
+	 * Package-relative paths to ignore, re-evaluated before each batch is filtered. Each covers itself, what lies under
+	 * it, and the directories it lives in, as {@link DEFAULT_EXCLUDES} does.
+	 */
 	readonly exclude: Effect.Effect<ReadonlyArray<string>, never, R>;
 	/** How long the watched tree must be quiet before a batch is cut; omitted, 100 milliseconds. */
 	readonly debounce?: Duration.Input;
