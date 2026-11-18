@@ -38,4 +38,10 @@ export {
 	NotAPackageError,
 } from "./BuildRun.js";
 export { BuildRunResult } from "./BuildRunResult.js";
-export { BuildWatch, type BuildWatchOptions, DEFAULT_EXCLUDES, type WatchTrigger } from "./BuildWatch.js";
+export {
+	BuildWatch,
+	type BuildWatchOptions,
+	DEFAULT_EXCLUDES,
+	type WatchTarget,
+	type WatchTrigger,
+} from "./BuildWatch.js";

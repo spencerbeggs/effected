@@ -1,8 +1,11 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { MemoryFileSystemHandle, MemoryFileSystemOptions, MemoryFileSystemSeed } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
+import type { FileSystem, Path } from "effect";
 import { Deferred, Effect, Fiber, PlatformError, Ref, Stream } from "effect";
 import { TestClock } from "effect/testing";
+import { NotAnActionError } from "../../src/build/ActionRun.js";
+import { NotAPackageError } from "../../src/build/BuildRun.js";
 import type { WatchTrigger } from "../../src/build/BuildWatch.js";
 import { BuildWatch, DEFAULT_EXCLUDES } from "../../src/build/BuildWatch.js";
 
@@ -327,6 +330,72 @@ describe("BuildWatch.run", () => {
 		Effect.gen(function* () {
 			const reason = stoppedReason(yield* runWithEndingWatch((dir) => dir === CWD));
 			assert.strictEqual(reason.pathOrDescriptor, CWD);
+		}),
+	);
+});
+
+/** A pnpm workspace at ROOT with one package at CWD, plus whatever `extra` adds. */
+const workspace = (extra: MemoryFileSystemSeed = {}): MemoryFileSystemSeed => ({
+	[`${ROOT}/package.json`]: JSON.stringify({ name: "root" }),
+	[`${ROOT}/pnpm-workspace.yaml`]: 'packages:\n  - "packages/*"\n',
+	[`${CWD}/package.json`]: JSON.stringify({ name: "@scope/a" }),
+	...extra,
+});
+
+const inVolume = <A, E>(seed: MemoryFileSystemSeed, effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>) =>
+	Effect.gen(function* () {
+		const handle = yield* MemoryFileSystem.makeHandle(seed);
+		return yield* effect.pipe(Effect.provide(handle.layer));
+	});
+
+describe("BuildWatch.target", () => {
+	it.effect("target fails NotAPackageError without a package.json", () =>
+		Effect.gen(function* () {
+			const { [`${CWD}/package.json`]: _manifest, ...seed } = workspace();
+			const error = yield* inVolume(seed, Effect.flip(BuildWatch.target(CWD, "package")));
+			assert.instanceOf(error, NotAPackageError);
+		}),
+	);
+
+	it.effect("target fails NotAnActionError for an action whose config has no [action] table", () =>
+		Effect.gen(function* () {
+			const seed = workspace({ [`${CWD}/effected.toml`]: '[package.build]\ncopy = ["public"]\n' });
+			const error = yield* inVolume(seed, Effect.flip(BuildWatch.target(CWD, "action")));
+			assert.instanceOf(error, NotAnActionError);
+		}),
+	);
+
+	it.effect("target succeeds for an action whose effected.toml does not parse", () =>
+		Effect.gen(function* () {
+			const seed = workspace({ [`${CWD}/effected.toml`]: "[action\n" });
+			const target = yield* inVolume(seed, BuildWatch.target(CWD, "action"));
+			assert.deepStrictEqual(target, { cwd: CWD, root: ROOT });
+		}),
+	);
+
+	it.effect("target resolves the workspace root above cwd", () =>
+		Effect.gen(function* () {
+			const target = yield* inVolume(workspace(), BuildWatch.target(CWD, "package"));
+			assert.deepStrictEqual(target, { cwd: CWD, root: ROOT });
+		}),
+	);
+});
+
+describe("BuildWatch.actionExcludes", () => {
+	it.effect("actionExcludes adds a custom persistLocal.path", () =>
+		Effect.gen(function* () {
+			const seed = workspace({ [`${CWD}/effected.toml`]: '[action.persistLocal]\npath = "out/local"\n' });
+			const excludes = yield* inVolume(seed, BuildWatch.actionExcludes({ cwd: CWD, root: ROOT }));
+			assert.include(excludes, "out/local");
+			for (const entry of DEFAULT_EXCLUDES) assert.include(excludes, entry);
+		}),
+	);
+
+	it.effect("actionExcludes falls back to the defaults when the config will not load", () =>
+		Effect.gen(function* () {
+			const seed = workspace({ [`${CWD}/effected.toml`]: "[action\n" });
+			const excludes = yield* inVolume(seed, BuildWatch.actionExcludes({ cwd: CWD, root: ROOT }));
+			assert.deepStrictEqual(excludes, DEFAULT_EXCLUDES);
 		}),
 	);
 });

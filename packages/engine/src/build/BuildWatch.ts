@@ -2,8 +2,14 @@
 // package is not the workspace root; events debounced into batches, filtered against what the build itself writes,
 // and handed to one sequential consumer so builds never overlap and changes made during one become one follow-up.
 
+import type { EffectedConfigError } from "@effected/bundler";
+import { EffectedConfigFile } from "@effected/bundler";
+import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import type { Duration } from "effect";
-import { Deferred, Effect, FileSystem, Option, Path, PlatformError, Queue, Stream } from "effect";
+import { Deferred, Effect, FileSystem, Layer, Option, Path, PlatformError, Queue, Stream } from "effect";
+import { NotAnActionError } from "./ActionRun.js";
+import type { NotAPackageError } from "./BuildRun.js";
+import { readPackageName, workspaceRootOf } from "./BuildRun.js";
 
 /**
  * Why a watched build runs: the first build, or a settled batch of changes.
@@ -56,7 +62,22 @@ export interface BuildWatchOptions<E, R> {
 	readonly build: (trigger: WatchTrigger) => Effect.Effect<void, E, R>;
 }
 
+/**
+ * The directories a watch covers, resolved once at startup.
+ *
+ * @public
+ */
+export interface WatchTarget {
+	/** The package directory, absolute. */
+	readonly cwd: string;
+	/** The workspace root, absolute; `cwd` itself when there is no workspace above it. */
+	readonly root: string;
+}
+
 const CONFIG_NAME = "effected.toml";
+
+/** Discovery from `cwd`, as `BuildRun` and `ActionRun` provide it to the root search and the config load. */
+const discoveryFrom = (cwd: string) => WorkspaceDiscovery.layer({ cwd }).pipe(Layer.provide(WorkspaceRoot.layer));
 
 /** Whether `path` is `prefix` or lies under it, on `/` boundaries. */
 const isUnder = (path: string, prefix: string): boolean => {
@@ -70,6 +91,58 @@ const isUnder = (path: string, prefix: string): boolean => {
  * @public
  */
 export class BuildWatch {
+	/**
+	 * Resolves what a watch covers, refusing a directory that cannot be built at all: no `package.json`, a workspace
+	 * root that cannot be discovered, or, for an action, a config that loads with no `[action]` table. A config that
+	 * will not load is not refused, because it is an edit the watch must survive.
+	 */
+	static readonly target = (
+		cwd: string,
+		kind: "package" | "action",
+	): Effect.Effect<
+		WatchTarget,
+		NotAPackageError | NotAnActionError | EffectedConfigError | PlatformError.PlatformError,
+		FileSystem.FileSystem | Path.Path
+	> =>
+		Effect.gen(function* () {
+			const path = yield* Path.Path;
+			const resolved = path.resolve(cwd);
+			yield* readPackageName(resolved);
+			const discovery = discoveryFrom(resolved);
+			const root = yield* workspaceRootOf(resolved).pipe(Effect.provide(discovery));
+			if (kind === "action") {
+				const loaded = yield* EffectedConfigFile.load({ cwd: resolved, root }).pipe(
+					Effect.provide(discovery),
+					Effect.option,
+				);
+				if (Option.isSome(loaded) && loaded.value.config.action === undefined) {
+					return yield* new NotAnActionError({ cwd: resolved });
+				}
+			}
+			return { cwd: resolved, root };
+		});
+
+	/**
+	 * An action's exclusions: {@link DEFAULT_EXCLUDES} plus its enabled `persistLocal.path`, package-relative, read
+	 * from the config as it is now. Any config that will not load, or has no `[action]` table, gives the defaults.
+	 */
+	static readonly actionExcludes = (
+		target: WatchTarget,
+	): Effect.Effect<ReadonlyArray<string>, never, FileSystem.FileSystem | Path.Path> =>
+		Effect.gen(function* () {
+			const path = yield* Path.Path;
+			const loaded = yield* EffectedConfigFile.load({ cwd: target.cwd, root: target.root }).pipe(
+				Effect.provide(discoveryFrom(target.cwd)),
+				Effect.option,
+			);
+			const persist = Option.isSome(loaded) ? loaded.value.config.action?.persistLocal : undefined;
+			if (persist === undefined || !persist.enabled) return DEFAULT_EXCLUDES;
+			const relative = path.relative(target.cwd, path.resolve(target.cwd, persist.path)).split(path.sep).join("/");
+			// Outside the package no watched event can match it, and at the package itself it would exclude everything.
+			const inside = relative !== "" && relative !== ".." && !relative.startsWith("../") && !path.isAbsolute(relative);
+			return inside && !DEFAULT_EXCLUDES.includes(relative) ? [...DEFAULT_EXCLUDES, relative] : DEFAULT_EXCLUDES;
+		});
+
 	/**
 	 * Builds once with `Initial` after every watcher is installed, then once per settled batch of changes, for as long
 	 * as it runs. Fails with a watcher's `PlatformError`, or when a watcher stops; `build`'s errors propagate.
