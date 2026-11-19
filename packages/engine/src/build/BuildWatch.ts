@@ -269,30 +269,46 @@ export class BuildWatch {
 						description: "The watcher stopped.",
 					});
 
+				// The directory now at `dir`, if any.
+				const directoryAt = (dir: string) =>
+					Effect.map(
+						Effect.option(fs.stat(dir)),
+						Option.filter((info) => info.type === "Directory"),
+					);
+
 				// A watch of a directory that can come and go: one per top-level directory no exclusion covers, so a
 				// populated `node_modules` or `.git` is never walked, and `<root>/.config`. Its ending, by an error or not,
-				// is its directory going away, which the watch above it reports; while the directory is still there it is
-				// a watcher that stopped, and fails the run rather than leave the directory silently unwatched.
+				// is its directory going away, which the watch above it reports; while the directory it armed on is still
+				// there it is a watcher that stopped, and fails the run rather than leave the directory silently unwatched.
+				// A directory replaced at the same path (another inode) counts as gone: the watch above re-arms it.
 				const watchWhilePresent = (
 					dir: string,
 					recursive: boolean,
 					accept: (absolute: string) => string | undefined,
 				) => {
 					const ready = Deferred.makeUnsafe<void>();
-					const unlessGone = (error: PlatformError.PlatformError) =>
-						Effect.flatMap(fs.exists(dir), (exists) => (exists ? Effect.fail(error) : Effect.void));
-					const watching = fs
-						.watch(dir, {
-							recursive,
-							onReady: () => {
-								Deferred.doneUnsafe(ready, Effect.void);
-							},
-						})
-						.pipe(
-							Stream.runForEach((event) => offer(accept(absoluteIn(dir, event.path)))),
-							Effect.matchEffect({ onFailure: unlessGone, onSuccess: () => unlessGone(stopped(dir)) }),
-							Effect.ensuring(Effect.sync(() => Deferred.doneUnsafe(ready, Effect.void))),
-						);
+					const watching = Effect.flatMap(directoryAt(dir), (armedOn) => {
+						const armedIno = Option.flatMap(armedOn, (info) => info.ino);
+						const unlessGone = (error: PlatformError.PlatformError) =>
+							Effect.flatMap(directoryAt(dir), (now) => {
+								const nowIno = Option.flatMap(now, (info) => info.ino);
+								const same =
+									Option.isSome(now) &&
+									(Option.isNone(armedIno) || Option.isNone(nowIno) || armedIno.value === nowIno.value);
+								return same ? Effect.fail(error) : Effect.void;
+							});
+						return fs
+							.watch(dir, {
+								recursive,
+								onReady: () => {
+									Deferred.doneUnsafe(ready, Effect.void);
+								},
+							})
+							.pipe(
+								Stream.runForEach((event) => offer(accept(absoluteIn(dir, event.path)))),
+								Effect.matchEffect({ onFailure: unlessGone, onSuccess: () => unlessGone(stopped(dir)) }),
+							);
+					}).pipe(Effect.ensuring(Effect.sync(() => Deferred.doneUnsafe(ready, Effect.void))));
 					return { ready, watching };
 				};
 
@@ -303,9 +319,11 @@ export class BuildWatch {
 				};
 
 				// `<root>/.config` is watched while it exists: armed at startup and whenever `<root>` reports it, so one
-				// created after the watch starts is seen. Creating it with an `effected.toml` already inside is a change.
+				// created after the watch starts is seen. One permit makes the check and the claim one step, as `permit`
+				// does for `reconcile`: a caller that lost the claim would wait on a `ready` nothing completes.
 				const configWatch = yield* FiberMap.make<"config", void, PlatformError.PlatformError>();
-				const armConfig = Effect.gen(function* () {
+				const configPermit = yield* Semaphore.make(1);
+				const claimConfig = Effect.gen(function* () {
 					if (!rootTier || (yield* FiberMap.has(configWatch, "config")) || !(yield* fs.exists(configDir))) {
 						return Option.none<Deferred.Deferred<void>>();
 					}
@@ -313,14 +331,16 @@ export class BuildWatch {
 					yield* FiberMap.run(configWatch, "config", watching, { onlyIfMissing: true });
 					return Option.some(ready);
 				});
-				// `<root>` reported `.config`: drop the watch of one that is gone, so a later one is armed afresh.
+				const armConfig = Semaphore.withPermit(configPermit, claimConfig);
+				// `<root>` reported `.config`: it was created, removed or replaced, so the config changed, and the watch
+				// moves to whatever is there now; a kept watch could sit on a replaced directory that reports nothing.
 				const configEvent = Effect.gen(function* () {
-					if (!(yield* fs.exists(configDir))) return yield* FiberMap.remove(configWatch, "config");
-					const armed = yield* armConfig;
-					if (Option.isNone(armed)) return;
-					yield* Deferred.await(armed.value);
-					const file = path.join(configDir, CONFIG_NAME);
-					if (yield* fs.exists(file)) yield* offer(toRelative(file));
+					const armed = yield* Semaphore.withPermit(
+						configPermit,
+						Effect.andThen(FiberMap.remove(configWatch, "config"), claimConfig),
+					);
+					if (Option.isSome(armed)) yield* Deferred.await(armed.value);
+					yield* offer(toRelative(path.join(configDir, CONFIG_NAME)));
 				});
 				// Brings the armed set in line with the package's top-level directories and the exclusions as they are now.
 				// Runs at startup, on every top-level event, and after each batch, one at a time.

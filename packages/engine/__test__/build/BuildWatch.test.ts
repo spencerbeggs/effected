@@ -340,33 +340,150 @@ describe("BuildWatch.run", () => {
 		}),
 	);
 
-	it.effect("watches a .config created after the watch starts, and drops its watch when it is removed", () =>
+	it.effect(
+		"watches a .config created after the watch starts, and rebuilds and drops its watch when it is removed",
+		() =>
+			Effect.gen(function* () {
+				const seed: MemoryFileSystemSeed = {
+					[`${ROOT}/package.json`]: "{}",
+					[`${CWD}/package.json`]: "{}",
+				};
+				const { handle, triggers, fiber } = yield* start({ seed, watchers: 2 });
+				// Created with its effected.toml already inside: the config changed, and later edits are seen.
+				handle.write(`${ROOT}/.config/effected.toml`, "");
+				yield* burst(handle, [[`${ROOT}/.config`, "Create"]]);
+				assert.strictEqual(handle.watcherCount(), 3, "the new .config is watched");
+				yield* burst(handle, [[`${ROOT}/.config/effected.toml`, "Update"]]);
+				// Removed, then created again: each is a config change, its old watch is dropped, and the new one is armed afresh.
+				handle.remove(`${ROOT}/.config`);
+				yield* burst(handle, [[`${ROOT}/.config`, "Remove"]]);
+				assert.strictEqual(handle.watcherCount(), 2, "the removed .config's watch is gone");
+				assert.isUndefined(fiber.pollUnsafe(), "run is still watching");
+				handle.mkdir(`${ROOT}/.config`);
+				yield* burst(handle, [[`${ROOT}/.config`, "Create"]]);
+				assert.strictEqual(handle.watcherCount(), 3, "the recreated .config is watched");
+				yield* burst(handle, [[`${ROOT}/.config/effected.toml`, "Create"]]);
+				assert.deepStrictEqual(yield* triggers, [
+					{ _tag: "Initial" },
+					...Array.from({ length: 5 }, () => changed("../../.config/effected.toml")),
+				]);
+				yield* Fiber.interrupt(fiber);
+			}),
+	);
+
+	it.effect("a .config reported while startup is arming its watch still builds Initial and watches it", () =>
 		Effect.gen(function* () {
 			const seed: MemoryFileSystemSeed = {
 				[`${ROOT}/package.json`]: "{}",
 				[`${CWD}/package.json`]: "{}",
+				[`${ROOT}/.config/effected.toml`]: "",
 			};
-			const { handle, triggers, fiber } = yield* start({ seed, watchers: 2 });
-			// Created with its effected.toml already inside: the config changed, and later edits are seen.
+			const checking = yield* Deferred.make<void>();
+			const proceed = yield* Deferred.make<void>();
+			let checks = 0;
+			const { handle, triggers, fiber } = yield* start({
+				seed,
+				watchers: 2,
+				handle: {
+					faults: (base) => ({
+						// Startup's check that `.config` exists waits until `<root>` has reported `.config`.
+						exists: (path) =>
+							path === `${ROOT}/.config` && checks++ === 0
+								? Effect.andThen(
+										Effect.andThen(Deferred.succeed(checking, undefined), Deferred.await(proceed)),
+										base.exists(path),
+									)
+								: base.exists(path),
+					}),
+				},
+			});
+			yield* Deferred.await(checking);
+			handle.emit(`${ROOT}/.config`, "Update");
+			yield* settle;
+			yield* Deferred.succeed(proceed, undefined);
+			yield* settle;
+			yield* TestClock.adjust("100 millis");
+			yield* settle;
+			assert.strictEqual(handle.watcherCount(), 3, ".config is watched");
+			yield* burst(handle, [[`${ROOT}/.config/effected.toml`, "Update"]]);
+			const seen = yield* triggers;
+			assert.deepStrictEqual(seen[0], { _tag: "Initial" });
+			assert.deepStrictEqual(seen.at(-1), changed("../../.config/effected.toml"));
+			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
+	it.effect("re-arms a .config replaced at the same path while its old watch still runs", () =>
+		Effect.gen(function* () {
+			const seed: MemoryFileSystemSeed = {
+				[`${ROOT}/package.json`]: "{}",
+				[`${CWD}/package.json`]: "{}",
+				[`${ROOT}/.config/effected.toml`]: "",
+			};
+			let configWatches = 0;
+			const { handle, triggers, fiber } = yield* start({
+				seed,
+				watchers: 2,
+				handle: {
+					faults: (base) => ({
+						// The first `.config` watch is on a directory about to be replaced: it runs, and hears nothing again.
+						watch: (path, options) =>
+							path === `${ROOT}/.config` && configWatches++ === 0
+								? Stream.concat(
+										Stream.fromEffect(Effect.sync(() => options?.onReady?.())).pipe(Stream.drain),
+										Stream.never,
+									)
+								: base.watch(path, options),
+					}),
+				},
+			});
+			handle.remove(`${ROOT}/.config`);
 			handle.write(`${ROOT}/.config/effected.toml`, "");
 			yield* burst(handle, [[`${ROOT}/.config`, "Create"]]);
-			assert.strictEqual(handle.watcherCount(), 3, "the new .config is watched");
+			assert.strictEqual(handle.watcherCount(), 3, "the replacement is watched");
 			yield* burst(handle, [[`${ROOT}/.config/effected.toml`, "Update"]]);
-			// Removed, then created again: its old watch is dropped, and the new one is armed afresh.
-			handle.remove(`${ROOT}/.config`);
-			yield* burst(handle, [[`${ROOT}/.config`, "Remove"]]);
-			assert.strictEqual(handle.watcherCount(), 2, "the removed .config's watch is gone");
-			assert.isUndefined(fiber.pollUnsafe(), "run is still watching");
-			handle.mkdir(`${ROOT}/.config`);
-			yield* burst(handle, [[`${ROOT}/.config`, "Create"]]);
-			assert.strictEqual(handle.watcherCount(), 3, "the recreated .config is watched");
-			yield* burst(handle, [[`${ROOT}/.config/effected.toml`, "Create"]]);
 			assert.deepStrictEqual(yield* triggers, [
 				{ _tag: "Initial" },
 				changed("../../.config/effected.toml"),
 				changed("../../.config/effected.toml"),
-				changed("../../.config/effected.toml"),
 			]);
+			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
+	it.effect("a .config watch ending after .config is replaced does not fail the run", () =>
+		Effect.gen(function* () {
+			const seed: MemoryFileSystemSeed = {
+				[`${ROOT}/package.json`]: "{}",
+				[`${CWD}/package.json`]: "{}",
+				[`${ROOT}/.config/effected.toml`]: "",
+			};
+			const replaced = yield* Deferred.make<void>();
+			let configWatches = 0;
+			const { handle, triggers, fiber } = yield* start({
+				seed,
+				watchers: 2,
+				handle: {
+					faults: (base) => ({
+						// The first `.config` watch ends, with no error, once its directory has been replaced.
+						watch: (path, options) =>
+							path === `${ROOT}/.config` && configWatches++ === 0
+								? Stream.concat(
+										Stream.fromEffect(Effect.sync(() => options?.onReady?.())),
+										Stream.fromEffect(Deferred.await(replaced)),
+									).pipe(Stream.drain)
+								: base.watch(path, options),
+					}),
+				},
+			});
+			handle.remove(`${ROOT}/.config`);
+			handle.write(`${ROOT}/.config/effected.toml`, "");
+			yield* Deferred.succeed(replaced, undefined);
+			yield* settle;
+			assert.isUndefined(fiber.pollUnsafe(), "run is still watching");
+			yield* burst(handle, [[`${ROOT}/.config`, "Create"]]);
+			assert.strictEqual(handle.watcherCount(), 3, "the replacement is watched");
+			assert.deepStrictEqual(yield* triggers, [{ _tag: "Initial" }, changed("../../.config/effected.toml")]);
 			yield* Fiber.interrupt(fiber);
 		}),
 	);

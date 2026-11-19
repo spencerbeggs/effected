@@ -34,10 +34,10 @@ sources:
     resource: ../../packages/cli/src/commands/watch.ts
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-19T22:56:15Z
+  at: 2026-11-19T23:33:10Z
 integrity:
   generated:
-    body: 2b33578f1e116f1d
+    body: b225eb881c4e6b96
 ---
 
 # The effected build commands: package build, action build and action init
@@ -108,7 +108,7 @@ An action build appends to no journal; the journals record package builds only.
 
 `--watch` behaves the same on both build commands. It builds once, then again after each settled batch of changes, until it is interrupted. Every run is a full build, not an incremental one. For a package build that keeps `dist/prod/issues.json` and the root journals current exactly as one-shot runs keep them; an action build writes neither, as above.[^build-watch]
 
-- **What is watched.** The package directory's top level, and each top-level directory no exclusion covers, recursively. An excluded `node_modules`, `.git` or `dist` is never walked, so a single-package repository with a populated `node_modules` starts at once and does not spend the host's watch limit. A directory that is only where an exclusion lives, such as `.github`, is watched, and the filter below drops the build's own events in it. A new top-level directory is watched from its first event, and its creation is itself a change; a removed one's watch is dropped, which is not the watcher stopping. A directory's watch that ends while the directory is still there is the watcher stopping. When the package is not the workspace root, the root tier is watched too: `<root>` and `<root>/.config`, each non-recursively and filtered to `effected.toml`. Watching the directory rather than the file catches a file that does not exist yet and an editor's save-by-rename. A `<root>/.config` that does not exist when the watch starts is watched once it is created, and creating it with an `effected.toml` inside is a change; removing it drops its watch. Some inputs outside the package are never watched: [editing them does not rebuild](../limitations/watch-ignores-inputs-outside-the-package.md).
+- **What is watched.** The package directory's top level, and each top-level directory no exclusion covers, recursively. An excluded `node_modules`, `.git` or `dist` is never walked, so a single-package repository with a populated `node_modules` starts at once and does not spend the host's watch limit. A directory that is only where an exclusion lives, such as `.github`, is watched, and the filter below drops the build's own events in it. A new top-level directory is watched from its first event, and its creation is itself a change; a removed one's watch is dropped, which is not the watcher stopping. A directory's watch that ends while the directory it watched is still there is the watcher stopping; a directory replaced at the same path counts as removed. When the package is not the workspace root, the root tier is watched too: `<root>` and `<root>/.config`, each non-recursively and filtered to `effected.toml`. Watching the directory rather than the file catches a file that does not exist yet and an editor's save-by-rename. A `<root>/.config` that does not exist when the watch starts is watched once it is created. Creating, removing or replacing `<root>/.config` is a change to its `effected.toml`, and each moves the watch to whatever directory is there now, so a replaced one is not left on the old directory. Some inputs outside the package are never watched: [editing them does not rebuild](../limitations/watch-ignores-inputs-outside-the-package.md).
 - **What is excluded.** These paths are package-relative and matched on `/` boundaries: `dist`, `node_modules`, `.turbo`, `.git`, `.cache`, `tsdoc.json`, `.actrc`, `.github/workflows/act-test.yml` and `.github/actions/local`. An exclusion covers the path, everything under it, and the directories it lives in.
   - A path that only shares a prefix with an exclusion still triggers: `distribution/x.ts` does, and so does `.github/actions/local-notes.md`.
   - A file beside an excluded path also triggers, such as `.github/workflows/ci.yml`. A bare `.github` or `.github/workflows` directory event does not, because those are the directories a first action build creates on its way to its own outputs.
