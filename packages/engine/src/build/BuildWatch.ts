@@ -118,6 +118,27 @@ const isCovered = (path: string, prefix: string): boolean => {
 	return trimmed !== "" && (path === trimmed || path.startsWith(`${trimmed}/`));
 };
 
+/** The config as it is now, or `None` when it will not load; a watch's exclusions never fail. */
+const loadConfig = (target: WatchTarget) =>
+	EffectedConfigFile.load({ cwd: target.cwd, root: target.root }).pipe(
+		Effect.provide(discoveryFrom(target.cwd)),
+		Effect.option,
+	);
+
+/**
+ * {@link DEFAULT_EXCLUDES} plus each of `paths` that resolves inside the package, package-relative with `/`. Outside
+ * the package no watched event can match one, and at the package itself it would exclude everything.
+ */
+const withInside = (path: Path.Path, cwd: string, paths: ReadonlyArray<string>): ReadonlyArray<string> => {
+	const added: Array<string> = [];
+	for (const entry of paths) {
+		const relative = path.relative(cwd, path.resolve(cwd, entry)).split(path.sep).join("/");
+		const inside = relative !== "" && relative !== ".." && !relative.startsWith("../") && !path.isAbsolute(relative);
+		if (inside && !DEFAULT_EXCLUDES.includes(relative) && !added.includes(relative)) added.push(relative);
+	}
+	return added.length === 0 ? DEFAULT_EXCLUDES : [...DEFAULT_EXCLUDES, ...added];
+};
+
 /**
  * Rebuild on change.
  *
@@ -156,24 +177,36 @@ export class BuildWatch {
 		});
 
 	/**
-	 * An action's exclusions: {@link DEFAULT_EXCLUDES} plus its enabled `persistLocal.path`, package-relative, read
-	 * from the config as it is now. Any config that will not load, or has no `[action]` table, gives the defaults.
+	 * A package's exclusions: {@link DEFAULT_EXCLUDES} plus each `[package.build.meta] localPaths` directory inside the
+	 * package, package-relative, read from the config as it is now. Every build copies the API model into each one, so
+	 * without them the watch would rebuild itself. Any config that will not load, or `meta = false`, gives the defaults.
 	 */
-	static readonly actionExcludes = (
+	static readonly packageExcludes = (
 		target: WatchTarget,
 	): Effect.Effect<ReadonlyArray<string>, never, FileSystem.FileSystem | Path.Path> =>
 		Effect.gen(function* () {
 			const path = yield* Path.Path;
-			const loaded = yield* EffectedConfigFile.load({ cwd: target.cwd, root: target.root }).pipe(
-				Effect.provide(discoveryFrom(target.cwd)),
-				Effect.option,
-			);
+			const loaded = yield* loadConfig(target);
+			const meta = Option.isSome(loaded) ? loaded.value.config.package.build.meta : false;
+			return withInside(path, target.cwd, meta === false ? [] : meta.localPaths);
+		});
+
+	/**
+	 * An action's exclusions: {@link DEFAULT_EXCLUDES} plus its enabled `persistLocal.path`, package-relative, read
+	 * from the config as it is now. `persist: false`, the `--no-persist` build that writes nothing there, leaves that
+	 * path watched. Any config that will not load, or has no `[action]` table, gives the defaults.
+	 */
+	static readonly actionExcludes = (
+		target: WatchTarget,
+		options?: { readonly persist?: boolean },
+	): Effect.Effect<ReadonlyArray<string>, never, FileSystem.FileSystem | Path.Path> =>
+		Effect.gen(function* () {
+			if (options?.persist === false) return DEFAULT_EXCLUDES;
+			const path = yield* Path.Path;
+			const loaded = yield* loadConfig(target);
 			const persist = Option.isSome(loaded) ? loaded.value.config.action?.persistLocal : undefined;
 			if (persist === undefined || !persist.enabled) return DEFAULT_EXCLUDES;
-			const relative = path.relative(target.cwd, path.resolve(target.cwd, persist.path)).split(path.sep).join("/");
-			// Outside the package no watched event can match it, and at the package itself it would exclude everything.
-			const inside = relative !== "" && relative !== ".." && !relative.startsWith("../") && !path.isAbsolute(relative);
-			return inside && !DEFAULT_EXCLUDES.includes(relative) ? [...DEFAULT_EXCLUDES, relative] : DEFAULT_EXCLUDES;
+			return withInside(path, target.cwd, [persist.path]);
 		});
 
 	/**
@@ -185,8 +218,9 @@ export class BuildWatch {
 	 * gets a recursive watch of its own, so an excluded `node_modules`, `.git` or `dist` is never walked. A directory
 	 * that is only where an exclusion lives, such as `.github`, is watched, and its events are filtered. The set follows
 	 * the package: a new top-level directory is watched from its first event, a removed one's watch is dropped, and the
-	 * exclusions are re-read after each batch. Only the package directory's own watch and the root tier's watches
-	 * stopping fail the run; a top-level directory's watch ending is that directory going away.
+	 * exclusions are re-read after each batch. `<root>/.config` is watched while it exists, including one created after
+	 * the watch starts. A watch stopping fails the run, except that a top-level directory's or `<root>/.config`'s watch
+	 * ending once the directory is gone is that directory going away.
 	 */
 	static readonly run = <E, R>(
 		options: BuildWatchOptions<E, R>,
@@ -206,54 +240,88 @@ export class BuildWatch {
 					return relative === "" || relative === ".." || relative.startsWith("../") ? undefined : relative;
 				};
 
-				// The watches whose ending means the watcher stopped: the package directory's own top level, and the root
-				// tier. Each maps an event's absolute path to the batch entry it contributes, or to nothing.
+				const configDir = path.join(root, ".config");
+				/** The root-tier `effected.toml` directly in `dir`, as a batch entry, or nothing. */
+				const configIn = (dir: string) => (absolute: string) =>
+					path.dirname(absolute) === dir && path.basename(absolute) === CONFIG_NAME ? toRelative(absolute) : undefined;
+
+				// The watches whose ending means the watcher stopped: the package directory's own top level, and `<root>`.
+				// Each maps an event's absolute path to the batch entry it contributes, or to nothing.
 				const fixed: Array<{
 					readonly dir: string;
 					readonly accept: (absolute: string) => string | undefined;
 					/** Whether an event here can be a top-level directory appearing or vanishing. */
 					readonly topLevel: boolean;
 				}> = [{ dir: cwd, accept: inPackage, topLevel: true }];
-				if (root !== cwd) {
-					for (const dir of [root, path.join(root, ".config")]) {
-						if (!(yield* fs.exists(dir))) continue;
-						fixed.push({
-							dir,
-							topLevel: false,
-							accept: (absolute) =>
-								path.dirname(absolute) === dir && path.basename(absolute) === CONFIG_NAME
-									? toRelative(absolute)
-									: undefined,
-						});
-					}
-				}
+				const rootTier = root !== cwd && (yield* fs.exists(root));
+				if (rootTier) fixed.push({ dir: root, topLevel: false, accept: configIn(root) });
 
 				const pending = yield* Queue.unbounded<string>();
 				const offer = (entry: string | undefined) => (entry === undefined ? Effect.void : Queue.offer(pending, entry));
 
-				// One recursive watch per top-level directory no exclusion covers, so a populated `node_modules` or `.git`
-				// is never walked. A watch here ending, by an error or not, is its directory going away, which the
-				// top-level watch reports as a change; it fails the run only if the directory is still there.
-				const directories = yield* FiberMap.make<string, void, PlatformError.PlatformError>();
-				const arm = (name: string) => {
-					const dir = path.join(cwd, name);
+				// A watch stream that ends has lost its watcher (node ends one on `close`).
+				const stopped = (dir: string) =>
+					PlatformError.systemError({
+						_tag: "Unknown",
+						module: "FileSystem",
+						method: "watch",
+						pathOrDescriptor: dir,
+						description: "The watcher stopped.",
+					});
+
+				// A watch of a directory that can come and go: one per top-level directory no exclusion covers, so a
+				// populated `node_modules` or `.git` is never walked, and `<root>/.config`. Its ending, by an error or not,
+				// is its directory going away, which the watch above it reports; while the directory is still there it is
+				// a watcher that stopped, and fails the run rather than leave the directory silently unwatched.
+				const watchWhilePresent = (
+					dir: string,
+					recursive: boolean,
+					accept: (absolute: string) => string | undefined,
+				) => {
 					const ready = Deferred.makeUnsafe<void>();
+					const unlessGone = (error: PlatformError.PlatformError) =>
+						Effect.flatMap(fs.exists(dir), (exists) => (exists ? Effect.fail(error) : Effect.void));
 					const watching = fs
 						.watch(dir, {
-							recursive: true,
+							recursive,
 							onReady: () => {
 								Deferred.doneUnsafe(ready, Effect.void);
 							},
 						})
 						.pipe(
-							Stream.runForEach((event) => offer(inPackage(absoluteIn(dir, event.path)))),
-							Effect.catch((error: PlatformError.PlatformError) =>
-								Effect.flatMap(fs.exists(dir), (exists) => (exists ? Effect.fail(error) : Effect.void)),
-							),
+							Stream.runForEach((event) => offer(accept(absoluteIn(dir, event.path)))),
+							Effect.matchEffect({ onFailure: unlessGone, onSuccess: () => unlessGone(stopped(dir)) }),
 							Effect.ensuring(Effect.sync(() => Deferred.doneUnsafe(ready, Effect.void))),
 						);
+					return { ready, watching };
+				};
+
+				const directories = yield* FiberMap.make<string, void, PlatformError.PlatformError>();
+				const arm = (name: string) => {
+					const { ready, watching } = watchWhilePresent(path.join(cwd, name), true, inPackage);
 					return Effect.as(FiberMap.run(directories, name, watching, { onlyIfMissing: true }), ready);
 				};
+
+				// `<root>/.config` is watched while it exists: armed at startup and whenever `<root>` reports it, so one
+				// created after the watch starts is seen. Creating it with an `effected.toml` already inside is a change.
+				const configWatch = yield* FiberMap.make<"config", void, PlatformError.PlatformError>();
+				const armConfig = Effect.gen(function* () {
+					if (!rootTier || (yield* FiberMap.has(configWatch, "config")) || !(yield* fs.exists(configDir))) {
+						return Option.none<Deferred.Deferred<void>>();
+					}
+					const { ready, watching } = watchWhilePresent(configDir, false, configIn(configDir));
+					yield* FiberMap.run(configWatch, "config", watching, { onlyIfMissing: true });
+					return Option.some(ready);
+				});
+				// `<root>` reported `.config`: drop the watch of one that is gone, so a later one is armed afresh.
+				const configEvent = Effect.gen(function* () {
+					if (!(yield* fs.exists(configDir))) return yield* FiberMap.remove(configWatch, "config");
+					const armed = yield* armConfig;
+					if (Option.isNone(armed)) return;
+					yield* Deferred.await(armed.value);
+					const file = path.join(configDir, CONFIG_NAME);
+					if (yield* fs.exists(file)) yield* offer(toRelative(file));
+				});
 				// Brings the armed set in line with the package's top-level directories and the exclusions as they are now.
 				// Runs at startup, on every top-level event, and after each batch, one at a time.
 				const permit = yield* Semaphore.make(1);
@@ -280,16 +348,8 @@ export class BuildWatch {
 				);
 
 				const fixedReady = fixed.map(() => Deferred.makeUnsafe<void>());
-				// A fixed watch stream that ends has lost its watcher (node ends one on `close`). Any one ending fails the
-				// run: a stopped package watch beside live root-tier watches would otherwise idle while looking healthy.
-				const stopped = (dir: string) =>
-					PlatformError.systemError({
-						_tag: "Unknown",
-						module: "FileSystem",
-						method: "watch",
-						pathOrDescriptor: dir,
-						description: "The watcher stopped.",
-					});
+				// Any one fixed watch ending fails the run: a stopped package watch beside a live root watch would
+				// otherwise idle while looking healthy.
 				const watching = Stream.mergeAll(
 					fixed.map((target, index) =>
 						fs
@@ -299,15 +359,17 @@ export class BuildWatch {
 								},
 							})
 							.pipe(
-								Stream.map((event) => ({ target, entry: target.accept(absoluteIn(target.dir, event.path)) })),
+								Stream.map((event) => ({ target, absolute: absoluteIn(target.dir, event.path) })),
 								Stream.concat(Stream.fail(stopped(target.dir))),
 							),
 					),
 					{ concurrency: "unbounded" },
 				).pipe(
-					Stream.runForEach(({ target, entry }) =>
-						target.topLevel && entry !== undefined ? Effect.andThen(reconcile, offer(entry)) : offer(entry),
-					),
+					Stream.runForEach(({ target, absolute }) => {
+						const entry = target.accept(absolute);
+						if (target.topLevel) return entry === undefined ? Effect.void : Effect.andThen(reconcile, offer(entry));
+						return absolute === configDir ? configEvent : offer(entry);
+					}),
 					// Unreachable: every stream above ends by failing.
 					Effect.andThen(Effect.never),
 				);
@@ -326,7 +388,10 @@ export class BuildWatch {
 
 				const consuming = Effect.gen(function* () {
 					const armed = yield* reconcile;
-					yield* Effect.forEach([...fixedReady, ...armed], Deferred.await, { discard: true });
+					const config = yield* armConfig;
+					yield* Effect.forEach([...fixedReady, ...armed, ...Option.toArray(config)], Deferred.await, {
+						discard: true,
+					});
 					yield* options.build({ _tag: "Initial" });
 					while (true) {
 						const paths = yield* nextBatch;
@@ -340,6 +405,7 @@ export class BuildWatch {
 					watching,
 					consuming,
 					Effect.andThen(FiberMap.join(directories), Effect.never),
+					Effect.andThen(FiberMap.join(configWatch), Effect.never),
 				]);
 			}),
 		);

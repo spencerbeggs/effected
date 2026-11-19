@@ -246,20 +246,33 @@ describe("BuildWatch.run", () => {
 		}),
 	);
 
-	it.effect("a top-level directory's watch ending does not fail the run", () =>
+	it.effect("a top-level directory's watch ending once the directory is gone does not fail the run", () =>
 		Effect.gen(function* () {
+			const gone = yield* Deferred.make<void>();
 			const { handle, triggers, fiber } = yield* start({
 				watchers: WATCHERS - 1,
 				handle: {
 					faults: (base) => ({
-						watch: (path, options) => (path === `${CWD}/src` ? Stream.empty : base.watch(path, options)),
+						// The directory's watch lives until the directory is removed, then ends with no error.
+						watch: (path, options) =>
+							path === `${CWD}/src` ? Stream.drain(Stream.fromEffect(Deferred.await(gone))) : base.watch(path, options),
 					}),
 				},
 			});
+			handle.remove(`${CWD}/src`);
+			yield* Deferred.succeed(gone, undefined);
+			yield* settle;
 			assert.isUndefined(fiber.pollUnsafe(), "run is still watching");
 			yield* burst(handle, [[`${CWD}/README.md`, "Update"]]);
 			assert.deepStrictEqual(yield* triggers, [{ _tag: "Initial" }, changed("README.md")]);
 			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
+	it.effect("a top-level directory's watch ending while the directory is still there fails the run", () =>
+		Effect.gen(function* () {
+			const reason = stoppedReason(yield* runWithEndingWatch((dir) => dir === `${CWD}/src`));
+			assert.strictEqual(reason.pathOrDescriptor, `${CWD}/src`);
 		}),
 	);
 
@@ -323,6 +336,37 @@ describe("BuildWatch.run", () => {
 			yield* burst(handle, [[`${ROOT}/effected.toml`, "Create"]]);
 			assert.isUndefined(fiber.pollUnsafe(), "run is still watching");
 			assert.deepStrictEqual(yield* triggers, [{ _tag: "Initial" }, changed("../../effected.toml")]);
+			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
+	it.effect("watches a .config created after the watch starts, and drops its watch when it is removed", () =>
+		Effect.gen(function* () {
+			const seed: MemoryFileSystemSeed = {
+				[`${ROOT}/package.json`]: "{}",
+				[`${CWD}/package.json`]: "{}",
+			};
+			const { handle, triggers, fiber } = yield* start({ seed, watchers: 2 });
+			// Created with its effected.toml already inside: the config changed, and later edits are seen.
+			handle.write(`${ROOT}/.config/effected.toml`, "");
+			yield* burst(handle, [[`${ROOT}/.config`, "Create"]]);
+			assert.strictEqual(handle.watcherCount(), 3, "the new .config is watched");
+			yield* burst(handle, [[`${ROOT}/.config/effected.toml`, "Update"]]);
+			// Removed, then created again: its old watch is dropped, and the new one is armed afresh.
+			handle.remove(`${ROOT}/.config`);
+			yield* burst(handle, [[`${ROOT}/.config`, "Remove"]]);
+			assert.strictEqual(handle.watcherCount(), 2, "the removed .config's watch is gone");
+			assert.isUndefined(fiber.pollUnsafe(), "run is still watching");
+			handle.mkdir(`${ROOT}/.config`);
+			yield* burst(handle, [[`${ROOT}/.config`, "Create"]]);
+			assert.strictEqual(handle.watcherCount(), 3, "the recreated .config is watched");
+			yield* burst(handle, [[`${ROOT}/.config/effected.toml`, "Create"]]);
+			assert.deepStrictEqual(yield* triggers, [
+				{ _tag: "Initial" },
+				changed("../../.config/effected.toml"),
+				changed("../../.config/effected.toml"),
+				changed("../../.config/effected.toml"),
+			]);
 			yield* Fiber.interrupt(fiber);
 		}),
 	);
@@ -451,7 +495,7 @@ describe("BuildWatch.run", () => {
 	it.effect("fails when every watcher stops", () =>
 		Effect.gen(function* () {
 			const reason = stoppedReason(yield* runWithEndingWatch(() => true));
-			assert.include([CWD, ROOT, `${ROOT}/.config`], reason.pathOrDescriptor);
+			assert.include([CWD, `${CWD}/src`, ROOT, `${ROOT}/.config`], reason.pathOrDescriptor);
 		}),
 	);
 
@@ -520,10 +564,54 @@ describe("BuildWatch.actionExcludes", () => {
 		}),
 	);
 
+	it.effect("actionExcludes leaves persistLocal.path watched under persist: false", () =>
+		Effect.gen(function* () {
+			const seed = workspace({ [`${CWD}/effected.toml`]: '[action.persistLocal]\npath = "out/local"\n' });
+			const excludes = yield* inVolume(seed, BuildWatch.actionExcludes({ cwd: CWD, root: ROOT }, { persist: false }));
+			assert.deepStrictEqual(excludes, DEFAULT_EXCLUDES);
+		}),
+	);
+
 	it.effect("actionExcludes falls back to the defaults when the config will not load", () =>
 		Effect.gen(function* () {
 			const seed = workspace({ [`${CWD}/effected.toml`]: "[action\n" });
 			const excludes = yield* inVolume(seed, BuildWatch.actionExcludes({ cwd: CWD, root: ROOT }));
+			assert.deepStrictEqual(excludes, DEFAULT_EXCLUDES);
+		}),
+	);
+});
+
+describe("BuildWatch.packageExcludes", () => {
+	it.effect("packageExcludes adds each localPaths directory inside the package", () =>
+		Effect.gen(function* () {
+			const seed = workspace({
+				[`${CWD}/effected.toml`]:
+					'[package.build.meta]\nlocalPaths = ["docs/models", "./site/api/", "../../website/models"]\n',
+			});
+			const excludes = yield* inVolume(seed, BuildWatch.packageExcludes({ cwd: CWD, root: ROOT }));
+			assert.deepStrictEqual(excludes, [...DEFAULT_EXCLUDES, "docs/models", "site/api"]);
+		}),
+	);
+
+	it.effect("packageExcludes gives the defaults with no localPaths", () =>
+		Effect.gen(function* () {
+			const excludes = yield* inVolume(workspace(), BuildWatch.packageExcludes({ cwd: CWD, root: ROOT }));
+			assert.deepStrictEqual(excludes, DEFAULT_EXCLUDES);
+		}),
+	);
+
+	it.effect("packageExcludes gives the defaults under meta = false", () =>
+		Effect.gen(function* () {
+			const seed = workspace({ [`${CWD}/effected.toml`]: "[package.build]\nmeta = false\n" });
+			const excludes = yield* inVolume(seed, BuildWatch.packageExcludes({ cwd: CWD, root: ROOT }));
+			assert.deepStrictEqual(excludes, DEFAULT_EXCLUDES);
+		}),
+	);
+
+	it.effect("packageExcludes falls back to the defaults when the config will not load", () =>
+		Effect.gen(function* () {
+			const seed = workspace({ [`${CWD}/effected.toml`]: "[package.build\n" });
+			const excludes = yield* inVolume(seed, BuildWatch.packageExcludes({ cwd: CWD, root: ROOT }));
 			assert.deepStrictEqual(excludes, DEFAULT_EXCLUDES);
 		}),
 	);

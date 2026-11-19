@@ -1,5 +1,10 @@
 # Log
 
+## 2026-11-19
+
+* Updated @effected/engine
+* Updated The effected build commands: package build, action build and action init
+
 ## 2026-11-18
 
 * Updated @effected/engine
