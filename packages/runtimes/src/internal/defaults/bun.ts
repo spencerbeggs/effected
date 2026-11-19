@@ -8,6 +8,7 @@ import type { RawRelease } from "../types.js";
  * @internal
  */
 export const bunDefaults: ReadonlyArray<RawRelease> = [
+	{ version: "1.4.5", date: "2026-11-19T08:47:28Z" },
 	{ version: "1.4.4", date: "2026-10-22T10:11:32Z" },
 	{ version: "1.4.3", date: "2026-10-10T05:24:54Z" },
 	{ version: "1.4.2", date: "2026-09-05T05:55:48Z" },
