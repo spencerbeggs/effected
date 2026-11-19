@@ -2,7 +2,8 @@
 // load check stays on. The copy gains the `package.json` and `effected.toml` a build needs. It sits under this package's
 // `dist`, the same place the package-build e2e uses, and the root `globalSetup` rebuilds `dist/prod` before every run.
 
-import { spawnSync } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
@@ -35,6 +36,60 @@ const effected = (args: ReadonlyArray<string>, directory = cwd, env: Record<stri
 		env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", ...env },
 		timeout: 110_000,
 	});
+
+/** What a watched run has written so far, and how to end it. */
+interface Watched {
+	readonly stdoutLines: () => ReadonlyArray<string>;
+	readonly stderr: () => string;
+	/** Resolves with the exit code, or rejects naming the signal that killed the child. */
+	readonly exited: Promise<number>;
+	readonly kill: (signal: NodeJS.Signals) => void;
+}
+
+const watch = (args: ReadonlyArray<string>, directory: string): Watched => {
+	const child = spawn(process.execPath, ["--import", TSX, BIN, ...args], {
+		cwd: directory,
+		env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "" },
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+	let stdout = "";
+	let stderr = "";
+	child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+		stdout += chunk;
+	});
+	child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+		stderr += chunk;
+	});
+	const exited = new Promise<number>((resolveExit, rejectExit) => {
+		child.on("exit", (code, signal) =>
+			code !== null ? resolveExit(code) : rejectExit(new Error(`killed by ${signal ?? "nothing"}\n${stderr}`)),
+		);
+	});
+	// The `afterAll` kill after a failed assertion rejects this with no one awaiting it; that is not a second failure.
+	exited.catch(() => {});
+	// A failing assertion must never leave a watching child behind.
+	children.push(child);
+	return {
+		stdoutLines: () => stdout.split("\n").filter((line) => line !== ""),
+		stderr: () => stderr,
+		exited,
+		kill: (signal) => child.kill(signal),
+	};
+};
+
+const children: Array<ChildProcess> = [];
+afterAll(() => {
+	for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+});
+
+/** Polls `done` every 100 ms for at most `ms`, failing with `context` if it never holds. */
+const until = async (done: () => boolean, ms: number, context: () => string) => {
+	for (let waited = 0; waited < ms && !done(); waited += 100) await new Promise((wake) => setTimeout(wake, 100));
+	assert.isTrue(done(), context());
+};
+
+// Well above the 100 ms debounce, so a build's own writes would have queued and started another run.
+const SETTLE_MS = 3_000;
 
 describe("the built effected bin", () => {
 	it("action build --no-persist builds a real action into dist/main.js", { timeout: 120_000 }, () => {
@@ -87,5 +142,32 @@ describe("the built effected bin", () => {
 		});
 		assert.strictEqual(status, 2, stderr);
 		assert.include(stderr, "[action]");
+	});
+
+	it("action build --watch does not rebuild from its own writes, persist on", { timeout: 180_000 }, async () => {
+		// A fresh copy, so the first build creates .github/actions/local, .actrc and act-test.yml inside the watched tree.
+		const persisted = join(scratch, "persisted");
+		cpSync(FIXTURE, persisted, { recursive: true });
+		writeFileSync(join(persisted, "package.json"), JSON.stringify({ name: "default-minify", version: "1.0.0" }));
+		writeFileSync(join(persisted, "effected.toml"), '[action.entries]\nmain = "src/main.ts"\n');
+		assert.isFalse(existsSync(join(persisted, ".actrc")));
+		assert.isFalse(existsSync(join(persisted, ".github")));
+
+		const run = watch(["action", "build", "--watch", "--format", "json"], persisted);
+		const context = () => `stdout:\n${run.stdoutLines().join("\n")}\nstderr:\n${run.stderr()}`;
+		await until(() => run.stdoutLines().length >= 1, 120_000, context);
+		await new Promise((wake) => setTimeout(wake, SETTLE_MS));
+		assert.strictEqual(run.stdoutLines().length, 1, context());
+		assert.strictEqual(
+			(JSON.parse(run.stdoutLines()[0] ?? "{}") as { readonly verdict?: string }).verdict,
+			"ok",
+			context(),
+		);
+		assert.notInclude(run.stderr(), "rebuilding:", context());
+		assert.isTrue(existsSync(join(persisted, ".actrc")), "the build wrote .actrc inside the watched tree");
+		assert.isTrue(existsSync(join(persisted, ".github/workflows/act-test.yml")), "and act-test.yml");
+		assert.isTrue(existsSync(join(persisted, ".github/actions/local/dist/main.js")), "and the local copy");
+		run.kill("SIGINT");
+		assert.strictEqual(await run.exited, 130, context());
 	});
 });

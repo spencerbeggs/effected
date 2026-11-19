@@ -28,12 +28,16 @@ sources:
     resource: ../../packages/cli/src/commands/action/execute-init.ts
   - id: action-builder
     resource: ../../packages/bundler/src/action/ActionBuilder.ts
+  - id: build-watch
+    resource: ../../packages/engine/src/build/BuildWatch.ts
+  - id: cli-watch
+    resource: ../../packages/cli/src/commands/watch.ts
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-12T17:12:57Z
+  at: 2026-11-19T23:33:10Z
 integrity:
   generated:
-    body: a03ae7cdc21c61b8
+    body: b225eb881c4e6b96
 ---
 
 # The effected build commands: package build, action build and action init
@@ -41,8 +45,8 @@ integrity:
 `effected package build` builds the package in the working directory into its `dist/prod`. `effected action build` builds the GitHub Action in the working directory into its `dist`, and `effected action init` scaffolds a new one for it to build. They are commands of the [effected tool](../decisions/one-tool-beside-the-libraries.md): the flags and exit codes live in [`@effected/cli`](../modules/cli.md), the logic in [`@effected/engine`](../modules/engine.md)'s `./build` subpath, and [`effected-mcp`](../modules/mcp.md) answers the same results as data. The config they read is [`effected.toml`](effected-toml.md), and what they leave on disk is [the build artifacts](build-artifacts.md).
 
 ```text
-effected package build [--format=human|json] [--no-exe] [--verbose]
-effected action build [--format=human|json] [--no-validate] [--no-persist]
+effected package build [--format=human|json] [--no-exe] [--verbose] [--watch]
+effected action build [--format=human|json] [--no-validate] [--no-persist] [--watch]
 effected action init [--format=human|json] [--name=<name>] [--description=<text>] [--force]
 ```
 
@@ -67,6 +71,7 @@ Neither takes a path. The working directory is the package; in this repository r
 | `--format=human\|json` | The report's form. The default follows the audience, as `effected schema`'s does |
 | `--no-exe` | Skips the single-executable compile, which is the only skip: without it the binary compiles on any host, for its declared target. The manifest still points at the binary |
 | `--verbose` | Measures gzip sizes for the report |
+| `--watch` | Rebuilds whenever a source file or `effected.toml` changes, until interrupted; see [Watching](#watching) |
 
 - **Exit 1** is `BuildFailedError`: the build crashed, or it finished having recorded an error.
 - **Exit 2** is `PackageConfigError`, carrying the engine's message, which names the file and key at fault: an `effected.toml` that will not load or decode, a plugin module that will not load, a directory with no readable `package.json`, or a config the bundler refuses before any work (`ConfigValidationError`).
@@ -83,6 +88,7 @@ Under `--format=json`, stdout holds exactly one `BuildRunResult` (`package`, `ve
 | `--format=human\|json` | The report's form, as above |
 | `--no-validate` | Skips validating the config and `action.yml`, and the bundle size check |
 | `--no-persist` | Skips copying the build to the local action directory |
+| `--watch` | Rebuilds whenever a source file or `effected.toml` changes, until interrupted; see [Watching](#watching) |
 
 An absent `[action]` table means the directory is a library, not an action, and the command refuses it.[^action-run]
 
@@ -97,6 +103,26 @@ Under `--format=json`, stdout holds one `ActionRunResult` (`verdict`, `result`),
 **The load check runs what it built.** Unless `[action.build] importCheck = false`, each bundle is imported in a fresh Node to prove it loads, which runs an action with no `GITHUB_ACTIONS` guard around its program for real. A worker that refuses to start at import by design sets `importCheck = false` in its own `[action.entries.workers.<name>]` table, which skips that bundle alone.
 
 An action build appends to no journal; the journals record package builds only.
+
+## Watching
+
+`--watch` behaves the same on both build commands. It builds once, then again after each settled batch of changes, until it is interrupted. Every run is a full build, not an incremental one. For a package build that keeps `dist/prod/issues.json` and the root journals current exactly as one-shot runs keep them; an action build writes neither, as above.[^build-watch]
+
+- **What is watched.** The package directory's top level, and each top-level directory no exclusion covers, recursively. An excluded `node_modules`, `.git` or `dist` is never walked, so a single-package repository with a populated `node_modules` starts at once and does not spend the host's watch limit. A directory that is only where an exclusion lives, such as `.github`, is watched, and the filter below drops the build's own events in it. A new top-level directory is watched from its first event, and its creation is itself a change; a removed one's watch is dropped, which is not the watcher stopping. A directory's watch that ends while the directory it watched is still there is the watcher stopping; a directory replaced at the same path counts as removed. When the package is not the workspace root, the root tier is watched too: `<root>` and `<root>/.config`, each non-recursively and filtered to `effected.toml`. Watching the directory rather than the file catches a file that does not exist yet and an editor's save-by-rename. A `<root>/.config` that does not exist when the watch starts is watched once it is created. Creating, removing or replacing `<root>/.config` is a change to its `effected.toml`, and each moves the watch to whatever directory is there now, so a replaced one is not left on the old directory. Some inputs outside the package are never watched: [editing them does not rebuild](../limitations/watch-ignores-inputs-outside-the-package.md).
+- **What is excluded.** These paths are package-relative and matched on `/` boundaries: `dist`, `node_modules`, `.turbo`, `.git`, `.cache`, `tsdoc.json`, `.actrc`, `.github/workflows/act-test.yml` and `.github/actions/local`. An exclusion covers the path, everything under it, and the directories it lives in.
+  - A path that only shares a prefix with an exclusion still triggers: `distribution/x.ts` does, and so does `.github/actions/local-notes.md`.
+  - A file beside an excluded path also triggers, such as `.github/workflows/ci.yml`. A bare `.github` or `.github/workflows` directory event does not, because those are the directories a first action build creates on its way to its own outputs.
+  - An action watch also excludes its `persistLocal.path`, re-read from `effected.toml` before each batch. An edit that moves the path or turns persist off is honoured. Under `--no-persist` the build writes nothing there, so the path stays watched. The default `.github/actions/local` is always excluded, so a config that will not load cannot start a loop.
+  - A package watch also excludes each `[package.build.meta] localPaths` directory inside the package, re-read from `effected.toml` before each batch, because every build copies the API model into each one. A `localPaths` entry outside the package needs no exclusion: nothing outside the package is watched.
+- **Debounce and queueing.** Events collect until the tree has been quiet for 100 ms, then run as one batch, so a branch switch or a format-on-save is one rebuild. Changes made during a build are kept, not dropped, and become exactly one follow-up run. Builds never overlap.
+- **Before each rebuild** the command prints `rebuilding: <path>, <path>, <path>` on stderr, followed by `+N more` when there are more than three paths. The paths are relative to the package, and a root-tier config reads as `../…`. Each path is printed as data: escape sequences and control characters are stripped, and a line break becomes a space.
+- **A broken edit does not end the watch.** A failed verdict, a config or plugin that will not load, or a run that could not finish is reported the way a one-shot run reports it, and the watch waits for the next change. A plugin written as native `.mjs`, or `.js` under `type: module`, is cached by Node's ESM loader, so a fixed one is not seen until the watch restarts. The report of a run that built goes to stdout; a refusal or a run failure is rendered on stderr and puts nothing on stdout. A failure that arrives alongside an interrupt from inside a build is reported, and the watch goes on.[^cli-watch]
+- **Exit 2 before any watch exists** when the directory itself is wrong: no `package.json`, no `[action]` table, or workspace discovery that fails (a workspace file that will not read or parse; no workspace above the package is not a failure, and makes the package its own root). A config that will not load, or cannot be read, is an edit the watch must survive, so the watch starts.
+- **Exit 3** when the package directory's own watch or a root-tier watch fails or stops, or a top-level directory's watch fails while the directory is still there, rendered as `PackageRunError` or `ActionRunError`. A watch never sits idle looking healthy.
+- **Exit 130** on Ctrl-C. The build in flight is interrupted, and a package build releases [the build lock](build-artifacts.md#the-build-lock); an action build takes no lock.
+- **Exit 64 under CI.** `--watch` is a usage error for the CI audience, because a watching job never ends.
+- **Under `--format=json`, stdout is JSON Lines:** one `BuildRunResult` or `ActionRunResult` per run.
+- **No step summary and no workflow annotations** are written while watching.
 
 ## `effected action init`
 
@@ -136,6 +162,7 @@ The tools resolve `cwd` against the workspace root, refuse a `cwd` outside it on
 - **`action_build` never persists unless asked,** the opposite of the command's default. Only `persist: true` writes `.github/actions/local`, `.actrc` and `.github/workflows/act-test.yml`; otherwise it writes only `dist`.[^action-tool]
 - **`action_init` has no verdict.** It answers what it wrote. Everything exit 2 or 3 covers above is a refusal: an existing file without `force`, a conflict (a symbolic link, the wrong kind of entry), no `package.json`, or a missing or invalid name or description. The containment check covers `cwd`; within it, the command's own rule keeps every write inside `cwd`, so a committed link cannot carry a write past the workspace root. It takes no lane, because it writes sources and never `dist`.[^action-tool]
 - **Builds are serialized.** Both build tools take one shared lane with a 10-minute timeout. The timeout cannot stop a build, because the bundler's passes are promises nothing can abort: a timed-out build runs on while the next call holds the lane, and the refusal says to wait.[^package-tool] Across processes, `package_build` also waits on [the build lock](build-artifacts.md#the-build-lock), so a call racing a terminal's build of the same package waits for it, and a wait that runs out is a refusal naming the lock file.
+- **The build tools are one-shot.** Neither takes a `watch` parameter; a watch belongs to the command, whose process a person or an agent can interrupt.
 - **A plugin cannot write the wire.** A plugin and the build tools run in the server's process, so a call runs with its stdout off the JSON-RPC stream.
 
 [^package-execute]: `packages/cli/src/commands/package/execute.ts`: the report, the annotations, the step summary and every exit code.
@@ -147,3 +174,5 @@ The tools resolve `cwd` against the workspace root, refuse a `cwd` outside it on
 [^action-builder]: `packages/bundler/src/action/ActionBuilder.ts`: the step order, strict mode, and what a failed step leaves behind.
 [^package-tool]: `packages/mcp/src/tools/package.ts`: the parameters, the lane, the timeout and the refusals.
 [^action-tool]: `packages/mcp/src/tools/action.ts`: the `persist` default and the refusals.
+[^build-watch]: `packages/engine/src/build/BuildWatch.ts`: the watch set, the exclusions, the debounce and the follow-up run.
+[^cli-watch]: `packages/cli/src/commands/watch.ts`: the status line, the CI refusal and how a failed run is rendered without ending the watch.

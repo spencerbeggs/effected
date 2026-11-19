@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, describe, it } from "@effect/vitest";
-import { Cause, ConfigProvider, Effect, Exit, Layer, Runtime } from "effect";
+import { Cause, ConfigProvider, Effect, Exit, Fiber, Layer, Runtime } from "effect";
 import { TestConsole } from "effect/testing";
 import { run } from "../src/main.js";
 import { environment } from "./schema/harness.js";
@@ -249,5 +249,238 @@ describe("effected action build", () => {
 			assert.include(text, "### effected action build");
 			assert.include(text, "dist/main.js");
 		}),
+	);
+});
+
+/** Writes `files` into a fresh temporary directory, removed when the scope closes. */
+const tempAction = (files: Readonly<Record<string, string>>) =>
+	Effect.acquireRelease(
+		Effect.sync(() => {
+			const cwd = mkdtempSync(join(tmpdir(), "effected-action-watch-"));
+			for (const [name, source] of Object.entries(files)) {
+				mkdirSync(dirname(join(cwd, name)), { recursive: true });
+				writeFileSync(join(cwd, name), source);
+			}
+			return cwd;
+		}),
+		(cwd) => Effect.sync(() => rmSync(cwd, { recursive: true, force: true })),
+	);
+
+const lines = (read: Effect.Effect<ReadonlyArray<unknown>>) =>
+	Effect.map(read, (all) =>
+		all
+			.map(String)
+			.join("\n")
+			.split("\n")
+			.filter((line) => line !== ""),
+	);
+
+/** Polls `check` every 50 ms of real time until it holds, for at most `seconds`. */
+const eventually = (
+	check: Effect.Effect<boolean>,
+	what: string,
+	seconds = 30,
+	context: Effect.Effect<string> = Effect.succeed(""),
+) =>
+	Effect.gen(function* () {
+		for (let waited = 0; waited < seconds * 20; waited++) {
+			if (yield* check) return;
+			yield* Effect.sleep("50 millis");
+		}
+		assert.fail(`timed out waiting for ${what}\n${yield* context}`);
+	});
+
+/** Waits until `progress` has not changed for `quiet` ms of real time, failing with `context` past `bound`. */
+const quiet = (progress: Effect.Effect<string>, context: Effect.Effect<string>, ms = 1_000, bound = 10_000) =>
+	Effect.gen(function* () {
+		let last = yield* progress;
+		let still = 0;
+		for (let waited = 0; waited < bound; waited += 50) {
+			yield* Effect.sleep("50 millis");
+			const now = yield* progress;
+			still = now === last ? still + 50 : 0;
+			last = now;
+			if (still >= ms) return;
+		}
+		assert.fail(`never went quiet\n${yield* context}`);
+	});
+
+/**
+ * `action build --watch` over a real temporary action with `--format json`: the first run, quiet, one rewrite of
+ * `src/main.ts`, and its run. Answers what stdout and stderr held, with the fiber still running.
+ */
+const watchedTwice = (env: Readonly<Record<string, string>>) =>
+	Effect.gen(function* () {
+		const cwd = yield* tempAction(GOOD);
+		const fiber = yield* run(
+			{},
+			{ cwd, ci: false },
+			environment(["action", "build", "--watch", "--format", "json"], Live),
+		).pipe(
+			Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: { ...env } }))),
+			Effect.forkChild({ startImmediately: true }),
+		);
+		const out = lines(TestConsole.logLines);
+		const err = lines(TestConsole.errorLines);
+		const transcript = Effect.map(
+			Effect.all([out, err]),
+			([o, e]) => `stdout:\n${o.join("\n")}\nstderr:\n${e.join("\n")}`,
+		);
+		const runs = Effect.map(out, (all) => all.length);
+		yield* eventually(
+			Effect.map(runs, (n) => n >= 1),
+			"the first run",
+			20,
+			transcript,
+		);
+		yield* quiet(
+			Effect.map(Effect.all([out, err]), ([o, e]) => `${o.length}/${e.length}`),
+			transcript,
+		);
+		const before = yield* runs;
+		writeFileSync(join(cwd, "src/main.ts"), 'console.log("changed");\n');
+		yield* eventually(
+			Effect.map(runs, (n) => n === before + 1),
+			"the run after the rewrite",
+			10,
+			transcript,
+		);
+		assert.isUndefined(fiber.pollUnsafe(), yield* transcript);
+		return { fiber, out: yield* out, transcript: yield* transcript };
+	});
+
+describe("effected action build --watch", () => {
+	it.effect("--watch exits 2 without an [action] table", () =>
+		Effect.gen(function* () {
+			const { code, errText } = yield* cli(["--watch"], { ...GOOD, "effected.toml": "" });
+			assert.strictEqual(code, 2);
+			assert.include(errText, "[action]");
+		}),
+	);
+
+	it.effect("--watch is refused under CI", () =>
+		Effect.gen(function* () {
+			const { code, errText } = yield* cli(["--watch"], GOOD, { CI: "true" }, true);
+			assert.strictEqual(code, 64);
+			assert.include(errText, "refused under CI");
+		}),
+	);
+
+	it.live(
+		"--watch rebuilds after src/main.ts changes",
+		() =>
+			Effect.scoped(
+				Effect.gen(function* () {
+					const cwd = yield* tempAction(GOOD);
+					const fiber = yield* run(
+						{},
+						{ cwd, ci: false },
+						environment(["action", "build", "--watch", "--human"], Live),
+					).pipe(
+						Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} }))),
+						Effect.forkChild({ startImmediately: true }),
+					);
+					const out = lines(TestConsole.logLines);
+					const err = lines(TestConsole.errorLines);
+					const reports = Effect.map(
+						out,
+						(all) => all.filter((line) => /^built 1 entries in \d+ms$/.test(line)).length,
+					);
+					const rebuilds = Effect.map(err, (all) => all.filter((line) => line.startsWith("rebuilding:")));
+					const transcript = Effect.map(
+						Effect.all([out, err]),
+						([o, e]) => `stdout:\n${o.join("\n")}\nstderr:\n${e.join("\n")}`,
+					);
+					/** Polls until neither a report nor a rebuilding line has appeared for `quiet` ms of real time. */
+					const quiescence = (quiet: number, bound: number) =>
+						Effect.gen(function* () {
+							let last = `${yield* reports}/${(yield* rebuilds).length}`;
+							let still = 0;
+							for (let waited = 0; waited < bound; waited += 50) {
+								yield* Effect.sleep("50 millis");
+								const now = `${yield* reports}/${(yield* rebuilds).length}`;
+								still = now === last ? still + 50 : 0;
+								last = now;
+								if (still >= quiet) return;
+							}
+							assert.fail(`never went quiet\n${yield* transcript}`);
+						});
+
+					yield* eventually(
+						Effect.map(reports, (n) => n >= 1),
+						"the first report",
+						20,
+						transcript,
+					);
+					// Any late batch from the fixture's own creation lands here, before the rewrite, so it cannot hide in the
+					// batch under test. It may name the fixture files; it must never be the build's own `.github` writes.
+					yield* quiescence(1_000, 10_000);
+					const before = yield* reports;
+					const early = yield* rebuilds;
+					for (const line of early) {
+						const paths = line
+							.slice("rebuilding: ".length)
+							.replace(/ \+\d+ more$/, "")
+							.split(", ");
+						assert.isFalse(
+							paths.every((path) => path === ".github" || path.startsWith(".github/")),
+							`the build triggered itself: ${line}\n${yield* transcript}`,
+						);
+					}
+
+					writeFileSync(join(cwd, "src/main.ts"), 'console.log("changed");\n');
+					yield* eventually(
+						Effect.map(reports, (n) => n === before + 1),
+						"the report after the rewrite",
+						10,
+						transcript,
+					);
+					assert.strictEqual((yield* rebuilds).at(-1), "rebuilding: src/main.ts", yield* transcript);
+					// A settle window well above the debounce: the rebuild's own writes must queue nothing.
+					yield* Effect.sleep("1500 millis");
+					assert.strictEqual(yield* reports, before + 1, `a surplus rebuild\n${yield* transcript}`);
+					assert.strictEqual((yield* rebuilds).length, early.length + 1, yield* transcript);
+					assert.isUndefined(fiber.pollUnsafe(), yield* transcript);
+					assert.include(readFileSync(join(cwd, "dist/main.js"), "utf8"), "changed");
+					yield* Fiber.interrupt(fiber);
+				}).pipe(Effect.provide(TestConsole.layer)),
+			),
+		60_000,
+	);
+	it.live(
+		"--watch --format json writes one parseable ActionRunResult per run on stdout",
+		() =>
+			Effect.scoped(
+				Effect.gen(function* () {
+					const { fiber, out, transcript } = yield* watchedTwice({});
+					assert.isAtLeast(out.length, 2, transcript);
+					for (const line of out) {
+						const document = JSON.parse(line) as { readonly verdict?: string; readonly result?: unknown };
+						assert.strictEqual(document.verdict, "ok", transcript);
+						assert.isDefined(document.result, transcript);
+					}
+					yield* Fiber.interrupt(fiber);
+				}).pipe(Effect.provide(TestConsole.layer)),
+			),
+		60_000,
+	);
+
+	it.live(
+		"--watch writes no step summary",
+		() =>
+			Effect.scoped(
+				Effect.gen(function* () {
+					const summaryDir = yield* Effect.acquireRelease(
+						Effect.sync(() => mkdtempSync(join(tmpdir(), "effected-action-watch-summary-"))),
+						(dir) => Effect.sync(() => rmSync(dir, { recursive: true, force: true })),
+					);
+					const summary = join(summaryDir, "summary.md");
+					writeFileSync(summary, "");
+					const { fiber, transcript } = yield* watchedTwice({ GITHUB_STEP_SUMMARY: summary });
+					assert.strictEqual(readFileSync(summary, "utf8"), "", transcript);
+					yield* Fiber.interrupt(fiber);
+				}).pipe(Effect.provide(TestConsole.layer)),
+			),
+		60_000,
 	);
 });

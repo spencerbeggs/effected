@@ -8,6 +8,7 @@ import { MemoryFileSystem } from "@effected/memfs";
 import { Deferred, Effect, Fiber, Layer, Stream } from "effect";
 import { SERVER_INSTRUCTIONS, ServerLayer } from "../../src/server.js";
 import type { PackageToolOptions } from "../../src/tools/package.js";
+import { packageBuild } from "../../src/tools/package.js";
 
 const ROOT = "/repo";
 const CWD = `${ROOT}/packages/a`;
@@ -94,6 +95,11 @@ const crash: Seams = {
 };
 
 describe("package_build", () => {
+	it("package_build takes no watch parameter", () => {
+		// The MCP tools stay one-shot: a watch belongs to the CLI, whose process a person or agent can interrupt.
+		assert.isFalse("watch" in packageBuild.parametersSchema.fields);
+	});
+
 	it.effect("is listed with its output schema and its annotations, and the instructions name it", () =>
 		Effect.gen(function* () {
 			const { harness } = yield* serve();

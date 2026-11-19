@@ -428,7 +428,9 @@
 		"ActionMetadataInvalidError": "action init refused a name or description holding control characters",
 		"ScaffoldConflict": "one path action init cannot write, symlink, wrong kind, unreadable, unwritable, outside",
 		"ScaffoldConflictError": "action init refused symlinks or wrong-kind entries before any write, even with force",
-		"ScaffoldWriteError": "action init write failed after its checks, names files already written, exit code 3"
+		"ScaffoldWriteError": "action init write failed after its checks, names files already written, exit code 3",
+		"BuildWatch": "rebuild on change, watch a package and root config, debounce batches, queue one follow-up",
+		"DEFAULT_EXCLUDES": "paths a watched build ignores, its own outputs, dist, `node_modules`, act files"
 	},
 	"kit": {
 		"CurrentDistribution": "read which carrier package installed this run without it appearing in R, defaults to none",

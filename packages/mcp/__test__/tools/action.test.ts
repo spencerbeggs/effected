@@ -8,6 +8,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { McpHarness } from "@effected/mcp-kit/testing";
 import { Effect, Layer } from "effect";
 import { SERVER_INSTRUCTIONS, ServerLayer } from "../../src/server.js";
+import { actionBuild } from "../../src/tools/action.js";
 
 const GOOD: Readonly<Record<string, string>> = {
 	"package.json": JSON.stringify({ name: "action", version: "1.0.0" }),
@@ -61,6 +62,11 @@ const serving = <A, E>(
 	);
 
 describe("action_build", () => {
+	it("action_build takes no watch parameter", () => {
+		// The MCP tools stay one-shot: a watch belongs to the CLI, whose process a person or agent can interrupt.
+		assert.isFalse("watch" in actionBuild.parametersSchema.fields);
+	});
+
 	it.live("is listed with its output schema and its annotations, and the instructions name it", () =>
 		serving(GOOD, (harness) =>
 			Effect.gen(function* () {

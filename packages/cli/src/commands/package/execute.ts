@@ -9,6 +9,7 @@ import { Audience } from "@effected/env";
 import { Console, Effect, Option, Schema } from "effect";
 import { IssuesDoc } from "../../render/IssuesDoc.js";
 import { resolveFormat } from "../schema/execute.js";
+import { refuseUnderCi, reportAndContinue, triggerLine } from "../watch.js";
 import { BuildFailedError, PackageConfigError, PackageRunError } from "./errors.js";
 
 /**
@@ -24,41 +25,43 @@ export interface ExecuteInput {
 	readonly format: Option.Option<"human" | "json">;
 	readonly noExe: boolean;
 	readonly verbose: boolean;
+	readonly watch: boolean;
 }
 
+const refused = (error: { readonly message: string }) =>
+	Effect.fail(CliRuntime.reported(new PackageConfigError({ message: error.message }), 2));
+const infrastructure = (error: { readonly message: string }) =>
+	Effect.fail(CliRuntime.reported(new PackageRunError({ message: error.message }), 3));
+
+// On stderr, so that stdout stays one document under --format json.
+const onProgress = (event: BuildProgress): Effect.Effect<void> =>
+	event._tag === "Waiting"
+		? Console.error(
+				Option.match(event.holder, {
+					onNone: () => `waiting for another build of this package (${event.lockPath})`,
+					onSome: (holder) =>
+						`waiting for another build of this package: process ${holder.pid}, building ${holder.cwd} since ${holder.startedAt} (${event.lockPath})`,
+				}),
+			)
+		: Effect.void;
+
 /**
- * Run one `package build`.
+ * Run one build and report it.
  *
  * @remarks
- * The engine's build entry is imported here rather than at the top of the module: it loads the bundler and its
- * toolchain, which `effected --version` and every `effected schema` run have no use for. The report is emitted first and
- * the failure follows, so a run that fails has still said why.
- *
- * With `--format json`, stdout holds one document, so CI's annotations go to stderr instead, where the runner reads
- * workflow commands too.
+ * The report is emitted first and the failure follows, so a run that fails has still said why. With `--format json`,
+ * stdout holds one document, so CI's annotations go to stderr instead, where the runner reads workflow commands too.
+ * Under `--watch` neither the annotations nor the step summary are written: CI refuses `--watch`.
  */
-export const execute = Effect.fn("effected.package.execute")(function* (input: ExecuteInput, deps: PackageCommandDeps) {
-	const format = yield* resolveFormat(input.format);
+const runOnce = Effect.fn("effected.package.runOnce")(function* (
+	input: ExecuteInput,
+	deps: PackageCommandDeps,
+	format: "human" | "json",
+) {
 	const audience = yield* Audience;
 	const { BuildRun, BuildRunResult, renderCiAnnotations } = yield* Effect.promise(
 		() => import("@effected/engine/build"),
 	);
-
-	const refused = (error: { readonly message: string }) =>
-		Effect.fail(CliRuntime.reported(new PackageConfigError({ message: error.message }), 2));
-	const infrastructure = (error: { readonly message: string }) =>
-		Effect.fail(CliRuntime.reported(new PackageRunError({ message: error.message }), 3));
-	// On stderr, so that stdout stays one document under --format json.
-	const onProgress = (event: BuildProgress): Effect.Effect<void> =>
-		event._tag === "Waiting"
-			? Console.error(
-					Option.match(event.holder, {
-						onNone: () => `waiting for another build of this package (${event.lockPath})`,
-						onSome: (holder) =>
-							`waiting for another build of this package: process ${holder.pid}, building ${holder.cwd} since ${holder.startedAt} (${event.lockPath})`,
-					}),
-				)
-			: Effect.void;
 	const result = yield* BuildRun.run({ noExe: input.noExe, verbose: input.verbose }, { ...deps, onProgress }).pipe(
 		Effect.catchTags({
 			EffectedConfigError: refused,
@@ -77,12 +80,14 @@ export const execute = Effect.fn("effected.package.execute")(function* (input: E
 	} else {
 		yield* Doc.print([IssuesDoc.render(issues)]);
 	}
-	if (audience.kind === "ci") {
-		const write = format === "json" ? Console.error : Console.log;
-		for (const line of renderCiAnnotations(result.report)) yield* write(line);
+	if (!input.watch) {
+		if (audience.kind === "ci") {
+			const write = format === "json" ? Console.error : Console.log;
+			for (const line of renderCiAnnotations(result.report)) yield* write(line);
+		}
+		// Here and not in the engine: a `package_build` over MCP inside an Actions step must not write the summary.
+		yield* StepSummary.append(IssuesDoc.markdown(issues));
 	}
-	// Here and not in the engine: a `package_build` over MCP inside an Actions step must not write the summary.
-	yield* StepSummary.append(IssuesDoc.markdown(issues));
 
 	if (result.verdict === "failed") {
 		return yield* Effect.fail(
@@ -95,4 +100,36 @@ export const execute = Effect.fn("effected.package.execute")(function* (input: E
 			),
 		);
 	}
+});
+
+/**
+ * Run one `package build`, or under `--watch` one per change until interrupted.
+ *
+ * @remarks
+ * The engine's build entry is imported here rather than at the top of the module: it loads the bundler and its
+ * toolchain, which `effected --version` and every `effected schema` run have no use for.
+ *
+ * Under `--watch`, a directory that is not a package, or a workspace root that cannot be discovered, exits before any
+ * watch exists, as the one-shot run would. After that a run's failure is rendered on stderr and the watch goes on; only
+ * a watcher failure ends it, with exit `3`.
+ */
+export const execute = Effect.fn("effected.package.execute")(function* (input: ExecuteInput, deps: PackageCommandDeps) {
+	const format = yield* resolveFormat(input.format);
+	if (!input.watch) return yield* runOnce(input, deps, format);
+
+	yield* refuseUnderCi;
+	const { BuildWatch } = yield* Effect.promise(() => import("@effected/engine/build"));
+	const target = yield* BuildWatch.target(deps.cwd, "package").pipe(
+		Effect.catchTags({ NotAPackageError: refused, EffectedConfigError: refused, PlatformError: infrastructure }),
+	);
+	return yield* BuildWatch.run({
+		...target,
+		exclude: BuildWatch.packageExcludes(target),
+		build: (trigger) =>
+			Effect.gen(function* () {
+				const line = triggerLine(trigger);
+				if (line !== undefined) yield* Console.error(line);
+				yield* reportAndContinue(runOnce(input, { ...deps, cwd: target.cwd }, format));
+			}),
+	}).pipe(Effect.catchTag("PlatformError", infrastructure));
 });
