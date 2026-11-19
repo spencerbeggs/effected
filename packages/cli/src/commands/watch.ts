@@ -3,7 +3,7 @@
 // `BuildWatch`, reached through the commands' dynamic import of `@effected/engine/build`.
 
 import type { CliLinks, CliTheme } from "@effected/cli-kit";
-import { CliFailure, CliRuntime, Doc } from "@effected/cli-kit";
+import { CliFailure, CliRuntime, Doc, Fmt } from "@effected/cli-kit";
 import type { WatchTrigger } from "@effected/engine/build";
 import type { TerminalEnv } from "@effected/env";
 import { Audience } from "@effected/env";
@@ -23,10 +23,14 @@ export class WatchUnderCiError extends Schema.TaggedError<WatchUnderCiError>()("
 	}
 }
 
-/** The stderr line before a rebuild; `undefined` for `Initial`. */
+/** The stderr line before a rebuild, its paths sanitized; `undefined` for `Initial`. */
 export const triggerLine = (trigger: WatchTrigger): string | undefined => {
 	if (trigger._tag === "Initial") return undefined;
-	const listed = trigger.paths.slice(0, LISTED_PATHS).join(", ");
+	// A path is data: no escape sequence reaches the terminal, and no line break starts another stderr line.
+	const listed = trigger.paths
+		.slice(0, LISTED_PATHS)
+		.map((path) => Fmt.sanitize(path).replace(/\r\n|\r|\n/gu, " "))
+		.join(", ");
 	const rest = trigger.paths.length - LISTED_PATHS;
 	return rest > 0 ? `rebuilding: ${listed} +${rest} more` : `rebuilding: ${listed}`;
 };

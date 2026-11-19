@@ -108,7 +108,7 @@ export const execute = Effect.fn("effected.action.execute")(function* (input: Ex
 	);
 	return yield* BuildWatch.run({
 		...target,
-		exclude: BuildWatch.actionExcludes(target),
+		exclude: BuildWatch.actionExcludes(target, { persist: !input.noPersist }),
 		build: (trigger) =>
 			Effect.gen(function* () {
 				const line = triggerLine(trigger);

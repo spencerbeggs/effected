@@ -118,13 +118,13 @@ export const execute = Effect.fn("effected.package.execute")(function* (input: E
 	if (!input.watch) return yield* runOnce(input, deps, format);
 
 	yield* refuseUnderCi;
-	const { BuildWatch, DEFAULT_EXCLUDES } = yield* Effect.promise(() => import("@effected/engine/build"));
+	const { BuildWatch } = yield* Effect.promise(() => import("@effected/engine/build"));
 	const target = yield* BuildWatch.target(deps.cwd, "package").pipe(
 		Effect.catchTags({ NotAPackageError: refused, EffectedConfigError: refused, PlatformError: infrastructure }),
 	);
 	return yield* BuildWatch.run({
 		...target,
-		exclude: Effect.succeed(DEFAULT_EXCLUDES),
+		exclude: BuildWatch.packageExcludes(target),
 		build: (trigger) =>
 			Effect.gen(function* () {
 				const line = triggerLine(trigger);

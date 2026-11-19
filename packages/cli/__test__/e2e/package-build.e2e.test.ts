@@ -142,6 +142,8 @@ describe("the built effected bin", () => {
 	});
 
 	it("package build --watch does not rebuild from its own writes", { timeout: 300_000 }, async () => {
+		// An in-package localPaths: every build copies the API model there, so an unexcluded one would rebuild forever.
+		writeFileSync(join(cwd, "effected.toml"), '[package.build.meta]\nlocalPaths = ["docs/models"]\n');
 		const run = watch(["package", "build", "--watch", "--format", "json", "--no-exe"], cwd);
 		const context = () => `stdout:\n${run.stdoutLines().join("\n")}\nstderr:\n${run.stderr()}`;
 		await until(() => run.stdoutLines().length >= 1, 180_000, context);
@@ -153,6 +155,10 @@ describe("the built effected bin", () => {
 			context(),
 		);
 		assert.notInclude(run.stderr(), "rebuilding:", context());
+		assert.isTrue(
+			existsSync(join(cwd, "docs/models/package.json")),
+			`the build wrote no localPaths copy\n${context()}`,
+		);
 
 		// The positive control: the same watch does see an edit, so the silence above is not a watcher that saw nothing.
 		const source = join(cwd, "src/index.ts");

@@ -622,4 +622,13 @@ describe("effected package build --watch", () => {
 			assert.isUndefined(triggerLine({ _tag: "Initial" }));
 		}),
 	);
+
+	it.effect("triggerLine strips escape sequences and line breaks from a path", () =>
+		Effect.sync(() => {
+			assert.strictEqual(
+				triggerLine({ _tag: "Changed", paths: ["src/\u001b[2Jx.ts", "a\nb.ts", "c\r\nd.ts"] }),
+				"rebuilding: src/x.ts, a b.ts, c d.ts",
+			);
+		}),
+	);
 });
