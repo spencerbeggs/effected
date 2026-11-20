@@ -15,6 +15,7 @@ const inVolume = <A, E>(program: Effect.Effect<A, E, FileSystem.FileSystem | Pat
 			MemoryFileSystem.layerWithPath({
 				"/ws/pnpm-workspace.yaml": "",
 				"/ws/actions/one/package.json": "{}",
+				"/ws/actions/two/package.json": "{}",
 				"/link": MemoryFileSystem.symlink("/ws/actions/one"),
 			}),
 		),
@@ -92,6 +93,37 @@ describe("PersistTarget.resolve", () => {
 		Effect.gen(function* () {
 			const resolved = yield* resolve({ base: "workspace", path: "actions-out" });
 			assert.strictEqual(resolved.outputPath, "/ws/actions-out");
+		}),
+	);
+
+	it.effect("a path at or under another package is refused, naming it", () =>
+		Effect.gen(function* () {
+			for (const path of ["actions/two", "actions/two/out"]) {
+				const result = yield* Effect.result(resolve({ base: "workspace", path }));
+				assert.isTrue(Result.isFailure(result));
+				if (Result.isFailure(result)) {
+					assert.strictEqual(result.failure.reason, "inside-other-package");
+					assert.strictEqual(result.failure.packageDir, "/ws/actions/two");
+					assert.include(result.failure.message, "/ws/actions/two");
+				}
+			}
+		}),
+	);
+
+	it.effect("a path merely named after another package is accepted", () =>
+		Effect.gen(function* () {
+			const resolved = yield* resolve({ base: "workspace", path: ".github/actions/two" });
+			assert.strictEqual(resolved.outputPath, "/ws/.github/actions/two");
+		}),
+	);
+
+	it.effect("a package-based path in the package dist or staging directory is refused", () =>
+		Effect.gen(function* () {
+			for (const path of ["dist", "dist/action", ".action-staging", ".action-staging/x"]) {
+				const result = yield* Effect.result(resolve({ dist: false, path }));
+				assert.isTrue(Result.isFailure(result));
+				if (Result.isFailure(result)) assert.strictEqual(result.failure.reason, "inside-package");
+			}
 		}),
 	);
 

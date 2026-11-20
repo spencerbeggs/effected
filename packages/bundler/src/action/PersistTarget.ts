@@ -43,7 +43,9 @@ export class PersistTarget {
 	 *
 	 * @remarks
 	 * Fails with `PersistPathError` when the path leaves the workspace, when a workspace-based path lands inside the
-	 * package, when it is, or contains, the package (which includes the workspace root), or when `dist = false` leaves nothing persisted.
+	 * package, when a package-based path lands in its `dist` or its staging directory, when it is, or contains, the
+	 * package (which includes the workspace root), when it is or lies inside another package (any directory below the
+	 * root holding a `package.json`), or when `dist = false` leaves nothing persisted.
 	 *
 	 * @param config - The action's config.
 	 * @param options - The package directory and the workspace root.
@@ -82,9 +84,28 @@ export class PersistTarget {
 					return yield* new PersistPathError({ path: outputPath, reason: "inside-package" });
 				}
 			}
+			if (base === "package") {
+				// The build's own dist is cleaned and the staging directory removed, so a persist there is lost or recursive.
+				for (const owned of ["dist", STAGING]) {
+					const fromOwned = path.relative(path.join(cwd, owned), outputPath);
+					if (!escapes(fromOwned, path.isAbsolute(fromOwned))) {
+						return yield* new PersistPathError({ path: outputPath, reason: "inside-package" });
+					}
+				}
+			}
 			const toCwd = path.relative(outputPath, cwd);
 			if (!escapes(toCwd, path.isAbsolute(toCwd))) {
 				return yield* new PersistPathError({ path: outputPath, reason: "contains-package" });
+			}
+			// Any directory strictly below the root, up to the output path itself, that holds a `package.json` is a
+			// package a persist would overwrite. The package being built is an ancestor only under base = "package",
+			// where its own dist and staging are already refused, so it is skipped.
+			for (let dir = outputPath; dir !== root && dir !== path.dirname(dir); dir = path.dirname(dir)) {
+				if (dir === cwd) break;
+				const found = yield* fs.exists(path.join(dir, "package.json")).pipe(Effect.orElseSucceed(() => false));
+				if (found) {
+					return yield* new PersistPathError({ path: outputPath, reason: "inside-other-package", packageDir: dir });
+				}
 			}
 
 			return ResolvedPersist.make({

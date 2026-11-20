@@ -88,7 +88,10 @@ export class ActionYmlPathError extends Schema.TaggedError<ActionYmlPathError>()
  *
  * @remarks
  * `outside-workspace` means it resolves beyond the workspace root, `inside-package` means a workspace-based path
- * lands inside the package being built, `contains-package` means it is the package or an ancestor of it, the workspace root included, and `dist-without-persist` means `dist = false` with nothing persisted.
+ * lands inside the package being built, or a package-based path lands in its `dist` or staging directory,
+ * `contains-package` means it is the package or an ancestor of it, the workspace root included,
+ * `inside-other-package` means it is, or lies inside, another directory holding a `package.json` (named in
+ * `packageDir`), and `dist-without-persist` means `dist = false` with nothing persisted.
  *
  * @public
  */
@@ -96,13 +99,24 @@ export class PersistPathError extends Schema.TaggedError<PersistPathError>()("Pe
 	/** The path as configured, or the resolved output path. */
 	path: Schema.String,
 	/** Why it was refused. */
-	reason: Schema.Literals(["outside-workspace", "inside-package", "contains-package", "dist-without-persist"]),
+	reason: Schema.Literals([
+		"outside-workspace",
+		"inside-package",
+		"contains-package",
+		"inside-other-package",
+		"dist-without-persist",
+	]),
+	/** The other package's directory, for `inside-other-package`. */
+	packageDir: Schema.optionalKey(Schema.String),
 }) {
 	override get message(): string {
 		if (this.reason === "outside-workspace") return `The persist path ${this.path} is outside the workspace`;
 		if (this.reason === "contains-package")
 			return `The persist path ${this.path} is, or contains, the package being built, and a persist would delete it`;
-		if (this.reason === "inside-package") return `The persist path ${this.path} is inside the package being built`;
+		if (this.reason === "inside-package")
+			return `The persist path ${this.path} is inside the package being built, its dist or its staging directory`;
+		if (this.reason === "inside-other-package")
+			return `The persist path ${this.path} is inside the package at ${this.packageDir ?? "an unnamed directory"}, and a persist would overwrite it`;
 		return "persistLocal.dist = false needs persistLocal.enabled, or the build is written nowhere";
 	}
 }
