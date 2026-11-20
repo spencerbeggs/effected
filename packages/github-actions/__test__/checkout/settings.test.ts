@@ -159,11 +159,26 @@ describe("lower unsafe pull request guard", () => {
 	};
 	const ctx = github({ eventName: "pull_request_target", ref: "refs/heads/main" });
 
-	it("skips the guard for the default self-checkout", async () => {
-		const s = await Effect.runPromise(lowered({}, ctx, payload));
-		assert.strictEqual(s.ref, "refs/heads/main");
-		const explicitEvent = await Effect.runPromise(lowered({ ref: { _tag: "Event" } }, ctx, payload));
-		assert.strictEqual(explicitEvent.ref, "refs/heads/main");
+	it("skips the guard for the default self-checkout, even when it would refuse", async () => {
+		// The event's own ref and sha are exactly what the guard refuses for a fork PR.
+		const risky = github({ eventName: "pull_request_target", ref: "refs/pull/3/merge", sha: HEAD });
+		const s = await Effect.runPromise(lowered({}, risky, payload));
+		assert.deepStrictEqual([s.ref, s.commit], ["refs/pull/3/merge", HEAD]);
+		const explicitEvent = await Effect.runPromise(lowered({ ref: { _tag: "Event" } }, risky, payload));
+		assert.deepStrictEqual([explicitEvent.ref, explicitEvent.commit], ["refs/pull/3/merge", HEAD]);
+		// Control: the same context is refused once the ref is explicit or the repository is the fork.
+		const viaRef = await Effect.runPromise(
+			Effect.flip(lowered({ ref: { _tag: "Ref", ref: "refs/pull/3/merge" } }, risky, payload)),
+		);
+		assert.instanceOf(viaRef, CheckoutUnsafePullRequestError);
+		const viaCommit = await Effect.runPromise(
+			Effect.flip(lowered({ ref: { _tag: "Commit", sha: HEAD } }, risky, payload)),
+		);
+		assert.instanceOf(viaCommit, CheckoutUnsafePullRequestError);
+		const viaRepo = await Effect.runPromise(
+			Effect.flip(lowered({ repository: { owner: "fork", name: "repo" } }, risky, payload)),
+		);
+		assert.instanceOf(viaRepo, CheckoutUnsafePullRequestError);
 	});
 
 	it("applies the guard to an explicit pull request ref", async () => {
