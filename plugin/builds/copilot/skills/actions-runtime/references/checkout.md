@@ -5,7 +5,7 @@ can encapsulate the standard checkout (no separate workflow step) or rebuild it
 from the kit's parts. It is exported from the `@effected/github-actions` root
 beside `ActionLogger`, and it requires `@effected/git`'s `Git` service.
 
-Four static members:
+Five static members:
 
 - **`Checkout.checkout(options)`** — does the checkout and resolves a
   `CheckoutResult` (`ref`, `commit`, `path`, `repository`). It sets no action
@@ -84,15 +84,17 @@ An action that exposes a checkout-compatible interface instead reads
 `checkout` requires `Scope`, `Git`, `FileSystem`, `Path`, `ChildProcessSpawner`,
 `SecureRandom`, `ActionEnvironment`, `ActionOutputs`, `ActionState` and
 `ActionLogger`. `Action.run` already provides all but `Git`: add `Git.layer` as the
-extra layer. A `GitHubClient` provided in the program is used for the repository's
-object format and default branch; without one the checkout builds a client from its
-own token (a GHES `serverUrl` derives the API base from it).
+extra layer. The repository's object format and default branch come from a client the
+checkout builds from its own token against its own server (a GHES `serverUrl` derives
+the API base from it), as the stock action does; a `GitHubClient` provided in the
+program is used only when the checkout has no token (an `Ssh` auth without one).
 
 It requires a modern git and checks the version once up front, failing
 `CheckoutGitTooOldError` before any other git runs. The other typed failures are one
 class per reason: `CheckoutRefNotFoundError`, `CheckoutCommitMismatchError`,
 `CheckoutAuthError`, `CheckoutPathError` (a `path` that leaves the workspace) and
-`CheckoutDefaultBranchError`, plus the git errors `@effected/git` already classifies.
+`CheckoutDefaultBranchError` (its `detail` the API's or `ls-remote`'s reason), plus
+the git errors `@effected/git` already classifies.
 Recover from one with `Effect.catchTag`.
 
 ## The log
