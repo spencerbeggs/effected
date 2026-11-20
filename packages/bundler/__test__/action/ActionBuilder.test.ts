@@ -12,6 +12,7 @@ import {
 	ActionYmlPathError,
 	BuildFailed,
 	BundleFailed,
+	PersistPathError,
 	ValidationFailed,
 } from "../../src/index.js";
 import { configOf, withFiles } from "../e2e/action-fixture.js";
@@ -37,7 +38,7 @@ describe("ActionBuilder.build", () => {
 	it.live("validates, bundles and persists", () =>
 		withFiles(ACTION, (cwd) =>
 			Effect.gen(function* () {
-				const result = yield* ActionBuilder.build({ ...options, cwd, config: configOf() });
+				const result = yield* ActionBuilder.build({ ...options, cwd, root: cwd, config: configOf() });
 				assert.instanceOf(result, ActionBuildResult);
 				assert.isTrue(result.validation.valid);
 				assert.isTrue(result.build.success);
@@ -54,7 +55,7 @@ describe("ActionBuilder.build", () => {
 	it.live("stops at a validation error, before dist is touched", () =>
 		withFiles({ ...ACTION, "src/main.ts": "", "dist/old.js": "old\n", "action.yml": "name: [unclosed\n" }, (cwd) =>
 			Effect.gen(function* () {
-				const error = yield* ActionBuilder.build({ ...options, cwd, config: configOf() }).pipe(Effect.flip);
+				const error = yield* ActionBuilder.build({ ...options, cwd, root: cwd, config: configOf() }).pipe(Effect.flip);
 				assert.instanceOf(error, ValidationFailed);
 				if (error instanceof ValidationFailed) {
 					assert.strictEqual(error.errorCount, 1);
@@ -70,11 +71,13 @@ describe("ActionBuilder.build", () => {
 	it.live("stops at a warning in strict mode, and goes on outside it", () =>
 		withFiles({ "src/main.ts": 'console.log("main");\n' }, (cwd) =>
 			Effect.gen(function* () {
-				const strict = yield* ActionBuilder.build({ ...options, cwd, config: configOf(), ci: true }).pipe(Effect.flip);
+				const strict = yield* ActionBuilder.build({ ...options, cwd, root: cwd, config: configOf(), ci: true }).pipe(
+					Effect.flip,
+				);
 				assert.instanceOf(strict, ValidationFailed);
 				assert.isFalse(existsSync(join(cwd, "dist")));
 
-				const relaxed = yield* ActionBuilder.build({ ...options, cwd, config: configOf() });
+				const relaxed = yield* ActionBuilder.build({ ...options, cwd, root: cwd, config: configOf() });
 				assert.isTrue(relaxed.validation.valid);
 				assert.strictEqual(relaxed.validation.warnings[0]?.code, "ACTION_YML_MISSING");
 			}).pipe(Effect.provide(Live)),
@@ -86,6 +89,7 @@ describe("ActionBuilder.build", () => {
 			Effect.gen(function* () {
 				const result = yield* ActionBuilder.build({
 					cwd,
+					root: cwd,
 					config: configOf({ persistLocal: { enabled: false } }),
 					validate: false,
 					persist: false,
@@ -102,13 +106,14 @@ describe("ActionBuilder.build", () => {
 	it.live("does not persist when told not to, or when the config disables it", () =>
 		withFiles(ACTION, (cwd) =>
 			Effect.gen(function* () {
-				const off = yield* ActionBuilder.build({ ...options, cwd, config: configOf(), persist: false });
+				const off = yield* ActionBuilder.build({ ...options, cwd, root: cwd, config: configOf(), persist: false });
 				assert.isFalse(off.persisted);
 				assert.isFalse(existsSync(join(cwd, ".github")));
 
 				const disabled = yield* ActionBuilder.build({
 					...options,
 					cwd,
+					root: cwd,
 					config: configOf({ persistLocal: { enabled: false } }),
 				});
 				assert.isFalse(disabled.persisted);
@@ -123,6 +128,7 @@ describe("ActionBuilder.build", () => {
 				const relaxed = yield* ActionBuilder.build({
 					...options,
 					cwd,
+					root: cwd,
 					config: configOf({ validation: { maxBundleSize: "1b" } }),
 				});
 				assert.isTrue(relaxed.validation.valid);
@@ -135,6 +141,7 @@ describe("ActionBuilder.build", () => {
 				const strict = yield* ActionBuilder.build({
 					...options,
 					cwd,
+					root: cwd,
 					config: configOf({ validation: { maxBundleSize: "1b", strict: true }, persistLocal: { path: ".strict" } }),
 				}).pipe(Effect.flip);
 				assert.instanceOf(strict, ValidationFailed);
@@ -144,6 +151,7 @@ describe("ActionBuilder.build", () => {
 				const roomy = yield* ActionBuilder.build({
 					...options,
 					cwd,
+					root: cwd,
 					config: configOf({ validation: { maxBundleSize: `${statSync(join(cwd, "dist", "main.js")).size}b` } }),
 				});
 				assert.deepStrictEqual(roomy.validation.warnings, []);
@@ -154,7 +162,7 @@ describe("ActionBuilder.build", () => {
 	it.live("fails BuildFailed, carrying the build, when an entry does not load", () =>
 		withFiles({ ...ACTION, "src/main.ts": 'throw new TypeError("broken at load");\n' }, (cwd) =>
 			Effect.gen(function* () {
-				const error = yield* ActionBuilder.build({ ...options, cwd, config: configOf() }).pipe(Effect.flip);
+				const error = yield* ActionBuilder.build({ ...options, cwd, root: cwd, config: configOf() }).pipe(Effect.flip);
 				assert.instanceOf(error, BuildFailed);
 				if (error instanceof BuildFailed) {
 					assert.strictEqual(error.failedEntries, 1);
@@ -169,16 +177,56 @@ describe("ActionBuilder.build", () => {
 	it.live("fails with what bundling and persisting raise", () =>
 		Effect.gen(function* () {
 			const missing = yield* withFiles({}, (cwd) =>
-				ActionBuilder.build({ cwd, config: configOf(), validate: false, persist: false, ci: false }).pipe(Effect.flip),
+				ActionBuilder.build({ cwd, root: cwd, config: configOf(), validate: false, persist: false, ci: false }).pipe(
+					Effect.flip,
+				),
 			);
 			assert.instanceOf(missing, BundleFailed);
 
 			const unresolved = yield* withFiles(
 				{ ...ACTION, "action.yml": ACTION["action.yml"].replace("dist/main.js", "dist/elsewhere.js") },
-				(cwd) => ActionBuilder.build({ ...options, cwd, config: configOf() }).pipe(Effect.flip),
+				(cwd) => ActionBuilder.build({ ...options, cwd, root: cwd, config: configOf() }).pipe(Effect.flip),
 			);
 			assert.instanceOf(unresolved, ActionYmlPathError);
 		}).pipe(Effect.provide(Live)),
+	);
+});
+
+describe("ActionBuilder.build under the workspace base", () => {
+	const workspace = (extra: Record<string, unknown> = {}) =>
+		configOf({ persistLocal: { base: "workspace", dist: false, ...extra } });
+	const ws = (files: Readonly<Record<string, string>>) =>
+		Object.fromEntries(Object.entries(files).map(([name, source]) => [`actions/one/${name}`, source]));
+
+	it.live("dist = false leaves no package dist", () =>
+		withFiles({ ...ws(ACTION), "package.json": "{}" }, (root) =>
+			Effect.gen(function* () {
+				const cwd = join(root, "actions/one");
+				const result = yield* ActionBuilder.build({ ...options, cwd, root, config: workspace() });
+				assert.isTrue(result.persisted);
+				assert.isFalse(existsSync(join(cwd, "dist")));
+				assert.isFalse(existsSync(join(cwd, ".action-staging")));
+				assert.isTrue(existsSync(join(root, ".github/actions/one/dist/main.js")));
+				assert.isTrue(existsSync(join(root, ".github/actions/one/action.yml")));
+			}).pipe(Effect.provide(Live)),
+		),
+	);
+
+	it.live("a path outside the workspace fails before bundling", () =>
+		withFiles({ ...ws(ACTION), "package.json": "{}" }, (root) =>
+			Effect.gen(function* () {
+				const cwd = join(root, "actions/one");
+				const error = yield* ActionBuilder.build({
+					...options,
+					cwd,
+					root,
+					config: workspace({ path: "../outside" }),
+				}).pipe(Effect.flip);
+				assert.instanceOf(error, PersistPathError);
+				assert.isFalse(existsSync(join(cwd, ".action-staging")));
+				assert.isFalse(existsSync(join(cwd, "dist")));
+			}).pipe(Effect.provide(Live)),
+		),
 	);
 });
 

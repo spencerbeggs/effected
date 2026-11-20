@@ -1,8 +1,8 @@
 import { Yaml } from "@effected/yaml";
 import type { PlatformError } from "effect";
 import { Effect, FileSystem, Path, Result, Schema } from "effect";
-import type { ActionConfig } from "../config/ActionConfig.js";
 import { ActionYmlPathError, PersistLocalError } from "./ActionErrors.js";
+import type { ResolvedPersist } from "./PersistTarget.js";
 import { syncDirectory, syncFile } from "./tree.js";
 
 /**
@@ -25,7 +25,7 @@ const ACTRC_CONTENT = `--container-architecture linux/amd64
 -W .github/workflows/act-test.yml
 `;
 
-const ACT_WORKFLOW_CONTENT = `name: Local Test
+const actWorkflowContent = (actionPath: string): string => `name: Local Test
 on:
   workflow_dispatch:
 
@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/local
+      - uses: ./${actionPath}
 `;
 
 /** Fails when a `runs` path in the persisted `action.yml` names no persisted file. */
@@ -78,25 +78,29 @@ export class PersistLocal {
 	private constructor() {}
 
 	/**
-	 * Makes `persistLocal.path` hold the action's `action.yml` and `dist/`, and generates the act template.
+	 * Makes the resolved output directory hold the action's `action.yml` and `dist/`, and generates the act template.
 	 *
 	 * @remarks
-	 * It writes nothing when `persistLocal.enabled` is false. Files that match are left alone, and files the source no
+	 * It writes nothing when the target is not enabled. `dist/` is synced from `distDir`: the package's own `dist/`, or
+	 * the staging directory when the package keeps none. The act template is rooted at `target.actRoot`, and its step
+	 * uses the persisted directory relative to it. Files that match are left alone, and files the source no
 	 * longer has are removed. A `.actrc` and `.github/workflows/act-test.yml` that already exist are kept. A `runs` path
 	 * in `action.yml` that names no persisted file fails {@link ActionYmlPathError}.
 	 *
-	 * @param options - `cwd` is the action's directory.
+	 * @param target - Where to persist, from {@link PersistTarget.resolve}.
+	 * @param options - `cwd` is the action's directory and `distDir` is where its bundles are.
 	 */
 	static readonly persist: (
-		config: ActionConfig,
-		options: { readonly cwd: string },
+		target: ResolvedPersist,
+		options: { readonly cwd: string; readonly distDir: string },
 	) => Effect.Effect<PersistLocalResult, PersistLocalError | ActionYmlPathError, FileSystem.FileSystem | Path.Path> =
-		Effect.fn("PersistLocal.persist")(function* (config: ActionConfig, options: { readonly cwd: string }) {
+		Effect.fn("PersistLocal.persist")(function* (
+			target: ResolvedPersist,
+			options: { readonly cwd: string; readonly distDir: string },
+		) {
 			const fs = yield* FileSystem.FileSystem;
 			const path = yield* Path.Path;
-			const { enabled } = config.persistLocal;
-			const actTemplate = config.persistLocal.actTemplate ?? true;
-			const outputPath = path.resolve(options.cwd, config.persistLocal.path ?? ".github/actions/local");
+			const { enabled, actTemplate, outputPath } = target;
 			if (!enabled) {
 				return PersistLocalResult.make({ filesCopied: 0, filesSkipped: 0, actTemplateGenerated: false, outputPath });
 			}
@@ -117,7 +121,7 @@ export class PersistLocal {
 				yield* fs.remove(persistedActionYml, { force: true }).pipe(failingAt(persistedActionYml));
 			}
 
-			const dist = path.resolve(options.cwd, "dist");
+			const dist = options.distDir;
 			const hasDist = yield* Effect.gen(function* () {
 				return (yield* fs.exists(dist)) && (yield* fs.stat(dist)).type === "Directory";
 			}).pipe(failingAt(dist));
@@ -135,10 +139,12 @@ export class PersistLocal {
 
 			let actTemplateGenerated = false;
 			if (actTemplate) {
-				const actrc = path.resolve(options.cwd, ".actrc");
-				const workflow = path.resolve(options.cwd, ".github/workflows/act-test.yml");
+				const actrc = path.resolve(target.actRoot, ".actrc");
+				const workflow = path.resolve(target.actRoot, ".github/workflows/act-test.yml");
+				const actionPath = path.relative(target.actRoot, outputPath).split(path.sep).join("/");
 				if (yield* writeIfAbsent(actrc, ACTRC_CONTENT).pipe(failingAt(actrc))) actTemplateGenerated = true;
-				if (yield* writeIfAbsent(workflow, ACT_WORKFLOW_CONTENT).pipe(failingAt(workflow))) actTemplateGenerated = true;
+				if (yield* writeIfAbsent(workflow, actWorkflowContent(actionPath)).pipe(failingAt(workflow)))
+					actTemplateGenerated = true;
 			}
 
 			return PersistLocalResult.make({ filesCopied, filesSkipped, actTemplateGenerated, outputPath });

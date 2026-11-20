@@ -269,7 +269,7 @@ describe.skipIf(TARGET === undefined)("the action spike", () => {
 				assert.lengthOf(built.entries, 5);
 
 				const validated = await Effect.runPromise(
-					ActionValidation.validate(config, farm, { ci: false }).pipe(
+					ActionValidation.validate(config, farm, { ci: false, base: "package" }).pipe(
 						Effect.provide(Layer.mergeAll(NodeFileSystem.layer, NodePath.layer)),
 					),
 				);

@@ -54,6 +54,7 @@ const runOnce = Effect.fn("effected.action.runOnce")(function* (
 			CleanError: stopped,
 			WriteError: stopped,
 			PersistLocalError: stopped,
+			PersistPathError: stopped,
 			ActionYmlPathError: stopped,
 			PlatformError: stopped,
 		}),

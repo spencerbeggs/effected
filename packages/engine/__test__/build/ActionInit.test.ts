@@ -122,7 +122,9 @@ describe("ActionInit.run", () => {
 			Effect.gen(function* () {
 				yield* init(cwd, { name: 'greet: "x" # not a comment, runs: {evil}', description: "Greets: everyone" });
 				const config = Schema.decodeUnknownSync(ActionConfig)({});
-				const validation = yield* ActionValidation.validate(config, cwd, { ci: true }).pipe(Effect.provide(Live));
+				const validation = yield* ActionValidation.validate(config, cwd, { ci: true, base: "package" }).pipe(
+					Effect.provide(Live),
+				);
 				assert.deepStrictEqual([...validation.errors], []);
 				assert.deepStrictEqual([...validation.warnings], []);
 				assert.isTrue(validation.valid);

@@ -1,10 +1,18 @@
-import type { FileSystem, Path, PlatformError } from "effect";
-import { Effect, Schema } from "effect";
+import type { PlatformError } from "effect";
+import { Effect, FileSystem, Path, Schema } from "effect";
 import type { ActionConfig } from "../config/ActionConfig.js";
 import { ActionBundle, BuildResult } from "./ActionBundle.js";
-import type { ActionYmlPathError, BundleFailed, CleanError, PersistLocalError, WriteError } from "./ActionErrors.js";
+import type {
+	ActionYmlPathError,
+	BundleFailed,
+	CleanError,
+	PersistLocalError,
+	PersistPathError,
+	WriteError,
+} from "./ActionErrors.js";
 import { ActionValidation, ValidationResult } from "./ActionValidation.js";
 import { PersistLocal } from "./PersistLocal.js";
+import { PersistTarget } from "./PersistTarget.js";
 
 /**
  * Validation stopped an action build, before bundling or on a bundle's size afterwards.
@@ -52,6 +60,7 @@ export type ActionBuilderError =
 	| CleanError
 	| WriteError
 	| PersistLocalError
+	| PersistPathError
 	| ActionYmlPathError
 	| PlatformError.PlatformError;
 
@@ -63,6 +72,8 @@ export type ActionBuilderError =
 export interface ActionBuilderOptions {
 	/** The action's directory. */
 	readonly cwd: string;
+	/** The workspace root, which a `"workspace"` persist path is relative to. */
+	readonly root: string;
 	/** The decoded `[action]` table. */
 	readonly config: ActionConfig;
 	/** Whether to validate before bundling and check bundle sizes after it. */
@@ -86,6 +97,14 @@ export class ActionBuildResult extends Schema.Class<ActionBuildResult>("ActionBu
 	/** Whether the build was copied to the local action directory. */
 	persisted: Schema.Boolean,
 }) {}
+
+const realCwd = (cwd: string) =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const resolved = path.resolve(cwd);
+		return yield* fs.realPath(resolved).pipe(Effect.orElseSucceed(() => resolved));
+	});
 
 const failValidation = (validation: ValidationResult, build?: BuildResult): ValidationFailed =>
 	new ValidationFailed({
@@ -124,14 +143,18 @@ export class ActionBuilder {
 		"ActionBuilder.build",
 	)(function* (options: ActionBuilderOptions) {
 		const { config, cwd } = options;
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const target = yield* PersistTarget.resolve(config, { cwd, root: options.root });
 		const strict = ActionValidation.isStrict(config, options);
 
 		const before = options.validate
-			? yield* ActionValidation.validate(config, cwd, options)
+			? yield* ActionValidation.validate(config, cwd, { ci: options.ci, base: target.base })
 			: ActionValidation.resultOf([], [], false);
 		if (!before.valid) return yield* failValidation(before);
 
-		const build = yield* ActionBundle.build(config, { cwd, clean: true });
+		const outDir = target.keepDist ? path.join(yield* realCwd(cwd), "dist") : target.stagingDir;
+		const build = yield* ActionBundle.build(config, { cwd, clean: true, outDir });
 		if (!build.success) {
 			return yield* new BuildFailed({
 				message: build.error ?? "One or more entries failed to build",
@@ -155,7 +178,8 @@ export class ActionBuilder {
 		if (!validation.valid) return yield* failValidation(validation, build);
 
 		const persisted = options.persist && config.persistLocal.enabled;
-		if (persisted) yield* PersistLocal.persist(config, { cwd });
+		if (persisted) yield* PersistLocal.persist(target, { cwd, distDir: outDir });
+		if (!target.keepDist) yield* fs.remove(target.stagingDir, { recursive: true, force: true });
 
 		return ActionBuildResult.make({ validation, build, persisted });
 	});

@@ -21,9 +21,9 @@ const configOf = (document: unknown = {}) => Schema.decodeUnknownSync(ActionConf
 const validate = (
 	seed: Readonly<Record<string, string>>,
 	document: unknown = {},
-	options: { readonly ci: boolean } = { ci: false },
+	options: { readonly ci: boolean; readonly base?: "package" | "workspace" } = { ci: false },
 ) =>
-	ActionValidation.validate(configOf(document), CWD, options).pipe(
+	ActionValidation.validate(configOf(document), CWD, { base: "package", ...options }).pipe(
 		Effect.provide(MemoryFileSystem.layerWithPath(seed)),
 	);
 
@@ -240,7 +240,7 @@ describe("ActionValidation.validate", () => {
 
 	it.effect("fails with the PlatformError when action.yml cannot be read", () =>
 		Effect.gen(function* () {
-			const error = yield* ActionValidation.validate(configOf(), CWD, { ci: false }).pipe(
+			const error = yield* ActionValidation.validate(configOf(), CWD, { ci: false, base: "package" }).pipe(
 				Effect.provide(
 					MemoryFileSystem.layerWithPath(good, {
 						faults: {
@@ -293,4 +293,33 @@ describe("ActionValidation.checkBundleSizes", () => {
 		]);
 		assert.lengthOf(ActionValidation.checkBundleSizes(configWith("100b"), stats), 2);
 	});
+});
+
+describe("ActionValidation.validate externals under the workspace base", () => {
+	const document = { build: { externals: ["sharp"] } };
+
+	it.effect("warns, naming the externals and the missing node_modules", () =>
+		Effect.gen(function* () {
+			const result = yield* validate(good, document, { ci: false, base: "workspace" });
+			const found = result.warnings.find((warning) => warning.code === "EXTERNALS_NOT_COMMITTED");
+			assert.isDefined(found);
+			assert.include(found?.message ?? "", "sharp");
+			assert.include(found?.message ?? "", "node_modules");
+			assert.isTrue(result.valid);
+		}),
+	);
+
+	it.effect("is an error in strict mode", () =>
+		Effect.gen(function* () {
+			const result = yield* validate(good, document, { ci: true, base: "workspace" });
+			assert.isFalse(result.valid);
+		}),
+	);
+
+	it.effect("does not warn under the package base", () =>
+		Effect.gen(function* () {
+			const result = yield* validate(good, document, { ci: false, base: "package" });
+			assert.notInclude(codes(result.warnings), "EXTERNALS_NOT_COMMITTED");
+		}),
+	);
 });

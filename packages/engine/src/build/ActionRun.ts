@@ -8,6 +8,7 @@ import type {
 	CleanError,
 	EffectedConfigError,
 	PersistLocalError,
+	PersistPathError,
 	WriteError,
 } from "@effected/bundler";
 import { ActionBuildResult, ActionBuilder, BuildResult, EffectedConfigFile } from "@effected/bundler";
@@ -90,6 +91,7 @@ export class ActionRun {
 		| CleanError
 		| WriteError
 		| PersistLocalError
+		| PersistPathError
 		| ActionYmlPathError
 		| PlatformError.PlatformError,
 		FileSystem.FileSystem | Path.Path
@@ -105,6 +107,7 @@ export class ActionRun {
 
 		return yield* ActionBuilder.build({
 			cwd,
+			root,
 			config: config.action,
 			validate: input.validate,
 			persist: input.persist,

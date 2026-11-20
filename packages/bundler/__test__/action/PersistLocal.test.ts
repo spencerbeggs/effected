@@ -9,6 +9,7 @@ import {
 	PersistLocal,
 	PersistLocalError,
 	PersistLocalResult,
+	PersistTarget,
 } from "../../src/index.js";
 
 const CWD = "/action";
@@ -30,7 +31,26 @@ const seed: Readonly<Record<string, string>> = {
 
 const configOf = (persistLocal: unknown = {}) => Schema.decodeUnknownSync(ActionConfig)({ persistLocal });
 
-const persist = (persistLocal?: unknown) => PersistLocal.persist(configOf(persistLocal), { cwd: CWD });
+const persist = (persistLocal?: unknown) =>
+	Effect.gen(function* () {
+		const target = yield* PersistTarget.resolve(configOf(persistLocal), { cwd: CWD, root: CWD });
+		return yield* PersistLocal.persist(target, { cwd: CWD, distDir: `${CWD}/dist` });
+	});
+
+const WS = "/ws";
+const PKG = `${WS}/actions/one`;
+const STAGING = `${PKG}/.action-staging`;
+const WS_OUT = `${WS}/.github/actions/one`;
+
+/** Persists a staging-built action under the workspace base. */
+const persistWorkspace = (extra: Record<string, unknown> = {}) =>
+	Effect.gen(function* () {
+		const target = yield* PersistTarget.resolve(configOf({ base: "workspace", dist: false, ...extra }), {
+			cwd: PKG,
+			root: WS,
+		});
+		return yield* PersistLocal.persist(target, { cwd: PKG, distDir: STAGING });
+	});
 
 /** Runs a program over a volume holding `overrides` on top of the seed; a `null` override removes a seeded file. */
 const inVolume = <A, E>(
@@ -283,5 +303,49 @@ jobs:
 			assert.instanceOf(error, PersistLocalError);
 			if (error instanceof PersistLocalError) assert.strictEqual(error.path, `${CWD}/action.yml`);
 		}),
+	);
+});
+
+describe("PersistLocal.persist under the workspace base", () => {
+	const wsSeed = {
+		[`${STAGING}/main.js`]: 'console.log("built");',
+		[`${PKG}/action.yml`]: ACTION_YML.replace("dist/main/index.js", "dist/main.js"),
+	};
+
+	it.effect("persists from a staging dist under workspace base", () =>
+		inVolume(
+			{ ...wsSeed, [`${WS_OUT}/dist/stale.js`]: "stale" },
+			Effect.gen(function* () {
+				const result = yield* persistWorkspace();
+				assert.strictEqual(result.outputPath, WS_OUT);
+				assert.isTrue(yield* exists(`${WS_OUT}/action.yml`));
+				assert.strictEqual(yield* read(`${WS_OUT}/dist/main.js`), 'console.log("built");');
+				assert.isFalse(yield* exists(`${WS_OUT}/dist/stale.js`));
+			}),
+		),
+	);
+
+	it.effect("act templates at the workspace root", () =>
+		inVolume(
+			wsSeed,
+			Effect.gen(function* () {
+				const result = yield* persistWorkspace({ actTemplate: true });
+				assert.isTrue(result.actTemplateGenerated);
+				assert.isTrue(yield* exists(`${WS}/.actrc`));
+				assert.include(yield* read(`${WS}/.github/workflows/act-test.yml`), "uses: ./.github/actions/one\n");
+				assert.isFalse(yield* exists(`${PKG}/.github`));
+			}),
+		),
+	);
+
+	it.effect("no act templates by default under workspace base", () =>
+		inVolume(
+			wsSeed,
+			Effect.gen(function* () {
+				const result = yield* persistWorkspace();
+				assert.isFalse(result.actTemplateGenerated);
+				assert.isFalse(yield* exists(`${WS}/.actrc`));
+			}),
+		),
 	);
 });

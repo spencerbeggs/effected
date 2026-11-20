@@ -23,6 +23,7 @@ describe("a bundled CommonJS dependency", () => {
 			Effect.gen(function* () {
 				const result = yield* ActionBuilder.build({
 					cwd,
+					root: cwd,
 					config: configOf({ build: { minify: false } }),
 					validate: true,
 					persist: true,

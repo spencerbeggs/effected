@@ -131,6 +131,8 @@ const refusalOf = (error: ActionFailure, root: string): ToolRefusal => {
 			return refuse(`Check that ${error.path} can be written and call the tool again.`);
 		case "PersistLocalError":
 			return refuse(`Check that ${error.path} can be copied, or pass persist: false.`);
+		case "PersistPathError":
+			return refuse(`Change persistLocal.path in effected.toml (${error.reason}), or pass persist: false.`);
 		case "ActionYmlPathError":
 			return refuse(`Point runs.${error.entryType} in action.yml at a built file, or pass persist: false.`);
 		case "ExclusiveTimeout":
