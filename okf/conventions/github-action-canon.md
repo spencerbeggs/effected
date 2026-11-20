@@ -15,11 +15,11 @@ sources:
   - id: skill-structuring
     resource: ../../plugin/skills/structuring-an-action/SKILL.md
 generated:
-  by: "claude-code/opus-5.5"
-  at: 2026-11-08T17:37:31Z
+  by: "claude-code/sonnet-5.5"
+  at: 2026-11-20T17:18:13Z
 integrity:
   generated:
-    body: f75cb9f492f612f1
+    body: 39bcfe27f535cf99
 ---
 
 # Build a GitHub Action repository to the kit's canonical shape
@@ -199,6 +199,8 @@ JSON input for genuinely nested structure, which then triggers B4.
 Enable `persistLocal` so it feeds `.github/actions/local` and the
 `act`-test smoke loop — disabled by default, local verification is dead on
 arrival.
+
+A repository that holds several actions, each its own workspace package, and commits them only as local actions (an org's `.github-private` is the example) lays them out as `actions/<name>` packages. Each sets `[action.persistLocal] base = "workspace"` and `dist = false` (`effected action init --local` writes both), so the build lands in `.github/actions/<name>` at the workspace root and the package keeps no `dist/`. The action is used as `uses: <org>/.github-private/.github/actions/<name>@<ref>`, or `uses: ./.github/actions/<name>` inside the repository. Gate the committed build with `effected action build --check` in CI, which fails when it is stale. A committed action has no `node_modules`, so such a package declares no `externals`.
 
 ### B7 — Caret ranges for `@effected/*` until the kit reaches 1.0
 

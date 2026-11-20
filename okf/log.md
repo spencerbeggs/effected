@@ -1,5 +1,11 @@
 # Log
 
+## 2026-11-20
+
+* Updated Build a GitHub Action repository to the kit's canonical shape
+* Updated The effected build commands: package build, action build and action init
+* Updated effected.toml: the build config's tables, defaults and discovery
+
 ## 2026-11-19
 
 * Updated @effected/engine

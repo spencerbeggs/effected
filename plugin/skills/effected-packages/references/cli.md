@@ -111,28 +111,36 @@ taken over; delete the file only when no build is running.
 ## `effected action build`
 
 ```text
-effected action build [--no-validate] [--no-persist] [--format=human|json]
+effected action build [--no-validate] [--no-persist] [--check] [--format=human|json]
 ```
 
 Bundles a GitHub Action on rolldown from the `[action]` tables of `effected.toml`:
 `entries` (`main` `src/main.ts`; `pre`, `post`, `workers` optional), `build`
 (`minify` true, `sourceMap` false, `externals`, `ignore`, `importCheck` true),
 `validation` (`requireActionYml` true, `maxBundleSize`, `strict`) and
-`persistLocal` (`enabled` true, `path` `.github/actions/local`, `actTemplate`
-true). Each entry becomes one self-contained ESM file at `dist/<entry>.js`; a
+`persistLocal` (`enabled` true, `base` `"package"` or `"workspace"`, `path`
+`.github/actions/local` under `package` and `.github/actions/<package directory>`
+under `workspace`, `dist` true, `actTemplate` true under `package`, false under
+`workspace`). Each entry becomes one self-contained ESM file at `dist/<entry>.js`; a
 computed `import()` stays native. `ignore` aliases a package to a throwing stub.
 Unless `importCheck = false`, each bundle is then imported in an isolated
 temporary directory with no `PATH`, which runs an action that has no
 `GITHUB_ACTIONS` guard. A worker may be a table of its own,
 `[action.entries.workers.<name>]` with `source` and `importCheck`, and
 `importCheck = false` there skips that worker alone: the shape for a worker
-that exits at import when the environment its action hands it is missing. Exit `1` on validation errors or a failed entry; a missing
-`[action]` table or an unloadable config is `2`.
+that exits at import when the environment its action hands it is missing. Exit `1` on validation errors, a failed entry or `--check` drift; a missing
+`[action]` table, an unloadable config or a refused persist path is `2`; a
+usage error (`--check` with `--watch` or `--no-persist`, `--check` with persist
+off, `--no-persist` with `dist = false`) is `64`. `--check` stages a build and
+compares `action.yml` and `dist/**` byte for byte against the persisted
+directory, reports each `changed`, `missing` or `extra` file, and writes nothing.
+With `base = "workspace"` and `dist = false` the package keeps no `dist/`: the
+bundles stage in `.action-staging`, removed after every build.
 
 ## `effected action init`
 
 ```text
-effected action init [--name=<name>] [--description=<text>] [--force] [--format=human|json]
+effected action init [--name=<name>] [--description=<text>] [--local] [--force] [--format=human|json]
 ```
 
 Scaffolds a new GitHub Action in a directory holding a `package.json`, ready for
@@ -140,7 +148,9 @@ Scaffolds a new GitHub Action in a directory holding a `package.json`, ready for
 `[action.persistLocal]` enabled), `action.yml` (`node24`, `runs.main`
 `dist/main.js`, branding), `src/main.ts` (the program import and the
 `GITHUB_ACTIONS` guard), `src/program.ts`, and a `tsconfig.json` extending
-`@effected/plugin/tsconfig/action.json`. `--name` and `--description` default to
+`@effected/plugin/tsconfig/action.json`. `--local` writes `base = "workspace"` and
+`dist = false` instead, plus a `.gitignore` (`dist/`, `.action-staging/`) when
+the package has none. `--name` and `--description` default to
 `package.json`'s `name` (scope dropped) and `description`, and must be one line
 without control characters. Every path is inspected before anything is written:
 an existing file stops the run with nothing written unless `--force`, and a

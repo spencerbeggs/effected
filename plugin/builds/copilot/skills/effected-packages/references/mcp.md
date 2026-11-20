@@ -31,12 +31,15 @@ import { main } from "@effected/mcp/main";
   the directory is not a package or lies outside the workspace root, or another
   build of the same package held its build lock for the whole wait.
 - **`action_build`** — `effected action build` as a tool (`cwd?`, `validate?`,
-  `persist?`). `persist` defaults to false, so it writes only `dist`; `true` also
-  writes `.github/actions/local`, `.actrc` and `.github/workflows/act-test.yml`.
+  `persist?`, `check?`). `persist` defaults to false, so it writes only `dist`;
+  `true` also writes the `[action.persistLocal]` directory (default
+  `.github/actions/local`), `.actrc` and `.github/workflows/act-test.yml`.
+  `check: true` writes nothing, ignores `persist`, and answers `result.drift`
+  for each changed, missing or extra file; drift is the verdict `failed`.
   The load check imports each bundle unless `[action.build] importCheck` is false;
   a worker's own table can set `importCheck = false` to skip that worker alone.
 - **`action_init`** — `effected action init` as a tool (`cwd?`, `name?`,
-  `description?`, `force?`), answering `ActionInitResult`. An existing file
+  `description?`, `local?`, `force?`), answering `ActionInitResult`. An existing file
   without `force`, a symbolic link or wrong-kind entry at any path it writes
   (refused even with `force`, so no write leaves `cwd`), a directory with no
   `package.json`, and a missing or invalid name or description are refusals,
