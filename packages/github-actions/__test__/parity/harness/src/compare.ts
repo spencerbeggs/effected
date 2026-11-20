@@ -28,7 +28,15 @@ const normaliseSsh = (value: string): string =>
 const normaliseConfig = (raw: string, dir: string): ReadonlyArray<string> => {
 	const dirPattern = new RegExp(escapeRegExp(forward(dir)), "gi");
 	return lines(forward(raw))
-		.map((line) => normaliseSsh(line.replace(dirPattern, "<dir>").replace(CREDENTIALS_NAME, "git-credentials-<id>")))
+		.map((line) =>
+			normaliseSsh(
+				line
+					.replace(dirPattern, "<dir>")
+					.replace(CREDENTIALS_NAME, "git-credentials-<id>")
+					// A token left in the config must never reach the step summary.
+					.replace(/(basic\s+)[A-Za-z0-9+/=]+/gi, "$1<token>"),
+			),
+		)
 		.sort();
 };
 

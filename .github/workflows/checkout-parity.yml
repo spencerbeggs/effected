@@ -2,7 +2,8 @@ name: Checkout Parity
 
 # Runs the stock `actions/checkout` and the kit's `Checkout` service into two directories with the
 # same inputs and compares what each left behind (HEAD, refs, the normalised `.git/config`, the
-# credentials file with its token redacted, the working tree). Dispatch only: the full matrix is
+# credentials file with its token redacted, the working tree). The post-step cleanup is not compared:
+# it runs after the Compare step. Dispatch only: the full matrix is
 # slow and the area is stable. The harness action lives in
 # packages/github-actions/__test__/parity/harness and is built here, never published.
 
@@ -29,6 +30,7 @@ jobs:
   build:
     name: Build the harness
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -63,7 +65,6 @@ jobs:
     env:
       PARITY_CASE: ${{ matrix.case }}
       PARITY_PR_NUMBER: ${{ inputs.pr-number }}
-      PARITY_SSH_KEY: ${{ secrets.CHECKOUT_PARITY_SSH_KEY }}
     strategy:
       fail-fast: false
       matrix:
@@ -92,11 +93,9 @@ jobs:
             container: node:24
           - os: windows-latest
             container: node:24
-          # The ssh row runs on the host only, and the node image carries no git-lfs.
+          # The ssh row runs on the host only.
           - container: node:24
             case: ssh
-          - container: node:24
-            case: lfs
         include:
           # `fixture` selects the fixture repository; `ref`, `fetch-depth`, `sparse`, `lfs`,
           # `submodules` and `persist` are the row's inputs and fall back to the stock defaults.
@@ -128,9 +127,17 @@ jobs:
             fixture: "true"
             persist: "true"
     steps:
+      - name: Install git-lfs in the container
+        # The node image is Debian and runs as root; it carries git but not git-lfs.
+        if: matrix.container != 'host'
+        run: apt-get update && apt-get install -y git-lfs
+
       - name: Decide whether the row runs
         id: gate
         shell: bash
+        env:
+          # Scoped to this step: the secret reaches no third-party action's environment.
+          PARITY_SSH_KEY: ${{ secrets.CHECKOUT_PARITY_SSH_KEY }}
         run: |
           run=true
           if [ "$PARITY_CASE" = pr-ref ] && [ -z "$PARITY_PR_NUMBER" ]; then run=false; fi

@@ -87,4 +87,16 @@ describe("parity comparator", () => {
 			assert.isTrue(lines.some((line) => line.includes("core.autocrlf")));
 		}).pipe(Effect.provide(NodeServices.layer)),
 	);
+
+	it.effect("redacts an extraheader token left in the local config", () =>
+		Effect.gen(function* () {
+			const dir = yield* Effect.promise(() => checkout("leak", "55555555-5555-5555-5555-555555555555", "ghs_y"));
+			const header = Buffer.from("x-access-token:ghs_leaked").toString("base64");
+			git(dir, ["config", "--local", "http.https://github.com/.extraheader", `AUTHORIZATION: basic ${header}`]);
+			const snap = yield* snapshot(dir);
+			const text = snap.config.join("\n");
+			assert.isTrue(text.includes("basic <token>"));
+			assert.isFalse(text.includes(header));
+		}).pipe(Effect.provide(NodeServices.layer)),
+	);
 });
