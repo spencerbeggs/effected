@@ -43,7 +43,7 @@ export class PersistTarget {
 	 *
 	 * @remarks
 	 * Fails with `PersistPathError` when the path leaves the workspace, when a workspace-based path lands inside the
-	 * package, or when `dist = false` leaves nothing persisted.
+	 * package, when it is, or contains, the package (which includes the workspace root), or when `dist = false` leaves nothing persisted.
 	 *
 	 * @param config - The action's config.
 	 * @param options - The package directory and the workspace root.
@@ -81,6 +81,10 @@ export class PersistTarget {
 				if (!escapes(fromCwd, path.isAbsolute(fromCwd))) {
 					return yield* new PersistPathError({ path: outputPath, reason: "inside-package" });
 				}
+			}
+			const toCwd = path.relative(outputPath, cwd);
+			if (!escapes(toCwd, path.isAbsolute(toCwd))) {
+				return yield* new PersistPathError({ path: outputPath, reason: "contains-package" });
 			}
 
 			return ResolvedPersist.make({

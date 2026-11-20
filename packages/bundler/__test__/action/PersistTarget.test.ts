@@ -78,6 +78,23 @@ describe("PersistTarget.resolve", () => {
 		}),
 	);
 
+	it.effect("workspace root and ancestors of the package are refused", () =>
+		Effect.gen(function* () {
+			for (const path of [".", "actions"]) {
+				const result = yield* Effect.result(resolve({ base: "workspace", path }));
+				assert.isTrue(Result.isFailure(result));
+				if (Result.isFailure(result)) assert.strictEqual(result.failure.reason, "contains-package");
+			}
+		}),
+	);
+
+	it.effect("a sibling path is accepted", () =>
+		Effect.gen(function* () {
+			const resolved = yield* resolve({ base: "workspace", path: "actions-out" });
+			assert.strictEqual(resolved.outputPath, "/ws/actions-out");
+		}),
+	);
+
 	it.effect("dist = false with enabled = false is refused", () =>
 		Effect.gen(function* () {
 			const result = yield* Effect.result(resolve({ dist: false, enabled: false }));
