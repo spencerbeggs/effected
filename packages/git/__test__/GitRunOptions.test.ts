@@ -123,6 +123,22 @@ describe("Git.withRunOptions", () => {
 		}),
 	);
 
+	it.effect("pins a caller GIT_SSH_COMMAND whose program is a quoted absolute path, as a checkout writes it", () =>
+		Effect.gen(function* () {
+			for (const program of ['"/usr/bin/ssh"', '"C:\\Program Files\\Git\\usr\\bin\\ssh.exe"']) {
+				const { seen, layer } = recording();
+				const command = `${program} -i "/tmp/k" -o "UserKnownHostsFile=/tmp/k_known_hosts"`;
+				yield* provide(
+					Effect.flatMap(Git, (git) =>
+						Git.withRunOptions(git.lsRemote(cwd, "origin"), { env: { GIT_SSH_COMMAND: command } }),
+					),
+					layer,
+				);
+				assert.strictEqual(lastEnv(seen)?.GIT_SSH_COMMAND, `${command} -o BatchMode=yes`);
+			}
+		}),
+	);
+
 	it.effect("timeout replaces the 30s ceiling", () =>
 		Effect.gen(function* () {
 			const { layer } = recording(true);

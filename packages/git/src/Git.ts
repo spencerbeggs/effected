@@ -5231,10 +5231,11 @@ const notStubbed = (method: string) => () =>
  * then names the duration actually used.
  *
  * That ceiling is per run, not per member call. The network-touching members
- * (`lsRemote`, `fetch`, `fetchRefspecs`, `fetchUnshallow`, `push`, `pull`, `submoduleAdd`,
- * `submoduleUpdate`, and `commitsThatAdd` for each deepen round) first resolve their ssh command with up to two concurrent
- * local `git config` reads, each bounded separately, so their worst case is
- * 60 s; `fetchAny`, which runs `fetch` twice, is 120 s. A consumer merely
+ * (`lsRemote`, `remoteHead`, `fetch`, `fetchRefspecs`, `fetchUnshallow`, `push`, `pull`,
+ * `submoduleAdd`, `submoduleUpdate`, `lfsFetch`, and `commitsThatAdd` for each deepen round)
+ * first resolve their ssh command with up to two concurrent local `git config` reads, each
+ * bounded separately, so their worst case is 60 s (`commitsThatAdd` 60 s per deepen round);
+ * `fetchAny`, which runs `fetch` twice, is 120 s. A consumer merely
  * duplicating a 30 s layer buys nothing but two ceilings racing each other;
  * one whose budget is tighter than the figures above still needs its own.
  *
