@@ -53,7 +53,9 @@ export interface ActionRunInput {
 export type ActionRunDeps = Pick<BuildRunDeps, "cwd" | "ci">;
 
 /** The partial result a builder failure stops with. No bundling happened when `build` is absent. */
-const failedResult = (error: Extract<ActionBuilderError, { readonly _tag: "ValidationFailed" | "BuildFailed" }>) =>
+const failedResult = (
+	error: Extract<ActionBuilderError, { readonly _tag: "ValidationFailed" | "BuildFailed" | "CheckFailed" }>,
+) =>
 	ActionRunResult.make({
 		verdict: "failed",
 		result: ActionBuildResult.make({
@@ -112,11 +114,16 @@ export class ActionRun {
 			validate: input.validate,
 			persist: input.persist,
 			ci: deps.ci,
+			// Check mode reaches the front ends in a later change; until then a run never checks.
+			check: false,
 		}).pipe(
 			Effect.map((result) => ActionRunResult.make({ verdict: "ok", result })),
 			Effect.catchTags({
 				ValidationFailed: (error) => Effect.succeed(failedResult(error)),
 				BuildFailed: (error) => Effect.succeed(failedResult(error)),
+				CheckFailed: (error) => Effect.succeed(failedResult(error)),
+				// Unreachable while this run never checks; check mode is wired into the front ends separately.
+				CheckUnavailable: (error) => Effect.die(error),
 			}),
 		);
 	});

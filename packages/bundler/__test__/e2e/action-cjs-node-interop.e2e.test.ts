@@ -28,6 +28,7 @@ describe("a bundled CommonJS dependency", () => {
 					validate: true,
 					persist: true,
 					ci: false,
+					check: false,
 				});
 				assert.isTrue(result.build.success);
 				assert.isTrue(result.persisted);

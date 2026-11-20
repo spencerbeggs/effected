@@ -106,3 +106,21 @@ export class PersistPathError extends Schema.TaggedError<PersistPathError>()("Pe
 		return "persistLocal.dist = false needs persistLocal.enabled, or the build is written nowhere";
 	}
 }
+
+/**
+ * Check mode needs somewhere persisted to compare against, and there is none.
+ *
+ * @remarks
+ * `persist-disabled` means the run persists nothing, either because `persistLocal.enabled` is false or because the
+ * caller turned persisting off.
+ *
+ * @public
+ */
+export class CheckUnavailable extends Schema.TaggedError<CheckUnavailable>()("CheckUnavailable", {
+	/** Why there is nothing to check. */
+	reason: Schema.Literals(["persist-disabled"]),
+}) {
+	override get message(): string {
+		return "Nothing is persisted, so there is no committed build to check";
+	}
+}

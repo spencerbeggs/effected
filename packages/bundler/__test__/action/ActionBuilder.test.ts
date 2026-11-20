@@ -12,6 +12,8 @@ import {
 	ActionYmlPathError,
 	BuildFailed,
 	BundleFailed,
+	CheckFailed,
+	CheckUnavailable,
 	PersistPathError,
 	ValidationFailed,
 } from "../../src/index.js";
@@ -32,7 +34,7 @@ branding:
 `,
 };
 
-const options = { validate: true, persist: true, ci: false } as const;
+const options = { validate: true, persist: true, ci: false, check: false } as const;
 
 describe("ActionBuilder.build", () => {
 	it.live("validates, bundles and persists", () =>
@@ -94,6 +96,7 @@ describe("ActionBuilder.build", () => {
 					validate: false,
 					persist: false,
 					ci: false,
+					check: false,
 				});
 				assert.isTrue(result.validation.valid);
 				assert.deepStrictEqual(result.validation.errors, []);
@@ -177,9 +180,15 @@ describe("ActionBuilder.build", () => {
 	it.live("fails with what bundling and persisting raise", () =>
 		Effect.gen(function* () {
 			const missing = yield* withFiles({}, (cwd) =>
-				ActionBuilder.build({ cwd, root: cwd, config: configOf(), validate: false, persist: false, ci: false }).pipe(
-					Effect.flip,
-				),
+				ActionBuilder.build({
+					cwd,
+					root: cwd,
+					config: configOf(),
+					validate: false,
+					persist: false,
+					ci: false,
+					check: false,
+				}).pipe(Effect.flip),
 			);
 			assert.instanceOf(missing, BundleFailed);
 
@@ -340,6 +349,109 @@ describe("ActionBundle.build outDir", () => {
 					assert.isUndefined(result.entries[0]?.warnings);
 					assert.isTrue(existsSync(join(outDir, "main.js")));
 				}),
+		),
+	);
+});
+
+describe("ActionBuilder.build check mode", () => {
+	const checkOptions = { ...options, check: true } as const;
+	const mtimes = (directory: string): Record<string, number> => {
+		const out: Record<string, number> = {};
+		const visit = (dir: string) => {
+			for (const name of readdirSync(dir)) {
+				const full = join(dir, name);
+				if (statSync(full).isDirectory()) visit(full);
+				else out[full] = statSync(full).mtimeMs;
+			}
+		};
+		visit(directory);
+		return out;
+	};
+
+	it.live("check passes on a fresh persist", () =>
+		withFiles(ACTION, (cwd) =>
+			Effect.gen(function* () {
+				yield* ActionBuilder.build({ ...options, cwd, root: cwd, config: configOf() });
+				const result = yield* ActionBuilder.build({ ...checkOptions, cwd, root: cwd, config: configOf() });
+				assert.isFalse(result.persisted);
+				assert.deepStrictEqual(result.drift, []);
+				assert.isFalse(existsSync(join(cwd, ".action-staging")));
+			}).pipe(Effect.provide(Live)),
+		),
+	);
+
+	it.live("check writes nothing", () =>
+		withFiles(ACTION, (cwd) =>
+			Effect.gen(function* () {
+				yield* ActionBuilder.build({ ...options, cwd, root: cwd, config: configOf() });
+				const out = join(cwd, ".github/actions/local");
+				const persistedBefore = mtimes(out);
+				const distBefore = mtimes(join(cwd, "dist"));
+				const bytes = readFileSync(join(out, "dist/main.js"), "utf8");
+				yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 20)));
+				const { writeFileSync } = yield* Effect.promise(() => import("node:fs"));
+				writeFileSync(join(cwd, "src/main.ts"), 'console.log("changed");\n');
+				const error = yield* ActionBuilder.build({ ...checkOptions, cwd, root: cwd, config: configOf() }).pipe(
+					Effect.flip,
+				);
+				assert.instanceOf(error, CheckFailed);
+				if (error instanceof CheckFailed) {
+					assert.deepStrictEqual(
+						error.drift.map((entry) => [entry.target, entry.path, entry.kind]),
+						[
+							["persisted", "dist/main.js", "changed"],
+							["dist", "main.js", "changed"],
+						],
+					);
+				}
+				assert.deepStrictEqual(mtimes(out), persistedBefore);
+				assert.deepStrictEqual(mtimes(join(cwd, "dist")), distBefore);
+				assert.strictEqual(readFileSync(join(out, "dist/main.js"), "utf8"), bytes);
+				assert.isFalse(existsSync(join(cwd, ".action-staging")));
+			}).pipe(Effect.provide(Live)),
+		),
+	);
+
+	it.live("check covers the package dist", () =>
+		withFiles(ACTION, (cwd) =>
+			Effect.gen(function* () {
+				yield* ActionBuilder.build({ ...options, cwd, root: cwd, config: configOf() });
+				const { writeFileSync } = yield* Effect.promise(() => import("node:fs"));
+				writeFileSync(join(cwd, "dist/main.js"), "tampered\n");
+				const error = yield* ActionBuilder.build({ ...checkOptions, cwd, root: cwd, config: configOf() }).pipe(
+					Effect.flip,
+				);
+				assert.instanceOf(error, CheckFailed);
+				if (error instanceof CheckFailed) {
+					assert.deepStrictEqual(
+						error.drift.map((entry) => [entry.target, entry.path, entry.kind]),
+						[["dist", "main.js", "changed"]],
+					);
+				}
+			}).pipe(Effect.provide(Live)),
+		),
+	);
+
+	it.live("check without persist fails CheckUnavailable", () =>
+		withFiles(ACTION, (cwd) =>
+			Effect.gen(function* () {
+				const off = yield* ActionBuilder.build({
+					...checkOptions,
+					cwd,
+					root: cwd,
+					config: configOf(),
+					persist: false,
+				}).pipe(Effect.flip);
+				assert.instanceOf(off, CheckUnavailable);
+				const disabled = yield* ActionBuilder.build({
+					...checkOptions,
+					cwd,
+					root: cwd,
+					config: configOf({ persistLocal: { enabled: false } }),
+				}).pipe(Effect.flip);
+				assert.instanceOf(disabled, CheckUnavailable);
+				if (disabled instanceof CheckUnavailable) assert.strictEqual(disabled.reason, "persist-disabled");
+			}).pipe(Effect.provide(Live)),
 		),
 	);
 });
