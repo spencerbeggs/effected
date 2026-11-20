@@ -136,7 +136,7 @@ export class CheckUnavailable extends Schema.TaggedError<CheckUnavailable>()("Ch
  */
 export class NoOutput extends Schema.TaggedError<NoOutput>()("NoOutput", {
 	/** Why there is no output. */
-	reason: Schema.Literals(["dist-without-persist"]),
+	reason: Schema.Literals(["persist-off"]),
 }) {
 	override get message(): string {
 		return "persistLocal.dist = false keeps no dist, and this run persists nothing, so the build would be written nowhere";

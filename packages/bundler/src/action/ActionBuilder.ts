@@ -176,7 +176,7 @@ export class ActionBuilder {
 		if (check && (!options.persist || !target.enabled)) {
 			return yield* new CheckUnavailable({ reason: "persist-disabled" });
 		}
-		if (!target.keepDist && !options.persist && !check) return yield* new NoOutput({ reason: "dist-without-persist" });
+		if (!target.keepDist && !options.persist && !check) return yield* new NoOutput({ reason: "persist-off" });
 
 		const before = options.validate
 			? yield* ActionValidation.validate(config, cwd, { ci: options.ci, base: target.base })

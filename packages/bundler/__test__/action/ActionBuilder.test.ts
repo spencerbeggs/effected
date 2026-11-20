@@ -495,7 +495,7 @@ describe("ActionBuilder.build check mode", () => {
 						config: configOf({ persistLocal: { base: "workspace", dist: false } }),
 					}).pipe(Effect.flip);
 					assert.instanceOf(error, NoOutput);
-					if (error instanceof NoOutput) assert.strictEqual(error.reason, "dist-without-persist");
+					if (error instanceof NoOutput) assert.strictEqual(error.reason, "persist-off");
 					assert.isFalse(existsSync(join(cwd, "dist")));
 					assert.isFalse(existsSync(join(cwd, ".action-staging")));
 					assert.isFalse(existsSync(join(root, ".github")));

@@ -18,7 +18,7 @@ import { platformErrorHint } from "./package.js";
  */
 export const actionBuild = Tool.make("action_build", {
 	description:
-		"Builds one GitHub Action from the [action] table of its effected.toml into dist: validates the config and action.yml, bundles each entry into one file, and checks that each loads. It writes only dist unless persist is true, which also copies the build to .github/actions/local and generates .actrc and .github/workflows/act-test.yml. Validation stopping the build or an entry failing arrives as the result's verdict \"failed\", not as an error. With check true it writes nothing and compares the build with the committed persisted one. Reloads the config on every call. The load check imports each bundle, which runs an action with no GITHUB_ACTIONS guard unless [action.build] importCheck is false; a worker's own table can set importCheck = false to skip that worker alone.",
+		'Builds one GitHub Action from the [action] table of its effected.toml into dist: validates the config and action.yml, bundles each entry into one file, and checks that each loads. It writes only dist unless persist is true, which also copies the build to the configured [action.persistLocal] directory (default .github/actions/local, or .github/actions/<package name> under base = "workspace") and generates .actrc and .github/workflows/act-test.yml. Validation stopping the build or an entry failing arrives as the result\'s verdict "failed", not as an error. With check true it writes nothing and compares the build with the committed persisted one. Reloads the config on every call. The load check imports each bundle, which runs an action with no GITHUB_ACTIONS guard unless [action.build] importCheck is false; a worker\'s own table can set importCheck = false to skip that worker alone.',
 	parameters: Schema.Struct({
 		cwd: Schema.optionalKey(
 			Schema.String.annotate({
@@ -34,7 +34,7 @@ export const actionBuild = Tool.make("action_build", {
 		persist: Schema.optionalKey(
 			Schema.Boolean.annotate({
 				description:
-					"Copy the build to .github/actions/local and generate .actrc and .github/workflows/act-test.yml when they are absent, unless the config disables it. Omitted, false.",
+					'Copy the build to the configured [action.persistLocal] directory (default .github/actions/local, or .github/actions/<package name> under base = "workspace") and generate .actrc and .github/workflows/act-test.yml when they are absent, unless the config disables it. Omitted, false.',
 			}),
 		),
 		check: Schema.optionalKey(
@@ -144,7 +144,9 @@ const refusalOf = (error: ActionFailure, root: string): ToolRefusal => {
 		case "PersistLocalError":
 			return refuse(`Check that ${error.path} can be copied, or pass persist: false.`);
 		case "PersistPathError":
-			return refuse(`Fix [action.persistLocal] path in effected.toml (${error.reason}) and call the tool again.`);
+			return error.reason === "dist-without-persist"
+				? refuse("Set [action.persistLocal] enabled = true, or dist = true, in effected.toml and call the tool again.")
+				: refuse(`Fix [action.persistLocal] path in effected.toml (${error.reason}) and call the tool again.`);
 		case "CheckUnavailable":
 			return refuse("Persisting is disabled for this action, so there is nothing to check; enable persistLocal.");
 		case "NoOutput":

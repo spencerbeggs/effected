@@ -74,6 +74,25 @@ describe("action_build", () => {
 			'[action.entries]\nmain = "src/main.ts"\n[action.persistLocal]\nbase = "workspace"\ndist = false\n',
 	});
 
+	it("action_build takes no watch parameter", () => {
+		// The MCP tools stay one-shot: a watch belongs to the CLI, whose process a person or agent can interrupt.
+		assert.isFalse("watch" in actionBuild.parametersSchema.fields);
+	});
+
+	it.live("is listed with its output schema and its annotations, and the instructions name it", () =>
+		serving(GOOD, (harness) =>
+			Effect.gen(function* () {
+				const tool = (yield* harness.listTools).find((candidate) => candidate.name === "action_build") as unknown as {
+					readonly outputSchema?: unknown;
+					readonly annotations?: { readonly readOnlyHint?: boolean };
+				};
+				assert.include(JSON.stringify(tool.outputSchema ?? {}), '"verdict"');
+				assert.strictEqual(tool.annotations?.readOnlyHint, false);
+				assert.include(SERVER_INSTRUCTIONS, "action_build");
+			}),
+		),
+	);
+
 	it("takes a check parameter", () => {
 		assert.isTrue("check" in actionBuild.parametersSchema.fields);
 	});
@@ -123,6 +142,23 @@ describe("action_build", () => {
 				assert.isTrue(result.isError);
 				assert.include(textOf(result), "persist: true");
 			}),
+		),
+	);
+
+	it.live("dist = false with persistLocal disabled tells the caller to set enabled or dist, not the path", () =>
+		serving(
+			nested({
+				...GOOD,
+				"effected.toml":
+					'[action.entries]\nmain = "src/main.ts"\n[action.persistLocal]\nenabled = false\ndist = false\nbase = "workspace"\n',
+			}),
+			(harness) =>
+				Effect.gen(function* () {
+					const result = resultOf(yield* harness.callTool("action_build", { cwd: "actions/one", persist: true }));
+					assert.isTrue(result.isError);
+					assert.include(textOf(result), "enabled = true");
+					assert.notInclude(textOf(result), "persistLocal] path");
+				}),
 		),
 	);
 
