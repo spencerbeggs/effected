@@ -1,15 +1,18 @@
 import type { GitCommandError, NotARepositoryError, UnknownRefError } from "@effected/git";
 import { Git } from "@effected/git";
-import type { FileSystem, Path, PlatformError, Scope } from "effect";
+import type { Config, FileSystem, Path, PlatformError, Scope } from "effect";
 import { Effect, Option, Schema } from "effect";
 import type { SecureRandom } from "effect/crypto";
 import type { ChildProcessSpawner } from "effect/process";
 import type { ActionEnvironment, ActionEnvironmentError } from "./ActionEnvironment.js";
 import type { ActionLogger } from "./ActionLogger.js";
-import type { ActionOutputs } from "./ActionOutputs.js";
+import type { ActionManifestInput } from "./ActionManifest.js";
+import type { ActionOutputError } from "./ActionOutputs.js";
+import { ActionOutputs } from "./ActionOutputs.js";
 import type { ActionStateError } from "./ActionState.js";
 import { ActionState } from "./ActionState.js";
 import { CredentialRecord, remove } from "./internal/checkout/credentials.js";
+import { declarations, readInputs } from "./internal/checkout/inputs.js";
 import { getSource } from "./internal/checkout/source.js";
 
 const Sha = Schema.String;
@@ -388,12 +391,54 @@ export class Checkout {
 			Effect.catchDefect((defect) => Effect.logWarning(`Checkout cleanup failed: ${String(defect)}`)),
 		);
 
-	/** Reads {@link CheckoutOptions} from the action's inputs. Not yet implemented. */
-	static readonly fromInputs = (): Effect.Effect<CheckoutOptions> => Effect.die("not implemented");
+	/**
+	 * Reads {@link CheckoutOptions} from the action's inputs, on the stock
+	 * checkout action's input surface, so an action can expose a
+	 * checkout-compatible interface unchanged.
+	 *
+	 * @remarks
+	 * Reads `repository`, `ref`, `token`, `ssh-key`, `ssh-known-hosts`,
+	 * `ssh-strict`, `ssh-user`, `persist-credentials`, `path`, `clean`, `filter`,
+	 * `sparse-checkout`, `sparse-checkout-cone-mode`, `fetch-depth`,
+	 * `fetch-tags`, `show-progress` (read and ignored), `lfs`, `submodules`,
+	 * `set-safe-directory`, `github-server-url` and `allow-unsafe-pr-checkout`,
+	 * each as `<prefix><name>` when a prefix is given. `token` is required; a
+	 * present `ssh-key` makes the auth `Ssh`, carrying the token for the API
+	 * calls.
+	 *
+	 * `persist-credentials` true is `"job"` and false `"none"`; `fetch-depth` at
+	 * or below zero, or not a number, is `"full"`; `submodules` is `recursive`,
+	 * `true` or else false. A boolean that is present but malformed fails rather
+	 * than defaulting. `ref` is trimmed of ASCII whitespace only, so a leading
+	 * BOM or NBSP survives as part of a `Ref`: empty is `Event` for the
+	 * workflow's own repository and `Default` otherwise, a bare 40 or 64 hex
+	 * value is a `Commit`, anything else a `Ref`.
+	 *
+	 * The `path` is not validated here; {@link Checkout.checkout} refuses one
+	 * that leaves the workspace.
+	 */
+	static readonly fromInputs = (options?: {
+		readonly prefix?: string;
+	}): Effect.Effect<CheckoutOptions, Config.ConfigError | ActionEnvironmentError, ActionEnvironment> =>
+		readInputs(options?.prefix ?? "");
 
-	/** Declares the action inputs a checkout reads. Not yet implemented. */
-	static readonly inputs = (): Effect.Effect<ReadonlyArray<string>> => Effect.die("not implemented");
+	/**
+	 * Declares the action inputs {@link Checkout.fromInputs} reads, with the
+	 * stock checkout action's descriptions and defaults, for an author to merge
+	 * into `action.yml`.
+	 */
+	static readonly inputs = (options?: { readonly prefix?: string }): Readonly<Record<string, ActionManifestInput>> =>
+		Object.fromEntries(declarations.map(([name, input]) => [`${options?.prefix ?? ""}${name}`, input]));
 
-	/** Publishes a {@link CheckoutResult} as step outputs. Not yet implemented. */
-	static readonly writeOutputs = (_result: CheckoutResult): Effect.Effect<void> => Effect.die("not implemented");
+	/** Publishes a {@link CheckoutResult}'s `ref` and `commit` as step outputs. */
+	static readonly writeOutputs = (
+		result: CheckoutResult,
+		options?: { readonly prefix?: string },
+	): Effect.Effect<void, ActionOutputError, ActionOutputs> =>
+		Effect.gen(function* () {
+			const outputs = yield* ActionOutputs;
+			const prefix = options?.prefix ?? "";
+			yield* outputs.set(`${prefix}ref`, result.ref);
+			yield* outputs.set(`${prefix}commit`, result.commit);
+		});
 }
