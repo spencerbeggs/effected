@@ -113,6 +113,21 @@ export {
 	CheckReport,
 } from "./CheckDocument.js";
 export {
+	Checkout,
+	CheckoutAuth,
+	CheckoutAuthError,
+	CheckoutCommitMismatchError,
+	CheckoutDefaultBranchError,
+	type CheckoutError,
+	CheckoutGitTooOldError,
+	type CheckoutOptions,
+	CheckoutPathError,
+	CheckoutRef,
+	CheckoutRefNotFoundError,
+	CheckoutResult,
+	CheckoutUnsafePullRequestError,
+} from "./Checkout.js";
+export {
 	type CheckRunConclusion,
 	type CheckRunProjection,
 	CheckState,
