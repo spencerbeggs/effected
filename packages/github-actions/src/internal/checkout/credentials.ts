@@ -249,7 +249,10 @@ const icacls = (args: ReadonlyArray<string>) =>
  * `runEnv`; `core.sshCommand` is persisted only under `"job"`. A temporary
  * global config holds `safe.directory` (and later the submodule auth) and is
  * in `runEnv` as `GIT_CONFIG_GLOBAL`. Any previous credential layout is
- * removed first.
+ * removed first. A failure part way removes everything written so far, the
+ * token file and the SSH key included, before the failure propagates, and
+ * discards a temporary global config this call made (one passed in is the
+ * caller's).
  *
  * Pass `existing.temporaryGlobalConfig` when the caller already made the
  * temporary global config (and wrote `safe.directory` into it), as checkout
@@ -320,6 +323,9 @@ export const configure = (
 			submodules: false,
 		});
 
+		// Every path is recorded here BEFORE its file is written, so a failure at any point rolls back what
+		// exists, as checkout's `finally` → `removeAuth` does with the paths it set first.
+		let partial = base;
 		const write = Effect.gen(function* () {
 			// Remove possible previous values, as checkout does.
 			yield* removeLayout(base, git);
@@ -329,6 +335,12 @@ export const configure = (
 			if (Option.isSome(sshKey)) {
 				const id = yield* random.uuidV4();
 				const keyPath = path.join(runnerTemp, id);
+				const hostsPath = path.join(runnerTemp, `${id}_known_hosts`);
+				partial = CredentialRecord.make({
+					...partial,
+					sshKeyPath: Option.some(keyPath),
+					knownHostsPath: Option.some(hostsPath),
+				});
 				yield* fs.makeDirectory(runnerTemp, { recursive: true });
 				yield* fs.writeFileString(keyPath, `${sshKey.value.trim()}\n`, { mode: 0o600 });
 				yield* fs.chmod(keyPath, 0o600);
@@ -354,7 +366,6 @@ export const configure = (
 					knownHosts += `# Begin from input known hosts\n${settings.auth.knownHosts}\n# end from input known hosts\n`;
 				}
 				knownHosts += `# Begin implicitly added github.com\n${KNOWN_GITHUB_HOST}\n# End implicitly added github.com\n`;
-				const hostsPath = path.join(runnerTemp, `${id}_known_hosts`);
 				yield* fs.writeFileString(hostsPath, knownHosts);
 
 				sshKeyPath = Option.some(keyPath);
@@ -372,6 +383,7 @@ export const configure = (
 			let credentialsFile = Option.none<string>();
 			if (Option.isSome(basicCredential)) {
 				const file = path.join(runnerTemp, `git-credentials-${yield* random.uuidV4()}.config`);
+				partial = CredentialRecord.make({ ...partial, credentialsFile: Option.some(file) });
 				yield* Effect.logDebug(`Credentials config path: ${file}`);
 				// The placeholder goes through git, the credential through the filesystem: a process
 				// command line is commonly captured by audit logging.
@@ -406,7 +418,29 @@ export const configure = (
 			});
 		});
 
-		const record = yield* Git.withRunOptions(write, { env: { ...runEnv } });
+		const record = yield* Git.withRunOptions(
+			write.pipe(
+				Effect.onError(() =>
+					Effect.suspend(() =>
+						Effect.andThen(
+							removeLayout(partial, git),
+							// A temporary global config made here is this call's to discard; one passed in is the caller's.
+							existing?.temporaryGlobalConfig === undefined && Option.isSome(globalConfig)
+								? removeUnderTemp(
+										Option.some(runnerTemp),
+										"temporary global config",
+										path.dirname(globalConfig.value),
+										{
+											recursive: true,
+										},
+									)
+								: Effect.void,
+						),
+					),
+				),
+			),
+			{ env: { ...runEnv } },
+		);
 		return { record, runEnv };
 	});
 

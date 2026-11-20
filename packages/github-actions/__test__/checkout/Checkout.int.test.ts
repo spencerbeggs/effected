@@ -9,13 +9,14 @@ import { join } from "node:path";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, afterEach, assert, beforeAll, describe, it } from "@effect/vitest";
-import { Git } from "@effected/git";
+import { Git, GitCommandError } from "@effected/git";
 import { GitHubClient, GitHubError } from "@effected/github";
 import { Deferred, Effect, Exit, Fiber, Layer, Option, Redacted, Schedule } from "effect";
+import type { ChildProcessSpawner } from "effect/process";
 import { ActionEnvironment } from "../../src/ActionEnvironment.js";
 import { ActionLogger } from "../../src/ActionLogger.js";
 import { ActionOutputs } from "../../src/ActionOutputs.js";
-import { ActionState } from "../../src/ActionState.js";
+import { ActionState, ActionStateError } from "../../src/ActionState.js";
 import type { CheckoutOptions } from "../../src/Checkout.js";
 import { Checkout } from "../../src/Checkout.js";
 import { CredentialRecord } from "../../src/internal/checkout/credentials.js";
@@ -157,9 +158,14 @@ const workspace = async (): Promise<Workspace> => {
 	return ws;
 };
 
-const layerFor = (w: Workspace) =>
+interface Faults {
+	readonly git?: Layer.Layer<Git, never, ChildProcessSpawner.ChildProcessSpawner>;
+	readonly state?: Layer.Layer<ActionState>;
+}
+
+const layerFor = (w: Workspace, faults: Faults = {}) =>
 	Layer.mergeAll(
-		Git.layer,
+		faults.git ?? Git.layer,
 		ActionEnvironment.layerTest(
 			{
 				RUNNER_TEMP: w.runnerTemp,
@@ -174,9 +180,10 @@ const layerFor = (w: Workspace) =>
 			{},
 		),
 		ActionOutputs.recording().layer,
-		ActionState.layerTest({
-			save: (key, value) => Effect.sync(() => void w.saved.push({ key, value })),
-		}),
+		faults.state ??
+			ActionState.layerTest({
+				save: (key, value) => Effect.sync(() => void w.saved.push({ key, value })),
+			}),
 		ActionLogger.layerSilent,
 		GitHubClient.layerTest({
 			requestDecoded: () => Effect.fail(GitHubError.notFound("hash-algorithm", "the repository")),
@@ -193,11 +200,28 @@ const base = (over: Partial<CheckoutOptions> = {}): CheckoutOptions => ({
 	...over,
 });
 
-const checkout = (w: Workspace, options: CheckoutOptions) =>
+const checkout = (w: Workspace, options: CheckoutOptions, faults: Faults = {}) =>
 	Effect.scoped(Checkout.checkout(options)).pipe(
 		Effect.provideService(CheckoutRetry, Schedule.recurs(0)),
-		Effect.provide(layerFor(w)),
+		Effect.provide(layerFor(w, faults)),
 	);
+
+/** The real `Git`, except that writing the first `includeIf` entry fails: after the credentials file exists. */
+const includeIfFails: Layer.Layer<Git, never, ChildProcessSpawner.ChildProcessSpawner> = Layer.effect(
+	Git,
+	Effect.map(
+		Git.useSync((git) => git),
+		(real) => ({
+			...real,
+			configSet: (cwd: string, key: string, value: string, options?: { readonly file?: string }) =>
+				key.startsWith("includeIf.")
+					? Effect.fail(
+							new GitCommandError({ kind: "failed", args: ["config", key], cwd, exitCode: 1, stderr: "injected" }),
+						)
+					: real.configSet(cwd, key, value, options),
+		}),
+	),
+).pipe(Layer.provide(Git.layer));
 
 const repoOf = (w: Workspace) => join(w.workspace, "repo");
 const exists = (path: string) =>
@@ -432,5 +456,29 @@ describe("credential lifetimes", () => {
 		assert.isTrue(Option.isSome(record.credentialsFile));
 		assert.isTrue(Option.isNone(record.temporaryGlobalConfig));
 		assert.isTrue(record.safeDirectory);
+	});
+
+	for (const credentials of ["none", "action", "job"] as const) {
+		it(`"${credentials}" rolls back a configure that fails after writing the token and the SSH key`, async () => {
+			const w = await workspace();
+			const auth = { _tag: "Ssh", key: Redacted.make("-----KEY-----\n"), token: Redacted.make(TOKEN) } as const;
+			assert.strictEqual(
+				await failureTag(checkout(w, base({ auth, credentials }), { git: includeIfFails })),
+				"GitCommandError",
+			);
+			// Nothing at all is left: no credentials file, no SSH key, no known hosts, no temporary global config.
+			assert.deepStrictEqual(await readdir(w.runnerTemp), []);
+			assert.deepStrictEqual(w.saved, []);
+		});
+	}
+
+	it('"job" removes the credentials when saving the record fails', async () => {
+		const w = await workspace();
+		const state = ActionState.layerTest({
+			save: (key) => Effect.fail(new ActionStateError({ reason: "writeFailed", key })),
+		});
+		assert.strictEqual(await failureTag(checkout(w, base({ credentials: "job" }), { state })), "ActionStateError");
+		assert.deepStrictEqual(await readdir(w.runnerTemp), []);
+		assert.isFalse(await includeIf(w));
 	});
 });

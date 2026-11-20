@@ -413,28 +413,21 @@ export const getSource = (options: CheckoutOptions): Effect.Effect<CheckoutResul
 							),
 						);
 
-					const base = CredentialRecord.make({
-						repositoryPath: settings.path,
-						origin: new URL(settings.serverUrl).origin,
-						credentialsFile: Option.none(),
-						sshKeyPath: Option.none(),
-						knownHostsPath: Option.none(),
-						temporaryGlobalConfig: Option.none(),
-						safeDirectory: settings.safeDirectory,
-						submodules: true,
-					});
-					// Uninterruptible, so the credentials are either all recorded for removal or rolled back.
+					// Uninterruptible, so the credentials are either all recorded for removal or rolled back:
+					// `configure` removes its own partial writes, and a failed save removes the whole layout.
 					const written = yield* Effect.uninterruptible(
 						Effect.gen(function* () {
 							const configured = yield* configure(
 								settings,
 								git,
 								Option.isSome(temporaryConfig) ? { temporaryGlobalConfig: temporaryConfig.value } : undefined,
-							).pipe(Effect.onError(() => remove(base, git)));
+							);
 							// The temporary global config is discarded when checkout ends, so a later removal makes its own.
 							const lasting = CredentialRecord.make({ ...configured.record, temporaryGlobalConfig: Option.none() });
 							if (settings.credentials === "job") {
-								yield* state.save(settings.stateKey, lasting, CredentialRecord);
+								yield* state
+									.save(settings.stateKey, lasting, CredentialRecord)
+									.pipe(Effect.onError(() => remove(configured.record, git)));
 							}
 							credentials = Option.some(settings.credentials === "none" ? configured.record : lasting);
 							return configured;
