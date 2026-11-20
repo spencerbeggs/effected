@@ -535,7 +535,17 @@ type Classified =
  * degrade, `"tree"` enables the no-work-tree degrade, `"generic"` enables
  * none of them.
  */
-type ClassifyKind = "show" | "refExists" | "quiet" | "noSuchRemote" | "push" | "merge" | "log" | "tree" | "generic";
+type ClassifyKind =
+	| "show"
+	| "exitTwoAbsent"
+	| "refExists"
+	| "quiet"
+	| "noSuchRemote"
+	| "push"
+	| "merge"
+	| "log"
+	| "tree"
+	| "generic";
 
 const NOT_A_REPOSITORY = "not a git repository";
 // Unanchored substring matching against LC_ALL=C-pinned phrases: a path or ref
@@ -650,6 +660,10 @@ const classify = (
 	if (kind === "quiet" && exitCode === 1 && stderr === "") {
 		// --quiet probes (symbolic-ref) and config --get signal "unset" as a
 		// silent exit 1; any stderr text means a real failure instead.
+		return { _tag: "absent" };
+	}
+	if (kind === "exitTwoAbsent" && exitCode === 2 && stderr === "") {
+		// `ls-remote --exit-code` signals "no ref matched" as a silent exit 2.
 		return { _tag: "absent" };
 	}
 	if (kind === "noSuchRemote" && stderr.includes("No such remote")) {
@@ -2685,6 +2699,72 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		}
 	});
 
+	const sparseCheckoutDisable = Effect.fn("Git.sparseCheckoutDisable")(function* (cwd: string) {
+		yield* Effect.annotateCurrentSpan({ cwd });
+		yield* runVoid("Git.sparseCheckoutDisable", GitCommand.sparseCheckoutDisable(), cwd, "sparse-checkout");
+		// Mirrors actions/checkout: also clear the worktree-config extension that
+		// sparse checkout may have set; git exits 5 when the key was never set,
+		// which is the expected case here and is ignored. Any other failure surfaces.
+		yield* configUnset(cwd, "extensions.worktreeConfig").pipe(
+			Effect.catchIf(
+				(error): error is GitCommandError => error._tag === "GitCommandError" && error.exitCode === 5,
+				() => Effect.void,
+			),
+		);
+	});
+
+	const lfsInstall = Effect.fn("Git.lfsInstall")(function* (cwd: string, options?: { readonly local?: boolean }) {
+		yield* Effect.annotateCurrentSpan({ cwd, local: options?.local ?? false });
+		return yield* runVoid("Git.lfsInstall", GitCommand.lfsInstall(options?.local ?? false), cwd, "lfs");
+	});
+
+	const lfsFetch = Effect.fn("Git.lfsFetch")(function* (
+		cwd: string,
+		options: { readonly remote?: string; readonly ref: string },
+	) {
+		const remote = options.remote ?? "origin";
+		// The remote is deliberately NOT annotated: it may be a URL.
+		yield* Effect.annotateCurrentSpan({ cwd, ref: options.ref });
+		yield* rejectOptionLikeRefs(cwd, [remote, options.ref]);
+		const classified = yield* runForNetwork(GitCommand.lfsFetch(remote, options.ref), cwd, "generic");
+		switch (classified._tag) {
+			case "success":
+				return undefined;
+			case "notARepository":
+				return yield* Effect.fail(new NotARepositoryError({ cwd }));
+			case "unknownRef":
+				return yield* Effect.fail(new UnknownRefError({ ref: options.ref, cwd }));
+			case "failure":
+				return yield* Effect.fail(classified.error);
+			default:
+				return yield* Effect.die(`Git.lfsFetch: unexpected classification "${classified._tag}"`);
+		}
+	});
+
+	const remoteHead = Effect.fn("Git.remoteHead")(function* (cwd: string, remote: string) {
+		// The remote is deliberately NOT annotated: it may be a URL.
+		yield* Effect.annotateCurrentSpan({ cwd });
+		yield* rejectOptionLikeRefs(cwd, [remote]);
+		return yield* runParsed(
+			"Git.remoteHead",
+			GitCommand.lsRemoteSymref(remote, "HEAD"),
+			cwd,
+			"HEAD",
+			"exitTwoAbsent",
+			(output): Option.Option<string> => {
+				for (const line of output.split("\n")) {
+					const match = /^ref:\s+(\S+)\s+HEAD\s*$/.exec(line);
+					if (match?.[1] !== undefined) {
+						return Option.some(match[1]);
+					}
+				}
+				return Option.none();
+			},
+			() => Option.none<string>(),
+			true,
+		);
+	});
+
 	const configSet = Effect.fn("Git.configSet")(function* (
 		cwd: string,
 		key: string,
@@ -3840,6 +3920,10 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		submoduleAbsorbgitdirs,
 		submoduleForeach,
 		sparseCheckoutSet,
+		sparseCheckoutDisable,
+		lfsInstall,
+		lfsFetch,
+		remoteHead,
 		configSet,
 		configAdd,
 		init,
@@ -4388,6 +4472,39 @@ export interface GitShape {
 		patterns: ReadonlyArray<string>,
 		options: { readonly cone: boolean },
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git sparse-checkout disable` — restores every path to the
+	 * working tree, then clears `extensions.worktreeConfig` from the local
+	 * config. An unset key (git exits 5) is ignored; any other failure surfaces.
+	 */
+	readonly sparseCheckoutDisable: (
+		cwd: string,
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git lfs install [--local]` — installs the LFS filter, into the
+	 * repository's own config when `options.local` is true.
+	 */
+	readonly lfsInstall: (
+		cwd: string,
+		options?: { readonly local?: boolean },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git lfs fetch <remote> <ref>` — downloads the LFS objects
+	 * `ref` references (network). `options.remote` defaults to `origin`.
+	 */
+	readonly lfsFetch: (
+		cwd: string,
+		options: { readonly remote?: string; readonly ref: string },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * `git ls-remote --symref <remote> HEAD` (network) — the full ref the
+	 * remote's `HEAD` points at (`refs/heads/main`), or `Option.none()` when
+	 * the remote has no `HEAD` symref.
+	 */
+	readonly remoteHead: (
+		cwd: string,
+		remote: string,
+	) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
 	 * Mutating: `git config [-f <file>] <key> <value>` — writes `value` for
 	 * `key` into the repository config, or into `options.file` when given
@@ -5269,6 +5386,10 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 		submoduleAbsorbgitdirs: notStubbed("submoduleAbsorbgitdirs"),
 		submoduleForeach: notStubbed("submoduleForeach"),
 		sparseCheckoutSet: notStubbed("sparseCheckoutSet"),
+		sparseCheckoutDisable: notStubbed("sparseCheckoutDisable"),
+		lfsInstall: notStubbed("lfsInstall"),
+		lfsFetch: notStubbed("lfsFetch"),
+		remoteHead: notStubbed("remoteHead"),
 		configSet: notStubbed("configSet"),
 		configAdd: notStubbed("configAdd"),
 		init: notStubbed("init"),

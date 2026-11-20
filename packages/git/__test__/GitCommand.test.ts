@@ -274,6 +274,34 @@ describe("GitCommand", () => {
 		]);
 	});
 
+	it("sparseCheckoutDisable, lfsInstall, lfsFetch and lsRemoteSymref emit their argv", () => {
+		assertGitCommand(GitCommand.sparseCheckoutDisable(), ["sparse-checkout", "disable"]);
+		assertGitCommand(GitCommand.lfsInstall(false), ["lfs", "install"]);
+		assertGitCommand(GitCommand.lfsInstall(true), ["lfs", "install", "--local"]);
+		assertGitCommand(GitCommand.lfsFetch("origin", "refs/heads/main"), ["lfs", "fetch", "origin", "refs/heads/main"]);
+		assertGitCommand(GitCommand.lsRemoteSymref("origin", "HEAD"), [
+			"ls-remote",
+			"--quiet",
+			"--exit-code",
+			"--symref",
+			"origin",
+			"HEAD",
+		]);
+	});
+
+	it("lfsFetch and lsRemoteSymref mask an embedded userinfo credential in the remote", () => {
+		assertGitCommand(
+			GitCommand.lfsFetch("https://user:tok@example.com/r.git", "main"),
+			["lfs", "fetch", "https://user:tok@example.com/r.git", "main"],
+			["lfs", "fetch", "https://<redacted>@example.com/r.git", "main"],
+		);
+		assertGitCommand(
+			GitCommand.lsRemoteSymref("https://user:tok@example.com/r.git", "HEAD"),
+			["ls-remote", "--quiet", "--exit-code", "--symref", "https://user:tok@example.com/r.git", "HEAD"],
+			["ls-remote", "--quiet", "--exit-code", "--symref", "https://<redacted>@example.com/r.git", "HEAD"],
+		);
+	});
+
 	it("sparseCheckoutSet passes the cone flag explicitly in both branches", () => {
 		assertGitCommand(GitCommand.sparseCheckoutSet(["src", "docs"], false), [
 			"sparse-checkout",

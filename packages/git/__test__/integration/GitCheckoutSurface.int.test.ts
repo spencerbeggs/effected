@@ -2,12 +2,13 @@
 // configAdd, ...) against a REAL git binary and a real filesystem. Later tasks
 // extend this file.
 
+import { execFileSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import { ChildProcess } from "effect/process";
 import { Git } from "../../src/Git.js";
@@ -15,6 +16,15 @@ import { GitVersion } from "../../src/GitVersion.js";
 import { runCollected } from "../../src/internal/run.js";
 
 const TestLayer = Git.layer.pipe(Layer.provideMerge(NodeServices.layer));
+
+const hasLfs = (() => {
+	try {
+		execFileSync("git", ["lfs", "version"], { stdio: "ignore" });
+		return true;
+	} catch {
+		return false;
+	}
+})();
 
 const run = <A, E>(effect: Effect.Effect<A, E, Git | ChildProcessSpawner.ChildProcessSpawner>) =>
 	effect.pipe(Effect.provide(TestLayer));
@@ -194,5 +204,71 @@ describe("Git checkout surface — fetch, checkout and cleanup forms", () => {
 			assert.strictEqual(error._tag, "GitCommandError");
 			assert.strictEqual((error as { kind: string }).kind, "refused");
 		}
+	});
+
+	it("remoteHead returns the HEAD symref target, and none when the remote has no HEAD", async () => {
+		const [some, none] = await Effect.runPromise(
+			run(
+				Effect.gen(function* () {
+					const git = yield* Git;
+					const empty = join(root, "empty.git");
+					yield* runFixtureGit(root, ["init", "--bare", "--initial-branch=main", empty]);
+					return [
+						yield* git.remoteHead(work, `file://${bare}`),
+						yield* git.remoteHead(work, `file://${empty}`),
+					] as const;
+				}),
+			),
+		);
+		assert.deepStrictEqual(some, Option.some("refs/heads/main"));
+		assert.isTrue(Option.isNone(none));
+	});
+
+	it("sparseCheckoutDisable restores every file after sparseCheckoutSet", async () => {
+		const files = await Effect.runPromise(
+			run(
+				Effect.gen(function* () {
+					const git = yield* Git;
+					const dir = join(root, "sparse");
+					yield* runFixtureGit(root, ["init", "--initial-branch=main", dir]);
+					yield* runFixtureGit(dir, ["config", "user.email", "t@example.com"]);
+					yield* runFixtureGit(dir, ["config", "user.name", "T"]);
+					yield* Effect.promise(async () => {
+						const { mkdir, writeFile } = await import("node:fs/promises");
+						await mkdir(join(dir, "a"));
+						await mkdir(join(dir, "b"));
+						await writeFile(join(dir, "a", "f.txt"), "a");
+						await writeFile(join(dir, "b", "g.txt"), "b");
+					});
+					yield* runFixtureGit(dir, ["add", "."]);
+					yield* runFixtureGit(dir, ["commit", "-m", "x"]);
+					yield* git.sparseCheckoutSet(dir, ["a"], { cone: true });
+					const sparse = yield* runFixtureGit(dir, ["ls-files", "--sparse"]);
+					yield* git.sparseCheckoutDisable(dir);
+					const after = yield* Effect.promise(async () => {
+						const { existsSync } = await import("node:fs");
+						return existsSync(join(dir, "b", "g.txt"));
+					});
+					return { sparse, after };
+				}),
+			),
+		);
+		assert.isTrue(files.after);
+	});
+
+	it.skipIf(!hasLfs)("lfsInstall --local writes the filter.lfs keys", async () => {
+		const lfs = await Effect.runPromise(
+			run(
+				Effect.gen(function* () {
+					const git = yield* Git;
+					const dir = join(root, "lfs");
+					yield* runFixtureGit(root, ["init", "--initial-branch=main", dir]);
+					yield* git.lfsInstall(dir, { local: true });
+					const value = yield* git.configGet(dir, "filter.lfs.clean");
+					return Option.isSome(value);
+				}),
+			),
+		);
+		assert.isTrue(lfs);
 	});
 });

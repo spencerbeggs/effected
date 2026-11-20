@@ -648,6 +648,42 @@ export class GitCommand {
 		git(["sparse-checkout", "set", cone ? "--cone" : "--no-cone", ...patterns]);
 
 	/**
+	 * Mutating: `git sparse-checkout disable` — restores every path to the working
+	 * tree and turns sparse checkout off.
+	 */
+	static readonly sparseCheckoutDisable = (): GitInvocation => git(["sparse-checkout", "disable"]);
+
+	/**
+	 * Mutating: `git lfs install [--local]` — installs the LFS filter and hooks,
+	 * into the repository's own config when `local` is true.
+	 */
+	static readonly lfsInstall = (local: boolean): GitInvocation =>
+		git(["lfs", "install", ...(local ? ["--local"] : [])]);
+
+	/**
+	 * Mutating: `git lfs fetch <remote> <ref>` — downloads the LFS objects `ref`
+	 * references into the local store. Network-touching.
+	 *
+	 * @remarks
+	 * An embedded `userinfo@` credential in `remote` is masked in
+	 * {@link GitInvocation.redactedArgs}.
+	 */
+	static readonly lfsFetch = (remote: string, ref: string): GitInvocation =>
+		git(["lfs", "fetch", secretUrl(remote), ref]);
+
+	/**
+	 * `git ls-remote --quiet --exit-code --symref <remote> <ref>` — reads where a
+	 * remote ref points. With `--exit-code`, git exits 2 when nothing matches.
+	 * Network-touching.
+	 *
+	 * @remarks
+	 * An embedded `userinfo@` credential in `remote` is masked in
+	 * {@link GitInvocation.redactedArgs}.
+	 */
+	static readonly lsRemoteSymref = (remote: string, ref: string): GitInvocation =>
+		git(["ls-remote", "--quiet", "--exit-code", "--symref", secretUrl(remote), ref]);
+
+	/**
 	 * Mutating: `git config [-f <file>] <key> <value>` — writes a configuration value,
 	 * optionally into an explicit configuration file (e.g., `.gitmodules`).
 	 *
