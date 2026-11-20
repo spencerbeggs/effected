@@ -360,6 +360,7 @@ export class Checkout {
 	 * `insteadOf`, with `safe.directory` handled for the repository as the stock
 	 * post step does. It never fails: every failure, an unreadable record
 	 * included, becomes a warning, so a post step cannot turn a green job red.
+	 * It is uninterruptible, so a cancelled job cannot leave credentials behind.
 	 */
 	static readonly cleanup = (options?: {
 		readonly stateKey?: string;
@@ -375,12 +376,14 @@ export class Checkout {
 		| ActionState
 		| ActionLogger
 	> =>
-		Effect.gen(function* () {
-			const state = yield* ActionState;
-			const git = yield* Git;
-			const record = yield* state.getOptional(options?.stateKey ?? "effected-checkout", CredentialRecord);
-			if (Option.isSome(record)) yield* remove(record.value, git);
-		}).pipe(
+		Effect.uninterruptible(
+			Effect.gen(function* () {
+				const state = yield* ActionState;
+				const git = yield* Git;
+				const record = yield* state.getOptional(options?.stateKey ?? "effected-checkout", CredentialRecord);
+				if (Option.isSome(record)) yield* remove(record.value, git);
+			}),
+		).pipe(
 			Effect.catch((error) => Effect.logWarning(`Checkout cleanup failed: ${error.message}`)),
 			Effect.catchDefect((defect) => Effect.logWarning(`Checkout cleanup failed: ${String(defect)}`)),
 		);

@@ -11,7 +11,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, afterEach, assert, beforeAll, describe, it } from "@effect/vitest";
 import { Git } from "@effected/git";
 import { GitHubClient, GitHubError } from "@effected/github";
-import { Effect, Exit, Layer, Option, Redacted, Schedule } from "effect";
+import { Deferred, Effect, Exit, Fiber, Layer, Option, Redacted, Schedule } from "effect";
 import { ActionEnvironment } from "../../src/ActionEnvironment.js";
 import { ActionLogger } from "../../src/ActionLogger.js";
 import { ActionOutputs } from "../../src/ActionOutputs.js";
@@ -45,7 +45,6 @@ const fixtureGit = (cwd: string, args: ReadonlyArray<string>): string =>
 
 let root: string;
 let url: string;
-let first: string;
 
 beforeAll(async () => {
 	root = await realpath(await mkdtemp(join(tmpdir(), "cleanup-remotes-")));
@@ -64,7 +63,6 @@ beforeAll(async () => {
 	await writeFile(join(work, "README.md"), "readme\n");
 	fixtureGit(work, ["add", "."]);
 	fixtureGit(work, ["commit", "-q", "-m", "first"]);
-	first = fixtureGit(work, ["rev-parse", "HEAD"]);
 	fixtureGit(work, ["tag", "-a", "v1", "-m", "v1"]);
 	fixtureGit(work, ["submodule", "add", "-q", `file://${libBare}`, "lib"]);
 	fixtureGit(work, ["commit", "-q", "-m", "add submodule"]);
@@ -203,6 +201,8 @@ describe("Checkout.cleanup", () => {
 		);
 		assert.isTrue(Exit.isFailure(exit));
 		assert.isTrue(w.store.has("effected-checkout"));
+		assert.include(await gitConfig(join(w.workspace, "repo")), "includeIf");
+		assert.lengthOf(await credentialFiles(w), 1);
 		await ok(cleanup(w));
 		await assertClean(w, join(w.workspace, "repo"));
 	});
@@ -238,6 +238,7 @@ describe("Checkout.cleanup", () => {
 	it("never fails when the saved record's repository is gone", async () => {
 		const w = await workspace();
 		await ok(checkout(w, base()));
+		assert.lengthOf(await credentialFiles(w), 1);
 		await rm(join(w.workspace, "repo"), { recursive: true, force: true });
 		await ok(cleanup(w));
 		assert.deepStrictEqual(await readdir(w.runnerTemp), []);
@@ -245,9 +246,31 @@ describe("Checkout.cleanup", () => {
 
 	it("does not touch the commit that was checked out", async () => {
 		const w = await workspace();
-		await ok(checkout(w, base()));
+		const result = await ok(checkout(w, base()));
 		await ok(cleanup(w));
-		assert.strictEqual(fixtureGit(join(w.workspace, "repo"), ["rev-parse", "HEAD"]).length, 40);
-		assert.isString(first);
+		assert.strictEqual(fixtureGit(join(w.workspace, "repo"), ["rev-parse", "HEAD"]), result.commit);
+		assert.strictEqual(fixtureGit(join(w.workspace, "repo"), ["rev-parse", "--abbrev-ref", "HEAD"]), "main");
+	});
+
+	it("finishes removing when its fiber is interrupted straight after starting", async () => {
+		const w = await workspace();
+		await ok(checkout(w, base()));
+		assert.lengthOf(await credentialFiles(w), 1);
+		await ok(
+			Effect.gen(function* () {
+				const started = yield* Deferred.make<void>();
+				const state = ActionState.layerTest({
+					getOptional: (key) =>
+						Deferred.succeed(started, undefined).pipe(
+							Effect.andThen(Effect.sleep("10 millis")),
+							Effect.as(Option.fromNullishOr(w.store.get(key) as never)),
+						),
+				});
+				const fiber = yield* Effect.forkChild(cleanup(w, undefined, state));
+				yield* Deferred.await(started);
+				yield* Fiber.interrupt(fiber);
+			}),
+		);
+		await assertClean(w, join(w.workspace, "repo"));
 	});
 });
