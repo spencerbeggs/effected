@@ -11,16 +11,26 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, afterEach, assert, beforeAll, describe, it } from "@effect/vitest";
 import { Git } from "@effected/git";
 import { GitHubClient, GitHubError } from "@effected/github";
-import { Deferred, Effect, Exit, Fiber, Layer, Option, Redacted, Schedule } from "effect";
+import { Deferred, Effect, Exit, Fiber, Layer, LogLevel, Logger, Option, Redacted, Schedule } from "effect";
 import { ActionEnvironment } from "../../src/ActionEnvironment.js";
 import { ActionLogger } from "../../src/ActionLogger.js";
 import { ActionOutputs } from "../../src/ActionOutputs.js";
 import { ActionState, ActionStateError } from "../../src/ActionState.js";
 import type { CheckoutOptions } from "../../src/Checkout.js";
 import { Checkout } from "../../src/Checkout.js";
-import { CheckoutRetry } from "../../src/internal/checkout/source.js";
+import { CheckoutApiClient, CheckoutRetry } from "../../src/internal/checkout/source.js";
 
-process.env.GIT_ALLOW_PROTOCOL = "file";
+// git 2.38+ refuses a `file://` submodule remote unless the environment allows it. `Git` spawns over the
+// process environment, so this reaches every spawn in this file; it is restored when the file ends.
+let previousAllowProtocol: string | undefined;
+beforeAll(() => {
+	previousAllowProtocol = process.env.GIT_ALLOW_PROTOCOL;
+	process.env.GIT_ALLOW_PROTOCOL = "file";
+});
+afterAll(() => {
+	if (previousAllowProtocol === undefined) delete process.env.GIT_ALLOW_PROTOCOL;
+	else process.env.GIT_ALLOW_PROTOCOL = previousAllowProtocol;
+});
 
 const WINDOWS = process.platform === "win32";
 const TOKEN = "ghs_0123456789abcdefTOKEN";
@@ -126,9 +136,14 @@ const layerFor = (w: Workspace, state?: Layer.Layer<ActionState>) =>
 				getOptional: (key) => Effect.sync(() => Option.fromNullishOr(w.store.get(key) as never)),
 			}),
 		ActionLogger.layerSilent,
-		GitHubClient.layerTest({
-			requestDecoded: () => Effect.fail(GitHubError.notFound("hash-algorithm", "the repository")),
-		}),
+		// The client a checkout builds from its token: the object format lookup answers 404, and nothing reaches the network.
+		Layer.succeed(CheckoutApiClient, () =>
+			Effect.succeed(
+				GitHubClient.makeTest({
+					requestDecoded: () => Effect.fail(GitHubError.notFound("hash-algorithm", "the repository")),
+				}),
+			),
+		),
 		NodeCrypto.layerSecureRandom,
 	).pipe(Layer.provideMerge(NodeServices.layer));
 
@@ -240,7 +255,14 @@ describe("Checkout.cleanup", () => {
 		await ok(checkout(w, base()));
 		assert.lengthOf(await credentialFiles(w), 1);
 		await rm(join(w.workspace, "repo"), { recursive: true, force: true });
-		await ok(cleanup(w));
+		// A post step whose workspace is gone must not annotate a green job with warnings.
+		const warnings: Array<string> = [];
+		const capture = Logger.make((entry) => {
+			if (LogLevel.isGreaterThanOrEqualTo(entry.logLevel, "Warn")) warnings.push(String(entry.message));
+		});
+		// Inside the layer, whose silent ActionLogger installs no logger of its own.
+		await ok(Checkout.cleanup().pipe(Effect.provide(Logger.layer([capture])), Effect.provide(layerFor(w))));
+		assert.deepStrictEqual(warnings, []);
 		assert.deepStrictEqual(await readdir(w.runnerTemp), []);
 	});
 

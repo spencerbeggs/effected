@@ -268,10 +268,12 @@ export class CheckoutDefaultBranchError extends Schema.TaggedError<CheckoutDefau
 	{
 		/** The repository whose default branch is unknown. */
 		repository: Schema.String,
+		/** Why: the API's or `ls-remote`'s failure, with no secret in it. */
+		detail: Schema.String,
 	},
 ) {
 	override get message(): string {
-		return `Could not determine the default branch of ${this.repository}`;
+		return `Could not determine the default branch of ${this.repository}: ${this.detail}`;
 	}
 }
 
@@ -314,8 +316,9 @@ export class Checkout {
 	 * `HEAD` detached, local and conflicting remote-tracking branches deleted,
 	 * and with `clean` a `clean -ffdx` and `reset --hard HEAD`); any other
 	 * directory has its contents deleted. The fetch, the default branch lookup
-	 * and the LFS fetch are retried, as the stock action retries them, and the
-	 * network steps run under a 30 minute ceiling.
+	 * and the LFS fetch are retried, as the stock action retries them. Every git
+	 * step runs under a 30 minute ceiling: a checkout after a partial-clone
+	 * fetch, an LFS smudge or a clean of a big tree can take as long as a fetch.
 	 *
 	 * The credentials' lifetime is `options.credentials`: `"job"` saves what
 	 * was written under `stateKey` before any fetch, for {@link Checkout.cleanup}
@@ -326,9 +329,12 @@ export class Checkout {
 	 *
 	 * The log is one phase, `Checkout <owner>/<name> @ <ref>`, with one step
 	 * per phase of work; each step's detail is the git transcript. The
-	 * repository's object format and default branch come from the GitHub API:
-	 * through the ambient `GitHubClient` when one is provided, else a client
-	 * built from the checkout's own token.
+	 * repository's object format and default branch come from the GitHub API,
+	 * as the stock action asks it: through a client built from the checkout's
+	 * own token against its own server's API base (`<origin>/api/v3` for a GitHub
+	 * Enterprise Server `serverUrl`). An ambient `GitHubClient` is used only when
+	 * the checkout has no token, an `Ssh` auth without one. A failed default
+	 * branch lookup is {@link CheckoutDefaultBranchError}, its `detail` the reason.
 	 */
 	static readonly checkout = (
 		options: CheckoutOptions,

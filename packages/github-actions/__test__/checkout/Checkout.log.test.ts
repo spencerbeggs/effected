@@ -21,7 +21,7 @@ import { ActionOutputs } from "../../src/ActionOutputs.js";
 import { ActionState } from "../../src/ActionState.js";
 import type { CheckoutOptions } from "../../src/Checkout.js";
 import { Checkout } from "../../src/Checkout.js";
-import { CheckoutRetry } from "../../src/internal/checkout/source.js";
+import { CheckoutApiClient, CheckoutRetry } from "../../src/internal/checkout/source.js";
 
 const TOKEN = "ghs_0123456789abcdefTOKEN";
 const BASIC = Base64.encode(`x-access-token:${TOKEN}`);
@@ -74,9 +74,14 @@ const services = (vars: Readonly<Record<string, string>>) =>
 		ActionEnvironment.layerTest(vars, {}),
 		ActionOutputs.recording().layer,
 		ActionState.layerTest({ save: () => Effect.void }),
-		GitHubClient.layerTest({
-			requestDecoded: () => Effect.fail(GitHubError.notFound("hash-algorithm", "the repository")),
-		}),
+		// The client a checkout builds from its token: the object format lookup answers 404, and nothing reaches the network.
+		Layer.succeed(CheckoutApiClient, () =>
+			Effect.succeed(
+				GitHubClient.makeTest({
+					requestDecoded: () => Effect.fail(GitHubError.notFound("hash-algorithm", "the repository")),
+				}),
+			),
+		),
 		NodeCrypto.layerSecureRandom,
 	).pipe(Layer.provideMerge(NodeServices.layer));
 

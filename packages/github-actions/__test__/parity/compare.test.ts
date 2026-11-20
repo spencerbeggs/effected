@@ -88,6 +88,27 @@ describe("parity comparator", () => {
 		}).pipe(Effect.provide(NodeServices.layer)),
 	);
 
+	it.effect("normalises the ssh program's path but reports a bare ssh against an absolute one", () =>
+		Effect.gen(function* () {
+			const a = yield* Effect.promise(() => checkout("ssh-a", "66666666-6666-6666-6666-666666666666", "ghs_z"));
+			const b = yield* Effect.promise(() => checkout("ssh-b", "77777777-7777-7777-7777-777777777777", "ghs_z"));
+			const c = yield* Effect.promise(() => checkout("ssh-c", "88888888-8888-8888-8888-888888888888", "ghs_z"));
+			git(a, ["config", "--local", "core.sshCommand", '"/usr/bin/ssh" -i "$RUNNER_TEMP/a"']);
+			git(b, ["config", "--local", "core.sshCommand", '"C:/Program Files/Git/usr/bin/ssh.exe" -i "$RUNNER_TEMP/b"']);
+			assert.deepStrictEqual(diff(yield* snapshot(a), yield* snapshot(b)), []);
+			// Bare against quoted absolute, and bare against an unquoted absolute path.
+			git(c, ["config", "--local", "core.sshCommand", 'ssh -i "$RUNNER_TEMP/c"']);
+			const bare = yield* snapshot(c);
+			assert.isTrue(diff(yield* snapshot(a), bare).some((line) => line.toLowerCase().includes("core.sshcommand")));
+			git(c, ["config", "--local", "core.sshCommand", '/usr/bin/ssh -i "$RUNNER_TEMP/c"']);
+			const lines = diff(bare, yield* snapshot(c));
+			assert.isTrue(
+				lines.some((line) => line.toLowerCase().includes("core.sshcommand")),
+				JSON.stringify(lines),
+			);
+		}).pipe(Effect.provide(NodeServices.layer)),
+	);
+
 	it.effect("redacts an extraheader token left in the local config", () =>
 		Effect.gen(function* () {
 			const dir = yield* Effect.promise(() => checkout("leak", "55555555-5555-5555-5555-555555555555", "ghs_y"));

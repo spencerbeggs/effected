@@ -5,7 +5,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterEach, assert, describe, it } from "@effect/vitest";
@@ -87,7 +87,7 @@ const settingsFor = (f: Fixture, over: Partial<Settings> = {}): Settings => ({
 	...over,
 });
 
-const layerFor = (f: Fixture, outputs: Layer.Layer<ActionOutputs>) =>
+const layerFor = (f: Fixture, outputs: Layer.Layer<ActionOutputs>, env: Readonly<Record<string, string>> = {}) =>
 	Layer.mergeAll(
 		Git.layer,
 		ActionEnvironment.layerTest(
@@ -98,6 +98,7 @@ const layerFor = (f: Fixture, outputs: Layer.Layer<ActionOutputs>) =>
 				RUNNER_OS: WINDOWS ? "Windows" : process.platform === "darwin" ? "macOS" : "Linux",
 				USERDOMAIN: process.env.USERDOMAIN ?? "",
 				USERNAME: process.env.USERNAME ?? "",
+				...env,
 			},
 			{ repository: { owner: { id: 4242 } } },
 		),
@@ -231,6 +232,49 @@ describe("configure with an SSH key", () => {
 			assert.isTrue(keyGone);
 		});
 		await Effect.runPromise(program.pipe(Effect.provide(layerFor(f, recording.layer))));
+	});
+
+	it("runs and persists ssh by its absolute path from PATH, quoted, as checkout does", async () => {
+		const f = await fixture();
+		const empty = join(f.root, "empty-bin");
+		const bin = join(f.root, "my bin");
+		await mkdir(empty, { recursive: true });
+		await mkdir(bin, { recursive: true });
+		const program = join(bin, WINDOWS ? "ssh.exe" : "ssh");
+		await writeFile(program, "");
+		const recording = ActionOutputs.recording();
+		const run = Effect.gen(function* () {
+			const git = yield* Git;
+			const { record, runEnv } = yield* configure(settingsFor(f, { auth: ssh }), git);
+			const id = basename(Option.getOrThrow(record.sshKeyPath));
+			assert.isTrue((runEnv.GIT_SSH_COMMAND ?? "").startsWith(`"${program}" -i "`), runEnv.GIT_SSH_COMMAND);
+			const persisted = yield* git.configGet(f.repo, "core.sshCommand", { scope: "local" });
+			assert.deepStrictEqual(
+				persisted,
+				Option.some(
+					`"${program}" -i "$RUNNER_TEMP/${id}" -o StrictHostKeyChecking=yes -o CheckHostIP=no -o "UserKnownHostsFile=$RUNNER_TEMP/${id}_known_hosts"`,
+				),
+			);
+			yield* remove(record, git);
+		});
+		const delimiter = WINDOWS ? ";" : ":";
+		await Effect.runPromise(
+			run.pipe(Effect.provide(layerFor(f, recording.layer, { PATH: [empty, bin].join(delimiter) }))),
+		);
+	});
+
+	it("falls back to a bare ssh when PATH has none", async () => {
+		const f = await fixture();
+		const recording = ActionOutputs.recording();
+		const run = Effect.gen(function* () {
+			const git = yield* Git;
+			const { record, runEnv } = yield* configure(settingsFor(f, { auth: ssh }), git);
+			assert.isTrue((runEnv.GIT_SSH_COMMAND ?? "").startsWith('ssh -i "'), runEnv.GIT_SSH_COMMAND);
+			const persisted = Option.getOrThrow(yield* git.configGet(f.repo, "core.sshCommand", { scope: "local" }));
+			assert.isTrue(persisted.startsWith('ssh -i "$RUNNER_TEMP/'), persisted);
+			yield* remove(record, git);
+		});
+		await Effect.runPromise(run.pipe(Effect.provide(layerFor(f, recording.layer, { PATH: join(f.root, "nothing") }))));
 	});
 
 	it("does not persist core.sshCommand under action", async () => {

@@ -23,7 +23,10 @@ describe("Checkout errors", () => {
 			new CheckoutCommitMismatchError({ ref: "main", expected: "abc123" }),
 			new CheckoutAuthError({ repository: "o/r", detail: "bad credentials" }),
 			new CheckoutPathError({ path: "../x", workspace: "/w" }),
-			new CheckoutDefaultBranchError({ repository: "o/r" }),
+			new CheckoutDefaultBranchError({
+				repository: "o/r",
+				detail: "GET /repos/{owner}/{repo} failed (401): Bad credentials",
+			}),
 		];
 		for (const error of errors) {
 			assert.notInclude(error.message, "undefined", error._tag);
@@ -46,6 +49,7 @@ describe("Checkout errors", () => {
 		assert.include(errors[5]?.message, "../x");
 		assert.include(errors[5]?.message, "/w");
 		assert.include(errors[6]?.message, "o/r");
+		assert.include(errors[6]?.message, "failed (401): Bad credentials");
 	});
 });
 

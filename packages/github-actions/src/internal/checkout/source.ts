@@ -53,10 +53,32 @@ export const CheckoutRetry = Context.Reference<Schedule.Schedule<unknown, unknow
 	},
 );
 
+/**
+ * Builds the API client a checkout uses from its own token and API base: a
+ * live {@link GitHubClient.layerFromToken} client by default; a test replaces
+ * it to stay off the network.
+ *
+ * @internal
+ */
+export const CheckoutApiClient = Context.Reference<
+	(options: { readonly token: Redacted.Redacted<string>; readonly baseUrl: string }) => Effect.Effect<GitHubClientShape>
+>("@effected/github-actions/CheckoutApiClient", {
+	defaultValue: () => (options) =>
+		Effect.provide(
+			Effect.gen(function* () {
+				return yield* GitHubClient;
+			}),
+			GitHubClient.layerFromToken(options),
+		),
+});
+
 /** The oldest git a checkout runs on. */
 const MINIMUM_GIT = new GitVersion({ major: 2, minor: 39, patch: 0 });
 
-/** The ceiling of a fetch, an LFS fetch and a submodule update: a real repository's full history is slow. */
+/**
+ * The ceiling of every git spawn a checkout makes: a fetch of a real repository's full history is slow, and so is a
+ * checkout after a partial-clone fetch, a sparse set on a partial clone, an LFS smudge, or a clean of a big tree.
+ */
 const NETWORK_TIMEOUT = "30 minutes";
 
 /** git's hints, silenced for every run so they reach neither the log nor the transcript. */
@@ -134,22 +156,18 @@ export const serverApiUrl = (serverUrl: string, workflow: { readonly serverUrl: 
 const tokenOf = (settings: Settings): Option.Option<Redacted.Redacted<string>> =>
 	settings.auth._tag === "Token" ? Option.some(settings.auth.token) : Option.fromUndefinedOr(settings.auth.token);
 
-/** The API client: the ambient one when provided, else one built from the checkout's own token. */
-const apiClient = (settings: Settings, apiUrl: string): Effect.Effect<Option.Option<GitHubClientShape>> =>
-	Effect.flatMap(Effect.serviceOption(GitHubClient), (ambient) => {
-		if (Option.isSome(ambient)) return Effect.succeed(ambient);
-		const token = tokenOf(settings);
-		if (Option.isNone(token)) return Effect.succeed(Option.none());
-		return Effect.map(
-			Effect.provide(
-				Effect.gen(function* () {
-					return yield* GitHubClient;
-				}),
-				GitHubClient.layerFromToken({ token: token.value, baseUrl: apiUrl }),
-			),
-			Option.some,
-		);
-	});
+/**
+ * The API client: one built from the checkout's own token against its own
+ * server's API base, as checkout always uses; the ambient one only when the
+ * checkout has no token.
+ */
+const apiClient = (settings: Settings, apiUrl: string): Effect.Effect<Option.Option<GitHubClientShape>> => {
+	const token = tokenOf(settings);
+	if (Option.isNone(token)) return Effect.serviceOption(GitHubClient);
+	return Effect.flatMap(CheckoutApiClient, (build) =>
+		Effect.map(build({ token: token.value, baseUrl: apiUrl }), Option.some),
+	);
+};
 
 /** Registers every secret with the runner's log filter before any git runs. */
 const maskSecrets = (settings: Settings): Effect.Effect<void, never, ActionOutputs> =>
@@ -214,21 +232,28 @@ const objectFormat = (
 		);
 };
 
-/** The default branch, `refs/heads/`-prefixed: `ls-remote` for an SSH key, the API otherwise, as checkout looks it up. */
+/**
+ * The default branch, `refs/heads/`-prefixed: `ls-remote` for an SSH key, the API otherwise, as checkout looks it up.
+ * A failure carries the reason, with `scrub` applied so the token never reaches it.
+ */
 const defaultBranch = (
 	settings: Settings,
 	git: GitShape,
 	client: Option.Option<GitHubClientShape>,
+	scrub: (text: string) => string,
 ): Effect.Effect<string, CheckoutDefaultBranchError> => {
 	const repository = `${settings.owner}/${settings.name}`;
-	const failed = () => new CheckoutDefaultBranchError({ repository });
+	const failed = (detail: string) => new CheckoutDefaultBranchError({ repository, detail: scrub(detail) });
 	const lookup: Effect.Effect<string, unknown> =
 		settings.auth._tag === "Ssh"
 			? Effect.flatMap(retried(git.remoteHead(settings.path, "origin")), (head) =>
-					Option.match(head, { onNone: () => Effect.fail(failed()), onSome: Effect.succeed }),
+					Option.match(head, {
+						onNone: () => Effect.fail(failed("the remote names no HEAD")),
+						onSome: Effect.succeed,
+					}),
 				)
 			: Option.match(client, {
-					onNone: () => Effect.fail(failed()),
+					onNone: () => Effect.fail(failed("no GitHub API client to ask")),
 					onSome: (api) =>
 						retried(
 							Effect.gen(function* () {
@@ -243,7 +268,7 @@ const defaultBranch = (
 												: Effect.fail(error),
 										),
 									);
-								if (!name) return yield* Effect.fail(failed());
+								if (!name) return yield* Effect.fail(failed("the API reported no default branch"));
 								return name;
 							}),
 						),
@@ -251,7 +276,11 @@ const defaultBranch = (
 	return lookup.pipe(
 		Effect.tap((name) => Effect.logInfo(`Default branch '${name}'`)),
 		Effect.map((name) => (name.startsWith("refs/") ? name : `refs/heads/${name}`)),
-		Effect.mapError((error) => (error instanceof CheckoutDefaultBranchError ? error : failed())),
+		Effect.mapError((error) =>
+			error instanceof CheckoutDefaultBranchError
+				? error
+				: failed(error instanceof Error ? error.message : String(error)),
+		),
 	);
 };
 
@@ -336,6 +365,10 @@ export const getSource = (options: CheckoutOptions): Effect.Effect<CheckoutResul
 		const settings = yield* lower(options, { github, workspace, payload });
 		const repositoryUrl = Option.getOrElse(settings.remoteUrl, () => fetchUrl(settings));
 		const client = yield* apiClient(settings, serverApiUrl(settings.serverUrl, github));
+		const token = tokenOf(settings);
+		const plaintext = Option.isSome(token) ? yield* Secret.forRunnerFile(token.value) : "";
+		/** Removes the token from text bound for an error. */
+		const scrub = (text: string): string => (plaintext === "" ? text : text.replaceAll(plaintext, "***"));
 		const target = settings.ref
 			? displayRef(settings.ref)
 			: settings.commit
@@ -346,8 +379,6 @@ export const getSource = (options: CheckoutOptions): Effect.Effect<CheckoutResul
 		let runEnv: Record<string, string> = {};
 		const withRun = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 			Effect.suspend(() => Git.withRunOptions(effect, { env: { ...runEnv } }));
-		const network = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-			Git.withRunOptions(effect, { timeout: NETWORK_TIMEOUT });
 
 		let temporaryConfig = Option.none<string>();
 		/** What removal removes, set once the credentials are written. */
@@ -443,8 +474,8 @@ export const getSource = (options: CheckoutOptions): Effect.Effect<CheckoutResul
 			Effect.gen(function* () {
 				const shallow = yield* fs.exists(path.join(settings.path, ".git", "shallow"));
 				yield* retried(
-					network(
-						git.fetchRefspecs(settings.path, {
+					git
+						.fetchRefspecs(settings.path, {
 							refspecs,
 							...(settings.depth > 0 ? { depth: settings.depth } : shallow ? { unshallow: true } : {}),
 							...(Option.isSome(filter) ? { filter: filter.value } : {}),
@@ -452,14 +483,15 @@ export const getSource = (options: CheckoutOptions): Effect.Effect<CheckoutResul
 							prune: true,
 							noRecurseSubmodules: true,
 							protocolVersion: 2,
-						}),
-					).pipe(Effect.mapError(classifyFetch(settings, refspecs))),
+						})
+						.pipe(Effect.mapError(classifyFetch(settings, refspecs))),
 				);
 			});
 
 		const fetchRef = withRun(
 			Effect.gen(function* () {
-				const ref = !settings.ref && !settings.commit ? yield* defaultBranch(settings, git, client) : settings.ref;
+				const ref =
+					!settings.ref && !settings.commit ? yield* defaultBranch(settings, git, client, scrub) : settings.ref;
 				const commit = settings.commit;
 				if (settings.lfs) {
 					yield* git.lfsInstall(settings.path, { local: true });
@@ -520,15 +552,13 @@ export const getSource = (options: CheckoutOptions): Effect.Effect<CheckoutResul
 					const recursive = settings.nestedSubmodules;
 					yield* configureGlobalAuth(settings, record, git);
 					yield* git.submoduleSync(settings.path, { recursive });
-					yield* network(
-						git.submoduleUpdate(settings.path, {
-							init: true,
-							force: true,
-							...(settings.depth > 0 ? { depth: settings.depth } : {}),
-							recursive,
-							protocolVersion: 2,
-						}),
-					);
+					yield* git.submoduleUpdate(settings.path, {
+						init: true,
+						force: true,
+						...(settings.depth > 0 ? { depth: settings.depth } : {}),
+						recursive,
+						protocolVersion: 2,
+					});
 					yield* git.submoduleForeach(settings.path, "git config --local gc.auto 0", { recursive });
 					yield* configureSubmodules(settings, record, git);
 					return (yield* git.submoduleStatus(settings.path, { recursive })).length;
@@ -555,11 +585,9 @@ export const getSource = (options: CheckoutOptions): Effect.Effect<CheckoutResul
 					"lfs",
 					withRun(
 						retried(
-							network(
-								git.lfsFetch(settings.path, {
-									ref: Option.getOrElse(fetched.info.startPoint, () => fetched.info.ref),
-								}),
-							),
+							git.lfsFetch(settings.path, {
+								ref: Option.getOrElse(fetched.info.startPoint, () => fetched.info.ref),
+							}),
 						),
 					),
 					{ window: "2 minutes", summary: () => "fetched LFS objects" },
@@ -603,5 +631,6 @@ export const getSource = (options: CheckoutOptions): Effect.Effect<CheckoutResul
 		Git.withRunOptions({
 			env: options.lfs === true ? {} : { GIT_LFS_SKIP_SMUDGE: "1" },
 			config: QUIET_CONFIG,
+			timeout: NETWORK_TIMEOUT,
 		}),
 	);

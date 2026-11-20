@@ -19,11 +19,12 @@ const lines = (value: string): ReadonlyArray<string> => value.split(/\r?\n/).fil
 /** The credentials file's name carries a UUID that differs per run. */
 const CREDENTIALS_NAME = /git-credentials-[0-9a-f-]+/gi;
 
-/** The `ssh` program's path and the key and known-hosts paths differ by runner and temp directory. */
+/**
+ * The `ssh` program's path and the key and known-hosts paths differ by runner and temp directory, so only the quoted
+ * path text is normalised: a bare `ssh` against checkout's quoted absolute one is still a difference.
+ */
 const normaliseSsh = (value: string): string =>
-	value.replace(/^core\.sshcommand=.*$/i, (line) =>
-		line.replace(/"[^"]*"/g, '"<path>"').replace(/^core\.sshcommand=\S*ssh(\.exe)?\b/i, "core.sshcommand=ssh"),
-	);
+	value.replace(/^core\.sshcommand=.*$/i, (line) => line.replace(/"[^"]*"/g, '"<path>"'));
 
 const normaliseConfig = (raw: string, dir: string): ReadonlyArray<string> => {
 	const dirPattern = new RegExp(escapeRegExp(forward(dir)), "gi");

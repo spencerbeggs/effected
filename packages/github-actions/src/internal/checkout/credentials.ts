@@ -200,15 +200,48 @@ const insteadOfKey = (origin: string): string => `url.${origin}/.insteadOf`;
 const extraheaderKey = (origin: string): string => `http.${origin}/.extraheader`;
 
 /**
- * The SSH command, as checkout builds it. `form: "persisted"` spells the files
- * as `$RUNNER_TEMP/<basename>`, checkout's own form, so a later step (or a
- * container job) resolves them in its own temp directory; `form: "run"` uses
+ * The `ssh` program checkout names in its SSH command: the first `ssh` (`ssh.exe`
+ * on Windows) on `PATH`, as checkout's `io.which("ssh")` finds it, else a bare
+ * `ssh` when `PATH` has none.
+ */
+const resolveSsh = (
+	env: ActionEnvironment["Service"],
+): Effect.Effect<Option.Option<string>, never, FileSystem.FileSystem | Path.Path> =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const windows = yield* isWindowsRunner(env);
+		// Windows spells the variable `Path`; the environment is a plain copy, so its keys are case-sensitive.
+		const found = yield* env.getOptional("PATH");
+		const entries = Option.isSome(found) ? found : yield* env.getOptional("Path");
+		if (Option.isNone(entries)) return Option.none<string>();
+		const program = windows ? "ssh.exe" : "ssh";
+		for (const directory of entries.value.split(windows ? ";" : ":")) {
+			if (directory.trim() === "") continue;
+			const candidate = path.join(directory, program);
+			if (yield* fs.exists(candidate).pipe(Effect.orElseSucceed(() => false))) return Option.some(candidate);
+		}
+		return Option.none<string>();
+	});
+
+/**
+ * The SSH command, as checkout builds it: the program quoted by its absolute
+ * path when one was found, else a bare `ssh`. `form: "persisted"` spells the
+ * files as `$RUNNER_TEMP/<basename>`, checkout's own form, so a later step (or
+ * a container job) resolves them in its own temp directory; `form: "run"` uses
  * the absolute paths, so the run never depends on an ambient `RUNNER_TEMP`.
  */
-const sshCommand = (keyPath: string, knownHostsPath: string, strict: boolean, form: "run" | "persisted"): string => {
+const sshCommand = (
+	program: Option.Option<string>,
+	keyPath: string,
+	knownHostsPath: string,
+	strict: boolean,
+	form: "run" | "persisted",
+): string => {
 	const file = (value: string) => (form === "run" ? forward(value) : `$RUNNER_TEMP/${basename(value)}`);
 	const strictness = strict ? " -o StrictHostKeyChecking=yes -o CheckHostIP=no" : "";
-	return `ssh -i "${file(keyPath)}"${strictness} -o "UserKnownHostsFile=${file(knownHostsPath)}"`;
+	const ssh = Option.match(program, { onNone: () => "ssh", onSome: (value) => `"${value}"` });
+	return `${ssh} -i "${file(keyPath)}"${strictness} -o "UserKnownHostsFile=${file(knownHostsPath)}"`;
 };
 
 const sshStrict = (settings: Settings): boolean => settings.auth._tag !== "Ssh" || (settings.auth.strict ?? true);
@@ -370,12 +403,13 @@ export const configure = (
 
 				sshKeyPath = Option.some(keyPath);
 				knownHostsPath = Option.some(hostsPath);
-				runEnv.GIT_SSH_COMMAND = sshCommand(keyPath, hostsPath, sshStrict(settings), "run");
+				const program = yield* resolveSsh(env);
+				runEnv.GIT_SSH_COMMAND = sshCommand(program, keyPath, hostsPath, sshStrict(settings), "run");
 				if (settings.credentials === "job") {
 					yield* git.configSet(
 						repositoryPath,
 						SSH_COMMAND_KEY,
-						sshCommand(keyPath, hostsPath, sshStrict(settings), "persisted"),
+						sshCommand(program, keyPath, hostsPath, sshStrict(settings), "persisted"),
 					);
 				}
 			}
@@ -509,7 +543,7 @@ export const configureSubmodules = (
 	settings: Settings,
 	record: CredentialRecord,
 	git: GitShape,
-): Effect.Effect<void, CredentialError, ActionEnvironment | Path.Path> =>
+): Effect.Effect<void, CredentialError, ActionEnvironment | FileSystem.FileSystem | Path.Path> =>
 	Effect.gen(function* () {
 		if (settings.credentials === "none") return;
 		const env = yield* ActionEnvironment;
@@ -533,6 +567,7 @@ export const configureSubmodules = (
 			if (Option.isSome(record.sshKeyPath) && Option.isSome(record.knownHostsPath)) {
 				if (settings.credentials === "job") {
 					const command = sshCommand(
+						yield* resolveSsh(env),
 						record.sshKeyPath.value,
 						record.knownHostsPath.value,
 						sshStrict(settings),
@@ -709,7 +744,9 @@ const removeLayout = (
  * repository a `safe.directory`) a fresh one holding `safe.directory`, deleted
  * afterwards, as checkout's post step does, so a repository owned by another
  * user (a container job) is still cleaned. Best-effort throughout: each
- * failure logs a warning and the rest still runs, so this never fails.
+ * failure logs a warning and the rest still runs, so this never fails. A
+ * repository whose `.git/config` is gone runs no git at all, as checkout's post
+ * step returns early: only the files under `RUNNER_TEMP` are deleted.
  *
  * @internal
  */
@@ -719,8 +756,27 @@ export const remove = (
 ): Effect.Effect<void, never, ActionEnvironment | FileSystem.FileSystem | Path.Path | SecureRandom.SecureRandom> =>
 	Effect.gen(function* () {
 		const env = yield* ActionEnvironment;
+		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
 		const runnerTemp = yield* env.getOptional("RUNNER_TEMP");
+
+		// A repository that is gone (a post step after the workspace was deleted) has no config to clean, as
+		// checkout's post step returns early: only the files under RUNNER_TEMP are removed, with no warnings.
+		const repositoryConfig = path.join(record.repositoryPath, ".git", "config");
+		if (!(yield* fs.exists(repositoryConfig).pipe(Effect.orElseSucceed(() => false)))) {
+			yield* Effect.logDebug(`Skipping the git cleanup: '${repositoryConfig}' does not exist`);
+			for (const [description, file] of [
+				["SSH key", record.sshKeyPath],
+				["SSH known hosts", record.knownHostsPath],
+				["credentials config", record.credentialsFile],
+			] as const) {
+				if (Option.isSome(file)) yield* removeUnderTemp(runnerTemp, description, file.value);
+			}
+			for (const file of Option.toArray(record.temporaryGlobalConfig)) {
+				yield* removeUnderTemp(runnerTemp, "temporary global config", path.dirname(file), { recursive: true });
+			}
+			return;
+		}
 
 		let globalConfig = record.temporaryGlobalConfig;
 		let fresh = Option.none<string>();

@@ -9,22 +9,33 @@ import { join } from "node:path";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, afterEach, assert, beforeAll, describe, it } from "@effect/vitest";
+import type { GitShape } from "@effected/git";
 import { Git, GitCommandError } from "@effected/git";
+import type { GitHubClientShape } from "@effected/github";
 import { GitHubClient, GitHubError } from "@effected/github";
-import { Deferred, Effect, Exit, Fiber, Layer, Option, Redacted, Schedule } from "effect";
+import type { Duration } from "effect";
+import { Context, Deferred, Effect, Exit, Fiber, Layer, Option, Redacted, Schedule } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import { ActionEnvironment } from "../../src/ActionEnvironment.js";
 import { ActionLogger } from "../../src/ActionLogger.js";
 import { ActionOutputs } from "../../src/ActionOutputs.js";
 import { ActionState, ActionStateError } from "../../src/ActionState.js";
-import type { CheckoutOptions } from "../../src/Checkout.js";
+import type { CheckoutDefaultBranchError, CheckoutOptions } from "../../src/Checkout.js";
 import { Checkout } from "../../src/Checkout.js";
 import { CredentialRecord } from "../../src/internal/checkout/credentials.js";
-import { CheckoutRetry } from "../../src/internal/checkout/source.js";
+import { CheckoutApiClient, CheckoutRetry } from "../../src/internal/checkout/source.js";
 
-// git 2.38+ refuses a `file://` submodule remote unless the environment allows it;
-// `Git` spawns over the process environment, so this reaches every spawn in this file.
-process.env.GIT_ALLOW_PROTOCOL = "file";
+// git 2.38+ refuses a `file://` submodule remote unless the environment allows it. `Git` spawns over the
+// process environment, so this reaches every spawn in this file; it is restored when the file ends.
+let previousAllowProtocol: string | undefined;
+beforeAll(() => {
+	previousAllowProtocol = process.env.GIT_ALLOW_PROTOCOL;
+	process.env.GIT_ALLOW_PROTOCOL = "file";
+});
+afterAll(() => {
+	if (previousAllowProtocol === undefined) delete process.env.GIT_ALLOW_PROTOCOL;
+	else process.env.GIT_ALLOW_PROTOCOL = previousAllowProtocol;
+});
 
 const WINDOWS = process.platform === "win32";
 const TOKEN = "ghs_0123456789abcdefTOKEN";
@@ -119,6 +130,8 @@ beforeAll(async () => {
 	await commit(otherWork, "other.txt", "other\n", "other");
 	const otherBare = join(root, "other.git");
 	fixtureGit(root, ["clone", "-q", "--bare", otherWork, otherBare]);
+	// A wiki's default branch is master when the API cannot find the wiki.
+	fixtureGit(otherBare, ["update-ref", "refs/heads/master", "refs/heads/main"]);
 
 	remotes = {
 		root,
@@ -161,7 +174,17 @@ const workspace = async (): Promise<Workspace> => {
 interface Faults {
 	readonly git?: Layer.Layer<Git, never, ChildProcessSpawner.ChildProcessSpawner>;
 	readonly state?: Layer.Layer<ActionState>;
+	/** The client built from the checkout's own token; the object format lookup answers 404 by default. */
+	readonly api?: Partial<GitHubClientShape>;
+	/** An ambient `GitHubClient` in the program. */
+	readonly ambient?: Partial<GitHubClientShape>;
+	/** Records each token-built client's options. */
+	readonly builds?: Array<{ readonly token: string; readonly baseUrl: string }>;
 }
+
+const noHashAlgorithm: Partial<GitHubClientShape> = {
+	requestDecoded: () => Effect.fail(GitHubError.notFound("hash-algorithm", "the repository")),
+};
 
 const layerFor = (w: Workspace, faults: Faults = {}) =>
 	Layer.mergeAll(
@@ -185,9 +208,13 @@ const layerFor = (w: Workspace, faults: Faults = {}) =>
 				save: (key, value) => Effect.sync(() => void w.saved.push({ key, value })),
 			}),
 		ActionLogger.layerSilent,
-		GitHubClient.layerTest({
-			requestDecoded: () => Effect.fail(GitHubError.notFound("hash-algorithm", "the repository")),
-		}),
+		Layer.succeed(CheckoutApiClient, (options) =>
+			Effect.sync(() => {
+				faults.builds?.push({ token: Redacted.value(options.token), baseUrl: options.baseUrl });
+				return GitHubClient.makeTest({ ...noHashAlgorithm, ...faults.api });
+			}),
+		),
+		faults.ambient === undefined ? Layer.empty : GitHubClient.layerTest(faults.ambient),
 		NodeCrypto.layerSecureRandom,
 	).pipe(Layer.provideMerge(NodeServices.layer));
 
@@ -480,5 +507,153 @@ describe("credential lifetimes", () => {
 		assert.strictEqual(await failureTag(checkout(w, base({ credentials: "job" }), { state })), "ActionStateError");
 		assert.deepStrictEqual(await readdir(w.runnerTemp), []);
 		assert.isFalse(await includeIf(w));
+	});
+});
+
+/** `@effected/git`'s run options, read by their key, so a test sees the ceiling a spawn inherits. */
+const RunOptions = Context.Reference<{ readonly timeout?: Duration.Input }>("@effected/git/GitRunOptions", {
+	defaultValue: () => ({}),
+});
+
+/** The real `Git`, recording the timeout in force for a few of its non-network members. */
+const recordingTimeouts = (
+	seen: Map<string, Duration.Input | undefined>,
+): Layer.Layer<Git, never, ChildProcessSpawner.ChildProcessSpawner> =>
+	Layer.effect(
+		Git,
+		Effect.map(
+			Git.useSync((git) => git),
+			(real): GitShape => {
+				const record = <A, E>(name: string, effect: Effect.Effect<A, E>) =>
+					Effect.flatMap(RunOptions, (options) => {
+						seen.set(name, options.timeout);
+						return effect;
+					});
+				return {
+					...real,
+					version: (...args) => record("version", real.version(...args)),
+					sparseCheckoutDisable: (...args) => record("sparseCheckoutDisable", real.sparseCheckoutDisable(...args)),
+					checkout: (...args) => record("checkout", real.checkout(...args)),
+				};
+			},
+		),
+	).pipe(Layer.provide(Git.layer));
+
+const failureOf = async <A, E>(effect: Effect.Effect<A, E, never>): Promise<unknown> => {
+	const exit = await Effect.runPromiseExit(effect);
+	assert.isTrue(Exit.isFailure(exit), "expected a failure");
+	return Exit.isFailure(exit) ? Option.getOrUndefined(Exit.findErrorOption(exit)) : undefined;
+};
+
+const defaultBranchIs = (name: string): Partial<GitHubClientShape> => ({
+	request: (() => Effect.succeed({ default_branch: name })) as unknown as GitHubClientShape["request"],
+});
+
+const ambientUnused: Partial<GitHubClientShape> = {
+	request: (() => Effect.die("the ambient client was used")) as unknown as GitHubClientShape["request"],
+	requestDecoded: (() => Effect.die("the ambient client was used")) as unknown as GitHubClientShape["requestDecoded"],
+};
+
+describe("the step timeout", () => {
+	it("runs every git step, not only the network ones, under the 30 minute ceiling", async () => {
+		const w = await workspace();
+		const seen = new Map<string, Duration.Input | undefined>();
+		await ok(checkout(w, base({ credentials: "none" }), { git: recordingTimeouts(seen) }));
+		assert.deepStrictEqual(Object.fromEntries(seen), {
+			version: "30 minutes",
+			sparseCheckoutDisable: "30 minutes",
+			checkout: "30 minutes",
+		});
+	});
+});
+
+describe("the API client and the default branch", () => {
+	it("builds the client from the checkout's own token and API base, ignoring an ambient one", async () => {
+		const w = await workspace();
+		const builds: Array<{ readonly token: string; readonly baseUrl: string }> = [];
+		const result = await ok(
+			checkout(w, base({ ref: { _tag: "Default" }, credentials: "none" }), {
+				ambient: ambientUnused,
+				api: defaultBranchIs("main"),
+				builds,
+			}),
+		);
+		assert.strictEqual(result.ref, "refs/heads/main");
+		assert.deepStrictEqual(builds, [{ token: TOKEN, baseUrl: "https://api.github.com" }]);
+	});
+
+	it("derives a GitHub Enterprise Server API base from serverUrl", async () => {
+		const w = await workspace();
+		const builds: Array<{ readonly token: string; readonly baseUrl: string }> = [];
+		await ok(
+			checkout(w, base({ serverUrl: "https://ghes.example.com", credentials: "none" }), {
+				ambient: ambientUnused,
+				builds,
+			}),
+		);
+		assert.deepStrictEqual(builds, [{ token: TOKEN, baseUrl: "https://ghes.example.com/api/v3" }]);
+	});
+
+	it("uses the ambient client when the checkout has no token", async () => {
+		const w = await workspace();
+		const builds: Array<{ readonly token: string; readonly baseUrl: string }> = [];
+		let asked = 0;
+		const ambient: Partial<GitHubClientShape> = {
+			requestDecoded: () =>
+				Effect.suspend(() => {
+					asked += 1;
+					return Effect.fail(GitHubError.notFound("hash-algorithm", "the repository"));
+				}),
+		};
+		const auth = { _tag: "Ssh", key: Redacted.make("-----KEY-----\n") } as const;
+		await ok(checkout(w, base({ auth, credentials: "none" }), { ambient, builds }));
+		assert.strictEqual(asked, 1);
+		assert.deepStrictEqual(builds, []);
+	});
+
+	it("falls back to master for a wiki the API does not find", async () => {
+		const w = await workspace();
+		const api: Partial<GitHubClientShape> = {
+			request: (() =>
+				Effect.fail(
+					GitHubError.notFound("GET /repos/{owner}/{repo}", "the repository"),
+				)) as unknown as GitHubClientShape["request"],
+		};
+		const result = await ok(
+			checkout(
+				w,
+				base({
+					repository: { owner: "own", name: "repo.wiki" },
+					ref: { _tag: "Default" },
+					remoteUrl: remotes.otherUrl,
+					credentials: "none",
+				}),
+				{ api },
+			),
+		);
+		assert.strictEqual(result.ref, "refs/heads/master");
+	});
+
+	it("fails CheckoutDefaultBranchError carrying the API's reason, with no token in it", async () => {
+		const w = await workspace();
+		const api: Partial<GitHubClientShape> = {
+			request: (() =>
+				Effect.fail(
+					new GitHubError({
+						kind: "unauthorized",
+						operation: "GET /repos/{owner}/{repo}",
+						reason: `Bad credentials for ${TOKEN}`,
+						status: 401,
+					}),
+				)) as unknown as GitHubClientShape["request"],
+		};
+		const error = (await failureOf(
+			checkout(w, base({ ref: { _tag: "Default" } }), { api }),
+		)) as CheckoutDefaultBranchError;
+		assert.strictEqual(error._tag, "CheckoutDefaultBranchError");
+		assert.include(error.detail, "(401)");
+		assert.include(error.detail, "Bad credentials");
+		assert.include(error.message, error.detail);
+		assert.notInclude(error.message, TOKEN);
 	});
 });
