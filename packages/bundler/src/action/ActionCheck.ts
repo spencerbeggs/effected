@@ -20,7 +20,11 @@ export class DriftEntry extends Schema.Class<DriftEntry>("DriftEntry")({
 	kind: Schema.Literals(["changed", "missing", "extra"]),
 }) {}
 
-/** What {@link ActionCheck.compare} takes. */
+/**
+ * What {@link ActionCheck.compare} takes.
+ *
+ * @public
+ */
 export interface ActionCheckCompareOptions {
 	/** The action's own `action.yml`, when it has one. */
 	readonly stagedActionYml: Option.Option<string>;
