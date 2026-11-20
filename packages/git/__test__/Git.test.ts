@@ -892,6 +892,29 @@ describe("Git", () => {
 			}),
 		);
 
+		it.effect("sparseCheckoutDisable ignores a silent exit 5 from the worktreeConfig unset", () =>
+			Effect.gen(function* () {
+				const git = yield* Git;
+				yield* git.sparseCheckoutDisable(cwd);
+			}).pipe((program) =>
+				run(program, (args) => (args[0] === "config" && args[1] === "--unset" ? { exit: 5 } : { exit: 0 })),
+			),
+		);
+
+		it.effect("sparseCheckoutDisable surfaces any other failure of the unset", () =>
+			Effect.gen(function* () {
+				const git = yield* Git;
+				const error = yield* Effect.flip(git.sparseCheckoutDisable(cwd));
+				assert.instanceOf(error, GitCommandError);
+			}).pipe((program) =>
+				run(program, (args) =>
+					args[0] === "config" && args[1] === "--unset"
+						? { exit: 5, stderr: "error: cannot unset: multiple values" }
+						: { exit: 0 },
+				),
+			),
+		);
+
 		it.effect("an unset origin/HEAD (exit 1, silent) degrades to Option.none", () =>
 			Effect.gen(function* () {
 				const program = Effect.gen(function* () {

@@ -243,16 +243,23 @@ describe("Git checkout surface — fetch, checkout and cleanup forms", () => {
 					yield* runFixtureGit(dir, ["add", "."]);
 					yield* runFixtureGit(dir, ["commit", "-m", "x"]);
 					yield* git.sparseCheckoutSet(dir, ["a"], { cone: true });
-					const sparse = yield* runFixtureGit(dir, ["ls-files", "--sparse"]);
+					const hiddenWhileSparse = !(yield* Effect.promise(async () => {
+						const { existsSync } = await import("node:fs");
+						return existsSync(join(dir, "b", "g.txt"));
+					}));
+					yield* runFixtureGit(dir, ["config", "--local", "extensions.worktreeConfig", "true"]);
 					yield* git.sparseCheckoutDisable(dir);
+					const worktreeConfig = yield* git.configGet(dir, "extensions.worktreeConfig", { scope: "local" });
 					const after = yield* Effect.promise(async () => {
 						const { existsSync } = await import("node:fs");
 						return existsSync(join(dir, "b", "g.txt"));
 					});
-					return { sparse, after };
+					return { hiddenWhileSparse, worktreeConfig, after };
 				}),
 			),
 		);
+		assert.isTrue(files.hiddenWhileSparse);
+		assert.isTrue(Option.isNone(files.worktreeConfig));
 		assert.isTrue(files.after);
 	});
 
@@ -264,7 +271,7 @@ describe("Git checkout surface — fetch, checkout and cleanup forms", () => {
 					const dir = join(root, "lfs");
 					yield* runFixtureGit(root, ["init", "--initial-branch=main", dir]);
 					yield* git.lfsInstall(dir, { local: true });
-					const value = yield* git.configGet(dir, "filter.lfs.clean");
+					const value = yield* git.configGet(dir, "filter.lfs.clean", { scope: "local" });
 					return Option.isSome(value);
 				}),
 			),

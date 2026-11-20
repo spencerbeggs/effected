@@ -532,12 +532,15 @@ type Classified =
  * degrade, `"noSuchRemote"` enables the no-such-remote degrade, `"push"`
  * enables the rejected-non-fast-forward row, `"merge"` enables the
  * dirty-worktree and merge-conflict rows, `"log"` enables the unborn-HEAD
- * degrade, `"tree"` enables the no-work-tree degrade, `"generic"` enables
- * none of them.
+ * degrade, `"tree"` enables the no-work-tree degrade, `"exitTwoAbsent"` enables
+ * the silent-exit-2-is-absent degrade (`ls-remote --exit-code` found no match),
+ * `"unsetAbsent"` enables the silent-exit-5-is-absent degrade (`config --unset`
+ * of a key that was never set), `"generic"` enables none of them.
  */
 type ClassifyKind =
 	| "show"
 	| "exitTwoAbsent"
+	| "unsetAbsent"
 	| "refExists"
 	| "quiet"
 	| "noSuchRemote"
@@ -660,6 +663,11 @@ const classify = (
 	if (kind === "quiet" && exitCode === 1 && stderr === "") {
 		// --quiet probes (symbolic-ref) and config --get signal "unset" as a
 		// silent exit 1; any stderr text means a real failure instead.
+		return { _tag: "absent" };
+	}
+	if (kind === "unsetAbsent" && exitCode === 5 && stderr === "") {
+		// `config --unset` of a never-set key exits 5 silently; exit 5 with
+		// stderr (e.g. "multiple values") is a real failure and stays one.
 		return { _tag: "absent" };
 	}
 	if (kind === "exitTwoAbsent" && exitCode === 2 && stderr === "") {
@@ -2705,11 +2713,14 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		// Mirrors actions/checkout: also clear the worktree-config extension that
 		// sparse checkout may have set; git exits 5 when the key was never set,
 		// which is the expected case here and is ignored. Any other failure surfaces.
-		yield* configUnset(cwd, "extensions.worktreeConfig").pipe(
-			Effect.catchIf(
-				(error): error is GitCommandError => error._tag === "GitCommandError" && error.exitCode === 5,
-				() => Effect.void,
-			),
+		yield* runParsed(
+			"Git.sparseCheckoutDisable",
+			GitCommand.configUnset("extensions.worktreeConfig"),
+			cwd,
+			"extensions.worktreeConfig",
+			"unsetAbsent",
+			() => undefined,
+			() => undefined,
 		);
 	});
 
