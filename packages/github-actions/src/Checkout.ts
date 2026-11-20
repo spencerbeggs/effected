@@ -165,12 +165,11 @@ export class CheckoutUnsafePullRequestError extends Schema.TaggedError<CheckoutU
 ) {
 	override get message(): string {
 		return (
-			`Refusing to check out fork pull request code from a '${this.event}' workflow ` +
-			`(${this.repository} at ${this.ref}). ` +
+			`Refusing to check out fork pull request code from a '${this.event}' workflow. ` +
 			`This workflow runs with the base repository's GITHUB_TOKEN, secrets, default-branch ` +
 			`cache scope, and runner access. Fetching and executing a fork's code in that trusted ` +
 			`context commonly leads to "pwn request" vulnerabilities. To opt in, review the risks ` +
-			`at https://gh.io/securely-using-pull_request_target and set 'allowUnsafePrCheckout: true' ` +
+			`at https://gh.io/securely-using-pull_request_target and set 'allow-unsafe-pr-checkout: true' ` +
 			`on the checkout.`
 		);
 	}

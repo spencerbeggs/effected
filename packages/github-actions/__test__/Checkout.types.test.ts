@@ -31,8 +31,15 @@ describe("Checkout errors", () => {
 		assert.include(errors[0]?.message, "2.30.0");
 		assert.include(errors[0]?.message, "2.39.0");
 		assert.include(errors[1]?.message, "pull_request_target");
-		assert.include(errors[1]?.message, "on the checkout");
-		assert.notInclude(errors[1]?.message, "actions/checkout");
+		assert.strictEqual(
+			errors[1]?.message,
+			"Refusing to check out fork pull request code from a 'pull_request_target' workflow. " +
+				"This workflow runs with the base repository's GITHUB_TOKEN, secrets, default-branch " +
+				"cache scope, and runner access. Fetching and executing a fork's code in that trusted " +
+				'context commonly leads to "pwn request" vulnerabilities. To opt in, review the risks ' +
+				"at https://gh.io/securely-using-pull_request_target and set 'allow-unsafe-pr-checkout: true' " +
+				"on the checkout.",
+		);
 		assert.include(errors[2]?.message, "refs/heads/nope");
 		assert.include(errors[3]?.message, "abc123");
 		assert.include(errors[4]?.message, "bad credentials");
