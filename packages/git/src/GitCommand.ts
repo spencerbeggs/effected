@@ -318,12 +318,64 @@ export class GitCommand {
 	static readonly revParse = (ref: string): GitInvocation => git(["rev-parse", "--verify", ref]);
 
 	/**
-	 * Mutating: `git checkout [--detach] <ref>` — moves the working tree (and, for
-	 * a branch ref, `HEAD`) to `ref`. When `detach` is true, checks out the ref in
-	 * detached-HEAD state.
+	 * Mutating: `git checkout [--force] [--detach] [-B <branch>] <ref>` — moves
+	 * the working tree (and, for a branch ref, `HEAD`) to `ref`. When `detach`
+	 * is true, checks out the ref in detached-HEAD state.
+	 *
+	 * @remarks
+	 * `options.force` discards local changes. `options.branch` creates or
+	 * resets that branch at `ref`, which becomes the start point; git rejects
+	 * it alongside `detach`, so the {@link Git} service refuses the pair.
 	 */
-	static readonly checkout = (ref: string, detach = false): GitInvocation =>
-		git(["checkout", ...(detach ? ["--detach"] : []), ref]);
+	static readonly checkout = (
+		ref: string,
+		detach = false,
+		options: { readonly force?: boolean; readonly branch?: string } = {},
+	): GitInvocation =>
+		git([
+			"checkout",
+			...(options.force ? ["--force"] : []),
+			...(detach ? ["--detach"] : []),
+			...(options.branch !== undefined ? ["-B", options.branch] : []),
+			ref,
+		]);
+
+	/**
+	 * Mutating:
+	 * `git [-c protocol.version=2] fetch [--no-tags] [--prune] [--no-recurse-submodules] [--filter=<f>] [--depth=<n> | --unshallow] <remote> <refspec>...`
+	 * — fetches several refspecs in one invocation, in the argv order
+	 * `actions/checkout` uses.
+	 *
+	 * @remarks
+	 * Refspecs pass through verbatim. `unshallow` and `depth` are exclusive
+	 * modes; when both are given `unshallow` wins. `remote` may be a URL; an
+	 * embedded `userinfo@` credential is masked in
+	 * {@link GitInvocation.redactedArgs}.
+	 */
+	static readonly fetchRefspecs = (
+		remote: string,
+		refspecs: ReadonlyArray<string>,
+		options: {
+			readonly depth?: number;
+			readonly unshallow?: boolean;
+			readonly filter?: string;
+			readonly noTags?: boolean;
+			readonly prune?: boolean;
+			readonly noRecurseSubmodules?: boolean;
+			readonly protocolVersion?: 2;
+		} = {},
+	): GitInvocation =>
+		git([
+			...(options.protocolVersion === 2 ? ["-c", "protocol.version=2"] : []),
+			"fetch",
+			...(options.noTags ? ["--no-tags"] : []),
+			...(options.prune ? ["--prune"] : []),
+			...(options.noRecurseSubmodules ? ["--no-recurse-submodules"] : []),
+			...(options.filter !== undefined ? [`--filter=${options.filter}`] : []),
+			...(options.unshallow ? ["--unshallow"] : options.depth !== undefined ? [`--depth=${options.depth}`] : []),
+			remote,
+			...refspecs,
+		]);
 
 	/**
 	 * Mutating: `git fetch [--depth <n>] [--unshallow] <remote> [tag] <ref>` —
@@ -447,11 +499,19 @@ export class GitCommand {
 	 * would hand the retry the same dirty tree. `-d` removes untracked
 	 * directories too; `-x` removes ignored files as well. The literal `--`
 	 * separator makes the optional pathspec injection-safe by construction.
+	 * `nested` repeats `--force`, which is what lets git remove untracked
+	 * nested repositories (`-ffdx`).
 	 */
-	static readonly clean = (directories = false, ignored = false, paths: ReadonlyArray<string> = []): GitInvocation =>
+	static readonly clean = (
+		directories = false,
+		ignored = false,
+		paths: ReadonlyArray<string> = [],
+		nested = false,
+	): GitInvocation =>
 		git([
 			"clean",
 			"--force",
+			...(nested ? ["--force"] : []),
 			...(directories ? ["-d"] : []),
 			...(ignored ? ["-x"] : []),
 			...(paths.length > 0 ? ["--", ...paths] : []),
@@ -514,10 +574,11 @@ export class GitCommand {
 	 * @remarks
 	 * The default `-d` refuses to delete a branch not fully merged — a typed
 	 * failure, which is usually the honest answer. `force: true` emits `-D`
-	 * and deletes regardless.
+	 * and deletes regardless. `remote` adds `-r` to delete a remote-tracking
+	 * branch (`origin/feat/x`) instead.
 	 */
-	static readonly branchDelete = (name: string, force = false): GitInvocation =>
-		git(["branch", force ? "-D" : "-d", name]);
+	static readonly branchDelete = (name: string, force = false, remote = false): GitInvocation =>
+		git(["branch", force ? "-D" : "-d", ...(remote ? ["-r"] : []), name]);
 
 	/**
 	 * Mutating:
@@ -548,9 +609,11 @@ export class GitCommand {
 			readonly fetch?: false;
 			readonly recursive?: boolean;
 			readonly force?: boolean;
+			readonly protocolVersion?: 2;
 		} = {},
 	): GitInvocation =>
 		git([
+			...(options.protocolVersion === 2 ? ["-c", "protocol.version=2"] : []),
 			"submodule",
 			"update",
 			...(init ? ["--init"] : []),

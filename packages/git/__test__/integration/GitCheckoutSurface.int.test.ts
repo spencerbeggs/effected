@@ -109,3 +109,90 @@ describe("Git checkout surface — repository setup", () => {
 		assert.isTrue(version.major >= 2);
 	});
 });
+
+describe("Git checkout surface — fetch, checkout and cleanup forms", () => {
+	let root: string;
+	let bare: string;
+	let work: string;
+
+	beforeAll(async () => {
+		root = await mkdtemp(join(tmpdir(), "effected-git-forms-"));
+		bare = join(root, "remote.git");
+		const seed = join(root, "seed");
+		await Effect.runPromise(
+			run(
+				Effect.gen(function* () {
+					yield* runFixtureGit(root, ["init", "--bare", "--initial-branch=main", bare]);
+					yield* runFixtureGit(root, ["init", "--initial-branch=main", seed]);
+					yield* runFixtureGit(seed, ["config", "user.email", "t@example.com"]);
+					yield* runFixtureGit(seed, ["config", "user.name", "T"]);
+					yield* runFixtureGit(seed, ["commit", "--allow-empty", "-m", "one"]);
+					yield* runFixtureGit(seed, ["branch", "feature/x"]);
+					yield* runFixtureGit(seed, ["tag", "v1"]);
+					yield* runFixtureGit(seed, ["push", bare, "main", "feature/x", "v1"]);
+					yield* runFixtureGit(bare, ["update-ref", "refs/pull/1/merge", "main"]);
+					yield* runFixtureGit(root, ["init", "--initial-branch=other", "work"]);
+					work = join(root, "work");
+					yield* runFixtureGit(work, ["config", "user.email", "t@example.com"]);
+					yield* runFixtureGit(work, ["config", "user.name", "T"]);
+					yield* runFixtureGit(work, ["remote", "add", "origin", `file://${bare}`]);
+				}),
+			),
+		);
+	});
+
+	afterAll(async () => {
+		await rm(root, { recursive: true, force: true });
+	});
+
+	it("fetchRefspecs materialises a pull ref, then checkout -B and the cleanup forms work", async () => {
+		const result = await Effect.runPromise(
+			run(
+				Effect.gen(function* () {
+					const git = yield* Git;
+					yield* git.fetchRefspecs(work, {
+						refspecs: [
+							"+refs/pull/1/merge:refs/remotes/pull/1/merge",
+							"+refs/heads/main:refs/remotes/origin/main",
+							"+refs/heads/feature/x:refs/remotes/origin/feature/x",
+						],
+						noTags: true,
+						protocolVersion: 2,
+					});
+					const pull = yield* runFixtureGit(work, ["rev-parse", "--verify", "refs/remotes/pull/1/merge"]);
+					yield* git.checkout(work, "refs/remotes/origin/main", { force: true, branch: "main" });
+					const head = yield* runFixtureGit(work, ["rev-parse", "--abbrev-ref", "HEAD"]);
+					yield* runFixtureGit(work, ["init", "nested"]);
+					yield* git.clean(work, { nested: true, directories: true, ignored: true });
+					const nested = yield* runFixtureGit(work, ["status", "--porcelain", "--ignored"]);
+					yield* git.branchDelete(work, "origin/feature/x", { remote: true });
+					const remaining = yield* runFixtureGit(work, ["branch", "-r"]);
+					return { pull: pull.trim(), head: head.trim(), nested, remaining };
+				}),
+			),
+		);
+		assert.match(result.pull, /^[0-9a-f]{40}$/);
+		assert.strictEqual(result.head, "main");
+		assert.strictEqual(result.nested.trim(), "");
+		assert.notInclude(result.remaining, "feature/x");
+		assert.include(result.remaining, "origin/main");
+	});
+
+	it("refuses an empty refspec list, an option-like refspec, and branch with detach", async () => {
+		const outcomes = await Effect.runPromise(
+			run(
+				Effect.gen(function* () {
+					const git = yield* Git;
+					const a = yield* Effect.flip(git.fetchRefspecs(work, { refspecs: [] }));
+					const b = yield* Effect.flip(git.fetchRefspecs(work, { refspecs: ["--upload-pack=x"] }));
+					const c = yield* Effect.flip(git.checkout(work, "main", { branch: "b", detach: true }));
+					return [a, b, c];
+				}),
+			),
+		);
+		for (const error of outcomes) {
+			assert.strictEqual(error._tag, "GitCommandError");
+			assert.strictEqual((error as { kind: string }).kind, "refused");
+		}
+	});
+});

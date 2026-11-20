@@ -121,6 +121,50 @@ describe("GitCommand", () => {
 		assertGitCommand(GitCommand.checkout("FETCH_HEAD", true), ["checkout", "--detach", "FETCH_HEAD"]);
 	});
 
+	it("checkout --force and -B compose in checkout's order", () => {
+		assertGitCommand(GitCommand.checkout("refs/remotes/origin/main", false, { force: true, branch: "main" }), [
+			"checkout",
+			"--force",
+			"-B",
+			"main",
+			"refs/remotes/origin/main",
+		]);
+		assertGitCommand(GitCommand.checkout("abc", true, { force: true }), ["checkout", "--force", "--detach", "abc"]);
+	});
+
+	it("fetchRefspecs matches actions/checkout's fetch argv byte for byte", () => {
+		assertGitCommand(
+			GitCommand.fetchRefspecs("origin", ["+refs/heads/main:refs/remotes/origin/main"], {
+				depth: 1,
+				noTags: true,
+				prune: true,
+				noRecurseSubmodules: true,
+				protocolVersion: 2,
+				filter: "blob:none",
+			}),
+			[
+				"-c",
+				"protocol.version=2",
+				"fetch",
+				"--no-tags",
+				"--prune",
+				"--no-recurse-submodules",
+				"--filter=blob:none",
+				"--depth=1",
+				"origin",
+				"+refs/heads/main:refs/remotes/origin/main",
+			],
+		);
+		assertGitCommand(GitCommand.fetchRefspecs("origin", ["a", "b"], { unshallow: true }), [
+			"fetch",
+			"--unshallow",
+			"origin",
+			"a",
+			"b",
+		]);
+		assertGitCommand(GitCommand.fetchRefspecs("origin", ["a"]), ["fetch", "origin", "a"]);
+	});
+
 	it("fetch builds remote-then-ref, with optional depth and tag keyword", () => {
 		assertGitCommand(GitCommand.fetch("origin", "main"), ["fetch", "origin", "main"]);
 		assertGitCommand(GitCommand.fetch("origin", "v1.0.0", 1, true), [
@@ -146,6 +190,18 @@ describe("GitCommand", () => {
 			"--unshallow",
 			"origin",
 			"main",
+		]);
+	});
+
+	it("submoduleUpdate protocolVersion prefixes -c protocol.version=2", () => {
+		assertGitCommand(GitCommand.submoduleUpdate(true, 1, [], { protocolVersion: 2 }), [
+			"-c",
+			"protocol.version=2",
+			"submodule",
+			"update",
+			"--init",
+			"--depth",
+			"1",
 		]);
 	});
 
@@ -429,6 +485,7 @@ describe("GitCommand", () => {
 			assertGitCommand(GitCommand.clean(), ["clean", "--force"]);
 			assertGitCommand(GitCommand.clean(true), ["clean", "--force", "-d"]);
 			assertGitCommand(GitCommand.clean(true, true, ["dist"]), ["clean", "--force", "-d", "-x", "--", "dist"]);
+			assertGitCommand(GitCommand.clean(true, true, [], true), ["clean", "--force", "--force", "-d", "-x"]);
 		});
 
 		it("restore puts paths behind a literal --, composing --source/--staged/--worktree", () => {
@@ -494,6 +551,7 @@ describe("GitCommand", () => {
 		it("branchDelete builds -d by default and -D when forced", () => {
 			assertGitCommand(GitCommand.branchDelete("feat/x"), ["branch", "-d", "feat/x"]);
 			assertGitCommand(GitCommand.branchDelete("feat/x", true), ["branch", "-D", "feat/x"]);
+			assertGitCommand(GitCommand.branchDelete("origin/feat/x", true, true), ["branch", "-D", "-r", "origin/feat/x"]);
 		});
 	});
 

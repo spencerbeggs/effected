@@ -2137,12 +2137,30 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 	const checkout = Effect.fn("Git.checkout")(function* (
 		cwd: string,
 		ref: string,
-		options?: { readonly detach?: boolean },
+		options?: { readonly detach?: boolean; readonly force?: boolean; readonly branch?: string },
 	) {
 		const detach = options?.detach ?? false;
 		yield* Effect.annotateCurrentSpan({ cwd, ref, detach });
-		yield* rejectOptionLikeRefs(cwd, [ref]);
-		const classified = yield* runFor(GitCommand.checkout(ref, detach), cwd, "generic");
+		yield* rejectOptionLikeRefs(cwd, options?.branch !== undefined ? [ref, options.branch] : [ref]);
+		if (detach && options?.branch !== undefined) {
+			return yield* Effect.fail(
+				new GitCommandError({
+					kind: "refused",
+					args: ["checkout", "-B", options.branch, "--detach"],
+					cwd,
+					stderr: "",
+					detail: "refused checkout with both branch and detach: git cannot create a branch and detach HEAD at once",
+				}),
+			);
+		}
+		const classified = yield* runFor(
+			GitCommand.checkout(ref, detach, {
+				force: options?.force ?? false,
+				...(options?.branch !== undefined ? { branch: options.branch } : {}),
+			}),
+			cwd,
+			"generic",
+		);
 		switch (classified._tag) {
 			case "success":
 				return undefined;
@@ -2183,12 +2201,21 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 
 	const clean = Effect.fn("Git.clean")(function* (
 		cwd: string,
-		options?: { readonly directories?: boolean; readonly ignored?: boolean; readonly paths?: ReadonlyArray<string> },
+		options?: {
+			readonly directories?: boolean;
+			readonly ignored?: boolean;
+			readonly paths?: ReadonlyArray<string>;
+			readonly nested?: boolean;
+		},
 	) {
 		const directories = options?.directories ?? false;
 		const ignored = options?.ignored ?? false;
 		yield* Effect.annotateCurrentSpan({ cwd, directories, ignored });
-		const classified = yield* runFor(GitCommand.clean(directories, ignored, options?.paths ?? []), cwd, "generic");
+		const classified = yield* runFor(
+			GitCommand.clean(directories, ignored, options?.paths ?? [], options?.nested ?? false),
+			cwd,
+			"generic",
+		);
 		switch (classified._tag) {
 			case "success":
 				return undefined;
@@ -2268,11 +2295,15 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 	const branchDelete = Effect.fn("Git.branchDelete")(function* (
 		cwd: string,
 		name: string,
-		options?: { readonly force?: boolean },
+		options?: { readonly force?: boolean; readonly remote?: boolean },
 	) {
 		yield* Effect.annotateCurrentSpan({ cwd, name, force: options?.force ?? false });
 		yield* rejectOptionLikeRefs(cwd, [name]);
-		const classified = yield* runFor(GitCommand.branchDelete(name, options?.force ?? false), cwd, "generic");
+		const classified = yield* runFor(
+			GitCommand.branchDelete(name, options?.force ?? false, options?.remote ?? false),
+			cwd,
+			"generic",
+		);
 		switch (classified._tag) {
 			case "success":
 				return undefined;
@@ -2302,6 +2333,62 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 				return yield* Effect.fail(classified.error);
 			default:
 				return yield* Effect.die(`Git.isShallow: unexpected classification "${classified._tag}"`);
+		}
+	});
+
+	const fetchRefspecs = Effect.fn("Git.fetchRefspecs")(function* (
+		cwd: string,
+		options: {
+			readonly remote?: string;
+			readonly refspecs: ReadonlyArray<string>;
+			readonly depth?: number;
+			readonly unshallow?: boolean;
+			readonly filter?: string;
+			readonly noTags?: boolean;
+			readonly prune?: boolean;
+			readonly noRecurseSubmodules?: boolean;
+			readonly protocolVersion?: 2;
+		},
+	) {
+		const remote = options.remote ?? "origin";
+		yield* Effect.annotateCurrentSpan({ cwd, refspecs: options.refspecs.length });
+		if (options.refspecs.length === 0) {
+			return yield* Effect.fail(
+				new GitCommandError({
+					kind: "refused",
+					args: ["fetch", remote],
+					cwd,
+					stderr: "",
+					detail: "refused a fetch with no refspecs",
+				}),
+			);
+		}
+		yield* rejectOptionLikeRefs(cwd, [remote, ...options.refspecs]);
+		yield* rejectNonNaturalNumber(cwd, "a fetch depth", options.depth);
+		const classified = yield* runForNetwork(
+			GitCommand.fetchRefspecs(remote, options.refspecs, {
+				...(options.depth !== undefined ? { depth: options.depth } : {}),
+				...(options.unshallow ? { unshallow: true } : {}),
+				...(options.filter !== undefined ? { filter: options.filter } : {}),
+				...(options.noTags ? { noTags: true } : {}),
+				...(options.prune ? { prune: true } : {}),
+				...(options.noRecurseSubmodules ? { noRecurseSubmodules: true } : {}),
+				...(options.protocolVersion === 2 ? { protocolVersion: 2 as const } : {}),
+			}),
+			cwd,
+			"generic",
+		);
+		switch (classified._tag) {
+			case "success":
+				return undefined;
+			case "notARepository":
+				return yield* Effect.fail(new NotARepositoryError({ cwd }));
+			case "unknownRef":
+				return yield* Effect.fail(new UnknownRefError({ ref: options.refspecs.join(" "), cwd }));
+			case "failure":
+				return yield* Effect.fail(classified.error);
+			default:
+				return yield* Effect.die(`Git.fetchRefspecs: unexpected classification "${classified._tag}"`);
 		}
 	});
 
@@ -2514,6 +2601,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 			readonly fetch?: false;
 			readonly recursive?: boolean;
 			readonly force?: boolean;
+			readonly protocolVersion?: 2;
 		},
 	) {
 		const init = options?.init ?? false;
@@ -2526,6 +2614,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 				remote: options?.remote ?? false,
 				recursive: options?.recursive ?? false,
 				force: options?.force ?? false,
+				...(options?.protocolVersion === 2 ? { protocolVersion: 2 as const } : {}),
 				// exactOptionalPropertyTypes: `fetch` only exists when the caller
 				// asked for --no-fetch; an explicit undefined is not assignable.
 				...(options?.fetch === false ? { fetch: false as const } : {}),
@@ -3731,6 +3820,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		checkout,
 		fetch,
 		fetchAny,
+		fetchRefspecs,
 		fetchUnshallow,
 		isShallow,
 		commitsThatAdd,
@@ -3910,6 +4000,8 @@ export interface GitShape {
 	 * Mutating: `git checkout [--detach] <ref>` — moves the working tree
 	 * (and, for a branch ref, `HEAD`) to `ref`; `options.detach` checks it out
 	 * in detached-HEAD state instead of updating a branch.
+	 * `options.force` adds `--force`; `options.branch` adds `-B <branch>` with
+	 * `ref` as the start point, and is refused together with `detach`.
 	 * Real git reports an unknown ref to checkout as a pathspec error, which
 	 * classifies as `GitCommandError` rather than `UnknownRefError`; the
 	 * `UnknownRefError` arm remains declared for the stderr shapes that do match.
@@ -3917,7 +4009,7 @@ export interface GitShape {
 	readonly checkout: (
 		cwd: string,
 		ref: string,
-		options?: { readonly detach?: boolean },
+		options?: { readonly detach?: boolean; readonly force?: boolean; readonly branch?: string },
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
 	 * Mutating: `git fetch [--depth <n>] [--unshallow] <remote> [tag] <ref>` —
@@ -3966,6 +4058,30 @@ export interface GitShape {
 	readonly fetchAny: (
 		cwd: string,
 		options: { readonly ref: string; readonly remote?: string; readonly depth?: number },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git fetch` of several refspecs from `options.remote` (default
+	 * `origin`) in one invocation, in the argv order `actions/checkout` uses
+	 * (`options.protocolVersion: 2` prefixes `-c protocol.version=2`). Network
+	 * touching.
+	 *
+	 * Refuses an empty `options.refspecs` and any refspec (or remote) that
+	 * begins with `-`, as `GitCommandError` of kind `refused`, before any
+	 * spawn. Refspecs pass through verbatim.
+	 */
+	readonly fetchRefspecs: (
+		cwd: string,
+		options: {
+			readonly remote?: string;
+			readonly refspecs: ReadonlyArray<string>;
+			readonly depth?: number;
+			readonly unshallow?: boolean;
+			readonly filter?: string;
+			readonly noTags?: boolean;
+			readonly prune?: boolean;
+			readonly noRecurseSubmodules?: boolean;
+			readonly protocolVersion?: 2;
+		},
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
 	 * Mutating: `git fetch --unshallow <remote>` — converts a shallow clone
@@ -4070,11 +4186,17 @@ export interface GitShape {
 	 * a tree to a known state before retrying a non-idempotent operation, and
 	 * without it git refuses to clean under the default `clean.requireForce`
 	 * config — **a clean that silently did nothing corrupts the retry**. Any
-	 * non-zero exit fails loudly as `GitCommandError`.
+	 * non-zero exit fails loudly as `GitCommandError`. `options.nested` emits a
+	 * second `--force`, which also removes untracked nested repositories.
 	 */
 	readonly clean: (
 		cwd: string,
-		options?: { readonly directories?: boolean; readonly ignored?: boolean; readonly paths?: ReadonlyArray<string> },
+		options?: {
+			readonly directories?: boolean;
+			readonly ignored?: boolean;
+			readonly paths?: ReadonlyArray<string>;
+			readonly nested?: boolean;
+		},
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
 	 * Mutating: `git restore [--source <ref>] [--staged] [--worktree] -- <paths...>`
@@ -4121,12 +4243,13 @@ export interface GitShape {
 	 * Mutating: `git branch -d <name>` (or `-D` with `options.force`) —
 	 * deletes a local branch. The default `-d` refuses a branch that is not
 	 * fully merged — a typed `GitCommandError`, which is usually the honest
-	 * answer; `force: true` deletes regardless.
+	 * answer; `force: true` deletes regardless. `options.remote` adds `-r` to
+	 * delete a remote-tracking branch instead.
 	 */
 	readonly branchDelete: (
 		cwd: string,
 		name: string,
-		options?: { readonly force?: boolean },
+		options?: { readonly force?: boolean; readonly remote?: boolean },
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
 	 * Mutating:
@@ -4155,6 +4278,7 @@ export interface GitShape {
 			readonly fetch?: false;
 			readonly recursive?: boolean;
 			readonly force?: boolean;
+			readonly protocolVersion?: 2;
 		},
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
@@ -4979,7 +5103,7 @@ const notStubbed = (method: string) => () =>
  * then names the duration actually used.
  *
  * That ceiling is per run, not per member call. The network-touching members
- * (`lsRemote`, `fetch`, `fetchUnshallow`, `push`, `pull`, `submoduleAdd`,
+ * (`lsRemote`, `fetch`, `fetchRefspecs`, `fetchUnshallow`, `push`, `pull`, `submoduleAdd`,
  * `submoduleUpdate`, and `commitsThatAdd` for each deepen round) first resolve their ssh command with up to two concurrent
  * local `git config` reads, each bounded separately, so their worst case is
  * 60 s; `fetchAny`, which runs `fetch` twice, is 120 s. A consumer merely
@@ -5125,6 +5249,7 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 		checkout: notStubbed("checkout"),
 		fetch: notStubbed("fetch"),
 		fetchAny: notStubbed("fetchAny"),
+		fetchRefspecs: notStubbed("fetchRefspecs"),
 		fetchUnshallow: notStubbed("fetchUnshallow"),
 		isShallow: notStubbed("isShallow"),
 		commitsThatAdd: notStubbed("commitsThatAdd"),
