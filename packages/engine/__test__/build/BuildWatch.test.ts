@@ -732,4 +732,26 @@ describe("BuildWatch.packageExcludes", () => {
 			assert.deepStrictEqual(excludes, DEFAULT_EXCLUDES);
 		}),
 	);
+
+	it.effect("staging is excluded", () =>
+		Effect.gen(function* () {
+			const { handle, triggers, fiber } = yield* start({
+				seed: { ...SEED, [`${CWD}/.action-staging/main.js`]: "" },
+				watchers: WATCHERS,
+			});
+			yield* burst(handle, [[`${CWD}/.action-staging/main.js`, "Update"]]);
+			assert.deepStrictEqual(yield* triggers, [{ _tag: "Initial" }]);
+			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
+	it.effect("a workspace-base persist path is not an exclusion inside the package", () =>
+		Effect.gen(function* () {
+			const seed = workspace({
+				[`${CWD}/effected.toml`]: '[action.persistLocal]\nbase = "workspace"\ndist = false\n',
+			});
+			const excludes = yield* inVolume(seed, BuildWatch.actionExcludes({ cwd: CWD, root: ROOT }));
+			assert.deepStrictEqual(excludes, DEFAULT_EXCLUDES);
+		}),
+	);
 });

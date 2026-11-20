@@ -4,7 +4,7 @@
 // changes made during one become one follow-up.
 
 import type { EffectedConfigError } from "@effected/bundler";
-import { EffectedConfigFile } from "@effected/bundler";
+import { EffectedConfigFile, PersistTarget } from "@effected/bundler";
 import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import type { Duration } from "effect";
 import {
@@ -60,6 +60,7 @@ export const DEFAULT_EXCLUDES: ReadonlyArray<string> = [
 	".actrc",
 	".github/workflows/act-test.yml",
 	".github/actions/local",
+	".action-staging",
 ];
 
 /**
@@ -204,9 +205,13 @@ export class BuildWatch {
 			if (options?.persist === false) return DEFAULT_EXCLUDES;
 			const path = yield* Path.Path;
 			const loaded = yield* loadConfig(target);
-			const persist = Option.isSome(loaded) ? loaded.value.config.action?.persistLocal : undefined;
-			if (persist === undefined || !persist.enabled) return DEFAULT_EXCLUDES;
-			return withInside(path, target.cwd, [persist.path ?? ".github/actions/local"]);
+			if (Option.isNone(loaded) || loaded.value.config.action === undefined) return DEFAULT_EXCLUDES;
+			const resolved = yield* PersistTarget.resolve(loaded.value.config.action, {
+				cwd: target.cwd,
+				root: target.root,
+			}).pipe(Effect.option);
+			if (Option.isNone(resolved) || !resolved.value.enabled) return DEFAULT_EXCLUDES;
+			return withInside(path, target.cwd, [resolved.value.outputPath]);
 		});
 
 	/**

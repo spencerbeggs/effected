@@ -133,6 +133,8 @@ const refusalOf = (error: ActionFailure, root: string): ToolRefusal => {
 			return refuse(`Check that ${error.path} can be copied, or pass persist: false.`);
 		case "PersistPathError":
 			return refuse(`Change persistLocal.path in effected.toml (${error.reason}), or pass persist: false.`);
+		case "CheckUnavailable":
+			return refuse("Persisting is disabled for this action, so there is nothing to check; enable persistLocal.");
 		case "ActionYmlPathError":
 			return refuse(`Point runs.${error.entryType} in action.yml at a built file, or pass persist: false.`);
 		case "ExclusiveTimeout":
@@ -176,7 +178,7 @@ export const makeActionHandlers = (options: PackageToolOptions, lane: Exclusive)
 					if (params.cwd !== undefined) yield* inside(root, "cwd", params.cwd);
 					return yield* lane.run(
 						ActionRun.run(
-							{ validate: params.validate ?? true, persist: params.persist ?? false },
+							{ validate: params.validate ?? true, persist: params.persist ?? false, check: false },
 							{
 								cwd: target(params.cwd),
 								ci: options.ci ?? false,

@@ -45,7 +45,10 @@ const runOnce = Effect.fn("effected.action.runOnce")(function* (
 	format: "human" | "json",
 ) {
 	const { ActionRun, ActionRunResult } = yield* Effect.promise(() => import("@effected/engine/build"));
-	const answer = yield* ActionRun.run({ validate: !input.noValidate, persist: !input.noPersist }, deps).pipe(
+	const answer = yield* ActionRun.run(
+		{ validate: !input.noValidate, persist: !input.noPersist, check: false },
+		deps,
+	).pipe(
 		Effect.catchTags({
 			EffectedConfigError: refused,
 			NotAPackageError: refused,
@@ -55,6 +58,8 @@ const runOnce = Effect.fn("effected.action.runOnce")(function* (
 			WriteError: stopped,
 			PersistLocalError: stopped,
 			PersistPathError: stopped,
+			CheckUnavailable: (error) =>
+				Effect.fail(CliRuntime.reported(new ActionConfigError({ message: error.message }), 64)),
 			ActionYmlPathError: stopped,
 			PlatformError: stopped,
 		}),

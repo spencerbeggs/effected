@@ -5,6 +5,7 @@ import type {
 	ActionBuilderError,
 	ActionYmlPathError,
 	BundleFailed,
+	CheckUnavailable,
 	CleanError,
 	EffectedConfigError,
 	PersistLocalError,
@@ -43,6 +44,8 @@ export interface ActionRunInput {
 	readonly validate: boolean;
 	/** Whether to copy the build locally. `persistLocal.enabled = false` turns that off too. */
 	readonly persist: boolean;
+	/** Whether to compare the build with the committed one instead of persisting it. */
+	readonly check: boolean;
 }
 
 /**
@@ -62,6 +65,7 @@ const failedResult = (
 			validation: error.validation,
 			build: error.build ?? BuildResult.make({ success: false, entries: [], duration: 0 }),
 			persisted: false,
+			...(error._tag === "CheckFailed" ? { drift: error.drift } : {}),
 		}),
 	});
 
@@ -94,6 +98,7 @@ export class ActionRun {
 		| WriteError
 		| PersistLocalError
 		| PersistPathError
+		| CheckUnavailable
 		| ActionYmlPathError
 		| PlatformError.PlatformError,
 		FileSystem.FileSystem | Path.Path
@@ -114,16 +119,13 @@ export class ActionRun {
 			validate: input.validate,
 			persist: input.persist,
 			ci: deps.ci,
-			// Check mode reaches the front ends in a later change; until then a run never checks.
-			check: false,
+			check: input.check,
 		}).pipe(
 			Effect.map((result) => ActionRunResult.make({ verdict: "ok", result })),
 			Effect.catchTags({
 				ValidationFailed: (error) => Effect.succeed(failedResult(error)),
 				BuildFailed: (error) => Effect.succeed(failedResult(error)),
 				CheckFailed: (error) => Effect.succeed(failedResult(error)),
-				// Unreachable while this run never checks; check mode is wired into the front ends separately.
-				CheckUnavailable: (error) => Effect.die(error),
 			}),
 		);
 	});

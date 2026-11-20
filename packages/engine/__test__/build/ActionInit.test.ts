@@ -495,7 +495,7 @@ describe("action init, then action build", () => {
 					yield* init(cwd);
 
 					// `ci: true` is strict mode: a warning would fail the build.
-					const answer = yield* ActionRun.run({ validate: true, persist: false }, { cwd, ci: true }).pipe(
+					const answer = yield* ActionRun.run({ validate: true, persist: false, check: false }, { cwd, ci: true }).pipe(
 						Effect.provide(Live),
 					);
 					assert.strictEqual(answer.verdict, "ok", JSON.stringify(answer.result.build.entries));
