@@ -450,9 +450,11 @@ export interface ActionLoggerShape {
 	 * as annotations the moment they happen, and the result line counts them.
 	 *
 	 * The result line is `<mark> <summary or name> · <duration>`, the mark `✓` for a success, `⚠` for a success that
-	 * logged a warning or an error (here or in any step inside it), and `✗` for a failure ({@link StepOptions}):
+	 * logged a warning or an error, or in which a nested step failed and was recovered from (here or in any step
+	 * inside it, each counted on the line), and `✗` for a failure ({@link StepOptions}):
 	 *
-	 * 1. a success with detail is one folded `::group::` titled by the result line, the detail inside it;
+	 * 1. a success with detail is one folded `::group::` titled by the result line, the detail inside it, unless a
+	 *    nested step failed, which is never folded away;
 	 * 2. a success without detail is the result line alone;
 	 * 3. a failure is never folded: the result line, then the detail indented beneath it, then the failure itself
 	 *    propagates unchanged. An interruption is written the same way, as `✗ <name> · interrupted`.

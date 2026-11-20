@@ -140,6 +140,69 @@ describe("ActionLogger step", () => {
 		),
 	);
 
+	it.effect("indents every line of a multi-line detail entry", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				yield* Effect.flip(
+					logger.step(
+						"fetch",
+						Effect.andThen(
+							logger.step("inner", Effect.logDebug("$ git fetch\r\nfatal: no ref\nexit 128")),
+							Effect.andThen(Effect.logDebug("one\rtwo"), Effect.fail(new Error("boom"))),
+						),
+					),
+				);
+				assert.deepStrictEqual(yield* lines, [
+					"✗ fetch · boom · 0.0s",
+					"    $ git fetch",
+					"    fatal: no ref",
+					"    exit 128",
+					"  ✓ inner · 0.0s",
+					"  one",
+					"  two",
+				]);
+			}),
+		),
+	);
+
+	it.effect("a recovered inner failure marks the outer step and is never folded", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				const value = yield* logger.step(
+					"prepare",
+					logger
+						.step("inner", Effect.andThen(Effect.logInfo("x"), Effect.fail(new Error("boom"))))
+						.pipe(Effect.catch(() => Effect.succeed(1))),
+				);
+				assert.strictEqual(value, 1);
+				assert.deepStrictEqual(yield* lines, ["⚠ prepare · 1 failed step · 0.0s", "    x", "  ✗ inner · boom · 0.0s"]);
+			}),
+		),
+	);
+
+	it.effect("a recovered failure counts towards every enclosing step, beside its warnings", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				yield* logger.step(
+					"outer",
+					logger.step(
+						"middle",
+						Effect.andThen(Effect.logWarning("w"), Effect.ignore(logger.step("inner", Effect.fail(new Error("boom"))))),
+					),
+				);
+				assert.deepStrictEqual(yield* lines, [
+					"::warning::w",
+					"⚠ outer · 1 warning · 1 failed step · 0.0s",
+					"    ✗ inner · boom · 0.0s",
+					"  ⚠ middle · 1 warning · 1 failed step · 0.0s",
+				]);
+			}),
+		),
+	);
+
 	it.effect("a phase is one heading line", () =>
 		live(
 			Effect.gen(function* () {

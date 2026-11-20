@@ -30,6 +30,8 @@ export interface StepRun {
 	readonly console: Console.Console;
 	/** Whether the result may open a `::group::`: false when the step opened inside a group, which cannot nest. */
 	readonly canFold: boolean;
+	/** Whether any step in the run failed, recovered or not: such a run is never folded. */
+	failed: boolean;
 }
 
 /** One open step: the outermost one, or one nested inside it. */
@@ -42,6 +44,8 @@ export interface StepFrame {
 	readonly depth: number;
 	warnings: number;
 	errors: number;
+	/** Steps nested inside this one that failed or were interrupted, whether or not this one recovered. */
+	failedSteps: number;
 }
 
 /**
@@ -58,8 +62,16 @@ export const ActiveStep = Context.Reference<StepFrame | null>("@effected/github-
 /** Open a step: a new outermost run, or a frame nested in `parent`'s run. */
 export const open = (name: string, parent: StepFrame | null, console: Console.Console, canFold: boolean): StepFrame =>
 	parent === null
-		? { name, run: { mode: "held", lines: [], console, canFold }, parent: null, depth: 0, warnings: 0, errors: 0 }
-		: { name, run: parent.run, parent, depth: parent.depth + 1, warnings: 0, errors: 0 };
+		? {
+				name,
+				run: { mode: "held", lines: [], console, canFold, failed: false },
+				parent: null,
+				depth: 0,
+				warnings: 0,
+				errors: 0,
+				failedSteps: 0,
+			}
+		: { name, run: parent.run, parent, depth: parent.depth + 1, warnings: 0, errors: 0, failedSteps: 0 };
 
 /** Write one line, neutralized: every line is caller or program text. */
 const write = (run: StepRun, line: string): void => {
@@ -69,14 +81,24 @@ const write = (run: StepRun, line: string): void => {
 /** The indent a step's detail takes: two spaces per level of nesting. */
 const indent = (depth: number): string => "  ".repeat(depth);
 
-/** Add one detail line to a step, held or streamed by its run's mode. */
+/** The runner's line breaks. */
+const LINE_BREAK = /\r\n|\r|\n/;
+
+/**
+ * Add detail to a step, held or streamed by its run's mode.
+ *
+ * @remarks
+ * Split at every line break first, so each line of a multi-line entry (a git transcript is one) takes the indent.
+ */
 export const detail = (frame: StepFrame, text: string): void => {
-	const line = `${indent(frame.depth)}${text}`;
-	if (frame.run.mode === "held") {
-		frame.run.lines.push(line);
-		return;
+	for (const part of text.split(LINE_BREAK)) {
+		const line = `${indent(frame.depth)}${part}`;
+		if (frame.run.mode === "held") {
+			frame.run.lines.push(line);
+		} else {
+			write(frame.run, `  ${line}`);
+		}
 	}
-	write(frame.run, `  ${line}`);
 };
 
 /** Count a warning or an error against a step and every step around it. */
@@ -123,6 +145,7 @@ const resultLine = (frame: StepFrame, outcome: StepOutcome, millis: number): str
 	const counts = [
 		...(frame.warnings > 0 ? [plural(frame.warnings, "warning")] : []),
 		...(frame.errors > 0 ? [plural(frame.errors, "error")] : []),
+		...(frame.failedSteps > 0 ? [plural(frame.failedSteps, "failed step")] : []),
 	];
 	const mark = outcome._tag === "Failure" ? red("✗") : counts.length > 0 ? yellow("⚠") : green("✓");
 	const text = outcome.text.replace(/\r\n|\r|\n/g, " ");
@@ -133,13 +156,21 @@ const resultLine = (frame: StepFrame, outcome: StepOutcome, millis: number): str
  * End a step and write what it owes the log.
  *
  * @remarks
- * A nested step adds its result line to the enclosing step's detail. The outermost step writes its held detail: under
- * a folded `::group::` titled by the result line when it succeeded, or indented beneath an unfolded result line when it
- * failed, was interrupted or cannot fold. A step with no detail is its result line alone.
+ * A nested step adds its result line to the enclosing step's detail; when it failed or was interrupted it counts as a
+ * failed step against every step around it and marks the run failed, so an outer step that recovers still shows `⚠`
+ * and never folds the failure away. The outermost step writes its held detail: under a folded `::group::` titled by the
+ * result line when every step in the run succeeded, or indented beneath an unfolded result line otherwise, or when the
+ * step cannot fold. A step with no detail is its result line alone.
  */
 export const close = (frame: StepFrame, outcome: StepOutcome, millis: number): void => {
 	const line = resultLine(frame, outcome, millis);
 	if (frame.parent !== null) {
+		if (outcome._tag !== "Success") {
+			frame.run.failed = true;
+			for (let current: StepFrame | null = frame.parent; current !== null; current = current.parent) {
+				current.failedSteps += 1;
+			}
+		}
 		detail(frame.parent, line);
 		return;
 	}
@@ -149,7 +180,7 @@ export const close = (frame: StepFrame, outcome: StepOutcome, millis: number): v
 		write(run, line);
 		return;
 	}
-	if (outcome._tag === "Success" && run.canFold) {
+	if (outcome._tag === "Success" && run.canFold && !run.failed) {
 		run.console.log(WorkflowCommand.group(line));
 		for (const entry of held) {
 			write(run, entry);
