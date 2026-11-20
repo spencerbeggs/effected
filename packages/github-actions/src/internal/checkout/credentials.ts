@@ -283,7 +283,7 @@ export const configure = (
 
 		const write = Effect.gen(function* () {
 			// Remove possible previous values, as checkout does.
-			yield* remove(base, git);
+			yield* removeLayout(base, git);
 
 			let sshKeyPath = Option.none<string>();
 			let knownHostsPath = Option.none<string>();
@@ -531,39 +531,62 @@ const bestEffort = <E, R>(description: string, effect: Effect.Effect<void, E, R>
 	);
 
 /**
- * Removes everything {@link configure}, {@link configureGlobalAuth} and
- * {@link configureSubmodules} wrote, as checkout's `removeAuth` does.
- *
- * @remarks
- * The SSH files; `core.sshCommand`, the extraheader and the `includeIf.gitdir:`
- * values naming a `git-credentials-<uuid>.config` file, in the repository and
- * (when the record has submodules) every submodule, recursively; the
- * submodules' `insteadOf` values, which checkout leaves behind; each named
- * credentials file under `RUNNER_TEMP`; and the temporary global config's
- * directory. Best-effort throughout: each failure logs a warning and the rest
- * still runs, so this never fails.
- *
- * @internal
+ * Whether `candidate` lies strictly inside `root`, both resolved first, so
+ * neither a sibling sharing the prefix (`<root>-other`) nor a `..` escape
+ * passes. `root` itself does not pass: nothing here may delete `RUNNER_TEMP`.
  */
-export const remove = (
+const strictlyInside = (path: Path.Path, root: string, candidate: string): boolean => {
+	const base = path.resolve(root);
+	const target = path.resolve(candidate);
+	return target !== base && target.startsWith(base.endsWith(path.sep) ? base : base + path.sep);
+};
+
+/**
+ * Removes one file under `RUNNER_TEMP`, best-effort; a path outside it, or no
+ * `RUNNER_TEMP`, is skipped with a debug line.
+ */
+const removeUnderTemp = (
+	runnerTemp: Option.Option<string>,
+	description: string,
+	target: string,
+	options?: { readonly recursive?: boolean },
+): Effect.Effect<void, never, FileSystem.FileSystem | Path.Path> =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		if (Option.isNone(runnerTemp) || !strictlyInside(path, runnerTemp.value, target)) {
+			yield* Effect.logDebug(`Skipping removal of ${description} '${target}' - not under RUNNER_TEMP`);
+			return;
+		}
+		yield* Effect.logInfo(`Removing ${description} '${target}'`);
+		yield* bestEffort(
+			`${description} '${target}'`,
+			fs.remove(target, { force: true, ...(options?.recursive ? { recursive: true } : {}) }),
+		);
+	});
+
+/**
+ * The removal itself, run with whatever global config the caller has in
+ * force: every git step of {@link remove} and of {@link configure}'s
+ * pre-cleanup, which supplies its own temporary global config. Leaves the
+ * temporary global config alone.
+ */
+const removeLayout = (
 	record: CredentialRecord,
 	git: GitShape,
 ): Effect.Effect<void, never, ActionEnvironment | FileSystem.FileSystem | Path.Path> =>
 	Effect.gen(function* () {
 		const env = yield* ActionEnvironment;
-		const fs = yield* FileSystem.FileSystem;
 		const path = yield* Path.Path;
+		const runnerTemp = yield* env.getOptional("RUNNER_TEMP");
 		const repo = record.repositoryPath;
 		const configKeys = [SSH_COMMAND_KEY, extraheaderKey(record.origin)];
 
-		for (const [label, file] of [
-			["SSH key", record.sshKeyPath],
-			["SSH known hosts", record.knownHostsPath],
-		] as const) {
-			if (Option.isSome(file)) {
-				yield* Effect.logInfo(`Removing ${label} '${file.value}'`);
-				yield* bestEffort(`${label} '${file.value}'`, fs.remove(file.value, { force: true }));
-			}
+		if (Option.isSome(record.sshKeyPath)) {
+			yield* removeUnderTemp(runnerTemp, "SSH key", record.sshKeyPath.value);
+		}
+		if (Option.isSome(record.knownHostsPath)) {
+			yield* removeUnderTemp(runnerTemp, "SSH known hosts", record.knownHostsPath.value);
 		}
 
 		const credentialFiles = new Set<string>(Option.toArray(record.credentialsFile));
@@ -575,37 +598,83 @@ export const remove = (
 		yield* bestEffort("the repository's credential config", unsetPresent(git, repo, undefined, configKeys));
 		yield* bestEffort("the repository's includeIf entries", collect(repo, undefined));
 
-		if (record.submodules) {
-			const gitDirs = yield* submoduleGitDirs(git, repo, true).pipe(
+		// Every submodule, recursively, whatever the record says: an earlier run's checkout may have
+		// left credentials in submodules this one never fetched, as checkout's removeAuth assumes.
+		const gitDirs = yield* submoduleGitDirs(git, repo, true).pipe(
+			Effect.catch((error) =>
+				Effect.as(Effect.logWarning(`Failed to list submodules: ${error.message}`), [] as ReadonlyArray<string>),
+			),
+		);
+		for (const gitDir of gitDirs) {
+			const file = path.join(gitDir, "config");
+			yield* bestEffort(
+				`the credential config of '${gitDir}'`,
+				unsetPresent(git, repo, file, [...configKeys, insteadOfKey(record.origin)]),
+			);
+			yield* bestEffort(`the includeIf entries of '${gitDir}'`, collect(repo, file));
+		}
+
+		for (const file of credentialFiles) {
+			yield* removeUnderTemp(runnerTemp, "credentials config", file);
+		}
+	});
+
+/**
+ * Removes everything {@link configure}, {@link configureGlobalAuth} and
+ * {@link configureSubmodules} wrote, as checkout's `removeAuth` does.
+ *
+ * @remarks
+ * The SSH files; `core.sshCommand`, the extraheader and the `includeIf.gitdir:`
+ * values naming a `git-credentials-<uuid>.config` file, in the repository and
+ * every submodule, recursively; the submodules' `insteadOf` values, which
+ * checkout leaves behind; each named credentials file; and the temporary
+ * global config's directory. A file is deleted only when it resolves strictly
+ * inside `RUNNER_TEMP`.
+ *
+ * Every git step runs with `GIT_CONFIG_GLOBAL` set: the record's temporary
+ * global config when it still has one, otherwise (when the record marked the
+ * repository a `safe.directory`) a fresh one holding `safe.directory`, deleted
+ * afterwards, as checkout's post step does, so a repository owned by another
+ * user (a container job) is still cleaned. Best-effort throughout: each
+ * failure logs a warning and the rest still runs, so this never fails.
+ *
+ * @internal
+ */
+export const remove = (
+	record: CredentialRecord,
+	git: GitShape,
+): Effect.Effect<void, never, ActionEnvironment | FileSystem.FileSystem | Path.Path | SecureRandom.SecureRandom> =>
+	Effect.gen(function* () {
+		const env = yield* ActionEnvironment;
+		const path = yield* Path.Path;
+		const runnerTemp = yield* env.getOptional("RUNNER_TEMP");
+
+		let globalConfig = record.temporaryGlobalConfig;
+		let fresh = Option.none<string>();
+		if (Option.isNone(globalConfig) && record.safeDirectory && Option.isSome(runnerTemp)) {
+			const created = Effect.gen(function* () {
+				const file = yield* temporaryGlobalConfig(yield* homeDirectory(env), runnerTemp.value);
+				yield* git.configAdd(path.dirname(file), "safe.directory", record.repositoryPath, { file });
+				return file;
+			});
+			fresh = yield* created.pipe(
+				Effect.map(Option.some),
 				Effect.catch((error) =>
-					Effect.as(Effect.logWarning(`Failed to list submodules: ${error.message}`), [] as ReadonlyArray<string>),
+					Effect.as(
+						Effect.logWarning(`Failed to create a temporary global config for safe.directory: ${error.message}`),
+						Option.none<string>(),
+					),
 				),
 			);
-			for (const gitDir of gitDirs) {
-				const file = path.join(gitDir, "config");
-				yield* bestEffort(
-					`the credential config of '${gitDir}'`,
-					unsetPresent(git, repo, file, [...configKeys, insteadOfKey(record.origin)]),
-				);
-				yield* bestEffort(`the includeIf entries of '${gitDir}'`, collect(repo, file));
-			}
+			globalConfig = fresh;
 		}
 
-		const runnerTemp = yield* env.getOptional("RUNNER_TEMP");
-		for (const file of credentialFiles) {
-			if (Option.isSome(runnerTemp) && file.startsWith(runnerTemp.value)) {
-				yield* Effect.logInfo(`Removing credentials config '${file}'`);
-				yield* bestEffort(`credentials config '${file}'`, fs.remove(file, { force: true }));
-			} else {
-				yield* Effect.logDebug(`Skipping removal of credentials config '${file}' - not under RUNNER_TEMP`);
-			}
-		}
+		yield* Option.match(globalConfig, {
+			onNone: () => removeLayout(record, git),
+			onSome: (file) => Git.withRunOptions(removeLayout(record, git), { env: { GIT_CONFIG_GLOBAL: file } }),
+		});
 
-		if (Option.isSome(record.temporaryGlobalConfig)) {
-			const directory = path.dirname(record.temporaryGlobalConfig.value);
-			yield* bestEffort(
-				`temporary global config '${directory}'`,
-				fs.remove(directory, { recursive: true, force: true }),
-			);
+		for (const file of [...Option.toArray(record.temporaryGlobalConfig), ...Option.toArray(fresh)]) {
+			yield* removeUnderTemp(runnerTemp, "temporary global config", path.dirname(file), { recursive: true });
 		}
 	});

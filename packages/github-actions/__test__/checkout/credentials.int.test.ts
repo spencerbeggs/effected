@@ -3,9 +3,9 @@
 // removed. Each test builds its own mkdtemp root (workspace, RUNNER_TEMP, HOME).
 
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterEach, assert, describe, it } from "@effect/vitest";
@@ -17,6 +17,7 @@ import { ActionEnvironment } from "../../src/ActionEnvironment.js";
 import { ActionOutputs } from "../../src/ActionOutputs.js";
 import type { CheckoutAuth } from "../../src/Checkout.js";
 import {
+	CredentialRecord,
 	configure,
 	configureGlobalAuth,
 	configureSubmodules,
@@ -280,5 +281,127 @@ describe("submodules", () => {
 			assert.notInclude(removed, "insteadOf");
 		});
 		await Effect.runPromise(program.pipe(Effect.provide(layerFor(f, recording.layer))));
+	});
+});
+
+describe("remove under a repository git may consider unsafe", () => {
+	it("runs every git step with a fresh temporary global config holding safe.directory, then deletes it", async () => {
+		const f = await fixture();
+		const recording = ActionOutputs.recording();
+		const observed: Array<boolean> = [];
+		const program = Effect.gen(function* () {
+			const real = yield* Git;
+			const { record } = yield* configure(settingsFor(f), real);
+			// The post step's record: the run's own temporary global config is already gone.
+			yield* Effect.promise(() =>
+				rm(dirname(Option.getOrThrow(record.temporaryGlobalConfig)), { recursive: true, force: true }),
+			);
+			const postRecord = CredentialRecord.make({ ...record, temporaryGlobalConfig: Option.none() });
+			// Before each git step, ask git what global config it sees under the same ambient run options.
+			const git = new Proxy(real, {
+				get: (target, key, receiver) => {
+					const member = Reflect.get(target, key, receiver);
+					return typeof member === "function"
+						? (...args: Array<unknown>) =>
+								Effect.andThen(
+									Effect.map(target.configList(f.runnerTemp, { scope: "global" }), (entries) => {
+										// Only git steps in the repository: the fresh config's own `-f` write runs in RUNNER_TEMP.
+										if (args[0] !== f.repo) return;
+										observed.push(entries.some((entry) => entry.key === "safe.directory" && entry.value === f.repo));
+									}),
+									member(...args),
+								)
+						: member;
+				},
+			}) as GitShape;
+			yield* remove(postRecord, git);
+
+			assert.isAbove(observed.length, 0);
+			assert.isTrue(observed.every(Boolean));
+			const after = yield* Effect.promise(() => localConfig(f.repo));
+			assert.notInclude(after, "includeIf");
+			assert.deepStrictEqual(yield* Effect.promise(() => readdir(f.runnerTemp)), []);
+		});
+		await Effect.runPromise(program.pipe(Effect.provide(layerFor(f, recording.layer))));
+	});
+});
+
+describe("remove deletes only what lies inside RUNNER_TEMP", () => {
+	it("keeps a sibling sharing the prefix and a .. escape, for credentials, SSH files and the global config", async () => {
+		const f = await fixture();
+		const sibling = `${f.runnerTemp}-other`;
+		const outside = join(f.root, "outside");
+		for (const dir of [sibling, outside, join(outside, "cfg")]) await mkdir(dir, { recursive: true });
+		const siblingFile = join(sibling, "git-credentials-1111.config");
+		const escapeFile = join(outside, "git-credentials-2222.config");
+		const escapeKey = join(outside, "key");
+		const escapeHosts = join(outside, "key_known_hosts");
+		const escapeGlobal = join(outside, "cfg", ".gitconfig");
+		for (const file of [siblingFile, escapeFile, escapeKey, escapeHosts, escapeGlobal]) await writeFile(file, "x\n");
+		const viaDotDot = (file: string) => join(f.runnerTemp, "..", "outside", file);
+
+		// A stale includeIf naming the sibling-prefix file, as an earlier run might have left.
+		fixtureGit(f.repo, ["config", "includeIf.gitdir:/elsewhere/.git.path", siblingFile]);
+
+		const recording = ActionOutputs.recording();
+		const program = Effect.gen(function* () {
+			const git = yield* Git;
+			const record = CredentialRecord.make({
+				repositoryPath: f.repo,
+				origin: "https://github.com",
+				credentialsFile: Option.some(`${f.runnerTemp}/../outside/git-credentials-2222.config`),
+				sshKeyPath: Option.some(viaDotDot("key")),
+				knownHostsPath: Option.some(viaDotDot("key_known_hosts")),
+				temporaryGlobalConfig: Option.some(viaDotDot(join("cfg", ".gitconfig"))),
+				safeDirectory: false,
+				submodules: false,
+			});
+			yield* remove(record, git);
+			assert.notInclude(yield* Effect.promise(() => localConfig(f.repo)), "includeIf");
+		});
+		await Effect.runPromise(program.pipe(Effect.provide(layerFor(f, recording.layer))));
+
+		for (const file of [siblingFile, escapeFile, escapeKey, escapeHosts, escapeGlobal]) {
+			assert.isTrue(
+				await stat(file).then(
+					() => true,
+					() => false,
+				),
+				`${file} must survive`,
+			);
+		}
+	});
+});
+
+describe("configure's pre-cleanup", () => {
+	it("cleans a stale submodule layout from an earlier run even when this checkout has no submodules", async () => {
+		const f = await fixture();
+		const library = join(f.root, "library");
+		await mkdir(library);
+		fixtureGit(library, ["init", "-q"]);
+		await writeFile(join(library, "a.txt"), "a\n");
+		fixtureGit(library, ["add", "a.txt"]);
+		fixtureGit(library, ["commit", "-q", "-m", "a"]);
+		fixtureGit(f.repo, ["submodule", "add", "-q", library, "sub"]);
+		const subConfig = join(f.repo, ".git", "modules", "sub", "config");
+		fixtureGit(f.repo, [
+			"config",
+			"-f",
+			subConfig,
+			"includeIf.gitdir:/old/.git.path",
+			"/old/git-credentials-1234.config",
+		]);
+		fixtureGit(f.repo, ["config", "-f", subConfig, "core.sshCommand", "ssh -i old"]);
+
+		const recording = ActionOutputs.recording();
+		const program = Effect.gen(function* () {
+			const git = yield* Git;
+			yield* configure(settingsFor(f, { submodules: false }), git);
+		});
+		await Effect.runPromise(program.pipe(Effect.provide(layerFor(f, recording.layer))));
+
+		const cleaned = await readFile(subConfig, "utf8");
+		assert.notInclude(cleaned, "includeIf");
+		assert.notInclude(cleaned, "sshCommand");
 	});
 });
