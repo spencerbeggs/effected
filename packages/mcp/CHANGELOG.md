@@ -1,5 +1,13 @@
 # @effected/mcp
 
+## 0.18.6
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/engine | dependency | updated | 0.18.2 | 0.19.0 |
+
 ## 0.18.5
 
 ### Dependencies
