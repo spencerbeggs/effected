@@ -275,7 +275,9 @@ export class ActionValidation {
 				: [];
 		const actionYml = yield* checkActionYml(config, cwd);
 		const errors = [...entryErrors, ...sizeErrors, ...actionYml.errors];
-		const { externals } = config.build;
+		// An external that `build.ignore` also names is stubbed into the bundle, so nothing imports it at runtime.
+		const ignored = new Set(config.build.ignore);
+		const externals = config.build.externals.filter((name) => !ignored.has(name));
 		const externalsWarnings =
 			options.base === "workspace" && externals.length > 0
 				? [

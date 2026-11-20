@@ -1,6 +1,7 @@
 // Ported from @savvy-web/github-action-builder __test__/services/persist-local.test.ts, over memfs.
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
+import { Yaml } from "@effected/yaml";
 import type { Path } from "effect";
 import { Effect, FileSystem, PlatformError, Schema } from "effect";
 import {
@@ -153,7 +154,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/local
+      - uses: "./.github/actions/local"
 `,
 				);
 			}),
@@ -215,6 +216,53 @@ jobs:
 				assert.isFalse(yield* exists(`${OUT}/dist/old`));
 				assert.isFalse(yield* exists(`${OUT}/dist/main/stale.js`));
 				assert.isTrue(yield* exists(`${OUT}/dist/main/index.js`));
+			}),
+		),
+	);
+
+	it.effect("removes a stale symlinked directory as a link, never what it points at", () =>
+		Effect.gen(function* () {
+			const files: Record<string, string> = { ...seed, "/outside/keep.js": "keep", "/outside/deep/keep.js": "keep" };
+			yield* Effect.gen(function* () {
+				yield* persist();
+				assert.isTrue(yield* exists("/outside/keep.js"));
+				assert.isTrue(yield* exists("/outside/deep/keep.js"));
+				assert.isFalse(yield* exists(`${OUT}/dist/linked`));
+			}).pipe(
+				Effect.provide(
+					MemoryFileSystem.layerWithPath({ ...files, [`${OUT}/dist/linked`]: MemoryFileSystem.symlink("/outside") }),
+				),
+			);
+		}),
+	);
+
+	it.effect("replaces a symlinked directory the build writes into, leaving its target alone", () =>
+		Effect.gen(function* () {
+			yield* Effect.gen(function* () {
+				yield* persist();
+				assert.isFalse(yield* exists("/outside/index.js"));
+				assert.strictEqual(yield* read(`${OUT}/dist/main/index.js`), 'console.log("built");');
+			}).pipe(
+				Effect.provide(
+					MemoryFileSystem.layerWithPath({
+						...seed,
+						"/outside/other.js": "keep",
+						[`${OUT}/dist/main`]: MemoryFileSystem.symlink("/outside"),
+					}),
+				),
+			);
+		}),
+	);
+
+	it.effect("quotes the act step's path, so a # in it survives YAML", () =>
+		inVolume(
+			{},
+			Effect.gen(function* () {
+				yield* persist({ path: ".github/actions/a #b", actTemplate: true });
+				const workflow = (yield* Yaml.parse(yield* read(`${CWD}/.github/workflows/act-test.yml`))) as {
+					readonly jobs: { readonly test: { readonly steps: ReadonlyArray<{ readonly uses: string }> } };
+				};
+				assert.strictEqual(workflow.jobs.test.steps[1]?.uses, "./.github/actions/a #b");
 			}),
 		),
 	);
@@ -332,7 +380,7 @@ describe("PersistLocal.persist under the workspace base", () => {
 				const result = yield* persistWorkspace({ actTemplate: true });
 				assert.isTrue(result.actTemplateGenerated);
 				assert.isTrue(yield* exists(`${WS}/.actrc`));
-				assert.include(yield* read(`${WS}/.github/workflows/act-test.yml`), "uses: ./.github/actions/one\n");
+				assert.include(yield* read(`${WS}/.github/workflows/act-test.yml`), 'uses: "./.github/actions/one"\n');
 				assert.isFalse(yield* exists(`${PKG}/.github`));
 			}),
 		),

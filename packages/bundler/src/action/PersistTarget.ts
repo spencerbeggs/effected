@@ -1,4 +1,4 @@
-import { Effect, FileSystem, Path, Schema } from "effect";
+import { Effect, FileSystem, Option, Path, Schema } from "effect";
 import type { ActionConfig } from "../config/ActionConfig.js";
 import { PersistPathError } from "./ActionErrors.js";
 
@@ -26,8 +26,12 @@ export class ResolvedPersist extends Schema.Class<ResolvedPersist>("ResolvedPers
 
 const STAGING = ".action-staging";
 
-const escapes = (relative: string, isAbsolute: boolean): boolean =>
-	isAbsolute || relative === ".." || relative.startsWith("../");
+/**
+ * Whether `child` is `parent` or lies below it, by the platform's own rules: `resolveWithin` refuses a relative path
+ * that climbs out with `..` and its separator, and an absolute one such as another drive's.
+ */
+const within = (path: Path.Path, parent: string, child: string): boolean =>
+	Option.isSome(path.resolveWithin(parent, path.relative(parent, child)));
 
 /**
  * Resolves `[action.persistLocal]` against a package and its workspace root.
@@ -39,7 +43,8 @@ export class PersistTarget {
 	static readonly STAGING = STAGING;
 
 	/**
-	 * Resolves the persist target, realpathing `cwd` and `root` as `ActionBundle.build` does.
+	 * Resolves the persist target, realpathing `cwd` and `root` as `ActionBundle.build` does, and the output path's
+	 * deepest existing ancestor, so the returned `outputPath` is the real directory a persist writes to.
 	 *
 	 * @remarks
 	 * Fails with `PersistPathError` when the path leaves the workspace, when a workspace-based path lands inside the
@@ -72,29 +77,35 @@ export class PersistTarget {
 
 			const fallback = base === "package" ? ".github/actions/local" : `.github/actions/${path.basename(cwd)}`;
 			const configured = config.persistLocal.path ?? fallback;
-			const outputPath = path.resolve(base === "package" ? cwd : root, configured);
+			const lexical = path.resolve(base === "package" ? cwd : root, configured);
+			// Every check runs on the real path: an existing ancestor that is a symlink would carry the writes wherever it
+			// points, so the deepest existing ancestor is realpathed and the missing tail put back on it.
+			let existing = lexical;
+			const tail: Array<string> = [];
+			while (
+				existing !== path.dirname(existing) &&
+				!(yield* fs.exists(existing).pipe(Effect.orElseSucceed(() => false)))
+			) {
+				tail.unshift(path.basename(existing));
+				existing = path.dirname(existing);
+			}
+			const outputPath = path.join(yield* real(existing), ...tail);
 
-			const fromRoot = path.relative(root, outputPath);
-			if (escapes(fromRoot, path.isAbsolute(fromRoot))) {
+			if (!within(path, root, outputPath)) {
 				return yield* new PersistPathError({ path: outputPath, reason: "outside-workspace" });
 			}
-			if (base === "workspace") {
-				const fromCwd = path.relative(cwd, outputPath);
-				if (!escapes(fromCwd, path.isAbsolute(fromCwd))) {
-					return yield* new PersistPathError({ path: outputPath, reason: "inside-package" });
-				}
+			if (base === "workspace" && within(path, cwd, outputPath)) {
+				return yield* new PersistPathError({ path: outputPath, reason: "inside-package" });
 			}
 			if (base === "package") {
 				// The build's own dist is cleaned and the staging directory removed, so a persist there is lost or recursive.
 				for (const owned of ["dist", STAGING]) {
-					const fromOwned = path.relative(path.join(cwd, owned), outputPath);
-					if (!escapes(fromOwned, path.isAbsolute(fromOwned))) {
+					if (within(path, path.join(cwd, owned), outputPath)) {
 						return yield* new PersistPathError({ path: outputPath, reason: "inside-package" });
 					}
 				}
 			}
-			const toCwd = path.relative(outputPath, cwd);
-			if (!escapes(toCwd, path.isAbsolute(toCwd))) {
+			if (within(path, outputPath, cwd)) {
 				return yield* new PersistPathError({ path: outputPath, reason: "contains-package" });
 			}
 			// Any directory strictly below the root, up to the output path itself, that holds a `package.json` is a

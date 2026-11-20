@@ -316,6 +316,25 @@ describe("ActionValidation.validate externals under the workspace base", () => {
 		}),
 	);
 
+	it.effect("does not count an external that build.ignore stubs", () =>
+		Effect.gen(function* () {
+			const ignored = yield* validate(
+				good,
+				{ build: { externals: ["sharp"], ignore: ["sharp"] } },
+				{ ci: false, base: "workspace" },
+			);
+			assert.notInclude(codes(ignored.warnings), "EXTERNALS_NOT_COMMITTED");
+			const mixed = yield* validate(
+				good,
+				{ build: { externals: ["sharp", "canvas"], ignore: ["sharp"] } },
+				{ ci: false, base: "workspace" },
+			);
+			const found = mixed.warnings.find((warning) => warning.code === "EXTERNALS_NOT_COMMITTED");
+			assert.include(found?.message ?? "", "canvas");
+			assert.notInclude(found?.message ?? "", "sharp");
+		}),
+	);
+
 	it.effect("does not warn under the package base", () =>
 		Effect.gen(function* () {
 			const result = yield* validate(good, document, { ci: false, base: "package" });

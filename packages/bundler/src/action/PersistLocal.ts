@@ -25,6 +25,7 @@ const ACTRC_CONTENT = `--container-architecture linux/amd64
 -W .github/workflows/act-test.yml
 `;
 
+/** The act workflow. The step's path is a quoted scalar (JSON is YAML), so a `#` or `: ` in it is not misread. */
 const actWorkflowContent = (actionPath: string): string => `name: Local Test
 on:
   workflow_dispatch:
@@ -34,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: ./${actionPath}
+      - uses: ${JSON.stringify(`./${actionPath}`)}
 `;
 
 /** Fails when a `runs` path in the persisted `action.yml` names no persisted file. */
