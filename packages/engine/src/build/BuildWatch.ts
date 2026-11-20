@@ -206,7 +206,7 @@ export class BuildWatch {
 			const loaded = yield* loadConfig(target);
 			const persist = Option.isSome(loaded) ? loaded.value.config.action?.persistLocal : undefined;
 			if (persist === undefined || !persist.enabled) return DEFAULT_EXCLUDES;
-			return withInside(path, target.cwd, [persist.path]);
+			return withInside(path, target.cwd, [persist.path ?? ".github/actions/local"]);
 		});
 
 	/**

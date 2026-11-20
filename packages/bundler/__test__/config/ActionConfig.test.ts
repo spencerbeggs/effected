@@ -176,8 +176,10 @@ describe("ActionPersistLocalOptions", () => {
 			const decoded = yield* persistLocal({});
 			assert.instanceOf(decoded, ActionPersistLocalOptions);
 			assert.strictEqual(decoded.enabled, true);
-			assert.strictEqual(decoded.path, ".github/actions/local");
-			assert.strictEqual(decoded.actTemplate, true);
+			assert.strictEqual(decoded.base, "package");
+			assert.strictEqual(decoded.dist, true);
+			assert.isUndefined(decoded.path);
+			assert.isUndefined(decoded.actTemplate);
 		}),
 	);
 
@@ -204,8 +206,8 @@ describe("ActionConfig", () => {
 			assert.strictEqual(config.build.minify, true);
 			assert.strictEqual(config.validation.requireActionYml, true);
 			assert.strictEqual(config.persistLocal.enabled, true);
-			assert.strictEqual(config.persistLocal.path, ".github/actions/local");
-			assert.strictEqual(config.persistLocal.actTemplate, true);
+			assert.isUndefined(config.persistLocal.path);
+			assert.isUndefined(config.persistLocal.actTemplate);
 		}),
 	);
 

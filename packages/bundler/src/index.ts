@@ -24,6 +24,7 @@ export {
 	BundleFailed,
 	CleanError,
 	PersistLocalError,
+	PersistPathError,
 	WriteError,
 } from "./action/ActionErrors.js";
 export type { ActionValidationRunOptions } from "./action/ActionValidation.js";
@@ -38,6 +39,7 @@ export {
 	ActionYmlRuns,
 } from "./action/ActionYml.js";
 export { PersistLocal, PersistLocalResult } from "./action/PersistLocal.js";
+export { PersistTarget, ResolvedPersist } from "./action/PersistTarget.js";
 export type {
 	BundlerBuildOptions,
 	BundlerPackageJson,

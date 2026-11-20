@@ -73,7 +73,7 @@ describe("EffectedConfigFile.load", () => {
 			assert.instanceOf(resolved.config.action, ActionConfig);
 			assert.strictEqual(resolved.config.action?.entries.main, "src/main.ts");
 			assert.strictEqual(resolved.config.action?.build.minify, true);
-			assert.strictEqual(resolved.config.action?.persistLocal.path, ".github/actions/local");
+			assert.isUndefined(resolved.config.action?.persistLocal.path);
 		}),
 	);
 

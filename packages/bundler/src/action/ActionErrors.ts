@@ -82,3 +82,25 @@ export class ActionYmlPathError extends Schema.TaggedError<ActionYmlPathError>()
 		return `action.yml runs.${this.entryType} is ${this.specifiedPath}, and ${this.expectedPath} does not exist`;
 	}
 }
+
+/**
+ * The persisted action path cannot be used.
+ *
+ * @remarks
+ * `outside-workspace` means it resolves beyond the workspace root, `inside-package` means a workspace-based path
+ * lands inside the package being built, and `dist-without-persist` means `dist = false` with nothing persisted.
+ *
+ * @public
+ */
+export class PersistPathError extends Schema.TaggedError<PersistPathError>()("PersistPathError", {
+	/** The path as configured, or the resolved output path. */
+	path: Schema.String,
+	/** Why it was refused. */
+	reason: Schema.Literals(["outside-workspace", "inside-package", "dist-without-persist"]),
+}) {
+	override get message(): string {
+		if (this.reason === "outside-workspace") return `The persist path ${this.path} is outside the workspace`;
+		if (this.reason === "inside-package") return `The persist path ${this.path} is inside the package being built`;
+		return "persistLocal.dist = false needs persistLocal.enabled, or the build is written nowhere";
+	}
+}

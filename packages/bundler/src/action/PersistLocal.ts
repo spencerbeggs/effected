@@ -153,8 +153,9 @@ export class PersistLocal {
 		Effect.fn("PersistLocal.persist")(function* (config: ActionConfig, options: { readonly cwd: string }) {
 			const fs = yield* FileSystem.FileSystem;
 			const path = yield* Path.Path;
-			const { enabled, actTemplate } = config.persistLocal;
-			const outputPath = path.resolve(options.cwd, config.persistLocal.path);
+			const { enabled } = config.persistLocal;
+			const actTemplate = config.persistLocal.actTemplate ?? true;
+			const outputPath = path.resolve(options.cwd, config.persistLocal.path ?? ".github/actions/local");
 			if (!enabled) {
 				return PersistLocalResult.make({ filesCopied: 0, filesSkipped: 0, actTemplateGenerated: false, outputPath });
 			}
