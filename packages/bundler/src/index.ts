@@ -32,6 +32,7 @@ export {
 	BundleFailed,
 	CheckUnavailable,
 	CleanError,
+	NoOutput,
 	PersistLocalError,
 	PersistPathError,
 	WriteError,

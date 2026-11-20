@@ -184,6 +184,10 @@ export interface ActionScaffoldInput {
 	readonly name: string;
 	/** What the action does, one line. */
 	readonly description: string;
+	/** Persist to the workspace root's `.github/actions/<name>` and keep no package `dist`. Omitted, false. */
+	readonly local?: boolean;
+	/** With `local`, whether to scaffold a `.gitignore` for `dist/` and `.action-staging/`. Omitted, true. */
+	readonly gitignore?: boolean;
 }
 
 /**
@@ -197,6 +201,8 @@ export interface ActionInitInput {
 	readonly description?: string;
 	/** Replace files that already exist. */
 	readonly force: boolean;
+	/** Scaffold the local-only shape: persist to the workspace root and keep no package `dist`. Omitted, false. */
+	readonly local?: boolean;
 }
 
 /**
@@ -226,18 +232,30 @@ const yamlString = (value: string): string =>
 	JSON.stringify(value).replace(/[\u007F-\u009F\u2028\u2029]/g, (character) => `\\u${codePoint(character).slice(2)}`);
 
 // The directive points tombi, taplo and other TOML editors at the published schema; tombi wants the blank line after it.
-const effectedToml = `${EffectedConfigSchema.directive}
+const tomlHead = `${EffectedConfigSchema.directive}
 
 # \`effected action build\` reads the [action] tables. A key left out takes its default.
 
 [action.entries]
 main = "src/main.ts"
+`;
 
+const effectedToml = `${tomlHead}
 # Copies each build to .github/actions/local, the target act and CI smoke-test.
 [action.persistLocal]
 enabled = true
 path = ".github/actions/local"
 `;
+
+// The directory under the workspace root defaults to .github/actions/<package directory name>, so no path is written.
+const localEffectedToml = `${tomlHead}
+# Persists each build to .github/actions/<package directory name> at the workspace root and keeps no package dist.
+[action.persistLocal]
+base = "workspace"
+dist = false
+`;
+
+const localGitignore = "dist/\n.action-staging/\n";
 
 const actionYml = (
 	input: ActionScaffoldInput,
@@ -359,11 +377,17 @@ export class ActionInit {
 	static plan(input: ActionScaffoldInput): ActionScaffold {
 		return ActionScaffold.make({
 			files: [
-				ActionScaffoldFile.make({ path: "effected.toml", contents: effectedToml }),
+				ActionScaffoldFile.make({
+					path: "effected.toml",
+					contents: input.local === true ? localEffectedToml : effectedToml,
+				}),
 				ActionScaffoldFile.make({ path: "action.yml", contents: actionYml(input) }),
 				ActionScaffoldFile.make({ path: "src/main.ts", contents: mainTs }),
 				ActionScaffoldFile.make({ path: "src/program.ts", contents: programTs }),
 				ActionScaffoldFile.make({ path: "tsconfig.json", contents: tsconfigJson }),
+				...(input.local === true && input.gitignore !== false
+					? [ActionScaffoldFile.make({ path: ".gitignore", contents: localGitignore })]
+					: []),
 			],
 			dependencies: DEPENDENCIES,
 			devDependencies: DEV_DEPENDENCIES,
@@ -566,9 +590,15 @@ export class ActionInit {
 		const description = blank(input.description) ? manifest.description : input.description;
 		if (blank(description)) return yield* new ActionMetadataMissingError({ field: "description" });
 
+		const fs = yield* FileSystem.FileSystem;
+		const local = input.local === true;
+		// An existing .gitignore is the package's own: the scaffold neither replaces nor conflicts with it.
+		const hasGitignore = local ? yield* fs.exists(path.join(cwd, ".gitignore")) : false;
 		const scaffold = ActionInit.plan({
 			name: yield* checked("name", name ?? ""),
 			description: yield* checked("description", description ?? ""),
+			local,
+			gitignore: !hasGitignore,
 		});
 		const { written, overwritten } = yield* ActionInit.write(scaffold, { cwd, force: input.force });
 		return ActionInitResult.make({

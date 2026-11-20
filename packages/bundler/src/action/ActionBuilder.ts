@@ -11,7 +11,7 @@ import type {
 	PersistPathError,
 	WriteError,
 } from "./ActionErrors.js";
-import { CheckUnavailable } from "./ActionErrors.js";
+import { CheckUnavailable, NoOutput } from "./ActionErrors.js";
 import { ActionValidation, ValidationResult } from "./ActionValidation.js";
 import { PersistLocal } from "./PersistLocal.js";
 import { PersistTarget } from "./PersistTarget.js";
@@ -76,6 +76,7 @@ export type ActionBuilderError =
 	| BuildFailed
 	| CheckFailed
 	| CheckUnavailable
+	| NoOutput
 	| BundleFailed
 	| CleanError
 	| WriteError
@@ -175,6 +176,7 @@ export class ActionBuilder {
 		if (check && (!options.persist || !target.enabled)) {
 			return yield* new CheckUnavailable({ reason: "persist-disabled" });
 		}
+		if (!target.keepDist && !options.persist && !check) return yield* new NoOutput({ reason: "dist-without-persist" });
 
 		const before = options.validate
 			? yield* ActionValidation.validate(config, cwd, { ci: options.ci, base: target.base })

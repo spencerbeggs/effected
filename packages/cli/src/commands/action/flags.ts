@@ -15,6 +15,10 @@ export const buildFlags = {
 		Flag.withDefault(false),
 		Flag.withDescription("Skip copying the build to the local action directory"),
 	),
+	check: Flag.Boolean("check").pipe(
+		Flag.withDefault(false),
+		Flag.withDescription("Build to a staging directory and fail if the committed build differs, writing nothing"),
+	),
 	watch: Flag.Boolean("watch").pipe(
 		Flag.withDefault(false),
 		Flag.withDescription("Rebuild whenever a source file or effected.toml changes, until interrupted"),
@@ -31,6 +35,12 @@ export const initFlags = {
 	description: Flag.String("description").pipe(
 		Flag.optional,
 		Flag.withDescription("What the action does, for action.yml; omitted, package.json's description"),
+	),
+	local: Flag.Boolean("local").pipe(
+		Flag.withDefault(false),
+		Flag.withDescription(
+			"Scaffold a local-only action: persist to .github/actions/<name> at the workspace root and keep no package dist",
+		),
 	),
 	force: Flag.Boolean("force").pipe(
 		Flag.withDefault(false),

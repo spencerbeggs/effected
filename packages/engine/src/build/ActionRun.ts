@@ -8,6 +8,7 @@ import type {
 	CheckUnavailable,
 	CleanError,
 	EffectedConfigError,
+	NoOutput,
 	PersistLocalError,
 	PersistPathError,
 	WriteError,
@@ -99,6 +100,7 @@ export class ActionRun {
 		| PersistLocalError
 		| PersistPathError
 		| CheckUnavailable
+		| NoOutput
 		| ActionYmlPathError
 		| PlatformError.PlatformError,
 		FileSystem.FileSystem | Path.Path

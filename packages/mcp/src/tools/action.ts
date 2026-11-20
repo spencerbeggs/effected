@@ -18,7 +18,7 @@ import { platformErrorHint } from "./package.js";
  */
 export const actionBuild = Tool.make("action_build", {
 	description:
-		"Builds one GitHub Action from the [action] table of its effected.toml into dist: validates the config and action.yml, bundles each entry into one file, and checks that each loads. It writes only dist unless persist is true, which also copies the build to .github/actions/local and generates .actrc and .github/workflows/act-test.yml. Validation stopping the build or an entry failing arrives as the result's verdict \"failed\", not as an error. Reloads the config on every call. The load check imports each bundle, which runs an action with no GITHUB_ACTIONS guard unless [action.build] importCheck is false; a worker's own table can set importCheck = false to skip that worker alone.",
+		"Builds one GitHub Action from the [action] table of its effected.toml into dist: validates the config and action.yml, bundles each entry into one file, and checks that each loads. It writes only dist unless persist is true, which also copies the build to .github/actions/local and generates .actrc and .github/workflows/act-test.yml. Validation stopping the build or an entry failing arrives as the result's verdict \"failed\", not as an error. With check true it writes nothing and compares the build with the committed persisted one. Reloads the config on every call. The load check imports each bundle, which runs an action with no GITHUB_ACTIONS guard unless [action.build] importCheck is false; a worker's own table can set importCheck = false to skip that worker alone.",
 	parameters: Schema.Struct({
 		cwd: Schema.optionalKey(
 			Schema.String.annotate({
@@ -35,6 +35,12 @@ export const actionBuild = Tool.make("action_build", {
 			Schema.Boolean.annotate({
 				description:
 					"Copy the build to .github/actions/local and generate .actrc and .github/workflows/act-test.yml when they are absent, unless the config disables it. Omitted, false.",
+			}),
+		),
+		check: Schema.optionalKey(
+			Schema.Boolean.annotate({
+				description:
+					"Build to a staging directory and compare it with the committed persisted build instead of writing it; the result's drift lists each file that is changed, missing or extra, and a drift is verdict failed. Writes nothing, and ignores persist. Refused when persistLocal is disabled. Omitted, false.",
 			}),
 		),
 	}),
@@ -73,6 +79,12 @@ export const actionInit = Tool.make("action_init", {
 		),
 		force: Schema.optionalKey(
 			Schema.Boolean.annotate({ description: "Replace files that already exist. Omitted, false." }),
+		),
+		local: Schema.optionalKey(
+			Schema.Boolean.annotate({
+				description:
+					"Scaffold a local-only action: persistLocal base workspace with dist false, so the build lands in .github/actions/<name> at the workspace root and the package keeps no dist, and a .gitignore when the package has none. Omitted, false.",
+			}),
 		),
 	}),
 	success: ActionInitResult,
@@ -132,9 +144,11 @@ const refusalOf = (error: ActionFailure, root: string): ToolRefusal => {
 		case "PersistLocalError":
 			return refuse(`Check that ${error.path} can be copied, or pass persist: false.`);
 		case "PersistPathError":
-			return refuse(`Change persistLocal.path in effected.toml (${error.reason}), or pass persist: false.`);
+			return refuse(`Fix [action.persistLocal] path in effected.toml (${error.reason}) and call the tool again.`);
 		case "CheckUnavailable":
 			return refuse("Persisting is disabled for this action, so there is nothing to check; enable persistLocal.");
+		case "NoOutput":
+			return refuse("persistLocal.dist = false keeps no package dist, so pass persist: true or set dist = true.");
 		case "ActionYmlPathError":
 			return refuse(`Point runs.${error.entryType} in action.yml at a built file, or pass persist: false.`);
 		case "ExclusiveTimeout":
@@ -169,6 +183,7 @@ export const makeActionHandlers = (options: PackageToolOptions, lane: Exclusive)
 							...(params.name !== undefined ? { name: params.name } : {}),
 							...(params.description !== undefined ? { description: params.description } : {}),
 							force: params.force ?? false,
+							local: params.local ?? false,
 						},
 						{ cwd: target(params.cwd) },
 					).pipe(Effect.mapError((error) => initRefusalOf(error, root)));
@@ -178,7 +193,12 @@ export const makeActionHandlers = (options: PackageToolOptions, lane: Exclusive)
 					if (params.cwd !== undefined) yield* inside(root, "cwd", params.cwd);
 					return yield* lane.run(
 						ActionRun.run(
-							{ validate: params.validate ?? true, persist: params.persist ?? false, check: false },
+							{
+								validate: params.validate ?? true,
+								// A check never writes and always compares against the persisted build, so persist is moot.
+								persist: params.check === true ? true : (params.persist ?? false),
+								check: params.check ?? false,
+							},
 							{
 								cwd: target(params.cwd),
 								ci: options.ci ?? false,

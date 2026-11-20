@@ -14,6 +14,7 @@ import {
 	BundleFailed,
 	CheckFailed,
 	CheckUnavailable,
+	NoOutput,
 	PersistPathError,
 	ValidationFailed,
 } from "../../src/index.js";
@@ -477,6 +478,28 @@ describe("ActionBuilder.build check mode", () => {
 				assert.instanceOf(disabled, CheckUnavailable);
 				if (disabled instanceof CheckUnavailable) assert.strictEqual(disabled.reason, "persist-disabled");
 			}).pipe(Effect.provide(Live)),
+		),
+	);
+	it.live("dist = false with persist off fails NoOutput before validating or bundling", () =>
+		withFiles(
+			{ ...Object.fromEntries(Object.entries(ACTION).map(([n, c]) => [`actions/one/${n}`, c])), "package.json": "{}" },
+			(root) =>
+				Effect.gen(function* () {
+					const cwd = join(root, "actions/one");
+					const error = yield* ActionBuilder.build({
+						...checkOptions,
+						check: false,
+						cwd,
+						root,
+						persist: false,
+						config: configOf({ persistLocal: { base: "workspace", dist: false } }),
+					}).pipe(Effect.flip);
+					assert.instanceOf(error, NoOutput);
+					if (error instanceof NoOutput) assert.strictEqual(error.reason, "dist-without-persist");
+					assert.isFalse(existsSync(join(cwd, "dist")));
+					assert.isFalse(existsSync(join(cwd, ".action-staging")));
+					assert.isFalse(existsSync(join(root, ".github")));
+				}).pipe(Effect.provide(Live)),
 		),
 	);
 });

@@ -204,6 +204,34 @@ describe("ActionRun.run", () => {
 		),
 	);
 
+	it.live("dist = false with persist off fails NoOutput", () =>
+		Effect.acquireUseRelease(
+			Effect.sync(() => {
+				const root = mkdtempSync(join(tmpdir(), "effected-action-run-no-output-"));
+				const files: Record<string, string> = {
+					"package.json": JSON.stringify({ name: "root", private: true }),
+					"pnpm-workspace.yaml": 'packages:\n  - "packages/*"\n',
+					"packages/one/package.json": JSON.stringify({ name: "one", version: "1.0.0" }),
+					"packages/one/effected.toml":
+						'[action.entries]\nmain = "src/main.ts"\n[action.persistLocal]\nbase = "workspace"\ndist = false\n',
+					"packages/one/action.yml": ACTION_YML,
+					"packages/one/src/main.ts": 'console.log("main");\n',
+				};
+				for (const [name, source] of Object.entries(files)) {
+					mkdirSync(dirname(join(root, name)), { recursive: true });
+					writeFileSync(join(root, name), source);
+				}
+				return root;
+			}),
+			(root) =>
+				Effect.gen(function* () {
+					const error = yield* run(join(root, "packages/one"), { persist: false }).pipe(Effect.flip);
+					assert.strictEqual(error._tag, "NoOutput");
+				}),
+			(root) => Effect.sync(() => rmSync(root, { recursive: true, force: true })),
+		),
+	);
+
 	it.live("workspace base persists at the root", () =>
 		Effect.acquireUseRelease(
 			Effect.sync(() => {

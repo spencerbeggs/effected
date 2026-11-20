@@ -26,6 +26,7 @@ const cli = (
 	files: Readonly<Record<string, string | null>> = GOOD,
 	env: Readonly<Record<string, string>> = {},
 	ci = false,
+	sub = "",
 ) =>
 	Effect.acquireUseRelease(
 		Effect.sync(() => {
@@ -40,7 +41,7 @@ const cli = (
 		(cwd) =>
 			Effect.gen(function* () {
 				const exit = yield* Effect.exit(
-					run({}, { cwd, ci }, environment(["action", "build", ...args], Live)).pipe(
+					run({}, { cwd: join(cwd, sub), ci }, environment(["action", "build", ...args], Live)).pipe(
 						Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: { ...env } }))),
 					),
 				);
@@ -69,6 +70,98 @@ const readdirSafe = (path: string): ReadonlyArray<string> => {
 };
 
 describe("effected action build", () => {
+	const nested = (files: Readonly<Record<string, string>>): Readonly<Record<string, string>> => ({
+		"package.json": JSON.stringify({ name: "root", private: true }),
+		"pnpm-workspace.yaml": 'packages:\n  - "actions/*"\n',
+		...Object.fromEntries(Object.entries(files).map(([name, source]) => [`actions/one/${name}`, source])),
+	});
+	const WORKSPACE_LOCAL = nested({
+		...GOOD,
+		"effected.toml":
+			'[action.entries]\nmain = "src/main.ts"\n[action.persistLocal]\nbase = "workspace"\ndist = false\n',
+	});
+
+	it.effect("--check with --watch exits 64 before any build", () =>
+		Effect.gen(function* () {
+			const { code, errText, dist, local } = yield* cli(["--check", "--watch"]);
+			assert.strictEqual(code, 64);
+			assert.include(errText, "--watch");
+			assert.deepStrictEqual(dist, []);
+			assert.deepStrictEqual(local, []);
+		}),
+	);
+
+	it.effect("--check with --no-persist exits 64 before any build", () =>
+		Effect.gen(function* () {
+			const { code, errText, dist } = yield* cli(["--check", "--no-persist"]);
+			assert.strictEqual(code, 64);
+			assert.include(errText, "--no-persist");
+			assert.deepStrictEqual(dist, []);
+		}),
+	);
+
+	it.effect("--check with persistLocal disabled exits 64", () =>
+		Effect.gen(function* () {
+			const { code } = yield* cli(["--check"], {
+				...GOOD,
+				"effected.toml": '[action.entries]\nmain = "src/main.ts"\n[action.persistLocal]\nenabled = false\n',
+			});
+			assert.strictEqual(code, 64);
+		}),
+	);
+
+	it.effect("--no-persist with dist = false exits 64 and builds nothing", () =>
+		Effect.gen(function* () {
+			const { code, errText, dist } = yield* cli(["--no-persist"], WORKSPACE_LOCAL, {}, false, "actions/one");
+			assert.strictEqual(code, 64);
+			assert.include(errText, "dist");
+			assert.deepStrictEqual(dist, []);
+		}),
+	);
+
+	it.effect("a persist path outside the workspace exits 2", () =>
+		Effect.gen(function* () {
+			const { code, errText } = yield* cli(
+				[],
+				nested({
+					...GOOD,
+					"effected.toml":
+						'[action.entries]\nmain = "src/main.ts"\n[action.persistLocal]\nbase = "workspace"\npath = "../../../outside"\n',
+				}),
+				{},
+				false,
+				"actions/one",
+			);
+			assert.strictEqual(code, 2);
+			assert.include(errText, "outside the workspace");
+		}),
+	);
+
+	it.effect("--check on a never-persisted action exits 1 and lists each drift in the human report", () =>
+		Effect.gen(function* () {
+			const { code, outText, errText, dist, local } = yield* cli(["--human", "--check"]);
+			assert.strictEqual(code, 1);
+			assert.include(errText, "differing from the committed build");
+			assert.include(outText, "Check");
+			assert.include(outText, "persisted: missing dist/main.js");
+			assert.deepStrictEqual(local, []);
+			assert.notInclude(dist, "main.js");
+		}),
+	);
+
+	it.effect("--check carries the drift in --format json", () =>
+		Effect.gen(function* () {
+			const { code, outText } = yield* cli(["--format", "json", "--check"]);
+			assert.strictEqual(code, 1);
+			const document = JSON.parse(outText) as {
+				readonly verdict: string;
+				readonly result: { readonly drift: ReadonlyArray<{ readonly target: string; readonly kind: string }> };
+			};
+			assert.strictEqual(document.verdict, "failed");
+			assert.isTrue(document.result.drift.some((entry) => entry.target === "persisted" && entry.kind === "missing"));
+		}),
+	);
+
 	it.effect("exits 0, prints one line per entry and the total, and persists", () =>
 		Effect.gen(function* () {
 			const { code, out, errText, dist, local } = yield* cli(["--human"]);

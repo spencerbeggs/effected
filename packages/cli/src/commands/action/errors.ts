@@ -14,11 +14,14 @@ export class ActionBuildFailedError extends Schema.TaggedError<ActionBuildFailed
 	errors: Schema.Number,
 	/** How many entries failed to bundle or load. */
 	failedEntries: Schema.Number,
+	/** How many files differ from the committed build under `--check`. */
+	drift: Schema.Number,
 }) {
 	override get message(): string {
 		const parts = [
 			...(this.errors > 0 ? [`${this.errors} validation error(s)`] : []),
 			...(this.failedEntries > 0 ? [`${this.failedEntries} failed entry(ies)`] : []),
+			...(this.drift > 0 ? [`${this.drift} file(s) differing from the committed build`] : []),
 		];
 		return parts.length > 0
 			? `The action build failed with ${parts.join(" and ")}.`

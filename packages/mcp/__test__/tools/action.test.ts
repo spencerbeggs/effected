@@ -23,6 +23,7 @@ interface ToolResult {
 	readonly structuredContent?: {
 		readonly verdict?: string;
 		readonly result?: {
+			readonly drift?: ReadonlyArray<{ readonly target?: string; readonly kind?: string; readonly path?: string }>;
 			readonly persisted?: boolean;
 			readonly validation?: { readonly errors?: ReadonlyArray<{ readonly code?: string }> };
 			readonly build?: { readonly entries?: ReadonlyArray<{ readonly error?: string }> };
@@ -62,22 +63,83 @@ const serving = <A, E>(
 	);
 
 describe("action_build", () => {
-	it("action_build takes no watch parameter", () => {
-		// The MCP tools stay one-shot: a watch belongs to the CLI, whose process a person or agent can interrupt.
-		assert.isFalse("watch" in actionBuild.parametersSchema.fields);
+	const nested = (files: Readonly<Record<string, string>>): Readonly<Record<string, string>> => ({
+		"package.json": JSON.stringify({ name: "root", private: true }),
+		"pnpm-workspace.yaml": 'packages:\n  - "actions/*"\n',
+		...Object.fromEntries(Object.entries(files).map(([name, source]) => [`actions/one/${name}`, source])),
+	});
+	const WORKSPACE_LOCAL = nested({
+		...GOOD,
+		"effected.toml":
+			'[action.entries]\nmain = "src/main.ts"\n[action.persistLocal]\nbase = "workspace"\ndist = false\n',
 	});
 
-	it.live("is listed with its output schema and its annotations, and the instructions name it", () =>
+	it("takes a check parameter", () => {
+		assert.isTrue("check" in actionBuild.parametersSchema.fields);
+	});
+
+	it.live("check: true on a never-persisted action is a failed verdict listing the drift, and writes nothing", () =>
+		serving(GOOD, (harness, cwd) =>
+			Effect.gen(function* () {
+				const result = resultOf(yield* harness.callTool("action_build", { check: true }));
+				assert.notStrictEqual(result.isError, true, textOf(result));
+				assert.strictEqual(result.structuredContent?.verdict, "failed");
+				assert.isAbove(result.structuredContent?.result?.drift?.length ?? 0, 0);
+				assert.deepStrictEqual(
+					readdirSync(cwd).filter((name) => name === ".github"),
+					[],
+				);
+			}),
+		),
+	);
+
+	it.live("check: true ignores persist: false and is ok once the build is persisted", () =>
 		serving(GOOD, (harness) =>
 			Effect.gen(function* () {
-				const tool = (yield* harness.listTools).find((candidate) => candidate.name === "action_build") as unknown as {
-					readonly outputSchema?: unknown;
-					readonly annotations?: { readonly readOnlyHint?: boolean };
-				};
-				assert.include(JSON.stringify(tool.outputSchema ?? {}), '"verdict"');
-				assert.strictEqual(tool.annotations?.readOnlyHint, false);
-				assert.include(SERVER_INSTRUCTIONS, "action_build");
+				yield* harness.callTool("action_build", { persist: true });
+				const result = resultOf(yield* harness.callTool("action_build", { check: true, persist: false }));
+				assert.strictEqual(result.structuredContent?.verdict, "ok", textOf(result));
+				assert.deepStrictEqual(result.structuredContent?.result?.drift, []);
 			}),
+		),
+	);
+
+	it.live("check: true with persistLocal disabled is a refusal", () =>
+		serving(
+			{ ...GOOD, "effected.toml": '[action.entries]\nmain = "src/main.ts"\n[action.persistLocal]\nenabled = false\n' },
+			(harness) =>
+				Effect.gen(function* () {
+					const result = resultOf(yield* harness.callTool("action_build", { check: true }));
+					assert.isTrue(result.isError);
+					assert.include(textOf(result), "nothing to check");
+				}),
+		),
+	);
+
+	it.live("dist = false without persist is a refusal telling the caller to pass persist: true", () =>
+		serving(WORKSPACE_LOCAL, (harness) =>
+			Effect.gen(function* () {
+				const result = resultOf(yield* harness.callTool("action_build", { cwd: "actions/one" }));
+				assert.isTrue(result.isError);
+				assert.include(textOf(result), "persist: true");
+			}),
+		),
+	);
+
+	it.live("an unusable persist path is a refusal naming the reason and the config key", () =>
+		serving(
+			nested({
+				...GOOD,
+				"effected.toml":
+					'[action.entries]\nmain = "src/main.ts"\n[action.persistLocal]\npath = "../../../outside"\nbase = "workspace"\n',
+			}),
+			(harness) =>
+				Effect.gen(function* () {
+					const result = resultOf(yield* harness.callTool("action_build", { cwd: "actions/one", persist: true }));
+					assert.isTrue(result.isError);
+					assert.include(textOf(result), "outside-workspace");
+					assert.include(textOf(result), "[action.persistLocal] path");
+				}),
 		),
 	);
 

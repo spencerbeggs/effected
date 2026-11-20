@@ -19,6 +19,17 @@ const entryLine = (entry: BundleResult): string => {
 const summaryOf = ({ build }: ActionBuildResult): string =>
 	`built ${build.entries.filter((entry) => entry.success).length} entries in ${build.duration}ms`;
 
+/** The Check section: each drift as `<target>: <kind> <path>`, or that the build matches. Absent unless a check ran. */
+const checkLines = ({ drift }: ActionBuildResult): ReadonlyArray<string> =>
+	drift === undefined
+		? []
+		: [
+				"Check",
+				...(drift.length === 0
+					? ["  matches the committed build"]
+					: drift.map((entry) => `  ${entry.target}: ${entry.kind} ${entry.path}`)),
+			];
+
 /** A warning as its first line, indented under the entry it belongs to. */
 const warningLines = (entry: BundleResult): ReadonlyArray<string> =>
 	(entry.warnings ?? []).map((warning) => `  ${warning.trim().split("\n")[0]}`);
@@ -37,6 +48,7 @@ export class ActionDoc {
 			...result.validation.errors.map(issueLine),
 			...result.validation.warnings.map(issueLine),
 			...result.build.entries.flatMap((entry) => [entryLine(entry), ...warningLines(entry)]),
+			...checkLines(result),
 			summaryOf(result),
 		];
 	}
@@ -56,6 +68,9 @@ export class ActionDoc {
 				Doc.text(entryLine(entry), entry.success ? "success" : "error"),
 				...warningLines(entry).map((line) => Doc.text(line, "warning")),
 			]),
+			...checkLines(result).map((line) =>
+				Doc.text(line, line.startsWith("  ") && result.drift?.length !== 0 ? "error" : "success"),
+			),
 			Doc.text(summaryOf(result), result.build.success ? "success" : "error"),
 		];
 		return Doc.lines(rows, { wrap: false });

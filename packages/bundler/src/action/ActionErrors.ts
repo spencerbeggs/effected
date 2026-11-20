@@ -124,3 +124,21 @@ export class CheckUnavailable extends Schema.TaggedError<CheckUnavailable>()("Ch
 		return "Nothing is persisted, so there is no committed build to check";
 	}
 }
+
+/**
+ * The run would keep no output at all: the package's `dist` is not kept (`persistLocal.dist = false`) and this run
+ * persists nothing.
+ *
+ * @remarks
+ * Raised before validating or bundling, so nothing is written. Persist the run, or keep `dist`.
+ *
+ * @public
+ */
+export class NoOutput extends Schema.TaggedError<NoOutput>()("NoOutput", {
+	/** Why there is no output. */
+	reason: Schema.Literals(["dist-without-persist"]),
+}) {
+	override get message(): string {
+		return "persistLocal.dist = false keeps no dist, and this run persists nothing, so the build would be written nowhere";
+	}
+}
