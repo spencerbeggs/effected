@@ -112,6 +112,23 @@ describe("ActionCheck.compare", () => {
 		),
 	);
 
+	it.effect("an absent persisted dir reports every file missing, sorted", () =>
+		inVolume(
+			{
+				[`${PERSISTED}/action.yml`]: null,
+				[`${PERSISTED}/dist/main.js`]: null,
+				[`${PERSISTED}/dist/lib/util.js`]: null,
+			},
+			Effect.gen(function* () {
+				assert.deepStrictEqual(yield* persisted(), [
+					new DriftEntry({ target: "persisted", path: "action.yml", kind: "missing" }),
+					new DriftEntry({ target: "persisted", path: "dist/lib/util.js", kind: "missing" }),
+					new DriftEntry({ target: "persisted", path: "dist/main.js", kind: "missing" }),
+				]);
+			}),
+		),
+	);
+
 	it.effect("action.yml is compared when included", () =>
 		inVolume(
 			{ [`${PERSISTED}/action.yml`]: "name: y\n" },

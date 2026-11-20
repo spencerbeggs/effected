@@ -432,6 +432,31 @@ describe("ActionBuilder.build check mode", () => {
 		),
 	);
 
+	it.live("check on a never-persisted action reports everything missing and creates nothing", () =>
+		withFiles(ACTION, (cwd) =>
+			Effect.gen(function* () {
+				const error = yield* ActionBuilder.build({ ...checkOptions, cwd, root: cwd, config: configOf() }).pipe(
+					Effect.flip,
+				);
+				assert.instanceOf(error, CheckFailed);
+				if (error instanceof CheckFailed) {
+					const persisted = error.drift.filter((entry) => entry.target === "persisted");
+					assert.deepStrictEqual(
+						persisted.map((entry) => [entry.path, entry.kind]),
+						[
+							["action.yml", "missing"],
+							["dist/main.js", "missing"],
+							["dist/package.json", "missing"],
+						],
+					);
+					assert.isTrue(error.drift.every((entry) => entry.kind === "missing"));
+				}
+				assert.isFalse(existsSync(join(cwd, ".github")));
+				assert.isFalse(existsSync(join(cwd, ".action-staging")));
+			}).pipe(Effect.provide(Live)),
+		),
+	);
+
 	it.live("check without persist fails CheckUnavailable", () =>
 		withFiles(ACTION, (cwd) =>
 			Effect.gen(function* () {
