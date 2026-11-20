@@ -7,6 +7,7 @@ applies:
   "@effected/bundler": ">=0.7.0"
   "@effected/cli": ">=0.33.0"
 detect: ["PersistLocal\\.persist\\(", "ActionBuilder\\.build\\(", "ActionBundle\\.build\\(", "persistLocal\\??\\.(path|actTemplate)", "ActionBuildFailedError"]
+changesets: ["local-only-actions-bundler", "local-only-actions-cli"]
 ---
 
 This applies only to code that calls `@effected/bundler`'s action build helpers directly, or builds an `ActionBuildFailedError`. A repository that builds through `effected action build` needs no change, and `[action.persistLocal]` keeps working as written: a config with no new key behaves as before.
