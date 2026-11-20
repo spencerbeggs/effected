@@ -1,13 +1,15 @@
 import type { AnnotationProperties } from "@effected/github-commands";
 import { CommandNeutralizer, WorkflowCommand } from "@effected/github-commands";
-import type { Cause, Duration } from "effect";
+import type { Cause } from "effect";
 import {
 	Cause as CauseModule,
 	Clock,
 	Console,
 	Context,
+	Duration,
 	Effect,
 	Exit,
+	Fiber,
 	Inspectable,
 	Layer,
 	LogLevel,
@@ -292,12 +294,16 @@ const stepOutcome = <A, E>(name: string, exit: Exit.Exit<A, E>, options: StepOpt
 /**
  * The logger a step runs under: warnings and errors go out live and count against the step and every step around it;
  * everything below `Warn` is the step's detail.
+ *
+ * @remarks
+ * A warning is written through the run's console, the one the step opened under, not the fiber's: inside the step the
+ * fiber's console is the capturing one, which would count the annotation a second time.
  */
 const stepLogger = (frame: StepFrame): Logger.Logger<unknown, void> =>
 	Logger.make((options) => {
 		if (LogLevel.isGreaterThanOrEqualTo(options.logLevel, "Warn")) {
 			StepLog.countAnnotation(frame, LogLevel.isGreaterThanOrEqualTo(options.logLevel, "Error") ? "error" : "warning");
-			commandLogger.log(options);
+			frame.run.console.log(renderLogger.log(options));
 			return;
 		}
 		StepLog.detail(frame, formatMessage(options.message));
@@ -445,9 +451,21 @@ export interface ActionLoggerShape {
 	 * Run an effect as a step: its detail held, one result line when it ends.
 	 *
 	 * @remarks
-	 * The detail is every log line below `Warn`, `Debug` and `Trace` included whatever the ambient minimum level, and
-	 * every line a nested {@link ActionLoggerShape.group} or step writes. Warnings and errors are never held: they go out
+	 * The detail is every log line below `Warn`, `Debug` and `Trace` included whatever the ambient minimum level, every
+	 * line a nested {@link ActionLoggerShape.group} or step writes, and every line written straight to `Console` inside
+	 * the step (`@effected/cli-kit`'s renderers, a raw `Console.log`). A workflow command written to `Console` is not
+	 * detail: it goes out at once, so an `::add-mask::` reaches the runner before the secret can appear in any line,
+	 * except a group command, which becomes a `▸ <title>` header line. Warnings and errors are never held: they go out
 	 * as annotations the moment they happen, and the result line counts them.
+	 *
+	 * The step's window ({@link StepOptions.window}, 30 seconds by default) is how long the detail is held. A step that
+	 * runs past it goes live: it writes `… <name> is taking longer than <window>, showing live output`, everything held
+	 * so far, then each detail line as it happens, indented, and finally its result line, unfolded, with the same marks.
+	 * A window of zero streams from the start, with the opening line `… <name>`; runner debug (`RUNNER_DEBUG=1`) or an
+	 * ambient minimum log level of `Debug` or lower makes every window zero. Only the outermost open step has a window:
+	 * an inner step's own is ignored, and when the outer step is live the inner result lines print as they finish.
+	 * While two or more steps stream at once, each live detail line is prefixed `[<name>]  ` with its outermost step's
+	 * name.
 	 *
 	 * The result line is `<mark> <summary or name> · <duration>`, the mark `✓` for a success, `⚠` for a success that
 	 * logged a warning or an error, or in which a nested step failed and was recovered from (here or in any step
@@ -464,8 +482,9 @@ export interface ActionLoggerShape {
 	 * renderers write plain lines rather than a group the runner cannot nest. A step opened inside a `group` cannot fold
 	 * either, and writes its result line with the detail indented beneath it.
 	 *
-	 * Every line passes through `CommandNeutralizer.text`, so no detail line can be a workflow command. Text written
-	 * straight to `Console` inside a step is not detail and goes out at once.
+	 * Every line passes through `CommandNeutralizer.text`, so no detail line can be a workflow command. A fiber forked
+	 * inside a step that logs after the step has ended is not dropped: its lines print as ordinary log lines, unindented
+	 * and unprefixed, and a step it opens is a new outermost step.
 	 */
 	readonly step: <A, E, R>(
 		name: string,
@@ -494,8 +513,42 @@ export interface ActionLoggerShape {
 	) => Effect.Effect<A, E, R>;
 }
 
+/** The window a step declares by default. */
+const DEFAULT_WINDOW = "30 seconds";
+
 const make = Effect.gen(function* () {
 	const env = yield* ActionEnvironment;
+	/** The runs streaming live, shared by every step this logger opens, for the `[<name>]` prefix. */
+	const streaming = new Set<StepLog.StepRun>();
+
+	/** An outermost step's window: zero under runner debug or an ambient `Debug` minimum, else the declared one. */
+	const windowFor = (declared: Duration.Input | undefined, minimum: LogLevel.LogLevel) =>
+		Effect.gen(function* () {
+			const debug = yield* env.isDebug;
+			return debug || LogLevel.isLessThanOrEqualTo(minimum, "Debug")
+				? Duration.zero
+				: Duration.fromInputUnsafe(declared ?? DEFAULT_WINDOW);
+		});
+
+	/**
+	 * Start an outermost step's window: live at once for a zero window, else a timer that switches it live when the
+	 * window passes. The timer is interrupted when the step ends; a timer that fires as the step closes finds the run
+	 * closed and does nothing.
+	 */
+	const armWindow = (frame: StepFrame, declared: Duration.Input | undefined) =>
+		Effect.flatMap(windowFor(declared, frame.run.minimum), (window) =>
+			Duration.isZero(window)
+				? Effect.as(
+						Effect.sync(() => StepLog.goLive(frame.run, StepLog.opening(frame.name, undefined))),
+						undefined,
+					)
+				: Effect.forkChild(
+						Effect.andThen(
+							Effect.sleep(window),
+							Effect.sync(() => StepLog.goLive(frame.run, StepLog.opening(frame.name, Duration.format(window)))),
+						),
+					),
+		);
 
 	/** A `▸ <name>` header: a line of the open step's detail, or written out when no step is open. */
 	const writeHeader = (name: string) =>
@@ -517,20 +570,30 @@ const make = Effect.gen(function* () {
 
 	const step = <A, E, R>(name: string, effect: Effect.Effect<A, E, R>, options?: StepOptions<A>) =>
 		Effect.gen(function* () {
-			const parent = yield* StepLog.ActiveStep;
+			const active = yield* StepLog.ActiveStep;
+			// A step whose run has closed is no parent: a fiber forked inside it outlived it, and opens a fresh step.
+			const parent = active !== null && active.run.mode !== "closed" ? active : null;
 			const depth = yield* GroupDepth;
-			const console = yield* Console.Console;
+			// The real console: inside a step the fiber's console is the capturing one.
+			const console = active === null ? yield* Console.Console : active.run.console;
+			const canFold = active === null ? depth === 0 : active.run.canFold;
+			const minimum = active === null ? yield* References.MinimumLogLevel : active.run.minimum;
 			const started = yield* Clock.currentTimeMillis;
-			const frame = StepLog.open(name, parent, console, depth === 0);
+			const frame = StepLog.open(name, parent, console, canFold, streaming, minimum);
+			const timer = parent === null ? yield* armWindow(frame, options?.window) : undefined;
 			return yield* effect.pipe(
 				// `All` so Debug and Trace are detail whatever the ambient level: the git transcript is Debug.
 				Effect.provideService(References.MinimumLogLevel, "All"),
 				Effect.provideService(Logger.CurrentLoggers, new Set([stepLogger(frame)])),
 				Effect.provideService(StepLog.ActiveStep, frame),
 				Effect.provideService(GroupDepth, depth + 1),
+				Effect.provideService(Console.Console, StepLog.capture(frame)),
 				Effect.onExit((exit) =>
-					Effect.flatMap(Clock.currentTimeMillis, (ended) =>
-						Effect.sync(() => StepLog.close(frame, stepOutcome(name, exit, options), ended - started)),
+					Effect.andThen(
+						timer === undefined ? Effect.void : Fiber.interrupt(timer),
+						Effect.flatMap(Clock.currentTimeMillis, (ended) =>
+							Effect.sync(() => StepLog.close(frame, stepOutcome(name, exit, options), ended - started)),
+						),
 					),
 				),
 			);
