@@ -13,6 +13,9 @@ The programmatic surface changed shape with it:
 * `PersistLocal.persist(resolved, { cwd, distDir })` takes the working directory and the bundle directory explicitly.
 * `ActionBuilderOptions` requires `root` (the workspace root) and `check`.
 * `ActionBundle.build` takes an `outDir`.
+* `ActionValidationRunOptions` requires `base`, so `ActionValidation.validate(config, cwd, { ci })` must now pass `{ ci, base }`.
+
+A package-based `path` that was accepted before is now refused with `PersistPathError` (exit 2 from the CLI) when it resolves outside the workspace, is or contains the package, lands in the package's `dist/` or `.action-staging/`, or is or lies inside another package.
 
 ## Features
 
@@ -32,7 +35,7 @@ dist = false
 
 ### Persist path safety
 
-A new `PersistTarget.resolve` refuses a persist path that falls outside the workspace, or that sits inside or contains the package, with a `PersistPathError`. An action built with `base = "workspace"` that bundles externals now warns, since the persisted copy has no `node_modules` beside it.
+A new `PersistTarget.resolve` refuses a persist path that falls outside the workspace, that sits inside or contains the package, or that is or lies inside another package (`reason: "inside-other-package"`, naming it in `packageDir`), with a `PersistPathError`. An action built with `base = "workspace"` that bundles externals now warns, since the persisted copy has no `node_modules` beside it.
 
 ### Check mode
 

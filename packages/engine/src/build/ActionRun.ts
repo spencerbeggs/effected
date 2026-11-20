@@ -79,6 +79,10 @@ const failedResult = (
  * not start or finish: no `package.json`, a config that will not load, no `[action]` table, an entry that is missing
  * with validation off, and a file that cannot be cleaned, written or persisted.
  *
+ * With `check`, it writes nothing and a check that finds drift is the verdict `failed` with `result.drift`; the error
+ * channel adds `CheckUnavailable` (nothing persisted to compare), `NoOutput` (`dist = false` with persisting off) and
+ * `PersistPathError` (a persist path the bundler refuses).
+ *
  * It appends to no journal: the build and issue journals record package builds only.
  *
  * @public

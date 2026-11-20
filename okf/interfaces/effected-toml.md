@@ -31,10 +31,10 @@ sources:
     resource: ../../packages/bundler/lib/configs/schemastore.config.ts
 generated:
   by: "claude-code/sonnet-5.5"
-  at: 2026-11-20T17:18:13Z
+  at: 2026-11-20T17:34:26Z
 integrity:
   generated:
-    body: 8d22a2450e8bff28
+    body: 918c45108b89a461
 ---
 
 # effected.toml: the build config's tables, defaults and discovery
@@ -238,10 +238,10 @@ The config tier of the emitted `bundle.json`, ranked over the package's and the 
 | `[action.persistLocal]` | `enabled` | `true` | Copies the build locally |
 | | `base` | `"package"` | What `path` resolves against: `"package"`, or `"workspace"` for the workspace root |
 | | `path` | `.github/actions/local` under `"package"`; `.github/actions/<package directory basename>` under `"workspace"` | The persisted action directory, relative to `base` |
-| | `dist` | `true` | Whether the package keeps its own `dist/`. `false` stages the bundles in `<package>/.action-staging`, removed after every build, and the persisted directory is the only output |
+| | `dist` | `true` | Whether the package keeps its own `dist/`. `false` stages the bundles in `<package>/.action-staging`, removed after every build, and the persisted directory is the only output; `--check` stages there too, and removes it afterwards, whatever `dist` is |
 | | `actTemplate` | `true` under `"package"`, `false` under `"workspace"` | Generates `.actrc` and `act-test.yml` when they do not exist; under `"workspace"` they are written at the workspace root |
 
-A `path` that falls outside the workspace, inside the package under `base = "workspace"`, or equal to or containing the package is refused as a config error (exit 2), as is `dist = false` with `enabled = false`, since the build would have no output. Under `base = "workspace"` a non-empty `[action.build] externals` warns, and is an error in strict mode or under CI, because the committed action has no `node_modules`.
+A `path` that falls outside the workspace, inside the package under `base = "workspace"`, inside the package's `dist/` or `.action-staging/` under `base = "package"`, equal to or containing the package, or at or inside another package (a directory below the root holding a `package.json`) is refused as a config error (exit 2), as is `dist = false` with `enabled = false`, since the build would have no output. Under `base = "workspace"` a non-empty `[action.build] externals` warns, and is an error in strict mode or under CI, because the committed action has no `node_modules`. Two packages with the same directory basename, such as `actions/one` and `tools/one`, both default to `.github/actions/one` under `base = "workspace"` and nothing refuses it, so set `path` explicitly for each.
 
 There is no key for keeping a package's dynamic imports native, and writing one fails like any unknown key.
 

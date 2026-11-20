@@ -31,8 +31,9 @@ import { main } from "@effected/mcp/main";
   the directory is not a package or lies outside the workspace root, or another
   build of the same package held its build lock for the whole wait.
 - **`action_build`** — `effected action build` as a tool (`cwd?`, `validate?`,
-  `persist?`, `check?`). `persist` defaults to false, so it writes only `dist`;
-  `true` also writes the `[action.persistLocal]` directory (default
+  `persist?`, `check?`). `persist` defaults to false, so it writes only `dist`,
+  and under `[action.persistLocal] dist = false` that call is refused and
+  writes nothing; `true` also writes the `[action.persistLocal]` directory (default
   `.github/actions/local`), `.actrc` and `.github/workflows/act-test.yml`.
   `check: true` writes nothing, ignores `persist`, and answers `result.drift`
   for each changed, missing or extra file; drift is the verdict `failed`.

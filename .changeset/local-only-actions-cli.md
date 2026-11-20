@@ -4,7 +4,9 @@
 
 ## Breaking Changes
 
-`ActionBuildFailedError` gained a required `drift` field. Code that constructs it directly must supply the field (an empty array when there is no drift); code that only catches it is unaffected.
+`ActionBuildFailedError` gained a required `drift` field. Code that constructs it directly must supply the field (`drift: 0` when there is no drift); code that only catches it is unaffected.
+
+A `[action.persistLocal] path` that `effected action build` used to accept now exits 2 when it resolves outside the workspace, is or contains the package, lands in the package's `dist/` or `.action-staging/`, or is or lies inside another package.
 
 ## Features
 
