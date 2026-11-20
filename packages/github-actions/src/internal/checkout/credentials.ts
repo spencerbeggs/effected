@@ -155,6 +155,37 @@ const homeDirectory = (env: ActionEnvironment["Service"]): Effect.Effect<Option.
 		Option.isSome(home) ? Effect.succeed(home) : env.getOptional("USERPROFILE"),
 	);
 
+/**
+ * Creates the temporary global config a checkout runs under and, when
+ * `settings.safeDirectory`, marks the repository a `safe.directory` in it, as
+ * checkout does before it touches an existing directory. A failed
+ * `safe.directory` write is logged and the run continues, as checkout's is.
+ *
+ * @internal
+ */
+export const prepareGlobalConfig = (
+	settings: Settings,
+	git: GitShape,
+): Effect.Effect<
+	string,
+	PlatformError.PlatformError | ActionEnvironmentError,
+	ActionEnvironment | FileSystem.FileSystem | Path.Path | SecureRandom.SecureRandom
+> =>
+	Effect.gen(function* () {
+		const env = yield* ActionEnvironment;
+		const path = yield* Path.Path;
+		const file = yield* temporaryGlobalConfig(yield* homeDirectory(env), yield* env.get("RUNNER_TEMP"));
+		if (settings.safeDirectory) {
+			yield* Effect.logInfo("Adding repository directory to the temporary git global config as a safe directory");
+			yield* git
+				.configAdd(path.dirname(file), "safe.directory", settings.path, { file })
+				.pipe(
+					Effect.catch((error) => Effect.logInfo(`Failed to initialize safe directory with error: ${error.message}`)),
+				);
+		}
+		return file;
+	});
+
 /** The values checkout rewrites to HTTPS: `git@<host>:` and, from the event payload, `org-<id>@github.com:`. */
 const insteadOfValues = (env: ActionEnvironment["Service"], serverUrl: string): Effect.Effect<ReadonlyArray<string>> =>
 	Effect.gen(function* () {
@@ -220,11 +251,16 @@ const icacls = (args: ReadonlyArray<string>) =>
  * in `runEnv` as `GIT_CONFIG_GLOBAL`. Any previous credential layout is
  * removed first.
  *
+ * Pass `existing.temporaryGlobalConfig` when the caller already made the
+ * temporary global config (and wrote `safe.directory` into it), as checkout
+ * does before it prepares an existing directory; it is then used as is.
+ *
  * @internal
  */
 export const configure = (
 	settings: Settings,
 	git: GitShape,
+	existing?: { readonly temporaryGlobalConfig?: string },
 ): Effect.Effect<
 	{ readonly record: CredentialRecord; readonly runEnv: Record<string, string> },
 	CredentialError,
@@ -261,7 +297,10 @@ export const configure = (
 
 		const runEnv: Record<string, string> = {};
 		let globalConfig = Option.none<string>();
-		if (settings.safeDirectory || settings.submodules) {
+		if (existing?.temporaryGlobalConfig !== undefined) {
+			globalConfig = Option.some(existing.temporaryGlobalConfig);
+			runEnv.GIT_CONFIG_GLOBAL = existing.temporaryGlobalConfig;
+		} else if (settings.safeDirectory || settings.submodules) {
 			const file = yield* temporaryGlobalConfig(yield* homeDirectory(env), runnerTemp);
 			globalConfig = Option.some(file);
 			runEnv.GIT_CONFIG_GLOBAL = file;

@@ -1,4 +1,13 @@
+import type { Git, GitCommandError, NotARepositoryError, UnknownRefError } from "@effected/git";
+import type { FileSystem, Path, PlatformError, Scope } from "effect";
 import { Effect, Schema } from "effect";
+import type { SecureRandom } from "effect/crypto";
+import type { ChildProcessSpawner } from "effect/process";
+import type { ActionEnvironment, ActionEnvironmentError } from "./ActionEnvironment.js";
+import type { ActionLogger } from "./ActionLogger.js";
+import type { ActionOutputs } from "./ActionOutputs.js";
+import type { ActionState, ActionStateError } from "./ActionState.js";
+import { getSource } from "./internal/checkout/source.js";
 
 const Sha = Schema.String;
 
@@ -285,9 +294,58 @@ export type CheckoutError =
  * @public
  */
 export class Checkout {
-	/** Checks a repository out. Not yet implemented. */
-	static readonly checkout = (_options: CheckoutOptions): Effect.Effect<CheckoutResult, CheckoutError> =>
-		Effect.die("not implemented");
+	/**
+	 * Checks a repository out, in the stock checkout action's order: version
+	 * check, unsafe pull request guard, directory preparation, `init`, auth,
+	 * default branch, one fetch, ref verification, LFS, sparse set, checkout,
+	 * submodules.
+	 *
+	 * @remarks
+	 * Requires git 2.39.0 or later and fails {@link CheckoutGitTooOldError}
+	 * before any other git runs. Every secret is masked first.
+	 *
+	 * An existing repository of the same remote is reused (lock files removed,
+	 * `HEAD` detached, local and conflicting remote-tracking branches deleted,
+	 * and with `clean` a `clean -ffdx` and `reset --hard HEAD`); any other
+	 * directory has its contents deleted. The fetch, the default branch lookup
+	 * and the LFS fetch are retried, as the stock action retries them, and the
+	 * network steps run under a 30 minute ceiling.
+	 *
+	 * The credentials' lifetime is `options.credentials`: `"job"` saves what
+	 * was written under `stateKey` before any fetch, for {@link Checkout.cleanup}
+	 * in the post step; `"action"` removes it when the enclosing `Scope`
+	 * closes, on success, failure or interruption; `"none"` removes it before
+	 * this returns. The temporary global config holding `safe.directory` is
+	 * discarded when this returns, whatever the lifetime.
+	 *
+	 * The log is one phase, `Checkout <owner>/<name> @ <ref>`, with one step
+	 * per phase of work; each step's detail is the git transcript. The
+	 * repository's object format and default branch come from the GitHub API:
+	 * through the ambient `GitHubClient` when one is provided, else a client
+	 * built from the checkout's own token.
+	 */
+	static readonly checkout = (
+		options: CheckoutOptions,
+	): Effect.Effect<
+		CheckoutResult,
+		| CheckoutError
+		| GitCommandError
+		| NotARepositoryError
+		| UnknownRefError
+		| ActionStateError
+		| ActionEnvironmentError
+		| PlatformError.PlatformError,
+		| Scope.Scope
+		| Git
+		| FileSystem.FileSystem
+		| Path.Path
+		| ChildProcessSpawner.ChildProcessSpawner
+		| SecureRandom.SecureRandom
+		| ActionEnvironment
+		| ActionOutputs
+		| ActionState
+		| ActionLogger
+	> => getSource(options);
 
 	/** Runs the post-job cleanup. Not yet implemented. */
 	static readonly cleanup = (): Effect.Effect<void> => Effect.die("not implemented");
