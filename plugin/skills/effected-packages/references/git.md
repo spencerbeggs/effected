@@ -1,11 +1,11 @@
 # @effected/git
 
-Typed git over core's `ChildProcessSpawner`: **76 service members in two
-tiers** — a read tier (36 members) that reads a repository's state at any ref
+Typed git over core's `ChildProcessSpawner`: **84 service members in two
+tiers** — a read tier (38 members) that reads a repository's state at any ref
 without touching the working tree, including the one network read (`lsRemote`)
-and the index read (`lsFiles`), plus a clearly-marked mutating tier (40
-members: checkout/fetch, the restore trio, stash, branches, tags, remotes,
-worktrees, `commit`/`push`/`pull`, submodules, sparse checkout, config writes
+and the index read (`lsFiles`), plus a clearly-marked mutating tier (46
+members: init, checkout/fetch, the restore trio, stash, branches, tags, remotes,
+worktrees, `commit`/`push`/`pull`, submodules, sparse checkout, LFS, config writes
 and staging) that changes it — nothing serializes concurrent access, so a
 caller running two mutating calls (or a mutating call alongside a read)
 against the same `cwd` owns the race. Alongside the service sits a **pure
@@ -17,8 +17,8 @@ the consumer's platform layer.
 ## Import
 
 ```ts
-import { Git, GitCommand, GitConfig, GitFile, Gitmodules, GitRemote, TreeIdentity, UpstreamBranch } from "@effected/git";
-import type { GitConfigScope, GitInvocation, GitLocateOptions, GitRemoteForm, GitShape, TreeRelation } from "@effected/git";
+import { Git, GitCommand, GitConfig, GitFile, GitVersion, Gitmodules, GitRemote, TreeIdentity, UpstreamBranch } from "@effected/git";
+import type { GitConfigScope, GitInvocation, GitRunOptions, GitLocateOptions, GitRemoteForm, GitShape, TreeRelation } from "@effected/git";
 ```
 
 Single entrypoint; no subpaths.
@@ -35,7 +35,7 @@ need nothing at all; they are pure.
   explicitly; every failure is one of the typed errors below or a documented
   non-error degradation (`Option.none()`, `false`, `[]`).
 
-### Read tier (36 members; `R = never`)
+### Read tier (38 members; `R = never`)
 
 | Group | Members | Notes |
 | --- | --- | --- |
@@ -46,16 +46,17 @@ need nothing at all; they are pure.
 | Repo facts | `repoRoot` (PHYSICAL — symlinks resolved), `commonDir` (the absolute, symlink-resolved directory a repo shares with all its linked worktrees; git 2.31+), `treeIdentity` (`Option<TreeIdentity>` — `{ toplevel, commonDir }` in one spawn; `None` outside a working tree, bare repositories and `.git` included; git 2.31+), `currentBranch` (`None` on detached `HEAD`, never the literal `"HEAD"`), `defaultBranch` (`None` when `origin/HEAD` is unset), `isShallow`, `commitInfo` (`CommitInfo`; raw untrimmed message) | `isShallow` is a dedicated predicate, deliberately not folded into `revParse`. Relate two checkouts with `TreeIdentity.relation(a, b)` (dual) → `"same-tree" \| "sibling-worktree" \| "different-repo"`; `commonDir(a) === commonDir(b)` alone answers "same repository" — `repoRoot` differs per worktree. Both paths are git's physical, true-case answers, so no `realPath` step is needed — but compare them only with other git answers, never with a caller-spelled path. Bound an upward walk by `repoRoot` with `@effected/walker`'s `Walker.ascendWithin`, never `ascend`'s lexical `stopAt`. **Inside a git hook pass `{ ignoreRepositoryEnv: true }`** (`GitLocateOptions`, on `repoRoot`, `commonDir`, `treeIdentity` and `diffFile` only): git exports `GIT_DIR` to a hook, and a child git that inherits it with no `GIT_WORK_TREE` answers `cwd` itself as the toplevel. The option removes the `git rev-parse --local-env-vars` list from the child's environment; it is off by default because staged reads in a hook must keep `GIT_INDEX_FILE` |
 | Config reads | `configGet` (`None` when unset), `configGetAll` (`[]` when unset), `configList` (`ConfigListEntry[]`); `configGet` and `configList` take `{ scope?: GitConfigScope }` (`"local"` / `"global"` / `"system"` / `"worktree"`), `configGetAll` does NOT | **Omitted `scope` means the MERGED read** — repository plus global plus system — so a globally set key shadows what this checkout itself declares; pass `{ scope: "local" }` for the precise read. `configList` additionally takes `file`, and `file` + `scope` together fail typed (git accepts only one source). `configList` splits at the first newline so multi-line values survive |
 | Remotes / network | `remoteUrl` (`None` when the remote doesn't exist; the URL **after** `url.<base>.insteadOf` rewrites — for the URL as written, persisted or compared across machines, read `configGet(cwd, "remote.<name>.url")`), `lsRemote` (`LsRemoteEntry[]` — the ONE network read, still a read) | `LsRemoteEntry.shortName` and `.nearMatches` are pure decode-side statics; the near-miss suggestion policy lives on the entry VALUE, not the service |
+| Versions / default branch | `version` (`GitVersion`: `parse`, `compare`, `atLeast`), `remoteHead` (`Option<string>` — the full ref a remote's `HEAD` points at, via `ls-remote --symref`; none when the remote has no `HEAD` symref) | `remoteHead` is a network read; its silent exit 2 degrades to `None` (`exitTwoAbsent`) |
 | Misc | `stashList` (`StashEntry[]` — array position IS the current stash index), `worktreeList` (`WorktreeEntry[]`), `submoduleStatus` (`SubmoduleStatusEntry[]`), `checkIgnore` (`[]` when nothing is ignored) | |
 
-### Mutating tier (40 members) — nothing serializes concurrent access to the same `cwd`
+### Mutating tier (46 members) — nothing serializes concurrent access to the same `cwd`
 
 Every mutating method's TSDoc opens with the literal word `"Mutating:"`; that
 marker is the only signal a caller gets.
 
 | Group | Members | Notes |
 | --- | --- | --- |
-| Checkout / fetch | `checkout`, `fetch`, `fetchAny`, `fetchUnshallow` | `fetchAny` tries the tag form, then the plain form on `UnknownRefError` or a `GitCommandError` — except `kind: "refused"` (a pre-spawn guard rejection), which re-fails at once; if both fail the PLAIN error surfaces. `fetchUnshallow` does NOT tolerate a non-shallow repo — probe with `isShallow` first |
+| Init / checkout / fetch | `init` (`{ objectFormat?: "sha1" \| "sha256", initialBranch? }`), `checkout` (also `force` and `-B <branch> <startPoint>`), `fetch`, `fetchRefspecs` (several refspecs in one call: `depth`, `unshallow`, `filter`, `noTags`, `prune`, `noRecurseSubmodules`, `protocolVersion: 2`; an empty or option-like refspec is refused pre-spawn), `fetchAny`, `fetchUnshallow` | `fetchAny` tries the tag form, then the plain form on `UnknownRefError` or a `GitCommandError` — except `kind: "refused"` (a pre-spawn guard rejection), which re-fails at once; if both fail the PLAIN error surfaces. `fetchUnshallow` does NOT tolerate a non-shallow repo — probe with `isShallow` first |
 | Restore trio | `reset` (`mode`/`ref`), `clean` (`--force` unconditional), `restore` (paths always behind a literal `--`) | `reset`/`clean` fail LOUDLY on any non-zero exit — a silent no-op would hand a retry the same dirty tree |
 | Branches / tags | `branchCreate` (`{ startPoint?, checkout?, force? }` — one member, `branch [-f]` or `checkout -b/-B`), `branchDelete`, `tagCreate`, `tagDelete` | branch creation is a branch member, not a `checkout` option |
 | Commit / push / pull | `commit` (`{ all?, allowEmpty?, amend?, author? }`), `push` (`{ remote?, refspec?, force?, forceWithLease?, tags?, setUpstream? }`), `pull` (`{ remote?, ref?, rebase?, ffOnly? }`) | `push` additionally fails `NonFastForwardError`; `pull` additionally fails `MergeConflictError` / `DirtyWorktreeError` |
@@ -63,14 +64,30 @@ marker is the only signal a caller gets.
 | Remotes | `remoteAdd`, `remoteRemove`, `remoteSetUrl` | the `url` positional rides the redaction mask |
 | Worktrees | `worktreeAdd`, `worktreeRemove` | |
 | Submodules | `submoduleUpdate`, `submoduleAdd`, `submoduleInit`, `submoduleDeinit`, `submoduleSync`, `submoduleSetUrl`, `submoduleSetBranch`, `submoduleAbsorbgitdirs`, `submoduleForeach` | `submoduleStatus` is the tier's one READ; `submoduleForeach` is marked mutating because the shell command it runs can mutate anything |
-| Index / config / sparse | `add`, `rm`, `mv`, `configSet`, `configUnset`, `configRemoveSection`, `configRenameSection`, `sparseCheckoutSet` | **`configSet` writes repository-LOCAL, always** — it emits no scope flag and offers no `scope` option, deliberately asymmetric with the merged-by-default reads: a read has a defensible "effective value" default and a write does not, and a global write would leak onto a shared machine or CI runner. `configRemoveSection`/`configRenameSection` fail LOUDLY when the section is absent (git exits 128); both default to the local file, so an enumerate-then-remove flow built on a scope-less `configList` reads more broadly than it writes. `configSet` guards `key`, `value` AND `options.file` against a leading `-` (git config has no `--` separator), so a legitimate value starting with `-` cannot be written through it |
+| Index / config / sparse | `add`, `rm`, `mv`, `configSet`, `configUnset`, `configRemoveSection`, `configRenameSection`, `configAdd` (multi-valued `--add`, optionally into a file), `sparseCheckoutSet` (`cone` or `--no-cone`), `sparseCheckoutDisable`, `lfsInstall` (`local`), `lfsFetch` (network) | **`configSet` writes repository-LOCAL, always** — it emits no scope flag and offers no `scope` option, deliberately asymmetric with the merged-by-default reads: a read has a defensible "effective value" default and a write does not, and a global write would leak onto a shared machine or CI runner. `configRemoveSection`/`configRenameSection` fail LOUDLY when the section is absent (git exits 128); both default to the local file, so an enumerate-then-remove flow built on a scope-less `configList` reads more broadly than it writes. `configSet` guards `key`, `value` AND `options.file` against a leading `-` (git config has no `--` separator), so a legitimate value starting with `-` cannot be written through it |
 
 - **`GitShape`** — the exported interface behind `Git`'s tag. Two uses beyond
   the obvious: `Pick<GitShape, "mergeBase" | "nameStatus" | ...>` narrows a
   downstream service's dependency to exactly the methods it reads;
   `Layer.succeed(Git, fake)` accepts any `GitShape`-shaped object as a full
   test double.
-- **`GitCommand`** — 74 pure, `cwd`-less constructors returning `GitInvocation`
+- **`Git.withRunOptions(options)(effect)`** — applies `GitRunOptions` to every
+  spawn the wrapped effect makes: `env` (merged under the service's own pins, so
+  the locale, prompt and askpass pins always win), `config` (entries passed as
+  `GIT_CONFIG_COUNT`/`KEY_n`/`VALUE_n`) and `timeout` (replaces the 30 s
+  per-run ceiling for the scope; a fetch, LFS download or submodule update of a
+  real repository needs it). Nested calls merge, the inner winning. A per-call
+  `GIT_SSH_COMMAND` outranks the ambient one and is still pinned to batch mode on
+  a network member. A locating read with `ignoreRepositoryEnv` drops `config` by
+  design. Option forms: `clean` takes a double force (nested repositories),
+  `branchDelete` a remote form, `submoduleUpdate` `force`/`depth`/`protocolVersion`.
+- **The transcript** — every spawn emits one `Effect.logDebug` entry, invisible at
+  the default level: `git <redacted argv>` annotated with `git.cwd`,
+  `git.exitCode` and `git.durationMs`, then `stdout:`/`stderr:` sections cut at
+  4000 characters and scrubbed of secrets and credential-shaped text. A
+  `git config` invocation's stdout is never logged, only its size. Under an
+  `ActionLogger.step` it is the step's detail.
+- **`GitCommand`** — 82 pure, `cwd`-less constructors returning `GitInvocation`
   values (a core `ChildProcess.StandardCommand`, `redactedArgs`, and `scrub`,
   a closure masking the argv's exact secrets in any text — a closure so the raw
   secrets are no enumerable field a serializer could surface), inspectable

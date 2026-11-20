@@ -510,7 +510,8 @@
 		"TreeIdentity": "compare working trees, same worktree, same repository or unrelated, physical toplevel",
 		"GitFile": "parse a worktree or submodule .git pointer file, gitdir line, no spawn",
 		"GitFileParseError": "text is not a gitfile, missing gitdir prefix or empty path",
-		"UpstreamBranch": "the current branch's upstream remote and branch, gone when deleted"
+		"UpstreamBranch": "the current branch's upstream remote and branch, gone when deleted",
+		"GitVersion": "parse git version output, compare git versions, check git is at least a floor"
 	},
 	"github-actions": {
 		"Action": "run an action's main/pre/post entry point, compose the runtime, set exit code on failure",
@@ -519,7 +520,7 @@
 		"ActionEnvironment": "read `GITHUB_*` and `RUNNER_*` variables, process.env access for an action, step debug mode",
 		"ActionEnvironmentError": "handle a missing or malformed runner environment variable",
 		"ActionInput": "read with: inputs, INPUT_ variables, config provider for action inputs, dry-run boolean input, record which inputs a program reads",
-		"ActionLogger": "workflow-command logger, collapsible log groups, phase heading that opens no group, buffered step transcript, notice annotation",
+		"ActionLogger": "workflow-command logger, phase heading and step with quiet window, one result line per step, run child process into step detail, record step log in a test, notice annotation, collapsible log group",
 		"ActionManifest": "decode or read action.yml, runner-shaped INPUT_ test environment from manifest defaults, diff code reads/writes against declared inputs/outputs",
 		"ActionManifestBranding": "action.yml marketplace branding, icon and color",
 		"ActionManifestCompositeRuns": "action.yml runs block for a composite action, using composite with steps",
@@ -593,7 +594,18 @@
 		"TruncatedBlobEnvelopeError": "handle a blob envelope frame that ends mid-header or mid-metadata",
 		"UnsupportedBlobEnvelopeVersionError": "handle a blob envelope written by a newer format revision",
 		"describeCause": "one-line [Tag]: message summary of why an action failed",
-		"projectCheckState": "map the kit's check state onto GitHub's check-run status/conclusion wire vocabulary"
+		"projectCheckState": "map the kit's check state onto GitHub's check-run status/conclusion wire vocabulary",
+		"Checkout": "check out a repository in an action, actions/checkout rebuilt, job or action or no credential lifetime, cleanup in post entry, read checkout inputs, write ref and commit outputs",
+		"CheckoutAuth": "authenticate a checkout, token or ssh deploy key, redacted credentials",
+		"CheckoutAuthError": "checkout credentials refused by the remote",
+		"CheckoutCommitMismatchError": "fetched ref resolved to a different commit than pinned",
+		"CheckoutDefaultBranchError": "default branch of the repository could not be determined",
+		"CheckoutGitTooOldError": "runner git older than checkout's floor",
+		"CheckoutPathError": "checkout path escapes the workspace",
+		"CheckoutRef": "what to check out, branch, tag, commit, pull request merge or head, default branch, raw ref",
+		"CheckoutRefNotFoundError": "branch or tag missing on the remote",
+		"CheckoutResult": "resolved ref and commit after a checkout",
+		"CheckoutUnsafePullRequestError": "refuse fork pull request checkout under privileged event"
 	},
 	"github-commands": {
 		"CommandNeutralizer": "make log text safe on a GitHub Actions runner: defang ::command:: lines and ##[ anywhere, split at CR/LF/CRLF, idempotent",

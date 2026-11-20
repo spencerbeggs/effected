@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-16T17:04:15Z
+  at: 2026-11-20T22:40:26Z
 integrity:
   generated:
-    body: 04c7f5420ea82d6c
+    body: 4e38744806af3a77
 ---
 
 # github-actions
@@ -69,13 +69,38 @@ directly against their HTTP APIs, because the official cache client alone
 drags a dependency tree larger than this package; globbing is
 [`glob`](glob.md), never `@actions/glob`.
 
-Kit edges: [`github`](github.md), [`glob`](glob.md), [`markdown`](markdown.md),
+Kit edges: [`git`](git.md) (for `Checkout`), [`github`](github.md), [`glob`](glob.md), [`markdown`](markdown.md),
 [`npm`](npm.md), [`sbom`](sbom.md), [`templates`](templates.md),
 [`walker`](walker.md) and [`yaml`](yaml.md). The blob transfer against a
 signed url is the package's own `internal/blobTransport.ts` over `HttpClient`
 and `FileSystem`; no Azure SDK is a dependency. `ActionCache.layer`,
 `Artifact.layer` and `GitHubCacheBlobStore.layer` require `HttpClient` in `R`
 (the package provides no platform client of its own).
+
+## Checkout
+
+`Checkout` rebuilds the stock `actions/checkout` on [`git`](git.md): `checkout`
+(requires `Scope`, `Git` and the runner services), `cleanup` (the post entry's
+one call), `fromInputs` and `inputs` (the stock input surface and its
+`action.yml` declarations) and `writeOutputs`. Its implementation lives in
+`internal/checkout/`. The on-disk state matches the stock action's v6 layout, a
+credentials file under `$RUNNER_TEMP` reached by `includeIf.gitdir:` entries,
+so a later step cannot tell the two apart. The credentials' lifetime is
+`"job"` (recorded in `ActionState`, removed by `Checkout.cleanup` in the post
+entry), `"action"` (removed by a scope finalizer, so on success, failure and
+interruption) or `"none"` (removed before `checkout` returns); `checkout`
+therefore requires a `Scope` under all three. `cleanup` is uninterruptible and
+never fails, so a cancelled job leaves no credentials behind and a post step
+cannot turn a green job red. An action that uses `"job"` without calling
+`cleanup` in its post entry leaves the token on the runner, and the
+[canon](../conventions/github-action-canon.md) and the plugin's `actions-runtime`
+skill say so. The runner's git must be at least the floor, checked once before
+any other git runs, and a fork pull request under a privileged event is refused
+unless the caller opts in. Each failure is its own tagged error class, per
+[the per-reason errors decision](../decisions/github-actions-per-reason-tagged-errors.md).
+The log is one phase with a step per piece of work, and a step's detail is the
+`git` Debug transcript. A parity workflow, dispatched by hand, runs the stock
+action and this service into two directories and compares the results.
 
 ## Bundle reachability
 
@@ -177,12 +202,16 @@ place to leak one. The pure modules carry no spans. The package emits
 Effect logs and ships the `Logger` that renders them as workflow commands;
 it composes no OpenTelemetry itself.
 
-`ActionLogger` structures the log the runner shows. `group` opens the one
-collapsible section the runner allows at a time (a nested call writes a
-`▸ <name>` header line instead, since a second `::group::` would end the
-first), `heading` writes that same header line without opening a group, so
-the groups inside a phase stay top level and each gets its own section, and
-`withBuffer`/`withStep` hold a step's transcript for its failure report. The
+`ActionLogger` structures the log the runner shows, as the step log: `phase`
+writes a plain bold heading, `step` holds a unit of work's detail behind a
+quiet window and writes one result line (folded when it finishes inside the
+window, live and unfolded past it, never folded on failure), and
+`ActionLogger.command` runs a child process into the current step's detail.
+`group` remains the raw collapsible the runner allows one of at a time (a
+nested call writes a `▸ <name>` header line, since a second `::group::` would
+end the first), and `ActionLogger.recording()` is the test double that
+records the log's structure. The rendering contract is
+[the step log interface](../interfaces/actions-step-log.md). The
 open-group count is the fiber-local keyed by
 [`github-commands`](github-commands.md)' `WorkflowCommand.groupDepthKey`, not
 a key of this package's own, so [`cli-kit`](cli-kit.md)'s `Render.context` built

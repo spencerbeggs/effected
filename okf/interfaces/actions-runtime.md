@@ -10,7 +10,7 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-23T21:09:05Z
+  at: 2026-11-20T22:40:26Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:31.377Z
@@ -20,7 +20,7 @@ verified:
     at: 2026-10-29T00:43:21Z
 integrity:
   generated:
-    body: 541a63bc142e1775
+    body: 9ed04e9321ad30c0
   verified:
     by: human:spencer
     at: 2026-10-29T00:43:21Z
@@ -124,8 +124,8 @@ escaping and nothing else. It lives in the pure
 [`@effected/github-commands`](../modules/github-commands.md), which this
 package takes as a regular dependency and re-exports it from, so existing imports
 keep working; the grammar left so a package that is not an Actions runtime can
-use it without the integrated tier. `ActionLogger` owns groups, the buffered
-step renderer and annotations, and ships the `Logger` that maps every kit
+use it without the integrated tier. `ActionLogger` owns groups, phases, the step
+renderer (see [the step log](actions-step-log.md)) and annotations, and ships the `Logger` that maps every kit
 package's `Effect.log*` calls onto workflow commands — the mapping belongs to
 one `Logger` at the edge, not to each library. `group` is nesting-aware,
 because the runner cannot nest groups: a fiber-scoped depth lets only the
@@ -135,25 +135,31 @@ to a neutralized `▸ <name>` header line inside the open group.
 The same logger neutralizes the plain text it writes (`CommandNeutralizer`):
 the runner reads every line of stdout, so an `Info` message carrying `::` at the
 start of a line, or `##[` anywhere, would be a command. The levels that render AS
-a command escape their data instead, the buffered transcript and the
-`withStep` failure line are neutralized, and the deliberate commands (`group`,
+a command escape their data instead, every held or live step line and the
+step result lines are neutralized, and the deliberate commands (`group`,
 `notice`, `setFailed`, `setSecret`) are not routed through it.
 
 A silent layer is a named constant, not a no-arg factory (which would mint
-a fresh layer per call and defeat memoization). Buffering is opt-in and
-flushes on every exit path including a defect; only a **success** is ever
-discarded. `withStep` buffers with discard-on-success, prints one summary
-line on success (emitted **outside** the buffered region, or it would be
-discarded with the transcript it replaces) and a failure header ahead of
-the spilled transcript — a plain `Console` line, deliberately not a
-second `::error::` beside the one `Action.run` renders. Buffering is
-skipped when the runner has step debugging on, and the summary line
-survives that too. Step debugging also reaches the log level: under
-`RUNNER_DEBUG=1`, `Action.run` lowers `References.MinimumLogLevel` from
-core's `Info` default to `Debug` (never raising a lower one) so
-`Effect.logDebug` renders as `::debug::`; `{ stepDebugLogLevel: false }`
-opts out. Log annotations use a readable property
+a fresh layer per call and defeat memoization). The step log is opt-in per
+unit of work: a step holds its detail and writes it on every exit path
+including a defect or interruption, and a failure is never folded away. The
+failure result line is a plain `Console` line, deliberately not a second
+`::error::` beside the one `Action.run` renders. Step debugging makes every
+step's window zero, and reaches the log level too: under `RUNNER_DEBUG=1`,
+`Action.run` lowers `References.MinimumLogLevel` from core's `Info` default to
+`Debug` (never raising a lower one) so `Effect.logDebug` renders as
+`::debug::`; `{ stepDebugLogLevel: false }` opts out. Log annotations use a readable property
 vocabulary set through a combinator, never a spelled-out wire key.
+
+### Checkout
+
+`Checkout` is the runner-side checkout service: `checkout` in the main entry,
+`cleanup` in the post entry for a `"job"`-lifetime credential, and
+`fromInputs` / `inputs` / `writeOutputs` for the stock input and output
+surface. It sits beside `ActionCache` and `Artifact` as an opt-in module: it
+requires `Git` (provide `Git.layer` as the extra layer) and a `Scope`, and its
+log is one phase with a step per piece of work. The contract and the three
+credential lifetimes are in [`github-actions`](../modules/github-actions.md).
 
 ### Outputs and state
 

@@ -27,7 +27,9 @@ This table routes a capability to the package and skill that own it; it does not
 | set an output, export a variable, add to PATH | `ActionOutputs` | `actions-inputs-outputs` |
 | emit a machine-readable output contract | `ActionOutputs.setJson` + the same `Schema` codec | `actions-inputs-outputs` |
 | publish and drift-test that contract's JSON Schema | `HostedSchema` beside the schema, `defineSchemastore` in `lib/scripts/schemastore.config.ts`, `effected schema build` / `check` | `actions-inputs-outputs` |
-| make the run log readable | `ActionLogger` (`group`, nesting-aware; `withBuffer`, `notice`, `annotated`) | `actions-reporting` |
+| make the run log readable | `ActionLogger` (`phase`, `step` with quiet windows, `command` for child processes, `group`, `notice`, `annotated`) | `actions-reporting` |
+| assert on the log's structure in a test | `ActionLogger.recording()` and its `StepLogEntry` values | `actions-reporting` |
+| check a repository out inside the action | `Checkout.checkout` (main), `Checkout.cleanup` (post, for a `"job"` credential), `Checkout.fromInputs` + `Checkout.inputs` | `actions-runtime` |
 | write the job summary | `ActionOutputs.summary` | `actions-reporting` |
 | read a published package's contents before installing it | `PackageTarball.extract` (scoped) + `resolveEntryPoint` | `release-and-publish` |
 | create a check run or annotate a PR | `CheckRun`, `CheckRun.withCheckRun` | `actions-reporting` |

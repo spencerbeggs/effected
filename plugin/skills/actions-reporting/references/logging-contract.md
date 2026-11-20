@@ -18,6 +18,40 @@ ANSI/colour API, and none exists to invent — the rendering layer emits
 nothing but the `::name key=value::message` text; GitHub's own log viewer
 colours the commands, not this package.
 
+## The shape of a kit action's log
+
+Two levels, built on what the GitHub log can do: it is append only (no
+spinners, no rewriting), `::group::` folds its body but cannot be opened
+automatically, groups do not nest, and a folded failure is a hidden failure.
+
+- **A phase** is a plain bold heading, never folded (`Checkout owner/name @ main`,
+  `Runtime Setup`). It writes nothing when it ends.
+- **A step** is the unit with a quiet window and a result line. Its detail
+  (every log line below `Warn`, plus the output of commands run through
+  `ActionLogger.command`) is held back while it runs.
+
+A step's life:
+
+1. **It finishes inside its window:** one folded group titled by the outcome
+   (`✓`, `⚠` or `✗`), a summary and the duration, with the held detail inside.
+   A step with no detail is a plain result line.
+2. **It runs past its window:** a line `… <name> is taking longer than <window>,
+   showing live output`, then everything held so far, then the detail streams
+   live, indented and not folded, and a closing result line.
+3. **It fails** (in either mode): never folded. The `✗` line, the detail
+   indented beneath it, then the failure propagates and `Action.run` writes the
+   error annotation.
+
+Warnings and errors are never held: they become annotations the moment they
+happen, and the result line counts them (`⚠ peer check · 1 warning`).
+
+```text
+Checkout savvy-web/app @ pull/40/merge
+  ▸ ✓ git 2.56.1 · fresh clone                          0.1s
+  ▸ ✓ fetched 21cef44 · depth 1                         1.2s
+    ✓ credentials kept for the job
+```
+
 ## `ActionLogger`'s members
 
 ```ts
@@ -26,54 +60,67 @@ import { Effect } from "effect";
 
 const program = Effect.gen(function* () {
   const logger = yield* ActionLogger;
-  yield* logger.group("install", logger.withBuffer("pnpm", Effect.logInfo("resolving")));
+  yield* logger.phase(
+    "Runtime Setup",
+    logger.step("pnpm install", Effect.logInfo("resolving"), {
+      window: "2 minutes",
+      summary: () => "pnpm install · lockfile frozen",
+    }),
+  );
 });
 ```
 
-- **`group(name, effect)`** — opens `::group::name`, runs `effect`, always
-  closes with `::endgroup::` via a bracket. On a failing cause it flushes
-  whatever buffer is currently active *before* the group closes, so a failed
-  step's transcript lands inside the collapsed section it belongs to rather
-  than after it. **The runner cannot nest groups** — a second `::group::`
+- **`phase(title, effect)`** — the plain bold heading described above. It
+  changes no state: the steps inside it fold as top-level steps. Inside a step
+  it is a line of that step's detail.
+- **`step(name, effect, options?)`** — a step. `options.window` is how long the
+  detail is held (30 seconds by default; zero always streams). `options.summary`
+  is a function of the step's **result** and replaces the name on the success
+  line; `options.failure` is a function of the failure's `Cause` and replaces
+  the name and message on the `✗` line (without it, the line reads
+  `<name> · <first line of the failure's message>`, and an interruption reads
+  `<name> · interrupted`). The mark is derived: `✗` on failure or interruption,
+  `⚠` when the step or any step inside it logged a warning or error (or a nested
+  step failed and was recovered from), `✓` otherwise.
+  - Only the **outermost** open step has a window; an inner step's window is
+    ignored, it opens no group of its own and renders as a result line inside
+    the outer step's detail. If the outer step goes live, inner result lines
+    print as they finish.
+  - **Concurrent steps** that are live at once prefix each detail line with the
+    outermost step's name in brackets, so the lines can be told apart.
+  - **Runner debug** (`RUNNER_DEBUG=1`), or an ambient minimum log level of
+    `Debug` or lower, makes every window zero: each step prints an opening
+    line, streams its detail and closes with its result line.
+  - Detail includes `Debug` and `Trace` lines in the fold, in the failure
+    spill and in live output, so a library's debug transcript (the git
+    transcript is one) shows in all three.
+  - Writes straight to `Console` inside a step are captured as detail, as are
+    `@effected/cli-kit`'s renderers; a workflow command written there goes out
+    at once, so an `::add-mask::` still reaches the runner first.
+  - Masking needs no logger change: the runner masks every registered secret
+    in every line, held or live, so register a secret (`Secret.mask`) before it
+    can appear in any line.
+- **`ActionLogger.command(command, { display? })`** — runs a child process and
+  writes `$ <command line>`, each stdout and stderr line as it arrives, and
+  `exit <code>` as the current step's detail. A child spawned with
+  `stdout: "inherit"` writes straight to the runner log and defeats the fold, so
+  run it through `command` instead. It resolves with the exit code, whatever it
+  is, and the collected stdout; only a failure to spawn is an error.
+- **`group(name, effect)`** — a raw collapsible for dumping a block of text:
+  opens `::group::name`, runs `effect`, always closes with `::endgroup::` via a
+  bracket. **The runner cannot nest groups** — a second `::group::`
   implicitly closes the first — so `group` is nesting-aware: only the
   outermost call writes the command pair, and a `group` called inside it
   writes one `▸ <name>` header line (line breaks collapsed, the text
-  neutralized) through `Console`, so the header survives a green
-  `withStep`/`withBuffer` that discards its transcript. The depth is
-  fiber-scoped: concurrent sibling groups on separate fibers still
+  neutralized). Inside a step the group depth is already at least 1, so `group`
+  and `@effected/cli-kit`'s `Render.githubLog` / `Doc.print` render plain lines.
+  The depth is fiber-scoped: concurrent sibling groups on separate fibers still
   interleave, a fiber forked inside a group keeps the depth it was forked at,
   and only a writer that reads the shared depth is counted. The depth lives
   in the fiber-local keyed by `WorkflowCommand.groupDepthKey` (from
   `@effected/github-commands`, which holds the key, never the reference),
-  and `@effected/cli-kit` reads the same key: `Render.context` built inside a
-  group carries it as `RenderContext.groupDepth`, so `Doc.print` and
-  `Render.githubLog` render a top-level collapsible as plain text there
-  rather than as a second group. A raw `WorkflowCommand.group`, or a
+  and `@effected/cli-kit` reads the same key. A raw `WorkflowCommand.group`, or a
   wrapper that does not read the key, opens a group the count cannot see.
-  The test doubles pass the effect through and do not model nesting.
-- **`heading(name, effect)`** — the phase-level banner: writes the same
-  one-line, neutralized `▸ <name>` header a nested group writes, through
-  `Console`, then runs `effect` — no `::group::`, no change to the depth.
-  The groups inside it therefore stay top level and each renders as its own
-  collapsible, which a `group` wrapper cannot give them (the runner does not
-  nest). Reach for `heading` when a phase encloses groups and for `group`
-  when it encloses only lines; called inside an open group it is simply a
-  header line in that group. The doubles pass the body through.
-- **`withBuffer(label, effect, options?)`** — the quiet-green / verbose-red
-  mechanism. `Warn` and `Error` entries still go out live, rendered the same
-  way as the installed logger; everything `Info` and below is held and
-  flushed on **every** exit path, including a defect or interruption.
-  `WithBufferOptions.onSuccess: "flush" | "discard"` (default `"flush"`)
-  decides only what a **success** is worth in the log: `"discard"` drops the transcript on a
-  clean exit — one line per green step — while a failure, a defect or an
-  interruption still flushes under either setting. Buffering is skipped
-  entirely — the effect just runs, overriding `onSuccess: "discard"` too —
-  when the runner has step debugging on or the ambient minimum log level is
-  already `Debug` or lower: someone who asked for verbose output gets it
-  live, not replayed at the end. Under `Action.run` the two conditions
-  coincide: step debugging is what lowers the ambient minimum to `Debug`
-  (unless the program opted out with `stepDebugLogLevel: false`) — see
-  `actions-runtime`'s logging reference.
 - **`notice(message, properties?)`** — emits `::notice::`. A dedicated
   member, not a log level, because Effect has no level between `Info` and
   `Warn` to map a notice onto.
@@ -93,7 +140,17 @@ double with an empty logger — a recorded exception to the die-on-unstubbed
 rule, alongside a small handful of others across the suite: a logger that
 dies when a suite logs would make every double unusable.
 `ActionLogger.layerTest(overrides?)` builds the same double with per-member
-overrides.
+overrides; its `group`, `phase` and `step` pass the effect through and model
+neither nesting nor the step log.
+
+To assert on the log's **structure** rather than its rendered text, provide
+`ActionLogger.recording()`: it returns `{ layer, entries }`, and `entries()`
+returns `StepLogEntry` values, a phase (`{ kind: "phase", title }`) or a step
+(`{ kind: "step", name, outcome, summary, detail, steps }`) where `outcome` is
+`"success"`, `"warning"`, `"failure"` or `"interrupted"`, `summary` is the
+result line's text without its mark, count or duration, `detail` is the lines
+logged below `Warn` inside the step, and `steps` the steps opened inside it.
+Nothing is written to the console.
 
 ## `WorkflowCommand`: the low-level protocol, touched directly only rarely
 
