@@ -18,7 +18,7 @@ import { platformErrorHint } from "./package.js";
  */
 export const actionBuild = Tool.make("action_build", {
 	description:
-		'Builds one GitHub Action from the [action] table of its effected.toml into dist: validates the config and action.yml, bundles each entry into one file, and checks that each loads. It writes only dist unless persist is true; under [action.persistLocal] dist = false a call without persist is refused and writes nothing. Persist also copies the build to the configured [action.persistLocal] directory (default .github/actions/local, or .github/actions/<package name> under base = "workspace") and generates .actrc and .github/workflows/act-test.yml. Validation stopping the build or an entry failing arrives as the result\'s verdict "failed", not as an error. With check true it writes nothing and compares the build with the committed persisted one. Reloads the config on every call. The load check imports each bundle, which runs an action with no GITHUB_ACTIONS guard unless [action.build] importCheck is false; a worker\'s own table can set importCheck = false to skip that worker alone.',
+		'Builds one GitHub Action from the [action] table of its effected.toml into dist: validates the config and action.yml, bundles each entry into one file, and checks that each loads. It writes only dist unless persist is true; under [action.persistLocal] dist = false a build without persist is refused and writes nothing, so a local-only action needs persist true. Persist also copies the build to the configured [action.persistLocal] directory (default .github/actions/local, or .github/actions/<package directory name> at the workspace root under base = "workspace") and, when [action.persistLocal] actTemplate is on (the default only under base = "package"), generates .actrc and .github/workflows/act-test.yml. Validation stopping the build or an entry failing arrives as the result\'s verdict "failed", not as an error. With check true it persists nothing and compares the build with the committed one; it still builds into the package\'s staging directory, so it needs write access to the package. Reloads the config on every call. The load check imports each bundle, which runs an action with no GITHUB_ACTIONS guard unless [action.build] importCheck is false; a worker\'s own table can set importCheck = false to skip that worker alone.',
 	parameters: Schema.Struct({
 		cwd: Schema.optionalKey(
 			Schema.String.annotate({
@@ -34,13 +34,13 @@ export const actionBuild = Tool.make("action_build", {
 		persist: Schema.optionalKey(
 			Schema.Boolean.annotate({
 				description:
-					'Copy the build to the configured [action.persistLocal] directory (default .github/actions/local, or .github/actions/<package name> under base = "workspace") and generate .actrc and .github/workflows/act-test.yml when they are absent, unless the config disables it. Omitted, false.',
+					'Copy the build to the configured [action.persistLocal] directory (default .github/actions/local, or .github/actions/<package directory name> at the workspace root under base = "workspace"), and generate .actrc and .github/workflows/act-test.yml when they are absent and [action.persistLocal] actTemplate is on, which it is by default only under base = "package". Required for a build under dist = false. Omitted, false.',
 			}),
 		),
 		check: Schema.optionalKey(
 			Schema.Boolean.annotate({
 				description:
-					"Build to a staging directory and compare it with the committed persisted build instead of writing it; the result's drift lists each file that is changed, missing or extra, and a drift is verdict failed. Writes nothing, and ignores persist. Refused when persistLocal is disabled. Omitted, false.",
+					"Build to the package's staging directory and compare it with the committed build instead of persisting it; the result's drift lists each file that is changed, missing or extra, and a drift is verdict failed. Persists nothing and ignores persist, but needs write access to the package for the staging build. Refused when persistLocal is disabled. Omitted, false.",
 			}),
 		),
 	}),

@@ -33,10 +33,16 @@ import { main } from "@effected/mcp/main";
 - **`action_build`** — `effected action build` as a tool (`cwd?`, `validate?`,
   `persist?`, `check?`). `persist` defaults to false, so it writes only `dist`,
   and under `[action.persistLocal] dist = false` that call is refused and
-  writes nothing; `true` also writes the `[action.persistLocal]` directory (default
-  `.github/actions/local`), `.actrc` and `.github/workflows/act-test.yml`.
-  `check: true` writes nothing, ignores `persist`, and answers `result.drift`
-  for each changed, missing or extra file; drift is the verdict `failed`.
+  writes nothing (`NoOutput`), so a local-only build needs `persist: true`; `true`
+  also writes the `[action.persistLocal]` directory (default
+  `.github/actions/local`, or `.github/actions/<package directory>` at the
+  workspace root under `base = "workspace"`), plus `.actrc` and
+  `.github/workflows/act-test.yml` when `actTemplate` is on, which it is by
+  default only under `base = "package"`.
+  `check: true` persists nothing, ignores `persist`, and answers `result.drift`
+  for each changed, missing or extra file; drift is the verdict `failed`. It
+  still builds into the package's `.action-staging/`, so it needs write access
+  to the package.
   The load check imports each bundle unless `[action.build] importCheck` is false;
   a worker's own table can set `importCheck = false` to skip that worker alone.
 - **`action_init`** — `effected action init` as a tool (`cwd?`, `name?`,

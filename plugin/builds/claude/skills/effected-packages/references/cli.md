@@ -133,7 +133,9 @@ that exits at import when the environment its action hands it is missing. Exit `
 usage error (`--check` with `--watch` or `--no-persist`, `--check` with persist
 off, `--no-persist` with `dist = false`) is `64`. `--check` stages a build and
 compares `action.yml` and `dist/**` byte for byte against the persisted
-directory, reports each `changed`, `missing` or `extra` file, and writes nothing.
+directory, reports each `changed`, `missing` or `extra` file, and persists
+nothing. The staged build lands in the package's `.action-staging`, so `--check`
+needs write access to the package.
 With `base = "workspace"` and `dist = false` the package keeps no `dist/`: the
 bundles stage in `.action-staging`, removed after every build.
 

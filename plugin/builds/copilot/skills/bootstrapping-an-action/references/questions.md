@@ -61,4 +61,4 @@ Adds: the reporting surfaces, all built through `GitHubMarkdown` from one `forma
 
 > Which workflow in this repository will run the built action against the repository itself, and on what trigger? **Default: a `self-dogfood.yml` on pull request and manual dispatch.**
 
-Adds: the workflow name and trigger; the `act-test.yml` target (`.github/actions/local`, produced by `persistLocal`); the dist-freshness gate (`effected action build --check` for a local-only action, which keeps no package `dist/`).
+Adds: the workflow name and trigger; the `act-test.yml` target (`.github/actions/local` under `base = "package"`, or `.github/actions/<package directory>` at the workspace root for a local-only action under `base = "workspace"`, produced by `persistLocal`); the dist-freshness gate (`effected action build --check` for a local-only action, which keeps no package `dist/`).

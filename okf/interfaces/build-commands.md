@@ -34,10 +34,10 @@ sources:
     resource: ../../packages/cli/src/commands/watch.ts
 generated:
   by: "claude-code/sonnet-5.5"
-  at: 2026-11-20T17:18:13Z
+  at: 2026-11-20T23:44:43Z
 integrity:
   generated:
-    body: 909c031258bb8315
+    body: 668e5cbde1bbdb5a
 ---
 
 # The effected build commands: package build, action build and action init
@@ -88,7 +88,7 @@ Under `--format=json`, stdout holds exactly one `BuildRunResult` (`package`, `ve
 | `--format=human\|json` | The report's form, as above |
 | `--no-validate` | Skips validating the config and `action.yml`, and the bundle size check |
 | `--no-persist` | Skips copying the build to the local action directory |
-| `--check` | Builds to a staging directory and fails when the committed build differs; writes nothing |
+| `--check` | Builds to a staging directory and fails when the committed build differs; persists nothing, but the staging build needs write access to the package |
 | `--watch` | Rebuilds whenever a source file or `effected.toml` changes, until interrupted; see [Watching](#watching) |
 
 An absent `[action]` table means the directory is a library, not an action, and the command refuses it.[^action-run]
@@ -104,7 +104,7 @@ Under `--format=json`, stdout holds one `ActionRunResult` (`verdict`, `result`),
 
 **The persisted directory follows `[action.persistLocal]`.** Under `base = "workspace"` it is `.github/actions/<package directory basename>` at the workspace root, and with `dist = false` the bundles are staged in `<package>/.action-staging`, which is removed after every build, so the package keeps no `dist/`.
 
-**`--check` compares and writes nothing.** It stages a build, then compares `action.yml` and `dist/**` byte for byte against the persisted directory, and against the package `dist/` when the package keeps one. Each difference is reported as `<target>: <kind> <path>`, where the kind is `changed`, `missing` or `extra`. Any drift is exit 1 and a match is exit 0. Under `--format=json` the drift is `result.drift`. A check always compares against the persisted build, so it does not combine with `--no-persist`.
+**`--check` compares and persists nothing.** It stages a build in the package's `.action-staging` (so it needs write access to the package, and removes the staging directory after), then compares `action.yml` and `dist/**` byte for byte against the persisted directory, and against the package `dist/` when the package keeps one. Each difference is reported as `<target>: <kind> <path>`, where the kind is `changed`, `missing` or `extra`. Any drift is exit 1 and a match is exit 0. Under `--format=json` the drift is `result.drift`. A check always compares against the persisted build, so it does not combine with `--no-persist`.
 
 **The load check runs what it built.** Unless `[action.build] importCheck = false`, each bundle is imported in a fresh Node to prove it loads, which runs an action with no `GITHUB_ACTIONS` guard around its program for real. A worker that refuses to start at import by design sets `importCheck = false` in its own `[action.entries.workers.<name>]` table, which skips that bundle alone.
 
