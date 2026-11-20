@@ -216,6 +216,46 @@ describe("Checkout.fromInputs", () => {
 	});
 });
 
+describe("Checkout.fromInputs trimming", () => {
+	it("trims a padded repository and still matches the workflow repository", async () => {
+		const o = await run({ repository: " acme/example\n" });
+		assert.deepStrictEqual(o.repository, { owner: "acme", name: "example" });
+		assert.deepStrictEqual(o.ref, { _tag: "Event" });
+	});
+
+	it("trims submodules", async () => {
+		assert.strictEqual((await run({ submodules: " recursive " })).submodules, "recursive");
+	});
+
+	it("a whitespace-only fetch-depth is absent, so the default 1 applies", async () => {
+		assert.strictEqual((await run({ "fetch-depth": "  " })).depth, 1);
+	});
+
+	it("trims the token and ssh-key secrets", async () => {
+		const o = await run({ token: "ghs_x\n", "ssh-key": "KEY\n" });
+		if (o.auth._tag === "Ssh") {
+			assert.strictEqual(Redacted.value(o.auth.key), "KEY");
+			assert.strictEqual(Redacted.value(o.auth.token as Redacted.Redacted<string>), "ghs_x");
+		} else assert.fail("expected Ssh");
+		const t = await run({ token: "ghs_x\n" });
+		if (t.auth._tag === "Token") assert.strictEqual(Redacted.value(t.auth.token), "ghs_x");
+	});
+
+	it("trims path, filter, server url and ssh-user", async () => {
+		const o = await run({
+			path: " sub ",
+			filter: " blob:none ",
+			"github-server-url": " https://g.example ",
+			"ssh-key": "K",
+			"ssh-user": " me ",
+		});
+		assert.strictEqual(o.path, "sub");
+		assert.strictEqual(o.filter, "blob:none");
+		assert.strictEqual(o.serverUrl, "https://g.example");
+		if (o.auth._tag === "Ssh") assert.strictEqual(o.auth.user, "me");
+	});
+});
+
 describe("Checkout.inputs", () => {
 	const NAMES = [
 		"repository",

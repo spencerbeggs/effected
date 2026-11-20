@@ -1,5 +1,4 @@
-import type { Redacted } from "effect";
-import { Config, Effect, Option, Schema, SchemaIssue } from "effect";
+import { Config, Effect, Option, Redacted, Schema, SchemaIssue } from "effect";
 import type { ActionEnvironmentError } from "../../ActionEnvironment.js";
 import { ActionEnvironment } from "../../ActionEnvironment.js";
 import { ActionInput } from "../../ActionInput.js";
@@ -102,10 +101,30 @@ export const declarations: ReadonlyArray<readonly [string, ActionManifestInput]>
 const flag = (name: string, fallback: boolean): Config.Config<boolean> =>
 	ActionInput.boolean(name).pipe(Config.withDefault(fallback));
 
-const optional = (name: string): Config.Config<Option.Option<string>> => Config.option(ActionInput.string(name));
+// checkout's core.getInput trims every input; a whitespace-only value is absent.
+const trimmed = (name: string): Config.Config<Option.Option<string>> =>
+	Config.option(ActionInput.string(name)).pipe(
+		Config.map((value) =>
+			Option.flatMap(value, (raw) => {
+				const text = raw.trim();
+				return text === "" ? Option.none() : Option.some(text);
+			}),
+		),
+	);
+
+const optional = trimmed;
 
 const optionalSecret = (name: string): Config.Config<Option.Option<Redacted.Redacted<string>>> =>
-	Config.option(ActionInput.redacted(name));
+	Config.map(
+		trimmed(name),
+		Option.map((text) => Redacted.make(text)),
+	);
+
+const withFallback = (name: string, fallback: string): Config.Config<string> =>
+	Config.map(
+		trimmed(name),
+		Option.getOrElse(() => fallback),
+	);
 
 /** @internal */
 export const readInputs = (
@@ -116,7 +135,7 @@ export const readInputs = (
 		const github = yield* env.github;
 		const n = (name: string): string => `${prefix}${name}`;
 
-		const qualified = yield* ActionInput.string(n("repository")).pipe(Config.withDefault(github.repository));
+		const qualified = yield* withFallback(n("repository"), github.repository);
 		const parts = qualified.split("/");
 		if (parts.length !== 2 || !parts[0] || !parts[1]) {
 			return yield* Effect.fail(
@@ -126,7 +145,7 @@ export const readInputs = (
 		const isWorkflowRepository = qualified.toUpperCase() === github.repository.toUpperCase();
 
 		// Read raw: the input provider does not trim, so a leading BOM or NBSP survives.
-		const rawRef = asciiTrim(Option.getOrElse(yield* optional(n("ref")), () => ""));
+		const rawRef = asciiTrim(Option.getOrElse(yield* Config.option(ActionInput.string(n("ref"))), () => ""));
 		const ref: CheckoutRef =
 			rawRef === ""
 				? isWorkflowRepository
@@ -136,7 +155,11 @@ export const readInputs = (
 					? { _tag: "Commit", sha: rawRef }
 					: { _tag: "Ref", ref: rawRef };
 
-		const token = yield* ActionInput.redacted(n("token"));
+		const tokenInput = yield* optionalSecret(n("token"));
+		if (Option.isNone(tokenInput)) {
+			return yield* Effect.fail(invalid(`Input "${n("token")}" is required`, ""));
+		}
+		const token = tokenInput.value;
 		const sshKey = yield* optionalSecret(n("ssh-key"));
 		const auth: CheckoutAuth = Option.isSome(sshKey)
 			? {
@@ -144,7 +167,7 @@ export const readInputs = (
 					key: sshKey.value,
 					token,
 					strict: yield* flag(n("ssh-strict"), true),
-					user: yield* ActionInput.string(n("ssh-user")).pipe(Config.withDefault("git")),
+					user: yield* withFallback(n("ssh-user"), "git"),
 					...Option.match(yield* optional(n("ssh-known-hosts")), {
 						onNone: () => ({}),
 						onSome: (knownHosts) => ({ knownHosts }),
@@ -160,14 +183,14 @@ export const readInputs = (
 			Config.withDefault([] as ReadonlyArray<string>),
 		);
 		const cone = yield* flag(n("sparse-checkout-cone-mode"), true);
-		const rawDepth = yield* ActionInput.string(n("fetch-depth")).pipe(Config.withDefault("1"));
+		const rawDepth = yield* withFallback(n("fetch-depth"), "1");
 		const depthNumber = Math.floor(Number(rawDepth));
 		const depth = Number.isNaN(depthNumber) || depthNumber <= 0 ? ("full" as const) : depthNumber;
 		const fetchTags = yield* flag(n("fetch-tags"), false);
 		// Read for parity with checkout's surface; the transcript is always captured.
 		yield* optional(n("show-progress"));
 		const lfs = yield* flag(n("lfs"), false);
-		const submodulesText = (yield* ActionInput.string(n("submodules")).pipe(Config.withDefault(""))).toUpperCase();
+		const submodulesText = (yield* withFallback(n("submodules"), "")).toUpperCase();
 		const submodules = submodulesText === "RECURSIVE" ? "recursive" : submodulesText === "TRUE";
 		const safeDirectory = yield* flag(n("set-safe-directory"), true);
 		const serverUrl = yield* optional(n("github-server-url"));
