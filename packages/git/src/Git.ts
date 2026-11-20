@@ -3,6 +3,8 @@ import { dual } from "effect/Function";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { GitConfigScope, GitInvocation, GitUntrackedFilesMode } from "./GitCommand.js";
 import { GitCommand } from "./GitCommand.js";
+import type { GitRunOptions } from "./GitRunOptions.js";
+import { CurrentRunOptions, configEnv, mergeRunOptions } from "./GitRunOptions.js";
 import { maskCredentialsInText } from "./internal/redact.js";
 import { REPOSITORY_ENV_VARS } from "./internal/repositoryEnv.js";
 import type { Collected } from "./internal/run.js";
@@ -677,7 +679,12 @@ const unparseableOutput = (invocation: GitInvocation, cwd: string, detail: strin
  * This is also the single ENVIRONMENT choke point: `env` (computed once in
  * {@link Git.layer}) is applied here the same way `cwd` is, so every one of
  * the service's members is spawned with the pins and nothing else in the
- * package needs to know they exist.
+ * package needs to know they exist. The ambient {@link GitRunOptions} (env,
+ * config, timeout) are read here too, beneath the pins.
+ *
+ * Because `GIT_CONFIG_COUNT` is among the repository variables a
+ * `ignoreRepositoryEnv` locating read unsets, run-option `config` does not
+ * reach those reads; that is intended.
  */
 const runClassified = (
 	invocation: GitInvocation,
@@ -685,26 +692,37 @@ const runClassified = (
 	kind: ClassifyKind,
 	env: Record<string, string>,
 	unset: ReadonlyArray<string> = [],
-): Effect.Effect<Classified, never, ChildProcessSpawner.ChildProcessSpawner> => {
-	const args = invocation.redactedArgs;
-	const maskExact = invocation.scrub;
-	const command =
-		unset.length === 0
-			? ChildProcess.setEnv(ChildProcess.setCwd(invocation.command, cwd), env)
-			: withoutVars(invocation.command, cwd, env, unset);
-	return runCollected(command).pipe(
-		Effect.map((collected) => classify(cwd, args, collected, kind, maskExact)),
-		Effect.catch((platformError) => Effect.succeed(classify(cwd, args, platformError, kind, maskExact))),
-		Effect.timeoutOrElse({
-			duration: GIT_TIMEOUT,
-			orElse: () =>
-				Effect.succeed<Classified>({
-					_tag: "failure",
-					error: GitCommandError.make({ kind: "failed", args, cwd, stderr: "", detail: "timed out after 30s" }),
-				}),
-		}),
-	);
-};
+): Effect.Effect<Classified, never, ChildProcessSpawner.ChildProcessSpawner> =>
+	Effect.flatMap(Effect.service(CurrentRunOptions), (runOptions) => {
+		const args = invocation.redactedArgs;
+		const maskExact = invocation.scrub;
+		// The BASE_ENV-carrying `env` argument is spread last, so a run option can
+		// add keys but never undo a pin.
+		const spawnEnv = { ...runOptions.env, ...configEnv(runOptions.config), ...env };
+		const duration = runOptions.timeout === undefined ? GIT_TIMEOUT : Duration.fromInputUnsafe(runOptions.timeout);
+		const command =
+			unset.length === 0
+				? ChildProcess.setEnv(ChildProcess.setCwd(invocation.command, cwd), spawnEnv)
+				: withoutVars(invocation.command, cwd, spawnEnv, unset);
+		return runCollected(command).pipe(
+			Effect.map((collected) => classify(cwd, args, collected, kind, maskExact)),
+			Effect.catch((platformError) => Effect.succeed(classify(cwd, args, platformError, kind, maskExact))),
+			Effect.timeoutOrElse({
+				duration,
+				orElse: () =>
+					Effect.succeed<Classified>({
+						_tag: "failure",
+						error: GitCommandError.make({
+							kind: "failed",
+							args,
+							cwd,
+							stderr: "",
+							detail: `timed out after ${Duration.format(duration)}`,
+						}),
+					}),
+			}),
+		);
+	});
 
 /**
  * `command` at `cwd` with `env` applied and every key in `unset` removed from
@@ -1714,9 +1732,14 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 	 */
 	const resolveSshEnv = (cwd: string) =>
 		Effect.gen(function* () {
+			// A per-call GIT_SSH_COMMAND (from `withRunOptions`) is the first rung,
+			// above the ambient one; everything below it is unchanged.
+			const runOptions = yield* Effect.service(CurrentRunOptions);
+			const perCall = (runOptions.env?.GIT_SSH_COMMAND ?? "").trim();
+			const sshCommand = perCall === "" ? ssh.command : Option.some(perCall);
 			const [fromConfig, variantFromConfig] = yield* Effect.all(
 				[
-					Option.isSome(ssh.command) ? Effect.succeed("") : readConfig(cwd, "core.sshCommand"),
+					Option.isSome(sshCommand) ? Effect.succeed("") : readConfig(cwd, "core.sshCommand"),
 					Option.isSome(ssh.variant) ? Effect.succeed("") : readConfig(cwd, "ssh.variant"),
 				],
 				{ concurrency: "unbounded" },
@@ -1732,7 +1755,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 				return { ...BASE_ENV };
 			}
 
-			const command = Option.getOrElse(ssh.command, () => fromConfig).trim();
+			const command = Option.getOrElse(sshCommand, () => fromConfig).trim();
 			if (command !== "") {
 				return sshEnv(command);
 			}
@@ -4798,6 +4821,8 @@ const notStubbed = (method: string) => () =>
  * **Every spawn already runs under a 30 s timeout** (this module's
  * `GIT_TIMEOUT`): a command that has not answered in time fails as a
  * {@link GitCommandError} with `detail` set to `"timed out after 30s"`.
+ * `Git.withRunOptions` replaces that ceiling for a scope, and the `detail`
+ * then names the duration actually used.
  *
  * That ceiling is per run, not per member call. The network-touching members
  * (`lsRemote`, `fetch`, `fetchUnshallow`, `push`, `pull`, `submoduleAdd`,
@@ -4833,6 +4858,27 @@ const notStubbed = (method: string) => () =>
  * @public
  */
 export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
+	/**
+	 * Runs `self` with {@link GitRunOptions} applied to every `git` spawn it
+	 * makes, network and non-network members alike.
+	 *
+	 * @remarks
+	 * Nested calls merge: `env` and `config` key by key with the inner call
+	 * winning, and the inner `timeout` winning. Run options never undo the
+	 * service's own pins (locale, prompt, askpass), and a per-call
+	 * `GIT_SSH_COMMAND` is still pinned to batch mode on a network member. A
+	 * locating read with `ignoreRepositoryEnv` drops `config`, because
+	 * `GIT_CONFIG_COUNT` is part of the repository environment it unsets.
+	 */
+	static readonly withRunOptions: {
+		(options: GitRunOptions): <A, E, R>(self: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
+		<A, E, R>(self: Effect.Effect<A, E, R>, options: GitRunOptions): Effect.Effect<A, E, R>;
+	} = dual(
+		2,
+		<A, E, R>(self: Effect.Effect<A, E, R>, options: GitRunOptions): Effect.Effect<A, E, R> =>
+			Effect.updateService(self, CurrentRunOptions, (outer) => mergeRunOptions(outer, options)),
+	);
+
 	/** Resolves `ChildProcessSpawner` once, at construction — every method's `R` is `never`. */
 	static readonly layer: Layer.Layer<Git, never, ChildProcessSpawner.ChildProcessSpawner> = Layer.effect(
 		this,

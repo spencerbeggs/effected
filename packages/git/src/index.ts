@@ -65,3 +65,4 @@ export {
 	GitRemoteTransport,
 	GitRemoteUrl,
 } from "./GitRemote.js";
+export type { GitRunOptions } from "./GitRunOptions.js";
