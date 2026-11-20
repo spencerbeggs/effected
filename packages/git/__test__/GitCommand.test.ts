@@ -165,6 +165,12 @@ describe("GitCommand", () => {
 		assertGitCommand(GitCommand.fetchRefspecs("origin", ["a"]), ["fetch", "origin", "a"]);
 	});
 
+	it("fetchRefspecs masks a userinfo credential in the remote URL", () => {
+		const invocation = GitCommand.fetchRefspecs("https://u:tok@h/r.git", ["+refs/heads/a:refs/remotes/origin/a"]);
+		assert.isFalse(invocation.redactedArgs.join(" ").includes("tok"));
+		assert.isFalse(invocation.scrub("fatal: https://u:tok@h/r.git failed").includes("tok"));
+	});
+
 	it("fetch builds remote-then-ref, with optional depth and tag keyword", () => {
 		assertGitCommand(GitCommand.fetch("origin", "main"), ["fetch", "origin", "main"]);
 		assertGitCommand(GitCommand.fetch("origin", "v1.0.0", 1, true), [

@@ -373,7 +373,7 @@ export class GitCommand {
 			...(options.noRecurseSubmodules ? ["--no-recurse-submodules"] : []),
 			...(options.filter !== undefined ? [`--filter=${options.filter}`] : []),
 			...(options.unshallow ? ["--unshallow"] : options.depth !== undefined ? [`--depth=${options.depth}`] : []),
-			remote,
+			secretUrl(remote),
 			...refspecs,
 		]);
 
