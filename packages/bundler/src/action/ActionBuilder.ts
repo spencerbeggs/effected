@@ -154,33 +154,40 @@ export class ActionBuilder {
 		if (!before.valid) return yield* failValidation(before);
 
 		const outDir = target.keepDist ? path.join(yield* realCwd(cwd), "dist") : target.stagingDir;
-		const build = yield* ActionBundle.build(config, { cwd, clean: true, outDir });
-		if (!build.success) {
-			return yield* new BuildFailed({
-				message: build.error ?? "One or more entries failed to build",
-				failedEntries: build.entries.filter((entry) => !entry.success).length,
-				build,
-				validation: before,
-			});
-		}
+		const bundleAndPersist = Effect.gen(function* () {
+			const build = yield* ActionBundle.build(config, { cwd, clean: true, outDir });
+			if (!build.success) {
+				return yield* new BuildFailed({
+					message: build.error ?? "One or more entries failed to build",
+					failedEntries: build.entries.filter((entry) => !entry.success).length,
+					build,
+					validation: before,
+				});
+			}
 
-		const oversized = options.validate
-			? ActionValidation.checkBundleSizes(
-					config,
-					build.entries.flatMap((entry) => (entry.stats !== undefined ? [entry.stats] : [])),
-				)
-			: [];
-		const validation = ActionValidation.resultOf(
-			before.errors,
-			[...before.warnings, ...oversized],
-			strict && options.validate,
-		);
-		if (!validation.valid) return yield* failValidation(validation, build);
+			const oversized = options.validate
+				? ActionValidation.checkBundleSizes(
+						config,
+						build.entries.flatMap((entry) => (entry.stats !== undefined ? [entry.stats] : [])),
+					)
+				: [];
+			const validation = ActionValidation.resultOf(
+				before.errors,
+				[...before.warnings, ...oversized],
+				strict && options.validate,
+			);
+			if (!validation.valid) return yield* failValidation(validation, build);
 
-		const persisted = options.persist && config.persistLocal.enabled;
-		if (persisted) yield* PersistLocal.persist(target, { cwd, distDir: outDir });
-		if (!target.keepDist) yield* fs.remove(target.stagingDir, { recursive: true, force: true });
+			const persisted = options.persist && config.persistLocal.enabled;
+			if (persisted) yield* PersistLocal.persist(target, { cwd, distDir: outDir });
 
-		return ActionBuildResult.make({ validation, build, persisted });
+			return ActionBuildResult.make({ validation, build, persisted });
+		});
+		// A failed removal must not mask what the build raised.
+		return yield* target.keepDist
+			? bundleAndPersist
+			: bundleAndPersist.pipe(
+					Effect.ensuring(fs.remove(target.stagingDir, { recursive: true, force: true }).pipe(Effect.ignore)),
+				);
 	});
 }

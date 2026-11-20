@@ -212,6 +212,31 @@ describe("ActionBuilder.build under the workspace base", () => {
 		),
 	);
 
+	it.live("leaves a pre-existing package dist untouched", () =>
+		withFiles({ ...ws(ACTION), "actions/one/dist/keep.txt": "keep\n", "package.json": "{}" }, (root) =>
+			Effect.gen(function* () {
+				const cwd = join(root, "actions/one");
+				yield* ActionBuilder.build({ ...options, cwd, root, config: workspace() });
+				assert.deepStrictEqual(readdirSync(join(cwd, "dist")), ["keep.txt"]);
+				assert.strictEqual(readFileSync(join(cwd, "dist/keep.txt"), "utf8"), "keep\n");
+			}).pipe(Effect.provide(Live)),
+		),
+	);
+
+	it.live("removes the staging directory when the build fails", () =>
+		withFiles(
+			{ ...ws({ ...ACTION, "src/main.ts": 'throw new TypeError("broken at load");\n' }), "package.json": "{}" },
+			(root) =>
+				Effect.gen(function* () {
+					const cwd = join(root, "actions/one");
+					const error = yield* ActionBuilder.build({ ...options, cwd, root, config: workspace() }).pipe(Effect.flip);
+					assert.instanceOf(error, BuildFailed);
+					assert.isFalse(existsSync(join(cwd, ".action-staging")));
+					assert.isFalse(existsSync(join(cwd, "dist")));
+				}).pipe(Effect.provide(Live)),
+		),
+	);
+
 	it.live("a path outside the workspace fails before bundling", () =>
 		withFiles({ ...ws(ACTION), "package.json": "{}" }, (root) =>
 			Effect.gen(function* () {
