@@ -1,0 +1,182 @@
+name: Checkout Parity
+
+# Runs the stock `actions/checkout` and the kit's `Checkout` service into two directories with the
+# same inputs and compares what each left behind (HEAD, refs, the normalised `.git/config`, the
+# credentials file with its token redacted, the working tree). Dispatch only: the full matrix is
+# slow and the area is stable. The harness action lives in
+# packages/github-actions/__test__/parity/harness and is built here, never published.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr-number:
+        description: A pull request number in this repository, for the pr-ref case; the case skips without one
+        type: string
+        required: false
+      fixture-repository:
+        description: The repository the tag, branch, lfs, submodules, ssh and persist cases check out
+        type: string
+        default: spencerbeggs/checkout-parity-fixture
+
+concurrency:
+  group: checkout-parity-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the harness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Runtime
+        uses: savvy-web/silk-runtime-action@v1
+
+      - name: Build the harness action
+        # A direct run: the harness sits outside the workspace globs, so `pnpm exec` has no
+        # `effected` to find there. The bin registers tsx itself.
+        working-directory: packages/github-actions/__test__/parity/harness
+        run: |
+          "$GITHUB_WORKSPACE/node_modules/.bin/effected" action build
+
+      - name: Upload the harness
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-harness
+          if-no-files-found: error
+          path: |
+            packages/github-actions/__test__/parity/harness/action.yml
+            packages/github-actions/__test__/parity/harness/dist
+
+  parity:
+    name: ${{ matrix.case }} | ${{ matrix.os }}${{ matrix.container != 'host' && format(' | {0}', matrix.container) || '' }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    container: ${{ matrix.container != 'host' && matrix.container || null }}
+    env:
+      PARITY_CASE: ${{ matrix.case }}
+      PARITY_PR_NUMBER: ${{ inputs.pr-number }}
+      PARITY_SSH_KEY: ${{ secrets.CHECKOUT_PARITY_SSH_KEY }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+        container:
+          - host
+          - node:24
+        case:
+          - default
+          - full-history
+          - pr-ref
+          - tag
+          - branch
+          - sparse
+          - lfs
+          - submodules
+          - ssh
+          - persist-false
+          - persist-true
+        exclude:
+          # A container job is Linux only.
+          - os: macos-latest
+            container: node:24
+          - os: windows-latest
+            container: node:24
+          # The ssh row runs on the host only, and the node image carries no git-lfs.
+          - container: node:24
+            case: ssh
+          - container: node:24
+            case: lfs
+        include:
+          # `fixture` selects the fixture repository; `ref`, `fetch-depth`, `sparse`, `lfs`,
+          # `submodules` and `persist` are the row's inputs and fall back to the stock defaults.
+          - case: default
+          - case: full-history
+            fetch-depth: "0"
+          - case: pr-ref
+            pr-ref: "true"
+          - case: tag
+            fixture: "true"
+            ref: v1.0.0
+          - case: branch
+            fixture: "true"
+            ref: feature/x
+          - case: sparse
+            sparse: packages/git
+          - case: lfs
+            fixture: "true"
+            lfs: "true"
+          - case: submodules
+            fixture: "true"
+            submodules: "true"
+          - case: ssh
+            fixture: "true"
+          - case: persist-false
+            fixture: "true"
+            persist: "false"
+          - case: persist-true
+            fixture: "true"
+            persist: "true"
+    steps:
+      - name: Decide whether the row runs
+        id: gate
+        shell: bash
+        run: |
+          run=true
+          if [ "$PARITY_CASE" = pr-ref ] && [ -z "$PARITY_PR_NUMBER" ]; then run=false; fi
+          if [ "$PARITY_CASE" = ssh ] && [ -z "$PARITY_SSH_KEY" ]; then run=false; fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          if [ "$run" = false ]; then echo "::notice::Skipped: $PARITY_CASE needs its input or secret"; fi
+
+      - name: Download the harness
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: parity-harness
+          path: .harness
+
+      - name: Official checkout
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ matrix.fixture == 'true' && inputs.fixture-repository || github.repository }}
+          ref: ${{ matrix.pr-ref == 'true' && format('refs/pull/{0}/merge', inputs.pr-number) || matrix.ref }}
+          path: official
+          fetch-depth: ${{ matrix.fetch-depth || '1' }}
+          sparse-checkout: ${{ matrix.sparse }}
+          lfs: ${{ matrix.lfs || 'false' }}
+          submodules: ${{ matrix.submodules || 'false' }}
+          persist-credentials: ${{ matrix.persist || 'true' }}
+          ssh-key: ${{ matrix.case == 'ssh' && secrets.CHECKOUT_PARITY_SSH_KEY || '' }}
+
+      - name: Kit checkout
+        if: steps.gate.outputs.run == 'true'
+        uses: ./.harness
+        with:
+          repository: ${{ matrix.fixture == 'true' && inputs.fixture-repository || github.repository }}
+          ref: ${{ matrix.pr-ref == 'true' && format('refs/pull/{0}/merge', inputs.pr-number) || matrix.ref }}
+          path: kit
+          fetch-depth: ${{ matrix.fetch-depth || '1' }}
+          sparse-checkout: ${{ matrix.sparse }}
+          lfs: ${{ matrix.lfs || 'false' }}
+          submodules: ${{ matrix.submodules || 'false' }}
+          persist-credentials: ${{ matrix.persist || 'true' }}
+          ssh-key: ${{ matrix.case == 'ssh' && secrets.CHECKOUT_PARITY_SSH_KEY || '' }}
+
+      - name: Compare
+        if: steps.gate.outputs.run == 'true'
+        uses: ./.harness
+        with:
+          mode: compare
+          official: official
+          kit: kit
