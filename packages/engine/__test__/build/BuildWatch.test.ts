@@ -754,4 +754,23 @@ describe("BuildWatch.packageExcludes", () => {
 			assert.deepStrictEqual(excludes, DEFAULT_EXCLUDES);
 		}),
 	);
+
+	it.effect("a package-base persist path inside the package is excluded (positive control)", () =>
+		Effect.gen(function* () {
+			const seed = workspace({ [`${CWD}/effected.toml`]: '[action.persistLocal]\npath = "out/local"\n' });
+			const excludes = yield* inVolume(seed, BuildWatch.actionExcludes({ cwd: CWD, root: ROOT }));
+			assert.include(excludes, "out/local");
+		}),
+	);
+
+	it.effect("a persist path is excluded when cwd is given through a symlink", () =>
+		Effect.gen(function* () {
+			const seed = workspace({
+				[`${CWD}/effected.toml`]: '[action.persistLocal]\npath = "out/local"\n',
+				"/alias": MemoryFileSystem.symlink(CWD),
+			});
+			const excludes = yield* inVolume(seed, BuildWatch.actionExcludes({ cwd: "/alias", root: ROOT }));
+			assert.include(excludes, "out/local");
+		}),
+	);
 });

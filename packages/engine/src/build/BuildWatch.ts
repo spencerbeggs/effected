@@ -211,7 +211,10 @@ export class BuildWatch {
 				root: target.root,
 			}).pipe(Effect.option);
 			if (Option.isNone(resolved) || !resolved.value.enabled) return DEFAULT_EXCLUDES;
-			return withInside(path, target.cwd, [resolved.value.outputPath]);
+			// `outputPath` is under the realpath of `cwd`, so relativize against that, as `PersistTarget` realpaths it.
+			const fs = yield* FileSystem.FileSystem;
+			const realCwd = yield* fs.realPath(target.cwd).pipe(Effect.orElseSucceed(() => target.cwd));
+			return withInside(path, realCwd, [resolved.value.outputPath]);
 		});
 
 	/**
