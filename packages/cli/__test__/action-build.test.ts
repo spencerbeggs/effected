@@ -2,7 +2,7 @@
 // bundles on the real disk.
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, describe, it } from "@effect/vitest";
@@ -48,14 +48,18 @@ const cli = (
 				const code = Exit.isFailure(exit) ? Runtime.getErrorExitCode(Cause.squash(exit.cause)) : 0;
 				const outText = (yield* TestConsole.logLines).map(String).join("\n");
 				const errText = (yield* TestConsole.errorLines).map(String).join("\n");
+				// The package's own outputs sit under `sub`; a workspace-based persist lands at the workspace root.
+				const pkg = join(cwd, sub);
 				return {
 					code,
 					cwd,
 					outText,
 					errText,
 					out: outText === "" ? [] : outText.split("\n"),
-					dist: readdirSafe(join(cwd, "dist")),
-					local: readdirSafe(join(cwd, ".github/actions/local/dist")),
+					dist: readdirSafe(join(pkg, "dist")),
+					local: readdirSafe(join(pkg, ".github/actions/local/dist")),
+					staging: readdirSafe(join(pkg, ".action-staging")),
+					persisted: readdirSafe(join(cwd, ".github/actions", basename(pkg))),
 				};
 			}),
 		(cwd) => Effect.sync(() => rmSync(cwd, { recursive: true, force: true })),
@@ -112,10 +116,18 @@ describe("effected action build", () => {
 
 	it.effect("--no-persist with dist = false exits 64 and builds nothing", () =>
 		Effect.gen(function* () {
-			const { code, errText, dist } = yield* cli(["--no-persist"], WORKSPACE_LOCAL, {}, false, "actions/one");
+			const { code, errText, dist, staging, persisted } = yield* cli(
+				["--no-persist"],
+				WORKSPACE_LOCAL,
+				{},
+				false,
+				"actions/one",
+			);
 			assert.strictEqual(code, 64);
 			assert.include(errText, "dist");
 			assert.deepStrictEqual(dist, []);
+			assert.deepStrictEqual(staging, []);
+			assert.deepStrictEqual(persisted, []);
 		}),
 	);
 

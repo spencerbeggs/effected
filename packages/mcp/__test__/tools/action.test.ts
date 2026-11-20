@@ -1,5 +1,5 @@
 // `action_build` in process, over real temporary directories because rolldown bundles on the real disk.
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
@@ -17,6 +17,18 @@ const GOOD: Readonly<Record<string, string>> = {
 		"name: test\ndescription: d\nruns:\n  using: node24\n  main: dist/main.js\nbranding:\n  icon: zap\n  color: blue\n",
 	"src/main.ts": 'console.log("main");\n',
 };
+
+/** Every file under `directory` with its content, so a before and after comparison sees any write. */
+const treeOf = (directory: string): Readonly<Record<string, string>> =>
+	Object.fromEntries(
+		readdirSync(directory, { recursive: true, withFileTypes: true })
+			.filter((entry) => entry.isFile())
+			.map((entry) => {
+				const full = join(entry.parentPath, entry.name);
+				return [full.slice(directory.length + 1), readFileSync(full, "utf8")];
+			})
+			.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+	);
 
 interface ToolResult {
 	readonly isError?: boolean;
@@ -100,15 +112,36 @@ describe("action_build", () => {
 	it.live("check: true on a never-persisted action is a failed verdict listing the drift, and writes nothing", () =>
 		serving(GOOD, (harness, cwd) =>
 			Effect.gen(function* () {
+				const before = treeOf(cwd);
 				const result = resultOf(yield* harness.callTool("action_build", { check: true }));
 				assert.notStrictEqual(result.isError, true, textOf(result));
 				assert.strictEqual(result.structuredContent?.verdict, "failed");
 				assert.isAbove(result.structuredContent?.result?.drift?.length ?? 0, 0);
-				assert.deepStrictEqual(
-					readdirSync(cwd).filter((name) => name === ".github"),
-					[],
-				);
+				assert.deepStrictEqual(treeOf(cwd), before);
 			}),
+		),
+	);
+
+	it.live("check: true over stale committed output reports it changed and leaves every output file as it was", () =>
+		serving(
+			{
+				...GOOD,
+				"dist/main.js": "stale dist\n",
+				".github/actions/local/action.yml": GOOD["action.yml"] ?? "",
+				".github/actions/local/dist/main.js": "stale persisted\n",
+				".github/actions/local/dist/extra.js": "extra\n",
+			},
+			(harness, cwd) =>
+				Effect.gen(function* () {
+					const before = treeOf(cwd);
+					const result = resultOf(yield* harness.callTool("action_build", { check: true }));
+					assert.notStrictEqual(result.isError, true, textOf(result));
+					assert.strictEqual(result.structuredContent?.verdict, "failed");
+					const drift = (result.structuredContent?.result?.drift ?? []).map((entry) => `${entry.kind} ${entry.path}`);
+					assert.include(drift, "changed dist/main.js");
+					assert.include(drift, "extra dist/extra.js");
+					assert.deepStrictEqual(treeOf(cwd), before);
+				}),
 		),
 	);
 
