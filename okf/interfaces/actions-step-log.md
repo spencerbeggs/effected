@@ -16,11 +16,11 @@ sources:
   - id: step-log-tests
     resource: ../../packages/github-actions/__test__
 generated:
-  by: "claude-code/sonnet-5.5"
-  at: 2026-11-20T22:40:26Z
+  by: "claude-code/opus-5.5"
+  at: 2026-11-20T23:11:25Z
 integrity:
   generated:
-    body: eee5186facd69085
+    body: 6a3161ab65c402ad
 ---
 
 # actions-step-log
@@ -114,6 +114,14 @@ line.
   run in which any frame failed is written unfolded.
 - A fiber forked inside a step that logs after the step ended is not
   dropped: its lines print as ordinary log lines, unindented and unprefixed.
+- **Inside a step, the step's own logger replaces the installed loggers.**
+  Every other logger the program installed (an OpenTelemetry exporter, a
+  file logger) sees nothing logged inside a step; it sees only what is
+  logged outside every step. A program that needs those entries elsewhere
+  logs them outside the step.[^action-logger-source]
+- Opening a step and arming its window is uninterruptible, with only the
+  body interruptible, so an interruption at the start still writes the
+  `✗ <name> · interrupted` line and never leaves a run streaming.
 
 ## Commands, masking and tests
 
@@ -146,3 +154,6 @@ and `step` bodies through and model neither nesting nor the step log.
 
 [^step-log-source]: `packages/github-actions/src/internal/stepLog.ts` — the
     renderer, its frame state and the held, live and prefix rules.
+
+[^action-logger-source]: `packages/github-actions/src/ActionLogger.ts` — `step`
+    provides `Logger.CurrentLoggers` as a set holding only the step's logger.

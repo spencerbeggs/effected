@@ -505,36 +505,40 @@ const make = Effect.gen(function* () {
 			effect,
 		);
 
+	// Uninterruptible from opening the run to installing its close, with only the body restored: an interruption in
+	// between would leave a zero-window run streaming with no result line, prefixing every later live step.
 	const step = <A, E, R>(name: string, effect: Effect.Effect<A, E, R>, options?: StepOptions<A>) =>
-		Effect.gen(function* () {
-			const active = yield* StepLog.ActiveStep;
-			// A step whose run has closed is no parent: a fiber forked inside it outlived it, and opens a fresh step.
-			const parent = active !== null && active.run.mode !== "closed" ? active : null;
-			const depth = yield* GroupDepth;
-			// The real console: inside a step the fiber's console is the capturing one.
-			const console = active === null ? yield* Console.Console : active.run.console;
-			const canFold = active === null ? depth === 0 : active.run.canFold;
-			const minimum = active === null ? yield* References.MinimumLogLevel : active.run.minimum;
-			const started = yield* Clock.currentTimeMillis;
-			const frame = StepLog.open(name, parent, console, canFold, streaming, minimum);
-			const timer = parent === null ? yield* armWindow(frame, options?.window) : undefined;
-			return yield* effect.pipe(
-				// `All` so Debug and Trace are detail whatever the ambient level: the git transcript is Debug.
-				Effect.provideService(References.MinimumLogLevel, "All"),
-				Effect.provideService(Logger.CurrentLoggers, new Set([stepLogger(frame)])),
-				Effect.provideService(StepLog.ActiveStep, frame),
-				Effect.provideService(GroupDepth, depth + 1),
-				Effect.provideService(Console.Console, StepLog.capture(frame)),
-				Effect.onExit((exit) =>
-					Effect.andThen(
-						timer === undefined ? Effect.void : Fiber.interrupt(timer),
-						Effect.flatMap(Clock.currentTimeMillis, (ended) =>
-							Effect.sync(() => StepLog.close(frame, stepOutcome(name, exit, options), ended - started)),
+		Effect.uninterruptibleMask((restore) =>
+			Effect.gen(function* () {
+				const active = yield* StepLog.ActiveStep;
+				// A step whose run has closed is no parent: a fiber forked inside it outlived it, and opens a fresh step.
+				const parent = active !== null && active.run.mode !== "closed" ? active : null;
+				const depth = yield* GroupDepth;
+				// The real console: inside a step the fiber's console is the capturing one.
+				const console = active === null ? yield* Console.Console : active.run.console;
+				const canFold = active === null ? depth === 0 : active.run.canFold;
+				const minimum = active === null ? yield* References.MinimumLogLevel : active.run.minimum;
+				const started = yield* Clock.currentTimeMillis;
+				const frame = StepLog.open(name, parent, console, canFold, streaming, minimum);
+				const timer = parent === null ? yield* armWindow(frame, options?.window) : undefined;
+				return yield* restore(effect).pipe(
+					// `All` so Debug and Trace are detail whatever the ambient level: the git transcript is Debug.
+					Effect.provideService(References.MinimumLogLevel, "All"),
+					Effect.provideService(Logger.CurrentLoggers, new Set([stepLogger(frame)])),
+					Effect.provideService(StepLog.ActiveStep, frame),
+					Effect.provideService(GroupDepth, depth + 1),
+					Effect.provideService(Console.Console, StepLog.capture(frame)),
+					Effect.onExit((exit) =>
+						Effect.andThen(
+							timer === undefined ? Effect.void : Fiber.interrupt(timer),
+							Effect.flatMap(Clock.currentTimeMillis, (ended) =>
+								Effect.sync(() => StepLog.close(frame, stepOutcome(name, exit, options), ended - started)),
+							),
 						),
 					),
-				),
-			);
-		});
+				);
+			}),
+		);
 
 	return {
 		group: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) =>

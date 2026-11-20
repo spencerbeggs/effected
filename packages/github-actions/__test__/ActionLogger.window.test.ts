@@ -221,6 +221,36 @@ describe("ActionLogger step windows", () => {
 		),
 	);
 
+	it.effect("a zero-window step interrupted as it opens still closes, so a later live step has no prefix", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				const real = yield* Console.Console;
+				// Interrupt the step's own fiber the moment its opening line is written: after its window is armed
+				// and before its body starts.
+				const fiber = yield* Effect.forkChild(
+					Effect.withFiber((self) =>
+						logger.step("first", Effect.never, { window: 0 }).pipe(
+							Effect.provideService(Console.Console, {
+								...real,
+								log: (...args: ReadonlyArray<unknown>) => {
+									real.log(...args);
+									if (String(args[0]).includes("… first")) self.interruptUnsafe();
+								},
+							}),
+						),
+					),
+				);
+				yield* Fiber.await(fiber);
+				yield* logger.step("second", Effect.logInfo("b"), { window: 0 });
+				const all = yield* lines;
+				assert.include(all, "  b");
+				assert.notInclude(all, "  [second]  b");
+				assert.include(all, "✗ first · interrupted");
+			}),
+		),
+	);
+
 	it.effect("an inner step's window is ignored", () =>
 		live(
 			Effect.gen(function* () {
