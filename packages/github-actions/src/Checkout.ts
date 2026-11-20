@@ -1,12 +1,15 @@
-import type { Git, GitCommandError, NotARepositoryError, UnknownRefError } from "@effected/git";
+import type { GitCommandError, NotARepositoryError, UnknownRefError } from "@effected/git";
+import { Git } from "@effected/git";
 import type { FileSystem, Path, PlatformError, Scope } from "effect";
-import { Effect, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import type { SecureRandom } from "effect/crypto";
 import type { ChildProcessSpawner } from "effect/process";
 import type { ActionEnvironment, ActionEnvironmentError } from "./ActionEnvironment.js";
 import type { ActionLogger } from "./ActionLogger.js";
 import type { ActionOutputs } from "./ActionOutputs.js";
-import type { ActionState, ActionStateError } from "./ActionState.js";
+import type { ActionStateError } from "./ActionState.js";
+import { ActionState } from "./ActionState.js";
+import { CredentialRecord, remove } from "./internal/checkout/credentials.js";
 import { getSource } from "./internal/checkout/source.js";
 
 const Sha = Schema.String;
@@ -347,8 +350,40 @@ export class Checkout {
 		| ActionLogger
 	> => getSource(options);
 
-	/** Runs the post-job cleanup. Not yet implemented. */
-	static readonly cleanup = (): Effect.Effect<void> => Effect.die("not implemented");
+	/**
+	 * Runs the post-step cleanup of a `"job"` checkout: reads the record saved
+	 * under `stateKey` and removes everything the checkout wrote.
+	 *
+	 * @remarks
+	 * No saved record is a no-op. Removal covers the credentials file, the SSH
+	 * files, `includeIf`, the extraheader, `core.sshCommand` and the submodules'
+	 * `insteadOf`, with `safe.directory` handled for the repository as the stock
+	 * post step does. It never fails: every failure, an unreadable record
+	 * included, becomes a warning, so a post step cannot turn a green job red.
+	 */
+	static readonly cleanup = (options?: {
+		readonly stateKey?: string;
+	}): Effect.Effect<
+		void,
+		never,
+		| Git
+		| FileSystem.FileSystem
+		| Path.Path
+		| ChildProcessSpawner.ChildProcessSpawner
+		| SecureRandom.SecureRandom
+		| ActionEnvironment
+		| ActionState
+		| ActionLogger
+	> =>
+		Effect.gen(function* () {
+			const state = yield* ActionState;
+			const git = yield* Git;
+			const record = yield* state.getOptional(options?.stateKey ?? "effected-checkout", CredentialRecord);
+			if (Option.isSome(record)) yield* remove(record.value, git);
+		}).pipe(
+			Effect.catch((error) => Effect.logWarning(`Checkout cleanup failed: ${error.message}`)),
+			Effect.catchDefect((defect) => Effect.logWarning(`Checkout cleanup failed: ${String(defect)}`)),
+		);
 
 	/** Reads {@link CheckoutOptions} from the action's inputs. Not yet implemented. */
 	static readonly fromInputs = (): Effect.Effect<CheckoutOptions> => Effect.die("not implemented");
