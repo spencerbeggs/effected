@@ -751,9 +751,12 @@ const runClassified = (
 /** The text a transcript section keeps before truncating. */
 const TRANSCRIPT_LIMIT = 4000;
 
-/** Whether the redacted argv is a `git config` read, whose stdout may hold a credential header. */
-const isConfigRead = (args: ReadonlyArray<string>): boolean =>
-	args[0] === "config" && args.some((arg) => arg === "--get" || arg === "--get-all" || arg === "--list");
+/**
+ * Whether the redacted argv is a `git config` invocation. Fails closed: every
+ * `config` invocation, whatever its flag, may print a credential header, so
+ * none logs its stdout.
+ */
+const isConfigRead = (args: ReadonlyArray<string>): boolean => args[0] === "config";
 
 const truncate = (text: string): string =>
 	text.length <= TRANSCRIPT_LIMIT
@@ -762,8 +765,8 @@ const truncate = (text: string): string =>
 
 /**
  * Logs one invocation at Debug: the redacted argv as the message, then the
- * scrubbed `stdout:` and `stderr:` sections (empty ones omitted). A config
- * read logs its stdout as a byte count only. Never fails.
+ * scrubbed `stdout:` and `stderr:` sections (empty ones omitted). A `git config`
+ * invocation logs its stdout as a byte count only. Never fails.
  */
 const transcript = (
 	invocation: GitInvocation,
@@ -4912,8 +4915,7 @@ const notStubbed = (method: string) => () =>
  * `git.durationMs`, followed by `stdout:` and `stderr:` sections when they
  * are not empty. Both sections are scrubbed of the invocation's secrets and of
  * credential-shaped text, and each is cut at 4000 characters with a trailing
- * `… (<n> more characters)`. The stdout of a `git config` read (`--get`,
- * `--get-all`, `--list`) is never logged, only its size as `<n bytes>`, since
+ * `… (<n> more characters)`. The stdout of any `git config` invocation is never logged, only its size as `<n bytes>`, since
  * it may hold a credential header. A raw argv, a token and a config value are
  * never logged.
  *

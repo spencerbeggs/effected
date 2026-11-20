@@ -87,6 +87,35 @@ describe("Git transcript", () => {
 		}),
 	);
 
+	it.effect("a config invocation outside the read flags still logs a byte count", () =>
+		Effect.gen(function* () {
+			// A write shape carries none of --get/--get-all/--list; fail-closed means its stdout is withheld too.
+			const stdout = "AUTHORIZATION: basic c2VjcmV0\n";
+			const { entries } = yield* capture(
+				Effect.flatMap(Git, (git) => git.configSet(cwd, "http.extraheader", "x")),
+				() => ({ stdout }),
+				"Debug",
+			);
+			assert.strictEqual(entries.length, 1);
+			assert.include(entries[0]?.text, `stdout: <${new TextEncoder().encode(stdout).length} bytes>`);
+			assert.notInclude(entries[0]?.text, "c2VjcmV0");
+		}),
+	);
+
+	it.effect("ordinary stdout is logged scrubbed", () =>
+		Effect.gen(function* () {
+			const { entries } = yield* capture(
+				Effect.flatMap(Git, (git) => git.remoteAdd(cwd, "origin", "https://u:tok@h/o/r")),
+				() => ({ stdout: "added https://u:tok@h/o/r\n" }),
+				"Debug",
+			);
+			assert.strictEqual(entries.length, 1);
+			assert.include(entries[0]?.text, "stdout:");
+			assert.include(entries[0]?.text, "<redacted>");
+			assert.notInclude(entries[0]?.text, "tok");
+		}),
+	);
+
 	it.effect("long output is truncated", () =>
 		Effect.gen(function* () {
 			const { entries } = yield* capture(
