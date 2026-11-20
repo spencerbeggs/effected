@@ -43,6 +43,7 @@ export { ActionInput, type ActionInputRecording, type PairsOptions } from "./Act
 export {
 	ActionLogger,
 	type ActionLoggerShape,
+	type StepOptions,
 	type WithBufferOptions,
 	type WithStepOptions,
 } from "./ActionLogger.js";

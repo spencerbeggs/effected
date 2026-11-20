@@ -1,7 +1,22 @@
 import type { AnnotationProperties } from "@effected/github-commands";
 import { CommandNeutralizer, WorkflowCommand } from "@effected/github-commands";
-import { Console, Context, Effect, Exit, Inspectable, Layer, LogLevel, Logger, References } from "effect";
+import type { Cause, Duration } from "effect";
+import {
+	Cause as CauseModule,
+	Clock,
+	Console,
+	Context,
+	Effect,
+	Exit,
+	Inspectable,
+	Layer,
+	LogLevel,
+	Logger,
+	References,
+} from "effect";
 import { ActionEnvironment } from "./ActionEnvironment.js";
+import type { StepFrame, StepOutcome } from "./internal/stepLog.js";
+import * as StepLog from "./internal/stepLog.js";
 
 /**
  * Render a log message, which arrives as an array of the values passed to
@@ -149,6 +164,9 @@ const GroupDepth = Context.Reference<number>(WorkflowCommand.groupDepthKey, {
 	defaultValue: () => 0,
 });
 
+/** Line breaks collapsed to spaces, so caller text stays one line. */
+const singleLine = (text: string): string => text.replace(/\r\n|\r|\n/g, " ");
+
 /**
  * The `▸ <name>` line a nested group writes in place of a second `::group::`,
  * and the line {@link ActionLoggerShape.heading} writes.
@@ -159,7 +177,7 @@ const GroupDepth = Context.Reference<number>(WorkflowCommand.groupDepthKey, {
  * neutralized, because a group name is caller text and a `::` or `##[` in it
  * would otherwise be a command.
  */
-const nestedHeader = (name: string): string => CommandNeutralizer.text(`▸ ${name.replace(/\r\n|\r|\n/g, " ")}`);
+const nestedHeader = (name: string): string => CommandNeutralizer.text(`▸ ${singleLine(name)}`);
 
 /** Drop a transcript without writing it, so a green step stays quiet. */
 const discard = (state: BufferState): Effect.Effect<void> =>
@@ -219,6 +237,73 @@ export interface WithStepOptions {
 }
 
 /**
+ * Options for {@link ActionLoggerShape.step}.
+ *
+ * @public
+ */
+export interface StepOptions<A> {
+	/**
+	 * How long the step may run before its detail streams live instead of folding.
+	 *
+	 * @remarks
+	 * Only the outermost open step's window counts; a step nested inside another ignores its own.
+	 */
+	readonly window?: Duration.Input;
+	/**
+	 * The result line's text when the step succeeds, computed from its result.
+	 *
+	 * @remarks
+	 * Defaults to the step's name.
+	 */
+	readonly summary?: (result: A) => string;
+	/**
+	 * The result line's text when the step fails, computed from its failure.
+	 *
+	 * @remarks
+	 * Replaces both the name and the message. Defaults to `<name> · <message>`, the message being the first line of the
+	 * squashed failure's message. An interruption always reads `<name> · interrupted`.
+	 */
+	readonly failure?: (cause: Cause.Cause<unknown>) => string;
+}
+
+/** The first line of a failure's message, for the result line. */
+const failureMessage = (cause: Cause.Cause<unknown>): string => {
+	const squashed = CauseModule.squash(cause);
+	const message =
+		squashed instanceof Error
+			? squashed.message
+			: typeof squashed === "string"
+				? squashed
+				: Inspectable.toStringUnknown(squashed, 0);
+	return message.split(/\r\n|\r|\n/)[0] ?? "";
+};
+
+/** How a step's exit reads on its result line. */
+const stepOutcome = <A, E>(name: string, exit: Exit.Exit<A, E>, options: StepOptions<A> | undefined): StepOutcome => {
+	if (Exit.isSuccess(exit)) {
+		return { _tag: "Success", text: options?.summary?.(exit.value) ?? name };
+	}
+	if (CauseModule.hasInterruptsOnly(exit.cause)) {
+		return { _tag: "Interrupted" };
+	}
+	return { _tag: "Failure", text: options?.failure?.(exit.cause) ?? `${name} · ${failureMessage(exit.cause)}` };
+};
+
+/**
+ * The logger a step runs under: warnings and errors go out live and count against the step and every step around it;
+ * everything below `Warn` is the step's detail.
+ */
+const stepLogger = (frame: StepFrame): Logger.Logger<unknown, void> =>
+	Logger.make((options) => {
+		if (LogLevel.isGreaterThanOrEqualTo(options.logLevel, "Warn")) {
+			StepLog.countAnnotation(frame, LogLevel.isGreaterThanOrEqualTo(options.logLevel, "Error") ? "error" : "warning");
+			commandLogger.log(options);
+			return;
+		}
+		StepLog.detail(frame, formatMessage(options.message));
+	});
+
+/**
  * The members of the {@link ActionLogger} service: log groups and headings,
  * buffered steps, notices and source annotations.
  *
@@ -236,7 +321,9 @@ export interface ActionLoggerShape {
 	 * collapsed to spaces, the text neutralized so it cannot be a command). The
 	 * header goes out through `Console` like the group command it replaces, so
 	 * it is never captured into, or discarded with, an enclosing `withBuffer`
-	 * or `withStep` transcript. A failure at any depth flushes the active
+	 * or `withStep` transcript. Inside a {@link ActionLoggerShape.step} the
+	 * depth is already at least 1, so the header is a line of that step's
+	 * detail instead. A failure at any depth flushes the active
 	 * buffer before the group closes. That ordering is visible in a failed
 	 * run's log: the replayed transcript lands BELOW every nested header that
 	 * was written live, including lines that were logged before the header.
@@ -347,6 +434,43 @@ export interface ActionLoggerShape {
 		options?: WithStepOptions,
 	) => Effect.Effect<A, E, R>;
 	/**
+	 * Run an effect under a phase heading: one bold line, never folded.
+	 *
+	 * @remarks
+	 * What a reader scans for. Nothing is written when the phase ends, and the group depth is unchanged, so the steps
+	 * inside it fold as top-level steps. Inside a step the heading is a line of that step's detail.
+	 */
+	readonly phase: <A, E, R>(title: string, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
+	/**
+	 * Run an effect as a step: its detail held, one result line when it ends.
+	 *
+	 * @remarks
+	 * The detail is every log line below `Warn`, `Debug` and `Trace` included whatever the ambient minimum level, and
+	 * every line a nested {@link ActionLoggerShape.group} or step writes. Warnings and errors are never held: they go out
+	 * as annotations the moment they happen, and the result line counts them.
+	 *
+	 * The result line is `<mark> <summary or name> · <duration>`, the mark `✓` for a success, `⚠` for a success that
+	 * logged a warning or an error (here or in any step inside it), and `✗` for a failure ({@link StepOptions}):
+	 *
+	 * 1. a success with detail is one folded `::group::` titled by the result line, the detail inside it;
+	 * 2. a success without detail is the result line alone;
+	 * 3. a failure is never folded: the result line, then the detail indented beneath it, then the failure itself
+	 *    propagates unchanged. An interruption is written the same way, as `✗ <name> · interrupted`.
+	 *
+	 * A step inside a step opens no group: its result line, and its detail indented above it, are lines of the
+	 * enclosing step's detail. Inside the step the group depth is at least 1, so `group` and `@effected/cli-kit`'s
+	 * renderers write plain lines rather than a group the runner cannot nest. A step opened inside a `group` cannot fold
+	 * either, and writes its result line with the detail indented beneath it.
+	 *
+	 * Every line passes through `CommandNeutralizer.text`, so no detail line can be a workflow command. Text written
+	 * straight to `Console` inside a step is not detail and goes out at once.
+	 */
+	readonly step: <A, E, R>(
+		name: string,
+		effect: Effect.Effect<A, E, R>,
+		options?: StepOptions<A>,
+	) => Effect.Effect<A, E, R>;
+	/**
 	 * Emit a `::notice::` annotation.
 	 *
 	 * @remarks
@@ -370,6 +494,45 @@ export interface ActionLoggerShape {
 
 const make = Effect.gen(function* () {
 	const env = yield* ActionEnvironment;
+
+	/** A `▸ <name>` header: a line of the open step's detail, or written out when no step is open. */
+	const writeHeader = (name: string) =>
+		Effect.flatMap(StepLog.ActiveStep, (frame) =>
+			frame === null
+				? Console.log(nestedHeader(name))
+				: Effect.sync(() => StepLog.detail(frame, `▸ ${singleLine(name)}`)),
+		);
+
+	const phase = <A, E, R>(title: string, effect: Effect.Effect<A, E, R>) =>
+		Effect.andThen(
+			Effect.flatMap(StepLog.ActiveStep, (frame) =>
+				frame === null
+					? Console.log(CommandNeutralizer.text(StepLog.heading(title)))
+					: Effect.sync(() => StepLog.detail(frame, StepLog.heading(title))),
+			),
+			effect,
+		);
+
+	const step = <A, E, R>(name: string, effect: Effect.Effect<A, E, R>, options?: StepOptions<A>) =>
+		Effect.gen(function* () {
+			const parent = yield* StepLog.ActiveStep;
+			const depth = yield* GroupDepth;
+			const console = yield* Console.Console;
+			const started = yield* Clock.currentTimeMillis;
+			const frame = StepLog.open(name, parent, console, depth === 0);
+			return yield* effect.pipe(
+				// `All` so Debug and Trace are detail whatever the ambient level: the git transcript is Debug.
+				Effect.provideService(References.MinimumLogLevel, "All"),
+				Effect.provideService(Logger.CurrentLoggers, new Set([stepLogger(frame)])),
+				Effect.provideService(StepLog.ActiveStep, frame),
+				Effect.provideService(GroupDepth, depth + 1),
+				Effect.onExit((exit) =>
+					Effect.flatMap(Clock.currentTimeMillis, (ended) =>
+						Effect.sync(() => StepLog.close(frame, stepOutcome(name, exit, options), ended - started)),
+					),
+				),
+			);
+		});
 
 	const flushActive = Effect.flatMap(ActiveBuffer, (state) => (state === null ? Effect.void : flush(state)));
 
@@ -419,7 +582,7 @@ const make = Effect.gen(function* () {
 							() => body,
 							() => Console.log(WorkflowCommand.endGroup()),
 						)
-					: Effect.andThen(Console.log(nestedHeader(name)), body);
+					: Effect.andThen(writeHeader(name), body);
 			}),
 
 		heading: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) =>
@@ -427,6 +590,10 @@ const make = Effect.gen(function* () {
 			Effect.andThen(Console.log(nestedHeader(name)), effect),
 
 		withBuffer,
+
+		phase,
+
+		step,
 
 		withStep: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>, options?: WithStepOptions) =>
 			withBuffer(
@@ -525,6 +692,8 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 		heading: <A, E, R>(_name: string, effect: Effect.Effect<A, E, R>) => effect,
 		withBuffer: <A, E, R>(_label: string, effect: Effect.Effect<A, E, R>) => effect,
 		withStep: <A, E, R>(_name: string, effect: Effect.Effect<A, E, R>) => effect,
+		phase: <A, E, R>(_title: string, effect: Effect.Effect<A, E, R>) => effect,
+		step: <A, E, R>(_name: string, effect: Effect.Effect<A, E, R>) => effect,
 		notice: () => Effect.void,
 		annotated: <A, E, R>(_properties: AnnotationProperties, effect: Effect.Effect<A, E, R>) => effect,
 		...overrides,
