@@ -225,15 +225,15 @@ export class ActionBundle {
 	 * Cleaning `dist`, writing `dist/package.json` and reading each bundle's size go through the provided `FileSystem`
 	 * and `Path`, while rolldown and the load check work on the host disk, so provide the host's.
 	 *
-	 * @param options - `cwd` is the action's directory; `clean` removes `dist` first.
+	 * @param options - `cwd` is the action's directory; `clean` removes the output directory first; `outDir` is the absolute directory to bundle into and defaults to `dist` in `cwd`, while the reported output path stays `dist/<entry>.js`.
 	 */
 	static readonly build: (
 		config: ActionConfig,
-		options: { readonly cwd: string; readonly clean: boolean },
+		options: { readonly cwd: string; readonly clean: boolean; readonly outDir?: string },
 	) => Effect.Effect<BuildResult, BundleFailed | CleanError | WriteError, FileSystem.FileSystem | Path.Path> =
 		Effect.fn("ActionBundle.build")(function* (
 			config: ActionConfig,
-			options: { readonly cwd: string; readonly clean: boolean },
+			options: { readonly cwd: string; readonly clean: boolean; readonly outDir?: string },
 		) {
 			const fs = yield* FileSystem.FileSystem;
 			const path = yield* Path.Path;
@@ -242,7 +242,7 @@ export class ActionBundle {
 			// cwd reached through a symlink would write the machine's directory layout into the bundle.
 			const requested = path.resolve(options.cwd);
 			const cwd = yield* fs.realPath(requested).pipe(Effect.orElseSucceed(() => requested));
-			const dist = path.join(cwd, "dist");
+			const dist = options.outDir ?? path.join(cwd, "dist");
 			const entries = yield* entriesToBuild(config, cwd);
 
 			if (options.clean) {

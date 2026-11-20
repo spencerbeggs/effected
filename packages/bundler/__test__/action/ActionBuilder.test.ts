@@ -1,12 +1,14 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { join } from "node:path";
 import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as NodePath from "@effect/platform-node/NodePath";
 import { assert, describe, it } from "@effect/vitest";
 import { Effect, Layer } from "effect";
+import { sameBytes } from "../../src/action/tree.js";
 import {
 	ActionBuildResult,
 	ActionBuilder,
+	ActionBundle,
 	ActionYmlPathError,
 	BuildFailed,
 	BundleFailed,
@@ -177,5 +179,94 @@ describe("ActionBuilder.build", () => {
 			);
 			assert.instanceOf(unresolved, ActionYmlPathError);
 		}).pipe(Effect.provide(Live)),
+	);
+});
+
+describe("ActionBundle.build outDir", () => {
+	const files = { "src/main.ts": 'console.log("main");\n' };
+	const filesIn = (directory: string) => readdirSync(directory).sort();
+	/** `outDir` is absolute and under the real `cwd`, as `ResolvedPersist.stagingDir` is: the temp directory is a symlink on macOS. */
+	const stage = (cwd: string, name: string) => join(realpathSync(cwd), name);
+
+	it.live("bundles into outDir and leaves dist alone", () =>
+		withFiles({ ...files, "dist/keep.txt": "keep\n" }, (cwd) =>
+			Effect.gen(function* () {
+				const outDir = stage(cwd, ".action-staging");
+				const result = yield* ActionBundle.build(configOf(), { cwd, clean: true, outDir });
+				assert.isTrue(result.success);
+				assert.isTrue(existsSync(join(outDir, "main.js")));
+				assert.isTrue(existsSync(join(outDir, "package.json")));
+				assert.strictEqual(result.entries[0]?.stats?.outputPath, "dist/main.js");
+				assert.deepStrictEqual(filesIn(join(cwd, "dist")), ["keep.txt"]);
+			}),
+		),
+	);
+
+	it.live("clean clears a stale staging dir", () =>
+		withFiles({ ...files, ".action-staging/old.js": "old\n" }, (cwd) =>
+			Effect.gen(function* () {
+				const outDir = stage(cwd, ".action-staging");
+				yield* ActionBundle.build(configOf(), { cwd, clean: true, outDir });
+				assert.isFalse(existsSync(join(outDir, "old.js")));
+				assert.isTrue(existsSync(join(outDir, "main.js")));
+			}),
+		),
+	);
+
+	it.live("staged and real builds match", () =>
+		withFiles(files, (cwd) =>
+			Effect.gen(function* () {
+				const config = configOf({ build: { sourceMap: true, minify: false } });
+				const staged = stage(cwd, ".action-staging");
+				yield* ActionBundle.build(config, { cwd, clean: true, outDir: staged });
+				yield* ActionBundle.build(config, { cwd, clean: true });
+				const names = filesIn(staged);
+				assert.deepStrictEqual(names, filesIn(join(cwd, "dist")));
+				assert.include(names, "main.js.map");
+				for (const name of names) {
+					assert.isTrue(sameBytes(readFileSync(join(staged, name)), readFileSync(join(cwd, "dist", name))), name);
+				}
+			}),
+		),
+	);
+
+	it.live("two builds are byte-identical", () =>
+		withFiles(files, (cwd) =>
+			Effect.gen(function* () {
+				const config = configOf({ build: { sourceMap: true, minify: false } });
+				const one = stage(cwd, ".stage-one");
+				const two = stage(cwd, ".stage-two");
+				yield* ActionBundle.build(config, { cwd, clean: true, outDir: one });
+				yield* ActionBundle.build(config, { cwd, clean: true, outDir: two });
+				const names = filesIn(one);
+				assert.deepStrictEqual(names, filesIn(two));
+				for (const name of names) {
+					assert.isTrue(sameBytes(readFileSync(join(one, name)), readFileSync(join(two, name))), name);
+				}
+			}),
+		),
+	);
+
+	it.live("an external resolves from staging in the import check", () =>
+		withFiles(
+			{
+				"src/main.ts": 'import { value } from "ext-pkg";\nconsole.log(value);\n',
+				"node_modules/ext-pkg/package.json":
+					'{ "name": "ext-pkg", "version": "1.0.0", "type": "module", "main": "index.js" }',
+				"node_modules/ext-pkg/index.js": "export const value = 1;\n",
+			},
+			(cwd) =>
+				Effect.gen(function* () {
+					const outDir = stage(cwd, ".action-staging");
+					const result = yield* ActionBundle.build(configOf({ build: { externals: ["ext-pkg"] } }), {
+						cwd,
+						clean: true,
+						outDir,
+					});
+					assert.isTrue(result.success, result.entries[0]?.error);
+					assert.isUndefined(result.entries[0]?.warnings);
+					assert.isTrue(existsSync(join(outDir, "main.js")));
+				}),
+		),
 	);
 });
