@@ -1,4 +1,16 @@
-import { Config, Context, DateTime, Duration, Effect, Layer, Option, PlatformError, Result, Schema } from "effect";
+import {
+	Clock,
+	Config,
+	Context,
+	DateTime,
+	Duration,
+	Effect,
+	Layer,
+	Option,
+	PlatformError,
+	Result,
+	Schema,
+} from "effect";
 import { dual } from "effect/Function";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { GitConfigScope, GitInvocation, GitUntrackedFilesMode } from "./GitCommand.js";
@@ -704,23 +716,85 @@ const runClassified = (
 			unset.length === 0
 				? ChildProcess.setEnv(ChildProcess.setCwd(invocation.command, cwd), spawnEnv)
 				: withoutVars(invocation.command, cwd, spawnEnv, unset);
-		return runCollected(command).pipe(
-			Effect.map((collected) => classify(cwd, args, collected, kind, maskExact)),
-			Effect.catch((platformError) => Effect.succeed(classify(cwd, args, platformError, kind, maskExact))),
-			Effect.timeoutOrElse({
-				duration,
-				orElse: () =>
-					Effect.succeed<Classified>({
-						_tag: "failure",
-						error: GitCommandError.make({
-							kind: "failed",
-							args,
-							cwd,
-							stderr: "",
-							detail: `timed out after ${Duration.format(duration)}`,
-						}),
-					}),
-			}),
+		const config = isConfigRead(args);
+		const entry = (started: number, outcome: Collected | PlatformError.PlatformError | "timeout") =>
+			transcript(invocation, cwd, config, started, outcome);
+		return Effect.flatMap(Clock.currentTimeMillis, (started) =>
+			runCollected(command).pipe(
+				Effect.tap((collected) => entry(started, collected)),
+				Effect.map((collected) => classify(cwd, args, collected, kind, maskExact)),
+				Effect.catch((platformError) =>
+					Effect.as(entry(started, platformError), classify(cwd, args, platformError, kind, maskExact)),
+				),
+				Effect.timeoutOrElse({
+					duration,
+					orElse: () =>
+						Effect.as(
+							entry(started, "timeout"),
+							// Names the duration actually used: the run option, or the default.
+							<Classified>{
+								_tag: "failure",
+								error: GitCommandError.make({
+									kind: "failed",
+									args,
+									cwd,
+									stderr: "",
+									detail: `timed out after ${Duration.format(duration)}`,
+								}),
+							},
+						),
+				}),
+			),
+		);
+	});
+
+/** The text a transcript section keeps before truncating. */
+const TRANSCRIPT_LIMIT = 4000;
+
+/** Whether the redacted argv is a `git config` read, whose stdout may hold a credential header. */
+const isConfigRead = (args: ReadonlyArray<string>): boolean =>
+	args[0] === "config" && args.some((arg) => arg === "--get" || arg === "--get-all" || arg === "--list");
+
+const truncate = (text: string): string =>
+	text.length <= TRANSCRIPT_LIMIT
+		? text
+		: `${text.slice(0, TRANSCRIPT_LIMIT)}\u2026 (${text.length - TRANSCRIPT_LIMIT} more characters)`;
+
+/**
+ * Logs one invocation at Debug: the redacted argv as the message, then the
+ * scrubbed `stdout:` and `stderr:` sections (empty ones omitted). A config
+ * read logs its stdout as a byte count only. Never fails.
+ */
+const transcript = (
+	invocation: GitInvocation,
+	cwd: string,
+	configRead: boolean,
+	started: number,
+	outcome: Collected | PlatformError.PlatformError | "timeout",
+): Effect.Effect<void> =>
+	Effect.gen(function* () {
+		const scrubText = (text: string): string => truncate(maskCredentialsInText(invocation.scrub(text)));
+		const lines = [`git ${invocation.redactedArgs.join(" ")}`];
+		let exitCode: number | string;
+		if (outcome === "timeout") {
+			exitCode = "timeout";
+		} else if (outcome instanceof PlatformError.PlatformError) {
+			exitCode = "spawn-failed";
+			lines.push(`stderr:\n${scrubText(`spawn failed: ${outcome.reason._tag}: ${outcome.message}`)}`);
+		} else {
+			exitCode = outcome.exitCode;
+			if (outcome.stdout !== "") {
+				lines.push(
+					configRead
+						? `stdout: <${new TextEncoder().encode(outcome.stdout).length} bytes>`
+						: `stdout:\n${scrubText(outcome.stdout)}`,
+				);
+			}
+			if (outcome.stderr !== "") lines.push(`stderr:\n${scrubText(outcome.stderr)}`);
+		}
+		const finished = yield* Clock.currentTimeMillis;
+		yield* Effect.logDebug(lines.join("\n")).pipe(
+			Effect.annotateLogs({ "git.cwd": cwd, "git.exitCode": exitCode, "git.durationMs": finished - started }),
 		);
 	});
 
@@ -4831,6 +4905,17 @@ const notStubbed = (method: string) => () =>
  * 60 s; `fetchAny`, which runs `fetch` twice, is 120 s. A consumer merely
  * duplicating a 30 s layer buys nothing but two ceilings racing each other;
  * one whose budget is tighter than the figures above still needs its own.
+ *
+ * **Transcript.** Every spawn emits one `Effect.logDebug` entry, silent at
+ * the default log level: the message is `git <redacted argv>`, annotated with
+ * `git.cwd`, `git.exitCode` (a number, `"spawn-failed"` or `"timeout"`) and
+ * `git.durationMs`, followed by `stdout:` and `stderr:` sections when they
+ * are not empty. Both sections are scrubbed of the invocation's secrets and of
+ * credential-shaped text, and each is cut at 4000 characters with a trailing
+ * `… (<n> more characters)`. The stdout of a `git config` read (`--get`,
+ * `--get-all`, `--list`) is never logged, only its size as `<n bytes>`, since
+ * it may hold a credential header. A raw argv, a token and a config value are
+ * never logged.
  *
  * **Redaction policy (documented, not just convention).** Error values
  * persist only the constructor's REDACTED argv (see `GitCommandError.args`),
