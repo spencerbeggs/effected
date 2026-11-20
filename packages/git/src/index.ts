@@ -66,3 +66,4 @@ export {
 	GitRemoteUrl,
 } from "./GitRemote.js";
 export type { GitRunOptions } from "./GitRunOptions.js";
+export { GitVersion } from "./GitVersion.js";

@@ -238,6 +238,35 @@ describe("GitCommand", () => {
 		);
 	});
 
+	it("configAdd appends behind --add and masks the value in redactedArgs", () => {
+		assertGitCommand(
+			GitCommand.configAdd("http.extraheader", "AUTHORIZATION: basic x"),
+			["config", "--add", "http.extraheader", "AUTHORIZATION: basic x"],
+			["config", "--add", "http.extraheader", "<redacted>"],
+		);
+		assertGitCommand(
+			GitCommand.configAdd("a.b", "v", "f.cfg"),
+			["config", "-f", "f.cfg", "--add", "a.b", "v"],
+			["config", "-f", "f.cfg", "--add", "a.b", "<redacted>"],
+		);
+	});
+
+	it("init places path behind a literal -- and emits no flag for sha1", () => {
+		assertGitCommand(GitCommand.init("repo"), ["init", "--", "repo"]);
+		assertGitCommand(GitCommand.init("repo", { objectFormat: "sha1" }), ["init", "--", "repo"]);
+		assertGitCommand(GitCommand.init("repo", { objectFormat: "sha256", initialBranch: "main" }), [
+			"init",
+			"--object-format=sha256",
+			"--initial-branch=main",
+			"--",
+			"repo",
+		]);
+	});
+
+	it("version is `git version`", () => {
+		assertGitCommand(GitCommand.version(), ["version"]);
+	});
+
 	it("add stages paths behind a literal --", () => {
 		assertGitCommand(GitCommand.add([".gitmodules", ".repos/r"]), ["add", "--", ".gitmodules", ".repos/r"]);
 	});

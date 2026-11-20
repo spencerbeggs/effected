@@ -17,6 +17,7 @@ import type { GitConfigScope, GitInvocation, GitUntrackedFilesMode } from "./Git
 import { GitCommand } from "./GitCommand.js";
 import type { GitRunOptions } from "./GitRunOptions.js";
 import { CurrentRunOptions, configEnv, mergeRunOptions } from "./GitRunOptions.js";
+import { GitVersion } from "./GitVersion.js";
 import { maskCredentialsInText } from "./internal/redact.js";
 import { REPOSITORY_ENV_VARS } from "./internal/repositoryEnv.js";
 import type { Collected } from "./internal/run.js";
@@ -2624,6 +2625,50 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		}
 	});
 
+	const configAdd = Effect.fn("Git.configAdd")(function* (
+		cwd: string,
+		key: string,
+		value: string,
+		options?: { readonly file?: string },
+	) {
+		yield* Effect.annotateCurrentSpan({ cwd, key, file: options?.file ?? "(repository config)" });
+		// Same guard as configSet: no -- separator exists, and the value rides the
+		// SENSITIVE arm so a refusal reports <redacted>.
+		yield* rejectOptionLikeRefs(cwd, [key, ...(options?.file !== undefined ? [options.file] : [])], [value]);
+		return yield* runVoid("Git.configAdd", GitCommand.configAdd(key, value, options?.file), cwd, key);
+	});
+
+	const init = Effect.fn("Git.init")(function* (
+		cwd: string,
+		path: string,
+		options?: { readonly objectFormat?: "sha1" | "sha256"; readonly initialBranch?: string },
+	) {
+		yield* Effect.annotateCurrentSpan({ cwd, objectFormat: options?.objectFormat ?? "sha1" });
+		yield* rejectOptionLikeRefs(cwd, [path, ...(options?.initialBranch !== undefined ? [options.initialBranch] : [])]);
+		return yield* runVoid("Git.init", GitCommand.init(path, options), cwd, path);
+	});
+
+	const version = Effect.fn("Git.version")(function* (cwd: string) {
+		yield* Effect.annotateCurrentSpan({ cwd });
+		const invocation = GitCommand.version();
+		const parsed = yield* runParsed("Git.version", invocation, cwd, "version", "generic", (output) => ({
+			output,
+			version: GitVersion.parse(output),
+		}));
+		if (Option.isNone(parsed.version)) {
+			return yield* Effect.fail(
+				new GitCommandError({
+					kind: "failed",
+					args: invocation.redactedArgs,
+					cwd,
+					stderr: "",
+					detail: `could not parse git version output: ${JSON.stringify(parsed.output.trim())}`,
+				}),
+			);
+		}
+		return parsed.version.value;
+	});
+
 	const add = Effect.fn("Git.add")(function* (cwd: string, paths: ReadonlyArray<string>) {
 		yield* Effect.annotateCurrentSpan({ cwd, count: paths.length });
 		const classified = yield* runFor(GitCommand.add(paths), cwd, "generic");
@@ -3706,6 +3751,9 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		submoduleForeach,
 		sparseCheckoutSet,
 		configSet,
+		configAdd,
+		init,
+		version,
 		add,
 		nameStatus,
 		unstagedChanges,
@@ -4244,6 +4292,35 @@ export interface GitShape {
 		value: string,
 		options?: { readonly file?: string },
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git config [-f <file>] --add <key> <value>` — appends `value`
+	 * to `key` without replacing the values it already has.
+	 *
+	 * @remarks
+	 * Repository-local, like `configSet`, and the value is redacted the same
+	 * way: never in an error, never in a span.
+	 */
+	readonly configAdd: (
+		cwd: string,
+		key: string,
+		value: string,
+		options?: { readonly file?: string },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git init [--object-format=<f>] [--initial-branch=<b>] -- <path>`
+	 * — creates an empty repository at `path`. `cwd` is only where git runs;
+	 * `path` is resolved against it.
+	 */
+	readonly init: (
+		cwd: string,
+		path: string,
+		options?: { readonly objectFormat?: "sha1" | "sha256"; readonly initialBranch?: string },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * `git version` — the installed git's version. Fails `GitCommandError`
+	 * with a `detail` when the output is not a recognisable version line.
+	 */
+	readonly version: (cwd: string) => Effect.Effect<GitVersion, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
 	 * Mutating: `git add -- <paths...>` — stages `paths` in the index for
 	 * the next commit.
@@ -5068,6 +5145,9 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 		submoduleForeach: notStubbed("submoduleForeach"),
 		sparseCheckoutSet: notStubbed("sparseCheckoutSet"),
 		configSet: notStubbed("configSet"),
+		configAdd: notStubbed("configAdd"),
+		init: notStubbed("init"),
+		version: notStubbed("version"),
 		add: notStubbed("add"),
 		nameStatus: notStubbed("nameStatus"),
 		unstagedChanges: notStubbed("unstagedChanges"),

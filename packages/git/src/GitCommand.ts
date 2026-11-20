@@ -599,6 +599,37 @@ export class GitCommand {
 		git(["config", ...(file !== undefined ? ["-f", file] : []), key, secretValue(value)]);
 
 	/**
+	 * Mutating: `git config [-f <file>] --add <key> <value>` — appends a value for a
+	 * multi-valued key without replacing the existing ones.
+	 *
+	 * @remarks
+	 * `value` is masked wholesale — as `<redacted>` — in
+	 * {@link GitInvocation.redactedArgs}, exactly as `configSet` does.
+	 */
+	static readonly configAdd = (key: string, value: string, file?: string): GitInvocation =>
+		git(["config", ...(file !== undefined ? ["-f", file] : []), "--add", key, secretValue(value)]);
+
+	/**
+	 * Mutating: `git init [--object-format=<f>] [--initial-branch=<b>] -- <path>` —
+	 * creates an empty repository at `path`. `sha1` is git's default and emits no
+	 * flag.
+	 */
+	static readonly init = (
+		path: string,
+		options?: { readonly objectFormat?: "sha1" | "sha256"; readonly initialBranch?: string },
+	): GitInvocation =>
+		git([
+			"init",
+			...(options?.objectFormat === "sha256" ? ["--object-format=sha256"] : []),
+			...(options?.initialBranch !== undefined ? [`--initial-branch=${options.initialBranch}`] : []),
+			"--",
+			path,
+		]);
+
+	/** `git version` — prints the installed git's version line. */
+	static readonly version = (): GitInvocation => git(["version"]);
+
+	/**
 	 * Mutating: `git add -- <paths...>` — stages the given paths for commit. The literal
 	 * `--` separator makes the pathspec injection-safe by construction.
 	 */
