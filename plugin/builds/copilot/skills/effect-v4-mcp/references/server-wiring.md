@@ -85,7 +85,7 @@ details from `McpSchema.McpRequestContext` instead. Four consequences:
   which writes through `console.log` whatever `LogToStderr` says (`effect`'s
   `src/Logger.ts:273-279` is `withConsoleLog`; `consoleLogFmt` is `:942`,
   `consoleStructured` `:968` and `consoleJson` `:992`; the default logger reads
-  the reference at `src/internal/effect.ts:7001`). Never install them in an MCP server: every log
+  the reference at `src/internal/effect.ts:7017`). Never install them in an MCP server: every log
   line lands on stdout, the wire. For JSON logs on stderr, install
   `Logger.layer([Logger.withConsoleError(Logger.formatJson)])`.
 - A malformed `protocols` list — more than one stateless adapter — is the
@@ -145,15 +145,16 @@ this.
 
 ### Stdin guard
 
-Core's own stdio decoder (`RpcSerialization.makeNdjson`) skips a line it
-cannot use and keeps serving: a line that is not JSON, a blank line, a line
-opening with a U+FEFF anywhere but the start of the stream (core's
-streaming decoder strips a byte-order mark only there), a JSON value that is
-not an object, and an object that is neither a request nor a response. A
-line over the 16 Mi-UTF-16-code-unit cap is dropped too, after core logs a
-`MaxBufferSizeExceeded` error on stderr. Core sends **no reply** for any of
-them, where JSON-RPC 2.0 requires one: a client that wrote a malformed
-request waits for an answer that never comes.
+Core's own stdio decoder (`RpcSerialization.makeNdjson`) keeps serving past a
+line it cannot use, but answers only some of them. A line that does not parse
+as JSON, which includes a line opening with a U+FEFF anywhere but the start of
+the stream (core's streaming decoder strips a byte-order mark only there), gets
+a `-32700` parse error. A blank line, a JSON value that is not an object, and an
+object that is neither a request nor a response are skipped with **no reply**,
+and a line over the 16 Mi-UTF-16-code-unit cap is dropped after core logs a
+`MaxBufferSizeExceeded` error on stderr. JSON-RPC 2.0 requires a reply to each
+of those: a client that wrote such a request waits for an answer that never
+comes.
 
 `McpStdio.layer` provides the server a `Stdio` wrapped by an internal
 stdin-framing guard that frames stdin exactly as core's decoder does — one streaming UTF-8

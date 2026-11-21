@@ -470,7 +470,7 @@ under `Effect.runPromise`, the program prints only the control line on stdout
 and nothing on stderr. `References.UnhandledLogLevel` does not change this:
 core reads it only where a caller opts in with `log: "Unhandled"` on
 `Effect.ignore`/`ignoreCause` and their `Stream`/`Channel` twins
-(`internal/effect.ts:3537`), and inside `CircuitBreaker`. A test whose only assertions live in
+(`internal/effect.ts:3549`), and inside `CircuitBreaker`. A test whose only assertions live in
 code paths that never observe a forked child's outcome is exercising nothing
 about that child. Join it, or route its `Exit` into a `Deferred` the test
 explicitly awaits — never assume a green run means every fiber it started
@@ -533,8 +533,8 @@ Three sharp edges, all clock-adjacent:
   satisfied by the runner. An explicit `Effect.scoped` in the pipeline is
   harmless — it just closes the scope earlier, before the test ends — but it is
   belt-and-braces, not a requirement.
-- **`Effect.fork` does not exist** — it is `forkChild` (`Effect.ts:8935`) /
-  `forkIn` (`:8979`) / `forkScoped` (`:9023`) / `forkDetach` (`:9069`). And
+- **`Effect.fork` does not exist** — it is `forkChild` (`Effect.ts:9223`) /
+  `forkIn` (`:9294`) / `forkScoped` (`:9365`) / `forkDetach` (`:9423`). And
   `Stream.fromQueue` takes a `Queue.Dequeue`
   (`Stream.ts:1190`), so it rejects a `Subscription`.
 

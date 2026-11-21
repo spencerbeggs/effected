@@ -28,7 +28,7 @@ type).
 
 Every `Flag`, `Argument`, `Prompt` and `GlobalFlag` constructor is a
 PascalCase name (`cli/Flag.ts:62-452`, `Argument.ts:64-310`,
-`Prompt.ts:889-1443`, `GlobalFlag.ts:111,130`). The lowercase spellings are
+`Prompt.ts:892-1446`, `GlobalFlag.ts:111,130`). The lowercase spellings are
 **`undefined`** on the namespace — a call type-errors, and a lookup probe
 that prints `typeof Flag.string` and concludes "no string flag" is the
 expensive misread. The roster:
@@ -132,7 +132,7 @@ is the handler's error, not a usage error.
 ~~~ts
 import type { Command } from "effect/cli"
 
-// effect/cli/Command.ts:407 — the five members: FileSystem.FileSystem,
+// effect/cli/Command.ts:411 — the five members: FileSystem.FileSystem,
 // Path.Path, Terminal.Terminal, ChildProcessSpawner, Stdio.Stdio
 export type Environment = Command.Environment
 ~~~

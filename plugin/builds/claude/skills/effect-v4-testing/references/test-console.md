@@ -8,7 +8,7 @@ and **auditing for `Console.*` call sites is insufficient**, because Effect's
 default logger writes through the same ref. The identity is source-visible, not
 folklore: `Console.Console` **is** `effect.ConsoleRef` (`Console.ts:86`),
 `TestConsole.layer` is `Layer.effect(Console.Console)(make)`
-(`testing/TestConsole.ts:300`), and `Logger.ts:277`, `:318`, `:373` all read
+(`testing/TestConsole.ts:330`), and `Logger.ts:277`, `:318`, `:373` all read
 `options.fiber.getRef(effect.ConsoleRef)`. One repo's audit cleared a
 package by grepping `Console.*` and missed three live `Effect.logWarning`
 sites. Only direct `console.*`, direct `process.stdout.write` / `stderr.write`,
@@ -21,4 +21,8 @@ mode" tests that pass unconditionally because the drained sink is always empty.
 positive sibling is the cheap proof the sink is live. `TestConsole.logLines` is
 cumulative and never drained by reading it, so a test invoking a CLI twice
 asserts against a growing buffer →
-[false-greens.md](./false-greens.md).
+[false-greens.md](./false-greens.md). Each console level has its own reader —
+`logLines`, `errorLines`, `warnLines`, `infoLines`, `debugLines` and
+`traceLines` — returning that method's captured parameters in call order,
+unformatted, so assert on the level you mean rather than filtering a combined
+capture.

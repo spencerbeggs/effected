@@ -123,7 +123,7 @@ but that is style, not the rule.
 
 `it.effect` installs `TestConsole`, and Effect's **default logger writes through
 the same ref** — `Console.Console` *is* `effect.ConsoleRef` (`Console.ts:86`),
-`TestConsole.layer` sets that exact reference (`testing/TestConsole.ts:300`), and
+`TestConsole.layer` sets that exact reference (`testing/TestConsole.ts:330`), and
 `Logger.ts:277`, `:318`, `:373` all read
 `options.fiber.getRef(effect.ConsoleRef)`. So `Effect.log` / `logWarning` / `logError` are
 intercepted identically to `Console.*`. One repo's audit cleared

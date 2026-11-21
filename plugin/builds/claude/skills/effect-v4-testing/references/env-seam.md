@@ -36,7 +36,7 @@ it.effect("is silent when the variable is unset", () =>
 ```
 
 `ConfigProvider.fromEnv({ env })` takes an explicit record and never touches
-`process.env` when one is given (`ConfigProvider.ts:945`); `ConfigProvider.layer`
+`process.env` when one is given (`ConfigProvider.ts:955`); `ConfigProvider.layer`
 wraps a provider in `Layer.succeed(ConfigProvider)` (`ConfigProvider.ts:682`).
 An empty record is the "variable unset" case — spell it, because the default
 provider would otherwise answer from whatever the developer's shell exports.
