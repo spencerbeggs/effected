@@ -45,6 +45,27 @@ describe("ActionLogger.recording", () => {
 				entries().map((entry) => (entry.kind === "step" ? entry.outcome : entry.kind)),
 				["success", "interrupted"],
 			);
+			const interrupted = entries()[1];
+			assert.strictEqual(interrupted?.kind === "step" ? interrupted.summary : undefined, "i · interrupted");
+		}).pipe(Effect.provide(layer));
+	});
+
+	it.effect("a throwing summary or failure formatter records the default text", () => {
+		const { layer, entries } = ActionLogger.recording();
+		return Effect.gen(function* () {
+			const logger = yield* ActionLogger;
+			const broken = () => {
+				throw new Error("formatter broke");
+			};
+			assert.strictEqual(yield* logger.step("s", Effect.succeed(5), { summary: broken }), 5);
+			yield* Effect.flip(logger.step("f", Effect.fail("boom"), { failure: broken }));
+			assert.deepStrictEqual(
+				entries().map((entry) => (entry.kind === "step" ? [entry.outcome, entry.summary] : [])),
+				[
+					["success", "s"],
+					["failure", "f · boom"],
+				],
+			);
 		}).pipe(Effect.provide(layer));
 	});
 });

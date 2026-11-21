@@ -1,8 +1,8 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
-import { Effect, Layer } from "effect";
+import { Effect, Fiber, Layer } from "effect";
 import { ChildProcess, CommandLine } from "effect/process";
-import { TestConsole } from "effect/testing";
+import { TestClock, TestConsole } from "effect/testing";
 import { ActionEnvironment, ActionLogger } from "../src/index.js";
 import { commandLines } from "./helpers/runnerCommands.js";
 
@@ -60,6 +60,33 @@ describe("ActionLogger.command", () => {
 				assert.deepStrictEqual(yield* lines, ["$ x", "hi", "exit 0"]);
 			}),
 		),
+	);
+
+	it.effect(
+		"stops reading a pipe a grandchild still holds once the drain bound passes after the child exits",
+		() =>
+			live(
+				Effect.gen(function* () {
+					// The child writes, starts a grandchild that inherits stdout and stays alive, and exits.
+					const parent = [
+						"const { spawn } = require('node:child_process');",
+						"spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)'], { stdio: ['ignore', 'inherit', 'inherit'] }).unref();",
+						"console.log('parent done');",
+					].join(" ");
+					const fiber = yield* Effect.forkChild(
+						ActionLogger.command(ChildProcess.make("node", ["-e", parent]), { display: "x" }),
+					);
+					// Advance the test clock until the drain bound has passed after the real child's exit.
+					for (let tries = 0; tries < 200 && fiber.pollUnsafe() === undefined; tries++) {
+						yield* TestClock.withLive(Effect.sleep("25 millis"));
+						yield* TestClock.adjust("10 seconds");
+					}
+					const result = yield* Fiber.join(fiber);
+					assert.strictEqual(result.exitCode, 0);
+					assert.strictEqual(result.stdout, "parent done\n");
+				}),
+			),
+		{ timeout: 10_000 },
 	);
 
 	it.effect("a hostile line from the child is never a workflow command", () =>

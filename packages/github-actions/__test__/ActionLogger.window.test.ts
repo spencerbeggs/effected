@@ -251,6 +251,58 @@ describe("ActionLogger step windows", () => {
 		),
 	);
 
+	it.effect("a throwing summary or failure formatter falls back to the default line and still closes the step", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				const result = yield* logger.step("first", Effect.as(Effect.logInfo("a"), 7), {
+					window: 0,
+					summary: () => {
+						throw new Error("formatter broke");
+					},
+				});
+				assert.strictEqual(result, 7);
+				const failed = yield* Effect.flip(
+					logger.step("second", Effect.fail("boom"), {
+						window: 0,
+						failure: () => {
+							throw new Error("formatter broke");
+						},
+					}),
+				);
+				assert.strictEqual(failed, "boom");
+				yield* logger.step("third", Effect.logInfo("c"), { window: 0 });
+				const all = yield* lines;
+				assert.isTrue(
+					all.some((line) => line.startsWith("✓ first")),
+					JSON.stringify(all),
+				);
+				assert.isTrue(
+					all.some((line) => line.startsWith("✗ second · boom")),
+					JSON.stringify(all),
+				);
+				assert.include(all, "  c");
+				assert.notInclude(all, "  [third]  c");
+			}),
+		),
+	);
+
+	it.effect("a step's duration is monotonic: a wall clock stepping back never makes it negative", () =>
+		live(
+			Effect.gen(function* () {
+				const logger = yield* ActionLogger;
+				yield* TestClock.adjust("10 seconds");
+				// The wall clock steps back ten seconds while the step runs.
+				yield* logger.step("tick", TestClock.setTime(0), { window: 0 });
+				const all = yield* lines;
+				assert.isFalse(
+					all.some((line) => line.includes("-")),
+					JSON.stringify(all),
+				);
+			}),
+		),
+	);
+
 	it.effect("an inner step's window is ignored", () =>
 		live(
 			Effect.gen(function* () {

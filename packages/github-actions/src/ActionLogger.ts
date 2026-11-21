@@ -6,6 +6,7 @@ import {
 	Clock,
 	Console,
 	Context,
+	Deferred,
 	Duration,
 	Effect,
 	Exit,
@@ -32,6 +33,9 @@ import * as StepLog from "./internal/stepLog.js";
  * object would span lines, and a workflow command escapes every newline, so the
  * indented form buys nothing and costs readability.
  */
+/** How long `command` keeps reading after the child exits. */
+const COMMAND_DRAIN = Duration.seconds(10);
+
 const formatMessage = (message: unknown): string => {
 	const parts = Array.isArray(message) ? message : [message];
 	return parts.map((part) => Inspectable.toStringUnknown(part, 0)).join(" ");
@@ -170,7 +174,7 @@ export interface StepOptions<A> {
 	 * The result line's text when the step succeeds, computed from its result.
 	 *
 	 * @remarks
-	 * Defaults to the step's name.
+	 * Defaults to the step's name, which is also the text when the function throws.
 	 */
 	readonly summary?: (result: A) => string;
 	/**
@@ -178,7 +182,8 @@ export interface StepOptions<A> {
 	 *
 	 * @remarks
 	 * Replaces both the name and the message. Defaults to `<name> · <message>`, the message being the first line of the
-	 * squashed failure's message. An interruption always reads `<name> · interrupted`.
+	 * squashed failure's message, which is also the text when the function throws. An interruption always reads
+	 * `<name> · interrupted`.
 	 */
 	readonly failure?: (cause: Cause.Cause<unknown>) => string;
 }
@@ -195,15 +200,31 @@ const failureMessage = (cause: Cause.Cause<unknown>): string => {
 	return message.split(/\r\n|\r|\n/)[0] ?? "";
 };
 
-/** How a step's exit reads on its result line. */
+/** A caller's formatter, total: a throw falls back to the default text rather than skipping the step's close. */
+const format = <T>(formatter: ((value: T) => string) | undefined, value: T, fallback: () => string): string => {
+	if (formatter === undefined) return fallback();
+	try {
+		return formatter(value);
+	} catch {
+		return fallback();
+	}
+};
+
+/**
+ * How a step's exit reads on its result line. Total: it runs inside the step's exit handler, where a throw would skip
+ * the close and leave a live run streaming.
+ */
 const stepOutcome = <A, E>(name: string, exit: Exit.Exit<A, E>, options: StepOptions<A> | undefined): StepOutcome => {
 	if (Exit.isSuccess(exit)) {
-		return { _tag: "Success", text: options?.summary?.(exit.value) ?? name };
+		return { _tag: "Success", text: format(options?.summary, exit.value, () => name) };
 	}
 	if (CauseModule.hasInterruptsOnly(exit.cause)) {
 		return { _tag: "Interrupted" };
 	}
-	return { _tag: "Failure", text: options?.failure?.(exit.cause) ?? `${name} · ${failureMessage(exit.cause)}` };
+	return {
+		_tag: "Failure",
+		text: format(options?.failure, exit.cause, () => `${name} · ${failureMessage(exit.cause)}`),
+	};
 };
 
 /**
@@ -278,8 +299,10 @@ export interface ActionLoggerShape {
 	 *
 	 * @remarks
 	 * The detail is every log line below `Warn`, `Debug` and `Trace` included whatever the ambient minimum level, every
-	 * line a nested {@link ActionLoggerShape.group} or step writes, and every line written straight to `Console` inside
-	 * the step (`@effected/cli-kit`'s renderers, a raw `Console.log`). A workflow command written to `Console` is not
+	 * line a nested {@link ActionLoggerShape.group} or step writes, and every line written straight to `Console`'s
+	 * `log`, `info`, `debug`, `trace`, `warn`, `error` or `dirxml` inside the step (`@effected/cli-kit`'s renderers, a
+	 * raw `Console.log`). `Console.table`, `dir`, `count`, the `time*` and the `group*` members are not captured: they
+	 * print through at once. A workflow command written to `Console` is not
 	 * detail: it goes out at once, so an `::add-mask::` reaches the runner before the secret can appear in any line,
 	 * except a group command, which becomes a `▸ <title>` header line. Warnings and errors are never held: they go out
 	 * as annotations the moment they happen, and the result line counts them.
@@ -429,6 +452,7 @@ const recordingShape = (roots: Array<StepLogEntry>): Pick<ActionLoggerShape, "ph
 						const outcome = stepOutcome(name, exit, options);
 						if (outcome._tag === "Interrupted") {
 							node.outcome = "interrupted";
+							node.summary = `${name} · interrupted`;
 						} else {
 							node.summary = outcome.text;
 							node.outcome = outcome._tag === "Failure" ? "failure" : node.noisy ? "warning" : "success";
@@ -518,7 +542,8 @@ const make = Effect.gen(function* () {
 				const console = active === null ? yield* Console.Console : active.run.console;
 				const canFold = active === null ? depth === 0 : active.run.canFold;
 				const minimum = active === null ? yield* References.MinimumLogLevel : active.run.minimum;
-				const started = yield* Clock.currentTimeMillis;
+				// Monotonic, so a wall clock stepping back never prints a negative duration.
+				const started = yield* Clock.monotonicTimeNanos;
 				const frame = StepLog.open(name, parent, console, canFold, streaming, minimum);
 				const timer = parent === null ? yield* armWindow(frame, options?.window) : undefined;
 				return yield* restore(effect).pipe(
@@ -531,8 +556,10 @@ const make = Effect.gen(function* () {
 					Effect.onExit((exit) =>
 						Effect.andThen(
 							timer === undefined ? Effect.void : Fiber.interrupt(timer),
-							Effect.flatMap(Clock.currentTimeMillis, (ended) =>
-								Effect.sync(() => StepLog.close(frame, stepOutcome(name, exit, options), ended - started)),
+							Effect.flatMap(Clock.monotonicTimeNanos, (ended) =>
+								Effect.sync(() =>
+									StepLog.close(frame, stepOutcome(name, exit, options), Number(ended - started) / 1_000_000),
+								),
 							),
 						),
 					),
@@ -649,8 +676,9 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 	 *
 	 * @remarks
 	 * `entries()` returns the phases and steps opened so far, each step with its detail (every line below `Warn`),
-	 * outcome, result text and nested steps. Nothing is written to the console. The other members behave as in
-	 * {@link ActionLogger.makeTest}.
+	 * outcome, result text and nested steps. The step log itself writes nothing to the console. A raw `Console` write
+	 * inside a recorded step is not detail and still prints, so test `Console` or `@effected/cli-kit` output against
+	 * the live layer with `TestConsole`. The other members behave as in {@link ActionLogger.makeTest}.
 	 */
 	static readonly recording = (): {
 		readonly layer: Layer.Layer<ActionLogger>;
@@ -671,7 +699,17 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 	 * line as it arrives, then `exit <code>`. Both streams are read concurrently, so a child that fills one pipe cannot
 	 * deadlock the other. Every line is detail, so the step's held, live and prefix rules apply; stderr lines are
 	 * detail too, not warnings. Outside any step the lines print live. Resolves with the exit code, whatever it is, and
-	 * the collected stdout; only a failure to spawn is an error.
+	 * the collected stdout.
+	 *
+	 * Reading stops 10 seconds after the child exits, as `@actions/exec` does: a background grandchild that inherited
+	 * the child's stdout or stderr would otherwise hold the pipe open, and the call with it, for as long as it lives.
+	 * What it wrote after that is not read.
+	 *
+	 * Stdout is decoded as UTF-8 text and logged line by line, so this suits a child whose stdout is text; a binary
+	 * stdout needs the raw `ChildProcessSpawner` handle.
+	 *
+	 * Fails with `PlatformError` when the spawn fails, or when reading the child's output or its exit status fails after
+	 * it started. A non-zero exit is never an error.
 	 */
 	static readonly command = (
 		command: ChildProcess.Command,
@@ -692,7 +730,8 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 						Stream.splitLines,
 						Stream.runForEach((line) => Effect.logInfo(line)),
 					);
-				const [, , code] = yield* Effect.all(
+				const exited = yield* Deferred.make<void>();
+				const readers = Effect.all(
 					[
 						logLines(
 							Stream.decodeText(handle.stdout).pipe(
@@ -704,7 +743,15 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 							),
 						),
 						logLines(Stream.decodeText(handle.stderr)),
-						handle.exitCode,
+					],
+					{ concurrency: "unbounded" },
+				);
+				// A grandchild that inherited the pipes can hold them open after the child exits: stop reading once the
+				// drain bound passes after the exit, as `@actions/exec` does.
+				const [, code] = yield* Effect.all(
+					[
+						Effect.raceFirst(readers, Effect.andThen(Deferred.await(exited), Effect.sleep(COMMAND_DRAIN))),
+						Effect.tap(handle.exitCode, () => Deferred.succeed(exited, undefined)),
 					],
 					{ concurrency: "unbounded" },
 				);
