@@ -1,5 +1,13 @@
 # @effected/pnpm-plugin-effect
 
+## 0.27.2
+
+### Maintenance
+
+#### Updates 1 catalog:effected version
+
+- `@effected/github-actions` ^0.36.1 -> ^0.37.0 (peer ^0.37.0)
+
 ## 0.27.1
 
 ### Maintenance
