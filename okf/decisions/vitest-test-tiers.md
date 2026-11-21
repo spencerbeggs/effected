@@ -2,7 +2,7 @@
 type: Decision
 title: The vitest suite splits into a fast tier with coverage and a slow tier run beside it
 description: "EFFECTED_TEST_TIER=fast (ci:test, coverage and thresholds) excludes vitest.config.ts's SLOW_TESTS at discovery; slow (ci:test:slow, coverage off) runs only them in slow-tests.yml on every pull request in parallel with the Silk workflow, because the tier holds security regression suites."
-status: draft
+status: stable
 tags:
   - testing
   - ci
@@ -20,6 +20,13 @@ generated:
 integrity:
   generated:
     body: e80b7bff990e0e52
+  verified:
+    by: human:spencer
+    at: 2026-11-21T19:47:49Z
+    content: f3188edbace9e13b
+verified:
+  - by: human:spencer
+    at: 2026-11-21T19:47:49Z
 ---
 
 # The vitest suite splits into a fast tier with coverage and a slow tier run beside it

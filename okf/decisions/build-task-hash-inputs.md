@@ -2,7 +2,7 @@
 type: Decision
 title: The build task hashes CI and GITHUB_ACTIONS, not pending changesets
 description: "turbo.json's build task dropped $TURBO_ROOT$/.changeset/** from its inputs and hashes the CI and GITHUB_ACTIONS environment variables instead, because pending changesets only feed optimistic next versions, which CI turns off."
-status: draft
+status: stable
 tags:
   - ci
   - performance
@@ -20,6 +20,13 @@ generated:
 integrity:
   generated:
     body: 410a057ae9cfb291
+  verified:
+    by: human:spencer
+    at: 2026-11-21T19:47:48Z
+    content: 7e2076ed7de2bf48
+verified:
+  - by: human:spencer
+    at: 2026-11-21T19:47:48Z
 ---
 
 # The build task hashes CI and GITHUB_ACTIONS, not pending changesets
