@@ -34,10 +34,10 @@ sources:
     resource: ../../packages/cli/src/commands/watch.ts
 generated:
   by: "claude-code/sonnet-5.5"
-  at: 2026-11-21T00:06:29Z
+  at: 2026-11-21T00:16:05Z
 integrity:
   generated:
-    body: 7ec4c054bbf16239
+    body: 40919d6c88456a05
 ---
 
 # The effected build commands: package build, action build and action init
@@ -102,7 +102,7 @@ Under `--format=json`, stdout holds one `ActionRunResult` (`verdict`, `result`),
 
 **The command persists by default.** Unless `--no-persist` or `[action.persistLocal] enabled = false` says otherwise, a successful build also writes `.github/actions/local`, and `.actrc` and `.github/workflows/act-test.yml` when those two do not exist. A failed build or size check persists nothing, and an invalid action leaves `dist` as it was.[^action-builder]
 
-**A persist replaces `dist/` whole and leaves the rest of the directory alone.** The persisted `dist/` is swapped in atomically (`AtomicDirectory`), so a reader sees the old tree or the new one and a failed write keeps the old one, and `action.yml` is written atomically (`AtomicFile`). A committed symlink at either path is replaced, never written through. Any other file in the persisted directory, a README for one, survives. The act templates are written only when nothing is at their path, a dangling link included, and are skipped with a warning when their real path leaves the workspace.
+**A persist replaces `dist/` whole and leaves the rest of the directory alone.** `dist/` is persisted first, then `action.yml`, so a failed dist write never leaves a new `action.yml` beside the old `dist/`. The persisted `dist/` is swapped in atomically (`AtomicDirectory`): a reader sees the old tree, the new one, or briefly none, never a partial one, and a failure between its renames leaves `dist` absent until the next persist restores it. A failed removal of the old tree once the new one is live only logs a warning. `action.yml` is written atomically (`AtomicFile`). A committed symlink at either path is replaced, never written through. Any other file in the persisted directory, a README for one, survives. The act templates are written only when nothing is at their path, a dangling link included, and are skipped with a warning when their real path leaves the workspace.
 
 **The persisted directory follows `[action.persistLocal]`.** Under `base = "workspace"` it is `.github/actions/<package directory basename>` at the workspace root, and with `dist = false` the bundles are staged in `<package>/.action-staging`, which is removed after every build, so the package keeps no `dist/`.
 

@@ -17,3 +17,4 @@
 ## Bug Fixes
 
 * `--watch` excludes `.action-staging` from its watched paths and resolves the persist path by `base`, so a dist-less action no longer retriggers itself.
+* `--watch` ignores the `.effected-<random>.tmp` atomic-write temporaries at any depth, so persisting act templates no longer triggers a rebuild.

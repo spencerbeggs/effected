@@ -19,7 +19,7 @@ export class PersistLocalResult extends Schema.Class<PersistLocalResult>("Persis
 	filesSkipped: Schema.Number,
 	/** Whether an act template file was generated. */
 	actTemplateGenerated: Schema.Boolean,
-	/** Act template files not written because their real path is not inside the workspace. */
+	/** Act template files not written because their real path cannot be resolved or is outside the workspace. */
 	actTemplateSkipped: Schema.Array(Schema.String),
 	/** The local action directory. */
 	outputPath: Schema.String,
@@ -130,10 +130,12 @@ export class PersistLocal {
 	 * Makes the resolved output directory hold the action's `action.yml` and `dist/`, and generates the act template.
 	 *
 	 * @remarks
-	 * It writes nothing when the target is not enabled. `dist/` is replaced whole with `AtomicDirectory.write`, from
-	 * `distDir`: the package's own `dist/`, or the staging directory when the package keeps none. A reader sees the old
-	 * tree or the new one, never a partial one, and a failed write leaves the old tree as it was. `action.yml` is written
-	 * with `AtomicFile.write`. A symlink at either path is replaced, never followed. Everything else in the persisted
+	 * It writes nothing when the target is not enabled. `dist/` is persisted first, so a failed dist write never leaves
+	 * a new `action.yml` beside the old `dist/`. It is replaced whole with `AtomicDirectory.write`, from `distDir`: the
+	 * package's own `dist/`, or the staging directory when the package keeps none. A reader sees the old tree, the new
+	 * one, or briefly none, never a partial one; a failure between its two renames leaves `dist` absent until the next
+	 * persist restores it. A failed removal of the old tree after the new one is live only logs a warning. `action.yml`
+	 * is then written with `AtomicFile.write`. A symlink at either path is replaced, never followed. Everything else in the persisted
 	 * directory, a committed README for one, is left alone. `filesCopied` and `filesSkipped` count the files that were
 	 * new or changed and those that already matched. The act template is rooted at `target.actRoot`, and its step uses
 	 * the persisted directory relative to it. A `.actrc` or `.github/workflows/act-test.yml` is written only when nothing
@@ -172,25 +174,6 @@ export class PersistLocal {
 			let filesCopied = 0;
 			let filesSkipped = 0;
 
-			const actionYml = path.resolve(options.cwd, "action.yml");
-			const persistedActionYml = path.resolve(outputPath, "action.yml");
-			if (yield* fs.exists(actionYml).pipe(failingAt(actionYml))) {
-				const unchanged = yield* Effect.gen(function* () {
-					const types = yield* entryType(persistedActionYml);
-					if (Option.isNone(types) || types.value !== "File") return false;
-					return sameBytes(yield* fs.readFile(actionYml), yield* fs.readFile(persistedActionYml));
-				}).pipe(failingAt(actionYml));
-				if (unchanged) filesSkipped++;
-				else {
-					const content = yield* fs.readFile(actionYml).pipe(failingAt(actionYml));
-					// "replace": a committed link at the persisted path is swapped for a file, never written through.
-					yield* AtomicFile.write(persistedActionYml, content, { links: "replace" }).pipe(failingAt(actionYml));
-					filesCopied++;
-				}
-			} else {
-				yield* fs.remove(persistedActionYml, { force: true }).pipe(failingAt(persistedActionYml));
-			}
-
 			const dist = options.distDir;
 			const hasDist = yield* Effect.gen(function* () {
 				return (yield* fs.exists(dist)) && (yield* fs.stat(dist)).type === "Directory";
@@ -210,11 +193,35 @@ export class PersistLocal {
 					}
 					return read;
 				}).pipe(failingAt(dist));
-				// Only dist/ is replaced, whole: a reader sees the old tree or the new one, a link there is replaced rather
-				// than followed, and anything else in the persisted directory is left alone.
+				// Only dist/ is replaced, whole (old, new, or briefly none, never partial): a link there is replaced rather
+				// than followed, and anything else in the persisted directory is left alone. A failed cleanup of the old
+				// tree leaves the new one live, so it is a warning, not a failure.
 				yield* AtomicDirectory.write(persistedDist, files).pipe(
-					Effect.mapError((cause) => new PersistLocalError({ path: persistedDist, cause })),
+					Effect.catchTag("AtomicDirectoryError", (cause) =>
+						cause.operation === "cleanup"
+							? Effect.logWarning(`Persisted ${persistedDist}, but could not remove the old tree: ${cause.message}`)
+							: Effect.fail(new PersistLocalError({ path: persistedDist, cause })),
+					),
 				);
+			}
+
+			const actionYml = path.resolve(options.cwd, "action.yml");
+			const persistedActionYml = path.resolve(outputPath, "action.yml");
+			if (yield* fs.exists(actionYml).pipe(failingAt(actionYml))) {
+				const unchanged = yield* Effect.gen(function* () {
+					const types = yield* entryType(persistedActionYml);
+					if (Option.isNone(types) || types.value !== "File") return false;
+					return sameBytes(yield* fs.readFile(actionYml), yield* fs.readFile(persistedActionYml));
+				}).pipe(failingAt(actionYml));
+				if (unchanged) filesSkipped++;
+				else {
+					const content = yield* fs.readFile(actionYml).pipe(failingAt(actionYml));
+					// "replace": a committed link at the persisted path is swapped for a file, never written through.
+					yield* AtomicFile.write(persistedActionYml, content, { links: "replace" }).pipe(failingAt(actionYml));
+					filesCopied++;
+				}
+			} else {
+				yield* fs.remove(persistedActionYml, { force: true }).pipe(failingAt(persistedActionYml));
 			}
 
 			yield* checkRunsPaths(persistedActionYml, outputPath).pipe(
@@ -236,7 +243,9 @@ export class PersistLocal {
 					if (outcome === "written") actTemplateGenerated = true;
 					if (outcome === "outside") {
 						actTemplateSkipped.push(file);
-						yield* Effect.logWarning(`Skipped the act template ${file}: its real path is not inside the workspace`);
+						yield* Effect.logWarning(
+							`Skipped the act template ${file}: it cannot be resolved or is outside the workspace`,
+						);
 					}
 				}
 			}

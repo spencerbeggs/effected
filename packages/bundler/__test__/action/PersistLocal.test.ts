@@ -3,7 +3,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
 import { Yaml } from "@effected/yaml";
 import type { Path } from "effect";
-import { Effect, FileSystem, PlatformError, Schema } from "effect";
+import { Effect, FileSystem, Logger, PlatformError, Schema } from "effect";
 import {
 	ActionConfig,
 	ActionYmlPathError,
@@ -463,9 +463,74 @@ jobs:
 				Effect.flip,
 			);
 			assert.instanceOf(error, PersistLocalError);
-			if (error instanceof PersistLocalError) assert.strictEqual(error.path, `${CWD}/action.yml`);
+			if (error instanceof PersistLocalError) assert.strictEqual(error.path, `${OUT}/dist`);
 		}),
 	);
+
+	it.effect("leaves the old action.yml unchanged when the dist write fails", () => {
+		const refused = (path: string) =>
+			PlatformError.systemError({
+				_tag: "PermissionDenied",
+				module: "FileSystem",
+				method: "writeFile",
+				pathOrDescriptor: path,
+			});
+		const persistedManifest = (path: string) => path.startsWith(`${OUT}/`) && path.endsWith("package.json");
+		return Effect.gen(function* () {
+			yield* persist().pipe(Effect.flip);
+			assert.strictEqual(yield* read(`${OUT}/action.yml`), "old: yml\n");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ ...seed, [`${OUT}/action.yml`]: "old: yml\n" },
+					{
+						faults: (base) => ({
+							copyFile: (from, to) => (persistedManifest(to) ? Effect.fail(refused(to)) : base.copyFile(from, to)),
+							writeFile: (path, data, options) =>
+								persistedManifest(path) ? Effect.fail(refused(path)) : base.writeFile(path, data, options),
+						}),
+					},
+				),
+			),
+		);
+	});
+
+	it.effect("succeeds with a warning when only removing the old dist fails", () => {
+		const lines: Array<{ readonly level: string; readonly message: string }> = [];
+		const capture = Logger.make((options) => {
+			lines.push({ level: options.logLevel, message: JSON.stringify(options.message) });
+		});
+		const refused = (path: string) =>
+			PlatformError.systemError({
+				_tag: "PermissionDenied",
+				module: "FileSystem",
+				method: "remove",
+				pathOrDescriptor: path,
+			});
+		// The first removal of `.dist.old` is the pre-promote clear; the second is the cleanup after the swap.
+		let removals = 0;
+		return Effect.gen(function* () {
+			const result = yield* persist();
+			assert.instanceOf(result, PersistLocalResult);
+			assert.strictEqual(yield* read(`${OUT}/dist/main/index.js`), 'console.log("built");');
+			assert.isTrue(lines.some((line) => line.level === "Warn" && line.message.includes(".dist.old")));
+		}).pipe(
+			Effect.provide(Logger.layer([capture])),
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ ...seed, [`${OUT}/dist/main/index.js`]: "old" },
+					{
+						faults: (base) => ({
+							remove: (path, options) =>
+								path.endsWith("/.dist.old") && ++removals === 2
+									? Effect.fail(refused(path))
+									: base.remove(path, options),
+						}),
+					},
+				),
+			),
+		);
+	});
 });
 
 describe("PersistLocal.persist under the workspace base", () => {

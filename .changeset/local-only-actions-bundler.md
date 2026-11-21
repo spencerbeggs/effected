@@ -33,6 +33,10 @@ base = "workspace"
 dist = false
 ```
 
+### Atomic persist
+
+* The persist replaces `dist/` atomically (via `@effected/files`) and leaves other files in the persisted directory alone. `action.yml` is written atomically. A committed symlink at either path is replaced, never written through. Act templates are written only when nothing is at their path (a dangling link included) and are skipped with a warning when their real path leaves the workspace. `PersistLocalResult` gains `actTemplateSkipped` and `ResolvedPersist` gains `root`.
+
 ### Persist path safety
 
 A new `PersistTarget.resolve` refuses a persist path that falls outside the workspace, that sits inside or contains the package, or that is or lies inside another package (`reason: "inside-other-package"`, naming it in `packageDir`), with a `PersistPathError`. An action built with `base = "workspace"` that bundles externals now warns, since the persisted copy has no `node_modules` beside it.
