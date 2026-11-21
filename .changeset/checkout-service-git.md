@@ -10,7 +10,7 @@
 
 ### Per-call run options
 
-`Git.withRunOptions(effect, options)` scopes extra settings to every `git` spawn inside `effect`. `GitRunOptions` carries `env` (extra environment variables), `config` (git config entries, passed through `GIT_CONFIG_COUNT` and its key and value variables) and `timeout` (replaces the per-run ceiling). The service's own locale, prompt and askpass pins always win over a per-call `env`.
+`Git.withRunOptions(effect, options)` scopes extra settings to every `git` spawn inside `effect`. `GitRunOptions` carries `env` (extra environment variables), `config` (git config entries, passed through `GIT_CONFIG_COUNT` and its key and value variables) and `timeout` (replaces the per-run ceiling). The service's own locale, prompt and askpass pins always win over a per-call `env`. Scoped `config` is appended after any inherited `GIT_CONFIG_COUNT` entries, so an inherited runtime config survives, and a per-call `GIT_SSH` or `GIT_SSH_VARIANT` takes its ambient counterpart's place in the ssh resolution.
 
 ```ts
 Git.withRunOptions(git.revParse(cwd, "HEAD"), {
@@ -26,5 +26,5 @@ Every `git` invocation now writes a Debug-level transcript with secrets redacted
 ### Version and new commands
 
 * `GitVersion` and `Git.version` report the installed git version
-* New members: `init`, `configAdd`, `fetchRefspecs`, `sparseCheckoutDisable`, `lfsInstall`, `lfsFetch` and `remoteHead`
+* New members: `init`, `configAdd`, `fetchRefspecs`, `sparseCheckoutDisable`, `lfsInstall`, `lfsFetch` and `remoteHead`. `init` passes `--object-format` whenever `objectFormat` is set, `sha1` included
 * `checkout` takes `force` and `branch` options, `clean` takes `nested`, `branchDelete` takes `remote`, and `submoduleUpdate` takes `protocolVersion`
