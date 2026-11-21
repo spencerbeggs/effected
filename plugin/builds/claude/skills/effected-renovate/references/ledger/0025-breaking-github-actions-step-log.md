@@ -5,7 +5,7 @@ kind: breaking
 shows: typed
 applies:
   "@effected/github-actions": ">=0.36.0"
-detect: ["withStep", "withBuffer", "WithStepOptions", "WithBufferOptions", "[Ll]ogger\\.heading", "stdout: .inherit."]
+detect: ["withStep", "withBuffer", "WithStepOptions", "WithBufferOptions", "[Ll]ogger\\.heading", "\\.heading\\(", "(^|[^A-Za-z_])heading:", "stdout: .inherit."]
 changesets: ["checkout-service-github-actions", "checkout-service-plugin"]
 ---
 

@@ -17,10 +17,10 @@ sources:
     resource: ../../packages/github-actions/__test__
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-20T23:11:25Z
+  at: 2026-11-21T01:44:37Z
 integrity:
   generated:
-    body: 6a3161ab65c402ad
+    body: 45d3a546785cf2d0
 ---
 
 # actions-step-log
@@ -54,8 +54,9 @@ them:
 
 ## Phase and step
 
-A **phase** is a plain bold heading, never folded. It writes nothing when it
-ends and changes no state. A **step** is the unit with a quiet window and a
+A **phase** is a plain bold heading, never folded outside a step; inside one it
+is a heading line of the step's detail. It writes nothing when it ends and
+changes no state. A **step** is the unit with a quiet window and a
 result line. The result line is `<mark> <summary or name> · <duration>`.
 
 The mark is derived: `✗` on failure or interruption, `⚠` when the step or
@@ -91,7 +92,11 @@ annotations and count against the step and every step around it. A workflow
 command written to `Console` inside a step is not detail either: it goes out
 at once, so an `::add-mask::` reaches the runner before the secret can appear
 in any line, except a group command, which becomes a `▸ <title>` header
-line.
+line. Of `Console`'s members only `log`, `info`, `debug`, `trace`, `warn`,
+`error` and `dirxml` are captured as detail; `table`, `dir`, `count`, the
+`time*` and the `group*` members print through at once. A `summary` or
+`failure` function that throws falls back to the default text, so the step
+still closes, and durations come from the monotonic clock.
 
 ## Windows, nesting and concurrency
 
@@ -129,7 +134,12 @@ A step can hold back only what reaches it. A child spawned with
 `stdout: "inherit"` writes straight to the runner log and defeats the fold, so
 `ActionLogger.command(command, { display? })` runs a child with `$ <argv>`
 (secrets redacted), each stdout and stderr line as detail, and `exit <code>`
-last, resolving `{ exitCode, stdout }`; only a failure to spawn is an error.
+last, resolving `{ exitCode, stdout }`. Reading stops 10 seconds after the
+child exits, as `@actions/exec` does, so a grandchild that inherited the pipes
+cannot hang it. It fails with `PlatformError` when the spawn, or reading the
+output or the exit status, fails; a non-zero exit is never an error. Stdout is
+decoded as text and logged line by line, so a binary stdout needs the raw
+`ChildProcessSpawner` handle.
 The [`git`](../modules/git.md) Debug transcript is the same idea for git,
 arriving through Effect's logger.
 
@@ -142,7 +152,9 @@ that a secret is registered (`Secret.mask`) before it can appear in any line.
 of `StepLogEntry` values (a phase, or a step with `name`, `outcome` of
 `success`, `warning`, `failure` or `interrupted`, `summary`, `detail` and
 nested `steps`), so a test asserts on the log's structure rather than its
-rendered text. `makeTest`, `layerTest` and `layerSilent` pass `group`, `phase`
+rendered text. The step log itself writes nothing to the console, but a raw
+`Console` write inside a recorded step is not detail and still prints.
+`makeTest`, `layerTest` and `layerSilent` pass `group`, `phase`
 and `step` bodies through and model neither nesting nor the step log.
 
 ## Anti-goals

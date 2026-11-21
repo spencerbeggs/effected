@@ -32,14 +32,19 @@ there is no ambient token to fall back on. Pass `CheckoutAuth.Token` with a
 repository), `Default` (the repository's default branch, the default for any other),
 `Branch`, `Tag`, `Commit`, `PullRequest` (`merge` or `head`) or `Ref` (a raw ref
 classified as the stock action classifies it). Each member that names something
-movable may pin it with `commit`; a mismatch fails `CheckoutCommitMismatchError`.
+movable may pin it with `commit` (lowercased before any comparison); a mismatch
+fails `CheckoutCommitMismatchError`. A `Ref` pinned with `commit` must be a full
+`refs/...` name, or it fails `CheckoutUnqualifiedRefPinError`: pin a branch or tag
+with `Branch` or `Tag`.
 
 The rest mirrors the stock inputs: `path`, `clean` (default true), `depth` (default
 1, or `"full"`), `fetchTags`, `filter`, `sparse` (`patterns`, `cone` default true),
 `lfs`, `submodules` (`false`, `true` or `"recursive"`), `safeDirectory` (default
-true), `serverUrl` for GHES, and `allowUnsafePrCheckout` (default false: a fork pull
-request checkout under `pull_request_target` or `workflow_run` is refused with
-`CheckoutUnsafePullRequestError`).
+true), `serverUrl` for GHES, `remoteUrl` (a remote to fetch instead of the derived
+GitHub URL; with it set the default branch is the remote's own `HEAD`), and
+`allowUnsafePrCheckout` (default false: a fork pull request checkout under
+`pull_request_target` or `workflow_run` is refused with
+`CheckoutUnsafePullRequestError`, a deleted fork's included).
 
 ## The three credential lifetimes
 
@@ -50,15 +55,22 @@ them apart.
 | Lifetime | What a later step sees | Removed |
 | --- | --- | --- |
 | `"job"` (default, as `persist-credentials: true`) | the credentials, usable | by `Checkout.cleanup` in the `post` entry |
-| `"action"` | nothing, once the action's own work is done | by a scope finalizer: on success, failure and interruption |
+| `"action"` | the credentials while the scope is open, then nothing | by a scope finalizer: on success, failure and interruption |
 | `"none"` | nothing | before `checkout` returns |
+
+Under `"job"` and `"action"` both the token (through `includeIf`) and an SSH key's
+`core.sshCommand` are persisted in the repository and its submodules, so a later
+`git push` or `git fetch` in the action authenticates the same way over either.
 
 `checkout` requires a `Scope` under every lifetime (the finalizer is a no-op under
 `"job"` and `"none"`), so call it inside `Effect.scoped` or the entry's scope. **An
 action that uses `"job"` must call `Checkout.cleanup()` in its `post` entry**; without
 one the credentials stay on the runner for the rest of the job. A `"job"` checkout
 saves its record under `stateKey` before any fetch, so cleanup works after a failed
-or cancelled run. `cleanup` never fails (every failure becomes a warning) and is
+or cancelled run. The runner keeps one value per key, so give each `"job"` checkout
+of a different path its own `stateKey` and call `Checkout.cleanup({ stateKey })` for
+each; a second one under a key already in use fails `CheckoutStateKeyInUseError`
+before it writes anything. `cleanup` never fails (every failure becomes a warning) and is
 uninterruptible.
 
 ```ts
@@ -77,7 +89,11 @@ const post = Checkout.cleanup();
 
 An action that exposes a checkout-compatible interface instead reads
 `Checkout.fromInputs()` and merges `Checkout.inputs()` into its `action.yml`;
-`persist-credentials: true` is `"job"` and `false` is `"none"`.
+`persist-credentials: true` is `"job"` and `false` is `"none"`. Every boolean input
+reads as the stock action reads it: true only for a case-insensitive `true`, false
+for anything else, and an empty value takes the stock in-code default, which for
+`persist-credentials` is false (an unsupplied input arrives as the manifest's
+`true`).
 
 ## Requirements and failures
 

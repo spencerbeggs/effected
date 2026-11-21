@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-20T22:40:26Z
+  at: 2026-11-21T01:44:37Z
 integrity:
   generated:
-    body: 4e38744806af3a77
+    body: 61bae95c5a1f8b7c
 ---
 
 # github-actions
@@ -89,7 +89,14 @@ so a later step cannot tell the two apart. The credentials' lifetime is
 `"job"` (recorded in `ActionState`, removed by `Checkout.cleanup` in the post
 entry), `"action"` (removed by a scope finalizer, so on success, failure and
 interruption) or `"none"` (removed before `checkout` returns); `checkout`
-therefore requires a `Scope` under all three. `cleanup` is uninterruptible and
+therefore requires a `Scope` under all three. Under `"job"` and `"action"` both
+the token and an SSH key's `core.sshCommand` are persisted in the repository and
+its submodules, so token and SSH auth behave the same while the action runs; the
+`"action"` finalizer removes them with the rest. The runner keeps one state value
+per key, so a second `"job"` checkout of another path under a `stateKey` already
+in use is refused before it writes anything. `fromInputs` reads every boolean as
+the stock action does: a case-insensitive `true` or false, an empty value taking
+the stock in-code default (`persist-credentials` false). `cleanup` is uninterruptible and
 never fails, so a cancelled job leaves no credentials behind and a post step
 cannot turn a green job red. An action that uses `"job"` without calling
 `cleanup` in its post entry leaves the token on the runner, and the

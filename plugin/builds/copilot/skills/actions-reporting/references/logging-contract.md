@@ -24,8 +24,9 @@ Two levels, built on what the GitHub log can do: it is append only (no
 spinners, no rewriting), `::group::` folds its body but cannot be opened
 automatically, groups do not nest, and a folded failure is a hidden failure.
 
-- **A phase** is a plain bold heading, never folded (`Checkout owner/name @ main`,
-  `Runtime Setup`). It writes nothing when it ends.
+- **A phase** is a plain bold heading, never folded outside a step (`Checkout owner/name @ main`,
+  `Runtime Setup`); inside a step it is a heading line of the step's detail. It
+  writes nothing when it ends.
 - **A step** is the unit with a quiet window and a result line. Its detail
   (every log line below `Warn`, plus the output of commands run through
   `ActionLogger.command`) is held back while it runs.
@@ -94,9 +95,12 @@ const program = Effect.gen(function* () {
   - Detail includes `Debug` and `Trace` lines in the fold, in the failure
     spill and in live output, so a library's debug transcript (the git
     transcript is one) shows in all three.
-  - Writes straight to `Console` inside a step are captured as detail, as are
-    `@effected/cli-kit`'s renderers; a workflow command written there goes out
-    at once, so an `::add-mask::` still reaches the runner first.
+  - Writes straight to `Console`'s `log`, `info`, `debug`, `trace`, `warn`,
+    `error` or `dirxml` inside a step are captured as detail, as are
+    `@effected/cli-kit`'s renderers; `Console.table`, `dir`, `count`, the
+    `time*` and the `group*` members are not captured and print through at
+    once. A workflow command written there goes out at once, so an
+    `::add-mask::` still reaches the runner first.
   - Masking needs no logger change: the runner masks every registered secret
     in every line, held or live, so register a secret (`Secret.mask`) before it
     can appear in any line.
@@ -104,8 +108,14 @@ const program = Effect.gen(function* () {
   writes `$ <command line>`, each stdout and stderr line as it arrives, and
   `exit <code>` as the current step's detail. A child spawned with
   `stdout: "inherit"` writes straight to the runner log and defeats the fold, so
-  run it through `command` instead. It resolves with the exit code, whatever it
-  is, and the collected stdout; only a failure to spawn is an error.
+  run it through `command` instead, for a child whose stdout is text: it
+  decodes stdout and logs it line by line, so a binary stdout needs the raw
+  `ChildProcessSpawner` handle. Reading stops 10 seconds after the child exits,
+  as `@actions/exec` does, so a background grandchild holding the pipes cannot
+  hang the call. It resolves with the exit code, whatever it is, and the
+  collected stdout; it fails with `PlatformError` when the spawn fails, or when
+  reading the output or the exit status fails after it started, and a non-zero
+  exit is never an error.
 - **`group(name, effect)`** — a raw collapsible for dumping a block of text:
   opens `::group::name`, runs `effect`, always closes with `::endgroup::` via a
   bracket. **The runner cannot nest groups** — a second `::group::`
@@ -150,7 +160,9 @@ returns `StepLogEntry` values, a phase (`{ kind: "phase", title }`) or a step
 `"success"`, `"warning"`, `"failure"` or `"interrupted"`, `summary` is the
 result line's text without its mark, count or duration, `detail` is the lines
 logged below `Warn` inside the step, and `steps` the steps opened inside it.
-Nothing is written to the console.
+The step log itself writes nothing to the console. A raw `Console` write inside
+a recorded step is not detail and still prints, so test `Console` or
+`@effected/cli-kit` output against the live layer with `TestConsole`.
 
 ## `WorkflowCommand`: the low-level protocol, touched directly only rarely
 
