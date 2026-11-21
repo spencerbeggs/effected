@@ -96,11 +96,12 @@ const answerFor = (line: string): string | undefined => {
  * decoder will parse and answer, each with its newline.
  *
  * @remarks
- * Core's stdio decoder skips a line it cannot use and keeps serving
- * (Effect-TS/effect PR #8541): a line that is not JSON, a JSON value that is
- * not an object, or an object that is no JSON-RPC message is dropped without
- * a reply, and a line past its buffer cap is logged on stderr and dropped.
- * JSON-RPC 2.0 requires a reply to each of them, so the guard frames stdin
+ * Core's stdio decoder keeps serving past a line it cannot use
+ * (Effect-TS/effect PR #8541), but answers only a line that is not JSON, with
+ * a `-32700` parse error: a JSON value that is not an object, or an object that
+ * is no JSON-RPC message, is dropped without a reply, and a line past its
+ * buffer cap is logged on stderr and dropped. JSON-RPC 2.0 requires a reply to
+ * each of them, so the guard frames stdin
  * exactly as core does and answers such a line itself, returning
  * {@link PARSE_ERROR_FRAME} or {@link INVALID_REQUEST_FRAME} for the caller
  * to write.

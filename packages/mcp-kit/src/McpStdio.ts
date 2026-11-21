@@ -169,9 +169,10 @@ export class McpStdio {
 	 *
 	 * The server reads stdin through a guard that frames it exactly as core's
 	 * decoder does: one streaming UTF-8 decoder, a byte-order mark stripped
-	 * only at the start of the stream, lines split on `\n`. Core itself skips
-	 * a line it cannot use and keeps serving, but sends no reply, where
-	 * JSON-RPC 2.0 requires one; the guard supplies it. A line that is not
+	 * only at the start of the stream, lines split on `\n`. Core itself keeps
+	 * serving past a line it cannot use, but answers only one that is not JSON,
+	 * where JSON-RPC 2.0 requires a reply to each; the guard supplies them all,
+	 * so no line reaches core to be answered twice. A line that is not
 	 * JSON is answered on stdout with a parse error, code `-32700` and
 	 * `id: null`, and never reaches core. So is a line longer than core's cap
 	 * of 16 Mi UTF-16 code units: it is answered once, as soon as it passes

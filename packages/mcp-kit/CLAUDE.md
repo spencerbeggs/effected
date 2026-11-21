@@ -123,9 +123,12 @@ carry `initialize`, `initializeWith`, `sentSoFar`, `discover`, `listTools`, `lis
   `Logger.withConsoleError` instead. `McpHarness.test.ts` pins both sides
   through `consoleLogSoFar`.
 - **`McpStdio.layer` guards the server's stdin.** Core's stdio decoder
-  skips a line it cannot use and keeps serving (Effect-TS/effect PR #8541),
-  but sends no reply, where JSON-RPC 2.0 requires one; an over-cap line is
-  logged on stderr and dropped. `McpStdio.layer` provides the
+  keeps serving past a line it cannot use (Effect-TS/effect PR #8541), but
+  answers only a line that is not JSON (`-32700`); a non-object JSON value
+  or an object that is no JSON-RPC message gets no reply, where JSON-RPC 2.0
+  requires one, and an over-cap line is logged on stderr and dropped. The
+  guard answers every such line itself, a non-JSON one included, so none
+  reaches core to be answered twice. `McpStdio.layer` provides the
   server a `Stdio` (`src/internal/StdinFrames.ts`) that frames stdin the
   way core does (streaming UTF-8 decode, BOM stripped only at stream
   start), answers a non-JSON or over-cap (16 Mi code units) line with a
