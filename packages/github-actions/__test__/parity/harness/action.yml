@@ -95,3 +95,6 @@ runs:
   using: node24
   main: dist/main.js
   post: dist/post.js
+branding:
+  icon: git-branch
+  color: gray-dark
