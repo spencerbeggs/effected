@@ -1,5 +1,32 @@
 # @effected/engine
 
+## 0.20.0
+
+### Breaking Changes
+
+- `ActionRunInput.check` is a new required field, so every programmatic `ActionRun.run` call must pass `check` (`false` for a plain build).
+- `ActionRun.run` propagates `PersistPathError`, `CheckUnavailable` and `NoOutput` from `@effected/bundler`. Callers that handle `ActionRun.run` errors exhaustively must handle these.
+
+### Features
+
+#### Check and local-only actions
+
+- `ActionRun.run` supports `check`: it writes nothing, and a check that finds drift still succeeds, answering the verdict `"failed"` with the drift in `result.drift`.
+- `ActionInit` takes `local`, scaffolding a local-only action: `[action.persistLocal]` with `base = "workspace"` and `dist = false`, plus a `.gitignore` for the staging directory.
+
+### Bug Fixes
+
+- `--watch` excludes `.action-staging` from its watched paths and resolves the persist path by `base`, so a dist-less action no longer retriggers itself.
+- `--watch` ignores the `.effected-<random>.tmp` atomic-write temporaries at any depth, so persisting act templates no longer triggers a rebuild.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/bundler | dependency | updated | 0.6.2 | 0.7.0 |
+| @effected/kit | dependency | updated | 0.14.0 | 0.14.0 |
+| @effected/workspaces | dependency | updated | 0.48.1 | 0.48.2 |
+
 ## 0.19.0
 
 ### Features

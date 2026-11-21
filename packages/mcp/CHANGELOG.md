@@ -1,5 +1,22 @@
 # @effected/mcp
 
+## 0.19.0
+
+### Features
+
+- `action_build` gains `check`: builds and compares against the committed output without writing, reporting drift. It ignores `persist`.
+- `action_init` gains `local`, scaffolding a local-only action (workspace base, no package `dist`).
+- The new bundler errors (`PersistPathError`, `CheckUnavailable`, `NoOutput`, and check drift) are refused with a message that names what to change.
+- The tool descriptions name the configured persist directory.
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/engine | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/kit | dependency | updated | 0.14.0 | 0.14.0 |
+| @effected/mcp-kit | dependency | updated | 0.15.0 | 0.15.1 |
+
 ## 0.18.6
 
 ### Dependencies

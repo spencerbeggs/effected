@@ -1,5 +1,39 @@
 # @effected/cli
 
+## 0.33.0
+
+### Breaking Changes
+
+- `ActionBuildFailedError` gained a required `drift` field. Code that constructs it directly must supply the field (`drift: 0` when there is no drift); code that only catches it is unaffected.
+
+- A `[action.persistLocal] path` that `effected action build` used to accept now exits 2 when it resolves outside the workspace, is or contains the package, lands in the package's `dist/` or `.action-staging/`, or is or lies inside another package.
+
+### Features
+
+#### `effected action build --check`
+
+- `--check` builds the action and compares the result with the committed `dist/` and the persisted action directory, writing nothing. A mismatch exits non-zero and lists each drifting file as `changed`, `missing` or `extra`, in the human report, the GitHub step summary and the JSON output. It is meant for CI to prove committed bundles are current.
+
+- These combinations are usage errors (exit 64): `--check --watch`, `--check --no-persist`, `--check` when persisting is disabled in config, and `--no-persist` when `dist = false`. A persist path the bundler refuses (`PersistPathError`) exits 2.
+
+#### `effected action init --local`
+
+- Scaffolds a local-only action: persisted at the workspace root with `base = "workspace"`, `dist = false`, and a `.gitignore` for the staging directory.
+
+```sh
+effected action build --check
+effected action init --local
+```
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli-kit | dependency | updated | 0.30.0 | 0.30.1 |
+| @effected/engine | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/env | dependency | updated | 0.12.0 | 0.12.0 |
+| @effected/kit | dependency | updated | 0.14.0 | 0.14.0 |
+
 ## 0.32.0
 
 ### Features

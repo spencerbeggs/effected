@@ -1,5 +1,17 @@
 # @effected/mcp
 
+## 0.15.1
+
+### Documentation
+
+- `McpStdio.layer` states which malformed stdin lines core itself answers (a line that is not JSON gets `-32700`) and which only the stdin guard does, and that the guard answers every one before core sees it, so none is answered twice
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/kit | dependency | updated | 0.14.0 | 0.14.0 |
+
 ## 0.15.0
 
 ### Documentation
