@@ -4,7 +4,9 @@ name: Slow Tests
 # and the reload tests listed in vitest.config.ts's SLOW_TESTS. The Silk workflow's `ci:test` runs
 # everything else (EFFECTED_TEST_TIER=fast, with coverage and its thresholds); this job runs these
 # files alone (EFFECTED_TEST_TIER=slow) with coverage off, beside it rather than after it, so a PR
-# waits for the slower of the two instead of their sum. It runs on every pull request, not on a
+# waits for the slower of the two instead of their sum. The TIMING_TESTS among them, which bound a
+# timing growth ratio, run afterwards one file at a time (EFFECTED_TEST_TIER=timing), so no other
+# file shares the runner while they measure (#1387). It runs on every pull request, not on a
 # schedule, because the tier holds security regression suites (shell, glob and lockfile hostility)
 # that must not merge red. Coverage is off because these files exercise code the fast tier already
 # covers, and v8 instrumentation made them two to three times slower.

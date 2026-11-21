@@ -16,17 +16,19 @@ sources:
     resource: ../../package.json
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-21T19:43:06Z
+  at: 2026-11-21T22:26:30Z
 integrity:
   generated:
-    body: e80b7bff990e0e52
+    body: 60c66c15bae56dc1
   verified:
     by: human:spencer
-    at: 2026-11-21T19:47:49Z
-    content: f3188edbace9e13b
+    at: 2026-11-21T22:25:48Z
+    content: 9a4c2c352325d795
 verified:
   - by: human:spencer
     at: 2026-11-21T19:47:49Z
+  - by: human:spencer
+    at: 2026-11-21T22:25:48Z
 ---
 
 # The vitest suite splits into a fast tier with coverage and a slow tier run beside it
@@ -40,7 +42,8 @@ The Silk workflow's Run Tests step took 21 minutes, and a handful of CPU-heavy f
 `EFFECTED_TEST_TIER` splits the suite, and `vitest.config.ts`'s `SLOW_TESTS` list names the slow files by repo-relative path.[^vitest-config]
 
 - **`fast`** — what `pnpm ci:test` runs, with coverage and its thresholds. Each project excludes its slow files from **discovery**, through `test.exclude`.
-- **`slow`** — what `pnpm ci:test:slow` runs, with `--coverage.enabled=false`. Each project includes only its slow files, and a project with none is dropped.[^root-package-json]
+- **`slow`** — what `pnpm ci:test:slow` runs first, with `--coverage.enabled=false`. Each project includes only its slow files outside `TIMING_TESTS`, and a project with none is dropped.[^root-package-json]
+- **`timing`** — what `pnpm ci:test:slow` runs after `slow`, coverage off, with `fileParallelism: false`. It includes only `TIMING_TESTS`, the slow files that bound a timing growth ratio (the shell package's hostile and `allCommands` units). Run in parallel with the other slow files, those failed two of four Slow Tests runs, each just past its bound, so they now measure with no other file on the runner (#1387). Every `TIMING_TESTS` entry must also be in `SLOW_TESTS`, or the config refuses to load.
 - **Unset** — every local run — runs everything.
 
 `.github/workflows/slow-tests.yml` runs the slow tier on every pull request to `main`, on pushes to `main` and on dispatch, as its own job beside the Silk workflow rather than after it, so a pull request waits for the slower of the two rather than their sum.[^slow-tests-yml]
@@ -62,4 +65,4 @@ The slow tier holds the security regression suites: shell, glob and lockfile hos
 
 [^vitest-config]: `vitest.config.ts` — `SLOW_TESTS`, `testTier()`, the missing-file check and the per-project `exclude`/`include` in `buildProject`.
 [^slow-tests-yml]: `.github/workflows/slow-tests.yml` — the `Slow Tests` job and its header comment.
-[^root-package-json]: `package.json` — `ci:test` sets `EFFECTED_TEST_TIER=fast`; `ci:test:slow` sets `EFFECTED_TEST_TIER=slow` and `--coverage.enabled=false`.
+[^root-package-json]: `package.json` — `ci:test` sets `EFFECTED_TEST_TIER=fast`; `ci:test:slow` runs `EFFECTED_TEST_TIER=slow` and then `EFFECTED_TEST_TIER=timing`, each with `--coverage.enabled=false`.
