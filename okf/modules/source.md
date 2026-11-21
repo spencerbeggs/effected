@@ -27,10 +27,10 @@ sources:
     title: "LSP 3.17 Position: zero-based, UTF-16 by default, line endings \\n, \\r\\n and \\r"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-05T16:26:11Z
+  at: 2026-11-21T16:30:44Z
 integrity:
   generated:
-    body: 6e00b72eb673395a
+    body: 7a553c84d94418b8
 ---
 
 # @effected/source
@@ -149,6 +149,16 @@ unchanged), and `rangeOf` rejects a span whose end precedes its start.
 text ending in a terminator has an empty last line after it (`"a\n"` has two
 lines), as an editor shows it and as markdown's AST already places its root's
 end point.
+
+**`LineDiff` stays hand-rolled; it is not rebuilt on core's `TextDiff.hunks`.**
+Core's `TextDiff.lines` plus `hunks` covers the same ground (a line diff
+grouped `diff -u` style, changes sharing a hunk when at most `2 * context`
+equal lines separate them), but it lives in `effect`, and this package takes
+no dependency of any kind. Adopting it would hand an `effect` edge to every
+format package and LSP server that depends on `source`. The owner ruled on
+2026-11-21, during the Effect 4.1.5 advance, to keep `LineDiff`. A caller
+that already peers `effect` and needs no `LineDiff` shape may reach for
+`TextDiff` directly.
 
 ## What each package computed before adopting `LineIndex`
 

@@ -9,10 +9,10 @@ layer: boundary
 tags: [architecture, bundle]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-10T04:40:05Z
+  at: 2026-11-21T16:30:44Z
 integrity:
   generated:
-    body: ba744ed016aafac4
+    body: ded020ecb0d4bea1
 ---
 
 # @effected/mcp-kit
@@ -219,9 +219,12 @@ the vendored `.repos/effect` and probed against a live stdio server.
   that does not parse, and its JSON-RPC decoder skips a non-object value and
   no longer throws on a non-string `method`. An over-cap line is dropped
   after core logs `MaxBufferSizeExceeded` on stderr, and the server keeps
-  serving. Core still sends **no reply** to any of these lines, where
-  JSON-RPC 2.0 requires a `-32700` or `-32600`. The stdin guard stays for
-  that reply, not to prevent a wedge.
+  serving. Core now answers a line that does not parse with a `-32700`
+  (PR 10579), but still sends **no reply** to a non-object value, an object
+  that is no JSON-RPC message, or an over-cap line, where JSON-RPC 2.0
+  requires a `-32600` or `-32700`. The stdin guard stays for those replies,
+  not to prevent a wedge, and it answers a non-JSON line itself, so that line
+  never reaches core and is never answered twice.
 - **An MCP client could reach core's `@effect/rpc/*` control methods**
   (issue 8499). **Closed upstream** (PR 8509): core serves MCP with its RPC
   control messages off, so `{"jsonrpc":"2.0","method":"@effect/rpc/Eof"}`
