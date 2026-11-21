@@ -699,14 +699,20 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 	 * line as it arrives, then `exit <code>`. Both streams are read concurrently, so a child that fills one pipe cannot
 	 * deadlock the other. Every line is detail, so the step's held, live and prefix rules apply; stderr lines are
 	 * detail too, not warnings. Outside any step the lines print live. Resolves with the exit code, whatever it is, and
-	 * the collected stdout.
+	 * the collected stdout and stderr, each the whole stream as decoded text, so a caller can classify a failure from
+	 * what the child wrote to either.
+	 *
+	 * The collected text is **not redacted**: it is what the child wrote. The logged lines reach the runner, which masks
+	 * any value registered as a secret (through `Secret` or `::add-mask::`), but the returned strings carry no such
+	 * masking. Before quoting either in an error message, a check run or a summary, scrub it, for example with
+	 * `@effected/commands`' `Redaction.apply(text, secrets)`. The `$ <display>` line is redacted as described above.
 	 *
 	 * Reading stops 10 seconds after the child exits, as `@actions/exec` does: a background grandchild that inherited
 	 * the child's stdout or stderr would otherwise hold the pipe open, and the call with it, for as long as it lives.
-	 * What it wrote after that is not read.
+	 * What it wrote after that is not read or collected.
 	 *
-	 * Stdout is decoded as UTF-8 text and logged line by line, so this suits a child whose stdout is text; a binary
-	 * stdout needs the raw `ChildProcessSpawner` handle.
+	 * Both streams are decoded as UTF-8 text and logged line by line, so this suits a child whose output is text; a
+	 * binary stream needs the raw `ChildProcessSpawner` handle.
 	 *
 	 * Fails with `PlatformError` when the spawn fails, or when reading the child's output or its exit status fails after
 	 * it started. A non-zero exit is never an error.
@@ -715,7 +721,7 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 		command: ChildProcess.Command,
 		options?: { readonly display?: string },
 	): Effect.Effect<
-		{ readonly exitCode: number; readonly stdout: string },
+		{ readonly exitCode: number; readonly stdout: string; readonly stderr: string },
 		PlatformError.PlatformError,
 		ChildProcessSpawner.ChildProcessSpawner
 	> =>
@@ -725,6 +731,7 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 				yield* Effect.logInfo(`$ ${options?.display ?? commandLine(command)}`);
 				const handle = yield* spawner.spawn(command);
 				let stdout = "";
+				let stderr = "";
 				const logLines = (stream: Stream.Stream<string, PlatformError.PlatformError>) =>
 					stream.pipe(
 						Stream.splitLines,
@@ -742,7 +749,15 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 								),
 							),
 						),
-						logLines(Stream.decodeText(handle.stderr)),
+						logLines(
+							Stream.decodeText(handle.stderr).pipe(
+								Stream.tap((chunk) =>
+									Effect.sync(() => {
+										stderr += chunk;
+									}),
+								),
+							),
+						),
 					],
 					{ concurrency: "unbounded" },
 				);
@@ -757,7 +772,7 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 				);
 				const exitCode = Number(code);
 				yield* Effect.logInfo(`exit ${exitCode}`);
-				return { exitCode, stdout };
+				return { exitCode, stdout, stderr };
 			}),
 		);
 

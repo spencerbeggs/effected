@@ -112,10 +112,16 @@ const program = Effect.gen(function* () {
   decodes stdout and logs it line by line, so a binary stdout needs the raw
   `ChildProcessSpawner` handle. Reading stops 10 seconds after the child exits,
   as `@actions/exec` does, so a background grandchild holding the pipes cannot
-  hang the call. It resolves with the exit code, whatever it is, and the
-  collected stdout; it fails with `PlatformError` when the spawn fails, or when
-  reading the output or the exit status fails after it started, and a non-zero
-  exit is never an error.
+  hang the call. It resolves with `{ exitCode, stdout, stderr }`: the exit
+  code, whatever it is, and each stream collected whole and apart, so classify
+  a failure from the stream the tool writes it to (npm writes `npm error code`
+  to stderr only) rather than merging them with `2>&1`, which needs a shell and
+  breaks on Windows runners. The collected text is **not redacted**: the runner
+  masks registered secrets in the logged lines, but scrub the returned strings
+  (`@effected/commands`' `Redaction.apply(text, secrets)`) before quoting them
+  in an error, a check run or a summary. It fails with `PlatformError` when the
+  spawn fails, or when reading the output or the exit status fails after it
+  started, and a non-zero exit is never an error.
 - **`group(name, effect)`** — a raw collapsible for dumping a block of text:
   opens `::group::name`, runs `effect`, always closes with `::endgroup::` via a
   bracket. **The runner cannot nest groups** — a second `::group::`

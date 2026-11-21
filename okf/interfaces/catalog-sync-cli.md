@@ -17,7 +17,7 @@ sources:
     resource: ../../packages/pnpm-plugin-effected/lib/build/pnpm-config.plugin.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-09T23:27:41Z
+  at: 2026-11-21T22:48:38Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:14.366Z
@@ -31,13 +31,15 @@ verified:
     at: 2026-11-08T18:25:54Z
   - by: human:spencer
     at: 2026-11-10T00:32:33Z
+  - by: human:spencer
+    at: 2026-11-21T22:48:18Z
 integrity:
   generated:
-    body: 2d77a48048326266
+    body: 4c5b5112545bb0e6
   verified:
     by: human:spencer
-    at: 2026-11-10T00:32:33Z
-    content: 28de1fcec0e41ebb
+    at: 2026-11-21T22:48:18Z
+    content: 9ba014adaefc4e73
 ---
 
 # The catalog:sync / catalog:check CLI
@@ -84,6 +86,20 @@ nothing.
 fixed-name changeset (`.changeset/catalog-sync.md`) when anything moved.
 Builds never write this file; only a human or a workflow invoking
 `catalog:sync` deliberately does.
+
+That changeset is the release's **running list** of catalog moves, every
+move since the last release, because the release consumes it. A sync
+therefore merges into a pending list rather than replacing it: a package
+already listed keeps its first `from`, every listed package takes its `to`
+and peer from the config as it now stands, and a move the config has
+returned to its `from` drops out. Before this, a second sync on one branch,
+or a branch syncing while `main` still carried an unreleased list, rewrote
+the file with its own run's moves alone, and the plugin's changelog
+under-reported the release while every gate stayed green (#1386). `check`
+now also fails when a listed `to` or peer disagrees with the config, and
+`sync` repairs such a list even when the config itself needs no change. A
+move missing from the list entirely is not detected: that needs the config
+at the last release to diff against, which the gate does not read.
 
 ## What each command checks, and what it does not
 

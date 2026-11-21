@@ -17,10 +17,10 @@ sources:
     resource: ../../packages/github-actions/__test__
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-21T01:44:37Z
+  at: 2026-11-21T22:35:23Z
 integrity:
   generated:
-    body: 45d3a546785cf2d0
+    body: 959e8407d5a5e496
 ---
 
 # actions-step-log
@@ -134,7 +134,11 @@ A step can hold back only what reaches it. A child spawned with
 `stdout: "inherit"` writes straight to the runner log and defeats the fold, so
 `ActionLogger.command(command, { display? })` runs a child with `$ <argv>`
 (secrets redacted), each stdout and stderr line as detail, and `exit <code>`
-last, resolving `{ exitCode, stdout }`. Reading stops 10 seconds after the
+last, resolving `{ exitCode, stdout, stderr }`, each stream collected whole and
+apart, so a caller can classify a failure from either (npm writes its error
+code to stderr only). The collected text is not redacted: the runner masks
+registered secrets in the logged lines, but a caller quoting the returned
+strings scrubs them first. Reading stops 10 seconds after the
 child exits, as `@actions/exec` does, so a grandchild that inherited the pipes
 cannot hang it. It fails with `PlatformError` when the spawn, or reading the
 output or the exit status, fails; a non-zero exit is never an error. Stdout is
