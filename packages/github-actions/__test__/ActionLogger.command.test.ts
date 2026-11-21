@@ -31,12 +31,38 @@ describe("ActionLogger.command", () => {
 				const result = yield* logger.step("run", ActionLogger.command(ChildProcess.make("node", ["-e", script])));
 				assert.strictEqual(result.exitCode, 3);
 				assert.strictEqual(result.stdout.trim(), "out line");
+				assert.strictEqual(result.stderr.trim(), "err line");
 				const captured = yield* lines;
 				assert.strictEqual(captured[0]?.startsWith("::group::"), true);
 				const body = captured.slice(1, -1);
 				assert.strictEqual(body[0], `$ ${CommandLine.display(["node", "-e", script])}`);
 				assert.sameMembers(body.slice(1, 3), ["out line", "err line"]);
 				assert.strictEqual(body[3], "exit 3");
+			}),
+		),
+	);
+
+	it.effect("collects stderr whole and apart from stdout, so a failure can be classified from it", () =>
+		live(
+			Effect.gen(function* () {
+				// npm's shape: a failing install writes its error code to stderr, and only there.
+				const npmLike = [
+					"process.stdout.write('progress 1\\nprogress 2\\n');",
+					"process.stderr.write('npm error code ETARGET\\n');",
+					"process.stderr.write('npm error notarget No matching version\\n');",
+					"process.exit(1)",
+				].join(" ");
+				const failed = yield* ActionLogger.command(ChildProcess.make("node", ["-e", npmLike]), { display: "x" });
+				assert.strictEqual(failed.exitCode, 1);
+				assert.strictEqual(failed.stderr, "npm error code ETARGET\nnpm error notarget No matching version\n");
+				assert.strictEqual(failed.stdout, "progress 1\nprogress 2\n");
+				assert.notInclude(failed.stdout, "ETARGET");
+				// A child that writes nothing to stderr resolves with an empty string, not a missing field.
+				const quiet = yield* ActionLogger.command(ChildProcess.make("node", ["-e", "console.log('ok')"]), {
+					display: "y",
+				});
+				assert.strictEqual(quiet.stderr, "");
+				assert.strictEqual(quiet.stdout, "ok\n");
 			}),
 		),
 	);
@@ -84,6 +110,7 @@ describe("ActionLogger.command", () => {
 					const result = yield* Fiber.join(fiber);
 					assert.strictEqual(result.exitCode, 0);
 					assert.strictEqual(result.stdout, "parent done\n");
+					assert.strictEqual(result.stderr, "");
 				}),
 			),
 		{ timeout: 10_000 },
