@@ -40,6 +40,7 @@ yield* logger.step("build", build, { summary: () => "built" });
 * `CheckoutRef` and `CheckoutAuth` model the ref to fetch and the credentials to use
 * Credential lifetime is `"job"`, `"action"` or `"none"`. Under `"job"` and `"action"` both the token and an SSH key's `core.sshCommand` are persisted, so later git authenticates the same way over either; `"action"` removes them when its scope closes
 * `Checkout.fromInputs` reads every boolean input as `actions/checkout` does: true only for a case-insensitive `true`, and an empty value takes the stock in-code default, so an empty `persist-credentials` persists nothing
+* A failure after the default branch is resolved names that branch: `CheckoutRefNotFoundError` and `CheckoutCommitMismatchError` carry `ref` as `refs/heads/<name>`, and the red fetch step names it too
 * Each failure reason is its own `CheckoutError` class, so callers can match on it. `CheckoutUnqualifiedRefPinError` refuses a `Ref` pinned to a commit without a full `refs/` name, and `CheckoutStateKeyInUseError` refuses a second `"job"` checkout of another path under a `stateKey` already in use
 
 ## Dependencies

@@ -205,12 +205,16 @@ export class CheckoutUnsafePullRequestError extends Schema.TaggedError<CheckoutU
 /**
  * Raised when the requested ref does not exist on the remote.
  *
+ * @remarks
+ * For a `Default` checkout `ref` is the default branch it resolved to, such as
+ * `refs/heads/main`, never `""`.
+ *
  * @public
  */
 export class CheckoutRefNotFoundError extends Schema.TaggedError<CheckoutRefNotFoundError>()(
 	"CheckoutRefNotFoundError",
 	{
-		/** The ref that was not found. */
+		/** The ref that was not found, after default-branch resolution. */
 		ref: Schema.String,
 	},
 ) {
@@ -227,7 +231,7 @@ export class CheckoutRefNotFoundError extends Schema.TaggedError<CheckoutRefNotF
 export class CheckoutCommitMismatchError extends Schema.TaggedError<CheckoutCommitMismatchError>()(
 	"CheckoutCommitMismatchError",
 	{
-		/** The ref that was fetched. */
+		/** The ref that was fetched, after default-branch resolution. */
 		ref: Schema.String,
 		/** The commit the caller pinned. */
 		expected: Schema.String,

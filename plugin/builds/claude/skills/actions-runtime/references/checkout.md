@@ -110,7 +110,9 @@ It requires a modern git and checks the version once up front, failing
 class per reason: `CheckoutRefNotFoundError`, `CheckoutCommitMismatchError`,
 `CheckoutAuthError`, `CheckoutPathError` (a `path` that leaves the workspace) and
 `CheckoutDefaultBranchError` (its `detail` the API's or `ls-remote`'s reason), plus
-the git errors `@effected/git` already classifies.
+the git errors `@effected/git` already classifies. On a `Default` checkout, a
+`CheckoutRefNotFoundError` or `CheckoutCommitMismatchError` names the branch the
+default resolved to (`refs/heads/main`), and so does the red fetch step.
 Recover from one with `Effect.catchTag`.
 
 ## The log

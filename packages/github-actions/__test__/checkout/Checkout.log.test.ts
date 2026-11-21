@@ -10,6 +10,7 @@ import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
 import { Git } from "@effected/git";
+import type { GitHubClientShape } from "@effected/github";
 import { GitHubClient, GitHubError } from "@effected/github";
 import { Effect, Layer, Redacted, Schedule } from "effect";
 import { Base64 } from "effect/encoding";
@@ -68,20 +69,19 @@ const env = () => {
 	};
 };
 
-const services = (vars: Readonly<Record<string, string>>) =>
+/** The object format lookup answers 404, and nothing reaches the network. */
+const noHashAlgorithm = {
+	requestDecoded: () => Effect.fail(GitHubError.notFound("hash-algorithm", "the repository")),
+};
+
+const services = (vars: Readonly<Record<string, string>>, api: Partial<GitHubClientShape> = {}) =>
 	Layer.mergeAll(
 		Git.layer,
 		ActionEnvironment.layerTest(vars, {}),
 		ActionOutputs.recording().layer,
 		ActionState.layerTest({ save: () => Effect.void }),
-		// The client a checkout builds from its token: the object format lookup answers 404, and nothing reaches the network.
-		Layer.succeed(CheckoutApiClient, () =>
-			Effect.succeed(
-				GitHubClient.makeTest({
-					requestDecoded: () => Effect.fail(GitHubError.notFound("hash-algorithm", "the repository")),
-				}),
-			),
-		),
+		// The client a checkout builds from its token.
+		Layer.succeed(CheckoutApiClient, () => Effect.succeed(GitHubClient.makeTest({ ...noHashAlgorithm, ...api }))),
 		NodeCrypto.layerSecureRandom,
 	).pipe(Layer.provideMerge(NodeServices.layer));
 
@@ -147,6 +147,31 @@ describe("the checkout step log", () => {
 			const detail = failed?.detail.join("\n") ?? "";
 			assert.match(detail, /git -c protocol\.version=2 fetch .*refs\/heads\/missing/);
 			assert.include(detail, "couldn't find remote ref");
+		}),
+	);
+
+	it.live("names the resolved default branch in the red fetch step when the remote lacks it", () =>
+		Effect.gen(function* () {
+			const vars = env();
+			yield* prepare(vars);
+			// No remoteUrl: the checkout derives the GitHub URL, which the seeded global config rewrites to the local remote,
+			// and asks the API for the default branch.
+			yield* Effect.promise(() =>
+				writeFile(join(vars.HOME, ".gitconfig"), `[url "${url}"]\n\tinsteadOf = https://github.com/own/repo\n`),
+			);
+			const { remoteUrl: _ignored, ...derived } = options({ ref: { _tag: "Default" } });
+			const api: Partial<GitHubClientShape> = {
+				request: (() => Effect.succeed({ default_branch: "gone" })) as unknown as GitHubClientShape["request"],
+			};
+			const recording = ActionLogger.recording();
+			const failure = yield* Effect.scoped(Checkout.checkout(derived)).pipe(
+				Effect.provideService(CheckoutRetry, Schedule.recurs(0)),
+				Effect.provide(Layer.merge(services(vars, api), recording.layer)),
+				Effect.flip,
+			);
+			assert.strictEqual(failure._tag, "CheckoutRefNotFoundError");
+			const failed = steps(recording.entries()).find((step) => step.outcome === "failure");
+			assert.strictEqual(failed?.summary, "fetch failed · branch or tag 'gone' not found");
 		}),
 	);
 

@@ -314,20 +314,22 @@ const lookups = (git: GitShape, cwd: string): CheckoutInfoLookup & TestRefLookup
  * A fetch failure in checkout's terms: a missing ref, or refused credentials.
  *
  * @remarks
- * A shallow fetch whose refspecs are all globs (an unqualified ref) and match
- * nothing exits 1 with no output at all; that silence is a missing ref too.
+ * `ref` is the ref being fetched, after default-branch resolution, so a missing
+ * default branch is named rather than reported as `""`. A shallow fetch whose
+ * refspecs are all globs (an unqualified ref) and match nothing exits 1 with no
+ * output at all; that silence is a missing ref too.
  */
 const classifyFetch =
-	(settings: Settings, refspecs: ReadonlyArray<string>) =>
+	(settings: Settings, ref: string, refspecs: ReadonlyArray<string>) =>
 	<E>(error: E): E | CheckoutRefNotFoundError | CheckoutAuthError => {
 		if (error instanceof UnknownRefError) {
-			return new CheckoutRefNotFoundError({ ref: settings.ref });
+			return new CheckoutRefNotFoundError({ ref });
 		}
 		const tagged = error as { readonly _tag?: unknown; readonly stderr?: unknown; readonly exitCode?: unknown };
 		if (tagged._tag === "GitCommandError" && typeof tagged.stderr === "string") {
 			const stderr = tagged.stderr;
 			if (tagged.exitCode === 1 && stderr.trim() === "" && refspecs.every((spec) => spec.includes("*"))) {
-				return new CheckoutRefNotFoundError({ ref: settings.ref });
+				return new CheckoutRefNotFoundError({ ref });
 			}
 			const match = AUTH_FAILURES.find((phrase) => stderr.includes(phrase));
 			if (match !== undefined) {
@@ -496,7 +498,8 @@ export const getSource = (options: CheckoutOptions): Effect.Effect<CheckoutResul
 			);
 		});
 
-		const fetch = (refspecs: ReadonlyArray<string>, filter: Option.Option<string>) =>
+		/** Fetches `refspecs` for `ref`, the resolved ref every failure names. */
+		const fetch = (ref: string, refspecs: ReadonlyArray<string>, filter: Option.Option<string>) =>
 			Effect.gen(function* () {
 				const shallow = yield* fs.exists(path.join(settings.path, ".git", "shallow"));
 				yield* retried(
@@ -510,7 +513,7 @@ export const getSource = (options: CheckoutOptions): Effect.Effect<CheckoutResul
 							noRecurseSubmodules: true,
 							protocolVersion: 2,
 						})
-						.pipe(Effect.mapError(classifyFetch(settings, refspecs))),
+						.pipe(Effect.mapError(classifyFetch(settings, ref, refspecs))),
 				);
 			});
 
@@ -531,14 +534,14 @@ export const getSource = (options: CheckoutOptions): Effect.Effect<CheckoutResul
 				const mismatch = () => new CheckoutCommitMismatchError({ ref, expected: commit });
 
 				if (settings.depth <= 0) {
-					yield* fetch(refSpecForAllHistory(ref, commit), filter);
+					yield* fetch(ref, refSpecForAllHistory(ref, commit), filter);
 					// The ref may have moved since the event: fetch the pinned commit explicitly.
 					if (!(yield* testRef(lookup, ref, commit))) {
-						yield* fetch(refSpec(ref, commit, false), filter);
+						yield* fetch(ref, refSpec(ref, commit, false), filter);
 						if (!(yield* testRef(lookup, ref, commit))) return yield* mismatch();
 					}
 				} else {
-					yield* fetch(refSpec(ref, commit, settings.fetchTags), filter);
+					yield* fetch(ref, refSpec(ref, commit, settings.fetchTags), filter);
 					if (!(yield* testRef(lookup, ref, commit))) return yield* mismatch();
 				}
 

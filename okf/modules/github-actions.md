@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-21T01:44:37Z
+  at: 2026-11-21T02:10:01Z
 integrity:
   generated:
-    body: 61bae95c5a1f8b7c
+    body: 4d3fb01dff9e325f
 ---
 
 # github-actions
@@ -104,7 +104,8 @@ cannot turn a green job red. An action that uses `"job"` without calling
 skill say so. The runner's git must be at least the floor, checked once before
 any other git runs, and a fork pull request under a privileged event is refused
 unless the caller opts in. Each failure is its own tagged error class, per
-[the per-reason errors decision](../decisions/github-actions-per-reason-tagged-errors.md).
+[the per-reason errors decision](../decisions/github-actions-per-reason-tagged-errors.md);
+one raised after the default branch is resolved names that branch, not `""`.
 The log is one phase with a step per piece of work, and a step's detail is the
 `git` Debug transcript. A parity workflow, dispatched by hand, runs the stock
 action and this service into two directories and compares the results.

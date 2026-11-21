@@ -20,7 +20,7 @@ import { ActionEnvironment } from "../../src/ActionEnvironment.js";
 import { ActionLogger } from "../../src/ActionLogger.js";
 import { ActionOutputs } from "../../src/ActionOutputs.js";
 import { ActionState, ActionStateError } from "../../src/ActionState.js";
-import type { CheckoutDefaultBranchError, CheckoutOptions } from "../../src/Checkout.js";
+import type { CheckoutDefaultBranchError, CheckoutOptions, CheckoutRefNotFoundError } from "../../src/Checkout.js";
 import { Checkout } from "../../src/Checkout.js";
 import { CredentialRecord } from "../../src/internal/checkout/credentials.js";
 import { CheckoutApiClient, CheckoutRetry } from "../../src/internal/checkout/source.js";
@@ -705,6 +705,15 @@ describe("the API client and the default branch", () => {
 			}),
 		);
 		assert.strictEqual(result.ref, "refs/heads/master");
+	});
+
+	it("fails CheckoutRefNotFoundError naming the resolved default branch when the remote lacks it", async () => {
+		const w = await workspace();
+		const options = await viaDerivedUrl(w, base({ ref: { _tag: "Default" }, credentials: "none" }), remotes.url);
+		const error = (await failureOf(checkout(w, options, { api: defaultBranchIs("gone") }))) as CheckoutRefNotFoundError;
+		assert.strictEqual(error._tag, "CheckoutRefNotFoundError");
+		assert.strictEqual(error.ref, "refs/heads/gone");
+		assert.include(error.message, "refs/heads/gone");
 	});
 
 	it("fails CheckoutDefaultBranchError carrying the API's reason, with no token in it", async () => {
