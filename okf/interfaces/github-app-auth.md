@@ -8,7 +8,7 @@ resource: ../../packages/github/src/GitHubApp.ts
 tags: [bundle, security]
 generated:
   by: "okfit/claude-code"
-  at: 2026-10-31T19:37:34Z
+  at: 2026-11-21T20:59:28Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:25.629Z
@@ -18,7 +18,7 @@ verified:
     at: 2026-10-31T19:39:48Z
 integrity:
   generated:
-    body: a433bb1afa94c60b
+    body: 17854d8ea127d4ca
   verified:
     by: human:spencer
     at: 2026-10-31T19:39:48Z
@@ -142,7 +142,11 @@ token's `iss`), with a **mandatory, non-empty audience** because one JWKS
 signs tokens for every relying party, and decodes camelCase claims with
 numeric ids. Authorize on immutable ids (`repositoryId`,
 `repositoryOwnerId`) plus `jobWorkflowRef`, never on a repository name,
-which can be registered again after deletion. GHE.com enterprise issuers and
+which can be registered again after deletion. A decision about the ref reads
+`refProtected`, decoded from the wire's `"true"`/`"false"` and required, so a
+token without it, or with any other value, fails as `claims` rather than
+defaulting; `refType` (`branch` or `tag`), `baseRef` and `headRef` (empty
+outside pull request events) are required too. GHE.com enterprise issuers and
 GHES issuers are refused. The module reaches `@effected/jwt` and not
 octokit.
 
