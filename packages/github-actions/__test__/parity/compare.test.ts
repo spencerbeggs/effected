@@ -8,8 +8,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
-import { Effect } from "effect";
-import { diff, snapshot } from "./harness/src/compare.js";
+import { MemoryFileSystem } from "@effected/memfs";
+import { Effect, FileSystem, Option } from "effect";
+import { ActionState } from "../../src/ActionState.js";
+import { CredentialRecord } from "../../src/internal/checkout/credentials.js";
+import { cleanSnapshot, credentialLeftovers, diff, diffClean, snapshot, tempLeftovers } from "./harness/src/compare.js";
+import { fromFile, teeing } from "./harness/src/record.js";
 
 const ENV = { ...process.env, LC_ALL: "C", GIT_ALLOW_PROTOCOL: "file" };
 const git = (cwd: string, args: ReadonlyArray<string>): string =>
@@ -31,6 +35,7 @@ const git = (cwd: string, args: ReadonlyArray<string>): string =>
 
 let root: string;
 let remote: string;
+let withSubRemote: string;
 
 beforeAll(async () => {
 	root = await realpath(await mkdtemp(join(tmpdir(), "parity-compare-")));
@@ -43,6 +48,15 @@ beforeAll(async () => {
 	git(work, ["tag", "-a", "v1", "-m", "v1"]);
 	remote = join(root, "remote.git");
 	git(root, ["clone", "-q", "--bare", work, remote]);
+
+	// A superproject with one submodule, for the clean comparison's submodule walk.
+	const superWork = join(root, "super-work");
+	await mkdir(superWork, { recursive: true });
+	git(superWork, ["init", "-q"]);
+	git(superWork, ["submodule", "add", "-q", `file://${remote}`, "lib"]);
+	git(superWork, ["commit", "-q", "-m", "add lib"]);
+	withSubRemote = join(root, "super.git");
+	git(root, ["clone", "-q", "--bare", superWork, withSubRemote]);
 });
 
 afterAll(async () => {
@@ -142,5 +156,125 @@ describe("parity comparator", () => {
 			assert.isTrue(text.includes("basic <token>"));
 			assert.isFalse(text.includes(header));
 		}).pipe(Effect.provide(NodeServices.layer)),
+	);
+});
+
+/** A clone of the superproject in `name/`, its submodule checked out. */
+const withSubmodule = (name: string): string => {
+	const dir = join(root, name);
+	git(root, ["clone", "-q", "--recurse-submodules", `file://${withSubRemote}`, dir]);
+	return dir;
+};
+
+describe("parity comparator after cleanup", () => {
+	it.effect("snapshots two cleaned checkouts with submodules equal and finds no leftovers", () =>
+		Effect.gen(function* () {
+			const a = yield* cleanSnapshot(withSubmodule("clean-official"));
+			const b = yield* cleanSnapshot(withSubmodule("clean-kit"));
+			assert.deepStrictEqual(Object.keys(b.configs).sort(), [".", "lib"]);
+			assert.deepStrictEqual(diffClean(a, b), []);
+			assert.deepStrictEqual(credentialLeftovers("kit", b), []);
+		}).pipe(Effect.provide(NodeServices.layer)),
+	);
+
+	it.effect("names credential config left in the repository or a submodule, and the side that left it", () =>
+		Effect.gen(function* () {
+			const official = withSubmodule("left-official");
+			const kit = withSubmodule("left-kit");
+			const header = Buffer.from("x-access-token:ghs_left").toString("base64");
+			git(kit, [
+				"config",
+				"--local",
+				`includeIf.gitdir:${join(kit, ".git")}.path`,
+				join(root, "git-credentials-x.config"),
+			]);
+			git(join(kit, "lib"), ["config", "--local", "url.https://github.com/.insteadOf", "git@github.com:"]);
+			git(join(kit, "lib"), [
+				"config",
+				"--local",
+				"http.https://github.com/.extraheader",
+				`AUTHORIZATION: basic ${header}`,
+			]);
+			git(join(kit, "lib"), ["config", "--local", "core.sshCommand", 'ssh -i "$RUNNER_TEMP/k"']);
+			const a = yield* cleanSnapshot(official);
+			const b = yield* cleanSnapshot(kit);
+			const leftovers = credentialLeftovers("kit", b);
+			assert.strictEqual(leftovers.length, 4, JSON.stringify(leftovers));
+			assert.isTrue(leftovers.some((line) => line.startsWith("kit .: includeif.gitdir:")));
+			assert.isTrue(leftovers.some((line) => line.startsWith("kit lib: url.https://github.com/.insteadof=")));
+			assert.isTrue(leftovers.some((line) => line.startsWith("kit lib: core.sshcommand=")));
+			// The token never reaches a line bound for the summary.
+			assert.isFalse(leftovers.join("\n").includes(header));
+			assert.deepStrictEqual(credentialLeftovers("official", a), []);
+			const lines = diffClean(a, b);
+			assert.isTrue(lines.some((line) => line.startsWith("config lib: only in kit: url.")));
+			assert.isTrue(lines.some((line) => line.startsWith("config .: only in kit: includeif.")));
+		}).pipe(Effect.provide(NodeServices.layer)),
+	);
+
+	it.effect("names a submodule only one side checked out", () =>
+		Effect.gen(function* () {
+			const a = yield* cleanSnapshot(withSubmodule("sub-official"));
+			const plain = join(root, "sub-kit");
+			git(root, ["clone", "-q", `file://${withSubRemote}`, plain]);
+			const lines = diffClean(a, yield* cleanSnapshot(plain));
+			assert.include(lines, "repositories: only in official: lib");
+		}).pipe(Effect.provide(NodeServices.layer)),
+	);
+});
+
+describe("parity RUNNER_TEMP leftovers", () => {
+	const ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
+	it.effect("names credentials files, SSH keys, known hosts and temporary homes, not the runner's step scripts", () =>
+		tempLeftovers("/temp").pipe(
+			Effect.map((names) =>
+				assert.deepStrictEqual(names, [ID, `${ID}_known_hosts`, `git-credentials-${ID}.config`].sort()),
+			),
+			Effect.provide(
+				MemoryFileSystem.layerWith({
+					[`/temp/git-credentials-${ID}.config`]: "",
+					[`/temp/${ID}`]: "key",
+					[`/temp/${ID}_known_hosts`]: "",
+					[`/temp/${ID}.sh`]: "echo",
+					"/temp/effected-parity-state.json": "{}",
+					"/temp/_runner_file_commands/set_output": "",
+				}),
+			),
+		),
+	);
+});
+
+describe("parity state record", () => {
+	const record = CredentialRecord.make({
+		repositoryPath: "/ws/kit",
+		origin: "https://github.com",
+		credentialsFile: Option.some("/temp/git-credentials-1.config"),
+		sshKeyPath: Option.none(),
+		knownHostsPath: Option.none(),
+		temporaryGlobalConfig: Option.none(),
+		safeDirectory: true,
+		submodules: false,
+	});
+
+	it.effect("reads back what the checkout step saved, as the post entry would", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const saved: Array<string> = [];
+			const real = ActionState.makeTest({ save: (key) => Effect.sync(() => void saved.push(key)) });
+			yield* teeing(real, fs, "/temp/state.json").save("effected-checkout", record, CredentialRecord);
+			assert.deepStrictEqual(saved, ["effected-checkout"]);
+			const state = fromFile(fs, "/temp/state.json");
+			const read = yield* state.getOptional("effected-checkout", CredentialRecord);
+			assert.deepStrictEqual(read, Option.some(record));
+			assert.isTrue(Option.isNone(yield* state.getOptional("other", CredentialRecord)));
+		}).pipe(Effect.provide(MemoryFileSystem.layerWith({ "/temp": MemoryFileSystem.directory() }))),
+	);
+
+	it.effect("reads nothing when the checkout step saved nothing", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const read = yield* fromFile(fs, "/temp/absent.json").getOptional("effected-checkout", CredentialRecord);
+			assert.isTrue(Option.isNone(read));
+		}).pipe(Effect.provide(MemoryFileSystem.layerWith({ "/temp": MemoryFileSystem.directory() }))),
 	);
 });

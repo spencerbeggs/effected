@@ -2,9 +2,12 @@ name: Checkout Parity
 
 # Runs the stock `actions/checkout` and the kit's `Checkout` service into two directories with the
 # same inputs and compares what each left behind (HEAD, refs, the normalised `.git/config`, the
-# credentials file with its token redacted, the working tree). The post-step cleanup is not compared:
-# it runs after the Compare step. Dispatch only: the full matrix is
-# slow and the area is stable. The harness action lives in
+# credentials file with its token redacted, the working tree). Post steps run after every main step,
+# so on each persisted-credential row the job then runs both cleanups itself: the kit's through the
+# harness `cleanup` mode (`Checkout.cleanup` on the record the checkout step wrote under RUNNER_TEMP)
+# and the stock action's by running its bundled entry in post mode with the STATE_* values it reads.
+# `compare-clean` then diffs what each left behind and fails on any credential config or RUNNER_TEMP
+# credential material still there. Dispatch only: the full matrix is slow and the area is stable. The harness action lives in
 # packages/github-actions/__test__/parity/harness and is built here, never published.
 
 on:
@@ -187,3 +190,45 @@ jobs:
           mode: compare
           official: official
           kit: kit
+
+      # The cleanup comparison runs for the persisted-credential rows, even when Compare failed, so a
+      # pre-cleanup difference does not hide a post-cleanup one.
+      - name: Kit cleanup
+        if: ${{ !cancelled() && steps.gate.outputs.run == 'true' && matrix.persist != 'false' }}
+        uses: ./.harness
+        with:
+          mode: cleanup
+
+      - name: Official cleanup
+        id: official-cleanup
+        if: ${{ !cancelled() && steps.gate.outputs.run == 'true' && matrix.persist != 'false' }}
+        shell: bash
+        # The stock action's post entry is its main bundle with STATE_isPost set; it reads the rest of
+        # its saved state from STATE_* too. The runner keeps that state for the action's own post step
+        # only, so it is rebuilt here: the SSH key's id is the one the official core.sshCommand names.
+        run: |
+          set -euo pipefail
+          entry="$RUNNER_WORKSPACE/../_actions/actions/checkout/v7/dist/index.js"
+          if ! node -e 'process.exit(require("fs").existsSync(process.argv[1]) ? 0 : 1)' "$entry"; then
+            echo "::warning::actions/checkout's bundled entry is not at $entry; its cleanup is not observed"
+            echo "observed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          ssh_command="$(git -C official config --local --get core.sshCommand || true)"
+          # shellcheck disable=SC2016 # the $RUNNER_TEMP is literal text in the config value
+          key_id="$(printf '%s' "$ssh_command" | sed -n 's/.*-i "\$RUNNER_TEMP\/\([^"]*\)".*/\1/p')"
+          export STATE_isPost=true STATE_repositoryPath="$GITHUB_WORKSPACE/official" STATE_setSafeDirectory=true
+          if [ -n "$key_id" ]; then
+            export STATE_sshKeyPath="$RUNNER_TEMP/$key_id" STATE_sshKnownHostsPath="$RUNNER_TEMP/${key_id}_known_hosts"
+          fi
+          node "$entry"
+          echo "observed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Compare after cleanup
+        if: ${{ !cancelled() && steps.gate.outputs.run == 'true' && matrix.persist != 'false' }}
+        uses: ./.harness
+        with:
+          mode: compare-clean
+          official: official
+          kit: kit
+          official-cleaned: ${{ steps.official-cleanup.outputs.observed || 'false' }}

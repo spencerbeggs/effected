@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-21T02:14:05Z
+  at: 2026-11-21T02:22:10Z
 integrity:
   generated:
-    body: 62d3d391da6bad8c
+    body: 34efb99de1a184d4
 ---
 
 # github-actions
@@ -111,7 +111,13 @@ The server URL is checked once, before any git runs: a host with no scheme
 as the stock action refuses it, rather than being given a scheme.
 The log is one phase with a step per piece of work, and a step's detail is the
 `git` Debug transcript. A parity workflow, dispatched by hand, runs the stock
-action and this service into two directories and compares the results.
+action and this service into two directories and compares the results. On the
+persisted-credential rows it then runs both cleanups in the same job (the kit's
+`Checkout.cleanup` on a state record the harness writes under `RUNNER_TEMP`, the
+stock action's bundled entry in post mode with the `STATE_*` values it reads) and
+compares again, failing on any credential config or `RUNNER_TEMP` credential
+material left behind; when the stock entry cannot be found only the kit side is
+checked, and the step says so.
 
 ## Bundle reachability
 

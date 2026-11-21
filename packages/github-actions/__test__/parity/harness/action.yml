@@ -74,7 +74,8 @@ inputs:
       Required to check out fork pull request code from a workflow triggered by `pull_request_target` or `workflow_run`. These workflows run with the base repository's GITHUB_TOKEN, secrets, default-branch cache scope, and runner access; fetching and executing a fork's code in that trusted context commonly leads to "pwn request" vulnerabilities. Set to `true` only after reviewing the risks at https://gh.io/securely-using-pull_request_target.
     default: "false"
   mode:
-    description: checkout runs the kit checkout; compare diffs the official and kit checkouts
+    description: >-
+      checkout runs the kit checkout; compare diffs the official and kit checkouts; cleanup runs the kit's post-step cleanup for the record the checkout step saved; compare-clean diffs both checkouts after their cleanups
     default: checkout
   official:
     description: "compare mode: the directory the stock action checked out into"
@@ -82,6 +83,9 @@ inputs:
   kit:
     description: "compare mode: the directory the kit checked out into"
     default: kit
+  official-cleaned:
+    description: "compare-clean mode: whether the stock action's cleanup ran, so its side can be compared"
+    default: "true"
 outputs:
   ref:
     description: The ref that was checked out

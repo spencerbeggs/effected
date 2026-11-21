@@ -118,3 +118,82 @@ export const diff = (a: Snapshot, b: Snapshot): ReadonlyArray<string> => {
 	set("files", a.files, b.files);
 	return out;
 };
+
+/** What a checkout leaves in its repository and submodules once its own cleanup has run. */
+export interface CleanSnapshot {
+	/** Each repository's normalised local config: `.` for the checkout itself, a submodule's display path otherwise. */
+	readonly configs: Readonly<Record<string, ReadonlyArray<string>>>;
+}
+
+/** The config a checkout writes for credentials, all of which its cleanup must remove. */
+const CREDENTIAL_KEY = /^(?:includeif\.[^=]*|http\.[^=]*\.extraheader|core\.sshcommand|url\.[^=]*\.insteadof)=/i;
+
+/** A credentials file, an SSH key, its known-hosts file or a temporary global config's directory under `RUNNER_TEMP`. */
+const CREDENTIAL_TEMP =
+	/^(?:git-credentials-[0-9a-f-]+\.config|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:_known_hosts)?)$/i;
+
+/**
+ * Collects the normalised local config of a cleaned-up checkout and of every submodule it checked out, recursively.
+ * `relative` is as {@link snapshot} takes it.
+ */
+export const cleanSnapshot = (
+	dir: string,
+	relative?: string,
+): Effect.Effect<CleanSnapshot, unknown, ChildProcessSpawner.ChildProcessSpawner | Path.Path> =>
+	Effect.gen(function* () {
+		const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+		const path = yield* Path.Path;
+		const git = (cwd: string, args: ReadonlyArray<string>) =>
+			spawner.string(ChildProcess.make("git", [...args], { cwd }));
+		// `git config --list` exits 1 on a config with no entries: an emptied submodule config is clean, not an error.
+		const config = (cwd: string) =>
+			git(cwd, ["config", "--local", "--list"]).pipe(Effect.catch(() => Effect.succeed("")));
+
+		const configs: Record<string, ReadonlyArray<string>> = { ".": normaliseConfig(yield* config(dir), dir, relative) };
+		const submodules = lines(
+			yield* git(dir, ["submodule", "foreach", "--quiet", "--recursive", 'echo "$displaypath"']),
+		);
+		for (const sub of submodules) {
+			const subDir = path.join(dir, sub);
+			configs[forward(sub)] = normaliseConfig(yield* config(subDir), subDir);
+		}
+		return { configs };
+	});
+
+/** The credential config a cleaned-up checkout still holds, one line each, labelled with its repository. */
+export const credentialLeftovers = (label: string, clean: CleanSnapshot): ReadonlyArray<string> =>
+	Object.entries(clean.configs).flatMap(([repo, config]) =>
+		config.filter((line) => CREDENTIAL_KEY.test(line)).map((line) => `${label} ${repo}: ${line}`),
+	);
+
+/** The credential material still under `RUNNER_TEMP`, by name. */
+export const tempLeftovers = (
+	runnerTemp: string,
+): Effect.Effect<ReadonlyArray<string>, unknown, FileSystem.FileSystem> =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		return (yield* fs.readDirectory(runnerTemp)).filter((name) => CREDENTIAL_TEMP.test(name)).sort();
+	});
+
+/** What differs between two cleaned-up checkouts, one line each; empty when they agree. */
+export const diffClean = (a: CleanSnapshot, b: CleanSnapshot): ReadonlyArray<string> => {
+	const out: Array<string> = [];
+	const repos = [...new Set([...Object.keys(a.configs), ...Object.keys(b.configs)])].sort();
+	for (const repo of repos) {
+		const left = a.configs[repo];
+		const right = b.configs[repo];
+		if (left === undefined) {
+			out.push(`repositories: only in kit: ${repo}`);
+			continue;
+		}
+		if (right === undefined) {
+			out.push(`repositories: only in official: ${repo}`);
+			continue;
+		}
+		const l = new Set(left);
+		const r = new Set(right);
+		for (const item of left) if (!r.has(item)) out.push(`config ${repo}: only in official: ${item}`);
+		for (const item of right) if (!l.has(item)) out.push(`config ${repo}: only in kit: ${item}`);
+	}
+	return out;
+};
