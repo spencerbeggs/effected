@@ -663,6 +663,12 @@ describe("the API client and the default branch", () => {
 		assert.deepStrictEqual(builds, [{ token: TOKEN, baseUrl: "https://ghes.example.com/api/v3" }]);
 	});
 
+	it("fails CheckoutServerUrlError, not a defect, for a serverUrl without a scheme", async () => {
+		const w = await workspace();
+		const { remoteUrl: _ignored, ...derived } = base({ serverUrl: "ghe.example.com", credentials: "none" });
+		assert.strictEqual(await failureTag(checkout(w, derived)), "CheckoutServerUrlError");
+	});
+
 	it("uses the ambient client when the checkout has no token", async () => {
 		const w = await workspace();
 		const builds: Array<{ readonly token: string; readonly baseUrl: string }> = [];

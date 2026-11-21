@@ -40,7 +40,7 @@ with `Branch` or `Tag`.
 The rest mirrors the stock inputs: `path`, `clean` (default true), `depth` (default
 1, or `"full"`), `fetchTags`, `filter`, `sparse` (`patterns`, `cone` default true),
 `lfs`, `submodules` (`false`, `true` or `"recursive"`), `safeDirectory` (default
-true), `serverUrl` for GHES, `remoteUrl` (a remote to fetch instead of the derived
+true), `serverUrl` for GHES (with its scheme: `https://ghe.example.com`), `remoteUrl` (a remote to fetch instead of the derived
 GitHub URL; with it set the default branch is the remote's own `HEAD`), and
 `allowUnsafePrCheckout` (default false: a fork pull request checkout under
 `pull_request_target` or `workflow_run` is refused with
@@ -109,7 +109,11 @@ It requires a modern git and checks the version once up front, failing
 `CheckoutGitTooOldError` before any other git runs. The other typed failures are one
 class per reason: `CheckoutRefNotFoundError`, `CheckoutCommitMismatchError`,
 `CheckoutAuthError`, `CheckoutPathError` (a `path` that leaves the workspace) and
-`CheckoutDefaultBranchError` (its `detail` the API's or `ls-remote`'s reason), plus
+`CheckoutDefaultBranchError` (its `detail` the API's or `ls-remote`'s reason),
+`CheckoutUnqualifiedRefPinError`, `CheckoutStateKeyInUseError` and
+`CheckoutServerUrlError` (a `serverUrl`, `github-server-url` or
+`GITHUB_SERVER_URL` that is not an absolute `http` or `https` URL; a bare host
+such as `ghe.example.com` is refused, not given `https://`, so write the scheme), plus
 the git errors `@effected/git` already classifies. On a `Default` checkout, a
 `CheckoutRefNotFoundError` or `CheckoutCommitMismatchError` names the branch the
 default resolved to (`refs/heads/main`), and so does the red fetch step.

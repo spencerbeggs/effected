@@ -1,7 +1,7 @@
 import { Effect, Option, Path } from "effect";
 import type { GitHubContext } from "../../ActionEnvironment.js";
 import type { CheckoutAuth, CheckoutOptions, CheckoutRef, CheckoutUnsafePullRequestError } from "../../Checkout.js";
-import { CheckoutPathError, CheckoutUnqualifiedRefPinError } from "../../Checkout.js";
+import { CheckoutPathError, CheckoutServerUrlError, CheckoutUnqualifiedRefPinError } from "../../Checkout.js";
 import { asciiTrim } from "./asciiTrim.js";
 import { assertSafePullRequest } from "./unsafePullRequest.js";
 
@@ -38,6 +38,28 @@ export interface Settings {
 	readonly allowUnsafePrCheckout: boolean;
 	readonly stateKey: string;
 }
+
+const DEFAULT_SERVER_URL = "https://github.com";
+
+/**
+ * Why a server URL is refused, or none when it is an absolute `http` or `https` URL naming a host. Everything later
+ * hands it to `URL`, so a refusal here is the only failure it can produce.
+ */
+const serverUrlProblem = (serverUrl: string): Option.Option<string> => {
+	const trimmed = serverUrl.trim();
+	if (!/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(trimmed)) {
+		// A bare host, with or without a port or path, gets itself back with the scheme; anything else an example.
+		const example = /^[A-Za-z0-9.-]+(?::\d+)?(?:\/\S*)?$/.test(trimmed) ? trimmed : "ghe.example.com";
+		return Option.some(`it has no scheme; include it, as in "https://${example}"`);
+	}
+	if (!URL.canParse(serverUrl)) return Option.some("it is not a valid URL");
+	const url = new URL(serverUrl);
+	if (url.protocol !== "https:" && url.protocol !== "http:") {
+		return Option.some(`its scheme must be http or https, not ${url.protocol.slice(0, -1)}`);
+	}
+	if (url.hostname === "") return Option.some("it names no host");
+	return Option.none();
+};
 
 const SHA_PATTERN = /^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$/;
 
@@ -76,8 +98,9 @@ const lowerRef = (ref: CheckoutRef, context: GitHubContext): { readonly ref: str
  *
  * @remarks
  * Pure: the workflow's context, workspace and event payload come in as
- * arguments. Fails when the path leaves the workspace, or when a privileged
- * event would check out fork pull request code. The guard is skipped only for
+ * arguments. Fails when the path leaves the workspace, when the server URL is
+ * not an absolute `http` or `https` URL, or when a privileged event would check
+ * out fork pull request code. The guard is skipped only for
  * the default self-checkout: the workflow's own repository at `Event`.
  *
  * @internal
@@ -87,7 +110,7 @@ export const lower = (
 	context: { readonly github: GitHubContext; readonly workspace: string; readonly payload: unknown },
 ): Effect.Effect<
 	Settings,
-	CheckoutPathError | CheckoutUnsafePullRequestError | CheckoutUnqualifiedRefPinError,
+	CheckoutPathError | CheckoutUnsafePullRequestError | CheckoutUnqualifiedRefPinError | CheckoutServerUrlError,
 	Path.Path
 > =>
 	Effect.gen(function* () {
@@ -102,6 +125,13 @@ export const lower = (
 		const repositoryPath = path.resolve(workspace, options.path ?? ".");
 		if (!(repositoryPath + path.sep).startsWith(workspace + path.sep)) {
 			return yield* new CheckoutPathError({ path: options.path ?? ".", workspace });
+		}
+
+		// An empty one counts as omitted, as checkout's `url-helper` falls back from it.
+		const serverUrl = options.serverUrl || context.github.serverUrl || DEFAULT_SERVER_URL;
+		const serverUrlRefused = serverUrlProblem(serverUrl);
+		if (Option.isSome(serverUrlRefused)) {
+			return yield* new CheckoutServerUrlError({ serverUrl, detail: serverUrlRefused.value });
 		}
 
 		const isWorkflowRepository = qualified.toUpperCase() === context.github.repository.toUpperCase();
@@ -148,7 +178,7 @@ export const lower = (
 			auth: options.auth,
 			credentials: options.credentials ?? "job",
 			safeDirectory: options.safeDirectory ?? true,
-			serverUrl: options.serverUrl ?? context.github.serverUrl,
+			serverUrl,
 			remoteUrl: Option.fromNullishOr(options.remoteUrl),
 			allowUnsafePrCheckout,
 			stateKey: options.stateKey ?? "effected-checkout",

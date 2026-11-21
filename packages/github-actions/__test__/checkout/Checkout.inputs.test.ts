@@ -112,6 +112,20 @@ describe("Checkout.fromInputs", () => {
 		assert.instanceOf(await refuse(bom), CheckoutUnsafePullRequestError);
 	});
 
+	it("a scheme-less github-server-url reaches checkout's server URL check", async () => {
+		const o = await run({ "github-server-url": "ghe.example.com" });
+		assert.strictEqual(o.serverUrl, "ghe.example.com");
+		const github = await Effect.runPromise(
+			Effect.gen(function* () {
+				return yield* (yield* ActionEnvironment).github;
+			}).pipe(Effect.provide(ActionEnvironment.layerTest({}))),
+		);
+		const error = await Effect.runPromise(
+			Effect.flip(lower(o, { github, workspace: "/workspace", payload: {} })).pipe(Effect.provide(Path.layer)),
+		);
+		assert.strictEqual((error as { readonly _tag: string })._tag, "CheckoutServerUrlError");
+	});
+
 	it("fetch-depth 0, negative and non-numeric are full; a number is that depth", async () => {
 		assert.strictEqual((await run({ "fetch-depth": "0" })).depth, "full");
 		assert.strictEqual((await run({ "fetch-depth": "-3" })).depth, "full");

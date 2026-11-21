@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-21T02:10:01Z
+  at: 2026-11-21T02:14:05Z
 integrity:
   generated:
-    body: 4d3fb01dff9e325f
+    body: 62d3d391da6bad8c
 ---
 
 # github-actions
@@ -106,6 +106,9 @@ any other git runs, and a fork pull request under a privileged event is refused
 unless the caller opts in. Each failure is its own tagged error class, per
 [the per-reason errors decision](../decisions/github-actions-per-reason-tagged-errors.md);
 one raised after the default branch is resolved names that branch, not `""`.
+The server URL is checked once, before any git runs: a host with no scheme
+(`ghe.example.com`) fails `CheckoutServerUrlError` saying to include `https://`,
+as the stock action refuses it, rather than being given a scheme.
 The log is one phase with a step per piece of work, and a step's detail is the
 `git` Debug transcript. A parity workflow, dispatched by hand, runs the stock
 action and this service into two directories and compares the results.

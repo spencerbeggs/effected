@@ -85,7 +85,8 @@ export type CheckoutAuth = typeof CheckoutAuth.Type;
  * (case-insensitive), else `Default`; `path` `"."`; `credentials` `"job"`;
  * `clean` true; `depth` 1; `fetchTags` false; `sparse.cone` true; `lfs` false;
  * `submodules` false; `safeDirectory` true; `serverUrl` the runner's
- * `GITHUB_SERVER_URL` or `https://github.com`; `stateKey` `"effected-checkout"`.
+ * `GITHUB_SERVER_URL` or `https://github.com` (an empty one counts as omitted);
+ * `stateKey` `"effected-checkout"`.
  *
  * @public
  */
@@ -121,7 +122,10 @@ export interface CheckoutOptions {
 	readonly submodules?: boolean | "recursive";
 	/** Whether to mark the checkout a git `safe.directory`. */
 	readonly safeDirectory?: boolean;
-	/** The GitHub server URL. */
+	/**
+	 * The GitHub server URL: an absolute `http` or `https` URL, such as `https://ghe.example.com`. One without a scheme
+	 * fails {@link CheckoutServerUrlError}.
+	 */
 	readonly serverUrl?: string;
 	/**
 	 * The remote URL to use instead of one derived from `serverUrl` and `repository`. With it set, the default branch
@@ -342,6 +346,28 @@ export class CheckoutStateKeyInUseError extends Schema.TaggedError<CheckoutState
 }
 
 /**
+ * Raised when the GitHub server URL is not an absolute `http` or `https` URL.
+ *
+ * @remarks
+ * Checked once, before any git runs, for `serverUrl`, the `github-server-url`
+ * input {@link Checkout.fromInputs} reads, and the runner's `GITHUB_SERVER_URL`.
+ * A host with no scheme, such as `ghe.example.com`, is refused rather than
+ * given `https://`, as the stock checkout action refuses it.
+ *
+ * @public
+ */
+export class CheckoutServerUrlError extends Schema.TaggedError<CheckoutServerUrlError>()("CheckoutServerUrlError", {
+	/** The server URL as given. */
+	serverUrl: Schema.String,
+	/** Why it was refused. */
+	detail: Schema.String,
+}) {
+	override get message(): string {
+		return `The GitHub server URL "${this.serverUrl}" is not valid: ${this.detail}`;
+	}
+}
+
+/**
  * Anything that can go wrong checking out a repository.
  *
  * @remarks
@@ -360,7 +386,8 @@ export type CheckoutError =
 	| CheckoutPathError
 	| CheckoutDefaultBranchError
 	| CheckoutUnqualifiedRefPinError
-	| CheckoutStateKeyInUseError;
+	| CheckoutStateKeyInUseError
+	| CheckoutServerUrlError;
 
 /**
  * Checks a repository out the way the stock checkout action does, on `@effected/git`.

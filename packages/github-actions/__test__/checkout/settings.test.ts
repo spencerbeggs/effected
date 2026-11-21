@@ -172,6 +172,48 @@ describe("lower defaults", () => {
 	});
 });
 
+describe("lower server URL", () => {
+	const refused = async (serverUrl: string) => {
+		const error = await Effect.runPromise(Effect.flip(lowered({ serverUrl })));
+		const typed = error as { readonly _tag: string; readonly serverUrl?: string; readonly message: string };
+		assert.strictEqual(typed._tag, "CheckoutServerUrlError", String(error));
+		assert.strictEqual(typed.serverUrl, serverUrl);
+		return typed.message;
+	};
+
+	it("refuses a host without a scheme, saying to include https://", async () => {
+		const message = await refused("ghe.example.com");
+		assert.include(message, "ghe.example.com");
+		assert.include(message, "https://");
+		// A host and port parses as a scheme `ghe.example.com:` with no host: still a missing scheme.
+		assert.include(await refused("ghe.example.com:8443"), "https://");
+	});
+
+	it("refuses garbage and a scheme other than http or https", async () => {
+		for (const serverUrl of ["not a url", "://", "ftp://ghe.example.com", "file:///srv/git"]) {
+			await refused(serverUrl);
+		}
+	});
+
+	it("accepts a GitHub Enterprise Server URL, with a port or a trailing slash", async () => {
+		for (const serverUrl of ["https://ghe.example.com", "https://ghe.example.com:8443/", "http://localhost:3000"]) {
+			assert.strictEqual((await Effect.runPromise(lowered({ serverUrl }))).serverUrl, serverUrl);
+		}
+	});
+
+	it("refuses a scheme-less GITHUB_SERVER_URL the same way", async () => {
+		const error = await Effect.runPromise(Effect.flip(lowered({}, github({ serverUrl: "ghe.example.com" }))));
+		assert.strictEqual((error as { readonly _tag: string })._tag, "CheckoutServerUrlError");
+	});
+
+	it("an empty serverUrl falls back to GITHUB_SERVER_URL, then https://github.com", async () => {
+		const ctx = github({ serverUrl: "https://ghe.example.com" });
+		assert.strictEqual((await Effect.runPromise(lowered({ serverUrl: "" }, ctx))).serverUrl, "https://ghe.example.com");
+		const bare = github({ serverUrl: "" });
+		assert.strictEqual((await Effect.runPromise(lowered({}, bare))).serverUrl, "https://github.com");
+	});
+});
+
 describe("lower unsafe pull request guard", () => {
 	const payload = {
 		repository: { id: 100 },

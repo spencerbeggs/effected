@@ -125,6 +125,7 @@ export {
 	CheckoutRef,
 	CheckoutRefNotFoundError,
 	CheckoutResult,
+	CheckoutServerUrlError,
 	CheckoutStateKeyInUseError,
 	CheckoutUnqualifiedRefPinError,
 	CheckoutUnsafePullRequestError,
