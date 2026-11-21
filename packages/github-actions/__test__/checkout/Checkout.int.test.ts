@@ -614,6 +614,16 @@ const ambientUnused: Partial<GitHubClientShape> = {
 	requestDecoded: (() => Effect.die("the ambient client was used")) as unknown as GitHubClientShape["requestDecoded"],
 };
 
+describe("the object format", () => {
+	it("initializes with the detected sha1 even when git's own default is sha256", async () => {
+		const w = await workspace();
+		const program = checkout(w, base({ ref: { _tag: "Commit", sha: remotes.second }, credentials: "none" }));
+		await ok(Git.withRunOptions(program, { env: { GIT_DEFAULT_HASH: "sha256" } }));
+		assert.strictEqual(fixtureGit(repoOf(w), ["rev-parse", "--show-object-format"]), "sha1");
+		assert.strictEqual(fixtureGit(repoOf(w), ["rev-parse", "HEAD"]), remotes.second);
+	});
+});
+
 describe("the step timeout", () => {
 	it("runs every git step, not only the network ones, under the 30 minute ceiling", async () => {
 		const w = await workspace();

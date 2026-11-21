@@ -341,9 +341,10 @@ describe("GitCommand", () => {
 		);
 	});
 
-	it("init places path behind a literal -- and emits no flag for sha1", () => {
+	it("init places path behind a literal -- and emits the object format whenever it is set", () => {
 		assertGitCommand(GitCommand.init("repo"), ["init", "--", "repo"]);
-		assertGitCommand(GitCommand.init("repo", { objectFormat: "sha1" }), ["init", "--", "repo"]);
+		// An explicit sha1 is honoured: GIT_DEFAULT_HASH or init.defaultObjectFormat may say otherwise.
+		assertGitCommand(GitCommand.init("repo", { objectFormat: "sha1" }), ["init", "--object-format=sha1", "--", "repo"]);
 		assertGitCommand(GitCommand.init("repo", { objectFormat: "sha256", initialBranch: "main" }), [
 			"init",
 			"--object-format=sha256",

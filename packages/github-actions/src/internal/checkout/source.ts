@@ -449,10 +449,11 @@ export const getSource = (options: CheckoutOptions): Effect.Effect<CheckoutResul
 						if (Option.contains(format, "sha256")) {
 							yield* Effect.logInfo("Detected SHA-256 repository object format");
 						}
+						// The detected format either way, so a runner's GIT_DEFAULT_HASH cannot change it.
 						yield* git.init(
 							settings.path,
 							settings.path,
-							Option.contains(format, "sha256") ? { objectFormat: "sha256" } : {},
+							Option.match(format, { onNone: () => ({}), onSome: (objectFormat) => ({ objectFormat }) }),
 						);
 						yield* git.remoteAdd(settings.path, "origin", repositoryUrl);
 					}

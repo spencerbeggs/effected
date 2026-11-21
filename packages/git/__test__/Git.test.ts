@@ -2225,6 +2225,19 @@ describe("Git", () => {
 			}),
 		);
 
+		it.effect("fetchRefspecs refuses no refspecs with no credential of the remote in the error", () =>
+			Effect.gen(function* () {
+				const program = Effect.gen(function* () {
+					const git = yield* Git;
+					return yield* git.fetchRefspecs(cwd, { remote: "https://user:tok3n@example.com/r.git", refspecs: [] });
+				});
+				const error = yield* Effect.flip(run(program, () => ({ exit: 0 })));
+				assert.strictEqual(error._tag, "GitCommandError");
+				assert.notInclude(JSON.stringify(error), "tok3n");
+				assert.notInclude(error.message, "tok3n");
+			}),
+		);
+
 		it.effect("fetch refuses an option-like REF without spawning", () =>
 			Effect.gen(function* () {
 				let spawned = false;
@@ -3253,6 +3266,8 @@ describe("Git — remaining tiers (round 2)", () => {
 			readonly configured?: string;
 			readonly variant?: string;
 			readonly network?: boolean;
+			/** A per-call env, installed with `Git.withRunOptions`. */
+			readonly runEnv?: Record<string, string>;
 		}) =>
 			Effect.gen(function* () {
 				const seen: Array<{
@@ -3290,9 +3305,11 @@ describe("Git — remaining tiers (round 2)", () => {
 					const git = yield* Git;
 					// lsRemote is network-touching (it reads over the wire); revParse
 					// is not — the ssh pin is scoped to members that can invoke ssh.
-					return options.network === false
-						? yield* git.revParse(cwd, "HEAD")
-						: yield* git.lsRemote(cwd, "ssh://git@example.invalid/x.git");
+					const member: Effect.Effect<unknown, unknown> =
+						options.network === false
+							? git.revParse(cwd, "HEAD")
+							: git.lsRemote(cwd, "ssh://git@example.invalid/x.git");
+					return yield* options.runEnv === undefined ? member : Git.withRunOptions(member, { env: options.runEnv });
 				}).pipe(
 					Effect.provide(Git.layer),
 					Effect.provide(recording),
@@ -3430,6 +3447,24 @@ describe("Git — remaining tiers (round 2)", () => {
 				assert.isUndefined(env?.GIT_SSH_COMMAND);
 				// The rest of the non-interactive pins still apply to that caller.
 				assert.strictEqual(env?.GIT_TERMINAL_PROMPT, "0");
+			}),
+		);
+
+		it.effect("declines to pin when a per-call GIT_SSH is the deciding rung, as for an ambient one", () =>
+			Effect.gen(function* () {
+				const { env } = yield* spawned({ runEnv: { GIT_SSH: "/opt/corp/ssh-wrapper" } });
+				assert.isUndefined(env?.GIT_SSH_COMMAND);
+				assert.strictEqual(env?.GIT_SSH, "/opt/corp/ssh-wrapper");
+			}),
+		);
+
+		it.effect("a per-call GIT_SSH_VARIANT overrides the variant check, as an ambient one does", () =>
+			Effect.gen(function* () {
+				const putty = yield* spawned({ runEnv: { GIT_SSH_VARIANT: "putty" } });
+				assert.isUndefined(putty.env?.GIT_SSH_COMMAND);
+				// A per-call ssh variant wins over a non-OpenSSH ambient one.
+				const ssh = yield* spawned({ env: { GIT_SSH_VARIANT: "plink" }, runEnv: { GIT_SSH_VARIANT: "ssh" } });
+				assert.strictEqual(ssh.env?.GIT_SSH_COMMAND, "ssh -o BatchMode=yes");
 			}),
 		);
 

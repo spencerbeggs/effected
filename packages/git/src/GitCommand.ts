@@ -710,8 +710,9 @@ export class GitCommand {
 
 	/**
 	 * Mutating: `git init [--object-format=<f>] [--initial-branch=<b>] -- <path>` —
-	 * creates an empty repository at `path`. `sha1` is git's default and emits no
-	 * flag.
+	 * creates an empty repository at `path`. An `objectFormat` emits the flag
+	 * whenever it is set, `sha1` included: `GIT_DEFAULT_HASH` or
+	 * `init.defaultObjectFormat` can make git's own default `sha256`.
 	 */
 	static readonly init = (
 		path: string,
@@ -719,7 +720,7 @@ export class GitCommand {
 	): GitInvocation =>
 		git([
 			"init",
-			...(options?.objectFormat === "sha256" ? ["--object-format=sha256"] : []),
+			...(options?.objectFormat !== undefined ? [`--object-format=${options.objectFormat}`] : []),
 			...(options?.initialBranch !== undefined ? [`--initial-branch=${options.initialBranch}`] : []),
 			"--",
 			path,

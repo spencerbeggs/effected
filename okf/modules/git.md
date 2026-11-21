@@ -10,10 +10,10 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-20T22:40:26Z
+  at: 2026-11-21T01:31:18Z
 integrity:
   generated:
-    body: afd37b8ec20765fd
+    body: 26bd22a9225d4b8f
 ---
 
 # git
@@ -162,12 +162,17 @@ seconds via `Effect.timeoutOrElse`, owned here), and a scope replaces it
 `GitRunOptions` to every spawn the wrapped effect makes: `env` (merged under
 the service's own pins, so the locale, prompt and askpass pins always win),
 `config` (entries passed as `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` /
-`GIT_CONFIG_VALUE_n`, in insertion order) and `timeout` (replaces the
+`GIT_CONFIG_VALUE_n`, in insertion order, appended after any
+`GIT_CONFIG_COUNT` entries already in force, the run options' own `env` or
+else the inherited environment, so an inherited runtime config such as an
+auth header survives) and `timeout` (replaces the
 per-run ceiling for the scope). Nested calls merge key by key with the inner
 call winning. A locating read that opts into `ignoreRepositoryEnv` drops
 `config` on purpose, since `GIT_CONFIG_COUNT` is part of the repository
 environment it unsets. A per-call `GIT_SSH_COMMAND` is the first rung of
-the ssh pin's walk and is still pinned to batch mode on a network member.
+the ssh pin's walk and is still pinned to batch mode on a network member; a
+per-call `GIT_SSH` and `GIT_SSH_VARIANT` take their ambient counterparts'
+rungs, above them.
 
 **The Debug transcript.** Every spawn emits one `Effect.logDebug` entry,
 invisible at the default log level, so a consumer's step log (the

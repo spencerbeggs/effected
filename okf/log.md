@@ -4,6 +4,7 @@
 
 * Updated The effected build commands: package build, action build and action init
 * Updated Build a GitHub Action repository to the kit's canonical shape
+* Updated git
 
 ## 2026-11-20
 

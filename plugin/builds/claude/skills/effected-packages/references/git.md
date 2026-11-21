@@ -74,11 +74,13 @@ marker is the only signal a caller gets.
 - **`Git.withRunOptions(options)(effect)`** — applies `GitRunOptions` to every
   spawn the wrapped effect makes: `env` (merged under the service's own pins, so
   the locale, prompt and askpass pins always win), `config` (entries passed as
-  `GIT_CONFIG_COUNT`/`KEY_n`/`VALUE_n`) and `timeout` (replaces the 30 s
+  `GIT_CONFIG_COUNT`/`KEY_n`/`VALUE_n`, appended after any inherited
+  `GIT_CONFIG_COUNT` entries, which survive) and `timeout` (replaces the 30 s
   per-run ceiling for the scope; a fetch, LFS download or submodule update of a
   real repository needs it). Nested calls merge, the inner winning. A per-call
   `GIT_SSH_COMMAND` outranks the ambient one and is still pinned to batch mode on
-  a network member. A locating read with `ignoreRepositoryEnv` drops `config` by
+  a network member; a per-call `GIT_SSH` or `GIT_SSH_VARIANT` takes its ambient
+  counterpart's rung. A locating read with `ignoreRepositoryEnv` drops `config` by
   design. Option forms: `clean` takes a double force (nested repositories),
   `branchDelete` a remote form, `submoduleUpdate` `force`/`depth`/`protocolVersion`.
 - **The transcript** — every spawn emits one `Effect.logDebug` entry, invisible at

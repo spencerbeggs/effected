@@ -16,7 +16,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { GitConfigScope, GitInvocation, GitUntrackedFilesMode } from "./GitCommand.js";
 import { GitCommand } from "./GitCommand.js";
 import type { GitRunOptions } from "./GitRunOptions.js";
-import { CurrentRunOptions, configEnv, mergeRunOptions } from "./GitRunOptions.js";
+import { CurrentRunOptions, configCount, configEnv, mergeRunOptions } from "./GitRunOptions.js";
 import { GitVersion } from "./GitVersion.js";
 import { maskCredentialsInText } from "./internal/redact.js";
 import { REPOSITORY_ENV_VARS } from "./internal/repositoryEnv.js";
@@ -727,13 +727,20 @@ const runClassified = (
 	kind: ClassifyKind,
 	env: Record<string, string>,
 	unset: ReadonlyArray<string> = [],
+	inheritedConfigCount = 0,
 ): Effect.Effect<Classified, never, ChildProcessSpawner.ChildProcessSpawner> =>
 	Effect.flatMap(Effect.service(CurrentRunOptions), (runOptions) => {
 		const args = invocation.redactedArgs;
 		const maskExact = invocation.scrub;
+		// Scoped config is appended after the GIT_CONFIG_COUNT entries already in force: the run options' own,
+		// else the inherited environment's, which the spawn extends.
+		const inherited =
+			runOptions.env?.GIT_CONFIG_COUNT === undefined
+				? inheritedConfigCount
+				: configCount(runOptions.env.GIT_CONFIG_COUNT);
 		// The BASE_ENV-carrying `env` argument is spread last, so a run option can
 		// add keys but never undo a pin.
-		const spawnEnv = { ...runOptions.env, ...configEnv(runOptions.config), ...env };
+		const spawnEnv = { ...runOptions.env, ...configEnv(runOptions.config, inherited), ...env };
 		const duration = runOptions.timeout === undefined ? GIT_TIMEOUT : Duration.fromInputUnsafe(runOptions.timeout);
 		const command =
 			unset.length === 0
@@ -1798,12 +1805,14 @@ interface SshFromEnv {
 	readonly program: Option.Option<string>;
 	/** `GIT_SSH_VARIANT` — overrides git's basename inference of the grammar. */
 	readonly variant: Option.Option<string>;
+	/** `GIT_CONFIG_COUNT` — the inherited runtime config entries a scoped `config` is appended after. */
+	readonly configCount: number;
 }
 
 /** Builds the `Git.Service` shape over an already-resolved `ChildProcessSpawner`. */
 const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: SshFromEnv) => {
 	const runFor = (invocation: GitInvocation, cwd: string, kind: ClassifyKind, unset?: ReadonlyArray<string>) =>
-		runClassified(invocation, cwd, kind, BASE_ENV, unset).pipe(
+		runClassified(invocation, cwd, kind, BASE_ENV, unset, ssh.configCount).pipe(
 			Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 		);
 
@@ -1835,12 +1844,18 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 			// A per-call GIT_SSH_COMMAND (from `withRunOptions`) is the first rung,
 			// above the ambient one; everything below it is unchanged.
 			const runOptions = yield* Effect.service(CurrentRunOptions);
-			const perCall = (runOptions.env?.GIT_SSH_COMMAND ?? "").trim();
-			const sshCommand = perCall === "" ? ssh.command : Option.some(perCall);
+			// Each per-call variable takes its ambient counterpart's rung, above it.
+			const perCallRung = (name: string, ambient: Option.Option<string>) => {
+				const value = (runOptions.env?.[name] ?? "").trim();
+				return value === "" ? ambient : Option.some(value);
+			};
+			const sshCommand = perCallRung("GIT_SSH_COMMAND", ssh.command);
+			const sshProgram = perCallRung("GIT_SSH", ssh.program);
+			const sshVariant = perCallRung("GIT_SSH_VARIANT", ssh.variant);
 			const [fromConfig, variantFromConfig] = yield* Effect.all(
 				[
 					Option.isSome(sshCommand) ? Effect.succeed("") : readConfig(cwd, "core.sshCommand"),
-					Option.isSome(ssh.variant) ? Effect.succeed("") : readConfig(cwd, "ssh.variant"),
+					Option.isSome(sshVariant) ? Effect.succeed("") : readConfig(cwd, "ssh.variant"),
 				],
 				{ concurrency: "unbounded" },
 			);
@@ -1848,7 +1863,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 			// The variant decides the argument GRAMMAR, so it is checked first: a
 			// non-OpenSSH variant means `-o BatchMode=yes` is not a thing git's ssh
 			// invocation understands, whatever the command happens to be named.
-			const variant = Option.getOrElse(ssh.variant, () => variantFromConfig)
+			const variant = Option.getOrElse(sshVariant, () => variantFromConfig)
 				.trim()
 				.toLowerCase();
 			if (!OPENSSH_VARIANTS.has(variant)) {
@@ -1862,7 +1877,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 			// No COMMAND anywhere, so GIT_SSH is the deciding rung if it is set. It
 			// names a program and takes no arguments, so pinning anything here would
 			// displace it rather than extend it — decline instead.
-			if (Option.isSome(ssh.program)) {
+			if (Option.isSome(sshProgram)) {
 				return { ...BASE_ENV };
 			}
 			return sshEnv("ssh");
@@ -1876,7 +1891,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 	const runForNetwork = (invocation: GitInvocation, cwd: string, kind: ClassifyKind) =>
 		Effect.gen(function* () {
 			const env = yield* resolveSshEnv(cwd);
-			return yield* runClassified(invocation, cwd, kind, env).pipe(
+			return yield* runClassified(invocation, cwd, kind, env, [], ssh.configCount).pipe(
 				Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 			);
 		});
@@ -2378,7 +2393,8 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 			return yield* Effect.fail(
 				new GitCommandError({
 					kind: "refused",
-					args: ["fetch", remote],
+					// Redacted: the remote may be a credentialed URL.
+					args: GitCommand.fetchRefspecs(remote, []).redactedArgs,
 					cwd,
 					stderr: "",
 					detail: "refused a fetch with no refspecs",
@@ -5323,11 +5339,11 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 					// variable is not a configuration worth preserving.
 					Effect.map(Option.filter((value) => value.trim() !== "")),
 				);
-			const [command, program, variant] = yield* Effect.all(
-				[read("GIT_SSH_COMMAND"), read("GIT_SSH"), read("GIT_SSH_VARIANT")],
+			const [command, program, variant, count] = yield* Effect.all(
+				[read("GIT_SSH_COMMAND"), read("GIT_SSH"), read("GIT_SSH_VARIANT"), read("GIT_CONFIG_COUNT")],
 				{ concurrency: "unbounded" },
 			);
-			return make(spawner, { command, program, variant });
+			return make(spawner, { command, program, variant, configCount: configCount(Option.getOrUndefined(count)) });
 		}),
 	);
 
