@@ -414,11 +414,15 @@ export class Checkout {
 	 *
 	 * `persist-credentials` true is `"job"` and false `"none"`; `fetch-depth` at
 	 * or below zero, or not a number, is `"full"`; `submodules` is `recursive`,
-	 * `true` or else false. A boolean that is present but malformed fails rather
-	 * than defaulting. `ref` is trimmed of ASCII whitespace only, so a leading
-	 * BOM or NBSP survives as part of a `Ref`: empty is `Event` for the
-	 * workflow's own repository and `Default` otherwise, a bare 40 or 64 hex
-	 * value is a `Commit`, anything else a `Ref`.
+	 * `true` or else false. Every boolean reads as the stock action reads it:
+	 * true only for a case-insensitive `true`, false for any other value, and
+	 * an absent or empty input takes the stock action's in-code default, which
+	 * for `persist-credentials` is false, not the manifest's `true` (on a
+	 * runner an unsupplied input arrives as the manifest default, so only an
+	 * explicit empty value meets the in-code one). `ref` is trimmed of ASCII
+	 * whitespace only, so a leading BOM or NBSP survives as part of a `Ref`:
+	 * empty is `Event` for the workflow's own repository and `Default`
+	 * otherwise, a bare 40 or 64 hex value is a `Commit`, anything else a `Ref`.
 	 *
 	 * The `path` is not validated here; {@link Checkout.checkout} refuses one
 	 * that leaves the workspace.

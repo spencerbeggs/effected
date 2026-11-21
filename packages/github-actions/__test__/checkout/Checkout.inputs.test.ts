@@ -22,7 +22,8 @@ describe("Checkout.fromInputs", () => {
 	it("an empty record for the workflow's own repository is the default self-checkout", async () => {
 		const o = await run({});
 		assert.deepStrictEqual(o.ref, { _tag: "Event" });
-		assert.strictEqual(o.credentials, "job");
+		// checkout's in-code default: on a runner the manifest default "true" arrives instead.
+		assert.strictEqual(o.credentials, "none");
 		assert.strictEqual(o.depth, 1);
 		assert.deepStrictEqual(o.repository, { owner: "acme", name: "example" });
 		assert.strictEqual(o.auth._tag, "Token");
@@ -130,11 +131,35 @@ describe("Checkout.fromInputs", () => {
 		assert.strictEqual((await run({ "persist-credentials": "false" })).credentials, "none");
 	});
 
-	it("a present but malformed boolean fails rather than defaulting", async () => {
-		for (const name of ["clean", "lfs", "fetch-tags", "persist-credentials", "set-safe-directory"]) {
-			const exit = await Effect.runPromiseExit(read({ [name]: "yes" }));
-			assert.strictEqual(exit._tag, "Failure", name);
-		}
+	it("an empty persist-credentials is checkout's in-code false, not the manifest's true", async () => {
+		assert.strictEqual((await run({ "persist-credentials": "" })).credentials, "none");
+		assert.strictEqual((await run({ "persist-credentials": "  " })).credentials, "none");
+	});
+
+	it("a boolean is true only for a case-insensitive true, as checkout reads it", async () => {
+		assert.strictEqual((await run({ clean: "TrUe" })).clean, true);
+		assert.strictEqual((await run({ clean: "no" })).clean, false);
+		assert.strictEqual((await run({ clean: "yes" })).clean, false);
+		assert.strictEqual((await run({ lfs: "tRUE" })).lfs, true);
+		assert.strictEqual((await run({ "persist-credentials": "TRUE" })).credentials, "job");
+	});
+
+	it("an empty boolean takes checkout's in-code default", async () => {
+		const o = await run({
+			clean: "",
+			"sparse-checkout": "src",
+			"sparse-checkout-cone-mode": "",
+			"set-safe-directory": "",
+			"fetch-tags": "",
+			lfs: "",
+			"allow-unsafe-pr-checkout": "",
+		});
+		assert.strictEqual(o.clean, true);
+		assert.deepStrictEqual(o.sparse, { patterns: ["src"], cone: true });
+		assert.strictEqual(o.safeDirectory, true);
+		assert.strictEqual(o.fetchTags, false);
+		assert.strictEqual(o.lfs, false);
+		assert.strictEqual(o.allowUnsafePrCheckout, false);
 	});
 
 	it("sparse-checkout is multiline, with cone mode defaulting true", async () => {

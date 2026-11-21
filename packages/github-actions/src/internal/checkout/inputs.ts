@@ -4,10 +4,9 @@ import { ActionEnvironment } from "../../ActionEnvironment.js";
 import { ActionInput } from "../../ActionInput.js";
 import { ActionManifestInput } from "../../ActionManifest.js";
 import type { CheckoutAuth, CheckoutOptions, CheckoutRef } from "../../Checkout.js";
+import { asciiTrim } from "./asciiTrim.js";
 
 const SHA_PATTERN = /^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$/;
-// ASCII whitespace only: a BOM or NBSP is valid inside a git ref name.
-const asciiTrim = (value: string): string => value.replace(/^[\t\n\v\f\r ]+|[\t\n\v\f\r ]+$/g, "");
 
 const invalid = (message: string, actual: unknown): Config.ConfigError =>
 	new Config.ConfigError(new Schema.SchemaError(new SchemaIssue.InvalidValue({ message }, actual)));
@@ -98,9 +97,6 @@ export const declarations: ReadonlyArray<readonly [string, ActionManifestInput]>
 	],
 ];
 
-const flag = (name: string, fallback: boolean): Config.Config<boolean> =>
-	ActionInput.boolean(name).pipe(Config.withDefault(fallback));
-
 // checkout's core.getInput trims every input; a whitespace-only value is absent.
 const trimmed = (name: string): Config.Config<Option.Option<string>> =>
 	Config.option(ActionInput.string(name)).pipe(
@@ -110,6 +106,14 @@ const trimmed = (name: string): Config.Config<Option.Option<string>> =>
 				return text === "" ? Option.none() : Option.some(text);
 			}),
 		),
+	);
+
+// checkout's `(core.getInput(name) || codeDefault).toUpperCase() === 'TRUE'`: an absent or empty input takes
+// checkout's in-code default (which differs from the manifest default for persist-credentials), and any other
+// spelling than a case-insensitive "true" is false rather than an error.
+const flag = (name: string, codeDefault: boolean): Config.Config<boolean> =>
+	Config.map(trimmed(name), (value) =>
+		Option.match(value, { onNone: () => codeDefault, onSome: (text) => text.toUpperCase() === "TRUE" }),
 	);
 
 const optional = trimmed;
@@ -175,7 +179,7 @@ export const readInputs = (
 				}
 			: { _tag: "Token", token };
 
-		const persist = yield* flag(n("persist-credentials"), true);
+		const persist = yield* flag(n("persist-credentials"), false);
 		const path = yield* optional(n("path"));
 		const clean = yield* flag(n("clean"), true);
 		const filter = yield* optional(n("filter"));

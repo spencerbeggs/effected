@@ -2,6 +2,7 @@ import { Effect, Option, Path } from "effect";
 import type { GitHubContext } from "../../ActionEnvironment.js";
 import type { CheckoutAuth, CheckoutOptions, CheckoutRef, CheckoutUnsafePullRequestError } from "../../Checkout.js";
 import { CheckoutPathError } from "../../Checkout.js";
+import { asciiTrim } from "./asciiTrim.js";
 import { assertSafePullRequest } from "./unsafePullRequest.js";
 
 /**
@@ -39,10 +40,6 @@ export interface Settings {
 }
 
 const SHA_PATTERN = /^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$/;
-// Strips only the ASCII whitespace forbidden in a ref name: a BOM or NBSP is
-// valid inside one, so a wider trim would reclassify a fork branch named
-// "<BOM><sha>" as a bare commit and slip past the unsafe pull request guard.
-const asciiTrim = (value: string): string => value.replace(/^[\t\n\v\f\r ]+|[\t\n\v\f\r ]+$/g, "");
 
 const lowerRef = (ref: CheckoutRef, context: GitHubContext): { readonly ref: string; readonly commit: string } => {
 	switch (ref._tag) {
