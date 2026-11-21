@@ -20,9 +20,15 @@ const compare = Effect.gen(function* () {
 	const outputs = yield* ActionOutputs;
 	const path = yield* Path.Path;
 	const workspace = (yield* env.github).workspace;
-	const official = path.resolve(workspace, yield* ActionInput.string("official"));
-	const kit = path.resolve(workspace, yield* ActionInput.string("kit"));
-	const [a, b] = [yield* snapshot(official), yield* snapshot(kit)];
+	const officialPath = yield* ActionInput.string("official");
+	const kitPath = yield* ActionInput.string("kit");
+	const official = path.resolve(workspace, officialPath);
+	const kit = path.resolve(workspace, kitPath);
+	// The workspace-relative paths name each checkout in its container includeIf keys.
+	const [a, b] = [
+		yield* snapshot(official, path.relative(workspace, official)),
+		yield* snapshot(kit, path.relative(workspace, kit)),
+	];
 	const differences = diff(a, b);
 	if (differences.length === 0) {
 		yield* outputs.summary("Parity: the official and kit checkouts agree.\n");

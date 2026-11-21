@@ -78,6 +78,29 @@ describe("parity comparator", () => {
 		}).pipe(Effect.provide(NodeServices.layer)),
 	);
 
+	it.effect("normalises the container includeIf keys, which name each checkout's workspace-relative path", () =>
+		Effect.gen(function* () {
+			const withContainerKeys = async (name: string, id: string) => {
+				const dir = await checkout(name, id, "ghs_c");
+				const creds = `/github/runner_temp/git-credentials-${id}.config`;
+				git(dir, ["config", "--local", `includeIf.gitdir:/github/workspace/${name}/.git.path`, creds]);
+				git(dir, ["config", "--local", `includeIf.gitdir:/github/workspace/${name}/.git/worktrees/*.path`, creds]);
+				return dir;
+			};
+			const official = yield* Effect.promise(() =>
+				withContainerKeys("c-official", "99999999-9999-9999-9999-999999999999"),
+			);
+			const kit = yield* Effect.promise(() => withContainerKeys("c-kit", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"));
+			const a = yield* snapshot(official, "c-official");
+			const b = yield* snapshot(kit, "c-kit");
+			assert.deepStrictEqual(diff(a, b), []);
+			assert.isTrue(
+				a.config.some((line) => line.includes("gitdir:<container-dir>/.git/worktrees/*.path")),
+				JSON.stringify(a.config),
+			);
+		}).pipe(Effect.provide(NodeServices.layer)),
+	);
+
 	it.effect("names a changed config key", () =>
 		Effect.gen(function* () {
 			const a = yield* Effect.promise(() => checkout("a2", "33333333-3333-3333-3333-333333333333", "ghs_x"));

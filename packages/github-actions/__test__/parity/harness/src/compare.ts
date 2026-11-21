@@ -26,12 +26,24 @@ const CREDENTIALS_NAME = /git-credentials-[0-9a-f-]+/gi;
 const normaliseSsh = (value: string): string =>
 	value.replace(/^core\.sshcommand=.*$/i, (line) => line.replace(/"[^"]*"/g, '"<path>"'));
 
-const normaliseConfig = (raw: string, dir: string): ReadonlyArray<string> => {
+/**
+ * Normalises a checkout's local config. The host directory becomes `<dir>`; with the checkout's workspace-relative
+ * path, the container form of it (`/github/workspace/<relative>`, in the `includeIf` keys a container job reads) becomes
+ * `<container-dir>`, so two checkouts in differently named directories compare equal.
+ */
+const normaliseConfig = (raw: string, dir: string, relative?: string): ReadonlyArray<string> => {
 	const dirPattern = new RegExp(escapeRegExp(forward(dir)), "gi");
+	const containerPattern =
+		relative === undefined
+			? undefined
+			: new RegExp(
+					`${escapeRegExp(`/github/workspace/${forward(relative).replace(/^\.\/|\/$/g, "")}`)}(?=/|\\.path|$)`,
+					"gi",
+				);
 	return lines(forward(raw))
 		.map((line) =>
 			normaliseSsh(
-				line
+				(containerPattern === undefined ? line : line.replace(containerPattern, "<container-dir>"))
 					.replace(dirPattern, "<dir>")
 					.replace(CREDENTIALS_NAME, "git-credentials-<id>")
 					// A token left in the config must never reach the step summary.
@@ -41,9 +53,13 @@ const normaliseConfig = (raw: string, dir: string): ReadonlyArray<string> => {
 		.sort();
 };
 
-/** Collects a checkout's HEAD, refs, normalised local config, redacted credentials and working tree files. */
+/**
+ * Collects a checkout's HEAD, refs, normalised local config, redacted credentials and working tree files. `relative`
+ * is the checkout's path relative to the workspace, which names it in the container `includeIf` keys.
+ */
 export const snapshot = (
 	dir: string,
+	relative?: string,
 ): Effect.Effect<Snapshot, unknown, ChildProcessSpawner.ChildProcessSpawner | FileSystem.FileSystem | Path.Path> =>
 	Effect.gen(function* () {
 		const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -54,7 +70,7 @@ export const snapshot = (
 		const head = (yield* git(["rev-parse", "HEAD"])).trim();
 		const refs = lines(yield* git(["for-each-ref", "--format=%(refname) %(objectname)"]));
 		const rawConfig = yield* git(["config", "--local", "--list"]);
-		const config = normaliseConfig(rawConfig, dir);
+		const config = normaliseConfig(rawConfig, dir, relative);
 
 		// The credentials file is named by the `includeIf` key, so the value is read back from the config.
 		const include = lines(rawConfig).find((line) => /^includeif\.gitdir:.*\.path=/i.test(line));
