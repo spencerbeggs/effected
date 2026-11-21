@@ -1,5 +1,17 @@
 # @effected/cli
 
+## 0.30.1
+
+### Refactoring
+
+- File and OSC 8 link encoding replaces unpaired UTF-16 surrogates with core's `String.toWellFormed` instead of a hand-rolled regular expression; the encoded output is unchanged
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/env | dependency | updated | 0.12.0 | 0.12.0 |
+
 ## 0.30.0
 
 ### Breaking Changes

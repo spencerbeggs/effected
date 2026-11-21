@@ -1,5 +1,22 @@
 # @effected/ai-plugins
 
+## 0.53.0
+
+### Features
+
+- The Actions skills teach the step log (`phase`, `step`, `ActionLogger.command` and `ActionLogger.recording()`) and the `Checkout` service
+- New upgrade-ledger entries 0025 (the `@effected/github-actions` step log replacing `withStep`, `withBuffer` and `heading`) and 0026 (the `@effected/git` `GitShape` members that hand-built doubles must add)
+
+* The session briefing and the vendored-source pin name Effect 4.1.5, and every skill line citation is re-derived against it
+* `effect-v4-schema` teaches schema source generation through `Codegen.Module` (`addSchemas` and `print`) and the `diagnostics` an exhausted `Arbitrary` sample carries
+* `effect-v4-mcp` states the `destructiveHint` a read-only tool lists and which malformed stdio lines core now answers
+* `effect-v4-module-index` adds `Codegen`, `effect/chat`, `effect/protobuf`, `crypto/Password`, `SharedMemory`, `TextDiff.hunks`, the unpadded and lenient Base64 functions and `String.isWellFormed` / `toWellFormed`; `effect-v4-testing` adds the per-level `TestConsole` readers
+* New upgrade-ledger entries 0027 to 0036 for what Effect 4.1.5 changed in a consumer's types and behaviour, and the helpers worth adopting
+
+- The `building-a-github-action`, `structuring-an-action` and `bootstrapping-an-action` skills teach local-only actions (`base = "workspace"`, `dist = false`), `action build --check` and `action init --local`.
+- The `effected-packages` references for the bundler, cli and mcp cover the new options, and the construct index is regenerated.
+- A new upgrade-ledger entry covers the breaking `persistLocal` and persist-API changes in `@effected/bundler`.
+
 ## 0.52.2
 
 ### Documentation
