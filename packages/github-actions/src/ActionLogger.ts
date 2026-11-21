@@ -24,6 +24,9 @@ import { ActionEnvironment } from "./ActionEnvironment.js";
 import type { StepFrame, StepOutcome } from "./internal/stepLog.js";
 import * as StepLog from "./internal/stepLog.js";
 
+/** How long `command` keeps reading after the child exits. */
+const COMMAND_DRAIN = Duration.seconds(10);
+
 /**
  * Render a log message, which arrives as an array of the values passed to
  * `Effect.log*`.
@@ -33,9 +36,6 @@ import * as StepLog from "./internal/stepLog.js";
  * object would span lines, and a workflow command escapes every newline, so the
  * indented form buys nothing and costs readability.
  */
-/** How long `command` keeps reading after the child exits. */
-const COMMAND_DRAIN = Duration.seconds(10);
-
 const formatMessage = (message: unknown): string => {
 	const parts = Array.isArray(message) ? message : [message];
 	return parts.map((part) => Inspectable.toStringUnknown(part, 0)).join(" ");

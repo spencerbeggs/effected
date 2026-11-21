@@ -380,6 +380,34 @@ describe("remove under a repository git may consider unsafe", () => {
 	});
 });
 
+describe("remove when the fresh temporary global config cannot be seeded", () => {
+	it("deletes the created directory when the safe.directory write fails", async () => {
+		const f = await fixture();
+		const recording = ActionOutputs.recording();
+		const program = Effect.gen(function* () {
+			const real = yield* Git;
+			const { record } = yield* configure(settingsFor(f), real);
+			yield* Effect.promise(() =>
+				rm(dirname(Option.getOrThrow(record.temporaryGlobalConfig)), { recursive: true, force: true }),
+			);
+			const postRecord = CredentialRecord.make({ ...record, temporaryGlobalConfig: Option.none() });
+			// Only the write into the fresh global config fails; the cleanup's own git steps still run.
+			const git = new Proxy(real, {
+				get: (target, key, receiver) => {
+					const member = Reflect.get(target, key, receiver);
+					if (key !== "configAdd" || typeof member !== "function") return member;
+					return (...args: Array<unknown>) =>
+						args[1] === "safe.directory" ? Effect.fail(new Error("configAdd refused")) : member(...args);
+				},
+			}) as GitShape;
+			yield* remove(postRecord, git);
+
+			assert.deepStrictEqual(yield* Effect.promise(() => readdir(f.runnerTemp)), []);
+		});
+		await Effect.runPromise(program.pipe(Effect.provide(layerFor(f, recording.layer))));
+	});
+});
+
 describe("remove deletes only what lies inside RUNNER_TEMP", () => {
 	it("keeps a sibling sharing the prefix and a .. escape, for credentials, SSH files and the global config", async () => {
 		const f = await fixture();

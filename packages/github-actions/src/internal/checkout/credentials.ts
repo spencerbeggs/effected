@@ -794,7 +794,14 @@ export const remove = (
 		if (Option.isNone(globalConfig) && record.safeDirectory && Option.isSome(runnerTemp)) {
 			const created = Effect.gen(function* () {
 				const file = yield* temporaryGlobalConfig(yield* homeDirectory(env), runnerTemp.value);
-				yield* git.configAdd(path.dirname(file), "safe.directory", record.repositoryPath, { file });
+				// The directory exists but is never recorded when the write fails: remove it here, inside RUNNER_TEMP only.
+				yield* git
+					.configAdd(path.dirname(file), "safe.directory", record.repositoryPath, { file })
+					.pipe(
+						Effect.tapError(() =>
+							removeUnderTemp(runnerTemp, "temporary global config", path.dirname(file), { recursive: true }),
+						),
+					);
 				return file;
 			});
 			fresh = yield* created.pipe(
