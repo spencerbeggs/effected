@@ -3,11 +3,12 @@ import { vi } from "vitest";
 import { Glyphs } from "../src/index.js";
 import { displayWidth } from "../src/internal/displayWidth.js";
 
-describe("Glyphs", () => {
-	afterEach(() => {
-		vi.unstubAllEnvs();
-	});
+// File scope, so it undoes the `Glyphs.select` block's TERM stub too.
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 
+describe("Glyphs", () => {
 	it("unicode and ascii are distinct, tagged sets", () => {
 		assert.strictEqual(Glyphs.unicode.kind, "unicode");
 		assert.strictEqual(Glyphs.ascii.kind, "ascii");

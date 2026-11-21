@@ -28,9 +28,23 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ASSIGNMENTS: ReadonlySet<SyntaxKind> = new Set([
 	SyntaxKind.EqualsToken,
 	SyntaxKind.PlusEqualsToken,
+	SyntaxKind.MinusEqualsToken,
+	SyntaxKind.AsteriskEqualsToken,
+	SyntaxKind.AsteriskAsteriskEqualsToken,
+	SyntaxKind.SlashEqualsToken,
+	SyntaxKind.PercentEqualsToken,
+	SyntaxKind.LessThanLessThanEqualsToken,
+	SyntaxKind.GreaterThanGreaterThanEqualsToken,
+	SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken,
+	SyntaxKind.AmpersandEqualsToken,
+	SyntaxKind.BarEqualsToken,
+	SyntaxKind.CaretEqualsToken,
 	SyntaxKind.QuestionQuestionEqualsToken,
 	SyntaxKind.BarBarEqualsToken,
 	SyntaxKind.AmpersandAmpersandEqualsToken,
+	// `process.env.N++` / `--`: a postfix update writes as surely as an assignment.
+	SyntaxKind.PlusPlusToken,
+	SyntaxKind.MinusMinusToken,
 ]);
 
 /** `Object.assign(process.env, …)` and friends: `<receiver>.<method>(process.env`. */
@@ -118,7 +132,13 @@ const tokenize = (text: string): ReadonlyArray<Token> => {
 		}
 		tokens.push({
 			kind: token,
-			value: token === SyntaxKind.Identifier ? scanner.getTokenValue() : scanner.getTokenText(),
+			// An identifier's name and a string literal's unquoted value; raw text for everything else.
+			value:
+				token === SyntaxKind.Identifier ||
+				token === SyntaxKind.StringLiteral ||
+				token === SyntaxKind.NoSubstitutionTemplateLiteral
+					? scanner.getTokenValue()
+					: scanner.getTokenText(),
 			start: scanner.getTokenStart(),
 		});
 		token = scanner.scan();
@@ -155,22 +175,30 @@ const envMutationLines = (text: string): ReadonlyArray<number> => {
 		tokens[i]?.kind === kind && (value === undefined || tokens[i]?.value === value);
 	const hits = new Set<number>();
 	for (let i = 0; i + 2 < tokens.length; i += 1) {
-		if (
-			!(
-				is(i, SyntaxKind.Identifier, "process") &&
-				is(i + 1, SyntaxKind.DotToken) &&
-				is(i + 2, SyntaxKind.Identifier, "env")
-			)
+		if (!is(i, SyntaxKind.Identifier, "process")) continue;
+		// The index just past the `env` access: `process.env` or `process["env"]` / `process['env']`.
+		let envEnd = -1;
+		if (is(i + 1, SyntaxKind.DotToken) && is(i + 2, SyntaxKind.Identifier, "env")) {
+			envEnd = i + 3;
+		} else if (
+			is(i + 1, SyntaxKind.OpenBracketToken) &&
+			(is(i + 2, SyntaxKind.StringLiteral, "env") || is(i + 2, SyntaxKind.NoSubstitutionTemplateLiteral, "env")) &&
+			is(i + 3, SyntaxKind.CloseBracketToken)
 		) {
-			continue;
+			envEnd = i + 4;
 		}
+		if (envEnd < 0) continue;
 		// A `process` that is itself a member (`globalThis.process.env`) is still the global; one
 		// that is another object's member (`fake.process.env`) is not — only `globalThis.` passes.
 		const start = is(i - 1, SyntaxKind.DotToken) && is(i - 2, SyntaxKind.Identifier, "globalThis") ? i - 2 : i;
 		if (is(i - 1, SyntaxKind.DotToken) && start === i) continue;
 		const line = lineOf(tokens[i]?.start ?? 0);
-		// `delete process.env…`
-		if (is(start - 1, SyntaxKind.DeleteKeyword)) {
+		// `delete process.env…`, `++process.env.N`
+		if (
+			is(start - 1, SyntaxKind.DeleteKeyword) ||
+			is(start - 1, SyntaxKind.PlusPlusToken) ||
+			is(start - 1, SyntaxKind.MinusMinusToken)
+		) {
 			hits.add(line);
 			continue;
 		}
@@ -186,7 +214,7 @@ const envMutationLines = (text: string): ReadonlyArray<number> => {
 			continue;
 		}
 		// `process.env = …`, `process.env.X = …`, `process.env[k] ??= …`
-		let after = i + 3;
+		let after = envEnd;
 		if (is(after, SyntaxKind.DotToken) && is(after + 1, SyntaxKind.Identifier)) {
 			after += 2;
 		} else if (is(after, SyntaxKind.OpenBracketToken)) {
@@ -225,8 +253,19 @@ describe("test suites never mutate process.env", () => {
 			'globalThis.process.env.X = "1";',
 			'Reflect.deleteProperty(process.env, "X");',
 			"const s = `${(process.env.T = 'x')}`;",
+			"process.env.COUNT -= 1;",
+			"process.env.FLAGS |= 4;",
+			'process["env"].CI = "true";',
+			"process['env'] = {};",
+			'delete process["env"].CI;',
+			"Object.assign(process['env'], RUNNER_ENV);",
+			"process.env.N++;",
+			"--process.env.N;",
 		].join("\n");
-		assert.deepEqual(envMutationLines(fixture), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+		assert.deepEqual(
+			envMutationLines(fixture),
+			Array.from({ length: 19 }, (_, i) => i + 1),
+		);
 	});
 
 	it("passes reads, comparisons, comments, strings and lookalikes", () => {
@@ -243,6 +282,9 @@ describe("test suites never mutate process.env", () => {
 			"Object.keys(process.env);",
 			"const r = /#\\s*process.env.X = ''/u; const q = a / b / c;",
 			"const h = `#${x}`; const p = s.replace(/[#]/g, '');",
+			'const w = process["env"].CI; const k = { ...process["env"] };',
+			'if (process["env"].N === "1") {} const m = process.env.A - 1;',
+			'const other = process["argv"]; process.title = "x";',
 		].join("\n");
 		assert.deepEqual(envMutationLines(fixture), []);
 	});

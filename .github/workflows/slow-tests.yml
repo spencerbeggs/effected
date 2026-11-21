@@ -9,8 +9,12 @@ name: Slow Tests
 # that must not merge red. Coverage is off because these files exercise code the fast tier already
 # covers, and v8 instrumentation made them two to three times slower.
 #
-# A fork's pull_request run gets no secrets, so the S3 turbo cache inputs arrive empty and the
-# remote cache stays off; pull_request runs never write to the base branch's cache scope.
+# Cache trust matches the Silk workflow's: a fork's pull_request run gets no secrets, so the S3
+# turbo cache inputs arrive empty and its remote cache stays off, while a same-repository pull
+# request reads and writes the shared S3 namespace that main also reads, exactly as Silk's own
+# validation run does. Turbo keys every artifact by its task hash, so a pull request can only
+# fill a key whose inputs it matches; a stronger boundary (a read-only key for pull requests, or a
+# per-ref prefix) belongs in the bucket policy or the secrets' scope, not in this file.
 
 on:
   pull_request:
