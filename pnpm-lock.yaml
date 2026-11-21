@@ -291,13 +291,13 @@ importers:
         specifier: 4.1.5
         version: 4.1.5(effect@4.1.5)(redis@6.3.1)
       '@effected/changesets':
-        specifier: workspace:*
+        specifier: link:packages/changesets
         version: link:packages/changesets
       '@effected/plugin':
-        specifier: workspace:*
+        specifier: link:packages/plugin
         version: link:packages/plugin
       '@effected/workspaces':
-        specifier: workspace:*
+        specifier: link:packages/workspaces
         version: link:packages/workspaces
       '@okfit/plugin':
         specifier: ^0.5.37

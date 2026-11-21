@@ -1,0 +1,50 @@
+name: Slow Tests
+
+# The slow tier of the vitest suite: the CPU-heavy property and fuzz sweeps, the packed-install e2es
+# and the reload tests listed in vitest.config.ts's SLOW_TESTS. The Silk workflow's `ci:test` runs
+# everything else (EFFECTED_TEST_TIER=fast, with coverage and its thresholds); this job runs these
+# files alone (EFFECTED_TEST_TIER=slow) with coverage off, beside it rather than after it, so a PR
+# waits for the slower of the two instead of their sum. It runs on every pull request, not on a
+# schedule, because the tier holds security regression suites (shell, glob and lockfile hostility)
+# that must not merge red. Coverage is off because these files exercise code the fast tier already
+# covers, and v8 instrumentation made them two to three times slower.
+#
+# A fork's pull_request run gets no secrets, so the S3 turbo cache inputs arrive empty and the
+# remote cache stays off; pull_request runs never write to the base branch's cache scope.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: slow-tests-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  slow:
+    name: Slow Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Runtime
+        uses: savvy-web/silk-runtime-action@v1
+        with:
+          turbo-s3-bucket: ${{ secrets.TURBO_S3_BUCKET }}
+          turbo-s3-region: ${{ secrets.TURBO_S3_REGION }}
+          turbo-s3-endpoint: ${{ secrets.TURBO_S3_ENDPOINT }}
+          turbo-s3-access-key-id: ${{ secrets.TURBO_S3_ACCESS_KEY_ID }}
+          turbo-s3-secret-access-key: ${{ secrets.TURBO_S3_SECRET_ACCESS_KEY }}
+
+      - name: Run the slow tier
+        run: pnpm run ci:test:slow

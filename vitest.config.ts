@@ -1,16 +1,72 @@
+import { existsSync } from "node:fs";
+import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AgentPlugin, DefaultDiscoverStrategy } from "@vitest-agent/plugin";
 import { defineConfig } from "vitest/config";
 
+/**
+ * The slow tier: CPU-heavy property and fuzz sweeps, packed-install e2e and reload tests that dominate CI time.
+ *
+ * @remarks
+ * `EFFECTED_TEST_TIER` splits the suite. `fast` (what `ci:test` runs, with coverage and its thresholds) excludes
+ * these files from discovery itself rather than through a tag filter, so the run still counts as a full run and
+ * keeps its coverage thresholds. `slow` (what `ci:test:slow` runs in `.github/workflows/slow-tests.yml`, coverage
+ * off) runs only these. Unset — every local run — runs everything. A file earns a place by taking about 20 s or
+ * more on a CI runner; each one below took that in the Effect 4.1.5 PR's run (#1382). Paths are repo-relative,
+ * and the config refuses to load when one no longer exists, so a rename cannot drop a file from both tiers.
+ */
+const SLOW_TESTS: ReadonlyArray<string> = [
+	"packages/bundler/__test__/meta/api-extractor.int.test.ts",
+	"packages/bundler/__test__/meta/generate.bundle.test.ts",
+	"packages/cli/__test__/e2e/package-build.e2e.test.ts",
+	"packages/commands/__test__/RunOnce.model.test.ts",
+	"packages/engine/__test__/schema/ConfigLoader.reload.test.ts",
+	"packages/glob/__test__/hostility.test.ts",
+	"packages/lockfiles/__test__/hostile.test.ts",
+	"packages/markdown/__test__/e2e/pathological.e2e.test.ts",
+	"packages/mcp/__test__/schema-tools.reload.test.ts",
+	"packages/plugin/__test__/e2e/packed-install.e2e.test.ts",
+	"packages/shell/__test__/ShellScript.test.ts",
+	"packages/shell/__test__/hostile.test.ts",
+	"packages/walker/__test__/PatternBoundsSweep.test.ts",
+	"packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts",
+];
+
+const TIERS = ["fast", "slow"] as const;
+type Tier = (typeof TIERS)[number];
+
+const testTier = (): Tier | undefined => {
+	const tier = process.env.EFFECTED_TEST_TIER;
+	if (tier === undefined || tier === "") return undefined;
+	if ((TIERS as ReadonlyArray<string>).includes(tier)) return tier as Tier;
+	throw new Error(`EFFECTED_TEST_TIER must be one of ${TIERS.join(", ")} or unset, got ${JSON.stringify(tier)}`);
+};
+
 export default async () => {
+	const root = fileURLToPath(new URL(".", import.meta.url));
+	const missing = SLOW_TESTS.filter((file) => !existsSync(join(root, file)));
+	if (missing.length > 0) {
+		throw new Error(`vitest.config.ts SLOW_TESTS names files that do not exist:\n  ${missing.join("\n  ")}`);
+	}
+	const tier = testTier();
+	/** The slow files a project owns, absolute: under its directory, or the root's own `__test__/`. */
+	const slowFilesOf = (projectPath: string): ReadonlyArray<string> => {
+		const rel = relative(root, projectPath);
+		const prefix = rel === "" ? `__test__${sep}` : `${rel}${sep}`;
+		return SLOW_TESTS.filter((file) => file.split("/").join(sep).startsWith(prefix)).map((file) => join(root, file));
+	};
 	// Scratchpad is a local-only probe venue: discovered as a normal project on
 	// dev machines, invisible to ci:test.
 	const strategy = new DefaultDiscoverStrategy().extend({
 		buildProject: async (input, inherited) => {
 			if (input.name === "scratchpad" && process.env.CI) return null;
 			if (inherited === null) return null;
+			const slow = slowFilesOf(input.path);
+			if (tier === "slow" && slow.length === 0) return null;
 			const test = {
 				...inherited.test,
+				...(tier === "fast" ? { exclude: [...(inherited.test?.exclude ?? []), ...slow] } : {}),
+				...(tier === "slow" ? { include: [...slow] } : {}),
 				env: {
 					...inherited.test?.env,
 					// pnpm sets this for the bootstrap, resolved from each process's cwd, so a child a test starts in a scratch

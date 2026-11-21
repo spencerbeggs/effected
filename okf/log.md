@@ -14,6 +14,11 @@
 * Updated @effected/workspaces catalogs and the config-dependency seam
 * Updated @effected/workspaces: monorepo tooling
 * Updated Testing standards
+* Added A root workspace:* devDependency puts its whole closure into turbo's global hash
+* Added CI's Run Tests step took 21 minutes, half of the file time in five files
+* Added The build task hashes CI and GITHUB_ACTIONS, not pending changesets
+* Added The vitest suite splits into a fast tier with coverage and a slow tier run beside it
+* Updated workspace
 
 ## 2026-11-20
 

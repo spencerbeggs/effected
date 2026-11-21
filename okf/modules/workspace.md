@@ -10,10 +10,10 @@ tags:
   - dx
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-12T21:41:04Z
+  at: 2026-11-21T19:43:06Z
 integrity:
   generated:
-    body: 9dc13feea9100a46
+    body: 6b7a58c0d45bd823
 ---
 
 # workspace
@@ -37,6 +37,8 @@ Build tooling is `@effected/bundler`, run by the `effected` tool from source, wi
 ## Build pipeline
 
 `pnpm build` runs `turbo run build`, leaving out the frozen `docs` site. Each package's `build` script is `effected package build`, and there is one target: `dist/prod/<group>/{pkg,meta}`, `dist/prod/targets.json` and `dist/prod/issues.json`. `build` depends on the package's `types:check`, which chains over `^types:check`, and it has no `^build`, because workspace links resolve to each sibling's source. See [one build target](../decisions/one-build-target-from-source-links.md). Config is `effected.toml`, which only six packages need; each build appends to `.cache/effected/build.jsonl` and `issues.jsonl` at the workspace root. `@effected/plugin` is a root devDependency, never a package's dependency, and `effected` runs from source as [the bootstrap decision](../decisions/bundler-bootstraps-from-source.md) describes. Build through `pnpm build --filter <pkg>`: a direct `effected package build` is allowed but skips the typecheck gate and the cache.
+
+The root `package.json` declares its kit devDependencies (`@effected/plugin`, `@effected/changesets`, `@effected/workspaces`) as `link:packages/<name>`, never `workspace:*`: turbo folds the root's internal dependencies into the global hash, so at `workspace:*` an edit anywhere in their closure missed every task's cache ([the root devDependency hash gotcha](../gotchas/root-workspace-devdeps-hash.md)). `build` hashes the `CI` and `GITHUB_ACTIONS` variables and not `.changeset/**`, since pending changesets only feed optimistic next versions, which CI turns off ([the build task's hash inputs](../decisions/build-task-hash-inputs.md)).
 
 A turbo cache hit replays the previous run's output **verbatim** — the same `FULL TURBO` line, the same `suppressed` figure a clean gate prints — so a clean log does not prove a build ran. The tell is `dist/prod/issues.json`'s `generatedAt`, which must postdate the last source edit; a replay against unchanged inputs is legitimate, one predating the edit means the reader is looking at someone else's gate. A hit also adds no line to the build journal.
 
@@ -78,7 +80,7 @@ Vitest with the `@vitest-agent/plugin` `AgentPlugin`; tests live in each package
 
 The root `globalSetup` (`vitest.setup.ts`) runs `pnpm exec turbo run build` for the packages whose tests read their own `dist` (`@effected/plugin...`, `@effected/pnpm-plugin-effected`, `@effected/cli-kit`, `@effected/config-file`, `@effected/kit`, `@effected/commands`) via `AgentPlugin.runScript` before **every** vitest run — CLI and the MCP `run_tests` tool alike, whichever project; turbo's cache makes it a fast no-op when nothing changed. Everything else reads siblings' source over the workspace links. The filter is named because `@effected/ai-plugins`'s `build` regenerates the committed `plugin/builds/` trees, and the setup pins `runScript`'s recently-built window to 1 ms, because at its 30 s default a run inside the window skips the build and reads a stale `dist` — see [testing standards](../conventions/testing-standards.md). `vitest.config.ts` clears `NODE_OPTIONS` and sets `__PACKAGE_VERSION__` for every project: a test that runs sibling source in a child process loads tsx itself. Run vitest from the repo root: from inside a package directory vitest does not load the root config, so `--project @effected/<pkg>` fails with `No projects matched the filter` and the repo's setup, plugins and reporter are all absent. From the root, prefer `vitest run --project @effected/<pkg>`. A bare positional filter is matched as a substring against each test file's path, not as a path selector — see [a vitest positional filter is a substring match, and a package-dir run never loads the root config](../gotchas/vitest-positional-filter-is-cwd-relative.md) for the measured comparison and the `Tests: 0/0 passed` / exit 1 shape a miss produces.
 
-`pnpm ci:test` sets `CI=true`. The global coverage thresholds in `vitest.config.ts` are set unconditionally. They measure the whole repository, so a filtered run cannot meet them — but `@vitest-agent/plugin` (4.x) detects a partial run (positional filter, `--project`, `--tags-filter`, `--changed`, `--related`, `--shard`, `-t`) and skips them, printing `Coverage thresholds skipped: partial run`. A filtered run's exit code is therefore a real signal; do not reintroduce a CI-only gate around the thresholds.
+`pnpm ci:test` sets `CI=true` and `EFFECTED_TEST_TIER=fast`, which excludes the files `vitest.config.ts` lists in `SLOW_TESTS` at discovery; `pnpm ci:test:slow` runs only those, coverage off, in `.github/workflows/slow-tests.yml` beside the Silk workflow on every pull request. An unset tier, every local run, runs everything. See [the vitest test tiers](../decisions/vitest-test-tiers.md). The global coverage thresholds in `vitest.config.ts` are set unconditionally. They measure the whole repository, so a filtered run cannot meet them — but `@vitest-agent/plugin` (4.x) detects a partial run (positional filter, `--project`, `--tags-filter`, `--changed`, `--related`, `--shard`, `-t`) and skips them, printing `Coverage thresholds skipped: partial run`. A filtered run's exit code is therefore a real signal; do not reintroduce a CI-only gate around the thresholds.
 
 Coverage is measured on our own sources only (`coverage.include`: `packages/*/src/**` and `lib/scripts/**`), so dependency files never reach the report. Under `CI` the config sets `persist: false` on `AgentPlugin`, skipping the SQLite history an ephemeral runner discards; `VITEST_AGENT_PERSIST` overrides it either way. The BATS construct-index positive control skips under `CI` (it would run a cold `pnpm build`; the pre-push gate proves it).
 

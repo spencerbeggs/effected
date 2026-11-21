@@ -6,13 +6,13 @@
 		"build": {
 			"cache": true,
 			"dependsOn": ["types:check"],
+			"env": ["CI", "GITHUB_ACTIONS"],
 			"inputs": [
 				"$TURBO_DEFAULT$",
 				"$TURBO_ROOT$/package.json",
 				"$TURBO_ROOT$/pnpm-workspace.yaml",
 				"$TURBO_ROOT$/pnpm-lock.yaml",
 				"$TURBO_ROOT$/tsconfig.json",
-				"$TURBO_ROOT$/.changeset/**",
 				"$TURBO_ROOT$/effected.toml",
 				"$TURBO_ROOT$/.config/effected.toml",
 				"README.md",
