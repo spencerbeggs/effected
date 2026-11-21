@@ -45,7 +45,7 @@ write said; nothing re-publishes the baseline over it.
 
 Failure still fails the effect — the job's verdict comes from the error channel the runtime renders, never from a manual "mark failed" call followed by a plain return. See `designing-an-action`'s checkpoints reference for the full failure-posture discipline this pattern depends on.
 
-The logging shape above — a run-context block, a closing result block, and (inside each step) a line for anything skipped — is a contract worth testing directly: assert on the captured log stream rather than trusting that the shape survives a refactor. `actions-reporting`'s logging-contract reference owns this in full.
+The logging shape above (each step a `phase` and `step` from `ActionLogger`) — a run-context block, a closing result block, and (inside each step) a line for anything skipped — is a contract worth testing directly: assert on the captured log stream rather than trusting that the shape survives a refactor. `actions-reporting`'s logging-contract reference owns this in full.
 
 ## A step is an orchestration unit
 

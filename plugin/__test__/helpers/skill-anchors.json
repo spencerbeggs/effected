@@ -703,15 +703,6 @@
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "ActionLogger.test.ts:270-272",
-			"source": "repo:packages/github-actions/__test__/ActionLogger.test.ts",
-			"symbols": {
-				"270": "const leftInside = yield* Latch.make()",
-				"272": "const leftDone = yield* Latch.make()"
-			}
-		},
-		{
-			"file": "effect-v4-testing/references/false-greens.md",
 			"anchor": "packages/github-actions/__test__/DetachedProcess.test.ts:55-63",
 			"source": "repo:packages/github-actions/__test__/DetachedProcess.test.ts",
 			"symbols": {

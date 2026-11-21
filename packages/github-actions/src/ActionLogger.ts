@@ -1,7 +1,31 @@
 import type { AnnotationProperties } from "@effected/github-commands";
 import { CommandNeutralizer, WorkflowCommand } from "@effected/github-commands";
-import { Console, Context, Effect, Exit, Inspectable, Layer, LogLevel, Logger, References } from "effect";
+import type { Cause, PlatformError } from "effect";
+import {
+	Cause as CauseModule,
+	Clock,
+	Console,
+	Context,
+	Deferred,
+	Duration,
+	Effect,
+	Exit,
+	Fiber,
+	Inspectable,
+	Layer,
+	LogLevel,
+	Logger,
+	References,
+	Stream,
+} from "effect";
+import type { ChildProcess } from "effect/process";
+import { ChildProcessSpawner, CommandLine } from "effect/process";
 import { ActionEnvironment } from "./ActionEnvironment.js";
+import type { StepFrame, StepOutcome } from "./internal/stepLog.js";
+import * as StepLog from "./internal/stepLog.js";
+
+/** How long `command` keeps reading after the child exits. */
+const COMMAND_DRAIN = Duration.seconds(10);
 
 /**
  * Render a log message, which arrives as an array of the values passed to
@@ -105,27 +129,6 @@ const renderLogger: Logger.Logger<unknown, string> = Logger.make((options) =>
 /** {@link renderLogger} written through core `Console`. */
 const commandLogger: Logger.Logger<unknown, void> = Logger.withConsoleLog(renderLogger);
 
-/** A step's captured transcript. Mutable by design — a logger callback is synchronous. */
-interface BufferState {
-	readonly label: string;
-	readonly entries: Array<string>;
-}
-
-/**
- * The buffer the current fiber is writing into, or `null` when not buffering.
- *
- * @remarks
- * A `Context.Reference` rather than a module-level "current buffer": two steps
- * running concurrently each keep their own transcript, and neither has to
- * restore anything. A save/restore global is LIFO-correct only while the two
- * buffers nest, which concurrent steps do not.
- *
- * @internal
- */
-const ActiveBuffer = Context.Reference<BufferState | null>("@effected/github-actions/ActiveBuffer", {
-	defaultValue: () => null,
-});
-
 /**
  * How many log groups are open around the current fiber.
  *
@@ -133,7 +136,7 @@ const ActiveBuffer = Context.Reference<BufferState | null>("@effected/github-act
  * The runner does not nest groups: a second `::group::` implicitly ends the
  * first, leaving an empty outer header and a stray `::endgroup::`. So only
  * depth 0 writes the group commands, and a nested call writes a plain header
- * line instead. Fiber-scoped for the same reason as {@link ActiveBuffer}: a
+ * line instead. Fiber-scoped so that a
  * `Context.Reference` is provided around the body, so it unwinds on every
  * exit path with nothing to restore.
  *
@@ -149,78 +152,102 @@ const GroupDepth = Context.Reference<number>(WorkflowCommand.groupDepthKey, {
 	defaultValue: () => 0,
 });
 
+const singleLine = (text: string): string => text.replace(/\r\n|\r|\n/g, " ");
+
+/** The `▸ <name>` line a nested group writes in place of a second `::group::`, neutralized because a name is caller text. */
+const nestedHeader = (name: string): string => CommandNeutralizer.text(`▸ ${singleLine(name)}`);
+
 /**
- * The `▸ <name>` line a nested group writes in place of a second `::group::`,
- * and the line {@link ActionLoggerShape.heading} writes.
+ * Options for {@link ActionLoggerShape.step}.
+ *
+ * @public
+ */
+export interface StepOptions<A> {
+	/**
+	 * How long the step may run before its detail streams live instead of folding.
+	 *
+	 * @remarks
+	 * Only the outermost open step's window counts; a step nested inside another ignores its own.
+	 */
+	readonly window?: Duration.Input;
+	/**
+	 * The result line's text when the step succeeds, computed from its result.
+	 *
+	 * @remarks
+	 * Defaults to the step's name, which is also the text when the function throws.
+	 */
+	readonly summary?: (result: A) => string;
+	/**
+	 * The result line's text when the step fails, computed from its failure.
+	 *
+	 * @remarks
+	 * Replaces both the name and the message. Defaults to `<name> · <message>`, the message being the first line of the
+	 * squashed failure's message, which is also the text when the function throws. An interruption always reads
+	 * `<name> · interrupted`.
+	 */
+	readonly failure?: (cause: Cause.Cause<unknown>) => string;
+}
+
+/** The first line of a failure's message, for the result line. */
+const failureMessage = (cause: Cause.Cause<unknown>): string => {
+	const squashed = CauseModule.squash(cause);
+	const message =
+		squashed instanceof Error
+			? squashed.message
+			: typeof squashed === "string"
+				? squashed
+				: Inspectable.toStringUnknown(squashed, 0);
+	return message.split(/\r\n|\r|\n/)[0] ?? "";
+};
+
+/** A caller's formatter, total: a throw falls back to the default text rather than skipping the step's close. */
+const format = <T>(formatter: ((value: T) => string) | undefined, value: T, fallback: () => string): string => {
+	if (formatter === undefined) return fallback();
+	try {
+		return formatter(value);
+	} catch {
+		return fallback();
+	}
+};
+
+/**
+ * How a step's exit reads on its result line. Total: it runs inside the step's exit handler, where a throw would skip
+ * the close and leave a live run streaming.
+ */
+const stepOutcome = <A, E>(name: string, exit: Exit.Exit<A, E>, options: StepOptions<A> | undefined): StepOutcome => {
+	if (Exit.isSuccess(exit)) {
+		return { _tag: "Success", text: format(options?.summary, exit.value, () => name) };
+	}
+	if (CauseModule.hasInterruptsOnly(exit.cause)) {
+		return { _tag: "Interrupted" };
+	}
+	return {
+		_tag: "Failure",
+		text: format(options?.failure, exit.cause, () => `${name} · ${failureMessage(exit.cause)}`),
+	};
+};
+
+/**
+ * The logger a step runs under: warnings and errors go out live and count against the step and every step around it;
+ * everything below `Warn` is the step's detail.
  *
  * @remarks
- * Line breaks collapse to spaces so the header stays one line — the
- * top-level form escapes them into one command — and the result is
- * neutralized, because a group name is caller text and a `::` or `##[` in it
- * would otherwise be a command.
+ * A warning is written through the run's console, the one the step opened under, not the fiber's: inside the step the
+ * fiber's console is the capturing one, which would count the annotation a second time.
  */
-const nestedHeader = (name: string): string => CommandNeutralizer.text(`▸ ${name.replace(/\r\n|\r|\n/g, " ")}`);
-
-/** Drop a transcript without writing it, so a green step stays quiet. */
-const discard = (state: BufferState): Effect.Effect<void> =>
-	Effect.sync(() => {
-		state.entries.length = 0;
-	});
-
-/** Write a transcript out and clear it, so a second flush is a no-op. */
-const flush = (state: BufferState): Effect.Effect<void> =>
-	Effect.suspend(() => {
-		if (state.entries.length === 0) {
-			return Effect.void;
+const stepLogger = (frame: StepFrame): Logger.Logger<unknown, void> =>
+	Logger.make((options) => {
+		if (LogLevel.isGreaterThanOrEqualTo(options.logLevel, "Warn")) {
+			StepLog.countAnnotation(frame, LogLevel.isGreaterThanOrEqualTo(options.logLevel, "Error") ? "error" : "warning");
+			frame.run.console.log(renderLogger.log(options));
+			return;
 		}
-		const body = [
-			`--- Buffered output for "${state.label}" ---`,
-			...state.entries,
-			`--- End buffered output for "${state.label}" ---`,
-		];
-		state.entries.length = 0;
-		// The transcript is the program's own log text and the label a step name: neutralized, as the live lines were.
-		return Effect.forEach(body, (line) => Console.log(CommandNeutralizer.text(line)), { discard: true });
+		StepLog.detail(frame, formatMessage(options.message));
 	});
 
 /**
- * Options for {@link ActionLoggerShape.withBuffer}.
- *
- * @public
- */
-export interface WithBufferOptions {
-	/**
-	 * What happens to the captured transcript when the step **succeeds**.
-	 *
-	 * @remarks
-	 * `"flush"` — the default — replays it, so a clean run still prints what it
-	 * did. `"discard"` drops it, which is what keeps a green release log to one
-	 * line per step: the transcript exists only as the failure report. A failure,
-	 * a defect or an interruption flushes under either setting — the choice is
-	 * only about what a success is worth in the log.
-	 */
-	readonly onSuccess?: "flush" | "discard";
-}
-
-/**
- * Options for {@link ActionLoggerShape.withStep}.
- *
- * @public
- */
-export interface WithStepOptions {
-	/**
-	 * The info line emitted when the step **succeeds**.
-	 *
-	 * @remarks
-	 * Defaults to `✅ <name>`. This is the line the buffered transcript is traded
-	 * for: a green step reports that it happened and nothing else.
-	 */
-	readonly summary?: string;
-}
-
-/**
- * The members of the {@link ActionLogger} service: log groups and headings,
- * buffered steps, notices and source annotations.
+ * The members of the {@link ActionLogger} service: log groups, phases, steps,
+ * notices and source annotations.
  *
  * @public
  */
@@ -234,12 +261,9 @@ export interface ActionLoggerShape {
 	 * `::group::` / `::endgroup::` pair, and a call made inside it writes one
 	 * `▸ <name>` header line inside the open group instead (line breaks
 	 * collapsed to spaces, the text neutralized so it cannot be a command). The
-	 * header goes out through `Console` like the group command it replaces, so
-	 * it is never captured into, or discarded with, an enclosing `withBuffer`
-	 * or `withStep` transcript. A failure at any depth flushes the active
-	 * buffer before the group closes. That ordering is visible in a failed
-	 * run's log: the replayed transcript lands BELOW every nested header that
-	 * was written live, including lines that were logged before the header.
+	 * header is a line of that step's detail when written inside a
+	 * {@link ActionLoggerShape.step}, where the depth is already at least 1, and
+	 * goes out through `Console` otherwise.
 	 *
 	 * The depth is fiber-scoped, which leaves four edges:
 	 *
@@ -263,88 +287,58 @@ export interface ActionLoggerShape {
 	 */
 	readonly group: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
 	/**
-	 * Run an effect under a `▸ <name>` header line, without opening a group.
+	 * Run an effect under a phase heading: one bold line, never folded.
 	 *
 	 * @remarks
-	 * The phase-level banner: the same one-line, neutralized header a nested
-	 * {@link ActionLoggerShape.group} writes, then the body, with no
-	 * `::group::` and no change to the depth. So the groups inside it stay
-	 * top level and each renders as its own collapsible section in the runner
-	 * log, which a `group` wrapper cannot give them: the runner does not nest
-	 * groups, and a wrapper that opened one would swallow every inner group
-	 * into a header line. Reach for this when a phase encloses groups, and for
-	 * `group` when it encloses only lines.
-	 *
-	 * The header goes out through `Console`, like a group command, so it is
-	 * never captured into, or discarded with, an enclosing `withBuffer` or
-	 * `withStep` transcript. Nothing is written when the body ends, and a
-	 * failure flushes no buffer here: the groups inside do that for their own
-	 * sections. Called inside an open group it is simply a header line in that
-	 * group. The test doubles pass the body through unchanged.
+	 * What a reader scans for. Nothing is written when the phase ends, and the group depth is unchanged, so the steps
+	 * inside it fold as top-level steps. Inside a step the heading is a line of that step's detail.
 	 */
-	readonly heading: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
+	readonly phase: <A, E, R>(title: string, effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
 	/**
-	 * Run an effect with its verbose output captured and replayed on exit.
+	 * Run an effect as a step: its detail held, one result line when it ends.
 	 *
 	 * @remarks
-	 * Warnings and errors are **not** buffered — they go out as they happen, so a
-	 * long step still reports trouble while it is running. Everything at `Info`
-	 * and below is held and flushed on every exit path, including a defect or an
-	 * interruption, so a clean run still prints its transcript. A step that
-	 * should be **quiet** when it succeeds passes
-	 * `{ onSuccess: "discard" }` ({@link WithBufferOptions}); failure still
-	 * spills the transcript either way.
+	 * The detail is every log line below `Warn`, `Debug` and `Trace` included whatever the ambient minimum level, every
+	 * line a nested {@link ActionLoggerShape.group} or step writes, and every line written straight to `Console`'s
+	 * `log`, `info`, `debug`, `trace`, `warn`, `error` or `dirxml` inside the step (`@effected/cli-kit`'s renderers, a
+	 * raw `Console.log`). `Console.table`, `dir`, `count`, the `time*` and the `group*` members are not captured: they
+	 * print through at once. A workflow command written to `Console` is not
+	 * detail: it goes out at once, so an `::add-mask::` reaches the runner before the secret can appear in any line,
+	 * except a group command, which becomes a `▸ <title>` header line. Warnings and errors are never held: they go out
+	 * as annotations the moment they happen, and the result line counts them.
 	 *
-	 * Buffering is skipped entirely when the runner has step debugging enabled or
-	 * the ambient minimum log level is already `Debug` or lower — someone asking
-	 * for verbose output wants it live, and that overrides
-	 * `onSuccess: "discard"` too: asking for debug output means wanting to see
-	 * what a green step did. Under `Action.run` the two conditions coincide,
-	 * because step debugging is what lowers the ambient level to `Debug`; the
-	 * step-debug check still stands on its own for a program that opted out
-	 * with `stepDebugLogLevel: false` or runs outside `Action.run`.
+	 * The step's window ({@link StepOptions.window}, 30 seconds by default) is how long the detail is held. A step that
+	 * runs past it goes live: it writes `… <name> is taking longer than <window>, showing live output`, everything held
+	 * so far, then each detail line as it happens, indented, and finally its result line, unfolded, with the same marks.
+	 * A window of zero streams from the start, with the opening line `… <name>`; runner debug (`RUNNER_DEBUG=1`) or an
+	 * ambient minimum log level of `Debug` or lower makes every window zero. Only the outermost open step has a window:
+	 * an inner step's own is ignored, and when the outer step is live the inner result lines print as they finish.
+	 * While two or more steps stream at once, each live detail line is prefixed `[<name>]  ` with its outermost step's
+	 * name.
+	 *
+	 * The result line is `<mark> <summary or name> · <duration>`, the mark `✓` for a success, `⚠` for a success that
+	 * logged a warning or an error, or in which a nested step failed and was recovered from (here or in any step
+	 * inside it, each counted on the line), and `✗` for a failure ({@link StepOptions}):
+	 *
+	 * 1. a success with detail is one folded `::group::` titled by the result line, the detail inside it, unless a
+	 *    nested step failed, which is never folded away;
+	 * 2. a success without detail is the result line alone;
+	 * 3. a failure is never folded: the result line, then the detail indented beneath it, then the failure itself
+	 *    propagates unchanged. An interruption is written the same way, as `✗ <name> · interrupted`.
+	 *
+	 * A step inside a step opens no group: its result line, and its detail indented above it, are lines of the
+	 * enclosing step's detail. Inside the step the group depth is at least 1, so `group` and `@effected/cli-kit`'s
+	 * renderers write plain lines rather than a group the runner cannot nest. A step opened inside a `group` cannot fold
+	 * either, and writes its result line with the detail indented beneath it.
+	 *
+	 * Every line passes through `CommandNeutralizer.text`, so no detail line can be a workflow command. A fiber forked
+	 * inside a step that logs after the step has ended is not dropped: its lines print as ordinary log lines, unindented
+	 * and unprefixed, and a step it opens is a new outermost step.
 	 */
-	readonly withBuffer: <A, E, R>(
-		label: string,
-		effect: Effect.Effect<A, E, R>,
-		options?: WithBufferOptions,
-	) => Effect.Effect<A, E, R>;
-	/**
-	 * Run a named step: quiet when it succeeds, its full transcript when it does
-	 * not.
-	 *
-	 * @remarks
-	 * The composition a release log actually wants, and the one
-	 * {@link ActionLoggerShape.withBuffer} alone does not reach. Buffering with
-	 * `{ onSuccess: "discard" }` gets a green step to *zero* lines; this trades
-	 * that transcript for exactly one:
-	 *
-	 * 1. verbose output is captured rather than printed live,
-	 * 2. on success the transcript is dropped and a single info line — `summary`,
-	 *    default `✅ <name>` ({@link WithStepOptions}) — goes out in its place,
-	 * 3. on failure a `❌ <name>` header lands **first**, then the transcript
-	 *    spills beneath it.
-	 *
-	 * The ordering in (3) is a property of the **buffered** path. With step
-	 * debugging on, nothing is buffered — verbose output has already gone out
-	 * live by the time the failure fires — so the header lands *after* the
-	 * transcript it would otherwise introduce. That is the honest trade of
-	 * asking for live output, not a defect, and both orderings are pinned by
-	 * test.
-	 *
-	 * The header and the summary are the whole difference from `withBuffer`, and
-	 * they are why this is a member rather than a documented recipe: `group` +
-	 * `withBuffer` looks like complete parity until you notice nothing emits the
-	 * success line.
-	 *
-	 * The summary survives step debugging. Buffering is skipped when the runner
-	 * asks for verbose output, but the line naming what succeeded is still the
-	 * cheapest thing in the log.
-	 */
-	readonly withStep: <A, E, R>(
+	readonly step: <A, E, R>(
 		name: string,
 		effect: Effect.Effect<A, E, R>,
-		options?: WithStepOptions,
+		options?: StepOptions<A>,
 	) => Effect.Effect<A, E, R>;
 	/**
 	 * Emit a `::notice::` annotation.
@@ -368,80 +362,227 @@ export interface ActionLoggerShape {
 	) => Effect.Effect<A, E, R>;
 }
 
-const make = Effect.gen(function* () {
-	const env = yield* ActionEnvironment;
+/**
+ * One entry of the log {@link ActionLogger.recording} captured: a phase heading, or a step with its detail, outcome and
+ * the steps and phases opened inside it.
+ *
+ * @public
+ */
+export type StepLogEntry =
+	| { readonly kind: "phase"; readonly title: string }
+	| {
+			readonly kind: "step";
+			readonly name: string;
+			/** `"warning"` is a success that logged a warning or an error, or in which a nested step failed. */
+			readonly outcome: "success" | "warning" | "failure" | "interrupted";
+			/** The result line's text, without its mark, counts or duration. */
+			readonly summary: string;
+			/** The lines logged below `Warn` inside the step, not those of nested steps. */
+			readonly detail: ReadonlyArray<string>;
+			readonly steps: ReadonlyArray<StepLogEntry>;
+	  };
 
-	const flushActive = Effect.flatMap(ActiveBuffer, (state) => (state === null ? Effect.void : flush(state)));
+/** A recorded step while it runs: the public shape, mutable. */
+interface RecordedStep {
+	kind: "step";
+	name: string;
+	outcome: "success" | "warning" | "failure" | "interrupted";
+	summary: string;
+	detail: Array<string>;
+	steps: Array<StepLogEntry>;
+	noisy: boolean;
+	parent: RecordedStep | null;
+}
 
-	const withBuffer = <A, E, R>(label: string, effect: Effect.Effect<A, E, R>, options?: WithBufferOptions) =>
-		Effect.gen(function* () {
-			const minimum = yield* References.MinimumLogLevel;
-			const stepDebug = yield* env.isDebug;
-			if (stepDebug || LogLevel.isLessThanOrEqualTo(minimum, "Debug")) {
-				return yield* effect;
-			}
+/** The recorded step the current fiber is inside, or `null`. */
+const RecordingParent = Context.Reference<RecordedStep | null>("@effected/github-actions/RecordingParent", {
+	defaultValue: () => null,
+});
 
-			const state: BufferState = { label, entries: [] };
-			const buffering = Logger.make<unknown, void>((options) => {
-				if (LogLevel.isGreaterThanOrEqualTo(options.logLevel, "Warn")) {
-					commandLogger.log(options);
+/** A recorded entry as the public shape, without the bookkeeping, copied so later steps cannot change it. */
+const snapshot = (entry: StepLogEntry): StepLogEntry =>
+	entry.kind === "phase"
+		? { kind: "phase", title: entry.title }
+		: {
+				kind: "step",
+				name: entry.name,
+				outcome: entry.outcome,
+				summary: entry.summary,
+				detail: [...entry.detail],
+				steps: entry.steps.map(snapshot),
+			};
+
+/** The recording double's members: they record the structure and write nothing. */
+const recordingShape = (roots: Array<StepLogEntry>): Pick<ActionLoggerShape, "phase" | "step"> => ({
+	phase: <A, E, R>(title: string, effect: Effect.Effect<A, E, R>) =>
+		Effect.andThen(
+			Effect.flatMap(RecordingParent, (parent) =>
+				Effect.sync(() => void (parent === null ? roots : parent.steps).push({ kind: "phase", title })),
+			),
+			effect,
+		),
+	step: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>, options?: StepOptions<A>) =>
+		Effect.flatMap(RecordingParent, (parent) => {
+			const node: RecordedStep = {
+				kind: "step",
+				name,
+				outcome: "success",
+				summary: name,
+				detail: [],
+				steps: [],
+				noisy: false,
+				parent,
+			};
+			(parent === null ? roots : parent.steps).push(node);
+			const logger = Logger.make<unknown, void>((entry) => {
+				if (LogLevel.isGreaterThanOrEqualTo(entry.logLevel, "Warn")) {
+					for (let current: RecordedStep | null = node; current !== null; current = current.parent) {
+						current.noisy = true;
+					}
 					return;
 				}
-				state.entries.push(formatMessage(options.message));
+				node.detail.push(...formatMessage(entry.message).split(/\r\n|\r|\n/));
 			});
-
-			return yield* effect.pipe(
-				// `All` so debug output is captured rather than dropped: the whole
-				// point of a buffer is that the verbose transcript exists if the step
-				// fails.
+			return effect.pipe(
 				Effect.provideService(References.MinimumLogLevel, "All"),
-				Effect.provideService(Logger.CurrentLoggers, new Set([buffering])),
-				Effect.provideService(ActiveBuffer, state),
+				Effect.provideService(Logger.CurrentLoggers, new Set([logger])),
+				Effect.provideService(RecordingParent, node),
 				Effect.onExit((exit) =>
-					// Only a SUCCESS is ever discarded: a failure, a defect or an
-					// interruption is exactly the moment the transcript was kept for.
-					Exit.isSuccess(exit) && options?.onSuccess === "discard" ? discard(state) : flush(state),
+					Effect.sync(() => {
+						const outcome = stepOutcome(name, exit, options);
+						if (outcome._tag === "Interrupted") {
+							node.outcome = "interrupted";
+							node.summary = `${name} · interrupted`;
+						} else {
+							node.summary = outcome.text;
+							node.outcome = outcome._tag === "Failure" ? "failure" : node.noisy ? "warning" : "success";
+						}
+						if (outcome._tag !== "Success") {
+							for (let current = parent; current !== null; current = current.parent) {
+								current.noisy = true;
+							}
+						}
+					}),
 				),
 			);
+		}),
+});
+
+/** A command as one displayable line, secrets redacted. */
+const commandLine = (command: ChildProcess.Command): string =>
+	command._tag === "StandardCommand"
+		? CommandLine.display([command.command, ...command.args])
+		: `${commandLine(command.left)} | ${commandLine(command.right)}`;
+
+/** The window a step declares by default. */
+const DEFAULT_WINDOW = "30 seconds";
+
+const make = Effect.gen(function* () {
+	const env = yield* ActionEnvironment;
+	/** The runs streaming live, shared by every step this logger opens, for the `[<name>]` prefix. */
+	const streaming = new Set<StepLog.StepRun>();
+
+	/** An outermost step's window: zero under runner debug or an ambient `Debug` minimum, else the declared one. */
+	const windowFor = (declared: Duration.Input | undefined, minimum: LogLevel.LogLevel) =>
+		Effect.gen(function* () {
+			const debug = yield* env.isDebug;
+			return debug || LogLevel.isLessThanOrEqualTo(minimum, "Debug")
+				? Duration.zero
+				: Duration.fromInputUnsafe(declared ?? DEFAULT_WINDOW);
 		});
+
+	/**
+	 * Start an outermost step's window: live at once for a zero window, else a timer that switches it live when the
+	 * window passes. The timer is interrupted when the step ends; a timer that fires as the step closes finds the run
+	 * closed and does nothing.
+	 */
+	const armWindow = (frame: StepFrame, declared: Duration.Input | undefined) =>
+		Effect.flatMap(windowFor(declared, frame.run.minimum), (window) =>
+			Duration.isZero(window)
+				? Effect.as(
+						Effect.sync(() => StepLog.goLive(frame.run, StepLog.opening(frame.name, undefined))),
+						undefined,
+					)
+				: Effect.forkChild(
+						Effect.andThen(
+							Effect.sleep(window),
+							Effect.sync(() => StepLog.goLive(frame.run, StepLog.opening(frame.name, Duration.format(window)))),
+						),
+					),
+		);
+
+	/** A `▸ <name>` header: a line of the open step's detail, or written out when no step is open. */
+	const writeHeader = (name: string) =>
+		Effect.flatMap(StepLog.ActiveStep, (frame) =>
+			frame === null
+				? Console.log(nestedHeader(name))
+				: Effect.sync(() => StepLog.detail(frame, `▸ ${singleLine(name)}`)),
+		);
+
+	const phase = <A, E, R>(title: string, effect: Effect.Effect<A, E, R>) =>
+		Effect.andThen(
+			Effect.flatMap(StepLog.ActiveStep, (frame) =>
+				frame === null
+					? Console.log(CommandNeutralizer.text(StepLog.heading(title)))
+					: Effect.sync(() => StepLog.detail(frame, StepLog.heading(title))),
+			),
+			effect,
+		);
+
+	// Uninterruptible from opening the run to installing its close, with only the body restored: an interruption in
+	// between would leave a zero-window run streaming with no result line, prefixing every later live step.
+	const step = <A, E, R>(name: string, effect: Effect.Effect<A, E, R>, options?: StepOptions<A>) =>
+		Effect.uninterruptibleMask((restore) =>
+			Effect.gen(function* () {
+				const active = yield* StepLog.ActiveStep;
+				// A step whose run has closed is no parent: a fiber forked inside it outlived it, and opens a fresh step.
+				const parent = active !== null && active.run.mode !== "closed" ? active : null;
+				const depth = yield* GroupDepth;
+				// The real console: inside a step the fiber's console is the capturing one.
+				const console = active === null ? yield* Console.Console : active.run.console;
+				const canFold = active === null ? depth === 0 : active.run.canFold;
+				const minimum = active === null ? yield* References.MinimumLogLevel : active.run.minimum;
+				// Monotonic, so a wall clock stepping back never prints a negative duration.
+				const started = yield* Clock.monotonicTimeNanos;
+				const frame = StepLog.open(name, parent, console, canFold, streaming, minimum);
+				const timer = parent === null ? yield* armWindow(frame, options?.window) : undefined;
+				return yield* restore(effect).pipe(
+					// `All` so Debug and Trace are detail whatever the ambient level: the git transcript is Debug.
+					Effect.provideService(References.MinimumLogLevel, "All"),
+					Effect.provideService(Logger.CurrentLoggers, new Set([stepLogger(frame)])),
+					Effect.provideService(StepLog.ActiveStep, frame),
+					Effect.provideService(GroupDepth, depth + 1),
+					Effect.provideService(Console.Console, StepLog.capture(frame)),
+					Effect.onExit((exit) =>
+						Effect.andThen(
+							timer === undefined ? Effect.void : Fiber.interrupt(timer),
+							Effect.flatMap(Clock.monotonicTimeNanos, (ended) =>
+								Effect.sync(() =>
+									StepLog.close(frame, stepOutcome(name, exit, options), Number(ended - started) / 1_000_000),
+								),
+							),
+						),
+					),
+				);
+			}),
+		);
 
 	return {
 		group: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) =>
 			Effect.flatMap(GroupDepth, (depth) => {
-				// Flush the enclosing buffer before the group closes, so a failed
-				// step's transcript lands inside the collapsed section it belongs to
-				// rather than after it. At every depth: a flush clears what it wrote,
-				// so the outer group's flush after an inner one is a no-op.
-				const body = Effect.tapCause(Effect.provideService(effect, GroupDepth, depth + 1), () => flushActive);
+				const body = Effect.provideService(effect, GroupDepth, depth + 1);
 				return depth === 0
 					? Effect.acquireUseRelease(
 							Console.log(WorkflowCommand.group(name)),
 							() => body,
 							() => Console.log(WorkflowCommand.endGroup()),
 						)
-					: Effect.andThen(Console.log(nestedHeader(name)), body);
+					: Effect.andThen(writeHeader(name), body);
 			}),
 
-		heading: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) =>
-			// No depth change: the groups inside must still see depth 0 and open real groups.
-			Effect.andThen(Console.log(nestedHeader(name)), effect),
+		phase,
 
-		withBuffer,
-
-		withStep: <A, E, R>(name: string, effect: Effect.Effect<A, E, R>, options?: WithStepOptions) =>
-			withBuffer(
-				name,
-				// Written through `Console` rather than `Effect.logError`, so it lands
-				// ahead of the flush instead of into the buffer it is announcing — and
-				// so a failed step does not mint a second `::error::` beside the one
-				// `Action.run` already renders for the failure itself.
-				Effect.tapCause(effect, () => Console.log(CommandNeutralizer.text(`❌ ${name}`))),
-				{ onSuccess: "discard" },
-			).pipe(
-				// Outside the buffered region on purpose: a line emitted inside it is
-				// discarded with the transcript it was meant to replace.
-				Effect.tap(() => Effect.logInfo(options?.summary ?? `✅ ${name}`)),
-			),
+		step,
 
 		notice: (message: string, properties: AnnotationProperties = {}) =>
 			Console.log(WorkflowCommand.notice(message, properties)),
@@ -452,7 +593,7 @@ const make = Effect.gen(function* () {
 });
 
 /**
- * Groups, buffered step transcripts, notices — and the `Logger` that renders
+ * Groups, phases, steps, notices — and the `Logger` that renders
  * every `Effect.log*` in the kit as a workflow command.
  *
  * @remarks
@@ -468,7 +609,7 @@ const make = Effect.gen(function* () {
  *
  * const program = Effect.gen(function* () {
  *   const logger = yield* ActionLogger;
- *   yield* logger.group("install", logger.withBuffer("pnpm", Effect.logInfo("resolving")));
+ *   yield* logger.phase("Install", logger.step("pnpm", Effect.logInfo("resolving")));
  * });
  * ```
  *
@@ -478,7 +619,7 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 	"@effected/github-actions/ActionLogger",
 ) {
 	/**
-	 * The service: groups, the buffered step renderer, notices and annotations.
+	 * The service: groups, phases, steps, notices and annotations.
 	 *
 	 * @remarks
 	 * This installs no `Logger`. Without {@link ActionLogger.layerLogger} (or `Action.run`, which installs it) Effect's
@@ -516,19 +657,109 @@ export class ActionLogger extends Context.Service<ActionLogger, ActionLoggerShap
 	 * **A recorded exception to the die-on-unstubbed rule**, alongside
 	 * {@link ActionEnvironment.makeTest}. A logger that dies when a suite logs
 	 * would make every double unusable, and silence is the honest default for a
-	 * service whose whole job is output. Group, heading and buffer wrappers pass their
-	 * effect through unchanged, so the double does not model group nesting:
-	 * a test of nested-group output needs the live {@link ActionLogger.layer}.
+	 * service whose whole job is output. Group, phase and step wrappers pass their
+	 * effect through unchanged, so the double does not model group nesting or
+	 * the step log: a test of that output needs the live {@link ActionLogger.layer}
+	 * or {@link ActionLogger.recording}.
 	 */
 	static readonly makeTest = (overrides: Partial<ActionLoggerShape> = {}): ActionLoggerShape => ({
 		group: <A, E, R>(_name: string, effect: Effect.Effect<A, E, R>) => effect,
-		heading: <A, E, R>(_name: string, effect: Effect.Effect<A, E, R>) => effect,
-		withBuffer: <A, E, R>(_label: string, effect: Effect.Effect<A, E, R>) => effect,
-		withStep: <A, E, R>(_name: string, effect: Effect.Effect<A, E, R>) => effect,
+		phase: <A, E, R>(_title: string, effect: Effect.Effect<A, E, R>) => effect,
+		step: <A, E, R>(_name: string, effect: Effect.Effect<A, E, R>) => effect,
 		notice: () => Effect.void,
 		annotated: <A, E, R>(_properties: AnnotationProperties, effect: Effect.Effect<A, E, R>) => effect,
 		...overrides,
 	});
+
+	/**
+	 * A double that records the step log's structure so a test can assert it.
+	 *
+	 * @remarks
+	 * `entries()` returns the phases and steps opened so far, each step with its detail (every line below `Warn`),
+	 * outcome, result text and nested steps. The step log itself writes nothing to the console. A raw `Console` write
+	 * inside a recorded step is not detail and still prints, so test `Console` or `@effected/cli-kit` output against
+	 * the live layer with `TestConsole`. The other members behave as in {@link ActionLogger.makeTest}.
+	 */
+	static readonly recording = (): {
+		readonly layer: Layer.Layer<ActionLogger>;
+		readonly entries: () => ReadonlyArray<StepLogEntry>;
+	} => {
+		const roots: Array<StepLogEntry> = [];
+		return {
+			layer: Layer.succeed(ActionLogger, ActionLogger.makeTest(recordingShape(roots))),
+			entries: () => roots.map(snapshot),
+		};
+	};
+
+	/**
+	 * Run a child process, writing its command line, its output and its exit code as the current step's detail.
+	 *
+	 * @remarks
+	 * Writes `$ <display>` (the command line, secrets redacted, unless `display` is given), then each stdout and stderr
+	 * line as it arrives, then `exit <code>`. Both streams are read concurrently, so a child that fills one pipe cannot
+	 * deadlock the other. Every line is detail, so the step's held, live and prefix rules apply; stderr lines are
+	 * detail too, not warnings. Outside any step the lines print live. Resolves with the exit code, whatever it is, and
+	 * the collected stdout.
+	 *
+	 * Reading stops 10 seconds after the child exits, as `@actions/exec` does: a background grandchild that inherited
+	 * the child's stdout or stderr would otherwise hold the pipe open, and the call with it, for as long as it lives.
+	 * What it wrote after that is not read.
+	 *
+	 * Stdout is decoded as UTF-8 text and logged line by line, so this suits a child whose stdout is text; a binary
+	 * stdout needs the raw `ChildProcessSpawner` handle.
+	 *
+	 * Fails with `PlatformError` when the spawn fails, or when reading the child's output or its exit status fails after
+	 * it started. A non-zero exit is never an error.
+	 */
+	static readonly command = (
+		command: ChildProcess.Command,
+		options?: { readonly display?: string },
+	): Effect.Effect<
+		{ readonly exitCode: number; readonly stdout: string },
+		PlatformError.PlatformError,
+		ChildProcessSpawner.ChildProcessSpawner
+	> =>
+		Effect.scoped(
+			Effect.gen(function* () {
+				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+				yield* Effect.logInfo(`$ ${options?.display ?? commandLine(command)}`);
+				const handle = yield* spawner.spawn(command);
+				let stdout = "";
+				const logLines = (stream: Stream.Stream<string, PlatformError.PlatformError>) =>
+					stream.pipe(
+						Stream.splitLines,
+						Stream.runForEach((line) => Effect.logInfo(line)),
+					);
+				const exited = yield* Deferred.make<void>();
+				const readers = Effect.all(
+					[
+						logLines(
+							Stream.decodeText(handle.stdout).pipe(
+								Stream.tap((chunk) =>
+									Effect.sync(() => {
+										stdout += chunk;
+									}),
+								),
+							),
+						),
+						logLines(Stream.decodeText(handle.stderr)),
+					],
+					{ concurrency: "unbounded" },
+				);
+				// A grandchild that inherited the pipes can hold them open after the child exits: stop reading once the
+				// drain bound passes after the exit, as `@actions/exec` does.
+				const [, code] = yield* Effect.all(
+					[
+						Effect.raceFirst(readers, Effect.andThen(Deferred.await(exited), Effect.sleep(COMMAND_DRAIN))),
+						Effect.tap(handle.exitCode, () => Deferred.succeed(exited, undefined)),
+					],
+					{ concurrency: "unbounded" },
+				);
+				const exitCode = Number(code);
+				yield* Effect.logInfo(`exit ${exitCode}`);
+				return { exitCode, stdout };
+			}),
+		);
 
 	/** {@link ActionLogger.makeTest} behind `Layer.succeed`. */
 	static readonly layerTest = (overrides: Partial<ActionLoggerShape> = {}): Layer.Layer<ActionLogger> =>

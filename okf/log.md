@@ -3,12 +3,26 @@
 ## 2026-11-21
 
 * Updated The effected build commands: package build, action build and action init
+* Updated Build a GitHub Action repository to the kit's canonical shape
+* Updated git
+* Updated actions-step-log
+* Updated github-actions
+* Updated The git ssh BatchMode pin is appended to what git would have used, and declines rather than substitutes
+* Updated actions-runtime
 
 ## 2026-11-20
 
 * Updated Build a GitHub Action repository to the kit's canonical shape
 * Updated The effected build commands: package build, action build and action init
 * Updated effected.toml: the build config's tables, defaults and discovery
+* Updated A GitCommand constructor carries no cwd and no environment
+* Updated A network-touching Git member's worst-case latency is a multiple of GIT_TIMEOUT
+* Updated Build a GitHub Action repository to the kit's canonical shape
+* Updated The git ssh BatchMode pin is appended to what git would have used, and declines rather than substitutes
+* Updated actions-runtime
+* Added actions-step-log
+* Updated git
+* Updated github-actions
 
 ## 2026-11-19
 

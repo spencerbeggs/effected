@@ -121,6 +121,56 @@ describe("GitCommand", () => {
 		assertGitCommand(GitCommand.checkout("FETCH_HEAD", true), ["checkout", "--detach", "FETCH_HEAD"]);
 	});
 
+	it("checkout --force and -B compose in checkout's order", () => {
+		assertGitCommand(GitCommand.checkout("refs/remotes/origin/main", false, { force: true, branch: "main" }), [
+			"checkout",
+			"--force",
+			"-B",
+			"main",
+			"refs/remotes/origin/main",
+		]);
+		assertGitCommand(GitCommand.checkout("abc", true, { force: true }), ["checkout", "--force", "--detach", "abc"]);
+	});
+
+	it("fetchRefspecs matches actions/checkout's fetch argv byte for byte", () => {
+		assertGitCommand(
+			GitCommand.fetchRefspecs("origin", ["+refs/heads/main:refs/remotes/origin/main"], {
+				depth: 1,
+				noTags: true,
+				prune: true,
+				noRecurseSubmodules: true,
+				protocolVersion: 2,
+				filter: "blob:none",
+			}),
+			[
+				"-c",
+				"protocol.version=2",
+				"fetch",
+				"--no-tags",
+				"--prune",
+				"--no-recurse-submodules",
+				"--filter=blob:none",
+				"--depth=1",
+				"origin",
+				"+refs/heads/main:refs/remotes/origin/main",
+			],
+		);
+		assertGitCommand(GitCommand.fetchRefspecs("origin", ["a", "b"], { unshallow: true }), [
+			"fetch",
+			"--unshallow",
+			"origin",
+			"a",
+			"b",
+		]);
+		assertGitCommand(GitCommand.fetchRefspecs("origin", ["a"]), ["fetch", "origin", "a"]);
+	});
+
+	it("fetchRefspecs masks a userinfo credential in the remote URL", () => {
+		const invocation = GitCommand.fetchRefspecs("https://u:tok@h/r.git", ["+refs/heads/a:refs/remotes/origin/a"]);
+		assert.isFalse(invocation.redactedArgs.join(" ").includes("tok"));
+		assert.isFalse(invocation.scrub("fatal: https://u:tok@h/r.git failed").includes("tok"));
+	});
+
 	it("fetch builds remote-then-ref, with optional depth and tag keyword", () => {
 		assertGitCommand(GitCommand.fetch("origin", "main"), ["fetch", "origin", "main"]);
 		assertGitCommand(GitCommand.fetch("origin", "v1.0.0", 1, true), [
@@ -146,6 +196,18 @@ describe("GitCommand", () => {
 			"--unshallow",
 			"origin",
 			"main",
+		]);
+	});
+
+	it("submoduleUpdate protocolVersion prefixes -c protocol.version=2", () => {
+		assertGitCommand(GitCommand.submoduleUpdate(true, 1, [], { protocolVersion: 2 }), [
+			"-c",
+			"protocol.version=2",
+			"submodule",
+			"update",
+			"--init",
+			"--depth",
+			"1",
 		]);
 	});
 
@@ -212,6 +274,34 @@ describe("GitCommand", () => {
 		]);
 	});
 
+	it("sparseCheckoutDisable, lfsInstall, lfsFetch and lsRemoteSymref emit their argv", () => {
+		assertGitCommand(GitCommand.sparseCheckoutDisable(), ["sparse-checkout", "disable"]);
+		assertGitCommand(GitCommand.lfsInstall(false), ["lfs", "install"]);
+		assertGitCommand(GitCommand.lfsInstall(true), ["lfs", "install", "--local"]);
+		assertGitCommand(GitCommand.lfsFetch("origin", "refs/heads/main"), ["lfs", "fetch", "origin", "refs/heads/main"]);
+		assertGitCommand(GitCommand.lsRemoteSymref("origin", "HEAD"), [
+			"ls-remote",
+			"--quiet",
+			"--exit-code",
+			"--symref",
+			"origin",
+			"HEAD",
+		]);
+	});
+
+	it("lfsFetch and lsRemoteSymref mask an embedded userinfo credential in the remote", () => {
+		assertGitCommand(
+			GitCommand.lfsFetch("https://user:tok@example.com/r.git", "main"),
+			["lfs", "fetch", "https://user:tok@example.com/r.git", "main"],
+			["lfs", "fetch", "https://<redacted>@example.com/r.git", "main"],
+		);
+		assertGitCommand(
+			GitCommand.lsRemoteSymref("https://user:tok@example.com/r.git", "HEAD"),
+			["ls-remote", "--quiet", "--exit-code", "--symref", "https://user:tok@example.com/r.git", "HEAD"],
+			["ls-remote", "--quiet", "--exit-code", "--symref", "https://<redacted>@example.com/r.git", "HEAD"],
+		);
+	});
+
 	it("sparseCheckoutSet passes the cone flag explicitly in both branches", () => {
 		assertGitCommand(GitCommand.sparseCheckoutSet(["src", "docs"], false), [
 			"sparse-checkout",
@@ -236,6 +326,36 @@ describe("GitCommand", () => {
 			["config", "-f", ".gitmodules", "submodule.a.shallow", "true"],
 			["config", "-f", ".gitmodules", "submodule.a.shallow", "<redacted>"],
 		);
+	});
+
+	it("configAdd appends behind --add and masks the value in redactedArgs", () => {
+		assertGitCommand(
+			GitCommand.configAdd("http.extraheader", "AUTHORIZATION: basic x"),
+			["config", "--add", "http.extraheader", "AUTHORIZATION: basic x"],
+			["config", "--add", "http.extraheader", "<redacted>"],
+		);
+		assertGitCommand(
+			GitCommand.configAdd("a.b", "v", "f.cfg"),
+			["config", "-f", "f.cfg", "--add", "a.b", "v"],
+			["config", "-f", "f.cfg", "--add", "a.b", "<redacted>"],
+		);
+	});
+
+	it("init places path behind a literal -- and emits the object format whenever it is set", () => {
+		assertGitCommand(GitCommand.init("repo"), ["init", "--", "repo"]);
+		// An explicit sha1 is honoured: GIT_DEFAULT_HASH or init.defaultObjectFormat may say otherwise.
+		assertGitCommand(GitCommand.init("repo", { objectFormat: "sha1" }), ["init", "--object-format=sha1", "--", "repo"]);
+		assertGitCommand(GitCommand.init("repo", { objectFormat: "sha256", initialBranch: "main" }), [
+			"init",
+			"--object-format=sha256",
+			"--initial-branch=main",
+			"--",
+			"repo",
+		]);
+	});
+
+	it("version is `git version`", () => {
+		assertGitCommand(GitCommand.version(), ["version"]);
 	});
 
 	it("add stages paths behind a literal --", () => {
@@ -400,6 +520,7 @@ describe("GitCommand", () => {
 			assertGitCommand(GitCommand.clean(), ["clean", "--force"]);
 			assertGitCommand(GitCommand.clean(true), ["clean", "--force", "-d"]);
 			assertGitCommand(GitCommand.clean(true, true, ["dist"]), ["clean", "--force", "-d", "-x", "--", "dist"]);
+			assertGitCommand(GitCommand.clean(true, true, [], true), ["clean", "--force", "--force", "-d", "-x"]);
 		});
 
 		it("restore puts paths behind a literal --, composing --source/--staged/--worktree", () => {
@@ -465,6 +586,7 @@ describe("GitCommand", () => {
 		it("branchDelete builds -d by default and -D when forced", () => {
 			assertGitCommand(GitCommand.branchDelete("feat/x"), ["branch", "-d", "feat/x"]);
 			assertGitCommand(GitCommand.branchDelete("feat/x", true), ["branch", "-D", "feat/x"]);
+			assertGitCommand(GitCommand.branchDelete("origin/feat/x", true, true), ["branch", "-D", "-r", "origin/feat/x"]);
 		});
 	});
 

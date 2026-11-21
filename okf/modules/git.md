@@ -10,10 +10,10 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-10T00:29:56Z
+  at: 2026-11-21T01:31:18Z
 integrity:
   generated:
-    body: 83e808e542fb1193
+    body: 26bd22a9225d4b8f
 ---
 
 # git
@@ -103,9 +103,10 @@ never `process.env`. Each pin exists for a named failure:
   also suppresses a configured `core.askPass` and `SSH_ASKPASS`.
 - `SSH_ASKPASS_REQUIRE=never` — defense in depth for a caller-supplied ssh
   wrapper that swallows the appended `BatchMode` option.
-- `GIT_SSH_COMMAND` — the one conditional pin, scoped to the seven
-  network-touching members (`lsRemote`, `fetch`, `fetchUnshallow`,
-  `push`, `pull`, `submoduleAdd`, `submoduleUpdate`), plus each deepen
+- `GIT_SSH_COMMAND` — the one conditional pin, scoped to the ten
+  network-touching members (`lsRemote`, `remoteHead`, `fetch`,
+  `fetchRefspecs`, `fetchUnshallow`, `push`, `pull`, `submoduleAdd`,
+  `submoduleUpdate`, `lfsFetch`), plus each deepen
   round of `commitsThatAdd`, whose lookups stay local. `ssh` reads from
   `/dev/tty` directly, so `-o BatchMode=yes` is the only lever that makes
   it fail instead of hang; it is appended to what git would have used and
@@ -153,8 +154,53 @@ construction, so every method's `R` is `never`. The service's shape is
 the exported `GitShape` interface, not an inferred object type, so a
 consumer can write a function accepting any `GitShape` — a test double, a
 decorated instance — without naming the service class. Every method
-takes `cwd` explicitly. The per-operation ceiling is git's own policy (30
-seconds via `Effect.timeoutOrElse`, owned here).
+takes `cwd` explicitly. The default per-operation ceiling is git's own policy (30
+seconds via `Effect.timeoutOrElse`, owned here), and a scope replaces it
+(see run options below).
+
+**Run options.** `Git.withRunOptions(options)(effect)` applies a
+`GitRunOptions` to every spawn the wrapped effect makes: `env` (merged under
+the service's own pins, so the locale, prompt and askpass pins always win),
+`config` (entries passed as `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` /
+`GIT_CONFIG_VALUE_n`, in insertion order, appended after any
+`GIT_CONFIG_COUNT` entries already in force, the run options' own `env` or
+else the inherited environment, so an inherited runtime config such as an
+auth header survives) and `timeout` (replaces the
+per-run ceiling for the scope). Nested calls merge key by key with the inner
+call winning. A locating read that opts into `ignoreRepositoryEnv` drops
+`config` on purpose, since `GIT_CONFIG_COUNT` is part of the repository
+environment it unsets. A per-call `GIT_SSH_COMMAND` is the first rung of
+the ssh pin's walk and is still pinned to batch mode on a network member; a
+per-call `GIT_SSH` and `GIT_SSH_VARIANT` take their ambient counterparts'
+rungs, above them.
+
+**The Debug transcript.** Every spawn emits one `Effect.logDebug` entry,
+invisible at the default log level, so a consumer's step log (the
+[step log](../interfaces/actions-step-log.md)) shows it in the fold, the
+failure spill and live output. The message is `git <redacted argv>`,
+annotated with `git.cwd`, `git.exitCode` and `git.durationMs`, followed by
+`stdout:` and `stderr:` sections cut at 4000 characters. Both sections are
+scrubbed of the invocation's secrets and of credential-shaped text, and the
+stdout of any `git config` invocation is never logged, only its size,
+because it may hold a credential header. Putting it in `Git` rather than in
+a consumer's wrapper is what lets an author who rebuilds a checkout from
+the parts get the same transcript.
+
+**Checkout's operations.** The members a repository checkout needs are
+typed here: `init` (with `objectFormat` and `initialBranch`), `version`
+(a `GitVersion` with `parse`, `compare` and `atLeast`), `configAdd` (the
+multi-valued `--add`, optionally into a file), `fetchRefspecs` (several
+refspecs in one invocation, with `depth`, `unshallow`, `filter`, `noTags`,
+`prune`, `noRecurseSubmodules` and `protocolVersion`), `sparseCheckoutDisable`,
+`lfsInstall`, `lfsFetch`, `remoteHead` (the full ref a remote's `HEAD`
+points at, as an `Option`), plus option forms on `checkout` (`force`,
+`-B` from a start point), `clean` (double force for nested repositories),
+`branchDelete` (the remote form) and `submoduleUpdate` (`force`, `depth`,
+`protocolVersion`). Two `ClassifyKind`s serve them: `exitTwoAbsent`
+degrades a silent exit 2 (`ls-remote --exit-code` found no match) to
+absent, and `unsetAbsent` degrades a silent exit 5 (`config --unset` of a
+key never set). The service that composes them into a checkout is
+`Checkout` in [`github-actions`](github-actions.md).
 
 The core read contracts: `show(cwd, ref, path)` returns `Option<string>` —
 absent-at-ref degrades to `Option.none`, never an error, the invariant

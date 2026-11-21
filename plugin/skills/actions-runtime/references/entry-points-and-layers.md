@@ -22,11 +22,10 @@ composes the runtime, runs `program` to `Effect.exit`, and:
   is the one piece `ActionOutputs.setFailed` deliberately leaves alone, so an
   action that reports a failure and then recovers is not doomed by a side
   effect it cannot undo.
-- **Does not wrap `program` in a log buffer.** A buffer wrapped around the
-  whole program risks an unhandled defect inside it swallowing the entire
-  transcript — the run fails and prints nothing. `ActionLogger.withBuffer` is
-  opt-in and flushes on every exit path including a defect, precisely to
-  avoid that failure mode; see `actions-reporting`.
+- **Does not wrap `program` in a step.** A step wrapped around the whole
+  program would hold every line of the run until it ended. `ActionLogger.step`
+  is opt-in per unit of work and writes its held detail on every exit path,
+  failures, defects and interruptions included; see `actions-reporting`.
 - **Renders one `::error::` line and a last-resort catch around the whole
   runtime.** See `references/failure-rendering.md` for the full rendering
   contract — this is the one canonical place it's documented.

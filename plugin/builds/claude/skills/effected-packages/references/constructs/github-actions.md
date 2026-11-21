@@ -14,8 +14,8 @@
 | `ActionEnvironmentShape` | Interface | The members of the `ActionEnvironment` service: variable lookup, the `GITHUB_*` and `RUNNER_*` contexts, the event payload and scoped overrides. | |
 | `ActionInput` | Class | Action inputs, read as `Config` values. | read with: inputs, INPUT_ variables, config provider for action inputs, dry-run boolean input, record which inputs a program reads |
 | `ActionInputRecording` | Interface | A provider that journals which inputs a program reads — see `ActionInput.recording`. | |
-| `ActionLogger` | Class | Groups, buffered step transcripts, notices — and the `Logger` that renders every `Effect.log*` in the kit as a workflow command. | workflow-command logger, collapsible log groups, phase heading that opens no group, buffered step transcript, notice annotation |
-| `ActionLoggerShape` | Interface | The members of the `ActionLogger` service: log groups and headings, buffered steps, notices and source annotations. | |
+| `ActionLogger` | Class | Groups, phases, steps, notices — and the `Logger` that renders every `Effect.log*` in the kit as a workflow command. | workflow-command logger, phase heading and step with quiet window, one result line per step, run child process into step detail, record step log in a test, notice annotation, collapsible log group |
+| `ActionLoggerShape` | Interface | The members of the `ActionLogger` service: log groups, phases, steps, notices and source annotations. | |
 | `ActionManifest` | Class | A decoded `action.yml`: the action's metadata, its declared inputs and outputs, and the `runs:` block naming how it executes. | decode or read action.yml, runner-shaped INPUT_ test environment from manifest defaults, diff code reads/writes against declared inputs/outputs |
 | `ActionManifestBranding` | Class | The `branding:` block a Marketplace listing reads. | action.yml marketplace branding, icon and color |
 | `ActionManifestCompositeRuns` | Class | The `runs:` block of a composite action. | action.yml runs block for a composite action, using composite with steps |
@@ -71,6 +71,22 @@
 | `CheckRunConclusion` | TypeAlias | The check-run conclusions the kit vocabulary can produce. | |
 | `CheckRunProjection` | TypeAlias | A `CheckState` on GitHub's check-run wire: a status, and a conclusion exactly when the status is `completed`. | |
 | `CheckState` | Variable + TypeAlias | The type of `CheckState`. | running/pass/fail/warn/skipped/timeout vocabulary for a release pipeline's checks |
+| `Checkout` | Class | Checks a repository out the way the stock checkout action does, on `@effected/git`. | check out a repository in an action, actions/checkout rebuilt, job or action or no credential lifetime, cleanup in post entry, read checkout inputs, write ref and commit outputs |
+| `CheckoutAuth` | Variable + TypeAlias | How a checkout authenticates. | authenticate a checkout, token or ssh deploy key, redacted credentials |
+| `CheckoutAuthError` | Class | Raised when the credentials were refused. | checkout credentials refused by the remote |
+| `CheckoutCommitMismatchError` | Class | Raised when a ref resolved to a different commit than the one pinned. | fetched ref resolved to a different commit than pinned |
+| `CheckoutDefaultBranchError` | Class | Raised when the repository's default branch could not be determined. | default branch of the repository could not be determined |
+| `CheckoutError` | TypeAlias | Anything that can go wrong checking out a repository. | |
+| `CheckoutGitTooOldError` | Class | Raised when the runner's git is older than the floor. | runner git older than checkout's floor |
+| `CheckoutOptions` | Interface | Everything `Checkout.checkout` accepts. | |
+| `CheckoutPathError` | Class | Raised when the target path escapes the workspace. | checkout path escapes the workspace |
+| `CheckoutRef` | Variable + TypeAlias | The ref a checkout lands on. | what to check out, branch, tag, commit, pull request merge or head, default branch, raw ref |
+| `CheckoutRefNotFoundError` | Class | Raised when the requested ref does not exist on the remote. | branch or tag missing on the remote |
+| `CheckoutResult` | Class | What a checkout resolved to. | resolved ref and commit after a checkout |
+| `CheckoutServerUrlError` | Class | Raised when the GitHub server URL is not an absolute `http` or `https` URL. | github server url without an http or https scheme, include https:// for a GHES host |
+| `CheckoutStateKeyInUseError` | Class | Raised when a second `"job"` checkout in one action saves its credentials under a state key another checkout of a different path already used. | second job-lifetime checkout reusing another path's state key, credentials would be left behind |
+| `CheckoutUnqualifiedRefPinError` | Class | Raised when a `Ref` that is not fully qualified is pinned with `commit`. | unqualified ref pinned to a commit, pin a branch or tag instead |
+| `CheckoutUnsafePullRequestError` | Class | Raised when a privileged event would check out fork pull request code. | refuse fork pull request checkout under privileged event |
 | `ChildEnv` | Class | Child-process environment construction: prepending directories to `PATH` without falling into three cross-platform traps. | prepend directories to PATH for a spawned child, cross-platform PATH casing, extendEnv trap |
 | `ClientLayerOptions` | Interface | How to build a client from a persisted token. | |
 | `DataBlobTransfer` | Interface | Moving in-memory bytes to and from a signed blob url. | |
@@ -136,6 +152,8 @@
 | `RunnerFileWriteError` | Class | Raised when a runner file exists but could not be appended to. | handle a runner file that exists but could not be appended to |
 | `S3Config` | Interface | How to reach an S3-compatible object store. | |
 | `Secret` | Class | The declassification seam: the **only** place in this package where a `Redacted` value becomes a plain string. | mask a Redacted value in runner logs, declassify only for a plain-string api |
+| `StepLogEntry` | TypeAlias | One entry of the log `ActionLogger.recording` captured: a phase heading, or a step with its detail, outcome and the steps and phases opened inside it. | |
+| `StepOptions` | Interface | Options for `ActionLoggerShape.step`. | |
 | `StoredBlob` | Interface | A stored value: the caller's metadata beside the bytes it describes. | |
 | `ToolDownloadOptions` | Interface | How a `ToolInstallerShape.download` should behave. | |
 | `ToolInstaller` | Class | Download, extract and cache a toolchain in the runner's tool cache. | download, extract and cache a toolchain binary in the runner's tool cache |
@@ -145,7 +163,5 @@
 | `UnsupportedBlobEnvelopeVersionError` | Class | Raised when the envelope came from a newer revision of the format. | handle a blob envelope written by a newer format revision |
 | `UploadOptions` | Interface | How to pack an upload. | |
 | `UploadResult` | Interface | What an upload produced. | |
-| `WithBufferOptions` | Interface | Options for `ActionLoggerShape.withBuffer`. | |
-| `WithStepOptions` | Interface | Options for `ActionLoggerShape.withStep`. | |
 | `describeCause` | Function | A readable one-line summary of why an action failed. | one-line [Tag]: message summary of why an action failed |
 | `projectCheckState` | Function | Project a kit check state onto GitHub's check-run wire vocabulary. | map the kit's check state onto GitHub's check-run status/conclusion wire vocabulary |

@@ -108,30 +108,30 @@ describe("ActionLogger neutralizes the plain text it writes", () => {
 	);
 });
 
-describe("the buffered transcript and the step line are neutralized too", () => {
-	it.effect("a flushed transcript, its header with the label, and its entries", () =>
+describe("a step's detail and result line are neutralized too", () => {
+	it.effect("a failed step's detail, name and result line cannot be a command", () =>
 		live(
 			Effect.gen(function* () {
 				const logger = yield* ActionLogger;
 				yield* Effect.flip(
-					logger.withBuffer(
+					logger.step(
 						"step ##[error]label",
 						Effect.andThen(Effect.logInfo("resolving\n::add-mask::secret"), Effect.fail("boom")),
 					),
 				);
 				const captured = yield* lines;
-				assert.isAbove(captured.length, 2);
+				assert.isAbove(captured.length, 1);
 				assert.deepStrictEqual(commandLines(captured.join("\n")), []);
-				assert.include(captured.join("\n").replaceAll(MARK, ""), "resolving\n::add-mask::secret");
+				assert.include(captured.join("\n").replaceAll(MARK, ""), "::add-mask::secret");
 			}),
 		),
 	);
 
-	it.effect("withStep's failure line carries a hostile step name safely", () =>
+	it.effect("a hostile step name is never a command", () =>
 		live(
 			Effect.gen(function* () {
 				const logger = yield* ActionLogger;
-				yield* Effect.flip(logger.withStep("name\n::error::x ##[add-mask]y", Effect.fail("boom")));
+				yield* Effect.flip(logger.step("name\n::error::x ##[add-mask]y", Effect.fail("boom")));
 				const captured = yield* lines;
 				assert.deepStrictEqual(commandLines(captured.join("\n")), [], JSON.stringify(captured));
 			}),

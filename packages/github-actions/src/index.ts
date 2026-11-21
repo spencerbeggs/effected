@@ -43,8 +43,8 @@ export { ActionInput, type ActionInputRecording, type PairsOptions } from "./Act
 export {
 	ActionLogger,
 	type ActionLoggerShape,
-	type WithBufferOptions,
-	type WithStepOptions,
+	type StepLogEntry,
+	type StepOptions,
 } from "./ActionLogger.js";
 export {
 	ActionManifest,
@@ -112,6 +112,24 @@ export {
 	type CheckFlushOutcome,
 	CheckReport,
 } from "./CheckDocument.js";
+export {
+	Checkout,
+	CheckoutAuth,
+	CheckoutAuthError,
+	CheckoutCommitMismatchError,
+	CheckoutDefaultBranchError,
+	type CheckoutError,
+	CheckoutGitTooOldError,
+	type CheckoutOptions,
+	CheckoutPathError,
+	CheckoutRef,
+	CheckoutRefNotFoundError,
+	CheckoutResult,
+	CheckoutServerUrlError,
+	CheckoutStateKeyInUseError,
+	CheckoutUnqualifiedRefPinError,
+	CheckoutUnsafePullRequestError,
+} from "./Checkout.js";
 export {
 	type CheckRunConclusion,
 	type CheckRunProjection,

@@ -1,8 +1,23 @@
-import { Config, Context, DateTime, Duration, Effect, Layer, Option, PlatformError, Result, Schema } from "effect";
+import {
+	Clock,
+	Config,
+	Context,
+	DateTime,
+	Duration,
+	Effect,
+	Layer,
+	Option,
+	PlatformError,
+	Result,
+	Schema,
+} from "effect";
 import { dual } from "effect/Function";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { GitConfigScope, GitInvocation, GitUntrackedFilesMode } from "./GitCommand.js";
 import { GitCommand } from "./GitCommand.js";
+import type { GitRunOptions } from "./GitRunOptions.js";
+import { CurrentRunOptions, configCount, configEnv, mergeRunOptions } from "./GitRunOptions.js";
+import { GitVersion } from "./GitVersion.js";
 import { maskCredentialsInText } from "./internal/redact.js";
 import { REPOSITORY_ENV_VARS } from "./internal/repositoryEnv.js";
 import type { Collected } from "./internal/run.js";
@@ -517,10 +532,23 @@ type Classified =
  * degrade, `"noSuchRemote"` enables the no-such-remote degrade, `"push"`
  * enables the rejected-non-fast-forward row, `"merge"` enables the
  * dirty-worktree and merge-conflict rows, `"log"` enables the unborn-HEAD
- * degrade, `"tree"` enables the no-work-tree degrade, `"generic"` enables
- * none of them.
+ * degrade, `"tree"` enables the no-work-tree degrade, `"exitTwoAbsent"` enables
+ * the silent-exit-2-is-absent degrade (`ls-remote --exit-code` found no match),
+ * `"unsetAbsent"` enables the silent-exit-5-is-absent degrade (`config --unset`
+ * of a key that was never set), `"generic"` enables none of them.
  */
-type ClassifyKind = "show" | "refExists" | "quiet" | "noSuchRemote" | "push" | "merge" | "log" | "tree" | "generic";
+type ClassifyKind =
+	| "show"
+	| "exitTwoAbsent"
+	| "unsetAbsent"
+	| "refExists"
+	| "quiet"
+	| "noSuchRemote"
+	| "push"
+	| "merge"
+	| "log"
+	| "tree"
+	| "generic";
 
 const NOT_A_REPOSITORY = "not a git repository";
 // Unanchored substring matching against LC_ALL=C-pinned phrases: a path or ref
@@ -637,6 +665,15 @@ const classify = (
 		// silent exit 1; any stderr text means a real failure instead.
 		return { _tag: "absent" };
 	}
+	if (kind === "unsetAbsent" && exitCode === 5 && stderr === "") {
+		// `config --unset` of a never-set key exits 5 silently; exit 5 with
+		// stderr (e.g. "multiple values") is a real failure and stays one.
+		return { _tag: "absent" };
+	}
+	if (kind === "exitTwoAbsent" && exitCode === 2 && stderr === "") {
+		// `ls-remote --exit-code` signals "no ref matched" as a silent exit 2.
+		return { _tag: "absent" };
+	}
 	if (kind === "noSuchRemote" && stderr.includes("No such remote")) {
 		return { _tag: "absent" };
 	}
@@ -677,7 +714,12 @@ const unparseableOutput = (invocation: GitInvocation, cwd: string, detail: strin
  * This is also the single ENVIRONMENT choke point: `env` (computed once in
  * {@link Git.layer}) is applied here the same way `cwd` is, so every one of
  * the service's members is spawned with the pins and nothing else in the
- * package needs to know they exist.
+ * package needs to know they exist. The ambient {@link GitRunOptions} (env,
+ * config, timeout) are read here too, beneath the pins.
+ *
+ * Because `GIT_CONFIG_COUNT` is among the repository variables a
+ * `ignoreRepositoryEnv` locating read unsets, run-option `config` does not
+ * reach those reads; that is intended.
  */
 const runClassified = (
 	invocation: GitInvocation,
@@ -685,26 +727,109 @@ const runClassified = (
 	kind: ClassifyKind,
 	env: Record<string, string>,
 	unset: ReadonlyArray<string> = [],
-): Effect.Effect<Classified, never, ChildProcessSpawner.ChildProcessSpawner> => {
-	const args = invocation.redactedArgs;
-	const maskExact = invocation.scrub;
-	const command =
-		unset.length === 0
-			? ChildProcess.setEnv(ChildProcess.setCwd(invocation.command, cwd), env)
-			: withoutVars(invocation.command, cwd, env, unset);
-	return runCollected(command).pipe(
-		Effect.map((collected) => classify(cwd, args, collected, kind, maskExact)),
-		Effect.catch((platformError) => Effect.succeed(classify(cwd, args, platformError, kind, maskExact))),
-		Effect.timeoutOrElse({
-			duration: GIT_TIMEOUT,
-			orElse: () =>
-				Effect.succeed<Classified>({
-					_tag: "failure",
-					error: GitCommandError.make({ kind: "failed", args, cwd, stderr: "", detail: "timed out after 30s" }),
+	inheritedConfigCount = 0,
+): Effect.Effect<Classified, never, ChildProcessSpawner.ChildProcessSpawner> =>
+	Effect.flatMap(Effect.service(CurrentRunOptions), (runOptions) => {
+		const args = invocation.redactedArgs;
+		const maskExact = invocation.scrub;
+		// Scoped config is appended after the GIT_CONFIG_COUNT entries already in force: the run options' own,
+		// else the inherited environment's, which the spawn extends.
+		const inherited =
+			runOptions.env?.GIT_CONFIG_COUNT === undefined
+				? inheritedConfigCount
+				: configCount(runOptions.env.GIT_CONFIG_COUNT);
+		// The BASE_ENV-carrying `env` argument is spread last, so a run option can
+		// add keys but never undo a pin.
+		const spawnEnv = { ...runOptions.env, ...configEnv(runOptions.config, inherited), ...env };
+		const duration = runOptions.timeout === undefined ? GIT_TIMEOUT : Duration.fromInputUnsafe(runOptions.timeout);
+		const command =
+			unset.length === 0
+				? ChildProcess.setEnv(ChildProcess.setCwd(invocation.command, cwd), spawnEnv)
+				: withoutVars(invocation.command, cwd, spawnEnv, unset);
+		const config = isConfigRead(args);
+		const entry = (started: number, outcome: Collected | PlatformError.PlatformError | "timeout") =>
+			transcript(invocation, cwd, config, started, outcome);
+		return Effect.flatMap(Clock.currentTimeMillis, (started) =>
+			runCollected(command).pipe(
+				Effect.tap((collected) => entry(started, collected)),
+				Effect.map((collected) => classify(cwd, args, collected, kind, maskExact)),
+				Effect.catch((platformError) =>
+					Effect.as(entry(started, platformError), classify(cwd, args, platformError, kind, maskExact)),
+				),
+				Effect.timeoutOrElse({
+					duration,
+					orElse: () =>
+						Effect.as(
+							entry(started, "timeout"),
+							// Names the duration actually used: the run option, or the default.
+							<Classified>{
+								_tag: "failure",
+								error: GitCommandError.make({
+									kind: "failed",
+									args,
+									cwd,
+									stderr: "",
+									detail: `timed out after ${Duration.format(duration)}`,
+								}),
+							},
+						),
 				}),
-		}),
-	);
-};
+			),
+		);
+	});
+
+/** The text a transcript section keeps before truncating. */
+const TRANSCRIPT_LIMIT = 4000;
+
+/**
+ * Whether the redacted argv is a `git config` invocation. Fails closed: every
+ * `config` invocation, whatever its flag, may print a credential header, so
+ * none logs its stdout.
+ */
+const isConfigRead = (args: ReadonlyArray<string>): boolean => args[0] === "config";
+
+const truncate = (text: string): string =>
+	text.length <= TRANSCRIPT_LIMIT
+		? text
+		: `${text.slice(0, TRANSCRIPT_LIMIT)}\u2026 (${text.length - TRANSCRIPT_LIMIT} more characters)`;
+
+/**
+ * Logs one invocation at Debug: the redacted argv as the message, then the
+ * scrubbed `stdout:` and `stderr:` sections (empty ones omitted). A `git config`
+ * invocation logs its stdout as a byte count only. Never fails.
+ */
+const transcript = (
+	invocation: GitInvocation,
+	cwd: string,
+	configRead: boolean,
+	started: number,
+	outcome: Collected | PlatformError.PlatformError | "timeout",
+): Effect.Effect<void> =>
+	Effect.gen(function* () {
+		const scrubText = (text: string): string => truncate(maskCredentialsInText(invocation.scrub(text)));
+		const lines = [`git ${invocation.redactedArgs.join(" ")}`];
+		let exitCode: number | string;
+		if (outcome === "timeout") {
+			exitCode = "timeout";
+		} else if (outcome instanceof PlatformError.PlatformError) {
+			exitCode = "spawn-failed";
+			lines.push(`stderr:\n${scrubText(`spawn failed: ${outcome.reason._tag}: ${outcome.message}`)}`);
+		} else {
+			exitCode = outcome.exitCode;
+			if (outcome.stdout !== "") {
+				lines.push(
+					configRead
+						? `stdout: <${new TextEncoder().encode(outcome.stdout).length} bytes>`
+						: `stdout:\n${scrubText(outcome.stdout)}`,
+				);
+			}
+			if (outcome.stderr !== "") lines.push(`stderr:\n${scrubText(outcome.stderr)}`);
+		}
+		const finished = yield* Clock.currentTimeMillis;
+		yield* Effect.logDebug(lines.join("\n")).pipe(
+			Effect.annotateLogs({ "git.cwd": cwd, "git.exitCode": exitCode, "git.durationMs": finished - started }),
+		);
+	});
 
 /**
  * `command` at `cwd` with `env` applied and every key in `unset` removed from
@@ -1680,12 +1805,14 @@ interface SshFromEnv {
 	readonly program: Option.Option<string>;
 	/** `GIT_SSH_VARIANT` — overrides git's basename inference of the grammar. */
 	readonly variant: Option.Option<string>;
+	/** `GIT_CONFIG_COUNT` — the inherited runtime config entries a scoped `config` is appended after. */
+	readonly configCount: number;
 }
 
 /** Builds the `Git.Service` shape over an already-resolved `ChildProcessSpawner`. */
 const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: SshFromEnv) => {
 	const runFor = (invocation: GitInvocation, cwd: string, kind: ClassifyKind, unset?: ReadonlyArray<string>) =>
-		runClassified(invocation, cwd, kind, BASE_ENV, unset).pipe(
+		runClassified(invocation, cwd, kind, BASE_ENV, unset, ssh.configCount).pipe(
 			Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 		);
 
@@ -1714,10 +1841,21 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 	 */
 	const resolveSshEnv = (cwd: string) =>
 		Effect.gen(function* () {
+			// A per-call GIT_SSH_COMMAND (from `withRunOptions`) is the first rung,
+			// above the ambient one; everything below it is unchanged.
+			const runOptions = yield* Effect.service(CurrentRunOptions);
+			// Each per-call variable takes its ambient counterpart's rung, above it.
+			const perCallRung = (name: string, ambient: Option.Option<string>) => {
+				const value = (runOptions.env?.[name] ?? "").trim();
+				return value === "" ? ambient : Option.some(value);
+			};
+			const sshCommand = perCallRung("GIT_SSH_COMMAND", ssh.command);
+			const sshProgram = perCallRung("GIT_SSH", ssh.program);
+			const sshVariant = perCallRung("GIT_SSH_VARIANT", ssh.variant);
 			const [fromConfig, variantFromConfig] = yield* Effect.all(
 				[
-					Option.isSome(ssh.command) ? Effect.succeed("") : readConfig(cwd, "core.sshCommand"),
-					Option.isSome(ssh.variant) ? Effect.succeed("") : readConfig(cwd, "ssh.variant"),
+					Option.isSome(sshCommand) ? Effect.succeed("") : readConfig(cwd, "core.sshCommand"),
+					Option.isSome(sshVariant) ? Effect.succeed("") : readConfig(cwd, "ssh.variant"),
 				],
 				{ concurrency: "unbounded" },
 			);
@@ -1725,21 +1863,21 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 			// The variant decides the argument GRAMMAR, so it is checked first: a
 			// non-OpenSSH variant means `-o BatchMode=yes` is not a thing git's ssh
 			// invocation understands, whatever the command happens to be named.
-			const variant = Option.getOrElse(ssh.variant, () => variantFromConfig)
+			const variant = Option.getOrElse(sshVariant, () => variantFromConfig)
 				.trim()
 				.toLowerCase();
 			if (!OPENSSH_VARIANTS.has(variant)) {
 				return { ...BASE_ENV };
 			}
 
-			const command = Option.getOrElse(ssh.command, () => fromConfig).trim();
+			const command = Option.getOrElse(sshCommand, () => fromConfig).trim();
 			if (command !== "") {
 				return sshEnv(command);
 			}
 			// No COMMAND anywhere, so GIT_SSH is the deciding rung if it is set. It
 			// names a program and takes no arguments, so pinning anything here would
 			// displace it rather than extend it — decline instead.
-			if (Option.isSome(ssh.program)) {
+			if (Option.isSome(sshProgram)) {
 				return { ...BASE_ENV };
 			}
 			return sshEnv("ssh");
@@ -1753,7 +1891,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 	const runForNetwork = (invocation: GitInvocation, cwd: string, kind: ClassifyKind) =>
 		Effect.gen(function* () {
 			const env = yield* resolveSshEnv(cwd);
-			return yield* runClassified(invocation, cwd, kind, env).pipe(
+			return yield* runClassified(invocation, cwd, kind, env, [], ssh.configCount).pipe(
 				Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 			);
 		});
@@ -2036,12 +2174,30 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 	const checkout = Effect.fn("Git.checkout")(function* (
 		cwd: string,
 		ref: string,
-		options?: { readonly detach?: boolean },
+		options?: { readonly detach?: boolean; readonly force?: boolean; readonly branch?: string },
 	) {
 		const detach = options?.detach ?? false;
 		yield* Effect.annotateCurrentSpan({ cwd, ref, detach });
-		yield* rejectOptionLikeRefs(cwd, [ref]);
-		const classified = yield* runFor(GitCommand.checkout(ref, detach), cwd, "generic");
+		yield* rejectOptionLikeRefs(cwd, options?.branch !== undefined ? [ref, options.branch] : [ref]);
+		if (detach && options?.branch !== undefined) {
+			return yield* Effect.fail(
+				new GitCommandError({
+					kind: "refused",
+					args: ["checkout", "-B", options.branch, "--detach"],
+					cwd,
+					stderr: "",
+					detail: "refused checkout with both branch and detach: git cannot create a branch and detach HEAD at once",
+				}),
+			);
+		}
+		const classified = yield* runFor(
+			GitCommand.checkout(ref, detach, {
+				force: options?.force ?? false,
+				...(options?.branch !== undefined ? { branch: options.branch } : {}),
+			}),
+			cwd,
+			"generic",
+		);
 		switch (classified._tag) {
 			case "success":
 				return undefined;
@@ -2082,12 +2238,21 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 
 	const clean = Effect.fn("Git.clean")(function* (
 		cwd: string,
-		options?: { readonly directories?: boolean; readonly ignored?: boolean; readonly paths?: ReadonlyArray<string> },
+		options?: {
+			readonly directories?: boolean;
+			readonly ignored?: boolean;
+			readonly paths?: ReadonlyArray<string>;
+			readonly nested?: boolean;
+		},
 	) {
 		const directories = options?.directories ?? false;
 		const ignored = options?.ignored ?? false;
 		yield* Effect.annotateCurrentSpan({ cwd, directories, ignored });
-		const classified = yield* runFor(GitCommand.clean(directories, ignored, options?.paths ?? []), cwd, "generic");
+		const classified = yield* runFor(
+			GitCommand.clean(directories, ignored, options?.paths ?? [], options?.nested ?? false),
+			cwd,
+			"generic",
+		);
 		switch (classified._tag) {
 			case "success":
 				return undefined;
@@ -2167,11 +2332,15 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 	const branchDelete = Effect.fn("Git.branchDelete")(function* (
 		cwd: string,
 		name: string,
-		options?: { readonly force?: boolean },
+		options?: { readonly force?: boolean; readonly remote?: boolean },
 	) {
 		yield* Effect.annotateCurrentSpan({ cwd, name, force: options?.force ?? false });
 		yield* rejectOptionLikeRefs(cwd, [name]);
-		const classified = yield* runFor(GitCommand.branchDelete(name, options?.force ?? false), cwd, "generic");
+		const classified = yield* runFor(
+			GitCommand.branchDelete(name, options?.force ?? false, options?.remote ?? false),
+			cwd,
+			"generic",
+		);
 		switch (classified._tag) {
 			case "success":
 				return undefined;
@@ -2201,6 +2370,63 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 				return yield* Effect.fail(classified.error);
 			default:
 				return yield* Effect.die(`Git.isShallow: unexpected classification "${classified._tag}"`);
+		}
+	});
+
+	const fetchRefspecs = Effect.fn("Git.fetchRefspecs")(function* (
+		cwd: string,
+		options: {
+			readonly remote?: string;
+			readonly refspecs: ReadonlyArray<string>;
+			readonly depth?: number;
+			readonly unshallow?: boolean;
+			readonly filter?: string;
+			readonly noTags?: boolean;
+			readonly prune?: boolean;
+			readonly noRecurseSubmodules?: boolean;
+			readonly protocolVersion?: 2;
+		},
+	) {
+		const remote = options.remote ?? "origin";
+		yield* Effect.annotateCurrentSpan({ cwd, refspecs: options.refspecs.length });
+		if (options.refspecs.length === 0) {
+			return yield* Effect.fail(
+				new GitCommandError({
+					kind: "refused",
+					// Redacted: the remote may be a credentialed URL.
+					args: GitCommand.fetchRefspecs(remote, []).redactedArgs,
+					cwd,
+					stderr: "",
+					detail: "refused a fetch with no refspecs",
+				}),
+			);
+		}
+		yield* rejectOptionLikeRefs(cwd, [remote, ...options.refspecs]);
+		yield* rejectNonNaturalNumber(cwd, "a fetch depth", options.depth);
+		const classified = yield* runForNetwork(
+			GitCommand.fetchRefspecs(remote, options.refspecs, {
+				...(options.depth !== undefined ? { depth: options.depth } : {}),
+				...(options.unshallow ? { unshallow: true } : {}),
+				...(options.filter !== undefined ? { filter: options.filter } : {}),
+				...(options.noTags ? { noTags: true } : {}),
+				...(options.prune ? { prune: true } : {}),
+				...(options.noRecurseSubmodules ? { noRecurseSubmodules: true } : {}),
+				...(options.protocolVersion === 2 ? { protocolVersion: 2 as const } : {}),
+			}),
+			cwd,
+			"generic",
+		);
+		switch (classified._tag) {
+			case "success":
+				return undefined;
+			case "notARepository":
+				return yield* Effect.fail(new NotARepositoryError({ cwd }));
+			case "unknownRef":
+				return yield* Effect.fail(new UnknownRefError({ ref: options.refspecs.join(" "), cwd }));
+			case "failure":
+				return yield* Effect.fail(classified.error);
+			default:
+				return yield* Effect.die(`Git.fetchRefspecs: unexpected classification "${classified._tag}"`);
 		}
 	});
 
@@ -2413,6 +2639,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 			readonly fetch?: false;
 			readonly recursive?: boolean;
 			readonly force?: boolean;
+			readonly protocolVersion?: 2;
 		},
 	) {
 		const init = options?.init ?? false;
@@ -2425,6 +2652,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 				remote: options?.remote ?? false,
 				recursive: options?.recursive ?? false,
 				force: options?.force ?? false,
+				...(options?.protocolVersion === 2 ? { protocolVersion: 2 as const } : {}),
 				// exactOptionalPropertyTypes: `fetch` only exists when the caller
 				// asked for --no-fetch; an explicit undefined is not assignable.
 				...(options?.fetch === false ? { fetch: false as const } : {}),
@@ -2495,6 +2723,75 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		}
 	});
 
+	const sparseCheckoutDisable = Effect.fn("Git.sparseCheckoutDisable")(function* (cwd: string) {
+		yield* Effect.annotateCurrentSpan({ cwd });
+		yield* runVoid("Git.sparseCheckoutDisable", GitCommand.sparseCheckoutDisable(), cwd, "sparse-checkout");
+		// Mirrors actions/checkout: also clear the worktree-config extension that
+		// sparse checkout may have set; git exits 5 when the key was never set,
+		// which is the expected case here and is ignored. Any other failure surfaces.
+		yield* runParsed(
+			"Git.sparseCheckoutDisable",
+			GitCommand.configUnset("extensions.worktreeConfig"),
+			cwd,
+			"extensions.worktreeConfig",
+			"unsetAbsent",
+			() => undefined,
+			() => undefined,
+		);
+	});
+
+	const lfsInstall = Effect.fn("Git.lfsInstall")(function* (cwd: string, options?: { readonly local?: boolean }) {
+		yield* Effect.annotateCurrentSpan({ cwd, local: options?.local ?? false });
+		return yield* runVoid("Git.lfsInstall", GitCommand.lfsInstall(options?.local ?? false), cwd, "lfs");
+	});
+
+	const lfsFetch = Effect.fn("Git.lfsFetch")(function* (
+		cwd: string,
+		options: { readonly remote?: string; readonly ref: string },
+	) {
+		const remote = options.remote ?? "origin";
+		// The remote is deliberately NOT annotated: it may be a URL.
+		yield* Effect.annotateCurrentSpan({ cwd, ref: options.ref });
+		yield* rejectOptionLikeRefs(cwd, [remote, options.ref]);
+		const classified = yield* runForNetwork(GitCommand.lfsFetch(remote, options.ref), cwd, "generic");
+		switch (classified._tag) {
+			case "success":
+				return undefined;
+			case "notARepository":
+				return yield* Effect.fail(new NotARepositoryError({ cwd }));
+			case "unknownRef":
+				return yield* Effect.fail(new UnknownRefError({ ref: options.ref, cwd }));
+			case "failure":
+				return yield* Effect.fail(classified.error);
+			default:
+				return yield* Effect.die(`Git.lfsFetch: unexpected classification "${classified._tag}"`);
+		}
+	});
+
+	const remoteHead = Effect.fn("Git.remoteHead")(function* (cwd: string, remote: string) {
+		// The remote is deliberately NOT annotated: it may be a URL.
+		yield* Effect.annotateCurrentSpan({ cwd });
+		yield* rejectOptionLikeRefs(cwd, [remote]);
+		return yield* runParsed(
+			"Git.remoteHead",
+			GitCommand.lsRemoteSymref(remote, "HEAD"),
+			cwd,
+			"HEAD",
+			"exitTwoAbsent",
+			(output): Option.Option<string> => {
+				for (const line of output.split("\n")) {
+					const match = /^ref:\s+(\S+)\s+HEAD\s*$/.exec(line);
+					if (match?.[1] !== undefined) {
+						return Option.some(match[1]);
+					}
+				}
+				return Option.none();
+			},
+			() => Option.none<string>(),
+			true,
+		);
+	});
+
 	const configSet = Effect.fn("Git.configSet")(function* (
 		cwd: string,
 		key: string,
@@ -2522,6 +2819,50 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 			default:
 				return yield* Effect.die(`Git.configSet: unexpected classification "${classified._tag}"`);
 		}
+	});
+
+	const configAdd = Effect.fn("Git.configAdd")(function* (
+		cwd: string,
+		key: string,
+		value: string,
+		options?: { readonly file?: string },
+	) {
+		yield* Effect.annotateCurrentSpan({ cwd, key, file: options?.file ?? "(repository config)" });
+		// Same guard as configSet: no -- separator exists, and the value rides the
+		// SENSITIVE arm so a refusal reports <redacted>.
+		yield* rejectOptionLikeRefs(cwd, [key, ...(options?.file !== undefined ? [options.file] : [])], [value]);
+		return yield* runVoid("Git.configAdd", GitCommand.configAdd(key, value, options?.file), cwd, key);
+	});
+
+	const init = Effect.fn("Git.init")(function* (
+		cwd: string,
+		path: string,
+		options?: { readonly objectFormat?: "sha1" | "sha256"; readonly initialBranch?: string },
+	) {
+		yield* Effect.annotateCurrentSpan({ cwd, objectFormat: options?.objectFormat ?? "sha1" });
+		yield* rejectOptionLikeRefs(cwd, [path, ...(options?.initialBranch !== undefined ? [options.initialBranch] : [])]);
+		return yield* runVoid("Git.init", GitCommand.init(path, options), cwd, path);
+	});
+
+	const version = Effect.fn("Git.version")(function* (cwd: string) {
+		yield* Effect.annotateCurrentSpan({ cwd });
+		const invocation = GitCommand.version();
+		const parsed = yield* runParsed("Git.version", invocation, cwd, "version", "generic", (output) => ({
+			output,
+			version: GitVersion.parse(output),
+		}));
+		if (Option.isNone(parsed.version)) {
+			return yield* Effect.fail(
+				new GitCommandError({
+					kind: "failed",
+					args: invocation.redactedArgs,
+					cwd,
+					stderr: "",
+					detail: `could not parse git version output: ${JSON.stringify(parsed.output.trim())}`,
+				}),
+			);
+		}
+		return parsed.version.value;
 	});
 
 	const add = Effect.fn("Git.add")(function* (cwd: string, paths: ReadonlyArray<string>) {
@@ -3586,6 +3927,7 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		checkout,
 		fetch,
 		fetchAny,
+		fetchRefspecs,
 		fetchUnshallow,
 		isShallow,
 		commitsThatAdd,
@@ -3605,7 +3947,14 @@ const make = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], ssh: 
 		submoduleAbsorbgitdirs,
 		submoduleForeach,
 		sparseCheckoutSet,
+		sparseCheckoutDisable,
+		lfsInstall,
+		lfsFetch,
+		remoteHead,
 		configSet,
+		configAdd,
+		init,
+		version,
 		add,
 		nameStatus,
 		unstagedChanges,
@@ -3762,6 +4111,8 @@ export interface GitShape {
 	 * Mutating: `git checkout [--detach] <ref>` — moves the working tree
 	 * (and, for a branch ref, `HEAD`) to `ref`; `options.detach` checks it out
 	 * in detached-HEAD state instead of updating a branch.
+	 * `options.force` adds `--force`; `options.branch` adds `-B <branch>` with
+	 * `ref` as the start point, and is refused together with `detach`.
 	 * Real git reports an unknown ref to checkout as a pathspec error, which
 	 * classifies as `GitCommandError` rather than `UnknownRefError`; the
 	 * `UnknownRefError` arm remains declared for the stderr shapes that do match.
@@ -3769,7 +4120,7 @@ export interface GitShape {
 	readonly checkout: (
 		cwd: string,
 		ref: string,
-		options?: { readonly detach?: boolean },
+		options?: { readonly detach?: boolean; readonly force?: boolean; readonly branch?: string },
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
 	 * Mutating: `git fetch [--depth <n>] [--unshallow] <remote> [tag] <ref>` —
@@ -3818,6 +4169,30 @@ export interface GitShape {
 	readonly fetchAny: (
 		cwd: string,
 		options: { readonly ref: string; readonly remote?: string; readonly depth?: number },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git fetch` of several refspecs from `options.remote` (default
+	 * `origin`) in one invocation, in the argv order `actions/checkout` uses
+	 * (`options.protocolVersion: 2` prefixes `-c protocol.version=2`). Network
+	 * touching.
+	 *
+	 * Refuses an empty `options.refspecs` and any refspec (or remote) that
+	 * begins with `-`, as `GitCommandError` of kind `refused`, before any
+	 * spawn. Refspecs pass through verbatim.
+	 */
+	readonly fetchRefspecs: (
+		cwd: string,
+		options: {
+			readonly remote?: string;
+			readonly refspecs: ReadonlyArray<string>;
+			readonly depth?: number;
+			readonly unshallow?: boolean;
+			readonly filter?: string;
+			readonly noTags?: boolean;
+			readonly prune?: boolean;
+			readonly noRecurseSubmodules?: boolean;
+			readonly protocolVersion?: 2;
+		},
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
 	 * Mutating: `git fetch --unshallow <remote>` — converts a shallow clone
@@ -3922,11 +4297,17 @@ export interface GitShape {
 	 * a tree to a known state before retrying a non-idempotent operation, and
 	 * without it git refuses to clean under the default `clean.requireForce`
 	 * config — **a clean that silently did nothing corrupts the retry**. Any
-	 * non-zero exit fails loudly as `GitCommandError`.
+	 * non-zero exit fails loudly as `GitCommandError`. `options.nested` emits a
+	 * second `--force`, which also removes untracked nested repositories.
 	 */
 	readonly clean: (
 		cwd: string,
-		options?: { readonly directories?: boolean; readonly ignored?: boolean; readonly paths?: ReadonlyArray<string> },
+		options?: {
+			readonly directories?: boolean;
+			readonly ignored?: boolean;
+			readonly paths?: ReadonlyArray<string>;
+			readonly nested?: boolean;
+		},
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
 	 * Mutating: `git restore [--source <ref>] [--staged] [--worktree] -- <paths...>`
@@ -3973,12 +4354,13 @@ export interface GitShape {
 	 * Mutating: `git branch -d <name>` (or `-D` with `options.force`) —
 	 * deletes a local branch. The default `-d` refuses a branch that is not
 	 * fully merged — a typed `GitCommandError`, which is usually the honest
-	 * answer; `force: true` deletes regardless.
+	 * answer; `force: true` deletes regardless. `options.remote` adds `-r` to
+	 * delete a remote-tracking branch instead.
 	 */
 	readonly branchDelete: (
 		cwd: string,
 		name: string,
-		options?: { readonly force?: boolean },
+		options?: { readonly force?: boolean; readonly remote?: boolean },
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
 	 * Mutating:
@@ -4007,6 +4389,7 @@ export interface GitShape {
 			readonly fetch?: false;
 			readonly recursive?: boolean;
 			readonly force?: boolean;
+			readonly protocolVersion?: 2;
 		},
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
@@ -4117,6 +4500,39 @@ export interface GitShape {
 		options: { readonly cone: boolean },
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
+	 * Mutating: `git sparse-checkout disable` — restores every path to the
+	 * working tree, then clears `extensions.worktreeConfig` from the local
+	 * config. An unset key (git exits 5) is ignored; any other failure surfaces.
+	 */
+	readonly sparseCheckoutDisable: (
+		cwd: string,
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git lfs install [--local]` — installs the LFS filter, into the
+	 * repository's own config when `options.local` is true.
+	 */
+	readonly lfsInstall: (
+		cwd: string,
+		options?: { readonly local?: boolean },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git lfs fetch <remote> <ref>` — downloads the LFS objects
+	 * `ref` references (network). `options.remote` defaults to `origin`.
+	 */
+	readonly lfsFetch: (
+		cwd: string,
+		options: { readonly remote?: string; readonly ref: string },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * `git ls-remote --symref <remote> HEAD` (network) — the full ref the
+	 * remote's `HEAD` points at (`refs/heads/main`), or `Option.none()` when
+	 * the remote has no `HEAD` symref.
+	 */
+	readonly remoteHead: (
+		cwd: string,
+		remote: string,
+	) => Effect.Effect<Option.Option<string>, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
 	 * Mutating: `git config [-f <file>] <key> <value>` — writes `value` for
 	 * `key` into the repository config, or into `options.file` when given
 	 * (e.g. `.gitmodules`).
@@ -4144,6 +4560,35 @@ export interface GitShape {
 		value: string,
 		options?: { readonly file?: string },
 	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git config [-f <file>] --add <key> <value>` — appends `value`
+	 * to `key` without replacing the values it already has.
+	 *
+	 * @remarks
+	 * Repository-local, like `configSet`, and the value is redacted the same
+	 * way: never in an error, never in a span.
+	 */
+	readonly configAdd: (
+		cwd: string,
+		key: string,
+		value: string,
+		options?: { readonly file?: string },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * Mutating: `git init [--object-format=<f>] [--initial-branch=<b>] -- <path>`
+	 * — creates an empty repository at `path`. `cwd` is only where git runs;
+	 * `path` is resolved against it.
+	 */
+	readonly init: (
+		cwd: string,
+		path: string,
+		options?: { readonly objectFormat?: "sha1" | "sha256"; readonly initialBranch?: string },
+	) => Effect.Effect<void, GitCommandError | NotARepositoryError | UnknownRefError>;
+	/**
+	 * `git version` — the installed git's version. Fails `GitCommandError`
+	 * with a `detail` when the output is not a recognisable version line.
+	 */
+	readonly version: (cwd: string) => Effect.Effect<GitVersion, GitCommandError | NotARepositoryError | UnknownRefError>;
 	/**
 	 * Mutating: `git add -- <paths...>` — stages `paths` in the index for
 	 * the next commit.
@@ -4798,14 +5243,27 @@ const notStubbed = (method: string) => () =>
  * **Every spawn already runs under a 30 s timeout** (this module's
  * `GIT_TIMEOUT`): a command that has not answered in time fails as a
  * {@link GitCommandError} with `detail` set to `"timed out after 30s"`.
+ * `Git.withRunOptions` replaces that ceiling for a scope, and the `detail`
+ * then names the duration actually used.
  *
  * That ceiling is per run, not per member call. The network-touching members
- * (`lsRemote`, `fetch`, `fetchUnshallow`, `push`, `pull`, `submoduleAdd`,
- * `submoduleUpdate`, and `commitsThatAdd` for each deepen round) first resolve their ssh command with up to two concurrent
- * local `git config` reads, each bounded separately, so their worst case is
- * 60 s; `fetchAny`, which runs `fetch` twice, is 120 s. A consumer merely
+ * (`lsRemote`, `remoteHead`, `fetch`, `fetchRefspecs`, `fetchUnshallow`, `push`, `pull`,
+ * `submoduleAdd`, `submoduleUpdate`, `lfsFetch`, and `commitsThatAdd` for each deepen round)
+ * first resolve their ssh command with up to two concurrent local `git config` reads, each
+ * bounded separately, so their worst case is 60 s (`commitsThatAdd` 60 s per deepen round);
+ * `fetchAny`, which runs `fetch` twice, is 120 s. A consumer merely
  * duplicating a 30 s layer buys nothing but two ceilings racing each other;
  * one whose budget is tighter than the figures above still needs its own.
+ *
+ * **Transcript.** Every spawn emits one `Effect.logDebug` entry, silent at
+ * the default log level: the message is `git <redacted argv>`, annotated with
+ * `git.cwd`, `git.exitCode` (a number, `"spawn-failed"` or `"timeout"`) and
+ * `git.durationMs`, followed by `stdout:` and `stderr:` sections when they
+ * are not empty. Both sections are scrubbed of the invocation's secrets and of
+ * credential-shaped text, and each is cut at 4000 characters with a trailing
+ * `… (<n> more characters)`. The stdout of any `git config` invocation is never logged, only its size as `<n bytes>`, since
+ * it may hold a credential header. A raw argv, a token and a config value are
+ * never logged.
  *
  * **Redaction policy (documented, not just convention).** Error values
  * persist only the constructor's REDACTED argv (see `GitCommandError.args`),
@@ -4833,6 +5291,27 @@ const notStubbed = (method: string) => () =>
  * @public
  */
 export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
+	/**
+	 * Runs `self` with {@link GitRunOptions} applied to every `git` spawn it
+	 * makes, network and non-network members alike.
+	 *
+	 * @remarks
+	 * Nested calls merge: `env` and `config` key by key with the inner call
+	 * winning, and the inner `timeout` winning. Run options never undo the
+	 * service's own pins (locale, prompt, askpass), and a per-call
+	 * `GIT_SSH_COMMAND` is still pinned to batch mode on a network member. A
+	 * locating read with `ignoreRepositoryEnv` drops `config`, because
+	 * `GIT_CONFIG_COUNT` is part of the repository environment it unsets.
+	 */
+	static readonly withRunOptions: {
+		(options: GitRunOptions): <A, E, R>(self: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
+		<A, E, R>(self: Effect.Effect<A, E, R>, options: GitRunOptions): Effect.Effect<A, E, R>;
+	} = dual(
+		2,
+		<A, E, R>(self: Effect.Effect<A, E, R>, options: GitRunOptions): Effect.Effect<A, E, R> =>
+			Effect.updateService(self, CurrentRunOptions, (outer) => mergeRunOptions(outer, options)),
+	);
+
 	/** Resolves `ChildProcessSpawner` once, at construction — every method's `R` is `never`. */
 	static readonly layer: Layer.Layer<Git, never, ChildProcessSpawner.ChildProcessSpawner> = Layer.effect(
 		this,
@@ -4860,11 +5339,11 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 					// variable is not a configuration worth preserving.
 					Effect.map(Option.filter((value) => value.trim() !== "")),
 				);
-			const [command, program, variant] = yield* Effect.all(
-				[read("GIT_SSH_COMMAND"), read("GIT_SSH"), read("GIT_SSH_VARIANT")],
+			const [command, program, variant, count] = yield* Effect.all(
+				[read("GIT_SSH_COMMAND"), read("GIT_SSH"), read("GIT_SSH_VARIANT"), read("GIT_CONFIG_COUNT")],
 				{ concurrency: "unbounded" },
 			);
-			return make(spawner, { command, program, variant });
+			return make(spawner, { command, program, variant, configCount: configCount(Option.getOrUndefined(count)) });
 		}),
 	);
 
@@ -4915,6 +5394,7 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 		checkout: notStubbed("checkout"),
 		fetch: notStubbed("fetch"),
 		fetchAny: notStubbed("fetchAny"),
+		fetchRefspecs: notStubbed("fetchRefspecs"),
 		fetchUnshallow: notStubbed("fetchUnshallow"),
 		isShallow: notStubbed("isShallow"),
 		commitsThatAdd: notStubbed("commitsThatAdd"),
@@ -4934,7 +5414,14 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 		submoduleAbsorbgitdirs: notStubbed("submoduleAbsorbgitdirs"),
 		submoduleForeach: notStubbed("submoduleForeach"),
 		sparseCheckoutSet: notStubbed("sparseCheckoutSet"),
+		sparseCheckoutDisable: notStubbed("sparseCheckoutDisable"),
+		lfsInstall: notStubbed("lfsInstall"),
+		lfsFetch: notStubbed("lfsFetch"),
+		remoteHead: notStubbed("remoteHead"),
 		configSet: notStubbed("configSet"),
+		configAdd: notStubbed("configAdd"),
+		init: notStubbed("init"),
+		version: notStubbed("version"),
 		add: notStubbed("add"),
 		nameStatus: notStubbed("nameStatus"),
 		unstagedChanges: notStubbed("unstagedChanges"),

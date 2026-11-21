@@ -15,11 +15,11 @@ sources:
   - id: skill-structuring
     resource: ../../plugin/skills/structuring-an-action/SKILL.md
 generated:
-  by: "claude-code/sonnet-5.5"
-  at: 2026-11-20T17:18:13Z
+  by: "claude-code/opus-5.5"
+  at: 2026-11-20T22:40:19Z
 integrity:
   generated:
-    body: 39bcfe27f535cf99
+    body: 22a84ed3d480c048
 ---
 
 # Build a GitHub Action repository to the kit's canonical shape
@@ -249,6 +249,31 @@ inside a step *method* is invisible to the layer's input channel, so the
 first assertion alone can pass while production dies on every consumer. A
 runtime assertion is not an acceptable substitute for either half: a
 compile failure cannot regress silently.
+
+### B12 — The step log is the logging rule
+
+Every unit of an action's work runs as an `ActionLogger.step`, grouped under
+an `ActionLogger.phase`, so a green run is a few result lines with the detail
+folded behind them and a red one shows the failing command and its output
+without a click. A step supplies its own `summary` (a function of its result)
+and, where the default message is not enough, its own `failure` text; it
+declares a `window` where a longer or shorter quiet period than the 30-second
+default suits the work. A child process runs through `ActionLogger.command`,
+never with inherited stdout, which writes past the fold. A test of the log
+asserts on `ActionLogger.recording()`'s entries rather than rendered text. The
+rendering contract is [the step log](../interfaces/actions-step-log.md); the
+old `withBuffer`, `withStep` and `heading` members no longer exist.
+
+### B13 — A checkout is `Checkout`, and a job-lifetime one cleans up in `post`
+
+An action that needs a repository checked out uses `Checkout.checkout` rather
+than a separate `actions/checkout` workflow step, and exposes the stock input
+surface with `Checkout.fromInputs` and `Checkout.inputs` when it wants a
+checkout-compatible interface. The default credential lifetime, `"job"`, is
+removed by `Checkout.cleanup()` in the action's `post` entry, so an action
+that uses it without a `post` entry leaves the token on the runner; choose
+`"action"` or `"none"` when no later step needs the credentials. See
+[`github-actions`](../modules/github-actions.md).
 
 ## Cross-cutting invariants
 

@@ -34,8 +34,10 @@
 | `GitRemoteScp` | Class | A remote in git's scp-like form: `[<user>@]<host>:<path>` (`git@github.com:o/n.git`). Git reads an address as this form when a `:` comes before any `/`. | a remote in scp-like user at host colon path form |
 | `GitRemoteTransport` | Class | A remote routed through a named remote helper: `<transport>::<address>` (`persistent::https://host/r`, `ext::ssh host %S`). git runs `git-remote-<transport>` and hands it `address`. | a remote routed through a transport helper, double-colon address |
 | `GitRemoteUrl` | Class | A remote in URL form: `<scheme>://[<user>[:<password>]@]<host>[:<port>]<path>` (`https://github.com/o/n.git`, `ssh://git@host:22/o/n`, `file:///srv/r.git`). | a remote in url form with scheme, credentials, host, port and path |
+| `GitRunOptions` | Interface | Per-scope options applied to every `git` spawn a `Git` member makes while they are in force. Install them with `Git.withRunOptions`. | |
 | `GitShape` | Interface | The `Git` service shape. | |
 | `GitUntrackedFilesMode` | TypeAlias | The untracked-files mode of `git status` — git's `--untracked-files` flag. | |
+| `GitVersion` | Class | A git release as `major.minor.patch`, parsed from `git version` output. | parse git version output, compare git versions, check git is at least a floor |
 | `Gitmodules` | Class | The typed view over a `.gitmodules` document: the decoded submodule entries, in first-appearance order. | typed view over a .gitmodules document, parse .gitmodules, decoded submodule entries |
 | `GitmodulesDecodeError` | Class | A `[submodule]` section could not be decoded into a `GitmodulesEntry`. | a [submodule] section in .gitmodules failed to decode, missing path or url |
 | `GitmodulesEntry` | Class | One `[submodule "<name>"]` entry of a `.gitmodules` document, decoded into typed fields. | one decoded submodule entry from .gitmodules: name path url branch shallow update ignore |

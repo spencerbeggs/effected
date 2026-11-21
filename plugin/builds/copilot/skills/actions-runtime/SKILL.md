@@ -1,6 +1,6 @@
 ---
 name: actions-runtime
-description: "Use when writing or reviewing a GitHub Action's pre/main/post entry point on @effected/github-actions — wiring Action.run, ActionRuntime.layer, the ActionServices union, an extra ActionRunOptions.layer, or deciding whether ActionCache, Artifact or GitHubCacheBlobStore belong in the runtime. Also use when: Action.run, ActionRuntime, ActionServices, ActionRunOptions.layer, describeCause, GitHubToken.clientLayer, action entry point, pre/main/post script, isDebug, MinimumLogLevel, RUNNER_DEBUG, stepDebugLogLevel, Effect.logDebug not showing"
+description: "Use when writing or reviewing a GitHub Action's pre/main/post entry point on @effected/github-actions — wiring Action.run, ActionRuntime.layer, the ActionServices union, an extra ActionRunOptions.layer, or deciding whether ActionCache, Artifact or GitHubCacheBlobStore belong in the runtime. Also use when: Checkout, Checkout.cleanup, Checkout.fromInputs, persist-credentials, actions/checkout, Action.run, ActionRuntime, ActionServices, ActionRunOptions.layer, describeCause, GitHubToken.clientLayer, action entry point, pre/main/post script, isDebug, MinimumLogLevel, RUNNER_DEBUG, stepDebugLogLevel, Effect.logDebug not showing"
 ---
 
 # Actions runtime
@@ -21,6 +21,7 @@ For the general Effect v4 service/layer rules this package follows — `Context.
 | `ActionRunOptions.stepDebugLogLevel` | `Action.run(program, { stepDebugLogLevel: false })` | opting out of the default that lowers `References.MinimumLogLevel` to `Debug` under `RUNNER_DEBUG=1` — rarely |
 | `env.isDebug` (a member of `ActionEnvironment`) | `const env = yield* ActionEnvironment` | branching on step debugging for something other than the log level, such as a spawned tool's verbose flag |
 | `GitHubToken.clientLayer` / `Repo.layerFromConfig` | `import { GitHubToken } from "@effected/github-actions"` / `import { Repo } from "@effected/github"` | building a client or repo context as an extra layer — both can fail to construct, see Standards |
+| `Checkout.checkout` / `.cleanup` / `.fromInputs` / `.inputs` / `.writeOutputs` | `import { Checkout } from "@effected/github-actions"` | checking a repository out inside an action: `checkout` in `main`, `cleanup` in `post` for a job-lifetime credential; see `references/checkout.md` |
 | `ActionCache` / `Artifact` / `GitHubCacheBlobStore` | `import { ActionCache } from "@effected/github-actions"` | caching, artifacts or blob storage — one extra layer line, never a runtime default; see `actions-cache-and-artifacts` |
 
 ## Standards
@@ -39,6 +40,7 @@ For the general Effect v4 service/layer rules this package follows — `Context.
 - A rejecting entry point produces a failed step *and* an unhandled rejection, and only the first is legible in a workflow log — `Action.run` never rejects by design; do not wrap it in a `try`/`catch` that could swallow the resolved `Promise`. See `references/entry-points-and-layers.md`.
 - `yield* ActionEnvironment.isDebug` does not compile and reads `undefined` at runtime — `isDebug` is a member of the service, so `const env = yield* ActionEnvironment` first, then `yield* env.isDebug`. See `references/logging-and-levels.md`.
 - `Effect.logDebug` stays invisible under step debugging only when the program opted out (`stepDebugLogLevel: false`), provides its own higher `MinimumLogLevel`, or runs outside `Action.run` — a test or a hand-composed runtime gets core's `"Info"` default.
+- A `Checkout.checkout` with the default `"job"` lifetime and no `Checkout.cleanup()` in the `post` entry leaves the token on the runner for the rest of the job. See `references/checkout.md`.
 - A `post` script that lets an unrendered defect escape `Action.run`'s top-level catch produces a green step for a crashed action, the worst outcome the last-resort catch exists to prevent. See `references/failure-rendering.md`.
 
 ## Additional resources
@@ -46,3 +48,4 @@ For the general Effect v4 service/layer rules this package follows — `Context.
 - [references/entry-points-and-layers.md](references/entry-points-and-layers.md) — the full `Action.run` contract, the `ActionServices` union, `ActionRuntime.layer`'s exact composition and `provideMerge` chain, the two config providers, `ActionRunOptions.layer`'s widening behavior, and the `pre`/`main`/`post` entry shapes. Load when: composing a runtime layer, debugging why a service isn't resolving, or writing a new entry script.
 - [references/failure-rendering.md](references/failure-rendering.md) — the canonical home for `describeCause`/`describeError`: the one-line rendering convention, the `::error::`/`::debug::` depth split, and the last-resort catch around `Effect.runPromise`. Load when: a failure needs rendering anywhere outside `Action.run`'s own catch, or reviewing why a run reported green after a crash.
 - [references/logging-and-levels.md](references/logging-and-levels.md) — how `Action.run` lowers `MinimumLogLevel` under step debugging (only-lowers, run-wide, the opt-out), why a hand-wired wrapper should be deleted, and reading `isDebug` off the service. Load when: `Effect.logDebug` calls aren't showing up with `RUNNER_DEBUG` set, or a program carries its own log-level wrapper.
+- [references/checkout.md](references/checkout.md) — the `Checkout` service: the typed options, `fromInputs` and `inputs`, the three credential lifetimes (`"job"`, `"action"`, `"none"`), `Checkout.cleanup` in the post entry, the requirements and the per-reason errors. Load when: an action needs a repository checked out, or is rebuilding `actions/checkout`.

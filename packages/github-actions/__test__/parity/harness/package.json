@@ -1,0 +1,7 @@
+{
+	"name": "@effected-internal/checkout-parity-harness",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Runs the kit's Checkout beside the stock checkout action and compares the results; built and used only by the checkout-parity workflow.",
+	"type": "module"
+}

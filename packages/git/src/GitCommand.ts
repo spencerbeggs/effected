@@ -318,12 +318,64 @@ export class GitCommand {
 	static readonly revParse = (ref: string): GitInvocation => git(["rev-parse", "--verify", ref]);
 
 	/**
-	 * Mutating: `git checkout [--detach] <ref>` — moves the working tree (and, for
-	 * a branch ref, `HEAD`) to `ref`. When `detach` is true, checks out the ref in
-	 * detached-HEAD state.
+	 * Mutating: `git checkout [--force] [--detach] [-B <branch>] <ref>` — moves
+	 * the working tree (and, for a branch ref, `HEAD`) to `ref`. When `detach`
+	 * is true, checks out the ref in detached-HEAD state.
+	 *
+	 * @remarks
+	 * `options.force` discards local changes. `options.branch` creates or
+	 * resets that branch at `ref`, which becomes the start point; git rejects
+	 * it alongside `detach`, so the {@link Git} service refuses the pair.
 	 */
-	static readonly checkout = (ref: string, detach = false): GitInvocation =>
-		git(["checkout", ...(detach ? ["--detach"] : []), ref]);
+	static readonly checkout = (
+		ref: string,
+		detach = false,
+		options: { readonly force?: boolean; readonly branch?: string } = {},
+	): GitInvocation =>
+		git([
+			"checkout",
+			...(options.force ? ["--force"] : []),
+			...(detach ? ["--detach"] : []),
+			...(options.branch !== undefined ? ["-B", options.branch] : []),
+			ref,
+		]);
+
+	/**
+	 * Mutating:
+	 * `git [-c protocol.version=2] fetch [--no-tags] [--prune] [--no-recurse-submodules] [--filter=<f>] [--depth=<n> | --unshallow] <remote> <refspec>...`
+	 * — fetches several refspecs in one invocation, in the argv order
+	 * `actions/checkout` uses.
+	 *
+	 * @remarks
+	 * Refspecs pass through verbatim. `unshallow` and `depth` are exclusive
+	 * modes; when both are given `unshallow` wins. `remote` may be a URL; an
+	 * embedded `userinfo@` credential is masked in
+	 * {@link GitInvocation.redactedArgs}.
+	 */
+	static readonly fetchRefspecs = (
+		remote: string,
+		refspecs: ReadonlyArray<string>,
+		options: {
+			readonly depth?: number;
+			readonly unshallow?: boolean;
+			readonly filter?: string;
+			readonly noTags?: boolean;
+			readonly prune?: boolean;
+			readonly noRecurseSubmodules?: boolean;
+			readonly protocolVersion?: 2;
+		} = {},
+	): GitInvocation =>
+		git([
+			...(options.protocolVersion === 2 ? ["-c", "protocol.version=2"] : []),
+			"fetch",
+			...(options.noTags ? ["--no-tags"] : []),
+			...(options.prune ? ["--prune"] : []),
+			...(options.noRecurseSubmodules ? ["--no-recurse-submodules"] : []),
+			...(options.filter !== undefined ? [`--filter=${options.filter}`] : []),
+			...(options.unshallow ? ["--unshallow"] : options.depth !== undefined ? [`--depth=${options.depth}`] : []),
+			secretUrl(remote),
+			...refspecs,
+		]);
 
 	/**
 	 * Mutating: `git fetch [--depth <n>] [--unshallow] <remote> [tag] <ref>` —
@@ -447,11 +499,19 @@ export class GitCommand {
 	 * would hand the retry the same dirty tree. `-d` removes untracked
 	 * directories too; `-x` removes ignored files as well. The literal `--`
 	 * separator makes the optional pathspec injection-safe by construction.
+	 * `nested` repeats `--force`, which is what lets git remove untracked
+	 * nested repositories (`-ffdx`).
 	 */
-	static readonly clean = (directories = false, ignored = false, paths: ReadonlyArray<string> = []): GitInvocation =>
+	static readonly clean = (
+		directories = false,
+		ignored = false,
+		paths: ReadonlyArray<string> = [],
+		nested = false,
+	): GitInvocation =>
 		git([
 			"clean",
 			"--force",
+			...(nested ? ["--force"] : []),
 			...(directories ? ["-d"] : []),
 			...(ignored ? ["-x"] : []),
 			...(paths.length > 0 ? ["--", ...paths] : []),
@@ -514,10 +574,11 @@ export class GitCommand {
 	 * @remarks
 	 * The default `-d` refuses to delete a branch not fully merged — a typed
 	 * failure, which is usually the honest answer. `force: true` emits `-D`
-	 * and deletes regardless.
+	 * and deletes regardless. `remote` adds `-r` to delete a remote-tracking
+	 * branch (`origin/feat/x`) instead.
 	 */
-	static readonly branchDelete = (name: string, force = false): GitInvocation =>
-		git(["branch", force ? "-D" : "-d", name]);
+	static readonly branchDelete = (name: string, force = false, remote = false): GitInvocation =>
+		git(["branch", force ? "-D" : "-d", ...(remote ? ["-r"] : []), name]);
 
 	/**
 	 * Mutating:
@@ -548,9 +609,11 @@ export class GitCommand {
 			readonly fetch?: false;
 			readonly recursive?: boolean;
 			readonly force?: boolean;
+			readonly protocolVersion?: 2;
 		} = {},
 	): GitInvocation =>
 		git([
+			...(options.protocolVersion === 2 ? ["-c", "protocol.version=2"] : []),
 			"submodule",
 			"update",
 			...(init ? ["--init"] : []),
@@ -585,6 +648,42 @@ export class GitCommand {
 		git(["sparse-checkout", "set", cone ? "--cone" : "--no-cone", ...patterns]);
 
 	/**
+	 * Mutating: `git sparse-checkout disable` — restores every path to the working
+	 * tree and turns sparse checkout off.
+	 */
+	static readonly sparseCheckoutDisable = (): GitInvocation => git(["sparse-checkout", "disable"]);
+
+	/**
+	 * Mutating: `git lfs install [--local]` — installs the LFS filter and hooks,
+	 * into the repository's own config when `local` is true.
+	 */
+	static readonly lfsInstall = (local: boolean): GitInvocation =>
+		git(["lfs", "install", ...(local ? ["--local"] : [])]);
+
+	/**
+	 * Mutating: `git lfs fetch <remote> <ref>` — downloads the LFS objects `ref`
+	 * references into the local store. Network-touching.
+	 *
+	 * @remarks
+	 * An embedded `userinfo@` credential in `remote` is masked in
+	 * {@link GitInvocation.redactedArgs}.
+	 */
+	static readonly lfsFetch = (remote: string, ref: string): GitInvocation =>
+		git(["lfs", "fetch", secretUrl(remote), ref]);
+
+	/**
+	 * `git ls-remote --quiet --exit-code --symref <remote> <ref>` — reads where a
+	 * remote ref points. With `--exit-code`, git exits 2 when nothing matches.
+	 * Network-touching.
+	 *
+	 * @remarks
+	 * An embedded `userinfo@` credential in `remote` is masked in
+	 * {@link GitInvocation.redactedArgs}.
+	 */
+	static readonly lsRemoteSymref = (remote: string, ref: string): GitInvocation =>
+		git(["ls-remote", "--quiet", "--exit-code", "--symref", secretUrl(remote), ref]);
+
+	/**
 	 * Mutating: `git config [-f <file>] <key> <value>` — writes a configuration value,
 	 * optionally into an explicit configuration file (e.g., `.gitmodules`).
 	 *
@@ -597,6 +696,38 @@ export class GitCommand {
 	 */
 	static readonly configSet = (key: string, value: string, file?: string): GitInvocation =>
 		git(["config", ...(file !== undefined ? ["-f", file] : []), key, secretValue(value)]);
+
+	/**
+	 * Mutating: `git config [-f <file>] --add <key> <value>` — appends a value for a
+	 * multi-valued key without replacing the existing ones.
+	 *
+	 * @remarks
+	 * `value` is masked wholesale — as `<redacted>` — in
+	 * {@link GitInvocation.redactedArgs}, exactly as `configSet` does.
+	 */
+	static readonly configAdd = (key: string, value: string, file?: string): GitInvocation =>
+		git(["config", ...(file !== undefined ? ["-f", file] : []), "--add", key, secretValue(value)]);
+
+	/**
+	 * Mutating: `git init [--object-format=<f>] [--initial-branch=<b>] -- <path>` —
+	 * creates an empty repository at `path`. An `objectFormat` emits the flag
+	 * whenever it is set, `sha1` included: `GIT_DEFAULT_HASH` or
+	 * `init.defaultObjectFormat` can make git's own default `sha256`.
+	 */
+	static readonly init = (
+		path: string,
+		options?: { readonly objectFormat?: "sha1" | "sha256"; readonly initialBranch?: string },
+	): GitInvocation =>
+		git([
+			"init",
+			...(options?.objectFormat !== undefined ? [`--object-format=${options.objectFormat}`] : []),
+			...(options?.initialBranch !== undefined ? [`--initial-branch=${options.initialBranch}`] : []),
+			"--",
+			path,
+		]);
+
+	/** `git version` — prints the installed git's version line. */
+	static readonly version = (): GitInvocation => git(["version"]);
 
 	/**
 	 * Mutating: `git add -- <paths...>` — stages the given paths for commit. The literal

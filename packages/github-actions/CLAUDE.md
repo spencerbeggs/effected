@@ -26,6 +26,13 @@ what matches what you touch:
   `Action.run` (only ever lowers; opt out with `stepDebugLogLevel: false`)
   → `okf/modules/github-actions.md` §Observability — Load when: touching
   `Action.run`'s composition or why `Effect.logDebug` does or does not show.
+- The step log's rendering contract (phases, steps, quiet windows, live
+  output, result marks, `ActionLogger.command` and `recording`) →
+  `okf/interfaces/actions-step-log.md` — Load when: touching
+  `ActionLogger` or `internal/stepLog.ts`.
+- `Checkout` (the three credential lifetimes, `cleanup` in the post entry,
+  `fromInputs`) → `okf/modules/github-actions.md` §Checkout — Load when:
+  touching `Checkout.ts` or `internal/checkout/`.
 - Cache, artifacts, blob store, cache keys, tool and package-manager install
   → `okf/interfaces/actions-storage.md` — Load when: touching `ActionCache`,
   `Artifact`, `BlobStore*`, `CacheKey`, `ToolInstaller` or

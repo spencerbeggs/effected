@@ -221,6 +221,7 @@ describe("bundle reachability", () => {
 			"@effected/github-commands",
 			"effect",
 			"effect/http",
+			"effect/process",
 		]);
 	});
 

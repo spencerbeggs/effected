@@ -941,6 +941,9 @@ importers:
       '@effected/crypto':
         specifier: workspace:^
         version: link:../crypto
+      '@effected/git':
+        specifier: workspace:^
+        version: link:../git
       '@effected/github':
         specifier: workspace:^
         version: link:../github

@@ -212,8 +212,8 @@ const describeError = (error: unknown): string => {
  *
  * - **It does not wrap the program in a log buffer.** A buffer that swallowed
  *   the transcript on an unhandled defect would leave a run that failed and
- *   printed nothing. `ActionLogger.withBuffer` is opt-in and flushes on every
- *   exit path including a defect, so the buffering is where the caller can
+ *   printed nothing. `ActionLogger.step` is opt-in and writes its result line on
+ *   every exit path including a defect, so the holding is where the caller can
  *   see it.
  * - **It does not throw.** The returned promise always resolves; the failure is
  *   in `process.exitCode`, which is what the runner reads. An action entry

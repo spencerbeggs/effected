@@ -13,17 +13,19 @@ sources:
     resource: ../../packages/git/__test__/Git.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
+  at: 2026-11-20T22:40:26Z
 integrity:
   generated:
-    body: 067bc6f52b4db9bf
+    body: 69424d785a3207fd
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 0deac17569b8e42c
+    at: 2026-11-21T00:44:55Z
+    content: 3795ceac25baf3c8
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-21T00:44:55Z
 ---
 
 # The git ssh BatchMode pin is appended to what git would have used, and declines rather than substitutes
@@ -46,7 +48,8 @@ turns "prompts for a passphrase" into "cannot reach the remote at all".
 ## Decision
 
 Before a network-touching member spawns, `resolveSshEnv` walks git's full
-precedence order for **that `cwd`** — `GIT_SSH_COMMAND` from the
+precedence order for **that `cwd`** — a per-call `GIT_SSH_COMMAND` from
+`Git.withRunOptions`, else `GIT_SSH_COMMAND` from the
 environment, else `core.sshCommand` in that repository's config, else
 `GIT_SSH`, else plain `ssh` — and **appends** `-o BatchMode=yes` to the
 resolved command through `withBatchMode`. The result is `BASE_ENV` plus a
@@ -76,9 +79,10 @@ every network call because both are repository-local while one `Git`
 instance serves every `cwd`; each is skipped when its environment
 counterpart already decides, the two run concurrently, and they go
 through the plain (non-network) run path because routing them through the
-network path would recurse. And only the seven network-touching members
-pay any of it — `lsRemote`, `fetch`, `fetchUnshallow`, `push`, `pull`,
-`submoduleAdd`, `submoduleUpdate` — via `runForNetwork`; everything else
+network path would recurse. And only the ten network-touching members
+pay any of it — `lsRemote`, `remoteHead`, `fetch`, `fetchRefspecs`,
+`fetchUnshallow`, `push`, `pull`, `submoduleAdd`, `submoduleUpdate`,
+`lfsFetch` — via `runForNetwork`; everything else
 spawns with `BASE_ENV` alone, because a member that never invokes `ssh`
 has no business pinning an ssh command or paying the config read.
 
@@ -121,7 +125,9 @@ prevent.
 A network-touching member's worst-case latency is a multiple of
 `GIT_TIMEOUT`, not one instance of it — see [the latency
 limitation](../limitations/git-network-member-latency-multiple-of-timeout.md).
-A new network-touching member must route through `runForNetwork`, and a
+A per-call `GIT_SSH_COMMAND` (a deploy key and known-hosts file for one
+checkout) outranks the ambient one and is appended to like any other, and
+it needs no `core.sshCommand` read. A new network-touching member must route through `runForNetwork`, and a
 new non-network member must not. The unit harness's `withoutSshProbe`
 hides the config probes from `byArgs` so a member's own argv assertions
 stay about the member.[^git-unit-tests]

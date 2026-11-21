@@ -11,20 +11,20 @@ sources:
     resource: ../../packages/git/src/Git.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
+  at: 2026-11-20T22:40:26Z
 integrity:
   generated:
-    body: aad7fa63e446cd2d
+    body: 2558b15c06d43e5f
 ---
 
 # A network-touching Git member's worst-case latency is a multiple of GIT_TIMEOUT
 
 ## Condition
 
-A caller invokes one of the seven network-touching `Git` members
-(`lsRemote`, `fetch`, `fetchUnshallow`, `push`, `pull`, `submoduleAdd`,
-`submoduleUpdate`) and reasons about its worst case from the documented
-per-operation ceiling of 30 seconds.
+A caller invokes one of the ten network-touching `Git` members
+(`lsRemote`, `remoteHead`, `fetch`, `fetchRefspecs`, `fetchUnshallow`, `push`,
+`pull`, `submoduleAdd`, `submoduleUpdate`, `lfsFetch`) and reasons about its
+worst case from the documented per-operation ceiling of 30 seconds.
 
 ## Symptom
 
@@ -35,6 +35,11 @@ at the call's `cwd`, and each probe is a full `runFor` carrying its own
 `GIT_TIMEOUT` ceiling. A network member can therefore spend up to 30s
 probing before its own 30s run, and `fetchAny` — two fetch rounds — can
 double that again.[^git-service]
+
+The ceiling is scoped, not fixed: `Git.withRunOptions({ timeout })` replaces
+the per-run ceiling for every spawn in the wrapped effect, the probes
+included, so a caller whose fetch or LFS download needs longer raises it for
+that scope. The multiple still holds for whatever ceiling is in force.
 
 ## Why this is acceptable
 

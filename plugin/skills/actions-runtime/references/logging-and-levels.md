@@ -67,6 +67,7 @@ const installArgs = Effect.gen(function* () {
 });
 ```
 
-`ActionLogger.withBuffer` / `withStep` read the same flag: under step
-debugging they skip buffering and write live, because someone asking for
-verbose output wants it as it happens.
+`ActionLogger.step` reads the same flag: under step debugging every step's
+window is zero, so each one prints an opening line, streams its detail live and
+closes with its result line, because someone asking for verbose output wants it
+as it happens. An ambient `MinimumLogLevel` of `Debug` or lower does the same.

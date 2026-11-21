@@ -1,0 +1,7 @@
+# A test harness, not a package: it sits outside the workspace globs and is built only by the parity workflow.
+[action.build]
+# main and post run the action on import, with no GITHUB_ACTIONS guard to hold the load check back.
+importCheck = false
+
+[action.persistLocal]
+enabled = false

@@ -16,10 +16,10 @@ sources:
     resource: ../../packages/git/src/Git.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-09-22T01:21:07Z
+  at: 2026-11-20T20:10:50Z
 integrity:
   generated:
-    body: b0b5e2ad1cf8c2d5
+    body: 41a71d967e11c4ec
 ---
 
 # A GitCommand constructor carries no cwd and no environment
@@ -47,6 +47,11 @@ asserts `command.options.env` is `undefined` and no `cwd` is set for
 every constructor case, alongside the argv and redaction
 checks.[^git-command-tests] A pin that leaks back onto a constructor
 fails the suite at once.
+
+Scoped run options (`Git.withRunOptions`: env, config, timeout) arrive the
+same way: they are read from a `Context.Reference` inside `runClassified`
+and spread beneath the pins, so constructors still carry no environment and
+a run option can add a key but never undo a pin.[^git-service]
 
 ## What a refactor would have to break
 
