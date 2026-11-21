@@ -6,8 +6,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
+import { afterAll, afterEach, assert, beforeAll, describe, it } from "@effect/vitest";
 import { ConfigProvider, Effect, Layer, Option } from "effect";
+import { vi } from "vitest";
 import { Git } from "../../src/Git.js";
 
 const TestLayer = Git.layer.pipe(Layer.provideMerge(NodeServices.layer));
@@ -23,6 +24,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
 	await rm(root, { recursive: true, force: true });
+});
+
+afterEach(() => {
+	vi.unstubAllEnvs();
 });
 
 describe("Git.withRunOptions (real git)", () => {
@@ -50,28 +55,21 @@ describe("Git.withRunOptions (real git)", () => {
 	);
 
 	it("scoped config adds to an inherited GIT_CONFIG_COUNT rather than replacing it", async () => {
-		const saved = { ...process.env };
-		process.env.GIT_CONFIG_COUNT = "1";
-		process.env.GIT_CONFIG_KEY_0 = "x.ambient";
-		process.env.GIT_CONFIG_VALUE_0 = "ambient";
-		try {
-			const [ambient, scoped] = await Effect.runPromise(
-				Effect.gen(function* () {
-					const git = yield* Git;
-					return yield* Git.withRunOptions(
-						Effect.all([git.configGet(repo, "x.ambient"), git.configGet(repo, "x.scoped")]),
-						{ config: { "x.scoped": "scoped" } },
-					);
-					// A fresh env provider: the default one snapshots the environment on first use.
-				}).pipe(Effect.provide(TestLayer), Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv()))),
-			);
-			assert.deepStrictEqual([ambient, scoped], [Option.some("ambient"), Option.some("scoped")]);
-		} finally {
-			for (const key of ["GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"]) {
-				if (saved[key] === undefined) delete process.env[key];
-				else process.env[key] = saved[key];
-			}
-		}
+		// The ambient parent environment is the point here, so it is stubbed, and unstubbed in afterEach.
+		vi.stubEnv("GIT_CONFIG_COUNT", "1");
+		vi.stubEnv("GIT_CONFIG_KEY_0", "x.ambient");
+		vi.stubEnv("GIT_CONFIG_VALUE_0", "ambient");
+		const [ambient, scoped] = await Effect.runPromise(
+			Effect.gen(function* () {
+				const git = yield* Git;
+				return yield* Git.withRunOptions(
+					Effect.all([git.configGet(repo, "x.ambient"), git.configGet(repo, "x.scoped")]),
+					{ config: { "x.scoped": "scoped" } },
+				);
+				// A fresh env provider: the default one snapshots the environment on first use.
+			}).pipe(Effect.provide(TestLayer), Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv()))),
+		);
+		assert.deepStrictEqual([ambient, scoped], [Option.some("ambient"), Option.some("scoped")]);
 	});
 
 	it.effect("GIT_CONFIG_GLOBAL redirects which file the global scope reads", () =>

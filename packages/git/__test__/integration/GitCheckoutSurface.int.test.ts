@@ -26,10 +26,13 @@ const hasLfs = (() => {
 	}
 })();
 
-const run = <A, E>(effect: Effect.Effect<A, E, Git | ChildProcessSpawner.ChildProcessSpawner>) =>
-	effect.pipe(Effect.provide(TestLayer));
+// Keep host git config out of every spawn, the service's and the fixtures', so the assertions see only fixtures.
+const HOST_CONFIG = { GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } as const;
 
-const FIXTURE_ENV = { LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" } as const;
+const run = <A, E>(effect: Effect.Effect<A, E, Git | ChildProcessSpawner.ChildProcessSpawner>) =>
+	Git.withRunOptions(effect, { env: HOST_CONFIG }).pipe(Effect.provide(TestLayer));
+
+const FIXTURE_ENV = { LC_ALL: "C", GIT_TERMINAL_PROMPT: "0", ...HOST_CONFIG } as const;
 
 const runFixtureGit = (
 	cwd: string,
@@ -43,28 +46,6 @@ const runFixtureGit = (
 				: Effect.die(new Error(`fixture git ${args.join(" ")} failed (exit ${result.exitCode}): ${result.stderr}`)),
 		),
 	);
-
-// Keep host git config out of every spawn so the assertions see only fixtures.
-const HOST_CONFIG_KEYS = ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"] as const;
-const hostConfig = new Map<string, string | undefined>();
-
-beforeAll(() => {
-	for (const key of HOST_CONFIG_KEYS) {
-		hostConfig.set(key, process.env[key]);
-		process.env[key] = "/dev/null";
-	}
-});
-
-afterAll(() => {
-	for (const key of HOST_CONFIG_KEYS) {
-		const previous = hostConfig.get(key);
-		if (previous === undefined) {
-			delete process.env[key];
-		} else {
-			process.env[key] = previous;
-		}
-	}
-});
 
 describe("Git checkout surface — repository setup", () => {
 	let root: string;

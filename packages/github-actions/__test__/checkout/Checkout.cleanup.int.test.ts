@@ -20,18 +20,6 @@ import type { CheckoutOptions } from "../../src/Checkout.js";
 import { Checkout } from "../../src/Checkout.js";
 import { CheckoutApiClient, CheckoutRetry } from "../../src/internal/checkout/source.js";
 
-// git 2.38+ refuses a `file://` submodule remote unless the environment allows it. `Git` spawns over the
-// process environment, so this reaches every spawn in this file; it is restored when the file ends.
-let previousAllowProtocol: string | undefined;
-beforeAll(() => {
-	previousAllowProtocol = process.env.GIT_ALLOW_PROTOCOL;
-	process.env.GIT_ALLOW_PROTOCOL = "file";
-});
-afterAll(() => {
-	if (previousAllowProtocol === undefined) delete process.env.GIT_ALLOW_PROTOCOL;
-	else process.env.GIT_ALLOW_PROTOCOL = previousAllowProtocol;
-});
-
 const WINDOWS = process.platform === "win32";
 const TOKEN = "ghs_0123456789abcdefTOKEN";
 const FIXTURE_ENV = { ...process.env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0", GIT_ALLOW_PROTOCOL: "file" };
@@ -113,6 +101,15 @@ const workspace = async (): Promise<Workspace> => {
 	return w;
 };
 
+/**
+ * git 2.38+ refuses a `file://` submodule remote unless the environment allows it, so every git step under test runs
+ * with `GIT_ALLOW_PROTOCOL=file` through its run options, which reach each spawned git and its children.
+ */
+const provideFor =
+	(w: Workspace, state?: Layer.Layer<ActionState>) =>
+	<A, E, R>(effect: Effect.Effect<A, E, R>) =>
+		Git.withRunOptions(effect, { env: { GIT_ALLOW_PROTOCOL: "file" } }).pipe(Effect.provide(layerFor(w, state)));
+
 const layerFor = (w: Workspace, state?: Layer.Layer<ActionState>) =>
 	Layer.mergeAll(
 		Git.layer,
@@ -160,11 +157,11 @@ const base = (over: Partial<CheckoutOptions> = {}): CheckoutOptions => ({
 const checkout = (w: Workspace, options: CheckoutOptions) =>
 	Effect.scoped(Checkout.checkout(options)).pipe(
 		Effect.provideService(CheckoutRetry, Schedule.recurs(0)),
-		Effect.provide(layerFor(w)),
+		provideFor(w),
 	);
 
 const cleanup = (w: Workspace, options?: { readonly stateKey?: string }, state?: Layer.Layer<ActionState>) =>
-	Checkout.cleanup(options).pipe(Effect.provide(layerFor(w, state)));
+	Checkout.cleanup(options).pipe(provideFor(w, state));
 
 const gitConfig = async (dir: string): Promise<string> => readFile(join(dir, ".git", "config"), "utf8");
 const credentialFiles = async (w: Workspace) =>
@@ -261,7 +258,7 @@ describe("Checkout.cleanup", () => {
 			if (LogLevel.isGreaterThanOrEqualTo(entry.logLevel, "Warn")) warnings.push(String(entry.message));
 		});
 		// Inside the layer, whose silent ActionLogger installs no logger of its own.
-		await ok(Checkout.cleanup().pipe(Effect.provide(Logger.layer([capture])), Effect.provide(layerFor(w))));
+		await ok(Checkout.cleanup().pipe(Effect.provide(Logger.layer([capture])), provideFor(w)));
 		assert.deepStrictEqual(warnings, []);
 		assert.deepStrictEqual(await readdir(w.runnerTemp), []);
 	});
