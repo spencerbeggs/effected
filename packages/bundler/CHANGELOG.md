@@ -1,5 +1,15 @@
 # @effected/bundler
 
+## 0.7.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/changesets | dependency | updated | 0.6.1 | 0.6.2 |
+| @effected/env | dependency | updated | 0.12.0 | 0.12.0 |
+| @effected/workspaces | dependency | updated | 0.48.2 | 0.49.0 |
+
 ## 0.7.0
 
 ### Breaking Changes
