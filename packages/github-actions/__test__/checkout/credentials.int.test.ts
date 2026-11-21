@@ -345,17 +345,21 @@ describe("remove under a repository git may consider unsafe", () => {
 			const git = new Proxy(real, {
 				get: (target, key, receiver) => {
 					const member = Reflect.get(target, key, receiver);
-					return typeof member === "function"
-						? (...args: Array<unknown>) =>
-								Effect.andThen(
-									Effect.map(target.configList(f.runnerTemp, { scope: "global" }), (entries) => {
-										// Only git steps in the repository: the fresh config's own `-f` write runs in RUNNER_TEMP.
-										if (args[0] !== f.repo) return;
-										observed.push(entries.some((entry) => entry.key === "safe.directory" && entry.value === f.repo));
-									}),
+					if (typeof member !== "function") return member;
+					return (...args: Array<unknown>) =>
+						// Only git steps in the repository: the fresh config's own `-f` write runs in RUNNER_TEMP.
+						args[0] !== f.repo
+							? member(...args)
+							: Effect.andThen(
+									// A failed probe (no global config to read) records `false` and never stops the step.
+									Effect.map(
+										Effect.orElseSucceed(target.configList(f.runnerTemp, { scope: "global" }), () => []),
+										(entries) => {
+											observed.push(entries.some((entry) => entry.key === "safe.directory" && entry.value === f.repo));
+										},
+									),
 									member(...args),
-								)
-						: member;
+								);
 				},
 			}) as GitShape;
 			yield* remove(postRecord, git);

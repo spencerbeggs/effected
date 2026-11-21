@@ -4,6 +4,7 @@ import { Effect, Layer } from "effect";
 import { ChildProcess, CommandLine } from "effect/process";
 import { TestConsole } from "effect/testing";
 import { ActionEnvironment, ActionLogger } from "../src/index.js";
+import { commandLines } from "./helpers/runnerCommands.js";
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: the colour codes are exactly what is being stripped
 const SGR = /\x1b\[[0-9;]*m/g;
@@ -66,9 +67,11 @@ describe("ActionLogger.command", () => {
 			Effect.gen(function* () {
 				yield* ActionLogger.command(ChildProcess.make("node", ["-e", "console.log('::add-mask::secret')"]));
 				const captured = (yield* TestConsole.logLines).map(String);
-				assert.strictEqual(
-					captured.some((line) => line.startsWith("::")),
-					false,
+				assert.deepStrictEqual(commandLines(captured.join("\n")), [], JSON.stringify(captured));
+				// The line still prints, neutralized, rather than being dropped.
+				assert.isTrue(
+					captured.some((line) => line.includes("add-mask") && line.includes("secret")),
+					JSON.stringify(captured),
 				);
 			}),
 		),

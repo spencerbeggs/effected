@@ -53,6 +53,9 @@ const fixtureGit = (cwd: string, args: ReadonlyArray<string>): string =>
 			"protocol.file.allow=always",
 			"-c",
 			"init.defaultBranch=main",
+			// Some fixture steps run inside a bare repository, which `safe.bareRepository=explicit` refuses.
+			"-c",
+			"safe.bareRepository=all",
 			...args,
 		],
 		{ cwd, env: FIXTURE_ENV, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },

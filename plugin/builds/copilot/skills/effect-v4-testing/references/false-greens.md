@@ -701,8 +701,7 @@ runs.
 **Latches, not sleeps.** `it.effect` installs a virtual `TestClock`, so an
 `Effect.sleep` used to stage an interleaving hangs to the vitest timeout rather
 than interleaving. Three-way variants scale the same way — one latch per
-ordering constraint, each named for the constraint it enforces
-(`ActionLogger.test.ts:270-272` runs three).
+ordering constraint, each named for the constraint it enforces.
 
 ## A spy restored in `try`/`finally` inside `Effect.gen` LEAKS
 
