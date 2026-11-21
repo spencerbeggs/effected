@@ -7,7 +7,15 @@ import { ActionOutputs } from "../../../../src/ActionOutputs.js";
 import { ActionState } from "../../../../src/ActionState.js";
 import { Checkout } from "../../../../src/Checkout.js";
 import { CredentialRecord } from "../../../../src/internal/checkout/credentials.js";
-import { cleanSnapshot, credentialLeftovers, diff, diffClean, snapshot, tempLeftovers } from "./compare.js";
+import {
+	cleanSnapshot,
+	credentialLeftovers,
+	diff,
+	diffClean,
+	snapshot,
+	tempLeftovers,
+	withoutStockLeftovers,
+} from "./compare.js";
 import { RECORD_FILE, fromFile, teeing } from "./record.js";
 
 /** The state file the checkout step writes and the cleanup and compare-clean steps read. */
@@ -39,7 +47,8 @@ const cleanup = Effect.gen(function* () {
 
 /**
  * Both checkouts after their own cleanup, snapshotted and diffed. Any difference, and any credential config or
- * `RUNNER_TEMP` credential material either side left behind, fails the step. With `official-cleaned` false the stock
+ * `RUNNER_TEMP` credential material either side left behind, fails the step, except the submodule `insteadOf` values
+ * the stock post step is known to leave, which are set aside and listed in the summary. With `official-cleaned` false the stock
  * action's cleanup was not observed: only the kit's side is checked, against the clean shape, and only for the files
  * its record names.
  */
@@ -56,8 +65,11 @@ const compareClean = Effect.gen(function* () {
 
 	const b = yield* cleanSnapshot(kit, path.relative(workspace, kit));
 	const problems: Array<string> = [...credentialLeftovers("kit", b)];
+	let exempt: ReadonlyArray<string> = [];
 	if (observed) {
-		const a = yield* cleanSnapshot(official, path.relative(workspace, official));
+		const split = withoutStockLeftovers(yield* cleanSnapshot(official, path.relative(workspace, official)));
+		const a = split.held;
+		exempt = split.exempt;
 		problems.push(...diffClean(a, b), ...credentialLeftovers("official", a));
 		problems.push(...(yield* tempLeftovers(runnerTemp)).map((name) => `RUNNER_TEMP: left behind: ${name}`));
 	} else {
@@ -73,8 +85,14 @@ const compareClean = Effect.gen(function* () {
 	}
 
 	const scope = observed ? "the official and kit cleanups agree" : "the kit cleanup is clean (official not observed)";
+	// The stock leftover is reported, never failed, so a run shows what was set aside; a submodule case where the
+	// stock post step left none means it now removes them, and the exemption in `withoutStockLeftovers` can go.
+	const note =
+		exempt.length > 0
+			? `\nKnown stock leftovers, set aside (the kit removes them):\n\n${exempt.map((line) => `- \`${line}\``).join("\n")}\n`
+			: "";
 	if (problems.length === 0) {
-		yield* outputs.summary(`Parity after cleanup: ${scope}.\n`);
+		yield* outputs.summary(`Parity after cleanup: ${scope}.\n${note}`);
 		return;
 	}
 	yield* outputs.summary(`## Parity after cleanup failed\n\n${problems.map((line) => `- \`${line}\``).join("\n")}\n`);

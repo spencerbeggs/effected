@@ -160,6 +160,30 @@ export const cleanSnapshot = (
 		return { configs };
 	});
 
+/** A submodule's SSH-to-HTTPS rewrite: the stock post step never removes it, and the kit's cleanup does. */
+const SUBMODULE_INSTEADOF = /^url\.[^=]*\.insteadof=/i;
+
+/**
+ * Splits the stock action's cleaned-up snapshot into what it is held to and the one leftover it is known to leave: the
+ * `url.<origin>/.insteadOf` values it writes into each submodule's config, which its post step never unsets. The kit
+ * removes them, so the kit's snapshot is never split; every other leftover, on either side, still fails.
+ */
+export const withoutStockLeftovers = (
+	clean: CleanSnapshot,
+): { readonly held: CleanSnapshot; readonly exempt: ReadonlyArray<string> } => {
+	const configs: Record<string, ReadonlyArray<string>> = {};
+	const exempt: Array<string> = [];
+	for (const [repo, config] of Object.entries(clean.configs)) {
+		if (repo === ".") {
+			configs[repo] = config;
+			continue;
+		}
+		configs[repo] = config.filter((line) => !SUBMODULE_INSTEADOF.test(line));
+		for (const line of config) if (SUBMODULE_INSTEADOF.test(line)) exempt.push(`official ${repo}: ${line}`);
+	}
+	return { held: { configs }, exempt };
+};
+
 /** The credential config a cleaned-up checkout still holds, one line each, labelled with its repository. */
 export const credentialLeftovers = (label: string, clean: CleanSnapshot): ReadonlyArray<string> =>
 	Object.entries(clean.configs).flatMap(([repo, config]) =>

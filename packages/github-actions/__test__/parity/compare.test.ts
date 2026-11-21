@@ -12,7 +12,15 @@ import { MemoryFileSystem } from "@effected/memfs";
 import { Effect, FileSystem, Option } from "effect";
 import { ActionState } from "../../src/ActionState.js";
 import { CredentialRecord } from "../../src/internal/checkout/credentials.js";
-import { cleanSnapshot, credentialLeftovers, diff, diffClean, snapshot, tempLeftovers } from "./harness/src/compare.js";
+import {
+	cleanSnapshot,
+	credentialLeftovers,
+	diff,
+	diffClean,
+	snapshot,
+	tempLeftovers,
+	withoutStockLeftovers,
+} from "./harness/src/compare.js";
 import { fromFile, teeing } from "./harness/src/record.js";
 
 const ENV = { ...process.env, LC_ALL: "C", GIT_ALLOW_PROTOCOL: "file" };
@@ -210,6 +218,41 @@ describe("parity comparator after cleanup", () => {
 			assert.isTrue(lines.some((line) => line.startsWith("config lib: only in kit: url.")));
 			assert.isTrue(lines.some((line) => line.startsWith("config .: only in kit: includeif.")));
 		}).pipe(Effect.provide(NodeServices.layer)),
+	);
+
+	it.effect(
+		"sets aside only the submodule insteadOf values the stock post step leaves, and fails every other leftover",
+		() =>
+			Effect.gen(function* () {
+				const official = withSubmodule("stock-official");
+				const kit = withSubmodule("stock-kit");
+				for (const value of ["git@github.com:", "org-1@github.com:"]) {
+					git(join(official, "lib"), ["config", "--local", "--add", "url.https://github.com/.insteadOf", value]);
+				}
+				const b = yield* cleanSnapshot(kit);
+				const split = withoutStockLeftovers(yield* cleanSnapshot(official));
+				assert.deepStrictEqual(diffClean(split.held, b), []);
+				assert.deepStrictEqual(credentialLeftovers("official", split.held), []);
+				assert.deepStrictEqual(split.exempt, [
+					"official lib: url.https://github.com/.insteadof=git@github.com:",
+					"official lib: url.https://github.com/.insteadof=org-1@github.com:",
+				]);
+
+				// The same rewrite in the checkout itself, and any other credential key in a submodule, are not exempt.
+				git(official, ["config", "--local", "url.https://github.com/.insteadOf", "git@github.com:"]);
+				git(join(official, "lib"), ["config", "--local", "core.sshCommand", 'ssh -i "$RUNNER_TEMP/k"']);
+				const strict = withoutStockLeftovers(yield* cleanSnapshot(official));
+				const leftovers = credentialLeftovers("official", strict.held);
+				assert.strictEqual(leftovers.length, 2, JSON.stringify(leftovers));
+				assert.isTrue(leftovers.some((line) => line.startsWith("official .: url.https://github.com/.insteadof=")));
+				assert.isTrue(leftovers.some((line) => line.startsWith("official lib: core.sshcommand=")));
+				assert.strictEqual(strict.exempt.length, 2);
+				// The kit is never split: the same submodule rewrite on its side is a leftover.
+				git(join(kit, "lib"), ["config", "--local", "url.https://github.com/.insteadOf", "git@github.com:"]);
+				assert.isTrue(
+					credentialLeftovers("kit", yield* cleanSnapshot(kit)).some((line) => line.startsWith("kit lib: url.")),
+				);
+			}).pipe(Effect.provide(NodeServices.layer)),
 	);
 
 	it.effect("names a submodule only one side checked out", () =>
