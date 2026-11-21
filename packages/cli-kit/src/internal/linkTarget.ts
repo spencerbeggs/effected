@@ -1,5 +1,6 @@
-// A lone surrogate makes `encodeURIComponent` throw, so it becomes U+FFFD first.
-const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+import { String as Str } from "effect";
+
+// A lone surrogate makes `encodeURIComponent` throw, so `Str.toWellFormed` makes it U+FFFD first.
 
 /**
  * A Windows drive path (`C:\x`, `C:/x`): absolute whatever the `Path` flavour, so never resolved against a directory.
@@ -27,8 +28,7 @@ export const UNC = /^(?:\\\\|\/\/)/;
  * @internal
  */
 export const encodePath = (path: string): string =>
-	path
-		.replace(LONE_SURROGATE, "�")
+	Str.toWellFormed(path)
 		.split("/")
 		.map((segment) =>
 			encodeURIComponent(segment).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`),
@@ -57,4 +57,4 @@ export const fileUrlPath = (absolute: string): string | undefined => {
  * @internal
  */
 export const encodeForOsc8 = (url: string): string =>
-	url.replace(LONE_SURROGATE, "�").replace(/[^\x20-\x7e]/gu, (char) => encodeURIComponent(char));
+	Str.toWellFormed(url).replace(/[^\x20-\x7e]/gu, (char) => encodeURIComponent(char));

@@ -3,72 +3,72 @@ allowBuilds:
 autoInstallPeers: true
 catalogs:
   effected:
-    "@effect/ai-anthropic": 4.1.4
-    "@effect/ai-openai": 4.1.4
-    "@effect/ai-openai-compat": 4.1.4
-    "@effect/ai-openrouter": 4.1.4
-    "@effect/atom-react": 4.1.4
-    "@effect/atom-solid": 4.1.4
-    "@effect/atom-vue": 4.1.4
-    "@effect/openapi-generator": 4.1.4
-    "@effect/opentelemetry": 4.1.4
-    "@effect/platform-browser": 4.1.4
-    "@effect/platform-bun": 4.1.4
-    "@effect/platform-node": 4.1.4
-    "@effect/platform-node-shared": 4.1.4
-    "@effect/sql-clickhouse": 4.1.4
-    "@effect/sql-d1": 4.1.4
-    "@effect/sql-libsql": 4.1.4
-    "@effect/sql-mssql": 4.1.4
-    "@effect/sql-mysql2": 4.1.4
-    "@effect/sql-pg": 4.1.4
-    "@effect/sql-pglite": 4.1.4
-    "@effect/sql-sqlite-bun": 4.1.4
-    "@effect/sql-sqlite-do": 4.1.4
-    "@effect/sql-sqlite-node": 4.1.4
-    "@effect/sql-sqlite-react-native": 4.1.4
-    "@effect/sql-sqlite-wasm": 4.1.4
-    "@effect/tsgo": 0.67.7
-    "@effect/vitest": 4.1.4
-    "@effected/app": ^0.32.1
-    "@effected/bundler": ^0.4.1
-    "@effected/changesets": ^0.5.0
-    "@effected/cli": ^0.31.1
-    "@effected/cli-kit": ^0.28.2
-    "@effected/commands": ^0.21.0
-    "@effected/config-file": ^0.27.1
+    "@effect/ai-anthropic": 4.1.5
+    "@effect/ai-openai": 4.1.5
+    "@effect/ai-openai-compat": 4.1.5
+    "@effect/ai-openrouter": 4.1.5
+    "@effect/atom-react": 4.1.5
+    "@effect/atom-solid": 4.1.5
+    "@effect/atom-vue": 4.1.5
+    "@effect/openapi-generator": 4.1.5
+    "@effect/opentelemetry": 4.1.5
+    "@effect/platform-browser": 4.1.5
+    "@effect/platform-bun": 4.1.5
+    "@effect/platform-node": 4.1.5
+    "@effect/platform-node-shared": 4.1.5
+    "@effect/sql-clickhouse": 4.1.5
+    "@effect/sql-d1": 4.1.5
+    "@effect/sql-libsql": 4.1.5
+    "@effect/sql-mssql": 4.1.5
+    "@effect/sql-mysql2": 4.1.5
+    "@effect/sql-pg": 4.1.5
+    "@effect/sql-pglite": 4.1.5
+    "@effect/sql-sqlite-bun": 4.1.5
+    "@effect/sql-sqlite-do": 4.1.5
+    "@effect/sql-sqlite-node": 4.1.5
+    "@effect/sql-sqlite-react-native": 4.1.5
+    "@effect/sql-sqlite-wasm": 4.1.5
+    "@effect/tsgo": 0.73.2
+    "@effect/vitest": 4.1.5
+    "@effected/app": ^0.34.0
+    "@effected/bundler": ^0.7.0
+    "@effected/changesets": ^0.6.1
+    "@effected/cli": ^0.33.0
+    "@effected/cli-kit": ^0.30.1
+    "@effected/commands": ^0.22.0
+    "@effected/config-file": ^0.29.0
     "@effected/crypto": ^0.7.0
-    "@effected/engine": ^0.17.1
+    "@effected/engine": ^0.20.0
     "@effected/env": ^0.12.0
     "@effected/files": ^0.3.0
-    "@effected/git": ^0.32.0
-    "@effected/github": ^0.32.1
-    "@effected/github-actions": ^0.33.1
+    "@effected/git": ^0.33.0
+    "@effected/github": ^0.33.0
+    "@effected/github-actions": ^0.36.0
     "@effected/github-commands": ^0.10.0
     "@effected/github-references": ^0.15.0
-    "@effected/glob": ^0.21.0
+    "@effected/glob": ^0.23.0
     "@effected/images": ^0.10.0
     "@effected/jsonc": ^0.25.0
     "@effected/jsonl": ^0.19.0
     "@effected/jwt": ^0.10.0
     "@effected/kit": ^0.14.0
-    "@effected/lockfiles": ^0.24.1
+    "@effected/lockfiles": ^0.27.0
     "@effected/lsp": ^0.9.0
     "@effected/manifest": ^0.2.0
     "@effected/markdown": ^0.29.0
     "@effected/markdown-lint": ^0.2.0
-    "@effected/mcp": ^0.18.1
-    "@effected/mcp-kit": ^0.15.0
-    "@effected/memfs": ^0.26.1
-    "@effected/npm": ^0.34.0
+    "@effected/mcp": ^0.19.0
+    "@effected/mcp-kit": ^0.15.1
+    "@effected/memfs": ^0.26.2
+    "@effected/npm": ^0.35.1
     "@effected/oidc": ^0.5.0
-    "@effected/package-json": ^0.32.1
-    "@effected/plugin": ^0.5.2
-    "@effected/runtimes": ^0.19.0
+    "@effected/package-json": ^0.32.2
+    "@effected/plugin": ^0.6.5
+    "@effected/runtimes": ^0.19.3
     "@effected/s3": ^0.2.0
     "@effected/sbom": ^0.21.0
     "@effected/schema-org": ^0.15.0
-    "@effected/schemastore": ^0.32.0
+    "@effected/schemastore": ^0.33.1
     "@effected/semver": ^0.24.0
     "@effected/shell": ^0.3.0
     "@effected/source": ^0.5.0
@@ -76,13 +76,20 @@ catalogs:
     "@effected/store": ^0.25.0
     "@effected/templates": ^0.20.0
     "@effected/toml": ^0.20.0
-    "@effected/tsconfig-json": ^0.21.1
-    "@effected/walker": ^0.28.0
+    "@effected/tsconfig-json": ^0.23.0
+    "@effected/walker": ^0.30.0
     "@effected/webhooks": ^0.6.0
-    "@effected/workspaces": ^0.47.0
-    "@effected/xdg": ^0.20.1
+    "@effected/workspaces": ^0.48.2
+    "@effected/xdg": ^0.22.0
     "@effected/yaml": ^0.30.0
-    effect: 4.1.4
+    effect: 4.1.5
+    "@effected/bun": ^0.1.0
+    "@effected/pnpm": ^0.1.1
+    "@effect/chat-discord": 4.1.5
+    "@effect/chat-slack": 4.1.5
+    "@effect/chat-teams": 4.1.5
+    "@effect/chat-telegram": 4.1.5
+    "@effect/chat-whatsapp": 4.1.5
   effected:build:
     "@microsoft/api-extractor": ^7.60.1
     "@microsoft/api-extractor-model": ^7.33.16
@@ -145,47 +152,47 @@ catalogs:
     "@effect/sql-sqlite-node": ~4.1.0
     "@effect/sql-sqlite-react-native": ~4.1.0
     "@effect/sql-sqlite-wasm": ~4.1.0
-    "@effect/tsgo": ^0.67.0
+    "@effect/tsgo": ^0.73.0
     "@effect/vitest": ~4.1.0
-    "@effected/app": ^0.32.0
-    "@effected/bundler": ^0.4.0
-    "@effected/changesets": ^0.5.0
-    "@effected/cli": ^0.31.0
-    "@effected/cli-kit": ^0.28.0
-    "@effected/commands": ^0.21.0
-    "@effected/config-file": ^0.27.0
+    "@effected/app": ^0.34.0
+    "@effected/bundler": ^0.7.0
+    "@effected/changesets": ^0.6.0
+    "@effected/cli": ^0.33.0
+    "@effected/cli-kit": ^0.30.0
+    "@effected/commands": ^0.22.0
+    "@effected/config-file": ^0.29.0
     "@effected/crypto": ^0.7.0
-    "@effected/engine": ^0.17.0
+    "@effected/engine": ^0.20.0
     "@effected/env": ^0.12.0
     "@effected/files": ^0.3.0
-    "@effected/git": ^0.32.0
-    "@effected/github": ^0.32.0
-    "@effected/github-actions": ^0.33.0
+    "@effected/git": ^0.33.0
+    "@effected/github": ^0.33.0
+    "@effected/github-actions": ^0.36.0
     "@effected/github-commands": ^0.10.0
     "@effected/github-references": ^0.15.0
-    "@effected/glob": ^0.21.0
+    "@effected/glob": ^0.23.0
     "@effected/images": ^0.10.0
     "@effected/jsonc": ^0.25.0
     "@effected/jsonl": ^0.19.0
     "@effected/jwt": ^0.10.0
     "@effected/kit": ^0.14.0
-    "@effected/lockfiles": ^0.24.0
+    "@effected/lockfiles": ^0.27.0
     "@effected/lsp": ^0.9.0
     "@effected/manifest": ^0.2.0
     "@effected/markdown": ^0.29.0
     "@effected/markdown-lint": ^0.2.0
-    "@effected/mcp": ^0.18.0
+    "@effected/mcp": ^0.19.0
     "@effected/mcp-kit": ^0.15.0
     "@effected/memfs": ^0.26.0
-    "@effected/npm": ^0.34.0
+    "@effected/npm": ^0.35.0
     "@effected/oidc": ^0.5.0
     "@effected/package-json": ^0.32.0
-    "@effected/plugin": ^0.5.0
+    "@effected/plugin": ^0.6.0
     "@effected/runtimes": ^0.19.0
     "@effected/s3": ^0.2.0
     "@effected/sbom": ^0.21.0
     "@effected/schema-org": ^0.15.0
-    "@effected/schemastore": ^0.32.0
+    "@effected/schemastore": ^0.33.0
     "@effected/semver": ^0.24.0
     "@effected/shell": ^0.3.0
     "@effected/source": ^0.5.0
@@ -193,80 +200,87 @@ catalogs:
     "@effected/store": ^0.25.0
     "@effected/templates": ^0.20.0
     "@effected/toml": ^0.20.0
-    "@effected/tsconfig-json": ^0.21.0
-    "@effected/walker": ^0.28.0
+    "@effected/tsconfig-json": ^0.23.0
+    "@effected/walker": ^0.30.0
     "@effected/webhooks": ^0.6.0
-    "@effected/workspaces": ^0.47.0
-    "@effected/xdg": ^0.20.0
+    "@effected/workspaces": ^0.48.0
+    "@effected/xdg": ^0.22.0
     "@effected/yaml": ^0.30.0
     effect: ~4.1.0
+    "@effected/bun": ^0.1.0
+    "@effected/pnpm": ^0.1.0
+    "@effect/chat-discord": ~4.1.0
+    "@effect/chat-slack": ~4.1.0
+    "@effect/chat-teams": ~4.1.0
+    "@effect/chat-telegram": ~4.1.0
+    "@effect/chat-whatsapp": ~4.1.0
   effected:exact:
-    "@effect/ai-anthropic": 4.1.4
-    "@effect/ai-openai": 4.1.4
-    "@effect/ai-openai-compat": 4.1.4
-    "@effect/ai-openrouter": 4.1.4
-    "@effect/atom-react": 4.1.4
-    "@effect/atom-solid": 4.1.4
-    "@effect/atom-vue": 4.1.4
-    "@effect/openapi-generator": 4.1.4
-    "@effect/opentelemetry": 4.1.4
-    "@effect/platform-browser": 4.1.4
-    "@effect/platform-bun": 4.1.4
-    "@effect/platform-node": 4.1.4
-    "@effect/platform-node-shared": 4.1.4
-    "@effect/sql-clickhouse": 4.1.4
-    "@effect/sql-d1": 4.1.4
-    "@effect/sql-libsql": 4.1.4
-    "@effect/sql-mssql": 4.1.4
-    "@effect/sql-mysql2": 4.1.4
-    "@effect/sql-pg": 4.1.4
-    "@effect/sql-pglite": 4.1.4
-    "@effect/sql-sqlite-bun": 4.1.4
-    "@effect/sql-sqlite-do": 4.1.4
-    "@effect/sql-sqlite-node": 4.1.4
-    "@effect/sql-sqlite-react-native": 4.1.4
-    "@effect/sql-sqlite-wasm": 4.1.4
-    "@effect/tsgo": 0.67.7
-    "@effect/vitest": 4.1.4
-    "@effected/app": 0.32.1
-    "@effected/bundler": 0.4.1
-    "@effected/changesets": 0.5.0
-    "@effected/cli": 0.31.1
-    "@effected/cli-kit": 0.28.2
-    "@effected/commands": 0.21.0
-    "@effected/config-file": 0.27.1
+    "@effect/ai-anthropic": 4.1.5
+    "@effect/ai-openai": 4.1.5
+    "@effect/ai-openai-compat": 4.1.5
+    "@effect/ai-openrouter": 4.1.5
+    "@effect/atom-react": 4.1.5
+    "@effect/atom-solid": 4.1.5
+    "@effect/atom-vue": 4.1.5
+    "@effect/openapi-generator": 4.1.5
+    "@effect/opentelemetry": 4.1.5
+    "@effect/platform-browser": 4.1.5
+    "@effect/platform-bun": 4.1.5
+    "@effect/platform-node": 4.1.5
+    "@effect/platform-node-shared": 4.1.5
+    "@effect/sql-clickhouse": 4.1.5
+    "@effect/sql-d1": 4.1.5
+    "@effect/sql-libsql": 4.1.5
+    "@effect/sql-mssql": 4.1.5
+    "@effect/sql-mysql2": 4.1.5
+    "@effect/sql-pg": 4.1.5
+    "@effect/sql-pglite": 4.1.5
+    "@effect/sql-sqlite-bun": 4.1.5
+    "@effect/sql-sqlite-do": 4.1.5
+    "@effect/sql-sqlite-node": 4.1.5
+    "@effect/sql-sqlite-react-native": 4.1.5
+    "@effect/sql-sqlite-wasm": 4.1.5
+    "@effect/tsgo": 0.73.2
+    "@effect/vitest": 4.1.5
+    "@effected/app": 0.34.0
+    "@effected/bundler": 0.7.0
+    "@effected/changesets": 0.6.1
+    "@effected/cli": 0.33.0
+    "@effected/cli-kit": 0.30.1
+    "@effected/commands": 0.22.0
+    "@effected/config-file": 0.29.0
     "@effected/crypto": 0.7.0
-    "@effected/engine": 0.17.1
+    "@effected/engine": 0.20.0
     "@effected/env": 0.12.0
     "@effected/files": 0.3.0
-    "@effected/git": 0.32.0
-    "@effected/github": 0.32.1
-    "@effected/github-actions": 0.33.1
+    "@effected/git": 0.33.0
+    "@effected/github": 0.33.0
+    "@effected/github-actions": 0.36.0
     "@effected/github-commands": 0.10.0
     "@effected/github-references": 0.15.0
-    "@effected/glob": 0.21.0
+    "@effected/glob": 0.23.0
     "@effected/images": 0.10.0
     "@effected/jsonc": 0.25.0
     "@effected/jsonl": 0.19.0
     "@effected/jwt": 0.10.0
     "@effected/kit": 0.14.0
-    "@effected/lockfiles": 0.24.1
+    "@effected/lockfiles": 0.27.0
     "@effected/lsp": 0.9.0
     "@effected/manifest": 0.2.0
     "@effected/markdown": 0.29.0
     "@effected/markdown-lint": 0.2.0
-    "@effected/mcp": 0.18.1
-    "@effected/mcp-kit": 0.15.0
-    "@effected/memfs": 0.26.1
-    "@effected/npm": 0.34.0
+    "@effected/mcp": 0.19.0
+    "@effected/mcp-kit": 0.15.1
+    "@effected/memfs": 0.26.2
+    "@effected/npm": 0.35.1
     "@effected/oidc": 0.5.0
-    "@effected/package-json": 0.32.1
-    "@effected/plugin": 0.5.2
-    "@effected/runtimes": 0.19.0
+    "@effected/package-json": 0.32.2
+    "@effected/plugin": 0.6.5
+    "@effected/runtimes": 0.19.3
     "@effected/s3": 0.2.0
     "@effected/sbom": 0.21.0
     "@effected/schema-org": 0.15.0
-    "@effected/schemastore": 0.32.0
+    "@effected/schemastore": 0.33.1
     "@effected/semver": 0.24.0
     "@effected/shell": 0.3.0
     "@effected/source": 0.5.0
@@ -274,13 +288,20 @@ catalogs:
     "@effected/store": 0.25.0
     "@effected/templates": 0.20.0
     "@effected/toml": 0.20.0
-    "@effected/tsconfig-json": 0.21.1
-    "@effected/walker": 0.28.0
+    "@effected/tsconfig-json": 0.23.0
+    "@effected/walker": 0.30.0
     "@effected/webhooks": 0.6.0
-    "@effected/workspaces": 0.47.0
-    "@effected/xdg": 0.20.1
+    "@effected/workspaces": 0.48.2
+    "@effected/xdg": 0.22.0
     "@effected/yaml": 0.30.0
-    effect: 4.1.4
+    effect: 4.1.5
+    "@effected/bun": 0.1.0
+    "@effected/pnpm": 0.1.1
+    "@effect/chat-discord": 4.1.5
+    "@effect/chat-slack": 4.1.5
+    "@effect/chat-teams": 4.1.5
+    "@effect/chat-telegram": 4.1.5
+    "@effect/chat-whatsapp": 4.1.5
 configDependencies:
   "@savvy-web/pnpm-plugin-silk": 0.54.1
 loglevel: info
@@ -309,36 +330,41 @@ minimumReleaseAgeExclude:
   - ink
 nodeOptions: --import=tsx
 overrides:
-  "@effect/ai-anthropic@^4.0.0": 4.1.4
-  "@effect/ai-openai-compat@^4.0.0": 4.1.4
-  "@effect/ai-openai@^4.0.0": 4.1.4
-  "@effect/ai-openrouter@^4.0.0": 4.1.4
-  "@effect/atom-react@^4.0.0": 4.1.4
-  "@effect/atom-solid@^4.0.0": 4.1.4
-  "@effect/atom-vue@^4.0.0": 4.1.4
-  "@effect/openapi-generator@^4.0.0": 4.1.4
-  "@effect/opentelemetry@^4.0.0": 4.1.4
-  "@effect/platform-browser@^4.0.0": 4.1.4
-  "@effect/platform-bun@^4.0.0": 4.1.4
-  "@effect/platform-node-shared@^4.0.0": 4.1.4
+  "@effect/ai-anthropic@^4.0.0": 4.1.5
+  "@effect/ai-openai-compat@^4.0.0": 4.1.5
+  "@effect/ai-openai@^4.0.0": 4.1.5
+  "@effect/ai-openrouter@^4.0.0": 4.1.5
+  "@effect/atom-react@^4.0.0": 4.1.5
+  "@effect/atom-solid@^4.0.0": 4.1.5
+  "@effect/atom-vue@^4.0.0": 4.1.5
+  "@effect/openapi-generator@^4.0.0": 4.1.5
+  "@effect/opentelemetry@^4.0.0": 4.1.5
+  "@effect/platform-browser@^4.0.0": 4.1.5
+  "@effect/platform-bun@^4.0.0": 4.1.5
+  "@effect/platform-node-shared@^4.0.0": 4.1.5
   "@effect/platform-node@4.0.0-rc.117>@effect/platform-node-shared": 4.0.0-rc.117
   "@effect/platform-node@4.0.0-rc.118>@effect/platform-node-shared": 4.0.0-rc.118
-  "@effect/platform-node@^4.0.0": 4.1.4
-  "@effect/sql-clickhouse@^4.0.0": 4.1.4
-  "@effect/sql-d1@^4.0.0": 4.1.4
-  "@effect/sql-libsql@^4.0.0": 4.1.4
-  "@effect/sql-mssql@^4.0.0": 4.1.4
-  "@effect/sql-mysql2@^4.0.0": 4.1.4
-  "@effect/sql-pg@^4.0.0": 4.1.4
-  "@effect/sql-pglite@^4.0.0": 4.1.4
-  "@effect/sql-sqlite-bun@^4.0.0": 4.1.4
-  "@effect/sql-sqlite-do@^4.0.0": 4.1.4
-  "@effect/sql-sqlite-node@^4.0.0": 4.1.4
-  "@effect/sql-sqlite-react-native@^4.0.0": 4.1.4
-  "@effect/sql-sqlite-wasm@^4.0.0": 4.1.4
-  "@effect/vitest@^4.0.0": 4.1.4
-  effect@^4.0.0: 4.1.4
-  "@effect/tsgo@^0.67.0": 0.67.7
+  "@effect/platform-node@^4.0.0": 4.1.5
+  "@effect/sql-clickhouse@^4.0.0": 4.1.5
+  "@effect/sql-d1@^4.0.0": 4.1.5
+  "@effect/sql-libsql@^4.0.0": 4.1.5
+  "@effect/sql-mssql@^4.0.0": 4.1.5
+  "@effect/sql-mysql2@^4.0.0": 4.1.5
+  "@effect/sql-pg@^4.0.0": 4.1.5
+  "@effect/sql-pglite@^4.0.0": 4.1.5
+  "@effect/sql-sqlite-bun@^4.0.0": 4.1.5
+  "@effect/sql-sqlite-do@^4.0.0": 4.1.5
+  "@effect/sql-sqlite-node@^4.0.0": 4.1.5
+  "@effect/sql-sqlite-react-native@^4.0.0": 4.1.5
+  "@effect/sql-sqlite-wasm@^4.0.0": 4.1.5
+  "@effect/vitest@^4.0.0": 4.1.5
+  effect@^4.0.0: 4.1.5
+  "@effect/tsgo@^0.73.0": 0.73.2
+  "@effect/chat-discord@^4.0.0": 4.1.5
+  "@effect/chat-slack@^4.0.0": 4.1.5
+  "@effect/chat-teams@^4.0.0": 4.1.5
+  "@effect/chat-telegram@^4.0.0": 4.1.5
+  "@effect/chat-whatsapp@^4.0.0": 4.1.5
 packages:
   - packages/*
   - plugin

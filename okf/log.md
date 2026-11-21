@@ -9,6 +9,8 @@
 * Updated github-actions
 * Updated The git ssh BatchMode pin is appended to what git would have used, and declines rather than substitutes
 * Updated actions-runtime
+* Updated @effected/mcp-kit
+* Updated @effected/source
 
 ## 2026-11-20
 

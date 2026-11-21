@@ -87,7 +87,7 @@ member) so the instance type advertises it.
 `MakeOptions.disableChecks` reads like an escape hatch from validation. Its
 docstrings say what it really does — "skip filters and checks while still
 parsing types and structure" (`Schema.ts:137`) and "skips filters and checks,
-not parsing of types and structure" (`Schema.ts:17721`) — but the name still
+not parsing of types and structure" (`Schema.ts:17739`) — but the name still
 reads as a validation switch, and the
 vendored cluster code leans on it as the trusted-construction idiom
 (`cluster/EntityAddress.ts:100`, `RunnerAddress.ts:121`, `Runner.ts:140`),
@@ -129,7 +129,7 @@ If you do keep such a bypass, two corrections to the naive recipe:
 
 - **`Data.Class`'s constructor is not `Object.assign`.** At `Data.ts:50-58`
   it is `super(); InternalRecord.assignProperties(this, props)`, and
-  `assignProperties` (`internal/record.ts:16`) copies own enumerable keys
+  `assignProperties` (`internal/record.ts:33`) copies own enumerable keys
   *but defines `__proto__` as a plain data property* instead of invoking the
   prototype setter. A raw `Object.assign` bypass is therefore **not** an
   exact reproduction: it is a prototype-pollution hole on attacker-shaped
@@ -194,7 +194,7 @@ Three distinct tools — pick by intent:
   ```
 
 - **Inline predicates** → `Schema.check(Schema.makeFilter(pred))`
-  (`Schema.ts:6804`). `makeFilter`'s return shape is rich —
+  (`Schema.ts:6816`). `makeFilter`'s return shape is rich —
   this is the tool for cross-field validation:
 
   | return | meaning |
@@ -478,15 +478,16 @@ fields must be `Equal.equals` AND have identical `Hash.hash`.
 - **`isPattern` regexes: no lookaround, no `i`/`m`/`v` flags, and always
   the `u` flag.** The native regexp compiler cannot take
   lookahead/lookbehind, backreferences or the `i`/`m`/`v` flags
-  (`internal/arbitrary/regexp.ts:344,350,832`); it does not throw — the
+  (`internal/arbitrary/regexp.ts:345,351,833`); it does not throw — the
   pattern is **silently dropped** from constructive generation and left as a
   residual filter over random strings, which exhausts (`SampleError` /
   `Exhausted`) for any selective pattern: `/^(?=.*[0-9])[a-f0-9]{8}$/u`
-  and `/^[a-f]{8}$/iu` both die with `discards: 201`; the lookaround-free
+  and `/^[a-f]{8}$/iu` both die with `discards: 201`, the error's
+  `diagnostics` naming each dropped pattern (`UnsupportedPattern`); the lookaround-free
   `/^[a-f]{8}$/u` control generates. `u` is the flag the compiler supports
-  (`regexp.ts:835` generates full code points under it), and it is the flag
+  (`regexp.ts:836` generates full code points under it), and it is the flag
   JSON Schema export requires: `isPattern` exports `pattern` only when the
-  flags match `/^[dg]*uy?$/` (`Schema.ts:6938`), so
+  flags match `/^[dg]*uy?$/` (`Schema.ts:6950`), so
   `Schema.String.check(Schema.isPattern(/^[a-z]+$/))` exports as a bare
   `{"type":"string"}` while decoding still enforces the regex. Rewrite
   `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/u`

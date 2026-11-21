@@ -4,6 +4,7 @@ import { MemoryFileSystem } from "@effected/memfs";
 import { ConfigProvider, Effect, Layer, Logger, Option, Path } from "effect";
 import type { CliLinksShape, EditorLinks, LinkTarget } from "../src/index.js";
 import { CliLinks, Doc, Render } from "../src/index.js";
+import { fileUrlPath } from "../src/internal/linkTarget.js";
 import { contextOf } from "./helpers/renderContext.js";
 
 const ESC = String.fromCharCode(0x1b);
@@ -156,6 +157,18 @@ describe("CliLinks.linker writes a URL as OSC 8 wants it: bytes outside 32 to 12
 		assert.strictEqual(out.split(ESC).length - 1, 4, "exactly the two OSC 8 pairs' own escapes");
 		for (const byte of out.slice(OSC_OPEN.length, out.indexOf(ST)))
 			assert.isTrue(byte.charCodeAt(0) >= 32 && byte.charCodeAt(0) <= 126);
+	});
+
+	it("a lone surrogate of either half becomes U+FFFD, and a surrogate pair is kept whole", () => {
+		assert.strictEqual(urlOf(write("https://x.test/a\uD800b")), "https://x.test/a%EF%BF%BDb");
+		assert.strictEqual(urlOf(write("https://x.test/a\uDC00b")), "https://x.test/a%EF%BF%BDb");
+		assert.strictEqual(urlOf(write("https://x.test/\uDE00\uD83D")), "https://x.test/%EF%BF%BD%EF%BF%BD");
+		assert.strictEqual(urlOf(write("https://x.test/\uD83D\uDE00")), "https://x.test/%F0%9F%98%80");
+	});
+
+	it("a file URL path makes a lone surrogate U+FFFD per segment and keeps a pair whole", () => {
+		assert.strictEqual(fileUrlPath("/repo/a\uD800/b\uD83D\uDE00.ts"), "/repo/a%EF%BF%BD/b%F0%9F%98%80.ts");
+		assert.strictEqual(fileUrlPath("C:\\x\\\uDC00.ts"), "/C:/x/%EF%BF%BD.ts");
 	});
 
 	it("every character it writes between the escapes is printable ASCII", () => {

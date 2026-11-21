@@ -9,8 +9,8 @@ Checked against the pinned Effect source. `SchemaRepresentation.fromAST`, `fromA
 `toSchemaDefaultReviver`, `DocumentFromJson` and `MultiDocumentFromJson` are not exported. The surface
 is `Schema.toRepresentation` / `SchemaRepresentation.toRepresentation` (+ `toRepresentations`),
 `toJson` / `fromJson`, `fromRepresentation` / `fromRepresentations` with explicit revivers, and
-`toJsonSchemaDocument` / `toCodeDocument`. NOT PROBED: the code-generation and JSON Schema
-compilation output blobs.
+`toJsonSchemaDocument`; source generation lives in `Codegen.Module` (`addSchemas` + `print`, probed).
+NOT PROBED: the JSON Schema compilation output blobs.
 -->
 
 # Schema Representation
@@ -52,7 +52,7 @@ At a high level:
 - `toJson` / `fromJson` cross the persistence boundary
 - `fromRepresentation` / `fromRepresentations` rebuild runtime schemas using explicit revivers
 - `toJsonSchemaDocument` compiles a live `Document` to JSON Schema Draft 2020-12
-- `toCodeDocument` compiles a live `MultiDocument` to runtime and TypeScript source fragments
+- `Codegen.Module`'s `addSchemas` and `print` turn representations into a TypeScript module
 
 ```mermaid
 flowchart TD
@@ -64,7 +64,7 @@ flowchart TD
     LD -->|toJsonSchemaDocument|JD["JsonSchema.Document (draft-2020-12)"]
     JD -->|fromJsonSchemaDocument|S
     LD -->|toMultiDocument|LMD["live MultiDocument"]
-    LMD -->|toCodeDocument|CodeDocument
+    LD -->|"Codegen.Module.addSchemas + print"|SRC["TypeScript source"]
     LMD -->|toJsonSchemaMultiDocument|JMD[JsonSchema.MultiDocument]
     LMD -->|toJsonMultiDocument|JSON
 ```
@@ -334,18 +334,44 @@ and `additionalProperties`, because matching keys cannot be determined without e
 
 ## Code generation
 
-### `toCodeDocument`
+### `Codegen.Module`
 
-`toCodeDocument` compiles a live `MultiDocument` into runtime and TypeScript source fragments. It:
+Schema source is generated with the experimental `Codegen.Module` builder from `effect/Codegen`.
+`SchemaRepresentation` carries no code path of its own: there is no `toCodeDocument`, `CodeDocument`,
+`Artifact` or `makeCode`.
 
-- returns one `Code` value for each root
-- sorts non-recursive references in dependency order
-- keeps recursive references separate so callers can emit `Schema.suspend`
-- sanitizes reference names into valid JavaScript identifiers
-- collects symbol, enum, and import artifacts
-- omits an annotation whose value is, or contains, an object it cannot write as a literal (a `Map`, `Set`, `Date`,
-  typed array or class instance), and writes null-prototype and other-realm plain objects as ordinary literals
+```ts
+import { Codegen, Schema, SchemaRepresentation } from "effect"
 
-Opaque declarations and checks provide code through their `toCode` callbacks. `toCodeDocument` does not accept a
-reviver option. To generate code from persisted JSON, first reconstruct the schemas with `fromRepresentation` or
-`fromRepresentations`, then create a new live representation so the revivers can restore the callbacks.
+const User = Schema.Struct({ name: Schema.String, age: Schema.optionalKey(Schema.Number) }).annotate({
+  identifier: "User"
+})
+const document = SchemaRepresentation.toRepresentation(User.ast)
+
+const module = new Codegen.Module()
+const schemas = module.addSchemas({ User: document.representation }, { references: document.references })
+const source = module.print()
+// import * as Schema from "effect/Schema"
+//
+// export type User = { readonly "name": string, readonly "age"?: number }
+//
+// export const User = Schema.Struct({ "name": Schema.String, "age": Schema.optionalKey(Schema.Number) }).annotate({ "identifier": "User" })
+```
+
+- `addSchemas(schemas, { references, typeOnly })` registers an exported type alias and a runtime schema for each
+  named representation, plus the definitions they reference and their auxiliary declarations. It returns the
+  declaration bindings keyed by the requested names, which hold even when a declaration name had to change to avoid
+  a collision. `typeOnly: true` emits the types alone.
+- `print()` resolves imports and the eager initialization order and returns the module source. The builder stays
+  open, so further `declare` / `define` calls and another `print` are allowed.
+- Bindings are references, not strings: embed one in surrounding code with the `Codegen.code` tagged template and
+  pass it as a dependency to `define`, never by string concatenation (a binding throws on string coercion).
+- Recursive representations must contain explicit suspensions.
+
+Opaque declarations and checks provide code through their `toCode` callbacks. A callback must interpolate the
+argument strings it is given unchanged and return a supported schema or type expression: imports, qualified names,
+generic and structural types, API calls, literal, object and array arguments, and zero-argument arrows. Anything else
+throws with its document path, so move code such as a function with local declarations into an imported helper.
+There is no reviver option: to generate code from persisted JSON, first reconstruct the schemas with
+`fromRepresentation` or `fromRepresentations`, then create a new live representation so the revivers can restore the
+callbacks.

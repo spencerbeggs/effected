@@ -32,7 +32,7 @@ A resource read failure is `new McpSchema.InternalError({ message })`.
 
 `content` can return a bare `string`, a `Uint8Array`, or a whole
 `ReadResourceResult` (`{ contents: [{ uri, mimeType, text }] }`). Core's own
-`resolveResourceContent` (`ai/McpServer.ts:4221-4236`) wraps a bare string
+`resolveResourceContent` (`ai/McpServer.ts:4344-4359`) wraps a bare string
 as `{ contents: [{ uri, mimeType, text }] }` and bytes as
 `{ contents: [{ uri, mimeType, blob }] }`, copying the registered
 `mimeType` onto the read, and passes a full `ReadResourceResult` through
@@ -117,7 +117,7 @@ const Item = McpServer.resource`x://item/${id}`({
 
 ## A template variable cannot span a slash
 
-The router behind a template match is `FindMyWay` (`ai/McpServer.ts:26`,
+The router behind a template match is `FindMyWay` (`ai/McpServer.ts:27`,
 `makeUriMatcher`), and its route syntax (`:paramName`, built by
 `compileUriTemplate`) matches exactly one path segment — the same
 single-segment rule any `FindMyWay`-backed router applies. An id containing

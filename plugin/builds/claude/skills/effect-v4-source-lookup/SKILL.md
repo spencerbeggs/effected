@@ -194,7 +194,7 @@ So: **a removal is never settled by rung 1.** If the docs are silent on a symbol
 Silence is the *gentler* failure. The migration notes also make positive claims that the tree contradicts, in both directions — and a confident wrong answer costs more than an absent one. Both of these were found in one audit and both still hold:
 
 - **A method that does not exist.** `migration/yieldable.md` documents the `Yieldable` trait as `asEffect(): Effect<A, E, R>` and states the runtime calls `.asEffect()` internally. **`asEffect` has zero occurrences in the entire source tree.** A design built on it fails at the first call.
-- **A removal that did not happen.** `migration/fiberref.md` lists `Differ` as removed alongside `FiberRef` / `FiberRefs` / `FiberRefsPatch`. Those three are genuinely gone; **`Differ` is alive** (`index.ts:189`), and `migration/v3-to-v4.md` even maps `effect/Differ` → `effect/Differ` and documents the surviving interface. The notes contradict themselves.
+- **A removal that did not happen.** `migration/fiberref.md` lists `Differ` as removed alongside `FiberRef` / `FiberRefs` / `FiberRefsPatch`. Those three are genuinely gone; **`Differ` is alive** (`index.ts:195`), and `migration/v3-to-v4.md` even maps `effect/Differ` → `effect/Differ` and documents the surviving interface. The notes contradict themselves.
 
 **Rung 1 settles renames and nothing else.** Not existence, not removal, not trait mechanics — those are rung 2, and behaviour is rung 3. Treat a positive claim in the notes about *what a symbol is or does* exactly as you treat their silence: unsettled until you have read the source.
 
@@ -218,21 +218,21 @@ of the global `Array` type, so core defines the symbol under a private name and
 renames it in an `export {}` block:
 
 ```text
-// Schema.ts:4696 — the real definition, under a name you did not grep for
+// Schema.ts:4708 — the real definition, under a name you did not grep for
 const ArraySchema: ArrayLambda = Struct_.lambda<ArrayLambda>((schema) => …)
 
-// Schema.ts:4699 — the export, in a block your grep pattern never matches
-export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at Schema.ts:4717
+// Schema.ts:4711 — the export, in a block your grep pattern never matches
+export { /* …tsdoc… */ ArraySchema as Array }   // the rename lands at Schema.ts:4729
 ```
 
 `Schema.Array` is real, and `grep 'export const Array' Schema.ts` returns
 nothing. The confirmed occurrences of this pattern (vendored-tree lines) —
-`Schema.ts:4717`, `Equivalence.ts:637`, `Order.ts:596` — are all
+`Schema.ts:4729`, `Equivalence.ts:638`, `Order.ts:597` — are all
 `Array`, but treat the *class* of names as suspect, not just that one:
 `Array`, `Record`, `Map`, `Set`, `Error`, `Date`, `Number`, `String`, `Object`,
 `Symbol`, `Function`, `Boolean`. (Some of them do grep normally —
-`Schema.Record` is a plain `export function Record` at `Schema.ts:4032`, and
-`Config.Array` a plain `export function Array` at `Config.ts:1165` — which
+`Schema.Record` is a plain `export function Record` at `Schema.ts:4044`, and
+`Config.Array` a plain `export function Array` at `Config.ts:1178` — which
 is exactly why the inconsistency catches people.)
 
 **When a built-in-colliding name greps as absent, do not conclude it was

@@ -35,7 +35,7 @@ it.prop("mixed inputs", { name: Name, n: Schema.Int }, ({ name, n }) => typeof n
 
 The options bag is **`arbitrary?: Arbitrary.CheckOptions`** on the
 `timeout`/`TestOptions` argument (`packages/vitest/src/index.ts:129,185`):
-`{ runs, concurrency, size, maxDiscards, maxShrinks, seed, replay }` (`Arbitrary.ts:201`).
+`{ runs, concurrency, size, maxDiscards, maxShrinks, seed, replay }` (`Arbitrary.ts:240`).
 `concurrency` (default `1`) evaluates that many independent cases at once — an
 Effectful property that sleeps or does IO runs proportionally faster — while
 results are still processed in generation order, so a deterministic property
@@ -56,8 +56,8 @@ what a probe settled about **this repo's** thirteen migrated property suites:
 
 - **The `size` clamp silently shrinks a domain.** Every unconstrained string
   and array length is generated up to `min(maxLength, max(minLength, size))`
-  with `size` defaulting to **10** (`internal/arbitrary/schema.ts:1081-1086`,
-  `:1299-1300`; `runner.ts:478,727`), ramping from 0 across the runs. A
+  with `size` defaulting to **10** (`internal/arbitrary/schema.ts:1181-1186`,
+  `:1398-1399`; `runner.ts:482,741`), ramping from 0 across the runs. A
   `Schema.String.check(Schema.isMaxLength(40_000))` input never exceeded 10
   characters at the default and reached 40 000 with `arbitrary: { size: 40_000 }`.
   A byte-budget or long-input property that does not pass `size: <cap>`
@@ -75,8 +75,8 @@ what a probe settled about **this repo's** thirteen migrated property suites:
 - **The generator emits `-0`.** Always for `Schema.Number`/`Finite`, and for
   `Schema.Int` whenever the effective lower bound is `-1` — which an
   **unbounded** `Schema.Int` has during the early small-size runs
-  (`internal/arbitrary/model.ts:652`, where a lower bound of `-1` yields the
-  range `{ minimum: -0 }`, and `:593`, which returns that bound as-is;
+  (`internal/arbitrary/model.ts:646`, where a lower bound of `-1` yields the
+  range `{ minimum: -0 }`, and `:587`, which returns that bound as-is;
   `checkEffect(Arbitrary.schema(Schema.Int), (n) => !Object.is(n, -0))` is
   Falsified within the first ten runs, and `formatCheckFailure` prints the
   shrunk input as `0`, hiding the sign). Both parsers read `-0` back (`JSON.parse("-0")` and
@@ -95,15 +95,15 @@ what a probe settled about **this repo's** thirteen migrated property suites:
 - **`isPattern` regexes must be lookaround-free, free of the `i`/`m`/`v`
   flags, and always carry `u`.** The native regexp compiler returns
   `undefined` for lookahead/lookbehind, backreferences and the `i`/`m`/`v`
-  flags (`internal/arbitrary/regexp.ts:344,350,832`), and the string node
-  then **silently drops the pattern** (`schema.ts:1052-1053`) and filters
+  flags (`internal/arbitrary/regexp.ts:345,351,833`), and the string node
+  then **silently drops the pattern** (`schema.ts:1149-1150`) and filters
   random strings — which exhausts for any selective pattern
   (`/^(?=.*[0-9])[a-f0-9]{8}$/u` and `/^[a-f]{8}$/iu` both died with
   `discards: 201`). `u` is the flag the compiler supports
-  (`regexp.ts:835` generates full code points under it, so a negated class
+  (`regexp.ts:836` generates full code points under it, so a negated class
   or `\S` can yield astral characters), and JSON Schema export needs it:
   `isPattern` exports `pattern` only when the flags match `/^[dg]*uy?$/`
-  (`Schema.ts:6938`), so a flag-free regex exports a bare
+  (`Schema.ts:6950`), so a flag-free regex exports a bare
   `{"type":"string"}` while decoding still enforces it. Rewrite
   `/^(?=.*[A-Za-z-])[0-9A-Za-z-]+$/` as `/^[0-9]*[A-Za-z-][0-9A-Za-z-]*$/u`
   (`packages/semver/src/SemVer.ts`, `packages/schema-org/src/NodeRef.ts`). Hostile-unicode input is generated
@@ -127,7 +127,7 @@ what a probe settled about **this repo's** thirteen migrated property suites:
   `Schema.Literals` of fragments plus the random text, then `Arbitrary.map`
   to pick or concatenate (`packages/git/__test__/GitRemote.test.ts`).
   **`Arbitrary.array` is under the same `size` clamp**: its upper length is
-  `min(maxLength, max(minLength, size))` (`internal/arbitrary/runner.ts:308`),
+  `min(maxLength, max(minLength, size))` (`internal/arbitrary/runner.ts:313`),
   so `maxLength: 40` produces at most 10 characters at the default size —
   pass `arbitrary: { size: 40 }` to reach the bound. Invalid length bounds
   throw `RangeError` when `Arbitrary.array` is called.
@@ -142,7 +142,7 @@ what a probe settled about **this repo's** thirteen migrated property suites:
   `FastCheck.*` ones.
 
 **Reading a property failure.** `@effect/vitest` dies with
-`Arbitrary.formatCheckFailure` (`Arbitrary.ts:374`): runs, shrinks, the
+`Arbitrary.formatCheckFailure` (`Arbitrary.ts:416`): runs, shrinks, the
 **shrunk input**, the failure and the **replay token**. The vitest-agent
 reporter that owns this repo's CLI output compacts that to its first line —
 `Property falsified after 33 run(s) and 1 shrink(s)` — and drops the input

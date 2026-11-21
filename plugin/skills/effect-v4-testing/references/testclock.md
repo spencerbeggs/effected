@@ -92,7 +92,7 @@ it.effect("a sleeping fiber wakes when the clock advances", () =>
   **`effect/testing`** subpath — `TestClock`, `TestConsole`, `TestSchema`
   (property generation is `Arbitrary`), not `@effect/vitest`.
 - **Do not manually provide `TestClock.layer()` under `it.effect`.** They
-  compose — `Clock` is a `Context.Reference` (`Clock.ts:192`), `TestClock.layer()`
+  compose — `Clock` is a `Context.Reference` (`Clock.ts:195`), `TestClock.layer()`
   provides it together with the clock's own `Scheduler` (`TestClock.ts:571`),
   and `adjust` (`:647`) resolves its clock through `testClockWith`, which reads
   whatever is ambient: `fiber.getRef(Clock.Clock) as TestClock`

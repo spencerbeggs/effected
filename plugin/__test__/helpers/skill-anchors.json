@@ -344,10 +344,10 @@
 		},
 		{
 			"file": "effect-v4-testing/references/env-seam.md",
-			"anchor": "ConfigProvider.ts:945",
+			"anchor": "ConfigProvider.ts:955",
 			"source": "effect:ConfigProvider.ts",
 			"symbols": {
-				"945": "export function fromEnv("
+				"955": "export function fromEnv("
 			}
 		},
 		{
@@ -360,105 +360,105 @@
 		},
 		{
 			"file": "effect-v4-testing/references/property-testing.md",
-			"anchor": "Arbitrary.ts:201",
+			"anchor": "Arbitrary.ts:240",
 			"source": "effect:Arbitrary.ts",
 			"symbols": {
-				"201": "export interface CheckOptions"
+				"240": "export interface CheckOptions"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/property-testing.md",
-			"anchor": "Arbitrary.ts:374",
+			"anchor": "Arbitrary.ts:416",
 			"source": "effect:Arbitrary.ts",
 			"symbols": {
-				"374": "export function formatCheckFailure"
+				"416": "export function formatCheckFailure"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/property-testing.md",
-			"anchor": "internal/arbitrary/schema.ts:1081-1086",
+			"anchor": "internal/arbitrary/schema.ts:1181-1186",
 			"source": "effect:internal/arbitrary/schema.ts",
 			"symbols": {
-				"1081": "pattern?.minimumLength ?? 0, state.size)",
-				"1086": "Math.min(maximum, currentMaximum)"
+				"1181": "pattern?.minimumLength ?? 0, state.size)",
+				"1186": "Math.min(maximum, currentMaximum)"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/property-testing.md",
-			"anchor": "`:1299-1300`",
+			"anchor": "`:1398-1399`",
 			"source": "effect:internal/arbitrary/schema.ts",
 			"symbols": {
-				"1299": "required + tail.length, limit)",
-				"1300": "Math.min(maximum, currentMaximum)"
+				"1398": "required + tail.length, limit)",
+				"1399": "Math.min(maximum, currentMaximum)"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/property-testing.md",
-			"anchor": "runner.ts:478,727",
+			"anchor": "runner.ts:482,741",
 			"source": "effect:internal/arbitrary/runner.ts",
 			"symbols": {
-				"478": "natural(options?.size ?? defaults?.size, 10, \"size\")",
-				"727": "natural(options?.size ?? defaults?.size, 10, \"size\")"
+				"482": "natural(options?.size ?? defaults?.size, 10, \"size\")",
+				"741": "natural(options?.size ?? defaults?.size, 10, \"size\")"
 			},
 			"after": {
-				"478": "export const sampleEffect",
-				"727": "export const checkEffect"
+				"482": "export const sampleEffect",
+				"741": "export const checkEffect"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/property-testing.md",
-			"anchor": "internal/arbitrary/model.ts:652",
+			"anchor": "internal/arbitrary/model.ts:646",
 			"source": "effect:internal/arbitrary/model.ts",
 			"symbols": {
-				"652": "{ minimum: -low, maximum: high }"
+				"646": "{ minimum: -low, maximum: high }"
 			},
 			"after": "function numberBiasRanges("
 		},
 		{
 			"file": "effect-v4-testing/references/property-testing.md",
-			"anchor": "`:593`",
+			"anchor": "`:587`",
 			"source": "effect:internal/arbitrary/model.ts",
 			"symbols": {
-				"593": "if (minimum === maximum) return () => minimum"
+				"587": "if (minimum === maximum) return () => minimum"
 			},
 			"after": "function makeRandomInt("
 		},
 		{
 			"file": "effect-v4-testing/references/property-testing.md",
-			"anchor": "internal/arbitrary/regexp.ts:344,350,832",
+			"anchor": "internal/arbitrary/regexp.ts:345,351,833",
 			"source": "effect:internal/arbitrary/regexp.ts",
 			"symbols": {
-				"344": "if (next === \"=\" || next === \"!\") return undefined",
-				"350": "^        return undefined",
-				"832": "flags.includes(\"i\") || flags.includes(\"m\") || flags.includes(\"v\")"
+				"345": "if (next === \"=\" || next === \"!\") return undefined",
+				"351": "^        return undefined",
+				"833": "flags.includes(\"i\") || flags.includes(\"m\") || flags.includes(\"v\")"
 			},
 			"after": {
-				"350": "if (this.peek() === \":\") {"
+				"351": "if (this.peek() === \":\") {"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/property-testing.md",
-			"anchor": "regexp.ts:835",
+			"anchor": "regexp.ts:836",
 			"source": "effect:internal/arbitrary/regexp.ts",
 			"symbols": {
-				"835": "const restricted = flags.includes(\"u\") ? parsed : restrictCharacterCodePoints(parsed, 0xffff)"
+				"836": "const restricted = flags.includes(\"u\") ? parsed : restrictCharacterCodePoints(parsed, 0xffff)"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/property-testing.md",
-			"anchor": "Schema.ts:6938",
+			"anchor": "Schema.ts:6950",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"6938": "const canExport = /^[dg]*uy?$/.test(flags)"
+				"6950": "const canExport = /^[dg]*uy?$/.test(flags)"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/property-testing.md",
-			"anchor": "schema.ts:1052-1053",
+			"anchor": "schema.ts:1149-1150",
 			"source": "effect:internal/arbitrary/schema.ts",
 			"symbols": {
-				"1052": "Regexp.compile(candidate)",
-				"1053": "if (pattern !== undefined) patterns.push(pattern)"
+				"1149": "Regexp.compile(candidate)",
+				"1150": "if (pattern !== undefined) patterns.push(pattern)"
 			}
 		},
 		{
@@ -471,10 +471,10 @@
 		},
 		{
 			"file": "effect-v4-testing/references/testclock.md",
-			"anchor": "Clock.ts:192",
+			"anchor": "Clock.ts:195",
 			"source": "effect:Clock.ts",
 			"symbols": {
-				"192": "export const Clock: Context.Reference<Clock>"
+				"195": "export const Clock: Context.Reference<Clock>"
 			}
 		},
 		{
@@ -527,10 +527,10 @@
 		},
 		{
 			"file": "effect-v4-testing/references/test-console.md",
-			"anchor": "testing/TestConsole.ts:300",
+			"anchor": "testing/TestConsole.ts:330",
 			"source": "effect:testing/TestConsole.ts",
 			"symbols": {
-				"300": "Layer.effect(Console.Console)(make)"
+				"330": "Layer.effect(Console.Console)(make)"
 			}
 		},
 		{
@@ -570,10 +570,10 @@
 		},
 		{
 			"file": "effect-v4-testing/references/migrating-a-repo.md",
-			"anchor": "testing/TestConsole.ts:300",
+			"anchor": "testing/TestConsole.ts:330",
 			"source": "effect:testing/TestConsole.ts",
 			"symbols": {
-				"300": "Layer.effect(Console.Console)(make)"
+				"330": "Layer.effect(Console.Console)(make)"
 			}
 		},
 		{
@@ -629,34 +629,34 @@
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "Effect.ts:8935",
+			"anchor": "Effect.ts:9223",
 			"source": "effect:Effect.ts",
 			"symbols": {
-				"8935": "export const forkChild:"
+				"9223": "export const forkChild:"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "`:8979`",
+			"anchor": "`:9294`",
 			"source": "effect:Effect.ts",
 			"symbols": {
-				"8979": "export const forkIn:"
+				"9294": "export const forkIn:"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "`:9023`",
+			"anchor": "`:9365`",
 			"source": "effect:Effect.ts",
 			"symbols": {
-				"9023": "export const forkScoped:"
+				"9365": "export const forkScoped:"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "`:9069`",
+			"anchor": "`:9423`",
 			"source": "effect:Effect.ts",
 			"symbols": {
-				"9069": "export const forkDetach:"
+				"9423": "export const forkDetach:"
 			}
 		},
 		{
@@ -669,10 +669,10 @@
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "internal/effect.ts:3537",
+			"anchor": "internal/effect.ts:3549",
 			"source": "effect:internal/effect.ts",
 			"symbols": {
-				"3537": "const level = fiber.getRef(UnhandledLogLevel)"
+				"3549": "const level = fiber.getRef(UnhandledLogLevel)"
 			}
 		},
 		{
@@ -740,19 +740,19 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/resources.md",
-			"anchor": "ai/McpServer.ts:4221-4236",
+			"anchor": "ai/McpServer.ts:4344-4359",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"4221": "const resolveResourceContent = (",
-				"4236": "^}$"
+				"4344": "const resolveResourceContent = (",
+				"4359": "^}$"
 			}
 		},
 		{
 			"file": "effect-v4-mcp/references/resources.md",
-			"anchor": "ai/McpServer.ts:26",
+			"anchor": "ai/McpServer.ts:27",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"26": "import * as FindMyWay from \"../http/FindMyWay.ts\""
+				"27": "import * as FindMyWay from \"../http/FindMyWay.ts\""
 			}
 		},
 		{
@@ -799,20 +799,20 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/server-wiring.md",
-			"anchor": "src/internal/effect.ts:7001",
+			"anchor": "src/internal/effect.ts:7017",
 			"source": "effect:internal/effect.ts",
 			"symbols": {
-				"7001": "const log = fiber.getRef(LogToStderr) ? console.error : console.log"
+				"7017": "const log = fiber.getRef(LogToStderr) ? console.error : console.log"
 			},
 			"after": "export const defaultLogger = loggerMake"
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:3357-3370",
+			"anchor": "ai/McpServer.ts:3436-3450",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"3357": "const inputSchema = yield* Schema.decodeUnknownEffect(ToolJson)(",
-				"3370": "const mcpTool = new McpTool({"
+				"3436": "const inputSchema = yield* Schema.decodeUnknownEffect(ToolJson)(",
+				"3450": "const mcpTool = new McpTool({"
 			},
 			"occurrences": 2
 		},
@@ -834,61 +834,61 @@
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "`:2176`",
+			"anchor": "`:2177`",
 			"source": "effect:ai/Tool.ts",
 			"symbols": {
-				"2176": "export const Destructive = Context.Reference<boolean>"
+				"2177": "export const Destructive = Context.Reference<boolean>"
 			}
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "`:2204`",
+			"anchor": "`:2205`",
 			"source": "effect:ai/Tool.ts",
 			"symbols": {
-				"2204": "export const Idempotent = Context.Reference<boolean>"
+				"2205": "export const Idempotent = Context.Reference<boolean>"
 			}
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "`:2232`",
+			"anchor": "`:2233`",
 			"source": "effect:ai/Tool.ts",
 			"symbols": {
-				"2232": "export const OpenWorld = Context.Reference<boolean>"
+				"2233": "export const OpenWorld = Context.Reference<boolean>"
 			}
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:3306-3309",
+			"anchor": "ai/McpServer.ts:3383-3386",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"3306": "const decodeOptions: SchemaAST.ParseOptions = {",
-				"3307": "onExcessProperty: strict ? \"error\" : \"ignore\"",
-				"3309": "^    }$"
+				"3383": "const decodeOptions: SchemaAST.ParseOptions = {",
+				"3384": "onExcessProperty: strict ? \"error\" : \"ignore\"",
+				"3386": "^    }$"
 			}
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:3391",
+			"anchor": "ai/McpServer.ts:3471",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"3391": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
+				"3471": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
 			}
 		},
 		{
 			"file": "effect-v4-mcp/references/tools.md",
-			"anchor": "ai/McpServer.ts:3330-3333",
+			"anchor": "ai/McpServer.ts:3407-3410",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"3330": "const declaredFailureResult = (error: unknown) =>",
-				"3333": ": Effect.map(encodeFailure(error), failureResult)"
+				"3407": "const declaredFailureResult = (error: unknown) =>",
+				"3410": ": Effect.map(encodeFailure(error), failureResult)"
 			}
 		},
 		{
 			"file": "effected-packages/references/mcp-kit.md",
-			"anchor": "McpServer.ts:3391",
+			"anchor": "McpServer.ts:3471",
 			"source": "effect:ai/McpServer.ts",
 			"symbols": {
-				"3391": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
+				"3471": "built.handle(tool.name as keyof Tools, payload ?? {}, undefined, decodeOptions)"
 			}
 		},
 		{
@@ -911,11 +911,11 @@
 		},
 		{
 			"file": "effect-v4-cli/references/core-framework.md",
-			"anchor": "Prompt.ts:889-1443",
+			"anchor": "Prompt.ts:892-1446",
 			"source": "effect:cli/Prompt.ts",
 			"symbols": {
-				"889": "export const Confirm = ",
-				"1443": "export const Toggle = "
+				"892": "export const Confirm = ",
+				"1446": "export const Toggle = "
 			}
 		},
 		{
@@ -954,10 +954,10 @@
 		},
 		{
 			"file": "effect-v4-cli/references/core-framework.md",
-			"anchor": "effect/cli/Command.ts:407",
+			"anchor": "effect/cli/Command.ts:411",
 			"source": "effect:cli/Command.ts",
 			"symbols": {
-				"407": "export type Environment = FileSystem.FileSystem | Path.Path | Terminal.Terminal | ChildProcessSpawner | Stdio.Stdio"
+				"411": "export type Environment = FileSystem.FileSystem | Path.Path | Terminal.Terminal | ChildProcessSpawner | Stdio.Stdio"
 			}
 		},
 		{
@@ -1006,10 +1006,10 @@
 		},
 		{
 			"file": "effect-v4-cli/references/gotchas.md",
-			"anchor": "cli/Command.ts:1689",
+			"anchor": "cli/Command.ts:1697",
 			"source": "effect:cli/Command.ts",
 			"symbols": {
-				"1689": "export const provide: {"
+				"1697": "export const provide: {"
 			}
 		},
 		{
@@ -1045,76 +1045,76 @@
 		},
 		{
 			"file": "effect-v4-cli/references/gotchas.md",
-			"anchor": "Command.ts:1923",
+			"anchor": "Command.ts:1931",
 			"source": "effect:cli/Command.ts",
 			"symbols": {
-				"1923": "yield* CliConfig.CliConfig"
+				"1931": "yield* CliConfig.CliConfig"
 			},
 			"after": "const showHelp = <"
 		},
 		{
 			"file": "effect-v4-source-lookup/SKILL.md",
-			"anchor": "index.ts:189",
+			"anchor": "index.ts:195",
 			"source": "effect:index.ts",
 			"symbols": {
-				"189": "export * as Differ from \"./Differ.ts\""
+				"195": "export * as Differ from \"./Differ.ts\""
 			}
 		},
 		{
 			"file": "effect-v4-source-lookup/SKILL.md",
-			"anchor": "Schema.ts:4696",
+			"anchor": "Schema.ts:4708",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"4696": "const ArraySchema: ArrayLambda = Struct_.lambda<ArrayLambda>("
+				"4708": "const ArraySchema: ArrayLambda = Struct_.lambda<ArrayLambda>("
 			}
 		},
 		{
 			"file": "effect-v4-source-lookup/SKILL.md",
-			"anchor": "Schema.ts:4699",
+			"anchor": "Schema.ts:4711",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"4699": "export {"
+				"4711": "export {"
 			}
 		},
 		{
 			"file": "effect-v4-source-lookup/SKILL.md",
-			"anchor": "Schema.ts:4717",
+			"anchor": "Schema.ts:4729",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"4717": "ArraySchema as Array"
+				"4729": "ArraySchema as Array"
 			},
 			"occurrences": 2
 		},
 		{
 			"file": "effect-v4-source-lookup/SKILL.md",
-			"anchor": "Equivalence.ts:637",
+			"anchor": "Equivalence.ts:638",
 			"source": "effect:Equivalence.ts",
 			"symbols": {
-				"637": "Array_ as Array"
+				"638": "Array_ as Array"
 			}
 		},
 		{
 			"file": "effect-v4-source-lookup/SKILL.md",
-			"anchor": "Order.ts:596",
+			"anchor": "Order.ts:597",
 			"source": "effect:Order.ts",
 			"symbols": {
-				"596": "Array_ as Array"
+				"597": "Array_ as Array"
 			}
 		},
 		{
 			"file": "effect-v4-source-lookup/SKILL.md",
-			"anchor": "Schema.ts:4032",
+			"anchor": "Schema.ts:4044",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"4032": "export function Record<"
+				"4044": "export function Record<"
 			}
 		},
 		{
 			"file": "effect-v4-source-lookup/SKILL.md",
-			"anchor": "Config.ts:1165",
+			"anchor": "Config.ts:1178",
 			"source": "effect:Config.ts",
 			"symbols": {
-				"1165": "export function Array<"
+				"1178": "export function Array<"
 			},
 			"after": "const config = Config.Array(Schema.String, \"EXPORTERS\")"
 		},
@@ -1144,19 +1144,19 @@
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Effect.ts:2861",
+			"anchor": "Effect.ts:2910",
 			"source": "effect:Effect.ts",
 			"symbols": {
-				"2861": "const K extends Tags<E> | Arr.NonEmptyReadonlyArray<Tags<E>>"
+				"2910": "const K extends Tags<E> | Arr.NonEmptyReadonlyArray<Tags<E>>"
 			},
 			"after": "export const catchTag: {"
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "index.ts:501",
+			"anchor": "index.ts:507",
 			"source": "effect:index.ts",
 			"symbols": {
-				"501": "export * as PlatformError from \"./PlatformError.ts\""
+				"507": "export * as PlatformError from \"./PlatformError.ts\""
 			}
 		},
 		{
@@ -1205,26 +1205,26 @@
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "internal/effect.ts:725",
+			"anchor": "internal/effect.ts:727",
 			"source": "effect:internal/effect.ts",
 			"symbols": {
-				"725": "if (!hasProperty(current, evaluate))"
+				"727": "if (!hasProperty(current, evaluate))"
 			}
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Effect.ts:1947",
+			"anchor": "Effect.ts:1996",
 			"source": "effect:Effect.ts",
 			"symbols": {
-				"1947": "export const fromOption: <"
+				"1996": "export const fromOption: <"
 			}
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Effect.ts:1905",
+			"anchor": "Effect.ts:1954",
 			"source": "effect:Effect.ts",
 			"symbols": {
-				"1905": "export const fromResult: <A, E>"
+				"1954": "export const fromResult: <A, E>"
 			}
 		},
 		{
@@ -1238,18 +1238,18 @@
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Config.ts:854",
+			"anchor": "Config.ts:867",
 			"source": "effect:Config.ts",
 			"symbols": {
-				"854": "export function schema<T>("
+				"867": "export function schema<T>("
 			}
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Config.ts:493",
+			"anchor": "Config.ts:506",
 			"source": "effect:Config.ts",
 			"symbols": {
-				"493": "Result.isFailure(resolution) ? Result.succeed(defaultValue) : resolution"
+				"506": "Result.isFailure(resolution) ? Result.succeed(defaultValue) : resolution"
 			}
 		},
 		{
@@ -1263,10 +1263,10 @@
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Effect.ts:7981",
+			"anchor": "Effect.ts:8253",
 			"source": "effect:Effect.ts",
 			"symbols": {
-				"7981": "export const repeat: {"
+				"8253": "export const repeat: {"
 			}
 		},
 		{
@@ -1279,10 +1279,10 @@
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Effect.ts:7824",
+			"anchor": "Effect.ts:8098",
 			"source": "effect:Effect.ts",
 			"symbols": {
-				"7824": "export type Return<R, E, A, O extends Options<A>>"
+				"8098": "export type Return<R, E, A, O extends Options<A>>"
 			},
 			"after": "export declare namespace Repeat {"
 		},
@@ -1313,18 +1313,18 @@
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Schema.ts:9433",
+			"anchor": "Schema.ts:9447",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"9433": "export function Defect(options?: ErrorOptions)"
+				"9447": "export function Defect(options?: ErrorOptions)"
 			}
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Schema.ts:9355",
+			"anchor": "Schema.ts:9369",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"9355": "export function ErrorInstance(options?: ErrorOptions)"
+				"9369": "export function ErrorInstance(options?: ErrorOptions)"
 			}
 		},
 		{
@@ -1337,34 +1337,34 @@
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Schema.ts:5080",
+			"anchor": "Schema.ts:5092",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"5080": "export function Literals<"
+				"5092": "export function Literals<"
 			}
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Schema.ts:11472",
+			"anchor": "Schema.ts:11490",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"11472": "export function Cause<"
+				"11490": "export function Cause<"
 			}
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "`:15648`",
+			"anchor": "`:15666`",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"15648": "export function Exit<"
+				"15666": "export function Exit<"
 			}
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "testing/TestConsole.ts:300",
+			"anchor": "testing/TestConsole.ts:330",
 			"source": "effect:testing/TestConsole.ts",
 			"symbols": {
-				"300": "export const layer: Layer.Layer<TestConsole>"
+				"330": "export const layer: Layer.Layer<TestConsole>"
 			}
 		},
 		{
@@ -1557,18 +1557,18 @@
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "Schema.ts:17947",
+			"anchor": "Schema.ts:17965",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"17947": "export const TaggedError: {"
+				"17965": "export const TaggedError: {"
 			}
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "`:17886`",
+			"anchor": "`:17904`",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"17886": "export const Error: {"
+				"17904": "export const Error: {"
 			},
 			"occurrences": 2
 		},
@@ -1583,10 +1583,10 @@
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "Schema.ts:17518",
+			"anchor": "Schema.ts:17536",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"17518": "function makeClass<"
+				"17536": "function makeClass<"
 			}
 		},
 		{
@@ -1618,43 +1618,43 @@
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "Schema.ts:9433",
+			"anchor": "Schema.ts:9447",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"9433": "export function Defect(options?: ErrorOptions)"
+				"9447": "export function Defect(options?: ErrorOptions)"
 			}
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "`:9355`",
+			"anchor": "`:9369`",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"9355": "export function ErrorInstance(options?: ErrorOptions)"
+				"9369": "export function ErrorInstance(options?: ErrorOptions)"
 			}
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "Schema.ts:9918",
+			"anchor": "Schema.ts:9932",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"9918": "export function fromJsonString<S extends Constraint>("
+				"9932": "export function fromJsonString<S extends Constraint>("
 			}
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "Config.ts:854",
+			"anchor": "Config.ts:867",
 			"source": "effect:Config.ts",
 			"symbols": {
-				"854": "export function schema<T>("
+				"867": "export function schema<T>("
 			}
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "Schema.ts:13957,11773",
+			"anchor": "Schema.ts:13975,11791",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"11773": "export const DateTimeUtc: DateTimeUtc = declare(",
-				"13957": "export const Duration: Duration = declare("
+				"11791": "export const DateTimeUtc: DateTimeUtc = declare(",
+				"13975": "export const Duration: Duration = declare("
 			}
 		},
 		{
@@ -1728,26 +1728,26 @@
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "Schema.ts:6313",
+			"anchor": "Schema.ts:6325",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"6313": "export type TaggedStruct<Tag extends SchemaAST.LiteralValue"
+				"6325": "export type TaggedStruct<Tag extends SchemaAST.LiteralValue"
 			}
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "Schema.ts:17766",
+			"anchor": "Schema.ts:17784",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"17766": "export const Class: {"
+				"17784": "export const Class: {"
 			}
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "Schema.ts:5988",
+			"anchor": "Schema.ts:6000",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"5988": "export function withConstructorDefault<"
+				"6000": "export function withConstructorDefault<"
 			}
 		},
 		{
@@ -1760,10 +1760,10 @@
 		},
 		{
 			"file": "effect-v4-schema/references/09-classes-and-opaque-types.md",
-			"anchor": "Schema.ts:19093",
+			"anchor": "Schema.ts:19132",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"19093": "interface Declaration<T, TypeParameters extends ReadonlyArray<Constraint> = readonly []>"
+				"19132": "interface Declaration<T, TypeParameters extends ReadonlyArray<Constraint> = readonly []>"
 			}
 		},
 		{
@@ -1777,223 +1777,223 @@
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "`:423`",
+			"anchor": "`:478`",
 			"source": "effect:Arbitrary.ts",
 			"symbols": {
-				"423": "export function schema<S extends Schema_.Constraint>("
+				"478": "export function schema<S extends Schema_.Constraint>("
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "`:446`",
+			"anchor": "`:501`",
 			"source": "effect:Arbitrary.ts",
 			"symbols": {
-				"446": "export function Constant<const A>(value: A)"
+				"501": "export function Constant<const A>(value: A)"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "`:497`",
+			"anchor": "`:552`",
 			"source": "effect:Arbitrary.ts",
 			"symbols": {
-				"497": "export const array: <A>(item: Arbitrary<A>"
+				"552": "export const array: <A>(item: Arbitrary<A>"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "`:511`",
+			"anchor": "`:566`",
 			"source": "effect:Arbitrary.ts",
 			"symbols": {
-				"511": "export const map: {"
+				"566": "export const map: {"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "`:558`",
+			"anchor": "`:613`",
 			"source": "effect:Arbitrary.ts",
 			"symbols": {
-				"558": "export const filterMap: {"
+				"613": "export const filterMap: {"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "`:590`",
+			"anchor": "`:645`",
 			"source": "effect:Arbitrary.ts",
 			"symbols": {
-				"590": "export const flatMap: {"
+				"645": "export const flatMap: {"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "`:618`",
+			"anchor": "`:675`",
 			"source": "effect:Arbitrary.ts",
 			"symbols": {
-				"618": "export function all<"
+				"675": "export function all<"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "`:644`",
+			"anchor": "`:701`",
 			"source": "effect:Arbitrary.ts",
 			"symbols": {
-				"644": "export function sampleEffect<A>("
+				"701": "export function sampleEffect<A>("
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "`:679`",
+			"anchor": "`:736`",
 			"source": "effect:Arbitrary.ts",
 			"symbols": {
-				"679": "export function checkEffect<A, E = never, R = never>("
+				"736": "export function checkEffect<A, E = never, R = never>("
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "`:374`",
+			"anchor": "`:416`",
 			"source": "effect:Arbitrary.ts",
 			"symbols": {
-				"374": "export function formatCheckFailure<A, E>("
+				"416": "export function formatCheckFailure<A, E>("
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "`:201`",
+			"anchor": "`:240`",
 			"source": "effect:Arbitrary.ts",
 			"symbols": {
-				"201": "export interface CheckOptions {"
+				"240": "export interface CheckOptions {"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "internal/arbitrary/runner.ts:478,727",
+			"anchor": "internal/arbitrary/runner.ts:482,741",
 			"source": "effect:internal/arbitrary/runner.ts",
 			"symbols": {
-				"478": "const size = natural(options?.size ?? defaults?.size, 10, \"size\")",
-				"727": "const size = natural(options?.size ?? defaults?.size, 10, \"size\")"
+				"482": "const size = natural(options?.size ?? defaults?.size, 10, \"size\")",
+				"741": "const size = natural(options?.size ?? defaults?.size, 10, \"size\")"
 			},
 			"after": {
-				"478": "export const sampleEffect",
-				"727": "export const checkEffect"
+				"482": "export const sampleEffect",
+				"741": "export const checkEffect"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "internal/arbitrary/schema.ts:1081-1086",
+			"anchor": "internal/arbitrary/schema.ts:1181-1186",
 			"source": "effect:internal/arbitrary/schema.ts",
 			"symbols": {
-				"1081": "let currentMaximum = Math.max(minimum, pattern?.minimumLength ?? 0, state.size)",
-				"1086": "const upper = Math.min(maximum, currentMaximum)"
+				"1181": "let currentMaximum = Math.max(minimum, pattern?.minimumLength ?? 0, state.size)",
+				"1186": "const upper = Math.min(maximum, currentMaximum)"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "`:1299-1300`",
+			"anchor": "`:1398-1399`",
 			"source": "effect:internal/arbitrary/schema.ts",
 			"symbols": {
-				"1299": "const currentMaximum = Math.max(minimum, required + tail.length, limit)",
-				"1300": "Math.min(maximum, currentMaximum)"
+				"1398": "const currentMaximum = Math.max(minimum, required + tail.length, limit)",
+				"1399": "Math.min(maximum, currentMaximum)"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "schema.ts:1130",
+			"anchor": "schema.ts:1229",
 			"source": "effect:internal/arbitrary/schema.ts",
 			"symbols": {
-				"1130": "const magnitude = Math.max(1, state.size * state.size)"
+				"1229": "const magnitude = Math.max(1, state.size * state.size)"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "`:7921`",
+			"anchor": "`:7933`",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"7921": "export const isBetween: (options: {"
+				"7933": "export const isBetween: (options: {"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "Schema.ts:19293",
+			"anchor": "Schema.ts:19330",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"19293": "interface FilterConstraint<T = unknown> extends GenerationConstraint<T>"
+				"19330": "interface FilterConstraint<T = unknown> extends GenerationConstraint<T>"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "regexp.ts:344",
+			"anchor": "regexp.ts:345",
 			"source": "effect:internal/arbitrary/regexp.ts",
 			"symbols": {
-				"344": "if (next === \"=\" || next === \"!\") return undefined"
+				"345": "if (next === \"=\" || next === \"!\") return undefined"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "`:350`",
+			"anchor": "`:351`",
 			"source": "effect:internal/arbitrary/regexp.ts",
 			"symbols": {
-				"350": "^        return undefined"
+				"351": "^        return undefined"
 			},
 			"after": {
-				"350": "if (this.peek() === \":\") {"
+				"351": "if (this.peek() === \":\") {"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "regexp.ts:832",
+			"anchor": "regexp.ts:833",
 			"source": "effect:internal/arbitrary/regexp.ts",
 			"symbols": {
-				"832": "if (flags.includes(\"i\") || flags.includes(\"m\") || flags.includes(\"v\")) return undefined"
+				"833": "if (flags.includes(\"i\") || flags.includes(\"m\") || flags.includes(\"v\")) return undefined"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "schema.ts:1052-1053",
+			"anchor": "schema.ts:1149-1150",
 			"source": "effect:internal/arbitrary/schema.ts",
 			"symbols": {
-				"1052": "const pattern = Regexp.compile(candidate)",
-				"1053": "if (pattern !== undefined) patterns.push(pattern)"
+				"1149": "const pattern = Regexp.compile(candidate)",
+				"1150": "if (pattern !== undefined) patterns.push(pattern)"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "regexp.ts:835",
+			"anchor": "regexp.ts:836",
 			"source": "effect:internal/arbitrary/regexp.ts",
 			"symbols": {
-				"835": "const restricted = flags.includes(\"u\") ? parsed : restrictCharacterCodePoints(parsed, 0xffff)"
+				"836": "const restricted = flags.includes(\"u\") ? parsed : restrictCharacterCodePoints(parsed, 0xffff)"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "Schema.ts:6938",
+			"anchor": "Schema.ts:6950",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"6938": "const canExport = /^[dg]*uy?$/.test(flags)"
+				"6950": "const canExport = /^[dg]*uy?$/.test(flags)"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "internal/arbitrary/model.ts:646-652",
+			"anchor": "internal/arbitrary/model.ts:640-646",
 			"source": "effect:internal/arbitrary/model.ts",
 			"symbols": {
-				"646": "function numberBiasRanges(minimum: number, maximum: number)",
-				"652": "{ minimum: -low, maximum: high },"
+				"640": "function numberBiasRanges(minimum: number, maximum: number)",
+				"646": "{ minimum: -low, maximum: high },"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/11-generation-and-tooling.md",
-			"anchor": "Schema.ts:19312",
+			"anchor": "Schema.ts:19349",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"19312": "interface Declaration<T, Parameters extends ReadonlyArray<Constraint>>"
+				"19349": "interface Declaration<T, Parameters extends ReadonlyArray<Constraint>>"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/16-integrations.md",
-			"anchor": "Schema.ts:18109-18176",
+			"anchor": "Schema.ts:18127-18194",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"18109": "export interface ToJsonSchemaOptions extends SchemaRepresentation.ToRepresentationOptions",
-				"18176": "^}"
+				"18127": "export interface ToJsonSchemaOptions extends SchemaRepresentation.ToRepresentationOptions",
+				"18194": "^}"
 			}
 		},
 		{
@@ -2007,10 +2007,10 @@
 		},
 		{
 			"file": "effect-v4-schema/references/house-style.md",
-			"anchor": "Schema.ts:17721",
+			"anchor": "Schema.ts:17739",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"17721": "Passing `disableChecks: true` skips filters and checks, not parsing of types"
+				"17739": "Passing `disableChecks: true` skips filters and checks, not parsing of types"
 			},
 			"comment": true
 		},
@@ -2049,18 +2049,18 @@
 		},
 		{
 			"file": "effect-v4-schema/references/house-style.md",
-			"anchor": "internal/record.ts:16",
+			"anchor": "internal/record.ts:33",
 			"source": "effect:internal/record.ts",
 			"symbols": {
-				"16": "export function assignProperties(self: object, source: object): void"
+				"33": "export function assignProperties(self: object, source: object): void"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/house-style.md",
-			"anchor": "Schema.ts:6804",
+			"anchor": "Schema.ts:6816",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"6804": "export const makeFilter: <T>("
+				"6816": "export const makeFilter: <T>("
 			}
 		},
 		{
@@ -2106,31 +2106,31 @@
 		},
 		{
 			"file": "effect-v4-schema/references/house-style.md",
-			"anchor": "internal/arbitrary/regexp.ts:344,350,832",
+			"anchor": "internal/arbitrary/regexp.ts:345,351,833",
 			"source": "effect:internal/arbitrary/regexp.ts",
 			"symbols": {
-				"344": "if (next === \"=\" || next === \"!\") return undefined",
-				"350": "^        return undefined",
-				"832": "if (flags.includes(\"i\") || flags.includes(\"m\") || flags.includes(\"v\")) return undefined"
+				"345": "if (next === \"=\" || next === \"!\") return undefined",
+				"351": "^        return undefined",
+				"833": "if (flags.includes(\"i\") || flags.includes(\"m\") || flags.includes(\"v\")) return undefined"
 			},
 			"after": {
-				"350": "if (this.peek() === \":\") {"
+				"351": "if (this.peek() === \":\") {"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/house-style.md",
-			"anchor": "regexp.ts:835",
+			"anchor": "regexp.ts:836",
 			"source": "effect:internal/arbitrary/regexp.ts",
 			"symbols": {
-				"835": "const restricted = flags.includes(\"u\") ? parsed : restrictCharacterCodePoints(parsed, 0xffff)"
+				"836": "const restricted = flags.includes(\"u\") ? parsed : restrictCharacterCodePoints(parsed, 0xffff)"
 			}
 		},
 		{
 			"file": "effect-v4-schema/references/house-style.md",
-			"anchor": "Schema.ts:6938",
+			"anchor": "Schema.ts:6950",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"6938": "const canExport = /^[dg]*uy?$/.test(flags)"
+				"6950": "const canExport = /^[dg]*uy?$/.test(flags)"
 			}
 		},
 		{
@@ -2313,18 +2313,18 @@
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "`:17826`",
+			"anchor": "`:17844`",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"17826": "export const TaggedClass: {"
+				"17844": "export const TaggedClass: {"
 			}
 		},
 		{
 			"file": "effect-v4-idioms/SKILL.md",
-			"anchor": "Effect.ts:8935",
+			"anchor": "Effect.ts:9223",
 			"source": "effect:Effect.ts",
 			"symbols": {
-				"8935": "export const forkChild: <"
+				"9223": "export const forkChild: <"
 			}
 		},
 		{
@@ -2337,18 +2337,18 @@
 		},
 		{
 			"file": "effect-v4-schema/SKILL.md",
-			"anchor": "Schema.ts:3646",
+			"anchor": "Schema.ts:3649",
 			"source": "effect:Schema.ts",
 			"symbols": {
-				"3646": "struct.mapFields(Struct_.assign(fields))"
+				"3649": "struct.mapFields(Struct_.assign(fields))"
 			}
 		},
 		{
 			"file": "effect-v4-testing/references/property-testing.md",
-			"anchor": "internal/arbitrary/runner.ts:308",
+			"anchor": "internal/arbitrary/runner.ts:313",
 			"source": "effect:internal/arbitrary/runner.ts",
 			"symbols": {
-				"308": "const upper = Math.min("
+				"313": "const upper = Math.min("
 			}
 		},
 		{

@@ -138,12 +138,12 @@ _set_line() {
 @test "negative control: an anchor missing from the manifest fails" {
 	local mutated="$BATS_TEST_TMPDIR/manifest.json"
 	_edit_manifest "$MANIFEST" "$mutated" '
-		m.anchors = m.anchors.filter((a) => !(a.file === "effect-v4-cli/references/gotchas.md" && a.anchor === "cli/Command.ts:1689"));
+		m.anchors = m.anchors.filter((a) => !(a.file === "effect-v4-cli/references/gotchas.md" && a.anchor === "cli/Command.ts:1697"));
 	'
 	run node "$HELPER" --repo "$REPO_ROOT" --manifest "$mutated"
 	echo "$output"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"FAIL effect-v4-cli/references/gotchas.md: anchor cli/Command.ts:1689 is not in the manifest"* ]]
+	[[ "$output" == *"FAIL effect-v4-cli/references/gotchas.md: anchor cli/Command.ts:1697 is not in the manifest"* ]]
 }
 
 @test "negative control: a new citation in a skill the old scope never covered fails coverage" {
@@ -204,13 +204,13 @@ _set_line() {
 @test "negative control: a second occurrence of a listed token fails until the manifest counts it" {
 	local skills="$BATS_TEST_TMPDIR/skills"
 	_copy_skills "$skills"
-	# index.ts:189 is listed once for this file; a new, false claim reuses it.
-	[ "$(grep -o 'index.ts:189' "$skills/effect-v4-source-lookup/SKILL.md" | wc -l | tr -d ' ')" -eq 1 ]
-	printf '\nThe vitest `layer` helper is declared at `index.ts:189`.\n' >>"$skills/effect-v4-source-lookup/SKILL.md"
+	# index.ts:195 is listed once for this file; a new, false claim reuses it.
+	[ "$(grep -o 'index.ts:195' "$skills/effect-v4-source-lookup/SKILL.md" | wc -l | tr -d ' ')" -eq 1 ]
+	printf '\nThe vitest `layer` helper is declared at `index.ts:195`.\n' >>"$skills/effect-v4-source-lookup/SKILL.md"
 	run node "$HELPER" --repo "$REPO_ROOT" --skills "$skills"
 	echo "$output"
 	[ "$status" -eq 1 ]
-	[[ "$output" == *"FAIL effect-v4-source-lookup/SKILL.md: anchor index.ts:189 occurs 2 times but the manifest declares 1"* ]]
+	[[ "$output" == *"FAIL effect-v4-source-lookup/SKILL.md: anchor index.ts:195 occurs 2 times but the manifest declares 1"* ]]
 }
 
 @test "negative control: a token whose path is not its entry's source fails" {
