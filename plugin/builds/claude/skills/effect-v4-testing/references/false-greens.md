@@ -748,8 +748,10 @@ a **green suite that fails**: every test reports passing and the process exits
 nonzero, which CI reads as a failure with no failing test to point at.
 
 Snapshot and restore it in a `finally` around any test that exercises such
-code, alongside the console spy. Any environment the test needs goes in through
-`vi.stubEnv`, undone by `vi.unstubAllEnvs()` in `afterEach`, never a hand-written
+code, alongside the console spy. A value the test needs goes in through the
+code's own seam (a test `ConfigProvider`, a spawn's `env` option) wherever one
+exists; only a test of the inherited ambient environment stubs it, with
+`vi.stubEnv` undone by `vi.unstubAllEnvs()` in `afterEach`, never a hand-written
 `process.env` save and restore
 (`packages/github-actions/__test__/Action.test.ts:71-80`):
 

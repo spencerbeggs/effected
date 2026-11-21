@@ -221,7 +221,12 @@ const envMutationLines = (text: string): ReadonlyArray<number> => {
 			after = closeBracket(tokens, after);
 		}
 		const next = tokens[after]?.kind;
-		if (after >= 0 && next !== undefined && ASSIGNMENTS.has(next)) {
+		// A postfix `++`/`--` never applies across a line terminator: there the `++` starts the next
+		// statement (`const v = process.env.N` then `++count;`), so only a same-line update is a write.
+		const postfixAcrossLine =
+			(next === SyntaxKind.PlusPlusToken || next === SyntaxKind.MinusMinusToken) &&
+			/[\n\r\u2028\u2029]/.test(text.slice(tokens[after - 1]?.start ?? 0, tokens[after]?.start ?? 0));
+		if (after >= 0 && next !== undefined && ASSIGNMENTS.has(next) && !postfixAcrossLine) {
 			hits.add(line);
 		}
 	}
@@ -285,6 +290,8 @@ describe("test suites never mutate process.env", () => {
 			'const w = process["env"].CI; const k = { ...process["env"] };',
 			'if (process["env"].N === "1") {} const m = process.env.A - 1;',
 			'const other = process["argv"]; process.title = "x";',
+			"const n = process.env.COUNT",
+			"++count;",
 		].join("\n");
 		assert.deepEqual(envMutationLines(fixture), []);
 	});

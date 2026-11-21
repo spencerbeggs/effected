@@ -189,12 +189,16 @@ tempted to reach for `as`.
   camelCase claims with numeric ids (`repositoryId`, `runId`, ...). **Authorize
   on immutable ids** — `repositoryId` or `repositoryOwnerId` plus
   `jobWorkflowRef` — never the `repository` name: a deleted repository's name
-  can be registered again by someone else. To gate a privileged action on the
-  ref (only protected-branch runs may write a shared build cache, say), read
-  `refProtected`: a boolean decoded from the wire's `"true"`/`"false"`, and a
-  token whose `ref_protected` is anything else or absent fails as `claims`, so
-  it is never defaulted. `refType` is `"branch"` or `"tag"`; `baseRef` and
-  `headRef` are a pull request's refs and empty strings outside one.
+  can be registered again by someone else. `refProtected` is a boolean decoded
+  from the wire's `"true"`/`"false"`, and a token whose `ref_protected` is
+  anything else or absent fails as `claims`, so it is never defaulted.
+  `refType` is `"branch"` or `"tag"`; `baseRef` and `headRef` are a pull
+  request's refs and empty strings outside one. To gate a privileged action on
+  the ref (only protected-branch runs may write a shared build cache, say),
+  require `refProtected` **in addition to** the ref policy, never instead of
+  it: a protected tag carries `refProtected: true` too, and so does every other
+  protected branch, so check `refType === "branch"` and keep any branch
+  allowlist on `ref`.
   `ActionsOidc.testClaims(overrides?)`
   is a wire-shaped payload for tests, signed with `@effected/jwt/testing`'s
   `TestIssuer`. The module does not reach octokit.
