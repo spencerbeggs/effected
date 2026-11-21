@@ -8,7 +8,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Cause, Effect, Exit, Fiber, Schema } from "effect";
 import { FetchHttpClient } from "effect/http";
 import { TestClock } from "effect/testing";
-import { vi } from "vitest";
+import { afterEach, vi } from "vitest";
 import {
 	DetachedLogUnavailableError,
 	DetachedNotReadyError,
@@ -61,6 +61,10 @@ const withKillSpy = <A, E>(
 		(spy) => use(spy.mock.calls),
 		(spy) => Effect.sync(() => spy.mockRestore()),
 	);
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 
 describe("DetachedProcess", () => {
 	describe("the bare-pid guard", () => {
@@ -414,10 +418,11 @@ describe("DetachedProcess", () => {
 			const logFile = join(directory, "env.log");
 			// A test-owned variable, not `HOME`: nothing guarantees a runner's
 			// environment carries any particular name. Set on the parent for the
-			// test's duration only, and restored on every path.
+			// test's duration only, through `vi.stubEnv`: this test needs the
+			// PARENT's ambient environment, since what it proves is that an explicit
+			// base shuts it out. `vi.unstubAllEnvs` in `afterEach` restores it.
 			const PARENT_ONLY = "EFFECTED_DETACHED_PARENT_ONLY";
-			const previous = process.env[PARENT_ONLY];
-			process.env[PARENT_ONLY] = `parent-${Math.random().toString(36).slice(2)}`;
+			vi.stubEnv(PARENT_ONLY, `parent-${Math.random().toString(36).slice(2)}`);
 			return Effect.gen(function* () {
 				// The parent holds it; the child must NOT see it — the base is the
 				// whole inherited block, not additions to process.env.
@@ -448,15 +453,7 @@ describe("DetachedProcess", () => {
 				// An `undefined` base value is dropped, never stringified.
 				assert.notProperty(seen, "DROPPED");
 				assert.notInclude(Object.values(seen), "undefined");
-			}).pipe(
-				Effect.ensuring(
-					Effect.sync(() => {
-						if (previous === undefined) delete process.env[PARENT_ONLY];
-						else process.env[PARENT_ONLY] = previous;
-						rmSync(directory, { recursive: true, force: true });
-					}),
-				),
-			);
+			}).pipe(Effect.ensuring(Effect.sync(() => rmSync(directory, { recursive: true, force: true }))));
 		});
 
 		it.live("env overrides a key the base also carries", () => {

@@ -203,3 +203,101 @@ describe("Git.withRunOptions", () => {
 		}),
 	);
 });
+
+describe("Git.layerRunOptions", () => {
+	const Suite = Git.layerRunOptions({
+		env: { GIT_LFS_SKIP_SMUDGE: "1", GIT_ALLOW_PROTOCOL: "file" },
+		config: { "gc.auto": "0" },
+	});
+
+	it.effect("installs its options on every spawn of the program it is provided to", () =>
+		Effect.gen(function* () {
+			const { seen, layer } = recording();
+			yield* provide(
+				Effect.flatMap(Git, (git) => Effect.andThen(git.revParse(cwd, "HEAD"), git.revParse(cwd, "HEAD"))).pipe(
+					Effect.provide(Suite),
+				),
+				layer,
+			);
+			assert.strictEqual(seen.length, 2);
+			for (const { env } of seen) {
+				assert.strictEqual(env?.GIT_LFS_SKIP_SMUDGE, "1");
+				assert.strictEqual(env?.GIT_ALLOW_PROTOCOL, "file");
+				assert.strictEqual(env?.GIT_CONFIG_COUNT, "1");
+				assert.strictEqual(env?.GIT_CONFIG_KEY_0, "gc.auto");
+				assert.strictEqual(env?.GIT_CONFIG_VALUE_0, "0");
+			}
+		}),
+	);
+
+	it.effect("is overridden key by key by an inner withRunOptions", () =>
+		Effect.gen(function* () {
+			const { seen, layer } = recording();
+			yield* provide(
+				Effect.flatMap(Git, (git) =>
+					Git.withRunOptions(git.revParse(cwd, "HEAD"), {
+						env: { GIT_ALLOW_PROTOCOL: "file:https" },
+						config: { "advice.detachedHead": "false" },
+					}),
+				).pipe(Effect.provide(Suite)),
+				layer,
+			);
+			const env = lastEnv(seen);
+			assert.strictEqual(env?.GIT_ALLOW_PROTOCOL, "file:https");
+			assert.strictEqual(env?.GIT_LFS_SKIP_SMUDGE, "1");
+			assert.strictEqual(env?.GIT_CONFIG_COUNT, "2");
+			assert.strictEqual(env?.GIT_CONFIG_KEY_0, "gc.auto");
+			assert.strictEqual(env?.GIT_CONFIG_KEY_1, "advice.detachedHead");
+		}),
+	);
+
+	it.effect("cannot undo a pin", () =>
+		Effect.gen(function* () {
+			const { seen, layer } = recording();
+			yield* provide(
+				Effect.flatMap(Git, (git) => git.revParse(cwd, "HEAD")).pipe(
+					Effect.provide(Git.layerRunOptions({ env: { LC_ALL: "de_DE.UTF-8", GIT_TERMINAL_PROMPT: "1" } })),
+				),
+				layer,
+			);
+			const env = lastEnv(seen);
+			assert.strictEqual(env?.LC_ALL, "C");
+			assert.strictEqual(env?.GIT_TERMINAL_PROMPT, "0");
+		}),
+	);
+
+	it.effect("replaces the per-run timeout", () =>
+		Effect.gen(function* () {
+			const { layer } = recording(true);
+			const fiber = yield* Effect.forkChild(
+				Effect.flip(
+					provide(
+						Effect.flatMap(Git, (git) => git.revParse(cwd, "HEAD")).pipe(
+							Effect.provide(Git.layerRunOptions({ timeout: "50 millis" })),
+						),
+						layer,
+					),
+				),
+			);
+			yield* TestClock.adjust("1 second");
+			const failure = yield* Fiber.join(fiber);
+			assert.instanceOf(failure, GitCommandError);
+			if (failure instanceof GitCommandError) assert.strictEqual(failure.detail, "timed out after 50ms");
+		}),
+	);
+
+	it.effect("leaves the defaults in force when absent", () =>
+		Effect.gen(function* () {
+			const { seen, layer } = recording();
+			yield* provide(
+				Effect.flatMap(Git, (git) => git.revParse(cwd, "HEAD")),
+				layer,
+			);
+			const env = lastEnv(seen);
+			assert.isUndefined(env?.GIT_LFS_SKIP_SMUDGE);
+			assert.isUndefined(env?.GIT_ALLOW_PROTOCOL);
+			assert.isUndefined(env?.GIT_CONFIG_COUNT);
+			assert.strictEqual(env?.LC_ALL, "C");
+		}),
+	);
+});

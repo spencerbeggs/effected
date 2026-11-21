@@ -45,6 +45,7 @@ import { Run } from "@effected/commands";
 import type { ConfigDependencyLock, LockfileFramingError, LockfileParseError } from "@effected/lockfiles";
 import { IntegrityHash } from "@effected/npm";
 import { Yaml } from "@effected/yaml";
+import type { Redacted } from "effect";
 import { Duration, Effect, Predicate } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { HookReplayContext } from "../ConfigDependencyHooks.js";
@@ -287,12 +288,18 @@ export const fetchArgs = (scratch: string, stores: ReadonlyArray<string>): Reado
 const isStoreEntry = (resolved: string, name: string, version: string): boolean =>
 	resolved.split(/[/\\]/).join("/").includes(`/links/${name}/${version}/`);
 
+/** How the fetch rung spawns pnpm: the command and the variables layered over the inherited env. */
+export interface FetchPnpm {
+	readonly command?: string | undefined;
+	readonly env?: Readonly<Record<string, string | Redacted.Redacted<string>>> | undefined;
+}
+
 /**
  * Build the fetch rung over a spawner. Wired only by
- * `ConfigDependencyHooks.layerSubprocess`.
+ * `ConfigDependencyHooks.layerSubprocessWith` (and so `layerSubprocess`).
  */
 export const makeFetchConfigDependency =
-	(spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]): FetchConfigDependency =>
+	(spawner: ChildProcessSpawner.ChildProcessSpawner["Service"], pnpm: FetchPnpm = {}): FetchConfigDependency =>
 	(request) =>
 		Effect.scoped(
 			Effect.gen(function* () {
@@ -338,12 +345,18 @@ export const makeFetchConfigDependency =
 					});
 				});
 
-				const command = ChildProcess.make("pnpm", fetchArgs(scratch, request.stores), { cwd: scratch });
+				// A caller's env is layered OVER the inherited one, never in place of
+				// it: pnpm needs the PATH, HOME and registry variables it would see.
+				const executable = pnpm.command ?? "pnpm";
+				const command = ChildProcess.make(executable, fetchArgs(scratch, request.stores), {
+					cwd: scratch,
+					...(pnpm.env === undefined ? {} : { env: { ...pnpm.env }, extendEnv: true }),
+				});
 				yield* Run.text(command, { timeout: FETCH_TIMEOUT }).pipe(
 					Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
 					Effect.mapError((cause) =>
 						failed(
-							`fetching ${key} with \`pnpm ${fetchArgs("<scratch>", request.stores).join(" ")}\` failed: ${messageOf(cause)}`,
+							`fetching ${key} with \`${executable} ${fetchArgs("<scratch>", request.stores).join(" ")}\` failed: ${messageOf(cause)}`,
 							cause,
 						),
 					),

@@ -31,10 +31,10 @@ sources:
     resource: ../../packages/workspaces/src/testing.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-13T06:47:43Z
+  at: 2026-11-21T19:42:38Z
 integrity:
   generated:
-    body: fc5b8620a60ba02f
+    body: d287a2897e078e54
 ---
 
 # @effected/workspaces: monorepo tooling
@@ -187,6 +187,10 @@ concepts: [discovery and detection](../interfaces/workspaces-discovery.md),
 composites take `WorkspacesGitOptions` — `WorkspacesOptions` plus
 `WorkspaceSnapshotsOptions` — which is how a layer-level `seedCatalogs`
 reaches `at(ref)` without hand-composing the graph.[^workspaces-ts]
+The two subprocess composites also take a `pnpm: { command, env }` key,
+passed to `ConfigDependencyHooks.layerSubprocessWith`, which chooses the
+executable and the extra variables of the config-dependency fetch rung's
+one pnpm spawn ([the fetch rung](../interfaces/workspaces-catalogs.md#the-fetch-rung-subprocess-layer-only)).
 `Workspaces` is a
 static class with a private constructor rather than an `as const` namespace
 object, because an `as const` object's member types are inferred in the

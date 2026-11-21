@@ -35,14 +35,33 @@ import { ChildProcess } from "effect/process";
 import { FileNotFoundError, Git, NotARepositoryError, UnknownRefError } from "../../src/Git.js";
 import { runCollected } from "../../src/internal/run.js";
 
-/** Resolves both `Git` and every Node platform service (including the real `ChildProcessSpawner`). */
-const TestLayer = Git.layer.pipe(Layer.provideMerge(NodeServices.layer));
+// The `Git` service probes `ssh.variant` before every network-touching member,
+// and that read is a MERGED config read — so without this it reaches the
+// developer's or runner's own global git config. A machine with a global
+// `ssh.variant` outside `auto`/`ssh` would decline the ssh pin and fail the
+// assertions below with a message that says nothing about why. Pointing both
+// config scopes at /dev/null makes every git spawn in this file see only the
+// repository config its fixture wrote. Safe here because the fixtures pin
+// everything they depend on locally, including `init.defaultBranch`. It is
+// handed to each spawn (the service's through `Git.layerRunOptions`, the raw
+// fixture spawns through their own `env`), never written to `process.env`.
+const HOST_ISOLATION = { GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } as const;
 
+/** The real `Git` service with every spawn it makes isolated from the host's git config. */
+const IsolatedGit = Layer.merge(Git.layer, Git.layerRunOptions({ env: HOST_ISOLATION }));
+
+/** Resolves both the isolated `Git` and every Node platform service (including the real `ChildProcessSpawner`). */
+const TestLayer = IsolatedGit.pipe(Layer.provideMerge(NodeServices.layer));
+
+/** Runs `effect` against the real stack. */
 const run = <A, E>(effect: Effect.Effect<A, E, Git | ChildProcessSpawner.ChildProcessSpawner>) =>
 	effect.pipe(Effect.provide(TestLayer));
 
-/** The locale and prompt pins the `Git` service applies to its own spawns (#670). */
-const FIXTURE_ENV = { LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" } as const;
+/** The locale and prompt pins the `Git` service applies to its own spawns (#670), plus the host isolation. */
+const FIXTURE_ENV = { LC_ALL: "C", GIT_TERMINAL_PROMPT: "0", ...HOST_ISOLATION } as const;
+
+/** The environment for a synchronous fixture `git` call: the parent's, isolated from the host's git config. */
+const syncFixtureEnv = () => ({ ...process.env, ...HOST_ISOLATION });
 
 /**
  * Runs one raw `git` invocation for fixture setup — the operations that are
@@ -141,35 +160,6 @@ const buildFixture = (dir: string): Effect.Effect<RepoFixture, never, Git | Chil
 		return { dir, commit1, commit2, commit3, branchCommit, forkPoint, tag: "v1.0.0", bigContent };
 	});
 
-// The `Git` service probes `ssh.variant` before every network-touching member,
-// and that read is a MERGED config read — so without this it reaches the
-// developer's or runner's own global git config. A machine with a global
-// `ssh.variant` outside `auto`/`ssh` would decline the ssh pin and fail the
-// assertions below with a message that says nothing about why. Pointing both
-// config scopes at /dev/null makes every git spawn in this file see only the
-// repository config its fixture wrote. Safe here because the fixtures pin
-// everything they depend on locally, including `init.defaultBranch`.
-const HOST_CONFIG_KEYS = ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"] as const;
-const hostConfig = new Map<string, string | undefined>();
-
-beforeAll(() => {
-	for (const key of HOST_CONFIG_KEYS) {
-		hostConfig.set(key, process.env[key]);
-		process.env[key] = "/dev/null";
-	}
-});
-
-afterAll(() => {
-	for (const key of HOST_CONFIG_KEYS) {
-		const previous = hostConfig.get(key);
-		if (previous === undefined) {
-			delete process.env[key];
-		} else {
-			process.env[key] = previous;
-		}
-	}
-});
-
 describe("Git — real repository integration", () => {
 	let fixtureDir: string;
 	let fixture: RepoFixture;
@@ -231,8 +221,8 @@ describe("Git — real repository integration", () => {
 			Effect.gen(function* () {
 				const git = yield* Git;
 				const before = yield* git.diffFile(fixture.dir, fixture.commit1, "a.txt");
-				execFileSync("git", ["config", "diff.noprefix", "true"], { cwd: fixture.dir });
-				execFileSync("git", ["config", "diff.context", "0"], { cwd: fixture.dir });
+				execFileSync("git", ["config", "diff.noprefix", "true"], { cwd: fixture.dir, env: syncFixtureEnv() });
+				execFileSync("git", ["config", "diff.context", "0"], { cwd: fixture.dir, env: syncFixtureEnv() });
 				const after = yield* git.diffFile(fixture.dir, fixture.commit1, "a.txt");
 				assert.include(after, "--- a/a.txt");
 				assert.include(after, "+++ b/a.txt");
@@ -534,7 +524,7 @@ describe("Git — real repository integration", () => {
 					`expected "-o BatchMode=yes" in the ssh argv, got: ${JSON.stringify(argv)}`,
 				);
 			}).pipe(
-				Effect.provide(Git.layer),
+				Effect.provide(IsolatedGit),
 				Effect.provide(NodeServices.layer),
 				Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ GIT_SSH_COMMAND: fakeSsh }))),
 			),

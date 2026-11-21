@@ -27,6 +27,7 @@ import {
 import type { ChildProcessSpawner } from "effect/process";
 import type {
 	ConfigDependencyHooksShape,
+	ConfigDependencyHooksSubprocessOptions,
 	HookInjection,
 	HookReplay,
 	HookReplayContext,
@@ -887,16 +888,24 @@ export class WorkspaceCatalogs extends Context.Service<WorkspaceCatalogs, Worksp
 	 * that cannot resolve at runtime — every bundled GitHub Action hits this).
 	 * The cost is one extra requirement: core's `ChildProcessSpawner`, provided
 	 * once at the edge (`@effect/platform-node`'s `NodeServices.layer`) — the
-	 * same sanctioned R-widening as `Workspaces.layerWithGit`. Parameterized, so
+	 * same sanctioned R-widening as `Workspaces.layerWithGit`. `pnpm` chooses
+	 * how the fetch rung spawns pnpm, as for
+	 * {@link ConfigDependencyHooks.layerSubprocessWith}. Parameterized, so
 	 * bind it to a `const` and reuse it.
 	 */
 	static readonly layerWithConfigDependenciesSubprocess = (
-		options?: WorkspaceCatalogsOptions,
+		options?: WorkspaceCatalogsOptions & ConfigDependencyHooksSubprocessOptions,
 	): Layer.Layer<
 		WorkspaceCatalogs,
 		never,
 		WorkspaceRoot | LockfileReader | FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
-	> => WorkspaceCatalogs.layerWithHooks(ConfigDependencyHooks.layerSubprocess, options);
+	> =>
+		WorkspaceCatalogs.layerWithHooks(
+			options?.pnpm === undefined
+				? ConfigDependencyHooks.layerSubprocess
+				: ConfigDependencyHooks.layerSubprocessWith({ pnpm: options.pnpm }),
+			options,
+		);
 
 	/**
 	 * A test double satisfying the full {@link WorkspaceCatalogsShape} with no

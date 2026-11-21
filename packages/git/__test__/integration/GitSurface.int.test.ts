@@ -28,36 +28,56 @@ import { mkdir, mkdtemp, realpath, rm, stat, symlink, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { afterAll, assert, beforeAll, describe, it } from "@effect/vitest";
+import { afterAll, afterEach, assert, beforeAll, describe, it } from "@effect/vitest";
 import { Cause, DateTime, Effect, Exit, Layer, Option, Result } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import { ChildProcess } from "effect/process";
+import { vi } from "vitest";
 import { Git, NotARepositoryError, TreeIdentity, UnknownRefError, UpstreamBranch } from "../../src/Git.js";
 import { REPOSITORY_ENV_VARS } from "../../src/internal/repositoryEnv.js";
 import { runCollected } from "../../src/internal/run.js";
 
-/** Resolves both `Git` and every Node platform service (including the real `ChildProcessSpawner`). */
-const TestLayer = Git.layer.pipe(Layer.provideMerge(NodeServices.layer));
+// Every git spawn in this file runs with SUITE_ENV, handed to the spawn itself
+// (the `Git` service's through `Git.layerRunOptions`, the raw fixture spawns
+// through their own `env`) and never written to `process.env`:
+//
+//  - GIT_CONFIG_GLOBAL / GIT_CONFIG_SYSTEM: the `Git` service probes
+//    `ssh.variant` before every network-touching member, and that read is a
+//    MERGED config read — so without this it reaches the developer's or
+//    runner's own global git config. A machine with a global `ssh.variant`
+//    outside `auto`/`ssh` would decline the ssh pin and fail the assertions
+//    below with a message that says nothing about why. Pointing both config
+//    scopes at /dev/null makes every git spawn in this file see only the
+//    repository config its fixture wrote. Safe here because the fixtures pin
+//    everything they depend on locally, including `init.defaultBranch`.
+//  - GIT_ALLOW_PROTOCOL: git >= 2.38 (CVE-2022-39253) refuses a file://
+//    submodule remote unless explicitly allowed. Probed against the installed
+//    git (2.54.0): a repo-local `git config protocol.file.allow always` on the
+//    superproject does NOT reach `git submodule add`'s internal clone
+//    subprocess — only a command-line `-c`, the environment, or global config
+//    do. A run option's `env` reaches the service's own
+//    submoduleAdd/fetch/sparseCheckoutSet spawns, and git passes it on to the
+//    clone it runs. The fixtures below also set the repo-local config,
+//    matching the documented mutating-tier contract, but it is this
+//    environment variable that actually authorizes the file-protocol
+//    clone/fetch on this git version.
+const SUITE_ENV = {
+	GIT_CONFIG_GLOBAL: "/dev/null",
+	GIT_CONFIG_SYSTEM: "/dev/null",
+	GIT_ALLOW_PROTOCOL: "file",
+} as const;
 
+/** Resolves both `Git`, every spawn under {@link SUITE_ENV}, and every Node platform service (including the real `ChildProcessSpawner`). */
+const TestLayer = Layer.mergeAll(Git.layer, Git.layerRunOptions({ env: SUITE_ENV })).pipe(
+	Layer.provideMerge(NodeServices.layer),
+);
+
+/** Runs `effect` against the real stack. */
 const run = <A, E>(effect: Effect.Effect<A, E, Git | ChildProcessSpawner.ChildProcessSpawner>) =>
 	effect.pipe(Effect.provide(TestLayer));
 
-/** The locale and prompt pins the `Git` service applies to its own spawns (#670). */
-const FIXTURE_ENV = { LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" } as const;
-
-// git >= 2.38 (CVE-2022-39253) refuses a file:// submodule remote unless
-// explicitly allowed. Probed against the installed git (2.54.0): a repo-local
-// `git config protocol.file.allow always` on the superproject does NOT reach
-// `git submodule add`'s internal clone subprocess — only a command-line `-c`,
-// the environment, or global config do. The `Git` service's per-call env pins
-// (applied at its spawn choke point, over `extendEnv: true`) merge with
-// `process.env`, so setting it here on the running test process reaches every
-// spawn in this file, including the real `Git` service's own
-// submoduleAdd/fetch/sparseCheckoutSet calls. The fixtures below also set the
-// repo-local config, matching the documented mutating-tier contract, but it is
-// this environment variable that actually authorizes the file-protocol
-// clone/fetch on this git version.
-process.env.GIT_ALLOW_PROTOCOL = "file";
+/** The locale and prompt pins the `Git` service applies to its own spawns (#670), plus {@link SUITE_ENV}. */
+const FIXTURE_ENV = { LC_ALL: "C", GIT_TERMINAL_PROMPT: "0", ...SUITE_ENV } as const;
 
 /**
  * Runs one raw `git` invocation for fixture setup — the operations that are
@@ -85,35 +105,6 @@ const runFixtureGit = (
 
 /** Confirms a path exists on the real FS — dies (via the rejected promise) if it does not. */
 const assertExists = (path: string): Effect.Effect<void> => Effect.promise(() => stat(path)).pipe(Effect.asVoid);
-
-// The `Git` service probes `ssh.variant` before every network-touching member,
-// and that read is a MERGED config read — so without this it reaches the
-// developer's or runner's own global git config. A machine with a global
-// `ssh.variant` outside `auto`/`ssh` would decline the ssh pin and fail the
-// assertions below with a message that says nothing about why. Pointing both
-// config scopes at /dev/null makes every git spawn in this file see only the
-// repository config its fixture wrote. Safe here because the fixtures pin
-// everything they depend on locally, including `init.defaultBranch`.
-const HOST_CONFIG_KEYS = ["GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"] as const;
-const hostConfig = new Map<string, string | undefined>();
-
-beforeAll(() => {
-	for (const key of HOST_CONFIG_KEYS) {
-		hostConfig.set(key, process.env[key]);
-		process.env[key] = "/dev/null";
-	}
-});
-
-afterAll(() => {
-	for (const key of HOST_CONFIG_KEYS) {
-		const previous = hostConfig.get(key);
-		if (previous === undefined) {
-			delete process.env[key];
-		} else {
-			process.env[key] = previous;
-		}
-	}
-});
 
 describe("Git surface — introspection repository (fixture A)", () => {
 	let dirA: string;
@@ -869,20 +860,17 @@ describe("Git surface — repository identity across worktrees (commonDir)", () 
 
 describe("Git surface — git's stderr echo of a mistyped credential URL is masked", () => {
 	let dir: string;
-	let allowed: string | undefined;
 
 	// This file pins GIT_ALLOW_PROTOCOL=file, under which git refuses the
 	// `https` transport before it ever echoes the URL. Widen it for this block
-	// only (tests in a file run sequentially), and restore it after.
+	// only: the inner run option merges over the suite's, key by key.
+	const WIDENED = { GIT_ALLOW_PROTOCOL: "file:https" } as const;
+
 	beforeAll(async () => {
 		dir = await mkdtemp(join(tmpdir(), "effected-git-stderr-mask-"));
-		allowed = process.env.GIT_ALLOW_PROTOCOL;
-		process.env.GIT_ALLOW_PROTOCOL = "file:https";
 	});
 
 	afterAll(async () => {
-		if (allowed === undefined) delete process.env.GIT_ALLOW_PROTOCOL;
-		else process.env.GIT_ALLOW_PROTOCOL = allowed;
 		await rm(dir, { recursive: true, force: true });
 	});
 
@@ -903,7 +891,10 @@ describe("Git surface — git's stderr echo of a mistyped credential URL is mask
 					// so the assertions below can fail.
 					const raw = yield* runCollected(
 						ChildProcess.setCwd(
-							ChildProcess.make("git", ["ls-remote", remote], { env: FIXTURE_ENV, extendEnv: true }),
+							ChildProcess.make("git", ["ls-remote", remote], {
+								env: { ...FIXTURE_ENV, ...WIDENED },
+								extendEnv: true,
+							}),
 							dir,
 						),
 					).pipe(Effect.orDie);
@@ -912,7 +903,7 @@ describe("Git surface — git's stderr echo of a mistyped credential URL is mask
 					assert.include(raw.stderr, secret);
 
 					const git = yield* Git;
-					const error = yield* Effect.flip(git.lsRemote(dir, remote));
+					const error = yield* Effect.flip(git.lsRemote(dir, remote).pipe(Git.withRunOptions({ env: WIDENED })));
 					assert.strictEqual(error._tag, "GitCommandError");
 					if (error._tag !== "GitCommandError") return;
 					assert.include(error.stderr, "<redacted>");
@@ -1262,29 +1253,19 @@ describe("Git surface — locating a repository from inside a git hook (#1123)",
 		await rm(base, { recursive: true, force: true });
 	});
 
-	/**
-	 * Runs `body` with `hookEnv` exported on this process, the way a hook's git
-	 * children inherit it, and restores the previous values however it exits.
-	 */
+	// The inherited parent environment is the point of these tests — a hook's
+	// git children inherit `hookEnv` rather than being handed it — so it is
+	// stubbed on this process, and unstubbed after each test.
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	/** Runs `body` with `hookEnv` stubbed on this process, the way a hook's git children inherit it. */
 	const inHook = <A, E>(body: Effect.Effect<A, E, Git | ChildProcessSpawner.ChildProcessSpawner>) =>
-		Effect.acquireUseRelease(
-			Effect.sync(() => {
-				const previous = new Map<string, string | undefined>();
-				for (const [key, value] of Object.entries(hookEnv)) {
-					previous.set(key, process.env[key]);
-					process.env[key] = value;
-				}
-				return previous;
-			}),
-			() => run(body),
-			(previous) =>
-				Effect.sync(() => {
-					for (const [key, value] of previous) {
-						if (value === undefined) delete process.env[key];
-						else process.env[key] = value;
-					}
-				}),
-		);
+		Effect.suspend(() => {
+			for (const [key, value] of Object.entries(hookEnv)) vi.stubEnv(key, value);
+			return run(body);
+		});
 
 	// The control: without the option the inherited GIT_DIR reaches git, which
 	// answers the cwd itself. If this ever stops reproducing, the environment

@@ -38,6 +38,7 @@ export {
 export {
 	ConfigDependencyHooks,
 	type ConfigDependencyHooksShape,
+	type ConfigDependencyHooksSubprocessOptions,
 	type HookInjection,
 	type HookReplay,
 	type HookReplayContext,

@@ -11,6 +11,9 @@
 * Updated actions-runtime
 * Updated @effected/mcp-kit
 * Updated @effected/source
+* Updated @effected/workspaces catalogs and the config-dependency seam
+* Updated @effected/workspaces: monorepo tooling
+* Updated Testing standards
 
 ## 2026-11-20
 

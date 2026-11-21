@@ -19,6 +19,7 @@ import type { FileSystem, Path } from "effect";
 import { Effect, Layer, Option } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
 import { ChangeDetector } from "./ChangeDetector.js";
+import type { ConfigDependencyHooksSubprocessOptions } from "./ConfigDependencyHooks.js";
 import { ConfigDependencyHooks } from "./ConfigDependencyHooks.js";
 import { layerFindOptions } from "./internal/layerRoot.js";
 import type { LockfileReaderOptions } from "./LockfileReader.js";
@@ -115,6 +116,13 @@ export type WorkspacesServices =
 	| WorkspaceDiscovery
 	| LockfileReader
 	| WorkspaceCatalogs;
+
+// The subprocess composites' hooks layer: the shared default reference unless
+// the caller chose how the fetch rung spawns pnpm.
+const subprocessHooks = (options: ConfigDependencyHooksSubprocessOptions | undefined) =>
+	options?.pnpm === undefined
+		? ConfigDependencyHooks.layerSubprocess
+		: ConfigDependencyHooks.layerSubprocessWith({ pnpm: options.pnpm });
 
 // Shared composition helper for Workspaces.layer,
 // Workspaces.layerWithConfigDependencies and
@@ -243,16 +251,19 @@ export class Workspaces {
 	 * this is a separate composite rather than a flag: a consumer that keeps the
 	 * in-process replay should not have to be able to spawn a subprocess.
 	 *
+	 * `pnpm` chooses how the fetch rung spawns pnpm, as for
+	 * {@link ConfigDependencyHooks.layerSubprocessWith}.
+	 *
 	 * **Bind the result to a `const`.**
 	 */
 	static layerWithConfigDependenciesSubprocess(
-		options?: WorkspacesOptions,
+		options?: WorkspacesOptions & ConfigDependencyHooksSubprocessOptions,
 	): Layer.Layer<
 		WorkspacesServices,
 		never,
 		FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
 	> {
-		return compose(options, ConfigDependencyHooks.layerSubprocess);
+		return compose(options, subprocessHooks(options));
 	}
 
 	/**
@@ -337,6 +348,9 @@ export class Workspaces {
 	 * is no R-widening to weigh here and a bundled consumer pays nothing to be
 	 * correct. Prefer this variant whenever the program ships as a bundle.
 	 *
+	 * `pnpm` chooses how the fetch rung spawns pnpm, as for
+	 * {@link ConfigDependencyHooks.layerSubprocessWith}.
+	 *
 	 * **Bind the result to a `const`.**
 	 *
 	 * @example
@@ -348,13 +362,13 @@ export class Workspaces {
 	 * ```
 	 */
 	static layerWithGitAndConfigDependenciesSubprocess(
-		options?: WorkspacesGitOptions,
+		options?: WorkspacesGitOptions & ConfigDependencyHooksSubprocessOptions,
 	): Layer.Layer<
 		WorkspacesServices | ChangeDetector | WorkspaceSnapshots | Git,
 		never,
 		FileSystem.FileSystem | Path.Path | ChildProcessSpawner.ChildProcessSpawner
 	> {
-		return Workspaces.layerWithGitAndHooks(ConfigDependencyHooks.layerSubprocess, options);
+		return Workspaces.layerWithGitAndHooks(subprocessHooks(options), options);
 	}
 
 	/**

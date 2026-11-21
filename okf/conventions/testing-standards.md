@@ -1,7 +1,7 @@
 ---
 type: Convention
 title: Testing standards
-description: "@effect/vitest as the default runner, assert.* never expect, memfs as the real filesystem double, and why the oracle for a ported algorithm must be external."
+description: "@effect/vitest as the default runner, assert.* never expect, memfs as the real filesystem double, no process.env writes, the slow tier, and why the oracle for a ported algorithm must be external."
 status: stable
 stale_after: "2027-03-13T00:00:00Z"
 tags:
@@ -17,12 +17,16 @@ sources:
     resource: ../../CLAUDE.md
   - id: vitest-setup
     resource: ../../vitest.setup.ts
+  - id: no-process-env-mutation-test
+    resource: ../../__test__/no-process-env-mutation.test.ts
+  - id: vitest-config
+    resource: ../../vitest.config.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-21T19:42:38Z
 integrity:
   generated:
-    body: 683bb69240ef618c
+    body: 3e85b1aa9c4ad529
 ---
 
 # Testing standards
@@ -93,6 +97,27 @@ A double that exists to control *timing* rather than to hold bytes is a
 different artifact and stays hand-written; `@effected/jsonl`'s watch
 harness is the standing example of that exception.
 
+## Tests never write process.env
+
+Never assign to, delete from, or `Object.assign` into `process.env` in a
+test. `process.env` is shared by every file a vitest worker runs, so a
+missed restore, an early throw, or two files touching the same key make
+unrelated tests pass or fail. Provide the value through the code's own seam
+first — a test `ConfigProvider`, `Git.withRunOptions({ env })` or
+`Git.layerRunOptions(...)` for a whole suite, a spawn's `env` option. Where a
+test genuinely needs the parent's ambient environment, use `vi.stubEnv(...)`
+with `vi.unstubAllEnvs()` in `afterEach` or `afterAll`. Reading
+`process.env` is fine. The rule (issue 1379) is held by a root structural
+test that tokenizes every test file and fails on a write.[^no-process-env-mutation-test]
+
+## Slow files run in their own tier
+
+A test file that takes about 20 seconds or more on a CI runner goes in
+`vitest.config.ts`'s `SLOW_TESTS`, which moves it out of the coverage run
+into the slow tier; the list must name files that exist, or the config
+refuses to load.[^vitest-config] Why the tiers exist and how each is
+selected → [the vitest test tiers](../decisions/vitest-test-tiers.md).
+
 ## The build before the run is not a given
 
 Every cross-package import resolves to a sibling's `src/` over the workspace
@@ -151,5 +176,8 @@ property that was never in doubt.
 [^vitest-setup]: `vitest.setup.ts` — pins
     `VITEST_AGENT_RUNSCRIPT_BUILT_RECENTLY_MS` to 1 ms before
     `AgentPlugin.runScript`, with the reproduction recorded in the comment.
+[^no-process-env-mutation-test]: `__test__/no-process-env-mutation.test.ts`
+    — the token-level scan for assignments and mutating calls on `process.env`.
+[^vitest-config]: `vitest.config.ts` — `SLOW_TESTS` and its missing-file check.
 [^claude-md]: `CLAUDE.md` §Testing — "tests live in each package's
     `__test__/` directory, never co-located in `src/`."

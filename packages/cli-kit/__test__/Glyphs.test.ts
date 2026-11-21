@@ -1,8 +1,13 @@
-import { assert, describe, it } from "@effect/vitest";
+import { afterEach, assert, describe, it } from "@effect/vitest";
+import { vi } from "vitest";
 import { Glyphs } from "../src/index.js";
 import { displayWidth } from "../src/internal/displayWidth.js";
 
 describe("Glyphs", () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
 	it("unicode and ascii are distinct, tagged sets", () => {
 		assert.strictEqual(Glyphs.unicode.kind, "unicode");
 		assert.strictEqual(Glyphs.ascii.kind, "ascii");
@@ -76,13 +81,8 @@ describe("Glyphs.select", () => {
 	});
 
 	it("never reads the process: TERM=dumb in process.env changes nothing", () => {
-		const before = process.env.TERM;
-		process.env.TERM = "dumb";
-		try {
-			assert.strictEqual(Glyphs.select({ ascii: "auto" }), Glyphs.unicode);
-		} finally {
-			if (before === undefined) delete process.env.TERM;
-			else process.env.TERM = before;
-		}
+		vi.stubEnv("TERM", "dumb");
+		assert.strictEqual(process.env.TERM, "dumb", "control: the ambient TERM is dumb");
+		assert.strictEqual(Glyphs.select({ ascii: "auto" }), Glyphs.unicode);
 	});
 });

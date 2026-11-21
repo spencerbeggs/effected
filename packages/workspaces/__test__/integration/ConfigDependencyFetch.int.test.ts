@@ -6,21 +6,29 @@
 // 0.11.2, which is what `.pnpm-config` holds. The store holds no 0.11.1.
 // Further tags break the integrity record one way each.
 //
-// No live package manager runs. A fake `pnpm` on PATH (see
-// `writeFakePnpm`) stands in for the fetch rung's `pnpm install
+// No live package manager runs. A fake `pnpm` (see `writeFakePnpm`) stands in for the fetch rung's `pnpm install
 // --frozen-lockfile`: it serves each version from a fake registry and refuses
 // a tarball whose integrity does not match the pinned lockfile, as pnpm does
 // (probed against pnpm 11.27.1 and 12.6.0 for the real command). Real `git`
-// and `node` run through `NodeServices`.
+// and `node` run through `NodeServices` (see `Platform`).
+//
+// The fake is reached through the public seam, never `process.env`: every
+// layer here is built with `pnpm: { command, env }` naming the fake's absolute
+// path and its `FAKE_PNPM_*` variables (see `fakePnpm`). The spawner under it
+// is NodeServices' own behind a guard (see `Platform`) that dies on any other
+// `pnpm`, so a layer that misses the seam fails at once instead of running the
+// real pnpm against the registry until the fetch timeout.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { afterAll, assert, beforeAll, beforeEach, describe, it } from "@effect/vitest";
 import { CatalogAssemblyError } from "@effected/npm";
 import { Effect, Layer, Option } from "effect";
+import type { ChildProcess } from "effect/process";
+import { ChildProcessSpawner } from "effect/process";
 import { ConfigDependencyHooks, WorkspaceSnapshots, Workspaces } from "../../src/index.js";
 import { installConfigDependency, writeFakePnpm, writeModulesYaml } from "./utils/configDependencyFixtures.js";
 
@@ -34,7 +42,50 @@ let root: string;
 let store: string;
 let pnpmLog: string;
 let binDir: string;
-let savedPath: string | undefined;
+/** What the fake pnpm requires the scratch `.npmrc` to hold (`""` meaning none); reset before every test. */
+let expectedNpmrc = "";
+
+/**
+ * The fetch rung's pnpm, for every layer under test: the fake by absolute path,
+ * with its registry, log and `.npmrc` expectation. Read at layer construction,
+ * so a test sets {@link expectedNpmrc} before building its layer.
+ */
+const fakePnpm = () => ({
+	pnpm: {
+		command: join(binDir, "pnpm"),
+		env: {
+			FAKE_PNPM_LOG: pnpmLog,
+			FAKE_PNPM_PUBLISHED: JSON.stringify({ [`${NAME}@0.11.1`]: BASE_SRI }),
+			FAKE_PNPM_EXPECT_NPMRC: expectedNpmrc,
+			// A pnpm script's `nodeOptions` loads tsx, which no scratch under the
+			// OS temp dir can resolve; the fake is plain node.
+			NODE_OPTIONS: "",
+		},
+	},
+});
+
+/** Any `pnpm` but the fake: what a layer built without {@link fakePnpm} would spawn. */
+const isRealPnpm = (command: ChildProcess.Command): boolean =>
+	command._tag === "StandardCommand" &&
+	basename(command.command) === "pnpm" &&
+	command.command !== join(binDir, "pnpm");
+
+/** NodeServices behind a spawner that dies on a real pnpm and passes every other command through. */
+const Platform = Layer.effect(
+	ChildProcessSpawner.ChildProcessSpawner,
+	Effect.gen(function* () {
+		const live = yield* ChildProcessSpawner.ChildProcessSpawner;
+		return ChildProcessSpawner.make((command) =>
+			isRealPnpm(command)
+				? Effect.die(
+						new Error(
+							`the real pnpm was spawned (${command._tag === "StandardCommand" ? command.command : ""}); build the layer with fakePnpm()`,
+						),
+					)
+				: live.spawn(command),
+		);
+	}),
+).pipe(Layer.provideMerge(NodeServices.layer));
 
 const workspaceYaml = (spec: string): string =>
 	[
@@ -101,10 +152,6 @@ beforeAll(() => {
 	binDir = join(scratch, "bin");
 	pnpmLog = join(scratch, "pnpm.log");
 	writeFakePnpm(binDir);
-	savedPath = process.env.PATH;
-	process.env.PATH = `${binDir}${delimiter}${savedPath ?? ""}`;
-	process.env.FAKE_PNPM_LOG = pnpmLog;
-	process.env.FAKE_PNPM_PUBLISHED = JSON.stringify({ [`${NAME}@0.11.1`]: BASE_SRI });
 
 	// The checkout after `pnpm install` on the bumped branch: .pnpm-config holds
 	// 0.11.2 only, and the workspace store holds nothing of cfg-842.
@@ -157,23 +204,21 @@ beforeEach(() => {
 	rmSync(pnpmLog, { force: true });
 	// No `.npmrc` in the checkout, so the fake pnpm refuses a scratch that has one.
 	rmSync(join(root, ".npmrc"), { force: true });
-	process.env.FAKE_PNPM_EXPECT_NPMRC = "";
+	expectedNpmrc = "";
 });
 
 afterAll(() => {
-	process.env.PATH = savedPath;
-	delete process.env.FAKE_PNPM_LOG;
-	delete process.env.FAKE_PNPM_PUBLISHED;
-	delete process.env.FAKE_PNPM_EXPECT_NPMRC;
 	for (const dir of [root, dirname(store), dirname(binDir)]) {
 		if (dir !== undefined) rmSync(dir, { recursive: true, force: true });
 	}
 });
 
 const Subprocess = () =>
-	Workspaces.layerWithGitAndConfigDependenciesSubprocess({ cwd: root }).pipe(Layer.provideMerge(NodeServices.layer));
-const InProcess = () =>
-	Workspaces.layerWithGitAndConfigDependencies({ cwd: root }).pipe(Layer.provideMerge(NodeServices.layer));
+	Workspaces.layerWithGitAndConfigDependenciesSubprocess({ cwd: root, ...fakePnpm() }).pipe(
+		Layer.provideMerge(Platform),
+	);
+const Hooks = () => ConfigDependencyHooks.layerSubprocessWith(fakePnpm()).pipe(Layer.provide(Platform));
+const InProcess = () => Workspaces.layerWithGitAndConfigDependencies({ cwd: root }).pipe(Layer.provideMerge(Platform));
 
 /** `at(ref)`'s failure, which must be a typed hooks-source assembly error. */
 const failureAt = (ref: string) =>
@@ -227,10 +272,11 @@ describe("effected#842 — the base side of a config-dependency bump", () => {
 			"  '@acme': https://npm.acme.example/",
 			"",
 		].join("\n");
+		// Before the layer is built: the expectation rides its env.
+		expectedNpmrc = npmrc;
 		return Effect.gen(function* () {
 			writeFileSync(join(root, ".npmrc"), npmrc);
 			writeFileSync(join(root, "pnpm-workspace.yaml"), yamlWithRegistries);
-			process.env.FAKE_PNPM_EXPECT_NPMRC = npmrc;
 			const hooks = yield* ConfigDependencyHooks;
 			const lockfile = lockfileRecording("0.11.1", BASE_SRI);
 			const result = yield* hooks.inject(root, { [NAME]: "0.11.1" }, {}, undefined, { lockfile, ref: "base" });
@@ -249,7 +295,7 @@ describe("effected#842 — the base side of a config-dependency bump", () => {
 					writeFileSync(join(root, "pnpm-workspace.yaml"), workspaceYaml("0.11.2"));
 				}),
 			),
-			Effect.provide(ConfigDependencyHooks.layerSubprocess.pipe(Layer.provide(NodeServices.layer))),
+			Effect.provide(Hooks()),
 		);
 	});
 
@@ -262,7 +308,7 @@ describe("effected#842 — the base side of a config-dependency bump", () => {
 			const second = yield* hooks.inject(root, { [NAME]: "0.11.1" }, {}, undefined, { lockfile, ref: "base" });
 			assert.deepStrictEqual(second.replays, { [NAME]: { version: "0.11.1", source: "store" } });
 			assert.strictEqual(pnpmRuns().length, 1);
-		}).pipe(Effect.provide(ConfigDependencyHooks.layerSubprocess.pipe(Layer.provide(NodeServices.layer)))),
+		}).pipe(Effect.provide(Hooks())),
 	);
 
 	it.effect("a non-fetching layer fails with the distinct notInstalled reason, naming the base side", () =>

@@ -9,7 +9,8 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { assert, describe, it } from "@effect/vitest";
+import { afterEach, assert, describe, it } from "@effect/vitest";
+import { vi } from "vitest";
 import { GITHUB_BUILD_TYPE, SLSA_PROVENANCE_V1, SlsaProvenance } from "../src/index.js";
 
 const FIXTURE: unknown = JSON.parse(
@@ -38,6 +39,10 @@ const claims = {
 } as const;
 
 const asJson = (provenance: SlsaProvenance): unknown => JSON.parse(JSON.stringify(provenance));
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 
 describe("SlsaProvenance.forGitHubWorkflow", () => {
 	it("emits exactly the shape @actions/attest emits", () => {
@@ -74,14 +79,8 @@ describe("SlsaProvenance.forGitHubWorkflow", () => {
 		// The discriminating test for the no-ambient-env rule: upstream reads
 		// `process.env.GITHUB_SERVER_URL` (and writes the literal `undefined` when
 		// it is unset). Setting it here must change nothing.
-		const before = process.env.GITHUB_SERVER_URL;
-		process.env.GITHUB_SERVER_URL = "https://ambient.example";
-		try {
-			assert.deepStrictEqual(asJson(SlsaProvenance.forGitHubWorkflow(claims)), FIXTURE);
-		} finally {
-			if (before === undefined) delete process.env.GITHUB_SERVER_URL;
-			else process.env.GITHUB_SERVER_URL = before;
-		}
+		vi.stubEnv("GITHUB_SERVER_URL", "https://ambient.example");
+		assert.deepStrictEqual(asJson(SlsaProvenance.forGitHubWorkflow(claims)), FIXTURE);
 	});
 
 	it("threads a GHES server URL through every derived URL", () => {

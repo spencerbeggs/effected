@@ -3,11 +3,12 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { afterAll, assert, describe, it } from "@effect/vitest";
+import { afterAll, afterEach, assert, describe, it } from "@effect/vitest";
 import type { MemoryFileSystemHandle } from "@effected/memfs";
 import { MemoryFileSystem } from "@effected/memfs";
 import type { FileSystem, Layer, Path } from "effect";
 import { Effect, Schema } from "effect";
+import { vi } from "vitest";
 import type { BundlerBuildOptions, BundlerPackageJson, BundlerSeams } from "../src/Bundler.js";
 import { Bundler } from "../src/Bundler.js";
 import { BundlerError } from "../src/BundlerError.js";
@@ -56,6 +57,9 @@ const makeTmp = (): string => {
 	tmpDirs.push(dir);
 	return dir;
 };
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 afterAll(() => {
 	for (const dir of tmpDirs) rmSync(dir, { recursive: true, force: true });
 });
@@ -1104,29 +1108,15 @@ describe("Bundler.build meta pass", () => {
 	// first case for the wrong reason, and an unset one the second.
 	it.effect("resolves an auto optimistic setting from the ci option, never the environment", () =>
 		Effect.gen(function* () {
-			const saved = { CI: process.env.CI, GITHUB_ACTIONS: process.env.GITHUB_ACTIONS };
-			yield* Effect.acquireUseRelease(
-				Effect.void,
-				() =>
-					Effect.gen(function* () {
-						process.env.CI = "true";
-						const local = overRealPass({ config: { meta: {} }, options: { ci: false } });
-						yield* buildIn(local.options);
-						assert.deepStrictEqual(local.nextVersionReads, ["/abs/pkg"]);
-						delete process.env.CI;
-						delete process.env.GITHUB_ACTIONS;
-						const ci = overRealPass({ config: { meta: {} }, options: { ci: true } });
-						yield* buildIn(ci.options);
-						assert.deepStrictEqual(ci.nextVersionReads, []);
-					}),
-				() =>
-					Effect.sync(() => {
-						for (const [key, value] of Object.entries(saved)) {
-							if (value === undefined) delete process.env[key];
-							else process.env[key] = value;
-						}
-					}),
-			);
+			vi.stubEnv("CI", "true");
+			const local = overRealPass({ config: { meta: {} }, options: { ci: false } });
+			yield* buildIn(local.options);
+			assert.deepStrictEqual(local.nextVersionReads, ["/abs/pkg"]);
+			vi.stubEnv("CI", undefined);
+			vi.stubEnv("GITHUB_ACTIONS", undefined);
+			const ci = overRealPass({ config: { meta: {} }, options: { ci: true } });
+			yield* buildIn(ci.options);
+			assert.deepStrictEqual(ci.nextVersionReads, []);
 		}),
 	);
 
