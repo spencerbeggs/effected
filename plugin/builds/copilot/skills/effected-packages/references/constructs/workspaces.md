@@ -19,6 +19,7 @@
 | `ClassifyOptions` | Interface | Arguments to `VersioningStrategy.classify`. | |
 | `ConfigDependencyHooks` | Class | Replays a workspace's `configDependencies` `updateConfig` hooks over the inline catalogs — the opt-in seam that lets hook-injected catalogs participate in assembly. | replay pnpm config dependency pnpmfile hooks, inject catalogs from a config-dependency plugin, updateConfig hook |
 | `ConfigDependencyHooksShape` | Interface | The `ConfigDependencyHooks` service shape. | |
+| `ConfigDependencyHooksSubprocessOptions` | Interface | Options for `ConfigDependencyHooks.layerSubprocessWith`. | |
 | `ConfigDependencySpec` | Class | A pnpm `configDependencies` spec from `pnpm-workspace.yaml`: an exact `version` and, on the legacy inline form only, an SRI `integrity`. | parse a pnpm-workspace.yaml configDependencies version, split inline sri integrity, render bare form |
 | `CyclicDependencyError` | Class | Raised when the workspace dependency graph cannot be topologically ordered because it contains a cycle. | handle a circular workspace dependency, cannot topologically sort packages |
 | `DependencyDiff` | Interface | The result of comparing two `WorkspacePackage` dependency snapshots. | |
