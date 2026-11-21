@@ -1,7 +1,7 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, describe, it } from "@effect/vitest";
 import { MemoryFileSystem } from "@effected/memfs";
-import { Effect, FileSystem, Layer, Option, Path, Schema } from "effect";
+import { Effect, Exit, FileSystem, Layer, Option, Path, PlatformError, Schema } from "effect";
 import { CredentialRecord, includeIfKeys, temporaryGlobalConfig } from "../../src/internal/checkout/credentials.js";
 
 describe("includeIfKeys", () => {
@@ -115,4 +115,33 @@ describe("temporaryGlobalConfig", () => {
 			assert.strictEqual(yield* fs.readFileString(none), "");
 		}).pipe(Effect.provide(layer({ "/runner/temp/.keep": "" }))),
 	);
+
+	it.effect("removes its directory when seeding the file fails", () => {
+		const denied = (path: string) =>
+			Effect.fail(
+				PlatformError.systemError({
+					_tag: "PermissionDenied",
+					module: "FileSystem",
+					method: "copyFile",
+					pathOrDescriptor: path,
+				}),
+			);
+		return Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			const exit = yield* Effect.exit(temporaryGlobalConfig(Option.some("/home/me"), "/runner/temp"));
+			assert.isTrue(Exit.isFailure(exit));
+			assert.deepStrictEqual(yield* fs.readDirectory("/runner/temp"), [".keep"]);
+		}).pipe(
+			Effect.provide(
+				Layer.mergeAll(
+					MemoryFileSystem.layerWith(
+						{ "/home/me/.gitconfig": "[user]\n", "/runner/temp/.keep": "" },
+						{ faults: { copyFile: (from) => denied(from) } },
+					),
+					Path.layer,
+					NodeCrypto.layerSecureRandom,
+				),
+			),
+		);
+	});
 });

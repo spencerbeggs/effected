@@ -21,6 +21,7 @@ import {
 	CheckoutGitTooOldError,
 	CheckoutRefNotFoundError,
 	CheckoutResult,
+	CheckoutStateKeyInUseError,
 } from "../../Checkout.js";
 import { Secret } from "../../Secret.js";
 import {
@@ -118,6 +119,13 @@ type SourceRequirements =
 	| ActionOutputs
 	| ActionState
 	| ActionLogger;
+
+/**
+ * The state keys `"job"` checkouts saved, per `ActionState` service (one per action run), each with the path whose
+ * credentials it records. The runner keeps one value per key, so a second checkout of another path under the same key
+ * would leave the first one's credentials behind at cleanup.
+ */
+const savedStateKeys = new WeakMap<object, Map<string, string>>();
 
 const short = (sha: string): string => sha.slice(0, 7);
 
@@ -233,7 +241,8 @@ const objectFormat = (
 };
 
 /**
- * The default branch, `refs/heads/`-prefixed: `ls-remote` for an SSH key, the API otherwise, as checkout looks it up.
+ * The default branch, `refs/heads/`-prefixed: `ls-remote` for an SSH key or a `remoteUrl`, the API otherwise, as checkout
+ * looks it up.
  * A failure carries the reason, with `scrub` applied so the token never reaches it.
  */
 const defaultBranch = (
@@ -244,8 +253,10 @@ const defaultBranch = (
 ): Effect.Effect<string, CheckoutDefaultBranchError> => {
 	const repository = `${settings.owner}/${settings.name}`;
 	const failed = (detail: string) => new CheckoutDefaultBranchError({ repository, detail: scrub(detail) });
+	// The remote's own HEAD for SSH, as checkout does, and for a `remoteUrl`: the API only knows the repository a
+	// derived GitHub URL names.
 	const lookup: Effect.Effect<string, unknown> =
-		settings.auth._tag === "Ssh"
+		settings.auth._tag === "Ssh" || Option.isSome(settings.remoteUrl)
 			? Effect.flatMap(retried(git.remoteHead(settings.path, "origin")), (head) =>
 					Option.match(head, {
 						onNone: () => Effect.fail(failed("the remote names no HEAD")),
@@ -363,6 +374,12 @@ export const getSource = (options: CheckoutOptions): Effect.Effect<CheckoutResul
 		const privileged = github.eventName === "pull_request_target" || github.eventName === "workflow_run";
 		const payload = privileged ? yield* env.payload : yield* env.payload.pipe(Effect.orElseSucceed(() => ({})));
 		const settings = yield* lower(options, { github, workspace, payload });
+		if (settings.credentials === "job") {
+			const recorded = savedStateKeys.get(state)?.get(settings.stateKey);
+			if (recorded !== undefined && recorded !== settings.path) {
+				return yield* new CheckoutStateKeyInUseError({ stateKey: settings.stateKey, path: recorded });
+			}
+		}
 		const repositoryUrl = Option.getOrElse(settings.remoteUrl, () => fetchUrl(settings));
 		const client = yield* apiClient(settings, serverApiUrl(settings.serverUrl, github));
 		const token = tokenOf(settings);
@@ -410,9 +427,15 @@ export const getSource = (options: CheckoutOptions): Effect.Effect<CheckoutResul
 			}
 
 			if (settings.safeDirectory || settings.submodules) {
-				const file = yield* prepareGlobalConfig(settings, git);
-				temporaryConfig = Option.some(file);
-				runEnv = { ...runEnv, GIT_CONFIG_GLOBAL: file };
+				// Uninterruptible, so the directory it makes is recorded for discarding as soon as it exists.
+				yield* Effect.uninterruptible(
+					Effect.tap(prepareGlobalConfig(settings, git), (file) =>
+						Effect.sync(() => {
+							temporaryConfig = Option.some(file);
+							runEnv = { ...runEnv, GIT_CONFIG_GLOBAL: file };
+						}),
+					),
+				);
 			}
 
 			return yield* withRun(
@@ -459,6 +482,8 @@ export const getSource = (options: CheckoutOptions): Effect.Effect<CheckoutResul
 								yield* state
 									.save(settings.stateKey, lasting, CredentialRecord)
 									.pipe(Effect.onError(() => remove(configured.record, git)));
+								const keys = savedStateKeys.get(state) ?? new Map<string, string>();
+								savedStateKeys.set(state, keys.set(settings.stateKey, settings.path));
 							}
 							credentials = Option.some(settings.credentials === "none" ? configured.record : lasting);
 							return configured;

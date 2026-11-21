@@ -76,8 +76,10 @@ export const assertSafePullRequest = (
 		}
 	}
 
-	// (A) Fork PR?
-	if (typeof prHeadRepoId !== "number" || prHeadRepoId === baseRepoId) {
+	// (A) Fork PR? A same-repository PR always names its head repository, so a missing one is a deleted fork:
+	// its pull refs and head SHA stay fetchable from the base repository, so it falls through to (B). Stricter
+	// than the stock action, which returns early here.
+	if (prHeadRepoId === baseRepoId) {
 		return Effect.void;
 	}
 

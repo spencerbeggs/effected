@@ -2,7 +2,11 @@ import { assert, describe, it } from "@effect/vitest";
 import { Effect, Option, Path, Redacted } from "effect";
 import { GitHubContext } from "../../src/ActionEnvironment.js";
 import type { CheckoutOptions } from "../../src/Checkout.js";
-import { CheckoutPathError, CheckoutUnsafePullRequestError } from "../../src/Checkout.js";
+import {
+	CheckoutPathError,
+	CheckoutUnqualifiedRefPinError,
+	CheckoutUnsafePullRequestError,
+} from "../../src/Checkout.js";
 import { lower } from "../../src/internal/checkout/settings.js";
 
 const SHA = "1234567890123456789012345678901234567890";
@@ -72,7 +76,7 @@ describe("lower ref mapping", () => {
 		]);
 		assert.deepStrictEqual(await refPair({ _tag: "Commit", sha: SHA }), ["", SHA]);
 		assert.deepStrictEqual(await refPair({ _tag: "Ref", ref: "refs/heads/x" }), ["refs/heads/x", ""]);
-		assert.deepStrictEqual(await refPair({ _tag: "Ref", ref: "x", commit: SHA }), ["x", SHA]);
+		assert.deepStrictEqual(await refPair({ _tag: "Ref", ref: "refs/heads/x", commit: SHA }), ["refs/heads/x", SHA]);
 		assert.deepStrictEqual(await refPair({ _tag: "Default" }), ["", ""]);
 	});
 
@@ -80,6 +84,25 @@ describe("lower ref mapping", () => {
 		assert.deepStrictEqual(await refPair({ _tag: "Ref", ref: ` ${SHA}\n` }), ["", SHA]);
 		const bom = `﻿${SHA}`;
 		assert.deepStrictEqual(await refPair({ _tag: "Ref", ref: bom }), [bom, ""]);
+	});
+});
+
+describe("lower commit pins", () => {
+	it("lowercases a pinned commit, so it compares with what git reports", async () => {
+		const upper = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
+		assert.deepStrictEqual(await refPair({ _tag: "Tag", name: "v1", commit: upper }), [
+			"refs/tags/v1",
+			upper.toLowerCase(),
+		]);
+		assert.deepStrictEqual(await refPair({ _tag: "Commit", sha: upper }), ["", upper.toLowerCase()]);
+		assert.deepStrictEqual(await refPair({ _tag: "Ref", ref: upper }), ["", upper.toLowerCase()]);
+	});
+
+	it("refuses an unqualified Ref pinned to a commit, which fetches only the commit", async () => {
+		const error = await Effect.runPromise(Effect.flip(lowered({ ref: { _tag: "Ref", ref: "main", commit: SHA } })));
+		assert.instanceOf(error, CheckoutUnqualifiedRefPinError);
+		assert.strictEqual((error as CheckoutUnqualifiedRefPinError).ref, "main");
+		assert.match((error as CheckoutUnqualifiedRefPinError).message, /Branch or Tag/);
 	});
 });
 

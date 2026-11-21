@@ -98,7 +98,12 @@ export interface CheckoutOptions {
 	readonly path?: string;
 	/** How to authenticate. */
 	readonly auth: CheckoutAuth;
-	/** Where the credential lives afterwards: for the job, for the action's own run, or nowhere. */
+	/**
+	 * Where the credential lives afterwards: for the job, for the action's own run, or nowhere. Under `"job"` and
+	 * `"action"` both the token (through `includeIf`) and an SSH key's `core.sshCommand` are persisted in the
+	 * repository and its submodules, so later git authenticates either way; `"action"` removes them when the scope
+	 * closes.
+	 */
 	readonly credentials?: "job" | "action" | "none";
 	/** Whether to clean the target directory first. */
 	readonly clean?: boolean;
@@ -118,11 +123,18 @@ export interface CheckoutOptions {
 	readonly safeDirectory?: boolean;
 	/** The GitHub server URL. */
 	readonly serverUrl?: string;
-	/** The remote URL to use instead of one derived from `serverUrl` and `repository`. */
+	/**
+	 * The remote URL to use instead of one derived from `serverUrl` and `repository`. With it set, the default branch
+	 * is the remote's own `HEAD`, not the API's answer for `repository`.
+	 */
 	readonly remoteUrl?: string;
 	/** Permits checking out fork pull request code from a privileged event. */
 	readonly allowUnsafePrCheckout?: boolean;
-	/** The state key the cleanup phase reads back. */
+	/**
+	 * The state key the cleanup phase reads back. The runner keeps one value per key, so give each `"job"` checkout
+	 * of a different path its own key, and call `Checkout.cleanup({ stateKey })` for each; a second one under a key
+	 * already in use fails `CheckoutStateKeyInUseError` before it writes anything.
+	 */
 	readonly stateKey?: string;
 }
 
@@ -278,6 +290,54 @@ export class CheckoutDefaultBranchError extends Schema.TaggedError<CheckoutDefau
 }
 
 /**
+ * Raised when a `Ref` that is not fully qualified is pinned with `commit`.
+ *
+ * @remarks
+ * An unqualified ref pinned to a commit fetches only the commit, and nothing
+ * then names the branch or tag to land on. Pin a branch or tag with `Branch`
+ * or `Tag`, or give `Ref` a full `refs/...` name.
+ *
+ * @public
+ */
+export class CheckoutUnqualifiedRefPinError extends Schema.TaggedError<CheckoutUnqualifiedRefPinError>()(
+	"CheckoutUnqualifiedRefPinError",
+	{
+		/** The unqualified ref that was pinned. */
+		ref: Schema.String,
+	},
+) {
+	override get message(): string {
+		return `The ref "${this.ref}" is pinned to a commit but is not fully qualified: pin a branch or tag with Branch or Tag, or name it as refs/...`;
+	}
+}
+
+/**
+ * Raised when a second `"job"` checkout in one action saves its credentials
+ * under a state key another checkout of a different path already used.
+ *
+ * @remarks
+ * The runner keeps one value per state key, so the post entry's
+ * {@link Checkout.cleanup} would find only the later record and leave the
+ * earlier checkout's credentials behind. Give each `"job"` checkout its own
+ * `stateKey` and call `Checkout.cleanup({ stateKey })` for each.
+ *
+ * @public
+ */
+export class CheckoutStateKeyInUseError extends Schema.TaggedError<CheckoutStateKeyInUseError>()(
+	"CheckoutStateKeyInUseError",
+	{
+		/** The state key already in use. */
+		stateKey: Schema.String,
+		/** The path whose credentials it already records. */
+		path: Schema.String,
+	},
+) {
+	override get message(): string {
+		return `The state key "${this.stateKey}" already records the credentials of the checkout at "${this.path}": give each "job" checkout its own stateKey`;
+	}
+}
+
+/**
  * Anything that can go wrong checking out a repository.
  *
  * @remarks
@@ -294,7 +354,9 @@ export type CheckoutError =
 	| CheckoutCommitMismatchError
 	| CheckoutAuthError
 	| CheckoutPathError
-	| CheckoutDefaultBranchError;
+	| CheckoutDefaultBranchError
+	| CheckoutUnqualifiedRefPinError
+	| CheckoutStateKeyInUseError;
 
 /**
  * Checks a repository out the way the stock checkout action does, on `@effected/git`.
@@ -322,15 +384,17 @@ export class Checkout {
 	 *
 	 * The credentials' lifetime is `options.credentials`: `"job"` saves what
 	 * was written under `stateKey` before any fetch, for {@link Checkout.cleanup}
-	 * in the post step; `"action"` removes it when the enclosing `Scope`
+	 * in the post step, refusing a second `"job"` checkout of another path
+	 * under a key already in use; `"action"` removes it when the enclosing `Scope`
 	 * closes, on success, failure or interruption; `"none"` removes it before
 	 * this returns. The temporary global config holding `safe.directory` is
 	 * discarded when this returns, whatever the lifetime.
 	 *
 	 * The log is one phase, `Checkout <owner>/<name> @ <ref>`, with one step
 	 * per phase of work; each step's detail is the git transcript. The
-	 * repository's object format and default branch come from the GitHub API,
-	 * as the stock action asks it: through a client built from the checkout's
+	 * repository's object format and default branch come from the GitHub API
+	 * (the default branch from the remote's `HEAD` instead for an SSH key or a
+	 * `remoteUrl`), as the stock action asks it: through a client built from the checkout's
 	 * own token against its own server's API base (`<origin>/api/v3` for a GitHub
 	 * Enterprise Server `serverUrl`). An ambient `GitHubClient` is used only when
 	 * the checkout has no token, an `Ssh` auth without one. A failed default

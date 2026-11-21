@@ -138,6 +138,10 @@ describe("configure and remove with a token", () => {
 			const credentials = yield* Effect.promise(() => readFile(credentialsFile, "utf8"));
 			assert.include(credentials, '[http "https://github.com/"]');
 			assert.include(credentials, `extraheader = AUTHORIZATION: basic ${BASIC}`);
+			if (!WINDOWS) {
+				const { mode } = yield* Effect.promise(() => stat(credentialsFile));
+				assert.strictEqual(mode & 0o777, 0o600);
+			}
 
 			const header = yield* real.configGet(f.repo, "http.https://github.com/.extraheader");
 			assert.deepStrictEqual(header, Option.some(`AUTHORIZATION: basic ${BASIC}`));
@@ -277,13 +281,15 @@ describe("configure with an SSH key", () => {
 		await Effect.runPromise(run.pipe(Effect.provide(layerFor(f, recording.layer, { PATH: join(f.root, "nothing") }))));
 	});
 
-	it("does not persist core.sshCommand under action", async () => {
+	it("persists core.sshCommand under action, as under job, and remove unsets it", async () => {
 		const f = await fixture();
 		const recording = ActionOutputs.recording();
 		const program = Effect.gen(function* () {
 			const git = yield* Git;
-			const { runEnv } = yield* configure(settingsFor(f, { auth: ssh, credentials: "action" }), git);
+			const { record, runEnv } = yield* configure(settingsFor(f, { auth: ssh, credentials: "action" }), git);
 			assert.isDefined(runEnv.GIT_SSH_COMMAND);
+			assert.isTrue(Option.isSome(yield* git.configGet(f.repo, "core.sshCommand", { scope: "local" })));
+			yield* remove(record, git);
 			assert.isTrue(Option.isNone(yield* git.configGet(f.repo, "core.sshCommand", { scope: "local" })));
 		});
 		await Effect.runPromise(program.pipe(Effect.provide(layerFor(f, recording.layer))));

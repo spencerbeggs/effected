@@ -133,8 +133,9 @@ beforeAll(async () => {
 	await commit(otherWork, "other.txt", "other\n", "other");
 	const otherBare = join(root, "other.git");
 	fixtureGit(root, ["clone", "-q", "--bare", otherWork, otherBare]);
-	// A wiki's default branch is master when the API cannot find the wiki.
+	// A wiki's default branch is master when the API cannot find the wiki; the remote's HEAD names it too.
 	fixtureGit(otherBare, ["update-ref", "refs/heads/master", "refs/heads/main"]);
+	fixtureGit(otherBare, ["symbolic-ref", "HEAD", "refs/heads/master"]);
 
 	remotes = {
 		root,
@@ -434,6 +435,31 @@ describe("credential lifetimes", () => {
 		assert.isFalse(await includeIf(w));
 	});
 
+	it('"action" persists core.sshCommand for an SSH checkout until the scope closes', async () => {
+		const w = await workspace();
+		const auth = { _tag: "Ssh", key: Redacted.make("-----KEY-----\n"), token: Redacted.make(TOKEN) } as const;
+		const sshCommand = () => {
+			try {
+				return fixtureGit(repoOf(w), ["config", "--local", "--get", "core.sshCommand"]);
+			} catch {
+				return undefined;
+			}
+		};
+		let during: string | undefined;
+		await ok(
+			Effect.scoped(
+				Effect.gen(function* () {
+					yield* Checkout.checkout(base({ auth, credentials: "action" }));
+					during = sshCommand();
+				}),
+			).pipe(Effect.provideService(CheckoutRetry, Schedule.recurs(0)), Effect.provide(layerFor(w))),
+		);
+		assert.isDefined(during);
+		assert.include(during ?? "", "UserKnownHostsFile=");
+		assert.isUndefined(sshCommand());
+		assert.deepStrictEqual(await readdir(w.runnerTemp), []);
+	});
+
 	it('"action" removes the credentials when the checkout fails', async () => {
 		const w = await workspace();
 		assert.strictEqual(
@@ -502,6 +528,25 @@ describe("credential lifetimes", () => {
 		});
 	}
 
+	it('a second "job" checkout of another path under the same stateKey is refused before it writes anything', async () => {
+		const w = await workspace();
+		const both = Effect.gen(function* () {
+			yield* Effect.scoped(Checkout.checkout(base({ credentials: "job" })));
+			// The same path again replaces the first checkout's credentials, so it may share the key.
+			yield* Effect.scoped(Checkout.checkout(base({ credentials: "job" })));
+			const before = yield* Effect.promise(() => readdir(w.runnerTemp));
+			const error = yield* Effect.flip(Effect.scoped(Checkout.checkout(base({ credentials: "job", path: "other" }))));
+			assert.deepStrictEqual(yield* Effect.promise(() => readdir(w.runnerTemp)), before);
+			return error;
+		}).pipe(Effect.provideService(CheckoutRetry, Schedule.recurs(0)), Effect.provide(layerFor(w)));
+		const error = await ok(both);
+		assert.strictEqual(error._tag, "CheckoutStateKeyInUseError");
+		assert.strictEqual(w.saved.length, 2);
+		assert.isFalse(await exists(join(w.workspace, "other", ".git")));
+		// Its own key is fine.
+		await ok(checkout(w, base({ credentials: "job", path: "other", stateKey: "other-checkout" })));
+	});
+
 	it('"job" removes the credentials when saving the record fails', async () => {
 		const w = await workspace();
 		const state = ActionState.layerTest({
@@ -552,6 +597,18 @@ const defaultBranchIs = (name: string): Partial<GitHubClientShape> => ({
 	request: (() => Effect.succeed({ default_branch: name })) as unknown as GitHubClientShape["request"],
 });
 
+/**
+ * The options with no `remoteUrl`, so the checkout derives `https://github.com/<owner>/<name>` and asks the API for
+ * the default branch, while the workspace's global config rewrites that URL to a local remote: the temporary
+ * global config the checkout runs under is seeded from it.
+ */
+const viaDerivedUrl = async (w: Workspace, options: CheckoutOptions, remote: string): Promise<CheckoutOptions> => {
+	const { remoteUrl: _ignored, ...derived } = options;
+	const name = options.repository?.name ?? "repo";
+	await writeFile(join(w.home, ".gitconfig"), `[url "${remote}"]\n\tinsteadOf = https://github.com/own/${name}\n`);
+	return derived;
+};
+
 const ambientUnused: Partial<GitHubClientShape> = {
 	request: (() => Effect.die("the ambient client was used")) as unknown as GitHubClientShape["request"],
 	requestDecoded: (() => Effect.die("the ambient client was used")) as unknown as GitHubClientShape["requestDecoded"],
@@ -574,13 +631,15 @@ describe("the API client and the default branch", () => {
 	it("builds the client from the checkout's own token and API base, ignoring an ambient one", async () => {
 		const w = await workspace();
 		const builds: Array<{ readonly token: string; readonly baseUrl: string }> = [];
+		const options = await viaDerivedUrl(w, base({ ref: { _tag: "Default" }, credentials: "none" }), remotes.otherUrl);
 		const result = await ok(
-			checkout(w, base({ ref: { _tag: "Default" }, credentials: "none" }), {
+			checkout(w, options, {
 				ambient: ambientUnused,
 				api: defaultBranchIs("main"),
 				builds,
 			}),
 		);
+		// The API's answer, not the remote's HEAD (master).
 		assert.strictEqual(result.ref, "refs/heads/main");
 		assert.deepStrictEqual(builds, [{ token: TOKEN, baseUrl: "https://api.github.com" }]);
 	});
@@ -622,17 +681,21 @@ describe("the API client and the default branch", () => {
 					GitHubError.notFound("GET /repos/{owner}/{repo}", "the repository"),
 				)) as unknown as GitHubClientShape["request"],
 		};
+		const options = await viaDerivedUrl(
+			w,
+			base({ repository: { owner: "own", name: "repo.wiki" }, ref: { _tag: "Default" }, credentials: "none" }),
+			remotes.otherUrl,
+		);
+		const result = await ok(checkout(w, options, { api }));
+		assert.strictEqual(result.ref, "refs/heads/master");
+	});
+
+	it("with remoteUrl set, takes the default branch from the remote's HEAD, not the API", async () => {
+		const w = await workspace();
 		const result = await ok(
-			checkout(
-				w,
-				base({
-					repository: { owner: "own", name: "repo.wiki" },
-					ref: { _tag: "Default" },
-					remoteUrl: remotes.otherUrl,
-					credentials: "none",
-				}),
-				{ api },
-			),
+			checkout(w, base({ ref: { _tag: "Default" }, remoteUrl: remotes.otherUrl, credentials: "none" }), {
+				api: defaultBranchIs("main"),
+			}),
 		);
 		assert.strictEqual(result.ref, "refs/heads/master");
 	});
@@ -650,9 +713,8 @@ describe("the API client and the default branch", () => {
 					}),
 				)) as unknown as GitHubClientShape["request"],
 		};
-		const error = (await failureOf(
-			checkout(w, base({ ref: { _tag: "Default" } }), { api }),
-		)) as CheckoutDefaultBranchError;
+		const options = await viaDerivedUrl(w, base({ ref: { _tag: "Default" } }), remotes.url);
+		const error = (await failureOf(checkout(w, options, { api }))) as CheckoutDefaultBranchError;
 		assert.strictEqual(error._tag, "CheckoutDefaultBranchError");
 		assert.include(error.detail, "(401)");
 		assert.include(error.detail, "Bad credentials");

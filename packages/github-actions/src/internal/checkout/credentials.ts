@@ -1,6 +1,6 @@
 import type { GitCommandError, GitShape, NotARepositoryError, UnknownRefError } from "@effected/git";
 import { Git } from "@effected/git";
-import { Effect, FileSystem, Option, Path, PlatformError, Redacted, Schema } from "effect";
+import { Effect, Exit, FileSystem, Option, Path, PlatformError, Redacted, Schema } from "effect";
 import { SecureRandom } from "effect/crypto";
 import { Base64 } from "effect/encoding";
 import type { ChildProcessSpawner } from "effect/process";
@@ -139,13 +139,20 @@ export const temporaryGlobalConfig = (
 		yield* fs.makeDirectory(directory, { recursive: true });
 		const file = path.join(directory, ".gitconfig");
 		const source = Option.map(home, (dir) => path.join(dir, ".gitconfig"));
-		const seeded = Option.isSome(source) && (yield* fs.exists(source.value));
-		if (seeded) {
-			yield* Effect.logInfo(`Copying '${source.value}' to '${file}'`);
-			yield* fs.copyFile(source.value, file);
-		} else {
-			yield* fs.writeFileString(file, "");
-		}
+		// Seeding that fails or is interrupted removes the directory: the caller has not recorded it yet.
+		yield* Effect.gen(function* () {
+			const seeded = Option.isSome(source) && (yield* fs.exists(source.value));
+			if (seeded) {
+				yield* Effect.logInfo(`Copying '${source.value}' to '${file}'`);
+				yield* fs.copyFile(source.value, file);
+			} else {
+				yield* fs.writeFileString(file, "");
+			}
+		}).pipe(
+			Effect.onExit((exit) =>
+				Exit.isSuccess(exit) ? Effect.void : fs.remove(directory, { recursive: true, force: true }).pipe(Effect.ignore),
+			),
+		);
 		return file;
 	});
 
@@ -279,7 +286,7 @@ const icacls = (args: ReadonlyArray<string>) =>
  * repository's `.git/config` holds only the `includeIf` entries naming the
  * file. An SSH key lands under `RUNNER_TEMP` with mode `0600` (and `icacls`
  * on Windows), beside checkout's known-hosts file, and `GIT_SSH_COMMAND` is in
- * `runEnv`; `core.sshCommand` is persisted only under `"job"`. A temporary
+ * `runEnv`; `core.sshCommand` is persisted under `"job"` and `"action"`. A temporary
  * global config holds `safe.directory` (and later the submodule auth) and is
  * in `runEnv` as `GIT_CONFIG_GLOBAL`. Any previous credential layout is
  * removed first. A failure part way removes everything written so far, the
@@ -405,7 +412,9 @@ export const configure = (
 				knownHostsPath = Option.some(hostsPath);
 				const program = yield* resolveSsh(env);
 				runEnv.GIT_SSH_COMMAND = sshCommand(program, keyPath, hostsPath, sshStrict(settings), "run");
-				if (settings.credentials === "job") {
+				// Persisted for "action" as for "job", so a later git in the action authenticates over SSH as it does
+				// with a token; the "action" finalizer unsets it with the rest.
+				if (settings.credentials !== "none") {
 					yield* git.configSet(
 						repositoryPath,
 						SSH_COMMAND_KEY,
@@ -427,9 +436,12 @@ export const configure = (
 				if (at < 0 || at !== content.lastIndexOf(TOKEN_PLACEHOLDER)) {
 					return yield* Effect.die(new Error(`Unable to replace auth placeholder in ${file}`));
 				}
+				// Owner-only before the token lands: `git config -f` created the file under the umask.
+				yield* fs.chmod(file, 0o600);
 				yield* fs.writeFileString(
 					file,
 					content.replace(TOKEN_PLACEHOLDER, `AUTHORIZATION: basic ${basicCredential.value}`),
+					{ mode: 0o600 },
 				);
 				credentialsFile = Option.some(file);
 
@@ -531,7 +543,7 @@ const submoduleGitDirs = (
 /**
  * Persists the credentials into each submodule after `submodule update`, as
  * checkout's `configureSubmoduleAuth` does: the `includeIf` entries in each
- * submodule's config, then `core.sshCommand` (under `"job"`) for an SSH key or
+ * submodule's config, then `core.sshCommand` for an SSH key or
  * the `insteadOf` values for a token.
  *
  * @remarks
@@ -565,16 +577,15 @@ export const configureSubmodules = (
 				}
 			}
 			if (Option.isSome(record.sshKeyPath) && Option.isSome(record.knownHostsPath)) {
-				if (settings.credentials === "job") {
-					const command = sshCommand(
-						yield* resolveSsh(env),
-						record.sshKeyPath.value,
-						record.knownHostsPath.value,
-						sshStrict(settings),
-						"persisted",
-					);
-					yield* git.configSet(record.repositoryPath, SSH_COMMAND_KEY, command, { file });
-				}
+				// Every lifetime that reaches here persists: "none" returned above.
+				const command = sshCommand(
+					yield* resolveSsh(env),
+					record.sshKeyPath.value,
+					record.knownHostsPath.value,
+					sshStrict(settings),
+					"persisted",
+				);
+				yield* git.configSet(record.repositoryPath, SSH_COMMAND_KEY, command, { file });
 			} else {
 				for (const value of values) {
 					yield* git.configAdd(record.repositoryPath, key, value, { file });

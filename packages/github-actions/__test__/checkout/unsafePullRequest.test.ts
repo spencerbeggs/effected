@@ -5,7 +5,8 @@ import { assertSafePullRequest } from "../../src/internal/checkout/unsafePullReq
 
 const BASE_REPO_ID = 100;
 const FORK_REPO_ID = 200;
-const PR_HEAD_SHA = "1111111111111111111111111111111111111111";
+// Holds a-f, so a case-sensitive comparison of the uppercased form would miss it.
+const PR_HEAD_SHA = "abcdef0123456789abcdef0123456789abcdef01";
 const PR_MERGE_SHA = "2222222222222222222222222222222222222222";
 const SAFE_BASE_SHA = "3333333333333333333333333333333333333333";
 const WORKFLOW_RUN_HEAD_COMMIT_SHA = "4444444444444444444444444444444444444444";
@@ -170,6 +171,41 @@ describe("assertSafePullRequest", () => {
 		await allowed(
 			{ name: "workflow_run", payload },
 			{ repository: BASE_QUALIFIED_REPO, ref: "", commit: WORKFLOW_RUN_HEAD_COMMIT_SHA },
+		);
+	});
+
+	it("refuses pull_request_target from a deleted fork (head.repo null) asking for a pull ref", async () => {
+		const payload = { ...forkPullRequestTargetPayload(), pull_request: { head: { sha: PR_HEAD_SHA, repo: null } } };
+		await refused(
+			{ name: "pull_request_target", payload },
+			{ repository: BASE_QUALIFIED_REPO, ref: "refs/pull/42/merge", commit: "" },
+		);
+		await refused(
+			{ name: "pull_request_target", payload },
+			{ repository: BASE_QUALIFIED_REPO, ref: "", commit: PR_HEAD_SHA },
+		);
+	});
+
+	it("allows pull_request_target from a deleted fork (head.repo null) asking for the base branch", async () => {
+		const payload = { ...forkPullRequestTargetPayload(), pull_request: { head: { sha: PR_HEAD_SHA, repo: null } } };
+		await allowed(
+			{ name: "pull_request_target", payload },
+			{ repository: BASE_QUALIFIED_REPO, ref: "refs/heads/main", commit: SAFE_BASE_SHA },
+		);
+	});
+
+	it("refuses workflow_run from a deleted fork (head_repository null) asking for a pull ref", async () => {
+		const payload = {
+			repository: { id: BASE_REPO_ID },
+			workflow_run: { event: "pull_request", head_repository: null },
+		};
+		await refused(
+			{ name: "workflow_run", payload },
+			{ repository: BASE_QUALIFIED_REPO, ref: "refs/pull/7/head", commit: "" },
+		);
+		await allowed(
+			{ name: "workflow_run", payload },
+			{ repository: BASE_QUALIFIED_REPO, ref: "refs/heads/main", commit: "" },
 		);
 	});
 

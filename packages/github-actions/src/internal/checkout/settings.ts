@@ -1,7 +1,7 @@
 import { Effect, Option, Path } from "effect";
 import type { GitHubContext } from "../../ActionEnvironment.js";
 import type { CheckoutAuth, CheckoutOptions, CheckoutRef, CheckoutUnsafePullRequestError } from "../../Checkout.js";
-import { CheckoutPathError } from "../../Checkout.js";
+import { CheckoutPathError, CheckoutUnqualifiedRefPinError } from "../../Checkout.js";
 import { asciiTrim } from "./asciiTrim.js";
 import { assertSafePullRequest } from "./unsafePullRequest.js";
 
@@ -85,7 +85,11 @@ const lowerRef = (ref: CheckoutRef, context: GitHubContext): { readonly ref: str
 export const lower = (
 	options: CheckoutOptions,
 	context: { readonly github: GitHubContext; readonly workspace: string; readonly payload: unknown },
-): Effect.Effect<Settings, CheckoutPathError | CheckoutUnsafePullRequestError, Path.Path> =>
+): Effect.Effect<
+	Settings,
+	CheckoutPathError | CheckoutUnsafePullRequestError | CheckoutUnqualifiedRefPinError,
+	Path.Path
+> =>
 	Effect.gen(function* () {
 		const path = yield* Path.Path;
 		const workspace = path.resolve(context.workspace);
@@ -102,7 +106,13 @@ export const lower = (
 
 		const isWorkflowRepository = qualified.toUpperCase() === context.github.repository.toUpperCase();
 		const refOption: CheckoutRef = options.ref ?? (isWorkflowRepository ? { _tag: "Event" } : { _tag: "Default" });
-		const { ref, commit } = lowerRef(refOption, context.github);
+		if (refOption._tag === "Ref" && refOption.commit !== undefined && !refOption.ref.startsWith("refs/")) {
+			return yield* new CheckoutUnqualifiedRefPinError({ ref: refOption.ref });
+		}
+		const lowered = lowerRef(refOption, context.github);
+		const ref = lowered.ref;
+		// Lowercase once, so every comparison with what git reports and every refspec sees one spelling.
+		const commit = lowered.commit.toLowerCase();
 
 		const allowUnsafePrCheckout = options.allowUnsafePrCheckout ?? false;
 		const isDefaultCheckout = isWorkflowRepository && refOption._tag === "Event";
