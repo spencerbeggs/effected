@@ -185,6 +185,23 @@ describe("BuildWatch.run", () => {
 		}),
 	);
 
+	it.effect("ignores the temp files an atomic write of an excluded file leaves beside it", () =>
+		Effect.gen(function* () {
+			const { handle, triggers, fiber } = yield* start({
+				seed: { ...SEED, [`${CWD}/.github/workflows/ci.yml`]: "" },
+				watchers: WATCHERS + 1,
+			});
+			// AtomicFile writes `.actrc` and `act-test.yml` through a `.effected-<random>.tmp` renamed into place.
+			yield* burst(handle, [
+				[`${CWD}/.effected-k3j9x2.tmp`, "Create"],
+				[`${CWD}/.effected-k3j9x2.tmp`, "Remove"],
+				[`${CWD}/.github/workflows/.effected-a0b1c2.tmp`, "Create"],
+			]);
+			assert.deepStrictEqual(yield* triggers, [{ _tag: "Initial" }]);
+			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
 	it.effect("watches the package top level, and recursively only its directories that no exclusion covers", () =>
 		Effect.gen(function* () {
 			const watched: Array<readonly [string, boolean]> = [];

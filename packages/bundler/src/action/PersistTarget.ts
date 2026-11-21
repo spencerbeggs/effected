@@ -22,6 +22,8 @@ export class ResolvedPersist extends Schema.Class<ResolvedPersist>("ResolvedPers
 	actTemplate: Schema.Boolean,
 	/** The directory the act boilerplate is rooted at: the package under `"package"`, the workspace under `"workspace"`. */
 	actRoot: Schema.String,
+	/** The real workspace root, which every file a persist writes must stay inside. */
+	root: Schema.String,
 }) {}
 
 const STAGING = ".action-staging";
@@ -29,8 +31,10 @@ const STAGING = ".action-staging";
 /**
  * Whether `child` is `parent` or lies below it, by the platform's own rules: `resolveWithin` refuses a relative path
  * that climbs out with `..` and its separator, and an absolute one such as another drive's.
+ *
+ * @internal
  */
-const within = (path: Path.Path, parent: string, child: string): boolean =>
+export const within = (path: Path.Path, parent: string, child: string): boolean =>
 	Option.isSome(path.resolveWithin(parent, path.relative(parent, child)));
 
 /**
@@ -127,6 +131,7 @@ export class PersistTarget {
 				stagingDir: path.join(cwd, STAGING),
 				actTemplate: config.persistLocal.actTemplate ?? base === "package",
 				actRoot: base === "package" ? cwd : root,
+				root,
 			});
 		});
 }

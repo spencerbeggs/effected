@@ -111,6 +111,12 @@ const isUnder = (path: string, prefix: string): boolean => {
 	return isCovered(path, prefix) || (trimmed !== "" && trimmed.startsWith(`${path}/`));
 };
 
+/**
+ * An `@effected/files` `AtomicFile` temp, `.effected-<base36>.tmp`, which an action persist leaves for a moment beside
+ * `.actrc` and `act-test.yml` before renaming it into place. Never a source, so never a trigger.
+ */
+const ATOMIC_TEMP = /(^|\/)\.effected-[0-9a-z]+\.tmp$/;
+
 const trimExclusion = (prefix: string): string => prefix.replace(/^\.\//, "").replace(/\/+$/, "");
 
 /** Whether `path` is an excluded path or lies under it, on `/` boundaries: a top-level directory never watched. */
@@ -411,7 +417,9 @@ export class BuildWatch {
 						for (const entry of more.value) batch.add(entry);
 					}
 					const excludes = yield* options.exclude;
-					return [...batch].filter((entry) => !excludes.some((prefix) => isUnder(entry, prefix))).sort();
+					return [...batch]
+						.filter((entry) => !ATOMIC_TEMP.test(entry) && !excludes.some((prefix) => isUnder(entry, prefix)))
+						.sort();
 				});
 
 				const consuming = Effect.gen(function* () {

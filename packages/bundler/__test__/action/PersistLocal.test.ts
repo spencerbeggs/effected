@@ -254,6 +254,120 @@ jobs:
 		}),
 	);
 
+	it.effect("replaces only dist/: a sibling README.md survives and a stale dist file goes", () =>
+		inVolume(
+			{ [`${OUT}/README.md`]: "# committed", [`${OUT}/dist/stale.js`]: "stale" },
+			Effect.gen(function* () {
+				yield* persist();
+				assert.strictEqual(yield* read(`${OUT}/README.md`), "# committed");
+				assert.isFalse(yield* exists(`${OUT}/dist/stale.js`));
+				assert.strictEqual(yield* read(`${OUT}/dist/main/index.js`), 'console.log("built");');
+			}),
+		),
+	);
+
+	it.effect("replaces a symlinked dist with a real directory, leaving its target alone", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			yield* persist();
+			assert.strictEqual((yield* fs.lstat(`${OUT}/dist`)).type, "Directory");
+			assert.strictEqual(yield* read(`${OUT}/dist/main/index.js`), 'console.log("built");');
+			assert.strictEqual(yield* read("/outside/stale.js"), "keep");
+			assert.isFalse(yield* exists("/outside/main"));
+			assert.isFalse(yield* exists("/outside/package.json"));
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath({
+					...seed,
+					"/outside/stale.js": "keep",
+					[`${OUT}/dist`]: MemoryFileSystem.symlink("/outside"),
+				}),
+			),
+		),
+	);
+
+	it.effect("leaves the persisted dist whole when a write fails partway", () => {
+		const refused = (path: string) =>
+			PlatformError.systemError({
+				_tag: "PermissionDenied",
+				module: "FileSystem",
+				method: "writeFile",
+				pathOrDescriptor: path,
+			});
+		const persistedManifest = (path: string) => path.startsWith(`${OUT}/`) && path.endsWith("package.json");
+		return Effect.gen(function* () {
+			yield* persist().pipe(Effect.flip);
+			assert.strictEqual(yield* read(`${OUT}/dist/main/index.js`), "old");
+			assert.strictEqual(yield* read(`${OUT}/dist/package.json`), "old");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath(
+					{ ...seed, [`${OUT}/dist/main/index.js`]: "old", [`${OUT}/dist/package.json`]: "old" },
+					{
+						faults: (base) => ({
+							copyFile: (from, to) => (persistedManifest(to) ? Effect.fail(refused(to)) : base.copyFile(from, to)),
+							writeFile: (path, data, options) =>
+								persistedManifest(path) ? Effect.fail(refused(path)) : base.writeFile(path, data, options),
+						}),
+					},
+				),
+			),
+		);
+	});
+
+	it.effect("replaces a symlinked action.yml rather than writing through it", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			yield* persist();
+			assert.strictEqual((yield* fs.lstat(`${OUT}/action.yml`)).type, "File");
+			assert.strictEqual(yield* read(`${OUT}/action.yml`), ACTION_YML);
+			assert.strictEqual(yield* read("/outside/action.yml"), "outside");
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath({
+					...seed,
+					"/outside/action.yml": "outside",
+					[`${OUT}/action.yml`]: MemoryFileSystem.symlink("/outside/action.yml"),
+				}),
+			),
+		),
+	);
+
+	it.effect("does not write the act workflow through a symlinked .github/workflows that leaves the workspace", () =>
+		Effect.gen(function* () {
+			const result = yield* persist({ actTemplate: true });
+			assert.isFalse(yield* exists("/outside/workflows/act-test.yml"));
+			assert.deepStrictEqual(result.actTemplateSkipped, [`${CWD}/.github/workflows/act-test.yml`]);
+			assert.isTrue(yield* exists(`${CWD}/.actrc`));
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath({
+					...seed,
+					"/outside/workflows/keep.yml": "keep",
+					[`${CWD}/.github/workflows`]: MemoryFileSystem.symlink("/outside/workflows"),
+				}),
+			),
+		),
+	);
+
+	it.effect("treats a dangling .actrc link as present and never follows it", () =>
+		Effect.gen(function* () {
+			const fs = yield* FileSystem.FileSystem;
+			yield* persist({ actTemplate: true });
+			assert.isFalse(yield* exists("/outside/actrc"));
+			assert.strictEqual((yield* fs.lstat(`${CWD}/.actrc`)).type, "SymbolicLink");
+			assert.isTrue(yield* exists(`${CWD}/.github/workflows/act-test.yml`));
+		}).pipe(
+			Effect.provide(
+				MemoryFileSystem.layerWithPath({
+					...seed,
+					"/outside/keep.txt": "keep",
+					[`${CWD}/.actrc`]: MemoryFileSystem.symlink("/outside/actrc"),
+				}),
+			),
+		),
+	);
+
 	it.effect("quotes the act step's path, so a # in it survives YAML", () =>
 		inVolume(
 			{},
@@ -340,12 +454,12 @@ jobs:
 					PlatformError.systemError({
 						_tag: "PermissionDenied",
 						module: "FileSystem",
-						method: "copyFile",
+						method: "rename",
 						pathOrDescriptor: path,
 					}),
 				);
 			const error = yield* persist().pipe(
-				Effect.provide(MemoryFileSystem.layerWithPath(seed, { faults: { copyFile: (from) => denied(from) } })),
+				Effect.provide(MemoryFileSystem.layerWithPath(seed, { faults: { rename: (from) => denied(from) } })),
 				Effect.flip,
 			);
 			assert.instanceOf(error, PersistLocalError);

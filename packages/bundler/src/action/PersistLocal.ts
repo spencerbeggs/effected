@@ -1,9 +1,11 @@
+import { AtomicDirectory, AtomicFile } from "@effected/files";
 import { Yaml } from "@effected/yaml";
 import type { PlatformError } from "effect";
-import { Effect, FileSystem, Path, Result, Schema } from "effect";
+import { Effect, FileSystem, Option, Path, Result, Schema } from "effect";
 import { ActionYmlPathError, PersistLocalError } from "./ActionErrors.js";
 import type { ResolvedPersist } from "./PersistTarget.js";
-import { syncDirectory, syncFile } from "./tree.js";
+import { within } from "./PersistTarget.js";
+import { sameBytes, walkEntries } from "./tree.js";
 
 /**
  * What a persist did.
@@ -11,12 +13,14 @@ import { syncDirectory, syncFile } from "./tree.js";
  * @public
  */
 export class PersistLocalResult extends Schema.Class<PersistLocalResult>("PersistLocalResult")({
-	/** Files copied because they were new or changed. */
+	/** Files written that were new or changed. */
 	filesCopied: Schema.Number,
-	/** Files left alone because they matched. */
+	/** Files that already matched the persisted copy. */
 	filesSkipped: Schema.Number,
 	/** Whether an act template file was generated. */
 	actTemplateGenerated: Schema.Boolean,
+	/** Act template files not written because their real path is not inside the workspace. */
+	actTemplateSkipped: Schema.Array(Schema.String),
 	/** The local action directory. */
 	outputPath: Schema.String,
 }) {}
@@ -60,14 +64,58 @@ const checkRunsPaths = Effect.fnUntraced(function* (actionYml: string, outputPat
 	}
 });
 
-/** Writes `content` at `file` unless the file exists, and says whether it wrote. */
-const writeIfAbsent = Effect.fnUntraced(function* (file: string, content: string) {
+/** The entry's own type, without following a link; `None` when nothing is there. */
+const entryType = (file: string) =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		return yield* fs.lstat(file).pipe(
+			Effect.map((info) => Option.some(info.type)),
+			Effect.catchTag("PlatformError", (error) =>
+				error.reason._tag === "NotFound" ? Effect.succeed(Option.none()) : Effect.fail(error),
+			),
+		);
+	});
+
+/**
+ * Where `file` really lands: its deepest existing ancestor realpathed, with the missing tail put back, as
+ * `PersistTarget.resolve` does for the output path. `None` when that ancestor cannot be realpathed (a dangling link).
+ */
+const realDestination = Effect.fnUntraced(function* (file: string) {
 	const fs = yield* FileSystem.FileSystem;
 	const path = yield* Path.Path;
-	if (yield* fs.exists(file)) return false;
-	yield* fs.makeDirectory(path.dirname(file), { recursive: true });
-	yield* fs.writeFileString(file, content);
-	return true;
+	let existing = path.dirname(file);
+	const tail: Array<string> = [path.basename(file)];
+	while (existing !== path.dirname(existing) && Option.isNone(yield* entryType(existing))) {
+		tail.unshift(path.basename(existing));
+		existing = path.dirname(existing);
+	}
+	const real = yield* Effect.option(fs.realPath(existing));
+	return Option.map(real, (directory) => path.join(directory, ...tail));
+});
+
+type TemplateOutcome = "written" | "present" | "outside";
+
+/**
+ * Writes `content` at `file` when nothing is there, never through a link. Any entry at `file`, a dangling link
+ * included, is present and not ours. A `file` whose real path leaves `root` is not written.
+ */
+const writeTemplate = Effect.fnUntraced(function* (file: string, content: string, root: string) {
+	const fs = yield* FileSystem.FileSystem;
+	const path = yield* Path.Path;
+	const destination = yield* realDestination(file);
+	if (Option.isNone(destination) || !within(path, root, destination.value)) return "outside" as TemplateOutcome;
+	if (Option.isSome(yield* entryType(destination.value))) return "present" as TemplateOutcome;
+	yield* fs.makeDirectory(path.dirname(destination.value), { recursive: true });
+	yield* AtomicFile.write(destination.value, content, { links: "replace" });
+	return "written" as TemplateOutcome;
+});
+
+/** The regular files of a persisted `dist`, by relative path; a link, or a `dist` that is one, is never read through. */
+const persistedFiles = Effect.fnUntraced(function* (dist: string) {
+	const types = yield* entryType(dist);
+	if (Option.isNone(types) || types.value !== "Directory") return new Set<string>();
+	const entries = yield* walkEntries(dist, dist);
+	return new Set(entries.filter((entry) => !entry.symlink).map((entry) => entry.path));
 });
 
 /**
@@ -82,11 +130,16 @@ export class PersistLocal {
 	 * Makes the resolved output directory hold the action's `action.yml` and `dist/`, and generates the act template.
 	 *
 	 * @remarks
-	 * It writes nothing when the target is not enabled. `dist/` is synced from `distDir`: the package's own `dist/`, or
-	 * the staging directory when the package keeps none. The act template is rooted at `target.actRoot`, and its step
-	 * uses the persisted directory relative to it. Files that match are left alone, and files the source no
-	 * longer has are removed. A `.actrc` and `.github/workflows/act-test.yml` that already exist are kept. A `runs` path
-	 * in `action.yml` that names no persisted file fails {@link ActionYmlPathError}.
+	 * It writes nothing when the target is not enabled. `dist/` is replaced whole with `AtomicDirectory.write`, from
+	 * `distDir`: the package's own `dist/`, or the staging directory when the package keeps none. A reader sees the old
+	 * tree or the new one, never a partial one, and a failed write leaves the old tree as it was. `action.yml` is written
+	 * with `AtomicFile.write`. A symlink at either path is replaced, never followed. Everything else in the persisted
+	 * directory, a committed README for one, is left alone. `filesCopied` and `filesSkipped` count the files that were
+	 * new or changed and those that already matched. The act template is rooted at `target.actRoot`, and its step uses
+	 * the persisted directory relative to it. A `.actrc` or `.github/workflows/act-test.yml` is written only when nothing
+	 * is at its path, a dangling link included, and only when its real path (its deepest existing ancestor realpathed)
+	 * stays inside the workspace; one that would leave it is skipped with a warning and listed in `actTemplateSkipped`.
+	 * A `runs` path in `action.yml` that names no persisted file fails {@link ActionYmlPathError}.
 	 *
 	 * @param target - Where to persist, from {@link PersistTarget.resolve}.
 	 * @param options - `cwd` is the action's directory and `distDir` is where its bundles are.
@@ -103,7 +156,13 @@ export class PersistLocal {
 			const path = yield* Path.Path;
 			const { enabled, actTemplate, outputPath } = target;
 			if (!enabled) {
-				return PersistLocalResult.make({ filesCopied: 0, filesSkipped: 0, actTemplateGenerated: false, outputPath });
+				return PersistLocalResult.make({
+					filesCopied: 0,
+					filesSkipped: 0,
+					actTemplateGenerated: false,
+					actTemplateSkipped: [],
+					outputPath,
+				});
 			}
 			const failingAt = (at: string) =>
 				Effect.mapError((cause: PlatformError.PlatformError) => new PersistLocalError({ path: at, cause }));
@@ -116,8 +175,18 @@ export class PersistLocal {
 			const actionYml = path.resolve(options.cwd, "action.yml");
 			const persistedActionYml = path.resolve(outputPath, "action.yml");
 			if (yield* fs.exists(actionYml).pipe(failingAt(actionYml))) {
-				if (yield* syncFile(actionYml, persistedActionYml).pipe(failingAt(actionYml))) filesCopied++;
-				else filesSkipped++;
+				const unchanged = yield* Effect.gen(function* () {
+					const types = yield* entryType(persistedActionYml);
+					if (Option.isNone(types) || types.value !== "File") return false;
+					return sameBytes(yield* fs.readFile(actionYml), yield* fs.readFile(persistedActionYml));
+				}).pipe(failingAt(actionYml));
+				if (unchanged) filesSkipped++;
+				else {
+					const content = yield* fs.readFile(actionYml).pipe(failingAt(actionYml));
+					// "replace": a committed link at the persisted path is swapped for a file, never written through.
+					yield* AtomicFile.write(persistedActionYml, content, { links: "replace" }).pipe(failingAt(actionYml));
+					filesCopied++;
+				}
 			} else {
 				yield* fs.remove(persistedActionYml, { force: true }).pipe(failingAt(persistedActionYml));
 			}
@@ -127,9 +196,25 @@ export class PersistLocal {
 				return (yield* fs.exists(dist)) && (yield* fs.stat(dist)).type === "Directory";
 			}).pipe(failingAt(dist));
 			if (hasDist) {
-				const synced = yield* syncDirectory(dist, path.resolve(outputPath, "dist")).pipe(failingAt(dist));
-				filesCopied += synced.copied;
-				filesSkipped += synced.skipped;
+				const persistedDist = path.resolve(outputPath, "dist");
+				const files = yield* Effect.gen(function* () {
+					const before = yield* persistedFiles(persistedDist);
+					const read: Array<readonly [string, Uint8Array]> = [];
+					for (const entry of yield* walkEntries(dist, dist)) {
+						const bytes = yield* fs.readFile(path.join(dist, entry.path));
+						const unchanged =
+							before.has(entry.path) && sameBytes(bytes, yield* fs.readFile(path.join(persistedDist, entry.path)));
+						if (unchanged) filesSkipped++;
+						else filesCopied++;
+						read.push([entry.path, bytes]);
+					}
+					return read;
+				}).pipe(failingAt(dist));
+				// Only dist/ is replaced, whole: a reader sees the old tree or the new one, a link there is replaced rather
+				// than followed, and anything else in the persisted directory is left alone.
+				yield* AtomicDirectory.write(persistedDist, files).pipe(
+					Effect.mapError((cause) => new PersistLocalError({ path: persistedDist, cause })),
+				);
 			}
 
 			yield* checkRunsPaths(persistedActionYml, outputPath).pipe(
@@ -139,15 +224,29 @@ export class PersistLocal {
 			);
 
 			let actTemplateGenerated = false;
+			const actTemplateSkipped: Array<string> = [];
 			if (actTemplate) {
-				const actrc = path.resolve(target.actRoot, ".actrc");
-				const workflow = path.resolve(target.actRoot, ".github/workflows/act-test.yml");
 				const actionPath = path.relative(target.actRoot, outputPath).split(path.sep).join("/");
-				if (yield* writeIfAbsent(actrc, ACTRC_CONTENT).pipe(failingAt(actrc))) actTemplateGenerated = true;
-				if (yield* writeIfAbsent(workflow, actWorkflowContent(actionPath)).pipe(failingAt(workflow)))
-					actTemplateGenerated = true;
+				const templates = [
+					[path.resolve(target.actRoot, ".actrc"), ACTRC_CONTENT],
+					[path.resolve(target.actRoot, ".github/workflows/act-test.yml"), actWorkflowContent(actionPath)],
+				] as const;
+				for (const [file, content] of templates) {
+					const outcome = yield* writeTemplate(file, content, target.root).pipe(failingAt(file));
+					if (outcome === "written") actTemplateGenerated = true;
+					if (outcome === "outside") {
+						actTemplateSkipped.push(file);
+						yield* Effect.logWarning(`Skipped the act template ${file}: its real path is not inside the workspace`);
+					}
+				}
 			}
 
-			return PersistLocalResult.make({ filesCopied, filesSkipped, actTemplateGenerated, outputPath });
+			return PersistLocalResult.make({
+				filesCopied,
+				filesSkipped,
+				actTemplateGenerated,
+				actTemplateSkipped,
+				outputPath,
+			});
 		});
 }
