@@ -1,5 +1,14 @@
 # @effected/plugin
 
+## 0.6.6
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/cli | dependency | updated | 0.33.0 | 0.33.1 |
+| @effected/mcp | dependency | updated | 0.19.0 | 0.19.1 |
+
 ## 0.6.5
 
 ### Dependencies
