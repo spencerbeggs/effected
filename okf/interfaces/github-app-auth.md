@@ -8,7 +8,7 @@ resource: ../../packages/github/src/GitHubApp.ts
 tags: [bundle, security]
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-21T20:59:28Z
+  at: 2026-11-21T21:26:51Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:11:25.629Z
@@ -18,13 +18,15 @@ verified:
     at: 2026-10-31T19:39:48Z
   - by: human:spencer
     at: 2026-11-21T21:05:38Z
+  - by: human:spencer
+    at: 2026-11-21T21:26:34Z
 integrity:
   generated:
-    body: 17854d8ea127d4ca
+    body: 8ffe356e5bf3953d
   verified:
     by: human:spencer
-    at: 2026-11-21T21:05:38Z
-    content: 4135ab7589b69e5b
+    at: 2026-11-21T21:26:34Z
+    content: d0bcdf377489f429
 ---
 
 # @effected/github App authentication
@@ -144,11 +146,14 @@ token's `iss`), with a **mandatory, non-empty audience** because one JWKS
 signs tokens for every relying party, and decodes camelCase claims with
 numeric ids. Authorize on immutable ids (`repositoryId`,
 `repositoryOwnerId`) plus `jobWorkflowRef`, never on a repository name,
-which can be registered again after deletion. A decision about the ref reads
-`refProtected`, decoded from the wire's `"true"`/`"false"` and required, so a
-token without it, or with any other value, fails as `claims` rather than
-defaulting; `refType` (`branch` or `tag`), `baseRef` and `headRef` (empty
-outside pull request events) are required too. GHE.com enterprise issuers and
+which can be registered again after deletion. `refProtected` is decoded from
+the wire's `"true"`/`"false"` and required, so a token without it, or with any
+other value, fails as `claims` rather than defaulting; `refType` (`branch` or
+`tag`), `baseRef` and `headRef` (empty outside pull request events) are
+required too. A decision about the ref requires `refProtected` in addition to
+the relying party's ref policy, never in place of it: a protected tag and every
+other protected branch also carry `refProtected: true`, so a branch-only gate
+also checks `refType` and keeps its allowlist on `ref`. GHE.com enterprise issuers and
 GHES issuers are refused. The module reaches `@effected/jwt` and not
 octokit.
 
