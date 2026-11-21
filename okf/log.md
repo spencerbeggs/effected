@@ -20,6 +20,7 @@
 * Added The vitest suite splits into a fast tier with coverage and a slow tier run beside it
 * Updated workspace
 * Updated @effected/github App authentication
+* Updated The catalog:sync / catalog:check CLI
 
 ## 2026-11-20
 

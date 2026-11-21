@@ -213,6 +213,101 @@ export function renderChangeset(moves: readonly CatalogMove[]): string {
 	return `---\n"${PLUGIN}": patch\n---\n\n## Maintenance\n\n${sections.join("\n\n")}\n`;
 }
 
+/** One `### Updates … catalog:<catalog> …` heading, capturing the catalog. */
+const SECTION = /^### Updates \d+ catalog:(\S+) versions?$/;
+/** One move line as {@link renderChangeset} writes it: `` - `<pkg>` <from> -> <to>[ (peer <peer>)] ``. */
+const MOVE_LINE = /^- `([^`]+)` (\S+) -> (\S+)(?: \(peer (\S+)\))?$/;
+
+/**
+ * The moves an existing `catalog-sync.md` records, read back from its body.
+ *
+ * @remarks
+ * The inverse of {@link renderChangeset}, so a round trip is exact. The fallback body, and any
+ * line that is not a move under an `### Updates` heading, contributes nothing.
+ */
+export function parseChangeset(text: string): CatalogMove[] {
+	const moves: CatalogMove[] = [];
+	let catalog: string | undefined;
+	for (const line of text.split("\n")) {
+		const section = SECTION.exec(line);
+		if (section !== null) {
+			catalog = section[1];
+			continue;
+		}
+		const move = MOVE_LINE.exec(line);
+		if (move === null || catalog === undefined) continue;
+		const [, pkg, from, to, peer] = move;
+		if (pkg === undefined || from === undefined || to === undefined) continue;
+		moves.push({ catalog, pkg, from, to, peer });
+	}
+	return moves;
+}
+
+/** The `range:` an entry's literal body declares. */
+function rangeOf(spec: string): string | undefined {
+	return /\brange:\s*"([^"]+)"/.exec(spec)?.[1];
+}
+
+/**
+ * The moves the pending changeset should list once `fresh` lands on top of `pending`.
+ *
+ * @remarks
+ * `catalog-sync.md` is the release's running list: every catalog move since the last release, because a release
+ * consumes it and a sync before that release must add to it, never replace it (#1386). A second sync on one branch,
+ * or a branch syncing while `main` still carries an unreleased list, used to overwrite the file with its own run's
+ * moves alone, so the plugin's changelog under-reported the release while `catalog:check` stayed green.
+ *
+ * A package already listed keeps its first `from`, the range the last release published. Every listed package
+ * takes its `to` and peer from `current`, the config as it now stands, so the list can never disagree with what
+ * ships. A move that `current` has returned to its `from` drops out, and so does one whose package left the catalog.
+ */
+export function mergeMoves(
+	pending: readonly CatalogMove[],
+	fresh: readonly CatalogMove[],
+	current: (catalog: string) => ReadonlyMap<string, string>,
+): CatalogMove[] {
+	const merged = new Map<string, CatalogMove>();
+	for (const move of [...pending, ...fresh]) {
+		const key = `${move.catalog}\0${move.pkg}`;
+		const first = merged.get(key);
+		merged.set(key, first === undefined ? move : { ...move, from: first.from });
+	}
+	const out: CatalogMove[] = [];
+	for (const move of merged.values()) {
+		const spec = current(move.catalog).get(move.pkg);
+		if (spec === undefined) continue;
+		const to = rangeOf(spec) ?? move.to;
+		if (to === move.from) continue;
+		out.push({ ...move, to, peer: peerOf(spec) });
+	}
+	return out;
+}
+
+/**
+ * The listed moves whose `to` or peer no longer match the config, rendered one per line.
+ *
+ * @remarks
+ * A stale list fails the gate the way a stale config does: a changeset whose ranges disagree with the config it
+ * ships beside describes a release that is not the one being cut (#1386).
+ */
+export function staleMoves(
+	listed: readonly CatalogMove[],
+	current: (catalog: string) => ReadonlyMap<string, string>,
+): string[] {
+	const stale: string[] = [];
+	for (const move of listed) {
+		const spec = current(move.catalog).get(move.pkg);
+		const range = spec === undefined ? undefined : rangeOf(spec);
+		const peer = spec === undefined ? undefined : peerOf(spec);
+		if (range !== move.to || peer !== move.peer) {
+			stale.push(
+				`  ${move.catalog}.${move.pkg}  listed ${moveText(move)}, config ${range ?? "(absent)"}${peer === undefined ? "" : ` (peer ${peer})`}`,
+			);
+		}
+	}
+	return stale;
+}
+
 /**
  * The commit message for a set of moves: a conventional-commit headline, a
  * blank line, then one bullet per package.
@@ -527,6 +622,19 @@ function applyRipples(root: string, mismatches: readonly { pkg: string; from: st
  * disagree with it. When it moved, the changeset is written; when it did not, nothing is
  * written at all.
  */
+/** {@link catalogEntries} per catalog, read once each from the config as it stands. */
+function cachedEntries(root: string): (catalog: string) => ReadonlyMap<string, string> {
+	const cache = new Map<string, ReadonlyMap<string, string>>();
+	return (catalog) => {
+		let entries = cache.get(catalog);
+		if (entries === undefined) {
+			entries = catalogEntries(root, catalog);
+			cache.set(catalog, entries);
+		}
+		return entries;
+	};
+}
+
 export async function sync(options: SyncOptions = {}): Promise<boolean> {
 	const root = options.root ?? DEFAULT_ROOT;
 	const run = options.run ?? defaultRunner;
@@ -570,14 +678,31 @@ export async function sync(options: SyncOptions = {}): Promise<boolean> {
 		write(`  effected.${ripple.pkg}  ${ripple.from} -> ${ripple.to}  (ripple)\n`);
 	}
 
-	if (readConfig(root) === before) return false;
+	if (readConfig(root) === before) {
+		// The config is current, but a pending list can still be stale: hand-edited, or carried over a merge. Rewrite
+		// it from the config so the gate's remedy, a sync, actually repairs it (#1386).
+		const changesetFile = join(root, CHANGESET_PATH);
+		if (!existsSync(changesetFile)) return false;
+		const pending = parseChangeset(readFileSync(changesetFile, "utf8"));
+		const current = cachedEntries(root);
+		if (staleMoves(pending, current).length === 0) return false;
+		const moves = mergeMoves(pending, [], current);
+		writeFileSync(changesetFile, moves.length > 0 ? renderChangeset(moves) : CHANGESET_BODY);
+		writeFileSync(join(root, COMMIT_MESSAGE_PATH), renderCommitMessage(moves));
+		return true;
+	}
 
 	// Peers are read AFTER the rewrite, from the file the CLI just wrote.
-	const moves = movesWithPeers(root, [
+	const fresh = movesWithPeers(root, [
 		...changed,
 		...ripples.map((r) => ({ catalog: "effected", pkg: r.pkg, from: r.from, to: r.to })),
 	]);
-	writeFileSync(join(root, CHANGESET_PATH), moves.length > 0 ? renderChangeset(moves) : CHANGESET_BODY);
+	// Add to the pending list rather than replace it: it holds every move since the last release (#1386).
+	const changesetFile = join(root, CHANGESET_PATH);
+	const pending = existsSync(changesetFile) ? parseChangeset(readFileSync(changesetFile, "utf8")) : [];
+	const current = cachedEntries(root);
+	const moves = mergeMoves(pending, fresh, current);
+	writeFileSync(changesetFile, moves.length > 0 ? renderChangeset(moves) : CHANGESET_BODY);
 	writeFileSync(join(root, COMMIT_MESSAGE_PATH), renderCommitMessage(moves));
 	return true;
 }
@@ -663,6 +788,19 @@ export async function check(options: SyncOptions = {}): Promise<number> {
 			`Breaking floors are out of date in ${edits.length} changeset(s):\n${describeFloorEdits(raised, edits)}\nRun \`pnpm changeset:floors\` (or \`pnpm catalog:sync\`).\n`,
 		);
 		return code === 0 ? 1 : code;
+	}
+
+	// The pending changeset lists the release's catalog moves; one whose ranges disagree with the config
+	// describes a different release than the one being cut (#1386).
+	const changesetFile = join(root, CHANGESET_PATH);
+	if (existsSync(changesetFile)) {
+		const stale = staleMoves(parseChangeset(readFileSync(changesetFile, "utf8")), cachedEntries(root));
+		if (stale.length > 0) {
+			write(
+				`${CHANGESET_PATH} disagrees with the catalog config on ${stale.length} package(s):\n${stale.join("\n")}\nRun \`pnpm catalog:sync\` to rewrite it from the config.\n`,
+			);
+			return code === 0 ? 1 : code;
+		}
 	}
 
 	// Ripple drift is invisible to the CLI for the same reason it is invisible

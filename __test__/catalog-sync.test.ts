@@ -13,10 +13,13 @@ import {
 	catalogEntries,
 	check,
 	checkVerdict,
+	mergeMoves,
+	parseChangeset,
 	releasePlan,
 	renderChangeset,
 	renderCommitMessage,
 	rippleMismatches,
+	staleMoves,
 	sync,
 } from "../lib/scripts/catalog-sync.js";
 
@@ -619,5 +622,128 @@ describe("dependency-ripple bumps", () => {
 
 	it("the default runner fails with the read's own message", async () => {
 		await rejects(releasePlan(fixtureWorkspace("unknown-package")), /Release plan could not be read: .*names ghost/);
+	});
+});
+
+/** A catalog literal whose entries carry the given `range` and `peer`, shaped the way the real one is. */
+function rangedConfig(entries: Readonly<Record<string, { range: string; peer: string }>>): string {
+	const lines = Object.entries(entries)
+		.map(
+			([name, { range, peer }]) =>
+				`\t\t\t\t\t\t"${name}": { range: "${range}", peer: "${peer}", strategy: "lock-minor", source: "workspace" },`,
+		)
+		.join("\n");
+	return `await build({\n\tmeta: {\n\t\tcatalogs: {\n\t\t\teffected: {\n\t\t\t\tpackages: {\n${lines}\n\t\t\t\t},\n\t\t\t},\n\t\t},\n\t},\n});\n`;
+}
+
+/** The upgrade CLI's `--format json` document naming the moves it made. */
+const changedDoc = (moves: ReadonlyArray<{ pkg: string; from: string; to: string }>): string =>
+	JSON.stringify({ command: "upgrade", changed: moves.map((move) => ({ catalog: "effected", ...move })) });
+
+describe("catalog:sync keeps every move since the last release (#1386)", () => {
+	const A = "@effected/a";
+	const B = "@effected/b";
+	const base = { [A]: { range: "^0.1.0", peer: "^0.1.0" }, [B]: { range: "^0.2.0", peer: "^0.2.0" } };
+	const aMoved = { ...base, [A]: { range: "^0.1.1", peer: "^0.1.0" } };
+	const bothMoved = { ...aMoved, [B]: { range: "^0.3.0", peer: "^0.3.0" } };
+
+	it("a second sync adds its move to the first run's list instead of replacing it", async () => {
+		const root = makeRoot(rangedConfig(base));
+		await sync({
+			...quiet,
+			root,
+			run: runner(rangedConfig(aMoved), changedDoc([{ pkg: A, from: "^0.1.0", to: "^0.1.1" }])),
+		});
+		await sync({
+			...quiet,
+			root,
+			run: runner(rangedConfig(bothMoved), changedDoc([{ pkg: B, from: "^0.2.0", to: "^0.3.0" }])),
+		});
+		const moves = parseChangeset(readFileSync(join(root, CHANGESET_PATH), "utf8"));
+		assert.deepStrictEqual(
+			moves.map((move) => `${move.pkg} ${move.from} -> ${move.to} (peer ${move.peer})`),
+			[`${A} ^0.1.0 -> ^0.1.1 (peer ^0.1.0)`, `${B} ^0.2.0 -> ^0.3.0 (peer ^0.3.0)`],
+		);
+		assert.include(readFileSync(join(root, CHANGESET_PATH), "utf8"), "### Updates 2 catalog:effected versions");
+	});
+
+	it("a branch syncing over an unreleased list inherited from main merges into it", async () => {
+		// main still carries a pending list naming A; the branch's own sync moves only B.
+		const root = makeRoot(rangedConfig(aMoved));
+		writeFileSync(
+			join(root, CHANGESET_PATH),
+			renderChangeset([{ catalog: "effected", pkg: A, from: "^0.1.0", to: "^0.1.1", peer: "^0.1.0" }]),
+		);
+		await sync({
+			...quiet,
+			root,
+			run: runner(rangedConfig(bothMoved), changedDoc([{ pkg: B, from: "^0.2.0", to: "^0.3.0" }])),
+		});
+		const listed = parseChangeset(readFileSync(join(root, CHANGESET_PATH), "utf8")).map((move) => move.pkg);
+		assert.deepStrictEqual(listed, [A, B]);
+	});
+
+	it("a package moved twice keeps its first from and takes the config's current to and peer", () => {
+		const current = () => catalogEntries(makeRoot(rangedConfig({ [A]: { range: "^0.3.0", peer: "^0.3.0" } })));
+		const merged = mergeMoves(
+			[{ catalog: "effected", pkg: A, from: "^0.1.0", to: "^0.2.0", peer: "^0.2.0" }],
+			[{ catalog: "effected", pkg: A, from: "^0.2.0", to: "^0.3.0", peer: undefined }],
+			current,
+		);
+		assert.deepStrictEqual(merged, [{ catalog: "effected", pkg: A, from: "^0.1.0", to: "^0.3.0", peer: "^0.3.0" }]);
+	});
+
+	it("a move the config has returned to its from drops out of the list", () => {
+		const current = () => catalogEntries(makeRoot(rangedConfig({ [A]: { range: "^0.1.0", peer: "^0.1.0" } })));
+		const merged = mergeMoves(
+			[{ catalog: "effected", pkg: A, from: "^0.1.0", to: "^0.2.0", peer: "^0.2.0" }],
+			[],
+			current,
+		);
+		assert.deepStrictEqual(merged, []);
+	});
+
+	it("parseChangeset reads back exactly what renderChangeset writes", () => {
+		const moves: CatalogMove[] = [
+			{ catalog: "effected", pkg: A, from: "^0.1.0", to: "^0.1.1", peer: "^0.1.0" },
+			{ catalog: "effected", pkg: B, from: "^0.2.0", to: "^0.3.0", peer: undefined },
+		];
+		assert.deepStrictEqual(parseChangeset(renderChangeset(moves)), moves);
+		assert.deepStrictEqual(parseChangeset(`---\n"${PLUGIN}": patch\n---\n\n## Maintenance\n\n- Synced\n`), []);
+	});
+
+	it("check fails on a list whose ranges disagree with the config, and sync repairs it", async () => {
+		const root = makeRoot(rangedConfig(bothMoved));
+		// A stale list: B's move is missing its newer range, as a hand edit or an old merge leaves it.
+		writeFileSync(
+			join(root, CHANGESET_PATH),
+			renderChangeset([
+				{ catalog: "effected", pkg: A, from: "^0.1.0", to: "^0.1.1", peer: "^0.1.0" },
+				{ catalog: "effected", pkg: B, from: "^0.2.0", to: "^0.2.1", peer: "^0.2.0" },
+			]),
+		);
+		const out: string[] = [];
+		const code = await check({
+			...quiet,
+			root,
+			write: (text) => out.push(text),
+			run: async () => ({ code: 0, stdout: JSON.stringify({ command: "check", drift: [] }) }),
+		});
+		assert.notStrictEqual(code, 0);
+		assert.match(out.join(""), /catalog-sync\.md disagrees with the catalog config on 1 package/);
+		assert.include(out.join(""), `${B}  listed ^0.2.0 -> ^0.2.1`);
+
+		// The config is already current, so the CLI rewrites nothing; the sync still repairs the list.
+		const changed = await sync({ ...quiet, root, run: runner() });
+		assert.isTrue(changed);
+		const repaired = parseChangeset(readFileSync(join(root, CHANGESET_PATH), "utf8"));
+		assert.deepStrictEqual(
+			staleMoves(repaired, (catalog) => catalogEntries(root, catalog)),
+			[],
+		);
+		assert.deepStrictEqual(
+			repaired.map((move) => `${move.pkg} ${move.from} -> ${move.to}`),
+			[`${A} ^0.1.0 -> ^0.1.1`, `${B} ^0.2.0 -> ^0.3.0`],
+		);
 	});
 });
