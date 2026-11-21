@@ -60,9 +60,9 @@
 		"@effected/changesets": "link:packages/changesets",
 		"@effected/plugin": "link:packages/plugin",
 		"@effected/workspaces": "link:packages/workspaces",
-		"@okfit/plugin": "^0.5.37",
+		"@okfit/plugin": "^0.5.39",
 		"@savvy-web/silk": "^5.1.7",
-		"@vitest-agent/plugin": "^6.0.15",
+		"@vitest-agent/plugin": "^6.1.0",
 		"effect": "catalog:effected",
 		"tsx": "^4.23.12"
 	},
