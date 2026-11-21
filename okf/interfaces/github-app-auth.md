@@ -16,13 +16,15 @@ verified:
     at: 2026-10-13T21:42:59Z
   - by: human:spencer
     at: 2026-10-31T19:39:48Z
+  - by: human:spencer
+    at: 2026-11-21T21:05:38Z
 integrity:
   generated:
     body: 17854d8ea127d4ca
   verified:
     by: human:spencer
-    at: 2026-10-31T19:39:48Z
-    content: a4593432b366728b
+    at: 2026-11-21T21:05:38Z
+    content: 4135ab7589b69e5b
 ---
 
 # @effected/github App authentication
