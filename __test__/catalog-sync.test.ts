@@ -712,6 +712,15 @@ describe("catalog:sync keeps every move since the last release (#1386)", () => {
 		assert.deepStrictEqual(parseChangeset(`---\n"${PLUGIN}": patch\n---\n\n## Maintenance\n\n- Synced\n`), []);
 	});
 
+	it("parseChangeset reads back ranges that hold spaces, so no move is silently dropped", () => {
+		// A widened peer and a bounded range both hold spaces; a `\S+` group skipped the whole line.
+		const moves: CatalogMove[] = [
+			{ catalog: "effected", pkg: A, from: "^0.33.0", to: "^0.34.0", peer: "^0.33.0 || ^0.34.0" },
+			{ catalog: "effected", pkg: B, from: ">=0.1.0 <1", to: ">=0.2.0 <1", peer: undefined },
+		];
+		assert.deepStrictEqual(parseChangeset(renderChangeset(moves)), moves);
+	});
+
 	it("check fails on a list whose ranges disagree with the config, and sync repairs it", async () => {
 		const root = makeRoot(rangedConfig(bothMoved));
 		// A stale list: B's move is missing its newer range, as a hand edit or an old merge leaves it.

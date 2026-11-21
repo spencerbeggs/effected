@@ -215,8 +215,15 @@ export function renderChangeset(moves: readonly CatalogMove[]): string {
 
 /** One `### Updates … catalog:<catalog> …` heading, capturing the catalog. */
 const SECTION = /^### Updates \d+ catalog:(\S+) versions?$/;
-/** One move line as {@link renderChangeset} writes it: `` - `<pkg>` <from> -> <to>[ (peer <peer>)] ``. */
-const MOVE_LINE = /^- `([^`]+)` (\S+) -> (\S+)(?: \(peer (\S+)\))?$/;
+/**
+ * One move line as {@link renderChangeset} writes it: `` - `<pkg>` <from> -> <to>[ (peer <peer>)] ``.
+ *
+ * @remarks
+ * Every range may hold spaces (`^0.33.0 || ^0.34.0`, `>=0.1.0 <1`), so none is matched as `\S+`: a line the
+ * parser skipped would drop that move on the next sync with no warning, and the stale-list gate would never
+ * see it. The ` -> ` and ` (peer ` separators are what split them; a semver range holds neither.
+ */
+const MOVE_LINE = /^- `([^`]+)` (.+?) -> (.+?)(?: \(peer (.+)\))?$/;
 
 /**
  * The moves an existing `catalog-sync.md` records, read back from its body.
@@ -614,14 +621,6 @@ function applyRipples(root: string, mismatches: readonly { pkg: string; from: st
 	writeFileSync(file, source);
 }
 
-/**
- * Apply the sync. Returns whether the catalog moved.
- *
- * A move is decided by comparing the config file around the CLI invocation rather than by
- * parsing the CLI's output: the file is the artifact that matters, and a diff cannot
- * disagree with it. When it moved, the changeset is written; when it did not, nothing is
- * written at all.
- */
 /** {@link catalogEntries} per catalog, read once each from the config as it stands. */
 function cachedEntries(root: string): (catalog: string) => ReadonlyMap<string, string> {
 	const cache = new Map<string, ReadonlyMap<string, string>>();
@@ -635,6 +634,15 @@ function cachedEntries(root: string): (catalog: string) => ReadonlyMap<string, s
 	};
 }
 
+/**
+ * Apply the sync. Returns whether it wrote anything.
+ *
+ * A move is decided by comparing the config file around the CLI invocation rather than by
+ * parsing the CLI's output: the file is the artifact that matters, and a diff cannot
+ * disagree with it. When it moved, this run's moves are merged into the pending changeset
+ * ({@link mergeMoves}). When it did not, the pending changeset is rewritten only if it is
+ * stale ({@link staleMoves}), so the gate's remedy repairs it; otherwise nothing is written.
+ */
 export async function sync(options: SyncOptions = {}): Promise<boolean> {
 	const root = options.root ?? DEFAULT_ROOT;
 	const run = options.run ?? defaultRunner;
