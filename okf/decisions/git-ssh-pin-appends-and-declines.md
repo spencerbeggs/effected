@@ -19,11 +19,13 @@ integrity:
     body: 69424d785a3207fd
   verified:
     by: human:spencer
-    at: 2026-10-23T01:00:25Z
-    content: 0deac17569b8e42c
+    at: 2026-11-21T00:44:55Z
+    content: 3795ceac25baf3c8
 verified:
   - by: human:spencer
     at: 2026-10-23T01:00:25Z
+  - by: human:spencer
+    at: 2026-11-21T00:44:55Z
 ---
 
 # The git ssh BatchMode pin is appended to what git would have used, and declines rather than substitutes
