@@ -33,11 +33,11 @@ sources:
   - id: cli-watch
     resource: ../../packages/cli/src/commands/watch.ts
 generated:
-  by: "claude-code/opus-5.5"
-  at: 2026-11-19T23:33:10Z
+  by: "claude-code/sonnet-5.5"
+  at: 2026-11-21T00:16:05Z
 integrity:
   generated:
-    body: b225eb881c4e6b96
+    body: 40919d6c88456a05
 ---
 
 # The effected build commands: package build, action build and action init
@@ -88,17 +88,25 @@ Under `--format=json`, stdout holds exactly one `BuildRunResult` (`package`, `ve
 | `--format=human\|json` | The report's form, as above |
 | `--no-validate` | Skips validating the config and `action.yml`, and the bundle size check |
 | `--no-persist` | Skips copying the build to the local action directory |
+| `--check` | Builds to a staging directory and fails when the committed build differs; persists nothing, but the staging build needs write access to the package |
 | `--watch` | Rebuilds whenever a source file or `effected.toml` changes, until interrupted; see [Watching](#watching) |
 
 An absent `[action]` table means the directory is a library, not an action, and the command refuses it.[^action-run]
 
-- **Exit 1** is `ActionBuildFailedError`: validation stopped the build, or an entry failed to bundle or to load. In strict mode a warning fails like an error. `[action.validation] strict` sets that mode, and when it is absent CI turns it on.[^action-builder]
-- **Exit 2** is `ActionConfigError`: an `effected.toml` that will not load, no `[action]` table, or a directory with no readable `package.json`.
+- **Exit 1** is `ActionBuildFailedError`: validation stopped the build, an entry failed to bundle or to load, or `--check` found drift. In strict mode a warning fails like an error. `[action.validation] strict` sets that mode, and when it is absent CI turns it on.[^action-builder]
+- **Exit 2** is `ActionConfigError`: an `effected.toml` that will not load, no `[action]` table, a directory with no readable `package.json`, or a `[action.persistLocal]` path that is refused (see [the table](effected-toml.md#action)).
 - **Exit 3** is `ActionRunError`: an entry that is missing with validation off, or a file that could not be read, cleaned, written or copied.
+- **Exit 64** is a usage error: `--check` with `--watch`, `--check` with `--no-persist`, `--check` when persisting is disabled, or `--no-persist` when `dist = false` leaves the build no output.
 
 Under `--format=json`, stdout holds one `ActionRunResult` (`verdict`, `result`), where `result` carries `validation`, `build` and `persisted`. When validation stops the build before bundling, `build` has no entries and `success: false`. The step summary is appended as above; this command prints no workflow annotations.[^action-execute]
 
 **The command persists by default.** Unless `--no-persist` or `[action.persistLocal] enabled = false` says otherwise, a successful build also writes `.github/actions/local`, and `.actrc` and `.github/workflows/act-test.yml` when those two do not exist. A failed build or size check persists nothing, and an invalid action leaves `dist` as it was.[^action-builder]
+
+**A persist replaces `dist/` whole and leaves the rest of the directory alone.** `dist/` is persisted first, then `action.yml`, so a failed dist write never leaves a new `action.yml` beside the old `dist/`. The persisted `dist/` is swapped in atomically (`AtomicDirectory`): a reader sees the old tree, the new one, or briefly none, never a partial one, and a failure between its renames leaves `dist` absent until the next persist restores it. A failed removal of the old tree once the new one is live only logs a warning. `action.yml` is written atomically (`AtomicFile`). A committed symlink at either path is replaced, never written through. Any other file in the persisted directory, a README for one, survives. The act templates are written only when nothing is at their path, a dangling link included, and are skipped with a warning when their real path leaves the workspace.
+
+**The persisted directory follows `[action.persistLocal]`.** Under `base = "workspace"` it is `.github/actions/<package directory basename>` at the workspace root, and with `dist = false` the bundles are staged in `<package>/.action-staging`, which is removed after every build, so the package keeps no `dist/`.
+
+**`--check` compares and persists nothing.** It stages a build in the package's `.action-staging` (so it needs write access to the package, and removes the staging directory after), then compares `action.yml` and `dist/**` byte for byte against the persisted directory, and against the package `dist/` when the package keeps one. Each difference is reported as `<target>: <kind> <path>`, where the kind is `changed`, `missing` or `extra`. Any drift is exit 1 and a match is exit 0. Under `--format=json` the drift is `result.drift`. A check always compares against the persisted build, so it does not combine with `--no-persist`.
 
 **The load check runs what it built.** Unless `[action.build] importCheck = false`, each bundle is imported in a fresh Node to prove it loads, which runs an action with no `GITHUB_ACTIONS` guard around its program for real. A worker that refuses to start at import by design sets `importCheck = false` in its own `[action.entries.workers.<name>]` table, which skips that bundle alone.
 
@@ -109,10 +117,10 @@ An action build appends to no journal; the journals record package builds only.
 `--watch` behaves the same on both build commands. It builds once, then again after each settled batch of changes, until it is interrupted. Every run is a full build, not an incremental one. For a package build that keeps `dist/prod/issues.json` and the root journals current exactly as one-shot runs keep them; an action build writes neither, as above.[^build-watch]
 
 - **What is watched.** The package directory's top level, and each top-level directory no exclusion covers, recursively. An excluded `node_modules`, `.git` or `dist` is never walked, so a single-package repository with a populated `node_modules` starts at once and does not spend the host's watch limit. A directory that is only where an exclusion lives, such as `.github`, is watched, and the filter below drops the build's own events in it. A new top-level directory is watched from its first event, and its creation is itself a change; a removed one's watch is dropped, which is not the watcher stopping. A directory's watch that ends while the directory it watched is still there is the watcher stopping; a directory replaced at the same path counts as removed. When the package is not the workspace root, the root tier is watched too: `<root>` and `<root>/.config`, each non-recursively and filtered to `effected.toml`. Watching the directory rather than the file catches a file that does not exist yet and an editor's save-by-rename. A `<root>/.config` that does not exist when the watch starts is watched once it is created. Creating, removing or replacing `<root>/.config` is a change to its `effected.toml`, and each moves the watch to whatever directory is there now, so a replaced one is not left on the old directory. Some inputs outside the package are never watched: [editing them does not rebuild](../limitations/watch-ignores-inputs-outside-the-package.md).
-- **What is excluded.** These paths are package-relative and matched on `/` boundaries: `dist`, `node_modules`, `.turbo`, `.git`, `.cache`, `tsdoc.json`, `.actrc`, `.github/workflows/act-test.yml` and `.github/actions/local`. An exclusion covers the path, everything under it, and the directories it lives in.
+- **What is excluded.** These paths are package-relative and matched on `/` boundaries: `dist`, `node_modules`, `.turbo`, `.git`, `.cache`, `tsdoc.json`, `.actrc`, `.github/workflows/act-test.yml`, `.github/actions/local` and `.action-staging`. A `.effected-<random>.tmp` file at any depth, the temp an atomic write renames into place, never triggers either. An exclusion covers the path, everything under it, and the directories it lives in.
   - A path that only shares a prefix with an exclusion still triggers: `distribution/x.ts` does, and so does `.github/actions/local-notes.md`.
   - A file beside an excluded path also triggers, such as `.github/workflows/ci.yml`. A bare `.github` or `.github/workflows` directory event does not, because those are the directories a first action build creates on its way to its own outputs.
-  - An action watch also excludes its `persistLocal.path`, re-read from `effected.toml` before each batch. An edit that moves the path or turns persist off is honoured. Under `--no-persist` the build writes nothing there, so the path stays watched. The default `.github/actions/local` is always excluded, so a config that will not load cannot start a loop.
+  - An action watch also excludes its persisted directory, resolved from `persistLocal` with the same `base` rule as the build and re-read from `effected.toml` before each batch. An edit that moves the path or turns persist off is honoured. Under `--no-persist` the build writes nothing there, so the path stays watched. The default `.github/actions/local` is always excluded, so a config that will not load cannot start a loop.
   - A package watch also excludes each `[package.build.meta] localPaths` directory inside the package, re-read from `effected.toml` before each batch, because every build copies the API model into each one. A `localPaths` entry outside the package needs no exclusion: nothing outside the package is watched.
 - **Debounce and queueing.** Events collect until the tree has been quiet for 100 ms, then run as one batch, so a branch switch or a format-on-save is one rebuild. Changes made during a build are kept, not dropped, and become exactly one follow-up run. Builds never overlap.
 - **Before each rebuild** the command prints `rebuilding: <path>, <path>, <path>` on stderr, followed by `+N more` when there are more than three paths. The paths are relative to the package, and a root-tier config reads as `../…`. Each path is printed as data: escape sequences and control characters are stripped, and a line break becomes a space.
@@ -126,13 +134,14 @@ An action build appends to no journal; the journals record package builds only.
 
 ## `effected action init`
 
-It writes a new action to [the canonical shape](../conventions/github-action-canon.md), ready for `effected action build`: `effected.toml` opening with the `#:schema` directive that points TOML editors at [its JSON Schema](effected-toml.md#json-schema), then `[action.entries] main` and `[action.persistLocal]` enabled, `action.yml` (`node24`, `runs.main` at `dist/main.js`, branding), `src/main.ts` (the program import and the `GITHUB_ACTIONS` guard), `src/program.ts`, and a `tsconfig.json` that extends `@effected/plugin/tsconfig/action.json`. It has a `main` phase only and needs no token; `pre`, `post` and App authentication are added when the action needs them.[^action-init]
+It writes a new action to [the canonical shape](../conventions/github-action-canon.md), ready for `effected action build`: `effected.toml` opening with the `#:schema` directive that points TOML editors at [its JSON Schema](effected-toml.md#json-schema), then `[action.entries] main` and `[action.persistLocal]` enabled, `action.yml` (`node24`, `runs.main` at `dist/main.js`, branding), `src/main.ts` (the program import and the `GITHUB_ACTIONS` guard), `src/program.ts`, and a `tsconfig.json` that extends `@effected/plugin/tsconfig/action.json`. With `--local` the `[action.persistLocal]` table is `base = "workspace"` and `dist = false` instead, and a `.gitignore` listing `dist/` and `.action-staging/` is written when the package has none. It has a `main` phase only and needs no token; `pre`, `post` and App authentication are added when the action needs them.[^action-init]
 
 | Flag | Effect |
 | --- | --- |
 | `--format=human\|json` | The report's form, as above |
 | `--name` | The display name in `action.yml`. Omitted, `package.json`'s `name` without its scope |
 | `--description` | The description in `action.yml`. Omitted, `package.json`'s `description` |
+| `--local` | Scaffolds a local-only action: persists to the workspace root and keeps no package `dist/` |
 | `--force` | Replaces regular files that exist. It never replaces or follows a symbolic link, and never overrides a conflict |
 
 - **Every path is inspected before anything is written,** with `lstat`, so a refusal writes nothing. Each file and each directory the files go into is checked, and every conflict is named at once.
@@ -156,8 +165,8 @@ The tools resolve `cwd` against the workspace root, refuse a `cwd` outside it on
 | Tool | Parameters | Answers |
 | --- | --- | --- |
 | `package_build` | `cwd?`, `noExe?` | `BuildRunResult` |
-| `action_build` | `cwd?`, `validate?` (default `true`), `persist?` (default `false`) | `ActionRunResult` |
-| `action_init` | `cwd?`, `name?`, `description?`, `force?` (default `false`) | `ActionInitResult` |
+| `action_build` | `cwd?`, `validate?` (default `true`), `persist?` (default `false`), `check?` (default `false`; ignores `persist`) | `ActionRunResult` |
+| `action_init` | `cwd?`, `name?`, `description?`, `local?` (default `false`), `force?` (default `false`) | `ActionInitResult` |
 
 - **`action_build` never persists unless asked,** the opposite of the command's default. Only `persist: true` writes `.github/actions/local`, `.actrc` and `.github/workflows/act-test.yml`; otherwise it writes only `dist`.[^action-tool]
 - **`action_init` has no verdict.** It answers what it wrote. Everything exit 2 or 3 covers above is a refusal: an existing file without `force`, a conflict (a symbolic link, the wrong kind of entry), no `package.json`, or a missing or invalid name or description. The containment check covers `cwd`; within it, the command's own rule keeps every write inside `cwd`, so a committed link cannot carry a write past the workspace root. It takes no lane, because it writes sources and never `dist`.[^action-tool]

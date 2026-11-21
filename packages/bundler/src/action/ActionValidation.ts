@@ -44,6 +44,8 @@ export class ValidationResult extends Schema.Class<ValidationResult>("Validation
 export interface ActionValidationRunOptions {
 	/** Whether this run is under CI, which is what an unset `validation.strict` follows. */
 	readonly ci: boolean;
+	/** What the persist path is relative to: under `"workspace"` the committed action carries no `node_modules`. */
+	readonly base: "package" | "workspace";
 }
 
 const UNIT_BYTES: Readonly<Record<string, number>> = { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3 };
@@ -235,7 +237,7 @@ export class ActionValidation {
 	/**
 	 * Whether warnings stop this build: `validation.strict` when it is set, otherwise whether this is a CI run.
 	 */
-	static isStrict(config: ActionConfig, options: ActionValidationRunOptions): boolean {
+	static isStrict(config: ActionConfig, options: { readonly ci: boolean }): boolean {
 		return config.validation.strict ?? options.ci;
 	}
 
@@ -273,7 +275,25 @@ export class ActionValidation {
 				: [];
 		const actionYml = yield* checkActionYml(config, cwd);
 		const errors = [...entryErrors, ...sizeErrors, ...actionYml.errors];
-		return ActionValidation.resultOf(errors, actionYml.warnings, ActionValidation.isStrict(config, options));
+		// An external that `build.ignore` also names is stubbed into the bundle, so nothing imports it at runtime.
+		const ignored = new Set(config.build.ignore);
+		const externals = config.build.externals.filter((name) => !ignored.has(name));
+		const externalsWarnings =
+			options.base === "workspace" && externals.length > 0
+				? [
+						issue(
+							"EXTERNALS_NOT_COMMITTED",
+							`build.externals (${externals.join(", ")}) are imported at runtime, but a committed action under the workspace has no node_modules`,
+							undefined,
+							"Bundle them, or move to the package base where node_modules sits beside the action",
+						),
+					]
+				: [];
+		return ActionValidation.resultOf(
+			errors,
+			[...actionYml.warnings, ...externalsWarnings],
+			ActionValidation.isStrict(config, options),
+		);
 	});
 
 	/**

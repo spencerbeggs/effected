@@ -17,13 +17,24 @@ export {
 	isKnownRegistryType,
 } from "@effected/manifest";
 export type { ActionBuilderError, ActionBuilderOptions } from "./action/ActionBuilder.js";
-export { ActionBuildResult, ActionBuilder, BuildFailed, ValidationFailed } from "./action/ActionBuilder.js";
+export {
+	ActionBuildResult,
+	ActionBuilder,
+	BuildFailed,
+	CheckFailed,
+	ValidationFailed,
+} from "./action/ActionBuilder.js";
 export { ActionBundle, BuildResult, BundleResult, BundleStats } from "./action/ActionBundle.js";
+export type { ActionCheckCompareOptions } from "./action/ActionCheck.js";
+export { ActionCheck, DriftEntry } from "./action/ActionCheck.js";
 export {
 	ActionYmlPathError,
 	BundleFailed,
+	CheckUnavailable,
 	CleanError,
+	NoOutput,
 	PersistLocalError,
+	PersistPathError,
 	WriteError,
 } from "./action/ActionErrors.js";
 export type { ActionValidationRunOptions } from "./action/ActionValidation.js";
@@ -38,6 +49,7 @@ export {
 	ActionYmlRuns,
 } from "./action/ActionYml.js";
 export { PersistLocal, PersistLocalResult } from "./action/PersistLocal.js";
+export { PersistTarget, ResolvedPersist } from "./action/PersistTarget.js";
 export type {
 	BundlerBuildOptions,
 	BundlerPackageJson,

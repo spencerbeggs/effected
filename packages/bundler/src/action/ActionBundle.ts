@@ -111,7 +111,8 @@ type Bundled =
 
 /**
  * Bundles one entry and, unless the config turns it off, proves the bundle loads. A failure comes back as a result.
- * `out` is `cwd`'s `dist`, joined by the caller: rolldown and the load check work on the host disk.
+ * `out` is the output directory (`outDir`, by default `cwd`'s `dist`), joined by the caller: rolldown and the load
+ * check work on the host disk.
  */
 const bundleEntry = async (
 	entry: EntryToBuild,
@@ -204,8 +205,8 @@ export class ActionBundle {
 	private constructor() {}
 
 	/**
-	 * Bundles every entry of the action at `options.cwd` into its own `dist/<entry>.js`, and writes `dist/package.json`
-	 * so Node reads them as ESM.
+	 * Bundles every entry of the action at `options.cwd` into `<entry>.js` in the output directory (`options.outDir`,
+	 * by default `dist` in `cwd`), and writes a `package.json` there so Node reads them as ESM.
 	 *
 	 * @remarks
 	 * Each bundle is self-contained apart from `node:` builtins and `build.externals`, and the output does not depend
@@ -219,21 +220,24 @@ export class ActionBundle {
 	 * installed passes with a warning on the entry, and the check learns nothing about the bundle past that import.
 	 *
 	 * An entry that fails to bundle or load is reported in the result with the others still built, and leaves no bundle
-	 * in `dist`. A missing `main`, a `pre`, `post` or worker the config names with no file, and a bad worker name fail
-	 * {@link BundleFailed} before `dist` is touched. Interrupting the build kills a running load check.
+	 * in the output directory. A missing `main`, a `pre`, `post` or worker the config names with no file, and a bad
+	 * worker name fail {@link BundleFailed} before the output directory is touched. Interrupting the build kills a
+	 * running load check.
 	 *
-	 * Cleaning `dist`, writing `dist/package.json` and reading each bundle's size go through the provided `FileSystem`
+	 * Cleaning the output directory, writing its `package.json` and reading each bundle's size go through the provided `FileSystem`
 	 * and `Path`, while rolldown and the load check work on the host disk, so provide the host's.
 	 *
-	 * @param options - `cwd` is the action's directory; `clean` removes `dist` first.
+	 * @param options - `cwd` is the action's directory; `clean` removes the output directory first; `outDir` is the
+	 * absolute directory to bundle into and defaults to `dist` in `cwd`, while the reported output path stays
+	 * `dist/<entry>.js`.
 	 */
 	static readonly build: (
 		config: ActionConfig,
-		options: { readonly cwd: string; readonly clean: boolean },
+		options: { readonly cwd: string; readonly clean: boolean; readonly outDir?: string },
 	) => Effect.Effect<BuildResult, BundleFailed | CleanError | WriteError, FileSystem.FileSystem | Path.Path> =
 		Effect.fn("ActionBundle.build")(function* (
 			config: ActionConfig,
-			options: { readonly cwd: string; readonly clean: boolean },
+			options: { readonly cwd: string; readonly clean: boolean; readonly outDir?: string },
 		) {
 			const fs = yield* FileSystem.FileSystem;
 			const path = yield* Path.Path;
@@ -242,7 +246,7 @@ export class ActionBundle {
 			// cwd reached through a symlink would write the machine's directory layout into the bundle.
 			const requested = path.resolve(options.cwd);
 			const cwd = yield* fs.realPath(requested).pipe(Effect.orElseSucceed(() => requested));
-			const dist = path.join(cwd, "dist");
+			const dist = options.outDir ?? path.join(cwd, "dist");
 			const entries = yield* entriesToBuild(config, cwd);
 
 			if (options.clean) {

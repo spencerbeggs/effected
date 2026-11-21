@@ -193,16 +193,36 @@ export class ActionPersistLocalOptions extends Schema.Class<ActionPersistLocalOp
 		enabled: Schema.Boolean.annotate({ description: "Whether to copy the build output locally.", default: true }).pipe(
 			Schema.withDecodingDefaultKey(Effect.succeed(true)),
 		),
-		/** The local action directory, relative to the package. */
-		path: Schema.String.annotate({
-			description: "The local action directory, relative to the package.",
-			default: ".github/actions/local",
-		}).pipe(Schema.withDecodingDefaultKey(Effect.succeed(".github/actions/local"))),
-		/** Whether to generate the act boilerplate, `.actrc` and `act-test.yml`, when those files do not exist. */
-		actTemplate: Schema.Boolean.annotate({
-			description: "Whether to generate the act boilerplate, .actrc and act-test.yml, when those files do not exist.",
+		/**
+		 * Where the persisted action lives: relative to the package under `base = "package"`, to the workspace root under
+		 * `base = "workspace"`.
+		 */
+		base: Schema.Literals(["package", "workspace"])
+			.annotate({
+				description:
+					'What the persist path is relative to: "package" (the package directory) or "workspace" (the workspace root).',
+				default: "package",
+			})
+			.pipe(Schema.withDecodingDefaultKey(Effect.succeed("package" as const))),
+		/** The persisted action directory. Absent, `.github/actions/local` under the package or `.github/actions/<name>` under the workspace. */
+		path: Schema.optionalKey(
+			Schema.String.annotate({
+				description:
+					"The persisted action directory. Absent: .github/actions/local under the package base, .github/actions/<package directory name> under the workspace base.",
+			}),
+		),
+		/** Whether the build also stays in the package's own `dist/`. */
+		dist: Schema.Boolean.annotate({
+			description: "Whether the build also stays in the package's own dist/. false needs persistLocal.enabled.",
 			default: true,
 		}).pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+		/** Whether to generate the act boilerplate, `.actrc` and `act-test.yml`, when those files do not exist. */
+		actTemplate: Schema.optionalKey(
+			Schema.Boolean.annotate({
+				description:
+					"Whether to generate the act boilerplate, .actrc and act-test.yml, when those files do not exist. Absent: true under the package base, false under the workspace base.",
+			}),
+		),
 	}).annotate({
 		title: "Local action copy",
 		description: "The local copy of the action's build for testing with nektos/act, the [action.persistLocal] table.",

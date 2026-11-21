@@ -920,15 +920,24 @@
 					"description": "Whether to copy the build output locally.",
 					"default": true
 				},
+				"base": {
+					"type": "string",
+					"enum": ["package", "workspace"],
+					"description": "What the persist path is relative to: \"package\" (the package directory) or \"workspace\" (the workspace root).",
+					"default": "package"
+				},
 				"path": {
 					"type": "string",
-					"description": "The local action directory, relative to the package.",
-					"default": ".github/actions/local"
+					"description": "The persisted action directory. Absent: .github/actions/local under the package base, .github/actions/<package directory name> under the workspace base."
+				},
+				"dist": {
+					"type": "boolean",
+					"description": "Whether the build also stays in the package's own dist/. false needs persistLocal.enabled.",
+					"default": true
 				},
 				"actTemplate": {
 					"type": "boolean",
-					"description": "Whether to generate the act boilerplate, .actrc and act-test.yml, when those files do not exist.",
-					"default": true
+					"description": "Whether to generate the act boilerplate, .actrc and act-test.yml, when those files do not exist. Absent: true under the package base, false under the workspace base."
 				}
 			},
 			"additionalProperties": false,

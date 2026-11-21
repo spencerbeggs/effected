@@ -42,10 +42,14 @@ const withAction = <A, E>(files: Readonly<Record<string, string | null>>, use: (
 		(cwd) => Effect.sync(() => rmSync(cwd, { recursive: true, force: true })),
 	);
 
-const run = (cwd: string, input: { readonly validate?: boolean; readonly persist?: boolean } = {}) =>
-	ActionRun.run({ validate: input.validate ?? true, persist: input.persist ?? false }, { cwd, ci: false }).pipe(
-		Effect.provide(Live),
-	);
+const run = (
+	cwd: string,
+	input: { readonly validate?: boolean; readonly persist?: boolean; readonly check?: boolean } = {},
+) =>
+	ActionRun.run(
+		{ validate: input.validate ?? true, persist: input.persist ?? false, check: input.check ?? false },
+		{ cwd, ci: false },
+	).pipe(Effect.provide(Live));
 
 describe("ActionRun.run", () => {
 	it.live("answers ok with the whole result", () =>
@@ -116,11 +120,11 @@ describe("ActionRun.run", () => {
 	it.live("uses ci for strict mode", () =>
 		withAction({ ...GOOD, "action.yml": null }, (cwd) =>
 			Effect.gen(function* () {
-				const local = yield* ActionRun.run({ validate: true, persist: false }, { cwd, ci: false }).pipe(
+				const local = yield* ActionRun.run({ validate: true, persist: false, check: false }, { cwd, ci: false }).pipe(
 					Effect.provide(Live),
 				);
 				assert.strictEqual(local.verdict, "ok");
-				const inCi = yield* ActionRun.run({ validate: true, persist: false }, { cwd, ci: true }).pipe(
+				const inCi = yield* ActionRun.run({ validate: true, persist: false, check: false }, { cwd, ci: true }).pipe(
 					Effect.provide(Live),
 				);
 				assert.strictEqual(inCi.verdict, "failed");
@@ -172,6 +176,93 @@ describe("ActionRun.run", () => {
 				const error = yield* run(cwd, { persist: true }).pipe(Effect.flip);
 				assert.strictEqual(error._tag, "ActionYmlPathError");
 			}),
+		),
+	);
+
+	it.live("check drift is a failed verdict carrying drift", () =>
+		withAction(GOOD, (cwd) =>
+			Effect.gen(function* () {
+				// Nothing was ever persisted, so every built file differs from the committed build.
+				const answer = yield* run(cwd, { check: true, persist: true });
+				assert.strictEqual(answer.verdict, "failed");
+				assert.isDefined(answer.result.drift);
+				assert.isAbove(answer.result.drift?.length ?? 0, 0);
+				assert.isTrue(answer.result.build.success);
+				assert.isFalse(answer.result.persisted);
+			}),
+		),
+	);
+
+	it.live("check fails CheckUnavailable when persisting is disabled", () =>
+		withAction(
+			{ ...GOOD, "effected.toml": '[action.entries]\nmain = "src/main.ts"\n[action.persistLocal]\nenabled = false\n' },
+			(cwd) =>
+				Effect.gen(function* () {
+					const error = yield* run(cwd, { check: true, persist: true }).pipe(Effect.flip);
+					assert.strictEqual(error._tag, "CheckUnavailable");
+				}),
+		),
+	);
+
+	it.live("dist = false with persist off fails NoOutput", () =>
+		Effect.acquireUseRelease(
+			Effect.sync(() => {
+				const root = mkdtempSync(join(tmpdir(), "effected-action-run-no-output-"));
+				const files: Record<string, string> = {
+					"package.json": JSON.stringify({ name: "root", private: true }),
+					"pnpm-workspace.yaml": 'packages:\n  - "packages/*"\n',
+					"packages/one/package.json": JSON.stringify({ name: "one", version: "1.0.0" }),
+					"packages/one/effected.toml":
+						'[action.entries]\nmain = "src/main.ts"\n[action.persistLocal]\nbase = "workspace"\ndist = false\n',
+					"packages/one/action.yml": ACTION_YML,
+					"packages/one/src/main.ts": 'console.log("main");\n',
+				};
+				for (const [name, source] of Object.entries(files)) {
+					mkdirSync(dirname(join(root, name)), { recursive: true });
+					writeFileSync(join(root, name), source);
+				}
+				return root;
+			}),
+			(root) =>
+				Effect.gen(function* () {
+					const error = yield* run(join(root, "packages/one"), { persist: false }).pipe(Effect.flip);
+					assert.strictEqual(error._tag, "NoOutput");
+				}),
+			(root) => Effect.sync(() => rmSync(root, { recursive: true, force: true })),
+		),
+	);
+
+	it.live("workspace base persists at the root", () =>
+		Effect.acquireUseRelease(
+			Effect.sync(() => {
+				const root = mkdtempSync(join(tmpdir(), "effected-action-run-ws-"));
+				const files: Record<string, string> = {
+					"package.json": JSON.stringify({ name: "root", private: true }),
+					"pnpm-workspace.yaml": 'packages:\n  - "packages/*"\n',
+				};
+				for (const name of ["one", "two"]) {
+					files[`packages/${name}/package.json`] = JSON.stringify({ name, version: "1.0.0" });
+					files[`packages/${name}/effected.toml`] =
+						'[action.entries]\nmain = "src/main.ts"\n[action.persistLocal]\nbase = "workspace"\ndist = false\n';
+					files[`packages/${name}/action.yml`] = ACTION_YML;
+					files[`packages/${name}/src/main.ts`] = 'console.log("main");\n';
+				}
+				for (const [name, source] of Object.entries(files)) {
+					mkdirSync(dirname(join(root, name)), { recursive: true });
+					writeFileSync(join(root, name), source);
+				}
+				return root;
+			}),
+			(root) =>
+				Effect.gen(function* () {
+					for (const name of ["one", "two"]) {
+						const answer = yield* run(join(root, "packages", name), { persist: true });
+						assert.strictEqual(answer.verdict, "ok");
+						assert.isTrue(answer.result.persisted);
+						assert.include(readdirSync(join(root, ".github/actions", name, "dist")), "main.js");
+					}
+				}),
+			(root) => Effect.sync(() => rmSync(root, { recursive: true, force: true })),
 		),
 	);
 });

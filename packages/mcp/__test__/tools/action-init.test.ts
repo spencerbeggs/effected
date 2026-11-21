@@ -37,6 +37,19 @@ const serving = <A, E>(
 	}).pipe(Effect.scoped);
 
 describe("action_init", () => {
+	it.effect("local: true scaffolds the workspace persist keys and a gitignore", () =>
+		serving({ [`${ACTION}/package.json`]: MANIFEST }, (harness, volume) =>
+			Effect.gen(function* () {
+				const result = resultOf(yield* harness.callTool("action_init", { cwd: "actions/greet", local: true }));
+				assert.notStrictEqual(result.isError, true, textOf(result));
+				const toml = volume.text(`${ACTION}/effected.toml`) ?? "";
+				assert.include(toml, 'base = "workspace"');
+				assert.include(toml, "dist = false");
+				assert.strictEqual(volume.text(`${ACTION}/.gitignore`), "dist/\n.action-staging/\n");
+			}),
+		),
+	);
+
 	it.effect("is listed as a writing tool, and the instructions name it", () =>
 		serving({}, (harness) =>
 			Effect.gen(function* () {

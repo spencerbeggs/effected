@@ -160,7 +160,15 @@
 		"writeGeneratedOgImage": "render or reuse a cached social card, write it to the meta directory",
 		"writeIssuesArtifact": "atomically write issues.json for a build target",
 		"writeResolvedTsconfig": "write the resolved tsconfig to a temp file, get its path",
-		"writeTargetsBinding": "write dist/prod/targets.json for the release action"
+		"writeTargetsBinding": "write dist/prod/targets.json for the release action",
+		"ActionCheck": "compare fresh action build against committed copy, detect build drift, check mode",
+		"DriftEntry": "one file that changed, is missing or extra in a drift check",
+		"CheckFailed": "action check found committed build differs, drift list, ci check failure",
+		"CheckUnavailable": "action check refused, nothing persisted to compare against",
+		"NoOutput": "refuse action build that would write nowhere, dist false and persist off",
+		"PersistPathError": "persist path rejected, outside workspace, inside or containing package, dist without persist",
+		"PersistTarget": "resolve action persist directory, workspace root or package relative, staging dir, act root",
+		"ResolvedPersist": "resolved absolute action persist paths, keep dist, staging directory, act template"
 	},
 	"manifest": {
 		"BundleManifest": "bundle.json schema, metadata a docs site reads for a package api bundle, decode emitted sidecar",

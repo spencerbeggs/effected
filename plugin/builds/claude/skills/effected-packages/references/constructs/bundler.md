@@ -11,6 +11,8 @@
 | `ActionBuilderError` | TypeAlias | What `ActionBuilder.build` can fail with. | |
 | `ActionBuilderOptions` | Interface | What `ActionBuilder.build` takes. | |
 | `ActionBundle` | Class | Bundles a GitHub Action with rolldown. | bundle a github action with rolldown, one self-contained file per entry |
+| `ActionCheck` | Class | Compares a fresh build against a committed copy of it. | compare fresh action build against committed copy, detect build drift, check mode |
+| `ActionCheckCompareOptions` | Interface | What `ActionCheck.compare` takes. | |
 | `ActionConfig` | Class | A GitHub Action's build settings, the `[action]` table of `effected.toml`. | configure a github action build, the action table of effected.toml |
 | `ActionEntries` | Class | The bundles a GitHub Action ships, the `[action.entries]` table. | declare lifecycle entry points and worker bundles for an action |
 | `ActionPersistLocalOptions` | Class | The local copy of an action's build for testing with nektos/act, the `[action.persistLocal]` table. | copy an action build locally for nektos act testing |
@@ -60,6 +62,8 @@
 | `BundlerPackageJson` | Interface | The `package.json` fields the build reads. Any other field reaches the emitted manifest untouched. | |
 | `BundlerPhase` | Variable + TypeAlias | The decoded type of `(BundlerPhase:variable)`. | which stage a build failed in, for reporting a failure |
 | `BundlerSeams` | Interface | The orchestrator's side effects, each replaceable so a test can run it without tsdown, API Extractor or a compiler. Every member defaults to the real implementation. | |
+| `CheckFailed` | Class | Check mode found the committed build differs from a fresh one. | action check found committed build differs, drift list, ci check failure |
+| `CheckUnavailable` | Class | Check mode needs somewhere persisted to compare against, and there is none. | action check refused, nothing persisted to compare against |
 | `CleanError` | Class | The output directory could not be cleaned. | removing an action build's dist directory failed |
 | `ComposeManifestInput` | Interface | Everything `composeBundleManifest` needs: the three authoring tiers plus the build facts that derive the rest. | |
 | `ConfigValidationError` | Class | A build config is structurally invalid; raised before any build work. | structurally invalid build config, refused before any build work |
@@ -74,6 +78,7 @@
 | `DerivedTsdownOptions` | Interface | The JS pass: per-module JavaScript, no declarations. | |
 | `DiagnosticEntry` | Class | A captured warning or error, from tsdown's logger, rolldown's onLog, API Extractor, the meta pass's own sidecar work (`bundle.json` sources, Open Graph generation), or an advisory finding about the build config itself (`config`, e.g. a `publishConfig.targets` set no final release reaches). | one captured warning or error, tsdown, rolldown, api extractor or config |
 | `DiagnosticInput` | Interface | | |
+| `DriftEntry` | Class | One way a committed build differs from a fresh one. | one file that changed, is missing or extra in a drift check |
 | `DtsEmitTsconfigOptions` | Interface | What a dts-emit tsconfig adds for one partition. | |
 | `DtsExportClass` | TypeAlias | Classification of a single export value for ambient-.d.ts handling. | |
 | `DtsPassDtsOptions` | Interface | The `dts` block both declaration passes hand to tsdown. | |
@@ -117,6 +122,7 @@
 | `MetaWarningSuppressionRule` | Interface | An api-extractor message-suppression rule. messageId is exact-matched; pattern (regex or substring) is matched against the text. A rule with both needs both to match. | |
 | `ModuleExportNames` | Interface | The set of names a module exports, plus whether that set is fully known. | |
 | `NextVersions` | Interface | Result of resolving next release versions for a workspace. | |
+| `NoOutput` | Class | The run would keep no output at all: the package's `dist` is not kept (`persistLocal.dist = false`) and this run persists nothing. | refuse action build that would write nowhere, dist false and persist off |
 | `NormalizedExe` | Interface | Fully-resolved SEA binary spec (no optionals). | |
 | `NormalizedLooseFile` | Interface | A loose file resolved to a concrete build descriptor. | |
 | `NormalizedMeta` | Interface | Fully-resolved meta options (no optionals). | |
@@ -133,6 +139,8 @@
 | `PersistLocal` | Class | Copies an action's build to a local action directory, for testing with nektos/act. | copy an action build for local nektos act testing, generate the act template |
 | `PersistLocalError` | Class | A file could not be copied to the local action directory. | copying an action build to its local directory failed |
 | `PersistLocalResult` | Class | What a persist did. | files copied and skipped by a local action persist |
+| `PersistPathError` | Class | The persisted action path cannot be used. | persist path rejected, outside workspace, inside or containing package, dist without persist |
+| `PersistTarget` | Class | Resolves `[action.persistLocal]` against a package and its workspace root. | resolve action persist directory, workspace root or package relative, staging dir, act root |
 | `PkgOsCpu` | Interface | The package's own os/cpu fields, used to infer a single platform target. | |
 | `PlainDiagnostic` | Interface | A diagnostic flattened to a plain JSON object (only defined fields are present). | |
 | `PlainDiagnosticSchema` | Variable | The schema of a `PlainDiagnostic`, for reading one back from `issues.json` or a journal. | read one diagnostic back from issues.json or a journal line |
@@ -151,6 +159,7 @@
 | `ResolvedEffectedConfig` | Class | A package's effective `effected.toml` config and the files it came from. | effective effected.toml plus the files it was merged from |
 | `ResolvedGroup` | Interface | A distinct byte-variant build group (one per distinct resolved name). | |
 | `ResolvedJsxConfig` | Interface | Resolved JSX transform settings. The shape mirrors the subset of rolldown's JsxOptions, but the bundler consumes it to populate the generated dts tsconfig's `jsx`/`jsxImportSource`, not by forwarding it into rolldown's input options. | |
+| `ResolvedPersist` | Class | Where an action's build is persisted, with every path absolute. | resolved absolute action persist paths, keep dist, staging directory, act template |
 | `ResolvedTarget` | Interface | A resolved registry target (one per `publishConfig.targets` key). | |
 | `ResolvedTsconfig` | Interface | | |
 | `ResolvedTsconfigOptions` | Interface | | |

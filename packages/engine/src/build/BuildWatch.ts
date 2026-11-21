@@ -4,7 +4,7 @@
 // changes made during one become one follow-up.
 
 import type { EffectedConfigError } from "@effected/bundler";
-import { EffectedConfigFile } from "@effected/bundler";
+import { EffectedConfigFile, PersistTarget } from "@effected/bundler";
 import { WorkspaceDiscovery, WorkspaceRoot } from "@effected/workspaces";
 import type { Duration } from "effect";
 import {
@@ -60,6 +60,7 @@ export const DEFAULT_EXCLUDES: ReadonlyArray<string> = [
 	".actrc",
 	".github/workflows/act-test.yml",
 	".github/actions/local",
+	".action-staging",
 ];
 
 /**
@@ -109,6 +110,12 @@ const isUnder = (path: string, prefix: string): boolean => {
 	const trimmed = trimExclusion(prefix);
 	return isCovered(path, prefix) || (trimmed !== "" && trimmed.startsWith(`${path}/`));
 };
+
+/**
+ * An `@effected/files` `AtomicFile` temp, `.effected-<base36>.tmp`, which an action persist leaves for a moment beside
+ * `.actrc` and `act-test.yml` before renaming it into place. Never a source, so never a trigger.
+ */
+const ATOMIC_TEMP = /(^|\/)\.effected-[0-9a-z]+\.tmp$/;
 
 const trimExclusion = (prefix: string): string => prefix.replace(/^\.\//, "").replace(/\/+$/, "");
 
@@ -204,9 +211,16 @@ export class BuildWatch {
 			if (options?.persist === false) return DEFAULT_EXCLUDES;
 			const path = yield* Path.Path;
 			const loaded = yield* loadConfig(target);
-			const persist = Option.isSome(loaded) ? loaded.value.config.action?.persistLocal : undefined;
-			if (persist === undefined || !persist.enabled) return DEFAULT_EXCLUDES;
-			return withInside(path, target.cwd, [persist.path]);
+			if (Option.isNone(loaded) || loaded.value.config.action === undefined) return DEFAULT_EXCLUDES;
+			const resolved = yield* PersistTarget.resolve(loaded.value.config.action, {
+				cwd: target.cwd,
+				root: target.root,
+			}).pipe(Effect.option);
+			if (Option.isNone(resolved) || !resolved.value.enabled) return DEFAULT_EXCLUDES;
+			// `outputPath` is under the realpath of `cwd`, so relativize against that, as `PersistTarget` realpaths it.
+			const fs = yield* FileSystem.FileSystem;
+			const realCwd = yield* fs.realPath(target.cwd).pipe(Effect.orElseSucceed(() => target.cwd));
+			return withInside(path, realCwd, [resolved.value.outputPath]);
 		});
 
 	/**
@@ -403,7 +417,9 @@ export class BuildWatch {
 						for (const entry of more.value) batch.add(entry);
 					}
 					const excludes = yield* options.exclude;
-					return [...batch].filter((entry) => !excludes.some((prefix) => isUnder(entry, prefix))).sort();
+					return [...batch]
+						.filter((entry) => !ATOMIC_TEMP.test(entry) && !excludes.some((prefix) => isUnder(entry, prefix)))
+						.sort();
 				});
 
 				const consuming = Effect.gen(function* () {

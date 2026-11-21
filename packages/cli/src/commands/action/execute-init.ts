@@ -14,6 +14,7 @@ export interface InitInput {
 	readonly name: Option.Option<string>;
 	readonly description: Option.Option<string>;
 	readonly force: boolean;
+	readonly local: boolean;
 }
 
 /**
@@ -35,6 +36,7 @@ export const executeInit = Effect.fn("effected.action.init")(function* (input: I
 			...Option.match(input.name, { onNone: () => ({}), onSome: (name) => ({ name }) }),
 			...Option.match(input.description, { onNone: () => ({}), onSome: (description) => ({ description }) }),
 			force: input.force,
+			local: input.local,
 		},
 		{ cwd: deps.cwd },
 	).pipe(

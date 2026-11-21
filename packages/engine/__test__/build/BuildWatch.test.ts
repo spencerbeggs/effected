@@ -185,6 +185,23 @@ describe("BuildWatch.run", () => {
 		}),
 	);
 
+	it.effect("ignores the temp files an atomic write of an excluded file leaves beside it", () =>
+		Effect.gen(function* () {
+			const { handle, triggers, fiber } = yield* start({
+				seed: { ...SEED, [`${CWD}/.github/workflows/ci.yml`]: "" },
+				watchers: WATCHERS + 1,
+			});
+			// AtomicFile writes `.actrc` and `act-test.yml` through a `.effected-<random>.tmp` renamed into place.
+			yield* burst(handle, [
+				[`${CWD}/.effected-k3j9x2.tmp`, "Create"],
+				[`${CWD}/.effected-k3j9x2.tmp`, "Remove"],
+				[`${CWD}/.github/workflows/.effected-a0b1c2.tmp`, "Create"],
+			]);
+			assert.deepStrictEqual(yield* triggers, [{ _tag: "Initial" }]);
+			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
 	it.effect("watches the package top level, and recursively only its directories that no exclusion covers", () =>
 		Effect.gen(function* () {
 			const watched: Array<readonly [string, boolean]> = [];
@@ -730,6 +747,47 @@ describe("BuildWatch.packageExcludes", () => {
 			const seed = workspace({ [`${CWD}/effected.toml`]: "[package.build\n" });
 			const excludes = yield* inVolume(seed, BuildWatch.packageExcludes({ cwd: CWD, root: ROOT }));
 			assert.deepStrictEqual(excludes, DEFAULT_EXCLUDES);
+		}),
+	);
+
+	it.effect("staging is excluded", () =>
+		Effect.gen(function* () {
+			const { handle, triggers, fiber } = yield* start({
+				seed: { ...SEED, [`${CWD}/.action-staging/main.js`]: "" },
+				watchers: WATCHERS,
+			});
+			yield* burst(handle, [[`${CWD}/.action-staging/main.js`, "Update"]]);
+			assert.deepStrictEqual(yield* triggers, [{ _tag: "Initial" }]);
+			yield* Fiber.interrupt(fiber);
+		}),
+	);
+
+	it.effect("a workspace-base persist path is not an exclusion inside the package", () =>
+		Effect.gen(function* () {
+			const seed = workspace({
+				[`${CWD}/effected.toml`]: '[action.persistLocal]\nbase = "workspace"\ndist = false\n',
+			});
+			const excludes = yield* inVolume(seed, BuildWatch.actionExcludes({ cwd: CWD, root: ROOT }));
+			assert.deepStrictEqual(excludes, DEFAULT_EXCLUDES);
+		}),
+	);
+
+	it.effect("a package-base persist path inside the package is excluded (positive control)", () =>
+		Effect.gen(function* () {
+			const seed = workspace({ [`${CWD}/effected.toml`]: '[action.persistLocal]\npath = "out/local"\n' });
+			const excludes = yield* inVolume(seed, BuildWatch.actionExcludes({ cwd: CWD, root: ROOT }));
+			assert.include(excludes, "out/local");
+		}),
+	);
+
+	it.effect("a persist path is excluded when cwd is given through a symlink", () =>
+		Effect.gen(function* () {
+			const seed = workspace({
+				[`${CWD}/effected.toml`]: '[action.persistLocal]\npath = "out/local"\n',
+				"/alias": MemoryFileSystem.symlink(CWD),
+			});
+			const excludes = yield* inVolume(seed, BuildWatch.actionExcludes({ cwd: "/alias", root: ROOT }));
+			assert.include(excludes, "out/local");
 		}),
 	);
 });

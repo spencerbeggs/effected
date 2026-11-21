@@ -5,9 +5,12 @@ import type {
 	ActionBuilderError,
 	ActionYmlPathError,
 	BundleFailed,
+	CheckUnavailable,
 	CleanError,
 	EffectedConfigError,
+	NoOutput,
 	PersistLocalError,
+	PersistPathError,
 	WriteError,
 } from "@effected/bundler";
 import { ActionBuildResult, ActionBuilder, BuildResult, EffectedConfigFile } from "@effected/bundler";
@@ -42,6 +45,8 @@ export interface ActionRunInput {
 	readonly validate: boolean;
 	/** Whether to copy the build locally. `persistLocal.enabled = false` turns that off too. */
 	readonly persist: boolean;
+	/** Whether to compare the build with the committed one instead of persisting it. */
+	readonly check: boolean;
 }
 
 /**
@@ -52,13 +57,16 @@ export interface ActionRunInput {
 export type ActionRunDeps = Pick<BuildRunDeps, "cwd" | "ci">;
 
 /** The partial result a builder failure stops with. No bundling happened when `build` is absent. */
-const failedResult = (error: Extract<ActionBuilderError, { readonly _tag: "ValidationFailed" | "BuildFailed" }>) =>
+const failedResult = (
+	error: Extract<ActionBuilderError, { readonly _tag: "ValidationFailed" | "BuildFailed" | "CheckFailed" }>,
+) =>
 	ActionRunResult.make({
 		verdict: "failed",
 		result: ActionBuildResult.make({
 			validation: error.validation,
 			build: error.build ?? BuildResult.make({ success: false, entries: [], duration: 0 }),
 			persisted: false,
+			...(error._tag === "CheckFailed" ? { drift: error.drift } : {}),
 		}),
 	});
 
@@ -70,6 +78,10 @@ const failedResult = (error: Extract<ActionBuilderError, { readonly _tag: "Valid
  * with what happened so far in the result, so a front end can always render it. The error channel holds a run that could
  * not start or finish: no `package.json`, a config that will not load, no `[action]` table, an entry that is missing
  * with validation off, and a file that cannot be cleaned, written or persisted.
+ *
+ * With `check`, it writes nothing and a check that finds drift is the verdict `failed` with `result.drift`; the error
+ * channel adds `CheckUnavailable` (nothing persisted to compare), `NoOutput` (`dist = false` with persisting off) and
+ * `PersistPathError` (a persist path the bundler refuses).
  *
  * It appends to no journal: the build and issue journals record package builds only.
  *
@@ -90,6 +102,9 @@ export class ActionRun {
 		| CleanError
 		| WriteError
 		| PersistLocalError
+		| PersistPathError
+		| CheckUnavailable
+		| NoOutput
 		| ActionYmlPathError
 		| PlatformError.PlatformError,
 		FileSystem.FileSystem | Path.Path
@@ -105,15 +120,18 @@ export class ActionRun {
 
 		return yield* ActionBuilder.build({
 			cwd,
+			root,
 			config: config.action,
 			validate: input.validate,
 			persist: input.persist,
 			ci: deps.ci,
+			check: input.check,
 		}).pipe(
 			Effect.map((result) => ActionRunResult.make({ verdict: "ok", result })),
 			Effect.catchTags({
 				ValidationFailed: (error) => Effect.succeed(failedResult(error)),
 				BuildFailed: (error) => Effect.succeed(failedResult(error)),
+				CheckFailed: (error) => Effect.succeed(failedResult(error)),
 			}),
 		);
 	});

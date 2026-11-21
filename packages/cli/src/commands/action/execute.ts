@@ -24,11 +24,14 @@ export interface ExecuteInput {
 	readonly format: Option.Option<"human" | "json">;
 	readonly noValidate: boolean;
 	readonly noPersist: boolean;
+	readonly check: boolean;
 	readonly watch: boolean;
 }
 
 const refused = (error: { readonly message: string }) =>
 	Effect.fail(CliRuntime.reported(new ActionConfigError({ message: error.message }), 2));
+// A flag combination the command cannot honour: a usage error, exit 64, before any build.
+const usage = (message: string) => Effect.fail(CliRuntime.reported(new ActionConfigError({ message }), 64));
 const stopped = (error: { readonly message: string }) =>
 	Effect.fail(CliRuntime.reported(new ActionRunError({ message: error.message }), 3));
 
@@ -45,7 +48,10 @@ const runOnce = Effect.fn("effected.action.runOnce")(function* (
 	format: "human" | "json",
 ) {
 	const { ActionRun, ActionRunResult } = yield* Effect.promise(() => import("@effected/engine/build"));
-	const answer = yield* ActionRun.run({ validate: !input.noValidate, persist: !input.noPersist }, deps).pipe(
+	const answer = yield* ActionRun.run(
+		{ validate: !input.noValidate, persist: input.check || !input.noPersist, check: input.check },
+		deps,
+	).pipe(
 		Effect.catchTags({
 			EffectedConfigError: refused,
 			NotAPackageError: refused,
@@ -54,6 +60,10 @@ const runOnce = Effect.fn("effected.action.runOnce")(function* (
 			CleanError: stopped,
 			WriteError: stopped,
 			PersistLocalError: stopped,
+			// A persist path that cannot be used is a config that will not load.
+			PersistPathError: refused,
+			CheckUnavailable: (error) => usage(error.message),
+			NoOutput: (error) => usage(`${error.message}: drop --no-persist, or keep dist`),
 			ActionYmlPathError: stopped,
 			PlatformError: stopped,
 		}),
@@ -74,6 +84,7 @@ const runOnce = Effect.fn("effected.action.runOnce")(function* (
 				new ActionBuildFailedError({
 					errors: answer.result.validation.errors.length,
 					failedEntries: answer.result.build.entries.filter((entry) => !entry.success).length,
+					drift: answer.result.drift?.length ?? 0,
 				}),
 				1,
 			),
@@ -94,6 +105,10 @@ const runOnce = Effect.fn("effected.action.runOnce")(function* (
  */
 export const execute = Effect.fn("effected.action.execute")(function* (input: ExecuteInput, deps: ActionCommandDeps) {
 	const format = yield* resolveFormat(input.format);
+	if (input.check && input.watch) return yield* usage("--check compares one build and cannot be combined with --watch");
+	if (input.check && input.noPersist) {
+		return yield* usage("--check compares against the persisted build and cannot be combined with --no-persist");
+	}
 	if (!input.watch) return yield* runOnce(input, deps, format);
 
 	yield* refuseUnderCi;

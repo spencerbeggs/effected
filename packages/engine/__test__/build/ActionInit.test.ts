@@ -122,7 +122,9 @@ describe("ActionInit.run", () => {
 			Effect.gen(function* () {
 				yield* init(cwd, { name: 'greet: "x" # not a comment, runs: {evil}', description: "Greets: everyone" });
 				const config = Schema.decodeUnknownSync(ActionConfig)({});
-				const validation = yield* ActionValidation.validate(config, cwd, { ci: true }).pipe(Effect.provide(Live));
+				const validation = yield* ActionValidation.validate(config, cwd, { ci: true, base: "package" }).pipe(
+					Effect.provide(Live),
+				);
 				assert.deepStrictEqual([...validation.errors], []);
 				assert.deepStrictEqual([...validation.warnings], []);
 				assert.isTrue(validation.valid);
@@ -493,7 +495,7 @@ describe("action init, then action build", () => {
 					yield* init(cwd);
 
 					// `ci: true` is strict mode: a warning would fail the build.
-					const answer = yield* ActionRun.run({ validate: true, persist: false }, { cwd, ci: true }).pipe(
+					const answer = yield* ActionRun.run({ validate: true, persist: false, check: false }, { cwd, ci: true }).pipe(
 						Effect.provide(Live),
 					);
 					assert.strictEqual(answer.verdict, "ok", JSON.stringify(answer.result.build.entries));
@@ -505,5 +507,48 @@ describe("action init, then action build", () => {
 				}),
 			),
 		{ timeout: 120_000 },
+	);
+});
+
+describe("ActionInit local scaffold", () => {
+	it("plan with local writes the workspace persist keys, with no path line, and a gitignore", () => {
+		const scaffold = ActionInit.plan({ name: "greet", description: "Greets", local: true });
+		const toml = scaffold.files.find((file) => file.path === "effected.toml")?.contents ?? "";
+		assert.include(toml, 'base = "workspace"');
+		assert.include(toml, "dist = false");
+		assert.notMatch(toml, /^path\s*=/m);
+		const gitignore = scaffold.files.find((file) => file.path === ".gitignore")?.contents ?? "";
+		assert.deepStrictEqual(
+			gitignore.split("\n").filter((line) => line !== ""),
+			["dist/", ".action-staging/"],
+		);
+	});
+
+	it("plan without local keeps the package-local scaffold and writes no gitignore", () => {
+		const scaffold = ActionInit.plan({ name: "greet", description: "Greets" });
+		assert.deepStrictEqual(
+			scaffold.files.map((file) => file.path),
+			PLANNED,
+		);
+	});
+
+	it.live("run with local decodes as a valid config and writes the gitignore when the package has none", () =>
+		withDir({ "package.json": MANIFEST }, (cwd) =>
+			Effect.gen(function* () {
+				const result = yield* init(cwd, { local: true });
+				assert.include([...result.written], ".gitignore");
+				assert.strictEqual(readFileSync(join(cwd, ".gitignore"), "utf8"), "dist/\n.action-staging/\n");
+			}),
+		),
+	);
+
+	it.live("run with local leaves an existing gitignore alone", () =>
+		withDir({ "package.json": MANIFEST, ".gitignore": "node_modules/\n" }, (cwd) =>
+			Effect.gen(function* () {
+				const result = yield* init(cwd, { local: true });
+				assert.notInclude([...result.written], ".gitignore");
+				assert.strictEqual(readFileSync(join(cwd, ".gitignore"), "utf8"), "node_modules/\n");
+			}),
+		),
 	);
 });

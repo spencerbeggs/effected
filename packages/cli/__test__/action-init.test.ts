@@ -37,6 +37,29 @@ const cli = (
 	});
 
 describe("effected action init", () => {
+	it.effect("--local scaffolds the workspace persist keys and a gitignore", () =>
+		Effect.gen(function* () {
+			const { code, errText, volume } = yield* cli(["--human", "--local"]);
+			assert.strictEqual(code, 0, errText);
+			const toml = volume.text(`${CWD}/effected.toml`) ?? "";
+			assert.include(toml, 'base = "workspace"');
+			assert.include(toml, "dist = false");
+			assert.notMatch(toml, /^path\s*=/m);
+			assert.strictEqual(volume.text(`${CWD}/.gitignore`), "dist/\n.action-staging/\n");
+		}),
+	);
+
+	it.effect("--local leaves an existing .gitignore alone", () =>
+		Effect.gen(function* () {
+			const { code, errText, volume } = yield* cli(["--human", "--local"], {
+				"package.json": MANIFEST,
+				".gitignore": "node_modules/\n",
+			});
+			assert.strictEqual(code, 0, errText);
+			assert.strictEqual(volume.text(`${CWD}/.gitignore`), "node_modules/\n");
+		}),
+	);
+
 	it.effect("exits 0, writes every file and says what is left to do", () =>
 		Effect.gen(function* () {
 			const { code, outText, errText, present, yml } = yield* cli(["--human"]);

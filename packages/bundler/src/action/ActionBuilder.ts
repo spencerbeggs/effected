@@ -1,10 +1,20 @@
-import type { FileSystem, Path, PlatformError } from "effect";
-import { Effect, Schema } from "effect";
+import type { PlatformError } from "effect";
+import { Effect, FileSystem, Option, Path, Schema } from "effect";
 import type { ActionConfig } from "../config/ActionConfig.js";
 import { ActionBundle, BuildResult } from "./ActionBundle.js";
-import type { ActionYmlPathError, BundleFailed, CleanError, PersistLocalError, WriteError } from "./ActionErrors.js";
+import { ActionCheck, DriftEntry } from "./ActionCheck.js";
+import type {
+	ActionYmlPathError,
+	BundleFailed,
+	CleanError,
+	PersistLocalError,
+	PersistPathError,
+	WriteError,
+} from "./ActionErrors.js";
+import { CheckUnavailable, NoOutput } from "./ActionErrors.js";
 import { ActionValidation, ValidationResult } from "./ActionValidation.js";
 import { PersistLocal } from "./PersistLocal.js";
+import { PersistTarget } from "./PersistTarget.js";
 
 /**
  * Validation stopped an action build, before bundling or on a bundle's size afterwards.
@@ -41,6 +51,22 @@ export class BuildFailed extends Schema.TaggedError<BuildFailed>()("BuildFailed"
 }) {}
 
 /**
+ * Check mode found the committed build differs from a fresh one.
+ *
+ * @public
+ */
+export class CheckFailed extends Schema.TaggedError<CheckFailed>()("CheckFailed", {
+	/** A summary. */
+	message: Schema.String,
+	/** Every file that differs. */
+	drift: Schema.Array(DriftEntry),
+	/** How bundling went. */
+	build: BuildResult,
+	/** What validation found. */
+	validation: ValidationResult,
+}) {}
+
+/**
  * What {@link ActionBuilder.build} can fail with.
  *
  * @public
@@ -48,10 +74,14 @@ export class BuildFailed extends Schema.TaggedError<BuildFailed>()("BuildFailed"
 export type ActionBuilderError =
 	| ValidationFailed
 	| BuildFailed
+	| CheckFailed
+	| CheckUnavailable
+	| NoOutput
 	| BundleFailed
 	| CleanError
 	| WriteError
 	| PersistLocalError
+	| PersistPathError
 	| ActionYmlPathError
 	| PlatformError.PlatformError;
 
@@ -63,6 +93,8 @@ export type ActionBuilderError =
 export interface ActionBuilderOptions {
 	/** The action's directory. */
 	readonly cwd: string;
+	/** The workspace root, which a `"workspace"` persist path is relative to. */
+	readonly root: string;
 	/** The decoded `[action]` table. */
 	readonly config: ActionConfig;
 	/** Whether to validate before bundling and check bundle sizes after it. */
@@ -71,6 +103,8 @@ export interface ActionBuilderOptions {
 	readonly persist: boolean;
 	/** Whether this run is under CI, which is what an unset `validation.strict` follows. */
 	readonly ci: boolean;
+	/** Whether to compare a fresh build against the committed one and write nothing. Needs persisting to be available. */
+	readonly check: boolean;
 }
 
 /**
@@ -85,7 +119,17 @@ export class ActionBuildResult extends Schema.Class<ActionBuildResult>("ActionBu
 	build: BuildResult,
 	/** Whether the build was copied to the local action directory. */
 	persisted: Schema.Boolean,
+	/** What differs from the committed build. Present only under check, and empty when nothing does. */
+	drift: Schema.optionalKey(Schema.Array(DriftEntry)),
 }) {}
+
+const realCwd = (cwd: string) =>
+	Effect.gen(function* () {
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const resolved = path.resolve(cwd);
+		return yield* fs.realPath(resolved).pipe(Effect.orElseSucceed(() => resolved));
+	});
 
 const failValidation = (validation: ValidationResult, build?: BuildResult): ValidationFailed =>
 	new ValidationFailed({
@@ -124,39 +168,89 @@ export class ActionBuilder {
 		"ActionBuilder.build",
 	)(function* (options: ActionBuilderOptions) {
 		const { config, cwd } = options;
+		const fs = yield* FileSystem.FileSystem;
+		const path = yield* Path.Path;
+		const target = yield* PersistTarget.resolve(config, { cwd, root: options.root });
 		const strict = ActionValidation.isStrict(config, options);
+		const check = options.check;
+		if (check && (!options.persist || !target.enabled)) {
+			return yield* new CheckUnavailable({ reason: "persist-disabled" });
+		}
+		if (!target.keepDist && !options.persist && !check) return yield* new NoOutput({ reason: "persist-off" });
 
 		const before = options.validate
-			? yield* ActionValidation.validate(config, cwd, options)
+			? yield* ActionValidation.validate(config, cwd, { ci: options.ci, base: target.base })
 			: ActionValidation.resultOf([], [], false);
 		if (!before.valid) return yield* failValidation(before);
 
-		const build = yield* ActionBundle.build(config, { cwd, clean: true });
-		if (!build.success) {
-			return yield* new BuildFailed({
-				message: build.error ?? "One or more entries failed to build",
-				failedEntries: build.entries.filter((entry) => !entry.success).length,
-				build,
-				validation: before,
-			});
-		}
+		const stage = !target.keepDist || check;
+		const outDir = stage ? target.stagingDir : path.join(yield* realCwd(cwd), "dist");
+		const bundleAndPersist = Effect.gen(function* () {
+			const build = yield* ActionBundle.build(config, { cwd, clean: true, outDir });
+			if (!build.success) {
+				return yield* new BuildFailed({
+					message: build.error ?? "One or more entries failed to build",
+					failedEntries: build.entries.filter((entry) => !entry.success).length,
+					build,
+					validation: before,
+				});
+			}
 
-		const oversized = options.validate
-			? ActionValidation.checkBundleSizes(
-					config,
-					build.entries.flatMap((entry) => (entry.stats !== undefined ? [entry.stats] : [])),
-				)
-			: [];
-		const validation = ActionValidation.resultOf(
-			before.errors,
-			[...before.warnings, ...oversized],
-			strict && options.validate,
-		);
-		if (!validation.valid) return yield* failValidation(validation, build);
+			const oversized = options.validate
+				? ActionValidation.checkBundleSizes(
+						config,
+						build.entries.flatMap((entry) => (entry.stats !== undefined ? [entry.stats] : [])),
+					)
+				: [];
+			const validation = ActionValidation.resultOf(
+				before.errors,
+				[...before.warnings, ...oversized],
+				strict && options.validate,
+			);
+			if (!validation.valid) return yield* failValidation(validation, build);
 
-		const persisted = options.persist && config.persistLocal.enabled;
-		if (persisted) yield* PersistLocal.persist(config, { cwd });
+			if (check) {
+				const actionYml = path.join(cwd, "action.yml");
+				const stagedActionYml = (yield* fs.exists(actionYml)) ? Option.some(actionYml) : Option.none<string>();
+				const drift = [
+					...(yield* ActionCheck.compare({
+						stagedActionYml,
+						stagedDist: outDir,
+						targetDir: target.outputPath,
+						target: "persisted",
+						includeActionYml: true,
+					})),
+					...(target.keepDist
+						? yield* ActionCheck.compare({
+								stagedActionYml: Option.none(),
+								stagedDist: outDir,
+								targetDir: path.join(yield* realCwd(cwd), "dist"),
+								target: "dist",
+								includeActionYml: false,
+							})
+						: []),
+				];
+				if (drift.length > 0) {
+					return yield* new CheckFailed({
+						message: `${drift.length} file${drift.length === 1 ? "" : "s"} differ from the committed build`,
+						drift,
+						build,
+						validation,
+					});
+				}
+				return ActionBuildResult.make({ validation, build, persisted: false, drift });
+			}
 
-		return ActionBuildResult.make({ validation, build, persisted });
+			const persisted = options.persist && config.persistLocal.enabled;
+			if (persisted) yield* PersistLocal.persist(target, { cwd, distDir: outDir });
+
+			return ActionBuildResult.make({ validation, build, persisted });
+		});
+		// A failed removal must not mask what the build raised.
+		return yield* !stage
+			? bundleAndPersist
+			: bundleAndPersist.pipe(
+					Effect.ensuring(fs.remove(target.stagingDir, { recursive: true, force: true }).pipe(Effect.ignore)),
+				);
 	});
 }
