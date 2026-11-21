@@ -16,10 +16,10 @@ sources:
     resource: ../../plugin/skills/structuring-an-action/SKILL.md
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-20T22:40:26Z
+  at: 2026-11-20T22:40:19Z
 integrity:
   generated:
-    body: 7ce1cba8cb83f453
+    body: 22a84ed3d480c048
 ---
 
 # Build a GitHub Action repository to the kit's canonical shape
