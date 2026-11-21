@@ -125,6 +125,8 @@ export {
 	CheckoutRef,
 	CheckoutRefNotFoundError,
 	CheckoutResult,
+	CheckoutStateKeyInUseError,
+	CheckoutUnqualifiedRefPinError,
 	CheckoutUnsafePullRequestError,
 } from "./Checkout.js";
 export {

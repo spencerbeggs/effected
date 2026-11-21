@@ -83,6 +83,8 @@
 | `CheckoutRef` | Variable + TypeAlias | The ref a checkout lands on. | what to check out, branch, tag, commit, pull request merge or head, default branch, raw ref |
 | `CheckoutRefNotFoundError` | Class | Raised when the requested ref does not exist on the remote. | branch or tag missing on the remote |
 | `CheckoutResult` | Class | What a checkout resolved to. | resolved ref and commit after a checkout |
+| `CheckoutStateKeyInUseError` | Class | Raised when a second `"job"` checkout in one action saves its credentials under a state key another checkout of a different path already used. | second job-lifetime checkout reusing another path's state key, credentials would be left behind |
+| `CheckoutUnqualifiedRefPinError` | Class | Raised when a `Ref` that is not fully qualified is pinned with `commit`. | unqualified ref pinned to a commit, pin a branch or tag instead |
 | `CheckoutUnsafePullRequestError` | Class | Raised when a privileged event would check out fork pull request code. | refuse fork pull request checkout under privileged event |
 | `ChildEnv` | Class | Child-process environment construction: prepending directories to `PATH` without falling into three cross-platform traps. | prepend directories to PATH for a spawned child, cross-platform PATH casing, extendEnv trap |
 | `ClientLayerOptions` | Interface | How to build a client from a persisted token. | |
