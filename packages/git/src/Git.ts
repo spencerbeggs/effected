@@ -5312,6 +5312,48 @@ export class Git extends Context.Service<Git, GitShape>()("@effected/git/Git") {
 			Effect.updateService(self, CurrentRunOptions, (outer) => mergeRunOptions(outer, options)),
 	);
 
+	/**
+	 * A layer that installs {@link GitRunOptions} for every `git` spawn made by
+	 * the program it is provided to: the layer-level form of
+	 * {@link Git.withRunOptions}, for options that hold across a whole
+	 * program or test suite.
+	 *
+	 * @remarks
+	 * The layer merges `options` over the run options in force where it is
+	 * built, with the same rules as `withRunOptions`: `env` and `config` key by
+	 * key, `timeout` replaced. A `withRunOptions` call inside the program
+	 * merges over the layer's options in turn, so it overrides them key by key
+	 * and keeps the rest. Without the layer or a `withRunOptions` call, every
+	 * spawn runs with the defaults. The service's pins (locale, prompt,
+	 * askpass, the batch-mode ssh pin) still win over anything installed here.
+	 *
+	 * The layer provides no service of its own, so it composes beside
+	 * {@link Git.layer} in any order. Each call returns a new layer, and layers
+	 * memoize by reference: bind the result to a `const` and reuse it.
+	 *
+	 * @example
+	 * ```ts
+	 * import { Git } from "@effected/git";
+	 * import * as NodeServices from "@effect/platform-node/NodeServices";
+	 * import { Effect, Layer } from "effect";
+	 *
+	 * const Isolated = Git.layerRunOptions({ env: { GIT_CONFIG_GLOBAL: "/dev/null" } });
+	 * const AppLayer = Layer.mergeAll(Git.layer, Isolated).pipe(Layer.provideMerge(NodeServices.layer));
+	 *
+	 * const program = Effect.gen(function* () {
+	 *   const git = yield* Git;
+	 *   return yield* git.revParse(process.cwd(), "HEAD");
+	 * });
+	 *
+	 * Effect.runPromise(program.pipe(Effect.provide(AppLayer)));
+	 * ```
+	 */
+	static readonly layerRunOptions = (options: GitRunOptions): Layer.Layer<never> =>
+		Layer.effect(
+			CurrentRunOptions,
+			Effect.map(Effect.service(CurrentRunOptions), (outer) => mergeRunOptions(outer, options)),
+		);
+
 	/** Resolves `ChildProcessSpawner` once, at construction — every method's `R` is `never`. */
 	static readonly layer: Layer.Layer<Git, never, ChildProcessSpawner.ChildProcessSpawner> = Layer.effect(
 		this,

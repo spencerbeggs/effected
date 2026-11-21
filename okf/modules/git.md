@@ -10,10 +10,10 @@ tags:
   - security
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-21T01:31:18Z
+  at: 2026-11-21T19:42:38Z
 integrity:
   generated:
-    body: 26bd22a9225d4b8f
+    body: 59b41401d9955a31
 ---
 
 # git
@@ -167,7 +167,10 @@ the service's own pins, so the locale, prompt and askpass pins always win),
 else the inherited environment, so an inherited runtime config such as an
 auth header survives) and `timeout` (replaces the
 per-run ceiling for the scope). Nested calls merge key by key with the inner
-call winning. A locating read that opts into `ignoreRepositoryEnv` drops
+call winning. `Git.layerRunOptions(options)` is the layer form, for options that
+hold across a whole program or test suite: a `Layer<never>` that merges its
+options over those in force where it is built, so a `withRunOptions` inside
+the program still overrides it key by key. A locating read that opts into `ignoreRepositoryEnv` drops
 `config` on purpose, since `GIT_CONFIG_COUNT` is part of the repository
 environment it unsets. A per-call `GIT_SSH_COMMAND` is the first rung of
 the ssh pin's walk and is still pinned to batch mode on a network member; a

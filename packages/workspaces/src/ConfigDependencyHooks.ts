@@ -32,6 +32,7 @@ import { Run } from "@effected/commands";
 import { CatalogAssemblyError } from "@effected/npm";
 import type { PartialReleaseAgeGate } from "@effected/pnpm";
 import { PeerDependencyRules } from "@effected/pnpm";
+import type { Redacted } from "effect";
 import { Context, Duration, Effect, Layer, Predicate, Schema } from "effect";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import type { CatalogEntries } from "./internal/catalogs.js";
@@ -432,6 +433,36 @@ const replayInProcess = (
 	});
 
 /**
+ * Options for {@link ConfigDependencyHooks.layerSubprocessWith}.
+ *
+ * @public
+ */
+export interface ConfigDependencyHooksSubprocessOptions {
+	/**
+	 * How the fetch rung spawns pnpm, the one `pnpm install --frozen-lockfile`
+	 * it runs to put a declared version this checkout never installed into the
+	 * store.
+	 *
+	 * @remarks
+	 * `command` names the executable, spawned without a shell: a bare name
+	 * resolves against the child's `PATH`, so an absolute path pins exactly one
+	 * binary. `env` is layered over the inherited environment, never in place of
+	 * it, and only on this spawn; the `node` replay child never sees it.
+	 * `Redacted` values reach pnpm unchanged and are never shown in errors.
+	 * Neither changes how the fetch is verified.
+	 *
+	 * @defaultValue `pnpm` from the inherited `PATH`, under the inherited
+	 * environment.
+	 */
+	readonly pnpm?:
+		| {
+				readonly command?: string | undefined;
+				readonly env?: Readonly<Record<string, string | Redacted.Redacted<string>>> | undefined;
+		  }
+		| undefined;
+}
+
+/**
  * The subprocess replay program {@link ConfigDependencyHooks.layerSubprocess}
  * hands to `node --input-type=module -e`.
  *
@@ -707,7 +738,7 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 		});
 
 	/**
-	 * The subprocess layer: replays each config dependency's pnpmfile in a `node`
+	 * The subprocess layer, configured: replays each config dependency's pnpmfile in a `node`
 	 * child process instead of an in-process dynamic `import()`, with identical
 	 * typed semantics to {@link ConfigDependencyHooks.layerLive} — the two are
 	 * drop-in interchangeable.
@@ -784,14 +815,34 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 	 * the consumer provides it once at the edge (`@effect/platform-node`'s
 	 * `NodeServices.layer`), the same discharge `@effected/git` uses. Wired by
 	 * `WorkspaceCatalogs.layerWithConfigDependenciesSubprocess` /
-	 * `Workspaces.layerWithConfigDependenciesSubprocess`.
+	 * `Workspaces.layerWithConfigDependenciesSubprocess`, which take the same
+	 * options. {@link ConfigDependencyHooks.layerSubprocess} is this layer with
+	 * every default.
+	 *
+	 * **Bind the result to a `const`.** A parameterized factory mints a fresh
+	 * reference per call and layers memoize by reference.
+	 *
+	 * @param options - How the fetch rung spawns pnpm; see
+	 * {@link ConfigDependencyHooksSubprocessOptions}.
+	 *
+	 * @example
+	 * ```ts
+	 * import { ConfigDependencyHooks } from "@effected/workspaces";
+	 *
+	 * // Fetch with one pinned pnpm and a registry token only that spawn sees.
+	 * const Hooks = ConfigDependencyHooks.layerSubprocessWith({
+	 *   pnpm: { command: "/opt/pnpm/bin/pnpm", env: { NPM_TOKEN: "token" } },
+	 * });
+	 * ```
 	 */
-	static readonly layerSubprocess: Layer.Layer<ConfigDependencyHooks, never, ChildProcessSpawner.ChildProcessSpawner> =
+	static readonly layerSubprocessWith = (
+		options: ConfigDependencyHooksSubprocessOptions = {},
+	): Layer.Layer<ConfigDependencyHooks, never, ChildProcessSpawner.ChildProcessSpawner> =>
 		Layer.effect(
 			ConfigDependencyHooks,
 			Effect.gen(function* () {
 				const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-				const fetch = makeFetchConfigDependency(spawner);
+				const fetch = makeFetchConfigDependency(spawner, options.pnpm);
 				return {
 					inject: (root, configDependencies, seed, rules, context) =>
 						Effect.gen(function* () {
@@ -860,4 +911,17 @@ export class ConfigDependencyHooks extends Context.Service<ConfigDependencyHooks
 				};
 			}),
 		);
+
+	/**
+	 * {@link ConfigDependencyHooks.layerSubprocessWith} with every default: the
+	 * fetch rung runs `pnpm` from the inherited `PATH`, under the inherited
+	 * environment.
+	 *
+	 * @remarks
+	 * One shared reference, so every composite wiring it memoizes to one
+	 * layer. Requires core's `ChildProcessSpawner`, as `layerSubprocessWith`
+	 * does.
+	 */
+	static readonly layerSubprocess: Layer.Layer<ConfigDependencyHooks, never, ChildProcessSpawner.ChildProcessSpawner> =
+		ConfigDependencyHooks.layerSubprocessWith();
 }

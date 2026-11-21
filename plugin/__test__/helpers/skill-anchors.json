@@ -712,11 +712,11 @@
 		},
 		{
 			"file": "effect-v4-testing/references/false-greens.md",
-			"anchor": "packages/github-actions/__test__/Action.test.ts:47-57",
+			"anchor": "packages/github-actions/__test__/Action.test.ts:71-80",
 			"source": "repo:packages/github-actions/__test__/Action.test.ts",
 			"symbols": {
-				"47": "const previousExit = process.exitCode",
-				"57": "process.exitCode = previousExit"
+				"71": "const previousExit = process.exitCode",
+				"80": "process.exitCode = previousExit"
 			}
 		},
 		{

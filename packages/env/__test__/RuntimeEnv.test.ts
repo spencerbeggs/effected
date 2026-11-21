@@ -1,9 +1,14 @@
-import { assert, describe, it } from "@effect/vitest";
+import { afterEach, assert, describe, it } from "@effect/vitest";
 import { ConfigProvider, Context, Effect, Layer, Option, Schema } from "effect";
+import { vi } from "vitest";
 import { CurrentRuntimeEnv, RuntimeEnv } from "../src/RuntimeEnv.js";
 
 const withEnv = (env: Record<string, string>) =>
 	Effect.provideService(ConfigProvider.ConfigProvider, ConfigProvider.fromUnknown(env));
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 
 describe("RuntimeEnv", () => {
 	it.effect("layer reads agent, CI and terminal through Config", () =>
@@ -202,15 +207,9 @@ describe("RuntimeEnv.fromRecord", () => {
 	});
 
 	it("never reads the process environment", () => {
-		const before = process.env.CLAUDECODE;
-		process.env.CLAUDECODE = "1";
-		try {
-			assert.deepStrictEqual(RuntimeEnv.fromRecord({}), RuntimeEnv.fromRecord({}));
-			assert.isTrue(Option.isNone(RuntimeEnv.fromRecord({}).agent));
-		} finally {
-			if (before === undefined) delete process.env.CLAUDECODE;
-			else process.env.CLAUDECODE = before;
-		}
+		vi.stubEnv("CLAUDECODE", "1");
+		assert.deepStrictEqual(RuntimeEnv.fromRecord({}), RuntimeEnv.fromRecord({}));
+		assert.isTrue(Option.isNone(RuntimeEnv.fromRecord({}).agent));
 	});
 });
 

@@ -56,7 +56,7 @@ jobs:
       snapshot: ${{ inputs.snapshot || false }}
       snapshot-tag: ${{ inputs.snapshot_tag }}
       auto-merge: "squash"
-      skip-claude-review: false
+      skip-claude-review: true
       # Fails the validation phase when the effected catalog has drifted from
       # the kit's next release versions, or when the committed plugin builds
       # lag their source: plugin:check runs pluginfinity build --check, then

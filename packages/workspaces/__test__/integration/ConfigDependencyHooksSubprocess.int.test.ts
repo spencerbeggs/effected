@@ -11,7 +11,7 @@
 // failure mapping) is unit-tested with a scripted spawner in
 // `../ConfigDependencyHooksSubprocess.test.ts`.
 
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,6 +58,23 @@ const SEED = { default: { effect: "^4.0.0" } } as const;
 
 let root: string;
 
+/** The marker the `.cjs` fixture under {@link DEP_NAME} writes whenever its hook runs. */
+const cjsMarker = (): string => join(root, "cfg-fixture-marker.txt");
+
+/**
+ * Copy a hook fixture with its `process.env.HOOK_MARKER` read replaced by the
+ * literal `marker` path, so the replayed hook marks its execution without any
+ * process environment — in-process or in a child alike. Throws when the
+ * fixture no longer reads the marker, rather than writing a copy that never
+ * marks and turns every "the hook never ran" assertion vacuous.
+ */
+const copyMarking = (fixture: string, target: string, marker: string): void => {
+	const source = readFileSync(fixture, "utf8");
+	const marked = source.replace("process.env.HOOK_MARKER", JSON.stringify(marker));
+	if (marked === source) throw new Error(`${fixture} no longer reads process.env.HOOK_MARKER`);
+	writeFileSync(target, marked);
+};
+
 /** The `.pnpm-config/<name>` directory under the temp root, created with a `package.json` at `1.0.0` — the version every test declares. */
 const configDepDir = (name: string): string => {
 	const dir = join(root, "node_modules", ".pnpm-config", name);
@@ -76,7 +93,7 @@ beforeAll(() => {
 	// The legacy `.cjs`-only config dependency.
 	const cjsDir = configDepDir(DEP_NAME);
 	mkdirSync(cjsDir, { recursive: true });
-	copyFileSync(CJS_FIXTURE, join(cjsDir, "pnpmfile.cjs"));
+	copyMarking(CJS_FIXTURE, join(cjsDir, "pnpmfile.cjs"), cjsMarker());
 	// BOTH files present: the `.mjs` injects DISTINCT entries from the `.cjs`, so
 	// the injected names prove which file was loaded.
 	const bothDir = configDepDir(BOTH_DEP_NAME);
@@ -137,8 +154,9 @@ afterAll(() => {
 
 describe("ConfigDependencyHooks.layerSubprocess — replays the pnpmfile in a child process", () => {
 	it.effect("loads the config dependency's updateConfig and injects its catalogs", () => {
-		const markerPath = join(root, "subprocess-marker.txt");
-		process.env.HOOK_MARKER = markerPath;
+		// The fixture marks on EVERY run, so clear what an earlier test left.
+		const markerPath = cjsMarker();
+		rmSync(markerPath, { force: true });
 		return Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
 			const result = yield* hooks.inject(root, { [DEP_NAME]: "1.0.0" }, SEED);
@@ -148,17 +166,10 @@ describe("ConfigDependencyHooks.layerSubprocess — replays the pnpmfile in a ch
 			assert.strictEqual(result.catalogs.default?.effect, "^4.0.0");
 			assert.strictEqual(result.catalogs.extra?.["extra-dep"], "^1.2.3");
 			assert.deepStrictEqual(result.releaseAge, {});
-			// The marker proves the fixture executed — in the CHILD, which inherits
-			// the environment.
+			// The marker proves the fixture executed — in the CHILD, which wrote
+			// the path baked into its source.
 			assert.isTrue(existsSync(markerPath));
-		}).pipe(
-			Effect.provide(HooksSubprocess),
-			Effect.ensuring(
-				Effect.sync(() => {
-					delete process.env.HOOK_MARKER;
-				}),
-			),
-		);
+		}).pipe(Effect.provide(HooksSubprocess));
 	});
 
 	it.effect("surfaces the release-age keys a hook sets", () =>

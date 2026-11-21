@@ -3,7 +3,8 @@ import { Context } from "effect";
 
 /**
  * Per-scope options applied to every `git` spawn a {@link Git} member makes
- * while they are in force. Install them with `Git.withRunOptions`.
+ * while they are in force. Install them for one effect with `Git.withRunOptions`,
+ * or for a whole program with the `Git.layerRunOptions` layer.
  *
  * @remarks
  * - `env` is merged UNDER the service's own pins: the locale, prompt and

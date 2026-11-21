@@ -17,6 +17,7 @@ okf_version: '0.2'
 * [interfaces](interfaces/index.md)
 * [invariants](invariants/index.md)
 * [limitations](limitations/index.md)
+* [measurements](measurements/index.md)
 * [models](models/index.md)
 * [modules](modules/index.md)
 * [references](references/index.md)

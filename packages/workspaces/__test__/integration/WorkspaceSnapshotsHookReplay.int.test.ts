@@ -27,14 +27,17 @@ let root: string;
 let store: string;
 let markerPath: string;
 
-/** A pnpmfile injecting `hooked-dep` at `range`, and touching `HOOK_MARKER` so execution is observable. */
+/**
+ * A pnpmfile injecting `hooked-dep` at `range`, and writing the marker at
+ * `markerPath` (baked into its source, so no environment is involved) on every
+ * run, so execution is observable.
+ */
 const markingPnpmfile = (range: string): string =>
 	[
 		'import { writeFileSync } from "node:fs";',
 		"export const hooks = {",
 		"\tupdateConfig(config) {",
-		"\t\tconst marker = process.env.HOOK_MARKER;",
-		`\t\tif (marker) writeFileSync(marker, "${range}");`,
+		`\t\twriteFileSync(${JSON.stringify(markerPath)}, "${range}");`,
 		`\t\treturn { ...config, catalog: { ...(config.catalog ?? {}), "hooked-dep": "${range}" } };`,
 		"\t},",
 		"};",
@@ -96,6 +99,7 @@ afterAll(() => {
 
 describe("Workspaces.layerWithGitAndConfigDependencies — at(ref) replays the ref's pinned config dependency", () => {
 	it.effect("a config-dependency bump between two refs is a visible catalog change, with no seed", () => {
+		rmSync(markerPath, { force: true });
 		const Live = Workspaces.layerWithGitAndConfigDependencies({ cwd: root }).pipe(
 			Layer.provideMerge(NodeServices.layer),
 		);
@@ -118,6 +122,9 @@ describe("Workspaces.layerWithGitAndConfigDependencies — at(ref) replays the r
 			// injection, not on the snapshot).
 			assert.deepStrictEqual(before.hookReplays, { [NAME]: "1.0.0" });
 			assert.deepStrictEqual(after.hookReplays, { [NAME]: "2.0.0" });
+			// The positive control for the default composite's "no marker" below:
+			// a replaying composite does write it.
+			assert.isTrue(existsSync(markerPath));
 		}).pipe(Effect.provide(Live));
 	});
 
@@ -168,7 +175,8 @@ describe("Workspaces.layerWithGitAndHooks — the hermetic seam reaches at(ref) 
 
 describe("Workspaces.layerWithGit — the default composite executes no config-dependency code at a ref", () => {
 	it.effect("at(ref) never writes the marker and abstains on the hook-only catalog", () => {
-		process.env.HOOK_MARKER = markerPath;
+		// The replaying tests above write the marker, so clear it first.
+		rmSync(markerPath, { force: true });
 		const Default = Workspaces.layerWithGit({ cwd: root }).pipe(Layer.provideMerge(NodeServices.layer));
 		return Effect.gen(function* () {
 			const snapshots = yield* WorkspaceSnapshots;
@@ -185,13 +193,6 @@ describe("Workspaces.layerWithGit — the default composite executes no config-d
 			// Empty on every side: the no-op layer resolved nothing.
 			assert.deepStrictEqual(before.hookReplays, {});
 			assert.deepStrictEqual(live.hookReplays, {});
-		}).pipe(
-			Effect.provide(Default),
-			Effect.ensuring(
-				Effect.sync(() => {
-					delete process.env.HOOK_MARKER;
-				}),
-			),
-		);
+		}).pipe(Effect.provide(Default));
 	});
 });

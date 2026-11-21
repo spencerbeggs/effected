@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,6 +56,25 @@ const SEED = { default: { effect: "^4.0.0" } } as const;
 
 let root: string;
 
+/** The marker the `.cjs` fixture under {@link DEP_NAME} writes whenever its hook runs. */
+const cjsMarker = (): string => join(root, "cfg-fixture-marker.txt");
+/** The marker the `.mjs` fixture under {@link MJS_DEP_NAME} writes whenever its hook runs. */
+const mjsMarker = (): string => join(root, "cfg-fixture-mjs-marker.txt");
+
+/**
+ * Copy a hook fixture with its `process.env.HOOK_MARKER` read replaced by the
+ * literal `marker` path, so the replayed hook marks its execution without any
+ * process environment — in-process or in a child alike. Throws when the
+ * fixture no longer reads the marker, rather than writing a copy that never
+ * marks and turns every "the hook never ran" assertion vacuous.
+ */
+const copyMarking = (fixture: string, target: string, marker: string): void => {
+	const source = readFileSync(fixture, "utf8");
+	const marked = source.replace("process.env.HOOK_MARKER", JSON.stringify(marker));
+	if (marked === source) throw new Error(`${fixture} no longer reads process.env.HOOK_MARKER`);
+	writeFileSync(target, marked);
+};
+
 /** The `.pnpm-config/<name>` directory under the temp root, created with a `package.json` at `1.0.0`. */
 const configDepDir = (name: string): string => {
 	const dir = join(root, "node_modules", ".pnpm-config", name);
@@ -69,11 +88,11 @@ beforeAll(() => {
 	// The legacy `.cjs`-only config dependency.
 	const cjsDir = configDepDir(DEP_NAME);
 	mkdirSync(cjsDir, { recursive: true });
-	copyFileSync(CJS_FIXTURE, join(cjsDir, "pnpmfile.cjs"));
+	copyMarking(CJS_FIXTURE, join(cjsDir, "pnpmfile.cjs"), cjsMarker());
 	// A pnpm-11-native config dependency shipping ONLY `pnpmfile.mjs`.
 	const mjsDir = configDepDir(MJS_DEP_NAME);
 	mkdirSync(mjsDir, { recursive: true });
-	copyFileSync(MJS_FIXTURE, join(mjsDir, "pnpmfile.mjs"));
+	copyMarking(MJS_FIXTURE, join(mjsDir, "pnpmfile.mjs"), mjsMarker());
 	// A config-dependency directory that exists but carries neither pnpmfile.
 	mkdirSync(configDepDir(NEITHER_DEP_NAME), { recursive: true });
 	// A config dependency whose `pnpmfile.mjs` imports a module that does not resolve.
@@ -101,8 +120,9 @@ afterAll(() => {
 
 describe("ConfigDependencyHooks.layerLive — replays the pnpmfile", () => {
 	it.effect("loads the config dependency's updateConfig and injects its catalogs", () => {
-		const markerPath = join(root, "live-marker.txt");
-		process.env.HOOK_MARKER = markerPath;
+		// The fixture marks on EVERY run, so clear what an earlier test left.
+		const markerPath = cjsMarker();
+		rmSync(markerPath, { force: true });
 		return Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
 			const result = yield* hooks.inject(root, { [DEP_NAME]: "1.0.0" }, SEED);
@@ -115,14 +135,7 @@ describe("ConfigDependencyHooks.layerLive — replays the pnpmfile", () => {
 			assert.deepStrictEqual(result.releaseAge, {});
 			// The side-effect marker proves the fixture actually executed.
 			assert.isTrue(existsSync(markerPath));
-		}).pipe(
-			Effect.provide(ConfigDependencyHooks.layerLive),
-			Effect.ensuring(
-				Effect.sync(() => {
-					delete process.env.HOOK_MARKER;
-				}),
-			),
-		);
+		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive));
 	});
 
 	it.effect("a declared config dependency that is installed nowhere fails closed, never a silent skip", () =>
@@ -143,8 +156,8 @@ describe("ConfigDependencyHooks.layerLive — replays the pnpmfile", () => {
 
 describe("ConfigDependencyHooks.layerLive — pnpm 11 .mjs pnpmfile and load discrimination", () => {
 	it.effect("an .mjs-only config dependency replays its hook — proving .mjs is loaded", () => {
-		const markerPath = join(root, "mjs-marker.txt");
-		process.env.HOOK_MARKER = markerPath;
+		const markerPath = mjsMarker();
+		rmSync(markerPath, { force: true });
 		return Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
 			// The dep ships ONLY `pnpmfile.mjs`. The seam tries `.mjs` first, loads it,
@@ -156,14 +169,7 @@ describe("ConfigDependencyHooks.layerLive — pnpm 11 .mjs pnpmfile and load dis
 			assert.strictEqual(result.catalogs.mjsExtra?.["mjs-extra-dep"], "^3.4.5");
 			// The side-effect marker proves the `.mjs` fixture actually executed.
 			assert.isTrue(existsSync(markerPath));
-		}).pipe(
-			Effect.provide(ConfigDependencyHooks.layerLive),
-			Effect.ensuring(
-				Effect.sync(() => {
-					delete process.env.HOOK_MARKER;
-				}),
-			),
-		);
+		}).pipe(Effect.provide(ConfigDependencyHooks.layerLive));
 	});
 
 	it.effect("a config-dependency directory with neither pnpmfile.mjs nor pnpmfile.cjs is skipped, not a failure", () =>
@@ -236,8 +242,9 @@ describe("Workspaces.layer default — provably never executes a config dependen
 		// NEVER import that pnpmfile. Switch the default composite to layerLive and
 		// the marker appears — this is the discriminating test that lack of one let
 		// the default silently regress.
-		const markerPath = join(root, "default-layer-marker.txt");
-		process.env.HOOK_MARKER = markerPath;
+		// Cleared first: a replaying test earlier in the file writes the same marker.
+		const markerPath = cjsMarker();
+		rmSync(markerPath, { force: true });
 		// The virtual tree is keyed to the REAL temp root, so the effect-FileSystem
 		// read of pnpm-workspace.yaml is virtual while layerLive's node:fs read of
 		// the pnpmfile (were it wired) would hit the real file under the same root.
@@ -262,14 +269,7 @@ describe("Workspaces.layer default — provably never executes a config dependen
 			assert.deepStrictEqual(set.rangeOf("effect", Option.none()), Option.some("^4.0.0"));
 			// ...and the config dependency's real pnpmfile never executed.
 			assert.isFalse(existsSync(markerPath));
-		}).pipe(
-			Effect.provide(defaultLayer),
-			Effect.ensuring(
-				Effect.sync(() => {
-					delete process.env.HOOK_MARKER;
-				}),
-			),
-		);
+		}).pipe(Effect.provide(defaultLayer));
 	});
 });
 
@@ -365,8 +365,9 @@ describe("ConfigDependencyHooks.layerNoop — provably never loads the pnpmfile"
 	it.effect("returns the seed untouched and executes no config-dependency code", () => {
 		// A marker path the fixture WOULD write if it ran. Under the no-op it must
 		// stay absent — proving the default catalog path never loads the pnpmfile.
-		const markerPath = join(root, "noop-marker.txt");
-		process.env.HOOK_MARKER = markerPath;
+		// Cleared first: a replaying test earlier in the file writes the same marker.
+		const markerPath = cjsMarker();
+		rmSync(markerPath, { force: true });
 		return Effect.gen(function* () {
 			const hooks = yield* ConfigDependencyHooks;
 			const result = yield* hooks.inject(root, { [DEP_NAME]: "1.0.0" }, SEED);
@@ -380,14 +381,7 @@ describe("ConfigDependencyHooks.layerNoop — provably never loads the pnpmfile"
 				replays: {},
 			});
 			assert.isFalse(existsSync(markerPath));
-		}).pipe(
-			Effect.provide(ConfigDependencyHooks.layerNoop),
-			Effect.ensuring(
-				Effect.sync(() => {
-					delete process.env.HOOK_MARKER;
-				}),
-			),
-		);
+		}).pipe(Effect.provide(ConfigDependencyHooks.layerNoop));
 	});
 
 	it.effect("contributes an empty release-age gate — the no-op runs no hooks", () =>

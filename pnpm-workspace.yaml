@@ -303,7 +303,7 @@ catalogs:
     "@effect/chat-telegram": 4.1.5
     "@effect/chat-whatsapp": 4.1.5
 configDependencies:
-  "@savvy-web/pnpm-plugin-silk": 0.54.1
+  "@savvy-web/pnpm-plugin-silk": 0.55.0
 loglevel: info
 minimumReleaseAgeExclude:
   - "@effect/*"

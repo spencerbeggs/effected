@@ -1,10 +1,10 @@
 import { assert, layer } from "@effect/vitest";
 import type { JwtError } from "@effected/jwt";
 import { TestIssuer } from "@effected/jwt/testing";
-import { Duration, Effect } from "effect";
+import { Duration, Effect, Schema } from "effect";
 import type { Signature } from "effect/crypto";
 import { TestClock } from "effect/testing";
-import { ActionsOidc, ActionsOidcClaims } from "../src/ActionsOidc.js";
+import { ActionsOidc, ActionsOidcClaims, ActionsOidcClaimsFromWire } from "../src/ActionsOidc.js";
 import { CryptoLive } from "./crypto.js";
 
 const NOW_MILLIS = 1_800_000_000_000;
@@ -134,6 +134,83 @@ layer(CryptoLive, { buildPerTest: true })("ActionsOidc.verify", (it) => {
 		),
 	);
 
+	it.effect("decodes ref_protected to a boolean, true for a protected ref and false for an unprotected one", () =>
+		withActions((actions) =>
+			Effect.gen(function* () {
+				const read = (wire: string) =>
+					Effect.gen(function* () {
+						const token = yield* actions.sign(ActionsOidc.testClaims({ aud: "silk", ref_protected: wire }));
+						return yield* ActionsOidc.verify(token, { audience: "silk" }).pipe(Effect.provide(actions.resolverLayer));
+					});
+				const protectedRun = yield* read("true");
+				const unprotectedRun = yield* read("false");
+				// strictEqual against the literals: a truthy string "false" would pass an isTrue/isFalse on the wrong side.
+				assert.strictEqual(protectedRun.refProtected, true);
+				assert.strictEqual(unprotectedRun.refProtected, false);
+			}),
+		),
+	);
+
+	it.effect('refuses a ref_protected that is neither "true" nor "false" as claims', () =>
+		withActions((actions) =>
+			Effect.gen(function* () {
+				for (const ref_protected of ["True", "1", "", "yes", true]) {
+					const token = yield* actions.sign(ActionsOidc.testClaims({ aud: "silk", ref_protected }));
+					const error = yield* Effect.flip(
+						ActionsOidc.verify(token, { audience: "silk" }).pipe(Effect.provide(actions.resolverLayer)),
+					);
+					assert.strictEqual(reasonOf(error), "claims", JSON.stringify(ref_protected));
+				}
+			}),
+		),
+	);
+
+	it.effect("refuses a token missing ref_protected as claims, never defaulting it", () =>
+		withActions((actions) =>
+			Effect.gen(function* () {
+				const { ref_protected: _dropped, ...rest } = ActionsOidc.testClaims({ aud: "silk" });
+				const token = yield* actions.sign(rest);
+				const error = yield* Effect.flip(
+					ActionsOidc.verify(token, { audience: "silk" }).pipe(Effect.provide(actions.resolverLayer)),
+				);
+				assert.strictEqual(reasonOf(error), "claims");
+			}),
+		),
+	);
+
+	it.effect("maps ref_type, base_ref and head_ref, and refuses a ref_type outside branch and tag", () =>
+		withActions((actions) =>
+			Effect.gen(function* () {
+				const token = yield* actions.sign(
+					ActionsOidc.testClaims({
+						aud: "silk",
+						event_name: "pull_request",
+						ref: "refs/pull/7/merge",
+						ref_type: "branch",
+						base_ref: "main",
+						head_ref: "feat/x",
+					}),
+				);
+				const claims = yield* ActionsOidc.verify(token, { audience: "silk" }).pipe(
+					Effect.provide(actions.resolverLayer),
+				);
+				assert.strictEqual(claims.refType, "branch");
+				assert.strictEqual(claims.baseRef, "main");
+				assert.strictEqual(claims.headRef, "feat/x");
+				const tag = yield* actions.sign(ActionsOidc.testClaims({ aud: "silk", ref: "refs/tags/v1", ref_type: "tag" }));
+				const tagClaims = yield* ActionsOidc.verify(tag, { audience: "silk" }).pipe(
+					Effect.provide(actions.resolverLayer),
+				);
+				assert.strictEqual(tagClaims.refType, "tag");
+				const bogus = yield* actions.sign(ActionsOidc.testClaims({ aud: "silk", ref_type: "commit" }));
+				const error = yield* Effect.flip(
+					ActionsOidc.verify(bogus, { audience: "silk" }).pipe(Effect.provide(actions.resolverLayer)),
+				);
+				assert.strictEqual(reasonOf(error), "claims");
+			}),
+		),
+	);
+
 	it.effect("refuses an expired token as expired, after the tolerance", () =>
 		withActions((actions) =>
 			Effect.gen(function* () {
@@ -162,6 +239,18 @@ layer(CryptoLive, { buildPerTest: true })("ActionsOidc.testClaims", (it) => {
 		assert.strictEqual(typeof claims.repository_id, "string");
 		assert.isUndefined(claims.runId);
 		assert.strictEqual(claims.iss, ActionsOidc.issuer);
+	});
+
+	it("round-trips the ref claims through the wire codec, refProtected back to its string form", () => {
+		// testClaims leaves exp and iat to the issuer that signs it; a bare decode needs them.
+		const wire = ActionsOidc.testClaims({ ref_protected: "false", ref_type: "tag", exp: 2, iat: 1 });
+		const claims = Schema.decodeUnknownSync(ActionsOidcClaimsFromWire)(wire);
+		assert.strictEqual(claims.refProtected, false);
+		const encoded = Schema.encodeSync(ActionsOidcClaimsFromWire)(claims);
+		assert.strictEqual(encoded.ref_protected, "false");
+		assert.strictEqual(encoded.ref_type, "tag");
+		assert.strictEqual(encoded.base_ref, "");
+		assert.strictEqual(encoded.head_ref, "");
 	});
 
 	it("applies overrides", () => {

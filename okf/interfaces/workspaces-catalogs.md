@@ -25,10 +25,10 @@ sources:
     resource: ../../packages/workspaces/src/internal/configDependencySpecGrammar.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-13T00:43:17Z
+  at: 2026-11-21T19:42:38Z
 integrity:
   generated:
-    body: 286fbd4bbdc921d4
+    body: 28a3e6077d66c654
 ---
 
 # @effected/workspaces catalogs and the config-dependency seam
@@ -234,6 +234,21 @@ this machine fetches from, not what a ref declared. Relative paths inside the
 `.npmrc`, a `cafile=./ca.pem` for instance, resolve against the scratch and
 not the root.[^config-dependency-fetch-ts]
 
+The spawn of pnpm is configurable through
+`ConfigDependencyHooks.layerSubprocessWith({ pnpm: { command, env } })`, with
+`layerSubprocess` that layer at every default (`pnpm` from the inherited
+`PATH`, under the inherited environment), one shared reference so composites
+memoize to it. `command` names the executable, spawned without a shell, so an
+absolute path pins exactly one binary. `env` is layered over the inherited
+environment, never in place of it, and only on the fetch spawn: the `node`
+replay child never sees it, and `Redacted` values reach pnpm unchanged and
+stay out of error messages. Neither option changes how the fetch is verified.
+`WorkspaceCatalogs.layerWithConfigDependenciesSubprocess` and
+`Workspaces.layerWithConfigDependenciesSubprocess` take the same `pnpm` key
+beside their own options, and fall back to the shared `layerSubprocess` when
+it is absent. Bind a configured layer to a `const`: each call mints a new
+reference.[^config-dependency-hooks-ts]
+
 Assembly precedence is lockfile, then inline, then hook-injected, merged
 per-dependency within a catalog, with the hooks seeded by the inline
 catalogs — matching pnpm's own behavior. Failure is typed, never silent: a
@@ -308,7 +323,7 @@ assembly errors.
     `CatalogAssemblyFailure`.
 [^config-dependency-hooks-ts]: `packages/workspaces/src/ConfigDependencyHooks.ts` —
     the contract, `HookInjection`, `layerNoop` / `layerLive` / `layerSubprocess` /
-    `layerFrom`.
+    `layerSubprocessWith` (`ConfigDependencyHooksSubprocessOptions`) / `layerFrom`.
 [^config-dependency-resolution-ts]: `packages/workspaces/src/internal/configDependencyResolution.ts` —
     `resolvePnpmfiles`, `lookupPnpmfiles`, the store-discovery rungs and
     the fail-closed message.

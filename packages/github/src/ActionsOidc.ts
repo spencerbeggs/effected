@@ -17,6 +17,21 @@ const IdFromString = Schema.String.check(Schema.isPattern(/^\d+$/)).pipe(
 );
 
 /**
+ * A boolean as GitHub's OIDC tokens carry it: exactly the string `"true"` or
+ * `"false"`. Anything else (`"1"`, `"True"`, an empty string, a JSON boolean)
+ * does not decode.
+ */
+const BooleanFromString = Schema.Literals(["true", "false"]).pipe(
+	Schema.decodeTo(
+		Schema.Boolean,
+		SchemaTransformation.transform({
+			decode: (wire) => wire === "true",
+			encode: (value) => (value ? "true" : "false"),
+		}),
+	),
+);
+
+/**
  * The claims of a verified GitHub Actions OIDC token.
  *
  * @remarks
@@ -68,6 +83,20 @@ export class ActionsOidcClaims extends Schema.Class<ActionsOidcClaims>("ActionsO
 	jobWorkflowRef: Schema.String,
 	/** The git ref the run is for. */
 	ref: Schema.String,
+	/**
+	 * Whether `ref` is protected (wire key `ref_protected`): a protected
+	 * branch, or a tag under a ruleset or tag protection. The token carries it
+	 * as the string `"true"` or `"false"`; anything else fails verification as
+	 * `claims`. Gate a privileged action, such as writing a build cache other
+	 * runs restore from, on this rather than on the ref's name.
+	 */
+	refProtected: BooleanFromString,
+	/** The kind of `ref`, `branch` or `tag` (wire key `ref_type`). */
+	refType: Schema.Literals(["branch", "tag"]),
+	/** A pull request's base ref; an empty string outside pull request events (wire key `base_ref`). */
+	baseRef: Schema.String,
+	/** A pull request's head ref; an empty string outside pull request events (wire key `head_ref`). */
+	headRef: Schema.String,
 	/** The commit SHA the run is for. */
 	sha: Schema.String,
 	/** The event that triggered the run, e.g. `push` (wire key `event_name`). */
@@ -112,6 +141,10 @@ export const ActionsOidcClaimsFromWire = ActionsOidcClaims.pipe(
 		runAttempt: "run_attempt",
 		workflowRef: "workflow_ref",
 		jobWorkflowRef: "job_workflow_ref",
+		refProtected: "ref_protected",
+		refType: "ref_type",
+		baseRef: "base_ref",
+		headRef: "head_ref",
 		eventName: "event_name",
 		actorId: "actor_id",
 		runnerEnvironment: "runner_environment",
@@ -159,6 +192,10 @@ const testClaims = (overrides: Readonly<Record<string, unknown>> = {}): Record<s
 	workflow_ref: "octo-org/octo-repo/.github/workflows/ci.yml@refs/heads/main",
 	job_workflow_ref: "octo-org/octo-repo/.github/workflows/ci.yml@refs/heads/main",
 	ref: "refs/heads/main",
+	ref_protected: "true",
+	ref_type: "branch",
+	base_ref: "",
+	head_ref: "",
 	sha: "0123456789abcdef0123456789abcdef01234567",
 	event_name: "push",
 	actor: "octocat",

@@ -2,7 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { GitHubApp } from "@effected/github";
 import { Cause, Config, ConfigProvider, Context, Effect, FileSystem, Layer, References, Schema } from "effect";
 import { Mac, Signature } from "effect/crypto";
-import { vi } from "vitest";
+import { afterEach, vi } from "vitest";
 import type { ActionRunOptions } from "../src/index.js";
 import { Action, ActionEnvironment, ActionInput, ActionOutputs, ActionRuntime, describeCause } from "../src/index.js";
 
@@ -14,14 +14,7 @@ class Boom extends Schema.TaggedError<Boom>()("Boom", { detail: Schema.String })
 	}
 }
 
-/**
- * Run something with `console.log` captured and `process.exitCode` restored.
- *
- * @remarks
- * The exit code is the point of `Action.run`, and a test that failed to restore
- * it would fail the **vitest process** rather than the test — a green suite
- * whose exit code says otherwise.
- */
+/** The variables a runner would publish for the step under test. */
 const RUNNER_ENV: Readonly<Record<string, string>> = {
 	GITHUB_REPOSITORY: "acme/example",
 	GITHUB_JOB: "test-job",
@@ -39,14 +32,44 @@ const RUNNER_ENV: Readonly<Record<string, string>> = {
 	PLAIN_VAR: "from-env",
 };
 
+/**
+ * Seed the runner's environment on `process.env` through `vi.stubEnv`.
+ *
+ * @remarks
+ * These tests exercise the real `ActionRuntime.layer`, whose
+ * `ActionEnvironment.layer` snapshots `process.env` at construction — so the
+ * ambient environment IS the input under test, and a test `ActionEnvironment`
+ * would bypass the very wiring the shadowing and false-green cases pin.
+ * `vi.unstubAllEnvs` in `afterEach` restores it on every path, with no
+ * hand-written save and restore.
+ *
+ * `undefined` DELETES the variable rather than leaving it alone: a suite run on
+ * a runner with step debugging on inherits `RUNNER_DEBUG=1`, and a test of the
+ * unset case must not silently become a test of the set one.
+ */
+const stubEnv = (env: Readonly<Record<string, string | undefined>>): void => {
+	for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+};
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
+
+/**
+ * Run something with `console.log` captured and `process.exitCode` restored.
+ *
+ * @remarks
+ * The exit code is the point of `Action.run`, and a test that failed to restore
+ * it would fail the **vitest process** rather than the test — a green suite
+ * whose exit code says otherwise.
+ */
 const captured = async (run: (lines: ReadonlyArray<string>) => Promise<void>): Promise<void> => {
 	const lines: Array<string> = [];
 	const spy = vi.spyOn(console, "log").mockImplementation((...parts: ReadonlyArray<unknown>) => {
 		lines.push(parts.map(String).join(" "));
 	});
 	const previousExit = process.exitCode;
-	const previousEnv = new Map(Object.keys(RUNNER_ENV).map((name) => [name, process.env[name]]));
-	Object.assign(process.env, RUNNER_ENV);
+	stubEnv(RUNNER_ENV);
 	try {
 		await run(lines);
 	} finally {
@@ -55,39 +78,17 @@ const captured = async (run: (lines: ReadonlyArray<string>) => Promise<void>): P
 		// and leaving it set would fail the VITEST process — a green suite whose
 		// exit code says otherwise.
 		process.exitCode = previousExit;
-		for (const [name, value] of previousEnv) {
-			if (value === undefined) delete process.env[name];
-			else process.env[name] = value;
-		}
 	}
 };
 
-/**
- * {@link captured} with extra environment variables on top of `RUNNER_ENV`.
- *
- * @remarks
- * `undefined` DELETES the variable rather than leaving it alone: a suite run on
- * a runner with step debugging on inherits `RUNNER_DEBUG=1`, and a test of the
- * unset case must not silently become a test of the set one.
- */
+/** {@link captured} with extra environment variables on top of `RUNNER_ENV`. */
 const capturedWith = (
 	env: Readonly<Record<string, string | undefined>>,
 	run: (lines: ReadonlyArray<string>) => Promise<void>,
 ): Promise<void> =>
 	captured(async (lines) => {
-		const previous = new Map(Object.keys(env).map((name) => [name, process.env[name]]));
-		const apply = (values: Iterable<readonly [string, string | undefined]>) => {
-			for (const [name, value] of values) {
-				if (value === undefined) delete process.env[name];
-				else process.env[name] = value;
-			}
-		};
-		apply(Object.entries(env));
-		try {
-			await run(lines);
-		} finally {
-			apply(previous);
-		}
+		stubEnv(env);
+		await run(lines);
 	});
 
 describe("describeCause", () => {
