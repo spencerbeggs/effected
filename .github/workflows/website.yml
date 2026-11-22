@@ -21,6 +21,7 @@ jobs:
       DO_NOT_TRACK: "1"
     permissions:
       contents: read
+      id-token: write # signs the job in to the hosted turbo cache
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -28,6 +29,8 @@ jobs:
       - name: Setup runtime
         id: runtime
         uses: savvy-web/silk-runtime-action@v2
+        with:
+          turbo-api: https://cache.savvyweb.systems
 
       # No paths filter: the site build reaches through the whole workspace.
       # Its turbo task depends on the packages' build:prod api-extractor models,

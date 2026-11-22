@@ -24,7 +24,7 @@ permissions:
   # The reported check run below is written with GITHUB_TOKEN rather than the App
   # token, so the App's grants do not have to change for this job to report.
   checks: write
-
+  id-token: write # signs the job in to the hosted turbo cache
 jobs:
   catalog-sync:
     # A `pull_request` from a FORK gets no secrets, so the App-token step below
@@ -73,6 +73,8 @@ jobs:
       - name: Setup Runtime
         id: runtime
         uses: savvy-web/silk-runtime-action@v2
+        with:
+          turbo-api: https://cache.savvyweb.systems
 
       - name: Check the catalog
         id: catalog-check

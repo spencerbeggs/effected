@@ -28,6 +28,7 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write # signs the job in to the hosted turbo cache
 
 jobs:
   build:
@@ -42,6 +43,8 @@ jobs:
 
       - name: Setup Runtime
         uses: savvy-web/silk-runtime-action@v2
+        with:
+          turbo-api: https://cache.savvyweb.systems
 
       - name: Build the harness action
         # A direct run: the harness sits outside the workspace globs, so `pnpm exec` has no

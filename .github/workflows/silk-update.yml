@@ -25,6 +25,7 @@ jobs:
       contents: write
       pull-requests: write
       checks: write
+      id-token: write # signs the job in to the hosted turbo cache
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -36,6 +37,7 @@ jobs:
         uses: savvy-web/silk-runtime-action@v2
         with:
           ignore-scripts: true
+          turbo-api: https://cache.savvyweb.systems
       - name: Update Config Dependencies
         id: update
         uses: savvy-web/silk-update-action@v4
