@@ -10,10 +10,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-22T03:17:28Z
+  at: 2026-11-22T03:59:52Z
 integrity:
   generated:
-    body: 8e1cfc278b8d2803
+    body: d4903638004c5dfa
 ---
 
 # `@effected/jsonl`
@@ -226,9 +226,10 @@ Module-per-concept, no barrels, no namespace objects. See `packages/jsonl/src/`:
   hook, a monitor, a plugin build with no `node_modules` (#1380).
   `readFromResult(path, cursor?)` reads the complete lines appended since a
   JSON-round-trippable `JournalCursor` (`end`, `size`, `identity` as
-  `dev:ino`, `mtime` in nanoseconds), holds back a torn tail, and restarts
+  `dev:ino`, `mtime` in nanoseconds, `tail`), holds back a torn tail, and restarts
   from 0 with a `reset` of `truncated`, `replaced` or `rewritten` (same size
-  with a new mtime, or the byte before `end` no longer `\n`) where the
+  with a new mtime, or the 64 bytes before `end`, kept in the cursor as
+  `tail`, no longer the same) where the
   service would fail `JournalResync`: the caller decides. `lastValidResult`
   is `latest`'s read, ported to sync `readSync`: non-overlapping windows
   from 8 KiB by fours to the 1 MiB clamp, a longer line read whole. Offsets

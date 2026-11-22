@@ -19,7 +19,16 @@
 // against the real variables rather than a hand-written list.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -462,7 +471,11 @@ describe("PackedInstall against a real fixture workspace", () => {
 					assert.strictEqual(PREINSTALL?.status, 0, `${PREINSTALL?.stdout}\n${PREINSTALL?.stderr}`);
 					const xdg = realpathSync(mkdtempSync(join(tmpdir(), "packed-install-xdg-")));
 					try {
-						write(xdg, "pnpm/config.yaml", `pnprServer: ${DEAD_PROXY}\nlinkWorkspacePackages: false\n`);
+						// A symlinked config.yaml, as a dotfiles checkout leaves it: the run must never write through it.
+						const original = `pnprServer: ${DEAD_PROXY}\nlinkWorkspacePackages: false\n`;
+						write(xdg, "dotfiles/pnpm-config.yaml", original);
+						mkdirSync(join(xdg, "pnpm"), { recursive: true });
+						symlinkSync(join(xdg, "dotfiles/pnpm-config.yaml"), join(xdg, "pnpm/config.yaml"));
 						const env = { ...OFFLINE, XDG_CONFIG_HOME: xdg };
 						// Control: pnpm really reads this config, so an install that inherited it would resolve via the dead server.
 						const read = spawnSync("pnpm", ["config", "get", "pnprServer"], {
@@ -482,6 +495,7 @@ describe("PackedInstall against a real fixture workspace", () => {
 							installTimeout: "90 seconds",
 						});
 						for (const consumer of result.consumers) yield* assertConsumer(consumer, result.tarballs);
+						assert.strictEqual(readFileSync(join(xdg, "dotfiles/pnpm-config.yaml"), "utf8"), original);
 					} finally {
 						rmSync(xdg, { recursive: true, force: true });
 					}

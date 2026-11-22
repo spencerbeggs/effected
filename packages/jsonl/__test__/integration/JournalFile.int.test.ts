@@ -115,6 +115,30 @@ describe("JournalFile.readFromResult", () => {
 		assert.deepStrictEqual(texts(next), ['{"longer":1}']);
 	});
 
+	it("restarts from 0 when an in-place rewrite grew the file and kept the line boundary", () => {
+		const path = fresh('{"a":1}\n');
+		const first = read(path);
+		// Same length first line, so the byte before the cursor is still `\n`; only its content moved.
+		writeFileSync(path, '{"q":7}\n{"b":2}\n');
+		const next = read(path, first.cursor);
+		assert.strictEqual(next.reset, "rewritten");
+		assert.deepStrictEqual(texts(next), ['{"q":7}', '{"b":2}']);
+	});
+
+	it("a U+FEFF that starts a later read is content, and its offsets stay byte-exact", () => {
+		const path = fresh("{}\n");
+		const first = read(path);
+		appendFileSync(path, "\uFEFF{}\n");
+		const next = read(path, first.cursor);
+		assert.strictEqual(next.reset, "none");
+		assert.deepStrictEqual(texts(next), ["\uFEFF{}"]);
+		assert.deepStrictEqual(
+			next.lines.map(({ offset, end }) => [offset, end]),
+			[[3, 9]],
+		);
+		assert.strictEqual(next.cursor.end, 9);
+	});
+
 	it("control: an append keeps the boundary byte, so it reads on with no reset", () => {
 		const path = fresh('{"a":1}\n');
 		const first = read(path);

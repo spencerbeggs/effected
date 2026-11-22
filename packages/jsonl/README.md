@@ -126,13 +126,17 @@ declare const saved: JournalCursor | undefined;
 
 const read = JournalFile.readFromResult(".claude/dogfood/mailbox.jsonl", saved);
 if (Result.isSuccess(read)) {
+  // "initial" | "none" | "truncated" | "replaced" | "rewritten". Every reset but
+  // "none" reads from offset 0: drop what earlier reads built, or it is applied twice.
+  if (read.success.reset !== "none") {
+    // reset whatever you derived from earlier lines
+  }
   for (const line of read.success.lines) line.text; // each complete line, in order
-  read.success.reset; // "initial" | "none" | "truncated" | "replaced" | "rewritten"
   read.success.cursor; // persist it for the next run
 }
 ```
 
-A torn final line is held back until its newline lands. A file that shrank, was renamed over or was rewritten in place is read again from the start, and `reset` says which.
+A torn final line is held back until its newline lands. A file that shrank, was renamed over or was rewritten in place is read again from the start, and `reset` says which. A rewrite is seen when the size is unchanged but the modification time moved, or when the 64 bytes before the cursor differ from what the last read saw; a rewrite that grows the file and leaves those bytes alone is not.
 
 "Last valid" always means the last valid **envelope**, never merely the last valid JSON. That distinction is what catches a torn tail: an envelope is always an object and every strict prefix of an object text is invalid JSON, whereas a torn scalar (`42` cut mid-write leaves `4`) parses cleanly as a different value that no walk-back can detect.
 

@@ -112,7 +112,12 @@ declare const saved: JournalCursor | undefined; // what the last run persisted
 
 const read = JournalFile.readFromResult(".claude/dogfood/mailbox.jsonl", saved);
 if (Result.isSuccess(read)) {
-  read.success.lines;  // every complete line appended since `saved`
+  // Every reset but "none" reads from offset 0, replaying lines already seen:
+  // drop the state built from earlier reads first, or it is applied twice.
+  if (read.success.reset !== "none") {
+    // reset whatever you derived from earlier lines
+  }
+  read.success.lines;  // every complete line from where the read started, in order
   read.success.cursor; // persist for the next run
 }
 ```

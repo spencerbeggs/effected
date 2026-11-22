@@ -6,6 +6,7 @@
 // other. Root types are named through the package's own name, as in
 // `NodeJournalWatcher.ts`.
 
+import { Buffer } from "node:buffer";
 import * as NFS from "node:fs";
 import type * as Jsonl from "@effected/jsonl";
 import { Option, PlatformError, Result, Schema } from "effect";
@@ -21,7 +22,11 @@ const LF = 0x0a;
 const DEFAULT_WINDOW = 8192;
 /** The largest tail window, as the service clamps. Only one line longer than it is read whole. */
 const MAX_WINDOW = 1024 * 1024;
-const decoder = new TextDecoder();
+/** How many bytes before a cursor's `end` it keeps, to tell an append from a rewrite that kept the boundary. */
+const TAIL_BYTES = 64;
+// `ignoreBOM`: a U+FEFF that starts a read is content (a line can begin with one), never stripped. The file's own
+// BOM is skipped by starting the read past it.
+const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
 /**
  * Where an incremental read of a journal file resumes, and the identity of the
@@ -33,7 +38,9 @@ const decoder = new TextDecoder();
  * line read, the same number as a service envelope's `position.end`. `size`
  * is the logical size the read saw, `identity` the file's `dev:ino` and
  * `mtime` its modification time in nanoseconds, both as decimal strings so a
- * 64-bit inode survives JSON exactly.
+ * 64-bit inode survives JSON exactly. `tail` is the last 64 bytes before
+ * `end` (fewer when `end` is smaller), base64: a resume whose bytes there
+ * differ was rewritten, not appended to.
  *
  * @public
  */
@@ -46,6 +53,8 @@ export const JournalCursor = Schema.Struct({
 	identity: Schema.String,
 	/** The file's modification time in nanoseconds, in decimal. */
 	mtime: Schema.String,
+	/** The last bytes before `end`, base64. */
+	tail: Schema.String,
 });
 
 /**
@@ -67,9 +76,15 @@ export type JournalCursor = typeof JournalCursor.Type;
  * - `replaced` — the path names a different file (a new inode, a rename over
  *   it): read from the start.
  * - `rewritten` — the same file was rewritten in place: its size is unchanged
- *   but its modification time moved, or the byte before `end` is no longer a
- *   line terminator. Read from the start. A `touch` of an unchanged file also
- *   reads as `rewritten`, so lines already seen are returned again.
+ *   but its modification time moved, or the last 64 bytes before `end` are not
+ *   the ones the cursor saw. Read from the start. A `touch` of an unchanged
+ *   file also reads as `rewritten`, so lines already seen are returned again.
+ *   A rewrite that grows the file and leaves those 64 bytes as they were is
+ *   not seen: the check reads only the bytes at the cursor, never the whole
+ *   prefix.
+ *
+ * On any reset other than `none`, `lines` starts at offset 0: discard what
+ * earlier reads built before applying them, or they are applied twice.
  *
  * An append-only journal only ever reads `initial` once, then `none`. Every
  * other reset means the writer broke the cooperative-writer contract, which
@@ -178,6 +193,10 @@ const withFile = <A>(
 	}
 };
 
+/** The last {@link TAIL_BYTES} bytes before logical `end`, base64. */
+const tailAt = (fd: number, bom: number, end: number): string =>
+	Buffer.from(readAt(fd, bom + Math.max(0, end - TAIL_BYTES), bom + end)).toString("base64");
+
 /** Where a read with `cursor` starts in a file now at logical `size`, and why. */
 const startOf = (
 	fd: number,
@@ -193,10 +212,8 @@ const startOf = (
 	if (cursor.identity !== identity) return { from: 0, reset: "replaced" };
 	if (size < cursor.size || size < cursor.end) return { from: 0, reset: "truncated" };
 	if (size === cursor.size && mtime !== cursor.mtime) return { from: 0, reset: "rewritten" };
-	// The byte before `end` was the last line's terminator; anything else means the bytes under the cursor moved.
-	if (cursor.end > 0 && readAt(fd, bom + cursor.end - 1, bom + cursor.end)[0] !== LF) {
-		return { from: 0, reset: "rewritten" };
-	}
+	// The bytes just before `end` are the ones the cursor saw, or the content under it moved.
+	if (tailAt(fd, bom, cursor.end) !== cursor.tail) return { from: 0, reset: "rewritten" };
 	return { from: cursor.end, reset: "none" };
 };
 
@@ -277,7 +294,11 @@ const join = (chunks: ReadonlyArray<Uint8Array>): Uint8Array => {
  *
  * const read = JournalFile.readFromResult(".claude/dogfood/mailbox.jsonl", saved);
  * if (Result.isSuccess(read)) {
- *   for (const line of read.success.lines) line.text; // each complete line appended since `saved`
+ *   // Any reset reads from 0: drop what earlier reads built, or it is applied twice.
+ *   if (read.success.reset !== "none") {
+ *     // reset the state you derived from earlier lines
+ *   }
+ *   for (const line of read.success.lines) line.text; // each complete line, in order
  *   read.success.cursor; // persist it for the next run
  * }
  * ```
@@ -320,7 +341,8 @@ export class JournalFile {
 			const bytes = readAt(fd, bom + from, physical);
 			const complete = bytes.lastIndexOf(LF) + 1;
 			const lines = complete === 0 ? [] : Line.split(decoder.decode(bytes.subarray(0, complete)), from);
-			return { lines, cursor: { end: from + complete, size, identity, mtime }, reset };
+			const end = from + complete;
+			return { lines, cursor: { end, size, identity, mtime, tail: tailAt(fd, bom, end) }, reset };
 		});
 	}
 

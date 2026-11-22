@@ -80,7 +80,9 @@ to the root's `JournalWatcher` instead of carrying a copy.
   `watch`, registered synchronously inside an `acquireRelease`.
 - **`JournalFile`** (`./node`) — the sync, runtime-free reads over `node:fs`:
   `readFromResult(path, cursor?)` (cursor-resumed, torn tail held back,
-  `reset` on truncate/replace/rewrite) and `lastValidResult(events, path,
+  `reset` on truncate/replace/rewrite, a rewrite seen through the cursor's
+  64-byte `tail`; its decoder keeps a U+FEFF that starts a read, since the
+  file BOM is skipped by offset) and `lastValidResult(events, path,
   window?)` (`latest`'s windowed read). Offsets are logical, as the
   service's. Root types in its signatures go through `Jsonl.*` like
   `node.ts`: a relatively imported class named in a type position puts a

@@ -48,10 +48,10 @@ sources:
     resource: ../../packages/workspaces/__test__/e2e/PackedInstall.e2e.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-22T03:01:26Z
+  at: 2026-11-22T03:59:52Z
 integrity:
   generated:
-    body: ef1a45a082cdc501
+    body: 62931cad0b02e516
 ---
 
 # @effected/workspaces/testing: the repo-shape checks
@@ -565,7 +565,7 @@ hand-rolling this check; the pure half lives in
 | npm fails `EOVERRIDE` when a direct dependency's spec differs from its override | a `consumerDependencies` entry naming a packed package is written as the same `file:` spec the override uses | this package's final review (npm 11.19.1), pinned by the e2e's S1 case under every manager |
 | Yarn Berry's `npmMinimalAgeGate` quarantines any version under a day old, so a consumer of a just-released package fails `YN0016`; the caller cannot lower it, since `scrubEnv` drops `YARN_*` | Berry 4.10+ consumers get `npmMinimalAgeGate: 0`. Berry 2.x-4.9 do not, because an unknown `.yarnrc.yml` key fails every command and 4.9.4 does not know it | systems, the yarn-age-gate dogfood loop (Yarn 4.18.1) |
 | pnpm 11 and 12 gate fresh versions by default but non-strictly: the install passes, appends `minimumReleaseAgeExclude:` to the consumer's `pnpm-workspace.yaml`, and may resolve a range to an older, mature match | pnpm consumers' `pnpm-workspace.yaml` starts with `minimumReleaseAge: 0` | same loop, probed on pnpm 11.28.2 and 12.6.0 |
-| A `pnprServer` in pnpm's global `config.yaml` resolves on the server, which cannot read the consumer's local tarballs (`pnpr request failed`); pnpm 12 cannot unset it from a project or the command line (an empty `--config.pnpr-server=` and `pnprServer: null` both leave it set) | the pnpm install runs with `XDG_CONFIG_HOME` at a scratch copy of pnpm's global config directory (`pnpm config get globalconfig`), the same files with `pnprServer` removed | effected#1381, mirrored from systems#808; pinned by the e2e under a dead `pnprServer` (pnpm 12.22.0) |
+| A `pnprServer` in pnpm's global `config.yaml` resolves on the server, which cannot read the consumer's local tarballs (`pnpr request failed`); pnpm 12 cannot unset it from a project or the command line (an empty `--config.pnpr-server=` and `pnprServer: null` both leave it set) | when the global `config.yaml` sets `pnprServer`, the pnpm install runs with `XDG_CONFIG_HOME` at a scratch copy of pnpm's global config directory (`pnpm config get globalconfig`, copied from its real path), the same files with `pnprServer` removed; the copied `config.yaml` is unlinked before the write, so a symlinked one is never written through. With no `pnprServer` the install keeps the caller's `XDG_CONFIG_HOME` | effected#1381, mirrored from systems#808; pinned by the e2e under a dead `pnprServer` (pnpm 12.22.0) |
 
 User-level configuration is inherited by design. `HOME` stays, so each
 manager still reads the user's registry, auth and proxy settings, as a real
