@@ -1,5 +1,9 @@
 # Log
 
+## 2026-11-22
+
+* Updated @effected/workspaces/testing: the repo-shape checks
+
 ## 2026-11-21
 
 * Updated The effected build commands: package build, action build and action init
