@@ -361,7 +361,15 @@ const make = (options: JwksResolverOptions) =>
 							? current.last
 							: fetched,
 				});
-				yield* swallow(store.set(issuer, fetched, ttl), undefined);
+				// The store follows the same newest-wins rule as `last`: an older fetch that finished last
+				// (uncoalesced, during a rotation) must not replace a newer set in a store other isolates read,
+				// nor overwrite a newer set another isolate already stored there.
+				if (issuers.get(issuer)?.last === fetched) {
+					const held = yield* swallow(store.get(issuer), Option.none<CachedJwks>());
+					if (Option.isNone(held) || held.value.fetchedAtMillis <= fetched.fetchedAtMillis) {
+						yield* swallow(store.set(issuer, fetched, ttl), undefined);
+					}
+				}
 				const fresh = yield* select(jwks, header);
 				return Option.isSome(fresh) ? fresh.value : yield* unknownKid(header);
 			});

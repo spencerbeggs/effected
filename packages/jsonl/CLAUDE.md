@@ -123,7 +123,9 @@ to the root's `JournalWatcher` instead of carrying a copy.
   and the watcher's gap read all go through it, so **no read allocates a
   region**. Every tail window is clamped to `MAX_WINDOW` (1 MiB) in the one
   private `readWindow` primitive; only a single line longer than a bound may
-  exceed it.
+  exceed it. Its decoder (and `JournalFile`'s) is `ignoreBOM: true`: the file's
+  BOM is skipped by offset, so a U+FEFF that starts any decode is content, and
+  a default decoder would strip it and shift every offset after it.
 
 ## The envelope contract
 

@@ -745,3 +745,37 @@ layer(CryptoLive, { buildPerTest: true })("JwksResolver with coalesce: false", (
 		}),
 	);
 });
+
+layer(CryptoLive, { buildPerTest: true })("JwksResolver store writes follow newest-wins", (it) => {
+	it.effect(
+		"an older uncoalesced fetch finishing last does not replace the newer set in a store another isolate reads",
+		() =>
+			Effect.gen(function* () {
+				const [a, b] = [yield* generate("a"), yield* generate("b")];
+				const late = yield* Deferred.make<void>();
+				let seen = 0;
+				const http = stub((url) => {
+					if (url !== JWKS_URI) return issuerRoutes(() => [a.jwk])(url);
+					seen += 1;
+					// Request 1 (before the rotation) is held while request 2 (after it) answers.
+					return seen === 1 ? { body: { keys: [a.jwk] }, gate: late } : { body: { keys: [a.jwk, b.jwk] } };
+				});
+				// One store shared by two resolvers, as a KV namespace is shared by two isolates.
+				const shared = yield* Effect.provide(Effect.service(JwksStore), JwksStore.layerMemory);
+				const store = Layer.succeed(JwksStore, shared);
+				const isolateA = Effect.gen(function* () {
+					const older = yield* Effect.forkChild(verify(yield* Jws.sign({}, a.signing)));
+					yield* settle;
+					yield* TestClock.adjust(Duration.seconds(1));
+					yield* verify(yield* Jws.sign({}, b.signing));
+					yield* Deferred.succeed(late, undefined);
+					yield* Fiber.join(older);
+				});
+				yield* Effect.provide(isolateA, uncoalesced(http.layer, store));
+				// A second isolate, its own resolver over the same store, with an issuer that must not be asked again.
+				const silent = stub(() => ({ status: 500 }));
+				yield* Effect.provide(verify(yield* Jws.sign({}, b.signing)), uncoalesced(silent.layer, store));
+				assert.strictEqual(silent.count(JWKS_URI), 0, "the second isolate read the newer set from the store");
+			}),
+	);
+});
