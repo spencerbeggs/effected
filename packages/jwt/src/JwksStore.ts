@@ -31,7 +31,9 @@ export interface JwksStoreShape {
  * @remarks
  * {@link JwksStore.layerMemory} keeps it in process. A Cloudflare Worker,
  * whose isolates do not share memory, backs it with KV or the Cache API
- * instead. A store's own failures must be swallowed by the store (a miss on
+ * instead, and shares the resolver built over it between requests only with
+ * `JwksResolver.layerWith({ coalesce: false })`: the default resolver makes
+ * one request wait on another's fetch, which workerd does not allow. A store's own failures must be swallowed by the store (a miss on
  * `get`, a no-op on `set`): a cache must never fail a verification. The
  * resolver also guards against a store that fails or dies anyway.
  *

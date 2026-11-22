@@ -1,7 +1,14 @@
 import { Effect, Redacted } from "effect";
 import { KeyFormat, Signature } from "effect/crypto";
 import { Jwk as CoreJwk } from "effect/jose";
-import { isAsymmetricAlgorithm, kidOf, toJwtError, toPublicJwk, unsupportedAlgorithm } from "./internal/jose.js";
+import {
+	isAsymmetricAlgorithm,
+	kidOf,
+	publicMembersOf,
+	toJwtError,
+	toPublicJwk,
+	unsupportedAlgorithm,
+} from "./internal/jose.js";
 import { quote } from "./internal/quote.js";
 import type { Jwk } from "./Jwk.js";
 import { JwtError } from "./JwtError.js";
@@ -111,6 +118,29 @@ const fromJwk = Effect.fn("JwtKey.fromJwk")(function* (jwk: Jwk, options?: { rea
 	);
 });
 
+const verificationOf = Effect.fn("JwtKey.verificationOf")(function* (signing: SigningKey) {
+	const extra = kidOf(signing.kid);
+	// Core drops the backend cause of a private-key failure, which may describe
+	// the key, so only a description is kept here too.
+	const exported = yield* CoreJwk.exportPrivate(signing).pipe(
+		Effect.mapError(() =>
+			JwtError.of("key", "the signing key does not export, so its public half cannot be read", extra),
+		),
+	);
+	// Only the public members are kept: the private JWK is unwrapped here and
+	// nowhere else, and never leaves this function.
+	const publicJwk = publicMembersOf(Redacted.value(exported));
+	return yield* CoreJwk.importPublic(publicJwk, signing.algorithm).pipe(
+		Effect.mapError((error) =>
+			JwtError.of(
+				"key",
+				`the public half does not import as an ${signing.algorithm} key: ${toJwtError(error).detail}`,
+				extra,
+			),
+		),
+	);
+});
+
 const generate = Effect.fn("JwtKey.generate")(function* (alg: JwtAlgorithm, options?: { readonly kid?: string }) {
 	const kid = options?.kid;
 	const pair = yield* CoreJwk.generateKeyPair({ algorithm: alg, ...(kid !== undefined ? { kid } : {}) });
@@ -173,6 +203,25 @@ export class JwtKey {
 		jwk: Jwk,
 		options?: { readonly alg?: JwtAlgorithm },
 	) => Effect.Effect<VerificationKey, JwtError> = fromJwk;
+
+	/**
+	 * The verification key for a signing key: its public half, under the same
+	 * algorithm and `kid`.
+	 *
+	 * @remarks
+	 * For a service that signs and verifies its own tokens and holds only the
+	 * private key, so the two halves cannot disagree. The public members are
+	 * read from core's JWK export of the private key and re-imported, so the
+	 * signing key must be extractable, as every key {@link JwtKey.fromPkcs8Pem}
+	 * and {@link JwtKey.generate} return is. A key that does not export or
+	 * whose public half does not import is `key`; the failure never echoes the
+	 * private material.
+	 *
+	 * Needs no service: core imports on the WebCrypto reference.
+	 *
+	 * @public
+	 */
+	static readonly verificationOf: (signing: SigningKey) => Effect.Effect<VerificationKey, JwtError> = verificationOf;
 
 	/**
 	 * Generate a fresh key pair and its public JWK; for tests.

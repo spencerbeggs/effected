@@ -4,6 +4,7 @@
 
 * Updated @effected/workspaces/testing: the repo-shape checks
 * Updated @effected/jsonl
+* Updated @effected/jwt
 
 ## 2026-11-21
 

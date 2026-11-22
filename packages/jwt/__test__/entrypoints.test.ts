@@ -61,7 +61,7 @@ describe("root entrypoint", () => {
 		const containers = {
 			Jws: [main.Jws, ["decodeUnverified", "sign", "verify"]],
 			Jwt: [main.Jwt, ["sign", "verify"]],
-			JwtKey: [main.JwtKey, ["fromJwk", "fromPkcs8Pem", "generate"]],
+			JwtKey: [main.JwtKey, ["fromJwk", "fromPkcs8Pem", "generate", "verificationOf"]],
 			TestIssuer: [testing.TestIssuer, ["make", "rotate"]],
 		} as const;
 		for (const [name, [container, members]] of Object.entries(containers)) {
