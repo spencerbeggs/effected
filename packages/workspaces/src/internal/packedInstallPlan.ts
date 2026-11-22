@@ -48,7 +48,8 @@ const TRAP_PREFIXES = /^(npm_|pnpm_config_)/i;
  * User-level configuration is inherited by design: `HOME` stays, so each
  * manager still reads the user's `~/.npmrc` and friends, and
  * with them the registry, auth and proxy a real install on this machine
- * would use.
+ * would use. The one exception, pnpm's `pnprServer`, is not a variable: the
+ * pnpm install reads its global config from a scratch copy without that key.
  */
 export const scrubEnv = (env: Readonly<Record<string, string | undefined>>): Record<string, string> => {
 	const out: Record<string, string> = {};

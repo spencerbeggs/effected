@@ -595,3 +595,392 @@ layer(CryptoLive, { buildPerTest: true })("JwksStore.layerMemory", (it) => {
 		}).pipe(Effect.provide(JwksStore.layerMemory)),
 	);
 });
+
+// `coalesce: false`, the mode for a resolver shared between requests on
+// Cloudflare Workers, where one request must never wait on work another owns
+// (a waiter there is cancelled as hung and strands the lock). Node cannot
+// cancel a waiter the way workerd does, so the property is tested directly:
+// a caller whose fetch never answers must not hold up any other caller.
+const uncoalesced = (client: Layer.Layer<HttpClient.HttpClient>, store = JwksStore.layerMemory) =>
+	JwksResolver.layerWith({ coalesce: false }).pipe(Layer.provide(Layer.mergeAll(client, store)));
+
+/** A store that holds nothing, so only the resolver's own copy of the last fetch answers. */
+const forgetful = Layer.succeed(JwksStore, { get: () => Effect.succeedNone, set: () => Effect.void });
+
+/** Let every runnable fiber run until it blocks. */
+const settle = Effect.gen(function* () {
+	for (let i = 0; i < 50; i++) yield* Effect.yieldNow;
+});
+
+/** Hold the Nth JWKS request (1-based) on its own latch; every other request answers at once. */
+const holdingNth = (keys: () => ReadonlyArray<unknown>, held: ReadonlyMap<number, Deferred.Deferred<void>>) => {
+	let seen = 0;
+	return stub((url) => {
+		const base = issuerRoutes(keys)(url);
+		if (url !== JWKS_URI) return base;
+		seen += 1;
+		const gate = held.get(seen);
+		return gate === undefined ? base : { ...base, gate };
+	});
+};
+
+layer(CryptoLive, { buildPerTest: true })("JwksResolver with coalesce: false", (it) => {
+	it.effect(
+		"a cold caller is not held up by a concurrent caller whose fetch never answers, and a later caller reads the stored set",
+		() =>
+			Effect.gen(function* () {
+				const a = yield* generate("a");
+				const never = yield* Deferred.make<void>();
+				const http = holdingNth(() => [a.jwk], new Map([[1, never]]));
+				const token = yield* Jws.sign({}, a.signing);
+				const program = Effect.gen(function* () {
+					const stuck = yield* Effect.forkChild(verify(token));
+					yield* settle;
+					// The second caller fetches for itself and answers while the first is still stuck.
+					const second = yield* Effect.forkChild(verify(token));
+					yield* settle;
+					const done = second.pollUnsafe();
+					assert.isTrue(done !== undefined && Exit.isSuccess(done), "B finished on its own");
+					assert.isUndefined(stuck.pollUnsafe(), "A is still waiting on its own fetch");
+					assert.strictEqual(http.count(JWKS_URI), 2, "each cold caller fetched for itself");
+					// A third caller, alone, is answered from the set the second stored.
+					yield* verify(token);
+					assert.strictEqual(http.count(JWKS_URI), 2, "no fetch for a caller after them");
+					yield* Fiber.interrupt(stuck);
+				});
+				yield* Effect.provide(program, uncoalesced(http.layer));
+			}),
+	);
+
+	it.effect("control: coalesced, the second cold caller waits on the first caller's fetch", () =>
+		Effect.gen(function* () {
+			const a = yield* generate("a");
+			const never = yield* Deferred.make<void>();
+			const http = holdingNth(() => [a.jwk], new Map([[1, never]]));
+			const token = yield* Jws.sign({}, a.signing);
+			const program = Effect.gen(function* () {
+				const stuck = yield* Effect.forkChild(verify(token));
+				yield* settle;
+				const second = yield* Effect.forkChild(verify(token));
+				yield* settle;
+				assert.isUndefined(second.pollUnsafe(), "B waits on A's lock");
+				assert.strictEqual(http.count(JWKS_URI), 1, "B made no fetch of its own");
+				yield* Fiber.interrupt(second);
+				yield* Fiber.interrupt(stuck);
+			});
+			yield* Effect.provide(program, resolverLayer(http.layer));
+		}),
+	);
+
+	it.effect("concurrent cold callers each fetch and all succeed", () =>
+		Effect.gen(function* () {
+			const a = yield* generate("a");
+			const gate = yield* Deferred.make<void>();
+			const http = holdingNth(
+				() => [a.jwk],
+				new Map([
+					[1, gate],
+					[2, gate],
+					[3, gate],
+				]),
+			);
+			const token = yield* Jws.sign({}, a.signing);
+			const program = Effect.gen(function* () {
+				const fibers = yield* Effect.forEach([1, 2, 3], () => Effect.forkChild(verify(token)));
+				yield* settle;
+				assert.strictEqual(http.count(JWKS_URI), 3, "no cold caller was turned away by the refetch interval");
+				yield* Deferred.succeed(gate, undefined);
+				for (const fiber of fibers) yield* Fiber.join(fiber);
+			});
+			yield* Effect.provide(program, uncoalesced(http.layer));
+		}),
+	);
+
+	it.effect("with a set held, a second unknown kid inside the interval is unknownKid at once, not a wait", () =>
+		Effect.gen(function* () {
+			const [a, b, c] = [yield* generate("a"), yield* generate("b"), yield* generate("c")];
+			const never = yield* Deferred.make<void>();
+			// Request 1 is the initial fetch; request 2, the refetch for b's kid, never answers.
+			const http = holdingNth(() => [a.jwk, b.jwk], new Map([[2, never]]));
+			const program = Effect.gen(function* () {
+				yield* verify(yield* Jws.sign({}, a.signing));
+				yield* TestClock.adjust(Duration.seconds(31));
+				const refetching = yield* Effect.forkChild(verify(yield* Jws.sign({}, c.signing)));
+				yield* settle;
+				const reason = yield* reasonOf(verify(yield* Jws.sign({}, c.signing)));
+				assert.strictEqual(reason, "unknownKid");
+				assert.strictEqual(http.count(JWKS_URI), 2, "the second unknown kid made no fetch");
+				yield* Fiber.interrupt(refetching);
+			});
+			yield* Effect.provide(program, uncoalesced(http.layer));
+		}),
+	);
+
+	it.effect("an older fetch finishing last never replaces a newer one", () =>
+		Effect.gen(function* () {
+			const [a, b] = [yield* generate("a"), yield* generate("b")];
+			let published = [a.jwk];
+			const late = yield* Deferred.make<void>();
+			// Request 1 (published = [a]) is held while request 2 (published = [a, b]) answers.
+			let seen = 0;
+			const http = stub((url) => {
+				if (url !== JWKS_URI) return issuerRoutes(() => published)(url);
+				seen += 1;
+				const keys = seen === 1 ? [a.jwk] : published;
+				return seen === 1 ? { body: { keys }, gate: late } : { body: { keys } };
+			});
+			const program = Effect.gen(function* () {
+				const older = yield* Effect.forkChild(verify(yield* Jws.sign({}, a.signing)));
+				yield* settle;
+				yield* TestClock.adjust(Duration.seconds(1));
+				published = [a.jwk, b.jwk];
+				yield* verify(yield* Jws.sign({}, b.signing));
+				yield* Deferred.succeed(late, undefined);
+				yield* Fiber.join(older);
+				// The store keeps nothing, so b verifies only if the newer fetch is still the resolver's copy.
+				yield* verify(yield* Jws.sign({}, b.signing));
+				assert.strictEqual(http.count(JWKS_URI), 2);
+			});
+			yield* Effect.provide(program, uncoalesced(http.layer, forgetful));
+		}),
+	);
+});
+
+layer(CryptoLive, { buildPerTest: true })("JwksResolver store writes follow newest-wins", (it) => {
+	it.effect(
+		"an older uncoalesced fetch finishing last does not replace the newer set in a store another isolate reads",
+		() =>
+			Effect.gen(function* () {
+				const [a, b] = [yield* generate("a"), yield* generate("b")];
+				const late = yield* Deferred.make<void>();
+				let seen = 0;
+				const http = stub((url) => {
+					if (url !== JWKS_URI) return issuerRoutes(() => [a.jwk])(url);
+					seen += 1;
+					// Request 1 (before the rotation) is held while request 2 (after it) answers.
+					return seen === 1 ? { body: { keys: [a.jwk] }, gate: late } : { body: { keys: [a.jwk, b.jwk] } };
+				});
+				// One store shared by two resolvers, as a KV namespace is shared by two isolates.
+				const shared = yield* Effect.provide(Effect.service(JwksStore), JwksStore.layerMemory);
+				const store = Layer.succeed(JwksStore, shared);
+				const isolateA = Effect.gen(function* () {
+					const older = yield* Effect.forkChild(verify(yield* Jws.sign({}, a.signing)));
+					yield* settle;
+					yield* TestClock.adjust(Duration.seconds(1));
+					yield* verify(yield* Jws.sign({}, b.signing));
+					yield* Deferred.succeed(late, undefined);
+					yield* Fiber.join(older);
+				});
+				yield* Effect.provide(isolateA, uncoalesced(http.layer, store));
+				// A second isolate, its own resolver over the same store, with an issuer that must not be asked again.
+				const silent = stub(() => ({ status: 500 }));
+				yield* Effect.provide(verify(yield* Jws.sign({}, b.signing)), uncoalesced(silent.layer, store));
+				assert.strictEqual(silent.count(JWKS_URI), 0, "the second isolate read the newer set from the store");
+			}),
+	);
+});
+
+/** Hold request N (1-based) of the JWKS on a latch, serving each request its own key list. */
+const jwksSequence = (
+	sets: ReadonlyArray<ReadonlyArray<unknown>>,
+	held: ReadonlyMap<number, Deferred.Deferred<void>>,
+) => {
+	let seen = 0;
+	return stub((url) => {
+		if (url !== JWKS_URI) return issuerRoutes(() => [])(url);
+		seen += 1;
+		const keys = sets[Math.min(seen, sets.length) - 1] ?? [];
+		const gate = held.get(seen);
+		return gate === undefined ? { body: { keys } } : { body: { keys }, gate };
+	});
+};
+
+layer(CryptoLive, { buildPerTest: true })("JwksResolver overlapping uncoalesced fetches", (it) => {
+	it.effect("two fetches in the same millisecond keep the one that started later, whichever finishes last", () =>
+		Effect.gen(function* () {
+			const [a, b] = [yield* generate("a"), yield* generate("b")];
+			const late = yield* Deferred.make<void>();
+			const http = jwksSequence([[a.jwk], [a.jwk, b.jwk]], new Map([[1, late]]));
+			const program = Effect.gen(function* () {
+				const older = yield* Effect.forkChild(verify(yield* Jws.sign({}, a.signing)));
+				yield* settle;
+				// No clock advance: both fetches are stamped with the same millisecond.
+				yield* verify(yield* Jws.sign({}, b.signing));
+				yield* Deferred.succeed(late, undefined);
+				yield* Fiber.join(older);
+				// Only the resolver's own copy answers (the store keeps nothing): it must still be the later set.
+				yield* verify(yield* Jws.sign({}, b.signing));
+				assert.strictEqual(http.count(JWKS_URI), 2);
+			});
+			yield* Effect.provide(program, uncoalesced(http.layer, forgetful));
+		}),
+	);
+
+	it.effect(
+		"a fetch that finishes after a newer one resolves from the newer set, so a key it dropped is unknownKid",
+		() =>
+			Effect.gen(function* () {
+				const [a, b] = [yield* generate("a"), yield* generate("b")];
+				const late = yield* Deferred.make<void>();
+				// Request 1 still lists a; request 2, after the rotation, lists only b.
+				const http = jwksSequence([[a.jwk], [b.jwk]], new Map([[1, late]]));
+				const program = Effect.gen(function* () {
+					const older = yield* Effect.forkChild(reasonOf(verify(yield* Jws.sign({}, a.signing))));
+					yield* settle;
+					yield* verify(yield* Jws.sign({}, b.signing));
+					yield* Deferred.succeed(late, undefined);
+					assert.strictEqual(yield* Fiber.join(older), "unknownKid", "a was dropped by the newer set");
+				});
+				yield* Effect.provide(program, uncoalesced(http.layer, forgetful));
+			}),
+	);
+
+	it.effect("a store write re-checks after its read suspends, so a later fetch's set stays in the store", () =>
+		Effect.gen(function* () {
+			const [a, b] = [yield* generate("a"), yield* generate("b")];
+			const aHeld = yield* Deferred.make<void>();
+			const bHeld = yield* Deferred.make<void>();
+			const readHeld = yield* Deferred.make<void>();
+			const http = jwksSequence(
+				[[a.jwk], [a.jwk, b.jwk]],
+				new Map([
+					[1, aHeld],
+					[2, bHeld],
+				]),
+			);
+			// A shared in-memory store whose next read, once armed, waits on a latch.
+			const memory = yield* Effect.provide(Effect.service(JwksStore), JwksStore.layerMemory);
+			let armed = false;
+			const store = Layer.succeed(JwksStore, {
+				get: (issuer) =>
+					Effect.gen(function* () {
+						if (armed) {
+							armed = false;
+							yield* Deferred.await(readHeld);
+						}
+						return yield* memory.get(issuer);
+					}),
+				set: memory.set,
+			});
+			const program = Effect.gen(function* () {
+				const first = yield* Effect.forkChild(verify(yield* Jws.sign({}, a.signing)));
+				yield* settle;
+				const second = yield* Effect.forkChild(verify(yield* Jws.sign({}, b.signing)));
+				yield* settle;
+				// The first fetch answers and is kept, then suspends on its pre-write store read.
+				armed = true;
+				yield* Deferred.succeed(aHeld, undefined);
+				yield* settle;
+				// The second fetch, which started later, answers and writes [a, b] while the first is suspended.
+				yield* Deferred.succeed(bHeld, undefined);
+				yield* Fiber.join(second);
+				yield* Deferred.succeed(readHeld, undefined);
+				yield* Fiber.join(first);
+				const stored = yield* memory.get(ISSUER);
+				assert.strictEqual(
+					Option.isSome(stored) ? stored.value.jwks.keys.length : -1,
+					2,
+					"the store still holds [a, b]",
+				);
+			});
+			yield* Effect.provide(program, uncoalesced(http.layer, store));
+		}),
+	);
+});
+
+layer(CryptoLive, { buildPerTest: true })("JwksResolver uncoalesced, after a slow fetch", (it) => {
+	it.effect("a fetch that outlasts the newer set's TTL does not select from a set past it", () =>
+		Effect.gen(function* () {
+			const a = yield* generate("a");
+			const late = yield* Deferred.make<void>();
+			const http = jwksSequence([[a.jwk], [a.jwk]], new Map([[1, late]]));
+			const resolver = JwksResolver.layerWith({ coalesce: false, ttl: "1 second" }).pipe(
+				Layer.provide(Layer.mergeAll(http.layer, forgetful)),
+			);
+			const program = Effect.gen(function* () {
+				const slow = yield* Effect.forkChild(reasonOf(verify(yield* Jws.sign({}, a.signing))));
+				yield* settle;
+				yield* verify(yield* Jws.sign({}, a.signing));
+				// Both sets are now past the 1 second TTL by the time the slow fetch answers.
+				yield* TestClock.adjust(Duration.seconds(2));
+				yield* Deferred.succeed(late, undefined);
+				assert.strictEqual(yield* Fiber.join(slow), "unknownKid", "no set past its TTL is trusted");
+			});
+			yield* Effect.provide(program, resolver);
+		}),
+	);
+
+	it.effect("an older store write that lands after the newer one is followed by the newer set again", () =>
+		Effect.gen(function* () {
+			const [a, b] = [yield* generate("a"), yield* generate("b")];
+			const aHeld = yield* Deferred.make<void>();
+			const bHeld = yield* Deferred.make<void>();
+			const writeHeld = yield* Deferred.make<void>();
+			const http = jwksSequence(
+				[[a.jwk], [a.jwk, b.jwk]],
+				new Map([
+					[1, aHeld],
+					[2, bHeld],
+				]),
+			);
+			// A shared in-memory store whose first write is held until released, landing after the second.
+			const memory = yield* Effect.provide(Effect.service(JwksStore), JwksStore.layerMemory);
+			let writes = 0;
+			const store = Layer.succeed(JwksStore, {
+				get: memory.get,
+				set: (issuer, value, ttl) =>
+					Effect.gen(function* () {
+						writes += 1;
+						if (writes === 1) yield* Deferred.await(writeHeld);
+						yield* memory.set(issuer, value, ttl);
+					}),
+			});
+			const program = Effect.gen(function* () {
+				const first = yield* Effect.forkChild(verify(yield* Jws.sign({}, a.signing)));
+				yield* settle;
+				const second = yield* Effect.forkChild(verify(yield* Jws.sign({}, b.signing)));
+				yield* settle;
+				// The first fetch answers and starts writing [a]; its write is held.
+				yield* Deferred.succeed(aHeld, undefined);
+				yield* settle;
+				// The second fetch, which started later, answers and writes [a, b].
+				yield* Deferred.succeed(bHeld, undefined);
+				yield* Fiber.join(second);
+				// The held write of [a] now lands last.
+				yield* Deferred.succeed(writeHeld, undefined);
+				yield* Fiber.join(first);
+				const stored = yield* memory.get(ISSUER);
+				assert.strictEqual(
+					Option.isSome(stored) ? stored.value.jwks.keys.length : -1,
+					2,
+					"the newer set is written again after the older write lands",
+				);
+			});
+			yield* Effect.provide(program, uncoalesced(http.layer, store));
+		}),
+	);
+});
+
+layer(CryptoLive, { buildPerTest: true })("JwksResolver.layerUncoalesced", (it) => {
+	it.effect("is the uncoalesced mode: a cold caller is not held up by another caller's fetch that never answers", () =>
+		Effect.gen(function* () {
+			const a = yield* generate("a");
+			const never = yield* Deferred.make<void>();
+			const http = holdingNth(() => [a.jwk], new Map([[1, never]]));
+			const token = yield* Jws.sign({}, a.signing);
+			const program = Effect.gen(function* () {
+				const stuck = yield* Effect.forkChild(verify(token));
+				yield* settle;
+				const second = yield* Effect.forkChild(verify(token));
+				yield* settle;
+				const done = second.pollUnsafe();
+				assert.isTrue(done !== undefined && Exit.isSuccess(done), "B finished on its own");
+				yield* Fiber.interrupt(stuck);
+			});
+			yield* Effect.provide(
+				program,
+				JwksResolver.layerUncoalesced.pipe(Layer.provide(Layer.mergeAll(http.layer, JwksStore.layerMemory))),
+			);
+		}),
+	);
+});

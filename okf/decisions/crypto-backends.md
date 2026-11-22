@@ -20,10 +20,10 @@ sources:
     title: "Mac.Mac: generateKey, sign and a constant-time verify; Mac.key refuses an empty key with InvalidKey; layerWebCrypto dies without crypto.subtle"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-10-31T19:37:34Z
+  at: 2026-11-22T05:32:31Z
 integrity:
   generated:
-    body: caa1f9ae4fbc71b5
+    body: 41b63d2de5545ffe
   verified:
     by: human:spencer
     at: 2026-10-31T19:39:48Z
@@ -65,7 +65,7 @@ Every keyed operation goes through core `Mac.Mac`, and every digest of a payload
 
 ## Consequences
 
-`Hmac`, `ConstantTime.secretsEqual`, `SigV4.signingKey`, `SigV4.sign` and every [`webhooks`](../modules/webhooks.md) preset require `Mac.Mac`; SigV4 and `Fingerprint` require `Digest.Digest`. A consumer provides `Mac.layerWebCrypto` with `SecureRandom.layerWebCrypto` (any WebCrypto runtime, Workers included) or `@effect/platform-node`'s `NodeCrypto.layerMac`, which needs nothing further. Core's `Mac.layerWebCrypto` is truly asynchronous, so a test that forks one of these and then adjusts `TestClock` needs a latch. On the WebCrypto layers a runtime with no `crypto.subtle` now **dies** where the old keyed path failed typed; that is the same trade the kit accepted for `Digest`, and both are wiring defects a caller would `orDie` anyway. A refused key is core's `CryptoError` with reason `InvalidKey` (an empty HMAC key, for instance). [`github-actions`](../modules/github-actions.md)' `BlobStore.layerS3` requires both services, which `NodeServices.layer` does not carry; `ActionRuntime.layer` provides them from `NodeCrypto` (`layerDigest`, `layerMac`). A streamed digest stays outside both services, since neither hashes a stream.
+`Hmac`, `ConstantTime.secretsEqual`, `SigV4.signingKey`, `SigV4.sign` and every [`webhooks`](../modules/webhooks.md) preset require `Mac.Mac`; SigV4 and `Fingerprint` require `Digest.Digest`. A consumer provides `Mac.layerWebCrypto` with `SecureRandom.layerWebCrypto` (any WebCrypto runtime, Workers included) or `@effect/platform-node`'s `NodeCrypto.layerMac`, which needs nothing further. Core's `Mac.layerWebCrypto` is truly asynchronous, so a test that forks one of these and then adjusts `TestClock` needs a latch. On the WebCrypto layers a runtime with no `crypto.subtle` now **dies** where the old keyed path failed typed; that is the same trade the kit accepted for `Digest`, and both are wiring defects a caller would `orDie` anyway. A refused key is core's `CryptoError` with reason `InvalidKey` (an empty HMAC key, for instance). [`github-actions`](../modules/github-actions.md)' `S3BlobStore.layer` requires both services, which `NodeServices.layer` does not carry; `ActionRuntime.layer` provides them from `NodeCrypto` (`layerDigest`, `layerMac`). A streamed digest stays outside both services, since neither hashes a stream.
 
 ## Out of scope: nonce randomness
 

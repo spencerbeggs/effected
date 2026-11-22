@@ -1,5 +1,17 @@
 # Log
 
+## 2026-11-22
+
+* Updated @effected/workspaces/testing: the repo-shape checks
+* Updated @effected/jsonl
+* Updated @effected/jwt
+* Updated @effected/crypto
+* Updated @effected/s3
+* Updated Keyed operations come from core Mac, payload digests from core Digest, both required in R
+* Updated Raw S3 objects get their own boundary package, with a ListObjectsV2 reader that fails a wrong root
+* Updated actions-storage
+* Updated github-actions
+
 ## 2026-11-21
 
 * Updated The effected build commands: package build, action build and action init

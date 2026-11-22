@@ -10,7 +10,7 @@ tags:
   - bundle
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-16T17:04:15Z
+  at: 2026-11-22T05:32:31Z
 verified:
   - by: human:spencer
     at: 2026-09-24T00:12:32.522Z
@@ -24,7 +24,7 @@ verified:
     at: 2026-11-16T16:59:20Z
 integrity:
   generated:
-    body: dc5e07b159b44e41
+    body: 119d0aeb46cb96d8
   verified:
     by: human:spencer
     at: 2026-11-16T16:59:20Z
@@ -75,10 +75,17 @@ Actions cache protocol, and an S3-compatible backend with request signing
 (`@effected/crypto`'s `SigV4`), path-style addressing and a custom endpoint.
 The S3 backend sends the target exactly as `SigV4.sign` returned it, and a
 key with a `.` or `..` path segment fails as `BlobStoreError` `invalidKey`
-with nothing sent, since no URL can carry it as signed. The
-GitHub-cache backend's layer static lives on its own module's class, never
-on the shared service class, so the Twirp cache protocol and the blob
-transport stay unreachable from every other module that reads a blob.
+with nothing sent, since no URL can carry it as signed. Each
+backend's layer lives on its own module's class (`GitHubCacheBlobStore.layer`
+in `BlobStore.githubCache.ts`, `S3BlobStore.layer` in `BlobStore.s3.ts`),
+never as a static on the shared `BlobStore` service class. A bundler keeps a
+class's static members with the class, so a static there ships its protocol
+in every bundle that names the tag. The S3 backend was once
+`BlobStore.layerS3`, and an action that used only the GitHub cache still
+carried SigV4 in its bundle. Measured with rolldown on the built package:
+a bundle naming only the tag fell from 672 KB to 347 KB when the static
+moved out. `__test__/reachability.test.ts` pins that `SigV4` is imported by
+`BlobStore.s3.ts` alone and that `BlobStore.ts` reaches `effect` alone.
 
 ### The transport seam
 

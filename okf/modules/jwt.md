@@ -25,10 +25,10 @@ sources:
     resource: ../../packages/jwt/effected.toml
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-22T05:03:27Z
 integrity:
   generated:
-    body: 8c06aeac86733757
+    body: 1601eff2866a280c
 ---
 
 # `@effected/jwt`
@@ -49,7 +49,7 @@ Nothing here is re-derived from core. Compact parsing and encoding, canonical ba
 
 What this package still owns, because core does not provide it:
 
-- **`JwksResolver` and `JwksStore`.** Core's `Jwks.makeRemote` fetches one configured HTTPS URL into an in-memory cache. The resolver adds OIDC discovery per issuer (the discovery document's `issuer` must match exactly), many issuers behind one service, a `JwksStore` seam that a Cloudflare Worker backs with KV so isolates share a fetched set, a store-versus-own-copy freshness rule, and `http://localhost` issuers for tests. Selection and import within a fetched set are core's (`Jwks.makeLocal`, one per set, so a key is imported once per set).
+- **`JwksResolver` and `JwksStore`.** Core's `Jwks.makeRemote` fetches one configured HTTPS URL into an in-memory cache. The resolver adds OIDC discovery per issuer (the discovery document's `issuer` must match exactly), many issuers behind one service, a `JwksStore` seam that a Cloudflare Worker backs with KV so isolates share a fetched set, a store-versus-own-copy freshness rule, and `http://localhost` issuers for tests. Fetches are coalesced per issuer behind a semaphore by default; `coalesce: false` drops the lock for a resolver shared between requests on Cloudflare Workers, where one request waiting on another's fetch is cancelled as hung and a cancelled waiter strands the permit (reported by savvy-web/cache, reproduced in workerd). Uncoalesced, every miss fetches for itself, a caller with no usable set is never turned away by the refetch interval, `lastAttemptMillis` never moves back and `last` never moves to an older fetch. The store write follows the same rule in both modes: a fetch is written only when it is the resolver's kept `last` and the store holds nothing newer, so a KV store shared by isolates is never rolled back to a set that refuses a rotated `kid`. The write re-checks after its store read, which suspends, so a later fetch in the same resolver cannot be overwritten either. Local order is start order (a per-resolver attempt counter), not `fetchedAtMillis`, because two uncoalesced fetches can share a millisecond. A caller selects its key from the newest set held, local or stored, never from its own fetch alone. Across isolates the race cannot be closed: `JwksStore` has no conditional write, so two isolates can interleave get and set, and the TTL bounds how long a lost race lasts. The tests pin it in Node by holding one caller's fetch forever and requiring another caller to finish, with a coalesced control that blocks. Selection and import within a fetched set are core's (`Jwks.makeLocal`, one per set, so a key is imported once per set).
 - **PEM convenience.** Core's `Jwk.importPkcs8` takes PKCS#8 only and real newlines only. `JwtKey.fromPkcs8Pem` also takes PKCS#1 (GitHub App keys) through core's `KeyFormat.pkcs1`, and unescapes the one-line `\n` form an environment variable carries.
 - **Verification defaults.** A 60 second clock tolerance (core's is zero), `exp` required unless `requireExpiry: false` (core makes it optional), a future `iat` always refused (core checks `iat` only under `maxTokenAge`), and a key-resolver function in place of a `Jwks` service.
 - **`JwtError`.** One flat `reason` string to route on, where core nests a reason class; and a sync `Result` form of `Jws.decodeUnverified`.

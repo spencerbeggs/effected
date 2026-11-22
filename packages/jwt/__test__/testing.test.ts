@@ -78,6 +78,24 @@ layer(CryptoLive, { buildPerTest: true })("TestIssuer", (it) => {
 		}),
 	);
 
+	it.effect("make's resolver options reach its resolverLayer", () =>
+		Effect.gen(function* () {
+			// A 1 second refetch interval, where the default is 30: the rotated kid is picked up after 1 second.
+			const first = yield* TestIssuer.make({
+				issuer: ISSUER,
+				kid: "k1",
+				resolver: { coalesce: false, minRefetchInterval: "1 second" },
+			});
+			const program = Effect.gen(function* () {
+				yield* Jwt.verify(yield* first.sign({ aud: "x" }), { key: JwksResolver.forIssuer(ISSUER), claims: Claims });
+				const second = yield* TestIssuer.rotate(first, "k2");
+				yield* TestClock.adjust(Duration.seconds(1));
+				yield* Jwt.verify(yield* second.sign({ aud: "x" }), { key: JwksResolver.forIssuer(ISSUER), claims: Claims });
+			});
+			yield* Effect.provide(program, first.resolverLayer);
+		}),
+	);
+
 	it.effect("the httpClient serves discovery and the JWKS, and 404s anything else", () =>
 		Effect.gen(function* () {
 			const issuer = yield* TestIssuer.make({ issuer: ISSUER });

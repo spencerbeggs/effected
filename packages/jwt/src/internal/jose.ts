@@ -176,7 +176,15 @@ const publicMembers = ["kty", "crv", "n", "e", "x", "y", "kid", "alg", "use", "k
  *
  * @internal
  */
-export const toPublicJwk = (jwk: Jwk): CoreJwk.PublicJwk => {
+export const toPublicJwk = (jwk: Jwk): CoreJwk.PublicJwk => publicMembersOf(jwk);
+
+/**
+ * The public members of any JWK-shaped record, core's private JWK export
+ * included: every other member, private ones first of all, is left behind.
+ *
+ * @internal
+ */
+export const publicMembersOf = (jwk: { readonly [name: string]: unknown }): CoreJwk.PublicJwk => {
 	const out: Record<string, unknown> = {};
 	for (const name of publicMembers) if (jwk[name] !== undefined) out[name] = jwk[name];
 	return out as CoreJwk.PublicJwk;

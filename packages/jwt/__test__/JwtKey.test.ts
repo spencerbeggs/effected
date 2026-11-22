@@ -351,3 +351,40 @@ layer(CryptoLive, { buildPerTest: true })("JwtAlgorithm", (it) => {
 		assert.isTrue(same);
 	});
 });
+
+layer(CryptoLive, { buildPerTest: true })("JwtKey.verificationOf", (it) => {
+	const families: ReadonlyArray<JwtAlgorithm> = ["RS256", "PS384", "ES256", "ES512", "EdDSA"];
+	for (const alg of families) {
+		it.effect(`${alg}: the derived key verifies what the signing key signed, under the same alg and kid`, () =>
+			Effect.gen(function* () {
+				const pair = yield* JwtKey.generate(alg, { kid: `k-${alg}` });
+				const derived = yield* JwtKey.verificationOf(pair.signing);
+				assert.strictEqual(derived.algorithm, alg);
+				assert.strictEqual(derived.kid, `k-${alg}`);
+				const signature = yield* signWith(pair.signing, data);
+				assert.isTrue(yield* verifyWith(derived, signature, data));
+			}),
+		);
+	}
+
+	it.effect("control: the derived key refuses another key's signature", () =>
+		Effect.gen(function* () {
+			const [mine, other] = [yield* JwtKey.generate("ES256"), yield* JwtKey.generate("ES256")];
+			const derived = yield* JwtKey.verificationOf(mine.signing);
+			assert.isFalse(yield* verifyWith(derived, yield* signWith(other.signing, data), data));
+		}),
+	);
+
+	it.effect("a PEM-imported key yields its public half, and the derived key holds no private member", () =>
+		Effect.gen(function* () {
+			const { privateKey, publicKey } = rsaPair("pkcs1");
+			const signing = yield* JwtKey.fromPkcs8Pem(Redacted.make(privateKey), { alg: "RS256", kid: "app" });
+			const derived = yield* JwtKey.verificationOf(signing);
+			assert.strictEqual(derived.kid, "app");
+			const signature = yield* signWith(signing, data);
+			assert.isTrue(yield* verifyWith(derived, signature, data));
+			// The same public key node reads from the PEM.
+			assert.isTrue(verify("sha256", data, createPublicKey(publicKey), signature));
+		}),
+	);
+});

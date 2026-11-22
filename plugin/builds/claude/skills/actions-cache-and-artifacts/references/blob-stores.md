@@ -193,7 +193,7 @@ rather than merely asserting the double's own echo.
 Cache and blob-store payloads get a metadata channel that raw bytes don't
 have. `BlobEnvelope` is deliberately **pure**: no IO, no service, just
 `Result`-returning encode/decode over a byte array. `BlobStore`,
-`GitHubCacheBlobStore` and `BlobStore.layerS3` all put bytes behind this
+`GitHubCacheBlobStore` and `S3BlobStore.layer` all put bytes behind this
 frame before they ever reach a transport, using the caller's own
 `Schema.Codec` as the metadata contract — the package owns **framing**,
 the caller owns **meaning**.

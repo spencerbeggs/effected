@@ -19,7 +19,16 @@
 // against the real variables rather than a hand-written list.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -448,6 +457,48 @@ describe("PackedInstall against a real fixture workspace", () => {
 						[...sourceManagers],
 					);
 					for (const consumer of result.consumers) yield* assertConsumer(consumer, result.tarballs);
+				}).pipe(Effect.timeout("150 seconds")),
+			180_000,
+		);
+
+		// #1381: a pnpr server resolves on the server, which cannot read the
+		// consumer's local tarballs. A global config that sets one must not
+		// reach the pnpm install, while the rest of that config still does.
+		it.effect.skipIf(!HAS_PNPM)(
+			"a pnprServer in pnpm's global config does not reach the pnpm install",
+			() =>
+				Effect.gen(function* () {
+					assert.strictEqual(PREINSTALL?.status, 0, `${PREINSTALL?.stdout}\n${PREINSTALL?.stderr}`);
+					const xdg = realpathSync(mkdtempSync(join(tmpdir(), "packed-install-xdg-")));
+					try {
+						// A symlinked config.yaml, as a dotfiles checkout leaves it: the run must never write through it.
+						const original = `pnprServer: ${DEAD_PROXY}\nlinkWorkspacePackages: false\n`;
+						write(xdg, "dotfiles/pnpm-config.yaml", original);
+						mkdirSync(join(xdg, "pnpm"), { recursive: true });
+						symlinkSync(join(xdg, "dotfiles/pnpm-config.yaml"), join(xdg, "pnpm/config.yaml"));
+						const env = { ...OFFLINE, XDG_CONFIG_HOME: xdg };
+						// Control: pnpm really reads this config, so an install that inherited it would resolve via the dead server.
+						const read = spawnSync("pnpm", ["config", "get", "pnprServer"], {
+							cwd: tmpdir(),
+							env: PackedInstall.scrubEnv(env),
+							encoding: "utf8",
+						});
+						assert.strictEqual(read.stdout.trim(), DEAD_PROXY, read.stderr);
+						const result = yield* PackedInstall.run({
+							carrier: CARRIER,
+							closure: "auto",
+							managers: ["pnpm"],
+							require: "all",
+							packFrom: "source",
+							bins: [BIN_NAME],
+							env,
+							installTimeout: "90 seconds",
+						});
+						for (const consumer of result.consumers) yield* assertConsumer(consumer, result.tarballs);
+						assert.strictEqual(readFileSync(join(xdg, "dotfiles/pnpm-config.yaml"), "utf8"), original);
+					} finally {
+						rmSync(xdg, { recursive: true, force: true });
+					}
 				}).pipe(Effect.timeout("150 seconds")),
 			180_000,
 		);

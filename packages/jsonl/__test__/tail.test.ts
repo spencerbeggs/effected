@@ -232,3 +232,44 @@ describe("readTailUntil", () => {
 		);
 	});
 });
+
+// A U+FEFF is content wherever it is not the file's own leading BOM: a decode
+// starting at a line that begins with one must keep it, or the decoded text is
+// three bytes short and every offset after it in that read drifts.
+describe("a U+FEFF that starts a read is content", () => {
+	const content = `{}\n${BOM}x\n{"a":1}\n`;
+
+	it.effect("readLinePages keeps it at a page start, so offsets match the reference", () =>
+		withFile(content, (fs) =>
+			Effect.gen(function* () {
+				const size = encode(content).length;
+				const lines = yield* collectLines(fs, 3, size, 0, 64);
+				assert.deepStrictEqual(lines, reference(content, 3));
+				assert.strictEqual(lines[0]?.text, `${BOM}x`);
+			}),
+		),
+	);
+
+	it.effect("readTailUntil keeps it at a window start", () =>
+		withFile(content, (fs) =>
+			Effect.gen(function* () {
+				let seen: TailWindow | undefined;
+				// The file is 16 bytes; a 15-byte window starts mid-`{}\n` and is cut at its first newline, right before
+				// the U+FEFF line.
+				yield* readTailUntil(
+					fs,
+					PATH,
+					0,
+					(window) => {
+						seen ??= window;
+						return Option.none<never>();
+					},
+					15,
+				);
+				assert.isDefined(seen);
+				assert.strictEqual(seen?.start, 3);
+				assert.strictEqual(seen?.text, `${BOM}x\n{"a":1}\n`);
+			}),
+		),
+	);
+});

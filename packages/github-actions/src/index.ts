@@ -99,7 +99,8 @@ export {
 	UnsupportedBlobEnvelopeVersionError,
 } from "./BlobEnvelope.js";
 export { GitHubCacheBlobStore } from "./BlobStore.githubCache.js";
-export { BlobStore, BlobStoreError, type BlobStoreShape, type S3Config, type StoredBlob } from "./BlobStore.js";
+export { BlobStore, BlobStoreError, type BlobStoreShape, type StoredBlob } from "./BlobStore.js";
+export { S3BlobStore, type S3Config } from "./BlobStore.s3.js";
 export { BlobTransferError, type DataBlobTransfer, type FileBlobTransfer } from "./BlobTransfer.js";
 export { CacheKey, CacheKeyBadPatternError, type CacheKeyError, CacheKeyReadError } from "./CacheKey.js";
 export {

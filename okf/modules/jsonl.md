@@ -10,10 +10,10 @@ tags:
   - architecture
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-06T20:09:15Z
+  at: 2026-11-22T03:59:52Z
 integrity:
   generated:
-    body: bca1e5a17dd8420b
+    body: d4903638004c5dfa
 ---
 
 # `@effected/jsonl`
@@ -218,8 +218,24 @@ Module-per-concept, no barrels, no namespace objects. See `packages/jsonl/src/`:
   interface](../interfaces/jsonl-journal.md).
 - **The watch seam**: `JournalWatcher.ts` is the `Context.Service`
   (`JournalWatcherShape`, one `watch` member) the engine requires. The
-  `./node` entry, `node.ts`, re-exports `NodeJournalWatcher` and nothing
-  else; `NodeJournalWatcher.ts` is the one module that imports `node:*`.
+  `./node` entry, `node.ts`, re-exports `NodeJournalWatcher` and
+  `JournalFile` and nothing else; those two are the only modules that
+  import `node:*`.
+- **The sync file reader**: `JournalFile.ts` (`./node`) is the runtime-free
+  read path over `node:fs`, for a consumer that cannot ship the service: a
+  hook, a monitor, a plugin build with no `node_modules` (#1380).
+  `readFromResult(path, cursor?)` reads the complete lines appended since a
+  JSON-round-trippable `JournalCursor` (`end`, `size`, `identity` as
+  `dev:ino`, `mtime` in nanoseconds, `tail`), holds back a torn tail, and restarts
+  from 0 with a `reset` of `truncated`, `replaced` or `rewritten` (same size
+  with a new mtime, or the 64 bytes before `end`, kept in the cursor as
+  `tail`, no longer the same) where the
+  service would fail `JournalResync`: the caller decides. `lastValidResult`
+  is `latest`'s read, ported to sync `readSync`: non-overlapping windows
+  from 8 KiB by fours to the 1 MiB clamp, a longer line read whole. Offsets
+  are logical (past any BOM), the service's own, so a cursor crosses between
+  the two. Both return `Result`, failing `JournalNotFound` or an
+  untranslated core `PlatformError`, and never throw.
   `node.ts` names root types through `import type * as Jsonl from
   "@effected/jsonl"`, and `effected.toml` keeps that import external in the
   declarations (`dtsExternals`) and suppresses `ae-forgotten-export` for the

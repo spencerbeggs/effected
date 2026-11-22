@@ -1,7 +1,7 @@
 import type { CommandOutput } from "@effected/commands";
 import { Run } from "@effected/commands";
 import { PackageJsonFormat } from "@effected/package-json";
-import { Yaml } from "@effected/yaml";
+import { Yaml, YamlFormat } from "@effected/yaml";
 import type { PlatformError } from "effect";
 import { Config, Duration, Effect, FileSystem, Option, Path, Redacted, Result, Schema, Stream } from "effect";
 import type { ChildProcessSpawner } from "effect/process";
@@ -1224,8 +1224,18 @@ export class PackedInstall {
 		}
 		const env = scrubEnv(options.env);
 		const io = (message: string) => (cause: unknown) => failure("Io", message, { cause });
-		const command = (executable: string, args: ReadonlyArray<string>, cwd: string) =>
-			ChildProcess.make(executable, args, { cwd, env, extendEnv: false, stdin: "ignore" });
+		const command = (
+			executable: string,
+			args: ReadonlyArray<string>,
+			cwd: string,
+			extra?: Readonly<Record<string, string>>,
+		) =>
+			ChildProcess.make(executable, args, {
+				cwd,
+				env: extra === undefined ? env : { ...env, ...extra },
+				extendEnv: false,
+				stdin: "ignore",
+			});
 
 		const scratch = yield* fs.makeTempDirectoryScoped({ prefix: "effected-packed-install-" }).pipe(
 			Effect.flatMap((directory) => fs.realPath(directory)),
@@ -1389,6 +1399,48 @@ export class PackedInstall {
 		}
 		const overrides = Object.fromEntries(rest.map(({ name, tarball }) => [name, tarball]));
 
+		/**
+		 * A copy of pnpm's global config directory without `pnprServer`, for the
+		 * pnpm install's `XDG_CONFIG_HOME`; undefined when pnpm names no global
+		 * `config.yaml` or it sets no `pnprServer`, so the install then sees the
+		 * caller's own `XDG_CONFIG_HOME` like every other manager.
+		 * A pnpr server resolves on the server, which cannot read the
+		 * consumer's local tarballs, so a machine that sets it globally failed
+		 * every pnpm install CI passed (#1381). pnpm 12 has no way to unset the
+		 * setting from a project or the command line: an empty
+		 * `--config.pnpr-server=` and a `pnprServer: null` in the project's
+		 * `pnpm-workspace.yaml` both leave it set. The rest of the directory
+		 * (`rc`, `auth.ini`, the other `config.yaml` keys) is copied as it is,
+		 * so the registry, auth and proxy a real install uses still apply.
+		 */
+		const pnpmConfigHome = Effect.gen(function* () {
+			const located = yield* Run.collect(command("pnpm", ["config", "get", "globalconfig"], scratch), {
+				timeout: PROBE_TIMEOUT,
+			}).pipe(Effect.option);
+			if (Option.isNone(located) || !located.value.succeeded) return undefined;
+			const file = located.value.stdout.trim();
+			if (!path.isAbsolute(file)) return undefined;
+			if (!(yield* fs.exists(file).pipe(Effect.mapError(io(`could not inspect ${file}`))))) return undefined;
+			const text = yield* fs.readFileString(file).pipe(Effect.mapError(io(`could not read ${file}`)));
+			// An empty or unparseable file holds no pnprServer pnpm could read, so nothing needs isolating.
+			const without = YamlFormat.modifyToStringResult(text, ["pnprServer"], undefined);
+			if (Result.isFailure(without) || without.success === text) return undefined;
+			// The real directory, so a symlinked config directory is copied as its contents, not as a link back to it.
+			const from = yield* fs
+				.realPath(path.dirname(file))
+				.pipe(Effect.mapError(io(`could not resolve ${path.dirname(file)}`)));
+			const home = path.join(scratch, "pnpm-config-home");
+			const to = path.join(home, "pnpm");
+			yield* fs.copy(from, to).pipe(Effect.mapError(io(`could not copy pnpm's global config from ${from}`)));
+			const copied = path.join(to, path.basename(file));
+			// The copy keeps a symlinked config.yaml as a link to the user's file: unlink it before writing, so the
+			// write lands in the scratch copy and never in the original.
+			yield* fs.remove(copied, { force: true }).pipe(Effect.mapError(io(`could not replace ${copied}`)));
+			yield* fs.writeFileString(copied, without.success).pipe(Effect.mapError(io(`could not write ${copied}`)));
+			return home;
+		});
+		const pnpmHome = available.some(({ manager }) => manager === "pnpm") ? yield* pnpmConfigHome : undefined;
+
 		const consumers = yield* Effect.forEach(available, ({ manager, version }) =>
 			Effect.gen(function* () {
 				const directory = path.join(scratch, `consumer-${manager}`);
@@ -1407,7 +1459,8 @@ export class PackedInstall {
 						.pipe(Effect.mapError(io(`could not write ${file}`)));
 				}
 				const installTimeout = options.installTimeout ?? DEFAULT_INSTALL_TIMEOUT;
-				const output = yield* Run.collect(command(manager, installArgs(manager), directory), {
+				const isolated = manager === "pnpm" && pnpmHome !== undefined ? { XDG_CONFIG_HOME: pnpmHome } : undefined;
+				const output = yield* Run.collect(command(manager, installArgs(manager), directory, isolated), {
 					timeout: installTimeout,
 				}).pipe(
 					Effect.mapError((cause) =>

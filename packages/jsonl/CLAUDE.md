@@ -25,7 +25,7 @@ devDependency, for the integration suite only. Core `PlatformError` passes
 through every write and read path **untranslated** rather than being wrapped.
 
 **The root never imports `node:*`.** The one platform surface is the
-`./node` subpath (`src/node.ts` → `NodeJournalWatcher`): Node-only, read
+`./node` subpath (`src/node.ts` → `NodeJournalWatcher`, `JournalFile`): Node-only, read
 per entrypoint like `@effected/cli-kit`'s `./ui`. It adds no package — only the
 `node:fs` built-in — so it does not make the package integrated by
 `okf/glossary/library-tier.md`; it does make that entry unusable off Node.
@@ -78,6 +78,16 @@ to the root's `JournalWatcher` instead of carrying a copy.
   exists.
 - **`NodeJournalWatcher`** (`./node`) — `JournalWatcher` over `node:fs`
   `watch`, registered synchronously inside an `acquireRelease`.
+- **`JournalFile`** (`./node`) — the sync, runtime-free reads over `node:fs`:
+  `readFromResult(path, cursor?)` (cursor-resumed, torn tail held back,
+  `reset` on truncate/replace/rewrite, a rewrite seen through the cursor's
+  64-byte `tail`; its decoder keeps a U+FEFF that starts a read, since the
+  file BOM is skipped by offset) and `lastValidResult(events, path,
+  window?)` (`latest`'s windowed read). Offsets are logical, as the
+  service's. Root types in its signatures go through `Jsonl.*` like
+  `node.ts`: a relatively imported class named in a type position puts a
+  second copy (`JournalNotFound_2`) in `node.d.ts`. Tested against real
+  files in `__test__/integration/JournalFile.int.test.ts`.
 - **`Journal`** — a static class: `Journal.Service<Self>()(id, { events,
   config })`, where `config` is a `JournalConfig` or an `Effect` producing one.
   The class carries a static **`layer` value** (one journal however often it is
@@ -113,7 +123,9 @@ to the root's `JournalWatcher` instead of carrying a copy.
   and the watcher's gap read all go through it, so **no read allocates a
   region**. Every tail window is clamped to `MAX_WINDOW` (1 MiB) in the one
   private `readWindow` primitive; only a single line longer than a bound may
-  exceed it.
+  exceed it. Its decoder (and `JournalFile`'s) is `ignoreBOM: true`: the file's
+  BOM is skipped by offset, so a U+FEFF that starts any decode is content, and
+  a default decoder would strip it and shift every offset after it.
 
 ## The envelope contract
 

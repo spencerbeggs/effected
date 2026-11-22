@@ -41,7 +41,7 @@ const CryptoLive = Layer.mergeAll(
 - **`HttpRedaction.cause(cause)`** → `unknown` (pure, sync). Call it wherever an error keeps an HTTP cause: `new MyError({ cause: HttpRedaction.cause(cause) })`. Core's `HttpClientError` keeps the live request, `authorization`, `cookie` and `proxy-authorization` included, as a readable field, and redacts only when rendering (`toJSON`, inspect), so a logger or serializer that walks the error reads the token. An `HttpClientError`, a bare reason, a request or a response comes back as a copy: method, URL (userinfo and sensitive query and fragment values `REDACTED`), status and response headers survive; sensitive header values read `REDACTED`, `set-cookie` and `cookie` are dropped from the response, bodies are dropped, and a nested fetch `TypeError` is rebuilt on its own prototype with its URLs redacted and its `code`/`errno`/`port` kept. Anything else (a `SchemaError`, a `PlatformError`, a plain `Error`) passes through by identity. The pieces are exported too: `HttpRedaction.error`, `.request`, `.response`, `.url(url)` (for a URL kept in a string field), `.text(text)` (URLs and `Bearer`/`Basic`/`token` credentials in free text, scheme in any case, value replaced only when credential-shaped so prose survives; linear time) and `.isSensitiveHeader(name)`.
 - **`CryptoError`** — core's, from `effect/crypto` (`CryptoError.CryptoError`, tag `"CryptoError"`), not exported by this package: route on `reason._tag` (`InvalidKey` for an empty HMAC key), never on `message`. A wiring defect: `Effect.orDie` it. A digest is never a `CryptoError`: core's `Digest` has no typed failure.
 - **`SigV4EncodingError`** — `{ component: "method" | "host" | "path" | "query-key" | "query-value" | "header-name" | "header-value", subject? }`: a lone UTF-16 surrogate in a component that enters the canonical request as text; a string `body` is not checked, since it is hashed as the UTF-8 bytes `fetch` sends. Caller input; recover with `Effect.catchTag("SigV4EncodingError", ...)`.
-- **`SigV4PathError`** — `{ path, segment }`, both required: a SigV4 path with a segment that is exactly `.` or `..`. Caller input, so recover with `Effect.catchTag("SigV4PathError", ...)` into your own bad-input error (as `BlobStore.layerS3` does with `invalidKey`) and let `CryptoError` die; no `reason` branch needed.
+- **`SigV4PathError`** — `{ path, segment }`, both required: a SigV4 path with a segment that is exactly `.` or `..`. Caller input, so recover with `Effect.catchTag("SigV4PathError", ...)` into your own bad-input error (as `S3BlobStore.layer` does with `invalidKey`) and let `CryptoError` die; no `reason` branch needed.
 
 ## Rules the package enforces
 
@@ -79,7 +79,7 @@ const signGet = (credentials: SigV4Credentials, key: string) =>
 
 ## Where it is used
 
-`@effected/webhooks` verifies every signed scheme through `Hmac` and `ConstantTime`. `@effected/github-actions`'s `BlobStore.layerS3` signs its S3 requests with `SigV4`, so there is no AWS SDK in the graph. Reach for it before `node:crypto` (not available on Workers) or a signing library.
+`@effected/webhooks` verifies every signed scheme through `Hmac` and `ConstantTime`. `@effected/github-actions`'s `S3BlobStore.layer` signs its S3 requests with `SigV4`, so there is no AWS SDK in the graph. Reach for it before `node:crypto` (not available on Workers) or a signing library.
 
 ## Not included
 

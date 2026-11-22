@@ -35,10 +35,10 @@ sources:
     title: "Intake's HMAC helpers and its hashed secretsEqual"
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-16T17:04:15Z
+  at: 2026-11-22T05:32:31Z
 integrity:
   generated:
-    body: 6f15e753c612b40a
+    body: 78197c10afb68baa
 ---
 
 # `@effected/crypto`
@@ -103,7 +103,7 @@ SigV4 is pinned to the AWS documented worked examples (the `AKIAIOSFODNN7EXAMPLE
 ## Consumers
 
 - [`npm`](npm.md), [`runtimes`](runtimes.md) and [`jwt`](jwt.md): `HttpRedaction.cause` on every kept HTTP cause.
-- [`github-actions`](github-actions.md): `BlobStore.layerS3` signs with `SigV4`, requiring `Mac.Mac` and `Digest.Digest`, which `ActionRuntime.layer` provides from `NodeCrypto`; `internal/sigv4.ts` is deleted. `OidcTokenIssuer`, the Twirp results client, the S3 `BlobStore` and `ToolInstaller.download` keep HTTP causes through `HttpRedaction.cause`, and `ToolInstallerError.subject` is the URL through `HttpRedaction.url`.
+- [`github-actions`](github-actions.md): `S3BlobStore.layer` signs with `SigV4`, requiring `Mac.Mac` and `Digest.Digest`, which `ActionRuntime.layer` provides from `NodeCrypto`; `internal/sigv4.ts` is deleted. `OidcTokenIssuer`, the Twirp results client, the S3 `BlobStore` and `ToolInstaller.download` keep HTTP causes through `HttpRedaction.cause`, and `ToolInstallerError.subject` is the URL through `HttpRedaction.url`.
 - [`webhooks`](webhooks.md): every preset verifies through `Hmac` and `ConstantTime`, so every preset requires `Mac.Mac`.
 - `savvy-web/build` intake: its S3 archive signs with `SigV4`, replacing `src/s3/SigV4.ts`, and its verifiers move onto `webhooks`. Its content-hash delivery ids can move onto `Hash.digest`, replacing `src/vendors/hash.ts`.
 

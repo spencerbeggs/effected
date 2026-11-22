@@ -77,7 +77,10 @@ export interface LinePage {
 
 const EMPTY: Uint8Array = new Uint8Array(0);
 
-const decoder = new TextDecoder();
+// `ignoreBOM`: a U+FEFF that starts a decode is content, never stripped. The file's own BOM is skipped by starting
+// the read past it (`bomBytes`); a default decoder also dropped a U+FEFF opening any later line a read started on,
+// leaving the text three bytes short and every offset after it in that read wrong.
+const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
 /** Join byte chunks with one allocation. */
 const join = (chunks: ReadonlyArray<Uint8Array>): Uint8Array => {

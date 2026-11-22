@@ -101,6 +101,27 @@ if (Option.isSome(state)) {
 }
 ```
 
+To read the file itself with no runtime, use `JournalFile` from `@effected/jsonl/node` rather than hand-rolling `readSync` around `Line` and `Envelope`. `JournalFile.lastValidResult(events, path)` reads the way the service's `latest` does (bounded windows back from the end, widening only while none holds a valid envelope). `JournalFile.readFromResult(path, cursor?)` returns the complete lines appended since a saved `JournalCursor`, holds back a torn tail, and reads from the start with `reset: "truncated" | "replaced" | "rewritten"` when the file shrank, was renamed over or was rewritten in place. Both return a `Result` (`JournalNotFound` or the untranslated `PlatformError`) and never throw. The cursor is a plain JSON record whose `end` is the service's own logical byte offset:
+
+```ts
+import type { JournalCursor } from "@effected/jsonl/node";
+import { JournalFile } from "@effected/jsonl/node";
+import { Result } from "effect";
+
+declare const saved: JournalCursor | undefined; // what the last run persisted
+
+const read = JournalFile.readFromResult(".claude/dogfood/mailbox.jsonl", saved);
+if (Result.isSuccess(read)) {
+  // Every reset but "none" reads from offset 0, replaying lines already seen:
+  // drop the state built from earlier reads first, or it is applied twice.
+  if (read.success.reset !== "none") {
+    // reset whatever you derived from earlier lines
+  }
+  read.success.lines;  // every complete line from where the read started, in order
+  read.success.cursor; // persist for the next run
+}
+```
+
 ## Testing machinery
 
 No exported test layer — a journal requires a real `FileSystem`, so tests provide `@effected/memfs`. The package's own `__test__/helpers/memfs.ts` is the pattern to copy: an `@effected/memfs` handle whose storage, inodes and `O_APPEND` are memfs's own, with faults layered on for the seams a journal test needs — a `JournalWatcher` double over a manual registry provided alongside it (`poke(path)` drives watch events deterministically; `holdNextWatch(target)` holds a watch between its `stat` and its registration, to land a write in the arming window), write and read gates to assert ordering without wall-clock timing, `replace` to model a new inode, and `readRequests()` to assert read sizes. Fault handlers (`failTimes`, per-method interception) model `NotFound`, `PermissionDenied` and a file vanishing mid-operation. Real-filesystem behavior (`O_APPEND` under concurrency, an actual `fs.watch`) belongs in an integration suite against real temp directories, with `NodeJournalWatcher.layer` provided.

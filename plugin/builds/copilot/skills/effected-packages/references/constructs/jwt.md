@@ -10,7 +10,7 @@
 | `JoseHeader` | Variable + TypeAlias | A decoded `(JoseHeader:variable)`. | decoded jws protected header, alg kid typ |
 | `Jwk` | Variable + TypeAlias | A decoded `(Jwk:variable)`. | json web key schema, rsa or p-256 key from a jwks, private members redacted |
 | `Jwks` | Variable + TypeAlias | A decoded `(Jwks:variable)`. | json web key set schema, decode an issuer's published keys |
-| `JwksResolver` | Class | Resolves the verification key for a token from its issuer's JWKS. | fetch and cache an issuer's jwks by oidc discovery, verification key by kid, key rotation |
+| `JwksResolver` | Class | Resolves the verification key for a token from its issuer's JWKS. | fetch and cache an issuer's jwks by oidc discovery, verification key by kid, key rotation, uncoalesced mode safe to share between requests on cloudflare workers |
 | `JwksResolverOptions` | Interface | Options for `(JwksResolver:class).layerWith`. | |
 | `JwksResolverShape` | Interface | The operations of a `(JwksResolver:class)`. | |
 | `JwksStore` | Class | Where `(JwksResolver:class)` caches each issuer's key set. | cache seam for fetched jwks, kv or in-memory, share keys across worker isolates |
@@ -20,10 +20,10 @@
 | `JwtAlgorithm` | TypeAlias | The signature algorithms this package signs and verifies with: every asymmetric JWS algorithm core `effect/jose` implements (`RS256`-`RS512`, `PS256`-`PS512`, `ES256`-`ES512` and `EdDSA` over Ed25519). | |
 | `JwtError` | Class | The one error `@effected/jwt` fails with. | typed jwt failure routed by reason, expired, bad signature, wrong audience |
 | `JwtErrorReason` | Variable + TypeAlias | The reason union carried by `JwtError`. | every reason a jwt operation fails, for routing on reason |
-| `JwtKey` | Class | Importers and a generator for `SigningKey` and `VerificationKey`. | import a pem private key pkcs1 or pkcs8, import a jwk, generate a test key pair |
+| `JwtKey` | Class | Importers and a generator for `SigningKey` and `VerificationKey`. | import a pem private key pkcs1 or pkcs8, import a jwk, generate a test key pair, derive the verification key from a signing key |
 | `RegisteredClaims` | Variable + TypeAlias | A decoded `(RegisteredClaims:variable)`. | standard jwt claims iss sub aud exp nbf iat jti |
 | `SigningKey` | TypeAlias | A private key that signs, bound to the one algorithm it was imported for. | an imported private key with its algorithm, for signing |
-| `TestIssuer` | Class | A network-free OIDC issuer for consumer tests: sign tokens with `TestIssuerShape.sign`, and verify them through the real `JwksResolver` by providing `TestIssuerShape.resolverLayer`. | from `@effected/jwt/testing` — network-free test oidc issuer, sign test tokens verified through the real resolver |
+| `TestIssuer` | Class | A network-free OIDC issuer for consumer tests: sign tokens with `TestIssuerShape.sign`, and verify them through the real `JwksResolver` by providing `TestIssuerShape.resolverLayer`. | from `@effected/jwt/testing` — network-free test oidc issuer, sign test tokens verified through the real resolver, resolver options such as uncoalesced for workers |
 | `TestIssuerShape` | Interface | A test issuer: a generated key pair, its JWKS and discovery document served by an in-memory `HttpClient`, and a signer. | from `@effected/jwt/testing` |
 | `VerificationKey` | TypeAlias | A public key that verifies, bound to the one algorithm it was imported for. | an imported public key with its algorithm, for verifying |
 | `VerifyOptions` | Interface | Options for `(Jwt:class).verify`. | |

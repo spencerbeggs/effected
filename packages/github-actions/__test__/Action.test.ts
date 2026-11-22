@@ -373,7 +373,7 @@ describe("Action.run", () => {
 		assert.strictEqual(ActionRuntime.layer, ActionRuntime.layer);
 	});
 
-	it.effect("provides a working Mac, which BlobStore.layerS3 signs with", () =>
+	it.effect("provides a working Mac, which S3BlobStore.layer signs with", () =>
 		Effect.gen(function* () {
 			// RFC 4231 test case 2: key "Jefe", data "what do ya want for nothing?".
 			const encoder = new TextEncoder();
