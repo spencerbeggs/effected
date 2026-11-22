@@ -104,6 +104,30 @@ const EXPANSION_SQUOTE = 11;
  */
 const EXPANSION_ANSIC = 12;
 
+// The fields of one frame on `scanNested`'s stack, `FRAME` int32s apart.
+/** The frame's kind. */
+const F_KIND = 0;
+/** Where the frame's opener starts. */
+const F_START = 1;
+/** Where the frame's body starts. */
+const F_OPEN = 2;
+/** The index into `entries` the frame records into, or -1. */
+const F_RECORD = 3;
+/** 1 when the frame raised `substDepth` (only real substitution frames do). */
+const F_COUNTED = 4;
+/**
+ * 1 when the frame sits in double quotes: a `"` frame does, command text does
+ * not, and an expansion or quoted-run frame inherits it.
+ */
+const F_QUOTED = 5;
+/**
+ * For a `"…"` frame directly inside an expansion frame: 1 once it has met a
+ * literal `$`, an escaped `$` or an escaped backtick, 0 until then. -1 for
+ * every other frame.
+ */
+const F_LITERAL = 6;
+const FRAME = 7;
+
 /** Whether `kind` is a frame inside which a quoted run is still expanded. */
 const expandsQuotes = (kind: number): boolean =>
 	kind === BRACE || kind === ARITH_SUBST || kind === ARITH_GROUP || kind === ARITH_PAREN || kind === ARITH_BRACKET;
@@ -334,21 +358,42 @@ export const scanNested = (
 	root: NestedRoot,
 	inDoubleQuotes = false,
 ): NestedScan => {
-	const kinds: Array<number> = [root];
-	// Where each frame's opener starts, and where its body starts.
-	const starts: Array<number> = [start];
-	const opens: Array<number> = [start];
-	// Index into `entries` a frame records into, or -1.
-	const records: Array<number> = [-1];
-	// Whether the frame raised `substDepth` (only real substitution frames do).
-	const counted: Array<boolean> = [false];
-	// Whether the frame sits in double quotes: a `"` frame does, command text
-	// does not, and an expansion or quoted-run frame inherits it.
-	const quotedContext: Array<boolean> = [inDoubleQuotes && root !== SUBST && root !== BACKTICK];
-	// For a `"…"` frame directly inside an expansion frame: 1 once it has met a
-	// literal `$`, an escaped `$` or an escaped backtick, 0 until then. -1 for
-	// every other frame.
-	const literals: Array<number> = [-1];
+	// The frame stack: `FRAME` int32 fields per frame (`F_*`), `depth` frames
+	// deep. A megabyte of openers is a stack of millions of frames, all live
+	// until the scan ends; held in JS arrays they were most of the scan's
+	// allocation and grew its GC cost faster than the input (#1387). A typed
+	// array's contents sit off the JS heap, where the collector never traces
+	// them.
+	let frames = new Int32Array(FRAME * 16);
+	let depth = 0;
+	const kindAt = (at: number): number => frames[at * FRAME + F_KIND] as number;
+	const topKind = (): number => kindAt(depth - 1);
+	const field = (at: number, offset: number): number => frames[at * FRAME + offset] as number;
+	const frame = (
+		kind: number,
+		at: number,
+		bodyStart: number,
+		record: number,
+		raises: boolean,
+		quotedHere: boolean,
+		literal: number,
+	): void => {
+		if ((depth + 1) * FRAME > frames.length) {
+			const grown = new Int32Array(frames.length * 2);
+			grown.set(frames);
+			frames = grown;
+		}
+		const base = depth * FRAME;
+		frames[base + F_KIND] = kind;
+		frames[base + F_START] = at;
+		frames[base + F_OPEN] = bodyStart;
+		frames[base + F_RECORD] = record;
+		frames[base + F_COUNTED] = raises ? 1 : 0;
+		frames[base + F_QUOTED] = quotedHere ? 1 : 0;
+		frames[base + F_LITERAL] = literal;
+		depth += 1;
+	};
+	frame(root, start, start, -1, false, inDoubleQuotes && root !== SUBST && root !== BACKTICK, -1);
 	const entries: Array<Entry> = [];
 	const quoted: Array<RawSpan> = [];
 	const closers: Array<RawSpan> = [];
@@ -375,29 +420,26 @@ export const scanNested = (
 				raises = true;
 			}
 		}
-		const inherits = quotedContext[quotedContext.length - 1] as boolean;
-		literals.push(kind === DQUOTE && expandsQuotes(kinds[kinds.length - 1] as number) ? 0 : -1);
-		kinds.push(kind);
-		starts.push(at);
-		opens.push(at + opener);
-		records.push(record);
-		counted.push(raises);
-		quotedContext.push(
+		const inherits = field(depth - 1, F_QUOTED) === 1;
+		frame(
+			kind,
+			at,
+			at + opener,
+			record,
+			raises,
 			kind === DQUOTE ? true : kind === SUBST || kind === GROUP || kind === BACKTICK ? false : inherits,
+			kind === DQUOTE && expandsQuotes(topKind()) ? 0 : -1,
 		);
 	};
 
 	// Pop the top frame, whose closer ends at `closerEnd`. Returns true when
 	// the root itself closed.
 	const pop = (closerEnd: number): boolean => {
-		const kind = kinds.pop() as number;
-		starts.pop();
-		opens.pop();
-		const record = records.pop() as number;
-		const raised = counted.pop() as boolean;
-		quotedContext.pop();
-		literals.pop();
-		if (kinds.length === 0) return true;
+		depth -= 1;
+		const kind = kindAt(depth);
+		const record = field(depth, F_RECORD);
+		const raised = field(depth, F_COUNTED) === 1;
+		if (depth === 0) return true;
 		if (raised) substDepth -= 1;
 		const entry = record === -1 ? undefined : entries[record];
 		if (entry !== undefined) {
@@ -409,23 +451,23 @@ export const scanNested = (
 
 	// A `'` at `i`: an ordinary single quote, or one bash expands inside.
 	const singleQuote = (): void => {
-		push(expandsQuotes(kinds[kinds.length - 1] as number) ? EXPANSION_SQUOTE : SQUOTE, i, 1);
+		push(expandsQuotes(topKind()) ? EXPANSION_SQUOTE : SQUOTE, i, 1);
 		i += 1;
 	};
 
 	// The quoted run on top of the stack closed just before `end`.
 	const closeQuotedRun = (end: number): void => {
-		const at = kinds.length - 1;
+		const at = depth - 1;
 		if (!recordsQuoted || substDepth !== 0) return;
-		const from = opens[at] as number;
+		const from = field(at, F_OPEN);
 		if (
 			holdsDollarOrBacktick(source, from, end - 1) ||
-			(kinds[at] === EXPANSION_ANSIC && ansiCRunHoldsOpener(source, from, end - 1))
+			(kindAt(at) === EXPANSION_ANSIC && ansiCRunHoldsOpener(source, from, end - 1))
 		) {
-			quoted.push({ start: starts[at] as number, end });
+			quoted.push({ start: field(at, F_START), end });
 		}
-		if (quotedContext[at] === true && posixReadingDiffers(source, from, end - 1)) {
-			closers.push({ start: starts[at] as number, end });
+		if (field(at, F_QUOTED) === 1 && posixReadingDiffers(source, from, end - 1)) {
+			closers.push({ start: field(at, F_START), end });
 		}
 	};
 
@@ -440,14 +482,15 @@ export const scanNested = (
 	// A literal or escaped `$`, or an escaped backtick, inside the `"…"` frame
 	// on top of the stack.
 	const literalInDoubleQuotes = (): void => {
-		const at = literals.length - 1;
-		if (literals[at] === 0) literals[at] = 1;
+		const slot = (depth - 1) * FRAME + F_LITERAL;
+		if (frames[slot] === 0) frames[slot] = 1;
 	};
 
 	// The `"…"` frame on top of the stack closed just before `end`.
 	const closeDoubleQuotedRun = (end: number): void => {
-		const at = kinds.length - 1;
-		if (literals[at] === 1 && recordsQuoted && substDepth === 0) quoted.push({ start: starts[at] as number, end });
+		const at = depth - 1;
+		if (field(at, F_LITERAL) === 1 && recordsQuoted && substDepth === 0)
+			quoted.push({ start: field(at, F_START), end });
 	};
 
 	// `$` inside a body: open whatever it introduces.
@@ -473,7 +516,7 @@ export const scanNested = (
 			push(ARITH_BRACKET, i, opener);
 			i = open + 1;
 		} else if (next === "'" && allowAnsiC) {
-			push(expandsQuotes(kinds[kinds.length - 1] as number) ? EXPANSION_ANSIC : ANSIC, i, opener);
+			push(expandsQuotes(topKind()) ? EXPANSION_ANSIC : ANSIC, i, opener);
 			i = open + 1;
 		} else {
 			// A bare `$` before an escaped `(` in a frame bash reads again:
@@ -485,7 +528,7 @@ export const scanNested = (
 				next === "\\" &&
 				open + 1 < limit &&
 				source[open + 1] === "(" &&
-				expandsQuotes(kinds[kinds.length - 1] as number) &&
+				expandsQuotes(topKind()) &&
 				recordsQuoted &&
 				substDepth === 0
 			) {
@@ -512,7 +555,7 @@ export const scanNested = (
 	};
 
 	while (i < limit) {
-		const top = kinds[kinds.length - 1] as number;
+		const top = topKind();
 		const c = source[i] as string;
 		if (top === SQUOTE || top === EXPANSION_SQUOTE) {
 			const close = source.indexOf("'", i);
@@ -637,13 +680,13 @@ export const scanNested = (
 					} else if (i + 1 < limit && source[i + 1] === ")") {
 						i += 2;
 						if (pop(i)) return finish(i, true, false);
-					} else if (kinds.length === 1 && top === ARITH_GROUP) {
+					} else if (depth === 1 && top === ARITH_GROUP) {
 						return finish(i + 1, false, true);
 					} else {
 						// `$( (…) …)` or `( (…) …)`: the `)` closed the inner parenthesis.
-						kinds[kinds.length - 1] = top === ARITH_SUBST ? SUBST : GROUP;
-						quotedContext[quotedContext.length - 1] = false;
-						if (kinds.length === 1) rootArithmetic = false;
+						frames[(depth - 1) * FRAME + F_KIND] = top === ARITH_SUBST ? SUBST : GROUP;
+						frames[(depth - 1) * FRAME + F_QUOTED] = 0;
+						if (depth === 1) rootArithmetic = false;
 						i += 1;
 					}
 					break;
@@ -687,7 +730,7 @@ export const scanNested = (
 				dollar(true, false);
 				break;
 			case "#":
-				if (isCommentStart(source, i, opens[opens.length - 1] as number)) {
+				if (isCommentStart(source, i, field(depth - 1, F_OPEN))) {
 					const newline = source.indexOf("\n", i);
 					i = newline === -1 || newline >= limit ? limit : newline;
 				} else i += 1;
@@ -732,7 +775,7 @@ export const scanNested = (
 				}
 				break;
 			default:
-				if (isNameStart(c) && isCommentStart(source, i, opens[opens.length - 1] as number)) {
+				if (isNameStart(c) && isCommentStart(source, i, field(depth - 1, F_OPEN))) {
 					// A word starting `NAME[`: read its subscript as a bracket
 					// span, so a `<<` inside it opens no heredoc. Name characters
 					// are not special here, so skipping the name is safe.
