@@ -378,20 +378,27 @@ const make = (options: JwksResolverOptions) =>
 				let held = Option.none<CachedJwks>();
 				if (!superseded) {
 					held = yield* swallow(store.get(issuer), Option.none<CachedJwks>());
-					// The store follows the same rule: never replace a newer set another isolate stored, and
-					// re-check after the read, which suspends, in case a later fetch here was kept meanwhile.
-					// Across isolates the store offers no conditional write, so two isolates can still race
+					// The store follows the same rule, without waiting on anyone: write the newest set this resolver
+					// holds, and write again if a later fetch here was kept while that write was in flight, so the
+					// newest set is the last one this resolver writes. Never replace a newer set another isolate
+					// stored. Across isolates the store offers no conditional write, so two isolates can still race
 					// get and set; the TTL bounds how long a lost race lasts.
-					const storeIsNewer = Option.isSome(held) && held.value.fetchedAtMillis > fetched.fetchedAtMillis;
-					if (!storeIsNewer && issuers.get(issuer)?.last === fetched) {
-						yield* swallow(store.set(issuer, fetched, ttl), undefined);
+					let written: CachedJwks | undefined;
+					for (let round = 0; round < 4; round += 1) {
+						const target = issuers.get(issuer)?.last;
+						if (target === undefined || target === written) break;
+						if (Option.isSome(held) && held.value.fetchedAtMillis > target.fetchedAtMillis) break;
+						yield* swallow(store.set(issuer, target, ttl), undefined);
+						written = target;
 					}
 				}
 				// Select from the newest set known now, never from this fetch alone: a key a newer set has
-				// dropped must not resolve because an older fetch happened to finish last.
+				// dropped must not resolve because an older fetch happened to finish last. Freshness is read
+				// again, since the fetch and the store calls took time: a set past its TTL is not trusted.
+				const after = yield* Clock.currentTimeMillis;
 				const fresh = yield* matchIn(
-					Option.filter(held, (entry) => now - entry.fetchedAtMillis < ttlMillis),
-					issuers.get(issuer)?.last ?? fetched,
+					Option.filter(held, (entry) => after - entry.fetchedAtMillis < ttlMillis),
+					lastFor(issuer, after),
 					header,
 				);
 				return Option.isSome(fresh) ? fresh.value : yield* unknownKid(header);

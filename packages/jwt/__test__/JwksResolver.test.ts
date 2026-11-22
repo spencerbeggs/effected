@@ -887,3 +887,76 @@ layer(CryptoLive, { buildPerTest: true })("JwksResolver overlapping uncoalesced 
 		}),
 	);
 });
+
+layer(CryptoLive, { buildPerTest: true })("JwksResolver uncoalesced, after a slow fetch", (it) => {
+	it.effect("a fetch that outlasts the newer set's TTL does not select from a set past it", () =>
+		Effect.gen(function* () {
+			const a = yield* generate("a");
+			const late = yield* Deferred.make<void>();
+			const http = jwksSequence([[a.jwk], [a.jwk]], new Map([[1, late]]));
+			const resolver = JwksResolver.layerWith({ coalesce: false, ttl: "1 second" }).pipe(
+				Layer.provide(Layer.mergeAll(http.layer, forgetful)),
+			);
+			const program = Effect.gen(function* () {
+				const slow = yield* Effect.forkChild(reasonOf(verify(yield* Jws.sign({}, a.signing))));
+				yield* settle;
+				yield* verify(yield* Jws.sign({}, a.signing));
+				// Both sets are now past the 1 second TTL by the time the slow fetch answers.
+				yield* TestClock.adjust(Duration.seconds(2));
+				yield* Deferred.succeed(late, undefined);
+				assert.strictEqual(yield* Fiber.join(slow), "unknownKid", "no set past its TTL is trusted");
+			});
+			yield* Effect.provide(program, resolver);
+		}),
+	);
+
+	it.effect("an older store write that lands after the newer one is followed by the newer set again", () =>
+		Effect.gen(function* () {
+			const [a, b] = [yield* generate("a"), yield* generate("b")];
+			const aHeld = yield* Deferred.make<void>();
+			const bHeld = yield* Deferred.make<void>();
+			const writeHeld = yield* Deferred.make<void>();
+			const http = jwksSequence(
+				[[a.jwk], [a.jwk, b.jwk]],
+				new Map([
+					[1, aHeld],
+					[2, bHeld],
+				]),
+			);
+			// A shared in-memory store whose first write is held until released, landing after the second.
+			const memory = yield* Effect.provide(Effect.service(JwksStore), JwksStore.layerMemory);
+			let writes = 0;
+			const store = Layer.succeed(JwksStore, {
+				get: memory.get,
+				set: (issuer, value, ttl) =>
+					Effect.gen(function* () {
+						writes += 1;
+						if (writes === 1) yield* Deferred.await(writeHeld);
+						yield* memory.set(issuer, value, ttl);
+					}),
+			});
+			const program = Effect.gen(function* () {
+				const first = yield* Effect.forkChild(verify(yield* Jws.sign({}, a.signing)));
+				yield* settle;
+				const second = yield* Effect.forkChild(verify(yield* Jws.sign({}, b.signing)));
+				yield* settle;
+				// The first fetch answers and starts writing [a]; its write is held.
+				yield* Deferred.succeed(aHeld, undefined);
+				yield* settle;
+				// The second fetch, which started later, answers and writes [a, b].
+				yield* Deferred.succeed(bHeld, undefined);
+				yield* Fiber.join(second);
+				// The held write of [a] now lands last.
+				yield* Deferred.succeed(writeHeld, undefined);
+				yield* Fiber.join(first);
+				const stored = yield* memory.get(ISSUER);
+				assert.strictEqual(
+					Option.isSome(stored) ? stored.value.jwks.keys.length : -1,
+					2,
+					"the newer set is written again after the older write lands",
+				);
+			});
+			yield* Effect.provide(program, uncoalesced(http.layer, store));
+		}),
+	);
+});

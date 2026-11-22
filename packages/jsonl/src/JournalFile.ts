@@ -193,14 +193,10 @@ const withFile = <A>(
 	}
 };
 
-/** The last {@link TAIL_BYTES} bytes before logical `end`, base64. */
-const tailAt = (fd: number, bom: number, end: number): string =>
-	Buffer.from(readAt(fd, bom + Math.max(0, end - TAIL_BYTES), bom + end)).toString("base64");
+const toBase64 = (bytes: Uint8Array): string => Buffer.from(bytes).toString("base64");
 
 /** Where a read with `cursor` starts in a file now at logical `size`, and why. */
 const startOf = (
-	fd: number,
-	bom: number,
 	size: number,
 	identity: string,
 	mtime: string,
@@ -212,8 +208,6 @@ const startOf = (
 	if (cursor.identity !== identity) return { from: 0, reset: "replaced" };
 	if (size < cursor.size || size < cursor.end) return { from: 0, reset: "truncated" };
 	if (size === cursor.size && mtime !== cursor.mtime) return { from: 0, reset: "rewritten" };
-	// The bytes just before `end` are the ones the cursor saw, or the content under it moved.
-	if (tailAt(fd, bom, cursor.end) !== cursor.tail) return { from: 0, reset: "rewritten" };
 	return { from: cursor.end, reset: "none" };
 };
 
@@ -337,17 +331,26 @@ export class JournalFile {
 			const size = physical - bom;
 			const identity = `${info.dev}:${info.ino}`;
 			const mtime = `${info.mtimeNs}`;
-			const { from, reset } = startOf(fd, bom, size, identity, mtime, cursor);
-			// One read serves the lines and the cursor's tail, reaching back up to TAIL_BYTES before `from`, so the
-			// two can never describe different bytes when a writer rewrites the file between reads.
-			const back = Math.min(from, TAIL_BYTES);
-			const buffer = readAt(fd, bom + from - back, physical);
+			const start = startOf(size, identity, mtime, cursor);
+			let { from, reset } = start;
+			// One read serves the resume check, the lines and the new cursor's tail: it reaches back up to TAIL_BYTES
+			// before `from`, which on a resume are exactly the bytes the cursor kept, so the check and the lines can
+			// never describe different bytes when a writer rewrites the file between reads.
+			let back = Math.min(from, TAIL_BYTES);
+			let buffer = readAt(fd, bom + from - back, physical);
+			if (reset === "none" && cursor !== undefined && toBase64(buffer.subarray(0, back)) !== cursor.tail) {
+				// The content under the cursor moved: read again from the start.
+				from = 0;
+				reset = "rewritten";
+				back = 0;
+				buffer = readAt(fd, bom, physical);
+			}
 			const bytes = buffer.subarray(back);
 			const complete = bytes.lastIndexOf(LF) + 1;
 			const lines = complete === 0 ? [] : Line.split(decoder.decode(bytes.subarray(0, complete)), from);
 			const end = from + complete;
 			const tailEnd = back + complete;
-			const tail = Buffer.from(buffer.subarray(Math.max(0, tailEnd - TAIL_BYTES), tailEnd)).toString("base64");
+			const tail = toBase64(buffer.subarray(Math.max(0, tailEnd - TAIL_BYTES), tailEnd));
 			return { lines, cursor: { end, size, identity, mtime, tail }, reset };
 		});
 	}
