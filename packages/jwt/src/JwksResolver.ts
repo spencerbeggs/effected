@@ -50,8 +50,10 @@ export interface JwksResolverOptions {
 	 * in the isolate hangs too.
 	 *
 	 * With `false`, no caller ever waits on work another caller started: each
-	 * miss fetches for itself, and the last fetch to finish is kept, never an
-	 * older one over a newer. A caller with no usable key set always fetches;
+	 * miss fetches for itself. Of overlapping fetches the one that started last
+	 * is kept, whichever finishes last, and every caller selects its key from
+	 * the newest set held, so a key a newer set dropped never resolves from an
+	 * older fetch. A caller with no usable key set always fetches;
 	 * `minRefetchInterval` throttles only the refetch an unknown `kid` triggers
 	 * once a set is held, answering `unknownKid` at once rather than waiting.
 	 * Use `false` for a resolver shared between requests on Workers, over a
@@ -236,7 +238,14 @@ const make = (options: JwksResolverOptions) =>
 		// issuer's lock. Without it, callers interleave between yields, so every
 		// write re-reads the entry first: `lastAttemptMillis` never moves back and
 		// `last` only ever moves to a newer fetch.
-		const issuers = new Map<string, { readonly lastAttemptMillis: number; readonly last: CachedJwks | undefined }>();
+		// `lastSeq` is the start order of the fetch that produced `last`: uncoalesced
+		// fetches can share a millisecond, so their order is the order they started,
+		// not their timestamps.
+		const issuers = new Map<
+			string,
+			{ readonly lastAttemptMillis: number; readonly last: CachedJwks | undefined; readonly lastSeq: number }
+		>();
+		let attempts = 0;
 		const locks = new Map<string, Semaphore.Semaphore>();
 		const lockFor = (issuer: string) => {
 			let lock = locks.get(issuer);
@@ -347,30 +356,44 @@ const make = (options: JwksResolverOptions) =>
 						? unknownKid(header)
 						: fetchFailed("the JWKS could not be fetched, and the refetch interval has not passed");
 				}
+				attempts += 1;
+				const seq = attempts;
+				const before = issuers.get(issuer);
 				issuers.set(issuer, {
-					lastAttemptMillis: Math.max(now, issuers.get(issuer)?.lastAttemptMillis ?? Number.NEGATIVE_INFINITY),
-					last: issuers.get(issuer)?.last ?? state?.last,
+					lastAttemptMillis: Math.max(now, before?.lastAttemptMillis ?? Number.NEGATIVE_INFINITY),
+					last: before?.last ?? state?.last,
+					lastSeq: before?.lastSeq ?? 0,
 				});
 				const jwks = yield* fetchJwks(issuer);
 				const fetched: CachedJwks = { jwks, fetchedAtMillis: now };
+				// Newest wins, by start order: a fetch that started later is kept over this one even when this
+				// one finishes last, and even within the same millisecond.
 				const current = issuers.get(issuer);
+				const superseded = current?.last !== undefined && current.lastSeq > seq;
 				issuers.set(issuer, {
 					lastAttemptMillis: Math.max(now, current?.lastAttemptMillis ?? Number.NEGATIVE_INFINITY),
-					last:
-						current?.last !== undefined && current.last.fetchedAtMillis > fetched.fetchedAtMillis
-							? current.last
-							: fetched,
+					last: superseded ? current.last : fetched,
+					lastSeq: superseded ? current.lastSeq : seq,
 				});
-				// The store follows the same newest-wins rule as `last`: an older fetch that finished last
-				// (uncoalesced, during a rotation) must not replace a newer set in a store other isolates read,
-				// nor overwrite a newer set another isolate already stored there.
-				if (issuers.get(issuer)?.last === fetched) {
-					const held = yield* swallow(store.get(issuer), Option.none<CachedJwks>());
-					if (Option.isNone(held) || held.value.fetchedAtMillis <= fetched.fetchedAtMillis) {
+				let held = Option.none<CachedJwks>();
+				if (!superseded) {
+					held = yield* swallow(store.get(issuer), Option.none<CachedJwks>());
+					// The store follows the same rule: never replace a newer set another isolate stored, and
+					// re-check after the read, which suspends, in case a later fetch here was kept meanwhile.
+					// Across isolates the store offers no conditional write, so two isolates can still race
+					// get and set; the TTL bounds how long a lost race lasts.
+					const storeIsNewer = Option.isSome(held) && held.value.fetchedAtMillis > fetched.fetchedAtMillis;
+					if (!storeIsNewer && issuers.get(issuer)?.last === fetched) {
 						yield* swallow(store.set(issuer, fetched, ttl), undefined);
 					}
 				}
-				const fresh = yield* select(jwks, header);
+				// Select from the newest set known now, never from this fetch alone: a key a newer set has
+				// dropped must not resolve because an older fetch happened to finish last.
+				const fresh = yield* matchIn(
+					Option.filter(held, (entry) => now - entry.fetchedAtMillis < ttlMillis),
+					issuers.get(issuer)?.last ?? fetched,
+					header,
+				);
 				return Option.isSome(fresh) ? fresh.value : yield* unknownKid(header);
 			});
 

@@ -33,7 +33,13 @@ export interface JwksStoreShape {
  * whose isolates do not share memory, backs it with KV or the Cache API
  * instead, and shares the resolver built over it between requests only with
  * `JwksResolver.layerWith({ coalesce: false })`: the default resolver makes
- * one request wait on another's fetch, which workerd does not allow. A store's own failures must be swallowed by the store (a miss on
+ * one request wait on another's fetch, which workerd does not allow.
+ *
+ * The resolver never writes an older set over a newer one it can see, but the
+ * store has no conditional write: two isolates that fetch at once can still
+ * race their read and write, and the older set can land last. The newer set
+ * then returns at the next refetch, and the TTL bounds how long a stale set is
+ * trusted. A store's own failures must be swallowed by the store (a miss on
  * `get`, a no-op on `set`): a cache must never fail a verification. The
  * resolver also guards against a store that fails or dies anyway.
  *

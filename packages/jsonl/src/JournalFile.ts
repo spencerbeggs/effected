@@ -338,11 +338,17 @@ export class JournalFile {
 			const identity = `${info.dev}:${info.ino}`;
 			const mtime = `${info.mtimeNs}`;
 			const { from, reset } = startOf(fd, bom, size, identity, mtime, cursor);
-			const bytes = readAt(fd, bom + from, physical);
+			// One read serves the lines and the cursor's tail, reaching back up to TAIL_BYTES before `from`, so the
+			// two can never describe different bytes when a writer rewrites the file between reads.
+			const back = Math.min(from, TAIL_BYTES);
+			const buffer = readAt(fd, bom + from - back, physical);
+			const bytes = buffer.subarray(back);
 			const complete = bytes.lastIndexOf(LF) + 1;
 			const lines = complete === 0 ? [] : Line.split(decoder.decode(bytes.subarray(0, complete)), from);
 			const end = from + complete;
-			return { lines, cursor: { end, size, identity, mtime, tail: tailAt(fd, bom, end) }, reset };
+			const tailEnd = back + complete;
+			const tail = Buffer.from(buffer.subarray(Math.max(0, tailEnd - TAIL_BYTES), tailEnd)).toString("base64");
+			return { lines, cursor: { end, size, identity, mtime, tail }, reset };
 		});
 	}
 
