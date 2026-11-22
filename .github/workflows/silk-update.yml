@@ -33,7 +33,7 @@ jobs:
           fetch-depth: 0
       - name: Setup Runtime
         id: runtime
-        uses: savvy-web/silk-runtime-action@v1
+        uses: savvy-web/silk-runtime-action@v2
         with:
           ignore-scripts: true
       - name: Update Config Dependencies

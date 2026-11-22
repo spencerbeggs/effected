@@ -27,7 +27,7 @@ jobs:
 
       - name: Setup runtime
         id: runtime
-        uses: savvy-web/silk-runtime-action@v1
+        uses: savvy-web/silk-runtime-action@v2
 
       # No paths filter: the site build reaches through the whole workspace.
       # Its turbo task depends on the packages' build:prod api-extractor models,

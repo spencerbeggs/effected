@@ -72,7 +72,7 @@ jobs:
 
       - name: Setup Runtime
         id: runtime
-        uses: savvy-web/silk-runtime-action@v1
+        uses: savvy-web/silk-runtime-action@v2
 
       - name: Check the catalog
         id: catalog-check
