@@ -1,5 +1,15 @@
 # @effected/bundler
 
+## 0.7.2
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/env | dependency | updated | 0.12.0 | 0.12.0 |
+| @effected/jsonl | dependency | updated | 0.19.0 | 0.20.0 |
+| @effected/workspaces | dependency | updated | 0.49.0 | 0.49.1 |
+
 ## 0.7.1
 
 ### Dependencies

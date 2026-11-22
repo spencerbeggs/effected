@@ -1,5 +1,16 @@
 # @effected/ai-plugins
 
+## 0.53.3
+
+### Documentation
+
+- The Actions skills and the `effected-packages` references name the S3 blob backend `S3BlobStore.layer`, and teach `OidcTokenIssuer.recording()` without claims, `JwksResolver.layerUncoalesced` and `TestIssuer.make`'s `resolver` option
+- Upgrade-ledger entries 0038 to 0041: `BlobStore.layerS3` became `S3BlobStore.layer`; `JwksResolver.layerUncoalesced`, `TestIssuer.make`'s `resolver` and `JwtKey.verificationOf`; `JournalFile`; and `OidcTokenIssuer.recording()` without claims
+
+* The `effected-packages` `@effected/jsonl` reference and construct index teach `JournalFile` from `@effected/jsonl/node`: read a journal file with no Effect runtime, resume from a saved `JournalCursor`, and detect a truncated, replaced or rewritten file, instead of hand-rolling `readSync` around `Line` and `Envelope`
+
+- The `effected-packages` `@effected/jwt` reference warns that a resolver shared between requests on Cloudflare Workers must be `JwksResolver.layerWith({ coalesce: false })`, and teaches `JwtKey.verificationOf` for deriving a verification key from a signing key
+
 ## 0.53.2
 
 ### Documentation
