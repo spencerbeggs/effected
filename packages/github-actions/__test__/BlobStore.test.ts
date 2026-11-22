@@ -7,7 +7,7 @@ import { CryptoError, Mac } from "effect/crypto";
 import { FetchHttpClient, HttpClient } from "effect/http";
 import { TestClock } from "effect/testing";
 import type { S3Config } from "../src/index.js";
-import { ActionOutputs, BlobStore, BlobStoreError, NotABlobEnvelopeError } from "../src/index.js";
+import { ActionOutputs, BlobStore, BlobStoreError, NotABlobEnvelopeError, S3BlobStore } from "../src/index.js";
 
 class Meta extends Schema.Class<Meta>("Meta")({ tag: Schema.String, durationMs: Schema.Number }) {}
 
@@ -42,7 +42,7 @@ const s3 = (
 	digest: Layer.Layer<Digest.Digest> = NodeCrypto.layerDigest,
 	mac: Layer.Layer<Mac.Mac> = NodeCrypto.layerMac,
 ) =>
-	BlobStore.layerS3(config).pipe(
+	S3BlobStore.layer(config).pipe(
 		Layer.provide(
 			Layer.mergeAll(
 				outputs.layer,

@@ -10,7 +10,7 @@
 - `@effected/cli` ^0.33.1 -> ^0.33.2 (peer ^0.33.0)
 - `@effected/engine` ^0.20.1 -> ^0.20.2 (peer ^0.20.0)
 - `@effected/github` ^0.34.0 -> ^0.34.1 (peer ^0.34.0)
-- `@effected/github-actions` ^0.37.0 -> ^0.37.1 (peer ^0.37.0)
+- `@effected/github-actions` ^0.37.0 -> ^0.38.0 (peer ^0.38.0)
 - `@effected/jsonl` ^0.19.0 -> ^0.20.0 (peer ^0.20.0)
 - `@effected/jwt` ^0.10.0 -> ^0.11.0 (peer ^0.11.0)
 - `@effected/mcp` ^0.19.1 -> ^0.19.2 (peer ^0.19.0)

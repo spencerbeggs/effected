@@ -5,6 +5,8 @@
 ## Features
 
 * `JwksResolver.layerWith({ coalesce: false })` builds a resolver that is safe to share between requests on Cloudflare Workers. The default resolver coalesces concurrent misses for one issuer behind a lock, so one request waits on another's fetch; workerd cancels that waiter as hung, and a cancelled waiter that was handed the lock never released it, so every later refetch for that issuer in the isolate hung too. Uncoalesced, no caller ever waits on another: each miss fetches for itself, a caller with no usable key set always fetches, the refetch interval only answers an unknown-`kid` refetch with `unknownKid` once a set is held, and of overlapping fetches the one that started last is kept, in the resolver and in the `JwksStore`, even within one millisecond. Every caller selects its key from the newest set held, so a key a newer set dropped never resolves from an older fetch that finished last. The default stays coalesced
+* `JwksResolver.layerUncoalesced` is that resolver under a name, the same as `layerWith({ coalesce: false })`, so a Workers author can pick the safe layer without reading an option's docs
+* `TestIssuer.make` takes `resolver`, the `JwksResolverOptions` its `resolverLayer` is built with, so a consumer's Node tests can run `{ coalesce: false }`, the mode its Workers production runs
 * `JwtKey.verificationOf(signing)` derives the `VerificationKey` for a `SigningKey`, under the same algorithm and `kid`, for a service that signs and verifies its own tokens from one private key
 
 ## Bug Fixes

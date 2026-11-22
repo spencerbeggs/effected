@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { assert, describe, it } from "@effect/vitest";
 import { ActionsOidcClaims, ActionsOidcClaimsFromWire } from "@effected/github";
 import { Effect, Layer, Redacted, Schema } from "effect";
@@ -368,6 +369,45 @@ describe("OidcTokenIssuer masks at issuance", () => {
 				return yield* (yield* OidcTokenIssuer).token();
 			}).pipe(Effect.provide(live(answering(jwt), TOKEN_ENV, ActionOutputs.layerDetached)));
 			assert.strictEqual(Redacted.value(token), jwt);
+		}),
+	);
+});
+
+describe("OidcTokenIssuer.recording with no claims", () => {
+	it.effect("records each audience and answers with placeholder claims for that audience", () =>
+		Effect.gen(function* () {
+			const recorder = OidcTokenIssuer.recording();
+			const program = Effect.gen(function* () {
+				const issuer = yield* OidcTokenIssuer;
+				const claims = yield* issuer.claims("https://registry.example");
+				const token = yield* issuer.token("sigstore");
+				const unnamed = yield* issuer.claims();
+				return { claims, token, unnamed };
+			});
+			const { claims, token, unnamed } = yield* Effect.provide(program, recorder.layer);
+			assert.deepStrictEqual(recorder.audiences(), ["https://registry.example", "sigstore", undefined]);
+			assert.strictEqual(claims.aud, "https://registry.example");
+			assert.strictEqual(unnamed.aud, "https://github.com/acme");
+			// The token is a decodable JWT whose claims carry the audience it was asked for.
+			const segment = Redacted.value(token).split(".")[1] ?? "";
+			const payload = JSON.parse(Buffer.from(segment, "base64url").toString("utf8")) as {
+				readonly aud: string;
+				readonly repository: string;
+			};
+			assert.strictEqual(payload.aud, "sigstore");
+			assert.strictEqual(payload.repository, "acme/example");
+		}),
+	);
+
+	it.effect("control: given claims are answered as given, whatever the audience", () =>
+		Effect.gen(function* () {
+			const recorder = OidcTokenIssuer.recording(CLAIMS);
+			const program = Effect.gen(function* () {
+				const issuer = yield* OidcTokenIssuer;
+				return yield* issuer.claims("other");
+			});
+			const claims = yield* Effect.provide(program, recorder.layer);
+			assert.strictEqual(claims.aud, CLAIMS.aud);
 		}),
 	);
 });

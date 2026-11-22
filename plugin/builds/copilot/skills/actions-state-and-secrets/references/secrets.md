@@ -39,7 +39,7 @@ Four members, one seam:
   distinct only in *why* the caller needed a string. A signer that takes a
   `Redacted` (`@effected/crypto`'s `SigV4` and `Hmac`) needs no
   declassification: `mask` the value and pass the `Redacted` on, as
-  `BlobStore.layerS3` does.
+  `S3BlobStore.layer` does.
 - **`adopt`** — the far side of a handoff: re-wrap a plaintext environment
   variable as `Redacted` via `Config.Redacted`. A `Config`, so a missing or
   empty handoff is an honest `ConfigError` naming the variable, rather than

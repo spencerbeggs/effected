@@ -51,7 +51,7 @@
 | `BlobEnvelopeError` | TypeAlias | Anything that can go wrong reading or writing a blob envelope. | |
 | `BlobMetadataDecodeError` | Class | Raised when well-framed metadata does not satisfy the caller's schema. | handle blob metadata that does not satisfy the caller's schema |
 | `BlobMetadataEncodeError` | Class | Raised when the value being stored does not satisfy its schema. | handle a value that will not encode into blob metadata |
-| `BlobStore` | Class | Durable blob storage with a metadata channel. | get/put/has durable blob storage with a metadata channel, sigv4-signed s3-compatible or in-memory backend |
+| `BlobStore` | Class | Durable blob storage with a metadata channel. | get/put/has durable blob storage with a metadata channel, in-memory backend; s3 and actions-cache backends live on their own classes |
 | `BlobStoreError` | Class | Raised when a blob cannot be stored or retrieved. | handle a blob store read or write failure, unreachable or refused backend, request signing failure, invalid key |
 | `BlobStoreShape` | Interface | The members of the `BlobStore` service: `get`, `put` and `has` over blobs that carry the caller's own metadata. | |
 | `BlobTransferError` | Class | Raised when bytes could not be moved to or from a signed blob url. | handle a signed blob url upload or download failure |
@@ -127,7 +127,7 @@
 | `ManagedDocumentSource` | Interface | Options identifying a managed document inside a text that may not carry one yet. | |
 | `NotABlobEnvelopeError` | Class | Raised when bytes cannot be read as an envelope. | handle bytes that are not a recognizable blob envelope, legacy unframed blob |
 | `OidcTokenError` | Class | Raised when an OIDC token cannot be issued or read. | handle an OIDC token that could not be minted or decoded, missing id-token permission |
-| `OidcTokenIssuer` | Class | The runner's OIDC token service. | mint runner oidc token for audience, masked at issuance, read claims unverified as ActionsOidcClaims, recording test double |
+| `OidcTokenIssuer` | Class | The runner's OIDC token service. | mint runner oidc token for audience, masked at issuance, read claims unverified as ActionsOidcClaims, recording test double with or without claims |
 | `OidcTokenIssuerShape` | Interface | The members of the `OidcTokenIssuer` service: request an ID `token` and read its decoded `claims`, both failing with `OidcTokenError`. | |
 | `OutputEncodeError` | Class | Raised when a value did not satisfy its schema. | handle a value that did not satisfy its schema while publishing a JSON output |
 | `PackageManagerInstallOptions` | Interface | How `PackageManagerInstallerShape.install` should behave. | |
@@ -150,6 +150,7 @@
 | `RunnerContext` | Class | The runner's own context, projected from the `RUNNER_*` variables. | RUNNER_* context: os, arch, temp directory, tool cache root |
 | `RunnerFileUnavailableError` | Class | Raised when an action cannot publish an output. | handle a runner file (GITHUB_OUTPUT/STATE/ENV/PATH) that is not available |
 | `RunnerFileWriteError` | Class | Raised when a runner file exists but could not be appended to. | handle a runner file that exists but could not be appended to |
+| `S3BlobStore` | Class | The S3-compatible `BlobStore` backend: AWS S3, Cloudflare R2, MinIO, DigitalOcean Spaces, anything that speaks S3's object API with SigV4. | BlobStore backend over an s3-compatible bucket (aws s3, r2, minio, spaces), sigv4-signed, no aws sdk |
 | `S3Config` | Interface | How to reach an S3-compatible object store. | |
 | `Secret` | Class | The declassification seam: the **only** place in this package where a `Redacted` value becomes a plain string. | mask a Redacted value in runner logs, declassify only for a plain-string api |
 | `StepLogEntry` | TypeAlias | One entry of the log `ActionLogger.recording` captured: a phase heading, or a step with its detail, outcome and the steps and phases opened inside it. | |

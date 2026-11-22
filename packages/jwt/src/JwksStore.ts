@@ -32,7 +32,7 @@ export interface JwksStoreShape {
  * {@link JwksStore.layerMemory} keeps it in process. A Cloudflare Worker,
  * whose isolates do not share memory, backs it with KV or the Cache API
  * instead, and shares the resolver built over it between requests only with
- * `JwksResolver.layerWith({ coalesce: false })`: the default resolver makes
+ * `JwksResolver.layerUncoalesced`: the default resolver makes
  * one request wait on another's fetch, which workerd does not allow.
  *
  * The resolver never writes an older set over a newer one it can see, but the

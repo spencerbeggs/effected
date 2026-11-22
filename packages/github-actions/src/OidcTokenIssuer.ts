@@ -1,6 +1,5 @@
 import { HttpRedaction } from "@effected/crypto";
-import type { ActionsOidcClaims } from "@effected/github";
-import { ActionsOidcClaimsFromWire } from "@effected/github";
+import { ActionsOidcClaims, ActionsOidcClaimsFromWire } from "@effected/github";
 import { Oidc } from "@effected/oidc";
 import { Context, Effect, Layer, Redacted, Schema } from "effect";
 import * as Base64Url from "effect/encoding/Base64Url";
@@ -212,6 +211,39 @@ const make = Effect.gen(function* () {
 const dies = unstubbed("OidcTokenIssuer.makeTest");
 
 /**
+ * The claims {@link OidcTokenIssuer.recording} answers with when given none: a
+ * plausible push to `main` of `acme/example`, its `aud` the audience the call
+ * asked for (the repository owner's URL, as on the runner, for a call naming
+ * none). For a test that asserts on the audience and on nothing in the token.
+ */
+const placeholderClaims = (audience: string | undefined): ActionsOidcClaims =>
+	ActionsOidcClaims.make({
+		iss: "https://token.actions.githubusercontent.com",
+		sub: "repo:acme/example:ref:refs/heads/main",
+		aud: audience ?? "https://github.com/acme",
+		exp: 1_800_000_600,
+		iat: 1_800_000_000,
+		ref: "refs/heads/main",
+		refProtected: true,
+		refType: "branch",
+		baseRef: "",
+		headRef: "",
+		sha: "0000000000000000000000000000000000000000",
+		repository: "acme/example",
+		eventName: "push",
+		jobWorkflowRef: "acme/example/.github/workflows/release.yml@refs/heads/main",
+		workflowRef: "acme/example/.github/workflows/release.yml@refs/heads/main",
+		repositoryId: 1,
+		repositoryOwner: "acme",
+		repositoryOwnerId: 2,
+		runnerEnvironment: "github-hosted",
+		runId: 3,
+		runAttempt: 1,
+		actor: "octocat",
+		actorId: 583231,
+	});
+
+/**
  * What {@link OidcTokenIssuer.recording} returns: the layer to provide and the
  * audiences it was asked for.
  *
@@ -327,6 +359,12 @@ export class OidcTokenIssuer extends Context.Service<OidcTokenIssuer, OidcTokenI
 	 * Each call returns a fresh journal and a fresh layer: bind the result to a
 	 * `const` and provide its `layer` once.
 	 *
+	 * `claims` is optional. Without it the double answers with placeholder
+	 * claims for a push to `main` of `acme/example`, whose `aud` is the
+	 * audience each call asked for (the owner's URL for a call naming none), so
+	 * a test that only checks the audience needs no `@effected/github` import.
+	 * Pass claims whenever the code under test reads them.
+	 *
 	 * @example
 	 * ```ts
 	 * import type { ActionsOidcClaims } from "@effected/github";
@@ -334,7 +372,7 @@ export class OidcTokenIssuer extends Context.Service<OidcTokenIssuer, OidcTokenI
 	 * import { Effect } from "effect";
 	 *
 	 * declare const claims: ActionsOidcClaims;
-	 * const recorder = OidcTokenIssuer.recording(claims);
+	 * const recorder = OidcTokenIssuer.recording(claims); // or recording() when the claims do not matter
 	 * const program = Effect.gen(function* () {
 	 *   const issuer = yield* OidcTokenIssuer;
 	 *   yield* issuer.token("https://registry.example");
@@ -344,15 +382,16 @@ export class OidcTokenIssuer extends Context.Service<OidcTokenIssuer, OidcTokenI
 	 * // => ["https://registry.example"]
 	 * ```
 	 */
-	static readonly recording = (claims: ActionsOidcClaims): RecordingOidcTokenIssuer => {
+	static readonly recording = (claims?: ActionsOidcClaims): RecordingOidcTokenIssuer => {
 		const audiences: Array<string | undefined> = [];
 		const record = (audience: string | undefined): Effect.Effect<void> =>
 			Effect.sync(() => {
 				audiences.push(audience);
 			});
 		const layer = Layer.succeed(OidcTokenIssuer, {
-			token: (audience) => Effect.as(record(audience), OidcTokenIssuer.unsignedTokenFor(claims)),
-			claims: (audience) => Effect.as(record(audience), claims),
+			token: (audience) =>
+				Effect.as(record(audience), OidcTokenIssuer.unsignedTokenFor(claims ?? placeholderClaims(audience))),
+			claims: (audience) => Effect.as(record(audience), claims ?? placeholderClaims(audience)),
 		});
 		return { layer, audiences: () => audiences.slice() };
 	};

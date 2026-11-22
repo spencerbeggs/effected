@@ -89,6 +89,7 @@ const LIGHT_MODULES = [
 	"ActionState.ts",
 	"BlobEnvelope.ts",
 	"BlobStore.ts",
+	"BlobStore.s3.ts",
 	"BlobTransfer.ts",
 	"CacheKey.ts",
 	"ChildEnv.ts",
@@ -191,10 +192,12 @@ describe("bundle reachability", () => {
 			"effect/encoding/Hex",
 			"node:crypto",
 		]);
+		// The service tag reaches `effect` alone: no backend's protocol rides on it.
+		assert.deepStrictEqual([...reachableBareImports("BlobStore.ts")].sort(), ["effect"]);
 		// SigV4 is `@effected/crypto`'s (HMACs through core `Mac.Mac` and digests
 		// through core `Digest.Digest`, both in `R`), so the S3 store reaches no
 		// `node:crypto` at all.
-		assert.deepStrictEqual([...reachableBareImports("BlobStore.ts")].sort(), [
+		assert.deepStrictEqual([...reachableBareImports("BlobStore.s3.ts")].sort(), [
 			"@effected/crypto",
 			"@effected/github-commands",
 			"effect",
@@ -373,6 +376,34 @@ describe("bundle reachability", () => {
 			reachableBareImports("ActionsIdentityToken.ts").has("@effected/sbom"),
 			"ActionsIdentityToken reaches @effected/sbom: the identity contract is oidc's",
 		);
+	});
+
+	it("SigV4 is imported by BlobStore.s3.ts alone, and the BlobStore tag does not reach it", () => {
+		// A backend's layer lives in the module that owns its protocol, never as a static on the shared
+		// `BlobStore` service class: a bundler keeps a class's statics with the class, so the former
+		// `BlobStore.layerS3` put SigV4 in every bundle that named the tag. Checked on the import graph:
+		// the module that imports SigV4 must be one that nothing but the S3 backend's users reach.
+		const named = (source: string, specifier: string): ReadonlyArray<string> => {
+			const code = source.replace(/(^|\n)\s*\/\/.*/g, "$1").replace(/\/\*[\s\S]*?\*\//g, "");
+			const names: Array<string> = [];
+			for (const match of code.matchAll(/(?:^|\n)\s*import\s+(?!type\b)\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)) {
+				if (match[2] !== specifier) continue;
+				for (const name of (match[1] ?? "").split(",")) {
+					const trimmed = name.trim();
+					if (trimmed !== "" && !trimmed.startsWith("type ")) names.push(trimmed);
+				}
+			}
+			return names;
+		};
+		const importers = (readdirSync(SRC, { recursive: true }) as Array<string>)
+			.filter((file) => file.endsWith(".ts"))
+			.filter((file) => named(readFileSync(resolve(SRC, file), "utf8"), "@effected/crypto").includes("SigV4"))
+			.map((file) => file.split("\\").join("/"))
+			.sort();
+		assert.deepStrictEqual(importers, ["BlobStore.s3.ts"], "positive control: the walker sees the S3 module's import");
+		assert.isFalse(reachesFile("BlobStore.ts", "BlobStore.s3.ts"));
+		assert.isFalse(reachesFile("BlobStore.githubCache.ts", "BlobStore.s3.ts"));
+		assert.isTrue(reachesFile("index.ts", "BlobStore.s3.ts"), "positive control: the entry does reach it");
 	});
 
 	it("node:crypto is imported by internal/digest.ts and nothing else", () => {

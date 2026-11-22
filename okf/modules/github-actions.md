@@ -10,10 +10,10 @@ tags:
   - bundle
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-21T02:22:10Z
+  at: 2026-11-22T05:32:31Z
 integrity:
   generated:
-    body: 34efb99de1a184d4
+    body: dc872f5b55320fcc
 ---
 
 # github-actions
@@ -158,7 +158,7 @@ the `effect/crypto` services: `ActionServices` includes `Digest.Digest`,
 `Mac.Mac`, `SecureRandom.SecureRandom` and `Signature.Signature`, and
 `ActionRuntime.layer` provides all four from `NodeCrypto` (`layerDigest`,
 `layerMac`, `layerSecureRandom`, `layerSignature`) beside `NodeServices.layer`, which carries no crypto. A
-hand-composed `BlobStore.layerS3` must provide `Digest.Digest` and `Mac.Mac`
+hand-composed `S3BlobStore.layer` must provide `Digest.Digest` and `Mac.Mac`
 itself.
 
 ## Module topology

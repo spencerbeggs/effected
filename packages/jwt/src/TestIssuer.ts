@@ -41,9 +41,11 @@ export interface TestIssuerShape {
 	 */
 	readonly httpClient: Layer.Layer<HttpClient.HttpClient>;
 	/**
-	 * The real `JwksResolver` with default options, over
-	 * {@link TestIssuerShape.httpClient} and a fresh in-memory
-	 * `JwksStore`: one provide for a consumer test.
+	 * The real `JwksResolver`, with the options `make` was given (the defaults
+	 * otherwise), over {@link TestIssuerShape.httpClient} and a fresh in-memory
+	 * `JwksStore`: one provide for a consumer test. Pass
+	 * `resolver: { coalesce: false }` to test the mode a Cloudflare Workers
+	 * deployment runs.
 	 *
 	 * @remarks
 	 * Each `Effect.provide` of this layer builds a new resolver and store, so
@@ -109,6 +111,7 @@ const make = (options: {
 	readonly issuer: string;
 	readonly alg?: Root.JwtAlgorithm;
 	readonly kid?: string;
+	readonly resolver?: Root.JwksResolverOptions;
 }): Effect.Effect<TestIssuerShape, Root.JwtError, Signature.Signature> =>
 	Effect.gen(function* () {
 		if (!isAcceptedIssuer(options.issuer)) {
@@ -122,7 +125,9 @@ const make = (options: {
 		const pair = yield* JwtKey.generate(alg, { kid: options.kid ?? "test-key" });
 		const keys: Array<Root.Jwk> = [pair.jwk];
 		const httpClient = serve(options.issuer, keys);
-		const resolverLayer = JwksResolver.layer.pipe(Layer.provide(Layer.merge(httpClient, JwksStore.layerMemory)));
+		const resolverLayer = JwksResolver.layerWith(options.resolver ?? {}).pipe(
+			Layer.provide(Layer.merge(httpClient, JwksStore.layerMemory)),
+		);
 		return shapeFor({ issuer: options.issuer, alg, keys, httpClient, resolverLayer }, pair.signing);
 	});
 
@@ -179,7 +184,10 @@ export class TestIssuer {
 	 * service: provide `Signature.layerWebCrypto` over
 	 * `SecureRandom.layerWebCrypto` from `effect/crypto`. The issuer must be `https:`, or `http://localhost` /
 	 * `http://127.0.0.1`, because `JwksResolver` refuses any other
-	 * issuer; anything else is a defect.
+	 * issuer; anything else is a defect. `resolver` is passed to
+	 * `JwksResolver.layerWith` for {@link TestIssuerShape.resolverLayer}: give
+	 * `{ coalesce: false }` so a consumer's Node tests run the resolver mode its
+	 * Workers production does.
 	 *
 	 * @public
 	 */
@@ -187,6 +195,7 @@ export class TestIssuer {
 		readonly issuer: string;
 		readonly alg?: Root.JwtAlgorithm;
 		readonly kid?: string;
+		readonly resolver?: Root.JwksResolverOptions;
 	}) => Effect.Effect<TestIssuerShape, Root.JwtError, Signature.Signature> = make;
 
 	/**

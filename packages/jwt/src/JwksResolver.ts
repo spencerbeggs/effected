@@ -476,13 +476,27 @@ export class JwksResolver extends Context.Service<JwksResolver, JwksResolverShap
 	): Layer.Layer<JwksResolver, never, HttpClient.HttpClient | JwksStore> => Layer.effect(JwksResolver, make(options));
 
 	/**
+	 * A resolver with the default options except `coalesce: false`: the one to
+	 * share between requests on Cloudflare Workers.
+	 *
+	 * @remarks
+	 * The same as `layerWith({ coalesce: false })`: no caller waits on
+	 * another's fetch (see {@link JwksResolverOptions.coalesce}). For other
+	 * options as well, use {@link (JwksResolver:class).layerWith}.
+	 */
+	static readonly layerUncoalesced: Layer.Layer<JwksResolver, never, HttpClient.HttpClient | JwksStore> = Layer.effect(
+		this,
+		make({ coalesce: false }),
+	);
+
+	/**
 	 * A resolver with the default options: discovery, a 1 hour TTL, a 30 second
 	 * refetch interval and coalesced fetches.
 	 *
 	 * @remarks
 	 * Coalescing makes concurrent misses wait on one shared fetch, which on
 	 * Cloudflare Workers must not cross requests: share
-	 * `layerWith({ coalesce: false })` there instead.
+	 * {@link (JwksResolver:class).layerUncoalesced} there instead.
 	 */
 	static readonly layer: Layer.Layer<JwksResolver, never, HttpClient.HttpClient | JwksStore> = Layer.effect(
 		this,

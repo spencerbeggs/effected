@@ -960,3 +960,27 @@ layer(CryptoLive, { buildPerTest: true })("JwksResolver uncoalesced, after a slo
 		}),
 	);
 });
+
+layer(CryptoLive, { buildPerTest: true })("JwksResolver.layerUncoalesced", (it) => {
+	it.effect("is the uncoalesced mode: a cold caller is not held up by another caller's fetch that never answers", () =>
+		Effect.gen(function* () {
+			const a = yield* generate("a");
+			const never = yield* Deferred.make<void>();
+			const http = holdingNth(() => [a.jwk], new Map([[1, never]]));
+			const token = yield* Jws.sign({}, a.signing);
+			const program = Effect.gen(function* () {
+				const stuck = yield* Effect.forkChild(verify(token));
+				yield* settle;
+				const second = yield* Effect.forkChild(verify(token));
+				yield* settle;
+				const done = second.pollUnsafe();
+				assert.isTrue(done !== undefined && Exit.isSuccess(done), "B finished on its own");
+				yield* Fiber.interrupt(stuck);
+			});
+			yield* Effect.provide(
+				program,
+				JwksResolver.layerUncoalesced.pipe(Layer.provide(Layer.mergeAll(http.layer, JwksStore.layerMemory))),
+			);
+		}),
+	);
+});

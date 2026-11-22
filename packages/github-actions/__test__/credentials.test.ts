@@ -17,6 +17,7 @@ import {
 	BlobTransferError,
 	GitHubCacheBlobStore,
 	OidcTokenIssuer,
+	S3BlobStore,
 	ToolInstaller,
 } from "../src/index.js";
 import { RESULTS_ENV, json, resultsEnv, settle, twirpFetch } from "./results.js";
@@ -171,7 +172,7 @@ describe("the S3 BlobStore keeps no signature or session token on a failure", ()
 					sentAuthorization = new Headers(init?.headers).get("authorization");
 					return answer(input, init);
 				};
-				const layer = BlobStore.layerS3({
+				const layer = S3BlobStore.layer({
 					bucket: "cache",
 					region: "auto",
 					endpoint: "https://account.r2.cloudflarestorage.com",

@@ -23,7 +23,7 @@
 | `JwtKey` | Class | Importers and a generator for `SigningKey` and `VerificationKey`. | import a pem private key pkcs1 or pkcs8, import a jwk, generate a test key pair, derive the verification key from a signing key |
 | `RegisteredClaims` | Variable + TypeAlias | A decoded `(RegisteredClaims:variable)`. | standard jwt claims iss sub aud exp nbf iat jti |
 | `SigningKey` | TypeAlias | A private key that signs, bound to the one algorithm it was imported for. | an imported private key with its algorithm, for signing |
-| `TestIssuer` | Class | A network-free OIDC issuer for consumer tests: sign tokens with `TestIssuerShape.sign`, and verify them through the real `JwksResolver` by providing `TestIssuerShape.resolverLayer`. | from `@effected/jwt/testing` — network-free test oidc issuer, sign test tokens verified through the real resolver |
+| `TestIssuer` | Class | A network-free OIDC issuer for consumer tests: sign tokens with `TestIssuerShape.sign`, and verify them through the real `JwksResolver` by providing `TestIssuerShape.resolverLayer`. | from `@effected/jwt/testing` — network-free test oidc issuer, sign test tokens verified through the real resolver, resolver options such as uncoalesced for workers |
 | `TestIssuerShape` | Interface | A test issuer: a generated key pair, its JWKS and discovery document served by an in-memory `HttpClient`, and a signer. | from `@effected/jwt/testing` |
 | `VerificationKey` | TypeAlias | A public key that verifies, bound to the one algorithm it was imported for. | an imported public key with its algorithm, for verifying |
 | `VerifyOptions` | Interface | Options for `(Jwt:class).verify`. | |

@@ -62,7 +62,7 @@ export class ActionRuntime {
 	 * `SecureRandom` and `Signature` crypto layers (`NodeCrypto.layerDigest`,
 	 * `NodeCrypto.layerMac`, `NodeCrypto.layerSecureRandom` and
 	 * `NodeCrypto.layerSignature`), which `NodeServices.layer` does not carry;
-	 * `BlobStore.layerS3` takes its digests and HMACs from them, and
+	 * `S3BlobStore.layer` takes its digests and HMACs from them, and
 	 * `GitHubApp.layer` signs its app JWT with `Signature`.
 	 *
 	 * A bound constant rather than a factory. A layer-returning function mints a
