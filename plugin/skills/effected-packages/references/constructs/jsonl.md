@@ -19,7 +19,12 @@
 | `JournalClass` | Interface | A per-registry `Journal` service class. | |
 | `JournalClosed` | Class | An append refused because the journal's scope has closed. | handle an append attempted after the journal's scope has closed |
 | `JournalConfig` | Interface | Configuration for one journal. | |
+| `JournalCursor` | Variable + TypeAlias | Where an incremental read of a journal file resumes. | from `@effected/jsonl/node` — persist where a sync journal file read resumes, json round-trippable byte offset plus file identity |
+| `JournalFile` | Class | Synchronous reads of a journal file over `node:fs`, for a consumer with no Effect runtime. | from `@effected/jsonl/node` — read a journal file synchronously with no effect runtime, resume from a cursor, detect truncate or replace, last valid envelope |
+| `JournalFileError` | TypeAlias | Why a journal file could not be read: the path names nothing, or the filesystem refused, untranslated. | from `@effected/jsonl/node` |
 | `JournalNotFound` | Class | An operation against a journal file that does not exist. | handle an operation against a journal file that does not exist yet |
+| `JournalRead` | Interface | What `JournalFile.readFromResult` read. | from `@effected/jsonl/node` |
+| `JournalReset` | TypeAlias | Why a read started where it did. | from `@effected/jsonl/node` |
 | `JournalResync` | Class | The journal file was truncated or replaced beneath a reader. | handle a journal file truncated or replaced beneath a reader |
 | `JournalShape` | Interface | The shape of a `Journal`, typed by its registry. | |
 | `JournalWatcher` | Class | How a journal is told its file changed underneath it: a watch that reports when it is armed. | watch a journal file or its directory with a watch that succeeds only once registered, so no append lands unseen while arming |

@@ -221,7 +221,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/bundler": {
-					range: "^0.7.1",
+					range: "^0.7.2",
 					peer: "^0.7.0",
 					strategy: "lock-minor",
 					source: "workspace",
@@ -245,13 +245,13 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/shell": {
-					range: "^0.3.0",
+					range: "^0.3.1",
 					peer: "^0.3.0",
 					strategy: "lock-minor",
 					source: "workspace",
 				},
 				"@effected/cli": {
-					range: "^0.33.1",
+					range: "^0.33.2",
 					peer: "^0.33.0",
 					strategy: "lock-minor",
 					source: "workspace",
@@ -293,7 +293,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/engine": {
-					range: "^0.20.1",
+					range: "^0.20.2",
 					peer: "^0.20.0",
 					strategy: "lock-minor",
 					source: "workspace",
@@ -359,8 +359,8 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/jsonl": {
-					range: "^0.19.0",
-					peer: "^0.19.0",
+					range: "^0.20.0",
+					peer: "^0.20.0",
 					strategy: "lock-minor",
 					source: "workspace",
 				},
@@ -383,7 +383,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/mcp": {
-					range: "^0.19.1",
+					range: "^0.19.2",
 					peer: "^0.19.0",
 					strategy: "lock-minor",
 					source: "workspace",
@@ -419,7 +419,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/plugin": {
-					range: "^0.6.6",
+					range: "^0.6.7",
 					peer: "^0.6.0",
 					strategy: "lock-minor",
 					source: "workspace",
@@ -509,7 +509,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/workspaces": {
-					range: "^0.49.0",
+					range: "^0.49.1",
 					peer: "^0.49.0",
 					strategy: "lock-minor",
 					source: "workspace",

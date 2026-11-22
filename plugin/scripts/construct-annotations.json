@@ -798,6 +798,8 @@
 		"InvalidData": "handle a line whose envelope frame or registered payload fails schema validation",
 		"Journal": "define a journal service with a static layer, append events, query history, live tail changes",
 		"JournalClosed": "handle an append attempted after the journal's scope has closed",
+		"JournalCursor": "persist where a sync journal file read resumes, json round-trippable byte offset plus file identity",
+		"JournalFile": "read a journal file synchronously with no effect runtime, resume from a cursor, detect truncate or replace, last valid envelope",
 		"JournalNotFound": "handle an operation against a journal file that does not exist yet",
 		"JournalResync": "handle a journal file truncated or replaced beneath a reader",
 		"JournalWatcher": "watch a journal file or its directory with a watch that succeeds only once registered, so no append lands unseen while arming",

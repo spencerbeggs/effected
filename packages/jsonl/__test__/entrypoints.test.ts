@@ -38,7 +38,7 @@ describe("entrypoint boundary", () => {
 	it("nothing reachable from `.` imports node:* or the Node watcher", () => {
 		const reachable = reachableFrom(resolve(SRC, "index.ts"));
 		const offenders = [...reachable].filter(
-			(entry) => entry.startsWith("node:") || /src\/(NodeJournalWatcher|node)\.ts$/.test(entry),
+			(entry) => entry.startsWith("node:") || /src\/(NodeJournalWatcher|JournalFile|node)\.ts$/.test(entry),
 		);
 		assert.deepStrictEqual(offenders, [], "the platform backend belongs behind ./node");
 	});
@@ -54,8 +54,8 @@ describe("entrypoint boundary", () => {
 		assert.isTrue([...reachable].some((entry) => /src\/internal\/engine\.ts$/.test(entry)));
 	});
 
-	it("./node exports the Node watcher and nothing else", async () => {
+	it("./node exports the Node watcher, the sync file reader and nothing else", async () => {
 		const node = await import("../src/node.js");
-		assert.deepStrictEqual(Object.keys(node).sort(), ["NodeJournalWatcher"]);
+		assert.deepStrictEqual(Object.keys(node).sort(), ["JournalCursor", "JournalFile", "NodeJournalWatcher"]);
 	});
 });

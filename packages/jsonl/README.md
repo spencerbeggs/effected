@@ -98,45 +98,41 @@ Effect.runPromise(program.pipe(Effect.provide(MailJournalLive), Effect.provide([
 
 ## Reading a journal with no runtime
 
-A hook script wants one answer — what is the current state — and should not build an Effect runtime or read the history to get it. The pure core takes a string, so the cheap read is a bounded tail window plus a walk back to the last valid envelope. Reading the whole file into `lastValidResult` would be the honest-looking demonstration of exactly the cost this package exists to avoid:
+A hook script wants one answer — what is the current state — and should not build an Effect runtime or read the history to get it. `JournalFile` on the `./node` entry reads the file synchronously over `node:fs`, with no layer and no runtime, and returns a `Result` instead of throwing:
 
 ```ts
-import { Envelope } from "@effected/jsonl";
-import { Option } from "effect";
-import { closeSync, openSync, readSync, statSync } from "node:fs";
+import { JournalFile } from "@effected/jsonl/node";
+import { Option, Result } from "effect";
 // The same registry the writer declared, exported from your own module.
 import { events } from "./events.js";
 
-const readTail = (path: string, window: number): string => {
-  const size = statSync(path).size;
-  const start = Math.max(0, size - window);
-  const bytes = new Uint8Array(size - start);
-  const fd = openSync(path, "r");
-  try {
-    readSync(fd, bytes, 0, bytes.length, start);
-  } finally {
-    closeSync(fd);
-  }
-  const text = new TextDecoder().decode(bytes);
-  if (start === 0) return text;
-  // A window that does not start at 0 opens mid-line — drop that fragment. With
-  // no newline anywhere in it, the whole window IS one fragment and there is
-  // nothing usable here: return nothing rather than a half a line.
-  const newline = text.indexOf("\n");
-  return newline === -1 ? "" : text.slice(newline + 1);
-};
-
-const current = Envelope.lastValidResult(events, readTail(".claude/dogfood/mailbox.jsonl", 8_192));
-// Option.some(envelope) once a valid envelope is in the window.
-// Option.none() means no valid envelope was found in the supplied text — the
-// last line may be longer than the window, the window may hold only a torn
-// fragment, or the journal may genuinely be empty. Widen and read again before
-// concluding it is the last of those.
-if (Option.isSome(current)) {
-  current.value.event; // the tag
-  current.value.line.end; // its logical byte offset, for a resumable cursor
+const current = JournalFile.lastValidResult(events, ".claude/dogfood/mailbox.jsonl");
+if (Result.isSuccess(current) && Option.isSome(current.success)) {
+  current.success.value.event; // the tag
+  current.success.value.position.end; // its logical byte offset, for a resumable cursor
 }
 ```
+
+`lastValidResult` reads the way the service's `latest` does: a bounded window from the end, then wider windows further back only while none holds a valid envelope. `Option.none()` means the whole file holds none. A missing file fails `JournalNotFound`.
+
+A monitor that follows a journal across runs reads only what was appended since last time. `readFromResult` takes the cursor the previous read returned and returns the new lines with the next cursor, a plain JSON record to persist however you like:
+
+```ts
+import type { JournalCursor } from "@effected/jsonl/node";
+import { JournalFile } from "@effected/jsonl/node";
+import { Result } from "effect";
+
+declare const saved: JournalCursor | undefined;
+
+const read = JournalFile.readFromResult(".claude/dogfood/mailbox.jsonl", saved);
+if (Result.isSuccess(read)) {
+  for (const line of read.success.lines) line.text; // each complete line, in order
+  read.success.reset; // "initial" | "none" | "truncated" | "replaced" | "rewritten"
+  read.success.cursor; // persist it for the next run
+}
+```
+
+A torn final line is held back until its newline lands. A file that shrank, was renamed over or was rewritten in place is read again from the start, and `reset` says which.
 
 "Last valid" always means the last valid **envelope**, never merely the last valid JSON. That distinction is what catches a torn tail: an envelope is always an object and every strict prefix of an object text is invalid JSON, whereas a torn scalar (`42` cut mid-write leaves `4`) parses cleanly as a different value that no walk-back can detect.
 

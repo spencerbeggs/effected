@@ -25,7 +25,7 @@ devDependency, for the integration suite only. Core `PlatformError` passes
 through every write and read path **untranslated** rather than being wrapped.
 
 **The root never imports `node:*`.** The one platform surface is the
-`./node` subpath (`src/node.ts` → `NodeJournalWatcher`): Node-only, read
+`./node` subpath (`src/node.ts` → `NodeJournalWatcher`, `JournalFile`): Node-only, read
 per entrypoint like `@effected/cli-kit`'s `./ui`. It adds no package — only the
 `node:fs` built-in — so it does not make the package integrated by
 `okf/glossary/library-tier.md`; it does make that entry unusable off Node.
@@ -78,6 +78,14 @@ to the root's `JournalWatcher` instead of carrying a copy.
   exists.
 - **`NodeJournalWatcher`** (`./node`) — `JournalWatcher` over `node:fs`
   `watch`, registered synchronously inside an `acquireRelease`.
+- **`JournalFile`** (`./node`) — the sync, runtime-free reads over `node:fs`:
+  `readFromResult(path, cursor?)` (cursor-resumed, torn tail held back,
+  `reset` on truncate/replace/rewrite) and `lastValidResult(events, path,
+  window?)` (`latest`'s windowed read). Offsets are logical, as the
+  service's. Root types in its signatures go through `Jsonl.*` like
+  `node.ts`: a relatively imported class named in a type position puts a
+  second copy (`JournalNotFound_2`) in `node.d.ts`. Tested against real
+  files in `__test__/integration/JournalFile.int.test.ts`.
 - **`Journal`** — a static class: `Journal.Service<Self>()(id, { events,
   config })`, where `config` is a `JournalConfig` or an `Effect` producing one.
   The class carries a static **`layer` value** (one journal however often it is
