@@ -1,5 +1,14 @@
 # @effected/github
 
+## 0.34.1
+
+### Dependencies
+
+| Dependency | Type | Action | From | To |
+| --- | --- | --- | --- | --- |
+| @effected/jwt | dependency | updated | 0.10.0 | 0.11.0 |
+| @effected/oidc | dependency | updated | 0.5.0 | 0.5.1 |
+
 ## 0.34.0
 
 ### Breaking Changes
