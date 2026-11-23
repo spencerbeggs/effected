@@ -23,7 +23,9 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
-		"./package.json": "./package.json"
+		"./package.json": "./package.json",
+		"./rules": "./src/rules/index.ts",
+		"./rules/all": "./src/rules/all.ts"
 	},
 	"scripts": {
 		"build": "effected package build",
