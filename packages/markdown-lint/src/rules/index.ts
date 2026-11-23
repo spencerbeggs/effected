@@ -6,10 +6,10 @@
  * installed markdownlint by a differential test over its fixture corpus.
  *
  * @remarks
- * No rule is ported yet; `@effected/markdown-lint/rules/all` lists which of
- * markdownlint's rules are still `uncovered`.
+ * `@effected/markdown-lint/rules/all` lists which of markdownlint's rules are
+ * still `uncovered`.
  *
  * @packageDocumentation
  */
 
-export {};
+export { MD009 } from "./MD009.js";

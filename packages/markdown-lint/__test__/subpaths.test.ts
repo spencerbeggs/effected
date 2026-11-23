@@ -7,7 +7,16 @@
 // modules import the root's modules, never inline a second copy of them.
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	readdirSync,
+	realpathSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,9 +29,12 @@ const TSC = join(PACKAGE, "node_modules", ".bin", "tsc");
 
 /** Each rule subpath, its built entry, and the names its declarations export. */
 const SUBPATHS = [
-	{ subpath: "./rules", entry: "rules", exports: [] as ReadonlyArray<string> },
+	{ subpath: "./rules", entry: "rules", exports: ["MD009"] as ReadonlyArray<string> },
 	{ subpath: "./rules/all", entry: "rules-all", exports: ["rules", "uncovered"] },
 ] as const;
+
+/** Where built JavaScript declares the LintRule class: the bundler writes `var LintRule = class …`. */
+const DECLARES_LINT_RULE = /\b(?:class LintRule\b|LintRule = class\b)/;
 
 /** A top-level declaration in a rolled-up `.d.ts`: whether the line exports it, and its name. */
 const TOP_LEVEL_DECLARATION =
@@ -57,8 +69,28 @@ describe("the built rule subpaths", () => {
 	it("import the root's modules at runtime rather than inlining them", () => {
 		for (const { entry } of SUBPATHS) {
 			const js = readFileSync(join(BUILT, `${entry}.js`), "utf8");
-			assert.notMatch(js, /class LintRule\b/, entry);
+			assert.notMatch(js, DECLARES_LINT_RULE, entry);
 		}
+	});
+
+	it("build rules that are instances of the built root's LintRule", async () => {
+		const root = await import(join(BUILT, "index.js"));
+		const subpath = await import(join(BUILT, "rules.js"));
+		const all = await import(join(BUILT, "rules-all.js"));
+		assert.isTrue(subpath.MD009 instanceof root.LintRule);
+		assert.isTrue(all.rules.includes(subpath.MD009));
+		const findings = root.MarkdownLint.lint("text  \nmore   \n", [subpath.MD009]);
+		assert.deepStrictEqual(
+			findings.map((finding: { readonly lineNumber: number }) => finding.lineNumber),
+			[2],
+		);
+	});
+
+	it("declare LintRule in the root's module alone", () => {
+		const declaring = readdirSync(BUILT, { recursive: true, encoding: "utf8" })
+			.filter((file) => file.endsWith(".js"))
+			.filter((file) => DECLARES_LINT_RULE.test(readFileSync(join(BUILT, file), "utf8")));
+		assert.deepStrictEqual(declaring, ["LintRule.js"]);
 	});
 
 	it("type-check in a consumer, with rules a real LintRule array rather than an unresolved any", () => {
