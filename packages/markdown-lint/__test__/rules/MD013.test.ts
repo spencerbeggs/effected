@@ -77,6 +77,11 @@ const extra = [
 		name: "link then a numeric entity",
 		source: `[${long}](https://example.com/a/very/long/path/that/keeps/going/on)&#42;\n`,
 	},
+	// No named reference of 32 letters exists, so this one stays text to both parsers, and the line is not link-only.
+	{
+		name: "link then a 32-letter name",
+		source: `[${"word ".repeat(18)}end](https://example.com)&${"a".repeat(32)};\n`,
+	},
 	{ name: "heading in a math block", source: `$$\n# ${long}\n$$\n` },
 	{ name: "blockquote and list", source: `> ${long} end\n\n- ${long} end\n` },
 ];
@@ -157,4 +162,4 @@ describe("MD013 line-length", () => {
 });
 
 // markdownlint's MD013 findings over the corpus (LF and CRLF) and the extras.
-const ORACLE_FINDINGS_DEFAULT = 164;
+const ORACLE_FINDINGS_DEFAULT = 165;
