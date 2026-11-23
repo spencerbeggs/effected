@@ -25,10 +25,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-23T22:08:52Z
+  at: 2026-11-23T22:29:54Z
 integrity:
   generated:
-    body: f74a43de7046c46f
+    body: 873b44e4c594b1f5
 ---
 
 # `@effected/markdown-lint`
@@ -221,6 +221,14 @@ plain synchronous function; no logging, no metrics.
   (LF and CRLF, 2 inputs). A parser-reading difference, pinned by a test.
 
 ## Known limitations
+
+- Two findings can carry inserts at one position (MD022, when two headings
+  each ask for blank lines between them). `MarkdownEdit.applyAll` applies
+  every edit; markdownlint's `applyFixes` applies one insert per line and
+  column, the longest, and drops identical fixes. The differential harness
+  applies kit edits under markdownlint's policy, so its applied-fix
+  comparison holds; a caller applying the kit edits directly gets every
+  insert.
 
 - MD012 under `maximum: 0` on a document of several lines that are all
   blank: the last line's delete, after every earlier line is deleted
