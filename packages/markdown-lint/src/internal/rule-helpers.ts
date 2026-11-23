@@ -152,14 +152,17 @@ export const isString = (value: unknown): value is string => typeof value === "s
 /**
  * markdownlint's `frontMatterHasTitle`: whether a front matter line matches
  * `front_matter_title` (case-insensitive; default `^\s*"?title"?\s*[:=]`).
- * An empty pattern turns front matter off. A pattern of the wrong type, or
- * one that is not a valid regular expression, reads as the default.
+ * Any falsy value (`""`, `false`, `0`, `null`) turns front matter off, as in
+ * markdownlint. A truthy pattern of the wrong type, or one that is not a
+ * valid regular expression, reads as the default.
  * @internal
  */
 export const frontMatterHasTitle = (context: LintContext): boolean => {
 	const fallback = '^\\s*"?title"?\\s*[:=]';
+	// markdownlint turns front matter off for any falsy value (`""`, `false`, `0`, `null`), not only `""`.
+	const raw = context.config.front_matter_title;
+	if (raw !== undefined && !raw) return false;
 	const pattern = setting(context.config, "front_matter_title", isString, fallback);
-	if (pattern === "") return false;
 	let matcher: RegExp;
 	try {
 		matcher = new RegExp(pattern, "i");

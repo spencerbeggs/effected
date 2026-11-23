@@ -48,6 +48,9 @@ describe("MD001 heading-increment", () => {
 	// Each setting changes markdownlint's findings over the same inputs, so its run is not the default run again.
 	for (const [settings, changes] of [
 		[{ front_matter_title: "" }, true],
+		[{ front_matter_title: false }, true],
+		[{ front_matter_title: 0 }, true],
+		[{ front_matter_title: null }, true],
 		[{ front_matter_title: "^\\s*layout\\s*:" }, true],
 	] as const) {
 		it(
@@ -75,6 +78,12 @@ describe("MD001 heading-increment", () => {
 			findings.map((finding) => [finding.lineNumber, Option.getOrNull(finding.detail)]),
 			[[3, "Expected: h2; Actual: h3"]],
 		);
+		// markdownlint's rule reports no range and no fix.
+		for (const finding of findings) {
+			assert.isTrue(Option.isNone(finding.range));
+			assert.isTrue(Option.isNone(finding.fixInfo));
+			assert.isTrue(Option.isNone(finding.edit));
+		}
 	});
 });
 

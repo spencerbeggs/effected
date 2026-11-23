@@ -68,6 +68,12 @@ describe("MD024 no-duplicate-heading", () => {
 			findings.map((finding) => [finding.lineNumber, Option.getOrNull(finding.context)]),
 			[[3, "Intro"]],
 		);
+		// markdownlint's rule reports no range and no fix.
+		for (const finding of findings) {
+			assert.isTrue(Option.isNone(finding.range));
+			assert.isTrue(Option.isNone(finding.fixInfo));
+			assert.isTrue(Option.isNone(finding.edit));
+		}
 	});
 });
 

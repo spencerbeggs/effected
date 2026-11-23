@@ -69,6 +69,12 @@ describe("MD003 heading-style", () => {
 			findings.map((finding) => [finding.lineNumber, Option.getOrNull(finding.detail)]),
 			[[3, "Expected: atx; Actual: atx_closed"]],
 		);
+		// markdownlint's rule reports no range and no fix.
+		for (const finding of findings) {
+			assert.isTrue(Option.isNone(finding.range));
+			assert.isTrue(Option.isNone(finding.fixInfo));
+			assert.isTrue(Option.isNone(finding.edit));
+		}
 	});
 });
 

@@ -43,6 +43,9 @@ describe("MD025 single-title", () => {
 	// This repository's own markdownlint config sets `front_matter_title: ""`.
 	for (const [settings, changes] of [
 		[{ front_matter_title: "" }, true],
+		[{ front_matter_title: false }, true],
+		[{ front_matter_title: 0 }, true],
+		[{ front_matter_title: null }, true],
 		[{ front_matter_title: "^\\s*layout\\s*:" }, true],
 		[{ level: 2 }, true],
 		[{ level: 1 }, false],
@@ -76,6 +79,12 @@ describe("MD025 single-title", () => {
 				[5, "Three"],
 			],
 		);
+		// markdownlint's rule reports no range and no fix.
+		for (const finding of findings) {
+			assert.isTrue(Option.isNone(finding.range));
+			assert.isTrue(Option.isNone(finding.fixInfo));
+			assert.isTrue(Option.isNone(finding.edit));
+		}
 	});
 });
 

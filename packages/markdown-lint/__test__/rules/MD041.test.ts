@@ -45,6 +45,9 @@ describe("MD041 first-line-heading", () => {
 		[{ allow_preamble: true }, true],
 		[{ level: 2 }, true],
 		[{ front_matter_title: "" }, true],
+		[{ front_matter_title: false }, true],
+		[{ front_matter_title: 0 }, true],
+		[{ front_matter_title: null }, true],
 		[{ front_matter_title: "^\\s*layout\\s*:" }, true],
 		[{ allow_preamble: false, level: 1 }, false],
 	] as const) {
@@ -79,6 +82,12 @@ describe("MD041 first-line-heading", () => {
 			findings.map((finding) => [finding.lineNumber, Option.getOrNull(finding.context)]),
 			[[1, "Intro text"]],
 		);
+		// markdownlint's rule reports no range and no fix.
+		for (const finding of findings) {
+			assert.isTrue(Option.isNone(finding.range));
+			assert.isTrue(Option.isNone(finding.fixInfo));
+			assert.isTrue(Option.isNone(finding.edit));
+		}
 	});
 });
 

@@ -39,7 +39,7 @@ const paragraphTextLines = (context: Lint.LintContext): Set<number> => {
 				segment
 					.replace(/\\[!-/:-@[-`{-~]/g, "")
 					.replace(/&#(?:\d{1,7}|[xX][\da-fA-F]{1,6});/g, "")
-					.replace(/&[A-Za-z][A-Za-z\d]{0,31};/g, (reference) => (value.includes(reference) ? reference : ""));
+					.replace(/&[A-Za-z][A-Za-z\d]{0,30};/g, (reference) => (value.includes(reference) ? reference : ""));
 			const segments = text.split(/\r\n?|\n/);
 			for (const [index, segment] of segments.entries()) {
 				if (notData(index === 0 ? segment : segment.replace(/^[ \t]+/, "")).length > 0) {
