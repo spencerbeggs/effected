@@ -1,0 +1,123 @@
+// MD013 `line-length`: a port of markdownlint's lib/md013.mjs over the kit
+// tree. markdownlint reads micromark tokens for six line sets — headings, code
+// blocks, tables, links, paragraph text and definitions — and this module
+// derives each from kit node positions and the raw source instead.
+
+import type { MarkdownNode, Paragraph } from "@effected/markdown";
+import type * as Lint from "@effected/markdown-lint";
+import {
+	codeBlockLines,
+	firstContentLine,
+	isBoolean,
+	isNumber,
+	lineStarts,
+	nodeLines,
+	setting,
+} from "../internal/rule-helpers.js";
+import { LintRule } from "../LintRule.js";
+
+// A line that cannot wrap: optional heading or blockquote markers and space, then one run of non-space.
+const notWrappable = /^(?:[#>\s]*\s)?\S*$/;
+
+// markdownlint's `\S*$`, run under re2js, whose `\s` is ASCII: the last run of non-space.
+const lastRun = /[^\t\n\f\r ]*$/;
+
+// The lines holding a paragraph's own text: its direct text children, less the line breaks between them and
+// the indentation that opens a continuation line (micromark's `data` tokens directly under `paragraph`).
+const paragraphTextLines = (context: Lint.LintContext): Set<number> => {
+	const lines = new Set<number>();
+	for (const paragraph of context.document.findAll("paragraph") as ReadonlyArray<Paragraph>) {
+		for (const child of paragraph.children as ReadonlyArray<MarkdownNode>) {
+			if (child.type !== "text") continue;
+			const text = context.source.slice(child.position.start.offset, child.position.end.offset);
+			const segments = text.split(/\r\n?|\n/);
+			for (const [index, segment] of segments.entries()) {
+				if ((index === 0 ? segment : segment.replace(/^[ \t]+/, "")).length > 0) {
+					lines.add(child.position.start.line + index);
+				}
+			}
+		}
+	}
+	return lines;
+};
+
+// The lines markdownlint counts as links: inline links, images and autolinks, and references whose label is
+// defined (micromark makes a link of no other reference).
+const linkLines = (context: Lint.LintContext): Set<number> =>
+	nodeLines(
+		context.document.links
+			.filter(
+				(entry) =>
+					entry.node.type === "link" ||
+					entry.node.type === "image" ||
+					((entry.node.type === "linkReference" || entry.node.type === "imageReference") && entry.url !== undefined),
+			)
+			.map((entry) => entry.node),
+	);
+
+/**
+ * MD013 `line-length`: lines are no longer than a limit.
+ *
+ * @remarks
+ * markdownlint's settings: `line_length` (default `80`),
+ * `heading_line_length` and `code_block_line_length` (default
+ * `line_length`), `code_blocks`, `tables` and `headings` (default `true`),
+ * and `strict` and `stern` (default `false`). A setting of the wrong type
+ * reads as its default.
+ *
+ * @public
+ */
+export const MD013: Lint.LintRule = LintRule.make({
+	names: ["MD013", "line-length"],
+	description: "Line length",
+	tags: ["line_length"],
+	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md013.md",
+	check: (context, report) => {
+		const lineLength = setting(context.config, "line_length", isNumber, 80);
+		const headingLineLength = setting(context.config, "heading_line_length", isNumber, lineLength);
+		const codeLineLength = setting(context.config, "code_block_line_length", isNumber, lineLength);
+		const strict = setting(context.config, "strict", isBoolean, false);
+		const stern = setting(context.config, "stern", isBoolean, false);
+		const includeCodeBlocks = setting(context.config, "code_blocks", isBoolean, true);
+		const includeTables = setting(context.config, "tables", isBoolean, true);
+		const includeHeadings = setting(context.config, "headings", isBoolean, true);
+		const starts = lineStarts(context.source);
+		const headings = nodeLines(context.document.findAll("heading"));
+		const code = codeBlockLines(context, starts);
+		const tables = nodeLines(context.document.findAll("table"));
+		const textLines = paragraphTextLines(context);
+		const linkOnly = new Set([...linkLines(context)].filter((line) => !textLines.has(line)));
+		const definitions = nodeLines(
+			context.document.findAll((node) => node.type === "definition" || node.type === "footnoteDefinition"),
+		);
+		for (let lineNumber = firstContentLine(context); lineNumber <= context.lines.length; lineNumber++) {
+			const line = context.lines[lineNumber - 1] as string;
+			const isHeading = headings.has(lineNumber);
+			const inCode = code.has(lineNumber);
+			const inTable = tables.has(lineNumber);
+			const maxLength = inCode ? codeLineLength : isHeading ? headingLineLength : lineLength;
+			// Unless strict or stern, the last run of non-space may run past the limit if it starts within it.
+			const text = strict || stern ? line : line.replace(lastRun, "#");
+			if (
+				maxLength > 0 &&
+				(includeCodeBlocks || !inCode) &&
+				(includeTables || !inTable) &&
+				(includeHeadings || !isHeading) &&
+				!definitions.has(lineNumber) &&
+				(strict || (!(stern && notWrappable.test(line)) && !linkOnly.has(lineNumber))) &&
+				text.length > maxLength &&
+				// markdownlint reports through `addErrorDetailIf`, which is silent when the line is exactly the limit.
+				line.length !== maxLength
+			) {
+				const start = starts[lineNumber - 1] as number;
+				report(
+					context.diagnostic({
+						at: { offset: start, length: 0 },
+						detail: `Expected: ${maxLength}; Actual: ${line.length}`,
+						range: { offset: start + maxLength, length: line.length - maxLength },
+					}),
+				);
+			}
+		}
+	},
+});

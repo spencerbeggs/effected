@@ -81,3 +81,28 @@ export const fencedInterior = (
 /** Every kit code node, fenced or indented. @internal */
 export const codeNodes = (context: LintContext): ReadonlyArray<Code> =>
 	context.document.findAll("code") as ReadonlyArray<Code>;
+
+/**
+ * Every line of every code block, fences included, as micromark's
+ * `codeFenced` and `codeIndented` tokens span them.
+ * @internal
+ */
+export const codeBlockLines = (context: LintContext, starts: ReadonlyArray<number>): Set<number> => {
+	const lines = new Set<number>();
+	for (const node of codeNodes(context)) {
+		const end = node.fenceChar === undefined ? node.position.end.line : fencedEndLine(context, node, starts);
+		addRange(lines, node.position.start.line, end);
+	}
+	return lines;
+};
+
+/** Every line from each node's first to its last. @internal */
+export const nodeLines = (
+	nodes: Iterable<{
+		readonly position: { readonly start: { readonly line: number }; readonly end: { readonly line: number } };
+	}>,
+): Set<number> => {
+	const lines = new Set<number>();
+	for (const node of nodes) addRange(lines, node.position.start.line, node.position.end.line);
+	return lines;
+};

@@ -25,10 +25,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-23T22:07:19Z
+  at: 2026-11-23T22:08:52Z
 integrity:
   generated:
-    body: 172d318423b11c8c
+    body: f74a43de7046c46f
 ---
 
 # `@effected/markdown-lint`
@@ -214,6 +214,11 @@ plain synchronous function; no logging, no metrics.
   LF and CRLF, 2 inputs). Its content is one empty line numbered one past
   its per-line enabled state. The kit reports nothing there. Pinned by a
   test as an upstream failure, not a port difference.
+- MD013 under a `heading_line_length` below 35: markdownlint's micromark
+  runs the math extension, so the `$$` block in
+  `headings-with-invalid-spaces.md` is math, while the kit reads the
+  `## …` lines inside it as headings and holds them to the heading limit
+  (LF and CRLF, 2 inputs). A parser-reading difference, pinned by a test.
 
 ## Known limitations
 

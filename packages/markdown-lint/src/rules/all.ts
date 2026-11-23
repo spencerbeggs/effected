@@ -14,13 +14,14 @@ import type { LintRule } from "@effected/markdown-lint";
 import { MD009 } from "./MD009.js";
 import { MD010 } from "./MD010.js";
 import { MD012 } from "./MD012.js";
+import { MD013 } from "./MD013.js";
 
 /**
  * Every ported markdownlint rule, in markdownlint's own order.
  *
  * @public
  */
-export const rules: ReadonlyArray<LintRule> = [MD009, MD010, MD012];
+export const rules: ReadonlyArray<LintRule> = [MD009, MD010, MD012, MD013];
 
 /**
  * The first names of markdownlint's built-in rules that have no port yet,
@@ -35,7 +36,6 @@ export const uncovered: ReadonlyArray<string> = [
 	"MD005",
 	"MD007",
 	"MD011",
-	"MD013",
 	"MD014",
 	"MD018",
 	"MD019",
