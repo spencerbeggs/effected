@@ -5,6 +5,7 @@
 import type { MarkdownDialect, MarkdownDocument } from "@effected/markdown";
 import { MarkdownEdit } from "@effected/markdown";
 import { Effect, Option, Result } from "effect";
+import { applyFixes as applyFixesPolicy } from "./internal/apply-fixes.js";
 import { alignedReading, lintReading, maskContent, parseSettings, readSource, splitLines } from "./internal/host.js";
 import { frontMatterLineCount } from "./internal/reading.js";
 import type { LintConfigRecord } from "./LintConfig.js";
@@ -220,6 +221,40 @@ export class MarkdownLint {
 		if (Option.isNone(aligned)) return MarkdownLint.lint(document.source, rules, options);
 		requireDistinctNames(rules);
 		return lintReading(Result.succeed(aligned.value), splitLines(document.source), rules, runOf(options));
+	}
+
+	/**
+	 * Apply findings' fixes to `source` as markdownlint's `applyFixes` does —
+	 * the fix that `markdownlint-cli2 --fix` would make.
+	 *
+	 * @remarks
+	 * Several findings can ask for fixes that meet: two headings each asking
+	 * for the blank line between them, an insert and a delete at one column.
+	 * `MarkdownEdit.applyAll` would apply them all (and refuse an overlap);
+	 * this applies them under markdownlint's policy, ported from its
+	 * `applyFixes`: fixes ordered bottom to top, whole-line deletes last on a
+	 * line, right to left, longer inserts first; a fix identical to another
+	 * applied once; an insert and a delete at one line and column made one
+	 * replace; at most one fix applied where fixes run into each other on a
+	 * line; and a whole-line delete taking every other fix on its line with
+	 * it.
+	 *
+	 * It works on the findings' kit `edit`s, not on markdownlint's line fixes,
+	 * so it differs where those differ: each fix is ordered and matched by its
+	 * finding's `fixInfo`, and an edit with no `fixInfo` (one crossing a line
+	 * break, which markdownlint cannot say) by its own start line and column;
+	 * the inserted text is the edit's as written, where markdownlint rewrites
+	 * an inserted `\n` as the file's line ending (the kit's rules write that
+	 * ending themselves). Findings without a fix are ignored. Edits address
+	 * `source` as given, as {@link MarkdownLint.lint} reports them, byte order
+	 * mark included. Pure and synchronous.
+	 *
+	 * @param source - The text the findings were reported on.
+	 * @param findings - The findings, from any number of rules, in any order.
+	 * @returns The fixed text.
+	 */
+	static applyFixes(source: string, findings: ReadonlyArray<LintDiagnostic>): string {
+		return applyFixesPolicy(source, findings);
 	}
 
 	/**

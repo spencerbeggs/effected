@@ -25,10 +25,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-23T22:59:58Z
+  at: 2026-11-23T23:12:14Z
 integrity:
   generated:
-    body: d5774ef16727b65a
+    body: a81ed31d901a7da3
 ---
 
 # `@effected/markdown-lint`
@@ -92,6 +92,12 @@ context construction and rule run both hosts share, which is what makes
   reading and findings as `lint` over `document.source`: the parse is
   reused when it already is markdownlint's reading, otherwise the source is
   re-read with `options.dialect`), and
+  `applyFixes(source, findings)`, which applies findings' kit edits under
+  markdownlint's `applyFixes` policy (the fix `markdownlint-cli2 --fix`
+  makes: identical fixes once, one insert per line and column, the longest,
+  an insert and a delete at one column made one replace, a fix running into
+  the one to its right skipped, a whole-line delete taking its line's other
+  fixes), and
   `lintEffect`, the `Effect` under a `MarkdownLint.lint` span defined in
   terms of `lint`. Defaults: gfm, frontmatter capture on (markdownlint
   always strips front matter). Findings come in rule order, then report
@@ -224,6 +230,12 @@ plain synchronous function; no logging, no metrics.
 
 ## Known limitations
 
+- Fixes from several findings can meet (MD022's two headings asking for the
+  blank line between them). `MarkdownEdit.applyAll` applies every edit and
+  refuses an overlap; apply findings with `MarkdownLint.applyFixes`, which
+  follows markdownlint's policy and is what the differential harness
+  compares with markdownlint's own `applyFixes`.
+
 - markdownlint's micromark runs the math extension; the kit tree carries no
   math. The rules read `$$` blocks from raw lines instead (an opening line
   of two or more `$` with no `$` in its meta, behind any blockquote markers
@@ -231,14 +243,6 @@ plain synchronous function; no logging, no metrics.
   least as many `$`), and drop the headings the kit reads inside them. The
   reader does not track a list item's indentation, so a block inside a list
   is found by its own line alone.
-
-- Two findings can carry inserts at one position (MD022, when two headings
-  each ask for blank lines between them). `MarkdownEdit.applyAll` applies
-  every edit; markdownlint's `applyFixes` applies one insert per line and
-  column, the longest, and drops identical fixes. The differential harness
-  applies kit edits under markdownlint's policy, so its applied-fix
-  comparison holds; a caller applying the kit edits directly gets every
-  insert.
 
 - `lintDocument` cannot know the dialect a document was parsed with:
   `MarkdownDocument` does not record it. When the given parse is not

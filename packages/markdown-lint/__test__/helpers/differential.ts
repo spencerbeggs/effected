@@ -7,7 +7,6 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
 import type { LintDiagnostic } from "../../src/LintDiagnostic.js";
 import type { LintRule } from "../../src/LintRule.js";
@@ -151,15 +150,7 @@ const compareOne = (rule: LintRule, config: Record<string, unknown>, input: Diff
 	const expected = oracleApplyFixes(input.source, oracleFindings);
 	let actual: string;
 	try {
-		// markdownlint's applyFixes applies one insert at a line and column, the longest (it sorts by insert length
-		// and skips any later fix there), and drops a fix identical to another: apply the kit's edits the same way.
-		const edits = new Map<string, MarkdownEdit>();
-		for (const edit of kitFindings.flatMap((finding) => Option.toArray(finding.edit))) {
-			const key = edit.length === 0 ? `insert:${edit.offset}` : `${edit.offset}:${edit.length}:${edit.content}`;
-			const held = edits.get(key);
-			if (held === undefined || edit.content.length > held.content.length) edits.set(key, edit);
-		}
-		actual = MarkdownEdit.applyAll(input.source, [...edits.values()]);
+		actual = MarkdownLint.applyFixes(input.source, kitFindings);
 	} catch (error) {
 		return found(`kit edits do not apply: ${error instanceof Error ? error.message : String(error)}`);
 	}
