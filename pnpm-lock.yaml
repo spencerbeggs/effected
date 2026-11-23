@@ -244,8 +244,8 @@ catalogs:
       specifier: ^4.23.15
       version: 4.23.15
     typescript:
-      specifier: 7.1.0-beta
-      version: 7.1.0-beta
+      specifier: 7.1.0-dev.20261119.1
+      version: 7.1.0-dev.20261119.1
   effected:build:peers:
     ink:
       specifier: ^8.0.0
@@ -368,7 +368,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/bun:
     dependencies:
@@ -393,7 +393,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/bundler:
     dependencies:
@@ -477,13 +477,13 @@ importers:
         version: 1.3.3
       rolldown-plugin-dts:
         specifier: catalog:effected:build
-        version: 0.30.2(rolldown@1.3.3)(typescript@7.1.0-beta)
+        version: 0.30.2(rolldown@1.3.3)(typescript@7.1.0-dev.20261119.1)
       satori:
         specifier: ^0.63.2
         version: 0.63.2
       tsdown:
         specifier: catalog:effected:build
-        version: 0.23.7(@tsdown/exe@0.23.7)(tsx@4.23.15)(typescript@7.1.0-beta)
+        version: 0.23.7(@tsdown/exe@0.23.7)(tsx@4.23.15)(typescript@7.1.0-dev.20261119.1)
     devDependencies:
       '@effect/vitest':
         specifier: 4.1.5
@@ -502,7 +502,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/changesets:
     dependencies:
@@ -563,7 +563,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/cli:
     dependencies:
@@ -618,7 +618,7 @@ importers:
         version: 19.3.0
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/cli-kit:
     dependencies:
@@ -691,7 +691,7 @@ importers:
         version: 9.0.0
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/commands:
     devDependencies:
@@ -715,7 +715,7 @@ importers:
         version: 4.23.15
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/config-file:
     dependencies:
@@ -755,7 +755,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/crypto:
     devDependencies:
@@ -773,7 +773,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/engine:
     dependencies:
@@ -828,7 +828,7 @@ importers:
         version: 26.6.6
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/env:
     devDependencies:
@@ -849,7 +849,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/files:
     devDependencies:
@@ -867,7 +867,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/git:
     devDependencies:
@@ -888,7 +888,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/github:
     dependencies:
@@ -949,7 +949,7 @@ importers:
         version: 1.0.3
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/github-actions:
     dependencies:
@@ -1013,7 +1013,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/github-commands:
     devDependencies:
@@ -1028,7 +1028,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/github-references:
     devDependencies:
@@ -1043,7 +1043,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/glob:
     devDependencies:
@@ -1061,7 +1061,7 @@ importers:
         version: 11.0.8
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/images:
     devDependencies:
@@ -1085,7 +1085,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/jsonc:
     dependencies:
@@ -1104,7 +1104,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/jsonl:
     devDependencies:
@@ -1125,7 +1125,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/jwt:
     dependencies:
@@ -1147,7 +1147,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/kit:
     devDependencies:
@@ -1171,7 +1171,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/lockfiles:
     devDependencies:
@@ -1207,7 +1207,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/lsp:
     devDependencies:
@@ -1228,7 +1228,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/manifest:
     devDependencies:
@@ -1243,7 +1243,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/markdown:
     dependencies:
@@ -1274,7 +1274,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/markdown-lint:
     dependencies:
@@ -1296,7 +1296,7 @@ importers:
         version: 0.42.1(supports-color@8.1.1)
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/mcp:
     dependencies:
@@ -1342,7 +1342,7 @@ importers:
         version: 26.6.6
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/mcp-kit:
     devDependencies:
@@ -1366,7 +1366,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/memfs:
     devDependencies:
@@ -1384,7 +1384,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/npm:
     dependencies:
@@ -1418,7 +1418,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/oidc:
     dependencies:
@@ -1440,7 +1440,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/package-json:
     dependencies:
@@ -1477,7 +1477,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/plugin:
     dependencies:
@@ -1522,13 +1522,13 @@ importers:
         version: 1.3.3
       rolldown-plugin-dts:
         specifier: catalog:effected:build
-        version: 0.30.2(rolldown@1.3.3)(typescript@7.1.0-beta)
+        version: 0.30.2(rolldown@1.3.3)(typescript@7.1.0-dev.20261119.1)
       satori:
         specifier: ^0.63.2
         version: 0.63.2
       tsdown:
         specifier: catalog:effected:build
-        version: 0.23.7(@tsdown/exe@0.23.7)(tsx@4.23.15)(typescript@7.1.0-beta)
+        version: 0.23.7(@tsdown/exe@0.23.7)(tsx@4.23.15)(typescript@7.1.0-dev.20261119.1)
     devDependencies:
       '@effect/platform-node':
         specifier: 4.1.5
@@ -1553,7 +1553,7 @@ importers:
         version: 26.6.6
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/pnpm:
     dependencies:
@@ -1587,7 +1587,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/pnpm-plugin-effected:
     devDependencies:
@@ -1599,7 +1599,7 @@ importers:
         version: 3.0.4(@effected/markdown-lint@0.2.0(@effected/jsonc@0.25.0(effect@4.1.5))(@effected/toml@0.20.0(effect@4.1.5))(@effected/yaml@0.30.0(effect@4.1.5))(effect@4.1.5))(@effected/markdown@0.29.0(@effected/jsonc@0.25.0(effect@4.1.5))(@effected/toml@0.20.0(effect@4.1.5))(@effected/yaml@0.30.0(effect@4.1.5))(effect@4.1.5))(@types/react@19.3.0)(redis@6.3.1)(rolldown@1.3.3)
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/runtimes:
     dependencies:
@@ -1624,7 +1624,7 @@ importers:
         version: 0.159.0
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/s3:
     dependencies:
@@ -1643,7 +1643,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/sbom:
     dependencies:
@@ -1677,7 +1677,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/schema-org:
     devDependencies:
@@ -1695,7 +1695,7 @@ importers:
         version: 0.159.0
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/schemastore:
     dependencies:
@@ -1723,7 +1723,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/semver:
     devDependencies:
@@ -1741,7 +1741,7 @@ importers:
         version: 7.8.6
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/shell:
     devDependencies:
@@ -1756,7 +1756,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/source:
     devDependencies:
@@ -1771,7 +1771,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/spdx:
     devDependencies:
@@ -1798,7 +1798,7 @@ importers:
         version: 3.0.24
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/store:
     dependencies:
@@ -1820,7 +1820,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/templates:
     dependencies:
@@ -1845,7 +1845,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/toml:
     dependencies:
@@ -1867,7 +1867,7 @@ importers:
         version: 1.9.1
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/tsconfig-json:
     devDependencies:
@@ -1894,7 +1894,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/walker:
     devDependencies:
@@ -1915,7 +1915,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/webhooks:
     dependencies:
@@ -1940,10 +1940,10 @@ importers:
         version: 23.2.0(@types/node@26.6.6)
       svix:
         specifier: ^2.9.1
-        version: 2.11.0
+        version: 2.10.0
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/workspaces:
     dependencies:
@@ -2001,7 +2001,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/xdg:
     devDependencies:
@@ -2037,7 +2037,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   packages/yaml:
     dependencies:
@@ -2056,7 +2056,7 @@ importers:
         version: 4.1.5
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   plugin:
     devDependencies:
@@ -2198,7 +2198,7 @@ importers:
         version: 4.23.15
       typescript:
         specifier: catalog:effected:build
-        version: 7.1.0-beta
+        version: 7.1.0-dev.20261119.1
 
   website:
     devDependencies:
@@ -2243,21 +2243,21 @@ packages:
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/helper-string-parser@7.29.15':
-    resolution: {integrity: sha512-C2FuapQ2Kh1OnVHAoLi5rD3GBJ8COb9Q609T6HEpLqaBAo560PDP5OxBE5dCI/h951MBO/+bCUYU5SZ+8ZlV+w==}
+  '@babel/helper-string-parser@7.29.14':
+    resolution: {integrity: sha512-CXvKMFvM80ihI7Vox9jb+kQjnyjESQNPM+vB7U0Zz6TWuZA+Z/FL0QPMH300h33qJtIx+REeBhXqWOPW48TcAQ==}
     engines: {node: '>=6.9.0'}
 
   '@babel/helper-validator-identifier@7.29.7':
     resolution: {integrity: sha512-qehxGkRj55h/ff8EMaJ+cYhyaKlHIxqYDn682wQD7RNp9UujOQsHog2uS0r2vzr4pW+sXf90NeeayjcNaX3fFg==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/parser@7.29.15':
-    resolution: {integrity: sha512-RpKWyisHoP81twtSCgmE02iU0RnPcq1DN5bBEbpUePrjA9Q3wXhufnCJrrayPpoZieqFh3zyZQqwtSK0gGccRA==}
+  '@babel/parser@7.29.14':
+    resolution: {integrity: sha512-VL220vXuyO2z3rNIQwY7ftj9UwpqOt+33sH+sBWkOekbsSR2g7EEMnOx24ZlCH0xOA3DM/33SifVFGbnJD8r/w==}
     engines: {node: '>=6.0.0'}
     hasBin: true
 
-  '@babel/types@7.29.15':
-    resolution: {integrity: sha512-/XKpKDakL//LZ66bq1XsZOswuqeI5MZqPLDu18o3XdkU1fNJ7bdPtzgnc4ZNS+bBGHV0FJG8jjb8SwcC3nNVQQ==}
+  '@babel/types@7.29.14':
+    resolution: {integrity: sha512-UjI/dKmwJwT9pOszJitq2G6EObZPnsZUfdCr92z2TlF3EZK9J3EdfOKUrCzHl6wFthbzwhzl1Soc/UIwxRiq6w==}
     engines: {node: '>=6.9.0'}
 
   '@bcoe/v8-coverage@1.0.2':
@@ -4267,8 +4267,20 @@ packages:
     cpu: [arm64]
     os: [darwin]
 
+  '@typescript/typescript-darwin-arm64@7.1.0-dev.20261119.1':
+    resolution: {integrity: sha512-VfAW3NZj9hGA3uiwUyrsPS9aVEZ/RDAqWucs1JdpuXP7LQKHp7zhmmAxmWZQwY+7EOD2p9pxpLkOR93mZrSd4w==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [darwin]
+
   '@typescript/typescript-darwin-x64@7.1.0-beta':
     resolution: {integrity: sha512-D5EYqG5Wm/guw9+0j8+Mn1Jbr/gfS/VtFTuoH8PJtFbcqeDaQGMulc7SW8q51QG6Y3wGOGX3nbsTOw6fIKWWAA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@typescript/typescript-darwin-x64@7.1.0-dev.20261119.1':
+    resolution: {integrity: sha512-tg720+Cs4tt4gZPPhWIKJGOw28gS0iKABDYFCj/O2LIAg8PD+7v+p8AGrY5UExABsW9oWcOh0QihoOxfoy9A/A==}
     engines: {node: '>=16.20.0'}
     cpu: [x64]
     os: [darwin]
@@ -4291,8 +4303,20 @@ packages:
     cpu: [arm64]
     os: [linux]
 
+  '@typescript/typescript-linux-arm64@7.1.0-dev.20261119.1':
+    resolution: {integrity: sha512-5eB1EMvL9OAtdHbYq27xAEfWWJYDbVrBT3soiESQ/kJsXsr3sy4Dt6T4KPKw+eIuhohzzG6milSrDMz9454K/A==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [linux]
+
   '@typescript/typescript-linux-arm@7.1.0-beta':
     resolution: {integrity: sha512-AvN9HmzOQh46G4312ooSgMHhbB7DtnLwg8D9mo324X49B7weMwtJrBG1MxT9IyI8kzDd7YRtW+1hWGun7WG7Qw==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm]
+    os: [linux]
+
+  '@typescript/typescript-linux-arm@7.1.0-dev.20261119.1':
+    resolution: {integrity: sha512-I//QGQojyWAK8bVJN/c3Aw+BOujSx8rfLfBL2A03KcdB3HqYsYYo0SOPJ+USQ1n8Cam4WsW4DzGYOQ/BpW+2vg==}
     engines: {node: '>=16.20.0'}
     cpu: [arm]
     os: [linux]
@@ -4333,6 +4357,12 @@ packages:
     cpu: [x64]
     os: [linux]
 
+  '@typescript/typescript-linux-x64@7.1.0-dev.20261119.1':
+    resolution: {integrity: sha512-nGjZo7RMoFB8vr4eAk5akISOPvvOCvS5WXSlTa/a2aDiSazA2H8Hu8Fpw5mK3109DOCcxKliO0TZizj38ql8DQ==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [linux]
+
   '@typescript/typescript-netbsd-arm64@7.1.0-beta':
     resolution: {integrity: sha512-8W85YyoGK+rgGoSU9jJQUpELbrKcZcbdJk2jPNQ6UKDKI7ryPlPFTrV2jCE5RQuv4Tt96hMDTc33s4YfRrLFBA==}
     engines: {node: '>=16.20.0'}
@@ -4369,8 +4399,20 @@ packages:
     cpu: [arm64]
     os: [win32]
 
+  '@typescript/typescript-win32-arm64@7.1.0-dev.20261119.1':
+    resolution: {integrity: sha512-lNwY0/K8NQ8/aUqVkW7GvjXwRr7aVqGdQ9qRvBEZ3q4LcTVLci1gEHm4m68uhxYj1+gg59stco7fd9Lp4glIqA==}
+    engines: {node: '>=16.20.0'}
+    cpu: [arm64]
+    os: [win32]
+
   '@typescript/typescript-win32-x64@7.1.0-beta':
     resolution: {integrity: sha512-UKcHvbybY2tDTvFW2b1vwiAvDlIRooo69lh8CXWVhOQejcvpM5+IgbiFW9EIwR5Wi5X/v+BdN7gdWbigBuJ3rw==}
+    engines: {node: '>=16.20.0'}
+    cpu: [x64]
+    os: [win32]
+
+  '@typescript/typescript-win32-x64@7.1.0-dev.20261119.1':
+    resolution: {integrity: sha512-XoqFWv7TfOOI7MQebplz/sp0VztyVCBsyZlksaTnNKsOqoeR8lcsaW+Vh1g5ixzqJV/ySnilbZ/3elwWEmKODA==}
     engines: {node: '>=16.20.0'}
     cpu: [x64]
     os: [win32]
@@ -4680,6 +4722,10 @@ packages:
   bundle-name@4.1.1:
     resolution: {integrity: sha512-DdH81/zPLVS11EUgWq3tEu/xn+EzljlMYooDNdzWEnFha3R3NBMpMV1UqYIpjYHV/SgpFKMIX1Oh7o06SjM/oA==}
     engines: {node: '>=18'}
+
+  cac@7.1.0:
+    resolution: {integrity: sha512-LMDU/U2yA4IPIY8KT0NsNPWEYZvAMkbgyspxJ6btJaYV+WMDOHAZCmB0lsTObiHaRS1V/ztKAl7+TSkTqXyeoA==}
+    engines: {node: '>=20.19.0'}
 
   cac@7.1.1:
     resolution: {integrity: sha512-8zc+h51HxpodKsA7L4PpBNd+9qlrfuUcyUDE5a793BJfN4NZgwk7v9NmrY3ptZ+Sk0+ToigxSzkb47AsEgyizw==}
@@ -5493,8 +5539,8 @@ packages:
   jju@1.4.0:
     resolution: {integrity: sha512-8wb9Yw966OSxApiCt0K3yNJL8pnNeIv+OEq2YMidz4FKP6nonSRoOXc80iXY4JaN2FC11B9qsNmDsm+ZOfMROA==}
 
-  js-tokens@10.0.1:
-    resolution: {integrity: sha512-XMt+uh+yEs6srFvEb/pEe4IMvbtoXVdNxF7lZFU+I9sdWI641L97L+gXQMTGm1x3RjPUVizNVjHueclXr0U7sw==}
+  js-tokens@10.0.0:
+    resolution: {integrity: sha512-lM/UBzQmfJRo9ABXbPWemivdCW8V2G8FHaHdypQaIy523snUjog0W71ayWXTjiR+ixeMyVHN2XcpnTd/liPg/Q==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -6546,8 +6592,8 @@ packages:
     resolution: {integrity: sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w==}
     engines: {node: '>= 0.4'}
 
-  svix@2.11.0:
-    resolution: {integrity: sha512-+S+IUVUJ0rG4+2OdBSYlZBfTqM/HIVxHK8e8r7tIuqDCm6kOfRgSCPcVJKJH5ChBIk+h1flUMCS0R2IecfoKCA==}
+  svix@2.10.0:
+    resolution: {integrity: sha512-dlRV27sT8XSRU9izvxXUKPor923DDLEXzPgMPYe+JrCjQ8w0w4lNipKeXFhhVKvNPyrkmXe/1ynVhzm24Nem3Q==}
     engines: {node: '>=22'}
 
   tagged-tag@1.0.0:
@@ -6671,14 +6717,16 @@ packages:
     engines: {node: '>=16.20.0'}
     hasBin: true
 
+  typescript@7.1.0-dev.20261119.1:
+    resolution: {integrity: sha512-iw3tH6lz4k89Fr80avtrgaT2jF+SKmKam459dsqNCwSyPdHiBrKj8j58Pv84FQu6GABeaY/oSyRivYovERj7zA==}
+    engines: {node: '>=16.20.0'}
+    hasBin: true
+
   uc.micro@3.0.0:
     resolution: {integrity: sha512-U3PppEkleoTnIfi8BozMx3yju3qc/L6SwqWo2Sw+54PX+PX0q9I+r1Um5HCmqD7n9VDX5/v3vQH/AjA6deDdtw==}
 
   unconfig-core@7.5.0:
     resolution: {integrity: sha512-Su3FauozOGP44ZmKdHy2oE6LPjk51M/TRRjHv2HNCWiDvfvCoxC2lno6jevMA91MYAdCdwP05QnWdWpSbncX/w==}
-
-  undici-types@8.13.1:
-    resolution: {integrity: sha512-wEtfquPVc1e9umZh73XVwnPauVuGQp20M/u/4ENuWMRkZ8NZx0ut6q3HLLdMUb9awNlxxHcsaGVhaerZu/2SSw==}
 
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
@@ -6931,17 +6979,17 @@ snapshots:
       js-tokens: 4.0.0
       picocolors: 1.1.1
 
-  '@babel/helper-string-parser@7.29.15': {}
+  '@babel/helper-string-parser@7.29.14': {}
 
   '@babel/helper-validator-identifier@7.29.7': {}
 
-  '@babel/parser@7.29.15':
+  '@babel/parser@7.29.14':
     dependencies:
-      '@babel/types': 7.29.15
+      '@babel/types': 7.29.14
 
-  '@babel/types@7.29.15':
+  '@babel/types@7.29.14':
     dependencies:
-      '@babel/helper-string-parser': 7.29.15
+      '@babel/helper-string-parser': 7.29.14
       '@babel/helper-validator-identifier': 7.29.7
 
   '@bcoe/v8-coverage@1.0.2': {}
@@ -6988,7 +7036,7 @@ snapshots:
       '@clack/prompts': 1.9.0
       '@manypkg/get-packages': 3.1.0
       '@pnpm/deps.graph-sequencer': 1100.0.1
-      cac: 7.1.1
+      cac: 7.1.0
       import-meta-resolve: 4.2.0
       launch-editor: 2.14.2
       package-manager-detector: 1.9.0
@@ -8839,7 +8887,7 @@ snapshots:
     dependencies:
       obug: 3.0.0
       tinyexec: 1.3.1
-      tsdown: 0.23.7(@tsdown/exe@0.23.7)(tsx@4.23.15)(typescript@7.1.0-beta)
+      tsdown: 0.23.7(@tsdown/exe@0.23.7)(tsx@4.23.15)(typescript@7.1.0-dev.20261119.1)
       verkit: 0.5.0
 
   '@turbo/darwin-64@2.11.13':
@@ -9053,7 +9101,13 @@ snapshots:
   '@typescript/typescript-darwin-arm64@7.1.0-beta':
     optional: true
 
+  '@typescript/typescript-darwin-arm64@7.1.0-dev.20261119.1':
+    optional: true
+
   '@typescript/typescript-darwin-x64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-darwin-x64@7.1.0-dev.20261119.1':
     optional: true
 
   '@typescript/typescript-freebsd-arm64@7.1.0-beta':
@@ -9065,7 +9119,13 @@ snapshots:
   '@typescript/typescript-linux-arm64@7.1.0-beta':
     optional: true
 
+  '@typescript/typescript-linux-arm64@7.1.0-dev.20261119.1':
+    optional: true
+
   '@typescript/typescript-linux-arm@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-linux-arm@7.1.0-dev.20261119.1':
     optional: true
 
   '@typescript/typescript-linux-loong64@7.1.0-beta':
@@ -9086,6 +9146,9 @@ snapshots:
   '@typescript/typescript-linux-x64@7.1.0-beta':
     optional: true
 
+  '@typescript/typescript-linux-x64@7.1.0-dev.20261119.1':
+    optional: true
+
   '@typescript/typescript-netbsd-arm64@7.1.0-beta':
     optional: true
 
@@ -9104,7 +9167,13 @@ snapshots:
   '@typescript/typescript-win32-arm64@7.1.0-beta':
     optional: true
 
+  '@typescript/typescript-win32-arm64@7.1.0-dev.20261119.1':
+    optional: true
+
   '@typescript/typescript-win32-x64@7.1.0-beta':
+    optional: true
+
+  '@typescript/typescript-win32-x64@7.1.0-dev.20261119.1':
     optional: true
 
   '@typescript/vfs@1.6.6(supports-color@8.1.1)(typescript@6.0.3)':
@@ -9446,7 +9515,7 @@ snapshots:
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       estree-walker: 3.0.3
-      js-tokens: 10.0.1
+      js-tokens: 10.0.0
 
   astring@1.9.0: {}
 
@@ -9475,11 +9544,13 @@ snapshots:
   bun-types@1.4.5:
     dependencies:
       '@types/node': 26.6.6
-      undici-types: 8.13.1
+      undici-types: 8.9.0
 
   bundle-name@4.1.1:
     dependencies:
       run-applescript: 7.1.0
+
+  cac@7.1.0: {}
 
   cac@7.1.1: {}
 
@@ -10346,7 +10417,7 @@ snapshots:
 
   jju@1.4.0: {}
 
-  js-tokens@10.0.1: {}
+  js-tokens@10.0.0: {}
 
   js-tokens@4.0.0: {}
 
@@ -10479,8 +10550,8 @@ snapshots:
 
   magicast@0.5.5:
     dependencies:
-      '@babel/parser': 7.29.15
-      '@babel/types': 7.29.15
+      '@babel/parser': 7.29.14
+      '@babel/types': 7.29.14
       source-map-js: 1.2.4
 
   make-fetch-happen@16.0.1(supports-color@8.1.1):
@@ -11599,7 +11670,7 @@ snapshots:
 
   robust-predicates@3.0.3: {}
 
-  rolldown-plugin-dts@0.30.2(rolldown@1.3.3)(typescript@7.1.0-beta):
+  rolldown-plugin-dts@0.30.2(rolldown@1.3.3)(typescript@7.1.0-dev.20261119.1):
     dependencies:
       dts-resolver: 3.0.0
       get-tsconfig: 5.0.0-beta.6
@@ -11607,7 +11678,7 @@ snapshots:
       rolldown: 1.3.3
       yuku: 0.28.1
     optionalDependencies:
-      typescript: 7.1.0-beta
+      typescript: 7.1.0-dev.20261119.1
     transitivePeerDependencies:
       - '@yuku-toolchain/wasm'
       - oxc-resolver
@@ -11953,7 +12024,7 @@ snapshots:
 
   supports-preserve-symlinks-flag@1.0.0: {}
 
-  svix@2.11.0:
+  svix@2.10.0:
     dependencies:
       standardwebhooks: 1.3.0
 
@@ -11993,7 +12064,7 @@ snapshots:
       '@ts-morph/common': 0.28.1
       code-block-writer: 13.0.3
 
-  tsdown@0.23.7(@tsdown/exe@0.23.7)(tsx@4.23.15)(typescript@7.1.0-beta):
+  tsdown@0.23.7(@tsdown/exe@0.23.7)(tsx@4.23.15)(typescript@7.1.0-dev.20261119.1):
     dependencies:
       cac: 7.1.1
       defu: 6.1.7
@@ -12003,7 +12074,7 @@ snapshots:
       obug: 3.0.0
       picomatch: 4.0.7
       rolldown: 1.3.3
-      rolldown-plugin-dts: 0.30.2(rolldown@1.3.3)(typescript@7.1.0-beta)
+      rolldown-plugin-dts: 0.30.2(rolldown@1.3.3)(typescript@7.1.0-dev.20261119.1)
       tinyexec: 1.3.1
       tinyglobby: 0.2.17
       tinyps: 0.5.2
@@ -12012,7 +12083,7 @@ snapshots:
     optionalDependencies:
       '@tsdown/exe': 0.23.7(tsdown@0.23.7)
       tsx: 4.23.15
-      typescript: 7.1.0-beta
+      typescript: 7.1.0-dev.20261119.1
     transitivePeerDependencies:
       - '@volar/typescript'
       - '@vue/language-core'
@@ -12081,14 +12152,22 @@ snapshots:
       '@typescript/typescript-win32-arm64': 7.1.0-beta
       '@typescript/typescript-win32-x64': 7.1.0-beta
 
+  typescript@7.1.0-dev.20261119.1:
+    optionalDependencies:
+      '@typescript/typescript-darwin-arm64': 7.1.0-dev.20261119.1
+      '@typescript/typescript-darwin-x64': 7.1.0-dev.20261119.1
+      '@typescript/typescript-linux-arm': 7.1.0-dev.20261119.1
+      '@typescript/typescript-linux-arm64': 7.1.0-dev.20261119.1
+      '@typescript/typescript-linux-x64': 7.1.0-dev.20261119.1
+      '@typescript/typescript-win32-arm64': 7.1.0-dev.20261119.1
+      '@typescript/typescript-win32-x64': 7.1.0-dev.20261119.1
+
   uc.micro@3.0.0: {}
 
   unconfig-core@7.5.0:
     dependencies:
       '@quansync/fs': 1.1.0
       quansync: 1.0.0
-
-  undici-types@8.13.1: {}
 
   undici-types@8.9.0: {}
 
