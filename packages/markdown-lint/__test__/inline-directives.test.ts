@@ -80,6 +80,43 @@ describe("InlineDirectives.resolve", () => {
 		assert.deepStrictEqual(states(lines, "AAA001"), [true, true]);
 	});
 
+	it("lets disable-next-line on the last line extend the array by one entry", () => {
+		const lines = ["x", "y", "<!-- markdownlint-disable-next-line AAA001 -->"];
+		const { enabledPerLine } = run(lines);
+		assert.deepStrictEqual(states(lines, "AAA001"), [true, true, true]);
+		assert.strictEqual(enabledPerLine.length, 5);
+		assert.strictEqual(enabledPerLine[4]?.get("AAA001"), false);
+		assert.strictEqual(enabledPerLine[4]?.get("BBB002"), undefined);
+	});
+
+	it("applies enable-file to every line under default false", () => {
+		const lines = ["x", "<!-- markdownlint-enable-file AAA001 -->", "y"];
+		assert.deepStrictEqual(states(lines, "AAA001", { default: false }), [true, true, true]);
+		assert.deepStrictEqual(states(lines, "BBB002", { default: false }), [false, false, false]);
+	});
+
+	it("resolves a tag passed to disable-line", () => {
+		const lines = ["x", "y <!-- markdownlint-disable-line t2 -->", "z"];
+		assert.deepStrictEqual(states(lines, "BBB002"), [true, false, true]);
+		assert.deepStrictEqual(states(lines, "AAA001"), [true, true, true]);
+	});
+
+	it("disables every rule on the line for a bare disable-line", () => {
+		const lines = ["x", "y <!-- markdownlint-disable-line -->", "z"];
+		assert.deepStrictEqual(states(lines, "AAA001"), [true, false, true]);
+		assert.deepStrictEqual(states(lines, "BBB002"), [true, false, true]);
+	});
+
+	it("carries an unclosed comment's search position into the next line, as markdownlint does", () => {
+		// Line 1 matches "<!-- markdownlint-disable " (26 characters) but has no "-->", so the shared
+		// global regex keeps lastIndex 26 and line 2 is searched from there; its comment starts at 0.
+		const carried = ["<!-- markdownlint-disable AAA001", "<!-- markdownlint-disable AAA001 -->", "x"];
+		assert.deepStrictEqual(states(carried, "AAA001"), [true, true, true]);
+		// Control: a comment on line 2 starting at or after index 26 is still found.
+		const control = ["<!-- markdownlint-disable AAA001", `${" ".repeat(30)}<!-- markdownlint-disable AAA001 -->`, "x"];
+		assert.deepStrictEqual(states(control, "AAA001"), [true, false, false]);
+	});
+
 	it("matches actions and names case-insensitively, and a tag where a rule name goes", () => {
 		const lines = ["<!-- MarkdownLint-DISABLE T2 -->", "x"];
 		assert.deepStrictEqual(states(lines, "BBB002"), [false, false]);

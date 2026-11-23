@@ -4,6 +4,7 @@
 // rule name or alias maps to that one rule, a tag maps to every rule carrying
 // it, and later keys override earlier ones.
 
+import { aliasMap } from "./internal/alias-map.js";
 import type { LintRule } from "./LintRule.js";
 
 /**
@@ -33,26 +34,6 @@ export interface EffectiveLintConfig {
 	/** The rule's settings with `enabled` and `severity` removed. */
 	readonly settings: ReadonlyMap<string, Readonly<Record<string, unknown>>>;
 }
-
-const aliasMap = (rules: ReadonlyArray<LintRule>): Map<string, Array<string>> => {
-	const aliases = new Map<string, Array<string>>();
-	for (const rule of rules) {
-		const ruleName = LintConfig.key(rule);
-		for (const name of rule.names) {
-			aliases.set(name.toUpperCase(), [ruleName]);
-		}
-		for (const tag of rule.tags) {
-			const tagUpper = tag.toUpperCase();
-			const existing = aliases.get(tagUpper);
-			if (existing === undefined) {
-				aliases.set(tagUpper, [ruleName]);
-			} else {
-				existing.push(ruleName);
-			}
-		}
-	}
-	return aliases;
-};
 
 /**
  * Resolves markdownlint configuration objects against a rule list.

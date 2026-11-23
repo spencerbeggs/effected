@@ -4,6 +4,7 @@
 // configure-file, file-level enable/disable, capture/restore/enable/disable
 // with a per-line snapshot, then disable-line and disable-next-line.
 
+import { aliasMap } from "./internal/alias-map.js";
 import type { EffectiveLintConfig, LintConfigRecord } from "./LintConfig.js";
 import { LintConfig } from "./LintConfig.js";
 import type { LintRule } from "./LintRule.js";
@@ -41,26 +42,14 @@ export class InlineDirectives {
 		options?: { readonly noInlineConfig?: boolean },
 	): InlineDirectivesResult {
 		const noInlineConfig = options?.noInlineConfig === true;
-		// One global regex for the whole run: markdownlint's is module-level, so
-		// a lastIndex left by an unclosed comment carries into the next line.
+		// One global regex for the whole run: an unclosed comment leaves lastIndex set and it
+		// carries into the next line. That is markdownlint's behaviour, kept deliberately.
+		// The one deliberate difference: the regex is created per resolve call, so the carry-over
+		// stops at the end of the document, where markdownlint's module-level regex also leaks it
+		// into the next document linted in the same process.
 		const commentStart =
 			/(<!--\s*markdownlint-(disable|enable|capture|restore|disable-file|enable-file|disable-line|disable-next-line|configure-file))(?:\s|-->)/gi;
-		const aliases = new Map<string, Array<string>>();
-		for (const rule of rules) {
-			const ruleName = LintConfig.key(rule);
-			for (const name of rule.names) {
-				aliases.set(name.toUpperCase(), [ruleName]);
-			}
-			for (const tag of rule.tags) {
-				const tagUpper = tag.toUpperCase();
-				const existing = aliases.get(tagUpper);
-				if (existing === undefined) {
-					aliases.set(tagUpper, [ruleName]);
-				} else {
-					existing.push(ruleName);
-				}
-			}
-		}
+		const aliases = aliasMap(rules);
 
 		const handleInlineConfig = (
 			input: ReadonlyArray<string>,
@@ -153,6 +142,7 @@ export class InlineDirectives {
 	}
 }
 
+// markdownlint turns a non-object payload into `{}`, which has the same effect as ignoring it.
 const parseJsonObject = (text: string): Record<string, unknown> | undefined => {
 	try {
 		const parsed: unknown = JSON.parse(text);
