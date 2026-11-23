@@ -310,3 +310,17 @@ export const flowNodesWithAncestors = (
 	visit(context.document.root as MarkdownNode, []);
 	return found;
 };
+
+/**
+ * markdownlint's `getHeadingText`: the heading's content as written — each
+ * direct child's source text, inline HTML left out — with line breaks read
+ * as spaces, trimmed.
+ * @internal
+ */
+export const headingText = (context: LintContext, heading: Heading): string =>
+	(heading.children as ReadonlyArray<MarkdownNode>)
+		.filter((child) => child.type !== "html")
+		.map((child) => context.source.slice(child.position.start.offset, child.position.end.offset))
+		.join("")
+		.replace(/\r\n?|\n/g, " ")
+		.trim();
