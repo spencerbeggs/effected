@@ -289,3 +289,24 @@ export const headingNodes = (context: LintContext): ReadonlyArray<Heading> => {
 		(heading) => !math.has(heading.position.start.line),
 	);
 };
+
+/**
+ * Every flow-level node of one of `types` with its container ancestors
+ * (blockquotes, lists, list items, footnote definitions), outermost first.
+ * @internal
+ */
+export const flowNodesWithAncestors = (
+	context: LintContext,
+	types: ReadonlySet<string>,
+): Array<{ readonly node: MarkdownNode; readonly ancestors: ReadonlyArray<MarkdownNode> }> => {
+	const found: Array<{ readonly node: MarkdownNode; readonly ancestors: ReadonlyArray<MarkdownNode> }> = [];
+	const visit = (node: MarkdownNode, ancestors: ReadonlyArray<MarkdownNode>): void => {
+		if (types.has(node.type)) found.push({ node, ancestors });
+		if (CONTAINERS.has(node.type) && "children" in node) {
+			const inner = node.type === "root" ? ancestors : [...ancestors, node];
+			for (const child of node.children as ReadonlyArray<MarkdownNode>) visit(child, inner);
+		}
+	};
+	visit(context.document.root as MarkdownNode, []);
+	return found;
+};
