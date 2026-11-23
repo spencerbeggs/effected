@@ -33,8 +33,8 @@ const maskBody = (content: string): string => {
 /**
  * markdownlint's `clearHtmlCommentText`: the body of each well-formed HTML
  * comment becomes a run of `.` of the same length, line breaks and spaces kept,
- * so every offset and line is preserved. An unterminated comment is text and
- * ends the scan, as does nothing else.
+ * so every offset and line is preserved. An unterminated comment is treated as
+ * text and ends the scan.
  */
 export const maskHtmlComments = (text: string): string => {
 	const chars = text.split("");
@@ -70,33 +70,35 @@ export const maskHtmlComments = (text: string): string => {
 	return chars.join("");
 };
 
-const isTerminator = (char: string | undefined): boolean =>
-	char === "\n" || char === "\r" || char === "\u2028" || char === "\u2029";
+// markdownlint runs its front-matter pattern under re2js (a linear-time engine),
+// whose `\s` is ASCII-only and whose multiline `^` and `$` see `\n` alone; the
+// text has been normalized to `\n` line endings by then. U+2028, U+2029, U+000B
+// and U+00A0 are therefore ordinary characters here, unlike under V8.
+const isSpace = (char: string | undefined): boolean =>
+	char === " " || char === "\t" || char === "\f" || char === "\n" || char === "\r";
 
-const isHorizontalSpace = (char: string): boolean => !isTerminator(char) && /\s/.test(char);
+const isHorizontalSpace = (char: string): boolean => char === " " || char === "\t" || char === "\f";
 
-// `^<fence>[^\S\r\n\u2028\u2029]*$`: the opener line, ending at a terminator or the
-// end. Returns the index of that terminator (or the length), or -1.
+// `^<fence>[^\S\r\n]*$`: the opener line, ending at a newline or the end of the
+// text. Returns the index of that newline (or the length), or -1.
 const openerEnd = (text: string, fence: string): number => {
 	if (!text.startsWith(fence)) return -1;
 	let at = fence.length;
 	while (at < text.length && isHorizontalSpace(text[at] as string)) at++;
-	return at === text.length || isTerminator(text[at]) ? at : -1;
+	return at === text.length || text[at] === "\n" ? at : -1;
 };
 
 // `^<closer>\s*(\r\n|\r|\n|$)` at `at`: the index the match ends at, or -1. The
-// greedy `\s*` backs off to the last line terminator inside the whitespace run,
-// or takes the whole run when it reaches the end of the text.
+// greedy `\s*` backs off to the last newline inside the whitespace run, or takes
+// the whole run when it reaches the end of the text.
 const closerEnd = (text: string, at: number, closer: string): number => {
 	if (!text.startsWith(closer, at)) return -1;
 	const runStart = at + closer.length;
 	let runEnd = runStart;
-	while (runEnd < text.length && /\s/.test(text[runEnd] as string)) runEnd++;
+	while (runEnd < text.length && isSpace(text[runEnd])) runEnd++;
 	if (runEnd === text.length) return runEnd;
 	for (let probe = runEnd - 1; probe >= runStart; probe--) {
-		const char = text[probe];
-		if (char === "\n" || char === "\r") return probe + 1;
-		if (char === "\u2028" || char === "\u2029") return probe;
+		if (text[probe] === "\n" || text[probe] === "\r") return probe + 1;
 	}
 	return -1;
 };
@@ -112,7 +114,7 @@ const matchFrontMatter = (text: string): number => {
 		if (lineEnd === -1 || lineEnd === text.length) continue;
 		// `[\s\S]+?` takes at least the terminator; a closer is any later line start.
 		for (let at = lineEnd + 1; at < text.length; at++) {
-			if (!isTerminator(text[at - 1])) continue;
+			if (text[at - 1] !== "\n") continue;
 			for (const closer of closers) {
 				const end = closerEnd(text, at, closer);
 				if (end !== -1) return end;
@@ -129,7 +131,7 @@ const matchFrontMatter = (text: string): number => {
  * mark dropped first, as markdownlint does.
  */
 export const frontMatterLineCount = (source: string): number => {
-	const text = source.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
+	const text = source.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
 	const end = matchFrontMatter(text);
 	if (end === -1) return 0;
 	const matched = text.slice(0, end);

@@ -63,6 +63,18 @@ const frontMatterInputs: ReadonlyArray<readonly [string, string, number]> = [
 	["a closing fence with trailing text", "---\na: b\n--- x\n# H\n", 0],
 	["a longer closing dash run", "---\na: b\n----\n# H\n", 0],
 	["a later closing fence after a failed candidate", "---\na: b\n--- x\nc: d\n---\n# H\n", 5],
+	["a --- block closed by ...", "---\na: b\n...\n# H\n", 0],
+	["a +++ block closed by ---", "+++\na = 1\n---\n# H\n", 0],
+	["a { block closed by ---", '{\n"a": 1\n---\n# H\n', 0],
+	["a { block with no }", '{\n"a": 1\n# H\n', 0],
+	["a closer followed by U+2028", "---\na: b\n---\u2028x\n# H\n", 0],
+	["an opener followed by U+2028", "---\u2028\na: b\n---\n# H\n", 0],
+	["a U+2028 inside the block ahead of the closer", "---\na: b\u2028---\n# H\n", 0],
+	["an opener followed by a vertical tab", "---\u000b\na: b\n---\n# H\n", 0],
+	["a closer followed by a no-break space", "---\na: b\n---\u00a0\n# H\n", 0],
+	["an opener and closer followed by tabs and form feeds", "---\t\f\na: b\n---\t\f\n# H\n", 3],
+	["a closer followed by a newline then U+2029", "---\na: b\n---\n\u2029\n# H\n", 3],
+	["a byte order mark before a block", "\uFEFF---\na: b\n---\n# H\n", 3],
 ];
 
 const maskInputs: ReadonlyArray<readonly [string, string]> = [
