@@ -208,7 +208,8 @@ describe("MarkdownlintAdapter under markdownlint", () => {
 		const results = await lintWith(text, [frontmatterRule]);
 		assert.lengthOf(results, 1);
 		assert.strictEqual(results[0]?.lineNumber, 2);
-		assert.strictEqual(results[0]?.errorDetail, "frontmatter of 4 lines");
+		// markdownlint's own count: its closing fence swallows the blank line after it.
+		assert.strictEqual(results[0]?.errorDetail, "frontmatter of 5 lines");
 		assert.deepStrictEqual(results[0]?.errorRange, [1, 8]);
 		assert.deepStrictEqual(results[0]?.fixInfo, { deleteCount: -1 });
 		assert.strictEqual(helpers.applyFixes(text, results), "---\nlayout: y\n---\n\n## Features\n");

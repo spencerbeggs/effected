@@ -9,26 +9,30 @@ import type { LintDiagnostic } from "./LintDiagnostic.js";
 import type { LintEditLike, PositionMapping } from "./PositionMapping.js";
 
 /**
- * The frontmatter block a lint context saw at the head of the source.
+ * The front matter block a lint context saw at the head of the source, read
+ * as markdownlint reads it.
+ *
+ * @remarks
+ * `lineCount` and `lines` are markdownlint's own front matter: its default
+ * pattern's `---`, `+++` or `{…}` block, with the blank lines its closing
+ * fence swallows, in both hosts. `node` is the kit's capture when the kit
+ * captured that block too (its closed `---`/`+++` fence grammar); for a block
+ * the kit does not capture (a `{…}` block, a `...`-closed one) it is
+ * `Option.none()`, and the parse saw those lines as spaces, so no tree node
+ * lies inside them.
  *
  * @public
  */
 export interface LintFrontmatter {
-	/** The kit capture node: its `format`, raw `value` and `position`. */
-	readonly node: Frontmatter;
+	/** The kit capture node — its `format`, raw `value` and `position` — when the kit captured the block. */
+	readonly node: Option.Option<Frontmatter>;
 	/**
-	 * How many lines the block occupies, fences included: the 1-based line of
-	 * its closing fence. The body starts on the line after it.
+	 * How many lines the block occupies, fences and swallowed blank lines
+	 * included: markdownlint's `frontMatterLines.length`. The content starts
+	 * on the line after it.
 	 */
 	readonly lineCount: number;
-	/**
-	 * Those lines, without terminators: the kit capture's lines. markdownlint's
-	 * `frontMatterLines` can differ — its closing `---` also swallows trailing
-	 * blank lines, and it strips `{…}` JSON and `...`-closed blocks the kit's
-	 * fence grammar does not capture — so never read this as markdownlint's
-	 * block. Line numbers are unaffected: the adapter renumbers by
-	 * markdownlint's own count.
-	 */
+	/** Those lines, without terminators: markdownlint's `frontMatterLines`. */
 	readonly lines: ReadonlyArray<string>;
 }
 
@@ -66,17 +70,25 @@ export interface LintReport {
  *
  * @remarks
  * `source` is the WHOLE text the host linted, frontmatter included, and every
- * line number counts from its first line. Under markdownlint the adapter
- * rebuilds that text from `params.frontMatterLines` and `params.lines`, so it
- * carries markdownlint's own normalizations: no leading byte order mark
- * (the programmatic host drops one too), `\n` line endings, and HTML
- * comment bodies replaced by `.` runs of the same length, which markdownlint
- * hides from every rule. Positions are unaffected by any of them.
+ * line number counts from its first line. Both hosts hand a rule the text
+ * markdownlint hands its rules: no leading byte order mark, and the body of
+ * every HTML comment after the front matter replaced by `.` runs of the same
+ * length (spaces and line breaks kept), which markdownlint hides from every
+ * rule; the tree is parsed from that same text. Under markdownlint the
+ * adapter rebuilds it from `params.frontMatterLines` and `params.lines`, so
+ * it also carries `\n` line endings. Positions are unaffected by any of it.
+ * `MarkdownLint.lintDocument` is the one exception: it reads the document it
+ * is handed as given, comments unmasked.
  *
- * `frontmatter` is the kit's capture at the head of `root.children`, read
- * with the closed `---`/`+++`/`---json` fence grammar, whichever host runs
- * the rule. A rule that walks `root.children` sees the `frontmatter` node
- * first and decides for itself whether it is content.
+ * `frontmatter` is markdownlint's front matter block (see
+ * {@link LintFrontmatter}). A kit capture sits at the head of
+ * `root.children`; a rule that walks them sees the `frontmatter` node first
+ * and decides for itself whether it is content. When the kit did not capture
+ * the block, `document.source` has those lines as spaces while `source`
+ * keeps them.
+ *
+ * `config` is the rule's settings from the markdownlint configuration, with
+ * `enabled` and `severity` removed — markdownlint's `params.config`.
  *
  * @public
  */
@@ -87,14 +99,16 @@ export interface LintContext {
 	readonly document: MarkdownDocument;
 	/** The document's tree — `document.root`. */
 	readonly root: Root;
-	/** The linted text — `document.source`. */
+	/** The linted text, as markdownlint hands it to rules. */
 	readonly source: string;
 	/** Every line of `source` without its terminator, first to last. */
 	readonly lines: ReadonlyArray<string>;
-	/** The frontmatter block at the head of `source`, when the parse captured one. */
+	/** markdownlint's front matter block at the head of `source`, when there is one. */
 	readonly frontmatter: Option.Option<LintFrontmatter>;
-	/** The offset-to-line mapping every diagnostic position comes from. */
+	/** The offset-to-line mapping over `source` every diagnostic position comes from. */
 	readonly mapping: PositionMapping;
+	/** The rule's settings, without `enabled` and `severity`; frozen. */
+	readonly config: Readonly<Record<string, unknown>>;
 	/**
 	 * Build the {@link LintDiagnostic} for a report, stamped with the running
 	 * rule's names and positioned by `mapping`. Pass the result to the

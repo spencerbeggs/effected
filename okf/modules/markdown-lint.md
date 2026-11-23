@@ -19,14 +19,16 @@ sources:
     resource: ../../packages/markdown-lint/__test__/fixtures/changesets/README.md
   - id: host-tests
     resource: ../../packages/markdown-lint/__test__/markdownlint-host.test.ts
+  - id: host-config-tests
+    resource: ../../packages/markdown-lint/__test__/host-config.test.ts
   - id: systems-804
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-09T23:28:01Z
+  at: 2026-11-23T20:57:45Z
 integrity:
   generated:
-    body: 3d2ef706bb851438
+    body: 75f4b6ac633ebbff
 ---
 
 # `@effected/markdown-lint`
@@ -124,11 +126,34 @@ the other. The mark is invisible to rules but not to the result:
 address the source as given and `MarkdownEdit.applyAll` needs no BOM
 knowledge, while `lineNumber`, `column`, `range` and `fixInfo` stay in
 markdownlint's own BOM-free coordinates (a differential test applies both to a
-BOM fixture and compares). `LintFrontmatter.lines` is the kit capture's
-block, which can differ from markdownlint's `frontMatterLines`
-(markdownlint's closing `---` swallows trailing blank lines, and it strips `{…}` and `...`-closed blocks
-the kit does not capture); the adapter renumbers by markdownlint's count, so
-line numbers agree regardless.
+BOM fixture and compares).
+
+`MarkdownLint.lint` reads a file as markdownlint does, so a rule sees the
+same text and tree in both hosts: HTML comment bodies after the front matter
+are masked before the parse, and `LintFrontmatter.lineCount` and `lines` are
+markdownlint's own front matter count (its closing `---` swallows trailing
+blank lines). `LintFrontmatter.node` is `Option.some` only when the kit
+captured that block too; a block the kit does not capture (`{…}`, a
+`...`-closed one) is parsed as spaces of equal length, so no tree node lies
+inside it and no offset moves, and a `---json` block markdownlint does not
+read as front matter is not captured either.
+
+## Configuration
+
+Both host options take markdownlint's configuration object (`config`,
+default `{ default: true }`) and `noInlineConfig`. `MarkdownLint` resolves
+them with `LintConfig` and `InlineDirectives`, as markdownlint's
+`lintContent` does: inline comments are read from the whole unmasked text,
+front matter included — markdownlint's per-line state is indexed by
+whole-file line, so a comment inside the front matter counts and no line
+translation is needed. Only rules enabled on some line run; each sees its
+settings (without `enabled` and `severity`) as `LintContext.config`; a
+finding on a line where its rule is disabled is dropped; each carries the
+rule's configured `severity` (a parse refusal is always `error`). Under the
+adapter markdownlint does all of that itself: `context.config` is
+`params.config` and the kit-side severity is `error`. A differential test
+runs both hosts over the same inputs and configs and requires equal lines,
+details and severities[^host-config-tests].
 
 ## Failure posture
 
@@ -177,10 +202,9 @@ plain synchronous function; no logging, no metrics.
   cells an author wrote; the CSH005 port reports a short row's padded cells
   as empty values where systems' micromark rule reports "too few columns".
   Pinned by a test.
-- Rule configuration (markdownlint's `params.config`) is not surfaced on
-  `LintContext`.
 
 [^issue-1030]: <https://github.com/spencerbeggs/effected/issues/1030>
 [^markdownlint-types]: markdownlint's `lib/markdownlint.d.mts`, checked against the markdownlint 0.42 that markdownlint-cli2 0.24 runs.
 [^golden-readme]: `packages/markdown-lint/__test__/fixtures/changesets/README.md` — producing commit, versions, the capture command and what each field pins.
 [^host-tests]: `packages/markdown-lint/__test__/markdownlint-host.test.ts`.
+[^host-config-tests]: `packages/markdown-lint/__test__/host-config.test.ts`.

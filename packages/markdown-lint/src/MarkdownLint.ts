@@ -5,7 +5,9 @@
 import type { MarkdownDialect, MarkdownDocument } from "@effected/markdown";
 import { MarkdownEdit } from "@effected/markdown";
 import { Effect, Option, Result } from "effect";
-import { parseDocument, parseSettings, refusalDiagnostic, runRule } from "./internal/host.js";
+import { lintReading, maskContent, parseSettings, readDocument, readSource, splitLines } from "./internal/host.js";
+import { frontMatterLineCount } from "./internal/reading.js";
+import type { LintConfigRecord } from "./LintConfig.js";
 import { LintDiagnostic } from "./LintDiagnostic.js";
 import type { LintRule } from "./LintRule.js";
 
@@ -35,11 +37,23 @@ export interface MarkdownLintOptions {
 	/** The dialect to parse with; defaults to `"gfm"`. */
 	readonly dialect?: MarkdownDialect;
 	/**
-	 * Capture a leading frontmatter block as a `frontmatter` node rather than
-	 * parsing its fences as markdown; defaults to `true`, as markdownlint
-	 * always strips front matter before its rules run.
+	 * Read markdownlint's front matter block as front matter rather than
+	 * parsing its lines as markdown; defaults to `true`, as markdownlint
+	 * always strips front matter before its rules run. Off, the rules see no
+	 * `frontmatter` and the fences parse as markdown.
 	 */
 	readonly frontmatter?: boolean;
+	/**
+	 * The markdownlint configuration object: which rules run, at what
+	 * severity, with what settings; defaults to `{ default: true }`.
+	 */
+	readonly config?: LintConfigRecord;
+	/**
+	 * Ignore markdownlint's inline comments (`<!-- markdownlint-disable -->`
+	 * and friends), as markdownlint's `noInlineConfig` does; defaults to
+	 * `false`.
+	 */
+	readonly noInlineConfig?: boolean;
 }
 
 /**
@@ -50,7 +64,24 @@ export interface MarkdownLintOptions {
 export interface MarkdownLintDocumentOptions {
 	/** The name rules see as `LintContext.name`; defaults to `"<input>"`. */
 	readonly name?: string;
+	/**
+	 * The markdownlint configuration object: which rules run, at what
+	 * severity, with what settings; defaults to `{ default: true }`.
+	 */
+	readonly config?: LintConfigRecord;
+	/**
+	 * Ignore markdownlint's inline comments (`<!-- markdownlint-disable -->`
+	 * and friends), as markdownlint's `noInlineConfig` does; defaults to
+	 * `false`.
+	 */
+	readonly noInlineConfig?: boolean;
 }
+
+const runOf = (options: MarkdownLintDocumentOptions | undefined) => ({
+	name: options?.name ?? "<input>",
+	config: options?.config ?? { default: true },
+	noInlineConfig: options?.noInlineConfig ?? false,
+});
 
 const requireDistinctNames = (rules: ReadonlyArray<LintRule>): void => {
 	const seen = new Map<string, string>();
@@ -115,6 +146,13 @@ export class MarkdownLint {
 	 * `lineNumber`, `column`, `range` and `fixInfo` stay in markdownlint's own
 	 * coordinates, which count from the text after the mark.
 	 *
+	 * The file is read as markdownlint reads it: HTML comment bodies after
+	 * the front matter are masked before the parse, and the front matter is
+	 * markdownlint's own block (see `LintFrontmatter`). `options.config` and
+	 * markdownlint's inline comments decide which rules run, on which lines,
+	 * at what severity and with what `LintContext.config`, as in markdownlint;
+	 * the comments are read from the unmasked text, front matter included.
+	 *
 	 * Findings come in rule order, then in the order each rule reported them;
 	 * markdownlint instead sorts by rule name, then line. Line numbers count
 	 * the whole source, frontmatter included.
@@ -124,7 +162,7 @@ export class MarkdownLint {
 	 *
 	 * @param source - The markdown text, frontmatter included.
 	 * @param rules - The rules to run, in order.
-	 * @param options - The name, dialect and frontmatter capture.
+	 * @param options - The name, dialect, frontmatter capture, configuration and inline-comment switch.
 	 * @returns Every finding.
 	 */
 	static lint(
@@ -133,13 +171,13 @@ export class MarkdownLint {
 		options?: MarkdownLintOptions,
 	): ReadonlyArray<LintDiagnostic> {
 		requireDistinctNames(rules);
-		const name = options?.name ?? "<input>";
 		// markdownlint drops a leading byte order mark before its rules run
 		// (and before it numbers lines), so the programmatic host does too.
 		const shift = source.charCodeAt(0) === 0xfeff ? 1 : 0;
-		const parsed = parseDocument(source.slice(shift), parseSettings(options));
-		if (Result.isFailure(parsed)) return rules.map((rule) => refusalDiagnostic(parsed.failure, rule));
-		const findings = rules.flatMap((rule) => runRule(parsed.success, rule, name));
+		const text = source.slice(shift);
+		const frontMatterLines = frontMatterLineCount(text);
+		const reading = readSource(maskContent(text, frontMatterLines), frontMatterLines, parseSettings(options));
+		const findings = lintReading(reading, splitLines(text), rules, runOf(options));
 		return shift === 0 ? findings : findings.map((finding) => shiftEdit(finding, shift));
 	}
 
@@ -154,13 +192,17 @@ export class MarkdownLint {
 	 * BOM-prefixed document keeps it in its first line (so `\uFEFF# T` is not a
 	 * heading) and edit offsets address `document.source`. A caller who wants
 	 * {@link MarkdownLint.lint}'s reading strips a leading U+FEFF before parsing,
-	 * or calls `lint`. Same ordering, naming check and throws as
+	 * or calls `lint`. The rules see the document as given, too: HTML
+	 * comments unmasked, and `frontmatter` present only when the document
+	 * captured a block (its `lineCount` stretched to markdownlint's when the
+	 * capture lies inside markdownlint's block). Configuration and inline
+	 * comments apply as in `lint`. Same ordering, naming check and throws as
 	 * {@link MarkdownLint.lint}, and no refusal case: the parse already
 	 * happened.
 	 *
 	 * @param document - The parsed document.
 	 * @param rules - The rules to run, in order.
-	 * @param options - The name rules see.
+	 * @param options - The name rules see, the configuration and inline-comment switch.
 	 * @returns Every finding.
 	 */
 	static lintDocument(
@@ -169,8 +211,8 @@ export class MarkdownLint {
 		options?: MarkdownLintDocumentOptions,
 	): ReadonlyArray<LintDiagnostic> {
 		requireDistinctNames(rules);
-		const name = options?.name ?? "<input>";
-		return rules.flatMap((rule) => runRule(document, rule, name));
+		const reading = readDocument(document, frontMatterLineCount(document.source));
+		return lintReading(Result.succeed(reading), splitLines(document.source), rules, runOf(options));
 	}
 
 	/**

@@ -88,12 +88,13 @@ describe("LintContext", () => {
 		assert.strictEqual(capture("x\n").name, "<input>");
 	});
 
-	it("reports the frontmatter block's node, line count and lines", () => {
+	it("reports the frontmatter block's node, and markdownlint's line count and lines", () => {
+		// markdownlint's closing fence swallows the blank line after it.
 		const context = capture("---\ntitle: x\nn: 1\n---\n\nBody\n");
 		const frontmatter = Option.getOrThrow(context.frontmatter);
-		assert.strictEqual(frontmatter.node.format, "yaml");
-		assert.strictEqual(frontmatter.lineCount, 4);
-		assert.deepStrictEqual(frontmatter.lines, ["---", "title: x", "n: 1", "---"]);
+		assert.strictEqual(Option.getOrThrow(frontmatter.node).format, "yaml");
+		assert.strictEqual(frontmatter.lineCount, 5);
+		assert.deepStrictEqual(frontmatter.lines, ["---", "title: x", "n: 1", "---", ""]);
 		assert.strictEqual(context.root.children[0]?.type, "frontmatter");
 	});
 
@@ -116,6 +117,7 @@ describe("LintContext", () => {
 					ruleNames: ["capture"],
 					lineNumber: 3,
 					column: 1,
+					severity: "error",
 					detail: Option.some("bad"),
 					context: Option.none(),
 					range: Option.none(),

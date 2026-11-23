@@ -1,5 +1,9 @@
 # Log
 
+## 2026-11-23
+
+* Updated @effected/markdown-lint
+
 ## 2026-11-22
 
 * Updated @effected/workspaces/testing: the repo-shape checks

@@ -74,6 +74,12 @@ export class LintDiagnostic extends Schema.Class<LintDiagnostic>("LintDiagnostic
 	lineNumber: PositiveInt,
 	/** The 1-based column of the finding's start, in UTF-16 code units. */
 	column: PositiveInt,
+	/**
+	 * The reporting rule's configured severity, as markdownlint's result
+	 * `severity`: the host stamps it from the configuration, whatever the
+	 * rule built. A parse refusal is always an `"error"`.
+	 */
+	severity: Schema.Literals(["error", "warning"]),
 	/** What is wrong, for a reader. */
 	detail: Schema.Option(Schema.String),
 	/** The offending text, as markdownlint's `context`. */
