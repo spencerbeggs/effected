@@ -324,3 +324,20 @@ export const headingText = (context: LintContext, heading: Heading): string =>
 		.join("")
 		.replace(/\r\n?|\n/g, " ")
 		.trim();
+
+/**
+ * markdownlint's `isHtmlFlowComment`: an HTML block that is one comment,
+ * read from its source span.
+ * @internal
+ */
+export const isHtmlFlowComment = (context: LintContext, node: MarkdownNode): boolean => {
+	if (node.type !== "html") return false;
+	const text = context.source.slice(node.position.start.offset, node.position.end.offset);
+	if (!text.startsWith("<!--") || !text.endsWith("-->")) return false;
+	const comment = text.slice(4, -3);
+	return !comment.startsWith(">") && !comment.startsWith("->") && !comment.endsWith("-");
+};
+
+/** The document's top-level blocks after its front matter: micromark's top-level content tokens. @internal */
+export const contentBlocks = (context: LintContext): ReadonlyArray<MarkdownNode> =>
+	(context.document.root.children as ReadonlyArray<MarkdownNode>).filter((node) => node.type !== "frontmatter");
