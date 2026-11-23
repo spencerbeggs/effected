@@ -185,7 +185,7 @@ export class MarkdownLint {
 		const shift = source.charCodeAt(0) === 0xfeff ? 1 : 0;
 		const text = source.slice(shift);
 		const frontMatterLines = frontMatterLineCount(text);
-		const reading = readSource(maskContent(text, frontMatterLines), frontMatterLines, parseSettings(options));
+		const reading = readSource(maskContent(text, frontMatterLines), frontMatterLines, parseSettings(options), text);
 		const findings = lintReading(reading, splitLines(text), rules, runOf(options));
 		return shift === 0 ? findings : findings.map((finding) => shiftEdit(finding, shift));
 	}

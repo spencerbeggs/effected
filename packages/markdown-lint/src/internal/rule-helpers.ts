@@ -327,12 +327,13 @@ export const headingText = (context: LintContext, heading: Heading): string =>
 
 /**
  * markdownlint's `isHtmlFlowComment`: an HTML block that is one comment,
- * read from its source span.
+ * read from its unmasked source span.
  * @internal
  */
 export const isHtmlFlowComment = (context: LintContext, node: MarkdownNode): boolean => {
 	if (node.type !== "html") return false;
-	const text = context.source.slice(node.position.start.offset, node.position.end.offset);
+	// markdownlint reads the comment before masking it, so `<!-- a --->` still ends in `-`.
+	const text = context.unmaskedSource.slice(node.position.start.offset, node.position.end.offset);
 	if (!text.startsWith("<!--") || !text.endsWith("-->")) return false;
 	const comment = text.slice(4, -3);
 	return !comment.startsWith(">") && !comment.startsWith("->") && !comment.endsWith("-");

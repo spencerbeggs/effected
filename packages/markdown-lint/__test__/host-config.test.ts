@@ -137,6 +137,7 @@ describe("MarkdownLint reads a file as markdownlint does", () => {
 		const context = capture(source);
 		assert.deepStrictEqual(context.lines, ["Text <!-- ...... --> end", ""]);
 		assert.strictEqual(context.source, "Text <!-- ...... --> end\n");
+		assert.strictEqual(context.unmaskedSource, source);
 		assert.strictEqual(context.source.length, source.length);
 	});
 

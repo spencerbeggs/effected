@@ -101,6 +101,14 @@ export interface LintContext {
 	readonly root: Root;
 	/** The linted text, as markdownlint hands it to rules. */
 	readonly source: string;
+	/**
+	 * `source` before HTML comment masking: the same text and offsets, with
+	 * comment bodies as written. For a rule that must read a comment's own
+	 * characters, as markdownlint's parse does before it masks. Under
+	 * markdownlint the adapter is handed only the masked lines, so there it
+	 * equals `source`.
+	 */
+	readonly unmaskedSource: string;
 	/** Every line of `source` without its terminator, first to last. */
 	readonly lines: ReadonlyArray<string>;
 	/** markdownlint's front matter block at the head of `source`, when there is one. */

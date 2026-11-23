@@ -47,6 +47,8 @@ const parseDocument = (source: string, settings: ParseSettings): Result.Result<M
  */
 export interface Reading {
 	readonly source: string;
+	/** `source` before comment masking: the same offsets, comment bodies as written. */
+	readonly unmaskedSource: string;
 	readonly document: MarkdownDocument;
 	readonly mapping: PositionMapping;
 	readonly frontmatter: Option.Option<LintFrontmatter>;
@@ -102,7 +104,8 @@ const captureFits = (source: string, frontMatterLines: number): boolean => {
 
 /**
  * Read `source` — markdownlint's text, comment bodies already masked after
- * its front matter — given markdownlint's front matter line count, in one
+ * its front matter, with `unmaskedSource` the same text before masking —
+ * given markdownlint's front matter line count, in one
  * parse. The kit's capture is kept when it lies inside those lines;
  * otherwise the parse sees them as spaces of equal length, so no tree node
  * lies inside them and no offset moves. With capture off, front matter is
@@ -112,6 +115,7 @@ export const readSource = (
 	source: string,
 	frontMatterLines: number,
 	settings: ParseSettings,
+	unmaskedSource: string = source,
 ): Result.Result<Reading, MarkdownParseError> => {
 	const count = settings.frontmatter ? frontMatterLines : 0;
 	if (count > 0 && captureFits(source, count)) {
@@ -119,6 +123,7 @@ export const readSource = (
 			const mapping = PositionMapping.fromDocument(document);
 			return {
 				source,
+				unmaskedSource,
 				document,
 				mapping,
 				frontmatter: Option.some(frontmatterFacts(document.frontmatter, count, mapping)),
@@ -132,6 +137,7 @@ export const readSource = (
 			const mapping = PositionMapping.of(source);
 			return {
 				source,
+				unmaskedSource,
 				document,
 				mapping,
 				frontmatter: Option.some(frontmatterFacts(Option.none(), count, mapping)),
@@ -142,6 +148,7 @@ export const readSource = (
 	// be content to markdownlint, so the parse does not capture one.
 	return Result.map(parseDocument(source, { ...settings, frontmatter: false }), (document) => ({
 		source,
+		unmaskedSource,
 		document,
 		mapping: PositionMapping.fromDocument(document),
 		frontmatter: Option.none(),
@@ -165,6 +172,7 @@ export const alignedReading = (document: MarkdownDocument): Option.Option<Readin
 	const mapping = PositionMapping.fromDocument(document);
 	return Option.some({
 		source,
+		unmaskedSource: source,
 		document,
 		mapping,
 		frontmatter: count === 0 ? Option.none() : Option.some(frontmatterFacts(document.frontmatter, count, mapping)),
@@ -193,6 +201,7 @@ export const makeContext = (reading: Reading, rule: LintRule, run: RuleRun): Lin
 		document: reading.document,
 		root: reading.document.root,
 		source: reading.source,
+		unmaskedSource: reading.unmaskedSource,
 		lines: mapping.lines(),
 		frontmatter: reading.frontmatter,
 		mapping,

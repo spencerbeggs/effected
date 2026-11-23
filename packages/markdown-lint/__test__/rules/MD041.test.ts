@@ -11,6 +11,7 @@ const extra = [
 	{ name: "text first", source: "Intro\n\n# Title\n" },
 	{ name: "level two first", source: "## Section\n" },
 	{ name: "comment then title", source: "<!-- note -->\n\n# Title\n" },
+	{ name: "comment ending in a dash then title", source: "<!-- a --->\n\n# Title\n" },
 	{ name: "html heading", source: "<h1>Title</h1>\n\ntext\n" },
 	{ name: "html heading of level two", source: '<h2 class="x">Title</h2>\n' },
 	{ name: "html block then title", source: "<div>\nx\n</div>\n\n# Title\n" },
@@ -82,4 +83,4 @@ describe("MD041 first-line-heading", () => {
 });
 
 // markdownlint's MD041 findings over the corpus (LF and CRLF) and the extras.
-const ORACLE_FINDINGS_DEFAULT = 29;
+const ORACLE_FINDINGS_DEFAULT = 30;

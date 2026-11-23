@@ -11,6 +11,7 @@ const extra = [
 	{ name: "two titles", source: "# One\n\n# Two\n" },
 	{ name: "text before the title", source: "Intro\n\n# One\n\n# Two\n" },
 	{ name: "comment before the title", source: "<!-- note -->\n\n# One\n\n# Two\n" },
+	{ name: "comment ending in a dash before the title", source: "<!-- a --->\n\n# One\n\n# Two\n" },
 	{ name: "front matter title", source: "---\ntitle: Doc\n---\n\n# One\n\n# Two\n" },
 	{ name: "front matter other key", source: "---\nlayout: post\n---\n\n# One\n\n# Two\n" },
 	{ name: "front matter other key, one title", source: "---\nlayout: post\n---\n\n# Only\n" },
