@@ -15,6 +15,8 @@
  * @packageDocumentation
  */
 
+export type { EffectiveLintConfig, LintConfigRecord, LintSeverity } from "./LintConfig.js";
+export { LintConfig } from "./LintConfig.js";
 export type { LintContext, LintFrontmatter, LintReport } from "./LintContext.js";
 export type { LintRange } from "./LintDiagnostic.js";
 export { LintDiagnostic, LintFixInfo } from "./LintDiagnostic.js";
