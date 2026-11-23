@@ -2,8 +2,7 @@
 // and reads each file the way markdownlint does: HTML comment bodies masked
 // after the front matter, front matter counted by markdownlint's own pattern.
 // The differential cases run the same inputs and configs through the REAL
-// markdownlint (through a variable specifier, as markdownlint-host.test.ts
-// does) with the probes adapted, and require the two hosts to agree.
+// markdownlint (through the shared oracle helper) with the probes adapted, and require the two hosts to agree.
 
 import { assert, describe, it } from "@effect/vitest";
 import { MarkdownDocument, MarkdownParseOptions } from "@effected/markdown";
@@ -14,27 +13,8 @@ import type { LintDiagnostic } from "../src/LintDiagnostic.js";
 import { LintRule } from "../src/LintRule.js";
 import type { MarkdownLintOptions } from "../src/MarkdownLint.js";
 import { MarkdownLint } from "../src/MarkdownLint.js";
-import type { MarkdownlintRule } from "../src/MarkdownlintAdapter.js";
 import { MarkdownlintAdapter } from "../src/MarkdownlintAdapter.js";
-
-interface MarkdownlintResult {
-	readonly lineNumber: number;
-	readonly ruleNames: ReadonlyArray<string>;
-	readonly errorDetail: string | null;
-	readonly severity: string;
-}
-
-interface MarkdownlintSync {
-	readonly lint: (options: {
-		readonly strings: Readonly<Record<string, string>>;
-		readonly customRules: ReadonlyArray<MarkdownlintRule>;
-		readonly config: Readonly<Record<string, unknown>>;
-		readonly noInlineConfig?: boolean;
-	}) => Record<string, ReadonlyArray<MarkdownlintResult>>;
-}
-
-const syncSpecifier = "markdownlint/sync";
-const markdownlint: MarkdownlintSync = await import(syncSpecifier);
+import { markdownlintLint } from "./helpers/markdownlint-oracle.js";
 
 // The 0-based offset each line of `source` starts at, split as markdownlint splits.
 const lineStarts = (source: string): Array<number> => {
@@ -247,7 +227,7 @@ const probeNames = new Set(probes.map((rule) => rule.name));
 
 const viaMarkdownlint = (text: string, config: LintConfigRecord, noInlineConfig: boolean) =>
 	(
-		markdownlint.lint({
+		markdownlintLint({
 			strings: { input: text },
 			customRules: MarkdownlintAdapter.rules(probes),
 			config,

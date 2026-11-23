@@ -1,30 +1,20 @@
 // Reads a file the way markdownlint does: masks HTML comment bodies and counts
 // leading front-matter lines. The differential cases run the real markdownlint
-// (through a variable specifier, as markdownlint-host.test.ts does) with a probe
+// (through the shared oracle helper, helpers/markdownlint-oracle.ts) with a probe
 // custom rule that records what markdownlint itself computed.
 
 import { assert, describe, it } from "@effect/vitest";
 import { frontMatterLineCount, maskHtmlComments } from "../src/internal/reading.js";
+import { markdownlintLint } from "./helpers/markdownlint-oracle.js";
 
 interface Probe {
 	readonly frontMatterLines: ReadonlyArray<string>;
 	readonly lines: ReadonlyArray<string>;
 }
 
-interface MarkdownlintSync {
-	readonly lint: (options: {
-		readonly strings: Readonly<Record<string, string>>;
-		readonly customRules: ReadonlyArray<unknown>;
-		readonly config: Readonly<Record<string, unknown>>;
-	}) => unknown;
-}
-
-const syncSpecifier = "markdownlint/sync";
-const markdownlint: MarkdownlintSync = await import(syncSpecifier);
-
 const probe = (text: string): Probe => {
 	let seen: Probe | undefined;
-	markdownlint.lint({
+	markdownlintLint({
 		strings: { input: text },
 		customRules: [
 			{
