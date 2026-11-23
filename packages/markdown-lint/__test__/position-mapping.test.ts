@@ -136,6 +136,29 @@ describe("PositionMapping", () => {
 			assert.isTrue(Option.isNone(PositionMapping.of("a\r\nb").fixInfo({ offset: 2, length: 1, content: "" }, 1)));
 		});
 
+		it("maps the diagnostic's own line deleted from the previous line's end, the only spelling a last line has", () => {
+			// "a\n\n" : line 3 is the empty last line; deleting the terminator before it deletes it.
+			assert.deepStrictEqual(
+				PositionMapping.of("a\n\n").fixInfo({ offset: 2, length: 1, content: "" }, 3),
+				Option.some(LintFixInfo.make({ deleteCount: -1 })),
+			);
+			assert.deepStrictEqual(
+				PositionMapping.of("a\r\nlast").fixInfo({ offset: 1, length: 6, content: "" }, 2),
+				Option.some(LintFixInfo.make({ deleteCount: -1 })),
+			);
+			// The same span reported on another line is not that line's delete.
+			assert.isTrue(Option.isNone(PositionMapping.of("a\r\nlast").fixInfo({ offset: 1, length: 6, content: "" }, 1)));
+		});
+
+		it("maps an empty edit on an empty source's one line to its whole-line delete, and on no other source", () => {
+			assert.deepStrictEqual(
+				PositionMapping.of("").fixInfo({ offset: 0, length: 0, content: "" }, 1),
+				Option.some(LintFixInfo.make({ deleteCount: -1 })),
+			);
+			assert.isTrue(Option.isNone(PositionMapping.of("\n").fixInfo({ offset: 0, length: 0, content: "" }, 1)));
+			assert.isTrue(Option.isNone(PositionMapping.of("x").fixInfo({ offset: 0, length: 0, content: "" }, 1)));
+		});
+
 		it("deleting the last line's text, with no terminator after it, is a plain delete", () => {
 			assert.deepStrictEqual(
 				PositionMapping.of("a\nlast").fixInfo({ offset: 2, length: 4, content: "" }, 2),

@@ -181,7 +181,13 @@ export class PositionMapping {
 	 * - stays within one line's text — `editColumn`, then `deleteCount` when
 	 *   it deletes and `insertText` when it inserts; or
 	 * - deletes exactly one whole line with its terminator and inserts nothing
-	 *   — `deleteCount: -1`, markdownlint's whole-line delete.
+	 *   — `deleteCount: -1`, markdownlint's whole-line delete. The
+	 *   diagnostic's own line may be deleted in either spelling: from its
+	 *   start through the next line's start, or from the previous line's end
+	 *   through its own end — the only spelling a last line, which has no
+	 *   terminator, has. Both leave the text markdownlint's delete leaves.
+	 *   The one line of an empty source has no text to delete at all: an
+	 *   empty edit at its start is that line's whole-line delete.
 	 *
 	 * Anything else — an edit crossing a line break, one starting inside a
 	 * `\r\n`, or one that changes nothing — is `Option.none()`. The fix is not
@@ -194,6 +200,16 @@ export class PositionMapping {
 	 * @returns The `fixInfo`, or `Option.none()`.
 	 */
 	fixInfo(edit: LintEditLike, lineNumber: number): Option.Option<LintFixInfo> {
+		const own = lineNumber - 1;
+		if (edit.content === "" && edit.length === 0 && edit.offset === 0 && this.index.lineCount === 1) {
+			if (lineNumber === 1 && this.index.lineEnd(0) === 0) return Option.some(LintFixInfo.make({ deleteCount: -1 }));
+		}
+		if (edit.content === "" && edit.length > 0 && own > 0 && own < this.index.lineCount) {
+			const fromPreviousEnd = this.index.lineEnd(own - 1);
+			if (edit.offset === fromPreviousEnd && edit.offset + edit.length === this.index.lineEnd(own)) {
+				return Option.some(LintFixInfo.make({ deleteCount: -1 }));
+			}
+		}
 		const line = this.index.lineAt(edit.offset);
 		const start = this.index.lineStart(line);
 		const end = this.index.lineEnd(line);

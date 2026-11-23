@@ -52,22 +52,31 @@ const isClosingFence = (line: string, node: Code): boolean => {
 };
 
 /**
+ * The 1-based line micromark's `codeFenced` token ends on. A closed fence
+ * ends on its closing fence line; micromark ends an unclosed fence at the
+ * start of the line after its last, when a line follows it.
+ * @internal
+ */
+export const fencedEndLine = (context: LintContext, node: Code, starts: ReadonlyArray<number>): number => {
+	const start = node.position.start.line;
+	const end = node.position.end.line;
+	const closed = end > start && isClosingFence(context.lines[end - 1] ?? "", node);
+	return closed || starts[end] === undefined ? end : end + 1;
+};
+
+/**
  * The lines between a fenced code block's fences, as micromark's
- * `codeFenced` token gives them (`startLine + 1` to `endLine - 1`). micromark
- * ends an unclosed fence at the start of the line after its last, so that
- * last line counts as inside it, but only when a line follows it.
+ * `codeFenced` token gives them: `startLine + 1` to `endLine - 1`.
  * @internal
  */
 export const fencedInterior = (
 	context: LintContext,
 	node: Code,
 	starts: ReadonlyArray<number>,
-): { readonly start: number; readonly end: number } => {
-	const start = node.position.start.line;
-	const end = node.position.end.line;
-	const closed = end > start && isClosingFence(context.lines[end - 1] ?? "", node);
-	return { start: start + 1, end: closed ? end - 1 : starts[end] !== undefined ? end : end - 1 };
-};
+): { readonly start: number; readonly end: number } => ({
+	start: node.position.start.line + 1,
+	end: fencedEndLine(context, node, starts) - 1,
+});
 
 /** Every kit code node, fenced or indented. @internal */
 export const codeNodes = (context: LintContext): ReadonlyArray<Code> =>

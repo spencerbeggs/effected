@@ -14,3 +14,4 @@
 
 export { MD009 } from "./MD009.js";
 export { MD010 } from "./MD010.js";
+export { MD012 } from "./MD012.js";

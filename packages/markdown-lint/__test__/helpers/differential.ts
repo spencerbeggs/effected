@@ -124,7 +124,16 @@ interface Comparison {
 const compareOne = (rule: LintRule, config: Record<string, unknown>, input: DifferentialInput): Comparison => {
 	const found = (reason: string | undefined): Comparison => ({ oracleFindings: oracleFindings.length, reason });
 	const lineEnding = oracleLineEnding(input.source);
-	const oracleFindings = oracleLint(input.source, config).filter((finding) => finding.ruleNames[0] === rule.name);
+	let oracleFindings: ReadonlyArray<OracleFinding>;
+	try {
+		oracleFindings = oracleLint(input.source, config).filter((finding) => finding.ruleNames[0] === rule.name);
+	} catch (error) {
+		// markdownlint itself can fail on an input (an upstream bug); that input compares nothing.
+		return {
+			oracleFindings: 0,
+			reason: `markdownlint throws: ${error instanceof Error ? error.message : String(error)}`,
+		};
+	}
 	// markdownlint sorts by rule name, then line, stably; one rule leaves line order.
 	const kitFindings = [...MarkdownLint.lint(input.source, [rule], { config })].sort(
 		(a, b) => a.lineNumber - b.lineNumber,

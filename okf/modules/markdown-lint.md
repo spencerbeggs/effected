@@ -25,10 +25,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-23T21:07:48Z
+  at: 2026-11-23T22:07:19Z
 integrity:
   generated:
-    body: 5efb8aeb1f30e77d
+    body: 172d318423b11c8c
 ---
 
 # `@effected/markdown-lint`
@@ -209,8 +209,19 @@ plain synchronous function; no logging, no metrics.
   reports severity `error` in the programmatic host, where markdownlint
   would apply the rule's configured severity to the adapter's refusal
   finding.
+- MD012 under `maximum: 0`: markdownlint 0.42.1 throws on a file that is
+  all front matter with no final line break (`front-matter-no-crlf.md`,
+  LF and CRLF, 2 inputs). Its content is one empty line numbered one past
+  its per-line enabled state. The kit reports nothing there. Pinned by a
+  test as an upstream failure, not a port difference.
 
 ## Known limitations
+
+- MD012 under `maximum: 0` on a document of several lines that are all
+  blank: the last line's delete, after every earlier line is deleted
+  forward, is an empty edit, which carries no `fixInfo`. The kit edits still
+  apply to markdownlint's result. No corpus input reaches it; an empty
+  document's one line does map, to `deleteCount: -1`.
 
 - `lintDocument` cannot know the dialect a document was parsed with:
   `MarkdownDocument` does not record it. When the given parse is not
