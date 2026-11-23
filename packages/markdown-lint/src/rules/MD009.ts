@@ -4,59 +4,32 @@
 // code span lines — and this module derives each from kit node positions and
 // the raw lines instead.
 
-import type { Code, List, MarkdownNode } from "@effected/markdown";
+import type { List, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import { Option } from "effect";
+import {
+	addRange,
+	codeNodes,
+	fencedInterior,
+	firstContentLine,
+	isBoolean,
+	isNumber,
+	lineStarts,
+	setting,
+} from "../internal/rule-helpers.js";
 import { LintRule } from "../LintRule.js";
 
-const setting = <A>(
-	config: Readonly<Record<string, unknown>>,
-	name: string,
-	guard: (value: unknown) => value is A,
-	fallback: A,
-): A => {
-	const value = config[name];
-	return guard(value) ? value : fallback;
-};
-
-const isNumber = (value: unknown): value is number => typeof value === "number";
-const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
-
-const addRange = (set: Set<number>, start: number, end: number): void => {
-	for (let line = start; line <= end; line++) set.add(line);
-};
-
-const lineStarts = (source: string): Array<number> => {
-	const starts = [0];
-	for (const match of source.matchAll(/\r\n?|\n/g)) starts.push(match.index + match[0].length);
-	return starts;
-};
-
 // The lines markdownlint leaves to the code: an indented block's every line,
-// and a fenced block's lines between its fences. micromark ends an unclosed
-// fence at the start of the line after its last, so that last line counts as
-// inside it, but only when a line follows.
+// and a fenced block's lines between its fences.
 const codeLines = (context: Lint.LintContext, starts: ReadonlyArray<number>): Set<number> => {
 	const lines = new Set<number>();
-	for (const node of context.document.findAll("code") as ReadonlyArray<Code>) {
-		const start = node.position.start.line;
-		const end = node.position.end.line;
-		if (node.fenceChar === undefined) {
-			addRange(lines, start, end);
-			continue;
+	for (const node of codeNodes(context)) {
+		if (node.fenceChar === undefined) addRange(lines, node.position.start.line, node.position.end.line);
+		else {
+			const interior = fencedInterior(context, node, starts);
+			addRange(lines, interior.start, interior.end);
 		}
-		const closed = end > start && isClosingFence(context.lines[end - 1] ?? "", node);
-		const lastInside = closed ? end - 1 : starts[end] !== undefined ? end : end - 1;
-		addRange(lines, start + 1, lastInside);
 	}
 	return lines;
-};
-
-// A closed fence ends on its closing fence line: only container markers,
-// indentation and at least the opener's run of its character.
-const isClosingFence = (line: string, node: Code): boolean => {
-	const match = /^(?:[ \t]*>)*[ \t]*(([`~])\2*)[ \t]*$/.exec(line);
-	return match !== null && match[2] === node.fenceChar && (match[1] as string).length >= (node.fenceLength ?? 3);
 };
 
 const isContent = (node: MarkdownNode): boolean => node.type === "paragraph" || node.type === "definition";
@@ -121,8 +94,7 @@ export const MD009: Lint.LintRule = LintRule.make({
 		const paragraphs = strict ? spanLines(context, "paragraph") : new Set<number>();
 		const codeSpans = strict ? spanLines(context, "inlineCode") : new Set<number>();
 		const expected = brSpaces < 2 ? 0 : brSpaces;
-		const first = Option.match(context.frontmatter, { onNone: () => 1, onSome: (block) => block.lineCount + 1 });
-		for (let lineNumber = first; lineNumber <= context.lines.length; lineNumber++) {
+		for (let lineNumber = firstContentLine(context); lineNumber <= context.lines.length; lineNumber++) {
 			const line = context.lines[lineNumber - 1] as string;
 			const trailing = line.length - line.trimEnd().length;
 			if (

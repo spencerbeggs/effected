@@ -27,15 +27,22 @@ const extra = [
 	{ name: "heading", source: "# Title  \n\nSetext  \n---\n" },
 ];
 
+// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
+const DIFFERENTIAL_TIMEOUT = 60_000;
+
 const run = (source: string, settings?: Record<string, unknown>) =>
 	MarkdownLint.lint(source, [MD009], { config: { default: false, MD009: settings ?? true } });
 
 describe("MD009 no-trailing-spaces", () => {
-	it("agrees with markdownlint with default settings", () => {
-		const result = differential(MD009, { extra });
-		assert.deepStrictEqual(result.divergences, []);
-		assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
-	});
+	it(
+		"agrees with markdownlint with default settings",
+		() => {
+			const result = differential(MD009, { extra });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 
 	// Each setting changes markdownlint's findings over the same inputs, so its run is not the default run again;
 	// an explicit `code_blocks: false` is the default spelled out.
@@ -49,13 +56,17 @@ describe("MD009 no-trailing-spaces", () => {
 		[{ strict: true }, true],
 		[{ strict: true, list_item_empty_lines: true }, true],
 	] as const) {
-		it(`agrees with markdownlint under ${JSON.stringify(settings)}`, () => {
-			const result = differential(MD009, { config: settings, extra });
-			assert.deepStrictEqual(result.divergences, []);
-			assert.isAbove(result.oracleFindings, 0);
-			if (changes) assert.notStrictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
-			else assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
-		});
+		it(
+			`agrees with markdownlint under ${JSON.stringify(settings)}`,
+			() => {
+				const result = differential(MD009, { config: settings, extra });
+				assert.deepStrictEqual(result.divergences, []);
+				assert.isAbove(result.oracleFindings, 0);
+				if (changes) assert.notStrictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
+				else assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
+			},
+			DIFFERENTIAL_TIMEOUT,
+		);
 	}
 
 	it("reads a wrong-typed setting as its default", () => {

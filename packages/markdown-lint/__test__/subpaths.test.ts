@@ -21,6 +21,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assert, describe, it } from "@effect/vitest";
+import * as ruleExports from "../src/rules/index.js";
 
 const PACKAGE = join(dirname(fileURLToPath(import.meta.url)), "..");
 /** The npm group's package: the test pre-build refreshes it, and it is what ships. */
@@ -29,7 +30,7 @@ const TSC = join(PACKAGE, "node_modules", ".bin", "tsc");
 
 /** Each rule subpath, its built entry, and the names its declarations export. */
 const SUBPATHS = [
-	{ subpath: "./rules", entry: "rules", exports: ["MD009"] as ReadonlyArray<string> },
+	{ subpath: "./rules", entry: "rules", exports: Object.keys(ruleExports) as ReadonlyArray<string> },
 	{ subpath: "./rules/all", entry: "rules-all", exports: ["rules", "uncovered"] },
 ] as const;
 
@@ -55,8 +56,8 @@ describe("the built rule subpaths", () => {
 			// Every top-level declaration is exported: an unexported one is what the scoped
 			// ae-forgotten-export suppression in effected.toml would otherwise hide.
 			assert.deepStrictEqual(
-				[...dts.matchAll(TOP_LEVEL_DECLARATION)].map((match) => [match[1] !== undefined, match[2]]),
-				exports.map((name) => [true, name]),
+				[...dts.matchAll(TOP_LEVEL_DECLARATION)].map((match) => [match[1] !== undefined, match[2]]).sort(),
+				exports.map((name) => [true, name]).sort(),
 				entry,
 			);
 			// No root declaration was rolled in: the root's types are only ever imported.
