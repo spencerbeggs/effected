@@ -116,7 +116,13 @@ const firstDifference = (
 	return undefined;
 };
 
-const compareOne = (rule: LintRule, config: Record<string, unknown>, input: DifferentialInput): string | undefined => {
+interface Comparison {
+	readonly oracleFindings: number;
+	readonly reason: string | undefined;
+}
+
+const compareOne = (rule: LintRule, config: Record<string, unknown>, input: DifferentialInput): Comparison => {
+	const found = (reason: string | undefined): Comparison => ({ oracleFindings: oracleFindings.length, reason });
 	const lineEnding = oracleLineEnding(input.source);
 	const oracleFindings = oracleLint(input.source, config).filter((finding) => finding.ruleNames[0] === rule.name);
 	// markdownlint sorts by rule name, then line, stably; one rule leaves line order.
@@ -127,7 +133,7 @@ const compareOne = (rule: LintRule, config: Record<string, unknown>, input: Diff
 		kitFindings.map((finding) => fromKit(finding, lineEnding)),
 		oracleFindings.map((finding) => fromOracle(finding, lineEnding)),
 	);
-	if (difference !== undefined) return difference;
+	if (difference !== undefined) return found(difference);
 	const expected = oracleApplyFixes(input.source, oracleFindings);
 	let actual: string;
 	try {
@@ -136,11 +142,13 @@ const compareOne = (rule: LintRule, config: Record<string, unknown>, input: Diff
 			kitFindings.flatMap((finding) => Option.toArray(finding.edit)),
 		);
 	} catch (error) {
-		return `kit edits do not apply: ${error instanceof Error ? error.message : String(error)}`;
+		return found(`kit edits do not apply: ${error instanceof Error ? error.message : String(error)}`);
 	}
-	return actual === expected
-		? undefined
-		: `applied fixes differ: kit ${JSON.stringify(actual)}, markdownlint ${JSON.stringify(expected)}`;
+	return found(
+		actual === expected
+			? undefined
+			: `applied fixes differ: kit ${JSON.stringify(actual)}, markdownlint ${JSON.stringify(expected)}`,
+	);
 };
 
 /**
@@ -148,7 +156,9 @@ const compareOne = (rule: LintRule, config: Record<string, unknown>, input: Diff
  * plus `extra` inputs, in both engines, with only `rule` enabled by the base
  * config (a fixture's own inline comments still apply in both). Each input
  * whose findings or applied fixes differ is one divergence, naming the first
- * difference.
+ * difference. `compared` counts the inputs and `oracleFindings` the findings
+ * markdownlint reported over them all, so a rule's test can assert the
+ * comparison was not vacuous.
  */
 export const differential = (
 	rule: LintRule,
@@ -156,7 +166,11 @@ export const differential = (
 		readonly config?: Record<string, unknown>;
 		readonly extra?: ReadonlyArray<DifferentialInput>;
 	},
-): { readonly compared: number; readonly divergences: ReadonlyArray<Divergence> } => {
+): {
+	readonly compared: number;
+	readonly oracleFindings: number;
+	readonly divergences: ReadonlyArray<Divergence>;
+} => {
 	const config = { default: false, [rule.name]: options?.config ?? true };
 	const inputs: Array<DifferentialInput> = [];
 	for (const entry of corpus) {
@@ -164,9 +178,11 @@ export const differential = (
 	}
 	inputs.push(...(options?.extra ?? []));
 	const divergences: Array<Divergence> = [];
+	let oracleFindings = 0;
 	for (const input of inputs) {
-		const reason = compareOne(rule, config, input);
-		if (reason !== undefined) divergences.push({ fixture: input.name, reason });
+		const comparison = compareOne(rule, config, input);
+		oracleFindings += comparison.oracleFindings;
+		if (comparison.reason !== undefined) divergences.push({ fixture: input.name, reason: comparison.reason });
 	}
-	return { compared: inputs.length, divergences };
+	return { compared: inputs.length, oracleFindings, divergences };
 };

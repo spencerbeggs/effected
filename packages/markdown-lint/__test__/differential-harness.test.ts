@@ -75,6 +75,9 @@ describe("the differential harness", () => {
 			],
 		});
 		assert.strictEqual(result.compared, 436 * 2 + 3);
+		// Not vacuous: markdownlint reports MD047 on 7 corpus files, LF and CRLF, and on "no trailing newline"; an
+		// unterminated block of front matter alone leaves an empty content line, which is blank.
+		assert.strictEqual(result.oracleFindings, 15);
 		assert.deepStrictEqual(result.divergences, []);
 	});
 
