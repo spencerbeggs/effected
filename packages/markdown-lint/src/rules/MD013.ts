@@ -23,17 +23,26 @@ const notWrappable = /^(?:[#>\s]*\s)?\S*$/;
 // markdownlint's `\S*$`, run under re2js, whose `\s` is ASCII: the last run of non-space.
 const lastRun = /[^\t\n\f\r ]*$/;
 
-// The lines holding a paragraph's own text: its direct text children, less the line breaks between them and
-// the indentation that opens a continuation line (micromark's `data` tokens directly under `paragraph`).
+// The lines holding a paragraph's own text: its direct text children, less the line breaks between them, the
+// indentation that opens a continuation line, and character escapes and references (micromark's `data` tokens
+// directly under `paragraph`).
 const paragraphTextLines = (context: Lint.LintContext): Set<number> => {
 	const lines = new Set<number>();
 	for (const paragraph of context.document.findAll("paragraph") as ReadonlyArray<Paragraph>) {
 		for (const child of paragraph.children as ReadonlyArray<MarkdownNode>) {
 			if (child.type !== "text") continue;
 			const text = context.source.slice(child.position.start.offset, child.position.end.offset);
+			const value = (child as { readonly value: string }).value;
+			// micromark makes no `data` of a character escape or a character reference: drop escapes and numeric
+			// references by their syntax, and a named reference when the parse decoded it (an unknown name stays text).
+			const notData = (segment: string): string =>
+				segment
+					.replace(/\\[!-/:-@[-`{-~]/g, "")
+					.replace(/&#(?:\d{1,7}|[xX][\da-fA-F]{1,6});/g, "")
+					.replace(/&[A-Za-z][A-Za-z\d]{0,31};/g, (reference) => (value.includes(reference) ? reference : ""));
 			const segments = text.split(/\r\n?|\n/);
 			for (const [index, segment] of segments.entries()) {
-				if ((index === 0 ? segment : segment.replace(/^[ \t]+/, "")).length > 0) {
+				if (notData(index === 0 ? segment : segment.replace(/^[ \t]+/, "")).length > 0) {
 					lines.add(child.position.start.line + index);
 				}
 			}

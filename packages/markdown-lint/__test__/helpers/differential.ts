@@ -128,11 +128,16 @@ const compareOne = (rule: LintRule, config: Record<string, unknown>, input: Diff
 	try {
 		oracleFindings = oracleLint(input.source, config).filter((finding) => finding.ruleNames[0] === rule.name);
 	} catch (error) {
-		// markdownlint itself can fail on an input (an upstream bug); that input compares nothing.
-		return {
-			oracleFindings: 0,
-			reason: `markdownlint throws: ${error instanceof Error ? error.message : String(error)}`,
-		};
+		// markdownlint itself can fail on an input (an upstream bug). Nothing compares against it, but the kit
+		// side still runs, and what it did goes in the reason, so a pin can say what the kit reports there.
+		const message = (thrown: unknown) => (thrown instanceof Error ? thrown.message : String(thrown));
+		let kit: string;
+		try {
+			kit = `kit: ${MarkdownLint.lint(input.source, [rule], { config }).length} findings`;
+		} catch (kitError) {
+			kit = `kit throws: ${message(kitError)}`;
+		}
+		return { oracleFindings: 0, reason: `markdownlint throws: ${message(error)}; ${kit}` };
 	}
 	// markdownlint sorts by rule name, then line, stably; one rule leaves line order.
 	const kitFindings = [...MarkdownLint.lint(input.source, [rule], { config })].sort(

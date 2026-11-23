@@ -33,6 +33,17 @@ const extra = [
 	{ name: "footnote definition", source: `[^1]: ${long} ${long}\n\nText[^1]\n` },
 	{ name: "undefined reference", source: `[${long}] ${"w".repeat(20)}\n` },
 	{ name: "front matter", source: `---\ntitle: ${long} ${long}\n---\n\n${long} end\n` },
+	{ name: "mid-length heading", source: `# ${"h".repeat(38)}\n` },
+	{ name: "link then an escape", source: `[${long}](https://example.com/a/very/long/path/that/keeps/going/on)\\*\n` },
+	{ name: "link then an entity", source: `[${long}](https://example.com/a/very/long/path/that/keeps/going/on)&amp;\n` },
+	{
+		name: "link then a non-entity",
+		source: `[${long}](https://example.com/a/very/long/path/that/keeps/going/on)&nope;\n`,
+	},
+	{
+		name: "link then a numeric entity",
+		source: `[${long}](https://example.com/a/very/long/path/that/keeps/going/on)&#42;\n`,
+	},
 	{ name: "heading in a math block", source: `$$\n# ${long}\n$$\n` },
 	{ name: "blockquote and list", source: `> ${long} end\n\n- ${long} end\n` },
 ];
@@ -75,6 +86,7 @@ describe("MD013 line-length", () => {
 			() => {
 				const result = differential(MD013, { config: settings, extra });
 				assert.deepStrictEqual(result.divergences, []);
+				if (!("line_length" in settings && settings.line_length === 0)) assert.isAbove(result.oracleFindings, 0);
 				if (changes) assert.notStrictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
 				else assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
 			},
@@ -112,4 +124,4 @@ describe("MD013 line-length", () => {
 });
 
 // markdownlint's MD013 findings over the corpus (LF and CRLF) and the extras.
-const ORACLE_FINDINGS_DEFAULT = 163;
+const ORACLE_FINDINGS_DEFAULT = 164;

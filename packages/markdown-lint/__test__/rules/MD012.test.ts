@@ -16,6 +16,8 @@ const extra = [
 	{ name: "blanks at the end, CRLF", source: "a\r\n\r\n\r\n\r\n" },
 	{ name: "blank last line with spaces", source: "a\n\n  " },
 	{ name: "empty document", source: "" },
+	{ name: "two blank lines only", source: "\n\n" },
+	{ name: "three blank lines only", source: "\n\n\n" },
 	{ name: "blanks at the start", source: "\n\n\na\n" },
 	{ name: "blanks in fenced code", source: "```\nx\n\n\n\ny\n```\n" },
 	{ name: "blanks after an unclosed fence", source: "```\nx\n\n\n" },
@@ -69,11 +71,27 @@ describe("MD012 no-multiple-blanks", () => {
 			// Not a divergence of the port: markdownlint 0.42.1 throws on a file that is all front matter with no final
 			// line break. Its content is one empty line, numbered one past its per-line enabled state, and MD012 with
 			// `maximum: 0` is the one rule here that reports that line. The kit reads no content line and reports nothing.
+			const throws = ["front-matter-no-crlf.md", "front-matter-no-crlf.md (CRLF)"];
+			// A document of nothing but blank lines: markdownlint deletes every one (`deleteCount: -1` each). n lines
+			// hold n - 1 line breaks, so n disjoint kit edits cannot each delete one; the last line's delete is an empty
+			// edit, which can carry no `fixInfo` (an empty edit changes nothing, where markdownlint's delete of that line
+			// alone would remove a line break). The kit edits still apply to markdownlint's text.
+			const allBlank = ["two blank lines only", "three blank lines only"];
 			assert.deepStrictEqual(
 				result.divergences.map((divergence) => divergence.fixture),
-				["front-matter-no-crlf.md", "front-matter-no-crlf.md (CRLF)"],
+				[...throws, ...allBlank],
 			);
-			for (const divergence of result.divergences) assert.match(divergence.reason, /^markdownlint throws: /);
+			for (const divergence of result.divergences.filter((each) => throws.includes(each.fixture))) {
+				assert.match(divergence.reason, /^markdownlint throws: .*; kit: 0 findings$/);
+			}
+			const lastLine = { "two blank lines only": 3, "three blank lines only": 4 } as Record<string, number>;
+			for (const divergence of result.divergences.filter((each) => allBlank.includes(each.fixture))) {
+				const line = lastLine[divergence.fixture];
+				assert.match(
+					divergence.reason,
+					new RegExp(`^finding ${line} \\(line ${line}\\) fixInfo: kit null, markdownlint .*"deleteCount":-1`),
+				);
+			}
 			assert.isAbove(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
 		},
 		DIFFERENTIAL_TIMEOUT,
@@ -109,4 +127,4 @@ describe("MD012 no-multiple-blanks", () => {
 });
 
 // markdownlint's MD012 findings over the corpus (LF and CRLF) and the extras.
-const ORACLE_FINDINGS_DEFAULT = 60;
+const ORACLE_FINDINGS_DEFAULT = 65;

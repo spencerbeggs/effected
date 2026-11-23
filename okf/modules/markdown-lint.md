@@ -25,10 +25,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-23T22:50:33Z
+  at: 2026-11-23T22:59:58Z
 integrity:
   generated:
-    body: 9ce56889b5a70d7d
+    body: d5774ef16727b65a
 ---
 
 # `@effected/markdown-lint`
@@ -212,8 +212,15 @@ plain synchronous function; no logging, no metrics.
 - MD012 under `maximum: 0`: markdownlint 0.42.1 throws on a file that is
   all front matter with no final line break (`front-matter-no-crlf.md`,
   LF and CRLF, 2 inputs). Its content is one empty line numbered one past
-  its per-line enabled state. The kit reports nothing there. Pinned by a
-  test as an upstream failure, not a port difference.
+  its per-line enabled state. The kit reports nothing there, which the pin
+  asserts. Pinned by a test as an upstream failure, not a port difference.
+- MD012 under `maximum: 0` on a document of nothing but blank lines:
+  markdownlint deletes every line. n lines hold n - 1 line breaks, so n
+  disjoint kit edits cannot each delete one: the last line's delete is an
+  empty edit, which carries no `fixInfo`, since an empty edit changes
+  nothing where markdownlint's delete of that line alone would remove a
+  line break. The kit edits still apply to markdownlint's text. Pinned by a
+  test (two and three blank lines, 2 inputs).
 
 ## Known limitations
 
@@ -232,12 +239,6 @@ plain synchronous function; no logging, no metrics.
   applies kit edits under markdownlint's policy, so its applied-fix
   comparison holds; a caller applying the kit edits directly gets every
   insert.
-
-- MD012 under `maximum: 0` on a document of several lines that are all
-  blank: the last line's delete, after every earlier line is deleted
-  forward, is an empty edit, which carries no `fixInfo`. The kit edits still
-  apply to markdownlint's result. No corpus input reaches it; an empty
-  document's one line does map, to `deleteCount: -1`.
 
 - `lintDocument` cannot know the dialect a document was parsed with:
   `MarkdownDocument` does not record it. When the given parse is not
