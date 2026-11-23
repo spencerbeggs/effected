@@ -25,10 +25,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-23T20:57:45Z
+  at: 2026-11-23T21:07:48Z
 integrity:
   generated:
-    body: 75f4b6ac633ebbff
+    body: 5efb8aeb1f30e77d
 ---
 
 # `@effected/markdown-lint`
@@ -88,7 +88,10 @@ context construction and rule run both hosts share, which is what makes
   inside one line or a whole-line delete (`deleteCount: -1`). An edit that
   crosses a line break otherwise has no `fixInfo` and keeps the kit `edit`.
 - `MarkdownLint` — `lint(source, rules, options)` (total and synchronous),
-  `lintDocument(document, rules)` for an already-parsed document, and
+  `lintDocument(document, rules)` for an already-parsed document (the same
+  reading and findings as `lint` over `document.source`: the parse is
+  reused when it already is markdownlint's reading, otherwise the source is
+  re-read with `options.dialect`), and
   `lintEffect`, the `Effect` under a `MarkdownLint.lint` span defined in
   terms of `lint`. Defaults: gfm, frontmatter capture on (markdownlint
   always strips front matter). Findings come in rule order, then report
@@ -128,7 +131,7 @@ knowledge, while `lineNumber`, `column`, `range` and `fixInfo` stay in
 markdownlint's own BOM-free coordinates (a differential test applies both to a
 BOM fixture and compares).
 
-`MarkdownLint.lint` reads a file as markdownlint does, so a rule sees the
+`MarkdownLint.lint` and `lintDocument` read a file as markdownlint does, so a rule sees the
 same text and tree in both hosts: HTML comment bodies after the front matter
 are masked before the parse, and `LintFrontmatter.lineCount` and `lines` are
 markdownlint's own front matter count (its closing `---` swallows trailing
@@ -202,6 +205,18 @@ plain synchronous function; no logging, no metrics.
   cells an author wrote; the CSH005 port reports a short row's padded cells
   as empty values where systems' micromark rule reports "too few columns".
   Pinned by a test.
+- A parse refusal (a document nested past the hardening cap) always
+  reports severity `error` in the programmatic host, where markdownlint
+  would apply the rule's configured severity to the adapter's refusal
+  finding.
+
+## Known limitations
+
+- `lintDocument` cannot know the dialect a document was parsed with:
+  `MarkdownDocument` does not record it. When the given parse is not
+  already markdownlint's reading, the source is re-read with
+  `options.dialect` (default gfm), so a caller who parsed as commonmark
+  passes `dialect: "commonmark"`.
 
 [^issue-1030]: <https://github.com/spencerbeggs/effected/issues/1030>
 [^markdownlint-types]: markdownlint's `lib/markdownlint.d.mts`, checked against the markdownlint 0.42 that markdownlint-cli2 0.24 runs.

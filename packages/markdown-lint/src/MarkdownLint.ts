@@ -5,7 +5,7 @@
 import type { MarkdownDialect, MarkdownDocument } from "@effected/markdown";
 import { MarkdownEdit } from "@effected/markdown";
 import { Effect, Option, Result } from "effect";
-import { lintReading, maskContent, parseSettings, readDocument, readSource, splitLines } from "./internal/host.js";
+import { alignedReading, lintReading, maskContent, parseSettings, readSource, splitLines } from "./internal/host.js";
 import { frontMatterLineCount } from "./internal/reading.js";
 import type { LintConfigRecord } from "./LintConfig.js";
 import { LintDiagnostic } from "./LintDiagnostic.js";
@@ -75,6 +75,14 @@ export interface MarkdownLintDocumentOptions {
 	 * `false`.
 	 */
 	readonly noInlineConfig?: boolean;
+	/**
+	 * The dialect to re-read the source with when the given parse is not
+	 * already markdownlint's reading (see {@link MarkdownLint.lintDocument});
+	 * defaults to `"gfm"`, as {@link MarkdownLint.lint} does. A document does
+	 * not record the dialect it was parsed with, so a caller who parsed as
+	 * commonmark passes `dialect: "commonmark"`.
+	 */
+	readonly dialect?: MarkdownDialect;
 }
 
 const runOf = (options: MarkdownLintDocumentOptions | undefined) => ({
@@ -186,23 +194,21 @@ export class MarkdownLint {
 	 *
 	 * @remarks
 	 * For a caller that holds a `MarkdownDocument` already — an editor
-	 * re-linting the document it just parsed. The rules see exactly this
-	 * document, so its parse options (dialect, frontmatter capture) are the
-	 * ones that hold. A byte order mark is not dropped on this path: a
-	 * BOM-prefixed document keeps it in its first line (so `\uFEFF# T` is not a
-	 * heading) and edit offsets address `document.source`. A caller who wants
-	 * {@link MarkdownLint.lint}'s reading strips a leading U+FEFF before parsing,
-	 * or calls `lint`. The rules see the document as given, too: HTML
-	 * comments unmasked, and `frontmatter` present only when the document
-	 * captured a block (its `lineCount` stretched to markdownlint's when the
-	 * capture lies inside markdownlint's block). Configuration and inline
-	 * comments apply as in `lint`. Same ordering, naming check and throws as
-	 * {@link MarkdownLint.lint}, and no refusal case: the parse already
-	 * happened.
+	 * re-linting the document it just parsed. A rule sees exactly what
+	 * {@link MarkdownLint.lint} would show it for `document.source`, and the
+	 * findings equal `lint`'s. The given parse is reused when it already is
+	 * that reading: no leading byte order mark, no HTML comment for
+	 * markdownlint to mask, and a front matter capture exactly where
+	 * markdownlint reads a block the kit's grammar takes. Otherwise the
+	 * source is re-read as `lint` reads it, with `options.dialect` — the
+	 * document cannot say which dialect it was parsed with, so a caller who
+	 * parsed as commonmark passes `dialect: "commonmark"`. Same ordering,
+	 * naming check and throws as {@link MarkdownLint.lint}, and the same
+	 * refusal reporting on a re-read.
 	 *
 	 * @param document - The parsed document.
 	 * @param rules - The rules to run, in order.
-	 * @param options - The name rules see, the configuration and inline-comment switch.
+	 * @param options - The name, configuration, inline-comment switch and re-read dialect.
 	 * @returns Every finding.
 	 */
 	static lintDocument(
@@ -210,9 +216,10 @@ export class MarkdownLint {
 		rules: ReadonlyArray<LintRule>,
 		options?: MarkdownLintDocumentOptions,
 	): ReadonlyArray<LintDiagnostic> {
+		const aligned = alignedReading(document);
+		if (Option.isNone(aligned)) return MarkdownLint.lint(document.source, rules, options);
 		requireDistinctNames(rules);
-		const reading = readDocument(document, frontMatterLineCount(document.source));
-		return lintReading(Result.succeed(reading), splitLines(document.source), rules, runOf(options));
+		return lintReading(Result.succeed(aligned.value), splitLines(document.source), rules, runOf(options));
 	}
 
 	/**

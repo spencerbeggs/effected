@@ -6,7 +6,7 @@
 // does) with the probes adapted, and require the two hosts to agree.
 
 import { assert, describe, it } from "@effect/vitest";
-import { MarkdownDocument } from "@effected/markdown";
+import { MarkdownDocument, MarkdownParseOptions } from "@effected/markdown";
 import { Option, Result } from "effect";
 import type { LintConfigRecord } from "../src/LintConfig.js";
 import type { LintContext } from "../src/LintContext.js";
@@ -137,15 +137,6 @@ describe("MarkdownLint applies markdownlint configuration", () => {
 		const source = "a\n<!-- markdownlint-disable-next-line every-line -->\nb\nc\n";
 		assert.deepStrictEqual(lines(MarkdownLint.lint(source, [everyLine])), [1, 2, 4]);
 		assert.deepStrictEqual(lines(MarkdownLint.lint(source, [everyLine], { noInlineConfig: true })), [1, 2, 3, 4]);
-	});
-
-	it("applies the same configuration through lintDocument", () => {
-		const document = Result.getOrThrow(
-			MarkdownDocument.parseResult("a\n<!-- markdownlint-disable-next-line every-line -->\nb\n"),
-		);
-		const findings = MarkdownLint.lintDocument(document, [everyLine], { config: { "every-line": "warning" } });
-		assert.deepStrictEqual(lines(findings), [1, 2]);
-		for (const finding of findings) assert.strictEqual(finding.severity, "warning");
 	});
 
 	it("reports a parse refusal at severity error for each enabled rule", () => {
@@ -305,5 +296,97 @@ describe("the programmatic host agrees with markdownlint", () => {
 			viaMarkdownlint(text, config, false).map((result) => result.lineNumber),
 			[1, 2, 3, 4, 6],
 		);
+	});
+});
+
+// A rule that hands out what it read, through either entry point.
+const seeing = (into: Array<LintContext>) =>
+	LintRule.make({
+		names: ["seeing"],
+		description: "Hands its context out",
+		tags: ["probe"],
+		check: (context) => {
+			into.push(context);
+		},
+	});
+
+const parsed = (source: string, frontmatter: boolean, dialect: "gfm" | "commonmark" = "gfm") =>
+	Result.getOrThrow(MarkdownDocument.parseResult(source, MarkdownParseOptions.make({ dialect, frontmatter })));
+
+describe("lintDocument gives a rule what lint gives it", () => {
+	for (const [label, text] of inputs) {
+		it(`${label}, with the document parsed capture on and off`, () => {
+			for (const frontmatter of [true, false]) {
+				const document = parsed(text, frontmatter);
+				for (const config of configs) {
+					for (const noInlineConfig of [false, true]) {
+						assert.deepStrictEqual(
+							MarkdownLint.lintDocument(document, probes, { config, noInlineConfig }),
+							MarkdownLint.lint(text, probes, { config, noInlineConfig }),
+							JSON.stringify({ frontmatter, config, noInlineConfig }),
+						);
+					}
+				}
+			}
+		});
+	}
+
+	it("hides a comment's markup from lintDocument's rules, as from lint's", () => {
+		const source = "Text <!-- <b>x</b> -->\n";
+		const seen: Array<LintContext> = [];
+		MarkdownLint.lintDocument(parsed(source, true), [seeing(seen)]);
+		MarkdownLint.lint(source, [seeing(seen)]);
+		assert.lengthOf(seen, 2);
+		for (const context of seen) {
+			assert.deepStrictEqual(context.lines, ["Text <!-- ........ -->", ""]);
+			assert.notInclude(JSON.stringify(context.root), "<b>");
+		}
+	});
+
+	it("reads a { } block through lintDocument as front matter with no node", () => {
+		const source = '{\n"title": "x"\n}\n# H\n';
+		const seen: Array<LintContext> = [];
+		MarkdownLint.lintDocument(parsed(source, true), [seeing(seen)]);
+		const context = seen[0] as LintContext;
+		const frontmatter = Option.getOrThrow(context.frontmatter);
+		assert.strictEqual(frontmatter.lineCount, 3);
+		assert.isTrue(Option.isNone(frontmatter.node));
+		for (const node of context.root.children) assert.isAbove(node.position.start.line, 3, node.type);
+	});
+
+	it("reuses the given parse when it already is the aligned reading, and re-reads otherwise", () => {
+		const seen: Array<LintContext> = [];
+		const aligned = parsed("---\ntitle: x\n---\n# H\n", true);
+		MarkdownLint.lintDocument(aligned, [seeing(seen)]);
+		assert.strictEqual(seen[0]?.document, aligned);
+		for (const document of [
+			parsed("# H <!-- c -->\n", true),
+			parsed("---\ntitle: x\n---\n# H\n", false),
+			parsed('---json\n{"a": 1}\n---\n# H\n', true),
+			parsed("\uFEFF# H\n", true),
+		]) {
+			seen.length = 0;
+			MarkdownLint.lintDocument(document, [seeing(seen)]);
+			assert.notStrictEqual(seen[0]?.document, document, JSON.stringify(document.source));
+		}
+	});
+
+	it("re-reads a commonmark document with the dialect the caller names", () => {
+		const source = "~~gone~~ <!-- note -->\n";
+		const types = LintRule.make({
+			names: ["types"],
+			description: "Reports the paragraph's child types",
+			tags: ["probe"],
+			check: (context, report) => {
+				const paragraph = Option.getOrThrow(context.document.find("paragraph"));
+				report(context.diagnostic({ at: paragraph, detail: paragraph.children.map((node) => node.type).join(",") }));
+			},
+		});
+		const document = parsed(source, true, "commonmark");
+		const viaLint = MarkdownLint.lint(source, [types], { dialect: "commonmark" });
+		assert.deepStrictEqual(MarkdownLint.lintDocument(document, [types], { dialect: "commonmark" }), viaLint);
+		// The control: without the dialect the re-read is gfm, and ~~ is a deletion.
+		assert.notDeepEqual(MarkdownLint.lintDocument(document, [types]), viaLint);
+		assert.include(Option.getOrThrow(viaLint[0]?.detail ?? Option.none()), "text");
 	});
 });
