@@ -272,14 +272,22 @@ const childContainers = (node: MarkdownNode): Array<MarkdownNode> => {
 };
 
 // A line's text inside its containers: each blockquote's marker and its optional space, and each list item's
-// or footnote's indentation, removed in turn. `undefined` for a lazy line, one that does not carry them.
-const contentOf = (line: string, lineNumber: number, chain: ReadonlyArray<MarkdownNode>): string | undefined => {
+// or footnote's indentation, removed in turn, with the blockquote markers (and the indentation before each)
+// collected as `quotes`. `text` is `undefined` for a lazy line, one that does not carry them all; `quotes` then
+// holds the markers it does carry.
+const containerParts = (
+	line: string,
+	lineNumber: number,
+	chain: ReadonlyArray<MarkdownNode>,
+): { readonly text: string | undefined; readonly quotes: string } => {
 	let at = 0;
+	let quotes = "";
 	for (const container of chain) {
 		if (container.type === "blockquote") {
 			const marker = /^[ \t]{0,3}>[ \t]?/.exec(line.slice(at));
-			if (marker === null) return undefined;
+			if (marker === null) return { text: undefined, quotes };
 			at += marker[0].length;
+			quotes += marker[0];
 			continue;
 		}
 		const column =
@@ -293,11 +301,48 @@ const contentOf = (line: string, lineNumber: number, chain: ReadonlyArray<Markdo
 					: at + (/^\[\^[^\]]*\]:[ \t]*/.exec(line.slice(at))?.[0].length ?? 0);
 			continue;
 		}
-		if (line.slice(at, column).trim() !== "") return undefined;
+		if (line.slice(at, column).trim() !== "") return { text: undefined, quotes };
 		at = Math.min(Math.max(at, column), line.length);
 	}
-	return line.slice(at);
+	return { text: line.slice(at), quotes };
 };
+
+const contentOf = (line: string, lineNumber: number, chain: ReadonlyArray<MarkdownNode>): string | undefined =>
+	containerParts(line, lineNumber, chain).text;
+
+/**
+ * The containers (blockquotes, list items, footnote definitions) the kit
+ * places line `lineNumber` in, outermost first.
+ * @internal
+ */
+export const containersAt = (context: LintContext, lineNumber: number): Array<MarkdownNode> =>
+	[
+		...context.document.findAll(
+			(node) =>
+				(node.type === "blockquote" || node.type === "listItem" || node.type === "footnoteDefinition") &&
+				node.position.start.line <= lineNumber &&
+				lineNumber <= node.position.end.line,
+		),
+	].sort((a, b) => a.position.start.offset - b.position.start.offset);
+
+/**
+ * markdownlint's `getBlockQuotePrefixText` for one line, from its raw text:
+ * the blockquote markers its containers carry on it, with the indentation
+ * before each (micromark's `blockQuotePrefix` and `linePrefix` tokens; a
+ * list item's or footnote's own indentation is neither), trailing space
+ * trimmed.
+ * @internal
+ */
+export const blockQuotePrefixText = (context: LintContext, lineNumber: number): string =>
+	containerParts(context.lines[lineNumber - 1] ?? "", lineNumber, containersAt(context, lineNumber)).quotes.trimEnd();
+
+/**
+ * Whether line `lineNumber` is lazy: it lacks a marker or the indentation
+ * of one of the containers the kit places it in.
+ * @internal
+ */
+export const isLazyLine = (context: LintContext, lineNumber: number): boolean =>
+	contentOf(context.lines[lineNumber - 1] ?? "", lineNumber, containersAt(context, lineNumber)) === undefined;
 
 /**
  * Every math block, by its first and last line: markdownlint's micromark runs the math
@@ -328,15 +373,21 @@ export const mathFlowBlocks = (
 		const first = isRoot ? firstContentLine(context) : container.position.start.line;
 		const last = isRoot ? context.lines.length : container.position.end.line;
 		const children = childContainers(container);
-		const inChild = (lineNumber: number): boolean =>
-			children.some((child) => child.position.start.line <= lineNumber && lineNumber <= child.position.end.line);
+		const childAt = (lineNumber: number): MarkdownNode | undefined =>
+			children.find((child) => child.position.start.line <= lineNumber && lineNumber <= child.position.end.line);
 		let open = 0;
 		let openedAt = 0;
 		for (let lineNumber = first; lineNumber <= last; lineNumber++) {
 			// An open block holds every line after its opener in this container: what the kit reads there as a
 			// child container (a list after the opener, say) is math to micromark.
-			if (open === 0 && (inChild(lineNumber) || math.has(lineNumber))) continue;
-			const text = contentOf(context.lines[lineNumber - 1] as string, lineNumber, chain);
+			if (open === 0 && math.has(lineNumber)) continue;
+			const line = context.lines[lineNumber - 1] as string;
+			const child = open === 0 ? childAt(lineNumber) : undefined;
+			// A line lazy to a child (the kit's paragraph continuation) is this container's line to micromark when
+			// it opens math, which interrupts a paragraph; any other line of a child is the child's to read.
+			const lazyInChild = child !== undefined && contentOf(line, lineNumber, [...chain, child]) === undefined;
+			if (child !== undefined && !lazyInChild) continue;
+			const text = contentOf(line, lineNumber, chain);
 			if (open > 0) {
 				if (text === undefined) {
 					close(openedAt, lineNumber - 1);
