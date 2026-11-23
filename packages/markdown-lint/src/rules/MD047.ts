@@ -3,7 +3,8 @@
 // empty remainder is one empty line, which is blank.
 
 import type * as Lint from "@effected/markdown-lint";
-import { firstContentLine, isBlankLine, lineStarts, preferredLineEnding } from "../internal/rule-helpers.js";
+import { preferredLineEnding } from "../internal/line-endings.js";
+import { firstContentLine, isBlankLine, lineStarts } from "../internal/rule-helpers.js";
 import { LintRule } from "../LintRule.js";
 
 /**

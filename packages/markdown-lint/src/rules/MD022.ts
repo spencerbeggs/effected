@@ -6,13 +6,13 @@
 
 import type { Heading } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
+import { preferredLineEnding } from "../internal/line-endings.js";
 import {
 	firstContentLine,
 	headingNodes,
 	isBlankLine,
 	isBoolean,
 	lineStarts,
-	preferredLineEnding,
 	setting,
 } from "../internal/rule-helpers.js";
 import { LintRule } from "../LintRule.js";

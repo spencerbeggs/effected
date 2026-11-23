@@ -7,6 +7,7 @@
 import { Option } from "effect";
 import type { LintDiagnostic } from "../LintDiagnostic.js";
 import { PositionMapping } from "../PositionMapping.js";
+import { preferredLineEnding } from "./line-endings.js";
 
 interface Fix {
 	readonly lineNumber: number;
@@ -18,8 +19,16 @@ interface Fix {
 	readonly length: number;
 }
 
-/** Apply `findings`' kit edits to `source` under markdownlint's fix policy. @internal */
-export const applyFixes = (source: string, findings: ReadonlyArray<LintDiagnostic>): string => {
+/**
+ * Apply `findings`' kit edits to `source` under markdownlint's fix policy, and
+ * count the edits the splice skipped because they reached into one already
+ * applied: a skip markdownlint's policy does not make, so a sign of an edit
+ * whose span disagrees with its `fixInfo`. @internal
+ */
+export const applyFixesCounted = (
+	source: string,
+	findings: ReadonlyArray<LintDiagnostic>,
+): { readonly text: string; readonly skipped: number } => {
 	const lead = source.charCodeAt(0) === 0xfeff ? 1 : 0;
 	const mapping = PositionMapping.of(source.slice(lead));
 	const fixes: Array<Fix> = [];
@@ -104,10 +113,27 @@ export const applyFixes = (source: string, findings: ReadonlyArray<LintDiagnosti
 	// Splice from the end backwards; an edit that would reach into one already applied is skipped.
 	let result = source;
 	let limit = Number.POSITIVE_INFINITY;
+	let skipped = 0;
 	for (const fix of applied) {
-		if (fix.offset + fix.length > limit) continue;
+		if (fix.offset + fix.length > limit) {
+			skipped++;
+			continue;
+		}
 		result = result.slice(0, fix.offset) + fix.insertText + result.slice(fix.offset + fix.length);
 		limit = fix.offset;
 	}
-	return result;
+	// markdownlint splits the file on every line break (a lone `\r` too) and joins it with the line ending it
+	// prefers for the original, so a fixed file comes back with one line ending throughout, fixed or not.
+	const ending = preferredLineEnding(source.slice(lead));
+	const text =
+		source.slice(0, lead) +
+		result
+			.slice(lead)
+			.split(/\r\n?|\n/)
+			.join(ending);
+	return { text, skipped };
 };
+
+/** Apply `findings`' kit edits to `source` under markdownlint's fix policy. @internal */
+export const applyFixes = (source: string, findings: ReadonlyArray<LintDiagnostic>): string =>
+	applyFixesCounted(source, findings).text;

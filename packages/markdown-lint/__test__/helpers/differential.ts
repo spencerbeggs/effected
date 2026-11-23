@@ -8,6 +8,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Option } from "effect";
+import { applyFixesCounted } from "../../src/internal/apply-fixes.js";
 import type { LintDiagnostic } from "../../src/LintDiagnostic.js";
 import type { LintRule } from "../../src/LintRule.js";
 import { MarkdownLint } from "../../src/MarkdownLint.js";
@@ -150,7 +151,11 @@ const compareOne = (rule: LintRule, config: Record<string, unknown>, input: Diff
 	const expected = oracleApplyFixes(input.source, oracleFindings);
 	let actual: string;
 	try {
-		actual = MarkdownLint.applyFixes(input.source, kitFindings);
+		const applied = applyFixesCounted(input.source, kitFindings);
+		// The public applyFixes forgives an edit that reaches into one already applied; markdownlint's policy
+		// never gets there, so any such skip is a kit edit whose span disagrees with its fixInfo.
+		if (applied.skipped > 0) return found(`kit edits do not apply: ${applied.skipped} skipped by the splice`);
+		actual = applied.text;
 	} catch (error) {
 		return found(`kit edits do not apply: ${error instanceof Error ? error.message : String(error)}`);
 	}

@@ -239,15 +239,19 @@ export class MarkdownLint {
 	 * line; and a whole-line delete taking every other fix on its line with
 	 * it.
 	 *
+	 * Like markdownlint, it returns the text with one line ending throughout:
+	 * every line break (CRLF, LF or a lone CR) becomes the one the original
+	 * text uses most, LF winning a tie, then CRLF, whether or not a fix
+	 * applied. A text with no line break keeps none; an inserted line break
+	 * there stays `\n`, where markdownlint writes the platform's.
+	 *
 	 * It works on the findings' kit `edit`s, not on markdownlint's line fixes,
 	 * so it differs where those differ: each fix is ordered and matched by its
 	 * finding's `fixInfo`, and an edit with no `fixInfo` (one crossing a line
-	 * break, which markdownlint cannot say) by its own start line and column;
-	 * the inserted text is the edit's as written, where markdownlint rewrites
-	 * an inserted `\n` as the file's line ending (the kit's rules write that
-	 * ending themselves). Findings without a fix are ignored. Edits address
-	 * `source` as given, as {@link MarkdownLint.lint} reports them, byte order
-	 * mark included. Pure and synchronous.
+	 * break, which markdownlint cannot say) by its own start line and column.
+	 * Findings without a fix are ignored. Edits address `source` as given, as
+	 * {@link MarkdownLint.lint} reports them, byte order mark included, which
+	 * is kept. Pure and synchronous.
 	 *
 	 * @param source - The text the findings were reported on.
 	 * @param findings - The findings, from any number of rules, in any order.

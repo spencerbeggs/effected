@@ -4,10 +4,12 @@
 // (reported through the adapter), as well as the text written out here.
 
 import { assert, describe, it } from "@effect/vitest";
+import { applyFixesCounted } from "../src/internal/apply-fixes.js";
 import { LintRule } from "../src/LintRule.js";
 import { MarkdownLint } from "../src/MarkdownLint.js";
 import { MarkdownlintAdapter } from "../src/MarkdownlintAdapter.js";
 import type { LintEditLike } from "../src/PositionMapping.js";
+import { rules } from "../src/rules/all.js";
 import { MD012 } from "../src/rules/MD012.js";
 import { MD022 } from "../src/rules/MD022.js";
 import { markdownlintLint, oracleApplyFixes, oracleLint } from "./helpers/markdownlint-oracle.js";
@@ -122,11 +124,45 @@ describe("MarkdownLint.applyFixes", () => {
 		}
 	});
 
+	it("returns one line ending throughout, the one the text uses most, as markdownlint's applyFixes does", () => {
+		const config = Object.fromEntries([["default", false], ...rules.map((rule) => [rule.name, true])]);
+		for (const [source, expected] of [
+			["# A\r\n## B\n### C\r\n", "# A\r\n\r\n## B\r\n\r\n### C\r\n"],
+			["text\r\n# H\ntext\n", "text\n\n# H\n\ntext\n"],
+		] as const) {
+			const fixed = MarkdownLint.applyFixes(source, MarkdownLint.lint(source, rules, { config }));
+			assert.strictEqual(fixed, expected, JSON.stringify(source));
+			assert.strictEqual(oracleApplyFixes(source, oracleLint(source, config)), expected, JSON.stringify(source));
+		}
+	});
+
+	it("normalizes line endings, a lone CR included, even when no fix applies", () => {
+		const source = "a\r\nb\rc\nd\n";
+		assert.strictEqual(MarkdownLint.applyFixes(source, []), "a\nb\nc\nd\n");
+		assert.strictEqual(oracleApplyFixes(source, []), "a\nb\nc\nd\n");
+	});
+
+	it("counts an edit the splice must skip, which markdownlint's policy never reaches", () => {
+		// Two cross-line edits on different lines whose spans overlap: the line policy chooses both.
+		const source = "ab\ncd\nef\n";
+		const rule = reporting([
+			{ offset: 1, length: 4, content: "" },
+			{ offset: 4, length: 2, content: "" },
+		]);
+		const counted = applyFixesCounted(source, MarkdownLint.lint(source, [rule]));
+		assert.strictEqual(counted.skipped, 1);
+		assert.strictEqual(counted.text, "ab\ncef\n");
+		// The control: edits that do not overlap skip nothing.
+		const clean = reporting([{ offset: 1, length: 1, content: "" }]);
+		assert.strictEqual(applyFixesCounted(source, MarkdownLint.lint(source, [clean])).skipped, 0);
+	});
+
 	it("addresses a byte-order-marked source as given and ignores findings without a fix", () => {
 		const source = "﻿a \n";
 		const rule = reporting([{ offset: 0, length: 1, content: "" }]);
 		const findings = MarkdownLint.lint(source, [rule]);
 		assert.strictEqual(MarkdownLint.applyFixes(source, findings), "﻿ \n");
 		assert.strictEqual(MarkdownLint.applyFixes(source, []), source);
+		assert.strictEqual(MarkdownLint.applyFixes("\uFEFFa\r\nb\n\n", []), "\uFEFFa\nb\n\n");
 	});
 });

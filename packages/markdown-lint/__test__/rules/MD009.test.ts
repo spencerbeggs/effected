@@ -9,6 +9,7 @@ import { MD009 } from "../../src/rules/MD009.js";
 import { differential } from "../helpers/differential.js";
 
 const extra = [
+	{ name: "mixed line endings", source: "a  \r\nb   \nc \r\nd\n" },
 	{ name: "hard break and stray spaces", source: "a  \nb   \nc \nd\n" },
 	{ name: "trailing tab", source: "a\t\nb \t\n" },
 	{ name: "fenced code", source: "```\ncode  \n  \n```  \n\ntext \n" },
@@ -101,4 +102,4 @@ describe("MD009 no-trailing-spaces", () => {
 });
 
 // markdownlint's MD009 findings over the corpus (LF and CRLF) and the extras.
-const ORACLE_FINDINGS_DEFAULT = 188;
+const ORACLE_FINDINGS_DEFAULT = 190;

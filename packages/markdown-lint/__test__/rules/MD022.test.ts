@@ -9,6 +9,7 @@ import { MD022 } from "../../src/rules/MD022.js";
 import { differential } from "../helpers/differential.js";
 
 const extra = [
+	{ name: "mixed line endings", source: "text\r\n# H\ntext\n\n## Two\r\nmore\r\n" },
 	{ name: "tight headings", source: "text\n# One\ntext\n## Two\n### Three\n" },
 	{ name: "setext", source: "text\nOne\n===\ntext\n" },
 	{ name: "blockquote", source: "> text\n> # Quoted\n> text\n" },
@@ -96,4 +97,4 @@ describe("MD022 blanks-around-headings", () => {
 });
 
 // markdownlint's MD022 findings over the corpus (LF and CRLF) and the extras.
-const ORACLE_FINDINGS_DEFAULT = 142;
+const ORACLE_FINDINGS_DEFAULT = 145;
