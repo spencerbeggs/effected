@@ -3,7 +3,7 @@
 // the front matter), line offsets, and the code-block line ranges the
 // micromark tokens markdownlint reads would give, derived from the kit tree.
 
-import type { Code } from "@effected/markdown";
+import type { Code, Heading } from "@effected/markdown";
 import { Option } from "effect";
 import type { LintContext } from "../LintContext.js";
 
@@ -171,3 +171,43 @@ export const frontMatterHasTitle = (context: LintContext): boolean => {
 		onSome: (block) => block.lines.some((line) => matcher.test(line)),
 	});
 };
+
+/** An ATX heading's source span, read as micromark tokenizes it. @internal */
+export interface AtxParts {
+	/** The opening `#` run. */
+	readonly open: { readonly offset: number; readonly length: number };
+	/** The closing `#` run, when the heading has one. */
+	readonly closing: Option.Option<{ readonly offset: number; readonly length: number }>;
+}
+
+/**
+ * Read an ATX heading's opening and closing sequences from its source span
+ * (from its first `#` to its line's end). A closing run follows a space or
+ * tab, or the opening run itself, and only spaces or tabs follow it.
+ * @internal
+ */
+export const atxParts = (context: LintContext, heading: Heading): AtxParts => {
+	const start = heading.position.start.offset;
+	const text = context.source.slice(start, heading.position.end.offset);
+	const open = (/^#+/.exec(text)?.[0] ?? "").length;
+	const rest = text.slice(open);
+	const match = /(^|[ \t])(#+)[ \t]*$/.exec(rest);
+	return {
+		open: { offset: start, length: open },
+		closing:
+			match === null
+				? Option.none()
+				: Option.some({
+						offset: start + open + match.index + (match[1] as string).length,
+						length: (match[2] as string).length,
+					}),
+	};
+};
+
+/** A heading's style as markdownlint's `getHeadingStyle` reads it. @internal */
+export const headingStyle = (context: LintContext, heading: Heading): "atx" | "atx_closed" | "setext" =>
+	heading.headingStyle === "setext"
+		? "setext"
+		: Option.isSome(atxParts(context, heading).closing)
+			? "atx_closed"
+			: "atx";

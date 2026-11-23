@@ -12,6 +12,7 @@
 
 import type { LintRule } from "@effected/markdown-lint";
 import { MD001 } from "./MD001.js";
+import { MD003 } from "./MD003.js";
 import { MD009 } from "./MD009.js";
 import { MD010 } from "./MD010.js";
 import { MD012 } from "./MD012.js";
@@ -23,7 +24,7 @@ import { MD047 } from "./MD047.js";
  *
  * @public
  */
-export const rules: ReadonlyArray<LintRule> = [MD001, MD009, MD010, MD012, MD013, MD047];
+export const rules: ReadonlyArray<LintRule> = [MD001, MD003, MD009, MD010, MD012, MD013, MD047];
 
 /**
  * The first names of markdownlint's built-in rules that have no port yet,
@@ -32,7 +33,6 @@ export const rules: ReadonlyArray<LintRule> = [MD001, MD009, MD010, MD012, MD013
  * @public
  */
 export const uncovered: ReadonlyArray<string> = [
-	"MD003",
 	"MD004",
 	"MD005",
 	"MD007",
