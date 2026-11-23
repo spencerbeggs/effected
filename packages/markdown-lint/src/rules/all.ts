@@ -13,6 +13,7 @@
 import type { LintRule } from "@effected/markdown-lint";
 import { MD001 } from "./MD001.js";
 import { MD003 } from "./MD003.js";
+import { MD004 } from "./MD004.js";
 import { MD009 } from "./MD009.js";
 import { MD010 } from "./MD010.js";
 import { MD012 } from "./MD012.js";
@@ -35,6 +36,7 @@ import { MD047 } from "./MD047.js";
 export const rules: ReadonlyArray<LintRule> = [
 	MD001,
 	MD003,
+	MD004,
 	MD009,
 	MD010,
 	MD012,
@@ -57,7 +59,6 @@ export const rules: ReadonlyArray<LintRule> = [
  * @public
  */
 export const uncovered: ReadonlyArray<string> = [
-	"MD004",
 	"MD005",
 	"MD007",
 	"MD011",

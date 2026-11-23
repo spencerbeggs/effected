@@ -282,7 +282,7 @@ const contentOf = (line: string, lineNumber: number, chain: ReadonlyArray<Markdo
 };
 
 /**
- * The lines of every math block: markdownlint's micromark runs the math
+ * Every math block, by its first and last line: markdownlint's micromark runs the math
  * extension, whose `mathFlow` the kit tree does not carry. Each container's
  * own lines (the document's, a blockquote's, a list item's, a footnote's)
  * are read with the container's markers and indentation removed, as the
@@ -293,10 +293,18 @@ const contentOf = (line: string, lineNumber: number, chain: ReadonlyArray<Markdo
  * container ends, as micromark's token does.
  * @internal
  */
-export const mathFlowLines = (context: LintContext, starts: ReadonlyArray<number>): Set<number> => {
+export const mathFlowBlocks = (
+	context: LintContext,
+	starts: ReadonlyArray<number>,
+): Array<{ readonly start: number; readonly end: number }> => {
 	const excluded = codeBlockLines(context, starts);
 	for (const line of nodeLines(flowNodes(context, new Set(["html"])))) excluded.add(line);
 	const math = new Set<number>();
+	const blocks: Array<{ readonly start: number; readonly end: number }> = [];
+	const close = (start: number, end: number): void => {
+		addRange(math, start, end);
+		blocks.push({ start, end });
+	};
 	const scan = (container: MarkdownNode, chain: ReadonlyArray<MarkdownNode>): void => {
 		const isRoot = container.type === "root";
 		const first = isRoot ? firstContentLine(context) : container.position.start.line;
@@ -307,17 +315,19 @@ export const mathFlowLines = (context: LintContext, starts: ReadonlyArray<number
 		let open = 0;
 		let openedAt = 0;
 		for (let lineNumber = first; lineNumber <= last; lineNumber++) {
-			if (inChild(lineNumber) || (open === 0 && math.has(lineNumber))) continue;
+			// An open block holds every line after its opener in this container: what the kit reads there as a
+			// child container (a list after the opener, say) is math to micromark.
+			if (open === 0 && (inChild(lineNumber) || math.has(lineNumber))) continue;
 			const text = contentOf(context.lines[lineNumber - 1] as string, lineNumber, chain);
 			if (open > 0) {
 				if (text === undefined) {
-					addRange(math, openedAt, lineNumber - 1);
+					close(openedAt, lineNumber - 1);
 					open = 0;
 					continue;
 				}
 				const closing = /^ {0,3}(\${2,})[ \t]*$/.exec(text);
 				if (closing !== null && (closing[1] as string).length >= open) {
-					addRange(math, openedAt, lineNumber);
+					close(openedAt, lineNumber);
 					open = 0;
 				}
 				continue;
@@ -329,12 +339,27 @@ export const mathFlowLines = (context: LintContext, starts: ReadonlyArray<number
 				openedAt = lineNumber;
 			}
 		}
-		if (open > 0) addRange(math, openedAt, last);
+		if (open > 0) close(openedAt, last);
 		for (const child of children) scan(child, [...chain, child]);
 	};
 	scan(context.document.root as MarkdownNode, []);
-	return math;
+	return blocks;
 };
+
+/** Every line of every math block {@link mathFlowBlocks} reads. @internal */
+export const mathFlowLines = (context: LintContext, starts: ReadonlyArray<number>): Set<number> => {
+	const lines = new Set<number>();
+	for (const block of mathFlowBlocks(context, starts)) addRange(lines, block.start, block.end);
+	return lines;
+};
+
+/**
+ * Whether a node the kit reads starting on `line` lies inside a math block:
+ * past the block's opening line, which holds the opener itself.
+ * @internal
+ */
+export const inMathBlock = (blocks: ReadonlyArray<{ readonly start: number; readonly end: number }>, line: number) =>
+	blocks.some((block) => block.start < line && line <= block.end);
 
 /**
  * The document's headings as markdownlint sees them: in document order,
