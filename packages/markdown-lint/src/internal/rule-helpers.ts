@@ -3,7 +3,7 @@
 // the front matter), line offsets, and the code-block line ranges the
 // micromark tokens markdownlint reads would give, derived from the kit tree.
 
-import type { Code, Heading } from "@effected/markdown";
+import type { Code, Heading, MarkdownNode } from "@effected/markdown";
 import { Option } from "effect";
 import type { LintContext } from "../LintContext.js";
 
@@ -211,3 +211,69 @@ export const headingStyle = (context: LintContext, heading: Heading): "atx" | "a
 		: Option.isSome(atxParts(context, heading).closing)
 			? "atx_closed"
 			: "atx";
+
+/**
+ * markdownlint's `addErrorContext` text: line breaks normalized, then
+ * `ellipsify` to 30 characters, keeping the start, the end, or both.
+ * @internal
+ */
+export const errorContext = (text: string, start?: boolean, end?: boolean): string => {
+	const normalized = text.replace(/\r\n?|\n/g, "\n");
+	if (normalized.length <= 30) return normalized;
+	if (start && end) return `${normalized.slice(0, 15)}...${normalized.slice(-15)}`;
+	if (end) return `...${normalized.slice(-30)}`;
+	return `${normalized.slice(0, 30)}...`;
+};
+
+const CONTAINERS = new Set(["root", "blockquote", "list", "listItem", "footnoteDefinition"]);
+
+/**
+ * Every flow-level node of one of `types` — a block in the document, a
+ * blockquote, a list item or a footnote definition, never inside a
+ * paragraph, heading or table, where the same node type is inline.
+ * @internal
+ */
+export const flowNodes = (context: LintContext, types: ReadonlySet<string>): Array<MarkdownNode> => {
+	const found: Array<MarkdownNode> = [];
+	const visit = (node: MarkdownNode): void => {
+		if (types.has(node.type)) found.push(node);
+		if (CONTAINERS.has(node.type) && "children" in node) {
+			for (const child of node.children as ReadonlyArray<MarkdownNode>) visit(child);
+		}
+	};
+	visit(context.document.root as MarkdownNode);
+	return found;
+};
+
+/**
+ * The lines of every math block, read from the raw lines: markdownlint's
+ * micromark runs the math extension, whose `mathFlow` the kit tree does not
+ * carry. A block opens on a line of two or more `$` and a meta with no `$`
+ * (behind any blockquote markers and indentation), outside code and HTML
+ * blocks, and closes on a line of at least as many `$` alone; an unclosed
+ * block runs to the end, as micromark's token does.
+ * @internal
+ */
+export const mathFlowLines = (context: LintContext, starts: ReadonlyArray<number>): Set<number> => {
+	const excluded = codeBlockLines(context, starts);
+	for (const line of nodeLines(flowNodes(context, new Set(["html"])))) excluded.add(line);
+	const lines = new Set<number>();
+	const strip = (line: string): string => line.replace(/^(?:[ \t]*>)*[ \t]*/, "");
+	let open = 0;
+	for (let lineNumber = firstContentLine(context); lineNumber <= context.lines.length; lineNumber++) {
+		const text = strip(context.lines[lineNumber - 1] as string);
+		if (open > 0) {
+			lines.add(lineNumber);
+			const closing = /^(\${2,})[ \t]*$/.exec(text);
+			if (closing !== null && (closing[1] as string).length >= open) open = 0;
+			continue;
+		}
+		if (excluded.has(lineNumber)) continue;
+		const opening = /^(\${2,})([^$]*)$/.exec(text);
+		if (opening !== null) {
+			open = (opening[1] as string).length;
+			lines.add(lineNumber);
+		}
+	}
+	return lines;
+};
