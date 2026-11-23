@@ -61,7 +61,8 @@ const md047 = (lineShift: number) =>
 		},
 	});
 
-describe("the differential harness", () => {
+// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
+describe("the differential harness", { timeout: 60_000 }, () => {
 	it("compares every corpus file, LF and CRLF", () => {
 		assert.lengthOf(corpus, 436);
 	});
