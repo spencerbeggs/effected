@@ -1,0 +1,7 @@
+# Heading
+
+| Head |
+| ---- |
+| Cell |
+| ==== |
+| Foot |

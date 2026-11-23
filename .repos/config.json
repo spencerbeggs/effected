@@ -258,6 +258,21 @@
 				"pnpm/crates/deps-inspection-peers/src",
 				"pnpm/crates/resolving-parse-wanted-dependency/src"
 			]
+		},
+		"markdownlint": {
+			"url": "https://github.com/DavidAnson/markdownlint.git",
+			"ref": "v0.42.1",
+			"purpose": "Rule-source and fixture authority for @effected/markdown-lint: the built-in rules (lib/mdNNN.mjs), their docs, and the test/*.md fixture corpus.",
+			"sparse": [
+				"lib",
+				"helpers",
+				"doc",
+				"test"
+			],
+			"orientation": {
+				"layout": "lib/mdNNN.mjs are the rules; lib/markdownlint.mjs the engine; helpers/ the shared helpers; doc/mdNNN.md rule docs; test/*.md the fixture corpus.",
+				"startHere": "Rule behaviour: lib/mdNNN.mjs and doc/mdNNN.md. Fixtures: test/*.md."
+			}
 		}
 	}
 }
