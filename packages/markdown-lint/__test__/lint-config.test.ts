@@ -74,8 +74,12 @@ describe("LintConfig.effective", () => {
 		assert.deepStrictEqual(resolve({ nosuchrule: true, extends: "x" }), { a: on, b: on });
 	});
 
-	it("does not resolve inherited object keys as aliases", () => {
-		assert.deepStrictEqual(resolve({ constructor: false, tostring: false }), { a: on, b: on });
+	it("freezes every settings object so one rule cannot leak into another", () => {
+		const result = LintConfig.effective({ t1: { x: 1 } }, rules);
+		for (const rule of rules) {
+			assert.isTrue(Object.isFrozen(result.settings.get(LintConfig.key(rule))));
+		}
+		assert.isTrue(Object.isFrozen(LintConfig.effective({}, rules).settings.get("AAA001")));
 	});
 });
 

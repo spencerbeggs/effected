@@ -84,11 +84,12 @@ export class LintConfig {
 		const enabled = new Map<string, boolean>();
 		const severity = new Map<string, LintSeverity>();
 		const settings = new Map<string, Readonly<Record<string, unknown>>>();
+		const noSettings = Object.freeze({});
 		for (const rule of rules) {
 			const name = LintConfig.key(rule);
 			enabled.set(name, defaultEnabled);
 			severity.set(name, defaultSeverity);
-			settings.set(name, {});
+			settings.set(name, noSettings);
 		}
 		for (const [key, value] of entries) {
 			let ruleEnabled = false;
@@ -105,6 +106,7 @@ export class LintConfig {
 					ruleSeverity = value === "warning" ? "warning" : "error";
 				}
 			}
+			Object.freeze(ruleSettings);
 			for (const name of aliases.get(key.toUpperCase()) ?? []) {
 				settings.set(name, ruleSettings);
 				enabled.set(name, ruleEnabled);
