@@ -145,3 +145,29 @@ export const isBlankLine = (line: string | undefined): boolean => {
 	}
 	return !text.replace(/>/g, "").trim();
 };
+
+/** @internal */
+export const isString = (value: unknown): value is string => typeof value === "string";
+
+/**
+ * markdownlint's `frontMatterHasTitle`: whether a front matter line matches
+ * `front_matter_title` (case-insensitive; default `^\s*"?title"?\s*[:=]`).
+ * An empty pattern turns front matter off. A pattern of the wrong type, or
+ * one that is not a valid regular expression, reads as the default.
+ * @internal
+ */
+export const frontMatterHasTitle = (context: LintContext): boolean => {
+	const fallback = '^\\s*"?title"?\\s*[:=]';
+	const pattern = setting(context.config, "front_matter_title", isString, fallback);
+	if (pattern === "") return false;
+	let matcher: RegExp;
+	try {
+		matcher = new RegExp(pattern, "i");
+	} catch {
+		matcher = new RegExp(fallback, "i");
+	}
+	return Option.match(context.frontmatter, {
+		onNone: () => false,
+		onSome: (block) => block.lines.some((line) => matcher.test(line)),
+	});
+};
