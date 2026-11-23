@@ -3,7 +3,7 @@
 // the front matter), line offsets, and the code-block line ranges the
 // micromark tokens markdownlint reads would give, derived from the kit tree.
 
-import type { Code, Heading, MarkdownNode } from "@effected/markdown";
+import type { Code, Heading, ListItem, MarkdownNode } from "@effected/markdown";
 import { Option } from "effect";
 import type { LintContext } from "../LintContext.js";
 
@@ -246,36 +246,111 @@ export const flowNodes = (context: LintContext, types: ReadonlySet<string>): Arr
 };
 
 /**
- * The lines of every math block, read from the raw lines: markdownlint's
- * micromark runs the math extension, whose `mathFlow` the kit tree does not
- * carry. A block opens on a line of two or more `$` and a meta with no `$`
- * (behind any blockquote markers and indentation), outside code and HTML
- * blocks, and closes on a line of at least as many `$` alone; an unclosed
- * block runs to the end, as micromark's token does.
+ * The 0-based column a list item's content starts at: its first child's,
+ * when that starts on the item's line; otherwise past a one-character marker
+ * and its space.
+ * @internal
+ */
+export const itemContentColumn = (item: ListItem): number => {
+	const first = item.children[0] as MarkdownNode | undefined;
+	return first !== undefined && first.position.start.line === item.position.start.line
+		? first.position.start.column - 1
+		: item.position.start.column + 1;
+};
+
+const MATH_CONTAINERS = new Set(["blockquote", "listItem", "footnoteDefinition"]);
+
+// A container's child containers, looking through lists to their items.
+const childContainers = (node: MarkdownNode): Array<MarkdownNode> => {
+	const found: Array<MarkdownNode> = [];
+	for (const child of ("children" in node ? node.children : []) as ReadonlyArray<MarkdownNode>) {
+		if (MATH_CONTAINERS.has(child.type)) found.push(child);
+		else if (child.type === "list") found.push(...childContainers(child));
+	}
+	return found;
+};
+
+// A line's text inside its containers: each blockquote's marker and its optional space, and each list item's
+// or footnote's indentation, removed in turn. `undefined` for a lazy line, one that does not carry them.
+const contentOf = (line: string, lineNumber: number, chain: ReadonlyArray<MarkdownNode>): string | undefined => {
+	let at = 0;
+	for (const container of chain) {
+		if (container.type === "blockquote") {
+			const marker = /^[ \t]{0,3}>[ \t]?/.exec(line.slice(at));
+			if (marker === null) return undefined;
+			at += marker[0].length;
+			continue;
+		}
+		const column =
+			container.type === "listItem"
+				? itemContentColumn(container as ListItem)
+				: container.position.start.column - 1 + 4;
+		if (lineNumber === container.position.start.line) {
+			at =
+				container.type === "listItem"
+					? Math.max(at, column)
+					: at + (/^\[\^[^\]]*\]:[ \t]*/.exec(line.slice(at))?.[0].length ?? 0);
+			continue;
+		}
+		if (line.slice(at, column).trim() !== "") return undefined;
+		at = Math.min(Math.max(at, column), line.length);
+	}
+	return line.slice(at);
+};
+
+/**
+ * The lines of every math block: markdownlint's micromark runs the math
+ * extension, whose `mathFlow` the kit tree does not carry. Each container's
+ * own lines (the document's, a blockquote's, a list item's, a footnote's)
+ * are read with the container's markers and indentation removed, as the
+ * tree places them. A block opens on a line of two or more `$` and a meta
+ * with no `$`, indented at most three columns, outside code and HTML
+ * blocks; it closes on a line of at least as many `$` alone, indented at
+ * most three columns. An unclosed block ends at a lazy line or where its
+ * container ends, as micromark's token does.
  * @internal
  */
 export const mathFlowLines = (context: LintContext, starts: ReadonlyArray<number>): Set<number> => {
 	const excluded = codeBlockLines(context, starts);
 	for (const line of nodeLines(flowNodes(context, new Set(["html"])))) excluded.add(line);
-	const lines = new Set<number>();
-	const strip = (line: string): string => line.replace(/^(?:[ \t]*>)*[ \t]*/, "");
-	let open = 0;
-	for (let lineNumber = firstContentLine(context); lineNumber <= context.lines.length; lineNumber++) {
-		const text = strip(context.lines[lineNumber - 1] as string);
-		if (open > 0) {
-			lines.add(lineNumber);
-			const closing = /^(\${2,})[ \t]*$/.exec(text);
-			if (closing !== null && (closing[1] as string).length >= open) open = 0;
-			continue;
+	const math = new Set<number>();
+	const scan = (container: MarkdownNode, chain: ReadonlyArray<MarkdownNode>): void => {
+		const isRoot = container.type === "root";
+		const first = isRoot ? firstContentLine(context) : container.position.start.line;
+		const last = isRoot ? context.lines.length : container.position.end.line;
+		const children = childContainers(container);
+		const inChild = (lineNumber: number): boolean =>
+			children.some((child) => child.position.start.line <= lineNumber && lineNumber <= child.position.end.line);
+		let open = 0;
+		let openedAt = 0;
+		for (let lineNumber = first; lineNumber <= last; lineNumber++) {
+			if (inChild(lineNumber) || (open === 0 && math.has(lineNumber))) continue;
+			const text = contentOf(context.lines[lineNumber - 1] as string, lineNumber, chain);
+			if (open > 0) {
+				if (text === undefined) {
+					addRange(math, openedAt, lineNumber - 1);
+					open = 0;
+					continue;
+				}
+				const closing = /^ {0,3}(\${2,})[ \t]*$/.exec(text);
+				if (closing !== null && (closing[1] as string).length >= open) {
+					addRange(math, openedAt, lineNumber);
+					open = 0;
+				}
+				continue;
+			}
+			if (text === undefined || excluded.has(lineNumber)) continue;
+			const opening = /^ {0,3}(\${2,})([^$]*)$/.exec(text);
+			if (opening !== null) {
+				open = (opening[1] as string).length;
+				openedAt = lineNumber;
+			}
 		}
-		if (excluded.has(lineNumber)) continue;
-		const opening = /^(\${2,})([^$]*)$/.exec(text);
-		if (opening !== null) {
-			open = (opening[1] as string).length;
-			lines.add(lineNumber);
-		}
-	}
-	return lines;
+		if (open > 0) addRange(math, openedAt, last);
+		for (const child of children) scan(child, [...chain, child]);
+	};
+	scan(context.document.root as MarkdownNode, []);
+	return math;
 };
 
 /**

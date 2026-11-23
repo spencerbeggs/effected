@@ -7,16 +7,14 @@
 
 import type { ListItem, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import { errorContext, flowNodesWithAncestors, headingNodes, lineStarts } from "../internal/rule-helpers.js";
+import {
+	errorContext,
+	flowNodesWithAncestors,
+	headingNodes,
+	itemContentColumn,
+	lineStarts,
+} from "../internal/rule-helpers.js";
 import { LintRule } from "../LintRule.js";
-
-// The 0-based column a list item's content starts at: its first child's, when that starts on the item's line.
-const itemContentColumn = (item: ListItem): number => {
-	const first = item.children[0] as MarkdownNode | undefined;
-	return first !== undefined && first.position.start.line === item.position.start.line
-		? first.position.start.column - 1
-		: item.position.start.column + 1;
-};
 
 /**
  * MD023 `heading-start-left`: headings start at the beginning of their line.

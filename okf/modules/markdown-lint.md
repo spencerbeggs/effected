@@ -25,10 +25,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-23T23:12:14Z
+  at: 2026-11-23T23:18:38Z
 integrity:
   generated:
-    body: a81ed31d901a7da3
+    body: 97735106df04448b
 ---
 
 # `@effected/markdown-lint`
@@ -237,12 +237,15 @@ plain synchronous function; no logging, no metrics.
   compares with markdownlint's own `applyFixes`.
 
 - markdownlint's micromark runs the math extension; the kit tree carries no
-  math. The rules read `$$` blocks from raw lines instead (an opening line
-  of two or more `$` with no `$` in its meta, behind any blockquote markers
-  and indentation, outside code and HTML blocks, to a closing line of at
-  least as many `$`), and drop the headings the kit reads inside them. The
-  reader does not track a list item's indentation, so a block inside a list
-  is found by its own line alone.
+  math. The rules read `$$` blocks from each container's own lines instead
+  (the document's, a blockquote's, a list item's, a footnote's, as the tree
+  places them, with the container's markers and indentation removed): an
+  opening line of two or more `$` with no `$` in its meta, indented at most
+  three columns, outside code and HTML blocks, to a closing line of at
+  least as many `$` indented at most three columns; an unclosed block ends
+  at a lazy line or where its container ends. The headings the kit reads
+  inside a block are dropped. A footnote's indentation is taken as four
+  columns from its marker.
 
 - `lintDocument` cannot know the dialect a document was parsed with:
   `MarkdownDocument` does not record it. When the given parse is not

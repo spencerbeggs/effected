@@ -8,6 +8,15 @@ import { MD001 } from "../../src/rules/MD001.js";
 import { differential } from "../helpers/differential.js";
 
 const extra = [
+	{ name: "math in a blockquote, unclosed", source: "> $$\n> x\n\n# A\n\n### C\n" },
+	{ name: "math fence indented four in a paragraph", source: "text\n    $$\n# A\n\n### C\n" },
+	{ name: "math closing fence indented four", source: "$$\n    $$\n# A\n\n### C\n" },
+	{ name: "math in a list item", source: "- $$\n  # A\n  ### C\n  $$\n" },
+	{ name: "math fence in fenced code", source: "```\n$$\n```\n# A\n\n### C\n" },
+	{ name: "math fence in an HTML block", source: "<div>\n$$\n</div>\n\n# A\n\n### C\n" },
+	{ name: "math ended by a lazy line", source: "> $$\nlazy\n# A\n\n### C\n" },
+	{ name: "math interrupting a paragraph", source: "text\n$$\n# A\n\n### C\n$$\n" },
+	{ name: "math unclosed in a list item", source: "- item\n\n  $$\n  # A\n  ### C\n\n- next\n\n### D\n" },
 	{ name: "skips a level", source: "# One\n\n### Three\n\n#### Four\n" },
 	{ name: "steps back down", source: "# One\n\n## Two\n\n# One\n\n### Three\n" },
 	{ name: "setext then atx", source: "One\n===\n\nTwo\n---\n\n#### Four\n" },
@@ -70,4 +79,4 @@ describe("MD001 heading-increment", () => {
 });
 
 // markdownlint's MD001 findings over the corpus (LF and CRLF) and the extras.
-const ORACLE_FINDINGS_DEFAULT = 29;
+const ORACLE_FINDINGS_DEFAULT = 34;

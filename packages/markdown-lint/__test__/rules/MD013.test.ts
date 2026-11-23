@@ -9,6 +9,39 @@ import { differential } from "../helpers/differential.js";
 
 const long = "word ".repeat(18).trim();
 const extra = [
+	{
+		name: "math in a blockquote, unclosed",
+		source: "> $$\n> x\n\n# Alpha heading text here\n\n### Gamma heading text here\n",
+	},
+	{
+		name: "math fence indented four in a paragraph",
+		source: "text\n    $$\n# Alpha heading text here\n\n### Gamma heading text here\n",
+	},
+	{
+		name: "math closing fence indented four",
+		source: "$$\n    $$\n# Alpha heading text here\n\n### Gamma heading text here\n",
+	},
+	{ name: "math in a list item", source: "- $$\n  # Alpha heading text here\n  ### Gamma heading text here\n  $$\n" },
+	{
+		name: "math fence in fenced code",
+		source: "```\n$$\n```\n# Alpha heading text here\n\n### Gamma heading text here\n",
+	},
+	{
+		name: "math fence in an HTML block",
+		source: "<div>\n$$\n</div>\n\n# Alpha heading text here\n\n### Gamma heading text here\n",
+	},
+	{
+		name: "math ended by a lazy line",
+		source: "> $$\nlazy\n# Alpha heading text here\n\n### Gamma heading text here\n",
+	},
+	{
+		name: "math interrupting a paragraph",
+		source: "text\n$$\n# Alpha heading text here\n\n### Gamma heading text here\n$$\n",
+	},
+	{
+		name: "math unclosed in a list item",
+		source: "- item\n\n  $$\n  # Alpha heading text here\n  ### Gamma heading text here\n\n- next\n\n### D\n",
+	},
 	{ name: "long prose", source: `${long} tail\n\nshort\n` },
 	{ name: "long last word", source: `${"a".repeat(75)} ${"b".repeat(30)}\n` },
 	{ name: "unwrappable line", source: `${"x".repeat(100)}\n\n> ${"y".repeat(100)}\n\n# ${"z".repeat(100)}\n` },
