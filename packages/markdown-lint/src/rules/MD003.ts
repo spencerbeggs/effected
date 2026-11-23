@@ -3,9 +3,8 @@
 // source span ends in a closing sequence (micromark's second
 // `atxHeadingSequence`).
 
-import type { Heading } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import { headingStyle, isString, setting } from "../internal/rule-helpers.js";
+import { headingNodes, headingStyle, isString, setting } from "../internal/rule-helpers.js";
 import { LintRule } from "../LintRule.js";
 
 /**
@@ -25,7 +24,7 @@ export const MD003: Lint.LintRule = LintRule.make({
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md003.md",
 	check: (context, report) => {
 		let style = setting(context.config, "style", isString, "consistent") || "consistent";
-		for (const heading of context.document.findAll("heading") as ReadonlyArray<Heading>) {
+		for (const heading of headingNodes(context)) {
 			const actual = headingStyle(context, heading);
 			if (style === "consistent") style = actual;
 			if (actual === style) continue;

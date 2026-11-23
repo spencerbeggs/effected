@@ -25,10 +25,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-23T22:29:54Z
+  at: 2026-11-23T22:50:33Z
 integrity:
   generated:
-    body: 873b44e4c594b1f5
+    body: 9ce56889b5a70d7d
 ---
 
 # `@effected/markdown-lint`
@@ -214,13 +214,16 @@ plain synchronous function; no logging, no metrics.
   LF and CRLF, 2 inputs). Its content is one empty line numbered one past
   its per-line enabled state. The kit reports nothing there. Pinned by a
   test as an upstream failure, not a port difference.
-- MD013 under a `heading_line_length` below 35: markdownlint's micromark
-  runs the math extension, so the `$$` block in
-  `headings-with-invalid-spaces.md` is math, while the kit reads the
-  `## …` lines inside it as headings and holds them to the heading limit
-  (LF and CRLF, 2 inputs). A parser-reading difference, pinned by a test.
 
 ## Known limitations
+
+- markdownlint's micromark runs the math extension; the kit tree carries no
+  math. The rules read `$$` blocks from raw lines instead (an opening line
+  of two or more `$` with no `$` in its meta, behind any blockquote markers
+  and indentation, outside code and HTML blocks, to a closing line of at
+  least as many `$`), and drop the headings the kit reads inside them. The
+  reader does not track a list item's indentation, so a block inside a list
+  is found by its own line alone.
 
 - Two findings can carry inserts at one position (MD022, when two headings
   each ask for blank lines between them). `MarkdownEdit.applyAll` applies

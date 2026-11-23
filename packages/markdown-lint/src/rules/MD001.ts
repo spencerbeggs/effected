@@ -1,9 +1,8 @@
 // MD001 `heading-increment`: a port of markdownlint's lib/md001.mjs over the
 // kit tree's headings, in document order.
 
-import type { Heading } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import { frontMatterHasTitle } from "../internal/rule-helpers.js";
+import { frontMatterHasTitle, headingNodes } from "../internal/rule-helpers.js";
 import { LintRule } from "../LintRule.js";
 
 /**
@@ -24,7 +23,7 @@ export const MD001: Lint.LintRule = LintRule.make({
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md001.md",
 	check: (context, report) => {
 		let previous = frontMatterHasTitle(context) ? 1 : Number.MAX_SAFE_INTEGER;
-		for (const heading of context.document.findAll("heading") as ReadonlyArray<Heading>) {
+		for (const heading of headingNodes(context)) {
 			// markdownlint reports through `addErrorDetailIf`, which is silent for a step of exactly one level.
 			if (heading.depth > previous + 1) {
 				report(

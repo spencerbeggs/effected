@@ -33,6 +33,7 @@ const extra = [
 	{ name: "footnote definition", source: `[^1]: ${long} ${long}\n\nText[^1]\n` },
 	{ name: "undefined reference", source: `[${long}] ${"w".repeat(20)}\n` },
 	{ name: "front matter", source: `---\ntitle: ${long} ${long}\n---\n\n${long} end\n` },
+	{ name: "heading in a math block", source: `$$\n# ${long}\n$$\n` },
 	{ name: "blockquote and list", source: `> ${long} end\n\n- ${long} end\n` },
 ];
 
@@ -73,12 +74,7 @@ describe("MD013 line-length", () => {
 			`agrees with markdownlint under ${JSON.stringify(settings)}`,
 			() => {
 				const result = differential(MD013, { config: settings, extra });
-				assert.deepStrictEqual(
-					result.divergences.map((divergence) => divergence.fixture),
-					"heading_line_length" in settings && settings.heading_line_length === 20 ? MATH_BLOCK_HEADINGS : [],
-				);
-				for (const divergence of result.divergences)
-					assert.match(divergence.reason, /^extra finding \d+: .*"lineNumber":(48|49|50),/);
+				assert.deepStrictEqual(result.divergences, []);
 				if (changes) assert.notStrictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
 				else assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
 			},
@@ -115,10 +111,5 @@ describe("MD013 line-length", () => {
 	});
 });
 
-// A parser-reading difference, not a port defect: markdownlint's micromark runs the math extension, so the `$$`
-// block in headings-with-invalid-spaces.md is math, while the kit reads its `## …` lines as headings. A heading
-// limit below their length reports them in the kit alone.
-const MATH_BLOCK_HEADINGS = ["headings-with-invalid-spaces.md", "headings-with-invalid-spaces.md (CRLF)"];
-
 // markdownlint's MD013 findings over the corpus (LF and CRLF) and the extras.
-const ORACLE_FINDINGS_DEFAULT = 162;
+const ORACLE_FINDINGS_DEFAULT = 163;

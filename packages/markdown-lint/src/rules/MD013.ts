@@ -8,6 +8,7 @@ import type * as Lint from "@effected/markdown-lint";
 import {
 	codeBlockLines,
 	firstContentLine,
+	headingNodes,
 	isBoolean,
 	isNumber,
 	lineStarts,
@@ -82,7 +83,7 @@ export const MD013: Lint.LintRule = LintRule.make({
 		const includeTables = setting(context.config, "tables", isBoolean, true);
 		const includeHeadings = setting(context.config, "headings", isBoolean, true);
 		const starts = lineStarts(context.source);
-		const headings = nodeLines(context.document.findAll("heading"));
+		const headings = nodeLines(headingNodes(context));
 		const code = codeBlockLines(context, starts);
 		const tables = nodeLines(context.document.findAll("table"));
 		const textLines = paragraphTextLines(context);
