@@ -13,6 +13,7 @@ const extra = [
 	{ name: "comment before the title", source: "<!-- note -->\n\n# One\n\n# Two\n" },
 	{ name: "front matter title", source: "---\ntitle: Doc\n---\n\n# One\n\n# Two\n" },
 	{ name: "front matter other key", source: "---\nlayout: post\n---\n\n# One\n\n# Two\n" },
+	{ name: "front matter other key, one title", source: "---\nlayout: post\n---\n\n# Only\n" },
 	{ name: "level two", source: "## One\n\n## Two\n\n# Top\n" },
 	{ name: "docfx tabs", source: "# Title\n\n# [Linux](#tab/linux)\n\n# [Windows](#tab/windows)\n" },
 	{ name: "nested, final line break", source: "> # One\n>\n> # Two\n" },
