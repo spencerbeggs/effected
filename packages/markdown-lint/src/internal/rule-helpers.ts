@@ -277,3 +277,15 @@ export const mathFlowLines = (context: LintContext, starts: ReadonlyArray<number
 	}
 	return lines;
 };
+
+/**
+ * The document's headings as markdownlint sees them: in document order,
+ * less any the kit reads inside a math block, which micromark reads as math.
+ * @internal
+ */
+export const headingNodes = (context: LintContext): ReadonlyArray<Heading> => {
+	const math = mathFlowLines(context, lineStarts(context.source));
+	return (context.document.findAll("heading") as ReadonlyArray<Heading>).filter(
+		(heading) => !math.has(heading.position.start.line),
+	);
+};
