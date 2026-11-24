@@ -54,27 +54,40 @@ const mathCutLine = (
 	return cut;
 };
 
-// The kit reads a directive line as paragraph text too, so one left of an item's content continues the item lazily.
-// markdownlint's directive extension ends the paragraph, and the list, before it: the list ends on the line before,
-// and the next item, if any, opens another list. Per item, that cut (`undefined` for none). A directive line indented
-// to the item's content is a block of the item in both.
-const directiveCuts = (context: Lint.LintContext, list: MarkdownNode): ReadonlyArray<number | undefined> => {
+// The kit reads a directive line as paragraph text, so one left of the content of the top-level item it falls in
+// continues the list lazily. markdownlint's directive extension ends the paragraph, and the list, before it: the list
+// ends on the line before, and the next list item after it, at any depth, opens another list. The cut lines, in
+// order; a directive line indented to the top-level item's content is a block of that item in both.
+const directiveCuts = (context: Lint.LintContext, list: MarkdownNode): ReadonlyArray<number> => {
+	const directives = directiveLines(context);
+	if (directives.size === 0) return [];
 	const items = ("children" in list ? (list.children as ReadonlyArray<MarkdownNode>) : []).filter(
 		(child) => child.type === "listItem",
 	);
-	const directives = directiveLines(context);
-	if (directives.size === 0) return items.map(() => undefined);
-	return items.map((item) => {
-		const paragraph = lastParagraph(item);
-		if (paragraph === undefined) return undefined;
-		const content = itemContentColumn(item as ListItem);
-		for (let line = paragraph.position.start.line + 1; line <= paragraph.position.end.line; line++) {
-			if (!directives.has(line)) continue;
-			const column = (context.lines[line - 1] ?? "").indexOf(":");
-			if (column >= 0 && column < content) return line - 1;
+	const cuts: Array<number> = [];
+	for (const line of [...directives.keys()].sort((a, b) => a - b)) {
+		if (line <= list.position.start.line || line > list.position.end.line) continue;
+		const item = items.findLast((each) => each.position.start.line <= line);
+		if (item === undefined) continue;
+		const column = (context.lines[line - 1] ?? "").indexOf(":");
+		if (column >= 0 && column < itemContentColumn(item as ListItem)) cuts.push(line);
+	}
+	return cuts;
+};
+
+// The first list item, at any depth in `list`, starting after `line`.
+const itemAfter = (list: MarkdownNode, line: number): number | undefined => {
+	let found: number | undefined;
+	const visit = (node: MarkdownNode): void => {
+		if (node.type === "listItem" && node.position.start.line > line) {
+			if (found === undefined || node.position.start.line < found) found = node.position.start.line;
 		}
-		return undefined;
-	});
+		for (const child of "children" in node ? (node.children as ReadonlyArray<MarkdownNode>) : []) {
+			if (child.position.end.line > line) visit(child);
+		}
+	};
+	visit(list);
+	return found;
 };
 
 /**
@@ -98,23 +111,20 @@ export const MD032: Lint.LintRule = LintRule.make({
 			if (ancestors.some((ancestor) => ancestor.type === "list")) continue;
 			// Strict: a list or fence starting on a math opener line holds the opener (see `inMathBlock`).
 			if (inMathBlock(math, list.position.start.line)) continue;
-			// The lists markdownlint reads here: the kit's list, split after each item a directive line cuts.
-			const items = list.children;
-			const cuts = directiveCuts(context, list as MarkdownNode);
+			// The lists markdownlint reads here: the kit's list, split at each directive line that cuts it.
 			const segments: Array<{ readonly first: number; readonly last: number }> = [];
 			let first: number | undefined = list.position.start.line;
-			for (const [index, cut] of cuts.entries()) {
-				if (cut === undefined || first === undefined) continue;
-				segments.push({ first, last: cut });
-				first = (items[index + 1] as MarkdownNode | undefined)?.position.start.line;
+			for (const cut of directiveCuts(context, list as MarkdownNode)) {
+				if (first === undefined) break;
+				if (cut <= first) continue;
+				segments.push({ first, last: cut - 1 });
+				first = itemAfter(list as MarkdownNode, cut);
 			}
+			const mathCut = mathCutLine(context, list as MarkdownNode, math);
 			if (first !== undefined) {
-				const lastLine =
-					mathCutLine(context, list as MarkdownNode, math) ?? lastContentLine(list as MarkdownNode, context.lines);
-				segments.push({ first, last: lastLine });
+				segments.push({ first, last: mathCut ?? lastContentLine(list as MarkdownNode, context.lines) });
 			} else {
 				const final = segments.pop();
-				const mathCut = mathCutLine(context, list as MarkdownNode, math);
 				if (final !== undefined) {
 					segments.push({
 						first: final.first,

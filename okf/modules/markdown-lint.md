@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T19:56:06Z
+  at: 2026-11-24T20:36:03Z
 integrity:
   generated:
-    body: a013bc0dc3fbe72d
+    body: 09ae7b853cddeeac
 ---
 
 # `@effected/markdown-lint`
@@ -372,18 +372,24 @@ micromark's do, row for row, with one parser-reading difference (below).
 
 markdownlint parses leaf and container directives (its directive extension,
 inline ones off), which the kit's parser reads as paragraph text. One
-internal helper (`src/internal/directives.ts`) reads them: `directiveLines`,
-each leaf (`::name`), container opening (`:::name`) and open container's
-closing fence (`:::`), with an optional `[label]` then `{attributes}` and
-nothing after, past the line's containers (a lazy line's blockquote markers
-too); and `directiveIndentedCode`, the lines indented four or more after
-one, which micromark reads as indented code. The tables end before a
-directive line; MD032 ends a list before a directive line left of an
-item's content, the next item opening another list; MD027 reads the
-indented lines as code. Over the directive grids (`directiveGrid`;
-`directiveBlockGrid`, 6 block kinds by 4 directive kinds before and after
-them in 3 places; and 4 list shapes) MD012, MD022, MD027, MD031, MD032,
-MD046, MD055, MD056 and MD058 agree finding for finding.
+internal helper (`src/internal/directives.ts`) reads them in micromark's
+own grammar (micromark-extension-directive's name, label and attributes
+factories): `directiveLines`, each leaf (`::name`), container opening
+(`:::name`) and open container's closing fence (`:::`), past the line's
+containers (a lazy line's blockquote markers too) and never inside a code,
+HTML or math block or the front matter; `directiveIndentedCode`, the lines
+indented four or more after one, which micromark reads as code; and
+`paragraphBreaks`, those lines and a math block's, where micromark ends a
+paragraph inside one of the kit's and starts another. The tables end
+before a directive line; MD032 ends a list before a directive line left of
+its top-level item's content, the next item at any depth opening another
+list; MD027 reads the indented lines as code; the reference data scans
+each paragraph segment alone and reads the definitions opening one.
+`directiveGrid` is pinned by MD055, MD056 and MD058, `directiveBlockGrid`
+by MD012, MD022, MD027, MD031, MD032, MD046 and MD058, the reference
+shapes after a break by MD052, MD053 and MD054, and
+`directive-readings.test.ts` pins 27 inputs through all 53 rules, the
+remaining differences named below.
 
 ## Failure posture
 
@@ -684,6 +690,22 @@ plain synchronous function; no logging, no metrics.
   `codeTextPadding` but not its `codeText` token, which MD038 walks, so it
   reports a code span in an undefined reference once (the code-span grid
   pins `[\`  x\`][undef]`).
+- **A list re-split by a directive line.** micromark ends a list before a
+  directive line left of its item's content and opens new lists past it;
+  MD032 reads that split, but MD005, MD007 and MD029 read the kit's one
+  list (`- a\n  - b\n::leaf\n  - c\n- d`: markdownlint's MD005 on line 5
+  and MD007 on line 4; `1. a\n::leaf\n2. b`: its MD029 on line 3). Pinned
+  by a test (3 inputs, `directive-readings.test.ts`).
+- **Container directives are tracked across the document.** An opening
+  inside a blockquote is still open below it, so a later bare `:::` closes
+  it in the kit (`> :::a\n> - x\n\n- a\n:::\n- b`: kit-only MD032 on lines
+  4 and 6). Pinned by a test (1 input).
+- **Other rules read a directive line as paragraph text.** MD033, MD034,
+  MD036 and MD041 read the kit's paragraph, the directive line in it:
+  markdownlint's MD041 on a setext heading whose text is a directive's
+  neighbour, its MD036 on a lone emphasis line before a directive, its
+  MD034 on a URL in a directive's label, and the kit's MD033 on a tag a
+  directive line splits. Pinned by a test (4 inputs).
 - **A table row that is a lone `|`.** micromark continues a table through
   it; the kit's parser, following cmark-gfm (a row must hold a cell to
   continue a table, `matches` in `extensions/table.c`), ends the table

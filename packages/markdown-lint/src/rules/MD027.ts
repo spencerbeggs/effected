@@ -47,7 +47,8 @@ const prefixLimits = (context: LintContext): ReadonlyMap<number, number> => {
 	}
 	// After a directive line, which markdownlint's directive extension parses, micromark reads an indented line as
 	// code where the kit's parser reads more paragraph.
-	for (const line of directiveIndentedCode(context)) limits.set(line, 0);
+	// A code block's own limit stands: a fence's inner line keeps its fence's indentation.
+	for (const line of directiveIndentedCode(context)) if (!limits.has(line)) limits.set(line, 0);
 	return limits;
 };
 
