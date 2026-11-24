@@ -15,7 +15,7 @@ import {
 	runRule,
 	settingsDifferential,
 } from "../helpers/differential.js";
-import { unclosedFenceEnds } from "../helpers/link-grid.js";
+import { unclosedFenceEnds, wrappedLinkEnds } from "../helpers/link-grid.js";
 import { quotedBlankGrid } from "../helpers/list-container-grid.js";
 import { directiveBlockGrid, directiveListEnds } from "../helpers/table-grid.js";
 
@@ -196,6 +196,17 @@ describe("MD027 no-multiple-space-blockquote", () => {
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
+
+	// A list ending in a link whose destination or title wraps: the list ends on the wrapped line.
+	it(
+		"agrees with markdownlint on a list ending in a wrapped link",
+		() => {
+			const result = differential(MD027, { extra: wrappedLinkEnds });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_WRAPPED);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD027 findings over the corpus (LF and CRLF) and the extras.
@@ -208,3 +219,6 @@ const ORACLE_FINDINGS_DIRECTIVE_BLOCKS = 121;
 
 // markdownlint's MD027 findings over the corpus (LF and CRLF) and the unclosed fences ending the source.
 const ORACLE_FINDINGS_UNCLOSED = 120;
+
+// markdownlint's MD027 findings over the corpus (LF and CRLF) and the lists ending in a wrapped link.
+const ORACLE_FINDINGS_WRAPPED = 120;

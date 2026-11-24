@@ -15,6 +15,7 @@ import {
 	runRule,
 	settingsDifferential,
 } from "../helpers/differential.js";
+import { wrappedLinkEnds } from "../helpers/link-grid.js";
 import { listEndGrid } from "../helpers/list-container-grid.js";
 
 const extra = [
@@ -148,9 +149,23 @@ describe("MD030 list-marker-space", () => {
 			"- a\n",
 		);
 	});
+
+	// A list ending in a link whose destination or title wraps: the list ends on the wrapped line.
+	it(
+		"agrees with markdownlint on a list ending in a wrapped link",
+		() => {
+			const result = differential(MD030, { extra: wrappedLinkEnds });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_WRAPPED);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD030 findings over the corpus (LF and CRLF) and the extras.
 const ORACLE_FINDINGS_DEFAULT = 62;
 // markdownlint's MD030 findings over the list-end grid, under both settings cases.
 const ORACLE_FINDINGS_GRID = 1077;
+
+// markdownlint's MD030 findings over the corpus (LF and CRLF) and the lists ending in a wrapped link.
+const ORACLE_FINDINGS_WRAPPED = 48;

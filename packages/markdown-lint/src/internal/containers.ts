@@ -242,7 +242,9 @@ export const lastContentLine = (node: MarkdownNode, lines: ReadonlyArray<string>
 	const children = "children" in node ? (node.children as ReadonlyArray<MarkdownNode>) : [];
 	const last = children.at(-1);
 	if (node.type === "heading" && (node as Heading).headingStyle === "setext") return node.position.end.line;
-	if (last !== undefined) return lastContentLine(last, lines);
+	// Into a container's last block only: a paragraph or heading ends where its own source does, past a link whose
+	// destination or title wraps onto a later line than its text.
+	if (last !== undefined && (node.type === "root" || CONTAINERS.has(node.type))) return lastContentLine(last, lines);
 	let line = node.position.end.line;
 	if (node.type === "code" && (node as Code).fenceChar === undefined) {
 		// An indented code block's trailing blank lines are micromark's `lineEndingBlank`, not content.

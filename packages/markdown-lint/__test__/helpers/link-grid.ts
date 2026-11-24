@@ -73,3 +73,16 @@ export const unclosedFenceEnds: ReadonlyArray<import("./differential.js").Differ
 	{ name: "unclosed fence, command", source: "```sh\n$ ls" },
 	{ name: "unclosed fence, two lines", source: "```\njavascript\njavascript" },
 ];
+
+// Lists whose last item ends in a link whose destination or title wraps onto the next line: the paragraph, and the
+// list, end on that line, not where the link's text ends.
+export const wrappedLinkEnds: ReadonlyArray<import("./differential.js").DifferentialInput> = [
+	{ name: "wrapped title", source: '- item with [link](https://example.com/a\n  "wrapped title")\n\ntext\n' },
+	{ name: "wrapped empty resource", source: "- [a](/u\n  )\n\ntext\n" },
+	{ name: "wrapped destination", source: "- [link](\n  https://example.com/a)\n\ntext\n" },
+	{ name: "wrapped title in a blockquote", source: '> - [a](/u\n>   "t")\n>\n> text\n' },
+	{ name: "wrapped title in an ordered list", source: '1. [a](/u\n   "t")\n2. [b](/v\n   "t")\n\ntext\n' },
+	{ name: "wrapped reference", source: "- [a][\n  r]\n\ntext\n\n[r]: /u\n" },
+	{ name: "image with a wrapped title", source: '- ![a](/u\n  "t")\n\ntext\n' },
+	{ name: "wrapped title, then a line", source: '- [a](/u\n  "t")\ntext\n' },
+];
