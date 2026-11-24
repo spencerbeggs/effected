@@ -40,12 +40,39 @@ export const itemContentColumn = (item: ListItem): number => {
 		: item.position.start.column + 1;
 };
 
-// A line's text inside its containers: each blockquote's marker and its optional space, and each list item's
-// or footnote's indentation, removed in turn, with the blockquote markers (and the indentation before each)
-// collected as `quotes`. `text` is `undefined` for a lazy line, one that does not carry them all; `quotes` then
-// holds the markers it does carry.
-/** @internal */
-export const containerParts = (
+/**
+ * One container's step through a line: from 0-based `at`, past the
+ * containers outside it, to past this one — a blockquote's marker and its
+ * optional space, or a list item's or footnote's indentation (on its first
+ * line, its marker). `undefined` when the line is lazy to it: it lacks the
+ * marker or the indentation.
+ * @internal
+ */
+export const containerStep = (
+	line: string,
+	lineNumber: number,
+	container: MarkdownNode,
+	at: number,
+): number | undefined => {
+	if (container.type === "blockquote") {
+		const marker = /^[ \t]{0,3}>[ \t]?/.exec(line.slice(at));
+		return marker === null ? undefined : at + marker[0].length;
+	}
+	const column =
+		container.type === "listItem" ? itemContentColumn(container as ListItem) : container.position.start.column - 1 + 4;
+	if (lineNumber === container.position.start.line) {
+		return container.type === "listItem"
+			? Math.max(at, column)
+			: at + (/^\[\^[^\]]*\]:[ \t]*/.exec(line.slice(at))?.[0].length ?? 0);
+	}
+	if (line.slice(at, column).trim() !== "") return undefined;
+	return Math.min(Math.max(at, column), line.length);
+};
+
+// A line's text inside its containers, each one's step taken in turn, with the blockquote markers (and the
+// indentation before each) collected as `quotes`. `text` is `undefined` for a lazy line, one that does not carry
+// them all; `quotes` then holds the markers it does carry.
+const containerParts = (
 	line: string,
 	lineNumber: number,
 	chain: ReadonlyArray<MarkdownNode>,
@@ -53,32 +80,16 @@ export const containerParts = (
 	let at = 0;
 	let quotes = "";
 	for (const container of chain) {
-		if (container.type === "blockquote") {
-			const marker = /^[ \t]{0,3}>[ \t]?/.exec(line.slice(at));
-			if (marker === null) return { text: undefined, quotes };
-			at += marker[0].length;
-			quotes += marker[0];
-			continue;
-		}
-		const column =
-			container.type === "listItem"
-				? itemContentColumn(container as ListItem)
-				: container.position.start.column - 1 + 4;
-		if (lineNumber === container.position.start.line) {
-			at =
-				container.type === "listItem"
-					? Math.max(at, column)
-					: at + (/^\[\^[^\]]*\]:[ \t]*/.exec(line.slice(at))?.[0].length ?? 0);
-			continue;
-		}
-		if (line.slice(at, column).trim() !== "") return { text: undefined, quotes };
-		at = Math.min(Math.max(at, column), line.length);
+		const next = containerStep(line, lineNumber, container, at);
+		if (next === undefined) return { text: undefined, quotes };
+		if (container.type === "blockquote") quotes += line.slice(at, next);
+		at = next;
 	}
 	return { text: line.slice(at), quotes };
 };
 
-/** A line's text inside `chain`'s containers; `undefined` for a lazy line. @internal */
-export const contentOf = (line: string, lineNumber: number, chain: ReadonlyArray<MarkdownNode>): string | undefined =>
+// A line's text inside `chain`'s containers; `undefined` for a lazy line.
+const contentOf = (line: string, lineNumber: number, chain: ReadonlyArray<MarkdownNode>): string | undefined =>
 	containerParts(line, lineNumber, chain).text;
 
 /**

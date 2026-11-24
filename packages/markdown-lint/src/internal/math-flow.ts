@@ -6,7 +6,7 @@
 import type { MarkdownNode } from "@effected/markdown";
 import type { LintContext } from "../LintContext.js";
 import { codeBlockLines } from "./code-blocks.js";
-import { contentOf, flowNodes } from "./containers.js";
+import { containerStep, flowNodes } from "./containers.js";
 import type { LineRange } from "./lines.js";
 import { addRange, firstContentLine, nodeLines } from "./lines.js";
 import { perReading } from "./memo.js";
@@ -22,6 +22,9 @@ const childContainers = (node: MarkdownNode): Array<MarkdownNode> => {
 	}
 	return found;
 };
+
+// The offset on a line past a chain of containers; `undefined` for a line lazy to one of them.
+type Inside = (lineNumber: number) => number | undefined;
 
 /**
  * Every math block, by its first and last line: markdownlint's micromark runs the math
@@ -44,11 +47,28 @@ export const mathFlowBlocks: (context: LintContext) => ReadonlyArray<LineRange> 
 		addRange(math, start, end);
 		blocks.push({ start, end });
 	};
-	const scan = (container: MarkdownNode, chain: ReadonlyArray<MarkdownNode>): void => {
+	// The offset on a line past `container` and every container outside it, from `outer`'s (the offset past
+	// those outside it), each line's computed once; `undefined` when the line is lazy to one of them. Each level
+	// takes one step from the level above, so no level re-strips the prefixes outside it.
+	const inside = (outer: Inside, container: MarkdownNode): Inside => {
+		const known = new Map<number, number | undefined>();
+		return (lineNumber) => {
+			if (known.has(lineNumber)) return known.get(lineNumber);
+			const at = outer(lineNumber);
+			const next =
+				at === undefined
+					? undefined
+					: containerStep(context.lines[lineNumber - 1] as string, lineNumber, container, at);
+			known.set(lineNumber, next);
+			return next;
+		};
+	};
+	const scan = (container: MarkdownNode, past: Inside): void => {
 		const isRoot = container.type === "root";
 		const first = isRoot ? firstContentLine(context) : container.position.start.line;
 		const last = isRoot ? context.lines.length : container.position.end.line;
 		const children = childContainers(container);
+		const pastChild = new Map(children.map((child) => [child, inside(past, child)]));
 		// `children` is in document order and `childAt` is asked about ever later lines: a child ending before the
 		// line asked about holds no later line either, and none after one starting past it can hold it.
 		let firstOpen = 0;
@@ -73,9 +93,10 @@ export const mathFlowBlocks: (context: LintContext) => ReadonlyArray<LineRange> 
 			const child = open === 0 ? childAt(lineNumber) : undefined;
 			// A line lazy to a child (the kit's paragraph continuation) is this container's line to micromark when
 			// it opens math, which interrupts a paragraph; any other line of a child is the child's to read.
-			const lazyInChild = child !== undefined && contentOf(line, lineNumber, [...chain, child]) === undefined;
+			const lazyInChild = child !== undefined && (pastChild.get(child) as Inside)(lineNumber) === undefined;
 			if (child !== undefined && !lazyInChild) continue;
-			const text = contentOf(line, lineNumber, chain);
+			const at = past(lineNumber);
+			const text = at === undefined ? undefined : line.slice(at);
 			if (open > 0) {
 				if (text === undefined) {
 					close(openedAt, lineNumber - 1);
@@ -97,9 +118,9 @@ export const mathFlowBlocks: (context: LintContext) => ReadonlyArray<LineRange> 
 			}
 		}
 		if (open > 0) close(openedAt, last);
-		for (const child of children) scan(child, [...chain, child]);
+		for (const child of children) scan(child, pastChild.get(child) as Inside);
 	};
-	scan(context.document.root as MarkdownNode, []);
+	scan(context.document.root as MarkdownNode, () => 0);
 	return blocks;
 });
 
