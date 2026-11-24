@@ -42,12 +42,31 @@ export interface ReferenceDefinition {
 	readonly destination: string;
 }
 
+/**
+ * One autolink, link or image markdownlint's MD054 reads, as written: an inline one's destination and title strings
+ * (absent when empty, as micromark makes no string token), a reference's raw label and reference string. A `link`
+ * or `image` with no destination string reads as a reference of its own kind (`shortcut` for an empty resource).
+ * @internal
+ */
+export interface Medium {
+	readonly kind: "autolink" | "inline" | "full" | "collapsed" | "shortcut";
+	readonly image: boolean;
+	readonly start: number;
+	readonly end: number;
+	readonly label: string;
+	readonly destination?: string;
+	readonly title?: string;
+	readonly reference?: string;
+}
+
 /** markdownlint's reference link and image data, keyed by normalized label, each map in markdownlint's order. @internal */
 export interface ReferenceData {
 	readonly references: ReadonlyMap<string, ReadonlyArray<ReferenceUse>>;
 	readonly shortcuts: ReadonlyMap<string, ReadonlyArray<ReferenceUse>>;
 	readonly definitions: ReadonlyMap<string, ReferenceDefinition>;
 	readonly duplicates: ReadonlyArray<{ readonly label: string; readonly offset: number }>;
+	/** Every autolink, link and image, in micromark's token order (an image before what its label holds). */
+	readonly media: ReadonlyArray<Medium>;
 }
 
 const options = MarkdownParseOptions.make({ dialect: "gfm", frontmatter: false });
@@ -84,6 +103,43 @@ export const rawDestination = (source: string, at: number, end: number): string 
 		index++;
 	}
 	return source.slice(at, index);
+};
+
+// Past whitespace and line endings (and each next line's container prefix) from `at`.
+const skipBlank = (text: string, at: number, end: number): number => {
+	let index = at;
+	while (index < end && /[ \t\r\n>]/.test(text.charAt(index))) index++;
+	return index;
+};
+
+// An inline link's resource from its `(` at `open`, as micromark's string tokens hold it: the destination (inside
+// `<>` or raw) and the title (inside its quotes or parentheses), each absent when empty.
+const resource = (text: string, open: number, end: number): { destination?: string; title?: string } => {
+	if (text.charAt(open) !== "(") return {};
+	let at = skipBlank(text, open + 1, end);
+	let destination: string;
+	if (text.charAt(at) === "<") {
+		let stop = at + 1;
+		while (stop < end && text.charAt(stop) !== ">") stop += text.charAt(stop) === "\\" ? 2 : 1;
+		destination = text.slice(at + 1, stop);
+		at = stop + 1;
+	} else {
+		destination = rawDestination(text, at, end);
+		at += destination.length;
+	}
+	at = skipBlank(text, at, end);
+	const quote = text.charAt(at);
+	const closer = quote === "(" ? ")" : quote;
+	let title: string | undefined;
+	if (quote === '"' || quote === "'" || quote === "(") {
+		let stop = at + 1;
+		while (stop < end && text.charAt(stop) !== closer) stop += text.charAt(stop) === "\\" ? 2 : 1;
+		title = text.slice(at + 1, stop);
+	}
+	return {
+		...(destination === "" ? {} : { destination }),
+		...(title === undefined || title === "" ? {} : { title }),
+	};
 };
 
 // A parsed text an inline walk reads: offsets in it map to the reading's source (`-1` for a character of its own).
@@ -259,6 +315,7 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 	const flow = mathFlowLines(context);
 	const shims: Array<Shim> = [];
 	const formed: Array<Formed> = [];
+	const media: Array<Medium> = [];
 
 	// The document's definitions, as written, by normalized label, for an image label's references to resolve against.
 	const definitionSources = new Map<string, string>();
@@ -354,6 +411,10 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 				const opener = text.charAt(start);
 				if (opener === "<") {
 					events.piece(text.slice(start, end));
+					const from = view.toSource(start);
+					const to = view.toSource(end - 1) + 1;
+					const destination = source.slice(from + 1, to - 1);
+					media.push({ kind: "autolink", image: false, start: from, end: to, label: destination, destination });
 					return;
 				}
 				if (opener !== "[") {
@@ -363,6 +424,7 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 				const label = events.open(view.toSource(start));
 				const close = labelEnd(text, start, end);
 				record(view, node, start, end, close);
+				medium(view, node, start, end, close);
 				for (const child of children) visit(view, events, child);
 				events.formed(label);
 				return;
@@ -372,6 +434,7 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 				const label = events.open(view.toSource(start), true);
 				const close = labelEnd(text, start + 1, end);
 				record(view, node, start, end, close);
+				medium(view, node, start, end, close);
 				readAlt(view, events, start + 1, close);
 				events.formed(label);
 				return;
@@ -402,6 +465,42 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 			length: view.toSource(end - 1) + 1 - offset,
 			label,
 			shortcut: referenceType === "shortcut",
+		});
+	};
+
+	// The source of `[from, to)` in `view`, as written.
+	const written = (view: View, from: number, to: number): string =>
+		to > from ? source.slice(view.toSource(from), view.toSource(to - 1) + 1) : "";
+
+	// A link or image as MD054 reads it: an inline one's resource parsed from its source, a reference's label and
+	// reference as written.
+	const medium = (view: View, node: MarkdownNode, start: number, end: number, close: number): void => {
+		const image = node.type === "image" || node.type === "imageReference";
+		const from = view.toSource(start);
+		const to = view.toSource(end - 1) + 1;
+		const label = written(view, start + (image ? 2 : 1), close);
+		const referenceType = (node as { readonly referenceType?: string }).referenceType;
+		if (referenceType === "full") {
+			media.push({ kind: "full", image, start: from, end: to, label, reference: written(view, close + 2, end - 1) });
+			return;
+		}
+		if (referenceType === "collapsed" || referenceType === "shortcut") {
+			media.push({ kind: referenceType, image, start: from, end: to, label });
+			return;
+		}
+		const { destination, title } = resource(view.text, close + 1, end);
+		if (destination === undefined) {
+			media.push({ kind: "shortcut", image, start: from, end: to, label });
+			return;
+		}
+		media.push({
+			kind: "inline",
+			image,
+			start: from,
+			end: to,
+			label,
+			destination,
+			...(title === undefined ? {} : { title }),
 		});
 	};
 
@@ -526,5 +625,5 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 		}
 		definitions.set(label, { offset, destination });
 	}
-	return { references, shortcuts, definitions, duplicates };
+	return { references, shortcuts, definitions, duplicates, media };
 });

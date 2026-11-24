@@ -33,6 +33,7 @@ import { rules } from "../src/rules/all.js";
 import { MD009 } from "../src/rules/MD009.js";
 import { MD034 } from "../src/rules/MD034.js";
 import { MD052 } from "../src/rules/MD052.js";
+import { MD054 } from "../src/rules/MD054.js";
 
 const CEILING_MS = 5_000;
 
@@ -131,6 +132,10 @@ const unusedDefinitions = (count: number): string =>
 const usesOfOneLabel = (count: number): string =>
 	`# T\n\n${"[r] [x][r] ".repeat(count)}\n\n${"[r]: u\n".repeat(count)}`;
 
+// MD054 reads every autolink, link and image with each style disallowed.
+const linkStyles = (count: number): string =>
+	`# T\n\n${"<https://a.example> [t](https://a.example) [t][r] [r][] [r] ![i][r] ".repeat(count)}\n\n[r]: https://r.example\n`;
+
 const cpuNow = (): number => {
 	const used = process.cpuUsage();
 	return (used.user + used.system) / 1000;
@@ -165,6 +170,12 @@ const scalingShapes: ReadonlyArray<
 	["reads undefined references and chains", undefinedReferences, MD052, { shortcut_syntax: true }],
 	["reads alternating images and links", imagesAndLinks, MD052, { shortcut_syntax: true }],
 	["reads label starts closed in reverse", openersThenClosers, MD052, { shortcut_syntax: true }],
+	[
+		"checks every link style",
+		linkStyles,
+		MD054,
+		{ autolink: false, inline: false, full: false, collapsed: false, shortcut: false, url_inline: false },
+	],
 ];
 
 const inputs: ReadonlyArray<readonly [name: string, source: string]> = [

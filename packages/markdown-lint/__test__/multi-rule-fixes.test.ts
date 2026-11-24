@@ -44,7 +44,7 @@ const shuffled = <A>(items: ReadonlyArray<A>, seed: string): ReadonlyArray<A> =>
 };
 
 // markdownlint's findings with a fix over every input, per case.
-const ORACLE_FIXES_ALL = 6366;
+const ORACLE_FIXES_ALL = 6540;
 const ORACLE_FIXES_MD004_MD032 = 396;
 const ORACLE_FIXES_MD022_MD009 = 452;
 const ORACLE_FIXES_MD031_MD032 = 368;
@@ -70,6 +70,7 @@ const ORACLE_FIXES_MD039_MD009 = 518;
 const ORACLE_FIXES_MD034_MD009 = 416;
 const ORACLE_FIXES_MD053_MD009 = 299;
 const ORACLE_FIXES_MD053_MD012 = 102;
+const ORACLE_FIXES_MD054_MD039 = 429;
 // The inputs on which fixes from two or more of the case's rules land on one line, the case the file exists for.
 const MEETING_ALL = 50;
 const MEETING_MD004_MD032 = 17;
@@ -98,6 +99,7 @@ const MEETING_MD039_MD009 = 5;
 const MEETING_MD034_MD009 = 2;
 const MEETING_MD053_MD009 = 2;
 const MEETING_MD053_MD012 = 0;
+const MEETING_MD054_MD039 = 2;
 const MEETING_SAMPLE = 11;
 
 describe("applyFixes over several rules' fixes", () => {
@@ -394,6 +396,25 @@ describe("applyFixes over several rules' fixes", () => {
 			[
 				{ name: "MD053 and MD012, LF", source: "x\n\n\n[a]: u\n\n\n[b]: v\n[b]: w\n\n\n[b]\n" },
 				{ name: "MD053 and MD012, CRLF", source: "x\r\n\r\n\r\n[a]: u\r\n\r\n\r\n[b]: v\r\n[b]: w\r\n\r\n\r\n[b]\r\n" },
+			],
+		],
+		// MD054 rewrites full references and autolinks to inline links while MD039 deletes the spaces inside their labels.
+		[
+			"MD054 and MD039",
+			["MD054", "MD039"],
+			ORACLE_FIXES_MD054_MD039,
+			MEETING_MD054_MD039,
+			[
+				{
+					name: "MD054 and MD039, LF",
+					source:
+						'See [ the docs ][d] and <https://a.example> and [ x ](u).\n\n[d]: https://d.example\n\n<!-- markdownlint-configure-file { "MD054": { "full": false, "autolink": false } } -->\n',
+				},
+				{
+					name: "MD054 and MD039, CRLF",
+					source:
+						'See [ the docs ][d] and <https://a.example> and [ x ](u).\r\n\r\n[d]: https://d.example\r\n\r\n<!-- markdownlint-configure-file { "MD054": { "full": false, "autolink": false } } -->\r\n',
+				},
 			],
 		],
 	];
