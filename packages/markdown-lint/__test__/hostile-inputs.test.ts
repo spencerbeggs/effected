@@ -78,6 +78,12 @@ const dataUriLine = (repeats: number): string =>
 // The comment mask re-read each comment's line from its start: many comments on one line.
 const commentsOnOneLine = (count: number): string => `x${"<!--a-->".repeat(count)}\n`;
 
+// MD036 reads each top-level HTML block's re-read and each paragraph's children: emphasis lines inside HTML blocks,
+// and one paragraph of emphasis spans.
+const htmlBlocksOfEmphasis = (count: number): string =>
+	`# T\n\n${Array.from({ length: count }, (_, index) => `<div>\n\n**Section ${index}**\n\n</div>\n`).join("\n")}`;
+const emphasisSpans = (count: number): string => `# T\n\n${"*a* **b** ".repeat(count)}\n`;
+
 const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a 400-column table with CJK cells", wideTable(400, 150)],
 	["2,000 unclosed fences in list items", unclosedFences(2000)],
@@ -86,6 +92,8 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a paragraph of 60,000 code spans, links and lone dollar signs", atomicDollars(60000)],
 	["a 198 KB line holding an inline data-URI image", dataUriLine(18000)],
 	["one line of 16,000 HTML comments", commentsOnOneLine(16000)],
+	["2,000 HTML blocks each holding an emphasis line", htmlBlocksOfEmphasis(2000)],
+	["a paragraph of 40,000 emphasis spans", emphasisSpans(20000)],
 ];
 
 describe("hostile inputs", () => {

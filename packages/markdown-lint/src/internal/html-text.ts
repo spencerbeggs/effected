@@ -5,7 +5,7 @@
 import type { MarkdownNode } from "@effected/markdown";
 import type { LintContext } from "../LintContext.js";
 import { flowNodes, isContainer } from "./containers.js";
-import { rereadHtmlBlock } from "./html-reread.js";
+import { rereadHtmlBlock, sourceColumn } from "./html-reread.js";
 import { mathFlowLines } from "./math-flow.js";
 import { inSpans, mathTextSpans } from "./math-text.js";
 import { perReading, unmaskedSource } from "./memo.js";
@@ -44,10 +44,28 @@ export const isHtmlFlowComment = (context: LintContext, node: MarkdownNode): boo
 	return !comment.startsWith(">") && !comment.startsWith("->") && !comment.endsWith("-");
 };
 
+const rereads: (context: LintContext) => Map<MarkdownNode, ReturnType<typeof rereadHtmlBlock>> = perReading(
+	() => new Map(),
+);
+
+/**
+ * markdownlint's re-parse of an HTML block's lines (see
+ * {@link rereadHtmlBlock}), re-read once per reading however many rules ask.
+ * @internal
+ */
+export const rereadBlock = (context: LintContext, block: MarkdownNode): ReturnType<typeof rereadHtmlBlock> => {
+	const cache = rereads(context);
+	const cached = cache.get(block);
+	if (cached !== undefined) return cached;
+	const blockLines = context.lines.slice(block.position.start.line - 1, block.position.end.line);
+	const reread = rereadHtmlBlock(blockLines, block.position.start.line);
+	cache.set(block, reread);
+	return reread;
+};
+
 // The `htmlText` tokens markdownlint's re-parse of an HTML block's lines gives, at their offsets in `source`.
 const blockHtmlText = (context: LintContext, block: MarkdownNode) => {
-	const blockLines = context.lines.slice(block.position.start.line - 1, block.position.end.line);
-	const { document, lines } = rereadHtmlBlock(blockLines, block.position.start.line);
+	const { document, lines } = rereadBlock(context, block);
 	if (document === undefined) return [];
 	const text = lines.map((line) => line.text).join("\n");
 	const math = mathTextSpans(document, text);
@@ -55,12 +73,10 @@ const blockHtmlText = (context: LintContext, block: MarkdownNode) => {
 	for (const { node, inTable } of inlineHtml(document.root as MarkdownNode, false, [])) {
 		const line = lines[node.position.start.line - 1];
 		if (line === undefined || line.origin === 0 || inSpans(math, node.position.start.offset)) continue;
-		// The column in the re-read line, less the columns inserted before it, undone last first.
-		let column = node.position.start.offset - document.lineIndex.lineStart(node.position.start.line - 1);
-		for (const [at, length] of [...line.inserts].reverse()) {
-			if (column >= at + length) column -= length;
-			else if (column >= at) column = at;
-		}
+		const column = sourceColumn(
+			line,
+			node.position.start.offset - document.lineIndex.lineStart(node.position.start.line - 1),
+		);
 		found.push({
 			offset: context.mapping.lineStart(line.origin) + column,
 			text: text.slice(node.position.start.offset, node.position.end.offset),

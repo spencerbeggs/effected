@@ -11,12 +11,27 @@ import { CONTAINERS } from "./containers.js";
 
 const reparseOptions = MarkdownParseOptions.make({ dialect: "gfm", frontmatter: false });
 
-/** One line of an HTML block's re-read text: its text, its source line (0 for a stub) and the columns inserted. */
-interface RereadLine {
+/** One line of an HTML block's re-read text: its text, its source line (0 for a stub) and the columns inserted. @internal */
+export interface RereadLine {
 	readonly text: string;
 	readonly origin: number;
 	readonly inserts: ReadonlyArray<readonly [at: number, length: number]>;
 }
+
+/**
+ * A column in a re-read line as a column in its source line: the columns
+ * inserted before it undone, last first; a column inside an insert reads as
+ * the insert's start.
+ * @internal
+ */
+export const sourceColumn = (line: RereadLine, column: number): number => {
+	let at = column;
+	for (const [start, length] of [...line.inserts].reverse()) {
+		if (at >= start + length) at -= length;
+		else if (at >= start) at = start;
+	}
+	return at;
+};
 
 /**
  * How many times the re-read parses an HTML block before its terminal sweep.
