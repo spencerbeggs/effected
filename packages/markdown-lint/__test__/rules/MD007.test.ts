@@ -6,6 +6,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
+import { MarkdownLint } from "../../src/MarkdownLint.js";
 import { MD007 } from "../../src/rules/MD007.js";
 import {
 	DIFFERENTIAL_TIMEOUT,
@@ -15,6 +16,7 @@ import {
 	settingsAppliedTextDivergences,
 	settingsDifferential,
 } from "../helpers/differential.js";
+import { oracleLint } from "../helpers/markdownlint-oracle.js";
 
 const extra = [
 	{ name: "two-space nesting", source: "* a\n  * b\n    * c\n" },
@@ -129,6 +131,31 @@ describe("MD007 ul-indent", () => {
 				);
 			}
 			assert.deepStrictEqual(settingsAppliedTextDivergences(MD007, cases, inputs), []);
+			// The divergence reason names only a finding's first differing field: compare every finding but its fix, so
+			// "fixInfo only" holds for each finding, not just the first that differs.
+			for (const settings of cases) {
+				const config = { default: false, MD007: settings };
+				for (const input of inputs) {
+					const oracle = oracleLint(input.source, config)
+						.filter((finding) => finding.ruleNames[0] === "MD007")
+						.map((finding) => [
+							finding.lineNumber,
+							finding.errorDetail,
+							finding.errorContext,
+							finding.errorRange === null ? null : [...finding.errorRange],
+						]);
+					// markdownlint sorts by line, stably, as the harness does.
+					const kit = [...MarkdownLint.lint(input.source, [MD007], { config })]
+						.sort((a, b) => a.lineNumber - b.lineNumber)
+						.map((finding) => [
+							finding.lineNumber,
+							Option.getOrNull(finding.detail),
+							Option.getOrNull(finding.context),
+							Option.match(finding.range, { onNone: () => null, onSome: (range) => [...range] }),
+						]);
+					assert.deepStrictEqual(kit, oracle, `${JSON.stringify(settings)} ${input.name}`);
+				}
+			}
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
