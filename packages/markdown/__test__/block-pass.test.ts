@@ -503,6 +503,33 @@ describe("link reference definitions", () => {
 
 	// CommonMark §4.7 allows spaces or tabs (and up to one line ending) around a definition's destination and title,
 	// and spaces or tabs after it; commonmark.js matches spaces only there, where cmark and micromark take tabs.
+	// A table interrupting a paragraph takes its last line as the header; the lines above it are reclaimed as a
+	// paragraph, whose definitions upstream (cmark-gfm) and micromark read as definitions.
+	describe("definitions directly above a table", () => {
+		const types = (source: string) => parseBlocks(source, "gfm").root.children.map((child) => child.type);
+		it("reads a definition right above the header row", () => {
+			const { root, refmap } = parseBlocks("[t]: https://example.com\n| a | b |\n| - | - |\n| [x][t] | d |\n", "gfm");
+			assert.deepStrictEqual(
+				root.children.map((child) => child.type),
+				["definition", "table"],
+			);
+			assert.strictEqual(refmap.get("T")?.url, "https://example.com");
+		});
+
+		it("reads several, and keeps text after them", () => {
+			assert.deepStrictEqual(types("[a]: /a\n[b]: /b\n| a |\n| - |\n"), ["definition", "definition", "table"]);
+			assert.deepStrictEqual(types("[a]: /a\ntext\n| a |\n| - |\n"), ["definition", "paragraph", "table"]);
+		});
+
+		it("leaves a definition after text as text, as anywhere", () => {
+			assert.deepStrictEqual(types("text\n[a]: /a\n| a |\n| - |\n"), ["paragraph", "table"]);
+		});
+
+		it("reads a definition with a title", () => {
+			assert.deepStrictEqual(types('[a]: /a "t"\n| a |\n| - |\n'), ["definition", "table"]);
+		});
+	});
+
 	describe("tabs as a definition's whitespace", () => {
 		const definitionOf = (source: string) => {
 			const [first] = parseBlocks(source).root.children;
