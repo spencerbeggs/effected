@@ -44,7 +44,7 @@ const shuffled = <A>(items: ReadonlyArray<A>, seed: string): ReadonlyArray<A> =>
 };
 
 // markdownlint's findings with a fix over every input, per case.
-const ORACLE_FIXES_ALL = 5436;
+const ORACLE_FIXES_ALL = 5568;
 const ORACLE_FIXES_MD004_MD032 = 396;
 const ORACLE_FIXES_MD022_MD009 = 452;
 const ORACLE_FIXES_MD031_MD032 = 368;
@@ -63,8 +63,9 @@ const ORACLE_FIXES_MD014_MD010 = 334;
 const ORACLE_FIXES_MD038_MD009 = 615;
 const ORACLE_FIXES_MD037_MD009 = 850;
 const ORACLE_FIXES_MD049_MD037 = 773;
+const ORACLE_FIXES_MD050_MD049 = 340;
 // The inputs on which fixes from two or more of the case's rules land on one line, the case the file exists for.
-const MEETING_ALL = 44;
+const MEETING_ALL = 47;
 const MEETING_MD004_MD032 = 17;
 const MEETING_MD022_MD009 = 3;
 const MEETING_MD031_MD032 = 13;
@@ -84,6 +85,7 @@ const MEETING_MD014_MD010 = 2;
 const MEETING_MD038_MD009 = 2;
 const MEETING_MD037_MD009 = 2;
 const MEETING_MD049_MD037 = 2;
+const MEETING_MD050_MD049 = 5;
 const MEETING_SAMPLE = 11;
 
 describe("applyFixes over several rules' fixes", () => {
@@ -295,6 +297,17 @@ describe("applyFixes over several rules' fixes", () => {
 			[
 				{ name: "swapped and spaced markers, LF", source: "*a* and _b_ and * c * end\n" },
 				{ name: "swapped and spaced markers, CRLF", source: "*a* and _b_ and * c * end\r\n" },
+			],
+		],
+		// MD050 swaps a strong's markers and MD049 an emphasis's, on one line and in one span.
+		[
+			"MD050 and MD049",
+			["MD050", "MD049"],
+			ORACLE_FIXES_MD050_MD049,
+			MEETING_MD050_MD049,
+			[
+				{ name: "strong and emphasis in both styles, LF", source: "**a** *b* and __c__ _d_ and ___e___\n" },
+				{ name: "strong and emphasis in both styles, CRLF", source: "**a** *b* and __c__ _d_ and ___e___\r\n" },
 			],
 		],
 	];
