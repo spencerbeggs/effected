@@ -12,63 +12,15 @@ import type { MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
 import { imageLabelNodes, inlineNodes } from "../internal/inline.js";
 import { errorContext } from "../internal/lines.js";
-import { mathFlowLines } from "../internal/math-flow.js";
 import { labelEnd } from "../internal/math-text.js";
+import { normalizeLabel, rawDestination, referenceData, skipSpace } from "../internal/references.js";
 import type { LintContext } from "../LintContext.js";
 import { LintRule } from "../LintRule.js";
 
-// markdownlint's `normalizeLinkLabelText`.
-const normalizeLabel = (text: string): string => text.toLowerCase().trim().replace(/\s+/g, " ");
-
-// Past whitespace, and at most one line ending (and the next line's container prefix), from `at`.
-const skipSpace = (source: string, at: number, end: number): number => {
-	let index = at;
-	while (index < end && /[ \t]/.test(source.charAt(index))) index++;
-	if (source.charAt(index) === "\r") index++;
-	if (source.charAt(index) === "\n") index++;
-	while (index < end && /[ \t>]/.test(source.charAt(index))) index++;
-	return index;
-};
-
-// A destination written without angle brackets, from `at`: the run up to whitespace or an unbalanced `)`.
-const rawDestination = (source: string, at: number, end: number): string => {
-	let depth = 0;
-	let index = at;
-	while (index < end) {
-		const char = source.charAt(index);
-		if (char === "\\" && index + 1 < end) {
-			index += 2;
-			continue;
-		}
-		if (/\s/.test(char)) break;
-		if (char === "(") depth++;
-		else if (char === ")") {
-			if (depth === 0) break;
-			depth--;
-		}
-		index++;
-	}
-	return source.slice(at, index);
-};
-
-// markdownlint's `definitions`: each definition's normalized label to its destination as written, the first one
-// winning; a destination in angle brackets reads as none.
-const definitionsOf = (context: LintContext): ReadonlyMap<string, string> => {
-	const { source } = context;
-	const flow = mathFlowLines(context);
-	const definitions = new Map<string, string>();
-	for (const node of context.document.findAll("definition") as ReadonlyArray<MarkdownNode>) {
-		if (flow.has(node.position.start.line)) continue;
-		const start = node.position.start.offset;
-		const end = node.position.end.offset;
-		const close = labelEnd(source, start, end);
-		const label = normalizeLabel(source.slice(start + 1, close));
-		if (definitions.has(label)) continue;
-		const at = skipSpace(source, close + 2, end);
-		definitions.set(label, source.charAt(at) === "<" ? "" : rawDestination(source, at, end));
-	}
-	return definitions;
-};
+// markdownlint's `definitions` (see `referenceData`): each definition's normalized label to its destination as
+// written, the first one winning; a destination in angle brackets reads as none.
+const definitionsOf = (context: LintContext): ReadonlyMap<string, string> =>
+	new Map([...referenceData(context).definitions].map(([label, definition]) => [label, definition.destination]));
 
 // Whether the link at `[start, end)` is empty, as markdownlint reads its parts.
 const isEmpty = (source: string, start: number, end: number, definitions: ReadonlyMap<string, string>): boolean => {

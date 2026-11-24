@@ -38,8 +38,8 @@ const inSortedSpans = (spans: ReadonlyArray<Span>, offset: number): boolean => {
 	return false;
 };
 
-// A point check over a document's inline math spans.
-const mathCheck = (document: MarkdownDocument, source: string): ((offset: number) => boolean) => {
+/** A point check over a document's inline math spans. @internal */
+export const mathCheck = (document: MarkdownDocument, source: string): ((offset: number) => boolean) => {
 	const spans = [...mathTextSpans(document, source)].sort((a, b) => a.start - b.start);
 	return (offset) => inSortedSpans(spans, offset);
 };
@@ -183,12 +183,13 @@ export const documentDataView: (context: LintContext) => TokenView = perReading(
 	},
 }));
 
-const characterReference = /^&(?:#\d{1,7}|#[xX][\da-fA-F]{1,6}|[A-Za-z][A-Za-z\d]{0,31});/;
+/** A character reference's shape, before {@link isReference} asks whether micromark decodes it. @internal */
+export const characterReference = /^&(?:#\d{1,7}|#[xX][\da-fA-F]{1,6}|[A-Za-z][A-Za-z\d]{0,31});/;
 const labelOptions = MarkdownParseOptions.make({ dialect: "gfm", frontmatter: false });
 const references = new Map<string, boolean>();
 
-// Whether `text` is a character reference micromark decodes: a numeric one, or a named one the parser knows.
-const isReference = (text: string): boolean => {
+/** Whether `text` is a character reference micromark decodes: a numeric one, or a named one the parser knows. @internal */
+export const isReference = (text: string): boolean => {
 	const known = references.get(text);
 	if (known !== undefined) return known;
 	const parsed = MarkdownDocument.parseResult(text, labelOptions);

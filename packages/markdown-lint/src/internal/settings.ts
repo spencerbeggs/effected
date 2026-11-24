@@ -64,6 +64,18 @@ export const stringListSetting = (value: unknown): ReadonlyArray<string> => {
 	return items;
 };
 
+/**
+ * markdownlint's `new Set(config[name] || fallback)`: a falsy value is the fallback, a string the set of its
+ * characters (code points), an array its items as they are (only a string ever matches a label). Where `new Set`
+ * throws (a number, `true`, a plain object: no iterable), the kit reads the fallback. @internal
+ */
+export const setSetting = (config: Config, name: string, fallback: ReadonlyArray<string>): ReadonlySet<unknown> => {
+	const value = config[name] || fallback;
+	if (typeof value === "string") return new Set(value);
+	if (Array.isArray(value)) return new Set<unknown>(value);
+	return new Set(fallback);
+};
+
 /** `Number(value)` for a raw setting value markdownlint compares by coercion; `NaN` when that throws. @internal */
 export const coercedNumber = (value: unknown): number => toNumber(value) ?? Number.NaN;
 

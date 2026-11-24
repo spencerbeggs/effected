@@ -72,9 +72,34 @@ export const markdownlintLint = (options: MarkdownlintOptions): Record<string, R
 /** The installed markdownlint's version. */
 export const oracleVersion = (): string => main.getVersion();
 
-/** Lint `source` with markdownlint's built-in rules under `config`. */
-export const oracleLint = (source: string, config: Record<string, unknown>): ReadonlyArray<OracleFinding> =>
-	sync.lint({ strings: { input: source }, config }).input ?? [];
+// A rule that reports nothing and asks markdownlint for micromark tokens. markdownlint parses with micromark only
+// when an enabled rule's `parser` is `"micromark"`, and its MD052 and MD053 (`parser: "none"`) read their reference
+// data from those tokens: enabled alone they see none and report nothing (a recorded divergence). With this rule
+// beside them they read what they read under the default config, where micromark rules are enabled.
+const micromarkCompanion = {
+	names: ["micromark-companion"],
+	description: "Asks markdownlint to parse with micromark",
+	tags: ["oracle"],
+	parser: "micromark",
+	function: () => undefined,
+};
+
+/**
+ * Lint `source` with markdownlint's built-in rules under `config`; with `micromark`, beside a rule that makes
+ * markdownlint parse with micromark whatever else is enabled.
+ */
+export const oracleLint = (
+	source: string,
+	config: Record<string, unknown>,
+	options?: { readonly micromark?: boolean },
+): ReadonlyArray<OracleFinding> =>
+	(options?.micromark === true
+		? sync.lint({
+				strings: { input: source },
+				config: { ...config, "micromark-companion": true },
+				customRules: [micromarkCompanion],
+			}).input
+		: sync.lint({ strings: { input: source }, config }).input) ?? [];
 
 /**
  * markdownlint's `applyFixes`, over the source as given: a leading byte order

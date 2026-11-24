@@ -27,10 +27,12 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { frontMatterLineCount, maskHtmlComments } from "../src/internal/reading.js";
+import type { LintRule } from "../src/LintRule.js";
 import { MarkdownLint } from "../src/MarkdownLint.js";
 import { rules } from "../src/rules/all.js";
 import { MD009 } from "../src/rules/MD009.js";
 import { MD034 } from "../src/rules/MD034.js";
+import { MD052 } from "../src/rules/MD052.js";
 
 const CEILING_MS = 5_000;
 
@@ -119,6 +121,50 @@ const unclosedInlineTags = (count: number): string => `# T\n\n${"<b> x ".repeat(
 // each: 10,000 URLs and other-case hosts in emphasis after one, on one line.
 const urlsAfterMathBracket = (count: number): string => `# T\n\n$[$ ${"*https://a.b* WWW.c.d ".repeat(count)}\n`;
 
+// The reference data MD052 and MD053 read: each failed label end shims back to the latest label start, a formed link
+// deactivates the link starts before it, and a label end takes the latest start not yet failed.
+const undefinedReferences = (count: number): string => `# T\n\n${"[a] [b][c] [d][] ".repeat(count)}\n`;
+const imagesAndLinks = (count: number): string => `# T\n\n${"![a] [b](u) ".repeat(count)}\n`;
+const openersThenClosers = (count: number): string => `# T\n\n${"[".repeat(count)}x${"]".repeat(count)}\n`;
+const usesOfOneLabel = (count: number): string =>
+	`# T\n\n${"[r] [x][r] ".repeat(count)}\n\n${"[r]: u\n".repeat(count)}`;
+
+const cpuNow = (): number => {
+	const used = process.cpuUsage();
+	return (used.user + used.system) / 1000;
+};
+
+// 10,000 against 2,500 of `make`'s unit under `rule` alone: the ratio of their best CPU times.
+const scalingRatio = (
+	make: (count: number) => string,
+	rule: LintRule,
+	config: Record<string, unknown>,
+): { readonly value: number; readonly detail: string } => {
+	const timeAt = (count: number): number => {
+		const source = make(count);
+		let best = Number.POSITIVE_INFINITY;
+		for (let pass = 0; pass < 5; pass += 1) {
+			const started = cpuNow();
+			MarkdownLint.lint(source, [rule], { config: { default: false, [rule.name]: config } });
+			best = Math.min(best, cpuNow() - started);
+		}
+		return best;
+	};
+	timeAt(500);
+	const small = timeAt(2_500);
+	const large = timeAt(10_000);
+	return { value: large / Math.max(small, 1), detail: `${small.toFixed(1)} ms -> ${large.toFixed(1)} ms` };
+};
+
+const scalingShapes: ReadonlyArray<
+	readonly [name: string, make: (count: number) => string, rule: LintRule, config: Record<string, unknown>]
+> = [
+	["re-reads URLs after a bracket in inline math", (count) => urlsAfterMathBracket(count), MD034, {}],
+	["reads undefined references and chains", undefinedReferences, MD052, { shortcut_syntax: true }],
+	["reads alternating images and links", imagesAndLinks, MD052, { shortcut_syntax: true }],
+	["reads label starts closed in reverse", openersThenClosers, MD052, { shortcut_syntax: true }],
+];
+
 const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a 400-column table with CJK cells", wideTable(400, 150)],
 	["2,000 unclosed fences in list items", unclosedFences(2000)],
@@ -138,6 +184,8 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["one line of 20,000 bracketed spans and addresses", bracketedAddresses(20000)],
 	["one line of 24,000 unclosed inline HTML tags", unclosedInlineTags(24000)],
 	["10,000 URLs in emphasis after a bracket in inline math", urlsAfterMathBracket(10000)],
+	["one line of 20,000 undefined references, collapsed and full", undefinedReferences(20000)],
+	["20,000 uses of one label beside 20,000 duplicate definitions", usesOfOneLabel(20000)],
 ];
 
 describe("hostile inputs", () => {
@@ -151,35 +199,20 @@ describe("hostile inputs", () => {
 		});
 	}
 
-	// The scaling guard for MD034's math-bracket re-read, as `@effected/markdown`'s pathological suite guards its own
-	// linear scans: a ceiling alone lets a cheaper superlinear rescan through at this size, a ratio does not. CPU time,
-	// not wall time, so load descheduling the process cannot stretch one side; the minimum of five samples, since a
-	// pause only ever adds time. Linear is about 4x for 4x the input, a per-node rescan of the block's rest about 16x.
-	it("re-reads URLs after a bracket in inline math in time linear in the input", { timeout: 60_000 }, () => {
-		const cpuNow = (): number => {
-			const used = process.cpuUsage();
-			return (used.user + used.system) / 1000;
-		};
-		const timeAt = (count: number): number => {
-			const source = urlsAfterMathBracket(count);
-			let best = Number.POSITIVE_INFINITY;
-			for (let pass = 0; pass < 5; pass += 1) {
-				const started = cpuNow();
-				MarkdownLint.lint(source, [MD034]);
-				best = Math.min(best, cpuNow() - started);
-			}
-			return best;
-		};
-		timeAt(500);
-		const small = timeAt(2_500);
-		const large = timeAt(10_000);
-		const ratio = large / Math.max(small, 1);
-		assert.isBelow(
-			ratio,
-			8,
-			`4x the input cost ${ratio.toFixed(1)}x the CPU time (${small.toFixed(1)} ms -> ${large.toFixed(1)} ms); linear is about 4x`,
-		);
-	});
+	// Scaling guards, as `@effected/markdown`'s pathological suite guards its own linear scans: a ceiling alone lets a
+	// cheaper superlinear scan through at these sizes, a ratio does not. CPU time, not wall time, so load descheduling
+	// the process cannot stretch one side; the minimum of five samples, since a pause only ever adds time. Linear is
+	// about 4x for 4x the input, a per-item rescan about 16x.
+	for (const [name, make, rule, config] of scalingShapes) {
+		it(`${name} in time linear in the input`, { timeout: 60_000 }, () => {
+			const ratio = scalingRatio(make, rule, config);
+			assert.isBelow(
+				ratio.value,
+				8,
+				`4x the input cost ${ratio.value.toFixed(1)}x the CPU time (${ratio.detail}); linear is about 4x`,
+			);
+		});
+	}
 });
 
 // The readers that run before any rule, each with its own tighter ceiling.
