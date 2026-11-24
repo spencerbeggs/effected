@@ -13,7 +13,7 @@
 
 import type { Code, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import { fenceIndent, fencedInterior } from "../internal/code-blocks.js";
+import { fenceIndent, fencedInterior, indentedEndLine } from "../internal/code-blocks.js";
 import {
 	containerStep,
 	containersAt,
@@ -37,7 +37,9 @@ const prefixLimits = (context: LintContext): ReadonlyMap<number, number> => {
 		if (node.type === "table") {
 			limits.set(start.line + 1, 0);
 		} else if (node.type === "html" || (node as Code).fenceChar === undefined) {
-			for (let line = start.line; line <= end.line; line++) limits.set(line, 0);
+			// An indented block runs on over the whitespace-only lines micromark's token takes in.
+			const last = node.type === "html" ? end.line : indentedEndLine(context, node as Code);
+			for (let line = start.line; line <= last; line++) limits.set(line, 0);
 		} else {
 			const indent = fenceIndent(context, node as Code);
 			const inner = fencedInterior(context, node as Code);

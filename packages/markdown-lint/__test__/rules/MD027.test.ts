@@ -15,7 +15,7 @@ import {
 	runRule,
 	settingsDifferential,
 } from "../helpers/differential.js";
-import { unclosedFenceEnds, wrappedLinkEnds } from "../helpers/link-grid.js";
+import { indentedCodeTails, unclosedFenceEnds, wrappedLinkEnds } from "../helpers/link-grid.js";
 import { quotedBlankGrid } from "../helpers/list-container-grid.js";
 import { directiveBlockGrid, directiveListEnds } from "../helpers/table-grid.js";
 
@@ -207,6 +207,18 @@ describe("MD027 no-multiple-space-blockquote", () => {
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
+
+	// Whitespace-only lines after indented code in a blockquote, which micromark's token takes in: no `linePrefix`.
+	it(
+		"agrees with markdownlint on whitespace-only lines after indented code",
+		() => {
+			const quoted = [{ name: "quoted, between headings", source: "> # H\n>\n>     code\n>     \n> # G\n" }];
+			const result = differential(MD027, { extra: [...indentedCodeTails, ...quoted] });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_CODE_TAILS);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD027 findings over the corpus (LF and CRLF) and the extras.
@@ -222,3 +234,6 @@ const ORACLE_FINDINGS_UNCLOSED = 120;
 
 // markdownlint's MD027 findings over the corpus (LF and CRLF) and the lists ending in a wrapped link.
 const ORACLE_FINDINGS_WRAPPED = 120;
+
+// markdownlint's MD027 findings over the corpus (LF and CRLF) and the lines after indented code.
+const ORACLE_FINDINGS_CODE_TAILS = 120;
