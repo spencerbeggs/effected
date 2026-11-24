@@ -15,7 +15,7 @@ import {
 	settingsDifferential,
 } from "../helpers/differential.js";
 import { oracleLint } from "../helpers/markdownlint-oracle.js";
-import { labelShapes, referenceGrid, tabbedDefinitions } from "../helpers/reference-grid.js";
+import { labelShapes, paragraphBreakShapes, referenceGrid, tabbedDefinitions } from "../helpers/reference-grid.js";
 
 const extra = [...referenceGrid, ...labelShapes];
 
@@ -138,6 +138,18 @@ describe("MD052 reference-links-images", () => {
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
+
+	// After a math block or a directive line micromark starts a paragraph the kit's parser does not: its references,
+	// and the definitions opening it, read as markdownlint reads them.
+	it(
+		"agrees with markdownlint after a line micromark ends a paragraph at",
+		() => {
+			const result = differential(MD052, { config: { shortcut_syntax: true }, extra: paragraphBreakShapes });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_BREAKS);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD052 findings over the corpus (LF and CRLF), the grid and the label shapes.
@@ -148,3 +160,6 @@ const ORACLE_FINDINGS_CR = 285;
 
 // markdownlint's MD052 findings over the corpus (LF and CRLF) and the tabbed definitions.
 const ORACLE_FINDINGS_TABBED = 246;
+
+// markdownlint's MD052 findings over the corpus (LF and CRLF) and the shapes after a paragraph break.
+const ORACLE_FINDINGS_BREAKS = 258;

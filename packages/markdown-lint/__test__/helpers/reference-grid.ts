@@ -111,3 +111,28 @@ export const tabbedDefinitions: ReadonlyArray<DifferentialInput> = [
 	{ name: "tabbed in containers", source: "> [a]\n>\n> [a]:\t/u\t\n\n- [b]\n\n  [b]:\t/v\t\n" },
 	{ name: "inline links with tabs", source: '[x](\t/u\t) [y](/u\t"t"\t) [https://u.example](\thttps://u.example\t)\n' },
 ];
+
+// References and definitions after a line micromark ends a paragraph at (a math block's lines, a directive line),
+// which the kit's parser reads as one paragraph: in a document, a blockquote and a list item.
+export const paragraphBreakShapes: ReadonlyArray<DifferentialInput> = [
+	{
+		name: "reference after a math block",
+		source: "Formula:\n\n$$\nE = mc^2\n$$\nSee [the paper][p] for details.\n\n[p]: https://example.com/paper\n",
+	},
+	{ name: "collapsed after math", source: "$$\nm\n$$\n[a][]\n" },
+	{ name: "full after math", source: "$$\nm\n$$\n[a][b]\n" },
+	{ name: "image after math", source: "$$\nm\n$$\n![a][]\n" },
+	{ name: "shortcut after math", source: "$$\nm\n$$\n[a]\n" },
+	{ name: "quoted after math", source: "> $$\n> m\n> $$\n> [a][b]\n" },
+	{ name: "listed after math", source: "- $$\n  m\n  $$\n  [a][b]\n" },
+	{ name: "definition after math", source: "$$\nm\n$$\n[p]: /u\n\n[p]\n" },
+	{ name: "two lines after math", source: "$$\nm\n$$\ntext [a][b]\n[c][d]\n" },
+	{ name: "math with meta", source: "$$ x\nm\n$$\n[a][b]\n" },
+	{ name: "text before math", source: "text\n$$\nm\n$$\n[a][b]\n" },
+	{ name: "reference after a leaf", source: "::leaf\n[a][b]\n" },
+	{ name: "definition after a leaf", source: "::leaf\n[r]: /u\n" },
+	{ name: "definition in a container directive", source: ":::note\n[r]: /u\n:::\n" },
+	{ name: "label after a leaf mid-paragraph", source: "text\n::note[label]\n" },
+	{ name: "directive grammar edges", source: '::1note[label]\n\n::é[label]\n\n::note[label]{a="}"}\n' },
+	{ name: "reference after a fence", source: "```\n[a]\n```\n[b][c]\n" },
+];

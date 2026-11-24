@@ -20,7 +20,7 @@ import {
 	settingsDifferential,
 } from "../helpers/differential.js";
 import { oracleLint } from "../helpers/markdownlint-oracle.js";
-import { labelShapes, referenceGrid, tabbedDefinitions } from "../helpers/reference-grid.js";
+import { labelShapes, paragraphBreakShapes, referenceGrid, tabbedDefinitions } from "../helpers/reference-grid.js";
 
 // Definitions beside other text, in containers, across lines, last in a source with no final line ending.
 const definitionShapes = [
@@ -167,6 +167,11 @@ describe("MD053 link-image-reference-definitions", () => {
 		assert.lengthOf(run(source), 1);
 	});
 
+	it("keeps a definition used after a math block, which the fix would otherwise delete", () => {
+		const source = "Formula:\n\n$$\nE = mc^2\n$$\nSee [the paper][p] for details.\n\n[p]: https://example.com/paper\n";
+		assert.deepStrictEqual(run(source), []);
+	});
+
 	it("reports an unused definition on its line, with a fix that deletes the line", () => {
 		const source = "Text.\n\n[unused]: https://example.com\n[used]: https://example.org\n\n[used]\n";
 		const findings = run(source);
@@ -195,6 +200,18 @@ describe("MD053 link-image-reference-definitions", () => {
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
+
+	// After a math block or a directive line micromark starts a paragraph the kit's parser does not: its references,
+	// and the definitions opening it, read as markdownlint reads them.
+	it(
+		"agrees with markdownlint after a line micromark ends a paragraph at",
+		() => {
+			const result = differential(MD053, { extra: paragraphBreakShapes });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_BREAKS);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD053 findings over the corpus (LF and CRLF), the grid, the label shapes and the definition shapes.
@@ -202,3 +219,6 @@ const ORACLE_FINDINGS_DEFAULT = 1137;
 
 // markdownlint's MD053 findings over the corpus (LF and CRLF) and the tabbed definitions.
 const ORACLE_FINDINGS_TABBED = 25;
+
+// markdownlint's MD053 findings over the corpus (LF and CRLF) and the shapes after a paragraph break.
+const ORACLE_FINDINGS_BREAKS = 22;

@@ -22,6 +22,7 @@ import { MarkdownDocument, MarkdownParseOptions } from "@effected/markdown";
 import { Result } from "effect";
 import type { LintContext } from "../LintContext.js";
 import { contentInContainers } from "./containers.js";
+import { paragraphBreaks } from "./directives.js";
 import { characterReference, inMathText, isReference, mathCheck } from "./inline.js";
 import { mathFlowLines } from "./math-flow.js";
 import { labelEnd } from "./math-text.js";
@@ -70,6 +71,8 @@ export interface ReferenceData {
 	readonly duplicates: ReadonlyArray<{ readonly label: string; readonly offset: number }>;
 	/** Every autolink, link and image, in micromark's token order (an image before what its label holds). */
 	readonly media: ReadonlyArray<Medium>;
+	/** Every link reference definition's source span, duplicates included, in document order. */
+	readonly definitionSpans: ReadonlyArray<{ readonly start: number; readonly end: number }>;
 }
 
 const options = MarkdownParseOptions.make({ dialect: "gfm", frontmatter: false });
@@ -555,14 +558,45 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 		}
 	};
 
-	// A paragraph opening with a leaf or container directive line (`::name[label]{attributes}`, `:::name...`), which
-	// markdownlint parses (its directive extension, inline directives off): that line is no text.
-	const directive = /^:{2,}[A-Za-z][\w-]*(?:\[[^\]\r\n]*\])?(?:\{[^}\r\n]*\})?[ \t]*$/;
-	const directiveEnd = (block: MarkdownNode): number => {
-		const start = block.position.start.offset;
-		const lineEnd = source.slice(start, block.position.end.offset).search(/[\r\n]/);
-		const end = lineEnd < 0 ? block.position.end.offset : start + lineEnd;
-		return block.type === "paragraph" && directive.test(source.slice(start, end)) ? end : start;
+	// Where micromark ends a paragraph inside one of the kit's and starts another past the line (a directive line, a
+	// math block's lines; see `paragraphBreaks`), the kit's paragraph is read as those segments: each scanned alone,
+	// and one after a break opening with link reference definitions, which micromark reads there and the kit's parser,
+	// reading paragraph text, does not.
+	const breaks = paragraphBreaks(context);
+	const extraDefinitions: Array<{ readonly start: number; readonly end: number }> = [];
+	const lineEnd = (lineNumber: number) =>
+		context.mapping.lineStart(lineNumber) + (context.lines[lineNumber - 1] ?? "").length;
+	const contentPrefix = (lineNumber: number) => {
+		const line = context.lines[lineNumber - 1] ?? "";
+		const content = contentInContainers(context, lineNumber) ?? line.replace(/^(?:[ \t]{0,3}>[ \t]?)*/, "");
+		return line.length - content.length;
+	};
+	// The definitions opening the paragraph on lines `[first, last]`, in source offsets, and the line after them.
+	const leadingDefinitions = (first: number, last: number): number => {
+		const starts: Array<number> = [];
+		let text = "";
+		for (let line = first; line <= last; line++) {
+			starts.push(text.length);
+			text += `${(context.lines[line - 1] ?? "").slice(contentPrefix(line))}\n`;
+		}
+		if (!text.trimStart().startsWith("[")) return first;
+		const parsed = MarkdownDocument.parseResult(text, options);
+		if (!Result.isSuccess(parsed)) return first;
+		const toSource = (offset: number) => {
+			let index = starts.length - 1;
+			while (index > 0 && (starts[index] as number) > offset) index--;
+			const line = first + index;
+			return context.mapping.lineStart(line) + contentPrefix(line) + offset - (starts[index] as number);
+		};
+		let next = first;
+		for (const node of childrenOf(parsed.success.root as MarkdownNode)) {
+			if (node.type !== "definition") break;
+			const start = toSource(node.position.start.offset);
+			const end = toSource(node.position.end.offset - 1) + 1;
+			extraDefinitions.push({ start, end });
+			next = context.mapping.lineNumber(end - 1) + 1;
+		}
+		return next;
 	};
 
 	const blocks = context.document.findAll(
@@ -582,21 +616,44 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 			}
 			continue;
 		}
-		if (flow.has(block.position.start.line)) continue;
-		const events = new BlockEvents(shims);
-		if (checkbox !== undefined && checkbox.to === block.position.start.offset) {
-			scanText(documentView, events, checkbox.from, checkbox.to);
+		const startLine = block.position.start.line;
+		const endLine = block.position.end.line;
+		// The segments of the block micromark reads as paragraphs: runs of lines no break holds.
+		const segments: Array<{ readonly first: number; readonly last: number; readonly opens: boolean }> = [];
+		if (block.type === "paragraph") {
+			let first: number | undefined;
+			let opens = false;
+			for (let line = startLine; line <= endLine + 1; line++) {
+				if (line <= endLine && !breaks.has(line)) {
+					first ??= line;
+					continue;
+				}
+				if (first !== undefined) segments.push({ first, last: line - 1, opens });
+				first = undefined;
+				opens = true;
+			}
+		} else if (!flow.has(startLine)) segments.push({ first: startLine, last: endLine, opens: false });
+		for (const [index, segment] of segments.entries()) {
+			const firstLine = segment.opens ? leadingDefinitions(segment.first, segment.last) : segment.first;
+			if (firstLine > segment.last) continue;
+			const from =
+				index === 0 && firstLine === startLine
+					? block.position.start.offset
+					: context.mapping.lineStart(firstLine) + contentPrefix(firstLine);
+			const to = segment.last === endLine ? block.position.end.offset : lineEnd(segment.last);
+			const events = new BlockEvents(shims);
+			if (index === 0 && checkbox !== undefined && checkbox.to === block.position.start.offset) {
+				scanText(documentView, events, checkbox.from, checkbox.to);
+			}
+			for (const child of childrenOf(block)) {
+				const start = child.position.start.offset;
+				const end = child.position.end.offset;
+				if (end <= from || start >= to) continue;
+				if (start >= from && end <= to) visit(documentView, events, child);
+				else if (child.type === "text") scanText(documentView, events, Math.max(start, from), Math.min(end, to));
+			}
 		}
 		checkbox = undefined;
-		const from = directiveEnd(block);
-		for (const child of childrenOf(block)) {
-			if (child.position.end.offset <= from) continue;
-			if (child.position.start.offset < from) {
-				if (child.type === "text") scanText(documentView, events, from, child.position.end.offset);
-				continue;
-			}
-			visit(documentView, events, child);
-		}
 	}
 
 	const references = new Map<string, Array<ReferenceUse>>();
@@ -616,13 +673,22 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 
 	const definitions = new Map<string, ReferenceDefinition>();
 	const duplicates: Array<{ readonly label: string; readonly offset: number }> = [];
+	const spans: Array<{ readonly start: number; readonly end: number; readonly footnote: boolean }> = [];
 	for (const node of context.document.findAll(
 		(each) => each.type === "definition" || each.type === "footnoteDefinition",
 	) as ReadonlyArray<MarkdownNode>) {
 		if (flow.has(node.position.start.line)) continue;
-		const start = node.position.start.offset;
-		const end = node.position.end.offset;
-		const footnote = node.type === "footnoteDefinition";
+		spans.push({
+			start: node.position.start.offset,
+			end: node.position.end.offset,
+			footnote: node.type === "footnoteDefinition",
+		});
+	}
+	for (const extra of extraDefinitions) spans.push({ ...extra, footnote: false });
+	spans.sort((a, b) => a.start - b.start);
+	const definitionSpans: Array<{ readonly start: number; readonly end: number }> = [];
+	for (const { start, end, footnote } of spans) {
+		if (!footnote) definitionSpans.push({ start, end });
 		const close = labelEnd(source, start, end);
 		const offset = start + (footnote ? 2 : 1);
 		const label = normalizeLabel(`${footnote ? "^" : ""}${source.slice(offset, close)}`);
@@ -637,5 +703,29 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 		}
 		definitions.set(label, { offset, destination });
 	}
-	return { references, shortcuts, definitions, duplicates, media };
+	// A reference the kit's parser left as text because the definition it names is one the kit reads as paragraph text
+	// (see `leadingDefinitions`) is a link or image to micromark, which reads that definition: MD054 reads it too.
+	if (extraDefinitions.length > 0) {
+		const recovered = new Set(
+			extraDefinitions.map(({ start, end }) => normalizeLabel(source.slice(start + 1, labelEnd(source, start, end)))),
+		);
+		for (const shim of shims) {
+			if (!recovered.has(normalizeLabel(shim.label))) continue;
+			const image = source.charAt(shim.start) === "!";
+			const open = shim.start + (image ? 1 : 0);
+			const close = labelEnd(source, open, shim.end);
+			const label = source.slice(open + 1, close);
+			const kind = shim.type;
+			media.push({
+				kind,
+				image,
+				start: shim.start,
+				end: shim.end,
+				label,
+				...(kind === "full" ? { reference: shim.label } : {}),
+			});
+		}
+		media.sort((a, b) => a.start - b.start);
+	}
+	return { references, shortcuts, definitions, duplicates, media, definitionSpans };
 });

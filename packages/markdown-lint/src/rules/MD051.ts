@@ -303,10 +303,8 @@ export const MD051: Lint.LintRule = LintRule.make({
 			}
 		}
 
-		for (const node of context.document.findAll("definition") as ReadonlyArray<MarkdownNode>) {
-			if (flow.has(node.position.start.line)) continue;
-			const start = node.position.start.offset;
-			const end = node.position.end.offset;
+		// Every definition, duplicates and those after a math block or a directive line included (see `referenceData`).
+		for (const { start, end } of referenceData(context).definitionSpans) {
 			const at = skipSpace(source, labelEnd(source, start, end) + 2, end);
 			if (source.charAt(at) === "<") {
 				let stop = at + 1;
