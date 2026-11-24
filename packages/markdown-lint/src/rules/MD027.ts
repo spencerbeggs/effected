@@ -7,13 +7,20 @@
 // a list item's marker, a footnote's label and an item's continuation
 // indentation each a prefix token of their own. micromark has no such token
 // in an indented code block, an HTML block, a fenced code block's closing
-// line or a table's delimiter row, and on a fenced code block's inner line
-// only as much as the fence is indented.
+// line or a table's delimiter row, on a blank line after a list item's
+// content (the item's blank continuation), and on a fenced code block's inner
+// line only as much as the fence is indented.
 
 import type { Code, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
 import { fencedInterior } from "../internal/code-blocks.js";
-import { containerStep, containersAt, contentInContainers, flowNodes } from "../internal/containers.js";
+import {
+	containerStep,
+	containersAt,
+	contentInContainers,
+	flowNodes,
+	lastContentLine,
+} from "../internal/containers.js";
 import { addRange, errorContext, firstContentLine } from "../internal/lines.js";
 import { flagSettingOn } from "../internal/settings.js";
 import type { LintContext } from "../LintContext.js";
@@ -60,6 +67,13 @@ export const MD027: Lint.LintRule = LintRule.make({
 	check: (context, report) => {
 		const includeListItems = flagSettingOn(context.config, "list_items");
 		const limits = prefixLimits(context);
+		// A blank quoted line after a list item's content is the item's blank continuation to micromark, its
+		// whitespace no `linePrefix`, until a line with content ends the run.
+		const itemBlanks = new Set<number>();
+		for (const item of flowNodes(context, new Set(["listItem"]))) {
+			let line = lastContentLine(item, context.lines) + 1;
+			while (line <= context.lines.length && /^[ \t>]*$/.test(context.lines[line - 1] ?? "")) itemBlanks.add(line++);
+		}
 		// micromark places a continuation line's prefix tokens inside every block still open from the lines before,
 		// so a list that started earlier and spans the line is an ancestor of its `linePrefix`.
 		const listContinues = new Set<number>();
@@ -120,7 +134,7 @@ export const MD027: Lint.LintRule = LintRule.make({
 				}
 				at = containerStep(line, lineNumber, container, at) as number;
 			}
-			if (!lazy && afterQuote) found(at, inList, limits.get(lineNumber));
+			if (!lazy && afterQuote && !itemBlanks.has(lineNumber)) found(at, inList, limits.get(lineNumber));
 		}
 	},
 });

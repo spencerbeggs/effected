@@ -38,6 +38,14 @@ const extra = [
 	{ name: "front matter", source: "---\ntitle: x\n---\n>  a\n" },
 	{ name: "long line", source: `>  ${"word ".repeat(10)}\n` },
 	{ name: "CRLF", source: ">  a\r\n>  b\r\n>  \r\n" },
+	// A blank quoted line after a list item is the item's blank continuation, not a `linePrefix`.
+	{ name: "blank between items", source: "> - a\n>    \n> - b\n" },
+	{ name: "blank after a list", source: "> - a\n>    \n" },
+	{ name: "blank after a list, then text", source: "> - a\n>  \n> text\n" },
+	{ name: "blank after an ordered list", source: "> 1. a\n>    \n" },
+	{ name: "blank after a nested-quote list", source: "> > - a\n> >    \n" },
+	{ name: "blank after a sublist", source: "> - a\n>   - b\n>      \n" },
+	{ name: "blank after text after a list", source: "> - a\n>\n> text\n>   \n> more\n" },
 ];
 
 const run = runRule(MD027);
@@ -85,6 +93,28 @@ describe("MD027 no-multiple-space-blockquote", () => {
 		DIFFERENTIAL_TIMEOUT,
 	);
 
+	// Not a divergence of the port: after a tab right behind `>`, markdownlint reports a range over the partly
+	// consumed tab and throws on its own `range`. The kit reports nothing there.
+	it(
+		"reads a tab right after the marker where markdownlint throws on its own range",
+		() => {
+			const result = settingsDifferential(
+				MD027,
+				[{ list_items: true }],
+				[{ name: "tab after the marker", source: ">\ttab\n" }],
+			);
+			assert.deepStrictEqual(
+				result.divergences.map((divergence) => divergence.fixture),
+				["tab after the marker"],
+			);
+			assert.match(
+				result.divergences[0]?.reason ?? "",
+				/^markdownlint throws: Value of 'range' passed to onError by 'MD027' is incorrect for 'input'\.; kit: 0 findings$/,
+			);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
 	it("reports the extra spaces with the line as context and a fix that deletes them", () => {
 		const source = ">   text\n";
 		const findings = run(source);
@@ -104,4 +134,4 @@ describe("MD027 no-multiple-space-blockquote", () => {
 });
 
 // markdownlint's MD027 findings over the corpus (LF and CRLF) and the extras.
-const ORACLE_FINDINGS_DEFAULT = 151;
+const ORACLE_FINDINGS_DEFAULT = 152;

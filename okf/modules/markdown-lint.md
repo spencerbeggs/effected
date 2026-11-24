@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T10:14:49Z
+  at: 2026-11-24T10:37:11Z
 integrity:
   generated:
-    body: a58c8b260a24aa92
+    body: 24d35a01e7af27c9
 ---
 
 # `@effected/markdown-lint`
@@ -345,7 +345,9 @@ plain synchronous function; no logging, no metrics.
   60,000 code-span, link and lone `$` groups, one 198 KB line holding an
   inline data-URI image, one line of 16,000 HTML comments), two shapes MD036
   reads (2,000 HTML blocks each holding an emphasis line, one paragraph of
-  40,000 emphasis spans), `applyFixes` over
+  40,000 emphasis spans), two shapes MD030's list end reads (a blockquote of
+  20,000 one-item lists, a list nested 40 deep in a blockquote before 20,000
+  quoted blank lines), `applyFixes` over
   90,000 fixes, and three settings that drive a loop or a repeat
   (`lines_above: 1e999` and `spaces_per_tab: 1e9` in a `configure-file`
   comment, `lines_above: 1e8`), and holds each to a 5,000 ms ceiling: far
@@ -405,6 +407,10 @@ plain synchronous function; no logging, no metrics.
   `ol_single` other than its default reports their spacing. Matching it needs
   the parser to read micromark's rule. Pinned by tests (MD029 2 inputs under
   each of `one` and `zero`; MD030 2 under each of two `ol_single` cases).
+- MD027 after a tab right behind a blockquote marker (`>\ttab`):
+  markdownlint reports a range over the partly consumed tab and throws on
+  its own `range`; the kit reports nothing. Pinned by a test as an upstream
+  failure (1 input).
 - MD007 under a negative `indent`: markdownlint's fix deletes past the end
   of a nested item's line, and markdownlint throws on its own `fixInfo`; the
   kit's deletion stops at the line's end. Pinned by a test as an upstream
