@@ -36,6 +36,11 @@ const extra = [
 	{ name: "quoted lists of two markers", source: "> - a\n>   + b\n>   - c\n" },
 	{ name: "footnote lists", source: "[^1]: x\n\n    - a\n      - b\n\n    1. c\n\nText[^1]\n" },
 	{ name: "empty last item", source: "- a\n-\n\ntext\n" },
+	// The next container may follow an outer blockquote or footnote, and a footnote definition is one.
+	{ name: "nested quote, then an outer list", source: "> > - a\n> > - b\n> - c\n" },
+	{ name: "deeply nested quote, then an outer list", source: "> > > - a\n> > > - b\n> - c\n" },
+	{ name: "footnote in a quote, then a list", source: "> [^1]: x\n>     - a\n>     - b\n> - c\n" },
+	{ name: "quoted list, then a footnote", source: "> - a\n> - b\n> [^1]: n\n" },
 ];
 
 const run = runRule(MD030);
@@ -62,6 +67,7 @@ describe("MD030 list-marker-space", () => {
 		[{ ol_multi: 3 }, true, []],
 		[{ ul_single: 3, ol_single: 2, ul_multi: 3, ol_multi: 2 }, true, interrupting],
 		[{ ul_single: 1, ol_single: 1, ul_multi: 1, ol_multi: 1 }, false, []],
+		[{ ul_single: 2, ul_multi: 3 }, true, []],
 	] as const) {
 		it(
 			`agrees with markdownlint under ${JSON.stringify(settings)}`,

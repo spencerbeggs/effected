@@ -193,6 +193,7 @@ export const listItemPrefix = (context: LintContext, item: ListItem): ListItemPr
 	const lineNumber = item.position.start.line;
 	const line = context.lines[lineNumber - 1] ?? "";
 	const at = offset - context.mapping.lineStart(lineNumber);
+	// A list item starts at its marker, so the match always succeeds; the fallback only keeps the reading total.
 	const marker = (/^(?:\d{1,9}[.)]|[-+*])/.exec(line.slice(at))?.[0] ?? "-").length;
 	const rest = line.slice(at + marker);
 	const spaces = /^[ \t]*/.exec(rest)?.[0] ?? "";
@@ -268,6 +269,9 @@ const nextSiblings: (context: LintContext) => ReadonlyMap<MarkdownNode, Markdown
 	return next;
 });
 
+// The blocks whose start micromark reads only after exiting the list before them: new containers.
+const followingContainers: ReadonlySet<string> = new Set(["list", "blockquote", "footnoteDefinition"]);
+
 // A blank line that carries a blockquote's marker: nothing but markers and whitespace, at least one marker.
 const quotedBlank = /^[ \t]*>[ \t>]*$/;
 
@@ -276,9 +280,11 @@ const quotedBlank = /^[ \t]*>[ \t>]*$/;
  * item, it is the list's last content line. Inside a blockquote or a
  * footnote definition micromark exits the list only once the next line's
  * container prefix is read: it ends on the line of the next block after the
- * list (its next sibling, or its enclosing items' and lists', up to the
- * blockquote or footnote) when that is a container (a list or a blockquote),
- * and otherwise past the blank lines after it that carry a blockquote marker.
+ * list (its next sibling, or the next sibling of the nearest enclosing node
+ * that has one, through any depth of blockquotes and footnotes) when that is
+ * a container (a list, a blockquote or a footnote definition), and otherwise
+ * past the blank lines after it, inside its nearest blockquote or footnote,
+ * that carry a blockquote marker.
  * @internal
  */
 export const listTokenEndLine = (
@@ -289,21 +295,20 @@ export const listTokenEndLine = (
 	const last = lastContentLine(list, context.lines);
 	if (!ancestors.some((node) => node.type === "blockquote" || node.type === "footnoteDefinition")) return last;
 	const siblings = nextSiblings(context);
-	let next: MarkdownNode | undefined;
-	let bound = context.lines.length;
-	let node = list;
+	// The next block after the list at any depth: its next sibling, or the next sibling of the nearest enclosing
+	// node that has one.
+	let next = siblings.get(list);
 	for (let index = ancestors.length - 1; index >= 0 && next === undefined; index--) {
-		const parent = ancestors[index] as MarkdownNode;
-		next = siblings.get(node);
-		if (parent.type === "blockquote" || parent.type === "footnoteDefinition") {
-			bound = parent.position.end.line;
-			break;
-		}
-		node = parent;
+		next = siblings.get(ancestors[index] as MarkdownNode);
 	}
-	if (next !== undefined && (next.type === "list" || next.type === "blockquote")) return next.position.start.line;
+	if (next !== undefined && followingContainers.has(next.type)) return next.position.start.line;
+	// The blank lines it runs past are its own blockquote's: they end with the nearest blockquote or footnote.
+	const nearest = ancestors.findLast((node) => node.type === "blockquote" || node.type === "footnoteDefinition");
 	let line = last;
-	if (next !== undefined) bound = next.position.start.line - 1;
+	const bound = Math.min(
+		nearest?.position.end.line ?? context.lines.length,
+		next === undefined ? context.lines.length : next.position.start.line - 1,
+	);
 	while (line < bound && quotedBlank.test(context.lines[line] ?? "")) line++;
 	return line;
 };

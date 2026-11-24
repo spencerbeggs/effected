@@ -89,6 +89,10 @@ const emphasisSpans = (pairs: number): string => `# T\n\n${"*a* **b** ".repeat(p
 const quotedListsOfTwoMarkers = (count: number): string =>
 	`# T\n\n${Array.from({ length: count }, (_, index) => `> ${index % 2 === 0 ? "-" : "+"}  item ${index}`).join("\n")}\n`;
 
+// Every nested list that ends on one line walks the quoted blank lines after it: depth times run.
+const deepQuotedListThenBlanks = (depth: number, blanks: number): string =>
+	`# T\n\n${Array.from({ length: depth }, (_, index) => `> ${"  ".repeat(index)}- item ${index}`).join("\n")}\n${">\n".repeat(blanks)}> text\n`;
+
 const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a 400-column table with CJK cells", wideTable(400, 150)],
 	["2,000 unclosed fences in list items", unclosedFences(2000)],
@@ -100,6 +104,7 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["2,000 HTML blocks each holding an emphasis line", htmlBlocksOfEmphasis(2000)],
 	["a paragraph of 40,000 emphasis spans", emphasisSpans(20000)],
 	["a blockquote of 20,000 one-item lists", quotedListsOfTwoMarkers(20000)],
+	["a list nested 40 deep in a blockquote, then 20,000 quoted blank lines", deepQuotedListThenBlanks(40, 20000)],
 ];
 
 describe("hostile inputs", () => {
