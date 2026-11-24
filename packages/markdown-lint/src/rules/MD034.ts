@@ -101,12 +101,13 @@ const urlsAt = (source: string, offset: number, text: string): ReadonlyArray<Lit
 // The `www.` hosts written in another case in each inline block, which micromark links and the kit's parser,
 // following the spec, does not: the block re-read once with each `www` lowered, its literals kept where they open on a
 // `www` in another case inside a text node in `texts` (disjoint, in document order).
-const otherCaseWww = (context: LintContext, texts: ReadonlyArray<Span>): ReadonlyArray<Literal> => {
-	const { source } = context;
+const otherCaseWww = (
+	source: string,
+	blocks: ReadonlyArray<MarkdownNode>,
+	texts: ReadonlyArray<Span>,
+): ReadonlyArray<Literal> => {
 	const found: Array<Literal> = [];
-	for (const block of context.document.findAll(
-		(node) => node.type === "paragraph" || node.type === "heading" || node.type === "tableCell",
-	) as ReadonlyArray<MarkdownNode>) {
+	for (const block of blocks) {
 		const start = block.position.start.offset;
 		const text = source.slice(start, block.position.end.offset);
 		if (!/(?!www)[wW]{3}\./.test(text)) continue;
@@ -119,11 +120,28 @@ const otherCaseWww = (context: LintContext, texts: ReadonlyArray<Span>): Readonl
 	return found;
 };
 
-const isAsciiAlpha = (char: string): boolean => /^[A-Za-z]$/.test(char);
-const isAsciiAlphanumeric = (char: string): boolean => /^[A-Za-z0-9]$/.test(char);
+// Character classes by code, for the scan that visits every character of a block: a one-character string or "".
+const codeOf = (char: string): number => (char.length === 1 ? char.charCodeAt(0) : -1);
+const isAsciiAlpha = (char: string): boolean => {
+	const code = codeOf(char) | 0x20;
+	return code >= 0x61 && code <= 0x7a;
+};
+const isAsciiAlphanumeric = (char: string): boolean => {
+	const code = codeOf(char);
+	return (code >= 0x30 && code <= 0x39) || isAsciiAlpha(char);
+};
 // micromark's `gfmAtext`: what an address's local part holds.
-const isAtext = (char: string): boolean => char.length === 1 && (isAsciiAlphanumeric(char) || "+-._".includes(char));
-const isAsciiPunctuation = (char: string): boolean => /^[!-/:-@[-`{-~]$/.test(char);
+const isAtext = (char: string): boolean =>
+	char === "+" || char === "-" || char === "." || char === "_" || isAsciiAlphanumeric(char);
+const isAsciiPunctuation = (char: string): boolean => {
+	const code = codeOf(char);
+	return (
+		(code >= 0x21 && code <= 0x2f) ||
+		(code >= 0x3a && code <= 0x40) ||
+		(code >= 0x5b && code <= 0x60) ||
+		(code >= 0x7b && code <= 0x7e)
+	);
+};
 
 // micromark's `tokenizeEmailAutolink` from `at`: the end of the address, or -1 where none starts.
 const emailEnd = (source: string, at: number, end: number): number => {
@@ -168,14 +186,16 @@ interface BlockScan {
  * Code spans, inline HTML, autolinks, the URL literals in `urls`, inline math and escapes hold neither; each leaves
  * its last character as the one before what follows, which is what an address's start checks.
  */
-const scanBlocks = (context: LintContext, urls: ReadonlyArray<Literal>): BlockScan => {
+const scanBlocks = (
+	context: LintContext,
+	blocks: ReadonlyArray<MarkdownNode>,
+	urls: ReadonlyArray<Literal>,
+): BlockScan => {
 	const { source } = context;
 	const inMath = inMathText(context);
 	const scan: BlockScan = { open: [], emails: [], bracketMath: [] };
 	const urlSpans = urls.map((url) => [url.start, url.end] as Span).sort((a, b) => a[0] - b[0]);
-	for (const block of context.document.findAll(
-		(node) => node.type === "paragraph" || node.type === "heading" || node.type === "tableCell",
-	) as ReadonlyArray<MarkdownNode>) {
+	for (const block of blocks) {
 		const skips: Array<Span> = [];
 		const collect = (nodes: ReadonlyArray<MarkdownNode>): void => {
 			for (const node of nodes) {
@@ -352,13 +372,18 @@ const bareUrls = (context: LintContext): ReadonlyArray<Literal> => {
 	const root = context.document.root as MarkdownNode;
 	for (const [index, child] of childrenOf(root).entries()) visit(child, childrenOf(root), index);
 
+	// The inline blocks (paragraphs, headings, table cells) the scans and re-reads go over, in document order.
+	const blocks = context.document.findAll(
+		(node) => node.type === "paragraph" || node.type === "heading" || node.type === "tableCell",
+	) as ReadonlyArray<MarkdownNode>;
 	const textSpans = texts.map((text) => [text.position.start.offset, text.position.end.offset] as Span);
-	for (const literal of otherCaseWww(context, textSpans)) {
+	for (const literal of otherCaseWww(source, blocks, textSpans)) {
 		if (!inMath(literal.start)) urls.push({ ...literal, wrapped: false });
 	}
 	// The rest of a block after a `[` in inline math: the kit's parser took the bracket as open and linked nothing
 	// after it. One re-read per block, its literals kept where they open in a text node the walk reaches.
-	const first = scanBlocks(context, urls);
+	const first = scanBlocks(context, blocks, urls);
+	let added = false;
 	if (first.bracketMath.length > 0) {
 		const known = new Set(urls.map((url) => url.start));
 		for (const [from, end] of first.bracketMath) {
@@ -373,11 +398,15 @@ const bareUrls = (context: LintContext): ReadonlyArray<Literal> => {
 				if (text === undefined || literal.start >= text[1]) continue;
 				if (known.has(literal.start) || inMath(literal.start)) continue;
 				const url = micromarkUrl(source, literal.start, literal.end);
-				if (url !== undefined) urls.push({ ...url, wrapped: false });
+				if (url !== undefined) {
+					urls.push({ ...url, wrapped: false });
+					added = true;
+				}
 			}
 		}
 	}
-	const scan = first.bracketMath.length > 0 ? scanBlocks(context, urls) : first;
+	// A URL the re-read added holds no address and balances no bracket: scan again only then.
+	const scan = added ? scanBlocks(context, blocks, urls) : first;
 	reached.sort((a, b) => a[0] - b[0]);
 	const found: Array<Literal> = [
 		...urls.filter((url) => !url.wrapped && !within(scan.open, url.start)),
