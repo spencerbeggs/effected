@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-24T01:25:19Z
+  at: 2026-11-24T02:19:01Z
 integrity:
   generated:
-    body: 89f565fe6ce29b59
+    body: ed36a153770f4021
 ---
 
 # `@effected/markdown-lint`
@@ -89,6 +89,8 @@ context construction and rule run both hosts share, which is what makes
   file's lint — and `fixInfo` for an edit
   inside one line or a whole-line delete (`deleteCount: -1`). An edit that
   crosses a line break otherwise has no `fixInfo` and keeps the kit `edit`.
+  `lineStart(lineNumber)` is a line's start offset: the one line table the
+  rules read, so no rule keeps a second one.
 - `MarkdownLint` — `lint(source, rules, options)` (total and synchronous),
   `lintDocument(document, rules)` for an already-parsed document (the same
   reading and findings as `lint` over `document.source`: the parse is
@@ -147,7 +149,10 @@ blank lines). `LintFrontmatter.node` is `Option.some` only when the kit
 captured that block too; a block the kit does not capture (`{…}`, a
 `...`-closed one) is parsed as spaces of equal length, so no tree node lies
 inside it and no offset moves, and a `---json` block markdownlint does not
-read as front matter is not captured either.
+read as front matter is not captured either. The text before masking is not on
+`LintContext`: only the reader of an HTML block that is one comment needs
+it (markdownlint reads that comment before masking it), the host records it
+internally, and under markdownlint it equals the masked text.
 
 ## Configuration
 

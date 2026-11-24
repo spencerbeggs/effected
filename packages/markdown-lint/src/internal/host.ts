@@ -19,6 +19,7 @@ import type { LintContext, LintFrontmatter, LintReport } from "../LintContext.js
 import { LintDiagnostic } from "../LintDiagnostic.js";
 import type { LintRule } from "../LintRule.js";
 import { PositionMapping } from "../PositionMapping.js";
+import { registerUnmaskedSource } from "./memo.js";
 import { frontMatterLineCount, maskHtmlComments } from "./reading.js";
 
 /** How a host parses the text it lints. @internal */
@@ -196,12 +197,12 @@ export interface RuleRun {
 /** Build the context `rule` runs in over `reading`. @internal */
 export const makeContext = (reading: Reading, rule: LintRule, run: RuleRun): LintContext => {
 	const { mapping } = reading;
+	registerUnmaskedSource(mapping, reading.unmaskedSource);
 	return {
 		name: run.name,
 		document: reading.document,
 		root: reading.document.root,
 		source: reading.source,
-		unmaskedSource: reading.unmaskedSource,
 		lines: mapping.lines(),
 		frontmatter: reading.frontmatter,
 		mapping,

@@ -7,6 +7,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MarkdownDocument, MarkdownParseOptions } from "@effected/markdown";
 import { Option, Result } from "effect";
+import { unmaskedSource } from "../src/internal/memo.js";
 import type { LintConfigRecord } from "../src/LintConfig.js";
 import type { LintContext } from "../src/LintContext.js";
 import type { LintDiagnostic } from "../src/LintDiagnostic.js";
@@ -137,7 +138,7 @@ describe("MarkdownLint reads a file as markdownlint does", () => {
 		const context = capture(source);
 		assert.deepStrictEqual(context.lines, ["Text <!-- ...... --> end", ""]);
 		assert.strictEqual(context.source, "Text <!-- ...... --> end\n");
-		assert.strictEqual(context.unmaskedSource, source);
+		assert.strictEqual(unmaskedSource(context), source);
 		assert.strictEqual(context.source.length, source.length);
 	});
 

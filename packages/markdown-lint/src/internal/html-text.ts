@@ -8,7 +8,7 @@ import { flowNodes } from "./containers.js";
 import { rereadHtmlBlock } from "./html-reread.js";
 import { mathFlowLines } from "./math-flow.js";
 import { inSpans, mathTextSpans } from "./math-text.js";
-import { perReading } from "./memo.js";
+import { perReading, unmaskedSource } from "./memo.js";
 
 /** One `htmlText` token: where its text starts, the text, and whether a table holds it. @internal */
 export interface HtmlText {
@@ -39,7 +39,7 @@ const inlineHtml = (node: MarkdownNode, inTable: boolean, found: Array<{ node: M
 export const isHtmlFlowComment = (context: LintContext, node: MarkdownNode): boolean => {
 	if (node.type !== "html") return false;
 	// markdownlint reads the comment before masking it, so `<!-- a --->` still ends in `-`.
-	const text = context.unmaskedSource.slice(node.position.start.offset, node.position.end.offset);
+	const text = unmaskedSource(context).slice(node.position.start.offset, node.position.end.offset);
 	if (!text.startsWith("<!--") || !text.endsWith("-->")) return false;
 	const comment = text.slice(4, -3);
 	return !comment.startsWith(">") && !comment.startsWith("->") && !comment.endsWith("-");
