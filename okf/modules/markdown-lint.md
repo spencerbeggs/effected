@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T14:22:44Z
+  at: 2026-11-24T14:23:44Z
 integrity:
   generated:
-    body: 2598546da13745e5
+    body: a57321fc2a7f29ad
 ---
 
 # `@effected/markdown-lint`
@@ -272,6 +272,20 @@ to equal it, both lists to be in markdownlint's order, every built-in rule
 to be ported or uncovered exactly once, and `./rules` to export exactly
 `./rules/all`'s rules.
 
+MD034 reads micromark's GFM literal autolinks, which differ from the GFM
+spec the kit's parser follows, so the rule re-reads the kit's literals as
+micromark does: `ftp://` is no literal; after `mailto:` or `xmpp:` only the
+address is; a `www.` in another case (`WWW.`) is one; a URL ends before a
+trailing `]`; an address starts past a character reference before it and is
+none after an escape; and no literal is linked while a `[` or `![` before it
+in the block is unbalanced, a `]` balancing the latest opener whether or not
+it makes a link. These are readings, not divergences: the literal-autolink
+grid (`__test__/helpers/autolink-grid.ts`, 25 shapes in 18 placements)
+agrees finding for finding. Porting it found two kit parser defects, fixed
+in `@effected/markdown`: an address after an escape or entity was
+positioned inside it, and the email postprocess went quadratic on a run of
+many text nodes.
+
 ## Failure posture
 
 A markdown document always parses except one nested past the kit's
@@ -347,7 +361,10 @@ plain synchronous function; no logging, no metrics.
   reads (2,000 HTML blocks each holding an emphasis line, one paragraph of
   40,000 emphasis spans), two shapes MD030's list end reads (a blockquote of
   20,000 one-item lists, a list nested 40 deep in a blockquote before 20,000
-  quoted blank lines), `applyFixes` over
+  quoted blank lines), one line of 20,000 reversed links beside code spans
+  (MD011), 2,000 images holding references beside 2,000 definitions (MD039,
+  MD042, MD059), one line of 20,000 bracketed spans and addresses (MD034),
+  `applyFixes` over
   90,000 fixes, and three settings that drive a loop or a repeat
   (`lines_above: 1e999` and `spaces_per_tab: 1e9` in a `configure-file`
   comment, `lines_above: 1e8`), and holds each to a 5,000 ms ceiling: far
@@ -536,8 +553,9 @@ plain synchronous function; no logging, no metrics.
   column. The kit reports it once, as 0.42.1 did; a defined reference is
   reported once by both. Pinned by a test (MD033 4 inputs). The same copy
   takes `autolink*`, `codeText*`, `attentionSequence` and `mathText*`
-  events, so expect the same double count when MD034, MD049 or MD050 is
-  ported. MD038 is spared: the copy takes a code span's `codeTextData` and
+  events, so expect the same double count when MD049 or MD050 is
+  ported. MD034 is spared: micromark links no literal while a label opener
+  before it is unbalanced, so a bracket holds none to copy. MD038 is spared: the copy takes a code span's `codeTextData` and
   `codeTextPadding` but not its `codeText` token, which MD038 walks, so it
   reports a code span in an undefined reference once (the code-span grid
   pins `[\`  x\`][undef]`).
