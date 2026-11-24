@@ -176,7 +176,7 @@ export const directiveBlockGrid: ReadonlyArray<DifferentialInput> = (() => {
 	return grid;
 })();
 
-// The review's lists ended by a directive line.
+// Lists ended by a directive line: a leaf, or a container directive's opening or closing fence, plain and quoted.
 export const directiveListEnds: ReadonlyArray<DifferentialInput> = [
 	{ name: "list then a leaf", source: "- a\n::leaf\n" },
 	{ name: "list in a container directive", source: "- a\n:::note\n- b\n:::\n" },

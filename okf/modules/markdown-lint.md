@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T20:36:03Z
+  at: 2026-11-24T21:46:39Z
 integrity:
   generated:
-    body: 09ae7b853cddeeac
+    body: 9e4cebf488a17784
 ---
 
 # `@effected/markdown-lint`
@@ -458,7 +458,7 @@ plain synchronous function; no logging, no metrics.
   `README.md` records the tag, the commit and the count. Never edit a fixture
   by hand; re-run the script after re-pinning the submodule.
 - **Hostile-input ceilings.** `hostile-inputs.test.ts` lints seven shapes that
-  once made a lint with all 22 rules superlinear (a 400-column table with CJK
+  once made a lint with every rule superlinear (a 400-column table with CJK
   cells, 2,000 unclosed fences in list items, a 9,000-block mixed document,
   3,000 lines in blockquotes 40 deep with inline HTML, one paragraph of
   60,000 code-span, link and lone `$` groups, one 198 KB line holding an
@@ -475,11 +475,10 @@ plain synchronous function; no logging, no metrics.
   beside 20,000 duplicate definitions (MD052), 20,000 unused definitions
   (MD053), 5,000 repeated headings with 20,000 fragments in another case
   (MD051), a table of 20,000 rows and a row of 50,000 pipes (the table
-  readers), with ratio guards for MD054 over every style disallowed, MD051
-  over repeated headings and MD055 over a tall table and a run of pipes, with ratio guards for the
-  math re-read, undefined references, alternating images and links, and
-  label starts closed in reverse,
-  `applyFixes` over
+  readers), ratio guards for MD054 over every style disallowed, MD051 over
+  repeated headings, MD055 over a tall table and a run of pipes, the math
+  re-read, undefined references, alternating images and links, and label
+  starts closed in reverse, `applyFixes` over
   90,000 fixes, and three settings that drive a loop or a repeat
   (`lines_above: 1e999` and `spaces_per_tab: 1e9` in a `configure-file`
   comment, `lines_above: 1e8`), and holds each to a 5,000 ms ceiling: far

@@ -51,10 +51,10 @@ sources:
     resource: ../../packages/markdown/__test__/visitor-traverse.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T04:25:23Z
+  at: 2026-11-24T21:46:39Z
 integrity:
   generated:
-    body: 85f3d532fb02f157
+    body: 3e7846c4da708e39
 ---
 
 # `@effected/markdown`
@@ -617,7 +617,12 @@ hardening posture working, not failures. The bare link-destination scan is
 capped at a fixed open-paren count — an inherited-not-introduced defect,
 since upstream commonmark.js carries the identical uncapped loop, fixed here
 via cmark's own cap and pinned by unit tests plus a growth-ratio guard immune
-to instrumentation and hardware variance. The reference map is keyed through
+to instrumentation and hardware variance. A second growth-ratio guard holds
+one long paragraph of inline nodes linear: an inline position maps through
+the paragraph's per-line segments by binary search, and a link's emphasis
+pass stops at its stack bottom when no delimiter lies above it, where the
+walk inherited from commonmark.js ran on to the base of every delimiter
+still open below. The reference map is keyed through
 a real `Map`, since link labels are attacker-controlled. Malformed input
 yields a typed error or a diagnostic, never a defect, and defect passthrough
 is proven at the facade.
