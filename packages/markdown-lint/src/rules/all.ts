@@ -1,6 +1,7 @@
 /**
  * Every ported markdownlint rule as one array, in markdownlint's own order,
- * and the first names of the built-in rules not yet ported.
+ * and `uncovered`, the first names of the built-in rules not ported:
+ * currently empty, every built-in rule being ported.
  *
  * @remarks
  * The one place the kit collects its rules: importing it reaches every rule
@@ -127,8 +128,13 @@ export const rules: ReadonlyArray<LintRule> = [
 ];
 
 /**
- * The first names of markdownlint's built-in rules that have no port yet,
- * in markdownlint's order.
+ * The first names of markdownlint's built-in rules that are not ported, in
+ * markdownlint's order: currently empty, every built-in rule being ported.
+ *
+ * @remarks
+ * A static list, held to the installed markdownlint by `rules-metadata`'s
+ * gate: a markdownlint release that adds a rule fails that gate until the
+ * rule is ported or its name added here.
  *
  * @public
  */

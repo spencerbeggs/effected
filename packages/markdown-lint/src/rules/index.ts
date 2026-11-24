@@ -6,8 +6,8 @@
  * installed markdownlint by a differential test over its fixture corpus.
  *
  * @remarks
- * `@effected/markdown-lint/rules/all` lists which of markdownlint's rules are
- * still `uncovered`.
+ * `@effected/markdown-lint/rules/all` lists in `uncovered` the built-in rules
+ * not ported: currently none.
  *
  * @packageDocumentation
  */

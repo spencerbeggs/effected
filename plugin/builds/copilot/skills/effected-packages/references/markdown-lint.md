@@ -34,9 +34,9 @@ The root never reaches a rule module or `./config`: import only the rules you ru
 
 ## The rule set
 
-`./rules` ports 22 of markdownlint 0.42's built-in rules, each carrying markdownlint's names, aliases, description, tags and settings (read from `context.config` under markdownlint's names and defaults), and each held finding for finding to markdownlint, fixes included, by a differential test over markdownlint's own fixture corpus: `MD001` `MD003` `MD004` `MD009` `MD010` `MD012` `MD013` `MD018` `MD019` `MD022` `MD023` `MD024` `MD025` `MD026` `MD031` `MD032` `MD033` `MD040` `MD041` `MD045` `MD047` `MD060`. Configure them by number or alias (`"heading-increment": false`) exactly as in a `.markdownlint.jsonc`.
+`./rules` ports all 53 of markdownlint 0.42's built-in rules, each carrying markdownlint's names, aliases, description, tags and settings (read from `context.config` under markdownlint's names and defaults), and each held finding for finding to markdownlint, fixes included, by a differential test over markdownlint's own fixture corpus: `MD001` `MD003` `MD004` `MD005` `MD007` `MD009` `MD010` `MD011` `MD012` `MD013` `MD014` `MD018` `MD019` `MD020` `MD021` `MD022` `MD023` `MD024` `MD025` `MD026` `MD027` `MD028` `MD029` `MD030` `MD031` `MD032` `MD033` `MD034` `MD035` `MD036` `MD037` `MD038` `MD039` `MD040` `MD041` `MD042` `MD043` `MD044` `MD045` `MD046` `MD047` `MD048` `MD049` `MD050` `MD051` `MD052` `MD053` `MD054` `MD055` `MD056` `MD058` `MD059` `MD060`. Configure them by number or alias (`"heading-increment": false`) exactly as in a `.markdownlint.jsonc`.
 
-**`uncovered` is how you say what was not checked.** It lists the first names of the built-in rules with no port, in markdownlint's order. A tool that lints with `rules` and reports clean has checked only the ported set; print `uncovered` (or the part of it the user's config enables) rather than implying markdownlint parity.
+**`uncovered` is how you say what was not checked.** It lists the first names of the built-in rules not ported, in markdownlint's order, and is currently empty: every built-in rule is ported. It is a static list, not a live comparison: when a markdownlint release adds a rule, the package's metadata test fails until a maintainer ports the rule or adds its name to `uncovered`. Keep reading it rather than assuming parity.
 
 ## Config files
 
@@ -112,4 +112,4 @@ export default { customRules: MarkdownlintAdapter.rules([NoH1]) };
 
 ## Not included
 
-The 31 built-in rules in `uncovered`, any markdownlint dependency, and markdownlint-cli2's options files and `overrides`. The rules and the adapter are differentially tested against markdownlint 0.42.2, the version markdownlint-cli2 0.24.2 runs.
+Any markdownlint dependency, and markdownlint-cli2's options files and `overrides`. The rules and the adapter are differentially tested against markdownlint 0.42.2, the version markdownlint-cli2 0.24.2 runs.
