@@ -8,7 +8,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
 import { MD034 } from "../../src/rules/MD034.js";
-import { autolinkGrid } from "../helpers/autolink-grid.js";
+import { addressGrid, autolinkGrid, mathBracketGrid } from "../helpers/autolink-grid.js";
 import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
 import { linkGrid } from "../helpers/link-grid.js";
 
@@ -30,6 +30,19 @@ const extra = [
 	{ name: "address after an escape", source: "x \\.c@d.ef and \\-c@d.ef and \\*a@b.co\n" },
 ];
 
+// micromark reads an address as it reads the text, before emphasis and brackets resolve: around `_`, `/`, an escape
+// or a scheme, and on a second or third `@`, and after inline math holding a bracket.
+const readings = [
+	{ name: "underscores around addresses", source: "_a@b.co_ and _a@b.co and _a@b.co._ and x_a@b.co_ y\n" },
+	{ name: "a second and third at sign", source: "foo@bar.baz@q.co and a@b.co@c.co@d.ef and x@y.z@w\n" },
+	{ name: "a slash or an escape before", source: "x/a@b.co and a\\_b@c.de and \\_c@d.ef\n" },
+	{ name: "domain edges", source: "a@.b.co a@b..co a@b.c1 a@b.co- a@b-.co a.@b.co -@b.co A@B.CO\n" },
+	{ name: "a www or URL holding an at sign", source: "www.a@b.co and https://a@b.co\n" },
+	{ name: "a bracket in math before", source: "$[$ https://a.com and $[$ *www.a.com* and $![$ WWW.a.com\n" },
+	{ name: "a closer in math", source: "[x $]$ https://a.com and [$x$] https://b.com\n" },
+	{ name: "emphasis across an html close tag", source: "<b>_x a@b.co</b> y_ and _x <b>_ a@b.co</b> y_\n" },
+];
+
 const run = runRule(MD034);
 
 describe("MD034 no-bare-urls", () => {
@@ -42,6 +55,27 @@ describe("MD034 no-bare-urls", () => {
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
+
+	it(
+		"agrees with markdownlint over micromark's address and math-bracket readings",
+		() => {
+			const result = differential(MD034, { extra: [...addressGrid, ...mathBracketGrid, ...readings] });
+			// Not a reading the port can take: micromark's address takes the `_` that would open emphasis, so a later `_`
+			// opens emphasis that pairs across the inline HTML close tag, and markdownlint's walk finds no close for the
+			// open tag. The kit's emphasis closes inside the element, so the kit leaves the address in it out.
+			assert.deepStrictEqual(
+				result.divergences.map((divergence) => divergence.fixture),
+				["_a@b.co._ in inside an html element"],
+			);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_READINGS);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
+	it("reads markdownlint's address that takes an emphasis opener inside an html element as the kit's emphasis", () => {
+		const findings = run("<b>_a@b.co._</b> x_\n");
+		assert.deepStrictEqual(findings, []);
+	});
 
 	it("reports a bare URL, with a fix that wraps it in angle brackets", () => {
 		const source = "See https://u.v/x for more.\n";
@@ -62,3 +96,6 @@ describe("MD034 no-bare-urls", () => {
 
 // markdownlint's MD034 findings over the corpus (LF and CRLF) and the grids.
 const ORACLE_FINDINGS_DEFAULT = 333;
+
+// markdownlint's MD034 findings over the corpus (LF and CRLF), the address and math-bracket grids and the readings.
+const ORACLE_FINDINGS_READINGS = 384;

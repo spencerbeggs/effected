@@ -110,6 +110,13 @@ const imagesAndDefinitions = (count: number): string =>
 // MD034 checks each literal against the unbalanced label spans before it: one line of 20,000 bracketed addresses.
 const bracketedAddresses = (count: number): string => `# T\n\n${"[a] b@c.de ".repeat(count)}\n`;
 
+// MD034 pairs each inline HTML open tag with its close among the same siblings: one line of 24,000 unclosed tags,
+// which a forward scan per open tag made quadratic (16,000 took 4.8 s with MD034 alone).
+const unclosedInlineTags = (count: number): string => `# T\n\n${"<b> x ".repeat(count)}\n`;
+
+// MD034 re-parses each text node after a `[` in inline math that can hold a URL: 20,000 of them on one line.
+const urlsAfterMathBracket = (count: number): string => `# T\n\n$[$ ${"*https://a.b* WWW.c.d ".repeat(count)}\n`;
+
 const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a 400-column table with CJK cells", wideTable(400, 150)],
 	["2,000 unclosed fences in list items", unclosedFences(2000)],
@@ -127,6 +134,8 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["one line of 20,000 reversed links beside code spans", reversedLinksBesideCode(20000)],
 	["2,000 images holding references, beside 2,000 definitions", imagesAndDefinitions(2000)],
 	["one line of 20,000 bracketed spans and addresses", bracketedAddresses(20000)],
+	["one line of 24,000 unclosed inline HTML tags", unclosedInlineTags(24000)],
+	["20,000 URLs in emphasis after a bracket in inline math", urlsAfterMathBracket(20000)],
 ];
 
 describe("hostile inputs", () => {
