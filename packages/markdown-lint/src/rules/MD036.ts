@@ -6,9 +6,11 @@
 // merge what micromark splits, so the split is read from the source: a line
 // ending, and trailing whitespace (micromark's `lineSuffix`), are tokens of
 // their own, and inside the emphasis an escape or a character reference
-// (where the text's value differs from its source) or a link or image
-// opener (`[`, which micromark leaves a token apart when it matches nothing)
-// is a token beside the `data`.
+// (where the text's value differs from its source), a link or image opener
+// (`[`, which micromark leaves a token apart when it matches nothing) or
+// inline math (micromark's `mathText`) is a token beside the `data`.
+// markdownlint parses no strikethrough, so the kit's `delete` of plain text
+// is part of the `data`, tildes and all.
 
 import type { MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
@@ -16,6 +18,8 @@ import { sourceColumn } from "../internal/html-reread.js";
 import { isHtmlFlowComment, rereadBlock } from "../internal/html-text.js";
 import { errorContext } from "../internal/lines.js";
 import { mathFlowLines } from "../internal/math-flow.js";
+import type { Span } from "../internal/math-text.js";
+import { mathTextSpans } from "../internal/math-text.js";
 import { stringSettingUnlessAbsent } from "../internal/settings.js";
 import type { LintContext } from "../LintContext.js";
 import { LintRule } from "../LintRule.js";
@@ -24,11 +28,6 @@ const allPunctuation = ".,;:!?。，；：！？";
 
 const lineBreak = /[\r\n]/;
 const trailingWhitespace = /[ \t]$/;
-
-interface Span {
-	readonly start: number;
-	readonly end: number;
-}
 
 const childrenOf = (node: MarkdownNode): ReadonlyArray<MarkdownNode> =>
 	(node as { readonly children?: ReadonlyArray<MarkdownNode> }).children ?? [];
@@ -44,14 +43,29 @@ const meaningful = (text: string, node: MarkdownNode, window: Span): number => {
 	return (slice.trim().length > 0 ? 1 : 0) + (lineBreak.test(slice) ? 1 : 0);
 };
 
+// Whether every text node under `node` (a `text`, or a `delete` of nothing but text) reads as written: no escape or
+// character reference decoded.
+const plainText = (text: string, node: MarkdownNode): boolean => {
+	if (node.type === "text")
+		return (
+			(node as { readonly value?: string }).value === text.slice(node.position.start.offset, node.position.end.offset)
+		);
+	// markdownlint parses no strikethrough, so a `delete` of plain text is data to it, tildes and all.
+	return node.type === "delete" && childrenOf(node).every((child) => plainText(text, child));
+};
+
 // The emphasis's text when micromark reads it as one `data` token.
-const singleDataText = (text: string, node: MarkdownNode): string | undefined => {
+const singleDataText = (text: string, node: MarkdownNode, math: ReadonlyArray<Span>): string | undefined => {
 	const children = childrenOf(node);
-	const [only] = children;
-	if (children.length !== 1 || only === undefined || only.type !== "text") return undefined;
-	const slice = text.slice(only.position.start.offset, only.position.end.offset);
-	const value = (only as { readonly value?: string }).value;
-	return value === slice && !lineBreak.test(slice) && !slice.includes("[") ? slice : undefined;
+	const first = children[0];
+	const last = children.at(-1);
+	if (first === undefined || last === undefined || !children.every((child) => plainText(text, child))) return undefined;
+	const start = first.position.start.offset;
+	const end = last.position.end.offset;
+	// Inline math is a `mathText` token beside the data.
+	if (math.some((span) => span.start < end && start < span.end)) return undefined;
+	const slice = text.slice(start, end);
+	return !lineBreak.test(slice) && !slice.includes("[") ? slice : undefined;
 };
 
 /**
@@ -64,6 +78,7 @@ const emphasisHeading = (
 	paragraph: MarkdownNode,
 	window: Span,
 	trailing: boolean,
+	math: ReadonlyArray<Span>,
 ): { readonly node: MarkdownNode; readonly text: string } | undefined => {
 	const children = childrenOf(paragraph);
 	const count = children.reduce((sum, child) => sum + meaningful(text, child, window), trailing ? 1 : 0);
@@ -75,7 +90,7 @@ const emphasisHeading = (
 			child.position.end.offset <= window.end,
 	);
 	if (node === undefined) return undefined;
-	const emphasized = singleDataText(text, node);
+	const emphasized = singleDataText(text, node, math);
 	return emphasized === undefined ? undefined : { node, text: emphasized };
 };
 
@@ -90,6 +105,7 @@ const fromHtmlBlock = (context: LintContext, block: MarkdownNode, found: Array<F
 	const { document, lines } = rereadBlock(context, block);
 	if (document === undefined) return;
 	const text = lines.map((line) => line.text).join("\n");
+	const math = mathTextSpans(document, text);
 	for (const paragraph of childrenOf(document.root as MarkdownNode)) {
 		if (paragraph.type !== "paragraph") continue;
 		// A stub line the re-read put before the paragraph is no part of it to markdownlint.
@@ -104,7 +120,7 @@ const fromHtmlBlock = (context: LintContext, block: MarkdownNode, found: Array<F
 		const lineStart = document.lineIndex.lineStart(row - 1);
 		const window = { start: lineStart, end: lineStart + line.text.length };
 		const trailing = trailingWhitespace.test(context.lines[line.origin - 1] ?? "");
-		const heading = emphasisHeading(text, paragraph, window, trailing);
+		const heading = emphasisHeading(text, paragraph, window, trailing, math);
 		if (heading === undefined) continue;
 		const column = sourceColumn(line, heading.node.position.start.offset - lineStart);
 		found.push({
@@ -145,6 +161,7 @@ export const MD036: Lint.LintRule = LintRule.make({
 	check: (context, report) => {
 		const trailing = punctuationPattern(stringSettingUnlessAbsent(context.config, "punctuation", allPunctuation));
 		const math = mathFlowLines(context);
+		const mathText = mathTextSpans(context.document, context.source);
 		const found: Array<Found> = [];
 		for (const node of context.root.children as ReadonlyArray<MarkdownNode>) {
 			// Inclusive: on a math opener line, this is the fence's meta (see `mathFlowLines`).
@@ -153,7 +170,7 @@ export const MD036: Lint.LintRule = LintRule.make({
 			if (node.type !== "paragraph") continue;
 			const window = { start: node.position.start.offset, end: node.position.end.offset };
 			const endsInSpace = trailingWhitespace.test(context.lines[node.position.end.line - 1] ?? "");
-			const heading = emphasisHeading(context.source, node, window, endsInSpace);
+			const heading = emphasisHeading(context.source, node, window, endsInSpace, mathText);
 			if (heading !== undefined)
 				found.push({ type: heading.node.type, offset: heading.node.position.start.offset, text: heading.text });
 		}

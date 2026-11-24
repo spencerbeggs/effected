@@ -39,6 +39,11 @@ const extra = [
 	{ name: "after front matter", source: "---\ntitle: T\n---\n**Bold**\n" },
 	{ name: "long context", source: `**${"word ".repeat(10)}end**\n` },
 	{ name: "CRLF", source: "**Bold**\r\n\r\n_Italic_\r\n" },
+	// markdownlint's math extension reads inline math as a token apart from the data around it.
+	{ name: "inline math", source: "**a $x$ b**\n\n*$x$*\n\n**a $$x$$ b**\n\n**a $ b $ c**\n\n**a $ b**\n" },
+	{ name: "inline math in html", source: "<div>\n\n**a $x$ b**\n\n**plain**\n\n</div>\n" },
+	// markdownlint parses no strikethrough: tildes are data to it.
+	{ name: "strikethrough", source: "**~~gone~~**\n\n**a ~~b~~ c**\n\n**a~b~c**\n\n**~~*x*~~**\n\n~~**a**~~\n" },
 ];
 
 const run = runRule(MD036);
@@ -112,4 +117,4 @@ describe("MD036 no-emphasis-as-heading", () => {
 });
 
 // markdownlint's MD036 findings over the corpus (LF and CRLF) and the extras.
-const ORACLE_FINDINGS_DEFAULT = 38;
+const ORACLE_FINDINGS_DEFAULT = 43;

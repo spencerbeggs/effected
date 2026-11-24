@@ -82,7 +82,8 @@ const commentsOnOneLine = (count: number): string => `x${"<!--a-->".repeat(count
 // and one paragraph of emphasis spans.
 const htmlBlocksOfEmphasis = (count: number): string =>
 	`# T\n\n${Array.from({ length: count }, (_, index) => `<div>\n\n**Section ${index}**\n\n</div>\n`).join("\n")}`;
-const emphasisSpans = (count: number): string => `# T\n\n${"*a* **b** ".repeat(count)}\n`;
+// `pairs` repeats of an emphasis and a strong: twice as many spans.
+const emphasisSpans = (pairs: number): string => `# T\n\n${"*a* **b** ".repeat(pairs)}\n`;
 
 const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a 400-column table with CJK cells", wideTable(400, 150)],

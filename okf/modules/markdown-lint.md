@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T08:39:40Z
+  at: 2026-11-24T08:44:27Z
 integrity:
   generated:
-    body: a187fcc11deca9a6
+    body: 0740808e7182a906
 ---
 
 # `@effected/markdown-lint`
@@ -343,7 +343,9 @@ plain synchronous function; no logging, no metrics.
   cells, 2,000 unclosed fences in list items, a 9,000-block mixed document,
   3,000 lines in blockquotes 40 deep with inline HTML, one paragraph of
   60,000 code-span, link and lone `$` groups, one 198 KB line holding an
-  inline data-URI image, one line of 16,000 HTML comments), `applyFixes` over
+  inline data-URI image, one line of 16,000 HTML comments), two shapes MD036
+  reads (2,000 HTML blocks each holding an emphasis line, one paragraph of
+  40,000 emphasis spans), `applyFixes` over
   90,000 fixes, and three settings that drive a loop or a repeat
   (`lines_above: 1e999` and `spaces_per_tab: 1e9` in a `configure-file`
   comment, `lines_above: 1e8`), and holds each to a 5,000 ms ceiling: far
