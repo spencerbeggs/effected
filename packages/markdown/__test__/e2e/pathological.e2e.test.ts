@@ -34,6 +34,11 @@
 //     one-member category unions (`MarkdownNode.ts`, see `RowContent`)
 //     passes constructed instances through: 7.4s → 2.8s.
 //
+//  7. The email-literal postprocess mapped each match back to source by walking
+//     the merged run's text nodes from the start, O(nodes) per address: a run
+//     split by brackets or escapes into many nodes went quadratic. A forward
+//     cursor makes it linear (guard at the bottom).
+//
 // Three cases nest deeper than `MAX_NESTING_DEPTH` by construction and are
 // REFUSED rather than parsed — a typed guard trip in milliseconds, which is
 // the hardening posture working as designed rather than a hang. They are
@@ -226,6 +231,38 @@ describe("pathological inputs", () => {
 		// TIMEOUT_MS is 8000): generous against instrumented linear cost —
 		// two orders of magnitude of headroom — while anything worse than
 		// the measured quadratic fails HERE instead of grinding the runner.
+		8000 * 40 + 5000,
+	);
+
+	// The linearity guard for the email-literal postprocess (defect 7). The postprocess maps each match's offsets in a
+	// merged run of text nodes back to source; that lookup walked the run's nodes from the start on every call, so a
+	// run that brackets or escapes split into many nodes cost O(nodes) per address: 20k reps of `[a] b@c.de ` took
+	// 5.6s, ~16x per input quadrupling. A forward cursor over the nodes makes the mapping linear. Same method and
+	// threshold as the guard above.
+	it(
+		"email literals in a run of many text nodes scale linearly",
+		() => {
+			const timeAt = (reps: number): number => {
+				const input = "[a] b@c.de ".repeat(reps);
+				let best = Number.POSITIVE_INFINITY;
+				for (let pass = 0; pass < 5; pass += 1) {
+					const started = cpuNow();
+					parseBlocks(input, "gfm");
+					best = Math.min(best, cpuNow() - started);
+				}
+				return best;
+			};
+			timeAt(500);
+			const small = timeAt(2500);
+			const large = timeAt(10000);
+			const ratio = large / Math.max(small, 1);
+			assert.isBelow(
+				ratio,
+				8,
+				`4x the input cost ${ratio.toFixed(1)}x the CPU time (${small.toFixed(1)}ms -> ${large.toFixed(1)}ms); ` +
+					"linear is ~4x, the per-call node walk was ~16x",
+			);
+		},
 		8000 * 40 + 5000,
 	);
 });

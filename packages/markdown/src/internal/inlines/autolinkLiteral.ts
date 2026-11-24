@@ -482,8 +482,13 @@ const linkifyRun = (pieces: ReadonlyArray<RunPiece>): void => {
 	 * running past its end, and the boundary right after it is its source end.
 	 * An email address holds neither, so this is a bound, not a rounding.
 	 */
+	// The calls come in increasing index order, so the walk resumes from the last piece it stopped at: linear over
+	// the run, where restarting from the first piece cost O(pieces) per call.
+	let walk = 0;
 	const localAt = (index: number): number => {
-		for (const piece of pieces) {
+		if (index < (pieces[Math.min(walk, pieces.length - 1)]?.valueStart ?? 0)) walk = 0;
+		for (; walk < pieces.length; walk += 1) {
+			const piece = pieces[walk] as RunPiece;
 			const within = index - piece.valueStart;
 			// The boundary past a node is its source end, which a decoded node's value length falls short of.
 			if (within === piece.node.value.length) {
