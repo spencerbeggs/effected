@@ -139,6 +139,22 @@ describe("MD060 table-column-style", () => {
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
+
+	// Recorded divergence "a tab after spaces before a math fence in a container": the kit's fence patterns read
+	// spaces only, where micromark expands the tab to its column. Here a tab after the blockquote marker's space opens math to micromark, so markdownlint reads no table; the kit reads one.
+	it(
+		"reads a tab before a math fence in a blockquote unlike markdownlint",
+		() => {
+			const result = settingsDifferential(
+				MD060,
+				[{}],
+				[{ name: "tab before a math fence", source: "> a\n> \t$$\n> | a | b |\n> |-|-|\n> |a|b|\n> $$\n" }],
+			);
+			assert.strictEqual(result.divergences.length, 1);
+			assert.match(result.divergences[0]?.reason ?? "", /^extra finding 1: kit/);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD060 findings over the corpus (LF and CRLF) and the extras.

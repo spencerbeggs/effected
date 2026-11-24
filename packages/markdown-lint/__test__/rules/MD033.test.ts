@@ -310,6 +310,22 @@ describe("MD033 no-inline-html", () => {
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
+
+	// Recorded divergence "a tab after spaces before a math fence in a container": the kit's fence patterns read
+	// spaces only, where micromark expands the tab to its column. Here three spaces and a tab indent the fence past three columns, so micromark reads no math and markdownlint reports the HTML; the kit reads math.
+	it(
+		"reads a tab before a math fence in a blockquote unlike markdownlint",
+		() => {
+			const result = settingsDifferential(
+				MD033,
+				[{}],
+				[{ name: "tab before a math fence", source: "> a\n>   \t$$\n> <b>x</b>\n> $$\n" }],
+			);
+			assert.strictEqual(result.divergences.length, 1);
+			assert.match(result.divergences[0]?.reason ?? "", /^missing finding 1: markdownlint/);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD033 findings over the corpus (LF and CRLF) and the extras.

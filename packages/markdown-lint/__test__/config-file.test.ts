@@ -81,6 +81,32 @@ describe("MarkdownlintConfigFile.read", () => {
 		}).pipe(Effect.provide(withVolume({ "/c/.markdownlint.json": '{ "extends": "./nope.json" }' }))),
 	);
 
+	// Recorded divergence: markdownlint also resolves a package specifier (falling back to module resolution when no
+	// such file exists) and expands a leading `~` to the home directory. The kit reads file paths only, so each is
+	// a path relative to the extending file, and missing there.
+	it.effect("reads a package specifier or a ~ path in extends as a relative file path, missing", () =>
+		Effect.gen(function* () {
+			for (const [file, target] of [
+				["/c/package.json", "/c/markdownlint/style/prettier"],
+				["/c/scoped.json", "/c/@org/markdownlint-config"],
+				["/c/home.json", "/c/~/x.json"],
+			] as const) {
+				const error = yield* Effect.flip(MarkdownlintConfigFile.read(file));
+				assert.strictEqual(error.reason, "extends-missing", file);
+				assert.strictEqual(error.path, target, file);
+			}
+		}).pipe(
+			Effect.provide(
+				withVolume({
+					"/c/package.json": '{ "extends": "markdownlint/style/prettier" }',
+					"/c/scoped.json": '{ "extends": "@org/markdownlint-config" }',
+					"/c/home.json": '{ "extends": "~/x.json" }',
+					"/home/user/x.json": '{ "MD001": false }',
+				}),
+			),
+		),
+	);
+
 	it.effect("fails extends-cycle for a -> b -> a, naming the re-entered file", () =>
 		Effect.gen(function* () {
 			const error = yield* Effect.flip(MarkdownlintConfigFile.read("/c/a.json"));
