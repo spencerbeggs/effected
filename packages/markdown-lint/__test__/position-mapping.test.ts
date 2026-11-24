@@ -110,6 +110,22 @@ describe("PositionMapping", () => {
 			);
 		});
 
+		it("writes every line break in insertText as \\n, as markdownlint's fixInfo does", () => {
+			// markdownlint's applyFix writes each `\n` as the document's line ending, so a `\r\n` here would come back
+			// as `\r\r\n`; the kit edit keeps the document's own text.
+			for (const [text, ending] of [
+				["a\r\nb\r\n", "\r\n"],
+				["a\rb\r", "\r"],
+				["a\nb\n", "\n"],
+			] as const) {
+				assert.deepStrictEqual(
+					PositionMapping.of(text).fixInfo({ offset: 0, length: 0, content: `> x${ending}${ending}` }, 1),
+					Option.some(LintFixInfo.make({ editColumn: 1, insertText: "> x\n\n" })),
+					JSON.stringify(text),
+				);
+			}
+		});
+
 		it("maps a pure deletion with no insertText", () => {
 			assert.deepStrictEqual(
 				mapping.fixInfo({ offset: 6, length: 7, content: "" }, 2),

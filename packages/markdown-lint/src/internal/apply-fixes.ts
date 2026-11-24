@@ -24,6 +24,19 @@ interface Fix {
 	readonly length: number;
 }
 
+// markdownlint's result order (`formatResults`): first rule name by `localeCompare`, then line, stably. Its
+// `applyFixes` always receives results in this order, so a tie between two rules' fixes is decided by it. A collator
+// compares as `localeCompare` with no arguments does, without building one per call.
+const ruleNameOrder = new Intl.Collator();
+const inMarkdownlintOrder = (findings: ReadonlyArray<LintDiagnostic>): ReadonlyArray<LintDiagnostic> =>
+	findings
+		.map((finding, index) => ({ finding, index, name: finding.ruleNames[0] ?? "" }))
+		.sort(
+			(a, b) =>
+				ruleNameOrder.compare(a.name, b.name) || a.finding.lineNumber - b.finding.lineNumber || a.index - b.index,
+		)
+		.map((entry) => entry.finding);
+
 // The `\r\n` pairs in `text`: each is one line break, one character to markdownlint.
 const countCrlf = (text: string): number => {
 	let count = 0;
@@ -44,7 +57,7 @@ export const applyFixesCounted = (
 	const lead = source.charCodeAt(0) === 0xfeff ? 1 : 0;
 	const mapping = PositionMapping.of(source.slice(lead));
 	const fixes: Array<Fix> = [];
-	for (const finding of findings) {
+	for (const finding of inMarkdownlintOrder(findings)) {
 		if (Option.isNone(finding.edit)) continue;
 		const edit = finding.edit.value;
 		// markdownlint's `normalizeFixInfo` over the finding's `fixInfo` (its own line or the finding's, column 1,

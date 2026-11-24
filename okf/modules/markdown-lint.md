@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T06:48:25Z
+  at: 2026-11-24T07:02:12Z
 integrity:
   generated:
-    body: 708d6ede9be45e6a
+    body: e9533caca7cb19ef
 ---
 
 # `@effected/markdown-lint`
@@ -117,6 +117,9 @@ context construction and rule run both hosts share, which is what makes
   file's lint — and `fixInfo` for an edit
   inside one line or a whole-line delete (`deleteCount: -1`). An edit that
   crosses a line break otherwise has no `fixInfo` and keeps the kit `edit`.
+  A line break in `fixInfo.insertText` is written `\n`, as markdownlint
+  writes it and its `applyFix` expects it; the kit `edit` keeps the source's
+  own ending.
   `lineStart(lineNumber)` is a line's start offset: the one line table the
   rules read, so no rule keeps a second one.
 - `LintConfig` — static, pure: `effective(config, rules)` resolves
@@ -139,7 +142,9 @@ context construction and rule run both hosts share, which is what makes
   `options.dialect`, default gfm), and
   `applyFixes(source, findings)`, which applies findings' kit edits under
   markdownlint's `applyFixes` policy (the fix `markdownlint-cli2 --fix`
-  makes: identical fixes once, one insert per line and column, the longest,
+  makes: the findings first put in markdownlint's result order, rule name
+  then line, so neither the rules' order nor the array's decides a tie;
+  identical fixes once, one insert per line and column, the longest,
   an insert and a delete at one column made one replace, a fix running into
   the one to its right skipped, a whole-line delete taking its line's other
   fixes; then, as markdownlint does, every line break in the result is

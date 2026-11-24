@@ -11,6 +11,7 @@
 import type { MarkdownDocument, MarkdownNode, MarkdownRangeLike, SourceIndex } from "@effected/markdown";
 import { LineIndex, MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
+import { LINE_BREAK } from "./internal/line-endings.js";
 import type { LintRange } from "./LintDiagnostic.js";
 import { LintFixInfo } from "./LintDiagnostic.js";
 
@@ -205,7 +206,10 @@ export class PositionMapping {
 	 * lost: the diagnostic keeps it as a kit edit, which `MarkdownLint.applyFixes`
 	 * applies.
 	 * `fixInfo.lineNumber` is set only when the edit's line differs from
-	 * `lineNumber`, as markdownlint's built-in rules do.
+	 * `lineNumber`, as markdownlint's built-in rules do. A line break the
+	 * edit inserts is written `\n` in `insertText`, whatever the document's
+	 * ending, because markdownlint's `applyFix` writes each `\n` as that
+	 * ending; the kit edit keeps the document's own text.
 	 *
 	 * @param edit - The kit edit, in UTF-16 offsets.
 	 * @param lineNumber - The 1-based line of the diagnostic carrying the fix.
@@ -244,7 +248,9 @@ export class PositionMapping {
 				...onLine,
 				editColumn: edit.offset - start + 1,
 				...(edit.length > 0 ? { deleteCount: edit.length } : {}),
-				...(edit.content !== "" ? { insertText: edit.content } : {}),
+				// markdownlint spells a line break `\n` and its applyFix writes the document's ending, so the kit
+				// edit's real ending is written back as `\n` here.
+				...(edit.content !== "" ? { insertText: edit.content.replace(LINE_BREAK, "\n") } : {}),
 			}),
 		);
 	}

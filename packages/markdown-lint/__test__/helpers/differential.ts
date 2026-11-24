@@ -13,7 +13,7 @@ import type { LintDiagnostic } from "../../src/LintDiagnostic.js";
 import type { LintRule } from "../../src/LintRule.js";
 import { MarkdownLint } from "../../src/MarkdownLint.js";
 import type { OracleFinding } from "./markdownlint-oracle.js";
-import { oracleApplyFixes, oracleLineEnding, oracleLint } from "./markdownlint-oracle.js";
+import { oracleApplyFixes, oracleLint } from "./markdownlint-oracle.js";
 
 /**
  * The timeout of a test that runs a rule over the whole fixture corpus: a differential pass lints the corpus twice
@@ -74,28 +74,27 @@ interface FixInfoLike {
 	readonly insertText?: string;
 }
 
-// markdownlint's `normalizeFixInfo`, and the line ending its `applyFix` writes
-// an inserted line break as: two fixes markdownlint applies identically
-// compare equal, whichever optional fields they spell out.
-const normalizeFix = (fix: FixInfoLike, lineNumber: number, lineEnding: string): ComparableFinding["fixInfo"] => ({
+// markdownlint's `normalizeFixInfo`: two fixes markdownlint applies identically compare equal, whichever optional
+// fields they spell out. `insertText` is compared raw, so a line break must be `\n` on both sides, as markdownlint's
+// `applyFix` expects it.
+const normalizeFix = (fix: FixInfoLike, lineNumber: number): ComparableFinding["fixInfo"] => ({
 	lineNumber: fix.lineNumber || lineNumber,
 	editColumn: fix.editColumn || 1,
 	deleteCount: fix.deleteCount || 0,
-	insertText: (fix.insertText || "").replace(/\r\n?|\n/g, lineEnding),
+	insertText: fix.insertText || "",
 });
 
-const fromOracle = (finding: OracleFinding, lineEnding: string): ComparableFinding => ({
+const fromOracle = (finding: OracleFinding): ComparableFinding => ({
 	lineNumber: finding.lineNumber,
 	ruleNames: [...finding.ruleNames],
 	detail: finding.errorDetail,
 	context: finding.errorContext,
 	range: finding.errorRange === null ? null : [...finding.errorRange],
-	fixInfo:
-		finding.fixInfo === null ? null : normalizeFix(finding.fixInfo as FixInfoLike, finding.lineNumber, lineEnding),
+	fixInfo: finding.fixInfo === null ? null : normalizeFix(finding.fixInfo as FixInfoLike, finding.lineNumber),
 	severity: finding.severity,
 });
 
-const fromKit = (finding: LintDiagnostic, lineEnding: string): ComparableFinding => ({
+const fromKit = (finding: LintDiagnostic): ComparableFinding => ({
 	lineNumber: finding.lineNumber,
 	ruleNames: [...finding.ruleNames],
 	detail: asResultText(finding.detail),
@@ -103,7 +102,7 @@ const fromKit = (finding: LintDiagnostic, lineEnding: string): ComparableFinding
 	range: Option.match(finding.range, { onNone: () => null, onSome: (range) => [...range] }),
 	fixInfo: Option.match(finding.fixInfo, {
 		onNone: () => null,
-		onSome: (fix) => normalizeFix(fix, finding.lineNumber, lineEnding),
+		onSome: (fix) => normalizeFix(fix, finding.lineNumber),
 	}),
 	severity: finding.severity,
 });
@@ -135,7 +134,6 @@ interface Comparison {
 
 const compareOne = (rule: LintRule, config: Record<string, unknown>, input: DifferentialInput): Comparison => {
 	const found = (reason: string | undefined): Comparison => ({ oracleFindings: oracleFindings.length, reason });
-	const lineEnding = oracleLineEnding(input.source);
 	let oracleFindings: ReadonlyArray<OracleFinding>;
 	try {
 		oracleFindings = oracleLint(input.source, config).filter((finding) => finding.ruleNames[0] === rule.name);
@@ -155,10 +153,7 @@ const compareOne = (rule: LintRule, config: Record<string, unknown>, input: Diff
 	const kitFindings = [...MarkdownLint.lint(input.source, [rule], { config })].sort(
 		(a, b) => a.lineNumber - b.lineNumber,
 	);
-	const difference = firstDifference(
-		kitFindings.map((finding) => fromKit(finding, lineEnding)),
-		oracleFindings.map((finding) => fromOracle(finding, lineEnding)),
-	);
+	const difference = firstDifference(kitFindings.map(fromKit), oracleFindings.map(fromOracle));
 	if (difference !== undefined) return found(difference);
 	const expected = oracleApplyFixes(input.source, oracleFindings);
 	let actual: string;
@@ -333,21 +328,33 @@ export const settingsAppliedTextDivergences = (
  * converted to bare CR, plus `extra` inputs, in both engines, and compare the text each engine's `applyFixes`
  * leaves. Each input on which the texts differ is one divergence. The per-rule harness applies one rule's fixes
  * at a time; this is the check on fixes from several rules meeting. Findings are not compared here, so a recorded
- * finding divergence shows up as a text difference and is pinned by the caller. `oracleFixes` counts the findings
- * with a `fixInfo` markdownlint reported over every input, so a test can assert the comparison was not vacuous.
+ * finding divergence shows up as a text difference and is pinned by the caller. An edit the kit's splice skips is a
+ * divergence too, as in the per-rule harness. `oracleFixes` counts the findings with a `fixInfo` markdownlint
+ * reported over every input, and `meeting` the inputs on which fixes from two or more of `rules` land on one line,
+ * so a test can assert the comparison was not vacuous and that the fixes it exists for do meet. `order` rearranges
+ * the kit's findings before they are applied (the identity when absent), to check that the result does not depend
+ * on the order they arrive in.
  */
 export const fixesDifferential = (
 	rules: ReadonlyArray<LintRule>,
-	options?: { readonly extra?: ReadonlyArray<DifferentialInput> },
+	options?: {
+		readonly extra?: ReadonlyArray<DifferentialInput>;
+		readonly inputs?: ReadonlyArray<DifferentialInput>;
+		readonly order?: (
+			findings: ReadonlyArray<LintDiagnostic>,
+			input: DifferentialInput,
+		) => ReadonlyArray<LintDiagnostic>;
+	},
 ): {
 	readonly compared: number;
 	readonly oracleFixes: number;
+	readonly meeting: number;
 	readonly divergences: ReadonlyArray<Divergence>;
 } => {
 	const names = new Set(rules.map((rule) => rule.name));
 	const config = { default: false, ...Object.fromEntries([...names].map((name) => [name, true])) };
 	const inputs: Array<DifferentialInput> = [];
-	for (const entry of corpus) {
+	for (const entry of options?.inputs ?? corpus) {
 		inputs.push(
 			entry,
 			{ name: `${entry.name} (CRLF)`, source: entry.source.replace(/\r?\n/g, "\r\n") },
@@ -357,6 +364,7 @@ export const fixesDifferential = (
 	inputs.push(...(options?.extra ?? []));
 	const divergences: Array<Divergence> = [];
 	let oracleFixes = 0;
+	let meeting = 0;
 	for (const input of inputs) {
 		let oracle: ReadonlyArray<OracleFinding>;
 		try {
@@ -369,14 +377,33 @@ export const fixesDifferential = (
 			});
 			continue;
 		}
-		oracleFixes += oracle.filter((finding) => finding.fixInfo !== null && finding.fixInfo !== undefined).length;
+		const fixLines = new Map<number, Set<string>>();
+		for (const finding of oracle) {
+			const fix = finding.fixInfo as FixInfoLike | null | undefined;
+			if (fix === null || fix === undefined) continue;
+			oracleFixes++;
+			const line = fix.lineNumber || finding.lineNumber;
+			const names = fixLines.get(line) ?? new Set<string>();
+			names.add(finding.ruleNames[0] ?? "");
+			fixLines.set(line, names);
+		}
+		if ([...fixLines.values()].some((names) => names.size > 1)) meeting++;
 		const expected = oracleApplyFixes(input.source, oracle);
-		const actual = MarkdownLint.applyFixes(input.source, MarkdownLint.lint(input.source, rules, { config }));
+		const kit = MarkdownLint.lint(input.source, rules, { config });
+		const applied = applyFixesCounted(input.source, options?.order?.(kit, input) ?? kit);
+		if (applied.skipped > 0) {
+			divergences.push({
+				fixture: input.name,
+				reason: `kit edits do not apply: ${applied.skipped} skipped by the splice`,
+			});
+			continue;
+		}
+		const actual = applied.text;
 		if (actual !== expected)
 			divergences.push({
 				fixture: input.name,
 				reason: `applied fixes differ: kit ${JSON.stringify(actual)}, markdownlint ${JSON.stringify(expected)}`,
 			});
 	}
-	return { compared: inputs.length, oracleFixes, divergences };
+	return { compared: inputs.length, oracleFixes, meeting, divergences };
 };

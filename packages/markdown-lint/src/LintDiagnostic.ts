@@ -33,7 +33,7 @@ export class LintFixInfo extends Schema.Class<LintFixInfo>("LintFixInfo")({
 	editColumn: Schema.optionalKey(PositiveInt),
 	/** How many characters to delete, or `-1` to delete the whole line. */
 	deleteCount: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(-1))),
-	/** The text to insert after deleting. */
+	/** The text to insert after deleting, each line break written `\n` as markdownlint writes it. */
 	insertText: Schema.optionalKey(Schema.String),
 }) {}
 
