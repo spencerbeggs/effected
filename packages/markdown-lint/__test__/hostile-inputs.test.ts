@@ -13,7 +13,9 @@
 // - one paragraph of 60,000 groups of a code span, a link and a lone `$`: 17.2 to 21.3 s with only the
 //   inline-math cursor reverted (three runs), 0.68 to 0.71 s fixed;
 // - one 198 KB line holding an inline data-URI image: 15.5 to 15.7 s with MD013's unanchored `\S*$` regex
-//   (three runs), 11 ms with its scan back from the line end.
+//   (three runs), 11 ms with its scan back from the line end;
+// - one line of 16,000 HTML comments: 9.3 to 10.5 s in the comment mask alone (three runs, no rules), which
+//   re-read each comment's line from its start, 61 ms reading it once.
 //
 // The ceiling is far above the fixed times, so a busy runner does not fail
 // it, and far below the unfixed ones, so a regression to any of them does. It
@@ -22,6 +24,7 @@
 // that scan costs about 53 ms at 40 deep, under any useful ceiling.
 
 import { assert, describe, it } from "@effect/vitest";
+import { frontMatterLineCount, maskHtmlComments } from "../src/internal/reading.js";
 import { MarkdownLint } from "../src/MarkdownLint.js";
 import { rules } from "../src/rules/all.js";
 
@@ -69,6 +72,9 @@ const atomicDollars = (groups: number): string =>
 const dataUriLine = (repeats: number): string =>
 	`# T\n\n![chart](data:image/png;base64,${"iVBORw0KGgo".repeat(repeats)}) and a caption\n`;
 
+// The comment mask re-read each comment's line from its start: many comments on one line.
+const commentsOnOneLine = (count: number): string => `x${"<!--a-->".repeat(count)}\n`;
+
 const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a 400-column table with CJK cells", wideTable(400, 150)],
 	["2,000 unclosed fences in list items", unclosedFences(2000)],
@@ -76,6 +82,7 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["3,000 lines in blockquotes 40 deep with inline HTML", deepQuote(3000, 40)],
 	["a paragraph of 60,000 code spans, links and lone dollar signs", atomicDollars(60000)],
 	["a 198 KB line holding an inline data-URI image", dataUriLine(18000)],
+	["one line of 16,000 HTML comments", commentsOnOneLine(16000)],
 ];
 
 describe("hostile inputs", () => {
@@ -88,4 +95,31 @@ describe("hostile inputs", () => {
 			assert.isBelow(elapsed, CEILING_MS, `${name}: ${elapsed.toFixed(0)} ms`);
 		});
 	}
+});
+
+// The readers that run before any rule, each with its own tighter ceiling.
+describe("hostile inputs to the reading pass", () => {
+	const READING_CEILING_MS = 1_000;
+
+	it("masks a long run of comments, one per line, under the ceiling", () => {
+		const text = "<!-- a -->\n".repeat(50_000);
+		const started = performance.now();
+		const masked = maskHtmlComments(text);
+		assert.isBelow(performance.now() - started, READING_CEILING_MS);
+		assert.strictEqual(masked.length, text.length);
+	});
+
+	it("counts a long unterminated front matter block under the ceiling", () => {
+		const text = `---\n${"x\n".repeat(100_000)}`;
+		const started = performance.now();
+		assert.strictEqual(frontMatterLineCount(text), 0);
+		assert.isBelow(performance.now() - started, READING_CEILING_MS);
+	});
+
+	it("counts a long run of fence-like lines under the ceiling", () => {
+		const text = `---\n${"--- x\n".repeat(100_000)}`;
+		const started = performance.now();
+		assert.strictEqual(frontMatterLineCount(text), 0);
+		assert.isBelow(performance.now() - started, READING_CEILING_MS);
+	});
 });

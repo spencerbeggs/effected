@@ -34,6 +34,9 @@ const maskBody = (content: string): string => {
 	return out.join("");
 };
 
+// One character `String.prototype.trim` removes: ECMAScript's WhiteSpace and LineTerminator, the set `\s` matches.
+const whitespace = /^\s$/;
+
 /**
  * markdownlint's `clearHtmlCommentText`: the body of each well-formed HTML
  * comment becomes a run of `.` of the same length, line breaks and spaces kept,
@@ -42,18 +45,31 @@ const maskBody = (content: string): string => {
  */
 export const maskHtmlComments = (text: string): string => {
 	const chars = text.split("");
+	// The text before each comment on its line (upstream's `preText`), read incrementally from the already-masked
+	// characters, as upstream's is: everything before a comment's opener is final once that opener is reached, so
+	// each character is read once. `preBlank` is `preText.trim().length === 0`; `prefix` tracks `/^ *\|/`.
+	let scanned = 0;
+	let preBlank = true;
+	let prefix: "spaces" | "pipe" | "other" = "spaces";
 	let from = 0;
 	for (let open = text.indexOf(commentOpen, from); open !== -1; open = text.indexOf(commentOpen, from)) {
 		const close = text.indexOf(commentClose, open + 2);
 		if (close === -1) break;
+		for (; scanned < open; scanned++) {
+			const char = chars[scanned] as string;
+			if (char === "\n") {
+				preBlank = true;
+				prefix = "spaces";
+				continue;
+			}
+			if (preBlank && !whitespace.test(char)) preBlank = false;
+			if (prefix === "spaces") prefix = char === " " ? "spaces" : char === "|" ? "pipe" : "other";
+		}
 		const bodyStart = open + commentOpen.length;
 		if (close > open + commentOpen.length) {
 			const content = text.slice(bodyStart, close);
-			// preText is read from the already-masked characters, as upstream's is.
-			const lineStart = chars.lastIndexOf("\n", open) + 1;
-			const preText = chars.slice(lineStart, open).join("");
-			const isBlock = preText.trim().length === 0;
-			const couldBeTable = /^ *\|/.test(preText);
+			const isBlock = preBlank;
+			const couldBeTable = prefix === "pipe";
 			const spansTableCells = couldBeTable && content.includes("\n");
 			const valid =
 				isBlock ||

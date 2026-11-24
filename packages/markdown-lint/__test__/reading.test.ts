@@ -117,14 +117,6 @@ describe("maskHtmlComments", () => {
 		assert.strictEqual(maskHtmlComments("<!-- x\n# H\n"), "<!-- x\n# H\n");
 		assert.strictEqual(maskHtmlComments("<!-- a -->\n<!-- b\n# H\n"), "<!-- . -->\n<!-- b\n# H\n");
 	});
-
-	it("is linear on a long run of comments", () => {
-		const text = "<!-- a -->\n".repeat(50_000);
-		const started = performance.now();
-		const masked = maskHtmlComments(text);
-		assert.isBelow(performance.now() - started, 1000);
-		assert.strictEqual(masked.length, text.length);
-	});
 });
 
 describe("frontMatterLineCount", () => {
@@ -151,20 +143,6 @@ describe("frontMatterLineCount", () => {
 				assert.strictEqual(frontMatterLineCount(text), probe(text).frontMatterLines.length, JSON.stringify(text));
 			}
 		}
-	});
-
-	it("is linear on a long unterminated block", () => {
-		const text = `---\n${"x\n".repeat(100_000)}`;
-		const started = performance.now();
-		assert.strictEqual(frontMatterLineCount(text), 0);
-		assert.isBelow(performance.now() - started, 1000);
-	});
-
-	it("is linear on a long run of fence-like lines", () => {
-		const text = `---\n${"--- x\n".repeat(100_000)}`;
-		const started = performance.now();
-		assert.strictEqual(frontMatterLineCount(text), 0);
-		assert.isBelow(performance.now() - started, 1000);
 	});
 });
 
