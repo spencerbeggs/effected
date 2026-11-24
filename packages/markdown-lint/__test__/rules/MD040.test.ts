@@ -53,24 +53,23 @@ describe("MD040 fenced-code-language", () => {
 	);
 
 	// markdownlint reads `allowed_languages` as the array or nothing, and `language_only` as `!!language_only`.
-	for (const [settings, changes] of [
-		[{ allowed_languages: ["js", "text"] }, true],
-		[{ allowed_languages: ["JS"] }, true],
-		[{ language_only: true }, true],
-		[{ language_only: "yes" }, true],
-		[{ allowed_languages: ["js"], language_only: true }, true],
-		[{ allowed_languages: [] }, false],
-		[{ allowed_languages: "js" }, false],
-		[{ language_only: false }, false],
-		[{ language_only: 0 }, false],
+	for (const [settings, expected] of [
+		[{ allowed_languages: ["js", "text"] }, 150],
+		[{ allowed_languages: ["JS"] }, 347],
+		[{ language_only: true }, 39],
+		[{ language_only: "yes" }, 39],
+		[{ allowed_languages: ["js"], language_only: true }, 306],
+		[{ allowed_languages: [] }, 28],
+		[{ allowed_languages: "js" }, 28],
+		[{ language_only: false }, 28],
+		[{ language_only: 0 }, 28],
 	] as const) {
 		it(
 			`agrees with markdownlint under ${JSON.stringify(settings)}`,
 			() => {
 				const result = differential(MD040, { config: settings, extra });
 				assert.deepStrictEqual(result.divergences, []);
-				if (changes) assert.notStrictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
-				else assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
+				assert.strictEqual(result.oracleFindings, expected);
 			},
 			DIFFERENTIAL_TIMEOUT,
 		);

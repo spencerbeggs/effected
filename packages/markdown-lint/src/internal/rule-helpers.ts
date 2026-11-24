@@ -41,9 +41,26 @@ export const lineStarts = (source: string): Array<number> => {
 	return starts;
 };
 
+/** A run of lines, `start` to `end`, 1-based and inclusive. @internal */
+export interface LineRange {
+	readonly start: number;
+	readonly end: number;
+}
+
 /** The 1-based line markdownlint's `params.lines` starts at: the first after its front matter. @internal */
 export const firstContentLine = (context: LintContext): number =>
 	Option.match(context.frontmatter, { onNone: () => 1, onSome: (block) => block.lineCount + 1 });
+
+/**
+ * markdownlint's `params.lines[lineNumber - 1]`, by whole-source line
+ * number: a content line (after the front matter), or `undefined` outside
+ * them.
+ * @internal
+ */
+export const contentLine = (context: LintContext, lineNumber: number): string | undefined =>
+	lineNumber >= firstContentLine(context) && lineNumber <= context.lines.length
+		? context.lines[lineNumber - 1]
+		: undefined;
 
 // A closed fence ends on its closing fence line: only container markers,
 // indentation and at least the opener's run of its character.
@@ -88,11 +105,7 @@ export const fencedEndLine = (context: LintContext, node: Code, starts: Readonly
  * `codeFenced` token gives them: `startLine + 1` to `endLine - 1`.
  * @internal
  */
-export const fencedInterior = (
-	context: LintContext,
-	node: Code,
-	starts: ReadonlyArray<number>,
-): { readonly start: number; readonly end: number } => ({
+export const fencedInterior = (context: LintContext, node: Code, starts: ReadonlyArray<number>): LineRange => ({
 	start: node.position.start.line + 1,
 	end: fencedEndLine(context, node, starts) - 1,
 });
@@ -365,14 +378,11 @@ export const isLazyLine = (context: LintContext, lineNumber: number): boolean =>
  * container ends, as micromark's token does.
  * @internal
  */
-export const mathFlowBlocks = (
-	context: LintContext,
-	starts: ReadonlyArray<number>,
-): Array<{ readonly start: number; readonly end: number }> => {
+export const mathFlowBlocks = (context: LintContext, starts: ReadonlyArray<number>): Array<LineRange> => {
 	const excluded = codeBlockLines(context, starts);
 	for (const line of nodeLines(flowNodes(context, new Set(["html"])))) excluded.add(line);
 	const math = new Set<number>();
-	const blocks: Array<{ readonly start: number; readonly end: number }> = [];
+	const blocks: Array<LineRange> = [];
 	const close = (start: number, end: number): void => {
 		addRange(math, start, end);
 		blocks.push({ start, end });
@@ -436,7 +446,7 @@ export const mathFlowLines = (context: LintContext, starts: ReadonlyArray<number
  * past the block's opening line, which holds the opener itself.
  * @internal
  */
-export const inMathBlock = (blocks: ReadonlyArray<{ readonly start: number; readonly end: number }>, line: number) =>
+export const inMathBlock = (blocks: ReadonlyArray<LineRange>, line: number) =>
 	blocks.some((block) => block.start < line && line <= block.end);
 
 /**
@@ -802,6 +812,16 @@ export const htmlTextTokens = (context: LintContext): Array<HtmlText> => {
 	tokens.sort((a, b) => a.offset - b.offset);
 	return tokens;
 };
+
+/**
+ * An `htmlText` token's range as markdownlint measures it: from its start to
+ * the end of its first line.
+ * @internal
+ */
+export const htmlTextRange = (token: HtmlText): { readonly offset: number; readonly length: number } => ({
+	offset: token.offset,
+	length: token.text.replace(/[\r\n][\s\S]*$/, "").length,
+});
 
 /**
  * markdownlint's `getHtmlTagInfo`: an `htmlText` token's element name, and

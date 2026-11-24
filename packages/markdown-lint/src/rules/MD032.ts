@@ -8,10 +8,11 @@
 import type { Code, Heading, List, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
 import { preferredLineEnding } from "../internal/line-endings.js";
+import type { LineRange } from "../internal/rule-helpers.js";
 import {
 	blockQuotePrefixText,
+	contentLine,
 	errorContext,
-	firstContentLine,
 	flowNodesWithAncestors,
 	inMathBlock,
 	isBlankLine,
@@ -20,11 +21,6 @@ import {
 	mathFlowBlocks,
 } from "../internal/rule-helpers.js";
 import { LintRule } from "../LintRule.js";
-
-interface Block {
-	readonly start: number;
-	readonly end: number;
-}
 
 // The line a node's last content token ends on: the last line holding its text, not a line break or the blank
 // lines a block the kit closes late carries. A setext heading ends on its underline.
@@ -53,7 +49,11 @@ const lastParagraph = (node: MarkdownNode): MarkdownNode | undefined => {
 // The kit reads a math block as paragraph text, so a lazy line continues the paragraph, and the list, across
 // it. micromark ends the list there: a lazy math opener interrupts the paragraph (the list ends on the line
 // before it), and a lazy line after a block inside the item cannot continue one (the list ends on its last line).
-const mathCutLine = (context: Lint.LintContext, list: MarkdownNode, math: ReadonlyArray<Block>): number | undefined => {
+const mathCutLine = (
+	context: Lint.LintContext,
+	list: MarkdownNode,
+	math: ReadonlyArray<LineRange>,
+): number | undefined => {
 	const paragraph = lastParagraph(list);
 	if (paragraph === undefined) return undefined;
 	const start = paragraph.position.start.line;
@@ -82,19 +82,14 @@ export const MD032: Lint.LintRule = LintRule.make({
 	check: (context, report) => {
 		const starts = lineStarts(context.source);
 		const lineEnding = preferredLineEnding(context.source);
-		const first = firstContentLine(context);
-		const last = context.lines.length;
 		const math = mathFlowBlocks(context, starts);
-		// markdownlint's `params.lines[lineNumber - 1]`: a content line, or undefined outside them.
-		const lineAt = (lineNumber: number): string | undefined =>
-			lineNumber >= first && lineNumber <= last ? context.lines[lineNumber - 1] : undefined;
 		for (const { node, ancestors } of flowNodesWithAncestors(context, new Set(["list"]))) {
 			const list = node as List;
 			if (ancestors.some((ancestor) => ancestor.type === "list")) continue;
 			const firstLine = list.position.start.line;
 			if (inMathBlock(math, firstLine)) continue;
 			const firstText = context.lines[firstLine - 1] as string;
-			if (!isBlankLine(lineAt(firstLine - 1))) {
+			if (!isBlankLine(contentLine(context, firstLine - 1))) {
 				const offset = starts[firstLine - 1] as number;
 				report(
 					context.diagnostic({
@@ -106,7 +101,7 @@ export const MD032: Lint.LintRule = LintRule.make({
 			}
 			const lastLine =
 				mathCutLine(context, list as MarkdownNode, math) ?? lastContentLine(list as MarkdownNode, context.lines);
-			if (!isBlankLine(lineAt(lastLine + 1))) {
+			if (!isBlankLine(contentLine(context, lastLine + 1))) {
 				const lastText = context.lines[lastLine - 1] as string;
 				report(
 					context.diagnostic({

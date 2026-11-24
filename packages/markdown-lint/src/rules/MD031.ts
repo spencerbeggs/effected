@@ -9,9 +9,9 @@ import type { Code } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
 import { preferredLineEnding } from "../internal/line-endings.js";
 import {
+	contentLine,
 	errorContext,
 	fencedEndLine,
-	firstContentLine,
 	flowNodesWithAncestors,
 	inMathBlock,
 	isBlankLine,
@@ -44,14 +44,9 @@ export const MD031: Lint.LintRule = LintRule.make({
 		const includeListItems = listItems === undefined || !!listItems;
 		const starts = lineStarts(context.source);
 		const lineEnding = preferredLineEnding(context.source);
-		const first = firstContentLine(context);
-		const last = context.lines.length;
 		const math = mathFlowBlocks(context, starts);
-		// markdownlint's `params.lines[lineNumber - 1]`: a content line, or undefined outside them.
-		const lineAt = (lineNumber: number): string | undefined =>
-			lineNumber >= first && lineNumber <= last ? context.lines[lineNumber - 1] : undefined;
 		const addError = (lineNumber: number, top: boolean): void => {
-			const line = lineAt(lineNumber) as string;
+			const line = contentLine(context, lineNumber) as string;
 			const prefix = codeFencePrefix.exec(line)?.[1];
 			const offset = starts[lineNumber - 1] as number;
 			const fixAt = starts[lineNumber - (top ? 1 : 0)] as number;
@@ -77,8 +72,9 @@ export const MD031: Lint.LintRule = LintRule.make({
 			if (!includeListItems && ancestors.some((ancestor) => ancestor.type === "list")) continue;
 			const startLine = code.position.start.line;
 			const endLine = fencedEndLine(context, code, starts);
-			if (!isBlankLine(lineAt(startLine - 1))) addError(startLine, true);
-			if (!isBlankLine(lineAt(endLine + 1)) && !isBlankLine(lineAt(endLine))) addError(endLine, false);
+			if (!isBlankLine(contentLine(context, startLine - 1))) addError(startLine, true);
+			if (!isBlankLine(contentLine(context, endLine + 1)) && !isBlankLine(contentLine(context, endLine)))
+				addError(endLine, false);
 		}
 	},
 });

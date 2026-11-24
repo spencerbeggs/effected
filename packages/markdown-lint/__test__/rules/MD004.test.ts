@@ -54,27 +54,26 @@ describe("MD004 ul-style", () => {
 	// Each style changes markdownlint's findings over the same inputs; `consistent` is the default spelled out.
 	// markdownlint reads `style` as `String(style || "consistent")` and an unknown name as `dash`, so a falsy value
 	// is the default and a truthy one of the wrong type (`5`, `true`) is `dash`.
-	for (const [settings, changes] of [
-		[{ style: "asterisk" }, true],
-		[{ style: "dash" }, true],
-		[{ style: "plus" }, true],
-		[{ style: "sublist" }, true],
-		[{ style: "unknown" }, true],
-		[{ style: 5 }, true],
-		[{ style: true }, true],
-		[{ style: ["sublist"] }, true],
-		[{ style: "consistent" }, false],
-		[{ style: "" }, false],
-		[{ style: 0 }, false],
-		[{ style: null }, false],
+	for (const [settings, expected] of [
+		[{ style: "asterisk" }, 888],
+		[{ style: "dash" }, 848],
+		[{ style: "plus" }, 1194],
+		[{ style: "sublist" }, 506],
+		[{ style: "unknown" }, 848],
+		[{ style: 5 }, 848],
+		[{ style: true }, 848],
+		[{ style: ["sublist"] }, 506],
+		[{ style: "consistent" }, 187],
+		[{ style: "" }, 187],
+		[{ style: 0 }, 187],
+		[{ style: null }, 187],
 	] as const) {
 		it(
 			`agrees with markdownlint under ${JSON.stringify(settings)}`,
 			() => {
 				const result = differential(MD004, { config: settings, extra });
 				assert.deepStrictEqual(result.divergences, []);
-				if (changes) assert.notStrictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
-				else assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
+				assert.strictEqual(result.oracleFindings, expected);
 			},
 			DIFFERENTIAL_TIMEOUT,
 		);

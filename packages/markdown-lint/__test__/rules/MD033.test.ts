@@ -134,23 +134,22 @@ describe("MD033 no-inline-html", () => {
 	// markdownlint reads each list as `Array.isArray(list) ? list.map((x) => String(x).toLowerCase()) : []`, and
 	// `table_allowed_elements || allowed_elements` for tables: a falsy table list falls back to `allowed_elements`,
 	// a truthy one that is not an array allows nothing in a table.
-	for (const [settings, changes] of [
-		[{ allowed_elements: ["br", "details", "summary", "img", "sup", "sub"] }, true],
-		[{ allowed_elements: ["BR", "B"] }, true],
-		[{ allowed_elements: ["br"], table_allowed_elements: ["b"] }, true],
-		[{ table_allowed_elements: ["br"] }, true],
-		[{ allowed_elements: ["br"], table_allowed_elements: "" }, true],
-		[{ allowed_elements: ["br"], table_allowed_elements: "br" }, true],
-		[{ allowed_elements: [] }, false],
-		[{ allowed_elements: "br" }, false],
+	for (const [settings, expected] of [
+		[{ allowed_elements: ["br", "details", "summary", "img", "sup", "sub"] }, 294],
+		[{ allowed_elements: ["BR", "B"] }, 254],
+		[{ allowed_elements: ["br"], table_allowed_elements: ["b"] }, 304],
+		[{ table_allowed_elements: ["br"] }, 313],
+		[{ allowed_elements: ["br"], table_allowed_elements: "" }, 306],
+		[{ allowed_elements: ["br"], table_allowed_elements: "br" }, 311],
+		[{ allowed_elements: [] }, 318],
+		[{ allowed_elements: "br" }, 318],
 	] as const) {
 		it(
 			`agrees with markdownlint under ${JSON.stringify(settings)}`,
 			() => {
 				const result = differential(MD033, { config: settings, extra });
 				assert.deepStrictEqual(result.divergences, []);
-				if (changes) assert.notStrictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
-				else assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
+				assert.strictEqual(result.oracleFindings, expected);
 			},
 			DIFFERENTIAL_TIMEOUT,
 		);

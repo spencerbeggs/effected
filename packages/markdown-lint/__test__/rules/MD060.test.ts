@@ -58,27 +58,27 @@ describe("MD060 table-column-style", () => {
 	);
 
 	// markdownlint reads `style` as `String(style || "any")`, so a falsy value is `any` and a name it does not know
-	// allows no style and reports nothing; `aligned_delimiter` is read by truthiness.
-	for (const [settings, changes] of [
-		[{ style: "compact" }, true],
-		[{ style: "aligned" }, true],
-		[{ style: "tight" }, true],
-		[{ style: "compact", aligned_delimiter: true }, true],
-		[{ style: "tight", aligned_delimiter: 1 }, true],
-		[{ aligned_delimiter: true }, true],
-		[{ style: "unknown" }, true],
-		[{ style: 5 }, true],
-		[{ style: "any" }, false],
-		[{ style: "" }, false],
-		[{ style: "any", aligned_delimiter: false }, false],
+	// allows no style and reports nothing (only fixtures that set their own style inline still report);
+	// `aligned_delimiter` is read by truthiness. Each count is markdownlint's over the corpus and the extras.
+	for (const [settings, expected] of [
+		[{ style: "compact" }, 2798],
+		[{ style: "aligned" }, 1679],
+		[{ style: "tight" }, 4717],
+		[{ style: "compact", aligned_delimiter: true }, 2908],
+		[{ style: "tight", aligned_delimiter: 1 }, 4827],
+		[{ aligned_delimiter: true }, 1433],
+		[{ style: "unknown" }, 1156],
+		[{ style: 5 }, 1156],
+		[{ style: "any" }, 1352],
+		[{ style: "" }, 1352],
+		[{ style: "any", aligned_delimiter: false }, 1352],
 	] as const) {
 		it(
 			`agrees with markdownlint under ${JSON.stringify(settings)}`,
 			() => {
 				const result = differential(MD060, { config: settings, extra });
 				assert.deepStrictEqual(result.divergences, []);
-				if (changes) assert.notStrictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
-				else assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
+				assert.strictEqual(result.oracleFindings, expected);
 			},
 			DIFFERENTIAL_TIMEOUT,
 		);

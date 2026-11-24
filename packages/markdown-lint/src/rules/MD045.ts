@@ -9,6 +9,7 @@
 import type * as Lint from "@effected/markdown-lint";
 import {
 	htmlTagInfo,
+	htmlTextRange,
 	htmlTextTokens,
 	inSpans,
 	lineStarts,
@@ -54,7 +55,7 @@ export const MD045: Lint.LintRule = LintRule.make({
 			report(
 				context.diagnostic({
 					at: { offset: token.offset, length: 0 },
-					range: { offset: token.offset, length: token.text.replace(/[\r\n][\s\S]*$/, "").length },
+					range: htmlTextRange(token),
 				}),
 			);
 		}

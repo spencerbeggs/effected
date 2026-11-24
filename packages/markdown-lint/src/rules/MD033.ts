@@ -4,7 +4,7 @@
 // `htmlTextTokens` reads both from the kit tree.
 
 import type * as Lint from "@effected/markdown-lint";
-import { htmlTagInfo, htmlTextTokens } from "../internal/rule-helpers.js";
+import { htmlTagInfo, htmlTextRange, htmlTextTokens } from "../internal/rule-helpers.js";
 import { LintRule } from "../LintRule.js";
 
 // markdownlint's `toLowerCaseStringArray`: an array's items as lowercase strings, or nothing.
@@ -40,7 +40,7 @@ export const MD033: Lint.LintRule = LintRule.make({
 					context.diagnostic({
 						at: { offset: token.offset, length: 0 },
 						detail: `Element: ${name}`,
-						range: { offset: token.offset, length: token.text.replace(/[\r\n][\s\S]*$/, "").length },
+						range: htmlTextRange(token),
 					}),
 				);
 			}

@@ -62,21 +62,20 @@ describe("MD031 blanks-around-fences", () => {
 
 	// markdownlint reads `list_items` as `list_items === undefined || !!list_items`: any falsy value leaves list
 	// items out, any truthy one keeps them.
-	for (const [settings, changes] of [
-		[{ list_items: false }, true],
-		[{ list_items: 0 }, true],
-		[{ list_items: "" }, true],
-		[{ list_items: null }, true],
-		[{ list_items: true }, false],
-		[{ list_items: "no" }, false],
+	for (const [settings, expected] of [
+		[{ list_items: false }, 101],
+		[{ list_items: 0 }, 101],
+		[{ list_items: "" }, 101],
+		[{ list_items: null }, 101],
+		[{ list_items: true }, 180],
+		[{ list_items: "no" }, 180],
 	] as const) {
 		it(
 			`agrees with markdownlint under ${JSON.stringify(settings)}`,
 			() => {
 				const result = differential(MD031, { config: settings, extra });
 				assert.deepStrictEqual(result.divergences, []);
-				if (changes) assert.notStrictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
-				else assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
+				assert.strictEqual(result.oracleFindings, expected);
 			},
 			DIFFERENTIAL_TIMEOUT,
 		);
