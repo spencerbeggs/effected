@@ -4,7 +4,13 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
 import { MD025 } from "../../src/rules/MD025.js";
-import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
+import {
+	DIFFERENTIAL_TIMEOUT,
+	SETTINGS_PROBES,
+	differential,
+	runRule,
+	settingsDifferential,
+} from "../helpers/differential.js";
 
 const extra = [
 	{ name: "two titles", source: "# One\n\n# Two\n" },
@@ -87,13 +93,46 @@ describe("MD025 single-title", () => {
 		DIFFERENTIAL_TIMEOUT,
 	);
 
-	it("reads a wrong-typed or invalid setting as its default", () => {
-		for (const settings of [{ level: "2" }, { front_matter_title: 1 }, { front_matter_title: "(" }]) {
-			for (const { source } of extra) {
-				assert.deepStrictEqual(run(source, settings), run(source), JSON.stringify(settings));
-			}
-		}
-	});
+	// markdownlint coerces its settings (`Number(x ?? d)`, `!!x`, `String(x || d)`), so a non-canonical value
+	// means to the kit what it means there.
+	it(
+		"reads a non-canonical setting as markdownlint does",
+		() => {
+			const result = settingsDifferential(
+				MD025,
+				[
+					{ level: "2" },
+					{ level: null },
+					{ level: "x" },
+					{ level: [2] },
+					{ front_matter_title: 5 },
+					{ front_matter_title: 0 },
+					{ front_matter_title: null },
+				],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.isAbove(result.oracleFindings, 0);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
+	// Where markdownlint's own reading of a setting throws (a `front_matter_title` that is not a valid regular expression), the kit stays total: it reads the setting
+	// as its default pattern and reports what that gives. Recorded as "the kit reads a setting markdownlint throws on".
+	it(
+		"reads a setting markdownlint throws on as its default pattern",
+		() => {
+			const result = settingsDifferential(
+				MD025,
+				[{ front_matter_title: "(" }, { front_matter_title: "[" }],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.strictEqual(result.divergences.length, INVALID_TITLE_PATTERN_DIVERGENCES);
+			for (const divergence of result.divergences)
+				assert.match(divergence.reason, /^markdownlint throws: Invalid regular expression.*; kit: \d+ findings$/);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 
 	it("reports every top-level heading after the first", () => {
 		const findings = run("# One\n\n# Two\n\n# Three\n");
@@ -118,3 +157,6 @@ const ORACLE_FINDINGS_DEFAULT = 53;
 
 // markdownlint's MD025 findings over the byte order mark inputs: both later h1s after one mark, and after three.
 const ORACLE_FINDINGS_BOM = 4;
+
+// The inputs on which markdownlint throws on an invalid `front_matter_title` (see the test above).
+const INVALID_TITLE_PATTERN_DIVERGENCES = 32;

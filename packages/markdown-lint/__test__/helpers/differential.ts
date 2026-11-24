@@ -213,3 +213,117 @@ export const differential = (
 	}
 	return { compared: inputs.length, oracleFindings, divergences };
 };
+
+/**
+ * Documents for comparing settings on, beside a rule's own extra inputs: one of each line shape the ported rules'
+ * settings read (trailing spaces, tabs in text and code, blank runs, long lines, headings of both styles and
+ * levels, punctuation, duplicates, lists, fences with and without a language, HTML in text and a table), and two
+ * front matter blocks for `front_matter_title`.
+ */
+export const SETTINGS_PROBES: ReadonlyArray<DifferentialInput> = [
+	{
+		name: "settings probe",
+		source: [
+			"# Title",
+			"",
+			"text with trailing   ",
+			"",
+			"\tTabbed line",
+			"",
+			"",
+			"",
+			"three blanks above",
+			"",
+			`${"a".repeat(30)} ${"b".repeat(30)} ${"c".repeat(30)} tail`,
+			"",
+			"## Two.",
+			"no blank",
+			"# Second h1",
+			"",
+			"Setext two",
+			"----------",
+			"",
+			"## Two.",
+			"",
+			"### Closed ###",
+			"",
+			"```",
+			"\tcode tab",
+			"```",
+			"",
+			"```js",
+			"\tconst a = 1;",
+			"```",
+			"- a",
+			"",
+			"",
+			"  ",
+			"- b",
+			"  ```",
+			"  x",
+			"  ```",
+			"",
+			"* c",
+			"",
+			"`code` \tx and <b>bold</b> <i>it</i>",
+			"",
+			"| a | b |",
+			"|---|:-|",
+			"| <br> |x|",
+			"",
+		].join("\n"),
+	},
+	{ name: "settings probe, title front matter", source: "---\ntitle: T\n---\n# H\n\n### Deep\n\n# Again\n" },
+	{ name: "settings probe, front matter with 5", source: "---\nlayout: 5\n---\n\ntext first\n\n## H\n\n# One\n" },
+];
+
+/** One settings case on which the kit and markdownlint disagree. */
+export interface SettingsDivergence extends Divergence {
+	readonly settings: string;
+}
+
+/**
+ * Compare `rule` and markdownlint under each of `cases` over `inputs` alone (no corpus): the check that a
+ * non-canonical setting means to the kit what markdownlint's coercion makes of it. `oracleFindings` sums
+ * markdownlint's findings over every case, so a test can assert the comparison was not vacuous.
+ */
+export const settingsDifferential = (
+	rule: LintRule,
+	cases: ReadonlyArray<Record<string, unknown>>,
+	inputs: ReadonlyArray<DifferentialInput>,
+): { readonly oracleFindings: number; readonly divergences: ReadonlyArray<SettingsDivergence> } => {
+	const divergences: Array<SettingsDivergence> = [];
+	let oracleFindings = 0;
+	for (const settings of cases) {
+		const config = { default: false, [rule.name]: settings };
+		for (const input of inputs) {
+			const comparison = compareOne(rule, config, input);
+			oracleFindings += comparison.oracleFindings;
+			if (comparison.reason !== undefined)
+				divergences.push({ settings: JSON.stringify(settings), fixture: input.name, reason: comparison.reason });
+		}
+	}
+	return { oracleFindings, divergences };
+};
+
+/**
+ * The settings cases and inputs on which the text the kit's fixes leave differs from the text markdownlint's
+ * leave: the check behind a divergence recorded as a `fixInfo` difference alone.
+ */
+export const settingsAppliedTextDivergences = (
+	rule: LintRule,
+	cases: ReadonlyArray<Record<string, unknown>>,
+	inputs: ReadonlyArray<DifferentialInput>,
+): ReadonlyArray<SettingsDivergence> => {
+	const divergences: Array<SettingsDivergence> = [];
+	for (const settings of cases) {
+		const config = { default: false, [rule.name]: settings };
+		for (const input of inputs) {
+			const oracle = oracleLint(input.source, config).filter((finding) => finding.ruleNames[0] === rule.name);
+			const kit = MarkdownLint.lint(input.source, [rule], { config });
+			if (MarkdownLint.applyFixes(input.source, kit) !== oracleApplyFixes(input.source, oracle))
+				divergences.push({ settings: JSON.stringify(settings), fixture: input.name, reason: "applied text differs" });
+		}
+	}
+	return divergences;
+};

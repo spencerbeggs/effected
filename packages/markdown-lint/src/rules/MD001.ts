@@ -11,8 +11,8 @@ import { LintRule } from "../LintRule.js";
  * @remarks
  * markdownlint's setting: `front_matter_title` (default
  * `^\s*"?title"?\s*[:=]`); a front matter title counts as a level-1
- * heading, and `""` turns that off. A setting of the wrong type reads as its
- * default.
+ * heading, and `""` turns that off. Settings are coerced as markdownlint coerces them
+ * (`"50"` reads as `50`, `0` as `false`).
  *
  * @public
  */

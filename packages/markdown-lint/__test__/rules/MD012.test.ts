@@ -5,7 +5,14 @@ import { assert, describe, it } from "@effect/vitest";
 import { MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
 import { MD012 } from "../../src/rules/MD012.js";
-import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
+import {
+	DIFFERENTIAL_TIMEOUT,
+	SETTINGS_PROBES,
+	differential,
+	runRule,
+	settingsAppliedTextDivergences,
+	settingsDifferential,
+} from "../helpers/differential.js";
 
 const extra = [
 	{ name: "two blanks", source: "a\n\n\nb\n" },
@@ -59,6 +66,29 @@ describe("MD012 no-multiple-blanks", () => {
 		);
 	}
 
+	// Under a negative maximum markdownlint reports, and deletes, every line, blank or not. That is the all-blank
+	// case of `{ maximum: 0 }` again: n lines hold n - 1 line breaks, so the last line's delete cannot be its own
+	// whole-line `fixInfo`, and only that one finding differs. The text the fixes leave is markdownlint's.
+	it(
+		"differs from markdownlint under a negative maximum only in the last line's delete",
+		() => {
+			const inputs = [...extra, ...SETTINGS_PROBES];
+			const result = settingsDifferential(MD012, [{ maximum: -1 }], inputs);
+			assert.strictEqual(result.divergences.length, NEGATIVE_MAXIMUM_DIVERGENCES);
+			for (const divergence of result.divergences) {
+				const input = inputs.find((each) => each.name === divergence.fixture);
+				const lastLine = (input?.source ?? "").split(/\r\n|\r|\n/).length;
+				assert.match(divergence.reason, new RegExp(`^finding ${lastLine} \\(line ${lastLine}\\) fixInfo: kit `));
+				assert.match(
+					divergence.reason,
+					/markdownlint \{"lineNumber":\d+,"editColumn":1,"deleteCount":-1,"insertText":""\}$/,
+				);
+			}
+			assert.deepStrictEqual(settingsAppliedTextDivergences(MD012, [{ maximum: -1 }], inputs), []);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
 	it(
 		"agrees with markdownlint under { maximum: 0 } wherever markdownlint does not throw",
 		() => {
@@ -92,13 +122,21 @@ describe("MD012 no-multiple-blanks", () => {
 		DIFFERENTIAL_TIMEOUT,
 	);
 
-	it("reads a wrong-typed setting as its default", () => {
-		for (const settings of [{ maximum: "2" }, { maximum: true }]) {
-			for (const { source } of extra) {
-				assert.deepStrictEqual(run(source, settings), run(source), JSON.stringify(settings));
-			}
-		}
-	});
+	// markdownlint coerces its settings (`Number(x ?? d)`, `!!x`, `String(x || d)`), so a non-canonical value
+	// means to the kit what it means there.
+	it(
+		"reads a non-canonical setting as markdownlint does",
+		() => {
+			const result = settingsDifferential(
+				MD012,
+				[{ maximum: "2" }, { maximum: true }, { maximum: null }, { maximum: "x" }, { maximum: [2] }],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.isAbove(result.oracleFindings, 0);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 
 	it("reports each blank line past the maximum, with a fix that deletes it", () => {
 		const source = "a\n\n\n\nb\n";
@@ -123,3 +161,6 @@ describe("MD012 no-multiple-blanks", () => {
 
 // markdownlint's MD012 findings over the corpus (LF and CRLF) and the extras.
 const ORACLE_FINDINGS_DEFAULT = 65;
+
+// The inputs on which a negative maximum's last delete differs (see the test above).
+const NEGATIVE_MAXIMUM_DIVERGENCES = 16;

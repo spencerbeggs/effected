@@ -4,7 +4,13 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
 import { MD003 } from "../../src/rules/MD003.js";
-import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
+import {
+	DIFFERENTIAL_TIMEOUT,
+	SETTINGS_PROBES,
+	differential,
+	runRule,
+	settingsDifferential,
+} from "../helpers/differential.js";
 
 const extra = [
 	{ name: "atx then closed", source: "# One\n\n## Two ##\n" },
@@ -50,13 +56,21 @@ describe("MD003 heading-style", () => {
 		);
 	}
 
-	it("reads a wrong-typed setting as its default", () => {
-		for (const settings of [{ style: 1 }, { style: ["atx"] }]) {
-			for (const { source } of extra) {
-				assert.deepStrictEqual(run(source, settings), run(source), JSON.stringify(settings));
-			}
-		}
-	});
+	// markdownlint coerces its settings (`Number(x ?? d)`, `!!x`, `String(x || d)`), so a non-canonical value
+	// means to the kit what it means there.
+	it(
+		"reads a non-canonical setting as markdownlint does",
+		() => {
+			const result = settingsDifferential(
+				MD003,
+				[{ style: 5 }, { style: null }, { style: 0 }, { style: true }, { style: ["atx"] }, { style: "" }],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.isAbove(result.oracleFindings, 0);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 
 	it("reports a heading whose style differs from the first", () => {
 		const findings = run("# One\n\n## Two ##\n");

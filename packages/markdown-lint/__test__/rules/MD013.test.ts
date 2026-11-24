@@ -4,7 +4,13 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
 import { MD013 } from "../../src/rules/MD013.js";
-import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
+import {
+	DIFFERENTIAL_TIMEOUT,
+	SETTINGS_PROBES,
+	differential,
+	runRule,
+	settingsDifferential,
+} from "../helpers/differential.js";
 
 const long = "word ".repeat(18).trim();
 const extra = [
@@ -127,22 +133,58 @@ describe("MD013 line-length", () => {
 		);
 	}
 
-	it("reads a wrong-typed setting as its default", () => {
-		for (const settings of [
-			{ line_length: "40" },
-			{ heading_line_length: "20" },
-			{ code_block_line_length: null },
-			{ code_blocks: "no" },
-			{ tables: 0 },
-			{ headings: "false" },
-			{ strict: "true" },
-			{ stern: 1 },
-		]) {
-			for (const { source } of extra) {
-				assert.deepStrictEqual(run(source, settings), run(source), JSON.stringify(settings));
-			}
-		}
-	});
+	// markdownlint coerces its settings (`Number(x ?? d)`, `!!x`, `String(x || d)`), so a non-canonical value
+	// means to the kit what it means there.
+	it(
+		"reads a non-canonical setting as markdownlint does",
+		() => {
+			const result = settingsDifferential(
+				MD013,
+				[
+					{ line_length: "50" },
+					{ line_length: null },
+					{ line_length: "x" },
+					{ line_length: true },
+					{ heading_line_length: "5" },
+					{ heading_line_length: null },
+					{ code_block_line_length: "10" },
+					{ code_block_line_length: null },
+					{ line_length: 50, strict: 1 },
+					{ line_length: 50, strict: "x" },
+					{ line_length: 50, stern: "yes" },
+					{ line_length: 50, stern: 0 },
+					{ line_length: 50, code_blocks: 0 },
+					{ line_length: 50, code_blocks: "" },
+					{ line_length: 20, tables: 0 },
+					{ line_length: 20, tables: "no" },
+					{ line_length: 50, headings: 0 },
+					{ line_length: 50, headings: null },
+				],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.isAbove(result.oracleFindings, 0);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
+	// markdownlint reports a fractional limit's overflow as fractional range columns (`[51.5, 69.5]`), which a kit
+	// range, in whole columns, cannot hold: the kit's finding carries no range, and lines and details agree.
+	// Recorded as "a fractional MD013 limit reports no range".
+	it(
+		"differs from markdownlint under a fractional limit only in the range",
+		() => {
+			const result = settingsDifferential(
+				MD013,
+				[{ line_length: 50.5 }, { heading_line_length: 5.5 }, { code_block_line_length: 10.5 }],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.strictEqual(result.divergences.length, FRACTIONAL_LIMIT_DIVERGENCES);
+			for (const divergence of result.divergences)
+				assert.match(divergence.reason, /\) range: kit null, markdownlint \[\d+\.5,\d+\.5\]$/);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 
 	it("reports a line past the limit with the overflow as its range", () => {
 		const source = `${"a".repeat(30)} ${"b".repeat(30)} ${"c".repeat(30)}\n`;
@@ -158,3 +200,6 @@ describe("MD013 line-length", () => {
 
 // markdownlint's MD013 findings over the corpus (LF and CRLF) and the extras.
 const ORACLE_FINDINGS_DEFAULT = 165;
+
+// The inputs on which a fractional limit's finding differs in its range (see the test above).
+const FRACTIONAL_LIMIT_DIVERGENCES = 29;

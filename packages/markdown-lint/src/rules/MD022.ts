@@ -6,19 +6,26 @@
 
 import type { Heading } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import { Predicate } from "effect";
 import { headingNodes } from "../internal/headings.js";
 import { preferredLineEnding } from "../internal/line-endings.js";
 import { contentLine, firstContentLine, isBlankLine } from "../internal/lines.js";
-import { setting } from "../internal/settings.js";
+import { coercedNumber, coercedText, flagSetting, numberSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
-const isLinesSetting = (value: unknown): value is number | ReadonlyArray<number> =>
-	typeof value === "number" || (Array.isArray(value) && value.every((item) => typeof item === "number"));
-
-// markdownlint's `lines_above` / `lines_below`: one count, or one per heading level (missing levels 1).
-const linesFor = (value: number | ReadonlyArray<number>, heading: Heading): number =>
-	typeof value === "number" ? value : (value.slice(0, 6)[heading.depth - 1] ?? 1);
+// markdownlint's `getLinesFunction` for `lines_above` / `lines_below`: an array gives each heading level its item
+// as written (missing levels 1); any other value is one count, `Number(value ?? 1)`. markdownlint compares an
+// item as written: by coercion to count and to test the side is on (`<`, `>=`), strictly to decide the finding
+// (`!==`, so `["2"]` reports two blank lines as wrong), and as text in the detail.
+const linesFunction = (config: Readonly<Record<string, unknown>>, name: string): ((heading: Heading) => unknown) => {
+	const value = config[name];
+	if (Array.isArray(value)) {
+		const levels: Array<unknown> = [1, 1, 1, 1, 1, 1];
+		for (const [index, item] of value.slice(0, 6).entries()) levels[index] = item;
+		return (heading) => levels[heading.depth - 1];
+	}
+	const lines = numberSetting(config, name, 1);
+	return () => lines;
+};
 
 // markdownlint's `getBlockQuotePrefixText` for the line a blank goes next to: its blockquote markers and the
 // indentation around them read straight from its raw text, trailing space trimmed, then a line break, `count`
@@ -33,8 +40,8 @@ const rawQuotePrefixLines = (line: string | undefined, count: number, lineEnding
  * @remarks
  * markdownlint's settings: `lines_above` and `lines_below` (default `1`;
  * a count, or an array of counts per heading level; a negative count turns
- * that side off) and `include_front_matter` (default `false`). A setting of
- * the wrong type reads as its default.
+ * that side off) and `include_front_matter` (default `false`). Settings are coerced as markdownlint coerces them
+ * (`"50"` reads as `50`, `0` as `false`).
  *
  * @public
  */
@@ -44,9 +51,9 @@ export const MD022: Lint.LintRule = LintRule.make({
 	tags: ["headings", "blank_lines"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md022.md",
 	check: (context, report) => {
-		const above = setting(context.config, "lines_above", isLinesSetting, 1);
-		const below = setting(context.config, "lines_below", isLinesSetting, 1);
-		const includeFrontMatter = setting(context.config, "include_front_matter", Predicate.isBoolean, false);
+		const above = linesFunction(context.config, "lines_above");
+		const below = linesFunction(context.config, "lines_below");
+		const includeFrontMatter = flagSetting(context.config, "include_front_matter");
 		const lineEnding = preferredLineEnding(context.source);
 		const first = firstContentLine(context);
 		const last = context.lines.length;
@@ -61,41 +68,43 @@ export const MD022: Lint.LintRule = LintRule.make({
 			const startLine = heading.position.start.line;
 			const endLine = heading.position.end.line;
 			const text = (context.lines[startLine - 1] as string).trim();
-			const linesAbove = linesFor(above, heading);
-			if (linesAbove >= 0) {
+			const linesAbove = above(heading);
+			const countAbove = coercedNumber(linesAbove);
+			if (countAbove >= 0) {
 				let actual = 0;
-				while (actual < linesAbove && isBlankLine(lineAt(startLine - 1 - actual, includeFrontMatter))) actual++;
+				while (actual < countAbove && isBlankLine(lineAt(startLine - 1 - actual, includeFrontMatter))) actual++;
 				if (actual !== linesAbove) {
 					const offset = context.mapping.lineStart(startLine);
 					report(
 						context.diagnostic({
 							at: { offset, length: 0 },
-							detail: `Expected: ${linesAbove}; Actual: ${actual}; Above`,
+							detail: `Expected: ${coercedText(linesAbove)}; Actual: ${actual}; Above`,
 							context: text,
 							fix: {
 								offset,
 								length: 0,
-								content: rawQuotePrefixLines(contentLine(context, startLine - 1), linesAbove - actual, lineEnding),
+								content: rawQuotePrefixLines(contentLine(context, startLine - 1), countAbove - actual, lineEnding),
 							},
 						}),
 					);
 				}
 			}
-			const linesBelow = linesFor(below, heading);
-			if (linesBelow >= 0) {
+			const linesBelow = below(heading);
+			const countBelow = coercedNumber(linesBelow);
+			if (countBelow >= 0) {
 				let actual = 0;
-				while (actual < linesBelow && isBlankLine(lineAt(endLine + 1 + actual, false))) actual++;
+				while (actual < countBelow && isBlankLine(lineAt(endLine + 1 + actual, false))) actual++;
 				if (actual !== linesBelow) {
 					const offset = context.mapping.lineStart(endLine + 1);
 					report(
 						context.diagnostic({
 							at: { offset: heading.position.start.offset, length: 0 },
-							detail: `Expected: ${linesBelow}; Actual: ${actual}; Below`,
+							detail: `Expected: ${coercedText(linesBelow)}; Actual: ${actual}; Below`,
 							context: text,
 							fix: {
 								offset,
 								length: 0,
-								content: rawQuotePrefixLines(contentLine(context, endLine + 1), linesBelow - actual, lineEnding),
+								content: rawQuotePrefixLines(contentLine(context, endLine + 1), countBelow - actual, lineEnding),
 							},
 						}),
 					);

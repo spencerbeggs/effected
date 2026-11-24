@@ -5,7 +5,13 @@ import { assert, describe, it } from "@effect/vitest";
 import { MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
 import { MD009 } from "../../src/rules/MD009.js";
-import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
+import {
+	DIFFERENTIAL_TIMEOUT,
+	SETTINGS_PROBES,
+	differential,
+	runRule,
+	settingsDifferential,
+} from "../helpers/differential.js";
 
 const extra = [
 	{ name: "mixed line endings", source: "a  \r\nb   \nc \r\nd\n" },
@@ -65,18 +71,35 @@ describe("MD009 no-trailing-spaces", () => {
 		);
 	}
 
-	it("reads a wrong-typed setting as its default", () => {
-		for (const settings of [
-			{ br_spaces: "3" },
-			{ code_blocks: "yes" },
-			{ list_item_empty_lines: 1 },
-			{ strict: "true" },
-		]) {
-			for (const { source } of extra) {
-				assert.deepStrictEqual(run(source, settings), run(source), JSON.stringify(settings));
-			}
-		}
-	});
+	// markdownlint coerces its settings (`Number(x ?? d)`, `!!x`, `String(x || d)`), so a non-canonical value
+	// means to the kit what it means there.
+	it(
+		"reads a non-canonical setting as markdownlint does",
+		() => {
+			const result = settingsDifferential(
+				MD009,
+				[
+					{ br_spaces: "3" },
+					{ br_spaces: null },
+					{ br_spaces: true },
+					{ br_spaces: "x" },
+					{ br_spaces: [3] },
+					{ code_blocks: 1 },
+					{ code_blocks: "yes" },
+					{ code_blocks: 0 },
+					{ list_item_empty_lines: 1 },
+					{ list_item_empty_lines: "x" },
+					{ strict: 1 },
+					{ strict: "true" },
+					{ strict: 0 },
+				],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.isAbove(result.oracleFindings, 0);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 
 	it("reports stray trailing spaces with a range and a fix that deletes them", () => {
 		const source = "Text   \n";

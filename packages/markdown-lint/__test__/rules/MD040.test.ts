@@ -4,7 +4,13 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
 import { MD040 } from "../../src/rules/MD040.js";
-import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
+import {
+	DIFFERENTIAL_TIMEOUT,
+	SETTINGS_PROBES,
+	differential,
+	runRule,
+	settingsDifferential,
+} from "../helpers/differential.js";
 
 const extra = [
 	{ name: "no language", source: "```\ncode\n```\n" },
@@ -94,6 +100,28 @@ describe("MD040 fenced-code-language", () => {
 			],
 		);
 	});
+
+	// markdownlint coerces its settings (`Number(x ?? d)`, `!!x`, `String(x || d)`), so a non-canonical value
+	// means to the kit what it means there.
+	it(
+		"reads a non-canonical setting as markdownlint does",
+		() => {
+			const result = settingsDifferential(
+				MD040,
+				[
+					{ allowed_languages: "js" },
+					{ allowed_languages: [5] },
+					{ allowed_languages: null },
+					{ language_only: 1 },
+					{ language_only: "x" },
+				],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.isAbove(result.oracleFindings, 0);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD040 findings over the corpus (LF and CRLF) and the extras.

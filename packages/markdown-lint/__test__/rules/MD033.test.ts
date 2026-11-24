@@ -6,7 +6,13 @@ import type { Code, Html, MarkdownNode } from "@effected/markdown";
 import { Option } from "effect";
 import { rereadHtmlBlock } from "../../src/internal/html-reread.js";
 import { MD033 } from "../../src/rules/MD033.js";
-import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
+import {
+	DIFFERENTIAL_TIMEOUT,
+	SETTINGS_PROBES,
+	differential,
+	runRule,
+	settingsDifferential,
+} from "../helpers/differential.js";
 
 const extra = [
 	{ name: "inline tags", source: "Text <b>bold</b> and <BR> and <img src='a.png'>\n" },
@@ -281,6 +287,29 @@ describe("MD033 no-inline-html", () => {
 		assert.deepStrictEqual(run("$$ <b>x</b>\nx\n$$$\n"), []);
 		assert.strictEqual(run("x <b>x</b>\nx\n$$$\n").length, 1);
 	});
+
+	// markdownlint coerces its settings (`Number(x ?? d)`, `!!x`, `String(x || d)`), so a non-canonical value
+	// means to the kit what it means there.
+	it(
+		"reads a non-canonical setting as markdownlint does",
+		() => {
+			const result = settingsDifferential(
+				MD033,
+				[
+					{ allowed_elements: "b" },
+					{ allowed_elements: ["B", 5] },
+					{ allowed_elements: null },
+					{ table_allowed_elements: "" },
+					{ table_allowed_elements: [] },
+					{ table_allowed_elements: "br" },
+				],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.isAbove(result.oracleFindings, 0);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD033 findings over the corpus (LF and CRLF) and the extras.

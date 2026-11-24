@@ -5,7 +5,13 @@ import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
 import { MarkdownLint } from "../../src/MarkdownLint.js";
 import { MD060 } from "../../src/rules/MD060.js";
-import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
+import {
+	DIFFERENTIAL_TIMEOUT,
+	SETTINGS_PROBES,
+	differential,
+	runRule,
+	settingsDifferential,
+} from "../helpers/differential.js";
 
 const extra = [
 	{ name: "aligned", source: "| a   | b |\n| --- | - |\n| ccc | d |\n" },
@@ -109,6 +115,30 @@ describe("MD060 table-column-style", () => {
 		);
 		assert.strictEqual(MarkdownLint.applyFixes(source, findings), "| a | b |\n| - | - |\n");
 	});
+
+	// markdownlint coerces its settings (`Number(x ?? d)`, `!!x`, `String(x || d)`), so a non-canonical value
+	// means to the kit what it means there.
+	it(
+		"reads a non-canonical setting as markdownlint does",
+		() => {
+			const result = settingsDifferential(
+				MD060,
+				[
+					{ style: 5 },
+					{ style: null },
+					{ style: 0 },
+					{ style: ["tight"] },
+					{ aligned_delimiter: 1 },
+					{ aligned_delimiter: "x" },
+					{ aligned_delimiter: 0 },
+				],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.isAbove(result.oracleFindings, 0);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD060 findings over the corpus (LF and CRLF) and the extras.

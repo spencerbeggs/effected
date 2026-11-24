@@ -3,19 +3,20 @@
 // top-level blocks the title rules read.
 
 import type { Heading, MarkdownNode } from "@effected/markdown";
-import { Option, Predicate } from "effect";
+import { Option } from "effect";
 import type { LintContext } from "../LintContext.js";
 import { LINE_BREAK } from "./line-endings.js";
 import { mathFlowLines } from "./math-flow.js";
 import { perReading } from "./memo.js";
-import { setting } from "./settings.js";
+import { stringSetting } from "./settings.js";
 
 /**
  * markdownlint's `frontMatterHasTitle`: whether a front matter line matches
  * `front_matter_title` (case-insensitive; default `^\s*"?title"?\s*[:=]`).
  * Any falsy value (`""`, `false`, `0`, `null`) turns front matter off, as in
- * markdownlint. A truthy pattern of the wrong type, or one that is not a
- * valid regular expression, reads as the default.
+ * markdownlint. A truthy pattern is read through `String`, as markdownlint
+ * reads it; one that is not a valid regular expression, where markdownlint
+ * throws, reads as the default.
  * @internal
  */
 export const frontMatterHasTitle = (context: LintContext): boolean => {
@@ -23,7 +24,7 @@ export const frontMatterHasTitle = (context: LintContext): boolean => {
 	// markdownlint turns front matter off for any falsy value (`""`, `false`, `0`, `null`), not only `""`.
 	const raw = context.config.front_matter_title;
 	if (raw !== undefined && !raw) return false;
-	const pattern = setting(context.config, "front_matter_title", Predicate.isString, fallback);
+	const pattern = stringSetting(context.config, "front_matter_title", fallback);
 	let matcher: RegExp;
 	try {
 		matcher = new RegExp(pattern, "i");

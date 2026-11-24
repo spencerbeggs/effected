@@ -4,9 +4,8 @@
 // `atxHeadingSequence`).
 
 import type * as Lint from "@effected/markdown-lint";
-import { Predicate } from "effect";
 import { headingNodes, headingStyle } from "../internal/headings.js";
-import { setting } from "../internal/settings.js";
+import { stringSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 /**
@@ -14,8 +13,8 @@ import { LintRule } from "../LintRule.js";
  *
  * @remarks
  * markdownlint's setting: `style` (default `consistent`; or `atx`,
- * `atx_closed`, `setext`, `setext_with_atx`, `setext_with_atx_closed`). A
- * setting of the wrong type reads as its default.
+ * `atx_closed`, `setext`, `setext_with_atx`, `setext_with_atx_closed`). Settings are coerced as markdownlint coerces them
+ * (`"50"` reads as `50`, `0` as `false`).
  *
  * @public
  */
@@ -25,7 +24,7 @@ export const MD003: Lint.LintRule = LintRule.make({
 	tags: ["headings"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md003.md",
 	check: (context, report) => {
-		let style = setting(context.config, "style", Predicate.isString, "consistent") || "consistent";
+		let style = stringSetting(context.config, "style", "consistent");
 		for (const heading of headingNodes(context)) {
 			const actual = headingStyle(context, heading);
 			if (style === "consistent") style = actual;

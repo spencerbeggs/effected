@@ -3,10 +3,9 @@
 // direct children's source spans (micromark's heading text token children).
 
 import type * as Lint from "@effected/markdown-lint";
-import { Predicate } from "effect";
 import { headingNodes, headingText } from "../internal/headings.js";
 import { errorContext } from "../internal/lines.js";
-import { setting } from "../internal/settings.js";
+import { flagSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 /**
@@ -14,8 +13,8 @@ import { LintRule } from "../LintRule.js";
  *
  * @remarks
  * markdownlint's setting: `siblings_only` (default `false`), which compares a
- * heading only with its siblings under the same parent heading. A setting of
- * the wrong type reads as its default.
+ * heading only with its siblings under the same parent heading. Settings are coerced as markdownlint coerces them
+ * (`"50"` reads as `50`, `0` as `false`).
  *
  * @public
  */
@@ -25,7 +24,7 @@ export const MD024: Lint.LintRule = LintRule.make({
 	tags: ["headings"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md024.md",
 	check: (context, report) => {
-		const siblingsOnly = setting(context.config, "siblings_only", Predicate.isBoolean, false);
+		const siblingsOnly = flagSetting(context.config, "siblings_only");
 		const known: Array<Array<string>> = [[], []];
 		let lastLevel = 1;
 		let current = known[lastLevel] as Array<string>;

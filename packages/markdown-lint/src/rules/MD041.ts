@@ -6,11 +6,10 @@
 
 import type { Heading } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import { Predicate } from "effect";
 import { contentBlocks, frontMatterHasTitle } from "../internal/headings.js";
 import { isHtmlFlowComment } from "../internal/html-text.js";
 import { errorContext } from "../internal/lines.js";
-import { setting } from "../internal/settings.js";
+import { flagSetting, numberSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 const headingTagName = /^h[1-6]$/;
@@ -21,8 +20,8 @@ const headingTagName = /^h[1-6]$/;
  * @remarks
  * markdownlint's settings: `level` (default `1`), `allow_preamble` (default
  * `false`) and `front_matter_title` (default `^\s*"?title"?\s*[:=]`; a front
- * matter title satisfies the rule, and `""` turns that off). A setting of
- * the wrong type reads as its default.
+ * matter title satisfies the rule, and `""` turns that off). Settings are coerced as markdownlint coerces them
+ * (`"50"` reads as `50`, `0` as `false`).
  *
  * @public
  */
@@ -32,8 +31,8 @@ export const MD041: Lint.LintRule = LintRule.make({
 	tags: ["headings"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md041.md",
 	check: (context, report) => {
-		const allowPreamble = setting(context.config, "allow_preamble", Predicate.isBoolean, false);
-		const level = setting(context.config, "level", Predicate.isNumber, 1);
+		const allowPreamble = flagSetting(context.config, "allow_preamble");
+		const level = numberSetting(context.config, "level", 1);
 		if (frontMatterHasTitle(context)) return;
 		let errorLine = 0;
 		for (const block of contentBlocks(context)) {

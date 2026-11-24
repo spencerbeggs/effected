@@ -4,7 +4,13 @@
 import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
 import { MD001 } from "../../src/rules/MD001.js";
-import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
+import {
+	DIFFERENTIAL_TIMEOUT,
+	SETTINGS_PROBES,
+	differential,
+	runRule,
+	settingsDifferential,
+} from "../helpers/differential.js";
 
 const extra = [
 	{ name: "math in a blockquote, unclosed", source: "> $$\n> x\n\n# A\n\n### C\n" },
@@ -59,13 +65,44 @@ describe("MD001 heading-increment", () => {
 		);
 	}
 
-	it("reads a wrong-typed or invalid setting as its default", () => {
-		for (const settings of [{ front_matter_title: 1 }, { front_matter_title: "(" }]) {
-			for (const { source } of extra) {
-				assert.deepStrictEqual(run(source, settings), run(source), JSON.stringify(settings));
-			}
-		}
-	});
+	// markdownlint coerces its settings (`Number(x ?? d)`, `!!x`, `String(x || d)`), so a non-canonical value
+	// means to the kit what it means there.
+	it(
+		"reads a non-canonical setting as markdownlint does",
+		() => {
+			const result = settingsDifferential(
+				MD001,
+				[
+					{ front_matter_title: 5 },
+					{ front_matter_title: true },
+					{ front_matter_title: 0 },
+					{ front_matter_title: null },
+					{ front_matter_title: ["title"] },
+				],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.isAbove(result.oracleFindings, 0);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
+	// Where markdownlint's own reading of a setting throws (a `front_matter_title` that is not a valid regular expression), the kit stays total: it reads the setting
+	// as its default pattern and reports what that gives. Recorded as "the kit reads a setting markdownlint throws on".
+	it(
+		"reads a setting markdownlint throws on as its default pattern",
+		() => {
+			const result = settingsDifferential(
+				MD001,
+				[{ front_matter_title: "(" }, { front_matter_title: "[" }],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.strictEqual(result.divergences.length, INVALID_TITLE_PATTERN_DIVERGENCES);
+			for (const divergence of result.divergences)
+				assert.match(divergence.reason, /^markdownlint throws: Invalid regular expression.*; kit: \d+ findings$/);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 
 	it("reports a heading two levels below the last", () => {
 		const findings = run("# One\n\n### Three\n");
@@ -84,3 +121,6 @@ describe("MD001 heading-increment", () => {
 
 // markdownlint's MD001 findings over the corpus (LF and CRLF) and the extras.
 const ORACLE_FINDINGS_DEFAULT = 34;
+
+// The inputs on which markdownlint throws on an invalid `front_matter_title` (see the test above).
+const INVALID_TITLE_PATTERN_DIVERGENCES = 42;

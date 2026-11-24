@@ -5,7 +5,13 @@ import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
 import { MarkdownLint } from "../../src/MarkdownLint.js";
 import { MD031 } from "../../src/rules/MD031.js";
-import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
+import {
+	DIFFERENTIAL_TIMEOUT,
+	SETTINGS_PROBES,
+	differential,
+	runRule,
+	settingsDifferential,
+} from "../helpers/differential.js";
 
 const extra = [
 	{ name: "tight fence", source: "text\n```js\ncode\n```\ntext\n" },
@@ -104,6 +110,22 @@ describe("MD031 blanks-around-fences", () => {
 		);
 		assert.strictEqual(MarkdownLint.applyFixes(source, findings), "> text\n>\n> ```\n> code\n> ```\n>\n> more\n");
 	});
+
+	// markdownlint coerces its settings (`Number(x ?? d)`, `!!x`, `String(x || d)`), so a non-canonical value
+	// means to the kit what it means there.
+	it(
+		"reads a non-canonical setting as markdownlint does",
+		() => {
+			const result = settingsDifferential(
+				MD031,
+				[{ list_items: 0 }, { list_items: "" }, { list_items: "no" }, { list_items: null }],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.isAbove(result.oracleFindings, 0);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD031 findings over the corpus (LF and CRLF) and the extras.

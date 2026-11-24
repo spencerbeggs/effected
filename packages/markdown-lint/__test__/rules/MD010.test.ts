@@ -5,7 +5,13 @@ import { assert, describe, it } from "@effect/vitest";
 import { MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
 import { MD010 } from "../../src/rules/MD010.js";
-import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
+import {
+	DIFFERENTIAL_TIMEOUT,
+	SETTINGS_PROBES,
+	differential,
+	runRule,
+	settingsDifferential,
+} from "../helpers/differential.js";
 
 const extra = [
 	{ name: "tabs in text", source: "a\tb\t\tc\n\tlead\n" },
@@ -55,18 +61,52 @@ describe("MD010 no-hard-tabs", () => {
 		);
 	}
 
-	it("reads a wrong-typed setting as its default", () => {
-		for (const settings of [
-			{ code_blocks: "no" },
-			{ ignore_code_languages: "js" },
-			{ ignore_code_languages: [1, "js"] },
-			{ spaces_per_tab: "4" },
-		]) {
-			for (const { source } of extra) {
-				assert.deepStrictEqual(run(source, settings), run(source), JSON.stringify(settings));
-			}
-		}
-	});
+	// markdownlint coerces its settings (`Number(x ?? d)`, `!!x`, `String(x || d)`), so a non-canonical value
+	// means to the kit what it means there.
+	it(
+		"reads a non-canonical setting as markdownlint does",
+		() => {
+			const result = settingsDifferential(
+				MD010,
+				[
+					{ spaces_per_tab: "4" },
+					{ spaces_per_tab: null },
+					{ spaces_per_tab: "x" },
+					{ spaces_per_tab: -2 },
+					{ spaces_per_tab: true },
+					{ code_blocks: 0 },
+					{ code_blocks: "" },
+					{ code_blocks: "no" },
+					{ code_blocks: null },
+					{ ignore_code_languages: [1, "JS"] },
+					{ ignore_code_languages: null },
+					{ ignore_code_languages: "" },
+					{ ignore_code_languages: [] },
+				],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.isAbove(result.oracleFindings, 0);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
+	// Where markdownlint's own reading of a setting throws (a truthy `ignore_code_languages` that is not an array), the kit stays total: it reads the setting
+	// as no languages and reports what that gives. Recorded as "the kit reads a setting markdownlint throws on".
+	it(
+		"reads a setting markdownlint throws on as no languages",
+		() => {
+			const result = settingsDifferential(
+				MD010,
+				[{ ignore_code_languages: "js" }, { ignore_code_languages: 5 }, { ignore_code_languages: {} }],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.strictEqual(result.divergences.length, NOT_A_LIST_DIVERGENCES);
+			for (const divergence of result.divergences)
+				assert.match(divergence.reason, /^markdownlint throws: .*\.map is not a function; kit: \d+ findings$/);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 
 	it("reports each run of tabs with its column, and a fix of spaces_per_tab spaces per tab", () => {
 		const source = "a\t\tb\n";
@@ -88,3 +128,6 @@ describe("MD010 no-hard-tabs", () => {
 
 // markdownlint's MD010 findings over the corpus (LF and CRLF) and the extras.
 const ORACLE_FINDINGS_DEFAULT = 199;
+
+// The inputs on which markdownlint throws on an `ignore_code_languages` that is not a list (see the test above).
+const NOT_A_LIST_DIVERGENCES = 33;

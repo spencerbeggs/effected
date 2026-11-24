@@ -5,7 +5,13 @@ import { assert, describe, it } from "@effect/vitest";
 import { MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
 import { MD026 } from "../../src/rules/MD026.js";
-import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
+import {
+	DIFFERENTIAL_TIMEOUT,
+	SETTINGS_PROBES,
+	differential,
+	runRule,
+	settingsDifferential,
+} from "../helpers/differential.js";
 
 const extra = [
 	{ name: "trailing punctuation", source: "# Done.\n\n## Wait!\n\n### Why?\n\n#### List:\n" },
@@ -50,13 +56,21 @@ describe("MD026 no-trailing-punctuation", () => {
 		);
 	}
 
-	it("reads a wrong-typed setting as its default", () => {
-		for (const settings of [{ punctuation: 1 }, { punctuation: ["."] }]) {
-			for (const { source } of extra) {
-				assert.deepStrictEqual(run(source, settings), run(source), JSON.stringify(settings));
-			}
-		}
-	});
+	// markdownlint coerces its settings (`Number(x ?? d)`, `!!x`, `String(x || d)`), so a non-canonical value
+	// means to the kit what it means there.
+	it(
+		"reads a non-canonical setting as markdownlint does",
+		() => {
+			const result = settingsDifferential(
+				MD026,
+				[{ punctuation: 5 }, { punctuation: null }, { punctuation: ["."] }, { punctuation: true }, { punctuation: 0 }],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.isAbove(result.oracleFindings, 0);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 
 	it("reports trailing punctuation with its span and a fix that deletes it", () => {
 		const source = "# Heading.\n";

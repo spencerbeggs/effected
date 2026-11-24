@@ -5,12 +5,11 @@
 
 import type { MarkdownNode, Paragraph } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import { Predicate } from "effect";
 import { codeBlockLines } from "../internal/code-blocks.js";
 import { headingNodes } from "../internal/headings.js";
 import { LINE_BREAK } from "../internal/line-endings.js";
 import { firstContentLine, nodeLines } from "../internal/lines.js";
-import { setting } from "../internal/settings.js";
+import { flagSetting, flagSettingOn, numberSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 // A line that cannot wrap: optional heading or blockquote markers and space, then one run of non-space.
@@ -76,8 +75,8 @@ const linkLines = (context: Lint.LintContext): Set<number> =>
  * markdownlint's settings: `line_length` (default `80`),
  * `heading_line_length` and `code_block_line_length` (default
  * `line_length`), `code_blocks`, `tables` and `headings` (default `true`),
- * and `strict` and `stern` (default `false`). A setting of the wrong type
- * reads as its default.
+ * and `strict` and `stern` (default `false`). Settings are coerced as markdownlint coerces them
+ * (`"50"` reads as `50`, `0` as `false`).
  *
  * @public
  */
@@ -87,14 +86,14 @@ export const MD013: Lint.LintRule = LintRule.make({
 	tags: ["line_length"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md013.md",
 	check: (context, report) => {
-		const lineLength = setting(context.config, "line_length", Predicate.isNumber, 80);
-		const headingLineLength = setting(context.config, "heading_line_length", Predicate.isNumber, lineLength);
-		const codeLineLength = setting(context.config, "code_block_line_length", Predicate.isNumber, lineLength);
-		const strict = setting(context.config, "strict", Predicate.isBoolean, false);
-		const stern = setting(context.config, "stern", Predicate.isBoolean, false);
-		const includeCodeBlocks = setting(context.config, "code_blocks", Predicate.isBoolean, true);
-		const includeTables = setting(context.config, "tables", Predicate.isBoolean, true);
-		const includeHeadings = setting(context.config, "headings", Predicate.isBoolean, true);
+		const lineLength = numberSetting(context.config, "line_length", 80);
+		const headingLineLength = numberSetting(context.config, "heading_line_length", lineLength);
+		const codeLineLength = numberSetting(context.config, "code_block_line_length", lineLength);
+		const strict = flagSetting(context.config, "strict");
+		const stern = flagSetting(context.config, "stern");
+		const includeCodeBlocks = flagSettingOn(context.config, "code_blocks");
+		const includeTables = flagSettingOn(context.config, "tables");
+		const includeHeadings = flagSettingOn(context.config, "headings");
 		const headings = nodeLines(headingNodes(context));
 		const code = codeBlockLines(context);
 		const tables = nodeLines(context.document.findAll("table"));
@@ -123,11 +122,16 @@ export const MD013: Lint.LintRule = LintRule.make({
 				line.length !== maxLength
 			) {
 				const start = context.mapping.lineStart(lineNumber);
+				// markdownlint reports a fractional limit's range as fractional columns; a kit range is whole columns, so
+				// a fractional limit's finding carries no range (recorded in the module concept).
+				const range = Number.isInteger(maxLength)
+					? { range: { offset: start + maxLength, length: line.length - maxLength } }
+					: {};
 				report(
 					context.diagnostic({
 						at: { offset: start, length: 0 },
 						detail: `Expected: ${maxLength}; Actual: ${line.length}`,
-						range: { offset: start + maxLength, length: line.length - maxLength },
+						...range,
 					}),
 				);
 			}

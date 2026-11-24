@@ -5,7 +5,14 @@ import { assert, describe, it } from "@effect/vitest";
 import { MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
 import { MD022 } from "../../src/rules/MD022.js";
-import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
+import {
+	DIFFERENTIAL_TIMEOUT,
+	SETTINGS_PROBES,
+	differential,
+	runRule,
+	settingsAppliedTextDivergences,
+	settingsDifferential,
+} from "../helpers/differential.js";
 
 const extra = [
 	{ name: "mixed line endings", source: "text\r\n# H\ntext\n\n## Two\r\nmore\r\n" },
@@ -82,13 +89,55 @@ describe("MD022 blanks-around-headings", () => {
 		DIFFERENTIAL_TIMEOUT,
 	);
 
-	it("reads a wrong-typed setting as its default", () => {
-		for (const settings of [{ lines_above: "2" }, { lines_below: [1, "2"] }, { include_front_matter: "yes" }]) {
-			for (const { source } of extra) {
-				assert.deepStrictEqual(run(source, settings), run(source), JSON.stringify(settings));
-			}
-		}
-	});
+	// markdownlint coerces its settings (`Number(x ?? d)`, `!!x`, `String(x || d)`), so a non-canonical value
+	// means to the kit what it means there.
+	it(
+		"reads a non-canonical setting as markdownlint does",
+		() => {
+			const result = settingsDifferential(
+				MD022,
+				[
+					{ lines_above: "2" },
+					{ lines_above: null },
+					{ lines_above: "x" },
+					{ lines_above: -1 },
+					{ lines_below: "0" },
+					{ lines_below: null },
+					{ include_front_matter: 1 },
+					{ include_front_matter: "yes" },
+				],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.isAbove(result.oracleFindings, 0);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
+	// markdownlint compares a per-level item as written (`"2" !== 2`) and a fractional count as a number, so a heading
+	// with the expected blank lines can still be reported, with a fix inserting `"2" - 2 = 0` lines:
+	// `{ insertText: "" }`. The kit reports the same finding, but an empty edit maps to no `fixInfo` (it changes
+	// nothing), so the one difference is that `fixInfo`; the text the fixes leave is markdownlint's. Recorded as
+	// "an empty insert carries no fixInfo" in the module concept.
+	it(
+		"differs from markdownlint only in the fixInfo of an empty insert under a per-level item as written",
+		() => {
+			const cases = [
+				{ lines_above: ["2"] },
+				{ lines_above: [null] },
+				{ lines_above: [true] },
+				{ lines_above: 2.5 },
+				{ lines_below: [1, "2"] },
+			];
+			const inputs = [...extra, ...SETTINGS_PROBES];
+			const result = settingsDifferential(MD022, cases, inputs);
+			assert.strictEqual(result.divergences.length, EMPTY_INSERT_DIVERGENCES);
+			for (const divergence of result.divergences)
+				assert.match(divergence.reason, /fixInfo: kit null, markdownlint \{[^}]*"deleteCount":0,"insertText":""\}$/);
+			assert.deepStrictEqual(settingsAppliedTextDivergences(MD022, cases, inputs), []);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 
 	it("reports a heading with no blank line around it, with fixes that insert them", () => {
 		const source = "text\n# Heading\nmore\n";
@@ -119,3 +168,6 @@ const ORACLE_FINDINGS_DEFAULT = 145;
 
 // markdownlint's MD022 findings over the byte order mark inputs: the setext heading after two marks, above and below.
 const ORACLE_FINDINGS_BOM = 2;
+
+// The settings cases and inputs on which markdownlint's fix is an empty insert (see the test above).
+const EMPTY_INSERT_DIVERGENCES = 41;

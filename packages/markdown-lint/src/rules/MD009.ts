@@ -6,10 +6,9 @@
 
 import type { List, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
-import { Predicate } from "effect";
 import { codeNodes, fencedInterior } from "../internal/code-blocks.js";
 import { addRange, firstContentLine } from "../internal/lines.js";
-import { setting } from "../internal/settings.js";
+import { flagSetting, numberSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 // The lines markdownlint leaves to the code: an indented block's every line,
@@ -68,7 +67,8 @@ const spanLines = (context: Lint.LintContext, type: "paragraph" | "inlineCode"):
  * @remarks
  * markdownlint's settings: `br_spaces` (default `2`), `code_blocks` (default
  * `false`), `list_item_empty_lines` (default `false`) and `strict` (default
- * `false`). A setting of the wrong type reads as its default.
+ * `false`). Settings are coerced as markdownlint coerces them
+ * (`"50"` reads as `50`, `0` as `false`).
  *
  * @public
  */
@@ -78,10 +78,10 @@ export const MD009: Lint.LintRule = LintRule.make({
 	tags: ["whitespace"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md009.md",
 	check: (context, report) => {
-		const brSpaces = setting(context.config, "br_spaces", Predicate.isNumber, 2);
-		const includeCode = setting(context.config, "code_blocks", Predicate.isBoolean, false);
-		const listItemEmptyLines = setting(context.config, "list_item_empty_lines", Predicate.isBoolean, false);
-		const strict = setting(context.config, "strict", Predicate.isBoolean, false);
+		const brSpaces = numberSetting(context.config, "br_spaces", 2);
+		const includeCode = flagSetting(context.config, "code_blocks");
+		const listItemEmptyLines = flagSetting(context.config, "list_item_empty_lines");
+		const strict = flagSetting(context.config, "strict");
 		const code = includeCode ? new Set<number>() : codeLines(context);
 		const listed = listItemEmptyLines ? listLines(context) : new Set<number>();
 		const paragraphs = strict ? spanLines(context, "paragraph") : new Set<number>();

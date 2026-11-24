@@ -6,7 +6,13 @@ import { MarkdownDocument } from "@effected/markdown";
 import { Option, Result } from "effect";
 import { MarkdownLint } from "../../src/MarkdownLint.js";
 import { MD041 } from "../../src/rules/MD041.js";
-import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
+import {
+	DIFFERENTIAL_TIMEOUT,
+	SETTINGS_PROBES,
+	differential,
+	runRule,
+	settingsDifferential,
+} from "../helpers/differential.js";
 
 const extra = [
 	{ name: "text first", source: "Intro\n\n# Title\n" },
@@ -101,18 +107,47 @@ describe("MD041 first-line-heading", () => {
 		DIFFERENTIAL_TIMEOUT,
 	);
 
-	it("reads a wrong-typed or invalid setting as its default", () => {
-		for (const settings of [
-			{ allow_preamble: "yes" },
-			{ level: "2" },
-			{ front_matter_title: 1 },
-			{ front_matter_title: "(" },
-		]) {
-			for (const { source } of extra) {
-				assert.deepStrictEqual(run(source, settings), run(source), JSON.stringify(settings));
-			}
-		}
-	});
+	// markdownlint coerces its settings (`Number(x ?? d)`, `!!x`, `String(x || d)`), so a non-canonical value
+	// means to the kit what it means there.
+	it(
+		"reads a non-canonical setting as markdownlint does",
+		() => {
+			const result = settingsDifferential(
+				MD041,
+				[
+					{ allow_preamble: 1 },
+					{ allow_preamble: "x" },
+					{ allow_preamble: 0 },
+					{ level: "2" },
+					{ level: null },
+					{ level: "x" },
+					{ front_matter_title: 5 },
+					{ front_matter_title: 0 },
+				],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.isAbove(result.oracleFindings, 0);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
+	// Where markdownlint's own reading of a setting throws (a `front_matter_title` that is not a valid regular expression), the kit stays total: it reads the setting
+	// as its default pattern and reports what that gives. Recorded as "the kit reads a setting markdownlint throws on".
+	it(
+		"reads a setting markdownlint throws on as its default pattern",
+		() => {
+			const result = settingsDifferential(
+				MD041,
+				[{ front_matter_title: "(" }, { front_matter_title: "[" }],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.strictEqual(result.divergences.length, INVALID_TITLE_PATTERN_DIVERGENCES);
+			for (const divergence of result.divergences)
+				assert.match(divergence.reason, /^markdownlint throws: Invalid regular expression.*; kit: \d+ findings$/);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 
 	it("reports a first line that is not a top-level heading", () => {
 		const findings = run("Intro text\n\n# Title\n");
@@ -136,3 +171,6 @@ const ORACLE_FINDINGS_DEFAULT = 30;
 // front matter title and three before a heading (micromark drops only the second, so a third is text); none for
 // three before a front matter block, whose setext heading markdownlint reads as a level-1 title.
 const ORACLE_FINDINGS_BOM = 4;
+
+// The inputs on which markdownlint throws on an invalid `front_matter_title` (see the test above).
+const INVALID_TITLE_PATTERN_DIVERGENCES = 32;

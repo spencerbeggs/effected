@@ -3,10 +3,9 @@
 // span, fences included; this module takes those spans from kit code nodes.
 
 import type * as Lint from "@effected/markdown-lint";
-import { Predicate } from "effect";
 import { codeBlockLines } from "../internal/code-blocks.js";
 import { firstContentLine } from "../internal/lines.js";
-import { setting } from "../internal/settings.js";
+import { numberSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 // The offset the text of the line before `lineNumber` ends at, before its terminator.
@@ -17,8 +16,8 @@ const previousEnd = (context: Lint.LintContext, lineNumber: number): number =>
  * MD012 `no-multiple-blanks`: no more than `maximum` consecutive blank lines.
  *
  * @remarks
- * markdownlint's setting: `maximum` (default `1`). A setting of the wrong
- * type reads as its default.
+ * markdownlint's setting: `maximum` (default `1`). Settings are coerced as markdownlint coerces them
+ * (`"50"` reads as `50`, `0` as `false`).
  *
  * @public
  */
@@ -28,7 +27,7 @@ export const MD012: Lint.LintRule = LintRule.make({
 	tags: ["whitespace", "blank_lines"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md012.md",
 	check: (context, report) => {
-		const maximum = setting(context.config, "maximum", Predicate.isNumber, 1);
+		const maximum = numberSetting(context.config, "maximum", 1);
 		const code = codeBlockLines(context);
 		const reported: Array<{ readonly lineNumber: number; readonly count: number }> = [];
 		let count = 0;

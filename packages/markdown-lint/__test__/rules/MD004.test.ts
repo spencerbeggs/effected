@@ -5,7 +5,13 @@ import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
 import { MarkdownLint } from "../../src/MarkdownLint.js";
 import { MD004 } from "../../src/rules/MD004.js";
-import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
+import {
+	DIFFERENTIAL_TIMEOUT,
+	SETTINGS_PROBES,
+	differential,
+	runRule,
+	settingsDifferential,
+} from "../helpers/differential.js";
 
 const extra = [
 	{ name: "mixed markers", source: "* one\n+ two\n- three\n" },
@@ -100,6 +106,22 @@ describe("MD004 ul-style", () => {
 		);
 		assert.strictEqual(MarkdownLint.applyFixes(source, findings), "* one\n* two\n");
 	});
+
+	// markdownlint coerces its settings (`Number(x ?? d)`, `!!x`, `String(x || d)`), so a non-canonical value
+	// means to the kit what it means there.
+	it(
+		"reads a non-canonical setting as markdownlint does",
+		() => {
+			const result = settingsDifferential(
+				MD004,
+				[{ style: ["dash"] }, { style: false }, { style: {} }],
+				[...extra, ...SETTINGS_PROBES],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.isAbove(result.oracleFindings, 0);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD004 findings over the corpus (LF and CRLF) and the extras.
