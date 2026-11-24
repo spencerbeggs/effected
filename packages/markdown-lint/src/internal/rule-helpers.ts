@@ -3,7 +3,7 @@
 // the front matter), line offsets, and the code-block line ranges the
 // micromark tokens markdownlint reads would give, derived from the kit tree.
 
-import type { Code, Heading, ListItem, MarkdownNode } from "@effected/markdown";
+import type { Code, Heading, ListItem, MarkdownDocument, MarkdownNode } from "@effected/markdown";
 import { Option } from "effect";
 import type { LintContext } from "../LintContext.js";
 
@@ -494,3 +494,91 @@ export const isHtmlFlowComment = (context: LintContext, node: MarkdownNode): boo
 /** The document's top-level blocks after its front matter: micromark's top-level content tokens. @internal */
 export const contentBlocks = (context: LintContext): ReadonlyArray<MarkdownNode> =>
 	(context.document.root.children as ReadonlyArray<MarkdownNode>).filter((node) => node.type !== "frontmatter");
+
+/** A source span, `[start, end)`. @internal */
+export interface Span {
+	readonly start: number;
+	readonly end: number;
+}
+
+// What micromark reads as one token before a `$` inside it could open math: a code span, inline HTML, an
+// autolink, an image, and a link's destination (the part after its text).
+const atomicSpans = (node: MarkdownNode, source: string, found: Array<Span>): Array<Span> => {
+	const { start, end } = { start: node.position.start.offset, end: node.position.end.offset };
+	if (node.type === "inlineCode" || node.type === "html" || node.type === "image") found.push({ start, end });
+	else if (node.type === "link" || node.type === "linkReference") {
+		const children = node.children as ReadonlyArray<MarkdownNode>;
+		if (source.charAt(start) === "<") found.push({ start, end });
+		else found.push({ start: children.at(-1)?.position.end.offset ?? start + 1, end });
+	}
+	if ("children" in node)
+		for (const child of node.children as ReadonlyArray<MarkdownNode>) atomicSpans(child, source, found);
+	return found;
+};
+
+/**
+ * The inline math spans of a document: markdownlint's micromark runs the
+ * math extension's `mathText`, which the kit tree does not carry. Within each
+ * paragraph, heading and table cell, read left to right as micromark does: a
+ * run of `$` opens math when a later run of exactly as many closes it (what
+ * lies between is math, unparsed), and a code span, inline HTML, an autolink,
+ * an image or a link destination that starts first is read whole. A
+ * backslash escapes the character after it outside math.
+ * @internal
+ */
+export const mathTextSpans = (document: MarkdownDocument, source: string): Array<Span> => {
+	const spans: Array<Span> = [];
+	const leaves = document.findAll(
+		(node) => node.type === "paragraph" || node.type === "heading" || node.type === "tableCell",
+	);
+	for (const leaf of leaves) {
+		const atomic = atomicSpans(leaf, source, []).sort((a, b) => a.start - b.start);
+		const end = leaf.position.end.offset;
+		let at = leaf.position.start.offset;
+		while (at < end) {
+			const skip = atomic.find((span) => span.start === at);
+			if (skip !== undefined) {
+				at = Math.max(skip.end, at + 1);
+				continue;
+			}
+			const char = source.charAt(at);
+			if (char === "\\" && /[!-/:-@[-`{-~]/.test(source.charAt(at + 1))) {
+				at += 2;
+				continue;
+			}
+			if (char !== "$") {
+				at++;
+				continue;
+			}
+			let open = at;
+			while (open < end && source.charAt(open) === "$") open++;
+			const size = open - at;
+			let close = -1;
+			let scan = open;
+			while (scan < end) {
+				if (source.charAt(scan) !== "$") {
+					scan++;
+					continue;
+				}
+				let run = scan;
+				while (run < end && source.charAt(run) === "$") run++;
+				if (run - scan === size) {
+					close = run;
+					break;
+				}
+				scan = run;
+			}
+			if (close === -1) {
+				at = open;
+				continue;
+			}
+			spans.push({ start: at, end: close });
+			at = close;
+		}
+	}
+	return spans;
+};
+
+/** Whether `offset` lies inside one of `spans`. @internal */
+export const inSpans = (spans: ReadonlyArray<Span>, offset: number): boolean =>
+	spans.some((span) => span.start <= offset && offset < span.end);
