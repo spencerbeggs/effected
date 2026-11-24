@@ -16,7 +16,7 @@ const childContainers = (node: MarkdownNode): Array<MarkdownNode> => {
 	const found: Array<MarkdownNode> = [];
 	for (const child of ("children" in node ? node.children : []) as ReadonlyArray<MarkdownNode>) {
 		if (isContainer(child)) found.push(child);
-		else if (child.type === "list") found.push(...childContainers(child));
+		else if (child.type === "list") for (const item of childContainers(child)) found.push(item);
 	}
 	return found;
 };

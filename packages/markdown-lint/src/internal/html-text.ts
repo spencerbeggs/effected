@@ -96,7 +96,7 @@ export const htmlTextTokens: (context: LintContext) => ReadonlyArray<HtmlText> =
 	for (const block of flowNodes(context, new Set(["html"]))) {
 		// Inclusive: on a math opener line, this is the fence's meta (see `mathFlowLines`).
 		if (math.has(block.position.start.line) || isHtmlFlowComment(context, block)) continue;
-		tokens.push(...blockHtmlText(context, block));
+		for (const token of blockHtmlText(context, block)) tokens.push(token);
 	}
 	tokens.sort((a, b) => a.offset - b.offset);
 	return tokens;

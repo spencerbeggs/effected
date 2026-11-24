@@ -6,6 +6,7 @@ import { Option } from "effect";
 import { MarkdownLint } from "../../src/MarkdownLint.js";
 import { MD032 } from "../../src/rules/MD032.js";
 import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
+import { oracleLint } from "../helpers/markdownlint-oracle.js";
 
 const extra = [
 	{ name: "tight list", source: "text\n- a\n- b\ntext\n" },
@@ -80,6 +81,19 @@ describe("MD032 blanks-around-lists", () => {
 		);
 		assert.strictEqual(MarkdownLint.applyFixes(source, findings), "> text\n>\n> - a\n>\n> ***\n");
 	});
+
+	// The math-block cut lines were once spread into Math.min, which overflows the call stack on this many.
+	it(
+		"reads a list item holding 150,000 math blocks as markdownlint does, without throwing",
+		() => {
+			const source = `- a\n${"$$\n$$\n".repeat(150_000)}`;
+			const kit = run(source).map((finding) => finding.lineNumber);
+			const oracle = oracleLint(source, { default: false, MD032: true }).map((finding) => finding.lineNumber);
+			assert.deepStrictEqual(kit, oracle);
+			assert.strictEqual(kit.length, 1);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD032 findings over the corpus (LF and CRLF) and the extras.

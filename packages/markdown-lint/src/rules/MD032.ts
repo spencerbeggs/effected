@@ -50,12 +50,18 @@ const mathCutLine = (
 	if (paragraph === undefined) return undefined;
 	const start = paragraph.position.start.line;
 	const end = paragraph.position.end.line;
-	const cuts: Array<number> = [];
+	// The earliest cut, kept as a running minimum: an item can hold more math blocks than a call takes arguments.
+	let cut: number | undefined;
 	for (const block of math) {
-		if (block.start > start && block.start <= end && isLazyLine(context, block.start)) cuts.push(block.start - 1);
-		else if (block.start >= start && block.end < end && isLazyLine(context, block.end + 1)) cuts.push(block.end);
+		const line =
+			block.start > start && block.start <= end && isLazyLine(context, block.start)
+				? block.start - 1
+				: block.start >= start && block.end < end && isLazyLine(context, block.end + 1)
+					? block.end
+					: undefined;
+		if (line !== undefined && (cut === undefined || line < cut)) cut = line;
 	}
-	return cuts.length === 0 ? undefined : Math.min(...cuts);
+	return cut;
 };
 
 /**

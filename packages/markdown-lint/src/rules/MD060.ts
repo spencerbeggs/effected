@@ -157,8 +157,10 @@ export const MD060: Lint.LintRule = LintRule.make({
 						rows.slice(0, 2),
 						'Table pipe does not align with header for option "aligned_delimiter"',
 					);
-					errorsIfCompact.push(...errors);
-					errorsIfTight.push(...errors);
+					for (const error of errors) {
+						errorsIfCompact.push(error);
+						errorsIfTight.push(error);
+					}
 				}
 				for (const row of rows) {
 					const tokens = row.tokens;
