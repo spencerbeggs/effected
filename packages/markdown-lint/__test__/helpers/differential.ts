@@ -327,3 +327,56 @@ export const settingsAppliedTextDivergences = (
 	}
 	return divergences;
 };
+
+/**
+ * Run `rules` together, each under its defaults, over every corpus file as written, converted to CRLF and
+ * converted to bare CR, plus `extra` inputs, in both engines, and compare the text each engine's `applyFixes`
+ * leaves. Each input on which the texts differ is one divergence. The per-rule harness applies one rule's fixes
+ * at a time; this is the check on fixes from several rules meeting. Findings are not compared here, so a recorded
+ * finding divergence shows up as a text difference and is pinned by the caller. `oracleFixes` counts the findings
+ * with a `fixInfo` markdownlint reported over every input, so a test can assert the comparison was not vacuous.
+ */
+export const fixesDifferential = (
+	rules: ReadonlyArray<LintRule>,
+	options?: { readonly extra?: ReadonlyArray<DifferentialInput> },
+): {
+	readonly compared: number;
+	readonly oracleFixes: number;
+	readonly divergences: ReadonlyArray<Divergence>;
+} => {
+	const names = new Set(rules.map((rule) => rule.name));
+	const config = { default: false, ...Object.fromEntries([...names].map((name) => [name, true])) };
+	const inputs: Array<DifferentialInput> = [];
+	for (const entry of corpus) {
+		inputs.push(
+			entry,
+			{ name: `${entry.name} (CRLF)`, source: entry.source.replace(/\r?\n/g, "\r\n") },
+			{ name: `${entry.name} (CR)`, source: entry.source.replace(/\r?\n/g, "\r") },
+		);
+	}
+	inputs.push(...(options?.extra ?? []));
+	const divergences: Array<Divergence> = [];
+	let oracleFixes = 0;
+	for (const input of inputs) {
+		let oracle: ReadonlyArray<OracleFinding>;
+		try {
+			// A fixture's own inline config can enable a rule outside `rules`; only theirs are compared.
+			oracle = oracleLint(input.source, config).filter((finding) => names.has(finding.ruleNames[0] ?? ""));
+		} catch (error) {
+			divergences.push({
+				fixture: input.name,
+				reason: `markdownlint throws: ${error instanceof Error ? error.message : String(error)}`,
+			});
+			continue;
+		}
+		oracleFixes += oracle.filter((finding) => finding.fixInfo !== null && finding.fixInfo !== undefined).length;
+		const expected = oracleApplyFixes(input.source, oracle);
+		const actual = MarkdownLint.applyFixes(input.source, MarkdownLint.lint(input.source, rules, { config }));
+		if (actual !== expected)
+			divergences.push({
+				fixture: input.name,
+				reason: `applied fixes differ: kit ${JSON.stringify(actual)}, markdownlint ${JSON.stringify(expected)}`,
+			});
+	}
+	return { compared: inputs.length, oracleFixes, divergences };
+};

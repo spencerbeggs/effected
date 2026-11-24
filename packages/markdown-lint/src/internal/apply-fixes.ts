@@ -14,10 +14,22 @@ interface Fix {
 	readonly editColumn: number;
 	readonly deleteCount: number;
 	readonly insertText: string;
+	/**
+	 * The length markdownlint ranks `insertText` by: its rules insert a line break as `\n` and `applyFix` writes it
+	 * as the file's ending afterwards, where a kit edit carries the ending itself, so each line break counts one.
+	 */
+	readonly insertLength: number;
 	/** The offset span the kit edit replaces with `insertText`. */
 	readonly offset: number;
 	readonly length: number;
 }
+
+// The `\r\n` pairs in `text`: each is one line break, one character to markdownlint.
+const countCrlf = (text: string): number => {
+	let count = 0;
+	for (let index = text.indexOf("\r\n"); index !== -1; index = text.indexOf("\r\n", index + 2)) count++;
+	return count;
+};
 
 /**
  * Apply `findings`' kit edits to `source` under markdownlint's fix policy, and
@@ -44,6 +56,7 @@ export const applyFixesCounted = (
 			editColumn: fixInfo === undefined ? mapping.column(edit.offset - lead) : (fixInfo.editColumn ?? 1),
 			deleteCount: fixInfo === undefined ? edit.length : (fixInfo.deleteCount ?? 0),
 			insertText: edit.content,
+			insertLength: edit.content.length - countCrlf(edit.content),
 			offset: edit.offset,
 			length: edit.length,
 		});
@@ -54,7 +67,7 @@ export const applyFixesCounted = (
 			b.lineNumber - a.lineNumber ||
 			(a.deleteCount === -1 ? 1 : b.deleteCount === -1 ? -1 : 0) ||
 			b.editColumn - a.editColumn ||
-			b.insertText.length - a.insertText.length,
+			b.insertLength - a.insertLength,
 	);
 	// Drop a fix identical to the one before it.
 	const unique: Array<Fix> = [];
@@ -84,7 +97,11 @@ export const applyFixesCounted = (
 			previous.insertText !== "" &&
 			previous.deleteCount === 0
 		) {
-			collapsed[collapsed.length - 1] = { ...fix, insertText: previous.insertText };
+			collapsed[collapsed.length - 1] = {
+				...fix,
+				insertText: previous.insertText,
+				insertLength: previous.insertLength,
+			};
 			continue;
 		}
 		collapsed.push(fix);
