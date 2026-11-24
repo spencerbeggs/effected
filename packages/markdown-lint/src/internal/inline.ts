@@ -472,12 +472,12 @@ const labelView = (document: MarkdownDocument, source: string): TokenView => ({
 	contentStart: (offset) => offset,
 });
 
-// The inline content of the image label in `text` from `open` (its `[`) to `close` (its `]`), whose characters sit at
-// `offsets` in the reading's source, pushed in source offsets: its emphasis and strong, its `data` tokens and its code
+// The inline content of the image label in `text` from `open` (its `[`) to `close` (its `]`), whose characters
+// `toSource` maps to the reading's source, pushed in source offsets: its emphasis and strong, its `data` tokens and its code
 // spans' data runs, and those of any image nested in it, read the same way.
 const readLabel = (
 	text: string,
-	offsets: ReadonlyArray<number>,
+	textToSource: (offset: number) => number | undefined,
 	open: number,
 	close: number,
 	inMath: (offset: number) => boolean,
@@ -493,8 +493,9 @@ const readLabel = (
 	const parsed = MarkdownDocument.parseResult(source, labelOptions);
 	if (!Result.isSuccess(parsed)) return;
 	const document = parsed.success;
-	// A re-parsed offset to the reading's: the `[` is the label's own, the rest the label's characters.
-	const toSource = (offset: number) => offsets[open + offset];
+	// A re-parsed offset to the reading's: the `[` is the label's own, the rest the label's characters. Composed, not
+	// copied, so an image nested in the label costs its own label's length, not this one's.
+	const toSource = (offset: number) => textToSource(open + offset);
 	const mapped = (type: string, start: number, end: number) => {
 		const first = toSource(start);
 		const last = toSource(end - 1);
@@ -517,9 +518,7 @@ const readLabel = (
 			} else if (node.type === "image" || node.type === "imageReference") {
 				const start = node.position.start.offset;
 				const end = labelEnd(source, start + 1, node.position.end.offset);
-				// Its characters, in the reading's source: offset as this label's.
-				const inner = Array.from({ length: source.length }, (_, index) => offsets[open + index] ?? -1);
-				readLabel(source, inner, start + 1, end, inMath, definitions, push);
+				readLabel(source, toSource, start + 1, end, inMath, definitions, push);
 			}
 		},
 	);
@@ -589,7 +588,15 @@ export const imageLabelNodes: (context: LintContext) => ReadonlyArray<InlineSpan
 		}
 		text += "]";
 		offsets.push(close);
-		readLabel(text, offsets, 0, text.length - 1, inMath, definitions, (span) => found.push(span));
+		readLabel(
+			text,
+			(offset) => offsets[offset],
+			0,
+			text.length - 1,
+			inMath,
+			definitions,
+			(span) => found.push(span),
+		);
 	}
 	return found.sort((a, b) => a.start - b.start);
 });

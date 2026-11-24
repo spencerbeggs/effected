@@ -122,6 +122,9 @@ const labelNamingOneDefinition = (uses: number, title: number): string =>
 // Many images naming one definition as long as the document: the definition's source was re-parsed per image.
 const imagesNamingOneLongDefinition = (count: number): string =>
 	`# T\n\n${"![[x]](i.png)\n\n".repeat(Math.ceil(count / 10))}[x]: http://e.com "${"t".repeat(count * 4)}"\n`;
+// One image's label holding many images: each nested image copied the whole label's offsets.
+const imagesNestedInOneLabel = (count: number): string =>
+	`# T\n\n![${"![a](b)".repeat(Math.ceil(count / 4))}](i.png)\n`;
 
 // MD034 checks each literal against the unbalanced label spans before it: one line of 20,000 bracketed addresses.
 const bracketedAddresses = (count: number): string => `# T\n\n${"[a] b@c.de ".repeat(count)}\n`;
@@ -194,6 +197,8 @@ const scalingShapes: ReadonlyArray<
 	["reads alternating images and links", imagesAndLinks, MD052, { shortcut_syntax: true }],
 	["re-parses image labels naming one long definition", imagesNamingOneLongDefinition, MD049, {}],
 	["reads image labels naming one long definition", imagesNamingOneLongDefinition, MD052, { shortcut_syntax: true }],
+	["re-parses images nested in one label", imagesNestedInOneLabel, MD049, {}],
+	["reads images nested in one label", imagesNestedInOneLabel, MD052, { shortcut_syntax: true }],
 	["reads label starts closed in reverse", openersThenClosers, MD052, { shortcut_syntax: true }],
 	["checks fragments against repeated headings", repeatedHeadings, MD051, {}],
 	["reads a tall table's rows", tallTable, MD055, {}],
