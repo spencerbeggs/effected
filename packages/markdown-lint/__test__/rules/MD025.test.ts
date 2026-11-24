@@ -22,7 +22,6 @@ const extra = [
 	{ name: "in math", source: "# One\n\n$$\n# not\n$$\n" },
 ];
 
-// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 const run = runRule(MD025);
 
 describe("MD025 single-title", () => {

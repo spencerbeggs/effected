@@ -15,7 +15,10 @@ import { MarkdownLint } from "../../src/MarkdownLint.js";
 import type { OracleFinding } from "./markdownlint-oracle.js";
 import { oracleApplyFixes, oracleLineEnding, oracleLint } from "./markdownlint-oracle.js";
 
-/** The timeout of a test that runs a rule over the whole fixture corpus. */
+/**
+ * The timeout of a test that runs a rule over the whole fixture corpus: a differential pass lints the corpus twice
+ * in two engines, and under a parallel run it outlasts the default.
+ */
 export const DIFFERENTIAL_TIMEOUT = 60_000;
 
 /** Lint `source` with `rule` alone, under `settings` (`true`, its defaults, when absent). */

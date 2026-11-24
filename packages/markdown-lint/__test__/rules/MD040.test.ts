@@ -34,7 +34,6 @@ const extra = [
 	{ name: "tab after the fence", source: "```\tjs\tmeta\ncode\n```\n" },
 ];
 
-// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 const run = runRule(MD040);
 
 describe("MD040 fenced-code-language", () => {

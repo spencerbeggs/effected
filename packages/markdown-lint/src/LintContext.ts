@@ -105,7 +105,13 @@ export interface LintContext {
 	readonly lines: ReadonlyArray<string>;
 	/** markdownlint's front matter block at the head of `source`, when there is one. */
 	readonly frontmatter: Option.Option<LintFrontmatter>;
-	/** The offset-to-line mapping over `source` every diagnostic position comes from. */
+	/**
+	 * The offset-to-line mapping over `source` every diagnostic position comes
+	 * from. A host builds one per reading and every rule's context over that
+	 * reading shares it; the built-in rules cache what they derive from the
+	 * document under it, so a context built by hand for another document or
+	 * front matter needs its own mapping.
+	 */
 	readonly mapping: PositionMapping;
 	/** The rule's settings, without `enabled` and `severity`; frozen. */
 	readonly config: Readonly<Record<string, unknown>>;

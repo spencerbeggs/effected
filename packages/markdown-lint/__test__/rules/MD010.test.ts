@@ -18,7 +18,6 @@ const extra = [
 	{ name: "front matter", source: "---\nkey:\tvalue\n---\n\ttext\n" },
 ];
 
-// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 const run = runRule(MD010);
 
 describe("MD010 no-hard-tabs", () => {

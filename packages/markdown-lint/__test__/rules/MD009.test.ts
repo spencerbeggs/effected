@@ -27,7 +27,6 @@ const extra = [
 	{ name: "heading", source: "# Title  \n\nSetext  \n---\n" },
 ];
 
-// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 const run = runRule(MD009);
 
 describe("MD009 no-trailing-spaces", () => {

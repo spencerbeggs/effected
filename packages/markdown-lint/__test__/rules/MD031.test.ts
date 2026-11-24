@@ -43,7 +43,6 @@ const extra = [
 	{ name: "unclosed in a quote in a list at the end", source: "- > ```\n  > code\n" },
 ];
 
-// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 const run = runRule(MD031);
 
 describe("MD031 blanks-around-fences", () => {

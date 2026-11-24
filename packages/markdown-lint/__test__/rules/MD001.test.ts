@@ -27,7 +27,6 @@ const extra = [
 	{ name: "headings in containers", source: "> # One\n>\n> ### Three\n\n- ## Two\n" },
 ];
 
-// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 const run = runRule(MD001);
 
 describe("MD001 heading-increment", () => {

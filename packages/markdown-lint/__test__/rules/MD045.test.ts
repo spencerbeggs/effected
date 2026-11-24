@@ -56,7 +56,6 @@ const extra = [
 	},
 ];
 
-// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 const run = runRule(MD045);
 
 describe("MD045 no-alt-text", () => {

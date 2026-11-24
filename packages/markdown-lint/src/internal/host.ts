@@ -74,13 +74,17 @@ const readingOf = (
 	mapping: PositionMapping,
 	frontMatterLines: number,
 	node: Option.Option<Frontmatter>,
-): Reading => ({
-	source,
-	unmaskedSource,
-	document,
-	mapping,
-	frontmatter: frontMatterLines === 0 ? Option.none() : Option.some(frontmatterFacts(node, frontMatterLines, mapping)),
-});
+): Reading => {
+	registerUnmaskedSource(mapping, unmaskedSource);
+	return {
+		source,
+		unmaskedSource,
+		document,
+		mapping,
+		frontmatter:
+			frontMatterLines === 0 ? Option.none() : Option.some(frontmatterFacts(node, frontMatterLines, mapping)),
+	};
+};
 
 // Whether the kit's capture grammar takes a block that ends inside
 // markdownlint's `frontMatterLines`-line front matter. `FrontmatterSource`
@@ -162,7 +166,6 @@ export interface RuleRun {
 /** Build the context `rule` runs in over `reading`. @internal */
 export const makeContext = (reading: Reading, rule: LintRule, run: RuleRun): LintContext => {
 	const { mapping } = reading;
-	registerUnmaskedSource(mapping, reading.unmaskedSource);
 	return {
 		name: run.name,
 		document: reading.document,

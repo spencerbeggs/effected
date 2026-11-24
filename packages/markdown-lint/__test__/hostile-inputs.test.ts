@@ -9,10 +9,14 @@
 // - a 400-column, 150-row table with CJK cells: 12.4 s, 0.39 s;
 // - 2,000 unclosed fenced code blocks in list items: 15.0 s, 0.06 s;
 // - an ordinary mixed document of 9,000 blocks (27,900 lines): 11.9 s, 0.29 s;
-// - 3,000 lines in blockquotes 40 deep, inline HTML on each: 21.3 s, 0.09 s.
+// - 3,000 lines in blockquotes 40 deep, inline HTML on each: 21.3 s, 0.09 s;
+// - one paragraph of 30,000 groups of a code span, a link and a lone `$`: 49.4 s, 0.34 s.
 //
 // The ceiling is far above the fixed times, so a busy runner does not fail
-// it, and far below the unfixed ones, so a regression to any of them does.
+// it, and far below the unfixed ones, so a regression to any of them does. It
+// runs in the timing tier (vitest.config.ts), alone on its runner. The math
+// scan's child cursor and single prefix strip are not guarded here: unfixed,
+// that scan costs about 53 ms at 40 deep, under any useful ceiling.
 
 import { assert, describe, it } from "@effect/vitest";
 import { MarkdownLint } from "../src/MarkdownLint.js";
@@ -54,11 +58,16 @@ const ordinary = (blocks: number): string => {
 const deepQuote = (lines: number, depth: number): string =>
 	`# T\n\n${Array.from({ length: lines }, (_, index) => `${"> ".repeat(depth)}line ${index} <b>x</b>`).join("\n")}\n`;
 
+// Inline math reads past each atomic span (here a code span and a link destination) at every `$` it tries.
+const atomicDollars = (groups: number): string =>
+	`# T\n\n${Array.from({ length: groups }, (_, index) => `\`c${index}\` [l](u) $`).join(" ")}\n`;
+
 const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a 400-column table with CJK cells", wideTable(400, 150)],
 	["2,000 unclosed fences in list items", unclosedFences(2000)],
 	["an ordinary document of 9,000 blocks", ordinary(9000)],
 	["3,000 lines in blockquotes 40 deep with inline HTML", deepQuote(3000, 40)],
+	["a paragraph of 30,000 code spans, links and lone dollar signs", atomicDollars(30000)],
 ];
 
 describe("hostile inputs", () => {

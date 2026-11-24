@@ -23,7 +23,6 @@ const extra = [
 	{ name: "in math", source: "$$\n# not\n$$\n" },
 ];
 
-// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 const run = runRule(MD022);
 
 // A leading byte order mark, once and twice, before front matter and a heading.

@@ -34,7 +34,6 @@ const bomExtra = [
 	{ name: "three byte order marks before a heading", source: "\uFEFF\uFEFF\uFEFF# Title\n\ntext\n" },
 ];
 
-// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 const run = runRule(MD041);
 
 describe("MD041 first-line-heading", () => {

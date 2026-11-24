@@ -85,7 +85,6 @@ const extra = [
 	{ name: "blockquote and list", source: `> ${long} end\n\n- ${long} end\n` },
 ];
 
-// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 const run = runRule(MD013);
 
 describe("MD013 line-length", () => {

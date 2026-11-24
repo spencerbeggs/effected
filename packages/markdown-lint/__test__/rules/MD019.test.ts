@@ -19,7 +19,6 @@ const extra = [
 	{ name: "in math", source: "$$\n#  not\n$$\n" },
 ];
 
-// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 describe("MD019 no-multiple-space-atx", () => {
 	it(
 		"agrees with markdownlint",

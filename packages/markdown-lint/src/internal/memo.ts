@@ -27,7 +27,7 @@ const unmaskedSources = new WeakMap<PositionMapping, string>();
 
 /**
  * Record a reading's text before HTML comment masking, under its mapping.
- * The host calls it when it builds a rule's context. @internal
+ * The host calls it once per reading, as it builds the reading. @internal
  */
 export const registerUnmaskedSource = (mapping: PositionMapping, text: string): void => {
 	unmaskedSources.set(mapping, text);

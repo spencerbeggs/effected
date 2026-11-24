@@ -22,8 +22,9 @@ describe("shared document facts", () => {
 	});
 
 	it("a rule reading the code-block lines sees none of the HTML lines the math-block scan excludes", () => {
-		// The math-block scan (which MD013's own headings read runs first) excludes HTML block lines on top of the
-		// code lines. MD013 under `code_blocks: false` skips code lines only, so the long HTML line is reported.
+		// MD013 reads the headings, and reading them runs the math-block scan first. That scan excludes HTML block
+		// lines on top of the code lines; MD013 under `code_blocks: false` skips code lines only, so the long HTML
+		// line is still reported unless the scan's additions leak into the shared code-block lines.
 		const source = `# T\n\n<div>\n${"word ".repeat(30).trimEnd()}\n</div>\n`;
 		const config = { default: true, MD013: { code_blocks: false } };
 		const findings = together(source, config);

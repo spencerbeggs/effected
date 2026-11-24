@@ -51,7 +51,6 @@ const extra = [
 	{ name: "math in a nested item", source: "- - a\n  $$\n  x\n  $$\n- b\n" },
 ];
 
-// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 const run = runRule(MD032);
 
 describe("MD032 blanks-around-lists", () => {

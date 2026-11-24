@@ -20,7 +20,6 @@ const extra = [
 	{ name: "an empty document", source: "" },
 ];
 
-// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 describe("MD047 single-trailing-newline", () => {
 	it(
 		"agrees with markdownlint",

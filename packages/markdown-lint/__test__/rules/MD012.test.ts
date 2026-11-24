@@ -27,7 +27,6 @@ const extra = [
 	{ name: "CRLF blanks", source: "a\r\n\r\n\r\nb\r\n" },
 ];
 
-// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 const run = runRule(MD012);
 
 describe("MD012 no-multiple-blanks", () => {

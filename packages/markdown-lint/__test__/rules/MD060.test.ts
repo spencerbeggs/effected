@@ -40,7 +40,6 @@ const extra = [
 	{ name: "aligned delimiter", source: "| aaa | b |\n| - | - |\n| c | d |\n" },
 ];
 
-// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 const run = runRule(MD060);
 
 describe("MD060 table-column-style", () => {

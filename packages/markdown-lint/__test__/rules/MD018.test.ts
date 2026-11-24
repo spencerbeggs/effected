@@ -21,7 +21,6 @@ const extra = [
 	{ name: "indented", source: " #Indented\n" },
 ];
 
-// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 describe("MD018 no-missing-space-atx", () => {
 	it(
 		"agrees with markdownlint",

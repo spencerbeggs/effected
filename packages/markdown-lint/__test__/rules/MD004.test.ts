@@ -34,7 +34,6 @@ const extra = [
 	{ name: "tab-indented sublist", source: "* a\n\n\t- b\n\t+ c\n" },
 ];
 
-// A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
 const run = runRule(MD004);
 
 describe("MD004 ul-style", () => {
