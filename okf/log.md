@@ -11,6 +11,9 @@
 * Updated effected
 * Updated workspace
 * Updated @effected/changesets
+* Updated Keyed operations come from core Mac, payload digests from core Digest, both required in R
+* Updated Raw S3 objects get their own boundary package, with a ListObjectsV2 reader that fails a wrong root
+* Updated actions-storage
 
 ## 2026-11-23
 

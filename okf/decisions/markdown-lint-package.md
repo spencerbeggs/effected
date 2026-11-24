@@ -20,11 +20,13 @@ integrity:
     body: 247e0f6f000e7998
   verified:
     by: human:spencer
-    at: 2026-11-08T18:25:54Z
-    content: d3629d49793e87d2
+    at: 2026-11-24T06:19:30Z
+    content: da33d7359befdfd5
 verified:
   - by: human:spencer
     at: 2026-11-08T18:25:54Z
+  - by: human:spencer
+    at: 2026-11-24T06:19:30Z
 ---
 
 # The markdownlint-compatible lint shape is its own pure package; @effected/markdown gains only the callback visitor
