@@ -44,7 +44,7 @@ const shuffled = <A>(items: ReadonlyArray<A>, seed: string): ReadonlyArray<A> =>
 };
 
 // markdownlint's findings with a fix over every input, per case.
-const ORACLE_FIXES_ALL = 3633;
+const ORACLE_FIXES_ALL = 3813;
 const ORACLE_FIXES_MD004_MD032 = 396;
 const ORACLE_FIXES_MD022_MD009 = 452;
 const ORACLE_FIXES_MD031_MD032 = 368;
@@ -54,6 +54,7 @@ const ORACLE_FIXES_MD020_MD009 = 333;
 const ORACLE_FIXES_MD021_MD009 = 359;
 const ORACLE_FIXES_MD005_MD009 = 309;
 const ORACLE_FIXES_MD007_MD004 = 655;
+const ORACLE_FIXES_MD027_MD009 = 454;
 // The inputs on which fixes from two or more of the case's rules land on one line, the case the file exists for.
 const MEETING_ALL = 38;
 const MEETING_MD004_MD032 = 17;
@@ -66,6 +67,7 @@ const MEETING_MD020_MD009 = 2;
 const MEETING_MD021_MD009 = 2;
 const MEETING_MD005_MD009 = 2;
 const MEETING_MD007_MD004 = 14;
+const MEETING_MD027_MD009 = 2;
 const MEETING_SAMPLE = 11;
 
 describe("applyFixes over several rules' fixes", () => {
@@ -178,6 +180,18 @@ describe("applyFixes over several rules' fixes", () => {
 			[
 				{ name: "re-indented sublists and markers, LF", source: "- a\n   * b\n + c\n> - d\n>    + e\n" },
 				{ name: "re-indented sublists and markers, CRLF", source: "- a\r\n   * b\r\n + c\r\n" },
+			],
+		],
+		// MD027 deletes the spaces past a blockquote marker and MD009 a line's trailing spaces: on a blank quote line
+		// they are the same spaces.
+		[
+			"MD027 and MD009",
+			["MD027", "MD009"],
+			ORACLE_FIXES_MD027_MD009,
+			MEETING_MD027_MD009,
+			[
+				{ name: "quote spaces and trailing spaces, LF", source: ">   \n>  a  \n>\t \n" },
+				{ name: "quote spaces and trailing spaces, CRLF", source: ">   \r\n>  a  \r\n" },
 			],
 		],
 	];

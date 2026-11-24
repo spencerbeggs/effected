@@ -30,6 +30,7 @@ export { MD023 } from "./MD023.js";
 export { MD024 } from "./MD024.js";
 export { MD025 } from "./MD025.js";
 export { MD026 } from "./MD026.js";
+export { MD027 } from "./MD027.js";
 export { MD031 } from "./MD031.js";
 export { MD032 } from "./MD032.js";
 export { MD033 } from "./MD033.js";
