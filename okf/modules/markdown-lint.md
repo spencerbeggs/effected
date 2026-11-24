@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T22:25:04Z
+  at: 2026-11-24T23:47:38Z
 integrity:
   generated:
-    body: 7988fb073e75989c
+    body: 1ded47b395c16544
 ---
 
 # `@effected/markdown-lint`
@@ -469,7 +469,10 @@ plain synchronous function; no logging, no metrics.
   20,000 one-item lists, a list nested 40 deep in a blockquote before 20,000
   quoted blank lines), one line of 20,000 reversed links beside code spans
   (MD011), 2,000 images holding references beside 2,000 definitions (MD039,
-  MD042, MD059), one line of 20,000 bracketed spans and addresses and one
+  MD042, MD059), one image label naming an 80 KB definition 8,000 times
+  (once a `RangeError`: a label's re-parse appended each named definition's
+  source, where it now appends one stand-in per distinct label), one line of
+  20,000 bracketed spans and addresses and one
   line of 24,000 unclosed inline HTML tags, and 10,000 URLs in emphasis
   after a bracket in inline math, the block's rest re-read once (MD034),
   one line of 20,000 undefined references and 20,000 uses of one label
@@ -478,8 +481,9 @@ plain synchronous function; no logging, no metrics.
   (MD051), a table of 20,000 rows and a row of 50,000 pipes (the table
   readers), ratio guards for MD054 over every style disallowed, MD051 over
   repeated headings, MD055 over a tall table and a run of pipes, the math
-  re-read, undefined references, alternating images and links, and label
-  starts closed in reverse, `applyFixes` over
+  re-read, undefined references, alternating images and links, label
+  starts closed in reverse, images naming one long definition and images
+  nested in one label (MD049 and MD052), `applyFixes` over
   90,000 fixes, and three settings that drive a loop or a repeat
   (`lines_above: 1e999` and `spaces_per_tab: 1e9` in a `configure-file`
   comment, `lines_above: 1e8`), and holds each to a 5,000 ms ceiling: far
