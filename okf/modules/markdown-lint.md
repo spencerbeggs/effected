@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-24T00:47:08Z
+  at: 2026-11-24T00:52:04Z
 integrity:
   generated:
-    body: 3b250a71ce77dd5b
+    body: e6540e6576ee2354
 ---
 
 # `@effected/markdown-lint`
@@ -259,7 +259,9 @@ plain synchronous function; no logging, no metrics.
   YAML, whatever the extension, as cli2 does, but without the TOML parser
   cli2 tries between them.
 - `./config` fails `parse` for a parsed value that is not an object (an
-  empty file, an array, a scalar), where markdownlint reads it as `{}`. It
+  array, a scalar), where markdownlint reads it as `{}`; an empty document
+  (empty, whitespace or comments only, a bare `null` or `~`) reads as `{}`,
+  as in cli2. It
   fails `parse` for a truthy non-string `extends`, where markdownlint throws
   a `TypeError` out of its callback. A falsy `extends` is left in place
   and not followed, as markdownlint does. Pinned by tests.

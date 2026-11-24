@@ -14,7 +14,8 @@
 //   stop; named directly or by `extends` they fail `unsupported`.
 // - cli2's TOML parser (tried between JSONC and YAML) is not modelled.
 // - A parsed value that is not a plain object fails `parse`, where
-//   markdownlint reads it as `{}`.
+//   markdownlint reads it as `{}`. An empty document (empty, whitespace or
+//   comments only, or a bare `null`/`~`) reads as `{}`, as in cli2.
 // - A truthy non-string `extends` fails `parse`, where markdownlint throws a
 //   TypeError out of its callback.
 //
@@ -58,7 +59,8 @@ const isPlainObject = (value: unknown): value is Lint.LintConfigRecord =>
  * @remarks
  * `reason` says why:
  * - `unreadable`: the file could not be read, or `resolve` was given a file outside its root
- * - `parse`: the content is neither JSONC nor YAML, is not an object, or has a non-string `extends`
+ * - `parse`: the content is neither JSONC nor YAML, is a value other than an object (an empty
+ *   document reads as `{}`), or has a non-string `extends`
  * - `extends-missing`: an `extends` target does not exist
  * - `extends-cycle`: an `extends` chain re-enters a file
  * - `extends-depth`: an `extends` chain is longer than 16 links
@@ -121,7 +123,7 @@ const fail = (
 
 /** JSONC first, then YAML: cli2's parser order without its TOML step. */
 const parseContent = (text: string): Result.Result<unknown, ReadonlyArray<unknown>> => {
-	const jsonc = Jsonc.parseResult(text, { allowTrailingComma: true });
+	const jsonc = Jsonc.parseResult(text, { allowTrailingComma: true, allowEmptyContent: true });
 	if (Result.isSuccess(jsonc)) return Result.succeed(jsonc.success);
 	const yaml = Yaml.parseResult(text);
 	if (Result.isSuccess(yaml)) return Result.succeed(yaml.success);
@@ -148,6 +150,8 @@ const readOne = Effect.fnUntraced(function* (file: string) {
 	if (Result.isFailure(parsed)) {
 		return yield* fail("parse", file, { detail: "neither JSONC nor YAML", cause: parsed.failure });
 	}
+	// An empty document (no content, comments only, or a bare null) is an empty config, as in cli2.
+	if (parsed.success === null || parsed.success === undefined) return {};
 	if (!isPlainObject(parsed.success)) {
 		return yield* fail("parse", file, { detail: "the configuration is not an object" });
 	}

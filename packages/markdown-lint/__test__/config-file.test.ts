@@ -136,6 +136,38 @@ describe("MarkdownlintConfigFile.read", () => {
 		),
 	);
 
+	it.effect("reads an empty, blank, comment-only or null document as an empty config, as cli2 does", () =>
+		Effect.gen(function* () {
+			for (const file of [
+				"/e/empty.json",
+				"/e/blank.json",
+				"/e/line.jsonc",
+				"/e/block.json",
+				"/e/null.json",
+				"/e/comment.yaml",
+				"/e/null.yaml",
+				"/e/tilde.yml",
+			]) {
+				assert.deepStrictEqual(yield* MarkdownlintConfigFile.read(file), {}, file);
+			}
+		}).pipe(
+			Effect.provide(
+				withVolume({
+					"/e/empty.json": "",
+					"/e/blank.json": "  \n\t\n",
+					"/e/line.jsonc": "// only a comment\n",
+					"/e/block.json": "/* only */\n",
+					"/e/null.json": "null\n",
+					"/e/comment.yaml": "# only a comment\n",
+					"/e/null.yaml": "null\n",
+					"/e/tilde.yml": "~\n",
+				}),
+			),
+		),
+	);
+
+	// Named divergence: markdownlint reads a non-empty value that is not an
+	// object (an array, a scalar) as {}; this package refuses it.
 	it.effect("fails parse for a value that is not a plain object", () =>
 		Effect.gen(function* () {
 			for (const file of ["/c/array.json", "/c/scalar.yaml"]) {
