@@ -1003,6 +1003,7 @@
 		"MD033": "no-inline-html, inline html, raw html elements, allowed elements",
 		"MD035": "hr-style, consistent horizontal rule style, thematic break markers",
 		"MD036": "no-emphasis-as-heading, emphasis or bold text used instead of a heading",
+		"MD037": "no-space-in-emphasis, spaces inside emphasis markers",
 		"MD038": "no-space-in-code, spaces inside code span backticks",
 		"MD040": "fenced-code-language, fenced code block without a language, allowed languages",
 		"MD041": "first-line-heading, first-line-h1, first line heading, document starts with h1",

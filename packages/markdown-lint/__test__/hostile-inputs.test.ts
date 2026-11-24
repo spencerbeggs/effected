@@ -97,6 +97,9 @@ const deepQuotedListThenBlanks = (depth: number, blanks: number): string =>
 const longCodeSpan = (words: number): string =>
 	`# T\n\n\`  ${Array.from({ length: words }, (_, index) => (index % 10 === 9 ? `w${index}\n` : `w${index} `)).join("")}  \`\n`;
 
+// MD037 pairs bare markers and reads the spaces beside each on its line: one line of 30,000 spaced marker pairs.
+const spacedMarkersOnOneLine = (pairs: number): string => `# T\n\n${"a * b * ".repeat(pairs)}\n`;
+
 const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a 400-column table with CJK cells", wideTable(400, 150)],
 	["2,000 unclosed fences in list items", unclosedFences(2000)],
@@ -110,6 +113,7 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a blockquote of 20,000 one-item lists", quotedListsOfTwoMarkers(20000)],
 	["a list nested 40 deep in a blockquote, then 20,000 quoted blank lines", deepQuotedListThenBlanks(40, 20000)],
 	["one code span of 100,000 words over 10,000 lines", longCodeSpan(100000)],
+	["one line of 30,000 spaced emphasis-marker pairs", spacedMarkersOnOneLine(30000)],
 ];
 
 describe("hostile inputs", () => {

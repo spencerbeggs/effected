@@ -44,7 +44,7 @@ const shuffled = <A>(items: ReadonlyArray<A>, seed: string): ReadonlyArray<A> =>
 };
 
 // markdownlint's findings with a fix over every input, per case.
-const ORACLE_FIXES_ALL = 4671;
+const ORACLE_FIXES_ALL = 5244;
 const ORACLE_FIXES_MD004_MD032 = 396;
 const ORACLE_FIXES_MD022_MD009 = 452;
 const ORACLE_FIXES_MD031_MD032 = 368;
@@ -61,6 +61,7 @@ const ORACLE_FIXES_MD030_MD007 = 479;
 const ORACLE_FIXES_MD030_MD005 = 116;
 const ORACLE_FIXES_MD014_MD010 = 334;
 const ORACLE_FIXES_MD038_MD009 = 615;
+const ORACLE_FIXES_MD037_MD009 = 850;
 // The inputs on which fixes from two or more of the case's rules land on one line, the case the file exists for.
 const MEETING_ALL = 44;
 const MEETING_MD004_MD032 = 17;
@@ -80,6 +81,7 @@ const MEETING_MD030_MD007 = 5;
 const MEETING_MD030_MD005 = 2;
 const MEETING_MD014_MD010 = 2;
 const MEETING_MD038_MD009 = 2;
+const MEETING_MD037_MD009 = 2;
 const MEETING_SAMPLE = 11;
 
 describe("applyFixes over several rules' fixes", () => {
@@ -269,6 +271,17 @@ describe("applyFixes over several rules' fixes", () => {
 			[
 				{ name: "padded code spans and trailing spaces, LF", source: "a `  x` b   \n`y  `  \n" },
 				{ name: "padded code spans and trailing spaces, CRLF", source: "a `  x` b   \r\n`y  `  \r\n" },
+			],
+		],
+		// MD037 deletes the spaces inside emphasis markers and MD009 the spaces at the line's end.
+		[
+			"MD037 and MD009",
+			["MD037", "MD009"],
+			ORACLE_FIXES_MD037_MD009,
+			MEETING_MD037_MD009,
+			[
+				{ name: "spaced markers and trailing spaces, LF", source: "a ** bold ** c   \n_ x _  \n" },
+				{ name: "spaced markers and trailing spaces, CRLF", source: "a ** bold ** c   \r\n_ x _  \r\n" },
 			],
 		],
 	];
