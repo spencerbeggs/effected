@@ -32,6 +32,11 @@ const definitionSets: ReadonlyArray<readonly [string, string]> = [
 	["defined", "\n\n[r]: https://r.example\n[s]: <>\n[n]: #\n[^n]: note\n"],
 ];
 
+const breakBeforeFirstBracket = (text: string): string => {
+	const at = text.indexOf("]");
+	return at === -1 ? text : `${text.slice(0, at)}\n${text.slice(at)}`;
+};
+
 const placements: ReadonlyArray<readonly [string, (text: string) => string]> = [
 	["paragraph", (text) => `a ${text} b\n`],
 	["heading", (text) => `# a ${text} b\n`],
@@ -48,7 +53,8 @@ const placements: ReadonlyArray<readonly [string, (text: string) => string]> = [
 	["inline math", (text) => `$${text}$ c\n`],
 	["inline html", (text) => `<b>${text}</b> c\n`],
 	["html block", (text) => `<div>\n${text}\n</div>\n`],
-	["across lines", (text) => `a ${text.replace(/\]/, "\n]")}\n`],
+	// Breaks the line before the first closing bracket only.
+	["across lines", (text) => `a ${breakBeforeFirstBracket(text)}\n`],
 	["CRLF", (text) => `a ${text}\r\nb\r\n`],
 	["after a tab", (text) => `a\t${text}\n`],
 ];
