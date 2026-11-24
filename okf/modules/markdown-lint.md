@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T18:58:08Z
+  at: 2026-11-24T18:58:42Z
 integrity:
   generated:
-    body: c95785d06a539dce
+    body: efcd856dcc9b23a8
 ---
 
 # `@effected/markdown-lint`
@@ -614,11 +614,16 @@ plain synchronous function; no logging, no metrics.
   no names, where markdownlint calls string methods on it and throws; an
   MD059 `prohibited_texts` that is truthy but no list, or a list holding a
   value that is no string, reads as the default, where markdownlint calls
-  `.map` and string methods on it and throws; a
+  `.map` and string methods on it and throws; an MD052 `ignored_labels`
+  or MD053 `ignored_definitions` that is truthy but not iterable (a number,
+  `true`, a plain object) reads as the default (`["x"]`, `["//"]`), where
+  markdownlint's `new Set` throws (a string is the set of its characters
+  in both); a
   value whose conversion
   to a primitive throws reads as absent. Pinned by tests (MD001 42 inputs,
   MD025 32, MD041 32, MD010 33, each a markdownlint throw; MD043 by seven
-  hand-written cases, the oracle throwing on each).
+  hand-written cases, the oracle throwing on each; MD052 and MD053 by a
+  hand-written case each over a number, `true` and an object).
 - **A fractional MD013 limit reports no range.** markdownlint reports a
   fractional limit's overflow as fractional columns (`[51.5, 69.5]`); a kit
   range is whole columns, so the kit's finding carries none, with the same
