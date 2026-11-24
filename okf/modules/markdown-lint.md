@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T06:42:20Z
+  at: 2026-11-24T06:48:25Z
 integrity:
   generated:
-    body: 538171983c2b8dc6
+    body: 708d6ede9be45e6a
 ---
 
 # `@effected/markdown-lint`
@@ -298,9 +298,9 @@ plain synchronous function; no logging, no metrics.
   The eleven disagreements are all CSH005; the port follows systems'
   markdownlint engine, and the count is pinned.
 - **A real markdownlint.** `markdownlint-host.test.ts` imports the
-  exact-pinned `markdownlint` devDependency, 0.42.1 like the vendored
-  source (the workspace root's `markdownlint-cli2` 0.24.2 resolves its own
-  copy, 0.42.2), through a variable specifier so no `src/` type resolves
+  exact-pinned `markdownlint` devDependency, 0.42.2 like the vendored
+  source and the copy the workspace root's `markdownlint-cli2` 0.24.2
+  resolves, through a variable specifier so no `src/` type resolves
   against its declarations, and runs the adapted rules in it:
   byte-identical to the golden, `applyFixes` over the mapped `fixInfo` equal
   to `MarkdownEdit.applyAll` over the kit edits (LF, CRLF, frontmatter,
@@ -319,14 +319,18 @@ plain synchronous function; no logging, no metrics.
   that appears or disappears fails. `differential-harness.test.ts` holds the
   harness to a positive control (a faithful throwaway MD047, zero
   divergences) and negative ones (a late line, a missing finding, a wrong
-  fix). The oracle is the exact-pinned `markdownlint` devDependency, 0.42.1.
+  fix). The oracle is the exact-pinned `markdownlint` devDependency, 0.42.2.
+  `fixesDifferential` applies the fixes of several rules enabled together in
+  both engines over the corpus as written, as CRLF and as bare CR, and
+  compares the text: `multi-rule-fixes.test.ts` runs every ported rule
+  together and five pairs whose fixes meet, each at zero divergence.
   `settingsDifferential` runs the same comparison over named settings cases
   and a few probe documents without the corpus: every rule with settings is
   held to zero divergence on non-canonical values (quoted numbers, `0` and
   `1` for booleans, `null`, numbers for strings, per-level items as
   written), and the residues below are pinned by count.
-- **The vendored corpus.** `__test__/fixtures/markdownlint/` holds 436
-  byte-identical copies of upstream's `test/*.md` at tag `v0.42.1`, copied
+- **The vendored corpus.** `__test__/fixtures/markdownlint/` holds 437
+  byte-identical copies of upstream's `test/*.md` at tag `v0.42.2`, copied
   from the `.repos/markdownlint` submodule by
   `scripts/capture-markdownlint-corpus.mjs` (no arguments, idempotent), whose
   `README.md` records the tag, the commit and the count. Never edit a fixture
@@ -381,7 +385,7 @@ plain synchronous function; no logging, no metrics.
   starts with `>` or `->` keeps those characters through the mask, so both
   hosts agree there. Pinned by a test (`markdownlint-host.test.ts`, the two
   inputs and a control).
-- MD012 under `maximum: 0`: markdownlint 0.42.1 throws on a file that is
+- MD012 under `maximum: 0`: markdownlint 0.42.2 throws on a file that is
   all front matter with no final line break (`front-matter-no-crlf.md`,
   LF and CRLF, 2 inputs). Its content is one empty line numbered one past
   its per-line enabled state. The kit reports nothing there, which the pin
@@ -402,7 +406,8 @@ plain synchronous function; no logging, no metrics.
   markdownlint's `getHeadingLevel` reads both as level 1. `@effected/markdown`
   drops no mark, so any source opening with two or more marks can diverge
   wherever a rule reads a heading level, a range or a token's text. Observed
-  against markdownlint 0.42.1 over 1 to 4 marks: two marks before `# Title`
+  against markdownlint 0.42.1 over 1 to 4 marks, and the pinned inputs hold
+  under 0.42.2: two marks before `# Title`
   are a heading there and text here (MD041); two marks before a `---` block
   give a thematic break and a setext heading on line 2 there, a setext
   heading on line 1 here (MD022); three or four marks before a `---` block,
@@ -545,7 +550,7 @@ plain synchronous function; no logging, no metrics.
 
 - MD060 measures with a port of string-width 8.3.0 and
   get-east-asian-width 1.7.0's Wide and Fullwidth ranges, the copies
-  markdownlint 0.42.1 installs. It does not strip ANSI escape sequences
+  markdownlint 0.42.2 installs. It does not strip ANSI escape sequences
   first, as string-width does.
 
 - `lintDocument` cannot know the dialect a document was parsed with:

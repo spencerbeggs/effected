@@ -22,7 +22,7 @@ A markdownlint-compatible lint rule shape over `@effected/markdown` trees: a `Li
 - `__test__/fixtures/changesets/golden.json` is CAPTURED, not hand-written: regenerate only with `capture/` per its `README.md`, and never edit a diagnostic by hand.
 - `__test__/fixtures/markdownlint/` is markdownlint's `test/*.md` corpus, copied from `.repos/markdownlint` by `scripts/capture-markdownlint-corpus.mjs`; never edit a fixture by hand.
 - `hostile-inputs.test.ts` holds wall-clock ceilings and runs in the root `vitest.config.ts`'s `SLOW_TESTS` and `TIMING_TESTS` tier, never the fast tier.
-- Only test code imports markdownlint, all of it through `__test__/helpers/markdownlint-oracle.ts`: the exact-pinned `markdownlint` devDependency, 0.42.1 like the vendored `.repos/markdownlint` (the workspace root's markdownlint-cli2 resolves its own copy, 0.42.2), through a variable specifier so no `src/` type resolves against its declarations.
+- Only test code imports markdownlint, all of it through `__test__/helpers/markdownlint-oracle.ts`: the exact-pinned `markdownlint` devDependency, 0.42.2 like the vendored `.repos/markdownlint` and the copy the workspace root's markdownlint-cli2 resolves, through a variable specifier so no `src/` type resolves against its declarations.
 
 ```bash
 pnpm vitest run packages/markdown-lint

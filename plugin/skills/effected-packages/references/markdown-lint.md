@@ -112,4 +112,4 @@ export default { customRules: MarkdownlintAdapter.rules([NoH1]) };
 
 ## Not included
 
-The 31 built-in rules in `uncovered`, any markdownlint dependency, and markdownlint-cli2's options files and `overrides`. The rules and the adapter are differentially tested against markdownlint 0.42.1; markdownlint-cli2 0.24.2 runs markdownlint 0.42.2.
+The 31 built-in rules in `uncovered`, any markdownlint dependency, and markdownlint-cli2's options files and `overrides`. The rules and the adapter are differentially tested against markdownlint 0.42.2, the version markdownlint-cli2 0.24.2 runs.
