@@ -50,6 +50,11 @@ const extra = [
 	{ name: "review: block in list item lines", source: "- <div>\n  <img src=x>\n  </div>\n" },
 	{ name: "review: block in quote lines", source: "> <div>\n> <img src=x>\n" },
 	{ name: "review: $ in image alt", source: "![$](a.png) ![](b.png) $\n" },
+	{
+		name: "review: indented ladder 12 MD045",
+		source:
+			"<pre>\n\n    <img src=a>\n\n        <img src=a>\n\n            <img src=a>\n\n                <img src=a>\n\n                    <img src=a>\n\n                        <img src=a>\n\n                            <img src=a>\n\n                                <img src=a>\n\n                                    <img src=a>\n\n                                        <img src=a>\n\n                                            <img src=a>\n\n                                                <img src=a>\n</pre>\n",
+	},
 ];
 
 // A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
@@ -81,4 +86,4 @@ describe("MD045 no-alt-text", () => {
 });
 
 // markdownlint's MD045 findings over the corpus (LF and CRLF) and the extras.
-const ORACLE_FINDINGS_DEFAULT = 61;
+const ORACLE_FINDINGS_DEFAULT = 73;

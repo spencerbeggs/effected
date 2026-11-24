@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-24T01:13:36Z
+  at: 2026-11-24T01:25:19Z
 integrity:
   generated:
-    body: a86e273334b5afe6
+    body: 89f565fe6ce29b59
 ---
 
 # `@effected/markdown-lint`
@@ -312,11 +312,15 @@ plain synchronous function; no logging, no metrics.
   parse finds neither. An HTML block that interrupts a paragraph is
   indented four columns, which makes it a continuation line. One right
   after a table gets a leading pipe, which makes it a body row. Any other
-  HTML block or indented code block gets a stub line before it. Fences,
-  headings, lists, blockquotes, thematic breaks and tables are read as
-  written. The parse runs at most eight times, and a block still unsettled
-  after that is read as the last parse read it. No corpus block needs more
-  than three.
+  HTML block or indented code block gets a stub line before it. A
+  neutralized node is handled whole in one pass: every run after a blank
+  line, and every line opening a deeper blockquote, gets its own stub.
+  Fences, headings, lists, blockquotes, thematic breaks and tables are
+  read as written. The parse runs at most eight times; no corpus block
+  and no adversarial shape tried needs more than four. Past the cap, a
+  terminal sweep gives every remaining node's lines a stub each and reads
+  the block from one more parse, so no line is left unread as code. There,
+  a tag spanning two lines is not read as one.
 
 - MD060 measures with a port of string-width 8.3.0 and
   get-east-asian-width 1.7.0's Wide and Fullwidth ranges, the copies

@@ -2,8 +2,9 @@
 // fixture corpus (LF and CRLF) and over inputs each setting changes.
 
 import { assert, describe, it } from "@effect/vitest";
+import type { Code, Html, MarkdownNode } from "@effected/markdown";
 import { Option } from "effect";
-import { HTML_REREAD_MAX_PASSES, rereadHtmlBlock } from "../../src/internal/rule-helpers.js";
+import { rereadHtmlBlock } from "../../src/internal/rule-helpers.js";
 import { MarkdownLint } from "../../src/MarkdownLint.js";
 import { MD033 } from "../../src/rules/MD033.js";
 import { differential } from "../helpers/differential.js";
@@ -112,6 +113,16 @@ const extra = [
 	{ name: "$ after an escaped bracket in an image label", source: "![\\]$](u) <b>x</b> $\n" },
 	{ name: "$ in an image reference", source: "![x][r$] <b>y</b> $\n\n[r$]: /u\n" },
 	{ name: "$ in a reference image label", source: "![$][r] <b>y</b> $\n\n[r]: /u\n" },
+	{
+		name: "review: indented ladder 12",
+		source:
+			"<pre>\n\n    <b>x</b>\n\n        <b>x</b>\n\n            <b>x</b>\n\n                <b>x</b>\n\n                    <b>x</b>\n\n                        <b>x</b>\n\n                            <b>x</b>\n\n                                <b>x</b>\n\n                                    <b>x</b>\n\n                                        <b>x</b>\n\n                                            <b>x</b>\n\n                                                <b>x</b>\n</pre>\n",
+	},
+	{
+		name: "review: indented ladder 6",
+		source:
+			"<pre>\n\n    <b>x</b>\n\n        <b>x</b>\n\n            <b>x</b>\n\n                <b>x</b>\n\n                    <b>x</b>\n\n                        <b>x</b>\n</pre>\n",
+	},
 ];
 
 // A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
@@ -135,14 +146,14 @@ describe("MD033 no-inline-html", () => {
 	// `table_allowed_elements || allowed_elements` for tables: a falsy table list falls back to `allowed_elements`,
 	// a truthy one that is not an array allows nothing in a table.
 	for (const [settings, expected] of [
-		[{ allowed_elements: ["br", "details", "summary", "img", "sup", "sub"] }, 294],
-		[{ allowed_elements: ["BR", "B"] }, 254],
-		[{ allowed_elements: ["br"], table_allowed_elements: ["b"] }, 304],
-		[{ table_allowed_elements: ["br"] }, 313],
-		[{ allowed_elements: ["br"], table_allowed_elements: "" }, 306],
-		[{ allowed_elements: ["br"], table_allowed_elements: "br" }, 311],
-		[{ allowed_elements: [] }, 318],
-		[{ allowed_elements: "br" }, 318],
+		[{ allowed_elements: ["br", "details", "summary", "img", "sup", "sub"] }, 314],
+		[{ allowed_elements: ["BR", "B"] }, 256],
+		[{ allowed_elements: ["br"], table_allowed_elements: ["b"] }, 324],
+		[{ table_allowed_elements: ["br"] }, 333],
+		[{ allowed_elements: ["br"], table_allowed_elements: "" }, 326],
+		[{ allowed_elements: ["br"], table_allowed_elements: "br" }, 331],
+		[{ allowed_elements: [] }, 338],
+		[{ allowed_elements: "br" }, 338],
 	] as const) {
 		it(
 			`agrees with markdownlint under ${JSON.stringify(settings)}`,
@@ -167,26 +178,93 @@ describe("MD033 no-inline-html", () => {
 		}
 	});
 
-	it("settles the re-read of a hostile HTML block within its bound, quickly", () => {
-		// Thousands of lines that each open an HTML block or indented code, with and without blank lines between.
-		const hostile = [
+	// Adversarial HTML blocks of thousands of lines: each re-read settles in a few parses, well inside the cap, and fast.
+	const spaces = (count: number) => " ".repeat(count);
+	for (const [name, lines, passes] of [
+		[
+			"alternating HTML and indented lines",
 			Array.from({ length: 3000 }, (_, index) => (index % 2 === 0 ? "<div>" : "    <b>x</b>")),
+			2,
+		],
+		[
+			"blank-separated HTML, code and list items",
 			Array.from(
 				{ length: 3500 },
 				(_, index) => ["<div>", "", "    x", "", "- <p>", "  ", "      y"][index % 7] as string,
 			),
+			3,
+		],
+		[
+			"table rows and closing tags",
 			Array.from({ length: 3000 }, (_, index) =>
 				index % 3 === 0 ? "| a | <b>x</b> |" : index % 3 === 1 ? "| - | - |" : "</div>",
 			),
-		];
-		for (const lines of hostile) {
+			3,
+		],
+		[
+			"an ever-deeper indented ladder in a pre block",
+			[
+				"<pre>",
+				"",
+				...Array.from({ length: 2000 }, (_, index) => [`${spaces(4 * ((index % 50) + 1))}<b>x</b>`, ""]).flat(),
+				"</pre>",
+			],
+			2,
+		],
+		[
+			"blockquotes nested ever deeper",
+			Array.from({ length: 1000 }, (_, index) => `${">".repeat((index % 40) + 1)} <div> <b>x</b>`),
+			3,
+		],
+		[
+			"list items nested ever deeper",
+			Array.from({ length: 1000 }, (_, index) => [
+				`${spaces(2 * (index % 40))}- <div>`,
+				`${spaces(2 * (index % 40) + 2)}<b>x</b>`,
+			]).flat(),
+			4,
+		],
+	] as const) {
+		it(`settles the re-read of ${name} quickly`, () => {
 			const started = Date.now();
 			const reread = rereadHtmlBlock(lines, 1);
-			assert.isTrue(reread.settled);
-			assert.isAtMost(reread.passes, HTML_REREAD_MAX_PASSES);
-			const findings = run(lines.join("\n"));
-			assert.isAbove(findings.length, 0);
 			assert.isBelow(Date.now() - started, 5_000);
+			assert.isTrue(reread.settled);
+			assert.isFalse(reread.swept);
+			assert.isAtMost(reread.passes, passes);
+			assert.isAbove(run(lines.join("\n")).length, 0);
+		});
+	}
+
+	// Past the cap, the terminal sweep reads every line left: forced here with a cap of one, on blocks that need more.
+	it("collects every tag through the terminal sweep when the cap is reached", () => {
+		const flowParents = new Set(["root", "blockquote", "listItem", "footnoteDefinition"]);
+		for (const source of [
+			"<pre>\n\n    <b>1</b>\n\n        <b>2</b>\n\n            <b>3</b>\n</pre>",
+			"> <div> <b>1</b>\n>> <div> <b>2</b>\n>>> <div> <b>3</b>",
+			"- <div>\n  <b>1</b>\n  - <div>\n    <b>2</b>\n    - <div>\n      <b>3</b>",
+		]) {
+			const lines = source.split("\n");
+			assert.isAbove(rereadHtmlBlock(lines, 1).passes, 1, source);
+			const reread = rereadHtmlBlock(lines, 1, { maxPasses: 1 });
+			assert.isTrue(reread.swept, source);
+			assert.isFalse(reread.settled, source);
+			assert.strictEqual(reread.passes, 2, source);
+			const document = reread.document;
+			assert.isDefined(document, source);
+			// No line is left read as an HTML block or code, and every tag is inline HTML.
+			const blocks: Array<string> = [];
+			const inline: Array<string> = [];
+			const visit = (node: MarkdownNode): void => {
+				for (const child of ("children" in node ? node.children : []) as ReadonlyArray<MarkdownNode>) {
+					if (child.type === "html") (flowParents.has(node.type) ? blocks : inline).push((child as Html).value);
+					if (child.type === "code" && (child as Code).fenceChar === undefined) blocks.push((child as Code).value);
+					visit(child);
+				}
+			};
+			if (document !== undefined) visit(document.root as MarkdownNode);
+			assert.deepStrictEqual(blocks, [], source);
+			for (const tag of ["<b>", "</b>"]) assert.strictEqual(inline.filter((value) => value === tag).length, 3, source);
 		}
 	});
 
@@ -204,4 +282,4 @@ describe("MD033 no-inline-html", () => {
 });
 
 // markdownlint's MD033 findings over the corpus (LF and CRLF) and the extras.
-const ORACLE_FINDINGS_DEFAULT = 318;
+const ORACLE_FINDINGS_DEFAULT = 338;
