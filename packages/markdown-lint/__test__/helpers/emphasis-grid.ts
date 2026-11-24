@@ -68,3 +68,65 @@ export const emphasisGrid: ReadonlyArray<DifferentialInput> = (() => {
 	for (const [name, source] of places) grid.push({ name, source });
 	return grid;
 })();
+
+/**
+ * A grid for the emphasis-style rules (MD049, MD050): emphasis and strong in each marker, nested, intraword and in
+ * each place, each input opening with a first span that sets the `consistent` style.
+ */
+export const emphasisStyleGrid: ReadonlyArray<DifferentialInput> = (() => {
+	const grid: Array<DifferentialInput> = [];
+	const spans = [
+		"*a*",
+		"_a_",
+		"**a**",
+		"__a__",
+		"***a***",
+		"___a___",
+		"*__a__*",
+		"_**a**_",
+		"**_a_**",
+		"__*a*__",
+		"*a **b** c*",
+		"_a __b__ c_",
+	];
+	for (const first of ["*x*", "_x_", "**x**", "__x__"]) {
+		for (const span of spans) grid.push({ name: `${first} then ${span}`, source: `${first} and ${span} end\n` });
+	}
+	const places: ReadonlyArray<readonly [string, string]> = [
+		["intraword star", "a*b*c and a**b**c\n"],
+		["intraword star at one side", "a*b* and *b*c and **b**c\n"],
+		["intraword underscore", "snake_case_name and a__b__c\n"],
+		["star after a word", "x_y_ *z* _w_\n"],
+		["heading", "# *a* and _b_ and **c** and __d__\n"],
+		["table cell", "| a | b |\n| - | - |\n| *x* | _y_ |\n| **x** | __y__ |\n"],
+		["blockquote", "> *a* _b_ **c** __d__\n"],
+		["list item", "- *a*\n- _b_\n- **c**\n- __d__\n"],
+		["link label", "[*a* and _b_](u) **c** __d__\n"],
+		["image alt", "![*a* _b_](u)\n"],
+		["image alt, strong", "![**a** and __b__](u)\n"],
+		["image alt across lines", "![*a\nb* _c_](u)\n"],
+		["quoted image alt across lines", "> ![_a\n> b_ *c*](u)\n"],
+		["reference image", "![*a* _b_][r]\n\n[r]: u\n"],
+		["math in image alt", "![$*a*$ _b_](u)\n"],
+		["image in a link", "[![*a*](u) _b_](v)\n"],
+		["undefined reference", "[*a* _b_][undef] **c** __d__\n"],
+		["strikethrough", "~~*a*~~ and ~~_b_~~ and ~~**c**~~ __d__\n"],
+		["strikethrough crossing", "*a ~~b* c~~ and _d_\n"],
+		["code span", "`*a*` _b_ *c*\n"],
+		["inline html", "<b>*a*</b> _b_\n"],
+		["html block", "<div>\n*a* _b_\n</div>\n\n_c_\n"],
+		["inline math", "$*a*$ _b_ *c*\n"],
+		["double-dollar math", "$$**a**$$ __b__ **c**\n"],
+		["math in quote", "> $*a*$ _b_\n"],
+		["math in table", "| a |\n| - |\n| $*a*$ _b_ |\n"],
+		["math in heading", "# $*a*$ _b_\n"],
+		["math across a break", "$*a\nb*$ _c_ *d*\n"],
+		["math block", "$$\n*a*\n$$\n\n_b_\n"],
+		["escaped", "\\*a\\* _b_ *c*\n"],
+		["across lines", "*a\nb* and _c\nd_\n"],
+		["front matter", "---\ntitle: x\n---\n*a* _b_\n"],
+		["CRLF", "*a*\r\n_b_\r\n**c**\r\n__d__\r\n"],
+	];
+	for (const [name, source] of places) grid.push({ name, source });
+	return grid;
+})();

@@ -11,8 +11,8 @@ export interface Span {
 	readonly end: number;
 }
 
-// Where a link's or image's label ends: the `]` closing the `[` at `open`, brackets nested and escapes skipped.
-const labelEnd = (source: string, open: number, end: number): number => {
+/** Where a link's or image's label ends: the `]` closing the `[` at `open`, brackets nested and escapes skipped. @internal */
+export const labelEnd = (source: string, open: number, end: number): number => {
 	let depth = 0;
 	for (let at = open + 1; at < end; at++) {
 		const char = source.charAt(at);

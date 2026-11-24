@@ -5,10 +5,13 @@
 // Every rule that reads inline nodes enumerates them here.
 
 import type { MarkdownNode } from "@effected/markdown";
+import { MarkdownDocument, MarkdownParseOptions } from "@effected/markdown";
+import { Result } from "effect";
 import type { LintContext } from "../LintContext.js";
+import { contentInContainers } from "./containers.js";
 import { mathFlowLines } from "./math-flow.js";
 import type { Span } from "./math-text.js";
-import { mathTextSpans } from "./math-text.js";
+import { labelEnd, mathTextSpans } from "./math-text.js";
 import { perReading } from "./memo.js";
 
 // Whether `offset` lies in one of `spans`, which are sorted by start and do not overlap: a binary search.
@@ -110,6 +113,65 @@ export const bareMarkers: (context: LintContext) => ReadonlyArray<ReadonlyArray<
 		};
 		for (const child of (block as { readonly children: ReadonlyArray<MarkdownNode> }).children) scan(child);
 		found.push(runs);
+	}
+	return found;
+});
+
+/** An inline node read from source the kit tree does not carry it in: its type and source span. @internal */
+export interface InlineSpan {
+	readonly type: string;
+	readonly start: number;
+	readonly end: number;
+}
+
+const labelOptions = MarkdownParseOptions.make({ dialect: "gfm", frontmatter: false });
+
+/**
+ * PARSER GAP: the inline nodes of image descriptions. micromark parses an
+ * image's label as inline content, where the kit's image carries its alt as a
+ * string, so each label (its continuation lines' container prefixes left out)
+ * is re-parsed as a link label, which CommonMark parses the same way, and its
+ * nodes mapped back to their source offsets. Those micromark reads as math are
+ * dropped. Computed once per reading.
+ * @internal
+ */
+export const imageLabelNodes: (context: LintContext) => ReadonlyArray<InlineSpan> = perReading((context) => {
+	const { source } = context;
+	const keep = outsideMath(context);
+	const inMath = inMathText(context);
+	const found: Array<InlineSpan> = [];
+	const images = context.document.findAll(
+		(node) => node.type === "image" || node.type === "imageReference",
+	) as ReadonlyArray<MarkdownNode>;
+	for (const image of images) {
+		if (!keep(image)) continue;
+		const open = image.position.start.offset + 1;
+		const close = labelEnd(source, open, image.position.end.offset);
+		// The label's text, and each character's source offset.
+		let text = "";
+		const offsets: Array<number> = [];
+		for (let at = open + 1; at < close; at++) {
+			const char = source.charAt(at);
+			text += char;
+			offsets.push(at);
+			if (char === "\n" || (char === "\r" && source.charAt(at + 1) !== "\n")) {
+				const lineNumber = context.mapping.lineNumber(at + 1);
+				const line = context.lines[lineNumber - 1] ?? "";
+				const content = contentInContainers(context, lineNumber) ?? line;
+				at = Math.max(at, context.mapping.lineStart(lineNumber) + line.length - content.length - 1);
+			}
+		}
+		if (!/[*_]/.test(text)) continue;
+		const parsed = MarkdownDocument.parseResult(`[${text}](u)`, labelOptions);
+		if (!Result.isSuccess(parsed)) continue;
+		for (const node of parsed.success.findAll(
+			(each) => each.type === "emphasis" || each.type === "strong",
+		) as ReadonlyArray<MarkdownNode>) {
+			const first = offsets[node.position.start.offset - 1];
+			const last = offsets[node.position.end.offset - 2];
+			if (first === undefined || last === undefined || inMath(first)) continue;
+			found.push({ type: node.type, start: first, end: last + 1 });
+		}
 	}
 	return found;
 });
