@@ -90,3 +90,39 @@ export const oracleLineEnding = (source: string): string => internal.getPreferre
 
 /** markdownlint's built-in rules, in its own order. */
 export const oracleRules = (): ReadonlyArray<OracleRule> => builtIn.default;
+
+interface OracleToken {
+	readonly type: string;
+	readonly startLine: number;
+	readonly startColumn: number;
+	readonly text: string;
+	readonly children: ReadonlyArray<OracleToken>;
+}
+
+const parseSpecifier = new URL("../../node_modules/markdownlint/lib/micromark-parse.mjs", import.meta.url).href;
+const micromarkParse: { readonly parse: (markdown: string) => ReadonlyArray<OracleToken> } = await import(
+	parseSpecifier
+);
+
+/**
+ * markdownlint's `data` tokens for `source`, as `[line, column, text]`, in document order: the text MD044 scans as
+ * `data`. Those under the parts MD044 passes over (a link's destination and title, a full reference's label, a
+ * definition, a fence's info) and the copies markdownlint's undefined-reference shim makes are left out.
+ */
+export const oracleDataTokens = (source: string): ReadonlyArray<readonly [number, number, string]> => {
+	const skipped = new Set(["resource", "reference", "definition", "codeFencedFence", "undefinedReference"]);
+	const found: Array<readonly [number, number, string]> = [];
+	const walk = (tokens: ReadonlyArray<OracleToken>): void => {
+		for (const token of tokens) {
+			if (skipped.has(token.type)) continue;
+			if (token.type === "data") found.push([token.startLine, token.startColumn, token.text]);
+			walk(token.children);
+		}
+	};
+	// markdownlint parses the content after its front matter, and numbers lines from the source's start.
+	const frontMatter =
+		/^---[^\S\r\n]*(?:\r\n|\r|\n)[\s\S]*?(?:\r\n|\r|\n)---\s*?(?:\r\n|\r|\n|$)/.exec(source)?.[0] ?? "";
+	const lines = frontMatter === "" ? 0 : frontMatter.split(/\r\n|\r|\n/).length - 1;
+	walk(micromarkParse.parse(source.slice(frontMatter.length)));
+	return found.map(([line, column, text]) => [line + lines, column, text] as const);
+};

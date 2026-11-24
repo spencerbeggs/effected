@@ -105,6 +105,26 @@ describe("MD036 no-emphasis-as-heading", () => {
 		);
 	});
 
+	// The emphasis's content is one `data` token as the shared splitter cuts it: a lone `[` or `![` is one token
+	// whole, and a `]` cuts nothing, where an escape, a reference or a `[` beside text cuts.
+	it(
+		"reads an emphasis's single data token as micromark cuts it",
+		() => {
+			const inputs = [
+				{ name: "lone bracket", source: "**[**\n" },
+				{ name: "lone image opener", source: "**![**\n" },
+				{ name: "closing bracket", source: "**a]**\n" },
+				{ name: "bracket beside text", source: "**[a**\n" },
+				{ name: "reference", source: "*&amp;*\n" },
+				{ name: "escape", source: "*\\**\n" },
+			];
+			const result = settingsDifferential(MD036, [{}], inputs);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, 3);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
 	it("reports the emphasized text as its context", () => {
 		const findings = run("text\n\n**My document**\n");
 		assert.lengthOf(findings, 1);

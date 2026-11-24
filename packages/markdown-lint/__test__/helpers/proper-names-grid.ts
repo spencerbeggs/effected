@@ -6,7 +6,16 @@
 import type { DifferentialInput } from "./differential.js";
 
 /** The names setting the grid is read under. */
-export const PROPER_NAMES: ReadonlyArray<string> = ["JavaScript", "GitHub", "GitHub Actions", "Node.js", "C++", ".NET"];
+export const PROPER_NAMES: ReadonlyArray<string> = [
+	"JavaScript",
+	"GitHub",
+	"GitHub Actions",
+	"Node.js",
+	"C++",
+	".NET",
+	"[z]",
+	"x[y",
+];
 
 const variants = [
 	"javascript",
@@ -63,6 +72,20 @@ export const properNamesGrid: ReadonlyArray<DifferentialInput> = (() => {
 		["across lines", "java\nscript and github\n"],
 		["hard break", "javascript  \ngithub\n"],
 		["CRLF", "javascript\r\ngithub\r\n"],
+		// micromark cuts its data at an unmatched `[` and at an escape: a name holding a bracket is two tokens.
+		["bracket name", "[Z]\n"],
+		["bracket name in a reference", "[x][Z]\n"],
+		["bracket name in a word", "a[Z]b\n"],
+		["escaped bracket name", "\\[Z] q\n"],
+		["unclosed bracket name", "X[Y\n"],
+		// In an HTML block's re-read, a bare `_` cuts the data too.
+		["snake case in an html block", "<div>\nmy_github_var\n</div>\n"],
+		["snake case in a one-line html block", "<p>my_github_var</p>\n"],
+		["short snake case in an html block", "<div>\na_github_b\n</div>\n"],
+		["snake case in a quoted html block", "> <div>\n> my_github_var\n> </div>\n"],
+		// An image description's code spans and nested images are read too.
+		["code in an image alt", "![`github`](i)\n"],
+		["nested image alt", "![a ![github](j) b](i)\n"],
 	];
 	for (const [name, source] of places) grid.push({ name, source });
 	return grid;
