@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T18:43:13Z
+  at: 2026-11-24T18:51:03Z
 integrity:
   generated:
-    body: 3963986fb1cbafcc
+    body: 946259bba96b8b34
 ---
 
 # `@effected/markdown-lint`
@@ -659,14 +659,11 @@ plain synchronous function; no logging, no metrics.
   continue a table, `matches` in `extensions/table.c`), ends the table
   before it and reads the line as a paragraph. The table rules read the
   kit's table. Pinned by a test (MD055 and MD056 2 inputs each).
-- **An MD051 `ignored_pattern` that does not compile, or that could match
-  in exponential time.** markdownlint passes the setting to `new RegExp`:
-  a pattern that does not compile (`(`) throws, and one where an unbounded
-  quantifier repeats a group holding another or an alternation
-  (`(a+)+$`, `(a|aa)*$`) runs as written (`(a+)+$` against a fragment of
-  26 `a`s and a `!` took 5,064 ms, doubling with each `a`). The kit reads
-  either as the default, `^$`, staying total and bounded. Pinned by a test
-  (6 patterns).
+- **An MD051 `ignored_pattern` that does not compile.** markdownlint
+  passes the setting to `new RegExp`, which throws on a pattern that does
+  not compile (`(`), and the lint fails. The kit reads it as the default,
+  `^$`. A pattern that compiles runs as written in both. Pinned by a test
+  (4 patterns).
 - **MD053's whole-line delete of the only line.** For a definition on the
   only line of a source with no line ending, markdownlint's fix is its
   whole-line delete (`deleteCount: -1`), which a kit edit (deleting the
@@ -729,6 +726,13 @@ plain synchronous function; no logging, no metrics.
 
 ## Known limitations
 
+- **A user-supplied pattern runs as written.** MD051's `ignored_pattern`
+  is compiled and run against each fragment as markdownlint runs it, with
+  no bound on its matching time: a pattern whose matching takes
+  exponential time on a long fragment (`(a+)+$`: 5,064 ms on 26 `a`s and a
+  `!`, doubling with each `a`) takes that time in the kit too. The setting
+  is the config author's, not the document's. Telling such a pattern apart
+  syntactically misreads safe ones, so the kit does not try.
 - Fixes from several findings can meet (MD022's two headings asking for the
   blank line between them). `MarkdownEdit.applyAll` applies every edit and
   refuses an overlap; apply findings with `MarkdownLint.applyFixes`, which

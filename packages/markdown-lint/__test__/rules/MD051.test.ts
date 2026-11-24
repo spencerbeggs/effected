@@ -19,6 +19,15 @@ import { linkGrid } from "../helpers/link-grid.js";
 
 const extra = [...linkGrid, ...fragmentGrid, ...anchorShapes];
 
+// Fragments the review's safe patterns match and miss.
+const patternShapes = [
+	{
+		name: "pattern fragments",
+		source: "# H\n\n[a](#api-v2-client) [b](#x1) [c](#ab) [d](#foo-bar) [e](#apicli) [f](#x1x22)\n",
+	},
+	{ name: "pattern misses", source: "# H\n\n[a](#Api) [b](#x) [c](#-a) [d](#foo_bar) [e](#xx1)\n" },
+];
+
 const run = runRule(MD051);
 
 describe("MD051 link-fragments", () => {
@@ -72,20 +81,36 @@ describe("MD051 link-fragments", () => {
 		DIFFERENTIAL_TIMEOUT,
 	);
 
-	// Named divergences, not of the port: markdownlint throws on a pattern that does not compile, and runs one whose
-	// matching can take exponential time; the kit stays total and bounded, reading either as the default.
-	it("reads an ignored_pattern markdownlint throws on, or one it could run unbounded, as the default", () => {
-		const source = `# H\n\n[a](#${"a".repeat(40)}!)\n`;
+	// A named divergence, not of the port: markdownlint throws on a pattern that does not compile; the kit stays total,
+	// reading it as the default. A pattern that compiles runs as written, as markdownlint runs it.
+	it("reads an ignored_pattern markdownlint throws on as the default", () => {
+		const source = "# H\n\n[a](#missing)\n";
 		const lines = (settings: Record<string, unknown>) => run(source, settings).map((each) => each.lineNumber);
 		const defaults = lines({});
 		assert.deepStrictEqual(defaults, [3]);
-		for (const ignored_pattern of ["(", "[a-", "(a+)+$", "(a|aa)*$", "(?:a*)*b", "(a{1,})+"]) {
+		for (const ignored_pattern of ["(", "[a-", "a{2,1}", "(?<n>a)(?<n>b)"]) {
 			assert.deepStrictEqual(lines({ ignored_pattern }), defaults, ignored_pattern);
 		}
-		// A pattern with a quantifier that is not nested runs.
-		assert.deepStrictEqual(lines({ ignored_pattern: "^a+!$" }), []);
-		assert.deepStrictEqual(lines({ ignored_pattern: "^(ab)+$|^a" }), []);
 	});
+
+	// Patterns that compile run as written, nested quantifiers and alternations among them.
+	it(
+		"agrees with markdownlint under ignored_pattern values that compile",
+		() => {
+			const result = settingsDifferential(
+				MD051,
+				[
+					{ ignored_pattern: "^[a-z]+(?:-[a-z0-9]+)*$" },
+					{ ignored_pattern: "^(api|cli)+" },
+					{ ignored_pattern: "^(x\\d+)+$" },
+				],
+				[...patternShapes, ...anchorShapes],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.isAbove(result.oracleFindings, 0);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 
 	it("reports a fragment differing only in case, with a fix to the heading's", () => {
 		const source = "# Getting Started\n\nSee [the guide](#Getting-Started).\n";

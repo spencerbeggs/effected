@@ -6,7 +6,8 @@
 // heading's `{#anchor}`, and an HTML tag's `id` (or an `<a>`'s `name`) —
 // then checks each link's destinations (its own and its images') and each
 // definition's: a `#fragment` none defines is reported, unless it is a line
-// fragment (`#L20`, `#L19C5-L21C11`) or `ignored_pattern` matches it; one
+// fragment (`#L20`, `#L19C5-L21C11`) or `ignored_pattern` (run as written)
+// matches it; one
 // that differs from a defined fragment only in case is reported with that
 // fragment as the fix, unless `ignore_case`.
 
@@ -29,58 +30,16 @@ const lineFragmentRe = /^#(?:L\d+(?:C\d+)?-L\d+(?:C\d+)?|L\d+)$/;
 const childrenOf = (node: MarkdownNode): ReadonlyArray<MarkdownNode> =>
 	(node as { readonly children?: ReadonlyArray<MarkdownNode> }).children ?? [];
 
-// Whether an unbounded quantifier applies to a group holding another or an alternation: a pattern whose matching can
-// take exponential time, which the kit does not run (see `ignoredPattern`).
-const nestedQuantifier = (pattern: string): boolean => {
-	// Per open group: whether it holds an unbounded quantifier or an alternation.
-	const groups: Array<boolean> = [];
-	let previousGroupRisky = false;
-	for (let at = 0; at < pattern.length; at++) {
-		const char = pattern.charAt(at);
-		const unbounded = char === "*" || char === "+" || (char === "{" && /^\{\d+,\}/.test(pattern.slice(at)));
-		if (char === "\\") {
-			at++;
-			previousGroupRisky = false;
-		} else if (char === "[") {
-			at++;
-			while (at < pattern.length && pattern.charAt(at) !== "]") at += pattern.charAt(at) === "\\" ? 2 : 1;
-			previousGroupRisky = false;
-		} else if (char === "(") {
-			groups.push(false);
-			previousGroupRisky = false;
-		} else if (char === ")") {
-			previousGroupRisky = groups.pop() ?? false;
-			if (previousGroupRisky && groups.length > 0) groups[groups.length - 1] = true;
-		} else if (unbounded) {
-			if (previousGroupRisky) return true;
-			if (groups.length > 0) groups[groups.length - 1] = true;
-			previousGroupRisky = false;
-		} else {
-			if (char === "|" && groups.length > 0) groups[groups.length - 1] = true;
-			previousGroupRisky = false;
-		}
-	}
-	return false;
-};
-
 /**
- * markdownlint's `new RegExp(ignored_pattern || "^$")`. Where it throws (a pattern that does not compile), and where
- * an unbounded quantifier repeats a group holding another or an alternation (matching that can take exponential time
- * on a long fragment), the kit reads the default, `^$`. A `RegExp` (from a JavaScript config) keeps its flags.
+ * markdownlint's `new RegExp(ignored_pattern || "^$")`, run as written. Where it throws (a pattern that does not
+ * compile), the kit reads the default, `^$`. A `RegExp` (from a JavaScript config) keeps its flags.
  */
 const ignoredPattern = (value: unknown): RegExp => {
 	const fallback = /^$/;
 	const setting = value || "";
-	if (setting instanceof RegExp) return nestedQuantifier(setting.source) ? fallback : new RegExp(setting);
-	let source: string;
+	if (setting instanceof RegExp) return new RegExp(setting);
 	try {
-		source = String(setting || "^$");
-	} catch {
-		return fallback;
-	}
-	if (nestedQuantifier(source)) return fallback;
-	try {
-		return new RegExp(source);
+		return new RegExp(String(setting || "^$"));
 	} catch {
 		return fallback;
 	}
