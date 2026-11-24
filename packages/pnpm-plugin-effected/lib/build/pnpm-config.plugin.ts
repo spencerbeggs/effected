@@ -335,7 +335,7 @@ const plugin: ReturnType<typeof PnpmConfigPlugin> = PnpmConfigPlugin({
 					source: "workspace",
 				},
 				"@effected/glob": {
-					range: "^0.23.0",
+					range: "^0.23.1",
 					peer: "^0.23.0",
 					strategy: "lock-minor",
 					source: "workspace",

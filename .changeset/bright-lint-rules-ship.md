@@ -11,6 +11,7 @@
 * `LintDiagnostic` carries a required `severity` (`"error"` or `"warning"`), stamped from the configuration.
 * `MarkdownlintAdapter` passes markdownlint's `params.config` to the rule as `LintContext.config`, with `enabled` and `severity` removed.
 * `lintDocument` drops one leading byte-order mark and re-parses the source when its reading and the parse it was given are not aligned.
+* `fixInfo.insertText` writes a line break as `"\n"` on CRLF and bare-CR documents, as markdownlint does, where it carried the document's own line ending. The kit `edit` is unchanged, so code that applies `edit` sees no difference; code that applies `fixInfo` itself should write each `\n` as the document's line ending, as markdownlint's `applyFix` does.
 
 ## Features
 
