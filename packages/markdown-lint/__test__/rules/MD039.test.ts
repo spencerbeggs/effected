@@ -28,6 +28,14 @@ const extra = [
 	{ name: "CRLF", source: "[ a ](u)\r\n[b ](u)\r\n" },
 ];
 
+const noBreakSpaces = [
+	{ name: "no-break space ending a label on the first line", source: "[a\u00a0](u)\n" },
+	{ name: "space and no-break space ending a label on the first line", source: "[a \u00a0](u)\n" },
+	{ name: "no-break space opening a label", source: "[\u00a0a](u)\n" },
+	{ name: "no-break space and space ending a label", source: "[a\u00a0 ](u)\n" },
+	{ name: "no-break space ending a reference label on a later line", source: "x\n\n[a\u00a0][r]\n\n[r]: u\n" },
+];
+
 const run = runRule(MD039);
 
 describe("MD039 no-space-in-links", () => {
@@ -40,6 +48,40 @@ describe("MD039 no-space-in-links", () => {
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
+
+	// markdownlint matches the spaces with re2, whose `\s` is ASCII, after `trimStart` and `trimEnd`, which trim a
+	// no-break space: a label edged by one is reported with no range, a line off.
+	it(
+		"agrees with markdownlint on labels edged by a no-break space",
+		() => {
+			const result = differential(MD039, { extra: noBreakSpaces });
+			// Not a divergence of the port: for a label that ends in a no-break space on the first line, markdownlint
+			// reports the line before it and throws on its own `lineNumber`. The kit reports the label's line.
+			assert.deepStrictEqual(
+				result.divergences.map((divergence) => divergence.fixture),
+				[
+					"no-break space ending a label on the first line",
+					"space and no-break space ending a label on the first line",
+				],
+			);
+			for (const divergence of result.divergences) {
+				assert.match(
+					divergence.reason,
+					/^markdownlint throws: Value of 'lineNumber' passed to onError by 'MD039' is incorrect for 'input'\.; kit: \d+ findings$/,
+				);
+			}
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_NO_BREAK);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
+	it("reports a label ending in a no-break space on the first line at that line, with no range", () => {
+		const findings = run("[a\u00a0](u)\n");
+		assert.deepStrictEqual(
+			findings.map((finding) => [finding.lineNumber, finding.range]),
+			[[1, Option.none()]],
+		);
+	});
 
 	it("reports the spaces inside a link's brackets, with fixes that delete them", () => {
 		const source = "See [ text  ](u).\n";
@@ -60,3 +102,6 @@ describe("MD039 no-space-in-links", () => {
 
 // markdownlint's MD039 findings over the corpus (LF and CRLF), the grid and the extras.
 const ORACLE_FINDINGS_DEFAULT = 217;
+
+// markdownlint's MD039 findings over the corpus (LF and CRLF) and the no-break-space labels it does not throw on.
+const ORACLE_FINDINGS_NO_BREAK = 173;

@@ -12,8 +12,10 @@ import { labelEnd } from "../internal/math-text.js";
 import type { LintContext, LintReport } from "../LintContext.js";
 import { LintRule } from "../LintRule.js";
 
-const startSpaces = /^[^\S\r\n]+/;
-const endSpaces = /[^\S\r\n]+$/;
+// markdownlint's `[^\S\r\n]` under re2, whose `\s` is ASCII (`[\t\n\f\r ]`): a no-break space is none, though
+// `trimStart` and `trimEnd` trim it.
+const startSpaces = /^[\t\f ]+/;
+const endSpaces = /[\t\f ]+$/;
 
 // The reports for one label: `[open, close]` its brackets.
 const labelReports = (context: LintContext, open: number, close: number): ReadonlyArray<LintReport> => {
@@ -39,7 +41,8 @@ const labelReports = (context: LintContext, open: number, close: number): Readon
 	}
 	if (text.trimEnd().length !== text.length) {
 		const match = endSpaces.exec(text);
-		const line = lineOf(close) - (match === null ? 1 : 0);
+		// markdownlint's line before the closing bracket's is none on the first line, where it throws; the kit keeps it.
+		const line = Math.max(lineOf(close) - (match === null ? 1 : 0), 1);
 		const length = match?.[0].length ?? 0;
 		reports.push({
 			at: { offset: context.mapping.lineStart(line), length: 0 },
