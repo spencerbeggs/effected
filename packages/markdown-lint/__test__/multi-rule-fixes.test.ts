@@ -44,7 +44,7 @@ const shuffled = <A>(items: ReadonlyArray<A>, seed: string): ReadonlyArray<A> =>
 };
 
 // markdownlint's findings with a fix over every input, per case.
-const ORACLE_FIXES_ALL = 6567;
+const ORACLE_FIXES_ALL = 6606;
 const ORACLE_FIXES_MD004_MD032 = 396;
 const ORACLE_FIXES_MD022_MD009 = 452;
 const ORACLE_FIXES_MD031_MD032 = 368;
@@ -72,6 +72,9 @@ const ORACLE_FIXES_MD053_MD009 = 299;
 const ORACLE_FIXES_MD053_MD012 = 102;
 const ORACLE_FIXES_MD054_MD039 = 429;
 const ORACLE_FIXES_MD051_MD039 = 282;
+const ORACLE_FIXES_MD058_MD022 = 244;
+const ORACLE_FIXES_MD058_MD031 = 269;
+const ORACLE_FIXES_MD058_MD032 = 197;
 // The inputs on which fixes from two or more of the case's rules land on one line, the case the file exists for.
 const MEETING_ALL = 50;
 const MEETING_MD004_MD032 = 17;
@@ -102,6 +105,9 @@ const MEETING_MD053_MD009 = 2;
 const MEETING_MD053_MD012 = 0;
 const MEETING_MD054_MD039 = 2;
 const MEETING_MD051_MD039 = 2;
+const MEETING_MD058_MD022 = 2;
+const MEETING_MD058_MD031 = 2;
+const MEETING_MD058_MD032 = 2;
 const MEETING_SAMPLE = 11;
 
 describe("applyFixes over several rules' fixes", () => {
@@ -435,6 +441,55 @@ describe("applyFixes over several rules' fixes", () => {
 					name: "MD051 and MD039, CRLF",
 					source:
 						"# Getting Started\r\n\r\nSee [ the guide ](#Getting-Started) and [ more ](#GETTING-STARTED) and [x](#nope).\r\n",
+				},
+			],
+		],
+		// MD058 inserts blank lines around tables while MD022 inserts them around the headings beside them, a table on the first line and one in a blockquote.
+		[
+			"MD058 and MD022",
+			["MD058", "MD022"],
+			ORACLE_FIXES_MD058_MD022,
+			MEETING_MD058_MD022,
+			[
+				{
+					name: "MD058 and MD022, LF",
+					source: "| a |\n| - |\n# H\n| b |\n| - |\n## H2\n\n> # Q\n> | c |\n> | - |\n> ## Q2\n",
+				},
+				{
+					name: "MD058 and MD022, CRLF",
+					source: "| a |\r\n| - |\r\n# H\r\n| b |\r\n| - |\r\n## H2\r\n\r\n> # Q\r\n> | c |\r\n> | - |\r\n> ## Q2\r\n",
+				},
+			],
+		],
+		// MD058 inserts blank lines around tables while MD031 inserts them around the fences beside them, a table on the last line.
+		[
+			"MD058 and MD031",
+			["MD058", "MD031"],
+			ORACLE_FIXES_MD058_MD031,
+			MEETING_MD058_MD031,
+			[
+				{
+					name: "MD058 and MD031, LF",
+					source: "```\nx\n```\n| a |\n| - |\n```\ny\n```\n\n> ```\n> z\n> ```\n> | b |\n> | - |\n\n| c |\n| - |",
+				},
+				{
+					name: "MD058 and MD031, CRLF",
+					source:
+						"```\r\nx\r\n```\r\n| a |\r\n| - |\r\n```\r\ny\r\n```\r\n\r\n> ```\r\n> z\r\n> ```\r\n> | b |\r\n> | - |\r\n\r\n| c |\r\n| - |",
+				},
+			],
+		],
+		// MD058 inserts blank lines around tables while MD032 inserts them around the lists beside them.
+		[
+			"MD058 and MD032",
+			["MD058", "MD032"],
+			ORACLE_FIXES_MD058_MD032,
+			MEETING_MD058_MD032,
+			[
+				{ name: "MD058 and MD032, LF", source: "Text\n\n- i\n\n| a |\n| - |\n- j\n\n> | b |\n> | - |\n> 1. k\n" },
+				{
+					name: "MD058 and MD032, CRLF",
+					source: "Text\r\n\r\n- i\r\n\r\n| a |\r\n| - |\r\n- j\r\n\r\n> | b |\r\n> | - |\r\n> 1. k\r\n",
 				},
 			],
 		],

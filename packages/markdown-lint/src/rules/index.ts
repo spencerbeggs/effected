@@ -62,5 +62,6 @@ export { MD053 } from "./MD053.js";
 export { MD054 } from "./MD054.js";
 export { MD055 } from "./MD055.js";
 export { MD056 } from "./MD056.js";
+export { MD058 } from "./MD058.js";
 export { MD059 } from "./MD059.js";
 export { MD060 } from "./MD060.js";

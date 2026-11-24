@@ -1025,6 +1025,7 @@
 		"MD054": "link-image-style, link or image in a style its settings disallow",
 		"MD055": "table-pipe-style, table row with inconsistent leading or trailing pipes",
 		"MD056": "table-column-count, table row with more or fewer cells than its header",
+		"MD058": "blanks-around-tables, table without a blank line before or after it",
 		"MD059": "descriptive-link-text, generic link text such as click here, prohibited texts",
 		"MD060": "table-column-style, table column style, pipe alignment, aligned compact tight",
 		"MarkdownLint": "lint markdown programmatically without markdownlint, run rules over a string or parsed document",
