@@ -184,7 +184,9 @@ export class MarkdownLint {
 		// (and before it numbers lines), so the programmatic host does too.
 		const shift = source.charCodeAt(0) === 0xfeff ? 1 : 0;
 		const text = source.slice(shift);
-		const frontMatterLines = frontMatterLineCount(text);
+		// Counted on the source as given: the count drops one mark itself, as markdownlint does, so a second
+		// mark is text and no front matter follows it.
+		const frontMatterLines = frontMatterLineCount(source);
 		const reading = readSource(maskContent(text, frontMatterLines), frontMatterLines, parseSettings(options), text);
 		const findings = lintReading(reading, splitLines(text), rules, runOf(options));
 		return shift === 0 ? findings : findings.map((finding) => shiftEdit(finding, shift));

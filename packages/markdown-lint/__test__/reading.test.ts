@@ -143,6 +143,16 @@ describe("frontMatterLineCount", () => {
 		assert.strictEqual(frontMatterLineCount(text), probe(text).frontMatterLines.length);
 	});
 
+	it("drops exactly one leading byte order mark, as markdownlint does", () => {
+		// A second mark is text to markdownlint, so no front matter block follows it.
+		for (const body of ["Intro\n", "---\ntitle: x\n---\n\n# H\n"]) {
+			for (const marks of ["", "\uFEFF", "\uFEFF\uFEFF"]) {
+				const text = marks + body;
+				assert.strictEqual(frontMatterLineCount(text), probe(text).frontMatterLines.length, JSON.stringify(text));
+			}
+		}
+	});
+
 	it("is linear on a long unterminated block", () => {
 		const text = `---\n${"x\n".repeat(100_000)}`;
 		const started = performance.now();

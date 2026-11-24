@@ -2,7 +2,9 @@
 // upstream fixture corpus (LF and CRLF) and over inputs each setting changes.
 
 import { assert, describe, it } from "@effect/vitest";
-import { Option } from "effect";
+import { MarkdownDocument } from "@effected/markdown";
+import { Option, Result } from "effect";
+import { MarkdownLint } from "../../src/MarkdownLint.js";
 import { MD041 } from "../../src/rules/MD041.js";
 import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
 
@@ -20,6 +22,14 @@ const extra = [
 	{ name: "badge preamble", source: "[![badge](https://x/b.svg)](https://x)\n\n# Title\n" },
 	{ name: "empty document", source: "" },
 	{ name: "long first line", source: `${"word ".repeat(10)}\n` },
+];
+
+// A leading byte order mark, once and twice, before plain content and before a front matter title.
+const bomExtra = [
+	{ name: "byte order mark", source: "\uFEFFIntro\n\n# Title\n" },
+	{ name: "byte order mark before front matter", source: "\uFEFF---\ntitle: Doc\n---\n\nIntro\n" },
+	{ name: "two byte order marks", source: "\uFEFF\uFEFFIntro\n\n# Title\n" },
+	{ name: "two byte order marks before front matter", source: "\uFEFF\uFEFF---\ntitle: Doc\n---\n\nIntro\n" },
 ];
 
 // A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
@@ -59,6 +69,26 @@ describe("MD041 first-line-heading", () => {
 		);
 	}
 
+	it(
+		"agrees with markdownlint on a leading byte order mark, one or two, in both hosts",
+		() => {
+			// markdownlint strips exactly one leading byte order mark: a second one is text, so a front matter
+			// block after it is not front matter and its title does not count.
+			const result = differential(MD041, { extra: [...extra, ...bomExtra] });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT + ORACLE_FINDINGS_BOM);
+			for (const { name, source } of bomExtra) {
+				const document = Result.getOrThrow(MarkdownDocument.parseResult(source));
+				assert.deepStrictEqual(
+					MarkdownLint.lintDocument(document, [MD041], { config: { default: false, MD041: true } }),
+					run(source),
+					name,
+				);
+			}
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
 	it("reads a wrong-typed or invalid setting as its default", () => {
 		for (const settings of [
 			{ allow_preamble: "yes" },
@@ -89,3 +119,6 @@ describe("MD041 first-line-heading", () => {
 
 // markdownlint's MD041 findings over the corpus (LF and CRLF) and the extras.
 const ORACLE_FINDINGS_DEFAULT = 30;
+
+// markdownlint's MD041 findings over the byte order mark inputs: all but the single mark before a title.
+const ORACLE_FINDINGS_BOM = 3;
