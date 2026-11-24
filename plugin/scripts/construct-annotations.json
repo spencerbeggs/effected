@@ -1002,6 +1002,7 @@
 		"MD031": "blanks-around-fences, blank lines around fenced code blocks",
 		"MD032": "blanks-around-lists, blank lines around lists",
 		"MD033": "no-inline-html, inline html, raw html elements, allowed elements",
+		"MD034": "no-bare-urls, bare URL or email address without angle brackets",
 		"MD035": "hr-style, consistent horizontal rule style, thematic break markers",
 		"MD036": "no-emphasis-as-heading, emphasis or bold text used instead of a heading",
 		"MD037": "no-space-in-emphasis, spaces inside emphasis markers",
