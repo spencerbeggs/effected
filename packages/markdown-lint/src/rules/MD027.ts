@@ -21,6 +21,7 @@ import {
 	flowNodesWithAncestors,
 	lastContentLine,
 } from "../internal/containers.js";
+import { directiveIndentedCode } from "../internal/directives.js";
 import { addRange, errorContext, firstContentLine } from "../internal/lines.js";
 import { flagSettingOn } from "../internal/settings.js";
 import type { LintContext } from "../LintContext.js";
@@ -44,6 +45,9 @@ const prefixLimits = (context: LintContext): ReadonlyMap<number, number> => {
 			for (let line = inner.end + 1; line <= end.line; line++) limits.set(line, 0);
 		}
 	}
+	// After a directive line, which markdownlint's directive extension parses, micromark reads an indented line as
+	// code where the kit's parser reads more paragraph.
+	for (const line of directiveIndentedCode(context)) limits.set(line, 0);
 	return limits;
 };
 

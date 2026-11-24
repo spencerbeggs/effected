@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T19:12:08Z
+  at: 2026-11-24T19:56:06Z
 integrity:
   generated:
-    body: 59d2be501a7f4b12
+    body: a013bc0dc3fbe72d
 ---
 
 # `@effected/markdown-lint`
@@ -369,6 +369,21 @@ and without a container directive open) agrees finding for finding. Over the tab
 (`__test__/helpers/table-grid.ts`, 36 shapes in 9 placements, CRLF and bare
 CR among them) and the corpus, the kit's tables start and end where
 micromark's do, row for row, with one parser-reading difference (below).
+
+markdownlint parses leaf and container directives (its directive extension,
+inline ones off), which the kit's parser reads as paragraph text. One
+internal helper (`src/internal/directives.ts`) reads them: `directiveLines`,
+each leaf (`::name`), container opening (`:::name`) and open container's
+closing fence (`:::`), with an optional `[label]` then `{attributes}` and
+nothing after, past the line's containers (a lazy line's blockquote markers
+too); and `directiveIndentedCode`, the lines indented four or more after
+one, which micromark reads as indented code. The tables end before a
+directive line; MD032 ends a list before a directive line left of an
+item's content, the next item opening another list; MD027 reads the
+indented lines as code. Over the directive grids (`directiveGrid`;
+`directiveBlockGrid`, 6 block kinds by 4 directive kinds before and after
+them in 3 places; and 4 list shapes) MD012, MD022, MD027, MD031, MD032,
+MD046, MD055, MD056 and MD058 agree finding for finding.
 
 ## Failure posture
 

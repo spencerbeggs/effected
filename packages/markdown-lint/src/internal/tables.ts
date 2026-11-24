@@ -14,6 +14,7 @@
 import type { MarkdownNode } from "@effected/markdown";
 import type { LintContext } from "../LintContext.js";
 import { contentInContainers } from "./containers.js";
+import { directiveLines } from "./directives.js";
 import { mathFlowLines } from "./math-flow.js";
 import { perReading } from "./memo.js";
 
@@ -112,76 +113,6 @@ const rowCells = (tokens: ReadonlyArray<TableToken>): Array<TableCell> => {
 	}));
 };
 
-// What markdownlint's directive extension (leaf and container directives; inline ones off) reads a line's text, past
-// its containers, as: a leaf (`::name`), a container's opening (`:::name`, three colons or more) — each an optional
-// `[label]` (brackets balanced) then `{attributes}` (quotes honoured), nothing after but blanks — or a closing fence
-// (colons alone, `close` its count). A name opens with a letter or digit and goes on with letters, digits, `_`, `-`.
-const directiveLine = (
-	text: string,
-): { readonly kind: "leaf" | "open" } | { readonly kind: "close"; readonly colons: number } | undefined => {
-	const fence = /^ {0,3}(:{2,})/.exec(text);
-	if (fence === null) return undefined;
-	const colons = (fence[1] as string).length;
-	let at = fence[0].length;
-	if (colons >= 3 && /^[ \t]*$/.test(text.slice(at))) return { kind: "close", colons };
-	while (text.charAt(at) === "\t") at++;
-	const name = /^[\p{L}\p{N}][\p{L}\p{N}_-]*/u.exec(text.slice(at));
-	if (name === null) return undefined;
-	at += name[0].length;
-	if (text.charAt(at) === "[") {
-		let depth = 0;
-		for (; at < text.length; at++) {
-			const char = text.charAt(at);
-			if (char === "\\") at++;
-			else if (char === "[") depth++;
-			else if (char === "]" && --depth === 0) break;
-		}
-		if (depth !== 0) return undefined;
-		at++;
-	}
-	if (text.charAt(at) === "{") {
-		let quote = "";
-		for (at++; at < text.length; at++) {
-			const char = text.charAt(at);
-			if (quote !== "") {
-				if (char === quote) quote = "";
-			} else if (char === '"' || char === "'") quote = char;
-			else if (char === "}") break;
-		}
-		if (at >= text.length) return undefined;
-		at++;
-	}
-	if (!/^[ \t]*$/.test(text.slice(at))) return undefined;
-	return { kind: colons === 2 ? "leaf" : "open" };
-};
-
-// The lines markdownlint's directive extension reads as a directive line a table ends before: a leaf, a container's
-// opening, and the fence closing an open container (one with at least its opening's colons), each read past the
-// line's containers. The open containers are tracked across the document, not per container.
-const directiveEnds = (context: LintContext): ReadonlySet<number> => {
-	const ends = new Set<number>();
-	const open: Array<number> = [];
-	for (const [index, line] of context.lines.entries()) {
-		if (!line.includes("::")) continue;
-		const lineNumber = index + 1;
-		const directive = directiveLine(contentInContainers(context, lineNumber) ?? line);
-		if (directive === undefined) continue;
-		if (directive.kind === "close") {
-			if (open.length > 0 && directive.colons >= (open[open.length - 1] as number)) {
-				open.pop();
-				ends.add(lineNumber);
-			}
-			continue;
-		}
-		if (directive.kind === "open") {
-			const colons = /^ {0,3}(:+)/.exec(contentInContainers(context, lineNumber) ?? line)?.[1]?.length ?? 3;
-			open.push(colons);
-		}
-		ends.add(lineNumber);
-	}
-	return ends;
-};
-
 /**
  * markdownlint's tables, each with its rows' tokens and cells, in document
  * order; a table micromark reads as math (in a math block) is none. Built
@@ -191,7 +122,7 @@ const directiveEnds = (context: LintContext): ReadonlySet<number> => {
 export const tables: (context: LintContext) => ReadonlyArray<Table> = perReading((context) => {
 	const math = mathFlowLines(context);
 	const nodes = context.document.findAll("table") as ReadonlyArray<MarkdownNode>;
-	const ends = nodes.length === 0 ? new Set<number>() : directiveEnds(context);
+	const ends = nodes.length === 0 ? new Map<number, string>() : directiveLines(context);
 	const found: Array<Table> = [];
 	for (const node of nodes) {
 		const startLine = node.position.start.line;

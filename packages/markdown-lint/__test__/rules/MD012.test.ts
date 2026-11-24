@@ -13,6 +13,7 @@ import {
 	settingsAppliedTextDivergences,
 	settingsDifferential,
 } from "../helpers/differential.js";
+import { directiveBlockGrid, directiveListEnds } from "../helpers/table-grid.js";
 
 const extra = [
 	{ name: "two blanks", source: "a\n\n\nb\n" },
@@ -157,6 +158,18 @@ describe("MD012 no-multiple-blanks", () => {
 			"a\n\nb\n",
 		);
 	});
+
+	// markdownlint's directive extension ends a paragraph (and a lazy list item, and a table) before a directive line,
+	// and reads an indented line after one as code: beside each block kind, in each container.
+	it(
+		"agrees with markdownlint beside directive lines",
+		() => {
+			const result = differential(MD012, { extra: [...directiveBlockGrid, ...directiveListEnds] });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DIRECTIVE_BLOCKS);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD012 findings over the corpus (LF and CRLF) and the extras.
@@ -164,3 +177,6 @@ const ORACLE_FINDINGS_DEFAULT = 65;
 
 // The inputs on which a negative maximum's last delete differs (see the test above).
 const NEGATIVE_MAXIMUM_DIVERGENCES = 16;
+
+// markdownlint's MD012 findings over the corpus (LF and CRLF) and the blocks beside directive lines.
+const ORACLE_FINDINGS_DIRECTIVE_BLOCKS = 44;

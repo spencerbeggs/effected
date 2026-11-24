@@ -9,7 +9,13 @@ import { MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
 import { MD058 } from "../../src/rules/MD058.js";
 import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
-import { directiveGrid, lonePipeRows, tableGrid } from "../helpers/table-grid.js";
+import {
+	directiveBlockGrid,
+	directiveGrid,
+	directiveListEnds,
+	lonePipeRows,
+	tableGrid,
+} from "../helpers/table-grid.js";
 
 const edges = [
 	{ name: "first and last lines", source: "| a | b |\n| - | - |\n| c | d |" },
@@ -80,6 +86,18 @@ describe("MD058 blanks-around-tables", () => {
 			"> Text\n>\n> | a |\n> | - |\n>\n> # H\n",
 		);
 	});
+
+	// markdownlint's directive extension ends a paragraph (and a lazy list item, and a table) before a directive line,
+	// and reads an indented line after one as code: beside each block kind, in each container.
+	it(
+		"agrees with markdownlint beside directive lines",
+		() => {
+			const result = differential(MD058, { extra: [...directiveBlockGrid, ...directiveListEnds] });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DIRECTIVE_BLOCKS);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD058 findings over the corpus (LF and CRLF), the table grid and the edges.
@@ -87,3 +105,6 @@ const ORACLE_FINDINGS_DEFAULT = 135;
 
 // markdownlint's MD058 findings over the corpus (LF and CRLF) and the directive grid.
 const ORACLE_FINDINGS_DIRECTIVES = 306;
+
+// markdownlint's MD058 findings over the corpus (LF and CRLF) and the blocks beside directive lines.
+const ORACLE_FINDINGS_DIRECTIVE_BLOCKS = 50;

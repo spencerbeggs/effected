@@ -7,6 +7,7 @@ import { MarkdownLint } from "../../src/MarkdownLint.js";
 import { MD032 } from "../../src/rules/MD032.js";
 import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
 import { oracleLint } from "../helpers/markdownlint-oracle.js";
+import { directiveBlockGrid, directiveListEnds } from "../helpers/table-grid.js";
 
 const extra = [
 	{ name: "tight list", source: "text\n- a\n- b\ntext\n" },
@@ -94,7 +95,22 @@ describe("MD032 blanks-around-lists", () => {
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
+
+	// markdownlint's directive extension ends a paragraph (and a lazy list item, and a table) before a directive line,
+	// and reads an indented line after one as code: beside each block kind, in each container.
+	it(
+		"agrees with markdownlint beside directive lines",
+		() => {
+			const result = differential(MD032, { extra: [...directiveBlockGrid, ...directiveListEnds] });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DIRECTIVE_BLOCKS);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD032 findings over the corpus (LF and CRLF) and the extras.
 const ORACLE_FINDINGS_DEFAULT = 122;
+
+// markdownlint's MD032 findings over the corpus (LF and CRLF) and the blocks beside directive lines.
+const ORACLE_FINDINGS_DIRECTIVE_BLOCKS = 115;

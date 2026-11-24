@@ -13,6 +13,7 @@ import {
 	settingsAppliedTextDivergences,
 	settingsDifferential,
 } from "../helpers/differential.js";
+import { directiveBlockGrid, directiveListEnds } from "../helpers/table-grid.js";
 
 const extra = [
 	{ name: "mixed line endings", source: "text\r\n# H\ntext\n\n## Two\r\nmore\r\n" },
@@ -183,6 +184,18 @@ describe("MD022 blanks-around-headings", () => {
 			"text\n\n# Heading\n\nmore\n",
 		);
 	});
+
+	// markdownlint's directive extension ends a paragraph (and a lazy list item, and a table) before a directive line,
+	// and reads an indented line after one as code: beside each block kind, in each container.
+	it(
+		"agrees with markdownlint beside directive lines",
+		() => {
+			const result = differential(MD022, { extra: [...directiveBlockGrid, ...directiveListEnds] });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DIRECTIVE_BLOCKS);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD022 findings over the corpus (LF and CRLF) and the extras.
@@ -193,3 +206,6 @@ const ORACLE_FINDINGS_BOM = 2;
 
 // The settings cases and inputs on which markdownlint's fix is an empty insert (see the test above).
 const EMPTY_INSERT_DIVERGENCES = 41;
+
+// markdownlint's MD022 findings over the corpus (LF and CRLF) and the blocks beside directive lines.
+const ORACLE_FINDINGS_DIRECTIVE_BLOCKS = 149;

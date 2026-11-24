@@ -16,6 +16,7 @@ import {
 	settingsDifferential,
 } from "../helpers/differential.js";
 import { quotedBlankGrid } from "../helpers/list-container-grid.js";
+import { directiveBlockGrid, directiveListEnds } from "../helpers/table-grid.js";
 
 const extra = [
 	{ name: "paragraph", source: ">  a\n>  b\n> c\n>   d\n" },
@@ -148,9 +149,24 @@ describe("MD027 no-multiple-space-blockquote", () => {
 			"> text\n",
 		);
 	});
+
+	// markdownlint's directive extension ends a paragraph (and a lazy list item, and a table) before a directive line,
+	// and reads an indented line after one as code: beside each block kind, in each container.
+	it(
+		"agrees with markdownlint beside directive lines",
+		() => {
+			const result = differential(MD027, { extra: [...directiveBlockGrid, ...directiveListEnds] });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DIRECTIVE_BLOCKS);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD027 findings over the corpus (LF and CRLF) and the extras.
 const ORACLE_FINDINGS_DEFAULT = 155;
 // markdownlint's MD027 findings over the quoted-blank grid, under both settings cases.
 const ORACLE_FINDINGS_GRID = 543;
+
+// markdownlint's MD027 findings over the corpus (LF and CRLF) and the blocks beside directive lines.
+const ORACLE_FINDINGS_DIRECTIVE_BLOCKS = 121;

@@ -132,3 +132,54 @@ export const directiveGrid: ReadonlyArray<DifferentialInput> = (() => {
 	}
 	return grid;
 })();
+
+// Directive lines beside each block kind markdownlint's block rules read (a list, a heading, a fence, a table, a
+// paragraph, indented code), before and after it, in a document, a blockquote and a list item.
+const blockKinds: ReadonlyArray<readonly [string, string]> = [
+	["list", "- a\n- b"],
+	["heading", "# H"],
+	["fence", "```\nx\n```"],
+	["table", "| a |\n| - |\n| b |"],
+	["paragraph", "text\nmore"],
+	["indented code", "    code"],
+];
+
+const directiveKinds: ReadonlyArray<readonly [string, string, string]> = [
+	["leaf", "", "::leaf"],
+	["container opening", "", ":::note"],
+	["closing fence", ":::outer\n", ":::"],
+	["look-alike", "", "::leaf x"],
+];
+
+const blockPlaces: ReadonlyArray<readonly [string, (text: string) => string]> = [
+	["document", (text) => text],
+	["blockquote", (text) => text.replace(/^/gm, "> ")],
+	["list item", (text) => `- item\n\n${text.replace(/^/gm, "  ")}`],
+];
+
+export const directiveBlockGrid: ReadonlyArray<DifferentialInput> = (() => {
+	const grid: Array<DifferentialInput> = [];
+	for (const [block, blockText] of blockKinds) {
+		for (const [kind, opener, line] of directiveKinds) {
+			for (const [place, wrap] of blockPlaces) {
+				grid.push({
+					name: `${kind} after a ${block} in a ${place}`,
+					source: `${wrap(`${opener}${blockText}\n${line}`)}\n`,
+				});
+				grid.push({
+					name: `${kind} before a ${block} in a ${place}`,
+					source: `${wrap(`${opener}${line}\n${blockText}`)}\n`,
+				});
+			}
+		}
+	}
+	return grid;
+})();
+
+// The review's lists ended by a directive line.
+export const directiveListEnds: ReadonlyArray<DifferentialInput> = [
+	{ name: "list then a leaf", source: "- a\n::leaf\n" },
+	{ name: "list in a container directive", source: "- a\n:::note\n- b\n:::\n" },
+	{ name: "quoted list then a leaf", source: "> - a\n> ::leaf\n" },
+	{ name: "container directive around a list", source: ":::note\n- a\n:::\n" },
+];
