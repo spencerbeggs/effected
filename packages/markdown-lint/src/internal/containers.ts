@@ -92,15 +92,29 @@ export const containerNodes: (context: LintContext) => ReadonlyArray<MarkdownNod
 	),
 );
 
+// Every line's containers, outermost first, built in one pass over the containers: each is added to the lines it
+// spans, in document order, then each line's are sorted by start offset as `containersAt` reads them.
+const containersByLine: (context: LintContext) => ReadonlyArray<ReadonlyArray<MarkdownNode>> = perReading((context) => {
+	const byLine: Array<Array<MarkdownNode>> = [];
+	for (const node of containerNodes(context)) {
+		for (let line = node.position.start.line; line <= node.position.end.line; line++) {
+			const nodes = byLine[line];
+			if (nodes === undefined) byLine[line] = [node];
+			else nodes.push(node);
+		}
+	}
+	for (const nodes of byLine) nodes?.sort((a, b) => a.position.start.offset - b.position.start.offset);
+	return byLine;
+});
+
 /**
  * The containers (blockquotes, list items, footnote definitions) the kit
- * places line `lineNumber` in, outermost first.
+ * places line `lineNumber` in, outermost first. Indexed once per reading
+ * and shared: read-only.
  * @internal
  */
-export const containersAt = (context: LintContext, lineNumber: number): Array<MarkdownNode> =>
-	containerNodes(context)
-		.filter((node) => node.position.start.line <= lineNumber && lineNumber <= node.position.end.line)
-		.sort((a, b) => a.position.start.offset - b.position.start.offset);
+export const containersAt = (context: LintContext, lineNumber: number): ReadonlyArray<MarkdownNode> =>
+	containersByLine(context)[lineNumber] ?? [];
 
 /**
  * markdownlint's `getBlockQuotePrefixText` for one line, from its raw text:
