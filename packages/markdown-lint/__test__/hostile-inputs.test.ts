@@ -93,6 +93,10 @@ const quotedListsOfTwoMarkers = (count: number): string =>
 const deepQuotedListThenBlanks = (depth: number, blanks: number): string =>
 	`# T\n\n${Array.from({ length: depth }, (_, index) => `> ${"  ".repeat(index)}- item ${index}`).join("\n")}\n${">\n".repeat(blanks)}> text\n`;
 
+// MD038 reads a code span's tokens back from its source: one span of 100,000 space-separated words over many lines.
+const longCodeSpan = (words: number): string =>
+	`# T\n\n\`  ${Array.from({ length: words }, (_, index) => (index % 10 === 9 ? `w${index}\n` : `w${index} `)).join("")}  \`\n`;
+
 const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a 400-column table with CJK cells", wideTable(400, 150)],
 	["2,000 unclosed fences in list items", unclosedFences(2000)],
@@ -105,6 +109,7 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a paragraph of 40,000 emphasis spans", emphasisSpans(20000)],
 	["a blockquote of 20,000 one-item lists", quotedListsOfTwoMarkers(20000)],
 	["a list nested 40 deep in a blockquote, then 20,000 quoted blank lines", deepQuotedListThenBlanks(40, 20000)],
+	["one code span of 100,000 words over 10,000 lines", longCodeSpan(100000)],
 ];
 
 describe("hostile inputs", () => {

@@ -44,7 +44,7 @@ const shuffled = <A>(items: ReadonlyArray<A>, seed: string): ReadonlyArray<A> =>
 };
 
 // markdownlint's findings with a fix over every input, per case.
-const ORACLE_FIXES_ALL = 4329;
+const ORACLE_FIXES_ALL = 4671;
 const ORACLE_FIXES_MD004_MD032 = 396;
 const ORACLE_FIXES_MD022_MD009 = 452;
 const ORACLE_FIXES_MD031_MD032 = 368;
@@ -60,8 +60,9 @@ const ORACLE_FIXES_MD030_MD004 = 324;
 const ORACLE_FIXES_MD030_MD007 = 479;
 const ORACLE_FIXES_MD030_MD005 = 116;
 const ORACLE_FIXES_MD014_MD010 = 334;
+const ORACLE_FIXES_MD038_MD009 = 615;
 // The inputs on which fixes from two or more of the case's rules land on one line, the case the file exists for.
-const MEETING_ALL = 41;
+const MEETING_ALL = 44;
 const MEETING_MD004_MD032 = 17;
 const MEETING_MD022_MD009 = 3;
 const MEETING_MD031_MD032 = 13;
@@ -78,6 +79,7 @@ const MEETING_MD030_MD004 = 8;
 const MEETING_MD030_MD007 = 5;
 const MEETING_MD030_MD005 = 2;
 const MEETING_MD014_MD010 = 2;
+const MEETING_MD038_MD009 = 2;
 const MEETING_SAMPLE = 11;
 
 describe("applyFixes over several rules' fixes", () => {
@@ -256,6 +258,17 @@ describe("applyFixes over several rules' fixes", () => {
 			[
 				{ name: "dollar, tab and command, LF", source: "```\n$\tls\n$ cd\tx\n```\n" },
 				{ name: "dollar, tab and command, CRLF", source: "```\r\n$\tls\r\n$ cd\tx\r\n```\r\n" },
+			],
+		],
+		// MD038 deletes the spaces inside a code span and MD009 the spaces after it, on one line.
+		[
+			"MD038 and MD009",
+			["MD038", "MD009"],
+			ORACLE_FIXES_MD038_MD009,
+			MEETING_MD038_MD009,
+			[
+				{ name: "padded code spans and trailing spaces, LF", source: "a `  x` b   \n`y  `  \n" },
+				{ name: "padded code spans and trailing spaces, CRLF", source: "a `  x` b   \r\n`y  `  \r\n" },
 			],
 		],
 	];
