@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T17:55:53Z
+  at: 2026-11-24T18:03:29Z
 integrity:
   generated:
-    body: 45d1e3b6fa2794c1
+    body: 4eecaadb51b6683b
 ---
 
 # `@effected/markdown-lint`
@@ -427,7 +427,7 @@ plain synchronous function; no logging, no metrics.
   after a bracket in inline math, the block's rest re-read once (MD034),
   one line of 20,000 undefined references and 20,000 uses of one label
   beside 20,000 duplicate definitions (MD052), 20,000 unused definitions
-  (MD053), 20,000 repeated headings with 80,000 fragments in another case
+  (MD053), 5,000 repeated headings with 20,000 fragments in another case
   (MD051), with ratio guards for MD054 over every style disallowed and MD051
   over repeated headings, with ratio guards for the
   math re-read, undefined references, alternating images and links, and

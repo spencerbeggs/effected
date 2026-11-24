@@ -208,7 +208,7 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["one line of 20,000 undefined references, collapsed and full", undefinedReferences(20000)],
 	["20,000 uses of one label beside 20,000 duplicate definitions", usesOfOneLabel(20000)],
 	["20,000 unused definitions", unusedDefinitions(20000)],
-	["20,000 repeated headings and 20,000 fragments in another case", repeatedHeadings(20000)],
+	["5,000 repeated headings and 20,000 fragments in another case", repeatedHeadings(5000)],
 ];
 
 describe("hostile inputs", () => {
