@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T22:15:22Z
+  at: 2026-11-24T22:25:04Z
 integrity:
   generated:
-    body: 7616fa697e5b6743
+    body: 7988fb073e75989c
 ---
 
 # `@effected/markdown-lint`
@@ -737,8 +737,28 @@ plain synchronous function; no logging, no metrics.
   at the definition, so markdownlint reports no MD022 (and, with the
   definition indented, its MD023 on the definition's line); the kit's
   heading starts on its text and MD022 asks for a blank line above it
-  (`[d]: /u\nTitle\n---`: kit-only MD022 on line 2; `[d]: /u\nTitle\n---`:
-  that, and markdownlint's MD023 on line 1). Pinned by a test (2 inputs).
+  (`[d]: /u\nTitle\n---`: kit-only MD022 on line 2; the same with the
+  definition indented one space: that, and markdownlint's MD023 on line
+  1). Pinned by a test (2 inputs).
+- **A setext heading directly after a math block or a leaf directive.**
+  micromark ends the math block or reads the directive line, and its
+  heading starts on the line after, so markdownlint's MD022 asks for a
+  blank line above the heading (and inserts it) and its MD041 reports the
+  document's first line, which is no heading. The kit's parser reads the
+  block's lines as the heading's text: its heading starts on the
+  document's first line, with nothing above it, so the kit reports
+  neither and leaves the text as is (`$$\nm\n$$\nTitle\n===`:
+  markdownlint's MD022 on line 4 and MD041 on line 1; `::leaf\nTitle\n===`:
+  its MD022 on line 2 and MD041 on line 1; with text and a blank line
+  before the math, its MD022 alone). References in the heading read as
+  they do in a paragraph (see the reference shapes). Pinned by a test (4
+  inputs).
+- **A list after nested container directives close.** In
+  `:::a\n:::b\n- a\n:::\n- b\n:::\n- c\n:::\n- d` both read the same
+  directive lines (lines 1 and 2 open, 4 and 6 close; line 8 is no
+  directive). markdownlint reports MD032 on lines 3, 3 and 5; the kit
+  reports those, MD032 on line 5 a second time, and MD032 on line 7. The
+  cause is not found. Pinned by a test (1 input).
 - **A table whose header row looks like a delimiter row.** micromark reads
   `a\n[x][y]\n| - | - |\n| - | - |\nb` as a table with `| - | - |` its
   header; the kit's parser reads none, so the table rules miss
@@ -821,12 +841,11 @@ plain synchronous function; no logging, no metrics.
   still open below it, and a later `:::` closes it in the kit; a closing
   fence closes the innermost opening whether or not its container holds
   it. It moves list ends (`> :::a\n> - x\n\n- a\n:::\n- b`: kit-only MD032
-  on lines 4 and 6; `:::a\n:::b\n- a\n:::\n- b\n:::\n- c\n:::\n- d`:
-  kit-only MD032 on line 7), table ends (`> :::a\n> x\n\n| a |\n| - |\n:::\n| b |`:
+  on lines 4 and 6), table ends (`> :::a\n> x\n\n| a |\n| - |\n:::\n| b |`:
   markdownlint's MD055 on line 6, the kit's MD058 on line 5) and MD027's
   reading of a quoted line. Tracking per container would mean following
   each container's own lines through the directive pass. Pinned by tests
-  (1 input in `directive-readings.test.ts`, 3 in
+  (1 input in `directive-readings.test.ts`, 2 in
   `recorded-divergences.test.ts`).
 - **The settings routing gate reads source text.** `settings-routing.test.ts`
   fails a rule module that reads a property of a value named `config`
