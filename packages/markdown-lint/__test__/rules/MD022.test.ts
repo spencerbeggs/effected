@@ -196,6 +196,27 @@ describe("MD022 blanks-around-headings", () => {
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
+
+	// A blank's prefix is the line's blockquote markers as micromark's tokens give them: not a list item's own
+	// indentation, and nothing on an HTML block's later lines, whose prefixes micromark nests inside the block.
+	it(
+		"agrees with markdownlint on the prefix a blank takes beside a quoted block",
+		() => {
+			const prefixes = [
+				{ name: "after a quoted HTML block", source: "> <div>\n> block\n> </div>\n# H\n" },
+				{ name: "after an unclosed quoted HTML block", source: "> <div>\n> block\n# H\n" },
+				{ name: "after an HTML block in a nested quote", source: "> > <div>\n> > b\n# H\n" },
+				{ name: "after a quote in a list item", source: "- > - q\n  > - r\n# H\n" },
+				{ name: "after a quote in a list item, paragraph", source: "- > q\n  > r\n# H\n" },
+				{ name: "after a list in a quote", source: "> - q\n# H\n" },
+				{ name: "before a quoted HTML block", source: "# H\n> <div>\n> b\n" },
+			];
+			const result = differential(MD022, { extra: prefixes });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_PREFIXES);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD022 findings over the corpus (LF and CRLF) and the extras.
@@ -209,3 +230,6 @@ const EMPTY_INSERT_DIVERGENCES = 41;
 
 // markdownlint's MD022 findings over the corpus (LF and CRLF) and the blocks beside directive lines.
 const ORACLE_FINDINGS_DIRECTIVE_BLOCKS = 149;
+
+// markdownlint's MD022 findings over the corpus (LF and CRLF) and the blanks beside quoted blocks.
+const ORACLE_FINDINGS_PREFIXES = 129;
