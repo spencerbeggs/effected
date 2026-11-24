@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T10:37:11Z
+  at: 2026-11-24T10:54:58Z
 integrity:
   generated:
-    body: 24d35a01e7af27c9
+    body: 7d07dba2572aab85
 ---
 
 # `@effected/markdown-lint`
@@ -407,6 +407,13 @@ plain synchronous function; no logging, no metrics.
   `ol_single` other than its default reports their spacing. Matching it needs
   the parser to read micromark's rule. Pinned by tests (MD029 2 inputs under
   each of `one` and `zero`; MD030 2 under each of two `ol_single` cases).
+- **A quoted blank line closes a footnote in a blockquote here.** The kit
+  ends a footnote definition nested in a blockquote at a quoted blank line
+  (the parser difference [`markdown`](markdown.md) records), where micromark
+  keeps it open, so in `> [^1]: x\n>     - a\n>     - b\n>\n>     - c` the
+  kit reads `- c` as a new list and markdownlint as the same, now
+  multi-line, list. MD030 under single and multi counts that differ reports
+  it. Pinned by a test (1 input of the list-end grid).
 - MD027 after a tab right behind a blockquote marker (`>\ttab`):
   markdownlint reports a range over the partly consumed tab and throws on
   its own `range`; the kit reports nothing. Pinned by a test as an upstream

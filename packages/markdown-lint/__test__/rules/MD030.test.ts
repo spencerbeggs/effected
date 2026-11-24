@@ -15,6 +15,7 @@ import {
 	runRule,
 	settingsDifferential,
 } from "../helpers/differential.js";
+import { listEndGrid } from "../helpers/list-container-grid.js";
 
 const extra = [
 	{ name: "single-line lists", source: "-  a\n- b\n\ntext\n\n1.  a\n2. b\n" },
@@ -41,6 +42,11 @@ const extra = [
 	{ name: "deeply nested quote, then an outer list", source: "> > > - a\n> > > - b\n> - c\n" },
 	{ name: "footnote in a quote, then a list", source: "> [^1]: x\n>     - a\n>     - b\n> - c\n" },
 	{ name: "quoted list, then a footnote", source: "> - a\n> - b\n> [^1]: n\n" },
+	// But not to a container outside every open quote or footnote, or past an unquoted blank line.
+	{ name: "quoted list, blank, then a new quote", source: "> - a\n> - b\n\n> - c\n" },
+	{ name: "nested quoted list, blank, then a new quote", source: "> > - a\n> > - b\n\n> - c\n" },
+	{ name: "footnote list, blank, then a footnote", source: "[^1]: x\n    - a\n    - b\n\n[^2]: y\n" },
+	{ name: "footnote list, then a footnote", source: "[^1]: x\n    - a\n    - b\n[^2]: y\n" },
 ];
 
 const run = runRule(MD030);
@@ -86,6 +92,23 @@ describe("MD030 list-marker-space", () => {
 		);
 	}
 
+	// Where micromark's list token ends, pinned as a whole grid of container stacks, separators and following blocks
+	// (see `listEndGrid`), under the default and under single and multi counts that tell the two apart.
+	// Recorded divergence "a quoted blank line closes a footnote in a blockquote" (okf, @effected/markdown): the kit's
+	// footnote ends at the quoted blank line, so the list after it is a new list there and the same list here.
+	it(
+		"agrees with markdownlint over the list-end grid",
+		() => {
+			const result = settingsDifferential(MD030, [{}, { ul_single: 2, ul_multi: 3 }], listEndGrid);
+			assert.deepStrictEqual(
+				result.divergences.map((divergence) => `${divergence.settings} ${divergence.fixture}`),
+				['{"ul_single":2,"ul_multi":3} qf/quoted1/list@2'],
+			);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_GRID);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
 	// markdownlint reads each count as `Number(x ?? 1)`; `padEnd` truncates a fraction and reads `NaN` as zero.
 	it(
 		"reads a non-canonical setting as markdownlint does",
@@ -129,3 +152,5 @@ describe("MD030 list-marker-space", () => {
 
 // markdownlint's MD030 findings over the corpus (LF and CRLF) and the extras.
 const ORACLE_FINDINGS_DEFAULT = 62;
+// markdownlint's MD030 findings over the list-end grid, under both settings cases.
+const ORACLE_FINDINGS_GRID = 1077;

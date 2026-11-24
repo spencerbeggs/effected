@@ -272,19 +272,22 @@ const nextSiblings: (context: LintContext) => ReadonlyMap<MarkdownNode, Markdown
 // The blocks whose start micromark reads only after exiting the list before them: new containers.
 const followingContainers: ReadonlySet<string> = new Set(["list", "blockquote", "footnoteDefinition"]);
 
-// A blank line that carries a blockquote's marker: nothing but markers and whitespace, at least one marker.
-const quotedBlank = /^[ \t]*>[ \t>]*$/;
-
 /**
  * The line micromark's list token ends on. In the document, as in a list
  * item, it is the list's last content line. Inside a blockquote or a
  * footnote definition micromark exits the list only once the next line's
- * container prefix is read: it ends on the line of the next block after the
- * list (its next sibling, or the next sibling of the nearest enclosing node
- * that has one, through any depth of blockquotes and footnotes) when that is
- * a container (a list, a blockquote or a footnote definition), and otherwise
- * past the blank lines after it, inside its nearest blockquote or footnote,
- * that carry a blockquote marker.
+ * container prefix is read, so the token runs on:
+ *
+ * - past the blank lines after the list that stay inside its innermost
+ *   blockquote (a quoted blank line always extends it; in a footnote alone a
+ *   blank line needs no marker, and extends it only on the way to a
+ *   container), then
+ * - to the line after them, when a container (a list, a blockquote or a
+ *   footnote definition) starts there inside one of the list's own
+ *   ancestors, not at the document's top level.
+ *
+ * Pinned against markdownlint by a grid of nestings, separators and
+ * following blocks in the MD030 test.
  * @internal
  */
 export const listTokenEndLine = (
@@ -294,21 +297,28 @@ export const listTokenEndLine = (
 ): number => {
 	const last = lastContentLine(list, context.lines);
 	if (!ancestors.some((node) => node.type === "blockquote" || node.type === "footnoteDefinition")) return last;
+	const quote = ancestors.findLast((node) => node.type === "blockquote");
+	// The run of blank lines that continue the list's containers.
+	let runEnd = last;
+	let lastQuoted = last;
+	while (runEnd < context.lines.length) {
+		const text = context.lines[runEnd] ?? "";
+		const lineNumber = runEnd + 1;
+		if (!/^[ \t>]*$/.test(text)) break;
+		if (quote !== undefined && (lineNumber > quote.position.end.line || !text.includes(">"))) break;
+		runEnd = lineNumber;
+		if (text.includes(">")) lastQuoted = lineNumber;
+	}
+	// The next block after the list, at any depth, and whether its parent is one of the list's ancestors.
 	const siblings = nextSiblings(context);
-	// The next block after the list at any depth: its next sibling, or the next sibling of the nearest enclosing
-	// node that has one.
 	let next = siblings.get(list);
+	let inside = ancestors.length > 0;
 	for (let index = ancestors.length - 1; index >= 0 && next === undefined; index--) {
 		next = siblings.get(ancestors[index] as MarkdownNode);
+		inside = index > 0;
 	}
-	if (next !== undefined && followingContainers.has(next.type)) return next.position.start.line;
-	// The blank lines it runs past are its own blockquote's: they end with the nearest blockquote or footnote.
-	const nearest = ancestors.findLast((node) => node.type === "blockquote" || node.type === "footnoteDefinition");
-	let line = last;
-	const bound = Math.min(
-		nearest?.position.end.line ?? context.lines.length,
-		next === undefined ? context.lines.length : next.position.start.line - 1,
-	);
-	while (line < bound && quotedBlank.test(context.lines[line] ?? "")) line++;
-	return line;
+	if (next !== undefined && inside && followingContainers.has(next.type) && next.position.start.line === runEnd + 1) {
+		return next.position.start.line;
+	}
+	return lastQuoted;
 };
