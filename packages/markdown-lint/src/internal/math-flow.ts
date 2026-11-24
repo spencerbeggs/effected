@@ -49,8 +49,20 @@ export const mathFlowBlocks: (context: LintContext) => ReadonlyArray<LineRange> 
 		const first = isRoot ? firstContentLine(context) : container.position.start.line;
 		const last = isRoot ? context.lines.length : container.position.end.line;
 		const children = childContainers(container);
-		const childAt = (lineNumber: number): MarkdownNode | undefined =>
-			children.find((child) => child.position.start.line <= lineNumber && lineNumber <= child.position.end.line);
+		// `children` is in document order and `childAt` is asked about ever later lines: a child ending before the
+		// line asked about holds no later line either, and none after one starting past it can hold it.
+		let firstOpen = 0;
+		const childAt = (lineNumber: number): MarkdownNode | undefined => {
+			while (firstOpen < children.length && (children[firstOpen] as MarkdownNode).position.end.line < lineNumber) {
+				firstOpen++;
+			}
+			for (let index = firstOpen; index < children.length; index++) {
+				const child = children[index] as MarkdownNode;
+				if (child.position.start.line > lineNumber) return undefined;
+				if (lineNumber <= child.position.end.line) return child;
+			}
+			return undefined;
+		};
 		let open = 0;
 		let openedAt = 0;
 		for (let lineNumber = first; lineNumber <= last; lineNumber++) {
