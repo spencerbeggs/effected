@@ -445,6 +445,89 @@ describe("gfm footnotes", () => {
 		});
 	});
 
+	describe("a definition ends at the end of its last content line", () => {
+		// The blank lines a definition continues through are not its content.
+		// cmark-gfm closes the block on the line before the one that ends it,
+		// which counts a trailing blank line in; mdast, like every other
+		// container block, ends at its last child. Each expected end was read
+		// from `mdast-util-from-markdown` 2.1.0 with `micromark-extension-gfm-footnote`
+		// 2.1.0 over the same source.
+		const point = (line: number, column: number, offset: number) => ({ line, column, offset });
+		const endOf = (source: string, index = 0) => {
+			const definition = definitionsOf(source)[index];
+			assert.isDefined(definition, "expected the source to parse a footnote definition");
+			const { line, column, offset } = definition.position.end;
+			return { line, column, offset };
+		};
+		const cases: ReadonlyArray<readonly [string, string, ReturnType<typeof point>]> = [
+			["a blank line then a heading", "[^1]: note\n\n# H\n", point(1, 11, 10)],
+			["several blank lines then a heading", "[^1]: note\n\n\n\n# H\n", point(1, 11, 10)],
+			["several blank lines then end of input", "[^1]: note\n\n\n", point(1, 11, 10)],
+			["two paragraphs with an indented continuation", "[^1]: first\n\n    second\n\n# H\n", point(3, 11, 23)],
+			["a fenced code block as its last child", "[^1]: x\n\n    ```js\n    code\n    ```\n\n# H\n", point(5, 8, 35)],
+			["a blockquote as its last child", "[^1]: a\n\n    > q\n\n# H\n", point(3, 8, 16)],
+			["a list as its last child", "[^1]: a\n\n    - x\n\n# H\n", point(3, 8, 16)],
+			["a link reference definition as its only child", "[^1]: [a]: /u\n\n# H\n", point(1, 14, 13)],
+			["trailing spaces on its last line", "[^1]: note  \n\n# H\n", point(1, 13, 12)],
+			["CRLF line endings", "[^1]: note\r\n\r\n# H\r\n", point(1, 11, 10)],
+			["CRLF line endings across two paragraphs", "[^1]: a\r\n\r\n    b\r\n\r\n# H\r\n", point(3, 6, 16)],
+			["nesting in a list item followed by a paragraph", "- [^1]: note\n\n  para\n", point(1, 13, 12)],
+			["nesting in a list item followed by another item", "- [^1]: note\n\n- b\n", point(1, 13, 12)],
+			["nesting in a list item across two paragraphs", "- [^1]: a\n\n      b\n\n  c\n", point(3, 8, 18)],
+		];
+		for (const [name, source, end] of cases) {
+			it(`with ${name}`, () => {
+				assert.deepStrictEqual(endOf(source), end);
+			});
+		}
+
+		it("ends an empty definition at the end of its marker line", () => {
+			// With no children the marker line is all there is, and the
+			// whitespace after the colon belongs to the marker.
+			assert.deepStrictEqual(endOf("[^1]:\n\n# H\n"), point(1, 6, 5));
+			assert.deepStrictEqual(endOf("[^1]:   \n\n# H\n"), point(1, 9, 8));
+			assert.deepStrictEqual(endOf("[^1]:\t\n# H\n"), point(1, 7, 6));
+		});
+
+		it("ends an empty definition with an indented paragraph at that paragraph", () => {
+			assert.deepStrictEqual(endOf("[^1]:\n    a\n\n# H\n"), point(2, 6, 11));
+		});
+
+		it("ends the first of two adjacent definitions on its own line, with or without a blank between", () => {
+			assert.deepStrictEqual(endOf("[^1]: a\n[^2]: b\n", 0), point(1, 8, 7));
+			assert.deepStrictEqual(endOf("[^1]: a\n[^2]: b\n", 1), point(2, 8, 15));
+			assert.deepStrictEqual(endOf("[^1]: a\n\n[^2]: b\n", 0), point(1, 8, 7));
+			assert.deepStrictEqual(endOf("[^1]: a\n\n[^2]: b\n", 1), point(3, 8, 16));
+		});
+
+		it("keeps the end at end of input, with and without a final newline", () => {
+			assert.deepStrictEqual(endOf("[^1]: note\n"), point(1, 11, 10));
+			assert.deepStrictEqual(endOf("[^1]: note"), point(1, 11, 10));
+		});
+
+		it("ends a list item whose last child is a definition at that definition", () => {
+			// A list item ends at its last child, so the definition's end was
+			// the item's end too.
+			const list = parseBlocks("- [^1]: note\n\n- b\n", "gfm").root.children[0];
+			assert.isDefined(list);
+			assert.strictEqual(list.type, "list");
+			const item = list.type === "list" ? list.children[0] : undefined;
+			assert.isDefined(item);
+			const { line, column, offset } = item.position.end;
+			assert.deepStrictEqual({ line, column, offset }, point(1, 13, 12));
+		});
+
+		it("ends a definition inside a blockquote at its last content line", () => {
+			// micromark ends this one at 2:2, past the `>` of the blank quoted
+			// line, and ends a list in the same place the same way; the kit
+			// ends both at the last content line, which is what it already did
+			// here because a quoted blank line is not blank to the
+			// continuation rule and closes the definition.
+			assert.deepStrictEqual(endOf("> [^1]: note\n>\n> # H\n"), point(1, 13, 12));
+			assert.deepStrictEqual(endOf("> [^1]: note\n\n# H\n"), point(1, 13, 12));
+		});
+	});
+
 	describe("the commonmark dialect sees neither construct", () => {
 		it("reads a definition line as a paragraph", () => {
 			// `bravo charlie` cannot be a link destination followed by a title,
