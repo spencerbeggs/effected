@@ -14,7 +14,8 @@ const loopHeadingRe = /^\^+$/u;
 const canMatchNothingHeadingsRe = /^(?:\*|\^+)$/u;
 const maximumLoopsAllowed = 1000;
 
-// Where markdownlint throws on a `%` pattern that does not compile, the kit reads `headings` as its default.
+// Where markdownlint throws on a `%` pattern that does not compile (reached at a heading of its level), the kit
+// reads `headings` as its default.
 class PatternDoesNotCompile {}
 
 const headingIsExpected = (actual: string, expected: string, matchCase: boolean): boolean => {
@@ -23,16 +24,15 @@ const headingIsExpected = (actual: string, expected: string, matchCase: boolean)
 		const expectedParts = prefixedHeadingPartsRe.exec(expected);
 		// An empty heading has no text to match, where markdownlint reads a level from the failed match and throws.
 		if (actualParts === null || expectedParts === null) return false;
+		// The levels first: markdownlint compiles the pattern only for a heading of the entry's level.
+		if ((actualParts[1] as string).length !== (expectedParts[1] as string).length) return false;
 		let pattern: RegExp;
 		try {
 			pattern = new RegExp(expectedParts[2] as string, `${matchCase ? "" : "i"}u`);
 		} catch {
 			throw new PatternDoesNotCompile();
 		}
-		return (
-			(actualParts[1] as string).length === (expectedParts[1] as string).length &&
-			pattern.test(actualParts[2] as string)
-		);
+		return pattern.test(actualParts[2] as string);
 	}
 	return matchCase ? actual === expected : actual.toLowerCase() === expected.toLowerCase();
 };
@@ -57,9 +57,10 @@ const itemText = (item: unknown): string => {
  * one) or a `^` loop marker; and `match_case` (default `false`). An item
  * that is none of these reads as `[Invalid syntax]`, as in markdownlint.
  * Where markdownlint throws, the kit stays total: a truthy `headings` that is
- * no list, or a `%` pattern that does not compile when the walk reaches it,
- * reads as the default; an empty heading read against a `%` entry does not
- * match it.
+ * no list, or a `%` pattern that does not compile when the walk compares it
+ * with a heading of its level, reads as the default; an item that is no
+ * string reads through `String`; an empty heading read against a `%` entry
+ * does not match it.
  *
  * @public
  */

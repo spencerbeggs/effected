@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T08:24:46Z
+  at: 2026-11-24T08:39:40Z
 integrity:
   generated:
-    body: 3f8402efc7d13e30
+    body: a187fcc11deca9a6
 ---
 
 # `@effected/markdown-lint`
@@ -444,10 +444,12 @@ plain synchronous function; no logging, no metrics.
   `ignore_code_languages` that is not a list reads as no languages in MD010,
   where markdownlint calls `.map` on it and throws; a truthy MD043
   `headings` that is not a list, or a `%` entry that does not compile when
-  the walk reaches it, reads as the default (no required headings), where
-  markdownlint throws; a value whose conversion
+  the walk compares it with a heading of its level (markdownlint compiles it
+  only then), reads as the default (no required headings), and an item that
+  is not a string (`[["# A"]]`) reads through `String`, where markdownlint
+  throws; a value whose conversion
   to a primitive throws reads as absent. Pinned by tests (MD001 42 inputs,
-  MD025 32, MD041 32, MD010 33, each a markdownlint throw; MD043 by six
+  MD025 32, MD041 32, MD010 33, each a markdownlint throw; MD043 by seven
   hand-written cases, the oracle throwing on each).
 - **A fractional MD013 limit reports no range.** markdownlint reports a
   fractional limit's overflow as fractional columns (`[51.5, 69.5]`); a kit

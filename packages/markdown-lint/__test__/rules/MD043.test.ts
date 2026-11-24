@@ -13,6 +13,7 @@ import {
 	runRule,
 	settingsDifferential,
 } from "../helpers/differential.js";
+import { oracleLint } from "../helpers/markdownlint-oracle.js";
 
 const extra = [
 	{
@@ -113,6 +114,23 @@ describe("MD043 required-headings", () => {
 		DIFFERENTIAL_TIMEOUT,
 	);
 
+	// markdownlint compiles a `%` pattern only when the heading's level matches the entry's, so a pattern that does
+	// not compile is only ever reached, and thrown on, at a heading of its level.
+	it(
+		"compares levels before it compiles a pattern, as markdownlint does",
+		() => {
+			const source = "# Heading\n\n## Item\n";
+			const result = settingsDifferential(
+				MD043,
+				[{ headings: ["# Heading", "%%% ("] }, { headings: ["%% (", "*"] }, { headings: ["*", "%%% (", "## Item"] }],
+				[{ name: "pattern of another level", source }],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, 3);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
 	// Where markdownlint throws, the kit stays total: `headings` that is truthy but no list, or a `%` pattern that
 	// does not compile when it is reached, reads as the default (no required headings); an empty heading read
 	// against a `%` pattern, where markdownlint reads its level from a failed match, does not match it.
@@ -127,6 +145,15 @@ describe("MD043 required-headings", () => {
 			run(source, { headings: ["# Other", "%% ("] }).map((each) => each.lineNumber),
 			[1],
 		);
+	});
+
+	// markdownlint tests an item's syntax through `String` but keeps the item, so a list item that reads as a
+	// heading (`["# Heading"]`) passes the test and then throws at `startsWith`; the kit reads the item's text.
+	it("reads an item that is no string through String, where markdownlint throws", () => {
+		const source = "# Heading\n\n## Item\n";
+		const settings = { headings: [["# Heading"], "## Item"] };
+		assert.throws(() => oracleLint(source, { default: false, MD043: settings }));
+		assert.deepStrictEqual(run(source, settings), []);
 	});
 
 	it("reads an empty heading as no match for a pattern", () => {
