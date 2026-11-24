@@ -15,6 +15,15 @@ import { MarkdownLint } from "../../src/MarkdownLint.js";
 import type { OracleFinding } from "./markdownlint-oracle.js";
 import { oracleApplyFixes, oracleLineEnding, oracleLint } from "./markdownlint-oracle.js";
 
+/** The timeout of a test that runs a rule over the whole fixture corpus. */
+export const DIFFERENTIAL_TIMEOUT = 60_000;
+
+/** Lint `source` with `rule` alone, under `settings` (`true`, its defaults, when absent). */
+export const runRule =
+	(rule: LintRule) =>
+	(source: string, settings?: Record<string, unknown>): ReadonlyArray<LintDiagnostic> =>
+		MarkdownLint.lint(source, [rule], { config: { default: false, [rule.name]: settings ?? true } });
+
 /** One place the kit rule and markdownlint disagree. */
 export interface Divergence {
 	readonly fixture: string;

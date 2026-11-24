@@ -7,7 +7,7 @@ import { MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
 import { MarkdownLint } from "../../src/MarkdownLint.js";
 import { MD018 } from "../../src/rules/MD018.js";
-import { differential } from "../helpers/differential.js";
+import { DIFFERENTIAL_TIMEOUT, differential } from "../helpers/differential.js";
 
 const extra = [
 	{ name: "missing space", source: "#Heading 1\n\n##Heading 2\n" },
@@ -22,8 +22,6 @@ const extra = [
 ];
 
 // A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
-const DIFFERENTIAL_TIMEOUT = 60_000;
-
 describe("MD018 no-missing-space-atx", () => {
 	it(
 		"agrees with markdownlint",

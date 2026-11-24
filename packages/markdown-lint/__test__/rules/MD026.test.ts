@@ -4,9 +4,8 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
-import { MarkdownLint } from "../../src/MarkdownLint.js";
 import { MD026 } from "../../src/rules/MD026.js";
-import { differential } from "../helpers/differential.js";
+import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
 
 const extra = [
 	{ name: "trailing punctuation", source: "# Done.\n\n## Wait!\n\n### Why?\n\n#### List:\n" },
@@ -20,10 +19,7 @@ const extra = [
 ];
 
 // A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
-const DIFFERENTIAL_TIMEOUT = 60_000;
-
-const run = (source: string, settings?: Record<string, unknown>) =>
-	MarkdownLint.lint(source, [MD026], { config: { default: false, MD026: settings ?? true } });
+const run = runRule(MD026);
 
 describe("MD026 no-trailing-punctuation", () => {
 	it(

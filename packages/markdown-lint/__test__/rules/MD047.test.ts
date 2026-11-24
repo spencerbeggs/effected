@@ -6,7 +6,7 @@ import { MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
 import { MarkdownLint } from "../../src/MarkdownLint.js";
 import { MD047 } from "../../src/rules/MD047.js";
-import { differential } from "../helpers/differential.js";
+import { DIFFERENTIAL_TIMEOUT, differential } from "../helpers/differential.js";
 
 const extra = [
 	{ name: "no trailing newline", source: "# H\n\ntext" },
@@ -21,8 +21,6 @@ const extra = [
 ];
 
 // A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
-const DIFFERENTIAL_TIMEOUT = 60_000;
-
 describe("MD047 single-trailing-newline", () => {
 	it(
 		"agrees with markdownlint",

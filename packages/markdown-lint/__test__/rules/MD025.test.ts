@@ -3,9 +3,8 @@
 
 import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
-import { MarkdownLint } from "../../src/MarkdownLint.js";
 import { MD025 } from "../../src/rules/MD025.js";
-import { differential } from "../helpers/differential.js";
+import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
 
 const extra = [
 	{ name: "two titles", source: "# One\n\n# Two\n" },
@@ -24,10 +23,7 @@ const extra = [
 ];
 
 // A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
-const DIFFERENTIAL_TIMEOUT = 60_000;
-
-const run = (source: string, settings?: Record<string, unknown>) =>
-	MarkdownLint.lint(source, [MD025], { config: { default: false, MD025: settings ?? true } });
+const run = runRule(MD025);
 
 describe("MD025 single-title", () => {
 	it(

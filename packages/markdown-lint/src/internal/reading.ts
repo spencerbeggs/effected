@@ -1,7 +1,11 @@
-// Reads a file the way markdownlint does, as two linear scans. Both mirror
-// markdownlint's own helpers (`clearHtmlCommentText`, `frontMatterRe` with
-// `removeFrontMatter`) without its backtracking front-matter regular
-// expression, which upstream only tolerates by running it under re2.
+// Reads a file's text the way markdownlint does: its lines, its front matter
+// and its masked comments, before anything is parsed. The comment mask and the
+// front matter count are two linear scans mirroring markdownlint's own helpers
+// (`clearHtmlCommentText`, `frontMatterRe` with `removeFrontMatter`) without
+// its backtracking front-matter regular expression, which upstream only
+// tolerates by running it under re2.
+
+import { LINE_BREAK } from "./line-endings.js";
 
 const commentOpen = "<!--";
 const commentClose = "-->";
@@ -137,4 +141,33 @@ export const frontMatterLineCount = (source: string): number => {
 	const matched = text.slice(0, end);
 	const lines = matched.split("\n");
 	return lines[lines.length - 1] === "" ? lines.length - 1 : lines.length;
+};
+
+/** markdownlint's line split: every line of `text` without its terminator. @internal */
+export const splitLines = (text: string): Array<string> => text.split(LINE_BREAK);
+
+/** The offset line `count + 1` starts at, or the length when there is no such line. @internal */
+export const offsetAfterLines = (text: string, count: number): number => {
+	if (count === 0) return 0;
+	let seen = 0;
+	for (const match of text.matchAll(LINE_BREAK)) {
+		seen++;
+		if (seen === count) return match.index + match[0].length;
+	}
+	return text.length;
+};
+
+/**
+ * `text` as markdownlint hands it to rules: comment bodies masked in the
+ * content after its `frontMatterLines`-line front matter, never inside it.
+ * markdownlint masks `\n`-normalized text; a lone `\r` is read as the `\n`
+ * it becomes there, and kept. @internal
+ */
+export const maskContent = (text: string, frontMatterLines: number): string => {
+	const end = offsetAfterLines(text, frontMatterLines);
+	const content = text.slice(end);
+	if (!/\r(?!\n)/.test(content)) return text.slice(0, end) + maskHtmlComments(content);
+	const masked = maskHtmlComments(content.replace(/\r(?!\n)/g, "\n")).split("");
+	for (let at = 0; at < content.length; at++) if (content[at] === "\r") masked[at] = "\r";
+	return text.slice(0, end) + masked.join("");
 };

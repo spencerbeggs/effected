@@ -5,7 +5,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { Option } from "effect";
 import { MarkdownLint } from "../../src/MarkdownLint.js";
 import { MD004 } from "../../src/rules/MD004.js";
-import { differential } from "../helpers/differential.js";
+import { DIFFERENTIAL_TIMEOUT, differential, runRule } from "../helpers/differential.js";
 
 const extra = [
 	{ name: "mixed markers", source: "* one\n+ two\n- three\n" },
@@ -35,10 +35,7 @@ const extra = [
 ];
 
 // A differential pass lints the whole corpus twice in two engines; under a parallel run it outlasts the default.
-const DIFFERENTIAL_TIMEOUT = 60_000;
-
-const run = (source: string, settings?: Record<string, unknown>) =>
-	MarkdownLint.lint(source, [MD004], { config: { default: false, MD004: settings ?? true } });
+const run = runRule(MD004);
 
 describe("MD004 ul-style", () => {
 	it(

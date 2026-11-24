@@ -19,9 +19,8 @@ import type { LintContext, LintFrontmatter, LintReport } from "../LintContext.js
 import { LintDiagnostic } from "../LintDiagnostic.js";
 import type { LintRule } from "../LintRule.js";
 import { PositionMapping } from "../PositionMapping.js";
-import { LINE_BREAK } from "./line-endings.js";
 import { registerUnmaskedSource } from "./memo.js";
-import { frontMatterLineCount, maskHtmlComments } from "./reading.js";
+import { frontMatterLineCount, maskContent, offsetAfterLines } from "./reading.js";
 
 /** How a host parses the text it lints. @internal */
 export interface ParseSettings {
@@ -56,35 +55,6 @@ export interface Reading {
 	readonly frontmatter: Option.Option<LintFrontmatter>;
 }
 
-/** markdownlint's line split: every line of `text` without its terminator. @internal */
-export const splitLines = (text: string): Array<string> => text.split(LINE_BREAK);
-
-/** The offset line `count + 1` starts at, or the length when there is no such line. @internal */
-export const offsetAfterLines = (text: string, count: number): number => {
-	if (count === 0) return 0;
-	let seen = 0;
-	for (const match of text.matchAll(LINE_BREAK)) {
-		seen++;
-		if (seen === count) return match.index + match[0].length;
-	}
-	return text.length;
-};
-
-/**
- * `text` as markdownlint hands it to rules: comment bodies masked in the
- * content after its `frontMatterLines`-line front matter, never inside it.
- * markdownlint masks `\n`-normalized text; a lone `\r` is read as the `\n`
- * it becomes there, and kept. @internal
- */
-export const maskContent = (text: string, frontMatterLines: number): string => {
-	const end = offsetAfterLines(text, frontMatterLines);
-	const content = text.slice(end);
-	if (!/\r(?!\n)/.test(content)) return text.slice(0, end) + maskHtmlComments(content);
-	const masked = maskHtmlComments(content.replace(/\r(?!\n)/g, "\n")).split("");
-	for (let at = 0; at < content.length; at++) if (content[at] === "\r") masked[at] = "\r";
-	return text.slice(0, end) + masked.join("");
-};
-
 const frontmatterFacts = (
 	node: Option.Option<Frontmatter>,
 	lineCount: number,
@@ -94,6 +64,23 @@ const frontmatterFacts = (
 	for (let line = 1; line <= lineCount; line++) lines.push(mapping.lineText(line));
 	return { node, lineCount, lines };
 };
+
+// The reading of `document` over `source`: front matter facts when markdownlint reads `frontMatterLines` lines
+// of it, `node` the kit's capture of them, if any.
+const readingOf = (
+	source: string,
+	unmaskedSource: string,
+	document: MarkdownDocument,
+	mapping: PositionMapping,
+	frontMatterLines: number,
+	node: Option.Option<Frontmatter>,
+): Reading => ({
+	source,
+	unmaskedSource,
+	document,
+	mapping,
+	frontmatter: frontMatterLines === 0 ? Option.none() : Option.some(frontmatterFacts(node, frontMatterLines, mapping)),
+});
 
 // Whether the kit's capture grammar takes a block that ends inside
 // markdownlint's `frontMatterLines`-line front matter. `FrontmatterSource`
@@ -121,40 +108,22 @@ export const readSource = (
 ): Result.Result<Reading, MarkdownParseError> => {
 	const count = settings.frontmatter ? frontMatterLines : 0;
 	if (count > 0 && captureFits(source, count)) {
-		return Result.map(parseDocument(source, settings), (document) => {
-			const mapping = PositionMapping.fromDocument(document);
-			return {
-				source,
-				unmaskedSource,
-				document,
-				mapping,
-				frontmatter: Option.some(frontmatterFacts(document.frontmatter, count, mapping)),
-			};
-		});
+		return Result.map(parseDocument(source, settings), (document) =>
+			readingOf(source, unmaskedSource, document, PositionMapping.fromDocument(document), count, document.frontmatter),
+		);
 	}
 	if (count > 0) {
 		const end = offsetAfterLines(source, count);
 		const blanked = source.slice(0, end).replace(/[^\r\n]/g, " ") + source.slice(end);
-		return Result.map(parseDocument(blanked, { ...settings, frontmatter: false }), (document) => {
-			const mapping = PositionMapping.of(source);
-			return {
-				source,
-				unmaskedSource,
-				document,
-				mapping,
-				frontmatter: Option.some(frontmatterFacts(Option.none(), count, mapping)),
-			};
-		});
+		return Result.map(parseDocument(blanked, { ...settings, frontmatter: false }), (document) =>
+			readingOf(source, unmaskedSource, document, PositionMapping.of(source), count, Option.none()),
+		);
 	}
 	// No front matter for markdownlint: a kit capture (a `---json` block) would
 	// be content to markdownlint, so the parse does not capture one.
-	return Result.map(parseDocument(source, { ...settings, frontmatter: false }), (document) => ({
-		source,
-		unmaskedSource,
-		document,
-		mapping: PositionMapping.fromDocument(document),
-		frontmatter: Option.none(),
-	}));
+	return Result.map(parseDocument(source, { ...settings, frontmatter: false }), (document) =>
+		readingOf(source, unmaskedSource, document, PositionMapping.fromDocument(document), 0, Option.none()),
+	);
 };
 
 /**
@@ -171,14 +140,9 @@ export const alignedReading = (document: MarkdownDocument): Option.Option<Readin
 	if (maskContent(source, count) !== source) return Option.none();
 	const captured = Option.isSome(document.frontmatter);
 	if (count === 0 ? captured : !captured || !captureFits(source, count)) return Option.none();
-	const mapping = PositionMapping.fromDocument(document);
-	return Option.some({
-		source,
-		unmaskedSource: source,
-		document,
-		mapping,
-		frontmatter: count === 0 ? Option.none() : Option.some(frontmatterFacts(document.frontmatter, count, mapping)),
-	});
+	return Option.some(
+		readingOf(source, source, document, PositionMapping.fromDocument(document), count, document.frontmatter),
+	);
 };
 
 const isNode = (at: MarkdownNode | MarkdownRangeLike): at is MarkdownNode => "type" in at && "position" in at;

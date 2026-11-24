@@ -47,6 +47,8 @@ const UNSUPPORTED_NAMES = [
 	".markdownlint-cli2.mjs",
 ];
 
+// Wider than `UNSUPPORTED_NAMES` on purpose: cli2 reads other `.markdownlint-cli2.*` extensions too, so the
+// prefix is not derived from the list (which names only what the walk records as skipped).
 const isUnsupported = (name: string): boolean =>
 	name === ".markdownlint.cjs" || name === ".markdownlint.mjs" || name.startsWith(".markdownlint-cli2.");
 
@@ -122,6 +124,9 @@ const fail = (
 	extra: { readonly detail?: string; readonly cause?: unknown } = {},
 ) => Effect.fail(MarkdownlintConfigError.make({ reason, path, ...extra }));
 
+// Any filesystem failure reaching `file`, as `unreadable` with the failure as its cause.
+const unreadable = (file: string) => Effect.catch((cause: unknown) => fail("unreadable", file, { cause }));
+
 /** JSONC first, then YAML: cli2's parser order without its TOML step. */
 const parseContent = (text: string): Result.Result<unknown, ReadonlyArray<unknown>> => {
 	const jsonc = Jsonc.parseResult(text, { allowTrailingComma: true, allowEmptyContent: true });
@@ -138,7 +143,7 @@ const readOne = Effect.fnUntraced(function* (file: string) {
 	if (isUnsupported(path.basename(file))) {
 		return yield* fail("unsupported", file, { detail: "JavaScript and markdownlint-cli2 config files are not read" });
 	}
-	const info = yield* fs.stat(file).pipe(Effect.catch((cause) => fail("unreadable", file, { cause })));
+	const info = yield* fs.stat(file).pipe(unreadable(file));
 	// Only a regular file has a size that bounds the read: a device or FIFO reports 0 and reads without end.
 	if (info.type !== "File") {
 		return yield* fail("unreadable", file, { detail: `not a regular file (${info.type})` });
@@ -146,7 +151,7 @@ const readOne = Effect.fnUntraced(function* (file: string) {
 	if (info.size > BigInt(MAX_FILE_BYTES)) {
 		return yield* fail("too-large", file, { detail: `${info.size} bytes exceeds ${MAX_FILE_BYTES}` });
 	}
-	const bytes = yield* fs.readFile(file).pipe(Effect.catch((cause) => fail("unreadable", file, { cause })));
+	const bytes = yield* fs.readFile(file).pipe(unreadable(file));
 	// The file may have grown between the stat and the read.
 	if (bytes.length > MAX_FILE_BYTES) {
 		return yield* fail("too-large", file, { detail: `${bytes.length} bytes exceeds ${MAX_FILE_BYTES}` });
@@ -187,7 +192,7 @@ const readChain = (
 			return yield* fail("extends-depth", target, { detail: `more than ${MAX_EXTENDS_DEPTH} extends links` });
 		}
 		if (!isUnsupported(path.basename(target))) {
-			const exists = yield* fs.exists(target).pipe(Effect.catch((cause) => fail("unreadable", target, { cause })));
+			const exists = yield* fs.exists(target).pipe(unreadable(target));
 			if (!exists) return yield* fail("extends-missing", target, { detail: `extended by "${file}"` });
 		}
 		const base = yield* readChain(target, visited);
@@ -249,8 +254,7 @@ export class MarkdownlintConfigFile {
 		if (relative === "" || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
 			return yield* fail("unreadable", file, { detail: `outside the root "${root}"` });
 		}
-		const exists = (candidate: string) =>
-			fs.exists(candidate).pipe(Effect.catch((cause) => fail("unreadable", candidate, { cause })));
+		const exists = (candidate: string) => fs.exists(candidate).pipe(unreadable(candidate));
 		const skipped: Array<string> = [];
 		let directory = path.dirname(file);
 		while (true) {
