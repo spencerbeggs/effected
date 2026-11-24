@@ -305,14 +305,16 @@ export const MD051: Lint.LintRule = LintRule.make({
 
 		// Every definition, duplicates and those after a math block or a directive line included (see `referenceData`).
 		for (const { start, end } of referenceData(context).definitionSpans) {
+			// micromark's definition token runs to its line's end: the kit's node stops at its last content character.
+			const token = { start, end: end + (/^[ \t]*/.exec(source.slice(end, end + 200))?.[0].length ?? 0) };
 			const at = skipSpace(source, labelEnd(source, start, end) + 2, end);
 			if (source.charAt(at) === "<") {
 				let stop = at + 1;
 				while (stop < end && source.charAt(stop) !== ">") stop += source.charAt(stop) === "\\" ? 2 : 1;
-				if (stop > at + 1) check({ start, end }, at + 1, stop);
+				if (stop > at + 1) check(token, at + 1, stop);
 			} else {
 				const destination = rawDestination(source, at, end);
-				if (destination !== "") check({ start, end }, at, at + destination.length);
+				if (destination !== "") check(token, at, at + destination.length);
 			}
 		}
 	},

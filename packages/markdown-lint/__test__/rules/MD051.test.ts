@@ -128,7 +128,30 @@ describe("MD051 link-fragments", () => {
 			"# Getting Started\n\nSee [the guide](#getting-started).\n",
 		);
 	});
+
+	// A definition's token runs to its line's end, trailing whitespace included: its context and range do too.
+	it(
+		"agrees with markdownlint on a definition with trailing whitespace",
+		() => {
+			const trailing = [
+				{ name: "trailing space", source: "[a]: #x \n\n[a]\n" },
+				{ name: "trailing tab", source: "[a]: #x\t\n\n[a]\n" },
+				{ name: "trailing spaces", source: "[a]: #x  \n\n[a]\n" },
+				{ name: "after a title", source: '[a]: #x "t" \n\n[a]\n' },
+				{ name: "title on the next line", source: '[a]: #x\n  "t"  \n\n[a]\n' },
+				{ name: "in a blockquote", source: "> [a]: #x \n>\n> [a]\n" },
+				{ name: "CRLF", source: "[a]: #x \r\n\r\n[a]\r\n" },
+			];
+			const result = differential(MD051, { extra: trailing });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_TRAILING);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
 });
 
 // markdownlint's MD051 findings over the corpus (LF and CRLF), the grids and the anchor shapes.
 const ORACLE_FINDINGS_DEFAULT = 391;
+
+// markdownlint's MD051 findings over the corpus (LF and CRLF) and the definitions with trailing whitespace.
+const ORACLE_FINDINGS_TRAILING = 117;
