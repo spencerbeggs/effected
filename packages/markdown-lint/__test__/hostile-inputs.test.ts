@@ -15,7 +15,9 @@
 // - one 198 KB line holding an inline data-URI image: 15.5 to 15.7 s with MD013's unanchored `\S*$` regex
 //   (three runs), 11 ms with its scan back from the line end;
 // - one line of 16,000 HTML comments: 9.3 to 10.5 s in the comment mask alone (three runs, no rules), which
-//   re-read each comment's line from its start, 61 ms reading it once.
+//   re-read each comment's line from its start, 61 ms reading it once;
+// - `applyFixes` over 90,000 MD009 fixes: 12.4 to 18.3 s rebuilding the text per fix (three runs), 27 to 38 ms
+//   joining the pieces once.
 //
 // The ceiling is far above the fixed times, so a busy runner does not fail
 // it, and far below the unfixed ones, so a regression to any of them does. It
@@ -27,6 +29,7 @@ import { assert, describe, it } from "@effect/vitest";
 import { frontMatterLineCount, maskHtmlComments } from "../src/internal/reading.js";
 import { MarkdownLint } from "../src/MarkdownLint.js";
 import { rules } from "../src/rules/all.js";
+import { MD009 } from "../src/rules/MD009.js";
 
 const CEILING_MS = 5_000;
 
@@ -121,5 +124,20 @@ describe("hostile inputs to the reading pass", () => {
 		const started = performance.now();
 		assert.strictEqual(frontMatterLineCount(text), 0);
 		assert.isBelow(performance.now() - started, READING_CEILING_MS);
+	});
+});
+
+describe("hostile inputs to applyFixes", () => {
+	// One MD009 fix per paragraph: the splice once rebuilt the whole text per fix. Each paragraph is one line, so the
+	// parse meets no run of hard line breaks.
+	it("applies 90,000 fixes under the ceiling", { timeout: 60_000 }, () => {
+		const source = `# T\n\n${"trailing spaces   \n\n".repeat(90_000)}`;
+		const findings = MarkdownLint.lint(source, [MD009]);
+		assert.strictEqual(findings.length, 90_000);
+		const start = performance.now();
+		const fixed = MarkdownLint.applyFixes(source, findings);
+		const elapsed = performance.now() - start;
+		assert.strictEqual(fixed, `# T\n\n${"trailing spaces\n\n".repeat(90_000)}`);
+		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
 	});
 });

@@ -110,8 +110,10 @@ export const applyFixesCounted = (
 	const applied = chosen
 		.filter((fix) => fix.deleteCount === -1 || !deleted.has(fix.lineNumber))
 		.sort((a, b) => b.offset - a.offset || b.length - a.length);
-	// Splice from the end backwards; an edit that would reach into one already applied is skipped.
-	let result = source;
+	// Splice from the end backwards; an edit that would reach into one already applied is skipped. Every edit kept
+	// ends at or before the one after it starts, so the text before it is still the source's: collect the pieces
+	// back to front and join once, rather than rebuilding the whole text per edit.
+	const pieces: Array<string> = [];
 	let limit = Number.POSITIVE_INFINITY;
 	let skipped = 0;
 	for (const fix of applied) {
@@ -119,9 +121,11 @@ export const applyFixesCounted = (
 			skipped++;
 			continue;
 		}
-		result = result.slice(0, fix.offset) + fix.insertText + result.slice(fix.offset + fix.length);
+		pieces.push(source.slice(fix.offset + fix.length, limit), fix.insertText);
 		limit = fix.offset;
 	}
+	pieces.push(source.slice(0, limit));
+	const result = pieces.reverse().join("");
 	// markdownlint splits the file on every line break (a lone `\r` too) and joins it with the line ending it
 	// prefers for the original, so a fixed file comes back with one line ending throughout, fixed or not.
 	const ending = preferredLineEnding(source.slice(lead));
