@@ -1,5 +1,9 @@
 # Log
 
+## 2026-11-24
+
+* Updated @effected/markdown-lint
+
 ## 2026-11-23
 
 * Updated @effected/markdown-lint

@@ -25,10 +25,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-23T23:18:38Z
+  at: 2026-11-24T00:23:11Z
 integrity:
   generated:
-    body: 97735106df04448b
+    body: d3a9a74b66017a91
 ---
 
 # `@effected/markdown-lint`
@@ -244,8 +244,31 @@ plain synchronous function; no logging, no metrics.
   three columns, outside code and HTML blocks, to a closing line of at
   least as many `$` indented at most three columns; an unclosed block ends
   at a lazy line or where its container ends. The headings the kit reads
-  inside a block are dropped. A footnote's indentation is taken as four
-  columns from its marker.
+  inside a block are dropped, and so are lists, fences and tables starting
+  past a block's opening line. A line the kit reads as lazy continuation of
+  a child container is read at its parent's level when it opens a block,
+  since math interrupts a paragraph in micromark. A footnote's indentation
+  is taken as four columns from its marker.
+
+- The math extension's inline `$` math is read the same way, from each
+  paragraph's, heading's and table cell's source: a run of `$` closed by
+  the next run of exactly as many, unless a code span, inline HTML, an
+  autolink, an image or a link destination starts first. Inline HTML and
+  images inside it are not reported.
+
+- markdownlint re-parses an HTML block (other than one comment) as
+  Markdown with HTML blocks and indented code turned off, and MD033 and
+  MD045 report the tags it finds there. The kit's dialects cannot turn a
+  construct off, so the block's lines are re-read with every line that
+  could open a block indented four columns behind the line before it (or a
+  stub line), table rows kept as written. Block structure inside such a
+  block (a heading, a list, a fence) is therefore read as paragraph text;
+  only the inline HTML it yields is used.
+
+- MD060 measures with a port of string-width 8.3.0 and
+  get-east-asian-width 1.7.0's Wide and Fullwidth ranges, the copies
+  markdownlint 0.42.1 installs. It does not strip ANSI escape sequences
+  first, as string-width does.
 
 - `lintDocument` cannot know the dialect a document was parsed with:
   `MarkdownDocument` does not record it. When the given parse is not
