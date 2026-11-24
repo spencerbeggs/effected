@@ -20,6 +20,8 @@ import type { LintDiagnostic } from "../src/LintDiagnostic.js";
 import { LintRule } from "../src/LintRule.js";
 import { MarkdownLint } from "../src/MarkdownLint.js";
 import { MarkdownlintAdapter } from "../src/MarkdownlintAdapter.js";
+import { MD025 } from "../src/rules/MD025.js";
+import { MD041 } from "../src/rules/MD041.js";
 import type { MarkdownlintResult } from "./helpers/markdownlint-oracle.js";
 import { markdownlintLint, oracleApplyFixes, oracleVersion } from "./helpers/markdownlint-oracle.js";
 import { changesetRules } from "./rules/index.js";
@@ -311,5 +313,24 @@ describe("MarkdownlintAdapter under markdownlint", () => {
 			config: { default: true },
 		});
 		assert.isDefined(results.input);
+	});
+
+	// Recorded divergence "the adapter reads the masked comment": markdownlint hands a custom rule the masked
+	// text, so a comment that is not one to markdownlint (its body ends in `-`) reads as a comment to an adapted
+	// rule. The ported rules are adapted under other names, as a custom rule may not reuse a built-in's.
+	it("reads a comment whose body ends in a dash as a comment, where markdownlint's MD025 and MD041 do not", async () => {
+		const adapted = (rule: LintRule, name: string) =>
+			LintRule.make({ names: [name], description: rule.description, tags: ["test"], check: rule.check });
+		const rules = [adapted(MD025, "X025"), adapted(MD041, "X041")];
+		const found = async (text: string) =>
+			(await lintWith(text, rules, { MD025: true, MD041: true })).map(
+				(result) => `${result.ruleNames[0]}:${result.lineNumber}`,
+			);
+		assert.deepStrictEqual(await found("<!-- a --->\n\n# Title\n"), ["MD041:1"]);
+		assert.deepStrictEqual(await found("<!-- a --->\n\n# One\n\n# Two\n"), ["MD041:1", "X025:5"]);
+		// Controls: a well-formed comment reads as one to both, so neither host reports; and the adapted rules do
+		// report, beside markdownlint's, where the document opens with text.
+		assert.deepStrictEqual(await found("<!-- a -->\n\n# Title\n"), []);
+		assert.deepStrictEqual(await found("text\n\n# One\n\n# Two\n"), ["MD041:1", "X041:1"]);
 	});
 });
