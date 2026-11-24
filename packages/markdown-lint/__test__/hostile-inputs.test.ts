@@ -100,6 +100,9 @@ const longCodeSpan = (words: number): string =>
 // MD037 pairs bare markers and reads the spaces beside each on its line: one line of 30,000 spaced marker pairs.
 const spacedMarkersOnOneLine = (pairs: number): string => `# T\n\n${"a * b * ".repeat(pairs)}\n`;
 
+// MD011 checks each reversed link against every code span and math span: one line of 20,000 of each.
+const reversedLinksBesideCode = (count: number): string => `# T\n\n${"`c` (a)[b] ".repeat(count)}\n`;
+
 const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a 400-column table with CJK cells", wideTable(400, 150)],
 	["2,000 unclosed fences in list items", unclosedFences(2000)],
@@ -114,6 +117,7 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["a list nested 40 deep in a blockquote, then 20,000 quoted blank lines", deepQuotedListThenBlanks(40, 20000)],
 	["one code span of 100,000 words over 10,000 lines", longCodeSpan(100000)],
 	["one line of 30,000 spaced emphasis-marker pairs", spacedMarkersOnOneLine(30000)],
+	["one line of 20,000 reversed links beside code spans", reversedLinksBesideCode(20000)],
 ];
 
 describe("hostile inputs", () => {

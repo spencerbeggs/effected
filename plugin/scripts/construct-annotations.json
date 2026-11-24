@@ -982,6 +982,7 @@
 		"MD007": "ul-indent, unordered list indentation, nested list indent width, start indented",
 		"MD009": "no-trailing-spaces, trailing spaces and whitespace at line end, hard break",
 		"MD010": "no-hard-tabs, hard tabs, tab characters, spaces per tab fix",
+		"MD011": "no-reversed-links, reversed link syntax, parentheses before brackets",
 		"MD012": "no-multiple-blanks, multiple consecutive blank lines over a maximum",
 		"MD013": "line-length, line length limit, long lines in headings tables code",
 		"MD014": "commands-show-output, dollar sign before shell commands in a code block without output",

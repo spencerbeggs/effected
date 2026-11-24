@@ -44,7 +44,7 @@ const shuffled = <A>(items: ReadonlyArray<A>, seed: string): ReadonlyArray<A> =>
 };
 
 // markdownlint's findings with a fix over every input, per case.
-const ORACLE_FIXES_ALL = 5862;
+const ORACLE_FIXES_ALL = 5958;
 const ORACLE_FIXES_MD004_MD032 = 396;
 const ORACLE_FIXES_MD022_MD009 = 452;
 const ORACLE_FIXES_MD031_MD032 = 368;
@@ -65,6 +65,7 @@ const ORACLE_FIXES_MD037_MD009 = 850;
 const ORACLE_FIXES_MD049_MD037 = 773;
 const ORACLE_FIXES_MD050_MD049 = 340;
 const ORACLE_FIXES_MD044_MD049 = 494;
+const ORACLE_FIXES_MD011_MD009 = 371;
 // The inputs on which fixes from two or more of the case's rules land on one line, the case the file exists for.
 const MEETING_ALL = 47;
 const MEETING_MD004_MD032 = 17;
@@ -88,6 +89,7 @@ const MEETING_MD037_MD009 = 2;
 const MEETING_MD049_MD037 = 2;
 const MEETING_MD050_MD049 = 5;
 const MEETING_MD044_MD049 = 2;
+const MEETING_MD011_MD009 = 2;
 const MEETING_SAMPLE = 11;
 
 describe("applyFixes over several rules' fixes", () => {
@@ -329,6 +331,17 @@ describe("applyFixes over several rules' fixes", () => {
 					source:
 						'<!-- markdownlint-configure-file {"MD044":{"names":["JavaScript"]}} -->\r\n\r\n*javascript* and _javascript_\r\n',
 				},
+			],
+		],
+		// MD011 rewrites a reversed link and MD009 trims the line's end.
+		[
+			"MD011 and MD009",
+			["MD011", "MD009"],
+			ORACLE_FIXES_MD011_MD009,
+			MEETING_MD011_MD009,
+			[
+				{ name: "MD011 and MD009, LF", source: "(a)[b] and (c)[d]   \n(e)[f]  \n" },
+				{ name: "MD011 and MD009, CRLF", source: "(a)[b] and (c)[d]   \r\n(e)[f]  \r\n" },
 			],
 		],
 	];
