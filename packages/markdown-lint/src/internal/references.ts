@@ -240,7 +240,7 @@ const labelText = (view: View, from: number, to: number): string => {
 	for (let at = from; at < to; at++) {
 		const char = view.text.charAt(at);
 		text += char;
-		if (char === "\n") {
+		if (char === "\n" || (char === "\r" && view.text.charAt(at + 1) !== "\n")) {
 			const next = view.contentStart(at + 1);
 			if (next > at + 1) at = next - 1;
 		}
@@ -414,7 +414,7 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 			const char = view.text.charAt(at);
 			label += char;
 			offsets.push(view.toSource(at));
-			if (char === "\n") {
+			if (char === "\n" || (char === "\r" && view.text.charAt(at + 1) !== "\n")) {
 				const next = view.contentStart(at + 1);
 				if (next > at + 1) at = next - 1;
 			}
@@ -449,7 +449,7 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 	const directive = /^:{2,}[A-Za-z][\w-]*(?:\[[^\]\r\n]*\])?(?:\{[^}\r\n]*\})?[ \t]*$/;
 	const directiveEnd = (block: MarkdownNode): number => {
 		const start = block.position.start.offset;
-		const lineEnd = source.slice(start, block.position.end.offset).search(/\r?\n/);
+		const lineEnd = source.slice(start, block.position.end.offset).search(/[\r\n]/);
 		const end = lineEnd < 0 ? block.position.end.offset : start + lineEnd;
 		return block.type === "paragraph" && directive.test(source.slice(start, end)) ? end : start;
 	};

@@ -32,6 +32,22 @@ describe("MD052 reference-links-images", () => {
 		DIFFERENTIAL_TIMEOUT,
 	);
 
+	// A bare CR ends a line as `\n` does: a reference's label across lines leaves its container prefix out.
+	it(
+		"agrees with markdownlint over the label shapes with CR line endings",
+		() => {
+			const quoted = { name: "quoted reference across lines", source: "> [a\n> b] [c\n> d][]\n\n[a b]: u\n[c d]: v\n" };
+			const crOnly = [...labelShapes, quoted].map((input) => ({
+				name: `${input.name} (CR)`,
+				source: input.source.replace(/\r?\n/g, "\r"),
+			}));
+			const result = differential(MD052, { config: { shortcut_syntax: true }, extra: crOnly });
+			assert.deepStrictEqual(result.divergences, []);
+			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_CR);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
 	// Each setting changes markdownlint's findings over the same inputs; the defaults spelled out change nothing.
 	for (const [settings, changes] of [
 		[{ shortcut_syntax: true }, true],
@@ -115,3 +131,6 @@ describe("MD052 reference-links-images", () => {
 
 // markdownlint's MD052 findings over the corpus (LF and CRLF), the grid and the label shapes.
 const ORACLE_FINDINGS_DEFAULT = 200;
+
+// markdownlint's MD052 findings under `shortcut_syntax` over the corpus (LF and CRLF) and the CR-only label shapes.
+const ORACLE_FINDINGS_CR = 285;
