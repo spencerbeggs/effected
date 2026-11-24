@@ -4,10 +4,8 @@
 // blocks and math blocks.
 
 import type * as Lint from "@effected/markdown-lint";
-import { codeBlockLines } from "../internal/code-blocks.js";
-import { flowNodes } from "../internal/containers.js";
-import { errorContext, firstContentLine, nodeLines } from "../internal/lines.js";
-import { mathFlowLines } from "../internal/math-flow.js";
+import { atxLineRuleSkippedLines } from "../internal/headings.js";
+import { errorContext, firstContentLine } from "../internal/lines.js";
 import { LintRule } from "../LintRule.js";
 
 /**
@@ -24,9 +22,7 @@ export const MD018: Lint.LintRule = LintRule.make({
 	tags: ["headings", "atx", "spaces"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md018.md",
 	check: (context, report) => {
-		const ignored = new Set(codeBlockLines(context));
-		for (const line of nodeLines(flowNodes(context, new Set(["html"])))) ignored.add(line);
-		for (const line of mathFlowLines(context)) ignored.add(line);
+		const ignored = atxLineRuleSkippedLines(context);
 		for (let lineNumber = firstContentLine(context); lineNumber <= context.lines.length; lineNumber++) {
 			const line = context.lines[lineNumber - 1] as string;
 			if (ignored.has(lineNumber) || !/^#+[^# \t]/.test(line) || /#\s*$/.test(line) || line.startsWith("#️⃣")) {
