@@ -35,6 +35,7 @@ import { MD034 } from "../src/rules/MD034.js";
 import { MD051 } from "../src/rules/MD051.js";
 import { MD052 } from "../src/rules/MD052.js";
 import { MD054 } from "../src/rules/MD054.js";
+import { MD055 } from "../src/rules/MD055.js";
 
 const CEILING_MS = 5_000;
 
@@ -143,6 +144,11 @@ const linkStyles = (count: number): string =>
 const repeatedHeadings = (count: number): string =>
 	`${"# Same\n\n".repeat(count)}${`[x](#SAME-${count - 1}) `.repeat(count * 4)}\n`;
 
+// The table readers (MD055, MD056, MD058, MD060) read every row's raw line: a table of many rows, and a row that is one
+// long run of pipes.
+const tallTable = (count: number): string => `# T\n\n| a | b |\n| - | - |\n${"| c | d\n".repeat(count)}\ntext\n`;
+const pipeRun = (count: number): string => `# T\n\n| a | b |\n| - | - |\n${"|".repeat(count)}\n`;
+
 const cpuNow = (): number => {
 	const used = process.cpuUsage();
 	return (used.user + used.system) / 1000;
@@ -178,6 +184,8 @@ const scalingShapes: ReadonlyArray<
 	["reads alternating images and links", imagesAndLinks, MD052, { shortcut_syntax: true }],
 	["reads label starts closed in reverse", openersThenClosers, MD052, { shortcut_syntax: true }],
 	["checks fragments against repeated headings", repeatedHeadings, MD051, {}],
+	["reads a tall table's rows", tallTable, MD055, {}],
+	["reads a row of many pipes", pipeRun, MD055, {}],
 	[
 		"checks every link style",
 		linkStyles,
@@ -209,6 +217,8 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["20,000 uses of one label beside 20,000 duplicate definitions", usesOfOneLabel(20000)],
 	["20,000 unused definitions", unusedDefinitions(20000)],
 	["5,000 repeated headings and 20,000 fragments in another case", repeatedHeadings(5000)],
+	["a table of 20,000 rows", tallTable(20000)],
+	["a table row of 50,000 pipes", pipeRun(50000)],
 ];
 
 describe("hostile inputs", () => {

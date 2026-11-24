@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/markdown-lint"
-description: "A markdownlint-compatible lint rule shape over @effected/markdown trees: one LintRule definition with markdownlint metadata, a pure programmatic host (MarkdownLint) resolving markdownlint configuration and inline comments, a markdownlint custom-rule adapter (MarkdownlintAdapter), 50 ported built-in rules on ./rules held to markdownlint by a differential harness, and a ./config reader of markdownlint config files; every line, range and fix derived from kit offsets by PositionMapping."
+description: "A markdownlint-compatible lint rule shape over @effected/markdown trees: one LintRule definition with markdownlint metadata, a pure programmatic host (MarkdownLint) resolving markdownlint configuration and inline comments, a markdownlint custom-rule adapter (MarkdownlintAdapter), 51 ported built-in rules on ./rules held to markdownlint by a differential harness, and a ./config reader of markdownlint config files; every line, range and fix derived from kit offsets by PositionMapping."
 status: draft
 kind: package
 resource: ../../packages/markdown-lint
@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T18:03:29Z
+  at: 2026-11-24T18:21:12Z
 integrity:
   generated:
-    body: 4eecaadb51b6683b
+    body: 938442e50f69740c
 ---
 
 # `@effected/markdown-lint`
@@ -66,7 +66,7 @@ their own markdownlint and the package cannot pin it.
 | Entry | Holds | May import |
 | --- | --- | --- |
 | `.` | `LintRule`, `LintContext`, `LintDiagnostic`, `PositionMapping`, `LintConfig`, `InlineDirectives`, the `MarkdownLint` host and the `MarkdownlintAdapter` | `@effected/markdown` and `effect`; never a rule module, `./config`, `node:` or a format engine |
-| `./rules` | the 50 ported built-in rules, one free-standing named export each (`MD001` … `MD060`) | the root, through the package's own name for types |
+| `./rules` | the 51 ported built-in rules, one free-standing named export each (`MD001` … `MD060`) | the root, through the package's own name for types |
 | `./rules/all` | `rules`, every port in markdownlint's order, and `uncovered`, the 0 built-in rule names with no port yet | the rule modules |
 | `./config` | `MarkdownlintConfigFile` and `MarkdownlintConfigError` | the root, `@effected/jsonc`, `@effected/yaml`, `FileSystem` and `Path` |
 
@@ -261,7 +261,7 @@ markdownlint's configuration and not markdownlint-cli2's options files is
 
 ## The ported rules
 
-`./rules` ports 50 of markdownlint 0.42's 53 built-in rules: MD001, MD003, MD004, MD005, MD007, MD009, MD010, MD011, MD012, MD013, MD014, MD018, MD019, MD020, MD021, MD022, MD023, MD024, MD025, MD026, MD027, MD028, MD029, MD030, MD031, MD032, MD033, MD034, MD035, MD036, MD037, MD038, MD039, MD040, MD041, MD042, MD043, MD044, MD045, MD046, MD047, MD048, MD049, MD050, MD051, MD052, MD053, MD054, MD059 and MD060. Each is an
+`./rules` ports 51 of markdownlint 0.42's 53 built-in rules: MD001, MD003, MD004, MD005, MD007, MD009, MD010, MD011, MD012, MD013, MD014, MD018, MD019, MD020, MD021, MD022, MD023, MD024, MD025, MD026, MD027, MD028, MD029, MD030, MD031, MD032, MD033, MD034, MD035, MD036, MD037, MD038, MD039, MD040, MD041, MD042, MD043, MD044, MD045, MD046, MD047, MD048, MD049, MD050, MD051, MD052, MD053, MD054, MD055, MD059 and MD060. Each is an
 ordinary `LintRule` carrying markdownlint's own names, description, tags and
 documentation link, and a rule with settings reads them from
 `LintContext.config` under markdownlint's names and defaults, coerced as
@@ -344,6 +344,21 @@ markdownlint reads them all under the link) and every definition's, a
 docfx tab heading's link left out. Over the fragment grid
 (`__test__/helpers/fragment-grid.ts`, 35 heading shapes in 8 link forms)
 and 19 anchor shapes it agrees finding for finding.
+
+MD055, MD056, MD058 and MD060 read tables through one internal helper
+(`src/internal/tables.ts`): the kit's `table` nodes give the tables and
+their lines, and each row's tokens are read from its raw line as micromark
+tokenizes it (its text after its containers' markers and indentation,
+trailing whitespace included, split at each pipe no backslash escapes, a
+code span, inline math or a link hiding none), its cells opening at each
+pipe, the last pipe and the blanks after it closing the last cell. The
+delimiter row holds its indentation, so it and its first cell start past
+the containers' markers alone. A table micromark reads in a container
+directive (`:::name` ... `:::`) ends at the closing fence, where the kit's
+parser reads one more row. Over the table grid
+(`__test__/helpers/table-grid.ts`, 36 shapes in 9 placements, CRLF and bare
+CR among them) and the corpus, the kit's tables start and end where
+micromark's do, row for row, with one parser-reading difference (below).
 
 ## Failure posture
 
@@ -428,8 +443,9 @@ plain synchronous function; no logging, no metrics.
   one line of 20,000 undefined references and 20,000 uses of one label
   beside 20,000 duplicate definitions (MD052), 20,000 unused definitions
   (MD053), 5,000 repeated headings with 20,000 fragments in another case
-  (MD051), with ratio guards for MD054 over every style disallowed and MD051
-  over repeated headings, with ratio guards for the
+  (MD051), a table of 20,000 rows and a row of 50,000 pipes (the table
+  readers), with ratio guards for MD054 over every style disallowed, MD051
+  over repeated headings and MD055 over a tall table and a run of pipes, with ratio guards for the
   math re-read, undefined references, alternating images and links, and
   label starts closed in reverse,
   `applyFixes` over
@@ -638,6 +654,11 @@ plain synchronous function; no logging, no metrics.
   `codeTextPadding` but not its `codeText` token, which MD038 walks, so it
   reports a code span in an undefined reference once (the code-span grid
   pins `[\`  x\`][undef]`).
+- **A table row that is a lone `|`.** micromark continues a table through
+  it; the kit's parser, following cmark-gfm (a row must hold a cell to
+  continue a table, `matches` in `extensions/table.c`), ends the table
+  before it and reads the line as a paragraph. The table rules read the
+  kit's table. Pinned by a test (MD055 2 inputs).
 - **An MD051 `ignored_pattern` that does not compile, or that could match
   in exponential time.** markdownlint passes the setting to `new RegExp`:
   a pattern that does not compile (`(`) throws, and one where an unbounded
