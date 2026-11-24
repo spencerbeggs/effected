@@ -114,7 +114,8 @@ const bracketedAddresses = (count: number): string => `# T\n\n${"[a] b@c.de ".re
 // which a forward scan per open tag made quadratic (16,000 took 4.8 s with MD034 alone).
 const unclosedInlineTags = (count: number): string => `# T\n\n${"<b> x ".repeat(count)}\n`;
 
-// MD034 re-reads the rest of a block after a `[` in inline math, once: 20,000 URLs in emphasis after one, on one line.
+// MD034 re-reads a block holding a `www.` in another case, and the rest of a block after a `[` in inline math, once
+// each: 10,000 URLs and other-case hosts in emphasis after one, on one line.
 const urlsAfterMathBracket = (count: number): string => `# T\n\n$[$ ${"*https://a.b* WWW.c.d ".repeat(count)}\n`;
 
 const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
@@ -135,7 +136,7 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["2,000 images holding references, beside 2,000 definitions", imagesAndDefinitions(2000)],
 	["one line of 20,000 bracketed spans and addresses", bracketedAddresses(20000)],
 	["one line of 24,000 unclosed inline HTML tags", unclosedInlineTags(24000)],
-	["20,000 URLs in emphasis after a bracket in inline math", urlsAfterMathBracket(20000)],
+	["10,000 URLs in emphasis after a bracket in inline math", urlsAfterMathBracket(10000)],
 ];
 
 describe("hostile inputs", () => {

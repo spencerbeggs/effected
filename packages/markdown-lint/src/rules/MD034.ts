@@ -57,9 +57,9 @@ const isUrl = (text: string): boolean => /^(?:https?:\/\/|ftp:\/\/|www\.)/i.test
  * The URL and `www.` literal autolinks the GFM reading of `text` finds, in its offsets.
  *
  * @remarks
- * A whole parse of `text`, linear in it but with a parse's fixed cost (about 45 µs for a short text): called only for
- * a text node holding a `www.` in another case, and once for the rest of a block after a `[` in inline math when that
- * rest holds `://` or `www.`. Email addresses are scanned, never re-parsed.
+ * A whole parse of `text`, linear in it but with a parse's fixed cost (about 45 µs for a short text): called at most
+ * twice per inline block, once for a block holding a `www.` in another case and once for the rest of a block after a
+ * `[` in inline math when that rest holds `://` or `www.`. Email addresses are scanned, never re-parsed.
  */
 const urlsIn = (text: string): ReadonlyArray<Literal> => {
 	const parsed = MarkdownDocument.parseResult(text, options);
@@ -98,18 +98,25 @@ const urlsAt = (source: string, offset: number, text: string): ReadonlyArray<Lit
 		.filter((literal) => literal.start >= offset)
 		.filter((literal) => opensAt(source, literal.start, /^www\./i.test(source.slice(literal.start, literal.end))));
 
-// The `www.` hosts written in another case in a text node's source, which micromark links and the kit's parser,
-// following the spec, does not: re-read with that `www` lowered.
-const otherCaseWww = (source: string, node: MarkdownNode): ReadonlyArray<Literal> => {
-	const start = node.position.start.offset;
-	const text = source.slice(start, node.position.end.offset);
-	if (!/www\./i.test(text) || !/(?!www)[wW]{3}\./.test(text)) return [];
-	const lowered = text.replace(/[wW]{3}\./g, (match) => match.toLowerCase());
-	const original = new Set(urlsIn(text).map((literal) => literal.start));
-	return urlsIn(lowered)
-		.filter((literal) => !original.has(literal.start) && lowered.startsWith("www.", literal.start))
-		.map((literal) => ({ start: start + literal.start, end: start + literal.end }))
-		.filter((literal) => opensAt(source, literal.start, true));
+// The `www.` hosts written in another case in each inline block, which micromark links and the kit's parser,
+// following the spec, does not: the block re-read once with each `www` lowered, its literals kept where they open on a
+// `www` in another case inside a text node in `texts` (disjoint, in document order).
+const otherCaseWww = (context: LintContext, texts: ReadonlyArray<Span>): ReadonlyArray<Literal> => {
+	const { source } = context;
+	const found: Array<Literal> = [];
+	for (const block of context.document.findAll(
+		(node) => node.type === "paragraph" || node.type === "heading" || node.type === "tableCell",
+	) as ReadonlyArray<MarkdownNode>) {
+		const start = block.position.start.offset;
+		const text = source.slice(start, block.position.end.offset);
+		if (!/(?!www)[wW]{3}\./.test(text)) continue;
+		for (const literal of urlsAt(source, start, text)) {
+			if (source.startsWith("www.", literal.start) || !/^[wW]{3}\./.test(source.slice(literal.start))) continue;
+			const node = texts[lowerBound(texts, literal.start + 1) - 1];
+			if (node !== undefined && literal.start < node[1]) found.push(literal);
+		}
+	}
+	return found;
 };
 
 const isAsciiAlpha = (char: string): boolean => /^[A-Za-z]$/.test(char);
@@ -330,9 +337,6 @@ const bareUrls = (context: LintContext): ReadonlyArray<Literal> => {
 			if (flow.has(node.position.start.line)) return;
 			texts.push(node);
 			reached.push([node.position.start.offset, node.position.end.offset]);
-			for (const literal of otherCaseWww(source, node)) {
-				if (!inMath(literal.start)) urls.push({ ...literal, wrapped: false });
-			}
 			return;
 		}
 		// A link's label holds no literal. An HTML node has no children: an HTML block's content is no literal's, as
@@ -348,12 +352,15 @@ const bareUrls = (context: LintContext): ReadonlyArray<Literal> => {
 	const root = context.document.root as MarkdownNode;
 	for (const [index, child] of childrenOf(root).entries()) visit(child, childrenOf(root), index);
 
+	const textSpans = texts.map((text) => [text.position.start.offset, text.position.end.offset] as Span);
+	for (const literal of otherCaseWww(context, textSpans)) {
+		if (!inMath(literal.start)) urls.push({ ...literal, wrapped: false });
+	}
 	// The rest of a block after a `[` in inline math: the kit's parser took the bracket as open and linked nothing
 	// after it. One re-read per block, its literals kept where they open in a text node the walk reaches.
 	const first = scanBlocks(context, urls);
 	if (first.bracketMath.length > 0) {
 		const known = new Set(urls.map((url) => url.start));
-		const textSpans = texts.map((text) => [text.position.start.offset, text.position.end.offset] as Span);
 		for (const [from, end] of first.bracketMath) {
 			// A URL or `www.` literal needs one of these: text without either is not re-parsed.
 			const raw = source.slice(from, end);
