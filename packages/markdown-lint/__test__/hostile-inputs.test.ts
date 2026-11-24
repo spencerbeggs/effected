@@ -216,6 +216,8 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["one line of 20,000 undefined references, collapsed and full", undefinedReferences(20000)],
 	["20,000 uses of one label beside 20,000 duplicate definitions", usesOfOneLabel(20000)],
 	["20,000 unused definitions", unusedDefinitions(20000)],
+	// Sized for a shared runner, this costs about 600 ms alone, so the ceiling only catches a gross blowup: the guard on
+	// MD051's lookups is its ratio twin in `scalingShapes`, which fails the quadratic lookup at 9.5x.
 	["5,000 repeated headings and 20,000 fragments in another case", repeatedHeadings(5000)],
 	["a table of 20,000 rows", tallTable(20000)],
 	["a table row of 50,000 pipes", pipeRun(50000)],
