@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T21:46:39Z
+  at: 2026-11-24T22:15:22Z
 integrity:
   generated:
-    body: 9e4cebf488a17784
+    body: 7616fa697e5b6743
 ---
 
 # `@effected/markdown-lint`
@@ -385,11 +385,12 @@ before a directive line; MD032 ends a list before a directive line left of
 its top-level item's content, the next item at any depth opening another
 list; MD027 reads the indented lines as code; the reference data scans
 each paragraph segment alone and reads the definitions opening one.
-`directiveGrid` is pinned by MD055, MD056 and MD058, `directiveBlockGrid`
+`directiveGrid` is pinned by MD056 and MD058, `directiveBlockGrid`
 by MD012, MD022, MD027, MD031, MD032, MD046 and MD058, the reference
-shapes after a break by MD052, MD053 and MD054, and
+shapes after a break by MD052, MD053 and MD054 (and the setext headings
+holding references, by MD052 and MD053), and
 `directive-readings.test.ts` pins 27 inputs through all 53 rules, the
-remaining differences named below.
+remaining differences named below and in Known limitations.
 
 ## Failure posture
 
@@ -695,16 +696,58 @@ plain synchronous function; no logging, no metrics.
   list (`- a\n  - b\n::leaf\n  - c\n- d`: markdownlint's MD005 on line 5
   and MD007 on line 4; `1. a\n::leaf\n2. b`: its MD029 on line 3). Pinned
   by a test (3 inputs, `directive-readings.test.ts`).
-- **Container directives are tracked across the document.** An opening
-  inside a blockquote is still open below it, so a later bare `:::` closes
-  it in the kit (`> :::a\n> - x\n\n- a\n:::\n- b`: kit-only MD032 on lines
-  4 and 6). Pinned by a test (1 input).
 - **Other rules read a directive line as paragraph text.** MD033, MD034,
   MD036 and MD041 read the kit's paragraph, the directive line in it:
   markdownlint's MD041 on a setext heading whose text is a directive's
   neighbour, its MD036 on a lone emphasis line before a directive, its
   MD034 on a URL in a directive's label, and the kit's MD033 on a tag a
   directive line splits. Pinned by a test (4 inputs).
+- **A directive line as a list item's content.** micromark ends the item's
+  paragraph at it, so the next unindented line is no lazy continuation; the
+  kit reads one (`- ::leaf\ntext`, `- :::note\ntext`: markdownlint's
+  MD032 on line 1; `- :::note\n| a |\n| - |`: its MD032 on line 1 and
+  MD058 on line 2). Pinned by a test (3 inputs,
+  `recorded-divergences.test.ts`).
+- **A container directive's content in a blockquote.** micromark reads the
+  whitespace past the quote marker inside a container directive as its
+  content's indentation; the kit reads paragraph text and reports MD027
+  (`> :::note\n>  text\n> :::`: kit-only MD027 on line 2). Pinned by a test
+  (1 input).
+- **A definition right after a closing fence, to MD034.** The reference
+  data reads it as a definition, as micromark does; MD034 reads the kit's
+  tree, where it is paragraph text, and reports its URL
+  (`:::note\ninside\n:::\n[r]: https://r.example`: kit-only MD034 on line
+  4). Pinned by a test (1 input).
+- **MD027 on a quoted math block's inner line.** micromark has no
+  `linePrefix` there; the kit, reading no math in its tree, reports the
+  whitespace (`> $$\n> x\n>      foo\n> $$`: kit-only MD027 on line 3).
+  Pinned by a test (1 input).
+- **Container readings found by fuzzing.** Four composed documents differ
+  in a container's reading, unminimised: MD028 after quoted math and a lazy
+  line (kit only, `> $$\n> math\n> $$\n[collapsed][]\n \n> x`); MD032
+  after an unclosed fence in a list item, a whitespace line and a quote
+  (kit only); MD032 on math in a list item before a table-like line
+  (markdownlint only, two lines); a top-level table after a quoted table
+  (kit-only MD055, MD056 and MD058). Pinned by a test (4 inputs, the
+  documents as found).
+- **markdownlint throws on `text\n:::\n---\n`.** Its MD026 reports a range
+  its own validation refuses, and the lint fails; the kit reports MD026
+  and MD041. Pinned by a test.
+- **A setext heading after a definition.** micromark's heading token starts
+  at the definition, so markdownlint reports no MD022 (and, with the
+  definition indented, its MD023 on the definition's line); the kit's
+  heading starts on its text and MD022 asks for a blank line above it
+  (`[d]: /u\nTitle\n---`: kit-only MD022 on line 2; `[d]: /u\nTitle\n---`:
+  that, and markdownlint's MD023 on line 1). Pinned by a test (2 inputs).
+- **A table whose header row looks like a delimiter row.** micromark reads
+  `a\n[x][y]\n| - | - |\n| - | - |\nb` as a table with `| - | - |` its
+  header; the kit's parser reads none, so the table rules miss
+  markdownlint's MD055 and MD056 on line 5 and MD058 on line 3. Pinned by
+  a test (1 input).
+- **MD025 with undefined references in a container.** In
+  `- [javascript][]\n  # H\n  [*javascript*][used]\n  # H\n    [u6]: /u6`
+  the kit reports MD025 on line 4 and markdownlint nothing; the cause is
+  not found. Pinned by a test (1 input).
 - **A table row that is a lone `|`.** micromark continues a table through
   it; the kit's parser, following cmark-gfm (a row must hold a cell to
   continue a table, `matches` in `extensions/table.c`), ends the table
@@ -771,6 +814,26 @@ plain synchronous function; no logging, no metrics.
   and not followed, as markdownlint does. Pinned by tests.
 
 ## Known limitations
+
+- **Open container directives are tracked across the document.** The kit
+  keeps one stack of open container directives for the whole document;
+  micromark keeps one per container. An opening inside a blockquote is
+  still open below it, and a later `:::` closes it in the kit; a closing
+  fence closes the innermost opening whether or not its container holds
+  it. It moves list ends (`> :::a\n> - x\n\n- a\n:::\n- b`: kit-only MD032
+  on lines 4 and 6; `:::a\n:::b\n- a\n:::\n- b\n:::\n- c\n:::\n- d`:
+  kit-only MD032 on line 7), table ends (`> :::a\n> x\n\n| a |\n| - |\n:::\n| b |`:
+  markdownlint's MD055 on line 6, the kit's MD058 on line 5) and MD027's
+  reading of a quoted line. Tracking per container would mean following
+  each container's own lines through the directive pass. Pinned by tests
+  (1 input in `directive-readings.test.ts`, 3 in
+  `recorded-divergences.test.ts`).
+- **The settings routing gate reads source text.** `settings-routing.test.ts`
+  fails a rule module that reads a property of a value named `config`
+  (`context.config.x`, a destructured `config.x`, `config[...]`), comments
+  set aside. A config reached under another name (`const c =
+  context.config; c.x`) passes it, and so does a read after a `//` inside a
+  string on the same line.
 
 - **A user-supplied pattern runs as written.** MD051's `ignored_pattern`
   is compiled and run against each fragment as markdownlint runs it, with
