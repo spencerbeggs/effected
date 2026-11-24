@@ -7,6 +7,7 @@
 * Inline `markdownlint-*` comments are honoured by default, so a document carrying a disable comment now suppresses findings it did not before. Pass `noInlineConfig: true` to `MarkdownLint.lint` or `lintDocument` for the old behaviour.
 * The host reads a file as markdownlint does: HTML comment bodies are masked in `LintContext.source`, front matter follows markdownlint's own pattern, and a `---json` block is content rather than front matter.
 * `LintFrontmatter.node` is now an `Option`.
+* `LintContext` carries a required `config`, so code that builds a `LintContext` by hand must supply it.
 * `LintDiagnostic` carries a required `severity` (`"error"` or `"warning"`), stamped from the configuration.
 * `MarkdownlintAdapter` passes markdownlint's `params.config` to the rule as `LintContext.config`, with `enabled` and `severity` removed.
 * `lintDocument` drops one leading byte-order mark and re-parses the source when its reading and the parse it was given are not aligned.
