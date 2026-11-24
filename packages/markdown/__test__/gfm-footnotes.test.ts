@@ -17,8 +17,11 @@
 // the `commonmark` dialect never sees either construct.
 
 import { assert, describe, it } from "@effect/vitest";
+import { Effect } from "effect";
 import { parseBlocks } from "../src/internal/blockParser.js";
 import { MAX_NESTING_DEPTH } from "../src/internal/limits.js";
+import { MarkdownDocument } from "../src/MarkdownDocument.js";
+import { MarkdownFormat } from "../src/MarkdownFormat.js";
 import type {
 	FlowContent,
 	FootnoteDefinition,
@@ -29,6 +32,7 @@ import type {
 	PhrasingContent,
 	Text,
 } from "../src/MarkdownNode.js";
+import { Point, Position } from "../src/MarkdownNode.js";
 
 type Dialect = "commonmark" | "gfm";
 
@@ -449,60 +453,70 @@ describe("gfm footnotes", () => {
 		// The blank lines a definition continues through are not its content.
 		// cmark-gfm closes the block on the line before the one that ends it,
 		// which counts a trailing blank line in; mdast, like every other
-		// container block, ends at its last child. Each expected end was read
+		// container block, ends at its last child. Each expected span was read
 		// from `mdast-util-from-markdown` 2.1.0 with `micromark-extension-gfm-footnote`
 		// 2.1.0 over the same source.
-		const point = (line: number, column: number, offset: number) => ({ line, column, offset });
-		const endOf = (source: string, index = 0) => {
+		type At = readonly [line: number, column: number, offset: number];
+		const span = (start: At, end: At): Position =>
+			Position.make({
+				start: Point.make({ line: start[0], column: start[1], offset: start[2] }),
+				end: Point.make({ line: end[0], column: end[1], offset: end[2] }),
+			});
+		const spanOf = (source: string, index = 0): Position => {
 			const definition = definitionsOf(source)[index];
 			assert.isDefined(definition, "expected the source to parse a footnote definition");
-			const { line, column, offset } = definition.position.end;
-			return { line, column, offset };
+			return definition.position;
 		};
-		const cases: ReadonlyArray<readonly [string, string, ReturnType<typeof point>]> = [
-			["a blank line then a heading", "[^1]: note\n\n# H\n", point(1, 11, 10)],
-			["several blank lines then a heading", "[^1]: note\n\n\n\n# H\n", point(1, 11, 10)],
-			["several blank lines then end of input", "[^1]: note\n\n\n", point(1, 11, 10)],
-			["two paragraphs with an indented continuation", "[^1]: first\n\n    second\n\n# H\n", point(3, 11, 23)],
-			["a fenced code block as its last child", "[^1]: x\n\n    ```js\n    code\n    ```\n\n# H\n", point(5, 8, 35)],
-			["a blockquote as its last child", "[^1]: a\n\n    > q\n\n# H\n", point(3, 8, 16)],
-			["a list as its last child", "[^1]: a\n\n    - x\n\n# H\n", point(3, 8, 16)],
-			["a link reference definition as its only child", "[^1]: [a]: /u\n\n# H\n", point(1, 14, 13)],
-			["trailing spaces on its last line", "[^1]: note  \n\n# H\n", point(1, 13, 12)],
-			["CRLF line endings", "[^1]: note\r\n\r\n# H\r\n", point(1, 11, 10)],
-			["CRLF line endings across two paragraphs", "[^1]: a\r\n\r\n    b\r\n\r\n# H\r\n", point(3, 6, 16)],
-			["nesting in a list item followed by a paragraph", "- [^1]: note\n\n  para\n", point(1, 13, 12)],
-			["nesting in a list item followed by another item", "- [^1]: note\n\n- b\n", point(1, 13, 12)],
-			["nesting in a list item across two paragraphs", "- [^1]: a\n\n      b\n\n  c\n", point(3, 8, 18)],
+		const top: At = [1, 1, 0];
+		const inItem: At = [1, 3, 2];
+		const cases: ReadonlyArray<readonly [string, string, Position]> = [
+			["a blank line then a heading", "[^1]: note\n\n# H\n", span(top, [1, 11, 10])],
+			["several blank lines then a heading", "[^1]: note\n\n\n\n# H\n", span(top, [1, 11, 10])],
+			["several blank lines then end of input", "[^1]: note\n\n\n", span(top, [1, 11, 10])],
+			["two paragraphs with an indented continuation", "[^1]: first\n\n    second\n\n# H\n", span(top, [3, 11, 23])],
+			[
+				"a fenced code block as its last child",
+				"[^1]: x\n\n    ```js\n    code\n    ```\n\n# H\n",
+				span(top, [5, 8, 35]),
+			],
+			["a blockquote as its last child", "[^1]: a\n\n    > q\n\n# H\n", span(top, [3, 8, 16])],
+			["a list as its last child", "[^1]: a\n\n    - x\n\n# H\n", span(top, [3, 8, 16])],
+			["a link reference definition as its only child", "[^1]: [a]: /u\n\n# H\n", span(top, [1, 14, 13])],
+			["trailing spaces on its last line", "[^1]: note  \n\n# H\n", span(top, [1, 13, 12])],
+			["CRLF line endings", "[^1]: note\r\n\r\n# H\r\n", span(top, [1, 11, 10])],
+			["CRLF line endings across two paragraphs", "[^1]: a\r\n\r\n    b\r\n\r\n# H\r\n", span(top, [3, 6, 16])],
+			["nesting in a list item followed by a paragraph", "- [^1]: note\n\n  para\n", span(inItem, [1, 13, 12])],
+			["nesting in a list item followed by another item", "- [^1]: note\n\n- b\n", span(inItem, [1, 13, 12])],
+			["nesting in a list item across two paragraphs", "- [^1]: a\n\n      b\n\n  c\n", span(inItem, [3, 8, 18])],
 		];
-		for (const [name, source, end] of cases) {
+		for (const [name, source, expected] of cases) {
 			it(`with ${name}`, () => {
-				assert.deepStrictEqual(endOf(source), end);
+				assert.deepStrictEqual(spanOf(source), expected);
 			});
 		}
 
 		it("ends an empty definition at the end of its marker line", () => {
 			// With no children the marker line is all there is, and the
 			// whitespace after the colon belongs to the marker.
-			assert.deepStrictEqual(endOf("[^1]:\n\n# H\n"), point(1, 6, 5));
-			assert.deepStrictEqual(endOf("[^1]:   \n\n# H\n"), point(1, 9, 8));
-			assert.deepStrictEqual(endOf("[^1]:\t\n# H\n"), point(1, 7, 6));
+			assert.deepStrictEqual(spanOf("[^1]:\n\n# H\n"), span(top, [1, 6, 5]));
+			assert.deepStrictEqual(spanOf("[^1]:   \n\n# H\n"), span(top, [1, 9, 8]));
+			assert.deepStrictEqual(spanOf("[^1]:\t\n# H\n"), span(top, [1, 7, 6]));
 		});
 
 		it("ends an empty definition with an indented paragraph at that paragraph", () => {
-			assert.deepStrictEqual(endOf("[^1]:\n    a\n\n# H\n"), point(2, 6, 11));
+			assert.deepStrictEqual(spanOf("[^1]:\n    a\n\n# H\n"), span(top, [2, 6, 11]));
 		});
 
 		it("ends the first of two adjacent definitions on its own line, with or without a blank between", () => {
-			assert.deepStrictEqual(endOf("[^1]: a\n[^2]: b\n", 0), point(1, 8, 7));
-			assert.deepStrictEqual(endOf("[^1]: a\n[^2]: b\n", 1), point(2, 8, 15));
-			assert.deepStrictEqual(endOf("[^1]: a\n\n[^2]: b\n", 0), point(1, 8, 7));
-			assert.deepStrictEqual(endOf("[^1]: a\n\n[^2]: b\n", 1), point(3, 8, 16));
+			assert.deepStrictEqual(spanOf("[^1]: a\n[^2]: b\n", 0), span(top, [1, 8, 7]));
+			assert.deepStrictEqual(spanOf("[^1]: a\n[^2]: b\n", 1), span([2, 1, 8], [2, 8, 15]));
+			assert.deepStrictEqual(spanOf("[^1]: a\n\n[^2]: b\n", 0), span(top, [1, 8, 7]));
+			assert.deepStrictEqual(spanOf("[^1]: a\n\n[^2]: b\n", 1), span([3, 1, 9], [3, 8, 16]));
 		});
 
 		it("keeps the end at end of input, with and without a final newline", () => {
-			assert.deepStrictEqual(endOf("[^1]: note\n"), point(1, 11, 10));
-			assert.deepStrictEqual(endOf("[^1]: note"), point(1, 11, 10));
+			assert.deepStrictEqual(spanOf("[^1]: note\n"), span(top, [1, 11, 10]));
+			assert.deepStrictEqual(spanOf("[^1]: note"), span(top, [1, 11, 10]));
 		});
 
 		it("ends a list item whose last child is a definition at that definition", () => {
@@ -513,19 +527,51 @@ describe("gfm footnotes", () => {
 			assert.strictEqual(list.type, "list");
 			const item = list.type === "list" ? list.children[0] : undefined;
 			assert.isDefined(item);
-			const { line, column, offset } = item.position.end;
-			assert.deepStrictEqual({ line, column, offset }, point(1, 13, 12));
+			assert.deepStrictEqual(item.position, span(top, [1, 13, 12]));
 		});
 
-		it("ends a definition inside a blockquote at its last content line", () => {
-			// micromark ends this one at 2:2, past the `>` of the blank quoted
-			// line, and ends a list in the same place the same way; the kit
-			// ends both at the last content line, which is what it already did
-			// here because a quoted blank line is not blank to the
-			// continuation rule and closes the definition.
-			assert.deepStrictEqual(endOf("> [^1]: note\n>\n> # H\n"), point(1, 13, 12));
-			assert.deepStrictEqual(endOf("> [^1]: note\n\n# H\n"), point(1, 13, 12));
+		it("ends a definition inside a blockquote at a plain blank line, as micromark does", () => {
+			assert.deepStrictEqual(spanOf("> [^1]: note\n\n# H\n"), span([1, 3, 2], [1, 13, 12]));
 		});
+
+		it("divergence tripwire: ends before a quoted blank line, where micromark ends past its `>` at 2:2", () => {
+			// A known difference, not the reference: micromark ends this
+			// definition at 2:2(14), past the `>` of the quoted blank line, and
+			// ends a list the same way (`> - a\n>\n> # H\n` gives 1:3-2:2).
+			// The kit ends both at the last content line. A red here means the
+			// kit moved toward micromark's reading.
+			assert.deepStrictEqual(spanOf("> [^1]: note\n>\n> # H\n"), span([1, 3, 2], [1, 13, 12]));
+		});
+
+		it("divergence tripwire: a quoted blank line closes the definition, as cmark-gfm reads it", () => {
+			// cmark-gfm's `parse_footnote_definition_block_prefix` tests the
+			// raw line (`input->data[0] == '\n'`), and a quoted blank line
+			// starts with `>`, so it closes the definition and `    b` is
+			// indented code in the blockquote. micromark keeps `b` inside the
+			// definition as a second paragraph. A red here means the
+			// continuation rule changed.
+			const quote = parseBlocks("> [^1]: a\n>\n>     b\n", "gfm").root.children[0];
+			assert.isDefined(quote);
+			assert.strictEqual(quote.type, "blockquote");
+			const children = quote.type === "blockquote" ? quote.children : [];
+			assert.deepStrictEqual(
+				children.map((node) => node.type),
+				["footnoteDefinition", "code"],
+			);
+			assert.deepStrictEqual(spanOf("> [^1]: a\n>\n>     b\n"), span([1, 3, 2], [1, 10, 9]));
+		});
+
+		it.effect("lets modify replace the definition without reaching the paragraph after it", () =>
+			Effect.gen(function* () {
+				// The old span ended on the blank line, so the splice consumed it
+				// and the replacement lazily continued into the next paragraph.
+				const document = yield* MarkdownDocument.parse("[^1]: note\n\npara\n");
+				const definition = document.root.children[0];
+				assert.isDefined(definition);
+				const out = yield* MarkdownFormat.modifyToString(document, definition, "X");
+				assert.strictEqual(out, "X\n\npara\n");
+			}),
+		);
 	});
 
 	describe("the commonmark dialect sees neither construct", () => {

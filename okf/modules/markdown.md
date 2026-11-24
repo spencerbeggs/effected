@@ -51,10 +51,10 @@ sources:
     resource: ../../packages/markdown/__test__/visitor-traverse.test.ts
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-07T03:13:10Z
+  at: 2026-11-24T01:44:45Z
 integrity:
   generated:
-    body: 1b54652dd77c9c20
+    body: 0867275fd9be8c33
 ---
 
 # `@effected/markdown`
@@ -662,6 +662,18 @@ a pin file recording upstream repo, ref and license:
    micromark's fixtures — all whitespace-shaped stored values, none
    reachable from mdast's field contracts — are masked symmetrically on
    both trees and each pinned by a tripwire.
+
+A GFM footnote definition ends at its last content line, never on a blank
+line it continued through, and an empty one ends past its marker; both
+match micromark. There are two known differences from micromark, both for a
+definition nested in a blockquote, and each is pinned by a `divergence
+tripwire` test in `__test__/gfm-footnotes.test.ts`. First, micromark ends
+the definition past the `>` of a trailing quoted blank line
+(`> [^1]: note\n>\n> # H\n` ends at 2:2). It ends a list there the same way.
+The kit ends both at the last content line. Second, a quoted blank line
+closes the definition, because cmark-gfm's continuation prefix tests the raw
+line for `\n`. So in `> [^1]: a\n>\n>     b\n` the kit reads `b` as indented
+code in the blockquote, while micromark keeps it inside the definition.
 
 The standing goal is an empty skip map, matching the `toml` precedent: the
 dialect matrix runs the whole CommonMark corpus under both dialects with an
