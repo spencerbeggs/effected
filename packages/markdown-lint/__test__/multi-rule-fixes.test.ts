@@ -44,7 +44,7 @@ const shuffled = <A>(items: ReadonlyArray<A>, seed: string): ReadonlyArray<A> =>
 };
 
 // markdownlint's findings with a fix over every input, per case.
-const ORACLE_FIXES_ALL = 5568;
+const ORACLE_FIXES_ALL = 5862;
 const ORACLE_FIXES_MD004_MD032 = 396;
 const ORACLE_FIXES_MD022_MD009 = 452;
 const ORACLE_FIXES_MD031_MD032 = 368;
@@ -64,6 +64,7 @@ const ORACLE_FIXES_MD038_MD009 = 615;
 const ORACLE_FIXES_MD037_MD009 = 850;
 const ORACLE_FIXES_MD049_MD037 = 773;
 const ORACLE_FIXES_MD050_MD049 = 340;
+const ORACLE_FIXES_MD044_MD049 = 494;
 // The inputs on which fixes from two or more of the case's rules land on one line, the case the file exists for.
 const MEETING_ALL = 47;
 const MEETING_MD004_MD032 = 17;
@@ -86,6 +87,7 @@ const MEETING_MD038_MD009 = 2;
 const MEETING_MD037_MD009 = 2;
 const MEETING_MD049_MD037 = 2;
 const MEETING_MD050_MD049 = 5;
+const MEETING_MD044_MD049 = 2;
 const MEETING_SAMPLE = 11;
 
 describe("applyFixes over several rules' fixes", () => {
@@ -308,6 +310,25 @@ describe("applyFixes over several rules' fixes", () => {
 			[
 				{ name: "strong and emphasis in both styles, LF", source: "**a** *b* and __c__ _d_ and ___e___\n" },
 				{ name: "strong and emphasis in both styles, CRLF", source: "**a** *b* and __c__ _d_ and ___e___\r\n" },
+			],
+		],
+		// MD044 writes a name and MD049 swaps the emphasis markers around it, on one line.
+		[
+			"MD044 and MD049",
+			["MD044", "MD049"],
+			ORACLE_FIXES_MD044_MD049,
+			MEETING_MD044_MD049,
+			[
+				{
+					name: "names in swapped emphasis, LF",
+					source:
+						'<!-- markdownlint-configure-file {"MD044":{"names":["JavaScript"]}} -->\n\n*javascript* and _javascript_\n',
+				},
+				{
+					name: "names in swapped emphasis, CRLF",
+					source:
+						'<!-- markdownlint-configure-file {"MD044":{"names":["JavaScript"]}} -->\r\n\r\n*javascript* and _javascript_\r\n',
+				},
 			],
 		],
 	];

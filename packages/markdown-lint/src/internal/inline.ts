@@ -131,7 +131,8 @@ const labelOptions = MarkdownParseOptions.make({ dialect: "gfm", frontmatter: fa
  * image's label as inline content, where the kit's image carries its alt as a
  * string, so each label (its continuation lines' container prefixes left out)
  * is re-parsed as a link label, which CommonMark parses the same way, and its
- * nodes mapped back to their source offsets. Those micromark reads as math are
+ * emphasis, strong and text nodes mapped back to their source offsets, a text
+ * node as one piece per source line. The emphasis micromark reads as math is
  * dropped. Computed once per reading.
  * @internal
  */
@@ -161,17 +162,120 @@ export const imageLabelNodes: (context: LintContext) => ReadonlyArray<InlineSpan
 				at = Math.max(at, context.mapping.lineStart(lineNumber) + line.length - content.length - 1);
 			}
 		}
-		if (!/[*_]/.test(text)) continue;
 		const parsed = MarkdownDocument.parseResult(`[${text}](u)`, labelOptions);
 		if (!Result.isSuccess(parsed)) continue;
 		for (const node of parsed.success.findAll(
-			(each) => each.type === "emphasis" || each.type === "strong",
+			(each) => each.type === "emphasis" || each.type === "strong" || each.type === "text",
 		) as ReadonlyArray<MarkdownNode>) {
-			const first = offsets[node.position.start.offset - 1];
-			const last = offsets[node.position.end.offset - 2];
-			if (first === undefined || last === undefined || inMath(first)) continue;
-			found.push({ type: node.type, start: first, end: last + 1 });
+			const from = node.position.start.offset - 1;
+			const to = node.position.end.offset - 1;
+			if (node.type !== "text") {
+				const first = offsets[from];
+				const last = offsets[to - 1];
+				if (first === undefined || last === undefined || inMath(first)) continue;
+				found.push({ type: node.type, start: first, end: last + 1 });
+				continue;
+			}
+			// A text node's pieces, one per source line: where the label's offsets jump, a line's prefix was left out.
+			let pieceStart = from;
+			for (let index = from; index <= to; index++) {
+				const at = offsets[index];
+				const previous = offsets[index - 1];
+				const breaks =
+					index === to || at === undefined || (index > pieceStart && previous !== undefined && at !== previous + 1);
+				const isLineBreak = at !== undefined && (source.charAt(at) === "\n" || source.charAt(at) === "\r");
+				if (!breaks && !isLineBreak) continue;
+				const first = offsets[pieceStart];
+				const last = offsets[index - 1];
+				if (first !== undefined && last !== undefined && index > pieceStart) {
+					found.push({ type: "text", start: first, end: last + 1 });
+				}
+				pieceStart = isLineBreak ? index + 1 : index;
+			}
 		}
 	}
 	return found;
 });
+
+/** One of a code span's content tokens: a space, a line ending, or a run of data. @internal */
+export interface CodeSpanToken {
+	readonly kind: "space" | "eol" | "data";
+	readonly start: number;
+	readonly end: number;
+}
+
+// A code span's content tokens, as micromark's code text tokenizer reads them before its resolver runs.
+const codeSpanTokens = (context: LintContext, start: number, end: number): Array<CodeSpanToken> => {
+	const { source } = context;
+	const tokens: Array<CodeSpanToken> = [];
+	let at = start;
+	while (at < end) {
+		const char = source.charAt(at);
+		if (char === " ") {
+			tokens.push({ kind: "space", start: at, end: at + 1 });
+			at++;
+		} else if (char === "\n" || char === "\r") {
+			const length = char === "\r" && source.charAt(at + 1) === "\n" ? 2 : 1;
+			tokens.push({ kind: "eol", start: at, end: at + length });
+			at += length;
+			// The next line's container prefix is no part of the inline content; its leading whitespace is.
+			const lineNumber = context.mapping.lineNumber(at);
+			const line = context.lines[lineNumber - 1] ?? "";
+			const content = contentInContainers(context, lineNumber) ?? line;
+			at = Math.max(at, context.mapping.lineStart(lineNumber) + line.length - content.length);
+		} else {
+			const last = tokens.at(-1);
+			if (last?.kind === "data" && last.end === at) tokens[tokens.length - 1] = { ...last, end: at + 1 };
+			else tokens.push({ kind: "data", start: at, end: at + 1 });
+			at++;
+		}
+	}
+	return tokens;
+};
+
+/**
+ * A code span as micromark tokenizes it, read back from its source: its
+ * source text, its `codeTextPadding` (the first and last content token, when
+ * both are a space or a line ending and there is data between) and its
+ * `codeTextData` runs (everything between, merged and split at line
+ * endings). Each space is a token and each line ending one, the next line's
+ * container prefix skipped and its leading whitespace kept. A code span's
+ * position starts at its opening backtick run and ends past its closing one.
+ * @internal
+ */
+export const codeSpanParts = (
+	context: LintContext,
+	code: MarkdownNode,
+): {
+	readonly span: string;
+	readonly paddings: ReadonlyArray<CodeSpanToken>;
+	readonly datas: ReadonlyArray<CodeSpanToken>;
+} => {
+	const spanStart = code.position.start.offset;
+	const spanEnd = code.position.end.offset;
+	const span = context.source.slice(spanStart, spanEnd);
+	const sequence = (/^`+/.exec(span)?.[0] ?? "").length;
+	const tokens = codeSpanTokens(context, spanStart + sequence, spanEnd - sequence);
+	const first = tokens[0];
+	const last = tokens.at(-1);
+	const blank = (token: CodeSpanToken | undefined) => token !== undefined && token.kind !== "data";
+	let paddings: ReadonlyArray<CodeSpanToken> = [];
+	let inner = tokens;
+	if (blank(first) && blank(last) && tokens.slice(1, -1).some((token) => token.kind === "data")) {
+		paddings = [first as CodeSpanToken, last as CodeSpanToken];
+		inner = tokens.slice(1, -1);
+	}
+	const datas: Array<CodeSpanToken> = [];
+	let open = false;
+	for (const token of inner) {
+		if (token.kind === "eol") {
+			open = false;
+			continue;
+		}
+		const run = datas.at(-1);
+		if (open && run !== undefined) datas[datas.length - 1] = { ...run, end: token.end };
+		else datas.push({ kind: "data", start: token.start, end: token.end });
+		open = true;
+	}
+	return { span, paddings, datas };
+};

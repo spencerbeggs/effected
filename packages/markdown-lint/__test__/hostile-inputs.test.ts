@@ -218,6 +218,25 @@ describe("hostile settings", () => {
 		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
 	});
 
+	it("lints proper names under a list of 1,000 names under the ceiling", { timeout: 30_000 }, () => {
+		const names = Array.from({ length: 1_000 }, (_, index) => `Name${index}`);
+		const source = `${Array.from({ length: 2_000 }, (_, index) => `name${index % 1_000} and www.name${index}.com and \`name1\``).join("\n\n")}\n`;
+		const start = performance.now();
+		const findings = MarkdownLint.lint(source, rules, { config: { default: false, MD044: { names } } });
+		const elapsed = performance.now() - start;
+		assert.isAbove(findings.length, 0);
+		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+	});
+
+	it("lints a one-letter proper name matching 100,000 words under the ceiling", { timeout: 30_000 }, () => {
+		const source = `${"a ".repeat(100_000)}\n`;
+		const start = performance.now();
+		const findings = MarkdownLint.lint(source, rules, { config: { default: false, MD044: { names: ["A", "A B"] } } });
+		const elapsed = performance.now() - start;
+		assert.isAbove(findings.length, 0);
+		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+	});
+
 	it("lints a heading under lines_above: 1e8 under the ceiling, its fix capped", { timeout: 30_000 }, () => {
 		const source = "text\n# T\n";
 		const start = performance.now();

@@ -1,53 +1,13 @@
 // MD038 `no-space-in-code`: a port of markdownlint's lib/md038.mjs over the
 // kit tree. markdownlint reads each `codeText` token's `codeTextData` and
 // `codeTextPadding` children; the kit's code spans carry only their value, so
-// the tokens are read back from the span's source as micromark tokenizes it:
-// each space a token, each line ending a token (the next line's container
-// prefix skipped, its leading whitespace kept), the
-// first and last token padding when both are blank and there is data between,
-// and the rest merged into data runs split at line endings.
+// the tokens are read back from the span's source (see `codeSpanParts`).
 
 import type * as Lint from "@effected/markdown-lint";
-import { contentInContainers } from "../internal/containers.js";
-import { inlineNodes } from "../internal/inline.js";
+import type { CodeSpanToken as Token } from "../internal/inline.js";
+import { codeSpanParts, inlineNodes } from "../internal/inline.js";
 import { errorContext } from "../internal/lines.js";
-import type { LintContext } from "../LintContext.js";
 import { LintRule } from "../LintRule.js";
-
-interface Token {
-	readonly kind: "space" | "eol" | "data";
-	readonly start: number;
-	readonly end: number;
-}
-
-// A code span's content tokens, as micromark's code text tokenizer reads them before its resolver runs.
-const contentTokens = (context: LintContext, start: number, end: number): Array<Token> => {
-	const { source } = context;
-	const tokens: Array<Token> = [];
-	let at = start;
-	while (at < end) {
-		const char = source.charAt(at);
-		if (char === " ") {
-			tokens.push({ kind: "space", start: at, end: at + 1 });
-			at++;
-		} else if (char === "\n" || char === "\r") {
-			const length = char === "\r" && source.charAt(at + 1) === "\n" ? 2 : 1;
-			tokens.push({ kind: "eol", start: at, end: at + length });
-			at += length;
-			// The next line's container prefix is no part of the inline content; its leading whitespace is.
-			const lineNumber = context.mapping.lineNumber(at);
-			const line = context.lines[lineNumber - 1] ?? "";
-			const content = contentInContainers(context, lineNumber) ?? line;
-			at = Math.max(at, context.mapping.lineStart(lineNumber) + line.length - content.length);
-		} else {
-			const last = tokens.at(-1);
-			if (last?.kind === "data" && last.end === at) tokens[tokens.length - 1] = { ...last, end: at + 1 };
-			else tokens.push({ kind: "data", start: at, end: at + 1 });
-			at++;
-		}
-	}
-	return tokens;
-};
 
 /**
  * MD038 `no-space-in-code`: no extra space inside a code span's backticks.
@@ -67,34 +27,7 @@ export const MD038: Lint.LintRule = LintRule.make({
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.2/doc/md038.md",
 	check: (context, report) => {
 		for (const code of inlineNodes(context, "inlineCode")) {
-			const spanStart = code.position.start.offset;
-			const spanEnd = code.position.end.offset;
-			const span = context.source.slice(spanStart, spanEnd);
-			// A code span's position starts at its opening backtick run and ends past its closing one.
-			const sequence = (/^`+/.exec(span)?.[0] ?? "").length;
-			const tokens = contentTokens(context, spanStart + sequence, spanEnd - sequence);
-			const first = tokens[0];
-			const last = tokens.at(-1);
-			const blank = (token: Token | undefined) => token !== undefined && token.kind !== "data";
-			let paddings: ReadonlyArray<Token> = [];
-			let inner = tokens;
-			if (blank(first) && blank(last) && tokens.slice(1, -1).some((token) => token.kind === "data")) {
-				paddings = [first as Token, last as Token];
-				inner = tokens.slice(1, -1);
-			}
-			// Everything between the paddings, merged into data runs split at line endings.
-			const datas: Array<Token> = [];
-			let open = false;
-			for (const token of inner) {
-				if (token.kind === "eol") {
-					open = false;
-					continue;
-				}
-				const run = datas.at(-1);
-				if (open && run !== undefined) datas[datas.length - 1] = { ...run, end: token.end };
-				else datas.push({ kind: "data", start: token.start, end: token.end });
-				open = true;
-			}
+			const { span, paddings, datas } = codeSpanParts(context, code);
 			const startData = datas[0];
 			const endData = datas.at(-1);
 			if (startData === undefined || endData === undefined) continue;

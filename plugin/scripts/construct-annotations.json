@@ -1008,6 +1008,7 @@
 		"MD040": "fenced-code-language, fenced code block without a language, allowed languages",
 		"MD041": "first-line-heading, first-line-h1, first line heading, document starts with h1",
 		"MD043": "required-headings, required heading structure, document outline, heading list pattern",
+		"MD044": "proper-names, proper name capitalization, names list, code blocks and html elements",
 		"MD045": "no-alt-text, image without alternate text, accessibility",
 		"MD046": "code-block-style, consistent code block style, fenced or indented",
 		"MD047": "single-trailing-newline, trailing newline, file ends with one line break",
