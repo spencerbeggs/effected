@@ -994,6 +994,7 @@
 		"MD031": "blanks-around-fences, blank lines around fenced code blocks",
 		"MD032": "blanks-around-lists, blank lines around lists",
 		"MD033": "no-inline-html, inline html, raw html elements, allowed elements",
+		"MD035": "hr-style, consistent horizontal rule style, thematic break markers",
 		"MD040": "fenced-code-language, fenced code block without a language, allowed languages",
 		"MD041": "first-line-heading, first-line-h1, first line heading, document starts with h1",
 		"MD045": "no-alt-text, image without alternate text, accessibility",

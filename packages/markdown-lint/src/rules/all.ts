@@ -30,6 +30,7 @@ import { MD026 } from "./MD026.js";
 import { MD031 } from "./MD031.js";
 import { MD032 } from "./MD032.js";
 import { MD033 } from "./MD033.js";
+import { MD035 } from "./MD035.js";
 import { MD040 } from "./MD040.js";
 import { MD041 } from "./MD041.js";
 import { MD045 } from "./MD045.js";
@@ -61,6 +62,7 @@ export const rules: ReadonlyArray<LintRule> = [
 	MD031,
 	MD032,
 	MD033,
+	MD035,
 	MD040,
 	MD041,
 	MD045,
@@ -84,7 +86,6 @@ export const uncovered: ReadonlyArray<string> = [
 	"MD029",
 	"MD030",
 	"MD034",
-	"MD035",
 	"MD036",
 	"MD037",
 	"MD038",
