@@ -63,7 +63,7 @@ export const MD053: Lint.LintRule = LintRule.make({
 					detail,
 					context: errorContext(line),
 					range: { offset: start, length: line.length },
-					...(singleLineDefinition(line) ? { fix: deleteLine(context, lineNumber) } : {}),
+					...(singleLineDefinition(line) ? { fix: deleteLine(context, lineNumber), deletesLine: true } : {}),
 				}),
 			);
 		};

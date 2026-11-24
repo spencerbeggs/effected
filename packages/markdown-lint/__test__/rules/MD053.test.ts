@@ -8,13 +8,15 @@
 import { assert, describe, it } from "@effect/vitest";
 import { MarkdownEdit } from "@effected/markdown";
 import { Option } from "effect";
+import { MD012 } from "../../src/rules/MD012.js";
+import { MD047 } from "../../src/rules/MD047.js";
 import { MD053 } from "../../src/rules/MD053.js";
 import {
 	DIFFERENTIAL_TIMEOUT,
 	SETTINGS_PROBES,
 	differential,
+	fixesDifferential,
 	runRule,
-	settingsAppliedTextDivergences,
 	settingsDifferential,
 } from "../helpers/differential.js";
 import { oracleLint } from "../helpers/markdownlint-oracle.js";
@@ -37,6 +39,42 @@ const definitionShapes = [
 
 const extra = [...referenceGrid, ...labelShapes, ...definitionShapes];
 
+// Unused definitions deleted at the source's end: 1 to 3 (and a duplicate), alone or after text, with and without a
+// final line ending, under each line ending. markdownlint removes each deleted line and joins the rest, so a run
+// reaching the end takes the line break before it.
+const endings: ReadonlyArray<readonly [string, string]> = [
+	["LF", "\n"],
+	["CRLF", "\r\n"],
+	["CR", "\r"],
+];
+const lastLineDeletes = (() => {
+	const grid: Array<{ readonly name: string; readonly source: string }> = [];
+	const runs: ReadonlyArray<readonly [string, ReadonlyArray<string>]> = [
+		["one", ["[a]: /u"]],
+		["two", ["[a]: /u", "[b]: /v"]],
+		["three", ["[a]: /u", "[b]: /v", "[c]: /w"]],
+		["a duplicate", ["[a]: /u", "[a]: /v"]],
+	];
+	for (const [count, definitions] of runs) {
+		for (const [prefixName, prefix] of [
+			["alone", []],
+			["after text", ["x", ""]],
+			["after a used one", ["[d]", "", "[d]: /d"]],
+		] as const) {
+			for (const [ending, eol] of endings) {
+				for (const final of [true, false]) {
+					const lines = [...prefix, ...definitions];
+					grid.push({
+						name: `${count} ${prefixName}, ${ending}${final ? "" : ", no final line ending"}`,
+						source: lines.join(eol) + (final ? eol : ""),
+					});
+				}
+			}
+		}
+	}
+	return grid;
+})();
+
 const run = runRule(MD053);
 
 describe("MD053 link-image-reference-definitions", () => {
@@ -44,16 +82,24 @@ describe("MD053 link-image-reference-definitions", () => {
 		"agrees with markdownlint with default settings over the corpus, the reference grid and definition shapes",
 		() => {
 			const result = differential(MD053, { extra });
-			// Not a divergence of the text: for the only line of a source with no line ending, markdownlint's fix is its
-			// whole-line delete (`deleteCount: -1`), which a kit edit spells only as deleting the line's text. Both leave
-			// the same text (asserted below).
-			assert.deepStrictEqual(
-				result.divergences.map((divergence) => divergence.fixture),
-				["unused alone with no line ending"],
-			);
-			assert.match(result.divergences[0]?.reason ?? "", /^finding 1 \(line 1\) fixInfo: /);
-			assert.deepStrictEqual(settingsAppliedTextDivergences(MD053, [{}], definitionShapes), []);
+			assert.deepStrictEqual(result.divergences, []);
 			assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
+	// The fix is markdownlint's whole-line delete (`deletesLine`), so the text left is markdownlint's, alone and beside
+	// MD047 (a final line ending added on a deleted line) and MD012 (blank lines removed beside deleted ones).
+	it(
+		"leaves markdownlint's text when deleting definitions at the source's end",
+		() => {
+			const result = differential(MD053, { extra: lastLineDeletes });
+			assert.deepStrictEqual(result.divergences, []);
+			for (const companion of [MD047, MD012]) {
+				const pair = fixesDifferential([MD053, companion], { inputs: lastLineDeletes });
+				assert.deepStrictEqual(pair.divergences, [], companion.name);
+				assert.isAbove(pair.oracleFixes, 0);
+			}
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
@@ -68,11 +114,7 @@ describe("MD053 link-image-reference-definitions", () => {
 			`agrees with markdownlint under ${JSON.stringify(settings)}`,
 			() => {
 				const result = differential(MD053, { config: settings, extra });
-				// The same `fixInfo` spelling as above, where the setting leaves the definition reported.
-				assert.includeMembers(
-					["unused alone with no line ending"],
-					result.divergences.map((divergence) => divergence.fixture),
-				);
+				assert.deepStrictEqual(result.divergences, []);
 				if (changes) assert.notStrictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
 				else assert.strictEqual(result.oracleFindings, ORACLE_FINDINGS_DEFAULT);
 			},
@@ -95,11 +137,7 @@ describe("MD053 link-image-reference-definitions", () => {
 				],
 				[...labelShapes, ...definitionShapes, ...SETTINGS_PROBES],
 			);
-			// The same `fixInfo` spelling, wherever a case leaves that definition reported.
-			assert.deepStrictEqual(
-				[...new Set(result.divergences.map((divergence) => divergence.fixture))],
-				result.divergences.length === 0 ? [] : ["unused alone with no line ending"],
-			);
+			assert.deepStrictEqual(result.divergences, []);
 			assert.isAbove(result.oracleFindings, 0);
 		},
 		DIFFERENTIAL_TIMEOUT,

@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T18:51:03Z
+  at: 2026-11-24T18:58:08Z
 integrity:
   generated:
-    body: 946259bba96b8b34
+    body: c95785d06a539dce
 ---
 
 # `@effected/markdown-lint`
@@ -308,6 +308,12 @@ pinned, beside 8 neighbours that agree). Porting it found two
 kit parser defects, fixed in `@effected/markdown`: an address after an
 escape or entity was positioned inside it, and the email postprocess went
 quadratic on a run of many text nodes.
+
+MD053's fix is markdownlint's whole-line delete: it reports with
+`LintReport.deletesLine`, so its `fixInfo` is `deleteCount: -1` whatever the
+edit's span, and `MarkdownLint.applyFixes` removes each run of deleted
+lines as markdownlint does (a run reaching the source's end taking the line
+break before it), alone and beside other rules' edits on those lines.
 
 MD042, MD052, MD053 and MD054 read markdownlint's reference link and image
 data through one internal helper (`src/internal/references.ts`): the
@@ -664,11 +670,6 @@ plain synchronous function; no logging, no metrics.
   not compile (`(`), and the lint fails. The kit reads it as the default,
   `^$`. A pattern that compiles runs as written in both. Pinned by a test
   (4 patterns).
-- **MD053's whole-line delete of the only line.** For a definition on the
-  only line of a source with no line ending, markdownlint's fix is its
-  whole-line delete (`deleteCount: -1`), which a kit edit (deleting the
-  line's text, the same text left) maps only to an edit on the line. Pinned
-  by a test (1 input), the applied text asserted equal.
 - **MD052 and MD053 enabled with no micromark rule beside them.**
   markdownlint parses with micromark only when an enabled rule's `parser`
   is `"micromark"`, and its MD052 and MD053 (`parser: "none"`) read their

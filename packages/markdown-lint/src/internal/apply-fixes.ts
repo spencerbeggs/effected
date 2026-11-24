@@ -135,11 +135,38 @@ export const applyFixesCounted = (
 		lastLine = fix.lineNumber;
 		lastEdit = editIndex;
 	}
-	// A whole-line delete removes its line, and with it every other fix chosen on that line.
+	// A whole-line delete removes its line, and with it every other fix chosen on that line. markdownlint removes the
+	// lines from its line list and joins what is left, so each run of deleted lines goes with the line break after it,
+	// or, a run reaching the source's last line, with the one before it (none when every line goes).
 	const deleted = new Set(chosen.filter((fix) => fix.deleteCount === -1).map((fix) => fix.lineNumber));
-	const applied = chosen
-		.filter((fix) => fix.deleteCount === -1 || !deleted.has(fix.lineNumber))
-		.sort((a, b) => b.offset - a.offset || b.length - a.length);
+	const lines = mapping.lines();
+	const lineEnd = (lineNumber: number) => mapping.lineStart(lineNumber) + (lines[lineNumber - 1] ?? "").length;
+	const runs: Array<Fix> = [];
+	const sortedDeleted = [...deleted].sort((a, b) => a - b);
+	for (let index = 0; index < sortedDeleted.length; ) {
+		const first = sortedDeleted[index] as number;
+		let last = first;
+		while (sortedDeleted[index + 1] === last + 1) {
+			index++;
+			last++;
+		}
+		index++;
+		const from =
+			last < lines.length ? mapping.lineStart(first) : first > 1 ? lineEnd(first - 1) : mapping.lineStart(first);
+		const to = last < lines.length ? mapping.lineStart(last + 1) : lineEnd(last);
+		runs.push({
+			lineNumber: first,
+			editColumn: 1,
+			deleteCount: -1,
+			insertText: "",
+			insertLength: 0,
+			offset: lead + from,
+			length: to - from,
+		});
+	}
+	const applied = [...chosen.filter((fix) => fix.deleteCount !== -1 && !deleted.has(fix.lineNumber)), ...runs].sort(
+		(a, b) => b.offset - a.offset || b.length - a.length,
+	);
 	// Splice from the end backwards; an edit that would reach into one already applied is skipped. Every edit kept
 	// ends at or before the one after it starts, so the text before it is still the source's: collect the pieces
 	// back to front and join once, rather than rebuilding the whole text per edit.
