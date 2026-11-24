@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T07:06:59Z
+  at: 2026-11-24T07:14:20Z
 integrity:
   generated:
-    body: a184e6141e7dde6d
+    body: 397b4c00dda5454f
 ---
 
 # `@effected/markdown-lint`
@@ -465,10 +465,13 @@ plain synchronous function; no logging, no metrics.
 - **HTML inside an undefined reference is reported twice by markdownlint.**
   From 0.42.2 markdownlint's micromark-parse copies a bracket's `htmlText`
   events into the artificial `undefinedReference` token it builds for MD052,
-  so its MD033 reports an element in `[<b>x</b>]`, `[<b>x</b>][]` or
-  `[x][<i>y</i>]` twice, at the same column. The kit reports it once, as
-  0.42.1 did; a defined reference is reported once by both. Pinned by a test
-  (MD033 3 inputs).
+  so its MD033 reports an element in `[<b>x</b>]`, `[<b>x</b>][]`,
+  `[x][<i>y</i>]` or a label spanning a line break twice, at the same
+  column. The kit reports it once, as 0.42.1 did; a defined reference is
+  reported once by both. Pinned by a test (MD033 4 inputs). The same copy
+  takes `autolink*`, `codeText*`, `attentionSequence` and `mathText*`
+  events, so expect the same double count when MD034, MD038, MD049 or MD050
+  is ported.
 - **Findings come in rule order.** `MarkdownLint.lint` returns findings in
   the order of the rules it was given, each rule's in the order it reported
   them; markdownlint sorts its results by rule name, then line. With the

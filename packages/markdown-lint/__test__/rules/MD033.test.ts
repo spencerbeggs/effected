@@ -340,17 +340,18 @@ describe("MD033 no-inline-html", () => {
 					{ name: "shortcut", source: "[<b>x</b>]\n" },
 					{ name: "collapsed", source: "[<b>x</b>][]\n" },
 					{ name: "full", source: "[x][<i>y</i>]\n" },
+					{ name: "across a line break", source: "[x\n<i>y</i>]\n" },
 					{ name: "defined", source: "[<b>x</b>]\n\n[<b>x</b>]: /u\n" },
 				],
 			);
 			assert.deepStrictEqual(
 				result.divergences.map((divergence) => divergence.fixture),
-				["shortcut", "collapsed", "full"],
+				["shortcut", "collapsed", "full", "across a line break"],
 			);
 			for (const divergence of result.divergences) {
 				assert.match(divergence.reason, /^missing finding 2: markdownlint .*"detail":"Element: [bi]"/);
 			}
-			assert.strictEqual(result.oracleFindings, 7);
+			assert.strictEqual(result.oracleFindings, 9);
 		},
 		DIFFERENTIAL_TIMEOUT,
 	);
