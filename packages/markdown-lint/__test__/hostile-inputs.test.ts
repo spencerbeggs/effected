@@ -10,7 +10,8 @@
 // - 2,000 unclosed fenced code blocks in list items: 15.0 s, 0.06 s;
 // - an ordinary mixed document of 9,000 blocks (27,900 lines): 11.9 s, 0.29 s;
 // - 3,000 lines in blockquotes 40 deep, inline HTML on each: 21.3 s, 0.09 s;
-// - one paragraph of 30,000 groups of a code span, a link and a lone `$`: 49.4 s, 0.34 s.
+// - one paragraph of 60,000 groups of a code span, a link and a lone `$`: 17.2 to 21.3 s with only the
+//   inline-math cursor reverted (three runs), 0.68 to 0.71 s fixed.
 //
 // The ceiling is far above the fixed times, so a busy runner does not fail
 // it, and far below the unfixed ones, so a regression to any of them does. It
@@ -67,7 +68,7 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["2,000 unclosed fences in list items", unclosedFences(2000)],
 	["an ordinary document of 9,000 blocks", ordinary(9000)],
 	["3,000 lines in blockquotes 40 deep with inline HTML", deepQuote(3000, 40)],
-	["a paragraph of 30,000 code spans, links and lone dollar signs", atomicDollars(30000)],
+	["a paragraph of 60,000 code spans, links and lone dollar signs", atomicDollars(60000)],
 ];
 
 describe("hostile inputs", () => {
