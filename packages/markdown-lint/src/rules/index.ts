@@ -33,3 +33,4 @@ export { MD040 } from "./MD040.js";
 export { MD041 } from "./MD041.js";
 export { MD045 } from "./MD045.js";
 export { MD047 } from "./MD047.js";
+export { MD060 } from "./MD060.js";

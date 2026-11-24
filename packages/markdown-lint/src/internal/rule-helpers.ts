@@ -338,6 +338,14 @@ export const blockQuotePrefixText = (context: LintContext, lineNumber: number): 
 	containerParts(context.lines[lineNumber - 1] ?? "", lineNumber, containersAt(context, lineNumber)).quotes.trimEnd();
 
 /**
+ * Line `lineNumber`'s text inside the containers the kit places it in, their
+ * markers and indentation removed; `undefined` for a lazy line.
+ * @internal
+ */
+export const contentInContainers = (context: LintContext, lineNumber: number): string | undefined =>
+	contentOf(context.lines[lineNumber - 1] ?? "", lineNumber, containersAt(context, lineNumber));
+
+/**
  * Whether line `lineNumber` is lazy: it lacks a marker or the indentation
  * of one of the containers the kit places it in.
  * @internal
