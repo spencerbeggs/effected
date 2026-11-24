@@ -141,3 +141,42 @@ describe("hostile inputs to applyFixes", () => {
 		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
 	});
 });
+
+// Settings are document content (an inline `configure-file` comment), so a count or a width that drives a loop or a
+// `repeat` is input too. markdownlint hangs on the first (it counts virtual blank lines past the document's top to
+// `Infinity`) and throws on the second (a billion spaces per tab); the kit bounds both. Before the bounds the first
+// never returned (killed at 20 s) and the second threw `RangeError: Invalid string length`.
+describe("hostile settings", () => {
+	it("lints a heading under lines_above: 1e999 under the ceiling", { timeout: 30_000 }, () => {
+		const source = '<!-- markdownlint-configure-file {"MD022":{"lines_above":1e999}} -->\n\n# T\n\nx\n';
+		const start = performance.now();
+		const findings = MarkdownLint.lint(source, rules);
+		const elapsed = performance.now() - start;
+		// Every line above the heading reads as blank, as markdownlint reads the lines past the top: no MD022 finding.
+		assert.deepStrictEqual(
+			findings.filter((finding) => finding.ruleNames[0] === "MD022"),
+			[],
+		);
+		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+	});
+
+	it("lints a tab under spaces_per_tab: 1e9 under the ceiling, its fix capped", { timeout: 30_000 }, () => {
+		const source = '<!-- markdownlint-configure-file {"MD010":{"spaces_per_tab":1e9}} -->\n\n# T\n\n\tx\n';
+		const start = performance.now();
+		const findings = MarkdownLint.lint(source, rules).filter((finding) => finding.ruleNames[0] === "MD010");
+		const elapsed = performance.now() - start;
+		assert.lengthOf(findings, 1);
+		assert.strictEqual(MarkdownLint.applyFixes(source, findings).split("\n")[4], `${" ".repeat(1_000)}x`);
+		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+	});
+
+	it("lints a heading under lines_above: 1e8 under the ceiling, its fix capped", { timeout: 30_000 }, () => {
+		const source = "text\n# T\n";
+		const start = performance.now();
+		const findings = MarkdownLint.lint(source, rules, { config: { default: false, MD022: { lines_above: 1e8 } } });
+		const elapsed = performance.now() - start;
+		assert.lengthOf(findings, 1);
+		assert.strictEqual(MarkdownLint.applyFixes(source, findings), `text\n${"\n".repeat(1_000)}# T\n`);
+		assert.isBelow(elapsed, CEILING_MS, `${elapsed.toFixed(0)} ms`);
+	});
+});

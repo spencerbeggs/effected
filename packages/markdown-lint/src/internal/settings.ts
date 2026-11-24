@@ -69,3 +69,14 @@ export const coercedNumber = (value: unknown): number => toNumber(value) ?? Numb
 
 /** `String(value)`, as a template literal writes a raw setting value; `""` when that throws. @internal */
 export const coercedText = (value: unknown): string => toText(value) ?? "";
+
+/**
+ * The most a setting-driven `repeat` writes per finding: MD010's spaces per
+ * tab, MD022's blank lines per fix. markdownlint repeats by the raw setting,
+ * so `spaces_per_tab: 1e9` throws past V8's string limit and a large
+ * `lines_above` builds megabytes of line breaks into one fix. No real
+ * configuration asks for a tab stop or a run of blank lines anywhere near a
+ * thousand, so a cap of 1,000 changes no fix under any setting below it, and
+ * bounds a fix's text at a thousand characters per tab or line. @internal
+ */
+export const REPEAT_CAP = 1_000;

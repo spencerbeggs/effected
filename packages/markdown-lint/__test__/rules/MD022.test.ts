@@ -114,6 +114,28 @@ describe("MD022 blanks-around-headings", () => {
 		DIFFERENTIAL_TIMEOUT,
 	);
 
+	// Past the document's edge every line reads as blank; the kit stops its walk there (see `blankRun`) and must still
+	// count what markdownlint's loop counts, including a fractional count's last step.
+	it(
+		"counts the lines past the document's edge as markdownlint does",
+		() => {
+			const result = settingsDifferential(
+				MD022,
+				[
+					{ lines_above: 50 },
+					{ lines_below: 40 },
+					{ lines_above: 500, lines_below: 500 },
+					{ lines_above: 3, include_front_matter: true },
+					{ lines_above: [7, 9, 2] },
+				],
+				[...extra, ...SETTINGS_PROBES, { name: "heading at the top", source: "# T\n" }],
+			);
+			assert.deepStrictEqual(result.divergences, []);
+			assert.isAbove(result.oracleFindings, 0);
+		},
+		DIFFERENTIAL_TIMEOUT,
+	);
+
 	// markdownlint compares a per-level item as written (`"2" !== 2`) and a fractional count as a number, so a heading
 	// with the expected blank lines can still be reported, with a fix inserting `"2" - 2 = 0` lines:
 	// `{ insertText: "" }`. The kit reports the same finding, but an empty edit maps to no `fixInfo` (it changes

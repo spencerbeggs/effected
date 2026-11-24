@@ -9,7 +9,7 @@ import type * as Lint from "@effected/markdown-lint";
 import { headingNodes } from "../internal/headings.js";
 import { preferredLineEnding } from "../internal/line-endings.js";
 import { contentLine, firstContentLine, isBlankLine } from "../internal/lines.js";
-import { coercedNumber, coercedText, flagSetting, numberSetting } from "../internal/settings.js";
+import { REPEAT_CAP, coercedNumber, coercedText, flagSetting, numberSetting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 // markdownlint's `getLinesFunction` for `lines_above` / `lines_below`: an array gives each heading level its item
@@ -34,13 +34,34 @@ const linesFunction = (config: Readonly<Record<string, unknown>>, name: string):
 const rawQuotePrefixLines = (line: string | undefined, count: number, lineEnding: string): string =>
 	`${(/^(?:[ \t]*>[ \t]?)*/.exec(line ?? "")?.[0] ?? "").trimEnd()}${lineEnding}`.repeat(Math.max(0, count));
 
+// markdownlint's count of blank lines beside a heading: up to `count` steps from it while each line is blank. Every
+// line past the document's edge reads as "" (blank), so once the walk leaves the document each remaining step counts
+// one: the walk stops at the edge and takes them at once (the smallest whole count not below `count`), where
+// markdownlint loops through them, forever under `Infinity`. The bound is the document's own lines.
+const blankRun = (
+	count: number,
+	lineNumberAt: (step: number) => number,
+	inside: (lineNumber: number) => boolean,
+	lineAt: (lineNumber: number) => string,
+): number => {
+	let actual = 0;
+	while (actual < count) {
+		const lineNumber = lineNumberAt(actual);
+		if (!inside(lineNumber)) return Math.ceil(count);
+		if (!isBlankLine(lineAt(lineNumber))) break;
+		actual++;
+	}
+	return actual;
+};
+
 /**
  * MD022 `blanks-around-headings`: headings are surrounded by blank lines.
  *
  * @remarks
  * markdownlint's settings: `lines_above` and `lines_below` (default `1`;
  * a count, or an array of counts per heading level; a negative count turns
- * that side off) and `include_front_matter` (default `false`). Settings are coerced as markdownlint coerces them
+ * that side off; a fix inserts at most 1,000 blank lines, and a count past
+ * the document's edge ends there, where markdownlint loops through it) and `include_front_matter` (default `false`). Settings are coerced as markdownlint coerces them
  * (`"50"` reads as `50`, `0` as `false`).
  *
  * @public
@@ -64,6 +85,8 @@ export const MD022: Lint.LintRule = LintRule.make({
 				: frontMatter && lineNumber >= 1 && lineNumber < first
 					? (context.lines[lineNumber - 1] as string)
 					: "";
+		// The first line the walk above can read: a front matter line when included, else the first content line.
+		const top = includeFrontMatter ? 1 : first;
 		for (const heading of headingNodes(context)) {
 			const startLine = heading.position.start.line;
 			const endLine = heading.position.end.line;
@@ -71,8 +94,12 @@ export const MD022: Lint.LintRule = LintRule.make({
 			const linesAbove = above(heading);
 			const countAbove = coercedNumber(linesAbove);
 			if (countAbove >= 0) {
-				let actual = 0;
-				while (actual < countAbove && isBlankLine(lineAt(startLine - 1 - actual, includeFrontMatter))) actual++;
+				const actual = blankRun(
+					countAbove,
+					(step) => startLine - 1 - step,
+					(lineNumber) => lineNumber >= top,
+					(lineNumber) => lineAt(lineNumber, includeFrontMatter),
+				);
 				if (actual !== linesAbove) {
 					const offset = context.mapping.lineStart(startLine);
 					report(
@@ -83,7 +110,11 @@ export const MD022: Lint.LintRule = LintRule.make({
 							fix: {
 								offset,
 								length: 0,
-								content: rawQuotePrefixLines(contentLine(context, startLine - 1), countAbove - actual, lineEnding),
+								content: rawQuotePrefixLines(
+									contentLine(context, startLine - 1),
+									Math.min(REPEAT_CAP, countAbove - actual),
+									lineEnding,
+								),
 							},
 						}),
 					);
@@ -92,8 +123,12 @@ export const MD022: Lint.LintRule = LintRule.make({
 			const linesBelow = below(heading);
 			const countBelow = coercedNumber(linesBelow);
 			if (countBelow >= 0) {
-				let actual = 0;
-				while (actual < countBelow && isBlankLine(lineAt(endLine + 1 + actual, false))) actual++;
+				const actual = blankRun(
+					countBelow,
+					(step) => endLine + 1 + step,
+					(lineNumber) => lineNumber <= last,
+					(lineNumber) => lineAt(lineNumber, false),
+				);
 				if (actual !== linesBelow) {
 					const offset = context.mapping.lineStart(endLine + 1);
 					report(
@@ -104,7 +139,11 @@ export const MD022: Lint.LintRule = LintRule.make({
 							fix: {
 								offset,
 								length: 0,
-								content: rawQuotePrefixLines(contentLine(context, endLine + 1), countBelow - actual, lineEnding),
+								content: rawQuotePrefixLines(
+									contentLine(context, endLine + 1),
+									Math.min(REPEAT_CAP, countBelow - actual),
+									lineEnding,
+								),
 							},
 						}),
 					);
