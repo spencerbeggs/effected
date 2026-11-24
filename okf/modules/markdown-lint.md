@@ -1,7 +1,7 @@
 ---
 type: Module
 title: "@effected/markdown-lint"
-description: "A markdownlint-compatible lint rule shape over @effected/markdown trees: one LintRule definition with markdownlint metadata, a pure programmatic host (MarkdownLint) resolving markdownlint configuration and inline comments, a markdownlint custom-rule adapter (MarkdownlintAdapter), 49 ported built-in rules on ./rules held to markdownlint by a differential harness, and a ./config reader of markdownlint config files; every line, range and fix derived from kit offsets by PositionMapping."
+description: "A markdownlint-compatible lint rule shape over @effected/markdown trees: one LintRule definition with markdownlint metadata, a pure programmatic host (MarkdownLint) resolving markdownlint configuration and inline comments, a markdownlint custom-rule adapter (MarkdownlintAdapter), 50 ported built-in rules on ./rules held to markdownlint by a differential harness, and a ./config reader of markdownlint config files; every line, range and fix derived from kit offsets by PositionMapping."
 status: draft
 kind: package
 resource: ../../packages/markdown-lint
@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T17:32:47Z
+  at: 2026-11-24T17:55:53Z
 integrity:
   generated:
-    body: c69285dbd87d355e
+    body: 45d1e3b6fa2794c1
 ---
 
 # `@effected/markdown-lint`
@@ -66,7 +66,7 @@ their own markdownlint and the package cannot pin it.
 | Entry | Holds | May import |
 | --- | --- | --- |
 | `.` | `LintRule`, `LintContext`, `LintDiagnostic`, `PositionMapping`, `LintConfig`, `InlineDirectives`, the `MarkdownLint` host and the `MarkdownlintAdapter` | `@effected/markdown` and `effect`; never a rule module, `./config`, `node:` or a format engine |
-| `./rules` | the 49 ported built-in rules, one free-standing named export each (`MD001` … `MD060`) | the root, through the package's own name for types |
+| `./rules` | the 50 ported built-in rules, one free-standing named export each (`MD001` … `MD060`) | the root, through the package's own name for types |
 | `./rules/all` | `rules`, every port in markdownlint's order, and `uncovered`, the 0 built-in rule names with no port yet | the rule modules |
 | `./config` | `MarkdownlintConfigFile` and `MarkdownlintConfigError` | the root, `@effected/jsonc`, `@effected/yaml`, `FileSystem` and `Path` |
 
@@ -261,7 +261,7 @@ markdownlint's configuration and not markdownlint-cli2's options files is
 
 ## The ported rules
 
-`./rules` ports 49 of markdownlint 0.42's 53 built-in rules: MD001, MD003, MD004, MD005, MD007, MD009, MD010, MD011, MD012, MD013, MD014, MD018, MD019, MD020, MD021, MD022, MD023, MD024, MD025, MD026, MD027, MD028, MD029, MD030, MD031, MD032, MD033, MD034, MD035, MD036, MD037, MD038, MD039, MD040, MD041, MD042, MD043, MD044, MD045, MD046, MD047, MD048, MD049, MD050, MD052, MD053, MD054, MD059 and MD060. Each is an
+`./rules` ports 50 of markdownlint 0.42's 53 built-in rules: MD001, MD003, MD004, MD005, MD007, MD009, MD010, MD011, MD012, MD013, MD014, MD018, MD019, MD020, MD021, MD022, MD023, MD024, MD025, MD026, MD027, MD028, MD029, MD030, MD031, MD032, MD033, MD034, MD035, MD036, MD037, MD038, MD039, MD040, MD041, MD042, MD043, MD044, MD045, MD046, MD047, MD048, MD049, MD050, MD051, MD052, MD053, MD054, MD059 and MD060. Each is an
 ordinary `LintRule` carrying markdownlint's own names, description, tags and
 documentation link, and a rule with settings reads them from
 `LintContext.config` under markdownlint's names and defaults, coerced as
@@ -331,6 +331,19 @@ extension parses) has that line read as no text. Over the corpus and the
 reference grid (`__test__/helpers/reference-grid.ts`, 18 forms with and
 without definitions in 18 placements, and 30 label shapes) the data agrees
 entry for entry, in markdownlint's map order.
+
+MD051 builds the fragments a document defines as markdownlint does:
+`#top`, each heading's GitHub fragment (its data, escapes' values, code
+and math data, links' labels; never an image, a reference, a resource, a
+character reference, an autolink, inline HTML, an emphasis sequence, or a
+setext heading's line endings and prefixes), suffixed `-1`, `-2` on a
+repeat, a heading's `{#anchor}`s, and each opening HTML tag's `id` (an
+`<a>`'s `name`), HTML blocks' tags included. It checks every link's
+destinations (its images' and the links in its images' labels too, as
+markdownlint reads them all under the link) and every definition's, a
+docfx tab heading's link left out. Over the fragment grid
+(`__test__/helpers/fragment-grid.ts`, 35 heading shapes in 8 link forms)
+and 19 anchor shapes it agrees finding for finding.
 
 ## Failure posture
 
@@ -414,7 +427,9 @@ plain synchronous function; no logging, no metrics.
   after a bracket in inline math, the block's rest re-read once (MD034),
   one line of 20,000 undefined references and 20,000 uses of one label
   beside 20,000 duplicate definitions (MD052), 20,000 unused definitions
-  (MD053), with a ratio guard for MD054 over every style disallowed, with ratio guards for the
+  (MD053), 20,000 repeated headings with 80,000 fragments in another case
+  (MD051), with ratio guards for MD054 over every style disallowed and MD051
+  over repeated headings, with ratio guards for the
   math re-read, undefined references, alternating images and links, and
   label starts closed in reverse,
   `applyFixes` over
@@ -623,6 +638,14 @@ plain synchronous function; no logging, no metrics.
   `codeTextPadding` but not its `codeText` token, which MD038 walks, so it
   reports a code span in an undefined reference once (the code-span grid
   pins `[\`  x\`][undef]`).
+- **An MD051 `ignored_pattern` that does not compile, or that could match
+  in exponential time.** markdownlint passes the setting to `new RegExp`:
+  a pattern that does not compile (`(`) throws, and one where an unbounded
+  quantifier repeats a group holding another or an alternation
+  (`(a+)+$`, `(a|aa)*$`) runs as written (`(a+)+$` against a fragment of
+  26 `a`s and a `!` took 5,064 ms, doubling with each `a`). The kit reads
+  either as the default, `^$`, staying total and bounded. Pinned by a test
+  (6 patterns).
 - **MD053's whole-line delete of the only line.** For a definition on the
   only line of a source with no line ending, markdownlint's fix is its
   whole-line delete (`deleteCount: -1`), which a kit edit (deleting the

@@ -32,6 +32,7 @@ import { MarkdownLint } from "../src/MarkdownLint.js";
 import { rules } from "../src/rules/all.js";
 import { MD009 } from "../src/rules/MD009.js";
 import { MD034 } from "../src/rules/MD034.js";
+import { MD051 } from "../src/rules/MD051.js";
 import { MD052 } from "../src/rules/MD052.js";
 import { MD054 } from "../src/rules/MD054.js";
 
@@ -136,6 +137,12 @@ const usesOfOneLabel = (count: number): string =>
 const linkStyles = (count: number): string =>
 	`# T\n\n${"<https://a.example> [t](https://a.example) [t][r] [r][] [r] ![i][r] ".repeat(count)}\n\n[r]: https://r.example\n`;
 
+// MD051 suffixes each repeated heading's fragment and looks each link's fragment up in every case: every link names
+// the last repeat in another case, which a search of the fragments in order finds only at their end; four links a
+// heading, so the lookups outweigh the parse.
+const repeatedHeadings = (count: number): string =>
+	`${"# Same\n\n".repeat(count)}${`[x](#SAME-${count - 1}) `.repeat(count * 4)}\n`;
+
 const cpuNow = (): number => {
 	const used = process.cpuUsage();
 	return (used.user + used.system) / 1000;
@@ -170,6 +177,7 @@ const scalingShapes: ReadonlyArray<
 	["reads undefined references and chains", undefinedReferences, MD052, { shortcut_syntax: true }],
 	["reads alternating images and links", imagesAndLinks, MD052, { shortcut_syntax: true }],
 	["reads label starts closed in reverse", openersThenClosers, MD052, { shortcut_syntax: true }],
+	["checks fragments against repeated headings", repeatedHeadings, MD051, {}],
 	[
 		"checks every link style",
 		linkStyles,
@@ -200,6 +208,7 @@ const inputs: ReadonlyArray<readonly [name: string, source: string]> = [
 	["one line of 20,000 undefined references, collapsed and full", undefinedReferences(20000)],
 	["20,000 uses of one label beside 20,000 duplicate definitions", usesOfOneLabel(20000)],
 	["20,000 unused definitions", unusedDefinitions(20000)],
+	["20,000 repeated headings and 20,000 fragments in another case", repeatedHeadings(20000)],
 ];
 
 describe("hostile inputs", () => {

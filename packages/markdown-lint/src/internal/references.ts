@@ -55,6 +55,9 @@ export interface Medium {
 	readonly end: number;
 	readonly label: string;
 	readonly destination?: string;
+	// An inline one's destination string, in source offsets (its `<>` left out).
+	readonly destinationStart?: number;
+	readonly destinationEnd?: number;
 	readonly title?: string;
 	readonly reference?: string;
 }
@@ -114,17 +117,24 @@ const skipBlank = (text: string, at: number, end: number): number => {
 
 // An inline link's resource from its `(` at `open`, as micromark's string tokens hold it: the destination (inside
 // `<>` or raw) and the title (inside its quotes or parentheses), each absent when empty.
-const resource = (text: string, open: number, end: number): { destination?: string; title?: string } => {
+const resource = (
+	text: string,
+	open: number,
+	end: number,
+): { destination?: string; destinationStart?: number; title?: string } => {
 	if (text.charAt(open) !== "(") return {};
 	let at = skipBlank(text, open + 1, end);
 	let destination: string;
+	let destinationStart: number;
 	if (text.charAt(at) === "<") {
 		let stop = at + 1;
 		while (stop < end && text.charAt(stop) !== ">") stop += text.charAt(stop) === "\\" ? 2 : 1;
 		destination = text.slice(at + 1, stop);
+		destinationStart = at + 1;
 		at = stop + 1;
 	} else {
 		destination = rawDestination(text, at, end);
+		destinationStart = at;
 		at += destination.length;
 	}
 	at = skipBlank(text, at, end);
@@ -137,7 +147,7 @@ const resource = (text: string, open: number, end: number): { destination?: stri
 		title = text.slice(at + 1, stop);
 	}
 	return {
-		...(destination === "" ? {} : { destination }),
+		...(destination === "" ? {} : { destination, destinationStart }),
 		...(title === undefined || title === "" ? {} : { title }),
 	};
 };
@@ -488,8 +498,8 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 			media.push({ kind: referenceType, image, start: from, end: to, label });
 			return;
 		}
-		const { destination, title } = resource(view.text, close + 1, end);
-		if (destination === undefined) {
+		const { destination, destinationStart, title } = resource(view.text, close + 1, end);
+		if (destination === undefined || destinationStart === undefined) {
 			media.push({ kind: "shortcut", image, start: from, end: to, label });
 			return;
 		}
@@ -500,6 +510,8 @@ export const referenceData: (context: LintContext) => ReferenceData = perReading
 			end: to,
 			label,
 			destination,
+			destinationStart: view.toSource(destinationStart),
+			destinationEnd: view.toSource(destinationStart + destination.length - 1) + 1,
 			...(title === undefined ? {} : { title }),
 		});
 	};
