@@ -7,7 +7,7 @@
 import { Option } from "effect";
 import type { LintDiagnostic } from "../LintDiagnostic.js";
 import { PositionMapping } from "../PositionMapping.js";
-import { preferredLineEnding } from "./line-endings.js";
+import { LINE_BREAK, preferredLineEnding } from "./line-endings.js";
 
 interface Fix {
 	readonly lineNumber: number;
@@ -125,12 +125,7 @@ export const applyFixesCounted = (
 	// markdownlint splits the file on every line break (a lone `\r` too) and joins it with the line ending it
 	// prefers for the original, so a fixed file comes back with one line ending throughout, fixed or not.
 	const ending = preferredLineEnding(source.slice(lead));
-	const text =
-		source.slice(0, lead) +
-		result
-			.slice(lead)
-			.split(/\r\n?|\n/)
-			.join(ending);
+	const text = source.slice(0, lead) + result.slice(lead).split(LINE_BREAK).join(ending);
 	return { text, skipped };
 };
 

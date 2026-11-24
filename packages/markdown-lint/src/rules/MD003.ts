@@ -4,8 +4,9 @@
 // `atxHeadingSequence`).
 
 import type * as Lint from "@effected/markdown-lint";
+import { Predicate } from "effect";
 import { headingNodes, headingStyle } from "../internal/headings.js";
-import { isString, setting } from "../internal/settings.js";
+import { setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 /**
@@ -24,7 +25,7 @@ export const MD003: Lint.LintRule = LintRule.make({
 	tags: ["headings"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md003.md",
 	check: (context, report) => {
-		let style = setting(context.config, "style", isString, "consistent") || "consistent";
+		let style = setting(context.config, "style", Predicate.isString, "consistent") || "consistent";
 		for (const heading of headingNodes(context)) {
 			const actual = headingStyle(context, heading);
 			if (style === "consistent") style = actual;

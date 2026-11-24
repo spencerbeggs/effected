@@ -4,8 +4,9 @@
 
 import type { MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
+import { Predicate } from "effect";
 import { headingNodes } from "../internal/headings.js";
-import { isString, setting } from "../internal/settings.js";
+import { setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 const allPunctuationNoQuestion = ".,;:!。，；：！";
@@ -32,7 +33,7 @@ export const MD026: Lint.LintRule = LintRule.make({
 	tags: ["headings"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md026.md",
 	check: (context, report) => {
-		const punctuation = setting(context.config, "punctuation", isString, allPunctuationNoQuestion);
+		const punctuation = setting(context.config, "punctuation", Predicate.isString, allPunctuationNoQuestion);
 		const trailing = new RegExp(`\\s*[${escapeForRegExp(punctuation)}]+$`);
 		for (const heading of headingNodes(context)) {
 			const children = heading.children as ReadonlyArray<MarkdownNode>;

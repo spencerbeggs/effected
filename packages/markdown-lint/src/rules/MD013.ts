@@ -5,10 +5,12 @@
 
 import type { MarkdownNode, Paragraph } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
+import { Predicate } from "effect";
 import { codeBlockLines } from "../internal/code-blocks.js";
 import { headingNodes } from "../internal/headings.js";
+import { LINE_BREAK } from "../internal/line-endings.js";
 import { firstContentLine, nodeLines } from "../internal/lines.js";
-import { isBoolean, isNumber, setting } from "../internal/settings.js";
+import { setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 // A line that cannot wrap: optional heading or blockquote markers and space, then one run of non-space.
@@ -34,7 +36,7 @@ const paragraphTextLines = (context: Lint.LintContext): Set<number> => {
 					.replace(/\\[!-/:-@[-`{-~]/g, "")
 					.replace(/&#(?:\d{1,7}|[xX][\da-fA-F]{1,6});/g, "")
 					.replace(/&[A-Za-z][A-Za-z\d]{0,30};/g, (reference) => (value.includes(reference) ? reference : ""));
-			const segments = text.split(/\r\n?|\n/);
+			const segments = text.split(LINE_BREAK);
 			for (const [index, segment] of segments.entries()) {
 				if (notData(index === 0 ? segment : segment.replace(/^[ \t]+/, "")).length > 0) {
 					lines.add(child.position.start.line + index);
@@ -77,14 +79,14 @@ export const MD013: Lint.LintRule = LintRule.make({
 	tags: ["line_length"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md013.md",
 	check: (context, report) => {
-		const lineLength = setting(context.config, "line_length", isNumber, 80);
-		const headingLineLength = setting(context.config, "heading_line_length", isNumber, lineLength);
-		const codeLineLength = setting(context.config, "code_block_line_length", isNumber, lineLength);
-		const strict = setting(context.config, "strict", isBoolean, false);
-		const stern = setting(context.config, "stern", isBoolean, false);
-		const includeCodeBlocks = setting(context.config, "code_blocks", isBoolean, true);
-		const includeTables = setting(context.config, "tables", isBoolean, true);
-		const includeHeadings = setting(context.config, "headings", isBoolean, true);
+		const lineLength = setting(context.config, "line_length", Predicate.isNumber, 80);
+		const headingLineLength = setting(context.config, "heading_line_length", Predicate.isNumber, lineLength);
+		const codeLineLength = setting(context.config, "code_block_line_length", Predicate.isNumber, lineLength);
+		const strict = setting(context.config, "strict", Predicate.isBoolean, false);
+		const stern = setting(context.config, "stern", Predicate.isBoolean, false);
+		const includeCodeBlocks = setting(context.config, "code_blocks", Predicate.isBoolean, true);
+		const includeTables = setting(context.config, "tables", Predicate.isBoolean, true);
+		const includeHeadings = setting(context.config, "headings", Predicate.isBoolean, true);
 		const headings = nodeLines(headingNodes(context));
 		const code = codeBlockLines(context);
 		const tables = nodeLines(context.document.findAll("table"));

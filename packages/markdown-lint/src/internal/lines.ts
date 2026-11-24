@@ -4,6 +4,7 @@
 
 import { Option } from "effect";
 import type { LintContext } from "../LintContext.js";
+import { LINE_BREAK } from "./line-endings.js";
 
 /** Add lines `start` to `end`, inclusive, to `set`. @internal */
 export const addRange = (set: Set<number>, start: number, end: number): void => {
@@ -67,7 +68,7 @@ export const isBlankLine = (line: string | undefined): boolean => {
  * @internal
  */
 export const errorContext = (text: string, start?: boolean, end?: boolean): string => {
-	const normalized = text.replace(/\r\n?|\n/g, "\n");
+	const normalized = text.replace(LINE_BREAK, "\n");
 	if (normalized.length <= 30) return normalized;
 	if (start && end) return `${normalized.slice(0, 15)}...${normalized.slice(-15)}`;
 	if (end) return `...${normalized.slice(-30)}`;

@@ -1,5 +1,7 @@
 // Rule settings: a reader that falls back to markdownlint's default on a
-// wrong-typed value, and the guards it takes.
+// wrong-typed value, and the one guard `effect`'s `Predicate` lacks.
+
+import { Predicate } from "effect";
 
 /** Read setting `name`, or `fallback` when it is absent or fails `guard`. @internal */
 export const setting = <A>(
@@ -12,15 +14,6 @@ export const setting = <A>(
 	return guard(value) ? value : fallback;
 };
 
-/** @internal */
-export const isNumber = (value: unknown): value is number => typeof value === "number";
-
-/** @internal */
-export const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
-
-/** @internal */
+/** A setting that is an array of strings; the scalar guards are `effect`'s `Predicate`s. @internal */
 export const isStringArray = (value: unknown): value is ReadonlyArray<string> =>
-	Array.isArray(value) && value.every((item) => typeof item === "string");
-
-/** @internal */
-export const isString = (value: unknown): value is string => typeof value === "string";
+	Array.isArray(value) && value.every(Predicate.isString);

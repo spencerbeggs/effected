@@ -4,10 +4,11 @@
 
 import type { Link } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
+import { Predicate } from "effect";
 import { contentBlocks, frontMatterHasTitle, headingNodes, headingStyle, headingText } from "../internal/headings.js";
 import { isHtmlFlowComment } from "../internal/html-text.js";
 import { errorContext } from "../internal/lines.js";
-import { isNumber, setting } from "../internal/settings.js";
+import { setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 /**
@@ -28,7 +29,7 @@ export const MD025: Lint.LintRule = LintRule.make({
 	tags: ["headings"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md025.md",
 	check: (context, report) => {
-		const level = setting(context.config, "level", isNumber, 1);
+		const level = setting(context.config, "level", Predicate.isNumber, 1);
 		const matching = headingNodes(context).filter((heading) => {
 			if (heading.depth !== level) return false;
 			// markdownlint's `isDocfxTab`: an ATX heading whose text is one link to `#tab/…`.

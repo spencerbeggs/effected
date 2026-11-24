@@ -3,11 +3,12 @@
 // top-level blocks the title rules read.
 
 import type { Heading, MarkdownNode } from "@effected/markdown";
-import { Option } from "effect";
+import { Option, Predicate } from "effect";
 import type { LintContext } from "../LintContext.js";
+import { LINE_BREAK } from "./line-endings.js";
 import { mathFlowLines } from "./math-flow.js";
 import { perReading } from "./memo.js";
-import { isString, setting } from "./settings.js";
+import { setting } from "./settings.js";
 
 /**
  * markdownlint's `frontMatterHasTitle`: whether a front matter line matches
@@ -22,7 +23,7 @@ export const frontMatterHasTitle = (context: LintContext): boolean => {
 	// markdownlint turns front matter off for any falsy value (`""`, `false`, `0`, `null`), not only `""`.
 	const raw = context.config.front_matter_title;
 	if (raw !== undefined && !raw) return false;
-	const pattern = setting(context.config, "front_matter_title", isString, fallback);
+	const pattern = setting(context.config, "front_matter_title", Predicate.isString, fallback);
 	let matcher: RegExp;
 	try {
 		matcher = new RegExp(pattern, "i");
@@ -99,7 +100,7 @@ export const headingText = (context: LintContext, heading: Heading): string =>
 		.filter((child) => child.type !== "html")
 		.map((child) => context.source.slice(child.position.start.offset, child.position.end.offset))
 		.join("")
-		.replace(/\r\n?|\n/g, " ")
+		.replace(LINE_BREAK, " ")
 		.trim();
 
 /** The document's top-level blocks after its front matter: micromark's top-level content tokens. @internal */

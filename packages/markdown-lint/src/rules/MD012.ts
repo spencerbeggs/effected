@@ -3,9 +3,10 @@
 // span, fences included; this module takes those spans from kit code nodes.
 
 import type * as Lint from "@effected/markdown-lint";
+import { Predicate } from "effect";
 import { codeBlockLines } from "../internal/code-blocks.js";
 import { firstContentLine } from "../internal/lines.js";
-import { isNumber, setting } from "../internal/settings.js";
+import { setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 // The offset the text of the line before `lineNumber` ends at, before its terminator.
@@ -27,7 +28,7 @@ export const MD012: Lint.LintRule = LintRule.make({
 	tags: ["whitespace", "blank_lines"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md012.md",
 	check: (context, report) => {
-		const maximum = setting(context.config, "maximum", isNumber, 1);
+		const maximum = setting(context.config, "maximum", Predicate.isNumber, 1);
 		const code = codeBlockLines(context);
 		const reported: Array<{ readonly lineNumber: number; readonly count: number }> = [];
 		let count = 0;

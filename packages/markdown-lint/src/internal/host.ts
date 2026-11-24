@@ -19,6 +19,7 @@ import type { LintContext, LintFrontmatter, LintReport } from "../LintContext.js
 import { LintDiagnostic } from "../LintDiagnostic.js";
 import type { LintRule } from "../LintRule.js";
 import { PositionMapping } from "../PositionMapping.js";
+import { LINE_BREAK } from "./line-endings.js";
 import { registerUnmaskedSource } from "./memo.js";
 import { frontMatterLineCount, maskHtmlComments } from "./reading.js";
 
@@ -56,13 +57,13 @@ export interface Reading {
 }
 
 /** markdownlint's line split: every line of `text` without its terminator. @internal */
-export const splitLines = (text: string): Array<string> => text.split(/\r\n?|\n/);
+export const splitLines = (text: string): Array<string> => text.split(LINE_BREAK);
 
 /** The offset line `count + 1` starts at, or the length when there is no such line. @internal */
 export const offsetAfterLines = (text: string, count: number): number => {
 	if (count === 0) return 0;
 	let seen = 0;
-	for (const match of text.matchAll(/\r\n?|\n/g)) {
+	for (const match of text.matchAll(LINE_BREAK)) {
 		seen++;
 		if (seen === count) return match.index + match[0].length;
 	}

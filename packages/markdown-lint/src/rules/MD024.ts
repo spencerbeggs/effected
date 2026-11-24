@@ -3,9 +3,10 @@
 // direct children's source spans (micromark's heading text token children).
 
 import type * as Lint from "@effected/markdown-lint";
+import { Predicate } from "effect";
 import { headingNodes, headingText } from "../internal/headings.js";
 import { errorContext } from "../internal/lines.js";
-import { isBoolean, setting } from "../internal/settings.js";
+import { setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 /**
@@ -24,7 +25,7 @@ export const MD024: Lint.LintRule = LintRule.make({
 	tags: ["headings"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md024.md",
 	check: (context, report) => {
-		const siblingsOnly = setting(context.config, "siblings_only", isBoolean, false);
+		const siblingsOnly = setting(context.config, "siblings_only", Predicate.isBoolean, false);
 		const known: Array<Array<string>> = [[], []];
 		let lastLevel = 1;
 		let current = known[lastLevel] as Array<string>;

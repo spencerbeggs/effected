@@ -6,18 +6,16 @@
 import type { MarkdownNode } from "@effected/markdown";
 import type { LintContext } from "../LintContext.js";
 import { codeBlockLines } from "./code-blocks.js";
-import { containerStep, flowNodes } from "./containers.js";
+import { containerStep, flowNodes, isContainer } from "./containers.js";
 import type { LineRange } from "./lines.js";
 import { addRange, firstContentLine, nodeLines } from "./lines.js";
 import { perReading } from "./memo.js";
-
-const MATH_CONTAINERS = new Set(["blockquote", "listItem", "footnoteDefinition"]);
 
 // A container's child containers, looking through lists to their items.
 const childContainers = (node: MarkdownNode): Array<MarkdownNode> => {
 	const found: Array<MarkdownNode> = [];
 	for (const child of ("children" in node ? node.children : []) as ReadonlyArray<MarkdownNode>) {
-		if (MATH_CONTAINERS.has(child.type)) found.push(child);
+		if (isContainer(child)) found.push(child);
 		else if (child.type === "list") found.push(...childContainers(child));
 	}
 	return found;

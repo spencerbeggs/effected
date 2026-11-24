@@ -6,8 +6,13 @@ import type { ListItem, MarkdownNode } from "@effected/markdown";
 import type { LintContext } from "../LintContext.js";
 import { perReading } from "./memo.js";
 
-/** The node types a flow-level walk descends into. @internal */
-export const CONTAINERS = new Set(["root", "blockquote", "list", "listItem", "footnoteDefinition"]);
+const CONTAINER_TYPES: ReadonlySet<string> = new Set(["blockquote", "listItem", "footnoteDefinition"]);
+
+/** Whether `node` is a container: a blockquote, a list item or a footnote definition. @internal */
+export const isContainer = (node: MarkdownNode): boolean => CONTAINER_TYPES.has(node.type);
+
+/** The node types a flow-level walk descends into: the root, the containers, and lists. @internal */
+export const CONTAINERS: ReadonlySet<string> = new Set(["root", "list", ...CONTAINER_TYPES]);
 
 /**
  * Every flow-level node of one of `types` — a block in the document, a
@@ -15,17 +20,8 @@ export const CONTAINERS = new Set(["root", "blockquote", "list", "listItem", "fo
  * paragraph, heading or table, where the same node type is inline.
  * @internal
  */
-export const flowNodes = (context: LintContext, types: ReadonlySet<string>): Array<MarkdownNode> => {
-	const found: Array<MarkdownNode> = [];
-	const visit = (node: MarkdownNode): void => {
-		if (types.has(node.type)) found.push(node);
-		if (CONTAINERS.has(node.type) && "children" in node) {
-			for (const child of node.children as ReadonlyArray<MarkdownNode>) visit(child);
-		}
-	};
-	visit(context.document.root as MarkdownNode);
-	return found;
-};
+export const flowNodes = (context: LintContext, types: ReadonlySet<string>): Array<MarkdownNode> =>
+	flowNodesWithAncestors(context, types).map(({ node }) => node);
 
 /**
  * The 0-based column a list item's content starts at: its first child's,
@@ -98,9 +94,7 @@ const contentOf = (line: string, lineNumber: number, chain: ReadonlyArray<Markdo
  * @internal
  */
 export const containerNodes: (context: LintContext) => ReadonlyArray<MarkdownNode> = perReading((context) =>
-	context.document.findAll(
-		(node) => node.type === "blockquote" || node.type === "listItem" || node.type === "footnoteDefinition",
-	),
+	context.document.findAll(isContainer),
 );
 
 // Every line's containers, outermost first, built in one pass over the containers: each is added to the lines it
@@ -152,7 +146,7 @@ export const contentInContainers = (context: LintContext, lineNumber: number): s
  * @internal
  */
 export const isLazyLine = (context: LintContext, lineNumber: number): boolean =>
-	contentOf(context.lines[lineNumber - 1] ?? "", lineNumber, containersAt(context, lineNumber)) === undefined;
+	contentInContainers(context, lineNumber) === undefined;
 
 /**
  * Every flow-level node of one of `types` with its container ancestors

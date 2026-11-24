@@ -61,8 +61,12 @@ const quoteMarkers = /^(?:[ \t]{0,3}>[ \t]?)*/;
  * before it, behind its own blockquote markers, and indents it, and the
  * block is read from one more parse: every swept line is paragraph text,
  * none read as an HTML block or code, and the re-read costs at most
- * `maxPasses + 1` parses. Each swept line is then its own paragraph, so a
- * tag spanning two of them is not read as one.
+ * `maxPasses + 1` parses. The swept lines and their stubs read as one
+ * paragraph, so a tag spanning two swept lines is still read as one tag,
+ * with the stub's `x` inside it.
+ *
+ * `options.maxPasses` and the `passes`, `settled` and `swept` results are
+ * test seams: the one production caller reads `document` and `lines`.
  * @internal
  */
 export const rereadHtmlBlock = (

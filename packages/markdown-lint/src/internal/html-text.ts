@@ -4,7 +4,7 @@
 
 import type { MarkdownNode } from "@effected/markdown";
 import type { LintContext } from "../LintContext.js";
-import { flowNodes } from "./containers.js";
+import { flowNodes, isContainer } from "./containers.js";
 import { rereadHtmlBlock } from "./html-reread.js";
 import { mathFlowLines } from "./math-flow.js";
 import { inSpans, mathTextSpans } from "./math-text.js";
@@ -17,14 +17,13 @@ export interface HtmlText {
 	readonly inTable: boolean;
 }
 
-const FLOW_PARENTS = new Set(["root", "blockquote", "listItem", "footnoteDefinition"]);
-
 // Every inline `html` node under `node` (none an HTML block), with whether a table holds it.
 const inlineHtml = (node: MarkdownNode, inTable: boolean, found: Array<{ node: MarkdownNode; inTable: boolean }>) => {
 	const tabled = inTable || node.type === "table";
 	if ("children" in node) {
 		for (const child of node.children as ReadonlyArray<MarkdownNode>) {
-			if (child.type === "html" && !FLOW_PARENTS.has(node.type)) found.push({ node: child, inTable: tabled });
+			if (child.type === "html" && node.type !== "root" && !isContainer(node))
+				found.push({ node: child, inTable: tabled });
 			inlineHtml(child, tabled, found);
 		}
 	}

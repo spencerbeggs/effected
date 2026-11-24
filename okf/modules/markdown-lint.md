@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "claude-code/opus-5.5"
-  at: 2026-11-24T02:19:01Z
+  at: 2026-11-24T02:55:54Z
 integrity:
   generated:
-    body: ed36a153770f4021
+    body: e6bc9e41891c1a05
 ---
 
 # `@effected/markdown-lint`
@@ -324,8 +324,9 @@ plain synchronous function; no logging, no metrics.
   read as written. The parse runs at most eight times; no corpus block
   and no adversarial shape tried needs more than four. Past the cap, a
   terminal sweep gives every remaining node's lines a stub each and reads
-  the block from one more parse, so no line is left unread as code. There,
-  a tag spanning two lines is not read as one.
+  the block from one more parse, so no line is left unread as code. The
+  swept lines and their stubs read as one paragraph, so a tag spanning two
+  lines is still read as one tag, with a stub's `x` inside it.
 
 - MD060 measures with a port of string-width 8.3.0 and
   get-east-asian-width 1.7.0's Wide and Fullwidth ranges, the copies

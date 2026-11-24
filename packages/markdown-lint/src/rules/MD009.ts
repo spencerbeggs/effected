@@ -6,9 +6,10 @@
 
 import type { List, MarkdownNode } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
+import { Predicate } from "effect";
 import { codeNodes, fencedInterior } from "../internal/code-blocks.js";
 import { addRange, firstContentLine } from "../internal/lines.js";
-import { isBoolean, isNumber, setting } from "../internal/settings.js";
+import { setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 // The lines markdownlint leaves to the code: an indented block's every line,
@@ -77,10 +78,10 @@ export const MD009: Lint.LintRule = LintRule.make({
 	tags: ["whitespace"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md009.md",
 	check: (context, report) => {
-		const brSpaces = setting(context.config, "br_spaces", isNumber, 2);
-		const includeCode = setting(context.config, "code_blocks", isBoolean, false);
-		const listItemEmptyLines = setting(context.config, "list_item_empty_lines", isBoolean, false);
-		const strict = setting(context.config, "strict", isBoolean, false);
+		const brSpaces = setting(context.config, "br_spaces", Predicate.isNumber, 2);
+		const includeCode = setting(context.config, "code_blocks", Predicate.isBoolean, false);
+		const listItemEmptyLines = setting(context.config, "list_item_empty_lines", Predicate.isBoolean, false);
+		const strict = setting(context.config, "strict", Predicate.isBoolean, false);
 		const code = includeCode ? new Set<number>() : codeLines(context);
 		const listed = listItemEmptyLines ? listLines(context) : new Set<number>();
 		const paragraphs = strict ? spanLines(context, "paragraph") : new Set<number>();

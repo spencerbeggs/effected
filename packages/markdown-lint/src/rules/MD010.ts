@@ -4,9 +4,10 @@
 // span — and this module takes those spans from kit node positions.
 
 import type * as Lint from "@effected/markdown-lint";
+import { Predicate } from "effect";
 import { codeNodes, fencedInterior } from "../internal/code-blocks.js";
 import { firstContentLine } from "../internal/lines.js";
-import { isBoolean, isNumber, isStringArray, setting } from "../internal/settings.js";
+import { isStringArray, setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 interface Span {
@@ -54,11 +55,11 @@ export const MD010: Lint.LintRule = LintRule.make({
 	tags: ["whitespace", "hard_tab"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md010.md",
 	check: (context, report) => {
-		const includeCode = setting(context.config, "code_blocks", isBoolean, true);
+		const includeCode = setting(context.config, "code_blocks", Predicate.isBoolean, true);
 		const ignored = new Set(
 			setting(context.config, "ignore_code_languages", isStringArray, []).map((language) => language.toLowerCase()),
 		);
-		const spacesPerTab = setting(context.config, "spaces_per_tab", isNumber, 1);
+		const spacesPerTab = setting(context.config, "spaces_per_tab", Predicate.isNumber, 1);
 		const multiplier = Math.max(0, spacesPerTab);
 		const spans: Array<Span> = [];
 		for (const node of codeNodes(context)) {

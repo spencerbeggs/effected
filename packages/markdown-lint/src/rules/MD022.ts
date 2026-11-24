@@ -6,10 +6,11 @@
 
 import type { Heading } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
+import { Predicate } from "effect";
 import { headingNodes } from "../internal/headings.js";
 import { preferredLineEnding } from "../internal/line-endings.js";
 import { firstContentLine, isBlankLine } from "../internal/lines.js";
-import { isBoolean, setting } from "../internal/settings.js";
+import { setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 const isLinesSetting = (value: unknown): value is number | ReadonlyArray<number> =>
@@ -43,7 +44,7 @@ export const MD022: Lint.LintRule = LintRule.make({
 	check: (context, report) => {
 		const above = setting(context.config, "lines_above", isLinesSetting, 1);
 		const below = setting(context.config, "lines_below", isLinesSetting, 1);
-		const includeFrontMatter = setting(context.config, "include_front_matter", isBoolean, false);
+		const includeFrontMatter = setting(context.config, "include_front_matter", Predicate.isBoolean, false);
 		const lineEnding = preferredLineEnding(context.source);
 		const first = firstContentLine(context);
 		const last = context.lines.length;

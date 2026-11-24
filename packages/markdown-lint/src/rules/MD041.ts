@@ -6,10 +6,11 @@
 
 import type { Heading } from "@effected/markdown";
 import type * as Lint from "@effected/markdown-lint";
+import { Predicate } from "effect";
 import { contentBlocks, frontMatterHasTitle } from "../internal/headings.js";
 import { isHtmlFlowComment } from "../internal/html-text.js";
 import { errorContext } from "../internal/lines.js";
-import { isBoolean, isNumber, setting } from "../internal/settings.js";
+import { setting } from "../internal/settings.js";
 import { LintRule } from "../LintRule.js";
 
 const headingTagName = /^h[1-6]$/;
@@ -31,8 +32,8 @@ export const MD041: Lint.LintRule = LintRule.make({
 	tags: ["headings"],
 	information: "https://github.com/DavidAnson/markdownlint/blob/v0.42.1/doc/md041.md",
 	check: (context, report) => {
-		const allowPreamble = setting(context.config, "allow_preamble", isBoolean, false);
-		const level = setting(context.config, "level", isNumber, 1);
+		const allowPreamble = setting(context.config, "allow_preamble", Predicate.isBoolean, false);
+		const level = setting(context.config, "level", Predicate.isNumber, 1);
 		if (frontMatterHasTitle(context)) return;
 		let errorLine = 0;
 		for (const block of contentBlocks(context)) {
