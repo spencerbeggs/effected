@@ -27,10 +27,10 @@ sources:
     resource: https://github.com/savvy-web/systems/issues/804
 generated:
   by: "okfit/claude-code"
-  at: 2026-11-24T15:19:30Z
+  at: 2026-11-24T15:42:50Z
 integrity:
   generated:
-    body: 028e8a61038d0991
+    body: 662345da36691758
 ---
 
 # `@effected/markdown-lint`
@@ -292,12 +292,19 @@ link; a bracket inside inline math opens and closes nothing. Over the
 literal-autolink grid (`__test__/helpers/autolink-grid.ts`, 25 shapes in
 18 placements) these readings agree finding for finding; over the address
 and math-bracket grids (28 addresses in 12 placements, 5 targets in 14
-math placements) one input diverges, pinned by name: an address that takes
-the `_` that would open emphasis inside an inline HTML element
-(`<b>_a@b.co._</b> _a@b.co._`) leaves a later `_` to open emphasis that
-pairs across the close tag, so markdownlint's walk finds no close for the
-open tag and reports the address inside it, where the kit's emphasis closes
-inside the element and the kit leaves the address out. Porting it found two
+math placements) one input diverges, of a class pinned by name in both
+directions: micromark's address consumes the `_` run right before it, so
+its emphasis pairs differently from the kit's, and with it which inline
+HTML tags are siblings for markdownlint's tag pairing. markdownlint reports
+an address inside an element the kit leaves out where the `_` after the
+address's trailing `.` opens emphasis pairing with a later `_` across the
+close tag (`<i>_a@b.co._</i> x_`); the kit reports one markdownlint leaves
+out where the kit's emphasis, opened by the run micromark gave the address,
+pairs with a `_` after the close tag (`<b>_a@b.co</b>_`, `__`, any tag
+name). Only an address does it, never a URL or `www.` literal, which takes
+no `_`, and only a `_` run, never `*`. Closing it would mean re-deriving
+micromark's emphasis over the delimiters an address consumed (8 inputs
+pinned, beside 8 neighbours that agree). Porting it found two
 kit parser defects, fixed in `@effected/markdown`: an address after an
 escape or entity was positioned inside it, and the email postprocess went
 quadratic on a run of many text nodes.
@@ -459,13 +466,14 @@ plain synchronous function; no logging, no metrics.
   on its own `range`; the kit reports the link, its range cut to the line.
   Pinned by a test as an upstream failure (2 inputs: a label across lines,
   and a label ending in a line break).
-- MD039 for a label ending in a no-break space on the first line:
-  markdownlint's `trimEnd` trims the no-break space but its re2 space
-  pattern, whose `\s` is ASCII, does not match it, so it reports the line
-  before the closing bracket's, line 0, and throws on its own `lineNumber`;
-  the kit reports the label's line, with no range. Pinned by a test as an
-  upstream failure (2 inputs). Off the first line the kit reads the
-  no-break space as markdownlint does.
+- MD039 for a label ending in non-ASCII whitespace on its first line:
+  markdownlint's `trimEnd` trims any Unicode whitespace (a no-break, em,
+  en, ideographic or narrow no-break space, a byte order mark, a vertical
+  tab) but its re2 space pattern, whose `\s` is ASCII, matches none, so it
+  reports the line before the closing bracket's, line 0, and throws on its
+  own `lineNumber`; the kit reports the label's line, with no range. Pinned
+  by a test as an upstream failure (9 inputs). Off the first line the kit
+  reads such whitespace as markdownlint does.
 - MD027 after a tab right behind a blockquote marker (`>\ttab`):
   markdownlint reports a range over the partly consumed tab and throws on
   its own `range`; the kit reports nothing. Pinned by a test as an upstream
