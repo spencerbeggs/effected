@@ -995,6 +995,7 @@
 		"MD026": "no-trailing-punctuation, heading ends in punctuation",
 		"MD027": "no-multiple-space-blockquote, multiple spaces after the blockquote marker",
 		"MD028": "no-blanks-blockquote, blank line between two blockquotes",
+		"MD029": "ol-prefix, ordered list item numbering, one ordered or zero style",
 		"MD031": "blanks-around-fences, blank lines around fenced code blocks",
 		"MD032": "blanks-around-lists, blank lines around lists",
 		"MD033": "no-inline-html, inline html, raw html elements, allowed elements",

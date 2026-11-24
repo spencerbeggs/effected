@@ -44,7 +44,7 @@ const shuffled = <A>(items: ReadonlyArray<A>, seed: string): ReadonlyArray<A> =>
 };
 
 // markdownlint's findings with a fix over every input, per case.
-const ORACLE_FIXES_ALL = 3813;
+const ORACLE_FIXES_ALL = 4206;
 const ORACLE_FIXES_MD004_MD032 = 396;
 const ORACLE_FIXES_MD022_MD009 = 452;
 const ORACLE_FIXES_MD031_MD032 = 368;
@@ -55,6 +55,7 @@ const ORACLE_FIXES_MD021_MD009 = 359;
 const ORACLE_FIXES_MD005_MD009 = 309;
 const ORACLE_FIXES_MD007_MD004 = 655;
 const ORACLE_FIXES_MD027_MD009 = 454;
+const ORACLE_FIXES_MD029_MD005 = 437;
 // The inputs on which fixes from two or more of the case's rules land on one line, the case the file exists for.
 const MEETING_ALL = 38;
 const MEETING_MD004_MD032 = 17;
@@ -68,6 +69,7 @@ const MEETING_MD021_MD009 = 2;
 const MEETING_MD005_MD009 = 2;
 const MEETING_MD007_MD004 = 14;
 const MEETING_MD027_MD009 = 2;
+const MEETING_MD029_MD005 = 2;
 const MEETING_SAMPLE = 11;
 
 describe("applyFixes over several rules' fixes", () => {
@@ -192,6 +194,17 @@ describe("applyFixes over several rules' fixes", () => {
 			[
 				{ name: "quote spaces and trailing spaces, LF", source: ">   \n>  a  \n>\t \n" },
 				{ name: "quote spaces and trailing spaces, CRLF", source: ">   \r\n>  a  \r\n" },
+			],
+		],
+		// MD029 renumbers an ordered item and MD005 re-indents it, on one line.
+		[
+			"MD029 and MD005",
+			["MD029", "MD005"],
+			ORACLE_FIXES_MD029_MD005,
+			MEETING_MD029_MD005,
+			[
+				{ name: "renumbered and re-indented items, LF", source: "1. a\n 3. b\n  5. c\n" },
+				{ name: "renumbered and re-indented items, CRLF", source: "1. a\r\n 3. b\r\n  5. c\r\n" },
 			],
 		],
 	];
